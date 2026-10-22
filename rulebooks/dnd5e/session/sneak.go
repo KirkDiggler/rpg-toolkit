@@ -45,8 +45,8 @@ type SetSneakingInput struct {
 // SetSneakingOutput is the mode the encounter now holds, with the ordinary
 // persistence reports. It mirrors [SetDiscoverySharingOutput] and the wire's
 // SetSneakingResponse: any roll the declaration's refresh caused arrives as an
-// [EventSnuck] on the mover's own stream, and a fight it formed arrives as the
-// formation's own events — neither is restated here.
+// `snuck` beat on the mover's own stream, and a fight it formed arrives as the
+// formation's own beats — neither is restated here.
 type SetSneakingOutput struct {
 	Sneaking bool
 	Saved    SaveReport

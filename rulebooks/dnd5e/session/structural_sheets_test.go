@@ -21,7 +21,7 @@ func (s *StructuralSessionSuite) TestStructuralWalkReadsLiveSheetsWithoutRewriti
 	worlds := newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		Sessions: newFakeSessions(), Encounters: worlds, Characters: characters,
-		Events: session.DiscardEvents{}, Dice: testDice{}, TurnDriver: session.Pass{}, PresentationIDs: testPresentationIDs{},
+		Dice: testDice{}, TurnDriver: session.Pass{}, PresentationIDs: testPresentationIDs{},
 	})
 	s.Require().NoError(err)
 	launchScene(s.T(), mgr, structuralRoomWorld())

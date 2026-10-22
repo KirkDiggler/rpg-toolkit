@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
-	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 )
@@ -94,10 +93,6 @@ var projectedPairs = []struct {
 	{"ActionView", encounter.ActionView{}, session.ActionView{}},
 	{"TurnBudget", encounter.TurnBudget{}, session.TurnBudget{}},
 	{"Holding", perception.Holding{}, session.Holding{}},
-	// An Event, not a StoryEntry: rpg-api-protos#239 deleted StoryEntry, and
-	// Manager.Story now returns the SAME Event projectEvents builds for the
-	// live stream (projectEntry, events.go) — one projection, audited once.
-	{"Event", record.Entry{}, session.Event{}},
 }
 
 // renamed lists inner fields carried across under a DIFFERENT name, each with
@@ -130,14 +125,6 @@ var renamed = map[string]struct{ outer, reason string }{
 // reason. Anything absent from a projection and absent from here is a bug, not
 // a decision.
 var omitted = map[string]string{
-	// A record entry names every viewer a beat was addressed to. Returning that
-	// would tell one player which other members exist and were present —
-	// including members they have never perceived and rooms they have never
-	// entered. The audience is a delivery rule, not story content.
-	"record.Entry.Audience": "delivery rule, not story content — naming it leaks unperceived members",
-	"record.Entry.ID": "the record stream's own wire id, carried on RecordEvent.ID (record.go); the v1alpha1 " +
-		"Event keeps its per-recipient seq, and a second numbering there would undo the per-recipient numbering",
-
 	// Placement answers a cell, not a chamber (rpg-toolkit#1046). The region
 	// is derivable: the Atlas now lists every region's cells
 	// (rpg-project#256), so a client that wants the name of where somebody
@@ -216,11 +203,6 @@ var omitted = map[string]string{
 	// (Confirmed, above). Surfacing Observed too is exactly the "last seen
 	// N ago" feature rpg-toolkit#1702 named out of scope: add it when a
 	// caller actually asks, not on spec.
-	// Tags stay on the record (rpg-project#627, event-stream design R23): they
-	// are the record's own query metadata, and the event carries the act id
-	// as its Correlation instead.
-	"record.Entry.Tags": "the record's own query metadata, kept on the record by event-stream design R23; " +
-		"an event names its act through Correlation",
 
 	"perception.Holding.Observed": "first-observed timestamp; no caller asks how old a memory is yet (rpg-toolkit#1702's own out-of-scope note)",
 

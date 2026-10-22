@@ -70,10 +70,10 @@ func (s *CloseDoorSuite) startWith(world scene) {
 	s.stream = &fakeStream{}
 	s.sessions = newFakeSessions()
 	s.encounters = newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: testCharacters(), Events: s.stream,
+		Characters: testCharacters(),
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -172,7 +172,7 @@ func (s *CloseDoorSuite) TestAClosedDoorSurvivesARepositoryReload() {
 	reloaded, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: testCharacters(), Events: &fakeStream{},
+		Characters: testCharacters(),
 	})
 	s.Require().NoError(err)
 
@@ -184,8 +184,8 @@ func (s *CloseDoorSuite) TestAClosedDoorSurvivesARepositoryReload() {
 }
 
 // TestTheCloseBeatNamesTheActorAndState is the delivery half: the existing
-// door beat reaches the actor typed, with the actor and the new state, and the
-// output's Seq is that beat's own number in the actor's dense stream.
+// door beat reaches the actor as one door act, with the actor and the new
+// state.
 func (s *CloseDoorSuite) TestTheCloseBeatNamesTheActorAndState() {
 	ctx := context.Background()
 	s.startWith(footprintLeafWorld(encounter.DoorIsClosed()))
@@ -193,22 +193,20 @@ func (s *CloseDoorSuite) TestTheCloseBeatNamesTheActorAndState() {
 	s.Require().NoError(err)
 	s.stream.published = nil
 
-	out, err := s.mgr.CloseDoor(ctx, &session.CloseDoorInput{Session: "sess", Member: "alice", Door: leafDoorID})
+	_, err = s.mgr.CloseDoor(ctx, &session.CloseDoorInput{Session: "sess", Member: "alice", Door: leafDoorID})
 	s.Require().NoError(err)
 
-	var beats []session.Event
-	for _, event := range s.stream.published {
-		if event.Kind == session.EventDoor && event.Recipient == "alice" {
-			body, ok := event.Body.(session.DoorBody)
-			s.Require().True(ok, "a door event carries its typed body")
-			s.Equal(session.DoorBody{Door: leafDoorID, State: "closed", Actor: "alice"}, body,
-				"the beat names the door, the new state, and whose hands")
-			s.Nil(body.Calculation, "closing rolls nothing, and says so")
-			beats = append(beats, event)
+	var doors []session.DoorAct
+	for _, act := range s.stream.published {
+		if body, ok := act.Body.(session.DoorAct); ok && act.Recipient == "alice" {
+			s.Equal(leafDoorID, body.Door, "the act names the door")
+			s.Equal("closed", body.State, "and the new state")
+			s.Equal("alice", body.By.ID, "and whose hands")
+			s.Nil(body.Roll, "closing rolls nothing, and says so")
+			doors = append(doors, body)
 		}
 	}
-	s.Require().Len(beats, 1, "one door beat for the close")
-	s.Equal(out.Seq, beats[0].Seq, "the output's Seq is the actor's own number for that beat")
+	s.Require().Len(doors, 1, "one door act for the close")
 }
 
 // Closing changes door state, not the known room or its floor. Structural-wall
@@ -334,11 +332,11 @@ func (s *CloseDoorSuite) TestCloseDoorRunsUnderTheSessionLock() {
 		s.True(locker.held, "repository and delivery operations must hold the session guard")
 	}
 	stream := &guardedStream{probe: probe}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions:   guardedSessions{SessionRepository: s.sessions, probe: probe},
 		Encounters: guardedEncounters{EncounterRepository: s.encounters, probe: probe},
-		Characters: testCharacters(), Events: stream, Locker: locker,
+		Characters: testCharacters(), Locker: locker,
 	})
 	s.Require().NoError(err)
 
@@ -370,13 +368,14 @@ func (s *CloseDoorSuite) TestClosingADoorTellsNobodyToLookAgain() {
 	s.Require().NoError(err)
 
 	lost := false
-	for _, event := range s.stream.published {
-		body, ok := event.Body.(session.SightedBody)
-		if !ok {
+	for _, act := range s.stream.published {
+		perception, ok := act.Body.(session.Perception)
+		if !ok || perception.Sighted == nil {
 			continue
 		}
-		s.Empty(body.Changed, "nobody's conditions changed: %+v to %s", body, event.Recipient)
-		if event.Recipient == "alice" && slices.Contains(body.Lost, "bob") {
+		body := perception.Sighted
+		s.Empty(body.Changed, "nobody's conditions changed: %+v to %s", body, act.Recipient)
+		if act.Recipient == "alice" && slices.Contains(body.Lost, "bob") {
 			lost = true
 		}
 	}

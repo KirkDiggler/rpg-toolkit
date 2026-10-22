@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package dungeonspec_test
+package castletest
 
 // castle_cells_fight_test.go is D0 ON THE ROOM THE CASTLE SHIPS
 // (rpg-project#569): the mad king's cells, rpg-api's content, with one line

@@ -212,122 +212,6 @@ func TestRecordProjectsSelectedStrikeDetail(t *testing.T) {
 	}
 }
 
-// TestRecordProjectsCriticalStrikeTrace runs the whole seam for a CRITICAL
-// strike whose provider hands over the ALREADY-RESOLVED doubled physical
-// trace — 2d8 as rolled, faces and subtotal settled upstream. Session rolls
-// and recalculates nothing: it projects the provider's trace through
-// Record → payload → projectEntry (the one projection live delivery and
-// Story catch-up both use) and asserts the doubled notation, faces, subtotal,
-// and the sourced modifier identity survive byte-honest — with no legacy
-// scalar fields fabricated anywhere on the way.
-func TestRecordProjectsCriticalStrikeTrace(t *testing.T) {
-	three := 3
-	struck := resolution.StrikeOutcome{
-		Roll: 20, Total: 25, Calculation: recordedStrikeCalculation(20, 5),
-		TargetAC: 12, Hit: true, Critical: true, Damage: 14,
-		DamageComponents: []dnd5eEvents.DamageComponent{
-			{
-				Source: dnd5eEvents.DamageSourceWeapon,
-				Roll: dnd5eEvents.RollComponent{
-					Source: dnd5eEvents.RollSource{Ref: refs.Weapons.Longsword(), Name: "Longsword", SourceID: "alice"},
-					Dice: &dnd5eEvents.DiceTrace{
-						Notation: "2d8", DieSize: 8,
-						OriginalRolls: []int{5, 6}, FinalRolls: []int{5, 6}, Subtotal: 11,
-					},
-				},
-				DamageType: damage.Slashing,
-			},
-			{
-				Source: dnd5eEvents.DamageSourceAbility,
-				Roll: dnd5eEvents.RollComponent{
-					Source: dnd5eEvents.RollSource{
-						Ref: refs.Abilities.Strength(), Name: "Strength",
-					},
-					Modifier: &three,
-				},
-				DamageType: damage.Slashing,
-			},
-		},
-	}
-
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field: encounter.FieldInput{
-			Canvas:  pointyCanvas(),
-			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 4, 4)},
-		},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-			{ID: "bob", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},
-		},
-		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
-			Sheets:        encStandStill{},
-			Sight:         aggregateRecordEveryoneSees{},
-			Equipment:     encNoHandsObserved{},
-			Conditions:    encNoHandsObserved{},
-			Participation: aggregateRecordEveryoneStanding{},
-			Initiative:    aggregateRecordOrderAsGiven{},
-			Driver:        passDriver{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	require.NoError(t, err)
-
-	definition := combatActions.Definition{Ref: *refs.Weapons.Longsword(), Name: "Longsword"}
-	// No token: a strike nobody declared, the shape striker and mover record
-	// (recordFor's own doc). The payload below carries no presentation_id key
-	// at all, which is what makes every beat written before shared dice still
-	// byte-identical to what this seam writes now.
-	_, err = recordOne(enc, recordFor(
-		&AttackInput{Attacker: "alice", Target: "bob"}, struck, definition, "",
-		concentration{},
-	))
-	require.NoError(t, err)
-
-	story, err := enc.Story(&encounter.StoryInput{Audience: "bob"})
-	require.NoError(t, err)
-	entry := lastStruck(t, story)
-	event := projectEntry("sess", "bob", entry, 1)
-	require.Equal(t, EventStruck, event.Kind)
-	require.JSONEq(t,
-		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":20,"total":25,"against":12,"amount":14,`+
-			`"critical":true,"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":""},`+
-			`"calculation":{"components":[`+
-			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},"dice":{"notation":"1d20","die_size":20,"original_rolls":[20],"final_rolls":[20],"subtotal":20}},`+
-			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"modifier":5}],"total":25},`+
-			`"damage_components":[`+
-			`{"source":"weapon","roll":{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},`+
-			`"dice":{"notation":"2d8","die_size":8,"original_rolls":[5,6],"final_rolls":[5,6],"subtotal":11}},"damage_type":"slashing"},`+
-			`{"source":"ability","roll":{"source":{"ref":"dnd5e:abilities:str","name":"Strength"},"modifier":3},"damage_type":"slashing"}]}`,
-		string(event.Payload))
-
-	got, ok := event.Body.(StruckBody)
-	require.True(t, ok, "the projected critical strike carries StruckBody, got %T", event.Body)
-	require.True(t, got.Critical)
-	require.Equal(t, 14, got.Damage)
-	require.Len(t, got.DamageComponents, 2)
-	require.Equal(t, RollComponent{
-		Source: RollSource{Ref: "dnd5e:weapons:longsword", Name: "Longsword", SourceID: "alice"},
-		Dice: &DiceTrace{
-			Notation: "2d8", DieSize: 8,
-			OriginalRolls: []int{5, 6}, FinalRolls: []int{5, 6}, Subtotal: 11,
-		},
-	}, got.DamageComponents[0].Roll, "the doubled physical trace survives projection whole")
-	require.Equal(t, RollComponent{
-		Source: RollSource{Ref: "dnd5e:abilities:str", Name: "Strength"}, Modifier: &three,
-	}, got.DamageComponents[1].Roll, "the modifier source survives with its value")
-	for _, component := range got.DamageComponents {
-		require.Empty(t, component.SourceRef, "no legacy identity is fabricated")
-		require.Empty(t, component.Dice, "no legacy notation is fabricated")
-		require.Nil(t, component.FinalRolls, "no legacy faces are fabricated")
-		require.Zero(t, component.FlatBonus, "no legacy bonus is fabricated")
-	}
-}
-
 // TestRecordDamageComponentsCloneEveryRollFact pins the persistence adapter's
 // whole shape: every face list, ordered reroll with its source and label, the
 // zero-modifier pointer presence, the subtotal, and the multiplier-only trait
@@ -631,7 +515,7 @@ func TestMoveRegenerationSkipsAttackTargetPreflight(t *testing.T) {
 	}}
 	mgr, err := NewManager(&Config{Record: DiscardRecord{}, Acts: DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: &scriptedDice{}, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters,
-		Characters: characters, Events: DiscardEvents{},
+		Characters: characters,
 	})
 	require.NoError(t, err)
 
@@ -686,7 +570,7 @@ func TestInjectedTargetPreflightRefusalChangesAffordAndAttack(t *testing.T) {
 	roller := &scriptedDice{rolls: []int{17, 4}}
 	mgr, err := NewManager(&Config{Record: DiscardRecord{}, Acts: DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: roller, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters,
-		Characters: characters, Events: DiscardEvents{},
+		Characters: characters,
 	})
 	require.NoError(t, err)
 
@@ -777,7 +661,7 @@ func TestAttackVariantsShareOneTargetPreflight(t *testing.T) {
 	}}
 	mgr, err := NewManager(&Config{Record: DiscardRecord{}, Acts: DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: &scriptedDice{}, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters,
-		Characters: characters, Events: DiscardEvents{},
+		Characters: characters,
 	})
 	require.NoError(t, err)
 
@@ -853,7 +737,7 @@ func TestStrikeRefusesAPersistedMonsterPriceBeforeRolling(t *testing.T) {
 
 	mgr, err := NewManager(&Config{Record: DiscardRecord{}, Acts: DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: roller, TurnDriver: Pass{},
-		Sessions: sessions, Encounters: encounters, Characters: characters, Events: DiscardEvents{},
+		Sessions: sessions, Encounters: encounters, Characters: characters,
 	})
 	require.NoError(t, err)
 

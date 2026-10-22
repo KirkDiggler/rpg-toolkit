@@ -156,7 +156,7 @@ func (s *JoinLongRestTestSuite) manager(
 	encounters session.EncounterRepository, characters session.CharacterRepository,
 ) *session.Manager {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
-		Dice: testDice{}, TurnDriver: session.Pass{}, Events: session.DiscardEvents{},
+		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: encounters, Characters: characters,
 	})
 	s.Require().NoError(err)
@@ -172,7 +172,7 @@ func (s *JoinLongRestTestSuite) TestFirstAdmissionRestsPersistsAndProjectsTheCom
 	s.Require().NotNil(out.Character)
 	s.Equal(36, out.Character.HitPoints, "JoinOutput is projected from the rested record")
 	s.Equal(36, out.Character.MaxHitPoints)
-	s.Equal([]string{"character:bob", "seat:bob", "encounter:sess", "session:sess"}, out.Saved.Written)
+	s.Equal([]string{"character:bob", "seat:bob", "encounter:sess"}, out.Saved.Written)
 	s.Empty(out.Saved.Failed)
 	s.Equal(1, s.characters.saves, "first admission performs one durable character save")
 
@@ -385,31 +385,6 @@ func (s *JoinLongRestTestSuite) TestDiscoveryFailureLeavesEarlyRestDurableAndRep
 	s.assertCompleteRest(s.characters.stored(s.T(), "bob"))
 }
 
-func (s *JoinLongRestTestSuite) TestCorruptStreamAfterEarlyRestReportsWriteAndSavesNoEncounter() {
-	data, err := s.sessions.GetSession(s.ctx, "sess")
-	s.Require().NoError(err)
-	// alice's cursor claims nothing delivered through a seq her launch-time
-	// beats already sit below: a count the surviving log contradicts.
-	data.Streams = map[string]session.StreamCursor{
-		"alice": {UpTo: 1 << 32, Count: 0},
-	}
-	s.Require().NoError(s.sessions.SaveSession(s.ctx, data))
-	beforeWorld := s.storedWorldJSON()
-	beforeEncounterSaves := s.encounters.saves
-
-	out, err := s.mgr.Join(s.ctx, &session.JoinInput{
-		Session: "sess", Member: "bob", Position: hexCell(2, 2),
-	})
-	s.Require().Error(err)
-	s.ErrorIs(err, session.ErrInvalidWorld)
-	s.assertWrittenOnly(err, "character:bob", "seat:bob")
-	s.Nil(out)
-	s.Equal(1, s.characters.saves)
-	s.Equal(beforeEncounterSaves, s.encounters.saves)
-	s.JSONEq(beforeWorld, s.storedWorldJSON())
-	s.assertCompleteRest(s.characters.stored(s.T(), "bob"))
-}
-
 func (s *JoinLongRestTestSuite) TestClosedEncounterFirstAdmissionRestsOnceAndReportsTheDurableWrite() {
 	_, err := s.mgr.End(s.ctx, &session.EndInput{Session: "sess", Ending: "out"})
 	s.Require().NoError(err)
@@ -482,36 +457,6 @@ func (s *JoinLongRestTestSuite) TestEncounterSaveFailureLeavesRestedCharacterDur
 	s.assertCompleteRest(s.characters.stored(s.T(), "bob"))
 }
 
-func (s *JoinLongRestTestSuite) TestSessionSaveFailureReportsEarlyRestAndPersistedEncounter() {
-	failing := &failingSessions{fakeSessions: s.sessions, saveErr: errBroken}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
-		Dice: testDice{}, TurnDriver: session.Pass{}, Events: session.DiscardEvents{},
-		Sessions: failing, Encounters: s.encounters, Characters: s.characters,
-	})
-	s.Require().NoError(err)
-	beforeEncounterSaves := s.encounters.saves
-
-	out, err := mgr.Join(s.ctx, &session.JoinInput{
-		Session: "sess", Member: "bob", Position: hexCell(2, 2),
-	})
-	s.Require().Error(err)
-	s.ErrorIs(err, session.ErrSaveFailed)
-	s.ErrorIs(err, errBroken)
-	s.Nil(out)
-	var saveErr *session.SaveError
-	s.Require().True(errors.As(err, &saveErr))
-	s.Equal(session.SaveReport{
-		Written: []string{"character:bob", "seat:bob", "encounter:sess"},
-		Failed:  []string{"session:sess"},
-	}, saveErr.Report)
-	s.Equal(beforeEncounterSaves+1, s.encounters.saves)
-	s.assertCompleteRest(s.characters.stored(s.T(), "bob"))
-
-	// The encounter half really landed even though its session cursor did not.
-	_, err = s.mgr.View(s.ctx, &session.ViewInput{Session: "sess", Member: "bob"})
-	s.Require().NoError(err)
-}
-
 func (s *JoinLongRestTestSuite) TestZeroHPFirstAdmissionIsStandingAndCannotFireMemberDownEnding() {
 	sessions := newFakeSessions()
 	encounters := newFakeEncounters()
@@ -519,7 +464,7 @@ func (s *JoinLongRestTestSuite) TestZeroHPFirstAdmissionIsStandingAndCannotFireM
 	zero.HitPoints = 0
 	characters := newCopyingCharacters(s.T(), zero, armedFighter("alice"))
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
-		Dice: testDice{}, TurnDriver: session.Pass{}, Events: session.DiscardEvents{},
+		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: characters,
 	})
 	s.Require().NoError(err)
@@ -552,7 +497,7 @@ func (s *JoinLongRestTestSuite) TestPlacementDrivenStrikeReadsRestedTruthAndIsNo
 	// remaining fixed rolls drive its damage and its later picks.
 	dice := &sequenceDice{rolls: []int{1, 20, 15, 15, 4, 4, 4, 4, 4, 4}}
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
-		Dice: dice, TurnDriver: session.Driver(), Events: session.DiscardEvents{},
+		Dice: dice, TurnDriver: session.Driver(),
 		Sessions: sessions, Encounters: encounters, Characters: characters,
 	})
 	s.Require().NoError(err)

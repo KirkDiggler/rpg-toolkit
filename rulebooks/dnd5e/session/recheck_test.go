@@ -36,10 +36,10 @@ func (s *RecheckSuite) SetupTest() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(sharpEyed("alice"), dullEyed("bob"))
 
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: s.stream,
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -63,12 +63,16 @@ func withCaptain(sc scene) scene {
 	return sc
 }
 
-// sightedFor is every sighting body one recipient was told about.
-func (s *RecheckSuite) sightedFor(recipient string) []session.SightedBody {
-	out := make([]session.SightedBody, 0)
-	for _, e := range eventsFor(s.stream.published, recipient) {
-		if body, ok := e.Body.(session.SightedBody); ok {
-			out = append(out, body)
+// sightedFor is every sight change one recipient was told about, live.
+func (s *RecheckSuite) sightedFor(recipient string) []session.SightChange {
+	out := make([]session.SightChange, 0)
+	for _, act := range s.stream.published {
+		if act.Recipient != recipient {
+			continue
+		}
+		if body, ok := act.Body.(session.Perception); ok && body.Sense == session.SenseSight {
+			s.Require().NotNil(body.Sighted)
+			out = append(out, *body.Sighted)
 		}
 	}
 	return out

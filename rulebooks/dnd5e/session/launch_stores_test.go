@@ -31,7 +31,7 @@ func (s *LaunchStoresSuite) SetupTest() {
 func (s *LaunchStoresSuite) manager(sessions session.SessionRepository, encounters session.EncounterRepository) *session.Manager {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
-		Characters: newFakeCharacters(armedFighter("alice")), Events: session.DiscardEvents{},
+		Characters: newFakeCharacters(armedFighter("alice")),
 	})
 	s.Require().NoError(err)
 	return mgr

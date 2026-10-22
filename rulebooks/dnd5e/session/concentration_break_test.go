@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
@@ -32,8 +33,9 @@ type ConcentrationBreakSuite struct {
 	sessions   *fakeSessions
 	encounters *fakeEncounters
 	characters *fakeCharacters
-	stream     *fakeStream
 	mgr        *session.Manager
+	// mark is alice's last story seq when the scene was handed over.
+	mark uint64
 }
 
 func TestConcentrationBreakSuite(t *testing.T) {
@@ -48,8 +50,8 @@ var heldSpellRef = refs.Spells.TrueStrike()
 
 const heldSpellName = "True Strike"
 
-// scene stands up the duel with bob concentrating, the dice scripted, and
-// events delivered to a real stream.
+// scene stands up the duel with bob concentrating and the dice scripted, and
+// marks where alice's story stood when it was handed over.
 //
 // The dice are consumed in the order the fight asks for them: the swing's d20,
 // the weapon's damage die, then the defender's Constitution check. Authored
@@ -63,14 +65,13 @@ func (s *ConcentrationBreakSuite) scene(children []dnd5eEvents.ConditionAddress,
 
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"), bob)
-	s.stream = &fakeStream{}
 
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{},
 		Dice:            &sequenceDice{rolls: rolls},
 		TurnDriver:      session.Pass{},
 		Sessions:        s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: s.stream,
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -84,7 +85,7 @@ func (s *ConcentrationBreakSuite) scene(children []dnd5eEvents.ConditionAddress,
 	// spell, so the testimony matches the sheet before the swing.
 	_, err = mgr.Recheck(context.Background(), &session.RecheckInput{Session: "sess", Members: []string{"bob"}})
 	s.Require().NoError(err)
-	s.stream.published = nil
+	s.mark = lastSeq(storyBeats(s.T(), mgr, "sess", "alice"))
 }
 
 // holdingBlob is one concentrating condition as the host stores it: an opaque
@@ -111,24 +112,38 @@ func (s *ConcentrationBreakSuite) swing() (*session.AttackOutput, error) {
 	})
 }
 
-// kinds is the ordered list of event kinds one recipient received.
-func (s *ConcentrationBreakSuite) kinds(recipient string) []session.EventKind {
+// told is what alice's story gained since the scene was handed over.
+func (s *ConcentrationBreakSuite) told() []witnessed {
 	s.T().Helper()
-	var out []session.EventKind
-	for _, event := range eventsFor(s.stream.published, recipient) {
-		out = append(out, event.Kind)
-	}
-	return out
+	return storyBeatsAfter(s.T(), s.mgr, "sess", "alice", s.mark)
 }
 
-// bodies is every body of one kind one recipient received, in order.
-func (s *ConcentrationBreakSuite) bodies(recipient string, kind session.EventKind) []session.EventBody {
+// kinds is the ordered list of beat words alice was told.
+func (s *ConcentrationBreakSuite) kinds() []string {
 	s.T().Helper()
-	var out []session.EventBody
-	for _, event := range eventsFor(s.stream.published, recipient) {
-		if event.Kind == kind {
-			out = append(out, event.Body)
-		}
+	return beatNames(s.told())
+}
+
+// savedBeat is a saved beat's payload.
+type savedBeat struct {
+	Saver       string                   `json:"saver"`
+	Ability     string                   `json:"ability"`
+	Roll        int                      `json:"roll"`
+	Total       int                      `json:"total"`
+	DC          int                      `json:"dc"`
+	Succeeded   bool                     `json:"succeeded"`
+	Source      session.SpellRef         `json:"source"`
+	Calculation *session.RollCalculation `json:"calculation"`
+}
+
+// saves is every saved beat alice was told, in order.
+func (s *ConcentrationBreakSuite) saves() []savedBeat {
+	s.T().Helper()
+	var out []savedBeat
+	for _, beat := range beatsNamed(s.told(), encounter.BeatSaved) {
+		var body savedBeat
+		beat.decode(s.T(), &body)
+		out = append(out, body)
 	}
 	return out
 }
@@ -154,22 +169,15 @@ func (s *ConcentrationBreakSuite) TestOneBlowIsOneTrain() {
 	// The last beat is the commit's freshness step (rpg-project#520, R19):
 	// alice watched bob holding the spell, and he no longer is, so she is
 	// told to look at him again.
-	s.Equal([]session.EventKind{
-		session.EventStruck,
-		session.EventSaved,
-		session.EventConcentrationEnded,
-		session.EventActivationResult,
-		session.EventSighted,
-	}, s.kinds("alice"),
+	s.Equal([]string{
+		string(encounter.OutcomeStruck),
+		encounter.BeatSaved,
+		encounter.BeatConcentrationEnded,
+		encounter.BeatActivationResult,
+		encounter.BeatSighted,
+	}, s.kinds(),
 		"one call, one train: the blow, the check it forced, the spell it ended, and the "+
 			"effect that came off with it")
-
-	s.Require().Len(out.FollowUpSeqs, 3,
-		"and the caller learns where each consequence landed, beside the blow's own seq")
-	s.Equal(out.Seq+1, out.FollowUpSeqs[0],
-		"the consequences follow the blow in the recipient's own numbering, with no gap")
-	s.Equal(out.Seq+2, out.FollowUpSeqs[1])
-	s.Equal(out.Seq+3, out.FollowUpSeqs[2])
 }
 
 // TestTheBreakBeatSaysWhoWhatAndWhy reads the beat a client narrates from.
@@ -179,15 +187,22 @@ func (s *ConcentrationBreakSuite) TestTheBreakBeatSaysWhoWhatAndWhy() {
 	_, err := s.swing()
 	s.Require().NoError(err)
 
-	bodies := s.bodies("alice", session.EventConcentrationEnded)
-	s.Require().Len(bodies, 1)
-	s.Equal(session.ConcentrationEndedBody{
+	type breakBeat struct {
+		Caster string           `json:"caster"`
+		Spell  session.SpellRef `json:"spell"`
+		Reason string           `json:"reason"`
+	}
+	beats := beatsNamed(s.told(), encounter.BeatConcentrationEnded)
+	s.Require().Len(beats, 1)
+	var body breakBeat
+	beats[0].decode(s.T(), &body)
+	s.Equal(breakBeat{
 		Caster: "bob",
 		Spell:  session.SpellRef{Ref: heldSpellRef.String(), Name: heldSpellName},
 		// The rulebook's own word for a failed check after damage, crossing
 		// unchanged.
 		Reason: conditions.ConcentrationEndedDamage,
-	}, bodies[0])
+	}, body)
 }
 
 // TestTheCheckIsTheRulebooksArithmeticAndNotThisSeams reads the saved beat.
@@ -215,10 +230,9 @@ func (s *ConcentrationBreakSuite) TestTheCheckIsTheRulebooksArithmeticAndNotThis
 			_, err := s.swing()
 			s.Require().NoError(err)
 
-			bodies := s.bodies("alice", session.EventSaved)
-			s.Require().Len(bodies, 1)
-			saved, ok := bodies[0].(session.SavedBody)
-			s.Require().True(ok)
+			saves := s.saves()
+			s.Require().Len(saves, 1)
+			saved := saves[0]
 
 			s.Equal("bob", saved.Saver, "the holder rolls, not the striker")
 			s.Equal("con", saved.Ability)
@@ -230,6 +244,8 @@ func (s *ConcentrationBreakSuite) TestTheCheckIsTheRulebooksArithmeticAndNotThis
 				"the saved beat names the spell that was at stake")
 			s.Require().NotNil(saved.Calculation)
 			s.Equal(saved.Total, saved.Calculation.Total)
+			s.Require().NotEmpty(saved.Calculation.Components)
+			s.Require().NotNil(saved.Calculation.Components[0].Dice)
 			s.Equal(saved.Roll, saved.Calculation.Components[0].Dice.Subtotal)
 		})
 	}
@@ -251,19 +267,28 @@ func (s *ConcentrationBreakSuite) TestTheStrippedEffectIsNamedByTheRulebook() {
 	_, err := s.swing()
 	s.Require().NoError(err)
 
-	bodies := s.bodies("alice", session.EventActivationResult)
-	s.Require().Len(bodies, 1)
-	result, ok := bodies[0].(session.ActivationResultBody)
-	s.Require().True(ok)
-	s.Require().NotNil(result.ConditionRemoved,
+	beats := beatsNamed(s.told(), encounter.BeatActivationResult)
+	s.Require().Len(beats, 1)
+	var body struct {
+		Result struct {
+			Kind   string `json:"kind"`
+			Target string `json:"target"`
+			Ref    string `json:"ref"`
+			Name   string `json:"name"`
+			Reason string `json:"reason"`
+		} `json:"result"`
+	}
+	beats[0].decode(s.T(), &body)
+	removed := body.Result
+	s.Equal(string(encounter.ResultConditionRemoved), removed.Kind,
 		"a stripped child is a condition-removed result and nothing else")
 
-	s.Equal("alice", result.ConditionRemoved.Target,
+	s.Equal("alice", removed.Target,
 		"the effect came off the sheet it was sitting on, which is not the caster's")
-	s.Equal(childRef, result.ConditionRemoved.Ref)
-	s.NotEmpty(result.ConditionRemoved.Name,
+	s.Equal(childRef, removed.Ref)
+	s.NotEmpty(removed.Name,
 		"the rulebook named it, and a nameless removal is a line a client cannot write")
-	s.Equal(conditions.ConcentrationEndedDamage, result.ConditionRemoved.Reason,
+	s.Equal(conditions.ConcentrationEndedDamage, removed.Reason,
 		"one cause for the whole event, so a reader never holds two")
 }
 
@@ -283,13 +308,12 @@ func (s *ConcentrationBreakSuite) TestAMadeCheckIsARollTheTableSees() {
 	_, err := s.swing()
 	s.Require().NoError(err)
 
-	s.Equal([]session.EventKind{session.EventStruck, session.EventSaved}, s.kinds("alice"),
+	s.Equal([]string{string(encounter.OutcomeStruck), encounter.BeatSaved}, s.kinds(),
 		"the blow and the check it forced — and nothing ended, so nothing more")
 
-	bodies := s.bodies("alice", session.EventSaved)
-	s.Require().Len(bodies, 1)
-	saved, ok := bodies[0].(session.SavedBody)
-	s.Require().True(ok)
+	saves := s.saves()
+	s.Require().Len(saves, 1)
+	saved := saves[0]
 	s.Equal("bob", saved.Saver)
 	s.Equal(19, saved.Roll)
 	s.Equal(21, saved.Total, "19 on the die and 2 for CON 14")
@@ -321,6 +345,5 @@ func (s *ConcentrationBreakSuite) TestAMissBreaksNothing() {
 	s.Require().NoError(err)
 	s.Require().False(out.Hit)
 
-	s.Equal([]session.EventKind{session.EventMissed}, s.kinds("alice"))
-	s.Empty(out.FollowUpSeqs, "nothing followed, and nil is how that is said")
+	s.Equal([]string{string(encounter.OutcomeMissed)}, s.kinds(), "the miss, and nothing followed")
 }

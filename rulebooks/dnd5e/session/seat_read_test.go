@@ -42,7 +42,6 @@ func (s *SeatReadSuite) build(seats session.SeatRepository) *session.Manager {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: seats, Explorations: newFakeExplorations(), Locker: &observingLocker{},
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
-		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	return mgr

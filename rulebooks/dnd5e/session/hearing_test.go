@@ -6,7 +6,7 @@ package session_test
 // hearing_test.go is hearing through the session (rpg-project#569 R4–R5,
 // castle plan Task B3): the sheet seam supplies every member's passive
 // Perception on every pull, the composition decides who a sound reaches, and
-// the per-recipient Story carries the `heard` beat to its one listener.
+// the per-recipient story carries the `heard` beat to its one listener.
 //
 // THE SCENE. Two rooms joined by one open door. In the hall, alice swings at
 // a thug — a clang, DC 5 where it is made. Through the door, one hop and so
@@ -78,7 +78,7 @@ func guardOrders() encounter.Table {
 func (s *HearingSuite) SetupTest() {
 	s.stream = &fakeStream{}
 	s.encounters = newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream,
 		Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: newFakeSessions(), Encounters: s.encounters,
@@ -87,7 +87,6 @@ func (s *HearingSuite) SetupTest() {
 			listener("bob", 14, true),
 			listener("carol", 8, false),
 		),
-		Events: s.stream,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -154,21 +153,32 @@ func (s *HearingSuite) positionOf(member string) spatial.Position {
 	return persistedMonsterPosition(s.T(), s.encounters, member)
 }
 
-// heardBy is every heard beat in one member's Story.
-func (s *HearingSuite) heardBy(member string) []session.HeardBody {
+// heard is a heard beat's payload.
+type heard struct {
+	Listener string           `json:"listener"`
+	Kind     string           `json:"kind"`
+	Position spatial.Position `json:"position"`
+	Hops     int              `json:"hops"`
+}
+
+// heardBy is every heard beat in one member's story.
+func (s *HearingSuite) heardBy(member string) []heard {
 	s.T().Helper()
-	story, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: member})
-	s.Require().NoError(err)
-	var out []session.HeardBody
-	for _, event := range story {
-		if event.Kind != session.EventHeard {
-			continue
-		}
-		body, ok := event.Body.(session.HeardBody)
-		s.Require().True(ok, "a heard beat decodes to its typed body, got %T", event.Body)
-		out = append(out, body)
+	var out []heard
+	for _, beat := range beatsNamed(storyBeats(s.T(), s.mgr, "sess", member), encounter.BeatHeard) {
+		var h heard
+		beat.decode(s.T(), &h)
+		out = append(out, h)
 	}
 	return out
+}
+
+// answered is the part of an answered beat a time pick is read by.
+type answered struct {
+	Creature string `json:"creature"`
+	Key      string `json:"key"`
+	Word     string `json:"word"`
+	Entry    int    `json:"entry"`
 }
 
 // aRound makes one round of the world pass: carol paces the barracks' bottom
@@ -197,15 +207,14 @@ func (s *HearingSuite) aRound() {
 }
 
 // timePick is the answered beat a creature's last `time` pick wrote, as
-// alice's Story carries it.
-func (s *HearingSuite) timePick(creature string) session.AnsweredBody {
+// alice's story carries it.
+func (s *HearingSuite) timePick(creature string) answered {
 	s.T().Helper()
-	story, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "alice"})
-	s.Require().NoError(err)
-	var last *session.AnsweredBody
-	for _, event := range story {
-		body, ok := event.Body.(session.AnsweredBody)
-		if ok && body.Creature == creature && body.Key == string(encounter.AnswerTime) {
+	var last *answered
+	for _, beat := range beatsNamed(storyBeats(s.T(), s.mgr, "sess", "alice"), encounter.BeatAnswered) {
+		var body answered
+		beat.decode(s.T(), &body)
+		if body.Creature == creature && body.Key == string(encounter.AnswerTime) {
 			last = &body
 		}
 	}
@@ -248,24 +257,24 @@ func (s *HearingSuite) TestTheKeenGuardWalksAllTheWayToTheClang() {
 }
 
 // THE BEAT REACHES ITS LISTENER ONLY. bob (passive 14) stands through the
-// door: one hop, DC 10, heard — and his Story carries the beat naming the kind,
+// door: one hop, DC 10, heard — and his story carries the beat naming the kind,
 // the cell it rang on and no maker. carol (passive 9) did not hear it and
 // never sees it; alice made it and never sees bob's beat either. Live
-// delivery says the same: the stream handed one heard event, to bob.
+// delivery says the same: the act stream handed one hearing perception, to bob.
 func (s *HearingSuite) TestOnlyTheListenerWhoHeardIsTold() {
 	clang := s.positionOf("alice")
 
 	s.swing()
 
-	s.Equal([]session.HeardBody{{Listener: "bob", Kind: encounter.SoundClang, Position: clang, Hops: 1}},
+	s.Equal([]heard{{Listener: "bob", Kind: encounter.SoundClang, Position: clang, Hops: 1}},
 		s.heardBy("bob"))
 	s.Empty(s.heardBy("carol"), "passive 9 does not reach DC 10 through the door")
 	s.Empty(s.heardBy("alice"), "the maker hears nothing, and another listener's beat is not hers")
 
 	var recipients []string
-	for _, event := range s.stream.published {
-		if event.Kind == session.EventHeard {
-			recipients = append(recipients, event.Recipient)
+	for _, act := range s.stream.published {
+		if body, ok := act.Body.(session.Perception); ok && body.Sense == session.SenseHearing {
+			recipients = append(recipients, act.Recipient)
 		}
 	}
 	s.Equal([]string{"bob"}, recipients, "delivered live to the listener alone")

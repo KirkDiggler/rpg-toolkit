@@ -5,8 +5,6 @@ package session
 
 import (
 	"context"
-	"encoding/json"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -29,10 +27,29 @@ type StabilizationSessionSuite struct{ suite.Suite }
 
 func TestStabilizationSessionSuite(t *testing.T) { suite.Run(t, new(StabilizationSessionSuite)) }
 
-type stabilizationStream struct{ events []Event }
+type stabilizationStream struct{ acts []Act }
 
-func (s *stabilizationStream) Publish(_ context.Context, events []Event) error {
-	s.events = append(s.events, events...)
+func (s *stabilizationStream) PublishActs(_ context.Context, acts []Act) error {
+	s.acts = append(s.acts, acts...)
+	return nil
+}
+
+// stabilizedIn is the stabilization alice's acts carry, or nil.
+func stabilizedIn(acts []Act) *Stabilization {
+	for _, act := range acts {
+		if act.Recipient != "alice" {
+			continue
+		}
+		activate, ok := act.Body.(ActivateAct)
+		if !ok {
+			continue
+		}
+		for _, result := range activate.Results {
+			if result.Stabilization != nil {
+				return result.Stabilization
+			}
+		}
+	}
 	return nil
 }
 
@@ -59,7 +76,7 @@ func (s *StabilizationSessionSuite) TestCompiledProfilePersistsAndDeliversReplay
 			encounters := &strikeEncounters{byID: map[string]*encounter.EncounterData{}}
 			stream := &stabilizationStream{}
 			dice := &scriptedDice{}
-			mgr, err := NewManager(&Config{Record: DiscardRecord{}, Acts: DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: dice, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters, Characters: characters, Events: stream})
+			mgr, err := NewManager(&Config{Record: DiscardRecord{}, Acts: stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: dice, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters, Characters: characters})
 			s.Require().NoError(err)
 			sc := scene{
 				Field:   encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 5, 5)}},
@@ -126,17 +143,11 @@ func (s *StabilizationSessionSuite) TestCompiledProfilePersistsAndDeliversReplay
 			s.Equal(alice.Resources, characters.byID["alice"].Resources)
 			s.Zero(characters.byID["bob"].HitPoints)
 			s.Equal(&saves.DeathSaveState{Stabilized: true}, characters.byID["bob"].DeathSaveState)
-			var live *StabilizedBody
-			for _, event := range stream.events {
-				if event.Recipient == "alice" && event.Kind == EventActivationResult {
-					body := event.Body.(ActivationResultBody)
-					live = body.Stabilized
-				}
-			}
+			live := stabilizedIn(stream.acts)
 			s.Require().NotNil(live)
-			s.Equal(LifeStateStabilized, live.After)
-			s.True(live.Progress.Stabilized)
-			s.Zero(live.Progress.Failures)
+			s.Equal(string(LifeStateStabilized), live.After)
+			s.True(live.Stabilized)
+			s.Zero(live.Failures)
 			for id, stored := range encounters.byID {
 				encounters.byID[id], err = cloneFixture(stored)
 				s.Require().NoError(err)
@@ -149,16 +160,9 @@ func (s *StabilizationSessionSuite) TestCompiledProfilePersistsAndDeliversReplay
 				characters.byID[id], err = cloneFixture(stored)
 				s.Require().NoError(err)
 			}
-			replay, err := mgr.Story(ctx, &StoryInput{Session: "sess", Member: "alice"})
+			replay, err := mgr.Acts(ctx, &ActsInput{Session: "sess", Member: "alice"})
 			s.Require().NoError(err)
-			found := false
-			for _, event := range replay {
-				if event.Kind == EventActivationResult {
-					s.Equal(live, event.Body.(ActivationResultBody).Stabilized)
-					found = true
-				}
-			}
-			s.True(found)
+			s.Equal(live, stabilizedIn(replay.Acts), "catch-up reads the stabilization live delivery carried")
 			// Recompilation rejects a target whose authoritative state changed.
 			for _, state := range []struct {
 				hp   int
@@ -194,37 +198,4 @@ func (s *StabilizationSessionSuite) TestCompiledProfilePersistsAndDeliversReplay
 			s.False(fresh.declaration.Available, "paid action cannot be offered again")
 		})
 	}
-}
-
-func (s *StabilizationSessionSuite) TestResultDecodingIsStrictAndMappingDetached() {
-	provider := character.StabilizeOutput{Before: combat.LifeStateDying, After: combat.LifeStateStabilized, Progress: character.DeathSaveProgress{Stabilized: true, SuccessesNeeded: 3, FailuresRemaining: 3}}
-	ref := stabilizationProfile().Ref
-	results := activationResults([]resolution.ActivationEffect{{Kind: resolution.EffectStabilized, TargetID: "bob", Ref: ref.String(), Name: "Stabilization", Stabilization: provider}})
-	s.Require().Len(results, 1)
-	s.Equal(stabilizationDetail(provider), results[0].Stabilization)
-	provider.Progress.Failures = 99
-	s.Zero(results[0].Stabilization.Failures)
-	_, err := imposedResult(resolution.ImposedEffect{Kind: resolution.ImposedStabilized, RecipientID: "bob"}, SpellRef{})
-	s.ErrorIs(err, ErrInvalidWorld)
-	valid := `{"beat":"activation-result","actor":"alice","result":{"kind":"stabilized","target":"bob","ref":"test:spells:stabilize","name":"Stabilization","stabilization":{"before":"dying","after":"stabilized","hit_points":0,"successes":0,"failures":0,"successes_needed":3,"failures_remaining":3,"stabilized":true,"dead":false}}}`
-	kind, body := decodeBeat([]byte(valid))
-	s.Equal(EventActivationResult, kind)
-	s.Require().NotNil(body)
-	for _, bad := range []string{
-		strings.Replace(valid, `"hit_points":0`, `"hit_points":null`, 1),
-		strings.Replace(valid, `"hit_points":0,`, ``, 1),
-		strings.Replace(valid, `"hit_points":0`, `"hit_points":0,"hit_points":0`, 1),
-		strings.Replace(valid, `"dead":false`, `"dead":false,"extra":0`, 1),
-		strings.Replace(valid, `"before":"dying"`, `"before":""`, 1),
-		strings.Replace(valid, `"kind":"stabilized"`, `"kind":"healing-applied"`, 1),
-		strings.Replace(valid, `"kind":"stabilized"`, `"kind":"stabilized","calculation":null`, 1),
-		strings.Replace(valid, `"kind":"stabilized"`, `"kind":"stabilized","amount":0`, 1),
-	} {
-		_, decoded := decodeBeat([]byte(bad))
-		s.Nil(decoded, bad)
-	}
-	encoded, err := json.Marshal(body)
-	s.Require().NoError(err)
-	s.Contains(string(encoded), `"hit_points":0`)
-	s.NotContains(string(encoded), "healing_applied")
 }

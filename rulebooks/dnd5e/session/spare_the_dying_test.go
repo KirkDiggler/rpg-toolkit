@@ -11,6 +11,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
@@ -54,25 +55,38 @@ func (s *CastSuite) TestSpareTheDyingPublicCastPersistsAndReplays() {
 			s.False(s.castRow(spells.SpareTheDying).Available)
 			s.Zero(s.characters.byID["patient"].HitPoints)
 			s.Equal(&saves.DeathSaveState{Stabilized: true}, s.characters.byID["patient"].DeathSaveState)
-			beats := s.beats(session.EventCast, session.EventActivationResult)
+			beats := s.beats(encounter.BeatCast, encounter.BeatActivationResult)
 			s.Require().Len(beats, 2)
-			result := beats[1].Body.(session.ActivationResultBody)
-			s.Nil(result.HealingApplied)
-			s.Require().NotNil(result.Stabilized)
+			var result struct {
+				Result struct {
+					Kind          string                         `json:"kind"`
+					Target        string                         `json:"target"`
+					Ref           string                         `json:"ref"`
+					Name          string                         `json:"name"`
+					Amount        *int                           `json:"amount"`
+					Stabilization *encounter.StabilizationDetail `json:"stabilization"`
+				} `json:"result"`
+			}
+			beats[1].decode(s.T(), &result)
+			s.Equal(string(encounter.ResultStabilized), result.Result.Kind, "a stabilization, not a healing")
+			s.Nil(result.Result.Amount, "no healing numbers ride it")
+			s.Equal("patient", result.Result.Target)
+			s.Equal(refs.Spells.SpareTheDying().String(), result.Result.Ref)
+			s.Equal("Spare the Dying", result.Result.Name)
+			s.Require().NotNil(result.Result.Stabilization)
 			before := session.LifeStateDying
 			if stable {
 				before = session.LifeStateStabilized
 			}
-			s.Equal(&session.StabilizedBody{
-				Target: "patient", SourceRef: refs.Spells.SpareTheDying().String(), SourceName: "Spare the Dying",
-				Before: before, After: session.LifeStateStabilized, HitPoints: 0,
-				Progress: session.DeathSaveProgress{SuccessesNeeded: 3, FailuresRemaining: 3, Stabilized: true},
-			}, result.Stabilized)
+			s.Equal(&encounter.StabilizationDetail{
+				Before: string(before), After: string(session.LifeStateStabilized), HitPoints: 0,
+				SuccessesNeeded: 3, FailuresRemaining: 3, Stabilized: true,
+			}, result.Result.Stabilization)
 
+			replayed := s.beats(encounter.BeatCast, encounter.BeatActivationResult, string(encounter.OutcomeDown))
 			s.reloadHealingScene()
-			story, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "cleric", FromSeq: beats[0].Seq})
-			s.Require().NoError(err)
-			s.Equal(s.beats(session.EventCast, session.EventActivationResult, session.EventDowned), story)
+			s.Equal(replayed, s.beats(encounter.BeatCast, encounter.BeatActivationResult, string(encounter.OutcomeDown)),
+				"a reloaded scene replays the same persisted beats")
 			loaded, err := character.Load(ctx, s.characters.byID["patient"])
 			s.Require().NoError(err)
 			status, err := loaded.StatusView(&character.StatusViewInput{})
@@ -119,7 +133,7 @@ func (s *CastSuite) TestSpareTheDyingPublicCastRevalidatesLifeState() {
 			s.ErrorIs(err, session.ErrStaleDeclaration)
 			s.JSONEq(storedJSON(s.T(), before), storedJSON(s.T(), s.characters.byID["cleric"]))
 			s.Equal(rolls, s.dice.next)
-			s.Empty(s.beats(session.EventCast, session.EventActivationResult))
+			s.Empty(s.beats(encounter.BeatCast, encounter.BeatActivationResult))
 		})
 	}
 }

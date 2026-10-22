@@ -33,9 +33,8 @@ func (s *MoveTestSuite) SetupTest() {
 	s.characters = testCharacters()
 	s.stream = &fakeStream{}
 	s.record = &fakeRecord{}
-	mgr, err := session.NewManager(&session.Config{Record: s.record, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Record: s.record, Acts: s.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
-		Events: s.stream,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -73,6 +72,7 @@ func (s *MoveTestSuite) launchHex() {
 // so it is asserted per step rather than on the destination.
 func (s *MoveTestSuite) TestWalksEveryCellOfThePath() {
 	s.startCorridor()
+	before := lastSeq(storyBeats(s.T(), s.mgr, "sess", "alice"))
 
 	out, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice",
@@ -82,7 +82,8 @@ func (s *MoveTestSuite) TestWalksEveryCellOfThePath() {
 	s.Require().Len(out.Steps, 2, "each cell of the path is entered in turn")
 	s.Equal(spatial.Position{X: 2, Y: 1}, out.Steps[0].Position)
 	s.Equal(spatial.Position{X: 3, Y: 1}, out.Steps[1].Position)
-	s.Less(out.Steps[0].Seq, out.Steps[1].Seq, "each step is its own recorded beat")
+	s.Len(beatsNamed(storyBeatsAfter(s.T(), s.mgr, "sess", "alice", before), encounter.BeatMoved), 2,
+		"each step is its own recorded beat")
 }
 
 // TestEndingUnderfootStopsTheWalk is scene 6.
@@ -250,7 +251,6 @@ func (s *MoveTestSuite) TestAWalkCrossesTheDoorway() {
 	s.Require().NoError(err, "the doorway is a step like any other")
 	s.Require().Len(out.Steps, 6, "five along the corridor, one through the gate")
 	s.Equal(hexCell(6, 0), out.Steps[5].Position, "she is on the far side, in the vault")
-	s.NotZero(out.Steps[2].Seq)
 }
 
 // TestAStepWithNoDoorwayIsRefused pins the sentinel that replaced
@@ -404,12 +404,11 @@ func (s *MoveTestSuite) TestAMidWalkRefusalMovesNobody() {
 	s.startCorridor()
 	ctx := context.Background()
 
-	before, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice"})
-	s.Require().NoError(err)
+	before := storyBeats(s.T(), s.mgr, "sess", "alice")
 	s.stream.published = nil // setup beats predate the walk
 
 	// (1,1) → (0,1) is a real step. (-1,1) is off the map.
-	_, err = s.mgr.Move(ctx, &session.MoveInput{
+	_, err := s.mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "alice",
 		Path: []spatial.Position{{X: 0, Y: 1}, {X: -1, Y: 1}},
 	})
@@ -421,8 +420,7 @@ func (s *MoveTestSuite) TestAMidWalkRefusalMovesNobody() {
 	s.Equal(spatial.Position{X: 1, Y: 1}, where.Position,
 		"she is where she started: the step that DID execute was discarded with the encounter")
 
-	after, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice"})
-	s.Require().NoError(err)
+	after := storyBeats(s.T(), s.mgr, "sess", "alice")
 	s.Len(after, len(before), "no beat survived a walk that failed")
 	s.Empty(s.stream.published, "and nothing reached a client")
 }
@@ -434,7 +432,7 @@ func (s *MoveTestSuite) TestAMidWalkRefusalMovesNobody() {
 // Distance <= 1 — so distance ZERO sailed through. The composition's own
 // placement then permits the mover's own cell, and the phantom went the whole
 // way: a genuine `moved` beat recorded and persisted, sight refreshed, and
-// EventMoved fanned out to every client, for a movement that never happened.
+// a `moved` act fanned out to every client, for a movement that never happened.
 // Free-roam has no movement budget, so no accounting layer downstream would
 // ever have caught the no-op.
 //
@@ -444,12 +442,11 @@ func (s *MoveTestSuite) TestAZeroDistanceStepIsRefused() {
 	s.startCorridor()
 	ctx := context.Background()
 
-	before, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice"})
-	s.Require().NoError(err)
+	before := storyBeats(s.T(), s.mgr, "sess", "alice")
 	s.stream.published = nil // setup beats predate the walk
 
 	// Alice stands at (1,1). This asks her to step onto herself.
-	_, err = s.mgr.Move(ctx, &session.MoveInput{
+	_, err := s.mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 1, Y: 1}},
 	})
 	s.Require().Error(err)
@@ -460,8 +457,7 @@ func (s *MoveTestSuite) TestAZeroDistanceStepIsRefused() {
 	s.Contains(err.Error(), "already standing on (1,1)",
 		"and the refusal names the cell, in the caller's own coordinates")
 
-	after, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice"})
-	s.Require().NoError(err)
+	after := storyBeats(s.T(), s.mgr, "sess", "alice")
 	s.Len(after, len(before), "no beat was recorded for a movement that did not happen")
 	s.Empty(s.stream.published, "and nothing reached a client")
 }

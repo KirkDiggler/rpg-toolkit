@@ -77,7 +77,7 @@ type HoldOutput struct {
 // physically is folds on the TRUTH GRAIN — one answer, the same for every
 // member, unlike knowledge, which is audience-scoped — so the composition
 // drops it from the atlas itself and every member's Atlas read inherits that.
-// A client patches its cached map from the EventHeld beat, which goes to
+// A client patches its cached map from the `held` beat, which goes to
 // everyone present, and a refetch agrees with the patch.
 //
 // In a fight the composition gates this on the turn clock (design §4.4): a

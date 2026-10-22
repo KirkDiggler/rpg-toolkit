@@ -137,9 +137,30 @@ func (e *Encounter) CellAt(in CellAtInput) (CellFact, error) {
 
 // cellQuery is a bounded read. Placement remains live; participation is assessed
 // once for this read only. Never retain a query across a step or reaction.
+//
+// FLOODS ARE MEMOIZED FOR THE READ (rpg-toolkit#2097). Every input a flood
+// reads (positions, doors, placements, who is down, each walker's picture)
+// changes only between reads, never inside one, so a flood asked twice from
+// the same origin for the same mover, walker and limit is the same field. A
+// monster's view asks it once per creature it sees; the read answers the
+// first ask and hands the rest the same field. The memo dies with the query,
+// which is why the rule above (never retain one across a step) is also the
+// memo's: a step moves creatures, even within one Step, as world pace drives
+// them, so a memo that outlived its read would route on stale ground.
 type cellQuery struct {
 	*Encounter
 	down map[MemberID]bool
+
+	// floods is this read's memo of goal-free floods, keyed by everything a
+	// flood without a forgiveness predicate reads from its caller.
+	floods map[floodKey]spatial.FieldOutput
+}
+
+// floodKey is everything a goal-free flood reads from its caller.
+type floodKey struct {
+	mover, walker MemberID
+	from          spatial.Position
+	limit         int
 }
 
 func (e *Encounter) cellQuery() (*cellQuery, error) {

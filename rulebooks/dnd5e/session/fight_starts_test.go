@@ -11,6 +11,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/npcs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -58,7 +59,7 @@ func managerOverRepos(
 	t fataler, sessions session.SessionRepository, encounters session.EncounterRepository,
 ) *session.Manager {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
-		Sessions: sessions, Encounters: encounters, Characters: testCharacters(), Events: session.DiscardEvents{},
+		Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
 	})
 	if err != nil {
 		t.Fatalf("building manager: %v", err)
@@ -170,7 +171,8 @@ func (s *FightStartsTestSuite) TestTheFightStopsTheWalk() {
 	s.Require().NotNil(out.Formed, "lining up with the gap started a fight")
 	s.Equal([]string{"alice", "ogre"}, out.Formed.Order, "and it has an order")
 	s.Empty(out.Formed.Surprised, "through the gap they see each other, so neither is caught unaware")
-	s.NotZero(out.Formed.Seq, "the fight starting is a beat of the story")
+	s.NotEmpty(beatsNamed(storyBeats(s.T(), s.mgr, "sess", "alice"), encounter.BeatFightStarted),
+		"the fight starting is a beat of the story")
 
 	// The discovery is still reported — what changed is who acted on it. The
 	// SDK reports what the walker saw; it no longer decides what that means.
@@ -208,7 +210,7 @@ func (s *FightStartsTestSuite) TestTheDiceDecideTheOrder() {
 		dice := &sequenceDice{rolls: []int{5, 18, 11}}
 		mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 			Dice: dice, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
-			Characters: testCharacters(), Events: session.DiscardEvents{},
+			Characters: testCharacters(),
 		})
 		s.Require().NoError(err)
 		launchScene(s.T(), mgr, ambushWorld(aardvark()))
@@ -241,7 +243,7 @@ func (s *FightStartsTestSuite) TestAnUnplayedMemberFirstInInitiativeIsAlreadyDri
 	dice := &sequenceDice{rolls: []int{1, 20}} // alice, then ogre — alphabetical asking order
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: dice, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: session.DiscardEvents{},
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	launchScene(s.T(), mgr, ambushWorld())
@@ -272,7 +274,7 @@ func (s *FightStartsTestSuite) TestAnUnplayedMemberFirstInInitiativeIsAlreadyDri
 func (s *FightStartsTestSuite) TestADiceFailureAbortsTheFight() {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: brokenDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: testCharacters(), Events: session.DiscardEvents{},
+		Characters: testCharacters(),
 	})
 	s.Require().NoError(err)
 	launchScene(s.T(), mgr, ambushWorld())
@@ -458,14 +460,11 @@ func (s *FightStartsTestSuite) TestTheFightsOrderIsAFunctionOfPersistedData() {
 		"every participant, in an order that does not depend on iteration")
 }
 
-// TestAWalkWritesWhatAWalkChanges pins write proportionality — in the shape
-// per-recipient numbering gave it (rpg-toolkit#1375). A walk appends beats,
-// appended beats advance every member's delivered-stream cursor, and the
-// cursors ride SessionData (stream.go) — so a beat-appending verb now writes
-// BOTH aggregates, encounter first (persist's own ordering argument). What
-// survives of the old rule is its principle: a verb that changes nothing
-// writes nothing extra — a verb that appends no beat leaves the cursors
-// untouched and the session blob alone (cursorsEqual's early-out).
+// TestAWalkWritesWhatAWalkChanges pins write proportionality: a walk changes
+// the world and nothing in the session record, so it writes the encounter
+// alone. (While the v1alpha1 stream's per-member cursors rode SessionData,
+// every beat-appending verb wrote both; the cursors left with that stream,
+// rpg-project#631 R29.)
 func (s *FightStartsTestSuite) TestAWalkWritesWhatAWalkChanges() {
 	s.startAmbush()
 
@@ -474,8 +473,8 @@ func (s *FightStartsTestSuite) TestAWalkWritesWhatAWalkChanges() {
 		Path: []spatial.Position{{X: 2, Y: 0}},
 	})
 	s.Require().NoError(err)
-	s.Equal([]string{"encounter:sess", "session:sess"}, out.Saved.Written,
-		"the walk's beats advance the stream cursors, and the cursors are session state")
+	s.Equal([]string{"encounter:sess"}, out.Saved.Written,
+		"a walk changes the world, not the session record")
 }
 
 // TestAPartialSaveTellsTheCallerWhichHalfLanded is S6 reaching a caller, which
@@ -487,11 +486,10 @@ func (s *FightStartsTestSuite) TestAWalkWritesWhatAWalkChanges() {
 // second a retry.
 //
 // It used to be driven by a walk that suspended: the world landed, the window
-// it owed did not. Nothing owes a window now, so the pin moved to the verb that
-// still writes both aggregates. That was Spawn, which put the NPC's sheet in
-// the session record; Spawn is gone, and a walk now writes both — its beats
-// advance the stream cursors the session record carries. Same failure, same
-// report, a producer that exists.
+// it owed did not. Nothing owes a window now, so the pin moved to a verb that
+// still writes both aggregates: PlaceNPC, which places the NPC in the world
+// and records its content in the session record (SessionData.WorldNPCs).
+// Same failure, same report, a producer that exists.
 func (s *FightStartsTestSuite) TestAPartialSaveTellsTheCallerWhichHalfLanded() {
 	s.startAmbush()
 
@@ -499,20 +497,22 @@ func (s *FightStartsTestSuite) TestAPartialSaveTellsTheCallerWhichHalfLanded() {
 	sessions := &failingSessions{fakeSessions: s.sessions, saveErr: errBroken}
 	mgr := managerOverRepos(s.T(), sessions, s.encounters)
 
-	_, err := mgr.Move(context.Background(), &session.MoveInput{
-		Session: "sess", Member: "alice",
-		Path: []spatial.Position{{X: 2, Y: 0}},
+	vendor, err := npcs.NewMerchant(nil)
+	s.Require().NoError(err)
+	_, err = mgr.PlaceNPC(context.Background(), &session.PlaceNPCInput{
+		Session: "sess", Member: "vendor", Position: spatial.Position{X: 2, Y: 0},
+		NPC: vendor.NPC().ToData(),
 	})
-	s.Require().Error(err, "the walk's advanced cursors had to be written to the session")
+	s.Require().Error(err, "the placed NPC's content had to be written to the session")
 	s.Require().ErrorIs(err, session.ErrSaveFailed, "the condition is matchable")
 	s.ErrorIs(err, errBroken, "and so is the store's own failure")
 
 	var saved *session.SaveError
 	s.Require().ErrorAs(err, &saved, "the report must survive the error, not die in persist")
 	s.Equal([]string{"encounter:sess"}, saved.Report.Written,
-		"the world landed — alice really took the step")
+		"the world landed — the vendor really stands there")
 	s.Equal([]string{"session:sess"}, saved.Report.Failed,
-		"the cursors did not — this is a repair, not a retry")
+		"its content did not — this is a repair, not a retry")
 }
 
 // TestATotalSaveFailureNamesOnlyWhatWasAttempted is the contrast that gives the

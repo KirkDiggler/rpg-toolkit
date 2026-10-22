@@ -12,6 +12,7 @@ import (
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/armor"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -77,9 +78,9 @@ func (s *EquipSuite) open(dice session.Roller) {
 	s.characters = newFakeCharacters(quickFighter("alice"), quickFighter("bob"))
 	s.seats = newFakeSeats()
 	s.stream = &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: s.seats, Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: s.seats, Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: dice, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: s.stream,
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -106,16 +107,16 @@ func (s *EquipSuite) stored(id string) *character.Data {
 	return data
 }
 
-// equipBeatsTo is every equip event delivered to recipient.
-func (s *EquipSuite) equipBeatsTo(recipient string) []session.EquipmentChangedBody {
-	var out []session.EquipmentChangedBody
-	for _, event := range s.stream.published {
-		if event.Kind != session.EventEquipmentChanged || event.Recipient != recipient {
+// equipBeatsTo is every equip act delivered to recipient.
+func (s *EquipSuite) equipBeatsTo(recipient string) []session.EquipAct {
+	var out []session.EquipAct
+	for _, act := range s.stream.published {
+		if act.Recipient != recipient {
 			continue
 		}
-		body, ok := event.Body.(session.EquipmentChangedBody)
-		s.Require().True(ok, "an equip event carries its typed body")
-		out = append(out, body)
+		if body, ok := act.Body.(session.EquipAct); ok {
+			out = append(out, body)
+		}
 	}
 	return out
 }
@@ -132,7 +133,6 @@ func (s *EquipSuite) TestAnUnseatedEquipCostsNothingAndTellsNoBeat() {
 	s.Empty(out.Session, "no run holds an unseated character")
 	s.Equal(string(weapons.Dagger), s.stored("alice").EquipmentSlots[character.SlotOffHand])
 	s.Equal([]string{"character:alice"}, out.Saved.Written)
-	s.Empty(out.Seqs)
 	s.Empty(s.stream.published, "an unseated change tells nobody anything")
 	s.Equal(worldSaves, s.encounters.saves, "no session is touched")
 	s.Require().Len(out.Drawn, 1)
@@ -153,17 +153,16 @@ func (s *EquipSuite) TestASeatedFreeRoamEquipCostsNothingTellsOneBeatAndRechecks
 	s.Equal("sess", out.Session)
 	s.Empty(s.stored("alice").EquipmentSlots[character.SlotMainHand])
 	s.Equal(before, s.stored("alice").ActionEconomy, "free roam charges nothing")
-	s.Len(out.Seqs, 1, "one item stowed, one beat")
 	s.Contains(out.Saved.Written, "character:alice")
 	s.Contains(out.Saved.Written, "encounter:sess")
 
 	toBob := s.equipBeatsTo("bob")
 	s.Require().Len(toBob, 1, "the watcher hears the stow")
-	s.Equal(session.EquipmentChangedBody{
-		Member: "alice", Slot: string(character.SlotMainHand),
-		Item: "dnd5e:weapons:" + string(weapons.Longsword), Change: session.EquipmentStowed,
-	}, toBob[0])
-	s.Len(s.equipBeatsTo("alice"), 1, "the actor hears their own act")
+	s.Equal("alice", toBob[0].By.ID)
+	s.Equal(string(character.SlotMainHand), toBob[0].Slot)
+	s.Equal("dnd5e:weapons:"+string(weapons.Longsword), toBob[0].Item)
+	s.Equal(string(encounter.EquipStow), toBob[0].Change)
+	s.Len(s.equipBeatsTo("alice"), 1, "the actor hears their own act: one item stowed, one beat")
 
 	// Sight was rechecked inside the verb: bob's own view of alice shows
 	// the empty hand without any second call.
@@ -190,16 +189,15 @@ func (s *EquipSuite) handsBobSees() *session.SeenEquipment {
 func (s *EquipSuite) TestASwapTellsTheStowBeforeTheDraw() {
 	s.start(freeRoamDuelWorld(), true, testDice{})
 
-	out, err := s.mgr.Equip(context.Background(), &session.EquipInput{
+	_, err := s.mgr.Equip(context.Background(), &session.EquipInput{
 		Character: "alice", Slot: string(character.SlotMainHand), Item: string(weapons.Dagger),
 	})
 	s.Require().NoError(err)
 
-	s.Len(out.Seqs, 2)
 	toBob := s.equipBeatsTo("bob")
 	s.Require().Len(toBob, 2)
-	s.Equal(session.EquipmentStowed, toBob[0].Change)
-	s.Equal(session.EquipmentDrawn, toBob[1].Change)
+	s.Equal(string(encounter.EquipStow), toBob[0].Change)
+	s.Equal(string(encounter.EquipDraw), toBob[1].Change)
 	s.Equal("dnd5e:weapons:"+string(weapons.Dagger), toBob[1].Item)
 }
 
@@ -242,12 +240,11 @@ func (s *EquipSuite) TestAnInFightStowWithTheActionSpentRefusesAndWritesNothing(
 func (s *EquipSuite) TestAnInFightDrawOnTurnPaysTheInteractionAndTellsTheBeat() {
 	s.startDuel(true, testDice{})
 
-	out, err := s.mgr.Equip(context.Background(), &session.EquipInput{
+	_, err := s.mgr.Equip(context.Background(), &session.EquipInput{
 		Character: "alice", Slot: string(character.SlotOffHand), Item: string(weapons.Dagger),
 	})
 	s.Require().NoError(err)
 
-	s.Len(out.Seqs, 1)
 	s.Equal(string(weapons.Dagger), s.stored("alice").EquipmentSlots[character.SlotOffHand])
 	s.Len(s.equipBeatsTo("bob"), 1)
 	s.Equal(1, s.stored("alice").ActionEconomy.ActionsRemaining, "a draw into an empty hand is the interaction, not the action")

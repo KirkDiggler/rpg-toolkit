@@ -8,6 +8,7 @@ import (
 
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -39,18 +40,20 @@ func (s *CastSuite) TestAWardEndsWithTheClericWhoLeft() {
 		Targets: []string{"warded"},
 	})
 	s.Require().NoError(err)
-	s.stream.published = nil
+	mark := lastSeq(storyBeats(s.T(), s.mgr, "sess", "warded"))
 
 	_, err = s.mgr.Exit(ctx, &session.ExitInput{Session: "sess", Member: "cleric"})
 	s.Require().NoError(err, "the cleric leaves the session")
 
-	exited := ofKinds(eventsFor(s.stream.published, "warded"), session.EventExited)
+	exited := beatsNamed(storyBeatsAfter(s.T(), s.mgr, "sess", "warded", mark), encounter.BeatExited)
 	s.Require().Len(exited, 1)
-	body, ok := exited[0].Body.(session.ExitedBody)
-	s.Require().True(ok)
+	var body struct {
+		Ended []activationResult `json:"ended"`
+	}
+	exited[0].decode(s.T(), &body)
 	var offWarded []string
 	for _, removed := range body.Ended {
-		if removed.Target == "warded" {
+		if removed.Kind == encounter.ResultConditionRemoved && removed.Target == "warded" {
 			offWarded = append(offWarded, removed.Ref)
 		}
 	}
@@ -66,19 +69,20 @@ func (s *CastSuite) TestAWardEndsWithTheClericWhoLeft() {
 	// From here the skeleton swings at the fighter, who is no longer warded.
 	s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: swingsAt{target: "warded"},
-		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream,
+		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	turn, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "warded"})
 	s.Require().NoError(err)
 	s.Require().Equal("warded", turn.Active, "precondition: the warded fighter acts before the skeleton")
-	s.stream.published = nil
+	mark = lastSeq(storyBeats(s.T(), s.mgr, "sess", "warded"))
 	_, err = s.mgr.EndTurn(ctx, &session.EndTurnInput{
 		Session: "sess", Member: "warded", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "warded"),
 	})
 	s.Require().NoError(err, "the skeleton's driven swing resolves; the table moves")
-	s.Empty(ofKinds(eventsFor(s.stream.published, "warded"), session.EventWarded), "no ward stood in its way")
-	s.NotEmpty(ofKinds(eventsFor(s.stream.published, "warded"), session.EventMissed), "the swing was rolled")
+	swing := storyBeatsAfter(s.T(), s.mgr, "sess", "warded", mark)
+	s.Empty(beatsNamed(swing, string(encounter.OutcomeWarded)), "no ward stood in its way")
+	s.NotEmpty(beatsNamed(swing, string(encounter.OutcomeMissed)), "the swing was rolled")
 }
 
 // swingsAt declares its first action against one named member, or passes when

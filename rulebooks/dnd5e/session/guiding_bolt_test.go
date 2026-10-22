@@ -4,8 +4,10 @@ package session_test
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -27,37 +29,70 @@ func (s *CastSuite) TestGuidingBoltPublicCastAndStoryReplay() {
 			beforeHP := s.storedSkeleton()
 			row := s.castRow(spells.GuidingBolt)
 			s.Require().True(row.Available)
-			published := len(s.stream.published)
+			before := lastSeq(storyBeats(s.T(), s.mgr, "sess", "cleric"))
 			out, err := s.cast(spells.GuidingBolt)
 			s.Require().NoError(err)
 			s.False(out.Posed)
 			s.Nil(out.Saved)
-			events := s.beats(session.EventCast, session.EventStruck, session.EventMissed, session.EventActivationResult)
-			sighted := ofKinds(s.stream.published[published:], session.EventSighted)
+			told := storyBeatsAfter(s.T(), s.mgr, "sess", "cleric", before)
+			events := beatsNamed(told, encounter.BeatCast, string(encounter.OutcomeStruck),
+				string(encounter.OutcomeMissed), encounter.BeatActivationResult)
+			sighted := beatsNamed(told, encounter.BeatSighted)
 			if hit {
 				// The light is a real change to the skeleton, so its one watcher is
 				// told to look again — once, naming only the lit target (R19).
 				s.Require().Len(sighted, 1, "one sight beat for the one change")
-				s.Equal("cleric", sighted[0].Recipient)
-				s.Equal(session.SightedBody{Changed: []string{"skeleton"}}, sighted[0].Body)
-				s.Require().Len(events, 3)
-				struck := events[1].Body.(session.StruckBody)
+				var sight struct {
+					Gained  []string `json:"gained"`
+					Lost    []string `json:"lost"`
+					Changed []string `json:"changed"`
+				}
+				sighted[0].decode(s.T(), &sight)
+				s.Equal([]string{"skeleton"}, sight.Changed)
+				s.Empty(sight.Gained)
+				s.Empty(sight.Lost)
+				s.Require().Equal([]string{encounter.BeatCast, string(encounter.OutcomeStruck), encounter.BeatActivationResult},
+					beatNames(events))
+				var struck struct {
+					Attack struct {
+						Ref        string `json:"ref"`
+						DamageType string `json:"damage_type"`
+					} `json:"attack"`
+					Amount         int             `json:"amount"`
+					PresentationID string          `json:"presentation_id"`
+					Calculation    json.RawMessage `json:"calculation"`
+				}
+				events[1].decode(s.T(), &struck)
 				s.Equal(refs.Spells.GuidingBolt().String(), struck.Attack.Ref)
-				s.Equal(session.DamageRadiant, struck.Attack.DamageType)
-				s.Equal(4, struck.Damage)
+				s.Equal(string(session.DamageRadiant), struck.Attack.DamageType)
+				s.Equal(4, struck.Amount)
 				s.NotEmpty(struck.PresentationID)
-				s.Require().NotNil(struck.Calculation)
-				condition := events[2].Body.(session.ActivationResultBody).ConditionApplied
-				s.Require().NotNil(condition)
-				s.Equal("skeleton", condition.Target)
-				s.Equal(refs.Conditions.GuidingBolt().String(), condition.Ref)
+				s.NotEmpty(struck.Calculation)
+				var result struct {
+					Result struct {
+						Kind   encounter.ActivationResultKind `json:"kind"`
+						Target string                         `json:"target"`
+						Ref    string                         `json:"ref"`
+					} `json:"result"`
+				}
+				events[2].decode(s.T(), &result)
+				s.Equal(encounter.ResultConditionApplied, result.Result.Kind)
+				s.Equal("skeleton", result.Result.Target)
+				s.Equal(refs.Conditions.GuidingBolt().String(), result.Result.Ref)
 				s.Equal(beforeHP-4, s.storedSkeleton())
 			} else {
 				s.Empty(sighted, "a miss lights nothing, so nobody looks again")
-				s.Require().Len(events, 2)
-				missed := events[1].Body.(session.MissedBody)
+				s.Require().Equal([]string{encounter.BeatCast, string(encounter.OutcomeMissed)}, beatNames(events))
+				var missed struct {
+					Attack struct {
+						Ref        string `json:"ref"`
+						DamageType string `json:"damage_type"`
+					} `json:"attack"`
+					PresentationID string `json:"presentation_id"`
+				}
+				events[1].decode(s.T(), &missed)
 				s.Equal(refs.Spells.GuidingBolt().String(), missed.Attack.Ref)
-				s.Equal(session.DamageRadiant, missed.Attack.DamageType)
+				s.Equal(string(session.DamageRadiant), missed.Attack.DamageType)
 				s.NotEmpty(missed.PresentationID)
 				s.Equal(beforeHP, s.storedSkeleton())
 			}
@@ -65,10 +100,9 @@ func (s *CastSuite) TestGuidingBoltPublicCastAndStoryReplay() {
 			s.Equal(1, s.characters.byID["cleric"].Resources[resources.SpellSlotLevel1].Current)
 			s.reloadHealingScene()
 			beforeRolls := s.dice.next
-			story, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "cleric", FromSeq: events[0].Seq})
-			s.Require().NoError(err)
-			s.Equal(events, ofKinds(story, session.EventCast, session.EventStruck, session.EventMissed, session.EventActivationResult))
-			s.Equal(sighted, ofKinds(story, session.EventSighted), "the replay carries the same sight beats, no more")
+			// Read back after a reload, the story holds the same beats and
+			// replaying it rolls nothing.
+			s.Equal(told, storyBeatsAfter(s.T(), s.mgr, "sess", "cleric", before))
 			s.Equal(beforeRolls, s.dice.next)
 		})
 	}
@@ -87,7 +121,7 @@ func (s *CastSuite) TestGuidingBoltAttackOfferResumesWithoutPayingOrRollingAgain
 	s.Require().NoError(err)
 	s.True(out.Posed)
 	s.Equal(1, s.characters.byID["cleric"].Resources[resources.SpellSlotLevel1].Current)
-	s.Empty(s.beats(session.EventStruck))
+	s.Empty(beatsNamed(storyBeats(s.T(), s.mgr, "sess", "cleric"), string(encounter.OutcomeStruck)))
 	s.reloadHealingScene()
 	before := s.dice.next
 	row := currentDeclaration(s.T(), s.mgr, "sess", "cleric", session.VerbReact)
@@ -95,6 +129,7 @@ func (s *CastSuite) TestGuidingBoltAttackOfferResumesWithoutPayingOrRollingAgain
 	s.Require().NoError(err)
 	s.Equal(before+4, s.dice.next, "resume only rolls damage; no second attack roll")
 	s.Equal(1, s.characters.byID["cleric"].Resources[resources.SpellSlotLevel1].Current)
-	s.Len(s.beats(session.EventStruck), 1)
-	s.Len(s.beats(session.EventActivationResult), 1)
+	beats := storyBeats(s.T(), s.mgr, "sess", "cleric")
+	s.Len(beatsNamed(beats, string(encounter.OutcomeStruck)), 1)
+	s.Len(beatsNamed(beats, encounter.BeatActivationResult), 1)
 }

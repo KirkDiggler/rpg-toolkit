@@ -73,7 +73,7 @@ type Encounter struct {
 	// the top one as its correlation and its [ActTag] unless it names its
 	// own correlation. Unexported and never persisted — an act lives inside
 	// one call.
-	acts []actRef
+	acts []string
 
 	// deferredDrives are the fights a held deed formed, whose first slot is
 	// driven by the train's post-train pass instead of by the formation.
@@ -303,6 +303,11 @@ type Encounter struct {
 	// hand-edited blob and would then reject Story queries the log could
 	// actually answer.
 	logFloor uint64
+
+	// floodsComputed counts the distance fields this run has actually
+	// flooded, memo hits excluded (rpg-toolkit#2097). It is a measure, read
+	// by the package's own tests, and never decides anything.
+	floodsComputed int
 }
 
 // isIntegralHexCell reports whether pos names a whole axial cell —
@@ -405,18 +410,18 @@ func logFloorOf(data record.LogData) uint64 {
 // since load and the window is enforced at the storage boundary, in ToData.
 //
 // THE ACT ID IS STAMPED HERE (act.go): a beat that names no correlation of
-// its own carries the open act's v1alpha1 id as its correlation and its
-// v1alpha2 id as the [ActTag] tag, so no verb has to remember to.
+// its own carries the open act's id as its correlation and as the [ActTag]
+// tag, so no verb has to remember to.
 func (e *Encounter) appendBeat(in *record.AppendInput) (*record.AppendOutput, error) {
 	if in.Correlation == "" {
-		act := e.currentAct()
-		in.Correlation = act.corr
-		if act.id != "" {
+		act := e.CurrentAct()
+		in.Correlation = act
+		if act != "" {
 			tags := make(map[string]string, len(in.Tags)+1)
 			for k, v := range in.Tags {
 				tags[k] = v
 			}
-			tags[ActTag] = act.id
+			tags[ActTag] = act
 			in.Tags = tags
 		}
 	}
@@ -1693,6 +1698,10 @@ var encodeSighting = EncodeSightTestimony
 // cannot read, so this composition remains the only thing that knows what a
 // sighting means (see [SightTestimony]).
 func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDelta, error) {
+	// One pass, one memo of the field's shared answers (rpg-toolkit#2097),
+	// dropped when the pass returns: see [sightPassMemo].
+	defer e.field.beginSightPass()()
+
 	// Get current clock reading
 	clockReadingInt := e.clock.ToData().HighWater
 	clockReading := uint64(clockReadingInt)

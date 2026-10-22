@@ -35,8 +35,7 @@ const (
 type OpposedMonstersSuite struct {
 	suite.Suite
 
-	mgr    *session.Manager
-	stream *fakeStream
+	mgr *session.Manager
 }
 
 func TestOpposedMonstersSuite(t *testing.T) { suite.Run(t, new(OpposedMonstersSuite)) }
@@ -54,12 +53,11 @@ func (d strikesBySelf) Act(view session.MonsterView) (session.TurnIntent, error)
 }
 
 func (s *OpposedMonstersSuite) SetupTest() {
-	s.stream = &fakeStream{}
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{},
 		TurnDriver: strikesBySelf{omZombie: omSkeleton},
 		Sessions:   newFakeSessions(), Encounters: newFakeEncounters(),
-		Characters: testCharacters(), Events: s.stream,
+		Characters: testCharacters(),
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -91,8 +89,7 @@ func (s *OpposedMonstersSuite) TestAMonsterStrikesAnOpposedMonsterThroughTheReal
 	// End alice's turn until the zombie's has been driven. The monsters'
 	// turns never rest; each EndTurn runs the table to the next player.
 	for range 3 {
-		if len(eventsOfKind(s.stream.published, "alice", session.EventStruck))+
-			len(eventsOfKind(s.stream.published, "alice", session.EventMissed)) > 0 {
+		if len(s.swingsAliceSaw()) > 0 {
 			break
 		}
 		turn, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
@@ -104,17 +101,29 @@ func (s *OpposedMonstersSuite) TestAMonsterStrikesAnOpposedMonsterThroughTheReal
 		s.Require().NoError(err)
 	}
 
-	struck := eventsOfKind(s.stream.published, "alice", session.EventStruck)
-	s.Require().Len(struck, 1, "alice watched one strike land")
-	body, ok := struck[0].Body.(session.StruckBody)
-	s.Require().True(ok)
-	s.Equal(omZombie, body.Attacker)
-	s.Equal(omSkeleton, body.Target, "the swing landed on the opposed monster")
-	s.Positive(body.Damage)
-	s.Empty(eventsOfKind(s.stream.published, "alice", session.EventMissed), "and nothing else was swung")
-	for _, event := range s.stream.published {
-		if b, isStruck := event.Body.(session.StruckBody); isStruck {
-			s.NotEqual("alice", b.Target, "the player is untouched")
-		}
+	swings := s.swingsAliceSaw()
+	s.Require().Equal([]string{string(encounter.OutcomeStruck)}, beatNames(swings),
+		"alice watched one strike land, and nothing else was swung")
+	var strike struct {
+		Actor   string   `json:"actor"`
+		Targets []string `json:"targets"`
+		Amount  int      `json:"amount"`
 	}
+	swings[0].decode(s.T(), &strike)
+	s.Equal(omZombie, strike.Actor)
+	s.Equal([]string{omSkeleton}, strike.Targets, "the swing landed on the opposed monster")
+	s.Positive(strike.Amount)
+	for _, beat := range beatsNamed(storyBeats(s.T(), s.mgr, "sess", "alice"), string(encounter.OutcomeStruck)) {
+		var b struct {
+			Targets []string `json:"targets"`
+		}
+		beat.decode(s.T(), &b)
+		s.NotContains(b.Targets, "alice", "the player is untouched")
+	}
+}
+
+// swingsAliceSaw is every struck or missed beat in alice's story.
+func (s *OpposedMonstersSuite) swingsAliceSaw() []witnessed {
+	return beatsNamed(storyBeats(s.T(), s.mgr, "sess", "alice"),
+		string(encounter.OutcomeStruck), string(encounter.OutcomeMissed))
 }

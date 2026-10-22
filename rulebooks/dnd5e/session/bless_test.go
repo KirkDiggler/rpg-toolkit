@@ -44,16 +44,14 @@ func (s *CastSuite) TestBlessKnownDyingAndStabilizedRecipientsPersistWithConcent
 			s.Require().NoError(err)
 			s.Empty(out.MissedTargets)
 			applied := 0
-			for _, event := range s.beats(session.EventActivationResult) {
-				body, isResult := event.Body.(session.ActivationResultBody)
-				if !isResult || body.ConditionApplied == nil {
+			for _, event := range s.beats(encounter.BeatActivationResult) {
+				body := resultOf(s.T(), event)
+				if body.Kind != encounter.ResultConditionApplied {
 					continue
 				}
 				applied++
-				s.Empty(body.ConditionApplied.Detail, "Bless has no per-instance word to carry")
-				marshalled, marshalErr := json.Marshal(body.ConditionApplied)
-				s.Require().NoError(marshalErr)
-				s.NotContains(string(marshalled), `"detail"`, "an empty detail writes no key")
+				s.Nil(body.Detail, "Bless has no per-instance word to carry")
+				s.NotContains(string(event.Payload), `"detail"`, "an empty detail writes no key")
 			}
 			s.Positive(applied, "the cast must have applied Blessed at least once for this to prove anything")
 			for _, member := range []string{"patient", "cleric"} {
@@ -74,7 +72,7 @@ func (s *CastSuite) configureBless(policy session.StaleTargetPolicy) {
 	var err error
 	s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), StaleTargetPolicy: policy,
 		PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: session.Pass{},
-		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters})
 	s.Require().NoError(err)
 }
 
@@ -98,7 +96,7 @@ func (s *CastSuite) TestBlessInvalidPolicyFailsConfiguration() {
 	s.scene(blessCleric(), 3)
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), StaleTargetPolicy: "typo",
 		PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: session.Pass{},
-		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters})
 	s.Nil(mgr)
 	s.ErrorIs(err, session.ErrIncompleteConfig)
 	s.ErrorContains(err, "StaleTargetPolicy")
@@ -132,21 +130,18 @@ func (s *CastSuite) TestBlessPoliciesMixedCastAndStoryReload() {
 				s.Equal([]string{"skeleton"}, out.MissedTargets)
 				s.Equal(1, s.characters.byID["cleric"].Resources[resources.SpellSlotLevel1].Current)
 				s.Zero(s.characters.byID["cleric"].ActionEconomy.ActionsRemaining)
-				beats := s.beats(session.EventCast, session.EventActivationResult, session.EventCastMissed)
+				beats := s.beats(encounter.BeatCast, encounter.BeatActivationResult, encounter.BeatCastMissed)
 				s.Require().Len(beats, 3)
-				s.Equal(session.EventCastMissed, beats[2].Kind)
-				want := session.CastMissedBody{Actor: "cleric", Target: "skeleton", Spell: session.SpellRef{Ref: refs.Spells.Bless().String(), Name: "Bless"}}
-				s.Equal(want, beats[2].Body)
+				s.Equal(encounter.BeatCastMissed, beats[2].Beat)
+				want := `{"beat":"cast_missed","actor":"cleric","target":"skeleton","spell":{"ref":"` +
+					refs.Spells.Bless().String() + `","name":"Bless"}}`
+				s.JSONEq(want, string(beats[2].Payload))
 				s.reloadHealingScene()
 				s.configureBless(policy)
-				story, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "cleric", FromSeq: beats[0].Seq})
-				s.Require().NoError(err)
 				foundMiss := false
-				for _, event := range story {
-					if event.Kind == session.EventCastMissed {
-						s.Equal(want, event.Body)
-						foundMiss = true
-					}
+				for _, event := range beatsNamed(storyBeatsAfter(s.T(), s.mgr, "sess", "cleric", beats[0].Seq-1), encounter.BeatCastMissed) {
+					s.JSONEq(want, string(event.Payload))
+					foundMiss = true
 				}
 				s.True(foundMiss)
 			}

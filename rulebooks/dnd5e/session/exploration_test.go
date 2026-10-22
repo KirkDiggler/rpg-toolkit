@@ -63,16 +63,16 @@ func discoveryRunWorld(dc int) scene {
 }
 
 func (s *AutomaticDiscoverySDKSuite) checkCount(mgr *session.Manager, run string) int {
-	story, err := mgr.Story(context.Background(), &session.StoryInput{Session: run, Member: "alice"})
-	s.Require().NoError(err)
 	count := 0
-	for _, event := range story {
-		if event.Kind == session.EventDiscoveryChecked {
-			count++
-			body := event.Body.(session.DiscoveryCheckedBody)
-			s.Equal("religion", body.Ability)
-			s.NotNil(body.Calculation)
+	for _, beat := range beatsNamed(storyBeats(s.T(), mgr, run, "alice"), encounter.BeatDiscoveryChecked) {
+		count++
+		var body struct {
+			Ability     string          `json:"ability"`
+			Calculation json.RawMessage `json:"calculation"`
 		}
+		beat.decode(s.T(), &body)
+		s.Equal("religion", body.Ability)
+		s.NotEmpty(body.Calculation)
 	}
 	return count
 }
@@ -85,7 +85,7 @@ func (s *AutomaticDiscoverySDKSuite) TestLegacyCharacterChecksCannotSeedANewEnco
 	encounters := newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(),
 		Sessions: newFakeSessions(), Encounters: encounters, Characters: testCharacters(),
-		Explorations: profiles, Events: session.DiscardEvents{}, Dice: testDice{},
+		Explorations: profiles, Dice: testDice{},
 		PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{},
 	})
 	s.Require().NoError(err)
@@ -116,7 +116,7 @@ func (s *AutomaticDiscoverySDKSuite) TestDiscoveryBelongsToTheEncounterNotTheCha
 			profiles := newFakeExplorations()
 			sessions, encounters := newFakeSessions(), newFakeEncounters()
 			cfg := &session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
-				Explorations: profiles, Events: session.DiscardEvents{}, Dice: testDice{},
+				Explorations: profiles, Dice: testDice{},
 				PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{}}
 			mgr, err := session.NewManager(cfg)
 			s.Require().NoError(err)
@@ -203,7 +203,7 @@ type sharingRig struct {
 func newSharingRig(profiles *explorationStore) *sharingRig {
 	return &sharingRig{profiles: profiles, cfg: &session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(),
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: testCharacters(),
-		Explorations: profiles, Events: session.DiscardEvents{}, Dice: testDice{},
+		Explorations: profiles, Dice: testDice{},
 		PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{},
 	}}
 }

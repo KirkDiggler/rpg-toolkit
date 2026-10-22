@@ -85,9 +85,11 @@ func (s *MoveTestSuite) TestRecordEventCarriesV2ActID() {
 		s.Equal(act, m.Act)
 	}
 
-	v1 := eventsOf(s.T(), storyOf(s.T(), s.mgr, "alice"), session.EventMoved, "member", "alice")
-	s.Require().Len(v1, 3)
-	s.Regexp(`^move:[0-9]+$`, v1[0].Correlation, "v1alpha1 keeps E1's form")
+	told := beatsNamed(storyBeats(s.T(), s.mgr, "sess", "alice"), encounter.BeatMoved)
+	s.Require().Len(told, 3)
+	for _, b := range told {
+		s.Equal(act, b.Correlation, "alice's story carries the same one act id")
+	}
 }
 
 // TestOutsideActHasNoAct: the scene opening is nobody's act.
@@ -214,7 +216,7 @@ func (s *SpeakWorldSuite) TestBeatIsVerbatim() {
 func (s *ManagerTestSuite) TestNilRecordStreamRefused() {
 	_, err := session.NewManager(&session.Config{
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: testCharacters(),
-		Seats: newFakeSeats(), Explorations: newFakeExplorations(), Events: session.DiscardEvents{}, Acts: session.DiscardActs{},
+		Seats: newFakeSeats(), Explorations: newFakeExplorations(), Acts: session.DiscardActs{},
 		Dice: testDice{}, PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{},
 	})
 	s.ErrorIs(err, session.ErrIncompleteConfig)

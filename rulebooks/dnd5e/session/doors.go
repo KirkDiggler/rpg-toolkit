@@ -46,7 +46,7 @@ type DoorsOutput struct {
 // Doors reports each known door's identity and live state — the dynamic half
 // of the Atlas's doorways. The Atlas says where a door's edges are; this says
 // what each door is doing now. A host reads it once per member and keeps it
-// fresh from EventDoor and EventConcealmentRevealed beats — the latter
+// fresh from `door` and `concealment_revealed` beats — the latter
 // carrying every door one secret hid, with its live state.
 //
 // Answered from [encounter.Encounter.DoorsFor] exclusively: the unscoped read
@@ -108,11 +108,6 @@ type OpenDoorOutput struct {
 	// Formed is present when what the door revealed started a fight.
 	Formed *Formed `json:"formed,omitempty"`
 
-	// Seq is the door beat's sequence in the ACTOR's own delivered
-	// numbering (stream.go) — the same number the actor's event for this
-	// beat carries.
-	Seq uint64 `json:"seq"`
-
 	Saved    SaveReport     `json:"saved"`
 	Delivery DeliveryReport `json:"delivery"`
 }
@@ -169,8 +164,7 @@ func (m *Manager) OpenDoor(ctx context.Context, in *OpenDoorInput) (*OpenDoorOut
 	return &OpenDoorOutput{
 		Door:       Door{ID: opened.Door, State: string(opened.State)},
 		Discovered: projectDiscoveries(opened.IntelDeltas),
-		Formed:     projectFormedFor(scope, in.Member, opened.Formed),
-		Seq:        scope.deliveredSeq(in.Member, opened.Seq),
+		Formed:     projectFormed(opened.Formed),
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil
@@ -219,10 +213,6 @@ type UnlockOutput struct {
 
 	// Formed is present when what the opened door revealed started a fight.
 	Formed *Formed `json:"formed,omitempty"`
-
-	// Seq is the door beat's sequence in the ACTOR's own delivered
-	// numbering (stream.go).
-	Seq uint64 `json:"seq"`
 
 	// Paused is true when the attempt stopped to ask the member whether to
 	// spend a held offer before the lock's verdict is settled —
@@ -357,8 +347,7 @@ func (m *Manager) Unlock(ctx context.Context, in *UnlockInput) (*UnlockOutput, e
 		Applied:    projectApproach(unlocked.Applied),
 		Door:       Door{ID: unlocked.Door, State: string(unlocked.State)},
 		Discovered: projectDiscoveries(unlocked.IntelDeltas),
-		Formed:     projectFormedFor(scope, in.Member, unlocked.Formed),
-		Seq:        scope.deliveredSeq(in.Member, unlocked.Seq),
+		Formed:     projectFormed(unlocked.Formed),
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil
@@ -394,7 +383,7 @@ func (m *Manager) poseUnlockWindow(
 		return nil, fmt.Errorf("unlock: %w", err)
 	}
 
-	recorded, err := scope.enc.RecordRollWindow(&encounter.RollWindowInput{
+	if _, err := scope.enc.RecordRollWindow(&encounter.RollWindowInput{
 		Audience: encounter.MemberID(ask.Audience),
 		Offer:    encounter.ReactionIdentity{Ref: offer.Ref, Name: offer.Name},
 		Roll:     ask.Roll,
@@ -402,8 +391,7 @@ func (m *Manager) poseUnlockWindow(
 		// The beat that asks shows the whole roll, not the one face the two
 		// scalars could carry (rpg-project#462 R5).
 		Calculation: rollCalculationFor(ask.Calculation),
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, fmt.Errorf("unlock: %w", reportUnrecorded(scope, translate(err)))
 	}
 
@@ -417,7 +405,6 @@ func (m *Manager) poseUnlockWindow(
 		Paused:   true,
 		Total:    ask.Total,
 		Roll:     &roll,
-		Seq:      scope.deliveredSeq(in.Member, recorded.Seq),
 		Saved:    report,
 		Delivery: delivery,
 	}, nil

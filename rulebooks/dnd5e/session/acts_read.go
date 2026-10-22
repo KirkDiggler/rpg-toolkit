@@ -114,9 +114,9 @@ func commitActs(scope *writeScope, members []encounter.MemberID) []Act {
 
 // deliverActs hands one commit's acts to the act stream, after the save (S9)
 // and best effort (S10).
-func (m *Manager) deliverActs(ctx context.Context, acts []Act) {
+func (m *Manager) deliverActs(ctx context.Context, acts []Act) error {
 	if len(acts) == 0 {
-		return
+		return nil
 	}
-	_ = m.acts.PublishActs(ctx, acts) // best effort; catch-up is Acts after the last id
+	return m.acts.PublishActs(ctx, acts) // best effort; catch-up is Acts after the last id
 }

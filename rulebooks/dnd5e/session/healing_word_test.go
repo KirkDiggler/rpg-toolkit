@@ -5,6 +5,7 @@ package session_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -21,6 +22,24 @@ func healingWordCleric() *character.Data {
 	sheet := healingCleric()
 	sheet.KnownSpells = append(sheet.KnownSpells, refs.Spells.HealingWord().String())
 	return sheet
+}
+
+// healingWordResultBeat is an activation_result beat's payload: the one
+// result it carries.
+type healingWordResultBeat struct {
+	Actor  string `json:"actor"`
+	Result struct {
+		Kind        encounter.ActivationResultKind `json:"kind"`
+		Target      string                         `json:"target"`
+		Ref         string                         `json:"ref"`
+		Amount      int                            `json:"amount"`
+		Requested   int                            `json:"requested"`
+		Before      int                            `json:"before"`
+		After       int                            `json:"after"`
+		Calculation *struct {
+			Components []json.RawMessage `json:"components"`
+		} `json:"calculation"`
+	} `json:"result"`
 }
 
 func (s *CastSuite) reloadHealingScene() {
@@ -40,7 +59,7 @@ func (s *CastSuite) reloadHealingScene() {
 	}
 	s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: session.Pass{},
-		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream,
+		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 	})
 	s.Require().NoError(err)
 }
@@ -63,17 +82,21 @@ func (s *CastSuite) TestHealingWordRangedUntypedTargetAndStoryReload() {
 	touch, found := castCandidate(s.T(), s.castRow(spells.CureWounds), "skeleton")
 	s.Require().True(found)
 	s.False(touch.Available, "the same patient is beyond touch")
+	mark := lastSeq(storyBeats(s.T(), s.mgr, "sess", "cleric"))
 	_, err := s.cast(spells.HealingWord)
 	s.Require().NoError(err)
-	beats := s.beats(session.EventCast, session.EventActivationResult)
-	s.Require().Len(beats, 2)
-	heal := beats[1].Body.(session.ActivationResultBody).HealingApplied
-	s.Require().NotNil(heal)
+	told := storyBeatsAfter(s.T(), s.mgr, "sess", "cleric", mark)
+	beats := beatsNamed(told, encounter.BeatCast, encounter.BeatActivationResult)
+	s.Require().Equal([]string{encounter.BeatCast, encounter.BeatActivationResult}, beatNames(beats))
+	var result healingWordResultBeat
+	beats[1].decode(s.T(), &result)
+	heal := result.Result
+	s.Equal(encounter.ResultHealingApplied, heal.Kind)
 	s.Equal(10, heal.Requested)
 	s.Equal(3, heal.Amount)
-	s.Equal(10, heal.HPBefore)
-	s.Equal(13, heal.HPAfter)
-	s.Equal(refs.Spells.HealingWord().String(), heal.SourceRef)
+	s.Equal(10, heal.Before)
+	s.Equal(13, heal.After)
+	s.Equal(refs.Spells.HealingWord().String(), heal.Ref)
 	s.Require().NotNil(heal.Calculation)
 	s.Len(heal.Calculation.Components, 3)
 	s.Equal(1, s.characters.byID["cleric"].Resources[resources.SpellSlotLevel1].Current)
@@ -81,9 +104,8 @@ func (s *CastSuite) TestHealingWordRangedUntypedTargetAndStoryReload() {
 	s.Zero(s.characters.byID["cleric"].ActionEconomy.BonusActionsRemaining)
 	s.reloadHealingScene()
 	beforeRolls := s.dice.next
-	story, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "cleric", FromSeq: beats[0].Seq})
-	s.Require().NoError(err)
-	s.Equal(beats, story)
+	s.Equal(told, storyBeatsAfter(s.T(), s.mgr, "sess", "cleric", mark),
+		"the cast and its healing survive JSON and manager recreation")
 	s.Equal(beforeRolls, s.dice.next)
 }
 
@@ -149,7 +171,7 @@ func (s *CastPauseSuite) TestPaidCastHistorySurvivesSavedPauseAndResume() {
 	}
 	s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: whisperDice{}, TurnDriver: session.Pass{},
-		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: session.DiscardEvents{},
+		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	s.react("fighter", session.Decline())
@@ -309,7 +331,8 @@ func (s *CastSuite) TestHealingWordRevalidatesSightAndTargetsBeforePayment() {
 			s.ErrorIs(err, session.ErrStaleDeclaration)
 			s.JSONEq(storedJSON(s.T(), before), storedJSON(s.T(), s.characters.byID["cleric"]))
 			s.Equal(rolls, s.dice.next)
-			s.Empty(s.beats(session.EventCast, session.EventActivationResult))
+			s.Empty(beatsNamed(storyBeats(s.T(), s.mgr, "sess", "cleric"),
+				encounter.BeatCast, encounter.BeatActivationResult))
 		})
 	}
 }

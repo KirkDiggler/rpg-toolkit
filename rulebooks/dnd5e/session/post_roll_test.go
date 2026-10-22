@@ -5,7 +5,6 @@ package session_test
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -88,7 +87,7 @@ func (s *PostRollWindowSuite) duelOverStores() *session.Manager {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: session.DiscardEvents{},
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	return mgr
@@ -145,13 +144,10 @@ func (s *PostRollWindowSuite) answer(mgr *session.Manager, choice session.Answer
 
 // beatsOf returns every beat in a member's story, decoded loosely.
 func (s *PostRollWindowSuite) beatsOf(mgr *session.Manager, member string) []map[string]any {
-	entries, err := mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: member})
-	s.Require().NoError(err)
-	out := make([]map[string]any, 0, len(entries))
-	for _, entry := range entries {
-		var beat map[string]any
-		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
-		out = append(out, beat)
+	beats := storyBeats(s.T(), mgr, "sess", member)
+	out := make([]map[string]any, 0, len(beats))
+	for _, beat := range beats {
+		out = append(out, beat.Fields)
 	}
 	return out
 }
@@ -408,7 +404,7 @@ func (s *PostRollWindowSuite) TestTheWindowSurvivesAReload() {
 	restarted, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: session.DiscardEvents{},
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 

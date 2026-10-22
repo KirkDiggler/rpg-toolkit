@@ -61,7 +61,6 @@ type StaleCombatEconomySuite struct {
 	sessions   *fakeSessions
 	encounters *fakeEncounters
 	characters *fakeCharacters
-	stream     *fakeStream
 	mgr        *session.Manager
 	launched   *session.LaunchOutput
 }
@@ -71,11 +70,10 @@ func TestStaleCombatEconomySuite(t *testing.T) { suite.Run(t, new(StaleCombatEco
 func (s *StaleCombatEconomySuite) SetupTest() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
-	s.stream = &fakeStream{}
 
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: s.stream,
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr

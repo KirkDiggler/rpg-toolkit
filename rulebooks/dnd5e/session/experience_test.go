@@ -6,6 +6,7 @@ package session_test
 import (
 	"context"
 	"errors"
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -39,8 +40,13 @@ type ExperienceTestSuite struct {
 	sessions   *fakeSessions
 	encounters *fakeEncounters
 	characters *fakeCharacters
-	stream     *fakeStream
 	mgr        *session.Manager
+
+	// party is the players the last launch seated, and mark each one's last
+	// witnessed beat at the last reset: what [ExperienceTestSuite.beats]
+	// reads after.
+	party []string
+	mark  map[string]uint64
 
 	// goblins are the monsters the next launch places.
 	goblins []dungeonspec.MonsterPlacement
@@ -140,11 +146,10 @@ func (s *ExperienceTestSuite) SetupTest() {
 	s.goblins = nil
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"), armedFighter("carol"))
-	s.stream = &fakeStream{}
 
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: s.stream,
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -166,7 +171,11 @@ func (s *ExperienceTestSuite) launchDen(sc scene) {
 	s.T().Helper()
 	sc.Monsters = append(sc.Monsters, s.goblins...)
 	launchScene(s.T(), s.mgr, sc)
-	s.stream.published = nil
+	s.party = s.party[:0]
+	for _, seat := range sc.Party {
+		s.party = append(s.party, seat.ID)
+	}
+	s.resetBeats()
 	for _, goblin := range s.goblins {
 		s.Require().Equal(7, s.storedNPC(goblin.ID).HitPoints, "the catalog goblin, whole")
 		s.Require().Equal(50, s.storedWorth(goblin.ID), "and worth 50, which is every share below")
@@ -252,34 +261,78 @@ func (s *ExperienceTestSuite) storedExperience(id string) int {
 	return data.Experience
 }
 
-// grantEvents is every experience beat published since the last reset.
-func (s *ExperienceTestSuite) grantEvents() []session.Event {
-	var out []session.Event
-	for _, event := range s.stream.published {
-		if event.Kind == session.EventExperienceGained {
-			out = append(out, event)
+// resetBeats marks where every player's story stands, so
+// [ExperienceTestSuite.beats] reads only what came after.
+func (s *ExperienceTestSuite) resetBeats() {
+	s.mark = map[string]uint64{}
+	for _, id := range s.party {
+		s.mark[id] = lastSeq(storyBeats(s.T(), s.mgr, "sess", id))
+	}
+}
+
+// beats is every beat any seated player witnessed since the last reset, once
+// each, in record order — the party's story, not one copy per player.
+func (s *ExperienceTestSuite) beats(names ...string) []witnessed {
+	seen := map[uint64]bool{}
+	var out []witnessed
+	for _, id := range s.party {
+		for _, b := range beatsNamed(storyBeatsAfter(s.T(), s.mgr, "sess", id, s.mark[id]), names...) {
+			if !seen[b.Seq] {
+				seen[b.Seq] = true
+				out = append(out, b)
+			}
 		}
 	}
-
+	sort.Slice(out, func(i, j int) bool { return out[i].Seq < out[j].Seq })
 	return out
 }
 
-// grantBodies is one body per DISTINCT beat, keyed by the member that fell.
+// grantBeat is the experience beat's payload: what fell, and who was paid.
+type grantBeat struct {
+	Experience struct {
+		Member string                    `json:"member"`
+		Grants []session.ExperienceGrant `json:"grants"`
+	} `json:"experience"`
+}
+
+// beatExperience and beatDown are the encounter's words for a payday and a
+// fall.
+var (
+	beatExperience = string(encounter.OutcomeExperienceGained)
+	beatDown       = string(encounter.OutcomeDown)
+)
+
+// grantEvents is every experience beat recorded since the last reset.
+func (s *ExperienceTestSuite) grantEvents() []witnessed {
+	return s.beats(beatExperience)
+}
+
+// fallen is the member each down beat since the last reset names, in record
+// order.
+func (s *ExperienceTestSuite) fallen() []string {
+	var out []string
+	for _, b := range s.beats(beatDown) {
+		member, _ := b.Fields["member"].(string)
+		out = append(out, member)
+	}
+	return out
+}
+
+// grantBodies is one grant per DISTINCT beat, keyed by the member that fell.
 //
-// The same beat reaches every recipient, so the raw event list holds one copy
-// per player; what the scenes want to count is beats, not deliveries. A second
-// beat naming the same fallen monster would collide here and the assertion on
-// its grants would fail — which is the settle-once claim, checked rather than
-// assumed.
-func (s *ExperienceTestSuite) grantBodies() map[string]session.ExperienceGainedBody {
-	out := map[string]session.ExperienceGainedBody{}
-	for _, event := range s.grantEvents() {
-		body, ok := event.Body.(session.ExperienceGainedBody)
-		s.Require().True(ok, "an experience beat carries a typed body")
-		if seen, dup := out[body.Member]; dup {
+// The beats are read once each however many players witnessed them, so what
+// is counted is beats, not deliveries. A second beat naming the same fallen
+// monster would collide here and the assertion on its grants would fail —
+// which is the settle-once claim, checked rather than assumed.
+func (s *ExperienceTestSuite) grantBodies() map[string]grantBeat {
+	out := map[string]grantBeat{}
+	for _, b := range s.grantEvents() {
+		var body grantBeat
+		b.decode(s.T(), &body)
+		if seen, dup := out[body.Experience.Member]; dup {
 			s.Require().Equal(seen, body, "two beats for one fall must at least agree")
 		}
-		out[body.Member] = body
+		out[body.Experience.Member] = body
 	}
 
 	return out
@@ -301,8 +354,8 @@ func (s *ExperienceTestSuite) TestOnePlayerTakesTheWholeWorth() {
 
 	bodies := s.grantBodies()
 	s.Require().Len(bodies, 1, "one fall, one beat")
-	s.Require().Len(bodies["goblin"].Grants, 1, "and one grant on it")
-	s.Equal(session.ExperienceGrant{Character: "alice", Amount: 50, Total: 50}, bodies["goblin"].Grants[0])
+	s.Require().Len(bodies["goblin"].Experience.Grants, 1, "and one grant on it")
+	s.Equal(session.ExperienceGrant{Character: "alice", Amount: 50, Total: 50}, bodies["goblin"].Experience.Grants[0])
 }
 
 // TestTheWholePartyHearsItsShare is R2's division and R5's audience in one
@@ -328,7 +381,7 @@ func (s *ExperienceTestSuite) TestTheWholePartyHearsItsShare() {
 		{Character: "alice", Amount: 16, Total: 16},
 		{Character: "bob", Amount: 16, Total: 16},
 		{Character: "carol", Amount: 16, Total: 16},
-	}, bodies["goblin"].Grants, "every payee on the one beat, sorted by character")
+	}, bodies["goblin"].Experience.Grants, "every payee on the one beat, sorted by character")
 }
 
 // TestEveryPlayerIsToldTheWholeGrant pins the delivery half of R5.
@@ -342,16 +395,14 @@ func (s *ExperienceTestSuite) TestEveryPlayerIsToldTheWholeGrant() {
 
 	s.swing("alice", "goblin")
 
-	heard := map[string]bool{}
-	for _, event := range s.grantEvents() {
-		heard[event.Recipient] = true
-		s.Equal(session.EventExperienceGained, event.Kind)
-		body, ok := event.Body.(session.ExperienceGainedBody)
-		s.Require().True(ok)
-		s.Equal("goblin", body.Member, "and it names what fell")
-		s.Len(body.Grants, 2, "the whole grant reaches each of them, not their own line alone")
+	for _, id := range []string{"alice", "bob"} {
+		told := beatsNamed(storyBeatsAfter(s.T(), s.mgr, "sess", id, s.mark[id]), beatExperience)
+		s.Require().Len(told, 1, id+" hears it")
+		var body grantBeat
+		told[0].decode(s.T(), &body)
+		s.Equal("goblin", body.Experience.Member, "and it names what fell")
+		s.Len(body.Experience.Grants, 2, "the whole grant reaches each of them, not their own line alone")
 	}
-	s.True(heard["alice"] && heard["bob"], "both players hear it, got %v", heard)
 }
 
 // TestAMonsterWorthNothingPaysNothing is R1's zero, which is a rule rather
@@ -415,13 +466,8 @@ func (s *ExperienceTestSuite) TestAFallenPlayerPaysNobodyAndIsStillPaid() {
 
 	s.bobSteps()
 
-	downed := map[string]bool{}
-	for _, event := range s.stream.published {
-		if body, ok := event.Body.(session.DownedBody); ok {
-			downed[body.Member] = true
-		}
-	}
-	s.Require().True(downed["alice"] && downed["goblin"], "both fell in this act, got %v", downed)
+	downed := s.fallen()
+	s.Require().ElementsMatch([]string{"alice", "goblin"}, downed, "both fell in this act, got %v", downed)
 
 	bodies := s.grantBodies()
 	s.Require().Len(bodies, 1, "one of the two falls is a payday")
@@ -429,7 +475,7 @@ func (s *ExperienceTestSuite) TestAFallenPlayerPaysNobodyAndIsStillPaid() {
 	s.Equal([]session.ExperienceGrant{
 		{Character: "alice", Amount: 25, Total: 25},
 		{Character: "bob", Amount: 25, Total: 25},
-	}, bodies["goblin"].Grants, "the dying character takes her share")
+	}, bodies["goblin"].Experience.Grants, "the dying character takes her share")
 	s.Equal(25, s.storedExperience("alice"))
 	s.Equal(25, s.storedExperience("bob"))
 }
@@ -462,11 +508,11 @@ func (s *ExperienceTestSuite) TestTwoFallsInOneActAreTwoBeats() {
 	s.Equal([]session.ExperienceGrant{
 		{Character: "alice", Amount: 25, Total: 25},
 		{Character: "bob", Amount: 25, Total: 25},
-	}, bodies["first"].Grants)
+	}, bodies["first"].Experience.Grants)
 	s.Equal([]session.ExperienceGrant{
 		{Character: "alice", Amount: 25, Total: 50},
 		{Character: "bob", Amount: 25, Total: 50},
-	}, bodies["second"].Grants,
+	}, bodies["second"].Experience.Grants,
 		"and the second beat carries the running total, not a second first payment")
 }
 
@@ -487,25 +533,13 @@ func (s *ExperienceTestSuite) TestTwoFallsArePaidInTheOrderTheyFell() {
 
 	s.bobSteps()
 
-	firsts := func(kind session.EventKind, member func(session.Event) string) []string {
-		var order []string
-		seen := map[string]bool{}
-		for _, event := range s.stream.published {
-			if event.Kind != kind {
-				continue
-			}
-			id := member(event)
-			if !seen[id] {
-				seen[id] = true
-				order = append(order, id)
-			}
-		}
-		return order
+	fell := s.fallen()
+	var paid []string
+	for _, body := range s.grantEvents() {
+		var grant grantBeat
+		body.decode(s.T(), &grant)
+		paid = append(paid, grant.Experience.Member)
 	}
-	fell := firsts(session.EventDowned, func(e session.Event) string { return e.Body.(session.DownedBody).Member })
-	paid := firsts(session.EventExperienceGained, func(e session.Event) string {
-		return e.Body.(session.ExperienceGainedBody).Member
-	})
 	s.Require().ElementsMatch([]string{"zeta", "alpha"}, fell, "both goblins fell in this act")
 	s.Equal(fell, paid, "the party is paid in the order the goblins fell")
 }
@@ -524,7 +558,7 @@ func (s *ExperienceTestSuite) TestTheFallSettlesExactlyOnce() {
 	s.swing("alice", "goblin")
 	s.Require().Equal(50, s.storedExperience("alice"))
 	s.Require().Len(s.grantBodies(), 1)
-	s.stream.published = nil
+	s.resetBeats()
 
 	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice", Path: []spatial.Position{hexCell(1, 2)},
@@ -551,19 +585,13 @@ func (s *ExperienceTestSuite) TestTheFallThatEndsTheRunStillPays() {
 
 	s.swing("alice", "goblin")
 
-	ended := false
-	for _, event := range s.stream.published {
-		if event.Kind == session.EventEnded {
-			ended = true
-		}
-	}
-	s.Require().True(ended, "the boss going down ends the run")
+	s.Require().NotEmpty(s.beats(encounter.BeatEnded), "the boss going down ends the run")
 
 	s.Equal(25, s.storedExperience("alice"), "and the sheets were still written")
 	s.Equal(25, s.storedExperience("bob"))
 	bodies := s.grantBodies()
 	s.Require().Len(bodies, 1, "and the beat was still recorded on the closed encounter")
-	s.Len(bodies["goblin"].Grants, 2)
+	s.Len(bodies["goblin"].Experience.Grants, 2)
 }
 
 // TestCrossingAThresholdOpensALevel is the ruling's own done-when, read back
@@ -582,7 +610,7 @@ func (s *ExperienceTestSuite) TestCrossingAThresholdOpensALevel() {
 
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: s.stream,
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -647,9 +675,7 @@ func (s *ExperienceTestSuite) TestAMonsterWithNoStoredSheetNeverFalls() {
 	})
 	s.Require().ErrorIs(err, session.ErrNoSheet, "a monster the session holds no stat block for is refused, not walked past")
 
-	for _, event := range s.stream.published {
-		s.NotEqual(session.EventDowned, event.Kind, "a sheetless monster cannot be seen to fall")
-	}
+	s.Empty(s.fallen(), "a sheetless monster cannot be seen to fall")
 	s.Empty(s.grantEvents(), "so nothing is paid and nothing is recorded")
 	s.Zero(s.storedExperience("alice"))
 	s.Zero(s.storedExperience("bob"))
@@ -694,7 +720,7 @@ func (s *ExperienceTestSuite) TestAPayeeTheStoreDoesNotHoldFailsTheVerb() {
 	forgetful := &forgetsAfterSaving{fakeCharacters: s.characters, saved: "bob", forget: "carol"}
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: forgetful, Events: s.stream,
+		Characters: forgetful,
 	})
 	s.Require().NoError(err)
 
@@ -794,13 +820,12 @@ func (s *ExperienceTestSuite) TestAPayeeMissingBeforeTheVerbIsRefusedBeforeAnyth
 func (s *ExperienceTestSuite) TestASheetThatWillNotSaveFailsTheVerbBeforeTheBeat() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
-	s.stream = &fakeStream{}
 	failing := &failNthArmedSaveCharacters{
 		fakeCharacters: s.characters, failAt: 3, err: errSettlementSave,
 	}
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: failing, Events: s.stream,
+		Characters: failing,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
