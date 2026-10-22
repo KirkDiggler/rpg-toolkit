@@ -52,6 +52,12 @@ import (
 // LEAVES view needs no rule: the mover was seen at its start, so it is
 // delivered, then the `lost` sighting, and nothing after.
 //
+// A PROP ARRIVING is held the same way, and released by a sighting under its
+// act that says the recipient's view of props changed (`knowledge_changed`):
+// a sighting names members only, and that flag is how the record tells an
+// observer they now see a different set of things. An arrival's own sight
+// refresh writes it.
+//
 // A RELEASED STEP TAKES ITS SIGHTING'S ID. It is delivered after that
 // sighting, so naming it by its own (earlier) entry would let a resume after
 // the step's id hand back the sighting a second time. Under the sighting's
@@ -136,16 +142,21 @@ func (v *viewState) observe(recipient string, payload []byte) {
 	}
 }
 
-// gains is the members a sighting payload gains, nil for any other beat.
-func gains(payload []byte) []string {
+// sighting is what a sighting payload brings into view: the members it
+// gains, and whether the observer's view of props and doors changed
+// (`knowledge_changed`). Zero for any other beat.
+func sighting(payload []byte) (gained []string, knowledge bool) {
 	if peekBeat(payload) != encounter.BeatSighted {
-		return nil
+		return nil, false
 	}
-	var k viewKeys
+	var k struct {
+		Gained           []string `json:"gained"`
+		KnowledgeChanged bool     `json:"knowledge_changed"`
+	}
 	if json.Unmarshal(payload, &k) != nil {
-		return nil
+		return nil, false
 	}
-	return k.Gained
+	return k.Gained, k.KnowledgeChanged
 }
 
 func contains(ids []string, id string) bool {

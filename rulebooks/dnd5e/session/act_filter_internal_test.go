@@ -308,3 +308,29 @@ func (s *ActFoldSuite) TestFilterSeedsTheViewFromBeforeTheFold() {
 	s.Require().Len(acts, 1)
 	s.Equal("guard", acts[0].Body.(WalkAct).Mover.ID)
 }
+
+// TestFilterAPropArrivesWhenTheRecipientsViewOfThingsChanges: the letter
+// arrives under the fighter's end of turn, and the arrival's own sight
+// refresh tells her that her view of things changed — she receives the
+// arrival after that sighting. A second letter arriving where her view of
+// things does not change never reaches her.
+//
+// Mutant: releasing only on a gained member drops the letter.
+func (s *ActFoldSuite) TestFilterAPropArrivesWhenTheRecipientsViewOfThingsChanges() {
+	const turn, later = "end_turn:01HZZZZZZZZZZZZZZZZZZTURN", "end_turn:01HZZZZZZZZZZZZZZZZZLATER"
+	entries := []record.Entry{
+		s.beat(turn, map[string]any{"beat": encounter.BeatArrived, "id": "letter", "kind": encounter.ArrivedProp, "cell": cell(0, 3)}),
+		s.beat(turn, map[string]any{"beat": encounter.BeatSighted, "knowledge_changed": true}),
+		s.beat(later, map[string]any{"beat": encounter.BeatArrived, "id": "far-letter", "kind": encounter.ArrivedProp, "cell": cell(40, 3)}),
+		s.beat(later, map[string]any{"beat": encounter.BeatSighted, "gained": []string{"scout"}}),
+	}
+
+	var arrived []string
+	for _, a := range actsAfter("sess", "fighter", entries, "") {
+		if c, ok := a.Body.(ClockEntry); ok && c.Arrival != nil {
+			arrived = append(arrived, c.Arrival.ID)
+			s.Equal(entries[1].ID, a.ID, "the arrival follows the sighting that showed it")
+		}
+	}
+	s.Equal([]string{"letter"}, arrived)
+}

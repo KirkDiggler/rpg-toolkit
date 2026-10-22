@@ -273,6 +273,8 @@ type heldPiece struct {
 	tag     string
 	piece   piece
 	subject string
+	// prop is true for a prop arriving, which no sighting gains by id.
+	prop bool
 }
 
 // entry filters and folds one entry.
@@ -304,7 +306,7 @@ func (f *fold) entry(e record.Entry) {
 			delete(f.last, tag)
 		}
 		if v == hold && tag != "" {
-			f.held = append(f.held, heldPiece{entry: e, tag: tag, piece: p, subject: heldSubject(p.body)})
+			f.held = append(f.held, heldPiece{entry: e, tag: tag, piece: p, subject: heldSubject(p.body), prop: arrivingProp(p.body)})
 		}
 	}
 	f.view.observe(f.recipient, e.Payload)
@@ -333,15 +335,18 @@ func (f *fold) settle(tag string, pieces []piece) {
 }
 
 // release delivers, after sighting e, the held pieces of its act whose
-// subject it gains — under e's id, since they now follow it.
+// subject it gains — or, for a prop arriving, whose sighting says the
+// recipient's view of things changed — under e's id, since they now follow
+// it.
 func (f *fold) release(e record.Entry, tag string) {
-	gained := gains(e.Payload)
-	if len(gained) == 0 || len(f.held) == 0 {
+	gained, knowledge := sighting(e.Payload)
+	if (len(gained) == 0 && !knowledge) || len(f.held) == 0 {
 		return
 	}
 	kept := f.held[:0]
 	for _, h := range f.held {
-		if h.tag != tag || !contains(gained, h.subject) {
+		seen := contains(gained, h.subject) || (h.prop && knowledge)
+		if h.tag != tag || !seen {
 			kept = append(kept, h)
 			continue
 		}
@@ -371,6 +376,12 @@ func heldSubject(body ActBody) string {
 	default:
 		return ""
 	}
+}
+
+// arrivingProp is whether a held piece is a prop arriving.
+func arrivingProp(body ActBody) bool {
+	c, ok := body.(ClockEntry)
+	return ok && c.Arrival != nil && c.Arrival.Kind == encounter.ArrivedProp
 }
 
 // absorb folds piece p of entry e into the open segment when it extends it,
