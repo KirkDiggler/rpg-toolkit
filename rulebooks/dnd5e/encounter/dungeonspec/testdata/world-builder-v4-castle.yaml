@@ -48,8 +48,8 @@
 #
 # THE CASTLE. The garrison keeps the gate and the hall, and its mind is the
 # captain: it is civil to the party until the party is recognized, and civil
-# to the loyalists until the guards turn. The loyalists (the king, his
-# knights, the reserves in the barracks) are hostile to the party always.
+# to the loyalists until the guards turn. The loyalists (the king and his
+# knights) are hostile to the party always.
 # The kitchen is civil and stays civil. One fact is learned in the kitchen
 # and spent at the gate — the cook's gossip opens the troupe, and Ashford
 # opens the turn. The captain's orders on the kitchen floor say the party is
@@ -64,9 +64,10 @@
 # the run with the king still breathing.
 #
 # THE ROUTES, each a scenario test in dungeonspec/castle_king_*_test.go:
-# the front door, the troupe, the troupe blown, turning the garrison, the
-# king deposed, the king slain, the scout who talks to the wrong guard, the
-# cell lock picked, and the orders carried to the captain.
+# the front door, the troupe (by the cook or by the stranger), the troupe
+# blown, turning the garrison, the king deposed, the king slain, the scout
+# who talks to the wrong guard, the cell lock picked, and the orders carried
+# to the captain.
 # THE KITCHEN-DOOR ROUTES (rpg-project#606, sneaking S1). The kitchen's one
 # door into the great hall is LOCKED: thieves' tools at DC 13 pick it
 # silently, Strength at DC 15 forces it and crashes. The hall guard walks a
@@ -83,9 +84,27 @@
 # 90), the scullion into the kitchen (ne; its centre is at 53), the captain
 # down the gatehouse at whoever comes to the gate (s, the party start), the
 # turnkey and the sergeant at the cells door (w, 251; se, 120), the king at
-# the throne door (e, 90). The facings are test choices, not story. Creatures that walk a route face their steps; the gate
+# the throne door (e, 90), the pedlar down past the corner wall at whoever
+# comes round it (s). The facings are test choices, not story. Creatures that walk a route face their steps; the gate
 # guards' pause facings are rpg-project#624's. castle_king_facings_test.go
 # holds each cone over the cell it keeps.
+#
+# THE QA CASTLE (rpg-project#639). The castle is also the standing QA
+# script, and these pieces stage its steps, each a test in
+# dungeonspec/castle_king_script_test.go. The party starts outside, before
+# the gate (the gatehouse's label reads "Before the Gate"), with the
+# garrison civil. Round the corner wall west of the door stands a stranger,
+# the pedlar (townsfolk, civil), whose one line teaches `feast-tonight`
+# win or lose, so the captain's troupe line is offered. Without it, a party
+# that declares sneaking behind the corner, unseen, crosses to the gate
+# while both gate guards stand at their beat posts and is rolled against by
+# nobody; at their door posts the crossing rolls. Declaring in plain sight
+# does nothing (sneaking R10). Fighting the gate guards brings nobody: the
+# far room's two guards, the reserves in the barracks, are the garrison's
+# and arrive only when the gate opens (`gate-opened`), walking to the gate
+# civil on the troupe route and hostile after a fight. These pieces were
+# written by hand in the export's own shape, for the operator to open and
+# adjust in the studio.
 #
 # STORED IS AUTHORED. Each stat block under `templates:` says scores, hit
 # dice, armor, proficiency, skills and weapons — never hit points, armor
@@ -190,13 +209,43 @@ tables:
             kind: clang
             within: 2
         toward: sound
-      # Hand edit: the gate guards pace the gatehouse, a right-angled loop
-      # whose legs never share a cell (use case R7). At each gate-side
-      # corner a guard stands two rounds turned inward to the party start,
-      # watching the incomers (rpg-project#624): se from the west corner,
-      # sw from the east.
+      # Hand edit (the QA castle's step 4, rpg-project#639): gate-1's loop.
+      # He stands a round at the door post west of the captain turned ne to
+      # the cell under the gate, walks to the beat post north of the party
+      # start and stands a round there turned se to the incomers (#624), and
+      # walks back round by the west. gate-patrol-east is its mirror for
+      # gate-2, so the two keep step: in two world rounds of every four both
+      # stand at their beat posts with their backs to the gate. That is the
+      # sneak window. Neither beat post sees round the corner wall.
       - when: { enemy: none }
-        toward: { path: [{ q: -7, r: 9, wait: 2, facing: se }, { q: -1, r: 9, wait: 2, facing: sw }, { q: -3, r: 12 }, { q: -9, r: 12 }] }
+        toward: { path: [{ q: -5, r: 8, wait: 1, facing: ne }, { q: -5, r: 10, wait: 1, facing: se }, { q: -7, r: 10 }] }
+  gate-patrol-east:
+    time:
+      # Hand edit: a gate guard who witnessed the turn marches with the
+      # captain, on storm-the-keep's own row.
+      - when: [{ fact: guards-turned }, { enemy: none }]
+        toward: { at: { q: 10, r: -19 } }
+      - say: To arms! Intruders at the gate!
+        when:
+          - enemy: seen
+          - not:
+              fact: alarm-raised
+        fact: alarm-raised
+      - when:
+          enemy: reach
+        attack: enemy
+      - when:
+          enemy: seen
+        toward: enemy
+      - when:
+          heard:
+            kind: clang
+            within: 2
+        toward: sound
+      # Hand edit (rpg-project#639): gate-2's loop, gate-patrol's mirror: nw
+      # at the door post east of the captain, sw at the beat post.
+      - when: { enemy: none }
+        toward: { path: [{ q: -2, r: 8, wait: 1, facing: nw }, { q: -4, r: 10, wait: 1, facing: sw }, { q: -2, r: 10 }] }
   keep-patrol:
     time:
       - say: Protect the king!
@@ -308,6 +357,20 @@ tables:
       - when:
           enemy: seen
         toward: enemy
+  answer-the-gate:
+    time:
+      - when:
+          enemy: reach
+        attack: enemy
+      - when:
+          enemy: seen
+        toward: enemy
+      # Hand edit (the QA castle's step 7, rpg-project#639): the far room
+      # answers the gate. Arrived on `gate-opened`, a guard with no enemy in
+      # sight walks to the yard two cells in from the gate, so the two who
+      # answer do not stand in the gate's one crossing.
+      - when: { enemy: none }
+        toward: { at: { q: -2, r: 4 } }
 factions:
   - id: garrison
     mind: captain
@@ -320,6 +383,7 @@ factions:
   - id: kitchen
     mind: cook
   - id: prisoners
+  - id: townsfolk
 dispositions:
   - between:
       - garrison
@@ -343,6 +407,10 @@ dispositions:
     stance: neutral
   - between:
       - prisoners
+      - party
+    stance: neutral
+  - between:
+      - townsfolk
       - party
     stance: neutral
 intel:
@@ -438,7 +506,7 @@ room:
           x: 0.39970403251589465
           z: 0
       - id: label-gatehouse
-        text: Gatehouse
+        text: Before the Gate
         location:
           x: 0.4330127018922192
           z: 14.25
@@ -3870,6 +3938,33 @@ room:
             offsetX: 0
             offsetZ: 0
         openings: []
+      # Hand edit (the QA castle's step 2, rpg-project#639): the corner wall,
+      # one row long, off the gate wall west of the door. The cell behind it
+      # beside the stranger is out of the gate's sight: where a party learns
+      # the feast unwitnessed, and declares sneaking unseen.
+      - id: gate-corner-wall
+        label: gate-corner-wall
+        line:
+          start:
+            x: -3.897114317029974
+            z: 9.75
+          end:
+            x: -3.897114317029974
+            z: 11.75
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 2.0
+            depth: 0.5
+            offsetX: 0
+            offsetZ: 0
+        openings: []
       - id: gatehouse-west-wall
         label: gatehouse-west-wall
         line:
@@ -7040,6 +7135,14 @@ room:
             q: -22
             r: 13
         appearanceRef: dnd5e:npcs:goblin:prisoner-02-style-02-a
+      - id: pedlar
+        ref: dnd5e:monsters:commoner
+        startingCell:
+          location:
+            q: -7
+            r: 7
+          facing: s
+        appearanceRef: dnd5e:npcs:kingdom:merchant-01
     partyStart:
       q: -5
       r: 11
@@ -7049,7 +7152,7 @@ room:
         table: gate-patrol
       gate-2:
         faction: garrison
-        table: gate-patrol
+        table: gate-patrol-east
       hall-1:
         faction: garrison
         table: hall-patrol
@@ -7157,15 +7260,15 @@ room:
       king:
         faction: loyalists
       reserve-1:
-        faction: loyalists
-        table: keep-patrol
+        faction: garrison
+        table: answer-the-gate
         arrives:
-          fact: alarm-raised
+          fact: gate-opened
       reserve-2:
-        faction: loyalists
-        table: keep-patrol
+        faction: garrison
+        table: answer-the-gate
         arrives:
-          fact: alarm-raised
+          fact: gate-opened
       scullion:
         faction: kitchen
       sergeant:
@@ -7282,9 +7385,28 @@ room:
         holds:
           - king-whereabouts
           - key-bearer
+      # The stranger (the QA castle's step 2, rpg-project#639): every option
+      # needs a check, so the line rolls against DC 5 and its success and
+      # failure both teach `feast-tonight`.
+      pedlar:
+        faction: townsfolk
+        options:
+          - id: tonight
+            say: What’s all the bustle?
+            check:
+              - ability: persuasion
+                dc: 5
+            success:
+              - say: Feast for the whole court tonight — they’ll want players.
+                fact: feast-tonight
+            failure:
+              - say: Feast, tonight. Now leave me be.
+                fact: feast-tonight
     doorBindings:
       gate-wall-door:
         closed: true
+        opened:
+          fact: gate-opened
       hall-wall-door:
         closed: true
       kitchen-wall-door:
