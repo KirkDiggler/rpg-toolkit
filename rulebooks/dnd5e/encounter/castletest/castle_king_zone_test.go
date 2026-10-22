@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package dungeonspec_test
+package castletest
 
 // castle_king_zone_test.go is THE RED FLOOR IN THE GREAT HALL (rpg-project#619,
 // sneaking Z1, design R15): the rogue sneaks out of the kitchen into the hall
@@ -69,10 +69,9 @@ func TestMadKingTheHallGuardsRedFloor(t *testing.T) {
 
 	// EVERY ZONE IS A WATCHER THE HERO SEES, and the hall guard's holds the
 	// hero's own cell.
-	seer := &sneakSite{t: t, enc: s.enc}
 	var hall []encounter.WatchZone
 	for _, zone := range zones {
-		h := seer.holding(hero, zone.Watcher)
+		h := s.holding(hero, zone.Watcher)
 		require.NotNil(t, h, "the hero holds %s", zone.Watcher)
 		require.NotEmpty(t, h.CurrentVia, "the hero sees %s now", zone.Watcher)
 		if zone.Watcher == kingHall1 {

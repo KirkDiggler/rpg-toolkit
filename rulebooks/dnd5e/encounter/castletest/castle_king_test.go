@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package dungeonspec_test
+package castletest
 
 // castle_king_test.go is THE MAD KING'S CASTLE, PLAYED (rpg-project#605):
 // the one studio document, compiled, opened the way a host opens it, and
@@ -34,7 +34,7 @@ import (
 )
 
 const (
-	kingFixture = "testdata/world-builder-v4-castle.yaml"
+	kingFixture = "../dungeonspec/testdata/world-builder-v4-castle.yaml"
 
 	// hero is the party's one player.
 	hero = encounter.MemberID("hero")
