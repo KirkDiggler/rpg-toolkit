@@ -94,8 +94,9 @@
 // # The act id (rpg-project#627)
 //
 // EVERY BEAT OF AN ACT CARRIES THE ACT'S ID as its record correlation, and a
-// beat outside any act carries none (act.go). The id is `<verb>:<first seq>`,
-// minted by [Encounter.OpenAct] from the seq the act's first beat takes. The
+// beat outside any act carries none (act.go). The id is `<verb>:<id>`, minted
+// by [Encounter.OpenAct] from the record's own id space, and stamped on every
+// beat of the act both as the correlation and as the record tag [ActTag]. The
 // open acts are an in-memory stack that is never persisted: a beat carries
 // the top of it, a driven creature's intent (`move`, `attack`, `pass`) and
 // its world-clock pick (`time`) open their own acts on top of whatever host
@@ -105,11 +106,8 @@
 // on the pause, where [Encounter.PausedAct] reads it and the resume walks on
 // under it. A beat's At is the world clock's high-water in rounds.
 //
-// AN ACT HAS A SECOND NAME FOR v1alpha2 (rpg-project#628): `<verb>:<id>`,
-// minted at the same open from the record's own id space, stamped on every
-// beat of the act as the record tag [ActTag], and carried beside the first
-// through reopens and pauses ([Encounter.CurrentActID],
-// [Encounter.PausedActID]). [Encounter.ReadRecord] reads the whole retained
+// E1's `<verb>:<first seq>` form left with the v1alpha1 stream
+// (rpg-project#631, R27). [Encounter.ReadRecord] reads the whole retained
 // record after an id, every audience included — the debug stream's source.
 // The record's ids draw on [SetupInput.IDs], the wall clock by default.
 //

@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package dungeonspec_test
+package castletest
 
 // castle_king_keep_test.go is THE KEEP, THREE WAYS (rpg-project#605, use
 // case §3): turn the garrison and let it storm the keep, turn it and have it

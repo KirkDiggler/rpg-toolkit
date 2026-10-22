@@ -163,7 +163,7 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 			return true, nil
 		}
 		if structuralBoundaries[p.ID] || (p.BlocksMovement && p.BlocksLineOfSight) {
-			support, supportErr := e.field.footprintObservationCells(p.Placement)
+			support, supportErr := e.field.observationCellsOf(p.ID, p.Placement)
 			if supportErr != nil {
 				return false, fmt.Errorf("structural boundary %q support: %w", p.ID, supportErr)
 			}

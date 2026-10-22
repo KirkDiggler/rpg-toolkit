@@ -146,7 +146,10 @@ type HoldOutSessionSuite struct {
 	canonical dungeonspec.Compiled
 	camp      dungeonspec.Compiled
 
-	stream     *fakeStream
+	stream *fakeStream
+	// since is the record seq a scene reads after: [HoldOutSessionSuite.mark]
+	// sets it.
+	since      uint64
 	sessions   *fakeSessions
 	encounters *fakeEncounters
 	characters *fakeCharacters
@@ -188,8 +191,18 @@ func (s *HoldOutSessionSuite) startWith(opts campOptions) *session.LaunchOutput 
 	s.T().Helper()
 	out, err := s.mgr.Launch(context.Background(), s.prepare(opts))
 	s.Require().NoError(err)
-	s.stream.published = nil
+	s.mark()
 	return out
+}
+
+// mark clears the live stream and moves the story cursor to now, so a scene
+// reads only what its own verbs caused.
+func (s *HoldOutSessionSuite) mark() {
+	s.T().Helper()
+	s.stream.published = nil
+	stored, ok := s.encounters.byID[campWorldID]
+	s.Require().True(ok)
+	s.since = stored.Log.NextSeq - 1
 }
 
 // prepare wires a fresh manager around the camp and returns the launch that
@@ -216,10 +229,10 @@ func (s *HoldOutSessionSuite) prepare(opts campOptions) *session.LaunchInput {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(opts.cast...)
 
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: opts.driver,
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: s.stream,
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -502,33 +515,27 @@ func (s *HoldOutSessionSuite) untilTurnOf(member string) {
 	}
 }
 
-func (s *HoldOutSessionSuite) events(recipient string) []session.Event {
-	return eventsFor(s.stream.published, recipient)
+// events is what a recipient's story told them since the mark.
+func (s *HoldOutSessionSuite) events(recipient string) []witnessed {
+	return storyBeatsAfter(s.T(), s.mgr, campSession, recipient, s.since)
 }
 
-func (s *HoldOutSessionSuite) kinds(recipient string) []session.EventKind {
-	var out []session.EventKind
-	for _, e := range s.events(recipient) {
-		out = append(out, e.Kind)
-	}
-	return out
+// kinds is the beat words a recipient was told since the mark.
+func (s *HoldOutSessionSuite) kinds(recipient string) []string {
+	return beatNames(s.events(recipient))
 }
 
-// bodyOf fetches the one event of a kind on a recipient's stream, failing if
-// there is not exactly one.
-func (s *HoldOutSessionSuite) bodyOf(recipient string, kind session.EventKind) session.EventBody {
+// bodyOf fetches the one beat of a word in a recipient's story since the
+// mark, failing if there is not exactly one.
+func (s *HoldOutSessionSuite) bodyOf(recipient string, beat string) witnessed {
 	s.T().Helper()
-	var found []session.Event
-	for _, e := range s.events(recipient) {
-		if e.Kind == kind {
-			found = append(found, e)
-		}
-	}
-	s.Require().Len(found, 1, "%s should have exactly one %s: %v", recipient, kind, s.kinds(recipient))
-	return found[0].Body
+	found := beatsNamed(s.events(recipient), beat)
+	s.Require().Len(found, 1, "%s should have exactly one %s: %v", recipient, beat, s.kinds(recipient))
+	return found[0]
 }
 
-// recipients is everyone anything was delivered to, sorted.
+// recipients is everyone an act was delivered to live, in first-delivery
+// order.
 func (s *HoldOutSessionSuite) recipients() []string {
 	seen := map[string]bool{}
 	var out []string
@@ -578,7 +585,7 @@ func (s *HoldOutSessionSuite) TestSpawnedMonstersCarryTheirFactionAndAFightForms
 		s.Contains(out.Formed.Order, campScout)
 		s.Equal(session.ClockTurn, s.turn("alice").Clock)
 		s.Equal(session.ClockTurn, s.turn(campScout).Clock)
-		s.Contains(s.kinds("bob"), session.EventFightStarted, "a fight is not secret")
+		s.Contains(s.kinds("bob"), encounter.BeatFightStarted, "a fight is not secret")
 	})
 }
 
@@ -607,15 +614,15 @@ func (s *HoldOutSessionSuite) TestAMonsterSpawnedWithNoFactionIsInMonstersAndFig
 // TestTheLetterCarriedToTheChiefMidFightTurnsTheCampOnTheWire is A2 at the
 // seam, and the `ended` beat naming the hold-out: alice picks up the letter,
 // walks into a fight in the yard, carries it into the hut on her turns —
-// and every recipient's own stream reads stance, then the fight ending BY
-// STANCE, then the run ending, each typed, each in dense numbering.
+// and every recipient's own story reads stance, then the fight ending BY
+// STANCE, then the run ending.
 func (s *HoldOutSessionSuite) TestTheLetterCarriedToTheChiefMidFightTurnsTheCampOnTheWire() {
 	s.start(true)
 	s.hold("alice", campLetter)
 	formed := s.intoTheYard("alice")
 	s.Require().NotNil(formed.Formed, "precondition: the fight is on")
 	s.Require().Equal(session.ClockTurn, s.turn("alice").Clock, "and the hut is walked to on her turns")
-	s.stream.published = nil
+	s.mark()
 
 	out := s.intoTheHut("alice")
 
@@ -633,23 +640,34 @@ func (s *HoldOutSessionSuite) TestTheLetterCarriedToTheChiefMidFightTurnsTheCamp
 			// The pair is a SET: a disposition has no direction, and the
 			// composition writes it in its own normalized order. A reader
 			// matches the two ids, never a first and a second.
-			turned, ok := s.bodyOf(who, session.EventStanceChanged).(session.StanceChangedBody)
-			s.Require().True(ok, "the flip crosses as its typed body")
+			var turned struct {
+				Between []string `json:"between"`
+				Stance  string   `json:"stance"`
+			}
+			s.bodyOf(who, encounter.BeatStance).decode(s.T(), &turned)
 			s.ElementsMatch([]string{campFaction, encounter.FactionParty}, turned.Between)
 			s.Equal(string(encounter.StanceNeutral), turned.Stance, "the author's word for what the pair now is")
-			s.Equal(session.FightEndedBody{Cause: session.DissolveByStance}, s.bodyOf(who, session.EventFightEnded),
+			var dissolved struct {
+				Cause string `json:"cause"`
+			}
+			s.bodyOf(who, encounter.BeatFightEnded).decode(s.T(), &dissolved)
+			s.Equal(string(session.DissolveByStance), dissolved.Cause,
 				"the fight lost its sides — not a decision, not a defeat")
-			s.Equal(session.EndedBody{Ending: scenarios.HoldOutID}, s.bodyOf(who, session.EventEnded),
+			var ended struct {
+				Ending string `json:"ending"`
+			}
+			s.bodyOf(who, encounter.BeatEnded).decode(s.T(), &ended)
+			s.Equal(scenarios.HoldOutID, ended.Ending,
 				"the scenario's ending, named as any declared ending is")
 
 			var stanceAt, dissolvedAt, endedAt int
 			for i, kind := range s.kinds(who) {
 				switch kind {
-				case session.EventStanceChanged:
+				case encounter.BeatStance:
 					stanceAt = i
-				case session.EventFightEnded:
+				case encounter.BeatFightEnded:
 					dissolvedAt = i
-				case session.EventEnded:
+				case encounter.BeatEnded:
 					endedAt = i
 				}
 			}
@@ -658,31 +676,16 @@ func (s *HoldOutSessionSuite) TestTheLetterCarriedToTheChiefMidFightTurnsTheCamp
 		})
 	}
 
-	s.Run("every recipient heard the stance turn exactly once, in their own dense numbering", func() {
+	s.Run("every recipient heard the stance turn exactly once", func() {
 		for _, who := range s.recipients() {
-			s.bodyOf(who, session.EventStanceChanged)
-			events := s.events(who)
-			for i := 1; i < len(events); i++ {
-				s.Require().Equal(events[i-1].Seq+1, events[i].Seq,
-					"%s's own stream must be dense: seq %d follows %d", who, events[i].Seq, events[i-1].Seq)
-			}
+			s.bodyOf(who, encounter.BeatStance)
 		}
 	})
 
-	s.Run("no beat reached a client as unknown", func() {
-		for _, e := range s.stream.published {
-			s.NotEqual(session.EventUnknown, e.Kind, "an armless beat narrates nothing")
-			// BODY-LESS BY DESIGN, and named rather than skipped by a nil
-			// check that would have let a genuinely armless beat through. A
-			// tick says one thing — a round of the world passed — and the
-			// reading is on the beat's own record; there is nothing for a body
-			// to add ([bodyFor]'s own default case says so). It reaches these
-			// streams at all because the world clock now moves when the party
-			// acts (rpg-project#465 §5).
-			if e.Kind == session.EventTick || e.Kind == session.EventSceneOpened {
-				continue
-			}
-			s.NotNil(e.Body, "and every kind this build names decodes its typed body: %s", e.Kind)
+	s.Run("no act reached a client undecoded", func() {
+		for _, act := range s.stream.published {
+			s.Empty(act.Undecoded, "an undecoded act narrates nothing: %s %s", act.Family, act.Act)
+			s.NotNil(act.Body, "every act decodes its typed body: %s %s", act.Family, act.Act)
 		}
 	})
 }
@@ -698,7 +701,7 @@ func (s *HoldOutSessionSuite) TestTheStanceSurvivesSaveAndLoadAsAFoldNotAField()
 	s.Require().NotNil(s.intoTheYard("alice").Formed)
 	out := s.intoTheHut("alice")
 	s.Require().Nil(out.Outcome, "nothing was declared to end on the flip")
-	s.bodyOf("bob", session.EventStanceChanged)
+	s.bodyOf("bob", encounter.BeatStance)
 	s.Require().Equal(session.ClockWorld, s.turn("alice").Clock, "the fight dissolved")
 
 	s.Run("the declaration is untouched and no stance is written", func() {
@@ -728,7 +731,7 @@ func (s *HoldOutSessionSuite) TestTheStanceSurvivesSaveAndLoadAsAFoldNotAField()
 			"a flip a mind caused writes the knowledge, never the stance")
 	})
 
-	s.stream.published = nil
+	s.mark()
 	s.Run("the next verb loads the world back, and the camp is still turned", func() {
 		// Beside the scout, in the yard, in plain sight of it.
 		scout := s.where(campScout)
@@ -736,7 +739,7 @@ func (s *HoldOutSessionSuite) TestTheStanceSurvivesSaveAndLoadAsAFoldNotAField()
 		s.Nil(out.Formed, "a raider in sight of a player, and no fight")
 		s.Equal(session.ClockWorld, s.turn("bob").Clock)
 		s.Equal(session.ClockWorld, s.turn(campScout).Clock)
-		s.NotContains(s.kinds("alice"), session.EventFightStarted)
+		s.NotContains(s.kinds("alice"), encounter.BeatFightStarted)
 		s.Equal(campFaction, s.roster()[campScout].Faction, "membership is declaration; the stance is the fold")
 	})
 }

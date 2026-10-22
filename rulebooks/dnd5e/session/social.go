@@ -215,7 +215,6 @@ func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, erro
 		Target:   in.Target,
 		Prop:     in.Prop,
 		OptionID: in.OptionID,
-		Seq:      scope.deliveredSeq(member, spoken.Seq),
 		Saved:    report,
 		Delivery: delivery,
 	}, nil
@@ -313,7 +312,7 @@ func (m *Manager) poseSocialWindow(
 		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
 	}
 
-	recorded, err := scope.enc.RecordRollWindow(&encounter.RollWindowInput{
+	if _, err := scope.enc.RecordRollWindow(&encounter.RollWindowInput{
 		Audience: encounter.MemberID(ask.Audience),
 		Offer:    encounter.ReactionIdentity{Ref: offer.Ref, Name: offer.Name},
 		Roll:     ask.Roll,
@@ -321,8 +320,7 @@ func (m *Manager) poseSocialWindow(
 		// The beat that asks shows the whole roll, not the one face the two
 		// scalars could carry (rpg-project#462 R5).
 		Calculation: rollCalculationFor(ask.Calculation),
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, fmt.Errorf("%s: %w", VerbSpeak, reportUnrecorded(scope, translate(err)))
 	}
 
@@ -342,7 +340,6 @@ func (m *Manager) poseSocialWindow(
 		Target:   in.Target,
 		Prop:     in.Prop,
 		OptionID: in.OptionID,
-		Seq:      scope.deliveredSeq(member, recorded.Seq),
 		Saved:    report,
 		Delivery: delivery,
 	}, nil

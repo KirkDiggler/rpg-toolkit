@@ -88,10 +88,10 @@ func (s *BothWaysSuite) yard(until encounter.Trigger) {
 	// acts first), then the 1 is alice's d20.
 	rolls := append([]int{10, 10, 10, 1}, ordinaryRolls(40)...)
 
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: &sequenceDice{rolls: rolls}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters,
-		Characters: characters, Events: s.stream,
+		Characters: characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -191,17 +191,44 @@ func (s *BothWaysSuite) believedStance(viewer, subject string) string {
 	return ""
 }
 
-// stanceTurn is the one stance beat on a recipient's stream, typed.
-func (s *BothWaysSuite) stanceTurn(recipient string) session.StanceChangedBody {
-	s.T().Helper()
-	events := eventsOfKind(s.stream.published, recipient, session.EventStanceChanged)
-	s.Require().Len(events, 1, "%s heard the pair turn exactly once", recipient)
-	body, ok := events[0].Body.(session.StanceChangedBody)
-	s.Require().True(ok, "the turn crosses as its typed body, not as bytes a client has to parse")
-	return body
+// bwStanceTurn is one stance turn as a recipient's act stream states it.
+type bwStanceTurn struct {
+	Between []string
+	Stance  string
+	Cause   string
 }
 
-// recipients is everybody any event was addressed to.
+// stanceTurns is every stance turn on a recipient's act stream.
+func (s *BothWaysSuite) stanceTurns(recipient string) []bwStanceTurn {
+	s.T().Helper()
+	var out []bwStanceTurn
+	for _, act := range s.stream.published {
+		if act.Recipient != recipient {
+			continue
+		}
+		change, ok := act.Body.(session.StateChange)
+		if !ok || change.Change != session.StateStance {
+			continue
+		}
+		s.Require().NotNil(change.Stance, "a stance entry carries its turn")
+		turn := bwStanceTurn{Stance: change.Stance.Stance, Cause: change.Stance.Cause}
+		for _, party := range change.Stance.Between {
+			turn.Between = append(turn.Between, party.ID)
+		}
+		out = append(out, turn)
+	}
+	return out
+}
+
+// stanceTurn is the one stance turn on a recipient's act stream.
+func (s *BothWaysSuite) stanceTurn(recipient string) bwStanceTurn {
+	s.T().Helper()
+	turns := s.stanceTurns(recipient)
+	s.Require().Len(turns, 1, "%s heard the pair turn exactly once", recipient)
+	return turns[0]
+}
+
+// recipients is everybody any act was addressed to.
 func (s *BothWaysSuite) recipients() []string {
 	seen := map[string]bool{}
 	var out []string
@@ -285,7 +312,7 @@ func (s *BothWaysSuite) TestTheGuardsTurnAtMidnightWithNobodyStepping() {
 		s.endRound()
 		s.Equal(string(encounter.StanceNeutral), s.believedStance("alice", bwChief))
 		s.Equal(session.ClockWorld, s.clockOf(bwChief), "and still out of the fight")
-		s.Empty(eventsOfKind(s.stream.published, "alice", session.EventStanceChanged),
+		s.Empty(s.stanceTurns("alice"),
 			"nothing turned, so nothing was announced")
 	})
 

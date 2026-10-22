@@ -96,7 +96,6 @@ type KnowledgeOutput struct {
 	Where            WhereOutput  `json:"where"`
 	Roster           RosterOutput `json:"roster"`
 	Holding          []string     `json:"holding"`
-	Seq              uint64       `json:"seq"`
 }
 
 // Knowledge returns one coherent snapshot for an authenticated owned seat.
@@ -137,11 +136,6 @@ func (m *Manager) Knowledge(ctx context.Context, in *KnowledgeInput) (*Knowledge
 	if err != nil {
 		return nil, translate(err)
 	}
-	world := enc.WorldView()
-	_, cursors, err := buildStreamNumbers(enc, &world, data.Streams)
-	if err != nil {
-		return nil, err
-	}
 	projected := projectAtlas(atlas)
 	projected.DungeonKey = data.Dungeon
 	holding := make([]string, 0, len(held))
@@ -153,7 +147,7 @@ func (m *Manager) Knowledge(ctx context.Context, in *KnowledgeInput) (*Knowledge
 		return nil, translate(err)
 	}
 	sharing := &preference.Sharing
-	return &KnowledgeOutput{DiscoverySharing: sharing, Atlas: projected, View: *view, Where: WhereOutput{Position: at}, Roster: *roster, Holding: holding, Seq: cursors[in.Member].Count}, nil
+	return &KnowledgeOutput{DiscoverySharing: sharing, Atlas: projected, View: *view, Where: WhereOutput{Position: at}, Roster: *roster, Holding: holding}, nil
 }
 
 func projectObjectSightings(enc *encounter.Encounter, member string) ([]PropSighting, []DoorSighting, error) {

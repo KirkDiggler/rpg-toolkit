@@ -76,18 +76,17 @@ func tombLock() encounter.DoorState {
 type DoorsSuite struct {
 	suite.Suite
 
-	stream *fakeStream
-	mgr    *session.Manager
+	mgr *session.Manager
 }
 
 func TestDoorsSuite(t *testing.T) {
 	suite.Run(t, new(DoorsSuite))
 }
 
-// startWith wires a fresh manager around the given world and cast, with the
-// stream recorded — the beats are half of what this suite pins.
+// startWith wires a fresh manager around the given world and cast. The
+// beats are half of what this suite pins; they are read back from the
+// member's story.
 func (s *DoorsSuite) startWith(world scene, cast ...*character.Data) {
-	s.stream = &fakeStream{}
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	characters := newFakeCharacters(cast...)
 	// The world asks every authored member's sheet how far it sees; the ones
@@ -96,7 +95,7 @@ func (s *DoorsSuite) startWith(world scene, cast ...*character.Data) {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters,
-		Characters: characters, Events: s.stream,
+		Characters: characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -104,18 +103,29 @@ func (s *DoorsSuite) startWith(world scene, cast ...*character.Data) {
 	launchScene(s.T(), mgr, world)
 }
 
-// doorEvents filters what the stream heard down to the door beats one
-// audience received, typed.
-func (s *DoorsSuite) doorEvents(audience string) []session.DoorBody {
+// doorBeat is a door beat's payload, as the encounter recorded it.
+type doorBeat struct {
+	Door   string `json:"door"`
+	State  string `json:"state"`
+	Actor  string `json:"actor,omitempty"`
+	DC     int    `json:"dc,omitempty"`
+	Total  int    `json:"total,omitempty"`
+	Beaten bool   `json:"beaten,omitempty"`
+	// Calculation is the roll behind an unlock attempt; nil when nothing was
+	// thrown.
+	Calculation *struct {
+		Total int `json:"total"`
+	} `json:"calculation,omitempty"`
+}
+
+// doorEvents is the door beats one audience witnessed, decoded.
+func (s *DoorsSuite) doorEvents(audience string) []doorBeat {
 	s.T().Helper()
 
-	out := make([]session.DoorBody, 0)
-	for _, e := range s.stream.published {
-		if e.Kind != session.EventDoor || e.Recipient != audience {
-			continue
-		}
-		body, ok := e.Body.(session.DoorBody)
-		s.Require().True(ok, "a door event carries its typed body")
+	out := make([]doorBeat, 0)
+	for _, b := range beatsNamed(storyBeats(s.T(), s.mgr, "sess", audience), encounter.BeatDoor) {
+		var body doorBeat
+		b.decode(s.T(), &body)
 		out = append(out, body)
 	}
 	return out
@@ -177,7 +187,7 @@ func (s *DoorsSuite) TestOpenDoorOpensAndTheTableHears() {
 
 	beats := s.doorEvents("alice")
 	s.Require().Len(beats, 1)
-	s.Equal(session.DoorBody{Door: "gate", State: "open", Actor: "alice"}, beats[0],
+	s.Equal(doorBeat{Door: "gate", State: "open", Actor: "alice"}, beats[0],
 		"the beat names the door, the state, and whose hands")
 	// THE CARVE-OUT IN THE PRODUCER RULE. A verb that rolled a check is
 	// refused when it reaches the beat with no arithmetic (ErrNoCalculation),
@@ -325,16 +335,8 @@ func (s *DoorsSuite) TestTheEndedBeatCarriesItsKey() {
 	_, err := s.mgr.End(ctx, &session.EndInput{Session: "sess", Ending: "out"})
 	s.Require().NoError(err)
 
-	var endeds []session.EndedBody
-	for _, e := range s.stream.published {
-		if e.Kind != session.EventEnded || e.Recipient != "alice" {
-			continue
-		}
-		body, ok := e.Body.(session.EndedBody)
-		s.Require().True(ok, "an ended event carries its typed body")
-		endeds = append(endeds, body)
-	}
+	endeds := beatsNamed(storyBeats(s.T(), s.mgr, "sess", "alice"), encounter.BeatEnded)
 	s.Require().Len(endeds, 1)
-	s.Equal(session.EndedBody{Ending: "out"}, endeds[0],
-		"a client following the stream finally hears HOW the run ended")
+	s.Equal("out", endeds[0].Fields["ending"],
+		"a member following the story finally hears HOW the run ended")
 }

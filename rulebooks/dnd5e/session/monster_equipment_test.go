@@ -51,7 +51,7 @@ func (s *MonsterWeaponObservationSuite) manager() *session.Manager {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: newFakeCharacters(armedFighter("fighter")), Events: session.DiscardEvents{},
+		Characters: newFakeCharacters(armedFighter("fighter")),
 	})
 	s.Require().NoError(err)
 	return mgr

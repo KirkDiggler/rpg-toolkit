@@ -71,7 +71,6 @@ func (s *DissolveTestSuite) TestTheDeadEndIsClosed() {
 	s.Require().NoError(err)
 	s.ElementsMatch([]string{"alice", "ogre"}, out.Members, "everyone in it comes back")
 	s.Equal(session.DissolveByDecision, out.Cause)
-	s.NotZero(out.Seq)
 
 	// And she can walk again.
 	moved, err := s.mgr.Move(ctx, &session.MoveInput{
@@ -155,18 +154,16 @@ func (s *DissolveTestSuite) TestDissolvingWhatIsNotAFightIsRefused() {
 	s.ErrorIs(err, session.ErrNilInput)
 }
 
-// TestTheEndingReachesClients pins that the story carries it.
-//
-// EventFightEnded and its beat mapping have existed since the trigger wave —
-// wired, tested, and unreachable, because nothing in this package could
-// produce the beat. This is the verb that makes them real.
+// TestTheEndingReachesClients pins that the act stream carries it: the
+// fight ending reaches the member live as a clock entry naming why, and no
+// entry of the call goes out undecoded.
 func (s *DissolveTestSuite) TestTheEndingReachesClients() {
 	s.fight()
 
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: testCharacters(), Events: stream,
+		Characters: testCharacters(),
 	})
 	s.Require().NoError(err)
 
@@ -175,10 +172,14 @@ func (s *DissolveTestSuite) TestTheEndingReachesClients() {
 	})
 	s.Require().NoError(err)
 
-	kinds := map[session.EventKind]int{}
-	for _, e := range stream.published {
-		kinds[e.Kind]++
+	dissolved := 0
+	for _, act := range stream.published {
+		s.Empty(act.Undecoded, "every entry of the ending is read")
+		if entry, ok := act.Body.(session.ClockEntry); ok && entry.Mark == session.ClockFightDissolved {
+			dissolved++
+			s.Require().NotNil(entry.Dissolved)
+			s.Equal(string(session.DissolveByDecision), entry.Dissolved.Cause)
+		}
 	}
-	s.Positive(kinds[session.EventFightEnded], "the fight ending is a kind, not a mystery")
-	s.Zero(kinds[session.EventUnknown])
+	s.Positive(dissolved, "the fight ending reaches the stream")
 }

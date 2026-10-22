@@ -69,7 +69,7 @@ func (s *ForcedStepSuite) SetupTest() {
 		// nobody expected exhausts the roller and says so out loud.
 		Dice: &scriptedDice{rolls: []int{19, 6, 6, 6}}, TurnDriver: Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: DiscardEvents{},
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -120,7 +120,9 @@ func (s *ForcedStepSuite) takeStep(step encounter.MoveStep) []string {
 	_, _, err = s.mgr.commit(ctx, scope)
 	s.Require().NoError(err)
 
-	entries, err := s.mgr.Story(ctx, &StoryInput{Session: "sess", Member: "fighter"})
+	enc, err := s.mgr.open(ctx, "sess")
+	s.Require().NoError(err)
+	entries, err := enc.Story(&encounter.StoryInput{Audience: "fighter"})
 	s.Require().NoError(err)
 
 	var reactions []string

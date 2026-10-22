@@ -54,11 +54,6 @@ type JoinOutput struct {
 	// observer. Absent observers saw nothing new.
 	Discovered map[string]Discovery
 
-	// Seq is the join beat's sequence IN THE JOINER'S OWN delivered
-	// numbering (stream.go) — the same number their event for it carries.
-	// The record's global sequence stays internal to the seam.
-	Seq uint64
-
 	// Outcome is present if an ending fired on the join.
 	Outcome *Outcome
 
@@ -112,11 +107,6 @@ type PlaceNPCOutput struct {
 	// observer. Absent observers saw nothing new.
 	Discovered map[string]Discovery
 
-	// Seq is the story sequence of the recorded arrival — the RECORD's own
-	// numbering, because an arrival has no acting member to number for (PlaceNPC has
-	// none either).
-	Seq uint64
-
 	// Outcome is present if an ending fired on the placement.
 	Outcome *Outcome
 
@@ -154,10 +144,6 @@ type ExitOutput struct {
 
 	// Discovered is what changed in remaining observers' perception.
 	Discovered map[string]Discovery `json:"discovered,omitempty"`
-
-	// Seq is the exit beat's sequence IN THE DEPARTING MEMBER'S OWN
-	// delivered numbering (stream.go).
-	Seq uint64
 
 	// Closed is present if the encounter auto-closed because the last member
 	// left.
@@ -326,9 +312,8 @@ func (m *Manager) Join(ctx context.Context, in *JoinInput) (*JoinOutput, error) 
 		Member:     projectMember(placed.Member),
 		Character:  state,
 		Discovered: projectDiscoveries(placed.IntelDeltas),
-		Seq:        scope.deliveredSeq(in.Member, placed.Seq),
 		Outcome:    projectOutcome(placed.Outcome),
-		Formed:     projectFormedFor(scope, in.Member, placed.Formed),
+		Formed:     projectFormed(placed.Formed),
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil
@@ -488,7 +473,6 @@ func (m *Manager) PlaceNPC(ctx context.Context, in *PlaceNPCInput) (*PlaceNPCOut
 	return &PlaceNPCOutput{
 		Member:     projectMember(placed.Member),
 		Discovered: projectDiscoveries(placed.IntelDeltas),
-		Seq:        placed.Seq,
 		Outcome:    projectOutcome(placed.Outcome),
 		Formed:     projectFormed(placed.Formed),
 		Saved:      report,
@@ -757,7 +741,6 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 		// relationship they no longer have.
 		Carry:      projectSightings(left.Carry, rosterNames(roster), rosterKinds(roster), nil),
 		Discovered: projectDiscoveries(left.IntelDeltas),
-		Seq:        scope.deliveredSeq(in.Member, left.Seq),
 		Closed:     projectOutcome(left.Closed),
 		Saved:      report,
 		Delivery:   delivery,
@@ -953,26 +936,24 @@ func (m *Manager) openForChange(
 	if err := scope.frozen(); err != nil {
 		return nil, err
 	}
-	if err := scope.openAct(verb, "", ""); err != nil {
+	if err := scope.openAct(verb, ""); err != nil {
 		return nil, err
 	}
 	return scope, nil
 }
 
 // openAct opens this verb's act on the scope's encounter: verb minted when
-// act is empty, act reopened otherwise — under both of its names, act (the
-// v1alpha1 `<verb>:<first seq>`) and actID (the v1alpha2 `<verb>:<id>`,
-// empty on an act from before v2 ids). A scope holds at most one act of its
-// own, which commit closes.
-func (s *writeScope) openAct(verb, act, actID string) error {
+// act is empty, act (`<verb>:<id>`) reopened otherwise. A scope holds at
+// most one act of its own, which commit closes.
+func (s *writeScope) openAct(verb, act string) error {
 	if s.act != "" {
 		return fmt.Errorf("%w: act %q is already open on this verb", ErrInvalidSession, s.act)
 	}
-	out, err := s.enc.OpenAct(&encounter.OpenActInput{Verb: verb, Act: act, ID: actID})
+	out, err := s.enc.OpenAct(&encounter.OpenActInput{Verb: verb, Act: act})
 	if err != nil {
 		return translate(err)
 	}
-	s.act, s.actID = out.Act, out.ID
+	s.act = out.Act
 	return nil
 }
 
@@ -1023,10 +1004,8 @@ type writeScope struct {
 	baseline  uint64
 
 	// act is the id of the act this verb opened on enc ([writeScope.openAct]),
-	// or "" for a scope that opened none. commit closes it. actID is the same
-	// act's v1alpha2 id (record.go).
-	act   string
-	actID string
+	// or "" for a scope that opened none: `<verb>:<id>`. commit closes it.
+	act string
 
 	// ledger is the session's open interrupt windows, loaded beside data
 	// because it IS part of the session record (SessionData.Windows) and a
@@ -1082,11 +1061,6 @@ type writeScope struct {
 	// Nil for the many verbs that roll no checks.
 	checks map[string]*stagedCheck
 
-	// numbers is this verb's per-recipient numbering, computed by commit
-	// before the save and read afterwards by event projection and by the
-	// verb's own output fields (stream.go). Nil until commit runs.
-	numbers *streamNumbers
-
 	// walker is the walking member's OWN readied sheet, put here by
 	// [Manager.Move] before the walk and kept current by [Manager.saveDirty]
 	// for as long as the walk runs.
@@ -1133,15 +1107,6 @@ type writeScope struct {
 	// it, so commit can tell a run this verb closed — whose seats it clears —
 	// from one that was already closed.
 	openAtLoad bool
-}
-
-// deliveredSeq translates one recorded beat's global sequence into a member's
-// own delivered numbering — the only numbering a verb's output may carry
-// (stream.go). Zero for a beat that was never delivered to that member, which
-// for a verb's OWN beat cannot happen: every verb's beat is audienced to its
-// actor.
-func (s *writeScope) deliveredSeq(member string, seq uint64) uint64 {
-	return s.numbers.deliveredSeq(member, seq)
 }
 
 // noteCharacterWritten records that this verb made a character's sheet
@@ -1251,7 +1216,7 @@ func (m *Manager) adopt(ctx context.Context, scope *writeScope, world encounter.
 	// loaded here starts with none; the verb is still the same act, and the
 	// outcome recorded on this world next is its beat.
 	if scope.act != "" {
-		if _, err := enc.OpenAct(&encounter.OpenActInput{Act: scope.act, ID: scope.actID}); err != nil {
+		if _, err := enc.OpenAct(&encounter.OpenActInput{Act: scope.act}); err != nil {
 			return fmt.Errorf("%q: %w", scope.encounter, translate(err))
 		}
 	}
@@ -1284,23 +1249,6 @@ func (m *Manager) adopt(ctx context.Context, scope *writeScope, world encounter.
 // is told exactly which aggregate is missing — that is S6's whole job — and
 // repairing it needs a decision, not a retry. Making the entry verbs idempotent
 // for this case is the fix, and it is not this wave's.
-//
-// ONE MORE WEDGE, NAMED RATHER THAN PATCHED (the rebind review of
-// rpg-toolkit#1377; the same admission is on rpg-project#351's record): a
-// crash between the two saves loses the stream cursors the session save was
-// carrying, and for a NORMAL verb the next load re-derives them from the
-// persisted log — self-healing, by numberEntries' own arithmetic. For a verb
-// that appended MORE BEATS THAN THE RETENTION WINDOW, the encounter save has
-// already trimmed the blob's floor past every cursor, so re-derivation is
-// impossible and every subsequent verb refuses at the trim-outran guard,
-// permanently, as ErrInvalidWorld. That is fail-closed and TRUTHFUL — no
-// beat was delivered that was not saved (delivery waits for both saves), the
-// world never lies, and it is strictly better than the pre-fix behavior
-// (which refused the big verb outright, every time, crash or no crash). It
-// is also unhealable by retry, which is why it is admitted here in the
-// ordering's own doc: a remediation path — reseeding cursors at the cost of
-// a client resync, or journaling them beside the blob — is a named shelf,
-// not slice work.
 func (m *Manager) persist(
 	ctx context.Context, scope *writeScope, data encounter.EncounterData,
 ) (SaveReport, error) {
@@ -1389,18 +1337,15 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", err)
 	}
 
-	// Number every member's stream and BUILD the delivery batch BEFORE the
-	// FINAL save-point ToData, from a pure WorldView and the live Story — the
-	// ordering retention-at-the-storage-boundary makes load-bearing. Join's
-	// earlier ToData reads only the already-persisted EverMembers before that
-	// verb appends anything; it cannot trim the current verb's delta.
-	// (encounter v0.43.0, #1381/#1385): ToData trims, so a verb whose delta
-	// outgrew the retention window would lose its own early beats to any
-	// read that came after it. Numbering failure fails the verb before
-	// anything lands — R5's atomicity, and the fail-closed arm of the
-	// numbering design. Delivery still WAITS for the save (S9): computed
-	// here, handed to the stream only after persist reports the world
-	// durable.
+	// BUILD the delivery batches BEFORE the FINAL save-point ToData, from a
+	// pure WorldView and the live Story — the ordering
+	// retention-at-the-storage-boundary makes load-bearing. Join's earlier
+	// ToData reads only the already-persisted EverMembers before that verb
+	// appends anything; it cannot trim the current verb's delta. (encounter
+	// v0.43.0, #1381/#1385): ToData trims, so a verb whose delta outgrew the
+	// retention window would lose its own early beats to any read that came
+	// after it. Delivery still WAITS for the save (S9): built here, handed
+	// to the streams only after persist reports the world durable.
 	// THE ACT CLOSES HERE (rpg-project#627): every beat this verb and its
 	// settlements appended is in, and nothing after this line appends.
 	if scope.act != "" {
@@ -1408,21 +1353,10 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 			report := SaveReport{Written: append([]string(nil), scope.written...)}
 			return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", translate(err))
 		}
-		scope.act, scope.actID = "", ""
+		scope.act = ""
 	}
 
 	view := scope.enc.WorldView()
-	numbers, cursors, err := buildStreamNumbers(scope.enc, &view, scope.data.Streams)
-	if err != nil {
-		report := SaveReport{Written: append([]string(nil), scope.written...)}
-		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", err)
-	}
-	scope.numbers = numbers
-	if !cursorsEqual(scope.data.Streams, cursors) {
-		scope.data.Streams = cursors
-		scope.touched = true
-	}
-	events := m.projectEvents(scope, &view)
 	recorded := commitRecord(scope)
 	acts := commitActs(scope, view.EverMembers)
 
@@ -1447,11 +1381,47 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 		return report, DeliveryReport{}, err
 	}
 	report.Written = mergeReportIdentities(report.Written, scope.written)
-	delivery := m.deliver(ctx, events)
-	m.deliverRecord(ctx, recorded)
-	m.deliverActs(ctx, acts)
+	var delivery DeliveryReport
+	if err := m.deliverRecord(ctx, recorded); err != nil {
+		delivery.Failed = append(delivery.Failed, DeliveryRecord)
+	}
+	if err := m.deliverActs(ctx, acts); err != nil {
+		delivery.Failed = append(delivery.Failed, DeliveryActs)
+	}
 	return report, delivery, nil
 }
+
+// DeliveryReport says whether this commit's batches reached the live
+// streams, the record ([RecordStream]) and the acts ([ActStream]).
+//
+// Separate from SaveReport because they answer different questions and have
+// different consequences. A failed save means the world did not change; a
+// failed delivery means it did, and some clients have not heard yet.
+// Conflating them would leave a host unable to tell "retry this" from "this
+// happened, tell them again."
+//
+// Delivery is best effort (S10): it runs only after the save has landed
+// (S9), and a failure is reported here while the verb still succeeds,
+// because the record remains the truth and a client that missed something
+// catches up with [Manager.Acts] or [Manager.Record] after the last id it
+// holds. Failing the verb instead would roll back nothing — the world has
+// already changed.
+type DeliveryReport struct {
+	// Failed names each stream that refused this commit's batch, in
+	// delivery order ([DeliveryRecord], [DeliveryActs]); empty when both
+	// landed. The verb still succeeded. Named rather than a flag because a
+	// host's retry differs per stream: a missed record is caught up with
+	// [Manager.Record], missed acts with [Manager.Acts].
+	Failed []string `json:"failed,omitempty"`
+}
+
+// The streams a [DeliveryReport] names.
+const (
+	// DeliveryRecord is the record stream ([RecordStream]).
+	DeliveryRecord = "record"
+	// DeliveryActs is the act stream ([ActStream]).
+	DeliveryActs = "acts"
+)
 
 // clearSeatsOfAClosedRun clears every player's seat when this verb closed the
 // run — an ending fired, End was called, or the last member left. A run that

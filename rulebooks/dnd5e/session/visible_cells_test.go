@@ -18,7 +18,7 @@ import (
 // VisibleCellsSuite pins fog of war at the session seam (rpg-project#586,
 // Task 2): the view carries each seat's own seen-now answer through
 // unchanged, and the per-recipient stream delivers the composition's
-// per-cell reveal as its own event. The session neither observes nor computes
+// per-cell reveal as its own perception act. The session neither observes nor computes
 // either; these tests hold the delivery, not the sight rules.
 type VisibleCellsSuite struct {
 	suite.Suite
@@ -43,9 +43,9 @@ func (s *VisibleCellsSuite) SetupTest() {
 // manager is a fresh Manager over the suite's stores — a second one is a
 // restart of the host process with the same repositories.
 func (s *VisibleCellsSuite) manager() *session.Manager {
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
-		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream,
+		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	return mgr
@@ -142,29 +142,41 @@ func (s *VisibleCellsSuite) TestASeatThatSeesNothingCarriesItsOwnCell() {
 }
 
 // TestAStepThatRevealsCellsReachesOnlyTheStepper: one step that brings new
-// cells into alice's sight emits one cells-revealed event, to alice alone,
+// cells into alice's sight delivers one cells-learned perception, to alice alone,
 // carrying exactly the cells her atlas gained — so a client applying it to
 // the prior atlas lands on the fresh one. bob, who learned nothing, hears no
-// reveal; and the whole-room event is never produced.
+// reveal; and the whole-room beat is never written.
 func (s *VisibleCellsSuite) TestAStepThatRevealsCellsReachesOnlyTheStepper() {
 	s.startWith(twoSeatWorld())
 	before := s.atlas("alice")
 
+	marks := map[string]uint64{}
+	for _, m := range []string{"alice", "bob"} {
+		marks[m] = lastSeq(storyBeats(s.T(), s.mgr, "sess", m))
+	}
 	s.stream.published = nil
 	_, err := s.mgr.Move(context.Background(), &session.MoveInput{
 		Session: "sess", Member: "alice", Path: []spatial.Position{hexCell(1, 0)}})
 	s.Require().NoError(err)
 
-	for _, event := range s.stream.published {
-		s.NotEqual(session.EventRoomRevealed, event.Kind, "the whole-room event is no longer produced")
-		if event.Kind == session.EventCellsRevealed {
-			s.Equal("alice", event.Recipient, "a cells reveal reaches its learner alone")
+	for m, mark := range marks {
+		told := storyBeatsAfter(s.T(), s.mgr, "sess", m, mark)
+		s.Empty(beatsNamed(told, encounter.BeatRoomRevealed), //nolint:staticcheck // SA1019: asserting it is no longer written
+			"the whole-room beat is no longer produced")
+		if m != "alice" {
+			s.Empty(beatsNamed(told, encounter.BeatCellsRevealed), "a cells reveal reaches its learner alone")
 		}
 	}
-	reveals := eventsOfKind(s.stream.published, "alice", session.EventCellsRevealed)
+	var reveals []session.CellsLearned
+	for _, act := range s.stream.published {
+		if p, ok := act.Body.(session.Perception); ok && p.Sense == session.SenseCells {
+			s.Equal("alice", act.Recipient, "a cells reveal reaches its learner alone")
+			s.Require().NotNil(p.Cells)
+			reveals = append(reveals, *p.Cells)
+		}
+	}
 	s.Require().Len(reveals, 1, "one step, one sight pass, one reveal")
-	body, ok := reveals[0].Body.(session.CellsRevealedBody)
-	s.Require().True(ok)
+	body := reveals[0]
 
 	gained := append([]spatial.Position{}, body.Scenery...)
 	for _, region := range body.Regions {

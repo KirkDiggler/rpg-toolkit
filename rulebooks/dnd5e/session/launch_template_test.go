@@ -57,10 +57,10 @@ func (s *LaunchTemplateSuite) SetupTest() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.stream = &fakeStream{}
 	s.dice = &faceDice{face: 10}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: newFakeCharacters(armedFighter("alice")), Events: s.stream,
+		Characters: newFakeCharacters(armedFighter("alice")),
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -254,10 +254,10 @@ func (s *LaunchTemplateSuite) TestLaunch_TemplateMemberIsAttackableAndTurnsHosti
 		"{id: cook-1, ref: 'dnd5e:monsters:cook', startingCell: { location: { q: -1, r: 2 } }}",
 		"{id: cook-1, ref: 'dnd5e:monsters:cook', startingCell: { location: { q: -1, r: 1 } }}",
 	})))
-	s.Require().Empty(eventsOfKind(s.stream.published, "alice", session.EventFightStarted),
+	launched := storyBeats(s.T(), s.mgr, testSession, "alice")
+	s.Require().Empty(beatsNamed(launched, encounter.BeatFightStarted),
 		"precondition: the castle is civil and nothing is fighting")
 	authorTurnClock(s.T(), s.encounters, testSession, []string{"alice"}, 0)
-	s.stream.published = nil
 	s.dice.face = 1
 
 	_, err := s.mgr.Attack(context.Background(), &session.AttackInput{
@@ -268,10 +268,13 @@ func (s *LaunchTemplateSuite) TestLaunch_TemplateMemberIsAttackableAndTurnsHosti
 	s.Require().NoError(err)
 
 	s.Run("the kitchen and the party are hostile", func() {
-		events := eventsOfKind(s.stream.published, "alice", session.EventStanceChanged)
-		s.Require().Len(events, 1, "alice heard the pair turn exactly once")
-		body, ok := events[0].Body.(session.StanceChangedBody)
-		s.Require().True(ok)
+		turned := beatsNamed(storyBeatsAfter(s.T(), s.mgr, testSession, "alice", lastSeq(launched)), encounter.BeatStance)
+		s.Require().Len(turned, 1, "alice heard the pair turn exactly once")
+		var body struct {
+			Between []string `json:"between"`
+			Stance  string   `json:"stance"`
+		}
+		turned[0].decode(s.T(), &body)
 		s.ElementsMatch([]string{"kitchen", encounter.FactionParty}, body.Between)
 		s.Equal(string(encounter.StanceHostile), body.Stance)
 	})

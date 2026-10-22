@@ -189,10 +189,10 @@ var (
 	// player seat in the requested session.
 	ErrNotSeated = errors.New("player is not seated in this session")
 
-	// ErrStoryTrimmed is returned by Story when the requested resume point has
-	// aged out of the retention window. The caller must resync from zero
-	// rather than resume: a short answer would be indistinguishable from a
-	// complete one and would leave a permanent hole in its view of the story.
+	// ErrStoryTrimmed is returned when a read asks for story the retention
+	// window has already trimmed — the composition's ErrTrimmed in this
+	// package's words. The caller must resync from zero rather than resume:
+	// a short answer would be indistinguishable from a complete one.
 	//
 	// This package's own sentinel rather than the composition's, and the
 	// distinction matters more than it looks. The boundary test reads exported

@@ -102,9 +102,9 @@ type RecordEquipOutput struct {
 // ONE BEAT PER ITEM, ONE WAY EACH. A swap is not a third kind of change; it
 // is a stow and a draw, told in the order they happen, and the correlation
 // is what says they were one act. The correlation is the open act's id
-// ([Encounter.OpenAct]) when there is one, and otherwise minted HERE, from
-// the sequence of the equip's first beat — the story owns its own sequence, so
-// no two acts in one story can share a token, and no caller has to mint one.
+// ([Encounter.OpenAct]) when there is one, and otherwise the equip opens its
+// own act, `equip:<id>` — the record owns its id space, so no two acts in one
+// story can share a token, and no caller has to mint one.
 //
 // THE SHEET MUST ALREADY CARRY THE CHANGE. The re-look asks [Equipment] for
 // the actor's hands, so a caller that records before it writes the sheet
@@ -172,8 +172,8 @@ func (e *Encounter) RecordEquip(in *RecordEquipInput) (*RecordEquipOutput, error
 	}
 
 	// UNDER AN OPEN ACT THE EQUIP IS THAT ACT (act.go): a host's equip verb
-	// already opened it. With none open the equip opens its own, which
-	// mints `equip:<first>` exactly as it always has, and its v2 id beside.
+	// already opened it. With none open the equip opens its own,
+	// `equip:<id>`.
 	var correlation string
 	var seqs []uint64
 	appendEquip := func() error {
@@ -207,7 +207,7 @@ func (e *Encounter) RecordEquip(in *RecordEquipInput) (*RecordEquipOutput, error
 	if e.CurrentAct() != "" {
 		err = appendEquip()
 	} else {
-		err = e.inAct("equip", actRef{}, appendEquip)
+		err = e.inAct("equip", "", appendEquip)
 	}
 	if err != nil {
 		return nil, err

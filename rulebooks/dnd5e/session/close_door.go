@@ -56,10 +56,6 @@ type CloseDoorOutput struct {
 	// one would be the place a formation went unrecorded.
 	Formed *Formed `json:"formed,omitempty"`
 
-	// Seq is the door beat's sequence in the ACTOR's own delivered numbering
-	// (stream.go) — the same number the actor's event for this beat carries.
-	Seq uint64 `json:"seq"`
-
 	Saved    SaveReport     `json:"saved"`
 	Delivery DeliveryReport `json:"delivery"`
 }
@@ -123,8 +119,7 @@ func (m *Manager) CloseDoor(ctx context.Context, in *CloseDoorInput) (*CloseDoor
 	return &CloseDoorOutput{
 		Door:       Door{ID: closed.Door, State: string(closed.State)},
 		Discovered: projectDiscoveries(closed.IntelDeltas),
-		Formed:     projectFormedFor(scope, in.Member, closed.Formed),
-		Seq:        scope.deliveredSeq(in.Member, closed.Seq),
+		Formed:     projectFormed(closed.Formed),
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil

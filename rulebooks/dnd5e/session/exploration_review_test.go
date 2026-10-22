@@ -18,8 +18,8 @@ func (s *AutomaticDiscoverySDKSuite) TestSharingRefusalsKeepTheVerbAndSentinel()
 	encounters := &failingEncounters{fakeEncounters: newFakeEncounters()}
 	cfg := &session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(),
 		Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
-		Explorations: newFakeExplorations(),
-		Events:       session.DiscardEvents{}, Dice: testDice{},
+		Explorations:    newFakeExplorations(),
+		Dice:            testDice{},
 		PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{},
 	}
 	mgr, err := session.NewManager(cfg)
@@ -73,8 +73,8 @@ func (s *AutomaticDiscoverySDKSuite) TestJoinDiscoveryUsesTheRestedRecordRatherT
 			dice := &discoveryReviewDice{}
 			mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(),
 				Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: characters,
-				Explorations: newFakeExplorations(),
-				Events:       session.DiscardEvents{}, Dice: dice,
+				Explorations:    newFakeExplorations(),
+				Dice:            dice,
 				PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{},
 			})
 			s.Require().NoError(err)
@@ -102,15 +102,8 @@ func (s *AutomaticDiscoverySDKSuite) TestJoinDiscoveryUsesTheRestedRecordRatherT
 			} else {
 				s.Equal(1, dice.calls, "Join is not a walker: the consult must refresh its pre-rest staging")
 			}
-			story, err := mgr.Story(ctx, &session.StoryInput{Session: "run", Member: "bob"})
-			s.Require().NoError(err)
-			checks := 0
-			for _, event := range story {
-				if event.Kind == session.EventDiscoveryChecked {
-					checks++
-				}
-			}
-			s.Equal(1, checks)
+			checks := beatsNamed(storyBeats(s.T(), mgr, "run", "bob"), encounter.BeatDiscoveryChecked)
+			s.Len(checks, 1)
 		})
 	}
 }

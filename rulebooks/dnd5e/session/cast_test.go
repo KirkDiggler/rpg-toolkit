@@ -46,6 +46,9 @@ type CastSuite struct {
 	characters *fakeCharacters
 	stream     *fakeStream
 	dice       *sequenceDice
+	// from is the last record seq the member held when the scene was set:
+	// [CastSuite.beats] reads what came after it.
+	from uint64
 }
 
 func TestCastSuite(t *testing.T) {
@@ -149,11 +152,11 @@ func (s *CastSuite) build(
 	s.encounters = newFakeEncounters()
 	s.stream = &fakeStream{}
 	s.dice = &sequenceDice{rolls: scripted}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: s.dice,
 		TurnDriver: session.Pass{},
 		Sessions:   s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: s.stream,
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -182,6 +185,7 @@ func (s *CastSuite) build(
 	s.Require().Equal(session.ClockTurn, turn.Clock, "a cast is priced on the turn clock")
 	s.Require().Equal(bard.ID, turn.Active)
 	s.stream.published = nil
+	s.from = lastSeq(storyBeats(s.T(), mgr, "sess", bard.ID))
 }
 
 // spendFirstLevelSlots empties the member's 1st-level spell slots on the
@@ -313,26 +317,21 @@ func (s *CastSuite) TestCanonicalTargetsCastBaneAndLegacyConflictIsRejectedBefor
 	s.Equal(refs.Spells.Bane().String(), out.Spell.Ref)
 	s.Equal([]string{"skeleton"}, targets, "entry normalization never mutates caller storage")
 
-	castEvents := s.beats(session.EventCast)
+	castEvents := s.beats(encounter.BeatCast)
 	s.Require().Len(castEvents, 1)
-	castBody, ok := castEvents[0].Body.(session.CastBody)
-	s.Require().True(ok)
-	s.Equal([]string{"skeleton"}, castBody.Targets)
-	s.Equal("skeleton", castBody.Target, "one target retains the deprecated projection")
+	s.Equal([]string{"skeleton"}, castOf(s.T(), castEvents[0]).Targets)
 
-	savedEvents := s.beats(session.EventSaved)
+	savedEvents := s.beats(encounter.BeatSaved)
 	s.Require().Len(savedEvents, 1)
-	savedBody, ok := savedEvents[0].Body.(session.SavedBody)
-	s.Require().True(ok)
+	savedBody := savedOf(s.T(), savedEvents[0])
 	s.Require().NotNil(savedBody.Calculation)
 	s.Equal(savedBody.Total, savedBody.Calculation.Total)
 
-	results := s.beats(session.EventActivationResult)
+	results := s.beats(encounter.BeatActivationResult)
 	s.Require().Len(results, 1)
-	applied, ok := results[0].Body.(session.ActivationResultBody)
-	s.Require().True(ok)
-	s.Require().NotNil(applied.ConditionApplied)
-	s.Equal("bard", applied.ConditionApplied.SourceID)
+	applied := resultOf(s.T(), results[0])
+	s.Equal(encounter.ResultConditionApplied, applied.Kind)
+	s.Equal("bard", applied.SourceID)
 
 	before := s.dice.next
 	_, err = s.mgr.Cast(context.Background(), &session.CastInput{
@@ -371,21 +370,17 @@ func (s *CastSuite) TestBaneResolvesOneOrderedThreeTargetCast() {
 	})
 	s.Require().NoError(err)
 
-	casts := s.beats(session.EventCast)
+	casts := s.beats(encounter.BeatCast)
 	s.Require().Len(casts, 1)
-	body, ok := casts[0].Body.(session.CastBody)
-	s.Require().True(ok)
+	body := castOf(s.T(), casts[0])
 	s.Equal(targets, body.Targets)
-	s.Empty(body.Target, "multi-target casts never invent a deprecated representative")
 
-	saves := s.beats(session.EventSaved)
+	saves := s.beats(encounter.BeatSaved)
 	s.Require().Len(saves, 3)
 	for i, event := range saves {
-		saved, ok := event.Body.(session.SavedBody)
-		s.Require().True(ok)
-		s.Equal(targets[i], saved.Saver, "per-target trains retain caller order")
+		s.Equal(targets[i], savedOf(s.T(), event).Saver, "per-target trains retain caller order")
 	}
-	s.Require().Len(s.beats(session.EventActivationResult), 3)
+	s.Require().Len(s.beats(encounter.BeatActivationResult), 3)
 
 	stored := s.characters.byID["bard"]
 	s.Equal(1, stored.Resources[resources.SpellSlotLevel1].Current,
@@ -456,18 +451,16 @@ func (s *CastSuite) TestBaneAffectsTheTargetsNextAttackWithSourceQualifiedSubtra
 	s.Require().NotNil(bane.Dice)
 	s.Equal(3, bane.Dice.Subtotal)
 
-	outcomes := s.beats(session.EventStruck, session.EventMissed)
+	outcomes := beatsNamed(storyBeatsAfter(s.T(), s.mgr, "sess", "fighter", 0),
+		string(encounter.OutcomeStruck), string(encounter.OutcomeMissed))
 	s.Require().Len(outcomes, 1)
-	switch body := outcomes[0].Body.(type) {
-	case session.StruckBody:
-		s.Require().NotNil(body.Calculation)
-		s.Equal("bard", body.Calculation.Components[len(body.Calculation.Components)-1].Source.SourceID)
-	case session.MissedBody:
-		s.Require().NotNil(body.Calculation)
-		s.Equal("bard", body.Calculation.Components[len(body.Calculation.Components)-1].Source.SourceID)
-	default:
-		s.FailNow("attack outcome has no typed body")
+	var outcome struct {
+		Calculation *session.RollCalculation `json:"calculation"`
 	}
+	outcomes[0].decode(s.T(), &outcome)
+	s.Require().NotNil(outcome.Calculation)
+	s.Require().NotEmpty(outcome.Calculation.Components)
+	s.Equal("bard", outcome.Calculation.Components[len(outcome.Calculation.Components)-1].Source.SourceID)
 }
 
 // TestTwoCastableCantripsAreTwoRows keeps the existing cantrip panel contract:
@@ -704,39 +697,80 @@ func (s *CastSuite) woundSkeleton(hp int) {
 	s.FailNow("no skeleton in the record")
 }
 
-// beats is every event of the named kinds the bard received, in order.
-func (s *CastSuite) beats(kinds ...session.EventKind) []session.Event {
+// beats is every beat of the named words (the encounter's Beat* and Outcome*
+// vocabulary) the member's story holds since the scene was set, in order.
+func (s *CastSuite) beats(names ...string) []witnessed {
 	s.T().Helper()
-	wanted := make(map[session.EventKind]bool, len(kinds))
-	for _, kind := range kinds {
-		wanted[kind] = true
-	}
-	out := make([]session.Event, 0, 4)
-	for _, event := range eventsFor(s.stream.published, s.member) {
-		if wanted[event.Kind] {
-			out = append(out, event)
-		}
-	}
+	return beatsNamed(storyBeatsAfter(s.T(), s.mgr, "sess", s.member, s.from), names...)
+}
+
+// castedBeat is a cast beat's payload.
+type castedBeat struct {
+	Actor   string           `json:"actor"`
+	Spell   session.SpellRef `json:"spell"`
+	Targets []string         `json:"targets"`
+}
+
+// castOf decodes a cast beat.
+func castOf(t testing.TB, beat witnessed) castedBeat {
+	t.Helper()
+	var out castedBeat
+	beat.decode(t, &out)
 	return out
 }
 
-// ofKinds keeps the events of the given kinds, in order. A replayed story also
-// carries the act's sight beats when the act really changed a member's
-// conditions — Guiding Bolt lighting its target is re-looked at commit
-// (rpg-project#520, R19) — so such a replay is compared kind for kind with the
-// beats a test selected.
-func ofKinds(events []session.Event, kinds ...session.EventKind) []session.Event {
-	wanted := make(map[session.EventKind]bool, len(kinds))
-	for _, kind := range kinds {
-		wanted[kind] = true
-	}
-	out := make([]session.Event, 0, len(events))
-	for _, event := range events {
-		if wanted[event.Kind] {
-			out = append(out, event)
-		}
-	}
+// saveBeat is a saved beat's payload.
+type saveBeat struct {
+	Saver       string                   `json:"saver"`
+	Ability     string                   `json:"ability"`
+	Roll        int                      `json:"roll"`
+	Total       int                      `json:"total"`
+	DC          int                      `json:"dc"`
+	Succeeded   bool                     `json:"succeeded"`
+	Source      session.SpellRef         `json:"source"`
+	Calculation *session.RollCalculation `json:"calculation"`
+}
+
+// savedOf decodes a saved beat.
+func savedOf(t testing.TB, beat witnessed) saveBeat {
+	t.Helper()
+	var out saveBeat
+	beat.decode(t, &out)
 	return out
+}
+
+// activationResult is an activation-result beat's `result`, with the beat's
+// actor beside it.
+type activationResult struct {
+	Actor       string
+	Kind        encounter.ActivationResultKind `json:"kind"`
+	Target      string                         `json:"target"`
+	Ref         string                         `json:"ref"`
+	Name        string                         `json:"name"`
+	SourceID    string                         `json:"source_id"`
+	Detail      *string                        `json:"detail"`
+	DamageType  session.DamageType             `json:"damage_type"`
+	Amount      *int                           `json:"amount"`
+	Requested   *int                           `json:"requested"`
+	Before      *int                           `json:"before"`
+	After       *int                           `json:"after"`
+	Moved       *int                           `json:"moved"`
+	StoppedBy   string                         `json:"stopped_by"`
+	Reason      string                         `json:"reason"`
+	Description string                         `json:"description"`
+	Calculation *session.RollCalculation       `json:"calculation"`
+}
+
+// resultOf decodes an activation-result beat.
+func resultOf(t testing.TB, beat witnessed) activationResult {
+	t.Helper()
+	var p struct {
+		Actor  string           `json:"actor"`
+		Result activationResult `json:"result"`
+	}
+	beat.decode(t, &p)
+	p.Result.Actor = p.Actor
+	return p.Result
 }
 
 // TestTrueStrikeIsACastBeatAndAConditionOnTheCaster is the gateless half of the
@@ -749,25 +783,22 @@ func (s *CastSuite) TestTrueStrikeIsACastBeatAndAConditionOnTheCaster() {
 	s.Require().NoError(err)
 	s.Equal(refs.Spells.TrueStrike().String(), out.Spell.Ref)
 	s.Nil(out.Saved, "nobody resists True Strike, and a save report would say one did")
-	s.Require().Len(out.Seqs, 2, "the cast beat and one result beat")
 
-	events := s.beats(session.EventCast, session.EventSaved, session.EventActivationResult)
+	events := s.beats(encounter.BeatCast, encounter.BeatSaved, encounter.BeatActivationResult)
 	s.Require().Len(events, 2, "a cast beat and its result, and no save beat at all")
+	s.Equal([]string{encounter.BeatCast, encounter.BeatActivationResult}, beatNames(events))
 
-	cast, ok := events[0].Body.(session.CastBody)
-	s.Require().True(ok)
+	cast := castOf(s.T(), events[0])
 	s.Equal("bard", cast.Actor)
 	s.Equal(refs.Spells.TrueStrike().String(), cast.Spell.Ref)
 	s.Equal("True Strike", cast.Spell.Name, "the server authors the label")
-	s.Equal("skeleton", cast.Target, "the creature it was pointed at is on the beat")
+	s.Equal([]string{"skeleton"}, cast.Targets, "the creature it was pointed at is on the beat")
 
-	result, ok := events[1].Body.(session.ActivationResultBody)
-	s.Require().True(ok)
-	s.Require().NotNil(result.ConditionApplied)
-	s.Equal("bard", result.ConditionApplied.Target,
+	result := resultOf(s.T(), events[1])
+	s.Equal(encounter.ResultConditionApplied, result.Kind)
+	s.Equal("bard", result.Target,
 		"True Strike's advantage is the CASTER's, keyed to the creature named")
-	s.Equal(refs.Conditions.TrueStrike().String(), result.ConditionApplied.Ref)
-	s.Nil(result.DamageApplied)
+	s.Equal(refs.Conditions.TrueStrike().String(), result.Ref)
 }
 
 // TestAFailedSaveAgainstViciousMockeryDeliversBothHalves is the gated half: the
@@ -786,36 +817,33 @@ func (s *CastSuite) TestAFailedSaveAgainstViciousMockeryDeliversBothHalves() {
 	s.Equal(bardSaveDC, out.Saved.DC, "the caster's own DC: 8 + 2 proficiency + 3 for CHA 16")
 	s.False(out.Saved.Succeeded)
 
-	saved := s.beats(session.EventSaved)
+	saved := s.beats(encounter.BeatSaved)
 	s.Require().Len(saved, 1)
-	body, ok := saved[0].Body.(session.SavedBody)
-	s.Require().True(ok)
+	body := savedOf(s.T(), saved[0])
 	s.Equal("skeleton", body.Saver)
 	s.Equal(bardSaveDC, body.DC)
 	s.False(body.Succeeded, "false is the answer here, not an absence")
 	s.Equal(refs.Spells.ViciousMockery().String(), body.Source.Ref,
 		"the save names what demanded it")
 
-	results := s.beats(session.EventActivationResult)
+	results := s.beats(encounter.BeatActivationResult)
 	s.Require().Len(results, 2, "damage and the rider")
-	damage, ok := results[0].Body.(session.ActivationResultBody)
-	s.Require().True(ok)
-	s.Require().NotNil(damage.DamageApplied)
-	s.Equal("skeleton", damage.DamageApplied.Target)
-	s.Equal(refs.Spells.ViciousMockery().String(), damage.DamageApplied.SourceRef,
+	damage := resultOf(s.T(), results[0])
+	s.Equal(encounter.ResultDamageApplied, damage.Kind)
+	s.Equal("skeleton", damage.Target)
+	s.Equal(refs.Spells.ViciousMockery().String(), damage.Ref,
 		"the spell is what dealt it")
-	s.Equal(session.DamagePsychic, damage.DamageApplied.DamageType,
+	s.Equal(session.DamagePsychic, damage.DamageType,
 		"psychic reaches the client as itself — a client that had to infer it from "+
 			"the spell ref would be deriving a rule the record already holds")
-	s.Require().NotNil(damage.DamageApplied.Calculation,
+	s.Require().NotNil(damage.Calculation,
 		"the 1d4 face reaches the client, not only its total")
 
-	rider, ok := results[1].Body.(session.ActivationResultBody)
-	s.Require().True(ok)
-	s.Require().NotNil(rider.ConditionApplied)
-	s.Equal("skeleton", rider.ConditionApplied.Target,
+	rider := resultOf(s.T(), results[1])
+	s.Equal(encounter.ResultConditionApplied, rider.Kind)
+	s.Equal("skeleton", rider.Target,
 		"Vicious Mockery's disadvantage is the TARGET's")
-	s.Equal(refs.Conditions.ViciousMockery().String(), rider.ConditionApplied.Ref)
+	s.Equal(refs.Conditions.ViciousMockery().String(), rider.Ref)
 
 	s.Less(s.storedSkeleton(), before, "the psychic damage reached the stored sheet")
 }
@@ -832,9 +860,11 @@ func (s *CastSuite) TestASuccessfulSaveDeliversNothing() {
 	s.Require().NoError(err)
 	s.Require().NotNil(out.Saved)
 	s.True(out.Saved.Succeeded)
-	s.Require().Len(out.Seqs, 2, "the cast beat and the save beat, and nothing after them")
+	s.Equal([]string{encounter.BeatCast, encounter.BeatSaved},
+		beatNames(s.beats(encounter.BeatCast, encounter.BeatSaved, encounter.BeatActivationResult)),
+		"the cast beat and the save beat, and nothing after them")
 
-	s.Empty(s.beats(session.EventActivationResult),
+	s.Empty(s.beats(encounter.BeatActivationResult),
 		"a made save negates both halves, so there is nothing to narrate")
 	s.Equal(before, s.storedSkeleton(), "and nothing reached the sheet")
 }
@@ -880,7 +910,7 @@ func (s *CastSuite) TestACantripCanDropATarget() {
 	s.Require().NoError(err)
 
 	s.Equal(0, s.storedSkeleton(), "4 psychic through 2 hit points leaves none")
-	s.NotEmpty(s.beats(session.EventDowned),
+	s.NotEmpty(s.beats(string(encounter.OutcomeDown)),
 		"the world noticed the drop; nobody announced it")
 }
 
@@ -907,10 +937,9 @@ func (s *CastSuite) TestBladeWardCastsWithNoTargetAndRecordsTheCasterAsItsRecipi
 	})
 	s.Require().NoError(err, "the whole point: this used to fail at RecordCast after the sheet was written")
 
-	casts := s.beats(session.EventCast)
+	casts := s.beats(encounter.BeatCast)
 	s.Require().Len(casts, 1)
-	body, ok := casts[0].Body.(session.CastBody)
-	s.Require().True(ok)
+	body := castOf(s.T(), casts[0])
 	s.Equal(refs.Spells.BladeWard().String(), body.Spell.Ref)
 	s.Equal([]string{"bard"}, body.Targets,
 		"one recipient, and it is the caster -- an empty list would have nowhere to hang the ward")
@@ -1129,13 +1158,11 @@ type storyBeat struct {
 
 func (s *CastSuite) storyOf(member string) []storyBeat {
 	s.T().Helper()
-	entries, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: member})
-	s.Require().NoError(err)
-
+	entries := storyBeats(s.T(), s.mgr, "sess", member)
 	out := make([]storyBeat, 0, len(entries))
 	for _, entry := range entries {
 		var beat storyBeat
-		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		entry.decode(s.T(), &beat)
 		out = append(out, beat)
 	}
 	return out
@@ -1234,10 +1261,9 @@ func (s *CastSuite) TestAShovedCreatureProvokesNobody() {
 	}
 }
 
-// TestTheShoveReachesTheClientAsATypedResult. The beat on the story is the
-// record; this is what a client actually decodes, and a result kind with no arm
-// in the projection arrives as a body nobody can read — a push that happened,
-// was recorded, and cannot be drawn.
+// TestTheShoveReachesTheClientAsATypedResult. The push's activation result
+// names who was moved, how far, what stopped them and what did it — a push
+// that happened and was recorded must be drawable from the beat alone.
 func (s *CastSuite) TestTheShoveReachesTheClientAsATypedResult() {
 	s.sceneWithProps(
 		castingBardWithSpells("bard", spells.Thunderwave),
@@ -1250,21 +1276,21 @@ func (s *CastSuite) TestTheShoveReachesTheClientAsATypedResult() {
 	})
 	s.Require().NoError(err)
 
-	var pushed *session.MoveImposedBody
-	for _, event := range s.beats(session.EventActivationResult) {
-		body, ok := event.Body.(session.ActivationResultBody)
-		s.Require().True(ok, "an activation result reached the bard as %T", event.Body)
-		if body.MoveImposed != nil {
-			pushed = body.MoveImposed
+	var pushed *activationResult
+	for _, event := range s.beats(encounter.BeatActivationResult) {
+		body := resultOf(s.T(), event)
+		if body.Kind == encounter.ResultMoved {
+			pushed = &body
 		}
 	}
 
-	s.Require().NotNil(pushed, "the push reached the client as something it can read")
+	s.Require().NotNil(pushed, "the push reached the bard as a moved result")
 	s.Equal("skeleton", pushed.Target)
-	s.Equal(1, pushed.MovedCells, "one open cell, then the pillar")
+	s.Require().NotNil(pushed.Moved)
+	s.Equal(1, *pushed.Moved, "one open cell, then the pillar")
 	s.Contains(pushed.StoppedBy, "pillar")
-	s.Equal(refs.Spells.Thunderwave().String(), pushed.SourceRef)
-	s.Equal("Thunderwave", pushed.SourceName)
+	s.Equal(refs.Spells.Thunderwave().String(), pushed.Ref)
+	s.Equal("Thunderwave", pushed.Name)
 }
 
 // storedSkeletonConditions reads the NPC's condition blobs back out of the
@@ -1368,11 +1394,9 @@ func (s *CastSuite) TestAMadeSaveLeavesNoCompulsion() {
 	})
 	s.Require().NoError(err)
 
-	saves := s.beats(session.EventSaved)
+	saves := s.beats(encounter.BeatSaved)
 	s.Require().Len(saves, 1)
-	saved, ok := saves[0].Body.(session.SavedBody)
-	s.Require().True(ok)
-	s.True(saved.Succeeded, "20 beats DC 13")
+	s.True(savedOf(s.T(), saves[0]).Succeeded, "20 beats DC 13")
 
 	_, held, err := conditions.DecodeCommanded(s.storedSkeletonConditions())
 	s.Require().NoError(err)
@@ -1481,14 +1505,14 @@ func (s *CastSuite) TestBurningHandsAimsPaysAndSavesForHalfWithoutPush() {
 			s.Equal(aim, s.cellOf("skeleton"), "fire never pushes")
 			s.Equal(1, s.characters.byID["bard"].Resources[resources.SpellSlotLevel1].Current)
 			s.Zero(s.characters.byID["bard"].ActionEconomy.ActionsRemaining)
-			saved := s.beats(session.EventSaved)
+			saved := s.beats(encounter.BeatSaved)
 			s.Require().Len(saved, 1)
-			results := s.beats(session.EventActivationResult)
+			results := s.beats(encounter.BeatActivationResult)
 			s.Require().Len(results, 1)
-			body := results[0].Body.(session.ActivationResultBody)
-			s.Require().NotNil(body.DamageApplied)
-			s.Equal(session.DamageFire, body.DamageApplied.DamageType)
-			s.Equal(refs.Spells.BurningHands().String(), body.DamageApplied.SourceRef)
+			body := resultOf(s.T(), results[0])
+			s.Equal(encounter.ResultDamageApplied, body.Kind)
+			s.Equal(session.DamageFire, body.DamageType)
+			s.Equal(refs.Spells.BurningHands().String(), body.Ref)
 		})
 	}
 }
@@ -1555,15 +1579,15 @@ func (s *CastSuite) TestFaerieFirePreviewSavePaymentAndPersistedCondition() {
 			s.Equal(before, s.storedSkeleton(), "Faerie Fire deals no damage")
 			s.Equal(1, s.characters.byID["bard"].Resources[resources.SpellSlotLevel1].Current)
 			s.Zero(s.characters.byID["bard"].ActionEconomy.ActionsRemaining)
-			s.Require().Len(s.beats(session.EventSaved), 1)
+			s.Require().Len(s.beats(encounter.BeatSaved), 1)
 			found := false
-			for _, beat := range s.beats(session.EventActivationResult) {
-				body := beat.Body.(session.ActivationResultBody)
-				s.Nil(body.DamageApplied)
-				if body.ConditionApplied != nil && body.ConditionApplied.Ref == refs.Conditions.FaerieFire().String() {
+			for _, beat := range s.beats(encounter.BeatActivationResult) {
+				body := resultOf(s.T(), beat)
+				s.NotEqual(encounter.ResultDamageApplied, body.Kind)
+				if body.Kind == encounter.ResultConditionApplied && body.Ref == refs.Conditions.FaerieFire().String() {
 					found = true
-					s.Equal("skeleton", body.ConditionApplied.Target)
-					s.Equal("bard", body.ConditionApplied.SourceID)
+					s.Equal("skeleton", body.Target)
+					s.Equal("bard", body.SourceID)
 				}
 			}
 			s.Equal(save == 1, found)
@@ -1588,14 +1612,14 @@ func (s *CastSuite) TestThornWhipThreeDistancesReachMovementAndStory() {
 			s.Equal(before.Y, after.Y)
 			s.Equal(11, s.storedSkeleton())
 			found := 0
-			for _, event := range s.beats(session.EventActivationResult) {
-				body, ok := event.Body.(session.ActivationResultBody)
-				s.Require().True(ok)
-				if body.MoveImposed != nil {
+			for _, event := range s.beats(encounter.BeatActivationResult) {
+				body := resultOf(s.T(), event)
+				if body.Kind == encounter.ResultMoved {
 					found++
-					s.Equal(cells, body.MoveImposed.MovedCells)
-					s.Equal("skeleton", body.MoveImposed.Target)
-					s.Equal(refs.Spells.ByID(string(spells.Thornwhip)).String(), body.MoveImposed.SourceRef)
+					s.Require().NotNil(body.Moved)
+					s.Equal(cells, *body.Moved)
+					s.Equal("skeleton", body.Target)
+					s.Equal(refs.Spells.ByID(string(spells.Thornwhip)).String(), body.Ref)
 				}
 			}
 			if cells == 0 {

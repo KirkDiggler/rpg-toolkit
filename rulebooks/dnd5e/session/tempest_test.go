@@ -47,12 +47,12 @@ func (s *CastSuite) TestFogCloudPublicCastPersistsWithoutDamageOrDice() {
 	s.Require().Len(areas, 1)
 	s.Equal(20, areas[0].RadiusFeet)
 	s.NotContains(areas[0].ID, "cleric")
-	results := s.beats(session.EventActivationResult)
+	results := s.beats(encounter.BeatActivationResult)
 	s.Require().NotEmpty(results)
-	result := results[0].Body.(session.ActivationResultBody)
-	s.Require().NotNil(result.ConditionApplied)
-	s.Equal(refs.Conditions.InFog().String(), result.ConditionApplied.Ref)
-	s.Less(s.beats(session.EventCast)[0].Seq, results[0].Seq, "cast precedes membership narration")
+	result := resultOf(s.T(), results[0])
+	s.Equal(encounter.ResultConditionApplied, result.Kind)
+	s.Equal(refs.Conditions.InFog().String(), result.Ref)
+	s.Less(s.beats(encounter.BeatCast)[0].Seq, results[0].Seq, "cast precedes membership narration")
 	s.reloadHealingScene()
 	again, err := s.mgr.Areas(context.Background(), &session.ViewInput{Session: "sess", Member: "cleric"})
 	s.Require().NoError(err)
@@ -145,7 +145,7 @@ func (s *CastSuite) TestWrathMonsterTurnReloadResumesWithoutSecondStrike() {
 	ctx := context.Background()
 	newManager := func() {
 		var err error
-		s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+		s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters})
 		s.Require().NoError(err)
 	}
 	newManager()
@@ -200,9 +200,9 @@ func (s *CastSuite) TestWrathAfterSpellAttackRecordsOneCastAndReaction() {
 	s.Equal(hp, s.characters.byID["cleric"].HitPoints)
 	s.Equal(1, s.characters.byID["aaron"].Resources[resources.SpellSlotLevel1].Current)
 	s.Equal(2, s.characters.byID["cleric"].Resources[resources.WrathOfTheStorm].Current)
-	casts := s.beats(session.EventCast)
+	casts := s.beats(encounter.BeatCast)
 	s.Len(casts, 1)
-	s.Len(s.beats(session.EventActivated), 1)
+	s.Len(s.beats(encounter.BeatActivated), 1)
 }
 
 func (s *CastSuite) TestFogCloudExpiresAndRestoresSightAfterReload() {
@@ -233,26 +233,18 @@ func (s *CastSuite) TestFogCloudExpiresAndRestoresSightAfterReload() {
 	areas, err := s.mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "cleric"})
 	s.Require().NoError(err)
 	s.Empty(areas)
-	results := s.beats(session.EventActivationResult)
-	var ended []session.Event
-	for _, event := range results {
-		removed := event.Body.(session.ActivationResultBody).ConditionRemoved
-		if removed != nil && removed.Ref == refs.Conditions.InFog().String() {
+	results := s.beats(encounter.BeatActivationResult)
+	var ended []witnessed
+	for _, beat := range results {
+		removed := resultOf(s.T(), beat)
+		if removed.Kind == encounter.ResultConditionRemoved && removed.Ref == refs.Conditions.InFog().String() {
 			s.Equal("area ended", removed.Reason)
-			ended = append(ended, event)
+			ended = append(ended, beat)
 		}
 	}
 	s.Require().NotEmpty(ended, "expiry narrates membership removal")
 	s.reloadHealingScene()
-	story, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "cleric"})
-	s.Require().NoError(err)
-	var replay []session.Event
-	for _, event := range story {
-		if event.Kind == session.EventActivationResult {
-			replay = append(replay, event)
-		}
-	}
-	s.Equal(results, replay, "expiration narration survives reload")
+	s.Equal(results, s.beats(encounter.BeatActivationResult), "expiration narration survives reload")
 	for _, raw := range s.characters.byID["cleric"].Conditions {
 		s.NotContains(string(raw), refs.Conditions.Concentrating().String())
 		s.NotContains(string(raw), refs.Conditions.InFog().String(), "expiry removes membership")
@@ -274,12 +266,12 @@ func (s *CastSuite) TestFogMembershipFollowsPublicMovement() {
 	}
 	told := func(applied bool) int {
 		count := 0
-		for _, event := range s.beats(session.EventActivationResult) {
-			body := event.Body.(session.ActivationResultBody)
-			if applied && body.ConditionApplied != nil && body.ConditionApplied.Target == "cleric" {
+		for _, beat := range s.beats(encounter.BeatActivationResult) {
+			body := resultOf(s.T(), beat)
+			if applied && body.Kind == encounter.ResultConditionApplied && body.Target == "cleric" {
 				count++
 			}
-			if !applied && body.ConditionRemoved != nil && body.ConditionRemoved.Target == "cleric" {
+			if !applied && body.Kind == encounter.ResultConditionRemoved && body.Target == "cleric" {
 				count++
 			}
 		}
@@ -296,25 +288,17 @@ func (s *CastSuite) TestFogMembershipFollowsPublicMovement() {
 	s.Require().NoError(err)
 	noSheetRow()
 	s.Equal(1, told(false), "walking out is told once")
-	results := s.beats(session.EventActivationResult)
+	results := s.beats(encounter.BeatActivationResult)
 	s.Require().Len(results, 2, "one entry and one exit, without duplicate reload narration")
-	entered := results[0].Body.(session.ActivationResultBody).ConditionApplied
-	left := results[1].Body.(session.ActivationResultBody).ConditionRemoved
-	s.Require().NotNil(entered)
-	s.Require().NotNil(left)
+	entered := resultOf(s.T(), results[0])
+	left := resultOf(s.T(), results[1])
+	s.Require().Equal(encounter.ResultConditionApplied, entered.Kind)
+	s.Require().Equal(encounter.ResultConditionRemoved, left.Kind)
 	s.Equal("cleric", entered.Target)
 	s.Equal(entered.SourceID, left.SourceID)
 	s.Equal("left area", left.Reason)
 	s.reloadHealingScene()
-	story, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "cleric"})
-	s.Require().NoError(err)
-	var replay []session.Event
-	for _, event := range story {
-		if event.Kind == session.EventActivationResult {
-			replay = append(replay, event)
-		}
-	}
-	s.Equal(results, replay)
+	s.Equal(results, s.beats(encounter.BeatActivationResult))
 }
 
 // A concentration-ending hit must be recorded before refreshed perception can
@@ -331,7 +315,7 @@ func (s *CastSuite) TestLethalHitBreakingFogKeepsItsStory() {
 	row := s.castRow(spells.FogCloud)
 	_, err := s.mgr.Cast(ctx, &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Cell: &spatial.Position{X: 20, Y: 1}})
 	s.Require().NoError(err)
-	s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+	s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters})
 	s.Require().NoError(err)
 	_, err = s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "cleric", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "cleric")})
 	s.Require().NoError(err, "a lethal hit that removes fog must still record and save its outcome")
@@ -339,22 +323,15 @@ func (s *CastSuite) TestLethalHitBreakingFogKeepsItsStory() {
 	s.Require().NoError(err)
 	s.Empty(areas, "the driven strike's broken concentration ends the cloud")
 	s.Zero(s.characters.byID["cleric"].HitPoints)
-	s.Require().Len(s.beats(session.EventStruck), 1)
-	s.Require().Len(s.beats(session.EventDowned), 1)
-	live := s.beats(session.EventStruck, session.EventDowned)
-	s.Equal(session.EventStruck, live[0].Kind)
-	s.Equal(session.EventDowned, live[1].Kind)
+	struck, down := string(encounter.OutcomeStruck), string(encounter.OutcomeDown)
+	s.Require().Len(s.beats(struck), 1)
+	s.Require().Len(s.beats(down), 1)
+	live := s.beats(struck, down)
+	s.Equal(struck, live[0].Beat)
+	s.Equal(down, live[1].Beat)
 	s.Less(live[0].Seq, live[1].Seq)
 	s.reloadHealingScene()
-	story, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "cleric"})
-	s.Require().NoError(err)
-	var replay []session.Event
-	for _, event := range story {
-		if event.Kind == session.EventStruck || event.Kind == session.EventDowned {
-			replay = append(replay, event)
-		}
-	}
-	s.Equal(live, replay, "the damaging hit and resulting downed event must survive reload unchanged")
+	s.Equal(live, s.beats(struck, down), "the damaging hit and resulting fall must survive reload unchanged")
 }
 
 // TestAStrikeThatBreaksFogInsideAWalkEndsTheArea is rpg-project#539's session
@@ -382,7 +359,7 @@ func (s *CastSuite) TestAStrikeThatBreaksFogInsideAWalkEndsTheArea() {
 	areas, err := s.mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "cleric"})
 	s.Require().NoError(err)
 	s.Require().NotEmpty(areas, "control: the cloud stands")
-	s.stream.published = nil
+	since := lastSeq(storyBeats(s.T(), s.mgr, "sess", "dana"))
 
 	_, err = s.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "cleric", DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "cleric"), Path: []spatial.Position{{X: 1, Y: 2}, {X: 1, Y: 3}}})
 	s.Require().NoError(err)
@@ -399,23 +376,10 @@ func (s *CastSuite) TestAStrikeThatBreaksFogInsideAWalkEndsTheArea() {
 
 	// Dana, the one the cloud held, is told it ended — after the strike, the
 	// save and the break that caused it, and before the walk goes on.
-	seqOf := func(kind session.EventKind, match func(session.Event) bool) uint64 {
-		for _, event := range eventsFor(s.stream.published, "dana") {
-			if event.Kind == kind && match(event) {
-				return event.Seq
-			}
-		}
-		s.FailNow("dana was never told " + string(kind))
-		return 0
-	}
-	first := func(session.Event) bool { return true }
-	struck := seqOf(session.EventStruck, first)
-	broken := seqOf(session.EventConcentrationEnded, first)
-	ended := seqOf(session.EventActivationResult, func(e session.Event) bool {
-		removed := e.Body.(session.ActivationResultBody).ConditionRemoved
-		return removed != nil && removed.Target == "dana" && removed.Reason == "area ended"
-	})
-	moved := seqOf(session.EventMoved, first)
+	struck := s.firstSeqOf("dana", since, string(encounter.OutcomeStruck), anyBeat)
+	broken := s.firstSeqOf("dana", since, encounter.BeatConcentrationEnded, anyBeat)
+	ended := s.firstSeqOf("dana", since, encounter.BeatActivationResult, s.areaEndedFor("dana"))
+	moved := s.firstSeqOf("dana", since, encounter.BeatMoved, anyBeat)
 	s.Less(struck, broken)
 	s.Less(broken, ended, "the cause is told before the membership change")
 	s.Less(ended, moved, "and the area ends inside the step, before the walk goes on")
@@ -426,8 +390,9 @@ func (s *CastSuite) TestAStrikeThatBreaksFogInsideAWalkEndsTheArea() {
 // cleric casts Fog Cloud over the skeleton — holding it and neither player —
 // then the turn comes back round to aaron. Unless wrath, the cleric holds no
 // Wrath of the Storm, so a blow against her poses her nothing; with it, a hit
-// on her stops after the damage to ask whether she strikes back.
-func (s *CastSuite) fogOverTheSkeleton(wrath bool, rolls ...int) {
+// on her stops after the damage to ask whether she strikes back. It returns
+// the last beat the skeleton held once the scene is set.
+func (s *CastSuite) fogOverTheSkeleton(wrath bool, rolls ...int) uint64 {
 	fighter := armedFighter("aaron")
 	s.sceneWithAllies(fighter, []*character.Data{s.tempestSheet()}, 6, rolls...)
 	if !wrath {
@@ -458,33 +423,47 @@ func (s *CastSuite) fogOverTheSkeleton(wrath bool, rolls ...int) {
 	turn, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "aaron"})
 	s.Require().NoError(err)
 	s.Require().Equal("aaron", turn.Active, "control: the turn is back with aaron")
-	s.stream.published = nil
+	return lastSeq(storyBeats(s.T(), s.mgr, "sess", "skeleton"))
+}
+
+// anyBeat matches every beat.
+func anyBeat(witnessed) bool { return true }
+
+// areaEndedFor matches an activation-result beat that took target out of an
+// area because the area ended.
+func (s *CastSuite) areaEndedFor(target string) func(witnessed) bool {
+	return func(beat witnessed) bool {
+		removed := resultOf(s.T(), beat)
+		return removed.Kind == encounter.ResultConditionRemoved && removed.Target == target && removed.Reason == "area ended"
+	}
+}
+
+// firstSeqOf is the record seq of the first beat named name that member
+// witnessed after since and match accepts; it fails the test when there is
+// none.
+func (s *CastSuite) firstSeqOf(member string, since uint64, name string, match func(witnessed) bool) uint64 {
+	s.T().Helper()
+	for _, beat := range beatsNamed(storyBeatsAfter(s.T(), s.mgr, "sess", member, since), name) {
+		if match(beat) {
+			return beat.Seq
+		}
+	}
+	s.FailNow(member + " was never told " + name)
+	return 0
 }
 
 // assertTheCloudEndedAfterItsCause is the shared verdict: the area is gone
 // from the live encounter, and the skeleton the cloud held is told it ended
-// after the strike and the broken concentration that ended it.
-func (s *CastSuite) assertTheCloudEndedAfterItsCause() {
+// after the strike and the broken concentration that ended it, reading what it
+// witnessed after since.
+func (s *CastSuite) assertTheCloudEndedAfterItsCause(since uint64) {
 	s.T().Helper()
 	areas, err := s.mgr.Areas(context.Background(), &session.ViewInput{Session: "sess", Member: "cleric"})
 	s.Require().NoError(err)
 	s.Empty(areas, "the broken concentration ends the cloud")
-	seqOf := func(kind session.EventKind, match func(session.Event) bool) uint64 {
-		for _, event := range eventsFor(s.stream.published, "skeleton") {
-			if event.Kind == kind && match(event) {
-				return event.Seq
-			}
-		}
-		s.FailNow("the skeleton was never told " + string(kind))
-		return 0
-	}
-	first := func(session.Event) bool { return true }
-	struck := seqOf(session.EventStruck, first)
-	broken := seqOf(session.EventConcentrationEnded, first)
-	ended := seqOf(session.EventActivationResult, func(e session.Event) bool {
-		removed := e.Body.(session.ActivationResultBody).ConditionRemoved
-		return removed != nil && removed.Target == "skeleton" && removed.Reason == "area ended"
-	})
+	struck := s.firstSeqOf("skeleton", since, string(encounter.OutcomeStruck), anyBeat)
+	broken := s.firstSeqOf("skeleton", since, encounter.BeatConcentrationEnded, anyBeat)
+	ended := s.firstSeqOf("skeleton", since, encounter.BeatActivationResult, s.areaEndedFor("skeleton"))
 	s.Less(struck, broken)
 	s.Less(broken, ended, "the cause is told before the membership change")
 }
@@ -493,10 +472,10 @@ func (s *CastSuite) assertTheCloudEndedAfterItsCause() {
 // area its blow closed: aaron strikes the concentrating cleric, her save
 // fails, and the cloud ends for the skeleton inside it, after its cause.
 func (s *CastSuite) TestAnAttackThatBreaksFogEndsTheArea() {
-	s.fogOverTheSkeleton(false, 15, 4, 1)
+	since := s.fogOverTheSkeleton(false, 15, 4, 1)
 	_, err := s.mgr.Attack(context.Background(), &session.AttackInput{Session: "sess", Attacker: "aaron", Target: "cleric", DeclarationID: currentAttackID(s.T(), s.mgr, "sess", "aaron")})
 	s.Require().NoError(err)
-	s.assertTheCloudEndedAfterItsCause()
+	s.assertTheCloudEndedAfterItsCause(since)
 }
 
 // TestAResumedStrikeThatBreaksFogEndsTheArea is the same blow finished through
@@ -504,7 +483,7 @@ func (s *CastSuite) TestAnAttackThatBreaksFogEndsTheArea() {
 // d20 to ask, and the strike that breaks the cleric's concentration lands only
 // when he answers. The resume lands the area its strike closed.
 func (s *CastSuite) TestAResumedStrikeThatBreaksFogEndsTheArea() {
-	s.fogOverTheSkeleton(false, 15, 4, 1)
+	since := s.fogOverTheSkeleton(false, 15, 4, 1)
 	s.holdInspiration("aaron")
 	ctx := context.Background()
 	out, err := s.mgr.Attack(ctx, &session.AttackInput{Session: "sess", Attacker: "aaron", Target: "cleric", DeclarationID: currentAttackID(s.T(), s.mgr, "sess", "aaron")})
@@ -517,7 +496,7 @@ func (s *CastSuite) TestAResumedStrikeThatBreaksFogEndsTheArea() {
 	react := currentDeclaration(s.T(), s.mgr, "sess", "aaron", session.VerbReact)
 	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "aaron", DeclarationID: react.ID, Answer: session.Decline()})
 	s.Require().NoError(err)
-	s.assertTheCloudEndedAfterItsCause()
+	s.assertTheCloudEndedAfterItsCause(since)
 }
 
 // TestAHitThatBreaksFogEndsTheAreaBeforeItsWindow: aaron's blow breaks the
@@ -525,11 +504,11 @@ func (s *CastSuite) TestAResumedStrikeThatBreaksFogEndsTheArea() {
 // the blow closed lands before that window opens, so the table waits over a
 // world where the cloud is already gone.
 func (s *CastSuite) TestAHitThatBreaksFogEndsTheAreaBeforeItsWindow() {
-	s.fogOverTheSkeleton(true, 15, 4, 1)
+	since := s.fogOverTheSkeleton(true, 15, 4, 1)
 	out, err := s.mgr.Attack(context.Background(), &session.AttackInput{Session: "sess", Attacker: "aaron", Target: "cleric", DeclarationID: currentAttackID(s.T(), s.mgr, "sess", "aaron")})
 	s.Require().NoError(err)
 	s.Require().True(out.Paused, "control: the cleric is asked whether she strikes back")
-	s.assertTheCloudEndedAfterItsCause()
+	s.assertTheCloudEndedAfterItsCause(since)
 }
 
 // TestAResumedHitThatBreaksFogEndsTheAreaBeforeItsNextWindow: the same blow
@@ -537,7 +516,7 @@ func (s *CastSuite) TestAHitThatBreaksFogEndsTheAreaBeforeItsWindow() {
 // strike, which breaks the cleric's concentration and poses her window; the
 // area lands before that window opens.
 func (s *CastSuite) TestAResumedHitThatBreaksFogEndsTheAreaBeforeItsNextWindow() {
-	s.fogOverTheSkeleton(true, 15, 4, 1)
+	since := s.fogOverTheSkeleton(true, 15, 4, 1)
 	s.holdInspiration("aaron")
 	ctx := context.Background()
 	out, err := s.mgr.Attack(ctx, &session.AttackInput{Session: "sess", Attacker: "aaron", Target: "cleric", DeclarationID: currentAttackID(s.T(), s.mgr, "sess", "aaron")})
@@ -553,7 +532,7 @@ func (s *CastSuite) TestAResumedHitThatBreaksFogEndsTheAreaBeforeItsNextWindow()
 		asked = asked || row.Verb == session.VerbReact
 	}
 	s.Require().True(asked, "control: the landed hit poses the cleric her window")
-	s.assertTheCloudEndedAfterItsCause()
+	s.assertTheCloudEndedAfterItsCause(since)
 }
 
 // TestARetaliationThatBreaksFogEndsTheArea: the concentrating member is the
@@ -587,7 +566,7 @@ func (s *CastSuite) TestARetaliationThatBreaksFogEndsTheArea() {
 	areas, err = s.mgr.Areas(ctx, &session.ViewInput{Session: "sess", Member: "aaron"})
 	s.Require().NoError(err)
 	s.Require().NotEmpty(areas, "control: aaron's blow ended nothing of his own")
-	s.stream.published = nil
+	since := lastSeq(storyBeats(s.T(), s.mgr, "sess", "skeleton"))
 
 	react := currentDeclaration(s.T(), s.mgr, "sess", "cleric", session.VerbReact)
 	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: react.ID, Answer: session.Take("thunder")})
@@ -597,14 +576,14 @@ func (s *CastSuite) TestARetaliationThatBreaksFogEndsTheArea() {
 	s.Require().NoError(err)
 	s.Empty(areas, "the thunder's broken concentration ends aaron's cloud")
 	var broken, ended uint64
-	for _, event := range eventsFor(s.stream.published, "skeleton") {
-		switch event.Kind {
-		case session.EventConcentrationEnded:
-			broken = event.Seq
-		case session.EventActivationResult:
-			if removed := event.Body.(session.ActivationResultBody).ConditionRemoved; removed != nil &&
-				removed.Target == "skeleton" && removed.Reason == "area ended" {
-				ended = event.Seq
+	endedForSkeleton := s.areaEndedFor("skeleton")
+	for _, beat := range storyBeatsAfter(s.T(), s.mgr, "sess", "skeleton", since) {
+		switch beat.Beat {
+		case encounter.BeatConcentrationEnded:
+			broken = beat.Seq
+		case encounter.BeatActivationResult:
+			if endedForSkeleton(beat) {
+				ended = beat.Seq
 			}
 		}
 	}
@@ -623,7 +602,7 @@ func (s *CastSuite) TestADrivenHitThatBreaksFogEndsTheAreaBeforeItsWindow() {
 	row := s.castRow(spells.FogCloud)
 	_, err := s.mgr.Cast(ctx, &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Cell: &spatial.Position{X: 20, Y: 1}})
 	s.Require().NoError(err)
-	s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+	s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters})
 	s.Require().NoError(err)
 	_, err = s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "cleric", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "cleric")})
 	s.Require().NoError(err)
@@ -655,7 +634,7 @@ func (s *CastSuite) flareFogScene(wrath bool) {
 	row := s.castRow(spells.FogCloud)
 	_, err := s.mgr.Cast(ctx, &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Cell: &spatial.Position{X: 20, Y: 1}})
 	s.Require().NoError(err)
-	s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+	s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: reachlessAttacker{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters})
 	s.Require().NoError(err)
 	_, err = s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "cleric", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "cleric")})
 	s.Require().NoError(err)
@@ -709,10 +688,11 @@ func (s *CastSuite) TestAWalkThatPausesOnItsSecondReactionTellsBoth() {
 	s.Require().NoError(err)
 
 	s.Equal(session.MovementPaused, out.Status, "the second reaction asks the walker")
-	told := s.beats(session.EventStruck, session.EventMissed)
+	struck, missed := string(encounter.OutcomeStruck), string(encounter.OutcomeMissed)
+	told := s.beats(struck, missed)
 	s.Require().Len(told, 2, "both settled reactions are told before the window")
-	s.Equal(session.EventMissed, told[0].Kind)
-	s.Equal(session.EventStruck, told[1].Kind)
+	s.Equal(missed, told[0].Beat)
+	s.Equal(struck, told[1].Beat)
 	offered, err := s.mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "cleric"})
 	s.Require().NoError(err)
 	var row session.Declaration
@@ -725,7 +705,7 @@ func (s *CastSuite) TestAWalkThatPausesOnItsSecondReactionTellsBoth() {
 
 	_, err = s.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Answer: session.Decline()})
 	s.Require().NoError(err)
-	s.Len(s.beats(session.EventStruck, session.EventMissed), 2, "the resume tells neither swing again")
+	s.Len(s.beats(struck, missed), 2, "the resume tells neither swing again")
 }
 
 // sceneWithSecondSkeleton is the cast scene with a second skeleton standing at
@@ -743,11 +723,11 @@ func (s *CastSuite) sceneWithSecondSkeleton(sheet *character.Data, cells int, ro
 	s.encounters = newFakeEncounters()
 	s.stream = &fakeStream{}
 	s.dice = &sequenceDice{rolls: append(make([]int, 3), rolls...)}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: s.dice,
 		TurnDriver: session.Pass{},
 		Sessions:   s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: s.stream,
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -766,6 +746,7 @@ func (s *CastSuite) sceneWithSecondSkeleton(sheet *character.Data, cells int, ro
 	s.Require().NotEmpty(launched.Formed, "standing in plain sight must start a fight")
 	authorTurnClock(s.T(), s.encounters, testSession, []string{sheet.ID, "skeleton", "skeleton2"}, 0)
 	s.stream.published = nil
+	s.from = lastSeq(storyBeats(s.T(), mgr, "sess", sheet.ID))
 }
 
 // spendWrath empties a sheet's Wrath of the Storm pool.

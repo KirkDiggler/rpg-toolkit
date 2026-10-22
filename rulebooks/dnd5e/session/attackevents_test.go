@@ -4,7 +4,6 @@
 package session_test
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"strings"
@@ -21,8 +20,8 @@ import (
 // Separate from AttackTestSuite because it asks a different question. That one
 // asks what the RULES produced — the roll, the arithmetic, the beat in the
 // story. This one asks what reached the TABLE: the same swing, delivered to a
-// real stream, named as something a client can branch on rather than as the
-// EventUnknown every attack arrived as before rpg-toolkit#1038.
+// real act stream as an attack act every recipient can read, with nothing in
+// the verb left undecoded.
 type AttackEventsTestSuite struct {
 	suite.Suite
 
@@ -60,9 +59,9 @@ func (s *AttackEventsTestSuite) duelWithStreamAndIDs(
 	s.characters = newFakeCharacters(alice, armedFighter("bob"))
 	s.stream = &fakeStream{}
 
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: ids,
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: ids,
 		Dice: dice, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: s.stream,
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 
@@ -86,168 +85,117 @@ func (s *AttackEventsTestSuite) swingBy(mgr *session.Manager, attacker, target s
 	return out
 }
 
-// sameBeat is every recipient's copy of the beat alice's stream numbers
-// aliceSeq, keyed by recipient.
-//
-// FOUND BY WHAT THE BEAT IS, NOT BY ARITHMETIC ON SEQUENCES. Sequences are
-// recipient-local, and two streams do not move in step: a launch hands alice
-// and bob different opening beats, and since hearing (rpg-project#569) bob
-// also hears the clang of every swing alice makes, a beat in his stream and
-// not in hers. Shifting alice's number by a fixed offset would land on the
-// wrong beat after the first sound. Every recipient's copy of one log entry
-// carries the same payload bytes and the same clock reading, so that is the
-// match — and a swing's payload names its own presentation token, so two
-// swings never match each other.
-func (s *AttackEventsTestSuite) sameBeat(aliceSeq uint64) map[string]session.Event {
-	var beat *session.Event
-	for i, event := range s.stream.published {
-		if event.Recipient == "alice" && event.Seq == aliceSeq {
-			beat = &s.stream.published[i]
-		}
-	}
-	s.Require().NotNil(beat, "alice was delivered seq %d", aliceSeq)
-
-	out := map[string]session.Event{}
-	for _, event := range s.stream.published {
-		if event.At != beat.At || !bytes.Equal(event.Payload, beat.Payload) {
+// swingsTo is every attack act delivered to recipient, in delivery order.
+func (s *AttackEventsTestSuite) swingsTo(recipient string) []session.AttackAct {
+	var out []session.AttackAct
+	for _, act := range s.stream.published {
+		if act.Recipient != recipient {
 			continue
 		}
-		s.Require().NotContains(out, event.Recipient, "one event per recipient per beat")
-		out[event.Recipient] = event
+		if body, ok := act.Body.(session.AttackAct); ok {
+			out = append(out, body)
+		}
 	}
 	return out
 }
 
-// kindsAtSeq collects the event kinds delivered for one story sequence (in
-// alice's numbering, the attacker's AttackOutput.Seq), keyed
-// by recipient — so an assertion can name WHO was told WHAT, rather than
-// counting events and hoping the count means what it looks like.
-func (s *AttackEventsTestSuite) kindsAtSeq(seq uint64) map[string]session.EventKind {
-	out := map[string]session.EventKind{}
-	for recipient, event := range s.sameBeat(seq) {
-		out[recipient] = event.Kind
-	}
-	return out
+// swingTo is the one attack act delivered to recipient.
+func (s *AttackEventsTestSuite) swingTo(recipient string) session.AttackAct {
+	s.T().Helper()
+	swings := s.swingsTo(recipient)
+	s.Require().Len(swings, 1, "%s was told about the swing once", recipient)
+	return swings[0]
 }
 
 // TestAHitIsNamedOnTheStream is the headline, and the reason the swing is real
-// rather than a payload handed to the mapper.
-//
-// The beat string is written by the composition (encounter's Record) and read
-// by this package (kindOf), and nothing else checks that the two agree. A test
-// that fed the mapper a literal "struck" would pass just as happily with a
-// composition that had renamed the beat, which is the exact failure mode the
-// mapper's own doc warns about: detection fails SILENTLY and everything
-// degrades to unknown.
-//
-// So the swing is driven end to end with scripted dice, and the event is found
-// by the sequence the caller's own AttackOutput reports. Both ends of the
-// coupling are exercised, and the assertion is tied to the swing that produced
-// it rather than to a string typed twice.
+// rather than a payload handed to the fold: the swing is driven end to end
+// with scripted dice, so both ends of the coupling — the composition's beat
+// and this package's reading of it — are exercised.
 func (s *AttackEventsTestSuite) TestAHitIsNamedOnTheStream() {
 	mgr := s.duelWithStream(&sequenceDice{rolls: []int{15, 5}})
 
 	out := s.swing(mgr)
 	s.Require().True(out.Hit, "15 + 3 STR + 2 proficiency clears AC 12")
 
-	s.Equal(
-		map[string]session.EventKind{"alice": session.EventStruck, "bob": session.EventStruck},
-		s.kindsAtSeq(out.Seq),
-		"both the striker and the struck hear that it landed",
-	)
+	for _, recipient := range []string{"alice", "bob"} {
+		s.Equal(session.AttackHit, s.swingTo(recipient).Outcome,
+			"both the striker and the struck hear that it landed (%s)", recipient)
+	}
 }
 
-// TestAMissIsNamedOnTheStream pins the other arm.
-//
-// Worth its own case rather than a subtest of the hit: the two beats are
-// separate strings on the composition's side and separate cases on this one, so
-// a mapper that named only the hit would leave every miss unknown — and a table
-// that narrates hits but not misses is arguably worse than one that narrates
-// neither, because the silence looks like nothing happened.
+// TestAMissIsNamedOnTheStream pins the other arm: a table that narrates hits
+// but not misses is arguably worse than one that narrates neither, because
+// the silence looks like nothing happened.
 func (s *AttackEventsTestSuite) TestAMissIsNamedOnTheStream() {
 	mgr := s.duelWithStream(&sequenceDice{rolls: []int{2, 5}})
 
 	out := s.swing(mgr)
 	s.Require().False(out.Hit, "2 + 5 is under AC 12")
 
-	s.Equal(
-		map[string]session.EventKind{"alice": session.EventMissed, "bob": session.EventMissed},
-		s.kindsAtSeq(out.Seq),
-		"a miss is a fact of the fight too",
-	)
+	for _, recipient := range []string{"alice", "bob"} {
+		s.Equal(session.AttackMiss, s.swingTo(recipient).Outcome,
+			"a miss is a fact of the fight too (%s)", recipient)
+	}
 }
 
-// TestTheSwingLeavesNothingUnknown guards the verb as a whole rather than the
-// one beat under test.
+// TestTheSwingLeavesNothingUndecoded guards the verb as a whole rather than
+// the one beat under test.
 //
 // Attack records its outcome, and anything the world does in response — a fight
 // starting underfoot, an ending firing — records its own beats behind it. If any
-// of those reached a client as unknown, naming the strike would have fixed the
+// of those reached a client undecoded, naming the strike would have fixed the
 // headline and left the scene around it unreadable.
-func (s *AttackEventsTestSuite) TestTheSwingLeavesNothingUnknown() {
+func (s *AttackEventsTestSuite) TestTheSwingLeavesNothingUndecoded() {
 	mgr := s.duelWithStream(&sequenceDice{rolls: []int{15, 5}})
 
 	s.swing(mgr)
 
 	s.Require().NotEmpty(s.stream.published, "a swing with two members in the room reaches clients")
-	for _, event := range s.stream.published {
-		s.NotEqual(session.EventUnknown, event.Kind,
-			"beat at seq %d reached %s unnamed", event.Seq, event.Recipient)
+	for _, act := range s.stream.published {
+		s.Empty(act.Undecoded, "act %s reached %s undecoded", act.ID, act.Recipient)
 	}
 }
 
-// bodiesAtSeq is kindsAtSeq's own twin for Body: the typed value each
-// recipient's event carries for one story sequence.
-func (s *AttackEventsTestSuite) bodiesAtSeq(seq uint64) map[string]session.EventBody {
-	out := map[string]session.EventBody{}
-	for recipient, event := range s.sameBeat(seq) {
-		out[recipient] = event.Body
-	}
-	return out
+// requireSameSwing asserts a recipient's attack act states the numbers and
+// weapon identity AttackOutput gave the attacker.
+func (s *AttackEventsTestSuite) requireSameSwing(out *session.AttackOutput, body session.AttackAct, recipient string) {
+	s.T().Helper()
+	s.Equal("alice", body.By.ID, recipient)
+	s.Equal("bob", body.To.ID, recipient)
+	s.Require().NotNil(body.Roll, recipient)
+	s.Contains(body.Roll.Dice, out.Roll, recipient)
+	s.Equal(out.Total, body.Roll.Total, recipient)
+	s.Require().NotNil(body.Roll.Against, recipient)
+	s.Equal(out.Against, *body.Roll.Against, recipient)
+	s.Equal(out.Damage, body.Damage, recipient)
+	s.Equal(out.Critical, body.Critical, recipient)
+	s.Equal(out.Attack, body.Attack, "the SAME weapon identity AttackOutput reported (%s)", recipient)
 }
 
 // TestAHitCarriesATypedBody pins rpg-toolkit#941/#866 at the stream: a
-// witness who is NOT the attacker — bob, reading his own struck event —
-// gets the SAME numbers and weapon identity AttackOutput gave alice, from
-// StruckBody rather than from decoding Payload by hand.
+// witness who is NOT the attacker — bob, reading his own attack act — gets
+// the SAME numbers and weapon identity AttackOutput gave alice.
 func (s *AttackEventsTestSuite) TestAHitCarriesATypedBody() {
 	mgr := s.duelWithStream(&sequenceDice{rolls: []int{15, 5}})
 
 	out := s.swing(mgr)
 	s.Require().True(out.Hit)
 
-	bodies := s.bodiesAtSeq(out.Seq)
 	for _, recipient := range []string{"alice", "bob"} {
-		body, ok := bodies[recipient].(session.StruckBody)
-		s.Require().True(ok, "%s's event carries a StruckBody, got %T", recipient, bodies[recipient])
-		s.Equal("alice", body.Attacker)
-		s.Equal("bob", body.Target)
-		s.Equal(out.Roll, body.Roll)
-		s.Equal(out.Total, body.Total)
-		s.Equal(out.Against, body.Against)
-		s.Equal(out.Damage, body.Damage)
-		s.Equal(out.Critical, body.Critical)
-		s.Equal(out.Attack, body.Attack, "the SAME weapon identity AttackOutput reported")
+		s.requireSameSwing(out, s.swingTo(recipient), recipient)
 	}
 }
 
-// TestAMissCarriesATypedBody is the hit's own twin: MissedBody, with no
-// Damage or Critical field to even get wrong.
+// TestAMissCarriesATypedBody is the hit's own twin.
 func (s *AttackEventsTestSuite) TestAMissCarriesATypedBody() {
 	mgr := s.duelWithStream(&sequenceDice{rolls: []int{2, 5}})
 
 	out := s.swing(mgr)
 	s.Require().False(out.Hit)
 
-	bodies := s.bodiesAtSeq(out.Seq)
-	body, ok := bodies["bob"].(session.MissedBody)
-	s.Require().True(ok, "bob's event carries a MissedBody, got %T", bodies["bob"])
-	s.Equal("alice", body.Attacker)
-	s.Equal("bob", body.Target)
-	s.Equal(out.Roll, body.Roll)
-	s.Equal(out.Total, body.Total)
-	s.Equal(out.Against, body.Against)
-	s.Equal(out.Attack, body.Attack)
+	body := s.swingTo("bob")
+	s.Equal(session.AttackMiss, body.Outcome)
+	s.requireSameSwing(out, body, "bob")
 }
 
 // TestAHitCarriesTheTokenTheAttackerWasGiven is the load-bearing property of
@@ -257,9 +205,7 @@ func (s *AttackEventsTestSuite) TestAMissCarriesATypedBody() {
 // The client that rolls an attack simulates the d20 falling through the room
 // and publishes that throw so everybody watches the same die bounce off the
 // same wall. That only works if the roller and the witnesses can agree on
-// WHICH roll a throw belongs to, and the story sequence cannot say: sequence
-// numbers are recipient-local (rpg-toolkit#1377), so the attacker's number and
-// a witness's number for one beat are different numbers.
+// WHICH roll a throw belongs to.
 //
 // So the assertion is equality, not presence. Two non-empty tokens that
 // disagree is exactly the bug this exists to prevent, and a test that only
@@ -271,21 +217,17 @@ func (s *AttackEventsTestSuite) TestAHitCarriesTheTokenTheAttackerWasGiven() {
 	s.Require().True(out.Hit, "15 + 3 STR + 2 proficiency clears AC 12")
 	s.Require().NotEmpty(out.PresentationID, "the attacker is told which roll this was")
 
-	bodies := s.bodiesAtSeq(out.Seq)
 	for _, recipient := range []string{"alice", "bob"} {
-		body, ok := bodies[recipient].(session.StruckBody)
-		s.Require().True(ok, "%s's event carries a StruckBody, got %T", recipient, bodies[recipient])
+		body := s.swingTo(recipient)
+		s.Equal(session.AttackHit, body.Outcome)
 		s.Equal(out.PresentationID, body.PresentationID,
 			"%s reads the SAME token the attacker was handed", recipient)
 	}
 }
 
-// TestAMissCarriesTheTokenTheAttackerWasGiven is the whiff's own half.
-//
-// Worth its own case for the reason MissedBody is its own type: a miss is a
-// different animation and a different sentence, and it is the one a client is
-// most likely to want the shared throw for — the die that clatters and comes
-// up short is the whole drama of the roll.
+// TestAMissCarriesTheTokenTheAttackerWasGiven is the whiff's own half: a miss
+// is the one a client is most likely to want the shared throw for — the die
+// that clatters and comes up short is the whole drama of the roll.
 func (s *AttackEventsTestSuite) TestAMissCarriesTheTokenTheAttackerWasGiven() {
 	mgr := s.duelWithStream(&sequenceDice{rolls: []int{2, 5}})
 
@@ -293,10 +235,9 @@ func (s *AttackEventsTestSuite) TestAMissCarriesTheTokenTheAttackerWasGiven() {
 	s.Require().False(out.Hit, "2 + 5 is under AC 12")
 	s.Require().NotEmpty(out.PresentationID)
 
-	bodies := s.bodiesAtSeq(out.Seq)
 	for _, recipient := range []string{"alice", "bob"} {
-		body, ok := bodies[recipient].(session.MissedBody)
-		s.Require().True(ok, "%s's event carries a MissedBody, got %T", recipient, bodies[recipient])
+		body := s.swingTo(recipient)
+		s.Equal(session.AttackMiss, body.Outcome)
 		s.Equal(out.PresentationID, body.PresentationID,
 			"%s reads the SAME token the attacker was handed", recipient)
 	}
@@ -325,16 +266,12 @@ func (s *AttackEventsTestSuite) TestTwoSwingsAreTwoDifferentRolls() {
 	s.Require().NotEmpty(second.PresentationID)
 	s.NotEqual(first.PresentationID, second.PresentationID, "one token, one roll")
 
-	// Read as bob, the witness: his stream is not in step with alice's (he
-	// hears the first swing's clang, rpg-project#569), and [sameBeat] finds
-	// his copy of each swing by what it is rather than by where it falls.
-	s.NotEqual(first.Seq, second.Seq, "and they really are two beats")
-	firstBody, ok := s.bodiesAtSeq(first.Seq)["bob"].(session.MissedBody)
-	s.Require().True(ok)
-	secondBody, ok := s.bodiesAtSeq(second.Seq)["bob"].(session.MissedBody)
-	s.Require().True(ok)
-	s.Equal(first.PresentationID, firstBody.PresentationID)
-	s.Equal(second.PresentationID, secondBody.PresentationID)
+	// Read as bob, the witness: each swing reached him as its own act,
+	// carrying its own token.
+	toBob := s.swingsTo("bob")
+	s.Require().Len(toBob, 2, "and they really are two swings")
+	s.Equal(first.PresentationID, toBob[0].PresentationID)
+	s.Equal(second.PresentationID, toBob[1].PresentationID)
 }
 
 // TestAnUnusableTokenRefusesTheSwingBeforeItRolls is the write side's fail-closed

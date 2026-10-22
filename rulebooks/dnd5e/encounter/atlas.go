@@ -512,7 +512,7 @@ func (e *Encounter) Atlas() (Atlas, error) {
 			// conceals nothing that filter never ran at all, so such a
 			// field does pay this walk where it paid none — the cost is
 			// stated in [Encounter.Atlas]' own doc rather than hidden here.
-			Cells:             f.placedCells(placement),
+			Cells:             f.placedCellsOf(p.id, placement),
 			BlocksMovement:    p.blocksMovement,
 			BlocksLineOfSight: p.blocksLineOfSight,
 			Holdable:          p.holdable,

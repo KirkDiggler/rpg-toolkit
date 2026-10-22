@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -27,7 +26,9 @@ type activationEventScene struct {
 	sessions   *fakeSessions
 	encounters *fakeEncounters
 	characters *fakeCharacters
-	stream     *fakeStream
+	stream     *actCapture
+	// marks is each member's last record seq when the scene was set.
+	marks map[string]uint64
 }
 
 // newActivationEventScene starts alice and bob in different sealed regions,
@@ -41,12 +42,12 @@ func newActivationEventScene(
 
 	es := &activationEventScene{
 		sessions: newFakeSessions(), encounters: newFakeEncounters(),
-		characters: newFakeCharacters(alice, bob), stream: &fakeStream{},
+		characters: newFakeCharacters(alice, bob), stream: &actCapture{},
 	}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: es.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: es.sessions, Encounters: es.encounters,
-		Characters: es.characters, Events: es.stream,
+		Characters: es.characters,
 	})
 	require.NoError(t, err)
 	es.mgr = mgr
@@ -71,8 +72,18 @@ func newActivationEventScene(
 	turn, err := mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
 	require.NoError(t, err)
 	require.Equal(t, "alice", turn.Active, "the deterministic initiative fixture must leave alice active")
-	es.stream.published = nil
+	es.stream.acts = nil
+	es.marks = map[string]uint64{}
+	for _, member := range []string{alice.ID, bob.ID, "skeleton"} {
+		es.marks[member] = lastSeq(storyBeats(t, mgr, "sess", member))
+	}
 	return es
+}
+
+// since is what one member's story told them after the scene was set.
+func (es *activationEventScene) since(t *testing.T, member string) []witnessed {
+	t.Helper()
+	return storyBeatsAfter(t, es.mgr, "sess", member, es.marks[member])
 }
 
 func secondWindFighter(t *testing.T, id string, hp, maxHP int) *character.Data {
@@ -90,28 +101,36 @@ func secondWindFighter(t *testing.T, id string, hp, maxHP int) *character.Data {
 	return fighter
 }
 
-func activationEvents(events []session.Event) []session.Event {
-	out := make([]session.Event, 0, len(events))
-	for _, event := range events {
-		if event.Kind == session.EventActivated || event.Kind == session.EventActivationResult {
-			out = append(out, event)
+// activationEvents is the activated and activation-result beats of a story,
+// asserted to be exactly one activation and its result, adjacent in it.
+func activationEvents(t *testing.T, story []witnessed) []witnessed {
+	t.Helper()
+	var out []witnessed
+	for i, beat := range story {
+		if beat.Beat != encounter.BeatActivated {
+			continue
 		}
+		require.Less(t, i+1, len(story), "the activation has a result after it")
+		require.Equal(t, encounter.BeatActivationResult, story[i+1].Beat,
+			"activation and result are adjacent in each recipient's story")
+		out = append(out, beat, story[i+1])
 	}
+	require.Len(t, out, 2, "one activation and its result")
+	require.Len(t, beatsNamed(story, encounter.BeatActivated, encounter.BeatActivationResult), 2)
 	return out
 }
 
-func requireActivationOrder(t *testing.T, events []session.Event) {
-	t.Helper()
-	require.Len(t, events, 2)
-	require.Equal(t, session.EventActivated, events[0].Kind)
-	require.Equal(t, session.EventActivationResult, events[1].Kind)
-	require.Equal(t, events[0].Seq+1, events[1].Seq, "activation and result are adjacent in each recipient's stream")
+// activatedBeat is an activated beat's payload.
+type activatedBeat struct {
+	Actor   string           `json:"actor"`
+	Ability session.SpellRef `json:"ability"`
+	Target  string           `json:"target"`
 }
 
-// TestSecondWindActivationEventsReachTheFullRosterAndCatchUpExactly pins the
+// TestSecondWindActivationEventsReachTheFullRoster pins the
 // complete transaction: one activated beat before the ordered result, exact
-// post-clamp healing facts, current full-roster fan-out, and Story/live parity.
-func TestSecondWindActivationEventsReachTheFullRosterAndCatchUpExactly(t *testing.T) {
+// post-clamp healing facts, and current full-roster fan-out.
+func TestSecondWindActivationEventsReachTheFullRoster(t *testing.T) {
 	scene := newActivationEventScene(t,
 		secondWindFighter(t, "alice", 30, 30), armedFighter("bob"))
 
@@ -123,33 +142,36 @@ func TestSecondWindActivationEventsReachTheFullRosterAndCatchUpExactly(t *testin
 	})
 	require.NoError(t, err)
 	require.Equal(t, refs.Features.SecondWind().String(), out.Ability)
-	require.Equal(t, 6, out.Delivery.Events, "two beats times the complete three-member roster")
+	require.Empty(t, out.Delivery.Failed)
 
 	for _, recipient := range []string{"alice", "bob", "skeleton"} {
-		live := activationEvents(eventsFor(scene.stream.published, recipient))
-		requireActivationOrder(t, live)
-		require.True(t, strings.HasPrefix(live[0].Correlation, "activate:"),
-			"the activation is the activate verb's act, got %q", live[0].Correlation)
-		require.Equal(t, live[0].Correlation, live[1].Correlation, "its result is the same act")
+		told := activationEvents(t, scene.since(t, recipient))
+		requireActID(t, told[0].Correlation, "activate")
+		require.Equal(t, told[0].Correlation, told[1].Correlation, "its result is the same act")
 
-		activated, ok := live[0].Body.(session.ActivatedBody)
-		require.True(t, ok, "%s received ActivatedBody, got %T", recipient, live[0].Body)
-		require.Equal(t, session.ActivatedBody{
+		var activated activatedBeat
+		told[0].decode(t, &activated)
+		require.Equal(t, activatedBeat{
 			Actor:   "alice",
-			Ability: session.AbilityRef{Ref: refs.Features.SecondWind().String(), Name: "Second Wind"},
+			Ability: session.SpellRef{Ref: refs.Features.SecondWind().String(), Name: "Second Wind"},
 		}, activated)
 
-		result, ok := live[1].Body.(session.ActivationResultBody)
-		require.True(t, ok, "%s received ActivationResultBody, got %T", recipient, live[1].Body)
-		require.Nil(t, result.ConditionApplied)
-		require.Nil(t, result.ConditionRemoved)
-		require.Nil(t, result.CapacityGranted)
+		result := resultOf(t, told[1])
+		require.Equal(t, "alice", result.Actor)
+		require.Equal(t, encounter.ResultHealingApplied, result.Kind)
+		require.Equal(t, "alice", result.Target)
+		require.Equal(t, refs.Features.SecondWind().String(), result.Ref)
+		require.Equal(t, "Second Wind", result.Name)
+		for name, got := range map[string]*int{"amount": result.Amount, "requested": result.Requested, "before": result.Before, "after": result.After} {
+			require.NotNil(t, got, name)
+		}
+		require.Equal(t, 0, *result.Amount)
+		require.Equal(t, 13, *result.Requested)
+		require.Equal(t, 30, *result.Before)
+		require.Equal(t, 30, *result.After)
 		modifier := 3
-		require.Equal(t, &session.HealingAppliedBody{
-			Target: "alice", Amount: 0, Requested: 13,
-			SourceRef: refs.Features.SecondWind().String(), SourceName: "Second Wind",
-			HPBefore: 30, HPAfter: 30,
-			Calculation: &session.RollCalculation{
+		require.Equal(t,
+			&session.RollCalculation{
 				Components: []session.RollComponent{
 					{
 						Source: session.RollSource{
@@ -172,16 +194,14 @@ func TestSecondWindActivationEventsReachTheFullRosterAndCatchUpExactly(t *testin
 					},
 				},
 				Total: 13,
-			},
-		}, result.HealingApplied,
+			}, result.Calculation,
 			"the sourced roll trace is the healing's only roll record, retained even when the HP clamp applies zero")
 
-		catchUp, storyErr := scene.mgr.Story(context.Background(), &session.StoryInput{
-			Session: "sess", Member: recipient, FromSeq: live[0].Seq,
-		})
-		require.NoError(t, storyErr)
-		require.Equal(t, live, catchUp,
-			"%s must receive byte-for-byte equivalent projection and order on catch-up", recipient)
+		var delivered bool
+		for _, act := range scene.stream.of(recipient) {
+			delivered = delivered || act.Act == told[0].Correlation
+		}
+		require.True(t, delivered, "%s was handed the activation live", recipient)
 	}
 }
 
@@ -196,44 +216,35 @@ func TestRageAndDashActivationResultVariants(t *testing.T) {
 		Session: "sess", Member: "alice", DeclarationID: rageID,
 	})
 	require.NoError(t, err)
-	rageEvents := activationEvents(eventsFor(scene.stream.published, "bob"))
-	requireActivationOrder(t, rageEvents)
-	rageResult := rageEvents[1].Body.(session.ActivationResultBody)
+	rageEvents := activationEvents(t, scene.since(t, "bob"))
+	rageResult := resultOf(t, rageEvents[1])
 	require.Equal(t, "alice", rageResult.Actor)
-	require.Equal(t, &session.ConditionAppliedBody{
-		Target: "alice", Ref: refs.Conditions.Raging().String(), Name: "Raging",
-	}, rageResult.ConditionApplied)
-	require.Nil(t, rageResult.HealingApplied)
-	require.Nil(t, rageResult.ConditionRemoved)
-	require.Nil(t, rageResult.CapacityGranted)
+	require.Equal(t, encounter.ResultConditionApplied, rageResult.Kind)
+	require.Equal(t, "alice", rageResult.Target)
+	require.Equal(t, refs.Conditions.Raging().String(), rageResult.Ref)
+	require.Equal(t, "Raging", rageResult.Name)
+	require.Empty(t, rageResult.SourceID)
+	require.Nil(t, rageResult.Detail)
 
-	beforeDash := len(scene.stream.published)
+	scene.marks["bob"] = lastSeq(storyBeats(t, scene.mgr, "sess", "bob"))
 	dashID := activationSelector(t, scene.mgr, "alice", refs.CombatAbilities.Dash().String())
 	dashOut, err := scene.mgr.Activate(context.Background(), &session.ActivateInput{
 		Session: "sess", Member: "alice", DeclarationID: dashID,
 	})
 	require.NoError(t, err)
 	require.Equal(t, "30ft movement", dashOut.GrantedCapacity)
-	dashEvents := activationEvents(eventsFor(scene.stream.published[beforeDash:], "bob"))
-	requireActivationOrder(t, dashEvents)
-	dashResult := dashEvents[1].Body.(session.ActivationResultBody)
-	require.Equal(t, &session.CapacityGrantedBody{
-		Member: "alice", Description: "30ft movement",
-	}, dashResult.CapacityGranted)
-	require.Nil(t, dashResult.HealingApplied)
-	require.Nil(t, dashResult.ConditionApplied)
-	require.Nil(t, dashResult.ConditionRemoved)
+	dashEvents := activationEvents(t, scene.since(t, "bob"))
+	dashResult := resultOf(t, dashEvents[1])
+	require.Equal(t, encounter.ResultCapacityGranted, dashResult.Kind)
+	require.Equal(t, "alice", dashResult.Target)
+	require.Equal(t, "30ft movement", dashResult.Description)
 }
 
 func storyLengths(t *testing.T, mgr *session.Manager, members ...string) map[string]int {
 	t.Helper()
 	out := make(map[string]int, len(members))
 	for _, member := range members {
-		story, err := mgr.Story(context.Background(), &session.StoryInput{
-			Session: "sess", Member: member,
-		})
-		require.NoError(t, err)
-		out[member] = len(story)
+		out[member] = len(storyBeats(t, mgr, "sess", member))
 	}
 	return out
 }
@@ -317,7 +328,7 @@ func TestActivationRecordFailureReportsTheDurableSheetAndDropsTheEncounterScope(
 	characters := &failAfterCharacterSave{inner: innerCharacters, err: standingErr}
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions,
-		Encounters: encounters, Characters: characters, Events: session.DiscardEvents{},
+		Encounters: encounters, Characters: characters,
 	})
 	require.NoError(t, err)
 
@@ -385,9 +396,9 @@ func TestActivationDissolveReportsNestedBoundarySaveFailure(t *testing.T) {
 		err:            errors.Join(boundaryStoreUnavailable, boundaryWriteRefused),
 	}
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions,
-		Encounters: encounters, Characters: characters, Events: stream,
+		Encounters: encounters, Characters: characters,
 	})
 	require.NoError(t, err)
 

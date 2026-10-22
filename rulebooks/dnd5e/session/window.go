@@ -124,15 +124,14 @@ type windowStory struct {
 	Spell  SpellRef       `json:"spell"`
 	Caught []CaughtMember `json:"caught,omitempty"`
 
-	// Act is the id of the act the window answers (rpg-project#627, Law 2):
-	// the walk or swing it interrupted. [Manager.React] reopens it, so the
-	// answer's beats carry the trigger's id. Set by [poseWindow]; empty on a
-	// window saved before acts existed, whose answer then carries none.
-	Act string `json:"act,omitempty"`
-
-	// ActID is Act's v1alpha2 id (`<verb>:<id>`, record.go), set beside it
-	// by [poseWindow]. Empty on a window saved before v2 ids existed, whose
-	// answer then carries Act alone.
+	// ActID is the id of the act the window answers, `<verb>:<id>`
+	// (rpg-project#627, Law 2): the walk or swing it interrupted.
+	// [Manager.React] reopens it, so the answer's beats carry the trigger's
+	// id. Set by [poseWindow]; empty on a window saved before act ids
+	// existed, whose answer then mints a react act of its own.
+	//
+	// A window saved before rpg-project#631 also carries `act`, E1's
+	// `<verb>:<first seq>` form (R27). Nothing reads it.
 	ActID string `json:"act_id,omitempty"`
 }
 
@@ -186,8 +185,8 @@ func poseWindow(scope *writeScope, pause resolution.Pause, story windowStory) er
 	// inside the encounter's Mover or Striker, while the driven walk's or
 	// swing's own act is open and before the encounter stores its pause, so
 	// the current act — not the paused one — is the trigger's.
-	if story.Act == "" {
-		story.Act, story.ActID = scope.enc.CurrentAct(), scope.enc.CurrentActID()
+	if story.ActID == "" {
+		story.ActID = scope.enc.CurrentAct()
 	}
 	raw, err := json.Marshal(pendingWindow{
 		Version:  windowVersion,

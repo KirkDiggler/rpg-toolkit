@@ -63,10 +63,10 @@ func task6ArrivalFixture(t *testing.T) (*session.Manager, *fakeSessions, *fakeEn
 	t.Helper()
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: sessions, Encounters: encounters,
-		Characters: newFakeCharacters(armedFighter("fighter")), Events: stream,
+		Characters: newFakeCharacters(armedFighter("fighter")),
 	})
 	require.NoError(t, err)
 	ctx := context.Background()
@@ -111,10 +111,10 @@ func TestSessionMonsterArrivalSaveFailureRollsBackCorrection(t *testing.T) {
 	mgr, sessions, encounters, stream := task6ArrivalFixture(t)
 	declarationID := currentEndTurnID(t, mgr, "sess", "fighter")
 	errSave := errors.New("encounter store unavailable")
-	failing, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	failing, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: sessions, Encounters: &failingEncounters{fakeEncounters: encounters, saveErr: errSave},
-		Characters: newFakeCharacters(armedFighter("fighter")), Events: stream,
+		Characters: newFakeCharacters(armedFighter("fighter")),
 	})
 	require.NoError(t, err)
 
@@ -127,7 +127,7 @@ func TestSessionMonsterArrivalSaveFailureRollsBackCorrection(t *testing.T) {
 	location := task6StoredLocation(t, encounters)
 	require.Equal(t, encounter.LocationKnown, location.State)
 	require.Equal(t, spatial.Position{X: 0, Y: 0}, location.Position)
-	require.Empty(t, stream.published, "a failed save publishes no driven-turn events")
+	require.Empty(t, stream.published, "a failed save publishes no driven-turn acts")
 }
 
 // TestSessionMonsterArrivalPersistsCorrection proves the success twin through
@@ -177,7 +177,7 @@ func TestMalformedSightTestimonyFailsSessionLoadBeforeProjection(t *testing.T) {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: sessions, Encounters: encounters,
-		Characters: newFakeCharacters(armedFighter("fighter")), Events: session.DiscardEvents{},
+		Characters: newFakeCharacters(armedFighter("fighter")),
 	})
 	require.NoError(t, err)
 	out, err := mgr.View(context.Background(), &session.ViewInput{Session: "sess", Member: "fighter"})
@@ -241,7 +241,6 @@ func (s *MonsterTurnTestSuite) tombManager(driver session.TurnDriver, dice sessi
 		Dice: dice, TurnDriver: driver,
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: newFakeCharacters(armedFighter("fighter")),
-		Events:     session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	return mgr
@@ -250,34 +249,19 @@ func (s *MonsterTurnTestSuite) tombManager(driver session.TurnDriver, dice sessi
 // storyBeats reads member's whole story and returns just the beat kinds, in
 // order — the shape every gate test below asserts its sequence against.
 func (s *MonsterTurnTestSuite) storyBeats(mgr *session.Manager, member string) []string {
-	entries, err := mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: member})
-	s.Require().NoError(err)
-	beats := make([]string, len(entries))
-	for i, e := range entries {
-		var body struct {
-			Beat string `json:"beat"`
-		}
-		s.Require().NoError(json.Unmarshal(e.Payload, &body))
-		beats[i] = body.Beat
-	}
-	return beats
+	return beatNames(storyBeats(s.T(), mgr, "sess", member))
 }
 
 // storySighted is the names each sighted beat in member's story names, from
 // the entry at index from onward, in order.
 func (s *MonsterTurnTestSuite) storySighted(mgr *session.Manager, member string, from int) [][]string {
-	entries, err := mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: member})
-	s.Require().NoError(err)
 	var out [][]string
-	for _, e := range entries[from:] {
+	for _, e := range beatsNamed(storyBeats(s.T(), mgr, "sess", member)[from:], encounter.BeatSighted) {
 		var body struct {
-			Beat    string   `json:"beat"`
 			Changed []string `json:"changed"`
 		}
-		s.Require().NoError(json.Unmarshal(e.Payload, &body))
-		if body.Beat == "sighted" {
-			out = append(out, body.Changed)
-		}
+		e.decode(s.T(), &body)
+		out = append(out, body.Changed)
 	}
 	return out
 }
@@ -372,29 +356,22 @@ func (s *MonsterTurnTestSuite) TestSkeletonAttacksFromRange() {
 
 	// The swing itself: recorded with a real attack identity, not a blank
 	// one — the exact gap #1196 closed in resolution.
-	entries, err := mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "fighter"})
-	s.Require().NoError(err)
-	entries = entries[before:]
+	swingBeats := beatsNamed(storyBeats(s.T(), mgr, "sess", "fighter")[before:],
+		string(encounter.OutcomeStruck), string(encounter.OutcomeMissed))
+	s.Require().NotEmpty(swingBeats)
 	var swingBody struct {
-		Beat   string            `json:"beat"`
-		Actor  string            `json:"actor"`
-		Target []string          `json:"targets"`
-		Attack session.AttackRef `json:"attack"`
+		Actor            string            `json:"actor"`
+		Target           []string          `json:"targets"`
+		Attack           session.AttackRef `json:"attack"`
+		DamageComponents []json.RawMessage `json:"damage_components"`
 	}
-	for _, e := range entries {
-		var peek struct {
-			Beat string `json:"beat"`
-		}
-		s.Require().NoError(json.Unmarshal(e.Payload, &peek))
-		if peek.Beat == "struck" || peek.Beat == "missed" {
-			s.Require().NoError(json.Unmarshal(e.Payload, &swingBody))
-			break
-		}
-	}
+	swingBeats[0].decode(s.T(), &swingBody)
 	s.Equal("skel-1", swingBody.Actor)
 	s.Equal([]string{"fighter"}, swingBody.Target)
 	s.NotEmpty(swingBody.Attack.Ref, "Attack{ref, name}: the ref side")
 	s.NotEmpty(swingBody.Attack.Name, "Attack{ref, name}: the name side (resolution#1196)")
+	s.Equal(string(encounter.OutcomeStruck), swingBeats[0].Beat, "14 against 12 lands")
+	s.NotEmpty(swingBody.DamageComponents, "the driven strike carries its damage detail")
 
 	char, err := s.encounters.GetEncounter(ctx, "sess") // sanity: world persisted at all
 	s.Require().NoError(err)
@@ -485,17 +462,18 @@ func (s *MonsterTurnTestSuite) TestBadIntentEndsOnlyTheMonstersTurn() {
 
 	// And the stayed beat says WHY: the refused attack names itself and the
 	// reason it could not land.
-	entries, err := mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "fighter"})
-	s.Require().NoError(err)
-	var stayed []session.StayedBody
-	for _, entry := range entries[before:] {
-		if entry.Kind == session.EventStayed {
-			body, ok := entry.Body.(session.StayedBody)
-			s.Require().True(ok, "a stayed event carries StayedBody, got %T", entry.Body)
-			stayed = append(stayed, body)
-		}
+	type stayedBeat struct {
+		Member string `json:"member"`
+		Cause  string `json:"cause"`
+		Why    string `json:"why"`
 	}
-	s.Equal([]session.StayedBody{{
+	var stayed []stayedBeat
+	for _, entry := range beatsNamed(storyBeats(s.T(), mgr, "sess", "fighter")[before:], encounter.BeatStayed) {
+		var body stayedBeat
+		entry.decode(s.T(), &body)
+		stayed = append(stayed, body)
+	}
+	s.Equal([]stayedBeat{{
 		Member: "skel-1", Cause: "encounter:intent:attack", Why: "target out of reach",
 	}}, stayed)
 }
@@ -554,36 +532,15 @@ func (s *MonsterTurnTestSuite) TestPassDriverStillPasses() {
 // went straight from "Skeleton's turn." to "Skeleton does nothing." both
 // times, though round 1's own moved/missed beats DID arrive live. This gate
 // asks the toolkit's own question: does [Manager.EndTurn]'s publish call
-// actually hand a round-2 struck beat to the [EventStream] it was given, the
+// actually hand a round-2 hit to the [session.ActStream] it was given, the
 // same as round 1's?
 //
-// Two full rounds against a FAKE STREAM (not Story) is the point — a
+// Two full rounds against a FAKE STREAM (not the story) is the point — a
 // passing log read proves nothing here, since the evidence already showed
-// the log was never the problem.
-//
-// This gate PASSES today, and pins the two seams a toolkit-side defect
-// could hide in, both with an exact assertion rather than a black-box
-// pass/fail:
-//
-//  1. Baseline: round 2's own publish batch must start exactly one seq
-//     after round 1's last (asserted below) — openForWrite's baseline is
-//     set once per EndTurn call, before that call's own writes, and
-//     saveDirty (run inside Strike, before Record) touches neither
-//     scope.baseline nor scope.enc, so there is no seam for round 2's
-//     baseline to advance past or skip over what round 1 already
-//     delivered.
-//  2. Recipient: the delivered struck event's Recipient is byte-equal to
-//     the exact string Join was called with (asserted below) — the same
-//     string a real StreamEvents caller subscribes with
-//     (h.broker.Subscribe(session, member), rpg-api's stream_events.go).
-//
-// Both clean means the mechanism has no seam for a round-2 beat to go
-// missing that a round-1 beat would not also hit. The live walk's own
-// anomaly is therefore not reproducible as a toolkit defect — this test is
-// the negative control that rules the toolkit's own Publish call out, in
-// writing, for whoever looks at rpg-api's broker/stream layer (a live,
-// no-replay pub/sub — StreamEvents' own doc: "no replay obligation... a
-// client resyncs via GetStory") or the live harness next.
+// the log was never the problem. Round 2 is isolated by resetting the fake
+// between the calls, so the hit asserted is the one THAT call published,
+// addressed to exactly the string Join was called with — the same string a
+// real stream subscriber keys off.
 func (s *MonsterTurnTestSuite) TestRoundTwoStruckReachesTheLiveSubscriber() {
 	ctx := context.Background()
 	stream := &fakeStream{}
@@ -595,11 +552,10 @@ func (s *MonsterTurnTestSuite) TestRoundTwoStruckReachesTheLiveSubscriber() {
 	fighter := armedFighter("fighter")
 	fighter.HitPoints, fighter.MaxHitPoints = 100, 100
 
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: newFakeCharacters(fighter),
-		Events:     stream,
 	})
 	s.Require().NoError(err)
 
@@ -608,22 +564,22 @@ func (s *MonsterTurnTestSuite) TestRoundTwoStruckReachesTheLiveSubscriber() {
 	s.Require().NotEmpty(spawned.Formed)
 
 	// joinMember is the exact string handed to Join — the same string a
-	// real StreamEvents caller subscribes with (h.broker.Subscribe(session,
-	// member), rpg-api's stream_events.go). The recipient check below
+	// real stream caller subscribes with. The recipient check below
 	// compares against this constant, not a literal, so the two can never
 	// silently drift apart.
 	const joinMember = "fighter"
 
-	skelStruckFighter := func(events []session.Event) (session.Event, bool) {
-		for _, e := range events {
-			if e.Recipient != joinMember || e.Kind != session.EventStruck {
+	skelStruckFighter := func(acts []session.Act) (session.Act, bool) {
+		for _, a := range acts {
+			if a.Recipient != joinMember {
 				continue
 			}
-			if body, ok := e.Body.(session.StruckBody); ok && body.Attacker == "skel-1" && body.Target == joinMember {
-				return e, true
+			if body, ok := a.Body.(session.AttackAct); ok && body.Outcome == session.AttackHit &&
+				body.By.ID == "skel-1" && body.To.ID == joinMember {
+				return a, true
 			}
 		}
-		return session.Event{}, false
+		return session.Act{}, false
 	}
 
 	// Round 1: the fighter hands her turn to the skeleton, which swings
@@ -636,121 +592,25 @@ func (s *MonsterTurnTestSuite) TestRoundTwoStruckReachesTheLiveSubscriber() {
 	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "fighter")})
 	s.Require().NoError(err)
 	_, ok := skelStruckFighter(stream.published)
-	s.Require().True(ok, "round 1's own struck beat must reach the live subscriber (control)")
-
-	// (1) Baseline seam, made explicit rather than merely implied by the
-	// round 2 assertion below: round 2's own publish batch must pick up
-	// EXACTLY where round 1's left off. saveDirty runs inside Strike,
-	// before Record — it writes m.characters.SaveCharacter and mutates
-	// scope.data.NPCs in place, and touches neither scope.baseline nor
-	// scope.enc — so there is no seam here for round 2's own baseline to
-	// advance past or skip over what round 1 already delivered. A gap
-	// above 0 would mean some beat between the two calls reached nobody.
-	//
-	// PER RECIPIENT, since rpg-toolkit#1375: Seq is each member's own
-	// delivered numbering, so continuity is asserted member by member —
-	// which is the stronger form of the same guarantee, and the form a
-	// real client (who holds exactly one member's stream) experiences.
-	s.Require().NotEmpty(stream.published)
-	round1LastFor := map[string]uint64{}
-	for _, e := range stream.published {
-		round1LastFor[e.Recipient] = e.Seq
-	}
+	s.Require().True(ok, "round 1's own hit must reach the live subscriber (control)")
 
 	// Round 2: the same call again. The skeleton's SECOND driven strike is
-	// round 2's own struck beat — the one the live evidence says never
-	// arrived at the client's stream, though the story log recorded it
-	// correctly.
+	// round 2's own hit — the one the live evidence says never arrived at
+	// the client's stream, though the story log recorded it correctly.
 	stream.published = nil // isolate what THIS EndTurn's own publish call delivers
 	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "fighter")})
 	s.Require().NoError(err)
 	s.Require().NotEmpty(stream.published)
-	round2FirstFor := map[string]uint64{}
-	for _, e := range stream.published {
-		if _, seen := round2FirstFor[e.Recipient]; !seen {
-			round2FirstFor[e.Recipient] = e.Seq
-		}
-	}
-	for member, last := range round1LastFor {
-		s.Equal(last+1, round2FirstFor[member],
-			"round 2's own publish batch starts exactly one seq after round 1's last "+
-				"for %s — no gap, no bypass", member)
-	}
 
 	struck, ok := skelStruckFighter(stream.published)
 	s.Require().True(ok,
-		"round 2's own struck beat must reach the live subscriber, exactly as round 1's did")
+		"round 2's own hit must reach the live subscriber, exactly as round 1's did")
 
-	// (2) Recipient seam, made explicit: the delivered event's Recipient is
+	// Recipient seam, made explicit: the delivered act's Recipient is
 	// byte-equal to the string a real subscriber would key off — not
 	// merely non-empty or plausible-looking.
 	s.Equal(joinMember, struck.Recipient,
-		"the struck event's Recipient must be exactly the string Join was called with")
-}
-
-// (g) Live delivery and a Story catch-up are the SAME projection of the
-// same story-log entries, entry by entry, for a driven monster turn —
-// rpg-api-protos#239's ruling (rpg-project#257 slice 3), and the reason
-// [projectEntry] exists: one producer, not two mappings that happen to
-// agree today. The debug feed found this broken as kind=UNKNOWN body=null
-// on every caught-up entry while the same beats arrived live typed
-// correctly (moved, missed, ...); a client that notices a gap and
-// re-queries Story from FromSeq:1 must see exactly what a live subscriber
-// already received.
-//
-// A driven monster turn is the fixture rather than a single Move, because
-// it is the shape #239 was found broken under, and because it exercises
-// several kinds at once (joined, bubble-formed, struck-or-missed, turn-ended)
-// rather than one kind that might happen to survive both paths
-// by accident.
-func (s *MonsterTurnTestSuite) TestLiveDeliveryAndStoryCatchUpAreByteEqual() {
-	ctx := context.Background()
-	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
-		Dice: testDice{}, TurnDriver: session.Driver(),
-		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: newFakeCharacters(armedFighter("fighter")),
-		Events:     stream,
-	})
-	s.Require().NoError(err)
-
-	// Four cells off: attacks from shortbow range (TestSkeletonAttacksFromRange).
-	spawned := launchScene(s.T(), mgr, tombWith(12, 6, skeletonAt("skel-1", 4, 0)))
-	s.Require().NotEmpty(spawned.Formed, "the skeleton's driven turn is this test's whole point")
-
-	_, err = mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(s.T(), mgr, "sess", "fighter")})
-	s.Require().NoError(err, "the skeleton's whole turn — strike, end — drives inside this one call")
-
-	// live is everything the fake stream delivered to fighter across the
-	// WHOLE scene, join through the driven turn — never reset — so it lines
-	// up against Story{FromSeq:1}, which answers from the very first entry
-	// fighter's own audience appears in.
-	var live []session.Event
-	for _, e := range stream.published {
-		if e.Recipient == "fighter" {
-			live = append(live, e)
-		}
-	}
-	s.Require().NotEmpty(live, "join, spawn and the driven turn must all have addressed fighter")
-	foundRichStrike := false
-	for _, event := range live {
-		if event.Kind != session.EventStruck {
-			continue
-		}
-		body, ok := event.Body.(session.StruckBody)
-		s.Require().True(ok, "live struck event carries StruckBody, got %T", event.Body)
-		s.Require().NotEmpty(body.DamageComponents,
-			"the driven strike must carry the detail whose replay equality this test guards")
-		foundRichStrike = true
-	}
-	s.True(foundRichStrike, "this deterministic driven turn lands a strike")
-
-	caughtUp, err := mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "fighter", FromSeq: 1})
-	s.Require().NoError(err)
-
-	s.Equal(live, caughtUp,
-		"live delivery and Story{FromSeq:1} catch-up must be the SAME projection, entry by "+
-			"entry — kind, typed Body and Correlation included — not two mappings that merely agree today")
+		"the hit's Recipient must be exactly the string Join was called with")
 }
 
 // reachlessAttacker always declares an attack against the fighter using the
@@ -1067,7 +927,7 @@ func doubleDoorFixture(t *testing.T, withDavid bool) (*session.Manager, *fakeSes
 	recorder := &recordingBehavior{next: pursuingDriver{}}
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: recorder, Sessions: sessions, Encounters: encounters,
-		Characters: newFakeCharacters(characters...), Events: session.DiscardEvents{},
+		Characters: newFakeCharacters(characters...),
 	})
 	require.NoError(t, err)
 	ctx := context.Background()

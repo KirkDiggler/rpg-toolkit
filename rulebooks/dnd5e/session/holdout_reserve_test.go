@@ -13,8 +13,8 @@ package session_test
 //     so, no beat is written, and it is on no roster and no map for anyone;
 //   - a verb after that reloads the stored world and it is still waiting;
 //   - the chief falls: on the next verb three `arrived` beats reach every
-//     recipient in dense numbering, the roster lists the reinforcements on
-//     their side, and they are in the fight;
+//     recipient's story, the roster lists the reinforcements on their side,
+//     and they are in the fight;
 //   - the letter is nowhere until round 6 — Hold refuses it as a thing that is
 //     not here — and lies at the gate for everyone once round 6 starts;
 //   - a predicate nothing could fire is refused by name.
@@ -48,19 +48,53 @@ func (s *HoldOutSessionSuite) downTheChief() {
 	s.Require().Fail("the chief has no sheet to put on the floor")
 }
 
-// arrivalsOn is every EventArrived body on a recipient's stream, in order.
-func (s *HoldOutSessionSuite) arrivalsOn(recipient string) []session.ArrivedBody {
+// reserveMarks is each named member's last story seq now — the point a
+// later [HoldOutSessionSuite.toldSince] reads from.
+func (s *HoldOutSessionSuite) reserveMarks(members ...string) map[string]uint64 {
 	s.T().Helper()
-	var out []session.ArrivedBody
-	for _, e := range s.events(recipient) {
-		if e.Kind != session.EventArrived {
-			continue
-		}
-		body, ok := e.Body.(session.ArrivedBody)
-		s.Require().True(ok, "an arrival crosses as its typed body: %+v", e)
+	out := map[string]uint64{}
+	for _, m := range members {
+		out[m] = lastSeq(storyBeats(s.T(), s.mgr, campSession, m))
+	}
+	return out
+}
+
+// toldSince is what a member's story gained after its mark (from the start
+// for a member with none — one that did not exist when the marks were taken).
+func (s *HoldOutSessionSuite) toldSince(marks map[string]uint64, who string) []witnessed {
+	s.T().Helper()
+	return storyBeatsAfter(s.T(), s.mgr, campSession, who, marks[who])
+}
+
+// arrivedBeat is an arrived beat's payload.
+type arrivedBeat struct {
+	ID   string           `json:"id"`
+	Kind string           `json:"kind"`
+	Cell spatial.Position `json:"cell"`
+}
+
+// arrivalsIn is every arrived beat in beats, in order.
+func (s *HoldOutSessionSuite) arrivalsIn(beats []witnessed) []arrivedBeat {
+	s.T().Helper()
+	var out []arrivedBeat
+	for _, b := range beatsNamed(beats, encounter.BeatArrived) {
+		var body arrivedBeat
+		b.decode(s.T(), &body)
 		out = append(out, body)
 	}
 	return out
+}
+
+// fallBeforeArrival asserts the first fall in beats comes before the first
+// arrival: the fall is the cause.
+func (s *HoldOutSessionSuite) fallBeforeArrival(beats []witnessed) {
+	s.T().Helper()
+	names := beatNames(beats)
+	downAt := slices.Index(names, string(encounter.OutcomeDown))
+	arrivedAt := slices.Index(names, encounter.BeatArrived)
+	s.Require().NotEqual(-1, downAt, "the chief's fall is narrated: %v", names)
+	s.Require().NotEqual(-1, arrivedAt, "the arrivals are narrated: %v", names)
+	s.Less(downAt, arrivedAt, "the fall is the cause")
 }
 
 // launchShippedCamp is startWith for the scenes that read the launch's own
@@ -88,10 +122,10 @@ func (s *HoldOutSessionSuite) launchShippedCamp(
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(cast...)
 
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: s.stream,
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -103,16 +137,6 @@ func (s *HoldOutSessionSuite) launchShippedCamp(
 	return mgr.Launch(context.Background(), &session.LaunchInput{
 		Session: campSession, DungeonKey: campKey, Dungeon: &camp, Party: party,
 	})
-}
-
-// assertDense fails unless a recipient's delivered numbers are consecutive.
-func (s *HoldOutSessionSuite) assertDense(who string) {
-	s.T().Helper()
-	events := s.events(who)
-	for i := 1; i < len(events); i++ {
-		s.Require().Equal(events[i-1].Seq+1, events[i].Seq,
-			"%s's own stream must be dense: seq %d follows %d", who, events[i].Seq, events[i-1].Seq)
-	}
 }
 
 // TestASpawnWithAPredicateWaitsInReserveForEveryone is the reserve at the
@@ -143,15 +167,22 @@ func (s *HoldOutSessionSuite) TestASpawnWithAPredicateWaitsInReserveForEveryone(
 			s.True(sheets[id], "%s: its sheet is recorded now; the run holds the member back", id)
 		}
 		for _, who := range []string{"alice", "bob"} {
-			s.Empty(s.arrivalsOn(who), "the reserve is silent to %s", who)
+			told := storyBeats(s.T(), s.mgr, campSession, who)
+			s.Empty(s.arrivalsIn(told), "the reserve is silent to %s", who)
+			// Silent in every kind, not only arrivals: no beat of any kind
+			// carries a reinforcement's id (joined, sighted, arrived, or
+			// anything else).
+			for _, beat := range told {
+				for _, id := range campReinforcements {
+					s.NotContains(string(beat.Payload), id, "no %s beat to %s names %s", beat.Beat, who, id)
+				}
+			}
 		}
-		// Silent in every kind, not only arrivals: no event of any kind is
-		// addressed to a reinforcement or carries one's id (joined, sighted,
-		// arrived, or anything else).
-		for _, event := range s.stream.published {
+		// And nothing is delivered to one, or names one, on the live stream.
+		for _, act := range s.stream.published {
 			for _, id := range campReinforcements {
-				s.NotEqual(id, event.Recipient, "nothing is delivered to %s", id)
-				s.NotContains(string(event.Payload), id, "no %s event names %s", event.Kind, id)
+				s.NotEqual(id, act.Recipient, "nothing is delivered to %s", id)
+				s.NotContains(fmt.Sprintf("%+v", act.Body), id, "no %s act names %s", act.Family, id)
 			}
 		}
 	})
@@ -190,15 +221,15 @@ func (s *HoldOutSessionSuite) TestASpawnWithAPredicateWaitsInReserveForEveryone(
 // TestTheChiefsFallBringsTheReinforcementsToEveryone is A4 at the seam: alice
 // fights the scout in the yard; the chief's sheet says zero; bob takes a step
 // at the gate — and on that verb three zombies stand where the file drew them,
-// on the raiders' side, in the fight, narrated to everyone in dense numbering
-// after the fall that caused them.
+// on the raiders' side, in the fight, narrated to everyone after the fall
+// that caused them.
 func (s *HoldOutSessionSuite) TestTheChiefsFallBringsTheReinforcementsToEveryone() {
 	s.startWith(campOptions{shipped: true})
 	s.Require().Len(s.roster(), 4, "three in reserve")
 	s.Require().NotNil(s.intoTheYard("alice").Formed, "precondition: alice and the scout are fighting")
 	s.Require().Equal(session.ClockWorld, s.turn("bob").Clock, "precondition: bob is at the gate, out of it")
 	s.downTheChief()
-	s.stream.published = nil
+	marks := s.reserveMarks("alice", "bob")
 
 	// The next verb: bob steps one cell at the gate. Its participation pass
 	// notices the chief down, and the reinforcements arrive.
@@ -214,59 +245,33 @@ func (s *HoldOutSessionSuite) TestTheChiefsFallBringsTheReinforcementsToEveryone
 		s.Equal(absolute(s.placement(campReinforcements[0]).At), s.where(campReinforcements[0]), "where the author drew it")
 	})
 
-	s.Run("the arrivals are narrated to everyone, after the fall, in dense numbering", func() {
+	s.Run("the arrivals are narrated to everyone, after the fall", func() {
 		// Everyone who was there hears all three; an arrival hears its own
 		// and the ones after it — a member is told nothing from before it
-		// existed, and its numbering starts at its first beat.
-		expected := map[string]int{campReinforcements[0]: 3, campReinforcements[1]: 2, campReinforcements[2]: 1}
-		for _, who := range s.recipients() {
-			arrivals := s.arrivalsOn(who)
-			want, isArrival := expected[who]
-			if !isArrival {
-				want = 3
-			}
-			s.Require().Len(arrivals, want, "%s heard %v", who, s.kinds(who))
+		// existed.
+		expected := map[string]int{
+			"alice": 3, "bob": 3,
+			campReinforcements[0]: 3, campReinforcements[1]: 2, campReinforcements[2]: 1,
+		}
+		for who, want := range expected {
+			told := s.toldSince(marks, who)
+			arrivals := s.arrivalsIn(told)
+			s.Require().Len(arrivals, want, "%s heard %v", who, beatNames(told))
 			for i, a := range arrivals {
 				id := campReinforcements[3-want+i]
 				s.Equal(id, a.ID, "in id order")
-				s.Equal(session.PlacementMonster, a.Kind)
+				s.Equal(string(session.PlacementMonster), a.Kind)
 				s.Equal(absolute(s.placement(id).At), a.Cell)
 			}
-			s.assertDense(who)
 		}
-		kinds := s.kinds("bob")
-		downAt, arrivedAt := -1, -1
-		for i, k := range kinds {
-			switch {
-			case k == session.EventDowned && downAt < 0:
-				downAt = i
-			case k == session.EventArrived && arrivedAt < 0:
-				arrivedAt = i
-			}
-		}
-		s.Require().NotEqual(-1, downAt, "the chief's fall is narrated: %v", kinds)
-		s.Less(downAt, arrivedAt, "the fall is the cause")
-		s.Contains(s.recipients(), campReinforcements[0], "the arrival hears itself arrive")
+		s.fallBeforeArrival(s.toldSince(marks, "bob"))
 	})
 
 	s.Run("the fight is joined: the zombies and bob are in it", func() {
 		for _, id := range append([]string{"bob", "alice"}, campReinforcements...) {
 			s.Equal(session.ClockTurn, s.turn(id).Clock, id)
 		}
-		s.NotContains(s.kinds("alice"), session.EventFightEnded, "one fight, grown")
-
-		// PINNED, NOT ARGUED: joining a running fight is narrated by the
-		// composition's `transferred` beat, which this seam has never named
-		// — it reaches a client as EventUnknown, delivered but uninterpretable
-		// (the delivery rule), so a client learns who joined only from the
-		// next TURN_ENDED's order. A pre-existing gap the reinforcements
-		// make visible; naming it is a wire decision (protos has no such
-		// kind), recorded on the branch report rather than widened here.
-		for _, e := range s.events("bob") {
-			if e.Kind == session.EventUnknown {
-				s.Contains(string(e.Payload), `"beat":"transferred"`, "the only unnamed beat is the transfer")
-			}
-		}
+		s.Empty(beatsNamed(s.toldSince(marks, "alice"), encounter.BeatFightEnded), "one fight, grown")
 	})
 
 	s.Run("nothing is waiting any more, and a reload agrees", func() {
@@ -280,10 +285,11 @@ func (s *HoldOutSessionSuite) TestTheChiefsFallBringsTheReinforcementsToEveryone
 // TestTheLetterArrivesAtRoundSixThroughTheSeam is A5 at the seam, and R9:
 // the letter is nowhere — refused by Hold as a thing that is not here, in no
 // atlas — through five rounds of a fight, and lies at the gate for everyone the
-// moment round 6 starts, with an EventArrived naming the prop and its cell.
+// moment round 6 starts, with an arrived beat naming the prop and its cell.
 func (s *HoldOutSessionSuite) TestTheLetterArrivesAtRoundSixThroughTheSeam() {
 	s.startWith(campOptions{shipped: true})
 	letterAt := absolute(spatial.Position{X: 1, Y: 3})
+	marks := s.reserveMarks("alice", "bob")
 
 	absent := func(when string) {
 		s.T().Helper()
@@ -291,7 +297,7 @@ func (s *HoldOutSessionSuite) TestTheLetterArrivesAtRoundSixThroughTheSeam() {
 			Session: campSession, Member: "bob", Target: campLetter, Range: 9})
 		s.Require().ErrorIs(err, session.ErrNoProp, "%s: the letter refuses as a thing that is not here", when)
 		s.NotContains(knownCellProps(s.T(), s.mgr, campSession, "bob"), campLetter, "%s: bob's map shows the letter", when)
-		s.Empty(s.arrivalsOn("bob"), "%s", when)
+		s.Empty(s.arrivalsIn(s.toldSince(marks, "bob")), "%s", when)
 	}
 	absent("at first light")
 
@@ -306,15 +312,23 @@ func (s *HoldOutSessionSuite) TestTheLetterArrivesAtRoundSixThroughTheSeam() {
 		s.Contains(knownCellProps(s.T(), s.mgr, campSession, "bob"), campLetter)
 		s.Contains(knownCellProps(s.T(), s.mgr, campSession, "alice"), campLetter)
 		for _, who := range []string{"alice", "bob"} {
-			arrivals := s.arrivalsOn(who)
-			s.Require().Len(arrivals, 1, "%s heard %v", who, s.kinds(who))
-			s.Equal(session.ArrivedBody{ID: campLetter, Kind: session.PlacementProp, Cell: letterAt}, arrivals[0])
-			s.assertDense(who)
+			told := s.toldSince(marks, who)
+			arrivals := s.arrivalsIn(told)
+			s.Require().Len(arrivals, 1, "%s heard %v", who, beatNames(told))
+			s.Equal(arrivedBeat{ID: campLetter, Kind: string(session.PlacementProp), Cell: letterAt}, arrivals[0])
 		}
 		_, err := s.mgr.Hold(context.Background(), &session.HoldInput{
 			Session: campSession, Member: "bob", Target: campLetter, Range: 9})
 		s.Require().NoError(err, "and it can be picked up")
-		s.Equal(session.HeldBody{Holder: "bob", Prop: campLetter}, s.bodyOf("alice", session.EventHeld))
+		held := beatsNamed(s.toldSince(marks, "alice"), encounter.BeatHeld)
+		s.Require().Len(held, 1, "alice is told of the pick-up once")
+		var body struct {
+			Holder string `json:"holder"`
+			Prop   string `json:"prop"`
+		}
+		held[0].decode(s.T(), &body)
+		s.Equal("bob", body.Holder)
+		s.Equal(campLetter, body.Prop)
 	})
 }
 
@@ -373,7 +387,7 @@ func (s *HoldOutSessionSuite) TestTheBlowThatFellsTheChiefBringsTheReinforcement
 	s.walk("alice", spatial.Position{X: at.X - 1, Y: at.Y})
 	s.Require().Equal(session.ClockTurn, s.turn("alice").Clock, "alice is in the chief's face")
 	s.weakenTheChief()
-	s.stream.published = nil
+	marks := s.reserveMarks("alice", "bob")
 	s.Require().Equal("alice", s.turn("alice").Active)
 
 	out, err := s.mgr.Attack(context.Background(), &session.AttackInput{
@@ -384,8 +398,9 @@ func (s *HoldOutSessionSuite) TestTheBlowThatFellsTheChiefBringsTheReinforcement
 	s.Require().NotNil(out)
 
 	s.Run("the chief is down and the zombies stand at the gate", func() {
-		s.Contains(s.kinds("alice"), session.EventStruck)
-		s.Contains(s.kinds("alice"), session.EventDowned)
+		told := beatNames(s.toldSince(marks, "alice"))
+		s.Contains(told, string(encounter.OutcomeStruck))
+		s.Contains(told, string(encounter.OutcomeDown))
 		rows := s.roster()
 		for _, id := range campReinforcements {
 			s.Require().Contains(rows, id)
@@ -396,21 +411,10 @@ func (s *HoldOutSessionSuite) TestTheBlowThatFellsTheChiefBringsTheReinforcement
 
 	s.Run("the arrivals are narrated to everyone who was there, after the fall", func() {
 		for _, who := range []string{"alice", "bob"} {
-			arrivals := s.arrivalsOn(who)
-			s.Require().Len(arrivals, 3, "%s heard %v", who, s.kinds(who))
-			s.assertDense(who)
+			told := s.toldSince(marks, who)
+			s.Require().Len(s.arrivalsIn(told), 3, "%s heard %v", who, beatNames(told))
 		}
-		kinds := s.kinds("alice")
-		downAt, arrivedAt := -1, -1
-		for i, k := range kinds {
-			switch {
-			case k == session.EventDowned && downAt < 0:
-				downAt = i
-			case k == session.EventArrived && arrivedAt < 0:
-				arrivedAt = i
-			}
-		}
-		s.Less(downAt, arrivedAt, "the fall is the cause")
+		s.fallBeforeArrival(s.toldSince(marks, "alice"))
 	})
 
 	s.Run("the writes were one commit, not a split", func() {

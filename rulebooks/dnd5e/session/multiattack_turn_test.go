@@ -76,16 +76,11 @@ type swingBeat struct {
 func (s *MonsterTurnTestSuite) swingsIn(mgr *session.Manager, member string, from int) []swingBeat {
 	s.T().Helper()
 
-	entries, err := mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: member})
-	s.Require().NoError(err)
-
 	swings := make([]swingBeat, 0, 2)
-	for _, entry := range entries[from:] {
+	for _, entry := range beatsNamed(storyBeats(s.T(), mgr, "sess", member)[from:], string(encounter.OutcomeStruck), string(encounter.OutcomeMissed)) {
 		var beat swingBeat
-		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
-		if beat.Beat == "struck" || beat.Beat == "missed" {
-			swings = append(swings, beat)
-		}
+		entry.decode(s.T(), &beat)
+		swings = append(swings, beat)
 	}
 
 	return swings
@@ -208,7 +203,7 @@ func (s *MonsterTurnTestSuite) TestASequenceStopsWhenTheTargetGoesDown() {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: firstInReach{},
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: newFakeCharacters(frail), Events: session.DiscardEvents{},
+		Characters: newFakeCharacters(frail),
 	})
 	s.Require().NoError(err)
 
@@ -295,7 +290,7 @@ func (s *MonsterTurnTestSuite) TestEachSwingsConcentrationCheckLandsBehindItsOwn
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: firstInReach{},
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: chars, Events: session.DiscardEvents{},
+		Characters: chars,
 	})
 	s.Require().NoError(err)
 
@@ -443,7 +438,7 @@ func (s *MonsterTurnTestSuite) bossBreaksTheFightersAreaWith(wrath bool, roller 
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: firstInReach{},
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: chars, Events: session.DiscardEvents{},
+		Characters: chars,
 	})
 	s.Require().NoError(err)
 	launchScene(s.T(), mgr, bossBesideFighter())
@@ -530,7 +525,7 @@ func (s *MonsterTurnTestSuite) TestATurnBoundaryTellsConcentrationItEnded() {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: firstInReach{},
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: chars, Events: session.DiscardEvents{},
+		Characters: chars,
 	})
 	s.Require().NoError(err)
 	launchScene(s.T(), mgr, bossBesideFighter())

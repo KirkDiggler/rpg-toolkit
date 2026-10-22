@@ -84,9 +84,9 @@ func (s *DeathTestSuite) SetupTest() {
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
 	s.stream = &fakeStream{}
 
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: s.stream,
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -147,24 +147,30 @@ func (s *DeathTestSuite) storedHP(id string) int {
 	return -1
 }
 
-// eventsOfKind collects everything of one kind published since the last reset.
-func (s *DeathTestSuite) eventsOfKind(kind session.EventKind) []session.Event {
-	var out []session.Event
-	for _, event := range s.stream.published {
-		if event.Kind == kind {
-			out = append(out, event)
+// downed is every fall the act stream delivered since the last reset, one
+// act per recipient.
+func (s *DeathTestSuite) downed() []session.Act {
+	var out []session.Act
+	for _, act := range s.stream.published {
+		if change, ok := act.Body.(session.StateChange); ok && change.Change == session.StateDowned {
+			out = append(out, act)
 		}
 	}
 
 	return out
 }
 
-// payloadOf decodes a beat into the fields these scenes assert on.
-func (s *DeathTestSuite) payloadOf(event session.Event) map[string]any {
-	var beat map[string]any
-	s.Require().NoError(json.Unmarshal(event.Payload, &beat))
+// fightsEnded is every fight ending the act stream delivered since the last
+// reset, one act per recipient.
+func (s *DeathTestSuite) fightsEnded() []session.Act {
+	var out []session.Act
+	for _, act := range s.stream.published {
+		if clock, ok := act.Body.(session.ClockEntry); ok && clock.Mark == session.ClockFightDissolved {
+			out = append(out, act)
+		}
+	}
 
-	return beat
+	return out
 }
 
 // swingUntilTheSkeletonFalls is alice hitting it until it stops standing.
@@ -225,9 +231,9 @@ func (s *DeathTestSuite) dropTheSkeleton() {
 func (s *DeathTestSuite) TestTheSwingNoticesItsOwnKill() {
 	s.dropTheSkeleton()
 
-	s.NotEmpty(s.eventsOfKind(session.EventDowned),
+	s.NotEmpty(s.downed(),
 		"the blow is recorded, and the same call notices what the blow did")
-	s.NotEmpty(s.eventsOfKind(session.EventFightEnded),
+	s.NotEmpty(s.fightsEnded(),
 		"and the fight it ended is over")
 
 	turn, err := s.mgr.Turn(context.Background(), &session.TurnInput{Session: "sess", Member: "alice"})
@@ -242,22 +248,16 @@ func (s *DeathTestSuite) TestTheSwingNoticesItsOwnKill() {
 // The audience is not scoped to whoever swung — a member downed anywhere on the
 // map is news to everybody, including bob, who is behind a solid wall and did
 // nothing at all.
-//
-// The event kind is EventDowned while the beat inside it still says "down":
-// that asymmetry is the ruling, and asserting both here is what would notice if
-// either half drifted.
 func (s *DeathTestSuite) TestEveryMemberHearsTheDeath() {
 	s.dropTheSkeleton()
 
-	down := s.eventsOfKind(session.EventDowned)
+	down := s.downed()
 	s.Require().Len(down, 3, "every member hears it: alice, bob, and the skeleton's own audience")
 
 	heard := map[string]bool{}
-	for _, event := range down {
-		heard[event.Recipient] = true
-		s.Equal(session.EventDowned, event.Kind, "the seam's word is downed")
-		s.Equal("down", s.payloadOf(event)["beat"], "while the composition's own beat kind is untouched")
-		s.Equal("skeleton", s.payloadOf(event)["member"], "and it names who fell")
+	for _, act := range down {
+		heard[act.Recipient] = true
+		s.Equal("skeleton", act.Body.(session.StateChange).Party.ID, "and it names who fell")
 	}
 	s.Equal(map[string]bool{"alice": true, "bob": true, "skeleton": true}, heard)
 }
@@ -269,12 +269,12 @@ func (s *DeathTestSuite) TestEveryMemberHearsTheDeath() {
 // table that heard the skeleton fall twice would render it twice.
 func (s *DeathTestSuite) TestTheDeathIsNotAnnouncedTwice() {
 	s.dropTheSkeleton()
-	s.Require().Len(s.eventsOfKind(session.EventDowned), 3)
+	s.Require().Len(s.downed(), 3)
 
 	s.bobSteps()
 
-	s.Len(s.eventsOfKind(session.EventDowned), 3, "one body, announced once")
-	s.Len(s.eventsOfKind(session.EventFightEnded), 3, "and one ending")
+	s.Len(s.downed(), 3, "one body, announced once")
+	s.Len(s.fightsEnded(), 3, "and one ending")
 }
 
 // TestTheLastOneDownedEndsTheFightByDefeat is the slice's own sentence.
@@ -284,13 +284,18 @@ func (s *DeathTestSuite) TestTheDeathIsNotAnnouncedTwice() {
 func (s *DeathTestSuite) TestTheLastOneDownedEndsTheFightByDefeat() {
 	s.dropTheSkeleton()
 
-	ended := s.eventsOfKind(session.EventFightEnded)
+	ended := s.fightsEnded()
 	s.Require().NotEmpty(ended, "the last one down ends the fight")
 
-	beat := s.payloadOf(ended[0])
-	s.Equal(string(session.DissolveByDefeat), beat["cause"],
+	dissolved := ended[0].Body.(session.ClockEntry).Dissolved
+	s.Require().NotNil(dissolved)
+	s.Equal(string(session.DissolveByDefeat), dissolved.Cause,
 		"and it says the fight was lost rather than left")
-	s.ElementsMatch([]any{"alice", "skeleton"}, beat["members"],
+	members := make([]string, 0, len(dissolved.Members))
+	for _, m := range dissolved.Members {
+		members = append(members, m.ID)
+	}
+	s.ElementsMatch([]string{"alice", "skeleton"}, members,
 		"everyone the fight held comes back out of it")
 
 	turn, err := s.mgr.Turn(context.Background(), &session.TurnInput{Session: "sess", Member: "alice"})
@@ -298,51 +303,40 @@ func (s *DeathTestSuite) TestTheLastOneDownedEndsTheFightByDefeat() {
 	s.Equal(session.ClockWorld, turn.Clock, "alice is free-roaming again, and nobody asked for that")
 }
 
-// TestDownedAndFightEndedCarryTypedBodies pins rpg-toolkit#941's other pair:
-// the killing blow's own consequences — the body, and the fight ending it —
-// reach a client as DownedBody and FightEndedBody, not as payload a client
-// decodes itself.
-func (s *DeathTestSuite) TestDownedAndFightEndedCarryTypedBodies() {
-	s.dropTheSkeleton()
-
-	downed := s.eventsOfKind(session.EventDowned)
-	s.Require().NotEmpty(downed)
-	body, ok := downed[0].Body.(session.DownedBody)
-	s.Require().True(ok, "got %T", downed[0].Body)
-	s.Equal("skeleton", body.Member)
-
-	ended := s.eventsOfKind(session.EventFightEnded)
-	s.Require().NotEmpty(ended)
-	endedBody, ok := ended[0].Body.(session.FightEndedBody)
-	s.Require().True(ok, "got %T", ended[0].Body)
-	s.Equal(session.DissolveByDefeat, endedBody.Cause)
-}
-
 // TestTheBeatOrderReachesTheClientAsCauseThenEffect is the composition's
 // ordering law arriving where a table actually reads it.
 //
 // The strike, the body, the ending — in that order, in one response's worth of
-// events. A client renders in sequence order, so an ending delivered ahead of
+// acts. A client renders in delivery order, so an ending delivered ahead of
 // the death that caused it would narrate the fight as won before anybody fell.
 func (s *DeathTestSuite) TestTheBeatOrderReachesTheClientAsCauseThenEffect() {
 	s.dropTheSkeleton()
 
-	var kinds []session.EventKind
-	for _, event := range s.stream.published {
-		if event.Recipient != "alice" {
+	var kinds []string
+	for _, act := range s.stream.published {
+		if act.Recipient != "alice" {
 			continue
 		}
-		switch event.Kind {
-		case session.EventStruck, session.EventDowned, session.EventFightEnded:
-			kinds = append(kinds, event.Kind)
+		switch body := act.Body.(type) {
+		case session.AttackAct:
+			if body.Outcome == session.AttackHit {
+				kinds = append(kinds, "hit")
+			}
+		case session.StateChange:
+			if body.Change == session.StateDowned {
+				kinds = append(kinds, "downed")
+			}
+		case session.ClockEntry:
+			if body.Mark == session.ClockFightDissolved {
+				kinds = append(kinds, "fight_dissolved")
+			}
 		default:
 		}
 	}
 
 	s.Require().GreaterOrEqual(len(kinds), 3)
-	s.Equal([]session.EventKind{session.EventDowned, session.EventFightEnded}, kinds[len(kinds)-2:],
+	s.Equal([]string{"hit", "downed", "fight_dissolved"}, kinds[len(kinds)-3:],
 		"the last strike, then the body, then the ending the body explains")
-	s.Equal(session.EventStruck, kinds[len(kinds)-3])
 }
 
 // TestTheEncounterOutlivesTheFight is ruled fork (c) surviving the seam, and
@@ -399,19 +393,18 @@ func (s *DeathTestSuite) TestTheSurvivorWalksAgain() {
 // TestNothingReachesAClientUnnamed is the whole scene's guard rail.
 //
 // Three beats now leave one Attack — the strike, the death, and the ending — and
-// any of them reaching a client as EventUnknown would leave a table unable to
+// any of them reaching a client undecoded would leave a table unable to
 // narrate the moment the fight was won.
 //
 // It is also the answer to the question rpg-toolkit#1083 asked of this seam:
 // whether the new call site needs new vocabulary. It does not. The beats are the
-// same kinds kindOf already names; only the verb they arrive on changed.
+// same ones the act fold already reads; only the verb they arrive on changed.
 func (s *DeathTestSuite) TestNothingReachesAClientUnnamed() {
 	s.dropTheSkeleton()
 
 	s.Require().NotEmpty(s.stream.published)
-	for _, event := range s.stream.published {
-		s.NotEqual(session.EventUnknown, event.Kind,
-			"beat at seq %d reached %s unnamed", event.Seq, event.Recipient)
+	for _, act := range s.stream.published {
+		s.Empty(act.Undecoded, "a %s act reached %s undecoded", act.Family, act.Recipient)
 	}
 }
 
@@ -479,9 +472,9 @@ func (s *DeathTestSuite) TestTheKillingBlowNoticesACHARACTERToo() {
 	}
 	s.Require().Zero(s.characters.byID["alice"].HitPoints)
 
-	down := s.eventsOfKind(session.EventDowned)
+	down := s.downed()
 	s.Require().NotEmpty(down, "the blow that dropped her is the blow that says so")
-	s.Equal("alice", s.payloadOf(down[0])["member"])
+	s.Equal("alice", down[0].Body.(session.StateChange).Party.ID)
 }
 
 // brokenAfterWriting is a repository that answers reads until something is
@@ -569,7 +562,7 @@ func (s *DeathTestSuite) TestAKillingAttackReportsTheNestedBoundarySaveFailure()
 	}
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: failing, Events: s.stream,
+		Characters: failing,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -636,7 +629,7 @@ func (s *DeathTestSuite) TestASwingThatCannotRecordStillNamesTheSheetItWrote() {
 	}
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: chars, Events: s.stream,
+		Characters: chars,
 	})
 	s.Require().NoError(err)
 
@@ -747,16 +740,15 @@ func (s *DeathTestSuite) TestAMemberStillUpIsNotRefused() {
 func (s *DeathTestSuite) TestAKillingBlowAboutADownedMemberIsStillLegal() {
 	s.duelAtZero()
 
-	story, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "bob"})
-	s.Require().NoError(err)
+	story := storyBeats(s.T(), s.mgr, "sess", "bob")
 	s.Require().NotEmpty(story)
 	lastStrike := false
-	for _, event := range story {
-		var beat struct {
-			Beat    string   `json:"beat"`
+	for _, beat := range beatsNamed(story, string(encounter.OutcomeStruck)) {
+		var body struct {
 			Targets []string `json:"targets"`
 		}
-		if json.Unmarshal(event.Payload, &beat) == nil && beat.Beat == "struck" && slices.Contains(beat.Targets, "alice") {
+		beat.decode(s.T(), &body)
+		if slices.Contains(body.Targets, "alice") {
 			lastStrike = true
 		}
 	}
@@ -813,8 +805,8 @@ func (s *DeathTestSuite) TestTheReadsStayOpenToTheDowned() {
 	_, err = s.mgr.View(ctx, &session.ViewInput{Session: "sess", Member: "alice"})
 	s.NoError(err, "and holdings")
 
-	_, err = s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice"})
-	s.NoError(err, "and a story, which is how a client renders what just happened to it")
+	_, err = s.mgr.Acts(ctx, &session.ActsInput{Session: "sess", Member: "alice"})
+	s.NoError(err, "and her acts, which is how a client renders what just happened to it")
 
 	_, err = s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
 	s.NoError(err, "and a clock")
@@ -896,7 +888,7 @@ func (s *DeathTestSuite) TestAMemberWithNoSheetIsRefusedNotWalkedPast() {
 		Path: ambushPath()[:3],
 	})
 	s.Require().ErrorIs(err, session.ErrNoSheet, "a sheetless monster is a member nobody can read")
-	s.Empty(s.eventsOfKind(session.EventDowned), "nothing died")
+	s.Empty(s.downed(), "nothing died")
 }
 
 // TestTheAnswerNamesOnlyWhoWasAsked is D1's carry-forward, and it is reachable
@@ -920,7 +912,7 @@ func (s *DeathTestSuite) TestTheAnswerNamesOnlyWhoWasAsked() {
 
 	_, err := s.mgr.Status(context.Background(), &session.StatusInput{Session: "sess"})
 	s.Require().NoError(err)
-	s.Empty(s.eventsOfKind(session.EventDowned),
+	s.Empty(s.downed(),
 		"a sheet for somebody who is not a member is not news about anybody")
 }
 
@@ -1000,7 +992,7 @@ func (s *DeathTestSuite) TestTheSeamReadsOnTheCallersContext() {
 	chars := &markedCharacters{fakeCharacters: newFakeCharacters(armedFighter("alice"), armedFighter("bob"))}
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: chars, Events: s.stream,
+		Characters: chars,
 	})
 	s.Require().NoError(err)
 
@@ -1055,7 +1047,7 @@ func (s *DeathTestSuite) TestAStoreThatCannotAnswerFailsTheVerb() {
 	}
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: chars, Events: s.stream,
+		Characters: chars,
 	})
 	s.Require().NoError(err)
 

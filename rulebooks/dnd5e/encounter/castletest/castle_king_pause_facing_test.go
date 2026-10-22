@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package dungeonspec_test
+package castletest
 
 // castle_king_pause_facing_test.go is THE GATE GUARDS WATCH THE INCOMERS
 // (rpg-project#624): the gate patrol's two gate-side corners state `wait: 2`

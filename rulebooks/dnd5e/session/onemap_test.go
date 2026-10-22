@@ -68,7 +68,7 @@ func (s *OneMapSuite) SetupTest() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: testCharacters(), Events: session.DiscardEvents{},
+		Characters: testCharacters(),
 	})
 	s.Require().NoError(err)
 
@@ -150,13 +150,13 @@ func (s *OneMapSuite) TestAWalkCrossesTheDoorway() {
 //
 // The step that changed rooms is still a distinguishable beat, so a client can
 // narrate a doorway differently from a corridor — which is the whole reason the
-// traversed event kind survives a reshape that removed rooms from everything
+// traversed beat survives a reshape that removed rooms from everything
 // else a client sees.
 func (s *OneMapSuite) TestACrossingReachesClientsAsACrossing() {
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: testCharacters(), Events: stream,
+		Characters: testCharacters(),
 	})
 	s.Require().NoError(err)
 
@@ -168,16 +168,21 @@ func (s *OneMapSuite) TestACrossingReachesClientsAsACrossing() {
 	})
 	s.Require().NoError(err)
 
-	kinds := map[session.EventKind]int{}
-	for _, e := range stream.published {
-		kinds[e.Kind]++
+	steps, undecoded := 0, 0
+	for _, act := range stream.published {
+		if act.Undecoded != "" {
+			undecoded++
+		}
+		if walk, ok := act.Body.(session.WalkAct); ok && walk.Mover.ID == "alice" {
+			steps += len(walk.Path)
+		}
 	}
-	s.Positive(kinds[session.EventMoved], "the cells inside the hall are moves")
+	s.Positive(steps, "the cells inside the hall are moves")
 	// The step through the gate is an ordinary move now, not its own kind: the
 	// composition stopped narrating crossings separately once a crossing became
 	// an ordinary step (rpg-toolkit#1048). A client that wants to draw a door
 	// matches the step against Atlas.Doorways, which still lists every pair.
-	s.Zero(kinds[session.EventUnknown], "with nothing unnameable in between")
+	s.Zero(undecoded, "with nothing unnameable in between")
 }
 
 // TestARefusalIsDescribedInTheCallersOwnCoordinates.
@@ -379,7 +384,7 @@ func (s *OneMapSuite) shallowSession() *session.Manager {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
-		Characters: testCharacters(), Events: session.DiscardEvents{},
+		Characters: testCharacters(),
 	})
 	s.Require().NoError(err)
 

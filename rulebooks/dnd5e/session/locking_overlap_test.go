@@ -66,7 +66,7 @@ func (s *SessionLockSuite) TestOverlappingMovesBothSurviveWithoutLostUpdates() {
 	defer resume()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		Sessions: newFakeSessions(), Encounters: worlds, Characters: testCharacters(),
-		Events: session.DiscardEvents{}, Dice: testDice{}, PresentationIDs: testPresentationIDs{},
+		Dice: testDice{}, PresentationIDs: testPresentationIDs{},
 		TurnDriver: session.Pass{}, Locker: locker,
 	})
 	s.Require().NoError(err)
@@ -119,13 +119,10 @@ func (s *SessionLockSuite) TestOverlappingMovesBothSurviveWithoutLostUpdates() {
 		s.Require().NoError(readErr)
 		s.Equal(expected, where.Position, "both independently valid moves must survive persistence")
 	}
-	story, err := mgr.Story(ctx, &session.StoryInput{Session: "run", Member: "alice"})
-	s.Require().NoError(err)
 	moves := map[string]int{}
-	for _, event := range story {
-		if body, ok := event.Body.(session.MovedBody); ok {
-			moves[body.Member]++
-		}
+	for _, beat := range beatsNamed(storyBeats(s.T(), mgr, "run", "alice"), encounter.BeatMoved) {
+		member, _ := beat.Fields["member"].(string)
+		moves[member]++
 	}
 	s.Equal(map[string]int{"alice": 1, "bob": 1}, moves, "the recorded outcomes survive too")
 }

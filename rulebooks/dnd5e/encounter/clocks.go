@@ -627,7 +627,7 @@ func (e *Encounter) runIntents(
 		// creature's roll is a driven activation of its own, not part of
 		// whichever player verb raised the clock that drew it.
 		if decision.Pick != nil && (j == startJ || len(decision.Pick.Candidates) > 0) {
-			if perr := e.inAct("time", actRef{}, func() error {
+			if perr := e.inAct("time", "", func() error {
 				if berr := e.appendPickBeat(activeID, decision.Pick); berr != nil {
 					return berr
 				}
@@ -645,7 +645,7 @@ func (e *Encounter) runIntents(
 			done         bool
 			intentDeltas map[MemberID]*IntelDelta
 		)
-		dexecerr := e.inAct(intentVerb(decision.Intent), actRef{}, func() error {
+		dexecerr := e.inAct(intentVerb(decision.Intent), "", func() error {
 			var xerr error
 			done, intentDeltas, xerr = e.executeTurnIntent(
 				activeID, m, view, decision.Intent, budget,
@@ -995,7 +995,7 @@ func (e *Encounter) executeTurnIntent(
 				e.pause = &pause{
 					kind:   PauseTurn,
 					member: activeID,
-					act:    e.currentAct(),
+					act:    e.CurrentAct(),
 					outer:  e.outerActs(),
 					turn: &turnPause{
 						round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,
@@ -1084,7 +1084,7 @@ func (e *Encounter) executeTurnIntent(
 				moved:     res.moved,
 				at:        at,
 				audience:  audience,
-				act:       e.currentAct(),
+				act:       e.CurrentAct(),
 				outer:     e.outerActs(),
 				turn: &turnPause{
 					round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,
@@ -1232,7 +1232,7 @@ func (e *Encounter) executeTurnIntent(
 				at:        at,
 				audience:  audience,
 				cause:     it.Cause,
-				act:       e.currentAct(),
+				act:       e.CurrentAct(),
 				outer:     e.outerActs(),
 				turn: &turnPause{
 					round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,
@@ -2197,9 +2197,40 @@ func (e *cellQuery) routeToRemembered(
 // rather than reinterpreted here. A caller with a real budget of zero has
 // nowhere to go and must say so before it asks, because asking with zero is
 // asking for the whole floor.
+//
+// A flood with no `forgiven` is memoized for the query's read (see
+// [cellQuery]): the same origin, mover, walker and limit are flooded once and
+// the field is shared, read-only, by every caller in the read. A flood with a
+// `forgiven` predicate is computed every time, because a predicate cannot be
+// a key.
 func (e *cellQuery) floodFrom(
 	mover, walker MemberID, from spatial.Position, forgiven func(spatial.Position) (bool, error), limit int,
 ) (spatial.FieldOutput, error) {
+	if forgiven != nil {
+		return e.computeFlood(mover, walker, from, forgiven, limit)
+	}
+	key := floodKey{mover: mover, walker: walker, from: from, limit: limit}
+	if field, ok := e.floods[key]; ok {
+		return field, nil
+	}
+	field, err := e.computeFlood(mover, walker, from, nil, limit)
+	if err != nil {
+		return spatial.FieldOutput{}, err
+	}
+	if e.floods == nil {
+		e.floods = map[floodKey]spatial.FieldOutput{}
+	}
+	e.floods[key] = field
+
+	return field, nil
+}
+
+// computeFlood is [cellQuery.floodFrom] without the memo: one flood, counted
+// on the run's floodsComputed.
+func (e *cellQuery) computeFlood(
+	mover, walker MemberID, from spatial.Position, forgiven func(spatial.Position) (bool, error), limit int,
+) (spatial.FieldOutput, error) {
+	e.floodsComputed++
 	var crossingErr error
 	field, err := spatial.Field(e.canvas.GetGrid(), spatial.FieldInput{
 		Sources: []spatial.Position{from},

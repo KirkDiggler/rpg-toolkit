@@ -116,7 +116,6 @@ func driverScene(t *testing.T, source session.TurnDriverSource) *session.Manager
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDrivers: source,
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 		Characters: newFakeCharacters(armedFighter("fighter-a"), armedFighter("fighter-b")),
-		Events:     session.DiscardEvents{},
 	})
 	require.NoError(t, err)
 	return mgr
@@ -287,7 +286,7 @@ func TestExactlyOneTurnDriverIsWired(t *testing.T) {
 		return &session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 			PresentationIDs: testPresentationIDs{}, Dice: testDice{},
 			Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
-			Characters: newFakeCharacters(armedFighter("fighter-a")), Events: session.DiscardEvents{},
+			Characters: newFakeCharacters(armedFighter("fighter-a")),
 		}
 	}
 

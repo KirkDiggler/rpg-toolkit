@@ -63,8 +63,8 @@ func (e *Encounter) resumeDirective(ctx context.Context) (*ResumeOutput, error) 
 	// after the answer, and the window a later cell may open, carry the act
 	// the walk was held in. A pause saved before acts existed has none.
 	// The acts it was opened inside come back beneath it, outermost first.
-	if h.act.corr != "" {
-		defer e.pushActs(append(append([]actRef(nil), h.outer...), h.act)...)()
+	if h.act != "" {
+		defer e.pushActs(append(append([]string(nil), h.outer...), h.act)...)()
 	}
 
 	downNow, derr := e.downNow()
