@@ -25,9 +25,9 @@ import (
 // first cell of the castle an incomer from outside stands on.
 var theDoorway = castleCell(0, 12)
 
-// TestMadKingGateGuardsDwellWatchingTheApproach walks the hero in from the
-// party start and paces it sneaking in the gatehouse, where it sees both gate
-// guards, with an arc of 120 scripted for both, until a gate
+// TestMadKingGateGuardsDwellWatchingTheApproach paces a sneaking hero in the
+// gatehouse, where it sees both gate guards, with an arc of 120 scripted for
+// both, until a gate
 // guard has stood out a dwell at each of the four posts; on every round of it
 // he faces the post's word and his zone holds the cell the post watches.
 func TestMadKingGateGuardsDwellWatchingTheApproach(t *testing.T) {
@@ -40,9 +40,8 @@ func TestMadKingGateGuardsDwellWatchingTheApproach(t *testing.T) {
 		stealth.d20s[hero][i] = 15
 	}
 	s := openTheCastleAs(t, castleHost{
-		at: partyStart(t), resolver: stealth, arcs: map[encounter.MemberID]int{kingGate1: 120, kingGate2: 120},
+		at: gatehouseSeat, resolver: stealth, arcs: map[encounter.MemberID]int{kingGate1: 120, kingGate2: 120},
 	})
-	s.walkIn()
 	require.Equal(t, "Gatehouse", labelOf(t, theDoorway), "precondition: the doorway's inner cell is the gatehouse's")
 	s.declare(hero)
 	here := s.at(hero)

@@ -265,15 +265,14 @@ func (s *kingScene) seenRegions() map[encounter.RegionID]int {
 	return by
 }
 
-// TestMadKingFrontDoor is the front door: the hero walks in from the party
-// start through the gatehouse's doorway and spears the nearest gate guard. Nobody authored a rule for it —
+// TestMadKingFrontDoor is the front door: the hero, in the gatehouse, spears
+// the nearest gate guard. Nobody authored a rule for it —
 // the aggression law turns the garrison, the fight forms at the gate, and the
 // gate patrol's own row shouts the alarm. Nobody comes (the QA script's step
 // 6, rpg-project#639): the far room answers the gate opening, not the alarm.
 func TestMadKingFrontDoor(t *testing.T) {
 	t.Parallel()
-	s := openTheCastle(t, partyStart(t))
-	s.walkIn()
+	s := openTheCastle(t, gatehouseSeat)
 	require.Equal(t, encounter.StanceNeutral, s.stance(garrison, encounter.FactionParty),
 		"precondition: the gate is civil to the party")
 	require.NotContains(t, memberIDsOf(t, s.enc), kingReserve, "precondition: the reserves are in the barracks, unseen")
@@ -352,8 +351,7 @@ func TestMadKingTheAlarmCarriesToTheKeenEar(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			s := openTheCastleWithEars(t, partyStart(t), nil, map[encounter.MemberID]int{tc.who: tc.passive})
-			s.walkIn()
+			s := openTheCastleWithEars(t, gatehouseSeat, nil, map[encounter.MemberID]int{tc.who: tc.passive})
 			s.struck(kingGate1, false)
 			require.True(t, s.learners("alarm-raised")[hero], "precondition: the gate raised the alarm")
 			require.Equal(t, tc.learns, s.learners("alarm-raised")[tc.who])
