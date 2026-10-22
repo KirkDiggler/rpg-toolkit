@@ -28,8 +28,11 @@ import (
 // it stops only the direct ray, and a sight lane can start on a void cell past
 // a wall's end (rpg-toolkit#2068).
 //
-// The gatehouse: with the gate shut the hero sees only the gatehouse, from the
-// party start and from the gate, and the open gate shows the courtyard.
+// The gatehouse: the party starts outside, on open ground whose one way into
+// the castle is the gatehouse's south doorway (the operator's layout,
+// rpg-project#654). With the gate shut the hero sees only the outside and the
+// gatehouse, from the party start, from inside the doorway and from the gate,
+// and the open gate shows the courtyard.
 //
 // The kitchen, the chapel, the great hall and the throne room: with that
 // room's door shut and every other door open, the hero's route from the party
@@ -43,17 +46,23 @@ func TestMadKingEveryRoomHasOneWayIn(t *testing.T) {
 	t.Run("the gatehouse", func(t *testing.T) {
 		t.Parallel()
 		s := openTheCastle(t, partyStart(t))
+		outside, ok := s.enc.RegionAt(s.at(hero))
+		require.True(t, ok, "the party start is floor")
 		gatehouse, ok := s.enc.RegionAt(castleCell(0, 11))
-		require.True(t, ok, "the party start is the gatehouse's floor")
+		require.True(t, ok, "the gatehouse's floor")
+		require.NotEqual(t, outside, gatehouse, "the party starts outside the gatehouse")
 		courtyard, ok := s.enc.RegionAt(castleCell(0, 4))
 		require.True(t, ok, "the courtyard's floor")
 		onlyTheGatehouse := func(where string) {
 			for region := range s.seenRegions() {
-				require.Equal(t, gatehouse, region, "%s, with the gate shut, the hero sees only the gatehouse", where)
+				require.Contains(t, []encounter.RegionID{outside, gatehouse}, region,
+					"%s, with the gate shut, the hero sees only the outside and the gatehouse", where)
 			}
 		}
 
 		onlyTheGatehouse("from the party start")
+		s.walkIn()
+		onlyTheGatehouse("from inside the doorway")
 		s.walkTo(castleCell(0, 6))
 		onlyTheGatehouse("from the gate")
 		s.open(kingGateDoor)
@@ -238,29 +247,33 @@ func seatAt(cell spatial.Position) spatial.Position {
 	return spatial.Position{X: float64(col), Y: float64(row)}
 }
 
-// seenRegions is how many cells of each region the hero sees now.
+// seenRegions is how many cells of each region the hero sees now. A seen
+// cell in no region is scenery — floor the file paints under a wall's line,
+// which nobody stands on (the outside's edge along the gatehouse's walls) —
+// and counts toward none.
 func (s *kingScene) seenRegions() map[encounter.RegionID]int {
 	s.t.Helper()
 	out, err := s.enc.VisibleCellsFor(&encounter.VisibleCellsInput{Member: hero})
 	require.NoError(s.t, err)
 	by := map[encounter.RegionID]int{}
 	for _, cell := range out.Cells {
-		region, ok := s.enc.RegionAt(cell)
-		require.True(s.t, ok, "%v is floor", cell)
-		by[region]++
+		if region, ok := s.enc.RegionAt(cell); ok {
+			by[region]++
+		}
 	}
 
 	return by
 }
 
-// TestMadKingFrontDoor is the front door: the hero comes in at the party
-// start and spears the nearest gate guard. Nobody authored a rule for it —
+// TestMadKingFrontDoor is the front door: the hero walks in from the party
+// start through the gatehouse's doorway and spears the nearest gate guard. Nobody authored a rule for it —
 // the aggression law turns the garrison, the fight forms at the gate, and the
 // gate patrol's own row shouts the alarm. Nobody comes (the QA script's step
 // 6, rpg-project#639): the far room answers the gate opening, not the alarm.
 func TestMadKingFrontDoor(t *testing.T) {
 	t.Parallel()
 	s := openTheCastle(t, partyStart(t))
+	s.walkIn()
 	require.Equal(t, encounter.StanceNeutral, s.stance(garrison, encounter.FactionParty),
 		"precondition: the gate is civil to the party")
 	require.NotContains(t, memberIDsOf(t, s.enc), kingReserve, "precondition: the reserves are in the barracks, unseen")
@@ -340,6 +353,7 @@ func TestMadKingTheAlarmCarriesToTheKeenEar(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			s := openTheCastleWithEars(t, partyStart(t), nil, map[encounter.MemberID]int{tc.who: tc.passive})
+			s.walkIn()
 			s.struck(kingGate1, false)
 			require.True(t, s.learners("alarm-raised")[hero], "precondition: the gate raised the alarm")
 			require.Equal(t, tc.learns, s.learners("alarm-raised")[tc.who])

@@ -82,21 +82,24 @@
 # states the compass word that points it at what it keeps, nearest the
 # bearing from its cell to that cell: the cook looks at the kitchen door (e,
 # 90), the scullion into the kitchen (ne; its centre is at 53), the captain
-# down the gatehouse at whoever comes to the gate (s, the party start), the
+# down the gatehouse at whoever comes to the gate (s, the south doorway), the
 # turnkey and the sergeant at the cells door (w, 251; se, 120), the king at
-# the throne door (e, 90), the pedlar down past the corner wall at whoever
-# comes round it (s). The facings are test choices, not story. Creatures that walk a route face their steps; the gate
+# the throne door (e, 90), the pedlar down the open ground west of the
+# gatehouse at whoever comes round its corner (s). The facings are test choices, not story. Creatures that walk a route face their steps; the gate
 # guards' pause facings are rpg-project#624's. castle_king_facings_test.go
 # holds each cone over the cell it keeps.
 #
 # THE QA CASTLE (rpg-project#639). The castle is also the standing QA
 # script, and these pieces stage its steps, each a test in
-# dungeonspec/castle_king_script_test.go. The party starts outside, before
-# the gate (the gatehouse's label reads "Before the Gate"), with the
-# garrison civil. Round the corner wall west of the door stands a stranger,
-# the pedlar (townsfolk, civil), whose one line teaches `feast-tonight`
-# win or lose, so the captain's troupe line is offered. Without it, a party
-# that declares sneaking behind the corner, unseen, crosses to the gate
+# dungeonspec/castle_king_script_test.go. The party starts outside, with the
+# garrison civil, on open ground round the gatehouse whose one way into the
+# castle is a doorway in the gatehouse's south wall: the operator's own
+# layout (rpg-project#654), its cells, doorway and party start folded in
+# from the studio. Round the gatehouse's west corner, at the castle wall on
+# the kitchen side, stands a stranger, the pedlar (townsfolk, civil), whose
+# one line teaches `feast-tonight` win or lose, so the captain's troupe
+# line is offered. Without it, a party that walks in civil and declares
+# sneaking behind the corner wall inside the gate, unseen, crosses to the gate
 # while both gate guards stand at their beat posts and is rolled against by
 # nobody; at their door posts the crossing rolls. Declaring in plain sight
 # does nothing (sneaking R10). Fighting the gate guards brings nobody: the
@@ -211,8 +214,8 @@ tables:
         toward: sound
       # Hand edit (the QA castle's step 4, rpg-project#639): gate-1's loop.
       # He stands a round at the door post west of the captain turned ne to
-      # the cell under the gate, walks to the beat post north of the party
-      # start and stands a round there turned se to the incomers (#624), and
+      # the cell under the gate, walks to the beat post north of the south
+      # doorway and stands a round there turned se to the incomers (#624), and
       # walks back round by the west. gate-patrol-east is its mirror for
       # gate-2, so the two keep step: in two world rounds of every four both
       # stand at their beat posts with their backs to the gate. That is the
@@ -506,7 +509,7 @@ room:
           x: 0.39970403251589465
           z: 0
       - id: label-gatehouse
-        text: Before the Gate
+        text: Gatehouse
         location:
           x: 0.4330127018922192
           z: 14.25
@@ -3938,10 +3941,11 @@ room:
             offsetX: 0
             offsetZ: 0
         openings: []
-      # Hand edit (the QA castle's step 2, rpg-project#639): the corner wall,
+      # Hand edit (the QA castle's step 4, rpg-project#639): the corner wall,
       # one row long, off the gate wall west of the door. The cell behind it
-      # beside the stranger is out of the gate's sight: where a party learns
-      # the feast unwitnessed, and declares sneaking unseen.
+      # is out of the gate's sight: where a party that walked in civil
+      # declares sneaking unseen. The operator's layout (rpg-project#654)
+      # predates it; it is S2's, kept for the sneak window.
       - id: gate-corner-wall
         label: gate-corner-wall
         line:
@@ -4033,7 +4037,13 @@ room:
             depth: 0.5
             offsetX: 0
             offsetZ: 0
-        openings: []
+        openings:
+          - id: be88f72a-91bb-4568-baea-6b3c8e99ccd8
+            position: 7.901156922328045
+            width: 1.8749944567680359
+            door:
+              id: 26369b41-e58f-475d-963a-95086d4cd868
+              assetRef: dnd5e:env:dark-fortress:wall_door_double_01
       - id: kitchen-south-wall
         label: kitchen-south-wall
         line:
@@ -4607,6 +4617,8 @@ room:
         r: 5
       - q: -17
         r: 6
+      - q: -17
+        r: 17
       - q: -16
         r: -16
       - q: -16
@@ -4653,6 +4665,12 @@ room:
         r: 5
       - q: -16
         r: 6
+      - q: -16
+        r: 15
+      - q: -16
+        r: 16
+      - q: -16
+        r: 17
       - q: -15
         r: -16
       - q: -15
@@ -4699,6 +4717,16 @@ room:
         r: 5
       - q: -15
         r: 6
+      - q: -15
+        r: 13
+      - q: -15
+        r: 14
+      - q: -15
+        r: 15
+      - q: -15
+        r: 16
+      - q: -15
+        r: 17
       - q: -14
         r: -16
       - q: -14
@@ -4745,6 +4773,20 @@ room:
         r: 5
       - q: -14
         r: 6
+      - q: -14
+        r: 11
+      - q: -14
+        r: 12
+      - q: -14
+        r: 13
+      - q: -14
+        r: 14
+      - q: -14
+        r: 15
+      - q: -14
+        r: 16
+      - q: -14
+        r: 17
       - q: -13
         r: -16
       - q: -13
@@ -4791,6 +4833,24 @@ room:
         r: 5
       - q: -13
         r: 6
+      - q: -13
+        r: 9
+      - q: -13
+        r: 10
+      - q: -13
+        r: 11
+      - q: -13
+        r: 12
+      - q: -13
+        r: 13
+      - q: -13
+        r: 14
+      - q: -13
+        r: 15
+      - q: -13
+        r: 16
+      - q: -13
+        r: 17
       - q: -12
         r: -16
       - q: -12
@@ -4837,6 +4897,28 @@ room:
         r: 5
       - q: -12
         r: 6
+      - q: -12
+        r: 7
+      - q: -12
+        r: 8
+      - q: -12
+        r: 9
+      - q: -12
+        r: 10
+      - q: -12
+        r: 11
+      - q: -12
+        r: 12
+      - q: -12
+        r: 13
+      - q: -12
+        r: 14
+      - q: -12
+        r: 15
+      - q: -12
+        r: 16
+      - q: -12
+        r: 17
       - q: -11
         r: -16
       - q: -11
@@ -4883,6 +4965,28 @@ room:
         r: 5
       - q: -11
         r: 6
+      - q: -11
+        r: 7
+      - q: -11
+        r: 8
+      - q: -11
+        r: 9
+      - q: -11
+        r: 10
+      - q: -11
+        r: 11
+      - q: -11
+        r: 12
+      - q: -11
+        r: 13
+      - q: -11
+        r: 14
+      - q: -11
+        r: 15
+      - q: -11
+        r: 16
+      - q: -11
+        r: 17
       - q: -10
         r: -16
       - q: -10
@@ -4929,8 +5033,28 @@ room:
         r: 5
       - q: -10
         r: 6
+      - q: -10
+        r: 7
+      - q: -10
+        r: 8
+      - q: -10
+        r: 9
+      - q: -10
+        r: 10
+      - q: -10
+        r: 11
       - q: -10
         r: 12
+      - q: -10
+        r: 13
+      - q: -10
+        r: 14
+      - q: -10
+        r: 15
+      - q: -10
+        r: 16
+      - q: -10
+        r: 17
       - q: -9
         r: -16
       - q: -9
@@ -4977,12 +5101,28 @@ room:
         r: 5
       - q: -9
         r: 6
+      - q: -9
+        r: 7
+      - q: -9
+        r: 8
+      - q: -9
+        r: 9
       - q: -9
         r: 10
       - q: -9
         r: 11
       - q: -9
         r: 12
+      - q: -9
+        r: 13
+      - q: -9
+        r: 14
+      - q: -9
+        r: 15
+      - q: -9
+        r: 16
+      - q: -9
+        r: 17
       - q: -8
         r: -16
       - q: -8
@@ -5029,6 +5169,8 @@ room:
         r: 5
       - q: -8
         r: 6
+      - q: -8
+        r: 7
       - q: -8
         r: 8
       - q: -8
@@ -5039,6 +5181,16 @@ room:
         r: 11
       - q: -8
         r: 12
+      - q: -8
+        r: 13
+      - q: -8
+        r: 14
+      - q: -8
+        r: 15
+      - q: -8
+        r: 16
+      - q: -8
+        r: 17
       - q: -7
         r: -16
       - q: -7
@@ -5097,6 +5249,16 @@ room:
         r: 11
       - q: -7
         r: 12
+      - q: -7
+        r: 13
+      - q: -7
+        r: 14
+      - q: -7
+        r: 15
+      - q: -7
+        r: 16
+      - q: -7
+        r: 17
       - q: -6
         r: -16
       - q: -6
@@ -5155,6 +5317,16 @@ room:
         r: 11
       - q: -6
         r: 12
+      - q: -6
+        r: 13
+      - q: -6
+        r: 14
+      - q: -6
+        r: 15
+      - q: -6
+        r: 16
+      - q: -6
+        r: 17
       - q: -5
         r: -16
       - q: -5
@@ -5213,6 +5385,16 @@ room:
         r: 11
       - q: -5
         r: 12
+      - q: -5
+        r: 13
+      - q: -5
+        r: 14
+      - q: -5
+        r: 15
+      - q: -5
+        r: 16
+      - q: -5
+        r: 17
       - q: -4
         r: -16
       - q: -4
@@ -5271,6 +5453,16 @@ room:
         r: 11
       - q: -4
         r: 12
+      - q: -4
+        r: 13
+      - q: -4
+        r: 14
+      - q: -4
+        r: 15
+      - q: -4
+        r: 16
+      - q: -4
+        r: 17
       - q: -3
         r: -16
       - q: -3
@@ -5329,6 +5521,16 @@ room:
         r: 11
       - q: -3
         r: 12
+      - q: -3
+        r: 13
+      - q: -3
+        r: 14
+      - q: -3
+        r: 15
+      - q: -3
+        r: 16
+      - q: -3
+        r: 17
       - q: -2
         r: -16
       - q: -2
@@ -5387,6 +5589,16 @@ room:
         r: 11
       - q: -2
         r: 12
+      - q: -2
+        r: 13
+      - q: -2
+        r: 14
+      - q: -2
+        r: 15
+      - q: -2
+        r: 16
+      - q: -2
+        r: 17
       - q: -1
         r: -16
       - q: -1
@@ -5443,6 +5655,18 @@ room:
         r: 10
       - q: -1
         r: 11
+      - q: -1
+        r: 12
+      - q: -1
+        r: 13
+      - q: -1
+        r: 14
+      - q: -1
+        r: 15
+      - q: -1
+        r: 16
+      - q: -1
+        r: 17
       - q: 0
         r: -16
       - q: 0
@@ -5495,6 +5719,22 @@ room:
         r: 8
       - q: 0
         r: 9
+      - q: 0
+        r: 10
+      - q: 0
+        r: 11
+      - q: 0
+        r: 12
+      - q: 0
+        r: 13
+      - q: 0
+        r: 14
+      - q: 0
+        r: 15
+      - q: 0
+        r: 16
+      - q: 0
+        r: 17
       - q: 1
         r: -16
       - q: 1
@@ -5543,6 +5783,22 @@ room:
         r: 6
       - q: 1
         r: 7
+      - q: 1
+        r: 8
+      - q: 1
+        r: 9
+      - q: 1
+        r: 10
+      - q: 1
+        r: 11
+      - q: 1
+        r: 12
+      - q: 1
+        r: 13
+      - q: 1
+        r: 14
+      - q: 1
+        r: 15
       - q: 2
         r: -16
       - q: 2
@@ -5589,6 +5845,20 @@ room:
         r: 5
       - q: 2
         r: 6
+      - q: 2
+        r: 7
+      - q: 2
+        r: 8
+      - q: 2
+        r: 9
+      - q: 2
+        r: 10
+      - q: 2
+        r: 11
+      - q: 2
+        r: 12
+      - q: 2
+        r: 13
       - q: 3
         r: -18
       - q: 3
@@ -5639,6 +5909,16 @@ room:
         r: 5
       - q: 3
         r: 6
+      - q: 3
+        r: 7
+      - q: 3
+        r: 8
+      - q: 3
+        r: 9
+      - q: 3
+        r: 10
+      - q: 3
+        r: 11
       - q: 4
         r: -20
       - q: 4
@@ -5693,6 +5973,12 @@ room:
         r: 5
       - q: 4
         r: 6
+      - q: 4
+        r: 7
+      - q: 4
+        r: 8
+      - q: 4
+        r: 9
       - q: 5
         r: -22
       - q: 5
@@ -5751,6 +6037,8 @@ room:
         r: 5
       - q: 5
         r: 6
+      - q: 5
+        r: 7
       - q: 6
         r: -22
       - q: 6
@@ -7139,13 +7427,13 @@ room:
         ref: dnd5e:monsters:commoner
         startingCell:
           location:
-            q: -7
-            r: 7
+            q: -12
+            r: 8
           facing: s
         appearanceRef: dnd5e:npcs:kingdom:merchant-01
     partyStart:
-      q: -5
-      r: 11
+      q: -2
+      r: 16
     monsterBindings:
       gate-1:
         faction: garrison
@@ -7432,6 +7720,7 @@ room:
             dc: 13
         opened:
           fact: cells-opened
+      26369b41-e58f-475d-963a-95086d4cd868: {}
     propBindings:
       purse:
         holdable: true

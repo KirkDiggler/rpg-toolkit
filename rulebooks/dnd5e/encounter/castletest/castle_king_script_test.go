@@ -8,14 +8,20 @@ package castletest
 // one test here, so a later edit that breaks a step fails by the step's name.
 //
 //  1. Start outside, neutral, with guards at the gate door.
-//  2. The stranger around the corner gives the feast, on a line whose success
-//     and failure both teach it.
+//  2. The stranger round the gatehouse's corner, outside on the kitchen side,
+//     gives the feast, on a line whose success and failure both teach it.
 //  3. With the fact, the troupe talks its way in; without it, the line is not
 //     offered.
 //  4. Without it, sneak at the front door: the gate patrol leaves a window.
 //  5. Sneaking in plain sight does nothing.
 //  6. Fight the gate guards: nobody comes.
 //  7. Open the gate: the far room answers.
+//
+// THE START IS OUTSIDE (the operator's layout, rpg-project#654): open ground
+// round the gatehouse, whose one way in is a doorway in its south wall. The
+// gate guards and the captain keep the gatehouse, so every step that happens
+// in front of them begins with the party walking in through that doorway,
+// civil, from the party start ([kingScene.walkIn]).
 //
 // THE HOST IS THE CASTLE'S, with every creature watching a 120-degree arc,
 // the arc the session seeds every monster with: a cone is what the script
@@ -48,8 +54,15 @@ var (
 	// party stands on to open it, and the one a sneak must reach.
 	beneathTheGate = castleCell(0, 7)
 
-	// theCorner is the cell behind the corner wall, beside the stranger: out
-	// of the gate's sight.
+	// inTheGatehouse is the gatehouse floor two cells in from its south
+	// doorway, in front of the gate guards and the captain: where a party
+	// that walks in from the start stands.
+	inTheGatehouse = castleCell(0, 11)
+
+	// theCorner is the cell behind the corner wall, in the gatehouse's
+	// north-west: out of the gate's sight, so a party that walked in civil
+	// declares sneaking there unseen. The gatehouse is otherwise one open
+	// room, and a watcher who holds the party live judges a declaration lost.
 	theCorner = castleCell(-3, 7)
 
 	// besideTheCorner is the floor just south of the corner, where a party
@@ -264,31 +277,49 @@ func (s *kingScene) atPosts(west, east spatial.Position) bool {
 		spatial.Position{X: g2.Cell.X, Y: g2.Cell.Y} == east && s.at(kingGate2) == east
 }
 
-// heardTheStranger walks the hero round the corner to the stranger and has
-// it ask what the bustle is, the check beaten or not.
+// heardTheStranger walks the hero round the gatehouse's corner to the
+// stranger, outside on the kitchen side, and has it ask what the bustle is,
+// the check beaten or not.
 func (s *kingScene) heardTheStranger(beaten bool) {
 	s.t.Helper()
-	s.stepTo(besideTheCorner)
-	s.stepTo(theCorner)
+	s.walkTo(s.at(kingPedlar))
+	require.Equal(s.t, 1.0, s.enc.Distance(s.at(hero), s.at(kingPedlar)), "the hero stands beside the stranger")
+	require.Equal(s.t, "", labelOf(s.t.(*testing.T), s.at(hero)), "outside, in no room of the castle")
 	s.said(kingPedlar, "tonight", "persuasion", beaten)
 }
 
-// TestMadKingScriptStartsOutsideNeutral is piece 1: the party starts before
-// the gate, outside the castle, with the garrison and the stranger civil, and
-// a gate guard keeps a post within two cells of the gate door.
+// walkIn walks the hero, civil and not sneaking, from wherever it stands
+// outside through the gatehouse's south doorway to the gatehouse floor in
+// front of the gate, and checks it arrived there with nobody fighting.
+func (s *kingScene) walkIn() {
+	s.t.Helper()
+	s.stepTo(inTheGatehouse)
+	require.Equal(s.t, "Gatehouse", labelOf(s.t.(*testing.T), s.at(hero)), "the hero walked into the gatehouse")
+	require.Equal(s.t, encounter.ClockWorld, clockKind(s.t.(*testing.T), s.enc, hero), "the civil garrison lets the party walk in")
+}
+
+// TestMadKingScriptStartsOutsideNeutral is piece 1: the party starts
+// outside the castle, in no room of it, with the garrison and the stranger
+// civil; the gate guards and the captain keep the gatehouse between the start
+// and the gate door, and a gate guard keeps a post within two cells of it.
 func TestMadKingScriptStartsOutsideNeutral(t *testing.T) {
 	t.Parallel()
 	s := openTheScript(t, partyStart(t), nil)
 
 	start := s.at(hero)
-	require.Equal(t, "Before the Gate", labelOf(t, start), "the party starts before the gate")
-	gate := s.room(start)
-	require.NotEqual(t, gate, s.room(pastTheGate), "the gate door is between the start and the castle")
+	require.Equal(t, "", labelOf(t, start), "the party starts outside, in no room of the castle")
+	outside := s.room(start)
+	gatehouse := s.room(inTheGatehouse)
+	require.Equal(t, "Gatehouse", labelOf(t, inTheGatehouse), "precondition: the gatehouse")
+	require.NotEqual(t, outside, gatehouse, "the gatehouse is a room of its own")
+	require.NotEqual(t, outside, s.room(pastTheGate), "the gate door is between the start and the castle")
+	require.NotEqual(t, gatehouse, s.room(pastTheGate), "and between the gatehouse and the courtyard")
 	require.Equal(t, encounter.StanceNeutral, s.stance(garrison, encounter.FactionParty))
 	require.Equal(t, encounter.StanceNeutral, s.stance(townsfolk, encounter.FactionParty))
 	for _, id := range []encounter.MemberID{kingGate1, kingGate2, kingCaptain} {
-		require.Equal(t, gate, s.room(s.at(id)), "%s stands before the gate", id)
+		require.Equal(t, gatehouse, s.room(s.at(id)), "%s stands in the gatehouse, before the gate", id)
 	}
+	require.Equal(t, outside, s.room(s.at(kingPedlar)), "the stranger is outside with the party")
 
 	beside := spatial.Position{X: start.X - 1, Y: start.Y}
 	var post spatial.Position
@@ -398,6 +429,7 @@ func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 	t.Run("every loop the cell under the gate is watched, then unwatched two rounds running", func(t *testing.T) {
 		t.Parallel()
 		s := openTheScript(t, partyStart(t), scriptStealth())
+		s.walkIn()
 		s.stepTo(besideTheCorner)
 		s.declare(hero)
 
@@ -465,14 +497,23 @@ func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 		}
 	})
 
-	// dash declares the hero behind the corner once both gate guards dwell on
-	// the given posts, then walks it to the cell under the gate.
+	// dash walks the hero in, declares it behind the corner once both gate
+	// guards have just come to the given posts, then walks it to the cell
+	// under the gate.
 	dash := func(t *testing.T, west, east spatial.Position) (*kingScene, *partyStealth, int) {
 		t.Helper()
 		stealth := scriptStealth()
 		s := openTheScript(t, partyStart(t), stealth)
+		s.walkIn()
 		s.stepTo(besideTheCorner)
-		require.True(t, s.pace(besideTheCorner, castleCell(-4, 8), 60, func() bool { return s.atPosts(west, east) }),
+		// Just arrived: both still have a round of the dwell to stand, so the
+		// dash crosses while they keep the posts (the walk in from outside
+		// puts the party at the corner on no fixed round of the loop).
+		justArrived := func() bool {
+			g1, g2 := dwellOf(t, s.enc, kingGate1), dwellOf(t, s.enc, kingGate2)
+			return s.atPosts(west, east) && g1.Rounds > 0 && g2.Rounds > 0
+		}
+		require.True(t, s.pace(besideTheCorner, castleCell(-4, 8), 60, justArrived),
 			"the gate guards come to the posts")
 		_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: theCorner, EndWalk: true})
 		require.NoError(t, err)
@@ -535,14 +576,15 @@ func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 	})
 }
 
-// TestMadKingScriptSneakingInPlainSightDoesNothing is piece 5: declared at the
-// party start, inside the gate's zones, sneaking appends no beat, rolls
-// nothing and turns nobody (sneaking R10: a declaration in plain view is a lost
-// verdict, unrolled).
+// TestMadKingScriptSneakingInPlainSightDoesNothing is piece 5: declared in
+// the gatehouse, walked into from the start, inside the gate's zones,
+// sneaking appends no beat, rolls nothing and turns nobody (sneaking R10: a
+// declaration in plain view is a lost verdict, unrolled).
 func TestMadKingScriptSneakingInPlainSightDoesNothing(t *testing.T) {
 	t.Parallel()
 	stealth := scriptStealth()
 	s := openTheScript(t, partyStart(t), stealth)
+	s.walkIn()
 	before := s.enc.ToData().Log.NextSeq
 
 	out, err := s.enc.SetSneaking(&encounter.SetSneakingInput{Member: hero, Sneaking: true})
@@ -554,7 +596,7 @@ func TestMadKingScriptSneakingInPlainSightDoesNothing(t *testing.T) {
 	for _, z := range zonesOf(t, s.enc, hero) {
 		inZone = inZone || cellSet(z.Cells)[s.at(hero)]
 	}
-	require.True(t, inZone, "precondition: the party start is inside a watcher's zone")
+	require.True(t, inZone, "precondition: the hero stands inside a watcher's zone")
 
 	require.Equal(t, before, s.enc.ToData().Log.NextSeq, "no beat")
 	require.Empty(t, stealth.asked, "nothing rolled")
@@ -573,6 +615,7 @@ func TestMadKingScriptSneakingInPlainSightDoesNothing(t *testing.T) {
 func TestMadKingScriptFightBringsNobody(t *testing.T) {
 	t.Parallel()
 	s := openTheScript(t, partyStart(t), nil)
+	s.walkIn()
 	gatehouse := labelOf(t, s.at(hero))
 	rooms := map[encounter.MemberID]string{}
 	for _, id := range memberIDsOf(t, s.enc) {
@@ -650,6 +693,7 @@ func TestMadKingScriptOpeningTheGateBringsTheFarRoom(t *testing.T) {
 	t.Run("after the fight, hostile", func(t *testing.T) {
 		t.Parallel()
 		s := openTheScript(t, partyStart(t), nil)
+		s.walkIn()
 		s.struck(kingGate1, false)
 		require.Equal(t, encounter.StanceHostile, s.stance(garrison, encounter.FactionParty), "precondition: the fight turned the garrison")
 		s.struck(kingGate1, true)
