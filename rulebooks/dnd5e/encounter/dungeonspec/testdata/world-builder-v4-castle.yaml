@@ -84,8 +84,7 @@
 # 90), the scullion into the kitchen (ne; its centre is at 53), the captain
 # down the gatehouse at whoever comes to the gate (s, the south doorway), the
 # turnkey and the sergeant at the cells door (w, 251; se, 120), the king at
-# the throne door (e, 90), the pedlar down the open ground west of the
-# gatehouse at whoever comes round its corner (s). The facings are test choices, not story. Creatures that walk a route face their steps; the gate
+# the throne door (e, 90), the pedlar at the party start two cells off (sw). The facings are test choices, not story. Creatures that walk a route face their steps; the gate
 # guards' pause facings are rpg-project#624's. castle_king_facings_test.go
 # holds each cone over the cell it keeps.
 #
@@ -95,8 +94,10 @@
 # garrison civil, on open ground round the gatehouse whose one way into the
 # castle is a doorway in the gatehouse's south wall: the operator's own
 # layout (rpg-project#654), its cells, doorway and party start folded in
-# from the studio. Round the gatehouse's west corner, at the castle wall on
-# the kitchen side, stands a stranger, the pedlar (townsfolk, civil), whose
+# from the studio. On the start's side, two cells from the party start and
+# out of the gate's sight, stands a stranger, the pedlar (townsfolk, civil),
+# placed where the party sees him at once (the QA castle is a checklist, not
+# a search; rpg-project#654), whose
 # one line teaches `feast-tonight` win or lose, so the captain's troupe
 # line is offered. Without it, a party that walks in civil and declares
 # sneaking behind the corner wall inside the gate, unseen, crosses to the gate
@@ -7427,9 +7428,9 @@ room:
         ref: dnd5e:monsters:commoner
         startingCell:
           location:
-            q: -12
-            r: 8
-          facing: s
+            q: 0
+            r: 14
+          facing: sw
         appearanceRef: dnd5e:npcs:kingdom:merchant-01
     partyStart:
       q: -2

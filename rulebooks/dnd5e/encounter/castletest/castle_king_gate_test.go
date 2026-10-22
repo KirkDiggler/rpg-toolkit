@@ -424,7 +424,7 @@ type troupeRoute struct {
 
 // troupeRoutes are the two ways the feast is learned: the cook's gossip in
 // the kitchen, walked out through the hall and the yard to the gate, and the
-// stranger round the corner before the gate (the QA script's step 2,
+// stranger beside the start, before the gate (the QA script's step 2,
 // rpg-project#639).
 var troupeRoutes = []troupeRoute{
 	{

@@ -8,8 +8,8 @@ package castletest
 // one test here, so a later edit that breaks a step fails by the step's name.
 //
 //  1. Start outside, neutral, with guards at the gate door.
-//  2. The stranger round the gatehouse's corner, outside on the kitchen side,
-//     gives the feast, on a line whose success and failure both teach it.
+//  2. The stranger beside the start, out of the gate's sight, gives the
+//     feast, on a line whose success and failure both teach it.
 //  3. With the fact, the troupe talks its way in; without it, the line is not
 //     offered.
 //  4. Without it, sneak at the front door: the gate patrol leaves a window.
@@ -23,7 +23,7 @@ package castletest
 // in front of them opens the hero inside it, on [gatehouseSeat], where the
 // party started before the fold: the walk in from the outside start is its
 // own claim, made once by [kingScene.walkIn] in the gatehouse's one-way-in
-// test and walked again by the stranger's troupe routes. Walking it in every
+// test and walked again by the stranger's troupe route. Walking it in every
 // step would cost the package a third of its race budget for no new claim.
 //
 // THE HOST IS THE CASTLE'S, with every creature watching a 120-degree arc,
@@ -66,13 +66,6 @@ var (
 	// [encounter.MemberInput.Position]: where a step that acts in front of
 	// the gate opens the hero.
 	gatehouseSeat = spatial.Position{X: 0, Y: 11}
-
-	// roundTheCorner is an offset cell on the open ground's west strip, round
-	// the gatehouse's west corner below the stranger and out of the gate's
-	// sight: where pieces 2 and 3 open the hero, a few cells from him. The
-	// whole way from the party start to him and on into the hall is the
-	// stranger's troupe route's (castle_king_gate_test.go).
-	roundTheCorner = spatial.Position{X: -9, Y: 11}
 
 	// theCorner is the cell behind the corner wall, in the gatehouse's
 	// north-west: out of the gate's sight, so a party that walked in civil
@@ -292,9 +285,8 @@ func (s *kingScene) atPosts(west, east spatial.Position) bool {
 		spatial.Position{X: g2.Cell.X, Y: g2.Cell.Y} == east && s.at(kingGate2) == east
 }
 
-// heardTheStranger walks the hero round the gatehouse's corner to the
-// stranger, outside on the kitchen side, and has it ask what the bustle is,
-// the check beaten or not.
+// heardTheStranger walks the hero to the stranger beside the start and has
+// it ask what the bustle is, the check beaten or not.
 func (s *kingScene) heardTheStranger(beaten bool) {
 	s.t.Helper()
 	s.walkTo(s.at(kingPedlar))
@@ -335,6 +327,10 @@ func TestMadKingScriptStartsOutsideNeutral(t *testing.T) {
 		require.Equal(t, gatehouse, s.room(s.at(id)), "%s stands in the gatehouse, before the gate", id)
 	}
 	require.Equal(t, outside, s.room(s.at(kingPedlar)), "the stranger is outside with the party")
+	// The QA castle is a checklist, not a search (rpg-project#654): the
+	// stranger stands where the party sees him at once.
+	require.LessOrEqual(t, s.enc.Distance(start, s.at(kingPedlar)), 3.0, "the stranger stands beside the start")
+	require.True(t, s.seenNow(hero)[s.at(kingPedlar)], "the party sees the stranger from the start")
 
 	beside := spatial.Position{X: start.X - 1, Y: start.Y}
 	var post spatial.Position
@@ -355,10 +351,10 @@ func TestMadKingScriptStartsOutsideNeutral(t *testing.T) {
 	t.Logf("a gate guard dwells at %v", post)
 }
 
-// TestMadKingScriptTheStrangerGivesTheFeast is piece 2: round the corner, the
+// TestMadKingScriptTheStrangerGivesTheFeast is piece 2: beside the start, the
 // stranger answers "What's all the bustle?" with the feast on a won check and
 // on a lost one, and the hero knows `feast-tonight` either way. The captain,
-// who cannot see round the corner, does not.
+// who cannot see past the gatehouse's walls, does not.
 func TestMadKingScriptTheStrangerGivesTheFeast(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -371,8 +367,7 @@ func TestMadKingScriptTheStrangerGivesTheFeast(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			s := openTheScript(t, roundTheCorner, nil)
-			require.Equal(t, s.room(s.at(kingPedlar)), s.room(s.at(hero)), "precondition: outside with the stranger")
+			s := openTheScript(t, partyStart(t), nil)
 			require.False(t, s.learners("feast-tonight")[hero], "precondition: the hero does not know")
 
 			s.heardTheStranger(tc.beaten)
@@ -398,7 +393,7 @@ func TestMadKingScriptTheStrangerGivesTheFeast(t *testing.T) {
 // opens the gate on a far room that comes civil.
 func TestMadKingScriptTheTroupeNeedsTheFeast(t *testing.T) {
 	t.Parallel()
-	s := openTheScript(t, roundTheCorner, nil)
+	s := openTheScript(t, partyStart(t), nil)
 
 	require.False(t, s.offers(kingCaptain, "troupe"), "before the stranger, no troupe")
 	_, err := s.speak(kingCaptain, "troupe", "performance", true)
