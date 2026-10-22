@@ -1381,9 +1381,14 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 		return report, DeliveryReport{}, err
 	}
 	report.Written = mergeReportIdentities(report.Written, scope.written)
-	recordErr := m.deliverRecord(ctx, recorded)
-	actsErr := m.deliverActs(ctx, acts)
-	return report, DeliveryReport{Failed: recordErr != nil || actsErr != nil}, nil
+	var delivery DeliveryReport
+	if err := m.deliverRecord(ctx, recorded); err != nil {
+		delivery.Failed = append(delivery.Failed, DeliveryRecord)
+	}
+	if err := m.deliverActs(ctx, acts); err != nil {
+		delivery.Failed = append(delivery.Failed, DeliveryActs)
+	}
+	return report, delivery, nil
 }
 
 // DeliveryReport says whether this commit's batches reached the live
@@ -1402,10 +1407,21 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 // holds. Failing the verb instead would roll back nothing — the world has
 // already changed.
 type DeliveryReport struct {
-	// Failed reports that the record stream or the act stream refused this
-	// commit's batch. The verb still succeeded.
-	Failed bool `json:"failed,omitempty"`
+	// Failed names each stream that refused this commit's batch, in
+	// delivery order ([DeliveryRecord], [DeliveryActs]); empty when both
+	// landed. The verb still succeeded. Named rather than a flag because a
+	// host's retry differs per stream: a missed record is caught up with
+	// [Manager.Record], missed acts with [Manager.Acts].
+	Failed []string `json:"failed,omitempty"`
 }
+
+// The streams a [DeliveryReport] names.
+const (
+	// DeliveryRecord is the record stream ([RecordStream]).
+	DeliveryRecord = "record"
+	// DeliveryActs is the act stream ([ActStream]).
+	DeliveryActs = "acts"
+)
 
 // clearSeatsOfAClosedRun clears every player's seat when this verb closed the
 // run — an ending fired, End was called, or the last member left. A run that

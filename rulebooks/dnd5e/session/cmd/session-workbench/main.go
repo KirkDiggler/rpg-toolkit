@@ -357,7 +357,7 @@ func drive(out *bytes.Buffer) error {
 	for _, step := range walked.Steps {
 		fmt.Fprintf(out, "   alice enters (%v,%v)\n", step.Position.X, step.Position.Y)
 	}
-	fmt.Fprintf(out, "   delivered: %v\n", !walked.Delivery.Failed)
+	fmt.Fprintf(out, "   delivery failed: %v\n", walked.Delivery.Failed)
 
 	// SHE REACHES THE GATE UNSEEN, and that is a claim about LIGHT rather than
 	// about walls. The arch on row 1 is open, and an opening is an opening in

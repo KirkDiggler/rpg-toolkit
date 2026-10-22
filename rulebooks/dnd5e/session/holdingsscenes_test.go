@@ -122,8 +122,8 @@ func (s *HoldingsSuite) TestLootOnABodyWithNothingIsIndistinguishableAtTheSeam()
 		// Only the caller learns the secret and sees the newly exposed door;
 		// what the bystander was told above remains byte-identical.
 		s.Equal(poorLooter+2, richLooter)
-		s.False(rich.Delivery.Failed)
-		s.False(poor.Delivery.Failed)
+		s.Empty(rich.Delivery.Failed)
+		s.Empty(poor.Delivery.Failed)
 	})
 }
 
@@ -156,7 +156,7 @@ func (s *HoldingsSuite) TestLootIsOfferedOnEveryBodyAndRefusesAnUpright() {
 	s.Equal([]string{encounter.BeatLooted, encounter.BeatTick}, s.kinds("alice"),
 		"and an empty body causes nothing — the tick is the round the verb spent, "+
 			"which an action costs whether or not it found anything")
-	s.False(out.Delivery.Failed)
+	s.Empty(out.Delivery.Failed)
 }
 
 // TestHoldRemovesThePropForEveryoneAndTheHolderHasIt is the acceptance

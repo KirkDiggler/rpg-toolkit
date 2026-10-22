@@ -343,7 +343,7 @@ func (s *CastSuite) TestCureWoundsFailureBoundaries() {
 			} else {
 				s.Require().NoError(err)
 				s.Require().NotNil(out)
-				s.True(out.Delivery.Failed)
+				s.Equal([]string{session.DeliveryActs}, out.Delivery.Failed)
 				s.Len(s.beats(encounter.BeatCast, encounter.BeatActivationResult), 2,
 					"a failed delivery still recorded the cast and its result")
 			}

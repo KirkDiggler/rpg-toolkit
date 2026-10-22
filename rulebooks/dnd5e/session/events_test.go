@@ -19,6 +19,11 @@ type failingStream struct{ err error }
 
 func (f *failingStream) PublishActs(_ context.Context, _ []session.Act) error { return f.err }
 
+// failingRecord is a RecordStream that refuses to deliver.
+type failingRecord struct{ err error }
+
+func (f *failingRecord) PublishRecord(_ context.Context, _ []session.RecordEvent) error { return f.err }
+
 // EventsTestSuite covers the multiplayer fan-out of the act stream.
 type EventsTestSuite struct {
 	suite.Suite
@@ -176,7 +181,7 @@ func (s *EventsTestSuite) TestDeliveryFailureDoesNotFailTheVerb() {
 		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 2, Y: 1}},
 	})
 	s.Require().NoError(err, "a stream outage must not fail the move")
-	s.True(out.Delivery.Failed, "but it is reported, not hidden")
+	s.Equal([]string{session.DeliveryActs}, out.Delivery.Failed, "but it is reported, not hidden, naming the stream")
 
 	// And the move really happened.
 	status, err := mgr.Status(ctx, &session.StatusInput{Session: "sess"})
@@ -201,7 +206,7 @@ func (s *EventsTestSuite) TestDiscardingActsIsNotFailing() {
 		Session: "sess", Member: "alice", Path: []spatial.Position{{X: 2, Y: 1}},
 	})
 	s.Require().NoError(err)
-	s.False(out.Delivery.Failed, "discarding is not failing")
+	s.Empty(out.Delivery.Failed, "discarding is not failing")
 }
 
 // TestDepartingMemberHearsTheirOwnExit pins the roster choice.
@@ -222,4 +227,38 @@ func (s *EventsTestSuite) TestDepartingMemberHearsTheirOwnExit() {
 
 func TestEventsSuite(t *testing.T) {
 	suite.Run(t, new(EventsTestSuite))
+}
+
+// TestDeliveryFailureNamesEachRefusingStream: the report names which stream
+// refused, so a host knows which catch-up to run — the record's, the acts',
+// or both — and names none when both landed.
+func (s *EventsTestSuite) TestDeliveryFailureNamesEachRefusingStream() {
+	cases := []struct {
+		name   string
+		record session.RecordStream
+		acts   session.ActStream
+		want   []string
+	}{
+		{"both land", session.DiscardRecord{}, session.DiscardActs{}, nil},
+		{"the record refuses", &failingRecord{err: errBroken}, session.DiscardActs{}, []string{session.DeliveryRecord}},
+		{"the acts refuse", session.DiscardRecord{}, &failingStream{err: errBroken}, []string{session.DeliveryActs}},
+		{"both refuse", &failingRecord{err: errBroken}, &failingStream{err: errBroken},
+			[]string{session.DeliveryRecord, session.DeliveryActs}},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			sessions, encounters := newFakeSessions(), newFakeEncounters()
+			mgr, err := session.NewManager(&session.Config{Record: tc.record, Acts: tc.acts, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+				Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
+			})
+			s.Require().NoError(err)
+			launchScene(s.T(), mgr, twoRoomParty())
+
+			out, err := mgr.Move(context.Background(), &session.MoveInput{
+				Session: "sess", Member: "alice", Path: []spatial.Position{{X: 2, Y: 1}},
+			})
+			s.Require().NoError(err, "a stream outage never fails the verb")
+			s.Equal(tc.want, out.Delivery.Failed)
+		})
+	}
 }

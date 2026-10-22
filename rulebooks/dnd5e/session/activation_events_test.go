@@ -142,7 +142,7 @@ func TestSecondWindActivationEventsReachTheFullRoster(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, refs.Features.SecondWind().String(), out.Ability)
-	require.False(t, out.Delivery.Failed)
+	require.Empty(t, out.Delivery.Failed)
 
 	for _, recipient := range []string{"alice", "bob", "skeleton"} {
 		told := activationEvents(t, scene.since(t, recipient))
