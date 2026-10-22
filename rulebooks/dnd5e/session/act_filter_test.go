@@ -45,6 +45,26 @@ func actSubject(act session.Act) string {
 	}
 }
 
+// recordHolds is the record's beats named beat whose payload names member
+// under key — what the record keeps whoever its act stream reached (R35).
+func recordHolds(t *testing.T, mgr *session.Manager, beat, key, member string) []session.RecordEvent {
+	t.Helper()
+	read, err := mgr.Record(context.Background(), &session.RecordReadInput{Session: "sess"})
+	require.NoError(t, err)
+	var out []session.RecordEvent
+	for _, e := range read.Events {
+		if e.Beat != beat {
+			continue
+		}
+		var fields map[string]any
+		require.NoError(t, json.Unmarshal(e.Fields, &fields))
+		if fields[key] == member {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 // keepPatrol is the gatehouse after alice's first line: the world takes its
 // round, and keep-1 walks its keep patrol out of her sight.
 func keepPatrol(t *testing.T) *gatehouse {

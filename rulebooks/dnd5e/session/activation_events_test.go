@@ -127,10 +127,13 @@ type activatedBeat struct {
 	Target  string           `json:"target"`
 }
 
-// TestSecondWindActivationEventsReachTheFullRoster pins the
-// complete transaction: one activated beat before the ordered result, exact
-// post-clamp healing facts, and current full-roster fan-out.
-func TestSecondWindActivationEventsReachTheFullRoster(t *testing.T) {
+// TestSecondWindReachesThoseWhoSeeIt pins the complete transaction: one
+// activated beat before the ordered result, exact post-clamp healing facts,
+// written to every member's story — and, on the act stream, delivered to
+// those who perceive it (event-stream R35, R42). Alice heals herself and the
+// skeleton beside her watches; bob, in the vault, learns nothing; the record
+// knows.
+func TestSecondWindReachesThoseWhoSeeIt(t *testing.T) {
 	scene := newActivationEventScene(t,
 		secondWindFighter(t, "alice", 30, 30), armedFighter("bob"))
 
@@ -201,8 +204,11 @@ func TestSecondWindActivationEventsReachTheFullRoster(t *testing.T) {
 		for _, act := range scene.stream.of(recipient) {
 			delivered = delivered || act.Act == told[0].Correlation
 		}
-		require.True(t, delivered, "%s was handed the activation live", recipient)
+		seesAlice := recipient != "bob"
+		require.Equal(t, seesAlice, delivered, "%s was handed the activation live only if they see alice", recipient)
 	}
+	require.NotEmpty(t, recordHolds(t, scene.mgr, encounter.BeatActivated, "actor", "alice"),
+		"the record keeps the activation bob never received")
 }
 
 // TestRageAndDashActivationResultVariants pins the two non-healing variants a

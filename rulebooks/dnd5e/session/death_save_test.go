@@ -361,8 +361,13 @@ func TestDeathSaveOutcomesAndContinuations(t *testing.T) {
 					deathRecipients[act.Recipient] = true
 				}
 			}
-			require.Equal(t, map[string]bool{"alice": true, "bob": true, "skeleton": true},
-				deathRecipients, "the Death Save reaches the whole three-member table")
+			// Alice rolls and the skeleton beside her watches; behind the
+			// crypt's solid wall, bob learns nothing; the record knows
+			// (event-stream R35, R42).
+			require.Equal(t, map[string]bool{"alice": true, "skeleton": true},
+				deathRecipients, "the Death Save reaches those who see it, and not bob")
+			require.NotEmpty(t, recordHolds(t, f.mgr, string(encounter.OutcomeDeathSave), "actor", "alice"),
+				"the record keeps the Death Save bob never received")
 
 			stored := f.characters.byID["alice"]
 			require.Equal(t, tc.hp, stored.HitPoints)

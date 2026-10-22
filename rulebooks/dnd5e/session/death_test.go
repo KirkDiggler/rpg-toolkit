@@ -242,24 +242,23 @@ func (s *DeathTestSuite) TestTheSwingNoticesItsOwnKill() {
 		"alice is free-roaming, and the party never had to move to find out")
 }
 
-// TestEveryMemberHearsTheDeath is the headline: the stream carries the death, on
-// the swing that caused it.
+// TestTheDeathReachesThoseWhoSeeIt is the headline: the stream carries the
+// death, on the swing that caused it, to those who perceive it (event-stream
+// R35, R42).
 //
-// The audience is not scoped to whoever swung — a member downed anywhere on the
-// map is news to everybody, including bob, who is behind a solid wall and did
-// nothing at all.
-func (s *DeathTestSuite) TestEveryMemberHearsTheDeath() {
+// Alice swung and sees the skeleton fall; the skeleton's own fall is its own.
+// Behind the solid wall, bob learns nothing; the record knows.
+func (s *DeathTestSuite) TestTheDeathReachesThoseWhoSeeIt() {
 	s.dropTheSkeleton()
 
-	down := s.downed()
-	s.Require().Len(down, 3, "every member hears it: alice, bob, and the skeleton's own audience")
-
 	heard := map[string]bool{}
-	for _, act := range down {
+	for _, act := range s.downed() {
 		heard[act.Recipient] = true
 		s.Equal("skeleton", act.Body.(session.StateChange).Party.ID, "and it names who fell")
 	}
-	s.Equal(map[string]bool{"alice": true, "bob": true, "skeleton": true}, heard)
+	s.Equal(map[string]bool{"alice": true, "skeleton": true}, heard, "alice sees it fall; bob does not")
+	s.NotEmpty(recordHolds(s.T(), s.mgr, string(encounter.OutcomeDown), "member", "skeleton"),
+		"the record keeps the fall bob never received")
 }
 
 // TestTheDeathIsNotAnnouncedTwice is the story-ledger dedup surviving the trip
@@ -269,12 +268,14 @@ func (s *DeathTestSuite) TestEveryMemberHearsTheDeath() {
 // table that heard the skeleton fall twice would render it twice.
 func (s *DeathTestSuite) TestTheDeathIsNotAnnouncedTwice() {
 	s.dropTheSkeleton()
-	s.Require().Len(s.downed(), 3)
+	s.Require().Len(s.downed(), 2, "alice and the skeleton")
 
 	s.bobSteps()
 
-	s.Len(s.downed(), 3, "one body, announced once")
-	s.Len(s.fightsEnded(), 3, "and one ending")
+	s.Len(s.downed(), 2, "one body, announced once")
+	s.Len(s.fightsEnded(), 2, "and one ending, to the fight's two members")
+	s.Len(recordHolds(s.T(), s.mgr, string(encounter.OutcomeDown), "member", "skeleton"), 1,
+		"and one fall on the record")
 }
 
 // TestTheLastOneDownedEndsTheFightByDefeat is the slice's own sentence.
