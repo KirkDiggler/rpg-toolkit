@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package dungeonspec_test
+package castletest
 
 // castle_king_cone_test.go is THE HALL GUARD'S BACK (rpg-project#621,
 // sneaking K1, design R14): with an arc of 120 scripted for the hall guard,
@@ -48,7 +48,6 @@ func TestMadKingTheHallGuardsBackIsNotWatched(t *testing.T) {
 	s := openTheCastleAs(t, castleHost{
 		at: besideTheCook, resolver: stealth, arcs: map[encounter.MemberID]int{kingHall1: 120},
 	})
-	seer := &coneSite{sneakSite: &sneakSite{t: t, enc: s.enc}}
 	s.declare(hero)
 	s.walkTo(pastTheKitchenDoor)
 	s.pickTheKitchenDoor()
@@ -59,7 +58,7 @@ func TestMadKingTheHallGuardsBackIsNotWatched(t *testing.T) {
 	behindHim := func() bool {
 		guard := positionOf(t, s.enc, kingHall1)
 		bearing := coneBearing(guard, s.at(hero))
-		return seer.seenNow(kingHall1)[s.at(hero)] && offArc(facingOf(t, s.enc, kingHall1), bearing) > 60
+		return s.seenNow(kingHall1)[s.at(hero)] && offArc(facingOf(t, s.enc, kingHall1), bearing) > 60
 	}
 	step := func(to spatial.Position) {
 		t.Helper()
@@ -72,7 +71,7 @@ func TestMadKingTheHallGuardsBackIsNotWatched(t *testing.T) {
 	requireUnwatched := func(where string) {
 		t.Helper()
 		require.Empty(t, stealth.asked, "%s: nothing rolled", where)
-		require.False(t, seer.seesLive(kingHall1, hero), "%s: the hall guard does not see the hero", where)
+		require.False(t, s.seesLive(kingHall1, hero), "%s: the hall guard does not see the hero", where)
 		for _, zone := range zonesOf(t, s.enc, hero) {
 			if zone.Watcher == kingHall1 {
 				require.False(t, cellSet(zone.Cells)[s.at(hero)], "%s: the hero's cell is not in his zone", where)

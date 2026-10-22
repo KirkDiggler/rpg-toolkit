@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package dungeonspec_test
+package castletest
 
 // castle_king_gate_test.go is THE GATE, FOUR WAYS (rpg-project#605, use case
 // §3): spear a guard, talk your way in as the feast's troupe, fail to, and

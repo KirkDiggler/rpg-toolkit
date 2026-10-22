@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package dungeonspec_test
+package castletest
 
 // castle_king_kitchen_test.go is THE KITCHEN DOOR (rpg-project#606, sneaking
 // S1; the mad king use case §3, "Kitchen door"): the party declares sneaking

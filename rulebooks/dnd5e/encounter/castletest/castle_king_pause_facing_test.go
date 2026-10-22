@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package dungeonspec_test
+package castletest
 
 // castle_king_pause_facing_test.go is THE GATE GUARDS WATCH THE GATE, THEN
 // THE INCOMERS (rpg-project#624, reshaped by the QA castle's step 4,

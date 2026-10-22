@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package dungeonspec_test
+package castletest
 
 // castle_king_cells_test.go is THE FOLD, PLAYED (rpg-project#611): the cells
 // and the kitchen's trigger, which were their own entries, as rooms of the
