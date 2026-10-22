@@ -48,8 +48,8 @@
 #
 # THE CASTLE. The garrison keeps the gate and the hall, and its mind is the
 # captain: it is civil to the party until the party is recognized, and civil
-# to the loyalists until the guards turn. The loyalists (the king, his
-# knights, the reserves in the barracks) are hostile to the party always.
+# to the loyalists until the guards turn. The loyalists (the king and his
+# knights) are hostile to the party always.
 # The kitchen is civil and stays civil. One fact is learned in the kitchen
 # and spent at the gate — the cook's gossip opens the troupe, and Ashford
 # opens the turn. The captain's orders on the kitchen floor say the party is
@@ -64,9 +64,10 @@
 # the run with the king still breathing.
 #
 # THE ROUTES, each a scenario test in dungeonspec/castle_king_*_test.go:
-# the front door, the troupe, the troupe blown, turning the garrison, the
-# king deposed, the king slain, the scout who talks to the wrong guard, the
-# cell lock picked, and the orders carried to the captain.
+# the front door, the troupe (by the cook or by the stranger), the troupe
+# blown, turning the garrison, the king deposed, the king slain, the scout
+# who talks to the wrong guard, the cell lock picked, and the orders carried
+# to the captain.
 # THE KITCHEN-DOOR ROUTES (rpg-project#606, sneaking S1). The kitchen's one
 # door into the great hall is LOCKED: thieves' tools at DC 13 pick it
 # silently, Strength at DC 15 forces it and crashes. The hall guard walks a
@@ -81,11 +82,33 @@
 # states the compass word that points it at what it keeps, nearest the
 # bearing from its cell to that cell: the cook looks at the kitchen door (e,
 # 90), the scullion into the kitchen (ne; its centre is at 53), the captain
-# down the gatehouse at whoever comes to the gate (s, the party start), the
+# down the gatehouse at whoever comes to the gate (s, the south doorway), the
 # turnkey and the sergeant at the cells door (w, 251; se, 120), the king at
-# the throne door (e, 90). The facings are test choices, not story. Creatures that walk a route face their steps; the gate
+# the throne door (e, 90), the pedlar at the party start two cells off (sw). The facings are test choices, not story. Creatures that walk a route face their steps; the gate
 # guards' pause facings are rpg-project#624's. castle_king_facings_test.go
 # holds each cone over the cell it keeps.
+#
+# THE QA CASTLE (rpg-project#639). The castle is also the standing QA
+# script, and these pieces stage its steps, each a test in
+# dungeonspec/castle_king_script_test.go. The party starts outside, with the
+# garrison civil, on open ground round the gatehouse whose one way into the
+# castle is a doorway in the gatehouse's south wall: the operator's own
+# layout (rpg-project#654), its cells, doorway and party start folded in
+# from the studio. On the start's side, two cells from the party start and
+# out of the gate's sight, stands a stranger, the pedlar (townsfolk, civil),
+# placed where the party sees him at once (the QA castle is a checklist, not
+# a search; rpg-project#654), whose
+# one line teaches `feast-tonight` win or lose, so the captain's troupe
+# line is offered. Without it, a party that walks in civil and declares
+# sneaking behind the corner wall inside the gate, unseen, crosses to the gate
+# while both gate guards stand at their beat posts and is rolled against by
+# nobody; at their door posts the crossing rolls. Declaring in plain sight
+# does nothing (sneaking R10). Fighting the gate guards brings nobody: the
+# far room's two guards, the reserves in the barracks, are the garrison's
+# and arrive only when the gate opens (`gate-opened`), walking to the gate
+# civil on the troupe route and hostile after a fight. These pieces were
+# written by hand in the export's own shape, for the operator to open and
+# adjust in the studio.
 #
 # STORED IS AUTHORED. Each stat block under `templates:` says scores, hit
 # dice, armor, proficiency, skills and weapons — never hit points, armor
@@ -190,13 +213,43 @@ tables:
             kind: clang
             within: 2
         toward: sound
-      # Hand edit: the gate guards pace the gatehouse, a right-angled loop
-      # whose legs never share a cell (use case R7). At each gate-side
-      # corner a guard stands two rounds turned inward to the party start,
-      # watching the incomers (rpg-project#624): se from the west corner,
-      # sw from the east.
+      # Hand edit (the QA castle's step 4, rpg-project#639): gate-1's loop.
+      # He stands a round at the door post west of the captain turned ne to
+      # the cell under the gate, walks to the beat post north of the south
+      # doorway and stands a round there turned se to the incomers (#624), and
+      # walks back round by the west. gate-patrol-east is its mirror for
+      # gate-2, so the two keep step: in two world rounds of every four both
+      # stand at their beat posts with their backs to the gate. That is the
+      # sneak window. Neither beat post sees round the corner wall.
       - when: { enemy: none }
-        toward: { path: [{ q: -7, r: 9, wait: 2, facing: se }, { q: -1, r: 9, wait: 2, facing: sw }, { q: -3, r: 12 }, { q: -9, r: 12 }] }
+        toward: { path: [{ q: -5, r: 8, wait: 1, facing: ne }, { q: -5, r: 10, wait: 1, facing: se }, { q: -7, r: 10 }] }
+  gate-patrol-east:
+    time:
+      # Hand edit: a gate guard who witnessed the turn marches with the
+      # captain, on storm-the-keep's own row.
+      - when: [{ fact: guards-turned }, { enemy: none }]
+        toward: { at: { q: 10, r: -19 } }
+      - say: To arms! Intruders at the gate!
+        when:
+          - enemy: seen
+          - not:
+              fact: alarm-raised
+        fact: alarm-raised
+      - when:
+          enemy: reach
+        attack: enemy
+      - when:
+          enemy: seen
+        toward: enemy
+      - when:
+          heard:
+            kind: clang
+            within: 2
+        toward: sound
+      # Hand edit (rpg-project#639): gate-2's loop, gate-patrol's mirror: nw
+      # at the door post east of the captain, sw at the beat post.
+      - when: { enemy: none }
+        toward: { path: [{ q: -2, r: 8, wait: 1, facing: nw }, { q: -4, r: 10, wait: 1, facing: sw }, { q: -2, r: 10 }] }
   keep-patrol:
     time:
       - say: Protect the king!
@@ -308,6 +361,20 @@ tables:
       - when:
           enemy: seen
         toward: enemy
+  answer-the-gate:
+    time:
+      - when:
+          enemy: reach
+        attack: enemy
+      - when:
+          enemy: seen
+        toward: enemy
+      # Hand edit (the QA castle's step 7, rpg-project#639): the far room
+      # answers the gate. Arrived on `gate-opened`, a guard with no enemy in
+      # sight walks to the yard two cells in from the gate, so the two who
+      # answer do not stand in the gate's one crossing.
+      - when: { enemy: none }
+        toward: { at: { q: -2, r: 4 } }
 factions:
   - id: garrison
     mind: captain
@@ -320,6 +387,7 @@ factions:
   - id: kitchen
     mind: cook
   - id: prisoners
+  - id: townsfolk
 dispositions:
   - between:
       - garrison
@@ -343,6 +411,10 @@ dispositions:
     stance: neutral
   - between:
       - prisoners
+      - party
+    stance: neutral
+  - between:
+      - townsfolk
       - party
     stance: neutral
 intel:
@@ -3870,6 +3942,34 @@ room:
             offsetX: 0
             offsetZ: 0
         openings: []
+      # Hand edit (the QA castle's step 4, rpg-project#639): the corner wall,
+      # one row long, off the gate wall west of the door. The cell behind it
+      # is out of the gate's sight: where a party that walked in civil
+      # declares sneaking unseen. The operator's layout (rpg-project#654)
+      # predates it; it is S2's, kept for the sneak window.
+      - id: gate-corner-wall
+        label: gate-corner-wall
+        line:
+          start:
+            x: -3.897114317029974
+            z: 9.75
+          end:
+            x: -3.897114317029974
+            z: 11.75
+        appearance:
+          assetRef: dnd5e:env:dark-fortress:45_wall_01
+          height: 3
+          thickness: 0.3
+          elevation: 0
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint:
+            width: 2.0
+            depth: 0.5
+            offsetX: 0
+            offsetZ: 0
+        openings: []
       - id: gatehouse-west-wall
         label: gatehouse-west-wall
         line:
@@ -3938,7 +4038,13 @@ room:
             depth: 0.5
             offsetX: 0
             offsetZ: 0
-        openings: []
+        openings:
+          - id: be88f72a-91bb-4568-baea-6b3c8e99ccd8
+            position: 7.901156922328045
+            width: 1.8749944567680359
+            door:
+              id: 26369b41-e58f-475d-963a-95086d4cd868
+              assetRef: dnd5e:env:dark-fortress:wall_door_double_01
       - id: kitchen-south-wall
         label: kitchen-south-wall
         line:
@@ -4512,6 +4618,8 @@ room:
         r: 5
       - q: -17
         r: 6
+      - q: -17
+        r: 17
       - q: -16
         r: -16
       - q: -16
@@ -4558,6 +4666,12 @@ room:
         r: 5
       - q: -16
         r: 6
+      - q: -16
+        r: 15
+      - q: -16
+        r: 16
+      - q: -16
+        r: 17
       - q: -15
         r: -16
       - q: -15
@@ -4604,6 +4718,16 @@ room:
         r: 5
       - q: -15
         r: 6
+      - q: -15
+        r: 13
+      - q: -15
+        r: 14
+      - q: -15
+        r: 15
+      - q: -15
+        r: 16
+      - q: -15
+        r: 17
       - q: -14
         r: -16
       - q: -14
@@ -4650,6 +4774,20 @@ room:
         r: 5
       - q: -14
         r: 6
+      - q: -14
+        r: 11
+      - q: -14
+        r: 12
+      - q: -14
+        r: 13
+      - q: -14
+        r: 14
+      - q: -14
+        r: 15
+      - q: -14
+        r: 16
+      - q: -14
+        r: 17
       - q: -13
         r: -16
       - q: -13
@@ -4696,6 +4834,24 @@ room:
         r: 5
       - q: -13
         r: 6
+      - q: -13
+        r: 9
+      - q: -13
+        r: 10
+      - q: -13
+        r: 11
+      - q: -13
+        r: 12
+      - q: -13
+        r: 13
+      - q: -13
+        r: 14
+      - q: -13
+        r: 15
+      - q: -13
+        r: 16
+      - q: -13
+        r: 17
       - q: -12
         r: -16
       - q: -12
@@ -4742,6 +4898,28 @@ room:
         r: 5
       - q: -12
         r: 6
+      - q: -12
+        r: 7
+      - q: -12
+        r: 8
+      - q: -12
+        r: 9
+      - q: -12
+        r: 10
+      - q: -12
+        r: 11
+      - q: -12
+        r: 12
+      - q: -12
+        r: 13
+      - q: -12
+        r: 14
+      - q: -12
+        r: 15
+      - q: -12
+        r: 16
+      - q: -12
+        r: 17
       - q: -11
         r: -16
       - q: -11
@@ -4788,6 +4966,28 @@ room:
         r: 5
       - q: -11
         r: 6
+      - q: -11
+        r: 7
+      - q: -11
+        r: 8
+      - q: -11
+        r: 9
+      - q: -11
+        r: 10
+      - q: -11
+        r: 11
+      - q: -11
+        r: 12
+      - q: -11
+        r: 13
+      - q: -11
+        r: 14
+      - q: -11
+        r: 15
+      - q: -11
+        r: 16
+      - q: -11
+        r: 17
       - q: -10
         r: -16
       - q: -10
@@ -4834,8 +5034,28 @@ room:
         r: 5
       - q: -10
         r: 6
+      - q: -10
+        r: 7
+      - q: -10
+        r: 8
+      - q: -10
+        r: 9
+      - q: -10
+        r: 10
+      - q: -10
+        r: 11
       - q: -10
         r: 12
+      - q: -10
+        r: 13
+      - q: -10
+        r: 14
+      - q: -10
+        r: 15
+      - q: -10
+        r: 16
+      - q: -10
+        r: 17
       - q: -9
         r: -16
       - q: -9
@@ -4882,12 +5102,28 @@ room:
         r: 5
       - q: -9
         r: 6
+      - q: -9
+        r: 7
+      - q: -9
+        r: 8
+      - q: -9
+        r: 9
       - q: -9
         r: 10
       - q: -9
         r: 11
       - q: -9
         r: 12
+      - q: -9
+        r: 13
+      - q: -9
+        r: 14
+      - q: -9
+        r: 15
+      - q: -9
+        r: 16
+      - q: -9
+        r: 17
       - q: -8
         r: -16
       - q: -8
@@ -4934,6 +5170,8 @@ room:
         r: 5
       - q: -8
         r: 6
+      - q: -8
+        r: 7
       - q: -8
         r: 8
       - q: -8
@@ -4944,6 +5182,16 @@ room:
         r: 11
       - q: -8
         r: 12
+      - q: -8
+        r: 13
+      - q: -8
+        r: 14
+      - q: -8
+        r: 15
+      - q: -8
+        r: 16
+      - q: -8
+        r: 17
       - q: -7
         r: -16
       - q: -7
@@ -5002,6 +5250,16 @@ room:
         r: 11
       - q: -7
         r: 12
+      - q: -7
+        r: 13
+      - q: -7
+        r: 14
+      - q: -7
+        r: 15
+      - q: -7
+        r: 16
+      - q: -7
+        r: 17
       - q: -6
         r: -16
       - q: -6
@@ -5060,6 +5318,16 @@ room:
         r: 11
       - q: -6
         r: 12
+      - q: -6
+        r: 13
+      - q: -6
+        r: 14
+      - q: -6
+        r: 15
+      - q: -6
+        r: 16
+      - q: -6
+        r: 17
       - q: -5
         r: -16
       - q: -5
@@ -5118,6 +5386,16 @@ room:
         r: 11
       - q: -5
         r: 12
+      - q: -5
+        r: 13
+      - q: -5
+        r: 14
+      - q: -5
+        r: 15
+      - q: -5
+        r: 16
+      - q: -5
+        r: 17
       - q: -4
         r: -16
       - q: -4
@@ -5176,6 +5454,16 @@ room:
         r: 11
       - q: -4
         r: 12
+      - q: -4
+        r: 13
+      - q: -4
+        r: 14
+      - q: -4
+        r: 15
+      - q: -4
+        r: 16
+      - q: -4
+        r: 17
       - q: -3
         r: -16
       - q: -3
@@ -5234,6 +5522,16 @@ room:
         r: 11
       - q: -3
         r: 12
+      - q: -3
+        r: 13
+      - q: -3
+        r: 14
+      - q: -3
+        r: 15
+      - q: -3
+        r: 16
+      - q: -3
+        r: 17
       - q: -2
         r: -16
       - q: -2
@@ -5292,6 +5590,16 @@ room:
         r: 11
       - q: -2
         r: 12
+      - q: -2
+        r: 13
+      - q: -2
+        r: 14
+      - q: -2
+        r: 15
+      - q: -2
+        r: 16
+      - q: -2
+        r: 17
       - q: -1
         r: -16
       - q: -1
@@ -5348,6 +5656,18 @@ room:
         r: 10
       - q: -1
         r: 11
+      - q: -1
+        r: 12
+      - q: -1
+        r: 13
+      - q: -1
+        r: 14
+      - q: -1
+        r: 15
+      - q: -1
+        r: 16
+      - q: -1
+        r: 17
       - q: 0
         r: -16
       - q: 0
@@ -5400,6 +5720,22 @@ room:
         r: 8
       - q: 0
         r: 9
+      - q: 0
+        r: 10
+      - q: 0
+        r: 11
+      - q: 0
+        r: 12
+      - q: 0
+        r: 13
+      - q: 0
+        r: 14
+      - q: 0
+        r: 15
+      - q: 0
+        r: 16
+      - q: 0
+        r: 17
       - q: 1
         r: -16
       - q: 1
@@ -5448,6 +5784,22 @@ room:
         r: 6
       - q: 1
         r: 7
+      - q: 1
+        r: 8
+      - q: 1
+        r: 9
+      - q: 1
+        r: 10
+      - q: 1
+        r: 11
+      - q: 1
+        r: 12
+      - q: 1
+        r: 13
+      - q: 1
+        r: 14
+      - q: 1
+        r: 15
       - q: 2
         r: -16
       - q: 2
@@ -5494,6 +5846,20 @@ room:
         r: 5
       - q: 2
         r: 6
+      - q: 2
+        r: 7
+      - q: 2
+        r: 8
+      - q: 2
+        r: 9
+      - q: 2
+        r: 10
+      - q: 2
+        r: 11
+      - q: 2
+        r: 12
+      - q: 2
+        r: 13
       - q: 3
         r: -18
       - q: 3
@@ -5544,6 +5910,16 @@ room:
         r: 5
       - q: 3
         r: 6
+      - q: 3
+        r: 7
+      - q: 3
+        r: 8
+      - q: 3
+        r: 9
+      - q: 3
+        r: 10
+      - q: 3
+        r: 11
       - q: 4
         r: -20
       - q: 4
@@ -5598,6 +5974,12 @@ room:
         r: 5
       - q: 4
         r: 6
+      - q: 4
+        r: 7
+      - q: 4
+        r: 8
+      - q: 4
+        r: 9
       - q: 5
         r: -22
       - q: 5
@@ -5656,6 +6038,8 @@ room:
         r: 5
       - q: 5
         r: 6
+      - q: 5
+        r: 7
       - q: 6
         r: -22
       - q: 6
@@ -7040,16 +7424,24 @@ room:
             q: -22
             r: 13
         appearanceRef: dnd5e:npcs:goblin:prisoner-02-style-02-a
+      - id: pedlar
+        ref: dnd5e:monsters:commoner
+        startingCell:
+          location:
+            q: 0
+            r: 14
+          facing: sw
+        appearanceRef: dnd5e:npcs:kingdom:merchant-01
     partyStart:
-      q: -5
-      r: 11
+      q: -2
+      r: 16
     monsterBindings:
       gate-1:
         faction: garrison
         table: gate-patrol
       gate-2:
         faction: garrison
-        table: gate-patrol
+        table: gate-patrol-east
       hall-1:
         faction: garrison
         table: hall-patrol
@@ -7157,15 +7549,15 @@ room:
       king:
         faction: loyalists
       reserve-1:
-        faction: loyalists
-        table: keep-patrol
+        faction: garrison
+        table: answer-the-gate
         arrives:
-          fact: alarm-raised
+          fact: gate-opened
       reserve-2:
-        faction: loyalists
-        table: keep-patrol
+        faction: garrison
+        table: answer-the-gate
         arrives:
-          fact: alarm-raised
+          fact: gate-opened
       scullion:
         faction: kitchen
       sergeant:
@@ -7282,9 +7674,28 @@ room:
         holds:
           - king-whereabouts
           - key-bearer
+      # The stranger (the QA castle's step 2, rpg-project#639): every option
+      # needs a check, so the line rolls against DC 5 and its success and
+      # failure both teach `feast-tonight`.
+      pedlar:
+        faction: townsfolk
+        options:
+          - id: tonight
+            say: What’s all the bustle?
+            check:
+              - ability: persuasion
+                dc: 5
+            success:
+              - say: Feast for the whole court tonight — they’ll want players.
+                fact: feast-tonight
+            failure:
+              - say: Feast, tonight. Now leave me be.
+                fact: feast-tonight
     doorBindings:
       gate-wall-door:
         closed: true
+        opened:
+          fact: gate-opened
       hall-wall-door:
         closed: true
       kitchen-wall-door:
@@ -7310,6 +7721,7 @@ room:
             dc: 13
         opened:
           fact: cells-opened
+      26369b41-e58f-475d-963a-95086d4cd868: {}
     propBindings:
       purse:
         holdable: true
