@@ -30,7 +30,7 @@ func TestAtlasRegionsSuite(t *testing.T) { suite.Run(t, new(AtlasRegionsSuite)) 
 func (s *AtlasRegionsSuite) SetupTest() {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
-		Characters: testCharacters(), Events: session.DiscardEvents{},
+		Characters: testCharacters(),
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -278,22 +278,22 @@ func (u untouchableStores) SaveCharacter(context.Context, *character.Data) error
 	u.touched("SaveCharacter")
 	return nil
 }
-func (u untouchableStores) Publish(context.Context, []session.Event) error {
-	u.touched("Publish")
+func (u untouchableStores) PublishActs(context.Context, []session.Act) error {
+	u.touched("PublishActs")
 	return nil
 }
 
 // TestAtlasOfTouchesNoStore pins what a dungeon registry relies on when it
 // calls AtlasOf for every file at boot and on every validate-only keystroke
 // from a builder: the projection is pure construction, and reaches no
-// session, encounter, character store or event stream. A load does not
+// session, encounter, character store or act stream. A load does not
 // consult standing, sight or initiative — those fire from play — and this
 // is the test that keeps it so from this side of the seam.
 func (s *AtlasRegionsSuite) TestAtlasOfTouchesNoStore() {
 	stores := untouchableStores{t: s.T()}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: stores, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
-		Sessions: stores, Encounters: stores, Characters: stores, Events: stores,
+		Sessions: stores, Encounters: stores, Characters: stores,
 	})
 	s.Require().NoError(err)
 

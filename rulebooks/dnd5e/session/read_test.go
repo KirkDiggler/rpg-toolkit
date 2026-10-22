@@ -5,7 +5,7 @@ package session_test
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -17,7 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// ReadTestSuite covers the four read verbs and, more importantly, the
+// ReadTestSuite covers the read verbs and, more importantly, the
 // projection boundary they sit on.
 type ReadTestSuite struct {
 	suite.Suite
@@ -34,7 +34,6 @@ func (s *ReadTestSuite) SetupTest() {
 	s.characters = testCharacters()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
-		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -88,8 +87,6 @@ func (s *ReadTestSuite) TestReadVerbsRejectMissingIdentifiers() {
 		s.ErrorIs(err, session.ErrNilInput)
 		_, err = s.mgr.View(ctx, nil)
 		s.ErrorIs(err, session.ErrNilInput)
-		_, err = s.mgr.Story(ctx, nil)
-		s.ErrorIs(err, session.ErrNilInput)
 	})
 
 	s.Run("empty session id", func() {
@@ -103,8 +100,6 @@ func (s *ReadTestSuite) TestReadVerbsRejectMissingIdentifiers() {
 		_, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess"})
 		s.ErrorIs(err, session.ErrNoMemberID)
 		_, err = s.mgr.View(ctx, &session.ViewInput{Session: "sess"})
-		s.ErrorIs(err, session.ErrNoMemberID)
-		_, err = s.mgr.Story(ctx, &session.StoryInput{Session: "sess"})
 		s.ErrorIs(err, session.ErrNoMemberID)
 	})
 
@@ -195,130 +190,6 @@ func (s *ReadTestSuite) TestViewRejectsUnknownMember() {
 		&session.ViewInput{Session: "sess", Member: "nobody"})
 	s.Require().Error(err)
 	s.ErrorIs(err, session.ErrNoMember)
-}
-
-// TestStoryOmitsTheAudienceRoster is an information-leak pin, not a shape test.
-//
-// A record entry carries the full roster of viewers a beat was addressed to.
-// Handing that back would tell Alice which other members exist and were
-// present — including members she has never perceived and rooms she has never
-// entered. The projection drops it deliberately, and this test fails if a
-// future "carry everything across" refactor puts it back.
-//
-// It is written against the type rather than a value so it fails at compile
-// time if the field is reintroduced, which is the earliest possible moment.
-func (s *ReadTestSuite) TestStoryOmitsTheAudienceRoster() {
-	s.startWith(hexWorld())
-
-	entries, err := s.mgr.Story(context.Background(),
-		&session.StoryInput{Session: "sess", Member: "alice", FromSeq: 0})
-	s.Require().NoError(err)
-	s.Require().NotEmpty(entries, "setup records a scene-opened beat")
-
-	// If Event ever grows an Audience field, this assertion's premise is
-	// gone and the reflection below reports it.
-	for _, field := range structFields(entries[0]) {
-		s.NotEqual("Audience", field,
-			"the audience roster is a delivery rule, not story content: exposing it "+
-				"tells a viewer which members exist and were present")
-	}
-}
-
-// TestStoryFromSeqIsInclusive pins the semantics our field name promises,
-// independent of the composition's misnamed one.
-func (s *ReadTestSuite) TestStoryFromSeqIsInclusive() {
-	s.startWith(hexWorld())
-	ctx := context.Background()
-
-	all, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice"})
-	s.Require().NoError(err)
-	s.Require().NotEmpty(all)
-
-	first := all[0].Seq
-	from, err := s.mgr.Story(ctx,
-		&session.StoryInput{Session: "sess", Member: "alice", FromSeq: first})
-	s.Require().NoError(err)
-	s.Require().NotEmpty(from)
-	s.Equal(first, from[0].Seq, "FromSeq includes the entry it names")
-}
-
-// TestTrimmedStoryUsesOurSentinelNotTheirs is the pin for the leak channel the
-// boundary test cannot see.
-//
-// The AST test reads exported signatures, and a sentinel error is not a type in
-// a signature. If the composition's ErrTrimmed were reachable through our
-// returned error, hosts would match on it, and replacing the composition would
-// break their error handling exactly as surely as leaking a struct would —
-// silently, with CI green throughout.
-func (s *ReadTestSuite) TestTrimmedStoryUsesOurSentinelNotTheirs() {
-	ctx := context.Background()
-	world := trimmedWorld(s.T())
-	// Launch always stores an unbounded log with only the launch's own beats;
-	// a log already aged past a bounded retention window is a stored shape no
-	// launch produces.
-	seedRun(s.T(), s.sessions, s.encounters, "sess", world)
-
-	// Under per-recipient numbering a cursorless session seeds from the
-	// retained window and FromSeq 1 is answerable — the trimmed refusal
-	// needs a cursor remembering beats the window no longer holds
-	// (stream.go; the SentinelSuite's own trimmed scene says the same).
-	data, err := s.sessions.GetSession(ctx, "sess")
-	s.Require().NoError(err)
-	data.Streams = map[string]session.StreamCursor{
-		"alice": {UpTo: world.Log.NextSeq - 1, Count: uint64(len(world.Log.Entries)) + 5},
-	}
-	s.Require().NoError(s.sessions.SaveSession(ctx, data))
-
-	_, err = s.mgr.Story(ctx,
-		&session.StoryInput{Session: "sess", Member: "alice", FromSeq: 1})
-	s.Require().Error(err)
-	s.ErrorIs(err, session.ErrStoryTrimmed, "the caller sees our vocabulary")
-	s.False(errors.Is(err, encounter.ErrTrimmed),
-		"and must NOT be able to reach the composition's sentinel — matching on it "+
-			"would couple every host to a module we intend to replace")
-}
-
-// trimmedWorld builds a world whose story log has already aged past its
-// retention window, so a resume from sequence 1 can no longer be honoured.
-func trimmedWorld(t fataler) *encounter.EncounterData {
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 5, 5)}},
-		Members: []encounter.MemberInput{
-			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
-		},
-		Endings: []encounter.EndingInput{
-			{Key: "out", Trigger: encounter.TriggerExternal{}},
-		},
-		Retention: 2,
-		Capabilities: encounter.Capabilities{
-			Sheets:        encStandStill{},
-			Sight:         encEveryoneSees{},
-			Equipment:     encNoHandsObserved{},
-			Conditions:    encNoHandsObserved{},
-			Initiative:    encOrderAsGiven{},
-			Driver:        encPassDriver{},
-			Participation: encEveryoneStanding{},
-			Actors: encounter.Actors{
-				Striker:   encounter.RefusingStriker{},
-				Mover:     encounter.RefusingMover{},
-				Announcer: encQuietAnnouncer{},
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("building trimmed world: %v", err)
-	}
-	for i := 0; i < 10; i++ {
-		to := spatial.Position{X: 2, Y: 1}
-		if i%2 == 1 {
-			to = spatial.Position{X: 1, Y: 1}
-		}
-		if _, err := enc.Step(&encounter.StepInput{Member: "alice", To: to}); err != nil {
-			t.Fatalf("generating beats: %v", err)
-		}
-	}
-	data := enc.ToData()
-	return &data
 }
 
 func TestReadSuite(t *testing.T) {
@@ -423,4 +294,30 @@ func (s *ReadTestSuite) TestViewCarriesKind() {
 	s.Require().NotNil(goblin, "scout must see goblin in the open hall")
 	s.Equal(session.KindPlayer, ally.Kind, "a fellow player's Sighting must report Kind player")
 	s.Equal(session.KindMonster, goblin.Kind, "a monster's Sighting must report Kind monster")
+}
+
+// TestOldSessionDataLoads (R29): a session saved while the v1alpha1 stream
+// existed carries a `streams` key, each member's delivered-stream cursor.
+// The cursor left with that stream (rpg-project#631), so the key is ignored:
+// the session decodes, reads and takes a write verb.
+func (s *ReadTestSuite) TestOldSessionDataLoads() {
+	s.startWith(hexWorld())
+
+	saved, err := json.Marshal(s.sessions.byID["sess"])
+	s.Require().NoError(err)
+	var blob map[string]json.RawMessage
+	s.Require().NoError(json.Unmarshal(saved, &blob))
+	blob["streams"] = json.RawMessage(`{"alice":{"up_to":7,"count":3}}`)
+	older, err := json.Marshal(blob)
+	s.Require().NoError(err)
+	var data session.SessionData
+	s.Require().NoError(json.Unmarshal(older, &data), "an older session decodes")
+	s.sessions.byID["sess"] = &data
+
+	_, err = s.mgr.View(context.Background(), &session.ViewInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err, "an older session reads")
+	_, err = s.mgr.Move(context.Background(), &session.MoveInput{
+		Session: "sess", Member: "alice", Path: []spatial.Position{hexCell(1, 0)},
+	})
+	s.Require().NoError(err, "an older session takes a write verb")
 }

@@ -85,7 +85,7 @@ func (s *InspireSuite) scene(uses, apart int) *session.Manager {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: session.DiscardEvents{},
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	launchOnClock(s.T(), mgr, s.encounters, bardWorld(apart), []string{"bard", "fighter"}, 0)
@@ -244,17 +244,5 @@ func (s *InspireSuite) TestTheBardCannotInspireThemselves() {
 
 // countBeat counts beats of one kind in the bard's story.
 func (s *InspireSuite) countBeat(mgr *session.Manager, kind string) int {
-	entries, err := mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "bard"})
-	s.Require().NoError(err)
-	count := 0
-	for _, entry := range entries {
-		var beat struct {
-			Beat string `json:"beat"`
-		}
-		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
-		if beat.Beat == kind {
-			count++
-		}
-	}
-	return count
+	return len(beatsNamed(storyBeats(s.T(), mgr, "sess", "bard"), kind))
 }

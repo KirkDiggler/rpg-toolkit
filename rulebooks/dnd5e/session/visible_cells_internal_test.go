@@ -26,7 +26,6 @@ func TestViewVisibleCellsIsTheEncounterAnswerExactly(t *testing.T) {
 		Characters: &strikeCharacters{byID: map[string]*character.Data{
 			"alice": strikeFixtureFighter("alice"), "bob": strikeFixtureFighter("bob"),
 		}},
-		Events: DiscardEvents{},
 	})
 	require.NoError(t, err)
 	// Two rooms the void walls apart, one seat in each.

@@ -61,7 +61,7 @@ func reloadStores(t *testing.T, sessions *fakeSessions, encounters *fakeEncounte
 	}
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
-		Sessions: sessions, Encounters: encounters, Characters: characters, Events: session.DiscardEvents{},
+		Sessions: sessions, Encounters: encounters, Characters: characters,
 	})
 	require.NoError(t, err)
 	return mgr

@@ -5,6 +5,7 @@ package session_test
 
 import (
 	"encoding/json"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -15,6 +16,41 @@ import (
 // Held rows (rpg-project#520, R18): an effect a TARGET holds is a full row on
 // that target's candidate, never on the declaration, and an effect no
 // candidate holds appears nowhere.
+
+// toldSighted is one sighted beat, and who was told it.
+type toldSighted struct {
+	Recipient string    `json:"-"`
+	Beat      witnessed `json:"-"`
+	Changed   []string  `json:"changed"`
+}
+
+// marks is each cave member's last record seq, the point
+// [EffectRowsSuite.sightedSince] reads after.
+func (s *EffectRowsSuite) marks() map[string]uint64 {
+	s.T().Helper()
+	out := map[string]uint64{}
+	for _, member := range []string{s.actor, erAlly, erGoblin1, erGoblin2} {
+		out[member] = lastSeq(storyBeats(s.T(), s.mgr, erSession, member))
+	}
+	return out
+}
+
+// sightedSince is every sighted beat any cave member was told after their
+// mark (all of them, for a nil map), recipient by recipient.
+func (s *EffectRowsSuite) sightedSince(marks map[string]uint64) []toldSighted {
+	s.T().Helper()
+	members := []string{s.actor, erAlly, erGoblin1, erGoblin2}
+	slices.Sort(members)
+	var out []toldSighted
+	for _, member := range members {
+		for _, beat := range beatsNamed(storyBeatsAfter(s.T(), s.mgr, erSession, member, marks[member]), "sighted") {
+			told := toldSighted{Recipient: member, Beat: beat}
+			beat.decode(s.T(), &told)
+			out = append(out, told)
+		}
+	}
+	return out
+}
 
 // seatOnGoblin writes a condition onto a goblin's sheet in the session record
 // and tells the session the goblin changed, as a host does after its own
@@ -149,7 +185,7 @@ func (s *EffectRowsSuite) TestAStaleSightingOfAnUntouchedMemberDrawsNoRecheck() 
 			data.NPCs[i].Conditions = append(data.NPCs[i].Conditions, s.raw(s.faerieFireOn(erGoblin1)))
 		}
 	}
-	s.stream.published = nil
+	marks := s.marks()
 
 	// Two verbs that touch alice and never the goblin: the dodge, then the
 	// host's re-look at alice. A standing diff would re-look at the goblin on
@@ -161,10 +197,8 @@ func (s *EffectRowsSuite) TestAStaleSightingOfAnUntouchedMemberDrawsNoRecheck() 
 	_, err = s.mgr.Recheck(s.ctx, &session.RecheckInput{Session: erSession, Members: []string{"alice"}})
 	s.Require().NoError(err)
 
-	for _, event := range s.stream.published {
-		if body, ok := event.Body.(session.SightedBody); ok {
-			s.NotContains(body.Changed, erGoblin1, "no beat names the untouched goblin: %+v", body)
-		}
+	for _, told := range s.sightedSince(marks) {
+		s.NotContains(told.Changed, erGoblin1, "no beat names the untouched goblin: %s", told.Beat.Payload)
 	}
 }
 
@@ -197,7 +231,7 @@ func (s *EffectRowsSuite) TestConditionChangeRechecksWatchers() {
 // TestDeliveredPayloadsCarryNoConditions: what a sighting snapshots of a
 // member's conditions is testimony for rules, never something delivered.
 // Goblin one holds Faerie Fire and has been re-looked at: neither alice's
-// View sightings nor any sighted beat on the stream carries a "conditions" key.
+// View sightings nor any sighted beat in anybody's story carries a "conditions" key.
 func (s *EffectRowsSuite) TestDeliveredPayloadsCarryNoConditions() {
 	s.cave(s.rogue())
 	s.seatOnGoblin(erGoblin1, s.faerieFireOn(erGoblin1))
@@ -216,13 +250,10 @@ func (s *EffectRowsSuite) TestDeliveredPayloadsCarryNoConditions() {
 	s.Positive(checked, "precondition: alice holds sightings")
 
 	beats := 0
-	for _, event := range s.stream.published {
-		if event.Kind != session.EventSighted {
-			continue
-		}
+	for _, told := range s.sightedSince(nil) {
 		var payload map[string]json.RawMessage
-		s.Require().NoError(json.Unmarshal(event.Payload, &payload))
-		s.NotContains(payload, "conditions", "sighted beat to %s", event.Recipient)
+		s.Require().NoError(json.Unmarshal(told.Beat.Payload, &payload))
+		s.NotContains(payload, "conditions", "sighted beat to %s", told.Recipient)
 		beats++
 	}
 	s.Positive(beats, "precondition: the re-look sent sighted beats")
@@ -290,7 +321,7 @@ func (s *EffectRowsSuite) TestAHitOnAFreshMonsterSendsNoSightedBeatAboutIt() {
 			data.NPCs[i].HitPoints, data.NPCs[i].MaxHitPoints = 100, 100 // wounded, still standing
 		}
 	}
-	s.stream.published = nil
+	marks := s.marks()
 
 	out, err := s.mgr.Attack(s.ctx, &session.AttackInput{
 		Session: erSession, Attacker: "alice", Target: erGoblin1,
@@ -299,11 +330,9 @@ func (s *EffectRowsSuite) TestAHitOnAFreshMonsterSendsNoSightedBeatAboutIt() {
 	s.Require().NoError(err)
 	s.Require().True(out.Hit, "precondition: the swing lands")
 
-	for _, event := range s.stream.published {
-		if body, ok := event.Body.(session.SightedBody); ok {
-			s.Subset([]string{"alice"}, body.Changed,
-				"no condition changed, so nobody is told to look again at the goblin or anyone but "+
-					"the attacker who turned: %+v to %s", body, event.Recipient)
-		}
+	for _, told := range s.sightedSince(marks) {
+		s.Subset([]string{"alice"}, told.Changed,
+			"no condition changed, so nobody is told to look again at the goblin or anyone but "+
+				"the attacker who turned: %s to %s", told.Beat.Payload, told.Recipient)
 	}
 }

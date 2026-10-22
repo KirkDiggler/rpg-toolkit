@@ -84,10 +84,6 @@ type SpeakOutput struct {
 	// OptionID echoes the line that was said.
 	OptionID string `json:"option_id"`
 
-	// Seq is the `spoke` beat's sequence in the ACTOR's own delivered
-	// numbering (stream.go). A missed line gets one too: somebody tried.
-	Seq uint64 `json:"seq"`
-
 	// Paused is true when the attempt stopped to ask the member whether to
 	// spend a held offer — Bardic Inspiration — before the verdict is
 	// settled. Answer it with [Manager.React].

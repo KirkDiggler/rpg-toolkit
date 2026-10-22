@@ -88,9 +88,6 @@ type InteractOutput struct {
 	// Descriptor is what the target IS, assembled from session's own store.
 	Descriptor WorldNPCDescriptor
 
-	// Seq is the sequence number of the recorded interaction beat.
-	Seq uint64
-
 	// Saved names what was persisted.
 	Saved SaveReport
 
@@ -159,7 +156,6 @@ func (m *Manager) Interact(ctx context.Context, in *InteractInput) (*InteractOut
 
 	return &InteractOutput{
 		Descriptor: descriptor,
-		Seq:        confirmed.Seq,
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil

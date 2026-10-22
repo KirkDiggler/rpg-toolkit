@@ -78,26 +78,6 @@ type AttackOutput struct {
 	// this call did not.
 	Paused bool `json:"paused,omitempty"`
 
-	// Seq is the story sequence of the recorded beat.
-	Seq uint64 `json:"seq"`
-
-	// FollowUpSeqs are the story sequences of the beats this swing's
-	// consequences produced, in the order they were appended: for each
-	// concentration it broke, the check that was failed, the break itself, and
-	// one condition-removed per address the ending spell was holding. Empty on
-	// a swing that broke nobody's concentration.
-	//
-	// SEPARATE FROM Seq rather than folded into it, mirroring the
-	// composition's own split: Seq answers the question the caller asked —
-	// where the blow I reported landed — and an attack whose own sequence
-	// moved depending on how many spells it happened to end would answer a
-	// different one.
-	//
-	// Recipient-local like Seq, and renumbered through the same seam: these
-	// are positions in THIS member's stream, so a caller may compare them with
-	// Seq and with the sequences on its own events, and with nobody else's.
-	FollowUpSeqs []uint64 `json:"follow_up_seqs,omitempty"`
-
 	// Saved names what was persisted.
 	Saved SaveReport `json:"saved"`
 
@@ -415,10 +395,8 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		case got.hit != nil:
 			struck, _ := out.Outcome.(resolution.StrikeOutcome)
 			paused.Roll, paused.Total = struck.Roll, struck.Total
-			paused.Seq = scope.deliveredSeq(in.Attacker, got.hit.Seq)
 		case got.window != nil:
 			paused.Roll, paused.Total = out.Posed.Ask.Roll, out.Posed.Ask.Total
-			paused.Seq = scope.deliveredSeq(in.Attacker, got.window.Seq)
 		}
 		return paused, nil
 	}
@@ -427,27 +405,23 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 	if !ok || got.hit == nil {
 		return nil, fmt.Errorf("attack: %w: strike produced %T", ErrInvalidWorld, out.Outcome)
 	}
-	recorded := got.hit
-
 	var wardedBy string
 	if struck.Warded != nil {
 		wardedBy = struck.Warded.SourceID
 	}
 	return &AttackOutput{
-		Roll:         struck.Roll,
-		Total:        struck.Total,
-		Against:      struck.TargetAC,
-		Hit:          struck.Hit,
-		Critical:     struck.Critical,
-		Damage:       struck.Damage,
-		Warded:       struck.Warded != nil,
-		WardedBy:     wardedBy,
-		Seq:          scope.deliveredSeq(in.Attacker, recorded.Seq),
-		FollowUpSeqs: deliveredSeqs(scope, in.Attacker, recorded.FollowUpSeqs),
-		Saved:        result.Saved,
-		Delivery:     result.Delivery,
-		Attack:       attackRefFor(definition),
-		Calculation:  sessionRollCalculationFor(rollCalculationFor(struck.Calculation)),
+		Roll:        struck.Roll,
+		Total:       struck.Total,
+		Against:     struck.TargetAC,
+		Hit:         struck.Hit,
+		Critical:    struck.Critical,
+		Damage:      struck.Damage,
+		Warded:      struck.Warded != nil,
+		WardedBy:    wardedBy,
+		Saved:       result.Saved,
+		Delivery:    result.Delivery,
+		Attack:      attackRefFor(definition),
+		Calculation: sessionRollCalculationFor(rollCalculationFor(struck.Calculation)),
 
 		PresentationID: presentationID,
 	}, nil
@@ -650,25 +624,6 @@ func translateResolution(err error) error {
 // no throw to correlate with, and an empty token says exactly that. Only
 // [Manager.Attack] mints one, because only [Manager.Attack] is a roll a
 // player asked for.
-// deliveredSeqs renumbers a run of story sequences into the recipient's own
-// stream, one at a time through the seam a single sequence already takes.
-//
-// EVERY BEAT IS RENUMBERED, not just the first. The delivered numbering is
-// per-recipient and gapless, so a caller handed one translated sequence and a
-// run of raw ones would be comparing two numbering systems that agree only by
-// accident. Nil in, nil out: a swing that ended nothing has no follow-ups, and
-// an empty slice would be a second way of saying so.
-func deliveredSeqs(scope *writeScope, member string, seqs []uint64) []uint64 {
-	if len(seqs) == 0 {
-		return nil
-	}
-	delivered := make([]uint64, len(seqs))
-	for i, seq := range seqs {
-		delivered[i] = scope.deliveredSeq(member, seq)
-	}
-	return delivered
-}
-
 func recordFor(
 	in *AttackInput, struck resolution.StrikeOutcome, definition combatActions.Definition,
 	presentationID string, told concentration,

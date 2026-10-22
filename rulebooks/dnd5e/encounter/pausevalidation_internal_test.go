@@ -30,6 +30,7 @@ func aTurnPauseBlob() *PauseData {
 		Version:   PauseVersion,
 		Kind:      PauseTurn,
 		Member:    "goblin",
+		ActID:     "move:01HF7YAT003RVQKEBZ99Y1AF3E",
 		From:      PositionData{X: 0, Y: 0},
 		To:        cell,
 		Remaining: []PositionData{cell},

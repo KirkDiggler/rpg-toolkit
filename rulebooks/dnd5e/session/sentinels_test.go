@@ -359,7 +359,7 @@ func (s *SentinelSuite) SetupTest() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: testCharacters(), Events: session.DiscardEvents{},
+		Characters: testCharacters(),
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -409,7 +409,7 @@ func (s *SentinelSuite) armedDuel(chars *fakeCharacters) *session.Manager {
 	encounters := newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: encounters,
-		Characters: chars, Events: session.DiscardEvents{},
+		Characters: chars,
 	})
 	s.Require().NoError(err)
 
@@ -536,51 +536,12 @@ func (s *SentinelSuite) TestAWorldThatWillNotLoad() {
 	s.refusedInOurVocabulary(err, session.ErrInvalidWorld)
 }
 
-// TestATrimmedStory is the case that already held, kept here so the list of
-// refusals is the list of refusals rather than a list of bugs once fixed —
-// reconstructed for per-recipient numbering (stream.go): a session with no
-// cursor has never issued a number, so any resume point the retained window
-// can seed is answerable, and the trimmed refusal needs a cursor that
-// remembers MORE than the window still holds — a session that delivered
-// beats, then aged them out.
-func (s *SentinelSuite) TestATrimmedStory() {
-	ctx := context.Background()
-	world := trimmedWorld(s.T())
-	// Seeded: a bounded retention whose window has already aged entries out is
-	// a stored shape Launch never produces (it always launches unbounded).
-	seedRun(s.T(), s.sessions, s.encounters, "trimmed", world)
-
-	// Five beats were delivered to alice before the surviving window — the
-	// state a long-running session reaches on its own, planted through the
-	// repository because driving 30+ verbs here would test patience, not
-	// the refusal.
-	data, err := s.sessions.GetSession(ctx, "trimmed")
-	s.Require().NoError(err)
-	data.Streams = map[string]session.StreamCursor{
-		"alice": {UpTo: world.Log.NextSeq - 1, Count: uint64(len(world.Log.Entries)) + 5},
-	}
-	s.Require().NoError(s.sessions.SaveSession(ctx, data))
-
-	_, err = s.mgr.Story(ctx,
-		&session.StoryInput{Session: "trimmed", Member: "alice", FromSeq: 1})
-	s.refusedInOurVocabulary(err, session.ErrStoryTrimmed)
-
-	resumable, err := s.mgr.Story(ctx,
-		&session.StoryInput{Session: "trimmed", Member: "alice", FromSeq: 6})
-	s.Require().NoError(err, "the oldest surviving number is still honoured")
-	s.Require().NotEmpty(resumable)
-	s.Equal(uint64(6), resumable[0].Seq)
-}
-
 // TestAMemberTheEncounterDoesNotHave covers the reads that ask the composition
 // about somebody by name.
 func (s *SentinelSuite) TestAMemberTheEncounterDoesNotHave() {
 	ctx := context.Background()
 
 	_, err := s.mgr.View(ctx, &session.ViewInput{Session: "sess", Member: "nobody"})
-	s.refusedInOurVocabulary(err, session.ErrNoMember)
-
-	_, err = s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "nobody"})
 	s.refusedInOurVocabulary(err, session.ErrNoMember)
 
 	_, err = s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "nobody"})

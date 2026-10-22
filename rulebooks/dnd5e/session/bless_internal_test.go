@@ -4,7 +4,6 @@
 package session
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -16,23 +15,6 @@ import (
 type BlessProjectionSuite struct{ suite.Suite }
 
 func TestBlessProjectionSuite(t *testing.T) { suite.Run(t, new(BlessProjectionSuite)) }
-
-func (s *BlessProjectionSuite) TestMissHasTypedBodyAndRequiresIdentity() {
-	valid := `{"beat":"cast_missed","actor":"cleric","target":"ally","spell":{"ref":"dnd5e:spells:bless","name":"Bless"}}`
-	kind, body := decodeBeat([]byte(valid))
-	s.Equal(EventCastMissed, kind)
-	s.Equal(CastMissedBody{Actor: "cleric", Target: "ally", Spell: SpellRef{Ref: refs.Spells.Bless().String(), Name: "Bless"}}, body)
-	for _, key := range []string{"actor", "target", "spell"} {
-		var malformed map[string]any
-		s.Require().NoError(json.Unmarshal([]byte(valid), &malformed))
-		delete(malformed, key)
-		raw, err := json.Marshal(malformed)
-		s.Require().NoError(err)
-		kind, body = decodeBeat(raw)
-		s.Equal(EventCastMissed, kind)
-		s.Nil(body)
-	}
-}
 
 func (s *BlessProjectionSuite) TestMissSurvivesOutcomeConversion() {
 	spell := SpellRef{Ref: refs.Spells.Bless().String(), Name: "Bless"}

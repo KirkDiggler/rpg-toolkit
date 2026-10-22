@@ -116,7 +116,7 @@ func (s *ReactWindowSuite) walkingSkeleton(live *actCapture, path ...spatial.Pos
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: live, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{},
 		TurnDriver: &pathWalker{paths: map[string][]spatial.Position{"skel-1": path}, walked: map[string]bool{}},
-		Sessions:   s.sessions, Encounters: s.encounters, Characters: s.characters, Events: session.DiscardEvents{},
+		Sessions:   s.sessions, Encounters: s.encounters, Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	return mgr
@@ -319,7 +319,7 @@ func (s *TradeTestSuite) TestTradingBeatsProduceNoAct() {
 func (s *ManagerTestSuite) TestNilActStreamRefused() {
 	_, err := session.NewManager(&session.Config{
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: testCharacters(),
-		Seats: newFakeSeats(), Explorations: newFakeExplorations(), Events: session.DiscardEvents{},
+		Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		Record: session.DiscardRecord{}, Dice: testDice{}, PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{},
 	})
 	s.ErrorIs(err, session.ErrIncompleteConfig)

@@ -15,7 +15,6 @@ package session_test
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -97,7 +96,7 @@ func (s *SpeakSuite) aYardDriven(
 		PresentationIDs: testPresentationIDs{}, Dice: roller,
 		TurnDriver: driver,
 		Sessions:   s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: session.DiscardEvents{},
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 
@@ -329,19 +328,9 @@ func (s *SpeakSuite) TestAPlayerOffersNoLines() {
 	s.Require().ErrorIs(err, session.ErrNoOption)
 }
 
-// beats is every beat kind the member's own stream carries, in order.
+// beats is every beat word the member's own story carries, in order.
 func (s *SpeakSuite) beats(mgr *session.Manager, member string) []string {
-	story, err := mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: member})
-	s.Require().NoError(err)
-	out := make([]string, 0, len(story))
-	for _, event := range story {
-		var beat struct {
-			Beat string `json:"beat"`
-		}
-		s.Require().NoError(json.Unmarshal(event.Payload, &beat))
-		out = append(out, beat.Beat)
-	}
-	return out
+	return beatNames(s.events(mgr, member))
 }
 
 func (s *SpeakSuite) endTurn(mgr *session.Manager, member string) {
@@ -352,34 +341,56 @@ func (s *SpeakSuite) endTurn(mgr *session.Manager, member string) {
 	s.Require().NoError(err)
 }
 
-// events is the typed events the member's own stream carries.
-func (s *SpeakSuite) events(mgr *session.Manager, member string) []session.Event {
-	story, err := mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: member})
-	s.Require().NoError(err)
-	return story
+// events is the beats the member's own story carries, in order.
+func (s *SpeakSuite) events(mgr *session.Manager, member string) []witnessed {
+	return storyBeats(s.T(), mgr, "sess", member)
 }
 
-// THE BEAT IS THE ONLY ACCOUNT OF THE ROLL, so it has to cross the seam
-// TYPED. Driven through the real Manager rather than decodeBeat, because the
-// unit pin passed the whole time the wire was once broken: what was missing
-// was the kind's case, not the decoder.
-func (s *SpeakSuite) TestABeatenLineSurfacesAsATypedEvent() {
+// spokePayload is the spoke beat's payload, as the encounter wrote it.
+type spokePayload struct {
+	Actor       string                   `json:"actor"`
+	Target      string                   `json:"target"`
+	Prop        string                   `json:"prop"`
+	OptionID    string                   `json:"option"`
+	Line        string                   `json:"line"`
+	Skill       string                   `json:"skill"`
+	DC          int                      `json:"dc"`
+	Total       int                      `json:"total"`
+	Beaten      bool                     `json:"beaten"`
+	Calculation *session.RollCalculation `json:"calculation"`
+}
+
+// answeredPayload is the answered beat's payload, as the encounter wrote it.
+type answeredPayload struct {
+	Creature string `json:"creature"`
+	Prop     string `json:"prop"`
+	OptionID string `json:"option"`
+	Say      string `json:"say"`
+}
+
+// lastSpoke is the last spoke beat in the member's story, decoded, or nil.
+func (s *SpeakSuite) lastSpoke(mgr *session.Manager, member string) *spokePayload {
+	beats := beatsNamed(s.events(mgr, member), encounter.BeatSpoke)
+	if len(beats) == 0 {
+		return nil
+	}
+	var body spokePayload
+	beats[len(beats)-1].decode(s.T(), &body)
+	return &body
+}
+
+// THE BEAT IS THE ONLY ACCOUNT OF THE ROLL: a beaten line's spoke beat
+// carries the line, the skill, the numbers and the roll behind them, and the
+// creature spoken to witnesses it too.
+func (s *SpeakSuite) TestABeatenLineIsRecorded() {
 	mgr := s.aYard([]int{10})
 
 	out, err := s.threaten(mgr)
 	s.Require().NoError(err)
 	s.Require().True(out.Beaten)
 
-	var found *session.Event
-	events := s.events(mgr, "alice")
-	for i := range events {
-		if events[i].Kind == session.EventSpoke {
-			found = &events[i]
-		}
-	}
-	s.Require().NotNil(found, "the line reached alice's stream as its own kind, not EventUnknown")
-	body, ok := found.Body.(session.SpokeBody)
-	s.Require().True(ok)
+	body := s.lastSpoke(mgr, "alice")
+	s.Require().NotNil(body, "the line reached alice's story")
 	s.Equal("alice", body.Actor)
 	s.Equal("goblin", body.Target)
 	s.Empty(body.Prop)
@@ -394,15 +405,10 @@ func (s *SpeakSuite) TestABeatenLineSurfacesAsATypedEvent() {
 	die := d20Of(s.T(), body.Calculation)
 	s.Equal(20, die.DieSize)
 	s.Equal(11, body.Calculation.Total)
-	s.Equal(out.Seq, found.Seq, "SpeakOutput.Seq references this event")
 
 	// The goblin heard it too — the audience is the witnesses.
-	for _, event := range s.events(mgr, "goblin") {
-		if event.Kind == session.EventSpoke {
-			return
-		}
-	}
-	s.Fail("the goblin was spoken to and its own stream does not say so")
+	s.NotEmpty(beatsNamed(s.events(mgr, "goblin"), encounter.BeatSpoke),
+		"the goblin was spoken to and its own story says so")
 }
 
 // The missed line is the case that matters most: with no failure rows nothing
@@ -414,20 +420,14 @@ func (s *SpeakSuite) TestAMissedLineSurfacesToo() {
 	s.Require().NoError(err)
 	s.Require().False(out.Beaten)
 
-	for _, event := range s.events(mgr, "alice") {
-		if event.Kind != session.EventSpoke {
-			continue
-		}
-		body, ok := event.Body.(session.SpokeBody)
-		s.Require().True(ok)
-		s.Equal("goblin", body.Target)
-		s.Equal(9, body.DC)
-		s.Equal(6, body.Total, "the roll the table saw, and the only record of it")
-		s.False(body.Beaten)
-		s.Equal(6, body.Calculation.Total, "a missed line carries its roll too — full data until v1.0")
-		return
-	}
-	s.Fail("a missed line left no typed event, which is the whole outcome lost")
+	body := s.lastSpoke(mgr, "alice")
+	s.Require().NotNil(body, "a missed line left no spoke beat, which is the whole outcome lost")
+	s.Equal("goblin", body.Target)
+	s.Equal(9, body.DC)
+	s.Equal(6, body.Total, "the roll the table saw, and the only record of it")
+	s.False(body.Beaten)
+	s.Require().NotNil(body.Calculation)
+	s.Equal(6, body.Calculation.Total, "a missed line carries its roll too — full data until v1.0")
 }
 
 // where the goblin stands now.
@@ -567,7 +567,7 @@ func (s *SpeakSuite) TestAGuidedLineStopsAndAsks() {
 	s.Equal(6, *out.Roll, "the d20 the player is deciding about")
 	s.Equal(session.SpeakOutput{
 		Paused: true, Total: 7, Roll: out.Roll, Target: "goblin", OptionID: "threaten",
-		Seq: out.Seq, Saved: out.Saved, Delivery: out.Delivery,
+		Saved: out.Saved, Delivery: out.Delivery,
 	}, *out, "the pre-offer total, and no DC, no applied route and no verdict")
 	s.False(s.held(mgr, encounter.DeedIntimidate), "and nothing has reached the goblin")
 
@@ -583,12 +583,7 @@ func (s *SpeakSuite) TestAGuidedLineStopsAndAsks() {
 	s.True(s.held(mgr, encounter.DeedIntimidate),
 		"7 + a d4's own 4 beats DC 9, and the resumed line landed its skill's deed")
 
-	var spoke *session.SpokeBody
-	for _, event := range s.events(mgr, "alice") {
-		if body, ok := event.Body.(session.SpokeBody); ok {
-			spoke = &body
-		}
-	}
+	spoke := s.lastSpoke(mgr, "alice")
 	s.Require().NotNil(spoke, "the resumed verdict reached the log")
 	s.Equal("threaten", spoke.OptionID, "the window carried the line it stopped")
 	s.Equal("intimidation", spoke.Skill)
@@ -672,16 +667,15 @@ func (s *SpeakSuite) TestAnAuthoredFactSurvivesTheSpawnAndIsTaught() {
 	s.Require().NoError(err)
 	s.Require().True(out.Beaten)
 
-	for _, event := range s.events(mgr, "alice") {
-		if event.Kind != session.EventStanceChanged {
-			continue
-		}
-		s.Equal(session.StanceChangedBody{
-			Between: []string{"party", "raiders"}, Stance: "neutral",
-		}, event.Body, "cowing it in front of the camp turned the camp")
-		return
+	stances := beatsNamed(s.events(mgr, "alice"), encounter.BeatStance)
+	s.Require().NotEmpty(stances, "the fact never reached the run, so the camp never learned anything")
+	var stance struct {
+		Between []string `json:"between"`
+		Stance  string   `json:"stance"`
 	}
-	s.Fail("the fact never reached the run, so the camp never learned anything")
+	stances[0].decode(s.T(), &stance)
+	s.Equal([]string{"party", "raiders"}, stance.Between, "cowing it in front of the camp turned the camp")
+	s.Equal("neutral", stance.Stance)
 }
 
 // aCamp is the yard with a faction that is hostile until it learns a fact,
@@ -692,7 +686,7 @@ func (s *SpeakSuite) aCamp(fact string, rolls []int) *session.Manager {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: session.DiscardEvents{},
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 
@@ -814,12 +808,7 @@ func (s *SpeakSuite) TestALineSaidToAProp() {
 	s.False(s.held(mgr, encounter.DeedIntimidate),
 		"an Intimidation line to a prop lands no deed — a prop is cowed by nothing")
 
-	var spoke *session.SpokeBody
-	for _, event := range s.events(mgr, "alice") {
-		if body, ok := event.Body.(session.SpokeBody); ok {
-			spoke = &body
-		}
-	}
+	spoke := s.lastSpoke(mgr, "alice")
 	s.Require().NotNil(spoke)
 	s.Equal("altar", spoke.Prop)
 	s.Empty(spoke.Target)
@@ -863,15 +852,11 @@ func (s *SpeakSuite) TestAGuidedLineToAPropResumesAsTheSameLine() {
 
 	s.answer(mgr, session.Take(""))
 
-	var spoke *session.SpokeBody
-	var answered *session.AnsweredBody
-	for _, event := range s.events(mgr, "alice") {
-		switch body := event.Body.(type) {
-		case session.SpokeBody:
-			spoke = &body
-		case session.AnsweredBody:
-			answered = &body
-		}
+	spoke := s.lastSpoke(mgr, "alice")
+	var answered *answeredPayload
+	if beats := beatsNamed(s.events(mgr, "alice"), encounter.BeatAnswered); len(beats) > 0 {
+		answered = &answeredPayload{}
+		beats[len(beats)-1].decode(s.T(), answered)
 	}
 	s.Require().NotNil(spoke, "the resumed verdict reached the log")
 	s.Equal("altar", spoke.Prop, "the window carried the prop it stopped on")

@@ -9,8 +9,8 @@ package session_test
 
 import (
 	"context"
-	"encoding/json"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -24,7 +24,7 @@ import (
 // The reveal is the beat SEARCH already sends (design P4 — loot is a second
 // writer of the fact search writes, never a second mechanism), so what this
 // pins at the seam is that a second cause reaches a recipient through the
-// same recipient-scoped path, typed the same way.
+// same recipient-scoped path, carrying the same payload.
 func (s *HoldingsSuite) TestLootOnTheCaptainRevealsTheVaultToTheLooterAlone() {
 	ctx := context.Background()
 	s.start(true)
@@ -33,14 +33,14 @@ func (s *HoldingsSuite) TestLootOnTheCaptainRevealsTheVaultToTheLooterAlone() {
 	out, err := s.mgr.Loot(ctx, &session.LootInput{
 		Session: "sess", Member: "alice", Target: "captain"})
 	s.Require().NoError(err)
-	s.Equal([]string{"encounter:sess", "session:sess"}, out.Saved.Written,
-		"the transferred fact rides the world; the advanced stream cursors ride the session")
+	s.Equal([]string{"encounter:sess"}, out.Saved.Written,
+		"the transferred fact rides the world, and nothing else is written")
 
 	s.Run("the looter alone is told about the secret", func() {
-		s.Equal([]session.EventKind{session.EventLooted, session.EventConcealmentRevealed, session.EventSighted, session.EventTick},
+		s.Equal([]string{encounter.BeatLooted, encounter.BeatConcealmentRevealed, encounter.BeatSighted, encounter.BeatTick},
 			s.kinds("alice"), "the verb's own beat first, then what it caused, then the round it spent")
-		body, ok := s.bodyOf("alice", session.EventConcealmentRevealed).(session.ConcealmentRevealedBody)
-		s.Require().True(ok, "a reveal carries its typed body")
+		var body revealedBeat
+		s.beatOf("alice", encounter.BeatConcealmentRevealed, &body)
 		s.Equal(vaultSecret, body.Concealment, "the record named the vault, so the vault is what arrives")
 		s.Require().Len(body.Doors, 1)
 		s.Equal("veil", body.Doors[0].Door)
@@ -48,10 +48,11 @@ func (s *HoldingsSuite) TestLootOnTheCaptainRevealsTheVaultToTheLooterAlone() {
 	})
 
 	s.Run("everyone present hears the LOOTED beat and nothing more", func() {
-		s.Equal([]session.EventKind{session.EventLooted, session.EventTick}, s.kinds("bob"),
+		s.Equal([]string{encounter.BeatLooted, encounter.BeatTick}, s.kinds("bob"),
 			"the loot, and the round it cost the world — but nothing about a secret")
-		s.Equal(session.LootedBody{Looter: "alice", Body: "captain"},
-			s.bodyOf("bob", session.EventLooted),
+		var looted lootedBeat
+		s.beatOf("bob", encounter.BeatLooted, &looted)
+		s.Equal(lootedBeat{Member: "alice", Target: "captain"}, looted,
 			"looter and body, and nothing of what moved")
 	})
 
@@ -92,19 +93,19 @@ func (s *HoldingsSuite) TestLootOnTheCaptainRevealsTheVaultToTheLooterAlone() {
 // only the seam can break — a BYSTANDER's delivered stream, and their map —
 // plus the one place the two runs legitimately differ and why.
 func (s *HoldingsSuite) TestLootOnABodyWithNothingIsIndistinguishableAtTheSeam() {
-	loot := func(knows bool) (*session.LootOutput, string, string, []session.Event) {
+	loot := func(knows bool) (*session.LootOutput, string, string, string, int) {
 		s.start(knows)
 		out, err := s.mgr.Loot(context.Background(), &session.LootInput{
 			Session: "sess", Member: "alice", Target: "captain"})
 		s.Require().NoError(err)
-		return out, s.atlasBytes("bob"), s.storyBytes("bob"), s.events("bob")
+		return out, s.atlasBytes("bob"), s.storyBytes("bob"), payloadBytes(s.T(), s.beats("bob")), len(s.beats("alice"))
 	}
 
-	rich, richAtlas, richStory, richStream := loot(true)
-	poor, poorAtlas, poorStory, poorStream := loot(false)
+	rich, richAtlas, richStory, richStream, richLooter := loot(true)
+	poor, poorAtlas, poorStory, poorStream, poorLooter := loot(false)
 
-	s.Run("the bystander's delivered stream is byte-identical", func() {
-		s.Equal(marshal(s.T(), poorStream), marshal(s.T(), richStream),
+	s.Run("what the bystander was told is byte-identical", func() {
+		s.Equal(poorStream, richStream,
 			"one LOOTED beat either way, naming the same two members")
 	})
 	s.Run("the bystander's map is byte-identical", func() {
@@ -112,17 +113,17 @@ func (s *HoldingsSuite) TestLootOnABodyWithNothingIsIndistinguishableAtTheSeam()
 	})
 	s.Run("the bystander's whole story is byte-identical", func() {
 		s.Equal(poorStory, richStory,
-			"including its numbering: a hole where a reveal went would be an oracle")
+			"beat for beat: a reveal the bystander could see the shape of would be an oracle")
 	})
 	s.Run("the response says the same thing about what was written", func() {
 		s.Equal(poor.Saved, rich.Saved)
 	})
-	s.Run("the looter's reveal and resulting observation are counted", func() {
+	s.Run("the looter alone is told the reveal and the observation it caused", func() {
 		// Only the caller learns the secret and sees the newly exposed door;
-		// the bystander's stream above remains byte-identical.
-		s.Equal(poor.Delivery.Events+2, rich.Delivery.Events)
-		s.False(rich.Delivery.Failed)
-		s.False(poor.Delivery.Failed)
+		// what the bystander was told above remains byte-identical.
+		s.Equal(poorLooter+2, richLooter)
+		s.Empty(rich.Delivery.Failed)
+		s.Empty(poor.Delivery.Failed)
 	})
 }
 
@@ -152,10 +153,10 @@ func (s *HoldingsSuite) TestLootIsOfferedOnEveryBodyAndRefusesAnUpright() {
 	out, err := s.mgr.Loot(ctx, &session.LootInput{
 		Session: "sess", Member: "alice", Target: "captain"})
 	s.Require().NoError(err, "every downed member is lootable")
-	s.Equal([]session.EventKind{session.EventLooted, session.EventTick}, s.kinds("alice"),
+	s.Equal([]string{encounter.BeatLooted, encounter.BeatTick}, s.kinds("alice"),
 		"and an empty body causes nothing — the tick is the round the verb spent, "+
 			"which an action costs whether or not it found anything")
-	s.False(out.Delivery.Failed)
+	s.Empty(out.Delivery.Failed)
 }
 
 // TestHoldRemovesThePropForEveryoneAndTheHolderHasIt is the acceptance
@@ -179,11 +180,12 @@ func (s *HoldingsSuite) TestHoldRemovesThePropForEveryoneAndTheHolderHasIt() {
 			"and the prop nobody touched is still there")
 	})
 
-	s.Run("everyone present is told, with the same typed body", func() {
+	s.Run("everyone present is told, with the same payload", func() {
 		for _, who := range []string{"alice", "bob"} {
-			s.Equal([]session.EventKind{session.EventHeld, session.EventSighted}, s.kinds(who))
-			s.Equal(session.HeldBody{Holder: "alice", Prop: heirloomID},
-				s.bodyOf(who, session.EventHeld))
+			s.Equal([]string{encounter.BeatHeld, encounter.BeatSighted}, s.kinds(who))
+			var held heldBeat
+			s.beatOf(who, encounter.BeatHeld, &held)
+			s.Equal(heldBeat{Holder: "alice", Prop: heirloomID}, held)
 		}
 	})
 
@@ -209,27 +211,27 @@ func (s *HoldingsSuite) TestExitAtTheBoundExitEndsTheRunNamingTheCarrier() {
 		_, err := s.mgr.Hold(ctx, &session.HoldInput{
 			Session: "sess", Member: "alice", Target: heirloomID, Range: 2})
 		s.Require().NoError(err)
-		s.stream.published = nil
+		s.mark()
 
 		out, err := s.mgr.Exit(ctx, &session.ExitInput{Session: "sess", Member: "alice"})
 		s.Require().NoError(err)
 		s.Require().NotNil(out.Closed, "the scenario's ending fired")
 		s.Equal(recovered, out.Closed.Ending)
 
-		exited, ok := s.bodyOf("alice", session.EventExited).(session.ExitedBody)
-		s.Require().True(ok)
+		var exited exitedBeat
+		s.beatOf("alice", encounter.BeatExited, &exited)
 		s.Equal("alice", exited.Member)
 		s.Equal([]string{heirloomID}, exited.Holding, "the record names what she carried out")
 		s.Equal(frontGate, exited.Exit, "and the way she left by")
 
-		s.Equal(session.EndedBody{Ending: recovered}, s.bodyOf("alice", session.EventEnded),
+		s.Equal(recovered, s.endingTold("alice"),
 			"the DEPARTING CARRIER is told about the run she just won — she has already "+
 				"left the roster by the time the ending fires, and a fresh roster read "+
 				"would have left her out of the beat announcing it")
-		s.Equal(session.EndedBody{Ending: recovered}, s.bodyOf("bob", session.EventEnded),
+		s.Equal(recovered, s.endingTold("bob"),
 			"and so is the member still standing in the tomb")
 
-		s.Equal([]session.EventKind{session.EventExited, session.EventEnded}, s.kinds("alice"),
+		s.Equal([]string{encounter.BeatExited, encounter.BeatEnded}, s.kinds("alice"),
 			"the departure is narrated BEFORE the ending: 'left through the front gate "+
 				"with the heirloom', and then 'ended'")
 
@@ -245,14 +247,14 @@ func (s *HoldingsSuite) TestExitAtTheBoundExitEndsTheRunNamingTheCarrier() {
 		_, err := s.mgr.Hold(ctx, &session.HoldInput{
 			Session: "sess", Member: "alice", Target: heirloomID, Range: 2})
 		s.Require().NoError(err)
-		s.stream.published = nil
+		s.mark()
 
 		out, err := s.mgr.Exit(ctx, &session.ExitInput{Session: "sess", Member: "bob"})
 		s.Require().NoError(err)
 		s.Require().Nil(out.Closed, "one member departing is not the run ending")
 
-		body, ok := s.bodyOf("alice", session.EventExited).(session.ExitedBody)
-		s.Require().True(ok)
+		var body exitedBeat
+		s.beatOf("alice", encounter.BeatExited, &body)
 		s.Equal("bob", body.Member)
 		s.Empty(body.Holding, "bob carried nothing, and empty is the truth rather than unknown")
 		s.Equal(sideDoor, body.Exit, "he left through an authored exit NOTHING binds")
@@ -261,7 +263,7 @@ func (s *HoldingsSuite) TestExitAtTheBoundExitEndsTheRunNamingTheCarrier() {
 		s.Require().NoError(err)
 		s.True(status.Open)
 
-		s.stream.published = nil
+		s.mark()
 		ended, err := s.mgr.Exit(ctx, &session.ExitInput{Session: "sess", Member: "alice"})
 		s.Require().NoError(err)
 		s.Require().NotNil(ended.Closed)
@@ -296,23 +298,23 @@ func (s *HoldingsSuite) TestExitAwayFromTheBoundExitDropsTheHolding() {
 		Session: "sess", Member: "bob", Target: chaliceID, Range: 1})
 	s.Require().NoError(err)
 	s.Require().NotContains(s.propsOf("alice"), chaliceID, "off the floor while carried")
-	s.stream.published = nil
+	s.mark()
 
 	out, err := s.mgr.Exit(ctx, &session.ExitInput{Session: "sess", Member: "bob"})
 	s.Require().NoError(err)
 	s.Require().Nil(out.Closed, "nothing binds the side door, so the run goes on")
 
 	s.Run("everyone present is told where it landed", func() {
-		dropped, ok := s.bodyOf("alice", session.EventDropped).(session.DroppedBody)
-		s.Require().True(ok)
+		var dropped droppedBeat
+		s.beatOf("alice", encounter.BeatDropped, &dropped)
 		s.Equal("bob", dropped.Member)
 		s.Equal(chaliceID, dropped.Prop)
-		s.Equal(bobCellAbsolute(), dropped.At, "on the cell he stood on, on the way out")
+		s.Equal(bobCellAbsolute(), dropped.Position, "on the cell he stood on, on the way out")
 	})
 
 	s.Run("the departure is narrated before the drop", func() {
-		s.Equal([]session.EventKind{
-			session.EventExited, session.EventDropped, session.EventSighted,
+		s.Equal([]string{
+			encounter.BeatExited, encounter.BeatDropped, encounter.BeatSighted,
 		}, s.kinds("alice"), "and losing sight of the leaver is its own beat")
 	})
 
@@ -511,8 +513,8 @@ func (s *HoldingsSuite) TestEveryBeatNamesItsVerbAsAStatement() {
 	_, err = s.mgr.Exit(ctx, &session.ExitInput{Session: "sess", Member: "bob"})
 	s.Require().NoError(err)
 
-	s.Equal([]session.EventKind{
-		session.EventLooted,
+	s.Equal([]string{
+		encounter.BeatLooted,
 		// THE WORLD CLOCK MOVED, because looting is an action and an action
 		// costs the world a round (rpg-project#465 §5). It is listed rather
 		// than filtered out: time passing is part of the fiction now, it goes
@@ -520,50 +522,37 @@ func (s *HoldingsSuite) TestEveryBeatNamesItsVerbAsAStatement() {
 		// where that belongs on the record. Hold and Exit raise nothing
 		// further — the clock accrues by DRIVER as a high-water mark, not as a
 		// sum, so bob's second and third acts are still inside his first round.
-		session.EventTick,
-		session.EventHeld, session.EventSighted, session.EventExited, session.EventDropped,
+		encounter.BeatTick,
+		encounter.BeatHeld, encounter.BeatSighted, encounter.BeatExited, encounter.BeatDropped,
 		// And the departure changed what alice can see, which is its own
 		// statement on her own stream — bob left the map, so she holds him
 		// as a ghost now.
-		session.EventSighted,
+		encounter.BeatSighted,
 	}, s.kinds("alice"), "every beat arrived named, and in the order the fiction happened")
-	s.Equal([]session.EventKind{
-		session.EventLooted, session.EventConcealmentRevealed, session.EventSighted, session.EventTick,
-		session.EventHeld, session.EventSighted, session.EventExited, session.EventDropped,
+	s.Equal([]string{
+		encounter.BeatLooted, encounter.BeatConcealmentRevealed, encounter.BeatSighted, encounter.BeatTick,
+		encounter.BeatHeld, encounter.BeatSighted, encounter.BeatExited, encounter.BeatDropped,
 	}, s.kinds("bob"), "and the ACTOR's stream is the same list plus what his loot caused, "+
 		"which is the one beat nobody else may see")
 
-	s.Run("no beat reached a client as unknown", func() {
-		for _, e := range s.stream.published {
-			s.NotEqual(session.EventUnknown, e.Kind,
-				"an armless beat would still be delivered, and would narrate nothing")
-			// BODY-LESS BY DESIGN, and named here rather than skipped by a
-			// nil check that would have let a genuinely armless beat through.
-			// A tick says one thing — a round of the world passed — and the
-			// reading is on the beat's own record; there is nothing for a body
-			// to add ([bodyFor]'s own default case says so).
-			if e.Kind == session.EventTick || e.Kind == session.EventSceneOpened {
-				continue
-			}
-			s.NotNil(e.Body, "and every kind this build names decodes its typed body")
+	s.Run("no act reached a client undecoded", func() {
+		s.Require().NotEmpty(s.stream.published)
+		for _, act := range s.stream.published {
+			s.Empty(act.Undecoded,
+				"an unread entry would still be delivered, and would narrate nothing")
+			s.NotNil(act.Body, "and every entry decodes its typed body")
 		}
 	})
 
 	s.Run("the words themselves", func() {
-		s.Equal(session.EventKind("looted"), session.EventLooted)
-		s.Equal(session.EventKind("held"), session.EventHeld)
-		s.Equal(session.EventKind("dropped"), session.EventDropped)
-	})
-
-	s.Run("and the numbering stayed dense for everybody", func() {
-		for _, who := range []string{"alice", "bob"} {
-			s.assertDenseFor(who)
-		}
+		s.Equal("looted", encounter.BeatLooted)
+		s.Equal("held", encounter.BeatHeld)
+		s.Equal("dropped", encounter.BeatDropped)
 	})
 }
 
 // TestAnOrdinaryDepartureCarriesNothingAndNamesNoExit is the negative that
-// makes the two new ExitedBody fields honest.
+// makes the exited beat's `holding` and `exit` honest.
 //
 // Empty is not "unknown" on either of them: it is the truth that this
 // departure carried nothing and used no authored way out, and it is what a
@@ -577,19 +566,19 @@ func (s *HoldingsSuite) TestAnOrdinaryDepartureCarriesNothingAndNamesNoExit() {
 	_, err := s.mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "bob", Path: []spatial.Position{hexCell(3, 1)}})
 	s.Require().NoError(err)
-	s.stream.published = nil
+	s.mark()
 
 	out, err := s.mgr.Exit(ctx, &session.ExitInput{Session: "sess", Member: "bob"})
 	s.Require().NoError(err)
 	s.Require().Nil(out.Closed)
 
-	body, ok := s.bodyOf("alice", session.EventExited).(session.ExitedBody)
-	s.Require().True(ok, "an ordinary departure still decodes its typed body")
+	var body exitedBeat
+	s.beatOf("alice", encounter.BeatExited, &body)
 	s.Equal("bob", body.Member)
 	s.Empty(body.Holding)
 	s.Empty(body.Exit, "no authored exit was used, and that is a fact rather than a gap")
 
-	s.Equal([]session.EventKind{session.EventExited, session.EventSighted}, s.kinds("alice"),
+	s.Equal([]string{encounter.BeatExited, encounter.BeatSighted}, s.kinds("alice"),
 		"nothing was carried, so nothing was dropped")
 }
 
@@ -647,23 +636,61 @@ func (s *HoldingsSuite) TestBothVerbsRefuseTheirOwnArgumentsFirst() {
 	s.Empty(s.stream.published, "and none of that told anybody anything")
 }
 
-// marshal is the byte comparison the secrecy scenes make.
-func marshal(t fataler, v any) string {
-	raw, err := json.Marshal(v)
-	if err != nil {
-		t.Fatalf("marshalling: %v", err)
+// revealedBeat is a concealment_revealed beat's payload, as far as these
+// scenes read it.
+type revealedBeat struct {
+	Concealment string `json:"concealment"`
+	Doors       []struct {
+		Door  string `json:"door"`
+		State string `json:"state"`
+	} `json:"doors"`
+}
+
+// lootedBeat is a looted beat's payload: the looter and the body.
+type lootedBeat struct {
+	Member string `json:"member"`
+	Target string `json:"target"`
+}
+
+// heldBeat is a held beat's payload.
+type heldBeat struct {
+	Holder string `json:"holder"`
+	Prop   string `json:"prop"`
+}
+
+// exitedBeat is an exited beat's payload.
+type exitedBeat struct {
+	Member  string   `json:"member"`
+	Holding []string `json:"holding"`
+	Exit    string   `json:"exit"`
+}
+
+// droppedBeat is a dropped beat's payload.
+type droppedBeat struct {
+	Member   string           `json:"member"`
+	Prop     string           `json:"prop"`
+	Position spatial.Position `json:"position"`
+}
+
+// endingTold is the ending the one ended beat a recipient witnessed since
+// the last mark names.
+func (s *HoldingsSuite) endingTold(recipient string) string {
+	s.T().Helper()
+	var ended struct {
+		Ending string `json:"ending"`
 	}
-	return string(raw)
+	s.beatOf(recipient, encounter.BeatEnded, &ended)
+	return ended.Ending
 }
 
 // TestHoldingAScrollTeachesTheHolderAtTheSeam is design R6 across the seam:
-// the walk's easy path, end to end through the manager and the event stream.
+// the walk's easy path, end to end through the manager and the story.
 //
 // Kirk's reason for the ruling — "if we want to test the intel we need to be
 // able to place it on a few things — not the hardest monster to kill in the
 // game" — is only true if the reveal actually reaches a client. The
 // composition applies the record; this asserts the seam publishes it, to the
-// holder alone, with the typed body a client reads.
+// holder alone, with the payload a client reads.
 func (s *HoldingsSuite) TestHoldingAScrollTeachesTheHolderAtTheSeam() {
 	ctx := context.Background()
 	s.start(false) // NOBODY was authored holding anything
@@ -673,24 +700,25 @@ func (s *HoldingsSuite) TestHoldingAScrollTeachesTheHolderAtTheSeam() {
 	s.Require().NoError(err)
 
 	s.Run("the holder is told what it says, after being told they hold it", func() {
-		s.Equal([]session.EventKind{session.EventHeld, session.EventConcealmentRevealed, session.EventSighted}, s.kinds("alice"),
+		s.Equal([]string{encounter.BeatHeld, encounter.BeatConcealmentRevealed, encounter.BeatSighted}, s.kinds("alice"),
 			"picking it up is the cause; what it teaches is the consequence")
 
-		body, ok := s.bodyOf("alice", session.EventConcealmentRevealed).(session.ConcealmentRevealedBody)
-		s.Require().True(ok, "the reveal crosses as its own typed body")
+		var body revealedBeat
+		s.beatOf("alice", encounter.BeatConcealmentRevealed, &body)
 		s.Equal(vaultSecret, body.Concealment)
 	})
 
 	s.Run("the bystander sees a thing picked up and is taught nothing", func() {
-		s.Equal([]session.EventKind{session.EventHeld, session.EventSighted}, s.kinds("bob"),
+		s.Equal([]string{encounter.BeatHeld, encounter.BeatSighted}, s.kinds("bob"),
 			"holding is public; what the scroll says is not")
 	})
 
 	s.Run("and no beat anywhere says which prop carried intel", func() {
-		// Design P3 at the seam: the Held body names holder and prop, and
+		// Design P3 at the seam: the held beat names holder and prop, and
 		// nothing about records. A client offering Hold must not be able to
 		// tell the scroll from the chalice.
-		s.Equal(session.HeldBody{Holder: "alice", Prop: scrollID},
-			s.bodyOf("bob", session.EventHeld))
+		var held heldBeat
+		s.beatOf("bob", encounter.BeatHeld, &held)
+		s.Equal(heldBeat{Holder: "alice", Prop: scrollID}, held)
 	})
 }

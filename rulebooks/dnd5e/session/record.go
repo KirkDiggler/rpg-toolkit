@@ -27,13 +27,11 @@ import (
 // THE ID IS THE RECORD'S OWN, an ordering key and not a counter (R27): a gap
 // between two ids means nothing, and loss is the transport's to report (R28).
 //
-// TWO ACT FORMS, UNTIL v1alpha1 IS DELETED. [Event.Correlation] keeps E1's
-// `<verb>:<first seq>` for the v1alpha1 stream; [RecordEvent.Act] carries the
-// v1alpha2 `<verb>:<id>`, which the encounter mints beside it at the act's
-// open and stamps on each beat as the record tag [encounter.ActTag]. The SDK
-// carries both by carrying the act under both names wherever it carries the
-// act at all — the verb's scope, a posed window's story — and each stream
-// reads its own form. Neither is derived from the other.
+// ONE ACT ID. [RecordEvent.Act] is the act's `<verb>:<id>`, which the
+// encounter mints at the act's open and stamps on each beat as its
+// correlation and as the record tag [encounter.ActTag]. E1's
+// `<verb>:<first seq>` form left with the v1alpha1 stream (rpg-project#631,
+// R27).
 
 // RecordEvent is one record beat as written.
 //
@@ -57,7 +55,7 @@ type RecordEvent struct {
 	Act string
 
 	// Beat is the payload's `beat` value verbatim — the encounter's word,
-	// not this package's [EventKind]. "" when the payload names none.
+	// verbatim. "" when the payload names none.
 	Beat string
 
 	// Fields is the encounter's payload, whole.
@@ -66,7 +64,7 @@ type RecordEvent struct {
 
 // RecordStream is the live channel for the record. Required on [Config].
 //
-// Publishing is best effort, exactly as [EventStream]'s is (S10): it runs
+// Publishing is best effort, exactly as [ActStream]'s is (S10): it runs
 // after the save has landed, a failure does not fail the verb, and a
 // subscriber that missed beats catches up with [Manager.Record] after the
 // last id it holds.
@@ -76,8 +74,7 @@ type RecordStream interface {
 }
 
 // DiscardRecord is a RecordStream that delivers nothing — a stated "no
-// record stream" for tests and headless runs, as [DiscardEvents] is for
-// events.
+// record stream" for tests and headless runs, as [DiscardActs] is for acts.
 type DiscardRecord struct{}
 
 // PublishRecord discards the batch and reports success.
@@ -180,7 +177,7 @@ func recordEvents(session string, entries []record.Entry) []RecordEvent {
 
 // commitRecord is the record batch of one commit: every beat appended at or
 // after the scope's baseline, read from the LIVE record before the save-point
-// ToData trims it (the same reason [Manager.projectEvents] reads early).
+// ToData trims it (see [Manager.commit]).
 func commitRecord(scope *writeScope) []RecordEvent {
 	read, err := scope.enc.ReadRecord(&encounter.ReadRecordInput{})
 	if err != nil {
@@ -198,9 +195,9 @@ func commitRecord(scope *writeScope) []RecordEvent {
 
 // deliverRecord hands one commit's record batch to the record stream, after
 // the save (S9) and best effort (S10).
-func (m *Manager) deliverRecord(ctx context.Context, events []RecordEvent) {
+func (m *Manager) deliverRecord(ctx context.Context, events []RecordEvent) error {
 	if len(events) == 0 {
-		return
+		return nil
 	}
-	_ = m.record.PublishRecord(ctx, events) // best effort; catch-up is Record after the last id
+	return m.record.PublishRecord(ctx, events) // best effort; catch-up is Record after the last id
 }

@@ -12,8 +12,8 @@ import (
 
 // The repositories below are most of the host's integration surface: it
 // implements them once and thereafter calls verbs with IDs, never holding a
-// domain object. (The other piece is EventStream, which lives with the fan-out
-// that uses it, in events.go.)
+// domain object. (The other pieces are the live streams, ActStream and
+// RecordStream, which live with the fan-outs that use them.)
 //
 // They point OUTWARD, which is the distinction worth keeping even after the
 // jargon goes: these are interfaces this package CALLS and the host IMPLEMENTS,

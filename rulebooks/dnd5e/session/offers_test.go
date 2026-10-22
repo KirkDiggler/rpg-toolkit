@@ -45,7 +45,7 @@ func candidateFight(t *testing.T) (*session.Manager, *fakeSessions, *fakeEncount
 	roller := &sequenceDice{rolls: []int{10, 1, 1, 1, 1, 1, 1, 1, 1, 1}}
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: roller, TurnDriver: session.Pass{},
-		Sessions: sessions, Encounters: encounters, Characters: characters, Events: session.DiscardEvents{},
+		Sessions: sessions, Encounters: encounters, Characters: characters,
 	})
 	require.NoError(t, err)
 
@@ -326,7 +326,7 @@ func TestNotYourTurnBlocksEveryVerb(t *testing.T) {
 	characters := newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
-		Characters: characters, Events: session.DiscardEvents{},
+		Characters: characters,
 	})
 	require.NoError(t, err)
 
@@ -455,7 +455,7 @@ func TestBadAttackCompilationBlocksAttackOnly(t *testing.T) {
 	characters := newFakeCharacters(admitted)
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{10, 1, 1, 1, 1, 1, 1, 1, 1, 1}}, TurnDriver: session.Pass{},
-		Sessions: sessions, Encounters: encounters, Characters: characters, Events: session.DiscardEvents{},
+		Sessions: sessions, Encounters: encounters, Characters: characters,
 	})
 	require.NoError(t, err)
 
@@ -521,7 +521,7 @@ func TestUnreadableCharacterBlocksEveryVerbButEndTurn(t *testing.T) {
 
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{10, 1, 1, 1, 1, 1, 1, 1, 1, 1}}, TurnDriver: session.Pass{},
-		Sessions: sessions, Encounters: encounters, Characters: characters, Events: session.DiscardEvents{},
+		Sessions: sessions, Encounters: encounters, Characters: characters,
 	})
 	require.NoError(t, err)
 
@@ -623,8 +623,7 @@ func TestAttackSelectorGatesFailBeforeDiceOrDurableMutation(t *testing.T) {
 	beforeEncounter, err := json.Marshal(encounters.byID[testSession])
 	require.NoError(t, err)
 	beforeCharacter := cloneCharacter(characters.byID["alice"])
-	beforeStory, err := mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice"})
-	require.NoError(t, err)
+	beforeStory := storyBeats(t, mgr, "sess", "alice")
 
 	cases := []struct {
 		name     string
@@ -653,8 +652,7 @@ func TestAttackSelectorGatesFailBeforeDiceOrDurableMutation(t *testing.T) {
 	require.JSONEq(t, string(beforeSession), string(afterSession), "selector refusals write no session state")
 	require.JSONEq(t, string(beforeEncounter), string(afterEncounter), "selector refusals record no story")
 	require.Equal(t, beforeCharacter, characters.byID["alice"], "selector refusals spend nothing")
-	afterStory, err := mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice"})
-	require.NoError(t, err)
+	afterStory := storyBeats(t, mgr, "sess", "alice")
 	require.Len(t, afterStory, len(beforeStory))
 }
 

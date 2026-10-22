@@ -45,7 +45,7 @@ func (s *MonsterTurnTestSuite) bossSwingsAt(target trainTarget, roller interface
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: firstInReach{},
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: chars, Events: session.DiscardEvents{},
+		Characters: chars,
 	})
 	s.Require().NoError(err)
 	launchScene(s.T(), mgr, sc)
@@ -82,20 +82,40 @@ func (s *MonsterTurnTestSuite) trainFrom(mgr *session.Manager, from int) []strin
 	return train
 }
 
-// eventsFrom is the fighter's story events from an index.
-func (s *MonsterTurnTestSuite) eventsFrom(mgr *session.Manager, from int) []session.Event {
-	events, err := mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "fighter"})
-	s.Require().NoError(err)
-	return events[from:]
+// eventsFrom is the fighter's story beats from an index.
+func (s *MonsterTurnTestSuite) eventsFrom(mgr *session.Manager, from int) []witnessed {
+	return storyBeats(s.T(), mgr, "sess", "fighter")[from:]
 }
 
-// struckAmounts is the damage of every struck beat of a run of events.
-func (s *MonsterTurnTestSuite) struckAmounts(events []session.Event) []int {
+// swing is the part of a struck or missed beat these scenes read.
+type swing struct {
+	Amount int `json:"amount"`
+	Attack struct {
+		Ref  string `json:"ref"`
+		Name string `json:"name"`
+	} `json:"attack"`
+	Sequence *struct {
+		Ref  string `json:"ref"`
+		Name string `json:"name"`
+	} `json:"sequence"`
+}
+
+// swingsOf is every beat of a run named one of names, decoded.
+func (s *MonsterTurnTestSuite) swingsOf(beats []witnessed, names ...string) []swing {
+	var out []swing
+	for _, beat := range beatsNamed(beats, names...) {
+		var body swing
+		beat.decode(s.T(), &body)
+		out = append(out, body)
+	}
+	return out
+}
+
+// struckAmounts is the damage of every struck beat of a run of beats.
+func (s *MonsterTurnTestSuite) struckAmounts(beats []witnessed) []int {
 	var amounts []int
-	for _, event := range events {
-		if body, ok := event.Body.(session.StruckBody); ok {
-			amounts = append(amounts, body.Damage)
-		}
+	for _, body := range s.swingsOf(beats, string(encounter.OutcomeStruck)) {
+		amounts = append(amounts, body.Amount)
 	}
 	return amounts
 }
@@ -217,18 +237,13 @@ func (s *MonsterTurnTestSuite) TestEachMultiattackSwingNamesItsSequence() {
 	mgr, _, before := s.bossSwingsAt(trainTarget{hp: 40}, &sequenceDice{rolls: []int{10, 10, 15, 6, 1, 15, 15, 6, 10, 10}})
 	s.Require().NoError(s.endFightersTurn(mgr))
 
-	var swings []session.StruckBody
-	for _, event := range s.eventsFrom(mgr, before) {
-		if body, ok := event.Body.(session.StruckBody); ok {
-			swings = append(swings, body)
-		}
-	}
+	swings := s.swingsOf(s.eventsFrom(mgr, before), string(encounter.OutcomeStruck))
 	s.Require().Len(swings, 2)
 	for _, swing := range swings {
 		s.Equal(refs.Weapons.Scimitar().String(), swing.Attack.Ref, "the component that swung")
-		s.Equal(&session.SequenceRef{
-			Ref: refs.MonsterActions.GoblinBossMultiattack().String(), Name: "Multiattack",
-		}, swing.Sequence, "and the sequence it swung inside")
+		s.Require().NotNil(swing.Sequence, "and the sequence it swung inside")
+		s.Equal(refs.MonsterActions.GoblinBossMultiattack().String(), swing.Sequence.Ref)
+		s.Equal("Multiattack", swing.Sequence.Name)
 	}
 }
 
@@ -239,21 +254,19 @@ func (s *MonsterTurnTestSuite) TestAMultiattackMissNamesItsSequence() {
 	mgr, _, before := s.bossSwingsAt(trainTarget{hp: 40}, &sequenceDice{rolls: []int{10, 10, 1, 1, 1, 10, 10, 10}})
 	s.Require().NoError(s.endFightersTurn(mgr))
 
-	missed := 0
-	for _, event := range s.eventsFrom(mgr, before) {
-		if body, ok := event.Body.(session.MissedBody); ok {
-			missed++
-			s.Require().NotNil(body.Sequence)
-			s.Equal("Multiattack", body.Sequence.Name)
-			s.Contains(string(event.Payload), `"sequence"`)
-		}
+	missed := beatsNamed(s.eventsFrom(mgr, before), string(encounter.OutcomeMissed))
+	for _, beat := range missed {
+		var body swing
+		beat.decode(s.T(), &body)
+		s.Require().NotNil(body.Sequence)
+		s.Equal("Multiattack", body.Sequence.Name)
+		s.Contains(string(beat.Payload), `"sequence"`)
 	}
-	s.Equal(2, missed)
+	s.Len(missed, 2)
 }
 
 // TestALoneSwingNamesNoSequence: a player's declared attack is not inside any
-// sequence, so its struck body has a nil Sequence and its beat has no
-// "sequence" key at all.
+// sequence, so its struck beat has no "sequence" key at all.
 func (s *EffectRowsSuite) TestALoneSwingNamesNoSequence() {
 	s.cave(s.fighter())
 	declared := s.mainAttack(s.afford("alice"))
@@ -262,11 +275,8 @@ func (s *EffectRowsSuite) TestALoneSwingNamesNoSequence() {
 	})
 	s.Require().NoError(err)
 
-	struck := eventsOfKind(s.stream.published, "alice", session.EventStruck)
+	struck := beatsNamed(storyBeats(s.T(), s.mgr, erSession, "alice"), string(encounter.OutcomeStruck))
 	s.Require().Len(struck, 1)
-	body, ok := struck[0].Body.(session.StruckBody)
-	s.Require().True(ok)
-	s.Nil(body.Sequence)
 	var payload map[string]json.RawMessage
 	s.Require().NoError(json.Unmarshal(struck[0].Payload, &payload))
 	s.NotContains(payload, "sequence")
@@ -313,15 +323,5 @@ func (s *MoverSeamSuite) TestTwoReactionsThatFellTheMoverAreBothTold() {
 
 // reactionStory is the fighter's whole story as beat kinds.
 func (s *MoverSeamSuite) reactionStory(mgr *session.Manager) []string {
-	entries, err := mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "fighter"})
-	s.Require().NoError(err)
-	beats := make([]string, len(entries))
-	for i, entry := range entries {
-		var body struct {
-			Beat string `json:"beat"`
-		}
-		s.Require().NoError(json.Unmarshal(entry.Payload, &body))
-		beats[i] = body.Beat
-	}
-	return beats
+	return beatNames(storyBeats(s.T(), mgr, "sess", "fighter"))
 }

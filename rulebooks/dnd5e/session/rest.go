@@ -91,10 +91,6 @@ type RestedMember struct {
 	// Member is the rester.
 	Member string
 
-	// Seq is the rest beat's sequence in the rester's own delivered
-	// numbering (stream.go).
-	Seq uint64
-
 	// Character is the record the verb saved for the rester.
 	Character *character.Data
 
@@ -207,22 +203,17 @@ func (m *Manager) Rest(ctx context.Context, in *RestInput) (*RestOutput, error) 
 		return nil, fmt.Errorf("rest: %w", err)
 	}
 
-	seqs := make(map[string]uint64, len(recorded.Rested))
-	for _, told := range recorded.Rested {
-		seqs[string(told.Member)] = scope.deliveredSeq(string(told.Member), told.Seq)
-	}
 	out := &RestOutput{
 		Discovered: projectDiscoveries(recorded.IntelDeltas),
 		Saved:      report,
 		Delivery:   delivery,
 	}
 	if recorded.Formed != nil && len(in.Resters) > 0 {
-		out.Formed = projectFormedFor(scope, in.Resters[0].Member, recorded.Formed)
+		out.Formed = projectFormed(recorded.Formed)
 	}
 	for _, result := range results {
 		out.Rested = append(out.Rested, RestedMember{
 			Member:            result.member,
-			Seq:               seqs[result.member],
 			Character:         result.out.Character,
 			HitPointsRestored: result.recording.HitPointsRestored,
 			HitPoints:         result.recording.HitPoints,

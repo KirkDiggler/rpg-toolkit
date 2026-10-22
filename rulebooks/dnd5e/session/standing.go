@@ -20,7 +20,7 @@ import (
 // reads as prone, and prone is a posture condition the rulebook tracks that
 // this package never gates on. The composition's names are left alone because
 // its beat kind is persisted in every stored world, so the translation happens
-// here — at [ErrDowned], at [EventDowned], and in kindOf. Inside this file the
+// here — at [ErrDowned] and in kindOf. Inside this file the
 // composition's word is used, because inside this file we are answering the
 // composition's question.
 //

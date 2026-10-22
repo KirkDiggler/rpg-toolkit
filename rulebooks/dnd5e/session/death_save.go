@@ -60,7 +60,6 @@ type DeathSaveOutput struct {
 	HPRestored        int                   `json:"hp_restored"`
 	Continuation      DeathSaveContinuation `json:"continuation"`
 	PresentationID    string                `json:"presentation_id"`
-	Seq               uint64                `json:"seq"`
 	Saved             SaveReport            `json:"saved"`
 	Delivery          DeliveryReport        `json:"delivery"`
 	Calculation       *RollCalculation      `json:"calculation,omitempty"`
@@ -205,7 +204,7 @@ func (m *Manager) DeathSave(ctx context.Context, in *DeathSaveInput) (*DeathSave
 		return nil, fmt.Errorf("death save: %w", err)
 	}
 
-	return result.output(scope.deliveredSeq(in.Member, recorded.Units[0].Seq), report, delivery), nil
+	return result.output(report, delivery), nil
 }
 
 // validateDeathSaveRecordSequence keeps the append-order assertion internal.
@@ -287,7 +286,7 @@ func assertDeathSaveContinuation(
 }
 
 func (r deathSaveResult) output(
-	seq uint64, saved SaveReport, delivery DeliveryReport,
+	saved SaveReport, delivery DeliveryReport,
 ) *DeathSaveOutput {
 	return &DeathSaveOutput{
 		Roll: r.Roll, Outcome: r.Outcome,
@@ -296,7 +295,7 @@ func (r deathSaveResult) output(
 		SuccessesNeeded: r.SuccessesNeeded, FailuresRemaining: r.FailuresRemaining,
 		Stabilized: r.Stabilized, Dead: r.Dead, Recovered: r.Recovered,
 		HPRestored: r.HPRestored, Continuation: r.Continuation,
-		PresentationID: r.PresentationID, Seq: seq, Saved: saved, Delivery: delivery,
+		PresentationID: r.PresentationID, Saved: saved, Delivery: delivery,
 		Calculation: r.Calculation,
 	}
 }

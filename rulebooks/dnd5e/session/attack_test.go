@@ -149,7 +149,7 @@ func (s *AttackTestSuite) breakableDuel(dice session.Roller) (*session.Manager, 
 
 	mgr, err := session.NewManager(&session.Config{Record: s.record, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: dice, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: encounters,
-		Characters: s.characters, Events: session.DiscardEvents{},
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 
@@ -220,7 +220,6 @@ func (s *AttackTestSuite) TestAnArmedDuelingFighterResolvesOnTheSessionStack() {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{15, 5}}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
-		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
@@ -283,7 +282,6 @@ func (s *AttackTestSuite) TestUnarmoredDefenseDefendsOnTheSessionStack() {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{15, 5}}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
-		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
@@ -361,7 +359,6 @@ func (s *AttackTestSuite) TestProtectionReactsToANearbyAllysAttackOnTheSessionSt
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{15, 5}}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
-		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
@@ -397,7 +394,6 @@ func (s *AttackTestSuite) TestASwingLandsAndTheStoryRecordsIt() {
 	s.True(out.Hit)
 	s.False(out.Critical)
 	s.Equal(8, out.Damage, "d8 scripted to 5, plus 3 STR")
-	s.NotZero(out.Seq)
 	s.Require().NotNil(out.Calculation)
 	s.Equal(out.Total, out.Calculation.Total)
 
@@ -412,13 +408,10 @@ func (s *AttackTestSuite) TestASwingLandsAndTheStoryRecordsIt() {
 	s.Equal("alice", d20.Source.SourceID)
 	s.Nil(d20.Dice.Keep, "nothing granted or imposed, so nothing is recorded over it")
 
-	// AttackOutput.Seq is in the ATTACKER's numbering, and a launch hands
-	// alice and bob different counts of opening beats, so the beat is read
-	// back from alice's own story.
-	story, err := mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "alice"})
-	s.Require().NoError(err)
-	last := story[len(story)-1]
-	s.Equal(out.Seq, last.Seq, "AttackOutput.Seq references the recorded beat")
+	// The beat is read back from alice's own story: her one struck beat.
+	struck := beatsNamed(storyBeats(s.T(), mgr, "sess", "alice"), string(encounter.OutcomeStruck))
+	s.Require().Len(struck, 1, "the swing recorded one struck beat")
+	last := struck[0]
 	s.True(strings.HasPrefix(last.Correlation, "attack:"), "the swing is the attack verb's act, got %q", last.Correlation)
 	s.JSONEq(
 		`{"beat":"struck","actor":"alice","targets":["bob"],"roll":15,"total":20,"against":12,"amount":8,`+
@@ -450,8 +443,8 @@ func (s *AttackTestSuite) TestAMissIsRecordedToo() {
 	s.False(out.Hit, "2 + 5 is under 12")
 	s.Zero(out.Damage)
 
-	story, err := mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "alice"})
-	s.Require().NoError(err)
+	missed := beatsNamed(storyBeats(s.T(), mgr, "sess", "alice"), string(encounter.OutcomeMissed))
+	s.Require().Len(missed, 1, "the swing recorded one missed beat")
 	s.JSONEq(
 		`{"beat":"missed","actor":"alice","targets":["bob"],"roll":2,"total":7,"against":12,`+
 			`"attack":{"ref":"dnd5e:weapons:longsword","name":"Longsword","damage_type":"slashing"},`+
@@ -459,7 +452,7 @@ func (s *AttackTestSuite) TestAMissIsRecordedToo() {
 			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword","source_id":"alice"},"dice":{"notation":"1d20","die_size":20,"original_rolls":[2],"final_rolls":[2],"subtotal":2}},`+
 			`{"source":{"ref":"dnd5e:weapons:longsword","name":"Longsword"},"modifier":5}],"total":7},`+
 			`"presentation_id":"presentation-test-id"}`,
-		string(story[len(story)-1].Payload))
+		string(missed[0].Payload))
 }
 
 // TestDamagePersists is the row Attack earns in the no-clobber pin.
@@ -499,7 +492,7 @@ func (s *AttackTestSuite) TestASwingNamesTheSheetItWrote() {
 	s.Require().NoError(err)
 	s.Require().True(out.Hit)
 
-	s.Equal([]string{"character:alice", "character:bob", "encounter:sess", "session:sess"}, out.Saved.Written,
+	s.Equal([]string{"character:alice", "character:bob", "encounter:sess"}, out.Saved.Written,
 		"the paid attacker and damaged target are durable and the report says so")
 	s.Empty(out.Saved.Failed)
 	s.False(out.Saved.Partial(), "a whole save is not a partial one")
@@ -519,7 +512,7 @@ func (s *AttackTestSuite) TestAMissNamesNoCharacterWrite() {
 	s.Require().NoError(err)
 	s.Require().False(out.Hit)
 
-	s.Equal([]string{"character:alice", "encounter:sess", "session:sess"}, out.Saved.Written,
+	s.Equal([]string{"character:alice", "encounter:sess"}, out.Saved.Written,
 		"a miss changes no target sheet, but the attacker's paid economy is durable")
 }
 
@@ -571,7 +564,7 @@ func (s *AttackTestSuite) TestFreeRoamAttackHasNoDeclaration() {
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: roller, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: session.DiscardEvents{},
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	launchScene(s.T(), mgr, freeRoamDuelWorld())
@@ -598,7 +591,7 @@ func (s *AttackTestSuite) TestAMonsterAttackerIsRefused() {
 	s.characters = newFakeCharacters(armedFighter("alice"))
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: session.DiscardEvents{},
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 
@@ -665,7 +658,7 @@ func (s *AttackTestSuite) TestAnEmptyHandThrowsAnUnarmedStrike() {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{15, 1}}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: session.DiscardEvents{},
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 
@@ -708,7 +701,7 @@ func (s *AttackTestSuite) TestOutOfReachIsRefused() {
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: session.DiscardEvents{},
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 
@@ -733,7 +726,7 @@ func (s *AttackTestSuite) TestReachPropertyExtendsToTwoCells() {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{2, 1}}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: session.DiscardEvents{},
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 
@@ -758,7 +751,7 @@ func (s *AttackTestSuite) TestNotYourTurnIsRefused() {
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: session.DiscardEvents{},
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 
@@ -808,7 +801,7 @@ func (s *AttackTestSuite) TestAffordThenAttackRefusesASheetlessTargetBeforeExecu
 	s.characters = newFakeCharacters(armedFighter("alice"))
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: session.DiscardEvents{},
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 
@@ -850,7 +843,7 @@ func (s *AttackTestSuite) duelAmong(members []string, sheets ...*character.Data)
 
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: session.DiscardEvents{},
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 
@@ -943,7 +936,7 @@ func (s *AttackTestSuite) TestCompetingOffersAreNamedWhenAnotherMemberReadsThem(
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
-		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: session.DiscardEvents{},
+		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	launchScene(s.T(), mgr, freeRoamDuelWorld())
@@ -1058,7 +1051,7 @@ func (s *AttackTestSuite) rangedDuel(targetX float64, weapon weapons.WeaponID, r
 	alice.EquipmentSlots = character.EquipmentSlots{character.SlotMainHand: string(weapon)}
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(alice, bob)
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: session.DiscardEvents{}})
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters})
 	s.Require().NoError(err)
 	launchOnClock(s.T(), mgr, s.encounters, rangedDuelWorld(targetX), duelClock, 0)
 	return mgr
