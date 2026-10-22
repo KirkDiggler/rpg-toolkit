@@ -1698,6 +1698,10 @@ var encodeSighting = EncodeSightTestimony
 // cannot read, so this composition remains the only thing that knows what a
 // sighting means (see [SightTestimony]).
 func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDelta, error) {
+	// One pass, one memo of the field's shared answers (rpg-toolkit#2097),
+	// dropped when the pass returns: see [sightPassMemo].
+	defer e.field.beginSightPass()()
+
 	// Get current clock reading
 	clockReadingInt := e.clock.ToData().HighWater
 	clockReading := uint64(clockReadingInt)

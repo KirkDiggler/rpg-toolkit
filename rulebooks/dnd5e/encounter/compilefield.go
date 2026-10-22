@@ -235,6 +235,17 @@ type field struct {
 	// width and height are the span of the one hex grid that holds the
 	// floor's bounding box (W6).
 	width, height int
+
+	// sightPass is the memo of the sight pass under way, nil between passes
+	// (rpg-toolkit#2097). See [sightPassMemo].
+	sightPass *sightPassMemo
+
+	// originOpacityComputed and placedCellsComputed count the answers the
+	// field actually computed, memo hits excluded (rpg-toolkit#2097). They
+	// are measures, read by the package's own tests, and never decide
+	// anything.
+	originOpacityComputed int
+	placedCellsComputed   int
 }
 
 // maxAnchorCoord bounds the magnitude of every authored coordinate — pure

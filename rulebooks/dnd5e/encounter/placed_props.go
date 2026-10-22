@@ -909,6 +909,25 @@ func (f *field) screensOf(cell spatial.Position) (map[PropID]bool, map[DoorID]bo
 // it marks, which is how a covered cell stops being a lane somebody leans
 // through.
 func (f *field) sightBlocksOriginAt(cell spatial.Position) (bool, error) {
+	if f.sightPass == nil {
+		return f.computeSightBlocksOriginAt(cell)
+	}
+	if covered, ok := f.sightPass.originOpaque[cell]; ok {
+		return covered, nil
+	}
+	covered, err := f.computeSightBlocksOriginAt(cell)
+	if err != nil {
+		return false, err
+	}
+	f.sightPass.originOpaque[cell] = covered
+
+	return covered, nil
+}
+
+// computeSightBlocksOriginAt is [field.sightBlocksOriginAt] without the
+// pass memo: one answer, counted on originOpacityComputed.
+func (f *field) computeSightBlocksOriginAt(cell spatial.Position) (bool, error) {
+	f.originOpacityComputed++
 	centre := f.plane.CellCentre(cell)
 	now := f.placedNow()
 	for i := range f.placed {
@@ -977,3 +996,81 @@ func (e *Encounter) crossingBlocked(from, to spatial.Position) (PropID, bool, er
 // here and reads the authored geometry, which is what a field nobody is
 // playing is.
 func (f *field) attachHoldings(h *holdings) { f.holdings = h }
+
+// sightPassMemo is ONE SIGHT PASS'S SHARED WORK (rpg-toolkit#2097): answers
+// that depend only on the field's geometry as it stands, which no observer's
+// part of the pass changes, so the pass computes each once and every
+// observer reads it.
+//
+//   - originOpaque: whether a sight-blocking footprint covers a cell's
+//     centre ([field.sightBlocksOriginAt]). Every lane of every observer's
+//     sight test asks it of the cells round both ends of the lane, so the
+//     same cells are asked again and again within one pass.
+//   - placedCells and observationCells: where each standing placement
+//     stands, and its observation support ([field.placedCells],
+//     [field.footprintObservationCells]), keyed by placement id. Every
+//     observer who learns cells builds its atlas before and after, and each
+//     build walked every placement over the whole floor.
+//
+// IT LIVES FOR ONE PASS AND NO LONGER. Doors open and shut, props are picked
+// up and dropped, and members move between passes, never inside one, so a
+// memo that outlived its pass would answer from a field that is gone.
+// [field.beginSightPass] starts it and its returned func drops it.
+type sightPassMemo struct {
+	originOpaque     map[spatial.Position]bool
+	placedCells      map[PropID][]spatial.Position
+	observationCells map[PropID][]spatial.Position
+}
+
+// beginSightPass starts the pass memo and returns the func that drops it.
+// A pass begun inside a pass shares the outer pass's memo, and its func
+// drops nothing: the outer pass ends it.
+func (f *field) beginSightPass() (end func()) {
+	if f.sightPass != nil {
+		return func() {}
+	}
+	f.sightPass = &sightPassMemo{
+		originOpaque:     map[spatial.Position]bool{},
+		placedCells:      map[PropID][]spatial.Position{},
+		observationCells: map[PropID][]spatial.Position{},
+	}
+
+	return func() { f.sightPass = nil }
+}
+
+// placedCellsOf is [field.placedCells] for the standing placement with id,
+// read from the pass memo when a pass is under way. The returned slice is
+// the caller's own.
+func (f *field) placedCellsOf(id PropID, p spatial.FootprintPlacement) []spatial.Position {
+	if f.sightPass == nil {
+		f.placedCellsComputed++
+		return f.placedCells(p)
+	}
+	cells, ok := f.sightPass.placedCells[id]
+	if !ok {
+		f.placedCellsComputed++
+		cells = f.placedCells(p)
+		f.sightPass.placedCells[id] = cells
+	}
+
+	return append([]spatial.Position(nil), cells...)
+}
+
+// observationCellsOf is [field.footprintObservationCells] for the standing
+// placement with id, read from the pass memo when a pass is under way. The
+// returned slice is read-only: callers range over it.
+func (f *field) observationCellsOf(id PropID, p spatial.FootprintPlacement) ([]spatial.Position, error) {
+	if f.sightPass == nil {
+		return f.footprintObservationCells(p)
+	}
+	if cells, ok := f.sightPass.observationCells[id]; ok {
+		return cells, nil
+	}
+	cells, err := f.footprintObservationCells(p)
+	if err != nil {
+		return nil, err
+	}
+	f.sightPass.observationCells[id] = cells
+
+	return cells, nil
+}
