@@ -2197,9 +2197,40 @@ func (e *cellQuery) routeToRemembered(
 // rather than reinterpreted here. A caller with a real budget of zero has
 // nowhere to go and must say so before it asks, because asking with zero is
 // asking for the whole floor.
+//
+// A flood with no `forgiven` is memoized for the query's read (see
+// [cellQuery]): the same origin, mover, walker and limit are flooded once and
+// the field is shared, read-only, by every caller in the read. A flood with a
+// `forgiven` predicate is computed every time, because a predicate cannot be
+// a key.
 func (e *cellQuery) floodFrom(
 	mover, walker MemberID, from spatial.Position, forgiven func(spatial.Position) (bool, error), limit int,
 ) (spatial.FieldOutput, error) {
+	if forgiven != nil {
+		return e.computeFlood(mover, walker, from, forgiven, limit)
+	}
+	key := floodKey{mover: mover, walker: walker, from: from, limit: limit}
+	if field, ok := e.floods[key]; ok {
+		return field, nil
+	}
+	field, err := e.computeFlood(mover, walker, from, nil, limit)
+	if err != nil {
+		return spatial.FieldOutput{}, err
+	}
+	if e.floods == nil {
+		e.floods = map[floodKey]spatial.FieldOutput{}
+	}
+	e.floods[key] = field
+
+	return field, nil
+}
+
+// computeFlood is [cellQuery.floodFrom] without the memo: one flood, counted
+// on the run's floodsComputed.
+func (e *cellQuery) computeFlood(
+	mover, walker MemberID, from spatial.Position, forgiven func(spatial.Position) (bool, error), limit int,
+) (spatial.FieldOutput, error) {
+	e.floodsComputed++
 	var crossingErr error
 	field, err := spatial.Field(e.canvas.GetGrid(), spatial.FieldInput{
 		Sources: []spatial.Position{from},

@@ -303,6 +303,11 @@ type Encounter struct {
 	// hand-edited blob and would then reject Story queries the log could
 	// actually answer.
 	logFloor uint64
+
+	// floodsComputed counts the distance fields this run has actually
+	// flooded, memo hits excluded (rpg-toolkit#2097). It is a measure, read
+	// by the package's own tests, and never decides anything.
+	floodsComputed int
 }
 
 // isIntegralHexCell reports whether pos names a whole axial cell —
