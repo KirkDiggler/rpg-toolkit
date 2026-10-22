@@ -80,9 +80,21 @@ func (s *HeldTestSuite) scene(mover encounter.Mover, standing encounter.Particip
 
 // flee sends the goblin down fleeRoute as a provoking directive.
 func (s *HeldTestSuite) flee(enc *encounter.Encounter) (encounter.DirectOutput, error) {
-	return enc.Direct(context.Background(), encounter.DirectInput{
+	return s.direct(enc, encounter.DirectInput{
 		Mover: goblin, Cause: whispersRef, Route: fleeRoute(), Provokes: true,
 	})
+}
+
+// direct runs one directive inside an act, as a host verb does: the caller's
+// when one is open, otherwise one of its own. Every pause is made inside an
+// act, and a pause without one is refused.
+func (s *HeldTestSuite) direct(enc *encounter.Encounter, in encounter.DirectInput) (encounter.DirectOutput, error) {
+	if enc.CurrentAct() == "" {
+		_, err := enc.OpenAct(&encounter.OpenActInput{Verb: "push"})
+		s.Require().NoError(err)
+		defer func() { s.Require().NoError(enc.CloseAct()) }()
+	}
+	return enc.Direct(context.Background(), in)
 }
 
 func (s *HeldTestSuite) positionOf(enc *encounter.Encounter, id encounter.MemberID) spatial.Position {
@@ -378,7 +390,7 @@ func (s *HeldTestSuite) TestASecondDirectiveIsRefusedWhileOneIsHeld() {
 	_, err := s.flee(enc)
 	s.Require().NoError(err)
 
-	_, derr := enc.Direct(context.Background(), encounter.DirectInput{
+	_, derr := s.direct(enc, encounter.DirectInput{
 		Mover: alice, Cause: whispersRef, Route: []spatial.Position{cellAt(2, 3)}, Provokes: false,
 	})
 	s.Require().ErrorIs(derr, encounter.ErrTurnPaused, "somebody else's push waits too")
@@ -474,7 +486,7 @@ func (s *HeldTestSuite) TestAHeldPushKeepsItsStanceAcrossTheHold() {
 	mover := &pausingMover{pauseAt: map[int]bool{0: true}}
 	enc := s.scene(mover, &downList{})
 
-	out, err := enc.Direct(context.Background(), encounter.DirectInput{
+	out, err := s.direct(enc, encounter.DirectInput{
 		Mover: goblin, Cause: thunderwaveRef, Route: fleeRoute(), Provokes: false,
 	})
 	s.Require().NoError(err)

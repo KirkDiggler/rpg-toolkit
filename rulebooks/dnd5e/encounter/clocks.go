@@ -627,7 +627,7 @@ func (e *Encounter) runIntents(
 		// creature's roll is a driven activation of its own, not part of
 		// whichever player verb raised the clock that drew it.
 		if decision.Pick != nil && (j == startJ || len(decision.Pick.Candidates) > 0) {
-			if perr := e.inAct("time", actRef{}, func() error {
+			if perr := e.inAct("time", "", func() error {
 				if berr := e.appendPickBeat(activeID, decision.Pick); berr != nil {
 					return berr
 				}
@@ -645,7 +645,7 @@ func (e *Encounter) runIntents(
 			done         bool
 			intentDeltas map[MemberID]*IntelDelta
 		)
-		dexecerr := e.inAct(intentVerb(decision.Intent), actRef{}, func() error {
+		dexecerr := e.inAct(intentVerb(decision.Intent), "", func() error {
 			var xerr error
 			done, intentDeltas, xerr = e.executeTurnIntent(
 				activeID, m, view, decision.Intent, budget,
@@ -995,7 +995,7 @@ func (e *Encounter) executeTurnIntent(
 				e.pause = &pause{
 					kind:   PauseTurn,
 					member: activeID,
-					act:    e.currentAct(),
+					act:    e.CurrentAct(),
 					outer:  e.outerActs(),
 					turn: &turnPause{
 						round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,
@@ -1084,7 +1084,7 @@ func (e *Encounter) executeTurnIntent(
 				moved:     res.moved,
 				at:        at,
 				audience:  audience,
-				act:       e.currentAct(),
+				act:       e.CurrentAct(),
 				outer:     e.outerActs(),
 				turn: &turnPause{
 					round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,
@@ -1232,7 +1232,7 @@ func (e *Encounter) executeTurnIntent(
 				at:        at,
 				audience:  audience,
 				cause:     it.Cause,
-				act:       e.currentAct(),
+				act:       e.CurrentAct(),
 				outer:     e.outerActs(),
 				turn: &turnPause{
 					round: coords.Round, budget: *budget, intent: coords.Intent, bound: coords.Bound,

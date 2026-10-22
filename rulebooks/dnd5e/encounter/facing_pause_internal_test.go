@@ -20,7 +20,7 @@ import (
 func TestAPausedWalkTowardASoundKeepsItsCell(t *testing.T) {
 	clang := spatial.Position{X: 4, Y: 2}
 	p := &pause{
-		kind: PauseTurn, member: "goblin",
+		kind: PauseTurn, member: "goblin", act: "move:01HF7YAT003RVQKEBZ99Y1AF3E",
 		from: spatial.Position{X: 0, Y: 0}, to: spatial.Position{X: 1, Y: 0},
 		remaining: []spatial.Position{{X: 1, Y: 0}},
 		turn: &turnPause{

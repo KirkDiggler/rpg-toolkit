@@ -4,15 +4,14 @@
 package encounter_test
 
 // act_test.go pins the act id (rpg-project#627, ideas/event-stream/design.md
-// R3, R20, R24, Law 2): one act is one verb, minted as `<verb>:<first seq>`,
-// and every beat appended inside it carries that id as its correlation. A
+// R3, R20, R24, R27, Law 2): one act is one verb, minted as `<verb>:<id>`
+// (act_v2_test.go), and every beat appended inside it carries that id as its correlation. A
 // reaction carries its trigger's id, and a driven activation is one act per
 // verb rather than part of the act that set it off.
 
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"testing"
 
@@ -86,24 +85,6 @@ func (s *ActTestSuite) missAt(enc *encounter.Encounter) {
 		Kind: encounter.OutcomeMissed, Actor: alice, Targets: []encounter.MemberID{goblin},
 	})
 	s.Require().NoError(err)
-}
-
-// TestOpenActMintsVerbAndFirstSeq is R20: the id is the verb and the seq
-// the act's first beat takes, which is the story's next seq at open.
-func (s *ActTestSuite) TestOpenActMintsVerbAndFirstSeq() {
-	enc := s.pair(&downList{})
-
-	n, err := enc.NextStorySeq()
-	s.Require().NoError(err)
-	act := s.open(enc, "attack", "")
-	s.Equal(fmt.Sprintf("attack:%d", n), act)
-
-	s.missAt(enc)
-	missed := ofKind(s.story(enc, alice), string(encounter.OutcomeMissed), "")
-	s.Require().Len(missed, 1)
-	s.Equal(n, missed[0].seq, "the act's first beat takes the seq its id names")
-	s.Equal(act, missed[0].correlation)
-	s.Require().NoError(enc.CloseAct())
 }
 
 // TestOpenActWithNothingToNameIsRefused: an act with no verb and no id has
@@ -344,8 +325,8 @@ func (s *ActTestSuite) pausedWalk() (*encounter.Encounter, string, string) {
 
 	data := enc.ToData()
 	s.Require().NotNil(data.Pause)
-	s.Equal(walk, data.Pause.Act, "the blob carries the walk's act")
-	s.Equal([]string{endTurn}, data.Pause.Outer, "and the act the walk was opened inside")
+	s.Equal(walk, data.Pause.ActID, "the blob carries the walk's act")
+	s.Equal([]string{endTurn}, data.Pause.OuterIDs, "and the act the walk was opened inside")
 
 	pt := &PauseTestSuite{}
 	pt.SetT(s.T())
@@ -467,7 +448,7 @@ func (s *ActTestSuite) TestTimePickIsItsOwnAct() {
 	for _, p := range picks {
 		s.True(strings.HasPrefix(p.correlation, "time:"), "a pick is a time act, got %q", p.correlation)
 		s.NotEqual(walk, p.correlation, "the goblin's answer is not the walker's act")
-		s.Equal(fmt.Sprintf("time:%d", p.seq), p.correlation, "the pick is its act's first beat")
+		s.Equal(p.seq, firstOfAct(entries, p.correlation), "the pick is its act's first beat")
 	}
 	for _, m := range ofKind(entries, encounter.BeatMoved, alice) {
 		s.Equal(walk, m.correlation)
@@ -525,7 +506,7 @@ func (s *ActTestSuite) TestRecordEquipWithoutAct() {
 	out, err := enc.RecordEquip(swap)
 	s.Require().NoError(err)
 	s.Require().Len(out.Seqs, 2)
-	s.Equal(fmt.Sprintf("equip:%d", out.Seqs[0]), out.Correlation)
+	s.True(strings.HasPrefix(out.Correlation, "equip:"), "got %q", out.Correlation)
 
 	beats := ofKind(s.story(enc, alice), encounter.BeatEquipmentChanged, "")
 	s.Require().Len(beats, 2)
@@ -551,4 +532,14 @@ func (s *ActTestSuite) TestRecordEquipUnderAct() {
 	for _, b := range beats {
 		s.Equal(act, b.correlation)
 	}
+}
+
+// firstOfAct is the seq of the first entry carrying act as its correlation.
+func firstOfAct(entries []told, act string) uint64 {
+	for _, e := range entries {
+		if e.correlation == act {
+			return e.seq
+		}
+	}
+	return 0
 }
