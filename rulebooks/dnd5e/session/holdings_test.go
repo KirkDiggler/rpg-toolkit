@@ -187,6 +187,10 @@ type HoldingsSuite struct {
 	encounters *fakeEncounters
 	characters *fakeCharacters
 	mgr        *session.Manager
+	// members are the cast; since is, per member, the last beat they held
+	// at the last [HoldingsSuite.mark] — what a scene reads after.
+	members []string
+	since   map[string]uint64
 }
 
 func TestHoldingsSuite(t *testing.T) { suite.Run(t, new(HoldingsSuite)) }
@@ -208,10 +212,15 @@ func (s *HoldingsSuite) launchHeirloom(
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(cast...)
 
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	s.members = s.members[:0]
+	for _, c := range cast {
+		s.members = append(s.members, c.ID)
+	}
+
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: s.stream,
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -239,24 +248,34 @@ func (s *HoldingsSuite) launchHeirloom(
 	_, err = mgr.Recheck(context.Background(), &session.RecheckInput{Session: "sess", Members: []string{"captain"}})
 	s.Require().NoError(err)
 
-	s.stream.published = nil
+	s.mark()
 	return launched
 }
 
-// events returns everything published to one recipient, in order.
-func (s *HoldingsSuite) events(recipient string) []session.Event {
-	return eventsFor(s.stream.published, recipient)
+// mark starts a fresh window: every scene read after it ([HoldingsSuite.beats])
+// is what each member witnessed from here on.
+func (s *HoldingsSuite) mark() {
+	s.T().Helper()
+	s.since = map[string]uint64{}
+	for _, member := range s.members {
+		s.since[member] = lastSeq(storyBeats(s.T(), s.mgr, "sess", member))
+	}
+	s.stream.published = nil
 }
 
-// kinds names the kinds one recipient was told about, in order — the shape
-// most of these scenes assert on, since WHAT reached a member and what did
-// not is the whole claim.
-func (s *HoldingsSuite) kinds(recipient string) []session.EventKind {
-	var out []session.EventKind
-	for _, e := range s.events(recipient) {
-		out = append(out, e.Kind)
-	}
-	return out
+// beats is everything one recipient witnessed since the last mark, in order.
+func (s *HoldingsSuite) beats(recipient string) []witnessed {
+	s.T().Helper()
+	since, ok := s.since[recipient]
+	s.Require().True(ok, "%s is not in the cast", recipient)
+	return storyBeatsAfter(s.T(), s.mgr, "sess", recipient, since)
+}
+
+// kinds names the beats one recipient was told about since the last mark, in
+// order — the shape most of these scenes assert on, since WHAT reached a
+// member and what did not is the whole claim.
+func (s *HoldingsSuite) kinds(recipient string) []string {
+	return beatNames(s.beats(recipient))
 }
 
 // atlasOf is one member's own map.
@@ -310,18 +329,13 @@ func (s *HoldingsSuite) atlasBytes(member string) string {
 	return string(raw)
 }
 
-// bodyOf fetches the one event of a kind on a recipient's stream, failing if
-// there is not exactly one.
-func (s *HoldingsSuite) bodyOf(recipient string, kind session.EventKind) session.EventBody {
+// beatOf decodes the one beat named name a recipient witnessed since the last
+// mark into v, failing if there is not exactly one.
+func (s *HoldingsSuite) beatOf(recipient, name string, v any) {
 	s.T().Helper()
-	var found []session.Event
-	for _, e := range s.events(recipient) {
-		if e.Kind == kind {
-			found = append(found, e)
-		}
-	}
-	s.Require().Len(found, 1, "%s should have exactly one %s", recipient, kind)
-	return found[0].Body
+	found := beatsNamed(s.beats(recipient), name)
+	s.Require().Len(found, 1, "%s should have exactly one %s", recipient, name)
+	found[0].decode(s.T(), v)
 }
 
 // absolute converts an AUTHORED cell to the dungeon-absolute one every read
@@ -333,26 +347,24 @@ func absolute(p spatial.Position) spatial.Position { return hexCell(int(p.X), in
 func aliceCellAbsolute() spatial.Position { return absolute(aliceCell) }
 func bobCellAbsolute() spatial.Position   { return absolute(bobCell) }
 
-// storyBytes is one member's whole delivered story, as bytes. A stronger
-// claim than the live stream for the secrecy scenes: it includes the
-// numbering, and a HOLE where a reveal went would itself be an oracle.
+// storyBytes is one member's whole story, as the payload bytes of each beat.
+// A stronger claim than the window since the last mark for the secrecy
+// scenes: a beat that was there in one run and not the other would itself
+// be an oracle.
 func (s *HoldingsSuite) storyBytes(member string) string {
 	s.T().Helper()
-	story, err := s.mgr.Story(context.Background(), &session.StoryInput{
-		Session: "sess", Member: member})
-	s.Require().NoError(err)
-	raw, err := json.Marshal(story)
-	s.Require().NoError(err)
-	return string(raw)
+	return payloadBytes(s.T(), storyBeats(s.T(), s.mgr, "sess", member))
 }
 
-// assertDenseFor fails unless a recipient's delivered numbers are
-// consecutive — the gap oracle, killed as one check on the values.
-func (s *HoldingsSuite) assertDenseFor(who string) {
-	s.T().Helper()
-	events := s.events(who)
-	for i := 1; i < len(events); i++ {
-		s.Require().Equal(events[i-1].Seq+1, events[i].Seq,
-			"%s's own stream must be dense: seq %d follows %d", who, events[i].Seq, events[i-1].Seq)
+// payloadBytes is beats' payloads, in order, as one string — the record's own
+// sequence and act ids left out, since neither ever reaches a viewer (R30).
+func payloadBytes(t *testing.T, beats []witnessed) string {
+	t.Helper()
+	payloads := make([]json.RawMessage, 0, len(beats))
+	for _, beat := range beats {
+		payloads = append(payloads, beat.Payload)
 	}
+	raw, err := json.Marshal(payloads)
+	require.NoError(t, err)
+	return string(raw)
 }

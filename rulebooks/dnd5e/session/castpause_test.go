@@ -93,7 +93,6 @@ func (s *CastPauseSuite) scene(sheets []*character.Data, at map[string]spatial.P
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: whisperDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
-		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -191,13 +190,11 @@ func (s *CastPauseSuite) where(member string) spatial.Position {
 // story is one member's whole story, decoded to the fields these tests read.
 func (s *CastPauseSuite) story(member string) []storyBeat {
 	s.T().Helper()
-	entries, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: member})
-	s.Require().NoError(err)
-
+	entries := storyBeats(s.T(), s.mgr, "sess", member)
 	out := make([]storyBeat, 0, len(entries))
 	for _, entry := range entries {
 		var beat storyBeat
-		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		entry.decode(s.T(), &beat)
 		out = append(out, beat)
 	}
 	return out
@@ -221,20 +218,10 @@ func (s *CastPauseSuite) fledCells() int {
 // windowAudiences is every audience the story has been asked about, in order.
 func (s *CastPauseSuite) windowAudiences(member string) []string {
 	s.T().Helper()
-	entries, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: member})
-	s.Require().NoError(err)
-
 	var out []string
-	for _, entry := range entries {
-		var peek struct {
-			Beat string `json:"beat"`
-		}
-		s.Require().NoError(json.Unmarshal(entry.Payload, &peek))
-		if peek.Beat != "window_opened" {
-			continue
-		}
+	for _, entry := range beatsNamed(storyBeats(s.T(), s.mgr, "sess", member), "window_opened") {
 		var body windowBeat
-		s.Require().NoError(json.Unmarshal(entry.Payload, &body))
+		entry.decode(s.T(), &body)
 		for _, window := range body.Windows {
 			out = append(out, window.Audience)
 		}
@@ -245,11 +232,8 @@ func (s *CastPauseSuite) windowAudiences(member string) []string {
 // swings is every beat in member's story that names a reaction.
 func (s *CastPauseSuite) swings(member string) []reactedBeat {
 	s.T().Helper()
-	entries, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: member})
-	s.Require().NoError(err)
-
 	var out []reactedBeat
-	for _, entry := range entries {
+	for _, entry := range storyBeats(s.T(), s.mgr, "sess", member) {
 		var body reactedBeat
 		if json.Unmarshal(entry.Payload, &body) != nil || body.Reaction == nil {
 			continue
@@ -432,7 +416,7 @@ func realPostHitWindow(t *testing.T) map[string]any {
 	wrath := &CastSuite{}
 	wrath.SetT(t)
 	wrath.scene(wrath.tempestSheet(), 1, 15, 2, 1, 4, 5)
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: wrath.dice, TurnDriver: reachlessAttacker{}, Sessions: wrath.sessions, Encounters: wrath.encounters, Characters: wrath.characters, Events: wrath.stream})
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: wrath.dice, TurnDriver: reachlessAttacker{}, Sessions: wrath.sessions, Encounters: wrath.encounters, Characters: wrath.characters})
 	require.NoError(t, err)
 	_, err = mgr.EndTurn(context.Background(), &session.EndTurnInput{Session: "sess", Member: "cleric", DeclarationID: currentEndTurnID(t, mgr, "sess", "cleric")})
 	require.NoError(t, err)

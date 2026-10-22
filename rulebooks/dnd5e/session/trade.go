@@ -119,9 +119,6 @@ type TradeOutput struct {
 	// Interact round trip.
 	Descriptor WorldNPCDescriptor
 
-	// Seq is the sequence number of the recorded `bought`/`sold` beat.
-	Seq uint64
-
 	// Saved names what was persisted.
 	Saved SaveReport
 
@@ -215,6 +212,9 @@ func (m *Manager) buy(ctx context.Context, in *TradeInput) (*TradeOutput, error)
 	if err := npcs.DecrementVendorStock(content, item.Type, item.ID, item.Quantity); err != nil {
 		return nil, fmt.Errorf("trade: %w: %w", ErrOutOfStock, err)
 	}
+	// The vendor's stock lives in the session record (SessionData.WorldNPCs),
+	// so this verb saves it.
+	scope.touched = true
 
 	actorData, err := m.sheetsFor(nil).load(ctx, "actor", in.Actor)
 	if err != nil {
@@ -299,6 +299,9 @@ func (m *Manager) sell(ctx context.Context, in *TradeInput) (*TradeOutput, error
 	if err := npcs.AddToVendorStock(content, item.Type, item.ID, item.Quantity); err != nil {
 		return nil, fmt.Errorf("trade: %w", err)
 	}
+	// The vendor's stock lives in the session record (SessionData.WorldNPCs),
+	// so this verb saves it.
+	scope.touched = true
 	actorData.Wallet = actorData.Wallet.Add(price)
 
 	if err := m.sheetsFor(scope).save(ctx, actorData); err != nil {
@@ -363,7 +366,7 @@ func (m *Manager) openVendorTrade(ctx context.Context, in *TradeInput) (*writeSc
 func (m *Manager) finishTrade(
 	ctx context.Context, scope *writeScope, targetID string, record *encounter.RecordInput,
 ) (*TradeOutput, error) {
-	recorded, err := scope.enc.RecordTrain(&encounter.RecordTrainInput{Units: []encounter.TrainUnit{{Outcome: record}}})
+	_, err := scope.enc.RecordTrain(&encounter.RecordTrainInput{Units: []encounter.TrainUnit{{Outcome: record}}})
 	if err != nil {
 		return nil, fmt.Errorf("trade: %w", reportUnrecorded(scope, translate(err)))
 	}
@@ -380,7 +383,6 @@ func (m *Manager) finishTrade(
 
 	return &TradeOutput{
 		Descriptor: descriptor,
-		Seq:        recorded.Units[0].Seq,
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil

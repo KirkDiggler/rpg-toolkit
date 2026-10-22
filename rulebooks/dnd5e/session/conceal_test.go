@@ -6,8 +6,7 @@ package session_test
 // conceal_test.go drives the seam's half of living-world slice 1
 // (rpg-toolkit#1375; ruled on rpg-project#350 and #351): the two supplied
 // capabilities, the per-member reads, automatic discovery, the applied unlock
-// route, the reveal beats on the event surface, and per-recipient dense
-// numbering. The composition's own laws (never-authored yardstick, probe law,
+// route, and the reveal beats in each member's story. The composition's own laws (never-authored yardstick, probe law,
 // move law, failed-equals-empty) are pinned in the encounter suite; what is
 // pinned HERE is that they survive the seam — same bytes through translate,
 // same secrecy through delivery — with the real resolver and the real
@@ -291,6 +290,7 @@ func armedSearcher(id string) *character.Data {
 type ConcealSuite struct {
 	suite.Suite
 
+	// stream is the act stream the manager publishes to.
 	stream       *fakeStream
 	explorations *explorationStore
 	sessions     session.SessionRepository
@@ -330,11 +330,11 @@ func (s *ConcealSuite) wire(driver session.TurnDriver, world scene, cast ...*cha
 	stockAuthoredPlayers(world, characters)
 	s.sessions, s.encounters, s.characters = sessions, encounters, characters
 	s.explorations = newFakeExplorations()
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream,
 		Seats: newFakeSeats(), Explorations: s.explorations, PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: driver,
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: s.stream,
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -382,44 +382,50 @@ func (s *ConcealSuite) startBounded(world scene, cast ...*character.Data) {
 	seedRun(s.T(), s.sessions.(*fakeSessions), s.encounters.(*fakeEncounters), testSession, &data)
 }
 
-// eventsFor filters the published stream down to one recipient, in order.
-func eventsFor(published []session.Event, recipient string) []session.Event {
-	var out []session.Event
-	for _, e := range published {
-		if e.Recipient == recipient {
-			out = append(out, e)
-		}
-	}
-	return out
-}
-
-// eventsOfKind is eventsFor narrowed to one kind — what a test that says "one
-// concealment_revealed for the finder" actually means.
-//
-// IT EXISTS BECAUSE THE WORLD CLOCK NOW MOVES (rpg-project#465, design §5). A
-// verb that spends a round appends a `tick` beat beside its own, so a count
-// over a recipient's WHOLE stream is now counting two different facts. Bumping
-// each of those counts from one to two would have pinned the tick by accident
-// in a dozen tests that are not about the clock; naming the kind pins what the
-// test claims and nothing else.
-func eventsOfKind(published []session.Event, recipient string, kind session.EventKind) []session.Event {
-	var out []session.Event
-	for _, e := range eventsFor(published, recipient) {
-		if e.Kind == kind {
-			out = append(out, e)
-		}
-	}
-	return out
-}
-
-// assertDense fails unless the recipient's numbers are consecutive — the
-// gap-oracle kill, stated as one check on the values.
-func (s *ConcealSuite) assertDense(events []session.Event, who string) {
+// beatsOf is member's whole story narrowed to the named beats, in order.
+func (s *ConcealSuite) beatsOf(member string, names ...string) []witnessed {
 	s.T().Helper()
-	for i := 1; i < len(events); i++ {
-		s.Require().Equal(events[i-1].Seq+1, events[i].Seq,
-			"%s's own stream must be dense: seq %d follows %d", who, events[i].Seq, events[i-1].Seq)
+	return beatsNamed(storyBeats(s.T(), s.mgr, "sess", member), names...)
+}
+
+// marks is, per member, the record sequence of the last beat they had
+// witnessed — taken before a verb so [ConcealSuite.since] reads what that
+// verb told each of them.
+func (s *ConcealSuite) marks(members ...string) map[string]uint64 {
+	s.T().Helper()
+	out := make(map[string]uint64, len(members))
+	for _, m := range members {
+		out[m] = lastSeq(storyBeats(s.T(), s.mgr, "sess", m))
 	}
+	return out
+}
+
+// since is member's beats after mark.
+func (s *ConcealSuite) since(member string, mark uint64) []witnessed {
+	s.T().Helper()
+	return storyBeatsAfter(s.T(), s.mgr, "sess", member, mark)
+}
+
+// revealedPayload is a concealment_revealed beat's payload: the recipient's
+// own atlas answer for the secret, sliced. The composition writes each door's
+// doorways as bare from/to pairs, so a doorway read here has no Door of its
+// own; the door it belongs to is the entry it sits under.
+type revealedPayload struct {
+	Concealment string                  `json:"concealment"`
+	Cells       []spatial.Position      `json:"cells"`
+	Doors       []session.RevealedDoor  `json:"doors"`
+	Regions     []session.AtlasRegion   `json:"regions"`
+	Boundaries  []session.AtlasBoundary `json:"boundaries"`
+	Segments    []session.AtlasSegment  `json:"segments"`
+}
+
+// revealedIn decodes a concealment_revealed beat.
+func (s *ConcealSuite) revealedIn(beat witnessed) revealedPayload {
+	s.T().Helper()
+	s.Require().Equal(encounter.BeatConcealmentRevealed, beat.Beat)
+	var body revealedPayload
+	beat.decode(s.T(), &body)
+	return body
 }
 
 // veilPath is the walk from where concealedWorld seats alice to the cell
@@ -474,7 +480,7 @@ func (s *ConcealSuite) find(ctx context.Context, member string) (*session.MoveOu
 
 // TestDiscoveryRevealsToTheFinderAlone is the slice's headline scene: alice
 // searches the hall, the vault appears for her alone, and nothing about the
-// verb — response, delivery, or any other member's stream — tells the table
+// verb — response, delivery, or any other member's story — tells the table
 // a question was even asked.
 //
 // ONE FIND, THE WHOLE SECRET (rpg-project#490 R1, E4). This scene used to end
@@ -492,16 +498,15 @@ func (s *ConcealSuite) TestDiscoveryRevealsToTheFinderAlone() {
 
 	out, err := s.find(ctx, "alice")
 	s.Require().NoError(err)
-	s.Equal([]string{"encounter:sess", "session:sess"}, out.Saved.Written,
-		"the found fact rides the world; the advanced stream cursors ride the session")
+	s.Equal([]string{"encounter:sess"}, out.Saved.Written,
+		"the found fact rides the world; the session record is unchanged")
 
-	// The searcher's own stream carries the reveal, typed. Narrowed to the
-	// kind this test is about: a Search spends a round of the world now, so
-	// every member's stream also carries that tick (rpg-project#465 §5).
-	alice := eventsOfKind(s.stream.published, "alice", session.EventConcealmentRevealed)
+	// The searcher's own story carries the reveal. Narrowed to the beat
+	// this test is about: a Search spends a round of the world now, so
+	// every member's story also carries that tick (rpg-project#465 §5).
+	alice := s.beatsOf("alice", encounter.BeatConcealmentRevealed)
 	s.Require().Len(alice, 1, "one concealment_revealed for the finder")
-	body, ok := alice[0].Body.(session.ConcealmentRevealedBody)
-	s.Require().True(ok, "a reveal event carries its typed body")
+	body := s.revealedIn(alice[0])
 	s.Equal(vaultSecret, body.Concealment, "the patch names the noun it is about")
 
 	s.Require().Len(body.Doors, 1, "the vault hides exactly one door")
@@ -509,9 +514,9 @@ func (s *ConcealSuite) TestDiscoveryRevealsToTheFinderAlone() {
 	s.Equal("closed", body.Doors[0].State,
 		"found is not opened — concealment looks like a shut door")
 	s.Require().Len(body.Doors[0].Doorways, 1)
-	s.Equal(session.AtlasDoorway{Door: "veil", From: cell(5, 0), To: cell(6, 0)},
-		body.Doors[0].Doorways[0],
-		"the body is the patch for the cached atlas's doorway list")
+	s.Equal(cell(5, 0), body.Doors[0].Doorways[0].From,
+		"the beat carries the crossing the cached atlas's doorway list gains")
+	s.Equal(cell(6, 0), body.Doors[0].Doorways[0].To)
 	s.Empty(body.Doors[0].Approaches, "an unlocked door carries no lock routes")
 
 	s.ElementsMatch(hexCells(rectCells(6, 0, 6, 6)), body.Cells,
@@ -523,17 +528,16 @@ func (s *ConcealSuite) TestDiscoveryRevealsToTheFinderAlone() {
 			"are no segments to carry — empty here is the truth, not an omission "+
 			"(the carrying is pinned on a payload that has some, in the decode suite)")
 
-	// Nobody else is told — and (per-recipient numbering) no readable hole is
-	// left where their copy would have been.
+	// Nobody else is told.
 	//
 	// THEY DO HEAR THE CLOCK. A Search spends a round of the world, and time
 	// passing is truth grain that goes to the whole run: what detection scopes
 	// is the FINDING, not the passing of a round. So this asks what it means
-	// — nobody else learned about the vault — rather than counting a stream.
-	s.Empty(eventsOfKind(s.stream.published, "bob", session.EventConcealmentRevealed))
-	s.Empty(eventsOfKind(s.stream.published, "carol", session.EventConcealmentRevealed))
+	// — nobody else learned about the vault — rather than counting a story.
+	s.Empty(s.beatsOf("bob", encounter.BeatConcealmentRevealed))
+	s.Empty(s.beatsOf("carol", encounter.BeatConcealmentRevealed))
 
-	// The per-member reads agree with the streams.
+	// The per-member reads agree with the stories.
 	doors, err := s.mgr.Doors(ctx, &session.DoorsInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	s.Require().Len(doors.Doors, 1, "the finder's door list holds the veil now")
@@ -609,17 +613,14 @@ func (s *ConcealSuite) TestAFightFormsOnAConcealedDungeon() {
 	_, err = s.find(ctx, "alice")
 	s.Require().NoError(err)
 
-	var started []session.Event
-	for _, e := range s.stream.published {
-		if e.Kind == session.EventFightStarted {
-			started = append(started, e)
-		}
-	}
+	started := s.beatsOf("alice", encounter.BeatFightStarted)
 	s.Require().NotEmpty(started, "the placement pulled the hall into one bubble")
-	body, ok := started[0].Body.(session.FightStartedBody)
-	s.Require().True(ok, "got %T", started[0].Body)
-	s.Contains(body.Members, "skel-1")
-	s.Contains(body.Members, "alice")
+	var body struct {
+		Order []string `json:"order"`
+	}
+	started[0].decode(s.T(), &body)
+	s.Contains(body.Order, "skel-1")
+	s.Contains(body.Order, "alice")
 
 	// Concealment law, knower's side: the fight did not take her door away.
 	doors, err := s.mgr.Doors(ctx, &session.DoorsInput{Session: "sess", Member: "alice"})
@@ -745,19 +746,19 @@ func (s *ConcealSuite) TestTheFightOnAConcealedDungeonIsFoughtIn() {
 
 	// THE MONSTER'S TURN — striker.go's reload, driven inside carol's EndTurn
 	// because the zombie is next in the order and no player ends its turn.
-	s.stream.published = nil
+	mark := s.marks("alice")["alice"]
 	wrapped := endTurn("carol")
 	s.True(wrapped.RoundWrapped, "the zombie closed the round")
 	s.Equal("alice", wrapped.Next, "which wraps back to whoever led it")
 
 	swungBack := false
-	for _, e := range eventsFor(s.stream.published, "alice") {
-		switch body := e.Body.(type) {
-		case session.StruckBody:
-			swungBack = swungBack || body.Attacker == "zed-1"
-		case session.MissedBody:
-			swungBack = swungBack || body.Attacker == "zed-1"
+	for _, b := range beatsNamed(s.since("alice", mark),
+		string(encounter.OutcomeStruck), string(encounter.OutcomeMissed)) {
+		var swing struct {
+			Actor string `json:"actor"`
 		}
+		b.decode(s.T(), &swing)
+		swungBack = swungBack || swing.Actor == "zed-1"
 	}
 	s.True(swungBack, "the zombie's own turn resolved a real strike through the striker seam")
 
@@ -828,8 +829,7 @@ func (s *ConcealSuite) TestTheResolverAppliesTheBestListedApproach() {
 	_, err := s.find(ctx, "mira")
 	s.Require().NoError(err)
 
-	events := eventsOfKind(s.stream.published, "mira", session.EventConcealmentRevealed)
-	s.Require().Len(events, 1,
+	s.Require().Len(s.beatsOf("mira", encounter.BeatConcealmentRevealed), 1,
 		"flat 10 + 0 investigation meets its DC 10; flat 10 + 5 perception misses its DC 16 — "+
 			"only best-by-margin finds this secret")
 }
@@ -889,7 +889,6 @@ func (s *ConcealSuite) TestTheProbeLawHoldsAtTheSeam() {
 	world := concealedWorld(encounter.DoorIsLocked(encounter.Lock{Approaches: []encounter.CheckApproach{{Ability: "dex", DC: 12}}}))
 
 	rolled := 0
-	s.stream = &fakeStream{}
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	characters := newFakeCharacters(sharpEyed("alice"), dullEyed("bob"))
 	stockAuthoredPlayers(world, characters)
@@ -897,7 +896,7 @@ func (s *ConcealSuite) TestTheProbeLawHoldsAtTheSeam() {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{calls: &rolled}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: s.stream,
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -975,37 +974,27 @@ func (s *ConcealSuite) TestOpeningRevealsToThePerceiversThroughTheOneSeam() {
 	s.Require().NoError(err)
 	// The find walked her up to the door, and a door opens only from beside
 	// it (rpg-toolkit#1856, arriving with encounter v0.97.1).
-	s.stream.published = nil
+	marks := s.marks("alice", "bob", "carol")
 	out, err := s.mgr.OpenDoor(ctx, &session.OpenDoorInput{Session: "sess", Member: "alice", Door: "veil"})
 	s.Require().NoError(err)
 	s.Equal("open", out.Door.State)
 
 	// alice knew the door; perceiving it OPEN hands her the room.
-	alice := eventsFor(s.stream.published, "alice")
-	kinds := func(events []session.Event) []session.EventKind {
-		out := make([]session.EventKind, 0, len(events))
-		for _, e := range events {
-			out = append(out, e.Kind)
-		}
-		return out
-	}
-	s.Contains(kinds(alice), session.EventDoor, "the state change reaches the knower")
-	s.NotContains(kinds(alice), session.EventConcealmentRevealed,
+	alice := beatNames(s.since("alice", marks["alice"]))
+	s.Contains(alice, encounter.BeatDoor, "the state change reaches the knower")
+	s.NotContains(alice, encounter.BeatConcealmentRevealed,
 		"she found the vault already — a secret is revealed to one member exactly once")
-	s.assertDense(alice, "alice")
 
 	// bob never searched: watching the wall open IS his reveal, and it is ONE
 	// beat carrying the whole secret — no door-state beat for a door he did
 	// not know a moment ago. Discovery is by cell (rpg-project#586): the
 	// concealment beat teaches the vault's floor, so no cells-revealed beat
 	// repeats those cells and no whole-room beat is produced at all.
-	bob := eventsFor(s.stream.published, "bob")
-	s.Equal([]session.EventKind{session.EventConcealmentRevealed, session.EventSighted}, kinds(bob),
+	bob := s.since("bob", marks["bob"])
+	s.Equal([]string{encounter.BeatConcealmentRevealed, encounter.BeatSighted}, beatNames(bob),
 		"perceiving a hidden door standing open reveals the concealment it belongs to, once")
-	s.assertDense(bob, "bob")
 
-	revealed, ok := bob[0].Body.(session.ConcealmentRevealedBody)
-	s.Require().True(ok)
+	revealed := s.revealedIn(bob[0])
 	s.Equal(vaultSecret, revealed.Concealment)
 	s.ElementsMatch(vaultFloor(), revealed.Cells, "the patch carries the secret's whole floor")
 	s.NotEmpty(revealed.Boundaries, "with every boundary touching its cells, border walls included")
@@ -1020,8 +1009,8 @@ func (s *ConcealSuite) TestOpeningRevealsToThePerceiversThroughTheOneSeam() {
 	// percepts on this same refresh, and that fade has always happened —
 	// it is only visible now that a sighting beat reports it. Publishing
 	// her own narrowing view is not leaking the vault.
-	carolHeard := kinds(eventsFor(s.stream.published, "carol"))
-	s.NotContains(carolHeard, session.EventConcealmentRevealed,
+	carolHeard := beatNames(s.since("carol", marks["carol"]))
+	s.NotContains(carolHeard, encounter.BeatConcealmentRevealed,
 		"she cannot see the door open, so the vault is not revealed to her")
 
 	blind, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "carol"})
@@ -1033,7 +1022,7 @@ func (s *ConcealSuite) TestOpeningRevealsToThePerceiversThroughTheOneSeam() {
 
 	// She walks up; her own verb's sight refresh is where present state
 	// reaches her — the late perceiver needs no special case.
-	s.stream.published = nil
+	carolMark := s.marks("carol")["carol"]
 	_, err = s.mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "carol",
 		Path: []spatial.Position{
@@ -1041,10 +1030,9 @@ func (s *ConcealSuite) TestOpeningRevealsToThePerceiversThroughTheOneSeam() {
 			hexCell(3, 2), hexCell(3, 1), hexCell(4, 0)}})
 	s.Require().NoError(err)
 
-	carol := eventsFor(s.stream.published, "carol")
-	s.Contains(kinds(carol), session.EventConcealmentRevealed,
+	carol := beatNames(s.since("carol", carolMark))
+	s.Contains(carol, encounter.BeatConcealmentRevealed,
 		"walking up to a hidden door standing open reveals the secret it belongs to")
-	s.assertDense(carol, "carol")
 
 	after, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "carol"})
 	s.Require().NoError(err)
@@ -1076,45 +1064,37 @@ func (s *ConcealSuite) TestAJoinIntoHiddenSpaceStaysHidden() {
 	shared := true
 	s.explorations.data[hiddenJoiner] = &session.ExplorationData{Character: hiddenJoiner, DiscoverySharing: &shared}
 
-	s.stream.published = nil
-	out, err := s.mgr.Join(ctx, &session.JoinInput{
+	marks := s.marks("alice", "bob")
+	_, err := s.mgr.Join(ctx, &session.JoinInput{
 		Session: "sess", Member: "david", Position: hexCell(9, 3)})
 	s.Require().NoError(err)
 
-	// david's own stream: his join, then the room presence pierced —
-	// numbered densely from 1, because nothing was ever delivered to him
-	// before.
-	david := eventsFor(s.stream.published, "david")
+	// david's own story: his join, then the room presence pierced — and
+	// nothing before it, because nothing was ever addressed to him before.
+	david := storyBeats(s.T(), s.mgr, "sess", "david")
 	// The sweep that finds the vault for him also rolls his own find check on
 	// arrival, and that roll is his to be told: a discovery_checked beat, his
 	// alone, between the join and the reveal. The concealment beat teaches
 	// the vault's cells, so no cells-revealed beat repeats them and no
 	// whole-room beat is produced (rpg-project#586).
-	s.Equal([]session.EventKind{
-		session.EventJoined, session.EventDiscoveryChecked,
-		session.EventConcealmentRevealed, session.EventSighted,
-	}, recipientKinds(david, "david"))
-	s.Equal(session.EventJoined, david[0].Kind)
-	s.Equal(uint64(1), david[0].Seq, "the joiner's stream starts at 1 — their own numbering, not the record's")
-	s.Equal(session.EventConcealmentRevealed, david[2].Kind)
-	s.Equal(uint64(3), david[2].Seq)
-	s.Equal(uint64(1), out.Seq, "the verb's own Seq speaks the actor's numbering too")
+	s.Equal([]string{
+		encounter.BeatJoined, encounter.BeatDiscoveryChecked,
+		encounter.BeatConcealmentRevealed, encounter.BeatSighted,
+	}, beatNames(david))
 
 	// The hall members hear that DAVID JOINED — membership is a table-level
 	// fact and every non-detection beat stays full-data until v1.0 (the
 	// standing ruling) — but the beat carries no position, and nothing
-	// tells them WHERE he appeared: no reveal, no hole. David chose to share
+	// tells them WHERE he appeared: no reveal. David chose to share
 	// discoveries with the party (seeded above), so they also hear that he
 	// rolled a find check, a beat that names neither a cell nor what he
 	// stands in.
 	for _, name := range []string{"alice", "bob"} {
-		heard := eventsFor(s.stream.published, name)
-		s.Equal([]session.EventKind{session.EventJoined, session.EventDiscoveryChecked},
-			recipientKinds(heard, name), "%s hears the membership beat and his find check, nothing else", name)
-		body, ok := heard[0].Body.(session.JoinedBody)
-		s.Require().True(ok)
-		s.Equal(session.JoinedBody{Member: "david"}, body,
-			"who joined, never where — the joined body carries no cell")
+		heard := s.since(name, marks[name])
+		s.Equal([]string{encounter.BeatJoined, encounter.BeatDiscoveryChecked},
+			beatNames(heard), "%s hears the membership beat and his find check, nothing else", name)
+		s.Equal(map[string]any{"beat": encounter.BeatJoined, "member": "david"}, heard[0].Fields,
+			"who joined, never where — the joined beat carries no cell")
 	}
 
 	// PRESENCE PIERCES THE SECRET, DOOR AND ALL. It used to pierce the room
@@ -1134,109 +1114,23 @@ func (s *ConcealSuite) TestAJoinIntoHiddenSpaceStaysHidden() {
 	s.ElementsMatch(hallFloor(), stranger.Cells, "the hall members' maps are unchanged")
 }
 
-// TestPerRecipientNumberingSurvivesLoadAndTrim is the numbering design's
-// whole claim in one run: an audience-of-one beat desynchronises the
-// members' counters, a fresh Manager over the same repositories continues
-// every stream without a restart or a skip, the retention window trims the
-// early story, and every stream stays dense throughout — with Story
-// answering catch-up byte-equal to what was delivered live, and refusing a
-// resume point the window no longer holds.
-func (s *ConcealSuite) TestPerRecipientNumberingSurvivesLoadAndTrim() {
-	ctx := context.Background()
-	s.startBounded(concealedWorld(encounter.DoorIsClosed()), sharpEyed("alice"), dullEyed("bob"))
-
-	// The desynchroniser: alice's search delivers to alice alone, putting
-	// her counter one ahead of bob's for the rest of the session.
-	_, err := s.find(ctx, "alice")
-	s.Require().NoError(err)
-
-	shuttle := func(mgr *session.Manager, times int) {
-		for i := 0; i < times; i++ {
-			to := cell(3, 1)
-			if i%2 == 1 {
-				to = cell(2, 1)
-			}
-			_, err := mgr.Move(ctx, &session.MoveInput{
-				Session: "sess", Member: "bob", Path: []spatial.Position{to}})
-			s.Require().NoError(err)
-		}
-	}
-	shuttle(s.mgr, 6)
-
-	// A different process picks the session up: same repositories, fresh
-	// Manager, fresh stream. Numbering must continue, not restart.
-	live := &fakeStream{}
-	mgr2, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
-		Dice: testDice{}, TurnDriver: session.Pass{},
-		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: live,
-	})
-	s.Require().NoError(err)
-
-	firstBatch := eventsFor(s.stream.published, "bob")
-	s.Require().NotEmpty(firstBatch)
-	handoff := firstBatch[len(firstBatch)-1].Seq
-
-	shuttle(mgr2, 40) // well past DefaultRetention 32: the early story trims away
-
-	second := eventsFor(live.published, "bob")
-	s.Require().NotEmpty(second)
-	s.Equal(handoff+1, second[0].Seq,
-		"the new process continues bob's stream exactly where the old one left off")
-	s.assertDense(append(append([]session.Event{}, firstBatch...), second...), "bob")
-
-	alice := append(eventsFor(s.stream.published, "alice"), eventsFor(live.published, "alice")...)
-	s.assertDense(alice, "alice")
-	s.Equal(alice[0].Seq+uint64(len(alice))-1, alice[len(alice)-1].Seq)
-
-	// Catch-up equals live delivery for whatever the window still holds —
-	// same numbers, same payloads, one projection (rpg-api-protos#239's law
-	// carried into the new numbering).
-	tail := second[len(second)-8:]
-	replay, err := mgr2.Story(ctx, &session.StoryInput{
-		Session: "sess", Member: "bob", FromSeq: tail[0].Seq})
-	s.Require().NoError(err)
-	s.Require().Len(replay, len(tail))
-	for i := range tail {
-		s.Equal(tail[i], replay[i], "live and catch-up must be byte-equal for the same seq")
-	}
-
-	// And the resume point that aged out refuses by name, in the member's
-	// own numbering.
-	_, err = mgr2.Story(ctx, &session.StoryInput{Session: "sess", Member: "bob", FromSeq: 1})
-	s.Require().ErrorIs(err, session.ErrStoryTrimmed)
-}
-
 // TestOneVerbBiggerThanTheRetentionWindowCommitsWhole is the review's C1
 // probe (PR #1377 review; ruled: RETENTION IS STORAGE-ONLY and may never
-// affect delivery or numbering), buildable only on encounter v0.43.0's
-// storage-boundary retention (#1381) and pure WorldView (#1385). One Move
-// whose path is DefaultRetention+8 cells appends more beats than the window
-// holds: under per-append trimming this destroyed its own early beats before
-// commit could number them — a permanent, opaque refusal of an ordinary
-// walk. Now the whole delta is numbered and DELIVERED before the save-point
-// ToData trims what storage keeps; nothing a member was owed is lost to a
-// policy about disk.
-//
-// This is also the single-verb variant of
-// TestPerRecipientNumberingSurvivesLoadAndTrim: the trim happens inside ONE
-// verb here (that scene's forty beats arrive one verb at a time), and the
-// reload at the end proves the cursors carried the un-restartable count
-// across it.
+// affect delivery), buildable only on encounter v0.43.0's storage-boundary
+// retention (#1381) and pure WorldView (#1385). One Move whose path is
+// DefaultRetention+8 cells appends more beats than the window holds: under
+// per-append trimming this destroyed its own early beats before commit could
+// deliver them — a permanent, opaque refusal of an ordinary walk. Now the
+// whole delta is DELIVERED before the save-point ToData trims what storage
+// keeps; nothing a member was owed is lost to a policy about disk.
 func (s *ConcealSuite) TestOneVerbBiggerThanTheRetentionWindowCommitsWhole() {
 	ctx := context.Background()
 	s.startBounded(plainHallWorld())
 
-	// A short walk first: cursors exist and are non-zero, the reviewer's
-	// own reproduction precondition (a fresh session's zero cursors would
-	// dodge the refusal by seeding).
+	// A short walk first, so the long one is not the session's first verb.
 	_, err := s.mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "bob", Path: []spatial.Position{cell(3, 1)}})
 	s.Require().NoError(err)
-	warmup := map[string][]session.Event{}
-	for _, name := range []string{"alice", "bob", "carol"} {
-		warmup[name] = eventsFor(s.stream.published, name)
-	}
 
 	// THE PROBE: one verb, DefaultRetention+8 beats. It must commit, and
 	// every member must be delivered every beat.
@@ -1255,31 +1149,18 @@ func (s *ConcealSuite) TestOneVerbBiggerThanTheRetentionWindowCommitsWhole() {
 	s.Require().Len(out.Steps, steps, "the whole walk happened")
 
 	for _, name := range []string{"alice", "bob", "carol"} {
-		events := eventsFor(s.stream.published, name)
-		// Every step's beat, and whatever else the walk recorded: bob's own
-		// legs pace the world clock now (rpg-project#538), so the long walk
-		// also ticks it. The claim is that nothing the verb recorded was
-		// lost to retention — every step is here, and the stream is dense.
-		s.Require().Len(eventsOfKind(s.stream.published, name, session.EventMoved), steps,
-			"%s is delivered every step of the big verb — retention govern storage, not delivery", name)
-		whole := append(append([]session.Event{}, warmup[name]...), events...)
-		s.assertDense(whole, name)
-	}
-
-	// The mover's own output speaks their numbering for every step, in
-	// order. Not +1 apart: the world-clock ticks bob's own pace records sit
-	// between some steps, and the stream that holds both is the dense one
-	// asserted above.
-	bobs := eventsFor(s.stream.published, "bob")
-	seqs := make(map[uint64]bool, len(bobs))
-	for _, e := range bobs {
-		seqs[e.Seq] = true
-	}
-	for i := range out.Steps {
-		s.True(seqs[out.Steps[i].Seq], "step %d's number is one bob was delivered", i)
-		if i > 0 {
-			s.Less(out.Steps[i-1].Seq, out.Steps[i].Seq)
+		// Every step's cell, across however many walk segments the act
+		// stream cut it into: bob's own legs pace the world clock now
+		// (rpg-project#538), so ticks sit between some steps. The claim is
+		// that nothing the verb recorded was lost to retention.
+		walked := 0
+		for _, act := range s.stream.published {
+			if walk, ok := act.Body.(session.WalkAct); ok && act.Recipient == name {
+				walked += walkSteps(act, walk)
+			}
 		}
+		s.Equal(steps, walked,
+			"%s is delivered every step of the big verb — retention governs storage, not delivery", name)
 	}
 
 	// Storage kept only the window — retention did its one job, at the one
@@ -1290,80 +1171,6 @@ func (s *ConcealSuite) TestOneVerbBiggerThanTheRetentionWindowCommitsWhole() {
 	s.Require().Len(world.Log.Entries, encounter.DefaultRetention,
 		"the persisted log holds exactly the window")
 	s.Equal(world.Log.NextSeq-uint64(encounter.DefaultRetention), world.Log.Entries[0].Seq)
-
-	// Catch-up below the floor refuses honestly, in bob's own numbering; at
-	// the oldest surviving number it answers, byte-equal to what was
-	// delivered live.
-	_, err = s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "bob", FromSeq: 1})
-	s.Require().ErrorIs(err, session.ErrStoryTrimmed)
-
-	bob := eventsFor(s.stream.published, "bob")
-	tail := bob[len(bob)-4:]
-	replay, err := s.mgr.Story(ctx, &session.StoryInput{
-		Session: "sess", Member: "bob", FromSeq: tail[0].Seq})
-	s.Require().NoError(err)
-	s.Require().Len(replay, len(tail))
-	for i := range tail {
-		s.Equal(tail[i], replay[i])
-	}
-
-	// And the count survives a load that happened entirely after the
-	// single-verb trim: a fresh Manager continues bob's stream exactly.
-	live := &fakeStream{}
-	mgr2, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
-		Dice: testDice{}, TurnDriver: session.Pass{},
-		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: live,
-	})
-	s.Require().NoError(err)
-	_, err = mgr2.Move(ctx, &session.MoveInput{
-		Session: "sess", Member: "bob", Path: []spatial.Position{cell(2, 1)}})
-	s.Require().NoError(err)
-	next := eventsFor(live.published, "bob")
-	s.Require().NotEmpty(next)
-	s.Equal(bob[len(bob)-1].Seq+1, next[0].Seq,
-		"the numbering neither restarted nor skipped across the in-verb trim and the reload")
-}
-
-// TestPlainDungeonNumberingIsIdentityForAFoundingMember shows exactly which
-// half of the numbering change touches a world with no concealment: none,
-// for a member whose story is the whole story — their numbers ARE the
-// record's — while a late joiner's stream is dense from 1 by construction
-// rather than starting mid-count.
-func (s *ConcealSuite) TestPlainDungeonNumberingIsIdentityForAFoundingMember() {
-	ctx := context.Background()
-	s.startWith(plainHallWorld(), armedFighter("david"))
-
-	for i, to := range []spatial.Position{cell(3, 1), cell(2, 1), cell(3, 1)} {
-		_ = i
-		_, err := s.mgr.Move(ctx, &session.MoveInput{
-			Session: "sess", Member: "bob", Path: []spatial.Position{to}})
-		s.Require().NoError(err)
-	}
-
-	// The record's own global numbering, read from the persisted blob.
-	world, err := s.encounters.GetEncounter(ctx, "sess")
-	s.Require().NoError(err)
-
-	bob := eventsFor(s.stream.published, "bob")
-	s.Require().NotEmpty(bob)
-	wantSeqs := make(map[uint64]bool, len(world.Log.Entries))
-	for _, entry := range world.Log.Entries {
-		wantSeqs[entry.Seq] = true
-	}
-	for _, e := range bob {
-		s.True(wantSeqs[e.Seq],
-			"a founding member of an all-shared story keeps the record's own numbers — identity, provably")
-	}
-
-	// A late joiner starts their own count at 1, however far the record has
-	// moved on.
-	s.stream.published = nil
-	out, err := s.mgr.Join(ctx, &session.JoinInput{
-		Session: "sess", Member: "david", Position: hexCell(4, 4)})
-	s.Require().NoError(err)
-	s.Equal(uint64(1), out.Seq, "the joiner's first delivered beat is their number 1")
-	s.Greater(world.Log.NextSeq, uint64(2), "while the record is well past it")
 }
 
 // footprintCell is where the fixture's footprint door stands: a cell inside
@@ -1453,12 +1260,11 @@ func (s *ConcealSuite) TestAFootprintDoorStandingOpenIsPerceivedThroughItsCells(
 		Session: "sess", Member: "alice", Path: []spatial.Position{hexCell(2, 0)}})
 	s.Require().NoError(err)
 
-	alice := eventsOfKind(s.stream.published, "alice", session.EventConcealmentRevealed)
+	alice := s.beatsOf("alice", encounter.BeatConcealmentRevealed)
 	s.Require().Len(alice, 1,
 		"a footprint door standing open is perceived by whoever can see the cell it stands on")
 
-	body, ok := alice[0].Body.(session.ConcealmentRevealedBody)
-	s.Require().True(ok)
+	body := s.revealedIn(alice[0])
 	s.Equal(leafSecret, body.Concealment)
 	s.Require().Len(body.Doors, 1)
 	s.Equal("leaf", body.Doors[0].Door)
@@ -1470,7 +1276,7 @@ func (s *ConcealSuite) TestAFootprintDoorStandingOpenIsPerceivedThroughItsCells(
 	// And the negative half, which is what makes the positive one a claim
 	// about SIGHT rather than about everybody: five feet from the far corner
 	// reaches nothing, and the seam says so.
-	s.Empty(eventsOfKind(s.stream.published, "carol", session.EventConcealmentRevealed),
+	s.Empty(s.beatsOf("carol", encounter.BeatConcealmentRevealed),
 		"carol sees five feet: the leaf is not hers to perceive, and the witness agrees")
 
 	found, doorsErr := s.mgr.Doors(ctx, &session.DoorsInput{Session: "sess", Member: "alice"})
@@ -1508,9 +1314,9 @@ func (s *ConcealSuite) TestTheTwoDoorGeometriesArePerceivedByTheSameMembers() {
 		s.Require().NoError(err)
 
 		var told []string
-		for _, e := range s.stream.published {
-			if e.Kind == session.EventConcealmentRevealed {
-				told = append(told, e.Recipient)
+		for _, member := range []string{"alice", "carol"} {
+			if len(s.beatsOf(member, encounter.BeatConcealmentRevealed)) > 0 {
+				told = append(told, member)
 			}
 		}
 		return told
@@ -1618,10 +1424,9 @@ func (s *ConcealSuite) TestAPartlySecretRoomComesBackWhole() {
 	_, err = walkToFind(ctx, s.T(), s.mgr, "alice", nichePath)
 	s.Require().NoError(err)
 
-	found := eventsOfKind(s.stream.published, "alice", session.EventConcealmentRevealed)
+	found := s.beatsOf("alice", encounter.BeatConcealmentRevealed)
 	s.Require().Len(found, 1)
-	body, ok := found[0].Body.(session.ConcealmentRevealedBody)
-	s.Require().True(ok)
+	body := s.revealedIn(found[0])
 
 	for _, withheld := range body.Cells {
 		s.NotContains(before.Regions[0].Cells, withheld, "the beat's cells are what was withheld")
@@ -1672,7 +1477,7 @@ func (s *ConcealSuite) TestAGuidanceDieHeldDuringADiscoveryIsKept() {
 
 	_, err = s.find(ctx, "alice")
 	s.Require().NoError(err, "the held die does not stop the search")
-	s.Len(eventsOfKind(s.stream.published, "alice", session.EventConcealmentRevealed), 1, "the search finished and found the vault")
+	s.Len(s.beatsOf("alice", encounter.BeatConcealmentRevealed), 1, "the search finished and found the vault")
 
 	after, err := s.characters.GetCharacter(ctx, "alice")
 	s.Require().NoError(err)

@@ -46,6 +46,34 @@ func structuralDoorOnlyWorld(extra ...encounter.ConcealmentInput) scene {
 	}
 }
 
+// structuralReveal is a concealment_revealed beat's payload, read through
+// this package's own atlas types.
+type structuralReveal struct {
+	Concealment                        string                                      `json:"concealment"`
+	Cells                              []spatial.Position                          `json:"cells"`
+	StructuralWalls                    []session.AtlasStructuralWall               `json:"structural_walls"`
+	StructuralDoors                    []session.AtlasStructuralDoor               `json:"structural_doors"`
+	StructuralWallOpeningsReplacements []session.StructuralWallOpeningsReplacement `json:"structural_wall_openings_replacements"`
+}
+
+// structuralCellsReveal is a cells_revealed beat's floor.
+type structuralCellsReveal struct {
+	Scenery []spatial.Position `json:"scenery"`
+	Regions []struct {
+		Cells []spatial.Position `json:"cells"`
+	} `json:"regions"`
+}
+
+// onlyReveal is the one concealment_revealed beat in told, decoded.
+func (s *StructuralSessionSuite) onlyReveal(told []witnessed) structuralReveal {
+	s.T().Helper()
+	reveals := beatsNamed(told, encounter.BeatConcealmentRevealed)
+	s.Require().Len(reveals, 1)
+	var body structuralReveal
+	reveals[0].decode(s.T(), &body)
+	return body
+}
+
 func (s *StructuralSessionSuite) TestIndependentDoorIntroductionDoesNotRequireItsHiddenParent() {
 	ctx := context.Background()
 	world := structuralDoorOnlyWorld(encounter.ConcealmentInput{
@@ -58,12 +86,11 @@ func (s *StructuralSessionSuite) TestIndependentDoorIntroductionDoesNotRequireIt
 	s.Require().NoError(err)
 	s.Empty(before.Atlas.StructuralWalls)
 	s.Empty(before.Atlas.StructuralDoors)
-	s.stream.published = nil
+	mark := lastSeq(storyBeats(s.T(), s.mgr, "sess", "alice"))
 	_, err = s.find(ctx, "alice")
 	s.Require().NoError(err)
-	reveals := eventsOfKind(s.stream.published, "alice", session.EventConcealmentRevealed)
-	s.Require().Len(reveals, 1)
-	body := reveals[0].Body.(session.ConcealmentRevealedBody)
+	told := storyBeatsAfter(s.T(), s.mgr, "sess", "alice", mark)
+	body := s.onlyReveal(told)
 	s.Empty(body.StructuralWalls)
 	s.Empty(body.StructuralWallOpeningsReplacements, "a hidden parent must not be named by a patch")
 	s.Require().Len(body.StructuralDoors, 1)
@@ -76,9 +103,9 @@ func (s *StructuralSessionSuite) TestIndependentDoorIntroductionDoesNotRequireIt
 	// sighted leaf teaches the cell it covers. Whatever floor the find adds
 	// arrives on the beats — the prior map plus the reveals is the fresh map.
 	patched := append(append([]spatial.Position{}, before.Atlas.Cells...), body.Cells...)
-	for _, reveal := range eventsOfKind(s.stream.published, "alice", session.EventCellsRevealed) {
-		cells, ok := reveal.Body.(session.CellsRevealedBody)
-		s.Require().True(ok)
+	for _, reveal := range beatsNamed(told, encounter.BeatCellsRevealed) {
+		var cells structuralCellsReveal
+		reveal.decode(s.T(), &cells)
 		patched = append(patched, cells.Scenery...)
 		for _, region := range cells.Regions {
 			patched = append(patched, region.Cells...)
@@ -97,9 +124,6 @@ func (s *StructuralSessionSuite) TestIndependentDoorIntroductionDoesNotRequireIt
 	}
 	s.Equal([]spatial.Position{hexCell(4, 0)}, added,
 		"the find adds the leaf's own cell and nothing of the hidden parent's floor")
-	replay, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice", FromSeq: before.Seq + 1})
-	s.Require().NoError(err)
-	s.Equal(eventsFor(s.stream.published, "alice"), replay)
 }
 
 func (s *StructuralSessionSuite) TestKnownWallOpeningReplacementMatchesSnapshotAndReplay() {
@@ -112,13 +136,10 @@ func (s *StructuralSessionSuite) TestKnownWallOpeningReplacementMatchesSnapshotA
 	s.Empty(before.Atlas.StructuralWalls[0].Openings)
 	s.Empty(before.Atlas.StructuralDoors)
 
-	s.stream.published = nil
+	mark := lastSeq(storyBeats(s.T(), s.mgr, "sess", "alice"))
 	_, err = s.find(ctx, "alice")
 	s.Require().NoError(err)
-	reveals := eventsOfKind(s.stream.published, "alice", session.EventConcealmentRevealed)
-	s.Require().Len(reveals, 1)
-	body, ok := reveals[0].Body.(session.ConcealmentRevealedBody)
-	s.Require().True(ok)
+	body := s.onlyReveal(storyBeatsAfter(s.T(), s.mgr, "sess", "alice", mark))
 	s.Empty(body.StructuralWalls, "a known wall's unchanged fixed fields are not resent")
 	s.Require().Len(body.StructuralWallOpeningsReplacements, 1)
 	s.Equal(structWallPresence, body.StructuralWallOpeningsReplacements[0].WallID)
@@ -133,21 +154,11 @@ func (s *StructuralSessionSuite) TestKnownWallOpeningReplacementMatchesSnapshotA
 	s.Equal(after.Atlas.StructuralDoors, body.StructuralDoors)
 	s.Equal(before.Atlas.Cells, after.Atlas.Cells)
 
-	replay, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice", FromSeq: before.Seq + 1})
-	s.Require().NoError(err)
-	s.Equal(eventsFor(s.stream.published, "alice"), replay)
 	reloaded, err := s.mgr.Knowledge(ctx, in)
 	s.Require().NoError(err)
 	s.Equal(after.Atlas.StructuralWalls, reloaded.Atlas.StructuralWalls)
 	s.Equal(after.Atlas.StructuralDoors, reloaded.Atlas.StructuralDoors)
 
 	s.Require().Len(body.StructuralWallOpeningsReplacements[0].Openings, 1)
-	body.StructuralWallOpeningsReplacements[0].Openings[0].ID = "consumer-edit"
-	replayAgain, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice", FromSeq: before.Seq + 1})
-	s.Require().NoError(err)
-	replayedReveals := eventsOfKind(replayAgain, "alice", session.EventConcealmentRevealed)
-	s.Require().Len(replayedReveals, 1)
-	replayedBody := replayedReveals[0].Body.(session.ConcealmentRevealedBody)
-	s.Equal("gap", replayedBody.StructuralWallOpeningsReplacements[0].Openings[0].ID,
-		"a consumer cannot mutate persisted event payloads through a DTO slice")
+	s.Equal("gap", body.StructuralWallOpeningsReplacements[0].Openings[0].ID)
 }

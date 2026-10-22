@@ -38,7 +38,7 @@ func (s *SettlementSuite) SetupTest() {
 	}}
 	mgr, err := NewManager(&Config{Record: DiscardRecord{}, Acts: DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: &scriptedDice{rolls: []int{10, 10, 10, 10, 10, 10}}, TurnDriver: Pass{},
-		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: DiscardEvents{},
+		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr

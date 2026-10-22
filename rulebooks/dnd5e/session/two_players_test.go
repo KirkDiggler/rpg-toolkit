@@ -23,14 +23,13 @@ import (
 // never been proven whole with two real humans in one session. Every prior
 // wave's own fixtures (MonsterTurnTestSuite, MoveTurnClockSuite,
 // TestRoundTwoStruckReachesTheLiveSubscriber) join at most one real player
-// and either discard events or read the log — nothing before this suite has
-// ever had two joined characters and two independent EventStream recipients
-// watching the same fight at once.
+// — nothing before this suite has ever had two joined characters, each with
+// their own story, watching the same fight at once.
 //
 // armedBarbarian ("barbarian") joins alongside armedFighter ("fighter") —
 // the design doc's own two-browser walk (rpg-project's ideas/stream-whole
-// design.md on the origin/ideas/stream-whole branch, §6), reduced to what a
-// fake EventStream can pin. skel-1 is spawned in plain sight of both and
+// design.md on the origin/ideas/stream-whole branch, §6), reduced to what
+// each member's story can pin. skel-1 is spawned in plain sight of both and
 // pulls them into one bubble; skel-2 is spawned behind a genuine
 // LOS+movement wall, matching
 // TestBlindSkeletonBehindAWallNeverJoinsTheFight's own fixture shape, and
@@ -51,7 +50,6 @@ type TwoPlayersTestSuite struct {
 
 	sessions   *fakeSessions
 	encounters *fakeEncounters
-	stream     *fakeStream
 	mgr        *session.Manager
 	// launched is the one launch SetupTest made: both players and both
 	// skeletons on the board at once.
@@ -91,7 +89,6 @@ func twoPlayerTomb(width, height, atX int) scene {
 
 func (s *TwoPlayersTestSuite) SetupTest() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
-	s.stream = &fakeStream{}
 
 	fighter := armedFighter("fighter")
 	fighter.HitPoints, fighter.MaxHitPoints = 100, 100
@@ -102,7 +99,6 @@ func (s *TwoPlayersTestSuite) SetupTest() {
 		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: newFakeCharacters(fighter, barbarian),
-		Events:     s.stream,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -116,44 +112,35 @@ func (s *TwoPlayersTestSuite) SetupTest() {
 	s.launched = launchScene(s.T(), mgr, world)
 }
 
-// recipientKinds is every kind one recipient was delivered in a window, in
-// order — recipientSeqs's twin, for an assertion about WHAT arrived rather than
-// how densely it was numbered.
-func recipientKinds(events []session.Event, who string) []session.EventKind {
-	var out []session.EventKind
-	for _, e := range events {
-		if e.Recipient == who {
-			out = append(out, e.Kind)
-		}
+// storyMarks is where each named member's story stands now: the last record
+// sequence they witnessed, for [toldSince] to read after.
+func storyMarks(t *testing.T, mgr *session.Manager, members ...string) map[string]uint64 {
+	t.Helper()
+	marks := make(map[string]uint64, len(members))
+	for _, who := range members {
+		marks[who] = lastSeq(storyBeats(t, mgr, "sess", who))
 	}
-	return out
+	return marks
 }
 
-// recipientSeqs returns, in the order they were published, the Seq values
-// of every event in events addressed to recipient.
-func recipientSeqs(events []session.Event, recipient string) []uint64 {
-	var out []uint64
-	for _, e := range events {
-		if e.Recipient == recipient {
-			out = append(out, e.Seq)
-		}
-	}
-	return out
+// toldSince is every beat who witnessed after marks were taken.
+func toldSince(t *testing.T, mgr *session.Manager, marks map[string]uint64, who string) []witnessed {
+	t.Helper()
+	return storyBeatsAfter(t, mgr, "sess", who, marks[who])
 }
 
-// assertContiguous fails unless seqs is non-empty, strictly increasing, and
-// gap-free — (b)'s own "no gap, no duplicate" stated as one check on the
-// values rather than a description of them.
-func (s *TwoPlayersTestSuite) assertContiguous(seqs []uint64, who string) {
-	s.Require().NotEmpty(seqs, "%s must have received something across two full rounds", who)
-	for i := 1; i < len(seqs); i++ {
-		s.Equal(seqs[i-1]+1, seqs[i], "%s: seq %d must immediately follow %d — no gap, no duplicate", who, seqs[i], seqs[i-1])
-	}
+// struckBeat is a landed attack's payload, as far as these scenes read it.
+type struckBeat struct {
+	Actor   string   `json:"actor"`
+	Targets []string `json:"targets"`
 }
+
+// beatStruck is the encounter's word for an attack that landed.
+var beatStruck = string(encounter.OutcomeStruck)
 
 // TestTwoPlayersOneSession is the proof itself (rpg-project#257 slice 3,
-// design rpg-project#258 §4): fighter and barbarian, two independently
-// addressed recipients on one fake EventStream, walking two full rounds
+// design rpg-project#258 §4): fighter and barbarian, each with their own
+// story, walking two full rounds
 // against a driven skeleton while a second, walled-off skeleton never hears
 // a thing worth keeping quiet about.
 func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
@@ -177,9 +164,10 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 	// --- (d): a player's Move/Attack on the other player's turn ---
 	//
 	// It is barbarian's turn (first in the real order). fighter tries to act
-	// anyway, on both verbs the brief names, and neither may publish
+	// anyway, on both verbs the brief names, and neither may record
 	// anything: a refusal this early must not have touched the story.
-	beforeRefusal := len(s.stream.published)
+	players := []string{"fighter", "barbarian"}
+	beforeRefusal := storyMarks(s.T(), s.mgr, players...)
 
 	_, err = s.mgr.Move(ctx, &session.MoveInput{
 		Session: "sess", Member: "fighter", Path: []spatial.Position{{X: 0, Y: 1}},
@@ -191,10 +179,12 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 	s.Require().Error(err)
 	s.ErrorIs(err, session.ErrNotYourTurn)
 
-	s.Equal(beforeRefusal, len(s.stream.published), "a refusal this early must publish nothing at all")
+	for _, who := range players {
+		s.Empty(toldSince(s.T(), s.mgr, beforeRefusal, who), "a refusal this early must tell %s nothing at all", who)
+	}
 
-	// --- (b)/(c): two full rounds, turn order and Next walked exactly ---
-	roundsStart := len(s.stream.published)
+	// --- (c): two full rounds, turn order and Next walked exactly ---
+	roundsStart := storyMarks(s.T(), s.mgr, "fighter", "barbarian", "skel-2")
 
 	// Round 1, barbarian: passes her own turn (a player's turn needs no
 	// declared action before EndTurn — the same convention every prior
@@ -209,13 +199,13 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 	// of the two), then wrapping the round
 	// back to barbarian, exactly as TestSkeletonAttacksFromRange's own
 	// single-player shape does with a second real player added.
-	beforeRound1Drive := len(s.stream.published)
+	beforeRound1Drive := storyMarks(s.T(), s.mgr, "fighter")
 	out2, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "fighter")})
 	s.Require().NoError(err)
 	s.Equal("barbarian", out2.Next)
 	s.True(out2.RoundWrapped, "skel-1 was last in the order — its own end wraps the round")
 
-	round1Drive := s.stream.published[beforeRound1Drive:]
+	round1Drive := toldSince(s.T(), s.mgr, beforeRound1Drive, "fighter")
 	// The fiction of the round, named rather than counted: her turn ending,
 	// the skeleton's swing, the skeleton's turn ending.
 	//
@@ -224,10 +214,9 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 	// world clock (`tick`), both of which are rpg-project#465 working — so a
 	// bare length would have to be bumped to seven and would then be pinning
 	// how many intents a turn takes, which is not what this test is about.
-	s.Require().Subset(recipientKinds(round1Drive, "fighter"),
-		[]session.EventKind{session.EventTurnEnded, session.EventStruck},
+	s.Require().Subset(beatNames(round1Drive),
+		[]string{encounter.BeatTurnEnded, beatStruck},
 		"turn-ended(fighter), struck(skel-1), turn-ended(skel-1) — the shortbow needs no approach")
-	s.Require().NotEmpty(recipientSeqs(round1Drive, "fighter"))
 
 	// Round 2, barbarian: same shape as round 1's own opening.
 	out3, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "barbarian", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "barbarian")})
@@ -237,46 +226,28 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 
 	// Round 2, fighter: skel-1 remains inside shortbow range, so this
 	// round's driven turn is again a bare strike with no move beat.
-	beforeRound2Drive := len(s.stream.published)
+	beforeRound2Drive := storyMarks(s.T(), s.mgr, "fighter")
 	out4, err := s.mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(s.T(), s.mgr, "sess", "fighter")})
 	s.Require().NoError(err)
 	s.Equal("barbarian", out4.Next)
 	s.True(out4.RoundWrapped)
 
-	round2Drive := s.stream.published[beforeRound2Drive:]
-	s.Require().Subset(recipientKinds(round2Drive, "fighter"),
-		[]session.EventKind{session.EventTurnEnded, session.EventStruck},
+	round2Drive := toldSince(s.T(), s.mgr, beforeRound2Drive, "fighter")
+	s.Require().Subset(beatNames(round2Drive),
+		[]string{encounter.BeatTurnEnded, beatStruck},
 		"round two is round one's shape: a bare strike with no move beat")
-
-	// (b): seqs are contiguous per recipient across the whole two-round
-	// window, for BOTH real players — no gap, no duplicate.
-	twoRounds := s.stream.published[roundsStart:]
-	s.assertContiguous(recipientSeqs(twoRounds, "fighter"), "fighter")
-	s.assertContiguous(recipientSeqs(twoRounds, "barbarian"), "barbarian")
 
 	// Each player sees the skeleton's struck beats, not only her own turn
 	// ending — the actual content check behind (a)'s "each sees the other's"
 	// clause, independent of the audience-scoping question below.
-	for _, who := range []string{"fighter", "barbarian"} {
-		var sawStruck bool
-		for _, e := range twoRounds {
-			if e.Recipient != who {
-				continue
-			}
-			switch e.Kind {
-			case session.EventStruck:
-				sawStruck = true
-			}
-		}
-		s.True(sawStruck, "%s must see skel-1's struck beats", who)
+	for _, who := range players {
+		s.NotEmpty(beatsNamed(toldSince(s.T(), s.mgr, roundsStart, who), beatStruck),
+			"%s must see skel-1's struck beats", who)
 	}
 
 	// --- (a), as a documented negative control ---
 	//
-	// NOT what a perception-scoped audience would do — see
-	// rulebooks/dnd5e/session/events_test.go's own
-	// TestOneBeatBecomesPerRecipientEvents, whose comment this one mirrors.
-	// skel-2 is walled off with no line of sight to the fight (confirmed
+	// NOT what a perception-scoped audience would do. skel-2 is walled off with no line of sight to the fight (confirmed
 	// above: ClockOf never leaves ClockWorld) and TODAY still receives every
 	// beat of it: Record, appendClockBeat and appendMovementBeat
 	// (rulebooks/dnd5e/encounter) address every beat to rosterIDs() — every
@@ -288,8 +259,7 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 	// lands and audiences become perception-scoped, skel-2's own count below
 	// flips to zero and THAT failure is the reminder to update this test —
 	// not a change made speculatively here.
-	skel2Seqs := recipientSeqs(twoRounds, "skel-2")
-	s.NotEmpty(skel2Seqs,
+	s.NotEmpty(toldSince(s.T(), s.mgr, roundsStart, "skel-2"),
 		"TODAY the composition addresses every beat to every member (rpg-toolkit#940, rpg-project#257); "+
 			"when audiences are perception-scoped this becomes Empty")
 
@@ -325,7 +295,8 @@ func (s *TwoPlayersTestSuite) TestTwoPlayersOneSession() {
 // this time downs fighter — the last player standing — deciding the fight:
 // #1202's own dissolved-bubble path fires, EndTurnOutput.Next reports the
 // CALLER (fighter) rather than a bubble that no longer exists, and both
-// players — barbarian already down, fighter just now — receive fight_ended.
+// players — barbarian already down, fighter just now — are told the fight
+// ended.
 func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	fighter := armedFighter("fighter")
@@ -335,13 +306,11 @@ func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 	fighter.HitPoints, fighter.MaxHitPoints = 8, 8
 	barbarian := armedBarbarian("barbarian")
 	barbarian.HitPoints, barbarian.MaxHitPoints = 8, 8
-	stream := &fakeStream{}
 
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: sessions, Encounters: encounters,
 		Characters: newFakeCharacters(fighter, barbarian),
-		Events:     stream,
 	})
 	require.NoError(t, err)
 
@@ -360,36 +329,30 @@ func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 
 	// Round 1: fighter's own end drives skel-1's WHOLE turn — the fix under
 	// test is that this is exactly ONE attack, not two.
-	stream.published = nil
+	beforeRound1 := storyMarks(t, mgr, "fighter", "barbarian", "skel-1")
 	out2, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(t, mgr, "sess", "fighter")})
 	require.NoError(t, err)
 	require.Equal(t, "barbarian", out2.Next,
 		"a Dying player retains the initiative slot for an explicit save")
 	require.True(t, out2.RoundWrapped)
 
-	round1Drive := stream.published
-	round1Fighter := recipientSeqs(round1Drive, "fighter")
-	require.NotEmpty(t, round1Fighter)
+	round1 := func(who string) []witnessed { return toldSince(t, mgr, beforeRound1, who) }
+	require.NotEmpty(t, round1("fighter"))
 
-	var round1Struck []session.Event
-	for _, e := range round1Drive {
-		if e.Recipient == "fighter" && e.Kind == session.EventStruck {
-			round1Struck = append(round1Struck, e)
-		}
-	}
+	round1Struck := beatsNamed(round1("fighter"), beatStruck)
 	require.Len(t, round1Struck, 1, "the fix: skel-1's own turn is exactly one attack, not two")
-	body, ok := round1Struck[0].Body.(session.StruckBody)
-	require.True(t, ok)
-	require.Equal(t, "barbarian", body.Target)
-	require.Equal(t, "skel-1", body.Attacker)
+	var body struckBeat
+	round1Struck[0].decode(t, &body)
+	require.Equal(t, []string{"barbarian"}, body.Targets)
+	require.Equal(t, "skel-1", body.Actor)
 
 	// Fighter — the survivor — was never touched this round: not struck,
 	// still standing, still in the fight.
-	for _, e := range round1Drive {
-		if e.Kind == session.EventStruck {
-			if b, ok := e.Body.(session.StruckBody); ok {
-				require.NotEqual(t, "fighter", b.Target, "fighter must not be attacked in round 1 — that is rpg-toolkit#1207's own defect")
-			}
+	for _, who := range []string{"fighter", "barbarian"} {
+		for _, b := range beatsNamed(round1(who), beatStruck) {
+			var struck struckBeat
+			b.decode(t, &struck)
+			require.NotContains(t, struck.Targets, "fighter", "fighter must not be attacked in round 1 — that is rpg-toolkit#1207's own defect")
 		}
 	}
 	clockOf, err := mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "fighter"})
@@ -402,27 +365,14 @@ func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 	// (rpg-project#569). Barbarian receives neither: no sight testimony about
 	// self, and the blow that made the sound downed her before it landed, so
 	// she was not standing to hear it. What she does see is the skeleton turn
-	// toward her to swing (sneaking R13). Every recipient still has its own
-	// contiguous sequence.
+	// toward her to swing (sneaking R13).
 	heardBy := map[string]int{}
-	for _, event := range round1Drive {
-		if event.Kind == session.EventHeard {
-			heardBy[event.Recipient]++
+	for _, who := range []string{"fighter", "barbarian", "skel-1"} {
+		if n := len(beatsNamed(round1(who), encounter.BeatHeard)); n > 0 {
+			heardBy[who] = n
 		}
 	}
 	require.Equal(t, map[string]int{"fighter": 1}, heardBy, "the clang reaches the one standing listener")
-	round1Barbarian := recipientSeqs(round1Drive, "barbarian")
-	// The claim as a set relation, not a count: barbarian receives every
-	// beat fighter does, kind for kind, except those two.
-	kindsOf := func(recipient string) []session.EventKind {
-		var kinds []session.EventKind
-		for _, e := range round1Drive {
-			if e.Recipient == recipient {
-				kinds = append(kinds, e.Kind)
-			}
-		}
-		return kinds
-	}
 	// Sightings are compared by who they name rather than by count: the
 	// skeleton turns toward barbarian to swing (sneaking R13), so BOTH
 	// watchers are told to look at it again, and fighter's one beat also
@@ -431,10 +381,12 @@ func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 	// beat names both barbarian's fall and the skeleton's turn.
 	sightedBy := func(recipient string) [][]string {
 		var beats [][]string
-		for _, e := range round1Drive {
-			if body, ok := e.Body.(session.SightedBody); ok && e.Recipient == recipient {
-				beats = append(beats, body.Changed)
+		for _, b := range beatsNamed(round1(recipient), encounter.BeatSighted) {
+			var sighted struct {
+				Changed []string `json:"changed"`
 			}
+			b.decode(t, &sighted)
+			beats = append(beats, sighted.Changed)
 		}
 		return beats
 	}
@@ -448,19 +400,15 @@ func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 	require.Equal(t, [][]string{{"skel-1"}}, sightedBy("barbarian"),
 		"downed barbarian still sees the skeleton turn on her (rpg-toolkit#2074), and never "+
 			"testifies about herself")
-	withoutSighted := func(kinds []session.EventKind) []session.EventKind {
-		return slices.DeleteFunc(kinds, func(k session.EventKind) bool { return k == session.EventSighted })
+	withoutSighted := func(names []string) []string {
+		return slices.DeleteFunc(names, func(n string) bool { return n == encounter.BeatSighted })
 	}
-	fighterKinds := withoutSighted(kindsOf("fighter"))
-	at := slices.Index(fighterKinds, session.EventHeard)
+	fighterNames := withoutSighted(beatNames(round1("fighter")))
+	at := slices.Index(fighterNames, encounter.BeatHeard)
 	require.GreaterOrEqual(t, at, 0, "fighter received a heard beat")
-	fighterKinds = slices.Delete(fighterKinds, at, at+1)
-	require.ElementsMatch(t, fighterKinds, withoutSighted(kindsOf("barbarian")),
+	fighterNames = slices.Delete(fighterNames, at, at+1)
+	require.ElementsMatch(t, fighterNames, withoutSighted(beatNames(round1("barbarian"))),
 		"barbarian receives every beat fighter does but the clang")
-	for i := 1; i < len(round1Barbarian); i++ {
-		require.Equal(t, round1Barbarian[i-1]+1, round1Barbarian[i],
-			"barbarian's own stream stays gap-free through the drive")
-	}
 
 	// Barbarian now owns the explicit save turn instead of being silently
 	// spliced. An ordinary success reports END_TURN, then her declared End Turn
@@ -480,7 +428,7 @@ func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 	// Round 2: fighter's own end drives skel-1 a second time. This time
 	// skel-1's one attack downs fighter too — the party now has no Conscious
 	// member, so supplied PartyDefeated closes the fight mid-drive.
-	stream.published = nil
+	beforeRound2 := storyMarks(t, mgr, "fighter", "barbarian")
 	out3, err := mgr.EndTurn(ctx, &session.EndTurnInput{Session: "sess", Member: "fighter", DeclarationID: currentEndTurnID(t, mgr, "sess", "fighter")})
 	require.NoError(t, err, "a driven turn that wins the fight must not abort the caller's own EndTurn")
 	require.Equal(t, "fighter", out3.Next,
@@ -488,39 +436,21 @@ func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 	require.True(t, out3.RoundWrapped,
 		"the retained Dying slot made round 2 begin before the final driven settlement")
 
-	round2Drive := stream.published
-	var round2Struck []session.Event
-	var fightEnded []session.Event
-	for _, e := range round2Drive {
-		if e.Recipient != "fighter" {
-			continue
-		}
-		switch e.Kind {
-		case session.EventStruck:
-			round2Struck = append(round2Struck, e)
-		case session.EventFightEnded:
-			fightEnded = append(fightEnded, e)
-		}
-	}
+	round2Fighter := toldSince(t, mgr, beforeRound2, "fighter")
+	round2Struck := beatsNamed(round2Fighter, beatStruck)
 	require.Len(t, round2Struck, 1, "skel-1's own killing blow is still exactly one attack")
-	body2, ok := round2Struck[0].Body.(session.StruckBody)
-	require.True(t, ok)
-	require.Equal(t, "fighter", body2.Target)
+	var body2 struckBeat
+	round2Struck[0].decode(t, &body2)
+	require.Equal(t, []string{"fighter"}, body2.Targets)
 
+	fightEnded := beatsNamed(round2Fighter, encounter.BeatFightEnded)
 	require.Len(t, fightEnded, 1, "fighter — the caller — hears the fight end")
-	endedBody, ok := fightEnded[0].Body.(session.FightEndedBody)
-	require.True(t, ok)
-	require.Equal(t, session.DissolveByDefeat, endedBody.Cause)
+	require.Equal(t, string(session.DissolveByDefeat), fightEnded[0].Fields["cause"])
 
 	// Both players get fight_ended — barbarian, already down since round 1,
 	// hears it too (rpg-toolkit#940's own current broadcast behaviour).
-	var barbarianFightEnded int
-	for _, e := range round2Drive {
-		if e.Recipient == "barbarian" && e.Kind == session.EventFightEnded {
-			barbarianFightEnded++
-		}
-	}
-	require.Equal(t, 1, barbarianFightEnded, "barbarian must also receive fight_ended")
+	require.Len(t, beatsNamed(toldSince(t, mgr, beforeRound2, "barbarian"), encounter.BeatFightEnded), 1,
+		"barbarian must also receive fight_ended")
 
 	for _, who := range []string{"fighter", "barbarian"} {
 		final, err := mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: who})

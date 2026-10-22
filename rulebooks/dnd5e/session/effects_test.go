@@ -55,7 +55,6 @@ type EffectRowsSuite struct {
 	sessions   *fakeSessions
 	encounters *fakeEncounters
 	characters *fakeCharacters
-	stream     *fakeStream
 	mgr        *session.Manager
 	actor      string
 }
@@ -77,11 +76,9 @@ func (s *EffectRowsSuite) cave(actor *character.Data) {
 	s.actor = actor.ID
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(actor, armedFighter(erAlly))
-	s.stream = &fakeStream{}
-
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
-		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream,
+		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -115,7 +112,6 @@ func (s *EffectRowsSuite) cave(actor *character.Data) {
 	s.Require().NoError(err)
 	s.Require().Equal(session.ClockTurn, turn.Clock, "precondition: the goblins started a fight")
 	s.Require().Equal(actor.ID, turn.Active, "precondition: the actor acts first")
-	s.stream.published = nil
 }
 
 // restoreConditions puts back the conditions a fixture's sheet held before
@@ -457,21 +453,30 @@ func (s *EffectRowsSuite) TestReadingRowsChangesNothing() {
 	s.Require().NoError(err)
 	s.JSONEq(string(before), string(after), "and spends nothing: Sneak Attack is still unused")
 
+	mark := lastSeq(storyBeats(s.T(), s.mgr, erSession, "alice"))
 	_, err = s.mgr.Attack(s.ctx, &session.AttackInput{
 		Session: erSession, Attacker: "alice", Target: erGoblin1, DeclarationID: first.ID,
 	})
 	s.Require().NoError(err)
-	struck := eventsOfKind(s.stream.published, "alice", session.EventStruck)
+	struck := beatsNamed(storyBeatsAfter(s.T(), s.mgr, erSession, "alice", mark), string(encounter.OutcomeStruck))
 	s.Require().Len(struck, 1)
-	body, ok := struck[0].Body.(session.StruckBody)
-	s.Require().True(ok)
+	var body struct {
+		DamageComponents []struct {
+			Roll struct {
+				Source struct {
+					Ref string `json:"ref"`
+				} `json:"source"`
+			} `json:"roll"`
+		} `json:"damage_components"`
+	}
+	struck[0].decode(s.T(), &body)
 	sneak := false
 	for _, component := range body.DamageComponents {
 		if component.Roll.Source.Ref == refs.Conditions.SneakAttack().String() {
 			sneak = true
 		}
 	}
-	s.True(sneak, "the swing still rolled Sneak Attack: %+v", body.DamageComponents)
+	s.True(sneak, "the swing still rolled Sneak Attack: %s", struck[0].Payload)
 }
 
 func (s *EffectRowsSuite) TestEffectsAreNotSelectorMaterial() {
@@ -565,7 +570,6 @@ func (s *EffectRowsSuite) TestNoRowsOnTheWorldClock() {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: s.characters,
-		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	sc := freeRoamDuelWorld()

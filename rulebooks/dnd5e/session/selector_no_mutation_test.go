@@ -43,9 +43,9 @@ func newSelectorFixture(t *testing.T, world scene, order ...string) *selectorFix
 		stream:     &fakeStream{},
 		roller:     &sequenceDice{rolls: []int{15, 5}},
 	}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: f.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: f.roller, TurnDriver: session.Pass{}, Sessions: f.sessions, Encounters: f.encounters,
-		Characters: f.characters, Events: f.stream,
+		Characters: f.characters,
 	})
 	require.NoError(t, err)
 	f.mgr = mgr
@@ -100,7 +100,7 @@ func (f *selectorFixture) requireNoMutation(before selectorState) {
 	require.Zero(f.t, f.sessions.saves, "selector refusal must write no session")
 	require.Zero(f.t, f.encounters.saves, "selector refusal must write no encounter")
 	require.Zero(f.t, f.encounters.records, "selector refusal must record no story beat")
-	require.Empty(f.t, f.stream.published, "selector refusal must publish no event")
+	require.Empty(f.t, f.stream.published, "selector refusal must publish no act")
 	require.Equal(f.t, before, f.state("alice"), "selector refusal must leave position and clock unchanged")
 }
 
@@ -296,7 +296,7 @@ func TestSuccessfulTurnAttackLoadsActorOnceBeforeExecution(t *testing.T) {
 	dice := &actorLoadCheckingDice{t: t, characters: characters, rolls: []int{15, 5}}
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: dice, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
-		Characters: characters, Events: session.DiscardEvents{},
+		Characters: characters,
 	})
 	require.NoError(t, err)
 	launchOnClock(t, mgr, encounters, freeRoamDuelWorld(), []string{"alice", "bob"}, 0)

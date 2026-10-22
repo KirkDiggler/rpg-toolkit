@@ -5,7 +5,6 @@ package session_test
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +18,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
@@ -52,9 +52,9 @@ func (s *LaunchSuite) SetupTest() {
 	s.characters = newFakeCharacters(tired("alice"), tired("bob"), tired("carol"))
 	s.seats = newFakeSeats()
 	s.stream = &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: s.seats, Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: s.seats, Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: s.stream,
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -248,34 +248,25 @@ func (s *LaunchSuite) TestTwoHostileFactionsFormOneFightAfterEveryMemberIsPlaced
 	})
 	s.Require().NoError(err)
 
-	// Every member's own stream: exactly one fight started, and it started
+	// Every member's own story: exactly one fight started, and it started
 	// after every arrival that member was told about — the monsters saw each
 	// other while the board stood, and nothing formed until the party came.
-	type account struct {
-		lastJoined, fight uint64
-		fights            int
-	}
-	streams := map[string]*account{}
-	for _, event := range s.stream.published {
-		acct := streams[event.Recipient]
-		if acct == nil {
-			acct = &account{}
-			streams[event.Recipient] = acct
-		}
-		switch event.Kind {
-		case session.EventJoined:
-			acct.lastJoined = event.Seq
-		case session.EventFightStarted:
-			acct.fights++
-			acct.fight = event.Seq
-		}
-	}
 	for _, member := range []string{"alice", "wolf-a", "raider-a", "raider-b"} {
-		acct := streams[member]
-		s.Require().NotNil(acct, "%s was told the story", member)
-		s.Equal(1, acct.fights, "%s: one contact, one fight", member)
-		s.Greater(acct.fight, acct.lastJoined, "%s: the fight forms after every member is placed", member)
+		s.assertOneFightAfterEveryJoin(member, "one contact, one fight")
 	}
+}
+
+// assertOneFightAfterEveryJoin fails unless member's story holds exactly one
+// fight forming, after the last join it was told about.
+func (s *LaunchSuite) assertOneFightAfterEveryJoin(member, why string) {
+	s.T().Helper()
+	told := storyBeats(s.T(), s.mgr, "run", member)
+	s.Require().NotEmpty(told, "%s was told the story", member)
+	fights := beatsNamed(told, encounter.BeatFightStarted)
+	s.Require().Len(fights, 1, "%s: %s", member, why)
+	joins := beatsNamed(told, encounter.BeatJoined)
+	s.Require().NotEmpty(joins, "%s was told of arrivals", member)
+	s.Greater(fights[0].Seq, lastSeq(joins), "%s: the fight forms after every member is placed", member)
 }
 
 // twoCampsSource is a hall with two camps, each hostile to the party and to
@@ -323,22 +314,7 @@ func (s *LaunchSuite) TestAPartyOfTwoArrivesIntoOneFightHoldingBoth() {
 	s.Require().Len(out.Formed, 1)
 	s.ElementsMatch([]string{"alice", "bob", "wolf-a", "raider-a"}, out.Formed[0].Order)
 	for _, member := range []string{"alice", "bob"} {
-		var lastJoined, fight uint64
-		fights := 0
-		for _, event := range s.stream.published {
-			if event.Recipient != member {
-				continue
-			}
-			switch event.Kind {
-			case session.EventJoined:
-				lastJoined = event.Seq
-			case session.EventFightStarted:
-				fights++
-				fight = event.Seq
-			}
-		}
-		s.Equal(1, fights, "%s: one fight", member)
-		s.Greater(fight, lastJoined, "%s: the fight forms after both party members stand", member)
+		s.assertOneFightAfterEveryJoin(member, "one fight, after both party members stand")
 	}
 }
 
@@ -394,13 +370,16 @@ func (s *LaunchSuite) TestALaunchCannotPlaceAMonsterHoldingARecordThatIsNotThere
 // rpg-project#372): a host brings every monster onto the board through the
 // placements of the dungeon it launches, so a placement's `holds:` is the
 // only way an authored record reaches a live monster.
-func launchHoldingLatecomer(t *testing.T, holds []string) (*session.Manager, *fakeStream) {
+//
+// It returns each party member's last story seq at hand-over, so a test reads
+// exactly what the next verb told them.
+func launchHoldingLatecomer(t *testing.T, holds []string) (*session.Manager, map[string]uint64) {
 	t.Helper()
-	sessions, stream := newFakeSessions(), &fakeStream{}
+	sessions := newFakeSessions()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: newFakeEncounters(),
-		Characters: newFakeCharacters(sharpEyed("alice"), dullEyed("bob")), Events: stream,
+		Characters: newFakeCharacters(sharpEyed("alice"), dullEyed("bob")),
 	})
 	require.NoError(t, err)
 
@@ -419,37 +398,39 @@ func launchHoldingLatecomer(t *testing.T, holds []string) (*session.Manager, *fa
 		}
 	}
 	require.True(t, downed, "the launch recorded no sheet to put on the floor")
-	stream.published = nil
-	return mgr, stream
+	marks := map[string]uint64{}
+	for _, member := range []string{"alice", "bob"} {
+		marks[member] = lastSeq(storyBeats(t, mgr, testSession, member))
+	}
+	return mgr, marks
 }
 
 // TestALaunchedMonsterCarriesTheRecordsItWasPlacedWith is the scene: a
 // placement with Holds, loot, and the looter alone learns the way in.
 func TestALaunchedMonsterCarriesTheRecordsItWasPlacedWith(t *testing.T) {
 	ctx := context.Background()
-	mgr, stream := launchHoldingLatecomer(t, []string{veilMap})
+	mgr, marks := launchHoldingLatecomer(t, []string{veilMap})
 
 	_, err := mgr.Loot(ctx, &session.LootInput{
 		Session: testSession, Member: "alice", Target: "latecomer", Range: 2})
 	require.NoError(t, err)
 
 	t.Run("the looter alone is told about the secret", func(t *testing.T) {
-		require.Equal(t, []session.EventKind{session.EventLooted, session.EventConcealmentRevealed, session.EventSighted},
-			recipientKinds(stream.published, "alice"))
-		var revealed []session.Event
-		for _, e := range eventsFor(stream.published, "alice") {
-			if e.Kind == session.EventConcealmentRevealed {
-				revealed = append(revealed, e)
-			}
-		}
+		told := storyBeatsAfter(t, mgr, testSession, "alice", marks["alice"])
+		require.Equal(t, []string{encounter.BeatLooted, encounter.BeatConcealmentRevealed, encounter.BeatSighted},
+			beatNames(told))
+		revealed := beatsNamed(told, encounter.BeatConcealmentRevealed)
 		require.Len(t, revealed, 1)
-		body, ok := revealed[0].Body.(session.ConcealmentRevealedBody)
-		require.True(t, ok)
+		var body struct {
+			Concealment string `json:"concealment"`
+		}
+		revealed[0].decode(t, &body)
 		require.Equal(t, vaultSecret, body.Concealment, "the way in came off the body that was placed carrying it")
 	})
 
 	t.Run("the bystander hears the beat and learns nothing", func(t *testing.T) {
-		require.Equal(t, []session.EventKind{session.EventLooted}, recipientKinds(stream.published, "bob"))
+		require.Equal(t, []string{encounter.BeatLooted},
+			beatNames(storyBeatsAfter(t, mgr, testSession, "bob", marks["bob"])))
 		blind, err := mgr.Doors(ctx, &session.DoorsInput{Session: testSession, Member: "bob"})
 		require.NoError(t, err)
 		require.Empty(t, blind.Doors)
@@ -465,22 +446,25 @@ func TestALaunchedMonsterCarriesTheRecordsItWasPlacedWith(t *testing.T) {
 func TestALaunchedMonsterHoldingNothingRevealsNothing(t *testing.T) {
 	ctx := context.Background()
 
-	loot := func(holds []string) ([]session.EventKind, string) {
-		mgr, stream := launchHoldingLatecomer(t, holds)
+	// The bob-side bytes are each beat's payload, in order: the act id a beat
+	// is filed under is minted fresh per run, so it is no part of what the
+	// two runs are compared on.
+	loot := func(holds []string) ([]string, []string) {
+		mgr, marks := launchHoldingLatecomer(t, holds)
 		_, err := mgr.Loot(ctx, &session.LootInput{
 			Session: testSession, Member: "alice", Target: "latecomer", Range: 2})
 		require.NoError(t, err)
-		story, err := mgr.Story(ctx, &session.StoryInput{Session: testSession, Member: "bob"})
-		require.NoError(t, err)
-		raw, err := json.Marshal(story)
-		require.NoError(t, err)
-		return recipientKinds(stream.published, "bob"), string(raw)
+		var payloads []string
+		for _, beat := range storyBeats(t, mgr, testSession, "bob") {
+			payloads = append(payloads, string(beat.Payload))
+		}
+		return beatNames(storyBeatsAfter(t, mgr, testSession, "bob", marks["bob"])), payloads
 	}
 
 	richKinds, richStory := loot([]string{veilMap})
 	poorKinds, poorStory := loot(nil)
 
-	require.Equal(t, []session.EventKind{session.EventLooted}, poorKinds)
+	require.Equal(t, []string{encounter.BeatLooted}, poorKinds)
 	require.Equal(t, poorKinds, richKinds)
 	require.Equal(t, poorStory, richStory,
 		"a monster placed knowing nothing and one placed knowing the run's "+
@@ -510,7 +494,6 @@ func (s *LaunchActionsSuite) SetupTest() {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: newFakeEncounters(), Characters: testCharacters(),
-		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr

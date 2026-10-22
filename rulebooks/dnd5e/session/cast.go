@@ -105,11 +105,11 @@ type CastInput struct {
 // never reached disk.
 type CastOutput struct {
 	// MissedTargets names attempted recipients the cast did not reach, in
-	// caller order. Details also appear as EventCastMissed story entries.
+	// caller order. Details also appear as `cast_missed` beats.
 	MissedTargets []string `json:"missed_targets,omitempty"`
 	// WardedTargets names attempted recipients a Sanctuary-style ward
 	// stopped before any save or effect ran against them, in caller order.
-	// Details also appear as EventCastWarded story entries. A different
+	// Details also appear as `cast_warded` beats. A different
 	// target in the same multi-target cast is unaffected and never appears
 	// here.
 	WardedTargets []string `json:"warded_targets,omitempty"`
@@ -137,11 +137,6 @@ type CastOutput struct {
 	// that should stay visible until it is built. Nil when nothing was caught
 	// this way, which is every cast that is not an area and most that are.
 	Caught []CaughtMember `json:"caught,omitempty"`
-
-	// Seqs are the story sequences of the recorded beats, in the order they
-	// were appended: the cast, then the save if there was one, then one per
-	// delivered effect.
-	Seqs []uint64 `json:"seqs"`
 
 	// Persisted names what was written.
 	Persisted SaveReport `json:"persisted"`
@@ -522,12 +517,10 @@ func (m *Manager) finishCast(
 	// noticed from the sheet this call already wrote. If that consult fails,
 	// the mechanical sheet writes remain durable and are named by
 	// reportUnrecorded while this unsaved encounter scope is dropped.
-	var recorded *encounter.RecordCastOutput
 	var paused bool
 	result, err := m.land(ctx, scope, out, &landing{
 		Record: func(enc *encounter.Encounter, told concentration) error {
-			var err error
-			recorded, err = enc.RecordCast(&encounter.RecordCastInput{
+			_, err := enc.RecordCast(&encounter.RecordCastInput{
 				Actor: encounter.MemberID(member),
 				Spell: encounter.SpellIdentity{
 					Ref:  spell.Ref,
@@ -602,17 +595,12 @@ func (m *Manager) finishCast(
 	if len(targetResults) == 1 {
 		singleSave = targetResults[0].Save
 	}
-	seqs := make([]uint64, len(recorded.Seqs))
-	for i, seq := range recorded.Seqs {
-		seqs[i] = scope.deliveredSeq(member, seq)
-	}
 	return &CastOutput{
 		MissedTargets: missedTargets,
 		WardedTargets: wardedTargets,
 		Spell:         spell,
 		Saved:         castSaveReport(singleSave),
 		Caught:        caught,
-		Seqs:          seqs,
 		Paused:        paused,
 		Persisted:     result.Saved,
 		Delivery:      result.Delivery,
@@ -665,7 +653,6 @@ func (m *Manager) poseCastWindow(
 		Posed:     true,
 		Roll:      &roll,
 		Total:     &total,
-		Seqs:      []uint64{scope.deliveredSeq(member, beat.Seq)},
 		Persisted: result.Saved,
 		Delivery:  result.Delivery,
 	}, nil

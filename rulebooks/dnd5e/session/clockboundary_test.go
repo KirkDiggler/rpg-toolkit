@@ -73,7 +73,6 @@ func (s *ClockBoundaryTestSuite) fightAs(class classes.Class, aliceConditions ..
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: dice, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
-		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
@@ -399,7 +398,6 @@ func (s *ClockBoundaryTestSuite) TestASheetReturnedUnderTheWrongIDIsRefused() {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{15, 5}}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: liar,
-		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 

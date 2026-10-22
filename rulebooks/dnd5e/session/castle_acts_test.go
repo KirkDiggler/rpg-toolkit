@@ -81,7 +81,6 @@ func openTheGatehouse(d20s ...int) *gatehouse {
 	g.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: g.live, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: &castleDice{d20s: d20s}, TurnDriver: session.Driver(),
 		Sessions: g.sessions, Encounters: newFakeEncounters(), Characters: newFakeCharacters(alice),
-		Events: session.DiscardEvents{},
 	})
 	if err != nil {
 		panic(err)

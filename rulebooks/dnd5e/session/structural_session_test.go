@@ -148,20 +148,26 @@ func structuralRoomWorld() scene {
 type StructuralSessionSuite struct {
 	suite.Suite
 
-	stream *fakeStream
-	mgr    *session.Manager
+	mgr *session.Manager
+}
+
+// structuralBeat is the structural half of a reveal beat's payload — the
+// rows a client applies to its atlas.
+type structuralBeat struct {
+	Walls        []session.AtlasStructuralWall               `json:"structural_walls"`
+	Doors        []session.AtlasStructuralDoor               `json:"structural_doors"`
+	Replacements []session.StructuralWallOpeningsReplacement `json:"structural_wall_openings_replacements"`
 }
 
 func TestStructuralSessionSuite(t *testing.T) { suite.Run(t, new(StructuralSessionSuite)) }
 
 func (s *StructuralSessionSuite) startWith(world scene, cast ...*character.Data) {
-	s.stream = &fakeStream{}
 	characters := newFakeCharacters(cast...)
 	stockAuthoredPlayers(world, characters)
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
-		Characters: characters, Events: s.stream,
+		Characters: characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -178,7 +184,7 @@ func (s *StructuralSessionSuite) find(ctx context.Context, member string) (*sess
 // independent door, and Manager.Knowledge answers all of it on the ONE atlas.
 //
 // BEFORE THE FIND the vault's structural layout is withheld whole, and AFTER
-// it the snapshot agrees with the concealment_revealed beat byte for byte — the
+// it the snapshot agrees with the concealment_revealed beat row for row — the
 // snapshot-or-event parity the promotion is for. bob, who found nothing,
 // learns nothing.
 func (s *StructuralSessionSuite) TestKnowledgeCarriesThePermittedStructuralLayout() {
@@ -191,7 +197,7 @@ func (s *StructuralSessionSuite) TestKnowledgeCarriesThePermittedStructuralLayou
 	s.Empty(before.Atlas.StructuralWalls, "the vault's wall is withheld whole before the find")
 	s.Empty(before.Atlas.StructuralDoors, "and so is the door it was withholding")
 
-	s.stream.published = nil
+	mark := lastSeq(storyBeats(s.T(), s.mgr, "sess", "alice"))
 	_, err = s.find(ctx, "alice")
 	s.Require().NoError(err)
 
@@ -219,24 +225,16 @@ func (s *StructuralSessionSuite) TestKnowledgeCarriesThePermittedStructuralLayou
 	// SNAPSHOT EQUALS EVENT. The beat the provider wrote carries the same
 	// rows, so a client applying the reveal and a client refetching the atlas
 	// hold one picture.
-	reveals := eventsOfKind(s.stream.published, "alice", session.EventConcealmentRevealed)
+	reveals := beatsNamed(storyBeatsAfter(s.T(), s.mgr, "sess", "alice", mark), encounter.BeatConcealmentRevealed)
 	s.Require().Len(reveals, 1, "one concealment_revealed for the finder")
-	body, ok := reveals[0].Body.(session.ConcealmentRevealedBody)
-	s.Require().True(ok, "a reveal event carries its typed body")
-	s.Equal(after.Atlas.StructuralWalls, body.StructuralWalls, "the wall row the beat carried")
-	s.Equal(after.Atlas.StructuralDoors, body.StructuralDoors, "and the door row")
+	var body structuralBeat
+	reveals[0].decode(s.T(), &body)
+	s.Equal(after.Atlas.StructuralWalls, body.Walls, "the wall row the beat carried")
+	s.Equal(after.Atlas.StructuralDoors, body.Doors, "and the door row")
 
 	// The one atlas rule: no second top-level structural collection beside the
 	// atlas, and no structural row smuggled onto the mutable observation list.
 	s.Empty(after.View.Doors, "structural doors are fixed layout, not door state observations")
-
-	// REPLAY IS THE SAME STORY. Manager.Story decodes the stored payload and
-	// must equal what the live stream delivered — the dense-numbering and
-	// payload-fidelity half.
-	replay, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice", FromSeq: before.Seq + 1})
-	s.Require().NoError(err)
-	s.Equal(eventsFor(s.stream.published, "alice"), replay,
-		"live and replay project the same stored structural payload")
 
 	// bob never searched: he is taught neither floor nor layout.
 	bob, err := s.mgr.Knowledge(ctx, &session.KnowledgeInput{Session: "sess", Member: "bob", Player: "player-bob"})
@@ -252,9 +250,8 @@ func (s *StructuralSessionSuite) TestKnowledgeCarriesThePermittedStructuralLayou
 // rows ride the cells-revealed beats of the opening and the sight pass after
 // it, and no whole-room beat is produced.
 //
-// The beats and the refreshed snapshot carry the SAME rows, and the stored
-// payloads replay identically — so a client that applies the reveals and one
-// that refetches agree, exactly as P2S requires.
+// The beats and the refreshed snapshot carry the SAME rows — so a client that
+// applies the reveals and one that refetches agree, exactly as P2S requires.
 func (s *StructuralSessionSuite) TestOpenDoorCellsRevealCarriesStructuralRows() {
 	ctx := context.Background()
 	s.startWith(structuralRoomWorld(), sharpEyed("alice"))
@@ -265,7 +262,7 @@ func (s *StructuralSessionSuite) TestOpenDoorCellsRevealCarriesStructuralRows() 
 	s.Empty(before.Atlas.StructuralWalls, "the sealed vault's wall is not known yet")
 	s.Empty(before.Atlas.StructuralDoors)
 
-	s.stream.published = nil
+	mark := lastSeq(storyBeats(s.T(), s.mgr, "sess", "alice"))
 	_, err = s.mgr.OpenDoor(ctx, &session.OpenDoorInput{Session: "sess", Member: "alice", Door: "gate"})
 	s.Require().NoError(err)
 
@@ -280,21 +277,23 @@ func (s *StructuralSessionSuite) TestOpenDoorCellsRevealCarriesStructuralRows() 
 	s.Require().Len(after.Atlas.StructuralDoors, 1, "and the independent door")
 	s.Equal(structDoorID, after.Atlas.StructuralDoors[0].ID)
 
-	s.Empty(eventsOfKind(s.stream.published, "alice", session.EventRoomRevealed), "no whole-room beat is produced")
-	reveals := eventsOfKind(s.stream.published, "alice", session.EventCellsRevealed)
+	told := storyBeatsAfter(s.T(), s.mgr, "sess", "alice", mark)
+	//nolint:staticcheck // asserting the retired whole-room beat is never written
+	s.Empty(beatsNamed(told, encounter.BeatRoomRevealed), "no whole-room beat is produced")
+	reveals := beatsNamed(told, encounter.BeatCellsRevealed)
 	s.Require().NotEmpty(reveals, "the opener learns cells")
 	walls := map[string]session.AtlasStructuralWall{}
 	doors := map[string]session.AtlasStructuralDoor{}
 	for _, reveal := range reveals {
-		body, ok := reveal.Body.(session.CellsRevealedBody)
-		s.Require().True(ok, "a cells reveal carries its typed body")
-		for _, wall := range body.StructuralWalls {
+		var body structuralBeat
+		reveal.decode(s.T(), &body)
+		for _, wall := range body.Walls {
 			walls[wall.ID] = wall
 		}
-		for _, door := range body.StructuralDoors {
+		for _, door := range body.Doors {
 			doors[door.ID] = door
 		}
-		for _, cut := range body.StructuralWallOpeningsReplacements {
+		for _, cut := range body.Replacements {
 			wall := walls[cut.WallID]
 			wall.Openings = cut.Openings
 			walls[cut.WallID] = wall
@@ -304,10 +303,6 @@ func (s *StructuralSessionSuite) TestOpenDoorCellsRevealCarriesStructuralRows() 
 		"the beats carry the same wall row as the snapshot")
 	s.Equal(map[string]session.AtlasStructuralDoor{structDoorID: after.Atlas.StructuralDoors[0]}, doors,
 		"and the same door row")
-
-	replay, err := s.mgr.Story(ctx, &session.StoryInput{Session: "sess", Member: "alice", FromSeq: before.Seq + 1})
-	s.Require().NoError(err)
-	s.Equal(eventsFor(s.stream.published, "alice"), replay, "live and replay project the same stored cells payloads")
 }
 
 // TestKnowledgeStructuralLayoutSurvivesARepositoryReload pins that the fixed

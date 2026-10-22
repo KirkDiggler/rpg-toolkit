@@ -272,13 +272,13 @@ func currentEndTurnID(t fataler, mgr *session.Manager, sessionID, member string)
 	return currentDeclaration(t, mgr, sessionID, member, session.VerbEndTurn).ID
 }
 
-// fakeStream records what was published.
+// fakeStream records the acts the act stream was handed (Config.Acts).
 type fakeStream struct {
-	published []session.Event
+	published []session.Act
 }
 
-func (f *fakeStream) Publish(_ context.Context, events []session.Event) error {
-	f.published = append(f.published, events...)
+func (f *fakeStream) PublishActs(_ context.Context, acts []session.Act) error {
+	f.published = append(f.published, acts...)
 	return nil
 }
 
@@ -317,22 +317,20 @@ func (s *ManagerTestSuite) TestEachRequirementIsCheckedByName() {
 		{
 			name: "sessions absent",
 			config: &session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Encounters: newFakeEncounters(),
-				Characters: testCharacters(), Events: session.DiscardEvents{},
+				Characters: testCharacters(),
 			},
 			expect: "Sessions",
 		},
 		{
 			name: "encounters absent",
 			config: &session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(),
-				Characters: testCharacters(), Events: session.DiscardEvents{},
+				Characters: testCharacters(),
 			},
 			expect: "Encounters",
 		},
 		{
-			name: "characters absent",
-			config: &session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
-				Events: session.DiscardEvents{},
-			},
+			name:   "characters absent",
+			config: &session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters()},
 			expect: "Characters",
 		},
 		{
@@ -341,16 +339,16 @@ func (s *ManagerTestSuite) TestEachRequirementIsCheckedByName() {
 			// a door: refused at construction, never turned off.
 			name: "explorations absent",
 			config: &session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
-				Characters: testCharacters(), Events: session.DiscardEvents{},
+				Characters: testCharacters(),
 			},
 			expect: "Explorations",
 		},
 		{
-			name: "events absent",
-			config: &session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
+			name: "acts absent",
+			config: &session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 				Characters: testCharacters(),
 			},
-			expect: "Events",
+			expect: "Acts",
 		},
 		{
 			// A fight now starts by itself, inside an ordinary Move. A host
@@ -360,7 +358,7 @@ func (s *ManagerTestSuite) TestEachRequirementIsCheckedByName() {
 			// into a startup failure.
 			name: "dice absent",
 			config: &session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
-				Characters: testCharacters(), Events: session.DiscardEvents{},
+				Characters: testCharacters(),
 			},
 			expect: "Dice",
 		},
@@ -368,7 +366,7 @@ func (s *ManagerTestSuite) TestEachRequirementIsCheckedByName() {
 			name: "presentation IDs absent",
 			config: &session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), Dice: testDice{}, TurnDriver: session.Pass{},
 				Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
-				Characters: testCharacters(), Events: session.DiscardEvents{},
+				Characters: testCharacters(),
 			},
 			expect: "PresentationIDs",
 		},
@@ -380,7 +378,7 @@ func (s *ManagerTestSuite) TestEachRequirementIsCheckedByName() {
 			// player ended their turn ahead of one (rpg-toolkit#1162).
 			name: "turndriver absent",
 			config: &session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
-				Characters: testCharacters(), Events: session.DiscardEvents{},
+				Characters: testCharacters(),
 			},
 			expect: "TurnDriver",
 		},
@@ -409,22 +407,21 @@ func (s *ManagerTestSuite) TestMissingReportIsDeterministic() {
 	}
 }
 
-// TestDiscardEventsIsAcceptedAsAStream is the must-accept row.
+// TestDiscardActsIsAcceptedAsAStream is the must-accept row.
 //
-// The stream is required, which makes the over-tightening risk real: a check
-// that demanded a "real" stream — anything beyond non-nil — would break every
-// test, every headless simulation, and every analysis run, while passing every
-// rejection row above.
+// The act stream is required, which makes the over-tightening risk real: a
+// check that demanded a "real" stream — anything beyond non-nil — would break
+// every test, every headless simulation, and every analysis run, while
+// passing every rejection row above.
 //
-// The point of DiscardEvents is that wanting no delivery stays possible while
+// The point of DiscardActs is that wanting no delivery stays possible while
 // being a stated decision. A nil reads as an oversight; this reads as a choice,
 // and it greps.
-func (s *ManagerTestSuite) TestDiscardEventsIsAcceptedAsAStream() {
+func (s *ManagerTestSuite) TestDiscardActsIsAcceptedAsAStream() {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions:   newFakeSessions(),
 		Encounters: newFakeEncounters(),
 		Characters: testCharacters(),
-		Events:     session.DiscardEvents{},
 	})
 	s.Require().NoError(err, "an explicit no-op stream is a legitimate configuration")
 	s.NotNil(mgr)
@@ -433,11 +430,10 @@ func (s *ManagerTestSuite) TestDiscardEventsIsAcceptedAsAStream() {
 // TestFullyWiredConstructs is the other positive control: a real stream,
 // which is what any actual game supplies.
 func (s *ManagerTestSuite) TestFullyWiredConstructs() {
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: &fakeStream{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions:   newFakeSessions(),
 		Encounters: newFakeEncounters(),
 		Characters: testCharacters(),
-		Events:     &fakeStream{},
 	})
 	s.Require().NoError(err)
 	s.NotNil(mgr)

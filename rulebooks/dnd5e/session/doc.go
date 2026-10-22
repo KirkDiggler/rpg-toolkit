@@ -107,8 +107,7 @@
 // deliberately not "down", which also reads as PRONE — a posture condition the
 // rulebook tracks and this package never gates on (Kirk's ruling,
 // rpg-toolkit#1084). The composition underneath keeps its own "down", which is
-// persisted in every stored world; kindOf is where the two meet. See ErrDowned
-// and EventDowned.
+// persisted in every stored world; kindOf is where the two meet. See ErrDowned.
 //
 // # Compiled declarations are the execution trust boundary
 //
@@ -189,13 +188,11 @@
 // the unscoped reads are the host's internal whole truth and do not cross
 // the boundary for a member-shaped question.
 //
-// The law is per-recipient dense numbering (stream.go): the record's global
-// sequence NEVER crosses this boundary. Each member's delivered stream —
-// live events and Story catch-up alike — numbers its own entries densely, so
-// a beat delivered to somebody else leaves no observable hole (the gap
-// oracle, closed), and every Seq a verb's output carries speaks its actor's
-// own numbering. What makes that durable is a persisted cursor per member on
-// the session record, advanced in the same commit as the beats it counts.
+// The record's global sequence NEVER crosses this boundary (R30): what a
+// member is sent is ordered by the record's own ids, an ordering key and not
+// a counter, so no number tells a viewer about a beat they were not sent.
+// Verb outputs carry no sequence at all. The per-member dense numbering and
+// its persisted cursor left with the v1alpha1 stream (rpg-project#631, R29).
 //
 // # Automatic discovery and encounter-owned memory
 //
@@ -231,7 +228,7 @@
 // SetDiscoverySharing changes the seated character's future discovery audience;
 // it neither backfills a new recipient nor erases anyone's learned knowledge.
 // KnowledgeOutput.DiscoverySharing is absent for hosts without this capability,
-// not a false/private default. EventDiscoveryChecked projects the provider's
+// not a false/private default. The `discovery_checked` beat carries the provider's
 // actor, applied skill, verdict, total and calculation, never a hidden subject
 // or DC. Successful teaching and failed-check narration keep the composition's
 // captured audience and the existing dense per-recipient live/Story numbering.
@@ -305,9 +302,9 @@
 // LOOT'S ANSWER NEVER LEAKS THE QUESTION. Loot is offered on every downed
 // member and its response is identical whether the body carried the run's
 // only secret or nothing: no found list, no count, no flag. What moved
-// reaches the LOOTER ALONE — intel as their own EventConcealmentRevealed,
+// reaches the LOOTER ALONE — intel as their own `concealment_revealed`,
 // which is the beat a successful search already sends, through the same
-// recipient-scoped path — while everyone present hears EventLooted, naming
+// recipient-scoped path — while everyone present hears `looted`, naming
 // looter and body and nothing else.
 //
 // Player Atlas carries discovered fixed geometry; mutable prop and door
@@ -327,16 +324,14 @@
 // atlas, never stored and never a party union — carried through View and
 // Knowledge unchanged. A placed member's answer always holds its own cell.
 //
-// Each learning moment reaches its learner alone as [EventCellsRevealed], the
-// composition's per-member delta delivered unchanged: partial regions carrying
-// only the newly known cells, which a client merges by region id with union.
-// [EventRoomRevealed] is deprecated and no longer produced; its kind and body
-// remain so a stored story still decodes as what it was.
+// Each learning moment reaches its learner alone as a `cells_revealed` beat,
+// the composition's per-member delta: partial regions carrying only the newly
+// known cells, which a client merges by region id with union.
 //
-// EXIT SAYS WHAT IT DID NOT SAY BEFORE. ExitedBody carries what the member
+// EXIT SAYS WHAT IT DID NOT SAY BEFORE. The `exited` beat carries what the member
 // walked out with and the authored exit they used, both empty for the
 // ordinary departure; a departure that did not end the run drops what was
-// carried on the cell they stood on (EventDropped); and a departure through a
+// carried on the cell they stood on (`dropped`); and a departure through a
 // scenario's bound exit while holding its artifact fires that scenario's
 // ending, which arrives through ExitOutput.Closed exactly as every other
 // ending does.

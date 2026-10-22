@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -71,7 +72,7 @@ func (s *ReactWindowSuite) managerWith(driver session.TurnDriver) *session.Manag
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: driver,
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: session.DiscardEvents{},
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	return mgr
@@ -170,23 +171,13 @@ type windowBeat struct {
 }
 
 func (s *ReactWindowSuite) windowBeats(mgr *session.Manager, member string) []windowBeat {
-	entries, err := mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: member})
-	s.Require().NoError(err)
-
+	// NAMED FIRST. One story carries a dozen beat shapes and several of
+	// them spell "to" as something other than a cell — decoding every
+	// entry into this shape would fail on the first transfer.
 	var out []windowBeat
-	for _, entry := range entries {
-		// PEEKED FIRST. One story carries a dozen beat shapes and several of
-		// them spell "to" as something other than a cell — decoding every
-		// entry into this shape would fail on the first transfer.
-		var peek struct {
-			Beat string `json:"beat"`
-		}
-		s.Require().NoError(json.Unmarshal(entry.Payload, &peek))
-		if peek.Beat != "window_opened" {
-			continue
-		}
+	for _, beat := range beatsNamed(storyBeats(s.T(), mgr, "sess", member), encounter.BeatWindowOpened) {
 		var body windowBeat
-		s.Require().NoError(json.Unmarshal(entry.Payload, &body))
+		beat.decode(s.T(), &body)
 		out = append(out, body)
 	}
 	return out
@@ -195,13 +186,10 @@ func (s *ReactWindowSuite) windowBeats(mgr *session.Manager, member string) []wi
 // reactionBeats is mover_test.go's reader, repeated here so this suite reads
 // standalone: every beat in member's story that names a reaction.
 func (s *ReactWindowSuite) reactionBeats(mgr *session.Manager, member string) []reactedBeat {
-	entries, err := mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: member})
-	s.Require().NoError(err)
-
 	var out []reactedBeat
-	for _, entry := range entries {
+	for _, beat := range storyBeats(s.T(), mgr, "sess", member) {
 		var body reactedBeat
-		if json.Unmarshal(entry.Payload, &body) != nil || body.Reaction == nil {
+		if json.Unmarshal(beat.Payload, &body) != nil || body.Reaction == nil {
 			continue
 		}
 		s.Require().Contains([]string{"struck", "missed"}, body.Beat,
@@ -529,15 +517,14 @@ func (s *ReactWindowSuite) TestAStrikeThatDropsTheMoverHoldsTheRestOfTheWindows(
 	s.Equal("fighter", turn.Active, "and the turn is over")
 }
 
-// TestTheWindowAndTheSwingReachTheEventStreamTyped drives the other end of the
-// wire: what a client actually receives.
+// TestTheWindowAndTheSwingReachTheFighter drives the other end of the
+// wire: what the fighter's own story tells them.
 //
-// TWO GAPS CLOSE HERE. The window beat is a new kind, and the reaction on a
-// struck beat has been written by the composition since rung 2 with nothing at
-// this seam decoding it — a field dead on arrival that would have shipped a
-// dock unable to say why the fighter dealt damage on a skeleton's turn.
-func (s *ReactWindowSuite) TestTheWindowAndTheSwingReachTheEventStreamTyped() {
-	stream := &fakeStream{}
+// TWO FACTS LAND HERE. The fighter is told the window opened — who moved,
+// from where to where, who is asked, and as what reaction — and the swing
+// they take says what it was taken AS, so a dock can say why the fighter
+// dealt damage on a skeleton's turn.
+func (s *ReactWindowSuite) TestTheWindowAndTheSwingReachTheFighter() {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{},
 		TurnDriver: &pathWalker{
@@ -545,65 +532,42 @@ func (s *ReactWindowSuite) TestTheWindowAndTheSwingReachTheEventStreamTyped() {
 			walked: map[string]bool{},
 		},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
-		Events: stream,
 	})
 	s.Require().NoError(err)
 	s.start(mgr, []sceneSeat{seatAt("fighter", 2, 0)}, reactSkeleton("skel-1", 3, 0))
 	s.endTurn(mgr, "fighter")
 
-	var opened *session.WindowOpenedBody
-	for _, event := range stream.published {
-		if event.Kind != session.EventWindowOpened || event.Recipient != "fighter" {
-			continue
-		}
-		body, ok := event.Body.(session.WindowOpenedBody)
-		s.Require().True(ok, "a window event carries a typed body, not a shrug")
-		opened = &body
-	}
-	s.Require().NotNil(opened, "the fighter is told, live, that they are being asked")
-	s.Equal("skel-1", opened.Mover)
+	windows := s.windowBeats(mgr, "fighter")
+	s.Require().NotEmpty(windows, "the fighter is told that they are being asked")
+	opened := windows[len(windows)-1]
+	s.Equal("skel-1", opened.Member)
 	s.Equal(hexCell(3, 0), opened.From)
 	s.Equal(hexCell(4, 0), opened.To)
-	s.Equal([]string{"fighter"}, opened.Audience)
-	s.Equal(session.ReactionRef{Ref: oaRef(), Name: "Opportunity Attack"}, opened.Reaction)
+	s.Require().Len(opened.Windows, 1)
+	s.Equal("fighter", opened.Windows[0].Audience)
+	s.Equal(oaRef(), opened.Windows[0].Reaction.Ref)
+	s.Equal("Opportunity Attack", opened.Windows[0].Reaction.Name)
 
 	s.react(mgr, "fighter", session.Take(""))
 
-	var struck *session.StruckBody
-	var missed *session.MissedBody
-	for _, event := range stream.published {
-		if event.Recipient != "fighter" {
-			continue
-		}
-		switch body := event.Body.(type) {
-		case session.StruckBody:
-			struck = &body
-		case session.MissedBody:
-			missed = &body
-		}
-	}
-	s.Require().True(struck != nil || missed != nil, "the swing reaches the stream")
-	switch {
-	case struck != nil:
-		s.Require().NotNil(struck.Reaction, "and it says what it was taken AS")
-		s.Equal(oaRef(), struck.Reaction.Ref)
-		s.Equal("Opportunity Attack", struck.Reaction.Name)
-	default:
-		s.Require().NotNil(missed.Reaction, "a reaction that missed is still a reaction")
-		s.Equal(oaRef(), missed.Reaction.Ref)
-	}
+	swings := beatsNamed(storyBeats(s.T(), mgr, "sess", "fighter"),
+		string(encounter.OutcomeStruck), string(encounter.OutcomeMissed))
+	s.Require().NotEmpty(swings, "the swing reaches the fighter")
+	var swing reactedBeat
+	swings[len(swings)-1].decode(s.T(), &swing)
+	s.Require().NotNil(swing.Reaction, "and it says what it was taken AS, hit or miss")
+	s.Equal(oaRef(), swing.Reaction.Ref)
+	s.Equal("Opportunity Attack", swing.Reaction.Name)
 }
 
 // TestAnOrdinarySwingCarriesNoReaction is the false-vs-absent half of the field
-// above: nil is an answer — this was a declared attack — and a client that saw
-// a populated Reaction on every swing would label the whole log.
+// above: no reaction is an answer — this was a declared attack — and a client
+// that saw a reaction on every swing would label the whole log.
 func (s *ReactWindowSuite) TestAnOrdinarySwingCarriesNoReaction() {
 	ctx := context.Background()
-	stream := &fakeStream{}
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
-		Events: stream,
 	})
 	s.Require().NoError(err)
 	s.start(mgr, []sceneSeat{seatAt("fighter", 2, 0)}, reactSkeleton("skel-1", 3, 0))
@@ -614,18 +578,14 @@ func (s *ReactWindowSuite) TestAnOrdinarySwingCarriesNoReaction() {
 	})
 	s.Require().NoError(err)
 
-	seen := false
-	for _, event := range stream.published {
-		switch body := event.Body.(type) {
-		case session.StruckBody:
-			seen = true
-			s.Nil(body.Reaction, "a declared swing was taken as nothing but itself")
-		case session.MissedBody:
-			seen = true
-			s.Nil(body.Reaction)
-		}
+	swings := beatsNamed(storyBeats(s.T(), mgr, "sess", "fighter"),
+		string(encounter.OutcomeStruck), string(encounter.OutcomeMissed))
+	s.Require().NotEmpty(swings, "the swing was recorded at all")
+	for _, beat := range swings {
+		var swing reactedBeat
+		beat.decode(s.T(), &swing)
+		s.Nil(swing.Reaction, "a declared swing was taken as nothing but itself")
 	}
-	s.True(seen, "the swing reached the stream at all")
 }
 
 // TestAStrikeThatEndsTheFightHoldsTheRestAndCarriesOn is the scene above with

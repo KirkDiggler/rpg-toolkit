@@ -76,26 +76,6 @@ type ViewInput struct {
 	Member string
 }
 
-// StoryInput asks for what a member has witnessed.
-type StoryInput struct {
-	// Session is the session to read from.
-	Session string
-
-	// Member is the viewer whose story is requested.
-	Member string
-
-	// FromSeq is the INCLUSIVE lower bound: entries begin AT this sequence,
-	// IN THE MEMBER'S OWN DELIVERED NUMBERING — the same numbers their
-	// events carry (Event.Seq, stream.go), which is the only numbering that
-	// crosses this seam. Zero means "I hold nothing, send what you have"
-	// and is always answerable, however much has aged out of the retention
-	// window.
-	//
-	// To resume after entry N, pass N+1. Named for what it does, unlike the
-	// composition's own field, whose name predates its behaviour.
-	FromSeq uint64
-}
-
 type rosterCharacterRow struct {
 	data *character.Data
 	err  error
@@ -233,7 +213,7 @@ func (m *Manager) rosterFrom(ctx context.Context, enc *encounter.Encounter, data
 //
 // Knowledge truth rather than construction truth now: unchanged by movement,
 // joins, exits or endings, and PATCHED by the member's own reveal beats
-// (EventConcealmentRevealed) — the load-once, beat-refreshed
+// (`concealment_revealed`) — the load-once, beat-refreshed
 // shape. Ordinary rooms need individual discovery too; an absence of
 // concealments is not permission to deliver the whole map.
 //
@@ -508,92 +488,6 @@ func projectView(enc *encounter.Encounter, in *ViewInput) (*ViewOutput, error) {
 		Sneaking:   enc.Sneaking(encounter.MemberID(in.Member)),
 		WatchZones: projectWatchZones(zones.Zones),
 	}, nil
-}
-
-// Story returns the beats a member has witnessed, from FromSeq onward
-// inclusive, projected exactly as a live [EventStream] subscriber would have
-// received them: same Kind, same typed Body, same Tags, same per-recipient
-// Seq — one projection ([projectEntry]) for both paths, so a client that
-// notices a gap and re-queries Story sees byte-equal entries for the same seq
-// rather than a second, thinner shape it must decode differently
-// (rpg-api-protos#239).
-//
-// Returns ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
-// ErrNoEncounter, ErrNoMember, or ErrStoryTrimmed when the requested resume
-// point has aged out of the retention window — in which case the caller must
-// resync from zero rather than resume, since a short answer would be
-// indistinguishable from a complete one.
-func (m *Manager) Story(ctx context.Context, in *StoryInput) ([]Event, error) {
-	if in == nil {
-		return nil, fmt.Errorf("story: %w", ErrNilInput)
-	}
-	release, lockErr := m.acquireSession(ctx, in.Session)
-	if lockErr != nil {
-		return nil, lockErr
-	}
-	defer release()
-	if in.Member == "" {
-		return nil, fmt.Errorf("story: %w", ErrNoMemberID)
-	}
-	data, err := m.loadSessionData(ctx, in.Session)
-	if err != nil {
-		return nil, fmt.Errorf("story: %w", err)
-	}
-	enc, err := m.loadWorld(ctx, data)
-	if err != nil {
-		return nil, fmt.Errorf("story: %w", err)
-	}
-
-	// The member's WHOLE retained story, then this seam's own numbering over
-	// it (stream.go): FromSeq is in the member's delivered numbering now, so
-	// the retention question — "can this resume point still be honoured" —
-	// is asked in that numbering too, against the same cursor the write
-	// verbs advance. Zero stays exempt and always answerable.
-	entries, err := enc.Story(&encounter.StoryInput{
-		Audience: encounter.MemberID(in.Member),
-		AfterSeq: 0,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("story: %w", translate(err))
-	}
-
-	// A pure view, not ToData: a read must not trim the log it is reading
-	// (encounter v0.43.0, #1385) — and the floor it needs is exactly what
-	// the view's retained entries answer.
-	view := enc.WorldView()
-	seqs, count, err := numberEntries(
-		in.Member, entries, data.Streams[in.Member], retainedFloor(view.Log))
-	if err != nil {
-		return nil, fmt.Errorf("story: %w", err)
-	}
-
-	// The oldest number the record can still serve: the first surviving
-	// entry's, or one past everything delivered when nothing survives. A
-	// resume point below it names a trimmed entry and is REJECTED rather
-	// than partially answered — the composition's own #937 reasoning, in
-	// this seam's numbering.
-	oldest := count + 1
-	if len(entries) > 0 {
-		oldest = seqs[entries[0].Seq]
-	}
-	if in.FromSeq > 0 && in.FromSeq < oldest {
-		return nil, fmt.Errorf("story: seq %d below retained floor %d: %w",
-			in.FromSeq, oldest, ErrStoryTrimmed)
-	}
-
-	// projectEntry, not a second mapping: catch-up must be byte-equal to
-	// what a live subscriber received for the same seq (rpg-api-protos#239).
-	// The requesting member IS the recipient — Story asks after one's own
-	// story, there is no other audience to address it to — and the numbering
-	// is the same arithmetic over the same persisted cursor both paths.
-	events := make([]Event, 0, len(entries))
-	for _, e := range entries {
-		if in.FromSeq > 0 && seqs[e.Seq] < in.FromSeq {
-			continue
-		}
-		events = append(events, projectEntry(in.Session, in.Member, e, seqs[e.Seq]))
-	}
-	return events, nil
 }
 
 // open loads a session and reconstitutes the encounter it points at.

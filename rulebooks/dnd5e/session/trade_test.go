@@ -46,7 +46,6 @@ func (s *TradeTestSuite) SetupTest() {
 	s.characters = testCharacters()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
-		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -130,7 +129,6 @@ func (s *TradeTestSuite) TestTradeBuysTheListedItem() {
 		}},
 	})
 	s.Require().NoError(err)
-	s.NotZero(out.Seq)
 
 	// The vendor's displayed stock reflects the decrement in this response —
 	// no second Interact round trip needed. An exhausted limited row is
@@ -413,7 +411,6 @@ func (s *TradeTestSuite) TestTradeSellsAnOwnedItem() {
 		Receive: session.TradeOffer{Currency: price},
 	})
 	s.Require().NoError(err)
-	s.NotZero(out.Seq)
 
 	saved := s.characters.byID["alice"]
 	s.Empty(saved.Inventory, "the sold item must leave alice's inventory")

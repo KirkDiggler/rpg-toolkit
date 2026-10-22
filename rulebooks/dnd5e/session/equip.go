@@ -90,10 +90,6 @@ type EquipOutput struct {
 	// Drawn is every item taken into hand or donned, after every stow.
 	Drawn []EquipmentMove
 
-	// Seqs are the equip beats' sequences in the character's own delivered
-	// numbering (stream.go), stows first. Empty for an unseated character.
-	Seqs []uint64
-
 	// Discovered is what changed in each observer's perception when sight
 	// was rechecked. Absent observers saw nothing new.
 	Discovered map[string]Discovery
@@ -243,7 +239,6 @@ func (m *Manager) equipSeated(
 
 	stowed, drawn := equipmentMoves(changed.Slot, changed.Stowed), equipmentMoves(changed.Slot, changed.Drawn)
 	var (
-		seqs   []uint64
 		deltas = map[encounter.MemberID]*encounter.IntelDelta{}
 		formed *encounter.FormedBubble
 	)
@@ -254,7 +249,6 @@ func (m *Manager) equipSeated(
 		if err != nil {
 			return nil, reportUnrecorded(scope, translate(err))
 		}
-		seqs = append(seqs, told.Seqs...)
 		mergeIntelDeltas(deltas, told.IntelDeltas)
 		if told.Formed != nil {
 			formed = told.Formed
@@ -266,18 +260,13 @@ func (m *Manager) equipSeated(
 		return nil, err
 	}
 
-	delivered := make([]uint64, 0, len(seqs))
-	for _, seq := range seqs {
-		delivered = append(delivered, scope.deliveredSeq(id, seq))
-	}
 	return &EquipOutput{
 		Session:    session,
 		Character:  changed.Character,
 		Stowed:     stowed,
 		Drawn:      drawn,
-		Seqs:       delivered,
 		Discovered: projectDiscoveries(deltas),
-		Formed:     projectFormedFor(scope, id, formed),
+		Formed:     projectFormed(formed),
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil

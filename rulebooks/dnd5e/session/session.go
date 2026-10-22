@@ -68,32 +68,24 @@ type Config struct {
 	// End and the commit that closes a run clear it. See [SeatRepository].
 	Seats SeatRepository
 
-	// Events is the live channel to connected clients. Required.
-	//
-	// Required because a verb's response tells the CALLER about the caller's
-	// own action, and that is a small fraction of what a client must render.
-	// Monsters acting, the clock advancing, another player crossing a doorway —
-	// none of it appears in anyone's return value. A host without a stream is
-	// reduced to polling Story, which is a recovery path rather than a design.
-	//
-	// This is not about multiplayer. A single-player game needs it for exactly
-	// the same reason: things happen that the player did not ask for.
-	//
-	// Use DiscardEvents for tests, headless simulation, or any run that
-	// genuinely wants no delivery — an explicit opt-out that reads as a
-	// decision, rather than a nil that reads as an oversight.
-	Events EventStream
-
 	// Record is the live channel for the record stream: every beat the
 	// encounter writes, as written, for the debug panel (record.go,
-	// rpg-project#628). Required, as Events is, and for the same reason a
-	// nil is refused: use DiscardRecord to say "no record stream".
+	// rpg-project#628). Required, as Acts is, and for the same reason a nil
+	// is refused: use DiscardRecord to say "no record stream".
 	Record RecordStream
 
 	// Acts is the live channel for the act stream: each recipient's beats
-	// folded into acts (act.go, rpg-project#629). Required, as Events and
-	// Record are, and for the same reason a nil is refused: use DiscardActs
-	// to say "no act stream".
+	// folded into acts (act.go, rpg-project#629) — the story a client
+	// renders. Required.
+	//
+	// Required because a verb's response tells the CALLER about the caller's
+	// own action, and that is a small fraction of what a client must render.
+	// Monsters acting, the clock advancing, another player crossing a
+	// doorway — none of it appears in anyone's return value, and that is as
+	// true with one player as with four. Use DiscardActs for tests, headless
+	// simulation, or any run that genuinely wants no delivery — an explicit
+	// opt-out that reads as a decision, rather than a nil that reads as an
+	// oversight.
 	Acts ActStream
 
 	// Dice is where random numbers come from. Required.
@@ -178,7 +170,6 @@ type Manager struct {
 	encounters        EncounterRepository
 	characters        CharacterRepository
 	seats             SeatRepository
-	events            EventStream
 	record            RecordStream
 	acts              ActStream
 	initiative        encounter.InitiativeRoller
@@ -231,7 +222,6 @@ func NewManager(cfg *Config) (*Manager, error) {
 		{"Characters", cfg.Characters != nil},
 		{"Seats", cfg.Seats != nil},
 		{"Explorations", cfg.Explorations != nil},
-		{"Events", cfg.Events != nil},
 		{"Record", cfg.Record != nil},
 		{"Acts", cfg.Acts != nil},
 		{"Dice", cfg.Dice != nil},
@@ -276,7 +266,6 @@ func NewManager(cfg *Config) (*Manager, error) {
 		encounters:        cfg.Encounters,
 		characters:        cfg.Characters,
 		seats:             cfg.Seats,
-		events:            cfg.Events,
 		record:            cfg.Record,
 		acts:              cfg.Acts,
 		initiative:        initiativeSeam{dice: cfg.Dice},

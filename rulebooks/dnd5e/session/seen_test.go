@@ -53,7 +53,6 @@ func (s *SeenTestSuite) SetupTest() {
 	s.encounters = newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: newFakeCharacters(armedFighter("fighter")),
-		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -245,7 +244,6 @@ func groundedSkeletonScene(t *testing.T) (*fakeSessions, *fakeEncounters) {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: newFakeCharacters(armedFighter("fighter")),
-		Events: session.DiscardEvents{},
 	})
 	require.NoError(t, err)
 
@@ -314,7 +312,6 @@ func TestGhostSeenStandingIsWhatItLastSaw(t *testing.T) {
 
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: newFakeCharacters(armedFighter("fighter")),
-		Events: session.DiscardEvents{},
 	})
 	require.NoError(t, err)
 
@@ -386,7 +383,6 @@ func TestViewNeverConsultsStandingEvenWithACurrentAndAGhostSighting(t *testing.T
 
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: seamOnlyCharacters{sheets: newFakeCharacters(armedFighter("fighter"))},
-		Events: session.DiscardEvents{},
 	})
 	require.NoError(t, err)
 

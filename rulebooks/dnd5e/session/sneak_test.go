@@ -18,6 +18,7 @@ package session_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -46,12 +47,11 @@ func TestSneakSuite(t *testing.T) { suite.Run(t, new(SneakSuite)) }
 func (s *SneakSuite) SetupTest() {
 	s.stream = &fakeStream{}
 	s.encounters = newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream,
 		Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: newFakeSessions(), Encounters: s.encounters,
 		Characters: newFakeCharacters(armedFighter("alice"), armedFighter("bob")),
-		Events:     s.stream,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -129,24 +129,28 @@ func (s *SneakSuite) view(member string) *session.ViewOutput {
 	return out
 }
 
-// story is one member's whole Story.
-func (s *SneakSuite) story(member string) []session.Event {
+// story is one member's whole story, beat by beat.
+func (s *SneakSuite) story(member string) []witnessed {
 	s.T().Helper()
-	out, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: testSession, Member: member})
-	s.Require().NoError(err)
-	return out
+	return storyBeats(s.T(), s.mgr, testSession, member)
 }
 
-// snuckIn is every snuck body in one member's Story.
-func (s *SneakSuite) snuckIn(member string) []session.SnuckBody {
+// snuckBeat is a snuck beat's payload, the fields these tests read.
+type snuckBeat struct {
+	Member      string          `json:"member"`
+	DC          int             `json:"dc"`
+	Total       int             `json:"total"`
+	Beaten      bool            `json:"beaten"`
+	Calculation json.RawMessage `json:"calculation"`
+}
+
+// snuckIn is every snuck beat in one member's story.
+func (s *SneakSuite) snuckIn(member string) []snuckBeat {
 	s.T().Helper()
-	var out []session.SnuckBody
-	for _, e := range s.story(member) {
-		if e.Kind != session.EventSnuck {
-			continue
-		}
-		body, ok := e.Body.(session.SnuckBody)
-		s.Require().True(ok, "a snuck beat decodes to its typed body, got %T", e.Body)
+	var out []snuckBeat
+	for _, e := range beatsNamed(s.story(member), encounter.BeatSnuck) {
+		var body snuckBeat
+		e.decode(s.T(), &body)
 		out = append(out, body)
 	}
 	return out
@@ -243,12 +247,12 @@ func (s *SneakSuite) TestAMonsterWalkOnAnotherPlayersVerbRollsForTheSneaker() {
 		s.Equal(9, roll.DC, "against the goblin's passive Perception")
 		s.Equal(12, roll.Total, "a d20 of 10 and DEX 14's +2, off alice's own sheet")
 		s.True(roll.Beaten)
-		s.NotNil(roll.Calculation, "the real resolver's arithmetic rides the beat")
+		s.NotEmpty(roll.Calculation, "the real resolver's arithmetic rides the beat")
 	}
 	s.Empty(s.snuckIn("bob"), "the beat goes to the mover alone")
-	for _, e := range s.stream.published {
-		if e.Kind == session.EventSnuck {
-			s.Equal("alice", e.Recipient, "delivered to the sneaker's stream only")
+	for _, a := range s.stream.published {
+		if _, ok := a.Body.(session.SneakAct); ok {
+			s.Equal("alice", a.Recipient, "delivered to the sneaker's stream only")
 		}
 	}
 	verdicts := s.encounters.byID[testSession].SneakVerdicts["alice"]
@@ -271,8 +275,8 @@ func (s *SneakSuite) TestDeclaringOffInsideAHostileZoneFormsAFight() {
 	s.False(off.Sneaking)
 	s.NotEmpty(s.encounters.byID[testSession].Bubbles, "stopping in plain view forms a fight")
 	delivered := false
-	for _, e := range s.stream.published {
-		if e.Kind == session.EventFightStarted && e.Recipient == "alice" {
+	for _, a := range s.stream.published {
+		if clock, ok := a.Body.(session.ClockEntry); ok && clock.Mark == session.ClockFightFormed && a.Recipient == "alice" {
 			delivered = true
 		}
 	}

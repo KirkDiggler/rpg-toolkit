@@ -62,10 +62,6 @@ type MoveInput struct {
 type Step struct {
 	// Position is the cell entered, in dungeon-absolute space.
 	Position spatial.Position `json:"position"`
-
-	// Seq is the step beat's sequence IN THE MOVER'S OWN delivered
-	// numbering (stream.go).
-	Seq uint64 `json:"seq"`
 }
 
 // MovementStatus distinguishes a completed route from a resumable reaction
@@ -255,17 +251,6 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
 		return nil, fmt.Errorf("move: %w", err)
-	}
-
-	// The walk collected the record's own sequences step by step; the
-	// numbering exists only once commit has run, so the translation into
-	// the MOVER's delivered numbering happens here (stream.go) — the mover
-	// is audience to every one of their own steps, frontier or not.
-	for i := range res.steps {
-		res.steps[i].Seq = scope.deliveredSeq(in.Member, res.steps[i].Seq)
-	}
-	if res.formed != nil {
-		res.formed.Seq = scope.deliveredSeq(in.Member, res.formed.Seq)
 	}
 
 	return &MoveOutput{
@@ -510,7 +495,6 @@ func (m *Manager) runWalk(
 		// answer keeps being right without anyone noticing it had to change.
 		res.steps = append(res.steps, Step{
 			Position: stepped.Stepped.To,
-			Seq:      stepped.Seq,
 		})
 		from = stepped.Stepped.To
 		mergeDiscoveries(res.discovered, projectDiscoveries(stepped.IntelDeltas))
@@ -554,25 +538,13 @@ func refusedStep(i, n int, cell spatial.Position, err error) error {
 	return fmt.Errorf("step %d of %d to (%v,%v): %w: %v", i+1, n, cell.X, cell.Y, ours, err)
 }
 
-// projectFormedFor is projectFormed with the beat's sequence translated into
-// one member's own delivered numbering — for verb outputs, which report in
-// their actor's numbering (stream.go). Callable only after commit has
-// numbered the streams.
-func projectFormedFor(scope *writeScope, member string, f *encounter.FormedBubble) *Formed {
-	out := projectFormed(f)
-	if out != nil {
-		out.Seq = scope.deliveredSeq(member, f.Seq)
-	}
-	return out
-}
-
 // projectFormed turns the composition's report of a started fight into the
 // SDK's own shape.
 func projectFormed(f *encounter.FormedBubble) *Formed {
 	if f == nil {
 		return nil
 	}
-	out := &Formed{Seq: f.Seq}
+	out := &Formed{}
 	for _, id := range f.Order {
 		out.Order = append(out.Order, string(id))
 	}
@@ -633,7 +605,7 @@ func validateWalk(enc *encounter.Encounter, member encounter.MemberID, path []sp
 			// adjacency as Distance <= 1, so zero passes the check below, and
 			// the composition's placement explicitly permits the mover's own
 			// cell. The no-op then went the whole way — a genuine `moved` beat
-			// recorded and persisted, sight refreshed, EventMoved fanned out to
+			// recorded and persisted, sight refreshed, the walk fanned out to
 			// every client — for a movement that never happened, and free-roam
 			// has no movement budget to notice the discrepancy later.
 			//

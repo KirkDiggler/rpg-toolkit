@@ -12,6 +12,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -46,7 +47,6 @@ type CommandTurnSuite struct {
 	encounters *fakeEncounters
 	characters *fakeCharacters
 	driver     *recordingBehavior
-	stream     *fakeStream
 
 	// behind is the brain the recorder wraps, for the one test that needs a
 	// driver of its own. Nil means the real behavior, which is what every
@@ -89,12 +89,10 @@ func (s *CommandTurnSuite) scene(
 		s.behind = session.Pass{}
 	}
 	s.driver = &recordingBehavior{next: s.behind}
-	s.stream = &fakeStream{}
 
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: whisperDice{}, TurnDriver: s.driver,
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
-		Events: s.stream,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -216,15 +214,11 @@ func (s *CommandTurnSuite) where(member string) spatial.Position {
 // story is one member's whole story, decoded to the fields these tests read.
 func (s *CommandTurnSuite) story(member string) []storyBeat {
 	s.T().Helper()
-	entries, err := s.mgr.Story(context.Background(), &session.StoryInput{
-		Session: "sess", Member: member,
-	})
-	s.Require().NoError(err)
-
+	entries := storyBeats(s.T(), s.mgr, "sess", member)
 	out := make([]storyBeat, 0, len(entries))
 	for _, entry := range entries {
 		var beat storyBeat
-		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		entry.decode(s.T(), &beat)
 		out = append(out, beat)
 	}
 	return out
@@ -234,13 +228,8 @@ func (s *CommandTurnSuite) story(member string) []storyBeat {
 // ref, in the order they were recorded — who the fight says put it there.
 func (s *CommandTurnSuite) appliedSources(ref string) []string {
 	s.T().Helper()
-	entries, err := s.mgr.Story(context.Background(), &session.StoryInput{
-		Session: "sess", Member: "bard",
-	})
-	s.Require().NoError(err)
-
 	var out []string
-	for _, entry := range entries {
+	for _, entry := range storyBeats(s.T(), s.mgr, "sess", "bard") {
 		var beat struct {
 			Result *struct {
 				Kind     string `json:"kind"`
@@ -248,7 +237,7 @@ func (s *CommandTurnSuite) appliedSources(ref string) []string {
 				SourceID string `json:"source_id"`
 			} `json:"result"`
 		}
-		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		entry.decode(s.T(), &beat)
 		if beat.Result == nil || beat.Result.Kind != "condition-applied" || beat.Result.Ref != ref {
 			continue
 		}
@@ -398,26 +387,39 @@ func (s *CommandTurnSuite) TestFleeWalksTheCreatureAwayAndEndsTheTurn() {
 	s.Positive(s.walkedCells("skeleton"))
 }
 
+// commandedResult is the result of a condition-applied beat, as written.
+type commandedResult struct {
+	Kind   string `json:"kind"`
+	Target string `json:"target"`
+	Ref    string `json:"ref"`
+	Detail string `json:"detail"`
+}
+
 // commandedBeat is the bard's copy of the condition-applied beat that names
-// the Commanded ref, selected by what it says and never by position.
-func (s *CommandTurnSuite) commandedBeat() session.ConditionAppliedBody {
+// the Commanded ref, selected by what it says and never by position, with
+// the result exactly as the beat carries it.
+func (s *CommandTurnSuite) commandedBeat() (commandedResult, json.RawMessage) {
 	s.T().Helper()
 	want := refs.Conditions.Commanded().String()
-	for _, event := range eventsFor(s.stream.published, "bard") {
-		if event.Kind != session.EventActivationResult {
+	for _, entry := range beatsNamed(storyBeats(s.T(), s.mgr, "sess", "bard"), encounter.BeatActivationResult) {
+		var beat struct {
+			Result json.RawMessage `json:"result"`
+		}
+		entry.decode(s.T(), &beat)
+		var result commandedResult
+		if len(beat.Result) == 0 || json.Unmarshal(beat.Result, &result) != nil {
 			continue
 		}
-		body, ok := event.Body.(session.ActivationResultBody)
-		if ok && body.ConditionApplied != nil && body.ConditionApplied.Ref == want {
-			return *body.ConditionApplied
+		if result.Kind == string(encounter.ResultConditionApplied) && result.Ref == want {
+			return result, beat.Result
 		}
 	}
 	s.Require().FailNow("no Commanded condition-applied beat reached the bard")
-	return session.ConditionAppliedBody{}
+	return commandedResult{}, nil
 }
 
 // TestACommandBeatCarriesTheWord proves the word the caster chose reaches the
-// condition-applied beat as its detail, and the marshalled body names it.
+// condition-applied beat as its detail, and the written result names it.
 func (s *CommandTurnSuite) TestACommandBeatCarriesTheWord() {
 	for _, word := range []string{spells.CommandWordGrovel, spells.CommandWordApproach} {
 		s.Run(word, func() {
@@ -425,12 +427,9 @@ func (s *CommandTurnSuite) TestACommandBeatCarriesTheWord() {
 			_, err := s.command("skeleton", word)
 			s.Require().NoError(err)
 
-			beat := s.commandedBeat()
+			beat, raw := s.commandedBeat()
 			s.Equal("skeleton", beat.Target)
 			s.Equal(word, beat.Detail)
-
-			raw, err := json.Marshal(beat)
-			s.Require().NoError(err)
 			s.Contains(string(raw), `"detail":"`+word+`"`)
 		})
 	}

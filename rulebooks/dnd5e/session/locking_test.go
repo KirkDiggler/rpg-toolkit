@@ -87,9 +87,9 @@ type guardedStream struct {
 	published int
 }
 
-func (p *guardedStream) Publish(_ context.Context, events []session.Event) error {
+func (p *guardedStream) PublishActs(_ context.Context, acts []session.Act) error {
 	p.probe()
-	p.published += len(events)
+	p.published += len(acts)
 	return nil
 }
 
@@ -115,10 +115,10 @@ func (s *SessionLockSuite) SetupTest() {
 	}
 	probe := func() { s.probe() }
 	s.stream = &guardedStream{probe: probe}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		Sessions:   guardedSessions{SessionRepository: s.store, probe: probe},
 		Encounters: guardedEncounters{EncounterRepository: newFakeEncounters(), probe: probe},
-		Characters: testCharacters(), Events: s.stream, Dice: testDice{},
+		Characters: testCharacters(), Dice: testDice{},
 		PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{}, Locker: s.locker,
 	})
 	s.Require().NoError(err)

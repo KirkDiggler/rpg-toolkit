@@ -31,6 +31,30 @@ func healingCleric() *character.Data {
 	return sheet
 }
 
+// healingResult is a healing activation-result beat's `result`, the fields
+// these tests read.
+type healingResult struct {
+	Kind        string                   `json:"kind"`
+	Target      string                   `json:"target"`
+	Ref         string                   `json:"ref"`
+	Amount      int                      `json:"amount"`
+	Requested   int                      `json:"requested"`
+	Before      int                      `json:"before"`
+	After       int                      `json:"after"`
+	Calculation *session.RollCalculation `json:"calculation"`
+}
+
+// healOf decodes a healing activation-result beat, failing unless it is one.
+func (s *CastSuite) healOf(beat witnessed) healingResult {
+	s.T().Helper()
+	var body struct {
+		Result healingResult `json:"result"`
+	}
+	beat.decode(s.T(), &body)
+	s.Require().Equal(string(encounter.ResultHealingApplied), body.Result.Kind, "a healing result: %s", beat.Payload)
+	return body.Result
+}
+
 func (s *CastSuite) TestCureWoundsLifeBonusClampingAndStoryReload() {
 	sheet := healingCleric()
 	sheet.SubclassID = classes.LifeDomain
@@ -43,17 +67,14 @@ func (s *CastSuite) TestCureWoundsLifeBonusClampingAndStoryReload() {
 		Session: "sess", Member: "cleric", DeclarationID: s.castRow(spells.CureWounds).ID, Targets: []string{"patient"},
 	})
 	s.Require().NoError(err)
-	beats := s.beats(session.EventCast, session.EventActivationResult)
+	beats := s.beats(encounter.BeatCast, encounter.BeatActivationResult)
 	s.Require().Len(beats, 2)
-	body, ok := beats[1].Body.(session.ActivationResultBody)
-	s.Require().True(ok)
-	heal := body.HealingApplied
-	s.Require().NotNil(heal)
+	heal := s.healOf(beats[1])
 	s.Equal(11, heal.Requested)
 	s.Equal(4, heal.Amount)
-	s.Equal(16, heal.HPBefore)
-	s.Equal(20, heal.HPAfter)
-	s.Equal(refs.Spells.CureWounds().String(), heal.SourceRef)
+	s.Equal(16, heal.Before)
+	s.Equal(20, heal.After)
+	s.Equal(refs.Spells.CureWounds().String(), heal.Ref)
 	s.Require().NotNil(heal.Calculation)
 	s.Require().Len(heal.Calculation.Components, 3)
 	s.Equal([]int{5}, heal.Calculation.Components[0].Dice.FinalRolls)
@@ -76,12 +97,10 @@ func (s *CastSuite) TestCureWoundsLifeBonusClampingAndStoryReload() {
 	}
 	s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: brokenDice{}, TurnDriver: session.Pass{},
-		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream,
+		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 	})
 	s.Require().NoError(err)
-	story, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "cleric", FromSeq: beats[0].Seq})
-	s.Require().NoError(err)
-	s.Equal(beats, story)
+	s.Equal(beats, s.beats(encounter.BeatCast, encounter.BeatActivationResult), "the reloaded story replays the same beats")
 	s.Equal(20, s.characters.byID["patient"].HitPoints)
 	s.Equal(1, s.characters.byID["cleric"].Resources[resources.SpellSlotLevel1].Current)
 }
@@ -111,13 +130,14 @@ func (s *CastSuite) TestCureWoundsUndeadIsPaidNoEffect() {
 	s.Equal(before, s.storedSkeleton())
 	s.Equal(2, s.dice.next, "no healing dice on an unaffected recipient")
 	s.Equal(1, s.characters.byID["cleric"].Resources[resources.SpellSlotLevel1].Current)
-	beats := s.beats(session.EventActivationResult)
+	beats := s.beats(encounter.BeatActivationResult)
 	s.Require().Len(beats, 1)
-	body := beats[0].Body.(session.ActivationResultBody)
-	s.Require().NotNil(body.HealingApplied)
-	s.Zero(body.HealingApplied.Requested)
-	s.Zero(body.HealingApplied.Amount)
-	s.Equal("No effect on undead", body.HealingApplied.Calculation.Components[0].Source.Label)
+	heal := s.healOf(beats[0])
+	s.Zero(heal.Requested)
+	s.Zero(heal.Amount)
+	s.Require().NotNil(heal.Calculation)
+	s.Require().NotEmpty(heal.Calculation.Components)
+	s.Equal("No effect on undead", heal.Calculation.Components[0].Source.Label)
 }
 
 func (s *CastSuite) TestCureWoundsUntypedMonsterSelectionHealingAndReload() {
@@ -149,15 +169,14 @@ func (s *CastSuite) TestCureWoundsUntypedMonsterSelectionHealingAndReload() {
 			s.Equal(1, s.characters.byID["cleric"].Resources[resources.SpellSlotLevel1].Current)
 			s.False(s.castRow(spells.CureWounds).Available, "the action was spent")
 			s.Equal(3, s.dice.next, "two initiative rolls and one healing die")
-			beats := s.beats(session.EventCast, session.EventActivationResult)
+			beats := s.beats(encounter.BeatCast, encounter.BeatActivationResult)
 			s.Require().Len(beats, 2)
-			heal := beats[1].Body.(session.ActivationResultBody).HealingApplied
-			s.Require().NotNil(heal)
+			heal := s.healOf(beats[1])
 			s.Equal(8, heal.Requested)
 			s.Equal(8, heal.Amount)
-			s.Equal(1, heal.HPBefore)
-			s.Equal(9, heal.HPAfter)
-			s.Equal(refs.Spells.CureWounds().String(), heal.SourceRef)
+			s.Equal(1, heal.Before)
+			s.Equal(9, heal.After)
+			s.Equal(refs.Spells.CureWounds().String(), heal.Ref)
 			for id, data := range s.sessions.byID {
 				s.sessions.byID[id], err = copyOf(data)
 				s.Require().NoError(err)
@@ -170,11 +189,9 @@ func (s *CastSuite) TestCureWoundsUntypedMonsterSelectionHealingAndReload() {
 				s.characters.byID[id], err = copyOf(data)
 				s.Require().NoError(err)
 			}
-			s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: brokenDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream})
+			s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: brokenDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters})
 			s.Require().NoError(err)
-			story, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "cleric", FromSeq: beats[0].Seq})
-			s.Require().NoError(err)
-			s.Equal(beats, story, "reload replays the result without another roll")
+			s.Equal(beats, s.beats(encounter.BeatCast, encounter.BeatActivationResult), "reload replays the result without another roll")
 			s.Equal(9, s.storedSkeleton())
 			s.Equal(1, s.characters.byID["cleric"].Resources[resources.SpellSlotLevel1].Current)
 			for _, npc := range s.sessions.byID["sess"].NPCs {
@@ -199,7 +216,7 @@ func (s *CastSuite) TestCureWoundsInvalidRequestsLeaveDiceSlotsAndHPAlone() {
 			s.Require().Error(err)
 			s.JSONEq(storedJSON(s.T(), before), storedJSON(s.T(), s.characters.byID["cleric"]))
 			s.Equal(2, s.dice.next)
-			s.Empty(s.beats(session.EventCast, session.EventActivationResult))
+			s.Empty(s.beats(encounter.BeatCast, encounter.BeatActivationResult))
 		})
 	}
 }
@@ -216,8 +233,8 @@ func (s *CastSuite) TestCureWoundsHealsSelfAndPaysOnce() {
 	s.Require().NoError(err)
 	s.Equal(10, s.characters.byID["cleric"].HitPoints)
 	s.Equal(1, s.characters.byID["cleric"].Resources[resources.SpellSlotLevel1].Current)
-	s.Empty(s.beats(session.EventSaved))
-	s.Len(s.beats(session.EventActivationResult), 1)
+	s.Empty(s.beats(encounter.BeatSaved))
+	s.Len(s.beats(encounter.BeatActivationResult), 1)
 	s.False(s.castRow(spells.CureWounds).Available, "one action has been spent")
 	before := s.dice.next
 	_, err = s.mgr.Cast(context.Background(), &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: row.ID, Targets: []string{"cleric"}})
@@ -233,9 +250,11 @@ func (s *CastSuite) TestCureWoundsFullHPStillPaysAndReportsZeroApplied() {
 	s.scene(healingCleric(), 2, 5)
 	_, err := s.mgr.Cast(context.Background(), &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: s.castRow(spells.CureWounds).ID, Targets: []string{"cleric"}})
 	s.Require().NoError(err)
-	beat := s.beats(session.EventActivationResult)[0].Body.(session.ActivationResultBody)
-	s.Equal(8, beat.HealingApplied.Requested)
-	s.Zero(beat.HealingApplied.Amount)
+	beats := s.beats(encounter.BeatActivationResult)
+	s.Require().NotEmpty(beats)
+	heal := s.healOf(beats[0])
+	s.Equal(8, heal.Requested)
+	s.Zero(heal.Amount)
 	s.Equal(1, s.characters.byID["cleric"].Resources[resources.SpellSlotLevel1].Current)
 }
 
@@ -291,7 +310,7 @@ func (s *CastSuite) TestCureWoundsFailureBoundaries() {
 			// Wounded after the launch: its first-admission rest would heal her.
 			s.characters.byID["cleric"].HitPoints = 2
 			id := s.castRow(spells.CureWounds).ID
-			config := &session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream}
+			config := &session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters}
 			fault := errors.New("injected failure")
 			switch failure {
 			case "roller":
@@ -299,7 +318,7 @@ func (s *CastSuite) TestCureWoundsFailureBoundaries() {
 			case "encounter save":
 				config.Encounters = &failingEncounters{fakeEncounters: s.encounters, saveErr: fault}
 			case "delivery":
-				config.Events = &failingStream{err: fault}
+				config.Acts = &failingStream{err: fault}
 			}
 			var err error
 			s.mgr, err = session.NewManager(config)
@@ -324,10 +343,9 @@ func (s *CastSuite) TestCureWoundsFailureBoundaries() {
 			} else {
 				s.Require().NoError(err)
 				s.Require().NotNil(out)
-				s.True(out.Delivery.Failed)
-				story, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "cleric", FromSeq: out.Seqs[0]})
-				s.Require().NoError(err)
-				s.Len(story, 2)
+				s.Equal([]string{session.DeliveryActs}, out.Delivery.Failed)
+				s.Len(s.beats(encounter.BeatCast, encounter.BeatActivationResult), 2,
+					"a failed delivery still recorded the cast and its result")
 			}
 		})
 	}

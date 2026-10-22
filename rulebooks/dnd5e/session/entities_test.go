@@ -39,7 +39,6 @@ func (s *EntitiesTestSuite) SetupTest() {
 	s.characters = testCharacters()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
-		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -186,7 +185,6 @@ func (s *EntitiesTestSuite) TestSpawnedContentIsNeverLookedUpAsACharacter() {
 	characters := testCharacters()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: characters,
-		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	s.characters = characters
@@ -257,7 +255,6 @@ func (s *EntitiesTestSuite) TestARepositoryReportingSuccessWithNoDataIsRejected(
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: &nilDataCharacters{},
-		Events:     session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 
@@ -328,7 +325,7 @@ func benchManager(b *testing.B) *session.Manager {
 	b.Helper()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
-		Characters: testCharacters(), Events: session.DiscardEvents{},
+		Characters: testCharacters(),
 	})
 	if err != nil {
 		b.Fatalf("manager: %v", err)

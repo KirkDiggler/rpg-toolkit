@@ -95,7 +95,7 @@ func aFight(
 
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: roller, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
-		Characters: characters, Events: session.DiscardEvents{},
+		Characters: characters,
 	})
 	if err != nil {
 		t.Fatalf("building manager: %v", err)
@@ -184,11 +184,10 @@ func (s *EconomySuite) storedEconomy() *character.ActionEconomyData {
 	return stored.ActionEconomy
 }
 
-func (s *EconomySuite) story() []session.Event {
+// story is every beat alice has witnessed.
+func (s *EconomySuite) story() []witnessed {
 	s.T().Helper()
-	out, err := s.mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: "alice"})
-	s.Require().NoError(err)
-	return out
+	return storyBeats(s.T(), s.mgr, "sess", "alice")
 }
 
 // TestALevel1FightersSecondSwingIsRefused is the headline, and the thing

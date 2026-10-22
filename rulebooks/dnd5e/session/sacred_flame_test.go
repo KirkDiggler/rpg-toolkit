@@ -5,10 +5,12 @@ package session_test
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -57,26 +59,26 @@ func (s *CastSuite) TestSacredFlameSaveDamageAndReload() {
 			firstRow := s.castRow(spells.SacredFlame)
 			s.Require().True(firstRow.Available, "exhausted slots do not block a cantrip")
 			before := s.storedSkeleton()
+			mark := lastSeq(storyBeats(s.T(), s.mgr, "sess", s.member))
 			out, err := s.cast(spells.SacredFlame)
 			s.Require().NoError(err)
 			s.Require().NotNil(out.Saved)
 			s.Equal(13, out.Saved.DC, "8 + proficiency 2 + Wisdom 3")
 			s.Equal(tc.saved, out.Saved.Succeeded)
-			events := s.beats(session.EventCast, session.EventSaved, session.EventActivationResult)
-			expectedBeats := 2 // cast and save; only a failed save adds damage
+			told := storyBeatsAfter(s.T(), s.mgr, "sess", s.member, mark)
+			events := beatsNamed(told, encounter.BeatCast, encounter.BeatSaved, encounter.BeatActivationResult)
+			expectedBeats := []string{encounter.BeatCast, encounter.BeatSaved} // only a failed save adds damage
 			if !tc.saved {
-				expectedBeats++
+				expectedBeats = append(expectedBeats, encounter.BeatActivationResult)
 			}
-			s.Require().Len(events, expectedBeats)
-			s.Len(out.Seqs, expectedBeats)
-			s.Equal(session.EventCast, events[0].Kind)
-			cast, ok := events[0].Body.(session.CastBody)
-			s.Require().True(ok)
+			s.Require().Equal(expectedBeats, beatNames(events))
+			var cast flameCastBeat
+			events[0].decode(s.T(), &cast)
 			s.Equal("cleric", cast.Actor)
 			s.Equal(refs.Spells.SacredFlame().String(), cast.Spell.Ref)
-			s.Equal("skeleton", cast.Target)
-			saved, ok := events[1].Body.(session.SavedBody)
-			s.Require().True(ok)
+			s.Equal([]string{"skeleton"}, cast.Targets)
+			var saved flameSavedBeat
+			events[1].decode(s.T(), &saved)
 			s.Equal(string(abilities.DEX), saved.Ability)
 			s.Equal("skeleton", saved.Saver)
 			s.Equal(tc.roll, saved.Roll)
@@ -85,18 +87,17 @@ func (s *CastSuite) TestSacredFlameSaveDamageAndReload() {
 			s.Equal(tc.saved, saved.Succeeded)
 			s.Equal(refs.Spells.SacredFlame().String(), saved.Source.Ref)
 			if !tc.saved {
-				result, ok := events[2].Body.(session.ActivationResultBody)
-				s.Require().True(ok)
-				s.Nil(result.ConditionApplied)
-				s.Require().NotNil(result.DamageApplied)
-				damage := result.DamageApplied
-				s.Equal(session.DamageRadiant, damage.DamageType)
-				s.Equal(refs.Spells.SacredFlame().String(), damage.SourceRef)
+				var result flameResultBeat
+				events[2].decode(s.T(), &result)
+				s.Equal(encounter.ResultDamageApplied, result.Result.Kind, "damage, not a condition")
+				damage := result.Result
+				s.Equal(string(session.DamageRadiant), damage.DamageType)
+				s.Equal(refs.Spells.SacredFlame().String(), damage.Ref)
 				s.Equal("skeleton", damage.Target)
 				s.Equal(tc.damage, damage.Amount)
-				s.Equal(before, damage.HPBefore)
-				s.Equal(before-tc.damage, damage.HPAfter)
-				s.Require().NotNil(damage.Calculation)
+				s.Equal(before, damage.Before)
+				s.Equal(before-tc.damage, damage.After)
+				s.NotEmpty(damage.Calculation)
 			}
 			s.Equal(before-tc.damage, s.storedSkeleton())
 			s.Equal(2+len(rolls), s.dice.next, "a successful save rolls no damage")
@@ -117,14 +118,11 @@ func (s *CastSuite) TestSacredFlameSaveDamageAndReload() {
 			}
 			s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 				PresentationIDs: testPresentationIDs{}, Dice: brokenDice{}, TurnDriver: session.Pass{},
-				Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Events: s.stream,
+				Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 			})
 			s.Require().NoError(err)
-			story, err := s.mgr.Story(context.Background(), &session.StoryInput{
-				Session: "sess", Member: s.member, FromSeq: events[0].Seq,
-			})
-			s.Require().NoError(err)
-			s.Equal(events, story, "cast, save and damage survive JSON and manager recreation")
+			s.Equal(told, storyBeatsAfter(s.T(), s.mgr, "sess", s.member, mark),
+				"cast, save and damage survive JSON and manager recreation")
 			s.Equal(before-tc.damage, s.storedSkeleton())
 			s.Equal(castingCleric().KnownCantrips, s.characters.byID[s.member].KnownCantrips)
 			row := s.castRow(spells.SacredFlame)
@@ -136,6 +134,47 @@ func (s *CastSuite) TestSacredFlameSaveDamageAndReload() {
 			s.refuseSacredFlame(firstRow.ID, "skeleton")
 		})
 	}
+}
+
+// flameCastBeat is a cast beat's payload.
+type flameCastBeat struct {
+	Actor string `json:"actor"`
+	Spell struct {
+		Ref  string `json:"ref"`
+		Name string `json:"name"`
+	} `json:"spell"`
+	Targets []string `json:"targets"`
+}
+
+// flameSavedBeat is a saved beat's payload.
+type flameSavedBeat struct {
+	Saver     string `json:"saver"`
+	Ability   string `json:"ability"`
+	Roll      int    `json:"roll"`
+	Total     int    `json:"total"`
+	DC        int    `json:"dc"`
+	Succeeded bool   `json:"succeeded"`
+	Source    struct {
+		Ref string `json:"ref"`
+	} `json:"source"`
+}
+
+// flameResultBeat is an activation_result beat's payload: the one result it
+// carries.
+type flameResultBeat struct {
+	Actor  string `json:"actor"`
+	Result struct {
+		Kind        encounter.ActivationResultKind `json:"kind"`
+		Target      string                         `json:"target"`
+		Ref         string                         `json:"ref"`
+		Name        string                         `json:"name"`
+		Amount      int                            `json:"amount"`
+		Requested   int                            `json:"requested"`
+		Before      int                            `json:"before"`
+		After       int                            `json:"after"`
+		DamageType  string                         `json:"damage_type"`
+		Calculation json.RawMessage                `json:"calculation"`
+	} `json:"result"`
 }
 
 // offeredCantrips is every spell ref the cast panel is currently offering.
@@ -155,15 +194,15 @@ func (s *CastSuite) offeredCantrips() []string {
 	return out
 }
 
-// Refusal must not roll, append events, or write any repository.
+// Refusal must not roll, append beats, or write any repository.
 func (s *CastSuite) refuseSacredFlame(selector, target string) {
 	s.T().Helper()
-	before := []int{s.sessions.saves, s.encounters.saves, s.characters.saves, s.dice.next, len(s.stream.published)}
+	before := []int{s.sessions.saves, s.encounters.saves, s.characters.saves, s.dice.next, len(storyBeats(s.T(), s.mgr, "sess", s.member))}
 	_, err := s.mgr.Cast(context.Background(), &session.CastInput{
 		Session: "sess", Member: s.member, DeclarationID: selector, Target: target,
 	})
 	s.ErrorIs(err, session.ErrStaleDeclaration)
-	s.Equal(before, []int{s.sessions.saves, s.encounters.saves, s.characters.saves, s.dice.next, len(s.stream.published)})
+	s.Equal(before, []int{s.sessions.saves, s.encounters.saves, s.characters.saves, s.dice.next, len(storyBeats(s.T(), s.mgr, "sess", s.member))})
 }
 
 func (s *CastSuite) TestSacredFlameRejectsForgedAndUnownedOffers() {
@@ -205,11 +244,11 @@ func (s *CastSuite) TestACastWhoseTargetLostItsSheetNamesTheSheet() {
 
 	s.sessions.byID["sess"].NPCs = nil
 
-	before := []int{s.sessions.saves, s.encounters.saves, s.characters.saves, s.dice.next, len(s.stream.published)}
+	before := []int{s.sessions.saves, s.encounters.saves, s.characters.saves, s.dice.next, len(storyBeats(s.T(), s.mgr, "sess", s.member))}
 	_, err := s.mgr.Cast(context.Background(), &session.CastInput{
 		Session: "sess", Member: s.member, DeclarationID: row.ID, Target: "skeleton",
 	})
 	s.Require().ErrorIs(err, session.ErrNoSheet, "the sheet refuses the cast, not the selector")
 	s.NotErrorIs(err, session.ErrStaleDeclaration)
-	s.Equal(before, []int{s.sessions.saves, s.encounters.saves, s.characters.saves, s.dice.next, len(s.stream.published)})
+	s.Equal(before, []int{s.sessions.saves, s.encounters.saves, s.characters.saves, s.dice.next, len(storyBeats(s.T(), s.mgr, "sess", s.member))})
 }

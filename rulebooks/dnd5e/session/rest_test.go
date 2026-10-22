@@ -31,6 +31,8 @@ type RestSuite struct {
 	characters *fakeCharacters
 	stream     *fakeStream
 	mgr        *session.Manager
+	// marks is each member's last story seq when the scene was handed over.
+	marks map[string]uint64
 }
 
 func TestRestSuite(t *testing.T) { suite.Run(t, new(RestSuite)) }
@@ -59,9 +61,9 @@ func (s *RestSuite) launch(sc scene, clock []string, alice, bob *character.Data,
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter(alice.ID), armedFighter(bob.ID))
 	s.stream = &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: s.stream,
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -73,6 +75,10 @@ func (s *RestSuite) launch(sc scene, clock []string, alice, bob *character.Data,
 	s.characters.byID[bob.ID] = bob
 	s.encounters.byID[testSession].SightAreas = append(s.encounters.byID[testSession].SightAreas, areas...)
 	s.stream.published = nil
+	s.marks = map[string]uint64{}
+	for _, id := range []string{alice.ID, bob.ID} {
+		s.marks[id] = lastSeq(storyBeats(s.T(), mgr, testSession, id))
+	}
 }
 
 func (s *RestSuite) stored(id string) *character.Data {
@@ -83,14 +89,42 @@ func (s *RestSuite) stored(id string) *character.Data {
 
 func (s *RestSuite) clock() int { return s.encounters.byID[testSession].Clock.HighWater }
 
-func (s *RestSuite) restedTo(recipient string) []session.RestedBody {
-	var out []session.RestedBody
-	for _, event := range s.stream.published {
-		if event.Kind != session.EventRested || event.Recipient != recipient {
-			continue
-		}
-		body, ok := event.Body.(session.RestedBody)
-		s.Require().True(ok, "a rest event carries its typed body")
+// restRemoval is one condition removal a beat carries, in the
+// activation-result shape.
+type restRemoval struct {
+	Kind   string `json:"kind"`
+	Target string `json:"target"`
+	Ref    string `json:"ref"`
+	Reason string `json:"reason"`
+}
+
+// restedBeat is a rested beat's payload, the fields these tests read.
+type restedBeat struct {
+	Member             string   `json:"member"`
+	Kind               string   `json:"kind"`
+	HitDiceSpent       int      `json:"hit_dice_spent"`
+	ResourcesRefilled  []string `json:"resources_refilled"`
+	ConcentrationEnded []struct {
+		Caster  string           `json:"caster"`
+		Spell   session.SpellRef `json:"spell"`
+		Reason  string           `json:"reason"`
+		Removed []restRemoval    `json:"removed"`
+	} `json:"concentration_ended"`
+	Ended []restRemoval `json:"ended"`
+}
+
+// toldSince is what recipient's story gained since the scene was handed over.
+func (s *RestSuite) toldSince(recipient string) []witnessed {
+	return storyBeatsAfter(s.T(), s.mgr, testSession, recipient, s.marks[recipient])
+}
+
+// restedTo is every rest beat recipient was told since the scene was handed
+// over.
+func (s *RestSuite) restedTo(recipient string) []restedBeat {
+	var out []restedBeat
+	for _, beat := range beatsNamed(s.toldSince(recipient), encounter.BeatRested) {
+		var body restedBeat
+		beat.decode(s.T(), &body)
 		out = append(out, body)
 	}
 	return out
@@ -359,26 +393,30 @@ func (s *RestSuite) TestAnAreaClosesAfterTheRestIsTold() {
 	})
 	s.Require().NoError(err)
 
+	// removedFrom is who an activation-result beat took a condition off.
+	removedFrom := func(beat witnessed) string {
+		var body struct {
+			Result *restRemoval `json:"result"`
+		}
+		beat.decode(s.T(), &body)
+		if body.Result == nil || body.Result.Kind != string(encounter.ResultConditionRemoved) {
+			return ""
+		}
+		return body.Result.Target
+	}
 	var rested, left uint64
+	for _, beat := range s.toldSince("bob") {
+		if beat.Beat == encounter.BeatRested {
+			rested = beat.Seq
+		}
+		if beat.Beat == encounter.BeatActivationResult && removedFrom(beat) == "bob" {
+			left = beat.Seq
+		}
+	}
 	aliceSawTheRest, aliceLeft := false, false
-	for _, event := range s.stream.published {
-		removed := ""
-		if body, ok := event.Body.(session.ActivationResultBody); ok && event.Kind == session.EventActivationResult &&
-			body.ConditionRemoved != nil {
-			removed = body.ConditionRemoved.Target
-		}
-		switch event.Recipient {
-		case "bob":
-			if event.Kind == session.EventRested {
-				rested = event.Seq
-			}
-			if removed == "bob" {
-				left = event.Seq
-			}
-		case "alice":
-			aliceSawTheRest = aliceSawTheRest || event.Kind == session.EventRested
-			aliceLeft = aliceLeft || removed == "alice"
-		}
+	for _, beat := range s.toldSince("alice") {
+		aliceSawTheRest = aliceSawTheRest || beat.Beat == encounter.BeatRested
+		aliceLeft = aliceLeft || (beat.Beat == encounter.BeatActivationResult && removedFrom(beat) == "alice")
 	}
 	s.Require().NotZero(rested, "bob is told his own rest")
 	s.Require().NotZero(left, "bob is told he left the area his rest closed")

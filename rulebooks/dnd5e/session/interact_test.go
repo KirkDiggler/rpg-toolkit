@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/npc"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -39,7 +40,6 @@ func (s *InteractTestSuite) SetupTest() {
 	s.characters = testCharacters()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
-		Events: session.DiscardEvents{},
 	})
 	s.Require().NoError(err)
 	s.mgr = mgr
@@ -71,7 +71,8 @@ func (s *InteractTestSuite) TestAdjacentPlayerGetsADescriptorMatchingWhatWasPlac
 	s.Equal(data.DisplayName, out.Descriptor.DisplayName)
 	s.Equal(data.Capabilities, out.Descriptor.Capabilities)
 	s.Equal(data.CombatPolicy, out.Descriptor.CombatPolicy)
-	s.NotZero(out.Seq)
+	s.NotEmpty(beatsNamed(storyBeats(s.T(), s.mgr, "sess", "alice"), encounter.BeatInteracted),
+		"the interaction is a beat of alice's story")
 }
 
 // TestOutOfRangeRefusalPropagates proves encounter's own range refusal

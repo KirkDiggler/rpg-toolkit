@@ -207,7 +207,6 @@ func advancementManagerWith(
 		Sessions:        newFakeSessions(),
 		Encounters:      newFakeEncounters(),
 		Characters:      characters,
-		Events:          session.DiscardEvents{},
 		Dice:            roller,
 		PresentationIDs: testPresentationIDs{},
 		TurnDriver:      session.Pass{},

@@ -92,7 +92,7 @@ func newRosterFixture(t *testing.T) *rosterFixture {
 	manager, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{},
 		Sessions:        sessions, Encounters: encounters, Characters: characters,
-		Events: session.DiscardEvents{}, Dice: testDice{}, TurnDriver: session.Pass{},
+		Dice: testDice{}, TurnDriver: session.Pass{},
 	})
 	require.NoError(t, err)
 
@@ -395,8 +395,8 @@ func TestRosterRefusesANilCharacterRepositoryResult(t *testing.T) {
 	manager, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{},
 		Sessions:        fixture.sessions, Encounters: fixture.encounters,
-		Characters: nilRosterRepository{}, Events: session.DiscardEvents{},
-		Dice: testDice{}, TurnDriver: session.Pass{},
+		Characters: nilRosterRepository{},
+		Dice:       testDice{}, TurnDriver: session.Pass{},
 	})
 	require.NoError(t, err)
 
@@ -572,8 +572,8 @@ func TestRosterSurvivesManagerRestartFromCopiedPersistence(t *testing.T) {
 	restarted, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{},
 		Sessions:        restartedSessions, Encounters: restartedEncounters,
-		Characters: restartedCharacters, Events: session.DiscardEvents{},
-		Dice: testDice{}, TurnDriver: session.Pass{},
+		Characters: restartedCharacters,
+		Dice:       testDice{}, TurnDriver: session.Pass{},
 	})
 	require.NoError(t, err)
 
@@ -602,7 +602,7 @@ func TestRosterRejectsMalformedNPCRefWithoutLeakingCoreErrors(t *testing.T) {
 	manager, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{},
 		Sessions:        sessions, Encounters: fixture.encounters, Characters: fixture.characters,
-		Events: session.DiscardEvents{}, Dice: testDice{}, TurnDriver: session.Pass{},
+		Dice: testDice{}, TurnDriver: session.Pass{},
 	})
 	require.NoError(t, err)
 

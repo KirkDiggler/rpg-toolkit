@@ -74,7 +74,7 @@ func (s *SpeakWorldSuite) front(rolls []int) *session.Manager {
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
 		PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: driver,
 		Sessions: s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: session.DiscardEvents{},
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 
@@ -148,12 +148,70 @@ func (s *SpeakWorldSuite) rowFor(mgr *session.Manager, verb session.Verb) sessio
 	return session.Declaration{}
 }
 
-// events reads one member's delivered stream.
-func (s *SpeakWorldSuite) events(mgr *session.Manager, member string) []session.Event {
-	story, err := mgr.Story(context.Background(), &session.StoryInput{Session: "sess", Member: member})
-	s.Require().NoError(err)
+// beats reads one member's whole story.
+func (s *SpeakWorldSuite) beats(mgr *session.Manager, member string) []witnessed {
+	return storyBeats(s.T(), mgr, "sess", member)
+}
 
-	return story
+// lastBeat decodes the last beat named name in alice's story into v, and
+// reports whether there was one.
+func (s *SpeakWorldSuite) lastBeat(mgr *session.Manager, name string, v any) bool {
+	s.T().Helper()
+	found := beatsNamed(s.beats(mgr, "alice"), name)
+	if len(found) == 0 {
+		return false
+	}
+	found[len(found)-1].decode(s.T(), v)
+	return true
+}
+
+// answerCandidate is one eligible entry of an answered beat's table roll.
+type answerCandidate struct {
+	Entry   int `json:"entry"`
+	Weight  int `json:"weight"`
+	Percent int `json:"percent"`
+	Loaded  int `json:"loaded"`
+}
+
+// answeredBeat is an answered beat's payload.
+type answeredBeat struct {
+	Creature   string            `json:"creature"`
+	Prop       string            `json:"prop"`
+	Verb       string            `json:"verb"`
+	Option     string            `json:"option"`
+	Beaten     bool              `json:"beaten"`
+	Roll       int               `json:"roll"`
+	Of         int               `json:"of"`
+	Entry      int               `json:"entry"`
+	Word       string            `json:"word"`
+	Say        string            `json:"say"`
+	Fact       string            `json:"fact"`
+	Key        string            `json:"key"`
+	Temper     string            `json:"temper"`
+	Candidates []answerCandidate `json:"candidates"`
+}
+
+// spokeBeat is a spoke beat's payload.
+type spokeBeat struct {
+	Actor       string                   `json:"actor"`
+	Target      string                   `json:"target"`
+	Prop        string                   `json:"prop"`
+	Option      string                   `json:"option"`
+	Line        string                   `json:"line"`
+	Skill       string                   `json:"skill"`
+	DC          int                      `json:"dc"`
+	Total       int                      `json:"total"`
+	Beaten      bool                     `json:"beaten"`
+	Calculation *session.RollCalculation `json:"calculation"`
+}
+
+// temperedBeat is a tempered beat's payload.
+type temperedBeat struct {
+	Member  string `json:"member"`
+	Temper  string `json:"temper"`
+	Roll    int    `json:"roll"`
+	Of      int    `json:"of"`
+	Faction string `json:"faction"`
 }
 
 // heldBy reads whether the goblin holds a deed with this verb from alice.
@@ -286,7 +344,7 @@ func (s *SpeakWorldSuite) TestAnUntrainedCheckerRollsTheLinePlain() {
 	})
 }
 
-// The option's success rows arrive as a typed beat: the creature, the verb,
+// The option's success rows arrive as their own beat in the story: the creature, the verb,
 // the option they belong to, the die, the entry that fired and the line the
 // author wrote.
 func (s *SpeakWorldSuite) TestTheAnswerReachesTheStreamAsATypedBeat() {
@@ -306,24 +364,18 @@ func (s *SpeakWorldSuite) TestTheAnswerReachesTheStreamAsATypedBeat() {
 	s.Require().NoError(err)
 	s.Require().True(out.Beaten)
 
-	var found *session.Event
-	events := s.events(mgr, "alice")
-	for i := range events {
-		if events[i].Kind == session.EventAnswered {
-			found = &events[i]
-		}
-	}
-	s.Require().NotNil(found, "the answer reached alice's stream as its own kind")
-	s.Equal(session.AnsweredBody{
-		Creature: "goblin", Verb: "speak", OptionID: "appeal", Beaten: true,
+	var found answeredBeat
+	s.Require().True(s.lastBeat(mgr, encounter.BeatAnswered, &found), "the answer reached alice's story as its own beat")
+	s.Equal(answeredBeat{
+		Creature: "goblin", Verb: "speak", Option: "appeal", Beaten: true,
 		Roll: 2, Of: 400, Entry: 0, Word: "",
 		Say: "Bandits took the cellar. Go left at the rope.", Fact: "",
 		Key: string(encounter.AnswerSuccess),
-		Candidates: []session.AnswerCandidate{
+		Candidates: []answerCandidate{
 			{Entry: 0, Weight: 3, Percent: 100, Loaded: 300},
 			{Entry: 1, Weight: 1, Percent: 100, Loaded: 100},
 		},
-	}, found.Body, "the die, every eligible entry's arithmetic, and the author's line verbatim")
+	}, found, "the die, every eligible entry's arithmetic, and the author's line verbatim")
 }
 
 // A verdict the author wrote no rows for produces NO answer beat at all.
@@ -342,9 +394,7 @@ func (s *SpeakWorldSuite) TestAnUnauthoredVerdictRollsNothing() {
 	s.Require().NoError(err)
 	s.Require().True(out.Beaten)
 
-	for _, event := range s.events(mgr, "alice") {
-		s.NotEqual(session.EventAnswered, event.Kind, "nothing was authored for a beaten appeal")
-	}
+	s.Empty(beatsNamed(s.beats(mgr, "alice"), encounter.BeatAnswered), "nothing was authored for a beaten appeal")
 }
 
 // The world clock's own refusals are the turn clock's, with its sentinels.
@@ -458,22 +508,11 @@ func (s *SpeakWorldSuite) TestAResumedAppealFinishesAsAnAppealAndRollsItsAnswer(
 	s.True(s.heldBy(mgr, encounter.DeedPersuade), "it finished as the line that was paused")
 	s.False(s.heldBy(mgr, encounter.DeedIntimidate), "and never as the other one")
 
-	var spoke, answered *session.Event
-	events := s.events(mgr, "alice")
-	for i := range events {
-		switch events[i].Kind {
-		case session.EventSpoke:
-			spoke = &events[i]
-		case session.EventAnswered:
-			answered = &events[i]
-		}
-	}
-	s.Require().NotNil(spoke, "the verdict reached the log")
-	body, ok := spoke.Body.(session.SpokeBody)
-	s.Require().True(ok)
+	var body spokeBeat
+	s.Require().True(s.lastBeat(mgr, encounter.BeatSpoke, &body), "the verdict reached the log")
 	s.Equal("alice", body.Actor)
 	s.Equal("goblin", body.Target)
-	s.Equal("appeal", body.OptionID)
+	s.Equal("appeal", body.Option)
 	s.Equal("persuasion", body.Skill)
 	s.Equal(9, body.DC)
 	s.Equal(11, body.Total, "the offered die joined the total, and nothing was re-rolled")
@@ -481,14 +520,15 @@ func (s *SpeakWorldSuite) TestAResumedAppealFinishesAsAnAppealAndRollsItsAnswer(
 	s.Require().NotNil(body.Calculation)
 	s.Equal(11, body.Calculation.Total, "and the RESUMED arithmetic rides the beat, offered die included")
 
-	s.Require().NotNil(answered, "and so did what the goblin did about it")
-	s.Equal(session.AnsweredBody{
-		Creature: "goblin", Verb: "speak", OptionID: "appeal", Beaten: true,
+	var answered answeredBeat
+	s.Require().True(s.lastBeat(mgr, encounter.BeatAnswered, &answered), "and so did what the goblin did about it")
+	s.Equal(answeredBeat{
+		Creature: "goblin", Verb: "speak", Option: "appeal", Beaten: true,
 		Roll: 1, Of: 100, Entry: 0, Word: "fact",
 		Say: "Go left at the rope.", Fact: "bandits-in-cellar",
 		Key:        string(encounter.AnswerSuccess),
-		Candidates: []session.AnswerCandidate{{Entry: 0, Weight: 1, Percent: 100, Loaded: 100}},
-	}, answered.Body)
+		Candidates: []answerCandidate{{Entry: 0, Weight: 1, Percent: 100, Loaded: 100}},
+	}, answered)
 }
 
 // THE RING IS PER VIEWER, and the sighting is what carries it
@@ -554,7 +594,7 @@ func (s *SpeakWorldSuite) frontWithBandit() *session.Manager {
 		PresentationIDs: testPresentationIDs{}, Dice: &sequenceDice{rolls: []int{10, 10, 10, 10}},
 		TurnDriver: session.Pass{},
 		Sessions:   s.sessions, Encounters: s.encounters,
-		Characters: s.characters, Events: session.DiscardEvents{},
+		Characters: s.characters,
 	})
 	s.Require().NoError(err)
 
@@ -586,15 +626,11 @@ func (s *SpeakWorldSuite) frontWithBandit() *session.Manager {
 	return mgr
 }
 
-// spokeBody is the last typed `spoke` body on alice's stream.
-func (s *SpeakWorldSuite) spokeBody(mgr *session.Manager) session.SpokeBody {
-	var body session.SpokeBody
-	for _, event := range s.events(mgr, "alice") {
-		if spoke, ok := event.Body.(session.SpokeBody); ok {
-			body = spoke
-		}
-	}
-	s.Require().NotZero(body.Actor, "the verdict reached alice's stream typed")
+// spokeBody is the last `spoke` beat in alice's story.
+func (s *SpeakWorldSuite) spokeBody(mgr *session.Manager) spokeBeat {
+	var body spokeBeat
+	s.Require().True(s.lastBeat(mgr, encounter.BeatSpoke, &body), "the verdict reached alice's story")
+	s.Require().NotZero(body.Actor)
 	return body
 }
 
@@ -649,23 +685,15 @@ func (s *SpeakWorldSuite) TestAWorldRoundRollsThroughTheSessionsOwnDice() {
 	_, err := s.appeal(mgr)
 	s.Require().NoError(err)
 
-	var answered *session.Event
-	for _, event := range s.events(mgr, "alice") {
-		if event.Kind == session.EventAnswered {
-			answered = &event
-		}
-	}
-	s.Require().NotNil(answered, "the world thought, and a creature's pick is a beat")
-
-	body, ok := answered.Body.(session.AnsweredBody)
-	s.Require().True(ok)
+	var body answeredBeat
+	s.Require().True(s.lastBeat(mgr, encounter.BeatAnswered, &body), "the world thought, and a creature's pick is a beat")
 	s.Equal(string(encounter.AnswerTime), body.Key, "this was time passing, not anybody speaking")
 	s.Empty(body.Verb, "nothing spoke, and an empty verb is that answer rather than a gap")
-	s.Empty(body.OptionID, "a time pick names no option")
+	s.Empty(body.Option, "a time pick names no option")
 	s.False(body.Beaten, "and there was no verdict to be beaten")
 	s.Equal(42, body.Roll, "the face this test seeded, thrown through the session's own dice")
 	s.Equal(100, body.Of, "one entry at weight 1, loaded by the soldier's 100")
-	s.Equal([]session.AnswerCandidate{{Entry: 0, Weight: 1, Percent: 100, Loaded: 100}}, body.Candidates)
+	s.Equal([]answerCandidate{{Entry: 0, Weight: 1, Percent: 100, Loaded: 100}}, body.Candidates)
 	s.Equal("hold", body.Word)
 }
 
@@ -677,16 +705,8 @@ func (s *SpeakWorldSuite) TestAFactionsMixDealsATemperamentAndSaysSo() {
 	}
 	mgr := s.front([]int{1})
 
-	var dealt *session.Event
-	for _, event := range s.events(mgr, "alice") {
-		if event.Kind == session.EventTempered {
-			dealt = &event
-		}
-	}
-	s.Require().NotNil(dealt, "a dealt temperament is a beat, not a private fact")
-
-	body, ok := dealt.Body.(session.TemperedBody)
-	s.Require().True(ok)
+	var body temperedBeat
+	s.Require().True(s.lastBeat(mgr, encounter.BeatTempered, &body), "a dealt temperament is a beat, not a private fact")
 	s.Equal("goblin", body.Member)
 	s.Equal("aggressive", body.Temper, "face 1 of the sorted mix")
 	s.Equal(1, body.Roll)
@@ -701,7 +721,5 @@ func (s *SpeakWorldSuite) TestAnAuthoredTemperamentIsNotDealtFor() {
 	}
 	mgr := s.front(nil)
 
-	for _, event := range s.events(mgr, "alice") {
-		s.NotEqual(session.EventTempered, event.Kind, "nothing was dealt, so there is no roll to show")
-	}
+	s.Empty(beatsNamed(s.beats(mgr, "alice"), encounter.BeatTempered), "nothing was dealt, so there is no roll to show")
 }
