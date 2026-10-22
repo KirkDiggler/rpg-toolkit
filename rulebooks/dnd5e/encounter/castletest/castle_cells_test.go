@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package dungeonspec_test
+package castletest
 
 // castle_cells_test.go is R12 ON THE ROOM IT WAS FOUND ON (rpg-project#569):
 // the mad king's cells, rpg-api's shipped content with `opened: { fact:
@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	cellsFixture = "testdata/world-builder-v4-castle-cells.yaml"
+	cellsFixture = "../dungeonspec/testdata/world-builder-v4-castle-cells.yaml"
 	cellsDoor    = encounter.DoorID("the-mad-king-cells/16556f61-2915-4656-ab30-d2445dff0174")
 	cellsPicker  = encounter.MemberID("picker")
 )

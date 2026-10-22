@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package dungeonspec_test
+package castletest
 
 // castle_king_facings_test.go is EVERY STILL WATCHER LOOKS AT WHAT IT KEEPS
 // (rpg-project#623, after sneaking C-cone): with an arc of 120 scripted for
@@ -117,7 +117,6 @@ func TestMadKingTheCaptainWatchesWhoComesToTheGate(t *testing.T) {
 		at: outsideTheGate, resolver: stealth, arcs: map[encounter.MemberID]int{kingCaptain: 120},
 		passive: map[encounter.MemberID]int{kingCaptain: captainPassive},
 	})
-	seer := &coneSite{sneakSite: &sneakSite{t: t, enc: s.enc}}
 	s.declare(hero)
 	s.open(kingGateDoor)
 
@@ -154,9 +153,9 @@ func TestMadKingTheCaptainWatchesWhoComesToTheGate(t *testing.T) {
 	captain := positionOf(t, s.enc, kingCaptain)
 	require.Greater(t, offArc(facingOf(t, s.enc, kingCaptain), coneBearing(captain, behind)), 60.0,
 		"the cell beneath the gate is behind the captain")
-	require.True(t, seer.seenNow(kingCaptain)[behind], "the captain's sight reaches the hero behind him")
+	require.True(t, s.seenNow(kingCaptain)[behind], "the captain's sight reaches the hero behind him")
 	require.False(t, rolled(), "behind him nothing rolls against the captain")
-	require.False(t, seer.seesLive(kingCaptain, hero), "the captain does not see the hero behind him")
+	require.False(t, s.seesLive(kingCaptain, hero), "the captain does not see the hero behind him")
 	require.False(t, captainZone()[behind], "the captain's zone does not hold the cell behind him")
 
 	// ROUND TO HIS FRONT: east of him, then down the gatehouse to his south,
