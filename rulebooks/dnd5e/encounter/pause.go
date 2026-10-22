@@ -236,9 +236,8 @@ type PauseData struct {
 	Forced bool `json:"forced,omitempty"`
 
 	// ActID is the id of the act the paused walk or strike belongs to,
-	// `<verb>:<id>` ([Encounter.PausedAct]). Absent on a pause written
-	// before act ids existed, which still loads — PauseVersion is unchanged
-	// — and resumes with no act id: degraded, not refused.
+	// `<verb>:<id>` ([Encounter.PausedAct]). Required: a pause without it
+	// is refused on load (ErrInvalidData) rather than resumed with no act.
 	//
 	// A pause written before rpg-project#631 also carries `act` and `outer`,
 	// E1's `<verb>:<first seq>` forms (R27). Nothing reads them: they are
@@ -518,6 +517,12 @@ func validatePause(d *PauseData, members map[core.EntityID]struct{}) error {
 
 	if d.Member == "" {
 		return fmt.Errorf("load encounter pause: names no member: %w", ErrInvalidData)
+	}
+	// FAIL CLOSED ON A PAUSE WITH NO ACT: a resumed walk whose beats carried
+	// no act id would be a story the act stream cannot place. Every pause is
+	// made inside an act; one without act_id predates act ids and is refused.
+	if d.ActID == "" {
+		return fmt.Errorf("load encounter pause %q: names no act_id: %w", d.Member, ErrInvalidData)
 	}
 	if _, ok := members[core.EntityID(d.Member)]; !ok {
 		return fmt.Errorf("load encounter pause: %q is not a member: %w", d.Member, ErrInvalidData)

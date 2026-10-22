@@ -148,8 +148,8 @@ func (s *ActTestSuite) TestResumedTurnEndsInsideItsOuterActV2() {
 // `act_id` and `outer_ids` only, never E1's `act` and `outer`. A pause
 // saved before rpg-project#631, which carries both, loads, and its seq
 // fields are ignored: the resumed walk carries the act_id. A pause saved
-// with no act id at all still loads and resumes with none (degraded, not
-// refused).
+// with no act id is refused on load: a resumed walk whose beats carried no
+// act would be a story the act stream cannot place (fail closed).
 func (s *ActTestSuite) TestPauseRoundTripWithoutSeqForm() {
 	loaded, _, walkID := s.pausedWalk()
 
@@ -172,12 +172,19 @@ func (s *ActTestSuite) TestPauseRoundTripWithoutSeqForm() {
 	s.resumeUnder(older, "")
 	s.Equal(len(closeIn), s.walkedUnder(older, walkID))
 
-	// A save with no act id at all.
+	// A save with no act id at all is refused, loudly.
 	delete(pause, "act_id")
 	delete(pause, "outer_ids")
-	bare := s.loadJSON(saved, pause)
-	s.Empty(bare.PausedAct())
-	s.resumeUnder(bare, "")
+	p, err := json.Marshal(pause)
+	s.Require().NoError(err)
+	saved["pause"] = p
+	blob, err = json.Marshal(saved)
+	s.Require().NoError(err)
+	var data encounter.EncounterData
+	s.Require().NoError(json.Unmarshal(blob, &data))
+	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Capabilities: s.pauseCapabilities()})
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	s.Contains(err.Error(), "act_id", "the refusal names what is missing")
 }
 
 // loadJSON loads the encounter saved as JSON, with its pause replaced.
