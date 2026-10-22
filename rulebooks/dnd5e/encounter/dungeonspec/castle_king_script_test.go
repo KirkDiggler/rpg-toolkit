@@ -344,7 +344,8 @@ func TestMadKingScriptTheStrangerGivesTheFeast(t *testing.T) {
 
 // TestMadKingScriptTheTroupeNeedsTheFeast is piece 3: the captain offers the
 // troupe's line only to a hero who knows the feast; after the stranger he
-// does, and a troupe that passes is let through with the garrison civil.
+// does, and a troupe that passes is let through with the garrison civil, and
+// opens the gate on a far room that comes civil.
 func TestMadKingScriptTheTroupeNeedsTheFeast(t *testing.T) {
 	t.Parallel()
 	s := openTheScript(t, partyStart(t), nil)
@@ -368,50 +369,26 @@ func TestMadKingScriptTheTroupeNeedsTheFeast(t *testing.T) {
 	require.Empty(t, s.learners("party-recognized"), "a troupe that passes writes nothing")
 	require.Equal(t, encounter.StanceNeutral, s.stance(garrison, encounter.FactionParty))
 	require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "nobody fights")
+
+	// Let through, the troupe opens the gate, and the far room comes civil
+	// (piece 7's other half; its test is the fight's).
+	s.stepTo(beneathTheGate)
+	s.open(kingGateDoor)
+	for _, id := range []encounter.MemberID{kingReserve, kingReserve2} {
+		require.Contains(t, memberIDsOf(t, s.enc), id, "%s answers the gate", id)
+		require.False(t, s.hostile(hero, id), "%s comes civil", id)
+	}
+	require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "nobody fights")
 }
 
 // TestMadKingScriptASneakWindowAtTheDoor is piece 4: the gate patrol stands
 // at its door posts watching the cell under the gate, then at its beat posts
 // with its back to it. The window is the beat: a hero who declares behind the
-// corner and crosses to the gate then is rolled against by nobody; the same
-// crossing while the door posts are kept is rolled against both gate guards.
+// corner and crosses to the gate then is rolled against by nobody, and no
+// zone holds the cell under the gate; the same crossing while the door posts
+// are kept is rolled against both gate guards, whose zones both hold it.
 func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 	t.Parallel()
-
-	t.Run("over one loop the cell under the gate is watched, and then it is not", func(t *testing.T) {
-		t.Parallel()
-		s := openTheScript(t, partyStart(t), scriptStealth())
-		s.stepTo(besideTheCorner)
-		s.declare(hero)
-		watched := func() (gate1, gate2 bool) {
-			for _, z := range zonesOf(t, s.enc, hero) {
-				in := cellSet(z.Cells)[beneathTheGate]
-				switch z.Watcher {
-				case kingGate1:
-					gate1 = in
-				case kingGate2:
-					gate2 = in
-				}
-			}
-			return gate1, gate2
-		}
-		var both, neither int
-		beside := castleCell(-4, 8)
-		for round := 0; round < 8; round++ {
-			g1, g2 := watched()
-			if g1 && g2 {
-				both++
-			}
-			if !g1 && !g2 {
-				neither++
-			}
-			start := s.enc.ToData().Clock.HighWater
-			require.True(t, s.pace(besideTheCorner, beside, 12, func() bool { return s.enc.ToData().Clock.HighWater > start }),
-				"a round passes")
-		}
-		require.NotZero(t, both, "some round both gate guards watch the cell under the gate")
-		require.NotZero(t, neither, "some round neither does: the window")
-	})
 
 	// dash declares the hero behind the corner once both gate guards dwell on
 	// the given posts, then walks it to the cell under the gate.
@@ -468,13 +445,15 @@ func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 		}
 		require.True(t, watchers[string(kingGate1)], "a snuck beat names gate-1")
 		require.True(t, watchers[string(kingGate2)], "a snuck beat names gate-2")
-		var gate1 map[spatial.Position]bool
-		for _, z := range zonesOf(t, s.enc, hero) {
-			if z.Watcher == kingGate1 {
-				gate1 = cellSet(z.Cells)
+		for _, guard := range []encounter.MemberID{kingGate1, kingGate2} {
+			var zone map[spatial.Position]bool
+			for _, z := range zonesOf(t, s.enc, hero) {
+				if z.Watcher == guard {
+					zone = cellSet(z.Cells)
+				}
 			}
+			require.True(t, zone[beneathTheGate], "%s watches the cell under the gate from its door post", guard)
 		}
-		require.True(t, gate1[beneathTheGate], "gate-1 watches the cell under the gate from its door post")
 	})
 }
 
@@ -547,7 +526,7 @@ func TestMadKingScriptFightBringsNobody(t *testing.T) {
 // TestMadKingScriptOpeningTheGateBringsTheFarRoom is piece 7: the gate door
 // teaches `gate-opened`, and the far room's two guards arrive on it in the
 // barracks as the garrison's and walk to the gate. After the fight they come
-// hostile; on the troupe route, civil.
+// hostile. (On the troupe route they come civil: piece 3's test.)
 func TestMadKingScriptOpeningTheGateBringsTheFarRoom(t *testing.T) {
 	t.Parallel()
 
@@ -603,18 +582,5 @@ func TestMadKingScriptOpeningTheGateBringsTheFarRoom(t *testing.T) {
 		answered(t, s)
 		require.True(t, s.hostile(hero, kingReserve), "they come hostile")
 		require.True(t, s.hostile(hero, kingReserve2))
-	})
-
-	t.Run("on the troupe route, civil", func(t *testing.T) {
-		t.Parallel()
-		s := openTheScript(t, partyStart(t), nil)
-		s.heardTheStranger(true)
-		s.walkTo(s.at(kingCaptain))
-		s.said(kingCaptain, "troupe", "performance", true)
-
-		answered(t, s)
-		require.False(t, s.hostile(hero, kingReserve), "they come civil")
-		require.False(t, s.hostile(hero, kingReserve2))
-		require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "nobody fights")
 	})
 }
