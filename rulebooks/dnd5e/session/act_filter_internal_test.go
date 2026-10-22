@@ -334,3 +334,35 @@ func (s *ActFoldSuite) TestFilterAPropArrivesWhenTheRecipientsViewOfThingsChange
 	}
 	s.Equal([]string{"letter"}, arrived)
 }
+
+// TestFilterAWindowReachesWhoeverWatchesItsSubject: a roll posed to alice
+// reaches alice and the bard who sees her — the shared die is on the table
+// — and not the scout who does not; a movement window reaches whoever sees
+// the mover, and the member it asks.
+//
+// Mutant: delivering windows to their audience alone fails the bard.
+func (s *ActFoldSuite) TestFilterAWindowReachesWhoeverWatchesItsSubject() {
+	const swing, walk = "attack:01HZZZZZZZZZZZZZZZZZSWNG", "move:01HZZZZZZZZZZZZZZZZZZZWALK"
+	marks := func(recipient string, seen ...string) []string {
+		entries := []record.Entry{
+			s.sighted("", seen, nil),
+			s.beat(swing, map[string]any{
+				"beat": encounter.BeatRollWindowOpened, "audience": "alice", "presentation_id": "p1",
+				"offer": map[string]string{"ref": "dnd5e:conditions:inspired", "name": "Bardic Inspiration"}, "roll": 15, "total": 20,
+			}),
+			s.beat(walk, map[string]any{
+				"beat": encounter.BeatWindowOpened, "member": "skel-1", "from": cell(1, 0), "to": cell(2, 0),
+				"windows": []map[string]any{{"audience": "alice", "reaction": map[string]string{"ref": "r", "name": "OA"}}},
+			}),
+		}
+		var out []string
+		for _, a := range actsAfter("sess", recipient, entries, entries[0].ID) {
+			out = append(out, string(a.Body.(ClockEntry).Mark))
+		}
+		return out
+	}
+
+	s.Equal([]string{"roll_window_opened", "window_opened"}, marks("alice"), "both ask alice")
+	s.Equal([]string{"roll_window_opened", "window_opened"}, marks("bella", "alice", "skel-1"), "the bard watches both")
+	s.Empty(marks("scout"), "the scout sees neither")
+}

@@ -33,8 +33,9 @@ import (
 //  4. It is clock or roster, by kind: tick, scene_opened and ended always;
 //     fight_formed and fight_dissolved when the recipient is in the fight;
 //     turn_ended when its member is in the recipient's fight; joined,
-//     exited and arrived under rule 3; a stance turn when the party's side
-//     is one of the two.
+//     exited and arrived under rule 3; a window under rule 3 by its mover,
+//     and a roll window by its roller (the shared die is seen thrown); a
+//     stance turn when the party's side is one of the two.
 //  5. It is a perception, or a door changing: the encounter already
 //     audiences those to the members who perceive them.
 //
@@ -248,7 +249,8 @@ func (v *viewState) judgeClock(recipient string, c ClockEntry) verdict {
 		if c.Window == nil {
 			return drop
 		}
-		if c.Window.Member.ID == recipient {
+		// The mover's own, one asking the recipient, or a step they watch.
+		if mover := c.Window.Member.ID; mover == recipient || v.seen[mover] {
 			return deliver
 		}
 		for _, w := range c.Window.Windows {
@@ -258,7 +260,9 @@ func (v *viewState) judgeClock(recipient string, c ClockEntry) verdict {
 		}
 		return drop
 	case ClockRollWindowOpened:
-		return verdictOf(c.RollWindow != nil && c.RollWindow.Audience.ID == recipient)
+		// The roller's own, or a roll posed to someone they see: the shared
+		// die is on the table for whoever watches it thrown.
+		return verdictOf(c.RollWindow != nil && (c.RollWindow.Audience.ID == recipient || v.seen[c.RollWindow.Audience.ID]))
 	default:
 		return drop
 	}
