@@ -1358,3 +1358,16 @@ func (s *TableSuite) TestASearchWalksAtLeastOneCell() {
 		s.Contains(err.Error(), "`search` distance")
 	}
 }
+
+// TestARowThatDoesNotSearchMarshalsAsBefore is the persisted shape: a row
+// with no `search` carries no Search key at all, so every compiled table
+// written before the word existed is byte-identical after it.
+func (s *TableSuite) TestARowThatDoesNotSearchMarshalsAsBefore() {
+	plain, err := json.Marshal(behavior.Answer{Weight: 1, Hold: true})
+	s.Require().NoError(err)
+	s.NotContains(string(plain), "Search")
+
+	searching, err := json.Marshal(behavior.Answer{Weight: 1, Search: &behavior.Search{Distance: 6}})
+	s.Require().NoError(err)
+	s.Contains(string(searching), `"Search":{"Distance":6}`)
+}

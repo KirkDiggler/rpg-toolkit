@@ -107,7 +107,10 @@ type Answer struct {
 	// Distance cells (rpg-project#668 R4). Where that cell is, which heading
 	// is held and when the search is over are the caller's; this module
 	// carries the number.
-	Search *Search
+	//
+	// OMITTED WHEN NIL, so a row that does not search marshals exactly as it
+	// did before the word existed and no compiled table moves.
+	Search *Search `json:",omitempty"`
 }
 
 // Validate refuses what this module's own types cannot carry: a [When] in the
