@@ -117,6 +117,11 @@ var (
 	// a sentence written for whoever filled the form.
 	ErrBadWhen = errors.New("behavior: when cannot be read")
 
+	// ErrBadSearch reports a `search` this table cannot read: a distance
+	// below 1, a search that walks nowhere. Returned by [Answer.Validate],
+	// wrapped in a sentence for the form.
+	ErrBadSearch = errors.New("behavior: search cannot be read")
+
 	// ErrBadSelector reports a selector this table cannot read: one naming
 	// no target or more than one, a route on a word that does not walk,
 	// `sound` on `attack`, or `sound` on a row that names no `heard`
@@ -173,7 +178,7 @@ func Layer(base, over Table) Table {
 // EnemyWord is a `when: { enemy: … }` condition's value: how close the
 // nearest thing this creature is opposed to has got.
 //
-// FOUR BANDS, AND THEY ARE EXCLUSIVE BY DEFINITION (rpg-project#465, ruled on
+// FIVE BANDS, AND THEY ARE EXCLUSIVE BY DEFINITION (rpg-project#465, ruled on
 // a session-builder finding). Exactly one of them holds for any creature at
 // any moment, so an author writes one entry per band and knows exactly one is
 // on the table — the same property `seen` and `remembered` already had, now
@@ -202,16 +207,23 @@ const (
 	EnemySeen EnemyWord = "seen"
 
 	// EnemyRemembered holds when none is in sight but one is held from an
-	// earlier sighting.
+	// earlier sighting that still points somewhere worth walking to.
 	EnemyRemembered EnemyWord = "remembered"
 
-	// EnemyNone holds when none of the three does.
+	// EnemyLost holds when none is in sight or remembered, but one is held
+	// as LOST: the creature went to where it last saw them and found nobody
+	// (rpg-project#668 R3). What turns a memory lost is the caller's rule;
+	// this module reads the flag. `search` is the word that walks on from
+	// here.
+	EnemyLost EnemyWord = "lost"
+
+	// EnemyNone holds when none of the four does.
 	EnemyNone EnemyWord = "none"
 )
 
 // EnemyWords is every value `enemy:` takes, nearest band first. Exported for
 // the dialect's refusal, [AnswerKeys]'s reason.
-var EnemyWords = []EnemyWord{EnemyReach, EnemySeen, EnemyRemembered, EnemyNone}
+var EnemyWords = []EnemyWord{EnemyReach, EnemySeen, EnemyRemembered, EnemyLost, EnemyNone}
 
 // WhenDeeds is every word a `when: { <deed>: { within: N } }` condition may
 // name. Exported for the dialect's refusal, [AnswerKeys]'s reason.
@@ -714,7 +726,10 @@ func (t Temper) factor(a Answer) int {
 		return t.Profile.Hold
 	case a.Attack != nil:
 		return t.Profile.Attack
-	case a.Toward != nil:
+	case a.Toward != nil, a.Search != nil:
+		// A SEARCH IS A WALK TOWARD where the quarry went, so it carries the
+		// `toward` factor rather than a sixth number every profile in content
+		// would have to grow.
 		return t.Profile.Toward
 	case a.Away != nil:
 		return t.Profile.Away
@@ -758,9 +773,9 @@ type HeldDeed struct {
 // holdings and the clock, both of which the caller already holds, and a
 // second copy kept between picks would be a second truth to keep in step.
 //
-// THE THREE ENEMY FLAGS ARE EXCLUSIVE, and the projections enforce it rather
-// than every reader re-deriving it: in reach clears seen, and seen clears
-// remembered. That is what makes `enemy: remembered` mean "I have lost sight
+// THE FOUR ENEMY FLAGS ARE EXCLUSIVE, and the projections enforce it rather
+// than every reader re-deriving it: in reach clears seen, seen clears
+// remembered, and remembered clears lost. That is what makes `enemy: remembered` mean "I have lost sight
 // of them" rather than "I have seen them at some point", and `enemy: seen`
 // mean "I can see them and cannot touch them" rather than "I can see them".
 type Facts struct {
@@ -776,6 +791,11 @@ type Facts struct {
 	// EnemyRemembered is true when NONE is in sight and one is held from an
 	// earlier sighting.
 	EnemyRemembered bool
+
+	// EnemyLost is true when NONE is in sight or remembered and one is held
+	// as lost: looked for where it was last seen, and not there
+	// ([EnemyLost]).
+	EnemyLost bool
 
 	// CanAttack and CanMove are what the creature can still AFFORD this turn
 	// — one attack left, one cell of movement left — and they are part of
@@ -834,7 +854,7 @@ type Facts struct {
 
 // affords reports whether this creature can still pay for what an entry does.
 //
-// ONLY THE THREE BUDGETED WORDS ARE GATED. A `fact`, a `flee`, a bare line and
+// ONLY THE FOUR BUDGETED WORDS ARE GATED. A `fact`, a `flee`, a bare line and
 // a `hold` cost nothing a turn can run out of — and `hold` in particular must
 // stay eligible whatever the budget says, because it is the word that lets a
 // creature with nothing left to spend still have had its turn.
@@ -852,6 +872,11 @@ func (f Facts) affords(a Answer) bool {
 		return f.CanMove && f.locates(a.Toward)
 	case a.Away != nil:
 		return f.CanMove && f.locates(a.Away)
+	case a.Search != nil:
+		// A SEARCH WALKS ON FROM A LOST TRAIL, so with none held there is
+		// nowhere to search from — the rule `sound` keeps for a walk with no
+		// sound held, and for the same reason.
+		return f.CanMove && f.EnemyLost
 	default:
 		return true
 	}
@@ -931,12 +956,14 @@ func (w *When) holds(f Facts) bool {
 		return f.EnemySeen
 	case EnemyRemembered:
 		return f.EnemyRemembered
+	case EnemyLost:
+		return f.EnemyLost
 	case EnemyNone:
 		// THE BANDS ARE EXCLUSIVE, so `none` is simply none of them. The
 		// projections that build [Facts] are what keep that true — they clear
 		// the farther flags once a nearer one holds — and this reads the
 		// result rather than re-deciding it.
-		return !f.EnemyInReach && !f.EnemySeen && !f.EnemyRemembered
+		return !f.EnemyInReach && !f.EnemySeen && !f.EnemyRemembered && !f.EnemyLost
 	}
 
 	// A SPAN IS COUNTED FROM 1, so a span below it is not a span and holds

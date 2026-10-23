@@ -50,7 +50,7 @@ refused, because the list is already the `and`.
 
 | condition | holds when | reads |
 |---|---|---|
-| `enemy: reach \| seen \| remembered \| none` | the nearest opposed thing is in that band (the bands are exclusive) | `Facts.EnemyInReach/Seen/Remembered` |
+| `enemy: reach \| seen \| remembered \| lost \| none` | the nearest opposed thing is in that band (the bands are exclusive); `lost` is a memory the creature went back to and found empty | `Facts.EnemyInReach/Seen/Remembered/Lost` |
 | `<deed>: { within: N, on/as }` — `attacked`, `intimidated`, `persuaded`, `fled` | that deed was done to me (or my side, or by me) within N units | `Facts.Deeds/AllyDeeds/OwnDeeds` |
 | `heard: { kind, within: N }` | a sound of that kind was heard within N units | `Facts.Sounds` |
 | `fact: <id>` | the creature holds that world fact | `Facts.Known` |
@@ -69,7 +69,8 @@ types cannot carry, each as a sentence for the form:
 - a selector naming no target or more than one;
 - a `path` off `toward`;
 - `sound` on `attack` (a sound cannot be struck);
-- `sound` on a row whose list names no `heard` condition (R10).
+- `sound` on a row whose list names no `heard` condition (R10);
+- a `search` distance below 1.
 
 Which words are legal under which key, which enemy and deed words a build
 reads, and a deed span below 1 stay the dialect's door.
@@ -83,6 +84,10 @@ cell (`at`), or a route (`path`, `toward` only). The words are `enemy`,
 - **`sound`** is where the freshest held sound was made. It is legal on
   `toward` and `away` only, and only on a row that names a `heard` condition
   (R10), the way `actor` needs a deed. Resolving it is the caller's.
+- **`search: { distance: N }`** walks on from a lost trail for N cells. It
+  is eligible only while `Facts.EnemyLost` holds and the creature can move,
+  and it carries the `toward` temperament factor. The trail, its heading and
+  when the search is over are the caller's.
 - **A route** is a patrol and holds no state: which waypoint is next is the
   caller's to derive from where the creature stands each time the row fires.
 
@@ -98,7 +103,7 @@ quietly swings.
 
 One trigger is named here, `KeyTime` — a creature having time is the one thing
 every game has. Every other key is the caller's to name, seal and refuse. The
-words on an entry (`Fact`, `Flee`, `Hold`, `Attack`, `Toward`, `Away`) are
+words on an entry (`Fact`, `Flee`, `Hold`, `Attack`, `Toward`, `Away`, `Search`) are
 DATA: this module knows which one fired and has no idea what attacking is or
 where `toward` walks to. A `Selector` is carried and resolved by the caller.
 
