@@ -1448,7 +1448,7 @@ type AnswerData struct {
 	Attack *SelectorData `json:"attack,omitempty"`
 	Toward *SelectorData `json:"toward,omitempty"`
 	Away   *SelectorData `json:"away,omitempty"`
-	// Search is `search: { distance }` (rpg-project#668 R4). Omitted when
+	// Search is `search: { distance, heading }` (rpg-project#668 R4, #679). Omitted when
 	// the row does not search, so every blob written before the word existed
 	// reads as it did.
 	Search *SearchData `json:"search,omitempty"`
@@ -1459,6 +1459,9 @@ type AnswerData struct {
 // is written whatever its value.
 type SearchData struct {
 	Distance int `json:"distance"`
+	// Heading is [Search.Heading], always written: a row that reloads with
+	// no heading is a wordless search, refused at the door.
+	Heading SearchHeading `json:"heading"`
 }
 
 // WhenData is the persistent representation of a [When]: ONE condition of the
@@ -1607,7 +1610,7 @@ func answerDataFrom(entry Answer) AnswerData {
 		Away:   selectorDataFrom(entry.Away),
 	}
 	if entry.Search != nil {
-		out.Search = &SearchData{Distance: entry.Search.Distance}
+		out.Search = &SearchData{Distance: entry.Search.Distance, Heading: entry.Search.Heading}
 	}
 	for _, w := range entry.When {
 		out.When = append(out.When, whenDataFrom(w))
@@ -1704,7 +1707,7 @@ func answerFromData(row AnswerData) Answer {
 		Away:   selectorFromData(row.Away),
 	}
 	if row.Search != nil {
-		out.Search = &Search{Distance: row.Search.Distance}
+		out.Search = &Search{Distance: row.Search.Distance, Heading: row.Search.Heading}
 	}
 	for _, w := range row.When {
 		out.When = append(out.When, whenFromData(w))
@@ -2003,6 +2006,12 @@ type MemberData struct {
 	// [0, 360) is refused at load (ErrInvalidData, ErrBadFacing).
 	Facing *float64 `json:"facing,omitempty"`
 
+	// Went is memberRecord.Went, the bearing of the member's last step
+	// (rpg-project#679 R10). Omitted when it has not stepped, which is what
+	// a blob from before the field means too. A value outside [0, 360) is
+	// refused at load (ErrInvalidData, ErrBadFacing).
+	Went *float64 `json:"went,omitempty"`
+
 	// Sneaking is memberRecord.Sneaking (sneak.go, design R6). Omits at
 	// false, so a blob from before sneaking existed loads every member not
 	// sneaking, which is what it meant. True on a non-player is refused at
@@ -2158,6 +2167,7 @@ func (e *Encounter) snapshot() EncounterData {
 			Temper:         temperDataFrom(m.Temper),
 			Pace:           m.PaceCells,
 			Facing:         &facing,
+			Went:           copyBearing(m.Went),
 			Sneaking:       m.Sneaking,
 			Dwell:          dwellDataFrom(m.Dwell),
 			BlocksMovement: m.BlocksMovement,
@@ -2760,6 +2770,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		if err := validateFacing(m.Facing); err != nil {
 			return nil, fmt.Errorf("load encounter: member %q: %w: %w", m.ID, ErrInvalidData, err)
 		}
+		if err := validateFacing(m.Went); err != nil {
+			return nil, fmt.Errorf("load encounter: member %q went: %w: %w", m.ID, ErrInvalidData, err)
+		}
 		if err := validateDwellData(m.Dwell); err != nil {
 			return nil, fmt.Errorf("load encounter: member %q: %s: %w", m.ID, err, ErrInvalidData)
 		}
@@ -3225,6 +3238,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			Temper:         temperFromData(m.Temper),
 			PaceCells:      m.Pace,
 			Facing:         seedFacing(m.Facing),
+			Went:           copyBearing(m.Went),
 			Sneaking:       m.Sneaking,
 			Dwell:          dwellFromData(m.Dwell),
 			BlocksMovement: m.BlocksMovement,

@@ -49,9 +49,42 @@ func TestASearchCompilesWithItsDistanceOrSix(t *testing.T) {
 				row := m.Table[encounter.AnswerTime][0]
 				require.NotNil(t, row.Search)
 				require.Equal(t, tc.want, row.Search.Distance)
+				require.Equal(t, encounter.HeadingWent, row.Search.Heading, "an omitted heading is went")
 				require.Equal(t, encounter.EnemyLost, row.When[0].Enemy)
 
 				return
+			}
+			require.Fail(t, "the fixture still places the captain")
+		})
+	}
+}
+
+// TestASearchCompilesWithItsHeadingOrWent is rpg-project#679 R10 at the
+// form: every heading word arrives as written, and an omitted one as
+// [dungeonspec.DefaultSearchHeading], which is went.
+func TestASearchCompilesWithItsHeadingOrWent(t *testing.T) {
+	require.Equal(t, encounter.HeadingWent, dungeonspec.DefaultSearchHeading)
+	for _, tc := range []struct {
+		search string
+		want   encounter.SearchHeading
+	}{
+		{search: `{}`, want: encounter.HeadingWent},
+		{search: `{ heading: went }`, want: encounter.HeadingWent},
+		{search: `{ heading: faced }`, want: encounter.HeadingFaced},
+		{search: `{ heading: left, distance: 3 }`, want: encounter.HeadingLeft},
+		{search: `{ heading: right }`, want: encounter.HeadingRight},
+	} {
+		t.Run(tc.search, func(t *testing.T) {
+			source := searchingCaptain(t, `{ when: { enemy: lost }, search: `+tc.search+` }`)
+			require.Empty(t, defectsIn(t, source))
+			compiled, err := dungeonspec.Load([]byte(source))
+			require.NoError(t, err)
+			for _, m := range compiled.Monsters {
+				if m.ID == "captain" {
+					require.Equal(t, tc.want, m.Table[encounter.AnswerTime][0].Search.Heading)
+
+					return
+				}
 			}
 			require.Fail(t, "the fixture still places the captain")
 		})
@@ -74,6 +107,12 @@ func TestASearchIsRefusedWhereItCannotMeanAnything(t *testing.T) {
 			says: []string{"`search` distance 0: a search walks at least one cell"},
 		},
 		{
+			name: "a heading that is not one of the four",
+			on:   `on: { time: [ { when: { enemy: lost }, search: { heading: backwards } } ] }`,
+			path: "place[18].on.time[0]",
+			says: []string{"`search` heading \"backwards\": a search follows went, faced, left or right"},
+		},
+		{
 			name: "a search beside a walk",
 			on:   `on: { time: [ { search: {}, toward: enemy } ] }`,
 			path: "place[18].on.time[0]",
@@ -94,7 +133,8 @@ func TestASearchIsRefusedWhereItCannotMeanAnything(t *testing.T) {
 	}
 }
 
-// TestAnUnknownSearchKeyIsRefused: `search` reads `distance` and nothing else.
+// TestAnUnknownSearchKeyIsRefused: `search` reads `distance` and `heading` and
+// nothing else.
 func TestAnUnknownSearchKeyIsRefused(t *testing.T) {
 	_, err := dungeonspec.Decode([]byte(searchingCaptain(t, `{ search: { cells: 6 } }`)))
 	require.Error(t, err)
@@ -106,5 +146,5 @@ func TestAnUnknownSearchKeyIsRefused(t *testing.T) {
 func TestASearchIsAMapping(t *testing.T) {
 	_, err := dungeonspec.Decode([]byte(searchingCaptain(t, `{ search: 6 }`)))
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "`search` is { distance: N }")
+	require.Contains(t, err.Error(), "`search` is { distance: N, heading: went }")
 }

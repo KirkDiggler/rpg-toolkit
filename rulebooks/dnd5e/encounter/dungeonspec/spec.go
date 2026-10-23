@@ -1314,15 +1314,17 @@ type AnswerSpec struct {
 	//	    - { when: { fled: { within: 3 } }, away: actor, weight: 5 }
 	Away *SelectorSpec `yaml:"away,omitempty"`
 
-	// Search walks on from a LOST enemy's cell along the heading it was last
-	// seen with, then gives up (rpg-project#668 R4, R5). `time` only, and
-	// eligible only under `enemy: lost`. `distance` is cells and defaults
-	// to [DefaultSearchDistance]; `search: {}` is the default search.
+	// Search walks on from a LOST enemy's cell along a heading, then gives up
+	// (rpg-project#668 R4, R5). `time` only, and eligible only under `enemy:
+	// lost`. `distance` is cells and defaults to [DefaultSearchDistance];
+	// `heading` is went, faced, left or right and defaults to
+	// [DefaultSearchHeading] (rpg-project#679 R10); `search: {}` is the
+	// default search. A guessing guard writes a left row and a right row.
 	//
 	//	on:
 	//	  time:
 	//	    - { when: { enemy: remembered }, toward: enemy }
-	//	    - { when: { enemy: lost },       search: { distance: 6 } }
+	//	    - { when: { enemy: lost },       search: { distance: 6, heading: went } }
 	Search *SearchSpec `yaml:"search,omitempty"`
 
 	// Line is the file line this entry was written on, captured at decode so
@@ -1348,24 +1350,33 @@ type HoldSpec struct{}
 // on from the lost cell (rpg-project#668 R4).
 const DefaultSearchDistance = 6
 
-// SearchSpec is `search: { distance: N }`. A pointer distance so an omitted
-// one is told from a written zero: omitted is [DefaultSearchDistance], and a
-// written 0 is refused at the form.
+// DefaultSearchHeading is the heading a `search` with no `heading` follows:
+// the way the quarry went (rpg-project#679 R10).
+const DefaultSearchHeading = encounter.HeadingWent
+
+// SearchSpec is `search: { distance: N, heading: <word> }`. A pointer
+// distance so an omitted one is told from a written zero: omitted is
+// [DefaultSearchDistance], and a written 0 is refused at the form. An omitted
+// heading is [DefaultSearchHeading]; a word outside went, faced, left and
+// right is refused at the form.
 type SearchSpec struct {
-	Distance *int `yaml:"distance,omitempty"`
+	Distance *int    `yaml:"distance,omitempty"`
+	Heading  *string `yaml:"heading,omitempty"`
 }
 
-// UnmarshalYAML reads `search: { distance }`, refusing every other key by
-// name. Refused BY HAND because a body decoded inside [AnswerSpec]'s own
-// unmarshaler is not strict, and a misspelt `distance` silently read as the
-// default search would be an author's six quietly ignored.
+// UnmarshalYAML reads `search: { distance, heading }`, refusing every other
+// key by name. Refused BY HAND because a body decoded inside [AnswerSpec]'s
+// own unmarshaler is not strict, and a misspelt `distance` silently read as
+// the default search would be an author's six quietly ignored.
 func (r *SearchSpec) UnmarshalYAML(value *yaml.Node) error {
 	if value.Kind != yaml.MappingNode {
-		return fmt.Errorf("line %d: `search` is { distance: N }, or {} for %d cells", value.Line, DefaultSearchDistance)
+		return fmt.Errorf("line %d: `search` is { distance: N, heading: went }, or {} for %d cells the way they went",
+			value.Line, DefaultSearchDistance)
 	}
 	for i := 0; i < len(value.Content); i += 2 {
-		if key := value.Content[i].Value; key != "distance" {
-			return fmt.Errorf("line %d: %q is not a key `search` reads: it reads distance", value.Content[i].Line, key)
+		if key := value.Content[i].Value; key != "distance" && key != "heading" {
+			return fmt.Errorf("line %d: %q is not a key `search` reads: it reads distance and heading",
+				value.Content[i].Line, key)
 		}
 	}
 	type searchBody SearchSpec

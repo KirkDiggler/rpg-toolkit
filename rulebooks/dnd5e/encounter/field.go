@@ -1462,6 +1462,13 @@ type memberRecord struct {
 	// where an entity stands and nothing about which way it is turned.
 	Facing float64
 
+	// Went is the bearing of the last step this member took, from the cell
+	// it left to the cell it took (rpg-project#679 R10), or nil when it has
+	// not stepped since it was placed. Written by every move, its own or
+	// imposed, and persisted: it is the way the member is GOING, which a
+	// sighting snapshots as [SightTestimony.Heading] beside its facing.
+	Went *float64
+
 	// Sneaking is whether this player is sneaking (sneak.go, design R6):
 	// set by [Encounter.SetSneaking], cleared by every verb that shows the
 	// member and by a fight engaging it, and persisted. Always false for a

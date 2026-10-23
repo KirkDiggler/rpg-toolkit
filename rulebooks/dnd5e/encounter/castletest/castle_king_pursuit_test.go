@@ -17,6 +17,7 @@ package castletest
 // six cells of open floor.
 
 import (
+	"math"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -155,6 +156,48 @@ func TestMadKingGateGuardPursuesTheRememberedHero(t *testing.T) {
 			}
 		}
 		require.Len(t, visited, len(posts), "back on his loop, he stands both his posts")
+	})
+
+	t.Run("the way he went, not the way he faced", func(t *testing.T) {
+		// rpg-project#679 R10: the guard sees the hero step west to the
+		// corner, then sees him turn to strike — facing the guard, not west —
+		// and the hero leaves unseen. The castle row says `heading: went`, so
+		// the search runs west along the step, not toward the way he faced.
+		t.Parallel()
+		s := openThePursuit(t, pursuitStart)
+		require.True(t, s.seesLive(kingGate1, hero), "precondition: gate-1 sees the hero at the start")
+		route, err := s.enc.Route(encounter.RouteInput{
+			Mover: hero, Policy: encounter.MoveToward, Anchor: castleCell(-6, 6), Budget: 40,
+		})
+		require.NoError(t, err)
+		require.Equal(t, lastSeen, route.Path[0], "precondition: the run starts with the step west")
+
+		_, err = s.enc.Step(&encounter.StepInput{Member: hero, To: route.Path[0]})
+		require.NoError(t, err)
+		s.reload()
+		require.True(t, s.seesLive(kingGate1, hero), "precondition: the guard sees the hero step west")
+		s.struck(kingGate1, false)
+		require.Equal(t, encounter.ClockTurn, clockKind(t, s.enc, hero), "the spear turns gate-1 and the fight forms")
+
+		seen, held := s.sightState(kingGate1)
+		require.True(t, held)
+		require.NotNil(t, seen.Heading, "the guard saw the hero step")
+		require.InDelta(t, 270.0, *seen.Heading, 1e-9, "west, the way he went")
+		require.NotNil(t, seen.Facing)
+		require.Greater(t, math.Abs(math.Mod(*seen.Facing-270+540, 360)-180), 45.0,
+			"precondition: turned to strike, he faces the guard, not the way he went")
+
+		run := encounter.CellsFromFeet(60)
+		s.runLeg(route.Path[1:run])
+		require.False(t, s.seesLive(kingGate1, hero), "precondition: the hero is out of sight")
+		s.endTurn()
+		require.Equal(t, lastSeen, s.at(kingGate1), "the guard comes to the corner")
+		s.runLeg(route.Path[run:])
+
+		s.endTurn()
+		require.False(t, s.seesLive(kingGate1, hero), "the hero is still hidden")
+		require.Equal(t, searchedTo, s.at(kingGate1), "he searches west, along the hero's departure")
+		require.Equal(t, 6.0, s.enc.Distance(lastSeen, s.at(kingGate1)), "six cells on from the corner")
 	})
 
 	t.Run("a guard that never saw the hero stays on his loop", func(t *testing.T) {

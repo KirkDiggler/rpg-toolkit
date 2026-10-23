@@ -388,8 +388,9 @@ func (d TableDriver) awayIntent(view MonsterView, entry Answer) TurnIntent {
 	return Routed{Policy: MoveAway, Anchor: target, Cause: tableCauseAway}
 }
 
-// searchIntent walks on from the nearest lost enemy's cell along its trail,
-// to the trail's Nth cell or its last (rpg-project#668 R4), and names whom it
+// searchIntent walks on from the nearest lost enemy's cell along the trail
+// its heading word names, to the trail's Nth cell or its last
+// (rpg-project#668 R4, rpg-project#679 R10), and names whom it
 // is looking for so the encounter can end the search when it gets there
 // ([Routed.GivesUp]).
 //
@@ -418,9 +419,12 @@ func (d TableDriver) searchIntent(view MonsterView, search Search) TurnIntent {
 	if target == nil {
 		return Pass{}
 	}
+	// THE ROW'S HEADING PICKS THE TRAIL (rpg-project#679 R10): which way to
+	// walk on is the author's word, read here, never the engine's guess.
+	trail := target.Trails[search.Heading]
 	cell := target.Position
-	if n := min(search.Distance, len(target.Trail)); n > 0 {
-		cell = target.Trail[n-1]
+	if n := min(search.Distance, len(trail)); n > 0 {
+		cell = trail[n-1]
 	}
 
 	return Routed{Policy: MoveToward, AnchorAt: &cell, Cause: tableCauseSearch, GivesUp: target.ID}

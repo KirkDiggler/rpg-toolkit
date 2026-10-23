@@ -1264,6 +1264,13 @@ func (e *Encounter) moveMember(member *memberRecord, to spatial.Position) (spati
 		return spatial.Position{}, fmt.Errorf("movemember: %w: %w", ErrBadPlacement, err)
 	}
 
+	// THE WAY IT WENT (rpg-project#679 R10): every move is a direction of
+	// travel, chosen or imposed, which is why this is here and not beside
+	// turnAlong. A zero-distance move has no direction and keeps the last.
+	if degrees, ok := bearing(e.field.orientation, currentPos, to); ok {
+		member.Went = &degrees
+	}
+
 	return currentPos, nil
 }
 
@@ -1820,6 +1827,10 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 			// the one payload this subject is encoded into this pass, so a
 			// memory keeps the facing it last saw.
 			Facing: &facing,
+			// THE WAY IT WENT, beside the way it faces (rpg-project#679
+			// R10): the bearing of its last step, unchanged by standing
+			// still, nil when it never stepped.
+			Heading: copyBearing(e.members[subjectID].Went),
 		})
 		if perr != nil {
 			return nil, fmt.Errorf("encode sight testimony: %w", perr)
