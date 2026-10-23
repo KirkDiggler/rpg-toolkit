@@ -103,10 +103,11 @@ type Answer struct {
 	Away *Selector
 
 	// Search walks on from a LOST trail ([EnemyLost]): the cell the creature
-	// last saw its quarry on, out along the way it was heading, for
-	// Distance cells (rpg-project#668 R4). Where that cell is, which heading
-	// is held and when the search is over are the caller's; this module
-	// carries the number.
+	// last saw its quarry on, out along the heading the row names, for
+	// Distance cells (rpg-project#668 R4, rpg-project#679 R10). Where that
+	// cell is, what each heading reads from the creature's testimony and
+	// when the search is over are the caller's; this module carries the
+	// number and the word.
 	//
 	// OMITTED WHEN NIL, so a row that does not search marshals exactly as it
 	// did before the word existed and no compiled table moves.
@@ -118,7 +119,8 @@ type Answer struct {
 // ErrBadWhen), and a [Selector] naming no target or more than one, a `path`
 // on a word other than `toward`, `sound` on `attack`, or `sound` on a row
 // whose list names no `heard` condition (ErrBadSelector, R10), and a `search`
-// distance below 1 (ErrBadSearch). Each refusal is a sentence for
+// distance below 1 or a heading not in [SearchHeadings] (ErrBadSearch). Each
+// refusal is a sentence for
 // the form, wrapping its sentinel.
 //
 // THE REST IS THE CALLER'S DOOR, as it always was: the weight, the
@@ -134,6 +136,10 @@ func (a *Answer) Validate() error {
 	if a.Search != nil && a.Search.Distance < 1 {
 		return fmt.Errorf("`search` distance %d: a search walks at least one cell: %w",
 			a.Search.Distance, ErrBadSearch)
+	}
+	if a.Search != nil && !a.Search.Heading.sealed() {
+		return fmt.Errorf("`search` heading %q: a search follows went, faced, left or right: %w",
+			a.Search.Heading, ErrBadSearch)
 	}
 	for _, slot := range []struct {
 		word string
@@ -154,17 +160,63 @@ func (a *Answer) Validate() error {
 	return nil
 }
 
-// Search is `search: { distance: N }`: how far on from a lost trail the
-// creature walks before it gives up (rpg-project#668 R4).
+// Search is `search: { distance: N, heading: <word> }`: how far on from a
+// lost trail the creature walks before it gives up (rpg-project#668 R4), and
+// which way it walks (rpg-project#679 R10).
 //
-// A NUMBER AND NOTHING ELSE. The trail, its heading and the cell N on are the
-// caller's to derive from what the creature holds, each time the row fires —
-// the search holds no state, as a route holds no state.
+// A NUMBER AND A WORD, NOTHING ELSE. The trail, the bearing each heading word
+// reads and the cell N on are the caller's to derive from what the creature
+// holds, each time the row fires — the search holds no state, as a route
+// holds no state.
 type Search struct {
 	// Distance is how many cells on the search walks. AT LEAST 1, refused
 	// otherwise. The dialect fills an omitted distance before it gets here,
 	// so nothing down here has to know what "omitted" meant.
 	Distance int
+
+	// Heading is which way the search walks: one of [SearchHeadings],
+	// refused otherwise. The dialect fills an omitted heading with
+	// [HeadingWent] before it gets here, so the persisted row always names
+	// its word and a reloaded table never holds a wordless search.
+	Heading SearchHeading
+}
+
+// SearchHeading is the sealed word a `search` names for its way on
+// (rpg-project#679 R10): the row's choice of heading, not the engine's.
+type SearchHeading string
+
+const (
+	// HeadingWent follows the way the quarry WENT: the bearing of the last
+	// step the creature saw it take. The dialect's default.
+	HeadingWent SearchHeading = "went"
+
+	// HeadingFaced follows the way the quarry FACED when last seen: the
+	// behaviour every search had before the word existed.
+	HeadingFaced SearchHeading = "faced"
+
+	// HeadingLeft turns a quarter left off the held heading (went when it
+	// was seen, faced otherwise). A table that wants a guess writes a left
+	// row and a right row and lets the roll pick.
+	HeadingLeft SearchHeading = "left"
+
+	// HeadingRight turns a quarter right off the held heading, the mirror of
+	// [HeadingLeft].
+	HeadingRight SearchHeading = "right"
+)
+
+// SearchHeadings is every value `search: { heading: }` takes. Exported for
+// the dialect's refusal, [AnswerKeys]'s reason.
+var SearchHeadings = []SearchHeading{HeadingWent, HeadingFaced, HeadingLeft, HeadingRight}
+
+// sealed reports whether h is one of [SearchHeadings].
+func (h SearchHeading) sealed() bool {
+	for _, w := range SearchHeadings {
+		if h == w {
+			return true
+		}
+	}
+
+	return false
 }
 
 // listens reports whether this row's `when` list names a `heard` condition
