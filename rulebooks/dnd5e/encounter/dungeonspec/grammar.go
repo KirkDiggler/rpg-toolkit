@@ -568,7 +568,7 @@ func (g *grammar) entryShape(at string, entry AnswerSpec) {
 		return
 	}
 	sentence := err.Error()
-	for _, sentinel := range []error{behavior.ErrBadSelector, behavior.ErrBadWhen} {
+	for _, sentinel := range []error{behavior.ErrBadSelector, behavior.ErrBadWhen, behavior.ErrBadSearch} {
 		sentence = strings.TrimSuffix(sentence, ": "+sentinel.Error())
 	}
 	g.fail(at, "%s (line %d)", sentence, entry.Line)
@@ -747,6 +747,9 @@ func entryWords(entry AnswerSpec) []string {
 	}
 	if entry.Away != nil {
 		out = append(out, "away")
+	}
+	if entry.Search != nil {
+		out = append(out, "search")
 	}
 
 	return out

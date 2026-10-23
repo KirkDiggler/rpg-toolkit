@@ -162,3 +162,21 @@ func TestDecodeSightTestimonyAgreesWithAViewsOwnPayload(t *testing.T) {
 		"the typed decode must name the same cell as the raw payload")
 	require.Equal(t, cellAt(5, 6), testimony.Position, "and that cell is really where the skeleton stands")
 }
+
+// TestLostTestimonyKeepsItsCellAndFacing is rpg-project#668 R3's encoding: a
+// lost memory carries everything a known one did, under its own state, and
+// never decodes without the cell it was lost at.
+func TestLostTestimonyKeepsItsCellAndFacing(t *testing.T) {
+	east := 90.0
+	lost := encounter.SightTestimony{State: encounter.LocationLost, Position: spatial.Position{X: 3, Y: -1}, Facing: &east}
+	payload, err := encounter.EncodeSightTestimony(lost)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"state":"lost","x":3,"y":-1,"facing":90}`, string(payload))
+
+	got, ok := encounter.DecodeSightTestimony(payload)
+	require.True(t, ok)
+	require.Equal(t, lost, got)
+
+	_, ok = encounter.DecodeSightTestimony([]byte(`{"state":"lost"}`))
+	require.False(t, ok, "a lost memory names where it was lost")
+}

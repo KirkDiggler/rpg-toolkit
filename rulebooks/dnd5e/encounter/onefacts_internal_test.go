@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -73,4 +74,44 @@ func TestASocialVerdictAndADrivenTurnAgreeOnEnemyInReach(t *testing.T) {
 	require.True(t, social.EnemySeen, "the body is still seen")
 	require.Equal(t, social.EnemySeen, driven.EnemySeen)
 	require.Equal(t, social.EnemyRemembered, driven.EnemyRemembered)
+}
+
+// TestASocialVerdictAndADrivenTurnAgreeOnEnemyLost: a lost memory
+// (rpg-project#668 R3) reads `enemy: lost` through both doors, and never as
+// remembered.
+func TestASocialVerdictAndADrivenTurnAgreeOnEnemyLost(t *testing.T) {
+	enc, err := NewEncounter(&SetupInput{
+		Field: FieldInput{Canvas: openAir(), Regions: []RegionInput{rectRegion("crypt", 0, 0, 12, 12)}},
+		Members: []MemberInput{
+			{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: "goblin", Kind: KindMonster, Position: spatial.Position{X: 8, Y: 8}},
+		},
+		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
+		Capabilities: Capabilities{
+			Sight: propagationSight{}, Equipment: UnobservedEquipment{}, Conditions: UnobservedEquipment{},
+			Sheets:        sheetFacts{"alice": {SpeedFeet: 30}, "goblin": {SpeedFeet: 30}},
+			Participation: &oneDown{}, Initiative: orderAsGiven{}, Driver: passDriver{},
+			Actors: Actors{Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}},
+		},
+	})
+	require.NoError(t, err)
+	payload, err := EncodeSightTestimony(SightTestimony{State: LocationLost, Position: spatial.Position{X: 4, Y: 4}})
+	require.NoError(t, err)
+	_, err = enc.intelLog.Report(perception.ReportInput{
+		Observer: sightMember("goblin"), Channel: perception.Sight,
+		Reports: []perception.Presence{{ID: sightMember("alice"), Payload: payload}},
+	})
+	require.NoError(t, err)
+
+	social, err := enc.factsFor("goblin")
+	require.NoError(t, err)
+	goblin := enc.members["goblin"]
+	view, err := enc.buildMonsterView(goblin, TurnBudget{MovementFeet: 30}, 1)
+	require.NoError(t, err)
+	driven := factsFromView(view)
+
+	require.True(t, social.EnemyLost, "a verdict reads the lost memory")
+	require.True(t, driven.EnemyLost, "and so does a driven turn")
+	require.False(t, social.EnemyRemembered)
+	require.False(t, driven.EnemyRemembered)
 }

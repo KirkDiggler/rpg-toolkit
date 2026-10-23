@@ -1314,6 +1314,17 @@ type AnswerSpec struct {
 	//	    - { when: { fled: { within: 3 } }, away: actor, weight: 5 }
 	Away *SelectorSpec `yaml:"away,omitempty"`
 
+	// Search walks on from a LOST enemy's cell along the heading it was last
+	// seen with, then gives up (rpg-project#668 R4, R5). `time` only, and
+	// eligible only under `enemy: lost`. `distance` is cells and defaults
+	// to [DefaultSearchDistance]; `search: {}` is the default search.
+	//
+	//	on:
+	//	  time:
+	//	    - { when: { enemy: remembered }, toward: enemy }
+	//	    - { when: { enemy: lost },       search: { distance: 6 } }
+	Search *SearchSpec `yaml:"search,omitempty"`
+
 	// Line is the file line this entry was written on, captured at decode so
 	// the validator can point an author at it.
 	//
@@ -1332,6 +1343,40 @@ type FleeSpec struct{}
 // HoldSpec is `hold: {}` — the word, with no options. [FleeSpec]'s twin under
 // `time`, and written the same way for the same reason.
 type HoldSpec struct{}
+
+// DefaultSearchDistance is how many cells a `search` with no `distance` walks
+// on from the lost cell (rpg-project#668 R4).
+const DefaultSearchDistance = 6
+
+// SearchSpec is `search: { distance: N }`. A pointer distance so an omitted
+// one is told from a written zero: omitted is [DefaultSearchDistance], and a
+// written 0 is refused at the form.
+type SearchSpec struct {
+	Distance *int `yaml:"distance,omitempty"`
+}
+
+// UnmarshalYAML reads `search: { distance }`, refusing every other key by
+// name. Refused BY HAND because a body decoded inside [AnswerSpec]'s own
+// unmarshaler is not strict, and a misspelt `distance` silently read as the
+// default search would be an author's six quietly ignored.
+func (r *SearchSpec) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: `search` is { distance: N }, or {} for %d cells", value.Line, DefaultSearchDistance)
+	}
+	for i := 0; i < len(value.Content); i += 2 {
+		if key := value.Content[i].Value; key != "distance" {
+			return fmt.Errorf("line %d: %q is not a key `search` reads: it reads distance", value.Content[i].Line, key)
+		}
+	}
+	type searchBody SearchSpec
+	var body searchBody
+	if err := value.Decode(&body); err != nil {
+		return err
+	}
+	*r = SearchSpec(body)
+
+	return nil
+}
 
 // WhenListSpec is a row's `when`: every condition in it must hold
 // (rpg-project#569 R8). Written as a list, or as one mapping that reads as a
@@ -2171,7 +2216,7 @@ func knownSelectorWord(word string) bool {
 func (r *AnswerSpec) UnmarshalYAML(value *yaml.Node) error {
 	if value.Kind != yaml.MappingNode {
 		return fmt.Errorf(
-			"line %d: an answer entry is { weight, say, when } plus exactly one of { fact, flee, hold, attack, toward, away }",
+			"line %d: an answer entry is { weight, say, when } plus exactly one of { fact, flee, hold, attack, toward, away, search }",
 			value.Line)
 	}
 	for i := 0; i < len(value.Content); i += 2 {
@@ -2187,7 +2232,7 @@ func (r *AnswerSpec) UnmarshalYAML(value *yaml.Node) error {
 			}}
 		}
 		switch key {
-		case "weight", "say", "when", "fact", "flee", "hold", "attack", "toward", "away":
+		case "weight", "say", "when", "fact", "flee", "hold", "attack", "toward", "away", "search":
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.AnswerSpec",
 				value.Content[i].Line, key)

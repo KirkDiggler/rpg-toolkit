@@ -137,8 +137,9 @@ func openTheCastleWithEars(
 // where the hero starts, doors standing in a state the file does not give
 // them, passive Perception other than 10, more players beside the hero, the
 // check resolver (the host's nothingIsEverFound when nil), and watch arcs for
-// some members (none — all round — for everybody else), and how far everybody
-// sees (the host's sixty feet when zero).
+// some members (none — all round — for everybody else), how far everybody
+// sees (the host's sixty feet when zero), and walking speeds other than the
+// host's thirty feet for some members.
 type castleHost struct {
 	at       spatial.Position
 	doors    map[encounter.DoorID]encounter.DoorState
@@ -147,6 +148,10 @@ type castleHost struct {
 	resolver encounter.CheckResolver
 	arcs     map[encounter.MemberID]int
 	sightFt  int
+	speedFt  map[encounter.MemberID]int
+
+	// heroFacing is the hero's stated facing, or nil for the unstated one.
+	heroFacing *float64
 }
 
 // openTheCastleAs compiles the file and opens it the way the host says.
@@ -159,7 +164,7 @@ func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 		}
 	}
 
-	members := []encounter.MemberInput{{ID: hero, Kind: encounter.KindPlayer, Position: host.at}}
+	members := []encounter.MemberInput{{ID: hero, Kind: encounter.KindPlayer, Position: host.at, Facing: host.heroFacing}}
 	members = append(members, host.players...)
 	for _, m := range compiled.Monsters {
 		var holds []encounter.IntelID
@@ -196,7 +201,7 @@ func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 			Sight:         castleSight{feet: host.sightFt},
 			Equipment:     encounter.UnobservedEquipment{},
 			Conditions:    encounter.UnobservedEquipment{},
-			Sheets:        castleSheets{passive: host.passive, arcs: host.arcs},
+			Sheets:        castleSheets{passive: host.passive, arcs: host.arcs, speed: host.speedFt},
 			Participation: standing,
 			Initiative:    orderAsGiven{},
 			Driver:        encounter.TableDriver{Roller: rollsOne{}},
@@ -472,12 +477,13 @@ func (s castleSight) Sight(members []encounter.MemberID) (map[encounter.MemberID
 	return out, nil
 }
 
-// castleSheets is everybody's sheet in this host: thirty feet, a spear at
-// five, a passive Perception of 10 unless passive names another, and the
-// watch arc arcs names, if any.
+// castleSheets is everybody's sheet in this host: thirty feet unless speed
+// names another, a spear at five, a passive Perception of 10 unless passive
+// names another, and the watch arc arcs names, if any.
 type castleSheets struct {
 	passive map[encounter.MemberID]int
 	arcs    map[encounter.MemberID]int
+	speed   map[encounter.MemberID]int
 }
 
 func (c castleSheets) Sheets(members []encounter.MemberID) (map[encounter.MemberID]encounter.SheetFacts, error) {
@@ -487,8 +493,12 @@ func (c castleSheets) Sheets(members []encounter.MemberID) (map[encounter.Member
 		if !ok {
 			passive = 10
 		}
+		speed, ok := c.speed[id]
+		if !ok {
+			speed = castleSpeedFeet
+		}
 		out[id] = encounter.SheetFacts{
-			SpeedFeet:         castleSpeedFeet,
+			SpeedFeet:         speed,
 			Actions:           []encounter.ActionView{{Ref: kingSpear, RangeFeet: 5}},
 			PassivePerception: passive,
 			WatchArc:          c.arcs[id],

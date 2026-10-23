@@ -1068,6 +1068,13 @@ func answerOf(entry AnswerSpec, o encounter.Orientation) encounter.Answer {
 	if entry.Fact != nil {
 		fact = *entry.Fact
 	}
+	var search *encounter.Search
+	if entry.Search != nil {
+		search = &encounter.Search{Distance: DefaultSearchDistance}
+		if entry.Search.Distance != nil {
+			search.Distance = *entry.Search.Distance
+		}
+	}
 
 	return encounter.Answer{
 		Weight: weight,
@@ -1079,6 +1086,7 @@ func answerOf(entry AnswerSpec, o encounter.Orientation) encounter.Answer {
 		Attack: selectorOf(entry.Attack, o),
 		Toward: selectorOf(entry.Toward, o),
 		Away:   selectorOf(entry.Away, o),
+		Search: search,
 	}
 }
 

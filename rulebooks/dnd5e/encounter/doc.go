@@ -18,26 +18,27 @@
 //
 // LOCATION KNOWLEDGE IS ENCOUNTER-OWNED. mind/perception holds channel-
 // sourced testimony opaquely; this composition gives creature sight payloads
-// their strict Known(position) or Unknown meaning. Every payload is tagged:
-// untagged coordinates are refused rather than read as known, and so are
-// malformed or current-unknown sight testimony on load. Other channels' payloads
+// their strict Known(position), Lost(position) or Unknown meaning. Every
+// payload is tagged: untagged coordinates are refused rather than read as
+// known, and so are malformed, current-unknown and current-lost sight
+// testimony on load. Other channels' payloads
 // remain uninterpreted.
 //
-// A fight-time [MonsterView] keeps current sight in Seen and held known
-// locations in Remembered. Remembered members carry no concealed standing or
+// A fight-time [MonsterView] keeps current sight in Seen, held known
+// locations in Remembered, and held lost ones in Lost. Remembered members carry no concealed standing or
 // reach fact, are never attackable, and have paths ending on the exact
 // remembered cell. Held unknown testimony persists but is not actionable. A
 // view is rebuilt after each driven move, so a visible-first driver such as
 // behavior.Basic can abandon remembered pursuit for new sight on its next
 // call.
 //
-// Only a successful fight-time driver move performs arrival correction: after
-// sight refresh, the composition compares the mover's prior held Intel and
-// arrival cell with that lawful complete percept. An absent subject remembered
-// at the exact cell becomes Held + Unknown without exposing its concealed live
-// position. Encounter-owned [IntelDelta] values surface the correction for
-// persistence; public Step and the world's own round do not independently
-// correct location testimony.
+// No arrival corrects a memory (rpg-toolkit#1691): a creature standing on a
+// cell it remembers somebody on keeps the memory, stale and honest. What
+// revises a driven creature's own memory is its own decision, and only two
+// do (memory.go, rpg-project#668): a [Pass] that names [Pass.Loses] turns a
+// remembered enemy LOST — the table's `toward` with nowhere left to walk —
+// and a search walk ([Routed.GivesUp]) that ends turns it UNKNOWN. A player's
+// memory is never revised.
 //
 // The composition holds no rules of its own that it could hold instead.
 // InitiativeRoller, Participation, and Sight are SUPPLIED at construction and

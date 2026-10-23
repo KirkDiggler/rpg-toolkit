@@ -78,6 +78,10 @@ type (
 	// Selector names what a word acts on.
 	Selector = behavior.Selector
 
+	// Search is `search: { distance: N }`: how far on from a lost trail the
+	// creature walks before it gives up (rpg-project#668 R4).
+	Search = behavior.Search
+
 	// SelectorWord is a selector's word.
 	SelectorWord = behavior.SelectorWord
 
@@ -114,7 +118,7 @@ const (
 	// AND it can attack this pick (R11, rpg-project#569): reach is a statement
 	// about striking. With no attack affordable — always, on the world clock —
 	// nothing is in reach, and `seen` (or `remembered`) holds instead, so the
-	// four bands stay exclusive and a creature that cannot swing still has
+	// five bands stay exclusive and a creature that cannot swing still has
 	// its alarm and patrol rows.
 	EnemyReach = behavior.EnemyReach
 
@@ -124,7 +128,12 @@ const (
 	// EnemyRemembered holds when none is in sight but one is held.
 	EnemyRemembered = behavior.EnemyRemembered
 
-	// EnemyNone holds when none of the three does.
+	// EnemyLost holds when none is in sight or remembered but one is held
+	// lost: the creature went to the remembered cell and found nobody
+	// (rpg-project#668 R3).
+	EnemyLost = behavior.EnemyLost
+
+	// EnemyNone holds when none of the four does.
 	EnemyNone = behavior.EnemyNone
 
 	// SelectorEnemy is the nearest opposed member in sight, else remembered.

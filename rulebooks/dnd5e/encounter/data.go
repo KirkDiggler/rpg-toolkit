@@ -3464,6 +3464,14 @@ func refuseRoomLocalSightings(data perception.Data) error {
 					"load encounter sight location: %q's sighting of %q is unknown but current: %w",
 					observer, subject, ErrInvalidData)
 			}
+			// A LOST MEMORY IS NEVER A SIGHTING BEING MADE (rpg-project#668
+			// R3): fresh sight replaces it, so one still sustained is a blob
+			// nobody wrote.
+			if location.State == LocationLost && len(holding.CurrentVia) > 0 {
+				return fmt.Errorf(
+					"load encounter sight location: %q's sighting of %q is lost but current: %w",
+					observer, subject, ErrInvalidData)
+			}
 		}
 	}
 	return nil

@@ -46,10 +46,12 @@ type factsInput struct {
 }
 
 // factSighting is one opposed-or-not subject a member holds sight testimony
-// about with a position. current is false for a remembered ghost. standing
-// and inReach are read only for a current sighting.
+// about with a position. current is false for a remembered ghost. lost is a
+// ghost the member went back for and found gone (rpg-project#668 R3), and
+// is never current. standing and inReach are read only for a current
+// sighting.
 type factSighting struct {
-	opposed, current, standing, inReach bool
+	opposed, current, lost, standing, inReach bool
 }
 
 // projectFacts is THE projection both doors end at.
@@ -58,7 +60,7 @@ type factSighting struct {
 // it is also standing, inside one of the member's actions' reach, AND the
 // member can attack this pick: a body is not an enemy in reach, and
 // [attackIntent] will not swing at one either. A remembered opposed subject is
-// remembered. The bands are then narrowed to one ([narrowToOneBand]).
+// remembered, and a lost one is lost. The bands are then narrowed to one ([narrowToOneBand]).
 //
 // REACH IS A STATEMENT ABOUT STRIKING (R11, rpg-project#569, ruled on the
 // castle walk). With no attack affordable — always, on the world clock — no
@@ -81,6 +83,10 @@ func projectFacts(in factsInput) Facts {
 	}
 	for _, s := range in.sightings {
 		if !s.opposed {
+			continue
+		}
+		if s.lost {
+			facts.EnemyLost = true
 			continue
 		}
 		if !s.current {
@@ -170,6 +176,7 @@ func (e *Encounter) factsFor(id MemberID) (Facts, error) {
 		in.sightings = append(in.sightings, factSighting{
 			opposed:  e.opposed(id, subject),
 			current:  current,
+			lost:     location.State == LocationLost,
 			standing: !down[subject],
 			inReach:  current && e.withinReach(self, sheet.Actions, location.Position),
 		})
@@ -211,11 +218,18 @@ func narrowToOneBand(facts *Facts) {
 	if facts.EnemyInReach {
 		facts.EnemySeen = false
 		facts.EnemyRemembered = false
+		facts.EnemyLost = false
 
 		return
 	}
 	if facts.EnemySeen {
 		facts.EnemyRemembered = false
+		facts.EnemyLost = false
+
+		return
+	}
+	if facts.EnemyRemembered {
+		facts.EnemyLost = false
 	}
 }
 
@@ -262,6 +276,9 @@ func factsFromView(view MonsterView) Facts {
 	}
 	for _, r := range view.Remembered {
 		in.sightings = append(in.sightings, factSighting{opposed: r.Opposed})
+	}
+	for _, l := range view.Lost {
+		in.sightings = append(in.sightings, factSighting{opposed: l.Opposed, lost: true})
 	}
 
 	return projectFacts(in)
