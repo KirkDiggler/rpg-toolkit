@@ -4,6 +4,8 @@
 package encounter_test
 
 import (
+	"encoding/json"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -315,4 +317,49 @@ func (s *MonsterTurnTestSuite) TestAPassNeverLosesASightingBeingMade() {
 	holding := requireHolding(s.T(), enc, goblin, alice)
 	s.Require().NotEmpty(holding.CurrentVia, "precondition: the goblin sees alice")
 	s.Equal(encounter.LocationKnown, s.goblinsAlice(enc).State)
+}
+
+// TestASearchRowSurvivesTheBlob: a `search` row is persisted with its
+// distance and loads back as the same row. A host loads and saves the
+// encounter on every verb, so a row that lost its word in the blob would roll
+// as a wordless row from the first save on.
+func (s *MonsterTurnTestSuite) TestASearchRowSurvivesTheBlob() {
+	table := encounter.Table{encounter.AnswerTime: {
+		{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyLost}}, Search: &encounter.Search{Distance: 4}},
+	}}
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 2}, Table: table},
+		},
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight: everyoneSeesTheWholeMap{}, Equipment: encounter.UnobservedEquipment{}, Conditions: encounter.UnobservedEquipment{},
+			Sheets: adjacentSkeletonSheets, Participation: everyoneStanding{}, Initiative: orderAsGiven{}, Driver: passDriver{},
+			Actors: encounter.Actors{Striker: &scriptedStriker{kind: encounter.OutcomeMissed}, Mover: quietMover{}, Announcer: quietAnnouncer{}},
+		},
+	})
+	s.Require().NoError(err)
+	blob, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+	var data encounter.EncounterData
+	s.Require().NoError(json.Unmarshal(blob, &data))
+	loaded := s.loadEncounterData(data, adjacentSkeletonSheets, &scriptedDriver{})
+
+	for _, m := range loaded.ToData().Members {
+		if m.ID != goblin {
+			continue
+		}
+		rows := m.Table[string(encounter.AnswerTime)]
+		s.Require().Len(rows, 1)
+		s.Require().NotNil(rows[0].Search, "the search row kept its word through the blob")
+		s.Equal(4, rows[0].Search.Distance)
+
+		return
+	}
+	s.Fail("the goblin is in the blob")
 }

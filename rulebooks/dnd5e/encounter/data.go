@@ -1448,6 +1448,17 @@ type AnswerData struct {
 	Attack *SelectorData `json:"attack,omitempty"`
 	Toward *SelectorData `json:"toward,omitempty"`
 	Away   *SelectorData `json:"away,omitempty"`
+	// Search is `search: { distance }` (rpg-project#668 R4). Omitted when
+	// the row does not search, so every blob written before the word existed
+	// reads as it did.
+	Search *SearchData `json:"search,omitempty"`
+}
+
+// SearchData is one persisted `search`: how many cells on from the lost cell.
+// The distance is resolved — the dialect's default is already in it — so it
+// is written whatever its value.
+type SearchData struct {
+	Distance int `json:"distance"`
 }
 
 // WhenData is the persistent representation of a [When]: ONE condition of the
@@ -1595,6 +1606,9 @@ func answerDataFrom(entry Answer) AnswerData {
 		Toward: selectorDataFrom(entry.Toward),
 		Away:   selectorDataFrom(entry.Away),
 	}
+	if entry.Search != nil {
+		out.Search = &SearchData{Distance: entry.Search.Distance}
+	}
 	for _, w := range entry.When {
 		out.When = append(out.When, whenDataFrom(w))
 	}
@@ -1688,6 +1702,9 @@ func answerFromData(row AnswerData) Answer {
 		Attack: selectorFromData(row.Attack),
 		Toward: selectorFromData(row.Toward),
 		Away:   selectorFromData(row.Away),
+	}
+	if row.Search != nil {
+		out.Search = &Search{Distance: row.Search.Distance}
 	}
 	for _, w := range row.When {
 		out.When = append(out.When, whenFromData(w))
