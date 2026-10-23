@@ -206,7 +206,7 @@ func (s *TableSuite) TestTheFiveEnemyBandsAreExclusive() {
 		{Weight: 1, When: []behavior.When{{Enemy: behavior.EnemyRemembered}},
 			Toward: &behavior.Selector{Word: behavior.SelectorEnemy}},
 		{Weight: 1, When: []behavior.When{{Enemy: behavior.EnemyLost}},
-			Search: &behavior.Search{Distance: 6}},
+			Search: &behavior.Search{Distance: 6, Heading: behavior.HeadingWent}},
 		{Weight: 1, When: []behavior.When{{Enemy: behavior.EnemyNone}}, Hold: true},
 	}}
 
@@ -1299,7 +1299,7 @@ func (s *TableSuite) TestLostIsSealedBetweenRememberedAndNone() {
 // creature with no movement left cannot pay for it.
 func (s *TableSuite) TestSearchNeedsALostTrailAndLegs() {
 	table := behavior.Table{behavior.KeyTime: {
-		{Weight: 1, Search: &behavior.Search{Distance: 6}},
+		{Weight: 1, Search: &behavior.Search{Distance: 6, Heading: behavior.HeadingWent}},
 	}}
 	for _, tc := range []struct {
 		name     string
@@ -1333,7 +1333,7 @@ func (s *TableSuite) TestSearchNeedsALostTrailAndLegs() {
 // factor. An aggressive creature searches at triple, a coward at half.
 func (s *TableSuite) TestSearchIsLoadedAsAWalkToward() {
 	table := behavior.Table{behavior.KeyTime: {
-		{Weight: 1, Search: &behavior.Search{Distance: 6}},
+		{Weight: 1, Search: &behavior.Search{Distance: 6, Heading: behavior.HeadingWent}},
 		{Weight: 1, Hold: true},
 	}}
 	lost := behavior.Facts{EnemyLost: true, CanMove: true}
@@ -1351,9 +1351,11 @@ func (s *TableSuite) TestSearchIsLoadedAsAWalkToward() {
 // door, so a zero here is a struct built past it.
 func (s *TableSuite) TestASearchWalksAtLeastOneCell() {
 	lost := []behavior.When{{Enemy: behavior.EnemyLost}}
-	s.NoError((&behavior.Answer{Weight: 1, When: lost, Search: &behavior.Search{Distance: 1}}).Validate())
+	s.NoError((&behavior.Answer{Weight: 1, When: lost,
+		Search: &behavior.Search{Distance: 1, Heading: behavior.HeadingWent}}).Validate())
 	for _, d := range []int{0, -3} {
-		err := (&behavior.Answer{Weight: 1, When: lost, Search: &behavior.Search{Distance: d}}).Validate()
+		err := (&behavior.Answer{Weight: 1, When: lost,
+			Search: &behavior.Search{Distance: d, Heading: behavior.HeadingWent}}).Validate()
 		s.Require().ErrorIs(err, behavior.ErrBadSearch)
 		s.Contains(err.Error(), "`search` distance")
 	}
@@ -1367,7 +1369,47 @@ func (s *TableSuite) TestARowThatDoesNotSearchMarshalsAsBefore() {
 	s.Require().NoError(err)
 	s.NotContains(string(plain), "Search")
 
-	searching, err := json.Marshal(behavior.Answer{Weight: 1, Search: &behavior.Search{Distance: 6}})
+	searching, err := json.Marshal(behavior.Answer{Weight: 1,
+		Search: &behavior.Search{Distance: 6, Heading: behavior.HeadingWent}})
 	s.Require().NoError(err)
-	s.Contains(string(searching), `"Search":{"Distance":6}`)
+	s.Contains(string(searching), `"Search":{"Distance":6,"Heading":"went"}`)
+}
+
+// TestASearchNamesOneOfFourHeadings is the sealed heading word
+// (rpg-project#679, R10): `went`, `faced`, `left` and `right` are read; a
+// fifth word, and an empty one, are refused. The dialect fills an omitted
+// heading with `went` before this door, so an empty word here is a struct
+// built past it, the same as a zero distance.
+func (s *TableSuite) TestASearchNamesOneOfFourHeadings() {
+	s.Equal([]behavior.SearchHeading{
+		behavior.HeadingWent, behavior.HeadingFaced, behavior.HeadingLeft, behavior.HeadingRight,
+	}, behavior.SearchHeadings)
+	lost := []behavior.When{{Enemy: behavior.EnemyLost}}
+	for _, h := range behavior.SearchHeadings {
+		s.NoError((&behavior.Answer{Weight: 1, When: lost,
+			Search: &behavior.Search{Distance: 6, Heading: h}}).Validate(), string(h))
+	}
+	for _, h := range []behavior.SearchHeading{"backwards", ""} {
+		err := (&behavior.Answer{Weight: 1, When: lost,
+			Search: &behavior.Search{Distance: 6, Heading: h}}).Validate()
+		s.Require().ErrorIs(err, behavior.ErrBadSearch, string(h))
+		s.Contains(err.Error(), "`search` heading")
+	}
+}
+
+// TestASearchHeadingSurvivesTheMarshalledRow is the persisted row: the
+// heading word rides the row's JSON beside the distance and comes back
+// unchanged, so a table saved and loaded never becomes a wordless search.
+func (s *TableSuite) TestASearchHeadingSurvivesTheMarshalledRow() {
+	for _, h := range behavior.SearchHeadings {
+		row := behavior.Answer{Weight: 2, When: []behavior.When{{Enemy: behavior.EnemyLost}},
+			Search: &behavior.Search{Distance: 4, Heading: h}}
+		raw, err := json.Marshal(row)
+		s.Require().NoError(err)
+		var back behavior.Answer
+		s.Require().NoError(json.Unmarshal(raw, &back))
+		s.Require().NotNil(back.Search)
+		s.Equal(h, back.Search.Heading)
+		s.Equal(4, back.Search.Distance)
+	}
 }

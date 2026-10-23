@@ -118,7 +118,8 @@ var (
 	ErrBadWhen = errors.New("behavior: when cannot be read")
 
 	// ErrBadSearch reports a `search` this table cannot read: a distance
-	// below 1, a search that walks nowhere. Returned by [Answer.Validate],
+	// below 1, a search that walks nowhere, or a heading that is not one of
+	// [SearchHeadings]. Returned by [Answer.Validate],
 	// wrapped in a sentence for the form.
 	ErrBadSearch = errors.New("behavior: search cannot be read")
 
