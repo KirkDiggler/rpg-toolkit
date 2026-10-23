@@ -193,7 +193,11 @@ func (s *TableSuite) TestLayerOnNothingIsNothing() {
 // swung at somebody across the room and passed, every round, forever. It means
 // "I can see them and cannot touch them" now, and `reach` is where the swing
 // belongs.
-func (s *TableSuite) TestTheFourEnemyBandsAreExclusive() {
+//
+// `lost` IS THE FIFTH BAND (rpg-project#668 R3): the decider has been to the
+// remembered cell and found nobody. Without it a creature standing on its own
+// stale memory reads `remembered` forever and has nowhere left to walk.
+func (s *TableSuite) TestTheFiveEnemyBandsAreExclusive() {
 	table := behavior.Table{behavior.KeyTime: {
 		{Weight: 1, When: []behavior.When{{Enemy: behavior.EnemyReach}},
 			Attack: &behavior.Selector{Word: behavior.SelectorEnemy}},
@@ -201,6 +205,8 @@ func (s *TableSuite) TestTheFourEnemyBandsAreExclusive() {
 			Toward: &behavior.Selector{Word: behavior.SelectorEnemy}},
 		{Weight: 1, When: []behavior.When{{Enemy: behavior.EnemyRemembered}},
 			Toward: &behavior.Selector{Word: behavior.SelectorEnemy}},
+		{Weight: 1, When: []behavior.When{{Enemy: behavior.EnemyLost}},
+			Search: &behavior.Search{Distance: 6}},
 		{Weight: 1, When: []behavior.When{{Enemy: behavior.EnemyNone}}, Hold: true},
 	}}
 
@@ -212,7 +218,8 @@ func (s *TableSuite) TestTheFourEnemyBandsAreExclusive() {
 		{name: "within reach", facts: behavior.Facts{EnemyInReach: true, CanAttack: true, CanMove: true}, entry: 0},
 		{name: "in sight, out of reach", facts: behavior.Facts{EnemySeen: true, CanAttack: true, CanMove: true}, entry: 1},
 		{name: "lost sight of", facts: behavior.Facts{EnemyRemembered: true, CanAttack: true, CanMove: true}, entry: 2},
-		{name: "never seen", facts: behavior.Facts{CanAttack: true, CanMove: true}, entry: 3},
+		{name: "searched the last place", facts: behavior.Facts{EnemyLost: true, CanAttack: true, CanMove: true}, entry: 3},
+		{name: "never seen", facts: behavior.Facts{CanAttack: true, CanMove: true}, entry: 4},
 	} {
 		s.Run(tc.name, func() {
 			roller := &facedDie{face: 1}
@@ -1273,4 +1280,81 @@ func (s *TableSuite) TestAWalkToASoundIsAbsentWhenNoSoundIsHeld() {
 		Die: &facedDie{face: 1}})
 	s.Require().NoError(err)
 	s.Equal(0, chosen.Entry, "with a sound held the walk is back on the table")
+}
+
+// TestLostIsSealedBetweenRememberedAndNone is the band's place in the sealed
+// list a dialect refuses against: nearest first, so `lost` sits after
+// `remembered` and before `none` (rpg-project#668 R3).
+func (s *TableSuite) TestLostIsSealedBetweenRememberedAndNone() {
+	s.Equal(behavior.EnemyWord("lost"), behavior.EnemyLost)
+	s.Equal([]behavior.EnemyWord{
+		behavior.EnemyReach, behavior.EnemySeen, behavior.EnemyRemembered, behavior.EnemyLost, behavior.EnemyNone,
+	}, behavior.EnemyWords)
+}
+
+// TestSearchNeedsALostTrailAndLegs is the `search` word's eligibility
+// (rpg-project#668 R4): it walks on from a lost cell, so with nothing lost
+// there is nowhere to search from and the row is absent from the roll — the
+// rule `sound` keeps for a walk with no sound held. And it is a walk, so a
+// creature with no movement left cannot pay for it.
+func (s *TableSuite) TestSearchNeedsALostTrailAndLegs() {
+	table := behavior.Table{behavior.KeyTime: {
+		{Weight: 1, Search: &behavior.Search{Distance: 6}},
+	}}
+	for _, tc := range []struct {
+		name     string
+		facts    behavior.Facts
+		eligible bool
+	}{
+		{name: "lost, can move", facts: behavior.Facts{EnemyLost: true, CanMove: true}, eligible: true},
+		{name: "lost, no movement left", facts: behavior.Facts{EnemyLost: true, CanAttack: true}},
+		{name: "only remembered", facts: behavior.Facts{EnemyRemembered: true, CanMove: true}},
+		{name: "nothing held", facts: behavior.Facts{CanMove: true}},
+	} {
+		s.Run(tc.name, func() {
+			chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
+				Key: behavior.KeyTime, Table: table, Facts: tc.facts, Die: &facedDie{face: 1}})
+			s.Require().NoError(err)
+			if tc.eligible {
+				s.Equal(0, chosen.Entry)
+				s.Require().NotNil(chosen.Answer.Search)
+				s.Equal(6, chosen.Answer.Search.Distance)
+
+				return
+			}
+			s.Equal(-1, chosen.Entry, "nothing eligible is a hold")
+			s.True(chosen.Answer.Hold)
+		})
+	}
+}
+
+// TestSearchIsLoadedAsAWalkToward is the temperament on a search: it is the
+// creature closing on where its quarry went, so it carries the `toward`
+// factor. An aggressive creature searches at triple, a coward at half.
+func (s *TableSuite) TestSearchIsLoadedAsAWalkToward() {
+	table := behavior.Table{behavior.KeyTime: {
+		{Weight: 1, Search: &behavior.Search{Distance: 6}},
+		{Weight: 1, Hold: true},
+	}}
+	lost := behavior.Facts{EnemyLost: true, CanMove: true}
+	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
+		Key: behavior.KeyTime, Table: table, Facts: lost,
+		Temper: behavior.Temper{Word: "aggressive", Profile: aggressiveProfile}, Die: &facedDie{face: 1}})
+	s.Require().NoError(err)
+	s.Require().Len(chosen.Candidates, 2)
+	s.Equal(aggressiveProfile.Toward, chosen.Candidates[0].Percent)
+	s.Equal(aggressiveProfile.Hold, chosen.Candidates[1].Percent)
+}
+
+// TestASearchWalksAtLeastOneCell is the shape refusal: a distance below 1 is a
+// search that goes nowhere. The dialect fills an omitted distance before this
+// door, so a zero here is a struct built past it.
+func (s *TableSuite) TestASearchWalksAtLeastOneCell() {
+	lost := []behavior.When{{Enemy: behavior.EnemyLost}}
+	s.NoError((&behavior.Answer{Weight: 1, When: lost, Search: &behavior.Search{Distance: 1}}).Validate())
+	for _, d := range []int{0, -3} {
+		err := (&behavior.Answer{Weight: 1, When: lost, Search: &behavior.Search{Distance: d}}).Validate()
+		s.Require().ErrorIs(err, behavior.ErrBadSearch)
+		s.Contains(err.Error(), "`search` distance")
+	}
 }
