@@ -137,7 +137,8 @@ func openTheCastleWithEars(
 // where the hero starts, doors standing in a state the file does not give
 // them, passive Perception other than 10, more players beside the hero, the
 // check resolver (the host's nothingIsEverFound when nil), and watch arcs for
-// some members (none — all round — for everybody else).
+// some members (none — all round — for everybody else), and how far everybody
+// sees (the host's sixty feet when zero).
 type castleHost struct {
 	at       spatial.Position
 	doors    map[encounter.DoorID]encounter.DoorState
@@ -145,6 +146,7 @@ type castleHost struct {
 	players  []encounter.MemberInput
 	resolver encounter.CheckResolver
 	arcs     map[encounter.MemberID]int
+	sightFt  int
 }
 
 // openTheCastleAs compiles the file and opens it the way the host says.
@@ -191,7 +193,7 @@ func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 		// Unbounded, so a route can read a creature's whole story back.
 		Retention: encounter.RetentionUnbounded,
 		Capabilities: encounter.Capabilities{
-			Sight:         castleSight{},
+			Sight:         castleSight{feet: host.sightFt},
 			Equipment:     encounter.UnobservedEquipment{},
 			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        castleSheets{passive: host.passive, arcs: host.arcs},
@@ -453,13 +455,18 @@ func (s *kingScene) endTurn() {
 // castleSpeedFeet is everybody's walking speed in this host.
 const castleSpeedFeet = 30
 
-// castleSight is a torchlit castle: everybody sees sixty feet.
-type castleSight struct{}
+// castleSight is a torchlit castle: everybody sees sixty feet, or what the
+// host says ([castleHost.sightFt]).
+type castleSight struct{ feet int }
 
-func (castleSight) Sight(members []encounter.MemberID) (map[encounter.MemberID]int, error) {
+func (s castleSight) Sight(members []encounter.MemberID) (map[encounter.MemberID]int, error) {
+	feet := s.feet
+	if feet == 0 {
+		feet = 60
+	}
 	out := make(map[encounter.MemberID]int, len(members))
 	for _, id := range members {
-		out[id] = encounter.CellsFromFeet(60)
+		out[id] = encounter.CellsFromFeet(feet)
 	}
 
 	return out, nil

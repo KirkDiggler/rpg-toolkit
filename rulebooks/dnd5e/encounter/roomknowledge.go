@@ -133,13 +133,25 @@ func (f *cellFold) catchUp(log *journal.Journal) {
 //
 // The learned fact makes no claim about occupants, props, or a door's
 // current state.
-func (e *Encounter) discoverCells(observer MemberID, reach sightReach) error {
+//
+// AN OBSERVER WHOSE SWEEP KEY IS UNCHANGED SKIPS (sightsweep.go): opacity is
+// the pass's [Encounter.sightOpacity], and the key is stored only once the
+// sweep's cells are learned, so a failed sweep is retried.
+func (e *Encounter) discoverCells(observer MemberID, reach sightReach, opacity string) error {
 	own, placed := reach.positions[observer]
 	if !placed {
 		return nil
 	}
-	known := e.world.knownCells(observer)
 	hidden := e.hiddenFrom(observer)
+	key := sweepKeyOf(own, reach.cells[observer], opacity, hidden)
+	if e.sightSweeps[observer] == string(key) {
+		return nil
+	}
+	if e.sightSweepsRun == nil {
+		e.sightSweepsRun = make(map[MemberID]int)
+	}
+	e.sightSweepsRun[observer]++
+	known := e.world.knownCells(observer)
 	learned := make([]spatial.Position, 0)
 	for _, cell := range e.field.cells {
 		if known[cell] {
@@ -149,7 +161,15 @@ func (e *Encounter) discoverCells(observer MemberID, reach sightReach) error {
 			learned = append(learned, cell)
 		}
 	}
-	return e.learnCells(observer, learned, known)
+	if err := e.learnCells(observer, learned, known); err != nil {
+		return err
+	}
+	if e.sightSweeps == nil {
+		e.sightSweeps = make(map[MemberID]string)
+	}
+	e.sightSweeps[observer] = string(key)
+
+	return nil
 }
 
 // learnCells is the layout-only writer. Sight, opening a door and presence
