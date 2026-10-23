@@ -1793,12 +1793,16 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 	// nobody to see, exactly as the old loop's skip said.
 	positions := make(map[MemberID]spatial.Position, len(roster))
 	presences := make([]perception.Presence, 0, len(roster))
+	// seenAs is each placed subject's index in presences, for the heading
+	// variants headingPasses builds.
+	seenAs := make(map[MemberID]int, len(roster))
 	for _, subjectID := range roster {
 		cell, ok := e.canvas.GetEntityPosition(string(subjectID))
 		if !ok {
 			continue // Not placed
 		}
 		positions[subjectID] = cell
+		seenAs[subjectID] = len(presences)
 
 		// Standing comes from the pass-scoped reading taken above, beside
 		// sight and equipment — see the comment on [down] for why there was
@@ -1895,15 +1899,27 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 	if err != nil {
 		return nil, err
 	}
-	perceived, err := e.intelLog.Observe(perception.Pass{
-		At:        clockReading,
-		Channel:   perception.Sight,
-		Presences: presences,
-		Observers: observerIDs,
-		Reach:     observationGeometry,
-	})
+	// THE WAY EACH OBSERVER SAW THEM GO (rpg-project#679 R10, #673 R8): one
+	// pass per distinct set of headings, every observer in exactly one.
+	passes, err := e.headingPasses(observerIDs, presences, positions, seenAs)
 	if err != nil {
-		return nil, fmt.Errorf("refreshsight observe: %w", err)
+		return nil, err
+	}
+	perceived := make(map[core.EntityID]*perception.Delta, len(observerIDs))
+	for _, pass := range passes {
+		out, oerr := e.intelLog.Observe(perception.Pass{
+			At:        clockReading,
+			Channel:   perception.Sight,
+			Presences: pass.presences,
+			Observers: pass.observers,
+			Reach:     observationGeometry,
+		})
+		if oerr != nil {
+			return nil, fmt.Errorf("refreshsight observe: %w", oerr)
+		}
+		for id, delta := range out {
+			perceived[id] = delta
+		}
 	}
 
 	// The rolls are told after the pass, so a beat names its watcher exactly

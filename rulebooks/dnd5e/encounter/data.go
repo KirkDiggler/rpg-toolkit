@@ -1448,7 +1448,7 @@ type AnswerData struct {
 	Attack *SelectorData `json:"attack,omitempty"`
 	Toward *SelectorData `json:"toward,omitempty"`
 	Away   *SelectorData `json:"away,omitempty"`
-	// Search is `search: { distance }` (rpg-project#668 R4). Omitted when
+	// Search is `search: { distance, heading }` (rpg-project#668 R4, #679). Omitted when
 	// the row does not search, so every blob written before the word existed
 	// reads as it did.
 	Search *SearchData `json:"search,omitempty"`
@@ -1459,6 +1459,9 @@ type AnswerData struct {
 // is written whatever its value.
 type SearchData struct {
 	Distance int `json:"distance"`
+	// Heading is [Search.Heading], always written: a row that reloads with
+	// no heading is a wordless search, refused at the door.
+	Heading SearchHeading `json:"heading"`
 }
 
 // WhenData is the persistent representation of a [When]: ONE condition of the
@@ -1607,7 +1610,7 @@ func answerDataFrom(entry Answer) AnswerData {
 		Away:   selectorDataFrom(entry.Away),
 	}
 	if entry.Search != nil {
-		out.Search = &SearchData{Distance: entry.Search.Distance}
+		out.Search = &SearchData{Distance: entry.Search.Distance, Heading: entry.Search.Heading}
 	}
 	for _, w := range entry.When {
 		out.When = append(out.When, whenDataFrom(w))
@@ -1704,7 +1707,7 @@ func answerFromData(row AnswerData) Answer {
 		Away:   selectorFromData(row.Away),
 	}
 	if row.Search != nil {
-		out.Search = &Search{Distance: row.Search.Distance}
+		out.Search = &Search{Distance: row.Search.Distance, Heading: row.Search.Heading}
 	}
 	for _, w := range row.When {
 		out.When = append(out.When, whenFromData(w))

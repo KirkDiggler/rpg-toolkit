@@ -116,6 +116,21 @@ type SightTestimony struct {
 	// keeps the facing it last saw, as it keeps the hands; nobody reads a
 	// subject's facing live.
 	Facing *float64
+
+	// Heading is the way THIS OBSERVER saw the subject go: the bearing from
+	// the cell its own previous testimony placed the subject on to the cell
+	// it sees the subject on now, in Facing's degrees (rpg-project#679 R10).
+	// Seen on the same cell, the previous heading is kept; with no placed
+	// testimony before, it is nil. So nil means this observer never saw the
+	// subject move — a first sighting of a subject standing still says
+	// nothing about the step it took out of sight (#673 R8: testimony is per
+	// observer) — and a memory keeps the heading it last saw. A `search: {
+	// heading: went }` walks along it.
+	//
+	// UNLIKE FACING, NOT A SNAPSHOT OF THE SUBJECT. Facing is visible at the
+	// instant of sight; a past step is not, so the heading is derived per
+	// observer in [Encounter.rebuildPercepts] from what that observer held.
+	Heading *float64
 }
 
 type handsWire struct {
@@ -135,6 +150,7 @@ type sightWire struct {
 	// key while an observed empty set encodes [].
 	Conditions *[]ConditionKey `json:"conditions,omitempty"`
 	Facing     *float64        `json:"facing,omitempty"`
+	Heading    *float64        `json:"heading,omitempty"`
 }
 
 // sightPayloadFields is the complete set of keys canonical sight testimony may
@@ -143,7 +159,7 @@ type sightWire struct {
 // a testimony that then reads as confident.
 var sightPayloadFields = map[string]struct{}{
 	"state": {}, "x": {}, "y": {}, "down": {}, "equipment": {}, "blocks_movement": {}, "conditions": {}, "appearance_ref": {},
-	"facing": {},
+	"facing": {}, "heading": {},
 }
 
 // EncodeSightTestimony encodes sight testimony in the canonical tagged wire
@@ -157,10 +173,14 @@ func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 	if err := validateFacing(testimony.Facing); err != nil {
 		return nil, asInvalidData(err)
 	}
+	if err := validateFacing(testimony.Heading); err != nil {
+		return nil, asInvalidData(fmt.Errorf("heading: %w", err))
+	}
 	switch testimony.State {
 	case LocationKnown, LocationLost:
 		x, y := testimony.Position.X, testimony.Position.Y
-		wire := sightWire{State: string(testimony.State), X: &x, Y: &y, Down: testimony.Down, BlocksMovement: testimony.BlocksMovement, AppearanceRef: testimony.AppearanceRef, Facing: testimony.Facing}
+		wire := sightWire{State: string(testimony.State), X: &x, Y: &y, Down: testimony.Down, BlocksMovement: testimony.BlocksMovement, AppearanceRef: testimony.AppearanceRef, Facing: testimony.Facing,
+			Heading: testimony.Heading}
 		if testimony.Equipment != nil {
 			wire.Equipment = &handsWire{
 				MainHand: testimony.Equipment.MainHand,
@@ -196,6 +216,9 @@ func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 		}
 		if testimony.Facing != nil {
 			return nil, asInvalidData(fmt.Errorf("unknown location cannot carry facing"))
+		}
+		if testimony.Heading != nil {
+			return nil, asInvalidData(fmt.Errorf("unknown location cannot carry a heading"))
 		}
 		return json.Marshal(sightWire{State: string(LocationUnknown)})
 	default:
@@ -304,10 +327,15 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 	_, conditionsPresent := fields["conditions"]
 	_, appearancePresent := fields["appearance_ref"]
 	_, facingPresent := fields["facing"]
+	_, headingPresent := fields["heading"]
 	// A present key must hold a bearing: "facing": null would decode as not
 	// observed while claiming the key, and a value outside [0, 360) is a
 	// facing no build writes.
 	if facingPresent && (wire.Facing == nil || validateFacing(wire.Facing) != nil) {
+		return SightTestimony{}, false
+	}
+	// The heading is a bearing on Facing's rule, for Facing's reasons.
+	if headingPresent && (wire.Heading == nil || validateFacing(wire.Heading) != nil) {
 		return SightTestimony{}, false
 	}
 	if appearancePresent && (wire.AppearanceRef == "" || validateAppearanceRef(wire.AppearanceRef) != nil) {
@@ -346,12 +374,13 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 			Conditions:     held,
 			AppearanceRef:  wire.AppearanceRef,
 			Facing:         wire.Facing,
+			Heading:        wire.Heading,
 		}, true
 	case LocationUnknown:
 		// Nobody in view has a position, a standing, hands or conditions to
 		// observe.
 		if xPresent || yPresent || downPresent || equipmentPresent || blocksPresent || conditionsPresent || appearancePresent ||
-			facingPresent {
+			facingPresent || headingPresent {
 			return SightTestimony{}, false
 		}
 		return SightTestimony{State: LocationUnknown}, true

@@ -139,7 +139,7 @@ func (s *MonsterTurnTestSuite) TestALostTrailRunsStraightToTheWall() {
 	s.Require().NoError(err)
 	s.Require().Len(driver.calls, 1)
 	s.Require().Len(driver.calls[0].Lost, 1)
-	trail := driver.calls[0].Lost[0].Trail
+	trail := driver.calls[0].Lost[0].Trails[encounter.HeadingFaced]
 	s.Require().GreaterOrEqual(len(trail), 2, "the room is wider than two cells east of the lost cell")
 
 	step := spatial.Position{X: trail[0].X - from.X, Y: trail[0].Y - from.Y}
@@ -171,8 +171,8 @@ func (s *MonsterTurnTestSuite) TestALostTrailRunsStraightToTheWall() {
 	enc = s.blindGoblin(encounter.SightTestimony{State: encounter.LocationLost, Position: from, Facing: &goblinFacing}, stated)
 	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
 	s.Require().NoError(err)
-	s.Equal(stated.calls[0].Lost[0].Trail, unstated.calls[0].Lost[0].Trail, "the goblin's own facing is the heading")
-	s.NotEqual(trail, unstated.calls[0].Lost[0].Trail, "precondition: the goblin does not face east")
+	s.Equal(stated.calls[0].Lost[0].Trails[encounter.HeadingFaced], unstated.calls[0].Lost[0].Trails[encounter.HeadingFaced], "the goblin's own facing is the heading")
+	s.NotEqual(trail, unstated.calls[0].Lost[0].Trails[encounter.HeadingFaced], "precondition: the goblin does not face east")
 }
 
 // TestASearchGivesUpWhereItEnds is R5: a search walk that ends on its cell,
@@ -302,8 +302,38 @@ func (s *MonsterTurnTestSuite) TestALostTrailStopsAtAWallItCouldWalkRound() {
 	s.Require().NoError(err)
 	s.Require().Len(driver.calls, 1)
 	s.Require().Len(driver.calls[0].Lost, 1)
-	s.Equal([]spatial.Position{cellAt(25, 11)}, driver.calls[0].Lost[0].Trail,
+	s.Equal([]spatial.Position{cellAt(25, 11)}, driver.calls[0].Lost[0].Trails[encounter.HeadingFaced],
 		"one cell east, then the seam wall: the east room past it is the doorway's long way round")
+}
+
+// TestALostTrailFollowsTheWaySheWent is R10's trail (rpg-project#679), on
+// testimony that came back through the blob: alice was last seen stepping
+// east while facing north, so `went` walks east and `faced` walks north from
+// the same lost cell, and `left` and `right` turn off east.
+func (s *MonsterTurnTestSuite) TestALostTrailFollowsTheWaySheWent() {
+	east, north := 90.0, 0.0
+	from := spatial.Position{X: 2, Y: 5}
+	driver := &scriptedDriver{}
+	enc := s.blindGoblin(encounter.SightTestimony{
+		State: encounter.LocationLost, Position: from, Facing: &north, Heading: &east,
+	}, driver)
+	_, err := enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Len(driver.calls, 1)
+	s.Require().Len(driver.calls[0].Lost, 1)
+	trails := driver.calls[0].Lost[0].Trails
+	s.Require().NotEmpty(trails[encounter.HeadingWent])
+	s.Greater(trails[encounter.HeadingWent][0].X, from.X, "went walks east, the way she stepped")
+	s.NotEqual(trails[encounter.HeadingWent], trails[encounter.HeadingFaced], "not the way she faced")
+
+	facedOnly := &scriptedDriver{}
+	enc = s.blindGoblin(encounter.SightTestimony{
+		State: encounter.LocationLost, Position: from, Facing: &east,
+	}, facedOnly)
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+	s.Equal(trails[encounter.HeadingWent], facedOnly.calls[0].Lost[0].Trails[encounter.HeadingFaced],
+		"went is the trail a facing of east gives")
 }
 
 // TestAPassNeverLosesASightingBeingMade: the goblin sees alice now, so a pass
@@ -325,7 +355,8 @@ func (s *MonsterTurnTestSuite) TestAPassNeverLosesASightingBeingMade() {
 // as a wordless row from the first save on.
 func (s *MonsterTurnTestSuite) TestASearchRowSurvivesTheBlob() {
 	table := encounter.Table{encounter.AnswerTime: {
-		{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyLost}}, Search: &encounter.Search{Distance: 4}},
+		{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyLost}},
+			Search: &encounter.Search{Distance: 4, Heading: encounter.HeadingFaced}},
 	}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
@@ -358,6 +389,7 @@ func (s *MonsterTurnTestSuite) TestASearchRowSurvivesTheBlob() {
 		s.Require().Len(rows, 1)
 		s.Require().NotNil(rows[0].Search, "the search row kept its word through the blob")
 		s.Equal(4, rows[0].Search.Distance)
+		s.Equal(encounter.HeadingFaced, rows[0].Search.Heading, "and its heading word (rpg-project#679)")
 
 		return
 	}

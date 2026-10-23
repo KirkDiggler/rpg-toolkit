@@ -210,12 +210,13 @@ tables:
         toward: enemy
       # Hand edit (rpg-project#668): pursuit. Lost from sight, he walks to
       # where he last saw you; finding nobody there he searches six cells on
-      # the way you were heading, then gives up — and his `enemy: none` loop
-      # below walks him home.
+      # the way you went (rpg-project#679: your last seen step, not the way
+      # you faced), then gives up — and his `enemy: none` loop below walks
+      # him home.
       - when: { enemy: remembered }
         toward: enemy
       - when: { enemy: lost }
-        search: { distance: 6 }
+        search: { distance: 6, heading: went }
       - when:
           heard:
             kind: clang
@@ -251,12 +252,13 @@ tables:
         toward: enemy
       # Hand edit (rpg-project#668): pursuit. Lost from sight, he walks to
       # where he last saw you; finding nobody there he searches six cells on
-      # the way you were heading, then gives up — and his `enemy: none` loop
-      # below walks him home.
+      # the way you went (rpg-project#679: your last seen step, not the way
+      # you faced), then gives up — and his `enemy: none` loop below walks
+      # him home.
       - when: { enemy: remembered }
         toward: enemy
       - when: { enemy: lost }
-        search: { distance: 6 }
+        search: { distance: 6, heading: went }
       - when:
           heard:
             kind: clang

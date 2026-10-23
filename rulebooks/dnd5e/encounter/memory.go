@@ -25,7 +25,7 @@ import (
 // restart the chase.
 //
 // NO STATE OF ITS OWN. The search cell is derived each turn from the lost
-// testimony and the row's distance ([LostMember.Trail]), as a patrol's next
+// testimony and the row's distance and heading ([LostMember.Trails]), as a patrol's next
 // leg is derived from where the walker stands; giving up is the testimony
 // changing, so a returning creature is simply one whose `enemy: none` rows
 // hold again.
@@ -113,18 +113,65 @@ func (e *Encounter) rewriteSight(
 	return nil
 }
 
+// searchHeadings is the bearing each heading word reads from one lost
+// testimony (rpg-project#679 R10), own being the searcher's own facing.
+//
+//   - `went` is the subject's last seen step ([SightTestimony.Heading]), else
+//     its seen facing, else own.
+//   - `faced` is its seen facing, else own — every search before the word.
+//   - `left` and `right` are a quarter turn off `went`'s bearing, the held
+//     heading, counter-clockwise and clockwise.
+//
+// THE FALLBACKS ARE THE TESTIMONY RUNNING OUT, never a live read: a subject
+// never seen stepping has no way it went, so the search follows the way it
+// faced, and one never seen at all the way the searcher itself is turned.
+func searchHeadings(seen SightTestimony, own float64) map[SearchHeading]float64 {
+	faced := own
+	if seen.Facing != nil {
+		faced = *seen.Facing
+	}
+	went := faced
+	if seen.Heading != nil {
+		went = *seen.Heading
+	}
+
+	return map[SearchHeading]float64{
+		HeadingWent:  went,
+		HeadingFaced: faced,
+		HeadingLeft:  math.Mod(went+270, 360),
+		HeadingRight: math.Mod(went+90, 360),
+	}
+}
+
+// searchTrails is [searchTrail] for every heading, on one flood from the lost
+// cell: the walls a search is clipped by do not depend on which way it walks.
+func (q *cellQuery) searchTrails(
+	mover MemberID, from spatial.Position, headings map[SearchHeading]float64,
+) (map[SearchHeading][]spatial.Position, error) {
+	field, err := q.floodFrom(mover, mover, from, nil, 0)
+	if err != nil {
+		return nil, err
+	}
+	trails := make(map[SearchHeading][]spatial.Position, len(headings))
+	for word, heading := range headings {
+		trails[word] = q.searchTrail(field.Dist, from, heading)
+	}
+
+	return trails, nil
+}
+
 // searchTrail is the straight line a search walks from a lost cell along a
 // heading (rpg-project#668 R4): the neighbour of `from` whose bearing is
 // nearest the heading names the step, and the line repeats that step for as
-// long as each next cell is a step from the last — reached by mover's own
-// flood from `from` in exactly as many steps as it is along the line. The
-// first cell that is not ends it: a search does not walk through a wall to
-// keep its line, and does not detour round one either.
+// long as each next cell is a step from the last — reached by the mover's own
+// flood from `from` (dist) in exactly as many steps as it is along the line.
+// The first cell that is not ends it: a search does not walk through a wall
+// to keep its line, and does not detour round one either.
 //
 // NEAREST FIRST, and empty when the first step is already blocked. Ties on
 // the bearing go to the grid's own neighbour order, so the same heading
 // always walks the same line (C8).
-func (q *cellQuery) searchTrail(mover MemberID, from spatial.Position, heading float64) ([]spatial.Position, error) {
+func (q *cellQuery) searchTrail(dist map[spatial.Position]int, from spatial.Position, heading float64) []spatial.Position {
 	var step spatial.Position
 	best := math.Inf(1)
 	for _, n := range adjacencyGrid.GetNeighbors(from) {
@@ -138,19 +185,15 @@ func (q *cellQuery) searchTrail(mover MemberID, from spatial.Position, heading f
 		}
 	}
 	if math.IsInf(best, 1) {
-		return nil, nil
+		return nil
 	}
 
-	field, err := q.floodFrom(mover, mover, from, nil, 0)
-	if err != nil {
-		return nil, err
-	}
 	var trail []spatial.Position
 	cell := from
 	for k := 1; ; k++ {
 		cell = spatial.Position{X: cell.X + step.X, Y: cell.Y + step.Y}
-		if d, reached := field.Dist[cell]; !reached || d != k {
-			return trail, nil
+		if d, reached := dist[cell]; !reached || d != k {
+			return trail
 		}
 		trail = append(trail, cell)
 	}

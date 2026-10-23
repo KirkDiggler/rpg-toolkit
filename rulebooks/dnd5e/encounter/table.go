@@ -78,9 +78,14 @@ type (
 	// Selector names what a word acts on.
 	Selector = behavior.Selector
 
-	// Search is `search: { distance: N }`: how far on from a lost trail the
-	// creature walks before it gives up (rpg-project#668 R4).
+	// Search is `search: { distance: N, heading: <word> }`: how far on from
+	// a lost trail the creature walks before it gives up (rpg-project#668
+	// R4), and which heading it follows (rpg-project#679 R10).
 	Search = behavior.Search
+
+	// SearchHeading is the sealed word a search follows: went, faced, left
+	// or right.
+	SearchHeading = behavior.SearchHeading
 
 	// SelectorWord is a selector's word.
 	SelectorWord = behavior.SelectorWord
@@ -135,6 +140,18 @@ const (
 
 	// EnemyNone holds when none of the four does.
 	EnemyNone = behavior.EnemyNone
+
+	// HeadingWent follows the way the quarry went: its last seen step.
+	HeadingWent = behavior.HeadingWent
+
+	// HeadingFaced follows the way the quarry faced when last seen.
+	HeadingFaced = behavior.HeadingFaced
+
+	// HeadingLeft turns a quarter left off the held heading.
+	HeadingLeft = behavior.HeadingLeft
+
+	// HeadingRight turns a quarter right off the held heading.
+	HeadingRight = behavior.HeadingRight
 
 	// SelectorEnemy is the nearest opposed member in sight, else remembered.
 	SelectorEnemy = behavior.SelectorEnemy

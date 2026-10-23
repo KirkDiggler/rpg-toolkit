@@ -90,6 +90,10 @@ func TestDecodeSightTestimonyRejectsMalformedOrContradictoryShapes(t *testing.T)
 		{name: "facing out of range", payload: `{"state":"known","x":1,"y":2,"facing":400}`},
 		{name: "negative facing", payload: `{"state":"known","x":1,"y":2,"facing":-1}`},
 		{name: "unknown with facing", payload: `{"state":"unknown","facing":90}`},
+		// A heading key is a bearing on facing's rule (rpg-project#679).
+		{name: "null heading", payload: `{"state":"known","x":1,"y":2,"heading":null}`},
+		{name: "heading out of range", payload: `{"state":"known","x":1,"y":2,"heading":360}`},
+		{name: "unknown with heading", payload: `{"state":"unknown","heading":90}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, ok := encounter.DecodeSightTestimony([]byte(tc.payload))
@@ -179,4 +183,24 @@ func TestLostTestimonyKeepsItsCellAndFacing(t *testing.T) {
 
 	_, ok = encounter.DecodeSightTestimony([]byte(`{"state":"lost"}`))
 	require.False(t, ok, "a lost memory names where it was lost")
+}
+
+// TestLostTestimonyKeepsTheWayItWent is rpg-project#679's encoding: the
+// heading rides beside the facing under its own key, and decodes back as it
+// was written.
+func TestLostTestimonyKeepsTheWayItWent(t *testing.T) {
+	east, north := 90.0, 0.0
+	lost := encounter.SightTestimony{
+		State: encounter.LocationLost, Position: spatial.Position{X: 3, Y: -1}, Facing: &north, Heading: &east,
+	}
+	payload, err := encounter.EncodeSightTestimony(lost)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"state":"lost","x":3,"y":-1,"facing":0,"heading":90}`, string(payload))
+
+	got, ok := encounter.DecodeSightTestimony(payload)
+	require.True(t, ok)
+	require.Equal(t, lost, got)
+
+	_, err = encounter.EncodeSightTestimony(encounter.SightTestimony{State: encounter.LocationUnknown, Heading: &east})
+	require.ErrorIs(t, err, encounter.ErrInvalidData, "an unknown subject has no way it went")
 }

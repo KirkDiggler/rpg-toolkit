@@ -1070,9 +1070,12 @@ func answerOf(entry AnswerSpec, o encounter.Orientation) encounter.Answer {
 	}
 	var search *encounter.Search
 	if entry.Search != nil {
-		search = &encounter.Search{Distance: DefaultSearchDistance}
+		search = &encounter.Search{Distance: DefaultSearchDistance, Heading: DefaultSearchHeading}
 		if entry.Search.Distance != nil {
 			search.Distance = *entry.Search.Distance
+		}
+		if entry.Search.Heading != nil {
+			search.Heading = encounter.SearchHeading(*entry.Search.Heading)
 		}
 	}
 

@@ -2004,11 +2004,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		// went there and they were gone. What it keeps is where to search
 		// from, and which way.
 		if location.State == LocationLost {
-			heading := m.Facing
-			if location.Facing != nil {
-				heading = *location.Facing
-			}
-			trail, terr := query.searchTrail(m.ID, pos, heading)
+			trails, terr := query.searchTrails(m.ID, pos, searchHeadings(location, m.Facing))
 			if terr != nil {
 				return MonsterView{}, terr
 			}
@@ -2017,7 +2013,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 				Opposed:       e.opposed(m.ID, subjectID),
 				Position:      pos,
 				DistanceCells: e.Distance(ownCell, pos),
-				Trail:         trail,
+				Trails:        trails,
 			})
 			continue
 		}

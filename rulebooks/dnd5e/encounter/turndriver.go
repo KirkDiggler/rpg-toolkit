@@ -253,13 +253,17 @@ type LostMember struct {
 	// Position, which is how the nearest lost member is chosen.
 	DistanceCells float64
 
-	// Trail is the straight line of cells walked on from Position along the
-	// held heading, nearest first, ending where the next cell along it cannot
-	// be stepped to (rpg-project#668 R4). The heading is the subject's
-	// facing as the testimony saw it, else the monster's own facing — the
-	// way it was walking when it got there. Empty when the very first step is
-	// blocked. A `search: { distance: N }` walks to its Nth cell, or its last.
-	Trail []spatial.Position
+	// Trails is, for every heading word a `search` may name, the straight
+	// line of cells walked on from Position along that heading, nearest
+	// first, ending where the next cell along it cannot be stepped to
+	// (rpg-project#668 R4, rpg-project#679 R10). Each word reads the
+	// testimony ([searchHeadings]): `went` the subject's last seen step,
+	// `faced` its seen facing, `left` and `right` a quarter turn off the
+	// held one, each falling back to the monster's own facing when the
+	// testimony holds nothing. A trail is empty when its very first step is
+	// blocked. A `search: { distance: N, heading: H }` walks to the Nth cell
+	// of Trails[H], or its last.
+	Trails map[SearchHeading][]spatial.Position
 }
 
 // SeenMember is one other member this monster currently holds active sight
