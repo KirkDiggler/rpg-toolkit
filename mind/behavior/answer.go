@@ -26,8 +26,8 @@ import "fmt"
 // that neither speaks nor acts is a row the author wrote for no reason.
 //
 // THE WORD IS LEGAL PER KEY (design §2). `fact` and `flee` answer a social
-// verdict; `hold`, `attack`, `toward` and `away` are what a creature does
-// with TIME. A `when` is a `time` word too — a social verdict is already the
+// verdict; `hold`, `attack`, `toward`, `away` and `search` are what a
+// creature does with TIME. A `when` is a `time` word too — a social verdict is already the
 // condition. the rulebook refuses the crossings by name.
 type Answer struct {
 	// Weight is this entry's share of the table. AT LEAST 1, refused
@@ -101,13 +101,24 @@ type Answer struct {
 	// their own engine-driven its own router path and do not pass through the
 	// table.
 	Away *Selector
+
+	// Search walks on from a LOST trail ([EnemyLost]): the cell the creature
+	// last saw its quarry on, out along the way it was heading, for
+	// Distance cells (rpg-project#668 R4). Where that cell is, which heading
+	// is held and when the search is over are the caller's; this module
+	// carries the number.
+	//
+	// OMITTED WHEN NIL, so a row that does not search marshals exactly as it
+	// did before the word existed and no compiled table moves.
+	Search *Search `json:",omitempty"`
 }
 
 // Validate refuses what this module's own types cannot carry: a [When] in the
 // list that does not name exactly one condition ([When.Validate],
 // ErrBadWhen), and a [Selector] naming no target or more than one, a `path`
 // on a word other than `toward`, `sound` on `attack`, or `sound` on a row
-// whose list names no `heard` condition (ErrBadSelector, R10). Each refusal is a sentence for
+// whose list names no `heard` condition (ErrBadSelector, R10), and a `search`
+// distance below 1 (ErrBadSearch). Each refusal is a sentence for
 // the form, wrapping its sentinel.
 //
 // THE REST IS THE CALLER'S DOOR, as it always was: the weight, the
@@ -119,6 +130,10 @@ func (a *Answer) Validate() error {
 		if err := a.When[i].Validate(); err != nil {
 			return err
 		}
+	}
+	if a.Search != nil && a.Search.Distance < 1 {
+		return fmt.Errorf("`search` distance %d: a search walks at least one cell: %w",
+			a.Search.Distance, ErrBadSearch)
 	}
 	for _, slot := range []struct {
 		word string
@@ -137,6 +152,19 @@ func (a *Answer) Validate() error {
 	}
 
 	return nil
+}
+
+// Search is `search: { distance: N }`: how far on from a lost trail the
+// creature walks before it gives up (rpg-project#668 R4).
+//
+// A NUMBER AND NOTHING ELSE. The trail, its heading and the cell N on are the
+// caller's to derive from what the creature holds, each time the row fires —
+// the search holds no state, as a route holds no state.
+type Search struct {
+	// Distance is how many cells on the search walks. AT LEAST 1, refused
+	// otherwise. The dialect fills an omitted distance before it gets here,
+	// so nothing down here has to know what "omitted" meant.
+	Distance int
 }
 
 // listens reports whether this row's `when` list names a `heard` condition
