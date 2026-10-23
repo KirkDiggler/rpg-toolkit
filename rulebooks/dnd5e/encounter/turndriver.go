@@ -178,6 +178,12 @@ type MonsterView struct {
 	// visible-first driver can interrupt remembered pursuit immediately.
 	Remembered []RememberedMember
 
+	// Lost are the OTHER members this monster held as remembered and then
+	// went looking for: it stood on the remembered cell, or found no route
+	// to it, and they were not there (rpg-project#668 R3). Never in Seen or
+	// Remembered at the same time. What `search` walks on from.
+	Lost []LostMember
+
 	// Budget is what remains of this member's turn.
 	Budget TurnBudget
 
@@ -228,6 +234,32 @@ type RememberedMember struct {
 	// Path is the exact-cell shortest route to Position. It contains no live
 	// standing or reach information and is nil when Position is unreachable.
 	Path []spatial.Position
+}
+
+// LostMember is one member this monster lost: its own testimony, marked lost,
+// and the trail a search walks from it.
+type LostMember struct {
+	// ID is the lost member's identifier.
+	ID MemberID
+
+	// Opposed is the stance graph's answer now, [RememberedMember.Opposed]'s
+	// twin: `enemy: lost` reads only an opposed one.
+	Opposed bool
+
+	// Position is the cell the monster last saw them on, DUNGEON-ABSOLUTE.
+	Position spatial.Position
+
+	// DistanceCells is the grid distance from the monster's own cell to
+	// Position, which is how the nearest lost member is chosen.
+	DistanceCells float64
+
+	// Trail is the straight line of cells walked on from Position along the
+	// held heading, nearest first, ending where the next cell along it cannot
+	// be stepped to (rpg-project#668 R4). The heading is the subject's
+	// facing as the testimony saw it, else the monster's own facing — the
+	// way it was walking when it got there. Empty when the very first step is
+	// blocked. A `search: { distance: N }` walks to its Nth cell, or its last.
+	Trail []spatial.Position
 }
 
 // SeenMember is one other member this monster currently holds active sight
@@ -385,6 +417,15 @@ type Pass struct {
 	// Why is the sentence the stayed beat carries ("already in reach").
 	// Read only when Cause is set.
 	Why string
+
+	// Loses names a member this creature REMEMBERED and went after, and found
+	// nothing left to walk to: it stands on the remembered cell, or no route
+	// reaches it (rpg-project#668 R3). The encounter turns the creature's own
+	// held testimony of that member LOST — same cell, same heading, no
+	// longer a place to go. A member it holds no remembered testimony of
+	// (seen now, unknown, or never seen) is left alone. Empty for every
+	// other pass.
+	Loses MemberID
 }
 
 // isTurnIntent marks Pass as a TurnIntent.
@@ -536,6 +577,14 @@ type Routed struct {
 	// creature that regains its route on a waypoint pauses there as the
 	// author said. Nil for every other routed walk.
 	Pause *WaypointPause
+
+	// GivesUp names the member a SEARCH is looking for (rpg-project#668 R5):
+	// when this walk has nowhere left to go — it already stands on AnchorAt,
+	// or no route brings it nearer — or it ends standing on AnchorAt, the
+	// walker's own testimony of GivesUp becomes unknown, and the search is
+	// over. Only with AnchorAt and [MoveToward]; empty for every other
+	// routed walk.
+	GivesUp MemberID
 }
 
 // isTurnIntent marks Routed as a TurnIntent.

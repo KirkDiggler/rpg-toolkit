@@ -449,6 +449,8 @@ func answerWord(entry Answer) string {
 		return "toward"
 	case entry.Away != nil:
 		return "away"
+	case entry.Search != nil:
+		return "search"
 	default:
 		return ""
 	}
@@ -537,7 +539,7 @@ func validateEntry(key AnswerKey, i int, entry Answer) error {
 			return fmt.Errorf("answer %q entry %d: `%s` answers a social verdict, not time: %w",
 				key, i, word, ErrBadAnswer)
 		}
-	case "hold", "attack", "toward", "away":
+	case "hold", "attack", "toward", "away", "search":
 		if social {
 			return fmt.Errorf("answer %q entry %d: `%s` is what a creature does with time: %w",
 				key, i, word, ErrBadAnswer)
@@ -728,6 +730,10 @@ func cloneAnswer(entry Answer) Answer {
 	out.Attack = cloneSelector(entry.Attack)
 	out.Toward = cloneSelector(entry.Toward)
 	out.Away = cloneSelector(entry.Away)
+	if entry.Search != nil {
+		search := *entry.Search
+		out.Search = &search
+	}
 
 	return out
 }

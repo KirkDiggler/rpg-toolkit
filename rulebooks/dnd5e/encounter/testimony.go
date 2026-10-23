@@ -23,6 +23,12 @@ const (
 	LocationKnown LocationState = "known"
 	// LocationUnknown says the subject remains known without a position.
 	LocationUnknown LocationState = "unknown"
+	// LocationLost says the observer went back to where the testimony
+	// places the subject and found nobody (rpg-project#668 R3). It keeps
+	// everything the last sighting saw — the cell, the facing it was
+	// heading — because a search walks on from there; it is never a place
+	// to aim at or to walk to, and never current.
+	LocationLost LocationState = "lost"
 )
 
 // SightTestimony is the encounter-owned meaning of a sight payload: everything
@@ -65,7 +71,7 @@ type SightTestimony struct {
 	State LocationState
 
 	// Position is where the subject was seen, dungeon-absolute. Meaningful
-	// only when State is LocationKnown.
+	// only when State is LocationKnown or LocationLost.
 	Position spatial.Position
 
 	// AppearanceRef is the optional opaque visual identity captured at sight.
@@ -141,9 +147,9 @@ var sightPayloadFields = map[string]struct{}{
 }
 
 // EncodeSightTestimony encodes sight testimony in the canonical tagged wire
-// form. Known testimony always carries both coordinates; unknown testimony
-// carries only its state tag, and carrying anything else is a defect rather
-// than a value to trim.
+// form. Known and lost testimony always carry both coordinates; unknown
+// testimony carries only its state tag, and carrying anything else is a
+// defect rather than a value to trim.
 func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 	if err := validateAppearanceRef(testimony.AppearanceRef); err != nil {
 		return nil, err
@@ -152,9 +158,9 @@ func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 		return nil, asInvalidData(err)
 	}
 	switch testimony.State {
-	case LocationKnown:
+	case LocationKnown, LocationLost:
 		x, y := testimony.Position.X, testimony.Position.Y
-		wire := sightWire{State: string(LocationKnown), X: &x, Y: &y, Down: testimony.Down, BlocksMovement: testimony.BlocksMovement, AppearanceRef: testimony.AppearanceRef, Facing: testimony.Facing}
+		wire := sightWire{State: string(testimony.State), X: &x, Y: &y, Down: testimony.Down, BlocksMovement: testimony.BlocksMovement, AppearanceRef: testimony.AppearanceRef, Facing: testimony.Facing}
 		if testimony.Equipment != nil {
 			wire.Equipment = &handsWire{
 				MainHand: testimony.Equipment.MainHand,
@@ -327,12 +333,12 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 	}
 
 	switch LocationState(wire.State) {
-	case LocationKnown:
+	case LocationKnown, LocationLost:
 		if wire.X == nil || wire.Y == nil {
 			return SightTestimony{}, false
 		}
 		return SightTestimony{
-			State:          LocationKnown,
+			State:          LocationState(wire.State),
 			Position:       spatial.Position{X: *wire.X, Y: *wire.Y},
 			Down:           wire.Down,
 			BlocksMovement: wire.BlocksMovement,

@@ -34,6 +34,7 @@ import (
 var (
 	tableCauseToward = core.Ref{Module: "encounter", Type: "table", ID: "toward"}
 	tableCauseAway   = core.Ref{Module: "encounter", Type: "table", ID: "away"}
+	tableCauseSearch = core.Ref{Module: "encounter", Type: "table", ID: "search"}
 )
 
 // TableDriver is THE ONE DRIVER: it rolls the creature's own authored table
@@ -121,6 +122,9 @@ func (d TableDriver) intentFor(view MonsterView, entry Answer) (TurnIntent, erro
 
 	case entry.Away != nil:
 		return d.awayIntent(view, entry), nil
+
+	case entry.Search != nil:
+		return d.searchIntent(view, *entry.Search), nil
 
 	case entry.Fact != "", !entry.Flee && entry.Say != "":
 		// THE CREATURE SPENDS ITS TIME SAYING SOMETHING (rpg-project#569 R6):
@@ -257,6 +261,18 @@ func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
 	}
 	path := d.pathTo(view, target)
 	if len(path) == 0 {
+		// A MEMORY WITH NOWHERE LEFT TO WALK IS LOST (memory.go,
+		// rpg-project#668 R3): the creature stands where it last saw them,
+		// or cannot get there. Sight first, as [pathTo] reads: a target in
+		// view with no route is still in view, and nothing is lost.
+		//
+		// A SILENT PASS, as this arm always was: the creature's next pick
+		// is `enemy: lost`, and that pick's own beat is where the story
+		// says what it does about it.
+		if !d.inSight(view, target) {
+			return Pass{Loses: target}
+		}
+
 		return Pass{}
 	}
 	if len(path) > cells {
@@ -301,6 +317,17 @@ func pauseAt(route *Selector, cell spatial.Position) *WaypointPause {
 // towardDwelling is the sentence a patrol row holding at its waypoint tells
 // on its stayed beat.
 const towardDwelling = "standing at its waypoint"
+
+// inSight reports whether target is one of the view's current sightings.
+func (d TableDriver) inSight(view MonsterView, target MemberID) bool {
+	for _, s := range view.Seen {
+		if s.ID == target {
+			return true
+		}
+	}
+
+	return false
+}
 
 // towardAlreadyInReach is the sentence a `toward` whose target is already
 // within range of one of the creature's actions tells on its stayed beat.
@@ -359,6 +386,44 @@ func (d TableDriver) awayIntent(view MonsterView, entry Answer) TurnIntent {
 	}
 
 	return Routed{Policy: MoveAway, Anchor: target, Cause: tableCauseAway}
+}
+
+// searchIntent walks on from the nearest lost enemy's cell along its trail,
+// to the trail's Nth cell or its last (rpg-project#668 R4), and names whom it
+// is looking for so the encounter can end the search when it gets there
+// ([Routed.GivesUp]).
+//
+// A [Routed] TO A CELL, because the search cell is a place to BE — the
+// exact-cell walk an authored `toward: { at }` takes — and the encounter
+// paths it against the walls the trail was clipped by. Terminal, like every
+// routed walk: a creature searching has nothing else it was told to do.
+//
+// AN EMPTY TRAIL SEARCHES WHERE IT STANDS: the lost cell itself is the search
+// cell, so a creature whose very first step along the heading is a wall
+// gives up there rather than walking off somewhere the author never said.
+// No lost enemy at all is a struct built past the eligibility gate
+// ([behavior.Facts]: `search` needs `enemy: lost`), and goes out as a plain
+// Pass, the rule for any word that names nothing.
+func (d TableDriver) searchIntent(view MonsterView, search Search) TurnIntent {
+	var target *LostMember
+	for i := range view.Lost {
+		l := &view.Lost[i]
+		if !l.Opposed {
+			continue
+		}
+		if target == nil || l.DistanceCells < target.DistanceCells {
+			target = l
+		}
+	}
+	if target == nil {
+		return Pass{}
+	}
+	cell := target.Position
+	if n := min(search.Distance, len(target.Trail)); n > 0 {
+		cell = target.Trail[n-1]
+	}
+
+	return Routed{Policy: MoveToward, AnchorAt: &cell, Cause: tableCauseSearch, GivesUp: target.ID}
 }
 
 // pathTo is the route the view already computed toward one member — current

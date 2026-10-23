@@ -942,6 +942,13 @@ func (e *Encounter) executeTurnIntent(
 				return false, nil, berr
 			}
 		}
+		// A PURSUIT THAT FOUND NOBODY (memory.go, rpg-project#668 R3): the
+		// creature's own memory of whom it walked after becomes lost.
+		if it.Loses != "" {
+			if lerr := e.loseMemory(activeID, it.Loses); lerr != nil {
+				return false, nil, lerr
+			}
+		}
 		return true, nil, nil
 
 	case Attack:
@@ -1132,7 +1139,8 @@ func (e *Encounter) executeTurnIntent(
 		// simply ends, exactly like Pass. So is naming both a member and a
 		// cell, or neither: the intent does not say what it is measured from.
 		anchorCell, known := e.routedAnchor(it)
-		if !known || validateWaypointPause(it.Pause) != nil {
+		if !known || validateWaypointPause(it.Pause) != nil ||
+			(it.GivesUp != "" && (it.AnchorAt == nil || it.Policy != MoveToward)) {
 			return true, nil, nil
 		}
 
@@ -1169,6 +1177,13 @@ func (e *Encounter) executeTurnIntent(
 		if len(route.Path) == 0 {
 			if berr := e.appendStayedBeat(activeID, it.Cause, route.StoppedBy, at); berr != nil {
 				return false, nil, berr
+			}
+			// A SEARCH WITH NOWHERE LEFT TO GO IS OVER (memory.go, R5): it
+			// stands on its search cell, or nothing brings it nearer.
+			if it.GivesUp != "" {
+				if gerr := e.giveUpSearch(activeID, it.GivesUp); gerr != nil {
+					return false, nil, gerr
+				}
 			}
 
 			return true, nil, nil
@@ -1245,6 +1260,16 @@ func (e *Encounter) executeTurnIntent(
 				return false, intelDeltas, fmt.Errorf("window beat: %w", berr)
 			}
 			return false, intelDeltas, nil
+		}
+
+		// A SEARCH THAT ARRIVED IS OVER NOW, not on its next turn (memory.go,
+		// R5), so the creature's next pick already reads `enemy: none`.
+		if it.GivesUp != "" {
+			if here, placed := e.canvas.GetEntityPosition(string(activeID)); placed && here == anchorCell {
+				if gerr := e.giveUpSearch(activeID, it.GivesUp); gerr != nil {
+					return false, intelDeltas, gerr
+				}
+			}
 		}
 
 		// Every other way the walk can end — arrived, dropped, stopped by a
@@ -1948,6 +1973,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 
 	var seen []SeenMember
 	var remembered []RememberedMember
+	var lost []LostMember
 	var query *cellQuery
 	for _, h := range holdings {
 		// Only location testimony from the sight channel is meaningful here.
@@ -1972,6 +1998,28 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 			if err != nil {
 				return MonsterView{}, fmt.Errorf("view passage: %w", err)
 			}
+		}
+
+		// A LOST GHOST IS NOT A PLACE TO GO (rpg-project#668 R3): the member
+		// went there and they were gone. What it keeps is where to search
+		// from, and which way.
+		if location.State == LocationLost {
+			heading := m.Facing
+			if location.Facing != nil {
+				heading = *location.Facing
+			}
+			trail, terr := query.searchTrail(m.ID, pos, heading)
+			if terr != nil {
+				return MonsterView{}, terr
+			}
+			lost = append(lost, LostMember{
+				ID:            subjectID,
+				Opposed:       e.opposed(m.ID, subjectID),
+				Position:      pos,
+				DistanceCells: e.Distance(ownCell, pos),
+				Trail:         trail,
+			})
+			continue
 		}
 
 		// A holding not current ON SIGHT is a GHOST — a subject remembered
@@ -2056,6 +2104,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 	// order, not whatever order the intel map happened to range in.
 	sort.Slice(seen, func(i, j int) bool { return seen[i].ID < seen[j].ID })
 	sort.Slice(remembered, func(i, j int) bool { return remembered[i].ID < remembered[j].ID })
+	sort.Slice(lost, func(i, j int) bool { return lost[i].ID < lost[j].ID })
 
 	return MonsterView{
 		Self:       m.ID,
@@ -2073,6 +2122,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		At:         uint64(e.clock.ToData().HighWater),
 		Seen:       seen,
 		Remembered: remembered,
+		Lost:       lost,
 		Budget:     budget,
 		Round:      round,
 		Dwelling:   e.dwelling(m),

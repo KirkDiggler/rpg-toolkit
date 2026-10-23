@@ -1448,6 +1448,17 @@ type AnswerData struct {
 	Attack *SelectorData `json:"attack,omitempty"`
 	Toward *SelectorData `json:"toward,omitempty"`
 	Away   *SelectorData `json:"away,omitempty"`
+	// Search is `search: { distance }` (rpg-project#668 R4). Omitted when
+	// the row does not search, so every blob written before the word existed
+	// reads as it did.
+	Search *SearchData `json:"search,omitempty"`
+}
+
+// SearchData is one persisted `search`: how many cells on from the lost cell.
+// The distance is resolved — the dialect's default is already in it — so it
+// is written whatever its value.
+type SearchData struct {
+	Distance int `json:"distance"`
 }
 
 // WhenData is the persistent representation of a [When]: ONE condition of the
@@ -1595,6 +1606,9 @@ func answerDataFrom(entry Answer) AnswerData {
 		Toward: selectorDataFrom(entry.Toward),
 		Away:   selectorDataFrom(entry.Away),
 	}
+	if entry.Search != nil {
+		out.Search = &SearchData{Distance: entry.Search.Distance}
+	}
 	for _, w := range entry.When {
 		out.When = append(out.When, whenDataFrom(w))
 	}
@@ -1688,6 +1702,9 @@ func answerFromData(row AnswerData) Answer {
 		Attack: selectorFromData(row.Attack),
 		Toward: selectorFromData(row.Toward),
 		Away:   selectorFromData(row.Away),
+	}
+	if row.Search != nil {
+		out.Search = &Search{Distance: row.Search.Distance}
 	}
 	for _, w := range row.When {
 		out.When = append(out.When, whenFromData(w))
@@ -3462,6 +3479,14 @@ func refuseRoomLocalSightings(data perception.Data) error {
 			if location.State == LocationUnknown && len(holding.CurrentVia) > 0 {
 				return fmt.Errorf(
 					"load encounter sight location: %q's sighting of %q is unknown but current: %w",
+					observer, subject, ErrInvalidData)
+			}
+			// A LOST MEMORY IS NEVER A SIGHTING BEING MADE (rpg-project#668
+			// R3): fresh sight replaces it, so one still sustained is a blob
+			// nobody wrote.
+			if location.State == LocationLost && len(holding.CurrentVia) > 0 {
+				return fmt.Errorf(
+					"load encounter sight location: %q's sighting of %q is lost but current: %w",
 					observer, subject, ErrInvalidData)
 			}
 		}

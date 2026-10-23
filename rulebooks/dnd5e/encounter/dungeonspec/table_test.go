@@ -252,7 +252,7 @@ func TestEveryMalformedConditionIsRefusedAtItsOwnLine(t *testing.T) {
 	}{
 		{name: "two conditions in one", when: `{ enemy: seen, attacked: { within: 3 } }`, says: "one condition, and this names 2"},
 		{name: "an enemy word nobody reads", when: `{ enemy: nearby }`, says: "not a condition this build reads"},
-		{name: "and the refusal lists the four bands", when: `{ enemy: nearby }`, says: "reach, seen, remembered, none"},
+		{name: "and the refusal lists the five bands", when: `{ enemy: nearby }`, says: "reach, seen, remembered, lost, none"},
 		{name: "a deed nobody holds", when: `{ insulted: { within: 3 } }`, says: "not a deed this build holds"},
 		{name: "a span counted from zero", when: `{ attacked: { within: 0 } }`, says: "counted from 1"},
 		{name: "a deed with no span", when: `{ attacked: {} }`, says: "names no span"},
