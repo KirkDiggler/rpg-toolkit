@@ -127,17 +127,6 @@ func validateFacing(facing *float64) error {
 	return nil
 }
 
-// copyBearing copies an optional bearing, nil staying nil, so a snapshot
-// never shares the pointer a later move rewrites.
-func copyBearing(b *float64) *float64 {
-	if b == nil {
-		return nil
-	}
-	out := *b
-
-	return &out
-}
-
 // seedFacing is the facing a member starts with: the stated one, or
 // [UnstatedFacing] when none was stated. Validated first ([validateFacing]).
 func seedFacing(facing *float64) float64 {

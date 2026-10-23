@@ -102,10 +102,11 @@ func TestASightingCarriesTheWaySheWent(t *testing.T) {
 	require.InDelta(t, stepBearing(t, from, to), *still.Heading, 1e-9, "standing still keeps the heading")
 }
 
-// TestTheWaySheWentSurvivesTheBlob is save→load→use: alice steps, the
-// encounter goes through JSON and back, and both halves of the heading come
-// with it — the goblin's held testimony, and alice's own last step, which a
-// member who joins after the load then sees.
+// TestTheWaySheWentSurvivesTheBlob is save→load→use: alice steps in the
+// goblin's sight, the encounter goes through JSON and back, the goblin still
+// holds the way she went — and, seeing her again on the same cell after the
+// load, keeps it, because the heading is derived from the testimony the blob
+// carried.
 func TestTheWaySheWentSurvivesTheBlob(t *testing.T) {
 	enc := headingScene(t, nil)
 	from := memberOf(t, enc, alice).Position
@@ -118,29 +119,107 @@ func TestTheWaySheWentSurvivesTheBlob(t *testing.T) {
 	require.NoError(t, err)
 	var data encounter.EncounterData
 	require.NoError(t, json.Unmarshal(blob, &data))
-	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Capabilities: headingCapabilities()})
+	caps := headingCapabilities()
+	caps.Driver = stepsOnce()
+	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Capabilities: caps})
 	require.NoError(t, err)
 
 	held := seenBy(t, loaded, goblin, alice)
 	require.NotNil(t, held.Heading, "the goblin's testimony kept the heading")
 	require.InDelta(t, want, *held.Heading, 1e-9)
 
-	_, err = loaded.Join(&encounter.JoinInput{Member: bob, Kind: encounter.KindMonster, Cell: cellAt(7, 7)})
+	_, err = loaded.EndTurn(&encounter.EndTurnInput{Member: alice})
 	require.NoError(t, err)
-	fresh := seenBy(t, loaded, bob, alice)
-	require.NotNil(t, fresh.Heading, "alice's own last step came back with her")
-	require.InDelta(t, want, *fresh.Heading, 1e-9, "and a sighting after the load carries it")
+	require.Equal(t, goblinStep, memberOf(t, loaded, goblin).Position, "precondition: a refresh after the load")
+	again := seenBy(t, loaded, goblin, alice)
+	require.NotNil(t, again.Heading, "seen again where she stood, the loaded heading is kept")
+	require.InDelta(t, want, *again.Heading, 1e-9)
 }
 
-// TestAStoredWentThatIsNotABearingIsRefused pins the load door for the
-// member's last step, on facing's rule.
-func TestAStoredWentThatIsNotABearingIsRefused(t *testing.T) {
-	data := headingScene(t, nil).ToData()
-	bad := 360.0
-	data.Members[0].Went = &bad
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Capabilities: headingCapabilities()})
-	require.ErrorIs(t, err, encounter.ErrInvalidData)
-	require.ErrorIs(t, err, encounter.ErrBadFacing)
+// toggledSight is everyone seeing the whole map except the members it has
+// blinded, who see nothing past their own cell.
+type toggledSight struct{ blind map[encounter.MemberID]bool }
+
+func (s *toggledSight) Sight(members []encounter.MemberID) (map[encounter.MemberID]int, error) {
+	out := make(map[encounter.MemberID]int, len(members))
+	for _, id := range members {
+		out[id] = 1000
+		if s.blind[id] {
+			out[id] = 0
+		}
+	}
+
+	return out, nil
+}
+
+// TestAStepNobodySawIsNoHeading is the law (#673 R8, rpg-project#679 R10):
+// alice steps while the goblin is blind; when the goblin first sees her she
+// is standing still, so its testimony holds no heading — and its `went`
+// search, with nothing seen going anywhere, walks the way she faced.
+func TestAStepNobodySawIsNoHeading(t *testing.T) {
+	sight := &toggledSight{blind: map[encounter.MemberID]bool{goblin: true}}
+	caps := headingCapabilities()
+	caps.Sight = sight
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 4}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 7, Y: 4}},
+		},
+		Endings:      []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+		Retention:    encounter.RetentionUnbounded,
+		Capabilities: caps,
+	})
+	require.NoError(t, err)
+
+	from := memberOf(t, enc, alice).Position
+	_, err = enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: from.X + 1, Y: from.Y}})
+	require.NoError(t, err)
+	holdings, err := enc.View(&encounter.ViewInput{Member: goblin})
+	require.NoError(t, err)
+	for _, h := range holdings {
+		require.NotEqual(t, alice, encounter.MemberID(h.Subject), "precondition: the goblin did not see the step")
+	}
+
+	// The goblin opens its eyes; a member joining is a refresh, and alice
+	// stands where her unseen step left her.
+	delete(sight.blind, goblin)
+	_, err = enc.Join(&encounter.JoinInput{Member: bob, Kind: encounter.KindMonster, Cell: cellAt(8, 8)})
+	require.NoError(t, err)
+	first := seenBy(t, enc, goblin, alice)
+	require.Equal(t, encounter.LocationKnown, first.State, "precondition: the goblin sees her now")
+	require.Nil(t, first.Heading, "a first sighting of her standing says nothing of the step it never saw")
+	require.NotNil(t, first.Facing, "it sees which way she faces")
+
+	// Lost from there, its `went` search walks the way she faced.
+	lost := first
+	lost.State = encounter.LocationLost
+	payload, err := encounter.EncodeSightTestimony(lost)
+	require.NoError(t, err)
+	data := enc.ToData()
+	editGoblinHolding(t, data, alice, payload)
+	driver := &scriptedDriver{}
+	loadCaps := headingCapabilities()
+	loadCaps.Sight = blindSight{}
+	loadCaps.Driver = driver
+	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Capabilities: loadCaps})
+	require.NoError(t, err)
+	_, err = loaded.EndTurn(&encounter.EndTurnInput{Member: alice})
+	require.NoError(t, err)
+	var view *encounter.MonsterView
+	for i := range driver.calls {
+		if driver.calls[i].Self == goblin {
+			view = &driver.calls[i]
+		}
+	}
+	require.NotNil(t, view, "precondition: the goblin had a turn")
+	require.Len(t, view.Lost, 1)
+	trails := view.Lost[0].Trails
+	require.NotEmpty(t, trails[encounter.HeadingFaced], "precondition: there is floor the way she faced")
+	require.Equal(t, trails[encounter.HeadingFaced], trails[encounter.HeadingWent], "went falls back to the facing")
 }
 
 // TestAPlayersTestimonyIsNeverRevisedByLooking is #667 R8 for the heading: a

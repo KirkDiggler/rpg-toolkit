@@ -117,14 +117,19 @@ type SightTestimony struct {
 	// subject's facing live.
 	Facing *float64
 
-	// Heading is the way the subject was seen GOING: the bearing of the last
-	// step it took, from the cell it left to the cell it took, in Facing's
-	// degrees (rpg-project#679 R10). Nil means it was never seen moving —
-	// a subject that has not stepped since it was placed, or testimony
-	// written before sightings carried one. Standing still does not change
-	// it, so a sighting of a subject standing keeps the last step it took,
-	// and a memory keeps the heading it last saw, as it keeps the facing.
-	// A `search: { heading: went }` walks along it.
+	// Heading is the way THIS OBSERVER saw the subject go: the bearing from
+	// the cell its own previous testimony placed the subject on to the cell
+	// it sees the subject on now, in Facing's degrees (rpg-project#679 R10).
+	// Seen on the same cell, the previous heading is kept; with no placed
+	// testimony before, it is nil. So nil means this observer never saw the
+	// subject move — a first sighting of a subject standing still says
+	// nothing about the step it took out of sight (#673 R8: testimony is per
+	// observer) — and a memory keeps the heading it last saw. A `search: {
+	// heading: went }` walks along it.
+	//
+	// UNLIKE FACING, NOT A SNAPSHOT OF THE SUBJECT. Facing is visible at the
+	// instant of sight; a past step is not, so the heading is derived per
+	// observer in [Encounter.rebuildPercepts] from what that observer held.
 	Heading *float64
 }
 

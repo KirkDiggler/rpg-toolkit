@@ -2006,12 +2006,6 @@ type MemberData struct {
 	// [0, 360) is refused at load (ErrInvalidData, ErrBadFacing).
 	Facing *float64 `json:"facing,omitempty"`
 
-	// Went is memberRecord.Went, the bearing of the member's last step
-	// (rpg-project#679 R10). Omitted when it has not stepped, which is what
-	// a blob from before the field means too. A value outside [0, 360) is
-	// refused at load (ErrInvalidData, ErrBadFacing).
-	Went *float64 `json:"went,omitempty"`
-
 	// Sneaking is memberRecord.Sneaking (sneak.go, design R6). Omits at
 	// false, so a blob from before sneaking existed loads every member not
 	// sneaking, which is what it meant. True on a non-player is refused at
@@ -2167,7 +2161,6 @@ func (e *Encounter) snapshot() EncounterData {
 			Temper:         temperDataFrom(m.Temper),
 			Pace:           m.PaceCells,
 			Facing:         &facing,
-			Went:           copyBearing(m.Went),
 			Sneaking:       m.Sneaking,
 			Dwell:          dwellDataFrom(m.Dwell),
 			BlocksMovement: m.BlocksMovement,
@@ -2770,9 +2763,6 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		if err := validateFacing(m.Facing); err != nil {
 			return nil, fmt.Errorf("load encounter: member %q: %w: %w", m.ID, ErrInvalidData, err)
 		}
-		if err := validateFacing(m.Went); err != nil {
-			return nil, fmt.Errorf("load encounter: member %q went: %w: %w", m.ID, ErrInvalidData, err)
-		}
 		if err := validateDwellData(m.Dwell); err != nil {
 			return nil, fmt.Errorf("load encounter: member %q: %s: %w", m.ID, err, ErrInvalidData)
 		}
@@ -3238,7 +3228,6 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			Temper:         temperFromData(m.Temper),
 			PaceCells:      m.Pace,
 			Facing:         seedFacing(m.Facing),
-			Went:           copyBearing(m.Went),
 			Sneaking:       m.Sneaking,
 			Dwell:          dwellFromData(m.Dwell),
 			BlocksMovement: m.BlocksMovement,
