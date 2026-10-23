@@ -83,6 +83,9 @@ func (s *kingScene) runLeg(cells []spatial.Position) {
 	for _, cell := range cells {
 		_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: cell})
 		require.NoError(s.t, err)
+		// PER VERB, as a host reloads: the pursuit's memory must survive
+		// the blob between every step (rpg-toolkit#2114's AnswerData).
+		s.reload()
 	}
 	require.Equal(s.t, encounter.ClockTurn, clockKind(s.t, s.enc, hero), "precondition: the fight is still on")
 }

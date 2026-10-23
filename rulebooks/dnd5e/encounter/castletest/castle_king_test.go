@@ -23,6 +23,7 @@ package castletest
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -103,6 +104,10 @@ type kingScene struct {
 	compiled dungeonspec.Compiled
 	strikes  *[]cellsStrike
 	standing *castleStanding
+
+	// host is how the castle was opened, kept so [kingScene.reload] can load
+	// the persisted encounter back with the same capabilities.
+	host castleHost
 }
 
 // openTheCastle compiles the file and opens it with the hero at a cell and
@@ -152,6 +157,10 @@ type castleHost struct {
 
 	// heroFacing is the hero's stated facing, or nil for the unstated one.
 	heroFacing *float64
+
+	// noReload opts a route out of [kingScene.reload]: the encounter is never
+	// saved and loaded back between turns.
+	noReload bool
 }
 
 // openTheCastleAs compiles the file and opens it the way the host says.
@@ -185,10 +194,6 @@ func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 		})
 	}
 
-	var resolver encounter.CheckResolver = nothingIsEverFound{}
-	if host.resolver != nil {
-		resolver = host.resolver
-	}
 	strikes := &[]cellsStrike{}
 	standing := &castleStanding{down: map[encounter.MemberID]bool{}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -196,28 +201,79 @@ func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 		Members: members,
 		Endings: append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, compiled.Endings...),
 		// Unbounded, so a route can read a creature's whole story back.
-		Retention: encounter.RetentionUnbounded,
-		Capabilities: encounter.Capabilities{
-			Sight:         castleSight{feet: host.sightFt},
-			Equipment:     encounter.UnobservedEquipment{},
-			Conditions:    encounter.UnobservedEquipment{},
-			Sheets:        castleSheets{passive: host.passive, arcs: host.arcs, speed: host.speedFt},
-			Participation: standing,
-			Initiative:    orderAsGiven{},
-			Driver:        encounter.TableDriver{Roller: rollsOne{}},
-			Roller:        rollsOne{},
-			CheckResolver: resolver,
-			Witness:       nobodyPerceivesAnything{},
-			Actors: encounter.Actors{
-				Striker:   cellsStriker{calls: strikes},
-				Mover:     quietMover{},
-				Announcer: quietAnnouncer{},
-			},
-		},
+		Retention:    encounter.RetentionUnbounded,
+		Capabilities: host.capabilities(strikes, standing),
 	})
 	require.NoError(t, err)
 
-	return &kingScene{t: t, enc: enc, compiled: compiled, strikes: strikes, standing: standing}
+	return &kingScene{t: t, enc: enc, compiled: compiled, strikes: strikes, standing: standing, host: host}
+}
+
+// capabilities is everything the host supplies the encounter, built in one
+// place so a route opened and a route reloaded play against the same host.
+func (host castleHost) capabilities(strikes *[]cellsStrike, standing *castleStanding) encounter.Capabilities {
+	var resolver encounter.CheckResolver = nothingIsEverFound{}
+	if host.resolver != nil {
+		resolver = host.resolver
+	}
+
+	return encounter.Capabilities{
+		Sight:         castleSight{feet: host.sightFt},
+		Equipment:     encounter.UnobservedEquipment{},
+		Conditions:    encounter.UnobservedEquipment{},
+		Sheets:        castleSheets{passive: host.passive, arcs: host.arcs, speed: host.speedFt},
+		Participation: standing,
+		Initiative:    orderAsGiven{},
+		Driver:        encounter.TableDriver{Roller: rollsOne{}},
+		Roller:        rollsOne{},
+		CheckResolver: resolver,
+		Witness:       nobodyPerceivesAnything{},
+		Actors: encounter.Actors{
+			Striker:   cellsStriker{calls: strikes},
+			Mover:     quietMover{},
+			Announcer: quietAnnouncer{},
+		},
+	}
+}
+
+// castleReload is the package's switch for [kingScene.reload]: on unless a
+// run says `-castle.reload=false`.
+var castleReload = flag.Bool("castle.reload", true,
+	"save and load back the castle encounter at every EndTurn and world-round boundary")
+
+// reload saves the encounter the way a host does — ToData, through JSON — and
+// plays on from what loads back, at the boundaries a host reloads at: every
+// EndTurn and every world round (rpg-project#667). A fact the blob does not
+// carry is then lost here exactly as it is lost on a deployed stack, which is
+// how the castle routes catch it: a `search` row that came back wordless
+// (rpg-toolkit#2114) failed the S1 route under this and passed without it.
+//
+// The host's own values (the strikes it recorded, who is down) are the
+// host's, not the blob's, and carry over as a real host's store does.
+func (s *kingScene) reload() {
+	s.t.Helper()
+	if !*castleReload || s.host.noReload {
+		return
+	}
+	blob, err := json.Marshal(s.enc.ToData())
+	require.NoError(s.t, err)
+	var data encounter.EncounterData
+	require.NoError(s.t, json.Unmarshal(blob, &data))
+	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data: data, Capabilities: s.host.capabilities(s.strikes, s.standing),
+	})
+	require.NoError(s.t, err, "the castle loads back from its own blob")
+	s.enc = enc
+}
+
+// reloadOnRound reloads when the world clock has moved past round: a world
+// round ended under the step just taken, which is a boundary a host reloads
+// at.
+func (s *kingScene) reloadOnRound(round int) {
+	s.t.Helper()
+	if s.enc.ToData().Clock.HighWater != round {
+		s.reload()
+	}
 }
 
 // soldierProfiles completes a compiled temper the way a host does, with the
@@ -259,8 +315,10 @@ func (s *kingScene) walkTo(to spatial.Position) {
 	require.NoError(s.t, err)
 	require.Empty(s.t, route.StoppedBy, "the hero has a way to %v", to)
 	for i, cell := range route.Path {
+		round := s.enc.ToData().Clock.HighWater
 		_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: cell, EndWalk: i == len(route.Path)-1})
 		require.NoError(s.t, err)
+		s.reloadOnRound(round)
 		if clockKind(s.t, s.enc, hero) == encounter.ClockTurn {
 			return
 		}
@@ -453,6 +511,7 @@ func (s *kingScene) struck(target encounter.MemberID, drops bool) {
 // runs before this returns.
 func (s *kingScene) endTurn() {
 	s.t.Helper()
+	s.reload()
 	_, err := s.enc.EndTurn(&encounter.EndTurnInput{Member: hero})
 	require.NoError(s.t, err)
 }

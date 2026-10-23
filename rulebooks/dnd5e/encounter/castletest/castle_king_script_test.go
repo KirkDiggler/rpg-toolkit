@@ -164,8 +164,10 @@ func (s *kingScene) pace(a, b spatial.Position, steps int, until func() bool) bo
 		if s.at(hero) == a {
 			to = b
 		}
+		round := s.enc.ToData().Clock.HighWater
 		_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: to, EndWalk: true})
 		require.NoError(s.t, err)
+		s.reloadOnRound(round)
 	}
 
 	return until()
