@@ -10,10 +10,12 @@ package encounter_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -161,4 +163,39 @@ func TestAPlayersTestimonyIsNeverRevisedByLooking(t *testing.T) {
 		require.Equal(t, first, again, "looking again revises nothing")
 	}
 	require.InDelta(t, stepBearing(t, goblinStart, goblinStep), *first.Heading, 1e-9)
+}
+
+// TestABlobFromBeforeTheHeadingIsRefusedAtLoad names what LoadEncounter does
+// with a `search` row persisted before the word existed (rpg-toolkit
+// encounter v0.141.x): it REFUSES it, ErrInvalidData wrapping
+// behavior.ErrBadSearch, rather than loading a wordless search or guessing
+// `went` at the door — a second spelling the dialect already owns. Pre-v1, a
+// host starts a fresh encounter. The same blob with its heading loads.
+func TestABlobFromBeforeTheHeadingIsRefusedAtLoad(t *testing.T) {
+	table := encounter.Table{encounter.AnswerTime: {
+		{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyLost}},
+			Search: &encounter.Search{Distance: 6, Heading: encounter.HeadingWent}},
+	}}
+	enc := facingFight(t, []encounter.MemberInput{
+		{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 4}},
+		{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 7, Y: 4}, Table: table},
+	}, passDriver{}, &scriptedStriker{kind: encounter.OutcomeMissed}, quietMover{})
+	blob, err := json.Marshal(enc.ToData())
+	require.NoError(t, err)
+	require.Contains(t, string(blob), `"search":{"distance":6,"heading":"went"}`, "precondition: today's blob names the word")
+
+	load := func(raw string) error {
+		var data encounter.EncounterData
+		require.NoError(t, json.Unmarshal([]byte(raw), &data))
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Capabilities: headingCapabilities()})
+
+		return err
+	}
+	require.NoError(t, load(string(blob)), "the blob with its heading loads")
+
+	old := strings.Replace(string(blob), `"search":{"distance":6,"heading":"went"}`, `"search":{"distance":6}`, 1)
+	err = load(old)
+	require.ErrorIs(t, err, encounter.ErrInvalidData)
+	require.ErrorIs(t, err, behavior.ErrBadSearch)
+	require.Contains(t, err.Error(), "`search` heading")
 }
