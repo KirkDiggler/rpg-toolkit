@@ -34,8 +34,15 @@ type EncounterData struct {
 	// the mover a sneaking player, the watcher a non-player member
 	// (ErrInvalidData).
 	SneakVerdicts map[MemberID]map[MemberID]SneakVerdictData `json:"sneak_verdicts,omitempty"`
-	Outcome       *OutcomeData                               `json:"outcome,omitempty"`
-	Clock         clock.TickData                             `json:"clock"`
+	// SightSweeps is each observer's sight sweep key at its last sweep
+	// (sightsweep.go, rpg-project#664): an observer whose key still matches
+	// skips its sweep, so a guard who stands still does not re-sweep the
+	// floor on every verb. Derived state, never a record of knowledge — the
+	// journal holds that — so a blob without it loads, and every observer
+	// sweeps once and then holds. An opaque digest; nothing reads inside it.
+	SightSweeps map[MemberID]string `json:"sight_sweeps,omitempty"`
+	Outcome     *OutcomeData        `json:"outcome,omitempty"`
+	Clock       clock.TickData      `json:"clock"`
 	// Bubbles holds the localized initiative bubbles running in this
 	// encounter — zero or more, and zero for any encounter not currently in a
 	// fight. Absent in blobs written before this field existed, which load as
@@ -2234,6 +2241,7 @@ func (e *Encounter) snapshot() EncounterData {
 	return EncounterData{
 		Discovery:          copyDiscoveryStates(e.discovery),
 		SneakVerdicts:      copySneakVerdicts(e.sneakVerdicts),
+		SightSweeps:        copySightSweeps(e.sightSweeps),
 		Outcome:            outcomeData,
 		Clock:              e.clock.ToData(),
 		Bubbles:            bubblesData,
@@ -3075,6 +3083,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	e := &Encounter{
 		discovery:     copyDiscoveryStates(data.Discovery),
 		sneakVerdicts: copySneakVerdicts(data.SneakVerdicts),
+		sightSweeps:   copySightSweeps(data.SightSweeps),
 		sightAreas:    sightAreasFromData(data.SightAreas),
 		members:       make(map[MemberID]*memberRecord),
 		everMembers:   make(map[MemberID]bool),

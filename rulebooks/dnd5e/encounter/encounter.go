@@ -225,6 +225,17 @@ type Encounter struct {
 	// sneaking.
 	sneakVerdicts map[MemberID]map[MemberID]SneakVerdictData
 
+	// sightSweeps is each observer's key at its last sight sweep
+	// (sightsweep.go, rpg-project#664): an observer whose key is unchanged
+	// skips the sweep, because it would learn nothing. Persisted on
+	// EncounterData.SightSweeps; derived, never a second record of what
+	// anybody knows — the journal is that.
+	sightSweeps map[MemberID]string
+
+	// sightSweepsRun counts the sweeps each observer actually ran in this
+	// process, for the tests that prove the skip. Never persisted.
+	sightSweepsRun map[MemberID]int
+
 	// holdings is WHO HAS WHAT: a reader over the world's journal for the
 	// holdings, takings and drops (rpg-project#368, design §5). An
 	// encounter where nobody holds anything writes no such facts and no
@@ -1901,9 +1912,10 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 		return nil, err
 	}
 
+	opacity := e.sightOpacity()
 	for _, observer := range observerIDs {
 		member, _ := subjectID(observer, memberSubjectKind)
-		if err := e.discoverCells(member, geometry); err != nil {
+		if err := e.discoverCells(member, geometry, opacity); err != nil {
 			return nil, err
 		}
 	}
