@@ -2019,6 +2019,13 @@ type MemberData struct {
 	// (ErrInvalidData).
 	Dwell *DwellData `json:"dwell,omitempty"`
 
+	// TableHash is memberRecord.TableHash (tablebeat.go, rpg-project#674):
+	// per scope, the hash of the table this member last described in the
+	// record. Omitted when it has described none, so a blob from before
+	// table beats loads every member describing its table afresh on its
+	// next answer — one `table` beat, which is what such a record lacks.
+	TableHash map[string]string `json:"table_hash,omitempty"`
+
 	// BlocksMovement carries forward memberRecord.BlocksMovement
 	// (rpg-toolkit#1434) — see MemberInput.BlocksMovement's own doc. A blob
 	// written before this field existed has no blocks_movement key and
@@ -2163,6 +2170,7 @@ func (e *Encounter) snapshot() EncounterData {
 			Facing:         &facing,
 			Sneaking:       m.Sneaking,
 			Dwell:          dwellDataFrom(m.Dwell),
+			TableHash:      maps.Clone(m.TableHash),
 			BlocksMovement: m.BlocksMovement,
 			Faction:        m.Faction,
 		})
@@ -3230,6 +3238,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			Facing:         seedFacing(m.Facing),
 			Sneaking:       m.Sneaking,
 			Dwell:          dwellFromData(m.Dwell),
+			TableHash:      maps.Clone(m.TableHash),
 			BlocksMovement: m.BlocksMovement,
 			Faction:        m.Faction,
 		}
