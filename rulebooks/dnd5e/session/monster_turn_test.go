@@ -339,6 +339,9 @@ func (s *MonsterTurnTestSuite) TestSkeletonAttacksFromRange() {
 			// it again: a consequence of the swing, not a decision. Counted,
 			// and its names pinned below, so this arm is not a catch-all.
 			sightings++
+		case "table":
+			// The skeleton's table, described before its first pick indexes
+			// it (rpg-project#674): the record's symbols, not a decision.
 		default:
 			s.Equal("answered", beat,
 				"the only other thing a driven turn writes is the roll that chose each intent")

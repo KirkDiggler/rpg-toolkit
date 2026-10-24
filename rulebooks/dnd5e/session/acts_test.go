@@ -355,7 +355,7 @@ func TestEveryBeatHasAFamily(t *testing.T) {
 	require.Empty(t, unmapped, "every beat has exactly one family, or is record-only")
 
 	for _, kind := range []string{
-		encounter.BeatTransferred, encounter.BeatInteracted,
+		encounter.BeatTable, encounter.BeatTransferred, encounter.BeatInteracted,
 		string(encounter.OutcomeBought), string(encounter.OutcomeSold),
 	} {
 		_, _, recordOnly := session.FamilyOfBeatForTest(kind)
