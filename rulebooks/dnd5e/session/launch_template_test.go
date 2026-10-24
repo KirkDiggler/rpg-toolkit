@@ -28,6 +28,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 )
 
@@ -120,6 +121,96 @@ func (s *LaunchTemplateSuite) assertNothingSpawned() {
 	s.ErrorIs(err, session.ErrNotFound, "no session is written")
 	s.Zero(s.encounters.saves, "no world is written")
 	s.Empty(s.stream.published, "nobody is told anything arrived")
+}
+
+// placement returns the compiled binding with id. The carrier identifies a
+// binding by its member id, so the test mutates the same shape Launch resolves.
+func (s *LaunchTemplateSuite) placement(dungeon *dungeonspec.Compiled, id string) *dungeonspec.MonsterPlacement {
+	s.T().Helper()
+	for i := range dungeon.Monsters {
+		if dungeon.Monsters[i].MemberID == id {
+			return &dungeon.Monsters[i]
+		}
+	}
+	s.Require().Failf("no binding", "the compiled dungeon has no binding %q", id)
+	return nil
+}
+
+// TestResolve_AddActionsAppendsToBase proves template augmentation preserves
+// the resolved order: the human base's unarmed strike precedes the addition.
+func (s *LaunchTemplateSuite) TestResolve_AddActionsAppendsToBase() {
+	dungeon := s.castle()
+	template := dungeon.Templates["guard"]
+	template.Actions = nil
+	template.AddActions = []string{refs.Weapons.LightCrossbow().String()}
+	dungeon.Templates["guard"] = template
+
+	s.Require().NoError(s.launch(dungeon))
+	s.Equal([]string{refs.Weapons.UnarmedStrike().String(), refs.Weapons.LightCrossbow().String()}, s.actionRefs("guard-1"))
+}
+
+// TestResolve_DropRemovesFromResolved proves a binding drop sees the
+// template-resolved list, including template additions.
+func (s *LaunchTemplateSuite) TestResolve_DropRemovesFromResolved() {
+	dungeon := s.castle()
+	template := dungeon.Templates["guard"]
+	template.AddActions = []string{refs.Weapons.LightCrossbow().String()}
+	dungeon.Templates["guard"] = template
+	s.placement(dungeon, "guard-1").DropActions = []string{refs.Weapons.LightCrossbow().String()}
+
+	s.Require().NoError(s.launch(dungeon))
+	s.Equal([]string{refs.Weapons.Spear().String()}, s.actionRefs("guard-1"))
+}
+
+// TestResolve_BindingReplaceThenAugment proves a binding replacement erases
+// earlier layers before its own additions and drops are applied.
+func (s *LaunchTemplateSuite) TestResolve_BindingReplaceThenAugment() {
+	dungeon := s.castle()
+	binding := s.placement(dungeon, "guard-1")
+	binding.Actions = []string{refs.Weapons.Club().String()}
+	binding.AddActions = []string{refs.Weapons.LightCrossbow().String()}
+	binding.DropActions = []string{refs.Weapons.Club().String()}
+
+	s.Require().NoError(s.launch(dungeon))
+	s.Equal([]string{refs.Weapons.LightCrossbow().String()}, s.actionRefs("guard-1"))
+}
+
+// TestResolve_NothingStatedKeepsArms proves nil remains absence: a direct
+// stat-block placement with no action fields retains its native arms.
+func (s *LaunchTemplateSuite) TestResolve_NothingStatedKeepsArms() {
+	dungeon := s.castle()
+	binding := s.placement(dungeon, "guard-1")
+	binding.Ref = refs.Monsters.Goblin().String()
+	binding.Actions, binding.AddActions, binding.DropActions = nil, nil, nil
+
+	s.Require().NoError(s.launch(dungeon))
+	s.Equal([]string{refs.Weapons.Scimitar().String(), refs.Weapons.Shortbow().String()}, s.actionRefs("guard-1"))
+}
+
+// TestResolve_TemplateDropAbsentRefuses proves template drops name their
+// authored field when the layer has no matching weapon.
+func (s *LaunchTemplateSuite) TestResolve_TemplateDropAbsentRefuses() {
+	dungeon := s.castle()
+	template := dungeon.Templates["guard"]
+	template.DropActions = []string{refs.Weapons.Halberd().String()}
+	dungeon.Templates["guard"] = template
+
+	err := s.launch(dungeon)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "templates.guard.dropActions[0]")
+	s.assertNothingSpawned()
+}
+
+// TestResolve_BindingDropAbsentRefuses proves binding drops are evaluated
+// after template resolution and name their own field on refusal.
+func (s *LaunchTemplateSuite) TestResolve_BindingDropAbsentRefuses() {
+	dungeon := s.castle()
+	s.placement(dungeon, "guard-1").DropActions = []string{refs.Weapons.Halberd().String()}
+
+	err := s.launch(dungeon)
+	s.Require().Error(err)
+	s.Contains(err.Error(), "monsterBindings.guard-1.dropActions[0]")
+	s.assertNothingSpawned()
 }
 
 // TestLaunch_TemplateGuardSpawnsWithDerivedNumbers is the headline: the

@@ -78,6 +78,10 @@ func TestMonsterViewCarriesEveryFieldAHostsDriverReads(t *testing.T) {
 			Position: spatial.Position{X: 1, Y: 1}, DistanceCells: 6,
 			Path: []spatial.Position{{X: 5, Y: 4}},
 		}},
+		Lost: []encounter.LostMember{{
+			ID: "carol", Opposed: true, Position: spatial.Position{X: 2, Y: 1}, DistanceCells: 5,
+			Trails: map[encounter.SearchHeading][]spatial.Position{"went": {{X: 3, Y: 1}, {X: 4, Y: 1}}},
+		}},
 		Budget: encounter.TurnBudget{AttacksLeft: 1, MovementFeet: 30, BonusActions: 1},
 		Round:  3,
 	}
@@ -112,6 +116,10 @@ func TestMonsterViewCarriesEveryFieldAHostsDriverReads(t *testing.T) {
 			ID: "bob", Kind: KindPlayer,
 			Position: spatial.Position{X: 1, Y: 1}, DistanceCells: 6,
 			Path: []spatial.Position{{X: 5, Y: 4}},
+		}},
+		Lost: []LostMember{{
+			ID: "carol", Opposed: true, Position: spatial.Position{X: 2, Y: 1}, DistanceCells: 5,
+			Trails: map[string][]spatial.Position{"went": {{X: 3, Y: 1}, {X: 4, Y: 1}}},
 		}},
 		Budget: TurnBudget{AttacksLeft: 1, MovementFeet: 30, BonusActions: 1},
 		Round:  3,
