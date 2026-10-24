@@ -1042,6 +1042,38 @@ type Candidate struct {
 	Loaded int
 }
 
+// RowVerdict is one row of the key as the pick judged it, whether or not it
+// was eligible (rpg-project#674).
+//
+// EVERY ROW, NOT ONLY THE CANDIDATES. [Candidate] is the arithmetic of the
+// roll; a verdict is the account of the table, and a reader asking "why did
+// it not attack?" needs the rows that were out as much as the ones that were
+// in. Held and Affordable are judged independently, so a row can say both
+// that its condition failed and that it could not have been paid for.
+//
+// Weight, Percent and Loaded are meaningful ONLY when Held && Affordable —
+// they are then exactly the row's [Candidate] numbers — and are zero
+// otherwise, because a row that was not on the table loaded nothing.
+type RowVerdict struct {
+	// Entry is this row's index in the key's authored entry list.
+	Entry int
+
+	// Held reports whether every `when` condition of the row held.
+	Held bool
+
+	// Affordable reports whether the creature could pay for the row's word.
+	Affordable bool
+
+	// Weight is the author's number, when the row was a candidate.
+	Weight int
+
+	// Percent is the temperament's factor, when the row was a candidate.
+	Percent int
+
+	// Loaded is Weight × Percent, when the row was a candidate.
+	Loaded int
+}
+
 // PickOutput is one roll on one key: who was eligible, what the die said, and which
 // entry fired.
 //
@@ -1055,6 +1087,12 @@ type PickOutput struct {
 
 	// Candidates is every eligible entry, in authored order.
 	Candidates []Candidate
+
+	// Rows is a verdict for EVERY entry of the key, in authored order —
+	// eligible or not — so the pick explains itself row by row. A hold
+	// carries them too: a creature that did nothing is the one most in need
+	// of saying why.
+	Rows []RowVerdict
 
 	// Roll is the face, 1..Of, or 0 when there was nothing to roll.
 	Roll int
@@ -1077,8 +1115,8 @@ type PickOutput struct {
 
 // holdPick is the pick a `time` key with nothing eligible produces: the
 // creature stands there, and the beat records that it was asked.
-func holdPick(key AnswerKey, temper string) *PickOutput {
-	return &PickOutput{Key: key, Entry: -1, Answer: Answer{Weight: 1, Hold: true}, Temper: temper}
+func holdPick(key AnswerKey, temper string, rows []RowVerdict) *PickOutput {
+	return &PickOutput{Key: key, Entry: -1, Answer: Answer{Weight: 1, Hold: true}, Temper: temper, Rows: rows}
 }
 
 // PickInput is one creature's whole situation, asked of its own table.
@@ -1131,13 +1169,18 @@ func Pick(ctx context.Context, in *PickInput) (*PickOutput, error) {
 	entries := table[key]
 
 	candidates := make([]Candidate, 0, len(entries))
+	rows := make([]RowVerdict, 0, len(entries))
 	of := 0
 	for i, entry := range entries {
 		// TWO TESTS, AND THEY ARE THE SAME TEST. An entry is on the table
 		// when its condition holds AND the creature can pay for it; either
 		// way it is ABSENT rather than weighted zero, so the candidate list
-		// stays the honest account of what could have happened.
-		if !allHold(entry.When, facts) || !facts.affords(entry) {
+		// stays the honest account of what could have happened. The verdict
+		// records both answers for every row, so the rows that were out say
+		// which test put them out.
+		held, affordable := allHold(entry.When, facts), facts.affords(entry)
+		if !held || !affordable {
+			rows = append(rows, RowVerdict{Entry: i, Held: held, Affordable: affordable})
 			continue
 		}
 		percent := temper.factor(entry)
@@ -1145,12 +1188,15 @@ func Pick(ctx context.Context, in *PickInput) (*PickOutput, error) {
 		candidates = append(candidates, Candidate{
 			Entry: i, Weight: entry.Weight, Percent: percent, Loaded: loaded,
 		})
+		rows = append(rows, RowVerdict{
+			Entry: i, Held: true, Affordable: true, Weight: entry.Weight, Percent: percent, Loaded: loaded,
+		})
 		of += loaded
 	}
 
 	if len(candidates) == 0 {
 		if key == KeyTime {
-			return holdPick(key, temper.Word), nil
+			return holdPick(key, temper.Word, rows), nil
 		}
 
 		return nil, nil
@@ -1162,7 +1208,7 @@ func Pick(ctx context.Context, in *PickInput) (*PickOutput, error) {
 		// `time` holds; a social table that cannot be rolled is the refusal
 		// it always was rather than a silently skipped answer.
 		if key == KeyTime {
-			return holdPick(key, temper.Word), nil
+			return holdPick(key, temper.Word, rows), nil
 		}
 
 		return nil, fmt.Errorf("pick: %q weighs %d: %w", key, of, ErrBadTable)
@@ -1189,6 +1235,7 @@ func Pick(ctx context.Context, in *PickInput) (*PickOutput, error) {
 	return &PickOutput{
 		Key:        key,
 		Candidates: candidates,
+		Rows:       rows,
 		Roll:       roll,
 		Of:         of,
 		Entry:      chosen.Entry,
