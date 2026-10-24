@@ -419,6 +419,55 @@ func (s *TableSuite) TestAnEventsWordsCostNothingATurnCanRunOutOf() {
 	s.Len(chosen.Candidates, 3, "all three, on a creature with nothing left to spend")
 }
 
+// TestEveryRowGetsAVerdict is rpg-project#674: a pick names a verdict for
+// EVERY row of the key in authored order — the row whose condition failed,
+// the row the creature could not pay for, and the candidate with its load —
+// so a reader can say why each row did or did not fire without the file.
+func (s *TableSuite) TestEveryRowGetsAVerdict() {
+	table := behavior.Table{behavior.KeyTime: {
+		{
+			Weight: 4, When: []behavior.When{{Enemy: behavior.EnemySeen}},
+			Toward: &behavior.Selector{Word: behavior.SelectorEnemy},
+		},
+		{Weight: 2, Attack: &behavior.Selector{Word: behavior.SelectorEnemy}},
+		{Weight: 3, Away: &behavior.Selector{Word: behavior.SelectorEnemy}},
+	}}
+	temper := behavior.Temper{Profile: cowardProfile}
+
+	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
+		Key: behavior.KeyTime, Table: table, Temper: temper,
+		Facts: behavior.Facts{CanMove: true}, Die: &facedDie{face: 1}})
+	s.Require().NoError(err)
+	s.Require().NotNil(chosen)
+
+	s.Equal([]behavior.RowVerdict{
+		{Entry: 0, Held: false, Affordable: true},
+		{Entry: 1, Held: true, Affordable: false},
+		{Entry: 2, Held: true, Affordable: true, Weight: 3, Percent: 300, Loaded: 900},
+	}, chosen.Rows, "the failed condition, the unaffordable swing, and the candidate with its load")
+	s.Require().Len(chosen.Candidates, 1, "the candidates stay the eligible subset")
+	s.Equal(2, chosen.Candidates[0].Entry)
+}
+
+// TestAHoldStillSaysWhyEveryRowWasOut: a `time` pick with nothing eligible is
+// the one most in need of explaining, so the hold carries its verdicts too.
+func (s *TableSuite) TestAHoldStillSaysWhyEveryRowWasOut() {
+	table := behavior.Table{behavior.KeyTime: {
+		{Weight: 1, When: []behavior.When{{Enemy: behavior.EnemySeen}}, Hold: true},
+		{Weight: 1, Attack: &behavior.Selector{Word: behavior.SelectorEnemy}},
+	}}
+
+	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
+		Key: behavior.KeyTime, Table: table, Die: &facedDie{face: 1}})
+	s.Require().NoError(err)
+	s.Require().NotNil(chosen)
+	s.Equal(-1, chosen.Entry)
+	s.Equal([]behavior.RowVerdict{
+		{Entry: 0, Held: false, Affordable: true},
+		{Entry: 1, Held: true, Affordable: false},
+	}, chosen.Rows)
+}
+
 // --- the loaded die ----------------------------------------------------------
 
 // TestTheBeatsArithmeticAddsUp is R7: every candidate carries its authored
