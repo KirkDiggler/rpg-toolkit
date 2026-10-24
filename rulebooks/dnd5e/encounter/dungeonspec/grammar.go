@@ -1032,8 +1032,14 @@ func (g *grammar) scenarios(scenarios map[string]map[string]string, names func(s
 // the same weapon twice, which is a pointless loadout rather than a malformed
 // one, and refusing it would be this compiler having an opinion about play.
 func (g *grammar) placeActions(path string, actions []string) {
+	g.placeActionAugment(path, "actions", actions)
+}
+
+// placeActionAugment applies the shared weapon-reference grammar to one
+// authored action list, retaining its exact field path for a refusal.
+func (g *grammar) placeActionAugment(path, key string, actions []string) {
 	for j, ref := range actions {
-		at := fmt.Sprintf("%s.actions[%d]", path, j)
+		at := fmt.Sprintf("%s.%s[%d]", path, key, j)
 
 		parsed, err := core.ParseString(ref)
 		if err != nil {

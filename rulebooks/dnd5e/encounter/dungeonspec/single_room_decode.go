@@ -858,7 +858,7 @@ func templatesShape(doc *yaml.Node, add errSink) {
 		if abilities := optionalNode(t, "abilities", p, add); abilities != nil {
 			abilitiesShape(abilities, p+".abilities", add)
 		}
-		for _, key := range [...]string{"skills", "actions"} {
+		for _, key := range [...]string{"skills", "actions", "addActions", "dropActions"} {
 			if list := optionalNode(t, key, p, add); list != nil {
 				stringListShape(list, fieldPath(p, key), add)
 			}
@@ -974,7 +974,10 @@ func templateValues(templates map[string]TemplateSpec, add errSink) {
 		}
 		// THE WEAPONS ARE A BINDING'S WEAPONS, judged by the one function that
 		// judges those, so an author reads the same sentence at either path.
-		(&grammar{add: add}).placeActions(p, t.Actions)
+		g := &grammar{add: add}
+		g.placeActions(p, t.Actions)
+		g.placeActionAugment(p, "addActions", t.AddActions)
+		g.placeActionAugment(p, "dropActions", t.DropActions)
 	}
 }
 

@@ -225,6 +225,8 @@ func monsterBindingsShape(gp *yaml.Node, add errSink) {
 		// with a different meaning.
 		optionalReference(b, "faction", p, add)
 		optionalNode(b, "actions", p, add)
+		optionalNode(b, "addActions", p, add)
+		optionalNode(b, "dropActions", p, add)
 		// AND THE FOUR GAMEPLAY KEYS (rpg-project#488,
 		// single_room_gameplay.go). Each is judged here for the same one
 		// thing: an authored `null` that the typed decode would read as the
@@ -314,6 +316,8 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 		g.placeOn(at, b.On)
 		g.placeTemper(at, b.Temper)
 		g.placeActions(at, b.Actions)
+		g.placeActionAugment(at, "addActions", b.AddActions)
+		g.placeActionAugment(at, "dropActions", b.DropActions)
 		// AND THE GAMEPLAY KEYS THE SAME BINDING CARRIES (rpg-project#488
 		// R1/R5). In this loop rather than in one of their own, so they are
 		// judged for the LIVE cast only: a binding whose creature is gone is

@@ -235,6 +235,18 @@ type TemplateSpec struct {
 	// binding's own `actions:`.
 	Actions []string `yaml:"actions,omitempty" json:"actions,omitempty"`
 
+	// AddActions appends weapons to the resolved action list in authored order.
+	// Resolution is performed at the session assembly seam (rpg-toolkit#2119):
+	// base, template actions replacement, template add/drop, binding actions
+	// replacement, then binding add/drop. It is nil when not authored, in this
+	// carrier's tradition.
+	AddActions []string `yaml:"addActions,omitempty" json:"addActions,omitempty"`
+
+	// DropActions removes weapons from the resolved action list. See
+	// [TemplateSpec.AddActions] for the session-owned resolution order and why
+	// this carrier does not interpret the list.
+	DropActions []string `yaml:"dropActions,omitempty" json:"dropActions,omitempty"`
+
 	// Experience is what the block is worth when it falls. It NEVER
 	// inherits from the base (design R8): absent, or 0, is worth nothing.
 	Experience int `yaml:"experience,omitempty" json:"experience,omitempty"`
@@ -438,6 +450,16 @@ type RoomMonsterBinding struct {
 	// ORDER IS THE POINT: both drivers take the first action whose target is
 	// in reach, so this list is never sorted and never deduplicated.
 	Actions []string `yaml:"actions,omitempty" json:"actions,omitempty"`
+
+	// AddActions appends weapons to the resolved action list in authored order.
+	// The session assembly seam resolves base, template actions replacement,
+	// template add/drop, binding actions replacement, then binding add/drop
+	// (rpg-toolkit#2119). Nil means this carrier was not stated.
+	AddActions []string `yaml:"addActions,omitempty" json:"addActions,omitempty"`
+
+	// DropActions removes weapons from the resolved action list. Resolution is
+	// session-owned; see [RoomMonsterBinding.AddActions].
+	DropActions []string `yaml:"dropActions,omitempty" json:"dropActions,omitempty"`
 
 	// Holds is the intel records this creature carries from spawn, by record
 	// id — [PlaceSpec.Holds]'s field and its one refusal (rpg-project#488 R1,
