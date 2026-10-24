@@ -258,7 +258,7 @@ func TestUnknownKeysInsideTheSiteKeysAreNamed(t *testing.T) {
 			repl: "        temper: coward\n        mind: goblin-1",
 			want: FieldError{
 				Path:    "room.room.monsterBindings.goblin-1.mind",
-				Message: `"mind" is not a key this build reads: they are actions, arrives, faction, holds, on, options, table, temper`,
+				Message: `"mind" is not a key this build reads: they are actions, addActions, arrives, dropActions, faction, holds, on, options, table, temper`,
 			},
 		},
 		{
@@ -331,7 +331,7 @@ func TestTheSiteDocumentReportsEveryUnknownKey(t *testing.T) {
 		{Path: "height", Message: `"height" is not a key this build reads: ` +
 			"they are concealments, dispositions, endings, exits, factions, intel, key, play, room, scenarios, tables, templates, version"},
 		{Path: "room.room.monsterBindings.goblin-1.tempre",
-			Message: `"tempre" is not a key this build reads: they are actions, arrives, faction, holds, on, options, table, temper`},
+			Message: `"tempre" is not a key this build reads: they are actions, addActions, arrives, dropActions, faction, holds, on, options, table, temper`},
 	}, validation.Errors, "both of them, in the order they were written")
 }
 
