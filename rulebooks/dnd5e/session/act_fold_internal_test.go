@@ -622,3 +622,30 @@ func (s *ActFoldSuite) TestStateEntriesNameTheirSource() {
 	s.Equal("dnd5e:conditions:baned", lifted.Condition.Ref)
 	s.Equal("Baned", lifted.Condition.Name)
 }
+
+// TestFoldATableBeatIsNoAct is rpg-project#674's "record only, never the act
+// stream": a creature's described table, written beside the pick that
+// indexes it, folds into no act and leaves no undecoded piece — the pick is
+// the only thing the recipient's acts carry.
+func (s *ActFoldSuite) TestFoldATableBeatIsNoAct() {
+	const pick = "time:01HZZZZZZZZZZZZZZZZZZZPICK"
+	table := s.beat(pick, map[string]any{
+		"beat": encounter.BeatTable, "creature": "gate-1", "option": "", "key": "time",
+		"temper": "", "percents": map[string]int{"attack": 100},
+		"rows": []map[string]any{{"entry": 0, "when": []string{"enemy seen"}, "word": "attack", "selector": "enemy"}},
+	})
+	answered := s.beat(pick, map[string]any{
+		"beat": encounter.BeatAnswered, "creature": "gate-1", "key": "time", "roll": 1, "of": 1, "entry": 0,
+		"word": "attack", "selector": "enemy", "candidates": []any{}, "rows": []any{},
+	})
+
+	withTable := foldActs("sess", "fighter", []record.Entry{table, answered})
+	without := foldActs("sess", "fighter", []record.Entry{answered})
+
+	s.Require().NotEmpty(withTable, "precondition: the pick folds")
+	s.Equal(len(without), len(withTable), "the table adds no act")
+	for _, act := range withTable {
+		s.NotEqual(table.ID, act.ID, "no act is named by the table beat")
+		s.Empty(act.Undecoded, "and nothing about it is undecoded")
+	}
+}
