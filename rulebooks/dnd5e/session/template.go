@@ -177,6 +177,9 @@ func assembleTemplate(memberID string, ref *core.Ref, spec dungeonspec.TemplateS
 	if err != nil {
 		return nil, fmt.Errorf("template %q: %w: %v", ref.ID, ErrInvalidWorld, err)
 	}
+	if err := augmentActions(built, spec.AddActions, spec.DropActions, "templates."+ref.ID); err != nil {
+		return nil, fmt.Errorf("template %q: %w", ref.ID, err)
+	}
 	return built, nil
 }
 

@@ -341,8 +341,8 @@ func (m *Manager) refuseExistingSession(ctx context.Context, id string) error {
 func resolveLaunchMonsters(dungeon *dungeonspec.Compiled) ([]launchMonster, error) {
 	out := make([]launchMonster, 0, len(dungeon.Monsters))
 	for _, placement := range dungeon.Monsters {
-		sheet, err := instantiate(placement.MemberID, placement.Ref, placement.Actions,
-			templateFor(dungeon.Templates, placement.Ref))
+		sheet, err := instantiateWithActionAugments(placement.MemberID, placement.Ref, placement.Actions,
+			placement.AddActions, placement.DropActions, templateFor(dungeon.Templates, placement.Ref))
 		if err != nil {
 			return nil, fmt.Errorf("monster %q: %w", placement.MemberID, err)
 		}

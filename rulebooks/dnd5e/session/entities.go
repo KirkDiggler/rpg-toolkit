@@ -90,9 +90,16 @@ import (
 //   - neither is [ErrUnknownContent], as it always was.
 //
 // The placement's own `actions:` replace the result's weapons wholesale on
-// either path (R9). What comes out is an ordinary monster sheet: nothing after
-// this function learns that a template existed (R1).
+// either path (R9), then its add/drop fields resolve over that replacement.
+// What comes out is an ordinary monster sheet: nothing after this function
+// learns that a template existed (R1).
 func instantiate(id string, ref string, actions []string, template *dungeonspec.TemplateSpec) (*monster.Data, error) {
+	return instantiateWithActionAugments(id, ref, actions, nil, nil, template)
+}
+
+// instantiateWithActionAugments resolves one monster placement after the
+// dialect has carried all of its action fields through compilation.
+func instantiateWithActionAugments(id string, ref string, actions []string, addActions []string, dropActions []string, template *dungeonspec.TemplateSpec) (*monster.Data, error) {
 	if ref == "" {
 		return nil, ErrNoRef
 	}
@@ -149,10 +156,13 @@ func instantiate(id string, ref string, actions []string, template *dungeonspec.
 		return nil, fmt.Errorf("%q: %w", ref, ErrUnknownContent)
 	}
 
-	if len(actions) > 0 {
+	if actions != nil {
 		if err := arm(built, actions); err != nil {
 			return nil, err
 		}
+	}
+	if err := augmentActions(built, addActions, dropActions, "monsterBindings."+id); err != nil {
+		return nil, err
 	}
 
 	data := built.ToData()
@@ -207,6 +217,73 @@ func arm(built *monster.Monster, actions []string) error {
 		return fmt.Errorf("arming %q: %w", built.Name(), err)
 	}
 	return nil
+}
+
+// augmentActions applies one authored add/drop layer to the monster's current
+// actions. Nil for both fields is deliberately a no-op: it leaves base arms
+// untouched when no action input was authored at any layer.
+func augmentActions(built *monster.Monster, addActions []string, dropActions []string, fieldPrefix string) error {
+	if addActions == nil && dropActions == nil {
+		return nil
+	}
+
+	resolved := actionRefsOf(built.ToData())
+	added, err := canonicalWeaponRefs(addActions)
+	if err != nil {
+		return err
+	}
+	resolved = append(resolved, added...)
+
+	for i, drop := range dropActions {
+		canonical, err := canonicalWeaponRefs([]string{drop})
+		if err != nil {
+			return err
+		}
+		without := make([]string, 0, len(resolved))
+		found := false
+		for _, action := range resolved {
+			if action == canonical[0] {
+				found = true
+				continue
+			}
+			without = append(without, action)
+		}
+		if !found {
+			return fmt.Errorf("%s.dropActions[%d]: action %q is absent from this resolved layer", fieldPrefix, i, canonical[0])
+		}
+		resolved = without
+	}
+
+	return arm(built, resolved)
+}
+
+// actionRefsOf reads a freshly assembled sheet's weapon refs in their existing
+// order. Monster assembly owns the source list; this seam only carries it to
+// the next authored layer.
+func actionRefsOf(sheet *monster.Data) []string {
+	refs := make([]string, 0, len(sheet.Actions))
+	for _, action := range sheet.Actions {
+		refs = append(refs, action.Ref.String())
+	}
+	return refs
+}
+
+// canonicalWeaponRefs validates authored weapon refs and returns their parsed
+// canonical spelling, so an added or dropped ref compares against the sheet's
+// own ref rather than the caller's bytes.
+func canonicalWeaponRefs(actions []string) ([]string, error) {
+	if _, err := weaponIDsOf(actions); err != nil {
+		return nil, err
+	}
+	refs := make([]string, 0, len(actions))
+	for _, action := range actions {
+		parsed, err := core.ParseString(action)
+		if err != nil {
+			return nil, fmt.Errorf("%q: %w: %v", action, ErrBadRef, err)
+		}
+		refs = append(refs, parsed.String())
+	}
+	return refs, nil
 }
 
 // weaponIDsOf turns authored weapon refs into catalogue ids, refusing as
