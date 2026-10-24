@@ -433,16 +433,16 @@ func (s *RetentionTestSuite) TestVerbBeatsSurviveTheVerb() {
 
 	entries, err := enc.Story(&encounter.StoryInput{Audience: "watcher", AfterSeq: 0})
 	s.Require().NoError(err)
-	s.Len(entries, 4, "scene-opened, tick, pick, movement: the verb's own beats all survive the verb")
+	s.Len(entries, 5, "scene-opened, tick, table, pick, movement: the verb's own beats all survive the verb")
 	for i, entry := range entries {
 		s.Equal(uint64(i+1), entry.Seq, "nothing was trimmed out from under the verb")
 	}
 
 	data := enc.ToData()
 	s.Require().Len(data.Log.Entries, 1, "the boundary then emits exactly the window")
-	s.Equal(uint64(4), data.Log.Entries[0].Seq, "and keeps the newest beat")
+	s.Equal(uint64(5), data.Log.Entries[0].Seq, "and keeps the newest beat")
 
-	_, err = enc.Story(&encounter.StoryInput{Audience: "watcher", AfterSeq: 3})
+	_, err = enc.Story(&encounter.StoryInput{Audience: "watcher", AfterSeq: 4})
 	s.ErrorIs(err, encounter.ErrTrimmed, "the floor advanced with the save, exactly as before")
 }
 

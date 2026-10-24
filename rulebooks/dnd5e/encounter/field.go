@@ -1474,6 +1474,13 @@ type memberRecord struct {
 	// and persisted.
 	Dwell *dwell
 
+	// TableHash is the hash of the table this member last described in the
+	// record, per scope ([tableScope]: the key, or the option and key), so a
+	// [BeatTable] is written only when the table it would describe differs
+	// (tablebeat.go, rpg-project#674). Persisted, so a reload describes
+	// nothing the record already holds. Nil until the first description.
+	TableHash map[string]string
+
 	// Faction is the faction the caller NAMED, or empty for the kind's
 	// default — stored as given, never resolved here, so a member in the
 	// default faction persists byte-identically to one from before factions

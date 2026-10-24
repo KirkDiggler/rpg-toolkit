@@ -274,8 +274,9 @@ func TestTombWatch(t *testing.T) {
 		// orders sent it and says so. Both halves are narrated: the roll,
 		// because being asked is part of the story, and the `stayed`,
 		// because a spent round that moved nobody must be visible (Kirk's
-		// walk, rpg-project#465).
-		"tick", "answered", "moved",
+		// walk, rpg-project#465). The first roll is preceded by the table
+		// it indexes (rpg-project#674); the second finds it described.
+		"tick", "table", "answered", "moved",
 		"tick", "answered", "stayed",
 		"moved",  // beat 3: alice slips behind the wall
 		"joined", // beat 5: cormac (the pause leaves no beat — pause is free)

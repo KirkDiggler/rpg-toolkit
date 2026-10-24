@@ -12,6 +12,7 @@ package encounter_test
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 
@@ -448,7 +449,8 @@ func (s *ActTestSuite) TestTimePickIsItsOwnAct() {
 	for _, p := range picks {
 		s.True(strings.HasPrefix(p.correlation, "time:"), "a pick is a time act, got %q", p.correlation)
 		s.NotEqual(walk, p.correlation, "the goblin's answer is not the walker's act")
-		s.Equal(p.seq, firstOfAct(entries, p.correlation), "the pick is its act's first beat")
+		s.Equal(p.seq, firstOfAct(entries, p.correlation, encounter.BeatTable),
+			"the pick is its act's first beat but the table it indexes")
 	}
 	for _, m := range ofKind(entries, encounter.BeatMoved, alice) {
 		s.Equal(walk, m.correlation)
@@ -535,9 +537,9 @@ func (s *ActTestSuite) TestRecordEquipUnderAct() {
 }
 
 // firstOfAct is the seq of the first entry carrying act as its correlation.
-func firstOfAct(entries []told, act string) uint64 {
+func firstOfAct(entries []told, act string, skip ...string) uint64 {
 	for _, e := range entries {
-		if e.correlation == act {
+		if e.correlation == act && !slices.Contains(skip, e.kind) {
 			return e.seq
 		}
 	}

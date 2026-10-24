@@ -706,12 +706,22 @@ func (e *Encounter) runIntents(
 // everyone ([Encounter.audienceFor]). A social answer's audience is the
 // witnesses of the verb that caused it; nothing caused this but time.
 func (e *Encounter) appendPickBeat(member MemberID, chosen *Pick) error {
+	at := uint64(e.clock.ToData().HighWater)
+	// THE SYMBOLS FIRST (rpg-project#674): the member's own table for this
+	// key, described before the first pick that indexes it — the table the
+	// driver was handed ([MonsterView.Table] is the member's).
+	if m, ok := e.members[member]; ok {
+		if err := e.describeTable(member, "", chosen.Key, m.Table[chosen.Key], m.Temper, at); err != nil {
+			return fmt.Errorf("pick beat: %w", err)
+		}
+	}
+
 	payload, err := json.Marshal(answeredBeatBody(answeredBy{creature: member}, chosen))
 	if err != nil {
 		return fmt.Errorf("pick beat: %w", err)
 	}
 	if _, err := e.appendBeat(&record.AppendInput{
-		At:       uint64(e.clock.ToData().HighWater),
+		At:       at,
 		Audience: e.audienceFor(subjectBeat, member),
 		Tags:     map[string]string{"tag": BeatAnswered},
 		Payload:  payload,
