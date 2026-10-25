@@ -101,6 +101,11 @@ here it is only the tree, with `From` and `Params` kept for the record.
 cell (`at`), or a route (`path`, `toward` only). The words are `enemy`,
 `attacker`, `actor` and `sound`.
 
+- **`attacker`** is who last attacked the creature, in the reading the
+  row's deed condition names (`Facts.Attacker`). The row is a candidate only
+  while that member is in `Facts.FoesInReach` (to strike) or `SeenFoes` or
+  `RememberedFoes` (to walk); otherwise it is absent, and the author's
+  sibling `attack: enemy` row is the fallback through the roll.
 - **`sound`** is where the freshest held sound was made. It is legal on
   `toward` and `away` only, and only on a row that names a `heard` condition
   (R10), the way `actor` needs a deed. Resolving it is the caller's.

@@ -509,7 +509,12 @@ const (
 	// nearest opposed member remembered.
 	SelectorEnemy SelectorWord = "enemy"
 
-	// SelectorAttacker is who last landed an attack on this creature.
+	// SelectorAttacker is who last landed an attack on this creature, read
+	// the way the row's deed condition reads ([Facts.Attacker]). The row is
+	// on the table only while the creature holds them placed: in reach to
+	// strike ([Facts.FoesInReach]), in sight or memory to walk
+	// ([Facts.SeenFoes]). Otherwise it is absent, and a sibling row is the
+	// author's fallback.
 	SelectorAttacker SelectorWord = "attacker"
 
 	// SelectorActor is the actor of the deed this entry's `when` named, so
@@ -891,6 +896,27 @@ type Facts struct {
 	// sounds channel ([sound.Held]); empty is "I heard nothing".
 	Sounds []sound.Sound
 
+	// SeenFoes is every opposed member this creature holds in its own sight
+	// right now, standing; RememberedFoes is every opposed member it holds
+	// placed from an earlier sighting and does not see now (rpg-project#669).
+	// What `attacker` needs to name somebody: the one who hit it is on the
+	// table only while it is among these ([Facts.Attacker]). The caller
+	// projects both from the creature's own sight testimony, never from
+	// where anybody really is.
+	//
+	// EMPTY IS "I HOLD NOBODY", so a caller that has not filled them gets an
+	// `attacker` row that is never a candidate, the module's "cannot"
+	// default for a forgotten field.
+	SeenFoes       []core.EntityID
+	RememberedFoes []core.EntityID
+
+	// FoesInReach is every member of SeenFoes this creature can strike now,
+	// with any of its attacks — the members `enemy: reach` is about. A strike
+	// at the one who hit it is on the table only while they are here: one in
+	// sight but out of reach is somebody to walk to, and an `attack` row that
+	// named them would be a swing the caller can only refuse.
+	FoesInReach []core.EntityID
+
 	// Known is the id of every world fact this creature holds — what a
 	// `fact` condition reads. Whose facts these are (a witness's, a
 	// hearer's, a faction's) is the caller's audience rule; this module
@@ -913,11 +939,11 @@ type Facts struct {
 func (f Facts) affords(a Answer) bool {
 	switch {
 	case a.Attack != nil:
-		return f.CanAttack
+		return f.CanAttack && f.locates(a.Attack, a.When, f.FoesInReach)
 	case a.Toward != nil:
-		return f.CanMove && f.locates(a.Toward)
+		return f.CanMove && f.locates(a.Toward, a.When, f.SeenFoes, f.RememberedFoes)
 	case a.Away != nil:
-		return f.CanMove && f.locates(a.Away)
+		return f.CanMove && f.locates(a.Away, a.When, f.SeenFoes, f.RememberedFoes)
 	case a.Search != nil:
 		// A SEARCH WALKS ON FROM A LOST TRAIL, so with none held there is
 		// nowhere to search from — the rule `sound` keeps for a walk with no
@@ -929,10 +955,68 @@ func (f Facts) affords(a Answer) bool {
 }
 
 // locates reports whether the facts hold something for this selector to
-// name. Only `sound` can name nothing from the facts alone: the other words
-// are resolved by the caller against a board this module does not have.
-func (f Facts) locates(s *Selector) bool {
-	return s.Word != SelectorSound || len(f.Sounds) > 0
+// name. `sound` names nothing with no sound held. `attacker` names nothing
+// unless the one who hit the creature ([Facts.Attacker], read the way the
+// row's own deed condition reads) is among the foes it holds placed: in
+// reach to strike, in sight or memory to walk (rpg-project#669). The other
+// words are resolved by the caller against a board this module does not
+// have.
+//
+// ABSENT, NOT A PASS (R15). A row whose selector names nobody is not on the
+// table, so the author's sibling row — `attack: enemy` beneath `attack:
+// attacker` — is the fallback, through the roll, and no word hides one.
+func (f Facts) locates(s *Selector, when []When, placed ...[]core.EntityID) bool {
+	switch s.Word {
+	case SelectorSound:
+		return len(f.Sounds) > 0
+	case SelectorAttacker:
+		who, ok := f.Attacker(when)
+		if !ok {
+			return false
+		}
+		for _, foes := range placed {
+			if slices.Contains(foes, who) {
+				return true
+			}
+		}
+
+		return false
+	default:
+		return true
+	}
+}
+
+// Attacker is who `attacker` names on a row with this `when` list: the
+// actor of the freshest attack in the reading the list's first deed
+// condition asks for ([When.Scope]; the creature itself when it names none),
+// ties on the stamp broken on the actor (C8). ok is false when that reading
+// holds no attack.
+//
+// THE CREATURE'S OWN TESTIMONY (R8): a deed is held only by a creature that
+// witnessed it, so an attack it never saw names nobody. Exported so the
+// caller resolves the selector off the same reading this module judged it
+// eligible by.
+func (f Facts) Attacker(when []When) (core.EntityID, bool) {
+	deeds := f.Deeds
+	for i := range when {
+		if when[i].Deed != "" {
+			deeds = when[i].deedsOf(f)
+
+			break
+		}
+	}
+	var best HeldDeed
+	found := false
+	for _, d := range deeds {
+		if d.Kind != VerbAttack || d.Actor == "" {
+			continue
+		}
+		if !found || d.At > best.At || (d.At == best.At && d.Actor < best.Actor) {
+			best, found = d, true
+		}
+	}
+
+	return best.Actor, found
 }
 
 // deedsOf is the reading this condition's scope asks for: the deeds against
