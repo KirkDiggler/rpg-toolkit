@@ -169,7 +169,10 @@ var AsWords = []string{"attack", "toward", "away", "flee", "hold"}
 // list that does not name exactly one condition ([When.Validate],
 // ErrBadWhen), and a [Selector] naming no target or more than one, a `path`
 // on a word other than `toward`, `sound` on `attack`, or `sound` on a row
-// whose list names no `heard` condition (ErrBadSelector, R10), and a `search`
+// whose list names no `heard` condition (ErrBadSelector, R10), an `enemy`
+// with no target policy or one not in [TargetPolicies], a policy on any other
+// target, or `target: attacker` on `away` (ErrBadSelector, rpg-project#669),
+// and a `search`
 // distance below 1 or a heading not in [SearchHeadings] (ErrBadSearch), and
 // a group row ([Answer.Rows]) that carries a word, a search, a line or a fact
 // of its own, holds no rows, counts `as` a word not in [AsWords], or nests

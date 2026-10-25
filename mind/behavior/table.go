@@ -505,8 +505,9 @@ func andList(words []string) string {
 type SelectorWord string
 
 const (
-	// SelectorEnemy is the nearest opposed member in sight, else the
-	// nearest opposed member remembered.
+	// SelectorEnemy is an opposed member the creature sees, else one it
+	// remembers, picked by the selector's [Selector.Target] policy: the
+	// nearest, or the one who hit it.
 	SelectorEnemy SelectorWord = "enemy"
 
 	// SelectorAttacker is who last landed an attack on this creature.
@@ -596,6 +597,50 @@ type Selector struct {
 	//
 	// Omitted when empty, for Facings' reason.
 	Waits []int `json:",omitempty"`
+
+	// Target is how an `enemy` selector picks among the opposed members it
+	// could name: one of [TargetPolicies] (rpg-project#669). REQUIRED on an
+	// `enemy` and refused on every other target ([Answer.Validate]). The
+	// dialect fills an omitted policy with [TargetClosest] before it gets
+	// here, so a persisted `enemy` always names its policy and a reloaded
+	// table never holds one that silently forgot it.
+	//
+	// A WORD, NOTHING ELSE. Who hit the creature, whether it can see them
+	// and what happens when it cannot are the caller's to read from the
+	// creature's own testimony; this module carries the word.
+	//
+	// Omitted when empty, so a cell, a route or a sound marshals as it did
+	// before the policy existed.
+	Target TargetPolicy `json:",omitempty"`
+}
+
+// TargetPolicy is the sealed word an `enemy` selector picks its member by
+// (rpg-project#669): `target: closest | attacker`.
+type TargetPolicy string
+
+const (
+	// TargetClosest is the nearest opposed member in sight, else the nearest
+	// remembered: what `enemy` always meant. The dialect's default.
+	TargetClosest TargetPolicy = "closest"
+
+	// TargetAttacker is the opposed member whose attack on this creature the
+	// creature itself witnessed most recently, when it still holds them in
+	// its own sight; otherwise the closest, and the caller's record says
+	// which it was. Legal on `attack` and `toward` only.
+	TargetAttacker TargetPolicy = "attacker"
+)
+
+// TargetPolicies is every value `target:` takes. Exported for the dialect's
+// refusal, [SearchHeadings]'s reason.
+var TargetPolicies = []TargetPolicy{TargetClosest, TargetAttacker}
+
+// attackerWords is every table word `target: attacker` may stand on: a
+// creature strikes the one who hit it, or closes on them.
+var attackerWords = []string{"attack", "toward"}
+
+// sealed reports whether p is one of [TargetPolicies].
+func (p TargetPolicy) sealed() bool {
+	return slices.Contains(TargetPolicies, p)
 }
 
 // targets names every target this selector sets, each as an author wrote it.
@@ -631,12 +676,39 @@ func (s *Selector) validate(word string) error {
 		return fmt.Errorf("`attack` cannot take `sound`: a sound cannot be struck, only walked toward "+
 			"or away from: %w", ErrBadSelector)
 	}
+	if err := s.validateTarget(word); err != nil {
+		return err
+	}
 	if err := s.validateWaypoints(word); err != nil {
 		return err
 	}
 	if len(s.Path) > 0 && word != "toward" {
 		return fmt.Errorf("`%s` cannot take a `path`: a route is walked, and only `toward` walks one: %w",
 			word, ErrBadSelector)
+	}
+
+	return nil
+}
+
+// validateTarget refuses an `enemy` with no policy or one not in
+// [TargetPolicies], a policy on any other target, and `attacker` on a word
+// other than `attack` and `toward`. word is the table word the selector is on.
+func (s *Selector) validateTarget(word string) error {
+	if s.Word != SelectorEnemy {
+		if s.Target != "" {
+			return fmt.Errorf("`%s` names `target` %q; a target policy picks among enemies, so only "+
+				"`enemy` takes one: %w", word, s.Target, ErrBadSelector)
+		}
+
+		return nil
+	}
+	if !s.Target.sealed() {
+		return fmt.Errorf("`%s: enemy` picks by `target` %q; an enemy is picked `closest` or by `attacker`: %w",
+			word, s.Target, ErrBadSelector)
+	}
+	if s.Target == TargetAttacker && !slices.Contains(attackerWords, word) {
+		return fmt.Errorf("`%s: enemy` picks by `target` attacker; only `attack` and `toward` pick the one "+
+			"who hit it: %w", word, ErrBadSelector)
 	}
 
 	return nil

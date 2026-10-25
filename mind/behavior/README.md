@@ -101,6 +101,11 @@ here it is only the tree, with `From` and `Params` kept for the record.
 cell (`at`), or a route (`path`, `toward` only). The words are `enemy`,
 `attacker`, `actor` and `sound`.
 
+- **`enemy`** carries a sealed target policy, `Target`: `closest` or
+  `attacker` (rpg-project#669). It is required on `enemy` and refused on
+  every other target; the dialect fills `closest`. `attacker` is legal on
+  `attack` and `toward` only. Who hit the creature, and the fallback when it
+  no longer holds them in sight, are the caller's.
 - **`sound`** is where the freshest held sound was made. It is legal on
   `toward` and `away` only, and only on a row that names a `heard` condition
   (R10), the way `actor` needs a deed. Resolving it is the caller's.

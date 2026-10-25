@@ -1466,3 +1466,71 @@ func (s *TableSuite) TestASearchHeadingSurvivesTheMarshalledRow() {
 		s.Equal(4, back.Search.Distance)
 	}
 }
+
+// TestAnEnemyNamesOneOfTwoTargetPolicies is the sealed target policy
+// (rpg-project#669): `enemy` on `attack` and `toward` picks its member
+// `closest` or by who hit it (`attacker`); a third word, and an empty one,
+// are refused. The dialect fills an omitted policy with `closest` before
+// this door, so an empty word here is a struct built past it, the same as a
+// search with no heading.
+func (s *TableSuite) TestAnEnemyNamesOneOfTwoTargetPolicies() {
+	s.Equal([]behavior.TargetPolicy{behavior.TargetClosest, behavior.TargetAttacker}, behavior.TargetPolicies)
+	for _, p := range behavior.TargetPolicies {
+		s.NoError((&behavior.Answer{Weight: 1,
+			Attack: &behavior.Selector{Word: behavior.SelectorEnemy, Target: p}}).Validate(), "attack "+string(p))
+		s.NoError((&behavior.Answer{Weight: 1,
+			Toward: &behavior.Selector{Word: behavior.SelectorEnemy, Target: p}}).Validate(), "toward "+string(p))
+	}
+	for _, p := range []behavior.TargetPolicy{"weakest", ""} {
+		err := (&behavior.Answer{Weight: 1,
+			Attack: &behavior.Selector{Word: behavior.SelectorEnemy, Target: p}}).Validate()
+		s.Require().ErrorIs(err, behavior.ErrBadSelector, string(p))
+		s.Contains(err.Error(), "`target`")
+	}
+}
+
+// TestOnlyAnEnemyTakesATargetPolicy is where the policy may stand: it picks
+// AMONG enemies, so a cell, a route, a sound or another word takes none, and
+// `attacker` is a choice only `attack` and `toward` make (no use case has a
+// creature run from the one who hit it rather than the nearest).
+func (s *TableSuite) TestOnlyAnEnemyTakesATargetPolicy() {
+	cell := spatial.Position{X: 1, Y: 1}
+	heard := []behavior.When{{Heard: &behavior.HeardWhen{Kind: lit("clang"), Within: 2}}}
+	for name, row := range map[string]behavior.Answer{
+		"at":   {Weight: 1, Toward: &behavior.Selector{At: &cell, Target: behavior.TargetClosest}},
+		"path": {Weight: 1, Toward: &behavior.Selector{Path: []spatial.Position{cell}, Target: behavior.TargetAttacker}},
+		"sound": {Weight: 1, When: heard,
+			Toward: &behavior.Selector{Word: behavior.SelectorSound, Target: behavior.TargetClosest}},
+		"attacker": {Weight: 1, Attack: &behavior.Selector{Word: behavior.SelectorAttacker, Target: behavior.TargetAttacker}},
+		"away from the attacker": {Weight: 1,
+			Away: &behavior.Selector{Word: behavior.SelectorEnemy, Target: behavior.TargetAttacker}},
+	} {
+		err := row.Validate()
+		s.Require().ErrorIs(err, behavior.ErrBadSelector, name)
+		s.Contains(err.Error(), "`target`", name)
+	}
+	s.NoError((&behavior.Answer{Weight: 1,
+		Away: &behavior.Selector{Word: behavior.SelectorEnemy, Target: behavior.TargetClosest}}).Validate(),
+		"away runs from the closest, as it always did")
+}
+
+// TestATargetPolicySurvivesTheMarshalledRow is the persisted row: the policy
+// rides the selector's JSON and comes back unchanged, so a table saved and
+// loaded never becomes an `enemy` with no policy. A selector that is not an
+// enemy carries no key for it, so those rows marshal as before.
+func (s *TableSuite) TestATargetPolicySurvivesTheMarshalledRow() {
+	for _, p := range behavior.TargetPolicies {
+		row := behavior.Answer{Weight: 1, Attack: &behavior.Selector{Word: behavior.SelectorEnemy, Target: p}}
+		raw, err := json.Marshal(row)
+		s.Require().NoError(err)
+		s.Contains(string(raw), `"Target":"`+string(p)+`"`)
+		var back behavior.Answer
+		s.Require().NoError(json.Unmarshal(raw, &back))
+		s.Require().NotNil(back.Attack)
+		s.Equal(p, back.Attack.Target)
+		s.NoError(back.Validate())
+	}
+	route, err := json.Marshal(behavior.Selector{Path: []spatial.Position{{X: 1, Y: 2}}})
+	s.Require().NoError(err)
+	s.NotContains(string(route), "Target")
+}
