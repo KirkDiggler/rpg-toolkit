@@ -209,6 +209,14 @@ type MonsterPlacement struct {
 	// close on it.
 	Actions []string `json:"Actions,omitempty"`
 
+	// AddActions appends weapons at the session assembly seam, after any
+	// resolved action replacement. It remains authored carrier data here.
+	AddActions []string `json:"AddActions,omitempty"`
+
+	// DropActions removes weapons at the session assembly seam. It remains
+	// authored carrier data here so dungeonspec never interprets rulebook arms.
+	DropActions []string `json:"DropActions,omitempty"`
+
 	// Boss is whether this is the monster whose death ends things.
 	Boss bool
 

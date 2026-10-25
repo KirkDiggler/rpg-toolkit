@@ -327,6 +327,18 @@ func (e *Encounter) landFled(creature, actor MemberID, at uint64) error {
 // false for a `time` pick — nothing spoke — and `creature` is empty when a
 // prop answered; all of those are answers rather than gaps.
 func (e *Encounter) appendAnsweredBeat(in answerInput, chosen *Pick) error {
+	// THE SYMBOLS FIRST (rpg-project#674): a creature's option rows are
+	// described before the first answer that indexes them. A prop's rows are
+	// not — a prop holds no member record to remember what it described —
+	// and its answer is read by index.
+	if in.creature != "" {
+		if err := e.describeTable(
+			in.creature, in.option, in.key, in.rows, e.members[in.creature].Temper, in.at,
+		); err != nil {
+			return fmt.Errorf("answer: %w", err)
+		}
+	}
+
 	payload, err := json.Marshal(answeredBeatBody(answeredBy{
 		creature: in.creature, prop: in.prop, verb: in.verb, option: in.option, beaten: in.beaten,
 	}, chosen))
@@ -380,6 +392,7 @@ func answeredBeatBody(by answeredBy, chosen *Pick) map[string]interface{} {
 		"of":         chosen.Of,
 		"entry":      chosen.Entry,
 		"candidates": candidates,
+		"rows":       rowVerdicts(chosen),
 		"temper":     chosen.Temper,
 		"word":       answerWord(chosen.Answer),
 		"selector":   selectorWord(chosen.Answer),

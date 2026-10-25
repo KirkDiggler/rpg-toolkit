@@ -257,8 +257,10 @@ func TestVaultChase(t *testing.T) {
 		"moved", // beat 2: she moves deeper into the vault
 		// beat 4: alice acts, which pays the world a round; the goblin rolls
 		// its own table (`answered`) and walks the whole of its speed after
-		// her, a cell and a beat at a time, through the gate.
-		"tick", "answered",
+		// her, a cell and a beat at a time, through the gate. Its first
+		// answer is preceded by the table it indexes (`table`,
+		// rpg-project#674), once.
+		"tick", "table", "answered",
 		"moved", "moved", "moved", "moved", "moved",
 		"moved", "moved", "moved", "moved", "moved",
 		// beat 5: she reaches sanctuary. Her own step pays no round — she is

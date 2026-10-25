@@ -226,6 +226,10 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 			ID: m.ID, Ref: m.Ref, Faction: b.Faction,
 			On: on, Temper: b.Temper, Actions: b.Actions,
 		}, from, encounter.HexesArePointyTop())
+		// Action augmentation remains carrier data: the session owns resolution
+		// against the base monster and so receives both authored lists verbatim.
+		mp.AddActions = slices.Clone(b.AddActions)
+		mp.DropActions = slices.Clone(b.DropActions)
 		mp.Region = layout.owner[at]
 		mp.At = at
 		mp.Facing = m.StartingCell.Facing
@@ -358,6 +362,8 @@ func templatesOf(templates map[string]TemplateSpec) map[string]TemplateSpec {
 		t.Abilities = maps.Clone(t.Abilities)
 		t.Skills = slices.Clone(t.Skills)
 		t.Actions = slices.Clone(t.Actions)
+		t.AddActions = slices.Clone(t.AddActions)
+		t.DropActions = slices.Clone(t.DropActions)
 		out[id] = t
 	}
 	return out
