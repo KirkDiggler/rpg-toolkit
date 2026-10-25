@@ -486,18 +486,6 @@ func soundFor(sounds []Sound, when []When) (spatial.Position, bool) {
 	return best.Where, found
 }
 
-// scopeOf is the reading the entry's deed condition asks for, or the self
-// reading when no condition in its list names a deed — a `time` row with no
-// deed condition reads the creature's own deeds.
-func scopeOf(entry Answer) DeedScope {
-	when := deedWhen(entry.When)
-	if when == nil {
-		return ScopeSelf
-	}
-
-	return when.Scope
-}
-
 // deedsForScope is the deeds list ONE SCOPE reads, off the view: the mirror of
 // the evaluator's own dispatch (behavior's When.deedsOf), so a condition and
 // the selector it pairs with can never read different deeds.
@@ -533,7 +521,9 @@ func deedsForScope(view MonsterView, scope DeedScope) []HeldDeed {
 //     onto the view — "a mind is never handed a target it is not opposed to",
 //     which is what keeps a neutral creature from advancing on the party.
 //   - `attacker`: who last landed an attack on this creature, off its own
-//     held deeds.
+//     held deeds, in the reading its row's deed condition asks for
+//     ([behavior.Facts.Attacker]); the row was only on the table while the
+//     creature holds that member placed (rpg-project#669).
 //   - `actor`: the actor of the deed this entry's `when` named, so `fled`
 //     pairs with `away: actor`.
 //
@@ -548,11 +538,12 @@ func (d TableDriver) selectMember(view MonsterView, entry Answer, sel Selector) 
 		return nearestOpposed(view)
 
 	case SelectorAttacker:
-		if held, ok := freshestDeed(deedsForScope(view, scopeOf(entry)), DeedAttack); ok && held.Actor != "" {
-			return held.Actor, true
-		}
-
-		return "", false
+		// THE READING THE ROW WAS JUDGED ELIGIBLE BY ([behavior.Facts.Attacker],
+		// rpg-project#669): the freshest attack in the deeds the row's own
+		// condition asks for. Pick already left the row off the table unless
+		// the creature holds that member placed, so it is never a Pass here
+		// for want of an attacker in sight.
+		return factsFromView(view).Attacker(entry.When)
 
 	case SelectorActor:
 		when := deedWhen(entry.When)
