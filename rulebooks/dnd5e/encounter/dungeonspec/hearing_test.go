@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -67,17 +68,17 @@ func TestTheCastleWordsCompile(t *testing.T) {
 	at := encounter.HexCellAt(o, 23, 3)
 	require.Equal(t, &at, rows[3].Toward.At, "and an `at` is converted the same way")
 
-	require.Equal(t, &encounter.HeardWhen{Kind: encounter.SoundClang, Within: 2}, rows[1].When[0].Heard)
+	require.Equal(t, &encounter.HeardWhen{Kind: behavior.Name{Literal: encounter.SoundClang}, Within: 2}, rows[1].When[0].Heard)
 	require.Equal(t, encounter.SelectorSound, rows[1].Toward.Word)
 	require.Equal(t, encounter.SelectorSound, rows[2].Away.Word)
 
-	require.Equal(t, "alarm-raised", rows[3].When[0].Fact)
+	require.Equal(t, behavior.Name{Literal: "alarm-raised"}, rows[3].When[0].Fact)
 
 	require.Equal(t, encounter.FactID("alarm-raised"), rows[4].Fact, "`fact` is a time word now")
 	require.Equal(t, "To arms! Intruders in the yard!", rows[4].Say)
 
 	require.Len(t, rows[5].When, 2, "the list form: both must hold")
-	require.Equal(t, "guards-turned", rows[5].When[0].Fact)
+	require.Equal(t, behavior.Name{Literal: "guards-turned"}, rows[5].When[0].Fact)
 	require.NotNil(t, rows[5].When[1].Not)
 	require.Equal(t, encounter.EnemySeen, rows[5].When[1].Not.Enemy)
 }

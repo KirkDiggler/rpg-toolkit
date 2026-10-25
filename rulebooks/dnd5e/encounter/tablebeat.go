@@ -111,6 +111,26 @@ func (e *Encounter) describeTable(
 func tableBeatBody(
 	creature MemberID, option string, key AnswerKey, rows []Answer, temper Temper,
 ) map[string]interface{} {
+	return map[string]interface{}{
+		"beat":     BeatTable,
+		"creature": string(creature),
+		"option":   option,
+		"key":      string(key),
+		"temper":   temper.Word,
+		"percents": temperPercents(temper),
+		"rows":     tableRows(rows),
+	}
+}
+
+// tableRows is every row of one level as authored, a group's rows nested in
+// its own `rows` (rpg-project#670): the tree the pick walks, so `answered`'s
+// path indexes it level by level.
+//
+// A GROUP ROW CARRIES `from`, `params`, `as` AND `rows`; A WORD ROW DOES NOT.
+// A word row's body is byte-identical to the one before groups existed, so a
+// table with no group in it describes itself exactly as it did and the
+// member's remembered hash still matches.
+func tableRows(rows []Answer) []map[string]interface{} {
 	out := make([]map[string]interface{}, 0, len(rows))
 	for i, row := range rows {
 		when := make([]string, 0, len(row.When))
@@ -123,7 +143,7 @@ func tableBeatBody(
 				"distance": row.Search.Distance, "heading": string(row.Search.Heading),
 			}
 		}
-		out = append(out, map[string]interface{}{
+		body := map[string]interface{}{
 			"entry":    i,
 			"when":     when,
 			"word":     answerWord(row),
@@ -132,18 +152,19 @@ func tableBeatBody(
 			"say":      row.Say,
 			"fact":     string(row.Fact),
 			"search":   search,
-		})
+		}
+		if len(row.Rows) > 0 {
+			params := map[string]string{}
+			for k, v := range row.Params {
+				params[k] = v
+			}
+			body["from"], body["params"], body["as"] = row.From, params, row.As
+			body["rows"] = tableRows(row.Rows)
+		}
+		out = append(out, body)
 	}
 
-	return map[string]interface{}{
-		"beat":     BeatTable,
-		"creature": string(creature),
-		"option":   option,
-		"key":      string(key),
-		"temper":   temper.Word,
-		"percents": temperPercents(temper),
-		"rows":     out,
-	}
+	return out
 }
 
 // temperPercents is the percent the temperament loads each acting word with
@@ -171,9 +192,11 @@ func whenShorthand(w *When) string {
 	case w.Not != nil:
 		return "not " + whenShorthand(w.Not)
 	case w.Heard != nil:
-		return "heard " + w.Heard.Kind + " within " + strconv.Itoa(w.Heard.Within)
-	case w.Fact != "":
-		return "fact " + w.Fact
+		// A PATTERN PRINTS AS WRITTEN (rpg-project#670): `heard /clang|bell/
+		// within 3`, so the panel shows the author's own words.
+		return "heard " + w.Heard.Kind.String() + " within " + strconv.Itoa(w.Heard.Within)
+	case !w.Fact.IsZero():
+		return "fact " + w.Fact.String()
 	case w.Enemy != "":
 		return "enemy " + string(w.Enemy)
 	}
@@ -192,13 +215,27 @@ func whenShorthand(w *When) string {
 // rowVerdicts is the `rows` of an [BeatAnswered] payload: one verdict per row
 // of the key, in authored order — whether its conditions held, whether it was
 // affordable, and for a candidate its weight, percent and load.
+//
+// A GROUP'S VERDICT NESTS (rpg-project#670): it carries `rows`, the verdict of
+// every row inside it, and when the pick descended into it, `roll` and `of`,
+// the inner die. A word row's verdict is the six keys it always was.
 func rowVerdicts(chosen *Pick) []map[string]interface{} {
-	out := make([]map[string]interface{}, 0, len(chosen.Rows))
-	for _, r := range chosen.Rows {
-		out = append(out, map[string]interface{}{
+	return verdictsOf(chosen.Rows)
+}
+
+// verdictsOf is [rowVerdicts] for one level.
+func verdictsOf(rows []behavior.RowVerdict) []map[string]interface{} {
+	out := make([]map[string]interface{}, 0, len(rows))
+	for _, r := range rows {
+		verdict := map[string]interface{}{
 			"entry": r.Entry, "held": r.Held, "affordable": r.Affordable,
 			"weight": r.Weight, "percent": r.Percent, "loaded": r.Loaded,
-		})
+		}
+		if r.Rows != nil {
+			verdict["rows"] = verdictsOf(r.Rows)
+			verdict["roll"], verdict["of"] = r.Roll, r.Of
+		}
+		out = append(out, verdict)
 	}
 
 	return out

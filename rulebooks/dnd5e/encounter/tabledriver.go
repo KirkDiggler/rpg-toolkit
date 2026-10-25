@@ -6,6 +6,7 @@ package encounter
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
@@ -465,16 +466,16 @@ func (d TableDriver) pathTo(view MonsterView, target MemberID) []spatial.Positio
 // is held — so the false answer is a struct built in Go past every door, and
 // it goes out as a plain Pass, the rule for any selector that names nothing.
 func soundFor(sounds []Sound, when []When) (spatial.Position, bool) {
-	kinds := map[string]bool{}
+	var kinds []behavior.Name
 	for _, w := range when {
 		if w.Heard != nil {
-			kinds[w.Heard.Kind] = true
+			kinds = append(kinds, w.Heard.Kind)
 		}
 	}
 	var best Sound
 	found := false
 	for _, s := range sounds {
-		if !kinds[s.Kind] {
+		if !slices.ContainsFunc(kinds, func(k behavior.Name) bool { return k.Matches(s.Kind) }) {
 			continue
 		}
 		if !found || s.At > best.At || (s.At == best.At && s.Kind < best.Kind) {

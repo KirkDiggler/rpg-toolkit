@@ -391,6 +391,7 @@ func answeredBeatBody(by answeredBy, chosen *Pick) map[string]interface{} {
 		"roll":       chosen.Roll,
 		"of":         chosen.Of,
 		"entry":      chosen.Entry,
+		"path":       pathOf(chosen),
 		"candidates": candidates,
 		"rows":       rowVerdicts(chosen),
 		"temper":     chosen.Temper,
@@ -399,6 +400,18 @@ func answeredBeatBody(by answeredBy, chosen *Pick) map[string]interface{} {
 		"say":        chosen.Answer.Say,
 		"fact":       string(chosen.Answer.Fact),
 	}
+}
+
+// pathOf is the pick's path through the table, level by level
+// (rpg-project#670): `[3]` for a word row, `[3, 1]` for the second row inside
+// the group at entry 3. `entry` is its first element; a hold's path is
+// empty, never null, the beat's every-field-written rule.
+func pathOf(chosen *Pick) []int {
+	if len(chosen.Path) == 0 {
+		return []int{}
+	}
+
+	return append([]int(nil), chosen.Path...)
 }
 
 // appendTemperedBeat writes which temperament a faction's mix dealt one
@@ -543,6 +556,9 @@ func validateEntry(key AnswerKey, i int, entry Answer) error {
 	if entry.Weight < 1 {
 		return fmt.Errorf("answer %q entry %d weighs %d: %w", key, i, entry.Weight, ErrBadAnswer)
 	}
+	if len(entry.Rows) > 0 || entry.As != "" || entry.From != "" || entry.Params != nil {
+		return validateGroupEntry(key, i, entry)
+	}
 
 	social := key != AnswerTime
 	word := answerWord(entry)
@@ -587,6 +603,34 @@ func validateEntry(key AnswerKey, i int, entry Answer) error {
 	return nil
 }
 
+// validateGroupEntry refuses a group row (rpg-project#670): its shape is
+// mind/behavior's ([behavior.Answer.Validate]: no word of its own, at least
+// one row, `as` a temperament word, the depth guard), its own `when` is
+// judged by this build's vocabulary, and every row inside is judged as a row
+// of the same key, so a word illegal under the key is as illegal one group
+// down. A refusal inside names the path to the row ("entry 2 → 1").
+func validateGroupEntry(key AnswerKey, i int, entry Answer) error {
+	if err := entry.Validate(); err != nil {
+		return fmt.Errorf("answer %q entry %d: %w: %w", key, i, err, ErrBadAnswer)
+	}
+	if len(entry.When) > 0 && key != AnswerTime {
+		return fmt.Errorf("answer %q entry %d: a social verdict is already the condition: %w",
+			key, i, ErrBadAnswer)
+	}
+	for j := range entry.When {
+		if err := validateWhenWords(&entry.When[j]); err != nil {
+			return fmt.Errorf("answer %q entry %d: %w", key, i, err)
+		}
+	}
+	for j, row := range entry.Rows {
+		if err := validateEntry(key, j, row); err != nil {
+			return fmt.Errorf("answer %q entry %d, inside its group: %w", key, i, err)
+		}
+	}
+
+	return nil
+}
+
 // validateWhenWords refuses the words inside one condition that this build
 // does not read: an enemy band, a deed, a scope or a deed span it has no
 // meaning for, or a sound kind nothing here makes ([SoundKinds]). A `not`
@@ -600,13 +644,18 @@ func validateWhenWords(when *When) error {
 	case when.Not != nil:
 		return validateWhenWords(when.Not)
 	case when.Heard != nil:
-		if !knownSoundKind(when.Heard.Kind) {
+		if !soundKindNamed(when.Heard.Kind) {
+			if when.Heard.Kind.Pattern != "" {
+				return fmt.Errorf("`heard: { kind: %s }` matches no sound this build makes: they are %s: %w",
+					when.Heard.Kind, strings.Join(SoundKinds, ", "), ErrBadAnswer)
+			}
+
 			return fmt.Errorf("`heard: { kind: %s }` is not a sound this build makes: they are %s: %w",
 				when.Heard.Kind, strings.Join(SoundKinds, ", "), ErrBadAnswer)
 		}
 
 		return nil
-	case when.Fact != "":
+	case !when.Fact.IsZero():
 		return nil
 	case when.Enemy != "":
 		for _, known := range EnemyWords {
@@ -746,6 +795,35 @@ func cloneAnswer(entry Answer) Answer {
 	if entry.Search != nil {
 		search := *entry.Search
 		out.Search = &search
+	}
+	if entry.Rows != nil {
+		out.Rows = make([]Answer, 0, len(entry.Rows))
+		for _, row := range entry.Rows {
+			out.Rows = append(out.Rows, cloneAnswer(row))
+		}
+	}
+	if entry.Params != nil {
+		out.Params = make(map[string]string, len(entry.Params))
+		for k, v := range entry.Params {
+			out.Params[k] = v
+		}
+	}
+
+	return out
+}
+
+// wordRows is every WORD row of a list, a group's rows in its place, in
+// authored order: what a walk over "every row an author wrote" means once a
+// row can be a table (rpg-project#670). A group itself teaches nothing and
+// says nothing; its rows do.
+func wordRows(rows []Answer) []Answer {
+	var out []Answer
+	for _, row := range rows {
+		if len(row.Rows) > 0 {
+			out = append(out, wordRows(row.Rows)...)
+			continue
+		}
+		out = append(out, row)
 	}
 
 	return out
