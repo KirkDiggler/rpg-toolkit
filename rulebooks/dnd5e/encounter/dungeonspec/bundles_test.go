@@ -303,3 +303,52 @@ func TestTheBundledRouteIsTheRoomsLoop(t *testing.T) {
 	require.Len(t, rows[0].Rows[0].Toward.Path, 4)
 	require.NotEqual(t, spatial.Position{}, rows[0].Rows[0].Toward.Path[1])
 }
+
+// TestAParameterCrossesIntoABundleUsedInside is N2, a base per kind: a
+// bundle of bundles whose own parameter is passed on to a bundle it uses,
+// `with: { path: $path }`, one level down, and resolves to the route the use
+// gave it.
+func TestAParameterCrossesIntoABundleUsedInside(t *testing.T) {
+	source := bundledPatrol(t, pursuerBundle+patrolBundle+`  guard-base:
+    params: { path: ~ }
+    rows:
+      - use: pursuer
+      - use: patrol
+        with: { path: $path }
+`, "use: guard-base\nwith: { path: [{q: -2, r: 0}, {q: 0, r: -2}, {q: 2, r: 0}, {q: 0, r: 2}] }")
+	require.Empty(t, roomDefects(t, source))
+	literal := gateTable(t, bundledPatrol(t, "", "{ when: { enemy: none }, toward: "+loop+" }"))
+	rows := gateTable(t, source)
+	require.Len(t, rows, 1)
+	base := rows[0]
+	require.Equal(t, "guard-base", base.From)
+	patrol := base.Rows[1]
+	require.Equal(t, "patrol", patrol.From)
+	require.Equal(t, base.Params["path"], patrol.Params["path"], "the route crossed one level down as written")
+	require.Equal(t, literal[0], patrol.Rows[0], "and compiles to the cells the literal row did")
+	require.NoError(t, base.Validate())
+
+	// The base's parameter is the base's: a use that gives none is refused at
+	// the use, by the base's name.
+	defects := roomDefects(t, bundledPatrol(t, pursuerBundle+patrolBundle+`  guard-base:
+    params: { path: ~ }
+    rows:
+      - use: patrol
+        with: { path: $path }
+`, "use: guard-base"))
+	require.Contains(t, defects, "room.room.monsterBindings.gate-patrol.on.time[0].with: "+
+		"bundle \"guard-base\" needs `path`: it has no default, so the use gives one")
+}
+
+// TestABundleCycleThroughAnotherIsRefused: the depth guard's sibling, a
+// cycle two bundles long, is refused at the use that closes it, naming the
+// chain — never resolved until the guard trips.
+func TestABundleCycleThroughAnotherIsRefused(t *testing.T) {
+	defects := roomDefects(t, bundledPatrol(t, `  ping:
+    rows: [ { use: pong } ]
+  pong:
+    rows: [ { use: ping } ]
+`, "use: ping", "{ when: { enemy: none }, toward: "+loop+" }"))
+	require.Contains(t, defects, "room.room.monsterBindings.gate-patrol.on.time[0].rows[0].rows[0].use: "+
+		"bundle \"ping\" uses itself: ping → pong → ping; a group cannot hold the table it is in")
+}
