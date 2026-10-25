@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/sound"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -761,7 +762,7 @@ func (s *TableSuite) TestADeedConditionDefaultsToAgainstTheCreatureItself() {
 	// blow to the creature still fires.
 	facts := behavior.Facts{
 		Now: 11, CanAttack: true,
-		Deeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+		Deeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}}, SeenFoes: []core.EntityID{"alice"}, // the attacker row's member, in sight
 	}
 
 	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
@@ -777,7 +778,7 @@ func (s *TableSuite) TestAllyScopeReadsABlowToMySideNotToMe() {
 	// A blow to an ALLY holds, even though nothing was done to this creature.
 	toAlly := behavior.Facts{
 		Now: 11, CanAttack: true,
-		AllyDeeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+		AllyDeeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}}, SeenFoes: []core.EntityID{"alice"}, // the attacker row's member, in sight
 	}
 	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
 		Key: behavior.KeyTime, Table: table, Facts: toAlly, Die: &facedDie{face: 1}})
@@ -788,7 +789,7 @@ func (s *TableSuite) TestAllyScopeReadsABlowToMySideNotToMe() {
 	// two readings being separate.
 	toMe := behavior.Facts{
 		Now: 11, CanAttack: true,
-		Deeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+		Deeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}}, SeenFoes: []core.EntityID{"alice"}, // the attacker row's member, in sight
 	}
 	chosen, err = behavior.Pick(context.Background(), &behavior.PickInput{
 		Key: behavior.KeyTime, Table: table, Facts: toMe, Die: &facedDie{face: 1}})
@@ -828,7 +829,7 @@ func (s *TableSuite) TestActorScopeIsThePauseReadsWhatIDid() {
 	// on the creature's own Deeds, which is what keeps the two apart.
 	wasHit := behavior.Facts{
 		Now: 11, CanAttack: true,
-		Deeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+		Deeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}}, SeenFoes: []core.EntityID{"alice"}, // the attacker row's member, in sight
 	}
 	chosen, err = behavior.Pick(context.Background(), &behavior.PickInput{
 		Key: behavior.KeyTime, Table: table, Facts: wasHit, Die: &facedDie{face: 1}})
@@ -867,7 +868,7 @@ func (s *TableSuite) TestAnUnknownScopeMatchesNothing() {
 	// The creature WAS attacked, so a fail-open reading would fire entry 0.
 	facts := behavior.Facts{
 		Now: 11, CanAttack: true,
-		Deeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+		Deeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}}, SeenFoes: []core.EntityID{"alice"}, // the attacker row's member, in sight
 	}
 
 	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
@@ -1465,4 +1466,104 @@ func (s *TableSuite) TestASearchHeadingSurvivesTheMarshalledRow() {
 		s.Equal(h, back.Search.Heading)
 		s.Equal(4, back.Search.Distance)
 	}
+}
+
+// attackerRows is the captain's revenge with its authored fallback
+// (rpg-project#669): strike whoever hit him, else strike the nearest.
+func attackerRows() behavior.Table {
+	return behavior.Table{behavior.KeyTime: {
+		{Weight: 1, When: []behavior.When{{Deed: "attacked", Within: 2}},
+			Attack: &behavior.Selector{Word: behavior.SelectorAttacker}},
+		{Weight: 1, Attack: &behavior.Selector{Word: behavior.SelectorEnemy}},
+	}}
+}
+
+// TestAnAttackerRowIsOnTheTableOnlyWhileItsAttackerIsInSight is the R15
+// reading of `attacker` (rpg-project#669): the row names the member whose
+// attack on the creature it holds most recently, and it is a candidate only
+// while the creature holds that member in its own sight ([Facts.SeenFoes]).
+// Otherwise the row is absent, not a Pass, so the author's sibling row wins
+// the roll.
+func (s *TableSuite) TestAnAttackerRowIsOnTheTableOnlyWhileItsAttackerIsInSight() {
+	hit := []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "bard", At: 9}}
+	for name, tc := range map[string]struct {
+		facts     behavior.Facts
+		candidate bool
+	}{
+		"hit, and the bard is in sight": {behavior.Facts{
+			CanAttack: true, Now: 10, Deeds: hit, SeenFoes: []core.EntityID{"fighter", "bard"}}, true},
+		"hit, and the bard is out of sight": {behavior.Facts{
+			CanAttack: true, Now: 10, Deeds: hit, SeenFoes: []core.EntityID{"fighter"}}, false},
+		"hit, and the bard only remembered: a memory cannot be struck": {behavior.Facts{
+			CanAttack: true, Now: 10, Deeds: hit, SeenFoes: []core.EntityID{"fighter"},
+			RememberedFoes: []core.EntityID{"bard"}}, false},
+	} {
+		chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
+			Key: behavior.KeyTime, Table: attackerRows(), Facts: tc.facts, Die: &facedDie{face: 1}})
+		s.Require().NoError(err, name)
+		s.Equal(tc.candidate, chosen.Rows[0].Affordable, name)
+		if tc.candidate {
+			s.Equal(0, chosen.Entry, "%s: the attacker row takes the first face", name)
+			s.Require().Len(chosen.Candidates, 2, name)
+
+			continue
+		}
+		s.Require().Len(chosen.Candidates, 1, name)
+		s.Equal(1, chosen.Entry, "%s: the author's fallback wins", name)
+	}
+}
+
+// TestAWalkToTheAttackerMayFollowAMemory: `toward: attacker` walks to where
+// the creature last saw them, so a remembered attacker keeps the row on the
+// table; one it holds nowhere does not.
+func (s *TableSuite) TestAWalkToTheAttackerMayFollowAMemory() {
+	table := behavior.Table{behavior.KeyTime: {
+		{Weight: 1, When: []behavior.When{{Deed: "attacked", Within: 2}},
+			Toward: &behavior.Selector{Word: behavior.SelectorAttacker}},
+		{Weight: 1, Hold: true},
+	}}
+	hit := []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "bard", At: 9}}
+	for name, tc := range map[string]struct {
+		remembered []core.EntityID
+		candidate  bool
+	}{
+		"remembered":   {[]core.EntityID{"bard"}, true},
+		"held nowhere": {nil, false},
+	} {
+		chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
+			Key: behavior.KeyTime, Table: table, Die: &facedDie{face: 1},
+			Facts: behavior.Facts{CanMove: true, Now: 10, Deeds: hit, RememberedFoes: tc.remembered}})
+		s.Require().NoError(err, name)
+		s.Equal(tc.candidate, chosen.Rows[0].Affordable, name)
+	}
+}
+
+// TestTheAttackerIsTheFreshestBlowInTheRowsOwnReading (R8): the attacker is
+// read from the deeds the row's deed condition names — a blow on the creature
+// itself for an unscoped row, never a blow on an ally — and it is the most
+// recent one, ties broken on the actor (C8).
+func (s *TableSuite) TestTheAttackerIsTheFreshestBlowInTheRowsOwnReading() {
+	self := []behavior.When{{Deed: "attacked", Within: 5}}
+	facts := behavior.Facts{
+		Deeds: []behavior.HeldDeed{
+			{Kind: behavior.VerbAttack, Actor: "rogue", At: 4},
+			{Kind: behavior.VerbAttack, Actor: "bard", At: 7},
+			{Kind: "intimidate", Actor: "fighter", At: 8},
+		},
+		AllyDeeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "wizard", At: 9}},
+	}
+	who, ok := facts.Attacker(self)
+	s.Require().True(ok)
+	s.Equal(core.EntityID("bard"), who, "the freshest attack, not the freshest deed")
+
+	who, ok = facts.Attacker([]behavior.When{{Deed: "attacked", Within: 5, Scope: behavior.ScopeAlly}})
+	s.Require().True(ok)
+	s.Equal(core.EntityID("wizard"), who, "an `on: ally` row reads the blows on its side")
+
+	facts.Deeds = append(facts.Deeds, behavior.HeldDeed{Kind: behavior.VerbAttack, Actor: "archer", At: 7})
+	who, _ = facts.Attacker(self)
+	s.Equal(core.EntityID("archer"), who, "a tie on the stamp breaks on the actor")
+
+	_, ok = behavior.Facts{AllyDeeds: facts.AllyDeeds}.Attacker(self)
+	s.False(ok, "a blow on an ally is not a blow on the creature")
 }
