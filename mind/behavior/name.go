@@ -106,24 +106,36 @@ func (n Name) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON reads a bare string as a literal and a `/…/` string as a
-// pattern.
+// pattern ([ParseName]).
 func (n *Name) UnmarshalJSON(raw []byte) error {
 	var s string
 	if err := json.Unmarshal(raw, &s); err != nil {
 		return err
 	}
-	*n = Name{}
-	if len(s) >= 2 && strings.HasPrefix(s, "/") && strings.HasSuffix(s, "/") {
-		if len(s) == 2 {
-			return errEmptyPattern
-		}
-		n.Pattern = s[1 : len(s)-1]
-
-		return nil
+	parsed, err := ParseName(s)
+	if err != nil {
+		return err
 	}
-	n.Literal = s
+	*n = parsed
 
 	return nil
+}
+
+// ParseName reads a name as an author writes it: a `/…/` string is a
+// pattern, anything else a literal, and the empty string the zero Name. The
+// one reading of the written form, for a dialect or a blob that carries the
+// name as a string. `//` is refused: a pattern between empty slashes.
+// Whether the pattern compiles is [When.Validate]'s.
+func ParseName(s string) (Name, error) {
+	if len(s) >= 2 && strings.HasPrefix(s, "/") && strings.HasSuffix(s, "/") {
+		if len(s) == 2 {
+			return Name{}, errEmptyPattern
+		}
+
+		return Name{Pattern: s[1 : len(s)-1]}, nil
+	}
+
+	return Name{Literal: s}, nil
 }
 
 // patterns caches each pattern's anchored compilation. Bounded by the

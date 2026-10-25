@@ -435,3 +435,21 @@ func (s *GroupSuite) TestANameIsOneOrTheOtherAndAPatternMustCompile() {
 
 	s.False(behavior.Name{Pattern: "clang("}.Matches("clang("), "a pattern that does not compile matches nothing")
 }
+
+// TestParseNameIsTheWrittenForm: the one reading of `/…/` against a bare
+// string, which a blob that stores the name as a string reads back through.
+func (s *GroupSuite) TestParseNameIsTheWrittenForm() {
+	for written, want := range map[string]behavior.Name{
+		"clang":        {Literal: "clang"},
+		"/clang|bell/": {Pattern: "clang|bell"},
+		"":             {},
+		"/":            {Literal: "/"},
+	} {
+		got, err := behavior.ParseName(written)
+		s.Require().NoError(err, written)
+		s.Equal(want, got, written)
+		s.Equal(written, got.String(), "the written form round-trips")
+	}
+	_, err := behavior.ParseName("//")
+	s.Error(err)
+}
