@@ -763,7 +763,7 @@ func (s *TableSuite) TestADeedConditionDefaultsToAgainstTheCreatureItself() {
 	facts := behavior.Facts{
 		Now: 11, CanAttack: true,
 		Deeds:    []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
-		SeenFoes: []core.EntityID{"alice"},
+		SeenFoes: []core.EntityID{"alice"}, FoesInReach: []core.EntityID{"alice"},
 	}
 
 	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
@@ -780,7 +780,7 @@ func (s *TableSuite) TestAllyScopeReadsABlowToMySideNotToMe() {
 	toAlly := behavior.Facts{
 		Now: 11, CanAttack: true,
 		AllyDeeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
-		SeenFoes:  []core.EntityID{"alice"},
+		SeenFoes:  []core.EntityID{"alice"}, FoesInReach: []core.EntityID{"alice"},
 	}
 	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
 		Key: behavior.KeyTime, Table: table, Facts: toAlly, Die: &facedDie{face: 1}})
@@ -792,7 +792,7 @@ func (s *TableSuite) TestAllyScopeReadsABlowToMySideNotToMe() {
 	toMe := behavior.Facts{
 		Now: 11, CanAttack: true,
 		Deeds:    []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
-		SeenFoes: []core.EntityID{"alice"},
+		SeenFoes: []core.EntityID{"alice"}, FoesInReach: []core.EntityID{"alice"},
 	}
 	chosen, err = behavior.Pick(context.Background(), &behavior.PickInput{
 		Key: behavior.KeyTime, Table: table, Facts: toMe, Die: &facedDie{face: 1}})
@@ -833,7 +833,7 @@ func (s *TableSuite) TestActorScopeIsThePauseReadsWhatIDid() {
 	wasHit := behavior.Facts{
 		Now: 11, CanAttack: true,
 		Deeds:    []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
-		SeenFoes: []core.EntityID{"alice"},
+		SeenFoes: []core.EntityID{"alice"}, FoesInReach: []core.EntityID{"alice"},
 	}
 	chosen, err = behavior.Pick(context.Background(), &behavior.PickInput{
 		Key: behavior.KeyTime, Table: table, Facts: wasHit, Die: &facedDie{face: 1}})
@@ -873,7 +873,7 @@ func (s *TableSuite) TestAnUnknownScopeMatchesNothing() {
 	facts := behavior.Facts{
 		Now: 11, CanAttack: true,
 		Deeds:    []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
-		SeenFoes: []core.EntityID{"alice"},
+		SeenFoes: []core.EntityID{"alice"}, FoesInReach: []core.EntityID{"alice"},
 	}
 
 	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
@@ -1483,22 +1483,27 @@ func attackerRows() behavior.Table {
 	}}
 }
 
-// TestAnAttackerRowIsOnTheTableOnlyWhileItsAttackerIsInSight is the R15
+// TestAnAttackerRowIsOnTheTableOnlyWhileItsAttackerIsInReach is the R15
 // reading of `attacker` (rpg-project#669): the row names the member whose
-// attack on the creature it holds most recently, and it is a candidate only
-// while the creature holds that member in its own sight ([Facts.SeenFoes]).
+// attack on the creature it holds most recently, and a strike is a candidate
+// only while that member is in its reach ([Facts.FoesInReach]).
 // Otherwise the row is absent, not a Pass, so the author's sibling row wins
 // the roll.
-func (s *TableSuite) TestAnAttackerRowIsOnTheTableOnlyWhileItsAttackerIsInSight() {
+func (s *TableSuite) TestAnAttackerRowIsOnTheTableOnlyWhileItsAttackerIsInReach() {
 	hit := []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "bard", At: 9}}
 	for name, tc := range map[string]struct {
 		facts     behavior.Facts
 		candidate bool
 	}{
-		"hit, and the bard is in sight": {behavior.Facts{
-			CanAttack: true, Now: 10, Deeds: hit, SeenFoes: []core.EntityID{"fighter", "bard"}}, true},
+		"hit, and the bard is in reach": {behavior.Facts{
+			CanAttack: true, Now: 10, Deeds: hit, SeenFoes: []core.EntityID{"fighter", "bard"},
+			FoesInReach: []core.EntityID{"fighter", "bard"}}, true},
+		"hit, and the bard is in sight but out of reach: somebody to walk to": {behavior.Facts{
+			CanAttack: true, Now: 10, Deeds: hit, SeenFoes: []core.EntityID{"fighter", "bard"},
+			FoesInReach: []core.EntityID{"fighter"}}, false},
 		"hit, and the bard is out of sight": {behavior.Facts{
-			CanAttack: true, Now: 10, Deeds: hit, SeenFoes: []core.EntityID{"fighter"}}, false},
+			CanAttack: true, Now: 10, Deeds: hit, SeenFoes: []core.EntityID{"fighter"},
+			FoesInReach: []core.EntityID{"fighter"}}, false},
 		"hit, and the bard only remembered: a memory cannot be struck": {behavior.Facts{
 			CanAttack: true, Now: 10, Deeds: hit, SeenFoes: []core.EntityID{"fighter"},
 			RememberedFoes: []core.EntityID{"bard"}}, false},

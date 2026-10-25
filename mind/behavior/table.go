@@ -511,9 +511,10 @@ const (
 
 	// SelectorAttacker is who last landed an attack on this creature, read
 	// the way the row's deed condition reads ([Facts.Attacker]). The row is
-	// on the table only while the creature holds them placed: in sight to
-	// strike, in sight or memory to walk ([Facts.SeenFoes]). Otherwise it is
-	// absent, and a sibling `enemy` row is the author's fallback.
+	// on the table only while the creature holds them placed: in reach to
+	// strike ([Facts.FoesInReach]), in sight or memory to walk
+	// ([Facts.SeenFoes]). Otherwise it is absent, and a sibling row is the
+	// author's fallback.
 	SelectorAttacker SelectorWord = "attacker"
 
 	// SelectorActor is the actor of the deed this entry's `when` named, so
@@ -909,6 +910,13 @@ type Facts struct {
 	SeenFoes       []core.EntityID
 	RememberedFoes []core.EntityID
 
+	// FoesInReach is every member of SeenFoes this creature can strike now,
+	// with any of its attacks — the members `enemy: reach` is about. A strike
+	// at the one who hit it is on the table only while they are here: one in
+	// sight but out of reach is somebody to walk to, and an `attack` row that
+	// named them would be a swing the caller can only refuse.
+	FoesInReach []core.EntityID
+
 	// Known is the id of every world fact this creature holds — what a
 	// `fact` condition reads. Whose facts these are (a witness's, a
 	// hearer's, a faction's) is the caller's audience rule; this module
@@ -931,7 +939,7 @@ type Facts struct {
 func (f Facts) affords(a Answer) bool {
 	switch {
 	case a.Attack != nil:
-		return f.CanAttack && f.locates(a.Attack, a.When, f.SeenFoes)
+		return f.CanAttack && f.locates(a.Attack, a.When, f.FoesInReach)
 	case a.Toward != nil:
 		return f.CanMove && f.locates(a.Toward, a.When, f.SeenFoes, f.RememberedFoes)
 	case a.Away != nil:
@@ -950,7 +958,7 @@ func (f Facts) affords(a Answer) bool {
 // name. `sound` names nothing with no sound held. `attacker` names nothing
 // unless the one who hit the creature ([Facts.Attacker], read the way the
 // row's own deed condition reads) is among the foes it holds placed: in
-// sight to strike, in sight or memory to walk (rpg-project#669). The other
+// reach to strike, in sight or memory to walk (rpg-project#669). The other
 // words are resolved by the caller against a board this module does not
 // have.
 //

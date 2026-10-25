@@ -103,7 +103,7 @@ cell (`at`), or a route (`path`, `toward` only). The words are `enemy`,
 
 - **`attacker`** is who last attacked the creature, in the reading the
   row's deed condition names (`Facts.Attacker`). The row is a candidate only
-  while that member is in `Facts.SeenFoes` (to strike) or `SeenFoes` or
+  while that member is in `Facts.FoesInReach` (to strike) or `SeenFoes` or
   `RememberedFoes` (to walk); otherwise it is absent, and the author's
   sibling `attack: enemy` row is the fallback through the roll.
 - **`sound`** is where the freshest held sound was made. It is legal on
