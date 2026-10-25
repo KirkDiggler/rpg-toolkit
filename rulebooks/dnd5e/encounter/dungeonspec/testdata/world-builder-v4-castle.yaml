@@ -389,6 +389,10 @@ tables:
         toward: { path: [{ q: -2, r: -12 }, { q: 6, r: -12 }, { q: 6, r: -15 }, { q: 1, r: -15 }] }
   storm-the-keep:
     time:
+      # Hand edit (smarter monsters S2, rpg-project#669): the captain goes for
+      # whoever hit him, past a nearer enemy, as one line. Otherwise the rows
+      # below are the fallback, through the roll.
+      - use: revenger
       # Hand edit: a turned garrison marches on the throne room until it sees
       # a loyalist (use case R8's list form). `enemy: none`, not `not: { enemy:
       # seen }`: the bands are exclusive (R11), so an enemy in reach is not
@@ -396,10 +400,6 @@ tables:
       # swinging at him.
       - when: [{ fact: guards-turned }, { enemy: none }]
         toward: { at: { q: 10, r: -19 } }
-      # Hand edit (smarter monsters S2, rpg-project#669): the captain goes for
-      # whoever hit him, past a nearer enemy, as one line. Otherwise the
-      # `enemy` rows below are the fallback, through the roll.
-      - use: revenger
       - when:
           enemy: reach
         attack: enemy
