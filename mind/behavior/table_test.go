@@ -762,7 +762,8 @@ func (s *TableSuite) TestADeedConditionDefaultsToAgainstTheCreatureItself() {
 	// blow to the creature still fires.
 	facts := behavior.Facts{
 		Now: 11, CanAttack: true,
-		Deeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}}, SeenFoes: []core.EntityID{"alice"}, // the attacker row's member, in sight
+		Deeds:    []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+		SeenFoes: []core.EntityID{"alice"},
 	}
 
 	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
@@ -778,7 +779,8 @@ func (s *TableSuite) TestAllyScopeReadsABlowToMySideNotToMe() {
 	// A blow to an ALLY holds, even though nothing was done to this creature.
 	toAlly := behavior.Facts{
 		Now: 11, CanAttack: true,
-		AllyDeeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}}, SeenFoes: []core.EntityID{"alice"}, // the attacker row's member, in sight
+		AllyDeeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+		SeenFoes:  []core.EntityID{"alice"},
 	}
 	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
 		Key: behavior.KeyTime, Table: table, Facts: toAlly, Die: &facedDie{face: 1}})
@@ -789,7 +791,8 @@ func (s *TableSuite) TestAllyScopeReadsABlowToMySideNotToMe() {
 	// two readings being separate.
 	toMe := behavior.Facts{
 		Now: 11, CanAttack: true,
-		Deeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}}, SeenFoes: []core.EntityID{"alice"}, // the attacker row's member, in sight
+		Deeds:    []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+		SeenFoes: []core.EntityID{"alice"},
 	}
 	chosen, err = behavior.Pick(context.Background(), &behavior.PickInput{
 		Key: behavior.KeyTime, Table: table, Facts: toMe, Die: &facedDie{face: 1}})
@@ -829,7 +832,8 @@ func (s *TableSuite) TestActorScopeIsThePauseReadsWhatIDid() {
 	// on the creature's own Deeds, which is what keeps the two apart.
 	wasHit := behavior.Facts{
 		Now: 11, CanAttack: true,
-		Deeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}}, SeenFoes: []core.EntityID{"alice"}, // the attacker row's member, in sight
+		Deeds:    []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+		SeenFoes: []core.EntityID{"alice"},
 	}
 	chosen, err = behavior.Pick(context.Background(), &behavior.PickInput{
 		Key: behavior.KeyTime, Table: table, Facts: wasHit, Die: &facedDie{face: 1}})
@@ -868,7 +872,8 @@ func (s *TableSuite) TestAnUnknownScopeMatchesNothing() {
 	// The creature WAS attacked, so a fail-open reading would fire entry 0.
 	facts := behavior.Facts{
 		Now: 11, CanAttack: true,
-		Deeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}}, SeenFoes: []core.EntityID{"alice"}, // the attacker row's member, in sight
+		Deeds:    []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+		SeenFoes: []core.EntityID{"alice"},
 	}
 
 	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
