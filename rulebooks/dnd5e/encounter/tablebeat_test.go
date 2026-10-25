@@ -14,6 +14,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
@@ -42,9 +43,16 @@ func symbolsCaps(members []encounter.MemberInput) encounter.Capabilities {
 // holds.
 func symbolsScene(t *testing.T) (*encounter.Encounter, []encounter.MemberInput) {
 	t.Helper()
+
+	return symbolsSceneWith(t, silenceTable())
+}
+
+// symbolsSceneWith is [symbolsScene] with the goblin holding this table.
+func symbolsSceneWith(t *testing.T, table encounter.Table) (*encounter.Encounter, []encounter.MemberInput) {
+	t.Helper()
 	members := []encounter.MemberInput{
 		{ID: alice, Kind: encounter.KindPlayer, Position: seat(4, 4)},
-		{ID: goblin, Kind: encounter.KindMonster, Position: seat(5, 4), Table: silenceTable(),
+		{ID: goblin, Kind: encounter.KindMonster, Position: seat(5, 4), Table: table,
 			Temper: encounter.Temper{Word: "coward", Profile: encounter.TemperProfile{
 				Attack: 50, Toward: 50, Away: 300, Flee: 300, Hold: 100}}},
 	}
@@ -193,4 +201,51 @@ func TestAReloadDescribesNoTableTheRecordHolds(t *testing.T) {
 		edited := tables[1]["rows"].([]any)[1].(map[string]any)
 		require.Equal(t, 5.0, edited["weight"], "and it describes the table as edited")
 	})
+}
+
+// TestATreeIsDescribedAndAnsweredByPath is rpg-project#670 in the record: a
+// group row is described with its bundle, parameters, `as` and rows, a
+// pattern prints as written, and the answer names its path through the
+// tree, with the group's verdict holding its rows' verdicts and its die.
+func TestATreeIsDescribedAndAnsweredByPath(t *testing.T) {
+	enemy := &encounter.Selector{Word: encounter.SelectorEnemy}
+	table := encounter.Table{encounter.AnswerTime: {
+		{Weight: 1, As: "attack", From: "brawler", Params: map[string]string{"span": "3"}, Rows: []encounter.Answer{
+			{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyReach}}, Attack: enemy},
+			{Weight: 2, When: []encounter.When{{Deed: "attacked", Within: 3}},
+				Toward: &encounter.Selector{Word: encounter.SelectorAttacker}},
+		}},
+		{Weight: 1, When: []encounter.When{{Heard: &encounter.HeardWhen{
+			Kind: behavior.Name{Pattern: "clang|voice"}, Within: 2}}},
+			Toward: &encounter.Selector{Word: encounter.SelectorSound}},
+		{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyNone}}, Hold: true},
+	}}
+	enc, _ := symbolsSceneWith(t, table)
+	goblinTurn(t, enc)
+
+	described := goblinBeatsOf(t, enc, encounter.BeatTable)
+	require.Len(t, described, 1)
+	rows := described[0]["rows"].([]any)
+	group := rows[0].(map[string]any)
+	require.Equal(t, "brawler", group["from"])
+	require.Equal(t, map[string]any{"span": "3"}, group["params"])
+	require.Equal(t, "attack", group["as"])
+	require.Equal(t, "", group["word"], "a group carries no word")
+	inner := group["rows"].([]any)
+	require.Len(t, inner, 2)
+	require.Equal(t, []any{"attacked within 3"}, inner[1].(map[string]any)["when"])
+	require.Equal(t, []any{"heard /clang|voice/ within 2"}, rows[1].(map[string]any)["when"],
+		"a pattern prints as written")
+	require.NotContains(t, rows[1].(map[string]any), "rows", "a word row's body is what it always was")
+
+	answered := goblinBeatsOf(t, enc, encounter.BeatAnswered)
+	require.NotEmpty(t, answered)
+	require.Equal(t, []any{0.0, 0.0}, answered[0]["path"], "the brawler, then its swing: the lowest face at each level")
+	require.Equal(t, 0.0, answered[0]["entry"])
+	require.Equal(t, "attack", answered[0]["word"])
+	verdict := answered[0]["rows"].([]any)[0].(map[string]any)
+	require.Equal(t, 1.0, verdict["roll"])
+	require.Equal(t, 150.0, verdict["of"], "the coward's swing (1 x 50) and chase (2 x 50) inside the group")
+	require.Len(t, verdict["rows"], 2)
+	require.Equal(t, 50.0, verdict["loaded"], "the group loads once, at the coward's attack percent")
 }
