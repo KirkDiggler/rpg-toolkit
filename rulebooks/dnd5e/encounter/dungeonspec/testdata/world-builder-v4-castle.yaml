@@ -189,6 +189,45 @@ templates:
     name: Prisoner
     actions:
       - dnd5e:weapons:club
+# Hand edit (rpg-project#670, S3 bundles): the gate guards' shared
+# behaviours, each authored once and used as one line of a table. A `use:`
+# row is a group: it takes one share of the roll, and its own rows roll
+# inside it. The castle's die is the route host's die of 1, so every level
+# picks its first eligible row and the castle plays exactly as it did when
+# these rows were written out flat in each table.
+bundles:
+  # Walk to where you last saw them; when that cell is empty, search on the
+  # way they went.
+  pursuer:
+    params: { distance: 6, heading: went }
+    rows:
+      - when: { enemy: remembered }
+        toward: enemy
+      - when: { enemy: lost }
+        search: { distance: $distance, heading: $heading }
+  # Run to steel being swung nearby.
+  alarm-reactor:
+    rows:
+      - when:
+          heard:
+            kind: clang
+            within: 2
+        toward: sound
+  # Go for whoever hit you in the last two rounds (rpg-project#669): strike
+  # them in reach, walk to them in sight or memory. Each row is on the table
+  # only while you hold your attacker so, and the group with it.
+  revenger:
+    rows:
+      - when: { attacked: { within: 2 } }
+        attack: attacker
+      - when: { attacked: { within: 2 } }
+        toward: attacker
+  # With nobody to chase, walk the route.
+  patrol:
+    params: { path: ~ }
+    rows:
+      - when: { enemy: none }
+        toward: { path: $path }
 tables:
   gate-patrol:
     time:
@@ -208,20 +247,12 @@ tables:
       - when:
           enemy: seen
         toward: enemy
-      # Hand edit (rpg-project#668): pursuit. Lost from sight, he walks to
-      # where he last saw you; finding nobody there he searches six cells on
-      # the way you went (rpg-project#679: your last seen step, not the way
-      # you faced), then gives up — and his `enemy: none` loop below walks
-      # him home.
-      - when: { enemy: remembered }
-        toward: enemy
-      - when: { enemy: lost }
-        search: { distance: 6, heading: went }
-      - when:
-          heard:
-            kind: clang
-            within: 2
-        toward: sound
+      # Hand edit (rpg-project#668, #670): pursuit, as one line. Lost from
+      # sight, he walks to where he last saw you; finding nobody there he
+      # searches six cells on the way you went, then gives up — and his
+      # patrol below walks him home. Then the clang he runs to.
+      - use: pursuer
+      - use: alarm-reactor
       # Hand edit (the QA castle's step 4, rpg-project#639): gate-1's loop.
       # He stands a round at the door post west of the captain turned ne to
       # the cell under the gate, walks to the beat post north of the south
@@ -230,8 +261,8 @@ tables:
       # gate-2, so the two keep step: in two world rounds of every four both
       # stand at their beat posts with their backs to the gate. That is the
       # sneak window. Neither beat post sees round the corner wall.
-      - when: { enemy: none }
-        toward: { path: [{ q: -5, r: 8, wait: 1, facing: ne }, { q: -5, r: 10, wait: 1, facing: se }, { q: -7, r: 10 }] }
+      - use: patrol
+        with: { path: [{ q: -5, r: 8, wait: 1, facing: ne }, { q: -5, r: 10, wait: 1, facing: se }, { q: -7, r: 10 }] }
   gate-patrol-east:
     time:
       # Hand edit: a gate guard who witnessed the turn marches with the
@@ -250,24 +281,16 @@ tables:
       - when:
           enemy: seen
         toward: enemy
-      # Hand edit (rpg-project#668): pursuit. Lost from sight, he walks to
-      # where he last saw you; finding nobody there he searches six cells on
-      # the way you went (rpg-project#679: your last seen step, not the way
-      # you faced), then gives up — and his `enemy: none` loop below walks
-      # him home.
-      - when: { enemy: remembered }
-        toward: enemy
-      - when: { enemy: lost }
-        search: { distance: 6, heading: went }
-      - when:
-          heard:
-            kind: clang
-            within: 2
-        toward: sound
+      # Hand edit (rpg-project#668, #670): pursuit, as one line. Lost from
+      # sight, he walks to where he last saw you; finding nobody there he
+      # searches six cells on the way you went, then gives up — and his
+      # patrol below walks him home. Then the clang he runs to.
+      - use: pursuer
+      - use: alarm-reactor
       # Hand edit (rpg-project#639): gate-2's loop, gate-patrol's mirror: nw
       # at the door post east of the captain, sw at the beat post.
-      - when: { enemy: none }
-        toward: { path: [{ q: -2, r: 8, wait: 1, facing: nw }, { q: -4, r: 10, wait: 1, facing: sw }, { q: -2, r: 10 }] }
+      - use: patrol
+        with: { path: [{ q: -2, r: 8, wait: 1, facing: nw }, { q: -4, r: 10, wait: 1, facing: sw }, { q: -2, r: 10 }] }
   keep-patrol:
     time:
       - say: Protect the king!
@@ -374,14 +397,9 @@ tables:
       - when: [{ fact: guards-turned }, { enemy: none }]
         toward: { at: { q: 10, r: -19 } }
       # Hand edit (smarter monsters S2, rpg-project#669): the captain goes for
-      # whoever hit him in the last two rounds, past a nearer enemy: strikes
-      # them in reach, walks to them in sight or memory. Each row is on the
-      # table only while he holds his attacker so; otherwise the `enemy` rows
-      # below are the fallback, through the roll.
-      - when: { attacked: { within: 2 } }
-        attack: attacker
-      - when: { attacked: { within: 2 } }
-        toward: attacker
+      # whoever hit him, past a nearer enemy, as one line. Otherwise the
+      # `enemy` rows below are the fallback, through the roll.
+      - use: revenger
       - when:
           enemy: reach
         attack: enemy

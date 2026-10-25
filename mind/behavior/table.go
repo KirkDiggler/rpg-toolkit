@@ -113,8 +113,10 @@ var (
 	// ErrBadWhen reports a `when` entry this table cannot read: one naming
 	// more than one condition or none, a `heard` with no kind or a span
 	// below 1, or a deed's `within` or scope on a condition that is not a
-	// deed. Returned by [When.Validate] and [Answer.Validate], wrapped in
-	// a sentence written for whoever filled the form.
+	// deed, or a [Name] that is both a literal and a pattern or whose
+	// pattern does not compile. Returned by [When.Validate] and
+	// [Answer.Validate], wrapped in a sentence written for whoever filled
+	// the form.
 	ErrBadWhen = errors.New("behavior: when cannot be read")
 
 	// ErrBadSearch reports a `search` this table cannot read: a distance
@@ -129,6 +131,13 @@ var (
 	// condition. Returned by [Answer.Validate], wrapped in a sentence for
 	// the form.
 	ErrBadSelector = errors.New("behavior: selector cannot be read")
+
+	// ErrBadGroup reports a group row this table cannot read: one carrying
+	// a word, a search, a line or a fact of its own, one holding no rows,
+	// one counting `as` a word no temperament multiplies, or one nested past
+	// [MaxGroupDepth]. Returned by [Answer.Validate], wrapped in a sentence
+	// for the form.
+	ErrBadGroup = errors.New("behavior: group cannot be read")
 )
 
 // KeyTime is the one trigger this module names: the creature has time.
@@ -376,9 +385,14 @@ type When struct {
 	// marshal exactly as it did before they existed.
 	Heard *HeardWhen `json:",omitempty"`
 
-	// Fact is `fact: <id>`: this creature holds the world fact with that id
-	// ([Facts.Known]). Empty when this condition names something else.
-	Fact string `json:",omitempty"`
+	// Fact is `fact: <id>`: this creature holds a world fact with that id,
+	// or one the pattern matches ([Facts.Known], [Name]). Zero when this
+	// condition names something else.
+	//
+	// OMITTED WHEN ZERO, which is what `omitempty` did for the plain string
+	// it replaced: a literal marshals as that string, so no committed golden
+	// moves.
+	Fact Name `json:",omitzero"`
 
 	// Not is `not: { … }`: it holds when the one condition inside it does
 	// not. It wraps exactly one When — any of them, another `not` included —
@@ -392,9 +406,10 @@ type When struct {
 // A KIND AND A SPAN, NEVER A MAKER (R4 of rpg-project#569). A sound carries
 // no identity ([sound.Sound]), so the condition cannot ask who made it.
 type HeardWhen struct {
-	// Kind is the sound's kind, in the caller's sealed vocabulary. This
-	// module compares it and never interprets it.
-	Kind string
+	// Kind is the sound's kind, in the caller's sealed vocabulary, or a
+	// pattern over those kinds ([Name]). This module matches it and never
+	// interprets it.
+	Kind Name
 
 	// Within is how many units ago the sound may have been made and still
 	// count, in the caller's own unit — the deed condition's span, with the
@@ -416,7 +431,7 @@ func (w *When) conditions() []string {
 	if w.Heard != nil {
 		out = append(out, "`heard`")
 	}
-	if w.Fact != "" {
+	if !w.Fact.IsZero() {
 		out = append(out, "`fact`")
 	}
 	if w.Not != nil {
@@ -428,8 +443,9 @@ func (w *When) conditions() []string {
 
 // Validate refuses a When that does not name exactly one condition, a
 // `heard` with no kind or a span below 1, a deed's `within` or scope set on
-// a condition that is not a deed, and the same faults inside a `not`.
-// ErrBadWhen, wrapped in a sentence for the form.
+// a condition that is not a deed, a [Name] that sets both forms or whose
+// pattern does not compile, and the same faults inside a `not`. ErrBadWhen,
+// wrapped in a sentence for the form.
 //
 // It does NOT refuse an enemy or deed word this build does not read, an
 // unknown scope, or a deed span below 1: those are the dialect's, where the
@@ -458,10 +474,14 @@ func (w *When) Validate() error {
 	case w.Deed == "" && (w.Within != 0 || w.Scope != ScopeSelf):
 		return fmt.Errorf("a `when` entry names %s with a deed's `within` or scope; "+
 			"those belong only beside a deed: %w", named[0], ErrBadWhen)
-	case w.Heard != nil && w.Heard.Kind == "":
+	case w.Heard != nil && w.Heard.Kind.IsZero():
 		return fmt.Errorf("`heard` needs a `kind`, the sound it listens for: %w", ErrBadWhen)
 	case w.Heard != nil && w.Heard.Within < 1:
 		return fmt.Errorf("`heard` within %d: a span is counted from 1: %w", w.Heard.Within, ErrBadWhen)
+	case w.Heard != nil:
+		return w.Heard.Kind.validate("`heard` kind")
+	case !w.Fact.IsZero():
+		return w.Fact.validate("`fact`")
 	case w.Not != nil:
 		if err := w.Not.Validate(); err != nil {
 			return fmt.Errorf("inside `not`: %w", err)
@@ -489,7 +509,12 @@ const (
 	// nearest opposed member remembered.
 	SelectorEnemy SelectorWord = "enemy"
 
-	// SelectorAttacker is who last landed an attack on this creature.
+	// SelectorAttacker is who last landed an attack on this creature, read
+	// the way the row's deed condition reads ([Facts.Attacker]). The row is
+	// on the table only while the creature holds them placed: in reach to
+	// strike ([Facts.FoesInReach]), in sight or memory to walk
+	// ([Facts.SeenFoes]). Otherwise it is absent, and a sibling row is the
+	// author's fallback.
 	SelectorAttacker SelectorWord = "attacker"
 
 	// SelectorActor is the actor of the deed this entry's `when` named, so
@@ -718,9 +743,16 @@ type Temper struct {
 // and there is nothing for it to say about a creature teaching the room a
 // fact or answering with a line. The zero profile is the soldier, so a member
 // with no temperament at all takes this same path (design §3's "and absent").
+//
+// A GROUP LOADS BY THE WORD ITS `as` NAMES (R13), and at 100 when it names
+// none: it has no word of its own, and a hidden rule reading its rows would
+// be a number the author never wrote.
 func (t Temper) factor(a Answer) int {
 	if t.Profile == (TemperProfile{}) {
 		return 100
+	}
+	if a.isGroup() {
+		return t.factorAs(a.As)
 	}
 	switch {
 	case a.Hold:
@@ -736,6 +768,24 @@ func (t Temper) factor(a Answer) int {
 		return t.Profile.Away
 	case a.Flee:
 		return t.Profile.Flee
+	default:
+		return 100
+	}
+}
+
+// factorAs is the percent for one of [AsWords], 100 for none.
+func (t Temper) factorAs(word string) int {
+	switch word {
+	case "attack":
+		return t.Profile.Attack
+	case "toward":
+		return t.Profile.Toward
+	case "away":
+		return t.Profile.Away
+	case "flee":
+		return t.Profile.Flee
+	case "hold":
+		return t.Profile.Hold
 	default:
 		return 100
 	}
@@ -846,6 +896,27 @@ type Facts struct {
 	// sounds channel ([sound.Held]); empty is "I heard nothing".
 	Sounds []sound.Sound
 
+	// SeenFoes is every opposed member this creature holds in its own sight
+	// right now, standing; RememberedFoes is every opposed member it holds
+	// placed from an earlier sighting and does not see now (rpg-project#669).
+	// What `attacker` needs to name somebody: the one who hit it is on the
+	// table only while it is among these ([Facts.Attacker]). The caller
+	// projects both from the creature's own sight testimony, never from
+	// where anybody really is.
+	//
+	// EMPTY IS "I HOLD NOBODY", so a caller that has not filled them gets an
+	// `attacker` row that is never a candidate, the module's "cannot"
+	// default for a forgotten field.
+	SeenFoes       []core.EntityID
+	RememberedFoes []core.EntityID
+
+	// FoesInReach is every member of SeenFoes this creature can strike now,
+	// with any of its attacks — the members `enemy: reach` is about. A strike
+	// at the one who hit it is on the table only while they are here: one in
+	// sight but out of reach is somebody to walk to, and an `attack` row that
+	// named them would be a swing the caller can only refuse.
+	FoesInReach []core.EntityID
+
 	// Known is the id of every world fact this creature holds — what a
 	// `fact` condition reads. Whose facts these are (a witness's, a
 	// hearer's, a faction's) is the caller's audience rule; this module
@@ -868,11 +939,11 @@ type Facts struct {
 func (f Facts) affords(a Answer) bool {
 	switch {
 	case a.Attack != nil:
-		return f.CanAttack
+		return f.CanAttack && f.locates(a.Attack, a.When, f.FoesInReach)
 	case a.Toward != nil:
-		return f.CanMove && f.locates(a.Toward)
+		return f.CanMove && f.locates(a.Toward, a.When, f.SeenFoes, f.RememberedFoes)
 	case a.Away != nil:
-		return f.CanMove && f.locates(a.Away)
+		return f.CanMove && f.locates(a.Away, a.When, f.SeenFoes, f.RememberedFoes)
 	case a.Search != nil:
 		// A SEARCH WALKS ON FROM A LOST TRAIL, so with none held there is
 		// nowhere to search from — the rule `sound` keeps for a walk with no
@@ -884,10 +955,68 @@ func (f Facts) affords(a Answer) bool {
 }
 
 // locates reports whether the facts hold something for this selector to
-// name. Only `sound` can name nothing from the facts alone: the other words
-// are resolved by the caller against a board this module does not have.
-func (f Facts) locates(s *Selector) bool {
-	return s.Word != SelectorSound || len(f.Sounds) > 0
+// name. `sound` names nothing with no sound held. `attacker` names nothing
+// unless the one who hit the creature ([Facts.Attacker], read the way the
+// row's own deed condition reads) is among the foes it holds placed: in
+// reach to strike, in sight or memory to walk (rpg-project#669). The other
+// words are resolved by the caller against a board this module does not
+// have.
+//
+// ABSENT, NOT A PASS (R15). A row whose selector names nobody is not on the
+// table, so the author's sibling row — `attack: enemy` beneath `attack:
+// attacker` — is the fallback, through the roll, and no word hides one.
+func (f Facts) locates(s *Selector, when []When, placed ...[]core.EntityID) bool {
+	switch s.Word {
+	case SelectorSound:
+		return len(f.Sounds) > 0
+	case SelectorAttacker:
+		who, ok := f.Attacker(when)
+		if !ok {
+			return false
+		}
+		for _, foes := range placed {
+			if slices.Contains(foes, who) {
+				return true
+			}
+		}
+
+		return false
+	default:
+		return true
+	}
+}
+
+// Attacker is who `attacker` names on a row with this `when` list: the
+// actor of the freshest attack in the reading the list's first deed
+// condition asks for ([When.Scope]; the creature itself when it names none),
+// ties on the stamp broken on the actor (C8). ok is false when that reading
+// holds no attack.
+//
+// THE CREATURE'S OWN TESTIMONY (R8): a deed is held only by a creature that
+// witnessed it, so an attack it never saw names nobody. Exported so the
+// caller resolves the selector off the same reading this module judged it
+// eligible by.
+func (f Facts) Attacker(when []When) (core.EntityID, bool) {
+	deeds := f.Deeds
+	for i := range when {
+		if when[i].Deed != "" {
+			deeds = when[i].deedsOf(f)
+
+			break
+		}
+	}
+	var best HeldDeed
+	found := false
+	for _, d := range deeds {
+		if d.Kind != VerbAttack || d.Actor == "" {
+			continue
+		}
+		if !found || d.At > best.At || (d.At == best.At && d.Actor < best.Actor) {
+			best, found = d, true
+		}
+	}
+
+	return best.Actor, found
 }
 
 // deedsOf is the reading this condition's scope asks for: the deeds against
@@ -946,8 +1075,8 @@ func (w *When) holds(f Facts) bool {
 		return !w.Not.holds(f)
 	case w.Heard != nil:
 		return w.Heard.holds(f)
-	case w.Fact != "":
-		return slices.Contains(f.Known, w.Fact)
+	case !w.Fact.IsZero():
+		return slices.ContainsFunc(f.Known, w.Fact.Matches)
 	}
 
 	switch w.Enemy {
@@ -1009,7 +1138,7 @@ func (h *HeardWhen) holds(f Facts) bool {
 	for _, s := range f.Sounds {
 		// A sound stamped ahead of now is wrong, not fresh: the deed
 		// condition's rule, and for the same reason.
-		if s.Kind != h.Kind || s.At > f.Now {
+		if !h.Kind.Matches(s.Kind) || s.At > f.Now {
 			continue
 		}
 		if f.Now-s.At <= uint64(h.Within) {
@@ -1054,6 +1183,14 @@ type Candidate struct {
 // Weight, Percent and Loaded are meaningful ONLY when Held && Affordable —
 // they are then exactly the row's [Candidate] numbers — and are zero
 // otherwise, because a row that was not on the table loaded nothing.
+//
+// A GROUP'S VERDICT HOLDS ITS ROWS' VERDICTS (rpg-project#670). For a group
+// row ([Answer.Rows]), Held is its own `when` and Affordable is whether any
+// row inside it was a candidate (a group pays with its rows), so a group out
+// of the roll says which: its gate failed, or nothing inside could fire. Rows
+// is then the verdict of every row inside it, judged whether or not the
+// group was, and Roll and Of are the inner die when the pick descended into
+// it.
 type RowVerdict struct {
 	// Entry is this row's index in the key's authored entry list.
 	Entry int
@@ -1072,6 +1209,16 @@ type RowVerdict struct {
 
 	// Loaded is Weight × Percent, when the row was a candidate.
 	Loaded int
+
+	// Rows is a group's verdict for every row inside it, in authored order;
+	// nil for a word row.
+	Rows []RowVerdict `json:",omitempty"`
+
+	// Roll and Of are the face and the size of the die rolled inside this
+	// group, when the pick descended into it; zero otherwise, and always zero
+	// for a word row.
+	Roll int `json:",omitempty"`
+	Of   int `json:",omitempty"`
 }
 
 // PickOutput is one roll on one key: who was eligible, what the die said, and which
@@ -1085,7 +1232,9 @@ type PickOutput struct {
 	// Key is the trigger this was rolled for.
 	Key AnswerKey
 
-	// Candidates is every eligible entry, in authored order.
+	// Candidates is every eligible entry OF THE TOP LEVEL, in authored
+	// order. A group is one candidate here; the candidates inside it are on
+	// its verdict in Rows.
 	Candidates []Candidate
 
 	// Rows is a verdict for EVERY entry of the key, in authored order —
@@ -1094,18 +1243,27 @@ type PickOutput struct {
 	// of saying why.
 	Rows []RowVerdict
 
-	// Roll is the face, 1..Of, or 0 when there was nothing to roll.
+	// Roll is the top level's face, 1..Of, or 0 when there was nothing to
+	// roll. A group's inner face is on its verdict.
 	Roll int
 
-	// Of is the die's size: the sum of every candidate's Loaded.
+	// Of is the top level's die: the sum of every candidate's Loaded.
 	Of int
 
 	// Entry is the index of the entry that fired in the key's authored
-	// list, or -1 when nothing was eligible.
+	// list, or -1 when nothing was eligible. With groups it is the top of
+	// the path, Path[0]: the line in the key's own list the die landed on.
 	Entry int
 
-	// Answer is the entry that fired — the zero-valued [Answer] with Hold
-	// set when nothing was eligible under [KeyTime].
+	// Path is the index of the row picked at every level, from the key's own
+	// list down to the word row that fired: `[3]` for a word row, `[3, 1]`
+	// for the second row inside the group at entry 3 (rpg-project#670).
+	// Empty when nothing was eligible.
+	Path []int
+
+	// Answer is the WORD ROW that fired, at the end of the path — never a
+	// group — or the zero-valued [Answer] with Hold set when nothing was
+	// eligible under [KeyTime].
 	Answer Answer
 
 	// Temper is the word the creature's temperament goes by, or empty for a
@@ -1167,81 +1325,143 @@ func Pick(ctx context.Context, in *PickInput) (*PickOutput, error) {
 	}
 	key, table, temper, facts, roller := in.Key, in.Table, in.Temper, in.Facts, in.Die
 	entries := table[key]
+	top := judge(entries, temper, facts, 0)
 
-	candidates := make([]Candidate, 0, len(entries))
-	rows := make([]RowVerdict, 0, len(entries))
-	of := 0
-	for i, entry := range entries {
-		// TWO TESTS, AND THEY ARE THE SAME TEST. An entry is on the table
-		// when its condition holds AND the creature can pay for it; either
-		// way it is ABSENT rather than weighted zero, so the candidate list
-		// stays the honest account of what could have happened. The verdict
-		// records both answers for every row, so the rows that were out say
-		// which test put them out.
-		held, affordable := allHold(entry.When, facts), facts.affords(entry)
-		if !held || !affordable {
-			rows = append(rows, RowVerdict{Entry: i, Held: held, Affordable: affordable})
-			continue
-		}
-		percent := temper.factor(entry)
-		loaded := entry.Weight * percent
-		candidates = append(candidates, Candidate{
-			Entry: i, Weight: entry.Weight, Percent: percent, Loaded: loaded,
-		})
-		rows = append(rows, RowVerdict{
-			Entry: i, Held: true, Affordable: true, Weight: entry.Weight, Percent: percent, Loaded: loaded,
-		})
-		of += loaded
-	}
-
-	if len(candidates) == 0 {
+	if len(top.candidates) == 0 {
 		if key == KeyTime {
-			return holdPick(key, temper.Word, rows), nil
+			return holdPick(key, temper.Word, top.rows), nil
 		}
 
 		return nil, nil
 	}
-	if of < 1 {
+	if top.of < 1 {
 		// Every eligible entry loaded to nothing: an author's weights are
 		// validated above 0, so this is a temperament whose every factor is
 		// zero. A creature that can do nothing at all still had its time, so
 		// `time` holds; a social table that cannot be rolled is the refusal
 		// it always was rather than a silently skipped answer.
 		if key == KeyTime {
-			return holdPick(key, temper.Word, rows), nil
+			return holdPick(key, temper.Word, top.rows), nil
 		}
 
-		return nil, fmt.Errorf("pick: %q weighs %d: %w", key, of, ErrBadTable)
+		return nil, fmt.Errorf("pick: %q weighs %d: %w", key, top.of, ErrBadTable)
 	}
 
 	if roller == nil {
 		return nil, fmt.Errorf("pick: %q: %w", key, ErrNoDie)
 	}
-	roll, err := roller.Roll(ctx, of)
-	if err != nil {
-		return nil, fmt.Errorf("pick: %q: %w", key, err)
+
+	// ONE DIE PER LEVEL (R0, R12). The top level's face is the output's
+	// Roll; each group descended into records its own die on its verdict.
+	// A group is a candidate only when something inside it is and its inner
+	// die is at least 1, so every descent has something to land on.
+	out := &PickOutput{Key: key, Candidates: top.candidates, Rows: top.rows, Of: top.of, Temper: temper.Word}
+	level, rows, verdict := top, entries, (*RowVerdict)(nil)
+	for {
+		roll, err := roller.Roll(ctx, level.of)
+		if err != nil {
+			return nil, fmt.Errorf("pick: %q at %v: %w", key, out.Path, err)
+		}
+		if verdict == nil {
+			out.Roll = roll
+		} else {
+			verdict.Roll, verdict.Of = roll, level.of
+		}
+		chosen := land(level.candidates, roll)
+		out.Path = append(out.Path, chosen)
+		inner, group := level.inner[chosen]
+		if !group {
+			out.Answer = rows[chosen]
+
+			break
+		}
+		verdict = &level.rows[chosen]
+		level, rows = inner, rows[chosen].Rows
+	}
+	out.Entry = out.Path[0]
+
+	return out, nil
+}
+
+// level is one table as a pick judged it: its candidates and their die, a
+// verdict for every row, and the judged level inside every group that is a
+// candidate, by entry.
+type level struct {
+	candidates []Candidate
+	rows       []RowVerdict
+	of         int
+	inner      map[int]*level
+}
+
+// judge is eligibility and load for one level, the same test at every depth.
+// nest is how many groups enclose it.
+//
+// A WORD ROW is a candidate when its `when` all hold and the creature can pay
+// for its word. A GROUP is a candidate when its own `when` hold AND something
+// inside it is (R15: an empty group is absent, not a hold), loaded at its
+// weight × the percent of its `as` (R13). Either way a row out of the roll is
+// ABSENT rather than weighted zero, so the candidate list stays the honest
+// account of what could have happened, and the verdict records both answers
+// for every row.
+func judge(entries []Answer, temper Temper, facts Facts, nest int) *level {
+	lv := &level{
+		candidates: make([]Candidate, 0, len(entries)),
+		rows:       make([]RowVerdict, 0, len(entries)),
+	}
+	for i := range entries {
+		entry := &entries[i]
+		held := allHold(entry.When, facts)
+		var inner *level
+		var affordable bool
+		if entry.isGroup() {
+			// PAST THE GUARD A GROUP IS ABSENT: [Pick] never validates, and
+			// a table built in Go can hold itself.
+			if nest+1 <= MaxGroupDepth {
+				inner = judge(entry.Rows, temper, facts, nest+1)
+				affordable = inner.of >= 1
+			}
+		} else {
+			affordable = facts.affords(*entry)
+		}
+		verdict := RowVerdict{Entry: i, Held: held, Affordable: affordable}
+		if inner != nil {
+			verdict.Rows = inner.rows
+		}
+		if !held || !affordable {
+			lv.rows = append(lv.rows, verdict)
+			continue
+		}
+		percent := temper.factor(*entry)
+		loaded := entry.Weight * percent
+		verdict.Weight, verdict.Percent, verdict.Loaded = entry.Weight, percent, loaded
+		lv.candidates = append(lv.candidates, Candidate{
+			Entry: i, Weight: entry.Weight, Percent: percent, Loaded: loaded,
+		})
+		lv.rows = append(lv.rows, verdict)
+		lv.of += loaded
+		if inner != nil {
+			if lv.inner == nil {
+				lv.inner = map[int]*level{}
+			}
+			lv.inner[i] = inner
+		}
 	}
 
-	chosen := candidates[len(candidates)-1]
+	return lv
+}
+
+// land is the entry whose running total of loads first reaches the face:
+// authored order maps faces to rows, and never decides priority (R0).
+func land(candidates []Candidate, roll int) int {
 	acc := 0
 	for _, c := range candidates {
 		acc += c.Loaded
 		if roll <= acc {
-			chosen = c
-			break
+			return c.Entry
 		}
 	}
 
-	return &PickOutput{
-		Key:        key,
-		Candidates: candidates,
-		Rows:       rows,
-		Roll:       roll,
-		Of:         of,
-		Entry:      chosen.Entry,
-		Answer:     entries[chosen.Entry],
-		Temper:     temper.Word,
-	}, nil
+	return candidates[len(candidates)-1].Entry
 }
 
 // DealInput is a faction's authored spread, and the die to pick one out of it.

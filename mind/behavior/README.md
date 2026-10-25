@@ -52,8 +52,8 @@ refused, because the list is already the `and`.
 |---|---|---|
 | `enemy: reach \| seen \| remembered \| lost \| none` | the nearest opposed thing is in that band (the bands are exclusive); `lost` is a memory the creature went back to and found empty | `Facts.EnemyInReach/Seen/Remembered/Lost` |
 | `<deed>: { within: N, on/as }` — `attacked`, `intimidated`, `persuaded`, `fled` | that deed was done to me (or my side, or by me) within N units | `Facts.Deeds/AllyDeeds/OwnDeeds` |
-| `heard: { kind, within: N }` | a sound of that kind was heard within N units | `Facts.Sounds` |
-| `fact: <id>` | the creature holds that world fact | `Facts.Known` |
+| `heard: { kind, within: N }` | a sound of that kind (or one a `/…/` pattern matches) was heard within N units | `Facts.Sounds` |
+| `fact: <id>` | the creature holds that world fact (or one a `/…/` pattern matches) | `Facts.Known` |
 | `not: { <one condition> }` | the condition inside does not hold | whatever it wraps |
 
 ```yaml
@@ -75,12 +75,37 @@ types cannot carry, each as a sentence for the form:
 Which words are legal under which key, which enemy and deed words a build
 reads, and a deed span below 1 stay the dialect's door.
 
+### Names and patterns
+
+A `heard` kind and a `fact` id are a `Name`: a literal, or a pattern written
+between slashes (`/clang|bell/`) that matches the WHOLE name. A bare string is
+a literal and marshals as the plain string it always was. Patterns match
+authored names only, never an engine payload (rpg-project#684); whether a
+pattern matches anything the file authored is the dialect's to refuse.
+
+### Groups: a row whose answer is a table
+
+A row with `Rows` is a GROUP (rpg-project#670). It carries no word of its own.
+At its level it is one candidate: eligible when its own `When` all hold and at
+least one row inside it is a candidate, loaded at its `Weight` × the
+temperament percent of the word its `As` names (100 when empty). When the die
+lands on it, a second die rolls over its own candidates, and so on down, to
+`MaxGroupDepth`. The output's `Path` names the row picked at every level
+(`Entry` is `Path[0]`), and a group's `RowVerdict` holds its rows' verdicts
+and the inner die. A bundle name is the dialect's; by the time a table gets
+here it is only the tree, with `From` and `Params` kept for the record.
+
 ### Selectors
 
 `attack`, `toward` and `away` take a `Selector`: exactly one of a word, a
 cell (`at`), or a route (`path`, `toward` only). The words are `enemy`,
 `attacker`, `actor` and `sound`.
 
+- **`attacker`** is who last attacked the creature, in the reading the
+  row's deed condition names (`Facts.Attacker`). The row is a candidate only
+  while that member is in `Facts.FoesInReach` (to strike) or `SeenFoes` or
+  `RememberedFoes` (to walk); otherwise it is absent, and the author's
+  sibling `attack: enemy` row is the fallback through the roll.
 - **`sound`** is where the freshest held sound was made. It is legal on
   `toward` and `away` only, and only on a row that names a `heard` condition
   (R10), the way `actor` needs a deed. Resolving it is the caller's.

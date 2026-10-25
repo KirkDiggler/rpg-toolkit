@@ -13,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/sound"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -22,6 +23,10 @@ import (
 // cell it is never matters, only that it is one. This module carries a
 // position and never reads it, which is the whole of what the test needs.
 var someCell = spatial.Position{X: 3, Y: 4}
+
+// lit is a literal [behavior.Name]: the plain string a `fact` or a `heard`
+// kind was before patterns existed, and still is when no pattern is written.
+func lit(name string) behavior.Name { return behavior.Name{Literal: name} }
 
 // table_test.go is THE CREATURE'S TABLE, pinned (rpg-project#465): the
 // layering, the conditions, the loaded die, and the deal.
@@ -757,7 +762,8 @@ func (s *TableSuite) TestADeedConditionDefaultsToAgainstTheCreatureItself() {
 	// blow to the creature still fires.
 	facts := behavior.Facts{
 		Now: 11, CanAttack: true,
-		Deeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+		Deeds:    []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+		SeenFoes: []core.EntityID{"alice"}, FoesInReach: []core.EntityID{"alice"},
 	}
 
 	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
@@ -774,6 +780,7 @@ func (s *TableSuite) TestAllyScopeReadsABlowToMySideNotToMe() {
 	toAlly := behavior.Facts{
 		Now: 11, CanAttack: true,
 		AllyDeeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+		SeenFoes:  []core.EntityID{"alice"}, FoesInReach: []core.EntityID{"alice"},
 	}
 	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
 		Key: behavior.KeyTime, Table: table, Facts: toAlly, Die: &facedDie{face: 1}})
@@ -784,7 +791,8 @@ func (s *TableSuite) TestAllyScopeReadsABlowToMySideNotToMe() {
 	// two readings being separate.
 	toMe := behavior.Facts{
 		Now: 11, CanAttack: true,
-		Deeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+		Deeds:    []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+		SeenFoes: []core.EntityID{"alice"}, FoesInReach: []core.EntityID{"alice"},
 	}
 	chosen, err = behavior.Pick(context.Background(), &behavior.PickInput{
 		Key: behavior.KeyTime, Table: table, Facts: toMe, Die: &facedDie{face: 1}})
@@ -824,7 +832,8 @@ func (s *TableSuite) TestActorScopeIsThePauseReadsWhatIDid() {
 	// on the creature's own Deeds, which is what keeps the two apart.
 	wasHit := behavior.Facts{
 		Now: 11, CanAttack: true,
-		Deeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+		Deeds:    []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+		SeenFoes: []core.EntityID{"alice"}, FoesInReach: []core.EntityID{"alice"},
 	}
 	chosen, err = behavior.Pick(context.Background(), &behavior.PickInput{
 		Key: behavior.KeyTime, Table: table, Facts: wasHit, Die: &facedDie{face: 1}})
@@ -863,7 +872,8 @@ func (s *TableSuite) TestAnUnknownScopeMatchesNothing() {
 	// The creature WAS attacked, so a fail-open reading would fire entry 0.
 	facts := behavior.Facts{
 		Now: 11, CanAttack: true,
-		Deeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+		Deeds:    []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "alice", At: 10}},
+		SeenFoes: []core.EntityID{"alice"}, FoesInReach: []core.EntityID{"alice"},
 	}
 
 	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
@@ -906,7 +916,7 @@ func (s *TableSuite) pickTime(table behavior.Table, facts behavior.Facts) int {
 // N+1 does not — and a sound of another kind is not this condition.
 func (s *TableSuite) TestHeardHoldsInsideItsWindowAndForItsKind() {
 	table := behavior.Table{behavior.KeyTime: {
-		{Weight: 1, When: []behavior.When{{Heard: &behavior.HeardWhen{Kind: "clang", Within: 2}}},
+		{Weight: 1, When: []behavior.When{{Heard: &behavior.HeardWhen{Kind: lit("clang"), Within: 2}}},
 			Toward: &behavior.Selector{At: &someCell}},
 		{Weight: 1, Hold: true},
 	}}
@@ -935,7 +945,7 @@ func (s *TableSuite) TestHeardHoldsInsideItsWindowAndForItsKind() {
 // among the facts this creature holds, and nothing else answers it.
 func (s *TableSuite) TestFactHoldsWhenTheCreatureKnowsIt() {
 	table := behavior.Table{behavior.KeyTime: {
-		{Weight: 1, When: []behavior.When{{Fact: "alarm-raised"}}, Toward: &behavior.Selector{At: &someCell}},
+		{Weight: 1, When: []behavior.When{{Fact: lit("alarm-raised")}}, Toward: &behavior.Selector{At: &someCell}},
 		{Weight: 1, Hold: true},
 	}}
 
@@ -952,7 +962,7 @@ func (s *TableSuite) TestFactHoldsWhenTheCreatureKnowsIt() {
 func (s *TableSuite) TestEveryWhenInTheListMustHold() {
 	table := behavior.Table{behavior.KeyTime: {
 		{Weight: 1, When: []behavior.When{
-			{Fact: "guards-turned"},
+			{Fact: lit("guards-turned")},
 			{Not: &behavior.When{Enemy: behavior.EnemySeen}},
 		}, Toward: &behavior.Selector{At: &someCell}},
 		{Weight: 1, Hold: true},
@@ -986,7 +996,7 @@ func (s *TableSuite) TestNotHoldsWhenItsConditionDoesNot() {
 		}}
 	}
 	notSeen := row(behavior.When{Not: &behavior.When{Enemy: behavior.EnemySeen}})
-	notHeard := row(behavior.When{Not: &behavior.When{Heard: &behavior.HeardWhen{Kind: "clang", Within: 2}}})
+	notHeard := row(behavior.When{Not: &behavior.When{Heard: &behavior.HeardWhen{Kind: lit("clang"), Within: 2}}})
 	notNotSeen := row(behavior.When{Not: &behavior.When{Not: &behavior.When{Enemy: behavior.EnemySeen}}})
 	clang := []sound.Sound{{Kind: "clang", At: 5}}
 
@@ -1010,12 +1020,12 @@ func (s *TableSuite) TestAWhenNamesExactlyOneCondition() {
 		says string
 	}{
 		{name: "two conditions",
-			when: behavior.When{Enemy: behavior.EnemySeen, Heard: &behavior.HeardWhen{Kind: "clang", Within: 2}},
+			when: behavior.When{Enemy: behavior.EnemySeen, Heard: &behavior.HeardWhen{Kind: lit("clang"), Within: 2}},
 			says: "a `when` entry names `enemy` and `heard`; give each its own entry in the list, " +
 				"and every entry must hold: behavior: when cannot be read"},
 		{name: "three conditions",
 			when: behavior.When{
-				Deed: "attacked", Within: 2, Fact: "alarm-raised",
+				Deed: "attacked", Within: 2, Fact: lit("alarm-raised"),
 				Not: &behavior.When{Enemy: behavior.EnemySeen},
 			},
 			says: "a `when` entry names `attacked`, `fact` and `not`; give each its own entry in the list, " +
@@ -1025,7 +1035,7 @@ func (s *TableSuite) TestAWhenNamesExactlyOneCondition() {
 			says: "a `when` entry names no condition; give it one of `enemy`, `attacked`, `intimidated`, " +
 				"`persuaded`, `fled`, `heard`, `fact` or `not`: behavior: when cannot be read"},
 		{name: "two conditions inside a not",
-			when: behavior.When{Not: &behavior.When{Enemy: behavior.EnemySeen, Fact: "alarm-raised"}},
+			when: behavior.When{Not: &behavior.When{Enemy: behavior.EnemySeen, Fact: lit("alarm-raised")}},
 			says: "inside `not`: a `when` entry names `enemy` and `fact`; give each its own entry in the list, " +
 				"and every entry must hold: behavior: when cannot be read"},
 		{name: "heard with no kind",
@@ -1033,11 +1043,11 @@ func (s *TableSuite) TestAWhenNamesExactlyOneCondition() {
 			says: "`heard` needs a `kind`, the sound it listens for: " +
 				"behavior: when cannot be read"},
 		{name: "heard with a span of zero",
-			when: behavior.When{Heard: &behavior.HeardWhen{Kind: "clang"}},
+			when: behavior.When{Heard: &behavior.HeardWhen{Kind: lit("clang")}},
 			says: "`heard` within 0: a span is counted from 1: behavior: when cannot be read"},
 	} {
 		s.Run(tc.name, func() {
-			entry := behavior.Answer{Weight: 1, When: []behavior.When{{Fact: "fine"}, tc.when}, Hold: true}
+			entry := behavior.Answer{Weight: 1, When: []behavior.When{{Fact: lit("fine")}, tc.when}, Hold: true}
 			err := entry.Validate()
 			s.Require().ErrorIs(err, behavior.ErrBadWhen)
 			s.EqualError(err, tc.says)
@@ -1047,8 +1057,8 @@ func (s *TableSuite) TestAWhenNamesExactlyOneCondition() {
 	ok := behavior.Answer{Weight: 1, Hold: true, When: []behavior.When{
 		{Enemy: behavior.EnemyNone},
 		{Deed: "attacked", Within: 2},
-		{Heard: &behavior.HeardWhen{Kind: "clang", Within: 2}},
-		{Fact: "alarm-raised"},
+		{Heard: &behavior.HeardWhen{Kind: lit("clang"), Within: 2}},
+		{Fact: lit("alarm-raised")},
 		{Not: &behavior.When{Not: &behavior.When{Enemy: behavior.EnemySeen}}},
 	}}
 	s.NoError(ok.Validate(), "one condition per entry, however many entries")
@@ -1191,7 +1201,7 @@ func (s *TableSuite) TestSoundIsAPlaceToWalkToOrFrom() {
 	s.Contains(behavior.SelectorWords, behavior.SelectorSound)
 	s.Equal(behavior.SelectorWord("sound"), behavior.SelectorSound)
 
-	heard := []behavior.When{{Heard: &behavior.HeardWhen{Kind: "clang", Within: 2}}}
+	heard := []behavior.When{{Heard: &behavior.HeardWhen{Kind: lit("clang"), Within: 2}}}
 	s.NoError((&behavior.Answer{Weight: 1, When: heard,
 		Toward: &behavior.Selector{Word: behavior.SelectorSound}}).Validate())
 	s.NoError((&behavior.Answer{Weight: 1, When: heard,
@@ -1211,7 +1221,7 @@ func (s *TableSuite) TestAHeardSpanBelowOneHoldsNothing() {
 	for _, within := range []int{0, -1} {
 		s.Run(fmt.Sprintf("within %d", within), func() {
 			table := behavior.Table{behavior.KeyTime: {
-				{Weight: 1, When: []behavior.When{{Heard: &behavior.HeardWhen{Kind: "clang", Within: within}}},
+				{Weight: 1, When: []behavior.When{{Heard: &behavior.HeardWhen{Kind: lit("clang"), Within: within}}},
 					Toward: &behavior.Selector{At: &someCell}},
 				{Weight: 1, Hold: true},
 			}}
@@ -1232,7 +1242,7 @@ func (s *TableSuite) TestADeedsSpanAndScopeBelongOnlyBesideADeed() {
 		when behavior.When
 		says string
 	}{
-		{name: "a span beside a fact", when: behavior.When{Fact: "alarm-raised", Within: 3},
+		{name: "a span beside a fact", when: behavior.When{Fact: lit("alarm-raised"), Within: 3},
 			says: "a `when` entry names `fact` with a deed's `within` or scope; " +
 				"those belong only beside a deed: behavior: when cannot be read"},
 		{name: "a scope beside an enemy band", when: behavior.When{Enemy: behavior.EnemySeen, Scope: behavior.ScopeAlly},
@@ -1269,14 +1279,14 @@ func (s *TableSuite) TestASelectorNamingNoTargetIsRefused() {
 func (s *TableSuite) TestSoundNeedsARowThatListened() {
 	const says = "`sound` needs a `heard` condition on the row: " +
 		"the sound it walks to is the one the row listened for: behavior: selector cannot be read"
-	clang := &behavior.HeardWhen{Kind: "clang", Within: 2}
+	clang := &behavior.HeardWhen{Kind: lit("clang"), Within: 2}
 
 	for _, tc := range []struct {
 		name string
 		when []behavior.When
 	}{
 		{name: "no when at all"},
-		{name: "a fact and no heard", when: []behavior.When{{Fact: "alarm-raised"}}},
+		{name: "a fact and no heard", when: []behavior.When{{Fact: lit("alarm-raised")}}},
 		{name: "a heard only inside a not", when: []behavior.When{{Not: &behavior.When{Heard: clang}}}},
 	} {
 		s.Run(tc.name, func() {
@@ -1292,7 +1302,7 @@ func (s *TableSuite) TestSoundNeedsARowThatListened() {
 	}
 
 	s.NoError((&behavior.Answer{Weight: 1,
-		When:   []behavior.When{{Fact: "alarm-raised"}, {Heard: clang}},
+		When:   []behavior.When{{Fact: lit("alarm-raised")}, {Heard: clang}},
 		Toward: &behavior.Selector{Word: behavior.SelectorSound}}).Validate(),
 		"a `heard` anywhere in the list is the row listening")
 }
@@ -1304,7 +1314,7 @@ func (s *TableSuite) TestSoundNeedsARowThatListened() {
 // is the affordability gate, and not the `heard` condition, being tested.
 func (s *TableSuite) TestAWalkToASoundIsAbsentWhenNoSoundIsHeld() {
 	listened := behavior.Table{behavior.KeyTime: {
-		{Weight: 1, When: []behavior.When{{Heard: &behavior.HeardWhen{Kind: "clang", Within: 3}}},
+		{Weight: 1, When: []behavior.When{{Heard: &behavior.HeardWhen{Kind: lit("clang"), Within: 3}}},
 			Toward: &behavior.Selector{Word: behavior.SelectorSound}},
 		{Weight: 1, Hold: true},
 	}}
@@ -1461,4 +1471,109 @@ func (s *TableSuite) TestASearchHeadingSurvivesTheMarshalledRow() {
 		s.Equal(h, back.Search.Heading)
 		s.Equal(4, back.Search.Distance)
 	}
+}
+
+// attackerRows is the captain's revenge with its authored fallback
+// (rpg-project#669): strike whoever hit him, else strike the nearest.
+func attackerRows() behavior.Table {
+	return behavior.Table{behavior.KeyTime: {
+		{Weight: 1, When: []behavior.When{{Deed: "attacked", Within: 2}},
+			Attack: &behavior.Selector{Word: behavior.SelectorAttacker}},
+		{Weight: 1, Attack: &behavior.Selector{Word: behavior.SelectorEnemy}},
+	}}
+}
+
+// TestAnAttackerRowIsOnTheTableOnlyWhileItsAttackerIsInReach is the R15
+// reading of `attacker` (rpg-project#669): the row names the member whose
+// attack on the creature it holds most recently, and a strike is a candidate
+// only while that member is in its reach ([Facts.FoesInReach]).
+// Otherwise the row is absent, not a Pass, so the author's sibling row wins
+// the roll.
+func (s *TableSuite) TestAnAttackerRowIsOnTheTableOnlyWhileItsAttackerIsInReach() {
+	hit := []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "bard", At: 9}}
+	for name, tc := range map[string]struct {
+		facts     behavior.Facts
+		candidate bool
+	}{
+		"hit, and the bard is in reach": {behavior.Facts{
+			CanAttack: true, Now: 10, Deeds: hit, SeenFoes: []core.EntityID{"fighter", "bard"},
+			FoesInReach: []core.EntityID{"fighter", "bard"}}, true},
+		"hit, and the bard is in sight but out of reach: somebody to walk to": {behavior.Facts{
+			CanAttack: true, Now: 10, Deeds: hit, SeenFoes: []core.EntityID{"fighter", "bard"},
+			FoesInReach: []core.EntityID{"fighter"}}, false},
+		"hit, and the bard is out of sight": {behavior.Facts{
+			CanAttack: true, Now: 10, Deeds: hit, SeenFoes: []core.EntityID{"fighter"},
+			FoesInReach: []core.EntityID{"fighter"}}, false},
+		"hit, and the bard only remembered: a memory cannot be struck": {behavior.Facts{
+			CanAttack: true, Now: 10, Deeds: hit, SeenFoes: []core.EntityID{"fighter"},
+			RememberedFoes: []core.EntityID{"bard"}}, false},
+	} {
+		chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
+			Key: behavior.KeyTime, Table: attackerRows(), Facts: tc.facts, Die: &facedDie{face: 1}})
+		s.Require().NoError(err, name)
+		s.Equal(tc.candidate, chosen.Rows[0].Affordable, name)
+		if tc.candidate {
+			s.Equal(0, chosen.Entry, "%s: the attacker row takes the first face", name)
+			s.Require().Len(chosen.Candidates, 2, name)
+
+			continue
+		}
+		s.Require().Len(chosen.Candidates, 1, name)
+		s.Equal(1, chosen.Entry, "%s: the author's fallback wins", name)
+	}
+}
+
+// TestAWalkToTheAttackerMayFollowAMemory: `toward: attacker` walks to where
+// the creature last saw them, so a remembered attacker keeps the row on the
+// table; one it holds nowhere does not.
+func (s *TableSuite) TestAWalkToTheAttackerMayFollowAMemory() {
+	table := behavior.Table{behavior.KeyTime: {
+		{Weight: 1, When: []behavior.When{{Deed: "attacked", Within: 2}},
+			Toward: &behavior.Selector{Word: behavior.SelectorAttacker}},
+		{Weight: 1, Hold: true},
+	}}
+	hit := []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "bard", At: 9}}
+	for name, tc := range map[string]struct {
+		remembered []core.EntityID
+		candidate  bool
+	}{
+		"remembered":   {[]core.EntityID{"bard"}, true},
+		"held nowhere": {nil, false},
+	} {
+		chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
+			Key: behavior.KeyTime, Table: table, Die: &facedDie{face: 1},
+			Facts: behavior.Facts{CanMove: true, Now: 10, Deeds: hit, RememberedFoes: tc.remembered}})
+		s.Require().NoError(err, name)
+		s.Equal(tc.candidate, chosen.Rows[0].Affordable, name)
+	}
+}
+
+// TestTheAttackerIsTheFreshestBlowInTheRowsOwnReading (R8): the attacker is
+// read from the deeds the row's deed condition names — a blow on the creature
+// itself for an unscoped row, never a blow on an ally — and it is the most
+// recent one, ties broken on the actor (C8).
+func (s *TableSuite) TestTheAttackerIsTheFreshestBlowInTheRowsOwnReading() {
+	self := []behavior.When{{Deed: "attacked", Within: 5}}
+	facts := behavior.Facts{
+		Deeds: []behavior.HeldDeed{
+			{Kind: behavior.VerbAttack, Actor: "rogue", At: 4},
+			{Kind: behavior.VerbAttack, Actor: "bard", At: 7},
+			{Kind: "intimidate", Actor: "fighter", At: 8},
+		},
+		AllyDeeds: []behavior.HeldDeed{{Kind: behavior.VerbAttack, Actor: "wizard", At: 9}},
+	}
+	who, ok := facts.Attacker(self)
+	s.Require().True(ok)
+	s.Equal(core.EntityID("bard"), who, "the freshest attack, not the freshest deed")
+
+	who, ok = facts.Attacker([]behavior.When{{Deed: "attacked", Within: 5, Scope: behavior.ScopeAlly}})
+	s.Require().True(ok)
+	s.Equal(core.EntityID("wizard"), who, "an `on: ally` row reads the blows on its side")
+
+	facts.Deeds = append(facts.Deeds, behavior.HeldDeed{Kind: behavior.VerbAttack, Actor: "archer", At: 7})
+	who, _ = facts.Attacker(self)
+	s.Equal(core.EntityID("archer"), who, "a tie on the stamp breaks on the actor")
+
+	_, ok = behavior.Facts{AllyDeeds: facts.AllyDeeds}.Attacker(self)
+	s.False(ok, "a blow on an ally is not a blow on the creature")
 }
