@@ -21,6 +21,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
@@ -869,7 +870,7 @@ func TestATimeRowsFactTeachesItsHearersAndNotTheFarRoom(t *testing.T) {
 func TestAWhenFactRowIsEligibleOnlyForAHolder(t *testing.T) {
 	post := cellAt(12, 4)
 	onAlarm := encounter.Table{encounter.AnswerTime: {
-		{Weight: 1, When: []encounter.When{{Fact: hAlarm}}, Toward: &encounter.Selector{At: &post}},
+		{Weight: 1, When: []encounter.When{{Fact: behavior.Name{Literal: hAlarm}}}, Toward: &encounter.Selector{At: &post}},
 		{Weight: 1, Hold: true},
 	}}
 	enc := tableHall(t,
@@ -940,9 +941,9 @@ func TestAListedWhenNeedsEveryEntryThroughTheRealPick(t *testing.T) {
 		at(noiseAlice, encounter.KindPlayer, 2, 8),
 		tabled(hCrier, 1, 1, cries()),
 		tabled(hWalker, 18, 1, walkWhenAll(
-			encounter.When{Fact: hAlarm}, encounter.When{Not: &encounter.When{Enemy: encounter.EnemySeen}})),
+			encounter.When{Fact: behavior.Name{Literal: hAlarm}}, encounter.When{Not: &encounter.When{Enemy: encounter.EnemySeen}})),
 		tabled(hOther, 18, 0, walkWhenAll(
-			encounter.When{Fact: hAlarm}, encounter.When{Fact: "guards-turned"})),
+			encounter.When{Fact: behavior.Name{Literal: hAlarm}}, encounter.When{Fact: behavior.Name{Literal: "guards-turned"}})),
 	)
 	walkerStart, otherStart := whereIs(t, enc, hWalker), whereIs(t, enc, hOther)
 
@@ -1022,7 +1023,7 @@ func TestTowardSoundWalksToTheClang(t *testing.T) {
 		},
 		at(noiseAlice, encounter.KindPlayer, 2, 5), at(noiseThug, encounter.KindMonster, 3, 5),
 		tabled(noiseKeen, 18, 1, encounter.Table{encounter.AnswerTime: {
-			{Weight: 1, When: []encounter.When{{Heard: &encounter.HeardWhen{Kind: encounter.SoundClang, Within: 6}}},
+			{Weight: 1, When: []encounter.When{{Heard: &encounter.HeardWhen{Kind: behavior.Name{Literal: encounter.SoundClang}, Within: 6}}},
 				Toward: &encounter.Selector{Word: encounter.SelectorSound}},
 			{Weight: 1, Hold: true},
 		}}),
@@ -1050,7 +1051,7 @@ func TestAwaySoundWalksFromIt(t *testing.T) {
 		},
 		at(noiseAlice, encounter.KindPlayer, 2, 5), at(noiseThug, encounter.KindMonster, 3, 5),
 		tabled(hWalker, 6, 5, encounter.Table{encounter.AnswerTime: {
-			{Weight: 1, When: []encounter.When{{Heard: &encounter.HeardWhen{Kind: encounter.SoundClang, Within: 2}}},
+			{Weight: 1, When: []encounter.When{{Heard: &encounter.HeardWhen{Kind: behavior.Name{Literal: encounter.SoundClang}, Within: 2}}},
 				Away: &encounter.Selector{Word: encounter.SelectorSound}},
 			{Weight: 1, Hold: true},
 		}}),
@@ -1079,7 +1080,7 @@ func TestSoundWalksToTheKindItsRowListensFor(t *testing.T) {
 		at(noiseAlice, encounter.KindPlayer, 2, 5), at(noiseThug, encounter.KindMonster, 3, 5),
 		tabled(hCrier, 7, 0, encounter.Table{encounter.AnswerTime: {{Weight: 1, Say: "Who's there?"}}}),
 		tabled(noiseKeen, 18, 1, encounter.Table{encounter.AnswerTime: {
-			{Weight: 1, When: []encounter.When{{Heard: &encounter.HeardWhen{Kind: encounter.SoundClang, Within: 6}}},
+			{Weight: 1, When: []encounter.When{{Heard: &encounter.HeardWhen{Kind: behavior.Name{Literal: encounter.SoundClang}, Within: 6}}},
 				Toward: &encounter.Selector{Word: encounter.SelectorSound}},
 			{Weight: 1, Hold: true},
 		}}),

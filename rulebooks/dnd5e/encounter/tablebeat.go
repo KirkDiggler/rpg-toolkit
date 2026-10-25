@@ -171,9 +171,9 @@ func whenShorthand(w *When) string {
 	case w.Not != nil:
 		return "not " + whenShorthand(w.Not)
 	case w.Heard != nil:
-		return "heard " + w.Heard.Kind + " within " + strconv.Itoa(w.Heard.Within)
-	case w.Fact != "":
-		return "fact " + w.Fact
+		return "heard " + w.Heard.Kind.String() + " within " + strconv.Itoa(w.Heard.Within)
+	case !w.Fact.IsZero():
+		return "fact " + w.Fact.String()
 	case w.Enemy != "":
 		return "enemy " + string(w.Enemy)
 	}

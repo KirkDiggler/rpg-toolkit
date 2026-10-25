@@ -135,7 +135,7 @@ func (s *TableSuite) TestATableThisBuildCannotRollIsRefusedAtTheDoor() {
 			// never interprets it, and no deed in this build makes a growl.
 			name: "a sound kind nothing here makes",
 			table: Table{AnswerTime: {{Weight: 1, Hold: true,
-				When: []When{{Heard: &HeardWhen{Kind: "growl", Within: 2}}}}}},
+				When: []When{{Heard: &HeardWhen{Kind: behavior.Name{Literal: "growl"}, Within: 2}}}}}},
 			says: "`heard: { kind: growl }` is not a sound this build makes: they are boom, crash, clang, voice",
 		},
 		{
@@ -231,10 +231,10 @@ func (s *TableSuite) TestAWholeLegalTableIsAccepted() {
 			{Weight: 1, When: []When{{Enemy: EnemyNone}}, Toward: &Selector{At: &cell}},
 			{Weight: 5, When: []When{{Deed: "fled", Within: 3}}, Away: &Selector{Word: SelectorActor}},
 			{Weight: 1, When: []When{{Enemy: EnemyNone}}, Toward: &Selector{Path: []spatial.Position{{X: 11, Y: 2}, {X: 15, Y: 2}, {X: 13, Y: 6}, {X: 9, Y: 6}}}},
-			{Weight: 1, When: []When{{Heard: &HeardWhen{Kind: SoundClang, Within: 2}}}, Toward: &Selector{Word: SelectorSound}},
-			{Weight: 1, When: []When{{Heard: &HeardWhen{Kind: SoundBoom, Within: 3}}}, Away: &Selector{Word: SelectorSound}},
+			{Weight: 1, When: []When{{Heard: &HeardWhen{Kind: behavior.Name{Literal: SoundClang}, Within: 2}}}, Toward: &Selector{Word: SelectorSound}},
+			{Weight: 1, When: []When{{Heard: &HeardWhen{Kind: behavior.Name{Literal: SoundBoom}, Within: 3}}}, Away: &Selector{Word: SelectorSound}},
 			{Weight: 1, When: []When{{Enemy: EnemySeen}}, Say: "To arms!", Fact: "alarm-raised"},
-			{Weight: 1, When: []When{{Fact: "guards-turned"}, {Not: &When{Enemy: EnemySeen}}}, Toward: &Selector{At: &cell}},
+			{Weight: 1, When: []When{{Fact: behavior.Name{Literal: "guards-turned"}}, {Not: &When{Enemy: EnemySeen}}}, Toward: &Selector{At: &cell}},
 			{Weight: 1, Hold: true},
 		},
 	}))

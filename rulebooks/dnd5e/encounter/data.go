@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
@@ -1623,10 +1624,10 @@ func answerDataFrom(entry Answer) AnswerData {
 func whenDataFrom(w When) WhenData {
 	out := WhenData{
 		Enemy: string(w.Enemy), Deed: w.Deed, Within: w.Within,
-		Scope: string(w.Scope), Fact: w.Fact,
+		Scope: string(w.Scope), Fact: w.Fact.String(),
 	}
 	if w.Heard != nil {
-		out.Heard = &HeardData{Kind: w.Heard.Kind, Within: w.Heard.Within}
+		out.Heard = &HeardData{Kind: w.Heard.Kind.String(), Within: w.Heard.Within}
 	}
 	if w.Not != nil {
 		inner := whenDataFrom(*w.Not)
@@ -1721,10 +1722,10 @@ func answerFromData(row AnswerData) Answer {
 func whenFromData(w WhenData) When {
 	out := When{
 		Enemy: EnemyWord(w.Enemy), Deed: w.Deed, Within: w.Within,
-		Scope: DeedScope(w.Scope), Fact: w.Fact,
+		Scope: DeedScope(w.Scope), Fact: behavior.Name{Literal: w.Fact},
 	}
 	if w.Heard != nil {
-		out.Heard = &HeardWhen{Kind: w.Heard.Kind, Within: w.Heard.Within}
+		out.Heard = &HeardWhen{Kind: behavior.Name{Literal: w.Heard.Kind}, Within: w.Heard.Within}
 	}
 	if w.Not != nil {
 		inner := whenFromData(*w.Not)

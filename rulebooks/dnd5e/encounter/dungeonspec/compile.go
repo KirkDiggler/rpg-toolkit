@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 	"gopkg.in/yaml.v3"
@@ -1159,10 +1160,10 @@ func oneWhenOf(when *WhenSpec) encounter.When {
 		// The scope rides with the deed (rpg-toolkit#1883): the condition's
 		// own reading of WHOSE deed it is about.
 		Scope: when.Scope,
-		Fact:  when.Fact,
+		Fact:  behavior.Name{Literal: when.Fact},
 	}
 	if when.Heard != nil {
-		out.Heard = &encounter.HeardWhen{Kind: when.Heard.Kind, Within: when.Heard.Within}
+		out.Heard = &encounter.HeardWhen{Kind: behavior.Name{Literal: when.Heard.Kind}, Within: when.Heard.Within}
 	}
 	if when.Not != nil {
 		inner := oneWhenOf(when.Not)

@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -67,7 +68,7 @@ func TestTheCastleWordsCompile(t *testing.T) {
 	at := encounter.HexCellAt(o, 23, 3)
 	require.Equal(t, &at, rows[3].Toward.At, "and an `at` is converted the same way")
 
-	require.Equal(t, &encounter.HeardWhen{Kind: encounter.SoundClang, Within: 2}, rows[1].When[0].Heard)
+	require.Equal(t, &encounter.HeardWhen{Kind: behavior.Name{Literal: encounter.SoundClang}, Within: 2}, rows[1].When[0].Heard)
 	require.Equal(t, encounter.SelectorSound, rows[1].Toward.Word)
 	require.Equal(t, encounter.SelectorSound, rows[2].Away.Word)
 

@@ -27,6 +27,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -339,9 +340,9 @@ func (s *TableSuite) TestASelfScopedRowStillReadsItsOwnDeeds() {
 func TestTheCastleWordsSurviveASave(t *testing.T) {
 	route := []spatial.Position{{X: 2, Y: 3}, {X: 6, Y: 3}, {X: 6, Y: 8}}
 	for _, entry := range []Answer{
-		{Weight: 1, When: []When{{Heard: &HeardWhen{Kind: SoundClang, Within: 2}}}, Toward: &Selector{Word: SelectorSound}},
-		{Weight: 1, When: []When{{Fact: "alarm-raised"}}, Away: &Selector{Word: SelectorSound}},
-		{Weight: 1, When: []When{{Fact: "guards-turned"}, {Not: &When{Enemy: EnemySeen}}}, Hold: true},
+		{Weight: 1, When: []When{{Heard: &HeardWhen{Kind: behavior.Name{Literal: SoundClang}, Within: 2}}}, Toward: &Selector{Word: SelectorSound}},
+		{Weight: 1, When: []When{{Fact: behavior.Name{Literal: "alarm-raised"}}}, Away: &Selector{Word: SelectorSound}},
+		{Weight: 1, When: []When{{Fact: behavior.Name{Literal: "guards-turned"}}, {Not: &When{Enemy: EnemySeen}}}, Hold: true},
 		{Weight: 1, When: []When{{Enemy: EnemyNone}}, Toward: &Selector{Path: route}},
 		{Weight: 1, When: []When{{Enemy: EnemySeen}}, Say: "To arms!", Fact: "alarm-raised"},
 	} {

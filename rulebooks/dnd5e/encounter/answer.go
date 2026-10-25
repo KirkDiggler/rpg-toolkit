@@ -600,13 +600,13 @@ func validateWhenWords(when *When) error {
 	case when.Not != nil:
 		return validateWhenWords(when.Not)
 	case when.Heard != nil:
-		if !knownSoundKind(when.Heard.Kind) {
+		if !knownSoundKind(when.Heard.Kind.Literal) {
 			return fmt.Errorf("`heard: { kind: %s }` is not a sound this build makes: they are %s: %w",
 				when.Heard.Kind, strings.Join(SoundKinds, ", "), ErrBadAnswer)
 		}
 
 		return nil
-	case when.Fact != "":
+	case !when.Fact.IsZero():
 		return nil
 	case when.Enemy != "":
 		for _, known := range EnemyWords {
