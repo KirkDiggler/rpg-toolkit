@@ -610,11 +610,11 @@ func theDefaultThugTable() encounter.Table {
 			{Weight: 3, When: []encounter.When{{Deed: "attacked", Within: 3}},
 				Attack: &encounter.Selector{Word: encounter.SelectorAttacker}},
 			{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyReach}},
-				Attack: &encounter.Selector{Word: encounter.SelectorEnemy}},
+				Attack: &encounter.Selector{Word: encounter.SelectorEnemy, Target: encounter.TargetClosest}},
 			{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemySeen}},
-				Toward: &encounter.Selector{Word: encounter.SelectorEnemy}},
+				Toward: &encounter.Selector{Word: encounter.SelectorEnemy, Target: encounter.TargetClosest}},
 			{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyRemembered}},
-				Toward: &encounter.Selector{Word: encounter.SelectorEnemy}},
+				Toward: &encounter.Selector{Word: encounter.SelectorEnemy, Target: encounter.TargetClosest}},
 			{Weight: 1, Hold: true},
 		},
 	}
@@ -650,7 +650,7 @@ func (s *WorldTimeSuite) TestASpentCreatureIsNotAskedToSwingAgain() {
 				// is the empty pick this rule is really about.
 				Table: encounter.Table{encounter.AnswerTime: {
 					{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyReach}},
-						Attack: &encounter.Selector{Word: encounter.SelectorEnemy}},
+						Attack: &encounter.Selector{Word: encounter.SelectorEnemy, Target: encounter.TargetClosest}},
 				}},
 			},
 		},

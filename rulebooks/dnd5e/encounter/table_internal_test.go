@@ -226,8 +226,8 @@ func (s *TableSuite) TestAWholeLegalTableIsAccepted() {
 	require.NoError(s.T(), validateTable(Table{
 		AnswerTime: {
 			{Weight: 3, When: []When{{Deed: "attacked", Within: 3}}, Attack: &Selector{Word: SelectorAttacker}},
-			{Weight: 1, When: []When{{Enemy: EnemySeen}}, Attack: &Selector{Word: SelectorEnemy}},
-			{Weight: 1, When: []When{{Enemy: EnemyRemembered}}, Toward: &Selector{Word: SelectorEnemy}},
+			{Weight: 1, When: []When{{Enemy: EnemySeen}}, Attack: &Selector{Word: SelectorEnemy, Target: TargetClosest}},
+			{Weight: 1, When: []When{{Enemy: EnemyRemembered}}, Toward: &Selector{Word: SelectorEnemy, Target: TargetClosest}},
 			{Weight: 1, When: []When{{Enemy: EnemyNone}}, Toward: &Selector{At: &cell}},
 			{Weight: 5, When: []When{{Deed: "fled", Within: 3}}, Away: &Selector{Word: SelectorActor}},
 			{Weight: 1, When: []When{{Enemy: EnemyNone}}, Toward: &Selector{Path: []spatial.Position{{X: 11, Y: 2}, {X: 15, Y: 2}, {X: 13, Y: 6}, {X: 9, Y: 6}}}},
@@ -256,22 +256,22 @@ func (s *TableSuite) TestEachDirectionNamesItselfInTheCause() {
 	cell := spatialOrigin
 	budget := TurnBudget{MovementFeet: 30}
 
-	toward, ok := d.towardIntent(
+	toward, ok := intentOf(d.towardIntent(
 		MonsterView{Budget: budget},
 		Answer{Toward: &Selector{At: &cell}},
-	).(Routed)
+	)).(Routed)
 	s.Require().True(ok, "an authored cell goes out routed")
 	s.Equal("encounter:table:toward", toward.Cause.String(), "the word the author wrote")
 
-	away, ok := d.awayIntent(
+	away, ok := intentOf(d.awayIntent(
 		MonsterView{
 			Budget: budget,
 			Seen: []SeenMember{{
 				ID: "intruder", Opposed: true, Standing: true, DistanceCells: 2,
 			}},
 		},
-		Answer{Away: &Selector{Word: SelectorEnemy}},
-	).(Routed)
+		Answer{Away: &Selector{Word: SelectorEnemy, Target: TargetClosest}},
+	)).(Routed)
 	s.Require().True(ok, "and so does a run")
 	s.Equal("encounter:table:away", away.Cause.String(), "which is not the same word")
 
@@ -296,15 +296,15 @@ func (s *TableSuite) TestAnAttackThatCannotLandStillGoesOutAsTheAttack() {
 		Budget: TurnBudget{AttacksLeft: 1, MovementFeet: 30},
 	}
 
-	got := d.attackIntent(view, Answer{Attack: &Selector{Word: SelectorEnemy}})
+	got := intentOf(d.attackIntent(view, Answer{Attack: &Selector{Word: SelectorEnemy, Target: TargetClosest}}))
 	s.Equal(Attack{Target: "bard", Action: scimitar}, got,
 		"out of reach: the author's first action, for the encounter to refuse and tell")
 
 	view.Seen[0].InReach[bow] = true
-	got = d.attackIntent(view, Answer{Attack: &Selector{Word: SelectorEnemy}})
+	got = intentOf(d.attackIntent(view, Answer{Attack: &Selector{Word: SelectorEnemy, Target: TargetClosest}}))
 	s.Equal(Attack{Target: "bard", Action: bow}, got, "the first action that reaches, in the author's order")
 
-	got = d.attackIntent(view, Answer{Attack: &Selector{Word: SelectorAttacker}})
+	got = intentOf(d.attackIntent(view, Answer{Attack: &Selector{Word: SelectorAttacker}}))
 	s.Equal(Attack{Action: scimitar}, got, "a selector that named nobody is an Attack with no target")
 }
 
@@ -324,12 +324,12 @@ func (s *TableSuite) TestTowardATargetInReachIsAPassThatNamesItself() {
 		Budget: TurnBudget{MovementFeet: 30},
 	}
 
-	got := d.towardIntent(view, Answer{Toward: &Selector{Word: SelectorEnemy}})
+	got := intentOf(d.towardIntent(view, Answer{Toward: &Selector{Word: SelectorEnemy, Target: TargetClosest}}))
 	s.Equal(Pass{Cause: tableCauseToward, Why: "already in reach"}, got)
 
 	view.Seen[0].InReach[scimitar] = false
 	view.Seen[0].Path = []spatial.Position{{X: 1, Y: 0}}
-	got = d.towardIntent(view, Answer{Toward: &Selector{Word: SelectorEnemy}})
+	got = intentOf(d.towardIntent(view, Answer{Toward: &Selector{Word: SelectorEnemy, Target: TargetClosest}}))
 	s.IsType(Move{}, got, "out of reach, it still walks")
 }
 
@@ -373,7 +373,7 @@ func pauseTable() Table {
 	return Table{AnswerTime: {
 		{Weight: 100, Hold: true,
 			When: []When{{Deed: "attacked", Within: 2, Scope: ScopeActor}}},
-		{Weight: 1, Attack: &Selector{Word: SelectorEnemy},
+		{Weight: 1, Attack: &Selector{Word: SelectorEnemy, Target: TargetClosest},
 			When: []When{{Enemy: EnemyReach}}},
 		{Weight: 1, Hold: true, When: []When{{Enemy: EnemyNone}}},
 	}}
@@ -436,7 +436,7 @@ func (s *TableSuite) TestBeingHitIsNotAPause() {
 func (s *TableSuite) TestTheAllyReadingFeedsARowThatFires() {
 	table := Table{AnswerTime: {
 		// "A friend has been struck in the last three rounds: avenge it."
-		{Weight: 100, Attack: &Selector{Word: SelectorEnemy},
+		{Weight: 100, Attack: &Selector{Word: SelectorEnemy, Target: TargetClosest},
 			When: []When{{Deed: "attacked", Within: 3, Scope: ScopeAlly}}},
 		{Weight: 1, Hold: true},
 	}}
@@ -471,3 +471,7 @@ func (s *TableSuite) TestTheAllyReadingFeedsARowThatFires() {
 	s.Require().NoError(err)
 	s.IsType(Pass{}, decision.Intent, "the span is a span, whoever it was about")
 }
+
+// intentOf is the intent half of a driver word's answer, for the tests that
+// pin the intent and not the policy that named its target.
+func intentOf(intent TurnIntent, _ TargetPolicy) TurnIntent { return intent }

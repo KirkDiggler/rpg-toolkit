@@ -128,6 +128,7 @@ func tableBeatBody(
 			"when":     when,
 			"word":     answerWord(row),
 			"selector": selectorWord(row),
+			"target":   string(targetPolicyOf(row)),
 			"weight":   row.Weight,
 			"say":      row.Say,
 			"fact":     string(row.Fact),

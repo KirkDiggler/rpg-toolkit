@@ -90,6 +90,10 @@ type (
 	// SelectorWord is a selector's word.
 	SelectorWord = behavior.SelectorWord
 
+	// TargetPolicy is how an `enemy` picks its member: closest, or the one
+	// who attacked it (rpg-project#669).
+	TargetPolicy = behavior.TargetPolicy
+
 	// Temper is the temperament loading a creature's die.
 	Temper = behavior.Temper
 
@@ -166,6 +170,15 @@ const (
 	// (rpg-project#569 R10): legal on `toward` and `away`, refused on
 	// `attack`. Resolved here ([TableDriver]); sealed in mind/behavior.
 	SelectorSound = behavior.SelectorSound
+
+	// TargetClosest is the nearest opposed member in sight, else remembered:
+	// what `enemy` always meant, and the dialect's default.
+	TargetClosest = behavior.TargetClosest
+
+	// TargetAttacker is the opposed member whose attack on the creature it
+	// witnessed most recently, while it still holds them in sight
+	// ([TableDriver]); otherwise the closest (rpg-project#669).
+	TargetAttacker = behavior.TargetAttacker
 )
 
 // EnemyWords and SelectorWords are the sealed vocabularies, for the dialect's
@@ -176,6 +189,9 @@ var (
 
 	// SelectorWords is every selector word.
 	SelectorWords = behavior.SelectorWords
+
+	// TargetPolicies is every value `target:` takes.
+	TargetPolicies = behavior.TargetPolicies
 
 	// WhenDeeds is every word a `when: { <deed>: { within: N } }` may name,
 	// in the author's own past tense.

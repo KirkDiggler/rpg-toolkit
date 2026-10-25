@@ -121,7 +121,7 @@ func TestTheTableIsDescribedBeforeItsFirstAnswer(t *testing.T) {
 	require.Len(t, rows, len(silenceTable()[encounter.AnswerTime]), "every row of the key, as authored")
 	require.Equal(t, map[string]any{
 		"entry": 1.0, "when": []any{"attacked within 3"}, "word": "toward", "selector": "attacker",
-		"weight": 2.0, "say": "", "fact": "", "search": nil,
+		"target": "", "weight": 2.0, "say": "", "fact": "", "search": nil,
 	}, rows[1])
 	var whens []any
 	for _, r := range rows {

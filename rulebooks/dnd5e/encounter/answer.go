@@ -367,6 +367,10 @@ type answeredBy struct {
 	verb     string
 	option   string
 	beaten   bool
+
+	// targeted is the policy that named the row's enemy, a `time` pick's
+	// only ([Decision.Targeted]).
+	targeted TargetPolicy
 }
 
 // answeredBeatBody is the beat's payload for one pick — ONE BODY for a spoken
@@ -396,6 +400,8 @@ func answeredBeatBody(by answeredBy, chosen *Pick) map[string]interface{} {
 		"temper":     chosen.Temper,
 		"word":       answerWord(chosen.Answer),
 		"selector":   selectorWord(chosen.Answer),
+		"target":     string(targetPolicyOf(chosen.Answer)),
+		"targeted":   string(by.targeted),
 		"say":        chosen.Answer.Say,
 		"fact":       string(chosen.Answer.Fact),
 	}
@@ -491,6 +497,20 @@ func selectorWord(entry Answer) string {
 	}
 
 	return string(sel.Word)
+}
+
+// targetPolicyOf is the target policy the entry's `enemy` names as
+// authored, or empty for a row that selects no enemy (rpg-project#669). The
+// record writes it as `target`, and the policy that actually named the member
+// as `targeted`: `attacker` and `closest` is a fallback.
+func targetPolicyOf(entry Answer) TargetPolicy {
+	for _, sel := range []*Selector{entry.Attack, entry.Toward, entry.Away} {
+		if sel != nil {
+			return sel.Target
+		}
+	}
+
+	return ""
 }
 
 // validateTable refuses a table this composition could not roll: a trigger

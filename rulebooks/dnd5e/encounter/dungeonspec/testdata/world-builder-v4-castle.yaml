@@ -373,12 +373,17 @@ tables:
       # swinging at him.
       - when: [{ fact: guards-turned }, { enemy: none }]
         toward: { at: { q: 10, r: -19 } }
+      # Hand edit (smarter monsters S2, rpg-project#669): the captain goes for
+      # the one who hit him, past a nearer enemy, while he still sees them;
+      # otherwise the closest.
       - when:
           enemy: reach
         attack: enemy
+        target: attacker
       - when:
           enemy: seen
         toward: enemy
+        target: attacker
   answer-the-gate:
     time:
       - when:

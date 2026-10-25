@@ -77,6 +77,15 @@ type Decision struct {
 
 	// Pick is the roll that chose it, or nil when nothing was rolled.
 	Pick *Pick
+
+	// Targeted is the policy that named the member an `enemy` selector
+	// resolved to (rpg-project#669): [TargetAttacker] when the one who hit
+	// the creature was picked, [TargetClosest] when the nearest was —
+	// whether the row asked for closest or asked for its attacker and fell
+	// back. Empty when the row selected no enemy, or its enemy named nobody.
+	// The record writes it beside the row's own policy, so a fallback reads
+	// as one.
+	Targeted TargetPolicy
 }
 
 type MonsterView struct {

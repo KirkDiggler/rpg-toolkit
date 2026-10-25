@@ -72,13 +72,13 @@ func TestTheCastleWordsCompile(t *testing.T) {
 	require.Equal(t, encounter.SelectorSound, rows[1].Toward.Word)
 	require.Equal(t, encounter.SelectorSound, rows[2].Away.Word)
 
-	require.Equal(t, "alarm-raised", rows[3].When[0].Fact)
+	require.Equal(t, "alarm-raised", rows[3].When[0].Fact.Literal)
 
 	require.Equal(t, encounter.FactID("alarm-raised"), rows[4].Fact, "`fact` is a time word now")
 	require.Equal(t, "To arms! Intruders in the yard!", rows[4].Say)
 
 	require.Len(t, rows[5].When, 2, "the list form: both must hold")
-	require.Equal(t, "guards-turned", rows[5].When[0].Fact)
+	require.Equal(t, "guards-turned", rows[5].When[0].Fact.Literal)
 	require.NotNil(t, rows[5].When[1].Not)
 	require.Equal(t, encounter.EnemySeen, rows[5].When[1].Not.Enemy)
 }

@@ -141,7 +141,7 @@ func cellsFight(t *testing.T, compiled dungeonspec.Compiled) (*encounter.Encount
 	t.Helper()
 	swings := encounter.Table{encounter.AnswerTime: {
 		{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyReach}},
-			Attack: &encounter.Selector{Word: encounter.SelectorEnemy}},
+			Attack: &encounter.Selector{Word: encounter.SelectorEnemy, Target: encounter.TargetClosest}},
 		{Weight: 1, Hold: true},
 	}}
 	club := encounter.SheetFacts{SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: cellsClub, RangeFeet: 5}}}

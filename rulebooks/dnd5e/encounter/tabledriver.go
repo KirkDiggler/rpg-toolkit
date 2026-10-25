@@ -101,31 +101,39 @@ func (d TableDriver) Act(view MonsterView) (Decision, error) {
 		return Decision{}, fmt.Errorf("table driver %q: %w", view.Self, ErrBadAnswer)
 	}
 
-	intent, err := d.intentFor(view, chosen.Answer)
+	intent, targeted, err := d.intentFor(view, chosen.Answer)
 	if err != nil {
 		return Decision{}, err
 	}
 
-	return Decision{Intent: intent, Pick: chosen}, nil
+	return Decision{Intent: intent, Pick: chosen, Targeted: targeted}, nil
 }
 
-// intentFor translates one fired entry into the intent that carries it out.
-func (d TableDriver) intentFor(view MonsterView, entry Answer) (TurnIntent, error) {
+// intentFor translates one fired entry into the intent that carries it out,
+// and the policy that named its enemy when it selected one
+// ([Decision.Targeted]).
+func (d TableDriver) intentFor(view MonsterView, entry Answer) (TurnIntent, TargetPolicy, error) {
 	switch {
 	case entry.Hold:
-		return Pass{}, nil
+		return Pass{}, "", nil
 
 	case entry.Attack != nil:
-		return d.attackIntent(view, entry), nil
+		intent, targeted := d.attackIntent(view, entry)
+
+		return intent, targeted, nil
 
 	case entry.Toward != nil:
-		return d.towardIntent(view, entry), nil
+		intent, targeted := d.towardIntent(view, entry)
+
+		return intent, targeted, nil
 
 	case entry.Away != nil:
-		return d.awayIntent(view, entry), nil
+		intent, targeted := d.awayIntent(view, entry)
+
+		return intent, targeted, nil
 
 	case entry.Search != nil:
-		return d.searchIntent(view, *entry.Search), nil
+		return d.searchIntent(view, *entry.Search), "", nil
 
 	case entry.Fact != "", !entry.Flee && entry.Say != "":
 		// THE CREATURE SPENDS ITS TIME SAYING SOMETHING (rpg-project#569 R6):
@@ -134,7 +142,7 @@ func (d TableDriver) intentFor(view MonsterView, entry Answer) (TurnIntent, erro
 		// fact land where the pick's beat is written
 		// ([Encounter.answerTime]), because what was said and who heard it
 		// is the encounter's to land and not this driver's.
-		return Pass{}, nil
+		return Pass{}, "", nil
 
 	default:
 		// `flee` is a social word, refused under `time` by [validateTable]
@@ -142,7 +150,7 @@ func (d TableDriver) intentFor(view MonsterView, entry Answer) (TurnIntent, erro
 		// no line is refused by the dialect. Reaching here means a blob got
 		// past that, and the honest answer is a named error rather than a
 		// creature standing there for reasons nobody could find.
-		return nil, fmt.Errorf("table driver %q: %q under `time`: %w",
+		return nil, "", fmt.Errorf("table driver %q: %q under `time`: %w",
 			view.Self, answerWord(entry), ErrBadAnswer)
 	}
 }
@@ -165,14 +173,14 @@ func (d TableDriver) intentFor(view MonsterView, entry Answer) (TurnIntent, erro
 // here as well used to mean two judges, both silent: this one returned a Pass
 // and the encounter's own returned "turn over", and the story could not say
 // which, or that either had happened.
-func (d TableDriver) attackIntent(view MonsterView, entry Answer) TurnIntent {
+func (d TableDriver) attackIntent(view MonsterView, entry Answer) (TurnIntent, TargetPolicy) {
 	var first core.Ref
 	if len(view.Actions) > 0 {
 		first = view.Actions[0].Ref
 	}
-	target, ok := d.selectMember(view, entry, *entry.Attack)
+	target, targeted, ok := d.selectMember(view, entry, *entry.Attack, strikeTarget)
 	if !ok {
-		return Attack{Action: first}
+		return Attack{Action: first}, ""
 	}
 	for _, s := range view.Seen {
 		if s.ID != target {
@@ -180,12 +188,12 @@ func (d TableDriver) attackIntent(view MonsterView, entry Answer) TurnIntent {
 		}
 		for _, a := range view.Actions {
 			if s.InReach[a.Ref] {
-				return Attack{Target: target, Action: a.Ref}
+				return Attack{Target: target, Action: a.Ref}, targeted
 			}
 		}
 	}
 
-	return Attack{Target: target, Action: first}
+	return Attack{Target: target, Action: first}, targeted
 }
 
 // towardIntent walks toward the selected member's BELIEVED position, or the
@@ -199,16 +207,16 @@ func (d TableDriver) attackIntent(view MonsterView, entry Answer) TurnIntent {
 // has no such route on the view, so it goes out as a [Routed] the encounter
 // paths itself, which is TERMINAL: a creature walking to a cell somebody
 // wrote on the map has nothing else it was told to do there.
-func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
+func (d TableDriver) towardIntent(view MonsterView, entry Answer) (TurnIntent, TargetPolicy) {
 	cells := CellsFromFeet(view.Budget.MovementFeet)
 	if cells <= 0 {
-		return Pass{}
+		return Pass{}, ""
 	}
 
 	if at := entry.Toward.At; at != nil {
 		cell := *at
 
-		return Routed{Policy: MoveToward, AnchorAt: &cell, Cause: tableCauseToward}
+		return Routed{Policy: MoveToward, AnchorAt: &cell, Cause: tableCauseToward}, ""
 	}
 
 	if path := entry.Toward.Path; len(path) > 0 {
@@ -227,38 +235,38 @@ func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
 		// its waypoint and its turns there are not spent, so the patrol
 		// walks nowhere. Rows above this one still fire first.
 		if view.Dwelling {
-			return Pass{Cause: tableCauseToward, Why: towardDwelling}
+			return Pass{Cause: tableCauseToward, Why: towardDwelling}, ""
 		}
 		ahead, back := patrolStep(view.Position, path)
 		if len(ahead) == 0 {
 			return Routed{Policy: MoveToward, AnchorAt: &back, Cause: tableCauseToward,
-				Pause: pauseAt(entry.Toward, back)}
+				Pause: pauseAt(entry.Toward, back)}, ""
 		}
 		pause := pauseAt(entry.Toward, ahead[len(ahead)-1])
 		if len(ahead) > cells {
 			ahead = ahead[:cells]
 		}
 
-		return Move{Path: append([]spatial.Position(nil), ahead...), Pause: pause}
+		return Move{Path: append([]spatial.Position(nil), ahead...), Pause: pause}, ""
 	}
 
 	if entry.Toward.Word == SelectorSound {
 		cell, heard := soundFor(view.Sounds, entry.When)
 		if !heard {
-			return Pass{}
+			return Pass{}, ""
 		}
 
 		// A SOUND IS A TARGET, so the walk ends facing where it rang
 		// ([Routed.Heard]).
-		return Routed{Policy: MoveToward, AnchorAt: &cell, Heard: true, Cause: tableCauseToward}
+		return Routed{Policy: MoveToward, AnchorAt: &cell, Heard: true, Cause: tableCauseToward}, ""
 	}
 
-	target, ok := d.selectMember(view, entry, *entry.Toward)
+	target, targeted, ok := d.selectMember(view, entry, *entry.Toward, walkTarget)
 	if !ok {
-		return Pass{}
+		return Pass{}, targeted
 	}
 	if alreadyInReach(view, target) {
-		return Pass{Cause: tableCauseToward, Why: towardAlreadyInReach}
+		return Pass{Cause: tableCauseToward, Why: towardAlreadyInReach}, targeted
 	}
 	path := d.pathTo(view, target)
 	if len(path) == 0 {
@@ -271,10 +279,10 @@ func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
 		// is `enemy: lost`, and that pick's own beat is where the story
 		// says what it does about it.
 		if !d.inSight(view, target) {
-			return Pass{Loses: target}
+			return Pass{Loses: target}, targeted
 		}
 
-		return Pass{}
+		return Pass{}, targeted
 	}
 	if len(path) > cells {
 		path = path[:cells]
@@ -282,7 +290,7 @@ func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
 
 	// THE WALK NAMES WHO IT CLOSES ON, so the creature ends it facing them
 	// ([Move.Target]).
-	return Move{Path: append([]spatial.Position(nil), path...), Target: target}
+	return Move{Path: append([]spatial.Position(nil), path...), Target: target}, targeted
 }
 
 // pauseAt is the pause a route states for one of its waypoints
@@ -369,24 +377,24 @@ func alreadyInReach(view MonsterView, target MemberID) bool {
 // [Routed] RATHER THAN A PATH, because running away is a policy and not a
 // route: the board is what knows where the corners are, and a driver picking
 // its own cells would flee into one. Terminal, which is what running is.
-func (d TableDriver) awayIntent(view MonsterView, entry Answer) TurnIntent {
+func (d TableDriver) awayIntent(view MonsterView, entry Answer) (TurnIntent, TargetPolicy) {
 	if CellsFromFeet(view.Budget.MovementFeet) <= 0 {
-		return Pass{}
+		return Pass{}, ""
 	}
 	if entry.Away.Word == SelectorSound {
 		cell, heard := soundFor(view.Sounds, entry.When)
 		if !heard {
-			return Pass{}
+			return Pass{}, ""
 		}
 
-		return Routed{Policy: MoveAway, AnchorAt: &cell, Cause: tableCauseAway}
+		return Routed{Policy: MoveAway, AnchorAt: &cell, Cause: tableCauseAway}, ""
 	}
-	target, ok := d.selectMember(view, entry, *entry.Away)
+	target, targeted, ok := d.selectMember(view, entry, *entry.Away, walkTarget)
 	if !ok {
-		return Pass{}
+		return Pass{}, targeted
 	}
 
-	return Routed{Policy: MoveAway, Anchor: target, Cause: tableCauseAway}
+	return Routed{Policy: MoveAway, Anchor: target, Cause: tableCauseAway}, targeted
 }
 
 // searchIntent walks on from the nearest lost enemy's cell along the trail
@@ -526,12 +534,17 @@ func deedsForScope(view MonsterView, scope DeedScope) []HeldDeed {
 	}
 }
 
-// selectMember resolves a selector word against the view.
+// selectMember resolves a selector word against the view, and names the
+// target policy that picked an `enemy` ([Decision.Targeted]; empty for every
+// other word).
 //
-//   - `enemy`: the nearest opposed member in sight, else the nearest opposed
-//     member remembered. Opposition is the stance graph's answer, projected
-//     onto the view — "a mind is never handed a target it is not opposed to",
-//     which is what keeps a neutral creature from advancing on the party.
+//   - `enemy`: an opposed member, by the selector's policy
+//     ([Selector.Target]). `closest` is the nearest opposed member in sight,
+//     else the nearest remembered. `attacker` is [attackerHeld]'s member when
+//     there is one, and the closest otherwise — and says which. Opposition is
+//     the stance graph's answer, projected onto the view — "a mind is never
+//     handed a target it is not opposed to", which is what keeps a neutral
+//     creature from advancing on the party.
 //   - `attacker`: who last landed an attack on this creature, off its own
 //     held deeds.
 //   - `actor`: the actor of the deed this entry's `when` named, so `fled`
@@ -542,32 +555,96 @@ func deedsForScope(view MonsterView, scope DeedScope) []HeldDeed {
 //
 // ok=false is a selector that named nobody, which the caller turns into a
 // [Pass] with the pick still attached.
-func (d TableDriver) selectMember(view MonsterView, entry Answer, sel Selector) (MemberID, bool) {
+func (d TableDriver) selectMember(
+	view MonsterView, entry Answer, sel Selector, held targetHold,
+) (MemberID, TargetPolicy, bool) {
 	switch sel.Word {
 	case SelectorEnemy:
-		return nearestOpposed(view)
+		if sel.Target == TargetAttacker {
+			if id, ok := attackerHeld(view, held); ok {
+				return id, TargetAttacker, true
+			}
+		}
+		id, ok := nearestOpposed(view)
+		if !ok {
+			return "", "", false
+		}
+
+		return id, TargetClosest, true
 
 	case SelectorAttacker:
 		if held, ok := freshestDeed(deedsForScope(view, scopeOf(entry)), DeedAttack); ok && held.Actor != "" {
-			return held.Actor, true
+			return held.Actor, "", true
 		}
 
-		return "", false
+		return "", "", false
 
 	case SelectorActor:
 		when := deedWhen(entry.When)
 		if when == nil {
-			return "", false
+			return "", "", false
 		}
 		if held, ok := freshestDeed(deedsForScope(view, when.Scope), DeedVerbFor(when.Deed)); ok && held.Actor != "" {
-			return held.Actor, true
+			return held.Actor, "", true
 		}
 
-		return "", false
+		return "", "", false
 
 	default:
+		return "", "", false
+	}
+}
+
+// targetHold is how the creature must hold the one who hit it for `target:
+// attacker` to pick them: in sight, to strike; in sight or memory, to walk.
+type targetHold int
+
+const (
+	// strikeTarget is `attack`'s: a member the creature sees, standing.
+	strikeTarget targetHold = iota
+
+	// walkTarget is `toward`'s: seen standing, or remembered — the cell it
+	// last saw them on is somewhere to walk.
+	walkTarget
+)
+
+// attackerHeld is `target: attacker` (rpg-project#669): the opposed member
+// whose attack on this creature the creature itself witnessed MOST RECENTLY,
+// if it still holds them as the word needs ([targetHold]). ok=false sends
+// the caller to the closest.
+//
+// THE CREATURE'S OWN TESTIMONY, BOTH HALVES (R8). Who hit it is the freshest
+// [DeedAttack] it holds against itself ([MonsterView.Deeds]) — landed only
+// where it witnessed the blow, so an attack it never saw names nobody, and
+// another member's hit log is never read. Where that member is, is its own
+// sight testimony ([MonsterView.Seen], [MonsterView.Remembered]), never the
+// member's live cell.
+//
+// THE MOST RECENT ONE OR NONE. When the freshest attacker is out of sight the
+// policy falls back to the closest; it does not reach back for an older
+// attacker the creature happens to see, because the author wrote "the one who
+// hit it", not "anyone who ever did". A miss is still an attack ([DeedAttack]).
+// Ties on the stamp break on the actor's id ([freshestDeed], C8).
+func attackerHeld(view MonsterView, held targetHold) (MemberID, bool) {
+	deed, ok := freshestDeed(view.Deeds, DeedAttack)
+	if !ok || deed.Actor == "" {
 		return "", false
 	}
+	for _, s := range view.Seen {
+		if s.ID == deed.Actor && s.Opposed && s.Standing {
+			return s.ID, true
+		}
+	}
+	if held != walkTarget {
+		return "", false
+	}
+	for _, r := range view.Remembered {
+		if r.ID == deed.Actor && r.Opposed {
+			return r.ID, true
+		}
+	}
+
+	return "", false
 }
 
 // nearestOpposed is the nearest opposed member the view holds: sighted first,

@@ -1088,7 +1088,7 @@ func answerOf(entry AnswerSpec, o encounter.Orientation) encounter.Answer {
 		}
 	}
 
-	return encounter.Answer{
+	out := encounter.Answer{
 		Weight: weight,
 		Say:    entry.Say,
 		When:   whenOf(entry.When),
@@ -1099,6 +1099,28 @@ func answerOf(entry AnswerSpec, o encounter.Orientation) encounter.Answer {
 		Toward: selectorOf(entry.Toward, o),
 		Away:   selectorOf(entry.Away, o),
 		Search: search,
+	}
+	targetOf(&out, entry.Target)
+
+	return out
+}
+
+// targetOf puts the row's `target` on the selector it carries
+// (rpg-project#669): the written word on whichever selector it is, so a
+// policy on a cell or a sound reaches mind/behavior's refusal, and
+// [DefaultTargetPolicy] on an `enemy` that names none. The persisted row
+// therefore always names its policy.
+func targetOf(out *encounter.Answer, target *string) {
+	for _, sel := range []*encounter.Selector{out.Attack, out.Toward, out.Away} {
+		if sel == nil {
+			continue
+		}
+		switch {
+		case target != nil:
+			sel.Target = encounter.TargetPolicy(*target)
+		case sel.Word == encounter.SelectorEnemy:
+			sel.Target = DefaultTargetPolicy
+		}
 	}
 }
 

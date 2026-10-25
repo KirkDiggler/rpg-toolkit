@@ -21,25 +21,25 @@ import (
 // still to walk is walked, and an enemy in SIGHT with no route loses nothing.
 func (s *TableSuite) TestTowardARememberedEnemyWithNowhereLeftLosesIt() {
 	d := TableDriver{}
-	row := Answer{Toward: &Selector{Word: SelectorEnemy}}
+	row := Answer{Toward: &Selector{Word: SelectorEnemy, Target: TargetClosest}}
 	budget := TurnBudget{MovementFeet: 30}
 
 	nowhere := MonsterView{Budget: budget, Remembered: []RememberedMember{{
 		ID: "bard", Opposed: true, Position: spatialOrigin,
 	}}}
-	s.Equal(Pass{Loses: "bard"}, d.towardIntent(nowhere, row), "at the remembered cell, the memory is lost")
+	s.Equal(Pass{Loses: "bard"}, intentOf(d.towardIntent(nowhere, row)), "at the remembered cell, the memory is lost")
 
 	walking := nowhere
 	walking.Remembered = []RememberedMember{{
 		ID: "bard", Opposed: true, Position: spatialOrigin, Path: []spatial.Position{{X: 1, Y: 0}, spatialOrigin},
 	}}
 	s.Equal(Move{Path: []spatial.Position{{X: 1, Y: 0}, spatialOrigin}, Target: "bard"},
-		d.towardIntent(walking, row), "a route still to walk is walked")
+		intentOf(d.towardIntent(walking, row)), "a route still to walk is walked")
 
 	inSight := MonsterView{Budget: budget, Seen: []SeenMember{{
 		ID: "bard", Opposed: true, Standing: true, DistanceCells: 4,
 	}}}
-	s.Equal(Pass{}, d.towardIntent(inSight, row), "a seen enemy with no route is still seen: nothing is lost")
+	s.Equal(Pass{}, intentOf(d.towardIntent(inSight, row)), "a seen enemy with no route is still seen: nothing is lost")
 }
 
 // TestASearchWalksToTheTrailsNthCell is R4 at the driver: the nearest opposed

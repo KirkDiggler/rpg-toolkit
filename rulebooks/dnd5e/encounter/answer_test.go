@@ -1272,7 +1272,7 @@ func TestACrossbowOnTheWorldClockRaisesTheAlarmRatherThanFreezing(t *testing.T) 
 		encounter.MemberInput{ID: "bandit", Kind: encounter.KindMonster, Faction: "watch",
 			Position: spatial.Position{X: 1, Y: 1}, Table: encounter.Table{encounter.AnswerTime: {
 				{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyReach}},
-					Attack: &encounter.Selector{Word: encounter.SelectorEnemy}},
+					Attack: &encounter.Selector{Word: encounter.SelectorEnemy, Target: encounter.TargetClosest}},
 				{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemySeen}}, Say: "To arms!", Fact: hAlarm},
 				{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyNone}},
 					Toward: &encounter.Selector{Path: route}},

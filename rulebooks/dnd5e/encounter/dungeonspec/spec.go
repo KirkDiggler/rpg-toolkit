@@ -1327,6 +1327,20 @@ type AnswerSpec struct {
 	//	    - { when: { enemy: lost },       search: { distance: 6, heading: went } }
 	Search *SearchSpec `yaml:"search,omitempty"`
 
+	// Target is how the row's `enemy` picks its member: `closest` or
+	// `attacker` (rpg-project#669), and [DefaultTargetPolicy] when omitted.
+	// `attacker` is the enemy whose attack on the creature it witnessed most
+	// recently, while it still sees them (or, for `toward`, remembers them);
+	// otherwise the closest, and the record says it fell back. Legal on an
+	// `attack: enemy` or `toward: enemy` row; `away: enemy` takes `closest`
+	// only, and every other selector none.
+	//
+	//	on:
+	//	  time:
+	//	    - { when: { enemy: reach }, attack: enemy, target: attacker }
+	//	    - { when: { enemy: seen },  toward: enemy, target: attacker }
+	Target *string `yaml:"target,omitempty"`
+
 	// Line is the file line this entry was written on, captured at decode so
 	// the validator can point an author at it.
 	//
@@ -1353,6 +1367,10 @@ const DefaultSearchDistance = 6
 // DefaultSearchHeading is the heading a `search` with no `heading` follows:
 // the way the quarry went (rpg-project#679 R10).
 const DefaultSearchHeading = encounter.HeadingWent
+
+// DefaultTargetPolicy is the policy an `enemy` with no `target` picks by:
+// the closest, what `enemy` always meant (rpg-project#669).
+const DefaultTargetPolicy = encounter.TargetClosest
 
 // SearchSpec is `search: { distance: N, heading: <word> }`. A pointer
 // distance so an omitted one is told from a written zero: omitted is
@@ -2243,7 +2261,7 @@ func (r *AnswerSpec) UnmarshalYAML(value *yaml.Node) error {
 			}}
 		}
 		switch key {
-		case "weight", "say", "when", "fact", "flee", "hold", "attack", "toward", "away", "search":
+		case "weight", "say", "when", "fact", "flee", "hold", "attack", "toward", "away", "search", "target":
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.AnswerSpec",
 				value.Content[i].Line, key)

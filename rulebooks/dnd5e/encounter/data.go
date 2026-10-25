@@ -1524,6 +1524,12 @@ type SelectorData struct {
 	// rpg-project#624), 0 where a waypoint states none. Omitted when no
 	// waypoint states one.
 	Waits []int `json:"waits,omitempty"`
+
+	// Target is an `enemy`'s target policy ([Selector.Target],
+	// rpg-project#669). Omitted on every other selector, where it is empty;
+	// an `enemy` that reloads without one is refused at the door, so a save
+	// that dropped it cannot come back as a wordless row.
+	Target string `json:"target,omitempty"`
 }
 
 // TemperData is the persistent representation of a resolved [Temper]: the
@@ -1642,7 +1648,7 @@ func selectorDataFrom(sel *Selector) *SelectorData {
 	if sel == nil {
 		return nil
 	}
-	out := &SelectorData{Word: string(sel.Word)}
+	out := &SelectorData{Word: string(sel.Word), Target: string(sel.Target)}
 	if sel.At != nil {
 		out.At = &PositionData{X: sel.At.X, Y: sel.At.Y}
 	}
@@ -1740,7 +1746,7 @@ func selectorFromData(data *SelectorData) *Selector {
 	if data == nil {
 		return nil
 	}
-	out := &Selector{Word: SelectorWord(data.Word)}
+	out := &Selector{Word: SelectorWord(data.Word), Target: TargetPolicy(data.Target)}
 	if data.At != nil {
 		out.At = &spatial.Position{X: data.At.X, Y: data.At.Y}
 	}

@@ -628,7 +628,7 @@ func (e *Encounter) runIntents(
 		// whichever player verb raised the clock that drew it.
 		if decision.Pick != nil && (j == startJ || len(decision.Pick.Candidates) > 0) {
 			if perr := e.inAct("time", "", func() error {
-				if berr := e.appendPickBeat(activeID, decision.Pick); berr != nil {
+				if berr := e.appendPickBeat(activeID, decision.Pick, decision.Targeted); berr != nil {
 					return berr
 				}
 				// WHAT THE PICK SAID, AFTER THE PICK (rpg-project#569 R6): the
@@ -705,7 +705,11 @@ func (e *Encounter) runIntents(
 // THE AUDIENCE IS THE MEMBER'S OWN SUBJECT AUDIENCE, which v1 still sends to
 // everyone ([Encounter.audienceFor]). A social answer's audience is the
 // witnesses of the verb that caused it; nothing caused this but time.
-func (e *Encounter) appendPickBeat(member MemberID, chosen *Pick) error {
+//
+// TARGETED IS THE DRIVER'S ([Decision.Targeted]): the policy that named the
+// enemy the row acted on, written beside the row's own policy so a
+// `target: attacker` that fell back reads as one (rpg-project#669).
+func (e *Encounter) appendPickBeat(member MemberID, chosen *Pick, targeted TargetPolicy) error {
 	at := uint64(e.clock.ToData().HighWater)
 	// THE SYMBOLS FIRST (rpg-project#674): the member's own table for this
 	// key, described before the first pick that indexes it — the table the
@@ -716,7 +720,7 @@ func (e *Encounter) appendPickBeat(member MemberID, chosen *Pick) error {
 		}
 	}
 
-	payload, err := json.Marshal(answeredBeatBody(answeredBy{creature: member}, chosen))
+	payload, err := json.Marshal(answeredBeatBody(answeredBy{creature: member, targeted: targeted}, chosen))
 	if err != nil {
 		return fmt.Errorf("pick beat: %w", err)
 	}

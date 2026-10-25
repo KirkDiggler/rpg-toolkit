@@ -617,6 +617,11 @@ func (g *grammar) wordLegality(at, key string, words []string, entry AnswerSpec)
 func (g *grammar) entrySelector(at, _ string, entry AnswerSpec) {
 	word, sel := entrySelectorOf(entry)
 	if sel == nil {
+		if entry.Target != nil {
+			g.fail(at+".target", "`target` picks which enemy a row strikes or walks to, and this row "+
+				"selects nobody: put it beside `attack: enemy` or `toward: enemy` (line %d)", entry.Line)
+		}
+
 		return
 	}
 	if route := selectorRoute(sel); len(route) > 0 {

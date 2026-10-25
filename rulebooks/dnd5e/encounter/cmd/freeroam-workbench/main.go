@@ -70,9 +70,9 @@ func goblinTable() encounter.Table {
 	return encounter.Table{
 		encounter.AnswerTime: {
 			{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemySeen}},
-				Toward: &encounter.Selector{Word: encounter.SelectorEnemy}},
+				Toward: &encounter.Selector{Word: encounter.SelectorEnemy, Target: encounter.TargetClosest}},
 			{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyRemembered}},
-				Toward: &encounter.Selector{Word: encounter.SelectorEnemy}},
+				Toward: &encounter.Selector{Word: encounter.SelectorEnemy, Target: encounter.TargetClosest}},
 			{Weight: 1, Hold: true},
 		},
 	}
