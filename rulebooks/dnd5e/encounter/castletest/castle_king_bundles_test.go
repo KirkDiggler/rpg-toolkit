@@ -4,11 +4,12 @@
 package castletest
 
 // castle_king_bundles_test.go is THE CASTLE'S BUNDLES IN THE RECORD
-// (rpg-project#670): gate-1's table is a tree now (pursuer, alarm-reactor
-// and patrol are `use:` lines), and the record says so. Its one `table` beat
-// carries the groups with their bundle, parameters and rows, and every
-// `answered` names the path it took through them: `[4, 0]` to the corner,
-// `[4, 1]` searching on, `[6, 0]` home on the loop.
+// (rpg-project#670): gate-1's table is a tree now — one `use: guard-base`
+// line, a bundle of bundles (pursuer, alarm-reactor, and patrol with the
+// guard's own route) — and the record says so. Its one `table` beat carries
+// the groups with their bundle, parameters and rows, and every `answered`
+// names the path it took through them: `[4, 0, 0]` to the corner,
+// `[4, 0, 1]` searching on, `[4, 2, 0]` home on the loop.
 
 import (
 	"encoding/json"
@@ -87,7 +88,14 @@ func TestMadKingGateGuardsTreeIsInTheRecord(t *testing.T) {
 	require.Len(t, tables, 1, "gate-1's time table is described once")
 	var rows []treeRow
 	require.NoError(t, json.Unmarshal(tables[0].Rows, &rows))
-	require.Len(t, rows, 7, "four word rows and three `use:` lines")
+	require.Len(t, rows, 5, "four word rows and one `use: guard-base` line")
+	base := rows[4]
+	require.Equal(t, "guard-base", base.From)
+	require.Equal(t, map[string]string{
+		"path": "[{q: -5, r: 8, wait: 1, facing: ne}, {q: -5, r: 10, wait: 1, facing: se}, {q: -7, r: 10}]"},
+		base.Params, "the guard's own route, passed to the base")
+	require.Empty(t, base.Word, "a group carries no word")
+	require.Len(t, base.Rows, 3, "the base is a bundle of bundles")
 	for i, want := range []struct {
 		from   string
 		inner  int
@@ -95,17 +103,15 @@ func TestMadKingGateGuardsTreeIsInTheRecord(t *testing.T) {
 	}{
 		{"pursuer", 2, map[string]string{"distance": "6", "heading": "went"}},
 		{"alarm-reactor", 1, map[string]string{}},
-		{"patrol", 1, map[string]string{
-			"path": "[{q: -5, r: 8, wait: 1, facing: ne}, {q: -5, r: 10, wait: 1, facing: se}, {q: -7, r: 10}]"}},
+		{"patrol", 1, base.Params},
 	} {
-		group := rows[4+i]
+		group := base.Rows[i]
 		require.Equal(t, want.from, group.From)
 		require.Len(t, group.Rows, want.inner)
-		require.Equal(t, want.params, group.Params)
+		require.Equal(t, want.params, group.Params, "%s's parameters; the route crossed one level down", want.from)
 		require.NotNil(t, group.As, "a group's `as` is written, empty for none")
-		require.Empty(t, group.Word, "a group carries no word")
 	}
-	require.Equal(t, "search", rows[4].Rows[1].Word)
+	require.Equal(t, "search", base.Rows[0].Rows[1].Word)
 	require.Nil(t, rows[0].Rows, "a word row carries no tree")
 
 	paths := make([][]int, 0, len(answers))
@@ -114,9 +120,9 @@ func TestMadKingGateGuardsTreeIsInTheRecord(t *testing.T) {
 		require.Equal(t, a.Path[0], a.Entry, "entry is the top of the path")
 		paths = append(paths, a.Path)
 	}
-	require.Contains(t, paths, []int{4, 0}, "to the corner, through the pursuer")
-	require.Contains(t, paths, []int{4, 1}, "the search, through the pursuer")
-	require.Contains(t, paths, []int{6, 0}, "home, through the patrol")
+	require.Contains(t, paths, []int{4, 0, 0}, "to the corner, through the base and the pursuer")
+	require.Contains(t, paths, []int{4, 0, 1}, "the search, through the base and the pursuer")
+	require.Contains(t, paths, []int{4, 2, 0}, "home, through the base and the patrol")
 
 	for _, a := range answers {
 		if len(a.Path) < 2 {
