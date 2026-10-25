@@ -286,7 +286,7 @@ func TestUnknownKeysInsideTheSiteKeysAreNamed(t *testing.T) {
 			want: FieldError{
 				Path: "height",
 				Message: `"height" is not a key this build reads: ` +
-					"they are concealments, dispositions, endings, exits, factions, intel, key, play, room, scenarios, tables, templates, version",
+					"they are bundles, concealments, dispositions, endings, exits, factions, intel, key, play, room, scenarios, tables, templates, version",
 			},
 		},
 		{
@@ -329,7 +329,7 @@ func TestTheSiteDocumentReportsEveryUnknownKey(t *testing.T) {
 	require.ErrorAs(t, err, &validation)
 	require.Equal(t, []FieldError{
 		{Path: "height", Message: `"height" is not a key this build reads: ` +
-			"they are concealments, dispositions, endings, exits, factions, intel, key, play, room, scenarios, tables, templates, version"},
+			"they are bundles, concealments, dispositions, endings, exits, factions, intel, key, play, room, scenarios, tables, templates, version"},
 		{Path: "room.room.monsterBindings.goblin-1.tempre",
 			Message: `"tempre" is not a key this build reads: they are actions, addActions, arrives, dropActions, faction, holds, on, options, table, temper`},
 	}, validation.Errors, "both of them, in the order they were written")

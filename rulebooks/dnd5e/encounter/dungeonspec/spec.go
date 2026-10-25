@@ -127,12 +127,14 @@ package dungeonspec
 
 import (
 	"fmt"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
@@ -1327,6 +1329,42 @@ type AnswerSpec struct {
 	//	    - { when: { enemy: lost },       search: { distance: 6, heading: went } }
 	Search *SearchSpec `yaml:"search,omitempty"`
 
+	// Use makes this row a GROUP: its answer is the named bundle's rows,
+	// rolled when the group is picked (rpg-project#670, R12). The bundle is
+	// declared once under the root `bundles:` ([SingleRoomSpec.Bundles]) and
+	// used by name wherever a table wants that behaviour:
+	//
+	//	time:
+	//	  - use: pursuer
+	//	    with: { distance: 8 }
+	//	    weight: 2
+	//	    as: toward
+	//
+	// A `use:` row takes `weight`, an optional `when` (a gate on the whole
+	// group), `as` and `with`, and NOTHING ELSE a row can carry: it has no
+	// word, no `search`, no `say` and no `fact` of its own — its rows do.
+	Use *string `yaml:"use,omitempty"`
+
+	// With is the bundle's parameters for this use, by name: each replaces
+	// every scalar `$name` in the bundle's rows, whole (a route can be a
+	// parameter). A name the bundle does not declare is refused, and so is a
+	// declared one with no default that this use does not give.
+	With map[string]yaml.Node `yaml:"with,omitempty"`
+
+	// As is the temperament word a group counts as (rpg-project#670 R13):
+	// one of attack, toward, away, flee or hold, or omitted for none, which
+	// loads the group at 100.
+	As *string `yaml:"as,omitempty"`
+
+	// Rows, From and Params are a `use:` row RESOLVED: the bundle's rows with
+	// the parameters substituted, the bundle's name, and every parameter's
+	// value, defaults included, as written. NOT AUTHORED: filled by
+	// [resolveBundles] before the grammar or the compiler reads the row, and
+	// never marshalled back, so a re-encoded file still says `use:`.
+	Rows   []AnswerSpec      `yaml:"-" json:"-"`
+	From   string            `yaml:"-" json:"-"`
+	Params map[string]string `yaml:"-" json:"-"`
+
 	// Line is the file line this entry was written on, captured at decode so
 	// the validator can point an author at it.
 	//
@@ -1678,12 +1716,42 @@ func decodeHeard(body *yaml.Node) (*HeardSpec, error) {
 	if heard.Within != nil {
 		out.Within = *heard.Within
 	}
+	// A PATTERN IS JUDGED AGAINST THE SOUNDS THIS FILE CAN HEAR
+	// (rpg-project#684 L3): a pattern that matches none of them is a
+	// condition that can never hold, refused rather than accepted as "never
+	// fires". Whether it compiles is mind/behavior's sentence, asked on the
+	// form ([grammar.entryShape]).
+	if pattern, ok := patternOf(out.Kind); ok {
+		if pattern == "" {
+			return nil, fmt.Errorf("line %d: `heard: { kind: // }` is a pattern between empty slashes, "+
+				"and names no sound", body.Line)
+		}
+		if _, err := regexp.Compile(pattern); err == nil && !anySoundMatches(nameOf(out.Kind)) {
+			return nil, fmt.Errorf("line %d: `heard` kind %s matches no sound this file makes: they are %s",
+				body.Line, out.Kind, strings.Join(encounter.SoundKinds, ", "))
+		}
+
+		return out, nil
+	}
 	if out.Kind != "" && !knownSoundKind(out.Kind) {
 		return nil, fmt.Errorf("line %d: `heard: { kind: %s }` is not a sound this build makes: they are %s",
 			body.Line, out.Kind, strings.Join(encounter.SoundKinds, ", "))
 	}
 
 	return out, nil
+}
+
+// anySoundMatches reports whether a `heard` kind's pattern matches at least
+// one of [encounter.SoundKinds]: every sound a file can make, since any
+// creature in it can swing, speak, force a door or cast.
+func anySoundMatches(kind behavior.Name) bool {
+	for _, k := range encounter.SoundKinds {
+		if kind.Matches(k) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // knownSoundKind reports whether a kind is one of [encounter.SoundKinds].
@@ -2243,7 +2311,8 @@ func (r *AnswerSpec) UnmarshalYAML(value *yaml.Node) error {
 			}}
 		}
 		switch key {
-		case "weight", "say", "when", "fact", "flee", "hold", "attack", "toward", "away", "search":
+		case "weight", "say", "when", "fact", "flee", "hold", "attack", "toward", "away", "search",
+			"use", "with", "as":
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.AnswerSpec",
 				value.Content[i].Line, key)

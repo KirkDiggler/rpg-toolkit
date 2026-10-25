@@ -171,6 +171,19 @@ type SingleRoomSpec struct {
 	// asked where a package may import it. See [TemplateSpec].
 	Templates map[string]TemplateSpec `yaml:"templates,omitempty" json:"templates,omitempty"`
 
+	// Bundles are the named groups of rows this site declared, keyed by id
+	// (rpg-project#670, R12): a behaviour authored once and used as one row,
+	// `use: <id>`, on any table, binding or option that wants it. Optional;
+	// absent means none, and every document authored before this key existed
+	// decodes, compiles and marshals exactly as it did.
+	//
+	// AT THE ROOT, BESIDE `tables:`, BY RULE 3 of the placement law: a bundle
+	// stands nowhere and is named from wherever it is used. The compiler
+	// resolves every `use:` into the row's group arm with its parameters
+	// substituted ([resolveBundles]), so the engine holds the tree and never
+	// a name. See [BundleSpec].
+	Bundles map[string]BundleSpec `yaml:"bundles,omitempty" json:"bundles,omitempty"`
+
 	Room RoomSource `yaml:"room" json:"room"`
 }
 

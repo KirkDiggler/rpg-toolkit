@@ -208,7 +208,7 @@ func TestAConcealmentIsRefusedForWhatItCannotBe(t *testing.T) {
 func TestTheUnknownKeyRefusalOffersConcealments(t *testing.T) {
 	errs := refusals(t, v4With("concealmets:\n  vault: { checks: [] }", ""))
 	requireExactDefect(t, errs, "concealmets",
-		`"concealmets" is not a key this build reads: they are concealments, dispositions, endings, `+
+		`"concealmets" is not a key this build reads: they are bundles, concealments, dispositions, endings, `+
 			"exits, factions, intel, key, play, room, scenarios, tables, templates, version")
 }
 

@@ -1074,6 +1074,9 @@ func answerOf(entry AnswerSpec, o encounter.Orientation) encounter.Answer {
 	if entry.Weight != nil {
 		weight = *entry.Weight
 	}
+	if entry.Use != nil {
+		return groupOf(entry, weight, o)
+	}
 	fact := ""
 	if entry.Fact != nil {
 		fact = *entry.Fact
@@ -1101,6 +1104,30 @@ func answerOf(entry AnswerSpec, o encounter.Orientation) encounter.Answer {
 		Away:   selectorOf(entry.Away, o),
 		Search: search,
 	}
+}
+
+// groupOf compiles a resolved `use:` row (rpg-project#670): the group arm,
+// its rows compiled as rows, and the bundle's name and parameters carried for
+// the record. A word, a line or a fact on the row is refused at the form
+// before a compile runs, so none is carried here.
+func groupOf(entry AnswerSpec, weight int, o encounter.Orientation) encounter.Answer {
+	out := encounter.Answer{
+		Weight: weight,
+		When:   whenOf(entry.When),
+		Rows:   rowsOf(entry.Rows, o),
+		From:   entry.From,
+	}
+	if entry.As != nil {
+		out.As = *entry.As
+	}
+	if len(entry.Params) > 0 {
+		out.Params = make(map[string]string, len(entry.Params))
+		for k, v := range entry.Params {
+			out.Params[k] = v
+		}
+	}
+
+	return out
 }
 
 // optionsOf compiles a binding's lines (rpg-project#569): each option's check
@@ -1353,6 +1380,7 @@ func CompileTable(source string) (encounter.Table, error) {
 		Add:     func(path, message string) { errs = append(errs, FieldError{Path: path, Message: message}) },
 		Members: newMembers(nil),
 		Cells:   floorCells{orientation: orientations["pointy"], owner: map[spatial.Position]int{}},
+		Facts:   factsIn(onLists(on)),
 	})
 	g.placeOn("table", on)
 	if len(errs) > 0 {

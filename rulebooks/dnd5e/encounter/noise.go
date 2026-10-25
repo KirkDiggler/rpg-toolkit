@@ -126,13 +126,6 @@ func soundOf(cause string) (kind string, dc int, ok bool) {
 	return kind, soundDCs[kind], true
 }
 
-// knownSoundKind reports whether a kind is one of [SoundKinds].
-func knownSoundKind(kind string) bool {
-	_, ok := soundDCs[kind]
-
-	return ok
-}
-
 // soundKindNamed reports whether a `heard` kind names a sound this build
 // makes: a literal that is one of [SoundKinds], or a pattern that matches at
 // least one of them. A pattern matching nothing this build makes is a

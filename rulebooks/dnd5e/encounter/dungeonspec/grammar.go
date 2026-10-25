@@ -5,6 +5,7 @@ package dungeonspec
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -314,6 +315,18 @@ type grammarInput struct {
 	// Members is the cast; Cells is the frame.
 	Members members
 	Cells   cells
+
+	// Facts is every fact id this document can set: what its rows teach and
+	// what its records reveal (rpg-project#670, #684 L3). A `fact` pattern
+	// in a `when` that matches none of them is a condition that can never
+	// hold, and is refused. [factsIn] builds it.
+	Facts map[string]bool
+
+	// Bundled says the dialect resolved `use:` rows against its `bundles:`
+	// ([resolveBundles]) before this grammar runs, and reported every name
+	// it could not. A dialect with no `bundles:` leaves it false, and a
+	// `use:` row there is refused here.
+	Bundled bool
 }
 
 // grammar judges one document's gameplay vocabulary, reporting every defect
@@ -342,6 +355,10 @@ type grammar struct {
 	factionMembers map[string][]int
 	mindValid      map[string]bool
 	dispositionAt  map[[2]string]int
+
+	// facts and bundled are [grammarInput.Facts] and [grammarInput.Bundled].
+	facts   map[string]bool
+	bundled bool
 }
 
 // newGrammar builds the grammar one dialect's document is judged by.
@@ -353,6 +370,8 @@ func newGrammar(in grammarInput) *grammar {
 		members:              in.Members,
 		cells:                in.Cells,
 		tables:               in.Tables,
+		facts:                in.Facts,
+		bundled:              in.Bundled,
 	}
 }
 
@@ -522,6 +541,20 @@ func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {
 			*entry.Weight)
 	}
 
+	// A GROUP ROW IS ITS OWN SHAPE (rpg-project#670): no word of its own,
+	// and its rows judged one by one beneath it.
+	if entry.Use != nil {
+		g.groupEntry(at, key, entry)
+
+		return
+	}
+	if entry.With != nil {
+		g.fail(at+".with", "%s (line %d)", errWithWithoutUse, entry.Line)
+	}
+	if entry.As != nil {
+		g.fail(at+".as", "%s (line %d)", errAsWithoutUse, entry.Line)
+	}
+
 	// An empty `fact:` is its own sentence rather than a missing word: the
 	// author wrote the key, so they meant to teach something. Reported
 	// INSTEAD of the no-word refusal below, not beside it — two defects for
@@ -531,6 +564,18 @@ func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {
 
 		return
 	}
+	// A ROW TEACHES ONE FACT, BY NAME (rpg-project#684 L2): a pattern is a
+	// value of a `when` kind, matching names already authored, and a fact
+	// the world learns has to be one.
+	if entry.Fact != nil {
+		if _, pattern := patternOf(*entry.Fact); pattern {
+			g.fail(at+".fact", "a row teaches one fact by its name, and %s is a pattern: a pattern only "+
+				"matches facts, in a `when` (line %d)", *entry.Fact, entry.Line)
+
+			return
+		}
+	}
+	g.whenPatterns(at, entry.When)
 
 	words := entryWords(entry)
 	switch {
@@ -550,6 +595,74 @@ func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {
 	g.entryShape(at, entry)
 }
 
+// groupEntry judges a `use:` row (rpg-project#670): it carries no word, no
+// `search`, no `say` and no `fact` of its own; its `as` and its own `when`
+// are judged as a group's; and every row the bundle gave it is judged under
+// the same key, at `<at>.rows[j]`, as any row is.
+//
+// THE NAME AND THE PARAMETERS WERE JUDGED ALREADY ([resolveBundles]), at the
+// same paths, so a group the resolver could not fill is not judged again
+// here: one mistake, one defect.
+func (g *grammar) groupEntry(at, key string, entry AnswerSpec) {
+	if !g.bundled {
+		g.fail(at+".use", "`use: %s` names a bundle, and only a version 4 document declares `bundles:` "+
+			"(line %d)", *entry.Use, entry.Line)
+
+		return
+	}
+	if len(entry.When) > 0 && key != string(encounter.AnswerTime) {
+		g.fail(at+".when",
+			"`%s` is already the condition — a `when` under it asks when a thing that just happened happened (line %d)",
+			key, entry.When[0].Line)
+	}
+	g.whenPatterns(at, entry.When)
+	if entry.Rows == nil {
+		return
+	}
+	g.entryShape(at, entry)
+	for j, row := range entry.Rows {
+		g.answerEntry(fmt.Sprintf("%s.rows[%d]", at, j), key, row)
+	}
+}
+
+// whenPatterns refuses a `fact` pattern, anywhere in a row's `when` (a
+// `not` included), that matches no fact this document can set
+// (rpg-project#684 L3). A `heard` pattern was judged at decode, against the
+// sounds a file can make. Whether a pattern compiles is mind/behavior's
+// sentence ([grammar.entryShape]); one that does not is not judged here.
+func (g *grammar) whenPatterns(at string, list WhenListSpec) {
+	for i := range list {
+		for w := &list[i]; w != nil; w = w.Not {
+			pattern, ok := patternOf(w.Fact)
+			if !ok {
+				continue
+			}
+			if pattern == "" {
+				g.fail(at+".when", "`fact: //` is a pattern between empty slashes, and names no fact (line %d)",
+					w.Line)
+				continue
+			}
+			if _, err := regexp.Compile(pattern); err != nil {
+				continue
+			}
+			if !g.factMatches(nameOf(w.Fact)) {
+				g.fail(at+".when", "`fact` %s matches no fact this file sets (line %d)", w.Fact, w.Line)
+			}
+		}
+	}
+}
+
+// factMatches reports whether a pattern matches a fact this document sets.
+func (g *grammar) factMatches(name behavior.Name) bool {
+	for id := range g.facts {
+		if name.Matches(id) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // entryShape asks mind/behavior the questions it owns about this row — a
 // `path` only on `toward`, `sound` never on `attack` and only on a row that
 // listens with `heard`, one target per selector, one condition per `when`
@@ -563,12 +676,32 @@ func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {
 // trimmed off: it names a Go package, and the form shows an author a sentence.
 func (g *grammar) entryShape(at string, entry AnswerSpec) {
 	compiled := answerOf(entry, encounter.HexesArePointyTop())
+	if entry.Use != nil {
+		// A GROUP IS ASKED AS WRITTEN: any word the `use:` row carries is
+		// compiled beside its rows, so mind/behavior refuses the group that
+		// carries one in its own sentence. Its rows are judged one by one at
+		// their own paths ([grammar.groupEntry]), so here each stands in as a
+		// bare hold: an inner row's fault is reported once, at the row.
+		written := entry
+		written.Use = nil
+		compiled = answerOf(written, encounter.HexesArePointyTop())
+		compiled.Rows = make([]encounter.Answer, len(entry.Rows))
+		for i := range compiled.Rows {
+			compiled.Rows[i] = encounter.Answer{Weight: 1, Hold: true}
+		}
+		if entry.As != nil {
+			compiled.As = *entry.As
+		}
+		compiled.From = entry.From
+	}
 	err := compiled.Validate()
 	if err == nil {
 		return
 	}
 	sentence := err.Error()
-	for _, sentinel := range []error{behavior.ErrBadSelector, behavior.ErrBadWhen, behavior.ErrBadSearch} {
+	for _, sentinel := range []error{
+		behavior.ErrBadSelector, behavior.ErrBadWhen, behavior.ErrBadSearch, behavior.ErrBadGroup,
+	} {
 		sentence = strings.TrimSuffix(sentence, ": "+sentinel.Error())
 	}
 	g.fail(at, "%s (line %d)", sentence, entry.Line)
