@@ -23,6 +23,10 @@ import (
 // position and never reads it, which is the whole of what the test needs.
 var someCell = spatial.Position{X: 3, Y: 4}
 
+// lit is a literal [behavior.Name]: the plain string a `fact` or a `heard`
+// kind was before patterns existed, and still is when no pattern is written.
+func lit(name string) behavior.Name { return behavior.Name{Literal: name} }
+
 // table_test.go is THE CREATURE'S TABLE, pinned (rpg-project#465): the
 // layering, the conditions, the loaded die, and the deal.
 //
@@ -906,7 +910,7 @@ func (s *TableSuite) pickTime(table behavior.Table, facts behavior.Facts) int {
 // N+1 does not — and a sound of another kind is not this condition.
 func (s *TableSuite) TestHeardHoldsInsideItsWindowAndForItsKind() {
 	table := behavior.Table{behavior.KeyTime: {
-		{Weight: 1, When: []behavior.When{{Heard: &behavior.HeardWhen{Kind: "clang", Within: 2}}},
+		{Weight: 1, When: []behavior.When{{Heard: &behavior.HeardWhen{Kind: lit("clang"), Within: 2}}},
 			Toward: &behavior.Selector{At: &someCell}},
 		{Weight: 1, Hold: true},
 	}}
@@ -935,7 +939,7 @@ func (s *TableSuite) TestHeardHoldsInsideItsWindowAndForItsKind() {
 // among the facts this creature holds, and nothing else answers it.
 func (s *TableSuite) TestFactHoldsWhenTheCreatureKnowsIt() {
 	table := behavior.Table{behavior.KeyTime: {
-		{Weight: 1, When: []behavior.When{{Fact: "alarm-raised"}}, Toward: &behavior.Selector{At: &someCell}},
+		{Weight: 1, When: []behavior.When{{Fact: lit("alarm-raised")}}, Toward: &behavior.Selector{At: &someCell}},
 		{Weight: 1, Hold: true},
 	}}
 
@@ -952,7 +956,7 @@ func (s *TableSuite) TestFactHoldsWhenTheCreatureKnowsIt() {
 func (s *TableSuite) TestEveryWhenInTheListMustHold() {
 	table := behavior.Table{behavior.KeyTime: {
 		{Weight: 1, When: []behavior.When{
-			{Fact: "guards-turned"},
+			{Fact: lit("guards-turned")},
 			{Not: &behavior.When{Enemy: behavior.EnemySeen}},
 		}, Toward: &behavior.Selector{At: &someCell}},
 		{Weight: 1, Hold: true},
@@ -986,7 +990,7 @@ func (s *TableSuite) TestNotHoldsWhenItsConditionDoesNot() {
 		}}
 	}
 	notSeen := row(behavior.When{Not: &behavior.When{Enemy: behavior.EnemySeen}})
-	notHeard := row(behavior.When{Not: &behavior.When{Heard: &behavior.HeardWhen{Kind: "clang", Within: 2}}})
+	notHeard := row(behavior.When{Not: &behavior.When{Heard: &behavior.HeardWhen{Kind: lit("clang"), Within: 2}}})
 	notNotSeen := row(behavior.When{Not: &behavior.When{Not: &behavior.When{Enemy: behavior.EnemySeen}}})
 	clang := []sound.Sound{{Kind: "clang", At: 5}}
 
@@ -1010,12 +1014,12 @@ func (s *TableSuite) TestAWhenNamesExactlyOneCondition() {
 		says string
 	}{
 		{name: "two conditions",
-			when: behavior.When{Enemy: behavior.EnemySeen, Heard: &behavior.HeardWhen{Kind: "clang", Within: 2}},
+			when: behavior.When{Enemy: behavior.EnemySeen, Heard: &behavior.HeardWhen{Kind: lit("clang"), Within: 2}},
 			says: "a `when` entry names `enemy` and `heard`; give each its own entry in the list, " +
 				"and every entry must hold: behavior: when cannot be read"},
 		{name: "three conditions",
 			when: behavior.When{
-				Deed: "attacked", Within: 2, Fact: "alarm-raised",
+				Deed: "attacked", Within: 2, Fact: lit("alarm-raised"),
 				Not: &behavior.When{Enemy: behavior.EnemySeen},
 			},
 			says: "a `when` entry names `attacked`, `fact` and `not`; give each its own entry in the list, " +
@@ -1025,7 +1029,7 @@ func (s *TableSuite) TestAWhenNamesExactlyOneCondition() {
 			says: "a `when` entry names no condition; give it one of `enemy`, `attacked`, `intimidated`, " +
 				"`persuaded`, `fled`, `heard`, `fact` or `not`: behavior: when cannot be read"},
 		{name: "two conditions inside a not",
-			when: behavior.When{Not: &behavior.When{Enemy: behavior.EnemySeen, Fact: "alarm-raised"}},
+			when: behavior.When{Not: &behavior.When{Enemy: behavior.EnemySeen, Fact: lit("alarm-raised")}},
 			says: "inside `not`: a `when` entry names `enemy` and `fact`; give each its own entry in the list, " +
 				"and every entry must hold: behavior: when cannot be read"},
 		{name: "heard with no kind",
@@ -1033,11 +1037,11 @@ func (s *TableSuite) TestAWhenNamesExactlyOneCondition() {
 			says: "`heard` needs a `kind`, the sound it listens for: " +
 				"behavior: when cannot be read"},
 		{name: "heard with a span of zero",
-			when: behavior.When{Heard: &behavior.HeardWhen{Kind: "clang"}},
+			when: behavior.When{Heard: &behavior.HeardWhen{Kind: lit("clang")}},
 			says: "`heard` within 0: a span is counted from 1: behavior: when cannot be read"},
 	} {
 		s.Run(tc.name, func() {
-			entry := behavior.Answer{Weight: 1, When: []behavior.When{{Fact: "fine"}, tc.when}, Hold: true}
+			entry := behavior.Answer{Weight: 1, When: []behavior.When{{Fact: lit("fine")}, tc.when}, Hold: true}
 			err := entry.Validate()
 			s.Require().ErrorIs(err, behavior.ErrBadWhen)
 			s.EqualError(err, tc.says)
@@ -1047,8 +1051,8 @@ func (s *TableSuite) TestAWhenNamesExactlyOneCondition() {
 	ok := behavior.Answer{Weight: 1, Hold: true, When: []behavior.When{
 		{Enemy: behavior.EnemyNone},
 		{Deed: "attacked", Within: 2},
-		{Heard: &behavior.HeardWhen{Kind: "clang", Within: 2}},
-		{Fact: "alarm-raised"},
+		{Heard: &behavior.HeardWhen{Kind: lit("clang"), Within: 2}},
+		{Fact: lit("alarm-raised")},
 		{Not: &behavior.When{Not: &behavior.When{Enemy: behavior.EnemySeen}}},
 	}}
 	s.NoError(ok.Validate(), "one condition per entry, however many entries")
@@ -1191,7 +1195,7 @@ func (s *TableSuite) TestSoundIsAPlaceToWalkToOrFrom() {
 	s.Contains(behavior.SelectorWords, behavior.SelectorSound)
 	s.Equal(behavior.SelectorWord("sound"), behavior.SelectorSound)
 
-	heard := []behavior.When{{Heard: &behavior.HeardWhen{Kind: "clang", Within: 2}}}
+	heard := []behavior.When{{Heard: &behavior.HeardWhen{Kind: lit("clang"), Within: 2}}}
 	s.NoError((&behavior.Answer{Weight: 1, When: heard,
 		Toward: &behavior.Selector{Word: behavior.SelectorSound}}).Validate())
 	s.NoError((&behavior.Answer{Weight: 1, When: heard,
@@ -1211,7 +1215,7 @@ func (s *TableSuite) TestAHeardSpanBelowOneHoldsNothing() {
 	for _, within := range []int{0, -1} {
 		s.Run(fmt.Sprintf("within %d", within), func() {
 			table := behavior.Table{behavior.KeyTime: {
-				{Weight: 1, When: []behavior.When{{Heard: &behavior.HeardWhen{Kind: "clang", Within: within}}},
+				{Weight: 1, When: []behavior.When{{Heard: &behavior.HeardWhen{Kind: lit("clang"), Within: within}}},
 					Toward: &behavior.Selector{At: &someCell}},
 				{Weight: 1, Hold: true},
 			}}
@@ -1232,7 +1236,7 @@ func (s *TableSuite) TestADeedsSpanAndScopeBelongOnlyBesideADeed() {
 		when behavior.When
 		says string
 	}{
-		{name: "a span beside a fact", when: behavior.When{Fact: "alarm-raised", Within: 3},
+		{name: "a span beside a fact", when: behavior.When{Fact: lit("alarm-raised"), Within: 3},
 			says: "a `when` entry names `fact` with a deed's `within` or scope; " +
 				"those belong only beside a deed: behavior: when cannot be read"},
 		{name: "a scope beside an enemy band", when: behavior.When{Enemy: behavior.EnemySeen, Scope: behavior.ScopeAlly},
@@ -1269,14 +1273,14 @@ func (s *TableSuite) TestASelectorNamingNoTargetIsRefused() {
 func (s *TableSuite) TestSoundNeedsARowThatListened() {
 	const says = "`sound` needs a `heard` condition on the row: " +
 		"the sound it walks to is the one the row listened for: behavior: selector cannot be read"
-	clang := &behavior.HeardWhen{Kind: "clang", Within: 2}
+	clang := &behavior.HeardWhen{Kind: lit("clang"), Within: 2}
 
 	for _, tc := range []struct {
 		name string
 		when []behavior.When
 	}{
 		{name: "no when at all"},
-		{name: "a fact and no heard", when: []behavior.When{{Fact: "alarm-raised"}}},
+		{name: "a fact and no heard", when: []behavior.When{{Fact: lit("alarm-raised")}}},
 		{name: "a heard only inside a not", when: []behavior.When{{Not: &behavior.When{Heard: clang}}}},
 	} {
 		s.Run(tc.name, func() {
@@ -1292,7 +1296,7 @@ func (s *TableSuite) TestSoundNeedsARowThatListened() {
 	}
 
 	s.NoError((&behavior.Answer{Weight: 1,
-		When:   []behavior.When{{Fact: "alarm-raised"}, {Heard: clang}},
+		When:   []behavior.When{{Fact: lit("alarm-raised")}, {Heard: clang}},
 		Toward: &behavior.Selector{Word: behavior.SelectorSound}}).Validate(),
 		"a `heard` anywhere in the list is the row listening")
 }
@@ -1304,7 +1308,7 @@ func (s *TableSuite) TestSoundNeedsARowThatListened() {
 // is the affordability gate, and not the `heard` condition, being tested.
 func (s *TableSuite) TestAWalkToASoundIsAbsentWhenNoSoundIsHeld() {
 	listened := behavior.Table{behavior.KeyTime: {
-		{Weight: 1, When: []behavior.When{{Heard: &behavior.HeardWhen{Kind: "clang", Within: 3}}},
+		{Weight: 1, When: []behavior.When{{Heard: &behavior.HeardWhen{Kind: lit("clang"), Within: 3}}},
 			Toward: &behavior.Selector{Word: behavior.SelectorSound}},
 		{Weight: 1, Hold: true},
 	}}
