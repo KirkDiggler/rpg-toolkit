@@ -3,7 +3,10 @@
 
 package behavior
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+)
 
 // answer.go is ONE ROW of a creature's table: how likely it is, when it is
 // even on the table, what the creature says, and the one thing it does.
@@ -112,22 +115,82 @@ type Answer struct {
 	// OMITTED WHEN NIL, so a row that does not search marshals exactly as it
 	// did before the word existed and no compiled table moves.
 	Search *Search `json:",omitempty"`
+
+	// Rows makes this row a GROUP: its answer is a table, rolled when the
+	// group is picked (rpg-project#670, R12). A group is a candidate when its
+	// own When all hold and at least one of its rows is a candidate (R15); it
+	// loads its one Weight × the percent of [Answer.As], so a two-row branch
+	// takes one share beside a one-row sibling, not two; and when the die
+	// lands on it, a second die rolls over its own candidates ([Pick]).
+	//
+	// A GROUP CARRIES NO WORD. Its answer is its rows, so a group row sets no
+	// Hold, Attack, Toward, Away, Flee, Search, Say or Fact, and holds at
+	// least one row ([Answer.Validate], ErrBadGroup). Groups nest, to
+	// [MaxGroupDepth] (R14).
+	//
+	// THIS MODULE HOLDS THE TREE, NEVER A NAME. A bundle is the dialect's
+	// word; by the time a table reaches [Pick] every `use:` has been resolved
+	// into this arm with its parameters substituted, and nothing here looks
+	// a bundle up.
+	//
+	// Omitted when empty, with As, From and Params, so a word row marshals
+	// exactly as it did before groups existed.
+	Rows []Answer `json:",omitempty"`
+
+	// As is the temperament word a group counts as, one of [AsWords], or
+	// empty for none, which loads at 100 (R13). A group has no word of its
+	// own, so a coward's pursuer is whatever its author says it is: `as:
+	// toward` loads it at the coward's toward percent. Only a group carries
+	// it.
+	As string `json:",omitempty"`
+
+	// From is the bundle a group was compiled from, FOR THE RECORD ONLY: the
+	// table beat and the panel name the group by it. Nothing here reads it.
+	From string `json:",omitempty"`
+
+	// Params is the parameters a group's bundle was used with, as written,
+	// FOR THE RECORD ONLY: they were substituted into Rows at compile.
+	// Nothing here reads them.
+	Params map[string]string `json:",omitempty"`
 }
+
+// MaxGroupDepth is how deep groups nest: a group inside a group inside a
+// group, to this many levels (R14: unbounded in principle, refused only by
+// this guard). [Answer.Validate] refuses a deeper one, and [Pick], which
+// never validates, treats a group past it as absent, so a table built in Go
+// that holds itself is a dead row rather than a recursion without end.
+const MaxGroupDepth = 8
+
+// AsWords is every word a group's [Answer.As] may name: the five words a
+// [TemperProfile] carries a percent for. Exported for the dialect's refusal.
+var AsWords = []string{"attack", "toward", "away", "flee", "hold"}
 
 // Validate refuses what this module's own types cannot carry: a [When] in the
 // list that does not name exactly one condition ([When.Validate],
 // ErrBadWhen), and a [Selector] naming no target or more than one, a `path`
 // on a word other than `toward`, `sound` on `attack`, or `sound` on a row
 // whose list names no `heard` condition (ErrBadSelector, R10), and a `search`
-// distance below 1 or a heading not in [SearchHeadings] (ErrBadSearch). Each
-// refusal is a sentence for
-// the form, wrapping its sentinel.
+// distance below 1 or a heading not in [SearchHeadings] (ErrBadSearch), and
+// a group row ([Answer.Rows]) that carries a word, a search, a line or a fact
+// of its own, holds no rows, counts `as` a word not in [AsWords], or nests
+// past [MaxGroupDepth] (ErrBadGroup). Every row inside a group is validated
+// as a row, and its refusal names which row of the group it is. Each refusal
+// is a sentence for the form, wrapping its sentinel.
 //
 // THE REST IS THE CALLER'S DOOR, as it always was: the weight, the
-// one-outcome-word rule, which word is legal under which key, and which enemy,
+// one-outcome-word rule among a word row's words, which word is legal under
+// which key, and which enemy,
 // deed and selector words this build reads are refused by the dialect that
 // decoded the file, which calls this first.
 func (a *Answer) Validate() error {
+	return a.validate(0)
+}
+
+// validate is [Answer.Validate] for a row nested inside `nest` groups.
+func (a *Answer) validate(nest int) error {
+	if a.isGroup() {
+		return a.validateGroup(nest)
+	}
 	for i := range a.When {
 		if err := a.When[i].Validate(); err != nil {
 			return err
@@ -158,6 +221,67 @@ func (a *Answer) Validate() error {
 	}
 
 	return nil
+}
+
+// isGroup reports whether this row is a group: it holds rows, or carries
+// something only a group carries. A row with `as` and no rows is a group
+// with no rows, refused as one, not a word row with a stray field.
+func (a *Answer) isGroup() bool {
+	return a.Rows != nil || a.As != "" || a.From != "" || a.Params != nil
+}
+
+// validateGroup is the group arm's door: no word of its own, at least one
+// row, `as` a temperament word or nothing, no deeper than [MaxGroupDepth],
+// its own When, and every row inside, each refusal naming the row it is in.
+func (a *Answer) validateGroup(nest int) error {
+	if nest+1 > MaxGroupDepth {
+		return fmt.Errorf("a group nested %d deep; groups nest at most %d deep: %w",
+			nest+1, MaxGroupDepth, ErrBadGroup)
+	}
+	if carried := a.words(); len(carried) > 0 {
+		return fmt.Errorf("a group carries %s; a group's answer is its rows, so the word goes on a row "+
+			"inside it: %w", andList(carried), ErrBadGroup)
+	}
+	if len(a.Rows) == 0 {
+		return fmt.Errorf("a group holds no rows; a group is a table, and a table with no rows can never "+
+			"be picked: %w", ErrBadGroup)
+	}
+	if a.As != "" && !slices.Contains(AsWords, a.As) {
+		return fmt.Errorf("a group counts `as` %q; it counts as one of attack, toward, away, flee or hold, "+
+			"or as nothing: %w", a.As, ErrBadGroup)
+	}
+	for i := range a.When {
+		if err := a.When[i].Validate(); err != nil {
+			return err
+		}
+	}
+	for i := range a.Rows {
+		if err := a.Rows[i].validate(nest + 1); err != nil {
+			return fmt.Errorf("row %d of the group: %w", i+1, err)
+		}
+	}
+
+	return nil
+}
+
+// words names every word, search, line and fact this row carries, as an
+// author writes each.
+func (a *Answer) words() []string {
+	var out []string
+	for _, w := range []struct {
+		name string
+		set  bool
+	}{
+		{"`hold`", a.Hold}, {"`attack`", a.Attack != nil}, {"`toward`", a.Toward != nil},
+		{"`away`", a.Away != nil}, {"`flee`", a.Flee}, {"`search`", a.Search != nil},
+		{"`say`", a.Say != ""}, {"`fact`", a.Fact != ""},
+	} {
+		if w.set {
+			out = append(out, w.name)
+		}
+	}
+
+	return out
 }
 
 // Search is `search: { distance: N, heading: <word> }`: how far on from a
