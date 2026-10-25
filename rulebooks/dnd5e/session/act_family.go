@@ -24,8 +24,10 @@ import (
 
 // recordOnly are R9's beats: written to the record, folded into no act —
 // trading's beats and prop interaction, until trading's use case brings
-// their act (Law 8).
+// their act (Law 8) — and a creature's described table (rpg-project#674),
+// which is the record's debug symbols and never anything a player is shown.
 var recordOnly = map[string]bool{
+	encounter.BeatTable:             true,
 	encounter.BeatTransferred:       true,
 	encounter.BeatInteracted:        true,
 	string(encounter.OutcomeBought): true,
