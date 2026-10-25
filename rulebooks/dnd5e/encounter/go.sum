@@ -8,6 +8,10 @@ github.com/KirkDiggler/rpg-toolkit/game v0.1.0 h1:jXYlCqkqK0LCHquu+1vgTEbedhgQbs
 github.com/KirkDiggler/rpg-toolkit/game v0.1.0/go.mod h1:6k+SKiGEAjeI4JRaQtVKOcsUsp3O/sDDee4GH9rl+WM=
 github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.12.0 h1:dSmE2mCbKKe8yYyeh3d2C4lamu/fTVV69al/lFi4xSg=
 github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.12.0/go.mod h1:Hx9+c1KAjPeno3m5XpKjp7VyUvnyG17tdsyC7yq80dA=
+github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.12.1-0.20261025205218-233f9b202fba h1:rieaudEshdJwIQHAlwzPgTUYDI4cE1Aapw1KA+E+SGM=
+github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.12.1-0.20261025205218-233f9b202fba/go.mod h1:Hx9+c1KAjPeno3m5XpKjp7VyUvnyG17tdsyC7yq80dA=
+github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.12.1-0.20261025205450-a7cfc5b8fbfd h1:e+Yvw1P+XHS0IRAlhxjSYmHZdu1unxkOS9yHyDlUnWM=
+github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.12.1-0.20261025205450-a7cfc5b8fbfd/go.mod h1:Hx9+c1KAjPeno3m5XpKjp7VyUvnyG17tdsyC7yq80dA=
 github.com/KirkDiggler/rpg-toolkit/mind/perception v0.3.0 h1:6gQDtn+xaS/APEL9goWd+pWwUXeVrK1iAnqyQSbcM6A=
 github.com/KirkDiggler/rpg-toolkit/mind/perception v0.3.0/go.mod h1:oSmM7omgDmbPZNO3zPblmPQXbceVMQWxIcDJjm8EBqw=
 github.com/KirkDiggler/rpg-toolkit/play/clock v0.1.0 h1:uKGivoRcgQW3sQ0I0G5ct0DkPBkSUwD/yX6bfK0i4XA=

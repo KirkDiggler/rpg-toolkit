@@ -367,6 +367,10 @@ type answeredBy struct {
 	verb     string
 	option   string
 	beaten   bool
+
+	// target is the member a `time` pick's intent acts on ([intentTarget]),
+	// empty for a spoken answer and for an intent that names nobody.
+	target MemberID
 }
 
 // answeredBeatBody is the beat's payload for one pick — ONE BODY for a spoken
@@ -397,6 +401,7 @@ func answeredBeatBody(by answeredBy, chosen *Pick) map[string]interface{} {
 		"temper":     chosen.Temper,
 		"word":       answerWord(chosen.Answer),
 		"selector":   selectorWord(chosen.Answer),
+		"target":     string(by.target),
 		"say":        chosen.Answer.Say,
 		"fact":       string(chosen.Answer.Fact),
 	}
@@ -477,6 +482,24 @@ func answerWord(entry Answer) string {
 		return "away"
 	case entry.Search != nil:
 		return "search"
+	default:
+		return ""
+	}
+}
+
+// intentTarget is the member an intent acts on: whom an attack strikes, whom a
+// walk closes on, whom a run is measured from — what the selector resolved to
+// (rpg-project#669), so the record says whom `attacker` named. Empty for an
+// intent that names nobody: a hold, a walk to a cell, a selector that found
+// no one.
+func intentTarget(intent TurnIntent) MemberID {
+	switch i := intent.(type) {
+	case Attack:
+		return i.Target
+	case Move:
+		return i.Target
+	case Routed:
+		return i.Anchor
 	default:
 		return ""
 	}

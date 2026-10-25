@@ -281,7 +281,32 @@ func factsFromView(view MonsterView) Facts {
 		in.sightings = append(in.sightings, factSighting{opposed: l.Opposed, lost: true})
 	}
 
-	return projectFacts(in)
+	facts := projectFacts(in)
+	// WHO THE CREATURE HOLDS PLACED, off its own sight testimony
+	// (rpg-project#669): what `attacker` needs to name somebody. Seen means
+	// in sight now and standing; in reach is the same reach `enemy: reach`
+	// and an Attack are judged by; remembered is a placed memory, somewhere
+	// to walk. Never anybody's live cell.
+	for _, s := range view.Seen {
+		if !s.Opposed || !s.Standing {
+			continue
+		}
+		facts.SeenFoes = append(facts.SeenFoes, s.ID)
+		for _, a := range view.Actions {
+			if s.InReach[a.Ref] {
+				facts.FoesInReach = append(facts.FoesInReach, s.ID)
+
+				break
+			}
+		}
+	}
+	for _, r := range view.Remembered {
+		if r.Opposed {
+			facts.RememberedFoes = append(facts.RememberedFoes, r.ID)
+		}
+	}
+
+	return facts
 }
 
 // heldDeedsAgainst is every deed this creature holds that was done TO IT,

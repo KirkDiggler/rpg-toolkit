@@ -373,6 +373,15 @@ tables:
       # swinging at him.
       - when: [{ fact: guards-turned }, { enemy: none }]
         toward: { at: { q: 10, r: -19 } }
+      # Hand edit (smarter monsters S2, rpg-project#669): the captain goes for
+      # whoever hit him in the last two rounds, past a nearer enemy: strikes
+      # them in reach, walks to them in sight or memory. Each row is on the
+      # table only while he holds his attacker so; otherwise the `enemy` rows
+      # below are the fallback, through the roll.
+      - when: { attacked: { within: 2 } }
+        attack: attacker
+      - when: { attacked: { within: 2 } }
+        toward: attacker
       - when:
           enemy: reach
         attack: enemy

@@ -157,13 +157,14 @@ func stayedBeats(beats []map[string]any) []map[string]any {
 	return out
 }
 
-// TestAnAttackRowWithItsTargetOutOfReachSaysWhy is rpg-toolkit#2000's walk,
-// reproduced through the shipped table driver: the bard mocks the goblin from
-// across the hall, the goblin's `time` table answers `attack: attacker`, and
-// the bard is out of reach. The turn used to go `answered … attack` and then
-// `turn-ended`, so nobody could tell a goblin that chose to stand from one
-// that could not reach. It now says so.
-func TestAnAttackRowWithItsTargetOutOfReachSaysWhy(t *testing.T) {
+// TestAnAttackRowWithItsAttackerOutOfReachIsNotOnTheTable is rpg-toolkit#2000's
+// walk under rpg-project#669: the bard mocks the goblin from across the hall
+// and the goblin's `time` table answers only `attack: attacker`. With the
+// bard out of reach the row is ABSENT (R15): the goblin holds, says so, and
+// its record shows the row held but could not be paid for. It used to fire
+// and be refused; a refused attack still says why, whoever drove it
+// ([TestARefusedAttackSaysWhyWhoeverDrove]).
+func TestAnAttackRowWithItsAttackerOutOfReachIsNotOnTheTable(t *testing.T) {
 	striker := &scriptedStriker{kind: encounter.OutcomeMissed}
 	enc := silenceScene(t, []encounter.MemberInput{
 		{ID: alice, Kind: encounter.KindPlayer, Position: seat(2, 3)},
@@ -181,11 +182,12 @@ func TestAnAttackRowWithItsTargetOutOfReachSaysWhy(t *testing.T) {
 	require.Equal(t, cellAt(8, 3), whereIs(t, enc, goblin), "`attack` does not walk")
 
 	beats := goblinBeats(t, enc)
-	require.Equal(t, []string{encounter.BeatTable, "answered:attack", encounter.BeatStayed, "turn-ended"},
-		beatWords(beats), "the table, the answer, why nothing happened, then the turn ends")
-	stayed := stayedBeats(beats)[0]
-	require.Equal(t, "encounter:intent:attack", stayed["cause"], "the word that did nothing")
-	require.Equal(t, "target out of reach", stayed["why"])
+	require.Equal(t, []string{encounter.BeatTable, "answered:hold", "turn-ended"},
+		beatWords(beats), "the table, then the empty hold: the attacker row was not on it")
+	rows := beats[1]["rows"].([]any)
+	verdict := rows[0].(map[string]any)
+	require.Equal(t, true, verdict["held"], "the goblin was attacked within 3")
+	require.Equal(t, false, verdict["affordable"], "but its attacker is out of reach")
 }
 
 // TestARefusedAttackSaysWhyWhoeverDrove is the arm half of #2000: the beat is
