@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
@@ -1418,7 +1419,7 @@ func rowsFromData(data []AnswerData) []Answer {
 func taughtOptionFactsOf(data []OptionData) []FactID {
 	var out []FactID
 	for _, o := range data {
-		for _, row := range append(append([]AnswerData(nil), o.Success...), o.Failure...) {
+		for _, row := range wordRowsData(append(append([]AnswerData(nil), o.Success...), o.Failure...)) {
 			if row.Fact != "" {
 				out = append(out, row.Fact)
 			}
@@ -1452,6 +1453,17 @@ type AnswerData struct {
 	// the row does not search, so every blob written before the word existed
 	// reads as it did.
 	Search *SearchData `json:"search,omitempty"`
+
+	// Rows, As, From and Params are a GROUP row ([Answer.Rows],
+	// rpg-project#670): its rows, the temperament word it counts as, and the
+	// bundle and parameters it was compiled from, for the record. ALL FOUR
+	// RIDE THE BLOB, the S1 lesson: a group saved without its rows would
+	// reload as a wordless row. Omitted on a word row, so every blob written
+	// before groups existed reads as it did.
+	Rows   []AnswerData      `json:"rows,omitempty"`
+	As     string            `json:"as,omitempty"`
+	From   string            `json:"from,omitempty"`
+	Params map[string]string `json:"params,omitempty"`
 }
 
 // SearchData is one persisted `search`: how many cells on from the lost cell.
@@ -1495,16 +1507,21 @@ type WhenData struct {
 	// Heard is a `heard: { kind, within }` condition, Fact a `fact: <id>`
 	// one, and Not the one condition a `not` wraps. Each omitted when it is
 	// not the condition this entry names.
-	Heard *HeardData `json:"heard,omitempty"`
-	Fact  string     `json:"fact,omitempty"`
-	Not   *WhenData  `json:"not,omitempty"`
+	//
+	// Fact and a `heard` kind are a [behavior.Name]: a literal is stored as
+	// the plain string it always was, and a pattern as `/…/`, so a blob
+	// written before patterns existed is byte-identical (rpg-project#670).
+	Heard *HeardData    `json:"heard,omitempty"`
+	Fact  behavior.Name `json:"fact,omitzero"`
+	Not   *WhenData     `json:"not,omitempty"`
 }
 
 // HeardData is the persistent representation of a [HeardWhen]: the sound's
-// kind and how many rounds it may be old and still count.
+// kind (a literal or a `/…/` pattern) and how many rounds it may be old and
+// still count.
 type HeardData struct {
-	Kind   string `json:"kind"`
-	Within int    `json:"within"`
+	Kind   behavior.Name `json:"kind"`
+	Within int           `json:"within"`
 }
 
 // SelectorData is the persistent representation of a [Selector]: the word,
@@ -1615,6 +1632,19 @@ func answerDataFrom(entry Answer) AnswerData {
 	for _, w := range entry.When {
 		out.When = append(out.When, whenDataFrom(w))
 	}
+	if entry.Rows != nil {
+		out.Rows = make([]AnswerData, 0, len(entry.Rows))
+		for _, row := range entry.Rows {
+			out.Rows = append(out.Rows, answerDataFrom(row))
+		}
+	}
+	out.As, out.From = entry.As, entry.From
+	if entry.Params != nil {
+		out.Params = make(map[string]string, len(entry.Params))
+		for k, v := range entry.Params {
+			out.Params[k] = v
+		}
+	}
 
 	return out
 }
@@ -1711,6 +1741,19 @@ func answerFromData(row AnswerData) Answer {
 	}
 	for _, w := range row.When {
 		out.When = append(out.When, whenFromData(w))
+	}
+	if row.Rows != nil {
+		out.Rows = make([]Answer, 0, len(row.Rows))
+		for _, inner := range row.Rows {
+			out.Rows = append(out.Rows, answerFromData(inner))
+		}
+	}
+	out.As, out.From = row.As, row.From
+	if row.Params != nil {
+		out.Params = make(map[string]string, len(row.Params))
+		for k, v := range row.Params {
+			out.Params[k] = v
+		}
 	}
 
 	return out
@@ -1837,11 +1880,26 @@ func undealtTemperFromData(d UndealtTemperData) Temper {
 func taughtFactsOf(data map[string][]AnswerData) []FactID {
 	var out []FactID
 	for _, rows := range data {
-		for _, row := range rows {
+		for _, row := range wordRowsData(rows) {
 			if row.Fact != "" {
 				out = append(out, row.Fact)
 			}
 		}
+	}
+
+	return out
+}
+
+// wordRowsData is [wordRows] over the blob's rows: every word row, a group's
+// rows in its place, so a fact taught one group down is still minted.
+func wordRowsData(rows []AnswerData) []AnswerData {
+	var out []AnswerData
+	for _, row := range rows {
+		if len(row.Rows) > 0 {
+			out = append(out, wordRowsData(row.Rows)...)
+			continue
+		}
+		out = append(out, row)
 	}
 
 	return out

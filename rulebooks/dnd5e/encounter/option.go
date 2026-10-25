@@ -719,7 +719,7 @@ func cloneRows(rows []Answer) []Answer {
 func optionFacts(options []Option) []FactID {
 	var out []FactID
 	for _, o := range options {
-		for _, row := range append(append([]Answer(nil), o.Success...), o.Failure...) {
+		for _, row := range wordRows(append(append([]Answer(nil), o.Success...), o.Failure...)) {
 			if row.Fact != "" {
 				out = append(out, row.Fact)
 			}

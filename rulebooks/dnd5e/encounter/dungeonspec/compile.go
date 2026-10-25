@@ -6,7 +6,9 @@ package dungeonspec
 import (
 	"fmt"
 	"sort"
+	"strings"
 
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 	"gopkg.in/yaml.v3"
@@ -1072,6 +1074,9 @@ func answerOf(entry AnswerSpec, o encounter.Orientation) encounter.Answer {
 	if entry.Weight != nil {
 		weight = *entry.Weight
 	}
+	if entry.Use != nil {
+		return groupOf(entry, weight, o)
+	}
 	fact := ""
 	if entry.Fact != nil {
 		fact = *entry.Fact
@@ -1099,6 +1104,30 @@ func answerOf(entry AnswerSpec, o encounter.Orientation) encounter.Answer {
 		Away:   selectorOf(entry.Away, o),
 		Search: search,
 	}
+}
+
+// groupOf compiles a resolved `use:` row (rpg-project#670): the group arm,
+// its rows compiled as rows, and the bundle's name and parameters carried for
+// the record. A word, a line or a fact on the row is refused at the form
+// before a compile runs, so none is carried here.
+func groupOf(entry AnswerSpec, weight int, o encounter.Orientation) encounter.Answer {
+	out := encounter.Answer{
+		Weight: weight,
+		When:   whenOf(entry.When),
+		Rows:   rowsOf(entry.Rows, o),
+		From:   entry.From,
+	}
+	if entry.As != nil {
+		out.As = *entry.As
+	}
+	if len(entry.Params) > 0 {
+		out.Params = make(map[string]string, len(entry.Params))
+		for k, v := range entry.Params {
+			out.Params[k] = v
+		}
+	}
+
+	return out
 }
 
 // optionsOf compiles a binding's lines (rpg-project#569): each option's check
@@ -1159,10 +1188,10 @@ func oneWhenOf(when *WhenSpec) encounter.When {
 		// The scope rides with the deed (rpg-toolkit#1883): the condition's
 		// own reading of WHOSE deed it is about.
 		Scope: when.Scope,
-		Fact:  when.Fact,
+		Fact:  nameOf(when.Fact),
 	}
 	if when.Heard != nil {
-		out.Heard = &encounter.HeardWhen{Kind: when.Heard.Kind, Within: when.Heard.Within}
+		out.Heard = &encounter.HeardWhen{Kind: nameOf(when.Heard.Kind), Within: when.Heard.Within}
 	}
 	if when.Not != nil {
 		inner := oneWhenOf(when.Not)
@@ -1170,6 +1199,28 @@ func oneWhenOf(when *WhenSpec) encounter.When {
 	}
 
 	return out
+}
+
+// nameOf reads a `heard` kind or a `fact` as the author wrote it
+// (rpg-project#670, R16): `/…/` is a pattern over authored names, anything
+// else the literal name it always was. The empty string is the zero name,
+// and `//` is refused at the form ([patternOf]) before a compile reads it.
+func nameOf(written string) behavior.Name {
+	if pattern, ok := patternOf(written); ok {
+		return behavior.Name{Pattern: pattern}
+	}
+
+	return behavior.Name{Literal: written}
+}
+
+// patternOf is the pattern a written name carries between its slashes, and
+// whether it is written as one.
+func patternOf(written string) (string, bool) {
+	if len(written) >= 2 && strings.HasPrefix(written, "/") && strings.HasSuffix(written, "/") {
+		return written[1 : len(written)-1], true
+	}
+
+	return "", false
 }
 
 // selectorOf compiles a selector, nil staying nil. THE CELL IS CONVERTED HERE,
@@ -1329,6 +1380,7 @@ func CompileTable(source string) (encounter.Table, error) {
 		Add:     func(path, message string) { errs = append(errs, FieldError{Path: path, Message: message}) },
 		Members: newMembers(nil),
 		Cells:   floorCells{orientation: orientations["pointy"], owner: map[spatial.Position]int{}},
+		Facts:   factsIn(onLists(on)),
 	})
 	g.placeOn("table", on)
 	if len(errs) > 0 {

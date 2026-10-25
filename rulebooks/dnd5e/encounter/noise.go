@@ -9,6 +9,7 @@ import (
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/sound"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -125,11 +126,19 @@ func soundOf(cause string) (kind string, dc int, ok bool) {
 	return kind, soundDCs[kind], true
 }
 
-// knownSoundKind reports whether a kind is one of [SoundKinds].
-func knownSoundKind(kind string) bool {
-	_, ok := soundDCs[kind]
+// soundKindNamed reports whether a `heard` kind names a sound this build
+// makes: a literal that is one of [SoundKinds], or a pattern that matches at
+// least one of them. A pattern matching nothing this build makes is a
+// condition that can never hold, refused rather than accepted as "never
+// fires" (rpg-project#684 L3).
+func soundKindNamed(kind behavior.Name) bool {
+	for _, known := range SoundKinds {
+		if kind.Matches(known) {
+			return true
+		}
+	}
 
-	return ok
+	return false
 }
 
 // forcedBy reports whether a beaten lock's applied route FORCED the door

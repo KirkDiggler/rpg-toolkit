@@ -645,6 +645,10 @@ func validateSingleRoom(s *SingleRoomSpec) (roomRead, []FieldError) {
 	// the call): every refusal about a faction, a disposition, a membership or
 	// an orders block is the one an author already gets from the other
 	// dialect, at this dialect's paths.
+	// THE BUNDLES BEFORE THE GRAMMAR (rpg-project#670): every `use:` row is
+	// resolved into its group's rows here, so the grammar below judges the
+	// rows a creature will roll, and the compile that follows reads them.
+	resolveBundles(s, add)
 	siteGrammar(s, add)
 
 	return read, e

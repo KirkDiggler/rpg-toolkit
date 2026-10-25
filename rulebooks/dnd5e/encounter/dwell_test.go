@@ -14,6 +14,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -221,7 +222,7 @@ func TestARowAboveThePatrolInterruptsTheDwellAndLeavingEndsIt(t *testing.T) {
 		},
 		at(noiseAlice, encounter.KindPlayer, 2, 5), at(noiseThug, encounter.KindMonster, 3, 5),
 		tabled(noiseKeen, 4, 2, encounter.Table{encounter.AnswerTime: {
-			{Weight: 1, When: []encounter.When{{Heard: &encounter.HeardWhen{Kind: encounter.SoundClang, Within: 2}}},
+			{Weight: 1, When: []encounter.When{{Heard: &encounter.HeardWhen{Kind: behavior.Name{Literal: encounter.SoundClang}, Within: 2}}},
 				Toward: &encounter.Selector{Word: encounter.SelectorSound}},
 			{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyNone}},
 				Toward: &encounter.Selector{Path: []spatial.Position{a, b, c},
