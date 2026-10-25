@@ -146,6 +146,11 @@ type MonsterView struct {
 	// an attack target and carries no concealed current-state facts.
 	Remembered []RememberedMember
 
+	// Lost are remembered members this monster searched for and did not find.
+	// Their last-known testimony and authored search trails are facts the
+	// driver may use for its next turn; they are never attack targets.
+	Lost []LostMember
+
 	// Budget is what remains of this member's turn.
 	Budget TurnBudget
 
@@ -179,6 +184,28 @@ type RememberedMember struct {
 	// Path is the exact-cell route toward Position; it is empty or nil when the
 	// remembered cell is unreachable.
 	Path []spatial.Position
+}
+
+// LostMember is one subject the monster searched for at its remembered cell
+// and did not find. Trails remain provider-authored navigation facts, keyed by
+// the heading word the table driver understands.
+type LostMember struct {
+	// ID identifies the lost member.
+	ID string
+
+	// Opposed is the current faction-graph answer for this member.
+	Opposed bool
+
+	// Position is the member's last-known, dungeon-absolute cell.
+	Position spatial.Position
+
+	// DistanceCells is the grid distance from the monster's current cell to
+	// Position.
+	DistanceCells float64
+
+	// Trails holds the authored search path for each heading word, in walk
+	// order. Its strings preserve the composition's opaque vocabulary.
+	Trails map[string][]spatial.Position
 }
 
 // Holding is this package's own twin of perception.Holding (S2): one piece
@@ -549,6 +576,23 @@ func projectMonsterView(view encounter.MonsterView) MonsterView {
 			Path:          append([]spatial.Position(nil), rm.Path...),
 		}
 	}
+	var lost []LostMember
+	if len(view.Lost) > 0 {
+		lost = make([]LostMember, len(view.Lost))
+		for i, lm := range view.Lost {
+			trails := make(map[string][]spatial.Position, len(lm.Trails))
+			for heading, trail := range lm.Trails {
+				trails[string(heading)] = append([]spatial.Position(nil), trail...)
+			}
+			lost[i] = LostMember{
+				ID:            string(lm.ID),
+				Opposed:       lm.Opposed,
+				Position:      lm.Position,
+				DistanceCells: lm.DistanceCells,
+				Trails:        trails,
+			}
+		}
+	}
 
 	var holdings []Holding
 	if len(view.Holdings) > 0 {
@@ -567,6 +611,7 @@ func projectMonsterView(view encounter.MonsterView) MonsterView {
 		At:         view.At,
 		Seen:       seen,
 		Remembered: remembered,
+		Lost:       lost,
 		Budget: TurnBudget{
 			AttacksLeft: view.Budget.AttacksLeft, MovementFeet: view.Budget.MovementFeet,
 			BonusActions: view.Budget.BonusActions,

@@ -132,13 +132,11 @@ func TestSessionMonsterArrivalSaveFailureRollsBackCorrection(t *testing.T) {
 
 // TestSessionMonsterArrivalPersistsCorrection proves the success twin through
 // the same load-act-save path, and its expectation flipped from this issue's
-// own (encounter#1691/#1692, adopted here by the rpg-toolkit#1702 version
-// bump): a ghost standing on the mover's own arrival cell no longer gets
-// rewritten to LocationUnknown. It keeps the last position it actually
-// observed — an honest, stale memory rather than an engine editing a
-// player's belief to patch staleness — so a successful driven arrival now
-// persists the SAME known, stale cell the rolled-back save above already
-// pins, and this test is what proves a real commit does not disturb it.
+// own (encounter#1691/#1692, adopted here by the encounter v0.143.0 version
+// bump): a ghost standing on the mover's own arrival cell is now marked lost.
+// It keeps the last position it actually observed, while the provider records
+// that searching there found nobody; a successful driven arrival must persist
+// that same lost, stale cell.
 // Session no longer reports a correction of its own either: IntelCorrection
 // is gone (rpg-toolkit#1702 deleted that dead reporting surface — encounter
 // stopped producing Corrected deltas back at #1691, so nothing was left to
@@ -151,8 +149,8 @@ func TestSessionMonsterArrivalPersistsCorrection(t *testing.T) {
 	})
 	require.NoError(t, err)
 	location := task6StoredLocation(t, encounters)
-	require.Equal(t, encounter.LocationKnown, location.State,
-		"the ghost keeps the stale cell it actually observed rather than being rewritten to unknown")
+	require.Equal(t, encounter.LocationLost, location.State,
+		"the ghost keeps the stale cell it actually observed while recording that it was searched")
 	require.Equal(t, spatial.Position{X: 0, Y: 0}, location.Position)
 	data, err := encounters.GetEncounter(context.Background(), "sess")
 	require.NoError(t, err)
