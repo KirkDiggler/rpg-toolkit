@@ -98,7 +98,7 @@ func TestTheHearingWordsAreRefusedOnTheForm(t *testing.T) {
 			name: "a route on `attack`",
 			on:   `on: { time: [ { attack: { path: [[23, 3], [23, 5]] } } ] }`,
 			path: "place[18].on.time[0]: ",
-			says: []string{"`attack` cannot take a `path`: a route is walked, and only `toward` walks one"},
+			says: []string{"`attack` cannot take a `path`: a route is walked, and only `toward` and `dash` walk one"},
 		},
 		{
 			name: "a route on `away`",

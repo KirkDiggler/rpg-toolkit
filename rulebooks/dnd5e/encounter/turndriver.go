@@ -198,6 +198,13 @@ type MonsterView struct {
 	// there are not spent. The table driver's patrol row holds while it is
 	// true; nothing else reads it.
 	Dwelling bool
+
+	// Threats is, for every opposed member this monster holds placed — in
+	// sight and standing, or remembered — where it could strike from on its
+	// next turn ([ThreatZone], rpg-project#671). Filled ONLY when this
+	// monster's `time` table names a `threat` condition somewhere, because
+	// it costs a flood per foe and nothing else reads it; nil otherwise.
+	Threats []ThreatZone
 }
 
 // RememberedMember is one other member's last-known position, projected from
@@ -234,6 +241,41 @@ type RememberedMember struct {
 	// Path is the exact-cell shortest route to Position. It contains no live
 	// standing or reach information and is nil when Position is unreachable.
 	Path []spatial.Position
+
+	// ReachTail is how many of Path's LAST cells a walk may leave untaken and
+	// still end with Position inside the reach of one of this monster's own
+	// actions (rpg-project#671): the route walks onto the remembered cell,
+	// and reach stops short of it. len(Path) when the monster already stands
+	// in reach. So `len(Path) - ReachTail` is the walk that brings the
+	// memory into reach, which is what `enemy: walk | dash | far` measure.
+	//
+	// ZERO, A HAND-BUILT VIEW'S VALUE, READS AS THE WHOLE PATH: the
+	// conservative answer, never a reach the monster does not have.
+	ReachTail int
+}
+
+// ThreatZone is where one opposed member this monster holds placed could
+// strike from on ITS next turn (rpg-project#671, R18): every cell within its
+// reach of a cell it can walk to (Walk), and of a cell only a dash brings it
+// to (Dash, excluding Walk's cells). Measured from where this monster
+// BELIEVES it stands — its current sighting or its memory, never a live read
+// — through this composition's own walls, at that member's sheet speed, and
+// with its longest-reaching action as its reach. What `threat:` reads off a
+// row's landing cell ([factsFromView]).
+//
+// CELLS, NOT A FUNCTION, for [MonsterView]'s reason: a view stays data. Both
+// lists are in scan order (X, then Y) so the same view is the same bytes.
+type ThreatZone struct {
+	// Member is the opposed member this zone is about.
+	Member MemberID
+
+	// Walk is every cell that member could strike on its next turn with a
+	// walk and its swing.
+	Walk []spatial.Position
+
+	// Dash is every cell it could strike only after a dash: inside the dash
+	// reach and not in Walk.
+	Dash []spatial.Position
 }
 
 // LostMember is one member this monster lost: its own testimony, marked lost,
@@ -498,6 +540,16 @@ type Move struct {
 	// waypoint). It moves nothing. A facing outside [0, 360) or a negative
 	// wait is a malformed intent ([ErrBadIntent]).
 	Pause *WaypointPause
+
+	// Dash says this walk is a RUN (rpg-project#671, R17): the table's
+	// `dash`, which spends the turn's swing for its movement twice over.
+	// The encounter charges it before the first step ([Encounter.spendDash]):
+	// on a turn the movement left doubles and the attack is gone, and a dash
+	// with the attack already spent is refused and told; on the world clock
+	// there is no swing to forfeit and the pace alone doubles. So Path may
+	// be up to twice the budget's cells. Every step's beat names the cause
+	// `encounter:table:dash`.
+	Dash bool
 }
 
 // isTurnIntent marks Move as a TurnIntent.
@@ -589,6 +641,11 @@ type Routed struct {
 	// over. Only with AnchorAt and [MoveToward]; empty for every other
 	// routed walk.
 	GivesUp MemberID
+
+	// Dash is [Move.Dash] for a routed walk — the table's `dash` at a cell,
+	// a sound, or back to a route: the walk is routed for the doubled
+	// movement the run buys, and costs what a dashing Move costs.
+	Dash bool
 }
 
 // isTurnIntent marks Routed as a TurnIntent.

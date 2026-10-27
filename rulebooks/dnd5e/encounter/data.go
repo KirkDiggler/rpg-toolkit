@@ -1448,7 +1448,11 @@ type AnswerData struct {
 	Hold   bool          `json:"hold,omitempty"`
 	Attack *SelectorData `json:"attack,omitempty"`
 	Toward *SelectorData `json:"toward,omitempty"`
-	Away   *SelectorData `json:"away,omitempty"`
+	// Dash is `dash: <selector>` (rpg-project#671, R17). Omitted when the
+	// row does not dash, so every blob written before the word existed
+	// reads as it did.
+	Dash *SelectorData `json:"dash,omitempty"`
+	Away *SelectorData `json:"away,omitempty"`
 	// Search is `search: { distance, heading }` (rpg-project#668 R4, #679). Omitted when
 	// the row does not search, so every blob written before the word existed
 	// reads as it did.
@@ -1514,6 +1518,11 @@ type WhenData struct {
 	Heard *HeardData    `json:"heard,omitempty"`
 	Fact  behavior.Name `json:"fact,omitzero"`
 	Not   *WhenData     `json:"not,omitempty"`
+
+	// Threat is a `threat: none | walk | dash` condition (rpg-project#671,
+	// R18). Omitted when empty, Scope's reason: a blob written before the
+	// word existed loads to the condition it always meant.
+	Threat string `json:"threat,omitempty"`
 }
 
 // HeardData is the persistent representation of a [HeardWhen]: the sound's
@@ -1624,6 +1633,7 @@ func answerDataFrom(entry Answer) AnswerData {
 		Hold:   entry.Hold,
 		Attack: selectorDataFrom(entry.Attack),
 		Toward: selectorDataFrom(entry.Toward),
+		Dash:   selectorDataFrom(entry.Dash),
 		Away:   selectorDataFrom(entry.Away),
 	}
 	if entry.Search != nil {
@@ -1653,7 +1663,7 @@ func answerDataFrom(entry Answer) AnswerData {
 func whenDataFrom(w When) WhenData {
 	out := WhenData{
 		Enemy: string(w.Enemy), Deed: w.Deed, Within: w.Within,
-		Scope: string(w.Scope), Fact: w.Fact,
+		Scope: string(w.Scope), Fact: w.Fact, Threat: string(w.Threat),
 	}
 	if w.Heard != nil {
 		out.Heard = &HeardData{Kind: w.Heard.Kind, Within: w.Heard.Within}
@@ -1734,6 +1744,7 @@ func answerFromData(row AnswerData) Answer {
 		Hold:   row.Hold,
 		Attack: selectorFromData(row.Attack),
 		Toward: selectorFromData(row.Toward),
+		Dash:   selectorFromData(row.Dash),
 		Away:   selectorFromData(row.Away),
 	}
 	if row.Search != nil {
@@ -1764,7 +1775,7 @@ func answerFromData(row AnswerData) Answer {
 func whenFromData(w WhenData) When {
 	out := When{
 		Enemy: EnemyWord(w.Enemy), Deed: w.Deed, Within: w.Within,
-		Scope: DeedScope(w.Scope), Fact: w.Fact,
+		Scope: DeedScope(w.Scope), Fact: w.Fact, Threat: behavior.ThreatWord(w.Threat),
 	}
 	if w.Heard != nil {
 		out.Heard = &HeardWhen{Kind: w.Heard.Kind, Within: w.Heard.Within}

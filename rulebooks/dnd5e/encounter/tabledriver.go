@@ -36,6 +36,7 @@ var (
 	tableCauseToward = core.Ref{Module: "encounter", Type: "table", ID: "toward"}
 	tableCauseAway   = core.Ref{Module: "encounter", Type: "table", ID: "away"}
 	tableCauseSearch = core.Ref{Module: "encounter", Type: "table", ID: "search"}
+	tableCauseDash   = core.Ref{Module: "encounter", Type: "table", ID: "dash"}
 )
 
 // TableDriver is THE ONE DRIVER: it rolls the creature's own authored table
@@ -119,7 +120,10 @@ func (d TableDriver) intentFor(view MonsterView, entry Answer) (TurnIntent, erro
 		return d.attackIntent(view, entry), nil
 
 	case entry.Toward != nil:
-		return d.towardIntent(view, entry), nil
+		return d.walkIntent(view, entry, *entry.Toward, walkPace(view)), nil
+
+	case entry.Dash != nil:
+		return d.walkIntent(view, entry, *entry.Dash, dashPace(view)), nil
 
 	case entry.Away != nil:
 		return d.awayIntent(view, entry), nil
@@ -188,8 +192,32 @@ func (d TableDriver) attackIntent(view MonsterView, entry Answer) TurnIntent {
 	return Attack{Target: target, Action: first}
 }
 
-// towardIntent walks toward the selected member's BELIEVED position, or the
-// authored cell, for this turn's movement.
+// pace is how far one walking row goes this turn and what it is called: a
+// `toward` walks the budget's cells, a `dash` runs twice as many
+// (rpg-project#671, R17). The cause names the word on every beat the walk
+// leaves, and dash marks the intent so the encounter charges the run.
+type pace struct {
+	cells int
+	cause core.Ref
+	dash  bool
+}
+
+// walkPace is a `toward` row's pace: the turn's movement left.
+func walkPace(view MonsterView) pace {
+	return pace{cells: CellsFromFeet(view.Budget.MovementFeet), cause: tableCauseToward}
+}
+
+// dashPace is a `dash` row's pace: the turn's movement left, twice
+// ([Encounter.spendDash] doubles the budget the same way when the run is
+// charged, so the cut here and the bound there are one number).
+func dashPace(view MonsterView) pace {
+	return pace{cells: 2 * CellsFromFeet(view.Budget.MovementFeet), cause: tableCauseDash, dash: true}
+}
+
+// walkIntent walks toward the selected member's BELIEVED position, or the
+// authored cell, for this turn's movement — `toward` at a walk and `dash` at a
+// run ([pace]); the two differ only in how many cells the walk is cut to,
+// the cause it names, and the run's flag.
 //
 // TWO SHAPES, AND THE DIFFERENCE IS WHO KNOWS THE PATH. A member the view can
 // see or remember arrives with a route already computed against this
@@ -199,19 +227,19 @@ func (d TableDriver) attackIntent(view MonsterView, entry Answer) TurnIntent {
 // has no such route on the view, so it goes out as a [Routed] the encounter
 // paths itself, which is TERMINAL: a creature walking to a cell somebody
 // wrote on the map has nothing else it was told to do there.
-func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
-	cells := CellsFromFeet(view.Budget.MovementFeet)
+func (d TableDriver) walkIntent(view MonsterView, entry Answer, sel Selector, p pace) TurnIntent {
+	cells := p.cells
 	if cells <= 0 {
 		return Pass{}
 	}
 
-	if at := entry.Toward.At; at != nil {
+	if at := sel.At; at != nil {
 		cell := *at
 
-		return Routed{Policy: MoveToward, AnchorAt: &cell, Cause: tableCauseToward}
+		return Routed{Policy: MoveToward, AnchorAt: &cell, Cause: p.cause, Dash: p.dash}
 	}
 
-	if path := entry.Toward.Path; len(path) > 0 {
+	if path := sel.Path; len(path) > 0 {
 		// ON THE ROUTE, THE LEG'S OWN CELLS; OFF IT, BACK TO THE NEAREST
 		// WAYPOINT ([patrolStep]). A Move rather than a Routed walk, because
 		// the leg IS the route: the creature walks the same cells the next
@@ -227,22 +255,22 @@ func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
 		// its waypoint and its turns there are not spent, so the patrol
 		// walks nowhere. Rows above this one still fire first.
 		if view.Dwelling {
-			return Pass{Cause: tableCauseToward, Why: towardDwelling}
+			return Pass{Cause: p.cause, Why: towardDwelling}
 		}
 		ahead, back := patrolStep(view.Position, path)
 		if len(ahead) == 0 {
-			return Routed{Policy: MoveToward, AnchorAt: &back, Cause: tableCauseToward,
-				Pause: pauseAt(entry.Toward, back)}
+			return Routed{Policy: MoveToward, AnchorAt: &back, Cause: p.cause,
+				Pause: pauseAt(&sel, back), Dash: p.dash}
 		}
-		pause := pauseAt(entry.Toward, ahead[len(ahead)-1])
+		pause := pauseAt(&sel, ahead[len(ahead)-1])
 		if len(ahead) > cells {
 			ahead = ahead[:cells]
 		}
 
-		return Move{Path: append([]spatial.Position(nil), ahead...), Pause: pause}
+		return Move{Path: append([]spatial.Position(nil), ahead...), Pause: pause, Dash: p.dash}
 	}
 
-	if entry.Toward.Word == SelectorSound {
+	if sel.Word == SelectorSound {
 		cell, heard := soundFor(view.Sounds, entry.When)
 		if !heard {
 			return Pass{}
@@ -250,15 +278,18 @@ func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
 
 		// A SOUND IS A TARGET, so the walk ends facing where it rang
 		// ([Routed.Heard]).
-		return Routed{Policy: MoveToward, AnchorAt: &cell, Heard: true, Cause: tableCauseToward}
+		return Routed{Policy: MoveToward, AnchorAt: &cell, Heard: true, Cause: p.cause, Dash: p.dash}
 	}
 
-	target, ok := d.selectMember(view, entry, *entry.Toward)
+	target, ok := d.selectMember(view, entry, sel)
 	if !ok {
 		return Pass{}
 	}
 	if alreadyInReach(view, target) {
-		return Pass{Cause: tableCauseToward, Why: towardAlreadyInReach}
+		// mind/behavior already keeps `dash: enemy` and `dash: attacker` off
+		// the table in reach; `actor` is resolved here, so a run at an actor
+		// already in reach stands and says so, as a `toward` does.
+		return Pass{Cause: p.cause, Why: towardAlreadyInReach}
 	}
 	path := d.pathTo(view, target)
 	if len(path) == 0 {
@@ -282,7 +313,7 @@ func (d TableDriver) towardIntent(view MonsterView, entry Answer) TurnIntent {
 
 	// THE WALK NAMES WHO IT CLOSES ON, so the creature ends it facing them
 	// ([Move.Target]).
-	return Move{Path: append([]spatial.Position(nil), path...), Target: target}
+	return Move{Path: append([]spatial.Position(nil), path...), Target: target, Dash: p.dash}
 }
 
 // pauseAt is the pause a route states for one of its waypoints

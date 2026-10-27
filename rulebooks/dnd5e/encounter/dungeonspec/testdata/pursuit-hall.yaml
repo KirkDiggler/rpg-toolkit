@@ -1,0 +1,265 @@
+# THE PURSUIT HALL (rpg-project#671, smarter monsters S4b): one long hall
+# and one guard who runs. Written by hand in the shape the encounter studio's
+# encoder exports (exportDraftYaml), the cone site's shape, plus the root
+# `bundles:` and `tables:` keys a v4 document declares; no studio export was
+# run for it.
+#
+#   hall    axial q -10..10, rows r 0..1, no wall: the party start at q -10,
+#           r 0.
+#   guard   at q 3, r 0, thirteen cells down the hall: a walk cannot reach the
+#           party start this turn and a run can. Its table is the `dasher`
+#           bundle: swing in reach, walk when a walk gets there, run when only
+#           a run does.
+#
+# pursuit_hall_site_test.go plays it.
+version: 4
+key: pursuit-hall
+play:
+  void: transparent
+  lighting: bright
+  standing: centre-covered
+factions:
+  - id: watch
+dispositions:
+  - between:
+      - watch
+      - party
+    stance: hostile
+bundles:
+  # Close on the nearest foe at the pace the gap needs: the swing when they
+  # are in reach, a walk when a walk gets there, a run when only a run does.
+  dasher:
+    rows:
+      - when: { enemy: reach }
+        attack: enemy
+      - when: { enemy: walk }
+        toward: enemy
+      - when: { enemy: dash }
+        dash: enemy
+tables:
+  runs-them-down:
+    time:
+      - use: dasher
+      - hold: {}
+room:
+  version: 3
+  id: room-1
+  name: Pursuit Hall
+  coordinateFrame:
+    horizontalPlane: world-xz
+    verticalAxis: world-y-up
+    distanceUnit: world-scene-unit
+    hexRadius: 1
+    footprintFrame: owner-local-xz
+  workspace:
+    kind: centered-odd-r
+    widthHexes: 30
+    heightHexes: 6
+    hexRadius: 13
+    horizontalLimit: 29
+  scene:
+    version: 3
+    id: scene-1
+    name: Pursuit Hall
+    items: []
+    groups: []
+    mapLabels:
+      - id: label-hall
+        text: Hall
+        location:
+          x: 10
+          z: 0.5
+    authoringRegions:
+      - id: region-hall
+        labelId: label-hall
+        boundary:
+          kind: explicit
+          cells:
+            - q: -10
+              r: 0
+            - q: -10
+              r: 1
+            - q: -9
+              r: 0
+            - q: -9
+              r: 1
+            - q: -8
+              r: 0
+            - q: -8
+              r: 1
+            - q: -7
+              r: 0
+            - q: -7
+              r: 1
+            - q: -6
+              r: 0
+            - q: -6
+              r: 1
+            - q: -5
+              r: 0
+            - q: -5
+              r: 1
+            - q: -4
+              r: 0
+            - q: -4
+              r: 1
+            - q: -3
+              r: 0
+            - q: -3
+              r: 1
+            - q: -2
+              r: 0
+            - q: -2
+              r: 1
+            - q: -1
+              r: 0
+            - q: -1
+              r: 1
+            - q: 0
+              r: 0
+            - q: 0
+              r: 1
+            - q: 1
+              r: 0
+            - q: 1
+              r: 1
+            - q: 2
+              r: 0
+            - q: 2
+              r: 1
+            - q: 3
+              r: 0
+            - q: 3
+              r: 1
+            - q: 4
+              r: 0
+            - q: 4
+              r: 1
+            - q: 5
+              r: 0
+            - q: 5
+              r: 1
+            - q: 6
+              r: 0
+            - q: 6
+              r: 1
+            - q: 7
+              r: 0
+            - q: 7
+              r: 1
+            - q: 8
+              r: 0
+            - q: 8
+              r: 1
+            - q: 9
+              r: 0
+            - q: 9
+              r: 1
+            - q: 10
+              r: 0
+            - q: 10
+              r: 1
+  room:
+    implicitRegionId: room-1-region
+    walkableHexes:
+      - q: -10
+        r: 0
+      - q: -10
+        r: 1
+      - q: -9
+        r: 0
+      - q: -9
+        r: 1
+      - q: -8
+        r: 0
+      - q: -8
+        r: 1
+      - q: -7
+        r: 0
+      - q: -7
+        r: 1
+      - q: -6
+        r: 0
+      - q: -6
+        r: 1
+      - q: -5
+        r: 0
+      - q: -5
+        r: 1
+      - q: -4
+        r: 0
+      - q: -4
+        r: 1
+      - q: -3
+        r: 0
+      - q: -3
+        r: 1
+      - q: -2
+        r: 0
+      - q: -2
+        r: 1
+      - q: -1
+        r: 0
+      - q: -1
+        r: 1
+      - q: 0
+        r: 0
+      - q: 0
+        r: 1
+      - q: 1
+        r: 0
+      - q: 1
+        r: 1
+      - q: 2
+        r: 0
+      - q: 2
+        r: 1
+      - q: 3
+        r: 0
+      - q: 3
+        r: 1
+      - q: 4
+        r: 0
+      - q: 4
+        r: 1
+      - q: 5
+        r: 0
+      - q: 5
+        r: 1
+      - q: 6
+        r: 0
+      - q: 6
+        r: 1
+      - q: 7
+        r: 0
+      - q: 7
+        r: 1
+      - q: 8
+        r: 0
+      - q: 8
+        r: 1
+      - q: 9
+        r: 0
+      - q: 9
+        r: 1
+      - q: 10
+        r: 0
+      - q: 10
+        r: 1
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    monsterDeclarations:
+      - id: guard
+        ref: dnd5e:monsters:guard
+        startingCell:
+          location:
+            q: 3
+            r: 0
+          facing: w
+    partyStart:
+      q: -10
+      r: 0
+    monsterBindings:
+      guard:
+        faction: watch
+        table: runs-them-down

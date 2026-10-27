@@ -306,6 +306,12 @@ func factsFromView(view MonsterView) Facts {
 		}
 	}
 
+	// WHAT A MOVE BUYS, AND WHO ELSE COULD REACH WHERE A ROW LANDS
+	// (rpg-project#671, dash.go). The driver's door only: a social verdict
+	// carries no `when`, so the verb's own door never reads them.
+	moveBuys(&facts, view)
+	facts.Threat = threatJudge(view)
+
 	return facts
 }
 

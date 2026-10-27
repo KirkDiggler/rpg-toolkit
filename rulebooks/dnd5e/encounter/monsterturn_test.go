@@ -707,6 +707,9 @@ func (s *MonsterTurnTestSuite) TestMonsterViewProjectsHeldKnownSightIntoRemember
 		Position:      cellAt(2, 2),
 		DistanceCells: enc.Distance(cellAt(3, 2), cellAt(2, 2)),
 		Path:          []spatial.Position{cellAt(2, 2)},
+		// One cell away is already in reach (rpg-project#671): the walk onto
+		// the memory is a tail the reach leaves untaken.
+		ReachTail: 1,
 	}, view.Remembered[0])
 }
 
