@@ -129,7 +129,10 @@ are `enemy`, `attacker`, `actor` and `sound`.
 
 **Affordability is eligibility.** `Facts.CanAttack` and `Facts.CanMove` say
 what the creature can still pay for, and an entry it cannot pay for is absent
-for the same reason an unmet condition is. A pick that cannot act is noise on
+for the same reason an unmet condition is. A `dash` also needs
+`Facts.CanDash`: the run spends the creature's action, so the host clears it
+once the swing is spent on a turn, and a run it cannot pay for is absent
+rather than picked and refused (rpg-project#671). A pick that cannot act is noise on
 the log. `hold` is never gated — it is the word that lets a creature with
 nothing left still have HAD its turn — and the zero value is "cannot", so a
 caller that forgets a budget gets a creature that holds rather than one that
