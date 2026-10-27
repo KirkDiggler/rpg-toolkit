@@ -51,6 +51,8 @@ refused, because the list is already the `and`.
 | condition | holds when | reads |
 |---|---|---|
 | `enemy: reach \| seen \| remembered \| lost \| none` | the nearest opposed thing is in that band (the bands are exclusive); `lost` is a memory the creature went back to and found empty | `Facts.EnemyInReach/Seen/Remembered/Lost` |
+| `enemy: walk \| dash \| far` | what this turn's movement buys against the foe `enemy` names: a walk puts me in reach, only a dash does, or not even a dash. Exclusive among themselves and with `reach`; they sit beside `seen` and `remembered`. The host computes them from both creatures' speed and reach, and no number is written here (rpg-project#671, R18) | `Facts.EnemyWalk/Dash/Far` |
+| `threat: none \| walk \| dash` | who ELSE could reach the cell this row's move lands on (where the creature stands, for a row that does not move) and swing next turn: nobody, a walking foe, or only a dashing one. The row's own target does not count. Judged per row: the host answers `Facts.Threat(row)`, asked only for rows that name a threat; nil or an empty answer holds nothing, `none` included; the row's verdict records the answered word as `RowVerdict.Threat` (rpg-project#671, R18) | `Facts.Threat` |
 | `<deed>: { within: N, on/as }` — `attacked`, `intimidated`, `persuaded`, `fled` | that deed was done to me (or my side, or by me) within N units | `Facts.Deeds/AllyDeeds/OwnDeeds` |
 | `heard: { kind, within: N }` | a sound of that kind (or one a `/…/` pattern matches) was heard within N units | `Facts.Sounds` |
 | `fact: <id>` | the creature holds that world fact (or one a `/…/` pattern matches) | `Facts.Known` |
@@ -58,16 +60,18 @@ refused, because the list is already the `and`.
 
 ```yaml
 - { when: [{ fact: guards-turned }, { not: { enemy: seen } }], toward: { at: [20,12] } }
+- { when: [{ enemy: dash }, { threat: none }], dash: enemy }   # the careful dasher
 ```
 
 `Answer.Validate` and `When.Validate` refuse the shape faults this module's
 types cannot carry, each as a sentence for the form:
 
 - a `When` that does not name exactly one condition;
+- a `threat` that is not `none`, `walk` or `dash`;
 - a `heard` with no kind or a span below 1;
 - a deed's `within` or scope on a condition that is not a deed;
 - a selector naming no target or more than one;
-- a `path` off `toward`;
+- a `path` off `toward` and `dash`;
 - `sound` on `attack` (a sound cannot be struck);
 - `sound` on a row whose list names no `heard` condition (R10);
 - a `search` distance below 1.
@@ -97,9 +101,9 @@ here it is only the tree, with `From` and `Params` kept for the record.
 
 ### Selectors
 
-`attack`, `toward` and `away` take a `Selector`: exactly one of a word, a
-cell (`at`), or a route (`path`, `toward` only). The words are `enemy`,
-`attacker`, `actor` and `sound`.
+`attack`, `toward`, `dash` and `away` take a `Selector`: exactly one of a
+word, a cell (`at`), or a route (`path`, `toward` and `dash` only). The words
+are `enemy`, `attacker`, `actor` and `sound`.
 
 - **`attacker`** is who last attacked the creature, in the reading the
   row's deed condition names (`Facts.Attacker`). The row is a candidate only
@@ -107,12 +111,19 @@ cell (`at`), or a route (`path`, `toward` only). The words are `enemy`,
   `RememberedFoes` (to walk); otherwise it is absent, and the author's
   sibling `attack: enemy` row is the fallback through the roll.
 - **`sound`** is where the freshest held sound was made. It is legal on
-  `toward` and `away` only, and only on a row that names a `heard` condition
+  `toward`, `dash` and `away` only, and only on a row that names a `heard` condition
   (R10), the way `actor` needs a deed. Resolving it is the caller's.
 - **`search: { distance: N }`** walks on from a lost trail for N cells. It
   is eligible only while `Facts.EnemyLost` holds and the creature can move,
   and it carries the `toward` temperament factor. The trail, its heading and
   when the search is over are the caller's.
+- **`dash: <selector>`** runs at the target, spending the turn on the run
+  (rpg-project#671, R17). It takes `toward`'s selectors and carries the
+  `toward` temperament factor. A dash at a foe already in reach is absent,
+  not a pass: `dash: enemy` while `Facts.EnemyInReach` holds, `dash:
+  attacker` while the attacker is in `Facts.FoesInReach`. Every other
+  threshold is the row's own `when`, so the dasher reads `when: { enemy:
+  dash }` and `dash: enemy`. What a run costs is the caller's.
 - **A route** is a patrol and holds no state: which waypoint is next is the
   caller's to derive from where the creature stands each time the row fires.
 
@@ -128,7 +139,7 @@ quietly swings.
 
 One trigger is named here, `KeyTime` — a creature having time is the one thing
 every game has. Every other key is the caller's to name, seal and refuse. The
-words on an entry (`Fact`, `Flee`, `Hold`, `Attack`, `Toward`, `Away`, `Search`) are
+words on an entry (`Fact`, `Flee`, `Hold`, `Attack`, `Toward`, `Dash`, `Away`, `Search`) are
 DATA: this module knows which one fired and has no idea what attacking is or
 where `toward` walks to. A `Selector` is carried and resolved by the caller.
 

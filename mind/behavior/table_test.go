@@ -1033,7 +1033,7 @@ func (s *TableSuite) TestAWhenNamesExactlyOneCondition() {
 		{name: "no condition",
 			when: behavior.When{},
 			says: "a `when` entry names no condition; give it one of `enemy`, `attacked`, `intimidated`, " +
-				"`persuaded`, `fled`, `heard`, `fact` or `not`: behavior: when cannot be read"},
+				"`persuaded`, `fled`, `heard`, `fact`, `threat` or `not`: behavior: when cannot be read"},
 		{name: "two conditions inside a not",
 			when: behavior.When{Not: &behavior.When{Enemy: behavior.EnemySeen, Fact: lit("alarm-raised")}},
 			says: "inside `not`: a `when` entry names `enemy` and `fact`; give each its own entry in the list, " +
@@ -1078,10 +1078,10 @@ func (s *TableSuite) TestAPathIsARouteAndOnlyTowardWalksOne() {
 		says  string
 	}{
 		{name: "a path on attack", entry: behavior.Answer{Weight: 1, Attack: &behavior.Selector{Path: route}},
-			says: "`attack` cannot take a `path`: a route is walked, and only `toward` walks one: " +
+			says: "`attack` cannot take a `path`: a route is walked, and only `toward` and `dash` walk one: " +
 				"behavior: selector cannot be read"},
 		{name: "a path on away", entry: behavior.Answer{Weight: 1, Away: &behavior.Selector{Path: route}},
-			says: "`away` cannot take a `path`: a route is walked, and only `toward` walks one: " +
+			says: "`away` cannot take a `path`: a route is walked, and only `toward` and `dash` walk one: " +
 				"behavior: selector cannot be read"},
 		{name: "a cell and a path", entry: behavior.Answer{Weight: 1,
 			Toward: &behavior.Selector{At: &someCell, Path: route}},
@@ -1348,6 +1348,7 @@ func (s *TableSuite) TestLostIsSealedBetweenRememberedAndNone() {
 	s.Equal(behavior.EnemyWord("lost"), behavior.EnemyLost)
 	s.Equal([]behavior.EnemyWord{
 		behavior.EnemyReach, behavior.EnemySeen, behavior.EnemyRemembered, behavior.EnemyLost, behavior.EnemyNone,
+		behavior.EnemyWalk, behavior.EnemyDash, behavior.EnemyFar,
 	}, behavior.EnemyWords)
 }
 

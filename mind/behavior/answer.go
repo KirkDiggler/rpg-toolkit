@@ -29,8 +29,8 @@ import (
 // that neither speaks nor acts is a row the author wrote for no reason.
 //
 // THE WORD IS LEGAL PER KEY (design §2). `fact` and `flee` answer a social
-// verdict; `hold`, `attack`, `toward`, `away` and `search` are what a
-// creature does with TIME. A `when` is a `time` word too — a social verdict is already the
+// verdict; `hold`, `attack`, `toward`, `dash`, `away` and `search` are what
+// a creature does with TIME. A `when` is a `time` word too — a social verdict is already the
 // condition. the rulebook refuses the crossings by name.
 type Answer struct {
 	// Weight is this entry's share of the table. AT LEAST 1, refused
@@ -99,6 +99,22 @@ type Answer struct {
 	// authored cell, for this turn's movement.
 	Toward *Selector
 
+	// Dash RUNS at the selected member's believed position, or an authored
+	// cell or route, spending this turn on the run (rpg-project#671, R17): a
+	// sibling of [Answer.Toward] with the same selector, and the row's
+	// choice rather than an engine rule. What a run costs and how far it
+	// goes are the caller's; this module carries the word.
+	//
+	// A RUN AT SOMEBODY ALREADY IN REACH IS ABSENT, NOT A PASS. The floor is
+	// the module's ([Facts.affords]): `dash: enemy` is off the table while
+	// [Facts.EnemyInReach] holds, and `dash: attacker` while the attacker is
+	// in [Facts.FoesInReach]. Every other threshold is the row's own `when`
+	// (`when: { enemy: dash }`, R18), never a number here.
+	//
+	// OMITTED WHEN NIL, so a row that does not dash marshals exactly as it
+	// did before the word existed and no compiled table moves.
+	Dash *Selector `json:",omitempty"`
+
 	// Away walks away from the selected member, this turn's movement — the
 	// coward's run. Command's and Dissonant Whispers' compelled walks keep
 	// their own engine-driven its own router path and do not pass through the
@@ -124,7 +140,7 @@ type Answer struct {
 	// lands on it, a second die rolls over its own candidates ([Pick]).
 	//
 	// A GROUP CARRIES NO WORD. Its answer is its rows, so a group row sets no
-	// Hold, Attack, Toward, Away, Flee, Search, Say or Fact, and holds at
+	// Hold, Attack, Toward, Dash, Away, Flee, Search, Say or Fact, and holds at
 	// least one row ([Answer.Validate], ErrBadGroup). Groups nest, to
 	// [MaxGroupDepth] (R14).
 	//
@@ -168,7 +184,7 @@ var AsWords = []string{"attack", "toward", "away", "flee", "hold"}
 // Validate refuses what this module's own types cannot carry: a [When] in the
 // list that does not name exactly one condition ([When.Validate],
 // ErrBadWhen), and a [Selector] naming no target or more than one, a `path`
-// on a word other than `toward`, `sound` on `attack`, or `sound` on a row
+// on a word other than `toward` or `dash`, `sound` on `attack`, or `sound` on a row
 // whose list names no `heard` condition (ErrBadSelector, R10), and a `search`
 // distance below 1 or a heading not in [SearchHeadings] (ErrBadSearch), and
 // a group row ([Answer.Rows]) that carries a word, a search, a line or a fact
@@ -207,7 +223,7 @@ func (a *Answer) validate(nest int) error {
 	for _, slot := range []struct {
 		word string
 		sel  *Selector
-	}{{"attack", a.Attack}, {"toward", a.Toward}, {"away", a.Away}} {
+	}{{"attack", a.Attack}, {"toward", a.Toward}, {"dash", a.Dash}, {"away", a.Away}} {
 		if slot.sel == nil {
 			continue
 		}
@@ -273,7 +289,7 @@ func (a *Answer) words() []string {
 		set  bool
 	}{
 		{"`hold`", a.Hold}, {"`attack`", a.Attack != nil}, {"`toward`", a.Toward != nil},
-		{"`away`", a.Away != nil}, {"`flee`", a.Flee}, {"`search`", a.Search != nil},
+		{"`dash`", a.Dash != nil}, {"`away`", a.Away != nil}, {"`flee`", a.Flee}, {"`search`", a.Search != nil},
 		{"`say`", a.Say != ""}, {"`fact`", a.Fact != ""},
 	} {
 		if w.set {

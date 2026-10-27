@@ -202,6 +202,17 @@ func Layer(base, over Table) Table {
 // two different questions and the table had a word for only one of them.
 // With the band, the default reads: swing when they are in reach, WALK when
 // they are merely in sight.
+//
+// # The second ladder: what a move buys (rpg-project#671, R18)
+//
+// `walk`, `dash` and `far` answer a different question from the five bands:
+// not how the creature holds its foe, but what this turn's movement buys
+// against it. They are exclusive among themselves and with `reach`, and they
+// sit BESIDE `seen` and `remembered` rather than inside the ladder: a foe in
+// sight that a walk reaches is both `seen` and `walk`. With no foe held
+// placed none of the three holds. The host computes them from both
+// creatures' speed and reach; this module never holds a distance, a speed or
+// a number of cells (Kirk, 2026-10-26: "what it means to the NPC").
 type EnemyWord string
 
 const (
@@ -229,11 +240,69 @@ const (
 
 	// EnemyNone holds when none of the four does.
 	EnemyNone EnemyWord = "none"
+
+	// EnemyWalk holds when no opposed member is in reach and a WALK this
+	// turn puts the creature in reach of the one `enemy` names, so it can
+	// still swing ([Facts.EnemyWalk]).
+	EnemyWalk EnemyWord = "walk"
+
+	// EnemyDash holds when a walk this turn does not reach the one `enemy`
+	// names and a DASH does ([Facts.EnemyDash]). The dasher's row: `when: {
+	// enemy: dash }` and `dash: enemy`.
+	EnemyDash EnemyWord = "dash"
+
+	// EnemyFar holds when not even a dash this turn reaches the one `enemy`
+	// names ([Facts.EnemyFar]).
+	EnemyFar EnemyWord = "far"
 )
 
-// EnemyWords is every value `enemy:` takes, nearest band first. Exported for
-// the dialect's refusal, [AnswerKeys]'s reason.
-var EnemyWords = []EnemyWord{EnemyReach, EnemySeen, EnemyRemembered, EnemyLost, EnemyNone}
+// EnemyWords is every value `enemy:` takes: the five bands nearest first,
+// then the move words nearest first. Exported for the dialect's refusal,
+// [AnswerKeys]'s reason.
+var EnemyWords = []EnemyWord{
+	EnemyReach, EnemySeen, EnemyRemembered, EnemyLost, EnemyNone,
+	EnemyWalk, EnemyDash, EnemyFar,
+}
+
+// ThreatWord is a `when: { threat: … }` condition's value: who ELSE could
+// reach the cell this row's move would land on, and swing, on their next
+// turn (rpg-project#671, R18; Kirk, 2026-10-26: "I don't mind dashing so long
+// as that doesn't put me in range after the other gets their move step").
+//
+// JUDGED PER ROW, AT THE ROW'S LANDING CELL. A `dash: enemy` row and a
+// `toward: enemy` row land on different cells, so they can read different
+// threats in one pick; a row that does not move is judged where the creature
+// stands. The row's own target does not count: dashing into reach of
+// somebody means they can hit back, and that is the point. `threat` asks who
+// else can. The host computes it ([Facts.Threat]); this module holds no
+// cell, no speed and no reach.
+//
+// THE CAREFUL DASHER is `when: [{ enemy: dash }, { threat: none }]` with
+// `dash: enemy`; the reckless one drops the threat condition.
+type ThreatWord string
+
+const (
+	// ThreatNone holds when no foe but the row's target could reach the
+	// landing cell with a walk and a swing, nor with a dash.
+	ThreatNone ThreatWord = "none"
+
+	// ThreatWalk holds when at least one foe but the row's target could reach
+	// the landing cell with a walk, and still swing.
+	ThreatWalk ThreatWord = "walk"
+
+	// ThreatDash holds when no foe but the row's target could reach the
+	// landing cell with a walk, and at least one could by dashing.
+	ThreatDash ThreatWord = "dash"
+)
+
+// ThreatWords is every value `threat:` takes, as the design names them.
+// Exported for the dialect's refusal, [AnswerKeys]'s reason.
+var ThreatWords = []ThreatWord{ThreatNone, ThreatWalk, ThreatDash}
+
+// sealed reports whether t is one of [ThreatWords].
+func (t ThreatWord) sealed() bool {
+	return slices.Contains(ThreatWords, t)
+}
 
 // WhenDeeds is every word a `when: { <deed>: { within: N } }` condition may
 // name. Exported for the dialect's refusal, [AnswerKeys]'s reason.
@@ -313,7 +382,8 @@ var DeedScopes = []DeedScope{ScopeSelf, ScopeAlly, ScopeActor}
 // entry is simply not a candidate, and the beat's candidate list is therefore
 // the honest account of what the creature could have done.
 //
-// EXACTLY ONE CONDITION PER WHEN: one of Enemy, Deed, Heard, Fact or Not.
+// EXACTLY ONE CONDITION PER WHEN: one of Enemy, Deed, Heard, Fact, Threat
+// or Not.
 // An entry that needs two writes two Whens in its list ([Answer.When], R8 of
 // rpg-project#569): the list is the `and`, every entry in it must hold, and
 // `not` wraps a negative. Two conditions in one When would be a second way to
@@ -328,7 +398,7 @@ var DeedScopes = []DeedScope{ScopeSelf, ScopeAlly, ScopeActor}
 // [When.holds] unrefused, and `holds` reads the first in the order it checks
 // rather than guessing at an `and`.
 type When struct {
-	// Enemy reads the two booleans on [Facts], or is empty when this
+	// Enemy reads the enemy booleans on [Facts], or is empty when this
 	// condition names a deed instead.
 	Enemy EnemyWord
 
@@ -399,6 +469,15 @@ type When struct {
 	// and never a list: a negative of an `and` is an `or` this grammar has
 	// not paid for.
 	Not *When `json:",omitempty"`
+
+	// Threat is `threat: none | walk | dash`: who else could reach the cell
+	// this row's move lands on ([ThreatWord]), read off [Facts.Threat] for
+	// the row being judged. Empty when this condition names something else.
+	// One of [ThreatWords], refused otherwise ([When.Validate]).
+	//
+	// OMITTED WHEN EMPTY, for Scope's reason: a condition that names no
+	// threat marshals exactly as it did before the word existed.
+	Threat ThreatWord `json:",omitempty"`
 }
 
 // HeardWhen is a `heard` condition: which kind of sound, and how recently.
@@ -437,12 +516,15 @@ func (w *When) conditions() []string {
 	if w.Not != nil {
 		out = append(out, "`not`")
 	}
+	if w.Threat != "" {
+		out = append(out, "`threat`")
+	}
 
 	return out
 }
 
 // Validate refuses a When that does not name exactly one condition, a
-// `heard` with no kind or a span below 1, a deed's `within` or scope set on
+// `threat` word not in [ThreatWords], a `heard` with no kind or a span below 1, a deed's `within` or scope set on
 // a condition that is not a deed, a [Name] that sets both forms or whose
 // pattern does not compile, and the same faults inside a `not`. ErrBadWhen,
 // wrapped in a sentence for the form.
@@ -460,7 +542,7 @@ func (w *When) Validate() error {
 		for _, d := range WhenDeeds {
 			words = append(words, "`"+d+"`")
 		}
-		words = append(words, "`heard`", "`fact`")
+		words = append(words, "`heard`", "`fact`", "`threat`")
 
 		return fmt.Errorf("a `when` entry names no condition; give it one of %s or `not`: %w",
 			strings.Join(words, ", "), ErrBadWhen)
@@ -482,6 +564,8 @@ func (w *When) Validate() error {
 		return w.Heard.Kind.validate("`heard` kind")
 	case !w.Fact.IsZero():
 		return w.Fact.validate("`fact`")
+	case w.Threat != "" && !w.Threat.sealed():
+		return fmt.Errorf("`threat: %s`: a threat is none, walk or dash: %w", w.Threat, ErrBadWhen)
 	case w.Not != nil:
 		if err := w.Not.Validate(); err != nil {
 			return fmt.Errorf("inside `not`: %w", err)
@@ -539,13 +623,13 @@ const (
 // for the dialect's refusal, [AnswerKeys]'s reason.
 var SelectorWords = []SelectorWord{SelectorEnemy, SelectorAttacker, SelectorActor, SelectorSound}
 
-// Selector names what a `attack`/`toward`/`away` entry acts on: a member
+// Selector names what a `attack`/`toward`/`dash`/`away` entry acts on: a member
 // found by a word, or an authored cell.
 //
 // EXACTLY ONE OF THE THREE. A Selector with a Word names somebody the CALLER
 // resolves against what this creature sees and remembers; one with At names a
 // cell the author wrote; one with Path names a route the author wrote, and
-// only `toward` walks one ([Answer.Validate] refuses the rest). Which words a
+// only `toward` and `dash` walk one ([Answer.Validate] refuses the rest). Which words a
 // caller resolves, and which of them it will accept beside which table word,
 // is the caller's rule — this module carries the selector and resolves
 // nothing.
@@ -564,7 +648,7 @@ type Selector struct {
 
 	// Path is an authored route of DUNGEON-ABSOLUTE cells, walked in order —
 	// `toward: { path: [...] }`, a patrol (R7 of rpg-project#569). Empty when
-	// Word or At is set. Legal only on `toward`.
+	// Word or At is set. Legal only on `toward` and `dash`.
 	//
 	// THE ROUTE HOLDS NO STATE. Which waypoint is next is derived by the
 	// caller from where the creature stands each time the row fires; nothing
@@ -639,8 +723,8 @@ func (s *Selector) validate(word string) error {
 	if err := s.validateWaypoints(word); err != nil {
 		return err
 	}
-	if len(s.Path) > 0 && word != "toward" {
-		return fmt.Errorf("`%s` cannot take a `path`: a route is walked, and only `toward` walks one: %w",
+	if len(s.Path) > 0 && word != "toward" && word != "dash" {
+		return fmt.Errorf("`%s` cannot take a `path`: a route is walked, and only `toward` and `dash` walk one: %w",
 			word, ErrBadSelector)
 	}
 
@@ -759,10 +843,10 @@ func (t Temper) factor(a Answer) int {
 		return t.Profile.Hold
 	case a.Attack != nil:
 		return t.Profile.Attack
-	case a.Toward != nil, a.Search != nil:
-		// A SEARCH IS A WALK TOWARD where the quarry went, so it carries the
-		// `toward` factor rather than a sixth number every profile in content
-		// would have to grow.
+	case a.Toward != nil, a.Dash != nil, a.Search != nil:
+		// A SEARCH IS A WALK TOWARD where the quarry went, and A DASH IS A
+		// RUN TOWARD, so both carry the `toward` factor rather than a sixth
+		// number every profile in content would have to grow.
 		return t.Profile.Toward
 	case a.Away != nil:
 		return t.Profile.Away
@@ -848,6 +932,27 @@ type Facts struct {
 	// ([EnemyLost]).
 	EnemyLost bool
 
+	// EnemyWalk, EnemyDash and EnemyFar are WHAT THIS TURN'S MOVEMENT BUYS
+	// against the opposed member `enemy` names: the nearest in sight, else
+	// the nearest remembered, at its believed position (rpg-project#671,
+	// R18). The host fills them from both creatures' speed and reach:
+	//
+	//   - EnemyWalk: a walk this turn, at the creature's movement left, ends
+	//     in its reach, so it can still swing.
+	//   - EnemyDash: a walk does not, and a dash (that movement twice) does.
+	//   - EnemyFar: not even a dash does.
+	//
+	// EXCLUSIVE, AND CLEARED BY REACH, as the bands are: when
+	// [Facts.EnemyInReach] holds all three are false, and otherwise exactly
+	// one is true whenever an opposed member is held placed (seen or
+	// remembered). With none held placed all three are false. The
+	// projection that builds Facts enforces it; this module reads the
+	// result. THE ZERO VALUE IS "NONE OF THEM", so a host that has not
+	// computed them gets `walk`, `dash` and `far` rows that never hold.
+	EnemyWalk bool
+	EnemyDash bool
+	EnemyFar  bool
+
 	// CanAttack and CanMove are what the creature can still AFFORD this turn
 	// — one attack left, one cell of movement left — and they are part of
 	// ELIGIBILITY, exactly as a [When] is.
@@ -917,6 +1022,33 @@ type Facts struct {
 	// named them would be a swing the caller can only refuse.
 	FoesInReach []core.EntityID
 
+	// Threat is who else could reach the cell a row's move would LAND on
+	// ([ThreatWord]), asked by [Pick] for each row whose `when` names a
+	// `threat` condition, with that row, and only then. The host computes:
+	//
+	//   - the landing cell: where the row's move ends this turn (the cut path
+	//     of a `toward`, `dash`, `away` or `search`), or where the creature
+	//     stands for a row that does not move, a group row included;
+	//   - every opposed member the creature holds placed, at its believed
+	//     position, BUT the row's own target (the one its selector names);
+	//   - for each, from their speed and reach, whether a walk on their next
+	//     turn brings that cell into their reach ([ThreatWalk]), only a dash
+	//     does ([ThreatDash]), or neither for any of them ([ThreatNone]).
+	//
+	// A FUNCTION BECAUSE THE FACT IS PER ROW. Every other fact here is one
+	// value per pick; this one depends on where each row would put the
+	// creature, and only the host can walk a row's move.
+	//
+	// NIL HOLDS NOTHING, and so does an empty answer: a host that has not
+	// computed threats gets `threat` rows that are never candidates, `none`
+	// included, so a careful row cannot be talked into a run by a forgotten
+	// field. Never marshalled.
+	Threat func(row Answer) ThreatWord `json:"-"`
+
+	// threat is [Facts.Threat]'s answer for the row being judged, filled by
+	// [Facts.forRow]. Empty outside a row's judgement.
+	threat ThreatWord
+
 	// Known is the id of every world fact this creature holds — what a
 	// `fact` condition reads. Whose facts these are (a witness's, a
 	// hearer's, a faction's) is the caller's audience rule; this module
@@ -926,7 +1058,7 @@ type Facts struct {
 
 // affords reports whether this creature can still pay for what an entry does.
 //
-// ONLY THE FOUR BUDGETED WORDS ARE GATED. A `fact`, a `flee`, a bare line and
+// ONLY THE BUDGETED WORDS ARE GATED. A `fact`, a `flee`, a bare line and
 // a `hold` cost nothing a turn can run out of — and `hold` in particular must
 // stay eligible whatever the budget says, because it is the word that lets a
 // creature with nothing left to spend still have had its turn.
@@ -942,6 +1074,9 @@ func (f Facts) affords(a Answer) bool {
 		return f.CanAttack && f.locates(a.Attack, a.When, f.FoesInReach)
 	case a.Toward != nil:
 		return f.CanMove && f.locates(a.Toward, a.When, f.SeenFoes, f.RememberedFoes)
+	case a.Dash != nil:
+		return f.CanMove && f.locates(a.Dash, a.When, f.SeenFoes, f.RememberedFoes) &&
+			!f.inReachOf(a.Dash, a.When)
 	case a.Away != nil:
 		return f.CanMove && f.locates(a.Away, a.When, f.SeenFoes, f.RememberedFoes)
 	case a.Search != nil:
@@ -983,6 +1118,26 @@ func (f Facts) locates(s *Selector, when []When, placed ...[]core.EntityID) bool
 		return false
 	default:
 		return true
+	}
+}
+
+// inReachOf reports whether the foe a selector names is already in reach,
+// which takes a `dash` at them off the table (rpg-project#671): a run at
+// somebody the creature could strike is a turn spent for nothing. `enemy`
+// is in reach while [Facts.EnemyInReach] holds; `attacker` while the
+// attacker is in [Facts.FoesInReach]. A cell, a route and a sound are
+// places, never foes, and `actor` is resolved by the caller off a reading
+// this module does not hold, so none of them is in reach here.
+func (f Facts) inReachOf(s *Selector, when []When) bool {
+	switch s.Word {
+	case SelectorEnemy:
+		return f.EnemyInReach
+	case SelectorAttacker:
+		who, ok := f.Attacker(when)
+
+		return ok && slices.Contains(f.FoesInReach, who)
+	default:
+		return false
 	}
 }
 
@@ -1051,6 +1206,38 @@ func (w *When) deedsOf(f Facts) []HeldDeed {
 	}
 }
 
+// forRow is these facts as one row's `when` reads them: [Facts.Threat]
+// asked for this row, when its list names a threat anywhere, inside a `not`
+// included. The host is asked once per row and never for a row that does
+// not care.
+func (f Facts) forRow(row Answer) Facts {
+	f.threat = ""
+	if f.Threat == nil {
+		return f
+	}
+	for i := range row.When {
+		if row.When[i].namesThreat() {
+			f.threat = f.Threat(row)
+
+			break
+		}
+	}
+
+	return f
+}
+
+// namesThreat reports whether this condition, or the one a `not` wraps,
+// names a threat.
+func (w *When) namesThreat() bool {
+	for c := w; c != nil; c = c.Not {
+		if c.Threat != "" {
+			return true
+		}
+	}
+
+	return false
+}
+
 // allHold reports whether every condition in an entry's list holds (R8). An
 // empty list holds: no conditions is a standing order (design §2: "an entry
 // with no `when` is always eligible").
@@ -1077,6 +1264,10 @@ func (w *When) holds(f Facts) bool {
 		return w.Heard.holds(f)
 	case !w.Fact.IsZero():
 		return slices.ContainsFunc(f.Known, w.Fact.Matches)
+	case w.Threat != "":
+		// AN UNSEALED OR UNCOMPUTED THREAT HOLDS NOTHING: the host's empty
+		// answer is "I did not judge it", never "none".
+		return w.Threat.sealed() && f.threat == w.Threat
 	}
 
 	switch w.Enemy {
@@ -1094,6 +1285,12 @@ func (w *When) holds(f Facts) bool {
 		// the farther flags once a nearer one holds — and this reads the
 		// result rather than re-deciding it.
 		return !f.EnemyInReach && !f.EnemySeen && !f.EnemyRemembered && !f.EnemyLost
+	case EnemyWalk:
+		return f.EnemyWalk
+	case EnemyDash:
+		return f.EnemyDash
+	case EnemyFar:
+		return f.EnemyFar
 	}
 
 	// A SPAN IS COUNTED FROM 1, so a span below it is not a span and holds
@@ -1209,6 +1406,14 @@ type RowVerdict struct {
 
 	// Loaded is Weight × Percent, when the row was a candidate.
 	Loaded int
+
+	// Threat is the word the host answered for this row's landing cell
+	// ([Facts.Threat]), so a careful row that did not hold says whether a
+	// walker or a dasher kept it off the table. Set only for a row whose
+	// `when` names a threat, and only when the host answered: an unjudged
+	// row reads as absent, never as `none`. Omitted when empty, so a verdict
+	// for a row that never asked marshals as it did before the word existed.
+	Threat ThreatWord `json:",omitempty"`
 
 	// Rows is a group's verdict for every row inside it, in authored order;
 	// nil for a word row.
@@ -1410,7 +1615,8 @@ func judge(entries []Answer, temper Temper, facts Facts, nest int) *level {
 	}
 	for i := range entries {
 		entry := &entries[i]
-		held := allHold(entry.When, facts)
+		judged := facts.forRow(*entry)
+		held := allHold(entry.When, judged)
 		var inner *level
 		var affordable bool
 		if entry.isGroup() {
@@ -1423,7 +1629,7 @@ func judge(entries []Answer, temper Temper, facts Facts, nest int) *level {
 		} else {
 			affordable = facts.affords(*entry)
 		}
-		verdict := RowVerdict{Entry: i, Held: held, Affordable: affordable}
+		verdict := RowVerdict{Entry: i, Held: held, Affordable: affordable, Threat: judged.threat}
 		if inner != nil {
 			verdict.Rows = inner.rows
 		}
