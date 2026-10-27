@@ -407,3 +407,27 @@ func (s *DashSuite) TestTheRecklessDasherRunsWhateverTheThreat() {
 	out := s.pick(reckless, behavior.Facts{CanMove: true, EnemySeen: true, EnemyDash: true})
 	s.Equal(0, out.Entry, "with no threat judged at all")
 }
+
+// TestTheVerdictRecordsTheJudgedThreat: the record carries the word the host
+// answered for a row that asked, so a careful dasher that stood says why,
+// and a row that never asked carries no threat key at all.
+func (s *DashSuite) TestTheVerdictRecordsTheJudgedThreat() {
+	out := s.pick(careful(), behavior.Facts{CanMove: true, EnemySeen: true, EnemyDash: true,
+		Threat: threatFor(behavior.ThreatWalk)})
+	s.Equal(1, out.Entry, "the careful dasher stands")
+	s.Equal(behavior.ThreatWalk, out.Rows[0].Threat)
+	s.Empty(out.Rows[1].Threat, "the hold row never asked")
+
+	raw, err := json.Marshal(out.Rows)
+	s.Require().NoError(err)
+	var rows []map[string]any
+	s.Require().NoError(json.Unmarshal(raw, &rows))
+	s.Equal("walk", rows[0]["Threat"], "the record carries the judged word")
+	s.NotContains(rows[1], "Threat", "a row never asked carries no key")
+
+	unjudged := s.pick(careful(), behavior.Facts{CanMove: true, EnemySeen: true, EnemyDash: true,
+		Threat: threatFor("")})
+	raw, err = json.Marshal(unjudged.Rows[0])
+	s.Require().NoError(err)
+	s.NotContains(string(raw), "Threat", "an empty answer reads as absent, not as none")
+}

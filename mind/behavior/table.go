@@ -1407,6 +1407,14 @@ type RowVerdict struct {
 	// Loaded is Weight × Percent, when the row was a candidate.
 	Loaded int
 
+	// Threat is the word the host answered for this row's landing cell
+	// ([Facts.Threat]), so a careful row that did not hold says whether a
+	// walker or a dasher kept it off the table. Set only for a row whose
+	// `when` names a threat, and only when the host answered: an unjudged
+	// row reads as absent, never as `none`. Omitted when empty, so a verdict
+	// for a row that never asked marshals as it did before the word existed.
+	Threat ThreatWord `json:",omitempty"`
+
 	// Rows is a group's verdict for every row inside it, in authored order;
 	// nil for a word row.
 	Rows []RowVerdict `json:",omitempty"`
@@ -1607,7 +1615,8 @@ func judge(entries []Answer, temper Temper, facts Facts, nest int) *level {
 	}
 	for i := range entries {
 		entry := &entries[i]
-		held := allHold(entry.When, facts.forRow(*entry))
+		judged := facts.forRow(*entry)
+		held := allHold(entry.When, judged)
 		var inner *level
 		var affordable bool
 		if entry.isGroup() {
@@ -1620,7 +1629,7 @@ func judge(entries []Answer, temper Temper, facts Facts, nest int) *level {
 		} else {
 			affordable = facts.affords(*entry)
 		}
-		verdict := RowVerdict{Entry: i, Held: held, Affordable: affordable}
+		verdict := RowVerdict{Entry: i, Held: held, Affordable: affordable, Threat: judged.threat}
 		if inner != nil {
 			verdict.Rows = inner.rows
 		}
