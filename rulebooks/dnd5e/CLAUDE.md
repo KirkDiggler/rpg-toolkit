@@ -2,6 +2,8 @@
 
 This document contains patterns specific to the dnd5e rulebook module.
 
+The seams between `encounter`, `resolution`, `session` and this module — what flows and what must not cross — are mapped in [`knowledge/`](knowledge/map.md).
+
 ## Live play — who plays which part
 
 The three-kind layering is described in the root `CLAUDE.md` ("How live play is
