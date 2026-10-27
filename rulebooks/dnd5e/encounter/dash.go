@@ -182,16 +182,20 @@ func landingOf(view MonsterView, row Answer) (spatial.Position, MemberID, bool) 
 
 // walkLanding is [landingOf] for a walking row: [TableDriver.walkIntent]'s
 // own branches, asked for the last cell instead of the intent.
+//
+// THE TARGET IS RESOLVED BEFORE THE PACE. A row with no movement left still
+// names whom it closes on, and that member is still not a threat to it: the
+// row stands, and its own target is still the one it would be running at.
 func walkLanding(view MonsterView, row Answer, sel Selector, p pace) (spatial.Position, MemberID, bool) {
 	var d TableDriver
-	switch {
-	case p.cells <= 0:
-		return view.Position, "", true
-	case sel.At != nil, sel.Word == SelectorSound:
-		return spatial.Position{}, "", false
-	case len(sel.Path) > 0:
-		if view.Dwelling {
+	place := sel.At != nil || len(sel.Path) > 0 || sel.Word == SelectorSound
+	if place {
+		switch {
+		case p.cells <= 0, len(sel.Path) > 0 && view.Dwelling:
 			return view.Position, "", true
+		case len(sel.Path) == 0:
+			// A cell or a sound: the encounter routes it at execution.
+			return spatial.Position{}, "", false
 		}
 		ahead, _ := patrolStep(view.Position, sel.Path)
 		if len(ahead) == 0 {
@@ -205,7 +209,7 @@ func walkLanding(view MonsterView, row Answer, sel Selector, p pace) (spatial.Po
 	if !ok {
 		return view.Position, "", true
 	}
-	if alreadyInReach(view, target) {
+	if p.cells <= 0 || alreadyInReach(view, target) {
 		return view.Position, target, true
 	}
 	path := d.pathTo(view, target)

@@ -101,6 +101,16 @@ func (s *DashDriverSuite) TestAThreatIsJudgedAtTheRowsLandingAndNotItsTarget() {
 		"alice is the run's own target, and hitting back is the point")
 }
 
+// TestARowWithNoMovementLeftStillExcludesItsTarget: after the run the
+// creature stands beside alice with nothing left to walk; its dash row
+// lands where it stands, and alice is still the row's own target.
+func (s *DashDriverSuite) TestARowWithNoMovementLeftStillExcludesItsTarget() {
+	view := farView()
+	view.Budget.MovementFeet = 0
+	view.Threats = []ThreatZone{{Member: "alice", Walk: []spatial.Position{view.Position}}}
+	s.Equal(behavior.ThreatNone, threatJudge(view)(Answer{Dash: &Selector{Word: SelectorEnemy}}))
+}
+
 // TestALandingTheViewCannotKnowIsNoAnswer: a walk the encounter routes itself
 // has no path on the view, so its threat is the empty answer and a `threat`
 // row of that word is never a candidate, `none` included.
