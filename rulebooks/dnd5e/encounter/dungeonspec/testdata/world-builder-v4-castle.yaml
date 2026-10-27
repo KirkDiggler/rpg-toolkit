@@ -223,11 +223,10 @@ bundles:
       - when: { attacked: { within: 2 } }
         toward: attacker
   # Hand edit (rpg-project#671, S4 dash; lane #683 D6, D8): close at the
-  # pace the gap needs. Strike them in reach, walk when a walk gets you there
-  # and still swings, run when only a run gets you there this turn. A run
-  # spends the swing, so a guard who runs arrives beside you and strikes on
-  # his next turn. The reckless shape: no row asks who else could reach the
-  # cell he runs to.
+  # pace the gap needs. Strike them in reach; walk when a walk gets you there
+  # and still swings. Run only while the run gains a round: inside one run of
+  # reach, walk up and swing next round rather than arrive winded beside him.
+  # A run spends the swing, so only a guard more than a run away runs.
   dasher:
     rows:
       - when: { enemy: reach }
@@ -235,6 +234,8 @@ bundles:
       - when: { enemy: walk }
         toward: enemy
       - when: { enemy: dash }
+        toward: enemy
+      - when: { enemy: far }
         dash: enemy
   # With nobody to chase, walk the route.
   patrol:
@@ -245,8 +246,8 @@ bundles:
   # Hand edit (rpg-project#670, N2): the base every gate guard starts from,
   # a bundle of bundles. Pursuit, the clang, and the guard's own loop, whose
   # route each guard passes in; `$path` crosses into the patrol one level
-  # down. Hand edit (rpg-project#671): the dasher first, so a guard who can
-  # only reach you by running runs, before he walks after a memory.
+  # down. Hand edit (rpg-project#671): the dasher first, so a guard more than
+  # a run from you runs, before he walks after a memory.
   guard-base:
     params: { path: ~ }
     rows:
@@ -431,8 +432,8 @@ tables:
   answer-the-gate:
     time:
       # Hand edit (rpg-project#671): the reserves run to the gate. First, so
-      # a reserve whom only a run brings into reach runs rather than walks,
-      # and one in reach strikes.
+      # a reserve more than a run from the hero runs, one nearer walks up, and
+      # one in reach strikes.
       - use: dasher
       - when:
           enemy: reach

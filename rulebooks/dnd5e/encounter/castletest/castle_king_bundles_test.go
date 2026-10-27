@@ -101,7 +101,7 @@ func TestMadKingGateGuardsTreeIsInTheRecord(t *testing.T) {
 		inner  int
 		params map[string]string
 	}{
-		{"dasher", 3, map[string]string{}},
+		{"dasher", 4, map[string]string{}},
 		{"pursuer", 2, map[string]string{"distance": "6", "heading": "went"}},
 		{"alarm-reactor", 1, map[string]string{}},
 		{"patrol", 1, base.Params},
@@ -112,7 +112,8 @@ func TestMadKingGateGuardsTreeIsInTheRecord(t *testing.T) {
 		require.Equal(t, want.params, group.Params, "%s's parameters; the route crossed one level down", want.from)
 		require.NotNil(t, group.As, "a group's `as` is written, empty for none")
 	}
-	require.Equal(t, "dash", base.Rows[0].Rows[2].Word)
+	require.Equal(t, "toward", base.Rows[0].Rows[2].Word, "inside one run of reach the castle walks")
+	require.Equal(t, "dash", base.Rows[0].Rows[3].Word, "and runs only beyond it")
 	require.Equal(t, "search", base.Rows[1].Rows[1].Word)
 	require.Nil(t, rows[0].Rows, "a word row carries no tree")
 

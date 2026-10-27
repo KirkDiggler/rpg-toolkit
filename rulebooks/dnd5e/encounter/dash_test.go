@@ -125,9 +125,11 @@ func enemyIs(word encounter.EnemyWord) encounter.Answer {
 	return encounter.Answer{Weight: 1, When: []encounter.When{{Enemy: word}}, Hold: true}
 }
 
-// dasher is the dasher bundle written out in Go: swing in reach, walk when a
-// walk gets there, run when only a run does, otherwise stand.
-func dasher() encounter.Table {
+// bandRunner is a table that runs in the `dash` band, written out in Go:
+// swing in reach, walk when a walk gets there, run when only a run does,
+// otherwise stand. It proves the word; the castle's `dasher` runs on `far`
+// instead and walks in this band (a run there gains no round).
+func bandRunner() encounter.Table {
 	enemy := &encounter.Selector{Word: encounter.SelectorEnemy}
 
 	return encounter.Table{encounter.AnswerTime: {
@@ -178,7 +180,7 @@ func (s *DashSuite) TestADashRunsTwiceTheCellsAndDoesNotSwing() {
 	striker := &swingRecorder{}
 	enc := s.hall(striker,
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: onRow(1)},
-		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: onRow(14), Table: dasher()},
+		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: onRow(14), Table: bandRunner()},
 	)
 	s.goblinsTurn(enc)
 

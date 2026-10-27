@@ -6,10 +6,10 @@
 #
 #   hall    axial q -10..10, rows r 0..1, no wall: the party start at q -10,
 #           r 0.
-#   guard   at q 3, r 0, thirteen cells down the hall: a walk cannot reach the
-#           party start this turn and a run can. Its table is the `dasher`
-#           bundle: swing in reach, walk when a walk gets there, run when only
-#           a run does.
+#   guard   at q 4, r 0, fourteen cells down the hall: not even a run reaches
+#           the party start this turn. Its table is the castle's `dasher`
+#           bundle: swing in reach, walk within one run of reach, run beyond
+#           it — so it runs twelve cells, then walks up and swings.
 #
 # pursuit_hall_site_test.go plays it.
 version: 4
@@ -26,8 +26,8 @@ dispositions:
       - party
     stance: hostile
 bundles:
-  # Close on the nearest foe at the pace the gap needs: the swing when they
-  # are in reach, a walk when a walk gets there, a run when only a run does.
+  # Close on the nearest foe at the pace the gap needs: the swing in reach,
+  # a walk within one run of reach, and a run only while it gains a round.
   dasher:
     rows:
       - when: { enemy: reach }
@@ -35,6 +35,8 @@ bundles:
       - when: { enemy: walk }
         toward: enemy
       - when: { enemy: dash }
+        toward: enemy
+      - when: { enemy: far }
         dash: enemy
 tables:
   runs-them-down:
@@ -253,7 +255,7 @@ room:
         ref: dnd5e:monsters:guard
         startingCell:
           location:
-            q: 3
+            q: 4
             r: 0
           facing: w
     partyStart:
