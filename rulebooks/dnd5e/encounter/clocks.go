@@ -1032,9 +1032,12 @@ func (e *Encounter) executeTurnIntent(
 
 	case Move:
 		// A RUN IS CHARGED BEFORE IT IS MEASURED (rpg-project#671, R17): the
-		// speed it adds is what makes the longer path affordable.
+		// speed it adds is what makes the longer path affordable. A run the
+		// turn cannot pay for ends it, told ([Encounter.refuseUnpaidDash]).
 		if it.Dash {
-			chargeDash(budget, view.SpeedFeet, coords.Clock)
+			if refused, rerr := e.refuseUnpaidDash(activeID, budget, view.SpeedFeet, coords.Clock); refused || rerr != nil {
+				return refused, nil, rerr
+			}
 		}
 		cellsAffordable := CellsFromFeet(budget.MovementFeet)
 		if len(it.Path) == 0 || len(it.Path) > cellsAffordable {
@@ -1175,7 +1178,9 @@ func (e *Encounter) executeTurnIntent(
 		// The Move arm's rule: a run is charged before it is routed, so the
 		// route is asked for the movement the run added.
 		if it.Dash {
-			chargeDash(budget, view.SpeedFeet, coords.Clock)
+			if refused, rerr := e.refuseUnpaidDash(activeID, budget, view.SpeedFeet, coords.Clock); refused || rerr != nil {
+				return refused, nil, rerr
+			}
 		}
 
 		// THE BUDGET IS THE TURN'S OWN, converted once here. This is what
@@ -1336,14 +1341,44 @@ func intentBound(budget TurnBudget) int {
 // forfeit, the run is the added speed alone. speedFeet is the view's
 // [MonsterView.SpeedFeet], the number the driver cut the run to.
 //
-// NOTHING IS REFUSED HERE. A run the creature cannot pay for is not on its
-// table at all ([behavior.Facts.CanDash], set by [factsFromView]), so the roll
-// lands on another row instead of a picked run ending the turn.
-func chargeDash(budget *TurnBudget, speedFeet int, kind ClockKind) {
+// paid is false, and nothing is charged, for a run on a turn whose attack is
+// already spent: the run IS the action, and there is none left to spend.
+func chargeDash(budget *TurnBudget, speedFeet int, kind ClockKind) (paid bool) {
 	if kind != ClockWorld {
+		if budget.AttacksLeft <= 0 {
+			return false
+		}
 		budget.AttacksLeft = 0
 	}
 	budget.MovementFeet += speedFeet
+
+	return true
+}
+
+// dashSpent is the sentence a run with the action already spent is refused
+// with ([Encounter.refuseUnpaidDash]).
+const dashSpent = "its action is spent"
+
+// refuseUnpaidDash charges a run ([chargeDash]) or, when the turn cannot pay
+// for it, refuses it: [ErrBadIntent], the turn ends, and the story says why
+// with a stayed beat naming `encounter:table:dash` and [dashSpent].
+//
+// THE HOST IS THE JUDGE OF COST, as [attackRefusal] is of a swing. The
+// [TableDriver] never reaches this — a run after the swing is not on its
+// table ([behavior.Facts.CanDash], set by [factsFromView]), so its roll lands
+// on another row — and the backstop is for any other driver, which could
+// otherwise run on an action it no longer has.
+func (e *Encounter) refuseUnpaidDash(
+	member MemberID, budget *TurnBudget, speedFeet int, kind ClockKind,
+) (refused bool, err error) {
+	if chargeDash(budget, speedFeet, kind) {
+		return false, nil
+	}
+	if berr := e.appendStayedBeat(member, tableCauseDash, dashSpent, uint64(e.clock.ToData().HighWater)); berr != nil {
+		return false, berr
+	}
+
+	return true, nil
 }
 
 // meleeReachCells is the v1 reading of "a hostile's melee reach" for the

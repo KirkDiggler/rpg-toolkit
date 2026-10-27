@@ -95,12 +95,13 @@ func TestMadKingGateGuardsTreeIsInTheRecord(t *testing.T) {
 		"path": "[{q: -5, r: 8, wait: 1, facing: ne}, {q: -5, r: 10, wait: 1, facing: se}, {q: -7, r: 10}]"},
 		base.Params, "the guard's own route, passed to the base")
 	require.Empty(t, base.Word, "a group carries no word")
-	require.Len(t, base.Rows, 3, "the base is a bundle of bundles")
+	require.Len(t, base.Rows, 4, "the base is a bundle of bundles")
 	for i, want := range []struct {
 		from   string
 		inner  int
 		params map[string]string
 	}{
+		{"dasher", 3, map[string]string{}},
 		{"pursuer", 2, map[string]string{"distance": "6", "heading": "went"}},
 		{"alarm-reactor", 1, map[string]string{}},
 		{"patrol", 1, base.Params},
@@ -111,7 +112,8 @@ func TestMadKingGateGuardsTreeIsInTheRecord(t *testing.T) {
 		require.Equal(t, want.params, group.Params, "%s's parameters; the route crossed one level down", want.from)
 		require.NotNil(t, group.As, "a group's `as` is written, empty for none")
 	}
-	require.Equal(t, "search", base.Rows[0].Rows[1].Word)
+	require.Equal(t, "dash", base.Rows[0].Rows[2].Word)
+	require.Equal(t, "search", base.Rows[1].Rows[1].Word)
 	require.Nil(t, rows[0].Rows, "a word row carries no tree")
 
 	paths := make([][]int, 0, len(answers))
@@ -120,9 +122,13 @@ func TestMadKingGateGuardsTreeIsInTheRecord(t *testing.T) {
 		require.Equal(t, a.Path[0], a.Entry, "entry is the top of the path")
 		paths = append(paths, a.Path)
 	}
-	require.Contains(t, paths, []int{4, 0, 0}, "to the corner, through the base and the pursuer")
-	require.Contains(t, paths, []int{4, 0, 1}, "the search, through the base and the pursuer")
-	require.Contains(t, paths, []int{4, 2, 0}, "home, through the base and the patrol")
+	// TO THE CORNER IS THE DASHER'S WALK (rpg-project#671): the dasher is the
+	// base's first bundle, and a remembered hero a walk brings into reach is
+	// its `enemy: walk` row before the pursuer's `remembered` one. The same
+	// cells, walked by the row that asks what a move buys.
+	require.Contains(t, paths, []int{4, 0, 1}, "to the corner, through the base and the dasher's walk")
+	require.Contains(t, paths, []int{4, 1, 1}, "the search, through the base and the pursuer")
+	require.Contains(t, paths, []int{4, 3, 0}, "home, through the base and the patrol")
 
 	for _, a := range answers {
 		if len(a.Path) < 2 {

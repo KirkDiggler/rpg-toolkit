@@ -367,3 +367,32 @@ func (s *DashSuite) TestARunAddsTheSpeedToWhatIsLeft() {
 		})
 	}
 }
+
+// TestAHandRolledRunAfterTheSwingIsRefused is the host's backstop: a driver
+// that is not the table's swings and then asks for a run. The run is the
+// action and the action is spent, so the host refuses it, tells why, and the
+// turn ends where it stands. The table driver never gets here.
+func (s *DashSuite) TestAHandRolledRunAfterTheSwingIsRefused() {
+	// Beside alice, so the swing lands first; then a one-cell run away.
+	driver := &scriptedDriver{intents: []encounter.TurnIntent{
+		encounter.Attack{Target: alice, Action: testMeleeAction},
+		encounter.Move{Path: []spatial.Position{onRow(3)}, Dash: true},
+	}}
+	striker := &swingRecorder{}
+	enc := s.hallDriven(driver, striker,
+		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: onRow(1)},
+		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: onRow(2)},
+	)
+	on, err := enc.ClockOf(&encounter.ClockOfInput{Member: alice})
+	s.Require().NoError(err)
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: on.Active})
+	s.Require().NoError(err, "a bad decision does not cost the caller its verb")
+
+	s.Require().Len(striker.swings, 1, "it swung")
+	s.Equal(onRow(2), whereIs(s.T(), enc, goblin), "and the run after it went nowhere")
+	stayed := s.beats(enc, encounter.BeatStayed, goblin)
+	s.Require().Len(stayed, 1)
+	s.Equal("encounter:table:dash", stayed[0]["cause"])
+	s.Equal("its action is spent", stayed[0]["why"])
+	s.Len(driver.calls, 2, "and the driver is not asked again: the turn is over")
+}
