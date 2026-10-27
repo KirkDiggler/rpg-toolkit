@@ -199,10 +199,12 @@ func (s *DashSuite) TestADashRunsTwiceTheCellsAndDoesNotSwing() {
 	s.Equal(false, verdict(picks[0], 1)["held"], "and the walk row did not")
 }
 
-// TestADashAfterTheSwingIsRefusedAndSaysSo: the goblin swings at alice beside
-// it, then its table offers a run to the far end of the hall. The swing is
-// spent, so the run is refused — told on the record and never walked.
-func (s *DashSuite) TestADashAfterTheSwingIsRefusedAndSaysSo() {
+// TestARunWithTheSwingSpentIsNotOnTheTable: the goblin swings at alice
+// beside it, and its table also offers a run to the far end of the hall.
+// The run spends the action, and the action is spent, so on the next consult
+// the run is not a candidate at all (behavior's CanDash): the roll lands on
+// the hold beneath it, and the record shows the hold that fired.
+func (s *DashSuite) TestARunWithTheSwingSpentIsNotOnTheTable() {
 	far := onRow(40)
 	striker := &swingRecorder{}
 	enc := s.hall(striker,
@@ -212,23 +214,25 @@ func (s *DashSuite) TestADashAfterTheSwingIsRefusedAndSaysSo() {
 				{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyReach}},
 					Attack: &encounter.Selector{Word: encounter.SelectorEnemy}},
 				{Weight: 1, Dash: &encounter.Selector{At: &far}},
+				{Weight: 1, Hold: true},
 			}}},
 	)
 	s.goblinsTurn(enc)
 
 	s.Require().Len(striker.swings, 1, "it swung first")
-	s.Equal(onRow(2), whereIs(s.T(), enc, goblin), "and the run after it went nowhere")
+	s.Equal(onRow(2), whereIs(s.T(), enc, goblin), "and never ran")
 	s.Empty(s.beats(enc, encounter.BeatMoved, goblin))
-
-	stayed := s.beats(enc, encounter.BeatStayed, goblin)
-	s.Require().Len(stayed, 1)
-	s.Equal("encounter:table:dash", stayed[0]["cause"])
-	s.Equal("its action is spent", stayed[0]["why"])
+	s.Empty(s.beats(enc, encounter.BeatStayed, goblin), "nothing was picked and refused")
 
 	picks := s.beats(enc, encounter.BeatAnswered, goblin)
 	s.Require().Len(picks, 2)
 	s.Equal("attack", picks[0]["word"])
-	s.Equal("dash", picks[1]["word"])
+	s.Equal(true, verdict(picks[0], 1)["affordable"], "before the swing the run was on the table")
+	s.Equal("hold", picks[1]["word"], "after it, the roll landed on the hold")
+	s.Equal(false, verdict(picks[1], 1)["affordable"], "because the run was not")
+	for _, c := range picks[1]["candidates"].([]any) {
+		s.NotEqual(1.0, c.(map[string]any)["entry"], "the run is not a candidate")
+	}
 }
 
 // TestACarefulDasherRunsOnlyWhenNobodyElseCouldReachWhereItLands: the
@@ -281,10 +285,11 @@ func (s *DashSuite) TestACarefulDasherRunsOnlyWhenNobodyElseCouldReachWhereItLan
 	}
 }
 
-// TestADashOnTheWorldClockDoublesThePace: a goblin nobody is opposed to,
+// TestADashOnTheWorldClockAddsItsSpeed: a goblin nobody is opposed to,
 // told to go to the far end of the hall, covers six cells a round at a walk
-// and twelve at a run. There is no swing to forfeit; the run is the pace.
-func (s *DashSuite) TestADashOnTheWorldClockDoublesThePace() {
+// and twelve at a run: its speed added once more. There is no swing to
+// forfeit, so the run is always on the table there.
+func (s *DashSuite) TestADashOnTheWorldClockAddsItsSpeed() {
 	far := spatial.Position{X: 28, Y: 6}
 	for _, tc := range []struct {
 		name  string

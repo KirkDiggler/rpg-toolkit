@@ -194,6 +194,14 @@ type MonsterView struct {
 	// one number. Zero, a hand-built view's value, is a run that buys nothing.
 	SpeedFeet int
 
+	// Clock is which clock this time is on — [ClockTurn] for a turn in a
+	// fight, [ClockWorld] for a round of the world — set where the view is
+	// asked for ([Encounter.runIntents]). What it decides is whether a run
+	// still has its action to spend ([factsFromView]): on a turn only while
+	// the swing is unspent, on the world clock always, since there is no swing
+	// there to forfeit.
+	Clock ClockKind
+
 	// Round is the fight's own round counter (see play/clock's Turn.Round),
 	// carried through so a driver that wants to vary behaviour by round — a
 	// monster that flees only after round 2, say — has the fact without
@@ -552,9 +560,9 @@ type Move struct {
 	// `dash`, which spends the turn's swing for its movement twice over.
 	// The encounter charges it before the first step ([Encounter.chargeDash]):
 	// the creature's speed is added to the movement left, and on a turn the
-	// attack is gone, a dash with the attack already spent refused and told;
-	// on the world clock there is no swing to forfeit. So Path may be up to
-	// the movement left plus the speed, in cells. Every step's beat names the cause
+	// attack is gone; on the world clock there is no swing to forfeit. A run
+	// after the swing is never offered ([behavior.Facts.CanDash]). So Path
+	// may be up to the movement left plus the speed, in cells. Every step's beat names the cause
 	// `encounter:table:dash`.
 	Dash bool
 }

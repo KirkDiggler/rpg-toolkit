@@ -312,6 +312,12 @@ func factsFromView(view MonsterView) Facts {
 	moveBuys(&facts, view)
 	facts.Threat = threatJudge(view)
 
+	// A RUN SPENDS THE ACTION (rpg-project#671, [behavior.Facts.CanDash]):
+	// on a turn only while the swing is unspent, so a creature that swung is
+	// never offered a run; on the world clock always, where there is no
+	// swing to forfeit.
+	facts.CanDash = view.Budget.AttacksLeft > 0 || view.Clock == ClockWorld
+
 	return facts
 }
 

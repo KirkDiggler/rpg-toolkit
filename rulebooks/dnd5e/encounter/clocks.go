@@ -603,6 +603,7 @@ func (e *Encounter) runIntents(
 		if verr != nil {
 			return nil, fmt.Errorf("view: %w", verr)
 		}
+		view.Clock = kind
 
 		decision, derr := e.driver.Act(view)
 		if derr != nil {
@@ -1031,12 +1032,9 @@ func (e *Encounter) executeTurnIntent(
 
 	case Move:
 		// A RUN IS CHARGED BEFORE IT IS MEASURED (rpg-project#671, R17): the
-		// speed it adds is what makes the longer path affordable, and a run
-		// the turn cannot pay for is told and ends it.
+		// speed it adds is what makes the longer path affordable.
 		if it.Dash {
-			if refused, derr := e.chargeDash(activeID, budget, view.SpeedFeet, coords.Clock); refused || derr != nil {
-				return refused, nil, derr
-			}
+			chargeDash(budget, view.SpeedFeet, coords.Clock)
 		}
 		cellsAffordable := CellsFromFeet(budget.MovementFeet)
 		if len(it.Path) == 0 || len(it.Path) > cellsAffordable {
@@ -1177,9 +1175,7 @@ func (e *Encounter) executeTurnIntent(
 		// The Move arm's rule: a run is charged before it is routed, so the
 		// route is asked for the movement the run added.
 		if it.Dash {
-			if refused, derr := e.chargeDash(activeID, budget, view.SpeedFeet, coords.Clock); refused || derr != nil {
-				return refused, nil, derr
-			}
+			chargeDash(budget, view.SpeedFeet, coords.Clock)
 		}
 
 		// THE BUDGET IS THE TURN'S OWN, converted once here. This is what
@@ -1332,10 +1328,6 @@ func intentBound(budget TurnBudget) int {
 	return 2 + 2*CellsFromFeet(budget.MovementFeet)
 }
 
-// dashSpent is the sentence a run is refused with on a turn whose swing is
-// already gone ([Encounter.chargeDash]).
-const dashSpent = "its action is spent"
-
 // chargeDash pays for a run (rpg-project#671, R17), before its walk: the
 // creature's speed is ADDED to the movement it has left, as a player's Dash
 // adds it (RAW; a creature that walked three cells of six and then runs has
@@ -1344,29 +1336,14 @@ const dashSpent = "its action is spent"
 // forfeit, the run is the added speed alone. speedFeet is the view's
 // [MonsterView.SpeedFeet], the number the driver cut the run to.
 //
-// A RUN THE TURN CANNOT PAY FOR IS TOLD, NEVER WALKED. With the attack
-// already spent on a turn, the run is refused with a stayed beat naming
-// `encounter:table:dash` and [dashSpent], and refused reports the turn over;
-// turning it into a plain walk would be this composition deciding something
-// the row did not say. mind/behavior v0.14.0 has no fact a host can clear to
-// take only `dash` off the table after a swing, so this is the judge — as
-// [attackRefusal] is the one judge of a swing.
-func (e *Encounter) chargeDash(
-	member MemberID, budget *TurnBudget, speedFeet int, kind ClockKind,
-) (refused bool, err error) {
+// NOTHING IS REFUSED HERE. A run the creature cannot pay for is not on its
+// table at all ([behavior.Facts.CanDash], set by [factsFromView]), so the roll
+// lands on another row instead of a picked run ending the turn.
+func chargeDash(budget *TurnBudget, speedFeet int, kind ClockKind) {
 	if kind != ClockWorld {
-		if budget.AttacksLeft <= 0 {
-			if berr := e.appendStayedBeat(member, tableCauseDash, dashSpent, uint64(e.clock.ToData().HighWater)); berr != nil {
-				return false, berr
-			}
-
-			return true, nil
-		}
 		budget.AttacksLeft = 0
 	}
 	budget.MovementFeet += speedFeet
-
-	return false, nil
 }
 
 // meleeReachCells is the v1 reading of "a hostile's melee reach" for the
