@@ -24,6 +24,10 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -519,6 +523,14 @@ func (s *kingScene) endTurn() {
 // castleSpeedFeet is everybody's walking speed in this host.
 const castleSpeedFeet = 30
 
+// sessionSightFeet is what the session sees with: the rulebook's stated
+// default for a sheet that states no senses (combat.DefaultSightFeet), which
+// is every sheet the castle seats. This composition may not import the
+// rulebook (C1), so the number is mirrored here and
+// [TestSessionSightFeetIsTheRulebooks] reads the rulebook's own line to keep
+// the two the same.
+const sessionSightFeet = 120
+
 // castleSight is a torchlit castle: everybody sees sixty feet, or what the
 // host says ([castleHost.sightFt]).
 type castleSight struct{ feet int }
@@ -592,4 +604,22 @@ func (c *castleStanding) Assess(members []encounter.MemberID) (*encounter.Partic
 	}
 
 	return assessment, nil
+}
+
+// rulebookSightLine is the rulebook's own declaration of its default sight,
+// read as text: this module may not import it (C1).
+var rulebookSightLine = regexp.MustCompile(`(?m)^const DefaultSightFeet = (\d+)$`)
+
+// TestSessionSightFeetIsTheRulebooks pins [sessionSightFeet] to the line that
+// declares combat.DefaultSightFeet, so a route run at the session's sight is
+// run at the sight the session actually has.
+func TestSessionSightFeetIsTheRulebooks(t *testing.T) {
+	t.Parallel()
+	src, err := os.ReadFile(filepath.Join("..", "..", "combat", "sight.go"))
+	require.NoError(t, err, "the rulebook's sight is declared beside this module")
+	m := rulebookSightLine.FindSubmatch(src)
+	require.NotNil(t, m, "combat/sight.go declares DefaultSightFeet")
+	feet, err := strconv.Atoi(string(m[1]))
+	require.NoError(t, err)
+	require.Equal(t, feet, sessionSightFeet, "the castle's session sight is the rulebook's default")
 }
