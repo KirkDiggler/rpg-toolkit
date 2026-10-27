@@ -385,3 +385,25 @@ func (s *DashSuite) TestTheRecordReadsThreat() {
 	s.Require().NoError(err)
 	s.Contains(string(out), `"Threat":"none"`, "the record carries the row's threat condition")
 }
+
+// TestTheRecklessDasherRunsWhateverTheThreat: drop the threat condition and
+// the run is on the table whenever only a run reaches, threatened or not,
+// and the host is never asked.
+func (s *DashSuite) TestTheRecklessDasherRunsWhateverTheThreat() {
+	reckless := behavior.Table{behavior.KeyTime: {
+		{Weight: 1, When: []behavior.When{{Enemy: behavior.EnemyDash}},
+			Dash: &behavior.Selector{Word: behavior.SelectorEnemy}},
+		{Weight: 1, Hold: true},
+	}}
+	for _, word := range []behavior.ThreatWord{behavior.ThreatNone, behavior.ThreatWalk, behavior.ThreatDash, ""} {
+		asked := false
+		out := s.pick(reckless, behavior.Facts{CanMove: true, EnemySeen: true, EnemyDash: true,
+			Threat: func(behavior.Answer) behavior.ThreatWord { asked = true; return word }})
+		s.True(out.Rows[0].Held, "threat %q", word)
+		s.True(out.Rows[0].Affordable, "threat %q", word)
+		s.Equal(0, out.Entry, "the reckless dasher takes the first face under threat %q", word)
+		s.False(asked, "a row that names no threat is never asked about one")
+	}
+	out := s.pick(reckless, behavior.Facts{CanMove: true, EnemySeen: true, EnemyDash: true})
+	s.Equal(0, out.Entry, "with no threat judged at all")
+}
