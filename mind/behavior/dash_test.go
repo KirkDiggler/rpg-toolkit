@@ -245,3 +245,143 @@ func (s *DashSuite) TestAGroupCarriesNoDash() {
 	s.Require().ErrorIs(err, behavior.ErrBadGroup)
 	s.Contains(err.Error(), "`dash`")
 }
+
+// careful is the careful dasher (R18): run only when only a run reaches, and
+// only when nobody else could reach where it lands; otherwise stand.
+func careful() behavior.Table {
+	return behavior.Table{behavior.KeyTime: {
+		{Weight: 1, When: []behavior.When{{Enemy: behavior.EnemyDash}, {Threat: behavior.ThreatNone}},
+			Dash: &behavior.Selector{Word: behavior.SelectorEnemy}},
+		{Weight: 1, Hold: true},
+	}}
+}
+
+// threatFor is a host that judges every row's landing cell the same way.
+func threatFor(word behavior.ThreatWord) func(behavior.Answer) behavior.ThreatWord {
+	return func(behavior.Answer) behavior.ThreatWord { return word }
+}
+
+// TestTheCarefulDasherRunsOnlyWhenBothHold: the run is on the table only
+// while a dash is what reaches AND nobody else threatens the landing cell.
+func (s *DashSuite) TestTheCarefulDasherRunsOnlyWhenBothHold() {
+	for _, tc := range []struct {
+		name   string
+		facts  behavior.Facts
+		dashes bool
+	}{
+		{name: "only a dash reaches, nobody else threatens", dashes: true, facts: behavior.Facts{
+			CanMove: true, EnemySeen: true, EnemyDash: true, Threat: threatFor(behavior.ThreatNone)}},
+		{name: "only a dash reaches, a walker threatens", facts: behavior.Facts{
+			CanMove: true, EnemySeen: true, EnemyDash: true, Threat: threatFor(behavior.ThreatWalk)}},
+		{name: "only a dash reaches, a dasher threatens", facts: behavior.Facts{
+			CanMove: true, EnemySeen: true, EnemyDash: true, Threat: threatFor(behavior.ThreatDash)}},
+		{name: "a walk reaches, nobody threatens", facts: behavior.Facts{
+			CanMove: true, EnemySeen: true, EnemyWalk: true, Threat: threatFor(behavior.ThreatNone)}},
+		{name: "the host judged no threat", facts: behavior.Facts{
+			CanMove: true, EnemySeen: true, EnemyDash: true}},
+		{name: "the host answered nothing", facts: behavior.Facts{
+			CanMove: true, EnemySeen: true, EnemyDash: true, Threat: threatFor("")}},
+	} {
+		s.Run(tc.name, func() {
+			out := s.pick(careful(), tc.facts)
+			s.Equal(tc.dashes, out.Rows[0].Held)
+			if tc.dashes {
+				s.Equal(0, out.Entry)
+
+				return
+			}
+			s.Equal(1, out.Entry, "the careful dasher stands")
+		})
+	}
+}
+
+// TestAThreatIsJudgedAtEachRowsOwnLanding: the host is asked with the row
+// being judged, so a walk and a run in one pick can read different threats,
+// and a row whose `when` names no threat is never asked about.
+func (s *DashSuite) TestAThreatIsJudgedAtEachRowsOwnLanding() {
+	enemy := &behavior.Selector{Word: behavior.SelectorEnemy}
+	table := behavior.Table{behavior.KeyTime: {
+		{Weight: 1, When: []behavior.When{{Threat: behavior.ThreatNone}}, Toward: enemy},
+		{Weight: 1, When: []behavior.When{{Threat: behavior.ThreatNone}}, Dash: enemy},
+		{Weight: 1, When: []behavior.When{{Not: &behavior.When{Threat: behavior.ThreatWalk}}}, Hold: true},
+		{Weight: 1, Away: enemy},
+	}}
+	var asked []string
+	facts := behavior.Facts{CanMove: true, EnemySeen: true, Threat: func(row behavior.Answer) behavior.ThreatWord {
+		switch {
+		case row.Toward != nil:
+			asked = append(asked, "toward")
+			return behavior.ThreatWalk // the walk lands beside the archer
+		case row.Dash != nil:
+			asked = append(asked, "dash")
+			return behavior.ThreatNone
+		case row.Away != nil:
+			asked = append(asked, "away")
+		default:
+			asked = append(asked, "stand")
+		}
+
+		return behavior.ThreatNone
+	}}
+	out := s.pick(table, facts)
+	s.Equal([]string{"toward", "dash", "stand"}, asked, "each threat row asked once, the away row never")
+	s.False(out.Rows[0].Held, "the walk lands threatened")
+	s.True(out.Rows[1].Held, "the run lands clear")
+	s.True(out.Rows[2].Held, "`not` reads the threat too: where it stands, no walker reaches")
+}
+
+// TestAThreatIsOneOfThreeWords: none, walk and dash are read; anything else,
+// inside a `not` included, is refused by name, and a When naming a threat
+// and an enemy word is two conditions, refused as every pair is: the list is
+// the `and`.
+func (s *DashSuite) TestAThreatIsOneOfThreeWords() {
+	s.Equal([]behavior.ThreatWord{behavior.ThreatNone, behavior.ThreatWalk, behavior.ThreatDash},
+		behavior.ThreatWords)
+	for _, w := range behavior.ThreatWords {
+		s.NoError((&behavior.When{Threat: w}).Validate(), string(w))
+	}
+	err := (&behavior.When{Threat: "far"}).Validate()
+	s.Require().ErrorIs(err, behavior.ErrBadWhen)
+	s.EqualError(err, "`threat: far`: a threat is none, walk or dash: behavior: when cannot be read")
+
+	err = (&behavior.Answer{Weight: 1, Hold: true,
+		When: []behavior.When{{Not: &behavior.When{Threat: "lots"}}}}).Validate()
+	s.Require().ErrorIs(err, behavior.ErrBadWhen)
+	s.Contains(err.Error(), "`threat: lots`")
+
+	err = (&behavior.When{Enemy: behavior.EnemyDash, Threat: behavior.ThreatNone}).Validate()
+	s.Require().ErrorIs(err, behavior.ErrBadWhen)
+	s.Contains(err.Error(), "names `enemy` and `threat`")
+
+	s.NoError((&behavior.Answer{Weight: 1, Dash: &behavior.Selector{Word: behavior.SelectorEnemy},
+		When: []behavior.When{{Enemy: behavior.EnemyDash}, {Threat: behavior.ThreatNone}}}).Validate(),
+		"the careful dasher's list is the `and`")
+
+	unsealed := behavior.Table{behavior.KeyTime: {
+		{Weight: 1, When: []behavior.When{{Threat: "far"}}, Hold: true}}}
+	s.Equal(-1, s.pick(unsealed, behavior.Facts{Threat: threatFor("far")}).Entry,
+		"an unsealed threat holds nothing, even when the host echoes it")
+}
+
+// TestTheRecordReadsThreat: the threat condition rides the row's JSON by its
+// own name, the host's function never does, and a condition with no threat
+// marshals as before.
+func (s *DashSuite) TestTheRecordReadsThreat() {
+	row := careful()[behavior.KeyTime][0]
+	raw, err := json.Marshal(row)
+	s.Require().NoError(err)
+	s.Contains(string(raw), `{"Enemy":"","Deed":"","Within":0,"Threat":"none"}`)
+	var back behavior.Answer
+	s.Require().NoError(json.Unmarshal(raw, &back))
+	s.Equal(row, back)
+
+	plain, err := json.Marshal(behavior.When{Enemy: behavior.EnemyDash})
+	s.Require().NoError(err)
+	s.JSONEq(`{"Enemy":"dash","Deed":"","Within":0}`, string(plain), "no threat, no key")
+
+	pick := s.pick(careful(), behavior.Facts{CanMove: true, EnemySeen: true, EnemyDash: true,
+		Threat: threatFor(behavior.ThreatNone)})
+	out, err := json.Marshal(pick)
+	s.Require().NoError(err)
+	s.Contains(string(out), `"Threat":"none"`, "the record carries the row's threat condition")
+}

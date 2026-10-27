@@ -264,6 +264,46 @@ var EnemyWords = []EnemyWord{
 	EnemyWalk, EnemyDash, EnemyFar,
 }
 
+// ThreatWord is a `when: { threat: … }` condition's value: who ELSE could
+// reach the cell this row's move would land on, and swing, on their next
+// turn (rpg-project#671, R18; Kirk, 2026-10-26: "I don't mind dashing so long
+// as that doesn't put me in range after the other gets their move step").
+//
+// JUDGED PER ROW, AT THE ROW'S LANDING CELL. A `dash: enemy` row and a
+// `toward: enemy` row land on different cells, so they can read different
+// threats in one pick; a row that does not move is judged where the creature
+// stands. The row's own target does not count: dashing into reach of
+// somebody means they can hit back, and that is the point. `threat` asks who
+// else can. The host computes it ([Facts.Threat]); this module holds no
+// cell, no speed and no reach.
+//
+// THE CAREFUL DASHER is `when: [{ enemy: dash }, { threat: none }]` with
+// `dash: enemy`; the reckless one drops the threat condition.
+type ThreatWord string
+
+const (
+	// ThreatNone holds when no foe but the row's target could reach the
+	// landing cell with a walk and a swing, nor with a dash.
+	ThreatNone ThreatWord = "none"
+
+	// ThreatWalk holds when at least one foe but the row's target could reach
+	// the landing cell with a walk, and still swing.
+	ThreatWalk ThreatWord = "walk"
+
+	// ThreatDash holds when no foe but the row's target could reach the
+	// landing cell with a walk, and at least one could by dashing.
+	ThreatDash ThreatWord = "dash"
+)
+
+// ThreatWords is every value `threat:` takes, as the design names them.
+// Exported for the dialect's refusal, [AnswerKeys]'s reason.
+var ThreatWords = []ThreatWord{ThreatNone, ThreatWalk, ThreatDash}
+
+// sealed reports whether t is one of [ThreatWords].
+func (t ThreatWord) sealed() bool {
+	return slices.Contains(ThreatWords, t)
+}
+
 // WhenDeeds is every word a `when: { <deed>: { within: N } }` condition may
 // name. Exported for the dialect's refusal, [AnswerKeys]'s reason.
 //
@@ -342,7 +382,8 @@ var DeedScopes = []DeedScope{ScopeSelf, ScopeAlly, ScopeActor}
 // entry is simply not a candidate, and the beat's candidate list is therefore
 // the honest account of what the creature could have done.
 //
-// EXACTLY ONE CONDITION PER WHEN: one of Enemy, Deed, Heard, Fact or Not.
+// EXACTLY ONE CONDITION PER WHEN: one of Enemy, Deed, Heard, Fact, Threat
+// or Not.
 // An entry that needs two writes two Whens in its list ([Answer.When], R8 of
 // rpg-project#569): the list is the `and`, every entry in it must hold, and
 // `not` wraps a negative. Two conditions in one When would be a second way to
@@ -428,6 +469,15 @@ type When struct {
 	// and never a list: a negative of an `and` is an `or` this grammar has
 	// not paid for.
 	Not *When `json:",omitempty"`
+
+	// Threat is `threat: none | walk | dash`: who else could reach the cell
+	// this row's move lands on ([ThreatWord]), read off [Facts.Threat] for
+	// the row being judged. Empty when this condition names something else.
+	// One of [ThreatWords], refused otherwise ([When.Validate]).
+	//
+	// OMITTED WHEN EMPTY, for Scope's reason: a condition that names no
+	// threat marshals exactly as it did before the word existed.
+	Threat ThreatWord `json:",omitempty"`
 }
 
 // HeardWhen is a `heard` condition: which kind of sound, and how recently.
@@ -466,12 +516,15 @@ func (w *When) conditions() []string {
 	if w.Not != nil {
 		out = append(out, "`not`")
 	}
+	if w.Threat != "" {
+		out = append(out, "`threat`")
+	}
 
 	return out
 }
 
 // Validate refuses a When that does not name exactly one condition, a
-// `heard` with no kind or a span below 1, a deed's `within` or scope set on
+// `threat` word not in [ThreatWords], a `heard` with no kind or a span below 1, a deed's `within` or scope set on
 // a condition that is not a deed, a [Name] that sets both forms or whose
 // pattern does not compile, and the same faults inside a `not`. ErrBadWhen,
 // wrapped in a sentence for the form.
@@ -489,7 +542,7 @@ func (w *When) Validate() error {
 		for _, d := range WhenDeeds {
 			words = append(words, "`"+d+"`")
 		}
-		words = append(words, "`heard`", "`fact`")
+		words = append(words, "`heard`", "`fact`", "`threat`")
 
 		return fmt.Errorf("a `when` entry names no condition; give it one of %s or `not`: %w",
 			strings.Join(words, ", "), ErrBadWhen)
@@ -511,6 +564,8 @@ func (w *When) Validate() error {
 		return w.Heard.Kind.validate("`heard` kind")
 	case !w.Fact.IsZero():
 		return w.Fact.validate("`fact`")
+	case w.Threat != "" && !w.Threat.sealed():
+		return fmt.Errorf("`threat: %s`: a threat is none, walk or dash: %w", w.Threat, ErrBadWhen)
 	case w.Not != nil:
 		if err := w.Not.Validate(); err != nil {
 			return fmt.Errorf("inside `not`: %w", err)
@@ -967,6 +1022,33 @@ type Facts struct {
 	// named them would be a swing the caller can only refuse.
 	FoesInReach []core.EntityID
 
+	// Threat is who else could reach the cell a row's move would LAND on
+	// ([ThreatWord]), asked by [Pick] for each row whose `when` names a
+	// `threat` condition, with that row, and only then. The host computes:
+	//
+	//   - the landing cell: where the row's move ends this turn (the cut path
+	//     of a `toward`, `dash`, `away` or `search`), or where the creature
+	//     stands for a row that does not move, a group row included;
+	//   - every opposed member the creature holds placed, at its believed
+	//     position, BUT the row's own target (the one its selector names);
+	//   - for each, from their speed and reach, whether a walk on their next
+	//     turn brings that cell into their reach ([ThreatWalk]), only a dash
+	//     does ([ThreatDash]), or neither for any of them ([ThreatNone]).
+	//
+	// A FUNCTION BECAUSE THE FACT IS PER ROW. Every other fact here is one
+	// value per pick; this one depends on where each row would put the
+	// creature, and only the host can walk a row's move.
+	//
+	// NIL HOLDS NOTHING, and so does an empty answer: a host that has not
+	// computed threats gets `threat` rows that are never candidates, `none`
+	// included, so a careful row cannot be talked into a run by a forgotten
+	// field. Never marshalled.
+	Threat func(row Answer) ThreatWord `json:"-"`
+
+	// threat is [Facts.Threat]'s answer for the row being judged, filled by
+	// [Facts.forRow]. Empty outside a row's judgement.
+	threat ThreatWord
+
 	// Known is the id of every world fact this creature holds — what a
 	// `fact` condition reads. Whose facts these are (a witness's, a
 	// hearer's, a faction's) is the caller's audience rule; this module
@@ -1124,6 +1206,38 @@ func (w *When) deedsOf(f Facts) []HeldDeed {
 	}
 }
 
+// forRow is these facts as one row's `when` reads them: [Facts.Threat]
+// asked for this row, when its list names a threat anywhere, inside a `not`
+// included. The host is asked once per row and never for a row that does
+// not care.
+func (f Facts) forRow(row Answer) Facts {
+	f.threat = ""
+	if f.Threat == nil {
+		return f
+	}
+	for i := range row.When {
+		if row.When[i].namesThreat() {
+			f.threat = f.Threat(row)
+
+			break
+		}
+	}
+
+	return f
+}
+
+// namesThreat reports whether this condition, or the one a `not` wraps,
+// names a threat.
+func (w *When) namesThreat() bool {
+	for c := w; c != nil; c = c.Not {
+		if c.Threat != "" {
+			return true
+		}
+	}
+
+	return false
+}
+
 // allHold reports whether every condition in an entry's list holds (R8). An
 // empty list holds: no conditions is a standing order (design §2: "an entry
 // with no `when` is always eligible").
@@ -1150,6 +1264,10 @@ func (w *When) holds(f Facts) bool {
 		return w.Heard.holds(f)
 	case !w.Fact.IsZero():
 		return slices.ContainsFunc(f.Known, w.Fact.Matches)
+	case w.Threat != "":
+		// AN UNSEALED OR UNCOMPUTED THREAT HOLDS NOTHING: the host's empty
+		// answer is "I did not judge it", never "none".
+		return w.Threat.sealed() && f.threat == w.Threat
 	}
 
 	switch w.Enemy {
@@ -1489,7 +1607,7 @@ func judge(entries []Answer, temper Temper, facts Facts, nest int) *level {
 	}
 	for i := range entries {
 		entry := &entries[i]
-		held := allHold(entry.When, facts)
+		held := allHold(entry.When, facts.forRow(*entry))
 		var inner *level
 		var affordable bool
 		if entry.isGroup() {

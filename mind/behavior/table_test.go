@@ -1033,7 +1033,7 @@ func (s *TableSuite) TestAWhenNamesExactlyOneCondition() {
 		{name: "no condition",
 			when: behavior.When{},
 			says: "a `when` entry names no condition; give it one of `enemy`, `attacked`, `intimidated`, " +
-				"`persuaded`, `fled`, `heard`, `fact` or `not`: behavior: when cannot be read"},
+				"`persuaded`, `fled`, `heard`, `fact`, `threat` or `not`: behavior: when cannot be read"},
 		{name: "two conditions inside a not",
 			when: behavior.When{Not: &behavior.When{Enemy: behavior.EnemySeen, Fact: lit("alarm-raised")}},
 			says: "inside `not`: a `when` entry names `enemy` and `fact`; give each its own entry in the list, " +

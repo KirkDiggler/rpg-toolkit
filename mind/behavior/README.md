@@ -52,6 +52,7 @@ refused, because the list is already the `and`.
 |---|---|---|
 | `enemy: reach \| seen \| remembered \| lost \| none` | the nearest opposed thing is in that band (the bands are exclusive); `lost` is a memory the creature went back to and found empty | `Facts.EnemyInReach/Seen/Remembered/Lost` |
 | `enemy: walk \| dash \| far` | what this turn's movement buys against the foe `enemy` names: a walk puts me in reach, only a dash does, or not even a dash. Exclusive among themselves and with `reach`; they sit beside `seen` and `remembered`. The host computes them from both creatures' speed and reach, and no number is written here (rpg-project#671, R18) | `Facts.EnemyWalk/Dash/Far` |
+| `threat: none \| walk \| dash` | who ELSE could reach the cell this row's move lands on (where the creature stands, for a row that does not move) and swing next turn: nobody, a walking foe, or only a dashing one. The row's own target does not count. Judged per row: the host answers `Facts.Threat(row)`, asked only for rows that name a threat; nil or an empty answer holds nothing, `none` included (rpg-project#671, R18) | `Facts.Threat` |
 | `<deed>: { within: N, on/as }` — `attacked`, `intimidated`, `persuaded`, `fled` | that deed was done to me (or my side, or by me) within N units | `Facts.Deeds/AllyDeeds/OwnDeeds` |
 | `heard: { kind, within: N }` | a sound of that kind (or one a `/…/` pattern matches) was heard within N units | `Facts.Sounds` |
 | `fact: <id>` | the creature holds that world fact (or one a `/…/` pattern matches) | `Facts.Known` |
@@ -59,12 +60,14 @@ refused, because the list is already the `and`.
 
 ```yaml
 - { when: [{ fact: guards-turned }, { not: { enemy: seen } }], toward: { at: [20,12] } }
+- { when: [{ enemy: dash }, { threat: none }], dash: enemy }   # the careful dasher
 ```
 
 `Answer.Validate` and `When.Validate` refuse the shape faults this module's
 types cannot carry, each as a sentence for the form:
 
 - a `When` that does not name exactly one condition;
+- a `threat` that is not `none`, `walk` or `dash`;
 - a `heard` with no kind or a span below 1;
 - a deed's `within` or scope on a condition that is not a deed;
 - a selector naming no target or more than one;
