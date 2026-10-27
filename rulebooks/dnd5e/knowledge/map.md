@@ -16,7 +16,7 @@ flowchart TD
   HOST --> SESS
   SESS --> RESMOD & ENC & DND
   RESMOD --> ENC & DND
-  ENC -. "asks capabilities, session answers" .-> SESS
+  ENC -.->|asks capabilities, session answers| SESS
 ```
 
 Solid arrows are `go.mod` requires. The dashed arrow is the one question that
