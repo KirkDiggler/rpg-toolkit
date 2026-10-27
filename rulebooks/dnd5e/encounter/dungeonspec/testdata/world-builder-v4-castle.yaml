@@ -222,6 +222,21 @@ bundles:
         attack: attacker
       - when: { attacked: { within: 2 } }
         toward: attacker
+  # Hand edit (rpg-project#671, S4 dash; lane #683 D6, D8): close at the
+  # pace the gap needs. Strike them in reach; walk when a walk gets you there
+  # and still swings. Run only while the run gains a round: inside one run of
+  # reach, walk up and swing next round rather than arrive winded beside him.
+  # A run spends the swing, so only a guard more than a run away runs.
+  dasher:
+    rows:
+      - when: { enemy: reach }
+        attack: enemy
+      - when: { enemy: walk }
+        toward: enemy
+      - when: { enemy: dash }
+        toward: enemy
+      - when: { enemy: far }
+        dash: enemy
   # With nobody to chase, walk the route.
   patrol:
     params: { path: ~ }
@@ -231,11 +246,17 @@ bundles:
   # Hand edit (rpg-project#670, N2): the base every gate guard starts from,
   # a bundle of bundles. Pursuit, the clang, and the guard's own loop, whose
   # route each guard passes in; `$path` crosses into the patrol one level
-  # down.
+  # down. Hand edit (rpg-project#671): the dasher first, and it is the whole
+  # approach: a table that uses this base carries no plain `reach` or `seen`
+  # rows of its own.
   guard-base:
     params: { path: ~ }
     rows:
+      - use: dasher
+      # Hand edit (rpg-project#671): the pursuit for a cold trail only; the
+      # dasher closes on a memory (answer-the-gate's reason).
       - use: pursuer
+        when: { enemy: lost }
       - use: alarm-reactor
       - use: patrol
         with: { path: $path }
@@ -252,12 +273,11 @@ tables:
           - not:
               fact: alarm-raised
         fact: alarm-raised
-      - when:
-          enemy: reach
-        attack: enemy
-      - when:
-          enemy: seen
-        toward: enemy
+      # Hand edit (rpg-project#671): no plain approach rows here. The base's
+      # dasher is the approach: in reach he strikes, within a run he walks
+      # up, beyond one he runs. A plain `seen` row beside it would split his
+      # roll between walking and running.
+      #
       # Hand edit (rpg-project#668, #670): the guard's base, as one line:
       # pursuit (lost from sight, he walks to where he last saw you, then
       # searches six cells on the way you went), the clang he runs to, and
@@ -285,12 +305,9 @@ tables:
           - not:
               fact: alarm-raised
         fact: alarm-raised
-      - when:
-          enemy: reach
-        attack: enemy
-      - when:
-          enemy: seen
-        toward: enemy
+      # Hand edit (rpg-project#671): no plain approach rows; the base's dasher
+      # is the approach, gate-patrol's reason.
+      #
       # Hand edit (rpg-project#668, #670): the guard's base, as one line.
       #
       # Hand edit (rpg-project#639): gate-2's loop, gate-patrol's mirror: nw
@@ -414,17 +431,19 @@ tables:
         toward: enemy
   answer-the-gate:
     time:
-      - when:
-          enemy: reach
-        attack: enemy
-      - when:
-          enemy: seen
-        toward: enemy
-      # Hand edit (rpg-project#661): the gate guards' pursuit, as one line.
-      # A reserve who saw you across the yard and lost you walks to where he
-      # last saw you, then searches six cells on the way you went; without
-      # it, a reserve who still remembers you has no row and holds.
+      # Hand edit (rpg-project#671): the reserves run to the gate. The dasher
+      # is their whole approach, seen or remembered: in reach they strike,
+      # within a run they walk up, beyond one they run. No plain `reach` or
+      # `seen` row beside it, which would split the roll between walking and
+      # running.
+      - use: dasher
+      # Hand edit (rpg-project#661, #671): the gate guards' pursuit, for a
+      # trail gone cold only. A reserve who walked to where he last saw you and
+      # found nobody searches six cells on the way you went. While he still
+      # remembers you, the dasher closes on the memory, and the pursuer's own
+      # walk would only split his roll.
       - use: pursuer
+        when: { enemy: lost }
       # Hand edit (the QA castle's step 7, rpg-project#639): the far room
       # answers the gate. Arrived on `gate-opened`, a guard with no enemy in
       # sight walks to the yard two cells in from the gate, so the two who

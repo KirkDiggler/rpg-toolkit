@@ -199,6 +199,8 @@ func whenShorthand(w *When) string {
 		return "fact " + w.Fact.String()
 	case w.Enemy != "":
 		return "enemy " + string(w.Enemy)
+	case w.Threat != "":
+		return "threat " + string(w.Threat)
 	}
 
 	deed := w.Deed + " within " + strconv.Itoa(w.Within)
@@ -230,6 +232,13 @@ func verdictsOf(rows []behavior.RowVerdict) []map[string]interface{} {
 		verdict := map[string]interface{}{
 			"entry": r.Entry, "held": r.Held, "affordable": r.Affordable,
 			"weight": r.Weight, "percent": r.Percent, "loaded": r.Loaded,
+		}
+		// THE JUDGED THREAT (rpg-project#671, R18), only on a row whose
+		// `when` asked and the host answered: why a careful row stood still.
+		// Absent otherwise, so a verdict for a row that never asked is the
+		// six keys it always was.
+		if r.Threat != "" {
+			verdict["threat"] = string(r.Threat)
 		}
 		if r.Rows != nil {
 			verdict["rows"] = verdictsOf(r.Rows)

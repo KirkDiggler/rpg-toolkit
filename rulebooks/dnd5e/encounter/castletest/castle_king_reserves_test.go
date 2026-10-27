@@ -7,7 +7,8 @@ package castletest
 // the hero opens the gate with the gate fallen, the two reserves arrive in
 // the barracks and see him across the courtyard at the session's sight, and
 // he steps back into the gatehouse out of their sight. Each reserve walks in
-// at a turn's pace and swings.
+// in, running while it is more than a run from him and walking inside one
+// (the castle's `dasher`, rpg-project#671), and swings.
 //
 // THE FIXTURE IS CHOSEN TO PROVE THE MECHANIC. The castle runs at the
 // session's sight ([sessionSightFeet]), so the reserves see the hero from the
@@ -18,6 +19,7 @@ package castletest
 // yard on `enemy: none`, which is why no route caught it.
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -28,10 +30,24 @@ import (
 
 // TestMadKingTheReservesComeIntoTheGatehouse opens the gate from beneath it,
 // steps the hero back into the gatehouse, and ends his turns: each reserve
-// stands in reach of him and has swung at him within ceil(walk / pace)
-// rounds, where walk is the pathfinder's own route from where it stood when
-// he stepped back (the gate's crossing makes it longer than the straight
-// line) and pace is a turn's walk at the host's speed.
+// RUNS in round 1 on every roll — the run is the only candidate at every
+// level of its pick ([kingScene.ranOnEveryRoll]) — and stands in reach of him having swung sooner than a
+// walk would have brought it, and within the dasher's own rounds
+// ([dasherRounds]) over the pathfinder's route to where it REMEMBERS him,
+// plus one round for the step from that memory to where he stands — he
+// stepped back after they saw him, and a walk that ends on the memory can
+// have nothing left to take it. Routes are from where each stood when he
+// stepped back (the gate's crossing makes them longer than the straight
+// line), at a turn's walk at the host's speed.
+//
+// WHAT THE RUN BUYS HERE (rpg-project#671, measured against the castle
+// without the dasher): both reserves start more than a run away and run in
+// round 1, then walk. reserve-2 swings in round 3 (a walk: round 4).
+// reserve-1's walk in round 3 ends on its memory of the hero with nothing
+// left, two cells short of him, and it swings in round 4 (a walk: round 5).
+// Inside one run of reach the castle walks: a run there lands beside the hero
+// with no swing and swings the round after anyway, handing him a free swing
+// (the design's middle band).
 func TestMadKingTheReservesComeIntoTheGatehouse(t *testing.T) {
 	t.Parallel()
 	arcs := map[encounter.MemberID]int{}
@@ -67,13 +83,23 @@ func TestMadKingTheReservesComeIntoTheGatehouse(t *testing.T) {
 
 	pace := encounter.CellsFromFeet(castleSpeedFeet)
 	bound := map[encounter.MemberID]int{}
+	walked := map[encounter.MemberID]int{}
 	for _, id := range reserves {
 		require.NotNil(t, s.holding(id, hero), "precondition: %s still holds the hero", id)
 		require.False(t, s.seesLive(id, hero), "precondition: %s remembers him and does not see him", id)
 		walk, err := s.enc.Route(encounter.RouteInput{Mover: id, Policy: encounter.MoveToward, Anchor: inside, Budget: 200})
 		require.NoError(t, err)
 		require.Empty(t, walk.StoppedBy, "precondition: %s has a way to the hero", id)
-		bound[id] = (len(walk.Path) + pace - 1) / pace
+		testimony, ok := encounter.DecodeSightTestimony(s.holding(id, hero).Payload)
+		require.True(t, ok, "precondition: %s holds where it saw him", id)
+		require.LessOrEqual(t, s.enc.Distance(testimony.Position, inside), float64(pace),
+			"precondition: from where %s remembers him, he is a walk away", id)
+		toMemory, err := s.enc.Route(encounter.RouteInput{
+			Mover: id, Policy: encounter.MoveToward, Anchor: testimony.Position, Budget: 200,
+		})
+		require.NoError(t, err)
+		bound[id] = dasherRounds(len(toMemory.Path), pace) + 1
+		walked[id] = (len(walk.Path) + pace - 1) / pace
 	}
 
 	swung := func(id encounter.MemberID) bool {
@@ -84,10 +110,17 @@ func TestMadKingTheReservesComeIntoTheGatehouse(t *testing.T) {
 		}
 		return false
 	}
+	before, err := s.enc.Story(&encounter.StoryInput{Audience: hero})
+	require.NoError(t, err)
 	arrived := map[encounter.MemberID]int{}
 	for round := 1; len(arrived) < len(reserves) && round <= bound[kingReserve]+bound[kingReserve2]; round++ {
 		s.endTurn()
 		require.Equal(t, encounter.ClockTurn, clockKind(t, s.enc, hero), "the fight is still on")
+		if round == 1 {
+			for _, id := range reserves {
+				s.ranOnEveryRoll(id, len(before))
+			}
+		}
 		for _, id := range reserves {
 			if _, ok := arrived[id]; !ok && s.enc.Distance(s.at(id), s.at(hero)) <= 1 && swung(id) {
 				arrived[id] = round
@@ -97,6 +130,83 @@ func TestMadKingTheReservesComeIntoTheGatehouse(t *testing.T) {
 	for _, id := range reserves {
 		round, ok := arrived[id]
 		require.True(t, ok, "%s stands in the hero's reach and swings at him", id)
-		require.LessOrEqual(t, round, bound[id], "%s comes in at a turn's pace: within %d rounds", id, bound[id])
+		require.LessOrEqual(t, round, bound[id], "%s comes in at the dasher's pace: within %d rounds", id, bound[id])
+		require.Less(t, round, walked[id], "%s swings sooner than a walk's %d rounds", id, walked[id])
+		require.True(t, s.ran(id), "%s ran once only a run reached him", id)
 	}
+}
+
+// dasherRounds is the round a creature on the castle's `dasher` swings in,
+// over a route of n cells at pace cells a walk: within one walk it walks and
+// swings; within two (one run) it walks; beyond that it runs two walks' worth.
+func dasherRounds(n, pace int) int {
+	for round := 1; ; round++ {
+		switch {
+		case n <= pace:
+			return round
+		case n <= 2*pace:
+			n -= pace
+		default:
+			n -= 2 * pace
+		}
+	}
+}
+
+// ranOnEveryRoll asserts a creature's first pick after the story's first
+// `from` entries was the run, and that it was the ONLY candidate at every
+// level of the roll — so whatever the die says, it runs. The harness's die
+// is 1; this reads the candidates instead, so it holds for every face.
+func (s *kingScene) ranOnEveryRoll(id encounter.MemberID, from int) {
+	s.t.Helper()
+	story, err := s.enc.Story(&encounter.StoryInput{Audience: hero})
+	require.NoError(s.t, err)
+	for _, entry := range story[from:] {
+		var pick struct {
+			Beat       string           `json:"beat"`
+			Creature   string           `json:"creature"`
+			Word       string           `json:"word"`
+			Path       []int            `json:"path"`
+			Candidates []map[string]any `json:"candidates"`
+			Rows       []struct {
+				Held       bool `json:"held"`
+				Affordable bool `json:"affordable"`
+				Rows       []struct {
+					Held       bool `json:"held"`
+					Affordable bool `json:"affordable"`
+				} `json:"rows"`
+			} `json:"rows"`
+		}
+		require.NoError(s.t, json.Unmarshal(entry.Payload, &pick))
+		if pick.Beat != encounter.BeatAnswered || pick.Creature != string(id) {
+			continue
+		}
+		require.Equal(s.t, "dash", pick.Word, "%s's first pick is the run", id)
+		require.Len(s.t, pick.Candidates, 1, "%s: the dasher is the only row on the table, so every roll lands on it", id)
+		inner := 0
+		for _, row := range pick.Rows[pick.Path[0]].Rows {
+			if row.Held && row.Affordable {
+				inner++
+			}
+		}
+		require.Equal(s.t, 1, inner, "%s: and the run is the only row inside it", id)
+
+		return
+	}
+	require.Failf(s.t, "no pick", "%s picked nothing in round 1", id)
+}
+
+// ran reports whether one member's record holds a step of a run.
+func (s *kingScene) ran(id encounter.MemberID) bool {
+	s.t.Helper()
+	story, err := s.enc.Story(&encounter.StoryInput{Audience: hero})
+	require.NoError(s.t, err)
+	for _, entry := range story {
+		var beat map[string]any
+		require.NoError(s.t, json.Unmarshal(entry.Payload, &beat))
+		if beat["beat"] == encounter.BeatMoved && beat["member"] == string(id) && beat["cause"] == "encounter:table:dash" {
+			return true
+		}
+	}
+
+	return false
 }

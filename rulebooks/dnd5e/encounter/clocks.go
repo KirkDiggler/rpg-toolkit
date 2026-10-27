@@ -525,7 +525,7 @@ func (e *Encounter) driveOneMonsterTurn(
 	// caller. +2 covers one attack and the terminating Pass a well-behaved
 	// driver returns once it has nothing left; the rest is however many
 	// cells this member could ever afford to ask for one at a time.
-	innerBound := 2 + CellsFromFeet(budget.MovementFeet)
+	innerBound := intentBound(budget)
 
 	return e.runTurnIntents(bubble, active, m, round, &budget, 0, innerBound)
 }
@@ -603,6 +603,7 @@ func (e *Encounter) runIntents(
 		if verr != nil {
 			return nil, fmt.Errorf("view: %w", verr)
 		}
+		view.Clock = kind
 
 		decision, derr := e.driver.Act(view)
 		if derr != nil {
@@ -1030,6 +1031,14 @@ func (e *Encounter) executeTurnIntent(
 		return false, nil, nil
 
 	case Move:
+		// A RUN IS CHARGED BEFORE IT IS MEASURED (rpg-project#671, R17): the
+		// speed it adds is what makes the longer path affordable. A run the
+		// turn cannot pay for ends it, told ([Encounter.refuseUnpaidDash]).
+		if it.Dash {
+			if refused, rerr := e.refuseUnpaidDash(activeID, budget, view.SpeedFeet, coords.Clock); refused || rerr != nil {
+				return refused, nil, rerr
+			}
+		}
 		cellsAffordable := CellsFromFeet(budget.MovementFeet)
 		if len(it.Path) == 0 || len(it.Path) > cellsAffordable {
 			// ErrBadIntent: a driver asking for more than its own budget, or
@@ -1055,7 +1064,15 @@ func (e *Encounter) executeTurnIntent(
 		at := uint64(e.clock.ToData().HighWater)
 		audience := e.audienceFor(subjectBeat, activeID)
 
-		res, werr := e.walkFor(coords.Clock, context.Background(), activeID, m, it.Path, audience, at, core.Ref{})
+		// A Move is the member's own decision and its steps name no cause —
+		// except a run, which names the word that spent the swing on it, so
+		// a reader can tell a creature that ran from one that walked.
+		cause := core.Ref{}
+		if it.Dash {
+			cause = tableCauseDash
+		}
+
+		res, werr := e.walkFor(coords.Clock, context.Background(), activeID, m, it.Path, audience, at, cause)
 		if werr != nil {
 			return false, nil, werr
 		}
@@ -1104,6 +1121,7 @@ func (e *Encounter) executeTurnIntent(
 				moved:     res.moved,
 				at:        at,
 				audience:  audience,
+				cause:     cause,
 				act:       e.CurrentAct(),
 				outer:     e.outerActs(),
 				turn: &turnPause{
@@ -1112,7 +1130,7 @@ func (e *Encounter) executeTurnIntent(
 				},
 			}
 			if _, berr := e.appendWindowOpenedBeat(
-				activeID, res.from, res.to, at, res.paused.Windows, core.Ref{},
+				activeID, res.from, res.to, at, res.paused.Windows, cause,
 			); berr != nil {
 				return false, intelDeltas, fmt.Errorf("window beat: %w", berr)
 			}
@@ -1155,6 +1173,14 @@ func (e *Encounter) executeTurnIntent(
 		if !known || validateWaypointPause(it.Pause) != nil ||
 			(it.GivesUp != "" && (it.AnchorAt == nil || it.Policy != MoveToward)) {
 			return true, nil, nil
+		}
+
+		// The Move arm's rule: a run is charged before it is routed, so the
+		// route is asked for the movement the run added.
+		if it.Dash {
+			if refused, rerr := e.refuseUnpaidDash(activeID, budget, view.SpeedFeet, coords.Clock); refused || rerr != nil {
+				return refused, nil, rerr
+			}
 		}
 
 		// THE BUDGET IS THE TURN'S OWN, converted once here. This is what
@@ -1293,6 +1319,66 @@ func (e *Encounter) executeTurnIntent(
 	default:
 		return false, nil, fmt.Errorf("driver returned %T: %w", intent, ErrBadTurnOutcome)
 	}
+}
+
+// intentBound is how many times one turn's worth of doing may ask its driver
+// for an intent ([Encounter.driveOneMonsterTurn]'s anti-spin bound): one
+// attack, one terminating Pass, and however many cells the member could ever
+// ask for one at a time — TWICE its movement, because a `dash` adds its speed
+// once more mid-turn (rpg-project#671) and a bound read before the run must
+// not refuse the longer walk the run bought. Read at the turn's start, where
+// the movement is the speed, so twice it is the most a turn can walk. On both
+// clocks.
+func intentBound(budget TurnBudget) int {
+	return 2 + 2*CellsFromFeet(budget.MovementFeet)
+}
+
+// chargeDash pays for a run (rpg-project#671, R17), before its walk: the
+// creature's speed is ADDED to the movement it has left, as a player's Dash
+// adds it (RAW; a creature that walked three cells of six and then runs has
+// nine left, not six). On a turn the attack is gone too — a dash IS the swing,
+// spent on ground — and on the world clock, where there is no swing to
+// forfeit, the run is the added speed alone. speedFeet is the view's
+// [MonsterView.SpeedFeet], the number the driver cut the run to.
+//
+// paid is false, and nothing is charged, for a run on a turn whose attack is
+// already spent: the run IS the action, and there is none left to spend.
+func chargeDash(budget *TurnBudget, speedFeet int, kind ClockKind) (paid bool) {
+	if kind != ClockWorld {
+		if budget.AttacksLeft <= 0 {
+			return false
+		}
+		budget.AttacksLeft = 0
+	}
+	budget.MovementFeet += speedFeet
+
+	return true
+}
+
+// dashSpent is the sentence a run with the action already spent is refused
+// with ([Encounter.refuseUnpaidDash]).
+const dashSpent = "its action is spent"
+
+// refuseUnpaidDash charges a run ([chargeDash]) or, when the turn cannot pay
+// for it, refuses it: [ErrBadIntent], the turn ends, and the story says why
+// with a stayed beat naming `encounter:table:dash` and [dashSpent].
+//
+// THE HOST IS THE JUDGE OF COST, as [attackRefusal] is of a swing. The
+// [TableDriver] never reaches this — a run after the swing is not on its
+// table ([behavior.Facts.CanDash], set by [factsFromView]), so its roll lands
+// on another row — and the backstop is for any other driver, which could
+// otherwise run on an action it no longer has.
+func (e *Encounter) refuseUnpaidDash(
+	member MemberID, budget *TurnBudget, speedFeet int, kind ClockKind,
+) (refused bool, err error) {
+	if chargeDash(budget, speedFeet, kind) {
+		return false, nil
+	}
+	if berr := e.appendStayedBeat(member, tableCauseDash, dashSpent, uint64(e.clock.ToData().HighWater)); berr != nil {
+		return false, berr
+	}
+
+	return true, nil
 }
 
 // meleeReachCells is the v1 reading of "a hostile's melee reach" for the
@@ -2052,6 +2138,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 				Position:      pos,
 				DistanceCells: e.Distance(ownCell, pos),
 				Path:          path,
+				ReachTail:     e.reachTail(ownCell, pos, path, bestRangeCells),
 			})
 			continue
 		}
@@ -2115,6 +2202,45 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 	sort.Slice(remembered, func(i, j int) bool { return remembered[i].ID < remembered[j].ID })
 	sort.Slice(lost, func(i, j int) bool { return lost[i].ID < lost[j].ID })
 
+	// WHERE EACH FOE COULD STRIKE FROM NEXT TURN (rpg-project#671, R18), only
+	// for a table that asks `threat`: in sight and standing, or remembered,
+	// from where this monster believes it stands.
+	var threats []ThreatZone
+	if tableNamesThreat(m.Table[AnswerTime]) {
+		if query == nil {
+			if query, err = e.cellQuery(); err != nil {
+				return MonsterView{}, fmt.Errorf("view threats: %w", err)
+			}
+		}
+		placed := make([]struct {
+			id  MemberID
+			pos spatial.Position
+		}, 0, len(seen)+len(remembered))
+		for _, s := range seen {
+			if s.Opposed && s.Standing {
+				placed = append(placed, struct {
+					id  MemberID
+					pos spatial.Position
+				}{s.ID, s.Position})
+			}
+		}
+		for _, r := range remembered {
+			if r.Opposed {
+				placed = append(placed, struct {
+					id  MemberID
+					pos spatial.Position
+				}{r.ID, r.Position})
+			}
+		}
+		for _, foe := range placed {
+			zone, zerr := query.threatZone(m.ID, foe.id, foe.pos)
+			if zerr != nil {
+				return MonsterView{}, fmt.Errorf("view threats: %q: %w", foe.id, zerr)
+			}
+			threats = append(threats, zone)
+		}
+	}
+
 	return MonsterView{
 		Self:       m.ID,
 		Position:   ownCell,
@@ -2133,8 +2259,10 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		Remembered: remembered,
 		Lost:       lost,
 		Budget:     budget,
+		SpeedFeet:  sheet.SpeedFeet,
 		Round:      round,
 		Dwelling:   e.dwelling(m),
+		Threats:    threats,
 	}, nil
 }
 

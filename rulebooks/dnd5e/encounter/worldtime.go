@@ -445,8 +445,8 @@ func (e *Encounter) thinkFor(member MemberID, m *memberRecord) error {
 		turnBudget := TurnBudget{AttacksLeft: 0, MovementFeet: sheet.SpeedFeet}
 		// The same anti-spin bound a fight's own turn uses: one terminating
 		// Pass plus however many cells this member could ever ask for one at
-		// a time. There is no attack to allow for here.
-		bound := 2 + CellsFromFeet(turnBudget.MovementFeet)
+		// a time, a run's included. The attack's allowance is spare here.
+		bound := intentBound(turnBudget)
 
 		if _, err := e.runIntents(nil, core.EntityID(member), m, 0, &turnBudget, 0, bound, ClockWorld); err != nil {
 			return fmt.Errorf("world thinks %q: %w", member, err)

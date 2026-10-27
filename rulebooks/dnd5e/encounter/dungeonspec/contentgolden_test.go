@@ -218,6 +218,7 @@ func TestEveryContentFileCompilesToItsCommittedPicture(t *testing.T) {
 		"cone-site.yaml",
 		"facing-site.yaml",
 		"pause-facing-site.yaml",
+		"pursuit-hall.yaml",
 		"reference-raider-camp.yaml",
 		"reference-tomb-heirloom.yaml",
 		"reference-tomb.yaml",

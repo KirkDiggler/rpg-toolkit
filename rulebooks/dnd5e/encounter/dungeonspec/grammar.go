@@ -764,7 +764,7 @@ func (g *grammar) entrySelector(at, _ string, entry AnswerSpec) {
 
 			return
 		}
-		if word != "toward" {
+		if !walksTo(word) {
 			g.fail(at+"."+word,
 				"a cell is somewhere to walk toward, and `%s` acts on a creature (line %d)", word, sel.Line)
 
@@ -801,7 +801,7 @@ func (g *grammar) entryRoute(at, word string, route []authoredCell) {
 		}
 		answers = append(answers, answer)
 	}
-	if word != "toward" {
+	if !walksTo(word) {
 		return
 	}
 	floorDefect := false
@@ -859,6 +859,13 @@ func (g *grammar) routeLegs(path string, cells []spatial.Position) {
 	}
 }
 
+// walksTo reports whether a row word walks to a place — a cell or a route —
+// rather than acting on a creature: `toward`, and `dash`, which is a run
+// toward (rpg-project#671, R17).
+func walksTo(word string) bool {
+	return word == "toward" || word == "dash"
+}
+
 // entryWords is the outcome words this entry carries, in the order the design
 // lists them.
 func entryWords(entry AnswerSpec) []string {
@@ -878,6 +885,9 @@ func entryWords(entry AnswerSpec) []string {
 	if entry.Toward != nil {
 		out = append(out, "toward")
 	}
+	if entry.Dash != nil {
+		out = append(out, "dash")
+	}
 	if entry.Away != nil {
 		out = append(out, "away")
 	}
@@ -895,6 +905,8 @@ func entrySelectorOf(entry AnswerSpec) (string, *SelectorSpec) {
 		return "attack", entry.Attack
 	case entry.Toward != nil:
 		return "toward", entry.Toward
+	case entry.Dash != nil:
+		return "dash", entry.Dash
 	case entry.Away != nil:
 		return "away", entry.Away
 	default:

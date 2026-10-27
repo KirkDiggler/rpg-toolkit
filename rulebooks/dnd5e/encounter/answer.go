@@ -478,6 +478,8 @@ func answerWord(entry Answer) string {
 		return "attack"
 	case entry.Toward != nil:
 		return "toward"
+	case entry.Dash != nil:
+		return "dash"
 	case entry.Away != nil:
 		return "away"
 	case entry.Search != nil:
@@ -509,13 +511,7 @@ func intentTarget(intent TurnIntent) MemberID {
 // "at" for an authored cell, "path" for an authored route, or empty for a
 // word that selects nothing.
 func selectorWord(entry Answer) string {
-	sel := entry.Attack
-	if sel == nil {
-		sel = entry.Toward
-	}
-	if sel == nil {
-		sel = entry.Away
-	}
+	sel := selectorOf(entry)
 	if sel == nil {
 		return ""
 	}
@@ -591,7 +587,7 @@ func validateEntry(key AnswerKey, i int, entry Answer) error {
 			return fmt.Errorf("answer %q entry %d: `%s` answers a social verdict, not time: %w",
 				key, i, word, ErrBadAnswer)
 		}
-	case "hold", "attack", "toward", "away", "search":
+	case "hold", "attack", "toward", "dash", "away", "search":
 		if social {
 			return fmt.Errorf("answer %q entry %d: `%s` is what a creature does with time: %w",
 				key, i, word, ErrBadAnswer)
@@ -614,7 +610,7 @@ func validateEntry(key AnswerKey, i int, entry Answer) error {
 			return fmt.Errorf("answer %q entry %d: `actor` names the actor of a deed and this entry names none: %w",
 				key, i, ErrBadAnswer)
 		}
-		if sel.At != nil && entry.Toward == nil {
+		if sel.At != nil && entry.Toward == nil && entry.Dash == nil {
 			return fmt.Errorf("answer %q entry %d: a cell is somewhere to walk toward, not %s: %w",
 				key, i, word, ErrBadAnswer)
 		}
@@ -679,6 +675,11 @@ func validateWhenWords(when *When) error {
 
 		return nil
 	case !when.Fact.IsZero():
+		return nil
+	case when.Threat != "":
+		// THE WORD IS mind/behavior's TO SEAL ([behavior.When.Validate],
+		// already asked of this entry): a threat names no vocabulary this
+		// build owns, so there is nothing more to refuse here.
 		return nil
 	case when.Enemy != "":
 		for _, known := range EnemyWords {
@@ -763,6 +764,8 @@ func selectorOf(entry Answer) *Selector {
 		return entry.Attack
 	case entry.Toward != nil:
 		return entry.Toward
+	case entry.Dash != nil:
+		return entry.Dash
 	case entry.Away != nil:
 		return entry.Away
 	default:
@@ -814,6 +817,7 @@ func cloneAnswer(entry Answer) Answer {
 	}
 	out.Attack = cloneSelector(entry.Attack)
 	out.Toward = cloneSelector(entry.Toward)
+	out.Dash = cloneSelector(entry.Dash)
 	out.Away = cloneSelector(entry.Away)
 	if entry.Search != nil {
 		search := *entry.Search

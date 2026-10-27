@@ -1101,6 +1101,7 @@ func answerOf(entry AnswerSpec, o encounter.Orientation) encounter.Answer {
 		Hold:   entry.Hold != nil,
 		Attack: selectorOf(entry.Attack, o),
 		Toward: selectorOf(entry.Toward, o),
+		Dash:   selectorOf(entry.Dash, o),
 		Away:   selectorOf(entry.Away, o),
 		Search: search,
 	}
@@ -1187,8 +1188,9 @@ func oneWhenOf(when *WhenSpec) encounter.When {
 		Enemy: encounter.EnemyWord(when.Enemy), Deed: when.Deed, Within: when.Within,
 		// The scope rides with the deed (rpg-toolkit#1883): the condition's
 		// own reading of WHOSE deed it is about.
-		Scope: when.Scope,
-		Fact:  nameOf(when.Fact),
+		Scope:  when.Scope,
+		Fact:   nameOf(when.Fact),
+		Threat: behavior.ThreatWord(when.Threat),
 	}
 	if when.Heard != nil {
 		out.Heard = &encounter.HeardWhen{Kind: nameOf(when.Heard.Kind), Within: when.Heard.Within}

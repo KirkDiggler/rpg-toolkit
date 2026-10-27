@@ -306,6 +306,18 @@ func factsFromView(view MonsterView) Facts {
 		}
 	}
 
+	// WHAT A MOVE BUYS, AND WHO ELSE COULD REACH WHERE A ROW LANDS
+	// (rpg-project#671, dash.go). The driver's door only: a social verdict
+	// carries no `when`, so the verb's own door never reads them.
+	moveBuys(&facts, view)
+	facts.Threat = threatJudge(view)
+
+	// A RUN SPENDS THE ACTION (rpg-project#671, [behavior.Facts.CanDash]):
+	// on a turn only while the swing is unspent, so a creature that swung is
+	// never offered a run; on the world clock always, where there is no
+	// swing to forfeit.
+	facts.CanDash = view.Budget.AttacksLeft > 0 || view.Clock == ClockWorld
+
 	return facts
 }
 

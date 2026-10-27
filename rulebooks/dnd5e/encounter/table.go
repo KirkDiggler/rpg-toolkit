@@ -70,6 +70,10 @@ type (
 	// EnemyWord is a `when: { enemy: … }` band.
 	EnemyWord = behavior.EnemyWord
 
+	// ThreatWord is a `when: { threat: … }` condition's value: who else
+	// could reach the cell a row lands on (rpg-project#671, dash.go).
+	ThreatWord = behavior.ThreatWord
+
 	// DeedScope says whose deed a `when: { <deed>: … }` condition is about:
 	// the creature itself (the default), its own side, or the creature as
 	// the doer (rpg-toolkit#1883).
@@ -140,6 +144,28 @@ const (
 
 	// EnemyNone holds when none of the four does.
 	EnemyNone = behavior.EnemyNone
+
+	// EnemyWalk holds when a walk this turn puts the foe in reach
+	// (rpg-project#671, [moveBuys]).
+	EnemyWalk = behavior.EnemyWalk
+
+	// EnemyDash holds when only a dash this turn puts the foe in reach.
+	EnemyDash = behavior.EnemyDash
+
+	// EnemyFar holds when not even a dash this turn puts the foe in reach.
+	EnemyFar = behavior.EnemyFar
+
+	// ThreatNone holds when nobody but the row's target could reach where
+	// the row lands, with a walk or a dash ([threatJudge]).
+	ThreatNone = behavior.ThreatNone
+
+	// ThreatWalk holds when another foe could walk into reach of where the
+	// row lands, and swing.
+	ThreatWalk = behavior.ThreatWalk
+
+	// ThreatDash holds when another foe could reach where the row lands only
+	// by dashing.
+	ThreatDash = behavior.ThreatDash
 
 	// HeadingWent follows the way the quarry went: its last seen step.
 	HeadingWent = behavior.HeadingWent

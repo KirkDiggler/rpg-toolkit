@@ -1308,6 +1308,17 @@ type AnswerSpec struct {
 	//	    - { when: { enemy: none }, toward: { at: [3, 4] } }
 	Toward *SelectorSpec `yaml:"toward,omitempty"`
 
+	// Dash RUNS at the selected member's believed position, an authored
+	// cell, a route or a sound, spending the turn on the run
+	// (rpg-project#671, R17): `toward`'s selectors, twice the movement, and
+	// no swing that turn. `time` only. A dash at a foe already in reach is
+	// not on the table; every other threshold is the row's own `when`:
+	//
+	//	on:
+	//	  time:
+	//	    - { when: [{ enemy: dash }, { threat: none }], dash: enemy }
+	Dash *SelectorSpec `yaml:"dash,omitempty"`
+
 	// Away walks away from the selected member for the turn's movement —
 	// the coward's run. `time` only.
 	//
@@ -1538,6 +1549,12 @@ type WhenSpec struct {
 	// Not is `not: { … }`: holds when the one condition inside it does not.
 	Not *WhenSpec
 
+	// Threat is `threat: none | walk | dash` (rpg-project#671, R18): who
+	// else could reach the cell this row's move lands on, and swing, on
+	// their next turn. Empty when this condition names something else. One
+	// of [behavior.ThreatWords], refused at decode otherwise.
+	Threat string
+
 	// Line is the file line, captured at decode for [AnswerSpec.Line]'s
 	// reason.
 	Line int
@@ -1563,10 +1580,11 @@ type heardBody struct {
 // The keys a `when` entry may name besides a deed word, sealed so the
 // refusals and the decode below cannot drift apart.
 const (
-	whenEnemy = "enemy"
-	whenHeard = "heard"
-	whenFact  = "fact"
-	whenNot   = "not"
+	whenEnemy  = "enemy"
+	whenHeard  = "heard"
+	whenFact   = "fact"
+	whenNot    = "not"
+	whenThreat = "threat"
 )
 
 // The three keys a deed condition's body may carry, sealed so the hand-read
@@ -1596,8 +1614,8 @@ type withinSpec struct {
 func (w *WhenSpec) UnmarshalYAML(value *yaml.Node) error {
 	if value.Kind != yaml.MappingNode || len(value.Content) == 0 {
 		return fmt.Errorf("line %d: a `when` is one of { enemy: %s }, { <deed>: { within: N } }, "+
-			"{ heard: { kind, within } }, { fact: <id> } or { not: { … } }",
-			value.Line, strings.Join(enemyWords(), " | "))
+			"{ heard: { kind, within } }, { fact: <id> }, { threat: %s } or { not: { … } }",
+			value.Line, strings.Join(enemyWords(), " | "), strings.Join(threatWords(), " | "))
 	}
 	if len(value.Content) > 2 {
 		return fmt.Errorf("line %d: a `when` entry is one condition, and this names %d: "+
@@ -1626,6 +1644,17 @@ func (w *WhenSpec) UnmarshalYAML(value *yaml.Node) error {
 		w.Fact = body.Value
 
 		return nil
+	case whenThreat:
+		// A SEALED WORD, REFUSED IN THIS DIALECT'S VOICE: what the word means
+		// is mind/behavior's, which words this build reads is said here.
+		if body.Kind != yaml.ScalarNode || !knownThreatWord(body.Value) {
+			return fmt.Errorf("line %d: `threat: %s` is not a threat this build reads: they are %s "+
+				"(who else could reach where this row lands: nobody, a walker, or only a dasher)",
+				body.Line, body.Value, strings.Join(threatWords(), ", "))
+		}
+		w.Threat = body.Value
+
+		return nil
 	case whenNot:
 		var inner WhenSpec
 		if err := body.Decode(&inner); err != nil {
@@ -1648,7 +1677,7 @@ func (w *WhenSpec) UnmarshalYAML(value *yaml.Node) error {
 	}
 
 	if !knownWhenDeed(key) {
-		return fmt.Errorf("line %d: `%s` is not a deed this build holds: they are %s (and `enemy`, `heard`, `fact`, `not`)",
+		return fmt.Errorf("line %d: `%s` is not a deed this build holds: they are %s (and `enemy`, `heard`, `fact`, `threat`, `not`)",
 			value.Content[0].Line, key, strings.Join(encounter.WhenDeeds, ", "))
 	}
 	// UNKNOWN KEYS ARE REFUSED BY HAND, because Decode's strictness does not
@@ -2257,6 +2286,28 @@ func knownEnemyWord(word string) bool {
 	return false
 }
 
+// threatWords is the sealed `threat:` vocabulary as strings, for a refusal
+// that lists what there is.
+func threatWords() []string {
+	out := make([]string, 0, len(behavior.ThreatWords))
+	for _, w := range behavior.ThreatWords {
+		out = append(out, string(w))
+	}
+
+	return out
+}
+
+// knownThreatWord reports whether a word is one of [behavior.ThreatWords].
+func knownThreatWord(word string) bool {
+	for _, w := range behavior.ThreatWords {
+		if string(w) == word {
+			return true
+		}
+	}
+
+	return false
+}
+
 // knownWhenDeed reports whether a key names a deed a `when` may read.
 func knownWhenDeed(key string) bool {
 	for _, d := range encounter.WhenDeeds {
@@ -2295,7 +2346,7 @@ func knownSelectorWord(word string) bool {
 func (r *AnswerSpec) UnmarshalYAML(value *yaml.Node) error {
 	if value.Kind != yaml.MappingNode {
 		return fmt.Errorf(
-			"line %d: an answer entry is { weight, say, when } plus exactly one of { fact, flee, hold, attack, toward, away, search }",
+			"line %d: an answer entry is { weight, say, when } plus exactly one of { fact, flee, hold, attack, toward, dash, away, search }",
 			value.Line)
 	}
 	for i := 0; i < len(value.Content); i += 2 {
@@ -2311,7 +2362,7 @@ func (r *AnswerSpec) UnmarshalYAML(value *yaml.Node) error {
 			}}
 		}
 		switch key {
-		case "weight", "say", "when", "fact", "flee", "hold", "attack", "toward", "away", "search",
+		case "weight", "say", "when", "fact", "flee", "hold", "attack", "toward", "dash", "away", "search",
 			"use", "with", "as":
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.AnswerSpec",
