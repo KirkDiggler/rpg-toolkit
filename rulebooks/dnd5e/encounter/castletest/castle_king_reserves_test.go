@@ -30,7 +30,8 @@ import (
 
 // TestMadKingTheReservesComeIntoTheGatehouse opens the gate from beneath it,
 // steps the hero back into the gatehouse, and ends his turns: each reserve
-// RUNS at least once, and stands in reach of him having swung sooner than a
+// RUNS in round 1 on every roll — the run is the only candidate at every
+// level of its pick ([kingScene.ranOnEveryRoll]) — and stands in reach of him having swung sooner than a
 // walk would have brought it, and within the dasher's own rounds
 // ([dasherRounds]) over the pathfinder's route to where it REMEMBERS him,
 // plus one round for the step from that memory to where he stands — he
@@ -109,10 +110,17 @@ func TestMadKingTheReservesComeIntoTheGatehouse(t *testing.T) {
 		}
 		return false
 	}
+	before, err := s.enc.Story(&encounter.StoryInput{Audience: hero})
+	require.NoError(t, err)
 	arrived := map[encounter.MemberID]int{}
 	for round := 1; len(arrived) < len(reserves) && round <= bound[kingReserve]+bound[kingReserve2]; round++ {
 		s.endTurn()
 		require.Equal(t, encounter.ClockTurn, clockKind(t, s.enc, hero), "the fight is still on")
+		if round == 1 {
+			for _, id := range reserves {
+				s.ranOnEveryRoll(id, len(before))
+			}
+		}
 		for _, id := range reserves {
 			if _, ok := arrived[id]; !ok && s.enc.Distance(s.at(id), s.at(hero)) <= 1 && swung(id) {
 				arrived[id] = round
@@ -142,6 +150,49 @@ func dasherRounds(n, pace int) int {
 			n -= 2 * pace
 		}
 	}
+}
+
+// ranOnEveryRoll asserts a creature's first pick after the story's first
+// `from` entries was the run, and that it was the ONLY candidate at every
+// level of the roll — so whatever the die says, it runs. The harness's die
+// is 1; this reads the candidates instead, so it holds for every face.
+func (s *kingScene) ranOnEveryRoll(id encounter.MemberID, from int) {
+	s.t.Helper()
+	story, err := s.enc.Story(&encounter.StoryInput{Audience: hero})
+	require.NoError(s.t, err)
+	for _, entry := range story[from:] {
+		var pick struct {
+			Beat       string           `json:"beat"`
+			Creature   string           `json:"creature"`
+			Word       string           `json:"word"`
+			Path       []int            `json:"path"`
+			Candidates []map[string]any `json:"candidates"`
+			Rows       []struct {
+				Held       bool `json:"held"`
+				Affordable bool `json:"affordable"`
+				Rows       []struct {
+					Held       bool `json:"held"`
+					Affordable bool `json:"affordable"`
+				} `json:"rows"`
+			} `json:"rows"`
+		}
+		require.NoError(s.t, json.Unmarshal(entry.Payload, &pick))
+		if pick.Beat != encounter.BeatAnswered || pick.Creature != string(id) {
+			continue
+		}
+		require.Equal(s.t, "dash", pick.Word, "%s's first pick is the run", id)
+		require.Len(s.t, pick.Candidates, 1, "%s: the dasher is the only row on the table, so every roll lands on it", id)
+		inner := 0
+		for _, row := range pick.Rows[pick.Path[0]].Rows {
+			if row.Held && row.Affordable {
+				inner++
+			}
+		}
+		require.Equal(s.t, 1, inner, "%s: and the run is the only row inside it", id)
+
+		return
+	}
+	require.Failf(s.t, "no pick", "%s picked nothing in round 1", id)
 }
 
 // ran reports whether one member's record holds a step of a run.
