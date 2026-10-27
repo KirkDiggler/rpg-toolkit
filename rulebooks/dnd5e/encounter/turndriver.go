@@ -187,6 +187,13 @@ type MonsterView struct {
 	// Budget is what remains of this member's turn.
 	Budget TurnBudget
 
+	// SpeedFeet is this monster's sheet speed, asked when the view is built
+	// ([SheetFacts.SpeedFeet]): what a `dash` ADDS to the turn's movement
+	// (rpg-project#671, RAW Dash). The facts that say what a run buys, the
+	// cut the driver makes, and the charge the encounter takes all read this
+	// one number. Zero, a hand-built view's value, is a run that buys nothing.
+	SpeedFeet int
+
 	// Round is the fight's own round counter (see play/clock's Turn.Round),
 	// carried through so a driver that wants to vary behaviour by round — a
 	// monster that flees only after round 2, say — has the fact without
@@ -543,11 +550,11 @@ type Move struct {
 
 	// Dash says this walk is a RUN (rpg-project#671, R17): the table's
 	// `dash`, which spends the turn's swing for its movement twice over.
-	// The encounter charges it before the first step ([Encounter.spendDash]):
-	// on a turn the movement left doubles and the attack is gone, and a dash
-	// with the attack already spent is refused and told; on the world clock
-	// there is no swing to forfeit and the pace alone doubles. So Path may
-	// be up to twice the budget's cells. Every step's beat names the cause
+	// The encounter charges it before the first step ([Encounter.chargeDash]):
+	// the creature's speed is added to the movement left, and on a turn the
+	// attack is gone, a dash with the attack already spent refused and told;
+	// on the world clock there is no swing to forfeit. So Path may be up to
+	// the movement left plus the speed, in cells. Every step's beat names the cause
 	// `encounter:table:dash`.
 	Dash bool
 }
@@ -643,7 +650,7 @@ type Routed struct {
 	GivesUp MemberID
 
 	// Dash is [Move.Dash] for a routed walk — the table's `dash` at a cell,
-	// a sound, or back to a route: the walk is routed for the doubled
+	// a sound, or back to a route: the walk is routed for the added
 	// movement the run buys, and costs what a dashing Move costs.
 	Dash bool
 }

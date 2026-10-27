@@ -20,12 +20,12 @@ import (
 //
 //   - `enemy: walk | dash | far`: against the foe `enemy` names, does a walk at
 //     this turn's movement left end in reach, does only a dash (that movement
-//     twice), or not even a dash ([moveBuys]).
+//     with its speed added once more), or not even a dash ([moveBuys]).
 //   - `threat: none | walk | dash`: at the cell a row's move would LAND on, who
 //     ELSE could walk into reach of it and swing on their next turn, or only
 //     dash into it, or nobody ([threatJudge]).
 //
-// The run itself — the doubled movement and the swing it costs — is charged
+// The run itself — the speed it adds and the swing it costs — is charged
 // where every intent is judged ([Encounter.chargeDash]).
 
 // moveBuys fills [Facts.EnemyWalk], [Facts.EnemyDash] and [Facts.EnemyFar]:
@@ -36,12 +36,13 @@ import (
 //
 // THE COMPUTATION. Let `need` be the cells this monster must walk before that
 // foe's believed position is inside the reach of one of its own actions
-// ([cellsToReach]), and `cells` the turn's movement left
-// ([TurnBudget.MovementFeet] in cells). Then:
+// ([cellsToReach]), `cells` the turn's movement left
+// ([TurnBudget.MovementFeet] in cells), and `run` that movement with the
+// creature's speed added once more ([dashCells], the RAW Dash). Then:
 //
 //   - walk: need <= cells — it can walk there and still swing;
-//   - dash: cells < need <= 2*cells — only a run gets there this turn;
-//   - far:  need > 2*cells, or no route ends in reach at all.
+//   - dash: cells < need <= run — only a run gets there this turn;
+//   - far:  need > run, or no route ends in reach at all.
 //
 // With speed 30 feet (6 cells) and a 5-foot reach (1 cell), a foe at a gap of
 // g cells needs g-1 cells walked: g of 2..7 is walk, 8..13 dash, 14 and on
@@ -63,7 +64,7 @@ func moveBuys(facts *Facts, view MonsterView) {
 	switch {
 	case reachable && need <= cells:
 		facts.EnemyWalk = true
-	case reachable && need <= 2*cells:
+	case reachable && need <= dashCells(view):
 		facts.EnemyDash = true
 	default:
 		facts.EnemyFar = true
@@ -242,6 +243,9 @@ func tableNamesThreat(rows []Answer) bool {
 
 // threatZone is one opposed member's [ThreatZone], from where the observer
 // believes it stands.
+//
+// A FOE'S NEXT TURN STARTS FRESH, so its walk is its whole speed and its
+// dash that speed added once more: twice it.
 //
 // THE COMPUTATION. A flood from that cell, as that member walks (its own
 // occupancy rules, the observer's own picture of the walls), out to twice its

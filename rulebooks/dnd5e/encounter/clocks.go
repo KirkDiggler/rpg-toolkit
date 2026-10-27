@@ -1031,10 +1031,10 @@ func (e *Encounter) executeTurnIntent(
 
 	case Move:
 		// A RUN IS CHARGED BEFORE IT IS MEASURED (rpg-project#671, R17): the
-		// doubled movement is what makes a path of twice the cells
-		// affordable, and a run the turn cannot pay for is told and ends it.
+		// speed it adds is what makes the longer path affordable, and a run
+		// the turn cannot pay for is told and ends it.
 		if it.Dash {
-			if refused, derr := e.chargeDash(activeID, budget, coords.Clock); refused || derr != nil {
+			if refused, derr := e.chargeDash(activeID, budget, view.SpeedFeet, coords.Clock); refused || derr != nil {
 				return refused, nil, derr
 			}
 		}
@@ -1175,9 +1175,9 @@ func (e *Encounter) executeTurnIntent(
 		}
 
 		// The Move arm's rule: a run is charged before it is routed, so the
-		// route is asked for the doubled movement.
+		// route is asked for the movement the run added.
 		if it.Dash {
-			if refused, derr := e.chargeDash(activeID, budget, coords.Clock); refused || derr != nil {
+			if refused, derr := e.chargeDash(activeID, budget, view.SpeedFeet, coords.Clock); refused || derr != nil {
 				return refused, nil, derr
 			}
 		}
@@ -1323,9 +1323,11 @@ func (e *Encounter) executeTurnIntent(
 // intentBound is how many times one turn's worth of doing may ask its driver
 // for an intent ([Encounter.driveOneMonsterTurn]'s anti-spin bound): one
 // attack, one terminating Pass, and however many cells the member could ever
-// ask for one at a time — TWICE its movement, because a `dash` doubles it
-// mid-turn (rpg-project#671) and a bound read before the run must not refuse
-// the longer walk the run bought. On both clocks.
+// ask for one at a time — TWICE its movement, because a `dash` adds its speed
+// once more mid-turn (rpg-project#671) and a bound read before the run must
+// not refuse the longer walk the run bought. Read at the turn's start, where
+// the movement is the speed, so twice it is the most a turn can walk. On both
+// clocks.
 func intentBound(budget TurnBudget) int {
 	return 2 + 2*CellsFromFeet(budget.MovementFeet)
 }
@@ -1334,10 +1336,13 @@ func intentBound(budget TurnBudget) int {
 // already gone ([Encounter.chargeDash]).
 const dashSpent = "its action is spent"
 
-// chargeDash pays for a run (rpg-project#671, R17), before its walk: on a
-// turn the movement left doubles and the attack is gone — a dash IS the
-// swing, spent on ground — and on the world clock, where there is no swing
-// to forfeit, the pace alone doubles.
+// chargeDash pays for a run (rpg-project#671, R17), before its walk: the
+// creature's speed is ADDED to the movement it has left, as a player's Dash
+// adds it (RAW; a creature that walked three cells of six and then runs has
+// nine left, not six). On a turn the attack is gone too — a dash IS the swing,
+// spent on ground — and on the world clock, where there is no swing to
+// forfeit, the run is the added speed alone. speedFeet is the view's
+// [MonsterView.SpeedFeet], the number the driver cut the run to.
 //
 // A RUN THE TURN CANNOT PAY FOR IS TOLD, NEVER WALKED. With the attack
 // already spent on a turn, the run is refused with a stayed beat naming
@@ -1346,7 +1351,9 @@ const dashSpent = "its action is spent"
 // the row did not say. mind/behavior v0.14.0 has no fact a host can clear to
 // take only `dash` off the table after a swing, so this is the judge — as
 // [attackRefusal] is the one judge of a swing.
-func (e *Encounter) chargeDash(member MemberID, budget *TurnBudget, kind ClockKind) (refused bool, err error) {
+func (e *Encounter) chargeDash(
+	member MemberID, budget *TurnBudget, speedFeet int, kind ClockKind,
+) (refused bool, err error) {
 	if kind != ClockWorld {
 		if budget.AttacksLeft <= 0 {
 			if berr := e.appendStayedBeat(member, tableCauseDash, dashSpent, uint64(e.clock.ToData().HighWater)); berr != nil {
@@ -1357,7 +1364,7 @@ func (e *Encounter) chargeDash(member MemberID, budget *TurnBudget, kind ClockKi
 		}
 		budget.AttacksLeft = 0
 	}
-	budget.MovementFeet *= 2
+	budget.MovementFeet += speedFeet
 
 	return false, nil
 }
@@ -2240,6 +2247,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		Remembered: remembered,
 		Lost:       lost,
 		Budget:     budget,
+		SpeedFeet:  sheet.SpeedFeet,
 		Round:      round,
 		Dwelling:   e.dwelling(m),
 		Threats:    threats,

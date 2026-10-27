@@ -41,18 +41,20 @@ func row(n int) []spatial.Position {
 // farView is a view whose one foe is a twenty-cell walk away, in sight.
 func farView() MonsterView {
 	return MonsterView{
-		Position: spatial.Position{X: 1, Y: 0},
-		Budget:   TurnBudget{AttacksLeft: 1, MovementFeet: 30},
+		Position:  spatial.Position{X: 1, Y: 0},
+		Budget:    TurnBudget{AttacksLeft: 1, MovementFeet: 30},
+		SpeedFeet: 30,
 		Seen: []SeenMember{{
 			ID: "alice", Opposed: true, Standing: true, DistanceCells: 21, Path: row(20),
 		}},
 	}
 }
 
-// TestADashRowIsCutToTwiceTheBudgetAndFlagged: six cells of movement, a run
-// of twelve, marked so the encounter charges it; a `toward` on the same view
-// is the walk's six and is not.
-func (s *DashDriverSuite) TestADashRowIsCutToTwiceTheBudgetAndFlagged() {
+// TestADashRowIsCutToTheBudgetPlusItsSpeedAndFlagged: six cells of movement
+// and a speed of six, a run of twelve, marked so the encounter charges it; a
+// `toward` on the same view is the walk's six and is not. Three cells already
+// walked leave three, and the run adds the whole speed to them: nine (RAW).
+func (s *DashDriverSuite) TestADashRowIsCutToTheBudgetPlusItsSpeedAndFlagged() {
 	d := TableDriver{}
 	view := farView()
 	enemy := &Selector{Word: SelectorEnemy}
@@ -64,6 +66,12 @@ func (s *DashDriverSuite) TestADashRowIsCutToTwiceTheBudgetAndFlagged() {
 	walk, err := d.intentFor(view, Answer{Toward: enemy})
 	s.Require().NoError(err)
 	s.Equal(Move{Path: row(6), Target: "alice"}, walk)
+
+	walked := view
+	walked.Budget.MovementFeet = 15
+	late, err := d.intentFor(walked, Answer{Dash: enemy})
+	s.Require().NoError(err)
+	s.Equal(Move{Path: row(9), Target: "alice", Dash: true}, late, "three left and six added")
 }
 
 // TestADashToACellIsRoutedUnderItsOwnCause: the encounter routes a run to a
@@ -144,8 +152,9 @@ func (s *DashDriverSuite) TestOnlyATableThatAsksPaysForTheZones() {
 // six-cell walk, `walk` on six cells of movement.
 func (s *DashDriverSuite) TestARememberedFoeIsMeasuredToReachNotOntoItsCell() {
 	view := MonsterView{
-		Position: spatial.Position{X: 1, Y: 0},
-		Budget:   TurnBudget{AttacksLeft: 1, MovementFeet: 30},
+		Position:  spatial.Position{X: 1, Y: 0},
+		Budget:    TurnBudget{AttacksLeft: 1, MovementFeet: 30},
+		SpeedFeet: 30,
 		Remembered: []RememberedMember{{
 			ID: "alice", Opposed: true, Position: row(7)[6], DistanceCells: 7, Path: row(7), ReachTail: 1,
 		}},

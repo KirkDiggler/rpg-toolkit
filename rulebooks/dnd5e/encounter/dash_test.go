@@ -40,6 +40,15 @@ var dashSheets = sheetFacts{
 // the order given.
 func (s *DashSuite) hall(striker *swingRecorder, members ...encounter.MemberInput) *encounter.Encounter {
 	s.T().Helper()
+
+	return s.hallDriven(tableDriver(), striker, members...)
+}
+
+// hallDriven is hall with the driver named.
+func (s *DashSuite) hallDriven(
+	driver encounter.Driver, striker *swingRecorder, members ...encounter.MemberInput,
+) *encounter.Encounter {
+	s.T().Helper()
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  openAir(),
@@ -54,7 +63,7 @@ func (s *DashSuite) hall(striker *swingRecorder, members ...encounter.MemberInpu
 			Sheets:        dashSheets,
 			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
-			Driver:        tableDriver(),
+			Driver:        driver,
 			Roller:        rollsLowest{},
 			Actors: encounter.Actors{
 				Striker:   striker,
@@ -301,6 +310,55 @@ func (s *DashSuite) TestADashOnTheWorldClockDoublesThePace() {
 
 			s.Len(s.beats(enc, encounter.BeatMoved, goblin), tc.cells,
 				"%s covers %d cells in one round of the world", tc.name, tc.cells)
+		})
+	}
+}
+
+// cellsWest is n cells of the hall's first row walking west from x, the
+// first step first.
+func cellsWest(x, n int) []spatial.Position {
+	out := make([]spatial.Position, 0, n)
+	for i := 1; i <= n; i++ {
+		out = append(out, onRow(x-i))
+	}
+
+	return out
+}
+
+// TestARunAddsTheSpeedToWhatIsLeft is RAW Dash: the goblin walks three of its
+// six cells, then runs. The run adds its whole speed to the three it has
+// left, so nine more cells are paid for — not six, which doubling what is
+// left would give — and a tenth is a walk the turn cannot afford.
+func (s *DashSuite) TestARunAddsTheSpeedToWhatIsLeft() {
+	for _, tc := range []struct {
+		name  string
+		run   int
+		ends  int
+		moved int
+	}{
+		{name: "nine more cells are paid for", run: 9, ends: 18, moved: 12},
+		{name: "a tenth is not", run: 10, ends: 27, moved: 3},
+	} {
+		s.Run(tc.name, func() {
+			driver := &scriptedDriver{intents: []encounter.TurnIntent{
+				encounter.Move{Path: cellsWest(30, 3)},
+				encounter.Move{Path: cellsWest(27, tc.run), Dash: true},
+			}}
+			striker := &swingRecorder{}
+			enc := s.hallDriven(driver, striker,
+				encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: onRow(1)},
+				encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: onRow(30)},
+			)
+			on, err := enc.ClockOf(&encounter.ClockOfInput{Member: alice})
+			s.Require().NoError(err)
+			_, err = enc.EndTurn(&encounter.EndTurnInput{Member: on.Active})
+			s.Require().NoError(err)
+
+			s.Require().GreaterOrEqual(len(driver.calls), 2)
+			s.Equal(15, driver.calls[1].Budget.MovementFeet, "three cells walked of six")
+			s.Equal(30, driver.calls[1].SpeedFeet, "and the speed a run adds")
+			s.Equal(onRow(tc.ends), whereIs(s.T(), enc, goblin))
+			s.Len(s.beats(enc, encounter.BeatMoved, goblin), tc.moved)
 		})
 	}
 }

@@ -193,8 +193,8 @@ func (d TableDriver) attackIntent(view MonsterView, entry Answer) TurnIntent {
 }
 
 // pace is how far one walking row goes this turn and what it is called: a
-// `toward` walks the budget's cells, a `dash` runs twice as many
-// (rpg-project#671, R17). The cause names the word on every beat the walk
+// `toward` walks the budget's cells, a `dash` runs the budget plus the
+// creature's speed once more (rpg-project#671, R17). The cause names the word on every beat the walk
 // leaves, and dash marks the intent so the encounter charges the run.
 type pace struct {
 	cells int
@@ -207,11 +207,19 @@ func walkPace(view MonsterView) pace {
 	return pace{cells: CellsFromFeet(view.Budget.MovementFeet), cause: tableCauseToward}
 }
 
-// dashPace is a `dash` row's pace: the turn's movement left, twice
-// ([Encounter.spendDash] doubles the budget the same way when the run is
-// charged, so the cut here and the bound there are one number).
+// dashPace is a `dash` row's pace: the turn's movement left plus the
+// creature's speed ([MonsterView.SpeedFeet]), the RAW Dash. The encounter
+// adds the same speed to the budget when the run is charged
+// ([Encounter.chargeDash]), so the cut here and the charge there are one
+// number.
 func dashPace(view MonsterView) pace {
-	return pace{cells: 2 * CellsFromFeet(view.Budget.MovementFeet), cause: tableCauseDash, dash: true}
+	return pace{cells: dashCells(view), cause: tableCauseDash, dash: true}
+}
+
+// dashCells is how many cells a run covers from here this turn: the movement
+// left with the creature's speed added once more, in feet before the cells.
+func dashCells(view MonsterView) int {
+	return CellsFromFeet(view.Budget.MovementFeet + view.SpeedFeet)
 }
 
 // walkIntent walks toward the selected member's BELIEVED position, or the
