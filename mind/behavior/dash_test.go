@@ -95,15 +95,16 @@ func (s *DashSuite) TestADasherPicksTheRunOnlyWhenOnlyARunReaches() {
 		facts behavior.Facts
 		entry int
 	}{
-		{name: "in reach", entry: 0, facts: behavior.Facts{CanAttack: true, CanMove: true,
+		{name: "in reach", entry: 0, facts: behavior.Facts{CanAttack: true, CanMove: true, CanDash: true,
 			EnemyInReach: true, SeenFoes: seen, FoesInReach: seen}},
-		{name: "a walk reaches", entry: 1, facts: behavior.Facts{CanAttack: true, CanMove: true,
+		{name: "a walk reaches", entry: 1, facts: behavior.Facts{CanAttack: true, CanMove: true, CanDash: true,
 			EnemySeen: true, EnemyWalk: true, SeenFoes: seen}},
-		{name: "only a dash reaches", entry: 2, facts: behavior.Facts{CanAttack: true, CanMove: true,
+		{name: "only a dash reaches", entry: 2, facts: behavior.Facts{CanAttack: true, CanMove: true, CanDash: true,
 			EnemySeen: true, EnemyDash: true, SeenFoes: seen}},
 		{name: "remembered, only a dash reaches", entry: 2, facts: behavior.Facts{CanAttack: true, CanMove: true,
+			CanDash:         true,
 			EnemyRemembered: true, EnemyDash: true, RememberedFoes: seen}},
-		{name: "not even a dash reaches", entry: 3, facts: behavior.Facts{CanAttack: true, CanMove: true,
+		{name: "not even a dash reaches", entry: 3, facts: behavior.Facts{CanAttack: true, CanMove: true, CanDash: true,
 			EnemySeen: true, EnemyFar: true, SeenFoes: seen}},
 	} {
 		s.Run(tc.name, func() {
@@ -113,12 +114,13 @@ func (s *DashSuite) TestADasherPicksTheRunOnlyWhenOnlyARunReaches() {
 		})
 	}
 
-	out := s.pick(dasher(), behavior.Facts{CanAttack: true, CanMove: true,
+	out := s.pick(dasher(), behavior.Facts{CanAttack: true, CanMove: true, CanDash: true,
 		EnemySeen: true, EnemyDash: true, SeenFoes: seen})
 	s.Require().NotNil(out.Answer.Dash)
 	s.Equal(behavior.SelectorEnemy, out.Answer.Dash.Word, "the row that fired carries its own word")
 
-	unset := s.pick(dasher(), behavior.Facts{CanAttack: true, CanMove: true, EnemySeen: true, SeenFoes: seen})
+	unset := s.pick(dasher(), behavior.Facts{CanAttack: true, CanMove: true, CanDash: true,
+		EnemySeen: true, SeenFoes: seen})
 	s.Equal(-1, unset.Entry, "a host that computed no move word holds none of them: nothing is on the table")
 }
 
@@ -132,11 +134,12 @@ func (s *DashSuite) TestADashAtAFoeInReachIsAbsent() {
 		{Weight: 1, Hold: true},
 	}}
 	seen := []core.EntityID{"fighter"}
-	inReach := s.pick(enemyRun, behavior.Facts{CanMove: true, EnemyInReach: true, SeenFoes: seen, FoesInReach: seen})
+	inReach := s.pick(enemyRun, behavior.Facts{CanMove: true, CanDash: true,
+		EnemyInReach: true, SeenFoes: seen, FoesInReach: seen})
 	s.False(inReach.Rows[0].Affordable, "a dash at an enemy in reach is absent")
 	s.Equal(1, inReach.Entry, "the sibling row wins")
 
-	outOfReach := s.pick(enemyRun, behavior.Facts{CanMove: true, EnemySeen: true, SeenFoes: seen})
+	outOfReach := s.pick(enemyRun, behavior.Facts{CanMove: true, CanDash: true, EnemySeen: true, SeenFoes: seen})
 	s.True(outOfReach.Rows[0].Affordable)
 	s.Equal(0, outOfReach.Entry)
 
@@ -153,21 +156,21 @@ func (s *DashSuite) TestADashAtAFoeInReachIsAbsent() {
 		facts     behavior.Facts
 		candidate bool
 	}{
-		"the bard in reach": {behavior.Facts{CanMove: true, Now: 10, Deeds: hit, EnemyInReach: true,
+		"the bard in reach": {behavior.Facts{CanMove: true, CanDash: true, Now: 10, Deeds: hit, EnemyInReach: true,
 			SeenFoes: []core.EntityID{"bard"}, FoesInReach: []core.EntityID{"bard"}}, false},
-		"the bard in sight, the fighter in reach": {behavior.Facts{CanMove: true, Now: 10, Deeds: hit,
+		"the bard in sight, the fighter in reach": {behavior.Facts{CanMove: true, CanDash: true, Now: 10, Deeds: hit,
 			EnemyInReach: true, SeenFoes: []core.EntityID{"fighter", "bard"},
 			FoesInReach: []core.EntityID{"fighter"}}, true},
-		"the bard remembered": {behavior.Facts{CanMove: true, Now: 10, Deeds: hit,
+		"the bard remembered": {behavior.Facts{CanMove: true, CanDash: true, Now: 10, Deeds: hit,
 			RememberedFoes: []core.EntityID{"bard"}}, true},
-		"the bard held nowhere": {behavior.Facts{CanMove: true, Now: 10, Deeds: hit}, false},
+		"the bard held nowhere": {behavior.Facts{CanMove: true, CanDash: true, Now: 10, Deeds: hit}, false},
 	} {
 		out := s.pick(attackerRun, tc.facts)
 		s.Equal(tc.candidate, out.Rows[0].Affordable, name)
 	}
 
 	cell := behavior.Table{behavior.KeyTime: {{Weight: 1, Dash: &behavior.Selector{At: &someCell}}}}
-	s.Equal(0, s.pick(cell, behavior.Facts{CanMove: true, EnemyInReach: true}).Entry,
+	s.Equal(0, s.pick(cell, behavior.Facts{CanMove: true, CanDash: true, EnemyInReach: true}).Entry,
 		"a cell is a place, not a foe: a foe in reach does not take a run to it off the table")
 }
 
@@ -180,7 +183,7 @@ func (s *DashSuite) TestADashIsLoadedAsAWalkToward() {
 	}}
 	out, err := behavior.Pick(context.Background(), &behavior.PickInput{
 		Key: behavior.KeyTime, Table: table, Die: &facedDie{face: 1},
-		Facts:  behavior.Facts{CanMove: true, EnemySeen: true, EnemyDash: true},
+		Facts:  behavior.Facts{CanMove: true, CanDash: true, EnemySeen: true, EnemyDash: true},
 		Temper: behavior.Temper{Word: "coward", Profile: cowardProfile}})
 	s.Require().NoError(err)
 	s.Require().Len(out.Candidates, 2)
@@ -229,7 +232,7 @@ func (s *DashSuite) TestTheRecordReadsDash() {
 	s.Require().NoError(err)
 	s.NotContains(string(plain), "Dash", "a row that does not dash marshals as before")
 
-	verdict := s.pick(dasher(), behavior.Facts{CanMove: true, EnemySeen: true, EnemyDash: true})
+	verdict := s.pick(dasher(), behavior.Facts{CanMove: true, CanDash: true, EnemySeen: true, EnemyDash: true})
 	pick, err := json.Marshal(verdict)
 	s.Require().NoError(err)
 	s.Contains(string(pick), `"Answer":{"Weight":1,"Say":"","When":[{"Enemy":"dash","Deed":"","Within":0}]`)
@@ -270,17 +273,17 @@ func (s *DashSuite) TestTheCarefulDasherRunsOnlyWhenBothHold() {
 		dashes bool
 	}{
 		{name: "only a dash reaches, nobody else threatens", dashes: true, facts: behavior.Facts{
-			CanMove: true, EnemySeen: true, EnemyDash: true, Threat: threatFor(behavior.ThreatNone)}},
+			CanMove: true, CanDash: true, EnemySeen: true, EnemyDash: true, Threat: threatFor(behavior.ThreatNone)}},
 		{name: "only a dash reaches, a walker threatens", facts: behavior.Facts{
-			CanMove: true, EnemySeen: true, EnemyDash: true, Threat: threatFor(behavior.ThreatWalk)}},
+			CanMove: true, CanDash: true, EnemySeen: true, EnemyDash: true, Threat: threatFor(behavior.ThreatWalk)}},
 		{name: "only a dash reaches, a dasher threatens", facts: behavior.Facts{
-			CanMove: true, EnemySeen: true, EnemyDash: true, Threat: threatFor(behavior.ThreatDash)}},
+			CanMove: true, CanDash: true, EnemySeen: true, EnemyDash: true, Threat: threatFor(behavior.ThreatDash)}},
 		{name: "a walk reaches, nobody threatens", facts: behavior.Facts{
-			CanMove: true, EnemySeen: true, EnemyWalk: true, Threat: threatFor(behavior.ThreatNone)}},
+			CanMove: true, CanDash: true, EnemySeen: true, EnemyWalk: true, Threat: threatFor(behavior.ThreatNone)}},
 		{name: "the host judged no threat", facts: behavior.Facts{
-			CanMove: true, EnemySeen: true, EnemyDash: true}},
+			CanMove: true, CanDash: true, EnemySeen: true, EnemyDash: true}},
 		{name: "the host answered nothing", facts: behavior.Facts{
-			CanMove: true, EnemySeen: true, EnemyDash: true, Threat: threatFor("")}},
+			CanMove: true, CanDash: true, EnemySeen: true, EnemyDash: true, Threat: threatFor("")}},
 	} {
 		s.Run(tc.name, func() {
 			out := s.pick(careful(), tc.facts)
@@ -307,22 +310,23 @@ func (s *DashSuite) TestAThreatIsJudgedAtEachRowsOwnLanding() {
 		{Weight: 1, Away: enemy},
 	}}
 	var asked []string
-	facts := behavior.Facts{CanMove: true, EnemySeen: true, Threat: func(row behavior.Answer) behavior.ThreatWord {
-		switch {
-		case row.Toward != nil:
-			asked = append(asked, "toward")
-			return behavior.ThreatWalk // the walk lands beside the archer
-		case row.Dash != nil:
-			asked = append(asked, "dash")
-			return behavior.ThreatNone
-		case row.Away != nil:
-			asked = append(asked, "away")
-		default:
-			asked = append(asked, "stand")
-		}
+	facts := behavior.Facts{CanMove: true, CanDash: true, EnemySeen: true,
+		Threat: func(row behavior.Answer) behavior.ThreatWord {
+			switch {
+			case row.Toward != nil:
+				asked = append(asked, "toward")
+				return behavior.ThreatWalk // the walk lands beside the archer
+			case row.Dash != nil:
+				asked = append(asked, "dash")
+				return behavior.ThreatNone
+			case row.Away != nil:
+				asked = append(asked, "away")
+			default:
+				asked = append(asked, "stand")
+			}
 
-		return behavior.ThreatNone
-	}}
+			return behavior.ThreatNone
+		}}
 	out := s.pick(table, facts)
 	s.Equal([]string{"toward", "dash", "stand"}, asked, "each threat row asked once, the away row never")
 	s.False(out.Rows[0].Held, "the walk lands threatened")
@@ -379,7 +383,7 @@ func (s *DashSuite) TestTheRecordReadsThreat() {
 	s.Require().NoError(err)
 	s.JSONEq(`{"Enemy":"dash","Deed":"","Within":0}`, string(plain), "no threat, no key")
 
-	pick := s.pick(careful(), behavior.Facts{CanMove: true, EnemySeen: true, EnemyDash: true,
+	pick := s.pick(careful(), behavior.Facts{CanMove: true, CanDash: true, EnemySeen: true, EnemyDash: true,
 		Threat: threatFor(behavior.ThreatNone)})
 	out, err := json.Marshal(pick)
 	s.Require().NoError(err)
@@ -397,14 +401,14 @@ func (s *DashSuite) TestTheRecklessDasherRunsWhateverTheThreat() {
 	}}
 	for _, word := range []behavior.ThreatWord{behavior.ThreatNone, behavior.ThreatWalk, behavior.ThreatDash, ""} {
 		asked := false
-		out := s.pick(reckless, behavior.Facts{CanMove: true, EnemySeen: true, EnemyDash: true,
+		out := s.pick(reckless, behavior.Facts{CanMove: true, CanDash: true, EnemySeen: true, EnemyDash: true,
 			Threat: func(behavior.Answer) behavior.ThreatWord { asked = true; return word }})
 		s.True(out.Rows[0].Held, "threat %q", word)
 		s.True(out.Rows[0].Affordable, "threat %q", word)
 		s.Equal(0, out.Entry, "the reckless dasher takes the first face under threat %q", word)
 		s.False(asked, "a row that names no threat is never asked about one")
 	}
-	out := s.pick(reckless, behavior.Facts{CanMove: true, EnemySeen: true, EnemyDash: true})
+	out := s.pick(reckless, behavior.Facts{CanMove: true, CanDash: true, EnemySeen: true, EnemyDash: true})
 	s.Equal(0, out.Entry, "with no threat judged at all")
 }
 
@@ -412,7 +416,7 @@ func (s *DashSuite) TestTheRecklessDasherRunsWhateverTheThreat() {
 // answered for a row that asked, so a careful dasher that stood says why,
 // and a row that never asked carries no threat key at all.
 func (s *DashSuite) TestTheVerdictRecordsTheJudgedThreat() {
-	out := s.pick(careful(), behavior.Facts{CanMove: true, EnemySeen: true, EnemyDash: true,
+	out := s.pick(careful(), behavior.Facts{CanMove: true, CanDash: true, EnemySeen: true, EnemyDash: true,
 		Threat: threatFor(behavior.ThreatWalk)})
 	s.Equal(1, out.Entry, "the careful dasher stands")
 	s.Equal(behavior.ThreatWalk, out.Rows[0].Threat)
@@ -425,9 +429,36 @@ func (s *DashSuite) TestTheVerdictRecordsTheJudgedThreat() {
 	s.Equal("walk", rows[0]["Threat"], "the record carries the judged word")
 	s.NotContains(rows[1], "Threat", "a row never asked carries no key")
 
-	unjudged := s.pick(careful(), behavior.Facts{CanMove: true, EnemySeen: true, EnemyDash: true,
+	unjudged := s.pick(careful(), behavior.Facts{CanMove: true, CanDash: true, EnemySeen: true, EnemyDash: true,
 		Threat: threatFor("")})
 	raw, err = json.Marshal(unjudged.Rows[0])
 	s.Require().NoError(err)
 	s.NotContains(string(raw), "Threat", "an empty answer reads as absent, not as none")
+}
+
+// TestADashNeedsItsAction: a run spends the creature's action, so with
+// CanDash false the `dash` row is ABSENT — not a candidate, never picked and
+// refused — while the `toward` row beside it, which spends only movement, is
+// still on the table. The zero value is "cannot".
+func (s *DashSuite) TestADashNeedsItsAction() {
+	enemy := &behavior.Selector{Word: behavior.SelectorEnemy}
+	table := behavior.Table{behavior.KeyTime: {
+		{Weight: 1, Dash: enemy},
+		{Weight: 1, Toward: enemy},
+	}}
+	seen := []core.EntityID{"bard"}
+
+	spent := s.pick(table, behavior.Facts{CanMove: true, EnemySeen: true, SeenFoes: seen})
+	s.False(spent.Rows[0].Affordable, "with the action spent the run is not affordable")
+	s.True(spent.Rows[1].Affordable, "and the walk beside it still is")
+	s.Require().Len(spent.Candidates, 1, "the run is absent, not a candidate")
+	s.Equal(1, spent.Entry, "so the walk is what the roll lands on")
+
+	unspent := s.pick(table, behavior.Facts{CanMove: true, CanDash: true, EnemySeen: true, SeenFoes: seen})
+	s.True(unspent.Rows[0].Affordable)
+	s.Len(unspent.Candidates, 2)
+	s.Equal(0, unspent.Entry, "with the action to spend, the run is the first candidate")
+
+	noMove := s.pick(table, behavior.Facts{CanDash: true, EnemySeen: true, SeenFoes: seen})
+	s.False(noMove.Rows[0].Affordable, "and a run still needs movement")
 }

@@ -972,6 +972,18 @@ type Facts struct {
 	CanAttack bool
 	CanMove   bool
 
+	// CanDash is whether this creature may still spend its action on a
+	// `dash` this turn (rpg-project#671): the host sets it from its own
+	// action economy — true while the swing is unspent on a turn, and true on
+	// a clock with no swing to forfeit. A `dash` row needs it and CanMove
+	// both ([Facts.affords]).
+	//
+	// A RUN THE CREATURE CANNOT PAY FOR IS ABSENT, NOT REFUSED: a picked run
+	// the host then refused would end the turn where the table should have
+	// rolled another row. The zero value is "cannot", the other Can fields'
+	// rule, so a host that has not thought about the action gets no run.
+	CanDash bool
+
 	// Deeds is every deed this creature holds against itself — the [ScopeSelf]
 	// reading, and the only one this module knew before scopes existed.
 	Deeds []HeldDeed
@@ -1075,7 +1087,7 @@ func (f Facts) affords(a Answer) bool {
 	case a.Toward != nil:
 		return f.CanMove && f.locates(a.Toward, a.When, f.SeenFoes, f.RememberedFoes)
 	case a.Dash != nil:
-		return f.CanMove && f.locates(a.Dash, a.When, f.SeenFoes, f.RememberedFoes) &&
+		return f.CanMove && f.CanDash && f.locates(a.Dash, a.When, f.SeenFoes, f.RememberedFoes) &&
 			!f.inReachOf(a.Dash, a.When)
 	case a.Away != nil:
 		return f.CanMove && f.locates(a.Away, a.When, f.SeenFoes, f.RememberedFoes)
