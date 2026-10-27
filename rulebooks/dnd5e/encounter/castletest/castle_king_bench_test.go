@@ -57,7 +57,7 @@ func BenchmarkCastleMove4Cells(b *testing.B) {
 	b.StopTimer()
 	// A session sees what a sheet that states no senses sees: the rulebook's
 	// 120 feet (combat.DefaultSightFeet), twice this host's usual sixty.
-	s := openTheCastleAs(b, castleHost{at: loadContent(b, kingFixture).PartyStart[0].At, sightFt: 120})
+	s := openTheCastleAs(b, castleHost{at: loadContent(b, kingFixture).PartyStart[0].At, sightFt: sessionSightFeet})
 	begin := s.at(hero)
 	if begin != (spatial.Position{X: -2, Y: 16}) {
 		b.Fatalf("the hero starts at %v, not the outside start", begin)

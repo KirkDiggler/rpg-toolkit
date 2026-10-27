@@ -420,6 +420,11 @@ tables:
       - when:
           enemy: seen
         toward: enemy
+      # Hand edit (rpg-project#661): the gate guards' pursuit, as one line.
+      # A reserve who saw you across the yard and lost you walks to where he
+      # last saw you, then searches six cells on the way you went; without
+      # it, a reserve who still remembers you has no row and holds.
+      - use: pursuer
       # Hand edit (the QA castle's step 7, rpg-project#639): the far room
       # answers the gate. Arrived on `gate-opened`, a guard with no enemy in
       # sight walks to the yard two cells in from the gate, so the two who
