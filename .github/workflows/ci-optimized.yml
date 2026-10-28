@@ -233,6 +233,16 @@ jobs:
     - name: Every ADR is summarised in docs/adr/DECISIONS.md
       run: ./scripts/check-decisions.sh
 
+  # Each level's knowledge/map.md draws exactly the modules beneath it, and
+  # the root composes the level maps. A module added, moved or retired without
+  # its map edit is red here, not a stale picture. Cheap, no Go toolchain needed.
+  knowledge-map:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Every module appears in exactly one knowledge map
+      run: ./scripts/check-knowledge-map.sh
+
   # The tagger mints the releases every consumer pins, and a wrong tag cannot
   # be taken back once the Go proxy caches it. Its cases run against
   # throwaway repositories. Cheap, no Go toolchain needed.
@@ -244,7 +254,7 @@ jobs:
       run: ./scripts/auto-tag-modules.test.sh
 
   ci-status:
-    needs: [changes, test-changed, test-all, docs-decisions, tagger]
+    needs: [changes, test-changed, test-all, docs-decisions, knowledge-map, tagger]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -255,6 +265,7 @@ jobs:
         echo "Changed modules test: ${{ needs.test-changed.result }}"
         echo "All modules test: ${{ needs.test-all.result }}"
         echo "ADR digest: ${{ needs.docs-decisions.result }}"
+        echo "Knowledge maps: ${{ needs.knowledge-map.result }}"
         echo "Module tagger: ${{ needs.tagger.result }}"
         
         # Fail if any required job failed
@@ -277,6 +288,11 @@ jobs:
 
         if [[ "${{ needs.docs-decisions.result }}" == "failure" ]]; then
           echo "❌ An ADR is missing from docs/adr/DECISIONS.md"
+          exit 1
+        fi
+
+        if [[ "${{ needs.knowledge-map.result }}" == "failure" ]]; then
+          echo "❌ A module and the knowledge maps disagree"
           exit 1
         fi
 

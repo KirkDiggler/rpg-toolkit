@@ -1,8 +1,8 @@
 ---
 name: rpg-toolkit architecture overview
-description: Module dependency map + rules-vs-room seam (two diagrams), persistence pattern, and the boundary with rpg-api — lead-framed with toolkit-as-product
-updated: 2026-08-23
-confidence: high — module paths re-verified against go.mod files 2026-08-23; retired top-level encounter removed
+description: Layer rules (module dependency diagram now in knowledge/map.md) + rules-vs-room seam, persistence pattern, and the boundary with rpg-api — lead-framed with toolkit-as-product
+updated: 2026-10-27
+confidence: medium — the module dependency diagram moved to knowledge/map.md, checked against go.mod files in CI; the prose and the module map table were last verified 2026-08-23, and the table still names the deleted mechanics/conditions and mechanics/spells and omits npc, world and mind/behavior
 ---
 
 # rpg-toolkit architecture overview
@@ -22,7 +22,7 @@ rpg-toolkit is a Go rules engine for tabletop RPG mechanics. Its mandate is to i
 
 ## Layer rules & module dependency map
 
-**Higher layers may import lower; reversing is a defect.** The diagram shows the
+**Higher layers may import lower; reversing is a defect.** The layer map shows the
 current supported D&D 5e stack after retiring the top-level `encounter/` module:
 `rulebooks/dnd5e` owns rules and content, `rulebooks/dnd5e/encounter` owns the
 D&D 5e composition/world state, `rulebooks/dnd5e/resolution` owns interaction
@@ -30,61 +30,10 @@ resolution, and `rulebooks/dnd5e/session` is the host seam. Everything sits at
 or below the Rulebooks layer, and **nothing imports rpg-api or
 rpg-api-protos** (the toolkit never knows its host).
 
-```mermaid
-flowchart TD
-  subgraph RB["Rulebooks"]
-    DND["rulebooks/dnd5e<br/>rules + content"]
-    ENC["rulebooks/dnd5e/encounter<br/>world composition"]
-    RESMOD["rulebooks/dnd5e/resolution<br/>interaction resolution"]
-    SESS["rulebooks/dnd5e/session<br/>host seam"]
-  end
-  subgraph PLAY["Play primitives"]
-    CLOCK["play/clock"]
-    INTEL["play/intel"]
-    RECORD["play/record"]
-  end
-  subgraph MIND["Mind primitives"]
-    PERCEPTION["mind/perception"]
-  end
-  subgraph TOOLS["Tools"]
-    SPATIAL["tools/spatial"]
-    ENV["tools/environments"]
-    SEL["tools/selectables"]
-    SPAWN["tools/spawn"]
-  end
-  subgraph MECH["Mechanics"]
-    EFFECTS["mechanics/effects"]
-    COND["mechanics/conditions"]
-    RES["mechanics/resources"]
-    FEAT["mechanics/features"]
-    PROF["mechanics/proficiency"]
-    SPELLS["mechanics/spells"]
-  end
-  subgraph CORELYR["Core"]
-    C["core"]
-    EV["events"]
-    DICE["dice"]
-    GAME["game"]
-    ERR["rpgerr"]
-    ITEMS["items"]
-  end
-
-  SESS --> ENC & RESMOD & DND & INTEL & RECORD
-  RESMOD --> ENC & DND & SPATIAL & EV & C & DICE
-  ENC --> SPATIAL & CLOCK & INTEL & RECORD & C
-  PERCEPTION --> INTEL & C
-  DND --> RES & ENV & SPATIAL & EV & C & DICE
-  SPAWN --> ENV & SPATIAL
-  ENV --> SPATIAL
-  SPATIAL --> GAME & EV & C
-  COND --> EFFECTS
-  EFFECTS --> EV & C
-```
-
-Nodes are modules. Arrows are dependencies; uniform ones are omitted for
-legibility — for example, several leaves depend on `core` and `events` without
-needing their own edge here. **Maintenance rule:** update this diagram in the
-same PR as any module move. Historical note: ADR-0034 proposed moving the loop
+The module dependency diagram lives in [`knowledge/map.md`](../../knowledge/map.md),
+the root of the knowledge maps: it draws the layers and composes the level maps
+for `rulebooks/dnd5e` and `play`. `scripts/check-knowledge-map.sh` fails CI when
+a module and the maps disagree. Historical note: ADR-0034 proposed moving the loop
 inside `rulebooks/dnd5e` and extracting new primitives, but that proposal is
 superseded as current guidance by the shipped separate modules
 `rulebooks/dnd5e/encounter`, `rulebooks/dnd5e/resolution`, and

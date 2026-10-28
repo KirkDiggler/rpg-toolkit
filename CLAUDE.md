@@ -10,6 +10,7 @@ same instructions.
 
 ## Where things live
 
+- `knowledge/` — the layer map and the rules that cross layers; `knowledge/map.md` composes the level maps beneath it (`rulebooks/dnd5e/knowledge/`, `play/knowledge/`), and CI holds every module to exactly one map
 - `docs/architecture/overview.md` — layer rules (Core → Events → Mechanics → Tools → Rulebooks), module map, boundary with rpg-api, named violations
 - `docs/architecture/data-model.md` — ToData/LoadFromData pattern, entity shapes, identifier constants, condition/feature serialization, chain/breakdown output
 - `docs/architecture/components/` — one doc per major module, plus focused sub-module docs (`rulebook-dnd5e-session`, `rulebook-dnd5e-character`)
