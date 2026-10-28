@@ -62,7 +62,7 @@ what was asked for, loaded and saved belongs to `session`
 
 **rulebooks/dnd5e → resolution and session**
 - Flows: the rules and content packages as values; a contestable consequence declared as a save gate, which resolution turns into a request ([ADR-0039](../../../docs/adr/0039-the-save-gate.md)); sheets that serialise and reload through one cascade ([ADR-0030](../../../docs/adr/0030-encounter-owns-combatant-hydration.md)).
-- Must not cross: a bus inside a rules package, which trades in values ([ADR-0038](../../../docs/adr/0038-resolution-owns-the-bus.md)); knowledge of what a session is ([`../CLAUDE.md`](../CLAUDE.md)).
+- Must not cross: a bus a rules package owns or creates ([ADR-0038](../../../docs/adr/0038-resolution-owns-the-bus.md)); knowledge of what a session is ([`../CLAUDE.md`](../CLAUDE.md)). The sheets borrow resolution's bus: it is attached to them at the door for the life of one interaction, their conditions subscribe through it and their chains publish on it, and `saves` and `checks` take it as an input. None of them holds a bus between interactions.
 
 **rulebooks/dnd5e ↔ encounter**
 - Flows: nothing in either direction by import; a rulebook fact reaches encounter only as a capability answer that session supplies.
