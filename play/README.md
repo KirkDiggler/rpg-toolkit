@@ -9,6 +9,8 @@ about a game in motion and know nothing about each other. None of them know what
 D&D is. None of them can tell you what happened in your game — they hold the
 pieces that something above them assembles into an answer.
 
+What may cross between the four, and what they may import, is mapped in [`knowledge/`](knowledge/map.md).
+
 ## The four
 
 | Package | Owns | Deliberately does *not* |
