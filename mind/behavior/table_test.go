@@ -303,12 +303,13 @@ func (s *TableSuite) TestADeedOfAnotherKindIsNotThisCondition() {
 // vocabularies meet. A condition is written from the CREATURE's side ("I was
 // attacked"); a deed is recorded from the WITNESS's ("somebody attacked").
 func (s *TableSuite) TestTheAuthorsPastTenseNamesTheStoresVerb() {
-	s.Equal([]string{"attacked", "intimidated", "persuaded", "fled"}, behavior.WhenDeeds)
+	s.Equal([]string{"attacked", "intimidated", "persuaded", "fled", "fell"}, behavior.WhenDeeds)
 
 	s.Equal(behavior.VerbAttack, behavior.DeedVerbFor("attacked"))
 	s.Equal(behavior.VerbIntimidate, behavior.DeedVerbFor("intimidated"))
 	s.Equal(behavior.VerbPersuade, behavior.DeedVerbFor("persuaded"))
 	s.Equal(behavior.VerbFled, behavior.DeedVerbFor("fled"))
+	s.Equal(behavior.VerbFell, behavior.DeedVerbFor("fell"))
 
 	s.Empty(behavior.DeedVerbFor("insulted"),
 		"a word nobody mapped matches no held deed, and the refusal for one lives at the caller's own door")
@@ -1033,7 +1034,7 @@ func (s *TableSuite) TestAWhenNamesExactlyOneCondition() {
 		{name: "no condition",
 			when: behavior.When{},
 			says: "a `when` entry names no condition; give it one of `enemy`, `attacked`, `intimidated`, " +
-				"`persuaded`, `fled`, `heard`, `fact`, `threat` or `not`: behavior: when cannot be read"},
+				"`persuaded`, `fled`, `fell`, `heard`, `fact`, `threat` or `not`: behavior: when cannot be read"},
 		{name: "two conditions inside a not",
 			when: behavior.When{Not: &behavior.When{Enemy: behavior.EnemySeen, Fact: lit("alarm-raised")}},
 			says: "inside `not`: a `when` entry names `enemy` and `fact`; give each its own entry in the list, " +
