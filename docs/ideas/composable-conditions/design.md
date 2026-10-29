@@ -289,7 +289,12 @@ something that already exists:
 | `roundsSinceAnchor(<op>)`, `roundWentBackwards()` | the beat's round against the bag's anchor | the comparison; skipped when the beat carries no round |
 | `classLevel(<class>, <op>)` | the frame's actor class levels | the op; Depends when the frame does not carry them |
 
-Ops are `eq`, `ne`, `gte`, `lte`, `in`. Amounts are a closed set too:
+This table is the intended shape, not S1's contents: S1 ships only the rows
+Rage reads (ruling 4); `in`, the pair and held facts, the dice and
+ability-modifier amounts, the offer-taken and save-result beats and the
+roll-bonus and offer-die kinds arrive with Blessed, Resistance and the
+against-holder family, each with its test. Ops are `eq`, `ne`, `gte`, `lte`,
+`in`. Amounts are a closed set too:
 `fixed(n)`, `dice(d)`, `byClassLevel(class, steps)`, `abilityModifier()`.
 Beats are the topics a transition may listen to: turn end, dropped to zero,
 rest, combat end, offer taken, save result, condition applied or removed.
@@ -641,7 +646,13 @@ the applier's parameters and written while it runs); the bag's declared keys
 are the only place a parameter can land, a parameter naming an undeclared key
 is refused by name, the cast's `CounterpartKey`, `SaveDCKey` and `OptionKey`
 name bag keys, and a bag key no guard, act or output reads is a finding, ruled
-2026-10-28; the target
+2026-10-28; **the first vocabulary table is trimmed to exactly what Rage
+reads** (facts: melee, weapon pool, ability; the flag, rounds-since-anchor and
+round-went-backwards leaves; ops `eq`, `gte`; the by-class-level amount; beats:
+turn end, dropped to zero, rest, combat end, post attack roll, damage received;
+kinds: damage bonus, resist, advantage), every other row arriving with the
+recipe that first reads it and its test, ruled 2026-10-28: "A, trimmed. only
+what rage reads"; the target
 is one data structure per condition, driven fully by its effects, under one
 ref (E1, E2); hand-written Go is the form for now, content authoring comes
 with the studio (E9); cost lives outside the condition (E7); `core/effect` is
@@ -652,9 +663,6 @@ the seam, and nothing is brought in or copied (E2, E3, E11).
 
 **Open, for the design PR's checklist:**
 
-- [ ] The first table of leaves, ops, amounts and beats: the one above, or
-  trimmed to exactly what Rage, Blessed and Resistance need. Recommendation:
-  trimmed; E8 grows it by finding.
 - [ ] Where a recipe lives at S1: a Go literal beside its descriptor (as the
   hand-written types are today), or a JSON file under `conditions/recipes/`
   embedded at build. Recommendation: Go literal at S1, JSON when the studio
