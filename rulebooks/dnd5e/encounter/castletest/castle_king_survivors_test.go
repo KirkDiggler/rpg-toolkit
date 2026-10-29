@@ -35,7 +35,7 @@ func TestCastleSurvivorsSuite(t *testing.T) { suite.Run(t, new(CastleSurvivorsSu
 // king put down by the hero's spear, the blob saved and loaded back as a host
 // does after a verb.
 func (s *CastleSurvivorsSuite) felled() *kingScene {
-	scene := openTheCastleAs(s.T(), castleHost{at: besideTheKing, withoutEndings: map[string]bool{"king-slain": true}})
+	scene := openTheCastleAs(s.T(), castleHost{at: besideTheKing, without: []string{"king-slain"}})
 	s.Require().Equal(encounter.StanceHostile, scene.stance(loyalists, encounter.FactionParty))
 	s.Require().Equal(encounter.ClockTurn, clockKind(s.T(), scene.enc, hero), "precondition: the court saw the hero")
 

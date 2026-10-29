@@ -92,8 +92,19 @@ func (e *Encounter) noticeDown(
 			if berr := e.appendDownBeat(id); berr != nil {
 				return nil, nil, berr
 			}
+			// THE FALL IS A DEED ITS WITNESSES HOLD (rpg-project#716, D1),
+			// landed beside the beat that tells it, so the ledger that keeps
+			// a death from being told twice keeps it from being witnessed
+			// twice. Testimony, never a world flag: a row reads `fell` off
+			// what its own creature saw ([DeedFell]).
+			if ferr := e.landFell(id); ferr != nil {
+				return nil, nil, fmt.Errorf("participation fell %q: %w", id, ferr)
+			}
 		}
 	}
+	// The blows this verb landed have explained every fall it will notice;
+	// a fall a later verb notices is not theirs to explain ([DeedFell]).
+	e.struckBy = nil
 
 	// Party defeat is the rulebook's policy answer, not a threshold this
 	// composition derives. It closes only after all causal down beats.

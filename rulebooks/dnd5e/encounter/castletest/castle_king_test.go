@@ -27,6 +27,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"testing"
 
@@ -166,10 +167,10 @@ type castleHost struct {
 	// saved and loaded back between turns.
 	noReload bool
 
-	// withoutEndings opens the castle without some of the file's endings, by
-	// id, for a route about what happens AFTER a predicate the file ends the
-	// run on (the survivors, rpg-project#718).
-	withoutEndings map[string]bool
+	// without names endings of the file a route opens without, so a run the
+	// ending would close plays on past it: the fall route keeps playing after
+	// the king is down, where `king-slain` would settle it.
+	without []string
 }
 
 // openTheCastleAs compiles the file and opens it the way the host says.
@@ -205,11 +206,16 @@ func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 
 	strikes := &[]cellsStrike{}
 	standing := &castleStanding{down: map[encounter.MemberID]bool{}}
+	endings := []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}
+	for _, e := range compiled.Endings {
+		if !slices.Contains(host.without, e.Key) {
+			endings = append(endings, e)
+		}
+	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field:   compiled.Field,
 		Members: members,
-		Endings: append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-			endingsWithout(compiled.Endings, host.withoutEndings)...),
+		Endings: endings,
 		// Unbounded, so a route can read a creature's whole story back.
 		Retention:    encounter.RetentionUnbounded,
 		Capabilities: host.capabilities(strikes, standing),
@@ -217,18 +223,6 @@ func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 	require.NoError(t, err)
 
 	return &kingScene{t: t, enc: enc, compiled: compiled, strikes: strikes, standing: standing, host: host}
-}
-
-// endingsWithout is the file's endings less the ones a route opens without.
-func endingsWithout(endings []encounter.EndingInput, without map[string]bool) []encounter.EndingInput {
-	out := make([]encounter.EndingInput, 0, len(endings))
-	for _, e := range endings {
-		if !without[e.Key] {
-			out = append(out, e)
-		}
-	}
-
-	return out
 }
 
 // capabilities is everything the host supplies the encounter, built in one
