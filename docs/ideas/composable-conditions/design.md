@@ -515,6 +515,149 @@ Everything the registry, resolution, session and the api touch is unchanged.
   of participants, a dozen conditions) this is nothing; one benchmark before
   S2 says so in numbers.
 
+### The data structs
+
+What an author writes and the studio emits; the machine's structs first,
+then the composer's. Go 1.27 shows up at the JSON seam (`omitzero`, the
+`inline` bag), not in the shapes. Names are the plan's to settle.
+
+```go
+// machine
+type Recipe struct {
+    Ref      core.Ref         `json:"ref"`
+    Stacks   Stacks           `json:"stacks,omitzero"` // by_ref (default) | by_source
+    Initial  string           `json:"initial"`
+    Bag      map[string]any   `json:"bag"`             // declared keys with their zero values
+    Trackers []Tracker        `json:"trackers,omitzero"`
+    States   map[string]State `json:"states"`
+}
+
+type State struct {
+    Outputs     []jsontext.Value `json:"outputs,omitzero"`     // opaque to the machine; the composer's
+    Transitions []Transition     `json:"transitions,omitzero"` // run in order; first that fires wins
+    Terminal    bool             `json:"terminal,omitzero"`    // entering it ends the condition
+}
+
+type Tracker struct {
+    On    Beat     `json:"on"`
+    About Selector `json:"about"` // which id on the event must be the holder
+    Set   string   `json:"set"`   // a declared bag key
+}
+
+type Transition struct {
+    On     Beat     `json:"on"`
+    About  Selector `json:"about"`
+    When   *Guard   `json:"when,omitzero"`   // nil means always
+    To     string   `json:"to,omitzero"`     // empty means stay
+    Do     []Act    `json:"do,omitzero"`
+    Reason string   `json:"reason,omitzero"` // required when To is terminal
+}
+
+// Guard is a tree. Exactly one field is set per node.
+type Guard struct {
+    All []Guard `json:"all,omitzero"`
+    Any []Guard `json:"any,omitzero"`
+    Not *Guard  `json:"not,omitzero"`
+
+    Fact       *FactLeaf       `json:"fact,omitzero"`
+    Flag       string          `json:"flag,omitzero"`
+    Rounds     *RoundsLeaf     `json:"rounds,omitzero"`
+    ClassLevel *ClassLevelLeaf `json:"class_level,omitzero"`
+}
+
+type FactLeaf struct {
+    Name  FactName `json:"name"`  // from the vocabulary
+    Op    Op       `json:"op"`    // eq, ne, gte, lte, in
+    Value any      `json:"value"` // typed per fact by the vocabulary at Validate
+}
+type RoundsLeaf struct {
+    SinceAnchor   *IntOp `json:"since_anchor,omitzero"`
+    WentBackwards bool   `json:"went_backwards,omitzero"`
+}
+type IntOp struct {
+    Op Op  `json:"op"`
+    N  int `json:"n"`
+}
+type ClassLevelLeaf struct {
+    Class string `json:"class"` // a vocabulary fact name space: the rulebook's classes
+    Op    Op     `json:"op"`
+    N     int    `json:"n"`
+}
+
+// Act is a bag write a transition performs. Exactly one field.
+type Act struct {
+    AnchorRound       bool     `json:"anchor_round,omitzero"`
+    DeriveTurnsActive bool     `json:"derive_turns_active,omitzero"`
+    ClearFlags        []string `json:"clear_flags,omitzero"`
+    Set               *SetAct  `json:"set,omitzero"`
+}
+type SetAct struct {
+    Key   string `json:"key"`
+    Value any    `json:"value"`
+}
+
+// Closed string sets. The vocabulary names them; Validate reads it.
+type Beat string
+type Selector string // holder_is_actor, holder_is_target, holder_is_subject, holder_and_this_ref
+type Op string
+type FactName string
+type Stacks string
+
+// Blob is what ToJSON writes and load reads: the header the loader routes
+// on, the state, and the bag's keys beside them in the same object.
+type Blob struct {
+    Ref      core.Ref       `json:"ref"`
+    MemberID string         `json:"member_id"`
+    Source   *core.Ref      `json:"source,omitzero"`
+    State    string         `json:"state"`
+    Bag      map[string]any `json:",inline"`
+}
+
+// Vocabulary is the rulebook's plug into the machine.
+type Vocabulary struct {
+    Facts map[FactName]FactSpec
+    Beats map[Beat]BeatSpec
+}
+type FactSpec struct {
+    Kind ScalarKind                       // bool, int, string
+    Read func(frame any) (any, bool)      // value, known
+}
+type BeatSpec struct {
+    Selectors []Selector
+    Subscribe func(ctx context.Context, bus events.EventBus, h func(ctx context.Context, ev any) error) (id string, err error)
+    Round     func(ev any) (int, bool)    // the beat's round, when it carries one
+    About     func(ev any, sel Selector) (id string, ok bool)
+}
+
+// composer (effects)
+type Output struct {
+    When   *machine.Guard `json:"when,omitzero"`
+    Amount *Amount        `json:"amount,omitzero"`
+    Kind   KindName       `json:"kind"`             // from the output vocabulary
+    Params jsontext.Value `json:"params,omitzero"`  // the kind's own fields, validated by the kind
+}
+type Amount struct {
+    Fixed           *int        `json:"fixed,omitzero"`
+    Dice            string      `json:"dice,omitzero"`
+    ByClassLevel    *ClassSteps `json:"by_class_level,omitzero"`
+    AbilityModifier bool        `json:"ability_modifier,omitzero"`
+}
+type ClassSteps struct {
+    Class string      `json:"class"`
+    Steps map[int]int `json:"steps"` // {1: 2, 9: 3, 16: 4}
+}
+type OutputVocabulary struct {
+    Kinds   map[KindName]KindSpec
+    Amounts map[AmountName]AmountFn
+}
+```
+
+Validate walks this: exactly one field per Guard node, Amount and Act; every
+fact, beat, kind and amount name in the vocabulary with a value of the fact's
+kind; every flag and set key declared in Bag; every `To` an existing state;
+the initial state not terminal; every state reachable; a reason on every
+transition into a terminal state; `by_source` implies a `source_id` key.
+
 ## Working agreements of this design
 
 Numbered so slices and knowledge lines can cite them by text. They are
