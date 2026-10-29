@@ -459,6 +459,28 @@ factions:
   - id: loyalists
     mind: king
     temper: aggressive
+    # Hand edit (Frank's list S4, rpg-project#718): the side's lines, spoken
+    # by whichever loyalist is addressed, so the court can be talked to once
+    # the king has fallen. Ungated: an option's `requires` reads a fact or a
+    # holding, and nothing the king's fall teaches is a fact.
+    options:
+      - id: yield
+        say: Yield and live.
+        check:
+          - ability: persuasion
+            dc: 12
+        success:
+          - say: The king is dead. We yield.
+            fact: loyalists-yielded
+        failure:
+          - say: Never.
+      - id: refuse
+        say: Die with your king, then.
+        check:
+          - ability: intimidation
+            dc: 15
+        failure:
+          - say: Then we die fighting.
   - id: kitchen
     mind: cook
   - id: prisoners
@@ -474,6 +496,11 @@ dispositions:
       - loyalists
       - party
     stance: hostile
+    # Hand edit (Frank's list S4, rpg-project#718): the court stands down when
+    # the king falls, so the fight dissolves and the survivors can be spoken
+    # to. A blow afterwards turns it hostile again by provocation (D4).
+    until:
+      down: king
   - between:
       - garrison
       - loyalists

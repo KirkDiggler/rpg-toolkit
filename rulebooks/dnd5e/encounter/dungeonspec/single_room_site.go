@@ -188,6 +188,9 @@ func factionShape(fa *yaml.Node, p string, add errSink) {
 	// `temper` is a WORD OR A MIX, so only its null-ness is judged here; the
 	// two spellings and the sealed words are [TemperSpec.UnmarshalYAML]'s.
 	optionalNode(fa, "temper", p, add)
+	// A faction's lines (rpg-project#718): a binding's `options` one level
+	// up, judged here for the same one thing — an authored `null`.
+	optionalNode(fa, "options", p, add)
 }
 
 func dispositionShape(d *yaml.Node, p string, add errSink) {
@@ -332,6 +335,10 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 		bindingTable(g, at, m.id, b.Table, s.Tables)
 		g.options(at, b.Options, roomProps(gp), false)
 	}
+	// AND THE LINES A SIDE SPEAKS (rpg-project#718), by the same grammar
+	// against the same props, judged once at the faction's own path rather
+	// than once per member who inherits them.
+	g.factionOptions(roomProps(gp))
 	g.minds()
 	// THE WAYS OUT, in [Validate]'s own position for them — after the cast is
 	// indexed and before the dispositions — so the ids a scenario binding may

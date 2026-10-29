@@ -128,6 +128,9 @@ func Validate(spec *Spec) []FieldError {
 		// refusals a placement's own `on:` earns, one layer up (design §1).
 		v.g.factionOrders()
 		v.place()
+		// AND THE LINES A SIDE SPEAKS (rpg-project#718), by the grammar a
+		// placement's own lines get, against the same placed props.
+		v.g.factionOptions(placedProps(spec))
 		v.g.minds()
 		v.exits()
 		v.g.dispositions()

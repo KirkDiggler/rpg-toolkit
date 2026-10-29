@@ -436,6 +436,31 @@ type FactionSpec struct {
 	// MIX to deal one from per member ([TemperSpec], design §3). A placement
 	// that names its own word wins, and the mix is not dealt for it.
 	Temper TemperSpec `yaml:"temper,omitempty"`
+
+	// Options is the lines a character can say to ANY member of this faction
+	// — a placement's `options` ([OptionSpec]), written once for the side
+	// (rpg-project#718).
+	//
+	//	factions:
+	//	  - id: loyalists
+	//	    options:
+	//	      - id: yield
+	//	        say: Yield and live.
+	//	        check: [{ ability: persuasion, dc: 12 }]
+	//	        success: [{ say: We yield., fact: loyalists-yielded }]
+	//
+	// LAYERED THE WAY `on:` IS, NEAREST WINS THE KEY WHOLESALE. A member that
+	// writes its own `options` speaks those and none of these; a member that
+	// writes none speaks the faction's. There is no merging of lists by id,
+	// for `on:`'s reason: an author never has to reason about what was added
+	// to what. So lines authored once for a side are spoken by whichever
+	// survivor is addressed, and a leader's fall does not take the side's
+	// lines down with him.
+	//
+	// Judged by the one option grammar a placement's lines get, at
+	// `factions[i].options[j]`. Optional; absent means the members speak only
+	// what they carry themselves.
+	Options []OptionSpec `yaml:"options,omitempty"`
 }
 
 // DispositionSpec is how two factions stand to each other, and what turns

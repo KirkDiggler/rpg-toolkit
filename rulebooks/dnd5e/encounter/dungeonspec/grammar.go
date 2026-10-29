@@ -1011,6 +1011,20 @@ func (g *grammar) factionOrders() {
 	}
 }
 
+// factionOptions validates every declared faction's lines ([FactionSpec.Options],
+// rpg-project#718) by the one option grammar a creature's own lines get, at
+// `factions[i].options[j]` in either dialect: ids unique WITHIN the faction,
+// a check with a way through, a `requires` of a fact or a holding of one of
+// props, and both verdicts' rows by the table's own grammar.
+//
+// A creature's lines, never a prop's: a faction's members are monsters, so a
+// `flee` row is legal here exactly as it is on a binding.
+func (g *grammar) factionOptions(props map[string]bool) {
+	for i, fa := range g.declaredFactions {
+		g.options(fmt.Sprintf("factions[%d]", i), fa.Options, props, false)
+	}
+}
+
 // knownTableKey reports whether a key is one the composition rolls.
 func knownTableKey(key string) bool {
 	for _, known := range encounter.TableKeys {
