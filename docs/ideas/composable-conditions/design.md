@@ -694,9 +694,7 @@ transition) and `effects` (the composer that attaches a state's outputs),
 formed together in `examples/effects` with `effects/machine` a package
 inside, tests their only customer and a Rage-shaped vocabulary, promoted as
 the `effects` module when `conditions` consumes them, `machine` broken out
-only when something outside `effects` pulls on it (E2, E9, S1, S2); the
-`effects` module's home is top-level beside `play/`, and a broken-out
-`machine` would live under `tools/` beside `spatial`, ruled 2026-10-28; **stacking identity is declared
+only when something outside `effects` pulls on it (E2, E9, S1, S2); **stacking identity is declared
 on the recipe** (`stacks: by_ref | by_source`, default by-ref; by-source
 requires a `source_id` bag key; the machine answers the condition address
 from it, retiring the eleven hand-written address methods), ruled 2026-10-28:
@@ -733,10 +731,12 @@ the seam, and nothing is brought in or copied (E2, E3, E11).
 
 **Open, for the design PR's checklist:**
 
-Every box is closed. The last: the `effects` module's home at promotion is a
-top-level `effects/` beside `play/`; if `machine` is ever broken out of it,
-it goes under `tools/` beside `spatial` (operator, 2026-10-28). The two dead
-`effects` packages are deleted before it lands so the name is free.
+- [ ] The `effects` module's home at promotion. Decided at S2, when we leave
+  `examples/`, not before: "we are building toolkit/examples/effects right
+  now. talking about its home is a little premature" (operator, 2026-10-28).
+  Instincts on record, not rulings: `effects/` top-level beside `play/`; a
+  broken-out `machine` under `tools/` beside `spatial`. The two dead
+  `effects` packages are deleted before any promotion so the name is free.
 
 ## Findings worth more than this story
 

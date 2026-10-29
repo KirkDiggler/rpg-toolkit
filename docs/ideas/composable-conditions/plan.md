@@ -248,7 +248,8 @@ are filled at slice start from the inspected S1 result.
 
 ### Task 7: Promote to `effects/`
 
-**Owner:** new module `effects` (top-level, beside `play/`), one PR that also
+**Owner:** new module `effects` at the home decided when this slice starts
+(open in the design; instincts: top-level beside `play/`), one PR that also
 deletes `examples/effects`. **Prerequisites:** S1 merged; `rulebooks/dnd5e/effects`
 and `mechanics/effects` deleted first (two small PRs, no importers) so the
 name is free. **Files:** `git mv examples/effects effects`, module path
@@ -326,7 +327,7 @@ built.
 | Ruling 3 instance = recipe + parameters into the bag | 2, 5 | undeclared parameter key refused by name |
 | Ruling 4 vocabulary trimmed to Rage | 4, 8 | the test vocabulary and `conditions/vocabulary.go` list exactly those rows |
 | Ruling 5 Go literals + round-trip | 2 | `TestRecipeRoundTrip` |
-| Ruling 6, 7 names and homes | 1, 7 | module paths |
+| Ruling 6 names; home open until S2 | 1, 7 | module paths |
 | Rage answers four rows | 5, 8 | `TestRowsSumOutputs`, `TestRagingRowsAreFour` |
 
 ### Provider/consumer seams
