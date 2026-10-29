@@ -1,6 +1,6 @@
 # Conditions Are Composed of Effects
 
-**Status:** Draft, for the operator's agreement on the idea PR
+**Status:** Approved by the operator 2026-10-28 ("I am ready to sign off on this prototype"); execution in `plan.md`
 
 **Story:** [rpg-project#703](https://github.com/KirkDiggler/rpg-project/issues/703)
 
@@ -8,7 +8,7 @@
 (`ConditionBehavior`, the registry, the blob) does not move; if a later slice
 moves it, that slice adds an ADR.
 
-**Execution:** `plan.md`, added after design agreement
+**Execution:** [plan.md](plan.md)
 
 **Knowledge:** the decisions this design rests on, and the ones it makes, are
 lines in [`rulebooks/dnd5e/knowledge/decisions.md`](../../../rulebooks/dnd5e/knowledge/decisions.md).
@@ -694,7 +694,9 @@ transition) and `effects` (the composer that attaches a state's outputs),
 formed together in `examples/effects` with `effects/machine` a package
 inside, tests their only customer and a Rage-shaped vocabulary, promoted as
 the `effects` module when `conditions` consumes them, `machine` broken out
-only when something outside `effects` pulls on it (E2, E9, S1, S2); **stacking identity is declared
+only when something outside `effects` pulls on it (E2, E9, S1, S2); the
+`effects` module's home is top-level beside `play/`, and a broken-out
+`machine` would live under `tools/` beside `spatial`, ruled 2026-10-28; **stacking identity is declared
 on the recipe** (`stacks: by_ref | by_source`, default by-ref; by-source
 requires a `source_id` bag key; the machine answers the condition address
 from it, retiring the eleven hand-written address methods), ruled 2026-10-28:
@@ -731,10 +733,10 @@ the seam, and nothing is brought in or copied (E2, E3, E11).
 
 **Open, for the design PR's checklist:**
 
-- [ ] The `effects` module's home at promotion (S2). Recommendation: a
-  top-level `effects/` beside `play/` and `world/`, since a tool no rulebook
-  owns should not sit under `rulebooks/dnd5e`; the two dead `effects`
-  packages are deleted before it lands so the name is free.
+Every box is closed. The last: the `effects` module's home at promotion is a
+top-level `effects/` beside `play/`; if `machine` is ever broken out of it,
+it goes under `tools/` beside `spatial` (operator, 2026-10-28). The two dead
+`effects` packages are deleted before it lands so the name is free.
 
 ## Findings worth more than this story
 
