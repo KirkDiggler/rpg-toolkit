@@ -2,7 +2,7 @@
 
 **Status:** Draft, for the operator's agreement on the idea PR
 
-**Story:** rpg-project story issue (linked on the PR once opened)
+**Story:** [rpg-project#703](https://github.com/KirkDiggler/rpg-project/issues/703)
 
 **Decision:** none yet. The seam between resolution and a condition
 (`ConditionBehavior`, the registry, the blob) does not move; if a later slice
