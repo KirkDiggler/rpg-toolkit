@@ -74,13 +74,15 @@ func openTheFall(t *testing.T) *kingScene {
 	return s
 }
 
-// heldFall is the fall a knight holds of the hero's doing, decoded.
+// heldFall is the king's fall by the hero as a knight holds it, decoded:
+// a fall is filed by who fell too ([deed.FiledUnder]).
 func (s *kingScene) heldFall(knight encounter.MemberID) (deed.Deed, bool) {
 	s.t.Helper()
 	held, err := s.enc.View(&encounter.ViewInput{Member: knight})
 	require.NoError(s.t, err)
 	for _, h := range held {
-		if h.Channel == deed.Channel && h.Subject == deed.Subject(hero, encounter.DeedFell) {
+		if h.Channel == deed.Channel &&
+			h.Subject == deed.FiledUnder(deed.Deed{Verb: encounter.DeedFell, Actor: hero, Target: theKing}) {
 			saw, derr := deed.Decode(h.Payload)
 			require.NoError(s.t, derr)
 

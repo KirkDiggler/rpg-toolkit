@@ -127,10 +127,14 @@ const DeedFled = "fled"
 // all. A row reads only what its own creature holds; there is no `down`
 // leaf inside `when` that could not be wrong.
 //
+// FILED BY WHO FELL (ruled on rpg-project#716): the deeds channel keys a fall
+// by its target as well as its actor ([deed.FiledUnder]), so a hero who drops
+// the king and then a loyalist leaves every witness holding both.
+//
 // ONE DOWN BEAT, ONE FALL. It lands where the down beat is written
 // ([Encounter.noticeDown]), so the story's ledger that keeps a death from
 // being told twice keeps it from being witnessed twice.
-const DeedFell = "fell"
+const DeedFell = deed.VerbFell
 
 // landFell tells every member whose sight reaches the fallen's cell that it
 // fell, naming its cause where the witness could see it ([DeedFell]). The

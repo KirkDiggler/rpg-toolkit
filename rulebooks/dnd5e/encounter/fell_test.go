@@ -87,13 +87,15 @@ func (s *FellTestSuite) strike(enc *encounter.Encounter, drops bool) {
 	s.Require().NoError(err)
 }
 
-// fall is the fall observer holds under actor's subject, decoded, with the
-// stamp it is held at.
+// fall is the goblin's fall by actor as observer holds it, decoded, with
+// the stamp it is held at. A fall is filed by who fell too
+// ([deed.FiledUnder]).
 func (s *FellTestSuite) fall(enc *encounter.Encounter, observer, actor encounter.MemberID) (deed.Deed, uint64, bool) {
 	holdings, err := enc.View(&encounter.ViewInput{Member: observer})
 	s.Require().NoError(err)
+	filed := deed.FiledUnder(deed.Deed{Verb: encounter.DeedFell, Actor: actor, Target: goblin})
 	for _, h := range holdings {
-		if h.Channel != deed.Channel || h.Subject != deed.Subject(actor, encounter.DeedFell) {
+		if h.Channel != deed.Channel || h.Subject != filed {
 			continue
 		}
 		saw, derr := deed.Decode(h.Payload)
