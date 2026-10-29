@@ -176,6 +176,7 @@ content arrives. Nothing in a recipe is a closure.
 ```go
 var raging = recipe{
     ref:     refs.Conditions.Raging(),
+    stacks:  byRef, // a second Rage on the same holder is refused as already applied
     initial: "fresh",
     bag:     bag{"was_hit_this_turn": false, "did_attack_this_turn": false, "saw_turn_end": false, "round_activated": 0, "turns_active": 0},
     trackers: []tracker{
@@ -215,6 +216,7 @@ var rageEndings = []transition{
 
 var blessed = recipe{
     ref:     refs.Conditions.Blessed(),
+    stacks:  bySource, // two casters' blessings are two conditions, each with its own concentration
     initial: "blessed",
     bag:     bag{"source_id": ""},
     states: map[string]state{
@@ -230,6 +232,7 @@ var blessed = recipe{
 
 var resistanceDie = recipe{
     ref:     refs.Conditions.Resistance(),
+    stacks:  bySource,
     initial: "held",
     bag:     bag{"source_id": ""},
     states: map[string]state{
@@ -622,7 +625,12 @@ conditions.
 **Settled in conversation, 2026-10-28, ruled by the operator:** the machine
 is a neutral tool the rulebook plugs into, built as a package inside the
 dnd5e root module with its seam held by a test, Rage as the real first use,
-no toy and no `examples/` detour (E9, S1); the target
+no toy and no `examples/` detour (E9, S1); **stacking identity is declared
+on the recipe** (`stacks: by_ref | by_source`, default by-ref; by-source
+requires a `source_id` bag key; the machine answers the condition address
+from it, retiring the eleven hand-written address methods), ruled 2026-10-28:
+"we are here to evolve our system not be limited by them … each piece does
+its one thing"; the target
 is one data structure per condition, driven fully by its effects, under one
 ref (E1, E2); hand-written Go is the form for now, content authoring comes
 with the studio (E9); cost lives outside the condition (E7); `core/effect` is
@@ -633,10 +641,6 @@ the seam, and nothing is brought in or copied (E2, E3, E11).
 
 **Open, for the design PR's checklist:**
 
-- [ ] Stacking identity: by ref, or by ref plus source, declared per condition
-  on the literal. Recommendation: a `stacks` field defaulting to by-ref, with
-  the source-qualified conditions (Resistance, Blessed) declaring by-source,
-  which is what `ConditionAddressProvider` already distinguishes.
 - [ ] Display: authored on the descriptor as today, or derived from the
   effects' rows. Recommendation: authored stays; derivation is a later win
   once every effect answers a row and the words are checked against the
