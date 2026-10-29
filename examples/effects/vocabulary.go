@@ -51,7 +51,7 @@ type Detach func(ctx context.Context) error
 // Host is the condition as its outputs see it: who holds it, its ref, and
 // the ref that applied it.
 type Host struct {
-	Holder string
-	Ref    *core.Ref
-	Source *core.Ref
+	Holder string    // the entity id the condition is on
+	Ref    *core.Ref // the recipe's ref, never nil
+	Source *core.Ref // what applied the condition, possibly nil
 }

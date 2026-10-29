@@ -26,10 +26,10 @@ var ErrNoAmount = errors.New("output has no amount")
 // Row is one output's information answer: its kind, its guard's verdict and
 // reason, and the amount when the guard applies.
 type Row struct {
-	Kind    KindName
-	Verdict machine.Verdict
-	Reason  string
-	Amount  int
+	Kind    KindName        // the output's kind
+	Verdict machine.Verdict // Applies, DoesNotApply, or Depends when the frame cannot answer
+	Reason  string          // the guard leaf that decided ("always" for no guard)
+	Amount  int             // the output's amount when it applies; zero otherwise
 }
 
 // Bound is one output bound to its condition: what a kind's Attach and
