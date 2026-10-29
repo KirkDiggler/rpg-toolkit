@@ -1512,6 +1512,13 @@ type WhenData struct {
 	// condition it always meant.
 	Scope string `json:"scope,omitempty"`
 
+	// Who is the member a `fell` condition names ([behavior.When.Who],
+	// rpg-project#716). Scope's reason makes it a field here: a `who` row
+	// saved without it would load back reading every fall, the king's and
+	// the cook's alike. Omitted when empty, so a record written before `who`
+	// existed loads to exactly the condition it always meant.
+	Who string `json:"who,omitempty"`
+
 	// Heard is a `heard: { kind, within }` condition, Fact a `fact: <id>`
 	// one, and Not the one condition a `not` wraps. Each omitted when it is
 	// not the condition this entry names.
@@ -1667,7 +1674,7 @@ func answerDataFrom(entry Answer) AnswerData {
 func whenDataFrom(w When) WhenData {
 	out := WhenData{
 		Enemy: string(w.Enemy), Deed: w.Deed, Within: w.Within,
-		Scope: string(w.Scope), Fact: w.Fact, Threat: string(w.Threat),
+		Scope: string(w.Scope), Who: string(w.Who), Fact: w.Fact, Threat: string(w.Threat),
 	}
 	if w.Heard != nil {
 		out.Heard = &HeardData{Kind: w.Heard.Kind, Within: w.Heard.Within}
@@ -1779,7 +1786,7 @@ func answerFromData(row AnswerData) Answer {
 func whenFromData(w WhenData) When {
 	out := When{
 		Enemy: EnemyWord(w.Enemy), Deed: w.Deed, Within: w.Within,
-		Scope: DeedScope(w.Scope), Fact: w.Fact, Threat: behavior.ThreatWord(w.Threat),
+		Scope: DeedScope(w.Scope), Who: core.EntityID(w.Who), Fact: w.Fact, Threat: behavior.ThreatWord(w.Threat),
 	}
 	if w.Heard != nil {
 		out.Heard = &HeardWhen{Kind: w.Heard.Kind, Within: w.Heard.Within}

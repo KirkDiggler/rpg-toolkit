@@ -576,6 +576,7 @@ func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {
 		}
 	}
 	g.whenPatterns(at, entry.When)
+	g.whenWho(at, entry.When)
 
 	words := entryWords(entry)
 	switch {
@@ -616,6 +617,7 @@ func (g *grammar) groupEntry(at, key string, entry AnswerSpec) {
 			key, entry.When[0].Line)
 	}
 	g.whenPatterns(at, entry.When)
+	g.whenWho(at, entry.When)
 	if entry.Rows == nil {
 		return
 	}
@@ -647,6 +649,30 @@ func (g *grammar) whenPatterns(at string, list WhenListSpec) {
 			}
 			if !g.factMatches(nameOf(w.Fact)) {
 				g.fail(at+".when", "`fact` %s matches no fact this file sets (line %d)", w.Fact, w.Line)
+			}
+		}
+	}
+}
+
+// whenWho refuses a `fell: { who }`, anywhere in a row's `when` (a `not`
+// included), that does not name a monster placed in this file
+// (rpg-project#716): `who` is the one whose fall the row waits on, and only a
+// monster can be down. `who` on any other deed was refused at decode.
+func (g *grammar) whenWho(at string, list WhenListSpec) {
+	for i := range list {
+		for w := &list[i]; w != nil; w = w.Not {
+			if w.Who == "" {
+				continue
+			}
+			m, ok := g.members.at(w.Who)
+			if !ok {
+				g.fail(at+".when", "`%s: { who: %s }`: %q is not a placement in this dungeon (line %d)",
+					w.Deed, w.Who, w.Who, w.Line)
+				continue
+			}
+			if !m.isMonster() {
+				g.fail(at+".when", "`%s: { who: %s }`: %q is a prop, and only a monster can fall (line %d)",
+					w.Deed, w.Who, w.Who, w.Line)
 			}
 		}
 	}

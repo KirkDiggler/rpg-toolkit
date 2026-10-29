@@ -1190,7 +1190,10 @@ func oneWhenOf(when *WhenSpec) encounter.When {
 		Enemy: encounter.EnemyWord(when.Enemy), Deed: when.Deed, Within: when.Within,
 		// The scope rides with the deed (rpg-toolkit#1883): the condition's
 		// own reading of WHOSE deed it is about.
-		Scope:  when.Scope,
+		Scope: when.Scope,
+		// `who` rides with the deed too (rpg-project#716): the fall's one
+		// member, by the placement id the dialect sealed.
+		Who:    encounter.MemberID(when.Who),
 		Fact:   nameOf(when.Fact),
 		Threat: behavior.ThreatWord(when.Threat),
 	}

@@ -27,6 +27,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"testing"
 
@@ -170,6 +171,11 @@ type castleHost struct {
 	// site cut from the castle plays through the castle's own host
 	// (rpg-project#717's ally-walk).
 	fixture string
+
+	// without names endings of the file a route opens without, so a run the
+	// ending would close plays on past it: the fall route keeps playing after
+	// the king is down, where `king-slain` would settle it.
+	without []string
 }
 
 // openTheCastleAs compiles the file and opens it the way the host says.
@@ -209,10 +215,16 @@ func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 
 	strikes := &[]cellsStrike{}
 	standing := &castleStanding{down: map[encounter.MemberID]bool{}}
+	endings := []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}
+	for _, e := range compiled.Endings {
+		if !slices.Contains(host.without, e.Key) {
+			endings = append(endings, e)
+		}
+	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field:   compiled.Field,
 		Members: members,
-		Endings: append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, compiled.Endings...),
+		Endings: endings,
 		// Unbounded, so a route can read a creature's whole story back.
 		Retention:    encounter.RetentionUnbounded,
 		Capabilities: host.capabilities(strikes, standing),
