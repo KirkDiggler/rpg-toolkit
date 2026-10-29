@@ -116,7 +116,7 @@ func TestADocumentThatBindsNoPropTakesNoOrders(t *testing.T) {
 // them — the fixture the keying claim needs, since a document with no
 // bindings at all cannot tell "keyed" from "applied to everything".
 const twoPropsOneBound = `
-version: 4
+version: 5
 key: two-props
 play: { void: transparent, lighting: bright, standing: centre-covered }
 room:
@@ -124,7 +124,6 @@ room:
   id: room-1
   name: A Room
   coordinateFrame: { hexRadius: 1 }
-  workspace: { hexRadius: 6 }
   scene:
     version: 1
     id: scene-1
@@ -135,7 +134,15 @@ room:
     groups: []
   room:
     implicitRegionId: room-1-region
-    walkableHexes: [{q: 0, r: 0}, {q: 1, r: 0}, {q: 2, r: 0}, {q: 0, r: 1}, {q: 1, r: 1}]
+    regions:
+      - id: room-1-region
+        name: A Room
+        lighting: { intensity: 1 }
+        cells:
+          - r: 0
+            q: [[0, 2]]
+          - r: 1
+            q: [[0, 1]]
     propDeclarations:
       cup: { blocksMovement: false, blocksLineOfSight: false, footprint: { width: 1, depth: 1, offsetX: 0, offsetZ: 0 } }
       plinth: { blocksMovement: true, blocksLineOfSight: false, footprint: { width: 1, depth: 1, offsetX: 0, offsetZ: 0 } }

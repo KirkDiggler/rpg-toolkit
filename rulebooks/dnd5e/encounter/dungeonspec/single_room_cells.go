@@ -1,0 +1,216 @@
+// Copyright (C) 2026 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package dungeonspec
+
+import "fmt"
+
+// single_room_cells.go reads a region's cells (rpg-project#725, design R2).
+//
+// A region's cells are written as ROW RUNS: for each axial row r, the
+// inclusive [qStart, qEnd] spans of q that are floor. The runs are canonical —
+// rows ascend by r with no repeat, spans ascend and neither overlap nor touch —
+// so one cell set has exactly one spelling and a repaint diffs per row. They
+// are what the compiler reads; nothing here infers a cell the author did not
+// list, and there is no bitmap, outline-fill or hole grammar.
+//
+// THE TWO BOUNDS THE WORKSPACE USED TO BE. The workspace radius bounded every
+// authored cell, and it is gone (R3: the canvas is unbounded). What it was
+// also doing — keeping a coordinate inside the range the encounter's integer
+// conversion is exact in, and keeping a twelve-byte span from naming a
+// billion cells — is held here, by two bounds that are not gameplay limits:
+// a coordinate magnitude ([maxSiteCoord]) and a whole-site cell budget
+// ([maxSiteCells], the encounter field's own cell budget).
+
+const (
+	// maxSiteCoord bounds the magnitude of every authored q and r. Integer
+	// defense, not a map size: the encounter refuses an offset cell beyond
+	// 1<<30, and no site is within five orders of magnitude of this.
+	maxSiteCoord = 1 << 24
+	// maxSiteCells is the most cells a site's regions may list together —
+	// the encounter field's own budget (compilefield.go maxFieldCells), so a
+	// site the decoder accepts is never one the compiler refuses for size.
+	maxSiteCells = 1 << 22
+
+	errBeyondCoordBound   = "is beyond the coordinate bound"
+	errSiteTooLarge       = "the site lists more cells than one field holds"
+	errSpanDescending     = "must not be descending"
+	errSpansNotCanonical  = "spans must be ascending and merged"
+	errRowsNotCanonical   = "rows must be ascending by r"
+	errMustNotBeEmpty     = "must not be empty"
+	errCellInTwoRegions   = "already belongs to region %q"
+	errNoRegionOwnsACell  = "no region owns a cell"
+	errLightingOutOfRange = "must be between 0 and 1"
+)
+
+// ExpandRows returns the cells a region's rows list, in the order they are
+// written (ascending r, then ascending q), reporting at path — the region's
+// `cells` path — every way the rows are not canonical: a row with no span, a
+// coordinate beyond the bound, a descending span, a span that does not start
+// after the previous one ends plus one, and a row that does not come after
+// the previous row. A span that is refused contributes no cell; a row out of
+// order still contributes its cells, so a later duplicate is still found.
+//
+// The rows are counted before a cell is listed: rows naming more cells than
+// one field holds are refused at the span that overdraws, and expand to
+// nothing.
+func ExpandRows(rows []RoomCellRow, path string, add errSink) []RoomCell {
+	region := []RoomRegion{{Cells: rows}}
+	if !withinBudget(region, func(int) string { return path }, add) {
+		return nil
+	}
+	return expandRows(rows, path, add)
+}
+
+// withinBudget counts every well-formed span of every region against the
+// site's cell budget without listing a cell, and refuses the span that
+// overdraws it. pathOf is a region's `cells` path.
+func withinBudget(regions []RoomRegion, pathOf func(i int) string, add errSink) bool {
+	budget := maxSiteCells
+	for i, region := range regions {
+		for j, row := range region.Cells {
+			for k, span := range row.Q {
+				if !inBound(span[0]) || !inBound(span[1]) || span[0] > span[1] {
+					continue
+				}
+				if budget -= span[1] - span[0] + 1; budget < 0 {
+					add(fmt.Sprintf("%s[%d].q[%d]", pathOf(i), j, k), errSiteTooLarge)
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+func inBound(v int) bool { return v <= maxSiteCoord && v >= -maxSiteCoord }
+
+// expandRows is [ExpandRows] after the count: the canonical-form refusals and
+// the cells of every span that passes them.
+func expandRows(rows []RoomCellRow, path string, add errSink) []RoomCell {
+	var out []RoomCell
+	for j, row := range rows {
+		rowPath := fmt.Sprintf("%s[%d]", path, j)
+		if j > 0 && row.R <= rows[j-1].R {
+			add(rowPath, errRowsNotCanonical)
+		}
+		if !inBound(row.R) {
+			add(rowPath+".r", errBeyondCoordBound)
+			continue
+		}
+		if len(row.Q) == 0 {
+			add(rowPath+".q", errMustNotBeEmpty)
+			continue
+		}
+		for k, span := range row.Q {
+			spanPath := fmt.Sprintf("%s.q[%d]", rowPath, k)
+			start, end := span[0], span[1]
+			switch {
+			case !inBound(start) || !inBound(end):
+				add(spanPath, errBeyondCoordBound)
+				continue
+			case start > end:
+				add(spanPath, errSpanDescending)
+				continue
+			case k > 0 && start <= row.Q[k-1][1]+1:
+				add(spanPath, errSpansNotCanonical)
+				continue
+			}
+			for q := start; q <= end; q++ {
+				out = append(out, RoomCell{Q: q, R: row.R})
+			}
+		}
+	}
+	return out
+}
+
+// regionCells expands every region's rows, in authored order, after counting
+// the whole site against one budget, and reports a cell a second region lists
+// at the span that lists it again, naming the region that owns it first. The
+// result is indexed like regions; an empty region, and every region of a site
+// over budget, expands to nothing.
+func regionCells(regions []RoomRegion, add errSink) [][]RoomCell {
+	out := make([][]RoomCell, len(regions))
+	pathOf := func(i int) string { return fmt.Sprintf("room.room.regions[%d].cells", i) }
+	if !withinBudget(regions, pathOf, add) {
+		return out
+	}
+	owner := map[RoomCell]int{}
+	for i, region := range regions {
+		path := pathOf(i)
+		for _, c := range expandRows(region.Cells, path, add) {
+			if first, taken := owner[c]; taken {
+				add(fmt.Sprintf("%s[%d].q[%d]", path, rowOf(region.Cells, c), spanOf(region.Cells[rowOf(region.Cells, c)], c.Q)),
+					fmt.Sprintf(errCellInTwoRegions, regions[first].ID))
+				continue
+			}
+			owner[c] = i
+			out[i] = append(out[i], c)
+		}
+	}
+	return out
+}
+
+// rowOf is the index of the first row in rows at c's r that lists c.
+func rowOf(rows []RoomCellRow, c RoomCell) int {
+	for j, row := range rows {
+		if row.R == c.R && spanOf(row, c.Q) >= 0 {
+			return j
+		}
+	}
+	return 0
+}
+
+// spanOf is the index of the span in row that lists q, or -1.
+func spanOf(row RoomCellRow, q int) int {
+	for k, span := range row.Q {
+		if q >= span[0] && q <= span[1] {
+			return k
+		}
+	}
+	return -1
+}
+
+// regionValues judges the authored regions: a non-empty list, each with an
+// id no other region has, a lighting intensity in [0, 1], and canonical rows;
+// no cell in two regions; and at least one cell on the floor. It returns
+// every region's expanded cells, indexed like the list, for the readers that
+// need the floor.
+func regionValues(regions []RoomRegion, add errSink) [][]RoomCell {
+	if len(regions) == 0 {
+		add("room.room.regions", errMustNotBeEmpty)
+		return nil
+	}
+	seen := map[string]bool{}
+	for i, region := range regions {
+		p := fmt.Sprintf("room.room.regions[%d]", i)
+		if region.ID == "" {
+			add(p+".id", errRequired)
+		} else if seen[region.ID] {
+			add(p+".id", errDuplicateID)
+		}
+		seen[region.ID] = true
+		if v := region.Lighting.Intensity; !(v >= 0 && v <= 1) {
+			add(p+".lighting.intensity", errLightingOutOfRange)
+		}
+	}
+	cells := regionCells(regions, add)
+	for _, c := range cells {
+		if len(c) > 0 {
+			return cells
+		}
+	}
+	add("room.room.regions", errNoRegionOwnsACell)
+	return cells
+}
+
+// floorCells is the union of the regions' cells — the site's floor — for a
+// reader that runs on a document validation has already judged. Defects are
+// not its business: they were reported where the document was judged.
+func (gp *RoomGameplaySource) floorCells() []RoomCell {
+	var out []RoomCell
+	for _, cells := range regionCells(gp.Regions, func(string, string) {}) {
+		out = append(out, cells...)
+	}
+	return out
+}

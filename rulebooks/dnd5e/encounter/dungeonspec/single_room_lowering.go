@@ -33,10 +33,6 @@ import (
 //	                                    silently mis-scaled, so 1 is required
 //	                                    by name — the one frame number, and
 //	                                    nothing else from the frame.
-//	room.workspace.hexRadius            bounds the walkable cells
-//	                                    (walkableValues). Required to be
-//	                                    POSITIVE: a floor of radius zero or
-//	                                    less is not a floor.
 //	room.scene.name                     the compiled dungeon's display name
 //	                                    ([Compiled.Name]) — the one
 //	                                    non-numeric value the lowering reads,
@@ -58,12 +54,11 @@ import (
 // THE REFUSALS THAT SURVIVED are the ones that guard a gameplay fact rather
 // than the editor's own bounds: a number play reads that was never authored
 // (a silent zero is a real pose, a real scale and a real floor radius), a
-// number that is not finite (a NaN radius compares false against every cell
-// and would quietly widen the floor), a workspace radius that is not
-// positive (no cell stands on a floor that size), and a duplicate item id
-// (the join would pick one of two poses for the same declaration). The editor's scalar
-// bounds, its workspace presets, its frame vocabulary, its item and group
-// caps and its parent/support graph left with the presentation.
+// number that is not finite, and a duplicate item id (the join would pick
+// one of two poses for the same declaration). The editor's scalar bounds, its
+// frame vocabulary, its item and group caps and its parent/support graph left
+// with the presentation, and the workspace left the file altogether
+// (rpg-project#725, R3: the canvas is unbounded and the floor is the regions).
 
 // scenePose is one scene item's pose AS AUTHORED: the three numbers
 // [placedPropFrom] converts into canonical geometry, and nothing else.
@@ -79,15 +74,6 @@ type roomRead struct {
 	// Name is `room.scene.name`: what [CompileSingleRoom] carries out as the
 	// dungeon's display name.
 	Name string
-
-	// WorkspaceHexRadius is `room.workspace.hexRadius`, the floor bound
-	// walkable cells are measured against. WorkspaceKnown is false when it
-	// was not authored as a finite POSITIVE number — the defect names that,
-	// and the floor bound is not applied on top of it, so one unreadable
-	// number reports as one defect rather than as every cell being off the
-	// floor.
-	WorkspaceHexRadius float64
-	WorkspaceKnown     bool
 
 	// ItemIDs is every authored scene item id: the universe a
 	// `propDeclarations` entry may name.
@@ -111,8 +97,8 @@ const errNotANumber = "must be a number"
 // depends on, reporting every value it needed and could not read at the
 // source path it sits at.
 //
-// It is the only reader of [RoomSource.CoordinateFrame],
-// [RoomSource.Workspace] and [RoomSource.Scene]. Both seams go through it:
+// It is the only reader of [RoomSource.CoordinateFrame] and
+// [RoomSource.Scene]. Both seams go through it:
 // [validateSingleRoom] (which both [DecodeSingleRoom] and
 // [CompileSingleRoom] run) and [RoomSource.CanonicalPlacedProps], so a
 // source the decoder accepts is one the placement adapter can read and vice
@@ -127,20 +113,6 @@ func readRoom(r *RoomSource) (roomRead, []FieldError) {
 	// than folded in as a second factor nobody asked for.
 	if v, ok := sceneNumber(resolveNode(&r.CoordinateFrame), "hexRadius", "room.coordinateFrame", add); ok && v != 1 {
 		add("room.coordinateFrame.hexRadius", "must be 1")
-	}
-
-	// A radius of zero or less is the SAME LIE AS AN ABSENT ONE, arriving as
-	// a value: at 0 every cell but the origin measures outside the floor, and
-	// at a negative radius the origin does too, so the one unreadable number
-	// would report as one defect per authored cell. Named once, here, with
-	// its own sentence — the shape the frame's "must be 1" already takes —
-	// and the floor bound is then not applied on top of it.
-	if v, ok := sceneNumber(resolveNode(&r.Workspace), "hexRadius", "room.workspace", add); ok {
-		if v <= 0 {
-			add("room.workspace.hexRadius", "must be positive")
-		} else {
-			out.WorkspaceHexRadius, out.WorkspaceKnown = v, true
-		}
 	}
 
 	scene := resolveNode(&r.Scene)

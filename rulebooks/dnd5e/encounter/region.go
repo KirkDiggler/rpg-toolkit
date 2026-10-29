@@ -68,6 +68,19 @@ func (e *Encounter) RegionAt(cell spatial.Position) (RegionID, bool) {
 	return e.field.regionOf(cell)
 }
 
+// PartitionAt reports which wall partition holds a dungeon-absolute cell: the
+// room as the walls make it, the division hearing, seats, arrivals and the
+// intel flip are decided on (rpg-project#725, partitions.go). It is
+// [Encounter.RegionAt]'s mechanical twin and is independent of it — an open
+// hall painted as two regions is one partition, and one region a wall cuts in
+// two is two.
+//
+// Returns false for a cell that is not owned floor. The id is derived and
+// internal: compare two answers, never persist or send one.
+func (e *Encounter) PartitionAt(cell spatial.Position) (PartitionID, bool) {
+	return e.field.partitionAt(cell)
+}
+
 // Region reports one region as authored: its name, its cells in absolute
 // space (sorted), its archetype and its lighting.
 //

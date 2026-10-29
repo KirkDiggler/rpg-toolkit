@@ -189,7 +189,7 @@ func TestALegOffTheFloorReachesTheRoomAuthor(t *testing.T) {
 	require.NoError(t, err)
 	// Cut the centre out of the floor: the diamond's legs go round it, but a
 	// route straight across does not.
-	holed := swapOneIn(t, raw, "{q: 0, r: 0}, {q: 0, r: 1}", "{q: 0, r: 1}")
+	holed := swapOneIn(t, raw, "          - r: 0\n            q: [[-3, 3]]\n", "          - r: 0\n            q: [[-3, -1], [1, 3]]\n")
 	holed = swapOneIn(t, holed, "startingCell: { location: { q: 0, r: 0 } }", "startingCell: { location: { q: 1, r: 0 } }")
 	holed = swapOneIn(t, holed, gateRoute, "toward: {path: [{q: -2, r: 0}, {q: 2, r: 0}, {q: 0, r: 2}]}")
 	_, err = Load(holed)

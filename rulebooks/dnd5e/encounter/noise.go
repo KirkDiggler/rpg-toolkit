@@ -30,16 +30,19 @@ import (
 // # Nobody rolls
 //
 // Hearing is passive (R5). A sound's DC is the rulebook's content for its kind
-// ([soundDCs]); every region hop between the sound and the listener adds
+// ([soundDCs]); every partition hop between the sound and the listener adds
 // [dcPerHop], and a closed door on the crossing counts as one hop more. The
 // listener's passive Perception ([SheetFacts.PassivePerception]) answers it
 // and nothing else does: no die, no check, no beat for a near miss.
 //
-// # Hops are regions, door to door
+// # Hops are wall partitions, door to door
 //
-// The graph is the field's regions joined by its doors — an edge door's
-// edges, a footprint door's crossings — derived once per encounter from the
-// construction-time doors ([Encounter.regionLinks]).
+// The graph is the field's WALL PARTITIONS joined by its doors — an edge
+// door's edges, a footprint door's crossings — derived once per encounter from
+// the construction-time doors ([Encounter.partitionLinks]). Never the
+// authored regions (rpg-project#725, R4): an authored boundary is
+// presentation, so two regions painted on one open floor are one partition
+// and a sound crosses between them with no hop at all.
 // Only a door's STATE is read live, because it is the one thing about the
 // graph a verb changes.
 
@@ -154,55 +157,55 @@ func forcedBy(ability string) bool {
 	return ability == "str"
 }
 
-// regionLink is one way out of a region: the region on the far side and the
-// door the crossing goes through.
-type regionLink struct {
-	to   RegionID
+// partitionLink is one way out of a wall partition: the partition on the far
+// side and the door the crossing goes through.
+type partitionLink struct {
+	to   PartitionID
 	door *doorRecord
 }
 
-// links is the region graph: every region's ways out, derived on first use
-// from the doors' construction-time geometry and cached for the encounter's
-// life.
+// links is the partition graph: every wall partition's ways out, derived on
+// first use from the doors' construction-time geometry and cached for the
+// encounter's life.
 //
 // ONCE, because nothing it is made of changes: a door's edges, a footprint
-// door's rectangle and the field's region owners are construction truth. The
+// door's rectangle and the field's partitions are construction truth. The
 // door POINTER is kept rather than its state, so [Encounter.hopsFrom] reads
 // whether it is closed at the moment a sound is made.
 //
 // TWO DOOR GEOMETRIES, ONE GRAPH (rpg-toolkit#2066). An edge door joins the
-// regions either side of each of its edges. A FOOTPRINT door — the studio's
-// wall door, or a standalone door prop — joins the regions either side of
+// partitions either side of each of its edges. A FOOTPRINT door — the studio's
+// wall door, or a standalone door prop — joins the partitions either side of
 // each crossing its rectangle lies across ([field.doorCrossings]): the same
 // trace a step through it asks, so hearing and movement cannot disagree
-// about which regions a door stands between.
+// about which partitions a door stands between.
 //
-// A DOOR WHOSE TWO SIDES ARE ONE REGION'S joins nothing: it is a door inside a
-// room, and crossing it changes no region. Each pair of regions is linked once
-// per door, however many crossings the door spans.
-func (e *Encounter) links() map[RegionID][]regionLink {
-	if e.regionLinks != nil {
-		return e.regionLinks
+// A DOOR WHOSE TWO SIDES ARE ONE PARTITION'S joins nothing: it is a door
+// inside a room, and crossing it changes no partition. Each pair of
+// partitions is linked once per door, however many crossings the door spans.
+func (e *Encounter) links() map[PartitionID][]partitionLink {
+	if e.partitionLinks != nil {
+		return e.partitionLinks
 	}
-	out := map[RegionID][]regionLink{}
+	out := map[PartitionID][]partitionLink{}
 	for _, d := range e.doors {
-		joined := map[[2]RegionID]bool{}
+		joined := map[[2]PartitionID]bool{}
 		join := func(a, b spatial.Position) {
-			from, okFrom := e.field.regionOf(a)
-			to, okTo := e.field.regionOf(b)
+			from, okFrom := e.field.partitionAt(a)
+			to, okTo := e.field.partitionAt(b)
 			if !okFrom || !okTo || from == to {
 				return
 			}
-			pair := [2]RegionID{from, to}
+			pair := [2]PartitionID{from, to}
 			if to < from {
-				pair = [2]RegionID{to, from}
+				pair = [2]PartitionID{to, from}
 			}
 			if joined[pair] {
 				return
 			}
 			joined[pair] = true
-			out[from] = append(out[from], regionLink{to: to, door: d})
-			out[to] = append(out[to], regionLink{to: from, door: d})
+			out[from] = append(out[from], partitionLink{to: to, door: d})
+			out[to] = append(out[to], partitionLink{to: from, door: d})
 		}
 		for _, edge := range d.edges {
 			join(edge.From, edge.To)
@@ -211,23 +214,23 @@ func (e *Encounter) links() map[RegionID][]regionLink {
 			join(crossing[0], crossing[1])
 		}
 	}
-	e.regionLinks = out
+	e.partitionLinks = out
 
 	return out
 }
 
-// hopsFrom is every region a sound made in origin reaches, and how many hops
-// away it is: one per region crossed, one more for each closed door crossed.
-// The cheapest way through wins, so an open door beside a closed one is the
-// way the sound goes. origin itself is zero hops.
+// hopsFrom is every wall partition a sound made in origin reaches, and how
+// many hops away it is: one per partition crossed, one more for each closed
+// door crossed. The cheapest way through wins, so an open door beside a
+// closed one is the way the sound goes. origin itself is zero hops.
 //
-// A region no door leads to is absent: no sound reaches it.
-func (e *Encounter) hopsFrom(origin RegionID) map[RegionID]int {
+// A partition no door leads to is absent: no sound reaches it.
+func (e *Encounter) hopsFrom(origin PartitionID) map[PartitionID]int {
 	links := e.links()
-	dist := map[RegionID]int{origin: 0}
-	done := map[RegionID]bool{}
+	dist := map[PartitionID]int{origin: 0}
+	done := map[PartitionID]bool{}
 	for {
-		var at RegionID
+		var at PartitionID
 		best := -1
 		for region, d := range dist {
 			if done[region] {
@@ -269,8 +272,8 @@ type hearing struct {
 // turn toward its own clang.
 //
 // A BODY HEARS NOTHING: a down member is skipped, the same down set every
-// other sense here reads. A cell no region owns is heard by nobody, which no
-// standing member can be on.
+// other sense here reads. A cell no partition holds — no region owns — is
+// heard by nobody, which no standing member can be on.
 //
 // WHO IS DOWN IS ASKED ONLY WHEN SOMEBODY'S EARS COULD CATCH IT. Participation
 // is a capability with a price per question, and most sounds in most scenes
@@ -278,7 +281,7 @@ type hearing struct {
 // nothing at all — so the question is put only once a listener has qualified
 // on the arithmetic.
 func (e *Encounter) hearersOf(cell spatial.Position, dc int, maker MemberID) ([]hearing, error) {
-	origin, ok := e.field.regionOf(cell)
+	origin, ok := e.field.partitionAt(cell)
 	if !ok {
 		return nil, nil
 	}
@@ -303,11 +306,11 @@ func (e *Encounter) hearersOf(cell spatial.Position, dc int, maker MemberID) ([]
 		if err != nil {
 			continue
 		}
-		region, ok := e.field.regionOf(pos)
+		partition, ok := e.field.partitionAt(pos)
 		if !ok {
 			continue
 		}
-		h, reached := hops[region]
+		h, reached := hops[partition]
 		if !reached {
 			continue
 		}

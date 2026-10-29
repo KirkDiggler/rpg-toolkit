@@ -22,11 +22,11 @@
 # hidden only because it stands on hidden floor; here it is hidden because it
 # belongs to the vault, which is the same answer for this room and a
 # different, stronger one for a bookcase standing in plain sight.
-version: 4
+version: 5
 key: tomb-vault-v4
 play: { void: transparent, lighting: bright, standing: centre-covered }
 
-# WHAT THIS ROOM HIDES. `cells` stay in `walkableHexes` — the author sees the
+# WHAT THIS ROOM HIDES. `cells` stay on the floor, in a region — the author sees the
 # vault at the table, and an unaware player is simply not sent those cells
 # (R2). `props` is ONE list of placed ids, doors included, because a door is a
 # prop in this dialect; the compiler sorts them into the engine's two lists by
@@ -64,7 +64,6 @@ room:
   coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
     distanceUnit: world-scene-unit, hexRadius: 1,
     footprintFrame: owner-local-xz}
-  workspace: { hexRadius: 6, horizontalLimit: 12 }
   scene:
     version: 1
     id: scene-1
@@ -91,11 +90,19 @@ room:
     # THE VAULT'S CELLS ARE WALKABLE FLOOR (R2). Nobody places a wall to hide
     # a room; omission is the wall, and what an unaware observer is sent is
     # the engine's answer, not the author's second drawing.
-    walkableHexes: [{q: -3, r: 0}, {q: -2, r: 0}, {q: -1, r: 0}, {q: 0, r: 0}, {q: 1, r: 0},
-      {q: -3, r: 1}, {q: -2, r: 1}, {q: -1, r: 1}, {q: 0, r: 1}, {q: 1, r: 1},
-      {q: -3, r: 2}, {q: -2, r: 2}, {q: -1, r: 2}, {q: 0, r: 2}, {q: 1, r: 2},
-      {q: -3, r: 3}, {q: -2, r: 3}, {q: -1, r: 3}, {q: 0, r: 3}, {q: 1, r: 3},
-      {q: 2, r: 0}, {q: 3, r: 0}, {q: 2, r: 1}, {q: 3, r: 1}, {q: 2, r: 2}, {q: 3, r: 2}]
+    regions:
+      - id: room-1-region
+        name: The Tomb
+        lighting: { intensity: 1 }
+        cells:
+          - r: 0
+            q: [[-3, 3]]
+          - r: 1
+            q: [[-3, 3]]
+          - r: 2
+            q: [[-3, 3]]
+          - r: 3
+            q: [[-3, 1]]
     propDeclarations:
       # STATE DECIDES WHAT A DOOR BLOCKS, so both flags stay false on the door
       # item and `closed` under doorBindings says the rest (R3).

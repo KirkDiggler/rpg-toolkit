@@ -167,7 +167,7 @@ func TestATableWithNoIdIsRefused(t *testing.T) {
 func TestTheThreeLayersStackInOrder(t *testing.T) {
 	// faction `time` = 1 row, table `time` = 2 rows, binding `time` = 3 rows —
 	// so the count SAYS which layer won.
-	const doc = `version: 4
+	const doc = `version: 5
 key: three-layers
 play: { void: transparent, lighting: bright, standing: centre-covered }
 factions:
@@ -185,7 +185,6 @@ room:
   id: room-1
   name: A Room
   coordinateFrame: { hexRadius: 1 }
-  workspace: { hexRadius: 6 }
   scene:
     version: 1
     id: scene-1
@@ -194,7 +193,13 @@ room:
     groups: []
   room:
     implicitRegionId: room-1-region
-    walkableHexes: [{q: 0, r: 0}, {q: 1, r: 0}, {q: 2, r: 0}]
+    regions:
+      - id: room-1-region
+        name: A Room
+        lighting: { intensity: 1 }
+        cells:
+          - r: 0
+            q: [[0, 2]]
     propDeclarations: {}
     arrangementDeclarations: {}
     partyStart: { q: 0, r: 0 }
@@ -253,7 +258,7 @@ func TestAFactionNamesItsTable(t *testing.T) {
         - { when: { enemy: reach }, attack: enemy }
 `
 	doc := func(on string) string {
-		return `version: 4
+		return `version: 5
 key: faction-table
 play: { void: transparent, lighting: bright, standing: centre-covered }
 factions:
@@ -269,7 +274,6 @@ room:
   id: room-1
   name: A Room
   coordinateFrame: { hexRadius: 1 }
-  workspace: { hexRadius: 6 }
   scene:
     version: 1
     id: scene-1
@@ -278,7 +282,13 @@ room:
     groups: []
   room:
     implicitRegionId: room-1-region
-    walkableHexes: [{q: 0, r: 0}, {q: 1, r: 0}, {q: 2, r: 0}]
+    regions:
+      - id: room-1-region
+        name: A Room
+        lighting: { intensity: 1 }
+        cells:
+          - r: 0
+            q: [[0, 2]]
     propDeclarations: {}
     arrangementDeclarations: {}
     partyStart: { q: 0, r: 0 }

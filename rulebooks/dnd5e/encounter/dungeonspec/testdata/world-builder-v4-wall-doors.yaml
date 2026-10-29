@@ -13,7 +13,7 @@
 # along scene z = 0; the wall runs parallel to it at scene z = 3, so neither its
 # spans nor the attached door cover a cell centre and the room still compiles.
 # `appearance` is here in full and nothing in this package reads a field of it.
-version: 4
+version: 5
 key: wall-doors-room
 play: { void: transparent, lighting: bright, standing: centre-covered }
 
@@ -24,7 +24,6 @@ room:
   coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
     distanceUnit: world-scene-unit, hexRadius: 1,
     footprintFrame: owner-local-xz}
-  workspace: { hexRadius: 6, horizontalLimit: 12 }
   scene:
     version: 1
     id: scene-1
@@ -33,8 +32,13 @@ room:
     groups: []
   room:
     implicitRegionId: room-1-region
-    walkableHexes: [{q: 0, r: 0}, {q: 1, r: 0}, {q: 2, r: 0}, {q: 3, r: 0},
-      {q: 4, r: 0}]
+    regions:
+      - id: room-1-region
+        name: Wall Doors Room
+        lighting: { intensity: 1 }
+        cells:
+          - r: 0
+            q: [[0, 4]]
     propDeclarations: {}
     arrangementDeclarations: {}
     partyStart: {q: 0, r: 0}

@@ -21,10 +21,15 @@ import (
 // opaque appearance refs for permitted projection. Gameplay never needs an
 // unrestricted fetch of the source document.
 //
-// One editing document can contain several discoverable rooms. PartitionRegion
-// derives spaces from the existing geometry with doors treated as closed for
-// topology only. Their ordinary RegionInput records feed unchanged room discovery;
-// initial door state does not rename them. Party seats stay in the starting space.
+// THE FLOOR IS THE AUTHORED REGIONS (rpg-project#725). Each region that owns
+// a cell lowers to one RegionInput with its own name and lighting; the
+// encounter's atlas, RegionAt and every member's region report those. The
+// WALLS divide the same floor a second time, independently: PartitionFloor
+// derives the partitions from the existing geometry with doors treated as
+// closed for topology only, wall footing no partition can claim leaves its
+// region for scenery, and the party's seats stay in the starting partition.
+// The partitions themselves are not compiled into the field — the encounter
+// derives them again at construction and at load (R8).
 //
 // THE SITE SCOPE AND THE ORDERS COMPILE THROUGH THE SHARED COMPILERS
 // (rpg-project#477, rpg-toolkit#1826; rpg-project#484). `factions:` and
@@ -75,11 +80,14 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 	cast := roomMembers(&spec.Room.Gameplay)
 	from := inheritedOrders(spec.Factions, spec.Tables)
 	o := spatial.HexOrientationPointyTop
-	cells := make([]spatial.Position, 0, len(spec.Room.Gameplay.WalkableHexes))
-	for _, c := range spec.Room.Gameplay.WalkableHexes {
-		cells = append(cells, axialOffset(c, o))
+	// ONE REGION INPUT PER AUTHORED REGION (rpg-project#725): the floor is
+	// their union, each lit as its author lit it. A region with no cells is
+	// declared and unpainted and contributes nothing.
+	authored := authoredRegionInputs(&spec.Room.Gameplay, o)
+	inputs := make([]encounter.RegionInput, len(authored))
+	for i, a := range authored {
+		inputs[i] = a.input
 	}
-	bright := encounter.Lighting{Intensity: 1}
 	props, err := spec.Room.CanonicalPlacedProps()
 	if err != nil {
 		return Compiled{}, singleRoomCompileError("room.room.propDeclarations", err.Error())
@@ -141,7 +149,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 	sort.SliceStable(doors, func(i, j int) bool { return doors[i].ID < doors[j].ID })
 	field := encounter.FieldInput{
 		Canvas:            encounter.CanvasInput{Void: encounter.VoidIsTransparent(), Orientation: encounter.HexesArePointyTop()},
-		Regions:           []encounter.RegionInput{{ID: spec.Room.Gameplay.ImplicitRegionID, Name: spec.Room.Name, Cells: cells, Archetype: "crypt", Lighting: &bright}},
+		Regions:           inputs,
 		Placed:            props,
 		PropPresentations: propPresentationsOf(read, spec),
 		// THE DOORS, standing as the footprints their prop declarations draw
@@ -175,12 +183,12 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		Factions:     factionsOf(spec.Factions, cast),
 		Dispositions: dispositionsOf(spec.Dispositions),
 	}
-	// The editor's one document may contain several physically separated
-	// spaces. Feed those to ordinary room discovery instead of teaching the
-	// entire painted floor when its first cell is seen.
-	layout, err := singleRoomRegions(field)
+	// The walls divide the floor a second time, independently of the
+	// regions: the footing no partition can claim leaves the region that
+	// painted it, and the party's seats stay in the starting partition.
+	layout, err := singleRoomRegions(field, authored)
 	if err != nil {
-		return Compiled{}, singleRoomCompileError("room.room", err.Error())
+		return Compiled{}, err
 	}
 	field.Regions = layout.regions
 	field.Scenery = append(field.Scenery, layout.footing...)
@@ -301,18 +309,23 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 				fmt.Sprintf("at author's axial q=%d r=%d: %s", placement.cell.Q, placement.cell.R, err))
 		}
 	}
-	// Party seats stay nearest-first in the STARTING space, not across an
-	// opaque partition merely because both sides share an editing document.
-	entryID := layout.owner[starts[0]]
-	entryCells := make([]spatial.Position, 0, len(cells))
-	for _, cell := range cells {
-		if layout.owner[cell] == entryID {
-			entryCells = append(entryCells, cell)
+	// Party seats stay nearest-first in the STARTING PARTITION — the room
+	// as the walls make it — not across a wall merely because both sides
+	// share an editing document, and not cut short by a region boundary the
+	// author painted across open floor (rpg-project#725, R4). Each seat
+	// reports the AUTHORED region it stands in.
+	entry := layout.partition[starts[0]]
+	var entryCells []spatial.Position
+	for _, region := range layout.regions {
+		for _, cell := range region.Cells {
+			if layout.partition[cell] == entry {
+				entryCells = append(entryCells, cell)
+			}
 		}
 	}
 	party := deriveSingleRoomSeats(entryCells, starts[0], occupied, o, static)
 	for i := range party {
-		party[i].Region = entryID
+		party[i].Region = layout.owner[party[i].At]
 	}
 	if len(party) == 0 {
 		return Compiled{}, singleRoomCompileError("room.room.partyStart", "has no free seat")

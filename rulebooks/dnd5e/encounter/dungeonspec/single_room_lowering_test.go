@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
 )
@@ -70,8 +71,8 @@ func fixtureSource(t *testing.T) []byte {
 }
 
 // TestThePresentationCarriesWhatTheEngineNeverModels is the whole point of
-// the lowering: the World Builder may author anything it likes in the scene,
-// the frame and the workspace, and the engine compiles the same world from
+// the lowering: the World Builder may author anything it likes in the scene
+// and the frame, and the engine compiles the same world from
 // it. A light, a label, a group, a height scale and a word no version of
 // either codec has ever heard of all ride through without a murmur — the
 // codec that owns the scene is the one that judges it (rpg-project#479, R3).
@@ -80,11 +81,9 @@ func TestThePresentationCarriesWhatTheEngineNeverModels(t *testing.T) {
 	before, err := Load(raw)
 	require.NoError(t, err)
 
-	// A key nobody has agreed on, inside each of the three subtrees, plus one
+	// A key nobody has agreed on, inside each of the two subtrees, plus one
 	// on the very item a declaration names.
 	odd := swapOneIn(t, raw, "      - id: table\n", "      - id: table\n        foo: bar\n        heightHint: {shape: tall, fudge: 0.25}\n")
-	odd = swapOneIn(t, odd, "  workspace: {hexRadius: 6, horizontalLimit: 12}",
-		"  workspace: {hexRadius: 6, horizontalLimit: 12, gridLines: true}")
 	odd = swapOneIn(t, odd, "    footprintFrame: owner-local-xz}", "    footprintFrame: owner-local-xz, upIsUp: yes}")
 
 	after, err := Load(odd)
@@ -142,18 +141,8 @@ func TestTheLoweringRefusesEveryNumberPlayReads(t *testing.T) {
 			path: "room.coordinateFrame.hexRadius", message: errRequired,
 		},
 		{
-			name: "workspace hexRadius unauthored",
-			old:  "workspace: {hexRadius: 6, horizontalLimit: 12}", repl: "workspace: {horizontalLimit: 12}",
-			path: "room.workspace.hexRadius", message: errRequired,
-		},
-		{
-			name: "workspace hexRadius authored as a word",
-			old:  "workspace: {hexRadius: 6, horizontalLimit: 12}", repl: "workspace: {hexRadius: wide, horizontalLimit: 12}",
-			path: "room.workspace.hexRadius", message: errNotANumber,
-		},
-		{
 			name: "scene name unauthored",
-			old:  "    name: Workshop\n", repl: "",
+			old:  "    id: scene-1\n    name: Workshop\n", repl: "    id: scene-1\n",
 			path: "room.scene.name", message: errRequired,
 		},
 		{
@@ -173,42 +162,6 @@ func TestTheLoweringRefusesEveryNumberPlayReads(t *testing.T) {
 			require.Contains(t, defects.Errors, FieldError{Path: tc.path, Message: tc.message})
 		})
 	}
-}
-
-// TestANonPositiveWorkspaceRadiusIsOneDefect is the second half of the
-// missing-radius rule, and the one a flag alone did not cover: an absent
-// `hexRadius` is named once and the floor bound is skipped, but an AUTHORED 0
-// or -6 read as a usable bound and every walkable cell was then blamed for
-// sitting outside it — eight defects for -6 on this fixture, seven for 0.
-//
-// A floor of radius zero or less is not a floor. It is the same lie as the
-// absent number wearing a value, so it is refused the same way: once, at its
-// own path, before anything is measured against it.
-func TestANonPositiveWorkspaceRadiusIsOneDefect(t *testing.T) {
-	raw := fixtureSource(t)
-	for _, radius := range []string{"0", "-6"} {
-		t.Run("hexRadius "+radius, func(t *testing.T) {
-			_, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: swapOneIn(t, raw,
-				"workspace: {hexRadius: 6, horizontalLimit: 12}",
-				"workspace: {hexRadius: "+radius+", horizontalLimit: 12}")})
-			require.Error(t, err)
-			var defects *ValidationError
-			require.ErrorAs(t, err, &defects)
-			require.Equal(t, []FieldError{{Path: "room.workspace.hexRadius", Message: "must be positive"}},
-				defects.Errors, "one unusable radius, one defect — never one per cell")
-		})
-	}
-
-	// And the smallest positive radius the metric can answer for is still a
-	// floor: the bound is about sign, not about the editor's presets.
-	oneCell := swapOneIn(t, raw, "workspace: {hexRadius: 6, horizontalLimit: 12}",
-		"workspace: {hexRadius: 0.5, horizontalLimit: 12}")
-	oneCell = swapOneIn(t, oneCell, "    walkableHexes: [{q: 0, r: 0}, {q: 1, r: 0}, {q: 2, r: 0},\n"+
-		"      {q: 0, r: 1}, {q: -1, r: 1}, {q: -1, r: 0},\n"+
-		"      {q: 0, r: -1}, {q: 1, r: -1}]\n", "    walkableHexes: [{q: 0, r: 0}]\n")
-	oneCell = swapOneIn(t, oneCell, "startingCell: { location: { q: 2, r: 0 } }", "startingCell: { location: { q: 0, r: 0 } }")
-	_, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: oneCell})
-	require.NoError(t, err, "a positive radius is a floor, however small")
 }
 
 // Renderable decoration needs a pose even without a mechanical declaration:
@@ -257,43 +210,24 @@ func TestTheLoweringResolvesAliasesInsideTheScene(t *testing.T) {
 // value that survived: [Compiled.Name] is what a host's dungeon list shows,
 // and it comes from the scene the author named.
 func TestTheLoweringReadsTheSceneNameForTheDungeonsOwn(t *testing.T) {
-	compiled, err := Load(swapOneIn(t, fixtureSource(t), "    name: Workshop\n", "    name: The Back Workshop\n"))
+	compiled, err := Load(swapOneIn(t, fixtureSource(t), "    id: scene-1\n    name: Workshop\n", "    id: scene-1\n    name: The Back Workshop\n"))
 	require.NoError(t, err)
 	require.Equal(t, "The Back Workshop", compiled.Name)
 }
 
-// TestCubeDistanceIsNotAppliedWithoutAWorkspace keeps one missing number from
-// reporting as a whole floor's worth of defects: the radius is named once,
-// and the cells it could not be compared against are not blamed for it.
-func TestCubeDistanceIsNotAppliedWithoutAWorkspace(t *testing.T) {
-	_, err := DecodeSingleRoom(SingleRoomDecodeInput{
-		Source: swapOneIn(t, fixtureSource(t), "workspace: {hexRadius: 6, horizontalLimit: 12}", "workspace: {}"),
-	})
-	require.Error(t, err)
-	var defects *ValidationError
-	require.ErrorAs(t, err, &defects)
-	require.Len(t, defects.Errors, 1, "one unreadable number, one defect")
-	require.Equal(t, "room.workspace.hexRadius", defects.Errors[0].Path)
-}
-
-// TestTheWorkspaceRadiusStillBoundsTheFloor is the other half: the number is
-// read for a reason, and a cell outside it is still refused.
-func TestTheWorkspaceRadiusStillBoundsTheFloor(t *testing.T) {
+// TestTheCanvasIsUnbounded: the workspace radius was the floor's bound, and
+// it is gone with the workspace (rpg-project#725, R3). A cell five thousand
+// hexes out is floor like any other, and the party can start on it.
+func TestTheCanvasIsUnbounded(t *testing.T) {
 	raw := fixtureSource(t)
-	_, err := DecodeSingleRoom(SingleRoomDecodeInput{
-		Source: swapOneIn(t, raw, "walkableHexes: [{q: 0, r: 0}", "walkableHexes: [{q: 7, r: 0}"),
-	})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "outside the workspace floor")
-
-	// A wider workspace than the editor ever offered is not this decoder's
-	// business any more, and the same cell is inside it.
-	wider := swapOneIn(t, raw, "walkableHexes: [{q: 0, r: 0}", "walkableHexes: [{q: 7, r: 0}")
-	wider = swapOneIn(t, wider, "workspace: {hexRadius: 6, horizontalLimit: 12}",
-		"workspace: {hexRadius: 9, horizontalLimit: 18}")
-	wider = swapOneIn(t, wider, "partyStart: {q: 0, r: 0}", "partyStart: {q: 1, r: 0}")
-	_, err = DecodeSingleRoom(SingleRoomDecodeInput{Source: wider})
-	require.NoError(t, err, "the editor's preset list left with the presentation")
+	far := swapOneIn(t, raw, "          - r: -1\n            q: [[0, 1]]\n",
+		"          - r: -1\n            q: [[0, 1]]\n          - r: 0\n            q: [[-1, 2], [5000, 5000]]\n")
+	far = swapOneIn(t, far, "          - r: 0\n            q: [[-1, 2]]\n          - r: 1", "          - r: 1")
+	far = swapOneIn(t, far, "partyStart: {q: 0, r: 0}", "partyStart: {q: 5000, r: 0}")
+	compiled, err := Load(far)
+	require.NoError(t, err)
+	require.NotEmpty(t, compiled.PartyStart)
+	require.Equal(t, axialOffset(RoomCell{Q: 5000, R: 0}, spatial.HexOrientationPointyTop), compiled.PartyStart[0].At)
 }
 
 // TestSceneNumberNamesEveryWayItCannotRead covers the reader itself, without
@@ -318,7 +252,7 @@ func TestSceneNumberNamesEveryWayItCannotRead(t *testing.T) {
 		t.Run(tc.key, func(t *testing.T) {
 			var got []FieldError
 			add := func(p, m string) { got = append(got, FieldError{Path: p, Message: m}) }
-			v, ok := sceneNumber(&node, tc.key, "room.workspace", add)
+			v, ok := sceneNumber(&node, tc.key, "room.coordinateFrame", add)
 			require.Equal(t, tc.ok, ok)
 			if tc.ok {
 				require.Equal(t, tc.want, v)
@@ -326,7 +260,7 @@ func TestSceneNumberNamesEveryWayItCannotRead(t *testing.T) {
 
 				return
 			}
-			require.Equal(t, []FieldError{{Path: "room.workspace." + tc.key, Message: tc.message}}, got)
+			require.Equal(t, []FieldError{{Path: "room.coordinateFrame." + tc.key, Message: tc.message}}, got)
 		})
 	}
 }
@@ -343,7 +277,6 @@ func TestTheLoweringIsIndifferentToTheEditorsOldBounds(t *testing.T) {
 		{"a prop under the floor", "y: 1.2,", "y: -6,"},
 		{"a group parented to nothing at all", "parentId: furniture\n        supportId: table", "parentId: nowhere\n        supportId: table"},
 		{"a frame that names no plane", "horizontalPlane: world-xz,", "horizontalPlane: mercator,"},
-		{"a workspace the editor never offered", "workspace: {hexRadius: 6, horizontalLimit: 12}", "workspace: {hexRadius: 6, horizontalLimit: 999}"},
 		{"a scene version from a later editor", "    version: 1\n    id: scene-1", "    version: 7\n    id: scene-1"},
 	}
 	before, err := Load(raw)
@@ -424,7 +357,7 @@ func TestTheDecodedDocumentRoundTripsThroughYAML(t *testing.T) {
 
 	// The author's own words are still in there, including the ones no type
 	// in this module names.
-	for _, word := range []string{"assetRef", "pointLight", "heightScale", "groups", "horizontalLimit", "footprintFrame"} {
+	for _, word := range []string{"assetRef", "pointLight", "heightScale", "groups", "verticalAxis", "footprintFrame"} {
 		require.True(t, strings.Contains(string(once), word), "the re-emitted document still carries %q", word)
 	}
 }
