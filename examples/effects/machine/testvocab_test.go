@@ -198,6 +198,9 @@ func rageSource() *core.Ref { return &core.Ref{Module: dnd5e, Type: "features", 
 
 // rageRecipe is the design's raging recipe, field for field.
 func rageRecipe() machine.Recipe {
+	upkeep := func(clearFlags machine.Act) []machine.Act {
+		return []machine.Act{{AnchorRound: true}, {DeriveTurnsActive: true}, clearFlags}
+	}
 	clearFlags := machine.Act{ClearFlags: []string{keyWasHit, keyDidAttack}}
 	rageEndings := func() []machine.Transition {
 		return []machine.Transition{
@@ -223,7 +226,7 @@ func rageRecipe() machine.Recipe {
 		},
 		States: map[string]machine.State{
 			stFresh: {Outputs: rageOutputs, Transitions: append([]machine.Transition{
-				{On: beatTurnEnd, About: selSubject, To: stRaging, Do: []machine.Act{{AnchorRound: true}, clearFlags}},
+				{On: beatTurnEnd, About: selSubject, To: stRaging, Do: upkeep(clearFlags)},
 			}, rageEndings()...)},
 			stRaging: {Outputs: rageOutputs, Transitions: append([]machine.Transition{
 				{
@@ -243,7 +246,7 @@ func rageRecipe() machine.Recipe {
 					When: &machine.Guard{Rounds: &machine.RoundsLeaf{WentBackwards: true}},
 					To:   stEnded, Reason: "clock_reset",
 				},
-				{On: beatTurnEnd, About: selSubject, Do: []machine.Act{{DeriveTurnsActive: true}, clearFlags}},
+				{On: beatTurnEnd, About: selSubject, Do: upkeep(clearFlags)},
 			}, rageEndings()...)},
 			stEnded: {Terminal: true},
 		},

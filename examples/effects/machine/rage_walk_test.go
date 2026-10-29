@@ -85,7 +85,7 @@ func (s *rageWalkSuite) TestFirstTurnEndIsGracedAndAnchors() {
 	s.Equal(true, bag[machine.KeySawTurnEnd])
 	s.Equal(false, bag[keyWasHit])
 	s.Equal(false, bag[keyDidAttack])
-	s.Equal(0, bag[machine.KeyTurnsActive], "the design's fresh transition derives nothing")
+	s.Equal(1, bag[machine.KeyTurnsActive], "the graced turn reads 1, as today")
 }
 
 func (s *rageWalkSuite) TestAnAttackSustains() {
@@ -199,6 +199,65 @@ func (s *rageWalkSuite) TestEventsAboutSomeoneElseAreIgnored() {
 
 func TestRageWalk(t *testing.T) {
 	suite.Run(t, new(rageWalkSuite))
+}
+
+type anchorSuite struct {
+	suite.Suite
+}
+
+func (s *anchorSuite) TestALaterRoundLeavesTheAnchor() {
+	rig := newRageRig(&s.Suite, rageRecipe())
+	rig.graced(1)
+	rig.attack()
+	rig.turnEnd(5)
+	bag := rig.m.Bag()
+	s.Equal(1, bag[machine.KeyRoundActivated], "anchored at 1, never re-anchored")
+	s.Equal(5, bag[machine.KeyTurnsActive], "derived from the kept anchor")
+	s.Equal(stRaging, rig.m.State())
+}
+
+func TestAnchorRoundNeverReanchors(t *testing.T) {
+	suite.Run(t, new(anchorSuite))
+}
+
+type lateAnchorSuite struct {
+	suite.Suite
+}
+
+// A rage whose first turn end carries no round anchors on the first one
+// that does, and its cap is not evaluated until then.
+func (s *lateAnchorSuite) TestAnchorsOnTheFirstRoundCarried() {
+	rig := newRageRig(&s.Suite, rageRecipe())
+	rig.graced(0)
+	bag := rig.m.Bag()
+	s.Equal(0, bag[machine.KeyRoundActivated], "nothing to anchor to")
+	s.Equal(true, bag[machine.KeySawTurnEnd])
+	s.Equal(0, bag[machine.KeyTurnsActive])
+
+	for range 12 {
+		rig.attack()
+		rig.turnEnd(0)
+	}
+	s.Equal(stRaging, rig.m.State(), "unanchored: no cap, however many turns")
+
+	rig.attack()
+	rig.turnEnd(3)
+	bag = rig.m.Bag()
+	s.Equal(3, bag[machine.KeyRoundActivated], "anchored late")
+	s.Equal(1, bag[machine.KeyTurnsActive])
+
+	for round := 4; round <= 11; round++ {
+		rig.attack()
+		rig.turnEnd(round)
+		s.Equal(stRaging, rig.m.State(), "round %d", round)
+	}
+	rig.attack()
+	rig.turnEnd(12)
+	rig.expectOneMore(1, machine.Transitioned{From: stRaging, To: stEnded, Reason: reasonExpired})
+}
+
+func TestLateAnchoring(t *testing.T) {
+	suite.Run(t, new(lateAnchorSuite))
 }
 
 type orderingSuite struct {

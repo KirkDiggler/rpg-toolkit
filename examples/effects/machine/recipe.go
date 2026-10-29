@@ -106,8 +106,9 @@ type ClassLevelLeaf struct {
 
 // Act is one bag write a transition performs. Exactly one field is set.
 //
-//   - AnchorRound sets KeySawTurnEnd true, and KeyRoundActivated to the
-//     beat's round when it carries one above zero.
+//   - AnchorRound sets KeySawTurnEnd true, and sets KeyRoundActivated to
+//     the beat's round only while it is zero and the beat carries a round
+//     above zero: a late anchor, never a re-anchor.
 //   - DeriveTurnsActive sets KeyTurnsActive to round - anchor + 1 when the
 //     bag is anchored and the beat's round is at or after the anchor.
 //   - ClearFlags sets each named bool key false.

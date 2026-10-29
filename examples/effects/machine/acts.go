@@ -18,8 +18,8 @@ func (m *Machine) run(acts []Act, spec BeatSpec, ev any) bool {
 		switch {
 		case a.AnchorRound:
 			set(KeySawTurnEnd, true)
-			if hasRound {
-				set(KeyRoundActivated, round)
+			if anchor, _ := m.bag[KeyRoundActivated].(int); hasRound && anchor == 0 {
+				set(KeyRoundActivated, round) // anchor late, never re-anchor
 			}
 		case a.DeriveTurnsActive:
 			if anchor, _ := m.bag[KeyRoundActivated].(int); hasRound && anchor > 0 && round >= anchor {
