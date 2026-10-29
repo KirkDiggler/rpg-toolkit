@@ -19,6 +19,7 @@ Slice [rpg-project#717](https://github.com/KirkDiggler/rpg-project/issues/717) o
 ## Decided
 
 - `ally` excludes the creature's own faction. A faction is allied with itself by law, so a turned captain following the nearest ally would follow the next guard, not the party. D2 did not say which members count — [`Encounter.alliedAcross`](../../encounter/world.go), [D2 on rpg-project#722](https://github.com/KirkDiggler/rpg-project/issues/722).
+- An allied sighting has no reach and its route ends beside it. A mind is never handed an ally to strike, and following is walking up to somebody, so a crossbowman follows to the hero's side, not to bow range — [`SeenMember.Allied`](../../encounter/turndriver.go), [`buildMonsterView`](../../encounter/clocks.go).
 - `then:` lives inside each step, one stance word: `until: { fact: x, then: allied }` alone, or a list of the same. The sibling `then:` beside `until:` that the first commit carried is gone, so there is one spelling — [`DispositionSpec.Until`](../../encounter/dungeonspec/spec.go).
 - A list of more than one step names facts only. Public turns, a round, a fall or another pair's stance, are ordered by stance and after every fact, so in a list they could not keep their place. One step of any form stays legal — [`untilListOnFacts`](../../encounter/disposition.go).
 - A step that turns the pair to its own declared stance is refused by name, in the run and in the file — [`validateSteps`](../../encounter/disposition.go).
