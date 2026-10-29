@@ -316,6 +316,14 @@ tables:
         with: { path: [{ q: -2, r: 8, wait: 1, facing: nw }, { q: -4, r: 10, wait: 1, facing: sw }, { q: -2, r: 10 }] }
   keep-patrol:
     time:
+      # Hand edit (rpg-project#716, Frank's list S2): a knight who SAW the
+      # king fall breaks and runs from the fight; one who did not fights
+      # on until somebody tells him. Testimony, not a world flag: the row
+      # reads the fall this knight holds. `on: ally` because the king is
+      # the knight's side, not the knight himself.
+      - when: { fell: { who: king, within: 3, on: ally } }
+        away: enemy
+        weight: 3
       - say: Protect the king!
         when:
           - enemy: seen
@@ -342,6 +350,14 @@ tables:
         toward: { path: [{ q: 4, r: -19 }, { q: 7, r: -19 }, { q: 7, r: -21 }, { q: 5, r: -21 }] }
   keep-patrol-east:
     time:
+      # Hand edit (rpg-project#716, Frank's list S2): a knight who SAW the
+      # king fall breaks and runs from the fight; one who did not fights
+      # on until somebody tells him. Testimony, not a world flag: the row
+      # reads the fall this knight holds. `on: ally` because the king is
+      # the knight's side, not the knight himself.
+      - when: { fell: { who: king, within: 3, on: ally } }
+        away: enemy
+        weight: 3
       - say: Protect the king!
         when:
           - enemy: seen
