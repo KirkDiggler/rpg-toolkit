@@ -99,7 +99,12 @@ func (q *cellQuery) doorPast(
 	walker MemberID, from, to spatial.Position, prop PropID, blocked bool,
 ) (*doorRecord, bool, error) {
 	opens := func(d *doorRecord) bool {
-		return d != nil && d.state.Kind() == DoorClosed && !q.hiddenDoorTo(walker, d.id)
+		if d == nil || q.hiddenDoorTo(walker, d.id) {
+			return false
+		}
+		kind := d.state.Kind()
+
+		return kind == DoorClosed || (q.locksYield && kind == DoorLocked)
 	}
 
 	switch {
@@ -304,4 +309,42 @@ func (e *Encounter) openAhead(walker MemberID, next spatial.Position, cause core
 	}
 
 	return true, nil
+}
+
+// lockedDoorInTheWay is the locked door that alone keeps a creature's walk
+// from a cell: the first lock on the route the walk WOULD take if locks
+// yielded, and ok=false when there is no such route or no lock on it — the
+// cell is unreachable for some other reason, or not at all.
+//
+// A DIAGNOSIS, NEVER A ROUTE. It asks a fresh read with
+// [cellQuery.locksYield] set, so the answer explains why the real route
+// failed and nothing walks it. A door hidden to the walker is not named:
+// what it has not found is wall to it, and naming the lock would tell it
+// the secret.
+func (e *Encounter) lockedDoorInTheWay(mover MemberID, from, to spatial.Position) (*doorRecord, bool, error) {
+	q, err := e.cellQuery()
+	if err != nil {
+		return nil, false, fmt.Errorf("locked door in the way: %w", err)
+	}
+	q.locksYield = true
+	path, found, err := q.routeTo(mover, from, func(cell spatial.Position) bool { return cell == to })
+	if err != nil {
+		return nil, false, fmt.Errorf("locked door in the way: %w", err)
+	}
+	if !found {
+		return nil, false, nil
+	}
+	prev := from
+	for _, cell := range path {
+		door, ok, err := q.doorToOpen(mover, prev, cell)
+		if err != nil {
+			return nil, false, fmt.Errorf("locked door in the way: %w", err)
+		}
+		if ok && door.state.Kind() == DoorLocked {
+			return door, true, nil
+		}
+		prev = cell
+	}
+
+	return nil, false, nil
 }

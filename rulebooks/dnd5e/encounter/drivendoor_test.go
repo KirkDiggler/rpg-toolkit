@@ -175,8 +175,10 @@ func (s *DrivenDoorSuite) TestTheOpenedFactLandsOnWhoSawTheDoor() {
 
 // TestALockedDoorStillStopsTheMarch is D5 (rpg-project#722): a creature never
 // opens a locked door in this slice. The guard walks to the near side and
-// stays, and the round after it says why in the stayed beat the route has
-// always written: nowhere nearer.
+// stays, and the round after, its stayed beat says what stopped it: that
+// door, locked, in the words a step refused by the lock is told. A march
+// stopped by a lock must not read as a march with nowhere to go (the
+// operator's walk of this slice).
 func (s *DrivenDoorSuite) TestALockedDoorStillStopsTheMarch() {
 	lock := encounter.DoorIsLocked(encounter.Lock{Approaches: []encounter.CheckApproach{{Ability: "str", DC: 15}}})
 	enc := s.drivenHall(lock, theMarchersHall()...)
@@ -199,8 +201,35 @@ func (s *DrivenDoorSuite) TestALockedDoorStillStopsTheMarch() {
 			s.Equal("encounter:table:toward", b["cause"])
 		}
 	}
-	s.Contains(why, fmt.Sprintf("nowhere nearer to %v within 6 cells", cellAt(11, 5)),
-		"the stayed beat says what stopped it, in the route's own words")
+	s.Require().NotEmpty(why, "the guard's stop is on the record")
+	for _, w := range why {
+		s.Equal(`door "door-ab" is locked, DC 15 (str)`, w, "the stop names the door and its lock")
+	}
+}
+
+// TestAMarchWithNoWayAtAllStillSaysNowhereNearer is the control: a cell that
+// no route reaches, lock or no lock, keeps the route's own sentence. A shut
+// wall is not a locked door, and the record does not invent one.
+func (s *DrivenDoorSuite) TestAMarchWithNoWayAtAllStillSaysNowhereNearer() {
+	in := noiseHallSetup(encounter.DoorIsClosed(), encounter.DoorIsClosed(), drivenDoorSheets, tableDriver(),
+		theMarchersHall()...)
+	in.Field.Walls = append(squareSeamWall(9, 10), squareSeamWall(19, 10, 5)...)
+	in.Field.Doors = in.Field.Doors[1:] // room a is sealed: no door into b at all
+	enc, err := encounter.NewEncounter(in)
+	s.Require().NoError(err)
+
+	for range 3 {
+		_, err := aRound(enc)
+		s.Require().NoError(err)
+	}
+
+	var why []any
+	for _, b := range s.beats(enc) {
+		if b["beat"] == encounter.BeatStayed && b["member"] == string(noiseKeen) {
+			why = append(why, b["why"])
+		}
+	}
+	s.Contains(why, fmt.Sprintf("nowhere nearer to %v within 6 cells", cellAt(11, 5)))
 }
 
 // TestAPatrolLoopsThroughTheShutDoor: a `toward: { path }` loop whose two

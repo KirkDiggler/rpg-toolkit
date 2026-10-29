@@ -1851,7 +1851,24 @@ func (e *Encounter) routedRoute(
 		return RouteOutput{}, err
 	}
 	if len(path) == 0 {
-		return e.route(RouteInput{Mover: mover, Policy: MoveToward, Anchor: anchor, Budget: budget}, true)
+		out, err := e.route(RouteInput{Mover: mover, Policy: MoveToward, Anchor: anchor, Budget: budget}, true)
+		if err != nil || from == anchor {
+			return out, err
+		}
+		// A LOCKED DOOR IS A REASON, AND THE RECORD SAYS IT (lane
+		// rpg-project#722, D5): a march whose only way is through a lock
+		// does not merely find "nowhere nearer" — it is stopped by that
+		// door, and the stayed beat names it in the lock refusal's own
+		// words ([Encounter.lockedDoorInTheWay]).
+		door, locked, lerr := e.lockedDoorInTheWay(mover, from, anchor)
+		if lerr != nil {
+			return RouteOutput{}, lerr
+		}
+		if locked {
+			out.StoppedBy = lockedDoorPhrase(door)
+		}
+
+		return out, nil
 	}
 	if len(path) > budget {
 		path = path[:budget]
