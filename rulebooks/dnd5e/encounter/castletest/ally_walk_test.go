@@ -73,16 +73,17 @@ func (s *kingScene) pickedTowardAlly(id encounter.MemberID) int {
 	return n
 }
 
-// markTime spends world rounds without the hero going anywhere: a cell out
-// and a cell back, so creatures on the world clock have time to act.
-func (s *kingScene) markTime(rounds int) {
+// markTime spends world rounds without the hero going anywhere: a cell away
+// from a member and a cell back, so creatures on the world clock have time to
+// act.
+func (s *kingScene) markTime(rounds int, from encounter.MemberID) {
 	s.t.Helper()
 	for i := 0; i < rounds*3 && clockKind(s.t, s.enc, hero) == encounter.ClockWorld; i++ {
-		from := s.at(hero)
-		out, err := s.enc.Route(encounter.RouteInput{Mover: hero, Policy: encounter.MoveAway, Anchor: s.at(allyVeteran), Budget: 1})
+		here := s.at(hero)
+		out, err := s.enc.Route(encounter.RouteInput{Mover: hero, Policy: encounter.MoveAway, Anchor: s.at(from), Budget: 1})
 		require.NoError(s.t, err)
 		require.NotEmpty(s.t, out.Path, "the hero has room to mark time (%s)", out.StoppedBy)
-		for _, cell := range []spatial.Position{out.Path[0], from} {
+		for _, cell := range []spatial.Position{out.Path[0], here} {
 			round := s.enc.ToData().Clock.HighWater
 			_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: cell, EndWalk: true})
 			require.NoError(s.t, err)
@@ -130,7 +131,7 @@ func TestAllyWalkTheVeteranJoinsFollowsAndFights(t *testing.T) {
 
 	posted := s.at(allyVeteran)
 	s.walkTo(westOfTheGatehouse)
-	s.markTime(2)
+	s.markTime(2, allyVeteran)
 
 	t.Run("the hero walks away and the veteran follows, on his toward ally row", func(t *testing.T) {
 		require.Positive(t, s.pickedTowardAlly(allyVeteran), "the record shows `toward ally` firing")
@@ -176,7 +177,7 @@ func TestAllyWalkNotJoinedTheVeteranHolds(t *testing.T) {
 	posted := s.at(allyVeteran)
 
 	s.walkTo(westOfTheGatehouse)
-	s.markTime(2)
+	s.markTime(2, allyVeteran)
 
 	require.Equal(t, encounter.StanceNeutral, s.stance(encounter.FactionParty, veterans))
 	require.Zero(t, s.pickedTowardAlly(allyVeteran), "no follow row fires for a veteran nobody recruited")

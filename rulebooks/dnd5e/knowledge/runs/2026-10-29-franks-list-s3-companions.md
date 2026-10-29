@@ -11,6 +11,8 @@ Slice [rpg-project#717](https://github.com/KirkDiggler/rpg-project/issues/717) o
 - An allied sighting has no reach, and its route ends beside it rather than at weapon range. A follower already beside its ally stands and says "already beside its ally" — [`SeenMember.Allied`](../../encounter/turndriver.go), [`buildMonsterView`](../../encounter/clocks.go).
 - The walk site `ally-walk` is cut from the castle through the gate walk. Its scenario test proves join, follow, and a fight beside the party that never strikes the hero — [`ally_walk_test.go`](../../encounter/castletest/ally_walk_test.go), [`ally-walk.yaml`](../../encounter/castletest/testdata/ally-walk.yaml).
 
+- A companion castle, built in the test from the castle file with two lines changed, shows the turned captain following the hero into the courtyard on `toward: ally`. The castle file itself is unchanged, and its turned captain still marches on the keep — [`castle_king_companion_test.go`](../../encounter/castletest/castle_king_companion_test.go).
+
 ## Decided
 
 - `ally` excludes the creature's own faction. A faction is allied with itself by law, so a turned captain following the nearest ally would follow the next guard, not the party. D2 did not say which members count — [`Encounter.alliedAcross`](../../encounter/world.go), [D2 on rpg-project#722](https://github.com/KirkDiggler/rpg-project/issues/722).
@@ -21,6 +23,7 @@ Slice [rpg-project#717](https://github.com/KirkDiggler/rpg-project/issues/717) o
 ## Found
 
 - The castle's garrison and party pair already has an `until` on `party-recognized`, which turns it hostile. One pair holds one `until`, so the same pair cannot also turn allied on `guards-turned` without the list D4 deferred — [castle dispositions](../../encounter/dungeonspec/testdata/world-builder-v4-castle.yaml), [D4 on rpg-project#722](https://github.com/KirkDiggler/rpg-project/issues/722).
+- On the companion castle the turned gate guards march on the keep and start the fight with the court before the party arrives. A follower beside a hero who is already fighting stays on the world clock until it sees a foe itself, so the captain stood at the hero's side in the hall and never swung — [`castle_king_companion_test.go`](../../encounter/castletest/castle_king_companion_test.go).
 - A member who joins a fight during another's driven turn holds the active slot undriven until somebody ends it. The site's route ends whoever is active, as the castle's attacker route does — [`ally_walk_test.go`](../../encounter/castletest/ally_walk_test.go).
 - `away: ally` and `away: enemy` anchor a `Routed` walk on the member's live cell at execution, not the believed one — [`Routed.Anchor`](../../encounter/turndriver.go).
 - The castle host's positions use two frames. `MemberInput.Position` takes an offset cell and `Members` and `Route` answer absolute ones, so a walk target needs `castleCell` — [`castle_king_test.go`](../../encounter/castletest/castle_king_test.go).
