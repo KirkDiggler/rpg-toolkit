@@ -630,7 +630,10 @@ on the recipe** (`stacks: by_ref | by_source`, default by-ref; by-source
 requires a `source_id` bag key; the machine answers the condition address
 from it, retiring the eleven hand-written address methods), ruled 2026-10-28:
 "we are here to evolve our system not be limited by them … each piece does
-its one thing"; the target
+its one thing"; **display is authored**, on the recipe exactly as on the
+descriptor today, with no derivation and no completeness check yet, ruled
+2026-10-28: "we don't know what we don't know and we have nothing to act on or
+add validation or other checks in place"; the target
 is one data structure per condition, driven fully by its effects, under one
 ref (E1, E2); hand-written Go is the form for now, content authoring comes
 with the studio (E9); cost lives outside the condition (E7); `core/effect` is
@@ -641,10 +644,6 @@ the seam, and nothing is brought in or copied (E2, E3, E11).
 
 **Open, for the design PR's checklist:**
 
-- [ ] Display: authored on the descriptor as today, or derived from the
-  effects' rows. Recommendation: authored stays; derivation is a later win
-  once every effect answers a row and the words are checked against the
-  authored ones.
 - [ ] Bag versus parameters: a cast's `Parameters` fill the bag through
   `create`; the keys a cast binds (`CounterpartKey`, `SaveDCKey`,
   `OptionKey`) are bag keys. Recommendation: yes, and nothing else; a bag key
