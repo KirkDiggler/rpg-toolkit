@@ -474,11 +474,28 @@ func (w *encounterWorld) knowsConcealment(member MemberID, id ConcealmentID) boo
 // keeps a copy): a member knows a fact when the journal holds a
 // `known:fact:<id>` fact whose SUBJECT is that member — the same shape the
 // graph's Raise flags for a Settle, read directly so knowledge does not
-// depend on which facts a disposition happens to wait for.
+// depend on which facts a disposition happens to wait for. Its one sibling,
+// [encounterWorld.anyoneKnowsFact], asks the same journal without the
+// subject; both live here so a change to how a fact is written meets both.
 func (w *encounterWorld) knowsFact(member MemberID, id FactID) bool {
 	kind := factKnownKind(id)
 	for _, f := range w.log.All() {
 		if f.Kind == kind && f.Subject == journal.EntityID(member) {
+			return true
+		}
+	}
+	return false
+}
+
+// anyoneKnowsFact reports whether anybody in the run has learned the fact:
+// the TRUTH grain (design R5) a leave ending's `if` reads
+// ([Encounter.truthHolds]). The same journal and kind as
+// [encounterWorld.knowsFact], so the two readings of a fact cannot disagree
+// about what knowing it means.
+func (w *encounterWorld) anyoneKnowsFact(id FactID) bool {
+	kind := factKnownKind(id)
+	for _, f := range w.log.All() {
+		if f.Kind == kind {
 			return true
 		}
 	}

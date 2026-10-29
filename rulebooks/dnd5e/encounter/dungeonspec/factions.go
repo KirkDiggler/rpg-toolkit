@@ -365,21 +365,16 @@ func (g *grammar) predicate(path string, p *PredicateSpec, self *[2]string) {
 		g.stancePredicate(path+".stance", p.Stance, self)
 	case predicateHolds:
 		g.fail(path+".holds", "%s", holdsOnlyRequires)
+	case predicateLeft:
+		g.fail(path+".left", "`left` waits for the party to walk out, and only an ending waits for that "+
+			"(`endings: [{ id, when: { left: %s }, outcome: success|failure }]`)", p.Left)
 	}
 }
 
-// holdsOnlyRequires is the sentence `holds` is refused with anywhere but an
-// option's `requires` (rpg-project#569): it is read when somebody speaks, and
-// an until, an arrival or an ending is waited for — nothing notices a holding
-// change in order to fire one.
-const holdsOnlyRequires = "`holds` is only something an option requires: it reads what the speaker carries, " +
-	"and nothing here speaks"
-
-// stancePredicate checks the stance form: two factions that exist and
-// differ, a stance word, and a pair that can reach it — not one it holds
-// from the start, and not one it can never hold (design §3.8's liveness
-// rule, in the file's own words).
-func (g *grammar) stancePredicate(path string, s *StancePredicateSpec, self *[2]string) {
+// stanceShape judges the half of a stance predicate that does not depend on
+// what it is for: two different factions that exist, and a stance word. It
+// reports whether the shape held, so a caller asks its own question after.
+func (g *grammar) stanceShape(path string, s *StancePredicateSpec) bool {
 	ok := true
 	for j, id := range s.Between {
 		bp := fmt.Sprintf("%s.between[%d]", path, j)
@@ -400,7 +395,23 @@ func (g *grammar) stancePredicate(path string, s *StancePredicateSpec, self *[2]
 		g.fail(path+".is", "%q is not a stance: %s", s.Is, stanceWords)
 		ok = false
 	}
-	if !ok {
+
+	return ok
+}
+
+// holdsOnlyRequires is the sentence `holds` is refused with anywhere but an
+// option's `requires` (rpg-project#569): it is read when somebody speaks, and
+// an until, an arrival or an ending is waited for — nothing notices a holding
+// change in order to fire one.
+const holdsOnlyRequires = "`holds` is only something an option requires: it reads what the speaker carries, " +
+	"and nothing here speaks"
+
+// stancePredicate checks the stance form: two factions that exist and
+// differ, a stance word, and a pair that can reach it — not one it holds
+// from the start, and not one it can never hold (design §3.8's liveness
+// rule, in the file's own words).
+func (g *grammar) stancePredicate(path string, s *StancePredicateSpec, self *[2]string) {
+	if !g.stanceShape(path, s) {
 		return
 	}
 	key := normalizedPair(s.Between[0], s.Between[1])

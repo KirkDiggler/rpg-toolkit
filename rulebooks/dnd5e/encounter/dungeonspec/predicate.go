@@ -77,6 +77,14 @@ type PredicateSpec struct {
 	// name ([grammar.predicate]). Must name a placed prop somebody can pick
 	// up.
 	Holds string
+
+	// Left is the `{ left: <exit id> }` form (rpg-project#716, ruled
+	// 2026-10-29): holds when the last standing party member has left by
+	// that exit. LEGAL ONLY AS AN ENDING'S `when` — leaving is the end of
+	// the run, so nothing can turn, arrive or be spoken for after it — and
+	// refused by name everywhere else ([grammar.predicate]). Must name an
+	// exit this file declares.
+	Left string
 }
 
 // StancePredicateSpec is the stance form's own object: the pair, and the
@@ -99,6 +107,7 @@ const (
 	predicateFact   = "fact"
 	predicateStance = "stance"
 	predicateHolds  = "holds"
+	predicateLeft   = "left"
 )
 
 // predicateForms is the one sentence every predicate refusal points at.
@@ -125,6 +134,8 @@ func (p *PredicateSpec) Form() string {
 		return predicateStance
 	case p.Holds != "":
 		return predicateHolds
+	case p.Left != "":
+		return predicateLeft
 	default:
 		return ""
 	}
@@ -142,7 +153,7 @@ func (p *PredicateSpec) UnmarshalYAML(value *yaml.Node) error {
 	var forms []string
 	for i := 0; i < len(value.Content); i += 2 {
 		switch key := value.Content[i].Value; key {
-		case predicateRound, predicateDown, predicateFact, predicateStance, predicateHolds:
+		case predicateRound, predicateDown, predicateFact, predicateStance, predicateHolds, predicateLeft:
 			forms = append(forms, key)
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.PredicateSpec",
@@ -163,11 +174,14 @@ func (p *PredicateSpec) UnmarshalYAML(value *yaml.Node) error {
 		Fact   string               `yaml:"fact"`
 		Stance *StancePredicateSpec `yaml:"stance"`
 		Holds  string               `yaml:"holds"`
+		Left   string               `yaml:"left"`
 	}
 	if err := value.Decode(&obj); err != nil {
 		return err
 	}
-	*p = PredicateSpec{Round: obj.Round, Down: obj.Down, Fact: obj.Fact, Stance: obj.Stance, Holds: obj.Holds}
+	*p = PredicateSpec{
+		Round: obj.Round, Down: obj.Down, Fact: obj.Fact, Stance: obj.Stance, Holds: obj.Holds, Left: obj.Left,
+	}
 
 	// A form that decoded to its own zero value said the key and nothing
 	// else — `{ fact: }` or `{ down: "" }` — which is the same author halfway
@@ -233,6 +247,8 @@ func (p *PredicateSpec) String() string {
 			strings.Join(p.Stance.Between[:], ", "), p.Stance.Is)
 	case predicateHolds:
 		return fmt.Sprintf("{ holds: %s }", p.Holds)
+	case predicateLeft:
+		return fmt.Sprintf("{ left: %s }", p.Left)
 	default:
 		return "{ }"
 	}

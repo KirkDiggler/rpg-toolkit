@@ -61,12 +61,14 @@
 # knows it (`party-recognized`, the second step of the garrison's `until`). The prisoners are
 # neutral to everybody. Every door is shut, the throne room's too, and one
 # is locked: the cell door, thieves' tools at DC 13, whose opening teaches
-# `cells-opened` and ends the run `freed`. A shut throne door stops a turned
+# `cells-opened`, and walking out of the front door after it ends the run
+# `freed`. A shut throne door stops a turned
 # garrison's march at it, because a driven walk routes only through open
 # doors and no creature opens one (rpg-toolkit#2069); the party opens it. A
 # turned garrison storms the keep, and its captain comes with the party
-# (`toward: ally`, rpg-project#717); a garrison told to hold the castle ends
-# the run with the king still breathing.
+# (`toward: ally`, rpg-project#717); a garrison told to hold the castle, and
+# the party walking out of the front door, ends the run with the king still
+# breathing.
 #
 # THE ROUTES, each a scenario test in dungeonspec/castle_king_*_test.go:
 # the front door, the troupe (by the cook or by the stranger), the troupe
@@ -537,16 +539,42 @@ exits:
     cell:
       q: -22
       r: 5
+  # Hand edit (rpg-project#716, ruled 2026-10-29): the party's way in is its
+  # way out. "walk out the front door to end. king taken care of? no?
+  # failure, yes? success." The last standing party member through this
+  # door ends the run; the king's state at that moment is the outcome.
+  - id: front-door
+    cell:
+      q: -2
+      r: 16
 endings:
   - id: king-slain
     when:
+      left: front-door
+    if:
       down: king
+    outcome: success
+  # Hand edit (rpg-project#716, decided 2026-10-29): every ending is at the
+  # door. The castle deposed and the cells freed are won when the party
+  # walks out with that done, as the king slain is; the first in this list
+  # whose `if` holds is the one the run ends on, so a king both slain and
+  # deposed ends slain, and walking out with none of it done is the failure.
   - id: king-deposed
     when:
+      left: front-door
+    if:
       fact: throne-taken
+    outcome: success
   - id: freed
     when:
+      left: front-door
+    if:
       fact: cells-opened
+    outcome: success
+  - id: king-lives
+    when:
+      left: front-door
+    outcome: failure
 room:
   version: 3
   id: room-1

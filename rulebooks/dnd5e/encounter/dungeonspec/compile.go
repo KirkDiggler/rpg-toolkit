@@ -482,7 +482,12 @@ func Compile(spec *Spec) (Compiled, error) {
 func endingsOf(endings []EndingSpec) []encounter.EndingInput {
 	var out []encounter.EndingInput
 	for _, e := range endings {
-		out = append(out, encounter.EndingInput{Key: e.ID, Trigger: predicateOf(e.When)})
+		out = append(out, encounter.EndingInput{
+			Key: e.ID, Trigger: predicateOf(e.When),
+			// The leave ending's two halves (rpg-project#716): what must also
+			// hold when the party walks out, and what that means for them.
+			If: predicateOf(e.If), Result: encounter.EndingResult(e.Outcome),
+		})
 	}
 	return out
 }
@@ -628,6 +633,9 @@ func predicateOf(p *PredicateSpec) encounter.Trigger {
 		// An option's `requires` only — [grammar.predicate] refuses it
 		// everywhere else, so this arm is reached from [optionsOf] alone.
 		return encounter.TriggerHolds{Prop: encounter.PropID(p.Holds)}
+	case predicateLeft:
+		// An ending's `when` only ([grammar.endings]); refused elsewhere.
+		return encounter.TriggerLeft{Exit: encounter.ExitID(p.Left)}
 	default:
 		return nil
 	}

@@ -482,42 +482,79 @@ func (e *Encounter) heldPropsOf(member MemberID) []PropID {
 	return out
 }
 
-// matchExitedHolding reports which declared [TriggerExitedHolding] fires for
-// one departure: the member stood on the ending's exit cell, and was holding
-// the ending's item. Declaration order decides when two could fire at once —
-// the same order every ending scan walks. Returns nil when none does.
+// departureMatch is what one departure ends: the declared ending that fires,
+// or none (fired nil). A stated value, so "no ending" is never two nils.
+type departureMatch struct {
+	// fired is the ending this departure ends the run on, or nil.
+	fired *declaredEnding
+}
+
+// departureEnding reports which declared ending one departure fires, in ONE
+// PASS IN DECLARATION ORDER over every ending a departure can fire
+// (rpg-project#716, D9: the first ending whose conditions hold fires). Each
+// asks its own question:
+//
+//   - a [TriggerExitedHolding]: the member stood on its exit cell holding
+//     its item;
+//   - a [TriggerLeft]: the member stood on its exit cell, no standing player
+//     is left inside (the last one out), and its `if` holds as world truth.
+//
+// ONE PASS, NOT ONE MATCHER AFTER ANOTHER. Asking the holding endings first
+// let an exited-holding ending outrank a `left` ending declared before it at
+// the same door, and the run ended on the ending the author listed second
+// (rpg-toolkit#2155 review). Who is down, and so whether this was the last
+// one out, is asked once, and only when a `left` ending names this exit.
 //
 // A PURE MATCH, deliberately, and this is the fix for rpg-toolkit#1507. It
 // used to close the encounter as well, which meant [Encounter.Exit] could
 // not know whether the departure carried anything out until after it had
 // already narrated that it had. Separating the decision from its consequence
 // lets the beat tell the truth and leaves design §6's beat order untouched:
-// the caller narrates the departure, then closes.
+// the caller narrates the departure, then closes. The roster it reads is the
+// roster after the departure, so the one leaving is not in it.
 //
-// NO GUARDS BUT THE LOOP. Three were written here first and a mutation pass
-// removed all three, because none of them decided anything: "they left from
-// no exit" and "they carried nothing" both fall out of the match below, since
-// an ending names a real exit and a real item and neither can match an empty
-// answer; and "the encounter is already closed" is unreachable, because
-// [Encounter.Exit] refuses ErrClosed long before this and nothing between the
-// two can close the scene.
-func (e *Encounter) matchExitedHolding(through ExitID, carried []PropID) *declaredEnding {
+// "They left from no exit" and "they carried nothing" need no guard: an
+// ending names a real exit and a real item, and neither matches an empty
+// answer. Errors are the [Participation] capability's, asked for who is down.
+func (e *Encounter) departureEnding(through ExitID, carried []PropID) (departureMatch, error) {
 	holding := make(map[PropID]bool, len(carried))
 	for _, id := range carried {
 		holding[id] = true
 	}
 
+	var down map[MemberID]bool
+	lastOut, asked := false, false
 	for i := range e.endings {
-		trigger, ok := e.endings[i].trigger.(TriggerExitedHolding)
-		if !ok {
-			continue
+		switch trigger := e.endings[i].trigger.(type) {
+		case TriggerExitedHolding:
+			if trigger.Exit == through && holding[trigger.Item] {
+				return departureMatch{fired: &e.endings[i]}, nil
+			}
+		case TriggerLeft:
+			if trigger.Exit != through {
+				continue
+			}
+			if !asked {
+				var err error
+				if down, err = e.downNow(); err != nil {
+					return departureMatch{}, fmt.Errorf("left: %w", err)
+				}
+				lastOut, asked = e.noStandingPlayer(down), true
+			}
+			if !lastOut {
+				continue
+			}
+			holds, err := e.truthHolds(e.endings[i].cond, down)
+			if err != nil {
+				return departureMatch{}, err
+			}
+			if holds {
+				return departureMatch{fired: &e.endings[i]}, nil
+			}
 		}
-		if trigger.Exit != through || !holding[trigger.Item] {
-			continue
-		}
-		return &e.endings[i]
 	}
-	return nil
+
+	return departureMatch{}, nil
 }
 
 // dropCarried puts everything a departing member was carrying back on the

@@ -341,6 +341,11 @@ func (f *field) stanceReachable(pair factionPair, s Stance) (now, ever bool) {
 // this is the forms the grammar adds.
 func (f *field) validatePredicate(what string, t Trigger, sentinel error) error {
 	switch p := t.(type) {
+	case TriggerLeft:
+		// ONLY AN ENDING WAITS FOR THE PARTY TO LEAVE ([TriggerLeft]): there
+		// is nobody left to turn, arrive for, or speak once they have.
+		return fmt.Errorf("%s waits for the party to leave by %q, and only an ending waits for that: %w",
+			what, p.Exit, sentinel)
 	case TriggerHolds:
 		// READ BY AN OPTION, NEVER WAITED FOR ([TriggerHolds]). Nothing
 		// notices a holding change in order to fire one, so an ending, an

@@ -1,6 +1,6 @@
 # Run — 2026-10-29 — Frank's list S3, companions
 
-Slice [rpg-project#717](https://github.com/KirkDiggler/rpg-project/issues/717) of story [rpg-project#714](https://github.com/KirkDiggler/rpg-project/issues/714), under lane [rpg-project#722](https://github.com/KirkDiggler/rpg-project/issues/722) ruling D2. Base: rpg-toolkit main at [`61bb0381`](https://github.com/KirkDiggler/rpg-toolkit/commit/61bb0381). PRs: [rpg-toolkit#2156](https://github.com/KirkDiggler/rpg-toolkit/pull/2156) (`mind/behavior`) and [rpg-toolkit#2157](https://github.com/KirkDiggler/rpg-toolkit/pull/2157) (`encounter`, on #2156's pseudo-version).
+Slice [rpg-project#717](https://github.com/KirkDiggler/rpg-project/issues/717) of story [rpg-project#714](https://github.com/KirkDiggler/rpg-project/issues/714), under lane [rpg-project#722](https://github.com/KirkDiggler/rpg-project/issues/722) ruling D2. Base: rpg-toolkit main at [`61bb0381`](https://github.com/KirkDiggler/rpg-toolkit/commit/61bb0381). PRs: [rpg-toolkit#2156](https://github.com/KirkDiggler/rpg-toolkit/pull/2156) (`mind/behavior`) and [rpg-toolkit#2157](https://github.com/KirkDiggler/rpg-toolkit/pull/2157) (`encounter`, pinned at `mind/behavior` v0.17.0 once #2156 merged).
 
 ## Shipped
 
