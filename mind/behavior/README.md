@@ -178,7 +178,10 @@ reimplementing them:
   is a question about that testimony, and this is where the testimony is
   written. A witness holds the freshest deed of EACH KIND by each actor, so a
   flight it was the target of and a shout it merely watched the same figure
-  make are two memories rather than one overwriting the other.
+  make are two memories rather than one overwriting the other. A fall is
+  also filed by WHO FELL (`deed.FiledUnder`, rpg-project#716): it is the first
+  deed a row names the target of, so a hero who drops the king and then a
+  loyalist leaves both falls held. The other verbs wait for a use case.
 - **Who a creature believes is where comes from perception, per observer.**
   `Land` writes a deed into each witness's own store, naming the figures in it
   only to witnesses who could actually see them — a witness who could not see

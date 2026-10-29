@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/deed"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/sound"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -95,8 +96,9 @@ const (
 	// above keeps, and its target is WHO FELL: the one deed whose condition
 	// may name its target, with `who` ([When.Who]). What going down means is
 	// the rulebook's; this module knows only that it is a deed a witness can
-	// hold.
-	VerbFell = "fell"
+	// hold. Spelled by the deeds channel ([deed.VerbFell]), which files a
+	// fall by who fell as well as who caused it ([deed.FiledUnder]).
+	VerbFell = deed.VerbFell
 )
 
 // The two ways a table can be unrollable, both refused rather than guessed.
