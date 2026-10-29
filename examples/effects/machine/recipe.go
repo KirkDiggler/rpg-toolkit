@@ -192,6 +192,20 @@ func (r *Recipe) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	return json.UnmarshalDecode(dec, (*plain)(r), wholeNumbers)
 }
 
+// UnmarshalJSONFrom decodes a fact leaf, landing a whole JSON number Value
+// as int so it compares with an int fact.
+func (f *FactLeaf) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	type plain FactLeaf
+	return json.UnmarshalDecode(dec, (*plain)(f), wholeNumbers)
+}
+
+// UnmarshalJSONFrom decodes a set act, landing a whole JSON number Value as
+// int so it matches an int bag key.
+func (a *SetAct) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	type plain SetAct
+	return json.UnmarshalDecode(dec, (*plain)(a), wholeNumbers)
+}
+
 // wholeNumbers decodes a JSON number held in an `any` as int when it is a
 // whole number in range, and as float64 otherwise, which Validate refuses.
 var wholeNumbers = json.WithUnmarshalers(json.UnmarshalFromFunc(func(dec *jsontext.Decoder, v *any) error {
