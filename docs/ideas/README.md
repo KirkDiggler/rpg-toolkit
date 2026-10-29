@@ -37,6 +37,7 @@ The three files have different jobs:
 
 ## Active ideas
 
+- [Composable conditions](composable-conditions/) — draft; conditions composed of effects under one ref, one bag, one budget
 - [Actions are data](actions-are-data/) — implemented; includes design, completed plan, and implementation record
 - [Encounter](encounter/)
 - [Encounter anchoring](encounter-anchoring/)
