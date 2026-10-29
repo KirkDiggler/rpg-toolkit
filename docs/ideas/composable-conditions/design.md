@@ -49,6 +49,11 @@ Recorded close to verbatim, 2026-10-28:
 > why would the example need the rulebook? this is the tool the rulebook would
 > use right?
 
+> we do not need a toy, let's make it our current use case. set up raging. if
+> we think a thing like the state machine would ever be broken out just create
+> the machine package under the main module, watch the seams. I think we can
+> get some tools out of this project and not just composable conditions.
+
 > core.Effect was ahead of its time. not imported means it is free for the
 > taking or at min deleted … the machine in resolution now speaks that
 > language. a modern core.Effects would do it the new way. the goal of
@@ -251,10 +256,11 @@ row, so Rage answers four rows where today it answers one.
 The contract above is what a condition author writes. This is what they
 write against: the vocabulary, the bag, the three kinds, and the machine.
 Names are the plan's to settle; the shape and the dependencies are the
-design's. Two layers (E9): the **tool** imports `core` and `events` only and
-holds the grammar, the machine and the blob; the **plug** is the rulebook's
-vocabulary, which for dnd5e reads `contributions.Frame`, the typed topics,
-the chains and their stages, and is handed to the tool at registry load.
+design's. Two layers (E9): the **tool**, a `machine` package inside the dnd5e root
+module that imports `core` and `events` only and holds the grammar, the
+machine and the blob; the **plug** is the rulebook's vocabulary in
+`conditions`, which reads `contributions.Frame`, the typed topics, the
+chains and their stages, and is handed to the tool at registry load.
 
 ```go
 // vocabulary is what a rulebook plugs into the tool. Validate checks every
@@ -518,19 +524,24 @@ hold.
   a finding, added to the table with its test on its second use, never worked
   around with a closure in a recipe. *Because* a vocabulary
   widened on a gap is the thing the dead attempts became.
-- **E9. The machine is a tool; the rulebook plugs in.** The tool (recipe
-  grammar, guard evaluation, bag and blob, Validate, the machine runner)
-  imports `core` and `events` only and is formed in `examples/` with a toy
-  game, then launches as its own module. The rulebook supplies a vocabulary:
-  fact readers over its own frame, beats over its typed topics, output kinds
-  over its chains, amounts. The tool never imports a rulebook. `core/effect`
-  is deleted in S1 so the ground and the import path are free. *Because* "why
-  would the example need the rulebook? this is the tool the rulebook would
-  use" (operator, 2026-10-28); generic tools, not game rules, is the
-  toolkit's first law; and play and world were formed exactly this way. An
-  earlier draft grew the machine inside dnd5e and lifted later; that applied
-  the mind ruling where it does not fit, since here the mechanism is known
-  and only the vocabulary is the rulebook's.
+- **E9. The machine is a tool; the rulebook plugs in; the seam is a test.**
+  The tool (recipe grammar, guard evaluation, bag and blob, Validate, the
+  machine runner) is a `machine` package inside the dnd5e root module whose
+  imports are `core`, `events` and the standard library, and a test in the
+  package fails on any other import. The rulebook supplies a vocabulary from
+  `conditions`: fact readers over its own frame, beats over its typed topics,
+  output kinds over its chains, amounts. Rage is the first recipe, beside the
+  hand-written one, so the existing tests and the identical blob are the
+  proof from day one. Breaking the package out into its own module, when a
+  second rulebook or the studio pulls on it, is a move with the import graph
+  already clean. `core/effect` is deleted in S1 so the ground and the import
+  path are free. *Because* "we do not need a toy, let's make it our current
+  use case … create the machine package under the main module, watch the
+  seams" and "why would the example need the rulebook? this is the tool the
+  rulebook would use" (operator, 2026-10-28); generic tools, not game rules,
+  is the toolkit's first law. Two earlier drafts put it in `conditions` with
+  a lift later, then in `examples/` with a toy game; this keeps the first
+  one's placement and the second one's discipline.
 - **E10. Features become Definitions.** Rage, Reckless Attack, Action Surge
   and Flurry of Blows move from `core.Action` to `actions.Definition`, their
   charges as `SpendProfile.Pools`, their condition as the delivered effect.
@@ -573,27 +584,16 @@ hold.
 Named here; the plan creates the sub-issues and may re-cut them. Each code
 slice is one module PR (one nearest `go.mod`), docs may ride along.
 
-- **S0. Forming, in `examples/condition-machine`.** One module at Go 1.27
-  importing `core` and `events` only: the recipe, state, output, guard,
-  amount, act and blob structs, the vocabulary plug, `Validate`, the machine,
-  and a toy game small enough to read in one sitting (a frame with three
-  facts, two beats, one chain, one output kind) with recipes shaped like
-  Rage, Blessed and Resistance, a transition-walk test each, and a benchmark
-  table for guard evaluation and a beat. It is where play and world were
-  formed before they launched. It proves the contract of the plug, the
-  three-valued semantics, ordering on a beat, the flat blob and Validate's
-  refusals; it cannot prove the dnd5e Rage, which is S1's. **It is deleted
-  in the S1 PR that launches the tool**, and the knowledge line says what
-  moved. Needs the CI PR of rpg-toolkit#2145 first, so CI runs 1.27 natively.
-- **S1. The tool launches; dnd5e plugs in; Rage.** Two module PRs in order.
-  First the tool graduates from `examples/` to its own module (name is the
-  plan's), unchanged, with the example deleted in the same PR. Then the dnd5e
-  root ships its vocabulary (the fact readers over `contributions.Frame`, the
+- **S1. The machine package, the dnd5e vocabulary, and Rage.** One dnd5e
+  root PR: the `machine` package (recipe, state, output, guard, amount, act
+  and blob structs, the vocabulary plug, `Validate`, the runner, the
+  import-seam test, a benchmark for guard evaluation and a beat); the
+  vocabulary in `conditions` (fact readers over `contributions.Frame`, the
   beats over its typed topics, the output and tracker kinds Rage needs, the
-  amounts) and `RagingCondition` rebuilt as the recipe above with the
-  identical blob. The existing rage tests run unchanged beside a dnd5e
-  transition-walk test. Assumes the dnd5e root is on Go 1.27
-  (rpg-toolkit#2145). Separate module PR: delete `core/effect`. Separate module PR: delete
+  amounts); and `RagingCondition` rebuilt as the recipe above with the
+  identical blob and a transition-walk test, the existing rage tests running
+  unchanged. Needs the dnd5e root on Go 1.27 first (rpg-toolkit#2145, that
+  module moved to the front). Separate module PR: delete `core/effect`. Separate module PR: delete
   `core/effect`.
 - **S2. The 1d4 family.** Blessed, Baned, Divine Favor, Guided, Inspired:
   roll bonuses and offered dice, source-qualified bags.
@@ -605,10 +605,12 @@ slice is one module PR (one nearest `go.mod`), docs may ride along.
   surface (status, description) it still owns.
 - **S5. The long tail.** The remaining conditions, each either composed from
   atoms or kept hand-written inside the shell under E8, with a count of each.
-- **S6. The studio form.** With five slices behind it, the recipe shape has
-  stopped moving; decide what the studio reads (the JSON recipe as content
-  with a ref) and how a rulebook's vocabulary tables reach it. An ADR if the
-  resolution seam moves.
+- **S6. The studio form, and whether the package becomes a module.** With
+  five slices behind it, the recipe shape has stopped moving; decide what the
+  studio reads (the JSON recipe as content with a ref), how a rulebook's
+  vocabulary tables reach it, and whether anything outside dnd5e now pulls
+  on `machine` hard enough to make it a module. An ADR if the resolution seam
+  moves.
 
 Spells are already on the activation path; the decomposition they need is
 of the conditions they deliver, which S2 and S3 cover. Instantaneous spells
@@ -618,8 +620,9 @@ conditions.
 ## Settled, and open
 
 **Settled in conversation, 2026-10-28, ruled by the operator:** the machine
-is a neutral tool the rulebook plugs into, formed in `examples/` with a toy
-game, launched as its own module, never importing a rulebook (E9, S0, S1); the target
+is a neutral tool the rulebook plugs into, built as a package inside the
+dnd5e root module with its seam held by a test, Rage as the real first use,
+no toy and no `examples/` detour (E9, S1); the target
 is one data structure per condition, driven fully by its effects, under one
 ref (E1, E2); hand-written Go is the form for now, content authoring comes
 with the studio (E9); cost lives outside the condition (E7); `core/effect` is
@@ -649,9 +652,22 @@ the seam, and nothing is brought in or copied (E2, E3, E11).
   hand-written types are today), or a JSON file under `conditions/recipes/`
   embedded at build. Recommendation: Go literal at S1, JSON when the studio
   reads them, since the shape is identical and the literal gets `go vet`.
-- [ ] The tool's module name and path at S1. Recommendation: the plan names
-  it after what it is, a machine for conditions, beside `play/` and `world/`,
-  not under `mechanics/`.
+- [ ] The package name at S1. Recommendation: `machine`, under the dnd5e
+  root, since that is what it is and the name survives a later move.
+
+## Findings worth more than this story
+
+Named here as findings, not slices; a use case brings the mechanism.
+
+- **The guard tree is a decision tool with no condition in it.** `all`, `any`,
+  `not` over named facts with a three-valued answer and a validator is also
+  what mind's "keys as config, roll against a bar" needs: a guard over facts
+  with an amount. If mind reaches for it, the package's clean import graph is
+  what makes that a reuse rather than a copy.
+- **The runner is a lifecycle tool.** States with outputs and transitions on
+  beats describe concentration, hidden and revealed, and an encounter's own
+  phases as well as they describe Rage. Each of those is a finding to record
+  when its owner meets it, not a reason to widen this story.
 
 ## Measures
 
