@@ -46,6 +46,10 @@ named as a gap and brought back, never guessed.
 
 ## S1: `examples/effects`, with `effects/machine` inside
 
+Built 2026-10-28 on `feat/examples-effects-s1` (tasks 1–5 green, benchmarks
+110 ns guard, 580 ns tracker-plus-turn-end); findings folded into the design
+and this plan the same day; task 6 in progress.
+
 ### Task 1: Module scaffold and the two seam tests
 
 **Delivers:** E9 (imports), E11. A module CI can build and lint.
@@ -84,7 +88,7 @@ Guard, FactLeaf, RoundsLeaf, ClassLevelLeaf, Act, SetAct, Stacks, Beat,
 Selector, Op, FactName as in design "The component" and the struct listing on
 the idea PR), `machine/vocabulary.go` (Vocabulary{Facts, Beats}, FactSpec{Kind,
 Read func(any) (any, bool)}, BeatSpec{Selectors}), `machine/validate.go`,
-`machine/blob.go` (Blob{Ref, MemberID, Source, State, Bag `json:",inline"`}),
+`machine/blob.go` (Blob{Ref, MemberID, Source, State, Bag `json:",embed"`}),
 `machine/recipe_test.go`, `machine/validate_test.go`, `machine/blob_test.go`.
 **Interfaces:** `func Validate(r Recipe, v Vocabulary) error` returning the
 first refusal by name; `func (r Recipe) Compile(v Vocabulary) (*Program, error)`
@@ -135,8 +139,9 @@ does not carry the class.
 **Tests:** `TestGuardTruthTable` over every combination of two leaves under
 `all`, `any`, `not` with values in {Applies, DoesNotApply, Depends};
 `TestGuardOps` for `eq`, `gte` on int and string facts; `TestRoundsLeaf` for
-anchor 0, event round 0, round below anchor, round 9 after anchor 1
-(`since_anchor gte 9` Applies).
+anchor 0, event round 0, round below anchor, and with anchor 1: round 10 is
+`since_anchor gte 9` Applies and round 9 is DoesNotApply (since = round −
+anchor; the walk ends at round 10 as today).
 
 - [ ] Tests red; implement; green.
 
@@ -162,7 +167,8 @@ set enters that state and fires the transition listener; a guard that answers
 Depends does not fire and is not an error; a tracker whose selector does not
 match the holder is ignored; a tracker sets the flag once per turn and calls
 the changed hook once; `anchor_round` sets `round_activated` from the event's
-round when it is > 0 and `saw_turn_end` true; `derive_turns_active` recomputes
+round only while `round_activated` is 0 and the round is > 0, and sets
+`saw_turn_end` true (today's late anchoring; never a re-anchor); `derive_turns_active` recomputes
 from the anchor only when anchored; `clear_flags` zeroes the named bools;
 entering a terminal state calls the end hook with the reason and the machine
 detaches everything.
@@ -171,7 +177,7 @@ events: typed topics `turn_end{SubjectID, Round}`, `damage_received{TargetID}`,
 `post_attack_roll{AttackerID}`, `dropped_to_zero{MemberID}`, `rest{CharacterID}`,
 `combat_end{SubjectID}`, named as Rage names them. `TestRageWalk` drives the
 Rage recipe from the design, state `fresh`, through: first turn end → `raging`
-with `round_activated` = 1, `saw_turn_end` true, no sustain check; an attack
+with `round_activated` = 1, `saw_turn_end` true, `turns_active` 1, no sustain check; an attack
 then turn end → stays `raging`, flags cleared, `turns_active` 2; a turn end
 with no flag → `ended`, reason `no_combat_activity`; separately, nine more
 active turn ends from round 1 → `ended` at round 10 with `duration_expired`;
@@ -211,8 +217,11 @@ plug supplies (the machine knows no removal topic), then Remove; Rows is the
 sum of the current outputs' Assess.
 **Tests:** a test chain `DefineChainedTopic[*testDamage]` and a test kind
 `bonus` that adds `Amount` to `testDamage.Total` at a stage when its guard
-Applies; `TestOutputsAttachedOnlyWhileInState` publishes on the chain in
-`fresh` (no bonus), `raging` (bonus), `ended` (no bonus); `TestEndPublishesThenDetaches`
+Applies; `TestOutputsAttachedOnlyWhileInState` uses a variant recipe whose
+`fresh` has no outputs and publishes on the chain in `fresh` (no bonus),
+`raging` (bonus), `ended` (no bonus); a second test shows the real Rage
+recipe applies the bonus from activation, since `fresh` carries
+`rageOutputs` by design; `TestEndPublishesThenDetaches`
 asserts the removal hook fires before the chain stops answering;
 `TestRowsSumOutputs` asserts two outputs give two rows and a Depends guard
 gives a Depends row, not an error. `BenchmarkGuardAnswer` on the Rage damage
@@ -228,7 +237,9 @@ guard with a known frame; `BenchmarkBeatTurnEnd` on the Rage machine in
 **Delivers:** the run record (R13), the ideas index line, the S1 PR.
 **Owner:** rpg-toolkit, `examples/effects` PR.
 **Prerequisites:** Tasks 1–5 green.
-**Files:** create `rulebooks/dnd5e/knowledge/runs/<date>-composable-conditions-s1.md`
+**Files:** create `knowledge/runs/<date>-composable-conditions-s1.md` at the
+toolkit root (R12: the lowest level containing everything S1 binds is the
+root, since `examples/effects` is not under `rulebooks/dnd5e`)
 (shipped, decided, found, mistaken; the benchmark table under found),
 modify `docs/ideas/README.md` (status line), this plan (tick S1).
 **Behavior:** PR body carries `Part of rpg-project#703`, `Closes rpg-project#<S1 sub-issue>`,
@@ -276,7 +287,8 @@ the tests below are green), `conditions/raging_test.go` unchanged.
 **Tests:** every existing raging test unchanged and green;
 `TestRagingBlobIdentical` builds the old type and the recipe with the same
 inputs, drives both through the same event sequence, and asserts byte-equal
-`ToJSON` at each step (run against the old type before it is deleted, then
+`ToJSON` at each step after removing the new blob's `state` key (the old
+blob has none); the loader also accepts today's `source` ref string (run against the old type before it is deleted, then
 kept as a golden); `TestRagingRowsAreFour` asserts the information rows now
 include damage, resistance and both advantages.
 **Verification:** `cd rulebooks/dnd5e && go test ./conditions/... ./resolution/... ./session/...`;

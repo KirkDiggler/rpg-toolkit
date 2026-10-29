@@ -202,14 +202,14 @@ var raging = recipe{
     },
     states: map[string]state{
         "fresh": {outputs: rageOutputs, transitions: []transition{
-            {on: beatTurnEnd, about: holder, to: "raging", do: []act{anchorRound(), clearFlags("was_hit_this_turn", "did_attack_this_turn")}},
+            {on: beatTurnEnd, about: holder, to: "raging", do: []act{anchorRound(), deriveTurnsActive(), clearFlags("was_hit_this_turn", "did_attack_this_turn")}},
             rageEndings...,
         }},
         "raging": {outputs: rageOutputs, transitions: []transition{
             {on: beatTurnEnd, about: holder, when: not(any(flag("was_hit_this_turn"), flag("did_attack_this_turn"))), to: "ended", reason: "no_combat_activity"},
             {on: beatTurnEnd, about: holder, when: roundsSinceAnchor(gte(9)), to: "ended", reason: "duration_expired"},
             {on: beatTurnEnd, about: holder, when: roundWentBackwards(), to: "ended", reason: "clock_reset"},
-            {on: beatTurnEnd, about: holder, do: []act{deriveTurnsActive(), clearFlags("was_hit_this_turn", "did_attack_this_turn")}},
+            {on: beatTurnEnd, about: holder, do: []act{anchorRound(), deriveTurnsActive(), clearFlags("was_hit_this_turn", "did_attack_this_turn")}},
             rageEndings...,
         }},
         "ended": terminal,
@@ -265,7 +265,13 @@ var resistanceDie = recipe{
 
 Rage's first turn end moves `fresh` to `raging` without a sustain check:
 that is the graced activation turn (operator, 2026-08-27) as a state rather
-than a flag, and the clock-anchored round as an act on that transition. The
+than a flag, and the clock-anchored round as an act on that transition.
+`anchor_round` sets `round_activated` only while it is zero and the beat
+carries a round, so the same act on `raging`'s upkeep transition is today's
+late anchoring (a rage whose first turn ends carried no round anchors on the
+first one that does) and never re-anchors. `derive_turns_active` runs on the
+graced turn too, so `turns_active` reads 1 there as it does today
+(`raging.go`, S1 finding). The
 descriptor stays exactly as it is: ref, display, load, create, bearings,
 attack override. `load` reads the bag and the current state; `create` fills
 the bag from the cast's parameters. Each output answers its own information
@@ -610,7 +616,7 @@ type Blob struct {
     MemberID string         `json:"member_id"`
     Source   *core.Ref      `json:"source,omitzero"`
     State    string         `json:"state"`
-    Bag      map[string]any `json:",inline"`
+    Bag      map[string]any `json:",embed"`
 }
 
 // Vocabulary is the rulebook's plug into the machine.
@@ -807,8 +813,12 @@ slice is one module PR (one nearest `go.mod`), docs may ride along.
   resist and advantage kinds, the by-class-level amount), the descriptor glue
   that builds an `effects.Composed` from a recipe, and `RagingCondition`
   rebuilt as the recipe above with the identical blob, the existing rage
-  tests running unchanged. Needs the dnd5e root on Go 1.27
-  (rpg-toolkit#2145). Separate module PR: delete `core/effect`.
+  tests running unchanged. "Identical" means byte-equal after the new blob's
+  `state` key is removed, since the old blob has no state; and the loader
+  accepts today's `source` as a ref string (`"dnd5e:features:rage"`) as well
+  as a ref object, since `RagingData.Source` is a string today (S1 findings).
+  Needs the dnd5e root on Go 1.27 (rpg-toolkit#2145). Separate module PR:
+  delete `core/effect`.
 - **S3. The 1d4 family.** Blessed, Baned, Divine Favor, Guided, Inspired:
   roll bonuses and offered dice, source-qualified bags.
 - **S4. The against-holder family.** Prone, Held, Faerie Fire, Sanctuary:
