@@ -79,6 +79,14 @@ type Encounter struct {
 	// driven by the train's post-train pass instead of by the formation.
 	deferredDrives []*clock.Turn
 
+	// struckBy is who last landed an attack deed on each member during the
+	// verb in flight ([Encounter.landAttack]): the cause a fall noticed in
+	// that same verb names as its actor ([DeedFell]). Cleared by every
+	// participation pass that tells its falls, so a blow never explains a
+	// fall a later verb notices. Unexported and never persisted: it is set
+	// and read inside one call.
+	struckBy map[MemberID]MemberID
+
 	// canvas is THE MAP: one spatial room spanning the whole dungeon, in
 	// dungeon-absolute cells, with every authored wall registered on it as an
 	// absolute boundary edge (rpg-toolkit#1106).

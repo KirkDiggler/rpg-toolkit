@@ -411,7 +411,9 @@ func heldDeedsWhere(
 		if !keep(d) {
 			continue
 		}
-		out = append(out, HeldDeed{Kind: d.Verb, Actor: d.Actor, At: h.Confirmed})
+		// THE TARGET RIDES ALONG as the witness could vouch for it: who
+		// fell is what a `fell: { who }` row reads ([behavior.When.Who]).
+		out = append(out, HeldDeed{Kind: d.Verb, Actor: d.Actor, Target: d.Target, At: h.Confirmed})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Actor < out[j].Actor })
 
