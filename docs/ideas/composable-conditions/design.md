@@ -58,6 +58,14 @@ Recorded close to verbatim, 2026-10-28:
 > with a low level tool is a win by itself. that it enables a loading of
 > content from someone in the studio is just bonus.
 
+> we are under examples/machine for now. I think we call it what the sum of
+> its responsibilities are. if it is a state machine that fires configured
+> events out on transition that are used by a composer then machine makes
+> sense. I think we may have an effects package but it will likely use the
+> machine package. alternatively we could shoot for making the effects
+> package in example and have a path to effects/machine with a package that
+> could be broken out when we leave example.
+
 > core.Effect was ahead of its time. not imported means it is free for the
 > taking or at min deleted … the machine in resolution now speaks that
 > language. a modern core.Effects would do it the new way. the goal of
@@ -123,10 +131,14 @@ What the tree holds on 2026-10-28, at `rpg-toolkit` main:
 Four nouns, kept apart. Three of them already have a home. The condition is
 a **machine**: explicit states, transitions that fire on beats under guards,
 and outputs a state emits while the machine sits in it. Guards and amounts
-are written in a **closed vocabulary**. The machine is a neutral tool that
-knows the grammar; the rulebook plugs in the vocabulary (its facts, beats,
-output kinds and amounts), so a recipe is data from the first slice and is
-checked against the vocabulary it was given when it loads.
+are written in a **closed vocabulary**. Two tools, one above the other. The
+**machine** is a state machine over a bag that fires configured events on
+transition; it knows states, transitions, guards, the bag and its blob, and
+nothing about a chain. The **composer**, `effects`, listens to those events
+and attaches a state's outputs to the chains while the machine sits in it.
+The rulebook plugs the vocabulary into both: facts and beats into the
+machine, output kinds and amounts into the composer. `conditions` is the
+rulebook's side: recipes, vocabulary and descriptor glue.
 
 ```mermaid
 flowchart LR
@@ -152,12 +164,13 @@ flowchart LR
   G --> D --> R --> condition
 ```
 
-- **Effect**: one atom. An **output** contributes to a chain through a guard
-  over the frame. A **tracker** sets a bag flag when a topic fires about the
-  holder. A **transition** reads the bag and the beat's event through a guard
-  and moves the machine to another state, with a reason. Three kinds, one
-  shape: configure what to listen to, what must be true, what to do, with the
-  bag handed in.
+- **Effect**: one atom. A **transition** reads the bag and the beat's event
+  through a guard and moves the machine to another state, firing an event
+  with its reason. A **tracker** sets a bag flag when a topic fires about the
+  holder. Those two are the machine's. An **output** contributes to a chain
+  through a guard over the frame while its state is current; outputs are the
+  composer's. Three kinds, one shape: configure what to listen to, what must
+  be true, what to do, with the bag handed in.
 - **Condition**: a machine. States, each with its outputs; transitions
   between them; trackers that feed the bag; one terminal state whose entry is
   the one verb that removes the condition. It is what the registry builds and
@@ -263,18 +276,28 @@ row, so Rage answers four rows where today it answers one.
 The contract above is what a condition author writes. This is what they
 write against: the vocabulary, the bag, the three kinds, and the machine.
 Names are the plan's to settle; the shape and the dependencies are the
-design's. Two layers (E9): the **tool**, a `machine` package inside the dnd5e root
-module that imports `core` and `events` only and holds the grammar, the
-machine and the blob; the **plug** is the rulebook's vocabulary in
-`conditions`, which reads `contributions.Frame`, the typed topics, the
-chains and their stages, and is handed to the tool at registry load.
+design's. Three parts (E9): **`effects/machine`**, a state machine over a bag that
+fires events on transition (states, transitions, trackers, guards, the bag
+and its blob, Validate), importing `core` and `events` only; **`effects`**,
+the composer, which builds a condition from a recipe by running a machine
+and attaching the current state's outputs to the chains, importing `machine`,
+`core` and `events`; and the **plug**, the rulebook's vocabulary in
+`conditions`, facts and beats handed to the machine, output kinds and
+amounts handed to the composer, all read from `contributions.Frame`, the
+typed topics, the chains and their stages. Both tools form in
+`examples/effects` and never import a rulebook.
 
 ```go
 // vocabulary is what a rulebook plugs into the tool. Validate checks every
 // recipe against the one it was given; the studio reads the same tables.
+// machine's side
 type vocabulary struct {
-    facts   map[factName]factSpec   // name → kind of scalar + reader over the rulebook's opaque frame
-    beats   map[beat]beatSpec       // name → typed topic + the selectors it supports
+    facts map[factName]factSpec // name → kind of scalar + reader over an opaque event or frame
+    beats map[beat]beatSpec     // name → typed topic + the selectors it supports
+}
+
+// composer's side
+type outputVocabulary struct {
     kinds   map[kindName]kindSpec   // name → attach(ctx, bus, host, params) for one output kind
     amounts map[amountName]amountFn // name → value(frame, params)
 }
@@ -414,11 +437,14 @@ out of code and into the recipe's guard and amount; the fold body is the
 part every damage-bonus condition repeats, written once. `rollBonus`,
 `resist`, `advantage` and `offerDie` are the same move on their chains.
 
-### The machine
+### The machine, and the composer
 
 ```go
-// machine is what the registry builds, the bus attaches, and the blob
-// persists. It is the only ConditionBehavior a composed condition has (E1).
+// machine is a state machine over a bag. It subscribes to the beats its
+// recipe names, runs the current state's transitions in order on each, and
+// fires a transition event (from, to, reason) that the composer listens to.
+// It knows no chain and no output; the composer below is what the registry
+// builds and what persists the blob (E1).
 type machine struct {
     recipe  *recipe
     bag     bag
@@ -452,8 +478,20 @@ func (m *machine) end(ctx context.Context, reason string) error
 // them, one object; loadJSON reads the same (E4).
 func (m *machine) ToJSON() (json.RawMessage, error)
 
-// AssessAction is the sum of the current state's outputs' rows (E8).
-func (m *machine) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error)
+```
+
+```go
+// effects.Composed is the condition the registry builds from a recipe. It
+// owns a machine, attaches the current state's outputs on entry and detaches
+// them on exit, calls end when the machine enters its terminal state, and
+// answers the information rows as the sum of the current outputs' (E8). It
+// satisfies the rulebook's ConditionBehavior structurally, importing none
+// of it.
+type Composed struct {
+    m        *machine.Machine
+    outputs  outputVocabulary
+    attached []func(context.Context) error
+}
 ```
 
 The descriptor for Rage changes in one line: `load` and `create` build a
@@ -488,10 +526,13 @@ hold.
   same blob shape. Effects are internal structure, never registered, never
   addressable from outside the condition. *Because* six parallel tables keyed
   by condition ref drifted once already (rpg-toolkit#1965).
-- **E2. A condition is a machine, and its parts are configuration.** States
-  with outputs, transitions on beats under guards, trackers feeding the bag;
-  each part names what it listens to, what must be true, and what it does,
-  with the bag handed in. Three kinds: output, tracker, transition. *Because* "configuring to subscribe and
+- **E2. A condition is a machine composed with outputs, and its parts are
+  configuration.** The machine is states, transitions on beats under guards,
+  trackers feeding the bag, and the events it fires on transition; the
+  composer attaches a state's outputs while the machine is in it. Each part
+  names what it listens to, what must be true, and what it does, with the
+  bag handed in. Three kinds: transition and tracker (the machine's), output
+  (the composer's). *Because* "configuring to subscribe and
   act on things with the state param filled in is what we want" (operator,
   2026-10-28).
 - **E3. Guards and amounts are a closed vocabulary, validated at load.** A
@@ -536,24 +577,31 @@ hold.
   a finding, added to the table with its test on its second use, never worked
   around with a closure in a recipe. *Because* a vocabulary
   widened on a gap is the thing the dead attempts became.
-- **E9. The machine is a tool; the rulebook plugs in; the seam is a test.**
-  The tool (recipe grammar, guard evaluation, bag and blob, Validate, the
-  machine runner) is a `machine` package inside the dnd5e root module whose
-  imports are `core`, `events` and the standard library, and a test in the
-  package fails on any other import. The rulebook supplies a vocabulary from
-  `conditions`: fact readers over its own frame, beats over its typed topics,
-  output kinds over its chains, amounts. Rage is the first recipe, beside the
-  hand-written one, so the existing tests and the identical blob are the
-  proof from day one. Breaking the package out into its own module, when a
-  second rulebook or the studio pulls on it, is a move with the import graph
-  already clean. `core/effect` is deleted in S1 so the ground and the import
-  path are free. *Because* "we do not need a toy, let's make it our current
-  use case … create the machine package under the main module, watch the
-  seams" and "why would the example need the rulebook? this is the tool the
-  rulebook would use" (operator, 2026-10-28); generic tools, not game rules,
-  is the toolkit's first law. Two earlier drafts put it in `conditions` with
-  a lift later, then in `examples/` with a toy game; this keeps the first
-  one's placement and the second one's discipline.
+- **E9. Two tools, formed together, each named for the sum of its
+  responsibilities; the rulebook plugs into both.** `machine` is a state
+  machine over a bag that fires configured events on transition; it imports
+  `core`, `events` and the standard library, a test fails on any other
+  import, and it knows no chain. `effects` is the composer: it runs a machine
+  from a recipe and attaches the current state's outputs; it imports
+  `machine`, `core` and `events`, and the same kind of test holds that seam.
+  Both form in one module, `examples/effects`, with `effects/machine` as a
+  package inside it, tests their only customer and a Rage-shaped test
+  vocabulary, no toy name. When `conditions` first consumes them the module
+  is promoted to its home as `effects` with `effects/machine` still a
+  package; `machine` becomes its own module only when something outside
+  `effects` pulls on it. The rulebook supplies facts and beats to the
+  machine and output kinds and amounts to the composer from `conditions`.
+  Neither tool ever imports a rulebook. `core/effect` is deleted in S2 so the
+  ground and the import path are free. *Because* "if it is a state machine
+  that fires configured events out on transition that are used by a composer
+  then machine makes sense … making the effects package in example and have
+  a path to effects/machine with a package that could be broken out when we
+  leave example" and "why would the example need the rulebook? this is the
+  tool the rulebook would use" (operator, 2026-10-28); generic tools, not
+  game rules, is the toolkit's first law. Earlier cuts the same day put one
+  undivided tool in `conditions`, then in `examples/` with a toy, then in the
+  dnd5e root; this one is two tools because outputs and states are not the
+  same responsibility.
 - **E10. Features become Definitions.** Rage, Reckless Attack, Action Surge
   and Flurry of Blows move from `core.Action` to `actions.Definition`, their
   charges as `SpendProfile.Pools`, their condition as the delivered effect.
@@ -596,45 +644,57 @@ hold.
 Named here; the plan creates the sub-issues and may re-cut them. Each code
 slice is one module PR (one nearest `go.mod`), docs may ride along.
 
-- **S1. The machine package, the dnd5e vocabulary, and Rage.** One dnd5e
-  root PR: the `machine` package (recipe, state, output, guard, amount, act
-  and blob structs, the vocabulary plug, `Validate`, the runner, the
-  import-seam test, a benchmark for guard evaluation and a beat); the
-  vocabulary in `conditions` (fact readers over `contributions.Frame`, the
-  beats over its typed topics, the output and tracker kinds Rage needs, the
-  amounts); and `RagingCondition` rebuilt as the recipe above with the
-  identical blob and a transition-walk test, the existing rage tests running
-  unchanged. Needs the dnd5e root on Go 1.27 first (rpg-toolkit#2145, that
-  module moved to the front). Separate module PR: delete `core/effect`. Separate module PR: delete
-  `core/effect`.
-- **S2. The 1d4 family.** Blessed, Baned, Divine Favor, Guided, Inspired:
+- **S1. `examples/effects`, with `effects/machine` inside.** One module at
+  Go 1.27 importing `core` and `events` only. `machine`: recipe, state,
+  transition, tracker, guard, act and blob structs, the facts-and-beats plug,
+  `Validate`, the runner that fires transition events, the import-seam test.
+  `effects`: `Composed`, the output kinds plug, attaching and detaching a
+  state's outputs on the machine's events, its own import-seam test (only
+  `machine`, `core`, `events`). A JSON round-trip test per recipe and a
+  benchmark for guard evaluation and a beat. Tests are the only customer and
+  carry a Rage-shaped vocabulary: the facts, flags, beats and kinds Rage
+  reads (ruling 4), named as Rage names them, over test events and a test
+  chain. The transition-walk test drives fresh, raging and ended through
+  every reason Rage can end with. Needs the CI PR of rpg-toolkit#2145 first.
+- **S2. Promotion, the dnd5e plug, and Rage.** The example is promoted to
+  its home as the `effects` module with `effects/machine` a package inside
+  it, the example deleted in the same PR (home open below). Then one dnd5e
+  root PR: the vocabulary in `conditions` (fact readers over
+  `contributions.Frame`, beats over its typed topics, the damage-bonus,
+  resist and advantage kinds, the by-class-level amount), the descriptor glue
+  that builds an `effects.Composed` from a recipe, and `RagingCondition`
+  rebuilt as the recipe above with the identical blob, the existing rage
+  tests running unchanged. Needs the dnd5e root on Go 1.27
+  (rpg-toolkit#2145). Separate module PR: delete `core/effect`.
+- **S3. The 1d4 family.** Blessed, Baned, Divine Favor, Guided, Inspired:
   roll bonuses and offered dice, source-qualified bags.
-- **S3. The against-holder family.** Prone, Held, Faerie Fire, Sanctuary:
-  effects that fold the attacker's chain through the holder's bearing, and
+- **S4. The against-holder family.** Prone, Held, Faerie Fire, Sanctuary:
+  outputs that fold the attacker's chain through the holder's bearing, and
   the save-gated ones.
-- **S4. Features become Definitions.** The four `core.Action` features move
+- **S5. Features become Definitions.** The four `core.Action` features move
   to `actions.Definition` with `Pools` costs; `features` keeps the sheet-side
   surface (status, description) it still owns.
-- **S5. The long tail.** The remaining conditions, each either composed from
-  atoms or kept hand-written inside the shell under E8, with a count of each.
-- **S6. The studio form, and whether the package becomes a module.** With
-  five slices behind it, the recipe shape has stopped moving; decide what the
-  studio reads (the JSON recipe as content with a ref), how a rulebook's
-  vocabulary tables reach it, and whether anything outside dnd5e now pulls
-  on `machine` hard enough to make it a module. An ADR if the resolution seam
-  moves.
+- **S6. The long tail.** The remaining conditions, each either composed from
+  the vocabulary or kept hand-written under E8, with a count of each.
+- **S7. The studio form.** With six slices behind it, the recipe shape has
+  stopped moving; decide what the studio reads (the JSON recipe as content
+  with a ref) and how a rulebook's vocabulary tables reach it. An ADR if the
+  resolution seam moves.
 
 Spells are already on the activation path; the decomposition they need is
-of the conditions they deliver, which S2 and S3 cover. Instantaneous spells
+of the conditions they deliver, which S3 and S4 cover. Instantaneous spells
 (damage, healing, stabilize) are already instantaneous data and are not
 conditions.
 
 ## Settled, and open
 
-**Settled in conversation, 2026-10-28, ruled by the operator:** the machine
-is a neutral tool the rulebook plugs into, built as a package inside the
-dnd5e root module with its seam held by a test, Rage as the real first use,
-no toy and no `examples/` detour (E9, S1); **stacking identity is declared
+**Settled in conversation, 2026-10-28, ruled by the operator:** two tools,
+`machine` (a state machine over a bag that fires configured events on
+transition) and `effects` (the composer that attaches a state's outputs),
+formed together in `examples/effects` with `effects/machine` a package
+inside, tests their only customer and a Rage-shaped vocabulary, promoted as
+the `effects` module when `conditions` consumes them, `machine` broken out
+only when something outside `effects` pulls on it (E2, E9, S1, S2); **stacking identity is declared
 on the recipe** (`stacks: by_ref | by_source`, default by-ref; by-source
 requires a `source_id` bag key; the machine answers the condition address
 from it, retiring the eleven hand-written address methods), ruled 2026-10-28:
@@ -671,8 +731,10 @@ the seam, and nothing is brought in or copied (E2, E3, E11).
 
 **Open, for the design PR's checklist:**
 
-- [ ] The package name at S1. Recommendation: `machine`, under the dnd5e
-  root, since that is what it is and the name survives a later move.
+- [ ] The `effects` module's home at promotion (S2). Recommendation: a
+  top-level `effects/` beside `play/` and `world/`, since a tool no rulebook
+  owns should not sit under `rulebooks/dnd5e`; the two dead `effects`
+  packages are deleted before it lands so the name is free.
 
 ## Findings worth more than this story
 
