@@ -38,6 +38,14 @@ Recorded close to verbatim, 2026-10-28:
 
 > cost is outside the executing of a condition or spell.
 
+> I never want to take, I always want to build it new.
+
+> it is really a state machine … having a proper state machine I think would
+> allow us to build easier and better.
+
+> I def do not want to bring in jsonata at the seams anyway. I like the closed
+> vocabulary.
+
 > core.Effect was ahead of its time. not imported means it is free for the
 > taking or at min deleted … the machine in resolution now speaks that
 > language. a modern core.Effects would do it the new way. the goal of
@@ -100,7 +108,12 @@ What the tree holds on 2026-10-28, at `rpg-toolkit` main:
 
 ## The shape
 
-Four nouns, kept apart. Three of them already have a home.
+Four nouns, kept apart. Three of them already have a home. The condition is
+a **machine**: explicit states, transitions that fire on beats under guards,
+and outputs a state emits while the machine sits in it. Guards and amounts
+are written in a **closed vocabulary** that is the frame's own fact list, so
+a recipe is data from the first slice and is checked against the frame when
+it loads.
 
 ```mermaid
 flowchart LR
@@ -111,27 +124,31 @@ flowchart LR
     D["Cost (SpendProfile)<br/>Target · Save · Concentration<br/>delivers: CastEffect / ConditionApplication"]
   end
   R["resolution<br/>builds ref + parameters through the registry<br/>attaches to the one bus"]
-  subgraph condition [Condition: one ref · one descriptor · one blob]
-    S[("state bag<br/>(the blob)")]
-    M["modifier effects<br/>fold a chain through a frame filter"]
-    T["tracker effects<br/>set a bag field when a topic fires"]
-    B["budget effects<br/>read the bag at a beat, call end"]
-    E["end<br/>publish removed · detach every effect"]
-    T --> S
-    S --> B
-    S -.-> M
-    B --> E
+  subgraph condition [Condition: a machine under one ref, one bag, one descriptor]
+    direction TB
+    B[("bag<br/>(the blob, a JSON object)")]
+    S1["state: raging<br/>outputs: damage bonus · resist physical<br/>advantage on STR saves · STR checks"]
+    S2["state: ended"]
+    TR["trackers<br/>set a bag flag when a topic fires about the holder"]
+    TX["transitions<br/>on a beat · guard over bag + event · to a state · reason"]
+    TR --> B
+    B --> TX
+    TX --> S2
+    S1 -.emits while here.-> S1
   end
   G --> D --> R --> condition
 ```
 
-- **Effect**: one atom. Contribute a value to a chain. Set a flag when a topic
-  fires. Read the flags at a beat and end the condition. Three kinds,
-  one shape: configure what to subscribe to, what must be true, and what to
-  do, with the condition's state handed in.
-- **Condition**: a bundle of effects grouped under one ref, sharing one
-  state bag, ending through one verb. It is what the registry builds and what
-  the blob persists. Its outward contract, `ConditionBehavior`, does not
+- **Effect**: one atom. An **output** contributes to a chain through a guard
+  over the frame. A **tracker** sets a bag flag when a topic fires about the
+  holder. A **transition** reads the bag and the beat's event through a guard
+  and moves the machine to another state, with a reason. Three kinds, one
+  shape: configure what to listen to, what must be true, what to do, with the
+  bag handed in.
+- **Condition**: a machine. States, each with its outputs; transitions
+  between them; trackers that feed the bag; one terminal state whose entry is
+  the one verb that removes the condition. It is what the registry builds and
+  what the blob persists. Its outward contract, `ConditionBehavior`, does not
   change.
 - **Activation**: the moment of use, already data. Cost, targeting, the
   contest, concentration, and what is delivered. This story moves the four
@@ -142,181 +159,193 @@ flowchart LR
 
 ## What a condition looks like
 
-A Go literal, declarative enough that every field is a value. The exact
-names are the plan's; the shape is the design's.
+A recipe. Shown as Go literals because that is where the first slices write
+them; every field is a value, so the same recipe is one JSON object, which is
+what the studio writes later and what the blob's `recipe` key can carry when
+content arrives. Nothing in a recipe is a closure.
 
 ```go
-var raging = composed{
-    ref:   refs.Conditions.Raging(),
-    state: &ragingBag{}, // saw_turn_end, round_activated, turns_active, was_hit_this_turn, did_attack_this_turn
-    effects: []effect{
-        damageBonus{stage: combat.StageFeatures, when: meleeWeaponUsing(abilities.STR), amount: byClassLevel(classes.Barbarian, 2, 3, 4)},
-        resist{types: physicalTypes},
-        advantage{on: saves, ability: abilities.STR},
-        advantage{on: checks, ability: abilities.STR},
-        track{topic: PostAttackRollChain, set: didAttack},
-        track{topic: DamageReceivedTopic, set: wasHit},
+var raging = recipe{
+    ref:     refs.Conditions.Raging(),
+    initial: "fresh",
+    bag:     bag{"was_hit_this_turn": false, "did_attack_this_turn": false, "saw_turn_end": false, "round_activated": 0, "turns_active": 0},
+    trackers: []tracker{
+        {on: topicPostAttackRoll, about: actorIsHolder, set: "did_attack_this_turn"},
+        {on: topicDamageReceived, about: targetIsHolder, set: "was_hit_this_turn"},
     },
-    budget: all(
-        rounds(10),                        // clock-anchored, activation turn graced
-        sustainedBy(didAttack, wasHit),    // checked at the holder's turn end
-        endsOn(droppedToZero, rest, combatEnd),
-    ),
+    states: map[string]state{
+        "fresh": {outputs: rageOutputs, transitions: []transition{
+            {on: beatTurnEnd, about: holder, to: "raging", do: []act{anchorRound(), clearFlags("was_hit_this_turn", "did_attack_this_turn")}},
+            rageEndings...,
+        }},
+        "raging": {outputs: rageOutputs, transitions: []transition{
+            {on: beatTurnEnd, about: holder, when: not(any(flag("was_hit_this_turn"), flag("did_attack_this_turn"))), to: "ended", reason: "no_combat_activity"},
+            {on: beatTurnEnd, about: holder, when: roundsSinceAnchor(gte(9)), to: "ended", reason: "duration_expired"},
+            {on: beatTurnEnd, about: holder, when: roundWentBackwards(), to: "ended", reason: "clock_reset"},
+            {on: beatTurnEnd, about: holder, do: []act{deriveTurnsActive(), clearFlags("was_hit_this_turn", "did_attack_this_turn")}},
+            rageEndings...,
+        }},
+        "ended": terminal,
+    },
 }
 
-var blessed = composed{
-    ref:   refs.Conditions.Blessed(),
-    state: &sourcedBag{}, // member_id, source_id
-    effects: []effect{
-        rollBonus{on: attackRolls, dice: "1d4"},
-        rollBonus{on: savingThrows, dice: "1d4"},
-    },
-    budget: endsOn(rest), // concentration and its turn ends are resolution's, not the condition's
+var rageOutputs = []output{
+    damageBonus{stage: combat.StageFeatures,
+        when:   all(fact(actionMelee, eq(true)), fact(actionWeaponPool, eq(true)), fact(actionAbility, eq(abilities.STR))),
+        amount: byClassLevel(classes.Barbarian, steps{1: 2, 9: 3, 16: 4})},
+    resist{types: physicalTypes},
+    advantage{on: savingThrows, when: fact(actionAbility, eq(abilities.STR))},
+    advantage{on: abilityChecks, when: fact(actionAbility, eq(abilities.STR))},
 }
 
-var resistanceDie = composed{
-    ref:   refs.Conditions.Resistance(),
-    state: &sourcedBag{},
-    effects: []effect{
-        offerDie{on: PostSaveRollOfferChain, die: "1d4", description: ResistanceOfferDescription},
+var rageEndings = []transition{
+    {on: beatDroppedToZero, about: holder, to: "ended", reason: "unconscious"},
+    {on: beatRest, about: holder, to: "ended", reason: "rest"},
+    {on: beatCombatEnd, about: holder, to: "ended", reason: "combat_ended"},
+}
+
+var blessed = recipe{
+    ref:     refs.Conditions.Blessed(),
+    initial: "blessed",
+    bag:     bag{"source_id": ""},
+    states: map[string]state{
+        "blessed": {outputs: []output{
+            rollBonus{on: attackRolls, dice: d4},
+            rollBonus{on: savingThrows, dice: d4},
+        }, transitions: []transition{
+            {on: beatRest, about: holder, to: "ended", reason: "rest"}, // concentration and its turn ends are resolution's
+        }},
+        "ended": terminal,
     },
-    budget: all(endsOn(rest), spentWhenTaken()),
+}
+
+var resistanceDie = recipe{
+    ref:     refs.Conditions.Resistance(),
+    initial: "held",
+    bag:     bag{"source_id": ""},
+    states: map[string]state{
+        "held": {outputs: []output{offerDie{on: postSaveRollOffer, die: d4, description: ResistanceOfferDescription}},
+            transitions: []transition{
+                {on: beatOfferTaken, about: holderAndThisRef, to: "ended", reason: "spent"},
+                {on: beatRest, about: holder, to: "ended", reason: "rest"},
+            }},
+        "ended": terminal,
+    },
 }
 ```
 
-The descriptor stays exactly as it is: ref, display, load, create, bearings,
-attack override. `load` reads the bag; `create` fills it from the cast's
-parameters. Display may be authored or derived from the effects; each effect
-answers its own information row, so the condition's assessment is the sum of
-its effects' answers.
+Rage's first turn end moves `fresh` to `raging` without a sustain check:
+that is the graced activation turn (operator, 2026-08-27) as a state rather
+than a flag, and the clock-anchored round as an act on that transition. The
+descriptor stays exactly as it is: ref, display, load, create, bearings,
+attack override. `load` reads the bag and the current state; `create` fills
+the bag from the cast's parameters. Each output answers its own information
+row, so Rage answers four rows where today it answers one.
 
 ## The component
 
-The contract above is what a condition author writes. This is what the author
-writes against: the bag, the flags, one effect of each kind, and the shell.
+The contract above is what a condition author writes. This is what they
+write against: the vocabulary, the bag, the three kinds, and the machine.
 Names are the plan's to settle; the shape and the dependencies are the
 design's. Everything here is in `rulebooks/dnd5e/conditions` (E9) and uses
 only what already exists: `events.TypedTopicDef`, `events.ChainedTopicDef`,
-`core/chain`, `contributions`, the registry's `descriptor`.
+`core/chain`, `contributions.Frame`, the registry's `descriptor`.
 
-### The bag and its flags
+### The closed vocabulary
 
-The bag is the persisted struct (E4). A budget that needs state declares it
-as an embeddable struct, and the condition's bag embeds it, so the JSON keys
-the web already reads are promoted unchanged. A flag is an accessor to one
-bool field, declared once beside the bag; an effect is handed the accessor,
-never a string key.
+A guard is a tree of `all`, `any`, `not` over leaves. A leaf is one of a
+short, closed set, and every leaf names something that already exists:
+
+| leaf | reads | answers |
+|------|-------|---------|
+| `fact(<frame fact>, <op>)` | one `contributions.Fact` on the frame: roll kind, ability, melee, weapon pool, finesse, ranged, two-handed, off-hand, advantage, target, a pair's sees or distance, a held condition | the op on the known value; **Depends** when the fact is unknown |
+| `flag(<bag key>)` | one bool in the bag | its value |
+| `roundsSinceAnchor(<op>)`, `roundWentBackwards()` | the beat's round against the bag's anchor | the comparison; skipped when the beat carries no round |
+| `classLevel(<class>, <op>)` | the frame's actor class levels | the op; Depends when the frame does not carry them |
+
+Ops are `eq`, `ne`, `gte`, `lte`, `in`. Amounts are a closed set too:
+`fixed(n)`, `dice(d)`, `byClassLevel(class, steps)`, `abilityModifier()`.
+Beats are the topics a transition may listen to: turn end, dropped to zero,
+rest, combat end, offer taken, save result, condition applied or removed.
+Trackers listen to any typed topic with an `about` selector that names which
+id on the event must be the holder.
+
+**Validate runs at load, not at the table.** A recipe whose guard names a
+fact the frame does not have, a flag the bag does not declare, a state no
+transition reaches, a transition to a state that does not exist, or an
+initial state that is terminal is refused by name when the registry loads
+it, the way `actions.Definition.Validate` refuses a cost no ledger holds.
+That is where the dead attempts' runtime misses go to be caught.
+
+**Three-valued, by construction.** A leaf over an unknown fact answers
+Depends. `all` is Depends if any leaf is and none is false; `any` is Depends
+if any leaf is and none is true. An output whose guard answers Depends fails
+the fold with `ErrRuleCannotAnswer`, exactly as `executeRule` does today; a
+transition whose guard answers Depends does not fire. Information and
+execution ask the same guard.
+
+### The bag
+
+A JSON object (`encoding/json/v2`, Go 1.27) whose keys the recipe declares
+with their zero values. Trackers and acts write it, guards read it, and it
+is the blob: `{ref, member_id, source, state, bag…}` flattened so the keys
+the web already duck-types (`turns_active`) are where they are today (E4).
+A key no guard, act or output reads is refused by Validate.
+
+### What every kind is handed
 
 ```go
-// ragingBag is Rage's state: what its effects share, what the blob holds.
-type ragingBag struct {
-    roundsState              // saw_turn_end, round_activated, turns_active: owned by rounds()
-    WasHitThisTurn    bool `json:"was_hit_this_turn"`
-    DidAttackThisTurn bool `json:"did_attack_this_turn"`
-}
-
-func wasHit(s *ragingBag) *bool    { return &s.WasHitThisTurn }
-func didAttack(s *ragingBag) *bool { return &s.DidAttackThisTurn }
-
-// roundsState is the state the rounds budget keeps. Embedding it is how a bag
-// says "I am measured in rounds".
-type roundsState struct {
-    SawTurnEnd     bool `json:"saw_turn_end"`
-    RoundActivated int  `json:"round_activated"`
-    TurnsActive    int  `json:"turns_active"` // derived, display only; no rule reads it
-}
-
-func (r *roundsState) rounds() *roundsState { return r }
-
-// roundsHolder is satisfied by any bag that embeds roundsState.
-type roundsHolder interface{ rounds() *roundsState }
-```
-
-### What every effect is handed
-
-```go
-// host is the condition as its effects see it: its state, who holds it, how
-// to say the state moved, and the one way out (E5). An effect never sees the
-// shell, the descriptor or another effect.
-type host[S any] struct {
-    state   *S
-    holder  string     // member id
+// host is the condition as its parts see it: the bag, who holds it, how to
+// say the state moved, and the one way out (E5). No part sees the machine,
+// the descriptor or another part.
+type host struct {
+    bag     *bag
+    holder  string
     ref     *core.Ref
     changed func(ctx context.Context) error                // publishStateChanged
     end     func(ctx context.Context, reason string) error // publish removed, then detach all
 }
-
-// effect is the one contract (E2): attach on a bus with the host filled in,
-// return how to detach; answer your own information row (E8).
-type effect[S any] interface {
-    attach(ctx context.Context, bus events.EventBus, h host[S]) (detach func(context.Context) error, err error)
-    assess(in *contributions.AssessActionInput, s *S) (*contributions.Answer, error)
-}
 ```
 
-### A tracker
+### The three kinds
 
 ```go
-// track sets a flag when a topic fires about the holder. Idempotent within a
-// turn: a second hit does not re-announce.
-type track[S any, E any] struct {
-    topic *events.TypedTopicDef[E]
-    about func(E) string // whose event this is: TargetID, AttackerID, SubjectID
-    set   func(*S) *bool
+// tracker sets a bag flag when a topic fires about the holder; idempotent
+// within a turn. One Go type serves every typed topic; chained topics get
+// the twin that returns the chain unmodified (PostAttackRoll fires per
+// attack roll, hit or miss, rpg-toolkit#755).
+type tracker struct {
+    on    beat        // which topic
+    about selector    // which id on the event must equal the holder
+    set   string      // bag key, declared in the recipe
 }
 
-func (t track[S, E]) attach(ctx context.Context, bus events.EventBus, h host[S]) (func(context.Context) error, error) {
-    id, err := t.topic.On(bus).Subscribe(ctx, func(ctx context.Context, e E) error {
-        if t.about(e) != h.holder {
-            return nil
-        }
-        flag := t.set(h.state)
-        if *flag {
-            return nil
-        }
-        *flag = true
-        return h.changed(ctx)
-    })
-    if err != nil {
-        return nil, err
-    }
-    return func(ctx context.Context) error { return bus.Unsubscribe(ctx, id) }, nil
-}
-
-func (track[S, E]) assess(*contributions.AssessActionInput, *S) (*contributions.Answer, error) {
-    return nil, nil // a tracker has no row
-}
-```
-
-A chained topic (`PostAttackRollChain`) gets the twin `trackChain`, which
-subscribes with `SubscribeWithChain` and returns the chain unmodified. Rage's
-"did attack" is that one: it fires per attack roll, hit or miss
-(rpg-toolkit#755), which is why it is not read off the damage chain.
-
-### A modifier
-
-```go
-// damageBonus folds a fixed or scaling bonus onto the dealt damage chain when
-// its rule applies. The rule IS the filter (E3): it reads the frame and
-// answers three ways, and the same rule answers the information row.
-type damageBonus[S any] struct {
+// output contributes to a chain while its state is current. Each output
+// kind is one Go type that knows its chain and its stage; the recipe
+// supplies the guard and the amount. The same guard answers the
+// information row (E8).
+type damageBonus struct {
     stage  combat.Stage
-    when   contributions.ActionAssessor // meleeWeaponUsing(STR) composed with byClassLevel(...)
+    when   guard
+    amount amount
 }
 
-func (d damageBonus[S]) attach(ctx context.Context, bus events.EventBus, h host[S]) (func(context.Context) error, error) {
+func (o damageBonus) attach(ctx context.Context, bus events.EventBus, h host) (detach, error) {
     id, err := dnd5eEvents.DamageChain.On(bus).SubscribeWithChain(ctx, func(
         _ context.Context, e *dnd5eEvents.DamageChainEvent, c chain.Chain[*dnd5eEvents.DamageChainEvent],
     ) (chain.Chain[*dnd5eEvents.DamageChainEvent], error) {
-        out, err := executeRule(&executeRuleInput{Name: h.ref.ID, Rule: d.when, Frame: e.Frame})
-        if err != nil || out.Answer.Decision.Applicability != contributions.Applies {
+        verdict, err := o.when.answer(e.Frame, h.bag) // Applies, DoesNotApply, Depends + reason
+        if err != nil || verdict.Applicability != contributions.Applies {
+            return c, err // Depends is ErrRuleCannotAnswer here, as today
+        }
+        n, err := o.amount.value(e.Frame)
+        if err != nil {
             return c, err
         }
-        change := out.Answer.Damage[0]
-        return c, c.Add(d.stage, h.ref.ID, func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
+        return c, c.Add(o.stage, h.ref.ID, func(_ context.Context, e *dnd5eEvents.DamageChainEvent) (*dnd5eEvents.DamageChainEvent, error) {
             e.Components = append(e.Components, dnd5eEvents.DamageComponent{
                 Source:     dnd5eEvents.DamageSourceCondition,
-                Roll:       dnd5eEvents.RollComponent{Source: change.Source, Modifier: change.Fixed},
+                Roll:       dnd5eEvents.RollComponent{Source: sourceOf(h), Modifier: n},
                 DamageType: e.WeaponDamageType,
             })
             return e, nil
@@ -328,142 +357,90 @@ func (d damageBonus[S]) attach(ctx context.Context, bus events.EventBus, h host[
     return func(ctx context.Context) error { return bus.Unsubscribe(ctx, id) }, nil
 }
 
-func (d damageBonus[S]) assess(in *contributions.AssessActionInput, _ *S) (*contributions.Answer, error) {
-    out, err := d.when.AssessAction(in)
-    if err != nil {
-        return nil, err
-    }
-    return &out.Answer, nil
+func (o damageBonus) assess(in *contributions.AssessActionInput, b *bag) (*contributions.Answer, error) {
+    return o.when.answerWithAmount(in.Frame, b, o.amount)
+}
+
+// transition is read by the machine, never attached itself: the machine
+// holds one subscription per beat and runs the current state's transitions
+// in recipe order, stopping at the first that fires.
+type transition struct {
+    on     beat
+    about  selector
+    when   guard   // nil means always
+    to     string  // empty means stay; do still runs
+    do     []act   // bag writes: anchorRound, clearFlags, deriveTurnsActive
+    reason string  // required when to is terminal
 }
 ```
 
-This is `onDamageChain` from today's `raging.go` with the Rage-specific
-parts moved into the rule it already had (`ragingDamageRule`). The fold body
-is the part every damage-bonus condition repeats; it is written once here.
+`damageBonus` is today's `onDamageChain` with the Rage-specific parts moved
+out of code and into the recipe's guard and amount; the fold body is the
+part every damage-bonus condition repeats, written once. `rollBonus`,
+`resist`, `advantage` and `offerDie` are the same move on their chains.
 
-### A budget
-
-```go
-// sustainedBy ends the condition at the holder's turn end unless one of its
-// flags was set since the last one, then clears the flags. The activation
-// turn is graced (operator, 2026-08-27): the check is skipped while the
-// rounds state has not yet seen a turn end, which is the same bag field
-// rounds() anchors on. Requires a bag that embeds roundsState.
-func sustainedBy[S roundsHolder](flags ...func(*S) *bool) budget[S] {
-    return atTurnEnd[S](func(ctx context.Context, e dnd5eEvents.TurnEndEvent, h host[S]) error {
-        var any bool
-        for _, f := range flags {
-            any = any || *f(h.state)
-        }
-        graced := !h.state.rounds().SawTurnEnd
-        for _, f := range flags {
-            *f(h.state) = false // RAW's window is "since your last turn"; the activation swing does not pay twice
-        }
-        if !graced && !any {
-            return h.end(ctx, "no_combat_activity")
-        }
-        return nil
-    })
-}
-```
-
-`rounds[S roundsHolder](n int)` is the same beat with today's `onTurnEnd`
-anchor logic: first turn end anchors `RoundActivated` and marks
-`SawTurnEnd`; a round that goes backwards ends with `clock_reset`; a round
-with no number skips the cap; `TurnsActive` is recomputed from the anchor.
-`endsOn(droppedToZero, rest, combatEnd)` is three one-line subscriptions
-each calling `h.end` with its reason. `spentWhenTaken()` subscribes to
-`OfferTakenTopic` for the holder and the condition's ref.
-
-**Ordering on one beat.** Two budgets read the same turn end. The shell
-delivers a beat to its budgets in the literal's order and stops at the first
-`end`, so `all(rounds(10), sustainedBy(...), ...)` means: anchor and cap
-first, then the sustain check, exactly today's order. A budget never
-subscribes to the bus itself; it registers a beat with the shell, which
-holds one subscription per beat topic. That is the one place the shell has
-an opinion.
-
-### The shell
+### The machine
 
 ```go
-// composed is what the registry builds, the bus attaches, and the blob
+// machine is what the registry builds, the bus attaches, and the blob
 // persists. It is the only ConditionBehavior a composed condition has (E1).
-type composed[S any] struct {
-    ref     *core.Ref
-    state   *S
-    effects []effect[S]
-    budget  budget[S]
+type machine struct {
+    recipe  *recipe
+    bag     bag
+    current string
 
-    holder string    // member id, from create or load
-    source *core.Ref // what applied it, for the removal event and the address
+    holder string
+    source *core.Ref
     bus    events.EventBus
-    detach []func(context.Context) error
+    detach []func(context.Context) error // outputs of the current state, plus trackers and beats
 }
 
-func (c *composed[S]) Ref() *core.Ref  { return c.ref }
-func (c *composed[S]) IsApplied() bool { return c.bus != nil }
+func (m *machine) Ref() *core.Ref  { return m.recipe.ref }
+func (m *machine) IsApplied() bool { return m.bus != nil }
 
-// Apply attaches every effect, then the budget's beats. Any failure detaches
-// what attached so far; today's rollback loop, written once.
-func (c *composed[S]) Apply(ctx context.Context, bus events.EventBus) error {
-    if c.IsApplied() {
-        return rpgerr.New(rpgerr.CodeAlreadyExists, c.ref.ID+" already applied")
-    }
-    c.bus = bus
-    h := c.host()
-    for _, e := range append(c.effects, c.budget.effects(h)...) {
-        d, err := e.attach(ctx, bus, h)
-        if err != nil {
-            _ = c.Remove(ctx, bus)
-            return err
-        }
-        c.detach = append(c.detach, d)
-    }
-    return nil
-}
+// Apply attaches the trackers, one subscription per beat the recipe names,
+// and the current state's outputs. Any failure detaches what attached so
+// far: today's rollback loop, written once.
+func (m *machine) Apply(ctx context.Context, bus events.EventBus) error
 
-// Remove detaches everything, in reverse, and reports every failure.
-func (c *composed[S]) Remove(ctx context.Context, bus events.EventBus) error { /* today's errors.Join loop */ }
+// onBeat is the machine's one opinion: run the current state's transitions
+// in recipe order; the first whose guard applies runs its acts and, if it
+// names a state, enters it. Entering a state detaches the old outputs and
+// attaches the new; entering the terminal state calls end (E5).
+func (m *machine) onBeat(ctx context.Context, b beat, ev any) error
 
-// end is E5: publish the removal first, so the collector that reads removals
-// still finds this condition as the owner, then detach.
-func (c *composed[S]) end(ctx context.Context, reason string) error {
-    if c.bus == nil {
-        return nil
-    }
-    if err := dnd5eEvents.ConditionRemovedTopic.On(c.bus).Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-        MemberID: c.holder, ConditionRef: c.ref.String(), SourceID: c.sourceID(), Reason: reason,
-    }); err != nil {
-        return err
-    }
-    return c.Remove(ctx, c.bus)
-}
+// end publishes the removal first, so the collector that reads removals
+// still finds this condition as the owner, then detaches everything.
+func (m *machine) end(ctx context.Context, reason string) error
 
-// ToJSON writes the header the loader routes on and the bag beside it, one
-// object; loadJSON reads the same. The bag's keys are the blob's keys (E4).
-func (c *composed[S]) ToJSON() (json.RawMessage, error) { /* header{ref, member_id, source} merged with *S */ }
+// ToJSON writes {ref, member_id, source, state} and the bag's keys beside
+// them, one object; loadJSON reads the same (E4).
+func (m *machine) ToJSON() (json.RawMessage, error)
 
-// AssessAction is the sum of the effects' rows (E8). Rage answers four rows
-// where today it answers one.
-func (c *composed[S]) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error) { /* collect non-nil assess() answers */ }
+// AssessAction is the sum of the current state's outputs' rows (E8).
+func (m *machine) AssessAction(in *contributions.AssessActionInput) (*contributions.AssessActionOutput, error)
 ```
 
 The descriptor for Rage changes in one line: `load` and `create` build a
-`composed[ragingBag]` from the literal instead of a `RagingCondition`.
+`machine` from the `raging` recipe instead of a `RagingCondition`.
 Everything the registry, resolution, session and the api touch is unchanged.
 
 ### What this costs, and what it does not
 
-- Go generics carry the bag type through `effect[S]`, `host[S]` and
-  `budget[S]`, so a flag accessor for the wrong bag is a compile error, not a
-  runtime miss. The literal pays for it with `rounds[ragingBag](10)` where Go
-  cannot infer `S` from the arguments.
-- One subscription per beat topic on the shell, instead of one per budget,
-  is the ordering guarantee and also fewer subscriptions than today's nine.
-- The three dead attempts had an `applyDiceModifier` that switched on the
-  string `"1d4"`. Nothing here parses a string: dice are `dice.Roll` values,
-  stages are `combat.Stage`, abilities are `abilities.Ability`, and the frame
-  answers the filter.
+- No generics, no closures, no expression engine. A recipe is one JSON
+  object and a Go literal of the same shape; the studio form is the literal's
+  fields as a form. The price is that the vocabulary is closed: a condition
+  that needs a leaf the table does not have is a finding (E8), and the leaf
+  is added to the table with its test, never worked around in a closure.
+- Validate at load is the safety the dead attempts lacked and the one Go's
+  compiler cannot give data. Every recipe ships with a transition-walk test
+  that drives each beat and asserts the state and the reason.
+- One subscription per beat on the machine, with transitions in recipe
+  order, is the ordering guarantee today's nine subscriptions only have by
+  accident. It is also fewer subscriptions.
+- Guards are evaluated per event per condition. At table scale (a handful
+  of participants, a dozen conditions) this is nothing; one benchmark before
+  S2 says so in numbers.
 
 ## Working agreements of this design
 
@@ -476,17 +453,23 @@ hold.
   same blob shape. Effects are internal structure, never registered, never
   addressable from outside the condition. *Because* six parallel tables keyed
   by condition ref drifted once already (rpg-toolkit#1965).
-- **E2. An effect is configuration, not code.** It names what it subscribes
-  to (a chain or a topic), what must be true (a filter), and what it does (a
-  fold, a bag write, or end), and it receives the condition's state. Three
-  kinds: modifier, tracker, budget. *Because* "configuring to subscribe and
+- **E2. A condition is a machine, and its parts are configuration.** States
+  with outputs, transitions on beats under guards, trackers feeding the bag;
+  each part names what it listens to, what must be true, and what it does,
+  with the bag handed in. Three kinds: output, tracker, transition. *Because* "configuring to subscribe and
   act on things with the state param filled in is what we want" (operator,
   2026-10-28).
-- **E3. Filters name frame facts.** A modifier's filter reads the typed frame
-  and the bag, never the live sheet, and an unknown fact answers Depends, not
-  false. *Because* the two dead attempts invented their own filter strings and
-  needed an interpreter that knew every one; the frame is a closed, typed
-  vocabulary that already exists and already answers three ways.
+- **E3. Guards and amounts are a closed vocabulary, validated at load.** A
+  guard is `all`, `any`, `not` over leaves that name a frame fact, a bag flag,
+  the beat's round against the anchor, or an actor's class level, with a short
+  list of ops; an amount is one of a short list of named functions. No
+  expression language crosses the seam. An unknown fact answers Depends, not
+  false, and a recipe naming a fact, flag or state that does not exist is
+  refused when the registry loads it. *Because* the two dead attempts invented
+  their own filter strings and needed an interpreter that knew every one; the
+  frame is a closed, typed vocabulary that already exists and already answers
+  three ways; and "I def do not want to bring in jsonata at the seams … I like
+  the closed vocabulary" (operator, 2026-10-28).
 - **E4. The bag is the blob.** The state the effects share is the state the
   condition persists, with its keys kept stable where a consumer duck-types
   them (`turns_active` for the web's rage badge). *Because* a composition
@@ -497,25 +480,28 @@ hold.
   every hand-written condition writes this twice today (`endRage`, `end`) and
   the publish-before-detach order is a rule an activation's effect collector
   depends on.
-- **E6. Budgets are effects, and they compose.** Ten rounds anchored to the
-  clock's round, sustained by a bag predicate at the holder's turn end, ending
-  on dropped-to-zero, rest or combat end, spent when an offer is taken.
-  Combined with `all`. *Because* three past defects (rpg-toolkit#752, #755,
+- **E6. Lifecycle is the machine's transitions.** Ten rounds anchored to the
+  clock's round, sustained by a bag guard at the holder's turn end, ending on
+  dropped-to-zero, rest or combat end, spent when an offer is taken: each is
+  a transition with its reason, run in recipe order, the first that fires
+  winning. *Because* three past defects (rpg-toolkit#752, #755,
   rpg-project#253) all lived in hand-rolled upkeep; a budget written once is
   a budget debugged once. The graced activation turn (operator, 2026-08-27)
-  and the clock-anchored round are carried into `rounds`, not re-derived per
-  condition.
+  and the clock-anchored round are a state (`fresh`) and an act
+  (`anchorRound`) every recipe reuses, not re-derived per condition.
 - **E7. Cost is never on a condition.** A condition's price is its
   activation's `SpendProfile`. Concentration is resolution's. *Because* "cost
   is outside the executing of a condition or spell" (operator, 2026-10-28),
   and the dead `Effect` struct is the warning: it carried `Concentration` and
   `Duration` beside a bonus string, cost smeared into effect.
-- **E8. Hand-written conditions stay legal.** A condition whose behaviour has
-  no atom yet keeps a hand-written effect inside the composed shell, and an
-  atom is extracted on its second use, not its first. *Because* a vocabulary
+- **E8. Hand-written conditions stay legal, and the vocabulary grows by
+  finding.** A condition whose behaviour has no leaf or kind yet stays
+  hand-written on its current `ConditionBehavior`; the missing leaf or kind is
+  a finding, added to the table with its test on its second use, never worked
+  around with a closure in a recipe. *Because* a vocabulary
   widened on a gap is the thing the dead attempts became.
-- **E9. Rulebook-neutral by lift, not by birth.** The shell (ref, bag,
-  effects, budget, end, blob) grows in `rulebooks/dnd5e/conditions` and is
+- **E9. Rulebook-neutral by lift, not by birth.** The machine (ref, bag,
+  states, transitions, end, blob) grows in `rulebooks/dnd5e/conditions` and is
   lifted to a neutral module when a second puller arrives: a second rulebook,
   or the studio. `core/effect` is deleted in the first slice so the ground
   and the import path are free. *Because* `core` is bus-free by design and
@@ -527,6 +513,12 @@ hold.
   charges as `SpendProfile.Pools`, their condition as the delivered effect.
   *Because* resolution already speaks that language and two activation
   shapes for one idea is the drift this story exists to close.
+- **E11. Build it new.** No state or expression library is brought in at
+  the seams, and nothing is copied from earlier work elsewhere; the machine,
+  the vocabulary and its validator are this repo's. *Because* "I never want
+  to take, I always want to build it new" (operator, 2026-10-28), and the
+  vocabulary has to be the frame's own list or it is a second place a fact is
+  defined.
 
 ## Approaches considered
 
@@ -534,14 +526,21 @@ hold.
    generic engine reading bonus strings and filter names. Tried twice in this
    tree; both dead. Rejected: the interpreter must know every filter, and the
    first one it does not sends the rule back to code.
-2. **Typed composition in Go, lifted later.** Atoms are Go values whose
-   filters name frame facts; the shell is a small type in the conditions
-   package; the literal is declarative enough to become a studio form by
-   transliteration when the atom list stops moving. **Recommended.** It is
-   the path the code is already on, it keeps the descriptor law and the
-   resolution seam untouched, and it defers the neutral home to the moment
-   something pulls on it.
-3. **Keep hand-writing, extract helpers.** The status quo drift: more shared
+2. **A machine with a closed vocabulary.** States, transitions, trackers and
+   outputs as data; guards and amounts from a short table that names the
+   frame's facts; a validator at load; the kinds in Go. **Chosen**
+   (operator, 2026-10-28). It is data from the first slice, it keeps the
+   descriptor law and the resolution seam untouched, and it defers the
+   neutral home to the moment something pulls on it. An earlier draft of this
+   design used typed Go atoms with closures and generics; the operator read
+   it as "very code centric" and it was replaced by this.
+3. **A machine with a general expression language.** States and transitions
+   as data, guards and amounts as JSONata (or similar) over a JSON projection
+   of frame plus bag. Considered 2026-10-28 and rejected by the operator: a
+   complete interpreter at the rules seam, a dependency we did not build, and
+   a typo that is a runtime miss. The closed vocabulary keeps the frame as the
+   one place a fact is defined and lets Validate refuse a bad recipe at load.
+4. **Keep hand-writing, extract helpers.** The status quo drift: more shared
    functions, no shell. Rejected: it never yields one data structure per
    condition, so the studio never gets a component to build with, and the
    information surface stays narrower than the behaviour.
@@ -551,11 +550,13 @@ hold.
 Named here; the plan creates the sub-issues and may re-cut them. Each code
 slice is one module PR (one nearest `go.mod`), docs may ride along.
 
-- **S1. The shell, the budgets, and Rage.** `composed`, the bag, `end`, the
-  budget combinators (`rounds`, `sustainedBy`, `endsOn`, `spentWhenTaken`),
-  the modifier and tracker atoms Rage needs, and `RagingCondition` rebuilt as
-  the literal above with the identical blob. The existing rage tests run
-  unchanged. Separate module PR: delete `core/effect`.
+- **S1. The machine, the vocabulary, and Rage.** `recipe`, `machine`, the
+  bag, `end`, the guard tree with the leaves and ops in the table, the
+  amounts, the beats, `Validate`, the output and tracker kinds Rage needs,
+  and `RagingCondition` rebuilt as the recipe above with the identical blob.
+  The existing rage tests run unchanged, plus one transition-walk test.
+  Assumes Go 1.27 has landed (rpg-toolkit#2145). Separate module PR: delete
+  `core/effect`.
 - **S2. The 1d4 family.** Blessed, Baned, Divine Favor, Guided, Inspired:
   roll bonuses and offered dice, source-qualified bags.
 - **S3. The against-holder family.** Prone, Held, Faerie Fire, Sanctuary:
@@ -582,7 +583,9 @@ is one data structure per condition, driven fully by its effects, under one
 ref (E1, E2); hand-written Go is the form for now, content authoring comes
 with the studio (E9); cost lives outside the condition (E7); `core/effect` is
 free for the taking or deleted (E9); features and spells converge on one
-activation shape (E10); no need to move quickly.
+activation shape (E10); no need to move quickly; a condition is a machine,
+guards and amounts are a closed vocabulary with no expression language at
+the seam, and nothing is brought in or copied (E2, E3, E11).
 
 **Open, for the design PR's checklist:**
 
@@ -598,6 +601,13 @@ activation shape (E10); no need to move quickly.
   `create`; the keys a cast binds (`CounterpartKey`, `SaveDCKey`,
   `OptionKey`) are bag keys. Recommendation: yes, and nothing else; a bag key
   no effect reads is a finding.
+- [ ] The first table of leaves, ops, amounts and beats: the one above, or
+  trimmed to exactly what Rage, Blessed and Resistance need. Recommendation:
+  trimmed; E8 grows it by finding.
+- [ ] Where a recipe lives at S1: a Go literal beside its descriptor (as the
+  hand-written types are today), or a JSON file under `conditions/recipes/`
+  embedded at build. Recommendation: Go literal at S1, JSON when the studio
+  reads them, since the shape is identical and the literal gets `go vet`.
 - [ ] Which neutral home at S6. Not decided before S6 by design.
 
 ## Measures
