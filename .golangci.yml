@@ -34,6 +34,53 @@ linters:
     - unparam        # Find unused parameters
     - whitespace     # Check unnecessary newlines
 
+  exclusions:
+    rules:
+      # Test files are fixtures, not product — these linters skip them.
+      # (Migrated from the v1 `issues.exclude-rules` block: golangci-lint v2
+      # silently ignores v1-syntax sections, so under the v2.15.0 pin these
+      # findings fired in _test.go files while that block sat in the file. #2148.)
+      - path: _test\.go
+        linters: [dupl, errcheck, goconst, gosec, gocyclo]
+
+      # refs/ namespace pattern is intentionally similar for IDE discoverability
+      - path: refs/
+        linters: [dupl]
+
+      # Exclude from example files
+      - path: example_test\.go
+        linters: [lll, gocritic, revive]
+
+      # Allow longer lines in generate directives
+      - source: "^//go:generate "
+        linters: [lll]
+
+      # ---- Shrinking exception list --------------------------------------------
+      # Debt raised by the golangci-lint v2.3.1 → v2.15.0 bump in #2148: one
+      # rule per module still carrying findings. The PR that fixes a module's
+      # findings deletes that module's rule here in the same commit. When
+      # this list is empty, delete the whole block.
+      - path: ^mind/behavior/       # 4 goconst (answer.go, table.go)
+        linters: [goconst]
+      - path: ^tools/environments/  # 26 goconst
+        linters: [goconst]
+      - path: ^tools/selectables/   # 5 goconst + gosec G115 + unparam (basic_table.go)
+        linters: [goconst, gosec, unparam]
+      - path: ^tools/spatial/       # 1 goconst (connection_helpers.go)
+        linters: [goconst]
+
+    paths:
+      # vendor (if any) and generated files
+      - vendor/
+      - _gen\.go
+
+# DEAD under golangci-lint v2: this v1-syntax section is silently ignored by
+# every v2 pin — the runtime drops it without a word and only
+# `golangci-lint config verify` notices. Restoring it is not a config fix but
+# a gate-policy change: these settings have never been enforced on this tree,
+# and re-arming them fires ~380 findings (measured 2026-10-29; per-setting
+# inventory and decision menu in #2153). Do not nest this under
+# `linters.settings` without that decision.
 linters-settings:
   dupl:
     threshold: 150
@@ -101,43 +148,6 @@ linters-settings:
       - name: errorf
 
 issues:
-  exclude-rules:
-    # Exclude some linters from test files
-    - path: ".*_test\\.go"
-      linters:
-        - dupl
-        - errcheck
-        - goconst
-        - gosec
-        - gocyclo
-
-    # Exclude refs directory from dupl - namespace pattern is intentionally similar for IDE discoverability
-    - path: refs/
-      linters:
-        - dupl
-    
-    # Exclude from example files
-    - path: example_test\.go
-      linters:
-        - lll
-        - gocritic
-        - revive
-    
-    # Exclude vendor (if any)
-    - path: vendor/
-      linters:
-        - all
-    
-    # Exclude generated files
-    - path: _gen\.go
-      linters:
-        - all
-    
-    # Allow longer lines in generate directives
-    - source: "^//go:generate "
-      linters:
-        - lll
-  
   max-issues-per-linter: 0
   max-same-issues: 0
 
@@ -146,6 +156,7 @@ formatters:
     - gofmt
     - goimports
 
+# DEAD under golangci-lint v2 — see the note on linters-settings above (#2153).
 formatters-settings:
   gofmt:
     simplify: true
