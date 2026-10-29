@@ -111,3 +111,33 @@ func TestWhoSurvivesPersistence(t *testing.T) {
 	unnamed := answerDataFrom(Answer{Weight: 1, Hold: true, When: []When{{Deed: "attacked", Within: 3}}})
 	require.Empty(t, unnamed.When[0].Who, "a condition with no who writes no key")
 }
+
+// TestAProjectedFallKeepsItsTarget is the projection a driver is handed
+// (rpg-toolkit#2149 review, item c): the view a creature's turn is driven
+// from carries each reading's fall with its target, the same as factsFor's.
+func TestAProjectedFallKeepsItsTarget(t *testing.T) {
+	standing := &somebodyDown{}
+	enc := fellEnc(t, standing)
+	standing.down = []MemberID{"friend"}
+	strike(t, enc, "alice", "friend")
+
+	view, err := enc.buildMonsterView(enc.members["watcher"], TurnBudget{}, 0)
+	require.NoError(t, err)
+	var targets []MemberID
+	for _, d := range view.AllyDeeds {
+		if d.Kind == DeedFell {
+			targets = append(targets, d.Target)
+		}
+	}
+	require.Equal(t, []MemberID{"friend"}, targets, "the watcher's view names who fell")
+
+	own, err := enc.buildMonsterView(enc.members["friend"], TurnBudget{}, 0)
+	require.NoError(t, err)
+	var mine []MemberID
+	for _, d := range own.Deeds {
+		if d.Kind == DeedFell {
+			mine = append(mine, d.Target)
+		}
+	}
+	require.Equal(t, []MemberID{"friend"}, mine, "and the fallen's own reading names itself")
+}
