@@ -305,6 +305,7 @@ func factsFromView(view MonsterView) Facts {
 			facts.RememberedFoes = append(facts.RememberedFoes, r.ID)
 		}
 	}
+	alliesFromView(&facts, view)
 
 	// WHAT A MOVE BUYS, AND WHO ELSE COULD REACH WHERE A ROW LANDS
 	// (rpg-project#671, dash.go). The driver's door only: a social verdict
@@ -439,4 +440,22 @@ func freshestDeed(deeds []HeldDeed, kind string) (HeldDeed, bool) {
 	}
 
 	return best, found
+}
+
+// alliesFromView fills who `ally` can name off the view (rpg-project#717):
+// every allied member in sight and standing, and every allied member
+// remembered. The creature's own testimony and the graph's answer projected
+// onto it ([SeenMember.Allied]), never anybody's live cell — a companion
+// follows where it believes the party went.
+func alliesFromView(facts *Facts, view MonsterView) {
+	for _, s := range view.Seen {
+		if s.Allied && s.Standing {
+			facts.SeenAllies = append(facts.SeenAllies, s.ID)
+		}
+	}
+	for _, r := range view.Remembered {
+		if r.Allied {
+			facts.RememberedAllies = append(facts.RememberedAllies, r.ID)
+		}
+	}
 }

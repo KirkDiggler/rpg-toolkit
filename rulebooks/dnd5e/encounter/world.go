@@ -657,6 +657,26 @@ func (e *Encounter) IsAllied(a, b MemberID) (allied, known bool) {
 	return err == nil && stance == StanceAllied, true
 }
 
+// alliedAcross reports whether b is on a side a's own faction is ALLIED
+// WITH through a disposition: allied ([Encounter.IsAllied]) and in another
+// faction. It is who `ally` names (rpg-project#717). A faction's own members
+// are allied with each other by law ([DefaultStance]) and are not counted:
+// they are kin, and a turned captain who followed the nearest of them would
+// never follow the party that turned him.
+func (e *Encounter) alliedAcross(a, b MemberID) bool {
+	ma, ok := e.members[a]
+	if !ok {
+		return false
+	}
+	mb, ok := e.members[b]
+	if !ok || factionOf(ma) == factionOf(mb) {
+		return false
+	}
+	allied, _ := e.IsAllied(a, b)
+
+	return allied
+}
+
 // StanceBetween is THE authoritative stance between two members: hostile,
 // neutral or allied, or [StanceNone] when either member is in NO FACTION,
 // which a world NPC is. It is folded from this run's own world at the moment

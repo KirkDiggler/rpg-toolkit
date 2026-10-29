@@ -2135,6 +2135,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 				ID:            subjectID,
 				Kind:          other.Kind,
 				Opposed:       e.opposed(m.ID, subjectID),
+				Allied:        e.alliedAcross(m.ID, subjectID),
 				Position:      pos,
 				DistanceCells: e.Distance(ownCell, pos),
 				Path:          path,
@@ -2144,9 +2145,18 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		}
 
 		dist := e.Distance(ownCell, pos)
+		// AN ALLY IS SOMEBODY TO WALK UP TO, NEVER INTO RANGE OF
+		// (rpg-project#717): nothing about it is in reach, and its route
+		// ends beside it ([SeenMember.Allied]).
+		allied := e.alliedAcross(m.ID, subjectID)
+		closeTo := bestRangeCells
 		inReach := make(map[core.Ref]bool, len(sheet.Actions))
-		for _, a := range sheet.Actions {
-			inReach[a.Ref] = dist <= float64(CellsFromFeet(a.RangeFeet))
+		if allied {
+			closeTo = 1
+		} else {
+			for _, a := range sheet.Actions {
+				inReach[a.Ref] = dist <= float64(CellsFromFeet(a.RangeFeet))
+			}
 		}
 
 		// Path ends on the NEAREST WALKABLE cell (to this member's own
@@ -2172,7 +2182,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		// sighting, every Act call — see the field's own doc for why that
 		// cost is accepted rather than deferred behind a lazy capability.
 		path, _, routeErr := query.routeTo(m.ID, ownCell, func(cell spatial.Position) bool {
-			return e.Distance(cell, pos) <= float64(bestRangeCells)
+			return e.Distance(cell, pos) <= float64(closeTo)
 		})
 
 		if routeErr != nil {
@@ -2188,6 +2198,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 			ID:            subjectID,
 			Kind:          other.Kind,
 			Opposed:       e.opposed(m.ID, subjectID),
+			Allied:        allied,
 			Standing:      !query.down[subjectID],
 			Position:      pos,
 			DistanceCells: dist,
