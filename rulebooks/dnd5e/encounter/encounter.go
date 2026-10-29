@@ -2436,16 +2436,15 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	// The BEAT ORDER design §6 fixes is untouched: the departure beat still
 	// precedes both `dropped` and `ended`. What moved is the decision, not
 	// the narration.
-	fired := e.matchExitedHolding(leftThrough, carried)
-	if fired == nil {
-		// THE LAST ONE OUT (rpg-project#716): a `left` ending is asked only
-		// when this departure leaves no standing player inside. Decided here,
-		// before narrating, for the reason above: a departure that ends the
-		// run carries out what it holds.
-		if fired, err = e.matchLeft(leftThrough); err != nil {
-			return nil, fmt.Errorf("exit: %w", err)
-		}
+	//
+	// ONE PASS IN DECLARATION ORDER (rpg-project#716): an exited-holding
+	// ending and a `left` ending at the same door are asked in the order the
+	// author listed them, and the first that holds fires.
+	match, err := e.departureEnding(leftThrough, carried)
+	if err != nil {
+		return nil, fmt.Errorf("exit: %w", err)
 	}
+	fired := match.fired
 
 	// What actually walked out with them: everything they held when an
 	// ending fired on this departure, and nothing otherwise. Never nil — an

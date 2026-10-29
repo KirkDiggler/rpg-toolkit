@@ -142,6 +142,23 @@ func TestMadKingDeposed(t *testing.T) {
 	require.Equal(t, encounter.ResultSuccess, out.Result)
 }
 
+// TestMadKingSlainAndDeposedEndsSlain pins the order of the castle's endings
+// at the door, not only its bytes: the castle held (`throne-taken`) and the
+// king down, both, and the party walks out. `king-slain` is listed first, so
+// the run ends slain. Reorder the endings and this route fails.
+func TestMadKingSlainAndDeposedEndsSlain(t *testing.T) {
+	t.Parallel()
+	s, _ := turnTheGarrison(t)
+	s.said(kingCaptain, "hold-the-castle", "persuasion", true)
+	s.struck(theKing, true)
+	require.Empty(t, s.ending(), "neither the castle held nor the king's fall ends the run")
+	require.True(t, s.learners("throne-taken")[kingCaptain], "precondition: the castle is held")
+
+	out := s.leaveByTheFrontDoor()
+	require.Equal(t, "king-slain", out.Ending, "slain outranks deposed, as the list orders them")
+	require.Equal(t, encounter.ResultSuccess, out.Result)
+}
+
 // kingPorter is a second player who waits on the front door while the hero
 // is in the throne room, so the last one out can leave by it.
 const kingPorter = encounter.MemberID("porter")

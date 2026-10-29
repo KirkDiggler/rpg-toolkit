@@ -10,7 +10,7 @@ import (
 // leave.go is THE RUN ENDS AT THE DOOR (rpg-project#716, ruled 2026-10-29):
 // "walk out the front door to end. king taken care of? no? failure, yes?
 // success." A [TriggerLeft] ending fires when the last standing player leaves
-// by its exit, its [EndingInput.If] says which of the endings waiting on
+// by its exit ([Encounter.departureEnding] asks, in declaration order), its [EndingInput.If] says which of the endings waiting on
 // that door it is, and its [EndingInput.Result] says what it meant.
 
 // validateLeaveEnding refuses the leave half of one declared ending: a
@@ -75,51 +75,17 @@ func (f *field) validateLeaveEnding(ei EndingInput) error {
 	return nil
 }
 
-// matchLeft is the first declared `left` ending this departure fires, in
-// declaration order, or nil: the party has left by through when no standing
-// player member remains, and the ending's `if` holds as world truth now.
-//
-// DOWN MEMBERS DO NOT KEEP THE RUN OPEN ([TriggerLeft]). The roster here is
-// the roster after the departure, so the one leaving is not in it.
-func (e *Encounter) matchLeft(through ExitID) (*declaredEnding, error) {
-	if through == "" {
-		return nil, nil
-	}
-	waiting := false
-	for i := range e.endings {
-		if left, ok := e.endings[i].trigger.(TriggerLeft); ok && left.Exit == through {
-			waiting = true
-		}
-	}
-	if !waiting {
-		return nil, nil
-	}
-
-	down, err := e.downNow()
-	if err != nil {
-		return nil, fmt.Errorf("left: %w", err)
-	}
+// noStandingPlayer reports whether no player member still standing remains
+// in the run: the last one out has gone. DOWN MEMBERS DO NOT KEEP THE RUN
+// OPEN ([TriggerLeft]): a body left behind is not somebody still playing.
+func (e *Encounter) noStandingPlayer(down map[MemberID]bool) bool {
 	for id, m := range e.members {
 		if m.Kind == KindPlayer && !down[id] {
-			return nil, nil
+			return false
 		}
 	}
 
-	for i := range e.endings {
-		left, ok := e.endings[i].trigger.(TriggerLeft)
-		if !ok || left.Exit != through {
-			continue
-		}
-		holds, herr := e.truthHolds(e.endings[i].cond, down)
-		if herr != nil {
-			return nil, herr
-		}
-		if holds {
-			return &e.endings[i], nil
-		}
-	}
-
-	return nil, nil
+	return true
 }
 
 // truthHolds answers an ending's `if` as world truth at this moment: the
@@ -133,14 +99,7 @@ func (e *Encounter) truthHolds(cond Trigger, down map[MemberID]bool) (bool, erro
 	case TriggerMemberDown:
 		return down[c.Member], nil
 	case TriggerFact:
-		kind := factKnownKind(c.Fact)
-		for _, f := range e.world.log.All() {
-			if f.Kind == kind {
-				return true, nil
-			}
-		}
-
-		return false, nil
+		return e.world.anyoneKnowsFact(c.Fact), nil
 	case TriggerStance:
 		now, err := e.Stance(c.Between[0], c.Between[1])
 		if err != nil {
