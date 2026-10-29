@@ -105,7 +105,7 @@ here it is only the tree, with `From` and `Params` kept for the record.
 
 `attack`, `toward`, `dash` and `away` take a `Selector`: exactly one of a
 word, a cell (`at`), or a route (`path`, `toward` and `dash` only). The words
-are `enemy`, `attacker`, `actor` and `sound`.
+are `enemy`, `attacker`, `actor`, `sound` and `ally`.
 
 - **`attacker`** is who last attacked the creature, in the reading the
   row's deed condition names (`Facts.Attacker`). The row is a candidate only
@@ -115,6 +115,13 @@ are `enemy`, `attacker`, `actor` and `sound`.
 - **`sound`** is where the freshest held sound was made. It is legal on
   `toward`, `dash` and `away` only, and only on a row that names a `heard` condition
   (R10), the way `actor` needs a deed. Resolving it is the caller's.
+- **`ally`** is the nearest allied member held in sight
+  (`Facts.SeenAllies`), else in memory (`Facts.RememberedAllies`)
+  (rpg-project#717). It is legal on `toward`, `dash` and `away` only: a mind
+  is never handed an ally to strike, so `attack: ally` is refused. The row is
+  absent while neither list holds anybody. `{ when: { enemy: none }, toward:
+  ally }` is "follow". Who is allied, and which held ally is nearest, are the
+  caller's; this module knows the word and nothing about sides.
 - **`search: { distance: N }`** walks on from a lost trail for N cells. It
   is eligible only while `Facts.EnemyLost` holds and the creature can move,
   and it carries the `toward` temperament factor. The trail, its heading and

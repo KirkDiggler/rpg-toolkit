@@ -660,11 +660,29 @@ const (
 	// refuses it on `attack` and on a row that listened for nothing.
 	// Resolving it to the heard kind is the caller's.
 	SelectorSound SelectorWord = "sound"
+
+	// SelectorAlly is the nearest allied member this creature holds: in its
+	// own sight now, else remembered from an earlier sighting
+	// ([Facts.SeenAllies], [Facts.RememberedAllies]; rpg-project#717). `{
+	// when: { enemy: none }, toward: ally }` is "follow".
+	//
+	// SOMEBODY TO WALK WITH, NEVER SOMEBODY TO STRIKE. Legal on `toward`,
+	// `dash` and `away` only: [Answer.Validate] refuses it on `attack`,
+	// because a mind is never handed an ally to swing at. Who is allied is
+	// the caller's answer (the rulebook's stance graph), asked when the facts
+	// are projected; this module knows the word and nothing about sides.
+	// Which of the held allies is nearest is the caller's too, against a
+	// board this module does not have.
+	//
+	// ABSENT WHILE NO ALLY IS HELD (R15): with both lists empty the row is
+	// not a candidate, so a companion with nobody to follow falls through to
+	// its author's next row.
+	SelectorAlly SelectorWord = "ally"
 )
 
 // SelectorWords is every selector word, in the design's own order. Exported
 // for the dialect's refusal, [AnswerKeys]'s reason.
-var SelectorWords = []SelectorWord{SelectorEnemy, SelectorAttacker, SelectorActor, SelectorSound}
+var SelectorWords = []SelectorWord{SelectorEnemy, SelectorAttacker, SelectorActor, SelectorSound, SelectorAlly}
 
 // Selector names what a `attack`/`toward`/`dash`/`away` entry acts on: a member
 // found by a word, or an authored cell.
@@ -747,7 +765,7 @@ func (s *Selector) targets() []string {
 }
 
 // validate refuses a selector naming no target or more than one, a route on
-// a word that does not walk one, or `sound` on `attack`. word is the table
+// a word that does not walk one, or `sound` or `ally` on `attack`. word is the table
 // word the selector is on.
 func (s *Selector) validate(word string) error {
 	named := s.targets()
@@ -762,6 +780,10 @@ func (s *Selector) validate(word string) error {
 	if s.Word == SelectorSound && word == "attack" {
 		return fmt.Errorf("`attack` cannot take `sound`: a sound cannot be struck, only walked toward "+
 			"or away from: %w", ErrBadSelector)
+	}
+	if s.Word == SelectorAlly && word == "attack" {
+		return fmt.Errorf("`attack` cannot take `ally`: a mind is never handed an ally to strike, "+
+			"only one to walk toward or away from: %w", ErrBadSelector)
 	}
 	if err := s.validateWaypoints(word); err != nil {
 		return err
@@ -1083,6 +1105,19 @@ type Facts struct {
 	// named them would be a swing the caller can only refuse.
 	FoesInReach []core.EntityID
 
+	// SeenAllies is every allied member this creature holds in its own sight
+	// right now, standing; RememberedAllies is every allied member it holds
+	// placed from an earlier sighting and does not see now (rpg-project#717).
+	// What `ally` needs to name somebody ([SelectorAlly]). The caller decides
+	// who is allied, off its own stance graph, and projects both lists from
+	// the creature's own sight testimony, never from where anybody really
+	// is: a companion follows where it believes the party went.
+	//
+	// EMPTY IS "I HOLD NOBODY ON MY SIDE", the foe lists' rule, so a caller
+	// that has not filled them gets an `ally` row that is never a candidate.
+	SeenAllies       []core.EntityID `json:",omitempty"`
+	RememberedAllies []core.EntityID `json:",omitempty"`
+
 	// Threat is who else could reach the cell a row's move would LAND on
 	// ([ThreatWord]), asked by [Pick] for each row whose `when` names a
 	// `threat` condition, with that row, and only then. The host computes:
@@ -1151,7 +1186,8 @@ func (f Facts) affords(a Answer) bool {
 }
 
 // locates reports whether the facts hold something for this selector to
-// name. `sound` names nothing with no sound held. `attacker` names nothing
+// name. `sound` names nothing with no sound held. `ally` names nothing with
+// no ally held in sight or memory ([Facts.SeenAllies]). `attacker` names nothing
 // unless the one who hit the creature ([Facts.Attacker], read the way the
 // row's own deed condition reads) is among the foes it holds placed: in
 // reach to strike, in sight or memory to walk (rpg-project#669). The other
@@ -1165,6 +1201,11 @@ func (f Facts) locates(s *Selector, when []When, placed ...[]core.EntityID) bool
 	switch s.Word {
 	case SelectorSound:
 		return len(f.Sounds) > 0
+	case SelectorAlly:
+		// AN ALLY IS NOT A FOE, so the foe lists the walking words pass in
+		// are not what it reads: only somebody held on the creature's own
+		// side is somebody to walk with.
+		return len(f.SeenAllies) > 0 || len(f.RememberedAllies) > 0
 	case SelectorAttacker:
 		who, ok := f.Attacker(when)
 		if !ok {
@@ -1188,7 +1229,9 @@ func (f Facts) locates(s *Selector, when []When, placed ...[]core.EntityID) bool
 // is in reach while [Facts.EnemyInReach] holds; `attacker` while the
 // attacker is in [Facts.FoesInReach]. A cell, a route and a sound are
 // places, never foes, and `actor` is resolved by the caller off a reading
-// this module does not hold, so none of them is in reach here.
+// this module does not hold, so none of them is in reach here. Nor is `ally`:
+// nobody is in reach of a creature that will never strike them, so a run to
+// an ally standing beside it is the caller's to stand out.
 func (f Facts) inReachOf(s *Selector, when []When) bool {
 	switch s.Word {
 	case SelectorEnemy:
