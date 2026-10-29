@@ -1423,8 +1423,9 @@ func approachesOf(check CheckSpec) []encounter.CheckApproach {
 // back to. Indexed once per compile, by [inheritedOrders], and read by
 // [ordersOf] per creature.
 type inherited struct {
-	on     map[string]map[string][]AnswerSpec
-	temper map[string]TemperSpec
+	on      map[string]map[string][]AnswerSpec
+	temper  map[string]TemperSpec
+	options map[string][]OptionSpec
 }
 
 // inheritedOrders indexes the declared factions' orders. The two maps are
@@ -1433,8 +1434,9 @@ type inherited struct {
 // reserved `monsters` side is a side whether or not a block declares it.
 func inheritedOrders(factions []FactionSpec, tables map[string]TableSpec) inherited {
 	out := inherited{
-		on:     make(map[string]map[string][]AnswerSpec, len(factions)),
-		temper: make(map[string]TemperSpec, len(factions)),
+		on:      make(map[string]map[string][]AnswerSpec, len(factions)),
+		temper:  make(map[string]TemperSpec, len(factions)),
+		options: make(map[string][]OptionSpec, len(factions)),
 	}
 	for _, fa := range factions {
 		// A NAMED TABLE IS THE FACTION'S BASE, and its own `on:` is laid over
@@ -1444,9 +1446,27 @@ func inheritedOrders(factions []FactionSpec, tables map[string]TableSpec) inheri
 		// before this key does.
 		out.on[fa.ID] = layerSpecs(rootTableOn(tables, fa.Table), fa.On)
 		out.temper[fa.ID] = fa.Temper
+		out.options[fa.ID] = fa.Options
 	}
 
 	return out
+}
+
+// optionsFor is the lines one creature speaks (rpg-project#718): its own
+// when it wrote any, and its faction's otherwise — NEAREST WINS THE KEY
+// WHOLESALE, the rule [ordersOf] lays `on:` by, with `options` as the one
+// key. Never a merge by id: a member who carries one line of its own speaks
+// that line alone, which is visible in the file it was written in.
+//
+// The faction is the creature's own `faction` as written, read through
+// [sideOf] so a creature on no declared side finds the reserved `monsters`
+// side's lines when that side is declared, and nothing when it is not.
+func (from inherited) optionsFor(own []OptionSpec, faction string) []OptionSpec {
+	if len(own) > 0 {
+		return own
+	}
+
+	return from.options[sideOf(faction)]
 }
 
 // creatureOrders is one creature as the orders compile reads it: who it is,
@@ -1517,7 +1537,7 @@ func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 		mp.Targeting = targeting
 		mp.Boss = p.Boss
 		mp.Holds = intelHoldingsOf(spec.Key, p.Holds)
-		mp.Options = optionsOf(p.Options, o)
+		mp.Options = optionsOf(from.optionsFor(p.Options, p.Faction), o)
 		mp.Arrives = predicateOf(p.Arrives)
 		out = append(out, mp)
 	}

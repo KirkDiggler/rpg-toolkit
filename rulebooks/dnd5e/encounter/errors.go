@@ -612,6 +612,13 @@ var (
 	// prop refusals above do.
 	ErrNotDown = errors.New("encounter: member is not down")
 
+	// ErrMemberDown is a creature that is down, reached by [Encounter.Speak]
+	// when a line is said to it (rpg-project#718). A fallen leader carries
+	// its faction's lines like every member, and it answers none of them. An
+	// ORDINARY refusal, [ErrNotDown]'s twin: the body is visible and whether
+	// it is down is no secret.
+	ErrMemberDown = errors.New("encounter: member is down")
+
 	// ErrBadDoor is returned when a door cannot be part of a field
 	// (rpg-toolkit#1123): an empty or duplicated ID, no edges at all, a
 	// missing state (required, never defaulted — see [DoorState]), a lock

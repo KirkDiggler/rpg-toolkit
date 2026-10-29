@@ -241,7 +241,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		// that brings it in by [predicateOf]. Absent is nil in every one of them, which is
 		// why a document with no orders pictures exactly as it did before.
 		mp.Holds = intelHoldingsOf(spec.Key, b.Holds)
-		mp.Options = optionsOf(b.Options, encounter.HexesArePointyTop())
+		mp.Options = optionsOf(from.optionsFor(b.Options, b.Faction), encounter.HexesArePointyTop())
 		mp.Arrives = predicateOf(b.Arrives)
 		monsters = append(monsters, mp)
 	}
