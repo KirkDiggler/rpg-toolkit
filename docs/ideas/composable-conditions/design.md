@@ -633,7 +633,15 @@ from it, retiring the eleven hand-written address methods), ruled 2026-10-28:
 its one thing"; **display is authored**, on the recipe exactly as on the
 descriptor today, with no derivation and no completeness check yet, ruled
 2026-10-28: "we don't know what we don't know and we have nothing to act on or
-add validation or other checks in place"; the target
+add validation or other checks in place"; **an instance is recipe plus
+parameters into the bag**: three levels, the machine package (code, knows the
+grammar, no condition), the recipe (configuration of one condition type, at
+load), the instance (one recipe on one holder, its bag filled at create from
+the applier's parameters and written while it runs); the bag's declared keys
+are the only place a parameter can land, a parameter naming an undeclared key
+is refused by name, the cast's `CounterpartKey`, `SaveDCKey` and `OptionKey`
+name bag keys, and a bag key no guard, act or output reads is a finding, ruled
+2026-10-28; the target
 is one data structure per condition, driven fully by its effects, under one
 ref (E1, E2); hand-written Go is the form for now, content authoring comes
 with the studio (E9); cost lives outside the condition (E7); `core/effect` is
@@ -644,10 +652,6 @@ the seam, and nothing is brought in or copied (E2, E3, E11).
 
 **Open, for the design PR's checklist:**
 
-- [ ] Bag versus parameters: a cast's `Parameters` fill the bag through
-  `create`; the keys a cast binds (`CounterpartKey`, `SaveDCKey`,
-  `OptionKey`) are bag keys. Recommendation: yes, and nothing else; a bag key
-  no effect reads is a finding.
 - [ ] The first table of leaves, ops, amounts and beats: the one above, or
   trimmed to exactly what Rage, Blessed and Resistance need. Recommendation:
   trimmed; E8 grows it by finding.
