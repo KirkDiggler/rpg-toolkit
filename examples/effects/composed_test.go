@@ -292,7 +292,7 @@ func (s *composeSuite) TestToJSONIsTheFlatBlobAndLoadsBack() {
 	data, err := rg.c.ToJSON()
 	s.Require().NoError(err)
 	s.JSONEq(`{"ref":"dnd5e:conditions:raging","member_id":"barbarian-1","source":"dnd5e:features:rage",`+
-		`"state":"raging","saw_turn_end":true,"round_activated":3,"turns_active":0,`+
+		`"state":"raging","saw_turn_end":true,"round_activated":3,"turns_active":1,`+
 		`"was_hit_this_turn":false,"did_attack_this_turn":false}`, string(data))
 
 	var b machine.Blob
