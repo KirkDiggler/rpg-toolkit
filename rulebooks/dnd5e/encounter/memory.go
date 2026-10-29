@@ -148,7 +148,7 @@ func searchHeadings(seen SightTestimony, own float64) map[SearchHeading]float64 
 func (q *cellQuery) searchTrails(
 	mover MemberID, from spatial.Position, headings map[SearchHeading]float64,
 ) (map[SearchHeading][]spatial.Position, error) {
-	field, err := q.floodFrom(mover, mover, from, nil, 0)
+	field, err := q.floodFrom(mover, mover, from, nil, 0, true)
 	if err != nil {
 		return nil, err
 	}

@@ -161,6 +161,7 @@ type floodKey struct {
 	mover, walker MemberID
 	from          spatial.Position
 	limit         int
+	opens         bool
 }
 
 func (e *Encounter) cellQuery() (*cellQuery, error) {

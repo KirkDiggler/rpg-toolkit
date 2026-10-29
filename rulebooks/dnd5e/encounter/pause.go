@@ -1011,7 +1011,7 @@ func (e *Encounter) finishPausedIntent(
 		}
 	}
 
-	deltas, serr := e.settleWalk(p.audience, res.moved)
+	deltas, serr := e.settleWalk(p.audience, res.moved+res.opened)
 	if serr != nil {
 		return 0, deltas, false, serr
 	}
