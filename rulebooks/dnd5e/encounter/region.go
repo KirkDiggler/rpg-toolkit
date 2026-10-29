@@ -27,7 +27,11 @@ import (
 // which of two strings a signature means, not to make callers convert.
 type RegionID = string
 
-// RegionAt reports which region holds a dungeon-absolute cell.
+// RegionAt reports which region holds a dungeon-absolute cell: the AUTHORED
+// region, the place the author named and lit (rpg-project#725). It reports a
+// place and decides nothing — whether two cells are in the same room as the
+// walls make it is [Encounter.PartitionAt]'s question, and the two answers are
+// independent.
 //
 // TOTAL OVER OWNED FLOOR, AND ONLY OVER IT: a cell has a region if and only if
 // exactly one region owns it. The canvas spans the field's whole bounding BOX,
