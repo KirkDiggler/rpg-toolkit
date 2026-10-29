@@ -526,10 +526,25 @@ exits:
     cell:
       q: -22
       r: 5
+  # Hand edit (rpg-project#716, ruled 2026-10-29): the party's way in is its
+  # way out. "walk out the front door to end. king taken care of? no?
+  # failure, yes? success." The last standing party member through this
+  # door ends the run; the king's state at that moment is the outcome.
+  - id: front-door
+    cell:
+      q: -2
+      r: 16
 endings:
   - id: king-slain
     when:
+      left: front-door
+    if:
       down: king
+    outcome: success
+  - id: king-lives
+    when:
+      left: front-door
+    outcome: failure
   - id: king-deposed
     when:
       fact: throne-taken

@@ -30,6 +30,10 @@ type declaredEnding struct {
 	key     string
 	trigger Trigger
 	cell    spatial.Position
+
+	// cond and result are [EndingInput.If] and [EndingInput.Result].
+	cond   Trigger
+	result EndingResult
 }
 
 // compileEndings resolves each declared ending's authored target into the
@@ -46,7 +50,7 @@ type declaredEnding struct {
 func compileEndings(endings []EndingInput, f *field) []declaredEnding {
 	out := make([]declaredEnding, 0, len(endings))
 	for _, ei := range endings {
-		de := declaredEnding{key: ei.Key, trigger: ei.Trigger}
+		de := declaredEnding{key: ei.Key, trigger: ei.Trigger, cond: ei.If, result: ei.Result}
 		if t, ok := ei.Trigger.(TriggerReachedPosition); ok {
 			de.cell = f.cellAt(t.Position)
 		}
@@ -532,6 +536,9 @@ func (e *Encounter) enforceRetention() error {
 // verb prefix — each caller wraps its own at the call site.
 func validateEndingTriggers(f *field, endings []EndingInput) error {
 	for _, ei := range endings {
+		if err := f.validateLeaveEnding(ei); err != nil {
+			return err
+		}
 		// A MemberDown ending must name a member — see TriggerMemberDown's
 		// doc for why empty is refused rather than defaulted.
 		if md, ok := ei.Trigger.(TriggerMemberDown); ok && md.Member == "" {
@@ -1194,6 +1201,7 @@ func (e *Encounter) Status() (*Status, error) {
 			Open: false,
 			Outcome: &Outcome{
 				Ending:  e.outcome.Ending,
+				Result:  e.outcome.Result,
 				At:      e.outcome.At,
 				Members: members,
 			},
@@ -1503,7 +1511,7 @@ func (e *Encounter) firedReachedPosition(member *memberRecord, cell spatial.Posi
 	if e.outcome != nil {
 		members := make([]MemberOutcome, len(e.outcome.Members))
 		copy(members, e.outcome.Members)
-		return &Outcome{Ending: e.outcome.Ending, At: e.outcome.At, Members: members}, nil
+		return &Outcome{Ending: e.outcome.Ending, Result: e.outcome.Result, At: e.outcome.At, Members: members}, nil
 	}
 
 	for _, de := range e.endings {
@@ -1562,14 +1570,16 @@ func (e *Encounter) closeWithEnded(
 		if e.heldEnding == nil {
 			e.heldEnding = &heldEnding{key: key, at: at, ended: ended, audience: audience}
 		}
-		return &Outcome{Ending: key, At: at}, nil
+		return &Outcome{Ending: key, Result: e.resultOf(key), At: at}, nil
 	}
 	// A reaction can finish the encounter while a turn or directed walk is
 	// suspended. No continuation survives an ending, and closed persisted worlds
 	// must never carry resumable work.
 	e.pause = nil
+	result := e.resultOf(key)
 	e.outcome = &Outcome{
 		Ending:  key,
+		Result:  result,
 		At:      at,
 		Members: e.buildMemberOutcomes(),
 	}
@@ -1591,6 +1601,12 @@ func (e *Encounter) closeWithEnded(
 	if len(ended) > 0 {
 		endedBeat["ended"] = ended
 	}
+	// What the ending meant for the party, when it says (rpg-project#716).
+	// Omitted for an ending that declares no result, so every beat written
+	// before results existed reads exactly as it did.
+	if result != "" {
+		endedBeat["outcome"] = string(result)
+	}
 	beatBytes, _ := json.Marshal(endedBeat)
 	if _, err := e.appendBeat(&record.AppendInput{
 		At:       at,
@@ -1603,7 +1619,7 @@ func (e *Encounter) closeWithEnded(
 
 	members := make([]MemberOutcome, len(e.outcome.Members))
 	copy(members, e.outcome.Members)
-	return &Outcome{Ending: key, At: at, Members: members}, nil
+	return &Outcome{Ending: key, Result: result, At: at, Members: members}, nil
 }
 
 // refreshSight rebuilds every observer's percept AND runs trigger detection on
@@ -2421,6 +2437,15 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	// precedes both `dropped` and `ended`. What moved is the decision, not
 	// the narration.
 	fired := e.matchExitedHolding(leftThrough, carried)
+	if fired == nil {
+		// THE LAST ONE OUT (rpg-project#716): a `left` ending is asked only
+		// when this departure leaves no standing player inside. Decided here,
+		// before narrating, for the reason above: a departure that ends the
+		// run carries out what it holds.
+		if fired, err = e.matchLeft(leftThrough); err != nil {
+			return nil, fmt.Errorf("exit: %w", err)
+		}
+	}
 
 	// What actually walked out with them: everything they held when an
 	// ending fired on this departure, and nothing otherwise. Never nil — an

@@ -351,7 +351,7 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 	// `{ down }`, so it waits for the whole table and the whole cast; a
 	// binding may name anything this document declares, so it waits for the
 	// exits as well.
-	g.endings(s.Endings)
+	g.endings(s.Endings, exits)
 	g.scenarios(s.Scenarios, singleRoomBindable(gp, g, exits))
 	// A binding whose creature is gone is refused the way a prop declaration
 	// with no live owner is — a declaration may not outlive the thing it

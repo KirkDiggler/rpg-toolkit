@@ -571,7 +571,7 @@ type DispositionData struct {
 // TriggerData is the persistent representation of one [Trigger] — the
 // predicate grammar on the wire (rpg-project#375). Kind is one of
 // reached_position, external, member_down, exited_holding, round, fact,
-// stance and holds, and the other fields are populated per kind exactly as
+// stance, holds and left, and the other fields are populated per kind exactly as
 // [EndingData]'s own are; a disposition's until persists as one of these,
 // an ending is one of these plus its key, and an option's requirement is a
 // fact or a holds (rpg-project#569) — `holds` naming its prop in Item.
@@ -609,6 +609,8 @@ func triggerDataFrom(t Trigger) TriggerData {
 		return TriggerData{Kind: "stance", Between: []FactionID{t.Between[0], t.Between[1]}, Stance: string(t.Stance)}
 	case TriggerHolds:
 		return TriggerData{Kind: "holds", Item: t.Prop}
+	case TriggerLeft:
+		return TriggerData{Kind: "left", Exit: t.Exit}
 	}
 	return TriggerData{}
 }
@@ -643,6 +645,8 @@ func triggerFromData(td TriggerData) (Trigger, error) {
 		return TriggerStance{Between: [2]FactionID{td.Between[0], td.Between[1]}, Stance: Stance(td.Stance)}, nil
 	case "holds":
 		return TriggerHolds{Prop: td.Item}, nil
+	case "left":
+		return TriggerLeft{Exit: td.Exit}, nil
 	default:
 		return nil, fmt.Errorf("unknown trigger kind %q: %w", td.Kind, ErrNoEnding)
 	}
@@ -2149,6 +2153,12 @@ type EndingData struct {
 	Fact    FactID      `json:"fact,omitempty"`
 	Between []FactionID `json:"between,omitempty"`
 	Stance  string      `json:"stance,omitempty"`
+
+	// If and Outcome carry a `left` ending's [EndingInput.If] and
+	// [EndingInput.Result] (rpg-project#716). Both omitted when empty, so an
+	// ending written before them is byte-identical.
+	If      *TriggerData `json:"if,omitempty"`
+	Outcome EndingResult `json:"outcome,omitempty"`
 }
 
 // triggerData is the ending's predicate half, as a [TriggerData].
@@ -2161,11 +2171,19 @@ func (ed EndingData) triggerData() TriggerData {
 
 // endingDataFrom is an ending as the blob carries it: its key, and its
 // trigger rendered by the one switch every trigger goes through.
-func endingDataFrom(key string, td TriggerData) EndingData {
-	return EndingData{
-		Key: key, Kind: td.Kind, At: td.At, Member: td.Member, Exit: td.Exit, Item: td.Item,
+func endingDataFrom(de declaredEnding) EndingData {
+	td := triggerDataFrom(de.trigger)
+	out := EndingData{
+		Key: de.key, Kind: td.Kind, At: td.At, Member: td.Member, Exit: td.Exit, Item: td.Item,
 		Round: td.Round, Fact: td.Fact, Between: td.Between, Stance: td.Stance,
+		Outcome: de.result,
 	}
+	if de.cond != nil {
+		cond := triggerDataFrom(de.cond)
+		out.If = &cond
+	}
+
+	return out
 }
 
 // ToData returns a persistent snapshot of this Encounter.
@@ -2256,7 +2274,7 @@ func (e *Encounter) snapshot() EncounterData {
 	// switch dispositions' untils go through too (triggerDataFrom).
 	endingsData := make([]EndingData, len(e.endings))
 	for i, de := range e.endings {
-		endingsData[i] = endingDataFrom(de.key, triggerDataFrom(de.trigger))
+		endingsData[i] = endingDataFrom(de)
 	}
 
 	// Deep-copy everMembers in sorted order for determinism
@@ -2704,7 +2722,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		seenEndingKeys[ed.Key] = true
 
 		switch ed.Kind {
-		case "reached_position", "external", "member_down", "exited_holding", "round", "fact", "stance":
+		case "reached_position", "external", "member_down", "exited_holding", "round", "fact", "stance", "left":
 		default:
 			return nil, fmt.Errorf("load encounter: unknown ending kind %q: %w: %w", ed.Kind, ErrInvalidData, ErrNoEnding)
 		}
@@ -2746,6 +2764,16 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			return nil, fmt.Errorf(
 				"load encounter: ending %q exited_holding names exit %q and item %q, and needs both: %w: %w",
 				ed.Key, ed.Exit, ed.Item, ErrInvalidData, ErrNoEnding)
+		}
+
+		// A `left` ending's `if` is a predicate in the one grammar, so it is
+		// refused here as any persisted trigger is: a kind this build does
+		// not write is bytes that are not a condition. Which kinds an `if`
+		// may be is validateEndingTriggers' question, below.
+		if ed.If != nil {
+			if _, ierr := triggerFromData(*ed.If); ierr != nil {
+				return nil, fmt.Errorf("load encounter: ending %q if: %w: %w", ed.Key, ErrInvalidData, ierr)
+			}
 		}
 	}
 
@@ -2979,7 +3007,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// switch on ed.Kind exists exactly once, not twice.
 	endingInputsForValidation := make([]EndingInput, len(data.Endings))
 	for i, ed := range data.Endings {
-		endingInputsForValidation[i] = EndingInput{Key: ed.Key, Trigger: endingTriggerFromData(ed)}
+		endingInputsForValidation[i] = EndingInput{
+			Key: ed.Key, Trigger: endingTriggerFromData(ed), If: endingIfFromData(ed), Result: ed.Outcome,
+		}
 	}
 	if err := validateEndingTriggers(f, endingInputsForValidation); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
@@ -3395,8 +3425,11 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 
 	// Restore outcome if present
 	if data.Outcome != nil {
+		// THE RESULT IS THE DECLARED ENDING'S, read back from it rather than
+		// stored beside it (rpg-project#716), so the two cannot disagree.
 		outcome := &Outcome{
 			Ending:  data.Outcome.Ending,
+			Result:  e.resultOf(data.Outcome.Ending),
 			At:      data.Outcome.At,
 			Members: make([]MemberOutcome, len(data.Outcome.Members)),
 		}
@@ -3467,6 +3500,20 @@ func triggersOf(endings []EndingInput) []Trigger {
 // skipped those checks.
 func endingTriggerFromData(ed EndingData) Trigger {
 	t, err := triggerFromData(ed.triggerData())
+	if err != nil {
+		return nil
+	}
+	return t
+}
+
+// endingIfFromData is a persisted ending's `if`, or nil when it has none.
+// Its kind was refused earlier in LoadEncounter if this build does not
+// write it, for [endingTriggerFromData]'s reason.
+func endingIfFromData(ed EndingData) Trigger {
+	if ed.If == nil {
+		return nil
+	}
+	t, err := triggerFromData(*ed.If)
 	if err != nil {
 		return nil
 	}

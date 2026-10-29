@@ -27,7 +27,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strconv"
 	"testing"
 
@@ -166,11 +165,6 @@ type castleHost struct {
 	// noReload opts a route out of [kingScene.reload]: the encounter is never
 	// saved and loaded back between turns.
 	noReload bool
-
-	// without names endings of the file a route opens without, so a run the
-	// ending would close plays on past it: the fall route keeps playing after
-	// the king is down, where `king-slain` would settle it.
-	without []string
 }
 
 // openTheCastleAs compiles the file and opens it the way the host says.
@@ -206,12 +200,7 @@ func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 
 	strikes := &[]cellsStrike{}
 	standing := &castleStanding{down: map[encounter.MemberID]bool{}}
-	endings := []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}
-	for _, e := range compiled.Endings {
-		if !slices.Contains(host.without, e.Key) {
-			endings = append(endings, e)
-		}
-	}
+	endings := append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, compiled.Endings...)
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field:   compiled.Field,
 		Members: members,

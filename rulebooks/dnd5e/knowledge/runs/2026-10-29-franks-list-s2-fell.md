@@ -9,6 +9,7 @@ Slice [rpg-project#716](https://github.com/KirkDiggler/rpg-project/issues/716) o
 - The facts projection carries the target, and `WhenData` persists `who` — [rpg-toolkit#2151](https://github.com/KirkDiggler/rpg-toolkit/pull/2151).
 - The dialect reads `fell: { who, within, on/as }`, refuses `who` on any other deed by that deed's name, and seals it to a monster placed in the file — [rpg-toolkit#2151](https://github.com/KirkDiggler/rpg-toolkit/pull/2151).
 - The castle's two knights carry `{ when: { fell: { who: king, within: 3, on: ally } }, away: enemy, weight: 3 }`, and a castle route proves the knight who saw the king fall has the row and the one who did not does not — [rpg-toolkit#2151](https://github.com/KirkDiggler/rpg-toolkit/pull/2151).
+- An ending may wait for the party to leave: `when: { left: <exit> }`, with an optional `if` read as truth at that moment and a required `outcome: success|failure` carried on `Outcome.Result`; the castle's `king-slain` becomes two endings at a new `front-door` exit, and the walk site gains the same pair — [rpg-toolkit#2152](https://github.com/KirkDiggler/rpg-toolkit/pull/2152).
 
 ## Decided
 
@@ -20,6 +21,10 @@ Slice [rpg-project#716](https://github.com/KirkDiggler/rpg-project/issues/716) o
 - A fall is filed by who fell as well as who caused it, and only a fall: `deed.FiledUnder` keys `fell` by actor, verb and target, while `attacked`, `intimidated`, `persuaded` and `fled` keep filing by actor and verb until a use case asks whom. Kirk, 2026-10-29: "go with the first option, file by who fell. maybe the target will be the right answer but I will wait for a use case to show that." — [rpg-toolkit#2149](https://github.com/KirkDiggler/rpg-toolkit/pull/2149), [rpg-project#716](https://github.com/KirkDiggler/rpg-project/issues/716).
 - An encounter ends when the party leaves by the front door, and the king's state at that moment is the outcome: down is success, alive is failure. Kirk, 2026-10-29: "I think all encounters will be a leave condition. walk out the front door to end. king taken care of? no? failure, yes? success." The dialect cannot say this today; the form is proposed to the lead and not built — [rpg-project#722](https://github.com/KirkDiggler/rpg-project/issues/722).
 - The castle route opens without `king-slain`, and that choice is stated in the route, not in the file — [rpg-toolkit#2151](https://github.com/KirkDiggler/rpg-toolkit/pull/2151).
+- The last standing player through the door ends the run; a down member keeps nobody in. Kirk, 2026-10-29: "last one out ends it, go with your lean." — [rpg-toolkit#2152](https://github.com/KirkDiggler/rpg-toolkit/pull/2152).
+- An `if` is legal only beside `left`, and is a `down`, `fact` or `stance`; a stance the pair holds from the start is a fine `if`, since it is a state read at the door, not a turn waited for — [rpg-toolkit#2152](https://github.com/KirkDiggler/rpg-toolkit/pull/2152).
+- `Outcome.Result` is read from the declared ending, never stored beside it, so a reloaded closed run cannot disagree with its ending — [rpg-toolkit#2152](https://github.com/KirkDiggler/rpg-toolkit/pull/2152).
+- PR C is stacked on B's branch because the castle fold edits the fixture B edits; retarget C to main before B merges — [rpg-toolkit#2152](https://github.com/KirkDiggler/rpg-toolkit/pull/2152).
 
 ## Found
 
@@ -31,6 +36,10 @@ Slice [rpg-project#716](https://github.com/KirkDiggler/rpg-project/issues/716) o
 - The web form offering `fell` and `who` (`answerVocabulary.ts`) is the third PR of this slice and is not started — [rpg-project#716](https://github.com/KirkDiggler/rpg-project/issues/716).
 - The repo's `.githooks/pre-commit` is not installed in this clone, so its checks were run by hand — [run-tests how-to](../../../../docs/how-to/run-tests.md).
 - The local `golangci-lint` is v2.15.0, not the pinned v2.3.1, and reports goconst findings main does not have in CI. The pinned binary panics under Go 1.27 and runs clean under go1.25.14, CI's toolchain — [`.golangci-version`](../../../../.golangci-version).
+- The castle declared no front door, only a `postern` side gate. `front-door` is declared at the party's start cell — [castle exits](../../encounter/dungeonspec/testdata/world-builder-v4-castle.yaml).
+- `king-deposed` and `freed` still end the castle the moment their fact lands, which the "every encounter is a leave condition" ruling may want moved to the door too — [castle endings](../../encounter/dungeonspec/testdata/world-builder-v4-castle.yaml).
+- The outcome reaches no client yet: `session`, rpg-api, the protos and the web Debug record carry the ending key and not `Outcome.Result`, and the studio form does not offer `left`, `if` or `outcome`. The ended beat does carry `outcome` — [rpg-toolkit#2152](https://github.com/KirkDiggler/rpg-toolkit/pull/2152).
+- A last player who leaves by the lobby, with monsters still in the run, leaves it open and ownerless, as before this slice — [`encounter.go`](../../encounter/encounter.go).
 
 ## Mistaken
 
@@ -38,3 +47,5 @@ Slice [rpg-project#716](https://github.com/KirkDiggler/rpg-project/issues/716) o
 - The first encounter test asserted the fall's place in offset coordinates, while a deed's place is the board's absolute cell — [rpg-toolkit#2151](https://github.com/KirkDiggler/rpg-toolkit/pull/2151).
 - The S2 walk site (`s2-fell-walk.yaml`, outside this repo) first had a wall with no `openings` key, which the World Builder dialect requires; it now writes `openings: []` — [rpg-project#716](https://github.com/KirkDiggler/rpg-project/issues/716).
 - The first castle seal test expected the v2 dialect's prop sentence, which the World Builder dialect does not produce — [rpg-toolkit#2151](https://github.com/KirkDiggler/rpg-toolkit/pull/2151).
+- The first cut of the stance check's split left half the old loop in the function it came out of, and the file did not build — [rpg-toolkit#2152](https://github.com/KirkDiggler/rpg-toolkit/pull/2152).
+- `Status` and the reached-position close copied the outcome without its result, so a closed run read back said no result; both now carry it — [rpg-toolkit#2152](https://github.com/KirkDiggler/rpg-toolkit/pull/2152).

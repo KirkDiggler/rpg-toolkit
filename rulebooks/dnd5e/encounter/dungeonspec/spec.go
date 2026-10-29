@@ -304,6 +304,20 @@ type EndingSpec struct {
 
 	// When is the predicate that fires it. REQUIRED. See [PredicateSpec].
 	When *PredicateSpec `yaml:"when"`
+
+	// If is what must also hold, as world truth, when a `{ left: <exit> }`
+	// ending fires (rpg-project#716): `{ down }`, `{ fact }` or
+	// `{ stance }`. Optional, and legal only beside `left`. When it does not
+	// hold, the next ending in the list is asked, so a `left` with an `if`
+	// and a plain `left` after it are success and failure at one door:
+	//
+	//	- { id: king-slain, when: { left: front-door }, if: { down: king }, outcome: success }
+	//	- { id: king-lives, when: { left: front-door }, outcome: failure }
+	If *PredicateSpec `yaml:"if,omitempty" json:"If,omitempty"`
+
+	// Outcome is what the ending means for the party: `success` or
+	// `failure`. REQUIRED beside `left`, optional otherwise.
+	Outcome string `yaml:"outcome,omitempty" json:"Outcome,omitempty"`
 }
 
 // IntelSpec is one authored piece of knowledge: an id, and what knowing it
