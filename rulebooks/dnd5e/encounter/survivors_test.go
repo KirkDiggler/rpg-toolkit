@@ -26,6 +26,8 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/deed"
+	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 )
@@ -258,6 +260,28 @@ func (s *SurvivorsSuite) beaten() *encounter.Encounter {
 	return enc
 }
 
+// story is every beat one member was told, in order.
+func (s *SurvivorsSuite) story(enc *encounter.Encounter, member core.EntityID) []record.Entry {
+	out, err := enc.Story(&encounter.StoryInput{Audience: member})
+	s.Require().NoError(err)
+
+	return out
+}
+
+// heldPersuade reports whether an observer holds the hero's persuade deed:
+// the deed a beaten Persuasion line lands on its witnesses.
+func (s *SurvivorsSuite) heldPersuade(enc *encounter.Encounter, observer core.EntityID) bool {
+	holdings, err := enc.View(&encounter.ViewInput{Member: observer})
+	s.Require().NoError(err)
+	for _, h := range holdings {
+		if h.Channel == deed.Channel && h.Subject == deed.Subject(svHero, encounter.DeedPersuade) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // ids is the ids of a list of lines, in order.
 func (s *SurvivorsSuite) ids(options []encounter.Option) []string {
 	out := make([]string, 0, len(options))
@@ -376,13 +400,21 @@ func (s *SurvivorsSuite) TestARefusalThenABlowTurnsThePairHostileAgain() {
 // before anything is written.
 func (s *SurvivorsSuite) TestSpeakingToADownMemberIsRefused() {
 	enc := s.beaten()
-	before := len(enc.ToData().Journal.Facts)
+	facts := len(enc.ToData().Journal.Facts)
+	beats := map[core.EntityID]int{}
+	for _, id := range []core.EntityID{svHero, svLeader, svFollower1, svFollower2} {
+		beats[id] = len(s.story(enc, id))
+	}
 
 	_, err := s.say(enc, svLeader, "yield", "persuasion", true)
 
 	s.Require().ErrorIs(err, encounter.ErrMemberDown)
 	s.Contains(err.Error(), `"leader" is down and cannot answer`)
-	s.Len(enc.ToData().Journal.Facts, before, "a refused line writes nothing")
+	s.Len(enc.ToData().Journal.Facts, facts, "a refused line teaches nothing")
+	for id, n := range beats {
+		s.Len(s.story(enc, id), n, "%s is told no beat: no spoke, no answered", id)
+		s.False(s.heldPersuade(enc, id), "%s holds no persuade deed about the hero", id)
+	}
 	offered, err := enc.OptionsFor(svHero, svLeader)
 	s.Require().NoError(err)
 	s.Empty(offered, "and a down member is offered as speaking nothing")

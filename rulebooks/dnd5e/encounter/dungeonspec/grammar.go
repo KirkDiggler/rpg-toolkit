@@ -458,12 +458,14 @@ const (
 	errOptionNoSay     = "the option does not say what the character says"
 	errOptionNoCheck   = "this option needs at least one way to make its check — an ability and a DC"
 	errOptionPropFlees = "a prop cannot run: `flee` is a creature's answer"
+	errOptionsEmpty    = "`options` lists nothing — omit it, or write a line it can be spoken to with"
 )
 
 // options validates the lines an author wrote on a creature or a prop
 // ([OptionSpec], rpg-project#569), at `<path>.options[i]`.
 //
-// Refusals per option, each its own sentence: no id; an id already used on
+// An empty list is refused whole ([errOptionsEmpty]). Refusals per option,
+// each its own sentence: no id; an id already used on
 // this binding; no line; a check with no way through, or an approach that
 // rolls nothing or has nothing to beat ([grammar.approaches], the lock's own
 // grammar); a `requires` that is neither `{ fact }` nor `{ holds }`; a `holds`
@@ -476,6 +478,15 @@ const (
 // — the universe a `holds` may name. isProp says the options are a prop's,
 // whose rows may not `flee`.
 func (g *grammar) options(path string, options []OptionSpec, props map[string]bool, isProp bool) {
+	// AN EMPTY LIST IS REFUSED, NOT READ AS ABSENT — a verdict's own rule
+	// one key up. `options` is a layered key (rpg-project#718): absent means
+	// the layer below speaks, so a member that writes `options: []` would
+	// silently speak its faction's lines, the zero value lying.
+	if options != nil && len(options) == 0 {
+		g.fail(path+".options", "%s", errOptionsEmpty)
+
+		return
+	}
 	seen := map[string]int{}
 	for i, o := range options {
 		p := fmt.Sprintf("%s.options[%d]", path, i)

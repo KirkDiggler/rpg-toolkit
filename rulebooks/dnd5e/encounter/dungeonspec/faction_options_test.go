@@ -238,3 +238,50 @@ func (s *FactionOptionsSuite) TestANullOptionsIsRefused() {
 	s.Require().Error(err)
 	s.Contains(fmt.Sprint(err), "factions[0].options")
 }
+
+// TestAnEmptyOptionsListIsRefusedNotReadAsAbsent: `options` is a layered key,
+// so `options: []` on a member would otherwise silently speak its faction's
+// lines. Refused by name at its own path — on a creature, a prop and a
+// faction alike, the sentence an empty verdict earns.
+func (s *FactionOptionsSuite) TestAnEmptyOptionsListIsRefusedNotReadAsAbsent() {
+	const message = "`options` lists nothing — omit it, or write a line it can be spoken to with"
+	cases := []struct {
+		name, root, gameplay, path string
+	}{
+		{
+			name: "a creature", root: bandLines,
+			gameplay: "    monsterBindings:\n      goblin-1: { faction: band, options: [] }\n",
+			path:     "room.room.monsterBindings.goblin-1.options",
+		},
+		{
+			name:     "a prop",
+			gameplay: "    propBindings:\n      table: { options: [] }\n",
+			path:     "room.room.propBindings.table.options",
+		},
+		{
+			name: "a faction", root: "factions:\n  - { id: band, options: [] }\n",
+			gameplay: "    monsterBindings:\n      goblin-1: { faction: band }\n",
+			path:     "factions[0].options",
+		},
+	}
+	for _, c := range cases {
+		s.Run(c.name, func() {
+			requireExactDefect(s.T(), refusals(s.T(), v4With(c.root, c.gameplay)), c.path, message)
+		})
+	}
+
+	s.Run("a v2 placement", func() {
+		errs := refusals(s.T(), `
+version: 2
+key: v2-empty
+orientation: pointy
+void: opaque
+regions:
+  - { id: yard, name: Yard, archetype: crypt, lighting: { intensity: 1 }, cells: [[[0,0],[1,0],[2,0]]] }
+start: [0, 0]
+place:
+  - { id: goblin, ref: "dnd5e:monsters:goblin", at: [2, 0], options: [] }
+`)
+		requireExactDefect(s.T(), errs, "place[0].options", message)
+	})
+}
