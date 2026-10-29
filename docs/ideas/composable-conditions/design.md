@@ -46,6 +46,9 @@ Recorded close to verbatim, 2026-10-28:
 > I def do not want to bring in jsonata at the seams anyway. I like the closed
 > vocabulary.
 
+> why would the example need the rulebook? this is the tool the rulebook would
+> use right?
+
 > core.Effect was ahead of its time. not imported means it is free for the
 > taking or at min deleted … the machine in resolution now speaks that
 > language. a modern core.Effects would do it the new way. the goal of
@@ -111,9 +114,10 @@ What the tree holds on 2026-10-28, at `rpg-toolkit` main:
 Four nouns, kept apart. Three of them already have a home. The condition is
 a **machine**: explicit states, transitions that fire on beats under guards,
 and outputs a state emits while the machine sits in it. Guards and amounts
-are written in a **closed vocabulary** that is the frame's own fact list, so
-a recipe is data from the first slice and is checked against the frame when
-it loads.
+are written in a **closed vocabulary**. The machine is a neutral tool that
+knows the grammar; the rulebook plugs in the vocabulary (its facts, beats,
+output kinds and amounts), so a recipe is data from the first slice and is
+checked against the vocabulary it was given when it loads.
 
 ```mermaid
 flowchart LR
@@ -247,14 +251,27 @@ row, so Rage answers four rows where today it answers one.
 The contract above is what a condition author writes. This is what they
 write against: the vocabulary, the bag, the three kinds, and the machine.
 Names are the plan's to settle; the shape and the dependencies are the
-design's. Everything here is in `rulebooks/dnd5e/conditions` (E9) and uses
-only what already exists: `events.TypedTopicDef`, `events.ChainedTopicDef`,
-`core/chain`, `contributions.Frame`, the registry's `descriptor`.
+design's. Two layers (E9): the **tool** imports `core` and `events` only and
+holds the grammar, the machine and the blob; the **plug** is the rulebook's
+vocabulary, which for dnd5e reads `contributions.Frame`, the typed topics,
+the chains and their stages, and is handed to the tool at registry load.
+
+```go
+// vocabulary is what a rulebook plugs into the tool. Validate checks every
+// recipe against the one it was given; the studio reads the same tables.
+type vocabulary struct {
+    facts   map[factName]factSpec   // name → kind of scalar + reader over the rulebook's opaque frame
+    beats   map[beat]beatSpec       // name → typed topic + the selectors it supports
+    kinds   map[kindName]kindSpec   // name → attach(ctx, bus, host, params) for one output kind
+    amounts map[amountName]amountFn // name → value(frame, params)
+}
+```
 
 ### The closed vocabulary
 
-A guard is a tree of `all`, `any`, `not` over leaves. A leaf is one of a
-short, closed set, and every leaf names something that already exists:
+A guard is a tree of `all`, `any`, `not` over leaves. The tool knows the
+leaf shapes; the rulebook supplies the names. For dnd5e every leaf names
+something that already exists:
 
 | leaf | reads | answers |
 |------|-------|---------|
@@ -271,7 +288,7 @@ Trackers listen to any typed topic with an `about` selector that names which
 id on the event must be the holder.
 
 **Validate runs at load, not at the table.** A recipe whose guard names a
-fact the frame does not have, a flag the bag does not declare, a state no
+fact the vocabulary does not have, a flag the bag does not declare, a state no
 transition reaches, a transition to a state that does not exist, or an
 initial state that is terminal is refused by name when the registry loads
 it, the way `actions.Definition.Validate` refuses a cost no ledger holds.
@@ -460,10 +477,11 @@ hold.
   act on things with the state param filled in is what we want" (operator,
   2026-10-28).
 - **E3. Guards and amounts are a closed vocabulary, validated at load.** A
-  guard is `all`, `any`, `not` over leaves that name a frame fact, a bag flag,
-  the beat's round against the anchor, or an actor's class level, with a short
-  list of ops; an amount is one of a short list of named functions. No
-  expression language crosses the seam. An unknown fact answers Depends, not
+  guard is `all`, `any`, `not` over leaves that name a fact, a bag flag, the
+  beat's round against the anchor, or an actor's class level, with a short
+  list of ops; an amount is one of a short list of named functions. The tool
+  owns the grammar; the rulebook owns the names (for dnd5e, the frame's
+  facts). No expression language crosses the seam. An unknown fact answers Depends, not
   false, and a recipe naming a fact, flag or state that does not exist is
   refused when the registry loads it. *Because* the two dead attempts invented
   their own filter strings and needed an interpreter that knew every one; the
@@ -500,14 +518,19 @@ hold.
   a finding, added to the table with its test on its second use, never worked
   around with a closure in a recipe. *Because* a vocabulary
   widened on a gap is the thing the dead attempts became.
-- **E9. Rulebook-neutral by lift, not by birth.** The machine (ref, bag,
-  states, transitions, end, blob) grows in `rulebooks/dnd5e/conditions` and is
-  lifted to a neutral module when a second puller arrives: a second rulebook,
-  or the studio. `core/effect` is deleted in the first slice so the ground
-  and the import path are free. *Because* `core` is bus-free by design and
-  the lift that happened early is the one sitting unused; and "no sense
-  pretending like previous us knew how this whole thing would turn out"
-  (operator, 2026-10-28).
+- **E9. The machine is a tool; the rulebook plugs in.** The tool (recipe
+  grammar, guard evaluation, bag and blob, Validate, the machine runner)
+  imports `core` and `events` only and is formed in `examples/` with a toy
+  game, then launches as its own module. The rulebook supplies a vocabulary:
+  fact readers over its own frame, beats over its typed topics, output kinds
+  over its chains, amounts. The tool never imports a rulebook. `core/effect`
+  is deleted in S1 so the ground and the import path are free. *Because* "why
+  would the example need the rulebook? this is the tool the rulebook would
+  use" (operator, 2026-10-28); generic tools, not game rules, is the
+  toolkit's first law; and play and world were formed exactly this way. An
+  earlier draft grew the machine inside dnd5e and lifted later; that applied
+  the mind ruling where it does not fit, since here the mechanism is known
+  and only the vocabulary is the rulebook's.
 - **E10. Features become Definitions.** Rage, Reckless Attack, Action Surge
   and Flurry of Blows move from `core.Action` to `actions.Definition`, their
   charges as `SpendProfile.Pools`, their condition as the delivered effect.
@@ -530,8 +553,8 @@ hold.
    outputs as data; guards and amounts from a short table that names the
    frame's facts; a validator at load; the kinds in Go. **Chosen**
    (operator, 2026-10-28). It is data from the first slice, it keeps the
-   descriptor law and the resolution seam untouched, and it defers the
-   neutral home to the moment something pulls on it. An earlier draft of this
+   descriptor law and the resolution seam untouched, and the tool is neutral
+   from birth with the rulebook as its first plug. An earlier draft of this
    design used typed Go atoms with closures and generics; the operator read
    it as "very code centric" and it was replaced by this.
 3. **A machine with a general expression language.** States and transitions
@@ -551,22 +574,26 @@ Named here; the plan creates the sub-issues and may re-cut them. Each code
 slice is one module PR (one nearest `go.mod`), docs may ride along.
 
 - **S0. Forming, in `examples/condition-machine`.** One module at Go 1.27
-  that imports the dnd5e root by pinned version for `contributions.Frame`
-  and the typed topics, and holds the recipe, state, output, guard, amount,
-  act and blob structs, `Validate`, the machine, Rage, Blessed and Resistance
-  as recipes with a transition-walk test each, and a benchmark table for
-  guard evaluation and a beat. It is where play and world were formed before
-  they launched. It cannot run the existing rage tests, so the identical-blob
-  proof stays in S1. **It is deleted in the S1 PR that lands the machine in
-  conditions**, and the knowledge line says what moved. Needs the CI PR of
-  rpg-toolkit#2145 first, so CI runs 1.27 natively.
-- **S1. The machine, the vocabulary, and Rage.** `recipe`, `machine`, the
-  bag, `end`, the guard tree with the leaves and ops in the table, the
-  amounts, the beats, `Validate`, the output and tracker kinds Rage needs,
-  and `RagingCondition` rebuilt as the recipe above with the identical blob.
-  The existing rage tests run unchanged, plus the transition-walk test moved
-  from S0. Assumes the dnd5e root is on Go 1.27 (rpg-toolkit#2145). A move
-  from S0, not a design. Separate module PR: delete
+  importing `core` and `events` only: the recipe, state, output, guard,
+  amount, act and blob structs, the vocabulary plug, `Validate`, the machine,
+  and a toy game small enough to read in one sitting (a frame with three
+  facts, two beats, one chain, one output kind) with recipes shaped like
+  Rage, Blessed and Resistance, a transition-walk test each, and a benchmark
+  table for guard evaluation and a beat. It is where play and world were
+  formed before they launched. It proves the contract of the plug, the
+  three-valued semantics, ordering on a beat, the flat blob and Validate's
+  refusals; it cannot prove the dnd5e Rage, which is S1's. **It is deleted
+  in the S1 PR that launches the tool**, and the knowledge line says what
+  moved. Needs the CI PR of rpg-toolkit#2145 first, so CI runs 1.27 natively.
+- **S1. The tool launches; dnd5e plugs in; Rage.** Two module PRs in order.
+  First the tool graduates from `examples/` to its own module (name is the
+  plan's), unchanged, with the example deleted in the same PR. Then the dnd5e
+  root ships its vocabulary (the fact readers over `contributions.Frame`, the
+  beats over its typed topics, the output and tracker kinds Rage needs, the
+  amounts) and `RagingCondition` rebuilt as the recipe above with the
+  identical blob. The existing rage tests run unchanged beside a dnd5e
+  transition-walk test. Assumes the dnd5e root is on Go 1.27
+  (rpg-toolkit#2145). Separate module PR: delete `core/effect`. Separate module PR: delete
   `core/effect`.
 - **S2. The 1d4 family.** Blessed, Baned, Divine Favor, Guided, Inspired:
   roll bonuses and offered dice, source-qualified bags.
@@ -578,9 +605,10 @@ slice is one module PR (one nearest `go.mod`), docs may ride along.
   surface (status, description) it still owns.
 - **S5. The long tail.** The remaining conditions, each either composed from
   atoms or kept hand-written inside the shell under E8, with a count of each.
-- **S6. The lift decision.** With five slices behind it, decide the neutral
-  home (a new module, or `events`), what moves, and what the studio form is.
-  An ADR if the seam moves.
+- **S6. The studio form.** With five slices behind it, the recipe shape has
+  stopped moving; decide what the studio reads (the JSON recipe as content
+  with a ref) and how a rulebook's vocabulary tables reach it. An ADR if the
+  resolution seam moves.
 
 Spells are already on the activation path; the decomposition they need is
 of the conditions they deliver, which S2 and S3 cover. Instantaneous spells
@@ -589,9 +617,9 @@ conditions.
 
 ## Settled, and open
 
-**Settled in conversation, 2026-10-28, ruled by the operator:** the shape
-is formed in `examples/` first, with tests and benchmarks, and deleted when
-it lands (S0); the target
+**Settled in conversation, 2026-10-28, ruled by the operator:** the machine
+is a neutral tool the rulebook plugs into, formed in `examples/` with a toy
+game, launched as its own module, never importing a rulebook (E9, S0, S1); the target
 is one data structure per condition, driven fully by its effects, under one
 ref (E1, E2); hand-written Go is the form for now, content authoring comes
 with the studio (E9); cost lives outside the condition (E7); `core/effect` is
@@ -621,7 +649,9 @@ the seam, and nothing is brought in or copied (E2, E3, E11).
   hand-written types are today), or a JSON file under `conditions/recipes/`
   embedded at build. Recommendation: Go literal at S1, JSON when the studio
   reads them, since the shape is identical and the literal gets `go vet`.
-- [ ] Which neutral home at S6. Not decided before S6 by design.
+- [ ] The tool's module name and path at S1. Recommendation: the plan names
+  it after what it is, a machine for conditions, beside `play/` and `world/`,
+  not under `mechanics/`.
 
 ## Measures
 
