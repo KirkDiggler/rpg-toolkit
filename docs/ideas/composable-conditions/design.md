@@ -54,6 +54,10 @@ Recorded close to verbatim, 2026-10-28:
 > the machine package under the main module, watch the seams. I think we can
 > get some tools out of this project and not just composable conditions.
 
+> I think the dnd5e conditions will remain in go code and refactoring that
+> with a low level tool is a win by itself. that it enables a loading of
+> content from someone in the studio is just bonus.
+
 > core.Effect was ahead of its time. not imported means it is free for the
 > taking or at min deleted … the machine in resolution now speaks that
 > language. a modern core.Effects would do it the new way. the goal of
@@ -652,7 +656,11 @@ round-went-backwards leaves; ops `eq`, `gte`; the by-class-level amount; beats:
 turn end, dropped to zero, rest, combat end, post attack roll, damage received;
 kinds: damage bonus, resist, advantage), every other row arriving with the
 recipe that first reads it and its test, ruled 2026-10-28: "A, trimmed. only
-what rage reads"; the target
+what rage reads"; **recipes are Go literals beside their descriptors**, with a
+JSON round-trip test on every recipe keeping the data shape honest; the dnd5e
+conditions stay in Go code, and refactoring them onto a low-level tool is the
+win by itself, content loaded from the studio being the bonus, ruled
+2026-10-28; the target
 is one data structure per condition, driven fully by its effects, under one
 ref (E1, E2); hand-written Go is the form for now, content authoring comes
 with the studio (E9); cost lives outside the condition (E7); `core/effect` is
@@ -663,10 +671,6 @@ the seam, and nothing is brought in or copied (E2, E3, E11).
 
 **Open, for the design PR's checklist:**
 
-- [ ] Where a recipe lives at S1: a Go literal beside its descriptor (as the
-  hand-written types are today), or a JSON file under `conditions/recipes/`
-  embedded at build. Recommendation: Go literal at S1, JSON when the studio
-  reads them, since the shape is identical and the literal gets `go vet`.
 - [ ] The package name at S1. Recommendation: `machine`, under the dnd5e
   root, since that is what it is and the name survives a later move.
 
