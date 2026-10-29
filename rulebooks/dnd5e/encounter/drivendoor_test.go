@@ -4,12 +4,15 @@
 package encounter_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -36,6 +39,7 @@ var drivenDoorSheets = sheetFacts{
 	noiseKeen:  {SpeedFeet: 30},
 	noiseSharp: {SpeedFeet: 30},
 	noiseAlice: {SpeedFeet: 30},
+	noiseDull:  {SpeedFeet: 30},
 }
 
 // drivenHall is the hall with door-ab in the state given and teaching
@@ -203,18 +207,7 @@ func (s *DrivenDoorSuite) TestALockedDoorStillStopsTheMarch() {
 // long legs cross a two-leaf door, one leaf each way. The guard walks the
 // whole loop and the door stands open.
 func (s *DrivenDoorSuite) TestAPatrolLoopsThroughTheShutDoor() {
-	route := []spatial.Position{cellAt(3, 4), cellAt(15, 4), cellAt(15, 5), cellAt(3, 5)}
-	guard := at(noiseKeen, encounter.KindMonster, 3, 4)
-	guard.Table = encounter.Table{encounter.AnswerTime: {{Weight: 1, Toward: &encounter.Selector{Path: route}}}}
-
-	in := noiseHallSetup(encounter.DoorIsClosed(), encounter.DoorIsClosed(), drivenDoorSheets, tableDriver(),
-		guard, at(noiseAlice, encounter.KindPlayer, 25, 2))
-	// A gap two rows wide in the a|b seam, and one door standing in both.
-	in.Field.Walls = append(squareSeamWall(9, 10, 4, 5), squareSeamWall(19, 10, 5)...)
-	in.Field.Doors[0].Edges = []encounter.DoorEdge{
-		{From: cellAt(9, 4), To: cellAt(10, 4)},
-		{From: cellAt(9, 5), To: cellAt(10, 5)},
-	}
+	in, route := patrolHall()
 	enc, err := encounter.NewEncounter(in)
 	s.Require().NoError(err)
 
@@ -231,6 +224,133 @@ func (s *DrivenDoorSuite) TestAPatrolLoopsThroughTheShutDoor() {
 	s.Len(s.doorBeatsBy(enc, noiseKeen), 1, "opened once; the way back finds it open")
 }
 
+// patrolHall is the hall with a gap two rows wide in the a|b seam and one
+// shut door standing in both rows, and keen walking a loop whose two long
+// legs cross it, one leaf each way. Alice, who makes time pass, is in room c.
+func patrolHall() (*encounter.SetupInput, []spatial.Position) {
+	route := []spatial.Position{cellAt(3, 4), cellAt(15, 4), cellAt(15, 5), cellAt(3, 5)}
+	guard := at(noiseKeen, encounter.KindMonster, 3, 4)
+	guard.Table = encounter.Table{encounter.AnswerTime: {{Weight: 1, Toward: &encounter.Selector{Path: route}}}}
+
+	in := noiseHallSetup(encounter.DoorIsClosed(), encounter.DoorIsClosed(), drivenDoorSheets, tableDriver(),
+		guard, at(noiseAlice, encounter.KindPlayer, 25, 2))
+	in.Field.Walls = append(squareSeamWall(9, 10, 4, 5), squareSeamWall(19, 10, 5)...)
+	in.Field.Doors[0].Edges = []encounter.DoorEdge{
+		{From: cellAt(9, 4), To: cellAt(10, 4)},
+		{From: cellAt(9, 5), To: cellAt(10, 5)},
+	}
+
+	return in, route
+}
+
+// TestAHiddenDoorIsNeverOpened is the masquerade law on the open side: the
+// same patrol, with the door a secret nobody has found. A patrol leg is an
+// authored line, not a route the masquerade could steer, so the walk itself
+// must refuse the door: the guard stops at the wall it believes is there, and
+// the door stays shut with no beat of anybody opening it.
+func (s *DrivenDoorSuite) TestAHiddenDoorIsNeverOpened() {
+	in, _ := patrolHall()
+	in.Field.Concealments = []encounter.ConcealmentInput{
+		{ID: "secret", Checks: vaultFind(), Doors: []encounter.DoorID{noiseDoorAB}},
+	}
+	in.CheckResolver = findsNothing{}
+	in.Witness = nobodyPerceives{}
+	enc, err := encounter.NewEncounter(in)
+	s.Require().NoError(err)
+
+	for range 3 {
+		_, err := aRound(enc)
+		s.Require().NoError(err)
+	}
+
+	s.Equal(encounter.DoorClosed, s.doorState(enc, noiseDoorAB), "nobody opens a door they have not found")
+	s.Empty(s.doorBeatsBy(enc, noiseKeen))
+	region, ok := enc.RegionAt(whereIs(s.T(), enc, noiseKeen))
+	s.Require().True(ok)
+	s.Equal(encounter.RegionID("room-a"), region, "the guard never passed the wall it believes is there")
+}
+
+// TestAMarchWithAnAllyAtTheDoorOpensItAndPassesThrough: a castle guard
+// stands on [9,5], the cell in front of door-ab. The marcher may cross an
+// ally and may not stop on one, so the walk is judged whole: it crosses the
+// ally's cell, opens the door, and arrives. (Review of rpg-toolkit#2150: a
+// walk trimmed door to door ended a cell short of the ally, asked about the
+// step onto it, opened nothing, and stood still every round.)
+func (s *DrivenDoorSuite) TestAMarchWithAnAllyAtTheDoorOpensItAndPassesThrough() {
+	enc := s.drivenHall(encounter.DoorIsClosed(), append(theMarchersHall(),
+		at(noiseDull, encounter.KindMonster, 9, 5))...)
+
+	for range 3 {
+		_, err := aRound(enc)
+		s.Require().NoError(err)
+	}
+
+	s.Equal(encounter.DoorOpen, s.doorState(enc, noiseDoorAB), "the march opens the door past its ally")
+	s.Equal(cellAt(11, 5), whereIs(s.T(), enc, noiseKeen), "and arrives")
+	s.Equal(cellAt(9, 5), whereIs(s.T(), enc, noiseDull), "the ally stays at its post")
+}
+
+// TestADirectedWalkThroughAShutDoorStopsAtIt: [encounter.Encounter.Direct]
+// walks the route its caller hands it, and nothing upstream stops a caller
+// from handing it one through a shut door. A push is nobody's walk, so it
+// opens nothing: the walk ends in front of the door and the door stays shut.
+func (s *DrivenDoorSuite) TestADirectedWalkThroughAShutDoorStopsAtIt() {
+	enc := s.drivenHall(encounter.DoorIsClosed(), theMarchersHall()...)
+	route := []spatial.Position{cellAt(6, 5), cellAt(7, 5), cellAt(8, 5), cellAt(9, 5), cellAt(10, 5), cellAt(11, 5)}
+
+	out, err := enc.Direct(context.Background(), encounter.DirectInput{
+		Mover: noiseKeen, Cause: core.Ref{Module: "test", Type: "spell", ID: "shove"}, Route: route,
+	})
+	s.Require().NoError(err)
+
+	s.Equal(4, out.Moved, "it is walked to the door and no further")
+	s.Equal(cellAt(9, 5), whereIs(s.T(), enc, noiseKeen))
+	s.Equal(encounter.DoorClosed, s.doorState(enc, noiseDoorAB), "a shove does not open a door")
+	s.Empty(s.doorBeatsBy(enc, noiseKeen))
+}
+
+// TestADoorOpenedBeforeAPausedStepIsSeen: on the turn clock a hostile guard
+// in front of door-ab marches through it, and the very step through is held
+// for a reaction. The door is open and no cell was walked; Sharp, beyond the
+// door in room b, sees the guard now, because the walk's settle counts the
+// door it opened as well as the steps it took.
+func (s *DrivenDoorSuite) TestADoorOpenedBeforeAPausedStepIsSeen() {
+	guard := at(noiseKeen, encounter.KindMonster, 9, 5)
+	guard.Faction = "" // opposed to the party: the fight is on
+	guard.Table = walksTo(cellAt(12, 5))
+	in := noiseHallSetup(encounter.DoorIsClosed(), encounter.DoorIsClosed(), drivenDoorSheets, tableDriver(),
+		at(noiseAlice, encounter.KindPlayer, 4, 5), guard, at(noiseSharp, encounter.KindPlayer, 15, 5))
+	in.Field.Doors[0].Opened = drivenDoorFact
+	in.Mover = &pausingMover{pauseAt: map[int]bool{0: true}}
+	enc, err := encounter.NewEncounter(in)
+	s.Require().NoError(err)
+	s.Require().False(s.seesNow(enc, noiseSharp, noiseKeen), "precondition: the shut door hides the guard from Sharp")
+
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: noiseAlice})
+	s.Require().NoError(err)
+
+	kind, paused := enc.PauseKind()
+	s.Require().True(paused, "precondition: the step through is held")
+	s.Require().Equal(encounter.PauseTurn, kind)
+	s.Equal(cellAt(9, 5), whereIs(s.T(), enc, noiseKeen), "no cell was walked")
+	s.Equal(encounter.DoorOpen, s.doorState(enc, noiseDoorAB))
+	s.True(s.seesNow(enc, noiseSharp, noiseKeen), "the opened door let Sharp see the guard")
+}
+
+// seesNow is whether an observer's sight of a subject is current, false when
+// it holds nothing on them at all.
+func (s *DrivenDoorSuite) seesNow(enc *encounter.Encounter, observer, subject encounter.MemberID) bool {
+	view, err := enc.View(&encounter.ViewInput{Member: observer})
+	s.Require().NoError(err)
+	for _, h := range view {
+		if h.Subject == subject {
+			return h.CurrentOn(perception.Sight)
+		}
+	}
+
+	return false
+}
+
 // TestAPursuerOpensTheDoorShutInItsFace: a hostile guard hunts Alice. She
 // slips through door-ab, shuts it behind her and steps out of its line; on
 // its turn the guard walks to where it last saw her, opens the door on the
@@ -238,9 +358,9 @@ func (s *DrivenDoorSuite) TestAPatrolLoopsThroughTheShutDoor() {
 func (s *DrivenDoorSuite) TestAPursuerOpensTheDoorShutInItsFace() {
 	alice := at(noiseAlice, encounter.KindPlayer, 8, 5)
 	// No faction: opposed to the party, so seeing her starts the fight.
-	guard := encounter.MemberInput{
-		ID: noiseKeen, Kind: encounter.KindMonster, Position: cellAt(6, 5), Table: hunts(),
-	}
+	guard := at(noiseKeen, encounter.KindMonster, 6, 5)
+	guard.Faction = ""
+	guard.Table = hunts()
 	enc := s.drivenHall(encounter.DoorIsOpen(), alice, guard)
 	on, err := enc.ClockOf(&encounter.ClockOfInput{Member: noiseAlice})
 	s.Require().NoError(err)

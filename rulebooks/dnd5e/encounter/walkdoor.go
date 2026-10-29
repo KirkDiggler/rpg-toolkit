@@ -26,8 +26,10 @@ import (
 //
 // [cellQuery.doorToOpen] is the only place that decides which door a step
 // would open. The route flood asks it so the plan goes through the door
-// ([cellQuery.floodFrom], `opens`); the walk asks it again from where the
-// creature actually stands so the door it opens is the one in front of it
+// ([cellQuery.floodFrom], `opens`); the walk's end-of-walk trim asks it so the
+// walk is cut where its walker can stand with those doors open
+// ([Encounter.walkableEnd]); and each step asks it again from where the
+// creature actually stands, so the door it opens is the one in front of it
 // ([Encounter.openAhead]). A route and a walk that asked different questions
 // would hand each other paths the other refuses — rpg-toolkit#1652, one noun
 // later.
@@ -59,7 +61,9 @@ import (
 // spends no world action and no turn budget.
 
 // doorToOpen is the door a creature's own step from one cell to the next
-// would open, or nil when the step opens nothing.
+// would open, and whether there is one: ok=false, with a nil door, when the
+// step opens nothing — no door in the way, or one this walk may not open.
+// The error is a failed geometry read, never "no door".
 //
 // A DOOR IS OPENED ONLY WHEN IT IS ALL THAT CLOSES THE STEP. Exactly one
 // closed, unlocked door the walker can see as a door — an edge door standing
@@ -73,10 +77,10 @@ import (
 // The destination's OTHER facts — a creature on it, scenery, void — are not
 // this question's: the caller asks them of the cell as it always has, and a
 // door standing open says nothing about them.
-func (q *cellQuery) doorToOpen(walker MemberID, from, to spatial.Position) (*doorRecord, error) {
+func (q *cellQuery) doorToOpen(walker MemberID, from, to spatial.Position) (*doorRecord, bool, error) {
 	prop, blocked, err := q.crossingBlocked(from, to)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	return q.doorPast(walker, from, to, prop, blocked)
@@ -88,7 +92,12 @@ func (q *cellQuery) doorToOpen(walker MemberID, from, to spatial.Position) (*doo
 // twice. The fold NAMES what closes the crossing, which is what keeps this
 // cheap where it is asked most: a wall's crossing names the wall, which is
 // not a door, and is answered by one map read rather than a trace.
-func (q *cellQuery) doorPast(walker MemberID, from, to spatial.Position, prop PropID, blocked bool) (*doorRecord, error) {
+//
+// Same answer shape as doorToOpen: the door and ok=true, or nil and
+// ok=false when the step opens nothing; an error only for a failed read.
+func (q *cellQuery) doorPast(
+	walker MemberID, from, to spatial.Position, prop PropID, blocked bool,
+) (*doorRecord, bool, error) {
 	opens := func(d *doorRecord) bool {
 		return d != nil && d.state.Kind() == DoorClosed && !q.hiddenDoorTo(walker, d.id)
 	}
@@ -101,16 +110,17 @@ func (q *cellQuery) doorPast(walker MemberID, from, to spatial.Position, prop Pr
 		// might close the crossing is a footprint across it or on the cell.
 		d := q.doorOnEdge(from, to)
 		if !opens(d) {
-			return nil, nil
+			return nil, false, nil
 		}
-		if _, across, err := q.field.crossingBlocks(from, to); err != nil || across {
-			return nil, err
+		_, across, err := q.field.crossingBlocks(from, to)
+		if err != nil {
+			return nil, false, err
 		}
-		if q.field.doorStandingOn(to) != nil {
-			return nil, nil
+		if across || q.field.doorStandingOn(to) != nil {
+			return nil, false, nil
 		}
 
-		return d, nil
+		return d, true, nil
 
 	case blocked:
 		// A FOOTPRINT ACROSS THE CROSSING, named by the fold. Only a door's
@@ -118,33 +128,37 @@ func (q *cellQuery) doorPast(walker MemberID, from, to spatial.Position, prop Pr
 		// across the crossing or stand on the cell as a second door.
 		d := q.doorsByID[DoorID(prop)]
 		if d == nil || d.placement == nil || !opens(d) {
-			return nil, nil
+			return nil, false, nil
 		}
-		if _, across, err := q.field.crossingBlocksExcept(from, to, d.id); err != nil || across {
-			return nil, err
+		_, across, err := q.field.crossingBlocksExcept(from, to, d.id)
+		if err != nil {
+			return nil, false, err
+		}
+		if across {
+			return nil, false, nil
 		}
 		if on := q.field.doorStandingOn(to); on != nil && on != d {
-			return nil, nil
+			return nil, false, nil
 		}
 
-		return d, nil
+		return d, true, nil
 	}
 
 	// A FOOTPRINT DOOR STANDING ON THE DESTINATION, with the crossing clear
 	// and nothing but the door blocking the cell.
 	d := q.field.doorStandingOn(to)
 	if !opens(d) {
-		return nil, nil
+		return nil, false, nil
 	}
 	fact, err := q.cellAt(CellAtInput{Cell: to, Mover: walker})
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if !blockedOnlyBy(fact, d) {
-		return nil, nil
+		return nil, false, nil
 	}
 
-	return d, nil
+	return d, true, nil
 }
 
 // blockedOnlyBy reports whether the one thing closing a cell to its mover
@@ -172,6 +186,83 @@ func standsADoor(fact CellFact) bool {
 	return false
 }
 
+// walkableEnd is [Encounter.standableEnd] for a walk that OPENS DOORS: the
+// same two cuts — at the first step the walk cannot take, then back to the
+// last cell it may stop on — judged over the WHOLE path, with every door the
+// walk would open on its way standing open.
+//
+// WHOLE PATH, NOT DOOR TO DOOR, which is the bug it replaced (review of
+// rpg-toolkit#2150). Trimming each stretch between doors on its own cut a
+// stretch back from the cell in front of a door whenever an ally stood
+// there: passable, not standable, so the stretch ended a cell short, the
+// step left to ask about was the step onto the ally, it opened nothing, and
+// the march stood still every round with its route through the door. Judged
+// whole, the ally's cell is crossed and the walk ends on the last cell it
+// may stand on, past the door or before it.
+//
+// A door a step opens is judged as the open door: an edge or a door across
+// the crossing leaves the far cell's own fact to answer; a footprint door
+// standing on the cell is crossed and never stopped on — nobody ends a walk
+// inside a door leaf. A walk that opens nothing (`opens` false: a directive)
+// is exactly standableEnd.
+//
+// A sibling of standableEnd rather than a flag on it only because that file
+// is in flight on a parallel slice; folding the two into one is a follow-up.
+func (e *Encounter) walkableEnd(mover MemberID, path []spatial.Position, opens bool) ([]spatial.Position, error) {
+	if !opens {
+		return e.standableEnd(mover, path)
+	}
+	prev, placed := e.canvas.GetEntityPosition(string(mover))
+	if !placed {
+		return nil, nil
+	}
+	query, err := e.cellQuery()
+	if err != nil {
+		return nil, fmt.Errorf("walk end: %w", err)
+	}
+	end := -1
+	for i, cell := range path {
+		fact, crossed, err := query.walkInto(mover, prev, cell)
+		if err != nil {
+			return nil, fmt.Errorf("walk end at %v: %w", cell, err)
+		}
+		if !crossed || fact.Passage == PassageBlocked {
+			break
+		}
+		if fact.Passage == PassageStandable {
+			end = i
+		}
+		prev = cell
+	}
+	if end < 0 {
+		return nil, nil
+	}
+
+	return path[:end+1], nil
+}
+
+// walkInto is [cellQuery.stepInto] for a walk that opens doors: a step
+// through a door it would open is crossed, and the far cell is judged as it
+// stands once the door is open.
+func (q *cellQuery) walkInto(mover MemberID, prev, cell spatial.Position) (CellFact, bool, error) {
+	door, ok, err := q.doorToOpen(mover, prev, cell)
+	if err != nil {
+		return CellFact{}, false, err
+	}
+	if !ok {
+		return q.stepInto(mover, prev, cell)
+	}
+	fact, err := q.cellAt(CellAtInput{Cell: cell, Mover: mover})
+	if err != nil {
+		return CellFact{}, false, err
+	}
+	if fact.Passage == PassageBlocked && blockedOnlyBy(fact, door) {
+		fact.Passage = PassagePassThrough
+	}
+
+	return fact, true, nil
+}
+
 // openAhead opens the door in front of a walking creature, when the next
 // cell of its walk is through one, and reports whether it did.
 //
@@ -179,8 +270,8 @@ func standsADoor(fact CellFact) bool {
 // from: the door opened is the one between it and the next cell, by the
 // same [cellQuery.doorToOpen] the route read. Nothing to open — no door, a
 // locked one, a hidden one, or something else in the way — answers false and
-// opens nothing, and the walk stops there exactly as it stopped before doors
-// could be opened.
+// opens nothing, and the step goes on to meet whatever is there, as it did
+// before doors could be opened.
 //
 // THE ACTOR IS THE WALKER and the beat names it, so the record reads "gate-1
 // opens the kitchen door". The cause, when the walk has one (a table's
@@ -196,11 +287,11 @@ func (e *Encounter) openAhead(walker MemberID, next spatial.Position, cause core
 	if err != nil {
 		return false, fmt.Errorf("door ahead: %w", err)
 	}
-	door, err := query.doorToOpen(walker, from, next)
+	door, ok, err := query.doorToOpen(walker, from, next)
 	if err != nil {
 		return false, fmt.Errorf("door ahead: %w", err)
 	}
-	if door == nil {
+	if !ok {
 		return false, nil
 	}
 
@@ -213,29 +304,4 @@ func (e *Encounter) openAhead(walker MemberID, next spatial.Position, cause core
 	}
 
 	return true, nil
-}
-
-// walkOn is the part of a walk still to take after its first `taken` cells,
-// when those cells ended in front of a door the walker has just opened — or
-// nil when the walk is over.
-//
-// THE WALK IS TAKEN IN LEGS, DOOR TO DOOR. [Encounter.standableEnd] trims a
-// walk where a shut crossing stops it, which is where a door is; so a walk
-// that opens doors takes the trimmed leg, opens the door the leg stopped in
-// front of, and asks for the next leg from there with the door now open. A
-// leg that stopped short for any other reason — a budget cut onto an ally, a
-// wall, a creature in the way — is the end of the walk, as it always was.
-//
-// `opens` is false for a walk nobody chose (a directive), which never opens
-// anything.
-func (e *Encounter) walkOn(walker MemberID, path []spatial.Position, taken int, cause core.Ref, opens bool) ([]spatial.Position, bool, error) {
-	if !opens || taken >= len(path) {
-		return nil, false, nil
-	}
-	opened, err := e.openAhead(walker, path[taken], cause)
-	if err != nil || !opened {
-		return nil, false, err
-	}
-
-	return path[taken:], true, nil
 }

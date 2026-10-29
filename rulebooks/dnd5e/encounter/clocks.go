@@ -1436,7 +1436,9 @@ func (e *Encounter) disengageBeforeWalk(
 	if sheet.BonusDisengage.Ref == "" {
 		return nil, nil
 	}
-	walked, err := e.standableEnd(member, path)
+	// The cells it will walk, judged as the walk judges them: its own walk,
+	// with the doors it opens standing open ([Encounter.walkableEnd]).
+	walked, err := e.walkableEnd(member, path, true)
 	if err != nil {
 		return nil, fmt.Errorf("disengage %q: %w", member, err)
 	}
@@ -1541,7 +1543,7 @@ type walkResult struct {
 	moved int
 
 	// opened is how many shut doors the walk opened on its way
-	// ([Encounter.walkOn]). An opened door changed what somebody can see
+	// ([Encounter.openAhead]). An opened door changed what somebody can see
 	// even when no step followed it, so the walk's settle counts it.
 	opened int
 
@@ -1584,150 +1586,150 @@ func (e *Encounter) walkPath(
 ) (walkResult, error) {
 	var res walkResult
 
-	// DOOR TO DOOR ([Encounter.walkOn]): a creature's own walk opens the
-	// shut door its leg stopped in front of and walks the next leg; an
-	// imposed one opens nothing and is one leg, as it always was.
-	rest := path
-walk:
-	for {
-		// THE WALK ENDS WHERE ITS WALKER CAN STAND ([Encounter.standableEnd]):
-		// the tail a budget cut onto an ally is dropped before the first step.
-		leg, err := e.standableEnd(mover, rest)
-		if err != nil {
-			return res, err
-		}
+	// THE WALK ENDS WHERE ITS WALKER CAN STAND ([Encounter.walkableEnd]):
+	// the tail a budget cut onto an ally is dropped before the first step,
+	// judged over the whole walk with the doors a creature's own walk
+	// opens standing open, and an imposed walk's doors as they are.
+	opens := !imposed
+	path, err := e.walkableEnd(mover, path, opens)
+	if err != nil {
+		return res, err
+	}
 
-		for i, cell := range leg {
-			// Where this member STILL stands, announced before the step is
-			// taken. The order is [Mover]'s contract: a reactor's swing is
-			// checked for reach against where the mover is, so announcing
-			// after the step would hand the reaction a departed target and
-			// the swing would refuse as out of range.
-			//
-			// A member the canvas cannot place has no cell to step FROM,
-			// which is not a step at all. It ends the walk exactly as any
-			// other refusal does rather than being announced from a
-			// fabricated position — and the walk ending here rather than at
-			// stepTo costs nothing, because stepTo refuses an unplaced member
-			// too.
-			from, placed := e.canvas.GetEntityPosition(string(mover))
-			if !placed {
-				break walk
-			}
-
-			// FORCED IS THE CALLER'S ANSWER, carried and not decided here. A
-			// creature's own Move intent, the resume of one, and a Routed turn
-			// all pass false: all three are somebody walking, however little
-			// choice they had about it. [Encounter.Direct] passes the inverse of
-			// its own Provokes, because being MOVED is the thing it knows and
-			// this loop does not.
-			step := MoveStep{Mover: mover, From: from, To: cell, Cause: cause, Forced: forced}
-			if merr := e.mover.Move(ctx, e, step); merr != nil {
-				// A PAUSE IS NEWS, NOT A MALFUNCTION. Somebody is being asked
-				// about this step; it is announced and not taken, and the rest
-				// of the path — this cell first — waits with them. Every other
-				// error out of a Mover still aborts the caller's whole verb.
-				var paused *StepPausedError
-				if errors.As(merr, &paused) {
-					res.paused = paused
-					res.from, res.to = from, cell
-					res.pending = append([]spatial.Position(nil), rest[i:]...)
-					return res, nil
-				}
-				if errors.Is(merr, ErrStepPaused) {
-					// The sentinel without its detail: a Mover said "paused"
-					// and named nobody. Pause anyway — the composition cannot
-					// tell whose window it is (C1) and refusing here would
-					// take the step the Mover explicitly said not to take.
-					res.paused = &StepPausedError{}
-					res.from, res.to = from, cell
-					res.pending = append([]spatial.Position(nil), rest[i:]...)
-					return res, nil
-				}
-				return res, fmt.Errorf("move: %w", merr)
-			}
-
-			// A REACTION THAT DROPPED THE MOVER STOPS THE WALK, and the mover
-			// falls in the cell they were LEAVING rather than the one they
-			// were entering (rpg-project#316, ruling R6).
-			//
-			// That is the rules picture the announcement above creates. An
-			// opportunity attack fires BECAUSE its target is leaving reach, so
-			// the strike was checked against the cell the mover still stands
-			// on — and stepping them afterwards would be moving a body out of
-			// the square it fell in.
-			//
-			// ASKED PER CELL, because the answer changes mid-walk, which is
-			// precisely what a reaction does to it. The batched
-			// once-per-walk answer elsewhere in this rulebook rests on a move
-			// being unable to down anyone; announcing steps is what made that
-			// false.
-			//
-			// session's runWalk must give the SAME answer on the player's
-			// path — resolve the movement fold, then stop before Step if the
-			// mover went down. Two paths, one rule: a walk that continued on
-			// one of them would be the asymmetry [Mover] exists to prevent.
-			down, derr := e.downNow()
-			if derr != nil {
-				return res, fmt.Errorf("move standing: %w", derr)
-			}
-			if down[mover] {
-				res.dropped = true
-				break walk
-			}
-
-			// THE ILLUSION BREAKS BEFORE THE PUSH LANDS (rpg-project#490, E7).
-			// A creature shoved at a wall that is not a wall learns it is not a
-			// wall — and learns it FIRST, because that is what lets the shove
-			// land at all: [Encounter.stepMember] refuses a crossing the mover's
-			// own atlas draws as wall, and this is the one walk that is nobody's
-			// choice. Ordinary walks never reach it: a creature's own route is
-			// gated by the same rule ([cellQuery.floodFrom]), so it plans no
-			// path through a secret, and a concealment already known reveals
-			// nothing here.
-			//
-			// BEFORE THE MOVEMENT BEAT rather than after it, which inverts the
-			// order [Encounter.Step] keeps — deliberately, and it is the honest
-			// order for this cause. On a step the reveal is a CONSEQUENCE of
-			// having walked through; on a push it is the PRECONDITION of the
-			// push landing, and narrating the shove first would be telling the
-			// story backwards.
-			if lerr := e.learnCrossedConcealment(mover, e.crossedDoors(from, cell), cell, at); lerr != nil {
-				return res, fmt.Errorf("move crossed concealment: %w", lerr)
-			}
-
-			action, stepped, stepErr := e.stepTo(m, cell)
-			if stepErr != nil {
-				return res, stepErr
-			}
-			action.cause = cause
-			// A creature's own step turns it; an imposed one — a directive, an
-			// effect moving it — does not (facing.go).
-			if stepped && !imposed {
-				e.turnAlong(action)
-			}
-			if !stepped {
-				// The same silent-refusal contract stepTo already has for
-				// the pump: a wall stops the WALK, not the turn — whatever
-				// cells succeeded before it are kept (rpg-project#254,
-				// "the same refusals a player's walk meets").
-				break walk
-			}
-			if _, berr := e.appendMovementBeat(action, audience, at); berr != nil {
-				return res, fmt.Errorf("move beat: %w", berr)
-			}
-			res.moved++
-		}
-
-		next, opened, oerr := e.walkOn(mover, rest, len(leg), cause, !imposed)
-		if oerr != nil {
-			return res, oerr
-		}
-		if !opened {
+	for i, cell := range path {
+		// Where this member STILL stands, announced before the step is
+		// taken. The order is [Mover]'s contract: a reactor's swing is
+		// checked for reach against where the mover is, so announcing
+		// after the step would hand the reaction a departed target and
+		// the swing would refuse as out of range.
+		//
+		// A member the canvas cannot place has no cell to step FROM,
+		// which is not a step at all. It ends the walk exactly as any
+		// other refusal does rather than being announced from a
+		// fabricated position — and the walk ending here rather than at
+		// stepTo costs nothing, because stepTo refuses an unplaced member
+		// too.
+		from, placed := e.canvas.GetEntityPosition(string(mover))
+		if !placed {
 			break
 		}
-		res.opened++
-		rest = next
+
+		// THE DOOR IN FRONT OPENS BEFORE THE STEP IS ANNOUNCED
+		// ([Encounter.openAhead]): a creature opens the door and then steps
+		// through it, so a step paused for a reaction resumes through an
+		// open door. A walk nobody chose opens nothing.
+		if opens {
+			opened, oerr := e.openAhead(mover, cell, cause)
+			if oerr != nil {
+				return res, oerr
+			}
+			if opened {
+				res.opened++
+			}
+		}
+
+		// FORCED IS THE CALLER'S ANSWER, carried and not decided here. A
+		// creature's own Move intent, the resume of one, and a Routed turn
+		// all pass false: all three are somebody walking, however little
+		// choice they had about it. [Encounter.Direct] passes the inverse of
+		// its own Provokes, because being MOVED is the thing it knows and
+		// this loop does not.
+		step := MoveStep{Mover: mover, From: from, To: cell, Cause: cause, Forced: forced}
+		if merr := e.mover.Move(ctx, e, step); merr != nil {
+			// A PAUSE IS NEWS, NOT A MALFUNCTION. Somebody is being asked
+			// about this step; it is announced and not taken, and the rest
+			// of the path — this cell first — waits with them. Every other
+			// error out of a Mover still aborts the caller's whole verb.
+			var paused *StepPausedError
+			if errors.As(merr, &paused) {
+				res.paused = paused
+				res.from, res.to = from, cell
+				res.pending = append([]spatial.Position(nil), path[i:]...)
+				return res, nil
+			}
+			if errors.Is(merr, ErrStepPaused) {
+				// The sentinel without its detail: a Mover said "paused"
+				// and named nobody. Pause anyway — the composition cannot
+				// tell whose window it is (C1) and refusing here would
+				// take the step the Mover explicitly said not to take.
+				res.paused = &StepPausedError{}
+				res.from, res.to = from, cell
+				res.pending = append([]spatial.Position(nil), path[i:]...)
+				return res, nil
+			}
+			return res, fmt.Errorf("move: %w", merr)
+		}
+
+		// A REACTION THAT DROPPED THE MOVER STOPS THE WALK, and the mover
+		// falls in the cell they were LEAVING rather than the one they
+		// were entering (rpg-project#316, ruling R6).
+		//
+		// That is the rules picture the announcement above creates. An
+		// opportunity attack fires BECAUSE its target is leaving reach, so
+		// the strike was checked against the cell the mover still stands
+		// on — and stepping them afterwards would be moving a body out of
+		// the square it fell in.
+		//
+		// ASKED PER CELL, because the answer changes mid-walk, which is
+		// precisely what a reaction does to it. The batched
+		// once-per-walk answer elsewhere in this rulebook rests on a move
+		// being unable to down anyone; announcing steps is what made that
+		// false.
+		//
+		// session's runWalk must give the SAME answer on the player's
+		// path — resolve the movement fold, then stop before Step if the
+		// mover went down. Two paths, one rule: a walk that continued on
+		// one of them would be the asymmetry [Mover] exists to prevent.
+		down, derr := e.downNow()
+		if derr != nil {
+			return res, fmt.Errorf("move standing: %w", derr)
+		}
+		if down[mover] {
+			res.dropped = true
+			break
+		}
+
+		// THE ILLUSION BREAKS BEFORE THE PUSH LANDS (rpg-project#490, E7).
+		// A creature shoved at a wall that is not a wall learns it is not a
+		// wall — and learns it FIRST, because that is what lets the shove
+		// land at all: [Encounter.stepMember] refuses a crossing the mover's
+		// own atlas draws as wall, and this is the one walk that is nobody's
+		// choice. Ordinary walks never reach it: a creature's own route is
+		// gated by the same rule ([cellQuery.floodFrom]), so it plans no
+		// path through a secret, and a concealment already known reveals
+		// nothing here.
+		//
+		// BEFORE THE MOVEMENT BEAT rather than after it, which inverts the
+		// order [Encounter.Step] keeps — deliberately, and it is the honest
+		// order for this cause. On a step the reveal is a CONSEQUENCE of
+		// having walked through; on a push it is the PRECONDITION of the
+		// push landing, and narrating the shove first would be telling the
+		// story backwards.
+		if lerr := e.learnCrossedConcealment(mover, e.crossedDoors(from, cell), cell, at); lerr != nil {
+			return res, fmt.Errorf("move crossed concealment: %w", lerr)
+		}
+
+		action, stepped, stepErr := e.stepTo(m, cell)
+		if stepErr != nil {
+			return res, stepErr
+		}
+		action.cause = cause
+		// A creature's own step turns it; an imposed one — a directive, an
+		// effect moving it — does not (facing.go).
+		if stepped && !imposed {
+			e.turnAlong(action)
+		}
+		if !stepped {
+			// The same silent-refusal contract stepTo already has for
+			// the pump: a wall stops the WALK, not the turn — whatever
+			// cells succeeded before it are kept (rpg-project#254,
+			// "the same refusals a player's walk meets").
+			break
+		}
+		if _, berr := e.appendMovementBeat(action, audience, at); berr != nil {
+			return res, fmt.Errorf("move beat: %w", berr)
+		}
+		res.moved++
 	}
 
 	return res, nil
@@ -1892,61 +1894,54 @@ func (e *Encounter) walkWorld(
 ) (walkResult, error) {
 	var res walkResult
 
-	// DOOR TO DOOR, as [Encounter.walkPath]'s: a world round's walk is the
-	// creature's own, so it opens the shut door a leg stops in front of.
-	rest := path
-walk:
-	for {
-		// THE WALK ENDS WHERE ITS WALKER CAN STAND ([Encounter.standableEnd]):
-		// the tail a budget cut onto an ally is dropped before the first step.
-		leg, err := e.standableEnd(mover, rest)
-		if err != nil {
-			return res, err
+	// THE WALK ENDS WHERE ITS WALKER CAN STAND ([Encounter.walkableEnd]),
+	// with the doors it opens standing open: a world round's walk is the
+	// creature's own.
+	path, err := e.walkableEnd(mover, path, true)
+	if err != nil {
+		return res, err
+	}
+
+	for _, cell := range path {
+		if _, placed := e.canvas.GetEntityPosition(string(mover)); !placed {
+			break
 		}
-
-		for _, cell := range leg {
-			if _, placed := e.canvas.GetEntityPosition(string(mover)); !placed {
-				break walk
-			}
-			action, stepped, stepErr := e.stepTo(m, cell)
-			if stepErr != nil {
-				return res, stepErr
-			}
-			action.cause = cause
-			if !stepped {
-				break walk
-			}
-			e.turnAlong(action) // a world round's walk is the creature's own
-			if _, berr := e.appendMovementBeat(action, audience, at); berr != nil {
-				return res, fmt.Errorf("world move beat: %w", berr)
-			}
-			res.moved++
-
-			// A DECLARED ENDING STILL FIRES UNDER A CREATURE'S OWN FEET, which
-			// the retired Pump evaluated per executed step and this walk has to
-			// as well: a monster walking onto the tile closes the run exactly as
-			// a player does, subject to the ending's own filter (a monster never
-			// fires an UNFILTERED one — "any player member" is what an empty
-			// filter means). The walk stops there: a closed run records nothing
-			// more.
-			fired, ferr := e.firedReachedPosition(m, cell, at)
-			if ferr != nil {
-				return res, fmt.Errorf("world move ending: %w", ferr)
-			}
-			if fired != nil {
-				break walk
-			}
-		}
-
-		next, opened, oerr := e.walkOn(mover, rest, len(leg), cause, true)
+		// The door in front opens before the step ([Encounter.openAhead]).
+		opened, oerr := e.openAhead(mover, cell, cause)
 		if oerr != nil {
 			return res, oerr
 		}
-		if !opened {
+		if opened {
+			res.opened++
+		}
+		action, stepped, stepErr := e.stepTo(m, cell)
+		if stepErr != nil {
+			return res, stepErr
+		}
+		action.cause = cause
+		if !stepped {
 			break
 		}
-		res.opened++
-		rest = next
+		e.turnAlong(action) // a world round's walk is the creature's own
+		if _, berr := e.appendMovementBeat(action, audience, at); berr != nil {
+			return res, fmt.Errorf("world move beat: %w", berr)
+		}
+		res.moved++
+
+		// A DECLARED ENDING STILL FIRES UNDER A CREATURE'S OWN FEET, which
+		// the retired Pump evaluated per executed step and this walk has to
+		// as well: a monster walking onto the tile closes the run exactly as
+		// a player does, subject to the ending's own filter (a monster never
+		// fires an UNFILTERED one — "any player member" is what an empty
+		// filter means). The walk stops there: a closed run records nothing
+		// more.
+		fired, ferr := e.firedReachedPosition(m, cell, at)
+		if ferr != nil {
+			return res, fmt.Errorf("world move ending: %w", ferr)
+		}
+		if fired != nil {
+			break
+		}
 	}
 
 	return res, nil
@@ -2491,13 +2486,15 @@ func (e *cellQuery) computeFlood(
 				if !opens {
 					return false
 				}
-				if door, err = e.doorPast(mover, a, b, prop, true); err != nil {
+				d, ok, err := e.doorPast(mover, a, b, prop, true)
+				if err != nil {
 					crossingErr = err
 					return false
 				}
-				if door == nil {
+				if !ok {
 					return false
 				}
+				door = d
 			}
 			if e.masqueradeBlocks(walker, a, b) {
 				return false
@@ -2511,9 +2508,13 @@ func (e *cellQuery) computeFlood(
 				return true
 			}
 			if opens && door == nil && standsADoor(fact) {
-				if door, err = e.doorPast(mover, a, b, "", false); err != nil {
+				d, ok, err := e.doorPast(mover, a, b, "", false)
+				if err != nil {
 					crossingErr = err
 					return false
+				}
+				if ok {
+					door = d
 				}
 			}
 			if door != nil && blockedOnlyBy(fact, door) {
