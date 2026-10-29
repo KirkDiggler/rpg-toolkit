@@ -1852,7 +1852,7 @@ func (e *Encounter) routedRoute(
 	}
 	if len(path) == 0 {
 		out, err := e.route(RouteInput{Mover: mover, Policy: MoveToward, Anchor: anchor, Budget: budget}, true)
-		if err != nil || from == anchor {
+		if err != nil || from == anchor || len(out.Path) > 0 {
 			return out, err
 		}
 		// A LOCKED DOOR IS A REASON, AND THE RECORD SAYS IT (lane
@@ -1860,6 +1860,11 @@ func (e *Encounter) routedRoute(
 		// does not merely find "nowhere nearer" — it is stopped by that
 		// door, and the stayed beat names it in the lock refusal's own
 		// words ([Encounter.lockedDoorInTheWay]).
+		//
+		// ASKED ONLY WHEN THE CREATURE STAYS. StoppedBy is read only off an
+		// empty route (the stayed beat); a fallback that still walks it
+		// nearer says nothing, so the second flood is paid only by the round
+		// that writes the sentence.
 		door, locked, lerr := e.lockedDoorInTheWay(mover, from, anchor)
 		if lerr != nil {
 			return RouteOutput{}, lerr
