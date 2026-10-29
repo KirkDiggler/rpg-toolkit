@@ -550,12 +550,23 @@ hold.
 Named here; the plan creates the sub-issues and may re-cut them. Each code
 slice is one module PR (one nearest `go.mod`), docs may ride along.
 
+- **S0. Forming, in `examples/condition-machine`.** One module at Go 1.27
+  that imports the dnd5e root by pinned version for `contributions.Frame`
+  and the typed topics, and holds the recipe, state, output, guard, amount,
+  act and blob structs, `Validate`, the machine, Rage, Blessed and Resistance
+  as recipes with a transition-walk test each, and a benchmark table for
+  guard evaluation and a beat. It is where play and world were formed before
+  they launched. It cannot run the existing rage tests, so the identical-blob
+  proof stays in S1. **It is deleted in the S1 PR that lands the machine in
+  conditions**, and the knowledge line says what moved. Needs the CI PR of
+  rpg-toolkit#2145 first, so CI runs 1.27 natively.
 - **S1. The machine, the vocabulary, and Rage.** `recipe`, `machine`, the
   bag, `end`, the guard tree with the leaves and ops in the table, the
   amounts, the beats, `Validate`, the output and tracker kinds Rage needs,
   and `RagingCondition` rebuilt as the recipe above with the identical blob.
-  The existing rage tests run unchanged, plus one transition-walk test.
-  Assumes Go 1.27 has landed (rpg-toolkit#2145). Separate module PR: delete
+  The existing rage tests run unchanged, plus the transition-walk test moved
+  from S0. Assumes the dnd5e root is on Go 1.27 (rpg-toolkit#2145). A move
+  from S0, not a design. Separate module PR: delete
   `core/effect`.
 - **S2. The 1d4 family.** Blessed, Baned, Divine Favor, Guided, Inspired:
   roll bonuses and offered dice, source-qualified bags.
@@ -578,7 +589,9 @@ conditions.
 
 ## Settled, and open
 
-**Settled in conversation, 2026-10-28, ruled by the operator:** the target
+**Settled in conversation, 2026-10-28, ruled by the operator:** the shape
+is formed in `examples/` first, with tests and benchmarks, and deleted when
+it lands (S0); the target
 is one data structure per condition, driven fully by its effects, under one
 ref (E1, E2); hand-written Go is the form for now, content authoring comes
 with the studio (E9); cost lives outside the condition (E7); `core/effect` is
