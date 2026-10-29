@@ -82,8 +82,7 @@ factions:
 dispositions:
 - between: [party, veterans]
   stance: neutral
-  until: {fact: veteran-joined}
-  then: allied
+  until: {fact: veteran-joined, then: allied}
 - between: [veterans, thugs]
   stance: neutral
   until: {fact: veteran-joined}

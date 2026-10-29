@@ -798,7 +798,7 @@ func (s *HoldOutSuite) TestTheRunRefusesWhatItCannotKeep() {
 		field := s.compiled.Field
 		field.Dispositions = []encounter.DispositionInput{{
 			Between: [2]encounter.FactionID{campFaction, encounter.FactionParty},
-			Stance:  stance, Until: t,
+			Stance:  stance, Until: []encounter.UntilStep{{When: t}},
 		}}
 		return field
 	}
@@ -884,7 +884,7 @@ func (s *HoldOutSuite) TestAThirdFactionStillHostileKeepsItsFight() {
 		Factions: []encounter.FactionInput{{ID: campFaction, Mind: lone}, {ID: "kobolds"}},
 		Dispositions: []encounter.DispositionInput{{
 			Between: [2]encounter.FactionID{campFaction, encounter.FactionParty},
-			Stance:  encounter.StanceHostile, Until: encounter.TriggerFact{Fact: campFact},
+			Stance:  encounter.StanceHostile, Until: []encounter.UntilStep{{When: encounter.TriggerFact{Fact: campFact}}},
 		}},
 	}
 	enc := s.open(field, []encounter.MemberInput{
@@ -1011,7 +1011,7 @@ func (s *HoldOutSuite) yardAndHut() (encounter.FieldInput, []encounter.MemberInp
 		Factions: []encounter.FactionInput{{ID: campFaction, Mind: campChief}},
 		Dispositions: []encounter.DispositionInput{{
 			Between: [2]encounter.FactionID{campFaction, encounter.FactionParty},
-			Stance:  encounter.StanceHostile, Until: encounter.TriggerFact{Fact: campFact},
+			Stance:  encounter.StanceHostile, Until: []encounter.UntilStep{{When: encounter.TriggerFact{Fact: campFact}}},
 		}},
 	}
 	members := []encounter.MemberInput{

@@ -61,7 +61,7 @@ func thenSetup(dispositions []DispositionInput) *SetupInput {
 // veteran says he joins, then allied.
 var joined = DispositionInput{
 	Between: [2]FactionID{FactionParty, "veterans"}, Stance: StanceNeutral,
-	Until: TriggerFact{Fact: "veteran-joined"}, Then: StanceAllied,
+	Until: []UntilStep{{When: TriggerFact{Fact: "veteran-joined"}, Then: StanceAllied}},
 }
 
 // stanceOf is the pair's fold now.
@@ -119,12 +119,11 @@ func TestAPublicUntilTurnsAPairAllied(t *testing.T) {
 	enc := thenEnc(t,
 		DispositionInput{
 			Between: [2]FactionID{"veterans", "thugs"}, Stance: StanceNeutral,
-			Until: TriggerFact{Fact: "veteran-joined"},
+			Until: []UntilStep{{When: TriggerFact{Fact: "veteran-joined"}}},
 		},
 		DispositionInput{
 			Between: [2]FactionID{FactionParty, "veterans"}, Stance: StanceNeutral,
-			Until: TriggerStance{Between: [2]FactionID{"veterans", "thugs"}, Stance: StanceHostile},
-			Then:  StanceAllied,
+			Until: []UntilStep{{When: TriggerStance{Between: [2]FactionID{"veterans", "thugs"}, Stance: StanceHostile}, Then: StanceAllied}},
 		},
 	)
 
@@ -140,7 +139,7 @@ func TestAPublicUntilTurnsAPairAllied(t *testing.T) {
 func TestWithNoThenAPairTurnsAsBefore(t *testing.T) {
 	enc := thenEnc(t, DispositionInput{
 		Between: [2]FactionID{FactionParty, "veterans"}, Stance: StanceNeutral,
-		Until: TriggerFact{Fact: "veteran-joined"},
+		Until: []UntilStep{{When: TriggerFact{Fact: "veteran-joined"}}},
 	})
 	require.NoError(t, enc.learnFact("veteran", "veteran-joined", "joined", 1))
 	require.Equal(t, StanceHostile, stanceOf(t, enc, FactionParty, "veterans"))
@@ -151,35 +150,81 @@ func TestWithNoThenAPairTurnsAsBefore(t *testing.T) {
 func TestAnAlliedPairThatNamesWhereItGoesTurns(t *testing.T) {
 	enc := thenEnc(t, DispositionInput{
 		Between: [2]FactionID{FactionParty, "veterans"}, Stance: StanceAllied,
-		Until: TriggerFact{Fact: "paid-off"}, Then: StanceHostile,
+		Until: []UntilStep{{When: TriggerFact{Fact: "paid-off"}, Then: StanceHostile}},
 	})
 	require.Equal(t, StanceAllied, stanceOf(t, enc, FactionParty, "veterans"))
 	require.NoError(t, enc.learnFact("veteran", "paid-off", "bribed", 1))
 	require.Equal(t, StanceHostile, stanceOf(t, enc, FactionParty, "veterans"))
 }
 
-// TestAThenThatCannotBeOneIsRefused: `then` beside no until, a word outside
-// the stances, the stance the pair already holds, and an until on an allied
-// pair that names nowhere to go, each refused by name.
-func TestAThenThatCannotBeOneIsRefused(t *testing.T) {
+// TestAStepThatCannotBeOneIsRefused: a `then` outside the stances, a step
+// turning the pair to the stance it already holds, a step on an allied pair
+// that names nowhere to go, and a list naming anything but facts, each
+// refused by name.
+func TestAStepThatCannotBeOneIsRefused(t *testing.T) {
 	pair := [2]FactionID{FactionParty, "veterans"}
 	fact := TriggerFact{Fact: "veteran-joined"}
 	for name, tc := range map[string]struct {
 		d    DispositionInput
 		says string
 	}{
-		"no until": {DispositionInput{Between: pair, Stance: StanceNeutral, Then: StanceAllied},
-			"dispositions[0] names then \"allied\" and no until, and a pair nothing turns has nowhere to go"},
-		"not a stance": {DispositionInput{Between: pair, Stance: StanceNeutral, Until: fact, Then: "friendly"},
-			"dispositions[0] turns to \"friendly\", which is not hostile, neutral or allied"},
-		"where it already is": {DispositionInput{Between: pair, Stance: StanceNeutral, Until: fact, Then: StanceNeutral},
-			"dispositions[0] is neutral and turns to neutral, which is the stance it already holds"},
-		"allied, nowhere to go": {DispositionInput{Between: pair, Stance: StanceAllied, Until: fact},
+		"not a stance": {DispositionInput{Between: pair, Stance: StanceNeutral, Until: []UntilStep{{When: fact, Then: "friendly"}}},
+			"dispositions[0]'s until turns to \"friendly\", which is not hostile, neutral or allied"},
+		"where it already is": {DispositionInput{Between: pair, Stance: StanceNeutral, Until: []UntilStep{{When: fact, Then: StanceNeutral}}},
+			"dispositions[0]'s until turns the neutral pair neutral, which is the stance it already holds"},
+		"a later step where it already is": {DispositionInput{Between: pair, Stance: StanceNeutral, Until: []UntilStep{
+			{When: fact, Then: StanceAllied}, {When: TriggerFact{Fact: "spat"}, Then: StanceNeutral}}},
+			"dispositions[0]'s until[1] turns the neutral pair neutral, which is the stance it already holds"},
+		"allied, nowhere to go": {DispositionInput{Between: pair, Stance: StanceAllied, Until: []UntilStep{{When: fact}}},
 			"dispositions[0] is allied and has an until, and an allied pair has nothing to become unless `then` names where it goes"},
+		"a list naming a round": {DispositionInput{Between: pair, Stance: StanceNeutral, Until: []UntilStep{
+			{When: fact, Then: StanceAllied}, {When: TriggerRound{Round: 3}, Then: StanceHostile}}},
+			"dispositions[0]'s until[1]: " + untilListOnFacts},
 	} {
 		_, err := NewEncounter(thenSetup([]DispositionInput{tc.d}))
 		require.ErrorIs(t, err, ErrNoFaction, name)
 		require.Contains(t, err.Error(), tc.says, name)
+	}
+}
+
+// castleSteps is the castle's garrison-and-party until, on the veterans:
+// the captain's word first, recognition second.
+var castleSteps = DispositionInput{
+	Between: [2]FactionID{FactionParty, "veterans"}, Stance: StanceNeutral,
+	Until: []UntilStep{
+		{When: TriggerFact{Fact: "guards-turned"}, Then: StanceAllied},
+		{When: TriggerFact{Fact: "party-recognized"}, Then: StanceHostile},
+	},
+}
+
+// TestTheFirstStepThatHoldsWins: each step alone turns the pair its own way,
+// and with both facts known the first step wins whichever was learned first.
+// A list survives the blob as a list.
+func TestTheFirstStepThatHoldsWins(t *testing.T) {
+	for name, tc := range map[string]struct {
+		learn []FactID
+		want  Stance
+	}{
+		"recognized alone":        {[]FactID{"party-recognized"}, StanceHostile},
+		"turned alone":            {[]FactID{"guards-turned"}, StanceAllied},
+		"recognized, then turned": {[]FactID{"party-recognized", "guards-turned"}, StanceAllied},
+		"turned, then recognized": {[]FactID{"guards-turned", "party-recognized"}, StanceAllied},
+	} {
+		enc := thenEnc(t, castleSteps)
+		for i, f := range tc.learn {
+			require.NoError(t, enc.learnFact("veteran", f, "told", uint64(i+1)), name)
+		}
+		require.Equal(t, tc.want, stanceOf(t, enc, FactionParty, "veterans"), name)
+
+		blob, err := json.Marshal(enc.ToData())
+		require.NoError(t, err)
+		var data EncounterData
+		require.NoError(t, json.Unmarshal(blob, &data))
+		require.Len(t, data.Field.Dispositions[0].Steps, 2, "%s: a list persists as its steps", name)
+		require.Nil(t, data.Field.Dispositions[0].Until, name)
+		loaded, err := LoadEncounter(&LoadEncounterInput{Data: data, Capabilities: thenSetup(nil).Capabilities})
+		require.NoError(t, err, name)
+		require.Equal(t, tc.want, stanceOf(t, loaded, FactionParty, "veterans"), "%s, loaded back", name)
 	}
 }
 

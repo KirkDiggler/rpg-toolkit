@@ -5,6 +5,7 @@ package encounter
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -128,10 +129,10 @@ var settledStances = []Stance{StanceNeutral, StanceAllied, StanceHostile}
 // allied (rpg-project#717), so a pair with no way to become allied carries no
 // machinery for it and a blob claiming it did is refused at load.
 func (f *field) settledStancesOf(pair factionPair) []Stance {
-	to, _ := f.untilTurnsTo(pair)
+	turns := f.untilTurnsTo(pair)
 	out := make([]Stance, 0, len(settledStances))
 	for _, s := range settledStances {
-		if s == StanceAllied && to != StanceAllied {
+		if s == StanceAllied && !slices.Contains(turns, StanceAllied) {
 			continue
 		}
 		out = append(out, s)
@@ -288,30 +289,40 @@ func (e *Encounter) buildWorld() error {
 	// edge at all, which is what neutral means; neutral-until-a-fact settles
 	// to the hostile edge, which is the direction that did not exist before
 	// this slice.
+	//
+	// A LIST OF STEPS IS DECLARED LAST STEP FIRST (rpg-project#717), so the
+	// first step's Settle is projected last and wins whenever its flag is up:
+	// "the first step that holds wins". The castle's captain's word outranks
+	// the garrison recognizing the party, whichever came first.
 	raised := make(map[FactID]bool)
 	for _, d := range e.field.dispositions {
-		fact, ok := d.Until.(TriggerFact)
-		if !ok {
-			continue
-		}
-		if !raised[fact.Fact] {
-			raised[fact.Fact] = true
-			cfg.Reducers = append(cfg.Reducers, graph.Raise{On: factKnownKind(fact.Fact), Flag: knowsFlag(fact.Fact)})
-		}
 		pair := pairOf(d.Between[0], d.Between[1])
-		for _, id := range []FactionID{pair.a, pair.b} {
-			mind := w.minds[id]
-			if mind == "" {
+		for j := len(d.Until) - 1; j >= 0; j-- {
+			step := d.Until[j]
+			fact, ok := step.When.(TriggerFact)
+			if !ok {
 				continue
 			}
-			cfg.Projections = append(cfg.Projections, graph.Settle{
-				OnFlag:    knowsFlag(fact.Fact),
-				Of:        journal.EntityID(mind),
-				Between:   [2]journal.EntityID{factionEntityID(pair.a), factionEntityID(pair.b)},
-				Relations: []graph.Relation{relHostileTo, relAlliedWith},
-				To:        settledRelation(d.turnsTo()),
-			})
-			w.observers[pair] = append(w.observers[pair], mind)
+			if !raised[fact.Fact] {
+				raised[fact.Fact] = true
+				cfg.Reducers = append(cfg.Reducers, graph.Raise{On: factKnownKind(fact.Fact), Flag: knowsFlag(fact.Fact)})
+			}
+			for _, id := range []FactionID{pair.a, pair.b} {
+				mind := w.minds[id]
+				if mind == "" {
+					continue
+				}
+				cfg.Projections = append(cfg.Projections, graph.Settle{
+					OnFlag:    knowsFlag(fact.Fact),
+					Of:        journal.EntityID(mind),
+					Between:   [2]journal.EntityID{factionEntityID(pair.a), factionEntityID(pair.b)},
+					Relations: []graph.Relation{relHostileTo, relAlliedWith},
+					To:        settledRelation(d.turnsTo(step)),
+				})
+				if !slices.Contains(w.observers[pair], mind) {
+					w.observers[pair] = append(w.observers[pair], mind)
+				}
+			}
 		}
 	}
 
@@ -405,8 +416,10 @@ func mintedFactIDs(f *field, endings []Trigger, members []FactID) []FactID {
 		}
 	}
 	for _, d := range f.dispositions {
-		if t, ok := d.Until.(TriggerFact); ok {
-			seen[t.Fact] = true
+		for _, step := range d.Until {
+			if t, ok := step.When.(TriggerFact); ok {
+				seen[t.Fact] = true
+			}
 		}
 	}
 	for _, t := range endings {
@@ -805,7 +818,7 @@ func turnablePairsOf(f *field) []factionPair {
 		for _, b := range ids[i+1:] {
 			pair := pairOf(a, b)
 			switch declared, until := f.declaredStance(pair); {
-			case until != nil, declared == StanceNeutral:
+			case len(until) > 0, declared == StanceNeutral:
 				out = append(out, pair)
 			}
 		}

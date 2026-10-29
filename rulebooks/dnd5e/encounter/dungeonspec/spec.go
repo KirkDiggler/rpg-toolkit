@@ -456,15 +456,27 @@ type DispositionSpec struct {
 	// Stance is one of hostile, neutral, allied. REQUIRED.
 	Stance string `yaml:"stance"`
 
-	// Until is the predicate that TURNS the pair: when it holds the stance
-	// becomes [DispositionSpec.Then], or with no `then` the OTHER of hostile
-	// and neutral (rpg-project#493, R1). A hostile pair stands down; a
-	// neutral pair turns on you — "the guards are civil until the third round
-	// of the brawl", "the wolves are calm until you kill the alpha". On
-	// `stance: allied` it needs a `then`: an allied pair has nothing to
-	// become unless the author names where it goes. Optional. See [PredicateSpec] — all four forms
-	// are legal here, and only `{ fact }` needs the pair to have a mind,
-	// because only a fact is somebody's knowledge.
+	// Until is what TURNS the pair: one step, or a list of steps
+	// (rpg-project#717), each a predicate and, optionally, `then:` — the
+	// stance the step turns the pair to. Without `then`, a step turns the
+	// pair to the OTHER of hostile and neutral (rpg-project#493, R1): a
+	// hostile pair stands down; a neutral pair turns on you — "the guards
+	// are civil until the third round of the brawl", "the wolves are calm
+	// until you kill the alpha". `then: allied` makes a recruited faction
+	// the party's side. Optional. See [UntilSpec] and [PredicateSpec] — all
+	// four forms are legal in one step, and only `{ fact }` needs the pair to
+	// have a mind, because only a fact is somebody's knowledge.
+	//
+	//	until: { fact: veteran-joined, then: allied }
+	//	until:
+	//	  - { fact: guards-turned, then: allied }
+	//	  - { fact: party-recognized, then: hostile }
+	//
+	// THE FIRST STEP THAT HOLDS WINS when the pair is asked, so the captain's
+	// word outranks the party being recognized whichever came first. A list
+	// of more than one step names facts only. On `stance: allied` every step
+	// names a `then`: an allied pair has nothing to become unless the author
+	// names where it goes.
 	//
 	// `until: { round: N }` COUNTS A FIGHT'S ROUNDS (hold-out R9): it holds
 	// when any fight in the run has started round N, and outside any fight it
@@ -480,18 +492,7 @@ type DispositionSpec struct {
 	// through — a swing, a spell that asks for a save, or one that simply
 	// lands its harm — so a camp is provokable the moment it is neutral, and
 	// a delivery that is wholly a kindness provokes nobody.
-	Until *PredicateSpec `yaml:"until,omitempty"`
-
-	// Then is the stance the pair turns to when its until holds
-	// (rpg-project#717): hostile, neutral or allied, never the stance it is
-	// declared with, and only beside an `until`. Omitted, the pair turns to
-	// the other of hostile and neutral, as every file written before `then`
-	// existed does. `then: allied` is how a faction the party recruited
-	// becomes the party's side:
-	//
-	//	- { between: [party, veterans], stance: neutral,
-	//	    until: { fact: veteran-joined }, then: allied }
-	Then string `yaml:"then,omitempty"`
+	Until *UntilSpec `yaml:"until,omitempty"`
 }
 
 // ExitSpec is one authored way out: an id and the floor cell a member stands

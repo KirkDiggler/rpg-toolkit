@@ -237,3 +237,84 @@ func (p *PredicateSpec) String() string {
 		return "{ }"
 	}
 }
+
+// UntilSpec is a disposition's `until` (rpg-project#717): one step written
+// as a mapping, or a list of steps. List records which spelling the file
+// used, so a refusal names `until` or `until[j]` as the author wrote it.
+type UntilSpec struct {
+	// Steps is every step, in the file's order. At least one.
+	Steps []UntilStepSpec
+
+	// List is whether the file wrote a list, even a list of one.
+	List bool
+}
+
+// UntilStepSpec is one step: a predicate, and the stance it turns the pair
+// to, or empty for the other of hostile and neutral.
+type UntilStepSpec struct {
+	// Predicate is the step's one predicate ([PredicateSpec]).
+	Predicate PredicateSpec
+
+	// Then is `then:`, hostile, neutral or allied, or empty.
+	Then string
+}
+
+// UnmarshalYAML reads one step written as a mapping or a list of steps, and
+// refuses an empty list by name.
+func (u *UntilSpec) UnmarshalYAML(value *yaml.Node) error {
+	switch value.Kind {
+	case yaml.MappingNode:
+		var step UntilStepSpec
+		if err := step.UnmarshalYAML(value); err != nil {
+			return err
+		}
+		*u = UntilSpec{Steps: []UntilStepSpec{step}}
+
+		return nil
+	case yaml.SequenceNode:
+		if len(value.Content) == 0 {
+			return fmt.Errorf("line %d: this until lists no steps — write a step, or drop the until", value.Line)
+		}
+		out := UntilSpec{List: true}
+		for _, item := range value.Content {
+			var step UntilStepSpec
+			if err := step.UnmarshalYAML(item); err != nil {
+				return err
+			}
+			out.Steps = append(out.Steps, step)
+		}
+		*u = out
+
+		return nil
+	default:
+		return fmt.Errorf("line %d: an until is one step, { <predicate>, then: <stance> }, or a list of them: %s",
+			value.Line, predicateForms)
+	}
+}
+
+// UnmarshalYAML reads one step: its `then:`, and every other key as the
+// step's predicate, refused by [PredicateSpec.UnmarshalYAML]'s own rules.
+func (s *UntilStepSpec) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: an until step is { <predicate>, then: <stance> }: %s", value.Line, predicateForms)
+	}
+	rest := *value
+	rest.Content = nil
+	var then string
+	for i := 0; i < len(value.Content); i += 2 {
+		if value.Content[i].Value == "then" {
+			if err := value.Content[i+1].Decode(&then); err != nil {
+				return err
+			}
+			continue
+		}
+		rest.Content = append(rest.Content, value.Content[i], value.Content[i+1])
+	}
+	var pred PredicateSpec
+	if err := pred.UnmarshalYAML(&rest); err != nil {
+		return err
+	}
+	*s = UntilStepSpec{Predicate: pred, Then: then}
+
+	return nil
+}

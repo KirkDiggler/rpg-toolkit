@@ -3,19 +3,16 @@
 
 package castletest
 
-// castle_king_companion_test.go is THE CAPTAIN COMES WITH YOU
-// (rpg-project#717, Frank's list S3), on a castle built in the test.
+// castle_king_companion_test.go is THE GARRISON'S TWO TURNS (rpg-project#717,
+// ruled 2026-10-29): the garrison and the party are civil, turn hostile on
+// recognition, and turn allied on the captain's word, and the captain's word
+// outranks recognition whichever came first — the castle's `until` list,
+// `guards-turned` before `party-recognized`.
 //
-// THE CASTLE FILE CANNOT SAY IT YET, and this file is why. Its garrison and
-// party pair already has its one `until` — `party-recognized`, which turns it
-// hostile when the party is seen through — and one pair holds one `until`
-// (lane rpg-project#722, D4: no list yet). So the companion castle is the
-// castle with that one line changed to `until: { fact: guards-turned }, then:
-// allied`, and the captain's march on the throne room swapped for the follow
-// row `{ when: [{ fact: guards-turned }, { enemy: none }], toward: ally }`.
-// Whether the castle itself takes that trade is the lane's call, and
-// [TestMadKingTurnTheGarrison] still holds the castle as it is: with no
-// follow row, a turned captain marches on the keep and never comes with you.
+// Recognition alone is [TestMadKingTroupeBlown] and
+// [TestMadKingTheOrdersTurnTheGarrison]; the turn alone, the follow and the
+// fight are [TestMadKingTurnTheGarrison]. This file is the two orders the
+// list exists for, and the castle authored without the captain's follow row.
 
 import (
 	"os"
@@ -26,85 +23,103 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// companionEdits are the two changes the companion castle makes, each
-// present exactly once in the castle file.
-var companionEdits = []struct{ old, new string }{
-	{
-		old: "      - garrison\n      - party\n    stance: neutral\n    until:\n      fact: party-recognized\n",
-		new: "      - garrison\n      - party\n    stance: neutral\n    until:\n      fact: guards-turned\n    then: allied\n",
-	},
-	{
-		old: "      # swinging at him.\n      - when: [{ fact: guards-turned }, { enemy: none }]\n        toward: { at: { q: 10, r: -19 } }\n",
-		new: "      # swinging at him.\n      - when: [{ fact: guards-turned }, { enemy: none }]\n        toward: ally\n",
-	},
-}
-
-// companionCastle writes the companion castle beside the test and answers
-// its path.
-func companionCastle(t *testing.T) string {
-	t.Helper()
-	raw, err := os.ReadFile(kingFixture)
-	require.NoError(t, err)
-	source := string(raw)
-	for _, e := range companionEdits {
-		require.Equal(t, 1, strings.Count(source, e.old), "the castle carries the line once: %q", e.old)
-		source = strings.Replace(source, e.old, e.new, 1)
-	}
-	path := filepath.Join(t.TempDir(), "companion-castle.yaml")
-	require.NoError(t, os.WriteFile(path, []byte(source), 0o600))
-
-	return path
-}
-
-// turnTheCompanionGarrison is [turnTheGarrison] on the companion castle:
-// the cook's gossip and Ashford, out through the hall and the gate, and the
-// captain told what his king did.
-func turnTheCompanionGarrison(t *testing.T) *kingScene {
+// toTheCaptainWithTheTruth is the hero out of the kitchen with Ashford in
+// hand, through the gate and in front of the captain, on the castle at path
+// ("" for the castle file itself).
+func toTheCaptainWithTheTruth(t *testing.T, path string) *kingScene {
 	t.Helper()
 	s := openTheCastleAs(t, castleHost{
 		at:      besideTheCook,
 		doors:   map[encounter.DoorID]encounter.DoorState{kingThroneDoor: encounter.DoorIsOpen()},
-		fixture: companionCastle(t),
+		fixture: path,
 	})
 	s.said(kingCook, "gossip", "persuasion", true)
 	s.said(kingCook, "ashford", "persuasion", true)
 	s.outOfTheKitchen()
 	s.throughTheGate(kingCaptain)
-	s.said(kingCaptain, "turn", "persuasion", true)
 
 	return s
 }
 
-// TestMadKingTheTurnedCaptainComesWithYou: after `turn`, the garrison is the
-// party's side; the hero walks back into the courtyard and the captain walks
-// after him on his follow row, on the party's side against the court. That
-// he strikes loyalists and never the party is the three-sided fight
-// [TestMadKingTurnTheGarrison] already holds on the castle itself, and
-// [TestAllyWalkTheVeteranJoinsFollowsAndFights] holds for a follower.
-func TestMadKingTheTurnedCaptainComesWithYou(t *testing.T) {
+// TestMadKingTheCaptainsWordOutranksRecognition: recognized and then turned,
+// the garrison is the party's side; turned and then recognized, it stays the
+// party's side.
+func TestMadKingTheCaptainsWordOutranksRecognition(t *testing.T) {
 	t.Parallel()
-	s := turnTheCompanionGarrison(t)
 
-	t.Run("the garrison is the party's side", func(t *testing.T) {
-		require.Equal(t, encounter.StanceAllied, s.stance(garrison, encounter.FactionParty))
-		require.Equal(t, encounter.StanceHostile, s.stance(garrison, loyalists))
+	t.Run("recognized, then turned: allied", func(t *testing.T) {
+		t.Parallel()
+		s := toTheCaptainWithTheTruth(t, "")
+		s.said(kingCaptain, "stand-aside", "intimidation", false)
+		require.True(t, s.learners("party-recognized")[kingCaptain], "the captain saw through the hero")
+		require.Equal(t, encounter.StanceHostile, s.stance(garrison, encounter.FactionParty), "recognition turned him")
+
+		s.said(kingCaptain, "turn", "persuasion", true)
+
+		require.True(t, s.learners("guards-turned")[kingCaptain])
+		require.Equal(t, encounter.StanceAllied, s.stance(garrison, encounter.FactionParty),
+			"the captain's word outranks the recognition that came first")
+		require.False(t, s.hostile(kingCaptain, hero))
 	})
 
+	t.Run("turned, then recognized: still allied", func(t *testing.T) {
+		t.Parallel()
+		s := toTheCaptainWithTheTruth(t, "")
+		s.said(kingCaptain, "turn", "persuasion", true)
+		require.Equal(t, encounter.StanceAllied, s.stance(garrison, encounter.FactionParty))
+
+		s.said(kingCaptain, "stand-aside", "intimidation", false)
+
+		require.True(t, s.learners("party-recognized")[kingCaptain], "the captain learned it all the same")
+		require.Equal(t, encounter.StanceAllied, s.stance(garrison, encounter.FactionParty),
+			"recognition after the turn changes nothing")
+	})
+}
+
+// marchingCaptain is the castle with the captain's follow row swapped back
+// for the march on the throne room every other turned guard keeps: the
+// castle authored without a follow row.
+func marchingCaptain(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile(kingFixture)
+	require.NoError(t, err)
+	follow := "      - when: [{ fact: guards-turned }, { enemy: none }]\n        toward: ally\n"
+	march := "      - when: [{ fact: guards-turned }, { enemy: none }]\n        toward: { at: { q: 10, r: -19 } }\n"
+	source := string(raw)
+	require.Equal(t, 1, strings.Count(source, follow), "the castle carries the captain's follow row once")
+	path := filepath.Join(t.TempDir(), "marching-captain.yaml")
+	require.NoError(t, os.WriteFile(path, []byte(strings.Replace(source, follow, march, 1)), 0o600))
+
+	return path
+}
+
+// TestMadKingACaptainWithNoFollowRowStaysBehind: turned on a castle authored
+// with no follow row, the captain is still the party's side, but he never
+// follows: he marches on the keep while the hero walks the other way.
+func TestMadKingACaptainWithNoFollowRowStaysBehind(t *testing.T) {
+	t.Parallel()
+	s := toTheCaptainWithTheTruth(t, marchingCaptain(t))
+	s.said(kingCaptain, "turn", "persuasion", true)
+	require.Equal(t, encounter.StanceAllied, s.stance(garrison, encounter.FactionParty))
 	post := s.at(kingCaptain)
-	s.walkTo(castleCell(0, -6))
+
+	s.walkTo(partyStartCell(t))
 	s.markTime(2, kingCaptain)
 
-	t.Run("the hero walks into the courtyard and the captain follows", func(t *testing.T) {
-		require.Positive(t, s.pickedTowardAlly(kingCaptain), "the record shows `toward ally` firing")
-		require.Less(t, s.enc.Distance(s.at(kingCaptain), s.at(hero)), s.enc.Distance(post, s.at(hero)),
-			"he walked from the gate toward the hero")
-		require.LessOrEqual(t, s.enc.Distance(s.at(kingCaptain), s.at(hero)), 2.0, "and stands beside him")
-	})
+	require.Zero(t, s.pickedTowardAlly(kingCaptain), "no follow row, no following")
+	require.Less(t, s.enc.Distance(s.at(kingCaptain), throneCell), s.enc.Distance(post, throneCell),
+		"he marched toward the throne room")
+	require.Greater(t, s.enc.Distance(s.at(kingCaptain), s.at(hero)), 2.0, "and left the hero behind")
+}
 
-	t.Run("and he stands on the party's side against the court", func(t *testing.T) {
-		require.False(t, s.hostile(kingCaptain, hero))
-		require.True(t, s.hostile(kingCaptain, theKing))
-	})
+// partyStartCell is the file's party start as an absolute cell, the frame
+// [encounter.Encounter.Route] reads.
+func partyStartCell(t *testing.T) spatial.Position {
+	t.Helper()
+	at := partyStart(t)
+
+	return castleCell(int(at.X), int(at.Y))
 }

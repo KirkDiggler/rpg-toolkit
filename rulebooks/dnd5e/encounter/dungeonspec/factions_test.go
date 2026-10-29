@@ -71,7 +71,7 @@ func TestTheRaiderCampCompiles(t *testing.T) {
 		require.Equal(t, []encounter.DispositionInput{{
 			Between: [2]encounter.FactionID{"raiders", "party"},
 			Stance:  encounter.StanceHostile,
-			Until:   encounter.TriggerFact{Fact: "saved-wiseman"},
+			Until:   []encounter.UntilStep{{When: encounter.TriggerFact{Fact: "saved-wiseman"}}},
 		}}, compiled.Dispositions)
 		require.Equal(t, compiled.Dispositions, compiled.Field.Dispositions)
 	})

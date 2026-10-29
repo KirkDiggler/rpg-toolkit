@@ -138,39 +138,48 @@ type DispositionInput struct {
 	// Stance is the declared posture, one of the closed [Stance] set.
 	Stance Stance
 
-	// Until is the predicate that TURNS the pair: when it holds, the stance
-	// becomes [DispositionInput.Then], or with no Then the OTHER of hostile
-	// and neutral (rpg-project#493, R1) — a hostile pair goes neutral, a
-	// neutral pair goes hostile. On [StanceAllied] an until needs a Then
-	// (ErrNoFaction otherwise): an allied pair has nothing to become unless
-	// the author names where it goes. Nil means the stance is static.
+	// Until is what TURNS the pair: a list of steps, each a predicate and
+	// the stance it turns the pair to ([UntilStep]), and the FIRST STEP THAT
+	// HOLDS WINS when the pair is asked (rpg-project#717, ruled 2026-10-29:
+	// "turning hostile on recognition and waiting for the captain's turn to
+	// change our disposition sound like good ideas"). Empty means the stance
+	// is static. One step is the spelling every file had before the list:
+	// it turns the pair to the other of hostile and neutral unless it names
+	// a [UntilStep.Then] (rpg-project#493, R1).
 	//
-	// ONE UNTIL PER PAIR, and one disposition per pair, so a pair turns at
-	// most once by authoring and never oscillates. What is NOT authored is
-	// the aggression law (R3): a neutral pair somebody attacks across turns
-	// hostile whether or not it has an until, and a pair its own until
-	// already turned neutral turns hostile again if the truce is then
-	// broken.
+	// A LIST OF MORE THAN ONE STEP TURNS ON FACTS ONLY in this build
+	// (ErrNoFaction otherwise). A fact step is the pair's mind's knowledge,
+	// and the graph orders minds' knowledge by the list; a round, a fall or
+	// another pair's stance is a public turn, ordered by stance and after
+	// every fact, so in a list it could not keep its place. One step of any
+	// form is legal as it always was.
 	//
-	// A [Trigger], because a predicate IS the sealed set endings already
-	// use: `{ fact: x }` is a [TriggerFact], `{ down: chief }` a
-	// [TriggerMemberDown], `{ round: 6 }` a [TriggerRound], and
-	// `{ stance: [a, b], is: neutral }` a [TriggerStance]. On an `until`,
-	// a fact predicate is judged on the AUDIENCE grain — the faction's mind
-	// knows it — where the same predicate on an ending is judged on the
-	// truth grain, anyone in the run knows it (design R5).
-	Until Trigger
+	// An allied pair's steps each name a Then (ErrNoFaction otherwise): an
+	// allied pair has nothing to become unless the author names where it
+	// goes. What is NOT authored is the aggression law (R3): a neutral pair
+	// somebody attacks across turns hostile whether or not it has an until,
+	// and a pair its own until turned neutral turns hostile again if the
+	// truce is then broken.
+	Until []UntilStep
+}
 
-	// Then is the stance the pair turns to when Until holds
-	// (rpg-project#717): one of the closed [Stance] set, and never the
-	// declared Stance itself. Empty is the default, the other of hostile and
-	// neutral, so every disposition written before Then existed turns as it
-	// did. `then: allied` is how a recruited faction becomes the party's
-	// side: `{ between: [party, veterans], stance: neutral, until: { fact:
-	// veteran-joined }, then: allied }`.
-	//
-	// ONLY BESIDE AN UNTIL (ErrNoFaction otherwise): a pair nothing turns has
-	// nowhere to go.
+// UntilStep is one step of a disposition's [DispositionInput.Until]: a
+// predicate, and the stance the pair turns to while it holds and no earlier
+// step does.
+type UntilStep struct {
+	// When is the predicate, one of the sealed [Trigger] forms endings
+	// already use: `{ fact: x }` is a [TriggerFact], `{ down: chief }` a
+	// [TriggerMemberDown], `{ round: 6 }` a [TriggerRound], and `{ stance:
+	// [a, b], is: neutral }` a [TriggerStance]. A fact step is judged on the
+	// AUDIENCE grain — the faction's mind knows it — where the same predicate
+	// on an ending is judged on the truth grain (design R5). REQUIRED.
+	When Trigger
+
+	// Then is the stance the pair turns to (rpg-project#717): one of the
+	// closed [Stance] set, and never the pair's declared Stance. Empty is the
+	// default, the other of hostile and neutral, so every disposition written
+	// before Then existed turns as it did. `then: allied` is how a recruited
+	// faction becomes the party's side.
 	Then Stance
 }
 

@@ -18,18 +18,22 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 )
 
-// TestThenTurnsTheCampToThePartysSide: `then: allied` compiles onto the
-// disposition, and a stance the pair could never reach before is reachable
-// now, so an arrival waiting on it is accepted.
+// stepped is the camp's disposition line with its until replaced.
+func stepped(until string) string {
+	return "  - { between: [raiders, party], stance: hostile, until: " + until + " }"
+}
+
+// TestThenTurnsTheCampToThePartysSide: `then: allied` inside the step
+// compiles onto the step, and a stance the pair could never reach before is
+// reachable now, so an arrival waiting on it is accepted.
 func TestThenTurnsTheCampToThePartysSide(t *testing.T) {
-	allied := strings.Replace(dispoLine, "} }", "}, then: allied }", 1)
+	allied := stepped("{ fact: saved-wiseman, then: allied }")
 	compiled, err := dungeonspec.Load([]byte(edited(t, dispoLine, allied)))
 	require.NoError(t, err)
 	require.Equal(t, []encounter.DispositionInput{{
 		Between: [2]encounter.FactionID{"raiders", "party"},
 		Stance:  encounter.StanceHostile,
-		Until:   encounter.TriggerFact{Fact: "saved-wiseman"},
-		Then:    encounter.StanceAllied,
+		Until:   []encounter.UntilStep{{When: encounter.TriggerFact{Fact: "saved-wiseman"}, Then: encounter.StanceAllied}},
 	}}, compiled.Field.Dispositions)
 
 	source := edited(t, dispoLine, allied)
@@ -38,49 +42,70 @@ func TestThenTurnsTheCampToThePartysSide(t *testing.T) {
 	require.Empty(t, refusals(t, source), "the camp can become the party's side, so an arrival may wait on it")
 }
 
-// TestAThenThatCannotBeOneIsRefusedAtItsLine: each refusal at the
-// disposition's own path, in words a form-filler can act on.
-func TestAThenThatCannotBeOneIsRefusedAtItsLine(t *testing.T) {
+// TestAListOfStepsCompilesInOrder: the castle's shape, the first step first.
+func TestAListOfStepsCompilesInOrder(t *testing.T) {
+	line := stepped("[{ fact: saved-wiseman, then: allied }, { fact: chief-insulted, then: neutral }]")
+	compiled, err := dungeonspec.Load([]byte(edited(t, dispoLine, line)))
+	require.NoError(t, err)
+	require.Equal(t, []encounter.UntilStep{
+		{When: encounter.TriggerFact{Fact: "saved-wiseman"}, Then: encounter.StanceAllied},
+		{When: encounter.TriggerFact{Fact: "chief-insulted"}, Then: encounter.StanceNeutral},
+	}, compiled.Field.Dispositions[0].Until)
+}
+
+// TestAStepThatCannotBeOneIsRefusedAtItsLine: each refusal at the step's own
+// path, `until` alone or `until[j]` in a list, in words a form-filler can
+// act on.
+func TestAStepThatCannotBeOneIsRefusedAtItsLine(t *testing.T) {
 	for _, tc := range []struct {
 		name, replacement, path string
 		want                    []string
 	}{
 		{
-			name:        "then with no until",
-			replacement: `  - { between: [raiders, party], stance: hostile, then: neutral }`,
-			path:        "dispositions[0].then", want: []string{"has no until"},
-		},
-		{
 			name:        "then that is not a stance",
-			replacement: strings.Replace(dispoLine, "} }", "}, then: friendly }", 1),
-			path:        "dispositions[0].then", want: []string{`"friendly" is not a stance`},
+			replacement: stepped("{ fact: saved-wiseman, then: friendly }"),
+			path:        "dispositions[0].until.then", want: []string{`"friendly" is not a stance`},
 		},
 		{
 			name:        "then the stance it already holds",
-			replacement: strings.Replace(dispoLine, "} }", "}, then: hostile }", 1),
-			path:        "dispositions[0].then", want: []string{"which it already is"},
+			replacement: stepped("{ fact: saved-wiseman, then: hostile }"),
+			path:        "dispositions[0].until.then", want: []string{"which it already is"},
+		},
+		{
+			name:        "a later step the stance it already holds",
+			replacement: stepped("[{ fact: saved-wiseman, then: allied }, { fact: chief-insulted, then: hostile }]"),
+			path:        "dispositions[0].until[1].then", want: []string{"which it already is"},
 		},
 		{
 			name:        "an until on an allied pair with nowhere to go",
 			replacement: strings.Replace(dispoLine, "stance: hostile", "stance: allied", 1),
 			path:        "dispositions[0].until", want: []string{alliedUntil, "`then: hostile`"},
 		},
+		{
+			name:        "a list naming a fall",
+			replacement: stepped("[{ fact: saved-wiseman, then: allied }, { down: chief, then: neutral }]"),
+			path:        "dispositions[0].until[1]", want: []string{"turns on facts only"},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			requireRefusedAt(t, refusals(t, edited(t, dispoLine, tc.replacement)), tc.path, tc.want...)
 		})
 	}
+
+	_, err := dungeonspec.Load([]byte(edited(t, dispoLine, stepped("[]"))))
+	require.ErrorContains(t, err, "this until lists no steps")
+	_, err = dungeonspec.Load([]byte(edited(t, dispoLine, stepped("{ fact: saved-wiseman, then: allied, round: 2 }"))))
+	require.ErrorContains(t, err, "says both", "a step is still exactly one predicate")
 }
 
 // TestAnAlliedPairThatNamesWhereItGoesCompiles: allied until a fact, then
 // hostile, is a legal line now.
 func TestAnAlliedPairThatNamesWhereItGoesCompiles(t *testing.T) {
-	line := strings.Replace(strings.Replace(dispoLine, "stance: hostile", "stance: allied", 1),
-		"} }", "}, then: hostile }", 1)
+	line := "  - { between: [raiders, party], stance: allied, until: { fact: saved-wiseman, then: hostile } }"
 	compiled, err := dungeonspec.Load([]byte(edited(t, dispoLine, line)))
 	require.NoError(t, err)
 	require.Equal(t, encounter.StanceAllied, compiled.Field.Dispositions[0].Stance)
-	require.Equal(t, encounter.StanceHostile, compiled.Field.Dispositions[0].Then)
+	require.Equal(t, encounter.StanceHostile, compiled.Field.Dispositions[0].Until[0].Then)
 }
 
 // TestTheAllyWordIsReadOnTheWalkingWordsAndRefusedOnAttack: the castle's

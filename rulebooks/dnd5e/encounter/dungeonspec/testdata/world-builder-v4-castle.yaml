@@ -47,20 +47,25 @@
 # floor. The one-offs stay in testdata as their own tests' content.
 #
 # THE CASTLE. The garrison keeps the gate and the hall, and its mind is the
-# captain: it is civil to the party until the party is recognized, and civil
-# to the loyalists until the guards turn. The loyalists (the king and his
+# captain: it is civil to the party until the party is recognized, and the
+# party's side once the guards turn; civil to the loyalists until the guards
+# turn. THE CAPTAIN'S WORD OUTRANKS RECOGNITION (rpg-project#717): the
+# garrison's `until` is a list, `guards-turned` first, so a party recognized
+# and then turned is allied, and a party turned and then recognized stays
+# allied. The loyalists (the king and his
 # knights) are hostile to the party always.
 # The kitchen is civil and stays civil. One fact is learned in the kitchen
 # and spent at the gate — the cook's gossip opens the troupe, and Ashford
 # opens the turn. The captain's orders on the kitchen floor say the party is
 # not who it claims: carry them into the captain's presence and the garrison
-# knows it (`party-recognized`, the garrison's `until`). The prisoners are
+# knows it (`party-recognized`, the second step of the garrison's `until`). The prisoners are
 # neutral to everybody. Every door is shut, the throne room's too, and one
 # is locked: the cell door, thieves' tools at DC 13, whose opening teaches
 # `cells-opened` and ends the run `freed`. A shut throne door stops a turned
 # garrison's march at it, because a driven walk routes only through open
 # doors and no creature opens one (rpg-toolkit#2069); the party opens it. A
-# turned garrison storms the keep; a garrison told to hold the castle ends
+# turned garrison storms the keep, and its captain comes with the party
+# (`toward: ally`, rpg-project#717); a garrison told to hold the castle ends
 # the run with the king still breathing.
 #
 # THE ROUTES, each a scenario test in dungeonspec/castle_king_*_test.go:
@@ -432,13 +437,16 @@ tables:
       # whoever hit him, past a nearer enemy, as one line. Otherwise the rows
       # below are the fallback, through the roll.
       - use: revenger
-      # Hand edit: a turned garrison marches on the throne room until it sees
-      # a loyalist (use case R8's list form). `enemy: none`, not `not: { enemy:
-      # seen }`: the bands are exclusive (R11), so an enemy in reach is not
-      # "seen", and the negation would march a captain past the knight
+      # Hand edit (Frank's list S3, rpg-project#717): a turned captain comes
+      # with the party. With no foe in sight he follows the nearest ally, a
+      # member of the party once the garrison is the party's side; his own
+      # garrison are kin, not allies. The rest of the garrison still marches
+      # on the throne room on its own tables. `enemy: none`, not `not: {
+      # enemy: seen }`: the bands are exclusive (R11), so an enemy in reach is
+      # not "seen", and the negation would walk a captain past the knight
       # swinging at him.
       - when: [{ fact: guards-turned }, { enemy: none }]
-        toward: { at: { q: 10, r: -19 } }
+        toward: ally
       - when:
           enemy: reach
         attack: enemy
@@ -480,12 +488,15 @@ factions:
   - id: prisoners
   - id: townsfolk
 dispositions:
+  # The captain's word outranks recognition: the first step that holds wins
+  # (rpg-project#717), whichever fact the captain learned first.
   - between:
       - garrison
       - party
     stance: neutral
     until:
-      fact: party-recognized
+      - { fact: guards-turned, then: allied }
+      - { fact: party-recognized, then: hostile }
   - between:
       - loyalists
       - party
