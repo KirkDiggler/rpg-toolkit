@@ -44,7 +44,7 @@ func (s *validateSuite) TestRefusals() {
 			`initial state "ended" is terminal`},
 		{"a state no transition reaches", func(r *machine.Recipe) {
 			r.States["sulking"] = machine.State{Transitions: []machine.Transition{
-				{On: beatRest, About: selSubject, To: stEnded, Reason: "rest"},
+				{On: beatRest, About: selSubject, To: stEnded, Reason: reasonRest},
 			}}
 		}, `state "sulking" is reached by no transition`},
 		{"a transition into a terminal state without a reason", func(r *machine.Recipe) {
@@ -156,7 +156,7 @@ func (s *validateAcceptsSuite) TestParametersLandOnlyOnDeclaredKeys() {
 	s.Equal(3, bag[machine.KeyRoundActivated], "a JSON number lands as the declared int")
 	s.Equal(false, bag[keyWasHit], "undeclared parameters keep the zero value")
 
-	_, err = p.NewBag(map[string]any{"counterpart_id": "goblin-1"})
+	_, err = p.NewBag(map[string]any{"counterpart_id": otherHolder})
 	s.Require().Error(err)
 	s.Contains(err.Error(), `parameter "counterpart_id" names no bag key`)
 

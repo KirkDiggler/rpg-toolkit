@@ -9,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/examples/effects/machine"
 )
 
@@ -57,7 +56,7 @@ func (s *blobTodaySuite) TestEveryKeyLandsWithItsType() {
 
 	s.Equal(ragingRef, b.Ref)
 	s.Equal("barbarian-1", b.MemberID)
-	s.Equal(&core.Ref{Module: "dnd5e", Type: "features", ID: "rage"}, b.Source)
+	s.Equal(rageSource(), b.Source)
 	s.Empty(b.State, "today's blob carries no state")
 	s.Equal(machine.Bag{
 		machine.KeySawTurnEnd:     true,

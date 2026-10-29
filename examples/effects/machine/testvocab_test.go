@@ -59,6 +59,12 @@ const (
 	stRaging = "raging"
 	stEnded  = "ended"
 
+	reasonNoActivity = "no_combat_activity"
+	reasonExpired    = "duration_expired"
+	reasonRest       = "rest"
+
+	otherHolder = "goblin-1"
+
 	factMelee      machine.FactName = "action.melee"
 	factWeaponPool machine.FactName = "action.weapon_pool"
 	factAbility    machine.FactName = "action.ability"
@@ -183,7 +189,12 @@ var rageOutputs = []jsontext.Value{
 		`"params":{"on":"ability_checks"}}`),
 }
 
-var ragingRef = core.Ref{Module: "dnd5e", Type: "conditions", ID: "raging"}
+const dnd5e = "dnd5e"
+
+var ragingRef = core.Ref{Module: dnd5e, Type: "conditions", ID: "raging"}
+
+// rageSource is the feature that applies Rage.
+func rageSource() *core.Ref { return &core.Ref{Module: dnd5e, Type: "features", ID: "rage"} }
 
 // rageRecipe is the design's raging recipe, field for field.
 func rageRecipe() machine.Recipe {
@@ -191,7 +202,7 @@ func rageRecipe() machine.Recipe {
 	rageEndings := func() []machine.Transition {
 		return []machine.Transition{
 			{On: beatDroppedToZero, About: selSubject, To: stEnded, Reason: "unconscious"},
-			{On: beatRest, About: selSubject, To: stEnded, Reason: "rest"},
+			{On: beatRest, About: selSubject, To: stEnded, Reason: reasonRest},
 			{On: beatCombatEnd, About: selSubject, To: stEnded, Reason: "combat_ended"},
 		}
 	}
@@ -220,12 +231,12 @@ func rageRecipe() machine.Recipe {
 					When: &machine.Guard{Not: &machine.Guard{Any: []machine.Guard{
 						{Flag: keyWasHit}, {Flag: keyDidAttack},
 					}}},
-					To: stEnded, Reason: "no_combat_activity",
+					To: stEnded, Reason: reasonNoActivity,
 				},
 				{
 					On: beatTurnEnd, About: selSubject,
 					When: &machine.Guard{Rounds: &machine.RoundsLeaf{SinceAnchor: &machine.IntOp{Op: machine.OpGte, N: 9}}},
-					To:   stEnded, Reason: "duration_expired",
+					To:   stEnded, Reason: reasonExpired,
 				},
 				{
 					On: beatTurnEnd, About: selSubject,
