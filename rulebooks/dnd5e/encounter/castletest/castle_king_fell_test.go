@@ -158,6 +158,15 @@ func TestMadKingAKnightWhoSawTheKingFallHasTheRow(t *testing.T) {
 		require.False(t, ok, "keep-2 was ten cells off, out of sight")
 	})
 
+	// THE COURT STANDS DOWN AT THE FALL (rpg-project#718): the file's
+	// `until: { down: king }` turns the loyalists neutral to the party and
+	// both knights' fights dissolve, so neither would pick again. The hero's
+	// blow on keep-1 turns the pair hostile by provocation (lane D4), and
+	// both fights form again for the knights to pick in.
+	require.Equal(t, encounter.StanceNeutral, s.stance(loyalists, encounter.FactionParty), "the court stood down")
+	s.struck(kingKeep1, false)
+	require.Equal(t, encounter.StanceHostile, s.stance(loyalists, encounter.FactionParty), "and the blow broke the truce")
+
 	s.playUntilBothKnightsPick(before, len(s.candidatesOf(kingKeep2)))
 
 	t.Run("keep-1's next pick has the fell row on its table", func(t *testing.T) {
