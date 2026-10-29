@@ -8,6 +8,8 @@ package dungeonspec_test
 // and `who` on any other deed is refused by that deed's name.
 
 import (
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -96,4 +98,24 @@ func TestAnEmptyWhoNamesNobody(t *testing.T) {
 	_, err := dungeonspec.Decode([]byte(captainWhen(t, `{ fell: { within: 3, who: "" } }`)))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "names nobody")
+}
+
+// TestTheCastleSealsWhoToItsMonsters is the slice's refusal line on the
+// castle itself, the World Builder's dialect: naming the altar, a prop, in a
+// knight's `fell` row is refused by name at the row, and naming the king is
+// not. This dialect keeps its props out of the cast, so the sentence is the
+// one `down: altar` earns: not a placement that can fall.
+func TestTheCastleSealsWhoToItsMonsters(t *testing.T) {
+	raw, err := os.ReadFile("testdata/world-builder-v4-castle.yaml")
+	require.NoError(t, err)
+	source := string(raw)
+	require.Contains(t, source, "fell: { who: king, within: 3, on: ally }", "the castle's knights wait on the king")
+
+	_, err = dungeonspec.Load(raw)
+	require.NoError(t, err, "the castle as committed loads")
+
+	_, err = dungeonspec.Load([]byte(strings.Replace(source, "who: king", "who: altar", 1)))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "tables.keep-patrol.on.time[0].when")
+	require.Contains(t, err.Error(), `"altar" is not a placement in this dungeon`)
 }
