@@ -123,7 +123,7 @@ func TestTheMemoDiesWithTheRead(t *testing.T) {
 
 	first, err := enc.cellQuery()
 	require.NoError(t, err)
-	field, err := first.floodFrom("goblin", "goblin", own, nil, 0)
+	field, err := first.floodFrom("goblin", "goblin", own, nil, 0, true)
 	require.NoError(t, err)
 	_, reached := field.Dist[bobFrom]
 	require.False(t, reached, "precondition: the cell bob stands on is closed to the goblin")
@@ -143,7 +143,7 @@ func TestTheMemoDiesWithTheRead(t *testing.T) {
 	next, err := enc.cellQuery()
 	require.NoError(t, err)
 	before := enc.floodsComputed
-	field, err = next.floodFrom("goblin", "goblin", own, nil, 0)
+	field, err = next.floodFrom("goblin", "goblin", own, nil, 0, true)
 	require.NoError(t, err)
 	require.Equal(t, 1, enc.floodsComputed-before, "the next read floods afresh")
 	_, reached = field.Dist[bobFrom]

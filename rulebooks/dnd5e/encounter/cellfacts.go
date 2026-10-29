@@ -154,6 +154,14 @@ type cellQuery struct {
 	// floods is this read's memo of goal-free floods, keyed by everything a
 	// flood without a forgiveness predicate reads from its caller.
 	floods map[floodKey]spatial.FieldOutput
+
+	// locksYield makes a LOCKED door one a creature's walk would open, in
+	// this read only. It exists for one question,
+	// [Encounter.lockedDoorInTheWay] — "would the way be open but for a
+	// lock?" — and no walk is ever planned or taken on a read that sets it.
+	// A fresh read is made for that question, so its floods are never shared
+	// with one that routes.
+	locksYield bool
 }
 
 // floodKey is everything a goal-free flood reads from its caller.
@@ -161,6 +169,7 @@ type floodKey struct {
 	mover, walker MemberID
 	from          spatial.Position
 	limit         int
+	opens         bool
 }
 
 func (e *Encounter) cellQuery() (*cellQuery, error) {

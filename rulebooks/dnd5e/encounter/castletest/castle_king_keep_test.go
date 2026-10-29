@@ -30,14 +30,9 @@ var throneCell = castleCell(0, -19)
 // he heard it.
 func turnTheGarrison(t *testing.T) (*kingScene, map[encounter.MemberID]spatial.Position) {
 	t.Helper()
-	// THE THRONE DOOR STARTS OPEN HERE. The file shuts it, and a driven walk
-	// routes only through open doors and no creature opens one
-	// (rpg-toolkit#2069). With it shut, the turned gate guards stop on the
-	// door's hall side, and the captain stalls in the courtyard against the
-	// hall wall at offset (-6,-6), 11 cells short, with the hall door open.
-	// Until that lands, this route stands the door open, as the party would
-	// before the march it means to see.
-	s := openTheCastleWithDoors(t, besideTheCook, map[encounter.DoorID]encounter.DoorState{kingThroneDoor: encounter.DoorIsOpen()})
+	// THE THRONE DOOR IS SHUT, as the file authors it: the march opens it
+	// on its way (rpg-project#715).
+	s := openTheCastle(t, besideTheCook)
 	s.said(kingCook, "gossip", "persuasion", true)
 	s.said(kingCook, "ashford", "persuasion", true)
 	s.outOfTheKitchen()
@@ -80,6 +75,20 @@ func TestMadKingTurnTheGarrison(t *testing.T) {
 		require.Less(t, s.enc.Distance(now, throneCell), s.enc.Distance(posts[kingCaptain], throneCell),
 			"he walked from his post toward the throne room")
 		require.NotEqual(t, throneCell, now, "and stopped short of it, where a loyalist came into his sight")
+	})
+
+	t.Run("the garrison opened the shut throne door on its way", func(t *testing.T) {
+		var state encounter.DoorStateKind
+		for _, d := range s.enc.Doors() {
+			if d.ID == kingThroneDoor {
+				state = d.State.Kind()
+			}
+		}
+		require.Equal(t, encounter.DoorOpen, state)
+		opener := s.throneDoorOpener()
+		require.NotEmpty(t, opener, "a door beat names who opened it")
+		t.Logf("the throne door was opened by %s", opener)
+		require.Equal(t, garrison, s.factionOf(opener), "a turned guard, not the party")
 	})
 
 	t.Run("a gate guard who witnessed the turn marches with him", func(t *testing.T) {
@@ -203,6 +212,28 @@ func (s *kingScene) pickedTowardACell(id encounter.MemberID) bool {
 	}
 
 	return false
+}
+
+// throneDoorOpener is the actor of the door beat that opened the throne door,
+// as the opener's own story holds it, or empty when no member's story does.
+func (s *kingScene) throneDoorOpener() encounter.MemberID {
+	s.t.Helper()
+	members, err := s.enc.Members()
+	require.NoError(s.t, err)
+	for _, m := range members {
+		story, err := s.enc.Story(&encounter.StoryInput{Audience: m.ID})
+		require.NoError(s.t, err)
+		for _, beat := range story {
+			var body struct{ Beat, Door, State, Actor string }
+			require.NoError(s.t, json.Unmarshal(beat.Payload, &body))
+			if body.Beat == encounter.BeatDoor && body.Door == string(kingThroneDoor) &&
+				body.State == string(encounter.DoorOpen) && body.Actor == string(m.ID) {
+				return m.ID
+			}
+		}
+	}
+
+	return ""
 }
 
 // followIntoTheKeep has the hero follow a member at a walk, a few cells

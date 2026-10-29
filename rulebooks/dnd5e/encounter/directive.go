@@ -176,7 +176,19 @@ type RouteOutput struct {
 // [ErrNoMember], [ErrClosed], [ErrNotMember], [ErrBadReach] for a negative
 // budget or a [MoveLine] anchor standing on the mover, and
 // [ErrUnsupportedPolicy] for any word that is not a policy, all are.
+//
+// A SHUT DOOR CLOSES THIS ROUTE, always. It answers for a walk nobody chose
+// — a push, a rout, a host asking the way — and a door opens only for a
+// creature's own walk, which routes through [Encounter.route] with doors
+// that open (rpg-project#715).
 func (e *Encounter) Route(in RouteInput) (RouteOutput, error) {
+	return e.route(in, false)
+}
+
+// route is [Encounter.Route] for a walk that may or may not open the doors
+// on its way: `opens` is true for a creature's own routed walk (a table's
+// `toward`, `away` or search), and false for the public read.
+func (e *Encounter) route(in RouteInput, opens bool) (RouteOutput, error) {
 	if in.Mover == "" {
 		return RouteOutput{}, fmt.Errorf("route: %w", ErrNoMember)
 	}
@@ -214,9 +226,9 @@ func (e *Encounter) Route(in RouteInput) (RouteOutput, error) {
 	case MovePull:
 		return q.routeStraight(in.Mover, from, in.Anchor, in.Budget, true)
 	case MoveAway:
-		return q.routeAway(in.Mover, from, in.Anchor, in.Budget)
+		return q.routeAway(in.Mover, from, in.Anchor, in.Budget, opens)
 	case MoveToward:
-		return q.routeToward(in.Mover, from, in.Anchor, in.Budget)
+		return q.routeToward(in.Mover, from, in.Anchor, in.Budget, opens)
 	default:
 		return RouteOutput{}, fmt.Errorf("route %q: policy %q: %w", in.Mover, in.Policy, ErrUnsupportedPolicy)
 	}
@@ -335,7 +347,10 @@ func (e *cellQuery) stepInto(mover MemberID, prev, cell spatial.Position) (CellF
 // [spatial.FieldInput.Limit], so asking the field with it would flood the
 // entire floor and hand a creature with no movement the far corner of the
 // dungeon.
-func (e *cellQuery) routeAway(mover MemberID, from, anchor spatial.Position, budget int) (RouteOutput, error) {
+//
+// `opens` is [cellQuery.floodFrom]'s: whether this walk opens the doors on
+// its way.
+func (e *cellQuery) routeAway(mover MemberID, from, anchor spatial.Position, budget int, opens bool) (RouteOutput, error) {
 	if budget == 0 {
 		return RouteOutput{}, nil
 	}
@@ -343,7 +358,7 @@ func (e *cellQuery) routeAway(mover MemberID, from, anchor spatial.Position, bud
 	// UNGATED BY THE MOVER'S OWN PICTURE (rpg-project#490, E7): a directive
 	// is nobody's choice, so a wall that is only a wall to them does not
 	// shape where they are pushed to.
-	field, err := e.floodFrom(mover, "", from, nil, budget)
+	field, err := e.floodFrom(mover, "", from, nil, budget, opens)
 	if err != nil {
 		return RouteOutput{}, err
 	}
@@ -410,7 +425,10 @@ func (e *cellQuery) routeAway(mover MemberID, from, anchor spatial.Position, bud
 // reason: zero is unbounded to [spatial.FieldInput.Limit], so asking the field
 // with it would flood the whole floor on behalf of a creature that cannot
 // move.
-func (e *cellQuery) routeToward(mover MemberID, from, anchor spatial.Position, budget int) (RouteOutput, error) {
+//
+// `opens` is [cellQuery.floodFrom]'s: whether this walk opens the doors on
+// its way.
+func (e *cellQuery) routeToward(mover MemberID, from, anchor spatial.Position, budget int, opens bool) (RouteOutput, error) {
 	if budget == 0 {
 		return RouteOutput{}, nil
 	}
@@ -423,7 +441,7 @@ func (e *cellQuery) routeToward(mover MemberID, from, anchor spatial.Position, b
 	// UNGATED BY THE MOVER'S OWN PICTURE (rpg-project#490, E7): a directive
 	// is nobody's choice, so a wall that is only a wall to them does not
 	// shape where they are pushed to.
-	field, err := e.floodFrom(mover, "", from, nil, budget)
+	field, err := e.floodFrom(mover, "", from, nil, budget, opens)
 	if err != nil {
 		return RouteOutput{}, err
 	}
