@@ -54,6 +54,7 @@ refused, because the list is already the `and`.
 | `enemy: walk \| dash \| far` | what this turn's movement buys against the foe `enemy` names: a walk puts me in reach, only a dash does, or not even a dash. Exclusive among themselves and with `reach`; they sit beside `seen` and `remembered`. The host computes them from both creatures' speed and reach, and no number is written here (rpg-project#671, R18) | `Facts.EnemyWalk/Dash/Far` |
 | `threat: none \| walk \| dash` | who ELSE could reach the cell this row's move lands on (where the creature stands, for a row that does not move) and swing next turn: nobody, a walking foe, or only a dashing one. The row's own target does not count. Judged per row: the host answers `Facts.Threat(row)`, asked only for rows that name a threat; nil or an empty answer holds nothing, `none` included; the row's verdict records the answered word as `RowVerdict.Threat` (rpg-project#671, R18) | `Facts.Threat` |
 | `<deed>: { within: N, on/as }` — `attacked`, `intimidated`, `persuaded`, `fled` | that deed was done to me (or my side, or by me) within N units | `Facts.Deeds/AllyDeeds/OwnDeeds` |
+| `fell: { within: N, who: <id>, on/as }` | a fall, read like the deeds above: its actor is who caused it, its target who fell. `who` narrows it to one target, read off the testimony (a fall the witness could not put a name to matches no `who`); only `fell` takes `who` (rpg-project#716) | `Facts.Deeds/AllyDeeds/OwnDeeds`, `HeldDeed.Target` |
 | `heard: { kind, within: N }` | a sound of that kind (or one a `/…/` pattern matches) was heard within N units | `Facts.Sounds` |
 | `fact: <id>` | the creature holds that world fact (or one a `/…/` pattern matches) | `Facts.Known` |
 | `not: { <one condition> }` | the condition inside does not hold | whatever it wraps |
@@ -70,6 +71,7 @@ types cannot carry, each as a sentence for the form:
 - a `threat` that is not `none`, `walk` or `dash`;
 - a `heard` with no kind or a span below 1;
 - a deed's `within` or scope on a condition that is not a deed;
+- a `who` on anything but `fell` (`WhoDeeds`);
 - a selector naming no target or more than one;
 - a `path` off `toward` and `dash`;
 - `sound` on `attack` (a sound cannot be struck);
@@ -103,7 +105,7 @@ here it is only the tree, with `From` and `Params` kept for the record.
 
 `attack`, `toward`, `dash` and `away` take a `Selector`: exactly one of a
 word, a cell (`at`), or a route (`path`, `toward` and `dash` only). The words
-are `enemy`, `attacker`, `actor` and `sound`.
+are `enemy`, `attacker`, `actor`, `sound` and `ally`.
 
 - **`attacker`** is who last attacked the creature, in the reading the
   row's deed condition names (`Facts.Attacker`). The row is a candidate only
@@ -113,6 +115,13 @@ are `enemy`, `attacker`, `actor` and `sound`.
 - **`sound`** is where the freshest held sound was made. It is legal on
   `toward`, `dash` and `away` only, and only on a row that names a `heard` condition
   (R10), the way `actor` needs a deed. Resolving it is the caller's.
+- **`ally`** is the nearest allied member held in sight
+  (`Facts.SeenAllies`), else in memory (`Facts.RememberedAllies`)
+  (rpg-project#717). It is legal on `toward`, `dash` and `away` only: a mind
+  is never handed an ally to strike, so `attack: ally` is refused. The row is
+  absent while neither list holds anybody. `{ when: { enemy: none }, toward:
+  ally }` is "follow". Who is allied, and which held ally is nearest, are the
+  caller's; this module knows the word and nothing about sides.
 - **`search: { distance: N }`** walks on from a lost trail for N cells. It
   is eligible only while `Facts.EnemyLost` holds and the creature can move,
   and it carries the `toward` temperament factor. The trail, its heading and
@@ -176,7 +185,10 @@ reimplementing them:
   is a question about that testimony, and this is where the testimony is
   written. A witness holds the freshest deed of EACH KIND by each actor, so a
   flight it was the target of and a shout it merely watched the same figure
-  make are two memories rather than one overwriting the other.
+  make are two memories rather than one overwriting the other. A fall is
+  also filed by WHO FELL (`deed.FiledUnder`, rpg-project#716): it is the first
+  deed a row names the target of, so a hero who drops the king and then a
+  loyalist leaves both falls held. The other verbs wait for a use case.
 - **Who a creature believes is where comes from perception, per observer.**
   `Land` writes a deed into each witness's own store, naming the figures in it
   only to witnesses who could actually see them — a witness who could not see

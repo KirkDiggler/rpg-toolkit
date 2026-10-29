@@ -1210,6 +1210,47 @@ type TriggerExitedHolding struct {
 // isTrigger marks TriggerExitedHolding as a Trigger.
 func (t TriggerExitedHolding) isTrigger() {}
 
+// TriggerLeft fires when the party has LEFT by an exit (rpg-project#716,
+// ruled 2026-10-29: "walk out the front door to end"): the last standing
+// party member declares [Encounter.Exit] standing on Exit's cell.
+//
+// # The last one out
+//
+// One player stepping through the door does not end a run their friends are
+// still playing ("last one out ends it"). The ending is judged after each
+// departure beat, where [TriggerExitedHolding] is judged, and it holds only
+// when no STANDING player member remains inside. A member who is down does
+// not keep the run open: a body left behind is part of how the run went, not
+// somebody still playing it.
+//
+// # Only an ending waits for it
+//
+// Leaving is something the party does once, at the end, so a disposition's
+// `until`, an arrival and an option's `requires` cannot name it; each is
+// refused at construction. The outcome of leaving is the ending's [EndingInput.If]
+// and [EndingInput.Result], judged at that moment.
+type TriggerLeft struct {
+	// Exit is the authored way out the party leaves by. REQUIRED, and must
+	// name a [FieldExit] this field declares (ErrNoEnding otherwise).
+	Exit ExitID
+}
+
+// isTrigger marks TriggerLeft as a Trigger.
+func (t TriggerLeft) isTrigger() {}
+
+// EndingResult is what an ending means for the party: [ResultSuccess] or
+// [ResultFailure], or empty for an ending that says neither (every ending
+// authored before results existed).
+type EndingResult string
+
+const (
+	// ResultSuccess is an ending the party won.
+	ResultSuccess EndingResult = "success"
+
+	// ResultFailure is an ending the party lost.
+	ResultFailure EndingResult = "failure"
+)
+
 // TriggerRound fires when any fight in the run starts round N
 // (rpg-project#375, the hold-out design §2 — `{ round: N }`).
 //
@@ -1274,6 +1315,25 @@ type EndingInput struct {
 
 	// Trigger defines when this ending fires.
 	Trigger Trigger
+
+	// If is a condition that must also hold, read as world truth at the
+	// moment Trigger fires: a [TriggerMemberDown] (the member is down now), a
+	// [TriggerFact] (anybody in the run has learned it) or a [TriggerStance]
+	// (the pair stands so now). Nil always holds. Legal only beside a
+	// [TriggerLeft] (rpg-project#716): "king taken care of? yes? success."
+	// When it does not hold the ending does not fire, and the next declared
+	// ending is asked, so a `left` with an `if` and a plain `left` after it
+	// are the two answers to one departure.
+	//
+	// OMITTED WHEN EMPTY, with Result, so a compiled world whose endings
+	// name neither marshals exactly as it did before they existed.
+	If Trigger `json:",omitempty"`
+
+	// Result is what this ending means for the party. REQUIRED beside a
+	// [TriggerLeft] (a run the party walked out of was won or lost), optional
+	// otherwise; one of [ResultSuccess] and [ResultFailure]. Carried onto
+	// [Outcome.Result] when the ending fires.
+	Result EndingResult `json:",omitempty"`
 }
 
 // SetupInput contains all information needed to construct an encounter.
@@ -1518,6 +1578,12 @@ type Status struct {
 type Outcome struct {
 	// Ending is the key of the ending that fired.
 	Ending string
+
+	// Result is what the ending meant for the party, as its declaration says
+	// ([EndingInput.Result]): success, failure, or empty for an ending that
+	// declares neither. Derived from the declared ending, never stored apart
+	// from it.
+	Result EndingResult
 
 	// At is the clock reading when the ending fired.
 	At uint64

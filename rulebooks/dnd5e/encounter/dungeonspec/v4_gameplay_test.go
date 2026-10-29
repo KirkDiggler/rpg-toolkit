@@ -521,7 +521,7 @@ func TestATypoInsideTheNewKeysIsNamedAtItsV4Path(t *testing.T) {
 			name:    "inside an ending",
 			root:    "endings:\n  - { id: held-out, whn: { round: 6 } }",
 			path:    "endings[0].whn",
-			message: `"whn" is not a key this build reads: they are id, when`,
+			message: `"whn" is not a key this build reads: they are id, if, outcome, when`,
 		},
 		{
 			// A PREDICATE READS ITSELF BY HAND here too, so an ending's

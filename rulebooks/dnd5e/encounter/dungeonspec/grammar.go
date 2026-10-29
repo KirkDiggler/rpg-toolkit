@@ -458,12 +458,14 @@ const (
 	errOptionNoSay     = "the option does not say what the character says"
 	errOptionNoCheck   = "this option needs at least one way to make its check — an ability and a DC"
 	errOptionPropFlees = "a prop cannot run: `flee` is a creature's answer"
+	errOptionsEmpty    = "`options` lists nothing — omit it, or write a line it can be spoken to with"
 )
 
 // options validates the lines an author wrote on a creature or a prop
 // ([OptionSpec], rpg-project#569), at `<path>.options[i]`.
 //
-// Refusals per option, each its own sentence: no id; an id already used on
+// An empty list is refused whole ([errOptionsEmpty]). Refusals per option,
+// each its own sentence: no id; an id already used on
 // this binding; no line; a check with no way through, or an approach that
 // rolls nothing or has nothing to beat ([grammar.approaches], the lock's own
 // grammar); a `requires` that is neither `{ fact }` nor `{ holds }`; a `holds`
@@ -476,6 +478,15 @@ const (
 // — the universe a `holds` may name. isProp says the options are a prop's,
 // whose rows may not `flee`.
 func (g *grammar) options(path string, options []OptionSpec, props map[string]bool, isProp bool) {
+	// AN EMPTY LIST IS REFUSED, NOT READ AS ABSENT — a verdict's own rule
+	// one key up. `options` is a layered key (rpg-project#718): absent means
+	// the layer below speaks, so a member that writes `options: []` would
+	// silently speak its faction's lines, the zero value lying.
+	if options != nil && len(options) == 0 {
+		g.fail(path+".options", "%s", errOptionsEmpty)
+
+		return
+	}
 	seen := map[string]int{}
 	for i, o := range options {
 		p := fmt.Sprintf("%s.options[%d]", path, i)
@@ -576,6 +587,7 @@ func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {
 		}
 	}
 	g.whenPatterns(at, entry.When)
+	g.whenWho(at, entry.When)
 
 	words := entryWords(entry)
 	switch {
@@ -616,6 +628,7 @@ func (g *grammar) groupEntry(at, key string, entry AnswerSpec) {
 			key, entry.When[0].Line)
 	}
 	g.whenPatterns(at, entry.When)
+	g.whenWho(at, entry.When)
 	if entry.Rows == nil {
 		return
 	}
@@ -647,6 +660,30 @@ func (g *grammar) whenPatterns(at string, list WhenListSpec) {
 			}
 			if !g.factMatches(nameOf(w.Fact)) {
 				g.fail(at+".when", "`fact` %s matches no fact this file sets (line %d)", w.Fact, w.Line)
+			}
+		}
+	}
+}
+
+// whenWho refuses a `fell: { who }`, anywhere in a row's `when` (a `not`
+// included), that does not name a monster placed in this file
+// (rpg-project#716): `who` is the one whose fall the row waits on, and only a
+// monster can be down. `who` on any other deed was refused at decode.
+func (g *grammar) whenWho(at string, list WhenListSpec) {
+	for i := range list {
+		for w := &list[i]; w != nil; w = w.Not {
+			if w.Who == "" {
+				continue
+			}
+			m, ok := g.members.at(w.Who)
+			if !ok {
+				g.fail(at+".when", "`%s: { who: %s }`: %q is not a placement in this dungeon (line %d)",
+					w.Deed, w.Who, w.Who, w.Line)
+				continue
+			}
+			if !m.isMonster() {
+				g.fail(at+".when", "`%s: { who: %s }`: %q is a prop, and only a monster can fall (line %d)",
+					w.Deed, w.Who, w.Who, w.Line)
 			}
 		}
 	}
@@ -1011,6 +1048,20 @@ func (g *grammar) factionOrders() {
 	}
 }
 
+// factionOptions validates every declared faction's lines ([FactionSpec.Options],
+// rpg-project#718) by the one option grammar a creature's own lines get, at
+// `factions[i].options[j]` in either dialect: ids unique WITHIN the faction,
+// a check with a way through, a `requires` of a fact or a holding of one of
+// props, and both verdicts' rows by the table's own grammar.
+//
+// A creature's lines, never a prop's: a faction's members are monsters, so a
+// `flee` row is legal here exactly as it is on a binding.
+func (g *grammar) factionOptions(props map[string]bool) {
+	for i, fa := range g.declaredFactions {
+		g.options(fmt.Sprintf("factions[%d]", i), fa.Options, props, false)
+	}
+}
+
 // knownTableKey reports whether a key is one the composition rolls.
 func knownTableKey(key string) bool {
 	for _, known := range encounter.TableKeys {
@@ -1098,7 +1149,7 @@ func (x exitIDs) declare(g *grammar, index int, id string) {
 //
 // RUN AFTER THE DISPOSITIONS, in both: a `{ stance }` is judged against the
 // whole stance table, and a `{ down }` names a placement.
-func (g *grammar) endings(endings []EndingSpec) {
+func (g *grammar) endings(endings []EndingSpec, exits exitIDs) {
 	at := map[string]int{}
 	for i, e := range endings {
 		p := fmt.Sprintf("endings[%d]", i)
@@ -1110,11 +1161,47 @@ func (g *grammar) endings(endings []EndingSpec) {
 		default:
 			at[e.ID] = i
 		}
+		if e.Outcome != "" && e.Outcome != string(encounter.ResultSuccess) && e.Outcome != string(encounter.ResultFailure) {
+			g.fail(p+".outcome", "`outcome: %s`: an ending's outcome is success or failure", e.Outcome)
+		}
 		if e.When == nil {
-			g.fail(p+".when", "the ending does not say when it fires — %s", predicateForms)
+			g.fail(p+".when", "the ending does not say when it fires — %s, or { left: <exit id> }", predicateForms)
 			continue
 		}
-		g.predicate(p+".when", e.When, nil)
+		if e.When.Form() != predicateLeft {
+			if e.If != nil {
+				g.fail(p+".if", "only an ending that waits for the party to leave, `when: { left: <exit id> }`, has an `if`")
+			}
+			g.predicate(p+".when", e.When, nil)
+			continue
+		}
+		// THE RUN ENDS AT THE DOOR (rpg-project#716): the last one out by a
+		// declared exit, success or failure as the `if` says.
+		if _, ok := exits[e.When.Left]; !ok {
+			g.fail(p+".when.left", "%q is not a way out this dungeon declares — add it under `exits:`", e.When.Left)
+		}
+		if e.Outcome == "" {
+			g.fail(p+".outcome", "an ending on leaving says what leaving means: `outcome: success` or `outcome: failure`")
+		}
+		if e.If != nil {
+			g.endingIf(p+".if", e.If)
+		}
+	}
+}
+
+// endingIf judges a leave ending's `if`: a `{ down }` on a monster placed
+// here, a `{ fact }`, or a `{ stance }` between two factions that exist. A
+// state read when the party leaves, so a stance the pair holds from the start
+// is a fine answer, unlike an `until` waiting for one.
+func (g *grammar) endingIf(path string, p *PredicateSpec) {
+	switch form := p.Form(); form {
+	case predicateDown, predicateFact:
+		g.predicate(path, p, nil)
+	case predicateStance:
+		g.stanceShape(path+".stance", p.Stance)
+	default:
+		g.fail(path, "an ending's `if` is { down: <placement id> }, { fact: <id> } or "+
+			"{ stance: { between: [a, b], is: hostile|neutral|allied } }, and `%s` is none of them", form)
 	}
 }
 

@@ -272,6 +272,6 @@ func TestEndingsRefuseEachWrongLine(t *testing.T) {
 	t.Run("a key this build does not know", func(t *testing.T) {
 		source := withEndings(t, "  - { id: x, when: { round: 6 }, then: party }\n")
 		requireRefusedAt(t, refusals(t, source), "endings[0].then",
-			`"then" is not a key this build reads`, "they are id, when")
+			`"then" is not a key this build reads`, "they are id, if, outcome, when")
 	})
 }

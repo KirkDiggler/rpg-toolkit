@@ -72,7 +72,8 @@ type LandInput struct {
 // currently holds them on sight, or is them: a witness who could not see the
 // healer learns that a heal happened and not who did it, and a witness that
 // was the target knows it was. The deed lands on the
-// deeds channel, one qualified subject per figure AND KIND, through
+// deeds channel, one qualified subject per figure AND KIND (and, for a fall,
+// per figure who fell: [deed.FiledUnder]), through
 // perception's Report door — so it is held and never current, it is judged by the
 // witness's mind like everything else, and the store cannot tell it from a
 // lie. Nothing here writes to anybody's sight holding.
@@ -98,7 +99,7 @@ func Land(in *LandInput) error {
 			Observer: witness,
 			Channel:  deed.Channel,
 			Reports: []perception.Presence{{
-				ID:      deed.Subject(in.Deed.Actor, in.Deed.Verb),
+				ID:      deed.FiledUnder(in.Deed),
 				Payload: deed.Encode(saw),
 			}},
 			At: in.At,

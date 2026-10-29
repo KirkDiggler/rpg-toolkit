@@ -304,6 +304,20 @@ type EndingSpec struct {
 
 	// When is the predicate that fires it. REQUIRED. See [PredicateSpec].
 	When *PredicateSpec `yaml:"when"`
+
+	// If is what must also hold, as world truth, when a `{ left: <exit> }`
+	// ending fires (rpg-project#716): `{ down }`, `{ fact }` or
+	// `{ stance }`. Optional, and legal only beside `left`. When it does not
+	// hold, the next ending in the list is asked, so a `left` with an `if`
+	// and a plain `left` after it are success and failure at one door:
+	//
+	//	- { id: king-slain, when: { left: front-door }, if: { down: king }, outcome: success }
+	//	- { id: king-lives, when: { left: front-door }, outcome: failure }
+	If *PredicateSpec `yaml:"if,omitempty" json:"If,omitempty"`
+
+	// Outcome is what the ending means for the party: `success` or
+	// `failure`. REQUIRED beside `left`, optional otherwise.
+	Outcome string `yaml:"outcome,omitempty" json:"Outcome,omitempty"`
 }
 
 // IntelSpec is one authored piece of knowledge: an id, and what knowing it
@@ -436,6 +450,31 @@ type FactionSpec struct {
 	// MIX to deal one from per member ([TemperSpec], design §3). A placement
 	// that names its own word wins, and the mix is not dealt for it.
 	Temper TemperSpec `yaml:"temper,omitempty"`
+
+	// Options is the lines a character can say to ANY member of this faction
+	// — a placement's `options` ([OptionSpec]), written once for the side
+	// (rpg-project#718).
+	//
+	//	factions:
+	//	  - id: loyalists
+	//	    options:
+	//	      - id: yield
+	//	        say: Yield and live.
+	//	        check: [{ ability: persuasion, dc: 12 }]
+	//	        success: [{ say: We yield., fact: loyalists-yielded }]
+	//
+	// LAYERED THE WAY `on:` IS, NEAREST WINS THE KEY WHOLESALE. A member that
+	// writes its own `options` speaks those and none of these; a member that
+	// writes none speaks the faction's. There is no merging of lists by id,
+	// for `on:`'s reason: an author never has to reason about what was added
+	// to what. So lines authored once for a side are spoken by whichever
+	// survivor is addressed, and a leader's fall does not take the side's
+	// lines down with him.
+	//
+	// Judged by the one option grammar a placement's lines get, at
+	// `factions[i].options[j]`. Optional; absent means the members speak only
+	// what they carry themselves.
+	Options []OptionSpec `yaml:"options,omitempty"`
 }
 
 // DispositionSpec is how two factions stand to each other, and what turns
@@ -1495,6 +1534,7 @@ func (l WhenListSpec) deed() *WhenSpec {
 //	when: { enemy: remembered }
 //	when: { enemy: none }
 //	when: { attacked: { within: 3 } }
+//	when: { fell: { who: king, within: 3, on: ally } }
 //	when: { heard: { kind: clang, within: 2 } }
 //	when: { fact: alarm-raised }
 //	when: { not: { enemy: seen } }
@@ -1513,8 +1553,15 @@ type WhenSpec struct {
 	Enemy string
 
 	// Deed is the deed kind — `attacked`, `intimidated`, `persuaded`,
-	// `fled` — or empty when this condition names an enemy instead.
+	// `fled`, `fell` — or empty when this condition names an enemy instead.
 	Deed string
+
+	// Who is `fell`'s `who: <placement id>`: the one member whose fall this
+	// condition waits on (rpg-project#716). Empty reads every fall. Legal on
+	// `fell` alone, refused by name on any other deed at decode; a MONSTER
+	// placed in this file, refused otherwise at validation, since only a
+	// monster can be down.
+	Who string
 
 	// Within is how many rounds ago the deed may have landed and still
 	// count. AT LEAST 1: a span is counted from 1.
@@ -1587,12 +1634,13 @@ const (
 	whenThreat = "threat"
 )
 
-// The three keys a deed condition's body may carry, sealed so the hand-read
+// The four keys a deed condition's body may carry, sealed so the hand-read
 // refusal above and the decode below cannot drift apart.
 const (
 	whenBodyWithin = "within"
 	whenBodyOn     = "on"
 	whenBodyAs     = "as"
+	whenBodyWho    = "who"
 )
 
 // withinSpec is the body a deed condition takes: `{ within: N }`, and — since
@@ -1606,6 +1654,7 @@ type withinSpec struct {
 	Within *int    `yaml:"within"`
 	On     *string `yaml:"on"`
 	As     *string `yaml:"as"`
+	Who    *string `yaml:"who"`
 }
 
 // UnmarshalYAML reads one condition, refusing two conditions in one entry,
@@ -1689,7 +1738,7 @@ func (w *WhenSpec) UnmarshalYAML(value *yaml.Node) error {
 	if body.Kind == yaml.MappingNode {
 		for i := 0; i < len(body.Content); i += 2 {
 			switch bodyKey := body.Content[i].Value; bodyKey {
-			case whenBodyWithin, whenBodyOn, whenBodyAs:
+			case whenBodyWithin, whenBodyOn, whenBodyAs, whenBodyWho:
 			default:
 				return fmt.Errorf("line %d: field %s not found in type dungeonspec.withinSpec",
 					body.Content[i].Line, bodyKey)
@@ -1710,6 +1759,20 @@ func (w *WhenSpec) UnmarshalYAML(value *yaml.Node) error {
 	scope, err := scopeOf(within, body.Line, key)
 	if err != nil {
 		return err
+	}
+	// `who` NAMES WHO FELL, and only a fall has one to name
+	// ([behavior.WhoDeeds]). Refused by the deed's own name, so an author
+	// who wrote `attacked: { who: king }` reads which word does take it.
+	if within.Who != nil {
+		if !slices.Contains(behavior.WhoDeeds, key) {
+			return fmt.Errorf("line %d: `who` names the one who fell, and only `%s` takes it; `%s` does not",
+				body.Line, strings.Join(behavior.WhoDeeds, "`, `"), key)
+		}
+		if *within.Who == "" {
+			return fmt.Errorf("line %d: `%s: { who }` names nobody: write the id of the monster placement whose fall this waits on",
+				body.Line, key)
+		}
+		w.Who = *within.Who
 	}
 	w.Deed = key
 	w.Within = *within.Within

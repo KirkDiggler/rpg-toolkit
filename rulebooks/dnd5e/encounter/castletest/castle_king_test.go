@@ -200,10 +200,11 @@ func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 
 	strikes := &[]cellsStrike{}
 	standing := &castleStanding{down: map[encounter.MemberID]bool{}}
+	endings := append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, compiled.Endings...)
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field:   compiled.Field,
 		Members: members,
-		Endings: append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, compiled.Endings...),
+		Endings: endings,
 		// Unbounded, so a route can read a creature's whole story back.
 		Retention:    encounter.RetentionUnbounded,
 		Capabilities: host.capabilities(strikes, standing),
@@ -379,7 +380,7 @@ func (s *kingScene) throughTheGate(to encounter.MemberID) {
 }
 
 // partyStart is the file's own party start, as an offset cell.
-func partyStart(t *testing.T) spatial.Position {
+func partyStart(t testing.TB) spatial.Position {
 	t.Helper()
 	compiled := loadContent(t, kingFixture)
 	require.NotEmpty(t, compiled.PartyStart)
