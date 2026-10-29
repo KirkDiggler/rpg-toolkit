@@ -380,7 +380,7 @@ func (s *kingScene) throughTheGate(to encounter.MemberID) {
 }
 
 // partyStart is the file's own party start, as an offset cell.
-func partyStart(t *testing.T) spatial.Position {
+func partyStart(t testing.TB) spatial.Position {
 	t.Helper()
 	compiled := loadContent(t, kingFixture)
 	require.NotEmpty(t, compiled.PartyStart)

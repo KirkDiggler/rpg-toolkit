@@ -124,8 +124,8 @@ func TestMadKingTurnTheGarrison(t *testing.T) {
 }
 
 // TestMadKingDeposed is the castle held: the garrison turned, the hero asks
-// the captain to hold the gate, and his answer ends the run deposed — with
-// the king alive and in the run. Method-indifference at castle scale: the
+// the captain to hold the gate, and walking out of the front door after his
+// answer ends the run deposed — with the king alive and in the run. Method-indifference at castle scale: the
 // ending waits on a fact, and nothing about the king.
 func TestMadKingDeposed(t *testing.T) {
 	t.Parallel()
@@ -133,10 +133,13 @@ func TestMadKingDeposed(t *testing.T) {
 	require.Empty(t, s.ending(), "precondition: turning the garrison ends nothing")
 
 	s.said(kingCaptain, "hold-the-castle", "persuasion", true)
-
-	require.Equal(t, "king-deposed", s.ending())
+	require.Empty(t, s.ending(), "the castle held ends nothing: the party has not left")
 	require.Contains(t, memberIDsOf(t, s.enc), theKing, "the king is still in the run")
 	require.False(t, s.standing.down[theKing], "and standing")
+
+	out := s.leaveByTheFrontDoor()
+	require.Equal(t, "king-deposed", out.Ending, "walked out with the castle held")
+	require.Equal(t, encounter.ResultSuccess, out.Result)
 }
 
 // kingPorter is a second player who waits on the front door while the hero
@@ -171,6 +174,28 @@ func TestMadKingSlain(t *testing.T) {
 	require.NotNil(t, out.Closed, "the last one out, through the front door, ends it")
 	require.Equal(t, "king-slain", out.Closed.Ending)
 	require.Equal(t, encounter.ResultSuccess, out.Closed.Result)
+}
+
+// leaveByTheFrontDoor walks the hero back to the party start and leaves by
+// the front door (rpg-project#716), returning what closed. The hero is the
+// party's only player, so the hero is the last one out.
+func (s *kingScene) leaveByTheFrontDoor() *encounter.Outcome {
+	s.t.Helper()
+	start := partyStart(s.t)
+	door := castleCell(int(start.X), int(start.Y))
+	if s.at(hero) != door {
+		s.walkTo(door)
+		require.Equal(s.t, encounter.ClockWorld, clockKind(s.t, s.enc, hero), "the walk to the door met no fight")
+		if s.at(hero) != door {
+			_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: door, EndWalk: true})
+			require.NoError(s.t, err, "the hero steps onto the front door")
+		}
+	}
+	out, err := s.enc.Exit(&encounter.ExitInput{Member: hero})
+	require.NoError(s.t, err)
+	require.NotNil(s.t, out.Closed, "the last one out, through the front door, ends it")
+
+	return out.Closed
 }
 
 // TestMadKingLeftAlive is the run walked away from: the hero comes in and
