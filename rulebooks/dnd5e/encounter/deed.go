@@ -134,6 +134,13 @@ const DeedFled = "fled"
 // ONE DOWN BEAT, ONE FALL. It lands where the down beat is written
 // ([Encounter.noticeDown]), so the story's ledger that keeps a death from
 // being told twice keeps it from being witnessed twice.
+//
+// WHILE THE BEAT IS RETAINED, and that is the limit. The ledger is the
+// RETAINED story, so under a bounded [SetupInput.Retention] a down beat that
+// ages out is told again, and its fall lands again: freshly stamped, filed as
+// the fallen's own (no blow in that verb explains it), told to whoever sees
+// the body then. The session host runs unbounded, so no live run meets it; a
+// told-ledger retention cannot trim is rpg-toolkit#2158.
 const DeedFell = deed.VerbFell
 
 // landFell tells every member whose sight reaches the fallen's cell that it

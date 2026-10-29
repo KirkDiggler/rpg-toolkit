@@ -124,8 +124,8 @@ func TestMadKingTurnTheGarrison(t *testing.T) {
 }
 
 // TestMadKingDeposed is the castle held: the garrison turned, the hero asks
-// the captain to hold the gate, and his answer ends the run deposed — with
-// the king alive and in the run. Method-indifference at castle scale: the
+// the captain to hold the gate, and walking out of the front door after his
+// answer ends the run deposed — with the king alive and in the run. Method-indifference at castle scale: the
 // ending waits on a fact, and nothing about the king.
 func TestMadKingDeposed(t *testing.T) {
 	t.Parallel()
@@ -133,24 +133,100 @@ func TestMadKingDeposed(t *testing.T) {
 	require.Empty(t, s.ending(), "precondition: turning the garrison ends nothing")
 
 	s.said(kingCaptain, "hold-the-castle", "persuasion", true)
-
-	require.Equal(t, "king-deposed", s.ending())
+	require.Empty(t, s.ending(), "the castle held ends nothing: the party has not left")
 	require.Contains(t, memberIDsOf(t, s.enc), theKing, "the king is still in the run")
 	require.False(t, s.standing.down[theKing], "and standing")
+
+	out := s.leaveByTheFrontDoor()
+	require.Equal(t, "king-deposed", out.Ending, "walked out with the castle held")
+	require.Equal(t, encounter.ResultSuccess, out.Result)
 }
 
-// TestMadKingSlain is the king put down: the hero is in the throne room at
-// the king's side when the run opens, the king's court sees him, and the
-// hero's spear drops the king. The ending is the file's `{ down: king }`.
+// TestMadKingSlainAndDeposedEndsSlain pins the order of the castle's endings
+// at the door, not only its bytes: the castle held (`throne-taken`) and the
+// king down, both, and the party walks out. `king-slain` is listed first, so
+// the run ends slain. Reorder the endings and this route fails.
+func TestMadKingSlainAndDeposedEndsSlain(t *testing.T) {
+	t.Parallel()
+	s, _ := turnTheGarrison(t)
+	s.said(kingCaptain, "hold-the-castle", "persuasion", true)
+	s.struck(theKing, true)
+	require.Empty(t, s.ending(), "neither the castle held nor the king's fall ends the run")
+	require.True(t, s.learners("throne-taken")[kingCaptain], "precondition: the castle is held")
+
+	out := s.leaveByTheFrontDoor()
+	require.Equal(t, "king-slain", out.Ending, "slain outranks deposed, as the list orders them")
+	require.Equal(t, encounter.ResultSuccess, out.Result)
+}
+
+// kingPorter is a second player who waits on the front door while the hero
+// is in the throne room, so the last one out can leave by it.
+const kingPorter = encounter.MemberID("porter")
+
+// TestMadKingSlain is the king put down, and the run won at the door
+// (rpg-project#716, ruled 2026-10-29: "walk out the front door to end. king
+// taken care of? ... yes? success."). The hero is in the throne room at the
+// king's side, the king's court sees him, and the hero's spear drops the king.
+// The fall ends nothing. The hero leaves by the lobby, which ends nothing
+// either: the porter is still inside. The porter, the last one out, leaves by
+// the front door, and the run ends `king-slain`, a success.
 func TestMadKingSlain(t *testing.T) {
 	t.Parallel()
-	s := openTheCastle(t, besideTheKing)
+	s := openTheCastleAs(t, castleHost{
+		at:      besideTheKing,
+		players: []encounter.MemberInput{{ID: kingPorter, Kind: encounter.KindPlayer, Position: partyStart(t)}},
+	})
 	require.Equal(t, encounter.ClockTurn, clockKind(t, s.enc, theKing), "precondition: the court saw the hero")
 	require.Empty(t, s.ending())
 
 	s.struck(theKing, true)
+	require.Empty(t, s.ending(), "the king's fall ends nothing: the party has not left")
 
-	require.Equal(t, "king-slain", s.ending())
+	out, err := s.enc.Exit(&encounter.ExitInput{Member: hero})
+	require.NoError(t, err)
+	require.Nil(t, out.Closed, "the hero left by the lobby, and the porter is still inside")
+
+	out, err = s.enc.Exit(&encounter.ExitInput{Member: kingPorter})
+	require.NoError(t, err)
+	require.NotNil(t, out.Closed, "the last one out, through the front door, ends it")
+	require.Equal(t, "king-slain", out.Closed.Ending)
+	require.Equal(t, encounter.ResultSuccess, out.Closed.Result)
+}
+
+// leaveByTheFrontDoor walks the hero back to the party start and leaves by
+// the front door (rpg-project#716), returning what closed. The hero is the
+// party's only player, so the hero is the last one out.
+func (s *kingScene) leaveByTheFrontDoor() *encounter.Outcome {
+	s.t.Helper()
+	start := partyStart(s.t)
+	door := castleCell(int(start.X), int(start.Y))
+	if s.at(hero) != door {
+		s.walkTo(door)
+		require.Equal(s.t, encounter.ClockWorld, clockKind(s.t, s.enc, hero), "the walk to the door met no fight")
+		if s.at(hero) != door {
+			_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: door, EndWalk: true})
+			require.NoError(s.t, err, "the hero steps onto the front door")
+		}
+	}
+	out, err := s.enc.Exit(&encounter.ExitInput{Member: hero})
+	require.NoError(s.t, err)
+	require.NotNil(s.t, out.Closed, "the last one out, through the front door, ends it")
+
+	return out.Closed
+}
+
+// TestMadKingLeftAlive is the run walked away from: the hero comes in and
+// goes straight back out of the front door with the king still breathing,
+// and the run ends `king-lives`, a failure.
+func TestMadKingLeftAlive(t *testing.T) {
+	t.Parallel()
+	s := openTheCastle(t, partyStart(t))
+
+	out, err := s.enc.Exit(&encounter.ExitInput{Member: hero})
+	require.NoError(t, err)
+	require.NotNil(t, out.Closed, "the last one out ends it")
+	require.Equal(t, "king-lives", out.Closed.Ending)
+	require.Equal(t, encounter.ResultFailure, out.Closed.Result)
 }
 
 // pickedTowardACell is whether a creature's own story shows it picking a
