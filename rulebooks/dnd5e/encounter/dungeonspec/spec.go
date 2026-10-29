@@ -457,11 +457,12 @@ type DispositionSpec struct {
 	Stance string `yaml:"stance"`
 
 	// Until is the predicate that TURNS the pair: when it holds the stance
-	// becomes the OTHER of hostile and neutral (rpg-project#493, R1). A
-	// hostile pair stands down; a neutral pair turns on you — "the guards
-	// are civil until the third round of the brawl", "the wolves are calm
-	// until you kill the alpha". REFUSED ON `stance: allied`: an allied pair
-	// has nothing to become. Optional. See [PredicateSpec] — all four forms
+	// becomes [DispositionSpec.Then], or with no `then` the OTHER of hostile
+	// and neutral (rpg-project#493, R1). A hostile pair stands down; a
+	// neutral pair turns on you — "the guards are civil until the third round
+	// of the brawl", "the wolves are calm until you kill the alpha". On
+	// `stance: allied` it needs a `then`: an allied pair has nothing to
+	// become unless the author names where it goes. Optional. See [PredicateSpec] — all four forms
 	// are legal here, and only `{ fact }` needs the pair to have a mind,
 	// because only a fact is somebody's knowledge.
 	//
@@ -480,6 +481,17 @@ type DispositionSpec struct {
 	// lands its harm — so a camp is provokable the moment it is neutral, and
 	// a delivery that is wholly a kindness provokes nobody.
 	Until *PredicateSpec `yaml:"until,omitempty"`
+
+	// Then is the stance the pair turns to when its until holds
+	// (rpg-project#717): hostile, neutral or allied, never the stance it is
+	// declared with, and only beside an `until`. Omitted, the pair turns to
+	// the other of hostile and neutral, as every file written before `then`
+	// existed does. `then: allied` is how a faction the party recruited
+	// becomes the party's side:
+	//
+	//	- { between: [party, veterans], stance: neutral,
+	//	    until: { fact: veteran-joined }, then: allied }
+	Then string `yaml:"then,omitempty"`
 }
 
 // ExitSpec is one authored way out: an id and the floor cell a member stands

@@ -84,8 +84,10 @@ const (
 	// R2).
 	StanceNeutral Stance = "neutral"
 
-	// StanceAllied means the two stand together. Authorable only as a
-	// static stance; no predicate turns a pair allied (R2).
+	// StanceAllied means the two stand together. Authorable as a declared
+	// stance, and reachable through an `until` whose [DispositionInput.Then]
+	// names it (rpg-project#717): a fact the party earned makes a faction the
+	// party's side.
 	StanceAllied Stance = "allied"
 
 	// StanceNone means the pair has NO SIDE toward each other: one of them
@@ -137,10 +139,11 @@ type DispositionInput struct {
 	Stance Stance
 
 	// Until is the predicate that TURNS the pair: when it holds, the stance
-	// becomes the OTHER of hostile and neutral (rpg-project#493, R1) — a
-	// hostile pair goes neutral, a neutral pair goes hostile. REFUSED ON
-	// [StanceAllied] (ErrNoFaction): an allied pair has nothing to become.
-	// Nil means the stance is static.
+	// becomes [DispositionInput.Then], or with no Then the OTHER of hostile
+	// and neutral (rpg-project#493, R1) — a hostile pair goes neutral, a
+	// neutral pair goes hostile. On [StanceAllied] an until needs a Then
+	// (ErrNoFaction otherwise): an allied pair has nothing to become unless
+	// the author names where it goes. Nil means the stance is static.
 	//
 	// ONE UNTIL PER PAIR, and one disposition per pair, so a pair turns at
 	// most once by authoring and never oscillates. What is NOT authored is
@@ -157,6 +160,18 @@ type DispositionInput struct {
 	// knows it — where the same predicate on an ending is judged on the
 	// truth grain, anyone in the run knows it (design R5).
 	Until Trigger
+
+	// Then is the stance the pair turns to when Until holds
+	// (rpg-project#717): one of the closed [Stance] set, and never the
+	// declared Stance itself. Empty is the default, the other of hostile and
+	// neutral, so every disposition written before Then existed turns as it
+	// did. `then: allied` is how a recruited faction becomes the party's
+	// side: `{ between: [party, veterans], stance: neutral, until: { fact:
+	// veteran-joined }, then: allied }`.
+	//
+	// ONLY BESIDE AN UNTIL (ErrNoFaction otherwise): a pair nothing turns has
+	// nowhere to go.
+	Then Stance
 }
 
 // Lighting is a region's light level, carried through the composition unread

@@ -589,7 +589,9 @@ func singletonMind(cast members, faction string) string {
 func dispositionsOf(dispositions []DispositionSpec) []encounter.DispositionInput {
 	var out []encounter.DispositionInput
 	for _, d := range dispositions {
-		di := encounter.DispositionInput{Between: d.Between, Stance: encounter.Stance(d.Stance)}
+		di := encounter.DispositionInput{
+			Between: d.Between, Stance: encounter.Stance(d.Stance), Then: encounter.Stance(d.Then),
+		}
 		if d.Until != nil {
 			di.Until = predicateOf(d.Until)
 		}

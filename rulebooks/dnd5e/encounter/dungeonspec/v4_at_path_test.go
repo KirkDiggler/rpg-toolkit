@@ -314,10 +314,10 @@ func TestTheDecodeHintsSpeakTheRoomsSpelling(t *testing.T) {
 	require.NoError(t, err)
 	for name, tc := range map[string]struct{ repl, want string }{
 		"a word nothing resolves": {"toward: sideways",
-			`"sideways" is not a selector this build resolves: they are enemy, attacker, actor, sound, ` +
+			`"sideways" is not a selector this build resolves: they are enemy, attacker, actor, sound, ally, ` +
 				"or { at: { q, r } }, or { path: [{ q, r }, …] }"},
 		"a selector that is a list": {"toward: [1, 1]",
-			"a selector is one of enemy, attacker, actor, sound, or { at: { q, r } }, or { path: [{ q, r }, …] }"},
+			"a selector is one of enemy, attacker, actor, sound, ally, or { at: { q, r } }, or { path: [{ q, r }, …] }"},
 		"`patrol`": {"patrol: {}",
 			"`patrol` is not a word: a patrol is a route, write toward: { path: [{ q, r }, …] }"},
 	} {

@@ -64,7 +64,7 @@ func (e *Encounter) turnUntils(holds func(Trigger) (string, bool), at uint64) er
 			continue
 		}
 		pair := pairOf(d.Between[0], d.Between[1])
-		to := turnsTo(d.Stance)
+		to := d.turnsTo()
 		if e.world.settled(pair, to) {
 			continue
 		}

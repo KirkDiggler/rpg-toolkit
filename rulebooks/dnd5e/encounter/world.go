@@ -115,19 +115,43 @@ func settledFlag(to Stance, pair factionPair) graph.Flag {
 	return graph.Flag(settledPrefix + string(to) + ":" + pair.a + "|" + pair.b)
 }
 
-// settledStances are the two stances a pair can be settled to publicly, IN
-// PROJECTION ORDER — neutral first so hostile overrules it. Allied is not
-// among them: nothing turns a pair allied, and nothing turns an allied pair.
-var settledStances = []Stance{StanceNeutral, StanceHostile}
+// settledStances are the stances a pair can be settled to publicly, IN
+// PROJECTION ORDER — neutral first, then allied, then hostile, so hostile
+// overrules both: a truce or an alliance its `until` granted publicly is
+// overruled by a later public turn to hostile. Allied is settled only for a
+// pair whose own `until` names it ([field.settledStancesOf]); nothing else
+// turns a pair allied.
+var settledStances = []Stance{StanceNeutral, StanceAllied, StanceHostile}
+
+// settledStancesOf is [settledStances] for one turnable pair: neutral and
+// hostile for every one, and allied only when the pair's own `until` turns it
+// allied (rpg-project#717), so a pair with no way to become allied carries no
+// machinery for it and a blob claiming it did is refused at load.
+func (f *field) settledStancesOf(pair factionPair) []Stance {
+	to, _ := f.untilTurnsTo(pair)
+	out := make([]Stance, 0, len(settledStances))
+	for _, s := range settledStances {
+		if s == StanceAllied && to != StanceAllied {
+			continue
+		}
+		out = append(out, s)
+	}
+
+	return out
+}
 
 // settledRelation is the edge a pair holds while it is settled to a stance:
-// the hostile edge, or none at all, which is what neutral means in a graph
-// whose only stances are edges.
+// the hostile edge, the allied edge, or none at all, which is what neutral
+// means in a graph whose only stances are edges.
 func settledRelation(to Stance) graph.Relation {
-	if to == StanceHostile {
+	switch to {
+	case StanceHostile:
 		return relHostileTo
+	case StanceAllied:
+		return relAlliedWith
+	default:
+		return ""
 	}
-	return ""
 }
 
 // factionEntityID mints the graph entity for a faction. Members are their
@@ -285,7 +309,7 @@ func (e *Encounter) buildWorld() error {
 				Of:        journal.EntityID(mind),
 				Between:   [2]journal.EntityID{factionEntityID(pair.a), factionEntityID(pair.b)},
 				Relations: []graph.Relation{relHostileTo, relAlliedWith},
-				To:        settledRelation(turnsTo(d.Stance)),
+				To:        settledRelation(d.turnsTo()),
 			})
 			w.observers[pair] = append(w.observers[pair], mind)
 		}
@@ -303,7 +327,7 @@ func (e *Encounter) buildWorld() error {
 	// gets neither, so an allied pair carries no machinery it could never
 	// use.
 	for _, pair := range turnablePairsOf(e.field) {
-		for _, to := range settledStances {
+		for _, to := range e.field.settledStancesOf(pair) {
 			cfg.Reducers = append(cfg.Reducers,
 				graph.Raise{On: settledKind(to, pair), Flag: settledFlag(to, pair)})
 			cfg.Projections = append(cfg.Projections, graph.Settle{
@@ -749,10 +773,11 @@ func (e *Encounter) turnablePairs() []factionPair { return turnablePairsOf(e.fie
 //   - EVERY NEUTRAL PAIR, authored or default, because the aggression law
 //     turns one hostile with nothing authored at all (R3).
 //
-// What is left out is exactly what cannot move: an allied pair, which takes
-// no until and is not turned by an attack, and a hostile pair with no until,
-// which has nothing to turn it — an attack across a pair already hostile
-// changes nothing.
+// What is left out is exactly what cannot move: an allied pair with no until,
+// which is not turned by an attack, and a hostile pair with no until, which
+// has nothing to turn it — an attack across a pair already hostile changes
+// nothing. An allied pair WITH an until (it names a `then`, rpg-project#717)
+// is the first way in.
 func turnablePairsOf(f *field) []factionPair {
 	ids := f.factionIDs()
 	out := make([]factionPair, 0, len(ids))
@@ -760,7 +785,6 @@ func turnablePairsOf(f *field) []factionPair {
 		for _, b := range ids[i+1:] {
 			pair := pairOf(a, b)
 			switch declared, until := f.declaredStance(pair); {
-			case declared == StanceAllied:
 			case until != nil, declared == StanceNeutral:
 				out = append(out, pair)
 			}

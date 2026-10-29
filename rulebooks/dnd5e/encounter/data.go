@@ -566,6 +566,10 @@ type DispositionData struct {
 	Between []FactionID  `json:"between"`
 	Stance  string       `json:"stance"`
 	Until   *TriggerData `json:"until,omitempty"`
+
+	// Then is [DispositionInput.Then], omitted when empty so a disposition
+	// written before it existed persists byte for byte as it did.
+	Then string `json:"then,omitempty"`
 }
 
 // TriggerData is the persistent representation of one [Trigger] — the
@@ -1157,7 +1161,7 @@ func validateWorldFacts(
 	minted[string(cellsKnownKind)] = ""
 	settled := make(map[string]factionPair, 2*len(turnable))
 	for _, pair := range turnable {
-		for _, to := range settledStances {
+		for _, to := range floor.settledStancesOf(pair) {
 			settled[string(settledKind(to, pair))] = pair
 		}
 	}
@@ -2473,7 +2477,9 @@ func fieldDataFrom(f *field) FieldData {
 	if len(f.dispositions) > 0 {
 		out.Dispositions = make([]DispositionData, len(f.dispositions))
 		for i, d := range f.dispositions {
-			dd := DispositionData{Between: []FactionID{d.Between[0], d.Between[1]}, Stance: string(d.Stance)}
+			dd := DispositionData{
+				Between: []FactionID{d.Between[0], d.Between[1]}, Stance: string(d.Stance), Then: string(d.Then),
+			}
 			if d.Until != nil {
 				td := triggerDataFrom(d.Until)
 				dd.Until = &td
@@ -3798,7 +3804,9 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 			return FieldInput{}, fmt.Errorf("dispositions[%d] names %d factions, and a disposition is between two: %w",
 				i, len(dd.Between), ErrNoFaction)
 		}
-		d := DispositionInput{Between: [2]FactionID{dd.Between[0], dd.Between[1]}, Stance: Stance(dd.Stance)}
+		d := DispositionInput{
+			Between: [2]FactionID{dd.Between[0], dd.Between[1]}, Stance: Stance(dd.Stance), Then: Stance(dd.Then),
+		}
 		if dd.Until != nil {
 			t, err := triggerFromData(*dd.Until)
 			if err != nil {

@@ -108,8 +108,8 @@ func (f *field) compileFactions(factions []FactionInput, dispositions []Disposit
 			return fmt.Errorf("dispositions[%d] declares stance %q, which is not hostile, neutral or allied: %w",
 				i, d.Stance, ErrNoFaction)
 		}
-		if d.Until != nil && d.Stance == StanceAllied {
-			return fmt.Errorf("dispositions[%d] is allied and has an until, and %s: %w", i, untilOnAllied, ErrNoFaction)
+		if err := validateThen(i, d); err != nil {
+			return err
 		}
 		pair := pairOf(d.Between[0], d.Between[1])
 		if prev, dup := f.dispositionOf[pair]; dup {
@@ -143,11 +143,34 @@ func (f *field) compileFactions(factions []FactionInput, dispositions []Disposit
 	return nil
 }
 
-// untilOnAllied is the one sentence an `until` on an allied pair gets, in the
-// file and in the run alike (rpg-project#493, R1). Hostile and neutral are
-// the two a pair moves between; allied is a static, authorable stance with no
-// other side to move to.
-const untilOnAllied = "an allied pair has nothing to become"
+// untilOnAllied is the one sentence an `until` on an allied pair that names
+// no `then` gets, in the file and in the run alike (rpg-project#493, R1;
+// revised for rpg-project#717). With no `then` a pair moves between hostile
+// and neutral, and an allied pair has no other of those to move to; a `then`
+// names where it goes.
+const untilOnAllied = "an allied pair has nothing to become unless `then` names where it goes"
+
+// validateThen refuses a disposition's `then` that cannot be one: a `then`
+// with no `until` (nothing turns the pair), a word outside the closed stance
+// set, the stance the pair is declared with, and an `until` on an allied pair
+// that names no `then` ([untilOnAllied]).
+func validateThen(i int, d DispositionInput) error {
+	switch {
+	case d.Then != "" && d.Until == nil:
+		return fmt.Errorf("dispositions[%d] names then %q and no until, and a pair nothing turns has nowhere to go: %w",
+			i, d.Then, ErrNoFaction)
+	case d.Then != "" && !knownStance(d.Then):
+		return fmt.Errorf("dispositions[%d] turns to %q, which is not hostile, neutral or allied: %w",
+			i, d.Then, ErrNoFaction)
+	case d.Then != "" && d.Then == d.Stance:
+		return fmt.Errorf("dispositions[%d] is %s and turns to %s, which is the stance it already holds: %w",
+			i, d.Stance, d.Then, ErrNoFaction)
+	case d.Until != nil && d.Then == "" && d.Stance == StanceAllied:
+		return fmt.Errorf("dispositions[%d] is allied and has an until, and %s: %w", i, untilOnAllied, ErrNoFaction)
+	}
+
+	return nil
+}
 
 // untilOnItself is the one sentence a disposition waiting on its OWN stance
 // gets. It used to be caught by accident — the pair held the stance it waited
@@ -156,10 +179,21 @@ const untilOnAllied = "an allied pair has nothing to become"
 // (R3 makes it reachable), so the rule is stated rather than inferred.
 const untilOnItself = "a disposition cannot wait on its own stance"
 
-// turnsTo is the stance a declared one moves to when its `until` holds
-// (rpg-project#493, R1): the OTHER of hostile and neutral. Allied never
-// turns and never has an until ([untilOnAllied]), so it answers itself.
-func turnsTo(declared Stance) Stance {
+// turnsTo is the stance a disposition moves to when its `until` holds: its
+// `then` when it names one (rpg-project#717), else the OTHER of hostile and
+// neutral (rpg-project#493, R1). An allied pair with no `then` has no until
+// ([untilOnAllied]), so it answers itself.
+func (d DispositionInput) turnsTo() Stance {
+	if d.Then != "" {
+		return d.Then
+	}
+
+	return otherOf(d.Stance)
+}
+
+// otherOf is the default turn: the other of hostile and neutral, and allied
+// answers itself.
+func otherOf(declared Stance) Stance {
 	switch declared {
 	case StanceHostile:
 		return StanceNeutral
@@ -208,6 +242,17 @@ func (f *field) declaredStance(pair factionPair) (Stance, Trigger) {
 	return defaultStance(pair), nil
 }
 
+// untilTurnsTo is the stance a pair's own `until` turns it to
+// ([DispositionInput.turnsTo]), and whether the pair has an until at all.
+func (f *field) untilTurnsTo(pair factionPair) (Stance, bool) {
+	i, ok := f.dispositionOf[pair]
+	if !ok || f.dispositions[i].Until == nil {
+		return "", false
+	}
+
+	return f.dispositions[i].turnsTo(), true
+}
+
 // defaultStance is the stance of a pair nobody declared — [DefaultStance],
 // on the normalized pair.
 func defaultStance(pair factionPair) Stance { return DefaultStance(pair.a, pair.b) }
@@ -242,19 +287,21 @@ func DefaultStance(a, b FactionID) Stance {
 // and whether it can ever hold it (ever).
 //
 // THREE WAYS A PAIR MOVES, and they are the whole answer (rpg-project#493):
-// it is declared that way; its own `until` holds, which turns it to the other
-// of hostile and neutral ([turnsTo], R1); or it is NEUTRAL and somebody
+// it is declared that way; its own `until` holds, which turns it to its
+// `then` or the other of hostile and neutral ([DispositionInput.turnsTo],
+// R1); or it is NEUTRAL and somebody
 // attacks across it, which turns it hostile with nothing authored at all
 // (R3). The third is why `{ stance: { between: [a, b], is: hostile } }` over
 // a neutral pair is never refused as unreachable any more: every neutral pair
 // can come to blows.
 func (f *field) stanceReachable(pair factionPair, s Stance) (now, ever bool) {
-	declared, until := f.declaredStance(pair)
+	declared, _ := f.declaredStance(pair)
+	to, turns := f.untilTurnsTo(pair)
 	now = declared == s
 	switch {
 	case now:
 		ever = true
-	case until != nil && s == turnsTo(declared):
+	case turns && s == to:
 		ever = true
 	case declared == StanceNeutral && s == StanceHostile:
 		ever = true
