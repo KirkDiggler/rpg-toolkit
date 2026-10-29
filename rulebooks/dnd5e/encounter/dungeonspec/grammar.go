@@ -1149,7 +1149,7 @@ func (x exitIDs) declare(g *grammar, index int, id string) {
 //
 // RUN AFTER THE DISPOSITIONS, in both: a `{ stance }` is judged against the
 // whole stance table, and a `{ down }` names a placement.
-func (g *grammar) endings(endings []EndingSpec) {
+func (g *grammar) endings(endings []EndingSpec, exits exitIDs) {
 	at := map[string]int{}
 	for i, e := range endings {
 		p := fmt.Sprintf("endings[%d]", i)
@@ -1161,11 +1161,47 @@ func (g *grammar) endings(endings []EndingSpec) {
 		default:
 			at[e.ID] = i
 		}
+		if e.Outcome != "" && e.Outcome != string(encounter.ResultSuccess) && e.Outcome != string(encounter.ResultFailure) {
+			g.fail(p+".outcome", "`outcome: %s`: an ending's outcome is success or failure", e.Outcome)
+		}
 		if e.When == nil {
-			g.fail(p+".when", "the ending does not say when it fires — %s", predicateForms)
+			g.fail(p+".when", "the ending does not say when it fires — %s, or { left: <exit id> }", predicateForms)
 			continue
 		}
-		g.predicate(p+".when", e.When, nil)
+		if e.When.Form() != predicateLeft {
+			if e.If != nil {
+				g.fail(p+".if", "only an ending that waits for the party to leave, `when: { left: <exit id> }`, has an `if`")
+			}
+			g.predicate(p+".when", e.When, nil)
+			continue
+		}
+		// THE RUN ENDS AT THE DOOR (rpg-project#716): the last one out by a
+		// declared exit, success or failure as the `if` says.
+		if _, ok := exits[e.When.Left]; !ok {
+			g.fail(p+".when.left", "%q is not a way out this dungeon declares — add it under `exits:`", e.When.Left)
+		}
+		if e.Outcome == "" {
+			g.fail(p+".outcome", "an ending on leaving says what leaving means: `outcome: success` or `outcome: failure`")
+		}
+		if e.If != nil {
+			g.endingIf(p+".if", e.If)
+		}
+	}
+}
+
+// endingIf judges a leave ending's `if`: a `{ down }` on a monster placed
+// here, a `{ fact }`, or a `{ stance }` between two factions that exist. A
+// state read when the party leaves, so a stance the pair holds from the start
+// is a fine answer, unlike an `until` waiting for one.
+func (g *grammar) endingIf(path string, p *PredicateSpec) {
+	switch form := p.Form(); form {
+	case predicateDown, predicateFact:
+		g.predicate(path, p, nil)
+	case predicateStance:
+		g.stanceShape(path+".stance", p.Stance)
+	default:
+		g.fail(path, "an ending's `if` is { down: <placement id> }, { fact: <id> } or "+
+			"{ stance: { between: [a, b], is: hostile|neutral|allied } }, and `%s` is none of them", form)
 	}
 }
 

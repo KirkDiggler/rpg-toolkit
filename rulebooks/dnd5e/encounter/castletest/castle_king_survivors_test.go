@@ -9,12 +9,9 @@ package castletest
 // `until: { down: king }`, the fight dissolves, and a surviving knight can be
 // told to yield — or refuse, and the next blow brings the fight back (D4).
 //
-// THE ROUTE OPENS WITHOUT THE `king-slain` ENDING. On this file that ending
-// fires on `{ down: king }` and closes the run at the fall, so no line could
-// be said after it; S2's leave ending (rpg-toolkit#2155, lane D7) moves every
-// ending to the front door. Until that lands this route takes the one ending
-// out by id, which is the honest form: the content under test is the court's
-// lines and the court's `until`, and neither reads an ending.
+// THE ROUTE PLAYS ON THE FILE'S OWN ENDINGS. Every castle ending waits for
+// the party to leave by the front door (rpg-toolkit#2155, lane D7), so the
+// king's fall settles nothing and the court can be spoken to after it.
 
 import (
 	"testing"
@@ -31,16 +28,18 @@ type CastleSurvivorsSuite struct {
 
 func TestCastleSurvivorsSuite(t *testing.T) { suite.Run(t, new(CastleSurvivorsSuite)) }
 
-// felled is the castle opened beside the king without `king-slain`, and the
-// king put down by the hero's spear, the blob saved and loaded back as a host
-// does after a verb.
+// felled is the castle opened beside the king with the file's endings, and
+// the king put down by the hero's spear, the blob saved and loaded back as a
+// host does after a verb. The run is still open: `king-slain` waits for the
+// front door.
 func (s *CastleSurvivorsSuite) felled() *kingScene {
-	scene := openTheCastleAs(s.T(), castleHost{at: besideTheKing, without: []string{"king-slain"}})
+	scene := openTheCastleAs(s.T(), castleHost{at: besideTheKing})
 	s.Require().Equal(encounter.StanceHostile, scene.stance(loyalists, encounter.FactionParty))
 	s.Require().Equal(encounter.ClockTurn, clockKind(s.T(), scene.enc, hero), "precondition: the court saw the hero")
 
 	scene.struck(theKing, true)
 	scene.reload()
+	s.Require().Empty(scene.ending(), "the fall ends nothing; the run ends at the front door")
 
 	return scene
 }

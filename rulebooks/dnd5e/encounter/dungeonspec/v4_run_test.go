@@ -245,7 +245,7 @@ func TestAnEndingThatNeverSaysWhenIsRefused(t *testing.T) {
 	requireExactDefect(t, errs, "endings[0].when",
 		"the ending does not say when it fires — a predicate is exactly one of { round: N }, "+
 			"{ down: <placement id> }, { fact: <id> }, or "+
-			"{ stance: { between: [a, b], is: hostile|neutral|allied } }")
+			"{ stance: { between: [a, b], is: hostile|neutral|allied } }, or { left: <exit id> }")
 }
 
 // An ending nobody can reach is refused by the one predicate grammar, which

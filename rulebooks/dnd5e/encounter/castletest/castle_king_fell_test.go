@@ -8,10 +8,8 @@ package castletest
 // knight who saw it holds the fall, and his `fell: { who: king }` row is on
 // his table; the knight who did not holds nothing, and the row is not.
 //
-// THE RUN OPENS WITHOUT `king-slain`. The file's ending settles the run the
-// moment the king is down, so no knight would ever pick again; this route
-// plays past it to read the row the fall puts on a table. Whether the castle
-// should end there is the file's call, not this route's.
+// The king's fall ends nothing: the castle ends when the party leaves by the
+// front door (rpg-project#716, ruled 2026-10-29), so the knights pick on.
 
 import (
 	"encoding/json"
@@ -61,7 +59,6 @@ func openTheFall(t *testing.T) *kingScene {
 	s := openTheCastleAs(t, castleHost{
 		at:      besideTheKing,
 		sightFt: 20,
-		without: []string{"king-slain"},
 		players: []encounter.MemberInput{{
 			ID: kingFellFighter, Kind: encounter.KindPlayer, Position: spatial.Position{X: keep2.X + 1, Y: keep2.Y},
 		}},

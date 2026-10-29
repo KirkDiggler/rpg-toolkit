@@ -42,9 +42,9 @@ var kingCellPick = encounter.CheckApproach{Ability: "dex", Tool: "dnd5e:item:thi
 // cell door from the barracks side, and walks toward the cells, which leaves
 // the hero beside the shut door. The guards are the garrison, civil to the
 // party, so the pick happens under their eyes and no fight forms. A pick of
-// 15 against DC 13 opens the door, the door teaches `cells-opened`, and the
-// run ends `freed` with both guards still in it: the lock was picked, not
-// fought through.
+// 15 against DC 13 opens the door, the door teaches `cells-opened`, and
+// walking back out of the front door ends the run `freed` with both guards
+// still in it: the lock was picked, not fought through.
 func TestMadKingPickingTheCellLockEndsTheRunFreed(t *testing.T) {
 	t.Parallel()
 	s := openTheCastle(t, partyStart(t))
@@ -78,7 +78,7 @@ func TestMadKingPickingTheCellLockEndsTheRunFreed(t *testing.T) {
 	})
 	require.NoError(t, err, "the hero stands within reach of the cell door")
 
-	require.Equal(t, "freed", s.ending())
+	require.Empty(t, s.ending(), "the lock picked ends nothing: the party has not left")
 	require.Empty(t, *s.strikes, "nobody swung")
 	require.True(t, s.learners("cells-opened")[hero], "the hero who opened it learned it")
 	for _, id := range []encounter.MemberID{kingSergeant, kingTurnkey} {
@@ -86,6 +86,10 @@ func TestMadKingPickingTheCellLockEndsTheRunFreed(t *testing.T) {
 		require.Contains(t, memberIDsOf(t, s.enc), id, "%s is still in the run", id)
 		require.False(t, s.standing.down[id], "and standing")
 	}
+
+	out := s.leaveByTheFrontDoor()
+	require.Equal(t, "freed", out.Ending, "walked out with the cells open")
+	require.Equal(t, encounter.ResultSuccess, out.Result)
 }
 
 // TestMadKingTheOrdersTurnTheGarrison is castle-kitchen's trigger in the

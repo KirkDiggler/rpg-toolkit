@@ -1021,7 +1021,7 @@ func (v *validation) placeLabel(i int) string {
 // single-room dialect is judged by the same function.
 //
 // RUN AFTER dispositions(), for arrivals()' reason.
-func (v *validation) endings() { v.g.endings(v.spec.Endings) }
+func (v *validation) endings() { v.g.endings(v.spec.Endings, v.exitIDs) }
 
 // axialSteps are the six unit crossings out of an axial hex cell. Fixed and
 // orientation-free BY CONSTRUCTION: orientation is spent converting the

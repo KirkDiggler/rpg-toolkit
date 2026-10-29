@@ -200,3 +200,29 @@ func (s *FellTestSuite) TestAnEarlierBlowDoesNotExplainALaterFall() {
 	_, _, ok = s.fall(enc, fellWatcher, goblin)
 	s.True(ok, "the fall is the goblin's own")
 }
+
+// TestAFallSeenButNotItsCause is the D1 seam, pinned (rpg-toolkit#2151
+// review, Minor 1): billy, behind the wall, drops the goblin. The watcher
+// saw the goblin fall but not who did it, so it holds the fall naming
+// nobody; billy did it without seeing it land, and still knows what it did.
+// It fails if the fall were told to whoever sees the CAUSE rather than the
+// fallen, or if the cause's own copy were dropped.
+func (s *FellTestSuite) TestAFallSeenButNotItsCause() {
+	enc := s.scene()
+	s.standing.down = []encounter.MemberID{goblin}
+	_, err := recordOne(enc, &encounter.RecordInput{
+		Kind: encounter.OutcomeStruck, Actor: billy, Targets: []encounter.MemberID{goblin},
+		Values: map[encounter.OutcomeValue]int{
+			encounter.ValueRoll: 17, encounter.ValueTotal: 22, encounter.ValueAgainst: 15, encounter.ValueAmount: 9,
+		},
+		Calculation: attackCalculation(17, 5, 0),
+	})
+	s.Require().NoError(err)
+
+	saw, _, ok := s.fall(enc, fellWatcher, billy)
+	s.Require().True(ok, "the watcher saw the goblin fall")
+	s.Equal(encounter.MemberID(""), saw.Actor, "but not who dropped it")
+	s.Equal(goblin, saw.Target)
+	_, _, ok = s.fall(enc, billy, billy)
+	s.True(ok, "billy knows what it did")
+}
