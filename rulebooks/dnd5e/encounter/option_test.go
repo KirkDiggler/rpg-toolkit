@@ -110,6 +110,11 @@ func (s *OptionTestSuite) capabilities() encounter.Capabilities {
 // feet, the altar beside her, and billy behind a wall row who can see none
 // of it.
 func (s *OptionTestSuite) scene() *encounter.Encounter {
+	return s.sceneWith(goblinOptions())
+}
+
+// sceneWith is [OptionTestSuite.scene] with the goblin's lines named.
+func (s *OptionTestSuite) sceneWith(options []encounter.Option) *encounter.Encounter {
 	altar := encounter.PropInput{
 		ID: theAltar, Ref: "test:props:altar", At: spatial.Position{X: 7, Y: 2},
 		BlocksMovement: no(), BlocksLineOfSight: no(), Options: altarOptions(),
@@ -124,7 +129,7 @@ func (s *OptionTestSuite) scene() *encounter.Encounter {
 		},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
-			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 4}, Options: goblinOptions()},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 4}, Options: options},
 			{ID: billy, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 10}},
 		},
 		Endings:      []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},

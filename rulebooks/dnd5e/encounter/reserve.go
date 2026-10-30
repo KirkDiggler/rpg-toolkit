@@ -575,6 +575,19 @@ func onFact(id FactID) func(Trigger) (string, bool) {
 // pair the predicate names turned, and to the stance it waits for.
 func onStance(before, after map[factionPair]Stance) func(Trigger) (string, bool) {
 	return func(t Trigger) (string, bool) {
+		if n, ok := t.(TriggerNot); ok {
+			// THE NEGATION'S EDGE (rpg-project#719): asked in the same fold,
+			// it holds when the pair turned AWAY from the stance named.
+			ts, ok := n.Inner.(TriggerStance)
+			if !ok {
+				return "", false
+			}
+			pair := pairOf(ts.Between[0], ts.Between[1])
+			if !turnedAway(before, after, pair, ts.Stance) {
+				return "", false
+			}
+			return fmt.Sprintf("%s stopped being %s", pair, ts.Stance), true
+		}
 		ts, ok := t.(TriggerStance)
 		if !ok {
 			return "", false

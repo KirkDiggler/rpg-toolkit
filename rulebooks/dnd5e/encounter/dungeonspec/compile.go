@@ -172,6 +172,10 @@ type MonsterPlacement struct {
 	// dialects without this authoring field leave it empty.
 	AppearanceRef string `json:"AppearanceRef,omitempty"`
 
+	// DefaultActivityRef is the optional authored presentation default, carried
+	// unread to sight capture. Legacy sources without this field leave it empty.
+	DefaultActivityRef string `json:"DefaultActivityRef,omitempty"`
+
 	// Region is the ID of the region whose floor it stands on — derived.
 	Region string
 
@@ -636,6 +640,10 @@ func predicateOf(p *PredicateSpec) encounter.Trigger {
 	case predicateLeft:
 		// An ending's `when` only ([grammar.endings]); refused elsewhere.
 		return encounter.TriggerLeft{Exit: encounter.ExitID(p.Left)}
+	case predicateNot:
+		// Scoped by what it wraps ([grammar.not]); the engine judges it at
+		// the inner form's own site (rpg-project#719).
+		return encounter.TriggerNot{Inner: predicateOf(p.Not)}
 	default:
 		return nil
 	}

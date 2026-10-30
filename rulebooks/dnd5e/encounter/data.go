@@ -499,8 +499,10 @@ type ReserveData struct {
 	Kind MemberKind `json:"kind"`
 	Name string     `json:"name,omitempty"`
 	// AppearanceRef retains the authored visual choice before arrival.
-	AppearanceRef string       `json:"appearance_ref,omitempty"`
-	Cell          PositionData `json:"cell"`
+	AppearanceRef string `json:"appearance_ref,omitempty"`
+	// DefaultActivityRef retains the authored default before arrival.
+	DefaultActivityRef string       `json:"default_activity_ref,omitempty"`
+	Cell               PositionData `json:"cell"`
 
 	// Options, Table and Temper are [MemberData]'s own keys, kept for a
 	// member still waiting to arrive — its facts are the same facts, and
@@ -587,7 +589,7 @@ type UntilStepData struct {
 // TriggerData is the persistent representation of one [Trigger] — the
 // predicate grammar on the wire (rpg-project#375). Kind is one of
 // reached_position, external, member_down, exited_holding, round, fact,
-// stance, holds and left, and the other fields are populated per kind exactly as
+// stance, holds, left and not (its inner in Not), and the other fields are populated per kind exactly as
 // [EndingData]'s own are; a disposition's until persists as one of these,
 // an ending is one of these plus its key, and an option's requirement is a
 // fact or a holds (rpg-project#569) — `holds` naming its prop in Item.
@@ -601,6 +603,10 @@ type TriggerData struct {
 	Fact    FactID        `json:"fact,omitempty"`
 	Between []FactionID   `json:"between,omitempty"`
 	Stance  string        `json:"stance,omitempty"`
+
+	// Not is a `not` trigger's one inner predicate (rpg-project#719), kind
+	// "not"; written only for that kind.
+	Not *TriggerData `json:"not,omitempty"`
 }
 
 // triggerDataFrom renders a trigger for the blob — ONE switch for endings and
@@ -627,6 +633,9 @@ func triggerDataFrom(t Trigger) TriggerData {
 		return TriggerData{Kind: "holds", Item: t.Prop}
 	case TriggerLeft:
 		return TriggerData{Kind: "left", Exit: t.Exit}
+	case TriggerNot:
+		inner := triggerDataFrom(t.Inner)
+		return TriggerData{Kind: "not", Not: &inner}
 	}
 	return TriggerData{}
 }
@@ -663,6 +672,15 @@ func triggerFromData(td TriggerData) (Trigger, error) {
 		return TriggerHolds{Prop: td.Item}, nil
 	case "left":
 		return TriggerLeft{Exit: td.Exit}, nil
+	case "not":
+		if td.Not == nil {
+			return nil, fmt.Errorf("not names nothing to negate: %w", ErrNoEnding)
+		}
+		inner, err := triggerFromData(*td.Not)
+		if err != nil {
+			return nil, fmt.Errorf("not: %w", err)
+		}
+		return TriggerNot{Inner: inner}, nil
 	default:
 		return nil, fmt.Errorf("unknown trigger kind %q: %w", td.Kind, ErrNoEnding)
 	}
@@ -2051,8 +2069,10 @@ type MemberData struct {
 	Kind MemberKind `json:"kind"`
 	Name string     `json:"name,omitempty"`
 	// AppearanceRef is authored content, not the observer's captured answer.
-	AppearanceRef string        `json:"appearance_ref,omitempty"`
-	Cell          *PositionData `json:"cell"`
+	AppearanceRef string `json:"appearance_ref,omitempty"`
+	// DefaultActivityRef is authored content, separate from captured testimony.
+	DefaultActivityRef string        `json:"default_activity_ref,omitempty"`
+	Cell               *PositionData `json:"cell"`
 
 	// speed_feet, sight_feet, actions and targeting are GONE (rpg-project#538).
 	// They were copies of the member's sheet taken at Join; the sheet owns
@@ -2175,13 +2195,17 @@ type EndingData struct {
 	// ending written before them is byte-identical.
 	If      *TriggerData `json:"if,omitempty"`
 	Outcome EndingResult `json:"outcome,omitempty"`
+
+	// Not carries a `not` ending's inner predicate (rpg-project#719), kind
+	// "not"; omitted for every other kind.
+	Not *TriggerData `json:"not,omitempty"`
 }
 
 // triggerData is the ending's predicate half, as a [TriggerData].
 func (ed EndingData) triggerData() TriggerData {
 	return TriggerData{
 		Kind: ed.Kind, At: ed.At, Member: ed.Member, Exit: ed.Exit, Item: ed.Item,
-		Round: ed.Round, Fact: ed.Fact, Between: ed.Between, Stance: ed.Stance,
+		Round: ed.Round, Fact: ed.Fact, Between: ed.Between, Stance: ed.Stance, Not: ed.Not,
 	}
 }
 
@@ -2191,7 +2215,7 @@ func endingDataFrom(de declaredEnding) EndingData {
 	td := triggerDataFrom(de.trigger)
 	out := EndingData{
 		Key: de.key, Kind: td.Kind, At: td.At, Member: td.Member, Exit: td.Exit, Item: td.Item,
-		Round: td.Round, Fact: td.Fact, Between: td.Between, Stance: td.Stance,
+		Round: td.Round, Fact: td.Fact, Between: td.Between, Stance: td.Stance, Not: td.Not,
 		Outcome: de.result,
 	}
 	if de.cond != nil {
@@ -2268,21 +2292,22 @@ func (e *Encounter) snapshot() EncounterData {
 		}
 		facing := m.Facing
 		membersData = append(membersData, MemberData{
-			ID:             m.ID,
-			Kind:           m.Kind,
-			Name:           m.Name,
-			AppearanceRef:  m.AppearanceRef,
-			Cell:           &PositionData{X: cell.X, Y: cell.Y},
-			Options:        optionsDataFrom(m.Options),
-			Table:          tableDataFrom(m.Table),
-			Temper:         temperDataFrom(m.Temper),
-			Pace:           m.PaceCells,
-			Facing:         &facing,
-			Sneaking:       m.Sneaking,
-			Dwell:          dwellDataFrom(m.Dwell),
-			TableHash:      maps.Clone(m.TableHash),
-			BlocksMovement: m.BlocksMovement,
-			Faction:        m.Faction,
+			ID:                 m.ID,
+			Kind:               m.Kind,
+			Name:               m.Name,
+			AppearanceRef:      m.AppearanceRef,
+			DefaultActivityRef: m.DefaultActivityRef,
+			Cell:               &PositionData{X: cell.X, Y: cell.Y},
+			Options:            optionsDataFrom(m.Options),
+			Table:              tableDataFrom(m.Table),
+			Temper:             temperDataFrom(m.Temper),
+			Pace:               m.PaceCells,
+			Facing:             &facing,
+			Sneaking:           m.Sneaking,
+			Dwell:              dwellDataFrom(m.Dwell),
+			TableHash:          maps.Clone(m.TableHash),
+			BlocksMovement:     m.BlocksMovement,
+			Faction:            m.Faction,
 		})
 	}
 
@@ -2360,19 +2385,20 @@ func (e *Encounter) snapshot() EncounterData {
 		rm := e.reserve[id]
 		facing := rm.record.Facing
 		reserveData = append(reserveData, ReserveData{
-			ID:             rm.record.ID,
-			Kind:           rm.record.Kind,
-			Name:           rm.record.Name,
-			AppearanceRef:  rm.record.AppearanceRef,
-			Cell:           PositionData{X: rm.at.X, Y: rm.at.Y},
-			Options:        optionsDataFrom(rm.record.Options),
-			Table:          tableDataFrom(rm.record.Table),
-			Temper:         undealtTemperDataFrom(rm.record.Temper),
-			BlocksMovement: rm.record.BlocksMovement,
-			Faction:        rm.record.Faction,
-			Holds:          append([]IntelID(nil), rm.holds...),
-			Arrives:        triggerDataFrom(rm.arrives),
-			Facing:         &facing,
+			ID:                 rm.record.ID,
+			Kind:               rm.record.Kind,
+			Name:               rm.record.Name,
+			AppearanceRef:      rm.record.AppearanceRef,
+			DefaultActivityRef: rm.record.DefaultActivityRef,
+			Cell:               PositionData{X: rm.at.X, Y: rm.at.Y},
+			Options:            optionsDataFrom(rm.record.Options),
+			Table:              tableDataFrom(rm.record.Table),
+			Temper:             undealtTemperDataFrom(rm.record.Temper),
+			BlocksMovement:     rm.record.BlocksMovement,
+			Faction:            rm.record.Faction,
+			Holds:              append([]IntelID(nil), rm.holds...),
+			Arrives:            triggerDataFrom(rm.arrives),
+			Facing:             &facing,
 		})
 	}
 
@@ -2745,6 +2771,12 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 
 		switch ed.Kind {
 		case "reached_position", "external", "member_down", "exited_holding", "round", "fact", "stance", "left":
+		case "not":
+			// The inner half is bytes too: refused here as any persisted
+			// trigger is, before validateEndingTriggers judges its scope.
+			if _, nerr := triggerFromData(ed.triggerData()); nerr != nil {
+				return nil, fmt.Errorf("load encounter: ending %q: %w: %w", ed.Key, ErrInvalidData, nerr)
+			}
 		default:
 			return nil, fmt.Errorf("load encounter: unknown ending kind %q: %w: %w", ed.Kind, ErrInvalidData, ErrNoEnding)
 		}
@@ -2938,6 +2970,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		if err := validateAppearanceRef(m.AppearanceRef); err != nil {
 			return nil, fmt.Errorf("load encounter: member %q: %w: %w", m.ID, ErrInvalidData, err)
 		}
+		if err := validateDefaultActivityRef(m.DefaultActivityRef); err != nil {
+			return nil, fmt.Errorf("load encounter: member %q: %w: %w", m.ID, ErrInvalidData, err)
+		}
 
 		// A faction this field does not have, or a mind in the wrong
 		// faction, is the SAME refusal Setup and Join make — a blob that
@@ -2997,10 +3032,11 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 				r.ID, cell.X, cell.Y, prop, ErrInvalidData, ErrBadPlacement)
 		}
 		if err := validateMemberFacts(memberFacts{
-			ID:            r.ID,
-			AppearanceRef: r.AppearanceRef,
-			Facing:        r.Facing,
-			Table:         tableFromData(r.Table),
+			ID:                 r.ID,
+			AppearanceRef:      r.AppearanceRef,
+			DefaultActivityRef: r.DefaultActivityRef,
+			Facing:             r.Facing,
+			Table:              tableFromData(r.Table),
 		}); err != nil {
 			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, err)
 		}
@@ -3361,20 +3397,21 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 
 		member := &memberRecord{
-			ID:             m.ID,
-			Kind:           m.Kind,
-			Name:           m.Name,
-			AppearanceRef:  m.AppearanceRef,
-			Options:        memberOptions[m.ID],
-			Table:          tableFromData(m.Table),
-			Temper:         temperFromData(m.Temper),
-			PaceCells:      m.Pace,
-			Facing:         seedFacing(m.Facing),
-			Sneaking:       m.Sneaking,
-			Dwell:          dwellFromData(m.Dwell),
-			TableHash:      maps.Clone(m.TableHash),
-			BlocksMovement: m.BlocksMovement,
-			Faction:        m.Faction,
+			ID:                 m.ID,
+			Kind:               m.Kind,
+			Name:               m.Name,
+			AppearanceRef:      m.AppearanceRef,
+			DefaultActivityRef: m.DefaultActivityRef,
+			Options:            memberOptions[m.ID],
+			Table:              tableFromData(m.Table),
+			Temper:             temperFromData(m.Temper),
+			PaceCells:          m.Pace,
+			Facing:             seedFacing(m.Facing),
+			Sneaking:           m.Sneaking,
+			Dwell:              dwellFromData(m.Dwell),
+			TableHash:          maps.Clone(m.TableHash),
+			BlocksMovement:     m.BlocksMovement,
+			Faction:            m.Faction,
 		}
 		e.members[m.ID] = member
 		e.everMembers[m.ID] = true
@@ -3410,16 +3447,17 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	for i, r := range data.Reserve {
 		rm := &reservedMember{
 			record: memberRecord{
-				ID:             r.ID,
-				Kind:           r.Kind,
-				Name:           r.Name,
-				AppearanceRef:  r.AppearanceRef,
-				Options:        reserveOptions[i],
-				Table:          tableFromData(r.Table),
-				Temper:         undealtTemperFromData(r.Temper),
-				Facing:         seedFacing(r.Facing),
-				BlocksMovement: r.BlocksMovement,
-				Faction:        r.Faction,
+				ID:                 r.ID,
+				Kind:               r.Kind,
+				Name:               r.Name,
+				AppearanceRef:      r.AppearanceRef,
+				DefaultActivityRef: r.DefaultActivityRef,
+				Options:            reserveOptions[i],
+				Table:              tableFromData(r.Table),
+				Temper:             undealtTemperFromData(r.Temper),
+				Facing:             seedFacing(r.Facing),
+				BlocksMovement:     r.BlocksMovement,
+				Faction:            r.Faction,
 			},
 			at:      spatial.Position{X: r.Cell.X, Y: r.Cell.Y},
 			holds:   append([]IntelID(nil), r.Holds...),

@@ -671,6 +671,19 @@ type RollWindowOpened struct {
 	Roll *Roll
 }
 
+// EndingResult is what an ending meant for the party, as the ending that
+// fired declares it (encounter `Outcome.Result`, rpg-toolkit#2155). It is
+// read from the ended beat, never stored beside the ending; the empty value
+// is an ending that states no result.
+type EndingResult string
+
+const (
+	// ResultSuccess is an ending the party won.
+	ResultSuccess EndingResult = "success"
+	// ResultFailure is an ending the party lost.
+	ResultFailure EndingResult = "failure"
+)
+
 // ClockEntry is the table's bookkeeping. A clock entry inside an act carries
 // that act's id and closes the act's open segment.
 type ClockEntry struct {
@@ -693,6 +706,11 @@ type ClockEntry struct {
 	Arrival *Arrival
 	// Ending is the ending reached (ended `ending`).
 	Ending string
+	// Outcome is the result the ending reached declares (ended `outcome`,
+	// rpg-project#733): success or failure. Empty for an ending that declares
+	// none and for every ended beat written before results existed, so an old
+	// run reads no result rather than a guessed one.
+	Outcome EndingResult
 	// Window is set for ClockWindowOpened.
 	Window *WindowOpened
 	// RollWindow is set for ClockRollWindowOpened.

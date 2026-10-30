@@ -525,13 +525,20 @@ func (e *Encounter) departureEnding(through ExitID, carried []PropID) (departure
 	var down map[MemberID]bool
 	lastOut, asked := false, false
 	for i := range e.endings {
-		switch trigger := e.endings[i].trigger.(type) {
+		inner, negated := unwrapNot(e.endings[i].trigger)
+		switch trigger := inner.(type) {
 		case TriggerExitedHolding:
+			if negated {
+				continue // never built: the door refuses a not of anything but a left here
+			}
 			if trigger.Exit == through && holding[trigger.Item] {
 				return departureMatch{fired: &e.endings[i]}, nil
 			}
 		case TriggerLeft:
-			if trigger.Exit != through {
+			// `{ not: { left: gate } }` (rpg-project#719) is judged at the
+			// same departure as `{ left: gate }` and answers the opposite:
+			// the last one out went by any other door.
+			if (trigger.Exit == through) == negated {
 				continue
 			}
 			if !asked {

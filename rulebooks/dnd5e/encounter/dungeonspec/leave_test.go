@@ -88,7 +88,7 @@ func TestLeftIsRefusedOnAnArrivalAndARequirement(t *testing.T) {
 			says: "only an ending waits for that"},
 		{name: "an option's requires",
 			gameplay: "    monsterBindings:\n      goblin-1: { options: [ { id: hail, say: Hi, requires: { left: front-door } } ] }",
-			says:     "`left` is neither"},
+			says:     "`left` is none of them"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			errs := refusals(t, v4With("exits:\n  - { id: front-door, cell: { q: 0, r: 0 } }", tc.gameplay))

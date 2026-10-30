@@ -1,5 +1,7 @@
 # Run — 2026-10-29 — Frank's list S1: a walking creature opens the door it walks into
 
+processed: 2026-10-30T183312Z
+
 Slice [rpg-project#715](https://github.com/KirkDiggler/rpg-project/issues/715) of story [rpg-project#714](https://github.com/KirkDiggler/rpg-project/issues/714), answering [rpg-toolkit#2069](https://github.com/KirkDiggler/rpg-toolkit/issues/2069). Base: rpg-toolkit main at [`dd2ccc8b`](https://github.com/KirkDiggler/rpg-toolkit/commit/dd2ccc8b). Work: [rpg-toolkit#2150](https://github.com/KirkDiggler/rpg-toolkit/pull/2150), commit [`c246a91e`](https://github.com/KirkDiggler/rpg-toolkit/commit/c246a91e).
 
 ## Shipped

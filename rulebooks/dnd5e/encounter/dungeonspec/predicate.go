@@ -26,6 +26,7 @@ import (
 //	until:   { down: chief }
 //	until:   { fact: saved-wiseman }
 //	when:    { stance: { between: [raiders, party], is: neutral } }
+//	requires: { not: { fact: caught-in-kitchen } }
 //
 // # Exactly one key
 //
@@ -85,6 +86,17 @@ type PredicateSpec struct {
 	// refused by name everywhere else ([grammar.predicate]). Must name an
 	// exit this file declares.
 	Left string
+
+	// Not is the `{ not: <one predicate> }` form (rpg-project#719): holds
+	// when the inner predicate does not, judged where and when the inner one
+	// is (the engine's [encounter.TriggerNot]). SCOPED BY WHAT IT WRAPS: a
+	// `not` of `holds` only on an option's `requires`, of `left` only on an
+	// ending's `when`, each refused elsewhere in the inner form's own words.
+	// On an until, an arrival or an ending's `when` it is waited for, and a
+	// `not` of a fact, a round or a fall holds from the start, so only a
+	// `not` of a stance the pair can turn away from is legal there
+	// ([grammar.not]). Never a `not` of a `not`.
+	Not *PredicateSpec
 }
 
 // StancePredicateSpec is the stance form's own object: the pair, and the
@@ -108,6 +120,7 @@ const (
 	predicateStance = "stance"
 	predicateHolds  = "holds"
 	predicateLeft   = "left"
+	predicateNot    = "not"
 )
 
 // predicateForms is the one sentence every predicate refusal points at.
@@ -136,6 +149,8 @@ func (p *PredicateSpec) Form() string {
 		return predicateHolds
 	case p.Left != "":
 		return predicateLeft
+	case p.Not != nil:
+		return predicateNot
 	default:
 		return ""
 	}
@@ -153,7 +168,7 @@ func (p *PredicateSpec) UnmarshalYAML(value *yaml.Node) error {
 	var forms []string
 	for i := 0; i < len(value.Content); i += 2 {
 		switch key := value.Content[i].Value; key {
-		case predicateRound, predicateDown, predicateFact, predicateStance, predicateHolds, predicateLeft:
+		case predicateRound, predicateDown, predicateFact, predicateStance, predicateHolds, predicateLeft, predicateNot:
 			forms = append(forms, key)
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.PredicateSpec",
@@ -175,12 +190,14 @@ func (p *PredicateSpec) UnmarshalYAML(value *yaml.Node) error {
 		Stance *StancePredicateSpec `yaml:"stance"`
 		Holds  string               `yaml:"holds"`
 		Left   string               `yaml:"left"`
+		Not    *PredicateSpec       `yaml:"not"`
 	}
 	if err := value.Decode(&obj); err != nil {
 		return err
 	}
 	*p = PredicateSpec{
 		Round: obj.Round, Down: obj.Down, Fact: obj.Fact, Stance: obj.Stance, Holds: obj.Holds, Left: obj.Left,
+		Not: obj.Not,
 	}
 
 	// A form that decoded to its own zero value said the key and nothing
@@ -249,6 +266,8 @@ func (p *PredicateSpec) String() string {
 		return fmt.Sprintf("{ holds: %s }", p.Holds)
 	case predicateLeft:
 		return fmt.Sprintf("{ left: %s }", p.Left)
+	case predicateNot:
+		return fmt.Sprintf("{ not: %s }", p.Not.String())
 	default:
 		return "{ }"
 	}

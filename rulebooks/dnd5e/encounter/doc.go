@@ -222,6 +222,13 @@
 // location testimony still carries no facts. This module validates reference
 // structure only, never asset-catalog membership or a model path.
 //
+// DefaultActivityRef follows the same authored/persisted/captured path,
+// independently of AppearanceRef. It names an opaque presentation default,
+// not a current animation phase or gameplay behavior. Missing legacy values
+// remain empty; a memory never acquires a newer live default on load. Unknown
+// testimony carries no activity fact. Activity catalogs, supported clips and
+// playback timing are outside this module.
+//
 // # Permitted ordinary prop appearance
 //
 // FieldInput.PropPresentations captures only typed appearance facts, not the

@@ -1735,14 +1735,35 @@ room:
                 fact: throne-taken
             failure:
               - say: We’ll hold what we can.
+      # A FAILED THEFT CLOSES THE KITCHEN, NOT THE KEEP (rpg-project#719):
+      # the pilfer's failure teaches `caught-in-kitchen` to whoever saw it,
+      # and the cook's theft and gossip are withheld from a speaker who knows
+      # it (D3: the speaker's knowledge). Ashford and the bribe already have
+      # a requirement each, and a requires is one predicate, so they stay.
       cook:
         faction: kitchen
         options:
+          - id: pilfer
+            say: (lift a pie from the sill)
+            check:
+              - ability: sleight-of-hand
+                dc: 13
+            requires:
+              not:
+                fact: caught-in-kitchen
+            success:
+              - say: The cook never looks round.
+            failure:
+              - say: Thief!
+                fact: caught-in-kitchen
           - id: gossip
             say: Busy night?
             check:
               - ability: persuasion
                 dc: 10
+            requires:
+              not:
+                fact: caught-in-kitchen
             success:
               - say: Feast for the whole court, and him sitting there grinning after what he did
                   to Ashford.

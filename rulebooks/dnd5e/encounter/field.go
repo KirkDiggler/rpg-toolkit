@@ -919,6 +919,10 @@ type MemberInput struct {
 	// testimony rather than delivered from live member state. It decides no rule.
 	AppearanceRef string
 
+	// DefaultActivityRef is an optional authored presentation default, captured
+	// with sight. It is not the current animation phase and decides no rule.
+	DefaultActivityRef string
+
 	// Position is the member's starting cell: an ABSOLUTE authored offset
 	// [col,row] pair, which must be floor — a cell some region owns
 	// (ErrBadPlacement otherwise).
@@ -1098,11 +1102,12 @@ type ActionView struct {
 // A STRUCT RATHER THAN POSITIONAL ARGUMENTS, so a fact added to every door
 // is one field here rather than a parameter at every call site.
 type memberFacts struct {
-	ID            MemberID
-	AppearanceRef string
-	Facing        *float64
-	Options       []Option
-	Table         Table
+	ID                 MemberID
+	AppearanceRef      string
+	DefaultActivityRef string
+	Facing             *float64
+	Options            []Option
+	Table              Table
 }
 
 // validateMemberFacts refuses a defective authored check or table. Callers ask
@@ -1112,6 +1117,9 @@ type memberFacts struct {
 // are asked ([Encounter.sheetsNow]).
 func validateMemberFacts(in memberFacts) error {
 	if err := validateAppearanceRef(in.AppearanceRef); err != nil {
+		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
+	}
+	if err := validateDefaultActivityRef(in.DefaultActivityRef); err != nil {
 		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
 	}
 	if err := validateFacing(in.Facing); err != nil {
@@ -1520,14 +1528,15 @@ type Member struct {
 // sat here from rpg-project#254 until then as copies taken at Join that no
 // verb refreshed.
 type memberRecord struct {
-	ID             MemberID
-	Kind           MemberKind
-	Name           string
-	AppearanceRef  string
-	Options        []Option
-	Table          Table
-	Temper         Temper
-	BlocksMovement bool
+	ID                 MemberID
+	Kind               MemberKind
+	Name               string
+	AppearanceRef      string
+	DefaultActivityRef string
+	Options            []Option
+	Table              Table
+	Temper             Temper
+	BlocksMovement     bool
 
 	// PaceCells is how far this member has walked on the WORLD clock since
 	// it last paid a round for it — the remainder of
@@ -1760,6 +1769,9 @@ type JoinInput struct {
 
 	// AppearanceRef carries the same optional visual content as MemberInput.
 	AppearanceRef string
+
+	// DefaultActivityRef carries MemberInput's optional presentation default.
+	DefaultActivityRef string
 
 	// Cell is where they arrive, DUNGEON-ABSOLUTE — the same frame the Atlas
 	// draws, [Encounter.Step] takes, and a [Member]'s Position reports.
