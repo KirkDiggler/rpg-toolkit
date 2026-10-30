@@ -60,12 +60,8 @@ linters:
       # rule per module still carrying findings. The PR that fixes a module's
       # findings deletes that module's rule here in the same commit. When
       # this list is empty, delete the whole block.
-      - path: ^mind/behavior/       # 4 goconst (answer.go, table.go)
-        linters: [goconst]
       - path: ^tools/environments/  # 26 goconst
         linters: [goconst]
-      - path: ^tools/selectables/   # 5 goconst + gosec G115 + unparam (basic_table.go)
-        linters: [goconst, gosec, unparam]
 
     paths:
       # vendor (if any) and generated files
