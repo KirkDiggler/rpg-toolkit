@@ -98,6 +98,15 @@ func unknownKeySentence(key, typeName string) string {
 	if typeName == "dungeonspec.RoomGameplaySource" && key == "monsters" {
 		return "monsters has been renamed to monsterDeclarations; rename this key"
 	}
+	// THE TWO KEYS VERSION 5 RETIRED (rpg-project#725). An author with a v4
+	// file is told where the floor went rather than that the word never
+	// existed.
+	if typeName == "dungeonspec.RoomGameplaySource" && key == "walkableHexes" {
+		return "walkableHexes is retired: the floor is the union of room.room.regions (rpg-project#725)"
+	}
+	if typeName == "dungeonspec.RoomSource" && key == "workspace" {
+		return "workspace is retired: the canvas is unbounded and the file carries only its content (rpg-project#725)"
+	}
 	if typeName == "dungeonspec.RoomMonsterSource" && key == "faction" {
 		return "faction belongs in monsterBindings, keyed by this monster's id; move it there"
 	}

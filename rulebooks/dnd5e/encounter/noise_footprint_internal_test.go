@@ -16,12 +16,14 @@ import (
 // behind a footprint door's hearing links (rpg-toolkit#2066), which the
 // bounds pre-filter alone cannot answer for a door that is not axis-aligned.
 //
-// Four floor cells in one row, x0 x1 x2 x3: region a is x0, b is x1 and x2,
-// c is x3. The door is a long thin rectangle at 45° through the midpoint of
-// the x0–x1 crossing. It lies across that crossing and no other, but its
-// axis-aligned bounds reach out over the x2–x3 crossing too. Counting every
-// crossing the bounds admit would join b to c through a door that stands
-// nowhere near their seam.
+// Four floor cells in one row, x0 x1 x2 x3, and a solid wall on the x2–x3
+// edge: the walls make three rooms — a is x0 (the door, closed for topology,
+// cuts it off), b is x1 and x2, c is x3 (rpg-project#725: hearing hops are
+// wall partitions). The door is a long thin rectangle at 45° through the
+// midpoint of the x0–x1 crossing. It lies across that crossing and no other,
+// but its axis-aligned bounds reach out over the x2–x3 crossing too. Counting
+// every crossing the bounds admit would join b to c through a door that
+// stands nowhere near their seam.
 func TestADiagonalDoorJoinsOnlyTheCrossingItLiesAcross(t *testing.T) {
 	region := func(id string, cols ...int) RegionInput {
 		r := rectRegion(id, 0, 0, 0, 0)
@@ -30,10 +32,15 @@ func TestADiagonalDoorJoinsOnlyTheCrossingItLiesAcross(t *testing.T) {
 		}
 		return r
 	}
-	f, err := compileField(FieldInput{
+	in := FieldInput{
 		Canvas:  openAir(),
 		Regions: []RegionInput{region("a", 0), region("b", 1, 2), region("c", 3)},
-	})
+		Walls: []WallInput{{Boundary: spatial.Boundary{
+			From: spatial.Position{X: 2, Y: 0}, To: spatial.Position{X: 3, Y: 0},
+			BlocksMovement: true, BlocksLineOfSight: true,
+		}}},
+	}
+	f, err := compileField(in)
 	require.NoError(t, err)
 
 	x := make([]spatial.Point, 4)
@@ -56,15 +63,26 @@ func TestADiagonalDoorJoinsOnlyTheCrossingItLiesAcross(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, trace.Interior, "precondition: the rectangle does not lie across it")
 
-	doors, _ := doorRecordsFrom([]DoorInput{{ID: "diagonal", Placement: &placement, State: DoorIsOpen()}})
+	door := []DoorInput{{ID: "diagonal", Placement: &placement, State: DoorIsOpen()}}
+	require.NoError(t, f.derivePartitions(door))
+	partition := func(col int) PartitionID {
+		p, ok := f.partitionAt(f.cellAt(spatial.Position{X: float64(col), Y: 0}))
+		require.True(t, ok)
+		return p
+	}
+	a, b, c := partition(0), partition(1), partition(3)
+	require.Equal(t, b, partition(2), "precondition: x1 and x2 are one room")
+	require.Len(t, map[PartitionID]bool{a: true, b: true, c: true}, 3, "precondition: three rooms")
+
+	doors, _ := doorRecordsFrom(door)
 	e := &Encounter{field: f, doors: doors}
 	links := e.links()
 
-	var fromB []RegionID
-	for _, l := range links["b"] {
+	var fromB []PartitionID
+	for _, l := range links[b] {
 		fromB = append(fromB, l.to)
 	}
-	require.Contains(t, fromB, RegionID("a"), "the door joins the two regions either side of the crossing it lies across")
-	require.NotContains(t, fromB, RegionID("c"), "and not a pair only its bounds reach")
-	require.Empty(t, links["c"], "c has no door at all")
+	require.Contains(t, fromB, a, "the door joins the two partitions either side of the crossing it lies across")
+	require.NotContains(t, fromB, c, "and not a pair only its bounds reach")
+	require.Empty(t, links[c], "c has no door at all")
 }

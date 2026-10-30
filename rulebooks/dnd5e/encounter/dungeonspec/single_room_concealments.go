@@ -60,7 +60,7 @@ const (
 		"the placed things under `props`, or both"
 
 	// concealmentUnknownCell is a cell the room's floor does not have.
-	concealmentUnknownCell = "a concealment hides floor this room has: name a hex from walkableHexes"
+	concealmentUnknownCell = "a concealment hides floor this room has: name a hex one of room.room.regions owns"
 
 	// concealmentUnknownProp is an id no `propDeclarations` entry owns.
 	concealmentUnknownProp = "a concealment hides things this room places: declare it under propDeclarations"
@@ -119,8 +119,8 @@ func concealmentsShape(doc *yaml.Node, add errSink) {
 // compare run to run.
 func singleRoomConcealmentValues(s *SingleRoomSpec, g *grammar, add errSink) map[string]bool {
 	gp := &s.Room.Gameplay
-	walkable := make(map[RoomCell]bool, len(gp.WalkableHexes))
-	for _, c := range gp.WalkableHexes {
+	walkable := map[RoomCell]bool{}
+	for _, c := range gp.floorCells() {
 		walkable[c] = true
 	}
 

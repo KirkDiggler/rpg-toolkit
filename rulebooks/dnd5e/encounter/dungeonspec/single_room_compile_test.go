@@ -151,10 +151,12 @@ func TestSingleRoomCompileSuite(t *testing.T) {
 			fresh, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: raw})
 			require.NoError(t, err)
 			spec := fresh.Spec
-			for i := range spec.Room.Gameplay.WalkableHexes {
-				spec.Room.Gameplay.WalkableHexes[i].Q += shift.Q
-				spec.Room.Gameplay.WalkableHexes[i].R += shift.R
+			shifted := Floor(&spec.Room.Gameplay)
+			for i := range shifted {
+				shifted[i].Q += shift.Q
+				shifted[i].R += shift.R
 			}
+			SetFloor(&spec.Room.Gameplay, shifted)
 			spec.Room.Gameplay.PartyStart.Q += shift.Q
 			spec.Room.Gameplay.PartyStart.R += shift.R
 			for i := range spec.Room.Gameplay.MonsterDeclarations {
@@ -165,7 +167,7 @@ func TestSingleRoomCompileSuite(t *testing.T) {
 			require.NoError(t, err)
 
 			floor := map[[2]int]bool{}
-			for _, c := range spec.Room.Gameplay.WalkableHexes {
+			for _, c := range Floor(&spec.Room.Gameplay) {
 				floor[[2]int{c.Q, c.R}] = true
 			}
 			got := map[[2]int]bool{}
@@ -200,27 +202,24 @@ func TestSingleRoomCompileSuite(t *testing.T) {
 func TestLoadRoutesVersionThreeAndAboveToTheSingleRoomDecoder(t *testing.T) {
 	raw, err := os.ReadFile("testdata/world-builder-v3.yaml")
 	require.NoError(t, err)
-	v3, err := Load(raw)
-	require.NoError(t, err)
-
-	// A v4 root carrying only v3 keys compiles through Load, to the SAME world
-	// the v3 document compiles to: the version is not content.
-	v4 := swapOneIn(t, raw, "version: 3\nkey: workshop-room", "version: 4\nkey: workshop-room")
-	compiled, err := Load(v4)
+	compiled, err := Load(raw)
 	require.NoError(t, err)
 	require.Equal(t, "Workshop", compiled.Name, "the single-room compiler ran")
-	require.Equal(t, v3, compiled, "v4-only-in-version compiled to the v3 world")
 	require.Equal(t, "workshop-room", compiled.Key)
 
-	// A version nobody agreed on meets the SINGLE ROOM's refusal by name — not
-	// a v2 shape error naming play or room, which is what the == 3 dispatch
-	// produced for a well-formed v4 site.
-	v5 := swapOneIn(t, raw, "version: 3\nkey: workshop-room", "version: 5\nkey: workshop-room")
-	_, err = Load(v5)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "unsupported version 5 (want 3 or 4)")
-	require.NotContains(t, err.Error(), `"play" is not a key`)
-	require.NotContains(t, err.Error(), `"room" is not a key`)
+	// A retired version and a version nobody agreed on both meet the SINGLE
+	// ROOM's refusal by name — not a v2 shape error naming play or room.
+	for _, tc := range []struct{ version, want string }{
+		{"3", "versions 3 and 4 are retired; regions are the floor (rpg-project#725)"},
+		{"4", "versions 3 and 4 are retired; regions are the floor (rpg-project#725)"},
+		{"6", "unsupported version 6 (want 5)"},
+	} {
+		_, err = Load(swapOneIn(t, raw, "version: 5\nkey: workshop-room", "version: "+tc.version+"\nkey: workshop-room"))
+		require.Error(t, err)
+		require.Contains(t, err.Error(), tc.want)
+		require.NotContains(t, err.Error(), `"play" is not a key`)
+		require.NotContains(t, err.Error(), `"room" is not a key`)
+	}
 }
 
 // TestSingleRoomValidationPaths locks source attribution for every placement

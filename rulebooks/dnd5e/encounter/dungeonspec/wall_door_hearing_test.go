@@ -14,9 +14,9 @@ import (
 
 // wall_door_hearing_test.go is HEARING THROUGH A STUDIO WALL DOOR
 // (rpg-toolkit#2066): a door attached to a wall's opening joins the two
-// regions either side of it for sound, the way an edge door always has. The
-// hearing law is untouched — a voice is DC 5 where it is said, every region
-// crossed adds 5, and a shut door on the way adds 5 more — so through an open
+// wall partitions either side of it for sound, the way an edge door always
+// has. The hearing law is untouched — a voice is DC 5 where it is said, every
+// partition crossed adds 5, and a shut door on the way adds 5 more — so through an open
 // wall door a passive-10 listener hears a line (DC 10) and through a shut one
 // does not (DC 15).
 //
@@ -26,7 +26,7 @@ import (
 // wall crosses the corridor, so a door in it is the corridor's only way on.
 
 // The corridor's cast. The talker answers the hero's one line; the listeners
-// each stand somewhere a region away and say only whether they heard it.
+// each stand somewhere a partition away and say only whether they heard it.
 const (
 	hearHero   encounter.MemberID = "hero"
 	hearTalk   encounter.MemberID = "talker"
@@ -58,10 +58,11 @@ func corridorWall(id string, x float64, door string) dungeonspec.RoomWall {
 // for the doors they carry.
 func (s *SingleRoomWallDoorSuite) corridorSpec(bindings map[string]dungeonspec.RoomDoorBinding, walls ...dungeonspec.RoomWall) *dungeonspec.SingleRoomSpec {
 	spec := s.baseSpec()
-	spec.Room.Gameplay.WalkableHexes = nil
+	var floor []dungeonspec.RoomCell
 	for q := 0; q <= 6; q++ {
-		spec.Room.Gameplay.WalkableHexes = append(spec.Room.Gameplay.WalkableHexes, dungeonspec.RoomCell{Q: q, R: 0})
+		floor = append(floor, dungeonspec.RoomCell{Q: q, R: 0})
 	}
+	dungeonspec.SetFloor(&spec.Room.Gameplay, floor)
 	spec.Room.Gameplay.Walls = walls
 	spec.Room.Gameplay.DoorBindings = bindings
 
@@ -173,16 +174,59 @@ func (s *SingleRoomWallDoorSuite) voicesHeardBy(enc *encounter.Encounter, member
 	return n
 }
 
-// regionOf is the region holding a corridor cell.
-func (s *SingleRoomWallDoorSuite) regionOf(enc *encounter.Encounter, q int) encounter.RegionID {
-	region, ok := enc.RegionAt(axial(q, 0))
+// partitionOf is the wall partition holding a corridor cell — the division
+// hearing hops are counted over (rpg-project#725, R4).
+func (s *SingleRoomWallDoorSuite) partitionOf(enc *encounter.Encounter, q int) encounter.PartitionID {
+	partition, ok := enc.PartitionAt(axial(q, 0))
 	s.Require().True(ok, "(%d,0) is floor", q)
 
-	return region
+	return partition
+}
+
+// TestHearing_AuthoredEdgeAddsNoHop is rpg-project#725's R4 on hearing: the
+// corridor painted as TWO authored regions, (0,0)..(2,0) and (3,0)..(6,0),
+// with nothing built between them, is one room as the walls make it, and a
+// line said in the first reaches a passive-5 listener in the second at DC 5 —
+// no hop for the painted boundary. Build a wall with a shut door on that same
+// boundary and it costs what it always did: a hop and a shut door, DC 15, so
+// a passive-10 listener there hears nothing.
+func (s *SingleRoomWallDoorSuite) TestHearing_AuthoredEdgeAddsNoHop() {
+	twoRegions := func(spec *dungeonspec.SingleRoomSpec) *dungeonspec.SingleRoomSpec {
+		var near, far []dungeonspec.RoomCell
+		for q := 0; q <= 6; q++ {
+			if q <= 2 {
+				near = append(near, dungeonspec.RoomCell{Q: q, R: 0})
+			} else {
+				far = append(far, dungeonspec.RoomCell{Q: q, R: 0})
+			}
+		}
+		spec.Room.Gameplay.Regions = []dungeonspec.RoomRegion{
+			dungeonspec.OneRegion("region-near", "Near end", near),
+			dungeonspec.OneRegion("region-far", "Far end", far),
+		}
+		return spec
+	}
+
+	open := s.load(twoRegions(s.corridorSpec(nil)))
+	enc := s.listenIn(open, hearingSheets{hearFar: 5}, map[encounter.MemberID]int{hearFar: 4})
+	nearRegion, _ := enc.RegionAt(axial(1, 0))
+	farRegion, _ := enc.RegionAt(axial(4, 0))
+	s.Require().Equal("region-near", nearRegion)
+	s.Require().Equal("region-far", farRegion, "precondition: the talker and the listener are in two authored regions")
+	s.Require().Equal(s.partitionOf(enc, 1), s.partitionOf(enc, 4), "precondition: and in one partition, nothing built between them")
+	s.greet(enc)
+	s.Positive(s.voicesHeardBy(enc, hearFar), "a painted boundary is no hop: DC 5, and passive 5 hears it")
+
+	shut := s.load(twoRegions(s.corridorSpec(map[string]dungeonspec.RoomDoorBinding{"seam-door": {Closed: true}},
+		corridorWall("seam", 12.5, "seam-door"))))
+	enc = s.listenIn(shut, hearingSheets{hearFar: 10}, map[encounter.MemberID]int{hearFar: 4})
+	s.Require().NotEqual(s.partitionOf(enc, 1), s.partitionOf(enc, 4), "precondition: the wall splits the corridor")
+	s.greet(enc)
+	s.Zero(s.voicesHeardBy(enc, hearFar), "a wall with a shut door on the same boundary: DC 5 + 5 + 5 = 15")
 }
 
 // TestAWallDoorCarriesAVoiceOpenAndStopsItShut is the proving test of
-// rpg-toolkit#2066: two regions split by a wall with one attached door, a
+// rpg-toolkit#2066: two partitions split by a wall with one attached door, a
 // passive-10 listener on each side, and a line said on the near side. Open,
 // the far listener hears it (1 hop, DC 10); shut, it does not (1 hop and a
 // shut door, DC 15). The near listener hears it both times (0 hops, DC 5).
@@ -200,8 +244,8 @@ func (s *SingleRoomWallDoorSuite) TestAWallDoorCarriesAVoiceOpenAndStopsItShut()
 				corridorWall("seam", 12.5, "seam-door")))
 			enc := s.listenIn(compiled, hearingSheets{hearNear: 10, hearFar: 10},
 				map[encounter.MemberID]int{hearNear: 2, hearFar: 4})
-			s.Require().Equal(s.regionOf(enc, 1), s.regionOf(enc, 2), "precondition: the near listener shares the talker's region")
-			s.Require().NotEqual(s.regionOf(enc, 1), s.regionOf(enc, 4), "precondition: the wall splits the corridor in two")
+			s.Require().Equal(s.partitionOf(enc, 1), s.partitionOf(enc, 2), "precondition: the near listener shares the talker's partition")
+			s.Require().NotEqual(s.partitionOf(enc, 1), s.partitionOf(enc, 4), "precondition: the wall splits the corridor in two")
 
 			s.greet(enc)
 
@@ -232,11 +276,11 @@ func (s *SingleRoomWallDoorSuite) TestOpeningTheWallDoorChangesTheNextSound() {
 	s.Positive(s.voicesHeardBy(enc, hearFar), "opened: the next line is DC 10, and passive 10 hears it")
 }
 
-// TestAWallDoorLinksOnlyTheTwoRegionsItStandsBetween: three regions in a row,
+// TestAWallDoorLinksOnlyTheTwoRegionsItStandsBetween: three partitions in a row,
 // an open door in the first wall and a shut one in the second. A line said in
-// the first region reaches the third only the long way, through both doors:
-// 2 regions crossed and 1 shut door, 3 hops, DC 20. Were the first door to
-// join the first region to the third as well, the third would hear it at
+// the first partition reaches the third only the long way, through both doors:
+// 2 partitions crossed and 1 shut door, 3 hops, DC 20. Were the first door to
+// join the first partition to the third as well, the third would hear it at
 // DC 10.
 func (s *SingleRoomWallDoorSuite) TestAWallDoorLinksOnlyTheTwoRegionsItStandsBetween() {
 	compiled := s.load(s.corridorSpec(
@@ -244,13 +288,13 @@ func (s *SingleRoomWallDoorSuite) TestAWallDoorLinksOnlyTheTwoRegionsItStandsBet
 		corridorWall("seam", 12.5, "seam-door"), corridorWall("far", 22.5, "far-door")))
 	enc := s.listenIn(compiled, hearingSheets{hearFar: 10, hearBeyond: 15, hearKeen: 20},
 		map[encounter.MemberID]int{hearFar: 3, hearBeyond: 5, hearKeen: 6})
-	s.Require().Equal(s.regionOf(enc, 5), s.regionOf(enc, 6), "precondition: the third region holds (5,0) and (6,0)")
-	s.Require().NotEqual(s.regionOf(enc, 3), s.regionOf(enc, 5), "precondition: the second wall splits it off")
-	s.Require().NotEqual(s.regionOf(enc, 1), s.regionOf(enc, 5), "precondition: and it is not the talker's")
+	s.Require().Equal(s.partitionOf(enc, 5), s.partitionOf(enc, 6), "precondition: the third partition holds (5,0) and (6,0)")
+	s.Require().NotEqual(s.partitionOf(enc, 3), s.partitionOf(enc, 5), "precondition: the second wall splits it off")
+	s.Require().NotEqual(s.partitionOf(enc, 1), s.partitionOf(enc, 5), "precondition: and it is not the talker's")
 
 	s.greet(enc)
 
-	s.Positive(s.voicesHeardBy(enc, hearFar), "the second region hears through the open door: DC 10")
+	s.Positive(s.voicesHeardBy(enc, hearFar), "the second partition hears through the open door: DC 10")
 	s.Zero(s.voicesHeardBy(enc, hearBeyond), "passive 15 in the third does not: the first door does not reach it")
 	s.Positive(s.voicesHeardBy(enc, hearKeen), "passive 20 does: through both doors, DC 5 + 5 + 5 + 5 = 20")
 }
@@ -262,10 +306,10 @@ func (s *SingleRoomWallDoorSuite) TestARoomWithNoDoorsLinksNothing() {
 	s.Require().Empty(compiled.Field.Doors, "precondition: the room has no doors")
 	enc := s.listenIn(compiled, hearingSheets{hearNear: 10, hearFar: 30},
 		map[encounter.MemberID]int{hearNear: 2, hearFar: 4})
-	s.Require().NotEqual(s.regionOf(enc, 1), s.regionOf(enc, 4), "precondition: the wall splits the corridor in two")
+	s.Require().NotEqual(s.partitionOf(enc, 1), s.partitionOf(enc, 4), "precondition: the wall splits the corridor in two")
 
 	s.greet(enc)
 
-	s.Positive(s.voicesHeardBy(enc, hearNear), "the talker's own region hears it")
+	s.Positive(s.voicesHeardBy(enc, hearNear), "the talker's own partition hears it")
 	s.Zero(s.voicesHeardBy(enc, hearFar), "and nothing crosses a wall with no door")
 }

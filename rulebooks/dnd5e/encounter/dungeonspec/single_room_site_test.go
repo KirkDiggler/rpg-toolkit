@@ -399,7 +399,7 @@ func TestTheV4FixtureRoundTripsItsSiteKeys(t *testing.T) {
 	decoded, err := DecodeSingleRoom(SingleRoomDecodeInput{Source: raw})
 	require.NoError(t, err)
 
-	require.Equal(t, 4, decoded.Spec.Version)
+	require.Equal(t, 5, decoded.Spec.Version)
 	require.Equal(t, 3, decoded.Spec.Room.Version, "the embedded room draft is its own artifact")
 	require.Len(t, decoded.Spec.Factions, 1)
 	require.Equal(t, map[string]int{"coward": 2, "soldier": 1, "aggressive": 1}, decoded.Spec.Factions[0].Temper.Mix)
@@ -432,21 +432,19 @@ func TestTheV4FixtureRoundTripsItsSiteKeys(t *testing.T) {
 	}
 }
 
-// TestTheSiteKeysAreNotGatedOnVersionFour records the versioning rule the seam
-// established (rpg-toolkit#1824): a version says what a file MAY contain, and
-// the keys arrive INSIDE it. There is no "v4 only" branch anywhere, so the
-// same document declared at 3 is read the same way — which is what keeps the
-// next key from needing a version of its own.
-func TestTheSiteKeysAreNotGatedOnVersionFour(t *testing.T) {
+// TestTheSiteKeysAreReadAtVersionFive: the site keys arrived inside version
+// 4 (rpg-toolkit#1824) and are read unchanged inside 5, the regions shape
+// (rpg-project#725); the earlier versions are retired, not a second reading
+// of the same keys.
+func TestTheSiteKeysAreReadAtVersionFive(t *testing.T) {
 	raw, err := os.ReadFile(v4SitePath)
 	require.NoError(t, err)
-	atV4, err := Load(raw)
+	atV5, err := Load(raw)
 	require.NoError(t, err)
+	require.Equal(t, "goblins", atV5.Monsters[0].Faction)
 
-	atV3, err := Load(swapOneIn(t, raw, "version: 4\nkey: front-room-site", "version: 3\nkey: front-room-site"))
-	require.NoError(t, err)
-	require.Equal(t, atV4, atV3, "the shape walk and the compiler are version-blind")
-	require.Equal(t, "goblins", atV3.Monsters[0].Faction)
+	_, err = Load(swapOneIn(t, raw, "version: 5\nkey: front-room-site", "version: 3\nkey: front-room-site"))
+	require.ErrorContains(t, err, "versions 3 and 4 are retired")
 }
 
 // TestTheSiteScopeShapeWalkNamesItsDefects covers the strict read of the new

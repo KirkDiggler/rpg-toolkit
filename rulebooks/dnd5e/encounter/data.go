@@ -2849,6 +2849,12 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	if err = validateDoorInputs(f, doorInputs); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
+	// THE WALL PARTITIONS, derived again from what the data persisted — the
+	// regions, walls, props and doors — exactly as Setup derived them. The
+	// data carries none of them (rpg-project#725 R8, partitions.go).
+	if err = f.derivePartitions(doorInputs); err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
 
 	// Concealment (rpg-toolkit#1371): the two capabilities are required
 	// exactly when the field declares a concealment — SetupInput's own

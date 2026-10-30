@@ -111,9 +111,10 @@ func TestMadKingTheOrdersTurnTheGarrison(t *testing.T) {
 	s.open(kingGateDoor)
 
 	t.Run("control: carried as far as the open gate, the orders turn nothing", func(t *testing.T) {
-		gatehouse, _ := s.enc.RegionAt(s.at(kingCaptain))
-		here, _ := s.enc.RegionAt(s.at(hero))
-		require.NotEqual(t, gatehouse, here, "precondition: the hero is not in the captain's region")
+		// Presence is the room the walls make (rpg-project#725).
+		gatehouse, _ := s.enc.PartitionAt(s.at(kingCaptain))
+		here, _ := s.enc.PartitionAt(s.at(hero))
+		require.NotEqual(t, gatehouse, here, "precondition: the hero is not in the captain's room")
 		require.False(t, s.learners("party-recognized")[kingCaptain])
 		require.Equal(t, encounter.StanceNeutral, s.stance(garrison, encounter.FactionParty))
 	})

@@ -27,7 +27,11 @@ import (
 // which of two strings a signature means, not to make callers convert.
 type RegionID = string
 
-// RegionAt reports which region holds a dungeon-absolute cell.
+// RegionAt reports which region holds a dungeon-absolute cell: the AUTHORED
+// region, the place the author named and lit (rpg-project#725). It reports a
+// place and decides nothing — whether two cells are in the same room as the
+// walls make it is [Encounter.PartitionAt]'s question, and the two answers are
+// independent.
 //
 // TOTAL OVER OWNED FLOOR, AND ONLY OVER IT: a cell has a region if and only if
 // exactly one region owns it. The canvas spans the field's whole bounding BOX,
@@ -66,6 +70,19 @@ type RegionID = string
 // absolute space.
 func (e *Encounter) RegionAt(cell spatial.Position) (RegionID, bool) {
 	return e.field.regionOf(cell)
+}
+
+// PartitionAt reports which wall partition holds a dungeon-absolute cell: the
+// room as the walls make it, the division hearing, seats, arrivals and the
+// intel flip are decided on (rpg-project#725, partitions.go). It is
+// [Encounter.RegionAt]'s mechanical twin and is independent of it — an open
+// hall painted as two regions is one partition, and one region a wall cuts in
+// two is two.
+//
+// Returns false for a cell that is not owned floor. The id is derived and
+// internal: compare two answers, never persist or send one.
+func (e *Encounter) PartitionAt(cell spatial.Position) (PartitionID, bool) {
+	return e.field.partitionAt(cell)
 }
 
 // Region reports one region as authored: its name, its cells in absolute

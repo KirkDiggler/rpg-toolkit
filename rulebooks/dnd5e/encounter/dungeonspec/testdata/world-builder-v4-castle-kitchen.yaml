@@ -19,7 +19,7 @@
 # BOTH SIDES START CIVIL. The watch and the kitchen are neutral to the party;
 # attack a cook and the kitchen turns, which is the aggression law every
 # monster already lives under and this file does not write.
-version: 4
+version: 5
 key: castle-kitchen-v4
 play: { void: transparent, lighting: bright, standing: centre-covered }
 
@@ -59,7 +59,6 @@ room:
   coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
     distanceUnit: world-scene-unit, hexRadius: 1,
     footprintFrame: owner-local-xz}
-  workspace: { hexRadius: 6, horizontalLimit: 12 }
   scene:
     version: 1
     id: scene-1
@@ -68,11 +67,21 @@ room:
     groups: []
   room:
     implicitRegionId: room-1-region
-    walkableHexes: [{q: -2, r: 0}, {q: -2, r: 1}, {q: -2, r: 2},
-      {q: -1, r: -1}, {q: -1, r: 0}, {q: -1, r: 1}, {q: -1, r: 2},
-      {q: 0, r: -2}, {q: 0, r: -1}, {q: 0, r: 0}, {q: 0, r: 1}, {q: 0, r: 2},
-      {q: 1, r: -2}, {q: 1, r: -1}, {q: 1, r: 0}, {q: 1, r: 1},
-      {q: 2, r: -2}, {q: 2, r: -1}, {q: 2, r: 0}]
+    regions:
+      - id: room-1-region
+        name: The Castle Kitchen
+        lighting: { intensity: 1 }
+        cells:
+          - r: -2
+            q: [[0, 2]]
+          - r: -1
+            q: [[-1, 2]]
+          - r: 0
+            q: [[-2, 2]]
+          - r: 1
+            q: [[-2, 1]]
+          - r: 2
+            q: [[-2, 0]]
     propDeclarations: {}
     arrangementDeclarations: {}
     partyStart: {q: -2, r: 1}

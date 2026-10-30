@@ -210,7 +210,7 @@ func TestAnExitNobodyCanStandOnIsRefused(t *testing.T) {
 // refusal needs, since [v4With]'s table is deliberately non-blocking.
 func theBlockedRoom(root string) string {
 	return fmt.Sprintf(`
-version: 4
+version: 5
 key: blocked-fixture
 play: { void: transparent, lighting: bright, standing: centre-covered }
 %s
@@ -219,7 +219,6 @@ room:
   id: room-1
   name: A Room
   coordinateFrame: { hexRadius: 1 }
-  workspace: { hexRadius: 6 }
   scene:
     version: 1
     id: scene-1
@@ -229,7 +228,15 @@ room:
     groups: []
   room:
     implicitRegionId: room-1-region
-    walkableHexes: [{q: 0, r: 0}, {q: 1, r: 0}, {q: 2, r: 0}, {q: 0, r: 1}, {q: 1, r: 1}]
+    regions:
+      - id: room-1-region
+        name: A Room
+        lighting: { intensity: 1 }
+        cells:
+          - r: 0
+            q: [[0, 2]]
+          - r: 1
+            q: [[0, 1]]
     propDeclarations:
       table: { blocksMovement: true, blocksLineOfSight: false, footprint: { width: 2, depth: 2, offsetX: 0, offsetZ: 0 } }
     arrangementDeclarations: {}

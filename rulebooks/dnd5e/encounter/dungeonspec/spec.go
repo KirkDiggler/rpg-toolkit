@@ -47,7 +47,7 @@
 //     side it is on;
 //   - the FRAME it resolves a cell in ([cells]) — the v2 dialect looks an
 //     offset pair up in the floor its regions painted, and the single room
-//     looks an axial `{ q, r }` up in its walkable hexes; each refuses the
+//     looks an axial `{ q, r }` up in the floor its regions list; each refuses the
 //     other's spelling by path.
 //
 // The single-room dialect used to reach the grammar by building a fake v2
@@ -103,14 +103,27 @@
 // The World Builder's PRESENTATION (rpg-project#479, R3). The single-room
 // dialect's document carries the authored scene — assets, labels, groups,
 // parents, supports, height scales, point lights, the coordinate frame's axis
-// words, the workspace's drawing limit — and this package carries it as the
-// [gopkg.in/yaml.v3.Node] it was authored as, without modelling or judging
-// any of it. It reads out of it exactly the values play depends on: the
-// frame's hexRadius (which the placement adapter's scale is calibrated to),
-// the workspace's hexRadius (which bounds the floor), the scene's name (which
-// names the dungeon) and, per prop a `propDeclarations` entry names, the
-// three transform numbers that place its footprint. single_room_lowering.go is
-// the one reader and lists every one of them by path.
+// words — and this package carries it as the [gopkg.in/yaml.v3.Node] it was
+// authored as, without modelling or judging any of it. It reads out of it
+// exactly the values play depends on: the frame's hexRadius (which the
+// placement adapter's scale is calibrated to), the scene's name (which names
+// the dungeon) and, per prop a `propDeclarations` entry names, the three
+// transform numbers that place its footprint. single_room_lowering.go is the
+// one reader and lists every one of them by path.
+//
+// # The single room's floor is its regions (rpg-project#725)
+//
+// Version 5 of the single-room document has no walkable list and no
+// workspace: the floor is the union of `room.room.regions`, each region an
+// id, a name, a lighting intensity and its cells as canonical row runs
+// (single_room_cells.go), and the canvas is unbounded. The compiler lowers
+// each region that owns a cell to one [encounter.RegionInput] with its own
+// name and lighting — what the atlas names and lights. The WALLS divide the
+// same floor a second time, independently: the encounter derives those
+// partitions itself at construction and at every load, and they decide
+// hearing, the party's seats, arrivals and presence, while an authored region
+// boundary decides nothing mechanical at all. [ConvertV4] is the one-time
+// conversion of a version 3 or 4 document.
 //
 // The consequence is the point: an unknown key inside `scene` is the web
 // codec's business, not this decoder's, and the editor's scalar bounds no
@@ -1945,7 +1958,7 @@ func scopeWords() string {
 // A CELL IS SPELT IN ITS DIALECT'S FRAME, and the spelling says which frame
 // (rpg-project#605, D1a). The v2 document's cells are offset pairs resolved
 // through its `orientation`; the single room's are the axial `{ q, r }` every
-// one of its walkable hexes and starting cells is written in. Both spellings
+// one of its floor cells and starting cells is written in. Both spellings
 // decode here, into their own fields, because the decoder does not know which
 // dialect it is reading — and the DIALECT refuses the other one's spelling by
 // path, through its [cells]. The same bytes therefore never mean two cells:

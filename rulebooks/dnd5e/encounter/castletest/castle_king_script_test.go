@@ -36,9 +36,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"gopkg.in/yaml.v3"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -173,50 +173,38 @@ func (s *kingScene) pace(a, b spatial.Position, steps int, until func() bool) bo
 	return until()
 }
 
-// room is the region a cell lies in: the room its walls close.
-func (s *kingScene) room(cell spatial.Position) encounter.RegionID {
+// room is the wall partition a cell lies in: the room its walls close
+// (rpg-project#725).
+func (s *kingScene) room(cell spatial.Position) encounter.PartitionID {
 	s.t.Helper()
-	id, ok := s.enc.RegionAt(cell)
+	id, ok := s.enc.PartitionAt(cell)
 	require.True(s.t, ok, "%v is floor", cell)
 
 	return id
 }
 
-// labelOf is the map label of the file's authoring region that holds a
-// cell, or "" for none: the studio's name for the room. The compiled field
-// names a region by the walls that close it, and the barracks and the armoury
-// are open to the courtyard, so the label is what tells them apart.
+// labelOf is the name of the file's authored region that holds a cell — the
+// studio's name for the room, which the region carries itself since
+// rpg-project#725 — or "" when the cell is in the implicit region, the open
+// ground in no room of the castle. The walls make the rooms, and the barracks
+// and the armoury are open to the courtyard, so the authored name is what
+// tells them apart.
 func labelOf(t *testing.T, cell spatial.Position) string {
 	t.Helper()
 	raw, err := os.ReadFile(kingFixture)
 	require.NoError(t, err)
-	type axial struct{ Q, R float64 }
-	var doc struct {
-		Room struct {
-			Scene struct {
-				MapLabels []struct {
-					ID   string
-					Text string
-				} `yaml:"mapLabels"`
-				AuthoringRegions []struct {
-					LabelID  string `yaml:"labelId"`
-					Boundary struct {
-						Cells []axial
-					}
-				} `yaml:"authoringRegions"`
+	decoded, err := dungeonspec.DecodeSingleRoom(dungeonspec.SingleRoomDecodeInput{Source: raw})
+	require.NoError(t, err)
+	gp := decoded.Spec.Room.Gameplay
+	for _, region := range gp.Regions {
+		for _, c := range dungeonspec.ExpandRows(region.Cells, "cells", func(p, m string) { t.Fatalf("%s: %s", p, m) }) {
+			if float64(c.Q) != cell.X || float64(c.R) != cell.Y {
+				continue
 			}
-		}
-	}
-	require.NoError(t, yaml.Unmarshal(raw, &doc))
-	texts := map[string]string{}
-	for _, l := range doc.Room.Scene.MapLabels {
-		texts[l.ID] = l.Text
-	}
-	for _, region := range doc.Room.Scene.AuthoringRegions {
-		for _, c := range region.Boundary.Cells {
-			if c.Q == cell.X && c.R == cell.Y {
-				return texts[region.LabelID]
+			if region.ID == gp.ImplicitRegionID {
+				return ""
 			}
+			return region.Name
 		}
 	}
 
