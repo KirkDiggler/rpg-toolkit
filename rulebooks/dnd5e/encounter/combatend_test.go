@@ -268,16 +268,37 @@ func (s *CombatEndTestSuite) TestAnAnnouncerMalfunctionAbortsTheDissolve() {
 // a sibling.
 func (s *CombatEndTestSuite) TestEveryPathThatEndsAFightAnnouncesIt() {
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool {
-		return !strings.HasSuffix(fi.Name(), "_test.go")
-	}, 0)
+	entries, err := os.ReadDir(".")
+	pkgs := map[string]map[string]*ast.File{}
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+				continue
+			}
+
+			filename := entry.Name()
+			file, parseErr := parser.ParseFile(fset, filename, nil, 0)
+			if parseErr != nil {
+				err = parseErr
+				break
+			}
+
+			name := file.Name.Name
+			pkg, found := pkgs[name]
+			if !found {
+				pkg = map[string]*ast.File{}
+				pkgs[name] = pkg
+			}
+			pkg[filename] = file
+		}
+	}
 	s.Require().NoError(err)
 	pkg, ok := pkgs["encounter"]
 	s.Require().True(ok, "the encounter package itself must be parseable")
 
 	callers := map[string]bool{}
 	var announces bool
-	for _, file := range pkg.Files {
+	for _, file := range pkg {
 		ast.Inspect(file, func(n ast.Node) bool {
 			fn, isFunc := n.(*ast.FuncDecl)
 			if !isFunc {
