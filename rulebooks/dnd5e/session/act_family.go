@@ -1092,6 +1092,7 @@ func clockPieces(beat string, payload []byte) ([]piece, error) {
 		From      spatial.Position `json:"from"`
 		To        spatial.Position `json:"to"`
 		Ending    string           `json:"ending"`
+		Outcome   string           `json:"outcome"`
 		Ended     json.RawMessage  `json:"ended"`
 		Windows   []struct {
 			Audience string       `json:"audience"`
@@ -1143,6 +1144,9 @@ func clockPieces(beat string, payload []byte) ([]piece, error) {
 		entry.Mark = ClockSceneOpened
 	case encounter.BeatEnded:
 		entry.Mark, entry.Ending = ClockEnded, p.Ending
+		// The ending's declared result rides the beat; absent on an ending
+		// that declares none, so the zero value carries "no result".
+		entry.Outcome = EndingResult(p.Outcome)
 		var ended map[string][]resultFields
 		if len(p.Ended) > 0 {
 			if err := json.Unmarshal(p.Ended, &ended); err != nil {
