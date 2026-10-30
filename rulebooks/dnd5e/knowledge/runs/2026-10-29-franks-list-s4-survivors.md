@@ -1,5 +1,7 @@
 # Run — 2026-10-29 — Frank's list S4, the survivors
 
+processed: 2026-10-30T004357Z
+
 Slice [rpg-project#718](https://github.com/KirkDiggler/rpg-project/issues/718) of story [rpg-project#714](https://github.com/KirkDiggler/rpg-project/issues/714), under lane [rpg-project#722](https://github.com/KirkDiggler/rpg-project/issues/722) ruling D4. Base: rpg-toolkit main at [`61bb0381`](https://github.com/KirkDiggler/rpg-toolkit/commit/61bb0381), with main merged in at [`78a28eff`](https://github.com/KirkDiggler/rpg-toolkit/commit/78a28eff), [`a1e058e8`](https://github.com/KirkDiggler/rpg-toolkit/commit/a1e058e8) and [`93b323e6`](https://github.com/KirkDiggler/rpg-toolkit/commit/93b323e6). PR: [rpg-toolkit#2159](https://github.com/KirkDiggler/rpg-toolkit/pull/2159).
 
 ## Shipped
