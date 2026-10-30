@@ -798,7 +798,7 @@ func (s *HoldOutSuite) TestTheRunRefusesWhatItCannotKeep() {
 		field := s.compiled.Field
 		field.Dispositions = []encounter.DispositionInput{{
 			Between: [2]encounter.FactionID{campFaction, encounter.FactionParty},
-			Stance:  stance, Until: t,
+			Stance:  stance, Until: []encounter.UntilStep{{When: t}},
 		}}
 		return field
 	}
@@ -884,7 +884,7 @@ func (s *HoldOutSuite) TestAThirdFactionStillHostileKeepsItsFight() {
 		Factions: []encounter.FactionInput{{ID: campFaction, Mind: lone}, {ID: "kobolds"}},
 		Dispositions: []encounter.DispositionInput{{
 			Between: [2]encounter.FactionID{campFaction, encounter.FactionParty},
-			Stance:  encounter.StanceHostile, Until: encounter.TriggerFact{Fact: campFact},
+			Stance:  encounter.StanceHostile, Until: []encounter.UntilStep{{When: encounter.TriggerFact{Fact: campFact}}},
 		}},
 	}
 	enc := s.open(field, []encounter.MemberInput{
@@ -997,11 +997,19 @@ func (s *HoldOutSuite) strikes() []string {
 // yard beside the letter, the chief starts in the hut, and his turn is
 // scripted to walk INTO the yard and then swing.
 //
+// THE HUT HAS A WALL, AND AN OPEN DOOR ON ROW 1 (rpg-project#725). Presence
+// is being in the same room as the walls make it, so two regions open to
+// each other would be one room and the letter would teach the chief before
+// he moved. The door stands open — sight crosses it, so first light is
+// unchanged — and is a room boundary all the same.
+//
 //	x: 0..5 yard | 6..11 hut     alice [4,1], scroll [3,1], chief [8,1]
 func (s *HoldOutSuite) yardAndHut() (encounter.FieldInput, []encounter.MemberInput) {
 	field := encounter.FieldInput{
 		Canvas:  openAir(),
 		Regions: []encounter.RegionInput{rectRegion("yard", 0, 0, 6, 4), rectRegion("hut", 6, 0, 6, 4)},
+		Walls:   seamWallRows(5, 0, 4, 1),
+		Doors:   []encounter.DoorInput{openDoorway("hut-door", 5, 1, 6, 1)},
 		Intel:   []encounter.IntelRecord{{ID: "letter", Reveals: encounter.RevealTargets{Fact: campFact}}},
 		Props: []encounter.PropInput{func() encounter.PropInput {
 			p := holdableProp("yard-scroll", "dnd5e:props:scroll", spatial.Position{X: 3, Y: 1})
@@ -1011,7 +1019,7 @@ func (s *HoldOutSuite) yardAndHut() (encounter.FieldInput, []encounter.MemberInp
 		Factions: []encounter.FactionInput{{ID: campFaction, Mind: campChief}},
 		Dispositions: []encounter.DispositionInput{{
 			Between: [2]encounter.FactionID{campFaction, encounter.FactionParty},
-			Stance:  encounter.StanceHostile, Until: encounter.TriggerFact{Fact: campFact},
+			Stance:  encounter.StanceHostile, Until: []encounter.UntilStep{{When: encounter.TriggerFact{Fact: campFact}}},
 		}},
 	}
 	members := []encounter.MemberInput{

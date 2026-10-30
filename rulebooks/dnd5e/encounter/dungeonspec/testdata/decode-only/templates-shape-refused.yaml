@@ -3,7 +3,7 @@
 # whole defect list, so one file proves the decoder reports EVERY defect it
 # finds rather than the first. Nothing here resolves a ref (design law C1):
 # each refusal is about what the string IS, never about what it names.
-version: 4
+version: 5
 key: templates-shape-refused
 play: { void: transparent, lighting: bright, standing: centre-covered }
 
@@ -30,11 +30,16 @@ room:
   coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
     distanceUnit: world-scene-unit, hexRadius: 1,
     footprintFrame: owner-local-xz}
-  workspace: { hexRadius: 6, horizontalLimit: 12 }
   scene: { version: 1, id: scene-1, name: Refused, items: [], groups: [] }
   room:
     implicitRegionId: room-1-region
-    walkableHexes: [{q: 0, r: 0}, {q: 1, r: 0}]
+    regions:
+      - id: room-1-region
+        name: Refused
+        lighting: { intensity: 1 }
+        cells:
+          - r: 0
+            q: [[0, 1]]
     propDeclarations: {}
     arrangementDeclarations: {}
     partyStart: {q: 0, r: 0}

@@ -312,6 +312,11 @@ func (d TableDriver) walkIntent(view MonsterView, entry Answer, sel Selector, p 
 		if !d.inSight(view, target) {
 			return Pass{Loses: target}
 		}
+		if sel.Word == SelectorAlly {
+			// An ally's route ends beside it ([SeenMember.Allied]), so
+			// an empty one in sight is a follower already there.
+			return Pass{Cause: p.cause, Why: towardBesideAlly}
+		}
 
 		return Pass{}
 	}
@@ -565,6 +570,9 @@ func deedsForScope(view MonsterView, scope DeedScope) []HeldDeed {
 //     creature holds that member placed (rpg-project#669).
 //   - `actor`: the actor of the deed this entry's `when` named, so `fled`
 //     pairs with `away: actor`.
+//   - `ally`: the nearest member on a side this creature's faction is
+//     allied with, sighted first, then remembered ([nearestAllied],
+//     rpg-project#717).
 //
 // `sound` is not here: it names a PLACE, never a member (R4), and is resolved
 // by [soundFor] where `toward` and `away` read their cells.
@@ -575,6 +583,9 @@ func (d TableDriver) selectMember(view MonsterView, entry Answer, sel Selector) 
 	switch sel.Word {
 	case SelectorEnemy:
 		return nearestOpposed(view)
+
+	case SelectorAlly:
+		return nearestAllied(view)
 
 	case SelectorAttacker:
 		// THE READING THE ROW WAS JUDGED ELIGIBLE BY ([behavior.Facts.Attacker],
@@ -619,6 +630,40 @@ func nearestOpposed(view MonsterView) (MemberID, bool) {
 	}
 	for _, r := range view.Remembered {
 		if !r.Opposed {
+			continue
+		}
+		if best == "" || r.DistanceCells < bestDist {
+			best, bestDist = r.ID, r.DistanceCells
+		}
+	}
+
+	return best, best != ""
+}
+
+// towardBesideAlly is the sentence a follow row tells on its stayed beat
+// when the creature already stands beside the ally it follows
+// (rpg-project#717).
+const towardBesideAlly = "already beside its ally"
+
+// nearestAllied is the nearest ally the view holds ([SeenMember.Allied]):
+// sighted and standing first, then remembered — [nearestOpposed]'s rule for
+// the other side, ties broken on the member's id (C8).
+func nearestAllied(view MonsterView) (MemberID, bool) {
+	best := MemberID("")
+	bestDist := 0.0
+	for _, s := range view.Seen {
+		if !s.Allied || !s.Standing {
+			continue
+		}
+		if best == "" || s.DistanceCells < bestDist {
+			best, bestDist = s.ID, s.DistanceCells
+		}
+	}
+	if best != "" {
+		return best, true
+	}
+	for _, r := range view.Remembered {
+		if !r.Allied {
 			continue
 		}
 		if best == "" || r.DistanceCells < bestDist {

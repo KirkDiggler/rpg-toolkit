@@ -115,10 +115,11 @@ type Encounter struct {
 	// a door's state has one home however it is reached.
 	doorsByID map[DoorID]*doorRecord
 
-	// regionLinks is the region graph a sound travels through, derived from
-	// the doors on first use and never persisted ([Encounter.links]): its
-	// parts are construction truth, so a reload derives the same graph.
-	regionLinks map[RegionID][]regionLink
+	// partitionLinks is the wall-partition graph a sound travels through,
+	// derived from the doors on first use and never persisted
+	// ([Encounter.links]): its parts are construction truth, so a reload
+	// derives the same graph.
+	partitionLinks map[PartitionID][]partitionLink
 
 	clock *clock.Tick
 	// bubbles are the localized initiative bubbles currently running. Zero or
@@ -702,6 +703,11 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// Check doors: names, states, and edges that are real crossings on real
 	// floor and belong to exactly one door (rpg-toolkit#1123).
 	if err = validateDoorInputs(f, in.Field.Doors); err != nil {
+		return nil, fmt.Errorf("newencounter: %w", err)
+	}
+	// THE SECOND DIVISION, derived here and at Load from the same authored
+	// geometry and never stored (partitions.go, rpg-project#725 R8).
+	if err = f.derivePartitions(in.Field.Doors); err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 

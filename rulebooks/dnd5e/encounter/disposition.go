@@ -5,6 +5,7 @@ package encounter
 
 import (
 	"fmt"
+	"slices"
 )
 
 // disposition.go is WHO FIGHTS WHOM, AS DECLARED (rpg-project#375, the
@@ -108,8 +109,8 @@ func (f *field) compileFactions(factions []FactionInput, dispositions []Disposit
 			return fmt.Errorf("dispositions[%d] declares stance %q, which is not hostile, neutral or allied: %w",
 				i, d.Stance, ErrNoFaction)
 		}
-		if d.Until != nil && d.Stance == StanceAllied {
-			return fmt.Errorf("dispositions[%d] is allied and has an until, and %s: %w", i, untilOnAllied, ErrNoFaction)
+		if err := validateSteps(i, d); err != nil {
+			return err
 		}
 		pair := pairOf(d.Between[0], d.Between[1])
 		if prev, dup := f.dispositionOf[pair]; dup {
@@ -127,27 +128,65 @@ func (f *field) compileFactions(factions []FactionInput, dispositions []Disposit
 	// arrived, and the three other forms are evaluated at the sites that
 	// already notice their events (flip.go).
 	for i, d := range dispositions {
-		if d.Until == nil {
-			continue
-		}
-		what := fmt.Sprintf("dispositions[%d]'s until", i)
-		if ts, ok := d.Until.(TriggerStance); ok &&
-			pairOf(ts.Between[0], ts.Between[1]) == pairOf(d.Between[0], d.Between[1]) {
-			return fmt.Errorf("%s: %s: %w", what, untilOnItself, ErrNoFaction)
-		}
-		if err := f.validatePredicate(what, d.Until, ErrNoFaction); err != nil {
-			return err
+		for j, step := range d.Until {
+			what := fmt.Sprintf("dispositions[%d]'s until", i)
+			if len(d.Until) > 1 {
+				what = fmt.Sprintf("dispositions[%d]'s until[%d]", i, j)
+			}
+			if ts, ok := step.When.(TriggerStance); ok &&
+				pairOf(ts.Between[0], ts.Between[1]) == pairOf(d.Between[0], d.Between[1]) {
+				return fmt.Errorf("%s: %s: %w", what, untilOnItself, ErrNoFaction)
+			}
+			if err := f.validatePredicate(what, step.When, ErrNoFaction); err != nil {
+				return err
+			}
 		}
 	}
 
 	return nil
 }
 
-// untilOnAllied is the one sentence an `until` on an allied pair gets, in the
-// file and in the run alike (rpg-project#493, R1). Hostile and neutral are
-// the two a pair moves between; allied is a static, authorable stance with no
-// other side to move to.
-const untilOnAllied = "an allied pair has nothing to become"
+// untilOnAllied is the one sentence an `until` on an allied pair that names
+// no `then` gets, in the file and in the run alike (rpg-project#493, R1;
+// revised for rpg-project#717). With no `then` a pair moves between hostile
+// and neutral, and an allied pair has no other of those to move to; a `then`
+// names where it goes.
+const untilOnAllied = "an allied pair has nothing to become unless `then` names where it goes"
+
+// untilListOnFacts is the one sentence a list of steps naming a predicate
+// other than a fact gets, in the file and in the run alike (rpg-project#717).
+const untilListOnFacts = "a list of until steps turns on facts only: a round, a fall or a stance is a public " +
+	"turn and cannot keep its place in the list, so give it a disposition of its own step"
+
+// validateSteps refuses an until step that cannot be one: a step with no
+// predicate, a `then` outside the closed stance set, a step that turns the
+// pair to the stance it is declared with, a step on an allied pair that names
+// no `then` ([untilOnAllied]), and a list of more than one step that names
+// anything but facts ([untilListOnFacts]).
+func validateSteps(i int, d DispositionInput) error {
+	for j, step := range d.Until {
+		at := fmt.Sprintf("dispositions[%d]'s until", i)
+		if len(d.Until) > 1 {
+			at = fmt.Sprintf("dispositions[%d]'s until[%d]", i, j)
+		}
+		_, isFact := step.When.(TriggerFact)
+		switch {
+		case step.When == nil:
+			return fmt.Errorf("%s names no predicate: %w", at, ErrNoFaction)
+		case step.Then != "" && !knownStance(step.Then):
+			return fmt.Errorf("%s turns to %q, which is not hostile, neutral or allied: %w", at, step.Then, ErrNoFaction)
+		case step.Then == "" && d.Stance == StanceAllied:
+			return fmt.Errorf("dispositions[%d] is allied and has an until, and %s: %w", i, untilOnAllied, ErrNoFaction)
+		case d.turnsTo(step) == d.Stance:
+			return fmt.Errorf("%s turns the %s pair %s, which is the stance it already holds: %w",
+				at, d.Stance, step.Then, ErrNoFaction)
+		case len(d.Until) > 1 && !isFact:
+			return fmt.Errorf("%s: %s: %w", at, untilListOnFacts, ErrNoFaction)
+		}
+	}
+
+	return nil
+}
 
 // untilOnItself is the one sentence a disposition waiting on its OWN stance
 // gets. It used to be caught by accident — the pair held the stance it waited
@@ -156,10 +195,21 @@ const untilOnAllied = "an allied pair has nothing to become"
 // (R3 makes it reachable), so the rule is stated rather than inferred.
 const untilOnItself = "a disposition cannot wait on its own stance"
 
-// turnsTo is the stance a declared one moves to when its `until` holds
-// (rpg-project#493, R1): the OTHER of hostile and neutral. Allied never
-// turns and never has an until ([untilOnAllied]), so it answers itself.
-func turnsTo(declared Stance) Stance {
+// turnsTo is the stance one of a disposition's steps moves the pair to: its
+// `then` when it names one (rpg-project#717), else the OTHER of hostile and
+// neutral (rpg-project#493, R1). An allied pair's step always names a `then`
+// ([untilOnAllied]).
+func (d DispositionInput) turnsTo(step UntilStep) Stance {
+	if step.Then != "" {
+		return step.Then
+	}
+
+	return otherOf(d.Stance)
+}
+
+// otherOf is the default turn: the other of hostile and neutral, and allied
+// answers itself.
+func otherOf(declared Stance) Stance {
 	switch declared {
 	case StanceHostile:
 		return StanceNeutral
@@ -200,12 +250,29 @@ func (f *field) isFaction(id FactionID) bool {
 }
 
 // declaredStance is the stance a pair was authored with, or its default, and
-// the predicate that ends it — nil for a static stance.
-func (f *field) declaredStance(pair factionPair) (Stance, Trigger) {
+// the steps that turn it — empty for a static stance.
+func (f *field) declaredStance(pair factionPair) (Stance, []UntilStep) {
 	if i, ok := f.dispositionOf[pair]; ok {
 		return f.dispositions[i].Stance, f.dispositions[i].Until
 	}
 	return defaultStance(pair), nil
+}
+
+// untilTurnsTo is every stance a pair's own steps can turn it to
+// ([DispositionInput.turnsTo]), in step order; empty for a pair with no
+// until.
+func (f *field) untilTurnsTo(pair factionPair) []Stance {
+	i, ok := f.dispositionOf[pair]
+	if !ok {
+		return nil
+	}
+	d := f.dispositions[i]
+	out := make([]Stance, 0, len(d.Until))
+	for _, step := range d.Until {
+		out = append(out, d.turnsTo(step))
+	}
+
+	return out
 }
 
 // defaultStance is the stance of a pair nobody declared — [DefaultStance],
@@ -242,19 +309,20 @@ func DefaultStance(a, b FactionID) Stance {
 // and whether it can ever hold it (ever).
 //
 // THREE WAYS A PAIR MOVES, and they are the whole answer (rpg-project#493):
-// it is declared that way; its own `until` holds, which turns it to the other
-// of hostile and neutral ([turnsTo], R1); or it is NEUTRAL and somebody
+// it is declared that way; its own `until` holds, which turns it to its
+// `then` or the other of hostile and neutral ([DispositionInput.turnsTo],
+// R1); or it is NEUTRAL and somebody
 // attacks across it, which turns it hostile with nothing authored at all
 // (R3). The third is why `{ stance: { between: [a, b], is: hostile } }` over
 // a neutral pair is never refused as unreachable any more: every neutral pair
 // can come to blows.
 func (f *field) stanceReachable(pair factionPair, s Stance) (now, ever bool) {
-	declared, until := f.declaredStance(pair)
+	declared, _ := f.declaredStance(pair)
 	now = declared == s
 	switch {
 	case now:
 		ever = true
-	case until != nil && s == turnsTo(declared):
+	case slices.Contains(f.untilTurnsTo(pair), s):
 		ever = true
 	case declared == StanceNeutral && s == StanceHostile:
 		ever = true

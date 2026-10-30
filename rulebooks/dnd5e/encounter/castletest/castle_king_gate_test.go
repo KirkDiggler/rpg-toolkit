@@ -46,16 +46,16 @@ func TestMadKingEveryRoomHasOneWayIn(t *testing.T) {
 	t.Run("the gatehouse", func(t *testing.T) {
 		t.Parallel()
 		s := openTheCastle(t, partyStart(t))
-		outside, ok := s.enc.RegionAt(s.at(hero))
+		outside, ok := s.enc.PartitionAt(s.at(hero))
 		require.True(t, ok, "the party start is floor")
-		gatehouse, ok := s.enc.RegionAt(castleCell(0, 11))
+		gatehouse, ok := s.enc.PartitionAt(castleCell(0, 11))
 		require.True(t, ok, "the gatehouse's floor")
 		require.NotEqual(t, outside, gatehouse, "the party starts outside the gatehouse")
-		courtyard, ok := s.enc.RegionAt(castleCell(0, 4))
+		courtyard, ok := s.enc.PartitionAt(castleCell(0, 4))
 		require.True(t, ok, "the courtyard's floor")
 		onlyTheGatehouse := func(where string) {
-			for region := range s.seenRegions() {
-				require.Contains(t, []encounter.RegionID{outside, gatehouse}, region,
+			for room := range s.seenRooms() {
+				require.Contains(t, []encounter.PartitionID{outside, gatehouse}, room,
 					"%s, with the gate shut, the hero sees only the outside and the gatehouse", where)
 			}
 		}
@@ -66,7 +66,7 @@ func TestMadKingEveryRoomHasOneWayIn(t *testing.T) {
 		s.walkTo(castleCell(0, 6))
 		onlyTheGatehouse("from the gate")
 		s.open(kingGateDoor)
-		require.NotZero(t, s.seenRegions()[courtyard], "the open gate shows the courtyard")
+		require.NotZero(t, s.seenRooms()[courtyard], "the open gate shows the courtyard")
 	})
 
 	doors := []encounter.DoorID{kingGateDoor, kingHallDoor, kingKitchenDoor, kingChapelDoor, kingThroneDoor, kingCellsDoor}
@@ -148,17 +148,17 @@ func TestMadKingEveryRoomHasOneWayIn(t *testing.T) {
 		t.Run(room.name, func(t *testing.T) {
 			t.Parallel()
 			s := openTheCastleWithDoors(t, partyStart(t), onlyShut(room.door))
-			region, ok := s.enc.RegionAt(room.in)
+			region, ok := s.enc.PartitionAt(room.in)
 			require.True(t, ok, "%v is %s's floor", room.in, room.name)
 
 			// The route stops beside its anchor, so what it proves is where it
 			// goes: with the door shut, toward no anchor does it set foot in
 			// the room.
 			for _, cell := range room.anchors {
-				in, ok := s.enc.RegionAt(cell)
+				in, ok := s.enc.PartitionAt(cell)
 				require.True(t, ok && in == region, "anchor %v is %s's floor", cell, room.name)
 				for _, step := range s.routeFor(cell) {
-					in, _ := s.enc.RegionAt(step)
+					in, _ := s.enc.PartitionAt(step)
 					require.NotEqual(t, region, in,
 						"with its door shut, the hero walks toward %v and never into %s", cell, room.name)
 				}
@@ -166,14 +166,14 @@ func TestMadKingEveryRoomHasOneWayIn(t *testing.T) {
 
 			for _, from := range yard {
 				v := openTheCastleWithDoors(t, seatAt(from), onlyShut(room.door))
-				require.Zero(t, v.seenRegions()[region],
+				require.Zero(t, v.seenRooms()[region],
 					"with its door shut, %s is out of sight from the yard at %v", room.name, from)
 			}
 
 			open := openTheCastleWithDoors(t, partyStart(t), onlyShut(""))
 			path := open.routeFor(room.in)
 			require.NotEmpty(t, path)
-			last, _ := open.enc.RegionAt(path[len(path)-1])
+			last, _ := open.enc.PartitionAt(path[len(path)-1])
 			require.Equal(t, region, last, "control: with every door open, the hero walks into %s", room.name)
 		})
 	}
@@ -247,18 +247,19 @@ func seatAt(cell spatial.Position) spatial.Position {
 	return spatial.Position{X: float64(col), Y: float64(row)}
 }
 
-// seenRegions is how many cells of each region the hero sees now. A seen
-// cell in no region is scenery — floor the file paints under a wall's line,
-// which nobody stands on (the outside's edge along the gatehouse's walls) —
-// and counts toward none.
-func (s *kingScene) seenRegions() map[encounter.RegionID]int {
+// seenRooms is how many cells of each room — each wall partition, the room
+// as the walls make it (rpg-project#725) — the hero sees now. A seen cell in
+// no partition is scenery — floor the file paints under a wall's line, which
+// nobody stands on (the outside's edge along the gatehouse's walls) — and
+// counts toward none.
+func (s *kingScene) seenRooms() map[encounter.PartitionID]int {
 	s.t.Helper()
 	out, err := s.enc.VisibleCellsFor(&encounter.VisibleCellsInput{Member: hero})
 	require.NoError(s.t, err)
-	by := map[encounter.RegionID]int{}
+	by := map[encounter.PartitionID]int{}
 	for _, cell := range out.Cells {
-		if region, ok := s.enc.RegionAt(cell); ok {
-			by[region]++
+		if room, ok := s.enc.PartitionAt(cell); ok {
+			by[room]++
 		}
 	}
 
@@ -379,11 +380,11 @@ func TestMadKingGateDoorCarriesASound(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			s := openTheCastleWithDoors(t, seatAt(yard), map[encounter.DoorID]encounter.DoorState{kingGateDoor: tc.state})
-			gatehouse, ok := s.enc.RegionAt(s.at(kingGate1))
+			gatehouse, ok := s.enc.PartitionAt(s.at(kingGate1))
 			require.True(t, ok)
-			courtyard, ok := s.enc.RegionAt(yard)
+			courtyard, ok := s.enc.PartitionAt(yard)
 			require.True(t, ok)
-			require.NotEqual(t, gatehouse, courtyard, "precondition: the gate guard and the hero are a region apart")
+			require.NotEqual(t, gatehouse, courtyard, "precondition: the gate guard and the hero are a room apart")
 
 			_, err := s.enc.RecordTrain(&encounter.RecordTrainInput{Units: []encounter.TrainUnit{{Outcome: &encounter.RecordInput{
 				Kind: encounter.OutcomeStruck, Actor: kingGate1, Targets: []encounter.MemberID{kingGate2},
@@ -482,12 +483,12 @@ func TestMadKingTroupe(t *testing.T) {
 			// the throne room, and the hero and the king do not see each other. The
 			// throne-room count is the pin on the shut door: with it open the hero
 			// sees 5, 19 and 21 of its cells from these three spots.
-			throneRoom, ok := s.enc.RegionAt(castleCell(0, -20))
+			throneRoom, ok := s.enc.PartitionAt(castleCell(0, -20))
 			require.True(t, ok, "the throne room's floor")
 			courtyard, ok := s.enc.RegionAt(castleCell(0, -6))
 			require.True(t, ok, "the yard cell under the hall door")
 			unseen := func(where string) {
-				require.Zero(t, s.seenRegions()[throneRoom], "%s, the hero sees no cell of the throne room", where)
+				require.Zero(t, s.seenRooms()[throneRoom], "%s, the hero sees no cell of the throne room", where)
 				s.unseenByTheKing(where)
 			}
 			s.walkTo(castleCell(0, -6))

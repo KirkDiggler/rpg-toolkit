@@ -75,8 +75,8 @@ type singleRoomCells struct {
 
 // roomCells is the frame of one room's walkable hexes.
 func roomCells(gp *RoomGameplaySource) singleRoomCells {
-	walkable := make(map[spatial.Position]bool, len(gp.WalkableHexes))
-	for _, c := range gp.WalkableHexes {
+	walkable := map[spatial.Position]bool{}
+	for _, c := range gp.floorCells() {
 		walkable[hexCell(c)] = true
 	}
 

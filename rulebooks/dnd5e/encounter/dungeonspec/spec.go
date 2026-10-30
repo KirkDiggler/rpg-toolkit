@@ -47,7 +47,7 @@
 //     side it is on;
 //   - the FRAME it resolves a cell in ([cells]) — the v2 dialect looks an
 //     offset pair up in the floor its regions painted, and the single room
-//     looks an axial `{ q, r }` up in its walkable hexes; each refuses the
+//     looks an axial `{ q, r }` up in the floor its regions list; each refuses the
 //     other's spelling by path.
 //
 // The single-room dialect used to reach the grammar by building a fake v2
@@ -103,14 +103,27 @@
 // The World Builder's PRESENTATION (rpg-project#479, R3). The single-room
 // dialect's document carries the authored scene — assets, labels, groups,
 // parents, supports, height scales, point lights, the coordinate frame's axis
-// words, the workspace's drawing limit — and this package carries it as the
-// [gopkg.in/yaml.v3.Node] it was authored as, without modelling or judging
-// any of it. It reads out of it exactly the values play depends on: the
-// frame's hexRadius (which the placement adapter's scale is calibrated to),
-// the workspace's hexRadius (which bounds the floor), the scene's name (which
-// names the dungeon) and, per prop a `propDeclarations` entry names, the
-// three transform numbers that place its footprint. single_room_lowering.go is
-// the one reader and lists every one of them by path.
+// words — and this package carries it as the [gopkg.in/yaml.v3.Node] it was
+// authored as, without modelling or judging any of it. It reads out of it
+// exactly the values play depends on: the frame's hexRadius (which the
+// placement adapter's scale is calibrated to), the scene's name (which names
+// the dungeon) and, per prop a `propDeclarations` entry names, the three
+// transform numbers that place its footprint. single_room_lowering.go is the
+// one reader and lists every one of them by path.
+//
+// # The single room's floor is its regions (rpg-project#725)
+//
+// Version 5 of the single-room document has no walkable list and no
+// workspace: the floor is the union of `room.room.regions`, each region an
+// id, a name, a lighting intensity and its cells as canonical row runs
+// (single_room_cells.go), and the canvas is unbounded. The compiler lowers
+// each region that owns a cell to one [encounter.RegionInput] with its own
+// name and lighting — what the atlas names and lights. The WALLS divide the
+// same floor a second time, independently: the encounter derives those
+// partitions itself at construction and at every load, and they decide
+// hearing, the party's seats, arrivals and presence, while an authored region
+// boundary decides nothing mechanical at all. [ConvertV4] is the one-time
+// conversion of a version 3 or 4 document.
 //
 // The consequence is the point: an unknown key inside `scene` is the web
 // codec's business, not this decoder's, and the editor's scalar bounds no
@@ -495,14 +508,27 @@ type DispositionSpec struct {
 	// Stance is one of hostile, neutral, allied. REQUIRED.
 	Stance string `yaml:"stance"`
 
-	// Until is the predicate that TURNS the pair: when it holds the stance
-	// becomes the OTHER of hostile and neutral (rpg-project#493, R1). A
+	// Until is what TURNS the pair: one step, or a list of steps
+	// (rpg-project#717), each a predicate and, optionally, `then:` — the
+	// stance the step turns the pair to. Without `then`, a step turns the
+	// pair to the OTHER of hostile and neutral (rpg-project#493, R1): a
 	// hostile pair stands down; a neutral pair turns on you — "the guards
 	// are civil until the third round of the brawl", "the wolves are calm
-	// until you kill the alpha". REFUSED ON `stance: allied`: an allied pair
-	// has nothing to become. Optional. See [PredicateSpec] — all four forms
-	// are legal here, and only `{ fact }` needs the pair to have a mind,
-	// because only a fact is somebody's knowledge.
+	// until you kill the alpha". `then: allied` makes a recruited faction
+	// the party's side. Optional. See [UntilSpec] and [PredicateSpec] — all
+	// four forms are legal in one step, and only `{ fact }` needs the pair to
+	// have a mind, because only a fact is somebody's knowledge.
+	//
+	//	until: { fact: veteran-joined, then: allied }
+	//	until:
+	//	  - { fact: guards-turned, then: allied }
+	//	  - { fact: party-recognized, then: hostile }
+	//
+	// THE FIRST STEP THAT HOLDS WINS when the pair is asked, so the captain's
+	// word outranks the party being recognized whichever came first. A list
+	// of more than one step names facts only. On `stance: allied` every step
+	// names a `then`: an allied pair has nothing to become unless the author
+	// names where it goes.
 	//
 	// `until: { round: N }` COUNTS A FIGHT'S ROUNDS (hold-out R9): it holds
 	// when any fight in the run has started round N, and outside any fight it
@@ -518,7 +544,7 @@ type DispositionSpec struct {
 	// through — a swing, a spell that asks for a save, or one that simply
 	// lands its harm — so a camp is provokable the moment it is neutral, and
 	// a delivery that is wholly a kindness provokes nobody.
-	Until *PredicateSpec `yaml:"until,omitempty"`
+	Until *UntilSpec `yaml:"until,omitempty"`
 }
 
 // ExitSpec is one authored way out: an id and the floor cell a member stands
@@ -1932,7 +1958,7 @@ func scopeWords() string {
 // A CELL IS SPELT IN ITS DIALECT'S FRAME, and the spelling says which frame
 // (rpg-project#605, D1a). The v2 document's cells are offset pairs resolved
 // through its `orientation`; the single room's are the axial `{ q, r }` every
-// one of its walkable hexes and starting cells is written in. Both spellings
+// one of its floor cells and starting cells is written in. Both spellings
 // decode here, into their own fields, because the decoder does not know which
 // dialect it is reading — and the DIALECT refuses the other one's spelling by
 // path, through its [cells]. The same bytes therefore never mean two cells:

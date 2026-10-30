@@ -192,6 +192,13 @@ const (
 	// (rpg-project#569 R10): legal on `toward` and `away`, refused on
 	// `attack`. Resolved here ([TableDriver]); sealed in mind/behavior.
 	SelectorSound = behavior.SelectorSound
+
+	// SelectorAlly is the nearest member on a side this creature's own
+	// faction is allied with, in sight else remembered (rpg-project#717):
+	// legal on `toward`, `dash` and `away`, refused on `attack`. "Follow" is
+	// `{ when: { enemy: none }, toward: ally }`. Resolved here
+	// ([TableDriver]); sealed in mind/behavior.
+	SelectorAlly = behavior.SelectorAlly
 )
 
 // EnemyWords and SelectorWords are the sealed vocabularies, for the dialect's

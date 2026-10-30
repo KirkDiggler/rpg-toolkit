@@ -25,7 +25,7 @@ func campFacts(edit func(*encounter.FieldInput)) *scenarios.DungeonFacts {
 		Dispositions: []encounter.DispositionInput{{
 			Between: [2]encounter.FactionID{factionID, encounter.FactionParty},
 			Stance:  encounter.StanceHostile,
-			Until:   encounter.TriggerFact{Fact: factID},
+			Until:   []encounter.UntilStep{{When: encounter.TriggerFact{Fact: factID}}},
 		}},
 		Intel: []encounter.IntelRecord{{ID: "letter", Reveals: encounter.RevealTargets{Fact: factID}}},
 	}

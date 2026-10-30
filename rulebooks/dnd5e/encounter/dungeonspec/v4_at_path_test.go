@@ -189,7 +189,7 @@ func TestALegOffTheFloorReachesTheRoomAuthor(t *testing.T) {
 	require.NoError(t, err)
 	// Cut the centre out of the floor: the diamond's legs go round it, but a
 	// route straight across does not.
-	holed := swapOneIn(t, raw, "{q: 0, r: 0}, {q: 0, r: 1}", "{q: 0, r: 1}")
+	holed := swapOneIn(t, raw, "          - r: 0\n            q: [[-3, 3]]\n", "          - r: 0\n            q: [[-3, -1], [1, 3]]\n")
 	holed = swapOneIn(t, holed, "startingCell: { location: { q: 0, r: 0 } }", "startingCell: { location: { q: 1, r: 0 } }")
 	holed = swapOneIn(t, holed, gateRoute, "toward: {path: [{q: -2, r: 0}, {q: 2, r: 0}, {q: 0, r: 2}]}")
 	_, err = Load(holed)
@@ -314,10 +314,10 @@ func TestTheDecodeHintsSpeakTheRoomsSpelling(t *testing.T) {
 	require.NoError(t, err)
 	for name, tc := range map[string]struct{ repl, want string }{
 		"a word nothing resolves": {"toward: sideways",
-			`"sideways" is not a selector this build resolves: they are enemy, attacker, actor, sound, ` +
+			`"sideways" is not a selector this build resolves: they are enemy, attacker, actor, sound, ally, ` +
 				"or { at: { q, r } }, or { path: [{ q, r }, …] }"},
 		"a selector that is a list": {"toward: [1, 1]",
-			"a selector is one of enemy, attacker, actor, sound, or { at: { q, r } }, or { path: [{ q, r }, …] }"},
+			"a selector is one of enemy, attacker, actor, sound, ally, or { at: { q, r } }, or { path: [{ q, r }, …] }"},
 		"`patrol`": {"patrol: {}",
 			"`patrol` is not a word: a patrol is a route, write toward: { path: [{ q, r }, …] }"},
 	} {

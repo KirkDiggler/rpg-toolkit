@@ -165,12 +165,21 @@ type castleHost struct {
 	// noReload opts a route out of [kingScene.reload]: the encounter is never
 	// saved and loaded back between turns.
 	noReload bool
+
+	// fixture is the document this host opens, the castle when empty: a walk
+	// site cut from the castle plays through the castle's own host
+	// (rpg-project#717's ally-walk).
+	fixture string
 }
 
 // openTheCastleAs compiles the file and opens it the way the host says.
 func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 	t.Helper()
-	compiled := loadContent(t, kingFixture)
+	fixture := kingFixture
+	if host.fixture != "" {
+		fixture = host.fixture
+	}
+	compiled := loadContent(t, fixture)
 	for i := range compiled.Field.Doors {
 		if state, ok := host.doors[compiled.Field.Doors[i].ID]; ok {
 			compiled.Field.Doors[i].State = state

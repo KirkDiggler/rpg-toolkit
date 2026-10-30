@@ -279,21 +279,42 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	// nothing of it survives — the never-authored twin of a room that is
 	// wholly a secret has no entry for it at all.
 	//
-	// A MASKED THRESHOLD keeps its region only when that region is on the map
-	// anyway — another of its cells is presented — as the twin's hex stays in
-	// the room around it. A region that would be on the map ONLY through the
-	// threshold (a compiled room partitions the hex a closed door encloses into
-	// its own one-hex space) is not: the threshold is presented ownerless, as
-	// the twin's footing hex is, and no region named after the room marks the
-	// secret door.
+	// A MASKED THRESHOLD keeps its region only when its WALL PARTITION is on
+	// the map anyway — another cell of the same partition is presented — as
+	// the twin's hex stays in the room around it. A threshold whose partition
+	// would be on the map ONLY through it (the walls make the hex a closed
+	// door encloses its own one-hex space) is not: it is presented ownerless,
+	// as the twin's footing hex is, and no region marks the secret door.
+	//
+	// THE PARTITION, NOT THE AUTHORED REGION (rpg-project#725). Whether the
+	// twin's hex is ownerless footing is the walls' answer, and an authored
+	// region now spans both sides of a wall: asking the region would leave
+	// the threshold inside the room around it, where the twin has none, and
+	// tell a non-knower where the door is.
+	presented := map[PartitionID]bool{}
+	if len(masked) > 0 {
+		for _, r := range full.Regions {
+			for _, c := range r.Cells {
+				if p, ok := e.field.partitionAt(c); ok && !hiddenCells[c] && !masked[c] {
+					presented[p] = true
+				}
+			}
+		}
+	}
 	for _, r := range full.Regions {
 		cells := make([]spatial.Position, 0, len(r.Cells))
 		open := false
 		for _, c := range r.Cells {
-			if !hiddenCells[c] {
-				cells = append(cells, c)
-				open = open || !masked[c]
+			if hiddenCells[c] {
+				continue
 			}
+			if masked[c] {
+				if p, ok := e.field.partitionAt(c); !ok || !presented[p] {
+					continue
+				}
+			}
+			cells = append(cells, c)
+			open = open || !masked[c]
 		}
 		if !open {
 			continue

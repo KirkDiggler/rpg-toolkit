@@ -566,6 +566,22 @@ type DispositionData struct {
 	Between []FactionID  `json:"between"`
 	Stance  string       `json:"stance"`
 	Until   *TriggerData `json:"until,omitempty"`
+
+	// Then is a ONE-STEP until's [UntilStep.Then], omitted when empty so a
+	// disposition written before it existed persists byte for byte as it
+	// did.
+	Then string `json:"then,omitempty"`
+
+	// Steps is an until of MORE THAN ONE step, in order (rpg-project#717).
+	// A one-step until persists as Until and Then, the shape every saved run
+	// before the list has, so a blob never carries both.
+	Steps []UntilStepData `json:"steps,omitempty"`
+}
+
+// UntilStepData is the persistent representation of one [UntilStep].
+type UntilStepData struct {
+	When TriggerData `json:"when"`
+	Then string      `json:"then,omitempty"`
 }
 
 // TriggerData is the persistent representation of one [Trigger] — the
@@ -1161,7 +1177,7 @@ func validateWorldFacts(
 	minted[string(cellsKnownKind)] = ""
 	settled := make(map[string]factionPair, 2*len(turnable))
 	for _, pair := range turnable {
-		for _, to := range settledStances {
+		for _, to := range floor.settledStancesOf(pair) {
 			settled[string(settledKind(to, pair))] = pair
 		}
 	}
@@ -2499,9 +2515,15 @@ func fieldDataFrom(f *field) FieldData {
 		out.Dispositions = make([]DispositionData, len(f.dispositions))
 		for i, d := range f.dispositions {
 			dd := DispositionData{Between: []FactionID{d.Between[0], d.Between[1]}, Stance: string(d.Stance)}
-			if d.Until != nil {
-				td := triggerDataFrom(d.Until)
-				dd.Until = &td
+			switch len(d.Until) {
+			case 0:
+			case 1:
+				td := triggerDataFrom(d.Until[0].When)
+				dd.Until, dd.Then = &td, string(d.Until[0].Then)
+			default:
+				for _, step := range d.Until {
+					dd.Steps = append(dd.Steps, UntilStepData{When: triggerDataFrom(step.When), Then: string(step.Then)})
+				}
 			}
 			out.Dispositions[i] = dd
 		}
@@ -2825,6 +2847,12 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 	if err = validateDoorInputs(f, doorInputs); err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+	// THE WALL PARTITIONS, derived again from what the data persisted — the
+	// regions, walls, props and doors — exactly as Setup derived them. The
+	// data carries none of them (rpg-project#725 R8, partitions.go).
+	if err = f.derivePartitions(doorInputs); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 
@@ -3853,12 +3881,23 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 				i, len(dd.Between), ErrNoFaction)
 		}
 		d := DispositionInput{Between: [2]FactionID{dd.Between[0], dd.Between[1]}, Stance: Stance(dd.Stance)}
+		if dd.Until != nil && len(dd.Steps) > 0 {
+			return FieldInput{}, fmt.Errorf("dispositions[%d] carries both an until and steps, and an until is one or the "+
+				"other: %w", i, ErrNoFaction)
+		}
 		if dd.Until != nil {
 			t, err := triggerFromData(*dd.Until)
 			if err != nil {
 				return FieldInput{}, fmt.Errorf("dispositions[%d] until: %w", i, err)
 			}
-			d.Until = t
+			d.Until = []UntilStep{{When: t, Then: Stance(dd.Then)}}
+		}
+		for j, sd := range dd.Steps {
+			t, err := triggerFromData(sd.When)
+			if err != nil {
+				return FieldInput{}, fmt.Errorf("dispositions[%d] until[%d]: %w", i, j, err)
+			}
+			d.Until = append(d.Until, UntilStep{When: t, Then: Stance(sd.Then)})
 		}
 		in.Dispositions = append(in.Dispositions, d)
 	}

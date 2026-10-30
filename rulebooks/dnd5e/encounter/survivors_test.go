@@ -51,7 +51,7 @@ var (
 // survivorsDoc is the band of three hostile to the party until its leader
 // falls, and the faction's two lines.
 const survivorsDoc = `
-version: 4
+version: 5
 key: survivors
 play: { void: transparent, lighting: bright, standing: centre-covered }
 factions:
@@ -75,21 +75,18 @@ room:
   id: yard
   name: The Yard
   coordinateFrame: { hexRadius: 1 }
-  workspace: { hexRadius: 8 }
   scene: { version: 1, id: yard-scene, name: The Yard, items: [], groups: [] }
   room:
     implicitRegionId: yard-region
-    walkableHexes:
-      - {q: 0, r: 0}
-      - {q: 1, r: 0}
-      - {q: 2, r: 0}
-      - {q: 3, r: 0}
-      - {q: 4, r: 0}
-      - {q: 0, r: 1}
-      - {q: 1, r: 1}
-      - {q: 2, r: 1}
-      - {q: 3, r: 1}
-      - {q: 4, r: 1}
+    regions:
+      - id: yard-region
+        name: The Yard
+        lighting: { intensity: 1 }
+        cells:
+          - r: 0
+            q: [[0, 4]]
+          - r: 1
+            q: [[0, 4]]
     propDeclarations: {}
     arrangementDeclarations: {}
     partyStart: { q: 0, r: 0 }

@@ -14,12 +14,13 @@ func (s *SingleRoomWallDoorSuite) TestKnownWallKeepsFloorUnderAClosedDoor() {
 	for _, secret := range []bool{false, true} {
 		s.Run(fmt.Sprintf("secret=%t", secret), func() {
 			spec := s.gapSpec(dungeonspec.RoomDoorBinding{Closed: true})
-			spec.Room.Gameplay.WalkableHexes = nil
+			var floor []dungeonspec.RoomCell
 			for q := 0; q <= 3; q++ {
 				for r := -1; r <= 1; r++ {
-					spec.Room.Gameplay.WalkableHexes = append(spec.Room.Gameplay.WalkableHexes, dungeonspec.RoomCell{Q: q, R: r})
+					floor = append(floor, dungeonspec.RoomCell{Q: q, R: r})
 				}
 			}
+			dungeonspec.SetFloor(&spec.Room.Gameplay, floor)
 			x := boundaryWallX(5)
 			spec.Room.Gameplay.Walls = []dungeonspec.RoomWall{roomWall("boundary", x, -6, x, 6, wallBlocks(true, true, 12, 0.2, 0, 0),
 				dungeonspec.RoomWallOpening{ID: "gap", Position: 6, Width: 2, Door: &dungeonspec.RoomWallDoor{ID: "gap-door", AssetRef: "dnd5e:env:test:door"}})}

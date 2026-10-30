@@ -12,7 +12,7 @@
 #           it — so it runs twelve cells, then walks up and swings.
 #
 # pursuit_hall_site_test.go plays it.
-version: 4
+version: 5
 key: pursuit-hall
 play:
   void: transparent
@@ -53,201 +53,28 @@ room:
     distanceUnit: world-scene-unit
     hexRadius: 1
     footprintFrame: owner-local-xz
-  workspace:
-    kind: centered-odd-r
-    widthHexes: 30
-    heightHexes: 6
-    hexRadius: 13
-    horizontalLimit: 29
   scene:
     version: 3
     id: scene-1
     name: Pursuit Hall
     items: []
     groups: []
-    mapLabels:
-      - id: label-hall
-        text: Hall
-        location:
-          x: 10
-          z: 0.5
-    authoringRegions:
-      - id: region-hall
-        labelId: label-hall
-        boundary:
-          kind: explicit
-          cells:
-            - q: -10
-              r: 0
-            - q: -10
-              r: 1
-            - q: -9
-              r: 0
-            - q: -9
-              r: 1
-            - q: -8
-              r: 0
-            - q: -8
-              r: 1
-            - q: -7
-              r: 0
-            - q: -7
-              r: 1
-            - q: -6
-              r: 0
-            - q: -6
-              r: 1
-            - q: -5
-              r: 0
-            - q: -5
-              r: 1
-            - q: -4
-              r: 0
-            - q: -4
-              r: 1
-            - q: -3
-              r: 0
-            - q: -3
-              r: 1
-            - q: -2
-              r: 0
-            - q: -2
-              r: 1
-            - q: -1
-              r: 0
-            - q: -1
-              r: 1
-            - q: 0
-              r: 0
-            - q: 0
-              r: 1
-            - q: 1
-              r: 0
-            - q: 1
-              r: 1
-            - q: 2
-              r: 0
-            - q: 2
-              r: 1
-            - q: 3
-              r: 0
-            - q: 3
-              r: 1
-            - q: 4
-              r: 0
-            - q: 4
-              r: 1
-            - q: 5
-              r: 0
-            - q: 5
-              r: 1
-            - q: 6
-              r: 0
-            - q: 6
-              r: 1
-            - q: 7
-              r: 0
-            - q: 7
-              r: 1
-            - q: 8
-              r: 0
-            - q: 8
-              r: 1
-            - q: 9
-              r: 0
-            - q: 9
-              r: 1
-            - q: 10
-              r: 0
-            - q: 10
-              r: 1
+    mapLabels: []
   room:
     implicitRegionId: room-1-region
-    walkableHexes:
-      - q: -10
-        r: 0
-      - q: -10
-        r: 1
-      - q: -9
-        r: 0
-      - q: -9
-        r: 1
-      - q: -8
-        r: 0
-      - q: -8
-        r: 1
-      - q: -7
-        r: 0
-      - q: -7
-        r: 1
-      - q: -6
-        r: 0
-      - q: -6
-        r: 1
-      - q: -5
-        r: 0
-      - q: -5
-        r: 1
-      - q: -4
-        r: 0
-      - q: -4
-        r: 1
-      - q: -3
-        r: 0
-      - q: -3
-        r: 1
-      - q: -2
-        r: 0
-      - q: -2
-        r: 1
-      - q: -1
-        r: 0
-      - q: -1
-        r: 1
-      - q: 0
-        r: 0
-      - q: 0
-        r: 1
-      - q: 1
-        r: 0
-      - q: 1
-        r: 1
-      - q: 2
-        r: 0
-      - q: 2
-        r: 1
-      - q: 3
-        r: 0
-      - q: 3
-        r: 1
-      - q: 4
-        r: 0
-      - q: 4
-        r: 1
-      - q: 5
-        r: 0
-      - q: 5
-        r: 1
-      - q: 6
-        r: 0
-      - q: 6
-        r: 1
-      - q: 7
-        r: 0
-      - q: 7
-        r: 1
-      - q: 8
-        r: 0
-      - q: 8
-        r: 1
-      - q: 9
-        r: 0
-      - q: 9
-        r: 1
-      - q: 10
-        r: 0
-      - q: 10
-        r: 1
+    regions:
+      - id: room-1-region
+        name: Pursuit Hall
+        lighting: { intensity: 1 }
+        cells: []
+      - id: region-hall
+        name: Hall
+        lighting: { intensity: 1 }
+        cells:
+          - r: 0
+            q: [[-10, 10]]
+          - r: 1
+            q: [[-10, 10]]
     propDeclarations: {}
     arrangementDeclarations: {}
     monsterDeclarations:
