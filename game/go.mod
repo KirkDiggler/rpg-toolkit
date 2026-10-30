@@ -1,6 +1,6 @@
 module github.com/KirkDiggler/rpg-toolkit/game
 
-go 1.24
+go 1.27.0
 
 require (
 	github.com/KirkDiggler/rpg-toolkit/events v0.1.1
