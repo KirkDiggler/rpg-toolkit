@@ -62,8 +62,6 @@ linters:
       # this list is empty, delete the whole block.
       - path: ^tools/environments/  # 26 goconst
         linters: [goconst]
-      - path: ^tools/selectables/   # 5 goconst + gosec G115 + unparam (basic_table.go)
-        linters: [goconst, gosec, unparam]
       - path: ^tools/spatial/       # 1 goconst (connection_helpers.go)
         linters: [goconst]
 

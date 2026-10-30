@@ -2,6 +2,7 @@ package selectables
 
 import (
 	"testing"
+	"unicode"
 
 	"github.com/stretchr/testify/suite"
 
@@ -481,6 +482,20 @@ func (s *BasicTableTestSuite) TestAddNestedTable() {
 			s.Assert().LessOrEqual(weight, 20, "Weight should be at most maximum")
 		}
 	})
+}
+
+func (s *BasicTableTestSuite) TestToStringConvertsIntegersToRunes() {
+	tests := map[int]string{
+		int('A'):            "A",
+		unicode.MaxRune:     string(unicode.MaxRune),
+		-1:                  string(unicode.ReplacementChar),
+		unicode.MaxRune + 1: string(unicode.ReplacementChar),
+		0xD800:              string(unicode.ReplacementChar),
+	}
+
+	for value, expected := range tests {
+		s.Assert().Equal(expected, toString(value))
+	}
 }
 
 func (s *BasicTableTestSuite) TestTableIntrospection() {
