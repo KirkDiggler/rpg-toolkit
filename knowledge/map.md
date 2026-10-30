@@ -16,6 +16,7 @@ flowchart TD
     EXW["examples/world"]
     EXP["examples/perception"]
     EXB["examples/behavior"]
+    EXE["examples/effects"]
   end
 
   RB[["Rulebooks: rulebooks/dnd5e<br/>see rulebooks/dnd5e/knowledge/map.md"]]
