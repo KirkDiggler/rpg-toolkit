@@ -1,6 +1,6 @@
 module github.com/KirkDiggler/rpg-toolkit/npc
 
-go 1.24.1
+go 1.27.0
 
 require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.10.0
