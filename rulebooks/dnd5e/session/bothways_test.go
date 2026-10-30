@@ -96,6 +96,10 @@ func (s *BothWaysSuite) yard(until encounter.Trigger) {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
+	var untilSteps []encounter.UntilStep
+	if until != nil {
+		untilSteps = []encounter.UntilStep{{When: until}}
+	}
 	sc := scene{
 		Field: encounter.FieldInput{
 			Canvas:   pointyCanvas(),
@@ -104,7 +108,7 @@ func (s *BothWaysSuite) yard(until encounter.Trigger) {
 			Dispositions: []encounter.DispositionInput{{
 				Between: [2]encounter.FactionID{bwGoblins, encounter.FactionParty},
 				Stance:  encounter.StanceNeutral,
-				Until:   until,
+				Until:   untilSteps,
 			}},
 		},
 		Party: []sceneSeat{

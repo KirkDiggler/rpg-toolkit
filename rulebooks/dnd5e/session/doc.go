@@ -245,6 +245,12 @@
 // Empty preserves legacy model resolution. This seam does not resolve an asset
 // catalog or derive a model path. Knowledge uses the same roster projection.
 //
+// DefaultActivityRef follows the same launch and captured-identity projection.
+// It is the authored presentation default, not a current animation phase or
+// gameplay command. PublicMember.DefaultActivityRef remains empty for legacy
+// missing observations; the seam never supplies a newer live default instead.
+// Activity catalogs, supported clips and playback timing remain consumer-owned.
+//
 // # Permitted prop presentation
 //
 // Atlas.PropPresentations and every reveal body carry the provider's fixed

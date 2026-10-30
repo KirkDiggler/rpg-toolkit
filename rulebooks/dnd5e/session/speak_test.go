@@ -698,7 +698,7 @@ func (s *SpeakSuite) aCamp(fact string, rolls []int) *session.Manager {
 			Dispositions: []encounter.DispositionInput{{
 				Between: [2]encounter.FactionID{"raiders", encounter.FactionParty},
 				Stance:  encounter.StanceHostile,
-				Until:   encounter.TriggerFact{Fact: encounter.FactID(fact)},
+				Until:   []encounter.UntilStep{{When: encounter.TriggerFact{Fact: encounter.FactID(fact)}}},
 			}},
 		},
 		Party: []sceneSeat{seatAt("alice", 1, 1)},

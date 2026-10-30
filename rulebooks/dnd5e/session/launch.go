@@ -226,6 +226,7 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 			return nil, fmt.Errorf("launch: %w", err)
 		}
 		join.AppearanceRef = monster.placement.AppearanceRef
+		join.DefaultActivityRef = monster.placement.DefaultActivityRef
 		// The author's facing, lowered to a bearing by the compile (sneaking
 		// R13); nil leaves the composition's rule bearing of 180.
 		join.Facing = monster.placement.FacingDegrees
