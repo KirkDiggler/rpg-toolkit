@@ -12,7 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// Room type constants
+// Room, connection, and wall material constants
 const (
 	RoomTypeEntrance = "entrance"
 	RoomTypeBoss     = "boss"
@@ -22,6 +22,16 @@ const (
 	RoomTypeExit     = "exit"
 	RoomTypeChamber  = "chamber"
 	RoomTypeJunction = "junction"
+	// RoomTypeHub identifies a hub room.
+	RoomTypeHub = "hub"
+
+	// ConnectionTypeDoor identifies a door connection.
+	ConnectionTypeDoor = "door"
+	// ConnectionTypePassage identifies a passage connection.
+	ConnectionTypePassage = "passage"
+
+	// WallMaterialStone identifies stone as a wall material.
+	WallMaterialStone = "stone"
 )
 
 // GraphBasedGenerator implements environment generation using graph algorithms
@@ -353,7 +363,7 @@ func (g *GraphBasedGenerator) generateLinearLayoutUnsafe(
 				ID:            connectionID,
 				FromRoomID:    previousRoomID,
 				ToRoomID:      roomID,
-				Type:          "passage",
+				Type:          ConnectionTypePassage,
 				Bidirectional: true,
 				Cost:          1.0,
 				Required:      true,
@@ -385,10 +395,10 @@ func (g *GraphBasedGenerator) generateBranchingLayoutUnsafe(
 	hubID := "hub_room"
 	hubRoom := &RoomNode{
 		ID:         hubID,
-		Type:       "hub",
+		Type:       RoomTypeHub,
 		Theme:      config.Theme,
 		Size:       spatial.Dimensions{Width: 20, Height: 20}, // Larger hub room
-		Features:   g.generateRoomFeaturesUnsafe("hub", config),
+		Features:   g.generateRoomFeaturesUnsafe(RoomTypeHub, config),
 		Properties: map[string]interface{}{"is_hub": true},
 	}
 
@@ -448,7 +458,7 @@ func (g *GraphBasedGenerator) createBranchUnsafe(
 			ID:            connectionID,
 			FromRoomID:    previousRoomID,
 			ToRoomID:      roomID,
-			Type:          "passage",
+			Type:          ConnectionTypePassage,
 			Bidirectional: true,
 			Cost:          1.0,
 			Required:      true,
@@ -579,7 +589,7 @@ func (g *GraphBasedGenerator) generateOrganicLayoutUnsafe(
 				ID:            connectionID,
 				FromRoomID:    targetRoomID,
 				ToRoomID:      roomID,
-				Type:          "passage",
+				Type:          ConnectionTypePassage,
 				Bidirectional: true,
 				Cost:          1.0,
 				Required:      true,
@@ -697,7 +707,7 @@ func (g *GraphBasedGenerator) createGridConnectionUnsafe(graph *RoomGraph, roomI
 		ID:            connectionID,
 		FromRoomID:    roomID1,
 		ToRoomID:      roomID2,
-		Type:          "passage",
+		Type:          ConnectionTypePassage,
 		Bidirectional: true,
 		Cost:          1.0,
 		Required:      true,
@@ -915,15 +925,15 @@ func (g *GraphBasedGenerator) selectRoomShapeUnsafe(roomType string, _ Generatio
 	case RoomTypeChamber:
 		return ShapeRectangle // Basic chamber
 	case RoomTypeBoss:
-		return "square" // Boss rooms are often square
+		return string(GridShapeSquare) // Boss rooms are often square
 	case RoomTypeTreasure:
-		return "square" // Treasure rooms are compact
-	case "hub":
-		return "cross" // Hub rooms have multiple connections
+		return string(GridShapeSquare) // Treasure rooms are compact
+	case RoomTypeHub:
+		return ShapeCross // Hub rooms have multiple connections
 	case RoomTypeJunction:
-		return "t_shape" // Junction rooms connect paths
+		return ShapeT // Junction rooms connect paths
 	case "corner":
-		return "l_shape" // Corner rooms change direction
+		return ShapeL // Corner rooms change direction
 	default:
 		return ShapeRectangle // Default to rectangle
 	}
@@ -982,7 +992,7 @@ func (g *GraphBasedGenerator) selectWallPatternUnsafe(roomType string, _ Generat
 		return "defensive" // Boss rooms have defensive positioning
 	case RoomTypeTreasure:
 		return "alcoves" // Treasure rooms have hiding spots
-	case "hub":
+	case RoomTypeHub:
 		return "pillars" // Hub rooms have visibility blockers
 	case RoomTypeJunction:
 		return PatternEmpty // Junctions should be clear for movement
@@ -996,7 +1006,7 @@ func (g *GraphBasedGenerator) selectWallPatternUnsafe(roomType string, _ Generat
 func (g *GraphBasedGenerator) calculateDensityUnsafe(roomType string, _ GenerationConfig) float64 {
 	// Calculate wall density based on room type
 	switch roomType {
-	case "entrance", "exit", "corridor", "junction":
+	case "entrance", "exit", "corridor", RoomTypeJunction:
 		return 0.1 // Very low density for movement rooms
 	case RoomTypeChamber:
 		return 0.4 // Medium density for tactical rooms
@@ -1029,7 +1039,7 @@ func (g *GraphBasedGenerator) selectMaterialUnsafe(_ string, config GenerationCo
 	// Select material based on theme and room type
 	switch config.Theme {
 	case "dungeon", "castle":
-		return "stone"
+		return WallMaterialStone
 	case "cave", "natural":
 		return "rock"
 	case "wooden", "tavern":
@@ -1037,7 +1047,7 @@ func (g *GraphBasedGenerator) selectMaterialUnsafe(_ string, config GenerationCo
 	case "metal", "facility":
 		return "metal"
 	default:
-		return "stone" // Default to stone
+		return WallMaterialStone // Default to stone
 	}
 }
 
@@ -1136,11 +1146,11 @@ func (g *GraphBasedGenerator) createSpatialConnectionUnsafe(
 
 	// Create spatial connection based on edge type
 	switch edge.Type {
-	case "door":
+	case ConnectionTypeDoor:
 		return spatial.CreateDoorConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, cost)
 	case "stairs":
 		return spatial.CreateStairsConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, cost, true)
-	case "passage":
+	case ConnectionTypePassage:
 		return spatial.CreateSecretPassageConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, cost, []string{})
 	case "portal":
 		return spatial.CreatePortalConnection(edge.ID, edge.FromRoomID, edge.ToRoomID, cost, true)

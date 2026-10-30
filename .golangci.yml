@@ -55,13 +55,6 @@ linters:
       - source: "^//go:generate "
         linters: [lll]
 
-      # ---- Shrinking exception list --------------------------------------------
-      # Debt raised by the golangci-lint v2.3.1 → v2.15.0 bump in #2148: one
-      # rule per module still carrying findings. The PR that fixes a module's
-      # findings deletes that module's rule here in the same commit. When
-      # this list is empty, delete the whole block.
-      - path: ^tools/environments/  # 26 goconst
-        linters: [goconst]
 
     paths:
       # vendor (if any) and generated files

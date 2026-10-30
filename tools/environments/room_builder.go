@@ -11,13 +11,19 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// Pattern constants
+// Pattern and shape constants
 const (
 	PatternEmpty   = "empty"
 	PatternRandom  = "random"
 	ShapeRectangle = "rectangle"
 	ShapeSquare    = "square"
-	ThemeDefault   = "default"
+	// ShapeL identifies an L-shaped room.
+	ShapeL = "l_shape"
+	// ShapeT identifies a T-shaped room.
+	ShapeT = "t_shape"
+	// ShapeCross identifies a cross-shaped room.
+	ShapeCross   = "cross"
+	ThemeDefault = "default"
 )
 
 // BasicRoomBuilder implements the RoomBuilder interface
@@ -64,7 +70,7 @@ func NewBasicRoomBuilder(config BasicRoomBuilderConfig) *BasicRoomBuilder {
 				EntitySize:        1.0,
 				EmergencyFallback: true,
 			},
-			Material:   "stone",
+			Material:   WallMaterialStone,
 			WallHeight: 3.0,
 		},
 		theme: ThemeDefault,

@@ -10,6 +10,18 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
+// Cardinal direction constants identify connection directions.
+const (
+	// DirectionEast identifies an east-facing connection.
+	DirectionEast = "east"
+	// DirectionNorth identifies a north-facing connection.
+	DirectionNorth = "north"
+	// DirectionWest identifies a west-facing connection.
+	DirectionWest = "west"
+	// DirectionSouth identifies a south-facing connection.
+	DirectionSouth = "south"
+)
+
 // RoomShape represents a room's boundary and connection points
 // Purpose: Defines the outer boundary of a room in a grid-agnostic way.
 // The spatial module handles the specific grid coordinate system.
@@ -360,24 +372,24 @@ func rotateDirection(direction string, degrees int) string {
 	// In our system: south->east, east->north, north->west, west->south (90° clockwise)
 	// This means we need: south=270°, east=0°, north=90°, west=180°
 	directionMap := map[string]int{
-		"east":      0,
-		"northeast": 45,
-		"north":     90,
-		"northwest": 135,
-		"west":      180,
-		"southwest": 225,
-		"south":     270,
-		"southeast": 315,
+		DirectionEast:  0,
+		"northeast":    45,
+		DirectionNorth: 90,
+		"northwest":    135,
+		DirectionWest:  180,
+		"southwest":    225,
+		DirectionSouth: 270,
+		"southeast":    315,
 	}
 
 	reverseMap := map[int]string{
-		0:   "east",
+		0:   DirectionEast,
 		45:  "northeast",
-		90:  "north",
+		90:  DirectionNorth,
 		135: "northwest",
-		180: "west",
+		180: DirectionWest,
 		225: "southwest",
-		270: "south",
+		270: DirectionSouth,
 		315: "southeast",
 	}
 
@@ -422,10 +434,10 @@ func IsShapeCompatibleWithGrid(shape *RoomShape, gridType string) bool {
 	case ShapeSquare:
 		// Square grids work with most shapes
 		return true
-	case "hex":
+	case string(GridShapeHex):
 		// Hex grids prefer shapes with 6-fold symmetry or organic shapes
 		return shape.Type == "organic" || len(shape.Boundary) == 6
-	case "gridless":
+	case string(GridShapeGridless):
 		// Gridless works with any shape
 		return true
 	default:
@@ -439,12 +451,12 @@ func IsShapeCompatibleWithGrid(shape *RoomShape, gridType string) bool {
 // GetDefaultShapes returns basic shapes for development/testing
 func GetDefaultShapes() map[string]*RoomShape {
 	return map[string]*RoomShape{
-		"rectangle": createRectangleShape(),
-		"square":    createSquareShape(),
-		"l_shape":   createLShape(),
-		"t_shape":   createTShape(),
-		"cross":     createCrossShape(),
-		"oval":      createOvalShape(),
+		"rectangle":             createRectangleShape(),
+		string(GridShapeSquare): createSquareShape(),
+		ShapeL:                  createLShape(),
+		ShapeT:                  createTShape(),
+		ShapeCross:              createCrossShape(),
+		"oval":                  createOvalShape(),
 	}
 }
 
@@ -462,13 +474,33 @@ func createRectangleShape() *RoomShape {
 			{X: 0.0, Y: 1.0}, // Top-left
 		},
 		Connections: []ConnectionPoint{
-			{Name: "south", Position: spatial.Position{X: 0.5, Y: 0.0}, Direction: "south", Type: "door"},
-			{Name: "north", Position: spatial.Position{X: 0.5, Y: 1.0}, Direction: "north", Type: "door"},
-			{Name: "east", Position: spatial.Position{X: 1.0, Y: 0.5}, Direction: "east", Type: "door"},
-			{Name: "west", Position: spatial.Position{X: 0.0, Y: 0.5}, Direction: "west", Type: "door"},
+			{
+				Name:      DirectionSouth,
+				Position:  spatial.Position{X: 0.5, Y: 0.0},
+				Direction: DirectionSouth,
+				Type:      ConnectionTypeDoor,
+			},
+			{
+				Name:      DirectionNorth,
+				Position:  spatial.Position{X: 0.5, Y: 1.0},
+				Direction: DirectionNorth,
+				Type:      ConnectionTypeDoor,
+			},
+			{
+				Name:      DirectionEast,
+				Position:  spatial.Position{X: 1.0, Y: 0.5},
+				Direction: DirectionEast,
+				Type:      ConnectionTypeDoor,
+			},
+			{
+				Name:      DirectionWest,
+				Position:  spatial.Position{X: 0.0, Y: 0.5},
+				Direction: DirectionWest,
+				Type:      ConnectionTypeDoor,
+			},
 		},
 		GridHints: GridHints{
-			PreferredGridTypes: []string{"square", "gridless"},
+			PreferredGridTypes: []string{string(GridShapeSquare), string(GridShapeGridless)},
 			MinSize:            spatial.Dimensions{Width: 4, Height: 4},
 			MaxSize:            spatial.Dimensions{Width: 50, Height: 50},
 			AspectRatio:        1.5, // Can be wider than tall
@@ -479,7 +511,7 @@ func createRectangleShape() *RoomShape {
 
 func createSquareShape() *RoomShape {
 	return &RoomShape{
-		Name:        "square",
+		Name:        string(GridShapeSquare),
 		Description: "Square room for balanced spaces",
 		Type:        "basic",
 		Boundary: []spatial.Position{
@@ -489,13 +521,33 @@ func createSquareShape() *RoomShape {
 			{X: 0.0, Y: 1.0}, // Top-left
 		},
 		Connections: []ConnectionPoint{
-			{Name: "south", Position: spatial.Position{X: 0.5, Y: 0.0}, Direction: "south", Type: "door"},
-			{Name: "north", Position: spatial.Position{X: 0.5, Y: 1.0}, Direction: "north", Type: "door"},
-			{Name: "east", Position: spatial.Position{X: 1.0, Y: 0.5}, Direction: "east", Type: "door"},
-			{Name: "west", Position: spatial.Position{X: 0.0, Y: 0.5}, Direction: "west", Type: "door"},
+			{
+				Name:      DirectionSouth,
+				Position:  spatial.Position{X: 0.5, Y: 0.0},
+				Direction: DirectionSouth,
+				Type:      ConnectionTypeDoor,
+			},
+			{
+				Name:      DirectionNorth,
+				Position:  spatial.Position{X: 0.5, Y: 1.0},
+				Direction: DirectionNorth,
+				Type:      ConnectionTypeDoor,
+			},
+			{
+				Name:      DirectionEast,
+				Position:  spatial.Position{X: 1.0, Y: 0.5},
+				Direction: DirectionEast,
+				Type:      ConnectionTypeDoor,
+			},
+			{
+				Name:      DirectionWest,
+				Position:  spatial.Position{X: 0.0, Y: 0.5},
+				Direction: DirectionWest,
+				Type:      ConnectionTypeDoor,
+			},
 		},
 		GridHints: GridHints{
-			PreferredGridTypes: []string{"square", "hex", "gridless"},
+			PreferredGridTypes: []string{string(GridShapeSquare), string(GridShapeHex), string(GridShapeGridless)},
 			MinSize:            spatial.Dimensions{Width: 4, Height: 4},
 			MaxSize:            spatial.Dimensions{Width: 30, Height: 30},
 			AspectRatio:        1.0, // Always square
@@ -506,9 +558,9 @@ func createSquareShape() *RoomShape {
 
 func createLShape() *RoomShape {
 	return &RoomShape{
-		Name:        "l_shape",
+		Name:        ShapeL,
 		Description: "L-shaped room for corners and turns",
-		Type:        "junction",
+		Type:        RoomTypeJunction,
 		Boundary: []spatial.Position{
 			{X: 0.0, Y: 0.0}, // Bottom-left
 			{X: 0.6, Y: 0.0}, // Bottom-right of short leg
@@ -518,14 +570,39 @@ func createLShape() *RoomShape {
 			{X: 0.0, Y: 1.0}, // Top-left
 		},
 		Connections: []ConnectionPoint{
-			{Name: "south_short", Position: spatial.Position{X: 0.3, Y: 0.0}, Direction: "south", Type: "door"},
-			{Name: "south_long", Position: spatial.Position{X: 0.8, Y: 0.4}, Direction: "south", Type: "door"},
-			{Name: "north", Position: spatial.Position{X: 0.3, Y: 1.0}, Direction: "north", Type: "door"},
-			{Name: "east", Position: spatial.Position{X: 1.0, Y: 0.7}, Direction: "east", Type: "door"},
-			{Name: "west", Position: spatial.Position{X: 0.0, Y: 0.5}, Direction: "west", Type: "door"},
+			{
+				Name:      "south_short",
+				Position:  spatial.Position{X: 0.3, Y: 0.0},
+				Direction: DirectionSouth,
+				Type:      ConnectionTypeDoor,
+			},
+			{
+				Name:      "south_long",
+				Position:  spatial.Position{X: 0.8, Y: 0.4},
+				Direction: DirectionSouth,
+				Type:      ConnectionTypeDoor,
+			},
+			{
+				Name:      DirectionNorth,
+				Position:  spatial.Position{X: 0.3, Y: 1.0},
+				Direction: DirectionNorth,
+				Type:      ConnectionTypeDoor,
+			},
+			{
+				Name:      DirectionEast,
+				Position:  spatial.Position{X: 1.0, Y: 0.7},
+				Direction: DirectionEast,
+				Type:      ConnectionTypeDoor,
+			},
+			{
+				Name:      DirectionWest,
+				Position:  spatial.Position{X: 0.0, Y: 0.5},
+				Direction: DirectionWest,
+				Type:      ConnectionTypeDoor,
+			},
 		},
 		GridHints: GridHints{
-			PreferredGridTypes: []string{"square", "gridless"},
+			PreferredGridTypes: []string{string(GridShapeSquare), string(GridShapeGridless)},
 			MinSize:            spatial.Dimensions{Width: 6, Height: 6},
 			MaxSize:            spatial.Dimensions{Width: 40, Height: 40},
 			AspectRatio:        1.0, // Square overall
@@ -536,9 +613,9 @@ func createLShape() *RoomShape {
 
 func createTShape() *RoomShape {
 	return &RoomShape{
-		Name:        "t_shape",
+		Name:        ShapeT,
 		Description: "T-shaped room for three-way junctions",
-		Type:        "junction",
+		Type:        RoomTypeJunction,
 		Boundary: []spatial.Position{
 			{X: 0.0, Y: 0.0}, // Bottom-left
 			{X: 1.0, Y: 0.0}, // Bottom-right
@@ -550,13 +627,33 @@ func createTShape() *RoomShape {
 			{X: 0.0, Y: 0.4}, // Left side of stem
 		},
 		Connections: []ConnectionPoint{
-			{Name: "south", Position: spatial.Position{X: 0.5, Y: 0.0}, Direction: "south", Type: "door"},
-			{Name: "north", Position: spatial.Position{X: 0.5, Y: 1.0}, Direction: "north", Type: "door"},
-			{Name: "east", Position: spatial.Position{X: 1.0, Y: 0.2}, Direction: "east", Type: "door"},
-			{Name: "west", Position: spatial.Position{X: 0.0, Y: 0.2}, Direction: "west", Type: "door"},
+			{
+				Name:      DirectionSouth,
+				Position:  spatial.Position{X: 0.5, Y: 0.0},
+				Direction: DirectionSouth,
+				Type:      ConnectionTypeDoor,
+			},
+			{
+				Name:      DirectionNorth,
+				Position:  spatial.Position{X: 0.5, Y: 1.0},
+				Direction: DirectionNorth,
+				Type:      ConnectionTypeDoor,
+			},
+			{
+				Name:      DirectionEast,
+				Position:  spatial.Position{X: 1.0, Y: 0.2},
+				Direction: DirectionEast,
+				Type:      ConnectionTypeDoor,
+			},
+			{
+				Name:      DirectionWest,
+				Position:  spatial.Position{X: 0.0, Y: 0.2},
+				Direction: DirectionWest,
+				Type:      ConnectionTypeDoor,
+			},
 		},
 		GridHints: GridHints{
-			PreferredGridTypes: []string{"square", "gridless"},
+			PreferredGridTypes: []string{string(GridShapeSquare), string(GridShapeGridless)},
 			MinSize:            spatial.Dimensions{Width: 8, Height: 8},
 			MaxSize:            spatial.Dimensions{Width: 40, Height: 40},
 			AspectRatio:        1.0, // Square overall
@@ -567,9 +664,9 @@ func createTShape() *RoomShape {
 
 func createCrossShape() *RoomShape {
 	return &RoomShape{
-		Name:        "cross",
+		Name:        ShapeCross,
 		Description: "Cross-shaped room for four-way intersections",
-		Type:        "hub",
+		Type:        RoomTypeHub,
 		Boundary: []spatial.Position{
 			{X: 0.3, Y: 0.0}, // Bottom-left of vertical
 			{X: 0.7, Y: 0.0}, // Bottom-right of vertical
@@ -585,13 +682,33 @@ func createCrossShape() *RoomShape {
 			{X: 0.3, Y: 0.3}, // Inner corner bottom-left
 		},
 		Connections: []ConnectionPoint{
-			{Name: "south", Position: spatial.Position{X: 0.5, Y: 0.0}, Direction: "south", Type: "door"},
-			{Name: "north", Position: spatial.Position{X: 0.5, Y: 1.0}, Direction: "north", Type: "door"},
-			{Name: "east", Position: spatial.Position{X: 1.0, Y: 0.5}, Direction: "east", Type: "door"},
-			{Name: "west", Position: spatial.Position{X: 0.0, Y: 0.5}, Direction: "west", Type: "door"},
+			{
+				Name:      DirectionSouth,
+				Position:  spatial.Position{X: 0.5, Y: 0.0},
+				Direction: DirectionSouth,
+				Type:      ConnectionTypeDoor,
+			},
+			{
+				Name:      DirectionNorth,
+				Position:  spatial.Position{X: 0.5, Y: 1.0},
+				Direction: DirectionNorth,
+				Type:      ConnectionTypeDoor,
+			},
+			{
+				Name:      DirectionEast,
+				Position:  spatial.Position{X: 1.0, Y: 0.5},
+				Direction: DirectionEast,
+				Type:      ConnectionTypeDoor,
+			},
+			{
+				Name:      DirectionWest,
+				Position:  spatial.Position{X: 0.0, Y: 0.5},
+				Direction: DirectionWest,
+				Type:      ConnectionTypeDoor,
+			},
 		},
 		GridHints: GridHints{
-			PreferredGridTypes: []string{"square", "gridless"},
+			PreferredGridTypes: []string{string(GridShapeSquare), string(GridShapeGridless)},
 			MinSize:            spatial.Dimensions{Width: 10, Height: 10},
 			MaxSize:            spatial.Dimensions{Width: 30, Height: 30},
 			AspectRatio:        1.0, // Always square
@@ -619,13 +736,33 @@ func createOvalShape() *RoomShape {
 		Type:        "organic",
 		Boundary:    boundary,
 		Connections: []ConnectionPoint{
-			{Name: "south", Position: spatial.Position{X: 0.5, Y: 0.1}, Direction: "south", Type: "passage"},
-			{Name: "north", Position: spatial.Position{X: 0.5, Y: 0.9}, Direction: "north", Type: "passage"},
-			{Name: "east", Position: spatial.Position{X: 0.9, Y: 0.5}, Direction: "east", Type: "passage"},
-			{Name: "west", Position: spatial.Position{X: 0.1, Y: 0.5}, Direction: "west", Type: "passage"},
+			{
+				Name:      DirectionSouth,
+				Position:  spatial.Position{X: 0.5, Y: 0.1},
+				Direction: DirectionSouth,
+				Type:      ConnectionTypePassage,
+			},
+			{
+				Name:      DirectionNorth,
+				Position:  spatial.Position{X: 0.5, Y: 0.9},
+				Direction: DirectionNorth,
+				Type:      ConnectionTypePassage,
+			},
+			{
+				Name:      DirectionEast,
+				Position:  spatial.Position{X: 0.9, Y: 0.5},
+				Direction: DirectionEast,
+				Type:      ConnectionTypePassage,
+			},
+			{
+				Name:      DirectionWest,
+				Position:  spatial.Position{X: 0.1, Y: 0.5},
+				Direction: DirectionWest,
+				Type:      ConnectionTypePassage,
+			},
 		},
 		GridHints: GridHints{
-			PreferredGridTypes: []string{"gridless", "hex"},
+			PreferredGridTypes: []string{string(GridShapeGridless), string(GridShapeHex)},
 			MinSize:            spatial.Dimensions{Width: 6, Height: 6},
 			MaxSize:            spatial.Dimensions{Width: 25, Height: 25},
 			AspectRatio:        1.2,   // Slightly wider than tall
