@@ -175,6 +175,10 @@ type RememberedMember struct {
 	// truce made while the creature was not looking is still a truce.
 	Opposed bool
 
+	// Allied is the composition's current alliance answer, carried as given.
+	// It is not inferred from Kind or from the absence of opposition.
+	Allied bool
+
 	// Position is the member's last-known dungeon-absolute cell and may be stale.
 	Position spatial.Position
 
@@ -287,6 +291,10 @@ type SeenMember struct {
 	// against them" is the honest answer, and it is what lets a creature stand
 	// quietly in a room full of vendors.
 	Opposed bool
+
+	// Allied is the composition's current alliance answer, carried as given.
+	// A neutral or factionless member is not implicitly allied.
+	Allied bool
 
 	// Standing is false when this member is known to be down.
 	Standing bool
@@ -557,6 +565,7 @@ func projectMonsterView(view encounter.MonsterView) MonsterView {
 			ID:            string(sm.ID),
 			Kind:          MemberKind(sm.Kind),
 			Opposed:       sm.Opposed,
+			Allied:        sm.Allied,
 			Standing:      sm.Standing,
 			Position:      sm.Position,
 			DistanceCells: sm.DistanceCells,
@@ -571,6 +580,7 @@ func projectMonsterView(view encounter.MonsterView) MonsterView {
 			ID:            string(rm.ID),
 			Kind:          MemberKind(rm.Kind),
 			Opposed:       rm.Opposed,
+			Allied:        rm.Allied,
 			Position:      rm.Position,
 			DistanceCells: rm.DistanceCells,
 			Path:          append([]spatial.Position(nil), rm.Path...),

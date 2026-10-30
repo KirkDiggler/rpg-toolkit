@@ -1459,6 +1459,11 @@ type PublicMember struct {
 	// live-member lookup. Empty retains legacy model resolution.
 	AppearanceRef string `json:"appearance_ref,omitempty"`
 
+	// DefaultActivityRef is the observer's captured authored presentation
+	// default, not the current animation phase or a live-member lookup.
+	// Empty means no explicit captured override, including legacy observations.
+	DefaultActivityRef string `json:"default_activity_ref,omitempty"`
+
 	// Customization is the player's exact cosmetic selection, or an empty
 	// customization for monsters.
 	Customization Customization `json:"customization"`

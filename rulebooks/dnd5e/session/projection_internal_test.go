@@ -67,14 +67,14 @@ func TestMonsterViewCarriesEveryFieldAHostsDriverReads(t *testing.T) {
 		},
 		At: 7,
 		Seen: []encounter.SeenMember{{
-			ID: "alice", Kind: encounter.KindPlayer, Standing: true,
+			ID: "alice", Kind: encounter.KindPlayer, Standing: true, Allied: true,
 			Position: aliceAt, DistanceCells: 4,
 			InReach:  map[core.Ref]bool{bow: true, blade: false},
 			Path:     []spatial.Position{{X: 6, Y: 3}},
 			AwayPath: []spatial.Position{{X: 6, Y: 5}},
 		}},
 		Remembered: []encounter.RememberedMember{{
-			ID: "bob", Kind: encounter.KindPlayer,
+			ID: "bob", Kind: encounter.KindPlayer, Allied: true,
 			Position: spatial.Position{X: 1, Y: 1}, DistanceCells: 6,
 			Path: []spatial.Position{{X: 5, Y: 4}},
 		}},
@@ -106,14 +106,14 @@ func TestMonsterViewCarriesEveryFieldAHostsDriverReads(t *testing.T) {
 		},
 		At: 7,
 		Seen: []SeenMember{{
-			ID: "alice", Kind: KindPlayer, Standing: true,
+			ID: "alice", Kind: KindPlayer, Standing: true, Allied: true,
 			Position: aliceAt, DistanceCells: 4,
 			InReach:  map[string]bool{bow.String(): true, blade.String(): false},
 			Path:     []spatial.Position{{X: 6, Y: 3}},
 			AwayPath: []spatial.Position{{X: 6, Y: 5}},
 		}},
 		Remembered: []RememberedMember{{
-			ID: "bob", Kind: KindPlayer,
+			ID: "bob", Kind: KindPlayer, Allied: true,
 			Position: spatial.Position{X: 1, Y: 1}, DistanceCells: 6,
 			Path: []spatial.Position{{X: 5, Y: 4}},
 		}},

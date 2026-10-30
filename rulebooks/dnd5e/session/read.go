@@ -145,7 +145,11 @@ func (m *Manager) rosterFrom(ctx context.Context, enc *encounter.Encounter, data
 	}
 
 	known := map[string]bool{in.Member: true}
-	observedAppearance := make(map[string]string)
+	type observedIdentity struct {
+		appearanceRef      string
+		defaultActivityRef string
+	}
+	observedPresentation := make(map[string]observedIdentity)
 	holdings, err := enc.View(&encounter.ViewInput{Member: encounter.MemberID(in.Member)})
 	if err != nil {
 		return nil, translate(err)
@@ -157,7 +161,9 @@ func (m *Manager) rosterFrom(ctx context.Context, enc *encounter.Encounter, data
 				return nil, fmt.Errorf("roster: invalid sight testimony for %q: %w", holding.Subject, ErrInvalidWorld)
 			}
 			known[string(holding.Subject)] = true
-			observedAppearance[string(holding.Subject)] = testimony.AppearanceRef
+			observedPresentation[string(holding.Subject)] = observedIdentity{
+				appearanceRef: testimony.AppearanceRef, defaultActivityRef: testimony.DefaultActivityRef,
+			}
 		}
 	}
 
@@ -192,7 +198,9 @@ func (m *Manager) rosterFrom(ctx context.Context, enc *encounter.Encounter, data
 			if err != nil {
 				return nil, fmt.Errorf("roster: %w", err)
 			}
-			projected.AppearanceRef = observedAppearance[id]
+			observed := observedPresentation[id]
+			projected.AppearanceRef = observed.appearanceRef
+			projected.DefaultActivityRef = observed.defaultActivityRef
 			members = append(members, projected)
 
 		case encounter.KindWorld:
