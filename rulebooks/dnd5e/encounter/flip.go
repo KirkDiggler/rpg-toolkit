@@ -180,7 +180,19 @@ func (e *Encounter) settleStances(before map[factionPair]Stance, at uint64) erro
 	if e.outcome != nil {
 		return nil
 	}
+	notStance := onStance(before, after)
 	for _, de := range e.endings {
+		if _, negated := de.trigger.(TriggerNot); negated {
+			// A `not` of a stance fires when the pair turned away from it
+			// (rpg-project#719), the same edge an until and an arrival read.
+			if _, ok := notStance(de.trigger); !ok {
+				continue
+			}
+			if _, err := e.closeWith(de.key, at); err != nil {
+				return fmt.Errorf("stance ending %q: %w", de.key, err)
+			}
+			return nil
+		}
 		ts, ok := de.trigger.(TriggerStance)
 		if !ok {
 			continue

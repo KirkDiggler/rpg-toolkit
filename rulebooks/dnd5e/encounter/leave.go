@@ -26,7 +26,8 @@ func (f *field) validateLeaveEnding(ei EndingInput) error {
 			ei.Key, ei.Result, ErrNoEnding)
 	}
 
-	left, isLeft := ei.Trigger.(TriggerLeft)
+	inner, negated := unwrapNot(ei.Trigger)
+	left, isLeft := inner.(TriggerLeft)
 	if !isLeft {
 		if ei.If != nil {
 			return fmt.Errorf("ending %q has an `if`, and only an ending that waits for the party to leave has one: %w",
@@ -39,13 +40,30 @@ func (f *field) validateLeaveEnding(ei EndingInput) error {
 		return fmt.Errorf("ending %q waits for the party to leave by %q, which this field does not declare: %w",
 			ei.Key, left.Exit, ErrNoEnding)
 	}
+	if negated {
+		// `when: { not: { left: gate } }` is the last one out by any other
+		// door (rpg-project#719), so there must be another door.
+		if err := f.notLeftLiveness(ei.Key, left.Exit); err != nil {
+			return err
+		}
+	}
 	if ei.Result == "" {
 		return fmt.Errorf("ending %q waits for the party to leave and does not say whether that is success or failure: %w",
 			ei.Key, ErrNoEnding)
 	}
 
 	what := fmt.Sprintf("ending %q's if", ei.Key)
-	switch c := ei.If.(type) {
+	cond := ei.If
+	if n, ok := cond.(TriggerNot); ok {
+		// A STATE READ, so a `not` is the inner read negated
+		// (rpg-project#719): any inner an `if` may be, never a `not`.
+		var err error
+		if cond, err = validateReadNot(what, n); err != nil {
+			return fmt.Errorf("%w: %w", err, ErrNoEnding)
+		}
+		what += "'s not"
+	}
+	switch c := cond.(type) {
 	case nil:
 	case TriggerMemberDown:
 		if c.Member == "" {
@@ -96,6 +114,11 @@ func (e *Encounter) truthHolds(cond Trigger, down map[MemberID]bool) (bool, erro
 	switch c := cond.(type) {
 	case nil:
 		return true, nil
+	case TriggerNot:
+		// The inner read, negated (rpg-project#719). The door refuses a nil
+		// inner, so the inner nil-holds arm is never what is negated here.
+		holds, err := e.truthHolds(c.Inner, down)
+		return !holds, err
 	case TriggerMemberDown:
 		return down[c.Member], nil
 	case TriggerFact:

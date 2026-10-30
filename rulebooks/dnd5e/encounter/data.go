@@ -587,7 +587,7 @@ type UntilStepData struct {
 // TriggerData is the persistent representation of one [Trigger] — the
 // predicate grammar on the wire (rpg-project#375). Kind is one of
 // reached_position, external, member_down, exited_holding, round, fact,
-// stance, holds and left, and the other fields are populated per kind exactly as
+// stance, holds, left and not (its inner in Not), and the other fields are populated per kind exactly as
 // [EndingData]'s own are; a disposition's until persists as one of these,
 // an ending is one of these plus its key, and an option's requirement is a
 // fact or a holds (rpg-project#569) — `holds` naming its prop in Item.
@@ -601,6 +601,10 @@ type TriggerData struct {
 	Fact    FactID        `json:"fact,omitempty"`
 	Between []FactionID   `json:"between,omitempty"`
 	Stance  string        `json:"stance,omitempty"`
+
+	// Not is a `not` trigger's one inner predicate (rpg-project#719), kind
+	// "not"; written only for that kind.
+	Not *TriggerData `json:"not,omitempty"`
 }
 
 // triggerDataFrom renders a trigger for the blob — ONE switch for endings and
@@ -627,6 +631,9 @@ func triggerDataFrom(t Trigger) TriggerData {
 		return TriggerData{Kind: "holds", Item: t.Prop}
 	case TriggerLeft:
 		return TriggerData{Kind: "left", Exit: t.Exit}
+	case TriggerNot:
+		inner := triggerDataFrom(t.Inner)
+		return TriggerData{Kind: "not", Not: &inner}
 	}
 	return TriggerData{}
 }
@@ -663,6 +670,15 @@ func triggerFromData(td TriggerData) (Trigger, error) {
 		return TriggerHolds{Prop: td.Item}, nil
 	case "left":
 		return TriggerLeft{Exit: td.Exit}, nil
+	case "not":
+		if td.Not == nil {
+			return nil, fmt.Errorf("not names nothing to negate: %w", ErrNoEnding)
+		}
+		inner, err := triggerFromData(*td.Not)
+		if err != nil {
+			return nil, fmt.Errorf("not: %w", err)
+		}
+		return TriggerNot{Inner: inner}, nil
 	default:
 		return nil, fmt.Errorf("unknown trigger kind %q: %w", td.Kind, ErrNoEnding)
 	}
@@ -2175,13 +2191,17 @@ type EndingData struct {
 	// ending written before them is byte-identical.
 	If      *TriggerData `json:"if,omitempty"`
 	Outcome EndingResult `json:"outcome,omitempty"`
+
+	// Not carries a `not` ending's inner predicate (rpg-project#719), kind
+	// "not"; omitted for every other kind.
+	Not *TriggerData `json:"not,omitempty"`
 }
 
 // triggerData is the ending's predicate half, as a [TriggerData].
 func (ed EndingData) triggerData() TriggerData {
 	return TriggerData{
 		Kind: ed.Kind, At: ed.At, Member: ed.Member, Exit: ed.Exit, Item: ed.Item,
-		Round: ed.Round, Fact: ed.Fact, Between: ed.Between, Stance: ed.Stance,
+		Round: ed.Round, Fact: ed.Fact, Between: ed.Between, Stance: ed.Stance, Not: ed.Not,
 	}
 }
 
@@ -2191,7 +2211,7 @@ func endingDataFrom(de declaredEnding) EndingData {
 	td := triggerDataFrom(de.trigger)
 	out := EndingData{
 		Key: de.key, Kind: td.Kind, At: td.At, Member: td.Member, Exit: td.Exit, Item: td.Item,
-		Round: td.Round, Fact: td.Fact, Between: td.Between, Stance: td.Stance,
+		Round: td.Round, Fact: td.Fact, Between: td.Between, Stance: td.Stance, Not: td.Not,
 		Outcome: de.result,
 	}
 	if de.cond != nil {
@@ -2745,6 +2765,12 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 
 		switch ed.Kind {
 		case "reached_position", "external", "member_down", "exited_holding", "round", "fact", "stance", "left":
+		case "not":
+			// The inner half is bytes too: refused here as any persisted
+			// trigger is, before validateEndingTriggers judges its scope.
+			if _, nerr := triggerFromData(ed.triggerData()); nerr != nil {
+				return nil, fmt.Errorf("load encounter: ending %q: %w: %w", ed.Key, ErrInvalidData, nerr)
+			}
 		default:
 			return nil, fmt.Errorf("load encounter: unknown ending kind %q: %w: %w", ed.Kind, ErrInvalidData, ErrNoEnding)
 		}

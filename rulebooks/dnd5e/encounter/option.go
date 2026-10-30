@@ -226,6 +226,15 @@ func (e *Encounter) requirementHolds(actor MemberID, requires Trigger) bool {
 	switch t := requires.(type) {
 	case nil:
 		return true
+	case TriggerNot:
+		// The speaker's own read, negated (rpg-project#719, D3): withheld
+		// from whoever learned the fact, still offered to whoever did not.
+		// The door refuses a nil inner, so nil's "holds always" is never
+		// what is negated.
+		if t.Inner == nil {
+			return false
+		}
+		return !e.requirementHolds(actor, t.Inner)
 	case TriggerFact:
 		return e.world.knowsFact(actor, t.Fact)
 	case TriggerHolds:
@@ -625,7 +634,15 @@ func validateOptions(options []Option) error {
 				return fmt.Errorf("option %q approach %q at DC %d has nothing to beat", o.ID, a.Ability, a.DC)
 			}
 		}
-		switch t := o.Requires.(type) {
+		requires := o.Requires
+		if n, ok := requires.(TriggerNot); ok {
+			inner, err := validateReadNot(fmt.Sprintf("option %q requires", o.ID), n)
+			if err != nil {
+				return err
+			}
+			requires = inner
+		}
+		switch t := requires.(type) {
 		case nil:
 		case TriggerFact:
 			if t.Fact == "" {
@@ -636,7 +653,7 @@ func validateOptions(options []Option) error {
 				return fmt.Errorf("option %q requires holding a prop and names none", o.ID)
 			}
 		default:
-			return fmt.Errorf("option %q requires a %T: an option requires a fact or a holding", o.ID, o.Requires)
+			return fmt.Errorf("option %q requires a %T: an option requires a fact or a holding, or not one", o.ID, requires)
 		}
 		for _, verdict := range []struct {
 			key  AnswerKey
@@ -684,7 +701,8 @@ func validatePropOptions(id PropID, ref string, options []Option) error {
 // because only then is the holdable index whole.
 func (f *field) validateOptionHolds(options []Option) error {
 	for _, o := range options {
-		t, ok := o.Requires.(TriggerHolds)
+		inner, _ := unwrapNot(o.Requires)
+		t, ok := inner.(TriggerHolds)
 		if !ok {
 			continue
 		}

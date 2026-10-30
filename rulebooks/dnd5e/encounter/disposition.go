@@ -341,6 +341,10 @@ func (f *field) stanceReachable(pair factionPair, s Stance) (now, ever bool) {
 // this is the forms the grammar adds.
 func (f *field) validatePredicate(what string, t Trigger, sentinel error) error {
 	switch p := t.(type) {
+	case TriggerNot:
+		// THE ONE NEGATION (rpg-project#719, not.go): scoped by what it
+		// wraps, and refused when it holds from the start.
+		return f.validateNot(what, p, sentinel)
 	case TriggerLeft:
 		// ONLY AN ENDING WAITS FOR THE PARTY TO LEAVE ([TriggerLeft]): there
 		// is nobody left to turn, arrive for, or speak once they have.

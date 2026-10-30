@@ -566,7 +566,17 @@ func validateEndingTriggers(f *field, endings []EndingInput) error {
 		// The predicate grammar's own forms (rpg-project#375) — a round, a
 		// fact, a stance — through the one validator dispositions use, so an
 		// ending and an until refuse the same shapes in the same words.
-		switch ei.Trigger.(type) {
+		switch t := ei.Trigger.(type) {
+		case TriggerNot:
+			// A `not` of a `left` is a leave ending, judged by
+			// validateLeaveEnding above; every other `not` is a waited-for
+			// predicate like the forms below.
+			if _, left := t.Inner.(TriggerLeft); left {
+				break
+			}
+			if err := f.validatePredicate(fmt.Sprintf("ending %q", ei.Key), ei.Trigger, ErrNoEnding); err != nil {
+				return err
+			}
 		case TriggerRound, TriggerFact, TriggerStance, TriggerHolds:
 			if err := f.validatePredicate(fmt.Sprintf("ending %q", ei.Key), ei.Trigger, ErrNoEnding); err != nil {
 				return err

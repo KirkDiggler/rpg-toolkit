@@ -636,6 +636,10 @@ func predicateOf(p *PredicateSpec) encounter.Trigger {
 	case predicateLeft:
 		// An ending's `when` only ([grammar.endings]); refused elsewhere.
 		return encounter.TriggerLeft{Exit: encounter.ExitID(p.Left)}
+	case predicateNot:
+		// Scoped by what it wraps ([grammar.not]); the engine judges it at
+		// the inner form's own site (rpg-project#719).
+		return encounter.TriggerNot{Inner: predicateOf(p.Not)}
 	default:
 		return nil
 	}
