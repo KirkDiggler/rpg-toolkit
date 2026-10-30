@@ -172,6 +172,10 @@ type MonsterPlacement struct {
 	// dialects without this authoring field leave it empty.
 	AppearanceRef string `json:"AppearanceRef,omitempty"`
 
+	// DefaultActivityRef is the optional authored presentation default, carried
+	// unread to sight capture. Legacy sources without this field leave it empty.
+	DefaultActivityRef string `json:"DefaultActivityRef,omitempty"`
+
 	// Region is the ID of the region whose floor it stands on — derived.
 	Region string
 

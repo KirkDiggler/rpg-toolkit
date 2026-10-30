@@ -499,8 +499,10 @@ type ReserveData struct {
 	Kind MemberKind `json:"kind"`
 	Name string     `json:"name,omitempty"`
 	// AppearanceRef retains the authored visual choice before arrival.
-	AppearanceRef string       `json:"appearance_ref,omitempty"`
-	Cell          PositionData `json:"cell"`
+	AppearanceRef string `json:"appearance_ref,omitempty"`
+	// DefaultActivityRef retains the authored default before arrival.
+	DefaultActivityRef string       `json:"default_activity_ref,omitempty"`
+	Cell               PositionData `json:"cell"`
 
 	// Options, Table and Temper are [MemberData]'s own keys, kept for a
 	// member still waiting to arrive — its facts are the same facts, and
@@ -2067,8 +2069,10 @@ type MemberData struct {
 	Kind MemberKind `json:"kind"`
 	Name string     `json:"name,omitempty"`
 	// AppearanceRef is authored content, not the observer's captured answer.
-	AppearanceRef string        `json:"appearance_ref,omitempty"`
-	Cell          *PositionData `json:"cell"`
+	AppearanceRef string `json:"appearance_ref,omitempty"`
+	// DefaultActivityRef is authored content, separate from captured testimony.
+	DefaultActivityRef string        `json:"default_activity_ref,omitempty"`
+	Cell               *PositionData `json:"cell"`
 
 	// speed_feet, sight_feet, actions and targeting are GONE (rpg-project#538).
 	// They were copies of the member's sheet taken at Join; the sheet owns
@@ -2288,21 +2292,22 @@ func (e *Encounter) snapshot() EncounterData {
 		}
 		facing := m.Facing
 		membersData = append(membersData, MemberData{
-			ID:             m.ID,
-			Kind:           m.Kind,
-			Name:           m.Name,
-			AppearanceRef:  m.AppearanceRef,
-			Cell:           &PositionData{X: cell.X, Y: cell.Y},
-			Options:        optionsDataFrom(m.Options),
-			Table:          tableDataFrom(m.Table),
-			Temper:         temperDataFrom(m.Temper),
-			Pace:           m.PaceCells,
-			Facing:         &facing,
-			Sneaking:       m.Sneaking,
-			Dwell:          dwellDataFrom(m.Dwell),
-			TableHash:      maps.Clone(m.TableHash),
-			BlocksMovement: m.BlocksMovement,
-			Faction:        m.Faction,
+			ID:                 m.ID,
+			Kind:               m.Kind,
+			Name:               m.Name,
+			AppearanceRef:      m.AppearanceRef,
+			DefaultActivityRef: m.DefaultActivityRef,
+			Cell:               &PositionData{X: cell.X, Y: cell.Y},
+			Options:            optionsDataFrom(m.Options),
+			Table:              tableDataFrom(m.Table),
+			Temper:             temperDataFrom(m.Temper),
+			Pace:               m.PaceCells,
+			Facing:             &facing,
+			Sneaking:           m.Sneaking,
+			Dwell:              dwellDataFrom(m.Dwell),
+			TableHash:          maps.Clone(m.TableHash),
+			BlocksMovement:     m.BlocksMovement,
+			Faction:            m.Faction,
 		})
 	}
 
@@ -2380,19 +2385,20 @@ func (e *Encounter) snapshot() EncounterData {
 		rm := e.reserve[id]
 		facing := rm.record.Facing
 		reserveData = append(reserveData, ReserveData{
-			ID:             rm.record.ID,
-			Kind:           rm.record.Kind,
-			Name:           rm.record.Name,
-			AppearanceRef:  rm.record.AppearanceRef,
-			Cell:           PositionData{X: rm.at.X, Y: rm.at.Y},
-			Options:        optionsDataFrom(rm.record.Options),
-			Table:          tableDataFrom(rm.record.Table),
-			Temper:         undealtTemperDataFrom(rm.record.Temper),
-			BlocksMovement: rm.record.BlocksMovement,
-			Faction:        rm.record.Faction,
-			Holds:          append([]IntelID(nil), rm.holds...),
-			Arrives:        triggerDataFrom(rm.arrives),
-			Facing:         &facing,
+			ID:                 rm.record.ID,
+			Kind:               rm.record.Kind,
+			Name:               rm.record.Name,
+			AppearanceRef:      rm.record.AppearanceRef,
+			DefaultActivityRef: rm.record.DefaultActivityRef,
+			Cell:               PositionData{X: rm.at.X, Y: rm.at.Y},
+			Options:            optionsDataFrom(rm.record.Options),
+			Table:              tableDataFrom(rm.record.Table),
+			Temper:             undealtTemperDataFrom(rm.record.Temper),
+			BlocksMovement:     rm.record.BlocksMovement,
+			Faction:            rm.record.Faction,
+			Holds:              append([]IntelID(nil), rm.holds...),
+			Arrives:            triggerDataFrom(rm.arrives),
+			Facing:             &facing,
 		})
 	}
 
@@ -2964,6 +2970,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		if err := validateAppearanceRef(m.AppearanceRef); err != nil {
 			return nil, fmt.Errorf("load encounter: member %q: %w: %w", m.ID, ErrInvalidData, err)
 		}
+		if err := validateDefaultActivityRef(m.DefaultActivityRef); err != nil {
+			return nil, fmt.Errorf("load encounter: member %q: %w: %w", m.ID, ErrInvalidData, err)
+		}
 
 		// A faction this field does not have, or a mind in the wrong
 		// faction, is the SAME refusal Setup and Join make — a blob that
@@ -3023,10 +3032,11 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 				r.ID, cell.X, cell.Y, prop, ErrInvalidData, ErrBadPlacement)
 		}
 		if err := validateMemberFacts(memberFacts{
-			ID:            r.ID,
-			AppearanceRef: r.AppearanceRef,
-			Facing:        r.Facing,
-			Table:         tableFromData(r.Table),
+			ID:                 r.ID,
+			AppearanceRef:      r.AppearanceRef,
+			DefaultActivityRef: r.DefaultActivityRef,
+			Facing:             r.Facing,
+			Table:              tableFromData(r.Table),
 		}); err != nil {
 			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, err)
 		}
@@ -3387,20 +3397,21 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 
 		member := &memberRecord{
-			ID:             m.ID,
-			Kind:           m.Kind,
-			Name:           m.Name,
-			AppearanceRef:  m.AppearanceRef,
-			Options:        memberOptions[m.ID],
-			Table:          tableFromData(m.Table),
-			Temper:         temperFromData(m.Temper),
-			PaceCells:      m.Pace,
-			Facing:         seedFacing(m.Facing),
-			Sneaking:       m.Sneaking,
-			Dwell:          dwellFromData(m.Dwell),
-			TableHash:      maps.Clone(m.TableHash),
-			BlocksMovement: m.BlocksMovement,
-			Faction:        m.Faction,
+			ID:                 m.ID,
+			Kind:               m.Kind,
+			Name:               m.Name,
+			AppearanceRef:      m.AppearanceRef,
+			DefaultActivityRef: m.DefaultActivityRef,
+			Options:            memberOptions[m.ID],
+			Table:              tableFromData(m.Table),
+			Temper:             temperFromData(m.Temper),
+			PaceCells:          m.Pace,
+			Facing:             seedFacing(m.Facing),
+			Sneaking:           m.Sneaking,
+			Dwell:              dwellFromData(m.Dwell),
+			TableHash:          maps.Clone(m.TableHash),
+			BlocksMovement:     m.BlocksMovement,
+			Faction:            m.Faction,
 		}
 		e.members[m.ID] = member
 		e.everMembers[m.ID] = true
@@ -3436,16 +3447,17 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	for i, r := range data.Reserve {
 		rm := &reservedMember{
 			record: memberRecord{
-				ID:             r.ID,
-				Kind:           r.Kind,
-				Name:           r.Name,
-				AppearanceRef:  r.AppearanceRef,
-				Options:        reserveOptions[i],
-				Table:          tableFromData(r.Table),
-				Temper:         undealtTemperFromData(r.Temper),
-				Facing:         seedFacing(r.Facing),
-				BlocksMovement: r.BlocksMovement,
-				Faction:        r.Faction,
+				ID:                 r.ID,
+				Kind:               r.Kind,
+				Name:               r.Name,
+				AppearanceRef:      r.AppearanceRef,
+				DefaultActivityRef: r.DefaultActivityRef,
+				Options:            reserveOptions[i],
+				Table:              tableFromData(r.Table),
+				Temper:             undealtTemperFromData(r.Temper),
+				Facing:             seedFacing(r.Facing),
+				BlocksMovement:     r.BlocksMovement,
+				Faction:            r.Faction,
 			},
 			at:      spatial.Position{X: r.Cell.X, Y: r.Cell.Y},
 			holds:   append([]IntelID(nil), r.Holds...),

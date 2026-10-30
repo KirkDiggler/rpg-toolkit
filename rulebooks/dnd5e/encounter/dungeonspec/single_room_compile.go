@@ -242,6 +242,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		mp.At = at
 		mp.Facing = m.StartingCell.Facing
 		mp.AppearanceRef = m.AppearanceRef
+		mp.DefaultActivityRef = m.DefaultActivityRef
 		// AND THE FOUR GAMEPLAY KEYS THE BINDING CARRIES (rpg-project#488
 		// R1/R5), each through the SAME compiler the v2 dialect's placement
 		// goes through: the records it holds minted by [intelHoldingsOf], the

@@ -685,10 +685,11 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		seenIDs[m.ID] = true
 
 		if err := validateMemberFacts(memberFacts{
-			ID:            m.ID,
-			AppearanceRef: m.AppearanceRef,
-			Facing:        m.Facing,
-			Options:       m.Options, Table: m.Table,
+			ID:                 m.ID,
+			AppearanceRef:      m.AppearanceRef,
+			DefaultActivityRef: m.DefaultActivityRef,
+			Facing:             m.Facing,
+			Options:            m.Options, Table: m.Table,
 		}); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
 		}
@@ -898,16 +899,17 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	memberIDs := make([]MemberID, 0, len(in.Members))
 	for _, mi := range in.Members {
 		member := &memberRecord{
-			ID:             mi.ID,
-			Kind:           mi.Kind,
-			Name:           mi.Name,
-			AppearanceRef:  mi.AppearanceRef,
-			Facing:         seedFacing(mi.Facing),
-			Options:        cloneOptions(mi.Options),
-			Table:          cloneTable(mi.Table),
-			Temper:         mi.Temper,
-			BlocksMovement: mi.BlocksMovement,
-			Faction:        mi.Faction,
+			ID:                 mi.ID,
+			Kind:               mi.Kind,
+			Name:               mi.Name,
+			AppearanceRef:      mi.AppearanceRef,
+			DefaultActivityRef: mi.DefaultActivityRef,
+			Facing:             seedFacing(mi.Facing),
+			Options:            cloneOptions(mi.Options),
+			Table:              cloneTable(mi.Table),
+			Temper:             mi.Temper,
+			BlocksMovement:     mi.BlocksMovement,
+			Faction:            mi.Faction,
 		}
 
 		// A MEMBER WITH A PREDICATE WAITS IN RESERVE (rpg-project#375,
@@ -1853,13 +1855,14 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 		blocksMovement := e.members[subjectID].BlocksMovement
 		facing := e.members[subjectID].Facing
 		payload, perr := encodeSighting(SightTestimony{
-			State:          LocationKnown,
-			Position:       cell,
-			Equipment:      hands[subjectID],
-			Conditions:     held[subjectID],
-			Down:           &isDown,
-			BlocksMovement: &blocksMovement,
-			AppearanceRef:  e.members[subjectID].AppearanceRef,
+			State:              LocationKnown,
+			Position:           cell,
+			Equipment:          hands[subjectID],
+			Conditions:         held[subjectID],
+			Down:               &isDown,
+			BlocksMovement:     &blocksMovement,
+			AppearanceRef:      e.members[subjectID].AppearanceRef,
+			DefaultActivityRef: e.members[subjectID].DefaultActivityRef,
 			// FACING IS SEEN, beside where (design R13): snapshotted into
 			// the one payload this subject is encoded into this pass, so a
 			// memory keeps the facing it last saw.
@@ -2124,10 +2127,11 @@ func (e *Encounter) validateJoin(in *JoinInput) error {
 	// fact caught after PlaceEntity would need to roll a placement back
 	// rather than simply never having made one (Copilot, PR #1187).
 	if err := validateMemberFacts(memberFacts{
-		ID:            in.Member,
-		AppearanceRef: in.AppearanceRef,
-		Facing:        in.Facing,
-		Options:       in.Options, Table: in.Table,
+		ID:                 in.Member,
+		AppearanceRef:      in.AppearanceRef,
+		DefaultActivityRef: in.DefaultActivityRef,
+		Facing:             in.Facing,
+		Options:            in.Options, Table: in.Table,
 	}); err != nil {
 		return fmt.Errorf("join: %w", err)
 	}
@@ -2208,16 +2212,17 @@ func (e *Encounter) validateJoin(in *JoinInput) error {
 // the caller fills in what the look produced.
 func (e *Encounter) admitMember(in *JoinInput) (*memberRecord, *JoinOutput, error) {
 	member := &memberRecord{
-		ID:             in.Member,
-		Kind:           in.Kind,
-		Name:           in.Name,
-		AppearanceRef:  in.AppearanceRef,
-		Facing:         seedFacing(in.Facing),
-		Options:        cloneOptions(in.Options),
-		Table:          cloneTable(in.Table),
-		Temper:         in.Temper,
-		BlocksMovement: in.BlocksMovement,
-		Faction:        in.Faction,
+		ID:                 in.Member,
+		Kind:               in.Kind,
+		Name:               in.Name,
+		AppearanceRef:      in.AppearanceRef,
+		DefaultActivityRef: in.DefaultActivityRef,
+		Facing:             seedFacing(in.Facing),
+		Options:            cloneOptions(in.Options),
+		Table:              cloneTable(in.Table),
+		Temper:             in.Temper,
+		BlocksMovement:     in.BlocksMovement,
+		Faction:            in.Faction,
 	}
 
 	// A JOINER WITH A PREDICATE GOES INTO RESERVE (rpg-project#375, design §3

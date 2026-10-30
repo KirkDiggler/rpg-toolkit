@@ -591,6 +591,13 @@ func monsterShape(m *yaml.Node, p string, add errSink) {
 			add(p+".appearanceRef", errRequired)
 		}
 	}
+	if activity := optionalNode(m, "defaultActivityRef", p, add); activity != nil {
+		if activity.Tag != "!!str" {
+			add(p+".defaultActivityRef", errNotAString)
+		} else if activity.Value == "" {
+			add(p+".defaultActivityRef", errRequired)
+		}
+	}
 	if sc := requireMapping(m, "startingCell", p, add); sc != nil {
 		startingCellShape(sc, p+".startingCell", add)
 	}
@@ -827,6 +834,11 @@ func monsterValues(monsters []RoomMonsterSource, add errSink) {
 		if m.AppearanceRef != "" {
 			if _, err := core.ParseString(m.AppearanceRef); err != nil {
 				add(p+".appearanceRef", "invalid ref: "+err.Error())
+			}
+		}
+		if m.DefaultActivityRef != "" {
+			if _, err := core.ParseString(m.DefaultActivityRef); err != nil {
+				add(p+".defaultActivityRef", "invalid ref: "+err.Error())
 			}
 		}
 		// The facing word, when authored, is one of the eight true-compass
