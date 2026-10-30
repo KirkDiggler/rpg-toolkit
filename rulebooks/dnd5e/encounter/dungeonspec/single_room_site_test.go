@@ -404,7 +404,7 @@ func TestTheV4FixtureRoundTripsItsSiteKeys(t *testing.T) {
 	require.Len(t, decoded.Spec.Factions, 1)
 	require.Equal(t, map[string]int{"coward": 2, "soldier": 1, "aggressive": 1}, decoded.Spec.Factions[0].Temper.Mix)
 	require.Len(t, decoded.Spec.Dispositions, 1)
-	require.Equal(t, "goblin-cowed", decoded.Spec.Dispositions[0].Until.Fact)
+	require.Equal(t, "goblin-cowed", decoded.Spec.Dispositions[0].Until.Steps[0].Predicate.Fact)
 	require.Equal(t, "goblins", decoded.Spec.Room.Gameplay.MonsterBindings["goblin-1"].Faction)
 	require.Empty(t, decoded.Spec.Room.Gameplay.MonsterBindings["skeleton-a"].Faction, "unauthored stays unauthored")
 

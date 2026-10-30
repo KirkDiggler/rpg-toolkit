@@ -5,6 +5,7 @@ package dungeonspec
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -184,10 +185,17 @@ func normalizedPair(a, b string) [2]string {
 }
 
 // declaredStance is the stance a pair was authored with, or its default,
-// and the predicate that ends it — nil for a static stance.
-func (g *grammar) declaredStance(pair [2]string) (string, *PredicateSpec) {
+// and every stance its until steps can turn it to — empty for a static
+// stance.
+func (g *grammar) declaredStance(pair [2]string) (stance string, turns []string) {
 	if idx, ok := g.dispositionAt[pair]; ok {
-		return g.declaredDispositions[idx].Stance, g.declaredDispositions[idx].Until
+		d := g.declaredDispositions[idx]
+		if d.Until != nil {
+			for _, step := range d.Until.Steps {
+				turns = append(turns, turnsTo(d.Stance, step.Then))
+			}
+		}
+		return d.Stance, turns
 	}
 	return string(encounter.DefaultStance(pair[0], pair[1])), nil
 }
@@ -226,9 +234,8 @@ func (g *grammar) dispositions() {
 			g.fail(p+".stance", "the disposition does not say its stance: %s", stanceWords)
 		case !stances[d.Stance]:
 			g.fail(p+".stance", "%q is not a stance: %s", d.Stance, stanceWords)
-		case d.Until != nil && d.Stance == string(encounter.StanceAllied):
-			g.fail(p+".until", "%s: drop the until, or make the pair hostile or neutral", untilOnAllied)
 		}
+		g.steps(p, d)
 		if !pairOK {
 			continue
 		}
@@ -249,23 +256,69 @@ func (g *grammar) dispositions() {
 		if idx, ok := g.dispositionAt[key]; !ok || idx != i {
 			continue // a pair that failed above has nothing to wait on
 		}
-		p := fmt.Sprintf("dispositions[%d].until", i)
-		g.predicate(p, d.Until, &key)
-		// EVERY FORM TURNS A PAIR NOW (rpg-project#493, R2). The "in this
-		// version a disposition turns only on a fact" refusal that stood
-		// here is gone; what survives it is the MIND rule, and only a fact
-		// needs one. A round starts, a monster falls and another pair turns
-		// whether or not anybody in this pair has a mind to notice — those
-		// are the world's truth, not somebody's knowledge.
-		if d.Until.Form() == predicateFact {
-			g.requireALearner(p, key)
+		for j := range d.Until.Steps {
+			step := &d.Until.Steps[j]
+			p := stepPath(i, d.Until, j)
+			g.predicate(p, &step.Predicate, &key)
+			// EVERY FORM TURNS A PAIR NOW (rpg-project#493, R2). The "in
+			// this version a disposition turns only on a fact" refusal that
+			// stood here is gone; what survives it is the MIND rule, and
+			// only a fact needs one. A round starts, a monster falls and
+			// another pair turns whether or not anybody in this pair has a
+			// mind to notice — those are the world's truth, not somebody's
+			// knowledge.
+			if step.Predicate.Form() == predicateFact {
+				g.requireALearner(p, key)
+			}
 		}
 	}
 }
 
-// untilOnAllied is the one sentence an `until` on an allied pair gets, in the
-// file and in the run alike (rpg-project#493, R1).
-const untilOnAllied = "an allied pair has nothing to become"
+// untilOnAllied is the one sentence an `until` on an allied pair that names
+// no `then` gets, in the file and in the run alike (rpg-project#493, R1;
+// revised for rpg-project#717).
+const untilOnAllied = "an allied pair has nothing to become unless `then` names where it goes"
+
+// untilListOnFacts is the one sentence a list of steps naming a predicate
+// other than a fact gets, in the file and in the run alike (rpg-project#717).
+const untilListOnFacts = "a list of until steps turns on facts only: a round, a fall or a stance is a public " +
+	"turn and cannot keep its place in the list, so give it a disposition of its own step"
+
+// stepPath is the path a refusal names for one until step: `until` for a
+// step written alone, `until[j]` for a step in a list.
+func stepPath(i int, u *UntilSpec, j int) string {
+	if u.List {
+		return fmt.Sprintf("dispositions[%d].until[%d]", i, j)
+	}
+
+	return fmt.Sprintf("dispositions[%d].until", i)
+}
+
+// steps checks a disposition's until steps' `then` (rpg-project#717): a
+// stance word, never the stance the pair is declared with; on an allied pair
+// every step names one ([untilOnAllied]); and a list of more than one step
+// names facts only ([untilListOnFacts]). The run's own compiler refuses the
+// same shapes (encounter's validateSteps).
+func (g *grammar) steps(p string, d DispositionSpec) {
+	if d.Until == nil {
+		return
+	}
+	for j, step := range d.Until.Steps {
+		at := stepPath(0, d.Until, j)
+		at = p + at[len("dispositions[0]"):]
+		switch {
+		case step.Then != "" && !stances[step.Then]:
+			g.fail(at+".then", "%q is not a stance: %s", step.Then, stanceWords)
+		case step.Then == "" && d.Stance == string(encounter.StanceAllied):
+			g.fail(at, "%s: name a `then: hostile` or `then: neutral`, drop the until, or make the pair "+
+				"hostile or neutral", untilOnAllied)
+		case step.Then != "" && step.Then == d.Stance:
+			g.fail(at+".then", "the pair is %s and `then` turns it %s, which it already is", d.Stance, step.Then)
+		case len(d.Until.Steps) > 1 && step.Predicate.Form() != predicateFact:
+			g.fail(at, "%s", untilListOnFacts)
+		}
+	}
+}
 
 // requireALearner is the mind rule (design §2): a fact-until between two
 // factions needs one of them able to come to know the fact — a valid mind,
@@ -366,13 +419,14 @@ func (g *grammar) stancePredicate(path string, s *StancePredicateSpec, self *[2]
 		g.fail(path, "a disposition cannot wait on its own stance")
 		return
 	}
-	declared, until := g.declaredStance(key)
+	declared, turns := g.declaredStance(key)
 	switch {
 	case declared == s.Is:
 		g.fail(path, "%s and %s are %s from the start, so nothing can fire this", key[0], key[1], s.Is)
-	case until != nil && s.Is == turnsTo(declared):
-		// Reachable: the pair turns to the other of hostile and neutral
-		// when its own until holds (rpg-project#493, R1).
+	case slices.Contains(turns, s.Is):
+		// Reachable: the pair turns to its `then`, or the other of hostile
+		// and neutral, when its own until holds (rpg-project#493, R1;
+		// rpg-project#717).
 	case declared == string(encounter.StanceNeutral) && s.Is == string(encounter.StanceHostile):
 		// Reachable with nothing authored: somebody attacks across a neutral
 		// pair and it is hostile (R3). Every neutral pair can come to blows,
@@ -383,13 +437,17 @@ func (g *grammar) stancePredicate(path string, s *StancePredicateSpec, self *[2]
 	}
 }
 
-// turnsTo is the stance a declared one moves to when its `until` holds — the
-// OTHER of hostile and neutral ([encounter.DispositionInput.Until]). Allied
-// never turns, and answers itself. THE RUN'S OWN COPY OF THIS RULE is
-// encounter's unexported `turnsTo`; both are three lines over a closed set,
-// and exporting it would put a stance-arithmetic verb on the composition's
+// turnsTo is the stance a declared one moves to when its `until` holds — its
+// `then` when it names one (rpg-project#717), else the OTHER of hostile and
+// neutral ([encounter.DispositionInput.Until]). Allied with no `then` never
+// turns, and answers itself. THE RUN'S OWN COPY OF THIS RULE is encounter's
+// unexported `turnsTo`; both are a few lines over a closed set, and
+// exporting it would put a stance-arithmetic verb on the composition's
 // public surface for one caller.
-func turnsTo(declared string) string {
+func turnsTo(declared, then string) string {
+	if then != "" {
+		return then
+	}
 	switch declared {
 	case string(encounter.StanceHostile):
 		return string(encounter.StanceNeutral)

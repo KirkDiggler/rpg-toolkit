@@ -246,6 +246,12 @@ type RememberedMember struct {
 	// still a truce.
 	Opposed bool
 
+	// Allied is whether this remembered member is on a side this monster's
+	// own faction is allied with — [SeenMember.Allied]'s twin, asked now for
+	// Opposed's reason, and what `ally` follows when nobody allied is in
+	// sight (rpg-project#717).
+	Allied bool
+
 	// Position is the remembered, possibly stale, DUNGEON-ABSOLUTE cell.
 	Position spatial.Position
 
@@ -346,6 +352,18 @@ type SeenMember struct {
 	// against them" is the honest answer, and it is what makes a table's
 	// `enemy: none` true in a room full of vendors.
 	Opposed bool
+
+	// Allied is whether the stance graph puts this sighting on a side this
+	// monster's own faction is ALLIED WITH, through a disposition
+	// ([Encounter.alliedAcross], rpg-project#717): what `ally` names. Its
+	// own faction's members are kin, not allies, so a turned captain follows
+	// the party and not the next guard. Projected for Opposed's reason: a
+	// driver has no graph to ask.
+	//
+	// AN ALLY IS NEVER IN REACH. Its InReach is empty and its Path ends
+	// beside it, because a mind is never handed an ally to strike and
+	// following is walking up to somebody, not into range of them.
+	Allied bool
 
 	// Standing is false when this composition's last standing consult found
 	// them down (see [Standing]) — a driver should not target a body, and

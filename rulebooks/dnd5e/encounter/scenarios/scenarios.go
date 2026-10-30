@@ -179,14 +179,26 @@ func FactsFrom(field encounter.FieldInput) *DungeonFacts {
 		consider(fa.ID)
 	}
 	for _, d := range field.Dispositions {
-		t, ok := d.Until.(encounter.TriggerFact)
-		if !ok || d.Stance != encounter.StanceHostile {
+		if d.Stance != encounter.StanceHostile {
+			continue
+		}
+		// THE FIRST FACT STEP THAT ENDS THE HOSTILITY: a list's later
+		// fact steps are outranked by it (rpg-project#717), and a step that
+		// turns a hostile pair hostile is refused at construction.
+		var fact encounter.FactID
+		for _, step := range d.Until {
+			if t, ok := step.When.(encounter.TriggerFact); ok {
+				fact = t.Fact
+				break
+			}
+		}
+		if fact == "" {
 			continue
 		}
 		for i, id := range d.Between {
 			other := d.Between[1-i]
 			if ff, has := facts.Factions[id]; has {
-				ff.UntilFact[other] = t.Fact
+				ff.UntilFact[other] = fact
 			}
 		}
 	}

@@ -260,7 +260,7 @@ func (s *LeaveSuite) TestTheLeaveEndingIsRefusedWhereItCannotFire() {
 		f.Factions = []encounter.FactionInput{{ID: "court"}}
 		f.Dispositions = []encounter.DispositionInput{{
 			Between: [2]encounter.FactionID{"court", encounter.FactionParty}, Stance: encounter.StanceNeutral,
-			Until: encounter.TriggerLeft{Exit: leaveDoor},
+			Until: []encounter.UntilStep{{When: encounter.TriggerLeft{Exit: leaveDoor}}},
 		}}
 		_, err := encounter.NewEncounter(&encounter.SetupInput{
 			Field:        f,
