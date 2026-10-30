@@ -197,7 +197,7 @@ func (s *FactionOptionsSuite) TestAFactionsLinesAreJudgedByTheOneOptionGrammar()
 			name:    "a requires that is neither a fact nor a holding",
 			options: "      - { id: yield, say: A., check: [{ ability: persuasion, dc: 10 }], requires: { down: goblin-1 } }\n",
 			path:    "factions[0].options[0].requires",
-			message: "an option requires { fact: <id> } or { holds: <prop id> }, and `down` is neither",
+			message: "an option requires { fact: <id> }, { holds: <prop id> }, or { not: } one of them, and `down` is none of them",
 		},
 		{
 			name:    "a verdict written and left empty",

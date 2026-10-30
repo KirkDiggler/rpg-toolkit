@@ -366,8 +366,87 @@ func (g *grammar) predicate(path string, p *PredicateSpec, self *[2]string) {
 	case predicateHolds:
 		g.fail(path+".holds", "%s", holdsOnlyRequires)
 	case predicateLeft:
-		g.fail(path+".left", "`left` waits for the party to walk out, and only an ending waits for that "+
-			"(`endings: [{ id, when: { left: %s }, outcome: success|failure }]`)", p.Left)
+		g.fail(path+".left", "%s", leftOnlyEndings(p.Left))
+	case predicateNot:
+		g.not(path+".not", p.Not, self)
+	}
+}
+
+// leftOnlyEndings is the sentence `left` is refused with anywhere but an
+// ending's `when`, bare or under a `not`.
+func leftOnlyEndings(exit string) string {
+	return "`left` waits for the party to walk out, and only an ending waits for that " +
+		"(`endings: [{ id, when: { left: " + exit + " }, outcome: success|failure }]`)"
+}
+
+// notOfNot is the sentence a `not` wrapping a `not` is refused with, in the
+// file and in the run alike (rpg-project#719; encounter's notOfNot).
+const notOfNot = "a not of a not is the predicate itself: write the inner one"
+
+// notHoldsFromTheStart is the sentence a WAITED-FOR `not` of a form that only
+// ever becomes true is refused with, in the file and in the run alike
+// (rpg-project#719): a fact is never unlearned, a round never unstarts, a
+// fall stays a fall.
+const notHoldsFromTheStart = "a not of a fact, a round or a fall holds from the start and can only stop holding, " +
+	"so nothing can fire it: a not is read by an option's requires or a leave ending's if, " +
+	"and waited for only on a stance a pair can turn away from"
+
+// not checks the inner predicate of a WAITED-FOR `not` — an until, an
+// arrival, an ending's `when` (rpg-project#719). Scoped by what it wraps: a
+// `holds` or a `left` inside is refused in its own sentence, as it is bare.
+// The liveness law turned over: a `not` of a fact, a round or a fall holds
+// from the start ([notHoldsFromTheStart]), and a `not` of a stance waits for
+// the pair to turn AWAY, so the pair must hold the stance from the start and
+// be able to leave it. path is the `not`'s own path (`….not`).
+func (g *grammar) not(path string, p *PredicateSpec, self *[2]string) {
+	switch form := p.Form(); form {
+	case "":
+		g.fail(path, "this predicate says nothing — %s", predicateForms)
+	case predicateNot:
+		g.fail(path, "%s", notOfNot)
+	case predicateHolds, predicateLeft:
+		g.predicate(path, p, self)
+	case predicateStance:
+		g.notStance(path+".stance", p.Stance, self)
+	default:
+		// The inner form's own refusals first (a fall of nobody placed is
+		// that, not a liveness question); the liveness one only if it was a
+		// well-formed predicate.
+		failed, add := false, g.add
+		g.add = func(at, message string) { failed = true; add(at, message) }
+		g.predicate(path, p, self)
+		g.add = add
+		if !failed {
+			g.fail(path, "%s", notHoldsFromTheStart)
+		}
+	}
+}
+
+// notStance is [grammar.stancePredicate] turned over: `{ not: { stance: S } }`
+// fires when the pair turns away from S, so it must be S from the start and
+// something must turn it — its own until, or a blow across a neutral pair (R3).
+func (g *grammar) notStance(path string, s *StancePredicateSpec, self *[2]string) {
+	if !g.stanceShape(path, s) {
+		return
+	}
+	key := normalizedPair(s.Between[0], s.Between[1])
+	if self != nil && *self == key {
+		g.fail(path, "a disposition cannot wait on its own stance")
+		return
+	}
+	declared, turns := g.declaredStance(key)
+	if declared != s.Is {
+		g.fail(path, "%s and %s are %s from the start, not %s, so this holds from the start and nothing can fire it",
+			key[0], key[1], declared, s.Is)
+		return
+	}
+	leaves := declared == string(encounter.StanceNeutral)
+	for _, to := range turns {
+		leaves = leaves || to != s.Is
+	}
+	if !leaves {
+		g.fail(path, "%s and %s are %s, and nothing turns them, so they can never stop being %s",
+			key[0], key[1], declared, s.Is)
 	}
 }
 
