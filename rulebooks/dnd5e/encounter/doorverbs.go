@@ -511,10 +511,33 @@ type doorChange struct {
 // branch would save, and a refresh over an unchanged world produces no new
 // percepts by construction.
 func (e *Encounter) setDoorState(door *doorRecord, next DoorState, actor MemberID, extra map[string]interface{}) (doorChange, error) {
+	seq, err := e.changeDoorState(door, next, actor, extra)
+	if err != nil {
+		return doorChange{}, err
+	}
+
+	deltas, formed, err := e.refreshSight(e.rosterIDs())
+	if err != nil {
+		return doorChange{}, err
+	}
+
+	return doorChange{seq: seq, deltas: deltas, formed: formed}, nil
+}
+
+// changeDoorState is everything a door's change does EXCEPT the sight
+// refresh: the state, the edges, the beat, the cells an opening reveals and
+// the fact it teaches. [Encounter.setDoorState] is this and then the refresh;
+// a creature's own walk ([Encounter.openOnTheWay]) is this and then the walk's
+// own settle, because a walk refreshes sight once, after it, and a world
+// round's walk not at all — its verb does (see [Encounter.settleWalkOn]). So a
+// door a creature opens and a door a player opens are ONE change, told the
+// same way; only who refreshes sight afterwards differs, and it is whoever
+// already refreshes it for the steps around the door.
+func (e *Encounter) changeDoorState(door *doorRecord, next DoorState, actor MemberID, extra map[string]interface{}) (uint64, error) {
 	door.state = next
 
 	if err := registerDoor(e.canvas.BasicRoom, door); err != nil {
-		return doorChange{}, err
+		return 0, err
 	}
 
 	// A known doorway is not permission to learn an unseen state change.
@@ -522,17 +545,17 @@ func (e *Encounter) setDoorState(door *doorRecord, next DoorState, actor MemberI
 	// who happens to know the door later.
 	audience, err := e.mutableWitnesses(sightDoor(door.id), actor)
 	if err != nil {
-		return doorChange{}, err
+		return 0, err
 	}
 
 	seq, err := e.appendDoorBeat(door, audience, extra)
 	if err != nil {
-		return doorChange{}, err
+		return 0, err
 	}
 
 	if next.Kind() == DoorOpen {
 		if err := e.discoverOpenedCells(actor, door); err != nil {
-			return doorChange{}, err
+			return 0, err
 		}
 	}
 
@@ -550,22 +573,17 @@ func (e *Encounter) setDoorState(door *doorRecord, next DoorState, actor MemberI
 	if next.Kind() == DoorOpen && door.opened != "" {
 		learners, err := e.subjectWitnesses(sightDoor(door.id), actor)
 		if err != nil {
-			return doorChange{}, err
+			return 0, err
 		}
 		at := uint64(e.clock.ToData().HighWater)
 		for _, member := range learners {
 			if err := e.learnFact(member, door.opened, "opened door "+string(door.id), at); err != nil {
-				return doorChange{}, err
+				return 0, err
 			}
 		}
 	}
 
-	deltas, formed, err := e.refreshSight(e.rosterIDs())
-	if err != nil {
-		return doorChange{}, err
-	}
-
-	return doorChange{seq: seq, deltas: deltas, formed: formed}, nil
+	return seq, nil
 }
 
 // hiddenDoorConcealment is the concealment holding a door, and whether one

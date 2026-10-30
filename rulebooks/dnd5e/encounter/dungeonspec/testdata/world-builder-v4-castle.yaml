@@ -62,13 +62,12 @@
 # neutral to everybody. Every door is shut, the throne room's too, and one
 # is locked: the cell door, thieves' tools at DC 13, whose opening teaches
 # `cells-opened`, and walking out of the front door after it ends the run
-# `freed`. A shut throne door stops a turned
-# garrison's march at it, because a driven walk routes only through open
-# doors and no creature opens one (rpg-toolkit#2069); the party opens it. A
-# turned garrison storms the keep, and its captain comes with the party
-# (`toward: ally`, rpg-project#717); a garrison told to hold the castle, and
-# the party walking out of the front door, ends the run with the king still
-# breathing.
+# `freed`. A creature walking into a shut, unlocked door opens it on its way
+# (rpg-project#715), so a turned garrison storms the keep through the shut
+# throne door, and its captain comes with the party (`toward: ally`,
+# rpg-project#717); a locked door still stops a march. A garrison told to
+# hold the castle, and the party walking out of the front door, ends the run
+# with the king still breathing.
 #
 # THE ROUTES, each a scenario test in dungeonspec/castle_king_*_test.go:
 # the front door, the troupe (by the cook or by the stranger), the troupe

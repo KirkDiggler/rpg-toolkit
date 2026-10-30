@@ -734,6 +734,15 @@ func (f *field) doorCrossings(d *doorRecord) [][2]spatial.Position {
 // caller deciding a step refuses rather than guesses (the bool seams below
 // fail closed for the same reason).
 func (f *field) crossingBlocks(from, to spatial.Position) (PropID, bool, error) {
+	return f.crossingBlocksExcept(from, to, "")
+}
+
+// crossingBlocksExcept is [field.crossingBlocks] with one shut footprint door
+// left out of the question — the door a creature's own walk is about to open
+// ([Encounter.doorToOpen]), when the question is whether anything ELSE closes
+// the crossing. One loop for both, so the two cannot disagree about any
+// contributor that is asked. An empty skip leaves nothing out.
+func (f *field) crossingBlocksExcept(from, to spatial.Position, skip DoorID) (PropID, bool, error) {
 	now := f.placedNow()
 	for i := range f.placed {
 		p := &f.placed[i]
@@ -763,6 +772,9 @@ func (f *field) crossingBlocks(from, to spatial.Position) (PropID, bool, error) 
 	// that sees it: the canvas registered no boundary for it, so without
 	// this the step would walk through the door.
 	for _, d := range f.blockingDoorFootprints() {
+		if skip != "" && d.id == skip {
+			continue
+		}
 		a, b := f.plane.CellCentre(from), f.plane.CellCentre(to)
 		if !d.reach.mayTouch(d.placement.Origin, a, b) {
 			continue

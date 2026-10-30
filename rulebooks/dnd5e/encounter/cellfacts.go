@@ -154,6 +154,55 @@ type cellQuery struct {
 	// floods is this read's memo of goal-free floods, keyed by everything a
 	// flood without a forgiveness predicate reads from its caller.
 	floods map[floodKey]spatial.FieldOutput
+
+	// locksYield makes a LOCKED door one a creature's walk would open, in
+	// this read only. It exists for one question,
+	// [Encounter.lockedDoorInTheWay] — "would the way be open but for a
+	// lock?" — and no walk is ever planned or taken on a read that sets it.
+	// A fresh read is made for that question, so its floods are never shared
+	// with one that routes.
+	locksYield bool
+
+	// cells and crossings are this read's memo of the two answers every
+	// flood edge asks — what a cell allows a mover ([cellQuery.cellAt]) and
+	// what closes the crossing between two cells ([cellQuery.crossingBlocked])
+	// — under the same promise the flood memo rests on: nothing moves inside
+	// a read. A flood asks a cell once from each neighbour and a crossing
+	// once from each end, and a creature's view floods the same floor more
+	// than once, so a route through every room of a castle (rpg-project#715)
+	// pays for each answer once.
+	cells     map[CellAtInput]CellFact
+	crossings map[[2]spatial.Position]crossingAnswer
+}
+
+// crossingAnswer is one memoized crossing fold: what closes it, if anything.
+type crossingAnswer struct {
+	prop    PropID
+	blocked bool
+}
+
+// crossingBlocked is [Encounter.crossingBlocked] memoized for the read. A
+// crossing is undirected — a boundary is, and so is the segment a footprint
+// is traced across — so one answer serves both directions. An error is not
+// memoized; it fails the read that met it.
+func (e *cellQuery) crossingBlocked(from, to spatial.Position) (PropID, bool, error) {
+	key := [2]spatial.Position{from, to}
+	if to.X < from.X || (to.X == from.X && to.Y < from.Y) {
+		key = [2]spatial.Position{to, from}
+	}
+	if a, ok := e.crossings[key]; ok {
+		return a.prop, a.blocked, nil
+	}
+	prop, blocked, err := e.Encounter.crossingBlocked(from, to)
+	if err != nil {
+		return prop, blocked, err
+	}
+	if e.crossings == nil {
+		e.crossings = map[[2]spatial.Position]crossingAnswer{}
+	}
+	e.crossings[key] = crossingAnswer{prop: prop, blocked: blocked}
+
+	return prop, blocked, nil
 }
 
 // floodKey is everything a goal-free flood reads from its caller.
@@ -161,6 +210,7 @@ type floodKey struct {
 	mover, walker MemberID
 	from          spatial.Position
 	limit         int
+	opens         bool
 }
 
 func (e *Encounter) cellQuery() (*cellQuery, error) {
@@ -172,6 +222,23 @@ func (e *Encounter) cellQuery() (*cellQuery, error) {
 }
 
 func (e *cellQuery) cellAt(in CellAtInput) (CellFact, error) {
+	if fact, ok := e.cells[in]; ok {
+		return fact, nil
+	}
+	fact, err := e.computeCellAt(in)
+	if err != nil {
+		return fact, err
+	}
+	if e.cells == nil {
+		e.cells = map[CellAtInput]CellFact{}
+	}
+	e.cells[in] = fact
+
+	return fact, nil
+}
+
+// computeCellAt is [cellQuery.cellAt] without the read's memo.
+func (e *cellQuery) computeCellAt(in CellAtInput) (CellFact, error) {
 	fact := CellFact{Passage: PassageStandable, Cost: 1}
 
 	if !e.field.isStandable(in.Cell) {

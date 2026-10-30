@@ -606,11 +606,25 @@ func copyApproaches(approaches []CheckApproach) []CheckApproach {
 // merely-shut door is its own answer, and ErrBadPlacement stays what its
 // name says — the position itself is not usable.
 func shutDoorRefusal(door *doorRecord) error {
-	if lock, locked := door.state.Lock(); locked {
-		return fmt.Errorf("door %q is locked, %s: %w", door.id, lockLabel(lock), ErrLocked)
+	if _, locked := door.state.Lock(); locked {
+		return fmt.Errorf("%s: %w", lockedDoorPhrase(door), ErrLocked)
 	}
 
 	return fmt.Errorf("door %q is %s: %w", door.id, door.state.Kind(), ErrDoorShut)
+}
+
+// lockedDoorPhrase is a locked door's refusal without its sentinel —
+// "door \"cells\" is locked, DC 13 (dex, thieves-tools)" — the ONE sentence
+// a locked door says, whether a step is refused by it ([shutDoorRefusal]) or
+// a creature's march stops at it (the stayed beat's `why`,
+// [Encounter.routedRoute]). A door that is not locked says nothing here.
+func lockedDoorPhrase(door *doorRecord) string {
+	lock, locked := door.state.Lock()
+	if !locked {
+		return ""
+	}
+
+	return fmt.Sprintf("door %q is locked, %s", door.id, lockLabel(lock))
 }
 
 // lockLabel renders a lock for a refusal — "DC 12 (dex)", or the routes

@@ -268,7 +268,7 @@ func (q *cellQuery) threatZone(observer, foe MemberID, at spatial.Position) (Thr
 
 	walkFrom, dashFrom := []spatial.Position{at}, []spatial.Position{at}
 	if speed > 0 {
-		field, ferr := q.floodFrom(foe, observer, at, nil, 2*speed)
+		field, ferr := q.floodFrom(foe, observer, at, nil, 2*speed, false)
 		if ferr != nil {
 			return zone, ferr
 		}
