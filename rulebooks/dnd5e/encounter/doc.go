@@ -188,12 +188,19 @@
 // beat containing fixed data, not live contents: partial regions carrying only
 // the newly known cells, merged by union.
 //
-// Builder compilation can refine a painted region through [PartitionRegion]:
-// geometry-separated spaces become ordinary regions before play. Door topology
-// is measured closed so initial mutable state cannot merge room identities;
-// runtime discovery and persistence stay unchanged. Permanently occupied opaque
-// boundary footing uses existing scenery, not an undiscoverable region. Door and
-// mutable-prop cells are not made permanently unowned by this construction query.
+// THE FLOOR IS DIVIDED TWICE (rpg-project#725, partitions.go). The authored
+// regions own presentation: a name, a lighting, what the atlas groups a cell
+// under and what [Encounter.RegionAt] answers. The WALL PARTITIONS own
+// mechanics: the floor split wherever sight cannot cross — walls, every door
+// measured closed, permanent opaque props — derived at construction and at
+// every load from the persisted regions, walls and doors, never stored in
+// [FieldData] and never sent. Hearing hops, the party's seats, where a blocked
+// arrival looks for room, presence transfer and the secret-door masquerade
+// read the partition ([Encounter.PartitionAt]); an authored region boundary
+// decides nothing mechanical. A builder asks [PartitionFloor] for the same
+// division before play: permanently occupied opaque footing no partition can
+// claim leaves its region for existing scenery, not an undiscoverable region,
+// and door and mutable-prop cells are never made permanently unowned by it.
 //
 // Holdable props and door states join the creature pass in the same perception
 // store. Subjects are qualified by kind, so equal member/prop/door names cannot
@@ -537,7 +544,8 @@
 //
 // A REGION IS A NAMED SET OF CELLS (#1108, #256). It is how a dungeon is
 // AUTHORED — [RegionInput] lists the cells it owns — and what the runtime
-// answers in: [Encounter.RegionAt] says which region holds a cell,
+// reports a place in (the partition, above, is what it decides outcomes in):
+// [Encounter.RegionAt] says which region holds a cell,
 // [Encounter.MembersIn] says who is standing in one, and [Encounter.Atlas]
 // reports every region's cells, archetype and lighting beside the flat lists
 // of props, walls and doorways. Membership is DERIVED from a member's cell

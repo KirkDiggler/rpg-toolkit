@@ -337,10 +337,15 @@ type SingleRoomPlay struct {
 // labels, groups, parents, supports, height scales and point lights belong
 // to the World Builder; the player is served the authored file by dungeon
 // key and the codec that owns those words (the web's) is the one that judges
-// them. [CoordinateFrame], [Workspace] and [Scene] are therefore YAML nodes,
-// carried verbatim and walked for exactly the values play depends on —
+// them. [CoordinateFrame] and [Scene] are therefore YAML nodes, carried
+// verbatim and walked for exactly the values play depends on —
 // single_room_lowering.go names every one of them, by path. An unknown key
-// inside any of the three is not this decoder's business.
+// inside either is not this decoder's business.
+//
+// THERE IS NO WORKSPACE (rpg-project#725, R3). The canvas is unbounded: the
+// file carries its content and its coordinate frame and nothing about the
+// grid the studio draws, so `room.workspace` is an unknown key, refused by
+// name. The floor is the union of [RoomGameplaySource.Regions].
 //
 // They marshal back to YAML as the nodes they are, so a host that re-emits a
 // decoded document gets the author's own bytes back.
@@ -359,7 +364,6 @@ type RoomSource struct {
 	Name    string `yaml:"name"`
 
 	CoordinateFrame yaml.Node `yaml:"coordinateFrame"`
-	Workspace       yaml.Node `yaml:"workspace"`
 	Scene           yaml.Node `yaml:"scene"`
 
 	Gameplay RoomGameplaySource `yaml:"room"`
@@ -677,12 +681,12 @@ type DiscoveryAttemptsSpec struct {
 //	    cells:  [{ q: 12, r: 3 }, { q: 13, r: 3 }]
 //	    props:  [vault-door, inner-wall-1, heirloom]
 //
-// # The cells stay in `walkableHexes` (R2)
+// # The cells stay on the floor (R2)
 //
 // The author sees the vault at the table; an unaware player is not sent those
 // cells, and the web draws wall on the boundary exactly as it does for any
-// edge of the walkable set. Nobody places a wall to hide a room — omission is
-// the wall. Whether a listed cell is walkable is the ENGINE's refusal at
+// edge of the floor. Nobody places a wall to hide a room — omission is
+// the wall. Whether a listed cell is floor is the ENGINE's refusal at
 // publish, not the web's: the web carries the list and the engine grades it,
 // which is the same split `doorBindings` keeps.
 type ConcealmentSpec struct {
@@ -710,7 +714,8 @@ type ConcealmentSpec struct {
 
 	// Cells are the hexes this hides, in this dialect's axial frame —
 	// [RoomPartyStart]'s shape, for [RoomExit.Cell]'s reason. Every one must
-	// be a `walkableHexes` cell, and no cell may be in two concealments.
+	// be a floor cell (one of `room.room.regions`), and no cell may be in two
+	// concealments.
 	// Optional: a concealment that hides only placed things lists none.
 	Cells []RoomCell `yaml:"cells,omitempty" json:"cells,omitempty"`
 
@@ -872,10 +877,53 @@ type RoomWallAppearance struct {
 	Elevation float64 `yaml:"elevation" json:"elevation"`
 }
 
-// RoomGameplaySource contains the room's walkable cells and placements.
+// RoomRegion is one authored place on the site's floor (rpg-project#725): an
+// id, the name the map labels it with, the lighting it is lit at, and the
+// cells it owns. The floor of the site IS the union of its regions — there is
+// no walkable list beside them — and no cell belongs to two.
+//
+// A region's cells are written as row runs ([RoomCellRow]): canonical,
+// lossless, and the only cell encoding this dialect reads. A region may be
+// listed with no cells — a place declared and not yet painted — and it then
+// contributes nothing to the compiled field.
+//
+// AN AUTHORED REGION OWNS PRESENTATION, NEVER MECHANICS (design R4). Its name
+// and lighting reach the atlas; hearing, seats and arrival read the wall
+// partitions the encounter derives over the whole floor, so drawing a region
+// boundary across an open hall changes how the hall is lit and labelled and
+// nothing about how sound or sight crosses it.
+type RoomRegion struct {
+	ID       string        `yaml:"id" json:"id"`
+	Name     string        `yaml:"name" json:"name"`
+	Lighting RoomLighting  `yaml:"lighting" json:"lighting"`
+	Cells    []RoomCellRow `yaml:"cells" json:"cells"`
+}
+
+// RoomLighting is a region's light level, the encounter's own word: an
+// intensity in [0, 1], 1 being bright.
+type RoomLighting struct {
+	Intensity float64 `yaml:"intensity" json:"intensity"`
+}
+
+// RoomCellRow is one row of a region's cells: every q in each inclusive
+// [qStart, qEnd] span at axial row r. Rows ascend by r with no repeat; spans
+// ascend and neither overlap nor touch, so one cell set has exactly one
+// spelling ([ExpandRows] refuses every other).
+type RoomCellRow struct {
+	R int      `yaml:"r" json:"r"`
+	Q [][2]int `yaml:"q" json:"q"`
+}
+
+// RoomGameplaySource contains the room's regions and placements.
 type RoomGameplaySource struct {
-	ImplicitRegionID        string                                    `yaml:"implicitRegionId" json:"implicitRegionId"`
-	WalkableHexes           []RoomCell                                `yaml:"walkableHexes" json:"walkableHexes"`
+	// ImplicitRegionID names the region paint lands in when the author has
+	// no other region active. It is required; a region listed under this id
+	// IS the implicit region, and when none is listed nothing is wrong — the
+	// studio creates it on the first stroke.
+	ImplicitRegionID string `yaml:"implicitRegionId" json:"implicitRegionId"`
+	// Regions are the site's floor: their union is every floor cell, and
+	// each cell belongs to one region (rpg-project#725).
+	Regions                 []RoomRegion                              `yaml:"regions" json:"regions"`
 	PropDeclarations        map[string]RoomPropDeclaration            `yaml:"propDeclarations" json:"propDeclarations"`
 	ArrangementDeclarations map[string]map[string]RoomPropDeclaration `yaml:"arrangementDeclarations" json:"arrangementDeclarations"`
 	PartyStart              *RoomCell                                 `yaml:"partyStart,omitempty" json:"partyStart,omitempty"`

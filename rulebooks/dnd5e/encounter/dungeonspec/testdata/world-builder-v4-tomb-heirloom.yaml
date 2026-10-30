@@ -27,7 +27,7 @@
 # a holdable placed prop, the hall scroll beside it as a second one, the
 # `entrance` exit standing on the cell the party comes in at, and the
 # recover-the-artifact binding that names both.
-version: 4
+version: 5
 key: tomb-heirloom-v4
 play: { void: transparent, lighting: bright, standing: centre-covered }
 
@@ -58,7 +58,6 @@ room:
   coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
     distanceUnit: world-scene-unit, hexRadius: 1,
     footprintFrame: owner-local-xz}
-  workspace: { hexRadius: 6, horizontalLimit: 12 }
   scene:
     version: 1
     id: scene-1
@@ -77,10 +76,19 @@ room:
     groups: []
   room:
     implicitRegionId: room-1-region
-    walkableHexes: [{q: -3, r: 0}, {q: -2, r: 0}, {q: -1, r: 0}, {q: 0, r: 0}, {q: 1, r: 0},
-      {q: -3, r: 1}, {q: -2, r: 1}, {q: -1, r: 1}, {q: 0, r: 1}, {q: 1, r: 1},
-      {q: -3, r: 2}, {q: -2, r: 2}, {q: -1, r: 2}, {q: 0, r: 2}, {q: 1, r: 2},
-      {q: -3, r: 3}, {q: -2, r: 3}, {q: -1, r: 3}, {q: 0, r: 3}, {q: 1, r: 3}]
+    regions:
+      - id: room-1-region
+        name: The Tomb
+        lighting: { intensity: 1 }
+        cells:
+          - r: 0
+            q: [[-3, 1]]
+          - r: 1
+            q: [[-3, 1]]
+          - r: 2
+            q: [[-3, 1]]
+          - r: 3
+            q: [[-3, 1]]
     # A HOLDABLE PROP IS WALKED ONTO TO BE TAKEN, so it blocks nothing —
     # which is what every v2 holdable declares too.
     propDeclarations:

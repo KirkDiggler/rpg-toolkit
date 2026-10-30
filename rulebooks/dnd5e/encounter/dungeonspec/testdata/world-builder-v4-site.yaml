@@ -1,4 +1,4 @@
-version: 4
+version: 5
 key: front-room-site
 play: {void: transparent, lighting: bright, standing: centre-covered}
 factions:
@@ -17,7 +17,6 @@ room:
   coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
     distanceUnit: world-scene-unit, hexRadius: 1,
     footprintFrame: owner-local-xz}
-  workspace: {hexRadius: 6, horizontalLimit: 12}
   scene:
     version: 1
     id: scene-1
@@ -40,9 +39,17 @@ room:
          transform: {x: -2.175, y: 0.6, z: 1.275, rotationY: 0.37}}
   room:
     implicitRegionId: room-1-region
-    walkableHexes: [{q: 0, r: 0}, {q: 1, r: 0}, {q: 2, r: 0},
-      {q: 0, r: 1}, {q: -1, r: 1}, {q: -1, r: 0},
-      {q: 0, r: -1}, {q: 1, r: -1}]
+    regions:
+      - id: room-1-region
+        name: Front Room
+        lighting: { intensity: 1 }
+        cells:
+          - r: -1
+            q: [[0, 1]]
+          - r: 0
+            q: [[-1, 2]]
+          - r: 1
+            q: [[-1, 0]]
     propDeclarations:
       table:
         blocksMovement: true

@@ -997,11 +997,19 @@ func (s *HoldOutSuite) strikes() []string {
 // yard beside the letter, the chief starts in the hut, and his turn is
 // scripted to walk INTO the yard and then swing.
 //
+// THE HUT HAS A WALL, AND AN OPEN DOOR ON ROW 1 (rpg-project#725). Presence
+// is being in the same room as the walls make it, so two regions open to
+// each other would be one room and the letter would teach the chief before
+// he moved. The door stands open — sight crosses it, so first light is
+// unchanged — and is a room boundary all the same.
+//
 //	x: 0..5 yard | 6..11 hut     alice [4,1], scroll [3,1], chief [8,1]
 func (s *HoldOutSuite) yardAndHut() (encounter.FieldInput, []encounter.MemberInput) {
 	field := encounter.FieldInput{
 		Canvas:  openAir(),
 		Regions: []encounter.RegionInput{rectRegion("yard", 0, 0, 6, 4), rectRegion("hut", 6, 0, 6, 4)},
+		Walls:   seamWallRows(5, 0, 4, 1),
+		Doors:   []encounter.DoorInput{openDoorway("hut-door", 5, 1, 6, 1)},
 		Intel:   []encounter.IntelRecord{{ID: "letter", Reveals: encounter.RevealTargets{Fact: campFact}}},
 		Props: []encounter.PropInput{func() encounter.PropInput {
 			p := holdableProp("yard-scroll", "dnd5e:props:scroll", spatial.Position{X: 3, Y: 1})

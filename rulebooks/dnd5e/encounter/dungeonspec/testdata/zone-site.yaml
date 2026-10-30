@@ -12,7 +12,7 @@
 #              corner, behind the wall from the party start.
 #
 # Both knights are hostile to the party. zone_site_test.go plays it.
-version: 4
+version: 5
 key: zone-site
 play:
   void: transparent
@@ -35,264 +35,13 @@ room:
     distanceUnit: world-scene-unit
     hexRadius: 1
     footprintFrame: owner-local-xz
-  workspace:
-    kind: centered-odd-r
-    widthHexes: 20
-    heightHexes: 10
-    hexRadius: 12
-    horizontalLimit: 19
   scene:
     version: 3
     id: scene-1
     name: Zone Site
     items: []
     groups: []
-    mapLabels:
-      - id: label-near-room
-        text: Near room
-        location:
-          x: -7.299356974754554
-          z: 0
-      - id: label-far-room
-        text: Far room
-        location:
-          x: 6.557049485796464
-          z: 0
-    authoringRegions:
-      - id: region-near-room
-        labelId: label-near-room
-        boundary:
-          kind: explicit
-          cells:
-            - q: -9
-              r: 2
-            - q: -9
-              r: 3
-            - q: -8
-              r: 0
-            - q: -8
-              r: 1
-            - q: -8
-              r: 2
-            - q: -8
-              r: 3
-            - q: -7
-              r: -2
-            - q: -7
-              r: -1
-            - q: -7
-              r: 0
-            - q: -7
-              r: 1
-            - q: -7
-              r: 2
-            - q: -7
-              r: 3
-            - q: -6
-              r: -3
-            - q: -6
-              r: -2
-            - q: -6
-              r: -1
-            - q: -6
-              r: 0
-            - q: -6
-              r: 1
-            - q: -6
-              r: 2
-            - q: -6
-              r: 3
-            - q: -5
-              r: -3
-            - q: -5
-              r: -2
-            - q: -5
-              r: -1
-            - q: -5
-              r: 0
-            - q: -5
-              r: 1
-            - q: -5
-              r: 2
-            - q: -5
-              r: 3
-            - q: -4
-              r: -3
-            - q: -4
-              r: -2
-            - q: -4
-              r: -1
-            - q: -4
-              r: 0
-            - q: -4
-              r: 1
-            - q: -4
-              r: 2
-            - q: -4
-              r: 3
-            - q: -3
-              r: -3
-            - q: -3
-              r: -2
-            - q: -3
-              r: -1
-            - q: -3
-              r: 0
-            - q: -3
-              r: 1
-            - q: -3
-              r: 2
-            - q: -3
-              r: 3
-            - q: -2
-              r: -3
-            - q: -2
-              r: -2
-            - q: -2
-              r: -1
-            - q: -2
-              r: 0
-            - q: -2
-              r: 1
-            - q: -2
-              r: 2
-            - q: -2
-              r: 3
-            - q: -1
-              r: -3
-            - q: -1
-              r: -2
-            - q: -1
-              r: -1
-            - q: -1
-              r: 0
-            - q: -1
-              r: 1
-            - q: 0
-              r: -3
-            - q: 0
-              r: -2
-            - q: 0
-              r: -1
-            - q: 1
-              r: -3
-      - id: region-far-room
-        labelId: label-far-room
-        boundary:
-          kind: explicit
-          cells:
-            - q: -1
-              r: 2
-            - q: -1
-              r: 3
-            - q: 0
-              r: 0
-            - q: 0
-              r: 1
-            - q: 0
-              r: 2
-            - q: 0
-              r: 3
-            - q: 1
-              r: -2
-            - q: 1
-              r: -1
-            - q: 1
-              r: 0
-            - q: 1
-              r: 1
-            - q: 1
-              r: 2
-            - q: 1
-              r: 3
-            - q: 2
-              r: -3
-            - q: 2
-              r: -2
-            - q: 2
-              r: -1
-            - q: 2
-              r: 0
-            - q: 2
-              r: 1
-            - q: 2
-              r: 2
-            - q: 2
-              r: 3
-            - q: 3
-              r: -3
-            - q: 3
-              r: -2
-            - q: 3
-              r: -1
-            - q: 3
-              r: 0
-            - q: 3
-              r: 1
-            - q: 3
-              r: 2
-            - q: 3
-              r: 3
-            - q: 4
-              r: -3
-            - q: 4
-              r: -2
-            - q: 4
-              r: -1
-            - q: 4
-              r: 0
-            - q: 4
-              r: 1
-            - q: 4
-              r: 2
-            - q: 4
-              r: 3
-            - q: 5
-              r: -3
-            - q: 5
-              r: -2
-            - q: 5
-              r: -1
-            - q: 5
-              r: 0
-            - q: 5
-              r: 1
-            - q: 5
-              r: 2
-            - q: 5
-              r: 3
-            - q: 6
-              r: -3
-            - q: 6
-              r: -2
-            - q: 6
-              r: -1
-            - q: 6
-              r: 0
-            - q: 6
-              r: 1
-            - q: 6
-              r: 2
-            - q: 6
-              r: 3
-            - q: 7
-              r: -3
-            - q: 7
-              r: -2
-            - q: 7
-              r: -1
-            - q: 7
-              r: 0
-            - q: 7
-              r: 1
-            - q: 8
-              r: -3
-            - q: 8
-              r: -2
-            - q: 8
-              r: -1
-            - q: 9
-              r: -3
+    mapLabels: []
   room:
     implicitRegionId: room-1-region
     walls:
@@ -322,231 +71,47 @@ room:
           - id: doorway
             position: 5.25
             width: 2
-    walkableHexes:
-      - q: -9
-        r: 2
-      - q: -9
-        r: 3
-      - q: -8
-        r: 0
-      - q: -8
-        r: 1
-      - q: -8
-        r: 2
-      - q: -8
-        r: 3
-      - q: -7
-        r: -2
-      - q: -7
-        r: -1
-      - q: -7
-        r: 0
-      - q: -7
-        r: 1
-      - q: -7
-        r: 2
-      - q: -7
-        r: 3
-      - q: -6
-        r: -3
-      - q: -6
-        r: -2
-      - q: -6
-        r: -1
-      - q: -6
-        r: 0
-      - q: -6
-        r: 1
-      - q: -6
-        r: 2
-      - q: -6
-        r: 3
-      - q: -5
-        r: -3
-      - q: -5
-        r: -2
-      - q: -5
-        r: -1
-      - q: -5
-        r: 0
-      - q: -5
-        r: 1
-      - q: -5
-        r: 2
-      - q: -5
-        r: 3
-      - q: -4
-        r: -3
-      - q: -4
-        r: -2
-      - q: -4
-        r: -1
-      - q: -4
-        r: 0
-      - q: -4
-        r: 1
-      - q: -4
-        r: 2
-      - q: -4
-        r: 3
-      - q: -3
-        r: -3
-      - q: -3
-        r: -2
-      - q: -3
-        r: -1
-      - q: -3
-        r: 0
-      - q: -3
-        r: 1
-      - q: -3
-        r: 2
-      - q: -3
-        r: 3
-      - q: -2
-        r: -3
-      - q: -2
-        r: -2
-      - q: -2
-        r: -1
-      - q: -2
-        r: 0
-      - q: -2
-        r: 1
-      - q: -2
-        r: 2
-      - q: -2
-        r: 3
-      - q: -1
-        r: -3
-      - q: -1
-        r: -2
-      - q: -1
-        r: -1
-      - q: -1
-        r: 0
-      - q: -1
-        r: 1
-      - q: -1
-        r: 2
-      - q: -1
-        r: 3
-      - q: 0
-        r: -3
-      - q: 0
-        r: -2
-      - q: 0
-        r: -1
-      - q: 0
-        r: 0
-      - q: 0
-        r: 1
-      - q: 0
-        r: 2
-      - q: 0
-        r: 3
-      - q: 1
-        r: -3
-      - q: 1
-        r: -2
-      - q: 1
-        r: -1
-      - q: 1
-        r: 0
-      - q: 1
-        r: 1
-      - q: 1
-        r: 2
-      - q: 1
-        r: 3
-      - q: 2
-        r: -3
-      - q: 2
-        r: -2
-      - q: 2
-        r: -1
-      - q: 2
-        r: 0
-      - q: 2
-        r: 1
-      - q: 2
-        r: 2
-      - q: 2
-        r: 3
-      - q: 3
-        r: -3
-      - q: 3
-        r: -2
-      - q: 3
-        r: -1
-      - q: 3
-        r: 0
-      - q: 3
-        r: 1
-      - q: 3
-        r: 2
-      - q: 3
-        r: 3
-      - q: 4
-        r: -3
-      - q: 4
-        r: -2
-      - q: 4
-        r: -1
-      - q: 4
-        r: 0
-      - q: 4
-        r: 1
-      - q: 4
-        r: 2
-      - q: 4
-        r: 3
-      - q: 5
-        r: -3
-      - q: 5
-        r: -2
-      - q: 5
-        r: -1
-      - q: 5
-        r: 0
-      - q: 5
-        r: 1
-      - q: 5
-        r: 2
-      - q: 5
-        r: 3
-      - q: 6
-        r: -3
-      - q: 6
-        r: -2
-      - q: 6
-        r: -1
-      - q: 6
-        r: 0
-      - q: 6
-        r: 1
-      - q: 6
-        r: 2
-      - q: 6
-        r: 3
-      - q: 7
-        r: -3
-      - q: 7
-        r: -2
-      - q: 7
-        r: -1
-      - q: 7
-        r: 0
-      - q: 7
-        r: 1
-      - q: 8
-        r: -3
-      - q: 8
-        r: -2
-      - q: 8
-        r: -1
-      - q: 9
-        r: -3
+    regions:
+      - id: room-1-region
+        name: Zone Site
+        lighting: { intensity: 1 }
+        cells: []
+      - id: region-near-room
+        name: Near room
+        lighting: { intensity: 1 }
+        cells:
+          - r: -3
+            q: [[-6, 1]]
+          - r: -2
+            q: [[-7, 0]]
+          - r: -1
+            q: [[-7, 0]]
+          - r: 0
+            q: [[-8, -1]]
+          - r: 1
+            q: [[-8, -1]]
+          - r: 2
+            q: [[-9, -2]]
+          - r: 3
+            q: [[-9, -2]]
+      - id: region-far-room
+        name: Far room
+        lighting: { intensity: 1 }
+        cells:
+          - r: -3
+            q: [[2, 9]]
+          - r: -2
+            q: [[1, 8]]
+          - r: -1
+            q: [[1, 8]]
+          - r: 0
+            q: [[0, 7]]
+          - r: 1
+            q: [[0, 7]]
+          - r: 2
+            q: [[-1, 6]]
+          - r: 3
+            q: [[-1, 6]]
     propDeclarations: {}
     arrangementDeclarations: {}
     monsterDeclarations:
