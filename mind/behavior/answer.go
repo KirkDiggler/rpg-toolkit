@@ -179,7 +179,7 @@ const MaxGroupDepth = 8
 
 // AsWords is every word a group's [Answer.As] may name: the five words a
 // [TemperProfile] carries a percent for. Exported for the dialect's refusal.
-var AsWords = []string{"attack", "toward", "away", "flee", "hold"}
+var AsWords = []string{VerbAttack, wordToward, wordAway, "flee", "hold"}
 
 // Validate refuses what this module's own types cannot carry: a [When] in the
 // list that does not name exactly one condition ([When.Validate],
@@ -223,7 +223,7 @@ func (a *Answer) validate(nest int) error {
 	for _, slot := range []struct {
 		word string
 		sel  *Selector
-	}{{"attack", a.Attack}, {"toward", a.Toward}, {"dash", a.Dash}, {"away", a.Away}} {
+	}{{VerbAttack, a.Attack}, {wordToward, a.Toward}, {"dash", a.Dash}, {wordAway, a.Away}} {
 		if slot.sel == nil {
 			continue
 		}
