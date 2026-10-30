@@ -22,6 +22,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -70,7 +71,7 @@ func listener(id string, wis int, trained bool) *character.Data {
 func guardOrders() encounter.Table {
 	return encounter.Table{encounter.AnswerTime: {{
 		Weight: 1,
-		When:   []encounter.When{{Heard: &encounter.HeardWhen{Kind: encounter.SoundClang, Within: 6}}},
+		When:   []encounter.When{{Heard: &encounter.HeardWhen{Kind: behavior.Name{Literal: encounter.SoundClang}, Within: 6}}},
 		Toward: &encounter.Selector{Word: encounter.SelectorSound},
 	}}}
 }
