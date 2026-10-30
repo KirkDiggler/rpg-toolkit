@@ -1103,26 +1103,36 @@ func TestResolveRefusesAWorldWithoutActors(t *testing.T) {
 // exactly the keys Data and Capabilities, and Capabilities is in.Capabilities.
 func TestResolveLoadsWithTheCapabilitiesItWasHanded(t *testing.T) {
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, ".", func(fi os.FileInfo) bool {
-		return !strings.HasSuffix(fi.Name(), "_test.go")
-	}, 0)
+	entries, err := os.ReadDir(".")
 	require.NoError(t, err)
 
-	var lits []*ast.CompositeLit
-	for _, pkg := range pkgs {
-		for _, f := range pkg.Files {
-			ast.Inspect(f, func(n ast.Node) bool {
-				cl, ok := n.(*ast.CompositeLit)
-				if !ok {
-					return true
-				}
-				sel, ok := cl.Type.(*ast.SelectorExpr)
-				if ok && sel.Sel.Name == "LoadEncounterInput" {
-					lits = append(lits, cl)
-				}
-				return true
-			})
+	type sourceFile struct {
+		name string
+		ast  *ast.File
+	}
+	var files []sourceFile
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
 		}
+		f, err := parser.ParseFile(fset, entry.Name(), nil, 0)
+		require.NoError(t, err)
+		files = append(files, sourceFile{name: entry.Name(), ast: f})
+	}
+
+	var lits []*ast.CompositeLit
+	for _, source := range files {
+		ast.Inspect(source.ast, func(n ast.Node) bool {
+			cl, ok := n.(*ast.CompositeLit)
+			if !ok {
+				return true
+			}
+			sel, ok := cl.Type.(*ast.SelectorExpr)
+			if ok && sel.Sel.Name == "LoadEncounterInput" {
+				lits = append(lits, cl)
+			}
+			return true
+		})
 	}
 	require.Len(t, lits, 1, "exactly one LoadEncounterInput literal in non-test files")
 
@@ -1140,15 +1150,13 @@ func TestResolveLoadsWithTheCapabilitiesItWasHanded(t *testing.T) {
 
 	// Refusing stand-ins live in actors.go and nowhere else.
 	for _, name := range []string{"RefusingStriker", "RefusingMover", "RefusingAnnouncer"} {
-		for _, pkg := range pkgs {
-			for fname, f := range pkg.Files {
-				ast.Inspect(f, func(n ast.Node) bool {
-					if id, ok := n.(*ast.Ident); ok && id.Name == name && !strings.HasSuffix(fname, "actors.go") {
-						t.Errorf("%s names %s outside actors.go", fname, name)
-					}
-					return true
-				})
-			}
+		for _, source := range files {
+			ast.Inspect(source.ast, func(n ast.Node) bool {
+				if id, ok := n.(*ast.Ident); ok && id.Name == name && !strings.HasSuffix(source.name, "actors.go") {
+					t.Errorf("%s names %s outside actors.go", source.name, name)
+				}
+				return true
+			})
 		}
 	}
 }
