@@ -7,7 +7,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
+	"os"
 	"sort"
 	"strings"
 	"testing"
@@ -145,14 +145,35 @@ func functionsWhoseBodyReads(t *testing.T, match func(ast.Node) bool) []string {
 	t.Helper()
 
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, ".", func(fi fs.FileInfo) bool {
-		return !strings.HasSuffix(fi.Name(), "_test.go")
-	}, 0)
+	entries, err := os.ReadDir(".")
+	pkgs := map[string]map[string]*ast.File{}
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+				continue
+			}
+
+			filename := entry.Name()
+			file, parseErr := parser.ParseFile(fset, filename, nil, 0)
+			if parseErr != nil {
+				err = parseErr
+				break
+			}
+
+			name := file.Name.Name
+			pkg, found := pkgs[name]
+			if !found {
+				pkg = map[string]*ast.File{}
+				pkgs[name] = pkg
+			}
+			pkg[filename] = file
+		}
+	}
 	require.NoError(t, err)
 	require.Contains(t, pkgs, "encounter", "the package must be parseable from its own directory")
 
 	written := map[ast.Node]bool{}
-	for _, file := range pkgs["encounter"].Files {
+	for _, file := range pkgs["encounter"] {
 		ast.Inspect(file, func(n ast.Node) bool {
 			assign, ok := n.(*ast.AssignStmt)
 			if !ok {
@@ -169,7 +190,7 @@ func functionsWhoseBodyReads(t *testing.T, match func(ast.Node) bool) []string {
 	}
 
 	names := map[string]bool{}
-	for _, file := range pkgs["encounter"].Files {
+	for _, file := range pkgs["encounter"] {
 		for _, decl := range file.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
 			if !ok || fn.Body == nil {
