@@ -1,8 +1,6 @@
 module github.com/KirkDiggler/rpg-toolkit/tools/spatial
 
-go 1.24
-
-toolchain go1.24.5
+go 1.27.0
 
 require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.11.0
