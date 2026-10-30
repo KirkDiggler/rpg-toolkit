@@ -1,10 +1,12 @@
 package spatial
 
+const connectionEntityType = "connection"
+
 // CreateDoorConnection creates a bidirectional door connection between two rooms (ADR-0015: Abstract Connections)
 func CreateDoorConnection(id, fromRoom, toRoom string, cost float64) *BasicConnection {
 	return NewBasicConnection(BasicConnectionConfig{
 		ID:           id,
-		Type:         "connection",
+		Type:         connectionEntityType,
 		ConnType:     ConnectionTypeDoor,
 		FromRoom:     fromRoom,
 		ToRoom:       toRoom,
@@ -25,7 +27,7 @@ func CreateStairsConnection(id, fromRoom, toRoom string, cost float64, goingUp b
 
 	return NewBasicConnection(BasicConnectionConfig{
 		ID:           id,
-		Type:         "connection",
+		Type:         connectionEntityType,
 		ConnType:     ConnectionTypeStairs,
 		FromRoom:     fromRoom,
 		ToRoom:       toRoom,
@@ -44,7 +46,7 @@ func CreateSecretPassageConnection(id, fromRoom, toRoom string, cost float64, re
 
 	return NewBasicConnection(BasicConnectionConfig{
 		ID:           id,
-		Type:         "connection",
+		Type:         connectionEntityType,
 		ConnType:     ConnectionTypePassage,
 		FromRoom:     fromRoom,
 		ToRoom:       toRoom,
@@ -61,7 +63,7 @@ func CreatePortalConnection(id, fromRoom, toRoom string, cost float64, bidirecti
 
 	return NewBasicConnection(BasicConnectionConfig{
 		ID:           id,
-		Type:         "connection",
+		Type:         connectionEntityType,
 		ConnType:     ConnectionTypePortal,
 		FromRoom:     fromRoom,
 		ToRoom:       toRoom,
@@ -76,7 +78,7 @@ func CreatePortalConnection(id, fromRoom, toRoom string, cost float64, bidirecti
 func CreateBridgeConnection(id, fromRoom, toRoom string, cost float64) *BasicConnection {
 	return NewBasicConnection(BasicConnectionConfig{
 		ID:           id,
-		Type:         "connection",
+		Type:         connectionEntityType,
 		ConnType:     ConnectionTypeBridge,
 		FromRoom:     fromRoom,
 		ToRoom:       toRoom,
@@ -91,7 +93,7 @@ func CreateBridgeConnection(id, fromRoom, toRoom string, cost float64) *BasicCon
 func CreateTunnelConnection(id, fromRoom, toRoom string, cost float64) *BasicConnection {
 	return NewBasicConnection(BasicConnectionConfig{
 		ID:           id,
-		Type:         "connection",
+		Type:         connectionEntityType,
 		ConnType:     ConnectionTypeTunnel,
 		FromRoom:     fromRoom,
 		ToRoom:       toRoom,
