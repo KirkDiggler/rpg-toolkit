@@ -81,6 +81,15 @@ const (
 	// VerbAttack is a swing or a shot resolving against somebody.
 	VerbAttack = "attack"
 
+	// wordToward is the authored answer word for walking toward a target.
+	wordToward = "toward"
+
+	// wordAway is the authored answer word for walking away from a target.
+	wordAway = "away"
+
+	// wordFell is the authored condition word for a witnessed fall.
+	wordFell = "fell"
+
 	// VerbIntimidate is a threat landing.
 	VerbIntimidate = "intimidate"
 
@@ -322,7 +331,7 @@ func (t ThreatWord) sealed() bool {
 // recorded from the WITNESS's — "somebody attacked". `attacked` and
 // [VerbAttack] are the same event named from the two ends of it, and
 // [DeedVerbFor] is the one place the two vocabularies meet.
-var WhenDeeds = []string{"attacked", "intimidated", "persuaded", "fled", "fell"}
+var WhenDeeds = []string{"attacked", "intimidated", "persuaded", "fled", wordFell}
 
 // WhoDeeds is every deed word whose condition may name WHO it was done to,
 // with `who` ([When.Who]). Exported for the dialect's refusal, [WhenDeeds]'s
@@ -333,7 +342,7 @@ var WhenDeeds = []string{"attacked", "intimidated", "persuaded", "fled", "fell"}
 // deeds are read from the creature's side (against me, my side, or by me),
 // and no use case has asked which one of my side was struck. Widening this
 // list is adding a word here, the way [WhenDeeds] grows.
-var WhoDeeds = []string{"fell"}
+var WhoDeeds = []string{wordFell}
 
 // DeedVerbFor is the deed a `when` word reads: the verb the deeds channel
 // files it under, for the word the author wrote.
@@ -352,7 +361,7 @@ func DeedVerbFor(word string) string {
 		return VerbPersuade
 	case "fled":
 		return VerbFled
-	case "fell":
+	case wordFell:
 		return VerbFell
 	default:
 		return ""
@@ -777,18 +786,18 @@ func (s *Selector) validate(word string) error {
 		return fmt.Errorf("`%s` names %s; a target is exactly one of somebody, a cell or a route: %w",
 			word, andList(named), ErrBadSelector)
 	}
-	if s.Word == SelectorSound && word == "attack" {
+	if s.Word == SelectorSound && word == VerbAttack {
 		return fmt.Errorf("`attack` cannot take `sound`: a sound cannot be struck, only walked toward "+
 			"or away from: %w", ErrBadSelector)
 	}
-	if s.Word == SelectorAlly && word == "attack" {
+	if s.Word == SelectorAlly && word == VerbAttack {
 		return fmt.Errorf("`attack` cannot take `ally`: a mind is never handed an ally to strike, "+
 			"only one to walk toward or away from: %w", ErrBadSelector)
 	}
 	if err := s.validateWaypoints(word); err != nil {
 		return err
 	}
-	if len(s.Path) > 0 && word != "toward" && word != "dash" {
+	if len(s.Path) > 0 && word != wordToward && word != "dash" {
 		return fmt.Errorf("`%s` cannot take a `path`: a route is walked, and only `toward` and `dash` walk one: %w",
 			word, ErrBadSelector)
 	}
@@ -925,11 +934,11 @@ func (t Temper) factor(a Answer) int {
 // factorAs is the percent for one of [AsWords], 100 for none.
 func (t Temper) factorAs(word string) int {
 	switch word {
-	case "attack":
+	case VerbAttack:
 		return t.Profile.Attack
-	case "toward":
+	case wordToward:
 		return t.Profile.Toward
-	case "away":
+	case wordAway:
 		return t.Profile.Away
 	case "flee":
 		return t.Profile.Flee
