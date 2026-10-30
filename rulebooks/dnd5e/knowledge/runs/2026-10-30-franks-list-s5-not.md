@@ -12,6 +12,7 @@ Slice [rpg-project#719](https://github.com/KirkDiggler/rpg-project/issues/719) o
 - An ending's `when: { not: { left: gate } }` is the last one out by any other door, judged at the same departure as a bare left — [`holdings.go`](../../encounter/holdings.go) `departureEnding`.
 - The blob carries a `not` trigger as kind `not` with its inner in `not`, on endings, untils, arrivals and requirements — [`data.go`](../../encounter/data.go).
 - The castle cook has `pilfer` (Sleight of Hand DC 13, failure says "Thief!" and teaches `caught-in-kitchen`). The cook's `pilfer` and `gossip` require `{ not: { fact: caught-in-kitchen } }`. A castletest proves the caught hero loses both and the pedlar still offers his line — [castle cook](../../encounter/dungeonspec/testdata/world-builder-v4-castle.yaml), [`castle_king_theft_test.go`](../../encounter/castletest/castle_king_theft_test.go).
+- The walk site `theft-walk` is cut from the gate walk's frame. A civil cook stands inside the gatehouse with `pilfer` and `gossip`, and a civil pedlar stands outside. Leaving ends on `clean-getaway` if `{ not: { fact: caught-in-kitchen } }` holds, else on `caught`. It is untracked in the franks-list-s1 api worktree and the castle stack's content, with a copy and one scenario test here — [`theft-walk.yaml`](../../encounter/castletest/testdata/theft-walk.yaml), [`theft_walk_test.go`](../../encounter/castletest/theft_walk_test.go).
 
 ## Decided
 
@@ -28,6 +29,8 @@ Slice [rpg-project#719](https://github.com/KirkDiggler/rpg-project/issues/719) o
 - A `requires` is one predicate. The cook's `ashford` already requires `feast-tonight` and `bribe` requires `holds: purse`, so neither can also carry the `not`. A caught thief who already knew of the feast can still ask about Ashford, and one holding the purse can still bribe. An `all:` form would close this. It is a grammar widening for the lane, not this slice — [castle cook](../../encounter/dungeonspec/testdata/world-builder-v4-castle.yaml).
 - The refusal for an option's wrong `requires` changed from "`round` is neither" to "`round` is none of them", and it now names the `not` form. The studio mirrors the old sentence.
 - The `before == S` half of the stance edge survives mutation. A pair that turned away has settled, an arrival is spent, and an ending closes the run, so nothing reaches the fold a second time.
+- The walk site loads through `dungeonspec.Load` at this head and through rpg-api's `dungeons.NewFileRegistry` with encounter pinned to `a519bc76`. At the api's current pin, v0.154.0, `NewFileRegistry` refuses it ("`not` is not a key this build reads"). That registry loads the whole directory, so the stack will not boot with the site in its content until the api pins this head.
+- The api refuses `dnd5e:monsters:commoner`. The castle's `commoner` is a template of the castle file, so the site declares its own as `yard-commoner`.
 - rpg-api's `content/the-mad-king.yaml` has to mirror the cook's `pilfer` and the `not` requires before the castle walk — [rpg-api content](https://github.com/KirkDiggler/rpg-api/blob/dev/content/the-mad-king.yaml).
 
 ## Mistaken

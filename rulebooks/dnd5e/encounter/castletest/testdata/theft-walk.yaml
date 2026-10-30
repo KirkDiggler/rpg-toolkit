@@ -1,0 +1,228 @@
+# THE THEFT WALK (Frank's list S5, rpg-project#719): a throwaway site that
+# lives only in the franks-list-s1 api worktree, the castle stack's content
+# dir, and rpg-toolkit's encounter castletest/testdata (its one scenario
+# test). CUT FROM THE CASTLE through the gate walk
+# (dungeonspec/testdata/world-builder-v4-castle.yaml): the gatehouse, its five
+# walls, the open south door, the closed gate, and the open ground round it.
+# The gate guards, the captain and the watchers are dropped; nobody here
+# fights.
+#
+# The cast, both civil and neither on a table (they stand):
+#   cook    inside the gatehouse, the castle's cook (faction kitchen, his
+#           mind). `pilfer` (Sleight of Hand DC 13): a failure says "Thief!"
+#           and teaches `caught-in-kitchen` to whoever saw it. `pilfer` and
+#           `gossip` (Persuasion DC 10) both require
+#           `{ not: { fact: caught-in-kitchen } }`: withheld from a SPEAKER
+#           who knows it (D3), offered to anybody who does not.
+#   pedlar  on the open ground outside, four cells west of the start. One
+#           line, `tonight`, with no requires.
+#
+# The way out, `front-door`, is the start. The last one out ends the run:
+# `clean-getaway` (success) if nobody in the run knows `caught-in-kitchen`,
+# the leave ending's `if: { not: { fact } }`; `caught` (failure) if not.
+#
+# TRY IT (lobby: "theft-walk").
+#   1. Walk in through the open south door to the cook. The Speak menu offers
+#      `pilfer` and `gossip`.
+#   2. Say `pilfer` and fail it (Sleight of Hand, DC 13): the cook says
+#      "Thief!" and the record shows `caught-in-kitchen` learned. The cook's
+#      menu is now empty for that character. A second character who stayed
+#      outside still sees both lines when they walk in.
+#   3. Walk out to the pedlar: `tonight` is offered and answers.
+#   4. Leave by the front door: `caught`, outcome failure. Play again, beat
+#      the pilfer or skip it, and leave: `clean-getaway`, outcome success.
+version: 5
+key: theft-walk
+play: {void: transparent, lighting: bright, standing: centre-covered}
+# The castle's commoner, under an id no rulebook monster has.
+templates:
+  yard-commoner:
+    base: dnd5e:monsters:human
+    name: Commoner
+    hitDice: 1d8
+    actions: ['dnd5e:weapons:club']
+factions:
+- {id: kitchen, mind: cook}
+- {id: townsfolk}
+dispositions:
+- between: [kitchen, party]
+  stance: neutral
+- between: [townsfolk, party]
+  stance: neutral
+exits:
+- id: front-door
+  cell: {q: -2, r: 16}
+endings:
+- id: clean-getaway
+  when: {left: front-door}
+  if:
+    not: {fact: caught-in-kitchen}
+  outcome: success
+- id: caught
+  when: {left: front-door}
+  outcome: failure
+room:
+  version: 3
+  id: theft-walk-room
+  name: Theft Walk (S5)
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up, distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz}
+  scene:
+    version: 3
+    id: theft-walk-scene
+    name: Theft Walk (S5)
+    items: []
+    groups: []
+  room:
+    implicitRegionId: theft-walk-region
+    walls:
+    - id: gate-wall
+      label: gate-wall
+      line:
+        start: {x: -9.5, z: 9.75}
+        end: {x: 9.5, z: 9.75}
+      appearance: {assetRef: 'dnd5e:env:dark-fortress:45_wall_01', height: 3, thickness: 0.3, elevation: 0}
+      blocker:
+        blocksMovement: true
+        blocksLineOfSight: true
+        footprint: {width: 19, depth: 0.5, offsetX: 0, offsetZ: 0}
+      openings:
+      - id: gate-wall-opening
+        position: 9.5
+        width: 2
+        door: {id: gate-wall-door, assetRef: 'dnd5e:env:dark-fortress:wall_door_double_01'}
+    - id: gate-corner-wall
+      label: gate-corner-wall
+      line:
+        start: {x: -3.897114317029974, z: 9.75}
+        end: {x: -3.897114317029974, z: 11.75}
+      appearance: {assetRef: 'dnd5e:env:dark-fortress:45_wall_01', height: 3, thickness: 0.3, elevation: 0}
+      blocker:
+        blocksMovement: true
+        blocksLineOfSight: true
+        footprint: {width: 2.0, depth: 0.5, offsetX: 0, offsetZ: 0}
+      openings: []
+    - id: gatehouse-west-wall
+      label: gatehouse-west-wall
+      line:
+        start: {x: -7.794228634059947, z: 9.75}
+        end: {x: -7.794228634059947, z: 18.75}
+      appearance: {assetRef: 'dnd5e:env:dark-fortress:45_wall_01', height: 3, thickness: 0.3, elevation: 0}
+      blocker:
+        blocksMovement: true
+        blocksLineOfSight: true
+        footprint: {width: 9, depth: 0.5, offsetX: 0, offsetZ: 0}
+      openings: []
+    - id: gatehouse-east-wall
+      label: gatehouse-east-wall
+      line:
+        start: {x: 8.660254037844386, z: 9.75}
+        end: {x: 8.660254037844386, z: 18.75}
+      appearance: {assetRef: 'dnd5e:env:dark-fortress:45_wall_01', height: 3, thickness: 0.3, elevation: 0}
+      blocker:
+        blocksMovement: true
+        blocksLineOfSight: true
+        footprint: {width: 9, depth: 0.5, offsetX: 0, offsetZ: 0}
+      openings: []
+    - id: gatehouse-south-wall
+      label: gatehouse-south-wall
+      line:
+        start: {x: -7.794228634059947, z: 18.75}
+        end: {x: 8.660254037844386, z: 18.75}
+      appearance: {assetRef: 'dnd5e:env:dark-fortress:45_wall_01', height: 3, thickness: 0.3, elevation: 0}
+      blocker:
+        blocksMovement: true
+        blocksLineOfSight: true
+        footprint: {width: 16.454482671904334, depth: 0.5, offsetX: 0, offsetZ: 0}
+      openings:
+      - id: be88f72a-91bb-4568-baea-6b3c8e99ccd8
+        position: 7.901156922328045
+        width: 1.8749944567680359
+        door: {id: 26369b41-e58f-475d-963a-95086d4cd868, assetRef: 'dnd5e:env:dark-fortress:wall_door_double_01'}
+    regions:
+      - id: theft-walk-region
+        name: Theft Walk (S5)
+        lighting: { intensity: 1 }
+        cells:
+          - r: 5
+            q: [[-7, 2]]
+          - r: 6
+            q: [[-7, 2]]
+          - r: 7
+            q: [[-11, 5]]
+          - r: 8
+            q: [[-12, 4]]
+          - r: 9
+            q: [[-12, 4]]
+          - r: 10
+            q: [[-13, 3]]
+          - r: 11
+            q: [[-13, 3]]
+          - r: 12
+            q: [[-14, 2]]
+          - r: 13
+            q: [[-14, 2]]
+          - r: 14
+            q: [[-15, 1]]
+          - r: 15
+            q: [[-15, 1]]
+          - r: 16
+            q: [[-16, 0]]
+          - r: 17
+            q: [[-16, 0]]
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    monsterDeclarations:
+    - id: cook
+      ref: dnd5e:monsters:yard-commoner
+      startingCell:
+        location: {q: -3, r: 11}
+        facing: s
+      appearanceRef: dnd5e:npcs:kingdom:peasant-male-01
+    - id: pedlar
+      ref: dnd5e:monsters:yard-commoner
+      startingCell:
+        location: {q: -6, r: 16}
+        facing: e
+      appearanceRef: dnd5e:npcs:kingdom:merchant-01
+    partyStart: {q: -2, r: 16}
+    monsterBindings:
+      cook:
+        faction: kitchen
+        options:
+        - id: pilfer
+          say: (lift a pie from the sill)
+          check:
+          - {ability: sleight-of-hand, dc: 13}
+          requires:
+            not: {fact: caught-in-kitchen}
+          success:
+          - say: The cook never looks round.
+          failure:
+          - say: Thief!
+            fact: caught-in-kitchen
+        - id: gossip
+          say: Busy night?
+          check:
+          - {ability: persuasion, dc: 10}
+          requires:
+            not: {fact: caught-in-kitchen}
+          success:
+          - say: Feast for the whole court tonight.
+          failure:
+          - say: Out of my kitchen.
+      pedlar:
+        faction: townsfolk
+        options:
+        - id: tonight
+          say: What's all the bustle?
+          check:
+          - {ability: persuasion, dc: 5}
+          success:
+          - say: Feast tonight. Pies, if you can get one.
+          failure:
+          - say: Feast. Now leave me be.
+    doorBindings:
+      gate-wall-door:
+        closed: true
+      26369b41-e58f-475d-963a-95086d4cd868: {}
