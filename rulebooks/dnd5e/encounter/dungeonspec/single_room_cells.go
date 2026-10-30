@@ -89,6 +89,14 @@ func inBound(v int) bool { return v <= maxSiteCoord && v >= -maxSiteCoord }
 // the cells of every span that passes them.
 func expandRows(rows []RoomCellRow, path string, add errSink) []RoomCell {
 	var out []RoomCell
+	expandRowsAt(rows, path, add, func(c RoomCell, _, _ int) { out = append(out, c) })
+	return out
+}
+
+// expandRowsAt is the expansion itself: every canonical-form refusal, and
+// each cell of every span that passes them handed to visit with the row and
+// span that list it, so a later refusal can name the exact listing.
+func expandRowsAt(rows []RoomCellRow, path string, add errSink, visit func(c RoomCell, row, span int)) {
 	for j, row := range rows {
 		rowPath := fmt.Sprintf("%s[%d]", path, j)
 		if j > 0 && row.R <= rows[j-1].R {
@@ -117,11 +125,10 @@ func expandRows(rows []RoomCellRow, path string, add errSink) []RoomCell {
 				continue
 			}
 			for q := start; q <= end; q++ {
-				out = append(out, RoomCell{Q: q, R: row.R})
+				visit(RoomCell{Q: q, R: row.R}, j, k)
 			}
 		}
 	}
-	return out
 }
 
 // regionCells expands every region's rows, in authored order, after counting
@@ -138,37 +145,21 @@ func regionCells(regions []RoomRegion, add errSink) [][]RoomCell {
 	owner := map[RoomCell]int{}
 	for i, region := range regions {
 		path := pathOf(i)
-		for _, c := range expandRows(region.Cells, path, add) {
-			if first, taken := owner[c]; taken {
-				add(fmt.Sprintf("%s[%d].q[%d]", path, rowOf(region.Cells, c), spanOf(region.Cells[rowOf(region.Cells, c)], c.Q)),
-					fmt.Sprintf(errCellInTwoRegions, regions[first].ID))
-				continue
+		expandRowsAt(region.Cells, path, add, func(c RoomCell, j, k int) {
+			first, taken := owner[c]
+			switch {
+			case !taken:
+				owner[c] = i
+				out[i] = append(out[i], c)
+			case first != i:
+				add(fmt.Sprintf("%s[%d].q[%d]", path, j, k), fmt.Sprintf(errCellInTwoRegions, regions[first].ID))
 			}
-			owner[c] = i
-			out[i] = append(out[i], c)
-		}
+			// A cell the SAME region lists twice is a repeated row, already
+			// refused at the second listing as "rows must be ascending by
+			// r"; the region keeps it once and names no second owner.
+		})
 	}
 	return out
-}
-
-// rowOf is the index of the first row in rows at c's r that lists c.
-func rowOf(rows []RoomCellRow, c RoomCell) int {
-	for j, row := range rows {
-		if row.R == c.R && spanOf(row, c.Q) >= 0 {
-			return j
-		}
-	}
-	return 0
-}
-
-// spanOf is the index of the span in row that lists q, or -1.
-func spanOf(row RoomCellRow, q int) int {
-	for k, span := range row.Q {
-		if q >= span[0] && q <= span[1] {
-			return k
-		}
-	}
-	return -1
 }
 
 // regionValues judges the authored regions: a non-empty list, each with an

@@ -125,3 +125,16 @@ func TestRegionCells_NamesTheSecondOwner(t *testing.T) {
 	require.Equal(t, []RoomCell{{Q: 0, R: 0}, {Q: 1, R: 0}, {Q: 2, R: 0}, {Q: 3, R: 0}}, cells[0])
 	require.NotContains(t, cells[1], RoomCell{Q: 3, R: 0})
 }
+
+// TestRegionCells_ARepeatedRowIsRefusedAtItsSecondListing: a row a region
+// writes twice is one refusal, at the second listing, in the rows' own
+// words — never "already belongs" naming the region itself.
+func TestRegionCells_ARepeatedRowIsRefusedAtItsSecondListing(t *testing.T) {
+	var errs []FieldError
+	add := func(p, m string) { errs = append(errs, FieldError{Path: p, Message: m}) }
+	cells := regionCells([]RoomRegion{{ID: "region-yard", Cells: []RoomCellRow{
+		{R: 0, Q: [][2]int{{0, 3}}}, {R: 1, Q: [][2]int{{0, 0}}}, {R: 0, Q: [][2]int{{2, 5}}},
+	}}}, add)
+	require.Equal(t, []FieldError{{Path: "room.room.regions[0].cells[2]", Message: "rows must be ascending by r"}}, errs)
+	require.ElementsMatch(t, []RoomCell{{Q: 0, R: 0}, {Q: 1, R: 0}, {Q: 2, R: 0}, {Q: 3, R: 0}, {Q: 0, R: 1}, {Q: 4, R: 0}, {Q: 5, R: 0}}, cells[0])
+}
