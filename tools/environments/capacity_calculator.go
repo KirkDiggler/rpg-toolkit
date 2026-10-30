@@ -262,7 +262,7 @@ func generateSplitRecommendations(size spatial.Dimensions, _ CapacityConstraints
 				"room_1": entityCount / 2,
 				"room_2": (entityCount + 1) / 2, // Handle odd numbers
 			},
-			RecommendedConnectionType:    "door",
+			RecommendedConnectionType:    ConnectionTypeDoor,
 			SplitReason:                  "Horizontal split for manageable entity density",
 			EstimatedCapacityImprovement: 0.8,
 		}
@@ -281,7 +281,7 @@ func generateSplitRecommendations(size spatial.Dimensions, _ CapacityConstraints
 				"room_1": entityCount / 2,
 				"room_2": (entityCount + 1) / 2,
 			},
-			RecommendedConnectionType:    "door",
+			RecommendedConnectionType:    ConnectionTypeDoor,
 			SplitReason:                  "Vertical split for manageable entity density",
 			EstimatedCapacityImprovement: 0.8,
 		}
@@ -305,7 +305,7 @@ func generateSplitRecommendations(size spatial.Dimensions, _ CapacityConstraints
 				"side_room_1":  entityCount / 6,
 				"side_room_2":  entityCount / 6,
 			},
-			RecommendedConnectionType:    "passage",
+			RecommendedConnectionType:    ConnectionTypePassage,
 			SplitReason:                  "Hub and spoke design for complex encounters",
 			EstimatedCapacityImprovement: 0.9,
 		}
