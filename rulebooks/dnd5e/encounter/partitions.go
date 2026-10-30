@@ -144,6 +144,51 @@ func (f *field) partitionAt(cell spatial.Position) (PartitionID, bool) {
 // The field itself is not edited: the canvas is built on a shallow copy whose
 // contributor lists are fresh.
 func (f *field) partitionFloor(doorInputs []DoorInput) ([][]spatial.Position, []spatial.Position, error) {
+	canvas, err := f.partitionCanvas(doorInputs)
+	if err != nil {
+		return nil, nil, err
+	}
+	// THE LOCAL INDEX (rpg-project#725, R8). Built once over the fixed
+	// contributors this canvas holds, so each edge and each cell asks only
+	// the few whose reach is near it; see [partitionSight].
+	sight := newPartitionSight(canvas)
+	var floor []spatial.Position
+	for _, cells := range f.regionCells {
+		floor = append(floor, cells...)
+	}
+	sortCells(floor)
+	visited := make(map[spatial.Position]bool, len(floor))
+	groups := make([][]spatial.Position, 0)
+	for _, seed := range floor {
+		if visited[seed] {
+			continue
+		}
+		component, err := spatial.Field(canvas.GetGrid(), spatial.FieldInput{
+			Sources: []spatial.Position{seed},
+			Passable: func(from, to spatial.Position) bool {
+				_, owned := f.regionOf(to)
+				return owned && !sight.edgeBlocked(from, to)
+			},
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		group := make([]spatial.Position, 0, len(component.Dist))
+		for cell := range component.Dist {
+			group = append(group, cell)
+			visited[cell] = true
+		}
+		sortCells(group)
+		groups = append(groups, group)
+	}
+	return joinOpaqueFooting(canvas, groups, sight.opaqueAt)
+}
+
+// partitionCanvas is the canvas the partition pass reads: built on a shallow
+// copy of the field whose contributor lists are fresh and hold only the
+// FIXED ones — immutable placed contributors and props — with every door
+// closed. The field itself is not edited.
+func (f *field) partitionCanvas(doorInputs []DoorInput) (*canvasRoom, error) {
 	fixed := *f
 	fixed.holdings = nil
 	fixed.sightPass = nil
@@ -163,40 +208,7 @@ func (f *field) partitionFloor(doorInputs []DoorInput) ([][]spatial.Position, []
 	for _, door := range doors {
 		door.state = DoorIsClosed()
 	}
-	canvas, err := fixed.compileCanvas(doors, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-	var floor []spatial.Position
-	for _, cells := range f.regionCells {
-		floor = append(floor, cells...)
-	}
-	sortCells(floor)
-	visited := make(map[spatial.Position]bool, len(floor))
-	groups := make([][]spatial.Position, 0)
-	for _, seed := range floor {
-		if visited[seed] {
-			continue
-		}
-		component, err := spatial.Field(canvas.GetGrid(), spatial.FieldInput{
-			Sources: []spatial.Position{seed},
-			Passable: func(from, to spatial.Position) bool {
-				_, owned := f.regionOf(to)
-				return owned && !canvas.IsLineOfSightBlocked(from, to)
-			},
-		})
-		if err != nil {
-			return nil, nil, err
-		}
-		group := make([]spatial.Position, 0, len(component.Dist))
-		for cell := range component.Dist {
-			group = append(group, cell)
-			visited[cell] = true
-		}
-		sortCells(group)
-		groups = append(groups, group)
-	}
-	return joinOpaqueFooting(canvas, groups)
+	return fixed.compileCanvas(doors, nil)
 }
 
 // permanentOpaqueFootingAt uses the same centre-contact standing rule as the
@@ -214,6 +226,9 @@ func (f *field) permanentOpaqueFootingAt(cell spatial.Position) (bool, error) {
 		if p.mutable() || !p.blocksMovement || !p.blocksLineOfSight {
 			continue
 		}
+		if !p.reach.mayTouch(p.placement.Origin, centre, centre) {
+			continue
+		}
 		contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{Placement: p.placement, From: centre, To: centre})
 		if err != nil {
 			return false, err
@@ -229,21 +244,26 @@ func (f *field) permanentOpaqueFootingAt(cell spatial.Position) (bool, error) {
 // footing only when it borders ONE clear component; never join two rooms through
 // a wall/closed door. Permanently occupied ambiguous footing is scenery, never
 // a phantom discovery region. Doors retain owned floor because they can open.
-func joinOpaqueFooting(canvas *canvasRoom, groups [][]spatial.Position) ([][]spatial.Position, []spatial.Position, error) {
+//
+// opaqueAt is [canvasSightObstructions.At]'s answer for a cell — the indexed
+// [partitionSight.opaqueAt] in the one caller.
+func joinOpaqueFooting(
+	canvas *canvasRoom, groups [][]spatial.Position, opaqueAt func(spatial.Position) (bool, error),
+) ([][]spatial.Position, []spatial.Position, error) {
 	owner := make(map[spatial.Position]int)
 	opaque := make([]bool, len(groups))
-	obstructions := canvasSightObstructions{canvas: canvas}
 	for i, cells := range groups {
 		opaque[i] = true
 		for _, cell := range cells {
 			owner[cell] = i
-			at, err := obstructions.At(spatial.SightCellInput{At: cell})
+			if !opaque[i] {
+				continue
+			}
+			blocked, err := opaqueAt(cell)
 			if err != nil {
 				return nil, nil, err
 			}
-			if !at.Blocked {
-				opaque[i] = false
-			}
+			opaque[i] = blocked
 		}
 	}
 	joined := make([][]spatial.Position, len(groups))
@@ -265,8 +285,13 @@ func joinOpaqueFooting(canvas *canvasRoom, groups [][]spatial.Position) ([][]spa
 			}
 		}
 		if target < 0 || ambiguous {
+			// A group with any clear cell is not permanent whatever its
+			// cells hold, so nothing more is asked of it.
 			permanent := opaque[i]
 			for _, cell := range cells {
+				if !permanent {
+					break
+				}
 				fixed, err := canvas.field.permanentOpaqueFootingAt(cell)
 				if err != nil {
 					return nil, nil, err
