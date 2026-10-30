@@ -1,6 +1,6 @@
 module github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e
 
-go 1.24.1
+go 1.27.0
 
 // v0.199.1 was tagged by an out-of-order tagging run at the commit before
 // v0.199.0's change: a higher version with older content (rpg-toolkit#1941).
