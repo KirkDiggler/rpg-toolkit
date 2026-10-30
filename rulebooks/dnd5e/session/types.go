@@ -814,7 +814,10 @@ type Status struct {
 	Outcome *Outcome `json:"outcome,omitempty"`
 }
 
-// Outcome describes how an encounter ended.
+// Outcome describes how an encounter ended. It carries no result: the
+// ending's declared success or failure reaches a host on the ended clock
+// entry ([ClockEntry.Outcome]), and this projection drops encounter's
+// Outcome.Result (rpg-project#733).
 type Outcome struct {
 	// Ending is the key of the ending that fired.
 	Ending string `json:"ending"`
