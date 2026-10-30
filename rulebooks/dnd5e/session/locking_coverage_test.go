@@ -7,7 +7,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -26,12 +26,23 @@ func TestSessionLockCoverageSuite(t *testing.T) {
 }
 
 func (s *SessionLockCoverageSuite) TestEverySessionOperationAcquiresAndDefersRelease() {
-	pkgs, err := parser.ParseDir(token.NewFileSet(), ".", func(info fs.FileInfo) bool {
-		return !strings.HasSuffix(info.Name(), "_test.go")
-	}, 0)
+	fset := token.NewFileSet()
+	entries, err := os.ReadDir(".")
 	s.Require().NoError(err)
+	files := make(map[string]*ast.File)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(fset, entry.Name(), nil, 0)
+		s.Require().NoError(err)
+		if file.Name.Name == "session" {
+			files[entry.Name()] = file
+		}
+	}
+	s.Require().NotEmpty(files, "expected to parse package session")
 	methods := map[string]*ast.FuncDecl{}
-	for _, file := range pkgs["session"].Files {
+	for _, file := range files {
 		for _, decl := range file.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
 			if !ok || fn.Recv == nil {
