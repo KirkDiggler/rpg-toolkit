@@ -406,6 +406,10 @@ type RoomMonsterSource struct {
 	// rules/template identity and the binding's faction. No catalog is read.
 	AppearanceRef string `yaml:"appearanceRef,omitempty" json:"appearanceRef,omitempty"`
 
+	// DefaultActivityRef is an optional opaque presentation default, independent
+	// of appearance, rules and faction. It is not a current animation phase.
+	DefaultActivityRef string `yaml:"defaultActivityRef,omitempty" json:"defaultActivityRef,omitempty"`
+
 	// StartingCell is where the monster stands and which way it faces when
 	// it arrives. See [RoomStartingCell].
 	StartingCell RoomStartingCell `yaml:"startingCell" json:"startingCell"`
