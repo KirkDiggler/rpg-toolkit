@@ -7,7 +7,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
+	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -257,15 +257,24 @@ var allowed = func() map[string]string {
 // every route by which a host could come to name an inner type.
 func (s *BoundaryTestSuite) TestNoInnerTypeCrossesTheBoundary() {
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, ".", func(fi fs.FileInfo) bool {
-		return !strings.HasSuffix(fi.Name(), "_test.go")
-	}, 0)
+	entries, err := os.ReadDir(".")
 	s.Require().NoError(err)
-	s.Require().Contains(pkgs, "session", "expected to parse package session")
+	files := make(map[string]*ast.File)
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		file, err := parser.ParseFile(fset, entry.Name(), nil, 0)
+		s.Require().NoError(err)
+		if file.Name.Name == "session" {
+			files[entry.Name()] = file
+		}
+	}
+	s.Require().NotEmpty(files, "expected to parse package session")
 
 	var violations []string
 
-	for _, file := range pkgs["session"].Files {
+	for _, file := range files {
 		imports := importsOf(file)
 
 		record := func(node ast.Node, where string) {
