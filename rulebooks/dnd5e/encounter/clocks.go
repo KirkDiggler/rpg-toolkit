@@ -1101,7 +1101,7 @@ func (e *Encounter) executeTurnIntent(
 		// running.
 		budget.MovementFeet -= res.moved * FeetPerCell
 
-		intelDeltas, serr := e.settleWalkOn(coords.Clock, audience, res.moved)
+		intelDeltas, serr := e.settleWalkOn(coords.Clock, audience, res.moved+res.opened)
 		if serr != nil {
 			return false, nil, serr
 		}
@@ -1265,7 +1265,7 @@ func (e *Encounter) executeTurnIntent(
 		// case's rule, for the Move case's reason.
 		budget.MovementFeet -= res.moved * FeetPerCell
 
-		intelDeltas, serr := e.settleWalkOn(coords.Clock, audience, res.moved)
+		intelDeltas, serr := e.settleWalkOn(coords.Clock, audience, res.moved+res.opened)
 		if serr != nil {
 			return false, nil, serr
 		}
@@ -1436,7 +1436,9 @@ func (e *Encounter) disengageBeforeWalk(
 	if sheet.BonusDisengage.Ref == "" {
 		return nil, nil
 	}
-	walked, err := e.standableEnd(member, path)
+	// The cells it will walk, judged as the walk judges them: its own walk,
+	// with the doors it opens standing open ([Encounter.walkableEnd]).
+	walked, err := e.walkableEnd(member, path, true)
 	if err != nil {
 		return nil, fmt.Errorf("disengage %q: %w", member, err)
 	}
@@ -1540,6 +1542,11 @@ type walkResult struct {
 	// moved is how many cells were actually stepped.
 	moved int
 
+	// opened is how many shut doors the walk opened on its way
+	// ([Encounter.openAhead]). An opened door changed what somebody can see
+	// even when no step followed it, so the walk's settle counts it.
+	opened int
+
 	// dropped is true when a reaction put the mover down mid-walk. The
 	// mover stands in the cell they were LEAVING (ruling R6).
 	dropped bool
@@ -1579,9 +1586,12 @@ func (e *Encounter) walkPath(
 ) (walkResult, error) {
 	var res walkResult
 
-	// THE WALK ENDS WHERE ITS WALKER CAN STAND ([Encounter.standableEnd]):
-	// the tail a budget cut onto an ally is dropped before the first step.
-	path, err := e.standableEnd(mover, path)
+	// THE WALK ENDS WHERE ITS WALKER CAN STAND ([Encounter.walkableEnd]):
+	// the tail a budget cut onto an ally is dropped before the first step,
+	// judged over the whole walk with the doors a creature's own walk
+	// opens standing open, and an imposed walk's doors as they are.
+	opens := !imposed
+	path, err := e.walkableEnd(mover, path, opens)
 	if err != nil {
 		return res, err
 	}
@@ -1602,6 +1612,20 @@ func (e *Encounter) walkPath(
 		from, placed := e.canvas.GetEntityPosition(string(mover))
 		if !placed {
 			break
+		}
+
+		// THE DOOR IN FRONT OPENS BEFORE THE STEP IS ANNOUNCED
+		// ([Encounter.openAhead]): a creature opens the door and then steps
+		// through it, so a step paused for a reaction resumes through an
+		// open door. A walk nobody chose opens nothing.
+		if opens {
+			opened, oerr := e.openAhead(mover, cell, cause)
+			if oerr != nil {
+				return res, oerr
+			}
+			if opened {
+				res.opened++
+			}
 		}
 
 		// FORCED IS THE CALLER'S ANSWER, carried and not decided here. A
@@ -1796,7 +1820,7 @@ func (e *Encounter) routedRoute(
 	// fleeing. Every other authored cell takes the exact-cell route, as it
 	// always has.
 	if it.AnchorAt == nil || it.Policy == MoveAway {
-		return e.Route(RouteInput{Mover: mover, Policy: it.Policy, Anchor: anchor, Budget: budget})
+		return e.route(RouteInput{Mover: mover, Policy: it.Policy, Anchor: anchor, Budget: budget}, true)
 	}
 	if budget <= 0 {
 		return RouteOutput{}, nil
@@ -1827,7 +1851,29 @@ func (e *Encounter) routedRoute(
 		return RouteOutput{}, err
 	}
 	if len(path) == 0 {
-		return e.Route(RouteInput{Mover: mover, Policy: MoveToward, Anchor: anchor, Budget: budget})
+		out, err := e.route(RouteInput{Mover: mover, Policy: MoveToward, Anchor: anchor, Budget: budget}, true)
+		if err != nil || from == anchor || len(out.Path) > 0 {
+			return out, err
+		}
+		// A LOCKED DOOR IS A REASON, AND THE RECORD SAYS IT (lane
+		// rpg-project#722, D5): a march whose only way is through a lock
+		// does not merely find "nowhere nearer" — it is stopped by that
+		// door, and the stayed beat names it in the lock refusal's own
+		// words ([Encounter.lockedDoorInTheWay]).
+		//
+		// ASKED ONLY WHEN THE CREATURE STAYS. StoppedBy is read only off an
+		// empty route (the stayed beat); a fallback that still walks it
+		// nearer says nothing, so the second flood is paid only by the round
+		// that writes the sentence.
+		door, locked, lerr := e.lockedDoorInTheWay(mover, from, anchor)
+		if lerr != nil {
+			return RouteOutput{}, lerr
+		}
+		if locked {
+			out.StoppedBy = lockedDoorPhrase(door)
+		}
+
+		return out, nil
 	}
 	if len(path) > budget {
 		path = path[:budget]
@@ -1870,9 +1916,10 @@ func (e *Encounter) walkWorld(
 ) (walkResult, error) {
 	var res walkResult
 
-	// THE WALK ENDS WHERE ITS WALKER CAN STAND ([Encounter.standableEnd]):
-	// the tail a budget cut onto an ally is dropped before the first step.
-	path, err := e.standableEnd(mover, path)
+	// THE WALK ENDS WHERE ITS WALKER CAN STAND ([Encounter.walkableEnd]),
+	// with the doors it opens standing open: a world round's walk is the
+	// creature's own.
+	path, err := e.walkableEnd(mover, path, true)
 	if err != nil {
 		return res, err
 	}
@@ -1880,6 +1927,14 @@ func (e *Encounter) walkWorld(
 	for _, cell := range path {
 		if _, placed := e.canvas.GetEntityPosition(string(mover)); !placed {
 			break
+		}
+		// The door in front opens before the step ([Encounter.openAhead]).
+		opened, oerr := e.openAhead(mover, cell, cause)
+		if oerr != nil {
+			return res, oerr
+		}
+		if opened {
+			res.opened++
 		}
 		action, stepped, stepErr := e.stepTo(m, cell)
 		if stepErr != nil {
@@ -2135,6 +2190,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 				ID:            subjectID,
 				Kind:          other.Kind,
 				Opposed:       e.opposed(m.ID, subjectID),
+				Allied:        e.alliedAcross(m.ID, subjectID),
 				Position:      pos,
 				DistanceCells: e.Distance(ownCell, pos),
 				Path:          path,
@@ -2144,9 +2200,18 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		}
 
 		dist := e.Distance(ownCell, pos)
+		// AN ALLY IS SOMEBODY TO WALK UP TO, NEVER INTO RANGE OF
+		// (rpg-project#717): nothing about it is in reach, and its route
+		// ends beside it ([SeenMember.Allied]).
+		allied := e.alliedAcross(m.ID, subjectID)
+		closeTo := bestRangeCells
 		inReach := make(map[core.Ref]bool, len(sheet.Actions))
-		for _, a := range sheet.Actions {
-			inReach[a.Ref] = dist <= float64(CellsFromFeet(a.RangeFeet))
+		if allied {
+			closeTo = 1
+		} else {
+			for _, a := range sheet.Actions {
+				inReach[a.Ref] = dist <= float64(CellsFromFeet(a.RangeFeet))
+			}
 		}
 
 		// Path ends on the NEAREST WALKABLE cell (to this member's own
@@ -2172,13 +2237,13 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		// sighting, every Act call — see the field's own doc for why that
 		// cost is accepted rather than deferred behind a lazy capability.
 		path, _, routeErr := query.routeTo(m.ID, ownCell, func(cell spatial.Position) bool {
-			return e.Distance(cell, pos) <= float64(bestRangeCells)
+			return e.Distance(cell, pos) <= float64(closeTo)
 		})
 
 		if routeErr != nil {
 			return MonsterView{}, routeErr
 		}
-		away, routeErr := query.routeAway(m.ID, ownCell, pos, 1)
+		away, routeErr := query.routeAway(m.ID, ownCell, pos, 1, true)
 		if routeErr != nil {
 			return MonsterView{}, routeErr
 		}
@@ -2188,6 +2253,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 			ID:            subjectID,
 			Kind:          other.Kind,
 			Opposed:       e.opposed(m.ID, subjectID),
+			Allied:        allied,
 			Standing:      !query.down[subjectID],
 			Position:      pos,
 			DistanceCells: dist,
@@ -2308,7 +2374,7 @@ func (e *cellQuery) routeTo(
 		return nil, true, nil
 	}
 
-	field, err := e.floodFrom(mover, mover, from, nil, 0)
+	field, err := e.floodFrom(mover, mover, from, nil, 0, true)
 	if err != nil {
 		return nil, false, err
 	}
@@ -2353,7 +2419,7 @@ func (e *cellQuery) routeToRemembered(
 			return false, nil
 		}
 		return e.blockedOnlyByCreatures(mover, cell)
-	}, 0)
+	}, 0, true)
 	if err != nil {
 		return nil, false, err
 	}
@@ -2379,6 +2445,14 @@ func (e *cellQuery) routeToRemembered(
 // directive routes pass it, because being pushed at a wall that is not a wall
 // is the illusion breaking rather than a path anybody planned.
 //
+// `opens` is whether the walk this flood plans OPENS DOORS (rpg-project#715):
+// a creature's own walk does, so a closed, unlocked door the walker can see
+// is passable to it at the price of the step onto it — the door
+// [cellQuery.doorToOpen] says the step would open. Every walk nobody chose
+// (a directive, the public [Encounter.Route]) and every estimate of somebody
+// else's reach (a threat zone) passes false and is closed by a shut door
+// exactly as before.
+//
 // `limit` bounds the flood to cells within that many steps, and ZERO MEANS
 // UNBOUNDED — [spatial.FieldInput.Limit]'s own contract, carried through
 // rather than reinterpreted here. A caller with a real budget of zero has
@@ -2391,16 +2465,16 @@ func (e *cellQuery) routeToRemembered(
 // `forgiven` predicate is computed every time, because a predicate cannot be
 // a key.
 func (e *cellQuery) floodFrom(
-	mover, walker MemberID, from spatial.Position, forgiven func(spatial.Position) (bool, error), limit int,
+	mover, walker MemberID, from spatial.Position, forgiven func(spatial.Position) (bool, error), limit int, opens bool,
 ) (spatial.FieldOutput, error) {
 	if forgiven != nil {
-		return e.computeFlood(mover, walker, from, forgiven, limit)
+		return e.computeFlood(mover, walker, from, forgiven, limit, opens)
 	}
-	key := floodKey{mover: mover, walker: walker, from: from, limit: limit}
+	key := floodKey{mover: mover, walker: walker, from: from, limit: limit, opens: opens}
 	if field, ok := e.floods[key]; ok {
 		return field, nil
 	}
-	field, err := e.computeFlood(mover, walker, from, nil, limit)
+	field, err := e.computeFlood(mover, walker, from, nil, limit, opens)
 	if err != nil {
 		return spatial.FieldOutput{}, err
 	}
@@ -2415,7 +2489,7 @@ func (e *cellQuery) floodFrom(
 // computeFlood is [cellQuery.floodFrom] without the memo: one flood, counted
 // on the run's floodsComputed.
 func (e *cellQuery) computeFlood(
-	mover, walker MemberID, from spatial.Position, forgiven func(spatial.Position) (bool, error), limit int,
+	mover, walker MemberID, from spatial.Position, forgiven func(spatial.Position) (bool, error), limit int, opens bool,
 ) (spatial.FieldOutput, error) {
 	e.floodsComputed++
 	var crossingErr error
@@ -2431,13 +2505,29 @@ func (e *cellQuery) computeFlood(
 			if crossingErr != nil {
 				return false
 			}
-			_, blocked, err := e.crossingBlocked(a, b)
+			// A DOOR THIS WALK WOULD OPEN is not in its way: the step onto
+			// it is the step through it, and costs what any step costs. Asked
+			// only of a step something closes, so an open floor pays nothing
+			// for the question.
+			var door *doorRecord
+			prop, blocked, err := e.crossingBlocked(a, b)
 			if err != nil {
 				crossingErr = err
 				return false
 			}
 			if blocked {
-				return false
+				if !opens {
+					return false
+				}
+				d, ok, err := e.doorPast(mover, a, b, prop, true)
+				if err != nil {
+					crossingErr = err
+					return false
+				}
+				if !ok {
+					return false
+				}
+				door = d
 			}
 			if e.masqueradeBlocks(walker, a, b) {
 				return false
@@ -2448,6 +2538,19 @@ func (e *cellQuery) computeFlood(
 				return false
 			}
 			if fact.Passage != PassageBlocked {
+				return true
+			}
+			if opens && door == nil && standsADoor(fact) {
+				d, ok, err := e.doorPast(mover, a, b, "", false)
+				if err != nil {
+					crossingErr = err
+					return false
+				}
+				if ok {
+					door = d
+				}
+			}
+			if door != nil && blockedOnlyBy(fact, door) {
 				return true
 			}
 			if forgiven == nil {

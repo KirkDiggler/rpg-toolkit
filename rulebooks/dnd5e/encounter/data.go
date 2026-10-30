@@ -566,12 +566,28 @@ type DispositionData struct {
 	Between []FactionID  `json:"between"`
 	Stance  string       `json:"stance"`
 	Until   *TriggerData `json:"until,omitempty"`
+
+	// Then is a ONE-STEP until's [UntilStep.Then], omitted when empty so a
+	// disposition written before it existed persists byte for byte as it
+	// did.
+	Then string `json:"then,omitempty"`
+
+	// Steps is an until of MORE THAN ONE step, in order (rpg-project#717).
+	// A one-step until persists as Until and Then, the shape every saved run
+	// before the list has, so a blob never carries both.
+	Steps []UntilStepData `json:"steps,omitempty"`
+}
+
+// UntilStepData is the persistent representation of one [UntilStep].
+type UntilStepData struct {
+	When TriggerData `json:"when"`
+	Then string      `json:"then,omitempty"`
 }
 
 // TriggerData is the persistent representation of one [Trigger] — the
 // predicate grammar on the wire (rpg-project#375). Kind is one of
 // reached_position, external, member_down, exited_holding, round, fact,
-// stance and holds, and the other fields are populated per kind exactly as
+// stance, holds, left and not (its inner in Not), and the other fields are populated per kind exactly as
 // [EndingData]'s own are; a disposition's until persists as one of these,
 // an ending is one of these plus its key, and an option's requirement is a
 // fact or a holds (rpg-project#569) — `holds` naming its prop in Item.
@@ -585,6 +601,10 @@ type TriggerData struct {
 	Fact    FactID        `json:"fact,omitempty"`
 	Between []FactionID   `json:"between,omitempty"`
 	Stance  string        `json:"stance,omitempty"`
+
+	// Not is a `not` trigger's one inner predicate (rpg-project#719), kind
+	// "not"; written only for that kind.
+	Not *TriggerData `json:"not,omitempty"`
 }
 
 // triggerDataFrom renders a trigger for the blob — ONE switch for endings and
@@ -609,6 +629,11 @@ func triggerDataFrom(t Trigger) TriggerData {
 		return TriggerData{Kind: "stance", Between: []FactionID{t.Between[0], t.Between[1]}, Stance: string(t.Stance)}
 	case TriggerHolds:
 		return TriggerData{Kind: "holds", Item: t.Prop}
+	case TriggerLeft:
+		return TriggerData{Kind: "left", Exit: t.Exit}
+	case TriggerNot:
+		inner := triggerDataFrom(t.Inner)
+		return TriggerData{Kind: "not", Not: &inner}
 	}
 	return TriggerData{}
 }
@@ -643,6 +668,17 @@ func triggerFromData(td TriggerData) (Trigger, error) {
 		return TriggerStance{Between: [2]FactionID{td.Between[0], td.Between[1]}, Stance: Stance(td.Stance)}, nil
 	case "holds":
 		return TriggerHolds{Prop: td.Item}, nil
+	case "left":
+		return TriggerLeft{Exit: td.Exit}, nil
+	case "not":
+		if td.Not == nil {
+			return nil, fmt.Errorf("not names nothing to negate: %w", ErrNoEnding)
+		}
+		inner, err := triggerFromData(*td.Not)
+		if err != nil {
+			return nil, fmt.Errorf("not: %w", err)
+		}
+		return TriggerNot{Inner: inner}, nil
 	default:
 		return nil, fmt.Errorf("unknown trigger kind %q: %w", td.Kind, ErrNoEnding)
 	}
@@ -1157,7 +1193,7 @@ func validateWorldFacts(
 	minted[string(cellsKnownKind)] = ""
 	settled := make(map[string]factionPair, 2*len(turnable))
 	for _, pair := range turnable {
-		for _, to := range settledStances {
+		for _, to := range floor.settledStancesOf(pair) {
 			settled[string(settledKind(to, pair))] = pair
 		}
 	}
@@ -1508,6 +1544,13 @@ type WhenData struct {
 	// condition it always meant.
 	Scope string `json:"scope,omitempty"`
 
+	// Who is the member a `fell` condition names ([behavior.When.Who],
+	// rpg-project#716). Scope's reason makes it a field here: a `who` row
+	// saved without it would load back reading every fall, the king's and
+	// the cook's alike. Omitted when empty, so a record written before `who`
+	// existed loads to exactly the condition it always meant.
+	Who string `json:"who,omitempty"`
+
 	// Heard is a `heard: { kind, within }` condition, Fact a `fact: <id>`
 	// one, and Not the one condition a `not` wraps. Each omitted when it is
 	// not the condition this entry names.
@@ -1663,7 +1706,7 @@ func answerDataFrom(entry Answer) AnswerData {
 func whenDataFrom(w When) WhenData {
 	out := WhenData{
 		Enemy: string(w.Enemy), Deed: w.Deed, Within: w.Within,
-		Scope: string(w.Scope), Fact: w.Fact, Threat: string(w.Threat),
+		Scope: string(w.Scope), Who: string(w.Who), Fact: w.Fact, Threat: string(w.Threat),
 	}
 	if w.Heard != nil {
 		out.Heard = &HeardData{Kind: w.Heard.Kind, Within: w.Heard.Within}
@@ -1775,7 +1818,7 @@ func answerFromData(row AnswerData) Answer {
 func whenFromData(w WhenData) When {
 	out := When{
 		Enemy: EnemyWord(w.Enemy), Deed: w.Deed, Within: w.Within,
-		Scope: DeedScope(w.Scope), Fact: w.Fact, Threat: behavior.ThreatWord(w.Threat),
+		Scope: DeedScope(w.Scope), Who: core.EntityID(w.Who), Fact: w.Fact, Threat: behavior.ThreatWord(w.Threat),
 	}
 	if w.Heard != nil {
 		out.Heard = &HeardWhen{Kind: w.Heard.Kind, Within: w.Heard.Within}
@@ -2142,23 +2185,41 @@ type EndingData struct {
 	Fact    FactID      `json:"fact,omitempty"`
 	Between []FactionID `json:"between,omitempty"`
 	Stance  string      `json:"stance,omitempty"`
+
+	// If and Outcome carry a `left` ending's [EndingInput.If] and
+	// [EndingInput.Result] (rpg-project#716). Both omitted when empty, so an
+	// ending written before them is byte-identical.
+	If      *TriggerData `json:"if,omitempty"`
+	Outcome EndingResult `json:"outcome,omitempty"`
+
+	// Not carries a `not` ending's inner predicate (rpg-project#719), kind
+	// "not"; omitted for every other kind.
+	Not *TriggerData `json:"not,omitempty"`
 }
 
 // triggerData is the ending's predicate half, as a [TriggerData].
 func (ed EndingData) triggerData() TriggerData {
 	return TriggerData{
 		Kind: ed.Kind, At: ed.At, Member: ed.Member, Exit: ed.Exit, Item: ed.Item,
-		Round: ed.Round, Fact: ed.Fact, Between: ed.Between, Stance: ed.Stance,
+		Round: ed.Round, Fact: ed.Fact, Between: ed.Between, Stance: ed.Stance, Not: ed.Not,
 	}
 }
 
 // endingDataFrom is an ending as the blob carries it: its key, and its
 // trigger rendered by the one switch every trigger goes through.
-func endingDataFrom(key string, td TriggerData) EndingData {
-	return EndingData{
-		Key: key, Kind: td.Kind, At: td.At, Member: td.Member, Exit: td.Exit, Item: td.Item,
-		Round: td.Round, Fact: td.Fact, Between: td.Between, Stance: td.Stance,
+func endingDataFrom(de declaredEnding) EndingData {
+	td := triggerDataFrom(de.trigger)
+	out := EndingData{
+		Key: de.key, Kind: td.Kind, At: td.At, Member: td.Member, Exit: td.Exit, Item: td.Item,
+		Round: td.Round, Fact: td.Fact, Between: td.Between, Stance: td.Stance, Not: td.Not,
+		Outcome: de.result,
 	}
+	if de.cond != nil {
+		cond := triggerDataFrom(de.cond)
+		out.If = &cond
+	}
+
+	return out
 }
 
 // ToData returns a persistent snapshot of this Encounter.
@@ -2249,7 +2310,7 @@ func (e *Encounter) snapshot() EncounterData {
 	// switch dispositions' untils go through too (triggerDataFrom).
 	endingsData := make([]EndingData, len(e.endings))
 	for i, de := range e.endings {
-		endingsData[i] = endingDataFrom(de.key, triggerDataFrom(de.trigger))
+		endingsData[i] = endingDataFrom(de)
 	}
 
 	// Deep-copy everMembers in sorted order for determinism
@@ -2474,9 +2535,15 @@ func fieldDataFrom(f *field) FieldData {
 		out.Dispositions = make([]DispositionData, len(f.dispositions))
 		for i, d := range f.dispositions {
 			dd := DispositionData{Between: []FactionID{d.Between[0], d.Between[1]}, Stance: string(d.Stance)}
-			if d.Until != nil {
-				td := triggerDataFrom(d.Until)
-				dd.Until = &td
+			switch len(d.Until) {
+			case 0:
+			case 1:
+				td := triggerDataFrom(d.Until[0].When)
+				dd.Until, dd.Then = &td, string(d.Until[0].Then)
+			default:
+				for _, step := range d.Until {
+					dd.Steps = append(dd.Steps, UntilStepData{When: triggerDataFrom(step.When), Then: string(step.Then)})
+				}
 			}
 			out.Dispositions[i] = dd
 		}
@@ -2697,7 +2764,13 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		seenEndingKeys[ed.Key] = true
 
 		switch ed.Kind {
-		case "reached_position", "external", "member_down", "exited_holding", "round", "fact", "stance":
+		case "reached_position", "external", "member_down", "exited_holding", "round", "fact", "stance", "left":
+		case "not":
+			// The inner half is bytes too: refused here as any persisted
+			// trigger is, before validateEndingTriggers judges its scope.
+			if _, nerr := triggerFromData(ed.triggerData()); nerr != nil {
+				return nil, fmt.Errorf("load encounter: ending %q: %w: %w", ed.Key, ErrInvalidData, nerr)
+			}
 		default:
 			return nil, fmt.Errorf("load encounter: unknown ending kind %q: %w: %w", ed.Kind, ErrInvalidData, ErrNoEnding)
 		}
@@ -2739,6 +2812,16 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			return nil, fmt.Errorf(
 				"load encounter: ending %q exited_holding names exit %q and item %q, and needs both: %w: %w",
 				ed.Key, ed.Exit, ed.Item, ErrInvalidData, ErrNoEnding)
+		}
+
+		// A `left` ending's `if` is a predicate in the one grammar, so it is
+		// refused here as any persisted trigger is: a kind this build does
+		// not write is bytes that are not a condition. Which kinds an `if`
+		// may be is validateEndingTriggers' question, below.
+		if ed.If != nil {
+			if _, ierr := triggerFromData(*ed.If); ierr != nil {
+				return nil, fmt.Errorf("load encounter: ending %q if: %w: %w", ed.Key, ErrInvalidData, ierr)
+			}
 		}
 	}
 
@@ -2790,6 +2873,12 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 	if err = validateDoorInputs(f, doorInputs); err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+	// THE WALL PARTITIONS, derived again from what the data persisted — the
+	// regions, walls, props and doors — exactly as Setup derived them. The
+	// data carries none of them (rpg-project#725 R8, partitions.go).
+	if err = f.derivePartitions(doorInputs); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 
@@ -2972,7 +3061,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// switch on ed.Kind exists exactly once, not twice.
 	endingInputsForValidation := make([]EndingInput, len(data.Endings))
 	for i, ed := range data.Endings {
-		endingInputsForValidation[i] = EndingInput{Key: ed.Key, Trigger: endingTriggerFromData(ed)}
+		endingInputsForValidation[i] = EndingInput{
+			Key: ed.Key, Trigger: endingTriggerFromData(ed), If: endingIfFromData(ed), Result: ed.Outcome,
+		}
 	}
 	if err := validateEndingTriggers(f, endingInputsForValidation); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
@@ -3388,8 +3479,11 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 
 	// Restore outcome if present
 	if data.Outcome != nil {
+		// THE RESULT IS THE DECLARED ENDING'S, read back from it rather than
+		// stored beside it (rpg-project#716), so the two cannot disagree.
 		outcome := &Outcome{
 			Ending:  data.Outcome.Ending,
+			Result:  e.resultOf(data.Outcome.Ending),
 			At:      data.Outcome.At,
 			Members: make([]MemberOutcome, len(data.Outcome.Members)),
 		}
@@ -3460,6 +3554,20 @@ func triggersOf(endings []EndingInput) []Trigger {
 // skipped those checks.
 func endingTriggerFromData(ed EndingData) Trigger {
 	t, err := triggerFromData(ed.triggerData())
+	if err != nil {
+		return nil
+	}
+	return t
+}
+
+// endingIfFromData is a persisted ending's `if`, or nil when it has none.
+// Its kind was refused earlier in LoadEncounter if this build does not
+// write it, for [endingTriggerFromData]'s reason.
+func endingIfFromData(ed EndingData) Trigger {
+	if ed.If == nil {
+		return nil
+	}
+	t, err := triggerFromData(*ed.If)
 	if err != nil {
 		return nil
 	}
@@ -3799,12 +3907,23 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 				i, len(dd.Between), ErrNoFaction)
 		}
 		d := DispositionInput{Between: [2]FactionID{dd.Between[0], dd.Between[1]}, Stance: Stance(dd.Stance)}
+		if dd.Until != nil && len(dd.Steps) > 0 {
+			return FieldInput{}, fmt.Errorf("dispositions[%d] carries both an until and steps, and an until is one or the "+
+				"other: %w", i, ErrNoFaction)
+		}
 		if dd.Until != nil {
 			t, err := triggerFromData(*dd.Until)
 			if err != nil {
 				return FieldInput{}, fmt.Errorf("dispositions[%d] until: %w", i, err)
 			}
-			d.Until = t
+			d.Until = []UntilStep{{When: t, Then: Stance(dd.Then)}}
+		}
+		for j, sd := range dd.Steps {
+			t, err := triggerFromData(sd.When)
+			if err != nil {
+				return FieldInput{}, fmt.Errorf("dispositions[%d] until[%d]: %w", i, j, err)
+			}
+			d.Until = append(d.Until, UntilStep{When: t, Then: Stance(sd.Then)})
 		}
 		in.Dispositions = append(in.Dispositions, d)
 	}

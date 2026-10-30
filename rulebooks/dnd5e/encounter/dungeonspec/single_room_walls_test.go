@@ -88,19 +88,14 @@ func (s *SingleRoomWallSuite) compiledWith(walls []dungeonspec.RoomWall) dungeon
 // landing on a cell the party stands on.
 func (s *SingleRoomWallSuite) compiledWithShiftedFloor(walls []dungeonspec.RoomWall, dq, dr int) dungeonspec.Compiled {
 	spec := s.baseSpec()
-	for i := range spec.Room.Gameplay.WalkableHexes {
-		spec.Room.Gameplay.WalkableHexes[i].Q += dq
-		spec.Room.Gameplay.WalkableHexes[i].R += dr
+	floor := dungeonspec.Floor(&spec.Room.Gameplay)
+	for i := range floor {
+		floor[i].Q += dq
+		floor[i].R += dr
 	}
+	dungeonspec.SetFloor(&spec.Room.Gameplay, floor)
 	spec.Room.Gameplay.PartyStart.Q += dq
 	spec.Room.Gameplay.PartyStart.R += dr
-	// Widen the floor bound so the moved cells are still inside it. The
-	// workspace node is presentation content the decoder carries opaquely, so
-	// this is a test-only edit of the authored radius.
-	var workspace yaml.Node
-	s.Require().NoError(yaml.Unmarshal([]byte("{hexRadius: 30, horizontalLimit: 12}"), &workspace))
-	s.Require().NotEmpty(workspace.Content)
-	spec.Room.Workspace = *workspace.Content[0]
 	spec.Room.Gameplay.Walls = walls
 	compiled, err := dungeonspec.Load(s.encoded(spec))
 	s.Require().NoError(err)

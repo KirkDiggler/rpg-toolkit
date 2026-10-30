@@ -165,12 +165,21 @@ type castleHost struct {
 	// noReload opts a route out of [kingScene.reload]: the encounter is never
 	// saved and loaded back between turns.
 	noReload bool
+
+	// fixture is the document this host opens, the castle when empty: a walk
+	// site cut from the castle plays through the castle's own host
+	// (rpg-project#717's ally-walk).
+	fixture string
 }
 
 // openTheCastleAs compiles the file and opens it the way the host says.
 func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 	t.Helper()
-	compiled := loadContent(t, kingFixture)
+	fixture := kingFixture
+	if host.fixture != "" {
+		fixture = host.fixture
+	}
+	compiled := loadContent(t, fixture)
 	for i := range compiled.Field.Doors {
 		if state, ok := host.doors[compiled.Field.Doors[i].ID]; ok {
 			compiled.Field.Doors[i].State = state
@@ -200,10 +209,11 @@ func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 
 	strikes := &[]cellsStrike{}
 	standing := &castleStanding{down: map[encounter.MemberID]bool{}}
+	endings := append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, compiled.Endings...)
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field:   compiled.Field,
 		Members: members,
-		Endings: append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, compiled.Endings...),
+		Endings: endings,
 		// Unbounded, so a route can read a creature's whole story back.
 		Retention:    encounter.RetentionUnbounded,
 		Capabilities: host.capabilities(strikes, standing),
@@ -379,7 +389,7 @@ func (s *kingScene) throughTheGate(to encounter.MemberID) {
 }
 
 // partyStart is the file's own party start, as an offset cell.
-func partyStart(t *testing.T) spatial.Position {
+func partyStart(t testing.TB) spatial.Position {
 	t.Helper()
 	compiled := loadContent(t, kingFixture)
 	require.NotEmpty(t, compiled.PartyStart)

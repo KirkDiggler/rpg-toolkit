@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/deed"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/sound"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -68,7 +69,7 @@ type Die interface {
 	Roll(ctx context.Context, sides int) (int, error)
 }
 
-// The four deed verbs a [When] condition can ask about — what the deeds
+// The five deed verbs a [When] condition can ask about — what the deeds
 // channel this module owns files them under.
 //
 // THE AUTHOR'S WORDS ARE PAST TENSE AND THESE ARE NOT, which is the whole of
@@ -89,6 +90,15 @@ const (
 	// VerbFled is a creature's own memory of having been made to run. Its
 	// actor is WHO CAUSED IT, the rule every verb above keeps.
 	VerbFled = "fled"
+
+	// VerbFell is a member going down, as its witnesses hold it
+	// (rpg-project#716). Its actor is WHO CAUSED IT, the rule every verb
+	// above keeps, and its target is WHO FELL: the one deed whose condition
+	// may name its target, with `who` ([When.Who]). What going down means is
+	// the rulebook's; this module knows only that it is a deed a witness can
+	// hold. Spelled by the deeds channel ([deed.VerbFell]), which files a
+	// fall by who fell as well as who caused it ([deed.FiledUnder]).
+	VerbFell = deed.VerbFell
 )
 
 // The two ways a table can be unrollable, both refused rather than guessed.
@@ -312,7 +322,18 @@ func (t ThreatWord) sealed() bool {
 // recorded from the WITNESS's — "somebody attacked". `attacked` and
 // [VerbAttack] are the same event named from the two ends of it, and
 // [DeedVerbFor] is the one place the two vocabularies meet.
-var WhenDeeds = []string{"attacked", "intimidated", "persuaded", "fled"}
+var WhenDeeds = []string{"attacked", "intimidated", "persuaded", "fled", "fell"}
+
+// WhoDeeds is every deed word whose condition may name WHO it was done to,
+// with `who` ([When.Who]). Exported for the dialect's refusal, [WhenDeeds]'s
+// reason.
+//
+// ONE WORD, AND IT IS `fell`: a fall's point is who fell, and a row that
+// waits on the king's death and not the cook's has to say so. The other
+// deeds are read from the creature's side (against me, my side, or by me),
+// and no use case has asked which one of my side was struck. Widening this
+// list is adding a word here, the way [WhenDeeds] grows.
+var WhoDeeds = []string{"fell"}
 
 // DeedVerbFor is the deed a `when` word reads: the verb the deeds channel
 // files it under, for the word the author wrote.
@@ -331,6 +352,8 @@ func DeedVerbFor(word string) string {
 		return VerbPersuade
 	case "fled":
 		return VerbFled
+	case "fell":
+		return VerbFell
 	default:
 		return ""
 	}
@@ -434,6 +457,19 @@ type When struct {
 	// is "nothing new".
 	Scope DeedScope `json:",omitempty"`
 
+	// Who narrows a deed condition to the deeds done to ONE member: the
+	// deed's target ([HeldDeed.Target]) must be this id. Legal only on a
+	// word in [WhoDeeds], which today is `fell`, so `{ fell: { who: king,
+	// within: 3, on: ally } }` reads "I saw the king fall, recently" and not
+	// the cook. Empty reads every deed of the word, as before `who` existed.
+	//
+	// THE CREATURE'S OWN TESTIMONY, never the world's: a witness that could
+	// not see who fell holds a fall that names nobody, and a `who` row cannot
+	// read it. Which ids are legal is the dialect's to seal.
+	//
+	// OMITTED WHEN EMPTY, Scope's rule for Scope's reason.
+	Who core.EntityID `json:",omitempty"`
+
 	// Within is how many rounds ago the deed may have landed and still
 	// count, in THE CALLER'S OWN UNIT — whatever [Facts.Now] and a deed's
 	// At are counted in, which this module never interprets. AT LEAST
@@ -525,7 +561,8 @@ func (w *When) conditions() []string {
 
 // Validate refuses a When that does not name exactly one condition, a
 // `threat` word not in [ThreatWords], a `heard` with no kind or a span below 1, a deed's `within` or scope set on
-// a condition that is not a deed, a [Name] that sets both forms or whose
+// a condition that is not a deed, a `who` on anything but a word in
+// [WhoDeeds], a [Name] that sets both forms or whose
 // pattern does not compile, and the same faults inside a `not`. ErrBadWhen,
 // wrapped in a sentence for the form.
 //
@@ -556,6 +593,12 @@ func (w *When) Validate() error {
 	case w.Deed == "" && (w.Within != 0 || w.Scope != ScopeSelf):
 		return fmt.Errorf("a `when` entry names %s with a deed's `within` or scope; "+
 			"those belong only beside a deed: %w", named[0], ErrBadWhen)
+	case w.Deed == "" && w.Who != "":
+		return fmt.Errorf("a `when` entry names %s with `who`; `who` belongs only beside `fell`: %w",
+			named[0], ErrBadWhen)
+	case w.Who != "" && !slices.Contains(WhoDeeds, w.Deed):
+		return fmt.Errorf("`who` names the one who fell, and only `fell` takes it; `%s` does not: %w",
+			w.Deed, ErrBadWhen)
 	case w.Heard != nil && w.Heard.Kind.IsZero():
 		return fmt.Errorf("`heard` needs a `kind`, the sound it listens for: %w", ErrBadWhen)
 	case w.Heard != nil && w.Heard.Within < 1:
@@ -617,11 +660,29 @@ const (
 	// refuses it on `attack` and on a row that listened for nothing.
 	// Resolving it to the heard kind is the caller's.
 	SelectorSound SelectorWord = "sound"
+
+	// SelectorAlly is the nearest allied member this creature holds: in its
+	// own sight now, else remembered from an earlier sighting
+	// ([Facts.SeenAllies], [Facts.RememberedAllies]; rpg-project#717). `{
+	// when: { enemy: none }, toward: ally }` is "follow".
+	//
+	// SOMEBODY TO WALK WITH, NEVER SOMEBODY TO STRIKE. Legal on `toward`,
+	// `dash` and `away` only: [Answer.Validate] refuses it on `attack`,
+	// because a mind is never handed an ally to swing at. Who is allied is
+	// the caller's answer (the rulebook's stance graph), asked when the facts
+	// are projected; this module knows the word and nothing about sides.
+	// Which of the held allies is nearest is the caller's too, against a
+	// board this module does not have.
+	//
+	// ABSENT WHILE NO ALLY IS HELD (R15): with both lists empty the row is
+	// not a candidate, so a companion with nobody to follow falls through to
+	// its author's next row.
+	SelectorAlly SelectorWord = "ally"
 )
 
 // SelectorWords is every selector word, in the design's own order. Exported
 // for the dialect's refusal, [AnswerKeys]'s reason.
-var SelectorWords = []SelectorWord{SelectorEnemy, SelectorAttacker, SelectorActor, SelectorSound}
+var SelectorWords = []SelectorWord{SelectorEnemy, SelectorAttacker, SelectorActor, SelectorSound, SelectorAlly}
 
 // Selector names what a `attack`/`toward`/`dash`/`away` entry acts on: a member
 // found by a word, or an authored cell.
@@ -704,7 +765,7 @@ func (s *Selector) targets() []string {
 }
 
 // validate refuses a selector naming no target or more than one, a route on
-// a word that does not walk one, or `sound` on `attack`. word is the table
+// a word that does not walk one, or `sound` or `ally` on `attack`. word is the table
 // word the selector is on.
 func (s *Selector) validate(word string) error {
 	named := s.targets()
@@ -719,6 +780,10 @@ func (s *Selector) validate(word string) error {
 	if s.Word == SelectorSound && word == "attack" {
 		return fmt.Errorf("`attack` cannot take `sound`: a sound cannot be struck, only walked toward "+
 			"or away from: %w", ErrBadSelector)
+	}
+	if s.Word == SelectorAlly && word == "attack" {
+		return fmt.Errorf("`attack` cannot take `ally`: a mind is never handed an ally to strike, "+
+			"only one to walk toward or away from: %w", ErrBadSelector)
 	}
 	if err := s.validateWaypoints(word); err != nil {
 		return err
@@ -881,20 +946,26 @@ func (t Temper) factorAs(word string) int {
 // WHICH DEEDS DEPENDS ON THE READING, and the three are the same shape because
 // they are the same testimony read three ways (rpg-toolkit#1883): against the
 // creature itself ([Facts.Deeds]), against its own side ([Facts.AllyDeeds]),
-// or done by the creature ([Facts.OwnDeeds]). WHO it was done to is what
-// separates them, which is why the shape does not carry it — the projection
-// already answered that when it chose which list to append to.
+// or done by the creature ([Facts.OwnDeeds]). WHOSE SIDE it was done to is
+// what separates them — the projection answered that when it chose which
+// list to append to — and Target still names the one it was done to, as the
+// witness could vouch for it, because a `fell` row asks which one ([When.Who]).
 //
 // THE CREATURE'S OWN TESTIMONY, never anybody's live state. A deed is
 // stamped when it happened and never restamped, so [Facts.Now] minus At is
 // how old it is in rounds.
 type HeldDeed struct {
 	// Kind is the deed's verb — [VerbAttack], [VerbIntimidate],
-	// [VerbPersuade], [VerbFled].
+	// [VerbPersuade], [VerbFled], [VerbFell].
 	Kind string
 
 	// Actor is who did it. What `actor` selects.
 	Actor core.EntityID
+
+	// Target is who it was done to, as the witness could vouch for it:
+	// empty when the witness could not see them. For [VerbFell] it is the
+	// one who fell, which is what `who` reads ([When.Who]).
+	Target core.EntityID
 
 	// At is the clock reading the deed was landed at.
 	At uint64
@@ -1034,6 +1105,19 @@ type Facts struct {
 	// named them would be a swing the caller can only refuse.
 	FoesInReach []core.EntityID
 
+	// SeenAllies is every allied member this creature holds in its own sight
+	// right now, standing; RememberedAllies is every allied member it holds
+	// placed from an earlier sighting and does not see now (rpg-project#717).
+	// What `ally` needs to name somebody ([SelectorAlly]). The caller decides
+	// who is allied, off its own stance graph, and projects both lists from
+	// the creature's own sight testimony, never from where anybody really
+	// is: a companion follows where it believes the party went.
+	//
+	// EMPTY IS "I HOLD NOBODY ON MY SIDE", the foe lists' rule, so a caller
+	// that has not filled them gets an `ally` row that is never a candidate.
+	SeenAllies       []core.EntityID `json:",omitempty"`
+	RememberedAllies []core.EntityID `json:",omitempty"`
+
 	// Threat is who else could reach the cell a row's move would LAND on
 	// ([ThreatWord]), asked by [Pick] for each row whose `when` names a
 	// `threat` condition, with that row, and only then. The host computes:
@@ -1102,7 +1186,8 @@ func (f Facts) affords(a Answer) bool {
 }
 
 // locates reports whether the facts hold something for this selector to
-// name. `sound` names nothing with no sound held. `attacker` names nothing
+// name. `sound` names nothing with no sound held. `ally` names nothing with
+// no ally held in sight or memory ([Facts.SeenAllies]). `attacker` names nothing
 // unless the one who hit the creature ([Facts.Attacker], read the way the
 // row's own deed condition reads) is among the foes it holds placed: in
 // reach to strike, in sight or memory to walk (rpg-project#669). The other
@@ -1116,6 +1201,11 @@ func (f Facts) locates(s *Selector, when []When, placed ...[]core.EntityID) bool
 	switch s.Word {
 	case SelectorSound:
 		return len(f.Sounds) > 0
+	case SelectorAlly:
+		// AN ALLY IS NOT A FOE, so the foe lists the walking words pass in
+		// are not what it reads: only somebody held on the creature's own
+		// side is somebody to walk with.
+		return len(f.SeenAllies) > 0 || len(f.RememberedAllies) > 0
 	case SelectorAttacker:
 		who, ok := f.Attacker(when)
 		if !ok {
@@ -1139,7 +1229,9 @@ func (f Facts) locates(s *Selector, when []When, placed ...[]core.EntityID) bool
 // is in reach while [Facts.EnemyInReach] holds; `attacker` while the
 // attacker is in [Facts.FoesInReach]. A cell, a route and a sound are
 // places, never foes, and `actor` is resolved by the caller off a reading
-// this module does not hold, so none of them is in reach here.
+// this module does not hold, so none of them is in reach here. Nor is `ally`:
+// nobody is in reach of a creature that will never strike them, so a run to
+// an ally standing beside it is the caller's to stand out.
 func (f Facts) inReachOf(s *Selector, when []When) bool {
 	switch s.Word {
 	case SelectorEnemy:
@@ -1316,6 +1408,12 @@ func (w *When) holds(f Facts) bool {
 	verb := DeedVerbFor(w.Deed)
 	for _, d := range w.deedsOf(f) {
 		if verb == "" || d.Kind != verb {
+			continue
+		}
+		// WHO NARROWS TO ONE TARGET, read off the testimony: a fall the
+		// witness could not put a name to has an empty Target and does not
+		// match, which is the honest answer to "did I see the king fall".
+		if w.Who != "" && d.Target != w.Who {
 			continue
 		}
 		// A DEED STAMPED AHEAD OF NOW IS NOT FRESH, IT IS WRONG. Unsigned

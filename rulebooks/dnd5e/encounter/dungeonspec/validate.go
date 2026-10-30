@@ -128,6 +128,9 @@ func Validate(spec *Spec) []FieldError {
 		// refusals a placement's own `on:` earns, one layer up (design §1).
 		v.g.factionOrders()
 		v.place()
+		// AND THE LINES A SIDE SPEAKS (rpg-project#718), by the grammar a
+		// placement's own lines get, against the same placed props.
+		v.g.factionOptions(placedProps(spec))
 		v.g.minds()
 		v.exits()
 		v.g.dispositions()
@@ -1018,7 +1021,7 @@ func (v *validation) placeLabel(i int) string {
 // single-room dialect is judged by the same function.
 //
 // RUN AFTER dispositions(), for arrivals()' reason.
-func (v *validation) endings() { v.g.endings(v.spec.Endings) }
+func (v *validation) endings() { v.g.endings(v.spec.Endings, v.exitIDs) }
 
 // axialSteps are the six unit crossings out of an axial hex cell. Fixed and
 // orientation-free BY CONSTRUCTION: orientation is spent converting the

@@ -184,7 +184,7 @@ var AsWords = []string{"attack", "toward", "away", "flee", "hold"}
 // Validate refuses what this module's own types cannot carry: a [When] in the
 // list that does not name exactly one condition ([When.Validate],
 // ErrBadWhen), and a [Selector] naming no target or more than one, a `path`
-// on a word other than `toward` or `dash`, `sound` on `attack`, or `sound` on a row
+// on a word other than `toward` or `dash`, `sound` or `ally` on `attack`, or `sound` on a row
 // whose list names no `heard` condition (ErrBadSelector, R10), and a `search`
 // distance below 1 or a heading not in [SearchHeadings] (ErrBadSearch), and
 // a group row ([Answer.Rows]) that carries a word, a search, a line or a fact

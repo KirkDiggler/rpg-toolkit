@@ -327,7 +327,7 @@ func (s *OpposedFightsSuite) TestAGuardWhoTurnedOnTheThugsJoinsThePartysFight() 
 		[]encounter.FactionInput{{ID: ofGarrison, Mind: ofCaptain}},
 		encounter.DispositionInput{
 			Between: [2]encounter.FactionID{ofGarrison, ofThugs},
-			Stance:  encounter.StanceNeutral, Until: encounter.TriggerFact{Fact: ofTurned},
+			Stance:  encounter.StanceNeutral, Until: []encounter.UntilStep{{When: encounter.TriggerFact{Fact: ofTurned}}},
 		},
 	)
 	// The thugs are declared with nothing toward the party, so they are

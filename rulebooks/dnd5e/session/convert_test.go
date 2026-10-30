@@ -176,6 +176,21 @@ var omitted = map[string]string{
 	// nothing else, so it is omitted for Table's reason too.
 	"encounter.MonsterView.Dwelling": "the patrol-waypoint wait the table driver's patrol row reads; " +
 		"encounter.TableDriver reads it on the composition view, never through this twin",
+	// Fields encounter added after session's last pin. Each is recorded, not
+	// projected: projecting one is the session slice of the story that added
+	// it. The four run inputs feed the table driver's `dash`, `threat` and
+	// `enemy: walk | dash | far` words; the ending's Result is already told on
+	// the `ended` beat as `outcome`.
+	"encounter.MonsterView.SpeedFeet": "not projected here; owned by rpg-project#671 " +
+		"(rpg-toolkit#2134, what a `dash` adds to a turn's movement)",
+	"encounter.MonsterView.Clock": "not projected here; owned by rpg-project#671 " +
+		"(rpg-toolkit#2134, whether a run still has its action to spend)",
+	"encounter.MonsterView.Threats": "not projected here; owned by rpg-project#671 " +
+		"(rpg-toolkit#2134, the strike zones a `threat` condition reads)",
+	"encounter.RememberedMember.ReachTail": "not projected here; owned by rpg-project#671 " +
+		"(rpg-toolkit#2134, the reach allowance `enemy: walk | dash | far` measure with)",
+	"encounter.Outcome.Result": "not projected here; owned by rpg-project#716 " +
+		"(rpg-toolkit#2155, the declared ending's success or failure, told on the `ended` beat as `outcome`)",
 	"encounter.MonsterView.Deeds": "the deeds a `when` condition reads, decoded from Holdings — which " +
 		"IS carried, so a host driver that wants them reads the same testimony the table does",
 	// Hearing's two reads (rpg-project#569 R4–R6), omitted for Table's reason:

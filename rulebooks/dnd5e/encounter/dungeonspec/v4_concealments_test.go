@@ -132,7 +132,7 @@ func TestAConcealmentIsRefusedForWhatItCannotBe(t *testing.T) {
 		errs := refusals(t, v4With(
 			"concealments:\n  vault: { checks: [{ability: perception, dc: 15}], cells: [{q: 5, r: 5}] }", ""))
 		requireExactDefect(t, errs, "concealments.vault.cells[0]",
-			"a concealment hides floor this room has: name a hex from walkableHexes")
+			"a concealment hides floor this room has: name a hex one of room.room.regions owns")
 	})
 
 	t.Run("a placed thing this room does not declare", func(t *testing.T) {

@@ -18,8 +18,8 @@ import (
 )
 
 // THE SHAPE WALK STOPS AT THE PRESENTATION (rpg-project#479, R3). The
-// scene, the coordinate frame and the workspace are the World Builder's
-// content: the editor's scalar bounds, its workspace presets, its frame
+// scene and the coordinate frame are the World Builder's
+// content: the editor's scalar bounds, its frame
 // vocabulary, its item and group caps and its parent/support graph were
 // mirrored here and are gone, along with the typed shapes they judged. What
 // this decoder still reads out of those three subtrees is the handful of
@@ -28,8 +28,10 @@ import (
 //
 // STRICTNESS OVER THE PRESENTATION BELONGS TO THE CODEC THAT OWNS IT — the
 // web's, which already validates the draft it authors and refuses what it
-// does not know. An unknown key inside `scene`, `coordinateFrame` or
-// `workspace` therefore decodes here without a word. Strictness over the
+// does not know. An unknown key inside `scene` or `coordinateFrame`
+// therefore decodes here without a word. (`workspace` is not presentation any
+// more: it is gone, and `room.workspace` is refused as the unknown key it is —
+// rpg-project#725, R3.) Strictness over the
 // GAMEPLAY grammar is unchanged: KnownFields(true) and the shape walk below
 // still cover the root, `play`, `room.room` and every site key, and a typo
 // in any of them is still refused at its own path.
@@ -57,7 +59,7 @@ const (
 	errDuplicateID   = "duplicate id"
 )
 
-// DecodeSingleRoom strictly reads one lossless single-room dungeon YAML (v3)
+// DecodeSingleRoom strictly reads one lossless single-room dungeon YAML (v5)
 // document.
 //
 // # What it refuses
@@ -84,9 +86,13 @@ const (
 //
 // # What it validates
 //
-// play carries only its approved values. Walkable cells are unique and stay
-// inside the workspace radius; monster and party-start cells are required
-// and integral, but whether they STAND is the compiler's question, not a
+// play carries only its approved values. The floor is `room.room.regions`
+// (rpg-project#725): each region has an id no other region has, a lighting
+// intensity in [0, 1] and canonical row runs ([ExpandRows]); no cell is in two
+// regions, and at least one cell is floor. A region may list no cells. There
+// is no workspace and no bound on the canvas beyond the integer defenses in
+// single_room_cells.go. Monster and party-start cells are required and
+// integral, but whether they STAND is the compiler's question, not a
 // floor-membership rule.
 //
 // propDeclarations must name live scene props; arrangementDeclarations are
@@ -102,7 +108,7 @@ const (
 //
 // # What it does NOT validate
 //
-// The presentation (`room.coordinateFrame`, `room.workspace`, `room.scene`).
+// The presentation (`room.coordinateFrame`, `room.scene`).
 // It is carried as the authored nodes it is, and only the values play
 // depends on are read out of it — single_room_lowering.go names them, and the
 // codec that owns the scene is the one that judges the rest
@@ -134,6 +140,17 @@ func DecodeSingleRoom(in SingleRoomDecodeInput) (*SingleRoomDecodeResult, error)
 				// add a second "required" error for its correctly spelled twin.
 				if shapeErr.Message != errRequired {
 					errs = append(errs, shapeErr)
+				}
+			}
+			// AND THE VERSION, which the value walk would have named had the
+			// typed decode got that far. A file of the retired shape fails
+			// the typed decode on its first retired key, and the one sentence
+			// that tells its author why must not be lost behind that.
+			if v := childNode(resolveNode(documentRoot(&root)), "version"); v != nil && v.Tag == "!!int" {
+				if n, convErr := strconv.Atoi(v.Value); convErr == nil {
+					if defect := rootVersionDefect(n); defect != "" {
+						errs = append(errs, FieldError{Path: "version", Message: defect})
+					}
 				}
 			}
 			sortFieldErrors(errs)
@@ -415,8 +432,8 @@ func sourceShapeErrors(root *yaml.Node) []FieldError {
 	return e
 }
 
-// roomShape walks the room's GAMEPLAY keys. `coordinateFrame`, `workspace`
-// and `scene` are deliberately absent from it: the presentation is content
+// roomShape walks the room's GAMEPLAY keys. `coordinateFrame` and `scene`
+// are deliberately absent from it: the presentation is content
 // and this decoder reads only the values play depends on out of it, at
 // single_room_lowering.go's own paths (rpg-project#479, R3).
 func roomShape(room *yaml.Node, add errSink) {
@@ -453,11 +470,7 @@ func optionalReference(m *yaml.Node, key, p string, add errSink) {
 
 func gameplayShape(gp *yaml.Node, add errSink) {
 	requireString(gp, "implicitRegionId", "room.room", add)
-	if cells := requireSequence(gp, "walkableHexes", "room.room", add); cells != nil {
-		for i, c := range cells.Content {
-			cellShape(c, fmt.Sprintf("room.room.walkableHexes[%d]", i), add)
-		}
-	}
+	regionsShape(gp, add)
 	if decls := requireMapping(gp, "propDeclarations", "room.room", add); decls != nil {
 		for i := 0; i+1 < len(decls.Content); i += 2 {
 			declarationShape(decls.Content[i+1], "room.room.propDeclarations."+decls.Content[i].Value, add)
@@ -486,6 +499,69 @@ func gameplayShape(gp *yaml.Node, add errSink) {
 // cellShape reads an axial cell. Both coordinates are required, and the
 // original scalars must be integers: yaml.v3 truncates 0.5 into the Go int
 // 0, which would quietly move a monster to the origin.
+// regionsShape walks `room.room.regions` (rpg-project#725): a list of
+// mappings, each with a text id and name, a lighting mapping with its
+// intensity, and a list of rows — each row an integer r and a non-empty list
+// of [qStart, qEnd] integer pairs. Whether the rows are canonical and the
+// values in range is [regionValues]' question, on the decoded value.
+func regionsShape(gp *yaml.Node, add errSink) {
+	regions := requireSequence(gp, "regions", "room.room", add)
+	if regions == nil {
+		return
+	}
+	for i, region := range regions.Content {
+		p := fmt.Sprintf("room.room.regions[%d]", i)
+		region = resolveNode(region)
+		entryShape(region, p, add)
+		if region == nil || region.Kind != yaml.MappingNode {
+			continue
+		}
+		requireString(region, "id", p, add)
+		requireString(region, "name", p, add)
+		if lighting := requireMapping(region, "lighting", p, add); lighting != nil {
+			requireNumber(lighting, "intensity", p+".lighting", add)
+		}
+		rows := requireSequence(region, "cells", p, add)
+		if rows == nil {
+			continue
+		}
+		for j, row := range rows.Content {
+			rp := fmt.Sprintf("%s.cells[%d]", p, j)
+			row = resolveNode(row)
+			entryShape(row, rp, add)
+			if row == nil || row.Kind != yaml.MappingNode {
+				continue
+			}
+			requireInteger(row, "r", rp, add)
+			spans := requireSequence(row, "q", rp, add)
+			if spans == nil {
+				continue
+			}
+			for k, span := range spans.Content {
+				if !integerPair(resolveNode(span)) {
+					add(fmt.Sprintf("%s.q[%d]", rp, k), errNotAnIntegerPair)
+				}
+			}
+		}
+	}
+}
+
+// errNotAnIntegerPair is the defect for a span that is not `[qStart, qEnd]`.
+const errNotAnIntegerPair = "must be a pair of integers"
+
+// integerPair reports whether n is a two-entry list of integer scalars.
+func integerPair(n *yaml.Node) bool {
+	if n == nil || n.Kind != yaml.SequenceNode || len(n.Content) != 2 {
+		return false
+	}
+	for _, v := range n.Content {
+		if v = resolveNode(v); v == nil || v.Tag != "!!int" {
+			return false
+		}
+	}
+	return true
+}
+
 func cellShape(c *yaml.Node, p string, add errSink) {
 	c = resolveNode(c)
 	if c == nil || isNull(c) {
@@ -583,25 +659,35 @@ func arrangementShape(v *yaml.Node, p string, add errSink) {
 // enums, finite bounded footprints, declaration owners that exist, and the
 // handful of presentation values play reads (single_room_lowering.go).
 
-// acceptedRootVersions are the ROOT document versions this decoder speaks,
-// lowest first. 4 is the seam, landed AHEAD OF ITS KEYS.
+// acceptedRootVersions are the ROOT document versions this decoder speaks.
 //
-// A version is a statement about what a file MAY CONTAIN. Two waves want v4:
-// the authored-door contract (rpg-project#468, consumer rpg-dnd5e-web#1117)
-// and the site scope plus `monsterBindings` (rpg-project#477, consumer
-// rpg-dnd5e-web#1136). The decoder accepts 4 BEFORE either wave's keys exist,
-// and the bump lands once so no second bump follows: each key then arrives
-// INSIDE a version rather than behind a new one.
+// A version is a statement about what a file MAY CONTAIN. 4 was the seam the
+// authored doors, the site scope and the walls landed inside; 5 is the shape
+// in which the floor is the union of authored regions (rpg-project#725).
 //
 // Only the ROOT version describes the site document. The embedded room draft
-// is its own separately-versioned artifact (the web persists it as
-// `rpg-room-authoring-draft` v3), so its version stays 3: root 4 with room 3
-// is the only combination the web can currently produce.
-//
-// 4 accepts exactly the keys 3 does and nothing more, so the version buys no
-// leniency. A file containing nothing new has no reason to claim otherwise,
-// and v3 therefore behaves exactly as it always did.
-var acceptedRootVersions = [...]int{3, 4}
+// is its own separately-versioned artifact, so its version stays 3.
+var acceptedRootVersions = [...]int{5}
+
+// VERSION 5: REGIONS ARE THE FLOOR (rpg-project#725, design R6). The walkable
+// list and the workspace are gone and `room.room.regions` carries the floor,
+// so a 3 or a 4 is a file of the retired shape. It is refused by name rather
+// than read, and there is no dual-dialect period: the shipped content
+// converts once ([ConvertV4]).
+const retiredRootVersions = "versions 3 and 4 are retired; regions are the floor (rpg-project#725)"
+
+// rootVersionDefect is the refusal for a root version this decoder does not
+// speak, or "" for the one it does.
+func rootVersionDefect(v int) string {
+	switch {
+	case slices.Contains(acceptedRootVersions[:], v):
+		return ""
+	case v == 3 || v == 4:
+		return retiredRootVersions
+	default:
+		return fmt.Sprintf("unsupported version %d (want 5)", v)
+	}
+}
 
 // validateSingleRoom judges one decoded document, and hands back the
 // lowering of its presentation beside the defects — one walk, so the values
@@ -609,8 +695,8 @@ var acceptedRootVersions = [...]int{3, 4}
 func validateSingleRoom(s *SingleRoomSpec) (roomRead, []FieldError) {
 	var e []FieldError
 	add := func(p, m string) { e = append(e, FieldError{Path: p, Message: m}) }
-	if !slices.Contains(acceptedRootVersions[:], s.Version) {
-		add("version", fmt.Sprintf("unsupported version %d (want 3 or 4)", s.Version))
+	if defect := rootVersionDefect(s.Version); defect != "" {
+		add("version", defect)
 	}
 	if s.Key == "" {
 		add("key", errRequired)
@@ -670,67 +756,10 @@ func gameplayValues(gp *RoomGameplaySource, read roomRead, add errSink) {
 	if gp.ImplicitRegionID == "" {
 		add("room.room.implicitRegionId", errRequired)
 	}
-	walkableValues(gp.WalkableHexes, read.WorkspaceHexRadius, read.WorkspaceKnown, add)
+	regionValues(gp.Regions, add)
 	propDeclarationValues(gp.PropDeclarations, read.ItemIDs, add)
 	arrangementDeclarationValues(gp.ArrangementDeclarations, add)
 	monsterValues(gp.MonsterDeclarations, add)
-}
-
-// walkableValues reports duplicate cells and cells outside the painted
-// workspace. A monster's own cell is checked for shape only: whether it
-// STANDS is decided by final standability at compile time, never by floor
-// membership here.
-//
-// known says whether `room.workspace.hexRadius` was authored as a finite
-// number. When it was not, the lowering has already named that at its own
-// path and the floor bound is not applied on top of it — one missing number
-// reports as one defect, not as every cell being off a floor of radius zero.
-func walkableValues(cells []RoomCell, radius float64, known bool, add errSink) {
-	seen := make(map[RoomCell]string, len(cells))
-	for i, c := range cells {
-		p := fmt.Sprintf("room.room.walkableHexes[%d]", i)
-		if _, ok := seen[c]; ok {
-			add(p, "duplicate cell")
-		}
-		seen[c] = p
-		if known && float64(cubeDistance(c)) > radius {
-			add(p, "outside the workspace floor")
-		}
-	}
-}
-
-// cubeDistance is the axial cube metric: max(|q|, |r|, |-q-r|).
-//
-// SATURATING, NOT WRAPPING. |MinInt| has no positive int, and negating or
-// summing an extreme cell would wrap around and measure a cell at the edge
-// of the int range as if it sat at the origin — a floor hex accepted because
-// its distance came back negative and no radius is smaller than that. Every
-// workspace radius is a two-digit number, so a coordinate magnitude beyond a
-// tiny bound is outside the floor already and the metric saturates rather
-// than lies. Legal cells measure exactly as the unwrapped metric always did.
-func cubeDistance(c RoomCell) int {
-	const metricBound = 1 << 40
-	q, r := saturatingAbs(c.Q), saturatingAbs(c.R)
-	if q > metricBound || r > metricBound {
-		return math.MaxInt
-	}
-	return max(q, r, saturatingAbs(-c.Q-c.R))
-}
-
-// saturatingAbs is |v| for every int: MinInt saturates to MaxInt instead of
-// wrapping back to negative.
-func saturatingAbs(v int) int {
-	if v == math.MinInt {
-		return math.MaxInt
-	}
-	return abs(v)
-}
-
-func abs(v int) int {
-	if v < 0 {
-		return -v
-	}
-	return v
 }
 
 func propDeclarationValues(decls map[string]RoomPropDeclaration, itemIDs map[string]bool, add errSink) {

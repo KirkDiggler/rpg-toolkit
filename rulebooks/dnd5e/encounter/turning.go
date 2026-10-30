@@ -57,25 +57,26 @@ func (e *Encounter) turnUntils(holds func(Trigger) (string, bool), at uint64) er
 	before := e.stanceTable()
 	turned := false
 	for _, d := range e.field.dispositions {
-		if d.Until == nil {
-			continue
+		// A list of steps names facts only ([untilListOnFacts]), so a public
+		// step is always a disposition's one step.
+		for _, step := range d.Until {
+			if _, isFact := step.When.(TriggerFact); isFact {
+				continue
+			}
+			pair := pairOf(d.Between[0], d.Between[1])
+			to := d.turnsTo(step)
+			if e.world.settled(pair, to) {
+				continue
+			}
+			cause, ok := holds(step.When)
+			if !ok {
+				continue
+			}
+			if err := e.world.settlePair(pair, to, cause); err != nil {
+				return err
+			}
+			turned = true
 		}
-		if _, isFact := d.Until.(TriggerFact); isFact {
-			continue
-		}
-		pair := pairOf(d.Between[0], d.Between[1])
-		to := turnsTo(d.Stance)
-		if e.world.settled(pair, to) {
-			continue
-		}
-		cause, ok := holds(d.Until)
-		if !ok {
-			continue
-		}
-		if err := e.world.settlePair(pair, to, cause); err != nil {
-			return err
-		}
-		turned = true
 	}
 	if !turned {
 		return nil

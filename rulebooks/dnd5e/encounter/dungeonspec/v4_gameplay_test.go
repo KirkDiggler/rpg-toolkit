@@ -290,7 +290,7 @@ func requireExactDefect(t *testing.T, errs []dungeonspec.FieldError, path, messa
 // refused.
 func v4With(root, gameplay string) string {
 	return fmt.Sprintf(`
-version: 4
+version: 5
 key: refusal-fixture
 play: { void: transparent, lighting: bright, standing: centre-covered }
 %s
@@ -299,7 +299,6 @@ room:
   id: room-1
   name: A Room
   coordinateFrame: { hexRadius: 1 }
-  workspace: { hexRadius: 6 }
   scene:
     version: 1
     id: scene-1
@@ -309,7 +308,15 @@ room:
     groups: []
   room:
     implicitRegionId: room-1-region
-    walkableHexes: [{q: 0, r: 0}, {q: 1, r: 0}, {q: 2, r: 0}, {q: 0, r: 1}, {q: 1, r: 1}]
+    regions:
+      - id: room-1-region
+        name: A Room
+        lighting: { intensity: 1 }
+        cells:
+          - r: 0
+            q: [[0, 2]]
+          - r: 1
+            q: [[0, 1]]
     propDeclarations:
       table: { blocksMovement: false, blocksLineOfSight: false, footprint: { width: 1, depth: 1, offsetX: 0, offsetZ: 0 } }
     arrangementDeclarations:
@@ -521,7 +528,7 @@ func TestATypoInsideTheNewKeysIsNamedAtItsV4Path(t *testing.T) {
 			name:    "inside an ending",
 			root:    "endings:\n  - { id: held-out, whn: { round: 6 } }",
 			path:    "endings[0].whn",
-			message: `"whn" is not a key this build reads: they are id, when`,
+			message: `"whn" is not a key this build reads: they are id, if, outcome, when`,
 		},
 		{
 			// A PREDICATE READS ITSELF BY HAND here too, so an ending's

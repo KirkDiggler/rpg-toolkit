@@ -5,6 +5,7 @@ package encounter
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/deed"
@@ -103,6 +104,69 @@ func deedForSkill(skill string) (string, bool) {
 // away, for as many rounds as the author wrote.
 const DeedFled = "fled"
 
+// DeedFell is the verb a member going down lands under: what a witness
+// would say they saw happen when somebody in sight fell (rpg-project#716,
+// lane rpg-project#722 D1). It is read by `when: { fell: { within: N } }`,
+// with `who: <placement>` to name which member, and is the one deed whose
+// condition may name its target ([behavior.WhoDeeds]).
+//
+// ACTOR IS WHO CAUSED IT, TARGET IS WHO FELL. That is the rule every verb
+// here keeps — [DeedAttack], [DeedIntimidate], [DeedPersuade] and [DeedFled]
+// all name the doer in Actor — so `away: actor` on a `fell` row runs from
+// the one who dropped the king, and `as: actor` reads a fall the creature
+// caused. The cause is the last attack landed on the fallen in the verb that
+// noticed the fall ([Encounter.landFell]). A fall no attack in that verb
+// explains (a death save, a hazard, a fall noticed at a turn boundary) has
+// no doer this composition knows, and is filed as the fallen's own: the
+// actor keys the subject a deed is held under, so it cannot be empty.
+//
+// TESTIMONY, NEVER A WORLD FLAG (D1). It lands on every member whose sight
+// reaches the fallen's cell when the fall is noticed, through the same door
+// every deed goes through, so a witness who could not see who did it holds
+// a fall naming no actor, and a loyalist in the far wing holds nothing at
+// all. A row reads only what its own creature holds; there is no `down`
+// leaf inside `when` that could not be wrong.
+//
+// FILED BY WHO FELL (ruled on rpg-project#716): the deeds channel keys a fall
+// by its target as well as its actor ([deed.FiledUnder]), so a hero who drops
+// the king and then a loyalist leaves every witness holding both.
+//
+// ONE DOWN BEAT, ONE FALL. It lands where the down beat is written
+// ([Encounter.noticeDown]), so the story's ledger that keeps a death from
+// being told twice keeps it from being witnessed twice.
+//
+// WHILE THE BEAT IS RETAINED, and that is the limit. The ledger is the
+// RETAINED story, so under a bounded [SetupInput.Retention] a down beat that
+// ages out is told again, and its fall lands again: freshly stamped, filed as
+// the fallen's own (no blow in that verb explains it), told to whoever sees
+// the body then. The session host runs unbounded, so no live run meets it; a
+// told-ledger retention cannot trim is rpg-toolkit#2158.
+const DeedFell = deed.VerbFell
+
+// landFell tells every member whose sight reaches the fallen's cell that it
+// fell, naming its cause where the witness could see it ([DeedFell]). The
+// fallen witnesses its own fall, the way a target knows it was struck, and
+// the cause witnesses what it did. Stamped at the clock's high-water, the
+// down beat's own reading.
+func (e *Encounter) landFell(fallen MemberID) error {
+	cause, ok := e.struckBy[fallen]
+	if !ok {
+		cause = fallen
+	}
+
+	where, witnesses, err := e.audienceOf(fallen)
+	if err != nil {
+		return err
+	}
+	if cause != fallen && !slices.Contains(witnesses, cause) {
+		if _, member := e.members[cause]; member {
+			witnesses = append(witnesses, cause)
+		}
+	}
+
+	return e.landDeed(DeedFell, cause, fallen, where, witnesses)
+}
+
 // landAttack tells every member whose senses reach the actor's cell that
 // the actor attacked, through perception's own Report door, in each
 // witness's terms (mind/behavior rule A4: a deed is landed where the fact
@@ -136,6 +200,12 @@ func (e *Encounter) landAttack(actor MemberID, targets []MemberID) error {
 
 	if err := e.aggression(actor, target, uint64(e.clock.ToData().HighWater)); err != nil {
 		return err
+	}
+	if target != "" && target != actor {
+		if e.struckBy == nil {
+			e.struckBy = make(map[MemberID]MemberID)
+		}
+		e.struckBy[target] = actor
 	}
 
 	where, witnesses, err := e.audienceOf(actor)

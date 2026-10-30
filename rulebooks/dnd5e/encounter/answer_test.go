@@ -59,7 +59,7 @@ func (s *AnswerTestSuite) front(table encounter.Table, options ...encounter.Opti
 			Factions: []encounter.FactionInput{{ID: campFaction, Mind: core.EntityID(goblin)}},
 			Dispositions: []encounter.DispositionInput{{
 				Between: [2]encounter.FactionID{campFaction, encounter.FactionParty},
-				Stance:  encounter.StanceHostile, Until: encounter.TriggerFact{Fact: campFact},
+				Stance:  encounter.StanceHostile, Until: []encounter.UntilStep{{When: encounter.TriggerFact{Fact: campFact}}},
 			}},
 		},
 		Members: []encounter.MemberInput{
@@ -533,7 +533,7 @@ func (s *AnswerTestSuite) straggler() *encounter.Encounter {
 			Factions: []encounter.FactionInput{{ID: campFaction, Mind: core.EntityID(goblin)}},
 			Dispositions: []encounter.DispositionInput{{
 				Between: [2]encounter.FactionID{campFaction, encounter.FactionParty},
-				Stance:  encounter.StanceHostile, Until: encounter.TriggerFact{Fact: campFact},
+				Stance:  encounter.StanceHostile, Until: []encounter.UntilStep{{When: encounter.TriggerFact{Fact: campFact}}},
 			}},
 		},
 		Members: []encounter.MemberInput{

@@ -10,8 +10,66 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
+// partitionGroups is the compiled field's wall partitions as the encounter
+// derives them — each partition's absolute cells, sorted, the partitions in
+// order of their first cell — so two compiles can be compared by what the
+// walls make of them, whatever the regions are called (rpg-project#725).
+func (s *SingleRoomWallDoorSuite) partitionGroups(compiled dungeonspec.Compiled) [][]spatial.Position {
+	enc := s.play(compiled)
+	byID := map[encounter.PartitionID][]spatial.Position{}
+	for _, r := range compiled.Field.Regions {
+		for _, c := range r.Cells {
+			abs := encounter.HexCellAt(compiled.Field.Canvas.Orientation, int(c.X), int(c.Y))
+			id, ok := enc.PartitionAt(abs)
+			s.Require().True(ok, "every owned cell is in a partition")
+			byID[id] = append(byID[id], abs)
+		}
+	}
+	out := make([][]spatial.Position, 0, len(byID))
+	for _, cells := range byID {
+		slices.SortFunc(cells, func(a, b spatial.Position) int {
+			if a.Y != b.Y {
+				return int(a.Y - b.Y)
+			}
+			return int(a.X - b.X)
+		})
+		out = append(out, cells)
+	}
+	slices.SortFunc(out, func(a, b []spatial.Position) int {
+		if a[0].Y != b[0].Y {
+			return int(a[0].Y - b[0].Y)
+		}
+		return int(a[0].X - b[0].X)
+	})
+	return out
+}
+
+// splitInReverse re-authors a room's one region as two — the cells west of q
+// and the rest — listed east first: the same floor in another authoring.
+func splitInReverse(spec *dungeonspec.SingleRoomSpec, q int) {
+	var west, east []dungeonspec.RoomCell
+	for _, c := range dungeonspec.Floor(&spec.Room.Gameplay) {
+		if c.Q < q {
+			west = append(west, c)
+		} else {
+			east = append(east, c)
+		}
+	}
+	spec.Room.Gameplay.Regions = []dungeonspec.RoomRegion{
+		dungeonspec.OneRegion("region-east", "East", east),
+		dungeonspec.OneRegion(spec.Room.Gameplay.ImplicitRegionID, "West", west),
+	}
+}
+
+// TestOrdinaryDiscoveryPartitionsStayFixedAndSeatsStayOnTheStartingSide: one
+// authored region cut by a wall with a door is two partitions; the party's
+// seats stay in the start's, every member reports the authored region, and
+// neither the door's state nor how the floor is authored into regions renames
+// or merges a partition (rpg-project#725: the walls' answer, not the
+// regions').
 func (s *SingleRoomWallDoorSuite) TestOrdinaryDiscoveryPartitionsStayFixedAndSeatsStayOnTheStartingSide() {
 	spec := s.gapSpec(dungeonspec.RoomDoorBinding{Closed: true})
 	spec.Room.Gameplay.MonsterDeclarations = []dungeonspec.RoomMonsterSource{{
@@ -19,14 +77,17 @@ func (s *SingleRoomWallDoorSuite) TestOrdinaryDiscoveryPartitionsStayFixedAndSea
 		StartingCell: dungeonspec.RoomStartingCell{Location: dungeonspec.RoomCell{Q: 4, R: 0}},
 	}}
 	closed := s.load(spec)
-	s.Require().Len(closed.Field.Regions, 2)
-	s.Require().Len(closed.PartyStart, 1)
-	s.Equal(closed.Field.Regions[0].ID, closed.PartyStart[0].Region)
-	s.Equal(closed.Field.Regions[1].ID, closed.Monsters[0].Region)
+	s.Require().Len(closed.Field.Regions, 1, "one authored region")
+	groups := s.partitionGroups(closed)
+	s.Require().Len(groups, 2, "the wall makes two rooms of it")
+	s.Require().Len(closed.PartyStart, 1, "the seats stay on the start's side of the wall")
+	s.Equal("room-1-region", closed.PartyStart[0].Region, "a seat reports its authored region")
+	s.Equal("room-1-region", closed.Monsters[0].Region, "so does a monster")
 	spec.Room.Gameplay.DoorBindings["gap-door"] = dungeonspec.RoomDoorBinding{}
-	slices.Reverse(spec.Room.Gameplay.WalkableHexes)
+	splitInReverse(spec, 2)
 	opened := s.load(spec)
-	s.Equal(closed.Field.Regions, opened.Field.Regions, "door state and authoring order do not rename or merge spaces")
+	s.Require().Len(opened.Field.Regions, 2)
+	s.Equal(groups, s.partitionGroups(opened), "door state and authoring do not rename or merge partitions")
 	s.Equal(encounter.DoorOpen, opened.Field.Doors[0].State.Kind(), "topology query must not close the actual door")
 	enc := s.play(opened)
 	atlas, err := enc.AtlasFor("walker")
@@ -44,7 +105,7 @@ func (s *SingleRoomWallDoorSuite) TestOrdinaryDiscoveryStopsAtTheNextClosedDoor(
 				Door: &dungeonspec.RoomWallDoor{ID: "far-door", AssetRef: "dnd5e:env:test:door"}}))
 	spec.Room.Gameplay.DoorBindings["far-door"] = dungeonspec.RoomDoorBinding{Closed: true}
 	compiled := s.load(spec)
-	s.Require().Len(compiled.Field.Regions, 3)
+	s.Require().Len(s.partitionGroups(compiled), 3, "two walls, three rooms")
 	enc := s.play(compiled)
 	before, err := enc.AtlasFor("walker")
 	s.Require().NoError(err)
@@ -152,12 +213,13 @@ groups: []
 				}
 			}
 			compiled := s.load(spec)
-			s.Require().Len(compiled.Field.Regions, 2, "never join the rooms or mint a third phantom region")
+			groups := s.partitionGroups(compiled)
+			s.Require().Len(groups, 2, "never join the rooms or mint a third phantom room")
 			s.Require().Len(compiled.Field.Scenery, 1)
 			s.Equal(axial(1, 0), compiled.Field.Scenery[0])
-			slices.Reverse(spec.Room.Gameplay.WalkableHexes)
+			splitInReverse(spec, 1)
 			reordered := s.load(spec)
-			s.Equal(compiled.Field.Regions, reordered.Field.Regions)
+			s.Equal(groups, s.partitionGroups(reordered))
 			s.Equal(compiled.Field.Scenery, reordered.Field.Scenery)
 			enc := s.play(compiled,
 				encounter.MemberInput{ID: "walker", Kind: encounter.KindPlayer, Position: axial(0, 0)},
@@ -212,12 +274,13 @@ groups: []
 
 func (s *SingleRoomWallDoorSuite) TestOrdinaryDiscoveryWithATwoDimensionalDivider() {
 	spec := s.gapSpec(dungeonspec.RoomDoorBinding{Closed: true})
-	spec.Room.Gameplay.WalkableHexes = nil
+	var floor []dungeonspec.RoomCell
 	for q := 0; q <= 3; q++ {
 		for r := -1; r <= 1; r++ {
-			spec.Room.Gameplay.WalkableHexes = append(spec.Room.Gameplay.WalkableHexes, dungeonspec.RoomCell{Q: q, R: r})
+			floor = append(floor, dungeonspec.RoomCell{Q: q, R: r})
 		}
 	}
+	dungeonspec.SetFloor(&spec.Room.Gameplay, floor)
 	spec.Room.Gameplay.PartyStart = &dungeonspec.RoomCell{Q: 1, R: 0}
 	x := boundaryWallX(7.5)
 	spec.Room.Gameplay.Walls = []dungeonspec.RoomWall{
@@ -306,4 +369,66 @@ groups: []
 	remembered, err := s.reload(enc).AtlasFor("walker")
 	s.Require().NoError(err)
 	s.Equal(learned, remembered, "closing and reloading retain the discovered fixed layout")
+}
+
+// footingSpec is TestOrdinaryDiscoveryOpaqueFootingIsVisibleFromBothSides'
+// structural room: the corridor (0,0)..(4,0) with a wall whose footprint
+// covers (1,0)'s centre, so (1,0) is opaque floor between two rooms.
+func (s *SingleRoomWallDoorSuite) footingSpec() *dungeonspec.SingleRoomSpec {
+	spec := s.gapSpec(dungeonspec.RoomDoorBinding{Closed: true})
+	spec.Room.Gameplay.DoorBindings = nil
+	x := boundaryWallX(5)
+	spec.Room.Gameplay.Walls = []dungeonspec.RoomWall{roomWall("boundary", x, -2, x, 2,
+		wallBlocks(true, true, 4, boundaryWallX(1.5), 0, 0))}
+	return spec
+}
+
+// TestCompile_FootingLeavesItsRegion: wall footing no room can claim leaves
+// the AUTHORED region that painted it and is carried as scenery, whichever
+// region that is (rpg-project#725). A region whose every painted cell is
+// footing is refused at its cells — paint the author must see is not floor —
+// where a region listed with no cells at all is declared and accepted.
+func (s *SingleRoomWallDoorSuite) TestCompile_FootingLeavesItsRegion() {
+	spec := s.footingSpec()
+	spec.Room.Gameplay.Regions = []dungeonspec.RoomRegion{
+		dungeonspec.OneRegion("room-1-region", "West", []dungeonspec.RoomCell{{Q: 0, R: 0}}),
+		dungeonspec.OneRegion("region-east", "East", []dungeonspec.RoomCell{{Q: 1, R: 0}, {Q: 2, R: 0}, {Q: 3, R: 0}, {Q: 4, R: 0}}),
+	}
+	compiled := s.load(spec)
+	s.Equal([]spatial.Position{axial(1, 0)}, compiled.Field.Scenery)
+	s.Require().Len(compiled.Field.Regions, 2)
+	s.Equal("region-east", compiled.Field.Regions[1].ID)
+	s.NotContains(compiled.Field.Regions[1].Cells, axial(1, 0), "the footing left the region that painted it")
+	s.Len(compiled.Field.Regions[1].Cells, 3)
+
+	spec.Room.Gameplay.Regions = []dungeonspec.RoomRegion{
+		dungeonspec.OneRegion("room-1-region", "Corridor", []dungeonspec.RoomCell{{Q: 0, R: 0}, {Q: 2, R: 0}, {Q: 3, R: 0}, {Q: 4, R: 0}}),
+		dungeonspec.OneRegion("region-wall", "Wall", []dungeonspec.RoomCell{{Q: 1, R: 0}}),
+	}
+	_, err := dungeonspec.Load(s.encoded(spec))
+	var validation *dungeonspec.ValidationError
+	s.Require().ErrorAs(err, &validation)
+	s.Equal([]dungeonspec.FieldError{{Path: "room.room.regions[1].cells", Message: "every cell is wall footing"}}, validation.Errors)
+}
+
+// TestFootingKeptAsFloorIsARoomOfItsOwn: a field authored in code may keep
+// permanent opaque footing as owned floor, which the compiler never does. The
+// encounter's own derivation makes each such cell a room of its own, so
+// nothing hears or is seated across it, and the rooms either side stay apart.
+func (s *SingleRoomWallDoorSuite) TestFootingKeptAsFloorIsARoomOfItsOwn() {
+	compiled := s.load(s.footingSpec())
+	s.Require().Equal([]spatial.Position{axial(1, 0)}, compiled.Field.Scenery)
+	compiled.Field.Regions[0].Cells = append(compiled.Field.Regions[0].Cells, compiled.Field.Scenery...)
+	compiled.Field.Scenery = nil
+	enc := s.play(compiled)
+	at := func(q int) encounter.PartitionID {
+		cell := encounter.HexCellAt(compiled.Field.Canvas.Orientation, int(axial(q, 0).X), int(axial(q, 0).Y))
+		p, ok := enc.PartitionAt(cell)
+		s.Require().True(ok, "(%d,0) is owned floor", q)
+		return p
+	}
+	west, footing, east := at(0), at(1), at(2)
+	s.NotEqual(west, east)
+	s.NotEqual(footing, west)
+	s.NotEqual(footing, east)
 }

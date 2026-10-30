@@ -169,8 +169,9 @@ func TestAnOptionIsRefusedByName(t *testing.T) {
 			name: "a requirement that is neither form",
 			options: "          - { id: hi, say: \"Hi.\", requires: { round: 2 }, " +
 				"check: [{ ability: persuasion, dc: 10 }] }\n",
-			path:    at + "[0].requires",
-			message: "an option requires { fact: <id> } or { holds: <prop id> }, and `round` is neither",
+			path: at + "[0].requires",
+			message: "an option requires { fact: <id> }, { holds: <prop id> }, or { not: } one of them, " +
+				"and `round` is none of them",
 		},
 		{
 			name: "holding a prop this room does not place",

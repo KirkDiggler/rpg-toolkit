@@ -65,6 +65,7 @@ on:
     - { when: { enemy: remembered },       toward: enemy }
     - { when: { enemy: none },             toward: { at: [3, 4] } }
     - { when: { fled: { within: 3 } },     away: actor, weight: 5 }
+    - { when: { fell: { who: king, within: 3, on: ally } }, away: enemy, weight: 3 }
     - { when: { heard: { kind: clang, within: 2 } }, toward: sound }
     - { when: { fact: alarm-raised },      toward: { at: [20, 12] } }
     - { when: { enemy: seen }, say: "To arms!", fact: alarm-raised }
@@ -75,6 +76,20 @@ on:
 
 One trigger: `time`, which fires when the creature has time — its turn in a
 fight, or a round of the world.
+
+**A run ends at the door** (rpg-project#716). An ending may wait for the
+party to leave: `{ id: king-slain, when: { left: front-door }, if: { down: king },
+outcome: success }`. It fires when the last standing player leaves by that
+exit, a down member keeping nobody in; its `if` (a `down`, `fact` or `stance`,
+read as truth at that moment) picks which of the endings at that door it is,
+the first in the list whose `if` holds, and `outcome` says success or failure.
+
+**A death is a deed its witnesses hold** (rpg-project#716). When a member goes
+down, every member whose sight reaches it holds `fell`: its actor is who
+dropped it, its target is who fell. `fell: { who: <placement> }` waits on one
+member's fall, and the dialect seals `who` to a monster placed in the file. A
+creature that did not see the fall holds nothing, so its row is not on its
+table until somebody tells it.
 
 **What a creature answers when spoken to lives on the line that was spoken**
 (rpg-project#569). `options:` on a creature or a prop lists what a character

@@ -76,6 +76,41 @@ func Subject(actor core.EntityID, verb string) core.EntityID {
 	return perception.Qualify(Channel, core.EntityID(string(actor)+kindSeparator+verb))
 }
 
+// VerbFell is the verb a member going down is filed under: the one deed
+// whose subject also names its target ([FiledUnder]). The behavior
+// package's VerbFell is this constant, so the filing law and the `when`
+// word cannot come to spell it differently.
+const VerbFell = "fell"
+
+// FiledUnder is the subject a deed is held under: [Subject] of its actor and
+// verb, and for a [VerbFell] its target too.
+//
+// A FALL IS FILED BY WHO FELL (rpg-project#716, ruled 2026-10-29). It is the
+// first deed a row names the target of (`fell: { who: king }`), and under
+// [Subject] alone a hero who dropped the king and then a loyalist left every
+// witness holding only the loyalist's fall: the newer deed of the same actor
+// and kind replaced the older, and the row waiting on the king stopped
+// holding inside the span its author wrote. Keyed by the target as well, a
+// witness holds one fall per figure who fell, by each figure who dropped
+// them.
+//
+// THE OTHER VERBS WAIT FOR A USE CASE. A second blow by the same actor still
+// replaces the first, because no row names whom a blow landed on, and
+// "the freshest of each thing they were seen to do" is what [Subject]'s law
+// promises them. When a row asks whom, its verb joins this one.
+//
+// The handle names the target's identity for the reason it names the
+// actor's: it is the filing system, and what the witness could vouch for is
+// the payload's to say.
+func FiledUnder(d Deed) core.EntityID {
+	if d.Verb == VerbFell && d.Target != "" {
+		return perception.Qualify(Channel,
+			core.EntityID(string(d.Actor)+kindSeparator+d.Verb+kindSeparator+string(d.Target)))
+	}
+
+	return Subject(d.Actor, d.Verb)
+}
+
 // Deed is one figure doing one thing to another, somewhere.
 //
 // The same struct is spoken twice. As stage.Land's input it is the fact, in

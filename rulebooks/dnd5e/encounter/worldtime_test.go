@@ -907,7 +907,7 @@ func TestAnAlarmThatFormsAFightMidTickCompletesTheTick(t *testing.T) {
 	setup.Field.Factions = []encounter.FactionInput{{ID: "watch", Mind: core.EntityID(bandit)}, {ID: "gang"}}
 	setup.Field.Dispositions = []encounter.DispositionInput{
 		{Between: [2]encounter.FactionID{"watch", encounter.FactionParty}, Stance: encounter.StanceNeutral,
-			Until: encounter.TriggerFact{Fact: alarm}},
+			Until: []encounter.UntilStep{{When: encounter.TriggerFact{Fact: alarm}}}},
 		{Between: [2]encounter.FactionID{"gang", encounter.FactionParty}, Stance: encounter.StanceNeutral},
 		{Between: [2]encounter.FactionID{"watch", "gang"}, Stance: encounter.StanceHostile},
 	}

@@ -30,6 +30,10 @@ type declaredEnding struct {
 	key     string
 	trigger Trigger
 	cell    spatial.Position
+
+	// cond and result are [EndingInput.If] and [EndingInput.Result].
+	cond   Trigger
+	result EndingResult
 }
 
 // compileEndings resolves each declared ending's authored target into the
@@ -46,7 +50,7 @@ type declaredEnding struct {
 func compileEndings(endings []EndingInput, f *field) []declaredEnding {
 	out := make([]declaredEnding, 0, len(endings))
 	for _, ei := range endings {
-		de := declaredEnding{key: ei.Key, trigger: ei.Trigger}
+		de := declaredEnding{key: ei.Key, trigger: ei.Trigger, cond: ei.If, result: ei.Result}
 		if t, ok := ei.Trigger.(TriggerReachedPosition); ok {
 			de.cell = f.cellAt(t.Position)
 		}
@@ -79,6 +83,14 @@ type Encounter struct {
 	// driven by the train's post-train pass instead of by the formation.
 	deferredDrives []*clock.Turn
 
+	// struckBy is who last landed an attack deed on each member during the
+	// verb in flight ([Encounter.landAttack]): the cause a fall noticed in
+	// that same verb names as its actor ([DeedFell]). Cleared by every
+	// participation pass that tells its falls, so a blow never explains a
+	// fall a later verb notices. Unexported and never persisted: it is set
+	// and read inside one call.
+	struckBy map[MemberID]MemberID
+
 	// canvas is THE MAP: one spatial room spanning the whole dungeon, in
 	// dungeon-absolute cells, with every authored wall registered on it as an
 	// absolute boundary edge (rpg-toolkit#1106).
@@ -103,10 +115,11 @@ type Encounter struct {
 	// a door's state has one home however it is reached.
 	doorsByID map[DoorID]*doorRecord
 
-	// regionLinks is the region graph a sound travels through, derived from
-	// the doors on first use and never persisted ([Encounter.links]): its
-	// parts are construction truth, so a reload derives the same graph.
-	regionLinks map[RegionID][]regionLink
+	// partitionLinks is the wall-partition graph a sound travels through,
+	// derived from the doors on first use and never persisted
+	// ([Encounter.links]): its parts are construction truth, so a reload
+	// derives the same graph.
+	partitionLinks map[PartitionID][]partitionLink
 
 	clock *clock.Tick
 	// bubbles are the localized initiative bubbles currently running. Zero or
@@ -524,6 +537,9 @@ func (e *Encounter) enforceRetention() error {
 // verb prefix — each caller wraps its own at the call site.
 func validateEndingTriggers(f *field, endings []EndingInput) error {
 	for _, ei := range endings {
+		if err := f.validateLeaveEnding(ei); err != nil {
+			return err
+		}
 		// A MemberDown ending must name a member — see TriggerMemberDown's
 		// doc for why empty is refused rather than defaulted.
 		if md, ok := ei.Trigger.(TriggerMemberDown); ok && md.Member == "" {
@@ -550,7 +566,17 @@ func validateEndingTriggers(f *field, endings []EndingInput) error {
 		// The predicate grammar's own forms (rpg-project#375) — a round, a
 		// fact, a stance — through the one validator dispositions use, so an
 		// ending and an until refuse the same shapes in the same words.
-		switch ei.Trigger.(type) {
+		switch t := ei.Trigger.(type) {
+		case TriggerNot:
+			// A `not` of a `left` is a leave ending, judged by
+			// validateLeaveEnding above; every other `not` is a waited-for
+			// predicate like the forms below.
+			if _, left := t.Inner.(TriggerLeft); left {
+				break
+			}
+			if err := f.validatePredicate(fmt.Sprintf("ending %q", ei.Key), ei.Trigger, ErrNoEnding); err != nil {
+				return err
+			}
 		case TriggerRound, TriggerFact, TriggerStance, TriggerHolds:
 			if err := f.validatePredicate(fmt.Sprintf("ending %q", ei.Key), ei.Trigger, ErrNoEnding); err != nil {
 				return err
@@ -687,6 +713,11 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// Check doors: names, states, and edges that are real crossings on real
 	// floor and belong to exactly one door (rpg-toolkit#1123).
 	if err = validateDoorInputs(f, in.Field.Doors); err != nil {
+		return nil, fmt.Errorf("newencounter: %w", err)
+	}
+	// THE SECOND DIVISION, derived here and at Load from the same authored
+	// geometry and never stored (partitions.go, rpg-project#725 R8).
+	if err = f.derivePartitions(in.Field.Doors); err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 
@@ -1186,6 +1217,7 @@ func (e *Encounter) Status() (*Status, error) {
 			Open: false,
 			Outcome: &Outcome{
 				Ending:  e.outcome.Ending,
+				Result:  e.outcome.Result,
 				At:      e.outcome.At,
 				Members: members,
 			},
@@ -1495,7 +1527,7 @@ func (e *Encounter) firedReachedPosition(member *memberRecord, cell spatial.Posi
 	if e.outcome != nil {
 		members := make([]MemberOutcome, len(e.outcome.Members))
 		copy(members, e.outcome.Members)
-		return &Outcome{Ending: e.outcome.Ending, At: e.outcome.At, Members: members}, nil
+		return &Outcome{Ending: e.outcome.Ending, Result: e.outcome.Result, At: e.outcome.At, Members: members}, nil
 	}
 
 	for _, de := range e.endings {
@@ -1554,14 +1586,16 @@ func (e *Encounter) closeWithEnded(
 		if e.heldEnding == nil {
 			e.heldEnding = &heldEnding{key: key, at: at, ended: ended, audience: audience}
 		}
-		return &Outcome{Ending: key, At: at}, nil
+		return &Outcome{Ending: key, Result: e.resultOf(key), At: at}, nil
 	}
 	// A reaction can finish the encounter while a turn or directed walk is
 	// suspended. No continuation survives an ending, and closed persisted worlds
 	// must never carry resumable work.
 	e.pause = nil
+	result := e.resultOf(key)
 	e.outcome = &Outcome{
 		Ending:  key,
+		Result:  result,
 		At:      at,
 		Members: e.buildMemberOutcomes(),
 	}
@@ -1583,6 +1617,12 @@ func (e *Encounter) closeWithEnded(
 	if len(ended) > 0 {
 		endedBeat["ended"] = ended
 	}
+	// What the ending meant for the party, when it says (rpg-project#716).
+	// Omitted for an ending that declares no result, so every beat written
+	// before results existed reads exactly as it did.
+	if result != "" {
+		endedBeat["outcome"] = string(result)
+	}
 	beatBytes, _ := json.Marshal(endedBeat)
 	if _, err := e.appendBeat(&record.AppendInput{
 		At:       at,
@@ -1595,7 +1635,7 @@ func (e *Encounter) closeWithEnded(
 
 	members := make([]MemberOutcome, len(e.outcome.Members))
 	copy(members, e.outcome.Members)
-	return &Outcome{Ending: key, At: at, Members: members}, nil
+	return &Outcome{Ending: key, Result: result, At: at, Members: members}, nil
 }
 
 // refreshSight rebuilds every observer's percept AND runs trigger detection on
@@ -2412,7 +2452,15 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	// The BEAT ORDER design §6 fixes is untouched: the departure beat still
 	// precedes both `dropped` and `ended`. What moved is the decision, not
 	// the narration.
-	fired := e.matchExitedHolding(leftThrough, carried)
+	//
+	// ONE PASS IN DECLARATION ORDER (rpg-project#716): an exited-holding
+	// ending and a `left` ending at the same door are asked in the order the
+	// author listed them, and the first that holds fires.
+	match, err := e.departureEnding(leftThrough, carried)
+	if err != nil {
+		return nil, fmt.Errorf("exit: %w", err)
+	}
+	fired := match.fired
 
 	// What actually walked out with them: everything they held when an
 	// ending fired on this departure, and nothing otherwise. Never nil — an

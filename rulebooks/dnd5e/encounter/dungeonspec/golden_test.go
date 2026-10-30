@@ -153,6 +153,17 @@ func goldenFromAtlas(atlas encounter.Atlas) goldenAtlas {
 // with nobody in it, and hands back the map.
 func compiledAtlas(t *testing.T, path string) (dungeonspec.Compiled, encounter.Atlas) {
 	t.Helper()
+	compiled, enc := compiledEncounter(t, path)
+	atlas, err := enc.Atlas()
+	require.NoError(t, err)
+	return compiled, atlas
+}
+
+// compiledEncounter is one content file compiled and set up with nobody in
+// it, for a test that asks the encounter itself — its partitions — and not
+// only its atlas.
+func compiledEncounter(t *testing.T, path string) (dungeonspec.Compiled, *encounter.Encounter) {
+	t.Helper()
 	raw, err := os.ReadFile(path)
 	require.NoError(t, err)
 	compiled, err := dungeonspec.Load(raw)
@@ -182,9 +193,7 @@ func compiledAtlas(t *testing.T, path string) (dungeonspec.Compiled, encounter.A
 		},
 	})
 	require.NoError(t, err)
-	atlas, err := enc.Atlas()
-	require.NoError(t, err)
-	return compiled, atlas
+	return compiled, enc
 }
 
 // tombDoorMoves is A6's one recorded difference: for each door, the crossing

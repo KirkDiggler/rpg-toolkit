@@ -700,15 +700,15 @@ func Example_theGatehouseActs() {
 	// move         clock        tick 1
 	// time         table_answer captain answers time with "hold", no roll
 	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
 	// move         act 1        gate-1 walks (-6,9) (-5,8)
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
 	// pass         act 1        gate-1 stays: standing at its waypoint
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-2,10)
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-2,9) (-2,8)
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// pass         act 1        gate-2 stays: standing at its waypoint
 	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
 	// move         act 1        hall-1 walks (13,-11) (12,-11) (11,-11) (10,-11) (9,-11) (8,-11)
@@ -750,9 +750,9 @@ func Example_theGatehouseActs() {
 	// speak        clock        tick 2
 	// time         table_answer captain answers time with "hold", no roll
 	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
 	// pass         act 1        gate-1 stays: standing at its waypoint
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// pass         act 1        gate-2 stays: standing at its waypoint
 	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
 	// move         act 1        hall-1 walks (7,-11) (6,-11) (6,-12)
@@ -856,15 +856,15 @@ func Example_theTroupeActs() {
 	// speak        clock        tick 1
 	// time         table_answer captain answers time with "hold", no roll
 	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
 	// move         act 1        gate-1 walks (-6,9) (-5,8)
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
 	// pass         act 1        gate-1 stays: standing at its waypoint
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-2,10)
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-2,9) (-2,8)
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// pass         act 1        gate-2 stays: standing at its waypoint
 	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
 	// move         act 1        hall-1 walks (13,-11) (12,-11) (11,-11) (10,-11) (9,-11) (8,-11)
@@ -900,9 +900,9 @@ func Example_theTroupeActs() {
 	// move         clock        tick 2
 	// time         table_answer captain answers time with "hold", no roll
 	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
 	// pass         act 1        gate-1 stays: standing at its waypoint
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// pass         act 1        gate-2 stays: standing at its waypoint
 	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
 	// move         act 1        hall-1 walks (7,-11) (6,-11) (6,-12)
@@ -943,13 +943,13 @@ func Example_theTroupeActs() {
 	// move         clock        tick 3
 	// time         table_answer captain answers time with "hold", no roll
 	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
 	// move         act 1        gate-1 walks (-5,9) (-5,10)
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
 	// pass         act 1        gate-1 stays: standing at its waypoint
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-3,9) (-4,10)
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// pass         act 1        gate-2 stays: standing at its waypoint
 	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
 	// move         act 1        hall-1 walks (6,-13) (6,-14) (6,-15)
@@ -984,9 +984,9 @@ func Example_theTroupeActs() {
 	// speak        clock        tick 4
 	// time         table_answer captain answers time with "hold", no roll
 	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
 	// pass         act 1        gate-1 stays: standing at its waypoint
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// pass         act 1        gate-2 stays: standing at its waypoint
 	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
 	// move         act 1        hall-1 walks (2,-15) (1,-15)
@@ -1025,11 +1025,11 @@ func Example_theTroupeActs() {
 	// open_door    table_answer reserve-1 is dealt "coward", rolled 1 of 3
 	// open_door    clock        reserve-2 arrives (monster)
 	// open_door    table_answer reserve-2 is dealt "coward", rolled 1 of 3
-	// open_door    perception   alice learns 1 region(s)
+	// open_door    perception   alice learns 2 region(s)
 	// open_door    perception   alice sees [reserve-1 reserve-2 sergeant turnkey], loses [], sees [] change
 	// -- alice waits at the gate --
 	// move         act 1        alice walks (-4,7)
-	// move         perception   alice learns 1 region(s)
+	// move         perception   alice learns 2 region(s)
 	// move         perception   alice sees [], loses [reserve-1 reserve-2 sergeant turnkey], sees [] change
 	// move         act 2        alice walks (-4,7) (-3,7)
 	// move         perception   alice sees [reserve-1 reserve-2 sergeant turnkey], loses [], sees [] change
@@ -1037,17 +1037,17 @@ func Example_theTroupeActs() {
 	// move         clock        tick 5
 	// time         table_answer captain answers time with "hold", no roll
 	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
 	// move         act 1        gate-1 walks (-6,10) (-7,10)
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
 	// move         act 1        gate-1 walks (-6,9) (-5,8)
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
 	// pass         act 1        gate-1 stays: standing at its waypoint
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-3,10) (-2,10)
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-2,9) (-2,8)
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 50
+	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// pass         act 1        gate-2 stays: standing at its waypoint
 	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
 	// move         act 1        hall-1 walks (0,-12) (1,-12) (2,-12) (3,-12) (4,-12) (5,-12)

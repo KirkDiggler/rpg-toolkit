@@ -26,6 +26,7 @@ import (
 //	until:   { down: chief }
 //	until:   { fact: saved-wiseman }
 //	when:    { stance: { between: [raiders, party], is: neutral } }
+//	requires: { not: { fact: caught-in-kitchen } }
 //
 // # Exactly one key
 //
@@ -77,6 +78,25 @@ type PredicateSpec struct {
 	// name ([grammar.predicate]). Must name a placed prop somebody can pick
 	// up.
 	Holds string
+
+	// Left is the `{ left: <exit id> }` form (rpg-project#716, ruled
+	// 2026-10-29): holds when the last standing party member has left by
+	// that exit. LEGAL ONLY AS AN ENDING'S `when` — leaving is the end of
+	// the run, so nothing can turn, arrive or be spoken for after it — and
+	// refused by name everywhere else ([grammar.predicate]). Must name an
+	// exit this file declares.
+	Left string
+
+	// Not is the `{ not: <one predicate> }` form (rpg-project#719): holds
+	// when the inner predicate does not, judged where and when the inner one
+	// is (the engine's [encounter.TriggerNot]). SCOPED BY WHAT IT WRAPS: a
+	// `not` of `holds` only on an option's `requires`, of `left` only on an
+	// ending's `when`, each refused elsewhere in the inner form's own words.
+	// On an until, an arrival or an ending's `when` it is waited for, and a
+	// `not` of a fact, a round or a fall holds from the start, so only a
+	// `not` of a stance the pair can turn away from is legal there
+	// ([grammar.not]). Never a `not` of a `not`.
+	Not *PredicateSpec
 }
 
 // StancePredicateSpec is the stance form's own object: the pair, and the
@@ -99,6 +119,8 @@ const (
 	predicateFact   = "fact"
 	predicateStance = "stance"
 	predicateHolds  = "holds"
+	predicateLeft   = "left"
+	predicateNot    = "not"
 )
 
 // predicateForms is the one sentence every predicate refusal points at.
@@ -125,6 +147,10 @@ func (p *PredicateSpec) Form() string {
 		return predicateStance
 	case p.Holds != "":
 		return predicateHolds
+	case p.Left != "":
+		return predicateLeft
+	case p.Not != nil:
+		return predicateNot
 	default:
 		return ""
 	}
@@ -142,7 +168,7 @@ func (p *PredicateSpec) UnmarshalYAML(value *yaml.Node) error {
 	var forms []string
 	for i := 0; i < len(value.Content); i += 2 {
 		switch key := value.Content[i].Value; key {
-		case predicateRound, predicateDown, predicateFact, predicateStance, predicateHolds:
+		case predicateRound, predicateDown, predicateFact, predicateStance, predicateHolds, predicateLeft, predicateNot:
 			forms = append(forms, key)
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.PredicateSpec",
@@ -163,11 +189,16 @@ func (p *PredicateSpec) UnmarshalYAML(value *yaml.Node) error {
 		Fact   string               `yaml:"fact"`
 		Stance *StancePredicateSpec `yaml:"stance"`
 		Holds  string               `yaml:"holds"`
+		Left   string               `yaml:"left"`
+		Not    *PredicateSpec       `yaml:"not"`
 	}
 	if err := value.Decode(&obj); err != nil {
 		return err
 	}
-	*p = PredicateSpec{Round: obj.Round, Down: obj.Down, Fact: obj.Fact, Stance: obj.Stance, Holds: obj.Holds}
+	*p = PredicateSpec{
+		Round: obj.Round, Down: obj.Down, Fact: obj.Fact, Stance: obj.Stance, Holds: obj.Holds, Left: obj.Left,
+		Not: obj.Not,
+	}
 
 	// A form that decoded to its own zero value said the key and nothing
 	// else — `{ fact: }` or `{ down: "" }` — which is the same author halfway
@@ -233,7 +264,92 @@ func (p *PredicateSpec) String() string {
 			strings.Join(p.Stance.Between[:], ", "), p.Stance.Is)
 	case predicateHolds:
 		return fmt.Sprintf("{ holds: %s }", p.Holds)
+	case predicateLeft:
+		return fmt.Sprintf("{ left: %s }", p.Left)
+	case predicateNot:
+		return fmt.Sprintf("{ not: %s }", p.Not.String())
 	default:
 		return "{ }"
 	}
+}
+
+// UntilSpec is a disposition's `until` (rpg-project#717): one step written
+// as a mapping, or a list of steps. List records which spelling the file
+// used, so a refusal names `until` or `until[j]` as the author wrote it.
+type UntilSpec struct {
+	// Steps is every step, in the file's order. At least one.
+	Steps []UntilStepSpec
+
+	// List is whether the file wrote a list, even a list of one.
+	List bool
+}
+
+// UntilStepSpec is one step: a predicate, and the stance it turns the pair
+// to, or empty for the other of hostile and neutral.
+type UntilStepSpec struct {
+	// Predicate is the step's one predicate ([PredicateSpec]).
+	Predicate PredicateSpec
+
+	// Then is `then:`, hostile, neutral or allied, or empty.
+	Then string
+}
+
+// UnmarshalYAML reads one step written as a mapping or a list of steps, and
+// refuses an empty list by name.
+func (u *UntilSpec) UnmarshalYAML(value *yaml.Node) error {
+	switch value.Kind {
+	case yaml.MappingNode:
+		var step UntilStepSpec
+		if err := step.UnmarshalYAML(value); err != nil {
+			return err
+		}
+		*u = UntilSpec{Steps: []UntilStepSpec{step}}
+
+		return nil
+	case yaml.SequenceNode:
+		if len(value.Content) == 0 {
+			return fmt.Errorf("line %d: this until lists no steps — write a step, or drop the until", value.Line)
+		}
+		out := UntilSpec{List: true}
+		for _, item := range value.Content {
+			var step UntilStepSpec
+			if err := step.UnmarshalYAML(item); err != nil {
+				return err
+			}
+			out.Steps = append(out.Steps, step)
+		}
+		*u = out
+
+		return nil
+	default:
+		return fmt.Errorf("line %d: an until is one step, { <predicate>, then: <stance> }, or a list of them: %s",
+			value.Line, predicateForms)
+	}
+}
+
+// UnmarshalYAML reads one step: its `then:`, and every other key as the
+// step's predicate, refused by [PredicateSpec.UnmarshalYAML]'s own rules.
+func (s *UntilStepSpec) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: an until step is { <predicate>, then: <stance> }: %s", value.Line, predicateForms)
+	}
+	rest := *value
+	rest.Content = nil
+	var then string
+	for i := 0; i < len(value.Content); i += 2 {
+		if value.Content[i].Value == "then" {
+			if err := value.Content[i+1].Decode(&then); err != nil {
+				return err
+			}
+			continue
+		}
+		rest.Content = append(rest.Content, value.Content[i], value.Content[i+1])
+	}
+	var pred PredicateSpec
+	if err := pred.UnmarshalYAML(&rest); err != nil {
+		return err
+	}
+	*s = UntilStepSpec{Predicate: pred, Then: then}
+
+	return nil
 }

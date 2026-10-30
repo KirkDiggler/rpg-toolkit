@@ -414,19 +414,23 @@ func (e *Encounter) arrivalStandable(cell spatial.Position) bool {
 
 // arrivalCell is where an arrival lands: the authored cell when it is floor
 // of the right kind and nothing stands on it, else the nearest free cell of
-// its region — grid distance first, then the map's coordinate order, so two
-// runs of one save land in one place (C8). floor is the rule for the kind of
+// its wall partition — grid distance first, then the map's coordinate order,
+// so two runs of one save land in one place (C8). floor is the rule for the kind of
 // thing arriving: standable for a member, any floor for a prop.
 //
 // Refused (ErrBadPlacement) when the cell is in no region to search — a prop
-// authored on scenery that something has been dropped on — or when the region
-// has no free cell left. Loud rather than nowhere: see the file's own doc.
+// authored on scenery that something has been dropped on — or when its
+// partition has no free cell left. Loud rather than nowhere: see the file's own doc.
 func (e *Encounter) arrivalCell(at spatial.Position, floor func(spatial.Position) bool, what string) (spatial.Position, error) {
 	free := func(c spatial.Position) bool { return floor(c) && !e.canvas.IsPositionOccupied(c) }
 	if free(at) {
 		return at, nil
 	}
-	region, owned := e.field.regionOf(at)
+	// THE ROOM AS THE WALLS MAKE IT, never the authored region
+	// (rpg-project#725, R4): an arrival bumped off its cell looks for room on
+	// the floor it can walk to, which a region boundary painted across an
+	// open hall does not cut and a wall does.
+	partition, owned := e.field.partitionAt(at)
 	if !owned {
 		return spatial.Position{}, fmt.Errorf("%s cannot arrive at %v: something stands there and the cell is in no region to look for room in: %w",
 			what, at, ErrBadPlacement)
@@ -434,7 +438,7 @@ func (e *Encounter) arrivalCell(at spatial.Position, floor func(spatial.Position
 	found := false
 	var best spatial.Position
 	var bestDistance float64
-	for _, c := range e.field.regionCells[region] {
+	for _, c := range e.field.partitionCells[partition] {
 		if !free(c) {
 			continue
 		}
@@ -444,8 +448,8 @@ func (e *Encounter) arrivalCell(at spatial.Position, floor func(spatial.Position
 		}
 	}
 	if !found {
-		return spatial.Position{}, fmt.Errorf("%s cannot arrive at %v: something stands there and region %q has no free cell: %w",
-			what, at, region, ErrBadPlacement)
+		return spatial.Position{}, fmt.Errorf("%s cannot arrive at %v: something stands there and its room has no free cell: %w",
+			what, at, ErrBadPlacement)
 	}
 	return best, nil
 }
@@ -571,6 +575,19 @@ func onFact(id FactID) func(Trigger) (string, bool) {
 // pair the predicate names turned, and to the stance it waits for.
 func onStance(before, after map[factionPair]Stance) func(Trigger) (string, bool) {
 	return func(t Trigger) (string, bool) {
+		if n, ok := t.(TriggerNot); ok {
+			// THE NEGATION'S EDGE (rpg-project#719): asked in the same fold,
+			// it holds when the pair turned AWAY from the stance named.
+			ts, ok := n.Inner.(TriggerStance)
+			if !ok {
+				return "", false
+			}
+			pair := pairOf(ts.Between[0], ts.Between[1])
+			if !turnedAway(before, after, pair, ts.Stance) {
+				return "", false
+			}
+			return fmt.Sprintf("%s stopped being %s", pair, ts.Stance), true
+		}
 		ts, ok := t.(TriggerStance)
 		if !ok {
 			return "", false

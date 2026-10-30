@@ -97,6 +97,15 @@ type field struct {
 	// than re-derived per call.
 	regionCells map[RegionID][]spatial.Position
 
+	// partitionOf and partitionCells are the field's SECOND DIVISION: every
+	// owned cell to the wall partition holding it, and each partition's
+	// cells, absolute axial and sorted (rpg-project#725; partitions.go).
+	// DERIVED by [field.derivePartitions] at construction and at every load,
+	// never written to [FieldData] (R8). Nil on a field compiled for a
+	// question that does not need them (validation, static placements).
+	partitionOf    map[spatial.Position]PartitionID
+	partitionCells map[PartitionID][]spatial.Position
+
 	// sceneryCells is THE OTHER HALF OF THE MASK: every scenery cell,
 	// absolute axial (rpg-project#360). A cell here is FLOOR that no region
 	// owns — a wall may stand on it, a prop may sit on it, a sightline

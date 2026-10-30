@@ -148,7 +148,8 @@ func (e *Encounter) Witnesses(of MemberID) ([]MemberID, error) {
 
 // OptionsFor is the options a target creature offers one speaker: every
 // option on the target whose [Option.Requires] holds for the SPEAKER (R9), in
-// authored order, deep-copied.
+// authored order, deep-copied. A target that is DOWN offers none
+// (rpg-project#718): [Encounter.Speak] refuses a line said to it.
 //
 // A CREATURE WITH NO OPTIONS OFFERS NONE, and that is an empty list and a nil
 // error — what the absence means (the shortfall a client is shown) is the
@@ -156,7 +157,8 @@ func (e *Encounter) Witnesses(of MemberID) ([]MemberID, error) {
 // here: that is [Encounter.Witnesses]' question, asked by whoever prices the
 // line, and asked again by [Encounter.Speak] at the door.
 //
-// Errors: ErrNotMember (no such speaker or target).
+// Errors: ErrNotMember (no such speaker or target), and the participation
+// capability's own error when who is down cannot be asked.
 func (e *Encounter) OptionsFor(actor, target MemberID) ([]Option, error) {
 	if _, ok := e.members[actor]; !ok {
 		return nil, fmt.Errorf("options for: actor %q: %w", actor, ErrNotMember)
@@ -164,6 +166,15 @@ func (e *Encounter) OptionsFor(actor, target MemberID) ([]Option, error) {
 	record, ok := e.members[target]
 	if !ok {
 		return nil, fmt.Errorf("options for: target %q: %w", target, ErrNotMember)
+	}
+	// A DOWN CREATURE OFFERS NONE (rpg-project#718), so the offer and
+	// [Encounter.Speak]'s door agree: a line it would refuse is never shown.
+	down, err := e.isDown(target)
+	if err != nil {
+		return nil, fmt.Errorf("options for: %w", err)
+	}
+	if down {
+		return []Option{}, nil
 	}
 
 	return e.offered(actor, record.Options), nil
@@ -215,6 +226,15 @@ func (e *Encounter) requirementHolds(actor MemberID, requires Trigger) bool {
 	switch t := requires.(type) {
 	case nil:
 		return true
+	case TriggerNot:
+		// The speaker's own read, negated (rpg-project#719, D3): withheld
+		// from whoever learned the fact, still offered to whoever did not.
+		// The door refuses a nil inner, so nil's "holds always" is never
+		// what is negated.
+		if t.Inner == nil {
+			return false
+		}
+		return !e.requirementHolds(actor, t.Inner)
 	case TriggerFact:
 		return e.world.knowsFact(actor, t.Fact)
 	case TriggerHolds:
@@ -369,10 +389,11 @@ type SpeakOutput struct {
 // Validation order (R5 atomicity — every refusal before the first write): nil
 // input → no actor, or not exactly one of target and prop → no option id → no
 // roller → closed → actor is a member → target is a member and not the actor
-// → the actor is placed → the option is on the target (a prop: the actor is
-// shown it) and its requirement holds for the actor → the skill is one of its
-// approaches → a creature target can see the actor → the beat → the deed → the
-// answer → the world's price for an action.
+// → a creature target is not down → the actor is placed → the option is on
+// the target (a prop: the actor is shown it) and its requirement holds for
+// the actor → the skill is one of its approaches → a creature target can see
+// the actor → the beat → the deed → the answer → the world's price for an
+// action.
 //
 // THE BEAT IS APPENDED BEFORE ITS CONSEQUENCES, the law
 // [Encounter.refreshSight] states: the line is the cause, and a stance beat
@@ -380,8 +401,8 @@ type SpeakOutput struct {
 // ANSWERED beat comes after both, because it is the result (answer.go).
 //
 // Errors: ErrNilInput, ErrNoMember, ErrNoOption, ErrNoRoller, ErrClosed,
-// ErrNotMember, ErrBadPlacement, ErrNoProp, ErrUnwitnessed, and a refused
-// Calculation.
+// ErrNotMember, ErrMemberDown, ErrBadPlacement, ErrNoProp, ErrUnwitnessed,
+// and a refused Calculation.
 func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("speak: %w", ErrNilInput)
@@ -415,6 +436,17 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 		// read as anything.
 		if in.Actor == in.Target {
 			return nil, fmt.Errorf("speak: actor %q cannot address itself: %w", in.Actor, ErrNotMember)
+		}
+		// A DOWN CREATURE ANSWERS NOTHING (rpg-project#718). It still carries
+		// its lines — a fallen leader's faction lines are on it like every
+		// member's — so without this door the body would "yield", learn the
+		// fact, and hold the deed. Refused before anything is written.
+		down, err := e.isDown(in.Target)
+		if err != nil {
+			return nil, fmt.Errorf("speak: %w", err)
+		}
+		if down {
+			return nil, fmt.Errorf("speak: %q is down and cannot answer: %w", in.Target, ErrMemberDown)
 		}
 		options = target.Options
 	}
@@ -602,7 +634,15 @@ func validateOptions(options []Option) error {
 				return fmt.Errorf("option %q approach %q at DC %d has nothing to beat", o.ID, a.Ability, a.DC)
 			}
 		}
-		switch t := o.Requires.(type) {
+		requires := o.Requires
+		if n, ok := requires.(TriggerNot); ok {
+			inner, err := validateReadNot(fmt.Sprintf("option %q requires", o.ID), n)
+			if err != nil {
+				return err
+			}
+			requires = inner
+		}
+		switch t := requires.(type) {
 		case nil:
 		case TriggerFact:
 			if t.Fact == "" {
@@ -613,7 +653,7 @@ func validateOptions(options []Option) error {
 				return fmt.Errorf("option %q requires holding a prop and names none", o.ID)
 			}
 		default:
-			return fmt.Errorf("option %q requires a %T: an option requires a fact or a holding", o.ID, o.Requires)
+			return fmt.Errorf("option %q requires a %T: an option requires a fact or a holding, or not one", o.ID, requires)
 		}
 		for _, verdict := range []struct {
 			key  AnswerKey
@@ -661,7 +701,8 @@ func validatePropOptions(id PropID, ref string, options []Option) error {
 // because only then is the holdable index whole.
 func (f *field) validateOptionHolds(options []Option) error {
 	for _, o := range options {
-		t, ok := o.Requires.(TriggerHolds)
+		inner, _ := unwrapNot(o.Requires)
+		t, ok := inner.(TriggerHolds)
 		if !ok {
 			continue
 		}

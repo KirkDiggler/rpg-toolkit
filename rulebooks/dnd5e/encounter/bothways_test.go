@@ -141,7 +141,7 @@ func (s *BothWaysSuite) openDriven(
 func neutralUntil(t encounter.Trigger) encounter.DispositionInput {
 	return encounter.DispositionInput{
 		Between: [2]encounter.FactionID{bwGoblins, encounter.FactionParty},
-		Stance:  encounter.StanceNeutral, Until: t,
+		Stance:  encounter.StanceNeutral, Until: []encounter.UntilStep{{When: t}},
 	}
 }
 
@@ -339,10 +339,10 @@ func (s *BothWaysSuite) TestTheGuardsTurnAtMidnightAndTheirDogsWithThem() {
 				{
 					Between: [2]encounter.FactionID{bwDogs, encounter.FactionParty},
 					Stance:  encounter.StanceNeutral,
-					Until: encounter.TriggerStance{
+					Until: []encounter.UntilStep{{When: encounter.TriggerStance{
 						Between: [2]encounter.FactionID{bwGoblins, encounter.FactionParty},
 						Stance:  encounter.StanceHostile,
-					},
+					}}},
 				},
 			},
 			false,
@@ -582,7 +582,7 @@ func (s *BothWaysSuite) TestTheBetrayedTruce() {
 			[]encounter.FactionInput{{ID: bwGoblins, Mind: bwChief}},
 			[]encounter.DispositionInput{{
 				Between: [2]encounter.FactionID{bwGoblins, encounter.FactionParty},
-				Stance:  encounter.StanceHostile, Until: encounter.TriggerFact{Fact: bwFact},
+				Stance:  encounter.StanceHostile, Until: []encounter.UntilStep{{When: encounter.TriggerFact{Fact: bwFact}}},
 			}},
 			true,
 		),

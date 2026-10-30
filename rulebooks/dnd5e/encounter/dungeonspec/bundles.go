@@ -76,7 +76,7 @@ type bundleResolver struct {
 
 // resolveBundles resolves every `use:` row in a single-room document: its
 // root tables, every binding's own `on:` and options, every prop binding's
-// options and every faction's orders. It also judges each bundle once, at its
+// options and every faction's orders and options. It also judges each bundle once, at its
 // own path: rows written, and no `$name` it does not declare.
 //
 // IDEMPOTENT. Validation and compile both run it, and each run writes the
@@ -92,6 +92,7 @@ func resolveBundles(s *SingleRoomSpec, add errSink) {
 	}
 	for i := range s.Factions {
 		r.on(fmt.Sprintf("factions[%d]", i), s.Factions[i].On)
+		r.options(fmt.Sprintf("factions[%d]", i), s.Factions[i].Options)
 	}
 	gp := &s.Room.Gameplay
 	for _, id := range sortedBindingIDs(gp.MonsterBindings) {
@@ -408,8 +409,8 @@ func optionLists(options []OptionSpec) [][]AnswerSpec {
 }
 
 // roomFacts is every fact a single-room document can set, read after its
-// bundles are resolved: its tables', factions', bindings' and options' rows,
-// and its records' reveals.
+// bundles are resolved: its tables', factions' (orders and lines), bindings'
+// and options' rows, and its records' reveals.
 func roomFacts(s *SingleRoomSpec) map[string]bool {
 	var lists [][]AnswerSpec
 	for _, id := range sortedTableIDs(s.Tables) {
@@ -417,6 +418,7 @@ func roomFacts(s *SingleRoomSpec) map[string]bool {
 	}
 	for _, f := range s.Factions {
 		lists = append(lists, onLists(f.On)...)
+		lists = append(lists, optionLists(f.Options)...)
 	}
 	gp := &s.Room.Gameplay
 	for _, id := range sortedBindingIDs(gp.MonsterBindings) {
@@ -435,7 +437,8 @@ func roomFacts(s *SingleRoomSpec) map[string]bool {
 }
 
 // specFacts is [roomFacts] for a version 2 document: its placements' and
-// factions' rows, its placements' options, and its records' reveals.
+// factions' rows and lines, its placements' options, and its records'
+// reveals.
 func specFacts(spec *Spec) map[string]bool {
 	var lists [][]AnswerSpec
 	for _, p := range spec.Place {
@@ -444,6 +447,7 @@ func specFacts(spec *Spec) map[string]bool {
 	}
 	for _, f := range spec.Factions {
 		lists = append(lists, onLists(f.On)...)
+		lists = append(lists, optionLists(f.Options)...)
 	}
 	revealed := make([]string, 0, len(spec.Intel))
 	for _, rec := range spec.Intel {

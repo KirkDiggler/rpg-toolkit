@@ -180,7 +180,19 @@ func (e *Encounter) settleStances(before map[factionPair]Stance, at uint64) erro
 	if e.outcome != nil {
 		return nil
 	}
+	notStance := onStance(before, after)
 	for _, de := range e.endings {
+		if _, negated := de.trigger.(TriggerNot); negated {
+			// A `not` of a stance fires when the pair turned away from it
+			// (rpg-project#719), the same edge an until and an arrival read.
+			if _, ok := notStance(de.trigger); !ok {
+				continue
+			}
+			if _, err := e.closeWith(de.key, at); err != nil {
+				return fmt.Errorf("stance ending %q: %w", de.key, err)
+			}
+			return nil
+		}
 		ts, ok := de.trigger.(TriggerStance)
 		if !ok {
 			continue
@@ -347,7 +359,8 @@ func (e *Encounter) noticeRounds(bubble *clock.Turn, ms []clock.Milestone) error
 // sweepPresence is PRESENCE TRANSFER (design §3.6, R3 — "we throw it at the
 // chief, or be in the same room as the chief holding the letter"): every
 // member holding a record that reveals a fact teaches every faction mind
-// standing in the same region. The record COPIES — the mind holds it too,
+// standing in the same wall partition — the same room as the walls make it,
+// whatever regions its author painted (rpg-project#725). The record COPIES — the mind holds it too,
 // and what it reveals is applied through the one routine a record is applied
 // by — and the holder keeps it. Idempotent: a mind already holding the record
 // is not taught it again.
@@ -356,8 +369,8 @@ func (e *Encounter) noticeRounds(bubble *clock.Turn, ms []clock.Milestone) error
 // loss), so standing is asked, once, only when there is a candidate to ask
 // about: a sweep with nobody carrying anything consults nothing.
 //
-// PRESENCE IS SYMMETRIC BY CONSTRUCTION (R3: the same region, nothing about
-// who arrived). The mind walking INTO the carrier's region teaches him
+// PRESENCE IS SYMMETRIC BY CONSTRUCTION (R3: the same room, nothing about
+// who arrived). The mind walking INTO the carrier's room teaches him
 // exactly as the carrier walking in does — a chief who charges into the
 // yard after the letter's holder learns what the letter says and stands
 // down. Kirk saw this on the raider camp (2026-09-05); it is the rule's
@@ -373,7 +386,10 @@ func (e *Encounter) sweepPresence(at uint64) error {
 		if !placed {
 			continue
 		}
-		region, owned := e.field.regionOf(cell)
+		// THE ROOM AS THE WALLS MAKE IT (rpg-project#725, R4): carrying a
+		// record into a mind's presence is being in the same partition, so a
+		// region boundary painted across an open hall separates nobody.
+		partition, owned := e.field.partitionAt(cell)
 		if !owned {
 			continue
 		}
@@ -386,7 +402,7 @@ func (e *Encounter) sweepPresence(at uint64) error {
 			if !placed {
 				continue
 			}
-			if r, ok := e.field.regionOf(mindCell); !ok || r != region {
+			if p, ok := e.field.partitionAt(mindCell); !ok || p != partition {
 				continue
 			}
 			if down == nil {
