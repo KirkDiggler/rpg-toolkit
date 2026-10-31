@@ -1831,9 +1831,11 @@ room:
             success:
               - say: Through the great hall, in the throne room. He holds court there, mad as a
                   hare.
+                activity: {ref: 'dnd5e:activities:thoughtful', cycles: 2}
                 fact: king-in-throne-room
             failure:
               - say: Why should I tell you? Get me out first.
+                activity: {ref: 'dnd5e:activities:thoughtful', cycles: 2}
           - id: who-holds-the-keys
             say: Who holds the keys?
             check:
