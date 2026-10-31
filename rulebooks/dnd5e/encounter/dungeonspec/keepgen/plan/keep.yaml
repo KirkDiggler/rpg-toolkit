@@ -1,0 +1,204 @@
+# The benchmark keep (rpg-project#740, design R1): FadedPez's keep as a floor
+# plan. Rooms around a courtyard, west and south grounds, doors between rooms.
+# The generator (dungeonspec/keepgen) derives every cell, wall, prop and
+# monster from this file; nothing here is a coordinate or a count.
+#
+# HOW TO READ IT. `width` runs west to east, `depth` north to south, both in
+# hexes at keep scale. Rooms on the north and south sides are listed west to
+# east and share one depth; rooms on the west and east sides are listed north
+# to south and share one width. The north and south sides span the keep; the
+# west and east sides fill the height between them; the courtyard is what is
+# left in the middle. The west grounds run the keep's height on its west; the
+# south grounds run under both.
+#
+# KEEP SCALE IS 10,000 HEXES EXACTLY (plan G1): an 80 x 80 keep, 20-wide west
+# grounds and 20-deep south grounds.
+name: The Benchmark Keep
+
+rooms:
+  # North, the far side (the postern), west to east.
+  - { id: bedrooms, name: Bedrooms, kind: quarters, width: 12, depth: 16, side: north, lighting: 0.8 }
+  - { id: treasury, name: Treasury, kind: service, width: 8, depth: 16, side: north, lighting: 0.6 }
+  - { id: hidden-stash, name: Hidden Stash, kind: service, width: 4, depth: 16, side: north, lighting: 0.3 }
+  - { id: throne-room, name: Throne Room, kind: hall, width: 16, depth: 16, side: north, lighting: 1 }
+  - { id: audience-approach, name: Audience Approach, kind: hall, width: 8, depth: 16, side: north, lighting: 1 }
+  - { id: enclosed-passage, name: Enclosed Passage, kind: passage, width: 6, depth: 16, side: north, lighting: 0.6 }
+  - { id: ballroom, name: Ballroom, kind: hall, width: 14, depth: 16, side: north, lighting: 1 }
+  - { id: banquet-hall, name: Banquet Hall, kind: hall, width: 12, depth: 16, side: north, lighting: 1 }
+  # West, north to south.
+  - { id: library, name: Library, kind: library, width: 16, depth: 8, side: west, lighting: 0.8 }
+  - { id: apothecary, name: Apothecary, kind: service, width: 16, depth: 6, side: west, lighting: 0.6 }
+  - { id: chapel, name: Chapel, kind: chapel, width: 16, depth: 8, side: west, lighting: 0.8 }
+  - { id: rectory, name: Rectory, kind: quarters, width: 16, depth: 6, side: west, lighting: 0.8 }
+  - { id: crypt, name: Crypt, kind: chapel, width: 16, depth: 6, side: west, lighting: 0.3 }
+  - { id: mausoleum, name: Mausoleum, kind: chapel, width: 16, depth: 6, side: west, lighting: 0.3 }
+  - { id: cemetery, name: Cemetery, kind: grounds, width: 16, depth: 8, side: west, lighting: 1 }
+  # East, north to south.
+  - { id: servants-quarters, name: Servants’ Quarters, kind: quarters, width: 16, depth: 8, side: east, lighting: 0.8 }
+  - { id: jailer, name: Jailer, kind: prison, width: 16, depth: 6, side: east, lighting: 0.4 }
+  - { id: prison, name: Prison, kind: prison, width: 16, depth: 10, side: east, lighting: 0.4 }
+  - { id: shared-service-passage, name: Shared Service Passage, kind: passage, width: 16, depth: 6, side: east, lighting: 0.6 }
+  - { id: larder, name: Larder, kind: service, width: 16, depth: 8, side: east, lighting: 0.6 }
+  - { id: kitchen, name: Kitchen, kind: service, width: 16, depth: 10, side: east, lighting: 0.6 }
+  # South, the gate side, west to east.
+  - { id: stables, name: Stables, kind: service, width: 14, depth: 16, side: south, lighting: 0.6 }
+  - { id: training-yard, name: Training Yard, kind: grounds, width: 12, depth: 16, side: south, lighting: 1 }
+  - { id: armory, name: Armory, kind: service, width: 8, depth: 16, side: south, lighting: 0.6 }
+  - { id: gatehouse, name: Gatehouse, kind: hall, width: 10, depth: 16, side: south, lighting: 1 }
+  - { id: forecourt, name: Forecourt, kind: grounds, width: 10, depth: 16, side: south, lighting: 1 }
+  - { id: barracks, name: Barracks, kind: quarters, width: 10, depth: 16, side: south, lighting: 0.8 }
+  - { id: tower, name: Tower, kind: hall, width: 6, depth: 16, side: south, lighting: 1 }
+  - { id: mess-hall, name: Mess Hall, kind: hall, width: 10, depth: 16, side: south, lighting: 1 }
+
+courtyard: { id: courtyard, name: Courtyard, lighting: 1 }
+
+grounds:
+  west: { id: west-grounds, name: West Grounds, width: 20, lighting: 1 }
+  south: { id: south-grounds, name: South Grounds, depth: 20, lighting: 1 }
+
+partyStart: gatehouse
+
+exits:
+  - { id: gate, room: gatehouse }
+  - { id: postern, room: enclosed-passage }
+
+# Each pair is one door on the wall the two share, bound open.
+doors:
+  # The way in, and the other ways out to the grounds.
+  - [gatehouse, south-grounds]
+  - [stables, south-grounds]
+  - [cemetery, west-grounds]
+  # The gate side.
+  - [gatehouse, forecourt]
+  - [forecourt, courtyard]
+  - [barracks, forecourt]
+  - [barracks, courtyard]
+  - [armory, courtyard]
+  - [training-yard, courtyard]
+  - [stables, training-yard]
+  - [tower, mess-hall]
+  # The far side.
+  - [enclosed-passage, courtyard]
+  - [audience-approach, courtyard]
+  - [throne-room, audience-approach]
+  - [treasury, courtyard]
+  - [treasury, hidden-stash]
+  - [bedrooms, treasury]
+  - [ballroom, courtyard]
+  - [ballroom, banquet-hall]
+  # The west side.
+  - [library, courtyard]
+  - [library, bedrooms]
+  - [apothecary, courtyard]
+  - [chapel, courtyard]
+  - [chapel, rectory]
+  - [rectory, crypt]
+  - [crypt, mausoleum]
+  - [mausoleum, cemetery]
+  - [cemetery, courtyard]
+  # The east side.
+  - [servants-quarters, courtyard]
+  - [jailer, courtyard]
+  - [jailer, prison]
+  - [shared-service-passage, courtyard]
+  - [shared-service-passage, larder]
+  - [larder, kitchen]
+  - [kitchen, courtyard]
+  - [kitchen, mess-hall]
+
+# Plan G13: the castle's wall and door.
+walls:
+  assetRef: dnd5e:env:dark-fortress:45_wall_01
+  doorAssetRef: dnd5e:env:dark-fortress:wall_door_double_01
+
+# Plan G11: full refs from the web's pinned catalog, by room kind; width and
+# depth are the catalog's boundsMeters x and z, to the centimetre. Plan G3:
+# shelves, statues, clothes racks and crate stacks block sight. Plan G7: the
+# castle's stat blocks.
+palettes:
+  hall:
+    props:
+      - { assetRef: "dnd5e:props:fantasy-kingdom:table_fancy_01", width: 1.4, depth: 3.44, blocksMovement: true, blocksLineOfSight: false }
+      - { assetRef: "dnd5e:props:fantasy-kingdom:table_fancy_03", width: 1.45, depth: 3.51, blocksMovement: true, blocksLineOfSight: false }
+      - { assetRef: "dnd5e:props:fantasy-kingdom:table_fancy_07", width: 1.29, depth: 0.64, blocksMovement: true, blocksLineOfSight: false }
+      - { assetRef: "dnd5e:props:fantasy-kingdom:chair_fancy_01", width: 0.46, depth: 0.52, blocksMovement: false, blocksLineOfSight: false }
+      - { assetRef: "dnd5e:props:fantasy-kingdom:chair_fancy_02", width: 0.46, depth: 0.54, blocksMovement: false, blocksLineOfSight: false }
+      - { assetRef: "dnd5e:props:fantasy-kingdom:bench_seat_01", width: 2.19, depth: 0.45, blocksMovement: true, blocksLineOfSight: false }
+      - { assetRef: "dnd5e:props:fantasy-kingdom:statue_knight_01", width: 0.93, depth: 0.64, blocksMovement: true, blocksLineOfSight: true }
+    monsters: [dnd5e:monsters:guard, dnd5e:monsters:knight]
+  service:
+    props:
+      - { assetRef: "dnd5e:props:fantasy-kingdom:barrel_01", width: 0.54, depth: 0.54, blocksMovement: true, blocksLineOfSight: false }
+      - { assetRef: "dnd5e:props:fantasy-kingdom:crate_stack_01", width: 2.44, depth: 0.91, blocksMovement: true, blocksLineOfSight: true }
+      - { assetRef: "dnd5e:props:fantasy-kingdom:crate_stack_02", width: 2.44, depth: 1.45, blocksMovement: true, blocksLineOfSight: true }
+      - { assetRef: "dnd5e:props:fantasy-kingdom:sack_stack_01", width: 0.75, depth: 0.75, blocksMovement: false, blocksLineOfSight: false }
+      - { assetRef: "dnd5e:props:fantasy-kingdom:shelf_03", width: 0.66, depth: 0.33, blocksMovement: true, blocksLineOfSight: true }
+      - { assetRef: "dnd5e:props:fantasy-kingdom:bread_crate_01", width: 0.62, depth: 0.39, blocksMovement: false, blocksLineOfSight: false }
+    monsters: [dnd5e:monsters:commoner]
+  quarters:
+    props:
+      - { assetRef: "dnd5e:props:fantasy-kingdom:bed_01", width: 1.63, depth: 1.85, blocksMovement: true, blocksLineOfSight: false }
+      - { assetRef: "dnd5e:props:fantasy-kingdom:bed_02", width: 1.7, depth: 1.88, blocksMovement: true, blocksLineOfSight: false }
+      - { assetRef: "dnd5e:props:fantasy-kingdom:bed_03", width: 1.48, depth: 1.62, blocksMovement: true, blocksLineOfSight: false }
+      - { assetRef: "dnd5e:props:fantasy-kingdom:side_table_01", width: 0.42, depth: 0.42, blocksMovement: false, blocksLineOfSight: false }
+      - { assetRef: "dnd5e:props:fantasy-kingdom:chest_01", width: 0.75, depth: 0.46, blocksMovement: false, blocksLineOfSight: false }
+      - { assetRef: "dnd5e:props:fantasy-kingdom:clothes_rack_01_preset_01", width: 1.63, depth: 0.51, blocksMovement: true, blocksLineOfSight: true }
+    monsters: [dnd5e:monsters:guard, dnd5e:monsters:knight]
+  library:
+    props:
+      - { assetRef: "dnd5e:props:fantasy-kingdom:shelf_03", width: 0.66, depth: 0.33, blocksMovement: true, blocksLineOfSight: true }
+      - { assetRef: "dnd5e:props:fantasy-kingdom:books_01", width: 0.72, depth: 0.18, blocksMovement: false, blocksLineOfSight: false }
+      - { assetRef: "dnd5e:props:fantasy-kingdom:books_02", width: 0.41, depth: 0.18, blocksMovement: false, blocksLineOfSight: false }
+      - { assetRef: "dnd5e:props:fantasy-kingdom:books_03", width: 0.74, depth: 0.18, blocksMovement: false, blocksLineOfSight: false }
+      - { assetRef: "dnd5e:props:fantasy-kingdom:books_04", width: 0.24, depth: 0.18, blocksMovement: false, blocksLineOfSight: false }
+    monsters: [dnd5e:monsters:commoner]
+  chapel:
+    props:
+      - { assetRef: "dnd5e:props:fantasy-kingdom:bench_seat_pew_01", width: 2.07, depth: 0.53, blocksMovement: true, blocksLineOfSight: false }
+      - { assetRef: "dnd5e:props:dark-fortress:altar_01", width: 1.62, depth: 0.83, blocksMovement: true, blocksLineOfSight: false }
+      - { assetRef: "dnd5e:props:dark-fortress:candle_stand_02", width: 0.24, depth: 0.21, blocksMovement: false, blocksLineOfSight: false }
+    monsters: [dnd5e:monsters:commoner]
+  prison:
+    props:
+      - { assetRef: "dnd5e:props:dark-fortress:barricade_01", width: 1.28, depth: 1.32, blocksMovement: true, blocksLineOfSight: false }
+      - { assetRef: "dnd5e:props:dark-fortress:bench_01", width: 1.33, depth: 0.39, blocksMovement: false, blocksLineOfSight: false }
+    monsters: [dnd5e:monsters:prisoner]
+  passage:
+    props: []
+    monsters: []
+  grounds:
+    props:
+      - { assetRef: "dnd5e:props:fantasy-kingdom:crate_stack_03", width: 1.34, depth: 0.95, blocksMovement: true, blocksLineOfSight: true }
+      - { assetRef: "dnd5e:props:fantasy-kingdom:statue_plinth_01", width: 1.08, depth: 1.08, blocksMovement: true, blocksLineOfSight: true }
+      - { assetRef: "dnd5e:props:fantasy-kingdom:barrel_01", width: 0.54, depth: 0.54, blocksMovement: false, blocksLineOfSight: false }
+    monsters: [dnd5e:monsters:guard]
+
+# The stat blocks the monster palettes name, the castle's own
+# (testdata/world-builder-v4-castle.yaml), carried into the site so a launch
+# resolves `dnd5e:monsters:<id>` the way it does for the castle.
+templates:
+  guard:
+    base: dnd5e:monsters:human
+    name: Guard
+    hitDice: 2d8
+    armor: dnd5e:armor:chain-shirt
+    abilities: { str: 13, con: 12, wis: 11 }
+    skills: [perception]
+    actions: [dnd5e:weapons:spear]
+  knight:
+    base: dnd5e:monsters:human
+    name: Knight
+    hitDice: 8d8
+    armor: dnd5e:armor:plate
+    abilities: { str: 16, dex: 11, con: 14, wis: 11, cha: 15 }
+    proficiency: 2
+    actions: [dnd5e:weapons:greatsword]
+  commoner:
+    base: dnd5e:monsters:human
+    name: Commoner
+    hitDice: 1d8
+    actions: [dnd5e:weapons:club]
+  prisoner:
+    base: dnd5e:monsters:human
+    name: Prisoner
+    actions: [dnd5e:weapons:club]

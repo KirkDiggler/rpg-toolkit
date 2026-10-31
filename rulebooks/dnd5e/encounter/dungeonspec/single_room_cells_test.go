@@ -138,3 +138,36 @@ func TestRegionCells_ARepeatedRowIsRefusedAtItsSecondListing(t *testing.T) {
 	require.Equal(t, []FieldError{{Path: "room.room.regions[0].cells[2]", Message: "rows must be ascending by r"}}, errs)
 	require.ElementsMatch(t, []RoomCell{{Q: 0, R: 0}, {Q: 1, R: 0}, {Q: 2, R: 0}, {Q: 3, R: 0}, {Q: 0, R: 1}, {Q: 4, R: 0}, {Q: 5, R: 0}}, cells[0])
 }
+
+// TestCellRows_Canonical is the encoder's contract (rpg-project#748 T1): a
+// cell set in any order, with a repeat, spells the same canonical rows as
+// the set sorted, and ExpandRows reads those rows back as exactly the set
+// with nothing to refuse.
+func TestCellRows_Canonical(t *testing.T) {
+	set := []RoomCell{
+		{Q: 0, R: 0}, {Q: 1, R: 0}, {Q: 2, R: 0}, {Q: 5, R: 0},
+		{Q: -3, R: 2}, {Q: -2, R: 2},
+		{Q: 7, R: -1},
+	}
+	shuffled := []RoomCell{
+		{Q: 5, R: 0}, {Q: -2, R: 2}, {Q: 7, R: -1}, {Q: 1, R: 0},
+		{Q: 0, R: 0}, {Q: -3, R: 2}, {Q: 2, R: 0}, {Q: 1, R: 0},
+	}
+	want := []RoomCellRow{
+		{R: -1, Q: [][2]int{{7, 7}}},
+		{R: 0, Q: [][2]int{{0, 2}, {5, 5}}},
+		{R: 2, Q: [][2]int{{-3, -2}}},
+	}
+	require.Equal(t, want, CellRows(set))
+	require.Equal(t, want, CellRows(shuffled), "order and repeats do not change the spelling")
+
+	cells, errs := expand(CellRows(shuffled))
+	require.Empty(t, errs, "the rows are canonical")
+	require.ElementsMatch(t, set, cells, "and name exactly the set")
+}
+
+// TestCellRows_Empty: no cells, no rows.
+func TestCellRows_Empty(t *testing.T) {
+	require.Nil(t, CellRows(nil))
+	require.Nil(t, CellRows([]RoomCell{}))
+}
