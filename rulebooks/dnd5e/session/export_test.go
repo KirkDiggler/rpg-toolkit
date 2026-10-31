@@ -27,3 +27,11 @@ func FamilyOfBeatForTest(beat string) (family Family, mapped, recordOnlyBeat boo
 	family, mapped = familyOf(beat)
 	return family, mapped, recordOnly[beat]
 }
+
+// SpeakMenuForTest reads the speak menu for a member exactly as Afford does
+// ([readSpeakMenu]), for the benchmark that prices the menu apart from the
+// load every Afford pays first. It answers the number of lines on the menu.
+func SpeakMenuForTest(enc *encounter.Encounter, member string) (int, error) {
+	menu, err := readSpeakMenu(enc, member)
+	return len(menu.lines), err
+}

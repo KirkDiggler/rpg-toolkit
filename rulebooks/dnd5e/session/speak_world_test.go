@@ -88,7 +88,7 @@ func (s *SpeakWorldSuite) front(rolls []int) *session.Manager {
 				Stance:  encounter.StanceNeutral,
 			}},
 		},
-		Party: []sceneSeat{seatAt("alice", 1, 1)},
+		Party: []sceneSeat{seatAt("alice", 2, 1)},
 	}
 
 	goblin := monsterAt("goblin", refs.Monsters.Goblin().String(), 5, 1)
@@ -273,7 +273,7 @@ func (s *SpeakWorldSuite) TestSpeakIsOfferedFreeInFreeRoam() {
 	s.NotEmpty(decl.ID, "a compiled row carries its selector")
 	s.Require().Len(decl.Candidates, 1, "one witness in the room")
 	s.Equal("goblin", decl.Candidates[0].Member)
-	s.True(decl.Candidates[0].Available, "speech carries as far as sight")
+	s.True(decl.Candidates[0].Available, "a witness within reach is an available candidate")
 	s.Equal([]session.SpeakOptionRow{
 		{Target: "goblin", OptionID: "threaten", Line: threatLine().Say, Available: true},
 		{Target: "goblin", OptionID: "appeal", Line: appealLine().Say, Available: true},
@@ -618,7 +618,7 @@ func (s *SpeakWorldSuite) frontWithBandit() *session.Manager {
 				},
 			},
 		},
-		Party:    []sceneSeat{seatAt("alice", 1, 1)},
+		Party:    []sceneSeat{seatAt("alice", 2, 1)},
 		Monsters: []dungeonspec.MonsterPlacement{goblin, bandit},
 	}
 	launchScene(s.T(), mgr, sc)
