@@ -47,7 +47,8 @@ func (s *SpeakOfferSuite) SetupTest() {
 
 // aRoom opens the two-goblin hall. `lines` says what each goblin's binding
 // authored, keyed by member ID; a goblin missing from it is spawned with
-// nothing, which is the creature the ruling is about.
+// nothing, which is the creature the ruling is about. Alice stands within
+// [session.InteractionReach] of both (rpg-project#753).
 func (s *SpeakOfferSuite) aRoom(
 	lines map[string][]encounter.Option, props ...encounter.PropInput,
 ) *session.Manager {
@@ -72,7 +73,7 @@ func (s *SpeakOfferSuite) aRoom(
 				Stance:  encounter.StanceNeutral,
 			}},
 		},
-		Party: []sceneSeat{seatAt("alice", 1, 1)},
+		Party: []sceneSeat{seatAt("alice", 3, 3)},
 	}
 
 	for i, id := range []string{"written", "unwritten"} {
@@ -224,13 +225,13 @@ func (s *SpeakOfferSuite) TestARoomNobodyWroteALineOnSaysSoByName() {
 // AND THE AUDIENCE COMES FIRST. With nobody able to see alice at all, the row
 // reports the missing audience rather than the missing lines.
 func (s *SpeakOfferSuite) TestNoAudienceOutRanksNoOption() {
-	// A wall down the middle: both goblins are still in the room and still
-	// unwritten, so both reasons are true at once and only one is reported.
+	// A wall down the middle, between alice and both goblins within her
+	// reach: both are still in the room and still unwritten, so both reasons are true at once and only one is reported.
 	mgr := s.aRoom(nil, occludingProps(
-		spatial.Position{X: 3, Y: 0}, spatial.Position{X: 3, Y: 1},
-		spatial.Position{X: 3, Y: 2}, spatial.Position{X: 3, Y: 3},
-		spatial.Position{X: 3, Y: 4}, spatial.Position{X: 3, Y: 5},
-		spatial.Position{X: 3, Y: 6}, spatial.Position{X: 3, Y: 7},
+		spatial.Position{X: 4, Y: 0}, spatial.Position{X: 4, Y: 1},
+		spatial.Position{X: 4, Y: 2}, spatial.Position{X: 4, Y: 3},
+		spatial.Position{X: 4, Y: 4}, spatial.Position{X: 4, Y: 5},
+		spatial.Position{X: 4, Y: 6}, spatial.Position{X: 4, Y: 7},
 	)...)
 
 	row := s.row(mgr)
