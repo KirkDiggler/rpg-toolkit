@@ -189,6 +189,7 @@ func (s *AnswerTestSuite) TestTheDieIsTheSumOfTheWeightsAndPicksByFace() {
 			enc := s.front(nil, line)
 			var of int
 			_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
+				Range:    speakReach,
 				OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14,
 				Roller: rollsFace{face: tc.face, of: &of},
 			})
@@ -216,6 +217,7 @@ func (s *AnswerTestSuite) TestAFactEntryTeachesEveryWitnessAndTurnsTheCamp() {
 	s.Require().Equal(encounter.StanceHostile, before, "precondition: nobody knows yet")
 
 	_, err = enc.Speak(s.ctx, &encounter.SpeakInput{
+		Range:    speakReach,
 		OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
 	})
 	s.Require().NoError(err)
@@ -306,6 +308,7 @@ func (s *AnswerTestSuite) TestAFleeEntryLandsTheDeedAndTheTableDoesTheRunning() 
 	// The threat, which pays the world a round on its way out — so the goblin
 	// gets that round and spends it running.
 	_, err = enc.Speak(s.ctx, &encounter.SpeakInput{
+		Range:    speakReach,
 		OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
 	})
 	s.Require().NoError(err)
@@ -389,6 +392,7 @@ func (s *AnswerTestSuite) TestAPinnedCreatureStaysAndTheBeatStillFires() {
 	s.Require().NoError(err)
 
 	_, err = enc.Speak(s.ctx, &encounter.SpeakInput{
+		Range:    speakReach,
 		OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
 	})
 	s.Require().NoError(err)
@@ -406,6 +410,7 @@ func (s *AnswerTestSuite) TestAFailedCheckReadsItsOwnTable() {
 	))
 
 	_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
+		Range:    speakReach,
 		OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin, Beaten: false, DC: 9, Total: 4, Roller: rollsLowest{},
 	})
 	s.Require().NoError(err)
@@ -424,6 +429,7 @@ func (s *AnswerTestSuite) TestNoTableMeansNoRollAndNoBeat() {
 	s.Run("a line with no answer at all", func() {
 		enc := s.front(nil, threat(nil, nil))
 		_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
+			Range:    speakReach,
 			OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: refusesToRoll{fail: func(why string) { s.Fail(why) }},
 		})
 		s.Require().NoError(err)
@@ -433,6 +439,7 @@ func (s *AnswerTestSuite) TestNoTableMeansNoRollAndNoBeat() {
 	s.Run("rows for the other verdict only", func() {
 		enc := s.front(nil, threat([]encounter.Answer{{Weight: 1, Say: "Fine."}}, nil))
 		_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
+			Range:    speakReach,
 			OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin, Beaten: false, DC: 9, Total: 2, Roller: refusesToRoll{fail: func(why string) { s.Fail(why) }},
 		})
 		s.Require().NoError(err)
@@ -618,6 +625,7 @@ func (s *AnswerTestSuite) TestAReservedMemberIsDealtFromTheMixItWasSavedWith() {
 	// The save, then the threat that plants the fact the straggler waits on.
 	back := s.reload(enc)
 	_, err := back.Speak(s.ctx, &encounter.SpeakInput{
+		Range:    speakReach,
 		OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
 	})
 	s.Require().NoError(err)
@@ -727,6 +735,7 @@ func (s *AnswerTestSuite) TestAFlightSurvivesWhatTheSameActorDoesToSomebodyElse(
 
 	start := s.cellOf(enc, goblin)
 	_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
+		Range:    speakReach,
 		OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
 	})
 	s.Require().NoError(err)
@@ -739,7 +748,10 @@ func (s *AnswerTestSuite) TestAFlightSurvivesWhatTheSameActorDoesToSomebodyElse(
 	// round, so the fleeing goblin gets its consult — and what it holds about
 	// alice now includes something that happened to somebody else.
 	for round := 2; round <= 3; round++ {
+		// The cousin stands four hexes off; this scene is about the flight,
+		// not about reach.
 		_, ierr := enc.Speak(s.ctx, &encounter.SpeakInput{
+			Range:    4,
 			OptionID: "threat", Skill: "intimidation", Actor: alice, Target: "cousin", Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
 		})
 		s.Require().NoError(ierr)
@@ -754,6 +766,7 @@ func (s *AnswerTestSuite) TestAFlightSurvivesWhatTheSameActorDoesToSomebodyElse(
 	// is not outliving the span: the deed is four rounds old and `within: 3`
 	// no longer holds.
 	_, err = enc.Speak(s.ctx, &encounter.SpeakInput{
+		Range:    4,
 		OptionID: "threat", Skill: "intimidation", Actor: alice, Target: "cousin", Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
 	})
 	s.Require().NoError(err)
@@ -1135,6 +1148,7 @@ func TestAnAnswersLineIsAVoice(t *testing.T) {
 	)
 
 	_, err := enc.Speak(context.Background(), &encounter.SpeakInput{
+		Range:    speakReach,
 		OptionID: "threat", Skill: "intimidation", Actor: noiseAlice, Target: noiseThug,
 		Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
 	})

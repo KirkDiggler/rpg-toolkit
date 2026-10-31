@@ -454,14 +454,17 @@ type AtlasDoorway struct {
 // is the honest shape of it: a region IS its cells now, so the list the host
 // wants is the list the composition already holds, copied.
 //
-// PLUS O(cells) PER STANDING PLACEMENT, so O(cells x (1+P)) per call for P of
-// them ([AtlasPlacedProp.Cells], rpg-api-protos#351): saying where a
-// rectangle stands is a walk over the floor, and this is the one place that
-// walk is paid rather than three readers and a client each paying it
-// separately. The field's cell budget (maxFieldCells) bounds both terms, and
-// P is the authored placement count, so the product is bounded too.
+// PLUS THE PLACEMENTS AND WALLS IT LISTS, never placements times cells
+// (rpg-project#753, design "The field indexes its placements"): where an
+// authored rectangle stands ([AtlasPlacedProp.Cells], rpg-api-protos#351)
+// and the floor a structural wall overlaps are read from the field's
+// placement index, derived once when the field was built; a dropped
+// rectangle is measured now over the cells its box reaches
+// (placement_index.go). It is not cached across calls: the encounter is
+// rebuilt from its data on every verb, so a cache would be rebuilt with it.
 func (e *Encounter) Atlas() (Atlas, error) {
 	f := e.field
+	f.atlasProjections++
 	out := Atlas{
 		Orientation:     f.orientation,
 		Cells:           append([]spatial.Position(nil), f.cells...),
@@ -503,15 +506,13 @@ func (e *Encounter) Atlas() (Atlas, error) {
 			// fold returned, not of the authored one, so a dropped
 			// rectangle reports the cells it stands on NOW.
 			//
-			// This is the O(cells) walk [field.placedCells] is, once per
-			// standing placement — the cost of stating the derivation
-			// instead of leaving three protocols and one client to repeat
-			// it. AtlasFor pays it ONCE, here, instead of a second time in
-			// the filter: [Encounter.placedWhollyUnexplored] reads these cells
-			// rather than measuring the rectangle again. On a field that
-			// conceals nothing that filter never ran at all, so such a
-			// field does pay this walk where it paid none — the cost is
-			// stated in [Encounter.Atlas]' own doc rather than hidden here.
+			// The placement index's answer for an authored rectangle, and
+			// a measurement of the cells its box reaches for a dropped one
+			// ([field.placedCellsOf]) — stated once here rather than left
+			// for three protocols and one client to repeat. AtlasFor reads
+			// it ONCE, here, instead of a second time in the filter:
+			// [Encounter.placedWhollyUnexplored] reads these cells rather
+			// than measuring the rectangle again.
 			Cells:             f.placedCellsOf(p.id, placement),
 			BlocksMovement:    p.blocksMovement,
 			BlocksLineOfSight: p.blocksLineOfSight,

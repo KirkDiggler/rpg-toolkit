@@ -6,6 +6,7 @@ package encounter
 import (
 	"fmt"
 	"math"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -361,9 +362,52 @@ func placedCentre(p spatial.FootprintPlacement) spatial.Point {
 // A trace error counts as covering, the fail-closed rule every other reader
 // of this geometry applies; compilePlaced makes it unreachable.
 func (f *field) placedCells(p spatial.FootprintPlacement) []spatial.Position {
-	centre := placedCentre(p)
 	reach := boundsOf(p)
-	stands := make(map[spatial.Position]bool, len(f.cells))
+	if f.centres == nil || !reach.ok {
+		return f.placedCellsByWalk(p, reach)
+	}
+	// THE SAME TWO CLAUSES, asked of the cells whose bucket the footprint's
+	// reach touches rather than of every cell: a cell outside that box is
+	// one mayTouch rejects below, so skipping it changes no answer
+	// (placement_index.go).
+	c := f.centres
+	m := boxMargin(reach, p.Origin, 0)
+	lo := spatial.Point{X: p.Origin.X + reach.minX - m, Y: p.Origin.Y + reach.minY - m}
+	hi := spatial.Point{X: p.Origin.X + reach.maxX + m, Y: p.Origin.Y + reach.maxY + m}
+	hits := make([]int32, 0, 4)
+	for _, i := range c.within(lo, hi) {
+		at := c.centre[i]
+		if reach.mayTouch(p.Origin, at, at) {
+			contact, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+				Placement: p, From: at, To: at,
+			})
+			if err != nil || contact.Contact {
+				hits = append(hits, i)
+			}
+		}
+	}
+	if own, found := c.nearest(f, placedCentre(p)); found {
+		hits = append(hits, own)
+	}
+	slices.Sort(hits)
+
+	out := make([]spatial.Position, 0, len(hits))
+	for k, i := range hits {
+		if k > 0 && hits[k-1] == i {
+			continue
+		}
+		out = append(out, f.cells[i])
+	}
+
+	return out
+}
+
+// placedCellsByWalk is [field.placedCells] as a walk over every cell of the
+// floor: the answer for a field built by hand, with no bucketed centres, and
+// for a placement whose reach cannot be bounded.
+func (f *field) placedCellsByWalk(p spatial.FootprintPlacement, reach footprintBounds) []spatial.Position {
+	centre := placedCentre(p)
+	stands := make(map[spatial.Position]bool)
 
 	var own spatial.Position
 	var ownD2 float64
@@ -411,11 +455,25 @@ func (f *field) placedCells(p spatial.FootprintPlacement) []spatial.Position {
 // overlaps by zero area, which is exactly what the filter below drops anyway.
 func (f *field) footprintObservationCells(p spatial.FootprintPlacement) ([]spatial.Position, error) {
 	cells := f.cells
+	r := float64(placedPlaneCellWidth)
 	if reach := boundsOf(p); reach.ok {
-		cells = make([]spatial.Position, 0, len(f.cells))
-		for _, cell := range f.cells {
+		candidates := f.cells
+		if c := f.centres; c != nil {
+			// Bucketed (placement_index.go): only the cells whose square can
+			// reach the footprint's box are candidates for the filter below.
+			m := boxMargin(reach, p.Origin, r)
+			order := c.within(
+				spatial.Point{X: p.Origin.X + reach.minX - m, Y: p.Origin.Y + reach.minY - m},
+				spatial.Point{X: p.Origin.X + reach.maxX + m, Y: p.Origin.Y + reach.maxY + m},
+			)
+			candidates = make([]spatial.Position, len(order))
+			for k, i := range order {
+				candidates[k] = f.cells[i]
+			}
+		}
+		cells = make([]spatial.Position, 0, len(candidates))
+		for _, cell := range candidates {
 			at := f.plane.CellCentre(cell)
-			r := float64(placedPlaneCellWidth)
 			lo, hi := spatial.Point{X: at.X - r, Y: at.Y - r}, spatial.Point{X: at.X + r, Y: at.Y + r}
 			if reach.mayOverlap(p.Origin, lo, hi) {
 				cells = append(cells, cell)
@@ -428,8 +486,10 @@ func (f *field) footprintObservationCells(p spatial.FootprintPlacement) ([]spati
 	if err != nil {
 		return nil, err
 	}
+	// The candidates are already in field order, so the covered ones are
+	// emitted in it.
 	out := make([]spatial.Position, 0, len(coverage.Cells))
-	for _, cell := range f.cells {
+	for _, cell := range cells {
 		if coverage.Cells[cell] > 0 {
 			out = append(out, cell)
 		}
@@ -1020,9 +1080,10 @@ func (f *field) attachHoldings(h *holdings) { f.holdings = h }
 //     same cells are asked again and again within one pass.
 //   - placedCells and observationCells: where each standing placement
 //     stands, and its observation support ([field.placedCells],
-//     [field.footprintObservationCells]), keyed by placement id. Every
-//     observer who learns cells builds its atlas before and after, and each
-//     build walked every placement over the whole floor.
+//     [field.footprintObservationCells]), keyed by placement id, for a
+//     placement that MOVED: an authored one's are the placement index's
+//     (placement_index.go), so only a dropped rectangle is measured in a
+//     pass, and only once.
 //
 // IT LIVES FOR ONE PASS AND NO LONGER. Doors open and shut, props are picked
 // up and dropped, and members move between passes, never inside one, so a
@@ -1050,10 +1111,14 @@ func (f *field) beginSightPass() (end func()) {
 	return func() { f.sightPass = nil }
 }
 
-// placedCellsOf is [field.placedCells] for the standing placement with id,
-// read from the pass memo when a pass is under way. The returned slice is
-// the caller's own.
+// placedCellsOf is [field.placedCells] for the standing placement with id:
+// the placement index's answer for an authored placement, and otherwise
+// (a dropped one) measured now, from the pass memo when a pass is under way.
+// The returned slice is the caller's own.
 func (f *field) placedCellsOf(id PropID, p spatial.FootprintPlacement) []spatial.Position {
+	if cells, ok := f.index.standsAt(id, p); ok {
+		return cells
+	}
 	if f.sightPass == nil {
 		f.placedCellsComputed++
 		return f.placedCells(p)
@@ -1069,9 +1134,13 @@ func (f *field) placedCellsOf(id PropID, p spatial.FootprintPlacement) []spatial
 }
 
 // observationCellsOf is [field.footprintObservationCells] for the standing
-// placement with id, read from the pass memo when a pass is under way. The
-// returned slice is read-only: callers range over it.
+// placement with id: the placement index's answer for an authored placement,
+// and otherwise measured now, from the pass memo when a pass is under way.
+// The returned slice is read-only: callers range over it.
 func (f *field) observationCellsOf(id PropID, p spatial.FootprintPlacement) ([]spatial.Position, error) {
+	if cells, ok := f.index.supportOf(id, p); ok {
+		return cells, nil
+	}
 	if f.sightPass == nil {
 		return f.footprintObservationCells(p)
 	}

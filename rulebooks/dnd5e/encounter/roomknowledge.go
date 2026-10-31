@@ -245,65 +245,26 @@ func (e *Encounter) discoverOpenedCells(member MemberID, door *doorRecord) error
 // undiscoveredFrom adds ordinary unexplored floor to concealment's projection
 // mask. This is a delivery mask only: unknown ordinary floor is not a secret
 // wall and must not acquire concealment's movement/probe rules.
+//
+// It is [Encounter.undiscoveredMask] MATERIALIZED over the floor: the one
+// rule, asked of every cell, for the projection that walks every cell anyway.
+// A read that asks a few cells asks the mask itself (rpg-project#753).
 func (e *Encounter) undiscoveredFrom(member MemberID) hiddenView {
+	mask := e.undiscoveredMask(member)
 	hidden := e.hiddenFrom(member)
 	hidden.unexploredCells = make(map[spatial.Position]bool)
-	known := e.world.knownCells(member)
-	// Existing explicit concealment discovery teaches its cells without the
-	// sight pass seeing them. Preserve that knowledge; ordinary cell
-	// discovery is not an authority to forget separately learned geometry.
-	revealed := make(map[spatial.Position]bool)
-	for i := range e.field.concealments {
-		c := &e.field.concealments[i]
-		if e.world.knowsConcealment(member, c.id) {
-			for _, cell := range e.hiddenCellsOf(c) {
-				revealed[cell] = true
-			}
-		}
+	// Footing beats even concealment: an authored boundary's unowned footing
+	// is on the map wherever its wall is.
+	for cell := range mask.footing {
+		delete(hidden.cells, cell)
 	}
 	for _, cell := range e.field.cells {
-		if !known[cell] && !revealed[cell] {
+		if mask.hides(cell) {
 			hidden.cells[cell] = true
+		}
+		if mask.unexplored(cell) {
 			hidden.unexploredCells[cell] = true
 		}
-	}
-	// Unowned scenery directly bordering learned floor belongs to its visible
-	// boundary. A presented wall adds no footing of its own (fog-of-war R9).
-	for _, cell := range e.field.cells {
-		if _, owned := e.field.regionOf(cell); owned || !hidden.unexploredCells[cell] {
-			continue
-		}
-		for _, neighbor := range adjacencyGrid.GetNeighbors(cell) {
-			_, owned := e.field.regionOf(neighbor)
-			if owned && known[neighbor] && !hidden.cells[neighbor] {
-				// Knowing a boundary's ordinary footing does not beat an
-				// explicit concealment on that floor. Keep the two masks
-				// independent so unlisted props do not inherit floor secrecy.
-				if _, concealed := e.field.concealmentOfCell[cell]; !concealed || revealed[cell] {
-					delete(hidden.cells, cell)
-				}
-				delete(hidden.unexploredCells, cell)
-				break
-			}
-		}
-	}
-	// An authored boundary brings its unowned footing, but not the adjoining
-	// room's interior. Read the pre-boundary set so long chains do not flood.
-	footing := make(map[spatial.Position]bool)
-	for _, wall := range e.field.walls {
-		from, to := e.field.cellAt(wall.From), e.field.cellAt(wall.To)
-		if hidden.cells[from] && hidden.cells[to] {
-			continue
-		}
-		for _, cell := range []spatial.Position{from, to} {
-			if _, owned := e.field.regionOf(cell); !owned {
-				footing[cell] = true
-			}
-		}
-	}
-	for cell := range footing {
-		delete(hidden.cells, cell)
-		delete(hidden.unexploredCells, cell)
 	}
 	for _, door := range e.doors {
 		if hidden.doors[door.id] {
