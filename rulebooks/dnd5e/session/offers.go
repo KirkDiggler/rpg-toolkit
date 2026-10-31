@@ -732,10 +732,10 @@ func buildMoveOffer(session, member string, sheet *character.Character) (compile
 // priced at the standard action and carrying the menu of every line this
 // speaker is offered right now (rpg-project#569).
 //
-// ITS CANDIDATES ARE THE WITNESSES WHO OFFER A LINE, and the direction is the
-// point. Every other member-targeting row here asks who the ACTOR can see; a
-// line only reaches somebody who can see who is saying it, so this asks the
-// composition the question the verb itself will ask
+// ITS CANDIDATES ARE THE WITNESSES WITHIN REACH WHO OFFER A LINE, and the
+// direction is the point. Every other member-targeting row here asks who the
+// ACTOR can see; a line only reaches somebody who can see who is saying it,
+// so this asks the composition the question the verb itself will ask
 // ([encounter.Encounter.Witnesses]). Of those, only the ones with a line for
 // THIS speaker are candidates ([linesOffered]) — the same read the verb
 // refuses by, so the row cannot offer a creature the door would turn away.
@@ -743,9 +743,10 @@ func buildMoveOffer(session, member string, sheet *character.Character) (compile
 // THE MENU IS [Declaration.SpeakOptions]: one row per (target, line) pair,
 // props included. A target with no line is not listed at all.
 //
-// NO REACH GATE. Speech carries as far as sight does — "no distance cap
-// beyond sight" is the design's own decision — so every candidate is
-// available and none carries a ShortfallTargetOutOfReach.
+// WITHIN REACH ONLY (rpg-project#753 R4). The menu is read within
+// [InteractionReach], so a target farther off is not a row at all rather than
+// an unavailable one: every candidate is available and none carries a
+// ShortfallTargetOutOfReach. A far target is approached first.
 func buildSpeakOffer(
 	menu speakMenu, session, member string, sheet *character.Character,
 ) (compiledOffer, error) {
@@ -801,7 +802,7 @@ func speakShortfall(menu speakMenu, sheet *character.Character, profile *combat.
 	case len(menu.lines) > 0:
 		return nil
 	case len(menu.witnesses) == 0:
-		why := Shortfall{Reason: ShortfallNoTargetInReach, Text: "nobody can see you to be spoken to"}
+		why := Shortfall{Reason: ShortfallNoTargetInReach, Text: "nobody within reach can see you to be spoken to"}
 		return &why
 	default:
 		why := Shortfall{Reason: ShortfallNoOption, Text: "nothing here has a line for you"}
@@ -812,7 +813,8 @@ func speakShortfall(menu speakMenu, sheet *character.Character, profile *combat.
 // speakMenu is every line one speaker is offered right now, and who it can
 // be said to — read ONCE per Afford.
 type speakMenu struct {
-	// witnesses is everybody who can see the speaker, minus the speaker.
+	// witnesses is every creature within reach who can see the speaker,
+	// minus the speaker.
 	witnesses []string
 
 	// targets is the witnesses who offer at least one line, as the row's
@@ -850,34 +852,61 @@ func (m speakMenu) projectRows() []SpeakOptionRow {
 	return out
 }
 
-// readSpeakMenu asks the composition who can see this member, and which
-// lines each of them — and each prop the member could address — offers THIS
-// member, through [linesOffered], the read the door refuses by.
+// InteractionReach is how near, in cells, a creature or prop must stand for
+// its lines to be offered to a member and for a line said to it to be heard
+// (rpg-project#753, ruling R4: "interaction is offered automatically within a
+// set reach in hexes, melee to about three"). Measured by the encounter's one
+// distance ([encounter.Encounter.Distance], cube hex distance on a hex grid),
+// so the menu read within it ([encounter.Encounter.WithinReach]) and the door
+// that refuses beyond it ([encounter.SpeakInput.Range]) cannot disagree.
 //
-// PROPS ARE JUDGED ONE BY ONE BY THE COMPOSITION: every prop the field
-// holds ([speakableProps]) is asked under the probe law
-// ([encounter.Encounter.PropOptionsFor]), so a prop hidden from the speaker,
-// out of their sight, or in somebody else's hands answers ErrNoProp and is
-// simply not on the menu — the offer never names a thing the door would
+// THE SESSION OWNS THE NUMBER; the composition has none. Every read and every
+// door that measures interaction passes this constant, because the
+// composition's zero means adjacent. The web mirrors it as INTERACTION_REACH.
+const InteractionReach = 3
+
+// readSpeakMenu reads the lines this member is offered by what stands WITHIN
+// REACH of them ([InteractionReach], rpg-project#753 R4), through
+// [linesOffered], the read the door refuses by. Nothing farther is asked
+// about, so the read costs the cells within reach rather than the map.
+//
+// THE UNIVERSE IS [encounter.Encounter.WithinReach]: the creatures the member
+// sights now and the props on a cell the member sees now, both within reach.
+// A thing the member CARRIES is within reach too — a scroll in your hand is
+// as near as anything gets — so the member's own held props join the props
+// (WithinReach leaves them out; the door admits them).
+//
+// A CREATURE IS OFFERED ONLY IF IT WITNESSES THE MEMBER: a line reaches
+// somebody who can see who is saying it, the question the door asks
+// ([encounter.Encounter.Witnesses]). The witness test runs per creature
+// within reach; a creature farther off is never asked about.
+//
+// PROPS ARE STILL JUDGED BY THE COMPOSITION under the probe law
+// ([encounter.Encounter.PropOptionsFor]): a prop that answers ErrNoProp is
+// simply not on the menu, so the offer never names a thing the door would
 // refuse.
 //
-// A WITNESS THE COMPOSITION CANNOT ANSWER FOR FAILS THE READ rather than
+// A CREATURE THE COMPOSITION CANNOT ANSWER FOR FAILS THE READ rather than
 // being skipped: that would mean its sight and its roster disagree about who
 // is in the room, which is a defect to surface, not to paper over.
 func readSpeakMenu(enc *encounter.Encounter, member string) (speakMenu, error) {
+	near, props, err := speakUniverse(enc, member)
+	if err != nil {
+		return speakMenu{}, err
+	}
 	witnesses, err := enc.Witnesses(encounter.MemberID(member))
 	if err != nil {
 		return speakMenu{}, badCostUnlessSheet(translate(err))
 	}
 
 	menu := speakMenu{
-		witnesses: make([]string, 0, len(witnesses)),
-		targets:   make([]targetPreflight, 0, len(witnesses)),
+		witnesses: make([]string, 0, len(near)),
+		targets:   make([]targetPreflight, 0, len(near)),
 	}
-	for _, id := range witnesses {
-		// A member always witnesses their own cell, and talking yourself
-		// round is not a shenanigan.
-		if string(id) == member {
+	for _, id := range near {
+		// WithinReach never lists the member themselves (talking yourself
+		// round is not a shenanigan), so only the witness test remains.
+		if !slices.Contains(witnesses, id) {
 			continue
 		}
 		menu.witnesses = append(menu.witnesses, string(id))
@@ -894,12 +923,8 @@ func readSpeakMenu(enc *encounter.Encounter, member string) (speakMenu, error) {
 		}
 	}
 
-	props, err := speakableProps(enc)
-	if err != nil {
-		return speakMenu{}, err
-	}
 	for _, prop := range props {
-		lines, err := linesOffered(enc, member, "", prop)
+		lines, err := linesOffered(enc, member, "", string(prop))
 		switch {
 		case errors.Is(err, ErrNoProp):
 			continue
@@ -907,44 +932,30 @@ func readSpeakMenu(enc *encounter.Encounter, member string) (speakMenu, error) {
 			return speakMenu{}, badCostUnlessSheet(err)
 		}
 		for _, o := range lines {
-			menu.lines = append(menu.lines, speakLine{prop: prop, option: o})
+			menu.lines = append(menu.lines, speakLine{prop: string(prop), option: o})
 		}
 	}
 
 	return menu, nil
 }
 
-// speakableProps is every prop id the field was built with — the universe a
-// speaker's menu is drawn from — sorted and without repeats. A prop the author
-// gave no id names nothing a verb can address and is skipped.
-//
-// THE CONSTRUCTION ATLAS, NOT THE SPEAKER'S SIGHTINGS. Only a prop that can
-// change hands is sighted as testimony; an altar bolted to the floor never
-// is, and it is exactly the thing somebody reads aloud. So the ids come from
-// the field ([encounter.Encounter.Atlas]) and the composition judges each one
-// for this speaker under the probe law ([encounter.Encounter.PropOptionsFor]):
-// a prop they cannot be shown answers ErrNoProp and is not on the menu, and
-// the atlas itself never reaches the client from here.
-func speakableProps(enc *encounter.Encounter) ([]string, error) {
-	atlas, err := enc.Atlas()
+// speakUniverse is what a member may speak to from where they stand: the
+// creatures and props [encounter.Encounter.WithinReach] lists within
+// [InteractionReach], plus the props the member carries, sorted and without
+// repeats. It is the menu's universe and the door's reach test for a prop.
+func speakUniverse(enc *encounter.Encounter, member string) ([]encounter.MemberID, []encounter.PropID, error) {
+	near, props, err := enc.WithinReach(encounter.MemberID(member), InteractionReach)
 	if err != nil {
-		return nil, badCostUnlessSheet(translate(err))
+		return nil, nil, badCostUnlessSheet(translate(err))
 	}
+	held, err := enc.HeldProps(&encounter.ViewInput{Member: encounter.MemberID(member)})
+	if err != nil {
+		return nil, nil, badCostUnlessSheet(translate(err))
+	}
+	props = append(props, held...)
+	slices.Sort(props)
 
-	ids := make([]string, 0, len(atlas.Props)+len(atlas.Placed))
-	for _, p := range atlas.Props {
-		if p.ID != "" {
-			ids = append(ids, string(p.ID))
-		}
-	}
-	for _, p := range atlas.Placed {
-		if p.ID != "" {
-			ids = append(ids, string(p.ID))
-		}
-	}
-	slices.Sort(ids)
-
-	return slices.Compact(ids), nil
+	return near, slices.Compact(props), nil
 }
 
 // blockedCompiledOffer is the compiledOffer shape every early per-verb
