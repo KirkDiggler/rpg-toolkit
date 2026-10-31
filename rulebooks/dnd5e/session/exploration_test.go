@@ -6,6 +6,7 @@ package session_test
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -15,30 +16,49 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-type explorationStore struct {
-	data map[string]*session.ExplorationData
+// characterConfigStore is the one in-memory character configuration every
+// test Config wires: Config.CharacterConfig is required, so no manager is
+// built without one. A missing entry is a character who has not chosen. It
+// counts reads, so a test can see the session ask at every write verb, and it
+// has no write method because the session never writes character
+// configuration (rpg-project#753 R2).
+type characterConfigStore struct {
+	mu      sync.Mutex
+	sharing map[string]bool
+	reads   map[string]int
+	err     error
 }
 
-// newFakeExplorations is the one in-memory exploration repository every test
-// Config wires: Config.Explorations is required, so no manager is built
-// without one.
-func newFakeExplorations() *explorationStore {
-	return &explorationStore{data: map[string]*session.ExplorationData{}}
+func newFakeCharacterConfig() *characterConfigStore {
+	return &characterConfigStore{sharing: map[string]bool{}, reads: map[string]int{}}
 }
 
-func (r *explorationStore) GetExploration(_ context.Context, id string) (*session.ExplorationData, error) {
-	if value := r.data[id]; value != nil {
-		return copyOf(value)
+func (r *characterConfigStore) DiscoverySharing(_ context.Context, id string) (*bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.reads[id]++
+	if r.err != nil {
+		return nil, r.err
 	}
-	return nil, session.ErrNotFound
+	choice, ok := r.sharing[id]
+	if !ok {
+		return nil, nil
+	}
+	return &choice, nil
 }
-func (r *explorationStore) SaveExploration(_ context.Context, in *session.ExplorationData) error {
-	value, err := copyOf(in)
-	if err != nil {
-		return err
-	}
-	r.data[in.Character] = value
-	return nil
+
+// choose is the host's character verb, standing in for the api's
+// SetPreference: it writes outside any session.
+func (r *characterConfigStore) choose(id string, sharing bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.sharing[id] = sharing
+}
+
+func (r *characterConfigStore) readsOf(id string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.reads[id]
 }
 
 type AutomaticDiscoverySDKSuite struct{ suite.Suite }
@@ -77,15 +97,14 @@ func (s *AutomaticDiscoverySDKSuite) checkCount(mgr *session.Manager, run string
 	return count
 }
 
-func (s *AutomaticDiscoverySDKSuite) TestLegacyCharacterChecksCannotSeedANewEncounter() {
+func (s *AutomaticDiscoverySDKSuite) TestAPrivateChoiceSeedsANewEncounterWithoutAttempts() {
 	ctx := context.Background()
-	var legacy session.ExplorationData
-	s.Require().NoError(json.Unmarshal([]byte(`{"character":"alice","private":true,"checks":{"same-dungeon/secret":{"used":9,"learned":true}}}`), &legacy))
-	profiles := &explorationStore{data: map[string]*session.ExplorationData{"alice": &legacy}}
+	profiles := newFakeCharacterConfig()
+	profiles.choose("alice", false)
 	encounters := newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(),
 		Sessions: newFakeSessions(), Encounters: encounters, Characters: testCharacters(),
-		Explorations: profiles, Dice: testDice{},
+		CharacterConfig: profiles, Dice: testDice{},
 		PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{},
 	})
 	s.Require().NoError(err)
@@ -113,10 +132,10 @@ func (s *AutomaticDiscoverySDKSuite) TestDiscoveryBelongsToTheEncounterNotTheCha
 	} {
 		s.Run(tc.name, func() {
 			ctx := context.Background()
-			profiles := newFakeExplorations()
+			profiles := newFakeCharacterConfig()
 			sessions, encounters := newFakeSessions(), newFakeEncounters()
 			cfg := &session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
-				Explorations: profiles, Dice: testDice{},
+				CharacterConfig: profiles, Dice: testDice{},
 				PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{}}
 			mgr, err := session.NewManager(cfg)
 			s.Require().NoError(err)
@@ -136,9 +155,8 @@ func (s *AutomaticDiscoverySDKSuite) TestDiscoveryBelongsToTheEncounterNotTheCha
 			}
 			// A second party member (bob, at axial (0,4)) keeps the encounter
 			// open during exit/rejoin.
+			profiles.choose("alice", false)
 			start("first", seatAt("bob", 2, 4))
-			_, err = mgr.SetDiscoverySharing(ctx, &session.SetDiscoverySharingInput{Session: "first", Member: "alice", Sharing: false})
-			s.Require().NoError(err)
 			approach("first")
 			s.Equal(1, s.checkCount(mgr, "first"))
 			saved, err := encounters.GetEncounter(ctx, "first")
@@ -179,11 +197,9 @@ func (s *AutomaticDiscoverySDKSuite) TestDiscoveryBelongsToTheEncounterNotTheCha
 			s.NotContains(freshAtlas.Cells, spatial.Position{X: 3, Y: 1}, "new encounter starts undiscovered")
 			approach("second")
 			s.Equal(1, s.checkCount(mgr, "second"), "the new playthrough has its own attempt")
-			s.Require().NotNil(profiles.data["alice"].DiscoverySharing, "only the sharing preference carries across runs")
-			s.False(*profiles.data["alice"].DiscoverySharing, "only the sharing preference carries across runs")
-			raw, err := json.Marshal(profiles.data["alice"])
+			again, err := encounters.GetEncounter(ctx, "second")
 			s.Require().NoError(err)
-			s.NotContains(string(raw), "checks", "character profile must not export encounter discoveries")
+			s.True(again.Discovery["alice"].Private, "only the sharing preference carries across runs")
 		})
 	}
 }
@@ -197,13 +213,13 @@ const (
 // manager built from the same Config is a reload of the same saved state.
 type sharingRig struct {
 	cfg      *session.Config
-	profiles *explorationStore
+	profiles *characterConfigStore
 }
 
-func newSharingRig(profiles *explorationStore) *sharingRig {
+func newSharingRig(profiles *characterConfigStore) *sharingRig {
 	return &sharingRig{profiles: profiles, cfg: &session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(),
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: testCharacters(),
-		Explorations: profiles, Dice: testDice{},
+		CharacterConfig: profiles, Dice: testDice{},
 		PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{},
 	}}
 }
@@ -220,7 +236,7 @@ func (s *AutomaticDiscoverySDKSuite) launchSharing(rig *sharingRig) *session.Man
 
 // sharingAfterPrepare reloads the manager and runs a write verb, so the
 // reported preference is whatever prepareExploration resolved from the
-// repository rather than what the previous verb left on the encounter.
+// reader rather than what the previous verb left on the encounter.
 func (s *AutomaticDiscoverySDKSuite) sharingAfterPrepare(rig *sharingRig) bool {
 	ctx := context.Background()
 	mgr, err := session.NewManager(rig.cfg)
@@ -245,63 +261,67 @@ func (s *AutomaticDiscoverySDKSuite) reportedSharing(mgr *session.Manager) bool 
 	return *knowledge.DiscoverySharing
 }
 
-func (s *AutomaticDiscoverySDKSuite) TestUnchosenSharingResolvesPrivate() {
-	rig := newSharingRig(newFakeExplorations())
-	mgr := s.launchSharing(rig)
-	s.False(s.reportedSharing(mgr), "a character who never chose sees privately")
-	s.False(s.sharingAfterPrepare(rig), "a later prepare resolves the same default")
-	s.NotContains(rig.profiles.data, "alice", "resolution never writes a default down as a choice")
-}
-
-func (s *AutomaticDiscoverySDKSuite) TestLegacyRecordWithoutPrivateStaysShared() {
+// TestResolveDiscoverySharing_FromReader: resolveDiscoverySharing reads the
+// reader's one answer (rpg-project#753 R2). An explicit choice wins either
+// way; a character who has not chosen discovers privately. A legacy record
+// without a choice is the host's to resolve before it answers.
+func TestResolveDiscoverySharing_FromReader(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
-		legacy  string
+		choice  *bool
 		sharing bool
 	}{
-		{name: "absent private meant shared", legacy: `{"character":"alice"}`, sharing: true},
-		{name: "private true stays private", legacy: `{"character":"alice","private":true}`, sharing: false},
+		{name: "nil is not chosen, so private", sharing: false},
+		{name: "true is shared", choice: boolPtr(true), sharing: true},
+		{name: "false is private", choice: boolPtr(false), sharing: false},
 	} {
-		s.Run(tc.name, func() {
-			var legacy session.ExplorationData
-			s.Require().NoError(json.Unmarshal([]byte(tc.legacy), &legacy))
-			rig := newSharingRig(&explorationStore{data: map[string]*session.ExplorationData{"alice": &legacy}})
+		t.Run(tc.name, func(t *testing.T) {
+			s := new(AutomaticDiscoverySDKSuite)
+			s.SetT(t)
+			profiles := newFakeCharacterConfig()
+			if tc.choice != nil {
+				profiles.choose("alice", *tc.choice)
+			}
+			rig := newSharingRig(profiles)
 			mgr := s.launchSharing(rig)
-			s.Equal(tc.sharing, s.reportedSharing(mgr))
-			s.Equal(tc.sharing, s.sharingAfterPrepare(rig))
-			s.Nil(rig.profiles.data["alice"].DiscoverySharing, "reading a legacy record does not rewrite it as a choice")
+			s.Equal(tc.sharing, s.reportedSharing(mgr), "launch restores the reader's answer")
+			s.Equal(tc.sharing, s.sharingAfterPrepare(rig), "a later write verb restores the same answer")
 		})
 	}
 }
 
-func (s *AutomaticDiscoverySDKSuite) TestChoiceIsSavedAndSurvivesReload() {
+func (s *AutomaticDiscoverySDKSuite) TestAChangedChoiceTakesEffectAtTheNextWriteVerb() {
+	rig := newSharingRig(newFakeCharacterConfig())
+	mgr := s.launchSharing(rig)
+	s.False(s.reportedSharing(mgr), "a character who never chose sees privately")
+	before := rig.profiles.readsOf("alice")
+
+	// The host's character verb changes the choice outside the session.
+	rig.profiles.choose("alice", true)
+	s.False(s.reportedSharing(mgr), "a read verb does not consult the configuration")
+	s.Equal(before, rig.profiles.readsOf("alice"), "reads never ask the reader")
+	s.True(s.sharingAfterPrepare(rig), "the next write verb restores the new choice")
+	s.Greater(rig.profiles.readsOf("alice"), before, "every write verb asks the reader")
+
+	rig.profiles.choose("alice", false)
+	s.False(s.sharingAfterPrepare(rig), "and the next one restores the change back")
+}
+
+func (s *AutomaticDiscoverySDKSuite) TestAReaderErrorRefusesTheWriteVerb() {
 	ctx := context.Background()
-	rig := newSharingRig(newFakeExplorations())
+	rig := newSharingRig(newFakeCharacterConfig())
 	mgr := s.launchSharing(rig)
-	_, err := mgr.SetDiscoverySharing(ctx,
-		&session.SetDiscoverySharingInput{Session: sharingRun, Member: "alice", Sharing: true})
-	s.Require().NoError(err)
-	raw, err := json.Marshal(rig.profiles.data["alice"])
-	s.Require().NoError(err)
-	s.JSONEq(`{"character":"alice","discovery_sharing":true}`, string(raw))
-	s.True(s.sharingAfterPrepare(rig), "the saved choice resolves shared after a reload")
-
-	_, err = mgr.SetDiscoverySharing(ctx,
-		&session.SetDiscoverySharingInput{Session: sharingRun, Member: "alice", Sharing: false})
-	s.Require().NoError(err)
-	raw, err = json.Marshal(rig.profiles.data["alice"])
-	s.Require().NoError(err)
-	s.JSONEq(`{"character":"alice","discovery_sharing":false,"private":true}`, string(raw))
-	s.False(s.sharingAfterPrepare(rig), "the second choice resolves private after a reload")
+	rig.profiles.err = errBroken
+	_, err := mgr.Move(ctx, &session.MoveInput{Session: sharingRun, Member: "alice", Path: []spatial.Position{{X: 1, Y: 1}}})
+	s.Require().ErrorIs(err, errBroken)
+	s.ErrorContains(err, "character configuration")
 }
 
-func (s *AutomaticDiscoverySDKSuite) TestChoosingTheDefaultIsStillAChoice() {
-	rig := newSharingRig(newFakeExplorations())
+func (s *AutomaticDiscoverySDKSuite) TestNotFoundIsNotChosen() {
+	rig := newSharingRig(newFakeCharacterConfig())
+	rig.profiles.err = session.ErrNotFound
 	mgr := s.launchSharing(rig)
-	_, err := mgr.SetDiscoverySharing(context.Background(),
-		&session.SetDiscoverySharingInput{Session: sharingRun, Member: "alice", Sharing: false})
-	s.Require().NoError(err)
-	s.Require().Contains(rig.profiles.data, "alice", "choosing private is written even though private is the default")
-	s.Require().NotNil(rig.profiles.data["alice"].DiscoverySharing)
-	s.False(*rig.profiles.data["alice"].DiscoverySharing)
+	s.False(s.reportedSharing(mgr), "a reader answering ErrNotFound reads as not chosen")
 }
+
+func boolPtr(v bool) *bool { return &v }

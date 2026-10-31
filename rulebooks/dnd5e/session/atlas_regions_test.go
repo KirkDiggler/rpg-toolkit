@@ -28,7 +28,7 @@ type AtlasRegionsSuite struct {
 func TestAtlasRegionsSuite(t *testing.T) { suite.Run(t, new(AtlasRegionsSuite)) }
 
 func (s *AtlasRegionsSuite) SetupTest() {
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 		Characters: testCharacters(),
 	})
@@ -291,7 +291,7 @@ func (u untouchableStores) PublishActs(context.Context, []session.Act) error {
 // is the test that keeps it so from this side of the seam.
 func (s *AtlasRegionsSuite) TestAtlasOfTouchesNoStore() {
 	stores := untouchableStores{t: s.T()}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: stores, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: stores, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: stores, Encounters: stores, Characters: stores,
 	})

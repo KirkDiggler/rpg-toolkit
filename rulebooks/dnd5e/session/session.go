@@ -36,11 +36,12 @@ type Config struct {
 	// the same coordination domain. No lock implementation lives in the SDK.
 	Locker SessionLocker
 
-	// Explorations runs automatic discovery and stores character-retained
-	// preferences. Required: there is no verb that finds hidden content
-	// without it, so a session without one fails NewManager. Hosts coordinate
-	// shared profiles across sessions.
-	Explorations ExplorationRepository
+	// CharacterConfig is the host's character configuration, read at every
+	// write verb for each player's discovery-sharing choice (rpg-project#753
+	// R2). Required: automatic discovery needs each finder's audience, so a
+	// session without one fails NewManager. The session never writes it; the
+	// host's character verbs do, under the character's own guard.
+	CharacterConfig CharacterConfigReader
 
 	// Encounters persists the world. Required.
 	Encounters EncounterRepository
@@ -166,7 +167,7 @@ type Manager struct {
 	staleTargetPolicy StaleTargetPolicy
 	sessions          SessionRepository
 	locker            SessionLocker
-	explorations      ExplorationRepository
+	characterConfig   CharacterConfigReader
 	encounters        EncounterRepository
 	characters        CharacterRepository
 	seats             SeatRepository
@@ -221,7 +222,7 @@ func NewManager(cfg *Config) (*Manager, error) {
 		{"Encounters", cfg.Encounters != nil},
 		{"Characters", cfg.Characters != nil},
 		{"Seats", cfg.Seats != nil},
-		{"Explorations", cfg.Explorations != nil},
+		{"CharacterConfig", cfg.CharacterConfig != nil},
 		{"Record", cfg.Record != nil},
 		{"Acts", cfg.Acts != nil},
 		{"Dice", cfg.Dice != nil},
@@ -262,7 +263,7 @@ func NewManager(cfg *Config) (*Manager, error) {
 		staleTargetPolicy: cfg.StaleTargetPolicy,
 		sessions:          cfg.Sessions,
 		locker:            cfg.Locker,
-		explorations:      cfg.Explorations,
+		characterConfig:   cfg.CharacterConfig,
 		encounters:        cfg.Encounters,
 		characters:        cfg.Characters,
 		seats:             cfg.Seats,

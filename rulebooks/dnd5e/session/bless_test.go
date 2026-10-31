@@ -70,7 +70,7 @@ func (s *CastSuite) TestBlessKnownDyingAndStabilizedRecipientsPersistWithConcent
 
 func (s *CastSuite) configureBless(policy session.StaleTargetPolicy) {
 	var err error
-	s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), StaleTargetPolicy: policy,
+	s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), StaleTargetPolicy: policy,
 		PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters})
 	s.Require().NoError(err)
@@ -94,7 +94,7 @@ func (s *CastSuite) TestBlessMissingPolicyExplainsBothOfferAndCast() {
 
 func (s *CastSuite) TestBlessInvalidPolicyFailsConfiguration() {
 	s.scene(blessCleric(), 3)
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), StaleTargetPolicy: "typo",
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), StaleTargetPolicy: "typo",
 		PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters})
 	s.Nil(mgr)
