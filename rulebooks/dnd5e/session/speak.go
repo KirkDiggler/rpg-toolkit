@@ -42,8 +42,10 @@ type SpeakInput struct {
 	// creature. The probe law holds: a prop Member cannot be shown is
 	// [ErrNoProp], the same answer an id that names nothing earns.
 	//
-	// Either target must stand within [InteractionReach] of Member, or be a
-	// prop Member carries ([ErrOutOfRange], asked after the two above).
+	// Asked after the two above: a creature must stand within
+	// [InteractionReach] of Member ([ErrOutOfRange]); a prop must be on
+	// Member's menu now — carried, or on a cell within reach that Member sees
+	// now — or the row is no longer offered ([ErrStaleDeclaration]).
 	Prop string
 
 	// OptionID names the line, verbatim from [SpeakOptionRow.OptionID]. It
@@ -155,8 +157,9 @@ type SpeakOutput struct {
 //
 // Errors: ErrNilInput, ErrNoMemberID, ErrNoSession, ErrNoEncounter,
 // ErrNotYourTurn, ErrDowned, ErrNoMember, ErrNoProp, ErrNoOption,
-// ErrCannotAfford, ErrUnwitnessed, ErrOutOfRange (a target beyond
-// [InteractionReach]: walk up first).
+// ErrCannotAfford, ErrUnwitnessed, ErrOutOfRange (a creature beyond
+// [InteractionReach]: walk up first), ErrStaleDeclaration (a prop no longer
+// on the menu: refresh Afford).
 func (m *Manager) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("speak: %w", ErrNilInput)

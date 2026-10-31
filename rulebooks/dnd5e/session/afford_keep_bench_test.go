@@ -38,7 +38,7 @@ func openTheKeep(b *testing.B, hexes int) *session.Manager {
 		b.Fatal(err)
 	}
 	mgr, err := session.NewManager(&session.Config{
-		Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+		Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: &castleDice{d20s: []int{10}}, TurnDriver: session.Driver(),
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: newFakeCharacters(talkingFighter("alice")),
 	})

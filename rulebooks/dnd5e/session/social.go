@@ -92,14 +92,15 @@ func (m *Manager) landSpoken(ctx context.Context, enc *encounter.Encounter, in *
 // names a speaker, exactly one target and a line; the session opens; the
 // clock is read; an off-turn actor ON THE TURN CLOCK is refused; a downed
 // actor is refused; the line is looked up among those offered to this
-// speaker; a creature target is checked to be able to SEE the actor; the
-// target is checked to stand within [InteractionReach]; and only then is the
-// action spent — because a line the target could never have
+// speaker; a creature target is checked to be able to SEE the actor; a
+// creature is checked to stand within [InteractionReach] and a prop to be on
+// the menu's universe; and only then is the action spent — because a line the target could never have
 // heard must not cost the actor their turn on the way to being told so.
 //
 // Errors: ErrNoMemberID, ErrNoOption, ErrNoSession, ErrNoEncounter,
 // ErrNotYourTurn, ErrDowned, ErrNoMember, ErrNoProp, ErrCannotAfford,
-// ErrUnwitnessed, ErrOutOfRange.
+// ErrUnwitnessed, ErrOutOfRange (a creature), ErrStaleDeclaration (a prop
+// no longer on the menu).
 func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, error) {
 	member := in.Member
 	if member == "" {
@@ -233,16 +234,20 @@ func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, erro
 }
 
 // refuseSpeakOutOfReach is the session's reach door for a line, asked before
-// anything is charged: [ErrOutOfRange] when the target stands beyond
-// [InteractionReach].
+// anything is charged.
 //
 // A CREATURE IS MEASURED by the encounter's one distance from the speaker's
-// cell to its own, the measure [encounter.Encounter.Speak] refuses by. A
-// PROP is within reach when it is on the speaker's menu universe
-// ([speakUniverse]): carried, or standing on a cell within reach that the
-// speaker sees now. That is the menu's own test, so a prop the menu would not
-// list is refused here rather than charged for and refused by the
-// composition.
+// cell to its own, the measure [encounter.Encounter.Speak] refuses by:
+// [ErrOutOfRange] beyond [InteractionReach].
+//
+// A PROP IS NOT MEASURED HERE; the session has no footprint to measure it by
+// without the atlas, and inventing a reach rule the encounter does not have
+// would refuse lines the encounter would hear. Instead the prop must be on
+// the speaker's menu universe ([speakUniverse]: carried, or on a cell within
+// reach that the speaker sees now). One that is not is a row no longer
+// offered — the speaker stepped behind a pillar, or walked off, since the
+// Afford that listed it — and is refused [ErrStaleDeclaration], so the
+// caller refreshes Afford rather than being told to come closer.
 func refuseSpeakOutOfReach(enc *encounter.Encounter, member, target, prop string) error {
 	if prop != "" {
 		_, props, err := speakUniverse(enc, member)
@@ -250,7 +255,7 @@ func refuseSpeakOutOfReach(enc *encounter.Encounter, member, target, prop string
 			return err
 		}
 		if !slices.Contains(props, encounter.PropID(prop)) {
-			return fmt.Errorf("prop %q is beyond reach %d: %w", prop, InteractionReach, ErrOutOfRange)
+			return fmt.Errorf("prop %q is not on this speaker's menu now: %w", prop, ErrStaleDeclaration)
 		}
 		return nil
 	}
