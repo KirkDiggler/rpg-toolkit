@@ -235,9 +235,10 @@ type placementRef struct {
 // one pass over its placements, walls and cell props, and never written
 // after.
 type placementIndex struct {
-	// origin is each placed contributor's authored origin: a placement asked
-	// about at any other origin was moved, and is measured at query time.
-	origin map[PropID]spatial.Point
+	// authoredAt is each placed contributor's authored placement: a placement
+	// asked about in any other pose (origin, facing, offset or box) is not
+	// the one the index measured, and is measured at query time.
+	authoredAt map[PropID]spatial.FootprintPlacement
 	// stands is each placed contributor's [field.placedCells], authored.
 	stands map[PropID][]spatial.Position
 	// support is each placed contributor's
@@ -254,10 +255,10 @@ type placementIndex struct {
 // in [compileField], after the structural walls resolve their presences.
 func (f *field) buildPlacementIndex() {
 	idx := &placementIndex{
-		origin:  make(map[PropID]spatial.Point, len(f.placed)),
-		stands:  make(map[PropID][]spatial.Position, len(f.placed)),
-		support: make(map[PropID][]spatial.Position, len(f.placed)),
-		at:      make(map[spatial.Position][]placementRef),
+		authoredAt: make(map[PropID]spatial.FootprintPlacement, len(f.placed)),
+		stands:     make(map[PropID][]spatial.Position, len(f.placed)),
+		support:    make(map[PropID][]spatial.Position, len(f.placed)),
+		at:         make(map[spatial.Position][]placementRef),
 	}
 	walls := make(map[PropID]bool, len(f.structuralWalls))
 	for i := range f.structuralWalls {
@@ -265,7 +266,7 @@ func (f *field) buildPlacementIndex() {
 	}
 	for i := range f.placed {
 		p := &f.placed[i]
-		idx.origin[p.id] = p.placement.Origin
+		idx.authoredAt[p.id] = p.placement
 		stands := f.placedCells(p.placement)
 		idx.stands[p.id] = stands
 		for _, cell := range stands {
@@ -295,14 +296,32 @@ func (f *field) buildPlacementIndex() {
 }
 
 // authored reports whether a placement for id is the one the field was built
-// with — the only placement the index answers for.
+// with — the only placement the index answers for. The WHOLE pose is
+// compared, not only the origin a drop moves today, so a future change that
+// turns or reshapes a placement is measured rather than read stale.
 func (idx *placementIndex) authored(id PropID, p spatial.FootprintPlacement) bool {
 	if idx == nil {
 		return false
 	}
-	origin, ok := idx.origin[id]
+	a, ok := idx.authoredAt[id]
 
-	return ok && origin == p.Origin
+	return ok && samePose(a, p)
+}
+
+// samePose reports whether two placements are the same rectangle in the same
+// place: origin, facing, local offset and footprint, compared by value.
+func samePose(a, b spatial.FootprintPlacement) bool {
+	if a.Origin != b.Origin || a.Facing != b.Facing || a.LocalOffset != b.LocalOffset {
+		return false
+	}
+	fa, fb := a.Footprint, b.Footprint
+	if (fa.Box == nil) != (fb.Box == nil) || (fa.Triangle == nil) != (fb.Triangle == nil) {
+		return false
+	}
+	if fa.Box != nil && *fa.Box != *fb.Box {
+		return false
+	}
+	return fa.Triangle == nil || *fa.Triangle == *fb.Triangle
 }
 
 // standsAt reads the authored cells a placed contributor stands on, a copy

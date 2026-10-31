@@ -394,3 +394,224 @@ func TestSpeak_OutOfRange(t *testing.T) {
 	require.ErrorIs(t, err, encounter.ErrNoProp, "a hidden prop ten hexes off names nothing")
 	require.NotErrorIs(t, err, encounter.ErrOutOfRange, "and never says it is out of range")
 }
+
+// openHall opens a 24 x 24 open hall with these members, placed props and
+// cell props, the hero's discovery checks answered by resolver.
+func openHall(
+	t *testing.T, members []encounter.MemberInput, placed []encounter.PlacedPropInput,
+	props []encounter.PropInput, concealments []encounter.ConcealmentInput, resolver encounter.CheckResolver,
+) *encounter.Encounter {
+	t.Helper()
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Canvas:       openAir(),
+			Regions:      []encounter.RegionInput{rectRegion("hall", 0, 0, 24, 24)},
+			Placed:       placed,
+			Props:        props,
+			Concealments: concealments,
+		},
+		Members: members,
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:         &sightList{fallback: 24},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        zeroSheets{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			CheckResolver: resolver,
+			Witness:       nobodyPerceives{},
+			Actors:        encounter.Actors{Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}},
+		},
+	})
+	require.NoError(t, err)
+
+	return enc
+}
+
+// walkMember walks a member to a cell along the pathfinder's route.
+func walkMember(t *testing.T, enc *encounter.Encounter, who encounter.MemberID, to spatial.Position) {
+	t.Helper()
+	route, err := enc.Route(encounter.RouteInput{Mover: who, Policy: encounter.MoveToward, Anchor: to, Budget: 200})
+	require.NoError(t, err)
+	require.Empty(t, route.StoppedBy, "%s has a way to %v", who, to)
+	path := route.Path
+	if len(path) == 0 || path[len(path)-1] != to {
+		path = append(path, to) // a walk toward a cell stops beside it
+	}
+	for i, cell := range path {
+		_, err := enc.Step(&encounter.StepInput{Member: who, To: cell, EndWalk: i == len(path)-1})
+		require.NoError(t, err)
+	}
+}
+
+// TestWithinReach_MovedPropsFromTheirRecord: a prop that can move is offered
+// where its record says it stands NOW, never at the cell it was authored on.
+// Two porters take four holdable things — a placed footprint and a cell prop
+// authored within the hero's reach, and one of each authored far off — and
+// leave the run: the near pair is dropped far away, the far pair beside the
+// hero. A reserved prop authored beside the hero, not arrived, is never
+// offered.
+func TestWithinReach_MovedPropsFromTheirRecord(t *testing.T) {
+	const (
+		hero    = encounter.MemberID("hero")
+		porterA = encounter.MemberID("porter-a")
+		porterB = encounter.MemberID("porter-b")
+		candle  = encounter.PropID("candle") // placed, authored within reach
+		key     = encounter.PropID("key")    // cell prop, authored within reach
+		lamp    = encounter.PropID("lamp")   // placed, authored far off
+		coin    = encounter.PropID("coin")   // cell prop, authored far off
+		late    = encounter.PropID("late")   // placed, reserved, authored within reach
+	)
+	box := func(cell spatial.Position) spatial.FootprintPlacement {
+		return spatial.FootprintPlacement{Footprint: spatial.Footprint{Box: &spatial.Box{W: 1, D: 1}}, Origin: centreOf(cell)}
+	}
+	enc := openHall(t,
+		[]encounter.MemberInput{
+			{ID: hero, Kind: encounter.KindPlayer, Position: spatial.Position{X: 10, Y: 10}},
+			{ID: porterA, Kind: encounter.KindPlayer, Position: spatial.Position{X: 9, Y: 11}},
+			{ID: porterB, Kind: encounter.KindPlayer, Position: spatial.Position{X: 10, Y: 18}},
+		},
+		[]encounter.PlacedPropInput{
+			{ID: candle, Placement: box(cellAt(9, 10)), Holdable: true},
+			{ID: lamp, Placement: box(cellAt(10, 19)), Holdable: true},
+			{ID: late, Placement: box(cellAt(11, 10)), Arrives: encounter.TriggerRound{Round: 99}},
+		},
+		[]encounter.PropInput{
+			holdableProp(key, "test:props:key", spatial.Position{X: 10, Y: 11}),
+			holdableProp(coin, "test:props:coin", spatial.Position{X: 11, Y: 19}),
+		},
+		nil, findsNothing{},
+	)
+	at := positionOfMember(t, enc, hero)
+	for _, c := range []struct {
+		cell spatial.Position
+		near bool
+	}{{cellAt(9, 10), true}, {cellAt(10, 11), true}, {cellAt(11, 10), true}, {cellAt(10, 19), false}, {cellAt(11, 19), false}} {
+		require.Equal(t, c.near, enc.Distance(at, c.cell) <= speakReach, "precondition: %v within reach is %v", c.cell, c.near)
+	}
+	reach := func() []encounter.PropID {
+		t.Helper()
+		_, props, err := enc.WithinReach(hero, speakReach)
+		require.NoError(t, err)
+		return props
+	}
+	require.Equal(t, []encounter.PropID{candle, key}, reach(),
+		"the near pair stands where it was authored; the reserved one has not arrived")
+
+	take := func(who encounter.MemberID, what ...encounter.PropID) {
+		t.Helper()
+		for _, id := range what {
+			_, err := enc.Hold(&encounter.HoldInput{Member: who, Target: id, Range: 2})
+			require.NoError(t, err, "%s takes %s", who, id)
+		}
+	}
+	take(porterA, candle, key)
+	require.Empty(t, reach(), "a thing in somebody's hands stands nowhere")
+
+	// Porter A leaves far off with the near pair; porter B beside the hero
+	// with the far pair. Leaving drops what one holds where one stands.
+	far, beside := cellAt(10, 16), cellAt(12, 10)
+	require.Greater(t, enc.Distance(at, far), float64(speakReach))
+	require.LessOrEqual(t, enc.Distance(at, beside), float64(speakReach))
+	walkMember(t, enc, porterA, far)
+	_, err := enc.Exit(&encounter.ExitInput{Member: porterA})
+	require.NoError(t, err)
+	require.Empty(t, reach(), "the near pair, dropped far off, is not offered at the cells it was authored on")
+
+	take(porterB, lamp, coin)
+	walkMember(t, enc, porterB, beside)
+	_, err = enc.Exit(&encounter.ExitInput{Member: porterB})
+	require.NoError(t, err)
+	require.Equal(t, []encounter.PropID{coin, lamp}, reach(),
+		"the far pair, dropped beside the hero, is offered where it lies now")
+}
+
+// toggledFinder fails every discovery check until finds is set.
+type toggledFinder struct{ finds bool }
+
+// ResolveCheck answers finds.
+func (f *toggledFinder) ResolveCheck(in *encounter.ResolveCheckInput) (*encounter.ResolveCheckOutput, error) {
+	return &encounter.ResolveCheckOutput{Beaten: f.finds, Applied: in.Approaches[0]}, nil
+}
+
+// ResolveDiscoveryCheck answers finds.
+func (f *toggledFinder) ResolveDiscoveryCheck(in *encounter.ResolveCheckInput) (*encounter.ResolveCheckOutput, error) {
+	return f.ResolveCheck(in)
+}
+
+// TestWithinReach_SecretUntilFound: proximity reveals nothing a map does not
+// show. A prop an unfound concealment hides stands on floor the hero sees,
+// two hexes off, and is not offered; once the hero finds it, it is.
+func TestWithinReach_SecretUntilFound(t *testing.T) {
+	const (
+		hero  = encounter.MemberID("hero")
+		relic = encounter.PropID("relic")
+	)
+	finder := &toggledFinder{}
+	enc := openHall(t,
+		[]encounter.MemberInput{{ID: hero, Kind: encounter.KindPlayer, Position: spatial.Position{X: 10, Y: 10}}},
+		[]encounter.PlacedPropInput{{
+			ID: relic, Placement: spatial.FootprintPlacement{
+				Footprint: spatial.Footprint{Box: &spatial.Box{W: 1, D: 1}}, Origin: centreOf(cellAt(12, 10)),
+			},
+		}},
+		nil,
+		[]encounter.ConcealmentInput{{
+			ID: "the-relic", Checks: []encounter.CheckApproach{{Ability: "perception", DC: 15}}, Props: []encounter.PropID{relic},
+		}},
+		finder,
+	)
+	at := positionOfMember(t, enc, hero)
+	require.InDelta(t, 2, enc.Distance(at, cellAt(12, 10)), 0)
+	visible, err := enc.VisibleCellsFor(&encounter.VisibleCellsInput{Member: hero})
+	require.NoError(t, err)
+	require.Contains(t, visible.Cells, cellAt(12, 10), "precondition: the hero sees the floor the relic stands on")
+
+	_, props, err := enc.WithinReach(hero, speakReach)
+	require.NoError(t, err)
+	require.Empty(t, props, "an unfound secret within reach is not offered")
+
+	// Walk up beside it with eyes that find: the automatic check fires.
+	finder.finds = true
+	walkMember(t, enc, hero, cellAt(11, 10))
+	_, props, err = enc.WithinReach(hero, speakReach)
+	require.NoError(t, err)
+	require.Equal(t, []encounter.PropID{relic}, props, "found, it is offered")
+}
+
+// TestWithinReach_OwnCellUnderASecret: the seen-now test admits the cell a
+// member stands on unconditionally, and a member can stand on floor a
+// concealment hides. The offer and the Speak door still agree there: standing
+// on the secret's floor shows it, so the urn on that cell is offered and the
+// door admits the line said to it.
+func TestWithinReach_OwnCellUnderASecret(t *testing.T) {
+	const (
+		hero = encounter.MemberID("hero")
+		urn  = encounter.PropID("urn")
+	)
+	hail := encounter.Option{ID: "hail", Say: "Hail.", Check: []encounter.CheckApproach{{Ability: "persuasion", DC: 10}}}
+	enc := openHall(t,
+		[]encounter.MemberInput{{ID: hero, Kind: encounter.KindPlayer, Position: spatial.Position{X: 10, Y: 10}}},
+		[]encounter.PlacedPropInput{{
+			ID: urn, Options: []encounter.Option{hail}, Placement: spatial.FootprintPlacement{
+				Footprint: spatial.Footprint{Box: &spatial.Box{W: 1, D: 1}}, Origin: centreOf(cellAt(10, 10)),
+			},
+		}},
+		nil,
+		[]encounter.ConcealmentInput{{
+			ID: "the-crypt", Checks: []encounter.CheckApproach{{Ability: "perception", DC: 30}},
+			Cells: []spatial.Position{{X: 10, Y: 10}},
+		}},
+		findsNothing{},
+	)
+	_, props, err := enc.WithinReach(hero, speakReach)
+	require.NoError(t, err)
+	require.Equal(t, []encounter.PropID{urn}, props, "the urn on the hero's own cell is offered")
+	_, err = enc.Speak(context.Background(), &encounter.SpeakInput{
+		Range: speakReach, Actor: hero, Prop: urn, OptionID: "hail", Skill: "persuasion",
+		Beaten: true, DC: 10, Total: 15, Roller: rollsLowest{},
+	})
+	require.NoError(t, err, "and the door admits the line the offer listed")
+}
