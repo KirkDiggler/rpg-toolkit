@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/internal/rowruns"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 	"github.com/KirkDiggler/rpg-toolkit/world/journal"
 )
@@ -28,25 +29,73 @@ func legacyRoomKnownKind(id RegionID) journal.Kind { return journal.Kind(legacyR
 // The fold is a union; nothing is ever forgotten within the run.
 const cellsKnownKind journal.Kind = "known:cells"
 
-// cellsKnownPayload is a `known:cells` fact's Detail. Cells are absolute
-// axial and sorted by [cellBefore]; the writer never lists a cell twice or one
-// already known, and the load boundary refuses a cell that is not floor.
+// cellsKnownPayload is a `known:cells` fact's Detail, in exactly one of two
+// spellings of the same cell set.
+//
+// ROWS IS WHAT THIS MODULE WRITES (rpg-project#753, "Knowledge is written
+// once, compactly"): the cells as canonical axial row runs
+// ([rowruns.Row]: q spans per r), the one spelling a site's regions use
+// too. A sight pass learns a disk cut by walls, which is a few dozen spans
+// rather than hundreds of cells.
+//
+// CELLS IS THE FORM A RUN SAVED BEFORE THAT CARRIES: one absolute axial cell
+// per entry, sorted by [cellBefore]. It is read, never written, and never
+// migrated — a stored fact keeps its bytes, and both spellings fold to the
+// same known set.
+//
+// Either way the writer never lists a cell twice or one already known, and
+// the load boundary refuses a cell that is not floor.
 type cellsKnownPayload struct {
-	Cells []spatial.Position `json:"cells"`
+	Cells []spatial.Position `json:"cells,omitempty"`
+	Rows  []rowruns.Row      `json:"rows,omitempty"`
 }
 
-// decodeCellsKnown reads one fact's Detail. The load boundary
+// encodeCellsKnown is a learning moment's Detail: its cells as row runs.
+// Every floor cell is a whole axial pair ([field.cellAt] converts each
+// authored integral cell), so a cell that is not — or one beyond the range a
+// float64 holds every integer of — is refused rather than rounded into a
+// different one.
+func encodeCellsKnown(cells []spatial.Position) (string, error) {
+	in := make([]rowruns.Cell, len(cells))
+	for i, cell := range cells {
+		if !wholeCell(cell) || math.Abs(cell.X) > 1<<53 || math.Abs(cell.Y) > 1<<53 {
+			return "", fmt.Errorf("cell %v is not a whole axial cell", cell)
+		}
+		in[i] = rowruns.Cell{Q: int(cell.X), R: int(cell.Y)}
+	}
+	detail, err := json.Marshal(cellsKnownPayload{Rows: rowruns.Encode(in)})
+	if err != nil {
+		return "", err
+	}
+	return string(detail), nil
+}
+
+// decodeCellsKnown reads one fact's Detail in either spelling, refusing one
+// that names both or neither, runs that are not canonical, and runs naming
+// more than limit cells (counted before a cell is listed). The load boundary
 // ([validateWorldFacts]) is the only caller that can see a malformed one.
-func decodeCellsKnown(detail string) ([]spatial.Position, error) {
+func decodeCellsKnown(detail string, limit int) ([]spatial.Position, error) {
 	var payload cellsKnownPayload
 	if err := json.Unmarshal([]byte(detail), &payload); err != nil {
 		return nil, err
 	}
-	if payload.Cells == nil {
+	switch {
+	case payload.Cells != nil && payload.Rows != nil:
+		return nil, fmt.Errorf("both a cells list and row runs")
+	case payload.Cells != nil:
+		return payload.Cells, nil
+	case payload.Rows == nil:
 		return nil, fmt.Errorf("no cells list")
 	}
-
-	return payload.Cells, nil
+	cells, err := rowruns.Expand(payload.Rows, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]spatial.Position, len(cells))
+	for i, c := range cells {
+		out[i] = spatial.Position{X: float64(c.Q), Y: float64(c.R)}
+	}
+	return out, nil
 }
 
 // knownCells folds what a member has learned of the fixed layout — every cell
@@ -111,7 +160,7 @@ func (f *cellFold) catchUp(log *journal.Journal, member MemberID) {
 		if fact.Kind != cellsKnownKind || MemberID(fact.Actor) != member {
 			continue
 		}
-		cells, err := decodeCellsKnown(fact.Outcome.Detail)
+		cells, err := decodeCellsKnown(fact.Outcome.Detail, maxFieldCells)
 		if err != nil {
 			continue // unreachable: the writer and the load boundary agree
 		}
@@ -277,14 +326,14 @@ func (e *Encounter) learnCells(member MemberID, cells []spatial.Position, known 
 			return err
 		}
 	}
-	detail, err := json.Marshal(cellsKnownPayload{Cells: fresh})
+	detail, err := encodeCellsKnown(fresh)
 	if err != nil {
 		return fmt.Errorf("discover cells: %w", err)
 	}
 	_, err = e.world.log.Append(journal.Fact{
 		Kind: cellsKnownKind, Actor: journal.EntityID(member),
 		Subject: journal.EntityID(member), Audience: journal.Audience{journal.EntityID(member)},
-		Outcome: journal.Outcome{Detail: string(detail)},
+		Outcome: journal.Outcome{Detail: detail},
 	})
 	if err != nil {
 		return fmt.Errorf("discover cells: %w", err)

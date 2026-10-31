@@ -9,9 +9,10 @@ package encounter_test
 // sweeps every observer cold; a step's look is the warm sweep. Re-run rather
 // than quoted:
 //
-//	go test . -run '^$' -bench 'Launch_Keep|RefreshSightWarm' -benchtime 3x
+//	go test . -run '^$' -bench 'Launch_Keep|RefreshSightWarm|LoadEncounter_Keep10k' -benchtime 3x
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -46,10 +47,21 @@ func launchBoard(compiled dungeonspec.Compiled) []encounter.JoinInput {
 // launch does.
 func launchSite(tb testing.TB, compiled dungeonspec.Compiled) *encounter.Encounter {
 	tb.Helper()
-	enc := openCompiled(tb, compiled, nil, false, findsNothing{})
-	_, err := enc.Board(&encounter.BoardInput{Members: launchBoard(compiled)})
+	enc, err := launchSiteErr(compiled)
 	require.NoError(tb, err)
 	return enc
+}
+
+// launchSiteErr is [launchSite] for a caller with no test to fail.
+func launchSiteErr(compiled dungeonspec.Compiled) (*encounter.Encounter, error) {
+	enc, err := openCompiledErr(compiled, nil, false, findsNothing{})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := enc.Board(&encounter.BoardInput{Members: launchBoard(compiled)}); err != nil {
+		return nil, err
+	}
+	return enc, nil
 }
 
 func benchmarkLaunch(b *testing.B, hexes int) {
@@ -78,4 +90,25 @@ func BenchmarkRefreshSightWarm_Keep10k(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+}
+
+// BenchmarkLoadEncounter_Keep10k is what every session verb pays to read the
+// launched 10k keep back (rpg-project#753, S4): unmarshal the saved run and
+// load it. The saved bytes are reported as a metric beside the time.
+func BenchmarkLoadEncounter_Keep10k(b *testing.B) {
+	raw, err := json.Marshal(launchedKeep10k(b).ToData())
+	require.NoError(b, err)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var data encounter.EncounterData
+		if err := json.Unmarshal(raw, &data); err != nil {
+			b.Fatal(err)
+		}
+		if _, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Data: data, Capabilities: knowledgeCapabilities(&sightList{fallback: 24}),
+		}); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ReportMetric(float64(len(raw)), "blob-bytes")
 }

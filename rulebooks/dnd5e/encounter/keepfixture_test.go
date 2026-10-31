@@ -47,12 +47,8 @@ func compiledSite(tb testing.TB, hexes int) dungeonspec.Compiled {
 	if hexes == 0 {
 		return compiledFile(tb, castleFixture)
 	}
-	return compiledOnce(tb, fmt.Sprintf("keep-%d", hexes), func() ([]byte, error) {
-		opts := keepgen.DefaultOptions()
-		opts.Hexes, opts.Seed, opts.Key = hexes, 1, "bench-keep"
-		raw, _, err := keepgen.Generate(keepgen.DefaultPlan(), opts)
-		return raw, err
-	})
+	name, read := keepDocument(hexes)
+	return compiledOnce(tb, name, read)
 }
 
 // compiledFile compiles an authored document once per binary.
@@ -65,6 +61,15 @@ func compiledFile(tb testing.TB, path string) dungeonspec.Compiled {
 
 func compiledOnce(tb testing.TB, name string, read func() ([]byte, error)) dungeonspec.Compiled {
 	tb.Helper()
+	compiled, err := compiledOnceErr(name, read)
+	require.NoError(tb, err, "%s compiles", name)
+
+	return compiled
+}
+
+// compiledOnceErr is [compiledOnce] for a caller with no test to fail: the
+// launch a [TestMain] starts ahead of the test that reads it.
+func compiledOnceErr(name string, read func() ([]byte, error)) (dungeonspec.Compiled, error) {
 	keepDocsMu.Lock()
 	d, ok := keepDocs[name]
 	if !ok {
@@ -79,12 +84,24 @@ func compiledOnce(tb testing.TB, name string, read func() ([]byte, error)) dunge
 		}
 		d.compiled, d.err = dungeonspec.Load(raw)
 	})
-	require.NoError(tb, d.err, "%s compiles", name)
+	if d.err != nil {
+		return dungeonspec.Compiled{}, d.err
+	}
 	compiled := d.compiled
 	compiled.Field.Doors = append([]encounter.DoorInput(nil), compiled.Field.Doors...)
 	compiled.Field.Concealments = append([]encounter.ConcealmentInput(nil), compiled.Field.Concealments...)
 
-	return compiled
+	return compiled, nil
+}
+
+// keepDocument is the generated keep's document at hexes.
+func keepDocument(hexes int) (string, func() ([]byte, error)) {
+	return fmt.Sprintf("keep-%d", hexes), func() ([]byte, error) {
+		opts := keepgen.DefaultOptions()
+		opts.Hexes, opts.Seed, opts.Key = hexes, 1, "bench-keep"
+		raw, _, err := keepgen.Generate(keepgen.DefaultPlan(), opts)
+		return raw, err
+	}
 }
 
 // keepPlayers is the party's member ids, best seat first.
@@ -119,6 +136,16 @@ func openCompiled(
 	resolver encounter.CheckResolver,
 ) *encounter.Encounter {
 	tb.Helper()
+	enc, err := openCompiledErr(compiled, players, monsters, resolver)
+	require.NoError(tb, err)
+
+	return enc
+}
+
+// openCompiledErr is [openCompiled] for a caller with no test to fail.
+func openCompiledErr(
+	compiled dungeonspec.Compiled, players []encounter.MemberInput, monsters bool, resolver encounter.CheckResolver,
+) (*encounter.Encounter, error) {
 	members := append([]encounter.MemberInput(nil), players...)
 	if monsters {
 		for _, m := range compiled.Monsters {
@@ -152,9 +179,7 @@ func openCompiled(
 			},
 		},
 	})
-	require.NoError(tb, err)
-
-	return enc
+	return enc, err
 }
 
 // soldierTemper gives every word in a monster's mix the empty profile — a
