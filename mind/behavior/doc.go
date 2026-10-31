@@ -35,6 +35,11 @@
 // word that arrives with a profile is multiplied by it. It carries a
 // [Selector] and resolves nothing; it carries a cell and never reads it.
 //
+// A spoken answer may also carry an opaque [ActivityCue]. This primitive
+// preserves the selected leaf's reference and positive sustain count, but
+// resolves no assets, runs no animation clock and changes no roll arithmetic.
+// The caller captures it with the spoken answer; presentation owns playback.
+//
 // That is the composability claim being tested. The table came out of a D&D
 // composition, and what was D&D about it — building the facts from a board,
 // executing the words through a striker and a router, the authoring dialect,

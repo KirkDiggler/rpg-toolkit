@@ -168,6 +168,10 @@ type Answer struct {
 	// FOR THE RECORD ONLY: they were substituted into Rows at compile.
 	// Nothing here reads them.
 	Params map[string]string `json:",omitempty"`
+
+	// Activity accompanies Say on the selected leaf. Nil means no cue; its
+	// reference and count are carried without resolving assets or playback.
+	Activity *ActivityCue
 }
 
 // MaxGroupDepth is how deep groups nest: a group inside a group inside a
@@ -189,7 +193,8 @@ var AsWords = []string{VerbAttack, wordToward, wordAway, "flee", "hold"}
 // distance below 1 or a heading not in [SearchHeadings] (ErrBadSearch), and
 // a group row ([Answer.Rows]) that carries a word, a search, a line or a fact
 // of its own, holds no rows, counts `as` a word not in [AsWords], or nests
-// past [MaxGroupDepth] (ErrBadGroup). Every row inside a group is validated
+// past [MaxGroupDepth] (ErrBadGroup), and an activity cue without a line,
+// reference or positive count (ErrBadActivity). Every row inside a group is validated
 // as a row, and its refusal names which row of the group it is. Each refusal
 // is a sentence for the form, wrapping its sentinel.
 //
@@ -206,6 +211,9 @@ func (a *Answer) Validate() error {
 func (a *Answer) validate(nest int) error {
 	if a.isGroup() {
 		return a.validateGroup(nest)
+	}
+	if a.Activity != nil && (a.Say == "" || a.Activity.Ref == "" || a.Activity.Cycles == 0) {
+		return fmt.Errorf("`activity` requires a say line, a reference and positive cycles: %w", ErrBadActivity)
 	}
 	for i := range a.When {
 		if err := a.When[i].Validate(); err != nil {
@@ -290,7 +298,7 @@ func (a *Answer) words() []string {
 	}{
 		{"`hold`", a.Hold}, {"`attack`", a.Attack != nil}, {"`toward`", a.Toward != nil},
 		{"`dash`", a.Dash != nil}, {"`away`", a.Away != nil}, {"`flee`", a.Flee}, {"`search`", a.Search != nil},
-		{"`say`", a.Say != ""}, {"`fact`", a.Fact != ""},
+		{"`say`", a.Say != ""}, {"`fact`", a.Fact != ""}, {"`activity`", a.Activity != nil},
 	} {
 		if w.set {
 			out = append(out, w.name)
