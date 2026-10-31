@@ -560,16 +560,27 @@ func (e *Encounter) refuseSpeakOutOfReach(in *SpeakInput, from spatial.Position,
 	if in.Target != "" {
 		return e.refuseOutOfReach(verbSpeak, in.Actor, in.Target, in.Range)
 	}
-	if propCells == nil {
+	return e.refusePropOutOfReach(verbSpeak, from, in.Prop, propCells, in.Range)
+}
+
+// refusePropOutOfReach is THE PROP REACH MEASURE, one for Speak's door and
+// for [Encounter.PropWithinReach]: [Encounter.refuseOutOfReachCell] against
+// every cell the prop stands on, any one within reach admitting it, as
+// [Encounter.Hold] measures a footprint. Nil cells — a prop the member
+// carries — is always within reach.
+func (e *Encounter) refusePropOutOfReach(
+	verb string, from spatial.Position, prop PropID, cells []spatial.Position, reach int,
+) error {
+	if cells == nil {
 		return nil
 	}
-	for _, cell := range propCells {
-		if e.refuseOutOfReachCell(verbSpeak, from, cell, in.Range, string(in.Prop)) == nil {
+	for _, cell := range cells {
+		if e.refuseOutOfReachCell(verb, from, cell, reach, string(prop)) == nil {
 			return nil
 		}
 	}
 
-	return fmt.Errorf("%s: %s: %w", verbSpeak, in.Prop, ErrOutOfRange)
+	return fmt.Errorf("%s: %s: %w", verb, prop, ErrOutOfRange)
 }
 
 // optionOffered finds an option by id among a target's options, and answers

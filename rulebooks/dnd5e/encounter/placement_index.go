@@ -249,6 +249,9 @@ type placementIndex struct {
 	// they stand on, structural walls by the floor they overlap, and cell
 	// props by their authored cell.
 	at map[spatial.Position][]placementRef
+	// reach is the authored placements bucketed by where their bounds reach,
+	// for the geometric queries (placed_reach_index.go).
+	reach *placedReach
 }
 
 // buildPlacementIndex derives the index from a compiled field. Called last
@@ -292,6 +295,7 @@ func (f *field) buildPlacementIndex() {
 		cell := f.cellAt(p.At)
 		idx.at[cell] = append(idx.at[cell], placementRef{id: p.ID, kind: refCellProp, at: i})
 	}
+	idx.reach = f.buildPlacedReach()
 	f.index = idx
 }
 

@@ -362,6 +362,7 @@ func placedCentre(p spatial.FootprintPlacement) spatial.Point {
 // A trace error counts as covering, the fail-closed rule every other reader
 // of this geometry applies; compilePlaced makes it unreachable.
 func (f *field) placedCells(p spatial.FootprintPlacement) []spatial.Position {
+	f.cellsMeasured++
 	reach := boundsOf(p)
 	if f.centres == nil || !reach.ok {
 		return f.placedCellsByWalk(p, reach)
@@ -454,6 +455,7 @@ func (f *field) placedCellsByWalk(p spatial.FootprintPlacement, reach footprintB
 // reach are measured ([footprintBounds], rpg-toolkit#2049): a cell beyond it
 // overlaps by zero area, which is exactly what the filter below drops anyway.
 func (f *field) footprintObservationCells(p spatial.FootprintPlacement) ([]spatial.Position, error) {
+	f.cellsMeasured++
 	cells := f.cells
 	r := float64(placedPlaneCellWidth)
 	if reach := boundsOf(p); reach.ok {
@@ -668,7 +670,7 @@ func (f *field) blockingDoorFootprints() []*doorRecord {
 func (f *field) standingBlocks(cell spatial.Position) (PropID, bool) {
 	centre := f.plane.CellCentre(cell)
 	now := f.placedNow()
-	for i := range f.placed {
+	for _, i := range f.placedNear(centre, centre) {
 		p := &f.placed[i]
 		if !p.blocksMovement {
 			continue
@@ -804,7 +806,8 @@ func (f *field) crossingBlocks(from, to spatial.Position) (PropID, bool, error) 
 // contributor that is asked. An empty skip leaves nothing out.
 func (f *field) crossingBlocksExcept(from, to spatial.Position, skip DoorID) (PropID, bool, error) {
 	now := f.placedNow()
-	for i := range f.placed {
+	a, b := f.plane.CellCentre(from), f.plane.CellCentre(to)
+	for _, i := range f.placedNear(a, b) {
 		p := &f.placed[i]
 		if !p.blocksMovement {
 			continue
@@ -813,7 +816,6 @@ func (f *field) crossingBlocksExcept(from, to spatial.Position, skip DoorID) (Pr
 		if !standing {
 			continue
 		}
-		a, b := f.plane.CellCentre(from), f.plane.CellCentre(to)
 		if !p.reach.mayTouch(placement.Origin, a, b) {
 			continue
 		}
@@ -872,38 +874,18 @@ func (f *field) sightBlocksAlong(from, to spatial.Position) (bool, error) {
 func (f *field) sightBlocksAlongExcept(
 	from, to spatial.Position, skipPlaced map[PropID]bool, skipDoors map[DoorID]bool,
 ) (bool, error) {
-	now := f.placedNow()
-	for i := range f.placed {
-		p := &f.placed[i]
-		if !p.blocksLineOfSight || skipPlaced[p.id] {
-			continue
-		}
-		placement, standing := now.stands(p)
-		if !standing {
-			continue
-		}
-		a, b := f.plane.CellCentre(from), f.plane.CellCentre(to)
-		if !p.reach.mayTouch(placement.Origin, a, b) {
-			continue
-		}
-		trace, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
-			Placement: placement, From: a, To: b,
-		})
-		if err != nil {
-			return false, fmt.Errorf("placed prop %q: %w", p.id, err)
-		}
-		if trace.Interior {
-			return true, nil
-		}
+	a, b := f.plane.CellCentre(from), f.plane.CellCentre(to)
+	blocked, err := f.placedSightBlocksAlong(a, b, skipPlaced)
+	if err != nil || blocked {
+		return blocked, err
 	}
 	// A SHUT DOOR BLOCKS SIGHT AS WELL AS MOVEMENT, whichever geometry it
 	// stands in: an edge door's crossings are registered blocking both, and
 	// a footprint door's rectangle is read here. One state, both facts.
-	for _, d := range f.blockingDoorFootprints() {
-		if skipDoors[d.id] {
+	for _, d := range f.doorFootprints {
+		if !d.blocks() || skipDoors[d.id] {
 			continue
 		}
-		a, b := f.plane.CellCentre(from), f.plane.CellCentre(to)
 		if !d.reach.mayTouch(d.placement.Origin, a, b) {
 			continue
 		}
@@ -912,6 +894,38 @@ func (f *field) sightBlocksAlongExcept(
 		})
 		if err != nil {
 			return false, fmt.Errorf("door %q: %w", d.id, err)
+		}
+		if trace.Interior {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// placedSightBlocksAlong is the placed half of [field.sightBlocksAlongExcept]:
+// whether a standing sight-blocking placement's interior covers the lane a→b,
+// asked of the placements near the lane ([field.placedNear]) in compiled
+// order.
+func (f *field) placedSightBlocksAlong(a, b spatial.Point, skip map[PropID]bool) (bool, error) {
+	now := f.placedNow()
+	for _, i := range f.placedNear(a, b) {
+		p := &f.placed[i]
+		if !p.blocksLineOfSight || skip[p.id] {
+			continue
+		}
+		placement, standing := now.stands(p)
+		if !standing {
+			continue
+		}
+		if !p.reach.mayTouch(placement.Origin, a, b) {
+			continue
+		}
+		trace, err := spatial.TraceFootprint(spatial.FootprintTraceInput{
+			Placement: placement, From: a, To: b,
+		})
+		if err != nil {
+			return false, fmt.Errorf("placed prop %q: %w", p.id, err)
 		}
 		if trace.Interior {
 			return true, nil
@@ -932,7 +946,7 @@ func (f *field) screensOf(cell spatial.Position) (map[PropID]bool, map[DoorID]bo
 	}
 	centre := f.plane.CellCentre(cell)
 	now := f.placedNow()
-	for i := range f.placed {
+	for _, i := range f.placedNear(centre, centre) {
 		p := &f.placed[i]
 		if !p.blocksLineOfSight {
 			continue
@@ -1002,7 +1016,7 @@ func (f *field) computeSightBlocksOriginAt(cell spatial.Position) (bool, error) 
 	f.originOpacityComputed++
 	centre := f.plane.CellCentre(cell)
 	now := f.placedNow()
-	for i := range f.placed {
+	for _, i := range f.placedNear(centre, centre) {
 		p := &f.placed[i]
 		if !p.blocksLineOfSight {
 			continue
@@ -1090,6 +1104,10 @@ func (f *field) attachHoldings(h *holdings) { f.holdings = h }
 // memo that outlived its pass would answer from a field that is gone.
 // [field.beginSightPass] starts it and its returned func drops it.
 type sightPassMemo struct {
+	// entityOpaque is the cells a sight-blocking canvas entity stands on
+	// ([canvasSightObstructions.entityBlocksAt]), listed the first time a
+	// lane asks; nil until then.
+	entityOpaque     map[spatial.Position]bool
 	originOpaque     map[spatial.Position]bool
 	placedCells      map[PropID][]spatial.Position
 	observationCells map[PropID][]spatial.Position

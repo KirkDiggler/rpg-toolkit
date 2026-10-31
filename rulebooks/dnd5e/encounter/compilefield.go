@@ -263,6 +263,12 @@ type field struct {
 	// anything.
 	originOpacityComputed int
 	placedCellsComputed   int
+	// cellsMeasured counts every run of the two per-placement floor
+	// measures, [field.placedCells] and [field.footprintObservationCells],
+	// the index's own build included (rpg-project#753, S3): what a
+	// projection must never pay for an authored placement or wall. A
+	// measure, never a decision.
+	cellsMeasured int
 
 	// atlasProjections counts [Encounter.Atlas] builds, every AtlasFor's
 	// included (rpg-project#753): a measure the package's tests read to hold
