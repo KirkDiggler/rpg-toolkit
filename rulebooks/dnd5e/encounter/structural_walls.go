@@ -484,8 +484,11 @@ func namesFootprintDoor(doors []DoorInput, id DoorID) bool {
 // list. Ordered along the wall from `from` to `to` by each cell centre's
 // projection onto the line, ties by [cellBefore], so a client walking the list
 // walks the wall (fog-of-war R9).
+//
+// The support is the placement index's for the wall's authored presence
+// (placement_index.go), so a projection reads it rather than measuring it.
 func (f *field) wallFootprintCells(w *structuralWall, placement spatial.FootprintPlacement) ([]spatial.Position, error) {
-	support, err := f.footprintObservationCells(placement)
+	support, err := f.observationCellsOf(w.id, placement)
 	if err != nil {
 		return nil, err
 	}

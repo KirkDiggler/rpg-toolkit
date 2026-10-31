@@ -96,9 +96,12 @@ func sightPassScene(t *testing.T) (*Encounter, *[]bool) {
 // the Sight capability with its memo live, and inside one pass four watchers
 // each ask the sight question of every floor cell and build their atlas
 // twice, as an observer that learns cells does. Each cell's origin opacity
-// is computed at most once, and each placement's cells once. Without the
-// memo the opacity is computed for every lane end of every watcher's every
-// cell, and the placement's cells eight times.
+// is computed at most once. The pillar's cells are never computed in the
+// pass at all: an authored placement's cells are the placement index's,
+// derived when the field was built (placement_index.go, rpg-project#753).
+// Without the memo the opacity is computed for every lane end of every
+// watcher's every cell; without the index the pillar's cells were the
+// memo's, computed once per pass.
 func TestASightPassComputesItsSharedAnswersOnceForEveryWatcher(t *testing.T) {
 	enc, inPass := sightPassScene(t)
 	f := enc.field
@@ -139,8 +142,8 @@ func TestASightPassComputesItsSharedAnswersOnceForEveryWatcher(t *testing.T) {
 	require.Positive(t, f.originOpacityComputed-opacity, "precondition: the pass asked origin opacity")
 	require.LessOrEqual(t, f.originOpacityComputed-opacity, len(f.cells),
 		"each cell's origin opacity is computed at most once in the pass")
-	require.Equal(t, 1, f.placedCellsComputed-placements,
-		"the pillar's cells are computed once for the four watchers' eight atlases")
+	require.Equal(t, 0, f.placedCellsComputed-placements,
+		"the pillar's cells are read from the placement index for the four watchers' eight atlases")
 }
 
 // TestTheSightPassMemoDiesWithThePass: in one pass the cell under the shut

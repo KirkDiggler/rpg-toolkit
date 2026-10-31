@@ -1243,11 +1243,14 @@ func validateWorldFacts(
 }
 
 // validateCellsKnown is the payload half of a `known:cells` fact: a decodable
-// cell list that names only this field's floor — a cell off the map would put
-// knowledge of nothing into somebody's atlas fold, which is the void-cell
-// precedent `dropped:` facts already refuse.
+// cell list — row runs or the legacy one-per-cell form, decoded as the fold
+// decodes them ([decodeCellsKnown]) — that names only this field's floor. A
+// cell off the map would put knowledge of nothing into somebody's atlas
+// fold, which is the void-cell precedent `dropped:` facts already refuse.
+// Runs are counted before they are listed: a fact can name no more cells than
+// the floor holds, so a span of a billion cells is refused unexpanded.
 func validateCellsKnown(i int, f FactData, floor *field) error {
-	cells, err := decodeCellsKnown(f.Detail)
+	cells, err := decodeCellsKnown(f.Detail, len(floor.cells))
 	if err != nil {
 		return fmt.Errorf("world fact %d is a known:cells fact whose cells do not decode (%v): %w", i, err, ErrInvalidData)
 	}

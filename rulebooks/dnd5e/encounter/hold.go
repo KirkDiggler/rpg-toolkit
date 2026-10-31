@@ -163,11 +163,7 @@ func (e *Encounter) Hold(in *HoldInput) (*HoldOutput, error) {
 	// Not shown this member: the SAME refusal as an id that names nothing,
 	// so no guess can tell the two apart. Everything below is about a prop
 	// the member can see, and says what it means.
-	shown, err := e.showsCellTo(in.Member, cell)
-	if err != nil {
-		return nil, fmt.Errorf("hold: %w", err)
-	}
-	if !shown {
+	if !e.shownTo(e.undiscoveredMask(in.Member), []spatial.Position{cell}) {
 		return nil, fmt.Errorf("hold: %q: %w", in.Target, ErrNoProp)
 	}
 
@@ -202,11 +198,11 @@ func (e *Encounter) Hold(in *HoldInput) (*HoldOutput, error) {
 //   - IN RESERVE and ALREADY HELD are one read of the same fold every other
 //     query uses ([placedFold.stands]): a rectangle that is not on the floor
 //     is either waiting or in somebody's hands, and the journal says which.
-//   - SHOWN THIS MEMBER is the probe law asked of the member's own atlas:
-//     the placement is shown when its rectangle stands on a cell that atlas
-//     lists. Not a second copy of the concealment rules — the same
-//     projection [Encounter.showsCellTo] asks, read for a shape rather than
-//     a point.
+//   - SHOWN THIS MEMBER is the probe law asked of the member's own mask:
+//     the placement is shown when its rectangle stands on a cell their atlas
+//     would list. Not a second copy of the concealment rules — the same
+//     [Encounter.shownTo] a cell prop asks, read for a shape rather than a
+//     point.
 //   - REACH is [refuseOutOfReachCell] — THE CELL PROP RULE, unchanged: grid
 //     distance from the member, Range 0 meaning adjacent — applied to every
 //     cell the placement stands on. Standing on one is distance zero;
@@ -232,11 +228,7 @@ func (e *Encounter) holdPlaced(in *HoldInput, p *placedContributor) (*HoldOutput
 	}
 
 	cells := e.field.placedCells(placement)
-	shown, err := e.showsAnyCellTo(in.Member, cells)
-	if err != nil {
-		return nil, fmt.Errorf("hold: %w", err)
-	}
-	if !shown {
+	if !e.shownTo(e.undiscoveredMask(in.Member), cells) {
 		return nil, fmt.Errorf("hold: %q: %w", in.Target, ErrNoProp)
 	}
 
@@ -274,32 +266,6 @@ func (e *Encounter) hiddenPropTo(member MemberID, prop PropID) bool {
 	id, hidden := e.field.concealmentOfProp[prop]
 
 	return hidden && !e.world.knowsConcealment(member, id)
-}
-
-// showsAnyCellTo is the probe law's question asked of a SHAPE: is any of the
-// cells this thing stands on in the member's own atlas.
-//
-// One atlas build for the whole set rather than one per cell — the same
-// projection [Encounter.showsCellTo] reads, and its error rule verbatim: a
-// wiring fault is returned, never folded into "not shown", because the probe
-// law is about what a player may infer and not a reason to lie to the
-// operator.
-func (e *Encounter) showsAnyCellTo(member MemberID, cells []spatial.Position) (bool, error) {
-	atlas, err := e.AtlasFor(member)
-	if err != nil {
-		return false, fmt.Errorf("atlas for %q: %w", member, err)
-	}
-	shown := make(map[spatial.Position]bool, len(atlas.Cells))
-	for _, c := range atlas.Cells {
-		shown[c] = true
-	}
-	for _, c := range cells {
-		if shown[c] {
-			return true, nil
-		}
-	}
-
-	return false, nil
 }
 
 // takeProp is WHAT HAPPENS WHEN A THING IS PICKED UP, whichever kind of
@@ -363,37 +329,146 @@ func (e *Encounter) takeProp(member MemberID, target PropID) (*HoldOutput, error
 	return &HoldOutput{}, nil
 }
 
-// showsCellTo reports whether a member's own atlas contains a cell — the
-// probe law's question, asked of the projection that already answers it
-// rather than of a second copy of the concealment rules.
+// undiscovered is ONE MEMBER'S UNDISCOVERED MASK (rpg-project#753, design
+// "Knowledge is the oracle"): the cells of the floor that member's own
+// projection leaves out — ordinary unexplored floor and unfound concealment
+// alike, less the boundary footing and the revealed concealment cells the
+// projection gives back. [Encounter.undiscoveredFrom] is this mask
+// materialized over the floor, so [Encounter.AtlasFor] withholds exactly the
+// cells [undiscovered.hides] names.
+//
+// BUILT ONCE PER READ by the caller, and asked as often as the read needs,
+// in the cells it asks about: building it costs what the member knows plus
+// the floor's boundaries (unowned cells, walls), never the floor's cells.
+type undiscovered struct {
+	f *field
+	// known is every cell the member has learned; revealed every cell of a
+	// concealment they have found; concealed every cell of one they have
+	// not (the shared fold's own map, read-only).
+	known, revealed, concealed map[spatial.Position]bool
+	// bordering is the unowned unexplored cells that border learned floor:
+	// on the map as the boundary of what was seen, hidden only while an
+	// explicit concealment still holds them.
+	bordering map[spatial.Position]bool
+	// footing is the unowned cells an authored wall stands on whose two
+	// ends are not both hidden: an authored boundary brings its footing.
+	footing map[spatial.Position]bool
+}
+
+// undiscoveredMask builds a member's [undiscovered] mask for one read.
+//
+// THE RULE, IN THE ORDER IT DECIDES:
+//
+//  1. A cell is unexplored when the member has neither learned it nor found
+//     a concealment that holds it, and hidden when it is unexplored or an
+//     unfound concealment holds it.
+//  2. Unowned scenery directly bordering learned floor belongs to its
+//     visible boundary. A presented wall adds no footing of its own
+//     (fog-of-war R9). Knowing a boundary's ordinary footing does not beat an
+//     explicit concealment on that floor: the two masks stay independent so
+//     unlisted props do not inherit floor secrecy.
+//  3. An authored boundary brings its unowned footing, but not the adjoining
+//     room's interior — judged on step 2's answer, so long chains do not
+//     flood.
+func (e *Encounter) undiscoveredMask(member MemberID) undiscovered {
+	f := e.field
+	m := undiscovered{
+		f:         f,
+		known:     e.world.knownCells(member),
+		revealed:  make(map[spatial.Position]bool),
+		concealed: e.hiddenFrom(member).cells,
+		bordering: make(map[spatial.Position]bool),
+		footing:   make(map[spatial.Position]bool),
+	}
+	// Existing explicit concealment discovery teaches its cells without the
+	// sight pass seeing them. Preserve that knowledge; ordinary cell
+	// discovery is not an authority to forget separately learned geometry.
+	for i := range f.concealments {
+		c := &f.concealments[i]
+		if e.world.knowsConcealment(member, c.id) {
+			for _, cell := range e.hiddenCellsOf(c) {
+				m.revealed[cell] = true
+			}
+		}
+	}
+	// Step 2 asks only unowned floor, and asks each cell's owned neighbours,
+	// whose step-1 answer no step-2 change can reach — so the order is free.
+	for cell := range f.sceneryCells {
+		if _, owned := f.regionOf(cell); owned || !m.unexploredByKnowledge(cell) {
+			continue
+		}
+		for _, neighbor := range adjacencyGrid.GetNeighbors(cell) {
+			if _, owned := f.regionOf(neighbor); owned && m.known[neighbor] && !m.hiddenByKnowledge(neighbor) {
+				m.bordering[cell] = true
+				break
+			}
+		}
+	}
+	for _, wall := range f.walls {
+		from, to := f.cellAt(wall.From), f.cellAt(wall.To)
+		if m.hiddenBeforeFooting(from) && m.hiddenBeforeFooting(to) {
+			continue
+		}
+		for _, cell := range []spatial.Position{from, to} {
+			if _, owned := f.regionOf(cell); !owned {
+				m.footing[cell] = true
+			}
+		}
+	}
+
+	return m
+}
+
+// unexploredByKnowledge is step 1's unexplored: neither learned nor revealed.
+func (m undiscovered) unexploredByKnowledge(cell spatial.Position) bool {
+	return m.f.isFloor(cell) && !m.known[cell] && !m.revealed[cell]
+}
+
+// hiddenByKnowledge is step 1's hidden: unexplored, or an unfound secret's.
+func (m undiscovered) hiddenByKnowledge(cell spatial.Position) bool {
+	return m.concealed[cell] || m.unexploredByKnowledge(cell)
+}
+
+// hiddenBeforeFooting is step 2's hidden: a bordering cell stays hidden only
+// while an explicit concealment holds it.
+func (m undiscovered) hiddenBeforeFooting(cell spatial.Position) bool {
+	if m.bordering[cell] {
+		_, concealed := m.f.concealmentOfCell[cell]
+		return m.concealed[cell] || (concealed && !m.revealed[cell])
+	}
+	return m.hiddenByKnowledge(cell)
+}
+
+// hides reports whether the member's projection leaves this cell out.
+func (m undiscovered) hides(cell spatial.Position) bool {
+	return !m.footing[cell] && m.hiddenBeforeFooting(cell)
+}
+
+// unexplored reports whether this cell is ordinary unexplored floor in the
+// member's projection — the delivery mask's own part, kept apart from
+// concealment so floor secrecy never implies a placement's.
+func (m undiscovered) unexplored(cell spatial.Position) bool {
+	return !m.footing[cell] && !m.bordering[cell] && m.unexploredByKnowledge(cell)
+}
+
+// shownTo is THE PROBE LAW'S ORACLE for cells and shapes: whether any of
+// these cells is in the atlas the mask's member would be projected — a cell
+// of this floor that the mask does not withhold. A cell prop asks it of its
+// one cell; a footprint of the cells it stands on.
+//
+// NO PROJECTION. [Encounter.AtlasFor]'s cells are the floor's cells less
+// exactly this mask's, so the answer is the projection's answer
+// (TestShownTo_MatchesAtlasFor holds the two equal on the castle and the
+// keep) at the cost of the cells asked about.
 //
 // Ordinary cell discovery and concealment both constrain this read. Knowing
 // floor does not itself make a prop current; prop observations are separate.
-//
-// THE ERROR IS RETURNED, NEVER FOLDED INTO "NOT SHOWN" (Copilot, PR #1497
-// review). Swallowing it would answer a wiring fault — an atlas that could
-// not be built at all — with ErrNoProp, which is the one refusal in this
-// verb designed to be indistinguishable from three others. A caller
-// debugging why a prop they can see refuses would have nothing to go on. The
-// probe law is about what a PLAYER may infer from a refusal; it is not a
-// reason to lie to the operator.
-//
-// UNREACHABLE TODAY, and said out loud rather than left for the next reader
-// to work out: [Encounter.Atlas] has one return and it is nil, and
-// [Encounter.AtlasFor]'s only other failure is ErrNotMember, which
-// [Encounter.Hold] has already refused before it gets here. So no test kills
-// a mutant that swallows this error, and a mutation pass says so. It stays
-// because the alternative is discarding an error return — which is the
-// habit that makes the next failure silent, whenever Atlas grows one.
-func (e *Encounter) showsCellTo(member MemberID, cell spatial.Position) (bool, error) {
-	atlas, err := e.AtlasFor(member)
-	if err != nil {
-		return false, fmt.Errorf("atlas for %q: %w", member, err)
-	}
-	for _, c := range atlas.Cells {
-		if c == cell {
-			return true, nil
+func (e *Encounter) shownTo(mask undiscovered, cells []spatial.Position) bool {
+	for _, c := range cells {
+		if e.field.isFloor(c) && !mask.hides(c) {
+			return true
 		}
 	}
-	return false, nil
+
+	return false
 }

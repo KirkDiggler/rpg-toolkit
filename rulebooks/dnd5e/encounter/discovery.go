@@ -29,51 +29,21 @@ type DiscoveryStateData struct {
 	Attempts map[ConcealmentID]DiscoveryAttemptData `json:"attempts,omitempty"`
 }
 
-// SetDiscoverySharingInput changes future result audiences for a placed player.
-type SetDiscoverySharingInput struct {
-	Member  MemberID
-	Sharing bool
-}
-
-// SetDiscoverySharingOutput reports the effective preference.
-type SetDiscoverySharingOutput struct{ Sharing bool }
-
-// SetDiscoverySharing changes no past audience or learned fact and spends no time.
-func (e *Encounter) SetDiscoverySharing(in *SetDiscoverySharingInput) (*SetDiscoverySharingOutput, error) {
-	if in == nil {
-		return nil, ErrNilInput
-	}
-	member, ok := e.members[in.Member]
-	if !ok {
-		return nil, ErrNotMember
-	}
-	if member.Kind != KindPlayer {
-		return nil, fmt.Errorf("discovery sharing requires a player: %w", ErrNotMember)
-	}
-	if e.outcome != nil {
-		return nil, ErrClosed
-	}
-	if e.discovery == nil {
-		e.discovery = map[MemberID]DiscoveryStateData{}
-	}
-	state := e.discovery[in.Member]
-	state.Private = !in.Sharing
-	e.discovery[in.Member] = state
-	return &SetDiscoverySharingOutput{Sharing: in.Sharing}, nil
-}
+// DiscoverySharingOutput reports the effective preference.
+type DiscoverySharingOutput struct{ Sharing bool }
 
 // DiscoverySharingInput selects the player whose preference is read.
 type DiscoverySharingInput struct{ Member MemberID }
 
 // DiscoverySharing returns a member's effective preference without mutating it.
-func (e *Encounter) DiscoverySharing(in *DiscoverySharingInput) (*SetDiscoverySharingOutput, error) {
+func (e *Encounter) DiscoverySharing(in *DiscoverySharingInput) (*DiscoverySharingOutput, error) {
 	if in == nil {
 		return nil, ErrNilInput
 	}
 	if _, ok := e.members[in.Member]; !ok {
 		return nil, ErrNotMember
 	}
-	return &SetDiscoverySharingOutput{Sharing: !e.discovery[in.Member].Private}, nil
+	return &DiscoverySharingOutput{Sharing: !e.discovery[in.Member].Private}, nil
 }
 
 // RestoreDiscoveryInput sets a placed player's audience preference. It is not

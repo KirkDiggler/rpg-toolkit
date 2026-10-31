@@ -497,6 +497,7 @@ func (s *SessionVerbsSuite) TestAReserveArrivalAfterARestSeatsAtTheWorldsTime() 
 
 	// The threat plants the fact the straggler waits on, and it arrives.
 	_, err = enc.Speak(context.Background(), &encounter.SpeakInput{
+		Range: speakReach,
 		Actor: alice, Target: goblin, OptionID: "threat", Skill: "intimidation",
 		Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
 	})
