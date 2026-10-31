@@ -467,6 +467,7 @@ func (s *ActTestSuite) TestSpeakAnswerCarriesSpeakAct() {
 
 	act := s.open(enc, "speak", "")
 	_, err := enc.Speak(context.Background(), &encounter.SpeakInput{
+		Range:    speakReach,
 		OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin,
 		Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
 	})

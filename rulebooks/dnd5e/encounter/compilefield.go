@@ -245,6 +245,14 @@ type field struct {
 	// floor's bounding box (W6).
 	width, height int
 
+	// centres and index are THE FIELD'S PLACEMENT INDEX (placement_index.go,
+	// rpg-project#753): the floor's cell centres bucketed, and what every
+	// authored placement, wall and cell prop covers. Built in compileField
+	// and never written after; nil only on a field built by hand, which
+	// every read below answers by walking the floor as it always did.
+	centres *cellCentres
+	index   *placementIndex
+
 	// sightPass is the memo of the sight pass under way, nil between passes
 	// (rpg-toolkit#2097). See [sightPassMemo].
 	sightPass *sightPassMemo
@@ -255,6 +263,11 @@ type field struct {
 	// anything.
 	originOpacityComputed int
 	placedCellsComputed   int
+
+	// atlasProjections counts [Encounter.Atlas] builds, every AtlasFor's
+	// included (rpg-project#753): a measure the package's tests read to hold
+	// a read to "no projection", never a decision.
+	atlasProjections int
 }
 
 // maxAnchorCoord bounds the magnitude of every authored coordinate — pure
@@ -321,6 +334,11 @@ func compileField(in FieldInput) (*field, error) {
 	if err := f.compileScenery(in.Scenery); err != nil {
 		return nil, err
 	}
+	// THE FLOOR IS WHOLE NOW: every cell is a region's or scenery's, and
+	// nothing after this adds one. Bucket the centres before the first
+	// footprint is measured, so every measurement below is the footprint's
+	// cost and not the floor's.
+	f.centres = newCellCentres(f)
 	if err := f.compileProps(in.Props); err != nil {
 		return nil, err
 	}
@@ -398,6 +416,10 @@ func compileField(in FieldInput) (*field, error) {
 	if err := f.validatePropArrivals(); err != nil {
 		return nil, err
 	}
+
+	// WHAT STANDS WHERE, as authored, once every placement, wall and cell
+	// prop is compiled (placement_index.go).
+	f.buildPlacementIndex()
 
 	// W6 — the field is one canvas: an origin-centred hex span wide enough to
 	// hold the floor's bounding box. A hex grid always fits (negative axial
