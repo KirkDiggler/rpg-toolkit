@@ -754,7 +754,7 @@ func (g *grammar) entryShape(at string, entry AnswerSpec) {
 	}
 	sentence := err.Error()
 	for _, sentinel := range []error{
-		behavior.ErrBadSelector, behavior.ErrBadWhen, behavior.ErrBadSearch, behavior.ErrBadGroup,
+		behavior.ErrBadSelector, behavior.ErrBadWhen, behavior.ErrBadSearch, behavior.ErrBadGroup, behavior.ErrBadActivity,
 	} {
 		sentence = strings.TrimSuffix(sentence, ": "+sentinel.Error())
 	}

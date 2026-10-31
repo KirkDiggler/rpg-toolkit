@@ -1478,14 +1478,16 @@ func taughtOptionFactsOf(data []OptionData) []FactID {
 // resolved. The others omit when unset because their absences mean nothing
 // else.
 type AnswerData struct {
-	Weight int           `json:"weight"`
-	Say    string        `json:"say,omitempty"`
-	When   []WhenData    `json:"when,omitempty"`
-	Fact   FactID        `json:"fact,omitempty"`
-	Flee   bool          `json:"flee,omitempty"`
-	Hold   bool          `json:"hold,omitempty"`
-	Attack *SelectorData `json:"attack,omitempty"`
-	Toward *SelectorData `json:"toward,omitempty"`
+	// Activity is absent on legacy rows and never reconstructed from live content.
+	Activity *ActivityCueData `json:"activity,omitempty"`
+	Weight   int              `json:"weight"`
+	Say      string           `json:"say,omitempty"`
+	When     []WhenData       `json:"when,omitempty"`
+	Fact     FactID           `json:"fact,omitempty"`
+	Flee     bool             `json:"flee,omitempty"`
+	Hold     bool             `json:"hold,omitempty"`
+	Attack   *SelectorData    `json:"attack,omitempty"`
+	Toward   *SelectorData    `json:"toward,omitempty"`
 	// Dash is `dash: <selector>` (rpg-project#671, R17). Omitted when the
 	// row does not dash, so every blob written before the word existed
 	// reads as it did.
@@ -1671,15 +1673,16 @@ func tableDataFrom(table Table) map[string][]AnswerData {
 // answerDataFrom renders one entry, pointers and all.
 func answerDataFrom(entry Answer) AnswerData {
 	out := AnswerData{
-		Weight: entry.Weight,
-		Say:    entry.Say,
-		Fact:   entry.Fact,
-		Flee:   entry.Flee,
-		Hold:   entry.Hold,
-		Attack: selectorDataFrom(entry.Attack),
-		Toward: selectorDataFrom(entry.Toward),
-		Dash:   selectorDataFrom(entry.Dash),
-		Away:   selectorDataFrom(entry.Away),
+		Activity: activityDataFrom(entry.Activity),
+		Weight:   entry.Weight,
+		Say:      entry.Say,
+		Fact:     entry.Fact,
+		Flee:     entry.Flee,
+		Hold:     entry.Hold,
+		Attack:   selectorDataFrom(entry.Attack),
+		Toward:   selectorDataFrom(entry.Toward),
+		Dash:     selectorDataFrom(entry.Dash),
+		Away:     selectorDataFrom(entry.Away),
 	}
 	if entry.Search != nil {
 		out.Search = &SearchData{Distance: entry.Search.Distance, Heading: entry.Search.Heading}
@@ -1782,15 +1785,16 @@ func tableFromData(data map[string][]AnswerData) Table {
 // answerFromData resolves one persisted entry.
 func answerFromData(row AnswerData) Answer {
 	out := Answer{
-		Weight: row.Weight,
-		Say:    row.Say,
-		Fact:   row.Fact,
-		Flee:   row.Flee,
-		Hold:   row.Hold,
-		Attack: selectorFromData(row.Attack),
-		Toward: selectorFromData(row.Toward),
-		Dash:   selectorFromData(row.Dash),
-		Away:   selectorFromData(row.Away),
+		Activity: activityFromData(row.Activity),
+		Weight:   row.Weight,
+		Say:      row.Say,
+		Fact:     row.Fact,
+		Flee:     row.Flee,
+		Hold:     row.Hold,
+		Attack:   selectorFromData(row.Attack),
+		Toward:   selectorFromData(row.Toward),
+		Dash:     selectorFromData(row.Dash),
+		Away:     selectorFromData(row.Away),
 	}
 	if row.Search != nil {
 		out.Search = &Search{Distance: row.Search.Distance, Heading: row.Search.Heading}

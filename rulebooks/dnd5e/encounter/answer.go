@@ -384,7 +384,7 @@ func answeredBeatBody(by answeredBy, chosen *Pick) map[string]interface{} {
 		})
 	}
 
-	return map[string]interface{}{
+	body := map[string]interface{}{
 		"beat":       BeatAnswered,
 		"creature":   string(by.creature),
 		"prop":       string(by.prop),
@@ -405,6 +405,11 @@ func answeredBeatBody(by answeredBy, chosen *Pick) map[string]interface{} {
 		"say":        chosen.Answer.Say,
 		"fact":       string(chosen.Answer.Fact),
 	}
+	if chosen.Answer.Activity != nil {
+		body["activity"] = activityDataFrom(chosen.Answer.Activity)
+	}
+
+	return body
 }
 
 // pathOf is the pick's path through the table, level by level
