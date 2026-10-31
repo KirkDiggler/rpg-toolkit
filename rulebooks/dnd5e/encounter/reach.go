@@ -164,6 +164,38 @@ func (e *Encounter) WithinReach(member MemberID, reach int) ([]MemberID, []PropI
 	return members, props, nil
 }
 
+// PropWithinReach answers whether a member may address a prop by reach —
+// THE ENCOUNTER'S OWN DOOR, exported so a host's pre-charge check and
+// [Encounter.Speak] cannot disagree (rpg-project#753, S3): nil when the
+// member is shown the prop and any cell it stands on now is within reach
+// cells by [Encounter.Distance] (zero means 1, as every reach does), the
+// footprint measured as Hold measures one; a prop the member carries is
+// always within reach.
+//
+// SHOWN, NOT SEEN NOW. This is the door's question, wider than
+// [Encounter.WithinReach]'s offer: a prop the member remembers behind them
+// is not offered, and saying a line to it is still admitted. Every prop
+// WithinReach lists, this admits.
+//
+// Errors, in Speak's order: ErrNotMember, ErrBadPlacement (not placed),
+// ErrNoProp (no such prop, or one the member is not shown — a hidden thing
+// far off is "no such thing", never "out of range"), then ErrOutOfRange.
+func (e *Encounter) PropWithinReach(member MemberID, prop PropID, reach int) error {
+	if _, ok := e.members[member]; !ok {
+		return fmt.Errorf("prop within reach: %q: %w", member, ErrNotMember)
+	}
+	from, placed := e.canvas.GetEntityPosition(string(member))
+	if !placed {
+		return fmt.Errorf("prop within reach: %q: %w", member, ErrBadPlacement)
+	}
+	_, cells, err := e.speakableProp(member, prop)
+	if err != nil {
+		return fmt.Errorf("prop within reach: %w", err)
+	}
+
+	return e.refusePropOutOfReach("prop within reach", from, prop, cells, reach)
+}
+
 // cellPropMutable reports whether a cell prop can stand anywhere but its
 // authored cell, or be off the floor: a holdable one can be taken and
 // dropped, a reserved one waits to arrive.
