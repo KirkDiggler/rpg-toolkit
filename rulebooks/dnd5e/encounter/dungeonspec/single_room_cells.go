@@ -3,7 +3,10 @@
 
 package dungeonspec
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+)
 
 // single_room_cells.go reads a region's cells (rpg-project#725, design R2).
 //
@@ -60,6 +63,43 @@ func ExpandRows(rows []RoomCellRow, path string, add errSink) []RoomCell {
 		return nil
 	}
 	return expandRows(rows, path, add)
+}
+
+// CellRows spells a cell set as canonical row runs — the one spelling
+// [ExpandRows] reads back: rows ascending by r with no repeat, each row's
+// inclusive [qStart, qEnd] spans ascending and merged, so cells that touch
+// along a row are one span. The input may be in any order and may repeat a
+// cell; the set is spelled once. Empty input is nil. The input is not
+// modified.
+//
+// It is the encoder every writer of a region uses — the v4 converter and the
+// keep generator (dungeonspec/keepgen) — so a generated site and a converted
+// one cannot spell the same floor two ways.
+func CellRows(cells []RoomCell) []RoomCellRow {
+	sorted := append([]RoomCell(nil), cells...)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].R != sorted[j].R {
+			return sorted[i].R < sorted[j].R
+		}
+		return sorted[i].Q < sorted[j].Q
+	})
+	var rows []RoomCellRow
+	for _, c := range sorted {
+		if n := len(rows); n > 0 && rows[n-1].R == c.R {
+			last := &rows[n-1].Q[len(rows[n-1].Q)-1]
+			switch c.Q {
+			case last[1]:
+				// a duplicate cell; the set has it once
+			case last[1] + 1:
+				last[1] = c.Q
+			default:
+				rows[n-1].Q = append(rows[n-1].Q, [2]int{c.Q, c.Q})
+			}
+			continue
+		}
+		rows = append(rows, RoomCellRow{R: c.R, Q: [][2]int{{c.Q, c.Q}}})
+	}
+	return rows
 }
 
 // withinBudget counts every well-formed span of every region against the

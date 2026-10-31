@@ -11,7 +11,7 @@ package dungeonspec
 // OneRegion is a region holding exactly cells, lit at 1, its rows canonical
 // whatever order cells come in.
 func OneRegion(id, name string, cells []RoomCell) RoomRegion {
-	return RoomRegion{ID: id, Name: name, Lighting: RoomLighting{Intensity: 1}, Cells: cellRowsOf(cells)}
+	return RoomRegion{ID: id, Name: name, Lighting: RoomLighting{Intensity: 1}, Cells: CellRows(cells)}
 }
 
 // SetFloor replaces a room's regions with ONE region, the implicit one under

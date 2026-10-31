@@ -242,35 +242,6 @@ type presentationEntry struct {
 	wallFinish *yaml.Node
 }
 
-// cellRowsOf spells a cell set as canonical rows: ascending r, spans ascending
-// and merged.
-func cellRowsOf(cells []RoomCell) []RoomCellRow {
-	sorted := append([]RoomCell(nil), cells...)
-	sort.Slice(sorted, func(i, j int) bool {
-		if sorted[i].R != sorted[j].R {
-			return sorted[i].R < sorted[j].R
-		}
-		return sorted[i].Q < sorted[j].Q
-	})
-	var rows []RoomCellRow
-	for _, c := range sorted {
-		if n := len(rows); n > 0 && rows[n-1].R == c.R {
-			last := &rows[n-1].Q[len(rows[n-1].Q)-1]
-			switch c.Q {
-			case last[1]:
-				// a duplicate walkable cell; the set has it once
-			case last[1] + 1:
-				last[1] = c.Q
-			default:
-				rows[n-1].Q = append(rows[n-1].Q, [2]int{c.Q, c.Q})
-			}
-			continue
-		}
-		rows = append(rows, RoomCellRow{R: c.R, Q: [][2]int{{c.Q, c.Q}}})
-	}
-	return rows
-}
-
 // regionsBlock writes `regions:` at indent, in the key order the studio
 // writes: id, name, lighting, cells.
 func regionsBlock(indent int, regions []convertedRegion) string {
@@ -281,7 +252,7 @@ func regionsBlock(indent int, regions []convertedRegion) string {
 		fmt.Fprintf(&b, "%s  - id: %s\n", pad, yamlScalar(r.id))
 		fmt.Fprintf(&b, "%s    name: %s\n", pad, yamlScalar(r.name))
 		fmt.Fprintf(&b, "%s    lighting: { intensity: %s }\n", pad, strconv.FormatFloat(r.intensity, 'f', -1, 64))
-		rows := cellRowsOf(r.cells)
+		rows := CellRows(r.cells)
 		if len(rows) == 0 {
 			fmt.Fprintf(&b, "%s    cells: []\n", pad)
 			continue
