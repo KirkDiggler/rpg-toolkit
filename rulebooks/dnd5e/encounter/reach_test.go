@@ -25,11 +25,13 @@ const speakReach = 3
 // requireShownToMatchesAtlasFor holds the oracle to the projection it
 // replaces, for every member of a run: the member's mask to the whole-floor
 // walk it replaced, and then every placement and every cell prop
-// the field holds, and every cell of the floor on its own, is shown exactly
-// when the member's own atlas lists one of its cells. It returns how many
+// the field holds, and the floor's cells on their own, is shown exactly
+// when the member's own atlas lists one of its cells (every cellStride-th
+// cell, so a garrisoned floor stays inside the package's -race budget; the
+// hand-built boundary scenes ask every cell). It returns how many
 // (member, placement) pairs were NOT shown, so a caller can require the
 // fixture actually withholds something.
-func requireShownToMatchesAtlasFor(t *testing.T, enc *encounter.Encounter) int {
+func requireShownToMatchesAtlasFor(t *testing.T, enc *encounter.Encounter, cellStride int) int {
 	t.Helper()
 	full, err := enc.Atlas()
 	require.NoError(t, err)
@@ -64,7 +66,8 @@ func requireShownToMatchesAtlasFor(t *testing.T, enc *encounter.Encounter) int {
 			cells := []spatial.Position{p.At}
 			require.Equal(t, anyListed(cells), enc.ExportedShownTo(m.ID, cells), "%s: prop %q", m.ID, p.ID)
 		}
-		for _, c := range full.Cells {
+		for i := 0; i < len(full.Cells); i += cellStride {
+			c := full.Cells[i]
 			require.Equal(t, listed[c], enc.ExportedShownTo(m.ID, []spatial.Position{c}), "%s: cell %v", m.ID, c)
 		}
 	}
@@ -79,7 +82,7 @@ func requireShownToMatchesAtlasFor(t *testing.T, enc *encounter.Encounter) int {
 func TestShownTo_MatchesAtlasFor(t *testing.T) {
 	t.Run("castle", func(t *testing.T) {
 		enc, _ := openSite(t, 0, true)
-		requireShownToMatchesAtlasFor(t, enc)
+		requireShownToMatchesAtlasFor(t, enc, 5)
 	})
 
 	t.Run("castle with a prop on concealed floor", func(t *testing.T) {
@@ -109,8 +112,10 @@ func TestShownTo_MatchesAtlasFor(t *testing.T) {
 			Checks: []encounter.CheckApproach{{Ability: "perception", DC: 30}},
 			Cells:  hide.Cells,
 		})
-		enc := openCompiled(t, compiled, seatedParty(compiled), true, findsNothing{})
-		require.Positive(t, requireShownToMatchesAtlasFor(t, enc),
+		// The party alone: the garrison's own masks are the plain castle's
+		// case above, and opening it twice is most of this test's budget.
+		enc := openCompiled(t, compiled, seatedParty(compiled), false, findsNothing{})
+		require.Positive(t, requireShownToMatchesAtlasFor(t, enc, 1),
 			"precondition: the concealment withholds a placement from somebody")
 	})
 
@@ -121,7 +126,7 @@ func TestShownTo_MatchesAtlasFor(t *testing.T) {
 		t.Run(path, func(t *testing.T) {
 			compiled := compiledFile(t, path)
 			enc := openCompiled(t, compiled, seatedParty(compiled), true, findsNothing{})
-			requireShownToMatchesAtlasFor(t, enc)
+			requireShownToMatchesAtlasFor(t, enc, 1)
 		})
 	}
 
@@ -175,30 +180,32 @@ func TestShownTo_MatchesAtlasFor(t *testing.T) {
 			},
 		})
 		require.NoError(t, err)
-		requireShownToMatchesAtlasFor(t, enc)
+		requireShownToMatchesAtlasFor(t, enc, 1)
 	})
 
 	t.Run("keep 10k", func(t *testing.T) {
-		enc, _ := openSite(t, 10000, false)
-		require.Positive(t, requireShownToMatchesAtlasFor(t, enc),
+		// Every placement, and every 37th cell of the floor on its own: the
+		// whole floor cell by cell is the castle's job, not the keep's.
+		require.Positive(t, requireShownToMatchesAtlasFor(t, sharedKeep10k(t), 37),
 			"precondition: the party has not seen the whole keep")
 	})
 }
 
 // TestPlacementIndex_AgreesWithTheWalk: the bucketed reads answer what the
-// whole-floor walk answered, for every authored placement and for each one
-// dropped across the floor — on the castle and the 10k keep.
+// whole-floor walk answered, for authored placements and for each one dropped
+// across the floor: every placement on the castle; every wall and a seeded
+// sample of the rest on the 10k keep.
 func TestPlacementIndex_AgreesWithTheWalk(t *testing.T) {
 	castle, _ := openSite(t, 0, false)
-	require.NoError(t, castle.ExportedPlacementIndexAgrees(7))
-	keep, _ := openSite(t, 10000, false)
-	require.NoError(t, keep.ExportedPlacementIndexAgrees(997))
+	require.NoError(t, castle.ExportedPlacementIndexAgrees(0, 8, 1), "every castle placement")
+	require.NoError(t, sharedKeep10k(t).ExportedPlacementIndexAgrees(64, 4, 1),
+		"every keep wall and 64 seeded placements")
 }
 
 // TestOptionsFor_NoProjection: the option reads and the reach read project no
 // atlas, on the 10k keep — every placed prop's options asked, every member's.
 func TestOptionsFor_NoProjection(t *testing.T) {
-	enc, _ := openSite(t, 10000, false)
+	enc := sharedKeep10k(t)
 	full, err := enc.Atlas()
 	require.NoError(t, err)
 

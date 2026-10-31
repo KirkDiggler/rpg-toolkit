@@ -171,3 +171,24 @@ func soldierTemper(temper encounter.Temper) encounter.Temper {
 
 	return temper
 }
+
+var (
+	sharedKeepOnce sync.Once
+	sharedKeep     *encounter.Encounter
+)
+
+// sharedKeep10k is ONE opened 10k keep for the package's read-only tests:
+// opening it is most of what those tests cost under -race, and none of them
+// changes the run.
+func sharedKeep10k(tb testing.TB) *encounter.Encounter {
+	tb.Helper()
+	// Two players, not four: every observer sweeps the keep when it opens,
+	// and two are all the shared tests ask about.
+	sharedKeepOnce.Do(func() {
+		compiled := compiledSite(tb, 10000)
+		sharedKeep = openCompiled(tb, compiled, seatedParty(compiled)[:2], false, findsNothing{})
+	})
+	require.NotNil(tb, sharedKeep, "the shared keep opened")
+
+	return sharedKeep
+}
