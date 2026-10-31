@@ -1107,8 +1107,11 @@ type sightPassMemo struct {
 	// entityOpaque is the cells a sight-blocking canvas entity stands on
 	// ([canvasSightObstructions.entityBlocksAt]), listed the first time a
 	// lane asks; nil until then.
-	entityOpaque     map[spatial.Position]bool
-	originOpaque     map[spatial.Position]bool
+	entityOpaque map[spatial.Position]bool
+	originOpaque map[spatial.Position]bool
+	// rays is each pair of cells' line-of-sight answer, keyed in
+	// [cellBefore] order ([canvasRoom.IsLineOfSightBlocked]).
+	rays             map[[2]spatial.Position]bool
 	placedCells      map[PropID][]spatial.Position
 	observationCells map[PropID][]spatial.Position
 }
@@ -1121,6 +1124,7 @@ func (f *field) beginSightPass() (end func()) {
 		return func() {}
 	}
 	f.sightPass = &sightPassMemo{
+		rays:             map[[2]spatial.Position]bool{},
 		originOpaque:     map[spatial.Position]bool{},
 		placedCells:      map[PropID][]spatial.Position{},
 		observationCells: map[PropID][]spatial.Position{},

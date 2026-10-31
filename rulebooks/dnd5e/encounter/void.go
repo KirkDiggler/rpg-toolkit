@@ -358,6 +358,29 @@ func (c *canvasRoom) CanPlaceEntity(entity core.Entity, pos spatial.Position) bo
 // ratios did not; both are in voidcost_internal_test.go, which is where they
 // are re-runnable.
 func (c *canvasRoom) IsLineOfSightBlocked(from, to spatial.Position) bool {
+	// ONE ANSWER PER PAIR OF CELLS PER SIGHT PASS (rpg-project#753, S3).
+	// Sight is mutual — the canonical ray and [spatial.SightLanes] answer
+	// a→b as b→a, which spatial pins — and nothing a pass reads changes
+	// inside it, so the watcher and the watched share one ray.
+	memo := c.field.sightPass
+	if memo == nil {
+		return c.lineOfSightBlocked(from, to)
+	}
+	key := [2]spatial.Position{from, to}
+	if cellBefore(to, from) {
+		key = [2]spatial.Position{to, from}
+	}
+	if blocked, ok := memo.rays[key]; ok {
+		return blocked
+	}
+	blocked := c.lineOfSightBlocked(from, to)
+	memo.rays[key] = blocked
+
+	return blocked
+}
+
+// lineOfSightBlocked is [canvasRoom.IsLineOfSightBlocked] asked afresh.
+func (c *canvasRoom) lineOfSightBlocked(from, to spatial.Position) bool {
 	if c.field.hasVoid() && c.field.void.blocksSight() {
 		for _, cell := range spatial.CanonicalBoundaryRay(c.GetGrid(), from, to) {
 			if !c.field.isFloor(cell) {

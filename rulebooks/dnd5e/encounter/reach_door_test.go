@@ -164,3 +164,45 @@ func TestPlacedReach_AgreesWithTheWalk(t *testing.T) {
 	require.NoError(t, err, "keep")
 	require.Positive(t, touched, "precondition: keep lanes meet placements")
 }
+
+// TestPlacedReach_ADroppedBlockerIsAskedWhereItLies: a crate that blocks
+// movement and sight is carried off and dropped. Where it lies now closes
+// that cell to a step and hides what is behind it; the cell it was authored
+// on is open floor. The index files only what cannot move, so the crate is
+// asked of every query from its record.
+func TestPlacedReach_ADroppedBlockerIsAskedWhereItLies(t *testing.T) {
+	const (
+		hero   = encounter.MemberID("hero")
+		porter = encounter.MemberID("porter")
+		crate  = encounter.PropID("crate")
+	)
+	enc := openHall(t,
+		[]encounter.MemberInput{
+			{ID: hero, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: porter, Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 4}},
+		},
+		[]encounter.PlacedPropInput{{
+			ID: crate, Holdable: true, BlocksMovement: true, BlocksLineOfSight: true,
+			Placement: spatial.FootprintPlacement{
+				Footprint: spatial.Footprint{Box: &spatial.Box{W: 4, D: 4}}, Origin: centreOf(cellAt(5, 5)),
+			},
+		}},
+		nil, nil, findsNothing{},
+	)
+	_, err := enc.Hold(&encounter.HoldInput{Member: porter, Target: crate, Range: 1})
+	require.NoError(t, err)
+	dropAt := cellAt(12, 2)
+	walkMember(t, enc, porter, dropAt)
+	_, err = enc.Exit(&encounter.ExitInput{Member: porter})
+	require.NoError(t, err)
+
+	walkMember(t, enc, hero, cellAt(11, 2))
+	_, err = enc.Step(&encounter.StepInput{Member: hero, To: dropAt})
+	require.Error(t, err, "the crate closes the cell it was dropped on")
+	walkMember(t, enc, hero, cellAt(5, 5))
+	require.Equal(t, cellAt(5, 5), positionOfMember(t, enc, hero), "and the cell it was authored on is open floor")
+
+	touched, err := enc.ExportedPlacedReachAgrees(3000, 12, 3)
+	require.NoError(t, err)
+	require.Positive(t, touched, "precondition: lanes meet the crate where it lies")
+}

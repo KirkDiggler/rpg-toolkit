@@ -134,7 +134,7 @@ func (e *Encounter) ExportedPlacedReachAgrees(lanes, span int, seed int64) (int,
 				continue
 			}
 			trace, err := spatial.TraceFootprint(spatial.FootprintTraceInput{Placement: placement, From: a, To: b})
-			if err != nil || !(trace.Interior || trace.Contact) {
+			if err != nil || (!trace.Interior && !trace.Contact) {
 				continue
 			}
 			touched++
