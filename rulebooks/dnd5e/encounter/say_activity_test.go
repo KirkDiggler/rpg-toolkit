@@ -2,6 +2,7 @@ package encounter_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -38,6 +39,41 @@ func (s *AnswerTestSuite) TestSayActivitySelectedRecordSurvivesReloadAndKeepsAud
 			after := s.reload(enc)
 			s.Equal(s.answeredBeats(enc, alice), s.answeredBeats(after, alice), "record replay keeps captured intent")
 		})
+	}
+}
+
+func (s *AnswerTestSuite) TestSayActivityCopyBoundariesDetachDirectAndNestedCues() {
+	for _, nested := range []bool{false, true} {
+		for _, returned := range []bool{false, true} {
+			s.Run(fmt.Sprintf("nested=%t/returned=%t", nested, returned), func() {
+				cue := &behavior.ActivityCue{Ref: "dnd5e:activities:thoughtful", Cycles: 2}
+				rows := []encounter.Answer{{Weight: 1, Say: "Hmm.", Activity: cue}}
+				if nested {
+					rows = []encounter.Answer{{Weight: 1, Rows: rows}}
+				}
+				enc := s.front(nil, threat(rows, nil))
+				if returned {
+					enc = s.reload(enc) // isolate the read boundary from the constructor
+					options, err := enc.OptionsFor(alice, goblin)
+					s.Require().NoError(err)
+					row := options[0].Success[0]
+					if nested {
+						row = row.Rows[0]
+					}
+					cue = row.Activity
+				}
+				s.Require().NotNil(cue)
+				cue.Ref, cue.Cycles = "future:activity:mutated", 9
+				_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
+					OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin,
+					Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
+				})
+				s.Require().NoError(err)
+				beats := s.answeredBeats(enc, alice)
+				s.Require().Len(beats, 1)
+				s.Equal(map[string]any{"ref": "dnd5e:activities:thoughtful", "cycles": float64(2)}, beats[0]["activity"])
+			})
+		}
 	}
 }
 

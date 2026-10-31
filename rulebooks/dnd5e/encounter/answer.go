@@ -814,6 +814,10 @@ func cloneTable(table Table) Table {
 // cloneAnswer deep-copies one entry's pointers and slices.
 func cloneAnswer(entry Answer) Answer {
 	out := entry
+	if entry.Activity != nil {
+		activity := *entry.Activity
+		out.Activity = &activity
+	}
 	if entry.When != nil {
 		out.When = make([]When, 0, len(entry.When))
 		for _, w := range entry.When {
