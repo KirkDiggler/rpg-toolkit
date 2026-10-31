@@ -5,6 +5,7 @@ package behavior_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
@@ -38,6 +39,20 @@ func (s *ActivitySuite) TestPickedAnswerCarriesActivityWithoutChangingWeights() 
 			s.Nil(got.Answer.Activity, "a different selected answer never borrows the cue")
 		}
 	}
+}
+
+func (s *ActivitySuite) TestLegacyPickDoesNotInventACueField() {
+	got, err := behavior.Pick(context.Background(), &behavior.PickInput{
+		Key: "success", Table: behavior.Table{"success": {{Weight: 1, Say: "Hello."}}},
+		Die: &facedDie{face: 1},
+	})
+	s.Require().NoError(err)
+	s.Require().NotNil(got)
+	encoded, err := json.Marshal(got.Answer)
+	s.Require().NoError(err)
+	var body map[string]any
+	s.Require().NoError(json.Unmarshal(encoded, &body))
+	s.NotContains(body, "Activity", "legacy compiled content must not acquire a null cue")
 }
 
 func (s *ActivitySuite) TestActivityRequiresLineReferenceAndCycles() {

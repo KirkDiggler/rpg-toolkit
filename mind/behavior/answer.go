@@ -171,7 +171,7 @@ type Answer struct {
 
 	// Activity accompanies Say on the selected leaf. Nil means no cue; its
 	// reference and count are carried without resolving assets or playback.
-	Activity *ActivityCue
+	Activity *ActivityCue `json:",omitempty"`
 }
 
 // MaxGroupDepth is how deep groups nest: a group inside a group inside a
