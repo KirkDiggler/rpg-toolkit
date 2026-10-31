@@ -95,7 +95,7 @@ func (s *CastSuite) TestCureWoundsLifeBonusClampingAndStoryReload() {
 		s.characters.byID[id], err = copyOf(data)
 		s.Require().NoError(err)
 	}
-	s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: brokenDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 	})
@@ -189,7 +189,7 @@ func (s *CastSuite) TestCureWoundsUntypedMonsterSelectionHealingAndReload() {
 				s.characters.byID[id], err = copyOf(data)
 				s.Require().NoError(err)
 			}
-			s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: brokenDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters})
+			s.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{}, Dice: brokenDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters})
 			s.Require().NoError(err)
 			s.Equal(beats, s.beats(encounter.BeatCast, encounter.BeatActivationResult), "reload replays the result without another roll")
 			s.Equal(9, s.storedSkeleton())
@@ -310,7 +310,7 @@ func (s *CastSuite) TestCureWoundsFailureBoundaries() {
 			// Wounded after the launch: its first-admission rest would heal her.
 			s.characters.byID["cleric"].HitPoints = 2
 			id := s.castRow(spells.CureWounds).ID
-			config := &session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters}
+			config := &session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{}, Dice: s.dice, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters}
 			fault := errors.New("injected failure")
 			switch failure {
 			case "roller":

@@ -69,7 +69,7 @@ func (p *pathWalker) Act(view session.MonsterView) (session.TurnIntent, error) {
 
 // managerWith builds this suite's manager over one turn driver.
 func (s *ReactWindowSuite) managerWith(driver session.TurnDriver) *session.Manager {
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: driver,
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters,
@@ -525,7 +525,7 @@ func (s *ReactWindowSuite) TestAStrikeThatDropsTheMoverHoldsTheRestOfTheWindows(
 // they take says what it was taken AS, so a dock can say why the fighter
 // dealt damage on a skeleton's turn.
 func (s *ReactWindowSuite) TestTheWindowAndTheSwingReachTheFighter() {
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{},
 		TurnDriver: &pathWalker{
 			paths:  map[string][]spatial.Position{"skel-1": {hexCell(4, 0), hexCell(5, 0)}},
@@ -565,7 +565,7 @@ func (s *ReactWindowSuite) TestTheWindowAndTheSwingReachTheFighter() {
 // that saw a reaction on every swing would label the whole log.
 func (s *ReactWindowSuite) TestAnOrdinarySwingCarriesNoReaction() {
 	ctx := context.Background()
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 	})

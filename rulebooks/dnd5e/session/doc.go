@@ -196,39 +196,37 @@
 //
 // # Automatic discovery and encounter-owned memory
 //
-// Config.Explorations is a required ExplorationRepository, keyed by character
-// ID; NewManager refuses a Config without one (ErrIncompleteConfig). It
-// persists only the sharing preference in ExplorationData. The host
-// coordinates that preference across sessions.
+// Config.CharacterConfig is a required CharacterConfigReader, keyed by
+// character ID; NewManager refuses a Config without one (ErrIncompleteConfig).
+// It is the host's character configuration (rpg-project#753 R2): what a
+// player chose for the character across every session, written by the host's
+// character verbs under the character's own guard. The session reads it and
+// never writes it, so no session verb needs a lock wider than its session.
 //
 // Discoveries and attempt/re-arm state belong to the encounter's own saved
 // World and Discovery data. Reloading/rejoining that encounter preserves them;
 // a new encounter from the same template and character starts fresh. They are
-// never exported to or imported from the character profile. Legacy profile JSON
-// containing checks is accepted but those obsolete values have no authority.
+// never exported to or imported from character configuration.
 //
-// Sharing is a choice (rpg-project#595, R8). ExplorationData.DiscoverySharing
-// is nil until the character chooses; SetDiscoverySharing is its only writer
-// and also keeps the legacy PrivateDiscoveries field its complement. One
-// resolution reads it: an explicit choice wins; a record without one keeps its
-// legacy meaning (absent private meant shared); no record at all is private.
-// Resolution never mutates the profile, so a default is never saved as a
-// choice and a later default change moves only the undecided. A member of an
-// already-saved encounter who was shared by the absence of any record becomes
-// private at the next prepare.
+// Sharing is a choice (rpg-project#595, R8). The reader answers nil until the
+// character chooses. One resolution reads it: an explicit choice wins, and a
+// character who has not chosen is private. A host migrating an older record
+// resolves it into that one answer before returning it. Resolution never
+// writes, so a default is never saved as a choice.
 //
-// prepareExploration loads preferences, stages character records and supplies
-// only the resolved private/shared audience to RestoreDiscovery or Join.
-// saveExploration writes a staged profile only when it differs from the loaded
-// one; it never derives the preference from the encounter. Encounter owns proximity,
-// eligibility, allowance and re-arming; resolution owns the actual check and
-// returns dirty character data and sourced arithmetic. The normal first-admission
-// long rest remains independent of this encounter-local discovery lifecycle.
+// prepareExploration reads each player's choice at every write verb, stages
+// character records and supplies only the resolved private/shared audience to
+// RestoreDiscovery or Join, so a choice changed between verbs takes effect at
+// the member's next write verb. Encounter owns proximity, eligibility,
+// allowance and re-arming; resolution owns the actual check and returns dirty
+// character data and sourced arithmetic. The normal first-admission long rest
+// remains independent of this encounter-local discovery lifecycle.
 //
-// SetDiscoverySharing changes the seated character's future discovery audience;
-// it neither backfills a new recipient nor erases anyone's learned knowledge.
-// KnowledgeOutput.DiscoverySharing is absent for hosts without this capability,
-// not a false/private default. The `discovery_checked` beat carries the provider's
+// A changed choice neither backfills a new recipient nor erases anyone's
+// learned knowledge.
+// KnowledgeOutput.DiscoverySharing answers from the reader through the same
+// resolution, so a changed choice reads back at once, before the encounter's
+// copy takes it up at the next write verb; a reader error refuses the read. The `discovery_checked` beat carries the provider's
 // actor, applied skill, verdict, total and calculation, never a hidden subject
 // or DC. Successful teaching and failed-check narration keep the composition's
 // captured audience and the existing dense per-recipient live/Story numbering.
