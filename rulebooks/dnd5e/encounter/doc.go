@@ -161,8 +161,10 @@
 // from, and a footprint door so covered is sighted the same way; a cover the
 // member has not found teaches nothing. Each learning moment is one per-member
 // `known:cells` journal fact, audience that member alone, independent of
-// creature testimony, and never forgotten within the run. A retired
-// `known:room:<id>` fact from an older save loads and teaches nothing.
+// creature testimony, and never forgotten within the run. The fact names its
+// cells as axial row runs (q spans per r), the spelling a site's regions use;
+// a fact an older save wrote one cell per entry folds to the same cells. A
+// retired `known:room:<id>` fact from an older save loads and teaches nothing.
 //
 // [Encounter.AtlasFor] withholds every unknown cell, and every wall, door,
 // doorway, fixed prop, start, exit and placement that touches only unknown
