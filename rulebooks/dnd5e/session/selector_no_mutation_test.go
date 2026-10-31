@@ -43,7 +43,7 @@ func newSelectorFixture(t *testing.T, world scene, order ...string) *selectorFix
 		stream:     &fakeStream{},
 		roller:     &sequenceDice{rolls: []int{15, 5}},
 	}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: f.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: f.stream, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: f.roller, TurnDriver: session.Pass{}, Sessions: f.sessions, Encounters: f.encounters,
 		Characters: f.characters,
 	})
@@ -294,7 +294,7 @@ func TestSuccessfulTurnAttackLoadsActorOnceBeforeExecution(t *testing.T) {
 		compiled:       map[string]int{},
 	}
 	dice := &actorLoadCheckingDice{t: t, characters: characters, rolls: []int{15, 5}}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: dice, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: characters,
 	})

@@ -171,23 +171,19 @@ func (m *memSeats) SaveSeat(_ context.Context, data *session.SeatData) error {
 	return nil
 }
 
-// memExplorations is an ExplorationRepository over a map: the preference each
-// character keeps for how their discoveries are shared.
-type memExplorations struct {
-	byID map[string]*session.ExplorationData
+// memCharacterConfig is a CharacterConfigReader over a map: the
+// discovery-sharing choice each character has made. A missing entry is a
+// character who has not chosen.
+type memCharacterConfig struct {
+	sharing map[string]bool
 }
 
-func (m *memExplorations) GetExploration(_ context.Context, id string) (*session.ExplorationData, error) {
-	data, ok := m.byID[id]
+func (m *memCharacterConfig) DiscoverySharing(_ context.Context, id string) (*bool, error) {
+	choice, ok := m.sharing[id]
 	if !ok {
-		return nil, session.ErrNotFound
+		return nil, nil
 	}
-	return data, nil
-}
-
-func (m *memExplorations) SaveExploration(_ context.Context, data *session.ExplorationData) error {
-	m.byID[data.Character] = data
-	return nil
+	return &choice, nil
 }
 
 // bobTheDwarf is the stored sheet the workbench loads.
@@ -269,8 +265,8 @@ func drive(out *bytes.Buffer) error {
 		Characters: &memCharacters{
 			byID: map[string]*character.Data{"alice": aliceTheFighter(), "bob": bobTheDwarf()},
 		},
-		Seats:        &memSeats{byID: map[string]*session.SeatData{}},
-		Explorations: &memExplorations{byID: map[string]*session.ExplorationData{}},
+		Seats:           &memSeats{byID: map[string]*session.SeatData{}},
+		CharacterConfig: &memCharacterConfig{sharing: map[string]bool{}},
 		// The workbench demonstrates verbs a human drives; nothing in it
 		// gives a monster a real behavior yet, so an unplayed member simply
 		// passes (rpg-toolkit#1162).

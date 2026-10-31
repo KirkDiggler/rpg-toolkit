@@ -38,7 +38,7 @@ func (s *DisengageSeamSuite) SetupTest() {
 	characters := &strikeCharacters{byID: map[string]*character.Data{
 		"fighter": strikeFixtureFighter("fighter"),
 	}}
-	mgr, err := NewManager(&Config{Record: DiscardRecord{}, Acts: DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := NewManager(&Config{Record: DiscardRecord{}, Acts: DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: &scriptedDice{rolls: []int{10, 10, 10, 10, 10, 10}},
 		TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters,
 		Characters: characters,

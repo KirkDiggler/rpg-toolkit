@@ -38,7 +38,7 @@ func (s *EndingOutcomeSuite) SetupTest() {
 // second manager over the same stores is a reload.
 func (s *EndingOutcomeSuite) manager(live *actCapture) *session.Manager {
 	mgr, err := session.NewManager(&session.Config{
-		Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+		Record: session.DiscardRecord{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Acts: live,
 	})
