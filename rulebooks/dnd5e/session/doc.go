@@ -224,8 +224,9 @@
 //
 // A changed choice neither backfills a new recipient nor erases anyone's
 // learned knowledge.
-// KnowledgeOutput.DiscoverySharing is absent for hosts without this capability,
-// not a false/private default. The `discovery_checked` beat carries the provider's
+// KnowledgeOutput.DiscoverySharing answers from the reader through the same
+// resolution, so a changed choice reads back at once, before the encounter's
+// copy takes it up at the next write verb; a reader error refuses the read. The `discovery_checked` beat carries the provider's
 // actor, applied skill, verdict, total and calculation, never a hidden subject
 // or DC. Successful teaching and failed-check narration keep the composition's
 // captured audience and the existing dense per-recipient live/Story numbering.

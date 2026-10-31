@@ -294,14 +294,21 @@ func (s *AutomaticDiscoverySDKSuite) TestAChangedChoiceTakesEffectAtTheNextWrite
 	rig := newSharingRig(newFakeCharacterConfig())
 	mgr := s.launchSharing(rig)
 	s.False(s.reportedSharing(mgr), "a character who never chose sees privately")
-	before := rig.profiles.readsOf("alice")
+	ctx := context.Background()
 
 	// The host's character verb changes the choice outside the session.
 	rig.profiles.choose("alice", true)
-	s.False(s.reportedSharing(mgr), "a read verb does not consult the configuration")
-	s.Equal(before, rig.profiles.readsOf("alice"), "reads never ask the reader")
+	s.True(s.reportedSharing(mgr), "the knowledge read answers from the configuration at once")
+	stored, err := rig.cfg.Encounters.GetEncounter(ctx, sharingRun)
+	s.Require().NoError(err)
+	s.True(stored.Discovery["alice"].Private, "the encounter's own copy waits for the next write verb")
+
+	before := rig.profiles.readsOf("alice")
 	s.True(s.sharingAfterPrepare(rig), "the next write verb restores the new choice")
 	s.Greater(rig.profiles.readsOf("alice"), before, "every write verb asks the reader")
+	stored, err = rig.cfg.Encounters.GetEncounter(ctx, sharingRun)
+	s.Require().NoError(err)
+	s.False(stored.Discovery["alice"].Private, "and the write verb saved the restored copy")
 
 	rig.profiles.choose("alice", false)
 	s.False(s.sharingAfterPrepare(rig), "and the next one restores the change back")
@@ -313,6 +320,16 @@ func (s *AutomaticDiscoverySDKSuite) TestAReaderErrorRefusesTheWriteVerb() {
 	mgr := s.launchSharing(rig)
 	rig.profiles.err = errBroken
 	_, err := mgr.Move(ctx, &session.MoveInput{Session: sharingRun, Member: "alice", Path: []spatial.Position{{X: 1, Y: 1}}})
+	s.Require().ErrorIs(err, errBroken)
+	s.ErrorContains(err, "character configuration")
+}
+
+func (s *AutomaticDiscoverySDKSuite) TestAReaderErrorRefusesTheKnowledgeRead() {
+	rig := newSharingRig(newFakeCharacterConfig())
+	mgr := s.launchSharing(rig)
+	rig.profiles.err = errBroken
+	_, err := mgr.Knowledge(context.Background(),
+		&session.KnowledgeInput{Session: sharingRun, Member: "alice", Player: sharingPlayer})
 	s.Require().ErrorIs(err, errBroken)
 	s.ErrorContains(err, "character configuration")
 }

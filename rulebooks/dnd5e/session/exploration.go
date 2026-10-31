@@ -39,6 +39,20 @@ func resolveDiscoverySharing(choice *bool) bool {
 	return false
 }
 
+// configuredSharing is the one read of a character's discovery-sharing
+// choice, for write verbs and the knowledge read alike: the reader's answer
+// through resolveDiscoverySharing. ErrNotFound is not chosen; any other error
+// refuses the caller.
+func (m *Manager) configuredSharing(ctx context.Context, character string) (bool, error) {
+	choice, err := m.characterConfig.DiscoverySharing(ctx, character)
+	if errors.Is(err, ErrNotFound) {
+		choice = nil
+	} else if err != nil {
+		return false, fmt.Errorf("character configuration %q: %w", character, err)
+	}
+	return resolveDiscoverySharing(choice), nil
+}
+
 func (m *Manager) prepareExploration(ctx context.Context, scope *writeScope, extra ...string) error {
 	roster, err := scope.enc.Members()
 	if err != nil {
@@ -62,15 +76,12 @@ func (m *Manager) prepareExploration(ctx context.Context, scope *writeScope, ext
 	sort.Strings(ordered)
 	scope.explorationSharing = map[string]bool{}
 	for _, id := range ordered {
-		choice, loadErr := m.characterConfig.DiscoverySharing(ctx, id)
-		if errors.Is(loadErr, ErrNotFound) {
-			choice = nil
-		} else if loadErr != nil {
-			return fmt.Errorf("character configuration %q: %w", id, loadErr)
-		}
 		// Read at every write verb, so a change the host made under the
 		// character's guard takes effect at this member's next verb.
-		sharing := resolveDiscoverySharing(choice)
+		sharing, loadErr := m.configuredSharing(ctx, id)
+		if loadErr != nil {
+			return loadErr
+		}
 		scope.explorationSharing[id] = sharing
 		// EVERY PLAYER IS STAGED, ON EVERY WRITE VERB, and that is also what
 		// a sneaker's roll needs (rpg-project#606, design R10): the
