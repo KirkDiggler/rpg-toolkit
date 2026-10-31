@@ -988,11 +988,9 @@ func (s *writeScope) frozen() error {
 // and the sequence boundary separating what was already recorded from what this
 // verb records.
 type writeScope struct {
-	exploration       map[string]*ExplorationData
-	explorationBefore map[string]ExplorationData
 	// explorationSharing is each staged member's resolved discovery audience,
-	// written once by prepareExploration (the only place that sees a missing
-	// record) and read by joinInputFor. A missing entry is private.
+	// written once by prepareExploration from the host's character
+	// configuration and read by joinInputFor. A missing entry is private.
 	explorationSharing map[string]bool
 	// The already-paid remainder is frozen only if a direct walk poses.
 	walkContinuation []spatial.Position
@@ -1364,9 +1362,6 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 	// delta has been numbered and projected. Everything before this line read
 	// that whole delta; everything after reads only what storage keeps.
 	world := scope.enc.ToData()
-	if err := m.saveExploration(ctx, scope); err != nil {
-		return SaveReport{Written: append([]string(nil), scope.written...)}, DeliveryReport{}, err
-	}
 
 	report, err := m.persist(ctx, scope, world)
 	if err != nil {

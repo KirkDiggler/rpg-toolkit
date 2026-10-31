@@ -89,7 +89,7 @@ func newRosterFixture(t *testing.T) *rosterFixture {
 		}},
 	}
 
-	manager, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	manager, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{},
 		Sessions:        sessions, Encounters: encounters, Characters: characters,
 		Dice: testDice{}, TurnDriver: session.Pass{},
@@ -402,7 +402,7 @@ func TestRosterRefusesACharacterReturnedUnderTheWrongID(t *testing.T) {
 
 func TestRosterRefusesANilCharacterRepositoryResult(t *testing.T) {
 	fixture := newRosterFixture(t)
-	manager, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	manager, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{},
 		Sessions:        fixture.sessions, Encounters: fixture.encounters,
 		Characters: nilRosterRepository{},
@@ -579,7 +579,7 @@ func TestRosterSurvivesManagerRestartFromCopiedPersistence(t *testing.T) {
 	restartedEncounters := newFakeEncounters()
 	restartedEncounters.byID["world"] = storedEncounter
 	restartedCharacters := newFakeCharacters(alice, bob)
-	restarted, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	restarted, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{},
 		Sessions:        restartedSessions, Encounters: restartedEncounters,
 		Characters: restartedCharacters,
@@ -609,7 +609,7 @@ func TestRosterRejectsMalformedNPCRefWithoutLeakingCoreErrors(t *testing.T) {
 			ID: "skel-1", Name: "Skeleton", Ref: &core.Ref{Module: "", Type: "monsters", ID: "skeleton"},
 		}},
 	})
-	manager, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	manager, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{},
 		Sessions:        sessions, Encounters: fixture.encounters, Characters: fixture.characters,
 		Dice: testDice{}, TurnDriver: session.Pass{},
