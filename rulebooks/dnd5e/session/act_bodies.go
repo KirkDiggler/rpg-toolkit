@@ -359,6 +359,15 @@ type Temper struct {
 	Roll Roll
 }
 
+// ActivityCue is the selected spoken answer's captured presentation intent.
+// It owns no timing or gameplay authority; the consumer resolves body support.
+type ActivityCue struct {
+	// Ref is the provider-owned activity reference captured in the record.
+	Ref string
+	// Cycles is the positive sustain count, excluding entry and exit.
+	Cycles uint32
+}
+
 // TableAnswer is a table roll's answer: a creature's or a prop's pick, or a
 // temperament deal. It never carries the answer's fact (R10).
 type TableAnswer struct {
@@ -375,6 +384,8 @@ type TableAnswer struct {
 	Selector string
 	// Say is what was said (answered `say`).
 	Say string
+	// Activity is the captured cue, or nil when the answer authored none.
+	Activity *ActivityCue
 	// Temperament is the temperament column the pick read (answered
 	// `temper`).
 	Temperament string
