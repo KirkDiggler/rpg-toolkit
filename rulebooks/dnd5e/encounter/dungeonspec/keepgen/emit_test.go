@@ -77,7 +77,7 @@ func TestOptionsFromHeader_Refuses(t *testing.T) {
 // densities, key bench-keep, command line "keepgen". A change here is a
 // change in what the generator writes: regenerate the api's shelf copies
 // (rpg-api content/bench-keep*.yaml) when it moves.
-const goldenKeep = "62e1aa12b46e03c773445cb5d850fb9a330773697ba9efe0a416872a082c3104"
+const goldenKeep = "af46ae2861d1fe43d602d2b6764ef53fd96632262c612ace710fe37c4a25cef1"
 
 // TestGenerate_Golden pins the emitter's output, so any shift in it is
 // visible in the toolkit PR that causes it.
@@ -87,4 +87,30 @@ func TestGenerate_Golden(t *testing.T) {
 	require.Equal(t, DefaultOptions().Seed, g.opts.Seed)
 	sum := sha256.Sum256(g.doc)
 	require.Equal(t, goldenKeep, hex.EncodeToString(sum[:]))
+}
+
+// TestEmit_NameCarriesSize: the room and scene name the plan and the size,
+// so two sizes of one plan list apart in the lobby picker (rpg-project#750).
+func TestEmit_NameCarriesSize(t *testing.T) {
+	small, large := keepAt(t, 10000), keepAt(t, 30000)
+	require.Contains(t, string(small.doc), "    name: \"The Benchmark Keep (10,000 hexes)\"\n")
+	require.Contains(t, string(large.doc), "    name: \"The Benchmark Keep (30,000 hexes)\"\n")
+	require.NotEqual(t, sceneName(t, small.doc), sceneName(t, large.doc))
+}
+
+// sceneName is the doc's `room.scene.name`.
+func sceneName(t *testing.T, doc []byte) string {
+	t.Helper()
+	const marker = "  scene:\n    version: 3\n    id: scene-1\n    name: "
+	s := string(doc)
+	i := strings.Index(s, marker)
+	require.GreaterOrEqual(t, i, 0, "the doc has a room.scene")
+	rest := s[i+len(marker):]
+	return rest[:strings.Index(rest, "\n")]
+}
+
+func TestThousands(t *testing.T) {
+	for n, want := range map[int]string{0: "0", 999: "999", 1000: "1,000", 12345: "12,345", 30000: "30,000", 1234567: "1,234,567", -4500: "-4,500"} {
+		require.Equal(t, want, thousands(n), n)
+	}
 }

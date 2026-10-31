@@ -79,7 +79,7 @@ func emitSite(p *Plan, l *layout, s *site, o Options) (emitted, error) {
 			fmt.Fprintf(&b, "  - { id: %s, cell: { q: %d, r: %d } }\n", ex.id, a.Q, a.R)
 		}
 	}
-	name := quote(p.Name)
+	name := quote(siteName(p.Name, o.Hexes))
 	b.WriteString("room:\n  version: 3\n  id: room-1\n")
 	fmt.Fprintf(&b, "  name: %s\n", name)
 	b.WriteString("  coordinateFrame: { horizontalPlane: world-xz, verticalAxis: world-y-up, distanceUnit: world-scene-unit, hexRadius: 1, footprintFrame: owner-local-xz }\n")
@@ -185,6 +185,31 @@ func emitSite(p *Plan, l *layout, s *site, o Options) (emitted, error) {
 		}
 	}
 	return emitted{doc: []byte(b.String()), geometryBytes: geometry}, nil
+}
+
+// siteName is the room's and the scene's name: the plan's name and the
+// floor's size, `The Benchmark Keep (30,000 hexes)`, so two sizes of one
+// plan list apart in the lobby picker (rpg-project#750).
+func siteName(plan string, hexes int) string {
+	return fmt.Sprintf("%s (%s hexes)", plan, thousands(hexes))
+}
+
+// thousands spells n with a comma every three digits: 30000 → `30,000`.
+func thousands(n int) string {
+	d := strconv.Itoa(n)
+	neg := strings.HasPrefix(d, "-")
+	d = strings.TrimPrefix(d, "-")
+	var b strings.Builder
+	for i, c := range d {
+		if i > 0 && (len(d)-i)%3 == 0 {
+			b.WriteByte(',')
+		}
+		b.WriteRune(c)
+	}
+	if neg {
+		return "-" + b.String()
+	}
+	return b.String()
 }
 
 // assetName is a ref's last part: `dnd5e:props:x:table_01` → `table_01`.

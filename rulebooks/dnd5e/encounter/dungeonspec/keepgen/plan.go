@@ -70,7 +70,8 @@ var embeddedPlan []byte
 // IT CARRIES NO CELLS, COORDINATES OR COUNTS. The generator derives them, so
 // the plan reads like a floor plan and a layout change is an edit to it.
 type Plan struct {
-	// Name is the site's name: the scene's and the room's.
+	// Name is the site's name: the scene's and the room's, followed by the
+	// floor's size in hexes (`The Benchmark Keep (10,000 hexes)`).
 	Name string `yaml:"name"`
 
 	// Rooms are the keep's rooms. On the north and south sides they are
