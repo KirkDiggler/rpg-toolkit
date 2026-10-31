@@ -571,8 +571,12 @@ func (s *AnswerTestSuite) straggler() *encounter.Encounter {
 // reload round-trips an encounter through its own blob, the way the host does
 // between two RPCs — which on a live stack is between EVERY two.
 func (s *AnswerTestSuite) reload(enc *encounter.Encounter) *encounter.Encounter {
+	encoded, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+	var data encounter.EncounterData
+	s.Require().NoError(json.Unmarshal(encoded, &data))
 	out, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: enc.ToData(),
+		Data: data,
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},

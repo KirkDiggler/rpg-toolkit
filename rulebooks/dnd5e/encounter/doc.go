@@ -229,6 +229,12 @@
 // testimony carries no activity fact. Activity catalogs, supported clips and
 // playback timing are outside this module.
 //
+// A spoken Answer may carry a separate counted activity cue. It survives
+// table/option persistence and is captured only from the selected leaf on the
+// audienced answered record. No animation phase or completion clock is stored;
+// gameplay never waits for it. An absent legacy cue remains absent rather than
+// being reconstructed from a current content document.
+//
 // # Permitted ordinary prop appearance
 //
 // FieldInput.PropPresentations captures only typed appearance facts, not the
