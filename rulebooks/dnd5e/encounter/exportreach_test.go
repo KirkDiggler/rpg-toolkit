@@ -6,6 +6,7 @@ package encounter
 import (
 	"fmt"
 	"maps"
+	"math/rand/v2"
 	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -36,11 +37,16 @@ func (e *Encounter) ExportedIndexedStands(id PropID) []spatial.Position {
 }
 
 // ExportedPlacementIndexAgrees holds the bucketed reads to the whole-floor
-// walk they replace: for every placed contributor, the index's cells and
-// support against the walk's, and the bucketed placedCells of the same
-// rectangle moved onto every stride-th cell of the floor against the walk's.
-// It returns the first disagreement, or nil.
-func (e *Encounter) ExportedPlacementIndexAgrees(stride int) error {
+// walk they replace: for every structural wall's presence and a seeded
+// sample of the other placed contributors (all of them when sample is zero
+// or covers them), the index's cells and support against the walk's, and the
+// bucketed placedCells of the same rectangle dropped on drops seeded cells of
+// the floor against the walk's. It returns the first disagreement, or nil.
+//
+// SAMPLED BECAUSE THE WALK IS THE COST BEING REMOVED: every walk is the
+// whole floor, and on the keep under -race all of them together outran the
+// package's CI budget.
+func (e *Encounter) ExportedPlacementIndexAgrees(sample, drops int, seed int64) error {
 	f := e.field
 	walk := func(read func() ([]spatial.Position, error)) ([]spatial.Position, error) {
 		centres := f.centres
@@ -48,7 +54,25 @@ func (e *Encounter) ExportedPlacementIndexAgrees(stride int) error {
 		defer func() { f.centres = centres }()
 		return read()
 	}
+	rng := rand.New(rand.NewPCG(uint64(seed), 0)) //nolint:gosec // a test's sample, not a secret
+	walls := make(map[PropID]bool, len(f.structuralWalls))
+	for i := range f.structuralWalls {
+		walls[f.structuralWalls[i].id] = true
+	}
+	var picked, others []int
 	for i := range f.placed {
+		if walls[f.placed[i].id] {
+			picked = append(picked, i)
+		} else {
+			others = append(others, i)
+		}
+	}
+	rng.Shuffle(len(others), func(i, j int) { others[i], others[j] = others[j], others[i] })
+	if sample > 0 && sample < len(others) {
+		others = others[:sample]
+	}
+	picked = append(picked, others...)
+	for _, i := range picked {
 		p := &f.placed[i]
 		want, _ := walk(func() ([]spatial.Position, error) { return f.placedCells(p.placement), nil })
 		if got := f.index.stands[p.id]; !slices.Equal(got, want) {
@@ -61,12 +85,13 @@ func (e *Encounter) ExportedPlacementIndexAgrees(stride int) error {
 		if got := f.index.support[p.id]; !slices.Equal(got, wantSupport) {
 			return fmt.Errorf("%q support: index %v, walk %v", p.id, got, wantSupport)
 		}
-		for k := i % stride; k < len(f.cells); k += stride {
+		for range drops {
+			cell := f.cells[rng.IntN(len(f.cells))]
 			moved := p.placement
-			moved.Origin = f.plane.CellCentre(f.cells[k])
+			moved.Origin = f.plane.CellCentre(cell)
 			want, _ := walk(func() ([]spatial.Position, error) { return f.placedCells(moved), nil })
 			if got := f.placedCells(moved); !slices.Equal(got, want) {
-				return fmt.Errorf("%q dropped on %v: bucketed %v, walk %v", p.id, f.cells[k], got, want)
+				return fmt.Errorf("%q dropped on %v: bucketed %v, walk %v", p.id, cell, got, want)
 			}
 		}
 	}
