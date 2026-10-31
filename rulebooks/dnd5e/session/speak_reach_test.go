@@ -47,7 +47,7 @@ func (s *SpeakReachSuite) SetupTest() {
 // and the given creatures in it, neutral, so the clock is the world's.
 func (s *SpeakReachSuite) aHall(props []encounter.PropInput, monsters ...dungeonspec.MonsterPlacement) *session.Manager {
 	mgr, err := session.NewManager(&session.Config{
-		Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+		Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: &sequenceDice{rolls: []int{10, 10, 10, 10, 10, 10}},
 		TurnDriver: session.Pass{},
 		Sessions:   s.sessions, Encounters: s.encounters,
@@ -191,7 +191,7 @@ func (s *SpeakReachSuite) TestSpeakMenu_HiddenPropNotOffered() {
 // under a secret nobody can find.
 func (s *SpeakReachSuite) aHallWithASecret(props ...encounter.PropInput) *session.Manager {
 	mgr, err := session.NewManager(&session.Config{
-		Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+		Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: &sequenceDice{rolls: []int{10, 10, 10, 10, 10, 10}},
 		TurnDriver: session.Pass{},
 		Sessions:   s.sessions, Encounters: s.encounters,
@@ -249,8 +249,8 @@ func (s *SpeakReachSuite) TestSpeakMenu_CarriedPropOffered() {
 
 // A LINE SAID FROM AFAR IS REFUSED AT THE DOOR, BEFORE THE PRICE. On the turn
 // clock, a stale client speaking to a guard four hexes off is told the
-// target is out of range, and alice keeps her action; a shown altar out of
-// reach is refused the same way.
+// target is out of range, and alice keeps her action; a line to an altar
+// off her menu is refused as a row no longer offered, also before the price.
 func (s *SpeakReachSuite) TestSpeak_OutOfReachRefused() {
 	mgr := s.aHall([]encounter.PropInput{aPropWithALine("far-altar", 9, 1)}, guardAt("guard", 5, 1))
 	authorTurnClock(s.T(), s.encounters, testSession, []string{"alice", "guard"}, 0)
@@ -258,16 +258,65 @@ func (s *SpeakReachSuite) TestSpeak_OutOfReachRefused() {
 	s.Require().NoError(err)
 	s.Require().Equal(session.ClockTurn, turn.Clock, "alice is on the turn clock, where a line costs her action")
 
-	s.ErrorIs(s.say(mgr, "guard", "", "threaten"), session.ErrOutOfRange, "four hexes off is out of reach")
-	s.ErrorIs(s.say(mgr, "", "far-altar", "read"), session.ErrOutOfRange, "so is the far altar")
-
-	stored, err := s.characters.GetCharacter(context.Background(), "alice")
+	before, err := s.characters.GetCharacter(context.Background(), "alice")
 	s.Require().NoError(err)
-	// A sheet never readied for a turn carries no economy, and a charged one
-	// carries zero actions left; either way a spend shows.
-	if stored.ActionEconomy != nil {
-		s.Equal(1, stored.ActionEconomy.ActionsRemaining, "nothing was charged on the way to the refusal")
-	}
+
+	s.ErrorIs(s.say(mgr, "guard", "", "threaten"), session.ErrOutOfRange, "four hexes off is out of reach")
+	s.ErrorIs(s.say(mgr, "", "far-altar", "read"), session.ErrStaleDeclaration,
+		"the far altar is not on her menu, so its row is no longer offered")
+
+	after, err := s.characters.GetCharacter(context.Background(), "alice")
+	s.Require().NoError(err)
+	s.Equal(before, after, "her sheet is untouched: nothing was charged on the way to the refusals")
+}
+
+// A PROP OFF THE MENU IS A STALE ROW, NOT A FAR ONE. Alice steps beside the
+// pillars and the altar behind them is on her menu; she steps back, two hexes
+// from it, and it is not — known, within reach, but not seen now. A line to
+// it from a client still holding the old row is refused as no longer
+// offered: the session does not invent a reach rule the encounter lacks, so
+// it never tells her to come closer when she is close.
+func (s *SpeakReachSuite) TestSpeak_PropOffTheMenuIsStale() {
+	props := append(occludingProps(spatial.Position{X: 2, Y: 0}, spatial.Position{X: 2, Y: 1}),
+		aPropWithALine("altar", 3, 1))
+	mgr := s.aHall(props)
+
+	s.walk(mgr, spatial.Position{X: 2, Y: 1})
+	s.Require().True(s.offered(mgr)["prop:altar"], "beside the pillars the altar is on her menu")
+
+	s.walk(mgr, spatial.Position{X: 1, Y: 1})
+	s.Require().False(s.offered(mgr)["prop:altar"], "stepped back behind them, it is not")
+
+	err := s.say(mgr, "", "altar", "read")
+	s.Require().ErrorIs(err, session.ErrStaleDeclaration, "the row she holds is no longer offered")
+	s.NotErrorIs(err, session.ErrOutOfRange, "and she is not told it is out of range: it is two hexes off")
+}
+
+// A CREATURE SHE SIGHTS BUT WHO CANNOT SEE HER IS NOT OFFERED. Alice declares
+// sneaking behind the pillars, out of the guard's sight, then steps out to
+// two hexes from him and beats his passive Perception (a d20 of 10 and DEX
+// 14's +2 is 12 against 9). She watches him; he does not see her. Within
+// reach and sighted, he fails the witness test, and the door refuses a line
+// to him the same way.
+func (s *SpeakReachSuite) TestSpeakMenu_UnwitnessingCreatureNotOffered() {
+	mgr := s.aHall(occludingProps(spatial.Position{X: 2, Y: 0}, spatial.Position{X: 2, Y: 1}), guardAt("guard", 5, 1))
+
+	_, err := mgr.SetSneaking(context.Background(), &session.SetSneakingInput{Session: "sess", Member: "alice", Sneaking: true})
+	s.Require().NoError(err)
+	s.walk(mgr, spatial.Position{X: 2, Y: 1}, spatial.Position{X: 3, Y: 1})
+	s.Require().LessOrEqual(s.distanceTo(mgr, "guard"), float64(session.InteractionReach), "she stands within his reach")
+
+	enc, err := mgr.LoadWorldForTest(context.Background(), "sess")
+	s.Require().NoError(err)
+	near, _, err := enc.WithinReach("alice", session.InteractionReach)
+	s.Require().NoError(err)
+	s.Require().Contains(near, encounter.MemberID("guard"), "she sights him within reach")
+	witnesses, err := enc.Witnesses("alice")
+	s.Require().NoError(err)
+	s.Require().NotContains(witnesses, encounter.MemberID("guard"), "and he does not see her: one-way sight")
+
+	s.False(s.offered(mgr)["guard"], "so he is not offered a line")
+	s.ErrorIs(s.say(mgr, "guard", "", "threaten"), session.ErrUnwitnessed, "and the door agrees")
 }
 
 // projectCandidateIDs is the Speak row's candidates by member id.
