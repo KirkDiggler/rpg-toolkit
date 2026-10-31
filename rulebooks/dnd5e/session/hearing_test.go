@@ -80,7 +80,7 @@ func (s *HearingSuite) SetupTest() {
 	s.stream = &fakeStream{}
 	s.encounters = newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream,
-		Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+		Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: newFakeSessions(), Encounters: s.encounters,
 		Characters: newFakeCharacters(

@@ -291,12 +291,12 @@ type ConcealSuite struct {
 	suite.Suite
 
 	// stream is the act stream the manager publishes to.
-	stream       *fakeStream
-	explorations *explorationStore
-	sessions     session.SessionRepository
-	encounters   session.EncounterRepository
-	characters   session.CharacterRepository
-	mgr          *session.Manager
+	stream          *fakeStream
+	characterConfig *characterConfigStore
+	sessions        session.SessionRepository
+	encounters      session.EncounterRepository
+	characters      session.CharacterRepository
+	mgr             *session.Manager
 }
 
 func TestConcealSuite(t *testing.T) {
@@ -329,9 +329,9 @@ func (s *ConcealSuite) wire(driver session.TurnDriver, world scene, cast ...*cha
 	// the ones this scene's cast leaves out are given plain ones.
 	stockAuthoredPlayers(world, characters)
 	s.sessions, s.encounters, s.characters = sessions, encounters, characters
-	s.explorations = newFakeExplorations()
+	s.characterConfig = newFakeCharacterConfig()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream,
-		Seats: newFakeSeats(), Explorations: s.explorations, PresentationIDs: testPresentationIDs{},
+		Seats: newFakeSeats(), CharacterConfig: s.characterConfig, PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: driver,
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters,
@@ -443,20 +443,14 @@ var (
 // suites is the one a member walking up to the secret gets. The member must
 // stand at (1,1), where the scenes seat alice.
 //
-// The finder keeps the find to herself first. Discovery is private until a
-// character chooses (rpg-project#595, R8), but a scene may have chosen shared;
-// these scenes are about what the finder alone is told, so the walk states the
-// private preference explicitly rather than leaning on the default.
+// The finder keeps the find to herself: discovery is private until a
+// character chooses (rpg-project#595, R8), and the walkers of these scenes
+// never choose, so what the finder alone is told is what they are told.
 //
 // On a turn clock the walk is the current Move offer, named by its selector.
 func walkToFind(
 	ctx context.Context, t fataler, mgr *session.Manager, member string, path []spatial.Position,
 ) (*session.MoveOutput, error) {
-	if _, err := mgr.SetDiscoverySharing(ctx, &session.SetDiscoverySharingInput{
-		Session: "sess", Member: member, Sharing: false,
-	}); err != nil {
-		return nil, err
-	}
 	turn, err := mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: member})
 	if err != nil {
 		return nil, err
@@ -893,7 +887,7 @@ func (s *ConcealSuite) TestTheProbeLawHoldsAtTheSeam() {
 	characters := newFakeCharacters(sharpEyed("alice"), dullEyed("bob"))
 	stockAuthoredPlayers(world, characters)
 	s.characters = characters
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{calls: &rolled}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters,
@@ -1060,9 +1054,9 @@ func (s *ConcealSuite) TestAJoinIntoHiddenSpaceStaysHidden() {
 	ctx := context.Background()
 	s.startWith(concealedWorld(encounter.DoorIsClosed()), armedFighter("david"))
 	// David's find check rolls inside Join, before he could choose, so his
-	// choice to share is already on his profile (rpg-project#595, R8).
-	shared := true
-	s.explorations.data[hiddenJoiner] = &session.ExplorationData{Character: hiddenJoiner, DiscoverySharing: &shared}
+	// choice to share is already in his character configuration
+	// (rpg-project#595, R8; rpg-project#753 R2).
+	s.characterConfig.choose(hiddenJoiner, true)
 
 	marks := s.marks("alice", "bob")
 	_, err := s.mgr.Join(ctx, &session.JoinInput{

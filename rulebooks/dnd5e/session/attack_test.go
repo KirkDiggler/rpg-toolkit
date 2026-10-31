@@ -147,7 +147,7 @@ func (s *AttackTestSuite) breakableDuel(dice session.Roller) (*session.Manager, 
 	encounters := &failingEncounters{fakeEncounters: s.encounters}
 	s.record = &fakeRecord{}
 
-	mgr, err := session.NewManager(&session.Config{Record: s.record, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: s.record, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: dice, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: encounters,
 		Characters: s.characters,
 	})
@@ -217,7 +217,7 @@ func (s *AttackTestSuite) TestAnArmedDuelingFighterResolvesOnTheSessionStack() {
 
 	s.characters = newFakeCharacters(alice, armedFighter("bob"))
 
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{15, 5}}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 	})
@@ -279,7 +279,7 @@ func (s *AttackTestSuite) TestUnarmoredDefenseDefendsOnTheSessionStack() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"), s.unarmoredBarbarian("bob"))
 
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{15, 5}}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 	})
@@ -356,7 +356,7 @@ func (s *AttackTestSuite) TestProtectionReactsToANearbyAllysAttackOnTheSessionSt
 		Party: []sceneSeat{seatAt("alice", 1, 1), seatAt("bob", 2, 1), seatAt("carol", 3, 1)},
 	}
 
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{15, 5}}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 	})
@@ -562,7 +562,7 @@ func (s *AttackTestSuite) TestFreeRoamAttackHasNoDeclaration() {
 	roller := &sequenceDice{rolls: []int{15, 5}}
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: roller, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters,
 	})
@@ -589,7 +589,7 @@ func (s *AttackTestSuite) TestFreeRoamAttackHasNoDeclaration() {
 func (s *AttackTestSuite) TestAMonsterAttackerIsRefused() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"))
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters,
 	})
@@ -655,7 +655,7 @@ func (s *AttackTestSuite) TestRefusals() {
 func (s *AttackTestSuite) TestAnEmptyHandThrowsAnUnarmedStrike() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(unarmedFighter("alice"), armedFighter("bob"))
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{15, 1}}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters,
@@ -699,7 +699,7 @@ func reachWorld(bobAt spatial.Position) scene {
 func (s *AttackTestSuite) TestOutOfReachIsRefused() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters,
 	})
@@ -723,7 +723,7 @@ func (s *AttackTestSuite) TestReachPropertyExtendsToTwoCells() {
 	}
 	glaiveAlice.EquipmentSlots = character.EquipmentSlots{character.SlotMainHand: string(weapons.Glaive)}
 	s.characters = newFakeCharacters(glaiveAlice, armedFighter("bob"))
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: &sequenceDice{rolls: []int{2, 1}}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters,
@@ -749,7 +749,7 @@ func (s *AttackTestSuite) TestReachPropertyExtendsToTwoCells() {
 func (s *AttackTestSuite) TestNotYourTurnIsRefused() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters,
 	})
@@ -799,7 +799,7 @@ func (s *AttackTestSuite) TestNotYourTurnIsRefused() {
 func (s *AttackTestSuite) TestAffordThenAttackRefusesASheetlessTargetBeforeExecution() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"))
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters,
 	})
@@ -841,7 +841,7 @@ func (s *AttackTestSuite) duelAmong(members []string, sheets ...*character.Data)
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(sheets...)
 
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters,
 	})
@@ -934,7 +934,7 @@ func (s *AttackTestSuite) TestCompetingAttackOffersBlockAttackAsUnavailable() {
 func (s *AttackTestSuite) TestCompetingOffersAreNamedWhenAnotherMemberReadsThem() {
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 	})
@@ -1051,7 +1051,7 @@ func (s *AttackTestSuite) rangedDuel(targetX float64, weapon weapons.WeaponID, r
 	alice.EquipmentSlots = character.EquipmentSlots{character.SlotMainHand: string(weapon)}
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(alice, bob)
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters})
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters})
 	s.Require().NoError(err)
 	launchOnClock(s.T(), mgr, s.encounters, rangedDuelWorld(targetX), duelClock, 0)
 	return mgr

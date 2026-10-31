@@ -53,7 +53,7 @@ func (d strikesBySelf) Act(view session.MonsterView) (session.TurnIntent, error)
 }
 
 func (s *OpposedMonstersSuite) SetupTest() {
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{},
 		TurnDriver: strikesBySelf{omZombie: omSkeleton},
 		Sessions:   newFakeSessions(), Encounters: newFakeEncounters(),

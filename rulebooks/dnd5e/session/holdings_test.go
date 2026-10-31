@@ -217,7 +217,7 @@ func (s *HoldingsSuite) launchHeirloom(
 		s.members = append(s.members, c.ID)
 	}
 
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters,

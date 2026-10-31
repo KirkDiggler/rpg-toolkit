@@ -32,7 +32,7 @@ func TestMissingSheetSuite(t *testing.T) { suite.Run(t, new(MissingSheetSuite)) 
 func (s *MissingSheetSuite) manager() *session.Manager {
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
 	s.encounters = newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: s.encounters,
 		Characters: s.characters,
 	})
@@ -93,7 +93,7 @@ func (s *MissingSheetSuite) TestTheStandingPathRefuses() {
 // run with a member whose sheet is gone can still be looked at.
 //
 // Leaving and closing such a run no longer works. Discovery is always on
-// (Config.Explorations is required), so every write verb stages each seated
+// (Config.CharacterConfig is required), so every write verb stages each seated
 // player's record when it opens, and an absent one is refused by name before
 // the verb's own work. Exit and End are write verbs. The refusal is the
 // store's one answer, and a host repairs the sheet before it ends the run.

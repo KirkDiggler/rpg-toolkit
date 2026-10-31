@@ -71,7 +71,7 @@ func (s *SpeakWorldSuite) front(rolls []int) *session.Manager {
 	if driver == nil {
 		driver = session.Pass{}
 	}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: driver,
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters,
@@ -590,7 +590,7 @@ func (s *SpeakWorldSuite) TestASubjectInNoFactionHasNoStance() {
 // whom the party declared itself hostile to and the goblins said nothing about.
 func (s *SpeakWorldSuite) frontWithBandit() *session.Manager {
 	s.characters = newFakeCharacters(s.sheet)
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: &sequenceDice{rolls: []int{10, 10, 10, 10}},
 		TurnDriver: session.Pass{},
 		Sessions:   s.sessions, Encounters: s.encounters,
