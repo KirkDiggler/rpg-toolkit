@@ -105,7 +105,8 @@ type Plan struct {
 
 	// Templates are the stat blocks the monster palettes name, carried into
 	// the site's root `templates` verbatim so a launch resolves
-	// `dnd5e:monsters:<id>` from the file. Optional.
+	// `dnd5e:monsters:<id>` from the file. Every palette monster needs one;
+	// a plan with no monsters needs none.
 	Templates map[string]dungeonspec.TemplateSpec `yaml:"templates"`
 }
 
@@ -228,7 +229,11 @@ func DefaultPlan() *Plan {
 // refused by name; so is every missing field, a room kind or side outside
 // the known sets, an id that is not lowercase letters, digits and dashes or
 // is used twice, a door, exit or party start naming no region, a door pair
-// written twice, a palette missing for a kind in use, and a palette entry
+// written twice, a palette missing for a kind in use, a palette monster
+// whose `dnd5e:monsters:<id>` has no stat block under `templates` (the
+// launch resolves it from the site's own templates and nowhere else; a
+// rulebook base is named by a template that states only its `base`), and a
+// palette entry
 // whose footprint is outside 0.1–12 or whose blocking answers are absent.
 // Every defect is reported, each prefixed by its path.
 //
@@ -396,7 +401,11 @@ func (p *Plan) validate() error {
 	required("walls.assetRef", p.Walls.AssetRef)
 	required("walls.doorAssetRef", p.Walls.DoorAssetRef)
 
+	declared := map[string]bool{}
 	for kind := range p.Palettes {
+		declared[kind] = true
+	}
+	for _, kind := range sortedKeys(declared) {
 		if !kinds[kind] {
 			errs.add("palettes."+kind, "is not a room kind")
 		}
@@ -426,8 +435,13 @@ func (p *Plan) validate() error {
 			}
 		}
 		for i, ref := range pal.Monsters {
-			if !strings.HasPrefix(ref, monsterRefPrefix) || len(ref) == len(monsterRefPrefix) {
-				errs.add(fmt.Sprintf("palettes.%s.monsters[%d]", kind, i), "%q must be a full ref, %s<id>", ref, monsterRefPrefix)
+			path := fmt.Sprintf("palettes.%s.monsters[%d]", kind, i)
+			id := strings.TrimPrefix(ref, monsterRefPrefix)
+			switch {
+			case !strings.HasPrefix(ref, monsterRefPrefix) || id == "":
+				errs.add(path, "%q must be a full ref, %s<id>", ref, monsterRefPrefix)
+			case p.Templates[id].Base == "":
+				errs.add(path, "%q has no stat block in templates: a launch resolves a monster only from the site's own templates", ref)
 			}
 		}
 	}

@@ -145,11 +145,16 @@ func segmentDistance(x, z float64, w wall) float64 {
 }
 
 // TestPlace_KeepsThresholdsClear is B4 at both sizes, read against the
-// compiled floor: no prop's footprint covers a door threshold (either cell
-// of a crossing inside an opening), the party start, an exit or a monster's
-// cell; every footprint stays inside the prop's own region (plan G2); and no
-// two props share a cell. Footprints are recomputed here by brute force over
-// the floor, not taken from the placement.
+// compiled floor and held to the generator's own stated clearances: no
+// prop's footprint and no monster's cell is within thresholdRadius of a door
+// opening's centre (either side), within startRadius steps of the party
+// start or exitRadius steps of an exit (in that cell's own region); every
+// door opens at least one crossing inside its opening; no footprint covers
+// a monster; every footprint stays inside its own region (plan G2); no two
+// props share a cell; and every blocker compiles with the palette's own
+// sight answer (plan G3). Footprints are recomputed by brute force over the
+// floor, not taken from the placement, and the clear set from the compiled
+// geometry, not from the generator's reservations.
 func TestPlace_KeepsThresholdsClear(t *testing.T) {
 	for _, hexes := range []int{10000, 30000} {
 		t.Run(fmt.Sprint(hexes), func(t *testing.T) {
@@ -161,8 +166,15 @@ func TestPlace_KeepsThresholdsClear(t *testing.T) {
 					continue
 				}
 				a, b := g.layout.regions[w.a].id, g.layout.regions[w.b].id
-				found := 0
+				opens := 0
 				for c, id := range floor {
+					if id != a && id != b {
+						continue
+					}
+					x, z := c.centre()
+					if math.Hypot(x-w.door.cx, z-w.door.cz) <= thresholdRadius {
+						clear[c] = "threshold of " + w.door.id
+					}
 					if id != a {
 						continue
 					}
@@ -170,33 +182,53 @@ func TestPlace_KeepsThresholdsClear(t *testing.T) {
 						if floor[nb] != b {
 							continue
 						}
-						x1, z1 := c.centre()
 						x2, z2 := nb.centre()
-						if math.Hypot((x1+x2)/2-w.door.cx, (z1+z2)/2-w.door.cz) <= doorWidth/2 {
-							clear[c], clear[nb] = "threshold of "+w.door.id, "threshold of "+w.door.id
-							found++
+						if math.Hypot((x+x2)/2-w.door.cx, (z+z2)/2-w.door.cz) <= doorWidth/2 {
+							opens++
 						}
 					}
 				}
-				require.Positive(t, found, "door %s opens a crossing between %s and %s", w.door.id, a, b)
+				require.Positive(t, opens, "door %s opens a crossing between %s and %s", w.door.id, a, b)
+			}
+			around := func(at cell, radius int, what string) {
+				own := floor[at]
+				require.NotEmpty(t, own, what)
+				for c, id := range floor {
+					if id == own && hexDistance(c, at) <= radius {
+						clear[c] = what
+					}
+				}
 			}
 			start := g.compiled.PartyStart[0].At
-			clear[cell{int(start.X), int(start.Y)}] = "the party start"
+			around(cell{int(start.X), int(start.Y)}, startRadius, "the party start's clearance")
 			require.Len(t, g.compiled.Field.Exits, 2)
 			for _, ex := range g.compiled.Field.Exits {
-				clear[cell{int(ex.At.X), int(ex.At.Y)}] = "exit " + string(ex.ID)
-			}
-			require.Len(t, g.compiled.Monsters, len(g.site.monsters))
-			for _, m := range g.compiled.Monsters {
-				clear[cell{int(m.At.X), int(m.At.Y)}] = "monster " + m.MemberID
+				around(cell{int(ex.At.X), int(ex.At.Y)}, exitRadius, "exit "+string(ex.ID)+"'s clearance")
 			}
 
+			require.Len(t, g.compiled.Monsters, len(g.site.monsters))
+			monsters := map[cell]string{}
+			for _, m := range g.compiled.Monsters {
+				at := cell{int(m.At.X), int(m.At.Y)}
+				require.Empty(t, clear[at], "monster %s stands in %s", m.MemberID, clear[at])
+				monsters[at] = m.MemberID
+			}
+
+			sight := map[string]bool{}
+			for _, pp := range g.compiled.Field.Placed {
+				sight[string(pp.ID)] = pp.BlocksLineOfSight
+			}
 			byRow := map[int][]cell{}
 			for c := range floor {
 				byRow[c.row] = append(byRow[c.row], c)
 			}
 			claimed := map[cell]string{}
 			for _, pr := range g.site.props {
+				if pr.blocking {
+					blocks, ok := sight[pr.id]
+					require.True(t, ok, "blocker %s is compiled as a placed footprint", pr.id)
+					require.Equal(t, *pr.entry.BlocksLineOfSight, blocks, "%s blocks sight as its palette entry says", pr.id)
+				}
 				hx, hz := pr.entry.Width/2, pr.entry.Depth/2
 				if pr.rotation != 0 {
 					hx, hz = hz, hx
@@ -219,6 +251,7 @@ func TestPlace_KeepsThresholdsClear(t *testing.T) {
 				for _, c := range covered {
 					require.Equal(t, own, floor[c], "%s stays inside %s", pr.id, own)
 					require.Empty(t, clear[c], "%s covers %v, %s", pr.id, c, clear[c])
+					require.Empty(t, monsters[c], "%s covers monster %s", pr.id, monsters[c])
 					require.Empty(t, claimed[c], "%s and %s share %v", pr.id, claimed[c], c)
 					claimed[c] = pr.id
 				}

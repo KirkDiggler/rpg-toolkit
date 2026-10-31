@@ -90,3 +90,49 @@ func TestLoadPlan_RefusesBadValues(t *testing.T) {
 	require.ErrorContains(t, err, `"mess-hall" and "tower" already have a door`)
 	require.ErrorContains(t, err, "palettes.hall.props[0].width: must be between 0.1 and 12")
 }
+
+// TestLoadPlan_RefusesMonsterWithoutStatBlock: a palette monster whose id
+// has no entry under templates is refused at its path, naming the ref,
+// because the launch resolves monsters only from the site's own templates.
+func TestLoadPlan_RefusesMonsterWithoutStatBlock(t *testing.T) {
+	doc := planWith(t, "    monsters: [dnd5e:monsters:guard]\n\n# The stat blocks",
+		"    monsters: [dnd5e:monsters:dragon]\n\n# The stat blocks")
+	_, err := LoadPlan(strings.NewReader(doc))
+	require.ErrorContains(t, err, `palettes.grounds.monsters[0]: "dnd5e:monsters:dragon" has no stat block in templates`)
+
+	cut := strings.Index(string(embeddedPlan), "\ntemplates:\n")
+	require.Positive(t, cut)
+	_, err = LoadPlan(strings.NewReader(string(embeddedPlan[:cut+1])))
+	require.ErrorContains(t, err, `palettes.hall.monsters[0]: "dnd5e:monsters:guard" has no stat block in templates`)
+}
+
+// TestLoadPlan_RefusalsInOrder: two unknown palette kinds are reported in
+// the same order every time.
+func TestLoadPlan_RefusalsInOrder(t *testing.T) {
+	doc := planWith(t, "palettes:\n", "palettes:\n  zeta: { props: [], monsters: [] }\n  alpha: { props: [], monsters: [] }\n")
+	_, first := LoadPlan(strings.NewReader(doc))
+	require.ErrorContains(t, first, "palettes.alpha: is not a room kind; palettes.zeta: is not a room kind")
+	for range 20 {
+		_, again := LoadPlan(strings.NewReader(doc))
+		require.Equal(t, first.Error(), again.Error())
+	}
+}
+
+// TestLoadPlan_SightBlockersAreG3: the embedded palettes block sight with
+// exactly the kinds plan G3 names (shelves, statues, clothes racks, crate
+// stacks) and nothing else.
+func TestLoadPlan_SightBlockersAreG3(t *testing.T) {
+	g3 := []string{"shelf_", "statue_", "clothes_rack_", "crate_stack_"}
+	for kind, pal := range DefaultPlan().Palettes {
+		for _, e := range pal.Props {
+			named := false
+			for _, prefix := range g3 {
+				named = named || strings.HasPrefix(assetName(e.AssetRef), prefix)
+			}
+			require.Equal(t, named, *e.BlocksLineOfSight, "%s %s", kind, e.AssetRef)
+			if named {
+				require.True(t, *e.BlocksMovement, "%s %s: a sight blocker is a blocker", kind, e.AssetRef)
+			}
+		}
+	}
+}

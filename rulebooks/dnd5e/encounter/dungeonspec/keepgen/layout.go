@@ -225,11 +225,13 @@ func keepOf(p *Plan) (keep, error) {
 }
 
 // layoutOf places the plan at hexes (design One keep, R2). The scale is
-// min(1.5, sqrt(hexes / planHexes)) and every room boundary is the plan's
-// boundary scaled and rounded, so the sides still close; the west grounds
-// scale with the keep; the south grounds take whatever floor is left as
-// full rows across the site and one partial row under them, so the floor is
-// exactly hexes.
+// min(1.5, sqrt(hexes / planHexes)). Every room dimension, band and the west
+// grounds' width is the plan's scaled and FLOORED, so no room is ever more
+// than 1.5 times its plan footprint, odd or even; where two opposite sides
+// floor to different lengths the longer gives the difference back from its
+// widest rooms, so the sides still close. The south grounds take whatever
+// floor is left as full rows across the site and one partial row under
+// them, so the floor is exactly hexes.
 //
 // It refuses fewer hexes than the plan's own floor, a plan whose sides do not
 // close, and a size whose south grounds would be left without a row.
@@ -243,7 +245,12 @@ func layoutOf(p *Plan, hexes int) (*layout, error) {
 		return nil, fmt.Errorf("keepgen: the plan needs at least %d hexes; %d were asked for", base, hexes)
 	}
 	s := math.Min(maxScale, math.Sqrt(float64(hexes)/float64(base)))
-	sc := func(v int) int { return int(math.Round(s * float64(v))) }
+	// THE CAP HOLDS UNDER ROUNDING because every dimension is FLOORED, never
+	// rounded: floor(s·w) <= s·w <= 1.5·w for any width, odd or even. Two
+	// opposite sides floored separately can disagree by a hex or two; the
+	// longer side gives them back from its widest rooms, which only ever
+	// shrinks a room, and the grounds absorb whatever the keep did not take.
+	sc := func(v int) int { return int(math.Floor(s * float64(v))) }
 
 	out := &layout{scale: s, planHexes: base, index: map[string]int{}}
 	gw := sc(p.Grounds.West.Width) // the keep starts east of the west grounds
@@ -251,46 +258,61 @@ func layoutOf(p *Plan, hexes int) (*layout, error) {
 		out.index[g.id] = len(out.regions)
 		out.regions = append(out.regions, g)
 	}
-	rooms := map[string]rect{}
-	place := func(rooms []Room, at func(from, to int) rect, of func(Room) int) map[string]rect {
-		got := map[string]rect{}
-		pos := 0
-		for _, r := range rooms {
-			got[r.ID] = at(pos, pos+of(r))
-			pos += of(r)
-		}
-		return got
-	}
 	width := func(r Room) int { return r.Width }
 	depth := func(r Room) int { return r.Depth }
-	for id, r := range place(k.north, func(a, b int) rect {
-		return rect{gw + sc(a), gw + sc(b), 0, sc(k.dn)}
-	}, width) {
-		rooms[id] = r
+	scaled := func(rooms []Room, of func(Room) int) []int {
+		out := make([]int, len(rooms))
+		for i, r := range rooms {
+			out[i] = sc(of(r))
+		}
+		return out
 	}
-	for id, r := range place(k.south, func(a, b int) rect {
-		return rect{gw + sc(a), gw + sc(b), sc(k.dn + (k.h - k.dn - k.ds)), sc(k.h)}
-	}, width) {
-		rooms[id] = r
+	north, south := scaled(k.north, width), scaled(k.south, width)
+	west, east := scaled(k.west, depth), scaled(k.east, depth)
+	w := min(sum(north), sum(south))
+	mid := min(sum(west), sum(east))
+	for _, side := range []struct {
+		name   string
+		sizes  []int
+		target int
+	}{{SideNorth, north, w}, {SideSouth, south, w}, {SideWest, west, mid}, {SideEast, east, mid}} {
+		if err := shrinkTo(side.sizes, side.target); err != nil {
+			return nil, fmt.Errorf("keepgen: at %d hexes the %s side %w", hexes, side.name, err)
+		}
 	}
-	for id, r := range place(k.west, func(a, b int) rect {
-		return rect{gw, gw + sc(k.ww), sc(k.dn + a), sc(k.dn + b)}
-	}, depth) {
-		rooms[id] = r
+	dn, ds, ww, we := sc(k.dn), sc(k.ds), sc(k.ww), sc(k.we)
+	if ww+we >= w {
+		return nil, fmt.Errorf("keepgen: at %d hexes the west and east sides leave no courtyard", hexes)
 	}
-	for id, r := range place(k.east, func(a, b int) rect {
-		return rect{gw + sc(k.w-k.we), gw + sc(k.w), sc(k.dn + a), sc(k.dn + b)}
-	}, depth) {
-		rooms[id] = r
+	h := dn + mid + ds
+	rooms := map[string]rect{}
+	pos := 0
+	for i, r := range k.north {
+		rooms[r.ID] = rect{gw + pos, gw + pos + north[i], 0, dn}
+		pos += north[i]
+	}
+	pos = 0
+	for i, r := range k.south {
+		rooms[r.ID] = rect{gw + pos, gw + pos + south[i], dn + mid, h}
+		pos += south[i]
+	}
+	pos = 0
+	for i, r := range k.west {
+		rooms[r.ID] = rect{gw, gw + ww, dn + pos, dn + pos + west[i]}
+		pos += west[i]
+	}
+	pos = 0
+	for i, r := range k.east {
+		rooms[r.ID] = rect{gw + w - we, gw + w, dn + pos, dn + pos + east[i]}
+		pos += east[i]
 	}
 	for _, r := range p.Rooms {
 		add(region{id: r.ID, name: r.Name, kind: r.Kind, side: r.Side, lighting: *r.Lighting, rect: rooms[r.ID]})
 	}
 	add(region{
 		id: p.Courtyard.ID, name: p.Courtyard.Name, kind: KindGrounds, lighting: *p.Courtyard.Lighting, open: true,
-		rect: rect{gw + sc(k.ww), gw + sc(k.w-k.we), sc(k.dn), sc(k.h - k.ds)},
+		rect: rect{gw + ww, gw + w - we, dn, dn + mid},
 	})
-	w, h := sc(k.w), sc(k.h)
 	add(region{
 		id: p.Grounds.West.ID, name: p.Grounds.West.Name, kind: KindGrounds, lighting: *p.Grounds.West.Lighting, open: true,
 		rect: rect{0, gw, 0, h},
@@ -344,4 +366,30 @@ func (l *layout) floor() int {
 		n += g.size()
 	}
 	return n
+}
+
+func sum(v []int) int {
+	t := 0
+	for _, x := range v {
+		t += x
+	}
+	return t
+}
+
+// shrinkTo takes hexes from the widest entry (the first of equals) until
+// sizes sums to target, refusing to shrink an entry to nothing.
+func shrinkTo(sizes []int, target int) error {
+	for sum(sizes) > target {
+		widest := 0
+		for i, v := range sizes {
+			if v > sizes[widest] {
+				widest = i
+			}
+		}
+		if sizes[widest] <= 1 {
+			return fmt.Errorf("cannot shrink to %d hexes", target)
+		}
+		sizes[widest]--
+	}
+	return nil
 }

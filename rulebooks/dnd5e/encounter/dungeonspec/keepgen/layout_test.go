@@ -61,6 +61,27 @@ func TestLayout_ScalesAndFills(t *testing.T) {
 	// that hides an overlap.
 	require.Len(t, large.owners(), 30000)
 	require.Len(t, small.owners(), 10000)
+
+	// THE CAP HOLDS FOR ODD WIDTHS (review of rpg-toolkit#2204): a tower 5
+	// wide (mess hall 11, so the south side still spans 80) at 19,968 hexes,
+	// scale 1.4131, once rounded to 8 wide, past 1.5 x 5. Floored, it is
+	// at most 7, at that size and at every size up to the ceiling.
+	odd, err := LoadPlan(strings.NewReader(strings.Replace(planWith(t,
+		"{ id: tower, name: Tower, kind: hall, width: 6,", "{ id: tower, name: Tower, kind: hall, width: 5,"),
+		"{ id: mess-hall, name: Mess Hall, kind: hall, width: 10,", "{ id: mess-hall, name: Mess Hall, kind: hall, width: 11,", 1)))
+	require.NoError(t, err)
+	for _, hexes := range []int{19968, 10000, 12000, 15000, 18000, 21000, 22499, 30000} {
+		l, err := layoutOf(odd, hexes)
+		require.NoError(t, err, hexes)
+		require.Equal(t, hexes, l.floor(), hexes)
+		require.Len(t, l.owners(), hexes, hexes)
+		for _, r := range odd.Rooms {
+			g := l.regions[l.index[r.ID]]
+			require.LessOrEqual(t, float64(g.rect.width()), 1.5*float64(r.Width), "%s at %d hexes", r.ID, hexes)
+			require.LessOrEqual(t, float64(g.rect.depth()), 1.5*float64(r.Depth), "%s at %d hexes", r.ID, hexes)
+			require.Positive(t, g.rect.width()*g.rect.depth(), r.ID)
+		}
+	}
 }
 
 // TestLayout_FillsAnyCount: the grounds absorb the remainder at sizes that
