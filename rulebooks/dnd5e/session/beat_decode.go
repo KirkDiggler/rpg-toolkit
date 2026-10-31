@@ -76,6 +76,23 @@ func isJSONNull(raw json.RawMessage) bool {
 	return string(raw) == "null"
 }
 
+// decodeActivityCue reads the captured two-field cue without consulting live
+// content. Present malformed data is refused rather than converted to absence.
+func decodeActivityCue(raw json.RawMessage) (*ActivityCue, bool) {
+	fields, ok := strictJSONObject(raw)
+	if !ok || len(fields) != 2 {
+		return nil, false
+	}
+	var cue ActivityCue
+	if err := json.Unmarshal(fields["ref"], &cue.Ref); err != nil || cue.Ref == "" {
+		return nil, false
+	}
+	if err := json.Unmarshal(fields["cycles"], &cue.Cycles); err != nil || cue.Cycles == 0 {
+		return nil, false
+	}
+	return &cue, true
+}
+
 // decodeRollCalculation decodes one persisted roll calculation into the SDK's
 // string-ref shape, refusing unknown keys, nulls, duplicate keys at every
 // nested depth, and any structural or arithmetic inconsistency the

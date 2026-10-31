@@ -659,17 +659,18 @@ func spokePiece(payload []byte) ([]piece, error) {
 // sits under a speak act with the line open, a table answer otherwise.
 func answeredPiece(tag string, payload []byte) ([]piece, error) {
 	var p struct {
-		Creature   string `json:"creature"`
-		Prop       string `json:"prop"`
-		Option     string `json:"option"`
-		Key        string `json:"key"`
-		Word       string `json:"word"`
-		Selector   string `json:"selector"`
-		Say        string `json:"say"`
-		Temper     string `json:"temper"`
-		Roll       int    `json:"roll"`
-		Of         int    `json:"of"`
-		Entry      int    `json:"entry"`
+		Creature   string          `json:"creature"`
+		Prop       string          `json:"prop"`
+		Option     string          `json:"option"`
+		Key        string          `json:"key"`
+		Word       string          `json:"word"`
+		Selector   string          `json:"selector"`
+		Say        string          `json:"say"`
+		Activity   json.RawMessage `json:"activity"`
+		Temper     string          `json:"temper"`
+		Roll       int             `json:"roll"`
+		Of         int             `json:"of"`
+		Entry      int             `json:"entry"`
 		Candidates []struct {
 			Entry   int `json:"entry"`
 			Weight  int `json:"weight"`
@@ -687,6 +688,13 @@ func answeredPiece(tag string, payload []byte) ([]piece, error) {
 	answer := TableAnswer{
 		Who: who, Option: p.Option, Key: p.Key, Word: p.Word, Selector: p.Selector,
 		Say: p.Say, Temperament: p.Temper, Entry: p.Entry,
+	}
+	if len(p.Activity) != 0 {
+		cue, valid := decodeActivityCue(p.Activity)
+		if !valid || p.Say == "" {
+			return nil, fmt.Errorf("answered activity: malformed cue or missing say line")
+		}
+		answer.Activity = cue
 	}
 	if p.Of > 0 {
 		answer.Roll = &Roll{Dice: facesOf(p.Roll), Total: p.Roll, Of: p.Of}
