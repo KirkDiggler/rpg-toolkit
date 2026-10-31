@@ -304,11 +304,22 @@ func soldierProfiles(temper encounter.Temper) encounter.Temper {
 	return temper
 }
 
-// speak says one of a creature's lines with the hero's check already rolled.
+// speak says one of a creature's lines with the hero's check already rolled,
+// within the interaction reach.
 func (s *kingScene) speak(target encounter.MemberID, option, skill string, beaten bool) (*encounter.SpeakOutput, error) {
 	s.t.Helper()
 
+	return s.speakWithin(speakReach, target, option, skill, beaten)
+}
+
+// speakWithin is [kingScene.speak] said from as far as reach hexes.
+func (s *kingScene) speakWithin(
+	reach int, target encounter.MemberID, option, skill string, beaten bool,
+) (*encounter.SpeakOutput, error) {
+	s.t.Helper()
+
 	return s.enc.Speak(context.Background(), &encounter.SpeakInput{
+		Range: reach,
 		Actor: hero, Target: target, OptionID: option, Skill: skill,
 		Beaten: beaten, DC: 15, Total: map[bool]int{true: 20, false: 3}[beaten], Roller: rollsOne{},
 	})
@@ -633,3 +644,7 @@ func TestSessionSightFeetIsTheRulebooks(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, feet, sessionSightFeet, "the castle's session sight is the rulebook's default")
 }
+
+// speakReach is the reach every line here is said within: the session's
+// interaction reach, three hexes (rpg-project#753, R4).
+const speakReach = 3
