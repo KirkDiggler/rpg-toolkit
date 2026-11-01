@@ -416,6 +416,9 @@ const (
 	StateConditionRemoved StateKind = "condition_removed"
 	// StateExperience is experience paid out (experience_gained).
 	StateExperience StateKind = "experience"
+	// StateMachine is a creature's machine entering a state (state,
+	// rpg-project#766): the reserve marching because the gate is fighting.
+	StateMachine StateKind = "machine"
 )
 
 // Downed is a fall's detail.
@@ -471,6 +474,21 @@ type StateChange struct {
 	// Experience is set for StateExperience: each character's share
 	// (experience_gained `experience.grants`).
 	Experience []ExperienceGrant
+	// Machine is set for StateMachine: the state left, the state entered
+	// and why (state `from`, `to`, `reason`).
+	Machine *MachineChange
+}
+
+// MachineChange is a creature's machine entering a state (state): the state
+// it left, the state it entered and the transition's reason, as the recipe
+// words them (`waiting` → `marching`, "the gate is fighting").
+type MachineChange struct {
+	// From is the state left (state `from`).
+	From string
+	// To is the state entered (state `to`).
+	To string
+	// Reason is the transition's reason (state `reason`).
+	Reason string
 }
 
 // Sense is how a perception entry was perceived.
@@ -606,7 +624,19 @@ const (
 	// ClockRollWindowOpened is a roll stopping to ask its roller
 	// (roll_window_opened).
 	ClockRollWindowOpened ClockMark = "roll_window_opened"
+	// ClockWakeCut is a raise cut short at the bound on the beats one pass
+	// matches (wake-cut, rpg-project#766).
+	ClockWakeCut ClockMark = "wake_cut"
 )
+
+// WakeCut is a raise cut short (wake-cut): how many landed beats the pass
+// matched before the bound, and how many it dropped unmatched.
+type WakeCut struct {
+	// Matched is the beats the pass matched (wake-cut `matched`).
+	Matched int
+	// Dropped is the beats it dropped unmatched (wake-cut `dropped`).
+	Dropped int
+}
 
 // TurnPassed is a turn ending (turn-ended).
 type TurnPassed struct {
@@ -726,6 +756,8 @@ type ClockEntry struct {
 	Window *WindowOpened
 	// RollWindow is set for ClockRollWindowOpened.
 	RollWindow *RollWindowOpened
+	// WakeCut is set for ClockWakeCut.
+	WakeCut *WakeCut
 }
 
 func (WalkAct) isActBody()      {}

@@ -28,8 +28,6 @@ import (
 // which is the record's debug symbols and never anything a player is shown.
 var recordOnly = map[string]bool{
 	encounter.BeatTable:             true,
-	encounter.BeatState:             true, // a creature's state change (rpg-project#766 S3); its act arrives with S6
-	encounter.BeatWakeCut:           true, // the raise cut a wake short (rpg-project#766 S4); its act arrives with S6
 	encounter.BeatTransferred:       true,
 	encounter.BeatInteracted:        true,
 	string(encounter.OutcomeBought): true,
@@ -51,7 +49,7 @@ func familyOf(beat string) (Family, bool) {
 	case encounter.BeatAnswered, encounter.BeatTempered:
 		return FamilyTableAnswer, true // a speak's answer folds into the SpeakAct
 	case string(encounter.OutcomeDown), encounter.BeatStance, encounter.BeatConcentrationEnded,
-		string(encounter.OutcomeExperienceGained):
+		string(encounter.OutcomeExperienceGained), encounter.BeatState:
 		return FamilyState, true
 	case encounter.BeatSighted, encounter.BeatHeard, encounter.BeatDiscoveryChecked,
 		encounter.BeatConcealmentRevealed, encounter.BeatCellsRevealed,
@@ -59,7 +57,8 @@ func familyOf(beat string) (Family, bool) {
 		return FamilyPerception, true
 	case encounter.BeatTick, encounter.BeatTurnEnded, encounter.BeatFightStarted, encounter.BeatFightEnded,
 		encounter.BeatJoined, encounter.BeatExited, encounter.BeatArrived, encounter.BeatSceneOpened,
-		encounter.BeatEnded, encounter.BeatWindowOpened, encounter.BeatRollWindowOpened:
+		encounter.BeatEnded, encounter.BeatWindowOpened, encounter.BeatRollWindowOpened,
+		encounter.BeatWakeCut:
 		return FamilyClock, true
 	default:
 		return "", false
@@ -191,6 +190,8 @@ func decodePieces(recipient, tag, beat string, payload []byte) ([]piece, error) 
 		return one(statePiece(state))
 	case string(encounter.OutcomeExperienceGained):
 		return experiencePiece(payload)
+	case encounter.BeatState:
+		return machinePiece(payload)
 	case encounter.BeatSighted, encounter.BeatHeard, encounter.BeatDiscoveryChecked,
 		encounter.BeatConcealmentRevealed, encounter.BeatCellsRevealed,
 		encounter.BeatRoomRevealed: //nolint:staticcheck // SA1019: stored stories still name it
@@ -205,6 +206,30 @@ func actPiece(body ActBody) piece { return piece{family: FamilyAct, body: body} 
 
 // statePiece is a FamilyState piece.
 func statePiece(body StateChange) piece { return piece{family: FamilyState, body: body} }
+
+// machinePiece is a creature's machine entering a state (state): one state
+// piece naming the creature, the state it left, the state it entered and
+// why. A beat naming no creature, no state left or no state entered is
+// unreadable, never a blank line on the panel: the writer steps only a
+// machine that leaves one state for another.
+func machinePiece(payload []byte) ([]piece, error) {
+	var p struct {
+		Member string `json:"member"`
+		From   string `json:"from"`
+		To     string `json:"to"`
+		Reason string `json:"reason"`
+	}
+	if err := json.Unmarshal(payload, &p); err != nil {
+		return nil, err
+	}
+	if p.Member == "" || p.From == "" || p.To == "" {
+		return nil, fmt.Errorf("names no member, no state left or no state entered")
+	}
+	return one(statePiece(StateChange{
+		Party: member(p.Member), Change: StateMachine,
+		Machine: &MachineChange{From: p.From, To: p.To, Reason: p.Reason},
+	}))
+}
 
 // walkPiece is one step. It extends an open walk of the same mover and cause,
 // and a new segment of a walk starts where the last one left the mover.
@@ -1114,6 +1139,8 @@ func clockPieces(beat string, payload []byte) ([]piece, error) {
 		Roll           int             `json:"roll"`
 		Total          int             `json:"total"`
 		Calculation    json.RawMessage `json:"calculation"`
+		Matched        *int            `json:"matched"`
+		Dropped        *int            `json:"dropped"`
 	}
 	if err := json.Unmarshal(payload, &p); err != nil {
 		return nil, err
@@ -1184,6 +1211,14 @@ func clockPieces(beat string, payload []byte) ([]piece, error) {
 			PresentationID: p.PresentationID, Audience: member(p.Audience),
 			Offer: ReactionRef{Ref: p.Offer.Ref, Name: p.Offer.Name}, Roll: roll,
 		}
+	case encounter.BeatWakeCut:
+		// The writer cuts only when it drops at least one beat, so a cut
+		// with no count, or none dropped, is a broken record: undecoded,
+		// never a "0 dropped" that reads as true.
+		if p.Matched == nil || p.Dropped == nil || *p.Dropped < 1 {
+			return nil, fmt.Errorf("names no matched count or no beat dropped")
+		}
+		entry.Mark, entry.WakeCut = ClockWakeCut, &WakeCut{Matched: *p.Matched, Dropped: *p.Dropped}
 	default:
 		return nil, fmt.Errorf("no clock mark")
 	}
