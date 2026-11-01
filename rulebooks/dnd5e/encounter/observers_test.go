@@ -385,12 +385,31 @@ func indexOfDoor(doors []encounter.Door, id encounter.DoorID) int {
 	return -1
 }
 
-// TestObserversOf_FarObserverUntouched is the cost: a player's step on the
-// 10k keep asks no rebuild of any member farther than its own sight (plus a
-// cover's face) from both ends of the step. The probe sees every observer
-// list a rebuild is handed, the wake pass's included.
+// TestObserversOf_FarObserverUntouched is the cost: a player's step asks no
+// rebuild of any member farther than its own sight (plus a cover's face)
+// from both ends of the step. The probe sees every observer list a rebuild is
+// handed. On the castle and on the 10k keep; the keep's launch alone is a
+// minute under -race, so a -race binary runs the castle only.
 func TestObserversOf_FarObserverUntouched(t *testing.T) {
-	enc := openDriven(t, garrisonKeep(t))
+	for _, tc := range []struct {
+		name   string
+		site   func(t *testing.T) dungeonspec.Compiled
+		noRace bool
+	}{
+		{"castle", func(t *testing.T) dungeonspec.Compiled { return compiledSite(t, 0) }, false},
+		{"keep-10k", garrisonKeep, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.noRace && raceDetector {
+				t.Skip("the 10k keep's launch is a minute under -race; plain go test runs it")
+			}
+			farObserverUntouched(t, openDriven(t, tc.site(t)))
+		})
+	}
+}
+
+func farObserverUntouched(t *testing.T, enc *encounter.Encounter) {
+	t.Helper()
 	player := keepPlayers[0]
 	from := whereIs(t, enc, player)
 	var to spatial.Position
