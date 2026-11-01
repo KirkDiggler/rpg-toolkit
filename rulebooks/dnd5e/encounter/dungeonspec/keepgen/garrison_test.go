@@ -109,6 +109,38 @@ func TestGarrison_EmitsBindings(t *testing.T) {
 	}
 }
 
+// TestGarrison_IsNeutralToTheParty: the garrison document declares the
+// garrison neutral to the party, the castle's disposition, and the loader
+// compiles it so. Undeclared, the pair would default to hostile
+// ([encounter.DefaultStance]) and a fight would form at the start.
+//
+// THE PATROL STILL WALKS. Its row is `when: { enemy: none }`, and an enemy
+// is an OPPOSED sighting only: [encounter.projectFacts] (facts.go) skips a
+// sighting that is not opposed, and opposed is `StanceBetween == hostile`
+// (world.go, Encounter.opposed). A neutral party in sight is no enemy, so
+// `enemy: none` holds and the patrol row fires.
+func TestGarrison_IsNeutralToTheParty(t *testing.T) {
+	doc, _, err := Generate(DefaultPlan(), garrisonOptions(5, 2))
+	require.NoError(t, err)
+	compiled, err := Prove(doc)
+	require.NoError(t, err)
+	require.Equal(t, encounter.StanceHostile, encounter.DefaultStance(garrisonFaction, encounter.FactionParty),
+		"without the declaration the garrison would fight the party")
+	var found []encounter.DispositionInput
+	for _, d := range compiled.Field.Dispositions {
+		pair := map[encounter.FactionID]bool{d.Between[0]: true, d.Between[1]: true}
+		if pair[garrisonFaction] && pair[encounter.FactionParty] {
+			found = append(found, d)
+		}
+	}
+	require.Len(t, found, 1)
+	require.Equal(t, encounter.StanceNeutral, found[0].Stance)
+	require.Empty(t, found[0].Until, "the stance is static")
+
+	off := keepAt(t, 10000)
+	require.Empty(t, off.compiled.Field.Dispositions, "no garrison, no disposition")
+}
+
 // TestGarrison_OffIsGolden: zero garrison writes today's bytes.
 func TestGarrison_OffIsGolden(t *testing.T) {
 	o := DefaultOptions()
@@ -123,7 +155,7 @@ func TestGarrison_OffIsGolden(t *testing.T) {
 // goldenGarrison is the SHA-256 of the 10,000-hex keep at seed 1 and the
 // default densities, garrison 99, patrols 20, key bench-keep-garrison,
 // command line "keepgen".
-const goldenGarrison = "24aa1bad43a150f300976856098311fee620b61cf11a9a7bc3fc55980aaebe51"
+const goldenGarrison = "4595da98b9f5bcef25155274d4a9a2978bbc83ca723dacc7de68990a9832395e"
 
 // TestGenerate_GoldenGarrison pins the garrison document's bytes.
 func TestGenerate_GoldenGarrison(t *testing.T) {

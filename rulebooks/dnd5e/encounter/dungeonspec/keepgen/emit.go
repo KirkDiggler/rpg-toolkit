@@ -191,7 +191,8 @@ func emitSite(p *Plan, l *layout, s *site, o Options) (emitted, error) {
 
 // emitOrders writes the garrison's tables and its faction, when it has one:
 // a `patrol-<i>` table per patrol, walking its loop with nobody to chase,
-// then the `post` the rest hold, then the side with its soldier/coward mix.
+// then the `post` the rest hold, then the side with its soldier/coward mix,
+// and its disposition: neutral to the party.
 func emitOrders(b *strings.Builder, s *site) {
 	if len(s.orders) == 0 {
 		return
@@ -215,6 +216,10 @@ func emitOrders(b *strings.Builder, s *site) {
 		fmt.Fprintf(b, "  %s:\n    time:\n      - { hold: {} }\n", postTable)
 	}
 	fmt.Fprintf(b, "factions:\n  - { id: %s, temper: { soldier: 2, coward: 1 } }\n", garrisonFaction)
+	// NEUTRAL TO THE PARTY, the castle's own disposition (rpg-project#771):
+	// a garrison watches a visitor rather than attacking it, so no fight
+	// forms at the start and the world clock carries every Move.
+	fmt.Fprintf(b, "dispositions:\n  - between:\n      - %s\n      - party\n    stance: neutral\n", garrisonFaction)
 }
 
 // emitBindings binds each ordered monster to the garrison and its table.
