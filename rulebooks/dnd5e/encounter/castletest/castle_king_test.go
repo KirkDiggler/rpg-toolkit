@@ -201,6 +201,7 @@ func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 			Table:    m.Table,
 			Options:  m.Options,
 			Arrives:  m.Arrives,
+			Machine:  m.Machine,
 			Temper:   soldierProfiles(m.Temper),
 			Holds:    holds,
 			Facing:   m.FacingDegrees,

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
+	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 	"gopkg.in/yaml.v3"
@@ -302,6 +303,12 @@ type MonsterPlacement struct {
 	// and fills [encounter.Temper.Profile] (or Profiles, for a mix) on the
 	// way in.
 	Temper encounter.Temper `json:"Temper,omitzero"`
+
+	// Machine is this monster's recipe (rpg-project#766 S4, states.go): its
+	// binding's `states`, else its faction's, compiled — for a host to hand
+	// to [encounter.MemberInput.Machine] when it spawns the sheet. Nil when
+	// neither authored one, which is the default recipe.
+	Machine *machine.Recipe `json:"Machine,omitempty"`
 
 	// Arrives is the predicate that brings this monster into the run
 	// ([PlaceSpec.Arrives]), compiled to the composition's own trigger by
@@ -1444,6 +1451,7 @@ type inherited struct {
 	on      map[string]map[string][]AnswerSpec
 	temper  map[string]TemperSpec
 	options map[string][]OptionSpec
+	states  map[string]*StatesSpec
 }
 
 // inheritedOrders indexes the declared factions' orders. The two maps are
@@ -1455,6 +1463,7 @@ func inheritedOrders(factions []FactionSpec, tables map[string]TableSpec) inheri
 		on:      make(map[string]map[string][]AnswerSpec, len(factions)),
 		temper:  make(map[string]TemperSpec, len(factions)),
 		options: make(map[string][]OptionSpec, len(factions)),
+		states:  make(map[string]*StatesSpec, len(factions)),
 	}
 	for _, fa := range factions {
 		// A NAMED TABLE IS THE FACTION'S BASE, and its own `on:` is laid over
@@ -1465,6 +1474,7 @@ func inheritedOrders(factions []FactionSpec, tables map[string]TableSpec) inheri
 		out.on[fa.ID] = layerSpecs(rootTableOn(tables, fa.Table), fa.On)
 		out.temper[fa.ID] = fa.Temper
 		out.options[fa.ID] = fa.Options
+		out.states[fa.ID] = fa.States
 	}
 
 	return out
@@ -1502,6 +1512,7 @@ type creatureOrders struct {
 	On      map[string][]AnswerSpec
 	Temper  string
 	Actions []string
+	States  *StatesSpec
 }
 
 // ordersOf is a creature's compiled orders: its faction's answer table with
@@ -1520,6 +1531,7 @@ func ordersOf(c creatureOrders, from inherited, o encounter.Orientation) Monster
 		Actions: append([]string(nil), c.Actions...),
 		Table:   encounter.Layer(tableOf(from.on[side], o), tableOf(c.On, o)),
 		Temper:  temperOf(c.Temper, from.temper[side]),
+		Machine: machineOf(c.States, from.states[side], c.ID, side),
 	}
 }
 

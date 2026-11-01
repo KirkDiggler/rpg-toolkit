@@ -13,11 +13,12 @@ import (
 
 // BenchmarkGarrisonMove is a four-cell Move on the garrison keep
 // (rpg-project#766 S1, S3): the 10k keep with 99 creatures given orders and
-// 20 of them on patrol routes, the same document
+// 20 of them on patrol routes, in two keeps (below), the documents
 //
-//	go run ./cmd/keepgen -hexes 10000 -seed 1 -garrison 99 -patrols 20 -key bench-keep-garrison
+//	go run ./cmd/keepgen -hexes 10000 -seed 1 -garrison 99 -patrols 20 -key bench-keep-garrison -posts-listen=false   # default
+//	go run ./cmd/keepgen -hexes 10000 -seed 1 -garrison 99 -patrols 20 -key bench-keep-garrison                       # posts-asleep
 //
-// writes. One player paces four cells, back and forth beside the party start,
+// write. One player paces four cells, back and forth beside the party start,
 // one walk per op; at thirty feet a round is six cells, so two ops in three
 // raise the world clock and the garrison is asked what it does with time.
 // Opening the keep is outside the timer, and the keep stays open across ops.
@@ -25,13 +26,35 @@ import (
 //	go test -run XXX -bench BenchmarkGarrisonMove -benchtime 20x -count 3 .
 //
 // Numbers on rpg-project#773 and #766: before is the census (every
-// world-clock member walked on every raise); after is the due heap.
+// world-clock member walked on every raise); after is the due heap. S3's
+// ~193 ms/op was taken before the garrison turned neutral to the party
+// (97098c41), when every Move ran inside a fight and nobody was asked the
+// time; ~4.2 s/op on `default` is the first number in which it is.
+//
+// TWO KEEPS (rpg-project#766 S4): `default` is the garrison as S1 wrote it,
+// every creature on the default recipe and due every round; `posts-asleep`
+// is the same keep with keepgen's `-posts-listen`, the 79 posts posted and
+// asking the world clock nothing until a sound lands near them, so a raise
+// costs the 20 patrols.
 func BenchmarkGarrisonMove(b *testing.B) {
+	for _, tc := range []struct {
+		name   string
+		listen bool
+	}{{"default", false}, {"posts-asleep", true}} {
+		b.Run(tc.name, func(b *testing.B) { benchGarrisonMove(b, tc.listen) })
+	}
+}
+
+func benchGarrisonMove(b *testing.B, listen bool) {
 	b.StopTimer()
-	compiled := compiledOnce(b, "keep-garrison-10000", func() ([]byte, error) {
+	key := "keep-garrison-10000"
+	if listen {
+		key += "-posts-listen"
+	}
+	compiled := compiledOnce(b, key, func() ([]byte, error) {
 		opts := keepgen.DefaultOptions()
 		opts.Hexes, opts.Seed, opts.Key = 10000, 1, "bench-keep-garrison"
-		opts.Garrison, opts.Patrols = 99, 20
+		opts.Garrison, opts.Patrols, opts.PostsListen = 99, 20, listen
 		raw, _, err := keepgen.Generate(keepgen.DefaultPlan(), opts)
 		return raw, err
 	})
@@ -40,7 +63,7 @@ func BenchmarkGarrisonMove(b *testing.B) {
 		members = append(members, encounter.MemberInput{
 			ID: encounter.MemberID(m.MemberID), Kind: encounter.KindMonster, Position: m.At,
 			Faction: encounter.FactionID(m.Faction), Table: m.Table, Options: m.Options,
-			Arrives: m.Arrives, Temper: soldierTemper(m.Temper), Facing: m.FacingDegrees,
+			Arrives: m.Arrives, Temper: soldierTemper(m.Temper), Facing: m.FacingDegrees, Machine: m.Machine,
 		})
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{

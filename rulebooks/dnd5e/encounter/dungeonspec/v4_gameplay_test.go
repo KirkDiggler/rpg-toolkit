@@ -585,7 +585,7 @@ func TestTheNewKeysAreOfferedByTheUnknownKeyRefusal(t *testing.T) {
 
 	requireExactDefect(t, refusals(t, v4With("", "    monsterBindings:\n      goblin-1: { tempre: coward }")),
 		"room.room.monsterBindings.goblin-1.tempre",
-		`"tempre" is not a key this build reads: they are actions, addActions, arrives, dropActions, faction, holds, on, options, table, temper`)
+		`"tempre" is not a key this build reads: they are actions, addActions, arrives, dropActions, faction, holds, on, options, states, table, temper`)
 }
 
 // A binding whose creature is gone is named ONCE. Its contents are not asked

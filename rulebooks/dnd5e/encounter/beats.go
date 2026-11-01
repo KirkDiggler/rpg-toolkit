@@ -35,6 +35,11 @@ const (
 	// and never lands one.
 	BeatState = "state"
 
+	// BeatWakeCut records a raise that reached the bound on the beats one pass
+	// matches (rpg-project#766 S4, design §2): how many it matched and how
+	// many it dropped. No shipped content comes near it.
+	BeatWakeCut = "wake-cut"
+
 	// BeatTurnEnded records a fight's turn passing to the next member.
 	BeatTurnEnded = "turn-ended"
 

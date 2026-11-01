@@ -83,6 +83,11 @@ type MonsterView struct {
 	// Self is who this view is for.
 	Self MemberID
 
+	// Key is the table key this turn rolls (rpg-project#766 S4): empty for
+	// `time`, the creature's turn; an authored key (`alert`, `march`) when
+	// the state its machine stands in picks one ([Encounter.runPick]).
+	Key AnswerKey
+
 	// Position is where this member stands, DUNGEON-ABSOLUTE — the same
 	// frame every SeenMember.Position and every Move path cell speaks.
 	Position spatial.Position

@@ -21,6 +21,7 @@
 //	-key           the site's key, equal to its shelf file's name (default bench-keep)
 //	-garrison      monsters, first in placement order, given orders (default 0)
 //	-patrols       of the garrison, how many walk a route (default 0)
+//	-posts-listen  the garrison's posts listen for a sound (default true; only with -garrison)
 //	-out           the file to write (required)
 //
 // It prints the report as one line. A site the loader refuses, that seats
@@ -61,6 +62,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	key := fs.String("key", def.Key, "the site's key, equal to its shelf file's name")
 	garrison := fs.Int("garrison", def.Garrison, "monsters, first in placement order, given orders")
 	patrols := fs.Int("patrols", def.Patrols, "of the garrison, how many walk a route")
+	postsListen := fs.Bool("posts-listen", true, "the garrison's posts listen for a sound (only with -garrison)")
 	out := fs.String("out", "", "the file to write (required)")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -80,7 +82,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	doc, report, err := keepgen.Generate(plan, keepgen.Options{
 		Hexes: *hexes, Seed: *seed, PropDensity: *props, GroundsDensity: *grounds, MonsterDensity: *monsters,
-		Key: *key, Garrison: *garrison, Patrols: *patrols, CommandLine: strings.Join(append([]string{"keepgen"}, args...), " "),
+		Key: *key, Garrison: *garrison, Patrols: *patrols, PostsListen: *postsListen && *garrison > 0, CommandLine: strings.Join(append([]string{"keepgen"}, args...), " "),
 	})
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)

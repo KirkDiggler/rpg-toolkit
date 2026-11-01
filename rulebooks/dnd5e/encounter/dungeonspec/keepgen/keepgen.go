@@ -65,6 +65,13 @@ type Options struct {
 	// Patrols is how many of the garrison, first in placement order, walk a
 	// route of their own rather than hold their post. At most Garrison.
 	Patrols int
+	// PostsListen gives every post of the garrison (the ones that are not
+	// patrols) a recipe of its own (rpg-project#766 S4): posted, asking the
+	// world clock nothing until a sound lands within six hexes, then alert,
+	// rolling its table every round, and posted again three rounds on. The
+	// population a raise is measured on with the posts asleep. Default false:
+	// today's bytes; the command turns it on whenever `-garrison` is given.
+	PostsListen bool
 }
 
 // DefaultOptions are the design's defaults at keep scale: 10,000 hexes,

@@ -167,6 +167,25 @@ type Encounter struct {
 	roller     dice.Roller
 	sightAreas map[string]SightArea
 
+	// landed is every beat landed for the listeners since the last raise
+	// matched them (wakebeats.go, rpg-project#766 S4). Persisted
+	// ([EncounterData.Landed]): a beat landed in a verb that raised nothing
+	// waits for the raise that does.
+	landed []wakeBeat
+
+	// pickKey is the table key a world pick in progress rolls, set by
+	// [Encounter.runPick] for the view it builds; empty is `time`.
+	pickKey AnswerKey
+
+	// wakeMatched is how many landed beats the pass in progress has matched,
+	// against [wakeBeatBound]; reset by every [Encounter.wakePass].
+	wakeMatched int
+
+	// reactionPicked says a reaction in the pass in progress ran a pick, so a
+	// pass that raised nothing still owes the sight refresh; reset by every
+	// [Encounter.wakePass].
+	reactionPicked bool
+
 	// worldThinking guards [Encounter.wake] against re-entry: the outer pass
 	// owns the world's round, and a nested one would step the same machines
 	// twice for one raise. The same shape as `driving`, one clock over.
@@ -713,7 +732,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			AppearanceRef:      m.AppearanceRef,
 			DefaultActivityRef: m.DefaultActivityRef,
 			Facing:             m.Facing,
-			Options:            m.Options, Table: m.Table,
+			Options:            m.Options, Table: m.Table, Machine: m.Machine,
 		}); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
 		}
@@ -940,6 +959,9 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			Temper:             mi.Temper,
 			BlocksMovement:     mi.BlocksMovement,
 			Faction:            mi.Faction,
+		}
+		if err = e.useRecipe(member, mi.Machine); err != nil {
+			return nil, fmt.Errorf("newencounter: %w", err)
 		}
 
 		// A MEMBER WITH A PREDICATE WAITS IN RESERVE (rpg-project#375,
@@ -1733,6 +1755,9 @@ func (e *Encounter) refreshSightDeclaring(
 	if err := e.appendSightedBeats(deltas, declared, uint64(e.clock.ToData().HighWater)); err != nil {
 		return nil, nil, err
 	}
+	// And a sighting wakes the observer whose state listens for one
+	// (rpg-project#766 S4), at the next raise.
+	e.landSightings(deltas, uint64(e.clock.ToData().HighWater))
 
 	// A closed encounter has nothing to start a fight about, and form refuses
 	// one anyway — checking here turns that refusal into a non-event.
@@ -2166,7 +2191,7 @@ func (e *Encounter) validateJoin(in *JoinInput) error {
 		AppearanceRef:      in.AppearanceRef,
 		DefaultActivityRef: in.DefaultActivityRef,
 		Facing:             in.Facing,
-		Options:            in.Options, Table: in.Table,
+		Options:            in.Options, Table: in.Table, Machine: in.Machine,
 	}); err != nil {
 		return fmt.Errorf("join: %w", err)
 	}
@@ -2258,6 +2283,9 @@ func (e *Encounter) admitMember(in *JoinInput) (*memberRecord, *JoinOutput, erro
 		Temper:             in.Temper,
 		BlocksMovement:     in.BlocksMovement,
 		Faction:            in.Faction,
+	}
+	if err := e.useRecipe(member, in.Machine); err != nil {
+		return nil, nil, fmt.Errorf("join: %w", err)
 	}
 
 	// A JOINER WITH A PREDICATE GOES INTO RESERVE (rpg-project#375, design §3

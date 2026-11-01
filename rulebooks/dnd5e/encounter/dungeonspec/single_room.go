@@ -460,6 +460,13 @@ type RoomMonsterBinding struct {
 	// never mean two cells in the two dialects.
 	On map[string][]AnswerSpec `yaml:"on,omitempty" json:"on,omitempty"`
 
+	// States is this creature's recipe (rpg-project#766 S4, states.go): the
+	// states its machine can be in, what each listens for and which key of
+	// its table each picks. It WINS WHOLESALE over its faction's
+	// ([FactionSpec.States]); absent with no faction's means the default
+	// recipe, `on time, pick time`.
+	States *StatesSpec `yaml:"states,omitempty" json:"states,omitempty"`
+
 	// Temper is this creature's temperament: ONE WORD, and it WINS over its
 	// faction's word or mix ([TemperSpec]). Optional; absent means the
 	// faction answers, and a faction with a mix deals one per member.

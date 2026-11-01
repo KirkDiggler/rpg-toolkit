@@ -979,6 +979,20 @@ type MemberInput struct {
 	// an internal error on somebody's turn.
 	Table Table
 
+	// Machine is this member's authored recipe (rpg-project#766 S4, design
+	// §4): the states it can be in, what each listens for and which key of
+	// [MemberInput.Table] each picks. ALREADY LAYERED by the caller, like the
+	// table (placement over faction, nearest wins wholesale). Nil runs the
+	// default recipe, `watch: on time, pick time`, which is the world turn
+	// every creature with a table has always had.
+	//
+	// VALIDATED AT THIS DOOR ([compileRecipe]): a beat, a fact or a state
+	// the vocabulary does not have, a scope on a beat that has none, and a
+	// pick of a key no table may carry are [ErrBadMember]. A recipe on a
+	// member with no table is refused too: the machine is the table's
+	// skeleton, and with no table there is nothing for it to pick.
+	Machine *machine.Recipe
+
 	// Temper is the temperament loading this member's die: the word and the
 	// percent profile that word means, or a faction's MIX for this
 	// composition to deal one from at the door ([Temper], design §3).
@@ -1109,6 +1123,7 @@ type memberFacts struct {
 	Facing             *float64
 	Options            []Option
 	Table              Table
+	Machine            *machine.Recipe
 }
 
 // validateMemberFacts refuses a defective authored check or table. Callers ask
@@ -1134,7 +1149,7 @@ func validateMemberFacts(in memberFacts) error {
 	}
 	// A table this composition could not roll is refused at whichever door
 	// the member came in through, never at the roll (answer.go).
-	if err := validateTable(in.Table); err != nil {
+	if err := validateOrders(in.Table, in.Machine); err != nil {
 		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
 	}
 
@@ -1568,12 +1583,19 @@ type memberRecord struct {
 	// and persisted.
 	Dwell *dwell
 
+	// Recipe is [MemberInput.Machine], the authored recipe this creature
+	// runs, or nil for the default (rpg-project#766 S4). Persisted, as the
+	// table is. recipeKey is its program's key in [Encounter.programs],
+	// derived at every door ([Encounter.useRecipe]) and never stored.
+	Recipe    *machine.Recipe
+	recipeKey string
+
 	// Machine is this creature's machine blob (machine.go, rpg-project#766
 	// S3): its current state, bag, wake and anchor. The zero blob is the
 	// recipe's initial state. Only a member [Encounter.programFor] gives a
 	// program steps it; for anyone else it stays zero. A dwell is not a
 	// wake: a dwelling creature stays due every round (its patrol row holds,
-	// rows above it fire). Only an authored wake_in act sets the wake (S4).
+	// rows above it fire). Only an authored wake_in act sets the wake.
 	// Persisted.
 	Machine machine.Blob
 
@@ -1813,6 +1835,10 @@ type JoinInput struct {
 	Options []Option
 	Table   Table
 	Temper  Temper
+
+	// Machine is [MemberInput.Machine] for a joiner: its authored recipe,
+	// validated at this door the same way, or nil for the default.
+	Machine *machine.Recipe
 
 	// BlocksMovement — see [MemberInput.BlocksMovement]'s own doc. A joiner
 	// arriving mid-scene carries it exactly as an authored one does.

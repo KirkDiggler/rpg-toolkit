@@ -259,3 +259,43 @@ func TestOptionsFromHeader_Garrison(t *testing.T) {
 	require.Zero(t, got.Garrison)
 	require.Zero(t, got.Patrols)
 }
+
+// TestGarrison_PostsListen (rpg-project#766 S4): with the option on, every
+// post carries the listening recipe — posted, waking only to a sound within
+// six hexes — and the patrols keep the default; the document loads, the
+// header reads the option back, and with the option off the bytes are the
+// garrison's own.
+func TestGarrison_PostsListen(t *testing.T) {
+	o := garrisonOptions(5, 2)
+	o.PostsListen = true
+	doc, _, err := Generate(DefaultPlan(), o)
+	require.NoError(t, err)
+	compiled, err := Prove(doc)
+	require.NoError(t, err)
+
+	posts, patrols := 0, 0
+	for _, m := range compiled.Monsters {
+		if m.Faction != garrisonFaction {
+			continue
+		}
+		if m.Machine == nil {
+			patrols++
+			continue
+		}
+		posts++
+		require.Equal(t, "posted", m.Machine.Initial, "%s starts posted", m.MemberID)
+		require.Empty(t, m.Machine.States["posted"].Transitions[1:], "posted listens for the one sound")
+		require.Equal(t, "heard", string(m.Machine.States["posted"].Transitions[0].On))
+		require.NoError(t, encounter.ValidateMachine(m.Machine))
+	}
+	require.Equal(t, 3, posts, "every post listens")
+	require.Equal(t, 2, patrols, "the patrols run the default")
+
+	back, err := OptionsFromHeader(doc)
+	require.NoError(t, err)
+	require.True(t, back.PostsListen, "the header records the option")
+
+	off, _, err := Generate(DefaultPlan(), garrisonOptions(5, 2))
+	require.NoError(t, err)
+	require.NotContains(t, string(off), "states:", "off, no post carries a recipe")
+}

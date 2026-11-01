@@ -535,6 +535,12 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 		return nil, fmt.Errorf("speak: %w", err)
 	}
 
+	// A BEATEN LINE SPOKEN TO A PROP IS THAT PROP'S DEED (rpg-project#766 S4):
+	// `clock: bell:<prop>` for whoever listens for it — the bell rung.
+	if in.Prop != "" && in.Beaten {
+		e.landClock(bellPrefix+string(in.Prop), "", at)
+	}
+
 	// THE WORLD'S PRICE FOR AN ACTION, paid after the answer has landed — the
 	// fact it taught, the deed it lodged, the running it set up — and before
 	// anything refreshes sight (design §5, worldtime.go). It is what makes a
