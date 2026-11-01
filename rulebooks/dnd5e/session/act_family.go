@@ -209,8 +209,9 @@ func statePiece(body StateChange) piece { return piece{family: FamilyState, body
 
 // machinePiece is a creature's machine entering a state (state): one state
 // piece naming the creature, the state it left, the state it entered and
-// why. A beat naming no creature or no entered state is unreadable, never a
-// blank line on the panel.
+// why. A beat naming no creature, no state left or no state entered is
+// unreadable, never a blank line on the panel: the writer steps only a
+// machine that leaves one state for another.
 func machinePiece(payload []byte) ([]piece, error) {
 	var p struct {
 		Member string `json:"member"`
@@ -221,8 +222,8 @@ func machinePiece(payload []byte) ([]piece, error) {
 	if err := json.Unmarshal(payload, &p); err != nil {
 		return nil, err
 	}
-	if p.Member == "" || p.To == "" {
-		return nil, fmt.Errorf("names no member or no state entered")
+	if p.Member == "" || p.From == "" || p.To == "" {
+		return nil, fmt.Errorf("names no member, no state left or no state entered")
 	}
 	return one(statePiece(StateChange{
 		Party: member(p.Member), Change: StateMachine,
@@ -1138,8 +1139,8 @@ func clockPieces(beat string, payload []byte) ([]piece, error) {
 		Roll           int             `json:"roll"`
 		Total          int             `json:"total"`
 		Calculation    json.RawMessage `json:"calculation"`
-		Matched        int             `json:"matched"`
-		Dropped        int             `json:"dropped"`
+		Matched        *int            `json:"matched"`
+		Dropped        *int            `json:"dropped"`
 	}
 	if err := json.Unmarshal(payload, &p); err != nil {
 		return nil, err
@@ -1211,7 +1212,13 @@ func clockPieces(beat string, payload []byte) ([]piece, error) {
 			Offer: ReactionRef{Ref: p.Offer.Ref, Name: p.Offer.Name}, Roll: roll,
 		}
 	case encounter.BeatWakeCut:
-		entry.Mark, entry.WakeCut = ClockWakeCut, &WakeCut{Matched: p.Matched, Dropped: p.Dropped}
+		// The writer cuts only when it drops at least one beat, so a cut
+		// with no count, or none dropped, is a broken record: undecoded,
+		// never a "0 dropped" that reads as true.
+		if p.Matched == nil || p.Dropped == nil || *p.Dropped < 1 {
+			return nil, fmt.Errorf("names no matched count or no beat dropped")
+		}
+		entry.Mark, entry.WakeCut = ClockWakeCut, &WakeCut{Matched: *p.Matched, Dropped: *p.Dropped}
 	default:
 		return nil, fmt.Errorf("no clock mark")
 	}

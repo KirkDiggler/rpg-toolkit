@@ -677,10 +677,12 @@ func (s *ActFoldSuite) TestFold_StateBeat() {
 
 // TestFold_StateBeatNamingNoStateIsUndecoded is the state piece failing
 // closed: a state beat naming no creature or no state entered is an
-// undecoded entry, never a blank line on the panel.
+// undecoded entry, never a blank line on the panel. A beat naming no state
+// left is the same: the writer steps only a machine that leaves one.
 func (s *ActFoldSuite) TestFold_StateBeatNamingNoStateIsUndecoded() {
 	for name, fields := range map[string]map[string]any{
 		"no member": {"beat": encounter.BeatState, "from": "waiting", "to": "marching"},
+		"no from":   {"beat": encounter.BeatState, "member": "reserve-1", "to": "marching"},
 		"no to":     {"beat": encounter.BeatState, "member": "reserve-1", "from": "waiting"},
 	} {
 		acts := foldActs("sess", "alice", []record.Entry{s.beat("", fields)})
@@ -705,4 +707,21 @@ func (s *ActFoldSuite) TestFold_WakeCut() {
 	entry, ok := acts[0].Body.(ClockEntry)
 	s.Require().True(ok, "%T", acts[0].Body)
 	s.Equal(ClockEntry{Mark: ClockWakeCut, WakeCut: &WakeCut{Matched: 4096, Dropped: 17}}, entry)
+}
+
+// TestFold_WakeCutWithNoCountIsUndecoded is the wake cut failing closed: the
+// writer cuts only when it drops at least one beat, so a cut naming no count,
+// or none dropped, is an undecoded entry, never a "0 dropped" that reads true.
+func (s *ActFoldSuite) TestFold_WakeCutWithNoCountIsUndecoded() {
+	for name, fields := range map[string]map[string]any{
+		"no dropped":   {"beat": encounter.BeatWakeCut, "matched": 4096},
+		"none dropped": {"beat": encounter.BeatWakeCut, "matched": 4096, "dropped": 0},
+		"no matched":   {"beat": encounter.BeatWakeCut, "dropped": 17},
+	} {
+		acts := foldActs("sess", "alice", []record.Entry{s.beat("", fields)})
+
+		s.Require().Len(acts, 1, name)
+		s.Equal(FamilyClock, acts[0].Family, name)
+		s.NotEmpty(acts[0].Undecoded, name)
+	}
 }
