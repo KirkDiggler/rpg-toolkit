@@ -7,11 +7,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
+	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -536,11 +538,32 @@ func selectorWord(entry Answer) string {
 // words; this is the composition refusing them for every other caller,
 // including a persisted blob somebody edited.
 func validateTable(table Table) error {
+	return validateOrders(table, nil)
+}
+
+// validateOrders is [validateTable] for a member that runs a recipe
+// (rpg-project#766 S4): the recipe compiles, and the keys its states pick
+// are legal table keys beside `time`, judged as `time` is — what a creature
+// does with its time, never a verdict. A recipe with no table is refused:
+// there is nothing for it to pick.
+func validateOrders(table Table, recipe *machine.Recipe) error {
+	picked := map[AnswerKey]bool{}
+	if recipe != nil {
+		if len(table) == 0 {
+			return fmt.Errorf("a machine on a member with no table has nothing to pick: %w", ErrBadAnswer)
+		}
+		if _, err := compileRecipe(recipe); err != nil {
+			return fmt.Errorf("machine: %w: %w", err, ErrBadAnswer)
+		}
+		for _, k := range picksOf(recipe) {
+			picked[k] = true
+		}
+	}
 	for key, entries := range table {
 		if IsRetiredTableKey(key) {
 			return fmt.Errorf("`%s` is no longer a table key: author an option: %w", key, ErrBadAnswer)
 		}
-		if !validTableKey(key) {
+		if !validTableKey(key) && !picked[key] {
 			return fmt.Errorf("answer %q is not a trigger this build rolls: %w", key, ErrBadAnswer)
 		}
 		for i, entry := range entries {
@@ -579,7 +602,7 @@ func validateEntry(key AnswerKey, i int, entry Answer) error {
 		return validateGroupEntry(key, i, entry)
 	}
 
-	social := key != AnswerTime
+	social := isOptionKey(key)
 	word := answerWord(entry)
 	switch word {
 	case "flee":
@@ -632,7 +655,7 @@ func validateGroupEntry(key AnswerKey, i int, entry Answer) error {
 	if err := entry.Validate(); err != nil {
 		return fmt.Errorf("answer %q entry %d: %w: %w", key, i, err, ErrBadAnswer)
 	}
-	if len(entry.When) > 0 && key != AnswerTime {
+	if len(entry.When) > 0 && isOptionKey(key) {
 		return fmt.Errorf("answer %q entry %d: a social verdict is already the condition: %w",
 			key, i, ErrBadAnswer)
 	}
@@ -771,6 +794,13 @@ func selectorOf(entry Answer) *Selector {
 	default:
 		return nil
 	}
+}
+
+// isOptionKey reports whether a key is one of [OptionKeys]: a verdict, where
+// the words a creature does with time are not legal. Every other key a
+// table may carry — `time`, or a key a recipe picks — is time.
+func isOptionKey(key AnswerKey) bool {
+	return slices.Contains(OptionKeys, key)
 }
 
 // validTableKey reports whether a key is one of [TableKeys].

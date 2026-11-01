@@ -475,6 +475,13 @@ tables:
       # answer do not stand in the gate's one crossing.
       - when: { enemy: none }
         toward: { at: { q: -2, r: 4 } }
+    # Hand edit (rpg-project#766 S4): the reserves' march, one leg a round of
+    # the gate fight: the dasher on a foe they hold, else to the yard two
+    # cells in from the gate.
+    march:
+      - use: dasher
+      - when: { enemy: none }
+        toward: { at: { q: -2, r: 4 } }
 factions:
   - id: garrison
     mind: captain
@@ -1672,6 +1679,21 @@ room:
       gate-1:
         faction: garrison
         table: gate-patrol
+        # Hand edit (rpg-project#766 S4): the gate post listens. It walks its
+        # loop on its `time` table in either state; a sound within six hexes
+        # turns it alert in the raise the sound landed, and three rounds on
+        # it stands down. Its turns are the same turns; the record says when
+        # it heard.
+        states:
+          initial: posted
+          posted:
+            transitions:
+              - { on: time, do: [{ pick: time }] }
+              - { on: heard, within: 6, to: alert, do: [{ anchor: true }], reason: heard something }
+          alert:
+            transitions:
+              - { on: time, rounds: 3, to: posted, do: [{ pick: time }], reason: nothing came of it }
+              - { on: time, do: [{ pick: time }] }
       gate-2:
         faction: garrison
         table: gate-patrol-east
@@ -1807,11 +1829,41 @@ room:
         table: answer-the-gate
         arrives:
           fact: gate-opened
+        # Hand edit (rpg-project#766 S4, #661): the reserves answer the gate
+        # fight on its own clock. Arrived and waiting, a reserve keeps its
+        # `time` table; every round of a fight the garrison is engaged in it
+        # marches one leg on `march`, and asks the world clock nothing; the
+        # first round of the world after the fight, it waits again.
+        states:
+          initial: waiting
+          waiting:
+            transitions:
+              - { on: time, do: [{ pick: time }] }
+              - { on: clock:fight, to: marching, do: [{ pick: march }], reason: the gate is fighting }
+          marching:
+            transitions:
+              - { on: clock:fight, do: [{ pick: march }] }
+              - { on: clock:world, to: waiting, reason: the fight is over }
       reserve-2:
         faction: garrison
         table: answer-the-gate
         arrives:
           fact: gate-opened
+        # Hand edit (rpg-project#766 S4, #661): the reserves answer the gate
+        # fight on its own clock. Arrived and waiting, a reserve keeps its
+        # `time` table; every round of a fight the garrison is engaged in it
+        # marches one leg on `march`, and asks the world clock nothing; the
+        # first round of the world after the fight, it waits again.
+        states:
+          initial: waiting
+          waiting:
+            transitions:
+              - { on: time, do: [{ pick: time }] }
+              - { on: clock:fight, to: marching, do: [{ pick: march }], reason: the gate is fighting }
+          marching:
+            transitions:
+              - { on: clock:fight, do: [{ pick: march }] }
+              - { on: clock:world, to: waiting, reason: the fight is over }
       scullion:
         faction: kitchen
       sergeant:

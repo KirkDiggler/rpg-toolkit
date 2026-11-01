@@ -4,11 +4,15 @@
 package encounter
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
@@ -39,17 +43,23 @@ import (
 //
 // which is the world turn the census gave it: due every round, roll the
 // `time` table, execute. So the castle plays as it did. A state with no
-// `time` transition is never due; that is the point of the machine, and the
-// authored recipes that use it are S4's.
+// `time` transition is never due; that is the point of the machine.
+//
+// # Authored recipes
+//
+// A creature may run a recipe of its own ([MemberInput.Machine], S4): states
+// that listen for the beats this composition lands (wakebeats.go) and pick a
+// key of its table. A creature whose state wants no time costs a raise
+// nothing until a beat in its scope wakes it.
 //
 // # A dwell is not a wake
 //
 // A patrol standing out a waypoint's wait (dwell.go) stays due every round on
 // the default recipe: it is asked, its patrol row holds, and the rows above
 // it still fire (a `heard` row walks a standing guard toward a clang). So the
-// dwell stays the member's own (memberRecord.Dwell) and this slice never sets
-// a wake; only an authored `wake_in` act does (S4). DueAt honours a wake
-// wherever it comes from.
+// dwell stays the member's own (memberRecord.Dwell) and never sets a wake;
+// only an authored `wake_in` act does. DueAt honours a wake wherever it comes
+// from, and the wake pays the rounds slept ([Encounter.afterStep]).
 
 // worldClockName is the name of the default clock (R5): every member is
 // seated on it unless content names another, and a member's empty
@@ -73,21 +83,123 @@ type tickEv struct {
 	Round uint64
 }
 
-// machineVocabulary is what this slice supplies the machine: the `time` beat
-// alone, carrying its round. Facts and the scoped beats (heard, deed, seen,
-// fact, clock) are S4's.
+// machineVocabulary is the vocabulary every recipe is compiled against
+// (design §3): the `time` beat, carrying its round; the scoped beats `heard`,
+// `deed` and `seen`, whose scope is hexes and regions from the listener; the
+// unscoped `fact`, `clock:world` and `clock:fight`; and the fact `enemy`
+// (`seen`, `remembered` or `none`). [vocabularyFor] adds the words a recipe
+// names that are open sets: a deed word, a clock name, a fact.
 func machineVocabulary() machine.Vocabulary {
+	scoped := machine.BeatSpec{InScope: inScope, Round: wakeRound}
+	unscoped := machine.BeatSpec{Round: wakeRound}
+
 	return machine.Vocabulary{
 		Beats: map[machine.Beat]machine.BeatSpec{
-			beatTime: {
-				Timed: true,
-				Round: func(ev any) (uint64, bool) {
-					t, ok := ev.(tickEv)
-					return t.Round, ok
-				},
-			},
+			beatTime:                  {Timed: true, Round: wakeRound},
+			beatHeard:                 scoped,
+			beatDeed:                  scoped,
+			beatSeen:                  scoped,
+			beatFact:                  unscoped,
+			clockBeat(worldClockName): unscoped,
+			clockBeat(clockFight):     unscoped,
+		},
+		Facts: map[machine.FactName]machine.FactSpec{
+			factEnemy: {Kind: machine.KindString, Read: readEnemy},
 		},
 	}
+}
+
+// vocabularyFor is [machineVocabulary] with the open words this recipe
+// names: `deed:<word>` for a deed word this build holds ([WhenDeeds]),
+// `clock:<name>` for any non-empty name (a bell, an area clock), and
+// `fact:<id>` for any fact a guard reads. A word outside those stays out,
+// and the compile refuses it as unknown.
+func vocabularyFor(r *machine.Recipe) machine.Vocabulary {
+	v := machineVocabulary()
+	for _, st := range r.States {
+		for _, t := range st.Transitions {
+			name := string(t.On)
+			switch {
+			case strings.HasPrefix(name, deedPrefix):
+				if word := strings.TrimPrefix(name, deedPrefix); slices.Contains(WhenDeeds, word) {
+					v.Beats[t.On] = v.Beats[beatDeed]
+				}
+			case strings.HasPrefix(name, beatClock) && len(name) > len(beatClock):
+				v.Beats[t.On] = machine.BeatSpec{Round: wakeRound}
+			}
+			addGuardFacts(v.Facts, t.When)
+		}
+	}
+
+	return v
+}
+
+// addGuardFacts declares every `fact:<id>` leaf in a guard tree.
+func addGuardFacts(facts map[machine.FactName]machine.FactSpec, g *machine.Guard) {
+	if g == nil {
+		return
+	}
+	if g.Fact != nil && strings.HasPrefix(string(g.Fact.Name), factPrefix) && len(g.Fact.Name) > len(factPrefix) {
+		id := FactID(strings.TrimPrefix(string(g.Fact.Name), factPrefix))
+		facts[g.Fact.Name] = machine.FactSpec{Kind: machine.KindBool, Read: func(env any) (any, bool) {
+			me, ok := env.(*machineEnv)
+			if !ok {
+				return nil, false
+			}
+			return me.e.world.knowsFact(me.id, id), true
+		}}
+	}
+	addGuardFacts(facts, g.Not)
+	for i := range g.All {
+		addGuardFacts(facts, &g.All[i])
+	}
+	for i := range g.Any {
+		addGuardFacts(facts, &g.Any[i])
+	}
+}
+
+// machineEnv is what a guard's facts read: the member asking, read lazily so
+// a guard that names no fact costs nothing.
+type machineEnv struct {
+	e     *Encounter
+	id    MemberID
+	facts *Facts
+	err   error
+}
+
+// envFor is the env one member's step reads its facts from.
+func (e *Encounter) envFor(id MemberID) *machineEnv {
+	return &machineEnv{e: e, id: id}
+}
+
+// readEnemy is the `enemy` fact: `seen` when an opposed member is in sight
+// (in reach or not), `remembered` when one is held only in memory, `none`
+// otherwise — the table's own bands, read through the same projection
+// ([Encounter.factsFor]), folded to the three a state can name.
+func readEnemy(env any) (any, bool) {
+	me, ok := env.(*machineEnv)
+	if !ok {
+		return nil, false
+	}
+	if me.facts == nil && me.err == nil {
+		f, err := me.e.factsFor(me.id)
+		if err != nil {
+			me.err = err
+			return nil, false
+		}
+		me.facts = &f
+	}
+	if me.err != nil {
+		return nil, false
+	}
+	switch {
+	case me.facts.EnemyInReach, me.facts.EnemySeen:
+		return string(EnemySeen), true
+	case me.facts.EnemyRemembered, me.facts.EnemyLost:
+		return string(EnemyRemembered), true
+	}
+
+	return string(EnemyNone), true
 }
 
 // defaultRecipe is the recipe every creature with a table and no recipe of
@@ -111,7 +223,8 @@ func defaultRecipe() (machine.Recipe, error) {
 }
 
 // compilePrograms compiles every recipe this build ships against the
-// encounter's vocabulary, keyed by the recipe's ref.
+// encounter's vocabulary, keyed by the recipe's ref. Authored recipes join
+// the map as members carrying them come in ([Encounter.useRecipe]).
 //
 // Errors: a recipe the vocabulary refuses, which is this build's defect.
 func compilePrograms() (map[string]*machine.Program, error) {
@@ -127,14 +240,110 @@ func compilePrograms() (map[string]*machine.Program, error) {
 	return map[string]*machine.Program{defaultRecipeRef: program}, nil
 }
 
-// programFor is the program a member's blob runs: the default recipe for a
-// monster with a table, nil for anyone else. A creature with no table has no
-// machine and is never armed, the census's own filter ("a creature nobody
-// wrote orders for holds, and holding is indistinguishable from not being
-// asked").
+// compileRecipe compiles an authored recipe against the vocabulary it names
+// ([vocabularyFor]) and refuses one this composition could not run: a pick of
+// the `time` key under no transition is fine, but a recipe is only ever the
+// skeleton of a table, so every key it picks must be one its table could
+// carry (any word but an option's verdict or a retired key).
+//
+// Errors: the machine's own refusals ([machine.Recipe.Compile]), joined, and
+// a pick of a key no table may carry.
+func compileRecipe(r *machine.Recipe) (*machine.Program, error) {
+	p, err := r.Compile(vocabularyFor(r))
+	if err != nil {
+		return nil, err
+	}
+	for _, key := range picksOf(r) {
+		if slices.Contains(OptionKeys, key) || IsRetiredTableKey(key) {
+			return nil, fmt.Errorf("pick %q is not a key a creature's table carries for its own time", key)
+		}
+	}
+
+	return p, nil
+}
+
+// picksOf is every table key a recipe picks, sorted.
+func picksOf(r *machine.Recipe) []AnswerKey {
+	if r == nil {
+		return nil
+	}
+	seen := map[AnswerKey]bool{}
+	for _, st := range r.States {
+		for _, t := range st.Transitions {
+			for _, a := range t.Do {
+				if a.Pick != "" {
+					seen[AnswerKey(a.Pick)] = true
+				}
+			}
+		}
+	}
+	out := make([]AnswerKey, 0, len(seen))
+	for k := range seen {
+		out = append(out, k)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+
+	return out
+}
+
+// recipeKey is the program cache's key for an authored recipe: its ref and
+// a hash of its whole shape, so two placements authoring the same recipe
+// share one program and two different recipes under one ref never do.
+func recipeKey(r *machine.Recipe) (string, error) {
+	raw, err := json.Marshal(r)
+	if err != nil {
+		return "", fmt.Errorf("recipe: %w", err)
+	}
+	sum := sha256.Sum256(raw)
+
+	return r.Ref.String() + "#" + hex.EncodeToString(sum[:8]), nil
+}
+
+// useRecipe gives a member its own copy of an authored recipe and compiles it into the encounter's program
+// cache, once per distinct recipe, and records the key on the member. A
+// member with no recipe runs the default and is left as it is.
+//
+// Errors: the recipe's own refusals ([compileRecipe]), wrapped in
+// [ErrBadMember].
+func (e *Encounter) useRecipe(m *memberRecord, r *machine.Recipe) error {
+	clone, err := cloneRecipe(r)
+	if err != nil {
+		return fmt.Errorf("member %s: %w: %w", m.ID, err, ErrBadMember)
+	}
+	m.Recipe = clone
+	if m.Recipe == nil {
+		m.recipeKey = ""
+		return nil
+	}
+	key, err := recipeKey(m.Recipe)
+	if err != nil {
+		return fmt.Errorf("member %s: %w: %w", m.ID, err, ErrBadMember)
+	}
+	if _, ok := e.programs[key]; !ok {
+		p, cerr := compileRecipe(m.Recipe)
+		if cerr != nil {
+			return fmt.Errorf("member %s: machine: %w: %w", m.ID, cerr, ErrBadMember)
+		}
+		e.programs[key] = p
+	}
+	m.recipeKey = key
+
+	return nil
+}
+
+// programFor is the program a member's blob runs: its authored recipe's, or
+// the default recipe for a monster with a table, nil for anyone else. A
+// creature with no table has no machine and is never armed, the census's own
+// filter ("a creature nobody wrote orders for holds, and holding is
+// indistinguishable from not being asked").
 func (e *Encounter) programFor(m *memberRecord) *machine.Program {
 	if m == nil || m.Kind != KindMonster || len(m.Table) == 0 {
 		return nil
+	}
+	if m.recipeKey != "" {
+		if p := e.programs[m.recipeKey]; p != nil {
+			return p
+		}
 	}
 
 	return e.programs[defaultRecipeRef]
@@ -272,73 +481,56 @@ func (e *Encounter) jumpWake(span uint64) {
 
 // stepMachine asks one woken member's machine the time at round, runs what
 // it picks, and re-arms it: the world turn the census's thinkFor ran, one
-// unit at a time.
+// unit at a time ([Encounter.afterStep]).
 //
-// THE PICK IS TODAY'S UNIT, unchanged: the sheet's speed of this moment, a
-// world budget with no attack, the fight's own anti-spin bound, one
-// [Encounter.runIntents] on the world clock, one round spent. Its own pick
-// can take it off the world clock (the alarm it raised formed a fight with
-// it in); then the fight prices its time, nothing is spent, and it is not
-// re-armed: the fight's end re-arms it.
+// Its own pick can take it off the world clock (the alarm it raised formed a
+// fight with it in); then the fight prices its time, nothing is spent, and it
+// is not re-armed: the fight's end re-arms it.
 //
-// A transition that names a state lands a [BeatState] and re-lists what the
-// member listens for, before the pick runs. The default recipe has one state
-// and never does.
+// A state that does not listen for time (it was popped at a wake its state
+// has since stopped wanting) fires nothing, pays its round and re-arms from
+// its machine, which is how it leaves the heap.
 //
-// Errors: the machine refused its blob, a pick of a key other than `time`
-// (the only key this slice's vocabulary picks), or the turn failed.
+// Errors: the machine refused its blob, or the turn failed.
 func (e *Encounter) stepMachine(id MemberID, m *memberRecord, round uint64) error {
 	p := e.programFor(m)
 	if p == nil {
 		return nil
 	}
-	stepped, err := p.Step(&m.Machine, beatTime, tickEv{Round: round}, nil, round)
+	stepped, err := p.Step(&m.Machine, beatTime, tickEv{Round: round}, e.envFor(id), round)
 	if err != nil {
 		return fmt.Errorf("world wakes %q: %w", id, err)
 	}
-	// A TRANSITION IS TRUE THE MOMENT IT FIRES, whatever its pick then does:
-	// the beat and the relist land before the pick, so a pick that takes the
-	// member off the world clock cannot leave its state changed silently.
-	if stepped.To != "" {
-		if err := e.appendStateBeat(id, stepped); err != nil {
-			return err
-		}
-		e.listeners.Set(id, p.Listens(&m.Machine))
-	}
-	for _, act := range stepped.Acts {
-		if act.Pick == "" {
-			continue
-		}
-		if act.Pick != string(AnswerTime) {
-			return fmt.Errorf("world wakes %q: pick %q: only the time table is picked on the world clock: %w",
-				id, act.Pick, ErrInvalidData)
-		}
-		sheet, serr := e.sheetOf(id)
-		if serr != nil {
-			return fmt.Errorf("world wakes %q: %w", id, serr)
-		}
-		turnBudget := TurnBudget{AttacksLeft: 0, MovementFeet: sheet.SpeedFeet}
-		// The same anti-spin bound a fight's own turn uses: one terminating
-		// Pass plus however many cells this member could ever ask for one at
-		// a time. It is also the bound on the beats a pick lands (design §2):
-		// the machine's own acts never raise a beat.
-		bound := intentBound(turnBudget)
-		if _, rerr := e.runIntents(nil, core.EntityID(id), m, 0, &turnBudget, 0, bound, ClockWorld); rerr != nil {
-			return fmt.Errorf("world wakes %q: %w", id, rerr)
-		}
-	}
 
-	on, err := e.onWorldClock(id)
+	return e.afterStep(id, m, p, stepped, round, true)
+}
+
+// runPick is one pick of a table key on the world clock: today's unit,
+// unchanged — the sheet's speed of this moment, a world budget with no
+// attack, the fight's own anti-spin bound, one [Encounter.runIntents] on the
+// world clock. The key is the state's (design §4): `time` on the default
+// recipe, an authored key (`alert`, `march`) on another; the view carries it
+// to the driver ([MonsterView.Key]).
+//
+// Errors: the sheet or the turn failed.
+func (e *Encounter) runPick(id MemberID, m *memberRecord, key AnswerKey) error {
+	sheet, err := e.sheetOf(id)
 	if err != nil {
-		return err
+		return fmt.Errorf("world wakes %q: %w", id, err)
 	}
-	if !on {
-		return nil
+	turnBudget := TurnBudget{AttacksLeft: 0, MovementFeet: sheet.SpeedFeet}
+	// The same anti-spin bound a fight's own turn uses: one terminating Pass
+	// plus however many cells this member could ever ask for one at a time.
+	// It is also the bound on the beats a pick lands (design §2).
+	bound := intentBound(turnBudget)
+	prev := e.pickKey
+	if key != AnswerTime {
+		e.pickKey = key
 	}
-	if _, err := e.clock.Spend(&clock.SpendInput{ID: core.EntityID(id), Amount: 1}); err != nil {
-		return fmt.Errorf("world wakes spend %q: %w", id, err)
+	defer func() { e.pickKey = prev }()
+	if _, err := e.runIntents(nil, core.EntityID(id), m, 0, &turnBudget, 0, bound, ClockWorld); err != nil {
+		return fmt.Errorf("world wakes %q: %w", id, err)
 	}
-	e.armAt(id, round)
 
 	return nil
 }
@@ -469,4 +661,97 @@ func bagScalar(v any) (any, bool) {
 	}
 
 	return nil, false
+}
+
+// cloneRecipe deep-copies a recipe so a caller's value and the composition's
+// cannot be the same one ([MemberInput]'s rule that nothing crossing the door
+// stays aliased), through its own JSON shape, the recipe's one
+// representation. nil stays nil.
+//
+// Errors: a recipe whose bag holds a value JSON cannot carry.
+func cloneRecipe(r *machine.Recipe) (*machine.Recipe, error) {
+	if r == nil {
+		return nil, nil
+	}
+	raw, err := json.Marshal(r)
+	if err != nil {
+		return nil, fmt.Errorf("recipe: %w", err)
+	}
+	out := &machine.Recipe{}
+	if err := json.Unmarshal(raw, out); err != nil {
+		return nil, fmt.Errorf("recipe: %w", err)
+	}
+
+	return out, nil
+}
+
+// keyOr is a pick's key: the one named, or `time` when none is.
+func keyOr(key AnswerKey) AnswerKey {
+	if key == "" {
+		return AnswerTime
+	}
+
+	return key
+}
+
+// MachineBeats is every beat word a recipe's transition may be on by itself
+// (rpg-project#766 S4, design §3), for a dialect's refusal that lists what
+// there is. Beside these, `deed:<word>` names one deed word ([WhenDeeds])
+// and `clock:<name>` any clock: `clock:world`, `clock:fight`,
+// `clock:bell:<prop>`, an area's clock.
+var MachineBeats = []string{
+	string(beatTime), string(beatHeard), string(beatDeed), string(beatSeen), string(beatFact),
+	beatClock + worldClockName, beatClock + clockFight,
+}
+
+// ValidMachineBeat reports whether a transition may be on this beat: one of
+// [MachineBeats], `deed:` and a deed word, or `clock:` and a name.
+func ValidMachineBeat(on string) bool {
+	switch {
+	case slices.Contains(MachineBeats, on):
+		return true
+	case strings.HasPrefix(on, deedPrefix):
+		return slices.Contains(WhenDeeds, strings.TrimPrefix(on, deedPrefix))
+	case strings.HasPrefix(on, beatClock):
+		return len(on) > len(beatClock)
+	}
+
+	return false
+}
+
+// MachineBeatScoped reports whether a beat carries a place a `within` or a
+// `regions` is measured from: `heard`, `deed` (and `deed:<word>`), `seen`.
+// `time`, `fact` and every clock carry none.
+func MachineBeatScoped(on string) bool {
+	switch {
+	case on == string(beatHeard), on == string(beatDeed), on == string(beatSeen):
+		return true
+	case strings.HasPrefix(on, deedPrefix):
+		return ValidMachineBeat(on)
+	}
+
+	return false
+}
+
+// MachineFact is the guard fact a recipe reads for a held fact: `fact:<id>`,
+// true when the creature holds it.
+func MachineFact(id string) machine.FactName { return machine.FactName(factPrefix + id) }
+
+// MachineEnemyFact is the guard fact a recipe reads the enemy band from:
+// `seen`, `remembered` or `none` ([readEnemy]).
+const MachineEnemyFact = factEnemy
+
+// ValidateMachine compiles an authored recipe against this composition's
+// vocabulary without an encounter, so a dialect refuses at its own door what
+// [MemberInput.Machine] would refuse at this one.
+//
+// Errors: the machine's refusals ([machine.Recipe.Compile]), joined, and a
+// pick of a key no table may carry.
+func ValidateMachine(r *machine.Recipe) error {
+	if r == nil {
+		return nil
+	}
+	_, err := compileRecipe(r)
+
+	return err
 }

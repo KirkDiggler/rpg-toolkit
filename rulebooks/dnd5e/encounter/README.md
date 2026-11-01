@@ -243,6 +243,25 @@ roster.
   world has nothing to give it. Your driver never needs to detect "am I in
   combat".
 
+A creature may run **states** of its own (`states:` on a binding or a
+faction, rpg-project#766 S4, `wakebeats.go`): each state lists the beats it
+listens for — `time`, `heard`, `deed` / `deed:<word>`, `seen`, `fact`,
+`clock:world`, `clock:fight`, `clock:bell:<prop>` — with a `within` (hexes),
+`regions`, `rounds` or `when`, the key of its table it `pick`s, and the
+state it goes `to`. A sound, deed, sighting or fact wakes the listeners in its
+scope in the raise it landed in, before anyone is asked the time; a state
+with no `time` costs a raise nothing. A reaction's pick spends no world round.
+
+```yaml
+states:
+  initial: posted
+  posted: { transitions: [{ on: heard, within: 6, to: alert, do: [{ anchor: true }] }] }
+  alert:
+    transitions:
+      - { on: time, rounds: 3, to: posted }
+      - { on: time, do: [{ pick: time }] }
+```
+
 ### What decides, and how you change it
 
 A creature's whole policy is its **table**: `on:`, in the dungeon file, keyed

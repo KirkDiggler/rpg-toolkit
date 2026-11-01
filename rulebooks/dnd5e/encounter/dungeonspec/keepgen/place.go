@@ -81,6 +81,8 @@ type site struct {
 	monsters []placedMonster
 	orders   []order // the garrison, in placement order ([Options.Garrison])
 	reserved map[cell]bool
+	// postsListen is [Options.PostsListen]: the posts carry a recipe.
+	postsListen bool
 }
 
 // placeAll runs the placement. A plan door between two regions that share
@@ -88,7 +90,7 @@ type site struct {
 // is a garrison larger than the monsters placed ([ErrBadOptions]).
 func placeAll(p *Plan, l *layout, o Options) (*site, error) {
 	owner := l.owners()
-	s := &site{reserved: map[cell]bool{}}
+	s := &site{reserved: map[cell]bool{}, postsListen: o.PostsListen}
 	if err := s.placeWalls(p, l); err != nil {
 		return nil, err
 	}

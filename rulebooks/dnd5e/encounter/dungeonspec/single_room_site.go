@@ -279,6 +279,7 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 		Factions:     s.Factions,
 		Dispositions: s.Dispositions,
 		Tables:       s.Tables,
+		Picked:       picksIn(s.Factions, gp.MonsterBindings),
 		Members:      roomMembers(gp),
 		Cells:        roomCells(gp),
 		Facts:        roomFacts(s),
@@ -319,6 +320,7 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 		}
 		at := "room.room.monsterBindings." + m.id
 		g.placeOn(at, b.On)
+		g.placeStates(at, b.States, m.id)
 		g.placeTemper(at, b.Temper)
 		g.placeActions(at, b.Actions)
 		g.placeActionAugment(at, "addActions", b.AddActions)

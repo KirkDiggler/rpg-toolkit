@@ -63,6 +63,8 @@ func (e *Encounter) learnFact(member MemberID, id FactID, cause string, at uint6
 	}); err != nil {
 		return fmt.Errorf("learn fact %q: %w", id, err)
 	}
+	// The learner's state may listen for what it learns (rpg-project#766 S4).
+	e.landFactBeat(member, at)
 
 	if err := e.settleStances(before, at); err != nil {
 		return err
@@ -316,8 +318,12 @@ func (e *Encounter) noticeRounds(bubble *clock.Turn, ms []clock.Milestone) error
 			if aerr != nil {
 				return fmt.Errorf("round %d: %w", m.Round, aerr)
 			}
-			if raised {
-				if terr := e.wake(); terr != nil {
+			// THE FIGHT'S ROUND IS A CLOCK'S ROUND (rpg-project#766 S4, R5):
+			// `clock: fight` lands once for every faction engaged, so a
+			// faction's reserves outside the fight hear each round of it.
+			e.landFightRound(fighters, uint64(e.clock.ToData().HighWater))
+			if raised || len(e.landed) > 0 {
+				if terr := e.wakePass(raised, false); terr != nil {
 					return fmt.Errorf("round %d: %w", m.Round, terr)
 				}
 			}

@@ -222,6 +222,12 @@ func emitOrders(b *strings.Builder, s *site) {
 	fmt.Fprintf(b, "dispositions:\n  - between:\n      - %s\n      - party\n    stance: neutral\n", garrisonFaction)
 }
 
+// postStates is a listening post's recipe ([Options.PostsListen]), one flow
+// mapping: posted until a sound within six hexes, alert for three rounds.
+const postStates = "{ initial: posted, " +
+	"posted: { transitions: [{ on: heard, within: 6, to: alert, do: [{ anchor: true }] }] }, " +
+	"alert: { transitions: [{ on: time, rounds: 3, to: posted }, { on: time, do: [{ pick: time }] }] } }"
+
 // emitBindings binds each ordered monster to the garrison and its table.
 func emitBindings(b *strings.Builder, s *site) {
 	if len(s.orders) == 0 {
@@ -232,6 +238,10 @@ func emitBindings(b *strings.Builder, s *site) {
 		table := postTable
 		if ord.route != nil {
 			table = patrolTable(i)
+		}
+		if ord.route == nil && s.postsListen {
+			fmt.Fprintf(b, "      %s: { faction: %s, table: %s, states: %s }\n", s.monsters[ord.monster].id, garrisonFaction, table, postStates)
+			continue
 		}
 		fmt.Fprintf(b, "      %s: { faction: %s, table: %s }\n", s.monsters[ord.monster].id, garrisonFaction, table)
 	}
@@ -258,6 +268,9 @@ func header(o Options) string {
 	if o.Garrison != 0 || o.Patrols != 0 {
 		// Only when given, so a keep with no garrison keeps today's bytes.
 		s := strings.TrimSuffix(b.String(), "\n")
+		if o.PostsListen {
+			return fmt.Sprintf("%s garrison=%d patrols=%d posts-listen=true\n", s, o.Garrison, o.Patrols)
+		}
 		return fmt.Sprintf("%s garrison=%d patrols=%d\n", s, o.Garrison, o.Patrols)
 	}
 	return b.String()
@@ -305,6 +318,8 @@ func OptionsFromHeader(doc []byte) (Options, error) {
 					o.Garrison, err = strconv.Atoi(v)
 				case "patrols":
 					o.Patrols, err = strconv.Atoi(v)
+				case "posts-listen":
+					o.PostsListen, err = strconv.ParseBool(v)
 				default:
 					return Options{}, fmt.Errorf("keepgen: header: unknown option %q", k)
 				}

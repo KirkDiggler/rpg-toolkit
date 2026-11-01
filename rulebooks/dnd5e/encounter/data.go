@@ -13,6 +13,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
+	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
@@ -54,6 +55,11 @@ type EncounterData struct {
 	// additively. There is no identifier per bubble on purpose — a bubble is
 	// reached through a member (R6), never addressed by name.
 	Bubbles []clock.TurnData `json:"bubbles,omitempty"`
+	// Landed is every beat landed for the listeners that no raise has
+	// matched yet (wakebeats.go, rpg-project#766 S4), in landing order.
+	// Omitted when nothing waits, which is every run whose content authored
+	// no recipe: a beat lands only when somebody listens for it.
+	Landed []WakeBeatData `json:"landed,omitempty"`
 	// Perception is what each member HOLDS — channel-sourced testimony, its
 	// currency, and its stamps. Named for mind/perception rather than for
 	// play/intel underneath it (rpg-toolkit#1691): the store is perception's
@@ -515,6 +521,8 @@ type ReserveData struct {
 	Options []OptionData            `json:"options,omitempty"`
 	Table   map[string][]AnswerData `json:"table,omitempty"`
 	Temper  UndealtTemperData       `json:"temper,omitzero"`
+	// Recipe is [MemberData.Recipe] for a member still waiting.
+	Recipe *machine.Recipe `json:"recipe,omitempty"`
 
 	BlocksMovement bool        `json:"blocks_movement,omitempty"`
 	Faction        FactionID   `json:"faction,omitempty"`
@@ -2147,6 +2155,11 @@ type MemberData struct {
 	// (ErrInvalidData).
 	Machine *MachineData `json:"machine,omitempty"`
 
+	// Recipe is memberRecord.Recipe (rpg-project#766 S4): the authored
+	// recipe this creature runs, omitted for the default. Compiled at load
+	// as at every door, and refused (ErrInvalidData) as the door refuses it.
+	Recipe *machine.Recipe `json:"recipe,omitempty"`
+
 	// Clock is memberRecord.Clock (R5): the clock this member is seated on,
 	// omitted for the world clock. This build knows the world clock alone,
 	// so any other name is refused at load (ErrInvalidData).
@@ -2323,6 +2336,7 @@ func (e *Encounter) snapshot() EncounterData {
 			Sneaking:           m.Sneaking,
 			Dwell:              dwellDataFrom(m.Dwell),
 			Machine:            machineDataFrom(e.programFor(m), m.Machine),
+			Recipe:             m.Recipe,
 			Clock:              m.Clock,
 			TableHash:          maps.Clone(m.TableHash),
 			BlocksMovement:     m.BlocksMovement,
@@ -2413,6 +2427,7 @@ func (e *Encounter) snapshot() EncounterData {
 			Options:            optionsDataFrom(rm.record.Options),
 			Table:              tableDataFrom(rm.record.Table),
 			Temper:             undealtTemperDataFrom(rm.record.Temper),
+			Recipe:             rm.record.Recipe,
 			BlocksMovement:     rm.record.BlocksMovement,
 			Faction:            rm.record.Faction,
 			Holds:              append([]IntelID(nil), rm.holds...),
@@ -2428,6 +2443,7 @@ func (e *Encounter) snapshot() EncounterData {
 		Outcome:            outcomeData,
 		Clock:              e.clock.ToData(),
 		Bubbles:            bubblesData,
+		Landed:             wakeBeatsData(e.landed),
 		Perception:         e.intelLog.ToData(),
 		PerceptionSubjects: perceptionSubjectVersion,
 		Log:                e.story.ToData(),
@@ -3008,7 +3024,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		// the same reason: LoadEncounter is the trust boundary for a blob
 		// somebody edited, and an unknown outcome key would otherwise sit in
 		// the run looking authored until a player finally spoke to it.
-		if err := validateTable(tableFromData(m.Table)); err != nil {
+		if err := validateOrders(tableFromData(m.Table), m.Recipe); err != nil {
 			return nil, fmt.Errorf("load encounter: member %q: %w: %w", m.ID, ErrInvalidData, err)
 		}
 
@@ -3060,6 +3076,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			DefaultActivityRef: r.DefaultActivityRef,
 			Facing:             r.Facing,
 			Table:              tableFromData(r.Table),
+			Machine:            r.Recipe,
 		}); err != nil {
 			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, err)
 		}
@@ -3409,6 +3426,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// Load leaf state (constructors always succeed after validation)
 	e.clock = loadedClock
 	e.bubbles = loadedBubbles
+	e.landed = wakeBeatsFrom(data.Landed)
 	e.intelLog = loadedIntel
 	e.story = loadedLog
 
@@ -3441,6 +3459,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			TableHash:          maps.Clone(m.TableHash),
 			BlocksMovement:     m.BlocksMovement,
 			Faction:            m.Faction,
+		}
+		if rerr := e.useRecipe(member, m.Recipe); rerr != nil {
+			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, rerr)
 		}
 		blob, merr := machineFromData(e.programFor(member), m.Machine)
 		if merr != nil {
@@ -3496,6 +3517,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			at:      spatial.Position{X: r.Cell.X, Y: r.Cell.Y},
 			holds:   append([]IntelID(nil), r.Holds...),
 			arrives: reserveTriggers[i],
+		}
+		if rerr := e.useRecipe(&rm.record, r.Recipe); rerr != nil {
+			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, rerr)
 		}
 		e.reserveMember(rm)
 	}

@@ -26,12 +26,31 @@ import (
 //
 // Numbers on rpg-project#773 and #766: before is the census (every
 // world-clock member walked on every raise); after is the due heap.
+//
+// TWO KEEPS (rpg-project#766 S4): `default` is the garrison as S1 wrote it,
+// every creature on the default recipe and due every round; `posts-asleep`
+// is the same keep with keepgen's `-posts-listen`, the 79 posts posted and
+// asking the world clock nothing until a sound lands near them, so a raise
+// costs the 20 patrols.
 func BenchmarkGarrisonMove(b *testing.B) {
+	for _, tc := range []struct {
+		name   string
+		listen bool
+	}{{"default", false}, {"posts-asleep", true}} {
+		b.Run(tc.name, func(b *testing.B) { benchGarrisonMove(b, tc.listen) })
+	}
+}
+
+func benchGarrisonMove(b *testing.B, listen bool) {
 	b.StopTimer()
-	compiled := compiledOnce(b, "keep-garrison-10000", func() ([]byte, error) {
+	key := "keep-garrison-10000"
+	if listen {
+		key += "-posts-listen"
+	}
+	compiled := compiledOnce(b, key, func() ([]byte, error) {
 		opts := keepgen.DefaultOptions()
 		opts.Hexes, opts.Seed, opts.Key = 10000, 1, "bench-keep-garrison"
-		opts.Garrison, opts.Patrols = 99, 20
+		opts.Garrison, opts.Patrols, opts.PostsListen = 99, 20, listen
 		raw, _, err := keepgen.Generate(keepgen.DefaultPlan(), opts)
 		return raw, err
 	})
@@ -40,7 +59,7 @@ func BenchmarkGarrisonMove(b *testing.B) {
 		members = append(members, encounter.MemberInput{
 			ID: encounter.MemberID(m.MemberID), Kind: encounter.KindMonster, Position: m.At,
 			Faction: encounter.FactionID(m.Faction), Table: m.Table, Options: m.Options,
-			Arrives: m.Arrives, Temper: soldierTemper(m.Temper), Facing: m.FacingDegrees,
+			Arrives: m.Arrives, Temper: soldierTemper(m.Temper), Facing: m.FacingDegrees, Machine: m.Machine,
 		})
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{

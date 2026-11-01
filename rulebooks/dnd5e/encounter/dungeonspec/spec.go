@@ -459,6 +459,11 @@ type FactionSpec struct {
 	// and the cost of overriding a key is visible in the file.
 	On map[string][]AnswerSpec `yaml:"on,omitempty"`
 
+	// States is the recipe every member of this faction runs (rpg-project#766
+	// S4, states.go) unless its own binding writes one, nearest winning
+	// wholesale, as tables layer.
+	States *StatesSpec `yaml:"states,omitempty"`
+
 	// Temper is the temperament every placement in this faction has, or a
 	// MIX to deal one from per member ([TemperSpec], design §3). A placement
 	// that names its own word wins, and the mix is not dealt for it.

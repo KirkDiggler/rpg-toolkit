@@ -88,11 +88,24 @@ type TableDriver struct {
 // says why it did nothing ([Attack]'s doc); a `toward` whose target is
 // already in reach goes out as a [Pass] that names itself.
 func (d TableDriver) Act(view MonsterView) (Decision, error) {
+	// AN AUTHORED KEY IS ROLLED AS TIME (rpg-project#766 S4): the state the
+	// creature's machine stands in names which rows are its turn, and a turn
+	// is a turn — nothing eligible is a hold, as under `time`, never the
+	// silence a verdict's empty key is. So the key's rows are rolled under
+	// `time` and the pick is named back to its own key.
+	key := keyOr(view.Key)
+	table := view.Table
+	if key != AnswerTime {
+		table = Table{AnswerTime: view.Table[key]}
+	}
 	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
-		Key: AnswerTime, Table: view.Table, Temper: view.Temper, Facts: factsFromView(view), Die: d.Roller,
+		Key: AnswerTime, Table: table, Temper: view.Temper, Facts: factsFromView(view), Die: d.Roller,
 	})
 	if err != nil {
 		return Decision{}, fmt.Errorf("table driver %q: %w", view.Self, err)
+	}
+	if chosen != nil {
+		chosen.Key = key
 	}
 	// pick never answers nil for AnswerTime — an empty table is a hold — but
 	// a nil here would be a nil-pointer panic inside a driver, which is the
