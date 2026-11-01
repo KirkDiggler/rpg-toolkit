@@ -169,8 +169,21 @@ func (e *Encounter) faceToward(m *memberRecord, cell spatial.Position) {
 	if !placed {
 		return
 	}
-	if degrees, ok := bearing(e.field.orientation, here, cell); ok {
+	if degrees, ok := bearing(e.field.orientation, here, cell); ok && degrees != m.Facing {
 		m.Facing = degrees
+		e.noteSeenChange(here)
+	}
+}
+
+// noteSeenChange records, inside a wake pass, a cell on which what can be
+// seen changed without a step — a creature turning where it stands — so the
+// pass's one refresh is asked of it too ([Encounter.wakeCells],
+// rpg-project#762). A step records its own two cells
+// ([Encounter.appendMovementBeat]); outside a wake pass the verb's own
+// refresh is asked of the verb's own cells.
+func (e *Encounter) noteSeenChange(cell spatial.Position) {
+	if e.worldThinking {
+		e.wakeCells = append(e.wakeCells, cell)
 	}
 }
 
@@ -300,8 +313,9 @@ func cloneWaypointPause(p *WaypointPause) *WaypointPause {
 func (e *Encounter) faceWalkEnd(m *memberRecord, f walkFace) error {
 	if f.pause != nil && f.pause.Wait > 0 {
 		if here, placed := e.canvas.GetEntityPosition(string(m.ID)); placed && here == f.pause.Cell {
-			if f.pause.Facing != nil {
+			if f.pause.Facing != nil && *f.pause.Facing != m.Facing {
 				m.Facing = *f.pause.Facing
+				e.noteSeenChange(here)
 			}
 			m.Dwell = &dwell{Cell: f.pause.Cell, Rounds: f.pause.Wait}
 

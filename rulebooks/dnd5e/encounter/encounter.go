@@ -186,6 +186,14 @@ type Encounter struct {
 	// [Encounter.wakePass].
 	reactionPicked bool
 
+	// wakeCells is every cell the pass in progress changed what can be seen
+	// on (rpg-project#762): the from and to of every step a creature or a
+	// reaction took, the cells of every door a walk opened, and the cell of
+	// every creature that ran a pick (a turn in place, a drawn blade). The
+	// pass's one refresh is [Encounter.observersOf] these. Written only while
+	// worldThinking; reset by every [Encounter.wakePass].
+	wakeCells []spatial.Position
+
 	// worldThinking guards [Encounter.wake] against re-entry: the outer pass
 	// owns the world's round, and a nested one would step the same machines
 	// twice for one raise. The same shape as `driving`, one clock over.
@@ -1373,6 +1381,142 @@ func (e *Encounter) rosterIDs() []MemberID {
 	return ids
 }
 
+// observersOf is A REFRESH THAT COSTS ITS REACH (rpg-project#762, the law
+// "a step costs its reach"): every placed member whose own sight, plus the
+// one cell of a cover's face ([sightReach.seesCell]), reaches any of cells,
+// with declared added, in ID order.
+//
+// cells are what changed: where a mover stood and stands, a door's cells, an
+// arrival's cell. A member farther than its own sight from every one of them
+// cannot see anything that changed — not the mover, not a ray the mover or
+// the door now crosses, since every cell on a ray is nearer the observer than
+// its far end — so its percept is the one it already holds, and rebuilding it
+// would only restamp it. A fight forms the same: whoever came into view did so
+// within the bound of a changed cell, by definition.
+//
+// ASKED OF THE CANVAS, not of the roster: a ring query around each changed
+// cell at the widest sight anybody has this refresh, each hit then held to
+// its own. declared are added whether or not they are placed —
+// [Encounter.rebuildPercepts] drops an unplaced observer itself.
+//
+// The roster-wide look stays legal in one place: [Encounter.Board], the
+// launch's one look, where everything changed at once.
+func (e *Encounter) observersOf(cells []spatial.Position, declared []MemberID) ([]MemberID, error) {
+	in := make(map[MemberID]bool, len(declared))
+	for _, id := range declared {
+		if _, ok := e.members[id]; ok {
+			in[id] = true
+		}
+	}
+	if len(e.members) > 0 {
+		sight, err := e.sightNow()
+		if err != nil {
+			return nil, fmt.Errorf("observers of: %w", err)
+		}
+		if err := e.addOutranged(in, sight); err != nil {
+			return nil, fmt.Errorf("observers of: %w", err)
+		}
+		widest := 0
+		for _, cells := range sight {
+			widest = max(widest, cells)
+		}
+		grid := e.canvas.GetGrid()
+		asked := make(map[spatial.Position]bool, len(cells))
+		for _, cell := range cells {
+			if asked[cell] {
+				continue
+			}
+			asked[cell] = true
+			for _, entity := range e.canvas.GetEntitiesInRange(cell, float64(widest+1)) {
+				id := MemberID(entity.GetID())
+				if _, member := e.members[id]; !member || in[id] {
+					continue
+				}
+				at, placed := e.canvas.GetEntityPosition(entity.GetID())
+				if placed && grid.Distance(at, cell) <= float64(sight[id]+1) {
+					in[id] = true
+				}
+			}
+		}
+	}
+	out := make([]MemberID, 0, len(in))
+	for id := range in {
+		out = append(out, id)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+
+	return out, nil
+}
+
+// addOutranged adds to in every member holding a LIVE sighting of somebody
+// now beyond its own sight (rpg-project#762): a range that shrank since the
+// last look — the torch guttered — is a change at the observer, not at any
+// cell, and the observer's own holdings are where it shows. The composition
+// keeps no range to compare against ([Sight]: it is a pull, never stored), so
+// the testimony it already holds is the witness. A range that GREW is seen
+// at the next look that includes the observer: one within its new sight of
+// anything that changed, or one a verb names (equip and recheck name theirs).
+func (e *Encounter) addOutranged(in map[MemberID]bool, sight map[MemberID]int) error {
+	grid := e.canvas.GetGrid()
+	for id := range e.members {
+		if in[id] {
+			continue
+		}
+		at, placed := e.canvas.GetEntityPosition(string(id))
+		if !placed {
+			continue
+		}
+		held, err := e.memberIntel(id)
+		if err != nil {
+			return err
+		}
+		for _, h := range held {
+			if !h.CurrentOn(perception.Sight) {
+				continue
+			}
+			seen, ok := DecodeSightTestimony(h.Payload)
+			if !ok || seen.State != LocationKnown {
+				continue
+			}
+			if grid.Distance(at, seen.Position) > float64(sight[id]) {
+				in[id] = true
+				break
+			}
+		}
+	}
+
+	return nil
+}
+
+// refreshCostingReach is [Encounter.refreshSight] over
+// [Encounter.observersOf]: the refresh a verb runs for what it changed.
+// declared here are extra OBSERVERS (the actor), never subjects whose facts
+// changed — that is [Encounter.refreshSightDeclaring]'s list, and the two
+// verbs that have one (equip, recheck) ask observersOf themselves.
+func (e *Encounter) refreshCostingReach(
+	cells []spatial.Position, declared ...MemberID,
+) (map[MemberID]*IntelDelta, *FormedBubble, error) {
+	observers, err := e.observersOf(cells, declared)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return e.refreshSight(observers)
+}
+
+// cellsOf is where each placed member of ids stands now; an unplaced one has
+// no cell to add.
+func (e *Encounter) cellsOf(ids ...MemberID) []spatial.Position {
+	out := make([]spatial.Position, 0, len(ids))
+	for _, id := range ids {
+		if cell, placed := e.canvas.GetEntityPosition(string(id)); placed {
+			out = append(out, cell)
+		}
+	}
+
+	return out
+}
+
 // frontierAudience is THE FRONTIER STOP (ruled on rpg-project#351, second
 // round): a step whose destination lies on floor a concealment hides is
 // delivered only to the members that concealment has been revealed to — the
@@ -1487,6 +1631,11 @@ func (e *Encounter) audienceFor(class beatClass, subjects ...MemberID) []MemberI
 // Pump's own comment on why).
 func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberID, at uint64) (uint64, error) {
 	audience = e.frontierAudience(action, audience)
+	// A step inside a wake pass is one of the cells that pass's one refresh
+	// is asked of ([Encounter.wakeCells]).
+	if e.worldThinking {
+		e.wakeCells = append(e.wakeCells, action.from, action.to)
+	}
 
 	payload := map[string]interface{}{
 		"beat":     BeatMoved,
@@ -1794,6 +1943,13 @@ func (e *Encounter) refreshSightDeclaring(
 // but a test ever assigns this.
 var encodeSighting = EncodeSightTestimony
 
+// rebuildProbe is told every observer list [Encounter.rebuildPercepts] is
+// asked to rebuild (rpg-project#762), so a test can say a member beyond the
+// sight bound of what changed was never looked for — the same indirection
+// as [encodeSighting], for the same reason: a cost nothing asserts comes
+// back. Nil outside a test, and nothing but a test assigns it.
+var rebuildProbe func(observers []MemberID)
+
 // rebuildPercepts rebuilds the complete percept for all given observers and
 // returns a map of member IDs to encounter-owned intel deltas. The current
 // clock reading is stamped on the pass.
@@ -1811,6 +1967,9 @@ var encodeSighting = EncodeSightTestimony
 // cannot read, so this composition remains the only thing that knows what a
 // sighting means (see [SightTestimony]).
 func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDelta, error) {
+	if rebuildProbe != nil {
+		rebuildProbe(observers)
+	}
 	// One pass, one memo of the field's shared answers (rpg-toolkit#2097),
 	// dropped when the pass returns: see [sightPassMemo].
 	defer e.field.beginSightPass()()

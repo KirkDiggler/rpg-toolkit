@@ -213,7 +213,13 @@ func (e *Encounter) RecordEquip(in *RecordEquipInput) (*RecordEquipOutput, error
 		return nil, err
 	}
 
-	deltas, formed, err := e.refreshSightDeclaring(e.rosterIDs(), []MemberID{in.Member})
+	// What changed is what the member holds, seen where they stand: their
+	// watchers' look, and nobody's beyond it (rpg-project#762).
+	observers, err := e.observersOf(e.cellsOf(in.Member), []MemberID{in.Member})
+	if err != nil {
+		return nil, fmt.Errorf("record equip: %w", err)
+	}
+	deltas, formed, err := e.refreshSightDeclaring(observers, []MemberID{in.Member})
 	if err != nil {
 		return nil, fmt.Errorf("record equip: %w", err)
 	}

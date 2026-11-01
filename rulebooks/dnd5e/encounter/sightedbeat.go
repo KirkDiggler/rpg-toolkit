@@ -298,12 +298,17 @@ func (e *Encounter) Recheck(in *RecheckInput) (*RecheckOutput, error) {
 		}
 	}
 
-	// THE WHOLE ROSTER RE-LOOKS, not only the changed members' watchers.
-	// Rebuilding one observer's percept and not another's would leave the two
-	// of them reading the same world at two different moments, which is the
-	// dual state the capabilities exist to avoid. The scoping that matters —
-	// who is TOLD — happens per observer when the beat is built.
-	deltas, formed, err := e.refreshSightDeclaring(e.rosterIDs(), in.Members)
+	// THE CHANGED MEMBERS' WATCHERS RE-LOOK, and nobody else
+	// (rpg-project#762). This used to be the whole roster, on the reasoning
+	// that two observers rebuilt at two moments read two worlds — but an
+	// observer beyond the sight bound of every changed member reads exactly
+	// the world it already held: nothing it can see changed. The scoping of
+	// who is TOLD still happens per observer when the beat is built.
+	observers, err := e.observersOf(e.cellsOf(in.Members...), in.Members)
+	if err != nil {
+		return nil, fmt.Errorf("recheck: %w", err)
+	}
+	deltas, formed, err := e.refreshSightDeclaring(observers, in.Members)
 	if err != nil {
 		return nil, fmt.Errorf("recheck: %w", err)
 	}

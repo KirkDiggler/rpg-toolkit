@@ -516,7 +516,11 @@ func (e *Encounter) setDoorState(door *doorRecord, next DoorState, actor MemberI
 		return doorChange{}, err
 	}
 
-	deltas, formed, err := e.refreshSight(e.rosterIDs())
+	// A DOOR CHANGES EVERY RAY THAT CROSSES IT (rpg-project#762), and a ray
+	// an observer can use runs no farther than its sight, so the observers a
+	// door's change can reach stand within the bound of the door's own cells
+	// ([Encounter.observersOf]). The actor is asked either way.
+	deltas, formed, err := e.refreshCostingReach(e.doorCells(door), actor)
 	if err != nil {
 		return doorChange{}, err
 	}
@@ -535,6 +539,11 @@ func (e *Encounter) setDoorState(door *doorRecord, next DoorState, actor MemberI
 // already refreshes it for the steps around the door.
 func (e *Encounter) changeDoorState(door *doorRecord, next DoorState, actor MemberID, extra map[string]interface{}) (uint64, error) {
 	door.state = next
+	// A door a walk opens inside a wake pass changes every ray through it,
+	// so its cells are the pass's refresh's too ([Encounter.wakeCells]).
+	if e.worldThinking {
+		e.wakeCells = append(e.wakeCells, e.doorCells(door)...)
+	}
 
 	if err := registerDoor(e.canvas.BasicRoom, door); err != nil {
 		return 0, err

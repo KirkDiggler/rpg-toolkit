@@ -185,7 +185,7 @@ func (e *Encounter) Hold(in *HoldInput) (*HoldOutput, error) {
 		return nil, err
 	}
 
-	return e.takeProp(in.Member, in.Target)
+	return e.takeProp(in.Member, in.Target, []spatial.Position{from, cell})
 }
 
 // holdPlaced is [Encounter.Hold] for a FOOTPRINT (rpg-toolkit#1854), in the
@@ -253,7 +253,7 @@ func (e *Encounter) holdPlaced(in *HoldInput, p *placedContributor) (*HoldOutput
 		return nil, fmt.Errorf("hold: %s: %w", in.Target, ErrOutOfRange)
 	}
 
-	return e.takeProp(in.Member, in.Target)
+	return e.takeProp(in.Member, in.Target, append([]spatial.Position{from}, cells...))
 }
 
 // hiddenPropTo reports whether a prop is a secret THIS member has not found
@@ -276,7 +276,11 @@ func (e *Encounter) hiddenPropTo(member MemberID, prop PropID) bool {
 // a footprint cannot come to differ in what a take RECORDS — the rules that
 // differ are the ones about where the thing is, and they are all above this
 // line.
-func (e *Encounter) takeProp(member MemberID, target PropID) (*HoldOutput, error) {
+//
+// cells are the holder's cell and every cell the thing lay on: what the
+// take changed for anybody looking (rpg-project#762), so the refresh is
+// theirs ([Encounter.observersOf]).
+func (e *Encounter) takeProp(member MemberID, target PropID, cells []spatial.Position) (*HoldOutput, error) {
 	audience, err := e.mutableWitnesses(sightProp(target), member)
 	if err != nil {
 		return nil, fmt.Errorf("hold witnesses: %w", err)
@@ -323,7 +327,7 @@ func (e *Encounter) takeProp(member MemberID, target PropID) (*HoldOutput, error
 		return nil, fmt.Errorf("hold: %w", err)
 	}
 
-	if _, _, err := e.refreshSight(e.rosterIDs()); err != nil {
+	if _, _, err := e.refreshCostingReach(cells, member); err != nil {
 		return nil, fmt.Errorf("hold observation: %w", err)
 	}
 	return &HoldOutput{}, nil
