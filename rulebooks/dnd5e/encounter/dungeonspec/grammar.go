@@ -6,6 +6,7 @@ package dungeonspec
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -316,6 +317,11 @@ type grammarInput struct {
 	Members members
 	Cells   cells
 
+	// Picked is every table key a creature's states pick ([picksIn],
+	// rpg-project#766 S4): a key a table may carry beside `time`, judged as
+	// `time` is.
+	Picked map[string]bool
+
 	// Facts is every fact id this document can set: what its rows teach and
 	// what its records reveal (rpg-project#670, #684 L3). A `fact` pattern
 	// in a `when` that matches none of them is a condition that can never
@@ -359,6 +365,9 @@ type grammar struct {
 	// facts and bundled are [grammarInput.Facts] and [grammarInput.Bundled].
 	facts   map[string]bool
 	bundled bool
+
+	// picked is [grammarInput.Picked].
+	picked map[string]bool
 }
 
 // newGrammar builds the grammar one dialect's document is judged by.
@@ -372,6 +381,7 @@ func newGrammar(in grammarInput) *grammar {
 		tables:               in.Tables,
 		facts:                in.Facts,
 		bundled:              in.Bundled,
+		picked:               in.Picked,
 	}
 }
 
@@ -427,7 +437,7 @@ func (g *grammar) placeOn(path string, on map[string][]AnswerSpec) {
 			g.fail(at, "%s", retiredTableKey(key))
 			continue
 		}
-		if !knownTableKey(key) {
+		if !knownTableKey(key) && !g.picked[key] {
 			g.fail(at, "%q is not a trigger this build rolls: they are %s",
 				key, strings.Join(tableKeyWords(), ", "))
 			continue
@@ -639,7 +649,7 @@ func (g *grammar) groupEntry(at, key string, entry AnswerSpec) {
 
 		return
 	}
-	if len(entry.When) > 0 && key != string(encounter.AnswerTime) {
+	if len(entry.When) > 0 && verdictKey(key) {
 		g.fail(at+".when",
 			"`%s` is already the condition — a `when` under it asks when a thing that just happened happened (line %d)",
 			key, entry.When[0].Line)
@@ -767,7 +777,7 @@ func (g *grammar) entryShape(at string, entry AnswerSpec) {
 // words and a `when` are not. `fact` is legal under `time` too
 // (rpg-project#569 R6).
 func (g *grammar) wordLegality(at, key string, words []string, entry AnswerSpec) {
-	time := key == string(encounter.AnswerTime)
+	time := !verdictKey(key)
 	for _, word := range words {
 		switch word {
 		case "fact":
@@ -1062,6 +1072,7 @@ func (g *grammar) placeTemper(path, temper string) {
 func (g *grammar) factionOrders() {
 	for i, fa := range g.declaredFactions {
 		g.placeOn(fmt.Sprintf("factions[%d]", i), fa.On)
+		g.placeStates(fmt.Sprintf("factions[%d]", i), fa.States, fa.ID)
 	}
 }
 
@@ -1077,6 +1088,13 @@ func (g *grammar) factionOptions(props map[string]bool) {
 	for i, fa := range g.declaredFactions {
 		g.options(fmt.Sprintf("factions[%d]", i), fa.Options, props, false)
 	}
+}
+
+// verdictKey reports whether a key is an option's verdict (`success`,
+// `failure`), where a creature's time words are not legal. Every other key a
+// row reaches here under is `time` or a key a state picks, and is time.
+func verdictKey(key string) bool {
+	return slices.Contains(encounter.OptionKeys, encounter.AnswerKey(key))
 }
 
 // knownTableKey reports whether a key is one the composition rolls.

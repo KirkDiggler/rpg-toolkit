@@ -107,6 +107,7 @@ func Validate(spec *Spec) []FieldError {
 		Members:      placedMembers(spec),
 		Cells:        floorCells{orientation: v.orientation, owner: v.owner},
 		Facts:        specFacts(spec),
+		Picked:       picksIn(spec.Factions, nil),
 	})
 	if v.geometryUsable() {
 		// SCENERY FIRST inside the geometry block: everything below asks
@@ -743,6 +744,7 @@ func (v *validation) place() {
 			// be spoken to ([PlaceSpec.Options]).
 			v.g.options(p, pl.Options, props, false)
 			v.g.placeOn(p, pl.On)
+			v.g.placeCreatureKeys(p, pl.Faction, pl.On, nil)
 			v.g.placeTemper(p, pl.Temper)
 			if pl.Boss && owned {
 				if prev, dup := bosses[owner]; dup {

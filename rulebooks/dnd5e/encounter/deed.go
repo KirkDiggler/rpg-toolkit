@@ -284,6 +284,9 @@ func (e *Encounter) landDeedAt(
 	}); err != nil {
 		return fmt.Errorf("deed: %w", err)
 	}
+	// AND FOR WHOEVER LISTENS FOR DEEDS (rpg-project#766 S4), within the
+	// scope their state names of where it was done (wakebeats.go).
+	e.landDeedBeat(verb, actor, where, at)
 
 	return nil
 }

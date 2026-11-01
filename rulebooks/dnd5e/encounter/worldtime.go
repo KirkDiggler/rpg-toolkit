@@ -147,6 +147,13 @@ func (e *Encounter) seatOnWorldClock(id MemberID) error {
 	}
 	data := e.clock.ToData()
 	e.armAt(id, uint64(data.HighWater))
+	// And what its first state listens for (rpg-project#766 S4): a
+	// newcomer's ears are on from the round it arrives.
+	if m, ok := e.members[id]; ok {
+		if p := e.programFor(m); p != nil {
+			e.listeners.Set(id, p.Listens(&m.Machine))
+		}
+	}
 	behind := data.HighWater - data.DriverProgress[core.EntityID(id)]
 	if behind <= 0 {
 		return nil
@@ -324,15 +331,47 @@ func (e *Encounter) spendRound(members []MemberID) (bool, error) {
 // The raise it skipped is not lost: the outer pass re-reads the high-water
 // before every pop, and whoever it made due is still on the heap at its round.
 func (e *Encounter) wake() error {
+	return e.wakePass(true, true)
+}
+
+// wakePass is [Encounter.wake] for either kind of raise (rpg-project#766
+// S4): a raise of the world clock by somebody walking or acting lands
+// `clock: world` (world true); a fight's round lands `clock: fight` for each
+// faction engaged before it calls here ([Encounter.noticeRounds]) and lands
+// no `world`, because a fight is a clock of its own (R5) and a creature
+// waiting out a fight hears its rounds, not the world's. A fight round that
+// raised nothing (raised false) asks nobody the time and writes no tick; it
+// still matches what landed, so the reserves hear the round.
+//
+// THE BEATS FIRST, THEN THE TIME. What landed since the last raise is what
+// the verb did — the clang, the deed — and it happened before the round
+// passed, so the listeners hear it before they are asked what they do with
+// the time: a guard posted at the gate is alert by the round the clang
+// raised, in that raise. A pick's own beats are matched after each pick, in
+// the same pass, up to [wakeBeatBound].
+func (e *Encounter) wakePass(raised, world bool) error {
 	if e.worldThinking || e.outcome != nil {
 		return nil
 	}
 	e.worldThinking = true
+	e.wakeMatched = 0
+	e.reactionPicked = false
 	defer func() { e.worldThinking = false }()
 
 	at := uint64(e.clock.ToData().HighWater)
-	if err := e.appendTickBeat(at); err != nil {
+	if raised {
+		if err := e.appendTickBeat(at); err != nil {
+			return err
+		}
+	}
+	if world {
+		e.landClock(worldClockName, "", at)
+	}
+	if err := e.matchLanded(); err != nil {
 		return err
+	}
+	if e.outcome != nil {
+		return nil
 	}
 
 	// A body has no round to spend, so its machine is not stepped at all —
@@ -340,7 +379,7 @@ func (e *Encounter) wake() error {
 	// patrolling. Read once for the pass, and only when somebody is due: a
 	// round in which no creature woke asks no standing consult.
 	var down map[MemberID]bool
-	for {
+	for raised {
 		// THE HIGH-WATER IS RE-READ BEFORE EVERY POP. A creature's pick can
 		// raise the world inside this pass (its alarm forms a fight whose
 		// round wraps, flip.go's noticeRounds, whose own wake is the no-op
@@ -394,9 +433,31 @@ func (e *Encounter) wake() error {
 			if e.outcome != nil {
 				return nil
 			}
+			// WHAT THE PICK LANDED IS HEARD IN THIS PASS: a patrol's clang
+			// wakes the barracks in the round it rang.
+			if len(e.landed) > 0 {
+				if merr := e.matchLanded(); merr != nil {
+					return merr
+				}
+				if e.outcome != nil {
+					return nil
+				}
+				// A reaction can put somebody down for the rest of the pass;
+				// re-read who stands.
+				var derr error
+				if down, derr = e.downNow(); derr != nil {
+					return fmt.Errorf("world wakes standing: %w", derr)
+				}
+			}
 		}
 	}
 
+	// A ROUND THAT RAISED NOTHING REFRESHES SIGHT ONLY IF A REACTION MOVED
+	// SOMEBODY: a fight round whose listeners only changed state, or did
+	// nothing, changed no geometry and nobody's view (review of #2219).
+	if !raised && !e.reactionPicked {
+		return nil
+	}
 	if _, _, err := e.refreshSight(e.rosterIDs()); err != nil {
 		return fmt.Errorf("world wakes refresh sight: %w", err)
 	}

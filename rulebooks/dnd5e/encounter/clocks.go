@@ -2273,7 +2273,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 	// for a table that asks `threat`: in sight and standing, or remembered,
 	// from where this monster believes it stands.
 	var threats []ThreatZone
-	if tableNamesThreat(m.Table[AnswerTime]) {
+	if tableNamesThreat(m.Table[keyOr(e.pickKey)]) {
 		if query == nil {
 			if query, err = e.cellQuery(); err != nil {
 				return MonsterView{}, fmt.Errorf("view threats: %w", err)
@@ -2310,6 +2310,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 
 	return MonsterView{
 		Self:       m.ID,
+		Key:        e.pickKey,
 		Position:   ownCell,
 		Actions:    sheet.Actions,
 		Targeting:  sheet.Targeting,
