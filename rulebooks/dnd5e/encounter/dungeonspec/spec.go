@@ -1282,6 +1282,9 @@ type AnswerSpec struct {
 	// would say for each outcome" (Kirk).
 	Say string `yaml:"say,omitempty"`
 
+	// Activity accompanies the selected spoken line; omission means no cue.
+	Activity *ActivityCueSpec `yaml:"activity,omitempty"`
+
 	// Fact is the authored fact id every witness learns when this entry
 	// fires — what the old `on: { intimidated: { fact: … } }` said, now one
 	// entry of one outcome's table. A disposition's `until: { fact: … }`
@@ -2450,8 +2453,11 @@ func (r *AnswerSpec) UnmarshalYAML(value *yaml.Node) error {
 				return fmt.Sprintf("line %d: %s", line, patrolRefusal(f))
 			}}
 		}
+		if key == "activity" && value.Content[i+1].Tag == "!!null" {
+			return fmt.Errorf("line %d: activity must not be null", value.Content[i+1].Line)
+		}
 		switch key {
-		case "weight", "say", "when", "fact", "flee", "hold", "attack", "toward", "dash", "away", "search",
+		case "weight", "say", "activity", "when", "fact", "flee", "hold", "attack", "toward", "dash", "away", "search",
 			"use", "with", "as":
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.AnswerSpec",
