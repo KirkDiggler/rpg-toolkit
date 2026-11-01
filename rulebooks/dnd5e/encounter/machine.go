@@ -306,15 +306,15 @@ func recipeKey(r *machine.Recipe) (string, error) {
 // Errors: the recipe's own refusals ([compileRecipe]), wrapped in
 // [ErrBadMember].
 func (e *Encounter) useRecipe(m *memberRecord, r *machine.Recipe) error {
+	if r == nil {
+		m.Recipe, m.recipeKey = nil, ""
+		return nil
+	}
 	clone, err := cloneRecipe(r)
 	if err != nil {
 		return fmt.Errorf("member %s: %w: %w", m.ID, err, ErrBadMember)
 	}
 	m.Recipe = clone
-	if m.Recipe == nil {
-		m.recipeKey = ""
-		return nil
-	}
 	key, err := recipeKey(m.Recipe)
 	if err != nil {
 		return fmt.Errorf("member %s: %w: %w", m.ID, err, ErrBadMember)
@@ -666,12 +666,13 @@ func bagScalar(v any) (any, bool) {
 // cloneRecipe deep-copies a recipe so a caller's value and the composition's
 // cannot be the same one ([MemberInput]'s rule that nothing crossing the door
 // stays aliased), through its own JSON shape, the recipe's one
-// representation. nil stays nil.
+// representation. The recipe is required; a member with none runs the
+// default and has nothing to copy ([Encounter.useRecipe]).
 //
-// Errors: a recipe whose bag holds a value JSON cannot carry.
+// Errors: no recipe, or one whose bag holds a value JSON cannot carry.
 func cloneRecipe(r *machine.Recipe) (*machine.Recipe, error) {
 	if r == nil {
-		return nil, nil
+		return nil, errors.New("recipe: none to copy")
 	}
 	raw, err := json.Marshal(r)
 	if err != nil {

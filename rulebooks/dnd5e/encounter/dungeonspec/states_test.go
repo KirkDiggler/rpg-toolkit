@@ -38,12 +38,14 @@ factions:
         transitions:
           - { on: clock:world, to: waiting }`
 
-// statesBindings binds both goblins to the garrison and the drill; goblin-1
-// writes states of its own, goblin-2 inherits the faction's.
+// statesBindings binds both goblins to the garrison; goblin-1 writes its own
+// orders and states (and so does not take the drill, whose `march` its
+// states never pick), goblin-2 takes the drill and inherits the faction's
+// states, which pick `march`.
 const statesBindings = `    monsterBindings:
       goblin-1:
         faction: garrison
-        table: drill
+        on: { time: [{ hold: {} }] }
         states:
           initial: posted
           posted:
@@ -99,9 +101,23 @@ func TestDungeonspec_StatesCompile(t *testing.T) {
 	require.Equal(t, "waiting", inherited.Machine.Initial)
 	require.Contains(t, inherited.Table, encounter.AnswerKey("march"), "the key its states pick is on its table")
 
-	for _, m := range []string{"goblin-1", "goblin-2"} {
-		require.NoError(t, encounter.ValidateMachine(monsterNamed(t, compiled, m).Machine), "%s's recipe runs", m)
+	// THROUGH THE DOOR: what the dialect accepts, the encounter seats — each
+	// compiled table with its compiled machine, judged per member.
+	members := []encounter.MemberInput{{ID: "hero", Kind: encounter.KindPlayer, Position: compiled.PartyStart[0].At}}
+	for _, m := range compiled.Monsters {
+		members = append(members, encounter.MemberInput{
+			ID: encounter.MemberID(m.MemberID), Kind: encounter.KindMonster, Position: m.At,
+			Faction: encounter.FactionID(m.Faction), Table: m.Table, Machine: m.Machine,
+		})
 	}
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field:        compiled.Field,
+		Members:      members,
+		Endings:      append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, compiled.Endings...),
+		Retention:    encounter.RetentionUnbounded,
+		Capabilities: facingCapabilities(),
+	})
+	require.NoError(t, err, "the door seats every creature the dialect compiled")
 }
 
 // TestDungeonspec_StatesRefusals: each defect at its own path, in a sentence
@@ -155,6 +171,27 @@ func TestDungeonspec_StatesRefusals(t *testing.T) {
 			requireRefusedAt(t, refusals(t, v4With("", binding(tc.states))), tc.path, tc.words...)
 		})
 	}
+
+	// PER CREATURE, AT ITS OWN PATH: the drill's `march` is picked by the
+	// faction's states, and goblin-1's own states win and never pick it, so
+	// goblin-1 taking the drill is refused where it took it — the door would
+	// refuse to seat it.
+	t.Run("a table key this creature's states never pick", func(t *testing.T) {
+		requireExactDefect(t, refusals(t, v4With(statesRoot, `    monsterBindings:
+      goblin-1:
+        faction: garrison
+        table: drill
+        states:
+          initial: posted
+          posted:
+            transitions:
+              - { on: time, do: [{ pick: time }] }
+      goblin-2:
+        faction: garrison
+        table: drill`)),
+			"room.room.monsterBindings.goblin-1",
+			`this creature's table carries "march" and the states it runs never pick it: they pick time`)
+	})
 
 	t.Run("a key no state picks is still not a trigger", func(t *testing.T) {
 		requireExactDefect(t, refusals(t, v4With("tables:\n  drill:\n    march:\n      - { hold: {} }", "")),

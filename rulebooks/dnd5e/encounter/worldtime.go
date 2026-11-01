@@ -354,6 +354,8 @@ func (e *Encounter) wakePass(raised, world bool) error {
 		return nil
 	}
 	e.worldThinking = true
+	e.wakeMatched = 0
+	e.reactionPicked = false
 	defer func() { e.worldThinking = false }()
 
 	at := uint64(e.clock.ToData().HighWater)
@@ -365,7 +367,6 @@ func (e *Encounter) wakePass(raised, world bool) error {
 	if world {
 		e.landClock(worldClockName, "", at)
 	}
-	matched := len(e.landed) > 0
 	if err := e.matchLanded(); err != nil {
 		return err
 	}
@@ -435,7 +436,6 @@ func (e *Encounter) wakePass(raised, world bool) error {
 			// WHAT THE PICK LANDED IS HEARD IN THIS PASS: a patrol's clang
 			// wakes the barracks in the round it rang.
 			if len(e.landed) > 0 {
-				matched = true
 				if merr := e.matchLanded(); merr != nil {
 					return merr
 				}
@@ -452,7 +452,10 @@ func (e *Encounter) wakePass(raised, world bool) error {
 		}
 	}
 
-	if !raised && !matched {
+	// A ROUND THAT RAISED NOTHING REFRESHES SIGHT ONLY IF A REACTION MOVED
+	// SOMEBODY: a fight round whose listeners only changed state, or did
+	// nothing, changed no geometry and nobody's view (review of #2219).
+	if !raised && !e.reactionPicked {
 		return nil
 	}
 	if _, _, err := e.refreshSight(e.rosterIDs()); err != nil {

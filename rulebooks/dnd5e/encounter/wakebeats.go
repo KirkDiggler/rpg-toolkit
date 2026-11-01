@@ -4,6 +4,7 @@
 package encounter
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
+	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -75,11 +77,13 @@ const (
 	factPrefix = "fact:"
 	// factEnemy is the fact a guard reads the enemy band from.
 	factEnemy machine.FactName = "enemy"
-	// wakeBeatBound is how many landed beats one raise matches: the
-	// anti-spin bound a fight turn has, for a pass whose reactions land beats
-	// of their own. A pass that reaches it drops the rest.
-	wakeBeatBound = 4096
 )
+
+// wakeBeatBound is how many landed beats one pass matches: the anti-spin
+// bound a fight turn has, for a pass whose reactions land beats of their own.
+// A pass that reaches it drops the rest and says so ([BeatWakeCut], design
+// §2). A variable only so a test can reach it.
+var wakeBeatBound = 4096
 
 // clockBeat is the beat a clock's round lands under.
 func clockBeat(name string) machine.Beat { return machine.Beat(beatClock + name) }
@@ -262,19 +266,50 @@ func (e *Encounter) landClock(name string, faction FactionID, at uint64) {
 //
 // Errors: a machine refused its blob, or a reaction's pick failed.
 func (e *Encounter) matchLanded() error {
-	for n := 0; len(e.landed) > 0; {
+	for len(e.landed) > 0 {
 		batch := e.landed
 		e.landed = nil
-		for _, b := range batch {
-			if n >= wakeBeatBound || e.outcome != nil {
+		for i, b := range batch {
+			if e.outcome != nil {
 				e.landed = nil
 				return nil
 			}
-			n++
+			// THE BOUND IS THE PASS'S, counted across every call this raise
+			// makes ([Encounter.wakeMatched], reset by [Encounter.wakePass]).
+			if e.wakeMatched >= wakeBeatBound {
+				dropped := len(batch) - i + len(e.landed)
+				e.landed = nil
+				return e.appendWakeCutBeat(dropped)
+			}
+			e.wakeMatched++
 			if err := e.matchOne(b); err != nil {
 				return err
 			}
 		}
+	}
+
+	return nil
+}
+
+// appendWakeCutBeat records a pass cut at [wakeBeatBound]: how many landed
+// beats it matched and how many it dropped unmatched, audience everyone, as
+// the tick that framed the pass.
+func (e *Encounter) appendWakeCutBeat(dropped int) error {
+	payload, err := json.Marshal(map[string]interface{}{
+		"beat":    BeatWakeCut,
+		"matched": e.wakeMatched,
+		"dropped": dropped,
+	})
+	if err != nil {
+		return fmt.Errorf("wake cut beat: %w", err)
+	}
+	if _, err := e.appendBeat(&record.AppendInput{
+		At:       uint64(e.clock.ToData().HighWater),
+		Audience: e.audienceFor(tableBeat),
+		Tags:     map[string]string{"tag": BeatWakeCut},
+		Payload:  payload,
+	}); err != nil {
+		return fmt.Errorf("wake cut beat: %w", err)
 	}
 
 	return nil
@@ -421,6 +456,9 @@ func (e *Encounter) afterStep(id MemberID, m *memberRecord, p *machine.Program, 
 	for _, act := range stepped.Acts {
 		if act.Pick == "" {
 			continue
+		}
+		if !spend {
+			e.reactionPicked = true
 		}
 		if err := e.runPick(id, m, AnswerKey(act.Pick)); err != nil {
 			return err

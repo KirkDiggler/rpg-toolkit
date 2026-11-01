@@ -409,3 +409,43 @@ func machineOf(own, faction *StatesSpec, owner, side string) *machine.Recipe {
 
 	return r
 }
+
+// placeCreatureKeys refuses, at one creature's own path, a key of its
+// resolved table that the machine it resolves to never picks: the
+// encounter's door judges the table against that creature's machine, not
+// the document's ([encounter.MemberInput.Machine]), so a `march:` legal for
+// the reserves is refused on a creature whose own states win and pick no
+// `march`. own is the creature's own orders, already laid over the table its
+// binding names; ownStates is its own `states`. The faction's orders and
+// states are the layer beneath, nearest winning wholesale, as compiled.
+//
+// A key no state anywhere picks is [grammar.placeOn]'s refusal at the
+// table's own path, and is not reported a second time here.
+func (g *grammar) placeCreatureKeys(path, faction string, own map[string][]AnswerSpec, ownStates *StatesSpec) {
+	side := sideOf(faction)
+	var sideOn map[string][]AnswerSpec
+	var sideStates *StatesSpec
+	for _, fa := range g.declaredFactions {
+		if fa.ID == side {
+			sideOn = layerSpecs(rootTableOn(g.tables, fa.Table), fa.On)
+			sideStates = fa.States
+		}
+	}
+	states := ownStates
+	if states == nil {
+		states = sideStates
+	}
+	picked := states.picks()
+	for _, key := range sortedKeys(layerSpecs(sideOn, own)) {
+		if knownTableKey(key) || !g.picked[key] || slices.Contains(picked, key) {
+			continue
+		}
+		if len(picked) == 0 {
+			g.fail(path, "this creature's table carries %q and the states it runs pick no key "+
+				"(it runs the default, which picks time): give it states that pick %q, or a table without it", key, key)
+			continue
+		}
+		g.fail(path, "this creature's table carries %q and the states it runs never pick it: they pick %s",
+			key, strings.Join(picked, ", "))
+	}
+}

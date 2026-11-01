@@ -271,3 +271,74 @@ func TestSetup_MachineRefusals(t *testing.T) {
 	_, err := NewEncounter(wakeSetup(passDriver{}, m))
 	require.NoError(t, err, "a key the recipe picks is a table key")
 }
+
+// TestWake_ReactionForgivesIdleRounds is the reaction half of #774's
+// carry-over (review of rpg-toolkit#2219): a posted guard accrues budget
+// every raise it is not due; woken by a sound, saved and loaded, it is asked
+// once the round after it woke, never its idle rounds replayed.
+func TestWake_ReactionForgivesIdleRounds(t *testing.T) {
+	enc, driver := earsHall(t, listener("m-near", 4, 1, postedRecipe(t)))
+	caps := wakeCapabilities(driver)
+	caps.Sheets = earsSheets{}
+	for i := 0; i < 5; i++ {
+		require.NoError(t, enc.spendWorldAction("alice"))
+	}
+	require.NoError(t, enc.makeSound(noiseAttack, "alice", uint64(enc.clock.ToData().HighWater)))
+	require.NoError(t, enc.spendWorldAction("alice")) // heard -> alert
+	loaded, err := LoadEncounter(&LoadEncounterInput{Data: enc.ToData(), Capabilities: caps})
+	require.NoError(t, err)
+	require.NoError(t, loaded.spendWorldAction("alice"))
+	require.Len(t, driver.asked, 1, "one ask the round after it woke, not its idle rounds replayed")
+}
+
+// TestWake_CutAtTheBoundIsRecorded: a pass that reaches the bound on landed
+// beats drops the rest and says so, with the count it dropped; the count is
+// the pass's, so a second raise matches afresh.
+func TestWake_CutAtTheBoundIsRecorded(t *testing.T) {
+	saved := wakeBeatBound
+	wakeBeatBound = 1
+	t.Cleanup(func() { wakeBeatBound = saved })
+	enc, _ := earsHall(t,
+		listener("m-a", 4, 1, postedRecipe(t)),
+		listener("m-b", 5, 1, postedRecipe(t)),
+	)
+	require.NoError(t, enc.makeSound(noiseAttack, "alice", uint64(enc.clock.ToData().HighWater)))
+	require.Len(t, enc.landed, 2)
+	require.NoError(t, enc.spendWorldAction("alice"))
+
+	require.Equal(t, "alert", stateOf(enc, "m-a"), "the first beat was matched")
+	require.Equal(t, "posted", stateOf(enc, "m-b"), "the second was cut")
+	cuts := beatsTagged(t, enc, BeatWakeCut)
+	require.Len(t, cuts, 1)
+	require.Equal(t, float64(1), cuts[0]["dropped"])
+	require.Equal(t, float64(1), cuts[0]["matched"])
+
+	require.NoError(t, enc.makeSound(noiseAttack, "alice", uint64(enc.clock.ToData().HighWater)))
+	require.NoError(t, enc.spendWorldAction("alice"))
+	require.Equal(t, "alert", stateOf(enc, "m-b"), "the next pass matches afresh")
+}
+
+// TestWake_FightRoundWithNoReactionPickRefreshesNoSight: a fight round that
+// raised nothing, heard by a `clock:fight` listener that only changes state,
+// moves nobody and pays no roster-wide sight refresh.
+func TestWake_FightRoundWithNoReactionPickRefreshesNoSight(t *testing.T) {
+	alarmed := recipe(t, "waiting", map[string]machine.State{
+		"waiting": {Transitions: []machine.Transition{{On: clockBeat(clockFight), To: "braced"}}},
+		"braced":  {},
+	})
+	enc, driver := wakeHall(t, monster("m-fighter", 4, 1, holds()), listener("m-res", 12, 6, alarmed))
+	encodes := 0
+	saved := encodeSighting
+	encodeSighting = func(t SightTestimony) ([]byte, error) {
+		encodes++
+		return saved(t)
+	}
+	defer func() { encodeSighting = saved }()
+
+	enc.landFightRound([]MemberID{"alice", "m-fighter"}, uint64(enc.clock.ToData().HighWater))
+	require.NoError(t, enc.wakePass(false, false))
+
+	require.Equal(t, "braced", stateOf(enc, "m-res"), "the listener heard the round")
+	require.Empty(t, driver.asked)
+	require.Zero(t, encodes, "nobody moved, so nothing was refreshed")
+}

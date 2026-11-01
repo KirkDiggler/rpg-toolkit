@@ -79,8 +79,8 @@ func TestReserves_MarchOnFightRounds(t *testing.T) {
 		mark, err := s.enc.Story(&encounter.StoryInput{Audience: hero})
 		require.NoError(t, err)
 		s.endTurn()
-		if clockKind(t, s.enc, kingReserve) != encounter.ClockWorld {
-			break // a reserve that sees the hero joins the fight, and the fight prices its time
+		for _, id := range reserves {
+			require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, id), "one leg does not bring %s into the fight", id)
 		}
 		picks := map[encounter.MemberID][]string{}
 		for _, b := range marchBeats(t, s, len(mark)) {

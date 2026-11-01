@@ -744,6 +744,7 @@ func (v *validation) place() {
 			// be spoken to ([PlaceSpec.Options]).
 			v.g.options(p, pl.Options, props, false)
 			v.g.placeOn(p, pl.On)
+			v.g.placeCreatureKeys(p, pl.Faction, pl.On, nil)
 			v.g.placeTemper(p, pl.Temper)
 			if pl.Boss && owned {
 				if prev, dup := bosses[owner]; dup {

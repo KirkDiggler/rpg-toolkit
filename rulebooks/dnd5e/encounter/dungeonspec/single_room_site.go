@@ -315,6 +315,12 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 		// again would report a second defect for the one bad ref.
 		g.placeFaction("room.room.monsterBindings."+m.id, i, m, typeMonsters)
 		b, bound := gp.MonsterBindings[m.id]
+		// THE TABLE AGAINST THE MACHINE, PER CREATURE (rpg-project#766 S4):
+		// both resolved as the compile resolves them, judged as the
+		// encounter's door judges this one member. Before the bound check,
+		// because an unbound creature inherits its side's orders too.
+		g.placeCreatureKeys("room.room.monsterBindings."+m.id, b.Faction,
+			layerSpecs(rootTableOn(s.Tables, b.Table), b.On), b.States)
 		if !bound {
 			continue
 		}

@@ -177,6 +177,15 @@ type Encounter struct {
 	// [Encounter.runPick] for the view it builds; empty is `time`.
 	pickKey AnswerKey
 
+	// wakeMatched is how many landed beats the pass in progress has matched,
+	// against [wakeBeatBound]; reset by every [Encounter.wakePass].
+	wakeMatched int
+
+	// reactionPicked says a reaction in the pass in progress ran a pick, so a
+	// pass that raised nothing still owes the sight refresh; reset by every
+	// [Encounter.wakePass].
+	reactionPicked bool
+
 	// worldThinking guards [Encounter.wake] against re-entry: the outer pass
 	// owns the world's round, and a nested one would step the same machines
 	// twice for one raise. The same shape as `driving`, one clock over.
