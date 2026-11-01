@@ -193,6 +193,7 @@ func (s *SurvivorsSuite) say(
 	enc *encounter.Encounter, target core.EntityID, option, skill string, beaten bool,
 ) (*encounter.SpeakOutput, error) {
 	return enc.Speak(s.ctx, &encounter.SpeakInput{
+		Range: speakReach,
 		Actor: svHero, Target: target, OptionID: option, Skill: skill,
 		Beaten: beaten, DC: 10, Total: map[bool]int{true: 18, false: 4}[beaten], Roller: rollsLowest{},
 	})

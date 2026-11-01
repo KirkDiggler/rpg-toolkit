@@ -113,7 +113,7 @@ func (s *ReactWindowSuite) TestCatchUpEqualsLive() {
 // walkingSkeleton is a manager whose skeleton walks the path given, its acts
 // captured live.
 func (s *ReactWindowSuite) walkingSkeleton(live *actCapture, path ...spatial.Position) *session.Manager {
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: live, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: live, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{},
 		TurnDriver: &pathWalker{paths: map[string][]spatial.Position{"skel-1": path}, walked: map[string]bool{}},
 		Sessions:   s.sessions, Encounters: s.encounters, Characters: s.characters,
@@ -319,7 +319,7 @@ func (s *TradeTestSuite) TestTradingBeatsProduceNoAct() {
 func (s *ManagerTestSuite) TestNilActStreamRefused() {
 	_, err := session.NewManager(&session.Config{
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: testCharacters(),
-		Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+		Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		Record: session.DiscardRecord{}, Dice: testDice{}, PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{},
 	})
 	s.ErrorIs(err, session.ErrIncompleteConfig)

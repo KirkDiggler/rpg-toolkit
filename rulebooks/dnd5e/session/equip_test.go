@@ -78,7 +78,7 @@ func (s *EquipSuite) open(dice session.Roller) {
 	s.characters = newFakeCharacters(quickFighter("alice"), quickFighter("bob"))
 	s.seats = newFakeSeats()
 	s.stream = &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: s.seats, Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: s.seats, CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: dice, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters,
 	})

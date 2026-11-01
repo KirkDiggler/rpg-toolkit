@@ -48,7 +48,7 @@ func (s *SneakSuite) SetupTest() {
 	s.stream = &fakeStream{}
 	s.encounters = newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream,
-		Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+		Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: newFakeSessions(), Encounters: s.encounters,
 		Characters: newFakeCharacters(armedFighter("alice"), armedFighter("bob")),
@@ -170,7 +170,7 @@ func (s *SneakSuite) TestTheVerbRoundTripsAndPersists() {
 	s.False(s.view("bob").Sneaking, "and only on hers")
 
 	// THE REPEAT IS A NO-OP in the composition: no beat, no refresh. The
-	// verb still commits, as SetDiscoverySharing does for a repeated choice.
+	// verb still commits, so the save report still names the records.
 	before := s.story("alice")
 	again := s.setSneaking("alice", true)
 	s.True(again.Sneaking, "declaring the mode held returns it")

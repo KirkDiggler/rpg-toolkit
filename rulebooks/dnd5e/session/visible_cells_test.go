@@ -43,7 +43,7 @@ func (s *VisibleCellsSuite) SetupTest() {
 // manager is a fresh Manager over the suite's stores — a second one is a
 // restart of the host process with the same repositories.
 func (s *VisibleCellsSuite) manager() *session.Manager {
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 	})

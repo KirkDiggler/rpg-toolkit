@@ -71,7 +71,7 @@ func (s *SpeakWorldSuite) front(rolls []int) *session.Manager {
 	if driver == nil {
 		driver = session.Pass{}
 	}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: driver,
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters,
@@ -88,7 +88,7 @@ func (s *SpeakWorldSuite) front(rolls []int) *session.Manager {
 				Stance:  encounter.StanceNeutral,
 			}},
 		},
-		Party: []sceneSeat{seatAt("alice", 1, 1)},
+		Party: []sceneSeat{seatAt("alice", 2, 1)},
 	}
 
 	goblin := monsterAt("goblin", refs.Monsters.Goblin().String(), 5, 1)
@@ -273,7 +273,7 @@ func (s *SpeakWorldSuite) TestSpeakIsOfferedFreeInFreeRoam() {
 	s.NotEmpty(decl.ID, "a compiled row carries its selector")
 	s.Require().Len(decl.Candidates, 1, "one witness in the room")
 	s.Equal("goblin", decl.Candidates[0].Member)
-	s.True(decl.Candidates[0].Available, "speech carries as far as sight")
+	s.True(decl.Candidates[0].Available, "a witness within reach is an available candidate")
 	s.Equal([]session.SpeakOptionRow{
 		{Target: "goblin", OptionID: "threaten", Line: threatLine().Say, Available: true},
 		{Target: "goblin", OptionID: "appeal", Line: appealLine().Say, Available: true},
@@ -590,7 +590,7 @@ func (s *SpeakWorldSuite) TestASubjectInNoFactionHasNoStance() {
 // whom the party declared itself hostile to and the goblins said nothing about.
 func (s *SpeakWorldSuite) frontWithBandit() *session.Manager {
 	s.characters = newFakeCharacters(s.sheet)
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: &sequenceDice{rolls: []int{10, 10, 10, 10}},
 		TurnDriver: session.Pass{},
 		Sessions:   s.sessions, Encounters: s.encounters,
@@ -618,7 +618,7 @@ func (s *SpeakWorldSuite) frontWithBandit() *session.Manager {
 				},
 			},
 		},
-		Party:    []sceneSeat{seatAt("alice", 1, 1)},
+		Party:    []sceneSeat{seatAt("alice", 2, 1)},
 		Monsters: []dungeonspec.MonsterPlacement{goblin, bandit},
 	}
 	launchScene(s.T(), mgr, sc)

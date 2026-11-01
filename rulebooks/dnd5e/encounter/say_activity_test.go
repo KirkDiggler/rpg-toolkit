@@ -20,7 +20,7 @@ func (s *AnswerTestSuite) TestSayActivitySelectedRecordSurvivesReloadAndKeepsAud
 			enc := s.reload(s.front(nil, threat(rows, []encounter.Answer{{Weight: 1, Say: "No."}})))
 			_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
 				OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin,
-				Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
+				Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{}, Range: speakReach,
 			})
 			s.Require().NoError(err)
 			for _, viewer := range []core.EntityID{alice, goblin} {
@@ -66,7 +66,7 @@ func (s *AnswerTestSuite) TestSayActivityCopyBoundariesDetachDirectAndNestedCues
 				cue.Ref, cue.Cycles = "future:activity:mutated", 9
 				_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
 					OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin,
-					Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
+					Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{}, Range: speakReach,
 				})
 				s.Require().NoError(err)
 				beats := s.answeredBeats(enc, alice)
@@ -83,7 +83,7 @@ func (s *AnswerTestSuite) TestSayActivityDoesNotBorrowFromAnUnselectedResponse()
 	}, []encounter.Answer{{Weight: 1, Say: "No."}})))
 	_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
 		OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin,
-		Beaten: false, DC: 9, Total: 1, Roller: rollsLowest{},
+		Beaten: false, DC: 9, Total: 1, Roller: rollsLowest{}, Range: speakReach,
 	})
 	s.Require().NoError(err)
 	beats := s.answeredBeats(enc, alice)

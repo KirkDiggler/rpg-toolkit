@@ -561,6 +561,29 @@ func (s *PlacedOrdersSuite) TestADroppedPlacementLandsOnTheCellItWasDroppedOn() 
 	}
 }
 
+// TestPlacementIndex_StaticAndDroppedAtQuery: the placement index is what
+// the field was built with and nothing writes it (rpg-project#753). A
+// dropped rectangle's cells come from its placement record at the moment of
+// asking; the index's own entry for it is unchanged by the take and the drop.
+func (s *PlacedOrdersSuite) TestPlacementIndex_StaticAndDroppedAtQuery() {
+	standing := cellAt(5, 1)
+	enc := s.open(map[encounter.MemberID]spatial.Position{alice: authoredAt(1, 4), bella: authoredAt(5, 5)})
+	authored := enc.ExportedIndexedStands(theSlab)
+	s.Require().ElementsMatch([]spatial.Position{cellAt(1, 4), slabCentre, cellAt(3, 4)}, authored,
+		"the index holds the row the slab was drawn on")
+
+	_, err := enc.Hold(&encounter.HoldInput{Member: alice, Target: theSlab})
+	s.Require().NoError(err)
+	_, err = enc.Step(&encounter.StepInput{Member: alice, To: standing})
+	s.Require().NoError(err)
+	_, err = enc.Exit(&encounter.ExitInput{Member: alice})
+	s.Require().NoError(err)
+
+	s.Equal(authored, enc.ExportedIndexedStands(theSlab), "the take and the drop wrote nothing to the index")
+	s.ElementsMatch([]spatial.Position{cellAt(4, 1), standing}, s.placedNamed(enc, theSlab).Cells,
+		"and the dropped slab reports the cells its record puts it on now")
+}
+
 // --- (5) A scenario's artifact may be a placement ---
 
 // The recovery ending names a PLACED artifact, and the run ends when it is

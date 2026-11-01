@@ -79,7 +79,8 @@ func (s *SpeakSuite) SetupTest() {
 }
 
 // aYard opens a session with alice alone in an 8x8 hall, then spawns a goblin
-// four cells off. Props, when given, stand in the hall.
+// three cells off, within [session.InteractionReach] (rpg-project#753).
+// Props, when given, stand in the hall.
 func (s *SpeakSuite) aYard(rolls []int, props ...encounter.PropInput) *session.Manager {
 	return s.aYardDriven(session.Pass{}, rolls, props...)
 }
@@ -92,7 +93,7 @@ func (s *SpeakSuite) aYardDriven(
 	// Two initiative rolls first: spawning the goblin in the open forms a
 	// fight, and initiative is rolled before any check this suite asserts.
 	roller := &sequenceDice{rolls: append([]int{10, 10}, rolls...)}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: roller,
 		TurnDriver: driver,
 		Sessions:   s.sessions, Encounters: s.encounters,
@@ -106,7 +107,7 @@ func (s *SpeakSuite) aYardDriven(
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)},
 			Props:   props,
 		},
-		Party: []sceneSeat{seatAt("alice", 1, 1)},
+		Party: []sceneSeat{seatAt("alice", 2, 1)},
 	}
 
 	ctx := context.Background()
@@ -683,7 +684,7 @@ func (s *SpeakSuite) TestAnAuthoredFactSurvivesTheSpawnAndIsTaught() {
 // teaching a fact is observable at this seam.
 func (s *SpeakSuite) aCamp(fact string, rolls []int) *session.Manager {
 	roller := &sequenceDice{rolls: append([]int{10, 10}, rolls...)}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters,
@@ -701,7 +702,7 @@ func (s *SpeakSuite) aCamp(fact string, rolls []int) *session.Manager {
 				Until:   []encounter.UntilStep{{When: encounter.TriggerFact{Fact: encounter.FactID(fact)}}},
 			}},
 		},
-		Party: []sceneSeat{seatAt("alice", 1, 1)},
+		Party: []sceneSeat{seatAt("alice", 2, 1)},
 	}
 
 	ctx := context.Background()

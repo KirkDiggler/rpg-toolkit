@@ -76,7 +76,7 @@ func (s *StabilizationSessionSuite) TestCompiledProfilePersistsAndDeliversReplay
 			encounters := &strikeEncounters{byID: map[string]*encounter.EncounterData{}}
 			stream := &stabilizationStream{}
 			dice := &scriptedDice{}
-			mgr, err := NewManager(&Config{Record: DiscardRecord{}, Acts: stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: dice, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters, Characters: characters})
+			mgr, err := NewManager(&Config{Record: DiscardRecord{}, Acts: stream, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{}, Dice: dice, TurnDriver: Pass{}, Sessions: sessions, Encounters: encounters, Characters: characters})
 			s.Require().NoError(err)
 			sc := scene{
 				Field:   encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 5, 5)}},

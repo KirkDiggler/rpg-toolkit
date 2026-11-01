@@ -105,7 +105,7 @@ func newDeathSaveFixture(t *testing.T, face int) *deathSaveFixture {
 		characters: newFakeCharacters(armedFighter("alice"), armedFighter("bob")),
 		stream:     &fakeStream{}, token: "opaque-save-token",
 	}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: f.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: f.stream, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		Dice: literalDeathSaveDice{face: face, calls: &f.rolls}, TurnDriver: session.Pass{},
 		PresentationIDs: testPresentationIDs{value: f.token, calls: &f.ids},
 		Sessions:        f.sessions, Encounters: f.encounters, Characters: f.characters,
@@ -177,7 +177,7 @@ func (f *deathSaveFixture) execute(id string) (*session.DeathSaveOutput, error) 
 func TestDeathSaveRejectsEmptyDeclarationBeforeAnyIO(t *testing.T) {
 	stores := &deathSaveForbiddenIO{}
 	rolls, ids := 0, 0
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: stores, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: stores, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		Sessions: stores, Encounters: stores, Characters: stores,
 		Dice:            literalDeathSaveDice{face: 10, calls: &rolls},
 		PresentationIDs: literalPresentationIDs{value: "must-not-generate", calls: &ids},
@@ -258,7 +258,7 @@ func TestDeathSaveAffordIsExplicitAndExclusive(t *testing.T) {
 func TestDeathSaveIsNotOfferedToNonActiveDyingCharacter(t *testing.T) {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
 	characters := newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		Dice: testDice{}, TurnDriver: session.Pass{}, PresentationIDs: testPresentationIDs{},
 		Sessions: sessions, Encounters: encounters, Characters: characters,
 	})
@@ -480,7 +480,7 @@ func TestDeathSaveRejectsInvalidGeneratedPresentationIDBeforeRoll(t *testing.T) 
 			f := newDeathSaveFixture(t, 10)
 			f.makeDying(0, 0)
 			declaration := f.declaration()
-			mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+			mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 				Dice: literalDeathSaveDice{face: 10, calls: &f.rolls}, TurnDriver: session.Pass{},
 				PresentationIDs: literalPresentationIDs{value: token, calls: &f.ids},
 				Sessions:        f.sessions, Encounters: f.encounters,
@@ -507,7 +507,7 @@ func TestDeathSavePartialWritePreventsRetry(t *testing.T) {
 	f.makeDying(0, 0)
 	declaration := f.declaration()
 	failing := &failingEncounters{fakeEncounters: f.encounters, saveErr: errors.New("world unavailable")}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		Dice: literalDeathSaveDice{face: 10, calls: &f.rolls}, TurnDriver: session.Pass{},
 		PresentationIDs: testPresentationIDs{value: f.token, calls: &f.ids},
 		Sessions:        f.sessions, Encounters: failing, Characters: f.characters,

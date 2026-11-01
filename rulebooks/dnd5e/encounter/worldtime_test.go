@@ -223,6 +223,7 @@ func (s *WorldTimeSuite) TestAThreatCostsItsActorARound() {
 	)
 
 	_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
+		Range: speakReach,
 		Actor: alice, Target: goblin, OptionID: "threat", Skill: "intimidation",
 		Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
 	})

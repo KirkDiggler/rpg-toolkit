@@ -1243,11 +1243,14 @@ func validateWorldFacts(
 }
 
 // validateCellsKnown is the payload half of a `known:cells` fact: a decodable
-// cell list that names only this field's floor — a cell off the map would put
-// knowledge of nothing into somebody's atlas fold, which is the void-cell
-// precedent `dropped:` facts already refuse.
+// cell list — row runs or the legacy one-per-cell form, decoded as the fold
+// decodes them ([decodeCellsKnown]) — that names only this field's floor. A
+// cell off the map would put knowledge of nothing into somebody's atlas
+// fold, which is the void-cell precedent `dropped:` facts already refuse.
+// Runs are counted before they are listed: a fact can name no more cells than
+// the floor holds, so a span of a billion cells is refused unexpanded.
 func validateCellsKnown(i int, f FactData, floor *field) error {
-	cells, err := decodeCellsKnown(f.Detail)
+	cells, err := decodeCellsKnown(f.Detail, len(floor.cells))
 	if err != nil {
 		return fmt.Errorf("world fact %d is a known:cells fact whose cells do not decode (%v): %w", i, err, ErrInvalidData)
 	}
@@ -2139,6 +2142,20 @@ type MemberData struct {
 	// (ErrInvalidData).
 	Dwell *DwellData `json:"dwell,omitempty"`
 
+	// Machine is memberRecord.Machine (machine.go, rpg-project#766 S3): the
+	// creature's machine blob. Omitted when it is the fresh blob (the
+	// recipe's initial state, empty bag, no wake, no anchor), which is what
+	// an absent one loads as, so a record from before machines loads every
+	// creature on its recipe's first state. A machine on a member that runs
+	// none, or naming a state its recipe lacks, is refused at load
+	// (ErrInvalidData).
+	Machine *MachineData `json:"machine,omitempty"`
+
+	// Clock is memberRecord.Clock (R5): the clock this member is seated on,
+	// omitted for the world clock. This build knows the world clock alone,
+	// so any other name is refused at load (ErrInvalidData).
+	Clock string `json:"clock,omitempty"`
+
 	// TableHash is memberRecord.TableHash (tablebeat.go, rpg-project#674):
 	// per scope, the hash of the table this member last described in the
 	// record. Omitted when it has described none, so a blob from before
@@ -2309,6 +2326,8 @@ func (e *Encounter) snapshot() EncounterData {
 			Facing:             &facing,
 			Sneaking:           m.Sneaking,
 			Dwell:              dwellDataFrom(m.Dwell),
+			Machine:            machineDataFrom(e.programFor(m), m.Machine),
+			Clock:              m.Clock,
 			TableHash:          maps.Clone(m.TableHash),
 			BlocksMovement:     m.BlocksMovement,
 			Faction:            m.Faction,
@@ -2942,6 +2961,10 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		if err := validateDwellData(m.Dwell); err != nil {
 			return nil, fmt.Errorf("load encounter: member %q: %s: %w", m.ID, err, ErrInvalidData)
 		}
+		if m.Clock != "" && m.Clock != worldClockName {
+			return nil, fmt.Errorf("load encounter: member %q: seated on clock %q, and this build knows only the world clock: %w",
+				m.ID, m.Clock, ErrInvalidData)
+		}
 
 		// Integral axial cells, asked FIRST and named as itself — the same
 		// order and the same words Step and Join use (isIntegralHexCell).
@@ -3282,7 +3305,12 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// rebuild below reaches Atlas, which folds it, so a nil here would be a
 	// panic on the load path rather than an empty answer.
 	world := newEncounterWorld()
+	programs, err := compilePrograms()
+	if err != nil {
+		return nil, fmt.Errorf("load encounter: %w", err)
+	}
 	e := &Encounter{
+		programs:      programs,
 		discovery:     copyDiscoveryStates(data.Discovery),
 		sneakVerdicts: copySneakVerdicts(data.SneakVerdicts),
 		sightSweeps:   copySightSweeps(data.SightSweeps),
@@ -3413,10 +3441,16 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			Facing:             seedFacing(m.Facing),
 			Sneaking:           m.Sneaking,
 			Dwell:              dwellFromData(m.Dwell),
+			Clock:              m.Clock,
 			TableHash:          maps.Clone(m.TableHash),
 			BlocksMovement:     m.BlocksMovement,
 			Faction:            m.Faction,
 		}
+		blob, merr := machineFromData(e.programFor(member), m.Machine)
+		if merr != nil {
+			return nil, fmt.Errorf("load encounter: member %q: %s: %w", m.ID, merr, ErrInvalidData)
+		}
+		member.Machine = blob
 		e.members[m.ID] = member
 		e.everMembers[m.ID] = true
 
@@ -3479,6 +3513,13 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// The graph, declared from the field, the restored roster and the
 	// endings (world.go) — the same declaration Setup makes.
 	if err = e.buildWorld(); err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+
+	// Who is due and who listens, derived from every restored blob
+	// (machine.go) — never stored, rebuilt here as the field rebuilds its
+	// placement index.
+	if err = e.rebuildWake(); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 

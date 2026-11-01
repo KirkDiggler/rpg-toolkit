@@ -71,7 +71,7 @@ func (s *DepartSuite) SetupTest() {
 
 	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"), armedFighter("carol"))
 	s.stream = &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: newFakeSessions(), Encounters: newFakeEncounters(),
 		Characters: s.characters,
 	})

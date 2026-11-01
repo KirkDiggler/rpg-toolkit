@@ -132,7 +132,7 @@ func (s *AutomaticDiscoverySuite) TestSharingToggleDoesNotEraseOrBackfill() {
 	s.Len(s.results(enc, "alice"), 1)
 	s.Empty(s.results(enc, "bob"))
 	s.True(s.learned(enc, "alice"))
-	_, err := enc.SetDiscoverySharing(&encounter.SetDiscoverySharingInput{Member: "alice", Sharing: true})
+	_, err := enc.RestoreDiscovery(&encounter.RestoreDiscoveryInput{Member: "alice", Private: false})
 	s.Require().NoError(err)
 	s.Empty(s.results(enc, "bob"))
 	s.False(s.learned(enc, "bob"), "turning sharing on does not backfill what was found privately")
@@ -140,7 +140,7 @@ func (s *AutomaticDiscoverySuite) TestSharingToggleDoesNotEraseOrBackfill() {
 	shared := s.world(false, 1, r2)
 	s.step(shared, 3)
 	s.True(s.learned(shared, "bob"))
-	_, err = shared.SetDiscoverySharing(&encounter.SetDiscoverySharingInput{Member: "alice", Sharing: false})
+	_, err = shared.RestoreDiscovery(&encounter.RestoreDiscoveryInput{Member: "alice", Private: true})
 	s.Require().NoError(err)
 	s.True(s.learned(shared, "bob"), "turning sharing off does not erase what was found")
 }

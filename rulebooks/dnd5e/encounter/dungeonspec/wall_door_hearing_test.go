@@ -150,6 +150,7 @@ func sortedListeners(listeners map[encounter.MemberID]int) []encounter.MemberID 
 // said at (1,0).
 func (s *SingleRoomWallDoorSuite) greet(enc *encounter.Encounter) {
 	_, err := enc.Speak(context.Background(), &encounter.SpeakInput{
+		Range: speakReach,
 		Actor: hearHero, Target: hearTalk, OptionID: "greet", Skill: "persuasion",
 		Beaten: true, DC: 9, Total: 14, Roller: rollsOne{},
 	})
@@ -313,3 +314,7 @@ func (s *SingleRoomWallDoorSuite) TestARoomWithNoDoorsLinksNothing() {
 	s.Positive(s.voicesHeardBy(enc, hearNear), "the talker's own partition hears it")
 	s.Zero(s.voicesHeardBy(enc, hearFar), "and nothing crosses a wall with no door")
 }
+
+// speakReach is the reach every line here is said within: the session's
+// interaction reach, three hexes (rpg-project#753, R4).
+const speakReach = 3

@@ -11,6 +11,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // option.go is THE ONE SOCIAL VERB (rpg-project#569, the mad king use case
@@ -196,7 +197,7 @@ func (e *Encounter) PropOptionsFor(actor MemberID, prop PropID) ([]Option, error
 	if _, ok := e.members[actor]; !ok {
 		return nil, fmt.Errorf("prop options for: actor %q: %w", actor, ErrNotMember)
 	}
-	options, err := e.speakableProp(actor, prop)
+	options, _, err := e.speakableProp(actor, prop)
 	if err != nil {
 		return nil, fmt.Errorf("prop options for: %w", err)
 	}
@@ -249,61 +250,61 @@ func (e *Encounter) requirementHolds(actor MemberID, requires Trigger) bool {
 // not: no such prop, hidden from them, in reserve, held by somebody else, or
 // standing nowhere they are shown.
 //
-// THE SAME QUESTIONS [Encounter.Hold] ASKS, minus reach: a character may read
-// an altar across a lit hall, and the DC is the line's, never the range's.
-func (e *Encounter) speakableProp(actor MemberID, prop PropID) ([]Option, error) {
+// THE SAME QUESTIONS [Encounter.Hold] ASKS, minus reach: whether a line can
+// be said from where the speaker stands is [Encounter.Speak]'s question,
+// asked after this one, so the cells the prop stands on are returned beside
+// its options — nil for a prop the speaker carries, which is wherever they
+// are.
+//
+// The probe law is [Encounter.shownTo] under the speaker's own mask, built
+// once here: no atlas is projected to answer it.
+func (e *Encounter) speakableProp(actor MemberID, prop PropID) ([]Option, []spatial.Position, error) {
 	refused := fmt.Errorf("prop %q: %w", prop, ErrNoProp)
 	if prop == "" || e.hiddenPropTo(actor, prop) {
-		return nil, refused
+		return nil, nil, refused
 	}
 	if index := e.field.propIndexOf(prop); index >= 0 {
 		p := e.field.props[index]
 		if slices.Contains(e.heldPropsOf(actor), prop) {
-			return p.Options, nil
+			return p.Options, nil, nil
 		}
 		cell := e.field.cellAt(p.At)
 		placement, moved := e.holdings.propPlacements()[prop]
 		if p.Arrives != nil && !placement.arrived {
-			return nil, refused
+			return nil, nil, refused
 		}
 		if moved && placement.gone {
-			return nil, refused
+			return nil, nil, refused
 		}
 		if moved {
 			cell = placement.at
 		}
-		shown, err := e.showsCellTo(actor, cell)
-		if err != nil {
-			return nil, err
-		}
-		if !shown {
-			return nil, refused
+		cells := []spatial.Position{cell}
+		if !e.shownTo(e.undiscoveredMask(actor), cells) {
+			return nil, nil, refused
 		}
 
-		return p.Options, nil
+		return p.Options, cells, nil
 	}
 	if index := e.field.placedIndexOf(prop); index >= 0 {
 		p := &e.field.placed[index]
 		if slices.Contains(e.heldPropsOf(actor), prop) {
-			return p.options, nil
+			return p.options, nil, nil
 		}
 		now := e.field.placedNow()
 		placement, standing := now.stands(p)
 		if !standing {
-			return nil, refused
+			return nil, nil, refused
 		}
-		shown, err := e.showsAnyCellTo(actor, e.field.placedCells(placement))
-		if err != nil {
-			return nil, err
-		}
-		if !shown {
-			return nil, refused
+		cells := e.field.placedCellsOf(p.id, placement)
+		if !e.shownTo(e.undiscoveredMask(actor), cells) {
+			return nil, nil, refused
 		}
 
-		return p.options, nil
+		return p.options, cells, nil
 	}
 
-	return nil, refused
+	return nil, nil, refused
 }
 
 // SpeakInput names who spoke, to what, which line, and the check the session
@@ -321,6 +322,15 @@ type SpeakInput struct {
 	// Prop is the prop spoken to, or empty when the line is said to a
 	// creature. The actor must be shown it ([ErrNoProp]).
 	Prop PropID
+
+	// Range is how many cells away the target may stand, measured by
+	// [Encounter.Distance] as every reach is; ZERO MEANS 1 (adjacent), as
+	// it does for Hold and Interact. The session passes its interaction
+	// reach (rpg-project#753, R4), the same one its offer was read within,
+	// so the offer and this door measure alike. Asked after the shown and
+	// witness checks ([ErrOutOfRange]); a prop the actor carries is always
+	// within reach.
+	Range int
 
 	// OptionID names the line, on the target. It must be one the target
 	// carries AND whose requirement holds for this actor ([ErrNoOption]) —
@@ -402,7 +412,7 @@ type SpeakOutput struct {
 //
 // Errors: ErrNilInput, ErrNoMember, ErrNoOption, ErrNoRoller, ErrClosed,
 // ErrNotMember, ErrMemberDown, ErrBadPlacement, ErrNoProp, ErrUnwitnessed,
-// and a refused Calculation.
+// ErrOutOfRange, and a refused Calculation.
 func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("speak: %w", ErrNilInput)
@@ -470,8 +480,9 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 		return refuse(fmt.Errorf("speak: %w", err))
 	}
 
+	var propCells []spatial.Position
 	if in.Prop != "" {
-		options, err = e.speakableProp(in.Actor, in.Prop)
+		options, propCells, err = e.speakableProp(in.Actor, in.Prop)
 		if err != nil {
 			return refuse(fmt.Errorf("speak: %w", err))
 		}
@@ -485,6 +496,13 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	}
 	if in.Target != "" && !slices.Contains(witnesses, in.Target) {
 		return refuse(fmt.Errorf("speak: target %q cannot see the actor: %w", in.Target, ErrUnwitnessed))
+	}
+	// REACH LAST OF THE DOORS (rpg-project#753, R4), in [Encounter.Hold]'s
+	// order: only a target this speaker is shown and that witnesses them is
+	// measured, so a hidden thing far off still answers "no such thing" and
+	// never "out of range". The measure is the one every reach uses.
+	if err := e.refuseSpeakOutOfReach(in, where, propCells); err != nil {
+		return refuse(err)
 	}
 
 	at := uint64(e.clock.ToData().HighWater)
@@ -531,6 +549,38 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	return &SpeakOutput{
 		Beaten: in.Beaten, Witnesses: witnesses, Deed: landed, Seq: seq, Answered: answered.pick,
 	}, nil
+}
+
+// refuseSpeakOutOfReach is Speak's reach door: a creature is measured by
+// [Encounter.refuseOutOfReach]; a prop by [Encounter.refuseOutOfReachCell]
+// against every cell it stands on, any one within reach admitting it, as
+// [Encounter.Hold] measures a footprint. A prop the speaker carries has no
+// cells and is always within reach.
+func (e *Encounter) refuseSpeakOutOfReach(in *SpeakInput, from spatial.Position, propCells []spatial.Position) error {
+	if in.Target != "" {
+		return e.refuseOutOfReach(verbSpeak, in.Actor, in.Target, in.Range)
+	}
+	return e.refusePropOutOfReach(verbSpeak, from, in.Prop, propCells, in.Range)
+}
+
+// refusePropOutOfReach is THE PROP REACH MEASURE, one for Speak's door and
+// for [Encounter.PropWithinReach]: [Encounter.refuseOutOfReachCell] against
+// every cell the prop stands on, any one within reach admitting it, as
+// [Encounter.Hold] measures a footprint. Nil cells — a prop the member
+// carries — is always within reach.
+func (e *Encounter) refusePropOutOfReach(
+	verb string, from spatial.Position, prop PropID, cells []spatial.Position, reach int,
+) error {
+	if cells == nil {
+		return nil
+	}
+	for _, cell := range cells {
+		if e.refuseOutOfReachCell(verb, from, cell, reach, string(prop)) == nil {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("%s: %s: %w", verb, prop, ErrOutOfRange)
 }
 
 // optionOffered finds an option by id among a target's options, and answers

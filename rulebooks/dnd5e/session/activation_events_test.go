@@ -44,7 +44,7 @@ func newActivationEventScene(
 		sessions: newFakeSessions(), encounters: newFakeEncounters(),
 		characters: newFakeCharacters(alice, bob), stream: &actCapture{},
 	}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: es.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: es.stream, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: es.sessions, Encounters: es.encounters,
 		Characters: es.characters,
@@ -326,7 +326,7 @@ func TestActivationRecordFailureReportsTheDurableSheetAndDropsTheEncounterScope(
 	innerCharacters := newFakeCharacters(alice)
 	standingErr := errors.New("standing unavailable after character save")
 	characters := &failAfterCharacterSave{inner: innerCharacters, err: standingErr}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions,
 		Encounters: encounters, Characters: characters,
 	})
@@ -396,7 +396,7 @@ func TestActivationDissolveReportsNestedBoundarySaveFailure(t *testing.T) {
 		err:            errors.Join(boundaryStoreUnavailable, boundaryWriteRefused),
 	}
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: stream, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions,
 		Encounters: encounters, Characters: characters,
 	})

@@ -40,11 +40,11 @@ func TestOnlyAWrittenMonsterIsFingerprinted(t *testing.T) {
 // re-checks are carried on the scope as IDs, and the report names each
 // aggregate once however many times it was saved.
 func TestAWrittenCharacterIsTouchedWithoutReadingTheReport(t *testing.T) {
-	scope := &writeScope{written: []string{"exploration:alice"}}
+	scope := &writeScope{written: []string{"encounter:run"}}
 
 	scope.noteCharacterWritten("alice")
 	scope.noteCharacterWritten("alice")
 
 	require.Equal(t, map[encounter.MemberID]bool{"alice": true}, scope.sheetsWritten)
-	require.Equal(t, []string{"exploration:alice", "character:alice"}, scope.written)
+	require.Equal(t, []string{"encounter:run", "character:alice"}, scope.written)
 }

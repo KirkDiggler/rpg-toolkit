@@ -155,6 +155,7 @@ func (s *OptionTestSuite) speak(
 	enc *encounter.Encounter, option, skill string, beaten bool,
 ) (*encounter.SpeakOutput, error) {
 	return enc.Speak(s.ctx, &encounter.SpeakInput{
+		Range: speakReach,
 		Actor: alice, Target: goblin, OptionID: option, Skill: skill,
 		Beaten: beaten, DC: 12, Total: 15, Roller: rollsLowest{},
 	})
@@ -393,6 +394,7 @@ func (s *OptionTestSuite) TestSpeakingThroughAWallIsRefused() {
 	enc := s.scene()
 
 	_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
+		Range: speakReach,
 		Actor: billy, Target: goblin, OptionID: "gossip", Skill: "persuasion",
 		Beaten: true, DC: 10, Total: 15, Roller: rollsLowest{},
 	})
@@ -410,6 +412,7 @@ func (s *OptionTestSuite) TestRefusals() {
 	s.ErrorIs(err, encounter.ErrNoMember, "spoken to nobody")
 
 	_, err = enc.Speak(s.ctx, &encounter.SpeakInput{
+		Range: speakReach,
 		Actor: alice, Target: goblin, Prop: theAltar, OptionID: "gossip", Roller: rollsLowest{},
 	})
 	s.ErrorIs(err, encounter.ErrNoMember, "spoken to two things at once")
@@ -421,16 +424,19 @@ func (s *OptionTestSuite) TestRefusals() {
 	s.ErrorIs(err, encounter.ErrNoRoller)
 
 	_, err = enc.Speak(s.ctx, &encounter.SpeakInput{
+		Range: speakReach,
 		Actor: "nobody", Target: goblin, OptionID: "gossip", Roller: rollsLowest{},
 	})
 	s.ErrorIs(err, encounter.ErrNotMember)
 
 	_, err = enc.Speak(s.ctx, &encounter.SpeakInput{
+		Range: speakReach,
 		Actor: alice, Target: "nobody", OptionID: "gossip", Roller: rollsLowest{},
 	})
 	s.ErrorIs(err, encounter.ErrNotMember)
 
 	_, err = enc.Speak(s.ctx, &encounter.SpeakInput{
+		Range: speakReach,
 		Actor: goblin, Target: goblin, OptionID: "gossip", Roller: rollsLowest{},
 	})
 	s.ErrorIs(err, encounter.ErrNotMember, "talking to yourself is a caller defect")
@@ -448,6 +454,7 @@ func (s *OptionTestSuite) TestSpeakingToAPropLandsNoDeedAndTeachesTheSpeakersWit
 	s.Equal([]string{"examine"}, ids(offered))
 
 	out, err := enc.Speak(s.ctx, &encounter.SpeakInput{
+		Range: speakReach,
 		Actor: alice, Prop: theAltar, OptionID: "examine", Skill: "religion",
 		Beaten: true, DC: 12, Total: 16, Roller: rollsLowest{},
 	})
@@ -677,6 +684,7 @@ func (s *OptionTestSuite) TestTheBeatCarriesTheWholeRoll() {
 	enc := s.scene()
 
 	_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
+		Range: speakReach,
 		Actor: alice, Target: goblin, OptionID: "threaten", Skill: "intimidation",
 		Beaten: true, DC: 9, Total: 14, Calculation: untrainedCheck(14), Roller: rollsLowest{},
 	})
@@ -710,6 +718,7 @@ func (s *OptionTestSuite) TestABeatWithoutArithmeticSaysSo() {
 	enc := s.scene()
 
 	_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
+		Range: speakReach,
 		Actor: alice, Target: goblin, OptionID: "threaten", Skill: "intimidation",
 		Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
 	})
@@ -776,6 +785,7 @@ func (s *OptionTestSuite) TestArithmeticThatCannotHaveHappenedIsRefused() {
 			test.change(calc)
 
 			_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
+				Range: speakReach,
 				Actor: alice, Target: goblin, OptionID: "threaten", Skill: "intimidation",
 				Beaten: true, DC: 9, Total: 14, Calculation: calc, Roller: rollsLowest{},
 			})
@@ -828,6 +838,7 @@ func (s *OptionTestSuite) TestReserveAndPlacedOptionsSurviveAReload() {
 
 	// The gossip teaches the fact the guard waits on, and it arrives.
 	_, err = reloaded.Speak(s.ctx, &encounter.SpeakInput{
+		Range: speakReach,
 		Actor: alice, Target: goblin, OptionID: "gossip", Skill: "persuasion",
 		Beaten: true, DC: 10, Total: 15, Roller: rollsLowest{},
 	})

@@ -606,6 +606,7 @@ func (s *SneakSuite) TestShowingYourselfEndsTheMode() {
 		s.open(sneakOptions{extra: []encounter.MemberInput{cook()}})
 		s.sneak(true)
 		_, err := s.enc.Speak(context.Background(), &encounter.SpeakInput{
+			Range: speakReach,
 			Actor: sneakRogue, Target: sneakCook, OptionID: "hello", Skill: "persuasion",
 			Beaten: true, DC: 10, Total: 15, Roller: rollsLowest{},
 		})
@@ -743,7 +744,10 @@ func (s *SneakSuite) TestSpeakingToABeatenWatcherIsHeard() {
 	s.Require().Nil(s.holding(sneakKnight, sneakRogue))
 
 	speak := func(option string) (*encounter.SpeakOutput, error) {
+		// The knight stands four hexes off; this scene is about speech
+		// ending the mode, not about reach.
 		return s.enc.Speak(context.Background(), &encounter.SpeakInput{
+			Range: 4,
 			Actor: sneakRogue, Target: sneakKnight, OptionID: option, Skill: "persuasion",
 			Beaten: true, DC: 10, Total: 15, Roller: rollsLowest{},
 		})

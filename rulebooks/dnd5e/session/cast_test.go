@@ -152,7 +152,7 @@ func (s *CastSuite) build(
 	s.encounters = newFakeEncounters()
 	s.stream = &fakeStream{}
 	s.dice = &sequenceDice{rolls: scripted}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: s.dice,
 		TurnDriver: session.Pass{},
 		Sessions:   s.sessions, Encounters: s.encounters,

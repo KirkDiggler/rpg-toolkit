@@ -95,7 +95,7 @@ func (s *TwoPlayersTestSuite) SetupTest() {
 	barbarian := armedBarbarian("barbarian")
 	barbarian.HitPoints, barbarian.MaxHitPoints = 100, 100
 
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: s.sessions, Encounters: s.encounters,
 		Characters: newFakeCharacters(fighter, barbarian),
@@ -307,7 +307,7 @@ func TestDrivenKillingBlowDissolvesCleanlyWithTwoPlayers(t *testing.T) {
 	barbarian := armedBarbarian("barbarian")
 	barbarian.HitPoints, barbarian.MaxHitPoints = 8, 8
 
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
 		Sessions: sessions, Encounters: encounters,
 		Characters: newFakeCharacters(fighter, barbarian),

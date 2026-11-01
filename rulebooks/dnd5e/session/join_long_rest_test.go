@@ -155,7 +155,7 @@ func (s *JoinLongRestTestSuite) SetupTest() {
 func (s *JoinLongRestTestSuite) manager(
 	encounters session.EncounterRepository, characters session.CharacterRepository,
 ) *session.Manager {
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: encounters, Characters: characters,
 	})
@@ -463,7 +463,7 @@ func (s *JoinLongRestTestSuite) TestZeroHPFirstAdmissionIsStandingAndCannotFireM
 	zero := spentJoinFighter(s.T(), "bob")
 	zero.HitPoints = 0
 	characters := newCopyingCharacters(s.T(), zero, armedFighter("alice"))
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: characters,
 	})
@@ -496,7 +496,7 @@ func (s *JoinLongRestTestSuite) TestPlacementDrivenStrikeReadsRestedTruthAndIsNo
 	// creature with an enemy in sight (rpg-project#465) — hits on 15, and the
 	// remaining fixed rolls drive its damage and its later picks.
 	dice := &sequenceDice{rolls: []int{1, 20, 15, 15, 4, 4, 4, 4, 4, 4}}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: dice, TurnDriver: session.Driver(),
 		Sessions: sessions, Encounters: encounters, Characters: characters,
 	})

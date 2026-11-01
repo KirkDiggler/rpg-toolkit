@@ -40,7 +40,7 @@ func (s *EventsTestSuite) SetupTest() {
 	s.encounters = newFakeEncounters()
 	s.characters = testCharacters()
 	s.stream = &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Acts: s.stream,
 	})
 	s.Require().NoError(err)
@@ -143,7 +143,7 @@ func (s *EventsTestSuite) TestActsAreAddressed() {
 func (s *EventsTestSuite) TestNothingIsPublishedWhenTheSaveFails() {
 	encounters := &failingEncounters{fakeEncounters: newFakeEncounters()}
 	stream := &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: encounters, Characters: testCharacters(), Acts: stream,
 	})
 	s.Require().NoError(err)
@@ -168,7 +168,7 @@ func (s *EventsTestSuite) TestNothingIsPublishedWhenTheSaveFails() {
 // error the host has to interpret. The record is the truth, so clients
 // self-heal by catching up after the last act id they hold.
 func (s *EventsTestSuite) TestDeliveryFailureDoesNotFailTheVerb() {
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 		Acts: &failingStream{err: errBroken},
 	})
@@ -194,7 +194,7 @@ func (s *EventsTestSuite) TestDeliveryFailureDoesNotFailTheVerb() {
 // succeeds, so the report says nothing failed — which is true: the acts were
 // handed to a stream that chose to drop them.
 func (s *EventsTestSuite) TestDiscardingActsIsNotFailing() {
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters, Acts: session.DiscardActs{},
 	})
 	s.Require().NoError(err)
@@ -248,7 +248,7 @@ func (s *EventsTestSuite) TestDeliveryFailureNamesEachRefusingStream() {
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
 			sessions, encounters := newFakeSessions(), newFakeEncounters()
-			mgr, err := session.NewManager(&session.Config{Record: tc.record, Acts: tc.acts, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
+			mgr, err := session.NewManager(&session.Config{Record: tc.record, Acts: tc.acts, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 				Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
 			})
 			s.Require().NoError(err)

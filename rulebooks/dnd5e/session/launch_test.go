@@ -52,7 +52,7 @@ func (s *LaunchSuite) SetupTest() {
 	s.characters = newFakeCharacters(tired("alice"), tired("bob"), tired("carol"))
 	s.seats = newFakeSeats()
 	s.stream = &fakeStream{}
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: s.seats, Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream, Seats: s.seats, CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: s.sessions, Encounters: s.encounters,
 		Characters: s.characters,
 	})
@@ -376,7 +376,7 @@ func (s *LaunchSuite) TestALaunchCannotPlaceAMonsterHoldingARecordThatIsNotThere
 func launchHoldingLatecomer(t *testing.T, holds []string) (*session.Manager, map[string]uint64) {
 	t.Helper()
 	sessions := newFakeSessions()
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: newFakeEncounters(),
 		Characters: newFakeCharacters(sharpEyed("alice"), dullEyed("bob")),
@@ -491,7 +491,7 @@ func TestLaunchActionsSuite(t *testing.T) { suite.Run(t, new(LaunchActionsSuite)
 
 func (s *LaunchActionsSuite) SetupTest() {
 	s.sessions = newFakeSessions()
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: newFakeEncounters(), Characters: testCharacters(),
 	})

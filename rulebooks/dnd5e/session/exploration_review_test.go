@@ -12,48 +12,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-func (s *AutomaticDiscoverySDKSuite) TestSharingRefusalsKeepTheVerbAndSentinel() {
-	ctx := context.Background()
-	sessions := newFakeSessions()
-	encounters := &failingEncounters{fakeEncounters: newFakeEncounters()}
-	cfg := &session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(),
-		Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
-		Explorations:    newFakeExplorations(),
-		Dice:            testDice{},
-		PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{},
-	}
-	mgr, err := session.NewManager(cfg)
-	s.Require().NoError(err)
-	_, err = mgr.SetDiscoverySharing(ctx, nil)
-	s.ErrorIs(err, session.ErrNilInput)
-	s.ErrorContains(err, "set discovery sharing:")
-	_, err = mgr.SetDiscoverySharing(ctx, &session.SetDiscoverySharingInput{Session: "missing", Member: "alice"})
-	s.ErrorIs(err, session.ErrNoSession)
-	s.ErrorContains(err, "set discovery sharing:")
-
-	run := authoredWorld()
-	run.Session = "run"
-	launchScene(s.T(), mgr, run)
-	_, err = mgr.SetDiscoverySharing(ctx, &session.SetDiscoverySharingInput{Session: "run", Member: "stranger"})
-	s.ErrorIs(err, session.ErrNoMember)
-	s.ErrorContains(err, "set discovery sharing:")
-
-	encounters.saveErr = errBroken
-	_, err = mgr.SetDiscoverySharing(ctx, &session.SetDiscoverySharingInput{Session: "run", Member: "alice", Sharing: false})
-	s.ErrorIs(err, session.ErrSaveFailed)
-	s.ErrorContains(err, "set discovery sharing:")
-	var partial *session.SaveError
-	s.Require().ErrorAs(err, &partial)
-	s.Contains(partial.Report.Written, "exploration:alice", "context wrapping must preserve the partial-save report")
-
-	cfg.Locker = &observingLocker{err: context.Canceled}
-	blocked, err := session.NewManager(cfg)
-	s.Require().NoError(err)
-	_, err = blocked.SetDiscoverySharing(ctx, &session.SetDiscoverySharingInput{Session: "run", Member: "alice"})
-	s.ErrorIs(err, context.Canceled)
-	s.ErrorContains(err, "set discovery sharing:")
-}
-
 type discoveryReviewDice struct{ calls int }
 
 func (d *discoveryReviewDice) Roll(_ context.Context, _ int) (int, error) {
@@ -73,7 +31,7 @@ func (s *AutomaticDiscoverySDKSuite) TestJoinDiscoveryUsesTheRestedRecordRatherT
 			dice := &discoveryReviewDice{}
 			mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(),
 				Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: characters,
-				Explorations:    newFakeExplorations(),
+				CharacterConfig: newFakeCharacterConfig(),
 				Dice:            dice,
 				PresentationIDs: testPresentationIDs{}, TurnDriver: session.Pass{},
 			})

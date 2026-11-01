@@ -642,6 +642,32 @@ func (e *Encounter) opposed(a, b MemberID) bool {
 	return err == nil && stance == StanceHostile
 }
 
+// opposedOnce is [Encounter.opposed] remembered by faction pair, for one
+// read that asks many member pairs while the journal stands still: the
+// stance is the pair's fold, so two members of the same two camps get the
+// same answer from one fold. Never kept past the read that made it.
+func (e *Encounter) opposedOnce() func(a, b MemberID) bool {
+	seen := map[factionPair]bool{}
+	return func(a, b MemberID) bool {
+		ma, okA := e.members[a]
+		mb, okB := e.members[b]
+		if !okA || !okB {
+			return e.opposed(a, b)
+		}
+		fa, fb := factionOf(ma), factionOf(mb)
+		if fa == "" || fb == "" {
+			return false
+		}
+		pair := pairOf(fa, fb)
+		hostile, ok := seen[pair]
+		if !ok {
+			hostile = e.stanceBetween(pair) == StanceHostile
+			seen[pair] = hostile
+		}
+		return hostile
+	}
+}
+
 // Stance reports the stance between two factions right now — the fold, for
 // a host or a test that wants the pair rather than two members.
 //

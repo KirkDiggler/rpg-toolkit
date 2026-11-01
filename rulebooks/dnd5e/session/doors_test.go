@@ -92,7 +92,7 @@ func (s *DoorsSuite) startWith(world scene, cast ...*character.Data) {
 	// The world asks every authored member's sheet how far it sees; the ones
 	// this cast leaves out are given plain ones.
 	stockAuthoredPlayers(world, characters)
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(), PresentationIDs: testPresentationIDs{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters,
 		Characters: characters,

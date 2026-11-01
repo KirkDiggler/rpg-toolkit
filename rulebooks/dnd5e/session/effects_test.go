@@ -76,7 +76,7 @@ func (s *EffectRowsSuite) cave(actor *character.Data) {
 	s.actor = actor.ID
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
 	s.characters = newFakeCharacters(actor, armedFighter(erAlly))
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 	})
@@ -567,7 +567,7 @@ func (s *EffectRowsSuite) TestAttachRunsOnlyInAfford() {
 // because the world clock compiles no attack.
 func (s *EffectRowsSuite) TestNoRowsOnTheWorldClock() {
 	s.characters = newFakeCharacters(s.fighter(s.blessedBy("alice", "bob")), armedFighter("bob"))
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: s.characters,
 	})

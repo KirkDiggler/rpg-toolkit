@@ -89,7 +89,8 @@ type KnowledgeInput struct {
 // loaded encounter. Seq is its recipient-local state cutoff, not acknowledgement
 // of historical narration.
 type KnowledgeOutput struct {
-	// DiscoverySharing is the viewer's current preference.
+	// DiscoverySharing is the viewer's configured preference, resolved as a
+	// write verb resolves it: a character who has not chosen is private.
 	DiscoverySharing *bool        `json:"discovery_sharing,omitempty"`
 	Atlas            Atlas        `json:"atlas"`
 	View             ViewOutput   `json:"view"`
@@ -142,11 +143,19 @@ func (m *Manager) Knowledge(ctx context.Context, in *KnowledgeInput) (*Knowledge
 	for _, id := range held {
 		holding = append(holding, string(id))
 	}
-	preference, err := enc.DiscoverySharing(&encounter.DiscoverySharingInput{Member: encounter.MemberID(in.Member)})
-	if err != nil {
+	// The encounter answers only whether the member has a discovery record;
+	// the value is the character's configuration, read through the same
+	// resolution prepareExploration applies (rpg-project#753 R2). The
+	// encounter's copy is restored from it at the next write verb, so reading
+	// the copy here would report the old choice until the member acts.
+	if _, err = enc.DiscoverySharing(&encounter.DiscoverySharingInput{Member: encounter.MemberID(in.Member)}); err != nil {
 		return nil, translate(err)
 	}
-	sharing := &preference.Sharing
+	resolved, err := m.configuredSharing(ctx, in.Member)
+	if err != nil {
+		return nil, fmt.Errorf("knowledge: %w", err)
+	}
+	sharing := &resolved
 	return &KnowledgeOutput{DiscoverySharing: sharing, Atlas: projected, View: *view, Where: WhereOutput{Position: at}, Roster: *roster, Holding: holding}, nil
 }
 

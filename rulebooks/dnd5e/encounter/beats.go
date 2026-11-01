@@ -29,6 +29,12 @@ const (
 	// BeatTick records the world clock advancing a round.
 	BeatTick = "tick"
 
+	// BeatState records a creature's machine entering a state
+	// (rpg-project#766 S3): the member, the state it left, the state it
+	// entered and the transition's reason. The default recipe has one state
+	// and never lands one.
+	BeatState = "state"
+
 	// BeatTurnEnded records a fight's turn passing to the next member.
 	BeatTurnEnded = "turn-ended"
 

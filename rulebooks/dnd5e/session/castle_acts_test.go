@@ -83,7 +83,7 @@ func openTheGatehouse(d20s ...int) *gatehouse {
 	alice := armedFighter("alice")
 	alice.AbilityScores[abilities.CHA] = 16
 	g := &gatehouse{sessions: newFakeSessions(), live: &actCapture{}}
-	g.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: g.live, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	g.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: g.live, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: &castleDice{d20s: d20s}, TurnDriver: session.Driver(),
 		Sessions: g.sessions, Encounters: newFakeEncounters(), Characters: newFakeCharacters(alice),
 	})

@@ -39,7 +39,7 @@ func TestSeatReadSuite(t *testing.T) { suite.Run(t, new(SeatReadSuite)) }
 
 func (s *SeatReadSuite) build(seats session.SeatRepository) *session.Manager {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: seats, Explorations: newFakeExplorations(), Locker: &observingLocker{},
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: seats, CharacterConfig: newFakeCharacterConfig(), Locker: &observingLocker{},
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: sessions, Encounters: encounters, Characters: testCharacters(),
 	})

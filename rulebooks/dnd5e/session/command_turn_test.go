@@ -90,7 +90,7 @@ func (s *CommandTurnSuite) scene(
 	}
 	s.driver = &recordingBehavior{next: s.behind}
 
-	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), Explorations: newFakeExplorations(),
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: whisperDice{}, TurnDriver: s.driver,
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 	})

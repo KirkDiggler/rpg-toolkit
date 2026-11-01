@@ -58,21 +58,37 @@ func (e *Encounter) VisibleCellsFor(in *VisibleCellsInput) (*VisibleCellsOutput,
 	if !placed {
 		return out, nil
 	}
-	// ONE VIEWER, ONE RANGE: only this member's sight enters seen-now, so only
-	// this member is asked about. Another member's unanswerable sheet is not
-	// this read's business.
-	reach, err := e.sightOf([]MemberID{in.Member})
+	seesNow, err := e.seenNow(in.Member, own)
 	if err != nil {
 		return nil, fmt.Errorf("visible cells for %q: %w", in.Member, err)
 	}
-	geometry := e.newSightReach(map[MemberID]spatial.Position{in.Member: own}, reach)
-	known := e.world.knownCells(in.Member)
-	hidden := e.hiddenFrom(in.Member)
 	// e.field.cells is sorted by cellBefore, so the answer is too.
 	for _, cell := range e.field.cells {
-		if cell == own || (known[cell] && !hidden.cells[cell] && geometry.seesCell(in.Member, cell, hidden)) {
+		if seesNow(cell) {
 			out.Cells = append(out.Cells, cell)
 		}
 	}
 	return out, nil
+}
+
+// seenNow is the seen-now test for one placed member standing at own, asked
+// a cell at a time: the cell they stand on, or a known cell no concealment
+// still hides from them that their sight reaches now. [Encounter.VisibleCellsFor]
+// asks it of every cell; [Encounter.WithinReach] of the cells within reach —
+// one test, so the two cannot disagree.
+func (e *Encounter) seenNow(member MemberID, own spatial.Position) (func(spatial.Position) bool, error) {
+	// ONE VIEWER, ONE RANGE: only this member's sight enters seen-now, so only
+	// this member is asked about. Another member's unanswerable sheet is not
+	// this read's business.
+	reach, err := e.sightOf([]MemberID{member})
+	if err != nil {
+		return nil, err
+	}
+	geometry := e.newSightReach(map[MemberID]spatial.Position{member: own}, reach)
+	known := e.world.knownCells(member)
+	hidden := e.hiddenFrom(member)
+
+	return func(cell spatial.Position) bool {
+		return cell == own || (known[cell] && !hidden.cells[cell] && geometry.seesCell(member, cell, hidden))
+	}, nil
 }

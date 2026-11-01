@@ -19,6 +19,8 @@
 //	-grounds-props props per 100 courtyard and grounds hexes (default 2.5)
 //	-monsters      monsters per 100 floor hexes (default 1)
 //	-key           the site's key, equal to its shelf file's name (default bench-keep)
+//	-garrison      monsters, first in placement order, given orders (default 0)
+//	-patrols       of the garrison, how many walk a route (default 0)
 //	-out           the file to write (required)
 //
 // It prints the report as one line. A site the loader refuses, that seats
@@ -57,6 +59,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 	grounds := fs.Float64("grounds-props", def.GroundsDensity, "props per 100 courtyard and grounds hexes")
 	monsters := fs.Float64("monsters", def.MonsterDensity, "monsters per 100 floor hexes")
 	key := fs.String("key", def.Key, "the site's key, equal to its shelf file's name")
+	garrison := fs.Int("garrison", def.Garrison, "monsters, first in placement order, given orders")
+	patrols := fs.Int("patrols", def.Patrols, "of the garrison, how many walk a route")
 	out := fs.String("out", "", "the file to write (required)")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -76,7 +80,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	doc, report, err := keepgen.Generate(plan, keepgen.Options{
 		Hexes: *hexes, Seed: *seed, PropDensity: *props, GroundsDensity: *grounds, MonsterDensity: *monsters,
-		Key: *key, CommandLine: strings.Join(append([]string{"keepgen"}, args...), " "),
+		Key: *key, Garrison: *garrison, Patrols: *patrols, CommandLine: strings.Join(append([]string{"keepgen"}, args...), " "),
 	})
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, err)

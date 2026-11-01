@@ -8,8 +8,8 @@ package session
 // encounter owns the mode — who may sneak (a player, in free roam), the lost
 // verdicts a declaration in plain view writes, the sight refresh that judges
 // the declaration at once, and the `snuck` beats any roll leaves — and this
-// file only carries that verb across the boundary in
-// [Manager.SetDiscoverySharing]'s guarded load/act/save/deliver shape.
+// file only carries that verb across the boundary in the ordinary guarded
+// load/act/save/deliver shape.
 //
 // WHAT THE SESSION ADDS ELSEWHERE, NOT HERE (design R8, R10):
 //   - the half pace, answered by the sheet seam's speed while
@@ -43,8 +43,7 @@ type SetSneakingInput struct {
 }
 
 // SetSneakingOutput is the mode the encounter now holds, with the ordinary
-// persistence reports. It mirrors [SetDiscoverySharingOutput] and the wire's
-// SetSneakingResponse: any roll the declaration's refresh caused arrives as an
+// persistence reports. It mirrors the wire's SetSneakingResponse: any roll the declaration's refresh caused arrives as an
 // `snuck` beat on the mover's own stream, and a fight it formed arrives as the
 // formation's own beats — neither is restated here.
 type SetSneakingOutput struct {
@@ -60,8 +59,7 @@ type SetSneakingOutput struct {
 //
 // DECLARING THE MODE ALREADY HELD IS A NO-OP in the composition: no roll, no
 // re-arm, no refresh, no beat; the current mode is returned. The verb still
-// commits, as [Manager.SetDiscoverySharing] does for a repeated choice, so the
-// save report names the records rewritten unchanged.
+// commits, so the save report names the records rewritten unchanged.
 //
 // Errors include ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
 // ErrNoEncounter, ErrNoMember (a stranger, or a member who is not a player: a

@@ -79,11 +79,13 @@ type site struct {
 	walls    []wall
 	props    []placedProp
 	monsters []placedMonster
+	orders   []order // the garrison, in placement order ([Options.Garrison])
 	reserved map[cell]bool
 }
 
 // placeAll runs the placement. A plan door between two regions that share
-// no wall, or share one too short to cut a door into, is refused by name.
+// no wall, or share one too short to cut a door into, is refused by name; so
+// is a garrison larger than the monsters placed ([ErrBadOptions]).
 func placeAll(p *Plan, l *layout, o Options) (*site, error) {
 	owner := l.owners()
 	s := &site{reserved: map[cell]bool{}}
@@ -102,6 +104,9 @@ func placeAll(p *Plan, l *layout, o Options) (*site, error) {
 	taken := map[cell]bool{}
 	for i, g := range l.regions {
 		s.placeMonsters(p, l, owner, occupied, taken, i, count(g.size(), o.MonsterDensity), o.Seed)
+	}
+	if err := s.placeGarrison(owner, occupied, taken, o); err != nil {
+		return nil, err
 	}
 	return s, nil
 }
