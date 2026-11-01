@@ -8,6 +8,7 @@ package encounter_test
 // leaves are the ones the whole roster's look would have written.
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand/v2"
 	"strings"
@@ -242,25 +243,72 @@ func openPacingRow(t *testing.T) *encounter.Encounter {
 			{ID: "g", Kind: encounter.KindPlayer, Position: cellAt(50, 1)},
 			{ID: "a", Kind: encounter.KindPlayer, Position: cellAt(53, 1)},
 		},
-		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
-		Capabilities: encounter.Capabilities{
-			Sight:         &sightList{reach: map[encounter.MemberID]int{"g": 3}, fallback: 24},
-			Equipment:     encounter.UnobservedEquipment{},
-			Conditions:    encounter.UnobservedEquipment{},
-			Sheets:        walksThirty{},
-			Participation: everyoneStanding{},
-			Initiative:    orderAsGiven{},
-			Driver:        passDriver{},
-			Actors: encounter.Actors{
-				Striker:   passStriker{},
-				Mover:     quietMover{},
-				Announcer: quietAnnouncer{},
-			},
-		},
+		Endings:      []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: pacingRowCapabilities(),
 	})
 	require.NoError(t, err)
 
 	return enc
+}
+
+// pacingRowCapabilities is what the pacing row runs on, at setup and at load:
+// g sees three cells, everybody else twenty-four.
+func pacingRowCapabilities() encounter.Capabilities {
+	return encounter.Capabilities{
+		Sight:         &sightList{reach: map[encounter.MemberID]int{"g": 3}, fallback: 24},
+		Equipment:     encounter.UnobservedEquipment{},
+		Conditions:    encounter.UnobservedEquipment{},
+		Sheets:        walksThirty{},
+		Participation: everyoneStanding{},
+		Initiative:    orderAsGiven{},
+		Driver:        passDriver{},
+		Actors: encounter.Actors{
+			Striker:   passStriker{},
+			Mover:     quietMover{},
+			Announcer: quietAnnouncer{},
+		},
+	}
+}
+
+// TestObserversOf_AMemoryIsStampedTheSameAcrossAReload is the probe through
+// a save and a load: the last look is never stored, a loaded encounter takes
+// it from the saved high-water (a verb ends with a look), and the memory the
+// next look forms is stamped exactly as the encounter that never left memory
+// stamps it — 4, the last round the subject was seen.
+func TestObserversOf_AMemoryIsStampedTheSameAcrossAReload(t *testing.T) {
+	kept := openPacingRow(t)
+	for i := 0; i < 12; i++ {
+		_, err := kept.Step(&encounter.StepInput{Member: "p", To: cellAt(1, 1), EndWalk: true})
+		require.NoError(t, err)
+		_, err = kept.Step(&encounter.StepInput{Member: "p", To: cellAt(0, 1), EndWalk: true})
+		require.NoError(t, err)
+	}
+	raw, err := json.Marshal(kept.ToData())
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), "last_look", "the last look is derived, never stored")
+	var data encounter.EncounterData
+	require.NoError(t, json.Unmarshal(raw, &data))
+	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Capabilities: pacingRowCapabilities()})
+	require.NoError(t, err)
+
+	for _, enc := range []*encounter.Encounter{kept, loaded} {
+		_, err := enc.Step(&encounter.StepInput{Member: "a", To: cellAt(54, 1), EndWalk: true})
+		require.NoError(t, err)
+	}
+	want, ok, err := kept.ExportedHolding("g", "a")
+	require.NoError(t, err)
+	require.True(t, ok)
+	got, ok, err := loaded.ExportedHolding("g", "a")
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.False(t, got.CurrentOn(perception.Sight), "a stepped out of g's sight")
+	require.EqualValues(t, 4, want.Confirmed, "the kept encounter stamps the last round a was seen")
+	require.Equal(t, want.Confirmed, got.Confirmed, "and the reloaded one stamps it the same")
+	keptPercepts, err := kept.ExportedPercepts()
+	require.NoError(t, err)
+	loadedPercepts, err := loaded.ExportedPercepts()
+	require.NoError(t, err)
+	require.Equal(t, keptPercepts, loadedPercepts, "every percept and every memory's stamp alike")
 }
 
 // monsterCells is where every monster stands now.

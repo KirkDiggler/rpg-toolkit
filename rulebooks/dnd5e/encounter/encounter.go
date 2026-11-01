@@ -196,8 +196,9 @@ type Encounter struct {
 	// verb ends with a look, so a saved encounter has nothing pending.
 	pendingCells []spatial.Position
 
-	// lastLook is the clock reading of the last look (rpg-project#762),
-	// persisted as [EncounterData.LastLook]. Every sighting an observer
+	// lastLook is the clock reading of the last look (rpg-project#762). Never
+	// persisted: a verb ends with a look, so a loaded encounter's last look is
+	// its saved clock high-water ([LoadEncounter]). Every sighting an observer
 	// still holds as current was true at that reading — nothing within its
 	// sight changed, or it would have been in that look — so a look
 	// re-confirms an observer's older current sightings at it before
