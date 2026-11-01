@@ -44,15 +44,17 @@ import (
 // raise nothing until they had walked ten paces. Every advance here names its
 // member.
 //
-// # When time passes, the world thinks
+// # When time passes, the world wakes who is due
 //
 // Inside the same call that raised the high-water, after the verb's own beats
-// and before its sight refresh, every standing monster on the world clock
-// with budget is given one turn's worth of doing, rolls its `time` table, and
-// spends one. Then the verb's one sight refresh runs, and a creature that
-// walked into an enemy's sight joins a fight by the shipped path. A fight
-// round wrapping is such a raise, so creatures OUTSIDE a fight close one
-// round at a time while it runs — the primitive Alarm needs.
+// and before its sight refresh, every creature the raise made due steps its
+// machine (machine.go): on the default recipe it rolls its `time` table,
+// executes, and spends one. Then the verb's one sight refresh runs, and a
+// creature that walked into an enemy's sight joins a fight by the shipped
+// path. A fight round wrapping is such a raise, so creatures OUTSIDE a fight
+// close one round at a time while it runs — the primitive Alarm needs.
+// (Creature-table §5's "the world thinks" is amended by rpg-project#766 R1:
+// the world wakes who is due; the roster is never walked.)
 
 // advanceWorld advances the world clock for one member and reports whether
 // that raised the high-water.
@@ -62,7 +64,7 @@ import (
 // a driver behind the front runner catches up silently, and its catching up is
 // not time passing for anybody else. Comparing the high-water before and after
 // is the only question this composition has — "did anybody gain a round" — and
-// it is what decides whether the world thinks.
+// it is what decides whether the world wakes.
 func (e *Encounter) advanceWorld(driver MemberID, displacement int) (bool, error) {
 	before := e.clock.ToData().HighWater
 	if _, err := e.clock.Advance(&clock.AdvanceInput{
@@ -80,10 +82,11 @@ func (e *Encounter) advanceWorld(driver MemberID, displacement int) (bool, error
 //
 // A JUMP, NOT A DRIVE. [Encounter.advanceWorld] is time somebody lived
 // round by round: it grants every world-clock member the rounds as budget,
-// and [Encounter.worldThinks] then spends them a turn at a time. An elapse
-// grants nothing and nobody thinks — no creature acts during it, no tick
+// and [Encounter.wake] then spends them a turn at a time. An elapse
+// grants nothing and nobody wakes — no creature acts during it, no tick
 // beat is written — and NOTHING IS OWED AFTERWARDS: every budget is exactly
-// what it was, so the next step anybody takes is not handed the hour.
+// what it was, and the due heap jumps with the reading ([Encounter.jumpWake]),
+// so the next step anybody takes is not handed the hour.
 //
 // EVERY DRIVER JUMPS WITH THE READING. The clock accrues by driver as max;
 // moving the high-water alone would leave every member an hour behind it,
@@ -117,6 +120,7 @@ func (e *Encounter) elapseWorld(span int) error {
 		return fmt.Errorf("elapse %d rounds: %w", span, err)
 	}
 	e.clock = jumped
+	e.jumpWake(uint64(span))
 
 	return nil
 }
@@ -131,7 +135,8 @@ func (e *Encounter) elapseWorld(span int) error {
 // anybody. A newcomer arrives NOW, so their progress is the reading, exactly
 // where [Encounter.elapseWorld] leaves every member who was present. The
 // catch-up raises nothing (it reaches the high-water, never past it), so it
-// grants nobody budget and the world does not think on it.
+// grants nobody budget and the world does not wake on it. A creature with a
+// machine is armed at the world's now: due at the next raise.
 //
 // A member coming back from a fight is not a newcomer and does not come
 // through here: a fight advances its members round by round
@@ -141,6 +146,7 @@ func (e *Encounter) seatOnWorldClock(id MemberID) error {
 		return err
 	}
 	data := e.clock.ToData()
+	e.armAt(id, uint64(data.HighWater))
 	behind := data.HighWater - data.DriverProgress[core.EntityID(id)]
 	if behind <= 0 {
 		return nil
@@ -183,7 +189,7 @@ func (e *Encounter) spendWorldAction(actor MemberID) error {
 		return nil
 	}
 
-	return e.worldThinks()
+	return e.wake()
 }
 
 // spendWorldPace accrues ONE CELL of walking on a member and pays a round
@@ -244,7 +250,7 @@ func (e *Encounter) spendWorldPace(mover MemberID) error {
 		return nil
 	}
 
-	return e.worldThinks()
+	return e.wake()
 }
 
 // spendRound is the fight's own advance: ONE ROUND PER BUBBLE MEMBER, each
@@ -268,44 +274,55 @@ func (e *Encounter) spendRound(members []MemberID) (bool, error) {
 	return raised, nil
 }
 
-// worldThinks gives every standing monster on the world clock its budget:
-// one turn's worth of doing per unit, rolled off its own `time` table.
+// wake gives every creature the raise made due its turn: the due heap is
+// popped up to the world's new high-water, and each member popped steps its
+// machine on the `time` beat (machine.go, rpg-project#766 S3, R1).
 //
 // CALLED BY EVERY RAISE SITE, RIGHT AFTER THE ADVANCE THAT RAISED THE
-// HIGH-WATER. An advance that granted nothing thinks nothing — a driver
+// HIGH-WATER. An advance that granted nothing wakes nothing — a driver
 // catching up to the front runner is not time passing.
+//
+// NOBODY IS WALKED. The census this replaces asked every world-clock member
+// in turn whether it had a table, a budget and no bubble; the heap holds only
+// who is due, so a raise costs the creatures it wakes, never the roster. A
+// creature with no table was never armed; a machine whose state has no
+// `time` transition is not due; a machine with an authored wake is due at
+// it. A patrol standing out a dwell is still due every round (dwell.go).
+//
+// IN SEAT ORDER, AND CAUGHT UP. Members due at one round pop in member order,
+// the clock's own sorted order. A member due behind the high-water (a raise
+// the pass below could not take, because it raised inside another pass)
+// steps at its own round, re-arms at the next and pops again, round after
+// round, until it is due past the high-water: the census's "a member two
+// rounds behind gets two turns' worth".
 //
 // NO ATTACKS, AND NO REACTIONS. The budget is `AttacksLeft: 0` and an
 // [Attack] returned here is [ErrAttackOffTurn] rather than a silently skipped
 // intent: an enemy in reach on the world clock is a fight sight that has
 // already formed, so a table that reaches this is describing a world that
 // cannot happen. Steps are world steps — nobody is in a fight, so there is no
-// threatened square to leave and no reaction to spend, which is the rule the
-// retired Pump kept and the comment it kept it with.
+// threatened square to leave and no reaction to spend.
 //
 // ONE tick BEAT PER RAISE, the frame, stamped with the new reading; the moves
 // inside it narrate themselves as they always did.
 //
-// AND ONE SIGHT REFRESH AT THE END, over the whole roster — the retired Pump's
-// own shape, and a correction to this slice's brief, which said the calling
-// verb's refresh would do. It cannot: the verbs that pay a round are
-// Loot, Interact, Cast and Activation as well as Step and Unlock, and the
-// first four deliberately refresh no sight because "nothing moved and no
-// geometry changed" (see [Encounter.Loot]). That stopped being true the
-// moment a round of the world could move somebody inside them. A creature
-// that walks into an opposed member's sight during an action therefore forms
-// or joins a fight here, by the shipped path, and leaves the world clock with
-// its budget — rather than standing invisibly in the doorway until somebody
-// takes a step.
-//
-// ONCE FOR THE PASS, not once per creature the world thought for: a fight
+// AND ONE SIGHT REFRESH AT THE END, over the whole roster. The verbs that pay
+// a round are Loot, Interact, Cast and Activation as well as Step and Unlock,
+// and the first four deliberately refresh no sight because "nothing moved
+// and no geometry changed" (see [Encounter.Loot]); a round of the world can
+// move somebody inside them, so a creature that walks into an opposed
+// member's sight during an action forms or joins a fight here, by the
+// shipped path. Once for the pass, not once per creature woken: a fight
 // formed halfway through the pass would be a fight formed before the rest of
-// the creatures had moved.
+// the creatures had moved. Bounding it to the observers of the cells crossed
+// is rpg-project#762's.
 //
 // RE-ENTRANT CALLS ARE A NO-OP. A step inside a world round cannot raise the
 // clock — pace is accrued by [Encounter.Step] alone — but a beat it appends
 // can reach a consult that reaches a verb, and the outer call owns this pass.
-func (e *Encounter) worldThinks() error {
+// The raise it skipped is not lost: whoever it made due is still on the heap
+// at its round and catches up at the next pass.
+func (e *Encounter) wake() error {
 	if e.worldThinking || e.outcome != nil {
 		return nil
 	}
@@ -317,36 +334,35 @@ func (e *Encounter) worldThinks() error {
 		return err
 	}
 
-	thinkers, err := e.worldThinkers()
-	if err != nil {
-		return err
-	}
-	// A WORLD WITH NOTHING IN IT THAT CAN ACT ASKS NOBODY, which is what
-	// [Encounter.worldThinkers] answers: no standing consult and no driver
-	// consult for a round in which no creature carries orders. The refresh
-	// below still runs — time passing is a moment the world notices things,
-	// which is what the retired Pump's own end-of-tick refresh was.
-	if len(thinkers) > 0 {
-		// A body has no round to spend, so its driver is not consulted at all
-		// rather than consulted and discarded — the retired Pump's second
-		// census defect, which had dead monsters patrolling.
-		down, derr := e.downNow()
-		if derr != nil {
-			return fmt.Errorf("world thinks standing: %w", derr)
+	// A body has no round to spend, so its machine is not stepped at all —
+	// the retired Pump's second census defect, which had dead monsters
+	// patrolling. Read once for the pass, and only when somebody is due: a
+	// round in which no creature woke asks no standing consult.
+	var down map[MemberID]bool
+	for {
+		woke := e.due.Pop(at)
+		if len(woke) == 0 {
+			break
 		}
-
-		for _, member := range thinkers {
+		if down == nil {
+			var derr error
+			if down, derr = e.downNow(); derr != nil {
+				return fmt.Errorf("world wakes standing: %w", derr)
+			}
+		}
+		for _, member := range woke {
+			round := e.dueAt[member]
+			delete(e.dueAt, member)
 			m, ok := e.members[member]
-			if !ok || down[member] {
+			if !ok || !onDefaultClock(m) {
 				continue
 			}
-			// THE LIST IS WHO WAS HERE WHEN THE PASS BEGAN, NOT WHO IS HERE
-			// NOW. A creature thinking earlier in this pass can move the
-			// clocks under the rest: an alarm turns a pair hostile and the
-			// fight that forms takes its members onto a turn clock; a walk
-			// into sight does the same. One who has left the world clock has
-			// no world budget to think with, and is skipped (rpg-project#569,
-			// the castle walk's last seam).
+			// WHO IS ON THE WORLD CLOCK NOW, NOT WHEN THE PASS BEGAN. A
+			// creature woken earlier in this pass can move the clocks under
+			// the rest: an alarm turns a pair hostile and the fight that
+			// forms takes its members onto a turn clock (rpg-project#569).
+			// The fight took this one off the heap; the dissolve or the
+			// transfer that returns it re-arms it.
 			on, cerr := e.onWorldClock(member)
 			if cerr != nil {
 				return cerr
@@ -354,8 +370,19 @@ func (e *Encounter) worldThinks() error {
 			if !on {
 				continue
 			}
-			if terr := e.thinkFor(member, m); terr != nil {
-				return terr
+			// A body, or a member with no round granted to spend (the
+			// census's budget filter: a spent creature is not asked again),
+			// waits for the next round without being asked.
+			budget, berr := e.clock.Budget(&clock.BudgetInput{ID: core.EntityID(member)})
+			if berr != nil {
+				return fmt.Errorf("world wakes budget %q: %w", member, berr)
+			}
+			if down[member] || budget <= 0 {
+				e.armAt(member, round)
+				continue
+			}
+			if serr := e.stepMachine(member, m, round); serr != nil {
+				return serr
 			}
 			if e.outcome != nil {
 				return nil
@@ -364,111 +391,7 @@ func (e *Encounter) worldThinks() error {
 	}
 
 	if _, _, err := e.refreshSight(e.rosterIDs()); err != nil {
-		return fmt.Errorf("world thinks refresh sight: %w", err)
-	}
-
-	return nil
-}
-
-// worldThinkers is every creature the world has something to ask this round,
-// in the clock's own stable order: a monster, on the world clock, with budget
-// to spend and a table to spend it on.
-//
-// A TABLE IS PART OF THE TEST, not an afterthought inside the loop. A creature
-// nobody wrote orders for holds, and holding is indistinguishable from not
-// being asked — so asking would cost the whole round a standing consult and a
-// sight sweep to produce a world nobody changed.
-func (e *Encounter) worldThinkers() ([]MemberID, error) {
-	ids, err := e.clock.Members()
-	if err != nil {
-		return nil, fmt.Errorf("world thinks: %w", err)
-	}
-
-	var out []MemberID
-	for _, id := range ids {
-		member := MemberID(id)
-		m, ok := e.members[member]
-		if !ok || m.Kind != KindMonster || len(m.Table) == 0 {
-			continue
-		}
-		// A monster caught in a bubble is not the world's to think for: the
-		// world thinks on the tick, and a fight thinks in turns. Form already
-		// took it off this clock, so this is the belt on the braces — and the
-		// claim a test pins.
-		bubble, berr := e.bubbleFor(member)
-		if berr != nil {
-			return nil, fmt.Errorf("world thinks: %w", berr)
-		}
-		if bubble != nil {
-			continue
-		}
-		budget, berr := e.clock.Budget(&clock.BudgetInput{ID: id})
-		if berr != nil {
-			return nil, fmt.Errorf("world thinks budget %q: %w", member, berr)
-		}
-		if budget <= 0 {
-			continue
-		}
-		out = append(out, member)
-	}
-
-	return out, nil
-}
-
-// thinkFor spends one member's whole world-clock budget, a turn's worth of
-// doing at a time.
-//
-// THE BUDGET IS READ ONCE AND SPENT DOWN. A member two rounds behind gets two
-// turns' worth in this call, which is what makes a creature that was in a
-// fight while the party walked catch up the moment the fight lets it go.
-func (e *Encounter) thinkFor(member MemberID, m *memberRecord) error {
-	budget, err := e.clock.Budget(&clock.BudgetInput{ID: core.EntityID(member)})
-	if err != nil {
-		return fmt.Errorf("world thinks budget %q: %w", member, err)
-	}
-
-	for spent := 0; spent < budget; spent++ {
-		// RE-READ EVERY UNIT: a unit already spent may have taken this
-		// creature off the world clock.
-		on, err := e.onWorldClock(member)
-		if err != nil {
-			return err
-		}
-		if !on {
-			return nil
-		}
-		// Each turn's worth reads the sheet's speed of that moment.
-		sheet, err := e.sheetOf(member)
-		if err != nil {
-			return fmt.Errorf("world thinks %q: %w", member, err)
-		}
-		turnBudget := TurnBudget{AttacksLeft: 0, MovementFeet: sheet.SpeedFeet}
-		// The same anti-spin bound a fight's own turn uses: one terminating
-		// Pass plus however many cells this member could ever ask for one at
-		// a time, a run's included. The attack's allowance is spare here.
-		bound := intentBound(turnBudget)
-
-		if _, err := e.runIntents(nil, core.EntityID(member), m, 0, &turnBudget, 0, bound, ClockWorld); err != nil {
-			return fmt.Errorf("world thinks %q: %w", member, err)
-		}
-
-		// ITS OWN PICK CAN TAKE IT OFF THE WORLD CLOCK — the alarm it just
-		// raised formed a fight with it in — and a creature on a turn clock
-		// is not charged the world's round: the fight prices its time now.
-		on, err = e.onWorldClock(member)
-		if err != nil {
-			return err
-		}
-		if !on {
-			return nil
-		}
-
-		if _, err := e.clock.Spend(&clock.SpendInput{ID: core.EntityID(member), Amount: 1}); err != nil {
-			return fmt.Errorf("world thinks spend %q: %w", member, err)
-		}
-		if e.outcome != nil {
-			return nil
-		}
+		return fmt.Errorf("world wakes refresh sight: %w", err)
 	}
 
 	return nil
@@ -572,12 +495,12 @@ func (e *Encounter) dealTemperFor(member MemberID, temper Temper, at uint64) (Te
 }
 
 // onWorldClock reports whether a member is on the world clock right now —
-// asked of the clock itself, never of a list taken earlier, because a world
-// think pass moves members between clocks as it runs.
+// asked of the clock itself, never of a list taken earlier, because a wake
+// pass moves members between clocks as it runs.
 func (e *Encounter) onWorldClock(member MemberID) (bool, error) {
 	on, err := e.clock.Contains(&clock.ContainsInput{ID: core.EntityID(member)})
 	if err != nil {
-		return false, fmt.Errorf("world thinks %q: %w", member, err)
+		return false, fmt.Errorf("world wakes %q: %w", member, err)
 	}
 
 	return on, nil

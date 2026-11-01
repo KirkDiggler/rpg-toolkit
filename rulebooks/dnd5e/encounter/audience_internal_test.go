@@ -333,7 +333,7 @@ func TestCallSiteClassification(t *testing.T) {
 
 	// tick: nobody left on the world clock with a round to spend, but the
 	// tick frame itself still gets recorded.
-	require.NoError(t, enc.worldThinks())
+	require.NoError(t, enc.wake())
 
 	// joined + exited: carl passes through.
 	_, err = enc.Join(&JoinInput{Member: "carl", Kind: KindPlayer, Cell: spatial.Position{X: 3, Y: 3}})

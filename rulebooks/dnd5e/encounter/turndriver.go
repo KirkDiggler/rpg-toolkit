@@ -47,7 +47,7 @@ type Driver interface {
 	// Act decides what a member with no player does with its time, given
 	// everything this composition is willing to tell it about its own
 	// situation (view) — or returns an error that aborts the caller's whole
-	// verb: see EndTurn, form and [Encounter.worldThinks], all of which
+	// verb: see EndTurn, form and [Encounter.wake], all of which
 	// consult this synchronously and persist nothing until the caller's own
 	// commit, so a driver failure here costs nothing but the retry.
 	//
