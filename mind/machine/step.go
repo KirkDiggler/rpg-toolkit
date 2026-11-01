@@ -7,7 +7,7 @@ import "fmt"
 
 // Stepped is what one Step did. Fired is false when no transition of the
 // current state on the beat applied; Reason then says why (the first guard
-// that depended, or that nothing listens). When a transition fired, Acts are
+// that did not apply or depended, or that nothing listens). When a transition fired, Acts are
 // its acts in recipe order, for the host to execute the ones that are its
 // own (Pick); Reason is the transition's. From and To are set when the
 // transition named a state, and are empty otherwise.
@@ -144,11 +144,12 @@ func (p *Program) Listens(b *Blob) []Listen {
 
 // DueAt answers the next round b wants to be asked the time: its wake when
 // it has one; else now + 1 when its current state has a transition on a
-// Timed beat; else not due. A nil b or an unknown state is not due.
+// Timed beat; else not due. A nil b, an unknown state or a terminal state
+// is not due, even with a wake.
 func (p *Program) DueAt(b *Blob, now uint64) (uint64, bool) {
 	st := p.stateOf(b)
 	switch {
-	case st == nil:
+	case st == nil, st.terminal:
 		return 0, false
 	case b.WakeAt != nil:
 		return *b.WakeAt, true

@@ -6,6 +6,7 @@ package machine
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 )
 
@@ -73,7 +74,7 @@ func (r Recipe) Compile(v Vocabulary) (*Program, error) {
 	p := &Program{
 		initial: r.Initial,
 		zero:    r.Bag.Clone(),
-		beats:   v.Beats,
+		beats:   maps.Clone(v.Beats),
 		states:  make(map[string]*program, len(r.States)),
 	}
 	for _, name := range sortedKeys(r.States) {

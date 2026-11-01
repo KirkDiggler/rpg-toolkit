@@ -255,6 +255,17 @@ func TestDueAt_NoTimedNoWake(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestDueAt_TerminalIsNeverDue(t *testing.T) {
+	p := mustCompile(states("s", map[string]machine.State{
+		"s":    {Transitions: []machine.Transition{on(beatTime, nil, machine.Act{Pick: "x"})}},
+		"done": {Terminal: true},
+	}))
+	b := machine.Blob{State: "done", WakeAt: u64(7)}
+	at, ok := p.DueAt(&b, 4)
+	assert.False(t, ok, "a terminal state is never due, even with a wake")
+	assert.Zero(t, at)
+}
+
 func TestDueAt_WakeBeatsTimed(t *testing.T) {
 	p := mustCompile(guardRecipe())
 	b := p.NewBlob()

@@ -122,6 +122,20 @@ func TestCompile_SinksAndTerminalsCompile(t *testing.T) {
 	assert.False(t, due)
 }
 
+func TestCompile_VocabularyIsCopied(t *testing.T) {
+	v := testVocabulary()
+	r := one(on(beatTime, fact("wounds", machine.OpGte, 1), machine.Act{Pick: "x"}))
+	p, err := r.Compile(v)
+	require.NoError(t, err)
+
+	delete(v.Beats, beatTime)
+	delete(v.Facts, "wounds")
+	b := p.NewBlob()
+	got, err := p.Step(&b, beatTime, tick{Round: 1}, env{"wounds": 2}, 1)
+	require.NoError(t, err, "a beat deleted from the vocabulary after Compile is still the program's")
+	assert.True(t, got.Fired, "and so is a fact")
+}
+
 func TestCompile_RecipeIsCopied(t *testing.T) {
 	r := guardRecipe()
 	p, err := r.Compile(testVocabulary())
