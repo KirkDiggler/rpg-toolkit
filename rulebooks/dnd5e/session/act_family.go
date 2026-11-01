@@ -28,6 +28,7 @@ import (
 // which is the record's debug symbols and never anything a player is shown.
 var recordOnly = map[string]bool{
 	encounter.BeatTable:             true,
+	encounter.BeatState:             true, // a creature's state change (rpg-project#766 S3); its act arrives with S6
 	encounter.BeatTransferred:       true,
 	encounter.BeatInteracted:        true,
 	string(encounter.OutcomeBought): true,
