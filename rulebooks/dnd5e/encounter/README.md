@@ -212,17 +212,21 @@ There is no tick verb. **The world clock advances only because somebody acts**
 actor, a fight round wrapping pays one per fighter — and every advance names
 its own member as the driver. Standing still is free.
 
-When an advance raises the high-water, the world thinks, inside the same call:
+When an advance raises the high-water, the world wakes who is due, inside the
+same call (`machine.go`, rpg-project#766): a creature with a table is a machine
+on the default recipe (`watch: on time → pick time`), and a due heap, rebuilt
+from every machine at load, answers who acts at this round. Nothing walks the
+roster.
 
-- **Deterministic order.** Creatures are consulted in stable clock-member
-  order.
-- **A table and a budget, or nothing.** A monster with no `on:` table is not
-  consulted at all: holding is what an absent table means, and asking would
+- **Deterministic order.** Creatures due at one round step in stable
+  member order.
+- **A table, or nothing.** A monster with no `on:` table has no machine and is
+  never on the heap: holding is what an absent table means, and asking would
   cost the round a standing consult and a sight sweep to produce a world
   nobody changed.
-- **One turn's worth per unit of budget**, with `AttacksLeft: 0`. A creature
-  two rounds behind — one that was in a fight while the party walked — gets
-  both when the fight lets it go.
+- **One turn's worth per round it is due**, with `AttacksLeft: 0`. A creature
+  a round behind — one whose raise came inside another pass — steps at its own
+  round and again at the next.
 - **An `Attack` off the turn clock is an error**, not a skipped intent. An
   enemy in reach on the world clock is a fight sight that has already formed.
 - **A refused step does not abort the round.** A cell no region owns, a wall
@@ -234,7 +238,7 @@ When an advance raises the high-water, the world thinks, inside the same call:
   whose own pick — or an earlier creature's — formed a fight with it in is on
   a turn clock now: it is not picked again, not charged the world's round, and
   a creature taken off the world clock before its turn to think is skipped.
-- **A monster in a fight is not consulted.** The world thinks on the tick and
+- **A monster in a fight is not consulted.** The world wakes on the tick and
   a fight thinks in turns; `Form` takes a fighter off the world clock, so the
   world has nothing to give it. Your driver never needs to detect "am I in
   combat".

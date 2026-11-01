@@ -317,7 +317,7 @@ func (e *Encounter) noticeRounds(bubble *clock.Turn, ms []clock.Milestone) error
 				return fmt.Errorf("round %d: %w", m.Round, aerr)
 			}
 			if raised {
-				if terr := e.worldThinks(); terr != nil {
+				if terr := e.wake(); terr != nil {
 					return fmt.Errorf("round %d: %w", m.Round, terr)
 				}
 			}

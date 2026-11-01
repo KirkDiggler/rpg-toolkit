@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -1566,6 +1567,20 @@ type memberRecord struct {
 	// patrol walk ends on a waypoint with a wait, spent one per fresh turn,
 	// and persisted.
 	Dwell *dwell
+
+	// Machine is this creature's machine blob (machine.go, rpg-project#766
+	// S3): its current state, bag, wake and anchor. The zero blob is the
+	// recipe's initial state. Only a member [Encounter.programFor] gives a
+	// program steps it; for anyone else it stays zero. A dwell is not a
+	// wake: a dwelling creature stays due every round (its patrol row holds,
+	// rows above it fire). Only an authored wake_in act sets the wake (S4).
+	// Persisted.
+	Machine machine.Blob
+
+	// Clock names the clock this member is seated on (R5); empty is the
+	// world clock. Every member is on the world clock in this slice; S7
+	// seats members on an area's own clock. Persisted when not the world.
+	Clock string
 
 	// TableHash is the hash of the table this member last described in the
 	// record, per scope ([tableScope]: the key, or the option and key), so a
