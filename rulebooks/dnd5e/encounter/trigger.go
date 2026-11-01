@@ -245,12 +245,18 @@ func (e *Encounter) classify(deltas map[MemberID]*IntelDelta, contact map[Member
 	// anywhere in it is NO FORMATION, not an error — the pair stays on the
 	// world clock, watching each other, and comes into the fight when a
 	// player makes contact with either side ([Encounter.pullInWatchers]).
+	//
+	// ONE FOLD PER FACTION PAIR, not per member pair (rpg-project#753, S3):
+	// a stance is the pair's, the same for every member of both camps, and
+	// nothing in this loop writes the journal it folds — so a garrison of a
+	// hundred asks the graph a handful of times, not five thousand.
+	opposed := e.opposedOnce()
 	for i, a := range members {
 		for _, b := range members[i+1:] {
 			// THE GRAPH SAYS WHO IS OPPOSED (rpg-project#375, design §3.2):
 			// a camp that has turned is a monster in sight of a player and no
 			// fight, and two neutral camps watching each other are two camps.
-			if !e.opposed(a, b) {
+			if !opposed(a, b) {
 				continue
 			}
 			aSaw, bSaw := sawFirst(a, b), sawFirst(b, a)

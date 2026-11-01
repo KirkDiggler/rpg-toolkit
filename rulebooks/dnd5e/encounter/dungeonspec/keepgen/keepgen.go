@@ -20,7 +20,9 @@
 //   - PROPS EXERCISE THE ENGINE (R3). Two in three carry a propDeclaration
 //     that blocks movement (and sight, where the palette says so); door
 //     thresholds, the party start, exits and monster cells stay clear.
-//     Monsters stand from the palette at a density, with no mind or patrol.
+//     Monsters stand from the palette at a density; with [Options.Garrison]
+//     the first of them are given orders, one faction holding posts and
+//     walking patrol loops (garrison.go, rpg-project#766 S1).
 //   - PROOF BEFORE WRITE. [Generate] runs [Prove] on its own bytes and
 //     returns none if the loader refuses them, the start seats fewer than
 //     four, or a region is unreachable through the doors.
@@ -56,6 +58,13 @@ type Options struct {
 	Key string
 	// CommandLine is recorded in the header comment, one line.
 	CommandLine string
+	// Garrison is how many placed monsters, first in placement order, are
+	// given orders: one faction `garrison` and a table each (rpg-project#766
+	// S1). Default 0: no faction, no tables, no bindings, today's bytes.
+	Garrison int
+	// Patrols is how many of the garrison, first in placement order, walk a
+	// route of their own rather than hold their post. At most Garrison.
+	Patrols int
 }
 
 // DefaultOptions are the design's defaults at keep scale: 10,000 hexes,
@@ -102,7 +111,7 @@ func (r Report) String() string {
 // Prove). It returns the bytes and their [Report], or an error and no bytes:
 // refused options (hexes below the plan's floor, a negative density, a key
 // that is not lowercase letters, digits and dashes, a command line with a
-// line break), a plan that does not lay out, or a site [Prove] refuses.
+// line break; [ErrBadOptions] for a garrison that cannot be met), a plan that does not lay out, or a site [Prove] refuses.
 // Equal (p, o) give equal bytes.
 func Generate(p *Plan, o Options) ([]byte, Report, error) {
 	if p == nil {
@@ -154,6 +163,10 @@ func (o Options) validate() error {
 		return fmt.Errorf("keepgen: key %q must be lowercase letters, digits and dashes", o.Key)
 	case strings.ContainsAny(o.CommandLine, "\r\n"):
 		return fmt.Errorf("keepgen: the command line must be one line")
+	case o.Garrison < 0, o.Patrols < 0:
+		return fmt.Errorf("%w: garrison %d and patrols %d must be zero or more", ErrBadOptions, o.Garrison, o.Patrols)
+	case o.Patrols > o.Garrison:
+		return fmt.Errorf("%w: patrols %d is more than the garrison %d", ErrBadOptions, o.Patrols, o.Garrison)
 	}
 	return nil
 }

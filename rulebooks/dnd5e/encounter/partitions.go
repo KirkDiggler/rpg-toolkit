@@ -198,6 +198,13 @@ func (f *field) partitionCanvas(doorInputs []DoorInput) (*canvasRoom, error) {
 			fixed.placed = append(fixed.placed, p)
 		}
 	}
+	// The reach buckets name contributors by their position in the list, so
+	// the copy's shorter list gets its own; the rest of the index is by id.
+	if f.index != nil {
+		idx := *f.index
+		idx.reach = fixed.buildPlacedReach()
+		fixed.index = &idx
+	}
 	fixed.props = make([]PropInput, 0, len(f.props))
 	for _, p := range f.props {
 		if !p.Holdable && p.Arrives == nil {

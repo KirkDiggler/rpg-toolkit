@@ -98,7 +98,10 @@ func (s *CastleSurvivorsSuite) TestAKnightYieldsAndNobodySwings() {
 func (s *CastleSurvivorsSuite) TestAKnightRefusesAndABlowBringsTheFightBack() {
 	scene := s.felled()
 
-	out, err := scene.speak(kingKeep2, "refuse", "intimidation", false)
+	// SAID ACROSS THE YARD, ten hexes off: this route is about what the
+	// refusal changes, not about reach, so the line is said within ten.
+	// Walking up first is the session's castle step (rpg-project#756, T2).
+	out, err := scene.speakWithin(10, kingKeep2, "refuse", "intimidation", false)
 	s.Require().NoError(err)
 	s.Require().NotNil(out.Answered)
 	s.Equal("Then we die fighting.", out.Answered.Answer.Say)

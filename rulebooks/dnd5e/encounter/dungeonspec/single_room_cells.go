@@ -5,7 +5,8 @@ package dungeonspec
 
 import (
 	"fmt"
-	"sort"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/internal/rowruns"
 )
 
 // single_room_cells.go reads a region's cells (rpg-project#725, design R2).
@@ -74,30 +75,21 @@ func ExpandRows(rows []RoomCellRow, path string, add errSink) []RoomCell {
 //
 // It is the encoder every writer of a region uses — the v4 converter and the
 // keep generator (dungeonspec/keepgen) — so a generated site and a converted
-// one cannot spell the same floor two ways.
+// one cannot spell the same floor two ways. The runs themselves are the
+// encounter's one spelling (internal/rowruns), which a member's `known:cells`
+// facts are written in too.
 func CellRows(cells []RoomCell) []RoomCellRow {
-	sorted := append([]RoomCell(nil), cells...)
-	sort.Slice(sorted, func(i, j int) bool {
-		if sorted[i].R != sorted[j].R {
-			return sorted[i].R < sorted[j].R
-		}
-		return sorted[i].Q < sorted[j].Q
-	})
-	var rows []RoomCellRow
-	for _, c := range sorted {
-		if n := len(rows); n > 0 && rows[n-1].R == c.R {
-			last := &rows[n-1].Q[len(rows[n-1].Q)-1]
-			switch c.Q {
-			case last[1]:
-				// a duplicate cell; the set has it once
-			case last[1] + 1:
-				last[1] = c.Q
-			default:
-				rows[n-1].Q = append(rows[n-1].Q, [2]int{c.Q, c.Q})
-			}
-			continue
-		}
-		rows = append(rows, RoomCellRow{R: c.R, Q: [][2]int{{c.Q, c.Q}}})
+	in := make([]rowruns.Cell, len(cells))
+	for i, c := range cells {
+		in[i] = rowruns.Cell{Q: c.Q, R: c.R}
+	}
+	runs := rowruns.Encode(in)
+	if runs == nil {
+		return nil
+	}
+	rows := make([]RoomCellRow, len(runs))
+	for i, run := range runs {
+		rows[i] = RoomCellRow{R: run.R, Q: run.Q}
 	}
 	return rows
 }

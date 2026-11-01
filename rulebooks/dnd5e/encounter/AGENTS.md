@@ -94,7 +94,7 @@ the ask, and the walk provokes as any walk does.
 It answers, on the other hand, in geometry, placement, knowledge and clocks: `Members`,
 `MembersIn`, `RegionAt`, `Region`, `Distance`, `Canvas`, `Grid`, `Atlas`/`AtlasFor`,
 `Doors`/`DoorsFor`, `View`, `Story`, `ClockOf`, `Stance`/`StanceBetween`/`IsHostile`/`IsAllied`,
-`BelievedAim`, `Settlement`, `Status`, `Route`, `Witnesses`, `OptionsFor`/`PropOptionsFor`,
+`BelievedAim`, `Settlement`, `Status`, `Route`, `Witnesses`, `WithinReach`, `OptionsFor`/`PropOptionsFor`,
 and the verbs that change them — `Join`, `Exit`, `Step`, `Direct`, `Transfer`, `EndTurn`,
 `Dissolve`, `OpenDoor`/`CloseDoor`/`Unlock`, `Interact`, `Loot`, `Hold`, `Speak`, `RecordTrain`,
 `TellConcentration`, `End`, `AddSightArea`/`RemoveSightArea`,

@@ -161,8 +161,10 @@
 // from, and a footprint door so covered is sighted the same way; a cover the
 // member has not found teaches nothing. Each learning moment is one per-member
 // `known:cells` journal fact, audience that member alone, independent of
-// creature testimony, and never forgotten within the run. A retired
-// `known:room:<id>` fact from an older save loads and teaches nothing.
+// creature testimony, and never forgotten within the run. The fact names its
+// cells as axial row runs (q spans per r), the spelling a site's regions use;
+// a fact an older save wrote one cell per entry folds to the same cells. A
+// retired `known:room:<id>` fact from an older save loads and teaches nothing.
 //
 // [Encounter.AtlasFor] withholds every unknown cell, and every wall, door,
 // doorway, fixed prop, start, exit and placement that touches only unknown
@@ -228,6 +230,12 @@
 // remain empty; a memory never acquires a newer live default on load. Unknown
 // testimony carries no activity fact. Activity catalogs, supported clips and
 // playback timing are outside this module.
+//
+// A spoken Answer may carry a separate counted activity cue. It survives
+// table/option persistence and is captured only from the selected leaf on the
+// audienced answered record. No animation phase or completion clock is stored;
+// gameplay never waits for it. An absent legacy cue remains absent rather than
+// being reconstructed from a current content document.
 //
 // # Permitted ordinary prop appearance
 //

@@ -198,6 +198,8 @@ func (e *Encounter) dissolveBubble(bubble *clock.Turn, cause DissolveCause) (*Di
 		if _, jerr := e.clock.Join(&clock.JoinInput{ID: id}); jerr != nil {
 			return nil, fmt.Errorf("dissolve member %q world clock: %w", id, jerr)
 		}
+		// Back on the due heap at the world's now (machine.go).
+		e.armAt(MemberID(id), uint64(e.clock.ToData().HighWater))
 	}
 	if derr := e.dropBubbleIfIdle(bubble); derr != nil {
 		return nil, fmt.Errorf("dissolve prune bubble: %w", derr)

@@ -79,7 +79,8 @@ func (s *SpeakSuite) SetupTest() {
 }
 
 // aYard opens a session with alice alone in an 8x8 hall, then spawns a goblin
-// four cells off. Props, when given, stand in the hall.
+// three cells off, within [session.InteractionReach] (rpg-project#753).
+// Props, when given, stand in the hall.
 func (s *SpeakSuite) aYard(rolls []int, props ...encounter.PropInput) *session.Manager {
 	return s.aYardDriven(session.Pass{}, rolls, props...)
 }
@@ -106,7 +107,7 @@ func (s *SpeakSuite) aYardDriven(
 			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)},
 			Props:   props,
 		},
-		Party: []sceneSeat{seatAt("alice", 1, 1)},
+		Party: []sceneSeat{seatAt("alice", 2, 1)},
 	}
 
 	ctx := context.Background()
@@ -701,7 +702,7 @@ func (s *SpeakSuite) aCamp(fact string, rolls []int) *session.Manager {
 				Until:   []encounter.UntilStep{{When: encounter.TriggerFact{Fact: encounter.FactID(fact)}}},
 			}},
 		},
-		Party: []sceneSeat{seatAt("alice", 1, 1)},
+		Party: []sceneSeat{seatAt("alice", 2, 1)},
 	}
 
 	ctx := context.Background()

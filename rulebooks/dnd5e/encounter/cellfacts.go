@@ -254,7 +254,7 @@ func (e *cellQuery) computeCellAt(in CellAtInput) (CellFact, error) {
 	if len(e.field.placed) > 0 {
 		centre := e.field.plane.CellCentre(in.Cell)
 		now := e.field.placedNow()
-		for i := range e.field.placed {
+		for _, i := range e.field.placedNear(centre, centre) {
 			p := &e.field.placed[i]
 			if !p.blocksMovement {
 				continue

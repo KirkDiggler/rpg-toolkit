@@ -78,6 +78,9 @@ func (m *Manager) landSpoken(ctx context.Context, enc *encounter.Encounter, in *
 	return enc.Speak(ctx, &encounter.SpeakInput{
 		Actor: in.Actor, Target: in.Target, Prop: in.Prop,
 		OptionID: in.OptionID, Skill: in.Skill,
+		// THE INTERACTION REACH, on every line: the composition's zero
+		// means adjacent, and the menu was read within this reach.
+		Range:  InteractionReach,
 		Beaten: in.Beaten, DC: in.DC, Total: in.Total, Calculation: in.Calculation,
 		Roller: &diceSeam{roller: m.dice},
 	})
@@ -89,13 +92,15 @@ func (m *Manager) landSpoken(ctx context.Context, enc *encounter.Encounter, in *
 // names a speaker, exactly one target and a line; the session opens; the
 // clock is read; an off-turn actor ON THE TURN CLOCK is refused; a downed
 // actor is refused; the line is looked up among those offered to this
-// speaker; a creature target is checked to be able to SEE the actor; and only
-// then is the action spent — because a line the target could never have
+// speaker; a creature target is checked to be able to SEE the actor; a
+// creature is checked to stand within [InteractionReach] and a prop to be on
+// the menu's universe; and only then is the action spent — because a line the target could never have
 // heard must not cost the actor their turn on the way to being told so.
 //
 // Errors: ErrNoMemberID, ErrNoOption, ErrNoSession, ErrNoEncounter,
 // ErrNotYourTurn, ErrDowned, ErrNoMember, ErrNoProp, ErrCannotAfford,
-// ErrUnwitnessed.
+// ErrUnwitnessed, ErrOutOfRange (a creature), ErrStaleDeclaration (a prop
+// no longer on the menu).
 func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, error) {
 	member := in.Member
 	if member == "" {
@@ -153,6 +158,14 @@ func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, erro
 			// encounter error crossing here is the S2 leak.
 			return nil, fmt.Errorf("%s: target %q cannot see the actor: %w", VerbSpeak, in.Target, ErrUnwitnessed)
 		}
+	}
+	// REACH LAST OF THE DOORS, BEFORE THE PRICE (rpg-project#753 R4): only a
+	// target this speaker is shown and that witnesses them is measured — so
+	// a hidden thing far off still answers "no such thing" — and a line the
+	// target is too far to hear must not cost the actor their action on the
+	// way to being told so. The composition asks again at its own door.
+	if err := refuseSpeakOutOfReach(scope.enc, member, in.Target, in.Prop); err != nil {
+		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
 	}
 
 	// FREE ON THE WORLD CLOCK, priced on the turn clock — move.go's rule,
@@ -218,6 +231,48 @@ func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, erro
 		Saved:    report,
 		Delivery: delivery,
 	}, nil
+}
+
+// refuseSpeakOutOfReach is the session's reach door for a line, asked before
+// anything is charged.
+//
+// A CREATURE IS MEASURED by the encounter's one distance from the speaker's
+// cell to its own, the measure [encounter.Encounter.Speak] refuses by:
+// [ErrOutOfRange] beyond [InteractionReach].
+//
+// A PROP IS NOT MEASURED HERE; the session has no footprint to measure it by
+// without the atlas, and inventing a reach rule the encounter does not have
+// would refuse lines the encounter would hear. Instead the prop must be on
+// the speaker's menu universe ([speakUniverse]: carried, or on a cell within
+// reach that the speaker sees now). One that is not is a row no longer
+// offered — the speaker stepped behind a pillar, or walked off, since the
+// Afford that listed it — and is refused [ErrStaleDeclaration], so the
+// caller refreshes Afford rather than being told to come closer.
+func refuseSpeakOutOfReach(enc *encounter.Encounter, member, target, prop string) error {
+	if prop != "" {
+		_, props, err := speakUniverse(enc, member)
+		if err != nil {
+			return err
+		}
+		if !slices.Contains(props, encounter.PropID(prop)) {
+			return fmt.Errorf("prop %q is not on this speaker's menu now: %w", prop, ErrStaleDeclaration)
+		}
+		return nil
+	}
+	roster, err := enc.Members()
+	if err != nil {
+		return translate(err)
+	}
+	positions := rosterPositions(roster)
+	from, okFrom := positions[member]
+	to, okTo := positions[target]
+	if !okFrom || !okTo {
+		return fmt.Errorf("speaker %q or target %q is not placed: %w", member, target, ErrBadPosition)
+	}
+	if enc.Distance(from, to) > float64(InteractionReach) {
+		return fmt.Errorf("target %q is beyond reach %d: %w", target, InteractionReach, ErrOutOfRange)
+	}
+	return nil
 }
 
 // linesOffered is THE ONE READ of which lines a target offers one speaker —

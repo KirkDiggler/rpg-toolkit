@@ -358,6 +358,29 @@ func (c *canvasRoom) CanPlaceEntity(entity core.Entity, pos spatial.Position) bo
 // ratios did not; both are in voidcost_internal_test.go, which is where they
 // are re-runnable.
 func (c *canvasRoom) IsLineOfSightBlocked(from, to spatial.Position) bool {
+	// ONE ANSWER PER PAIR OF CELLS PER SIGHT PASS (rpg-project#753, S3).
+	// Sight is mutual — the canonical ray and [spatial.SightLanes] answer
+	// a→b as b→a, which spatial pins — and nothing a pass reads changes
+	// inside it, so the watcher and the watched share one ray.
+	memo := c.field.sightPass
+	if memo == nil {
+		return c.lineOfSightBlocked(from, to)
+	}
+	key := [2]spatial.Position{from, to}
+	if cellBefore(to, from) {
+		key = [2]spatial.Position{to, from}
+	}
+	if blocked, ok := memo.rays[key]; ok {
+		return blocked
+	}
+	blocked := c.lineOfSightBlocked(from, to)
+	memo.rays[key] = blocked
+
+	return blocked
+}
+
+// lineOfSightBlocked is [canvasRoom.IsLineOfSightBlocked] asked afresh.
+func (c *canvasRoom) lineOfSightBlocked(from, to spatial.Position) bool {
 	if c.field.hasVoid() && c.field.void.blocksSight() {
 		for _, cell := range spatial.CanonicalBoundaryRay(c.GetGrid(), from, to) {
 			if !c.field.isFloor(cell) {
@@ -413,12 +436,7 @@ func (o canvasSightObstructions) Along(in spatial.SightLaneInput) (spatial.Sight
 
 	out := spatial.SightLaneOutput{}
 	for i := 1; i < len(in.Ray)-1 && !out.SoftBlocked; i++ {
-		for _, ent := range o.canvas.GetEntitiesAt(in.Ray[i]) {
-			if placeable, ok := ent.(spatial.Placeable); ok && placeable.BlocksLineOfSight() {
-				out.SoftBlocked = true
-				break
-			}
-		}
+		out.SoftBlocked = o.entityBlocksAt(in.Ray[i])
 	}
 	if !out.SoftBlocked {
 		soft, err := o.canvas.field.sightBlocksAlong(in.From, in.To)
@@ -436,12 +454,47 @@ func (o canvasSightObstructions) Along(in spatial.SightLaneInput) (spatial.Sight
 // this marks blocked, which is how a covered cell stops being a lane
 // somebody leans through.
 func (o canvasSightObstructions) At(in spatial.SightCellInput) (spatial.SightCellOutput, error) {
-	for _, ent := range o.canvas.GetEntitiesAt(in.At) {
-		if placeable, ok := ent.(spatial.Placeable); ok && placeable.BlocksLineOfSight() {
-			return spatial.SightCellOutput{Blocked: true}, nil
-		}
+	if o.entityBlocksAt(in.At) {
+		return spatial.SightCellOutput{Blocked: true}, nil
 	}
 
 	covered, err := o.canvas.field.sightBlocksOriginAt(in.At)
 	return spatial.SightCellOutput{Blocked: covered}, err
+}
+
+// entityBlocksAt reports whether a canvas entity that says it blocks sight
+// stands on a cell — the room's occupancy, which places each entity on its
+// one cell. Inside a sight pass the cells such entities stand on are listed
+// once, the first time a lane asks ([sightPassMemo]): entities move between
+// passes, never inside one, and a field whose sight blockers are all placed
+// footprints — the keep's — lists none, so a ray asks nothing.
+func (o canvasSightObstructions) entityBlocksAt(cell spatial.Position) bool {
+	memo := o.canvas.field.sightPass
+	if memo == nil {
+		return entitiesBlockSight(o.canvas.GetEntitiesAt(cell))
+	}
+	if memo.entityOpaque == nil {
+		memo.entityOpaque = map[spatial.Position]bool{}
+		for id, ent := range o.canvas.GetAllEntities() {
+			if !entitiesBlockSight([]core.Entity{ent}) {
+				continue
+			}
+			if at, placed := o.canvas.GetEntityPosition(id); placed {
+				memo.entityOpaque[at] = true
+			}
+		}
+	}
+
+	return len(memo.entityOpaque) > 0 && memo.entityOpaque[cell]
+}
+
+// entitiesBlockSight reports whether any of these entities says it blocks
+// sight.
+func entitiesBlockSight(ents []core.Entity) bool {
+	for _, ent := range ents {
+		if placeable, ok := ent.(spatial.Placeable); ok && placeable.BlocksLineOfSight() {
+			return true
+		}
+	}
+	return false
 }

@@ -47,6 +47,7 @@ func (s *OptionTestSuite) TestANotFactOptionIsWithheldFromTheSpeakerWhoWasCaught
 	s.Equal([]string{"pilfer", "chat"}, ids(before), "nobody has been caught yet")
 
 	_, err = enc.Speak(s.ctx, &encounter.SpeakInput{
+		Range: speakReach,
 		Actor: alice, Target: goblin, OptionID: "pilfer", Skill: "sleight-of-hand",
 		Beaten: false, DC: 13, Total: 5, Roller: rollsLowest{},
 	})

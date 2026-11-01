@@ -11,6 +11,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
@@ -166,11 +167,34 @@ type Encounter struct {
 	roller     dice.Roller
 	sightAreas map[string]SightArea
 
-	// worldThinking guards [Encounter.worldThinks] against re-entry: the
-	// outer pass owns the world's round, and a nested one would consult the
-	// same creatures twice for one raise. The same shape as `driving`, one
-	// clock over.
+	// worldThinking guards [Encounter.wake] against re-entry: the outer pass
+	// owns the world's round, and a nested one would step the same machines
+	// twice for one raise. The same shape as `driving`, one clock over.
 	worldThinking bool
+
+	// due is who acts at which world round (machine.go, rpg-project#766 S3):
+	// every member on the world clock whose machine wants time, keyed by
+	// member so a round's members pop in seat order. Derived from the blobs
+	// at construction and at load ([Encounter.rebuildWake]); never persisted.
+	due machine.Due[MemberID]
+
+	// dueAt is the round each member on the due heap is armed at, so a pop
+	// knows the round a member steps in: a member due behind the high-water
+	// steps at its own round and pops again at the next (the catch-up the
+	// census's budget gave). Kept beside due by [Encounter.armAt] and
+	// [Encounter.disarm] alone; never persisted.
+	dueAt map[MemberID]uint64
+
+	// listeners is who listens for which beat, from every machine's current
+	// state ([machine.Program.Listens]). Derived like due and never
+	// persisted. The default recipe listens for nothing but time, which the
+	// heap answers, so it is empty until a recipe listens (S4).
+	listeners machine.Listeners[MemberID]
+
+	// programs is every recipe this build ships, compiled once per encounter
+	// against the encounter's vocabulary, keyed by the recipe's ref
+	// ([compilePrograms]).
+	programs map[string]*machine.Program
 
 	// participation answers who is down and who counts as present. Required at
 	// both constructors and never defaulted; see [Participation].
@@ -823,8 +847,14 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 
+	programs, err := compilePrograms()
+	if err != nil {
+		return nil, fmt.Errorf("newencounter: %w", err)
+	}
+
 	// After validation passes, construct (R5: no observable state until success)
 	e := &Encounter{
+		programs:      programs,
 		members:       make(map[MemberID]*memberRecord),
 		everMembers:   make(map[MemberID]bool),
 		field:         f,
@@ -962,6 +992,11 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// The graph, declared from the field, the roster and the endings — the
 	// sides, the belonging, the knowledge reducers, the flips (world.go).
 	if err = e.buildWorld(); err != nil {
+		return nil, fmt.Errorf("newencounter: %w", err)
+	}
+
+	// Who is due, from every member's fresh machine (machine.go).
+	if err = e.rebuildWake(); err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 

@@ -181,6 +181,7 @@ func (e *Encounter) leaveAnyClock(id MemberID) (map[MemberID]*IntelDelta, error)
 		return e.driveIfStillRunning(bubble)
 	}
 	_, lerr := e.clock.Leave(&clock.LeaveInput{ID: core.EntityID(id)})
+	e.disarm(id)
 	return nil, lerr
 }
 
@@ -1908,8 +1909,8 @@ func (e *Encounter) walkFor(
 // NO down CONSULT PER CELL either, unlike [Encounter.walkPath]'s. That consult
 // exists because an announced step can be answered with a swing that drops the
 // mover mid-walk; nothing here can swing, so asking would be asking a question
-// whose answer cannot change inside the loop. [Encounter.worldThinks] asks it
-// once, before it consults anybody.
+// whose answer cannot change inside the loop. [Encounter.wake] asks it
+// once, before it steps anybody.
 func (e *Encounter) walkWorld(
 	mover MemberID, m *memberRecord,
 	path []spatial.Position, audience []MemberID, at uint64, cause core.Ref,
@@ -2797,6 +2798,9 @@ func (e *Encounter) formWithParticipation(
 		if _, lerr := e.clock.Leave(&clock.LeaveInput{ID: core.EntityID(id)}); lerr != nil {
 			return nil, fmt.Errorf("form member %q world clock: %w", id, lerr)
 		}
+		// The fight prices its time now: off the due heap until the
+		// dissolve that returns it (machine.go).
+		e.disarm(id)
 	}
 	bubble := &clock.Turn{}
 	formed, serr := bubble.SetOrder(&clock.SetOrderInput{Order: in.Order})
@@ -2966,6 +2970,8 @@ func (e *Encounter) transfer(in *TransferInput, driveAfterRemove bool) (*Transfe
 		}); terr != nil {
 			return nil, fmt.Errorf("transfer %q into bubble: %w", in.Member, terr)
 		}
+		// Off the due heap: the fight prices its time (machine.go).
+		e.disarm(in.Member)
 		// A straggler joining a fight is engaged by it too (sneaking R7).
 		e.endSneaking(in.Member)
 	case ClockWorld:
@@ -2988,6 +2994,8 @@ func (e *Encounter) transfer(in *TransferInput, driveAfterRemove bool) (*Transfe
 		}); terr != nil {
 			return nil, fmt.Errorf("transfer %q out of bubble: %w", in.Member, terr)
 		}
+		// Back on the due heap at the world's now (machine.go).
+		e.armAt(in.Member, uint64(e.clock.ToData().HighWater))
 		if derr := e.dropBubbleIfIdle(bubble); derr != nil {
 			return nil, fmt.Errorf("transfer %q prune bubble: %w", in.Member, derr)
 		}

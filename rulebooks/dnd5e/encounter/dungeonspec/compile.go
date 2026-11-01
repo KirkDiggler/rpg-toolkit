@@ -1102,6 +1102,10 @@ func answerOf(entry AnswerSpec, o encounter.Orientation) encounter.Answer {
 	if entry.Fact != nil {
 		fact = *entry.Fact
 	}
+	var activity *behavior.ActivityCue
+	if entry.Activity != nil {
+		activity = &behavior.ActivityCue{Ref: entry.Activity.Ref, Cycles: entry.Activity.Cycles}
+	}
 	var search *encounter.Search
 	if entry.Search != nil {
 		search = &encounter.Search{Distance: DefaultSearchDistance, Heading: DefaultSearchHeading}
@@ -1114,17 +1118,18 @@ func answerOf(entry AnswerSpec, o encounter.Orientation) encounter.Answer {
 	}
 
 	return encounter.Answer{
-		Weight: weight,
-		Say:    entry.Say,
-		When:   whenOf(entry.When),
-		Fact:   encounter.FactID(fact),
-		Flee:   entry.Flee != nil,
-		Hold:   entry.Hold != nil,
-		Attack: selectorOf(entry.Attack, o),
-		Toward: selectorOf(entry.Toward, o),
-		Dash:   selectorOf(entry.Dash, o),
-		Away:   selectorOf(entry.Away, o),
-		Search: search,
+		Activity: activity,
+		Weight:   weight,
+		Say:      entry.Say,
+		When:     whenOf(entry.When),
+		Fact:     encounter.FactID(fact),
+		Flee:     entry.Flee != nil,
+		Hold:     entry.Hold != nil,
+		Attack:   selectorOf(entry.Attack, o),
+		Toward:   selectorOf(entry.Toward, o),
+		Dash:     selectorOf(entry.Dash, o),
+		Away:     selectorOf(entry.Away, o),
+		Search:   search,
 	}
 }
 
