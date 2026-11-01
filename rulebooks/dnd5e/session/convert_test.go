@@ -172,6 +172,11 @@ var omitted = map[string]string{
 	"encounter.MonsterView.AllyDeeds": "encounter.TableDriver reads the ally-scoped testimony directly on the composition view; host drivers receive Holdings",
 	"encounter.MonsterView.OwnDeeds":  "encounter.TableDriver reads self-scoped testimony directly on the composition view; host drivers receive Holdings",
 	"encounter.MonsterView.Temper":    "Table's companion, omitted for Table's reason",
+	// The table key a machine's state picks (rpg-project#766 S4) chooses
+	// which of the Table's rows a turn rolls, so it is omitted for Table's
+	// reason: encounter.TableDriver reads it on the composition view.
+	"encounter.MonsterView.Key": "the table key this turn rolls, picked by the creature's machine; " +
+		"encounter.TableDriver reads it on the composition view, never through this twin",
 	// Dwelling (rpg-project#624) is read by the table driver's patrol row and
 	// nothing else, so it is omitted for Table's reason too.
 	"encounter.MonsterView.Dwelling": "the patrol-waypoint wait the table driver's patrol row reads; " +

@@ -227,6 +227,10 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 		}
 		join.AppearanceRef = monster.placement.AppearanceRef
 		join.DefaultActivityRef = monster.placement.DefaultActivityRef
+		// The author's states, compiled to the machine's recipe by the
+		// dungeonspec (rpg-project#766 S4): carried through the door as they
+		// were compiled. Nil stays nil, which is the default recipe.
+		join.Machine = monster.placement.Machine
 		// The author's facing, lowered to a bearing by the compile (sneaking
 		// R13); nil leaves the composition's rule bearing of 180.
 		join.Facing = monster.placement.FacingDegrees
