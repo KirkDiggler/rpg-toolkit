@@ -70,8 +70,14 @@ import (
 //
 // Being a pull is also what makes it COMPLETE. Every route to a changed range —
 // a torch lit, a torch dropped, a blindness spell, a light source another
-// creature is carrying, a rule nobody has written yet — is noticed at the next
-// refresh, without that route knowing this interface exists.
+// creature is carrying, a rule nobody has written yet — is noticed without
+// that route knowing this interface exists. A range that SHRANK is noticed at
+// the next refresh of any verb: a member holding a live sighting now beyond
+// its answer looks again ([Encounter.observersOf], rpg-project#762). A range
+// that GREW is noticed at the next look that includes the member — one within
+// its new range of anything that changed, or one a verb names (equip and
+// recheck name theirs) — because a refresh costs its reach, and nothing else
+// says which far members could now see further.
 //
 // # What an implementation owes
 //
@@ -129,8 +135,8 @@ type Sight interface {
 // The whole roster is asked about rather than only this refresh's observers,
 // which is the same choice [Encounter.downNow] makes and for the same
 // reason: the question a rulebook receives should not depend on which verb
-// happens to be running. Every caller of [Encounter.rebuildPercepts] passes the
-// roster anyway.
+// happens to be running, and [Encounter.observersOf] needs every member's
+// range to say whose look a change reaches.
 //
 // Three refusals, and each one exists to make a mis-wired capability LOOK like
 // a mis-wired capability rather than like a rule that silently never fires: a

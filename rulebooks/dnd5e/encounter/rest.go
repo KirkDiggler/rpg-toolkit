@@ -292,8 +292,14 @@ func (e *Encounter) RecordRest(in *RecordRestInput) (*RecordRestOutput, error) {
 
 	// THE ONE REFRESH, returned rather than discarded. Nobody moved and
 	// nothing was driven, so nothing is expected to form or change — and if
-	// a time-keyed fact ever makes it, the caller is told.
-	deltas, formed, err := e.refreshSight(e.rosterIDs())
+	// a time-keyed fact ever makes it, the caller is told. What a rest can
+	// change is the resters themselves (a condition ended), so it is theirs
+	// to pay for: whoever is within sight of a rester (rpg-project#762).
+	resters := make([]MemberID, 0, len(rested))
+	for _, r := range rested {
+		resters = append(resters, r.Member)
+	}
+	deltas, formed, err := e.refreshCostingReach(e.cellsOf(resters...), resters...)
 	if err != nil {
 		return nil, fmt.Errorf("record rest: %w", err)
 	}

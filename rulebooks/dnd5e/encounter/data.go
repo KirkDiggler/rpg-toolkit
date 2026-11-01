@@ -3331,6 +3331,10 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		discovery:     copyDiscoveryStates(data.Discovery),
 		sneakVerdicts: copySneakVerdicts(data.SneakVerdicts),
 		sightSweeps:   copySightSweeps(data.SightSweeps),
+		// THE LAST LOOK IS THE SAVED HIGH-WATER (rpg-project#762): a verb
+		// ends with a look, so the reading a blob was saved at is the one
+		// every current sighting in it is known true at. Derived, not stored.
+		lastLook:      uint64(data.Clock.HighWater),
 		sightAreas:    sightAreasFromData(data.SightAreas),
 		members:       make(map[MemberID]*memberRecord),
 		everMembers:   make(map[MemberID]bool),

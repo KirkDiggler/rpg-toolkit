@@ -160,7 +160,9 @@ func (e *Encounter) SetSneaking(in *SetSneakingInput) (*SetSneakingOutput, error
 		e.endSneaking(member.ID)
 	}
 
-	deltas, formed, err := e.refreshSight(e.rosterIDs())
+	// A sneaker changes what they are seen as where they stand, and nowhere
+	// else: the watchers within sight of them (rpg-project#762).
+	deltas, formed, err := e.refreshCostingReach(e.cellsOf(in.Member), in.Member)
 	if err != nil {
 		return nil, fmt.Errorf("set sneaking %q: %w", in.Member, err)
 	}

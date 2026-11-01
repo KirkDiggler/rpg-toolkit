@@ -458,7 +458,14 @@ func (e *Encounter) wakePass(raised, world bool) error {
 	if !raised && !e.reactionPicked {
 		return nil
 	}
-	if _, _, err := e.refreshSight(e.rosterIDs()); err != nil {
+	// AND THE REFRESH COSTS ITS REACH (rpg-project#762): the members within
+	// sight of a cell changed since the last look — a step's two ends, a door
+	// a walk opened, a creature that turned where it stands
+	// ([Encounter.pendingCells]) — and nobody else. A
+	// guard across the keep saw nothing move. The refresh still RUNS when no
+	// cell changed, with nobody to rebuild: it is the round's notice pass
+	// too, and a member the rulebook now calls down is noticed by it.
+	if _, _, err := e.refreshCostingReach(nil); err != nil {
 		return fmt.Errorf("world wakes refresh sight: %w", err)
 	}
 

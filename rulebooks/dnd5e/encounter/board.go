@@ -89,6 +89,10 @@ func (e *Encounter) Board(in *BoardInput) (*BoardOutput, error) {
 	}
 
 	// THE ONE LOOK: every contact on the board, seen at the same moment.
+	// The ONE roster-wide refresh left on a verb path (rpg-project#762): a
+	// launch placed everybody, so every cell changed and every member is an
+	// observer of it. Every other verb's look is [Encounter.observersOf]
+	// what it changed.
 	deltas, formed, err := e.refreshSight(e.rosterIDs())
 	if err != nil {
 		return nil, fmt.Errorf("board: refresh sight: %w", err)

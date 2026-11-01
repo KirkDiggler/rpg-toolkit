@@ -251,8 +251,8 @@ func (e *Encounter) reservedIDs() []MemberID {
 // therefore a function of persisted data and nothing else (C8). A closed run
 // arrives nobody.
 //
-// When a member or prop arrived, sight is refreshed for the whole roster at the end,
-// once — see the file's own doc for why that is this verb's refresh and not a
+// When a member or prop arrived, sight is refreshed at the end, once, for
+// whoever is within sight of where the arrivals stand ([Encounter.observersOf]) — see the file's own doc for why that is this verb's refresh and not a
 // later one's.
 func (e *Encounter) arrivals(holds func(Trigger) (string, bool), at uint64) error {
 	if e.outcome != nil {
@@ -260,6 +260,9 @@ func (e *Encounter) arrivals(holds func(Trigger) (string, bool), at uint64) erro
 	}
 
 	arrived := false
+	// cells is where everything that arrived now stands: what the arrivals
+	// changed for anybody looking (rpg-project#762).
+	var cells []spatial.Position
 	for _, id := range e.reservedIDs() {
 		rm := e.reserve[id]
 		cause, ok := holds(rm.arrives)
@@ -270,6 +273,7 @@ func (e *Encounter) arrivals(holds func(Trigger) (string, bool), at uint64) erro
 			return err
 		}
 		delete(e.reserve, id)
+		cells = append(cells, e.cellsOf(id)...)
 		arrived = true
 	}
 
@@ -284,6 +288,9 @@ func (e *Encounter) arrivals(holds func(Trigger) (string, bool), at uint64) erro
 		}
 		if err := e.arriveProp(i, cause, at); err != nil {
 			return err
+		}
+		if cell, placed := e.canvas.GetEntityPosition(propEntityOf(i, p).id); placed {
+			cells = append(cells, cell)
 		}
 		arrived = true
 	}
@@ -303,13 +310,14 @@ func (e *Encounter) arrivals(holds func(Trigger) (string, bool), at uint64) erro
 		if err := e.arrivePlacedProp(p, cause, at); err != nil {
 			return err
 		}
+		cells = append(cells, e.field.placedCells(p.placement)...)
 		arrived = true
 	}
 
 	if !arrived {
 		return nil
 	}
-	if _, _, err := e.refreshSight(e.rosterIDs()); err != nil {
+	if _, _, err := e.refreshCostingReach(cells); err != nil {
 		return fmt.Errorf("arrival refresh sight: %w", err)
 	}
 	return nil

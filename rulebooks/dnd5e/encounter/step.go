@@ -170,7 +170,10 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 		return nil, fmt.Errorf("step: %w", err)
 	}
 
-	intelDeltas, formed, err := e.refreshSight(audience)
+	// THE STEP COSTS ITS REACH (rpg-project#762): the beat goes to its
+	// audience, but the look is only of those within sight of where the mover
+	// stood or stands — nobody else could see anything move.
+	intelDeltas, formed, err := e.refreshCostingReach([]spatial.Position{action.from, action.to}, in.Member)
 	if err != nil {
 		return nil, fmt.Errorf("step refresh sight: %w", err)
 	}
