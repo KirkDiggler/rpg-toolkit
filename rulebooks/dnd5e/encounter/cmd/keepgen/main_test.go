@@ -38,6 +38,30 @@ func TestMain_WritesAndReports(t *testing.T) {
 	require.Equal(t, doc, again)
 }
 
+// TestMain_Garrison: -garrison and -patrols reach the file and come back
+// through its header, so the same options regenerate the same bytes.
+func TestMain_Garrison(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "bench-keep-garrison.yaml")
+	var stdout, stderr bytes.Buffer
+	args := []string{"-garrison", "10", "-patrols", "4", "-key", "bench-keep-garrison", "-out", out}
+	require.Equal(t, 0, run(args, &stdout, &stderr), stderr.String())
+	doc, err := os.ReadFile(out)
+	require.NoError(t, err)
+	_, err = keepgen.Prove(doc)
+	require.NoError(t, err)
+	opts, err := keepgen.OptionsFromHeader(doc)
+	require.NoError(t, err)
+	require.Equal(t, 10, opts.Garrison)
+	require.Equal(t, 4, opts.Patrols)
+	again, _, err := keepgen.Generate(keepgen.DefaultPlan(), opts)
+	require.NoError(t, err)
+	require.Equal(t, doc, again)
+
+	stderr.Reset()
+	require.Equal(t, 1, run([]string{"-garrison", "2", "-patrols", "3", "-out", out}, &stdout, &stderr))
+	require.Contains(t, stderr.String(), "patrols 3 is more than the garrison 2")
+}
+
 // TestMain_RefusesBelowPlan: fewer hexes than the plan's floor is refused,
 // exit 1, the reason on stderr, and no file.
 func TestMain_RefusesBelowPlan(t *testing.T) {
