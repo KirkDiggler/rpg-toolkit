@@ -8,11 +8,14 @@ package encounter_test
 // leaves are the ones the whole roster's look would have written.
 
 import (
+	"fmt"
 	"math/rand/v2"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec/keepgen"
@@ -75,13 +78,16 @@ func garrisonKeep(t *testing.T) dungeonspec.Compiled {
 	})
 }
 
-// TestObserversOf_EqualsFullRefresh is the property: after any verb, the
-// percepts the bounded refresh left are the ones a refresh of every member
-// writes over the same world. Random players take random steps (and every
-// raise those steps cause walks the garrison through the wake pass's own
-// refresh), and random doors open and shut, on the castle and on the 10k
-// garrison keep; after each, every member's holdings and known cells are held
-// to a full refresh's ([encounter.Encounter.ExportedAgreesWithFullRefresh]).
+// TestObserversOf_EqualsFullRefresh is the property: the percepts a bounded
+// look leaves are the ones the whole roster's look writes. Two twins open the
+// same site; the oracle looks with everyone on every look, as before
+// rpg-project#762 ([encounter.Encounter.ExportedEveryoneLooks]). The same
+// random verbs land on both — players' steps (mostly one walker, so the clock
+// raises and the garrison walks through the wake pass) and doors opened and
+// shut — on the castle and on the 10k garrison keep, and after each one
+// every member's holdings, known cells and every MEMORY's Confirmed stamp
+// must match the oracle's ([encounter.Encounter.ExportedPercepts] says what a
+// current holding's stamp is not compared for).
 func TestObserversOf_EqualsFullRefresh(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -92,30 +98,43 @@ func TestObserversOf_EqualsFullRefresh(t *testing.T) {
 		{"keep-10k", garrisonKeep, 24},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			enc := openDriven(t, tc.site(t))
-			require.NoError(t, enc.ExportedAgreesWithFullRefresh(), "the launch's look is the full one")
+			compiled := tc.site(t)
+			enc, oracle := openDriven(t, compiled), openDriven(t, compiled)
+			oracle.ExportedEveryoneLooks()
+			agree := func(what string, args ...interface{}) {
+				t.Helper()
+				got, err := enc.ExportedPercepts()
+				require.NoError(t, err)
+				want, err := oracle.ExportedPercepts()
+				require.NoError(t, err)
+				for id, w := range want {
+					require.Equal(t, w, got[id], "member %q after %s", id, fmt.Sprintf(what, args...))
+				}
+			}
+			agree("first light")
 			started := monsterCells(t, enc)
 			rng := rand.New(rand.NewPCG(762, 1)) //nolint:gosec // a seeded walk, not a secret
 			doors := enc.Doors()
-			stepped, swung := 0, 0
+			stepped, swung, memories := 0, 0, 0
 			for i := 0; i < tc.moves; i++ {
 				if len(doors) > 0 && rng.IntN(4) == 0 {
 					d := doors[rng.IntN(len(doors))]
-					var err error
-					if enc.Doors()[indexOfDoor(enc.Doors(), d.ID)].State.Kind() == encounter.DoorOpen {
+					open := enc.Doors()[indexOfDoor(enc.Doors(), d.ID)].State.Kind() == encounter.DoorOpen
+					var err, oerr error
+					if open {
 						_, err = enc.CloseDoor(&encounter.CloseDoorInput{Door: d.ID})
+						_, oerr = oracle.CloseDoor(&encounter.CloseDoorInput{Door: d.ID})
 					} else {
 						_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: d.ID})
+						_, oerr = oracle.OpenDoor(&encounter.OpenDoorInput{Door: d.ID})
 					}
+					require.Equal(t, oerr == nil, err == nil, "move %d: door %q answers alike", i, d.ID)
 					if err == nil {
 						swung++
-						require.NoError(t, enc.ExportedAgreesWithFullRefresh(), "move %d: door %q", i, d.ID)
+						agree("move %d: door %q", i, d.ID)
 					}
 					continue
 				}
-				// Mostly the one walker, so the world clock raises (six of
-				// a thirty-foot walker's cells is a round) and the garrison
-				// walks through the wake pass's refresh.
 				player := keepPlayers[0]
 				if rng.IntN(4) == 0 {
 					player = keepPlayers[rng.IntN(len(keepPlayers))]
@@ -123,11 +142,19 @@ func TestObserversOf_EqualsFullRefresh(t *testing.T) {
 				at := whereIs(t, enc, player)
 				d := hexSteps[rng.IntN(len(hexSteps))]
 				to := spatial.Position{X: at.X + d.X, Y: at.Y + d.Y}
-				if _, err := enc.Step(&encounter.StepInput{Member: player, To: to, EndWalk: true}); err != nil {
+				_, err := enc.Step(&encounter.StepInput{Member: player, To: to, EndWalk: true})
+				_, oerr := oracle.Step(&encounter.StepInput{Member: player, To: to, EndWalk: true})
+				require.Equal(t, oerr == nil, err == nil, "move %d: %q to %v answers alike", i, player, to)
+				if err != nil {
 					continue
 				}
 				stepped++
-				require.NoError(t, enc.ExportedAgreesWithFullRefresh(), "move %d: %q to %v", i, player, to)
+				agree("move %d: %q to %v", i, player, to)
+			}
+			got, err := enc.ExportedPercepts()
+			require.NoError(t, err)
+			for _, p := range got {
+				memories += strings.Count(p, "confirmed=")
 			}
 			require.Positive(t, stepped, "some step landed, or the property was never asked")
 			walked := 0
@@ -137,10 +164,103 @@ func TestObserversOf_EqualsFullRefresh(t *testing.T) {
 				}
 			}
 			require.Positive(t, walked, "some creature walked in a wake pass, or its refresh was never asked")
-			t.Logf("%s: %d steps, %d door swings, %d creatures walked; every one held to a full refresh",
-				tc.name, stepped, swung, walked)
+			require.Positive(t, memories, "some memory formed, or its stamp was never compared")
+			t.Logf("%s: %d steps, %d door swings, %d creatures walked, %d memories; every look held to the oracle",
+				tc.name, stepped, swung, walked, memories)
 		})
 	}
+}
+
+// TestObserversOf_AMemoryIsStampedAtTheLastRoundItWasSeen is the probe from
+// the review of rpg-toolkit#2224: a watcher outside every changed cell's
+// bound watches a subject through four quiet rounds, then the subject steps
+// out of its sight. The memory that forms is stamped 4 — the last round it
+// was seen — exactly what the whole roster's look stamps it, not the 0 of
+// the watcher's last look of its own.
+func TestObserversOf_AMemoryIsStampedAtTheLastRoundItWasSeen(t *testing.T) {
+	open := func() *encounter.Encounter { return openPacingRow(t) }
+	for _, tc := range []struct {
+		name     string
+		everyone bool
+	}{{"bounded", false}, {"everyone looks", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			enc := open()
+			if tc.everyone {
+				enc.ExportedEveryoneLooks()
+			}
+			// Twenty-four cells, there and back: four rounds of a thirty-foot
+			// walker, and none of the watcher's business.
+			for i := 0; i < 12; i++ {
+				_, err := enc.Step(&encounter.StepInput{Member: "p", To: cellAt(1, 1), EndWalk: true})
+				require.NoError(t, err)
+				_, err = enc.Step(&encounter.StepInput{Member: "p", To: cellAt(0, 1), EndWalk: true})
+				require.NoError(t, err)
+			}
+			watched, ok, err := enc.ExportedHolding("g", "a")
+			require.NoError(t, err)
+			require.True(t, ok && watched.CurrentOn(perception.Sight), "g watches a through the pacing")
+			high := enc.ToData().Clock.HighWater
+			require.EqualValues(t, 4, high, "the pacing raised the clock to 4")
+
+			_, err = enc.Step(&encounter.StepInput{Member: "a", To: cellAt(54, 1), EndWalk: true})
+			require.NoError(t, err)
+			memory, ok, err := enc.ExportedHolding("g", "a")
+			require.NoError(t, err)
+			require.True(t, ok, "g remembers a")
+			require.False(t, memory.CurrentOn(perception.Sight), "a stepped out of g's sight")
+			require.EqualValues(t, 4, memory.Confirmed, "the memory is stamped at the last round a was seen")
+		})
+	}
+}
+
+// TestObserversOf_SortedWithDeclared is observersOf's own shape: the members
+// within their own sight (+1) of a changed cell and every declared member,
+// however far, in ID order — and nobody else.
+func TestObserversOf_SortedWithDeclared(t *testing.T) {
+	enc := openPacingRow(t)
+	got, err := enc.ExportedObserversOf([]spatial.Position{cellAt(53, 1)}, []encounter.MemberID{"p"})
+	require.NoError(t, err)
+	require.Equal(t, []encounter.MemberID{"a", "g", "p"}, got,
+		"a stands on the cell, g at its own sight of it, p is declared from 53 away")
+	got, err = enc.ExportedObserversOf([]spatial.Position{cellAt(0, 1)}, nil)
+	require.NoError(t, err)
+	require.Equal(t, []encounter.MemberID{"p"}, got, "nobody but p is within sight of p's cell")
+}
+
+// openPacingRow is the review's probe field: one row 70 long, the pacer p at
+// col 0 (sight 24), the watcher g at col 50 (sight 3), and a at col 53, on
+// the edge of g's sight. All players, so nothing forms a fight.
+func openPacingRow(t *testing.T) *encounter.Encounter {
+	t.Helper()
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion("row", 0, 0, 70, 3)},
+		},
+		Members: []encounter.MemberInput{
+			{ID: "p", Kind: encounter.KindPlayer, Position: cellAt(0, 1)},
+			{ID: "g", Kind: encounter.KindPlayer, Position: cellAt(50, 1)},
+			{ID: "a", Kind: encounter.KindPlayer, Position: cellAt(53, 1)},
+		},
+		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:         &sightList{reach: map[encounter.MemberID]int{"g": 3}, fallback: 24},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        walksThirty{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        passDriver{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	return enc
 }
 
 // monsterCells is where every monster stands now.
@@ -271,5 +391,4 @@ func TestDoor_RefreshesRayCrossers(t *testing.T) {
 		}
 	}
 	require.True(t, gained[beyond], "near sees through the opened door to the member beyond it")
-	require.NoError(t, enc.ExportedAgreesWithFullRefresh())
 }

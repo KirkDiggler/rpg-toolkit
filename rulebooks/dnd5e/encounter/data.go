@@ -43,8 +43,15 @@ type EncounterData struct {
 	// journal holds that — so a blob without it loads, and every observer
 	// sweeps once and then holds. An opaque digest; nothing reads inside it.
 	SightSweeps map[MemberID]string `json:"sight_sweeps,omitempty"`
-	Outcome     *OutcomeData        `json:"outcome,omitempty"`
-	Clock       clock.TickData      `json:"clock"`
+	// LastLook is the clock reading of the last sight look
+	// (rpg-project#762): every sighting still held as current was true at
+	// it, so the next look re-confirms older ones at it before anything
+	// fades ([Encounter.reconfirm]). Absent before a look has been stamped
+	// past zero; a blob without it loads, and its first look re-confirms
+	// nothing.
+	LastLook uint64         `json:"last_look,omitempty"`
+	Outcome  *OutcomeData   `json:"outcome,omitempty"`
+	Clock    clock.TickData `json:"clock"`
 	// Bubbles holds the localized initiative bubbles running in this
 	// encounter — zero or more, and zero for any encounter not currently in a
 	// fight. Absent in blobs written before this field existed, which load as
@@ -2444,6 +2451,7 @@ func (e *Encounter) snapshot() EncounterData {
 		Discovery:          copyDiscoveryStates(e.discovery),
 		SneakVerdicts:      copySneakVerdicts(e.sneakVerdicts),
 		SightSweeps:        copySightSweeps(e.sightSweeps),
+		LastLook:           e.lastLook,
 		Outcome:            outcomeData,
 		Clock:              e.clock.ToData(),
 		Bubbles:            bubblesData,
@@ -3331,6 +3339,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		discovery:     copyDiscoveryStates(data.Discovery),
 		sneakVerdicts: copySneakVerdicts(data.SneakVerdicts),
 		sightSweeps:   copySightSweeps(data.SightSweeps),
+		lastLook:      data.LastLook,
 		sightAreas:    sightAreasFromData(data.SightAreas),
 		members:       make(map[MemberID]*memberRecord),
 		everMembers:   make(map[MemberID]bool),

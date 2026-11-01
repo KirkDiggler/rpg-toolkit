@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -30,41 +32,31 @@ func ExportedProbeRebuilds(fn func(observers []MemberID)) func() {
 	return func() { rebuildProbe = prev }
 }
 
-// ExportedAgreesWithFullRefresh holds the percepts the bounded refreshes left
-// to the ones a full refresh writes over the same world, now: it snapshots
-// every member's holdings and known cells, rebuilds every member's percept
-// ([Encounter.rebuildPercepts] over the roster, the look every verb ran
-// before rpg-project#762), snapshots again, and names the first member whose
-// two snapshots differ.
-//
-// Every holding is compared on everything but Confirmed. Confirmed is "when
-// last landed, whether or not the content changed": the restamp of a look
-// that changed nothing, and not taking that look is the point of the bound.
-// Observed — when this content was first seen — is compared.
-func (e *Encounter) ExportedAgreesWithFullRefresh() error {
-	before, err := e.perceptSnapshot()
+// ExportedEveryoneLooks makes every look of e the whole roster's, as before
+// rpg-project#762: the oracle a bounded twin is held to.
+func (e *Encounter) ExportedEveryoneLooks() { e.everyoneLooks = true }
+
+// ExportedHolding is what observer holds about subject, on any channel.
+func (e *Encounter) ExportedHolding(observer, subject MemberID) (perception.Holding, bool, error) {
+	held, err := e.memberIntel(observer)
 	if err != nil {
-		return err
+		return perception.Holding{}, false, err
 	}
-	if _, err := e.rebuildPercepts(e.rosterIDs()); err != nil {
-		return err
-	}
-	after, err := e.perceptSnapshot()
-	if err != nil {
-		return err
-	}
-	for _, id := range e.rosterIDs() {
-		if before[id] != after[id] {
-			return fmt.Errorf("member %q: bounded refresh left\n%s\nfull refresh writes\n%s", id, before[id], after[id])
+	for _, h := range held {
+		if h.Subject == core.EntityID(subject) {
+			return h, true, nil
 		}
 	}
-
-	return nil
+	return perception.Holding{}, false, nil
 }
 
-// perceptSnapshot is every member's holdings (all channels, Confirmed left
-// out) and known cells, one sorted string each.
-func (e *Encounter) perceptSnapshot() (map[MemberID]string, error) {
+// ExportedPercepts is every member's percept as one sorted string each: every
+// holding on every channel (subject, channel, Observed, CurrentVia, payload)
+// and the member's known cells. A holding that is NOT current carries its
+// Confirmed too — a memory's stamp, the one a mind ages it by. A current
+// holding's does not: it is perceived now, and a look that would only have
+// restamped it is the look the bound skips.
+func (e *Encounter) ExportedPercepts() (map[MemberID]string, error) {
 	out := make(map[MemberID]string, len(e.members))
 	for _, id := range e.rosterIDs() {
 		held, err := e.intelLog.Held(sightMember(id))
@@ -73,8 +65,12 @@ func (e *Encounter) perceptSnapshot() (map[MemberID]string, error) {
 		}
 		lines := make([]string, 0, len(held))
 		for _, h := range held {
-			lines = append(lines, fmt.Sprintf("%s ch=%s obs=%d via=%v payload=%s",
-				h.Subject, h.Channel, h.Observed, h.CurrentVia, hex.EncodeToString(h.Payload)))
+			stamp := "now"
+			if len(h.CurrentVia) == 0 {
+				stamp = fmt.Sprintf("confirmed=%d", h.Confirmed)
+			}
+			lines = append(lines, fmt.Sprintf("%s ch=%s obs=%d %s via=%v payload=%s",
+				h.Subject, h.Channel, h.Observed, stamp, h.CurrentVia, hex.EncodeToString(h.Payload)))
 		}
 		sort.Strings(lines)
 		known := e.world.knownCells(id)

@@ -304,11 +304,8 @@ func (e *Encounter) Recheck(in *RecheckInput) (*RecheckOutput, error) {
 	// observer beyond the sight bound of every changed member reads exactly
 	// the world it already held: nothing it can see changed. The scoping of
 	// who is TOLD still happens per observer when the beat is built.
-	observers, err := e.observersOf(e.cellsOf(in.Members...), in.Members)
-	if err != nil {
-		return nil, fmt.Errorf("recheck: %w", err)
-	}
-	deltas, formed, err := e.refreshSightDeclaring(observers, in.Members)
+	e.noteChanged(e.cellsOf(in.Members...)...)
+	deltas, formed, err := e.refreshSightDeclaring(in.Members, in.Members)
 	if err != nil {
 		return nil, fmt.Errorf("recheck: %w", err)
 	}

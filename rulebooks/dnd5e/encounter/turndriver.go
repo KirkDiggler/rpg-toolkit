@@ -162,7 +162,12 @@ type MonsterView struct {
 	// mind subtracts each holding's Confirmed from to age it. The holdings
 	// above were landed on this same CLOCK, not at this same MOMENT — a
 	// holding is stamped when it happened and never restamped, so a
-	// round-one deed reads as two units old in a round-three view.
+	// round-one deed reads as two units old in a round-three view. A sight
+	// MEMORY is stamped with the last look its subject was still in view at,
+	// even when that look did not include the watcher, because a watcher a
+	// look leaves out saw nothing change (rpg-project#762,
+	// [Encounter.reconfirm]); a CURRENT sighting's Confirmed may be older
+	// than At, and it is still perceived now.
 	At uint64
 
 	// Seen are the OTHER members this monster currently, actively holds
