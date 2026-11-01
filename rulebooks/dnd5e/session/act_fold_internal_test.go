@@ -649,3 +649,60 @@ func (s *ActFoldSuite) TestFoldATableBeatIsNoAct() {
 		s.Empty(act.Undecoded, "and nothing about it is undecoded")
 	}
 }
+
+// TestFold_StateBeat is rpg-project#766 S6: the castle reserve's machine
+// entering `marching` because the gate is fighting, written as the encounter
+// writes it (machine.go appendStateBeat, audience the whole roster), folds
+// into one state piece for every seat, the party naming the reserve.
+func (s *ActFoldSuite) TestFold_StateBeat() {
+	state := s.beat("", map[string]any{
+		"beat": encounter.BeatState, "member": "reserve-1",
+		"from": "waiting", "to": "marching", "reason": "the gate is fighting",
+	})
+
+	for _, seat := range []string{"alice", "bob", "fighter"} {
+		acts := foldActs("sess", seat, []record.Entry{state})
+
+		s.Require().Len(acts, 1, seat)
+		s.Equal(FamilyState, acts[0].Family, seat)
+		s.Empty(acts[0].Undecoded, seat)
+		change, ok := acts[0].Body.(StateChange)
+		s.Require().True(ok, "%s: %T", seat, acts[0].Body)
+		s.Equal(StateChange{
+			Party: Party{Kind: PartyMember, ID: "reserve-1"}, Change: StateMachine,
+			Machine: &MachineChange{From: "waiting", To: "marching", Reason: "the gate is fighting"},
+		}, change, seat)
+	}
+}
+
+// TestFold_StateBeatNamingNoStateIsUndecoded is the state piece failing
+// closed: a state beat naming no creature or no state entered is an
+// undecoded entry, never a blank line on the panel.
+func (s *ActFoldSuite) TestFold_StateBeatNamingNoStateIsUndecoded() {
+	for name, fields := range map[string]map[string]any{
+		"no member": {"beat": encounter.BeatState, "from": "waiting", "to": "marching"},
+		"no to":     {"beat": encounter.BeatState, "member": "reserve-1", "from": "waiting"},
+	} {
+		acts := foldActs("sess", "alice", []record.Entry{s.beat("", fields)})
+
+		s.Require().Len(acts, 1, name)
+		s.Equal(FamilyState, acts[0].Family, name)
+		s.NotEmpty(acts[0].Undecoded, name)
+	}
+}
+
+// TestFold_WakeCut is rpg-project#766 S6: a raise cut at the bound, written
+// as the encounter writes it (wakebeats.go appendWakeCutBeat), folds into
+// one clock entry naming the cut, what it matched and what it dropped.
+func (s *ActFoldSuite) TestFold_WakeCut() {
+	cut := s.beat("", map[string]any{"beat": encounter.BeatWakeCut, "matched": 4096, "dropped": 17})
+
+	acts := foldActs("sess", "alice", []record.Entry{cut})
+
+	s.Require().Len(acts, 1)
+	s.Equal(FamilyClock, acts[0].Family)
+	s.Empty(acts[0].Undecoded)
+	entry, ok := acts[0].Body.(ClockEntry)
+	s.Require().True(ok, "%T", acts[0].Body)
+	s.Equal(ClockEntry{Mark: ClockWakeCut, WakeCut: &WakeCut{Matched: 4096, Dropped: 17}}, entry)
+}

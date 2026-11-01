@@ -354,6 +354,17 @@ func TestEveryBeatHasAFamily(t *testing.T) {
 	sort.Strings(unmapped)
 	require.Empty(t, unmapped, "every beat has exactly one family, or is record-only")
 
+	// A creature's state change and a cut wake left R9's list with
+	// rpg-project#766 S6: each has its family now.
+	for kind, want := range map[string]session.Family{
+		encounter.BeatState: session.FamilyState, encounter.BeatWakeCut: session.FamilyClock,
+	} {
+		family, mapped, recordOnly := session.FamilyOfBeatForTest(kind)
+		require.True(t, mapped, "%s has a family", kind)
+		require.False(t, recordOnly, "%s is not record-only", kind)
+		require.Equal(t, want, family, kind)
+	}
+
 	for _, kind := range []string{
 		encounter.BeatTable, encounter.BeatTransferred, encounter.BeatInteracted,
 		string(encounter.OutcomeBought), string(encounter.OutcomeSold),

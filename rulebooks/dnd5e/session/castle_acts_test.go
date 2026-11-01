@@ -636,6 +636,8 @@ func describe(body session.ActBody) string {
 			return fmt.Sprintf("%s's fall pays %d grant(s)", b.Party.ID, len(b.Experience))
 		case session.StateStance:
 			return fmt.Sprintf("%s and %s turn %s", b.Stance.Between[0].ID, b.Stance.Between[1].ID, b.Stance.Stance)
+		case session.StateMachine:
+			return fmt.Sprintf("%s: %s -> %s (%s)", b.Party.ID, b.Machine.From, b.Machine.To, b.Machine.Reason)
 		default:
 			return fmt.Sprintf("%s: %s", b.Party.ID, b.Change)
 		}
@@ -668,6 +670,8 @@ func describe(body session.ActBody) string {
 			return b.Member.ID + " joins"
 		case session.ClockArrived:
 			return fmt.Sprintf("%s arrives (%s)", b.Arrival.ID, b.Arrival.Kind)
+		case session.ClockWakeCut:
+			return fmt.Sprintf("the wake is cut: %d matched, %d dropped", b.WakeCut.Matched, b.WakeCut.Dropped)
 		default:
 			return string(b.Mark)
 		}
@@ -748,6 +752,7 @@ func Example_theGatehouseActs() {
 	// speak        act 1        alice to captain, "stand-aside" (intimidation): rolled 1d20+3 = 17, beat 14; captain answers "…go on, then. I saw nothing."
 	// speak        perception   alice hears voice
 	// speak        clock        tick 2
+	// speak        state        gate-1: posted -> alert (heard something)
 	// time         table_answer captain answers time with "hold", no roll
 	// time         table_answer cook answers time with "hold", rolled 1 of 100
 	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
@@ -982,6 +987,7 @@ func Example_theTroupeActs() {
 	// speak        act 1        alice to captain, "troupe" (performance): rolled 1d20+3 = 15, beat 13; captain answers "Through to the hall, then. Don’t dawdle."
 	// speak        perception   alice hears voice
 	// speak        clock        tick 4
+	// speak        state        gate-1: posted -> alert (heard something)
 	// time         table_answer captain answers time with "hold", no roll
 	// time         table_answer cook answers time with "hold", rolled 1 of 100
 	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
