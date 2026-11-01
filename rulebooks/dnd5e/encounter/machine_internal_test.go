@@ -84,8 +84,8 @@ func wakeSetup(driver Driver, members ...MemberInput) *SetupInput {
 			Canvas:  CanvasInput{Void: VoidIsOpaque(), Orientation: HexesArePointyTop()},
 			Regions: []RegionInput{rectRegion("hall", 0, 0, 20, 10)},
 		},
-		Members: append([]MemberInput{{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 1, Y: 1}}}, members...),
-		Endings: []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
+		Members:      append([]MemberInput{{ID: "alice", Kind: KindPlayer, Position: spatial.Position{X: 1, Y: 1}}}, members...),
+		Endings:      []EndingInput{{Key: "called", Trigger: TriggerExternal{}}},
 		Capabilities: wakeCapabilities(driver),
 	}
 }
