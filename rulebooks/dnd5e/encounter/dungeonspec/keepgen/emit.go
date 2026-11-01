@@ -72,6 +72,7 @@ func emitSite(p *Plan, l *layout, s *site, o Options) (emitted, error) {
 			b.WriteString("  " + line + "\n")
 		}
 	}
+	emitOrders(&b, s)
 	if len(l.exits) > 0 {
 		b.WriteString("exits:\n")
 		for _, ex := range l.exits {
@@ -168,6 +169,7 @@ func emitSite(p *Plan, l *layout, s *site, o Options) (emitted, error) {
 	}
 	start := l.start.axial()
 	fmt.Fprintf(&b, "    partyStart: { q: %d, r: %d }\n", start.Q, start.R)
+	emitBindings(&b, s)
 	doors := 0
 	for _, w := range s.walls {
 		if w.door != nil {
@@ -185,6 +187,49 @@ func emitSite(p *Plan, l *layout, s *site, o Options) (emitted, error) {
 		}
 	}
 	return emitted{doc: []byte(b.String()), geometryBytes: geometry}, nil
+}
+
+// emitOrders writes the garrison's tables and its faction, when it has one:
+// a `patrol-<i>` table per patrol, walking its loop with nobody to chase,
+// then the `post` the rest hold, then the side with its soldier/coward mix.
+func emitOrders(b *strings.Builder, s *site) {
+	if len(s.orders) == 0 {
+		return
+	}
+	b.WriteString("tables:\n")
+	posts := 0
+	for i, ord := range s.orders {
+		if ord.route == nil {
+			posts++
+			continue
+		}
+		wps := make([]string, len(ord.route))
+		for j, c := range ord.route {
+			a := c.axial()
+			wps[j] = fmt.Sprintf("{ q: %d, r: %d }", a.Q, a.R)
+		}
+		fmt.Fprintf(b, "  %s:\n    time:\n      - { when: { enemy: none }, toward: { path: [%s] } }\n",
+			patrolTable(i), strings.Join(wps, ", "))
+	}
+	if posts > 0 {
+		fmt.Fprintf(b, "  %s:\n    time:\n      - { hold: {} }\n", postTable)
+	}
+	fmt.Fprintf(b, "factions:\n  - { id: %s, temper: { soldier: 2, coward: 1 } }\n", garrisonFaction)
+}
+
+// emitBindings binds each ordered monster to the garrison and its table.
+func emitBindings(b *strings.Builder, s *site) {
+	if len(s.orders) == 0 {
+		return
+	}
+	b.WriteString("    monsterBindings:\n")
+	for i, ord := range s.orders {
+		table := postTable
+		if ord.route != nil {
+			table = patrolTable(i)
+		}
+		fmt.Fprintf(b, "      %s: { faction: %s, table: %s }\n", s.monsters[ord.monster].id, garrisonFaction, table)
+	}
 }
 
 // assetName is a ref's last part: `dnd5e:props:x:table_01` → `table_01`.
@@ -205,6 +250,11 @@ func header(o Options) string {
 	b.WriteString(headerCommand + o.CommandLine + "\n")
 	fmt.Fprintf(&b, "%shexes=%d seed=%d props=%s grounds-props=%s monsters=%s key=%s\n",
 		headerOptions, o.Hexes, o.Seed, exact(o.PropDensity), exact(o.GroundsDensity), exact(o.MonsterDensity), o.Key)
+	if o.Garrison != 0 || o.Patrols != 0 {
+		// Only when given, so a keep with no garrison keeps today's bytes.
+		s := strings.TrimSuffix(b.String(), "\n")
+		return fmt.Sprintf("%s garrison=%d patrols=%d\n", s, o.Garrison, o.Patrols)
+	}
 	return b.String()
 }
 
@@ -212,7 +262,8 @@ func header(o Options) string {
 // from its opening comment, so a shelf copy can be regenerated and compared
 // byte for byte (README: keepgen.OptionsFromHeader). It refuses a document
 // whose opening comment carries no `keepgen-options` line, or one whose
-// values do not parse or omit a field.
+// values do not parse or omit a field. `garrison` and `patrols` are written
+// only when given, so their absence reads as zero.
 func OptionsFromHeader(doc []byte) (Options, error) {
 	var o Options
 	var sawOptions, sawCommand bool
@@ -245,6 +296,10 @@ func OptionsFromHeader(doc []byte) (Options, error) {
 					o.MonsterDensity, err = strconv.ParseFloat(v, 64)
 				case "key":
 					o.Key = v
+				case "garrison":
+					o.Garrison, err = strconv.Atoi(v)
+				case "patrols":
+					o.Patrols, err = strconv.Atoi(v)
 				default:
 					return Options{}, fmt.Errorf("keepgen: header: unknown option %q", k)
 				}
