@@ -24,6 +24,7 @@ flowchart TD
   subgraph MIND["Mind"]
     PERC["mind/perception"]
     BEH["mind/behavior"]
+    MACH["mind/machine"]
   end
 
   PLAY[["Play: clock, intel, interrupt, record<br/>see play/knowledge/map.md"]]
@@ -110,6 +111,7 @@ repo is `(…)`; neither is read as a module.
 **Mind ↔ Rulebooks**
 - Flows: downward, a creature's facts, its authored table and a die; upward, testimony and a pick with its whole arithmetic, as values ([`mind/behavior/doc.go`](../mind/behavior/doc.go)).
 - Must not cross: a rulebook import or a game rule into Mind; testimony read upward as live truth, since it is per observer and may be false.
+- Seam (`mind/machine`): the encounter supplies the vocabulary (its beats and facts) and executes the picks a step returns; the machine never imports a rulebook or a bus ([`mind/machine/doc.go`](../mind/machine/doc.go)).
 
 **World ↔ Rulebooks**
 - Flows: a rulebook plugs into `world` through its `Resolver` and receives `Result` values; `rulebooks/dnd5e` and its encounter import `world`.
