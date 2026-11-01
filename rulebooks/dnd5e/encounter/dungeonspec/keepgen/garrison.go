@@ -12,7 +12,9 @@ import (
 // first [Options.Garrison] in placement order join one faction, `garrison`,
 // and of those the first [Options.Patrols] each walk a route of their own;
 // the rest hold their post. It is the population the world clock is measured
-// on: who is due, and who is not.
+// on: who is due, and who is not. The garrison is NEUTRAL to the party, so a
+// party at the start is watched rather than fought and the world clock,
+// never a fight's turn clock, carries the Moves the story measures.
 //
 // A ROUTE IS A TRIANGLE OF STRAIGHT LEGS. A patrol starts on its own cell
 // and walks two more, each leg one hex line along an axis, so the leg the
