@@ -94,11 +94,35 @@ func TestObserversOf_EqualsFullRefresh(t *testing.T) {
 		name  string
 		site  func(t *testing.T) dungeonspec.Compiled
 		moves int
+		// doorOdds is one door swing in this many moves.
+		doorOdds int
+		// noRace skips the run in a -race binary.
+		noRace bool
+		// pace makes every step the one walker's, back and forth beside
+		// its start, so a short run lands every step and still raises the
+		// clock (six of its cells are a round).
+		pace bool
 	}{
-		{"castle", func(t *testing.T) dungeonspec.Compiled { return compiledSite(t, 0) }, 60},
-		{"keep-10k", garrisonKeep, 24},
+		// The castle compares after every one of twenty verbs, a quarter of
+		// them doors, and runs under -race too.
+		{"castle", func(t *testing.T) dungeonspec.Compiled { return compiledSite(t, 0) }, 20, 4, false, false},
+		// The keep is BOUNDED, and NOT RUN UNDER -race: twelve verbs (ten
+		// paces and two door swings at this seed, plus the probe step), one
+		// walker pacing so its steps raise the clock and walk the garrison,
+		// and a memory forms — all required below. Its twin looks with the
+		// whole garrison on every look, which the race detector slows ~30x
+		// (456 s locally against 15 s), past Go's ten-minute package
+		// timeout. The property is single-goroutine, so -race adds nothing
+		// here; every plain `go test` runs it, and it fails both mutants it
+		// exists for (the bound shrunk to bare sight, at move 10; a step's
+		// cells dropped, at move 4). Under -race the same two are failed by
+		// TestDoor_RefreshesTheRimObserver and by the castle run.
+		{"keep-10k", garrisonKeep, 12, 6, true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.noRace && raceDetector {
+				t.Skip("the 10k keep's twin is ~30x slower under -race; plain go test runs it")
+			}
 			compiled := tc.site(t)
 			enc, oracle := openDriven(t, compiled), openDriven(t, compiled)
 			oracle.ExportedEveryoneLooks()
@@ -117,8 +141,27 @@ func TestObserversOf_EqualsFullRefresh(t *testing.T) {
 			rng := rand.New(rand.NewPCG(762, 1)) //nolint:gosec // a seeded walk, not a secret
 			doors := enc.Doors()
 			stepped, swung, memories := 0, 0, 0
+			start := whereIs(t, enc, keepPlayers[0])
+			var beside spatial.Position
+			if tc.pace {
+				// Found as the bench finds it: step there on both twins and
+				// back, held to the oracle like every other verb.
+				for _, d := range hexSteps {
+					cell := spatial.Position{X: start.X + d.X, Y: start.Y + d.Y}
+					_, err := enc.Step(&encounter.StepInput{Member: keepPlayers[0], To: cell, EndWalk: true})
+					_, oerr := oracle.Step(&encounter.StepInput{Member: keepPlayers[0], To: cell, EndWalk: true})
+					require.Equal(t, oerr == nil, err == nil, "probe step to %v answers alike", cell)
+					if err != nil {
+						continue
+					}
+					beside = cell
+					agree("the probe step to %v", cell)
+					break
+				}
+				require.NotEqual(t, start, beside, "the walker has a cell to pace to")
+			}
 			for i := 0; i < tc.moves; i++ {
-				if len(doors) > 0 && rng.IntN(4) == 0 {
+				if len(doors) > 0 && rng.IntN(tc.doorOdds) == 0 {
 					d := doors[rng.IntN(len(doors))]
 					open := enc.Doors()[indexOfDoor(enc.Doors(), d.ID)].State.Kind() == encounter.DoorOpen
 					var err, oerr error
@@ -137,12 +180,18 @@ func TestObserversOf_EqualsFullRefresh(t *testing.T) {
 					continue
 				}
 				player := keepPlayers[0]
-				if rng.IntN(4) == 0 {
+				if !tc.pace && rng.IntN(4) == 0 {
 					player = keepPlayers[rng.IntN(len(keepPlayers))]
 				}
 				at := whereIs(t, enc, player)
 				d := hexSteps[rng.IntN(len(hexSteps))]
 				to := spatial.Position{X: at.X + d.X, Y: at.Y + d.Y}
+				if tc.pace {
+					to = beside
+					if at == beside {
+						to = start
+					}
+				}
 				_, err := enc.Step(&encounter.StepInput{Member: player, To: to, EndWalk: true})
 				_, oerr := oracle.Step(&encounter.StepInput{Member: player, To: to, EndWalk: true})
 				require.Equal(t, oerr == nil, err == nil, "move %d: %q to %v answers alike", i, player, to)
@@ -164,10 +213,11 @@ func TestObserversOf_EqualsFullRefresh(t *testing.T) {
 					walked++
 				}
 			}
+			t.Logf("%s: %d steps, %d door swings, %d creatures walked, %d memories",
+				tc.name, stepped, swung, walked, memories)
 			require.Positive(t, walked, "some creature walked in a wake pass, or its refresh was never asked")
 			require.Positive(t, memories, "some memory formed, or its stamp was never compared")
-			t.Logf("%s: %d steps, %d door swings, %d creatures walked, %d memories; every look held to the oracle",
-				tc.name, stepped, swung, walked, memories)
+			require.Positive(t, swung, "some door swung, or a door's look was never compared")
 		})
 	}
 }
@@ -439,4 +489,54 @@ func TestDoor_RefreshesRayCrossers(t *testing.T) {
 		}
 	}
 	require.True(t, gained[beyond], "near sees through the opened door to the member beyond it")
+}
+
+// TestDoor_RefreshesTheRimObserver is the "+ 1" in the bound: an observer
+// standing one cell beyond its own sight of a footprint door's cells sees
+// the shut leaf by its face ([sightReach.seesCell]), so when the door opens
+// it must look again and learn the door is open. The bounded look is held to
+// an everyone-looks twin; the twin's own percept says the rim observer holds
+// the door, so the comparison cannot pass by holding nothing.
+func TestDoor_RefreshesTheRimObserver(t *testing.T) {
+	open := func() *encounter.Encounter {
+		enc, err := encounter.NewEncounter(&encounter.SetupInput{
+			Field: footprintDoorField(encounter.DoorIsClosed()),
+			// rim stands two cells from the leaf's covered cell (2,1) and
+			// sees one: the face, and nothing past it.
+			Members: []encounter.MemberInput{{ID: "rim", Kind: encounter.KindPlayer, Position: cellAt(0, 1)}},
+			Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+			Capabilities: encounter.Capabilities{
+				Sight:         &sightList{reach: map[encounter.MemberID]int{"rim": 1}},
+				Equipment:     encounter.UnobservedEquipment{},
+				Conditions:    encounter.UnobservedEquipment{},
+				Sheets:        zeroSheets{},
+				Participation: everyoneStanding{},
+				Initiative:    orderAsGiven{},
+				Driver:        passDriver{},
+				Actors: encounter.Actors{
+					Striker:   passStriker{},
+					Mover:     quietMover{},
+					Announcer: quietAnnouncer{},
+				},
+			},
+		})
+		require.NoError(t, err)
+		return enc
+	}
+	enc, oracle := open(), open()
+	oracle.ExportedEveryoneLooks()
+	before, err := oracle.ExportedPercepts()
+	require.NoError(t, err)
+	require.Contains(t, before["rim"], "door|"+string(theLeaf), "rim holds the shut leaf by its face")
+
+	for _, e := range []*encounter.Encounter{enc, oracle} {
+		_, err := e.OpenDoor(&encounter.OpenDoorInput{Door: theLeaf})
+		require.NoError(t, err)
+	}
+	want, err := oracle.ExportedPercepts()
+	require.NoError(t, err)
+	got, err := enc.ExportedPercepts()
+	require.NoError(t, err)
+	require.NotEqual(t, before["rim"], want["rim"], "the opening changed what rim holds")
+	require.Equal(t, want["rim"], got["rim"], "and the bounded look told rim, from one cell past its sight")
 }
