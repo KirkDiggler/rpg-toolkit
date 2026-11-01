@@ -386,7 +386,7 @@ func answeredBeatBody(by answeredBy, chosen *Pick) map[string]interface{} {
 		})
 	}
 
-	return map[string]interface{}{
+	body := map[string]interface{}{
 		"beat":       BeatAnswered,
 		"creature":   string(by.creature),
 		"prop":       string(by.prop),
@@ -407,6 +407,11 @@ func answeredBeatBody(by answeredBy, chosen *Pick) map[string]interface{} {
 		"say":        chosen.Answer.Say,
 		"fact":       string(chosen.Answer.Fact),
 	}
+	if chosen.Answer.Activity != nil {
+		body["activity"] = activityDataFrom(chosen.Answer.Activity)
+	}
+
+	return body
 }
 
 // pathOf is the pick's path through the table, level by level
@@ -839,6 +844,10 @@ func cloneTable(table Table) Table {
 // cloneAnswer deep-copies one entry's pointers and slices.
 func cloneAnswer(entry Answer) Answer {
 	out := entry
+	if entry.Activity != nil {
+		activity := *entry.Activity
+		out.Activity = &activity
+	}
 	if entry.When != nil {
 		out.When = make([]When, 0, len(entry.When))
 		for _, w := range entry.When {
