@@ -420,3 +420,164 @@ func TestLoad_MachineRefusals(t *testing.T) {
 		})
 	}
 }
+
+// TestWake_CatchUpSurvivesReload is the review's probe (rpg-toolkit#2216): a
+// raise that came inside another pass leaves a creature owed a round, the
+// session saves and loads the run, and the next raise still gives it both:
+// the load arms it at its first owed round, read off the clock's persisted
+// budget, and the budget is spent back to zero.
+func TestWake_CatchUpSurvivesReload(t *testing.T) {
+	enc, _ := wakeHall(t, monster("m1", 6, 2, holds()))
+	enc.worldThinking = true // a raise inside another pass
+	require.NoError(t, enc.spendWorldAction("alice"))
+	enc.worldThinking = false
+
+	driver := &askedDriver{inner: TableDriver{Roller: wakeRollsOne{}}}
+	loaded, err := LoadEncounter(&LoadEncounterInput{Data: enc.ToData(), Capabilities: wakeCapabilities(driver)})
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), loaded.dueAt["m1"], "loaded owed a round, it is due at that round")
+
+	require.NoError(t, loaded.spendWorldAction("alice"))
+	require.Equal(t, []MemberID{"m1", "m1"}, driver.asked, "both rounds, across the save")
+	budget, err := loaded.clock.Budget(&clock.BudgetInput{ID: "m1"})
+	require.NoError(t, err)
+	require.Zero(t, budget, "and the budget is spent back to zero")
+}
+
+// TestWake_CatchUpAsksAtEachRound pins the round a catch-up step is asked
+// at: a creature owed rounds 3 and 4 is asked the time at 3, then at 4, never
+// twice at one round. The round is read off the `time` beat's own event,
+// through a vocabulary whose scope reader records it.
+func TestWake_CatchUpAsksAtEachRound(t *testing.T) {
+	enc, _ := wakeHall(t, monster("m1", 6, 2, holds()))
+	var asked []uint64
+	ref, err := core.ParseString(defaultRecipeRef)
+	require.NoError(t, err)
+	vocab := machineVocabulary()
+	spec := vocab.Beats[beatTime]
+	spec.InScope = func(ev any, _ machine.ScopeLeaf) bool {
+		asked = append(asked, ev.(tickEv).Round)
+		return true
+	}
+	vocab.Beats[beatTime] = spec
+	program, err := machine.Recipe{Ref: *ref, Initial: defaultInitial, States: map[string]machine.State{
+		defaultInitial: {Transitions: []machine.Transition{{
+			On: beatTime, When: &machine.Guard{Scope: &machine.ScopeLeaf{Within: 1}},
+			Do: []machine.Act{{Pick: string(AnswerTime)}},
+		}}},
+	}}.Compile(vocab)
+	require.NoError(t, err)
+	enc.programs[defaultRecipeRef] = program
+
+	for range 2 {
+		require.NoError(t, enc.spendWorldAction("alice"))
+	}
+	enc.worldThinking = true // round 3 raised inside another pass
+	require.NoError(t, enc.spendWorldAction("alice"))
+	enc.worldThinking = false
+	require.NoError(t, enc.spendWorldAction("alice"))
+
+	require.Equal(t, []uint64{1, 2, 3, 4}, asked, "the owed rounds 3 and 4 are asked at 3 and at 4")
+	require.Equal(t, uint64(5), enc.dueAt["m1"])
+}
+
+// leavingDriver is the table driver, except that the member it names is
+// transferred into the running fight when it is asked: a pick that takes its
+// creature off the world clock.
+type leavingDriver struct {
+	inner  TableDriver
+	enc    *Encounter
+	member MemberID
+}
+
+func (d *leavingDriver) Act(view MonsterView) (Decision, error) {
+	if view.Self == d.member {
+		if _, err := d.enc.Transfer(&TransferInput{Member: d.member, To: ClockTurn, Pos: 2}); err != nil {
+			return Decision{}, err
+		}
+	}
+
+	return d.inner.Act(view)
+}
+
+// TestWake_StateBeatLandsBeforeAPickThatLeaves: a transition whose own pick
+// takes the creature off the world clock still lands its `state` beat and
+// re-lists it: the transition is true the moment it fires.
+func TestWake_StateBeatLandsBeforeAPickThatLeaves(t *testing.T) {
+	driver := &leavingDriver{inner: TableDriver{Roller: wakeRollsOne{}}, member: "m-guard"}
+	enc, err := NewEncounter(wakeSetup(driver,
+		MemberInput{ID: "bob", Kind: KindPlayer, Position: spatial.Position{X: 1, Y: 8}},
+		monster("m-brute", 4, 2, holds()),
+		monster("m-guard", 12, 2, holds()),
+	))
+	require.NoError(t, err)
+	driver.enc = enc
+	enc.programs[defaultRecipeRef] = testProgram(t, map[string]machine.State{
+		defaultInitial: {Transitions: []machine.Transition{
+			{On: beatTime, To: "alert", Reason: "called to the fight", Do: []machine.Act{{Pick: string(AnswerTime)}}},
+		}},
+		"alert": {Transitions: []machine.Transition{pickTime, {On: "noise", To: defaultInitial}}},
+	}, defaultInitial)
+	require.NoError(t, enc.rebuildWake())
+	_, err = enc.form(&FormInput{Order: []MemberID{"alice", "m-brute"}})
+	require.NoError(t, err)
+
+	require.NoError(t, enc.spendWorldAction("bob"))
+
+	on, err := enc.onWorldClock("m-guard")
+	require.NoError(t, err)
+	require.False(t, on, "precondition: its pick took it into the fight")
+	states := beatsTagged(t, enc, BeatState)
+	require.Len(t, states, 1, "the transition landed its beat")
+	require.Equal(t, "alert", states[0]["to"])
+	require.Equal(t, []machine.Listener[MemberID]{{Key: "m-guard"}}, enc.listeners.For("noise"), "and re-listed it")
+	_, armed := enc.dueAt["m-guard"]
+	require.False(t, armed, "the fight prices its time")
+}
+
+// raisingDriver is the table driver, except that asking the member it names
+// raises the world clock once, the first time: a pick whose alarm wraps a
+// fight round inside the pass (flip.go's noticeRounds), whose own wake is the
+// re-entrant no-op.
+type raisingDriver struct {
+	inner  TableDriver
+	enc    *Encounter
+	member MemberID
+	done   bool
+	asked  []MemberID
+}
+
+func (d *raisingDriver) Act(view MonsterView) (Decision, error) {
+	d.asked = append(d.asked, view.Self)
+	if view.Self == d.member && !d.done {
+		d.done = true
+		if _, err := d.enc.advanceWorld("alice", 1); err != nil {
+			return Decision{}, err
+		}
+		if err := d.enc.wake(); err != nil { // the inner raise's wake: a no-op
+			return Decision{}, err
+		}
+	}
+
+	return d.inner.Act(view)
+}
+
+// TestWake_ARoundRaisedInsideThePassIsTakenInIt: an earlier creature's pick
+// raises the world inside the pass; the pass re-reads the high-water before
+// its next pop, so every creature takes that round in the same pass, as the
+// census's budget, re-read at each creature's turn, gave it them.
+func TestWake_ARoundRaisedInsideThePassIsTakenInIt(t *testing.T) {
+	driver := &raisingDriver{inner: TableDriver{Roller: wakeRollsOne{}}, member: "m1"}
+	enc, err := NewEncounter(wakeSetup(driver, monster("m1", 6, 2, holds()), monster("m2", 10, 2, holds())))
+	require.NoError(t, err)
+	driver.enc = enc
+
+	require.NoError(t, enc.spendWorldAction("alice"))
+
+	require.Equal(t, []MemberID{"m1", "m2", "m1", "m2"}, driver.asked, "the round raised mid-pass is taken in it")
+	for _, id := range []core.EntityID{"m1", "m2"} {
+		budget, berr := enc.clock.Budget(&clock.BudgetInput{ID: id})
+		require.NoError(t, berr)
+		require.Zero(t, budget, "%s owes nothing", id)
+	}
+}

@@ -291,10 +291,11 @@ func (e *Encounter) spendRound(members []MemberID) (bool, error) {
 //
 // IN SEAT ORDER, AND CAUGHT UP. Members due at one round pop in member order,
 // the clock's own sorted order. A member due behind the high-water (a raise
-// the pass below could not take, because it raised inside another pass)
-// steps at its own round, re-arms at the next and pops again, round after
-// round, until it is due past the high-water: the census's "a member two
-// rounds behind gets two turns' worth".
+// that came inside another pass) steps at its own round, re-arms at the next
+// and pops again, round after round, until it is due past the high-water: the
+// census's "a member two rounds behind gets two turns' worth". The owed
+// rounds survive a save: a load arms each member at its first owed round,
+// read off the clock's persisted budget ([Encounter.armOwed]).
 //
 // NO ATTACKS, AND NO REACTIONS. The budget is `AttacksLeft: 0` and an
 // [Attack] returned here is [ErrAttackOffTurn] rather than a silently skipped
@@ -320,8 +321,8 @@ func (e *Encounter) spendRound(members []MemberID) (bool, error) {
 // RE-ENTRANT CALLS ARE A NO-OP. A step inside a world round cannot raise the
 // clock — pace is accrued by [Encounter.Step] alone — but a beat it appends
 // can reach a consult that reaches a verb, and the outer call owns this pass.
-// The raise it skipped is not lost: whoever it made due is still on the heap
-// at its round and catches up at the next pass.
+// The raise it skipped is not lost: the outer pass re-reads the high-water
+// before every pop, and whoever it made due is still on the heap at its round.
 func (e *Encounter) wake() error {
 	if e.worldThinking || e.outcome != nil {
 		return nil
@@ -340,6 +341,12 @@ func (e *Encounter) wake() error {
 	// round in which no creature woke asks no standing consult.
 	var down map[MemberID]bool
 	for {
+		// THE HIGH-WATER IS RE-READ BEFORE EVERY POP. A creature's pick can
+		// raise the world inside this pass (its alarm forms a fight whose
+		// round wraps, flip.go's noticeRounds, whose own wake is the no-op
+		// above); the creatures that round made due take it in this pass, as
+		// the census's budget, re-read at each creature's turn, gave it them.
+		at = uint64(e.clock.ToData().HighWater)
 		woke := e.due.Pop(at)
 		if len(woke) == 0 {
 			break
@@ -372,13 +379,13 @@ func (e *Encounter) wake() error {
 			}
 			// A body, or a member with no round granted to spend (the
 			// census's budget filter: a spent creature is not asked again),
-			// waits for the next round without being asked.
+			// waits for the round after the high-water without being asked.
 			budget, berr := e.clock.Budget(&clock.BudgetInput{ID: core.EntityID(member)})
 			if berr != nil {
 				return fmt.Errorf("world wakes budget %q: %w", member, berr)
 			}
 			if down[member] || budget <= 0 {
-				e.armAt(member, round)
+				e.armAt(member, at)
 				continue
 			}
 			if serr := e.stepMachine(member, m, round); serr != nil {

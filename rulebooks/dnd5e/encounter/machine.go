@@ -177,12 +177,41 @@ func (e *Encounter) rebuildWake() error {
 		if err != nil {
 			return err
 		}
-		if on {
-			e.armAt(id, now)
+		if !on {
+			continue
 		}
+		budget, err := e.clock.Budget(&clock.BudgetInput{ID: core.EntityID(id)})
+		if err != nil {
+			return fmt.Errorf("world wakes budget %q: %w", id, err)
+		}
+		e.armOwed(id, now, budget)
 	}
 
 	return nil
+}
+
+// armOwed arms a member at its first OWED round: the clock's persisted budget
+// is the rounds it was granted and has not spent (a raise that came inside
+// another pass, saved before the next one took it), so a member owed b rounds
+// at the world's now is due at now - b + 1 and the next raise pops it b + 1
+// times, round by round, as the census spent the budget a turn at a time. A
+// member owed nothing, or whose machine carries a wake of its own, is armed
+// from its machine ([Encounter.armAt]). The budget never exceeds the
+// high-water (clock.LoadTick refuses it), so the round is at least 1.
+func (e *Encounter) armOwed(id MemberID, now uint64, budget int) {
+	m := e.members[id]
+	if budget <= 0 || m.Machine.WakeAt != nil {
+		e.armAt(id, now)
+		return
+	}
+	p := e.programFor(m)
+	if _, due := p.DueAt(&m.Machine, now); !due {
+		e.disarm(id)
+		return
+	}
+	at := now - uint64(budget) + 1
+	e.due.Arm(id, at)
+	e.dueAt[id] = at
 }
 
 // armAt puts a member on the due heap at the round its machine wants after
@@ -253,7 +282,8 @@ func (e *Encounter) jumpWake(span uint64) {
 // re-armed: the fight's end re-arms it.
 //
 // A transition that names a state lands a [BeatState] and re-lists what the
-// member listens for. The default recipe has one state and never does.
+// member listens for, before the pick runs. The default recipe has one state
+// and never does.
 //
 // Errors: the machine refused its blob, a pick of a key other than `time`
 // (the only key this slice's vocabulary picks), or the turn failed.
@@ -265,6 +295,15 @@ func (e *Encounter) stepMachine(id MemberID, m *memberRecord, round uint64) erro
 	stepped, err := p.Step(&m.Machine, beatTime, tickEv{Round: round}, nil, round)
 	if err != nil {
 		return fmt.Errorf("world wakes %q: %w", id, err)
+	}
+	// A TRANSITION IS TRUE THE MOMENT IT FIRES, whatever its pick then does:
+	// the beat and the relist land before the pick, so a pick that takes the
+	// member off the world clock cannot leave its state changed silently.
+	if stepped.To != "" {
+		if err := e.appendStateBeat(id, stepped); err != nil {
+			return err
+		}
+		e.listeners.Set(id, p.Listens(&m.Machine))
 	}
 	for _, act := range stepped.Acts {
 		if act.Pick == "" {
@@ -298,12 +337,6 @@ func (e *Encounter) stepMachine(id MemberID, m *memberRecord, round uint64) erro
 	}
 	if _, err := e.clock.Spend(&clock.SpendInput{ID: core.EntityID(id), Amount: 1}); err != nil {
 		return fmt.Errorf("world wakes spend %q: %w", id, err)
-	}
-	if stepped.To != "" {
-		if err := e.appendStateBeat(id, stepped); err != nil {
-			return err
-		}
-		e.listeners.Set(id, p.Listens(&m.Machine))
 	}
 	e.armAt(id, round)
 
