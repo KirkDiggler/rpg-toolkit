@@ -327,7 +327,7 @@ func (e *Encounter) lockedDoorInTheWay(mover MemberID, from, to spatial.Position
 		return nil, false, fmt.Errorf("locked door in the way: %w", err)
 	}
 	q.locksYield = true
-	path, found, err := q.routeTo(mover, from, func(cell spatial.Position) bool { return cell == to })
+	path, found, err := q.routeWithin(mover, from, to, 0)
 	if err != nil {
 		return nil, false, fmt.Errorf("locked door in the way: %w", err)
 	}

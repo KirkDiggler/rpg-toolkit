@@ -1847,7 +1847,7 @@ func (e *Encounter) routedRoute(
 	// answer is "the reached cell nearest the anchor, strictly nearer than
 	// where I stand" — which is what "walk to the front room" meant all
 	// along.
-	path, _, err := e.routeTo(mover, from, func(cell spatial.Position) bool { return cell == anchor })
+	path, _, err := e.routeWithin(mover, from, anchor, 0)
 	if err != nil {
 		return RouteOutput{}, err
 	}
@@ -2230,16 +2230,13 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		// relative to the far side of a wall, reachable in fewer steps
 		// than continuing on toward pos itself, and InReach never checked
 		// walkability to begin with (it is distance-only, matching 5e's
-		// own reach rule). routeTo's goal predicate stops the
-		// search the moment ANY cell — including this member's own
-		// starting position, handling "already in reach" for free — is
-		// within bestRangeCells of pos, which is the actual nearest
-		// walkable answer rather than a proxy for it. One BFS per
-		// sighting, every Act call — see the field's own doc for why that
-		// cost is accepted rather than deferred behind a lazy capability.
-		path, _, routeErr := query.routeTo(m.ID, ownCell, func(cell spatial.Position) bool {
-			return e.Distance(cell, pos) <= float64(closeTo)
-		})
+		// own reach rule). The route's goal is ANY cell — including this
+		// member's own starting position, handling "already in reach" for
+		// free — within bestRangeCells of pos, which is the actual nearest
+		// walkable answer rather than a proxy for it. One search per
+		// sighting, every Act call, toward pos and settling the cells near
+		// its path rather than the floor (rpg-project#762, R10).
+		path, _, routeErr := query.routeWithin(m.ID, ownCell, pos, float64(closeTo))
 
 		if routeErr != nil {
 			return MonsterView{}, routeErr
@@ -2369,6 +2366,11 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 // neighbours in a fixed order and breaks equal-cost ties the same way every
 // time; the goal scan below breaks its own ties by distance, then X, then Y,
 // so ranging over the field's map cannot leak iteration order into the answer.
+//
+// THIS IS THE FLOOD, for a goal with no anchor. A goal that is "within so
+// many cells of one cell" — every route a creature's own view or march asks —
+// goes through [cellQuery.routeWithin], which searches toward the anchor and
+// gives this function's answer cell for cell (rpg-project#762, R10).
 func (e *cellQuery) routeTo(
 	mover MemberID, from spatial.Position, goal func(spatial.Position) bool,
 ) ([]spatial.Position, bool, error) {
@@ -2416,12 +2418,20 @@ func (e *cellQuery) routeToRemembered(
 		return nil, true, nil
 	}
 
-	field, err := e.floodFrom(mover, mover, from, func(cell spatial.Position) (bool, error) {
+	forgiven := func(cell spatial.Position) (bool, error) {
 		if cell != target {
 			return false, nil
 		}
 		return e.blockedOnlyByCreatures(mover, cell)
-	}, 0, true)
+	}
+	// ONE CELL IS ONE GOAL (rpg-project#762, R10): searched toward, not
+	// flooded for — the flood's path, by [cellQuery.searchToward]'s promise.
+	if e.searchable() {
+		return e.searchToward(mover, mover, from, target, 0, forgiven, true, func(cell spatial.Position) (bool, error) {
+			return cell == target, nil
+		})
+	}
+	field, err := e.floodFrom(mover, mover, from, forgiven, 0, true)
 	if err != nil {
 		return nil, false, err
 	}
@@ -2494,86 +2504,104 @@ func (e *cellQuery) computeFlood(
 	mover, walker MemberID, from spatial.Position, forgiven func(spatial.Position) (bool, error), limit int, opens bool,
 ) (spatial.FieldOutput, error) {
 	e.floodsComputed++
-	var crossingErr error
+	passable, crossingErr := e.walkerEdge(mover, walker, forgiven, opens)
 	field, err := spatial.Field(e.canvas.GetGrid(), spatial.FieldInput{
-		Sources: []spatial.Position{from},
-		Limit:   limit,
-		Passable: func(a, b spatial.Position) bool {
-			// THE CROSSING FOLD (issue #1753): boundaries AND placed footprint
-			// interiors, the same read [Encounter.stepMember] makes, so a
-			// route and a step cannot disagree about a thin blocker. A trace
-			// error fails the edge closed — a flood that cannot judge a
-			// crossing does not walk through it.
-			if crossingErr != nil {
-				return false
-			}
-			// A DOOR THIS WALK WOULD OPEN is not in its way: the step onto
-			// it is the step through it, and costs what any step costs. Asked
-			// only of a step something closes, so an open floor pays nothing
-			// for the question.
-			var door *doorRecord
-			prop, blocked, err := e.crossingBlocked(a, b)
-			if err != nil {
-				crossingErr = err
-				return false
-			}
-			if blocked {
-				if !opens {
-					return false
-				}
-				d, ok, err := e.doorPast(mover, a, b, prop, true)
-				if err != nil {
-					crossingErr = err
-					return false
-				}
-				if !ok {
-					return false
-				}
-				door = d
-			}
-			if e.masqueradeBlocks(walker, a, b) {
-				return false
-			}
-			fact, err := e.cellAt(CellAtInput{Cell: b, Mover: mover})
-			if err != nil {
-				crossingErr = err
-				return false
-			}
-			if fact.Passage != PassageBlocked {
-				return true
-			}
-			if opens && door == nil && standsADoor(fact) {
-				d, ok, err := e.doorPast(mover, a, b, "", false)
-				if err != nil {
-					crossingErr = err
-					return false
-				}
-				if ok {
-					door = d
-				}
-			}
-			if door != nil && blockedOnlyBy(fact, door) {
-				return true
-			}
-			if forgiven == nil {
-				return false
-			}
-			allowed, err := forgiven(b)
-			if err != nil {
-				crossingErr = err
-				return false
-			}
-			return allowed
-		},
+		Sources:  []spatial.Position{from},
+		Limit:    limit,
+		Passable: passable,
 	})
 	if err != nil {
 		return spatial.FieldOutput{}, err
 	}
 
-	if crossingErr != nil {
-		return spatial.FieldOutput{}, crossingErr
+	if *crossingErr != nil {
+		return spatial.FieldOutput{}, *crossingErr
 	}
 	return field, nil
+}
+
+// walkerEdge is the one edge rule every route here walks by — the flood's
+// ([cellQuery.computeFlood]) and the goal-directed search's
+// ([cellQuery.searchToward]) — so the two cannot disagree about a step:
+// crossing only edges the canvas allows, entering only cells the fold does
+// not call Blocked, a door the walk would open passable at the price of the
+// step onto it, and `forgiven` (may be nil) naming cells whose blockage does
+// not stop the walk.
+//
+// The first error any edge meets is held in the returned pointer and closes
+// every edge after it: a search that cannot judge a crossing does not walk
+// through it, and its caller reads the error once the search is done.
+func (e *cellQuery) walkerEdge(
+	mover, walker MemberID, forgiven func(spatial.Position) (bool, error), opens bool,
+) (func(a, b spatial.Position) bool, *error) {
+	var crossingErr error
+	return func(a, b spatial.Position) bool {
+		// THE CROSSING FOLD (issue #1753): boundaries AND placed footprint
+		// interiors, the same read [Encounter.stepMember] makes, so a
+		// route and a step cannot disagree about a thin blocker. A trace
+		// error fails the edge closed — a flood that cannot judge a
+		// crossing does not walk through it.
+		if crossingErr != nil {
+			return false
+		}
+		// A DOOR THIS WALK WOULD OPEN is not in its way: the step onto
+		// it is the step through it, and costs what any step costs. Asked
+		// only of a step something closes, so an open floor pays nothing
+		// for the question.
+		var door *doorRecord
+		prop, blocked, err := e.crossingBlocked(a, b)
+		if err != nil {
+			crossingErr = err
+			return false
+		}
+		if blocked {
+			if !opens {
+				return false
+			}
+			d, ok, err := e.doorPast(mover, a, b, prop, true)
+			if err != nil {
+				crossingErr = err
+				return false
+			}
+			if !ok {
+				return false
+			}
+			door = d
+		}
+		if e.masqueradeBlocks(walker, a, b) {
+			return false
+		}
+		fact, err := e.cellAt(CellAtInput{Cell: b, Mover: mover})
+		if err != nil {
+			crossingErr = err
+			return false
+		}
+		if fact.Passage != PassageBlocked {
+			return true
+		}
+		if opens && door == nil && standsADoor(fact) {
+			d, ok, err := e.doorPast(mover, a, b, "", false)
+			if err != nil {
+				crossingErr = err
+				return false
+			}
+			if ok {
+				door = d
+			}
+		}
+		if door != nil && blockedOnlyBy(fact, door) {
+			return true
+		}
+		if forgiven == nil {
+			return false
+		}
+		allowed, err := forgiven(b)
+		if err != nil {
+			crossingErr = err
+			return false
+		}
+		return allowed
+	}, &crossingErr
 }
 
 // blockedOnlyByCreatures reports whether the single reason a cell is closed to
@@ -3251,10 +3279,11 @@ func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 	}, nil
 }
 
-func (e *Encounter) routeTo(mover MemberID, from spatial.Position, goal func(spatial.Position) bool) ([]spatial.Position, bool, error) {
+// routeWithin is [cellQuery.routeWithin] on a fresh read.
+func (e *Encounter) routeWithin(mover MemberID, from, anchor spatial.Position, within float64) ([]spatial.Position, bool, error) {
 	q, err := e.cellQuery()
 	if err != nil {
 		return nil, false, err
 	}
-	return q.routeTo(mover, from, goal)
+	return q.routeWithin(mover, from, anchor, within)
 }
