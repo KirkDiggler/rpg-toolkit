@@ -8,7 +8,8 @@ package castletest
 // costs one round of the world, as a cast, a loot or a door verb does. R3
 // orders it: the blow lands, the aggression law turns the pair, the fight
 // forms with the one it struck in it, and the world outside that fight lives
-// the round the swing took. Inside a fight the turn clock prices the swing,
+// the round the swing took, raised by the world itself (worldtime.go's
+// deedMovesTheWorld). Inside a fight the turn clock prices the swing,
 // and the world charges nothing for it.
 
 import (
@@ -17,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // swingAt records one swing of the hero's at the target, as the session
@@ -120,4 +122,42 @@ func TestWorldSwingPaysARound(t *testing.T) {
 		require.Zero(t, countOf(kinds, encounter.BeatTick), "the turn clock prices it: %v", kinds)
 		require.Equal(t, before, s.enc.ToData().Clock.HighWater, "the world clock has not moved")
 	})
+}
+
+// TestAStruckKnightStandsInTheFightAndTheWorldMovesOn is the ruling's own
+// scene (rpg-project#785 R3 as the lead amended it): with the king fallen and
+// the court civil, the hero strikes keep-2 from across the yard. The fight
+// forms with keep-2 in it — and keep-1, who can see the hero — so neither
+// wanders off on its patrol; the round the swing took is the world's, and
+// hall-1, still on the world clock across the hall, walks its patrol in it.
+// A reload keeps the world's own progress.
+func TestAStruckKnightStandsInTheFightAndTheWorldMovesOn(t *testing.T) {
+	t.Parallel()
+	s := openTheCastleAs(t, castleHost{at: besideTheKing})
+	s.struck(theKing, true)
+	s.reload()
+	_, err := s.speakWithin(10, kingKeep2, "refuse", "intimidation", false)
+	require.NoError(t, err)
+	require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "precondition: the hero is in free roam")
+	keep1, keep2, hall1 := s.at(kingKeep1), s.at(kingKeep2), s.at(kingHall1)
+	before := s.enc.ToData().Clock.HighWater
+	n := len(s.beats(hero))
+
+	s.struck(kingKeep2, false)
+
+	kinds := s.beatKindsSince(n)
+	require.Equal(t, 1, countOf(kinds, encounter.BeatTick), "exactly one round of the world: %v", kinds)
+	require.Less(t, indexOf(kinds, encounter.BeatFightStarted), indexOf(kinds, encounter.BeatTick),
+		"the fight forms first, then the world moves: %v", kinds)
+	require.Equal(t, before+1, s.enc.ToData().Clock.HighWater)
+
+	for id, was := range map[encounter.MemberID]spatial.Position{kingKeep1: keep1, kingKeep2: keep2} {
+		require.Equal(t, encounter.ClockTurn, clockKind(t, s.enc, id), "%s is in the fight", id)
+		require.Equal(t, was, s.at(id), "%s does not wander", id)
+	}
+	require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, kingHall1), "hall-1 is still on the world clock")
+	require.NotEqual(t, hall1, s.at(kingHall1), "hall-1 walks its patrol in the round the swing took")
+
+	s.reload()
+	require.Equal(t, before+1, s.enc.ToData().Clock.HighWater, "the world's round survives a reload")
 }

@@ -364,6 +364,15 @@ func (e *Encounter) RecordCast(in *RecordCastInput) (*RecordCastOutput, error) {
 	if err != nil {
 		return nil, err
 	}
+	// WHO PAYS IS ASKED WHERE THE CASTER STOOD WHEN IT CAST (rpg-project#785
+	// R1): off every fight, the cast is a deed done on the world clock and
+	// moves the world a round, even when its harm has put the caster in a
+	// fight by the time the price is charged; inside one, the turn clock
+	// prices it, even when it ends that fight.
+	free, err := e.onTheWorldClock(in.Actor)
+	if err != nil {
+		return nil, fmt.Errorf("record cast: %w", err)
+	}
 	// CASTING SHOWS YOU (sneaking R7).
 	e.endSneaking(in.Actor)
 
@@ -415,11 +424,14 @@ func (e *Encounter) RecordCast(in *RecordCastInput) (*RecordCastOutput, error) {
 	}
 
 	// THE WORLD'S PRICE FOR AN ACTION, paid after the outcome has landed and
-	// before anything refreshes sight (design §5, worldtime.go): one round on
-	// the world clock for the actor, and the world thinks on it. Nothing at
-	// all for a member inside a fight, where the round is what prices time.
-	if err := e.spendWorldAction(in.Actor); err != nil {
-		return nil, err
+	// the fight a hostile cast started has formed (design §5, worldtime.go):
+	// one round of the world, and the world thinks on it. Nothing at all for
+	// a caster that cast inside a fight, where the round is what prices time,
+	// nor once an ending the cast fired has closed the story.
+	if free && e.outcome == nil {
+		if err := e.deedMovesTheWorld(in.Actor); err != nil {
+			return nil, err
+		}
 	}
 
 	return &RecordCastOutput{Seqs: seqs, IntelDeltas: intelDeltas}, nil

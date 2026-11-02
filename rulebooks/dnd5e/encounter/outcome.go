@@ -1003,25 +1003,11 @@ func (e *Encounter) appendTrainAndNotice(
 		if !pays[i] {
 			continue
 		}
-		if err := e.chargeWorldRound(unit.worldActor); err != nil {
+		if err := e.deedMovesTheWorld(unit.worldActor); err != nil {
 			return nil, nil, err
 		}
 	}
 	return landed, mergeIntelDeltas(intelDeltas, observed), nil
-}
-
-// onTheWorldClock answers whether a member is outside every fight, so an
-// action it takes is priced in rounds of the world. Empty asks nobody and
-// answers false.
-func (e *Encounter) onTheWorldClock(id MemberID) (bool, error) {
-	if id == "" {
-		return false, nil
-	}
-	bubble, err := e.bubbleFor(id)
-	if err != nil {
-		return false, err
-	}
-	return bubble == nil, nil
 }
 
 // TellConcentrationOutput is what [Encounter.TellConcentration] appended.

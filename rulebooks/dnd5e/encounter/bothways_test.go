@@ -773,6 +773,56 @@ func (s *BothWaysSuite) TestAFailedSaveTurnsTheCampTheWaySwingDoes() {
 	})
 }
 
+// TestAHostileCastFromFreeRoamMovesTheWorldARound is rpg-project#785 R1 at
+// the cast's door: the cantrip lands, the camp turns, the fight forms with
+// the scout in it, and THEN the world lives the round the cast took — one
+// tick, raised by the world itself, since the caster is a fighter now and the
+// turn clock prices a fighter's time.
+func (s *BothWaysSuite) TestAHostileCastFromFreeRoamMovesTheWorldARound() {
+	enc := s.camp()
+	s.Require().Equal(encounter.ClockWorld, s.clockOf(enc, alice), "precondition: alice casts from free roam")
+	before := enc.ToData().Clock
+	n := storyLen(s.T(), enc, alice)
+
+	_, err := enc.RecordCast(&encounter.RecordCastInput{
+		Actor: alice, Spell: bwMockery,
+		Targets: []encounter.CastTargetResult{{
+			Target: bwScout, Save: bwSave(false),
+			Results: []encounter.ActivationResult{bwPsychic()},
+		}},
+	})
+	s.Require().NoError(err)
+
+	after := enc.ToData().Clock
+	s.Equal(before.HighWater+1, after.HighWater, "one round of the world")
+	s.Equal(before.DriverProgress[core.EntityID(alice)], after.DriverProgress[core.EntityID(alice)],
+		"raised by the world, not by alice: the turn clock prices her time now")
+	s.Equal(encounter.ClockTurn, s.clockOf(enc, alice))
+	s.Equal(encounter.ClockTurn, s.clockOf(enc, bwScout), "the scout it struck is in the fight")
+
+	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+	var kinds []string
+	for _, entry := range story[n:] {
+		var beat map[string]any
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		kinds = append(kinds, beat["beat"].(string))
+	}
+	ticks, formed, tick := 0, -1, -1
+	for i, k := range kinds {
+		switch k {
+		case encounter.BeatTick:
+			ticks++
+			tick = i
+		case encounter.BeatFightStarted:
+			formed = i
+		}
+	}
+	s.Equal(1, ticks, "exactly one round: %v", kinds)
+	s.Require().GreaterOrEqual(formed, 0, "the fight formed: %v", kinds)
+	s.Less(formed, tick, "the fight forms first, then the world moves: %v", kinds)
+}
+
 // TestASavedCastStillProvokesBecauseTheAttemptIsTheProvocation is the missed
 // swing's rule for the save: the scout shrugged the cantrip off, took nothing
 // at all, and the camp is still at war.
@@ -807,6 +857,7 @@ func (s *BothWaysSuite) TestASavedCastStillProvokesBecauseTheAttemptIsTheProvoca
 // camp, and the pair is exactly as it was.
 func (s *BothWaysSuite) TestASaveThatOnlyHelpsProvokesNothing() {
 	enc := s.camp()
+	before := enc.ToData().Clock
 	kindness := encounter.SpellIdentity{Ref: "dnd5e:spells:mass-cure-wounds", Name: "Mass Cure Wounds"}
 
 	_, err := enc.RecordCast(&encounter.RecordCastInput{
@@ -839,6 +890,13 @@ func (s *BothWaysSuite) TestASaveThatOnlyHelpsProvokesNothing() {
 	s.Equal(encounter.StanceNeutral, s.stance(enc, bwGoblins, encounter.FactionParty))
 	s.Empty(s.stanceBeats(enc, alice), "nothing turned, so nothing was announced")
 	s.Nil(s.formed(enc, alice), "and no fight formed")
+
+	// A harmless cast from free roam pays its round as it always did: alice
+	// is still on the world clock, so she drives it (rpg-project#785 R1).
+	after := enc.ToData().Clock
+	s.Equal(before.HighWater+1, after.HighWater, "one round of the world")
+	s.Equal(before.DriverProgress[core.EntityID(alice)]+1, after.DriverProgress[core.EntityID(alice)],
+		"driven by alice herself")
 }
 
 // bwForce is 9 force damage delivered with NO gate at all — magic missile's
