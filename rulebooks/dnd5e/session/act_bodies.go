@@ -35,7 +35,7 @@ type WalkAct struct {
 	// Cause is what moved them, when something did (moved `cause`).
 	Cause string
 	// Forced is true for external physical displacement (push/pull), not a chosen or self-propelled move; absent/legacy means the mover walked.
-	Forced bool
+	Forced bool `json:"forced"`
 }
 
 // AttackOutcome is how a swing ended.

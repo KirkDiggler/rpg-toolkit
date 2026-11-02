@@ -90,6 +90,9 @@ func (s *ActFoldSuite) TestAForcedWalkActRoundTripsThroughSerialization() {
 	}
 	raw, err := json.Marshal(want)
 	s.Require().NoError(err)
+	var wire map[string]json.RawMessage
+	s.Require().NoError(json.Unmarshal(raw, &wire))
+	s.Contains(wire, "forced", "the serialized WalkAct keeps the beat payload's forced key")
 	var got WalkAct
 	s.Require().NoError(json.Unmarshal(raw, &got))
 	s.Equal(want, got)
