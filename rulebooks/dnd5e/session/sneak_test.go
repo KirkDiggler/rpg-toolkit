@@ -19,10 +19,12 @@ package session_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -314,22 +316,23 @@ func (s *SneakSuite) TestTheViewCarriesTheEncountersWatchZonesUnchanged() {
 
 // TestDeclaringInPlainViewIsRefused (the-world-runs R11, rpg-project#768:
 // "if anyone can see you you cannot go into sneaking"): alice walks onto the
-// door row, into the goblin's sight through the open door, and declares. The
-// refusal arrives as the session's own ErrSeen — never the composition's —
-// and the world is untouched: no mode, no roll, no beat, nothing delivered.
-// Back out of sight, the same declaration is accepted.
+// door row, into the goblin's sight through the open door, and declares. She
+// sees the goblin too, so the refusal is a SeenError naming it, arriving as
+// the session's own ErrSeen and never the composition's. The world is
+// untouched: no mode, no roll, no beat, nothing delivered. Back out of
+// sight, the same declaration is accepted.
 func (s *SneakSuite) TestDeclaringInPlainViewIsRefused() {
 	s.launch(false, nil)
 	s.move("alice", hexCell(2, 2), hexCell(2, 1))
+	s.Require().True(s.sights("alice", "goblin"), "precondition: alice sees the goblin that sees her")
 	before := s.story("alice")
 	s.stream.published = nil
 
-	_, err := s.mgr.SetSneaking(context.Background(), &session.SetSneakingInput{
-		Session: testSession, Member: "alice", Sneaking: true,
-	})
-	s.Require().ErrorIs(err, session.ErrSeen, "the goblin sees alice: no sneak begins in plain view")
-	s.NotErrorIs(err, encounter.ErrSeen, "the composition's sentinel stays behind the seam")
-	s.NotContains(err.Error(), "goblin", "the refusal names nobody: the composition's list may hold watchers alice cannot see")
+	err := s.refusedSneak("alice")
+	var seen *session.SeenError
+	s.Require().ErrorAs(err, &seen)
+	s.Equal([]string{"goblin"}, seen.Watchers, "a watcher alice sees is named")
+	s.Equal("set sneaking: member is seen by goblin", err.Error())
 	s.False(s.stored("alice").Sneaking, "the mode is unchanged")
 	s.False(s.view("alice").Sneaking)
 	s.Equal(before, s.story("alice"), "a refused declaration writes nothing")
@@ -338,6 +341,35 @@ func (s *SneakSuite) TestDeclaringInPlainViewIsRefused() {
 
 	s.move("alice", hexCell(2, 2), hexCell(2, 3))
 	s.True(s.setSneaking("alice", true).Sneaking, "out of sight, the declaration is accepted")
+}
+
+// refusedSneak declares on for member and returns the refusal, which must be
+// the session's own ErrSeen and never the composition's.
+func (s *SneakSuite) refusedSneak(member string) error {
+	s.T().Helper()
+	_, err := s.mgr.SetSneaking(context.Background(), &session.SetSneakingInput{
+		Session: testSession, Member: member, Sneaking: true,
+	})
+	s.Require().ErrorIs(err, session.ErrSeen, "no sneak begins in plain view")
+	s.NotErrorIs(err, encounter.ErrSeen, "the composition's sentinel stays behind the seam")
+	var leaked *encounter.SeenError
+	s.False(errors.As(err, &leaked), "and so does its detail type, whose list is unfiltered")
+	return err
+}
+
+// sights reports whether viewer's own sightings hold subject live.
+func (s *SneakSuite) sights(viewer, subject string) bool {
+	s.T().Helper()
+	enc, err := s.mgr.LoadWorldForTest(context.Background(), testSession)
+	s.Require().NoError(err)
+	holdings, err := enc.View(&encounter.ViewInput{Member: encounter.MemberID(viewer)})
+	s.Require().NoError(err)
+	for _, h := range holdings {
+		if string(h.Subject) == subject && h.CurrentOn(perception.Sight) {
+			return true
+		}
+	}
+	return false
 }
 
 // TestAnAcceptedDeclarationIsOnTheRecordAndOnNoPanel (R11): an accepted on,
