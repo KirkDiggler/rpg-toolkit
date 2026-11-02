@@ -4,9 +4,11 @@
 package castletest
 
 // castle_king_zone_test.go is THE RED FLOOR IN THE GREAT HALL (rpg-project#619,
-// sneaking Z1, design R15): the rogue sneaks out of the kitchen into the hall
-// and, once it stands inside the hall guard's sight, is sent his zone — his
-// alone — with its own cell in it.
+// sneaking Z1, design R15): the rogue picks the kitchen door, declares in
+// the hall's corner (nobody begins to sneak in the kitchen, where the cook
+// and the scullion see it: R10 as amended by R11, rpg-project#768) and, once
+// it stands inside the hall guard's sight, is sent his zone with its own
+// cell in it.
 
 import (
 	"testing"
@@ -16,15 +18,16 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
-// TestMadKingTheHallGuardsRedFloor walks the sneaking hero from the kitchen
-// toward the throne door, a step at a time, until the hall guard's zone holds
+// TestMadKingTheHallGuardsRedFloor walks the sneaking hero from the hall's
+// corner toward the throne door, a step at a time, until the hall guard's zone holds
 // the cell it stands on: the entry rolled and the hero won it, every zone
 // sent is a watcher the hero sees, and the hall guard's holds the hero's
 // cell. Declared off, the hero is sent none.
 //
-// THE KITCHEN IS RED TOO. The cook and the scullion are watchers (R9: any
-// placed member that is not a player), so in the kitchen the hero is sent
-// their zones; the walk stops on the hall guard's, not on the first zone.
+// THE KITCHEN IS RED TOO. The cook is a watcher (R9: any placed member that
+// is not a player) whose sight reaches through the open door, so the walk
+// can stand in his zone first; it stops on the hall guard's, not on the
+// first zone.
 func TestMadKingTheHallGuardsRedFloor(t *testing.T) {
 	t.Parallel()
 	stealth := &partyStealth{
@@ -32,9 +35,9 @@ func TestMadKingTheHallGuardsRedFloor(t *testing.T) {
 		d20s:     map[encounter.MemberID][]int{hero: {15, 15}},
 	}
 	s := openTheCastleAs(t, castleHost{at: besideTheCook, resolver: stealth})
-	s.declare(hero)
 	s.walkTo(pastTheKitchenDoor)
 	s.pickTheKitchenDoor()
+	s.declareInTheHallCorner(hero)
 
 	route, err := s.enc.Route(encounter.RouteInput{Mover: hero, Policy: encounter.MoveToward, Anchor: pastTheThroneDoor, Budget: 200})
 	require.NoError(t, err)

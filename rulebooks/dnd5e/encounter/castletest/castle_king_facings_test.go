@@ -44,50 +44,78 @@ var (
 	// inTheBarracks is barracks floor in sight of the cells door's keepers
 	// (offset [col, row], for MemberInput.Position).
 	inTheBarracks = spatial.Position{X: -20, Y: 3}
-
-	// atTheThroneDoor is the great hall's cell at the shut throne door
-	// (offset [col, row], for MemberInput.Position).
-	atTheThroneDoor = spatial.Position{X: 0, Y: -16}
 )
 
-// TestMadKingStillWatchersFaceWhatTheyKeep opens the castle with the hero
-// sneaking where it sees each stationary watcher, and asks the watcher's red
-// floor for the cell in front of what it keeps.
+// inTheCourtyard is courtyard floor out of every watcher's sight, east of
+// the barracks (offset [col, row], for MemberInput.Position): where a hero
+// declares before walking into the barracks.
+var inTheCourtyard = spatial.Position{X: -6, Y: 3}
+
+// TestMadKingStillWatchersFaceWhatTheyKeep brings the hero, sneaking, to
+// where it sees each stationary watcher, and asks the watcher's red floor
+// for the cell in front of what it keeps.
 //
-// THE KING IS HOSTILE, so the hero cannot simply stand beside him: it
-// declares in the hall at the shut throne door and opens it, winning every
-// roll the opening asks, as the sneaking walk did — and from there it sees
-// him with no fight formed.
+// NOBODY BEGINS TO SNEAK IN A WATCHER'S SIGHT (sneaking R10 as amended by
+// R11, rpg-project#768), so the hero declares where nobody sees it and walks
+// in, winning every roll the walk asks: into the kitchen from the hall's
+// corner, into the barracks from the courtyard, and to the king through the
+// hall and the shut throne door, which it opens — from there it sees him
+// with no fight formed (THE KING IS HOSTILE).
 func TestMadKingStillWatchersFaceWhatTheyKeep(t *testing.T) {
 	t.Parallel()
+	// intoTheKitchen picks the kitchen door, declares in the hall's corner
+	// and walks back to the hero's start beside the cook.
+	intoTheKitchen := func(s *kingScene) {
+		start := s.at(hero)
+		s.walkTo(pastTheKitchenDoor)
+		s.pickTheKitchenDoor()
+		s.declareInTheHallCorner(hero)
+		s.walkTo(start)
+	}
+	// intoTheBarracks declares in the courtyard and walks to the barracks
+	// floor in sight of the cells door's keepers.
+	intoTheBarracks := func(s *kingScene) {
+		s.declare(hero)
+		s.walkTo(castleCell(int(inTheBarracks.X), int(inTheBarracks.Y)))
+	}
+	// toTheKing declares in the hall's corner, crosses the hall to the shut
+	// throne door and opens it.
+	toTheKing := func(s *kingScene) {
+		s.walkTo(pastTheKitchenDoor)
+		s.pickTheKitchenDoor()
+		s.declareInTheHallCorner(hero)
+		s.walkTo(pastTheThroneDoor)
+		s.open(kingThroneDoor)
+	}
 	cases := []struct {
 		watcher encounter.MemberID
 		hero    spatial.Position
 		keeps   spatial.Position
 		what    string
-		enter   bool
+		reach   func(s *kingScene)
 	}{
-		{kingCook, besideTheCook, kitchenDoorInside, "the kitchen door", false},
-		{kingScullion, besideTheCook, kitchenDoorInside, "the kitchen door", false},
-		{kingTurnkey, inTheBarracks, northOfTheCellsDoor, "the cells door", false},
-		{kingSergeant, inTheBarracks, northOfTheCellsDoor, "the cells door", false},
-		{theKing, atTheThroneDoor, throneDoorInside, "the throne door", true},
+		{kingCook, besideTheCook, kitchenDoorInside, "the kitchen door", intoTheKitchen},
+		{kingScullion, besideTheCook, kitchenDoorInside, "the kitchen door", intoTheKitchen},
+		{kingTurnkey, inTheCourtyard, northOfTheCellsDoor, "the cells door", intoTheBarracks},
+		{kingSergeant, inTheCourtyard, northOfTheCellsDoor, "the cells door", intoTheBarracks},
+		{theKing, besideTheCook, throneDoorInside, "the throne door", toTheKing},
 	}
 	for _, c := range cases {
 		t.Run(string(c.watcher), func(t *testing.T) {
 			t.Parallel()
 			stealth := &partyStealth{
 				modifier: map[encounter.MemberID]int{hero: 7},
-				d20s:     map[encounter.MemberID][]int{hero: {15, 15, 15, 15, 15}},
+				d20s:     map[encounter.MemberID][]int{hero: make([]int, 20)},
+			}
+			for i := range stealth.d20s[hero] {
+				stealth.d20s[hero][i] = 15
 			}
 			s := openTheCastleAs(t, castleHost{
 				at: c.hero, resolver: stealth, arcs: map[encounter.MemberID]int{c.watcher: 120},
 			})
-			s.declare(hero)
-			if c.enter {
-				s.open(kingThroneDoor)
-				require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "no fight formed")
-			}
+			c.reach(s)
+			require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "no fight formed")
+			require.True(t, s.enc.Sneaking(hero), "the hero is still sneaking")
 
 			var zone map[spatial.Position]bool
 			for _, z := range zonesOf(t, s.enc, hero) {

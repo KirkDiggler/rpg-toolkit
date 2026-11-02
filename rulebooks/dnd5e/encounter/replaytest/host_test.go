@@ -276,21 +276,9 @@ var errNotAsked = errors.New("replaytest: this host is never asked that")
 // not hold.
 var errNotOnRecord = errors.New("replaytest: the record holds no such answer")
 
-// asksNoCheck is the check resolver of a route that rolls no check: asked
-// for one, it refuses, so a check these routes make — and whether the
-// record carries its verdict — could not pass unseen.
-type asksNoCheck struct{}
-
-func (asksNoCheck) ResolveCheck(in *encounter.ResolveCheckInput) (*encounter.ResolveCheckOutput, error) {
-	return nil, fmt.Errorf("check for %s: %w", in.Member, errNotAsked)
-}
-
-func (asksNoCheck) ResolveDiscoveryCheck(in *encounter.ResolveCheckInput) (*encounter.ResolveCheckOutput, error) {
-	return nil, fmt.Errorf("discovery check for %s: %w", in.Member, errNotAsked)
-}
-
 // perceivesNothingAsked is the witness of a route that opens no concealed
-// door: asked who perceives one, it refuses, for [asksNoCheck]'s reason.
+// door: asked who perceives one, it refuses, so a door these routes open —
+// and whether the record carries who perceived it — could not pass unseen.
 type perceivesNothingAsked struct{}
 
 func (perceivesNothingAsked) Perceivers(*encounter.PerceiversInput) ([]encounter.MemberID, error) {

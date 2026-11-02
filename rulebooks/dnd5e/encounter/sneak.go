@@ -41,6 +41,17 @@ import (
 // EXPORTED BECAUSE A DECODER READS IT, [BeatHeard]'s reason.
 const BeatSnuck = "snuck"
 
+// BeatSneaking is the "beat" value of the record-only beat a sneak
+// declaration writes (sneaking R10 as amended by the-world-runs R11,
+// rpg-project#768): `{member, on}`, audience the mover alone, written by
+// every accepted declaration — on, and off — after the mode changes and
+// before the sight refresh it causes. A declaration refused ([ErrSeen]), and
+// one of the mode already held, write none. It is how the record says when a
+// sneak began, so a replay can rebuild what every creature could see.
+//
+// EXPORTED BECAUSE A DECODER READS IT, [BeatHeard]'s reason.
+const BeatSneaking = "sneaking"
+
 // stealthAbility is the one approach a sneak roll asks the resolver for. An
 // opaque word here, matched by nobody in this module ([CheckApproach]); what
 // Stealth adds is the rulebook's.
@@ -51,8 +62,7 @@ const stealthAbility = "stealth"
 // [EncounterData.SneakVerdicts] (design R10).
 //
 //   - Beaten is the resolver's verdict on the last roll: true is a won roll,
-//     false a lost one — including the lost-without-a-roll a declaration in
-//     plain view writes.
+//     false a lost one.
 //   - Armed is whether the pair may roll again on its next crossing: false
 //     from the roll until the mover stands the watcher's
 //     [SheetFacts.WatchResetCells] outside its zone (and, for a lost pair,
@@ -110,10 +120,16 @@ type SetSneakingOutput struct {
 // a declaration is judged at once: stopping inside a watcher's zone is seen in
 // the same call.
 //
-// DECLARING IN PLAIN VIEW IS A LOST VERDICT (R10, I1: nobody vanishes in plain
-// view). Every watcher that holds the mover live, or whose zone already holds
-// the mover's cell, gets a lost verdict with no roll and no beat, and keeps
-// seeing the mover by ordinary sight until the pair re-arms.
+// NOBODY BEGINS TO SNEAK IN PLAIN VIEW (R10 as amended by the-world-runs
+// R11, rpg-project#768: "if anyone can see you you cannot go into
+// sneaking"). Turning the mode on is refused with [ErrSeen], naming the
+// watchers, while any watcher holds the mover live or has the mover's cell
+// in its zone: the mode does not change, nothing is rolled, nothing is
+// written. A roll that could drop the mover out of a sight already on them
+// would be hiding from a creature that sees you, which R3 does not grant.
+//
+// AN ACCEPTED DECLARATION IS ON THE RECORD: on, and every off, appends a
+// [BeatSneaking] after the mode changes and before the refresh.
 //
 // DECLARING THE MODE ALREADY HELD IS A NO-OP: no roll, no re-arm, no refresh,
 // no beat; the current mode is returned. Declaring it off clears every
@@ -122,8 +138,9 @@ type SetSneakingOutput struct {
 // Errors: ErrNilInput; ErrNotMember for a stranger or a member who is not a
 // player (a monster never sneaks, R16); ErrClosed; ErrInBubble for a member
 // in a fight (free roam only, R1); ErrNoCheckResolver when the encounter was
-// given no [CheckResolver], because the mode could never roll; anything the
-// refresh returns (the encounter is then discarded, doc.go's R5).
+// given no [CheckResolver], because the mode could never roll; ErrSeen for a
+// declaration made in a watcher's sight; anything the refresh returns (the
+// encounter is then discarded, doc.go's R5).
 func (e *Encounter) SetSneaking(in *SetSneakingInput) (*SetSneakingOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("set sneaking: %w", ErrNilInput)
@@ -153,11 +170,19 @@ func (e *Encounter) SetSneaking(in *SetSneakingInput) (*SetSneakingOutput, error
 	}
 
 	if in.Sneaking {
-		if err := e.declareSneaking(member); err != nil {
+		seen, err := e.seenBy(member.ID)
+		if err != nil {
 			return nil, fmt.Errorf("set sneaking %q: %w", in.Member, err)
 		}
+		if len(seen) > 0 {
+			return nil, fmt.Errorf("set sneaking %q: seen by %v: %w", in.Member, seen, ErrSeen)
+		}
+		member.Sneaking = true
 	} else {
 		e.endSneaking(member.ID)
+	}
+	if err := e.appendSneakingBeat(member.ID, in.Sneaking); err != nil {
+		return nil, fmt.Errorf("set sneaking %q: %w", in.Member, err)
 	}
 
 	// A sneaker changes what they are seen as where they stand, and nowhere
@@ -178,36 +203,56 @@ func (e *Encounter) Sneaking(member MemberID) bool {
 	return ok && m.Sneaking
 }
 
-// declareSneaking turns the mode on, first writing a lost verdict against
-// every watcher that already sees the mover — by its own live holding, or
-// because its zone holds the mover's cell (R10).
+// seenBy is every watcher a declaration would be made in sight of, sorted:
+// a watcher that holds the mover live, or whose zone holds the mover's cell
+// (R10 as amended by R11). A watcher with no passive Perception judges no
+// sneak ([sneakJudge.pair]) and is not counted.
 //
 // Errors: the mover is not on the canvas, or sight or a holding could not be
 // read.
-func (e *Encounter) declareSneaking(mover *memberRecord) error {
+func (e *Encounter) seenBy(mover MemberID) ([]MemberID, error) {
 	geometry, sheets, err := e.watchReach()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	cell, placed := geometry.positions[mover.ID]
+	cell, placed := geometry.positions[mover]
 	if !placed {
-		return fmt.Errorf("sneaker is not on the canvas: %w", ErrBadPlacement)
+		return nil, fmt.Errorf("sneaker is not on the canvas: %w", ErrBadPlacement)
 	}
+	var seen []MemberID
 	for _, watcher := range e.watchersIn(geometry, e.rosterIDs()) {
-		// An unsupplied passive judges no sneak ([sneakJudge.pair]).
-		if watcher == mover.ID || sheets[watcher].PassivePerception == 0 {
+		if watcher == mover || sheets[watcher].PassivePerception == 0 {
 			continue
 		}
-		live, err := e.holdsLive(watcher, mover.ID)
+		live, err := e.holdsLive(watcher, mover)
 		if err != nil {
-			return err
+			return nil, err
 		}
-		inZone := geometry.inWatchZone(watcher, cell)
-		if live || inZone {
-			e.setSneakVerdict(mover.ID, watcher, SneakVerdictData{InZone: inZone})
+		if live || geometry.inWatchZone(watcher, cell) {
+			seen = append(seen, watcher)
 		}
 	}
-	mover.Sneaking = true
+	sort.Slice(seen, func(i, j int) bool { return seen[i] < seen[j] })
+
+	return seen, nil
+}
+
+// appendSneakingBeat writes one accepted declaration's [BeatSneaking].
+func (e *Encounter) appendSneakingBeat(member MemberID, on bool) error {
+	payload, err := json.Marshal(map[string]interface{}{
+		"beat": BeatSneaking, "member": string(member), "on": on,
+	})
+	if err != nil {
+		return fmt.Errorf("sneaking beat: %w", err)
+	}
+	if _, err := e.appendBeat(&record.AppendInput{
+		At:       uint64(e.clock.ToData().HighWater),
+		Audience: e.audienceFor(tableBeat, member),
+		Tags:     map[string]string{"tag": BeatSneaking},
+		Payload:  payload,
+	}); err != nil {
+		return fmt.Errorf("sneaking beat: %w", err)
+	}
 
 	return nil
 }
@@ -639,8 +684,9 @@ func (j *sneakJudge) pair(mover, watcher MemberID) (bool, error) {
 		// watcher's sight ([SneakVerdictData]).
 		//
 		// NEVER FROM A WATCHER THAT HOLDS THE MOVER LIVE (R10, R28). Nobody
-		// vanishes in plain view: a watcher already seeing the mover is
-		// answered by the lost verdict a declaration writes, never by this.
+		// vanishes in plain view: a declaration in a watcher's sight is
+		// refused ([ErrSeen]), and a watcher that comes to see a sneaker
+		// outside its zone keeps seeing it by ordinary sight, never by this.
 		// Without an arc the zone is sight, so nothing reaches this line.
 		if nowIn || !j.reach.reachesCell(watcher, cell) {
 			return false, nil

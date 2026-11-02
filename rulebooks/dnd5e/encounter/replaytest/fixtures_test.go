@@ -126,7 +126,8 @@ func monsterInput(m dungeonspec.MonsterPlacement) encounter.MemberInput {
 
 // setupOn is a SetupInput for compiled content and seated members, with the
 // host's collaborators that roll given: the world's die (the table
-// driver's and the composition's), the driven swing and initiative.
+// driver's and the composition's), the driven swing, initiative and
+// Stealth.
 func setupOn(
 	compiled dungeonspec.Compiled, members []encounter.MemberInput, h host, down *standing, sheets plainSheets,
 ) *encounter.SetupInput {
@@ -144,7 +145,7 @@ func setupOn(
 			Initiative:    h.initiative,
 			Driver:        encounter.TableDriver{Roller: h.die},
 			Roller:        h.die,
-			CheckResolver: asksNoCheck{},
+			CheckResolver: h.check,
 			Witness:       perceivesNothingAsked{},
 			Actors: encounter.Actors{
 				Striker:   h.striker,

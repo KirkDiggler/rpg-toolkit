@@ -8,7 +8,8 @@ package dungeonspec_test
 // third of the room in front of it, so a sneaking rogue walks up behind it
 // unrolled and unseen and rolls the moment it steps into that third — while
 // the knight's fog, and its sight of a rogue who is not sneaking, stay all
-// round, and a cook that already sees the rogue keeps seeing it.
+// round, and a declaration behind a cook that already sees the rogue is
+// refused (R10 as amended by R11, rpg-project#768).
 
 import (
 	"testing"
@@ -288,9 +289,25 @@ func TestConeSite(t *testing.T) {
 	require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, coneSiteRogue), "a civil knight forms no fight")
 	rolled := append([]encounter.ResolveCheckInput(nil), s.stealth.asked...)
 
-	// DECLARING BEHIND A WATCHER THAT SEES YOU KEEPS YOU SEEN (R10). Not
-	// sneaking, the rogue walks up behind the cook, inside her ordinary sight
-	// and outside her front third, and declares.
+	// A LOST PAIR HOLDS INSIDE ORDINARY SIGHT (R10). Back out of the front
+	// third, still in the knight's sight, the rogue stays seen and the pair
+	// does not re-arm; out of his sight and the re-arm distance clear of his
+	// zone, it re-arms.
+	s.step(sideways)
+	require.True(t, s.seesLive(coneSiteKnight, coneSiteRogue), "inside his sight the lost pair holds")
+	v, _ := s.verdict(coneSiteKnight)
+	require.Equal(t, encounter.SneakVerdictData{}, v, "lost, outside his zone, not re-armed")
+	away := castleCell(-5, 5)
+	s.walkTo(away)
+	require.False(t, s.seesLive(coneSiteKnight, coneSiteRogue), "out of his sight")
+	v, _ = s.verdict(coneSiteKnight)
+	require.True(t, v.Armed, "broken sight and the distance clear: the pair re-arms")
+	require.Equal(t, rolled, s.stealth.asked, "the walk away rolls nothing")
+
+	// DECLARING BEHIND A WATCHER THAT SEES YOU IS REFUSED (R10 as amended by
+	// R11, rpg-project#768). Not sneaking, the rogue walks up behind the
+	// cook, inside her ordinary sight and outside her front third, and
+	// declares: the cook sees it, so the declaration is refused, naming her.
 	s.declare(false)
 	cookAt := positionOf(t, s.enc, coneSiteCook)
 	behindCook := castleCell(-5, 2)
@@ -298,30 +315,25 @@ func TestConeSite(t *testing.T) {
 	s.walkTo(behindCook)
 	require.Equal(t, behindCook, positionOf(t, s.enc, coneSiteRogue))
 	require.True(t, s.seesLive(coneSiteCook, coneSiteRogue), "the cook sees the rogue behind her")
-	s.declare(true)
-	v, ok := s.verdict(coneSiteCook)
-	require.True(t, ok, "declaring in the cook's sight writes a verdict")
-	require.Equal(t, encounter.SneakVerdictData{Beaten: false, Armed: false, InZone: false}, v,
-		"lost with no roll, outside her zone")
+	_, err := s.enc.SetSneaking(&encounter.SetSneakingInput{Member: coneSiteRogue, Sneaking: true})
+	require.ErrorIs(t, err, encounter.ErrSeen)
+	require.ErrorContains(t, err, string(coneSiteCook))
+	require.False(t, s.enc.Sneaking(coneSiteRogue), "the mode did not change")
+	_, ok := s.verdict(coneSiteCook)
+	require.False(t, ok, "a refused declaration writes no verdict")
 	require.Equal(t, rolled, s.stealth.asked, "declaring in plain view rolls nothing")
 	require.True(t, s.seesLive(coneSiteCook, coneSiteRogue), "the cook keeps holding the rogue")
 
-	// Still in her sight, still behind her: still seen, not re-armed.
-	s.step(castleCell(-4, 2))
-	require.True(t, s.seesLive(coneSiteCook, coneSiteRogue), "inside her sight the lost pair holds")
-	v, _ = s.verdict(coneSiteCook)
-	require.False(t, v.Armed, "a lost pair inside ordinary sight does not re-arm")
-
-	// Out of her sight and the re-arm distance clear of her zone: re-armed.
-	s.walkTo(castleCell(-5, 5))
+	// Out of her sight, declared, and back behind her: armed, unseen, and
+	// nothing rolls.
+	s.walkTo(away)
 	require.False(t, s.seesLive(coneSiteCook, coneSiteRogue), "out of her sight")
-	v, _ = s.verdict(coneSiteCook)
-	require.True(t, v.Armed, "broken sight and the distance clear: the pair re-arms")
-
-	// Back behind her, armed: unseen, and nothing rolls.
+	s.declare(true)
 	s.walkTo(behindCook)
 	require.Equal(t, behindCook, positionOf(t, s.enc, coneSiteRogue))
-	require.False(t, s.seesLive(coneSiteCook, coneSiteRogue), "re-armed, the sneaker behind her is unseen")
+	require.False(t, s.seesLive(coneSiteCook, coneSiteRogue), "armed, the sneaker behind her is unseen")
+	v, _ = s.verdict(coneSiteCook)
+	require.Equal(t, encounter.SneakVerdictData{Armed: true}, v, "her sight reaching the rogue outside her zone records the pair")
 	require.Equal(t, rolled, s.stealth.asked, "behind her nothing rolls")
 
 	// A WATCHER THAT HOLDS THE SNEAKER IS NEVER ANSWERED BY THE ARC (R10,
