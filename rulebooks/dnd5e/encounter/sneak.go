@@ -122,8 +122,8 @@ type SetSneakingOutput struct {
 //
 // NOBODY BEGINS TO SNEAK IN PLAIN VIEW (R10 as amended by the-world-runs
 // R11, rpg-project#768: "if anyone can see you you cannot go into
-// sneaking"). Turning the mode on is refused with [ErrSeen], naming the
-// watchers, while any watcher holds the mover live or has the mover's cell
+// sneaking"). Turning the mode on is refused with a [SeenError], which
+// unwraps to [ErrSeen] and carries the watchers as a type, while any watcher holds the mover live or has the mover's cell
 // in its zone: the mode does not change, nothing is rolled, nothing is
 // written. A roll that could drop the mover out of a sight already on them
 // would be hiding from a creature that sees you, which R3 does not grant.
@@ -175,7 +175,7 @@ func (e *Encounter) SetSneaking(in *SetSneakingInput) (*SetSneakingOutput, error
 			return nil, fmt.Errorf("set sneaking %q: %w", in.Member, err)
 		}
 		if len(seen) > 0 {
-			return nil, fmt.Errorf("set sneaking %q: seen by %v: %w", in.Member, seen, ErrSeen)
+			return nil, fmt.Errorf("set sneaking %q: %w", in.Member, &SeenError{Watchers: seen})
 		}
 		member.Sneaking = true
 	} else {
@@ -236,6 +236,27 @@ func (e *Encounter) seenBy(mover MemberID) ([]MemberID, error) {
 
 	return seen, nil
 }
+
+// SeenError is [ErrSeen]'s detail: the watchers that see the mover when it
+// declares sneaking, sorted by id (the-world-runs R11, rpg-project#768).
+//
+// EVERY WATCHER THAT SEES THE MOVER, not only the ones the mover sees: a
+// watcher holding the mover live, or having the mover's cell in its zone,
+// may itself be hidden from the mover. A host that shows the list to a
+// player filters it through that player's own sightings first, because the
+// player learns only what their own eyes hold.
+type SeenError struct {
+	// Watchers are the watchers that see the mover, sorted by id.
+	Watchers []MemberID
+}
+
+// Error names the watchers.
+func (e *SeenError) Error() string {
+	return fmt.Sprintf("seen by %v: %v", e.Watchers, ErrSeen)
+}
+
+// Unwrap makes errors.Is(err, ErrSeen) true for this detail type.
+func (e *SeenError) Unwrap() error { return ErrSeen }
 
 // appendSneakingBeat writes one accepted declaration's [BeatSneaking].
 func (e *Encounter) appendSneakingBeat(member MemberID, on bool) error {

@@ -381,6 +381,11 @@ func (s *SneakSuite) TestDeclaringInPlainViewIsRefused() {
 	s.ErrorIs(err, encounter.ErrSeen)
 	s.ErrorContains(err, string(sneakCook), "the refusal names who sees the rogue")
 	s.NotContains(err.Error(), string(sneakKnight), "and not a watcher that does not")
+	var seen *encounter.SeenError
+	s.Require().ErrorAs(err, &seen, "the watchers arrive as a type, not only as text")
+	s.Equal([]encounter.MemberID{sneakCook}, seen.Watchers)
+	s.Equal(fmt.Sprintf("set sneaking %q: seen by [%s]: %v", sneakRogue, sneakCook, encounter.ErrSeen), err.Error(),
+		"the text is unchanged")
 	s.Nil(out)
 
 	s.False(s.enc.Sneaking(sneakRogue), "the mode did not change")
