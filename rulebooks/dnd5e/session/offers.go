@@ -288,13 +288,13 @@ func (m *Manager) compileOffersFor(
 	// everything else still standing, and talk belongs on the standing side:
 	// a fighter whose weapon will not compile can still tell a goblin what is
 	// going to happen to it.
-	var speak compiledOffer
+	var speaks []compiledOffer
 	if requested[VerbSpeak] {
 		menu, err := readSpeakMenu(enc, member)
 		if err != nil {
 			return nil, err
 		}
-		if speak, err = buildSpeakOffer(menu, sessionID, member, sheet); err != nil {
+		if speaks, err = buildSpeakOffers(menu, sessionID, member, sheet); err != nil {
 			return nil, err
 		}
 	}
@@ -381,9 +381,8 @@ func (m *Manager) compileOffersFor(
 			})
 			attackBlocker.unreadable = conflict
 		}
-		return finishRequestedOffers(requested, append(
-			[]compiledOffer{attackBlocker, move, endTurn, speak},
-			activations...)...)
+		standing := append([]compiledOffer{attackBlocker, move, endTurn}, speaks...)
+		return finishRequestedOffers(requested, append(standing, activations...)...)
 	}
 	price.cost.Profile = combatActions.CloneSpendProfile(definition.Cost)
 
@@ -489,7 +488,8 @@ func (m *Manager) compileOffersFor(
 		attacks = append(attacks, offHandAttack)
 	}
 
-	offers := append(attacks, move, deathSave, endTurn, speak)
+	offers := append(attacks, move, deathSave, endTurn)
+	offers = append(offers, speaks...)
 	offers = append(offers, activations...)
 	return finishRequestedOffers(requested, append(offers, casts...)...)
 }
@@ -731,44 +731,94 @@ func buildMoveOffer(session, member string, sheet *character.Character) (compile
 	return compiledOffer{declaration: decl, sheet: sheet, verb: VerbMove, slot: SlotNone, variant: variant}, nil
 }
 
-// buildSpeakOffer compiles THE ONE SOCIAL ROW on the turn clock — Speak,
-// priced at the standard action and carrying the menu of every line this
-// speaker is offered right now (rpg-project#569).
+// buildSpeakOffers compiles THE SOCIAL ROWS on the turn clock — Speak,
+// carrying the menu of every line this speaker is offered right now
+// (rpg-project#569), PRICED BY THE LINE (rpg-project#785 R5: "the check is the
+// action… speaking with no check would be a free action").
 //
-// ITS CANDIDATES ARE THE WITNESSES WITHIN REACH WHO OFFER A LINE, and the
-// direction is the point. Every other member-targeting row here asks who the
-// ACTOR can see; a line only reaches somebody who can see who is saying it,
-// so this asks the composition the question the verb itself will ask
-// ([encounter.Encounter.Witnesses]). Of those, only the ones with a line for
-// THIS speaker are candidates ([linesOffered]) — the same read the verb
+// # Two rows, because a line has one of two prices
+//
+// A line that rolls a check ([encounter.Option.Checked]) is the standard
+// action; a plain line costs nothing. A declaration has ONE [Slot], so one row
+// cannot say both honestly: priced at the action it would refuse a greeting to
+// a fighter who has swung, and priced at nothing it would offer a threat the
+// actor cannot pay for. So the menu is split by price into two rows, each with
+// its own candidates and its own selector (the slot is selector material):
+//
+//   - the FREE row, [SlotNone], carries the plain lines, and is compiled only
+//     when there is one. It has no price to fall short of.
+//   - the ACTION row, [SlotAction], carries the checked lines and keeps the
+//     price shortfall it always had. It is compiled when there is a checked
+//     line, AND when there is no line at all — so a speaker with nothing to
+//     say still gets the one row that says why ([speakShortfall]).
+//
+// Both are the active member's alone: the turn gate is Afford's, not the
+// price's (talking out of turn is a later ruling).
+//
+// ITS CANDIDATES ARE THE WITNESSES WITHIN REACH WHO OFFER A LINE AT THAT
+// PRICE, and the direction is the point. Every other member-targeting row here
+// asks who the ACTOR can see; a line only reaches somebody who can see who is
+// saying it, so this asks the composition the question the verb itself will
+// ask ([encounter.Encounter.Witnesses]). Of those, only the ones with a line
+// for THIS speaker are candidates ([linesOffered]) — the same read the verb
 // refuses by, so the row cannot offer a creature the door would turn away.
 //
 // THE MENU IS [Declaration.SpeakOptions]: one row per (target, line) pair,
-// props included. A target with no line is not listed at all.
+// props included. A target with no line at a row's price is not listed on it.
 //
 // WITHIN REACH ONLY (rpg-project#753 R4). The menu is read within
 // [InteractionReach], so a target farther off is not a row at all rather than
 // an unavailable one: every candidate is available and none carries a
 // ShortfallTargetOutOfReach. A far target is approached first.
-func buildSpeakOffer(
+func buildSpeakOffers(
 	menu speakMenu, session, member string, sheet *character.Character,
+) ([]compiledOffer, error) {
+	plain, checked := menu.byPrice()
+
+	var out []compiledOffer
+	if len(plain.lines) > 0 {
+		free, err := compileSpeakRow(plain, session, member, sheet, SlotNone, nil)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, free)
+	}
+	if len(checked.lines) > 0 || len(plain.lines) == 0 {
+		profile, err := speakCost(sheet)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %v", ErrBadCost, err)
+		}
+		action, err := compileSpeakRow(checked, session, member, sheet, SlotAction, profile)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, action)
+	}
+	return out, nil
+}
+
+// compileSpeakRow is one priced Speak row over one part of the menu. A nil
+// profile is a row with no price: the free row, whose shortfall order skips
+// the price arm ([speakShortfall]).
+func compileSpeakRow(
+	menu speakMenu, session, member string, sheet *character.Character,
+	slot Slot, profile *combat.SpendProfile,
 ) (compiledOffer, error) {
-	id, variant, err := selectorIDFor(session, member, VerbSpeak, SlotAction, nil, nil, "", "")
+	id, variant, err := selectorIDFor(session, member, VerbSpeak, slot, nil, nil, "", "")
 	if err != nil {
 		return compiledOffer{}, err
 	}
 
-	profile, err := speakCost(sheet)
-	if err != nil {
-		return compiledOffer{}, fmt.Errorf("%w: %v", ErrBadCost, err)
-	}
-
 	decl := Declaration{
-		Verb: VerbSpeak, Slot: SlotAction, ID: id,
+		Verb: VerbSpeak, Slot: slot, ID: id,
 		TargetKind: TargetMember, Candidates: projectCandidates(menu.targets),
 		SpeakOptions: menu.projectRows(),
 	}
-	if why := speakShortfall(menu, sheet, profile); why != nil {
+	var priced *character.Character
+	if profile != nil {
+		priced = sheet
+	}
+	if why := speakShortfall(menu, priced, profile); why != nil {
 		decl.Why = why
 	} else {
 		decl.Available = true
@@ -781,7 +831,7 @@ func buildSpeakOffer(
 
 	return compiledOffer{
 		declaration: decl, sheet: sheet, targets: targets,
-		verb: VerbSpeak, slot: SlotAction, variant: variant,
+		verb: VerbSpeak, slot: slot, variant: variant,
 	}, nil
 }
 
@@ -853,6 +903,35 @@ func (m speakMenu) projectRows() []SpeakOptionRow {
 		})
 	}
 	return out
+}
+
+// byPrice splits the menu by what a line costs (rpg-project#785 R5): the
+// plain lines, which roll nothing, and the checked lines, which are the
+// action. Each part keeps every witness (the shortfall's audience arm reads
+// them) and lists as targets only the creatures with a line at its price, in
+// the menu's own order.
+func (m speakMenu) byPrice() (plain, checked speakMenu) {
+	plain.witnesses, checked.witnesses = m.witnesses, m.witnesses
+	plainBy := map[string]bool{}
+	checkedBy := map[string]bool{}
+	for _, l := range m.lines {
+		if l.option.Checked() {
+			checked.lines = append(checked.lines, l)
+			checkedBy[l.target] = true
+			continue
+		}
+		plain.lines = append(plain.lines, l)
+		plainBy[l.target] = true
+	}
+	for _, t := range m.targets {
+		if plainBy[t.member] {
+			plain.targets = append(plain.targets, t)
+		}
+		if checkedBy[t.member] {
+			checked.targets = append(checked.targets, t)
+		}
+	}
+	return plain, checked
 }
 
 // InteractionReach is how near, in cells, a creature or prop must stand for

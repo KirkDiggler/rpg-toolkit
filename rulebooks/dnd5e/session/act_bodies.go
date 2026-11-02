@@ -218,7 +218,8 @@ type SpeakAct struct {
 	// Skill is the line's skill (spoke `skill`).
 	Skill string
 	// Roll is the line's check (spoke `total`, `dc`, `beaten`,
-	// `calculation`).
+	// `calculation`). Nil for a plain line, which rolls nothing
+	// (rpg-project#785 R5) and whose beat names no skill.
 	Roll *Roll
 	// Answer is the target's answer (the answered beat under this act).
 	Answer *TableAnswer

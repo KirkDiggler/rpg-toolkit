@@ -65,6 +65,9 @@ type SpeakInput struct {
 type SpeakOutput struct {
 	// Beaten is whether the check beat the applied route's DC. The session
 	// rolled it; the composition was told this verdict and nothing else.
+	//
+	// A PLAIN LINE (no `check:`, rpg-project#785 R5) rolls nothing and
+	// lands: Beaten is true, and Total, DC and Applied are the zero value.
 	Beaten bool `json:"beaten"`
 
 	// Total is what the check totalled. No omitempty: zero is an answer.
@@ -142,13 +145,18 @@ type SpeakOutput struct {
 // disadvantage (rpg-project#457 R2), named in the result's own sources. That
 // rule lives in resolution, attached to the skill.
 //
-// # It works on both clocks, and costs an action on only one
+// # The check is the action
 //
-// On the turn clock it must be the member's turn and it costs the standard
-// action, charged BEFORE the check is staged so a line that pauses for a
-// Bardic Inspiration cannot be answered and then spent on somebody else. On
-// the WORLD clock it costs nothing, exactly as Move does there: the world
-// clock has no economy (R3, rpg-project#457).
+// A line with no `check:` is a PLAIN LINE (rpg-project#785 R5: "speaking with
+// no check would be a free action"): it rolls nothing, lands no deed, is
+// answered from its success rows, and costs nothing on either clock. It is
+// still the active member's on the turn clock, and asks every door below.
+//
+// A CHECKED LINE is the action. On the turn clock it must be the member's
+// turn and it costs the standard action, charged BEFORE the check is staged
+// so a line that pauses for a Bardic Inspiration cannot be answered and then
+// spent on somebody else. On the WORLD clock the session spends nothing and
+// the composition charges the world its round when the line lands.
 //
 // # A missed line is an outcome, not an error
 //

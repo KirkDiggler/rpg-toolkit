@@ -168,8 +168,18 @@ func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, erro
 		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
 	}
 
-	// FREE ON THE WORLD CLOCK, priced on the turn clock — move.go's rule,
-	// shared rather than restated.
+	// A PLAIN LINE IS FREE ON BOTH CLOCKS (rpg-project#785 R5: "the check is
+	// the action… speaking with no check would be a free action"). It spends
+	// no action slot, rolls nothing, and the composition pays the world no
+	// round for it. Asked after every door above, so a plain line is refused
+	// exactly where a checked one would be.
+	if !line.Checked() {
+		return m.speakPlain(ctx, scope, in)
+	}
+
+	// A CHECKED LINE IS THE ACTION: the standard action on the turn clock,
+	// charged here; on the world clock the composition charges its round when
+	// the line lands ([encounter.Encounter.Speak]), so nothing is spent here.
 	if ClockKind(clock.Kind) == ClockTurn {
 		if err := m.spendOnSocial(ctx, scope, member, clock.Round); err != nil {
 			return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
@@ -225,6 +235,35 @@ func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, erro
 		Total:    verdict.Total,
 		DC:       verdict.Applied.DC,
 		Applied:  projectApproach(verdict.Applied),
+		Target:   in.Target,
+		Prop:     in.Prop,
+		OptionID: in.OptionID,
+		Saved:    report,
+		Delivery: delivery,
+	}, nil
+}
+
+// speakPlain lands a line that rolls no check (rpg-project#785 R5): nothing
+// is spent, nothing is staged or rolled, and the composition answers it from
+// its success rows with no deed. Every door was asked by the caller.
+func (m *Manager) speakPlain(ctx context.Context, scope *writeScope, in *SpeakInput) (*SpeakOutput, error) {
+	spoken, err := m.landSpoken(ctx, scope.enc, &speakLanding{
+		Actor:    encounter.MemberID(in.Member),
+		Target:   encounter.MemberID(in.Target),
+		Prop:     encounter.PropID(in.Prop),
+		OptionID: in.OptionID,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", VerbSpeak, translate(err))
+	}
+
+	report, delivery, err := m.commit(ctx, scope)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
+	}
+
+	return &SpeakOutput{
+		Beaten:   spoken.Beaten,
 		Target:   in.Target,
 		Prop:     in.Prop,
 		OptionID: in.OptionID,
