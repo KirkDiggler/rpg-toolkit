@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
@@ -66,7 +67,29 @@ func (p Participant) validate() error {
 // Input is everything one interaction needs. All of it is data (R2).
 type Input struct {
 	// World is the encounter the interaction happens in, as the host stored it.
+	// Resolve loads it. Exactly one of World and [Input.Live] is set.
 	World encounter.EncounterData
+
+	// Live is the encounter the interaction happens in, as the host already
+	// holds it loaded. Exactly one of [Input.World] and Live is set.
+	//
+	// A HOST THAT HOLDS THE ENCOUNTER LENDS IT rather than handing over its
+	// data to be loaded a second time. Loading is the expensive half of an
+	// interaction on a large site (rpg-project#753: a one-cell Move on the 10k
+	// keep loaded the whole encounter twice, the second time here), and the
+	// host's instance is the very world the data describes, post-whatever the
+	// host just did to it.
+	//
+	// IT IS READ, NEVER WRITTEN. This package calls no encounter verb on it:
+	// it reads the room (already read-only by construction), sides, stances,
+	// sight and the area set, exactly what it reads off a world it loaded.
+	// So [Output.World] comes back empty for a lent encounter: nothing was
+	// done to it here that the host does not already hold.
+	//
+	// The capabilities still validate as for World, and the Roller is still
+	// the one this package reads. A lent encounter carries the capabilities
+	// the host built it with; the ones on this input are not rebound onto it.
+	Live *encounter.Encounter
 
 	// Participants are the sheets of everyone in the interaction. Pass everyone
 	// (R3) — applicability is the effect's predicate, not the caller's guess.
@@ -119,6 +142,13 @@ func (in *Input) Validate() error {
 
 	if in.Machine == nil {
 		return ErrNoMachine
+	}
+
+	// ONE WORLD. Two would leave this package choosing which one is true, and
+	// a lent encounter beside stale data is exactly the mismatch that choice
+	// would hide.
+	if in.Live != nil && !reflect.ValueOf(in.World).IsZero() {
+		return fmt.Errorf("%w: both a lent encounter and world data", ErrBadWorld)
 	}
 
 	// A DRIVEN ACTIVATION CHARGES NOTHING, and this is where that is a law
@@ -182,6 +212,8 @@ type Output struct {
 	ClosedAreas []string
 
 	// World is the encounter after the interaction, ready to be stored.
+	// EMPTY when the host lent its encounter ([Input.Live]): the host's
+	// instance is the world, and nothing here wrote to it.
 	//
 	// It round-trips even when the interaction never reads it. That is
 	// deliberate: without it, Resolve is a saving throw with extra steps, and
@@ -293,12 +325,9 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 
 	roller := in.Roller
 
-	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:         in.World,
-		Capabilities: in.Capabilities,
-	})
+	enc, err := world(in)
 	if err != nil {
-		return nil, fmt.Errorf("resolution: load world: %w", err)
+		return nil, err
 	}
 
 	// The map the encounter itself runs on — its own room, handed over to be
@@ -438,8 +467,13 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		return nil, err
 	}
 
+	var stored encounter.EncounterData
+	if in.Live == nil {
+		stored = enc.ToData()
+	}
+
 	return &Output{
-		World:               enc.ToData(),
+		World:               stored,
 		OpenedAreas:         opened,
 		ClosedAreas:         closed,
 		DirtyCharacters:     dirty,
@@ -450,6 +484,22 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		ConcentrationChecks: kept,
 		ConcentrationBreaks: ended,
 	}, nil
+}
+
+// world is the encounter this interaction reads: the host's own when it lent
+// one, otherwise the one loaded from its data.
+func world(in *Input) (*encounter.Encounter, error) {
+	if in.Live != nil {
+		return in.Live, nil
+	}
+	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data:         in.World,
+		Capabilities: in.Capabilities,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("resolution: load world: %w", err)
+	}
+	return enc, nil
 }
 
 // attachAll reconstitutes every participant onto the surface, in sorted ID

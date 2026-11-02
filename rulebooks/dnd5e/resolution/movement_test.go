@@ -139,7 +139,13 @@ func (s *MovementTestSuite) runMachine(
 		listen(s.ctx, bus)
 	}
 
-	return resolveOn(s.ctx, &Input{
+	return resolveOn(s.ctx, s.input(machine, reactors...), newSurface(bus))
+}
+
+// input is the one interaction these scenes run: the suite's world as data,
+// its four probes, and machine. reactors hold a reaction each.
+func (s *MovementTestSuite) input(machine Machine, reactors ...string) *Input {
+	return &Input{
 		World: s.world(),
 		Participants: func() []Participant {
 			fighting := map[string]bool{}
@@ -168,7 +174,7 @@ func (s *MovementTestSuite) runMachine(
 			Roller:        dice.NewRoller(),
 			Actors:        Actors,
 		},
-	}, newSurface(bus))
+	}
 }
 
 func (s *MovementTestSuite) stepInput() *MovementInput {
