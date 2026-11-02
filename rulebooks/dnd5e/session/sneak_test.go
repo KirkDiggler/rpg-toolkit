@@ -311,3 +311,60 @@ func (s *SneakSuite) TestTheViewCarriesTheEncountersWatchZonesUnchanged() {
 	s.NotNil(bob, "a walker's list is empty, never nil")
 	s.Empty(bob, "a member who is not sneaking is sent no zones")
 }
+
+// TestDeclaringInPlainViewIsRefused (the-world-runs R11, rpg-project#768:
+// "if anyone can see you you cannot go into sneaking"): alice walks onto the
+// door row, into the goblin's sight through the open door, and declares. The
+// refusal arrives as the session's own ErrSeen — never the composition's —
+// and the world is untouched: no mode, no roll, no beat, nothing delivered.
+// Back out of sight, the same declaration is accepted.
+func (s *SneakSuite) TestDeclaringInPlainViewIsRefused() {
+	s.launch(false, nil)
+	s.move("alice", hexCell(2, 2), hexCell(2, 1))
+	before := s.story("alice")
+	s.stream.published = nil
+
+	_, err := s.mgr.SetSneaking(context.Background(), &session.SetSneakingInput{
+		Session: testSession, Member: "alice", Sneaking: true,
+	})
+	s.Require().ErrorIs(err, session.ErrSeen, "the goblin sees alice: no sneak begins in plain view")
+	s.NotErrorIs(err, encounter.ErrSeen, "the composition's sentinel stays behind the seam")
+	s.NotContains(err.Error(), "goblin", "the refusal names nobody: the composition's list may hold watchers alice cannot see")
+	s.False(s.stored("alice").Sneaking, "the mode is unchanged")
+	s.False(s.view("alice").Sneaking)
+	s.Equal(before, s.story("alice"), "a refused declaration writes nothing")
+	s.Empty(s.encounters.byID[testSession].SneakVerdicts["alice"], "and judges nothing")
+	s.Empty(s.stream.published, "and delivers nothing")
+
+	s.move("alice", hexCell(2, 2), hexCell(2, 3))
+	s.True(s.setSneaking("alice", true).Sneaking, "out of sight, the declaration is accepted")
+}
+
+// TestAnAcceptedDeclarationIsOnTheRecordAndOnNoPanel (R11): an accepted on,
+// and the off after it, each leave one `sneaking` beat on the sneaker's
+// record, and neither folds into an act: the beat is record-only, so the
+// stream carries nothing for it.
+func (s *SneakSuite) TestAnAcceptedDeclarationIsOnTheRecordAndOnNoPanel() {
+	s.launch(false, nil)
+	type sneakingBeat struct {
+		Member string `json:"member"`
+		On     bool   `json:"on"`
+	}
+	declared := func(on bool) sneakingBeat {
+		s.T().Helper()
+		s.stream.published = nil
+		after := lastSeq(s.story("alice"))
+		s.setSneaking("alice", on)
+		beats := beatsNamed(storyBeatsAfter(s.T(), s.mgr, testSession, "alice", after), encounter.BeatSneaking)
+		s.Require().Len(beats, 1, "one declaration, one beat")
+		var body sneakingBeat
+		beats[0].decode(s.T(), &body)
+		s.Empty(s.stream.published, "the beat is record-only: no act, nothing on any panel")
+		return body
+	}
+
+	s.Equal(sneakingBeat{Member: "alice", On: true}, declared(true))
+	s.Equal(sneakingBeat{Member: "alice", On: false}, declared(false))
+	s.Empty(beatsNamed(storyBeats(s.T(), s.mgr, testSession, "bob"), encounter.BeatSneaking),
+		"the beat is the sneaker's own")
+}

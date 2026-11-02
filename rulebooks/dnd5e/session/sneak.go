@@ -6,8 +6,9 @@ package session
 // sneak.go carries the composition's SetSneaking verb across the seam
 // (rpg-project#606, sneaking design R6). It is DELIBERATELY THIN: the
 // encounter owns the mode — who may sneak (a player, in free roam), the lost
-// verdicts a declaration in plain view writes, the sight refresh that judges
-// the declaration at once, and the `snuck` beats any roll leaves — and this
+// refusal of a declaration in plain view (R11), the sight refresh that judges
+// the declaration at once, the record-only `sneaking` beat an accepted
+// declaration writes, and the `snuck` beats any roll leaves — and this
 // file only carries that verb across the boundary in the ordinary guarded
 // load/act/save/deliver shape.
 //
@@ -64,7 +65,9 @@ type SetSneakingOutput struct {
 // Errors include ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
 // ErrNoEncounter, ErrNoMember (a stranger, or a member who is not a player: a
 // monster never sneaks), ErrWindowOpen, ErrInBubble (a member in a fight:
-// sneaking is declared in free roam), ErrClosed, and the ordinary
+// sneaking is declared in free roam), ErrSeen (declaring ON while a watcher
+// already sees the member: the-world-runs R11, rpg-project#768; nothing
+// changed), ErrClosed, and the ordinary
 // lock/read/save translations. Refusals name the verb.
 func (m *Manager) SetSneaking(ctx context.Context, in *SetSneakingInput) (*SetSneakingOutput, error) {
 	const verb = "set sneaking"

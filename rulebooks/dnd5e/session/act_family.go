@@ -26,12 +26,18 @@ import (
 // trading's beats and prop interaction, until trading's use case brings
 // their act (Law 8) — and a creature's described table (rpg-project#674),
 // which is the record's debug symbols and never anything a player is shown.
+//
+// A sneak declaration (BeatSneaking, the-world-runs R11, rpg-project#768) is
+// record-only too: it is how a replay knows when a sneak began and ended,
+// and the player already reads the mode off the view, so it folds into no
+// act and puts nothing on any panel.
 var recordOnly = map[string]bool{
 	encounter.BeatTable:             true,
 	encounter.BeatTransferred:       true,
 	encounter.BeatInteracted:        true,
 	string(encounter.OutcomeBought): true,
 	string(encounter.OutcomeSold):   true,
+	encounter.BeatSneaking:          true,
 }
 
 // familyOf is a beat name's family, and false for a beat with none — a

@@ -74,6 +74,8 @@ func TestTranslateLetsNoCompositionSentinelThrough(t *testing.T) {
 		{"stale pause", encounter.ErrStalePause, ErrStalePause},
 		{"bad placement", encounter.ErrBadPlacement, ErrBadPosition},
 		{"already in a fight", encounter.ErrInBubble, ErrInBubble},
+		// A sneak declared in plain view (the-world-runs R11).
+		{"seen", encounter.ErrSeen, ErrSeen},
 		{"not in a fight", encounter.ErrNoBubble, ErrNotInFight},
 		// The two the reads needed. Members fails with ErrNoField when the
 		// roster and the field disagree about who is placed, which is what

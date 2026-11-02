@@ -487,6 +487,17 @@ var (
 	// the sentinel had no path to a host and so did not exist.
 	ErrInBubble = errors.New("member is in a fight")
 
+	// ErrSeen is returned when a player declares sneaking while somebody
+	// already sees them: a watcher holds them live, or has their cell in its
+	// watch zone (the-world-runs R11, rpg-project#768: "if anyone can see you
+	// you cannot go into sneaking"). Nothing changed, nothing was rolled,
+	// nothing was written. The remedy is a place out of sight, then declare
+	// again; turning sneaking OFF is never refused with it.
+	//
+	// The same family as ErrInBubble: a well-formed declaration the world's
+	// present state refuses.
+	ErrSeen = errors.New("member is seen")
+
 	// ErrNotInFight is returned when a verb needs the member to be in a fight
 	// and they are not — ending a turn while free-roaming, most obviously.
 	//
