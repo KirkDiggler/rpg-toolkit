@@ -336,7 +336,9 @@ func (s *KillingBlowSuite) TestRecordingAgainAfterTheDeathAddsOnlyTheOutcome() {
 	_, err = s.blow(enc, goblin)
 	s.Require().NoError(err, "the killing blow is recordable against a body")
 
-	s.Equal([]string{"scene-opened", "bubble-formed", "struck", "down", "bubble-dissolved", "struck"},
+	// The second blow is struck off any fight — the first ended it — so it
+	// pays its round of the world (rpg-project#785 R1).
+	s.Equal([]string{"scene-opened", "bubble-formed", "struck", "down", "bubble-dissolved", "struck", "tick"},
 		s.beatKindsOf(enc, alice))
 }
 
@@ -352,8 +354,8 @@ func (s *KillingBlowSuite) TestARecordWithNobodyDownAppendsOneBeat() {
 	_, err := s.blow(enc, goblin)
 	s.Require().NoError(err)
 
-	s.Equal([]string{"scene-opened", "struck"}, s.beatKindsOf(enc, alice),
-		"one outcome in, one beat out")
+	s.Equal([]string{"scene-opened", "struck", "tick"}, s.beatKindsOf(enc, alice),
+		"one outcome in, one beat out, and the round of the world a swing off a fight pays (rpg-project#785 R1)")
 }
 
 // TestARecordOutsideAFightNoticesWithoutInventingAFight is the free-roam case,
@@ -370,8 +372,8 @@ func (s *KillingBlowSuite) TestARecordOutsideAFightNoticesWithoutInventingAFight
 	_, err := s.blow(enc, goblin)
 	s.Require().NoError(err)
 
-	s.Equal([]string{"scene-opened", "struck", "down"}, s.beatKindsOf(enc, alice),
-		"the body is news; the fight it was not in is not")
+	s.Equal([]string{"scene-opened", "struck", "down", "tick"}, s.beatKindsOf(enc, alice),
+		"the body is news; the fight it was not in is not; the swing pays its round (rpg-project#785 R1)")
 	s.Equal(encounter.ClockWorld, s.clockOf(enc, goblin), "it was already home")
 }
 
