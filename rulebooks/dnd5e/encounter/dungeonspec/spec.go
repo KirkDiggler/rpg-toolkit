@@ -1154,8 +1154,12 @@ type OptionSpec struct {
 	Say string `yaml:"say" json:"say"`
 
 	// Check is the approaches through the line's check — [CheckSpec], the
-	// list a lock carries. REQUIRED, at least one.
-	Check CheckSpec `yaml:"check" json:"check"`
+	// list a lock carries. ABSENT IS A PLAIN LINE (rpg-project#785 R5): it
+	// rolls nothing, costs nothing on either clock, is always answered from
+	// `success`, and may write no `failure`. Written, it lists at least one
+	// approach: `check: []`, `check:` and `check: ~` are refused, never read
+	// as absent.
+	Check CheckSpec `yaml:"check,omitempty" json:"check,omitempty"`
 
 	// Requires is what must hold for the speaker before the line is offered:
 	// a [PredicateSpec] of exactly one of two forms, `{ fact: <id> }` (the
@@ -1194,11 +1198,15 @@ func (o *OptionSpec) UnmarshalYAML(value *yaml.Node) error {
 	if value.Kind != yaml.MappingNode {
 		return fmt.Errorf("line %d: an option is { id, say, check } plus what it requires and answers", value.Line)
 	}
+	checkWrittenNull := false
 	for i := 0; i < len(value.Content); i += 2 {
 		key := value.Content[i].Value
 		if !optionKeys[key] {
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.OptionSpec",
 				value.Content[i].Line, key)
+		}
+		if key == "check" && i+1 < len(value.Content) && isNull(value.Content[i+1]) {
+			checkWrittenNull = true
 		}
 		if key != "check" || i+1 >= len(value.Content) || value.Content[i+1].Kind != yaml.SequenceNode {
 			continue
@@ -1225,6 +1233,17 @@ func (o *OptionSpec) UnmarshalYAML(value *yaml.Node) error {
 		return err
 	}
 	*o = OptionSpec(obj)
+	// A `check` WRITTEN NULL IS NOT AN ABSENT ONE (rpg-project#785 R5), the
+	// dialect's null law ([isNull]): absence means "not supplied", null
+	// means "supplied nothing". Absent is a plain line, free and never
+	// missed; `check:` or `check: ~` is a check with no way through, so it
+	// is carried as an empty list for the grammar to refuse at its path —
+	// never read as a plain line that lands for free. yaml.v3 decodes the
+	// null to nil and calls no unmarshaler for it, so this node pass is the
+	// only place that can tell the two apart.
+	if checkWrittenNull {
+		o.Check = CheckSpec{}
+	}
 
 	return nil
 }

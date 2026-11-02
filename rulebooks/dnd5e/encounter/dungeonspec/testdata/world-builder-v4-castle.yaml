@@ -1759,6 +1759,13 @@ room:
                 fact: throne-taken
             failure:
               - say: We’ll hold what we can.
+          # A PLAIN LINE (rpg-project#785 R5): no `check`, so it rolls
+          # nothing, cannot be missed, and costs nothing on either clock —
+          # greeting the captain passes no round of the world.
+          - id: greet
+            say: Good evening, captain.
+            success:
+              - say: Evening. Keep to the road and mind the guards.
       # A FAILED THEFT CLOSES THE KITCHEN, NOT THE KEEP (rpg-project#719):
       # the pilfer's failure teaches `caught-in-kitchen` to whoever saw it,
       # and the cook's theft and gossip are withheld from a speaker who knows

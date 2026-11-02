@@ -351,6 +351,94 @@ func (s *OptionTestSuite) TestTheSpokeBeatCarriesTheLineAndTheRoll() {
 	}
 }
 
+// plainLine is a greeting that rolls nothing (rpg-project#785 R5).
+func plainLine() encounter.Option {
+	return encounter.Option{
+		ID: "greet", Say: "Evening.",
+		Success: []encounter.Answer{{Weight: 1, Say: "Evening yourself."}},
+	}
+}
+
+// R5: a plain line rolls nothing, lands no deed, and is answered from its
+// success rows; the beat says no skill was rolled and that it landed.
+func (s *OptionTestSuite) TestAPlainLineRollsNothingAndLands() {
+	enc := s.sceneWith(append(goblinOptions(), plainLine()))
+	offered, err := enc.OptionsFor(alice, goblin)
+	s.Require().NoError(err)
+	for _, o := range offered {
+		s.Equal(o.ID != "greet", o.Checked(), "%s: only the greeting is plain", o.ID)
+	}
+
+	out, err := enc.Speak(s.ctx, &encounter.SpeakInput{
+		Range: speakReach, Actor: alice, Target: goblin, OptionID: "greet", Roller: rollsLowest{},
+	})
+	s.Require().NoError(err)
+	s.True(out.Beaten, "nothing to miss")
+	s.Empty(out.Deed, "no skill, no deed")
+	s.Require().NotNil(out.Answered)
+	s.Equal(encounter.AnswerSuccess, out.Answered.Key)
+	s.Equal("Evening yourself.", out.Answered.Answer.Say)
+
+	beats := s.beatsOfKind(enc, goblin, encounter.BeatSpoke)
+	s.Require().Len(beats, 1)
+	s.Equal("", beats[0]["skill"], "nothing was rolled")
+	s.EqualValues(0, beats[0]["dc"])
+	s.EqualValues(0, beats[0]["total"])
+	s.Equal(true, beats[0]["beaten"], "and it landed")
+}
+
+// R5: a roll reported for a line that rolls none is a caller that rolled a
+// check the line does not have, refused before anything is written.
+func (s *OptionTestSuite) TestARollReportedForAPlainLineIsRefused() {
+	tests := []struct {
+		name   string
+		change func(*encounter.SpeakInput)
+	}{
+		{"a skill", func(in *encounter.SpeakInput) { in.Skill = "persuasion" }},
+		{"a dc", func(in *encounter.SpeakInput) { in.DC = 10 }},
+		{"a total", func(in *encounter.SpeakInput) { in.Total = 14 }},
+		{"a calculation", func(in *encounter.SpeakInput) { in.Calculation = &encounter.RollCalculation{} }},
+	}
+	for _, test := range tests {
+		s.Run(test.name, func() {
+			enc := s.sceneWith([]encounter.Option{plainLine()})
+			in := &encounter.SpeakInput{
+				Range: speakReach, Actor: alice, Target: goblin, OptionID: "greet", Roller: rollsLowest{},
+			}
+			test.change(in)
+			_, err := enc.Speak(s.ctx, in)
+			s.Require().ErrorIs(err, encounter.ErrNoOption)
+			s.Empty(s.beatsOfKind(enc, goblin, encounter.BeatSpoke), "refused before the beat")
+		})
+	}
+}
+
+// R5 holds only while a checked line still requires its roll: a checked line
+// spoken with no skill, or with one it does not offer, is refused before
+// anything is written.
+func (s *OptionTestSuite) TestACheckedLineWithoutItsRollIsRefused() {
+	for name, skill := range map[string]string{"no skill": "", "a skill it does not offer": "athletics"} {
+		s.Run(name, func() {
+			enc := s.scene()
+			_, err := s.speak(enc, "gossip", skill, true)
+			s.Require().ErrorIs(err, encounter.ErrNoOption)
+			s.Empty(s.beatsOfKind(enc, goblin, encounter.BeatSpoke), "refused before the beat")
+		})
+	}
+}
+
+// A plain line survives the blob: no check is written, and none comes back.
+func (s *OptionTestSuite) TestAPlainLineSurvivesAReload() {
+	enc := s.sceneWith([]encounter.Option{plainLine()})
+	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data: enc.ToData(), Capabilities: s.capabilities(),
+	})
+	s.Require().NoError(err)
+	offered, err := reloaded.OptionsFor(alice, goblin)
+	s.Require().NoError(err)
+	s.Equal([]encounter.Option{plainLine()}, offered)
+}
+
 // The beat comes before its consequences and the answer after: Spoke, then
 // Answered.
 func (s *OptionTestSuite) TestSpokeComesBeforeAnswered() {
@@ -528,7 +616,7 @@ func (s *OptionTestSuite) TestAnOptionThatCouldNeverRunIsRefusedAtConstruction()
 	}{
 		{"no id", func(o *encounter.Option) { o.ID = "" }},
 		{"no line", func(o *encounter.Option) { o.Say = "" }},
-		{"no check", func(o *encounter.Option) { o.Check = nil }},
+		{"a plain line that can be missed", func(o *encounter.Option) { o.Check = nil }},
 		{"an approach with nothing to beat", func(o *encounter.Option) {
 			o.Check = []encounter.CheckApproach{{Ability: "persuasion"}}
 		}},
