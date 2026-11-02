@@ -6,6 +6,7 @@ package session
 import (
 	"context"
 	"fmt"
+	"reflect"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
@@ -22,7 +23,7 @@ import (
 // order is [Manager.land]'s, never the caller's.
 type landing struct {
 	// Live is the encounter a seam was called from; nil for a verb, whose scope
-	// adopts the output's world. A Live landing never commits: the encounter
+	// adopts the encounter it lent the resolution ([Manager.adopt]). A Live landing never commits: the encounter
 	// that called the seam is mid-verb, and the calling verb commits.
 	Live *encounter.Encounter
 	// Record tells the outcome's beats on enc, given the interaction's
@@ -63,21 +64,29 @@ type landed struct {
 //
 // A failure in the record, area, window or continuation step happens after the
 // sheets are durable, so it passes through [translate] once and is reported
-// with what landed ([reportUnrecorded], design ruling R10). A failure to adopt
-// or to save a sheet, and a failure to commit, are returned as they are: the
-// first two precede any write of this landing's, and commit reports its own.
+// with what landed ([reportUnrecorded], design ruling R10). A failure to save
+// a sheet, and a failure to commit, are returned as they are: the first
+// precedes any write of this landing's, and commit reports its own.
 func (m *Manager) land(ctx context.Context, scope *writeScope, out *resolution.Output, l *landing) (*landed, error) {
 	unrecorded := func(err error) error {
 		return reportUnrecorded(scope, translate(err))
 	}
 
-	// 1. Adopt: the world that came back is the only true one now. A seam's
-	// landing adopts nothing, because the encounter that called it is mid-verb.
+	// 0. ONE WORLD. Every resolution this package runs is handed the
+	// encounter it reads ([resolutionAsk.Live]), so it hands no world back. An
+	// output that carries one came from a resolution that loaded its own, and
+	// landing it would drop that world without a word: refused instead.
+	if !reflect.ValueOf(out.World).IsZero() {
+		return nil, fmt.Errorf("%w: a resolution output carries a world; this package lends its encounter",
+			ErrInvalidWorld)
+	}
+
+	// 1. Adopt: the encounter the verb lent the resolution is the world the
+	// interaction ran in. A seam's landing adopts nothing, because the
+	// encounter that called it is mid-verb.
 	enc := l.Live
 	if enc == nil {
-		if err := m.adopt(ctx, scope, out.World); err != nil {
-			return nil, err
-		}
+		m.adopt(scope)
 		enc = scope.enc
 	}
 

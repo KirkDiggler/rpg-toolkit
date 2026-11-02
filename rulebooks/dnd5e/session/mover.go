@@ -96,8 +96,8 @@ func (s moverSeam) Move(
 	}
 
 	out, err := resolution.Resolve(ctx, s.m.resolutionInput(ctx, s.scope, resolutionAsk{
-		// A pure view — a mid-verb read, never the storage boundary.
-		World:        enc.WorldView(),
+		// THE VERB'S OWN ENCOUNTER, lent, post-step (rpg-project#753, T12).
+		Live:         enc,
 		Participants: cast,
 		// NO COST. A step is not a declared action; a reaction taken during
 		// it is charged by resolution at the one door as it is taken.

@@ -5,6 +5,8 @@ package session
 
 import (
 	"context"
+	"sync/atomic"
+	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
@@ -34,4 +36,19 @@ func FamilyOfBeatForTest(beat string) (family Family, mapped, recordOnlyBeat boo
 func SpeakMenuForTest(enc *encounter.Encounter, member string) (int, error) {
 	menu, err := readSpeakMenu(enc, member)
 	return len(menu.lines), err
+}
+
+// CountEncounterLoadsForTest counts every encounter this package loads from
+// stored data until t ends, and returns the running count. The test that
+// calls it must not run in parallel: the count is package-wide.
+func CountEncounterLoadsForTest(t testing.TB) func() int {
+	t.Helper()
+	var n atomic.Int64
+	previous := loadEncounter
+	loadEncounter = func(in *encounter.LoadEncounterInput) (*encounter.Encounter, error) {
+		n.Add(1)
+		return previous(in)
+	}
+	t.Cleanup(func() { loadEncounter = previous })
+	return func() int { return int(n.Load()) }
 }

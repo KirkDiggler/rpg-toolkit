@@ -425,11 +425,11 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 			failures[0].member, ErrBadCharacter, failures[0].err)
 	}
 
-	// A pure view for resolution's Input.World — a mid-verb read, never the
-	// storage boundary (encounter v0.43.0, #1385).
-	world := scope.enc.WorldView()
+	// THE VERB'S OWN ENCOUNTER, lent: resolution reads it rather than
+	// loading a second one from its data (rpg-project#753, T12).
+	lent := scope.enc
 	out, err := resolution.Resolve(ctx, m.resolutionInput(ctx, scope, resolutionAsk{
-		World:        world,
+		Live:         lent,
 		Participants: participants,
 		Machine:      machine,
 		// NON-NIL ON PURPOSE, and the one thing that makes this verb different

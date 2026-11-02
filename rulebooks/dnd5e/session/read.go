@@ -14,6 +14,12 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 )
 
+// loadEncounter is [encounter.LoadEncounter], the one call this package
+// stands a stored world up through. A variable only so a test can count the
+// loads a verb pays (rpg-project#753, T12): every verb loads its encounter
+// exactly once, and lends that instance to every resolution it runs.
+var loadEncounter = encounter.LoadEncounter
+
 // AtlasInput asks for a session's static world map, as one member knows it.
 type AtlasInput struct {
 	// Session is the session whose world to describe.
@@ -299,7 +305,7 @@ func (m *Manager) AtlasOf(_ context.Context, in *AtlasOfInput) (*Atlas, error) {
 	if err != nil {
 		return nil, fmt.Errorf("atlasof: %w", err)
 	}
-	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+	enc, err := loadEncounter(&encounter.LoadEncounterInput{
 		Data:         *world,
 		Capabilities: encounter.RefusingCapabilities(),
 	})
@@ -653,7 +659,7 @@ func (m *Manager) loadGivenWorld(
 	} else {
 		capabilities = m.readCapabilities(standing, driver)
 	}
-	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+	enc, err := loadEncounter(&encounter.LoadEncounterInput{
 		Data:         *world,
 		Capabilities: capabilities,
 	})

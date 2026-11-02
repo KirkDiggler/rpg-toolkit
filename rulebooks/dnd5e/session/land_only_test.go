@@ -96,11 +96,12 @@ func TestOnlyTheLandingLandsAndOnlyTheBuildersCompose(t *testing.T) {
 // TestAWorldIsLoadedOrSetUpOnlyWhereTheReadersAndTheLandingAre holds the law
 // that one world builder serves two readers. An encounter.LoadEncounterInput
 // or encounter.SetupInput literal is how a world is stood up, so it appears
-// only in read.go (loadGivenWorld and AtlasOf), write.go (adopt, which land.go
-// calls) and launch.go (launchWorld); a verb standing up its own would be a second builder for the
-// question of which world a call reads.
+// only in read.go (loadGivenWorld and AtlasOf) and launch.go (launchWorld); a
+// verb standing up its own would be a second builder for the question of which
+// world a call reads. The landing stands up none: a verb lends resolution the
+// encounter it loaded, and adopts that same instance (rpg-project#753, T12).
 func TestAWorldIsLoadedOrSetUpOnlyWhereTheReadersAndTheLandingAre(t *testing.T) {
-	allowed := map[string]bool{"read.go": true, "write.go": true, "launch.go": true}
+	allowed := map[string]bool{"read.go": true, "launch.go": true}
 	files, err := filepath.Glob("*.go")
 	require.NoError(t, err)
 	fset := token.NewFileSet()
@@ -136,7 +137,7 @@ func TestAWorldIsLoadedOrSetUpOnlyWhereTheReadersAndTheLandingAre(t *testing.T) 
 			return true
 		})
 	}
-	require.Empty(t, found, "a world is loaded or set up only in read.go, write.go and launch.go")
+	require.Empty(t, found, "a world is loaded or set up only in read.go and launch.go")
 	for name := range allowed {
 		require.True(t, seenIn[name], "%s stands up a world", name)
 	}
