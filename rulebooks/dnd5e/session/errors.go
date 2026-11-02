@@ -487,6 +487,18 @@ var (
 	// the sentinel had no path to a host and so did not exist.
 	ErrInBubble = errors.New("member is in a fight")
 
+	// ErrSeen is returned when a player declares sneaking while somebody
+	// already sees them: a watcher holds them live, or has their cell in its
+	// watch zone (the-world-runs R11, rpg-project#768: "if anyone can see you
+	// you cannot go into sneaking"). Nothing changed, nothing was rolled,
+	// nothing was written. The remedy is a place out of sight, then declare
+	// again; turning sneaking OFF is never refused with it.
+	//
+	// The same family as ErrInBubble: a well-formed declaration the world's
+	// present state refuses. SetSneaking returns it as a [SeenError] naming
+	// the watchers the player can see.
+	ErrSeen = errors.New("member is seen")
+
 	// ErrNotInFight is returned when a verb needs the member to be in a fight
 	// and they are not — ending a turn while free-roaming, most obviously.
 	//
@@ -906,6 +918,34 @@ var (
 	// the fight ends. A host maps it to FailedPrecondition.
 	ErrCannotAdvance = errors.New("character cannot take a level now")
 )
+
+// SeenError is [ErrSeen]'s detail: the watchers the player can see among
+// those that see them (the-world-runs R11, rpg-project#768).
+//
+// FILTERED THROUGH THE PLAYER'S OWN SIGHTINGS. The composition refuses with
+// every watcher that sees the mover, and a watcher may see the mover while
+// staying hidden from it: a zone-only watcher, or a sight that is not
+// mutual. The intel law is testimony per observer, so the player learns
+// only what their own sightings hold: a watcher is named here only while the
+// player sights it live. When none are, Watchers is empty and the refusal
+// says only that the player is seen, with no name and no count.
+type SeenError struct {
+	// Watchers are the member ids of the watchers that see the player and
+	// that the player sights live, sorted by id. Empty when the player sees
+	// none of them.
+	Watchers []string
+}
+
+// Error says the member is seen, and by whom when the player can see them.
+func (e *SeenError) Error() string {
+	if len(e.Watchers) == 0 {
+		return ErrSeen.Error()
+	}
+	return fmt.Sprintf("%s by %s", ErrSeen, strings.Join(e.Watchers, ", "))
+}
+
+// Unwrap makes errors.Is(err, ErrSeen) true for this detail type.
+func (e *SeenError) Unwrap() error { return ErrSeen }
 
 // WindowOpenError is [ErrWindowOpen]'s detail: which windows are open and who
 // each of them is waiting on.

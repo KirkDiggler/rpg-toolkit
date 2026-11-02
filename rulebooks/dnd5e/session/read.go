@@ -847,6 +847,12 @@ func translate(err error) error {
 		return fmt.Errorf("%w", ErrStalePause)
 	case errors.Is(err, encounter.ErrInBubble):
 		return fmt.Errorf("%w", ErrInBubble)
+	case errors.Is(err, encounter.ErrSeen):
+		// A sneak declared in a watcher's sight (R11). The composition's
+		// text names every watcher that sees the mover, including ones the
+		// mover cannot see, so it stays behind the seam like every other
+		// arm's: the bare sentinel says "you are seen" and names nobody.
+		return fmt.Errorf("%w", ErrSeen)
 	case errors.Is(err, encounter.ErrNoBubble):
 		return fmt.Errorf("%w", ErrNotInFight)
 	case errors.Is(err, encounter.ErrNotActive):

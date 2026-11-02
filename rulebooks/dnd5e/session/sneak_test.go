@@ -19,10 +19,12 @@ package session_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -310,4 +312,91 @@ func (s *SneakSuite) TestTheViewCarriesTheEncountersWatchZonesUnchanged() {
 	bob := s.view("bob").WatchZones
 	s.NotNil(bob, "a walker's list is empty, never nil")
 	s.Empty(bob, "a member who is not sneaking is sent no zones")
+}
+
+// TestDeclaringInPlainViewIsRefused (the-world-runs R11, rpg-project#768:
+// "if anyone can see you you cannot go into sneaking"): alice walks onto the
+// door row, into the goblin's sight through the open door, and declares. She
+// sees the goblin too, so the refusal is a SeenError naming it, arriving as
+// the session's own ErrSeen and never the composition's. The world is
+// untouched: no mode, no roll, no beat, nothing delivered. Back out of
+// sight, the same declaration is accepted.
+func (s *SneakSuite) TestDeclaringInPlainViewIsRefused() {
+	s.launch(false, nil)
+	s.move("alice", hexCell(2, 2), hexCell(2, 1))
+	s.Require().True(s.sights("alice", "goblin"), "precondition: alice sees the goblin that sees her")
+	before := s.story("alice")
+	s.stream.published = nil
+
+	err := s.refusedSneak("alice")
+	var seen *session.SeenError
+	s.Require().ErrorAs(err, &seen)
+	s.Equal([]string{"goblin"}, seen.Watchers, "a watcher alice sees is named")
+	s.Equal("set sneaking: member is seen by goblin", err.Error())
+	s.False(s.stored("alice").Sneaking, "the mode is unchanged")
+	s.False(s.view("alice").Sneaking)
+	s.Equal(before, s.story("alice"), "a refused declaration writes nothing")
+	s.Empty(s.encounters.byID[testSession].SneakVerdicts["alice"], "and judges nothing")
+	s.Empty(s.stream.published, "and delivers nothing")
+
+	s.move("alice", hexCell(2, 2), hexCell(2, 3))
+	s.True(s.setSneaking("alice", true).Sneaking, "out of sight, the declaration is accepted")
+}
+
+// refusedSneak declares on for member and returns the refusal, which must be
+// the session's own ErrSeen and never the composition's.
+func (s *SneakSuite) refusedSneak(member string) error {
+	s.T().Helper()
+	_, err := s.mgr.SetSneaking(context.Background(), &session.SetSneakingInput{
+		Session: testSession, Member: member, Sneaking: true,
+	})
+	s.Require().ErrorIs(err, session.ErrSeen, "no sneak begins in plain view")
+	s.NotErrorIs(err, encounter.ErrSeen, "the composition's sentinel stays behind the seam")
+	var leaked *encounter.SeenError
+	s.False(errors.As(err, &leaked), "and so does its detail type, whose list is unfiltered")
+	return err
+}
+
+// sights reports whether viewer's own sightings hold subject live.
+func (s *SneakSuite) sights(viewer, subject string) bool {
+	s.T().Helper()
+	enc, err := s.mgr.LoadWorldForTest(context.Background(), testSession)
+	s.Require().NoError(err)
+	holdings, err := enc.View(&encounter.ViewInput{Member: encounter.MemberID(viewer)})
+	s.Require().NoError(err)
+	for _, h := range holdings {
+		if string(h.Subject) == subject && h.CurrentOn(perception.Sight) {
+			return true
+		}
+	}
+	return false
+}
+
+// TestAnAcceptedDeclarationIsOnTheRecordAndOnNoPanel (R11): an accepted on,
+// and the off after it, each leave one `sneaking` beat on the sneaker's
+// record, and neither folds into an act: the beat is record-only, so the
+// stream carries nothing for it.
+func (s *SneakSuite) TestAnAcceptedDeclarationIsOnTheRecordAndOnNoPanel() {
+	s.launch(false, nil)
+	type sneakingBeat struct {
+		Member string `json:"member"`
+		On     bool   `json:"on"`
+	}
+	declared := func(on bool) sneakingBeat {
+		s.T().Helper()
+		s.stream.published = nil
+		after := lastSeq(s.story("alice"))
+		s.setSneaking("alice", on)
+		beats := beatsNamed(storyBeatsAfter(s.T(), s.mgr, testSession, "alice", after), encounter.BeatSneaking)
+		s.Require().Len(beats, 1, "one declaration, one beat")
+		var body sneakingBeat
+		beats[0].decode(s.T(), &body)
+		s.Empty(s.stream.published, "the beat is record-only: no act, nothing on any panel")
+		return body
+	}
+
+	s.Equal(sneakingBeat{Member: "alice", On: true}, declared(true))
+	s.Equal(sneakingBeat{Member: "alice", On: false}, declared(false))
+	s.Empty(beatsNamed(storyBeats(s.T(), s.mgr, testSession, "bob"), encounter.BeatSneaking),
+		"the beat is the sneaker's own")
 }

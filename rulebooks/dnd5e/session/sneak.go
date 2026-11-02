@@ -6,8 +6,9 @@ package session
 // sneak.go carries the composition's SetSneaking verb across the seam
 // (rpg-project#606, sneaking design R6). It is DELIBERATELY THIN: the
 // encounter owns the mode — who may sneak (a player, in free roam), the lost
-// verdicts a declaration in plain view writes, the sight refresh that judges
-// the declaration at once, and the `snuck` beats any roll leaves — and this
+// refusal of a declaration in plain view (R11), the sight refresh that judges
+// the declaration at once, the record-only `sneaking` beat an accepted
+// declaration writes, and the `snuck` beats any roll leaves — and this
 // file only carries that verb across the boundary in the ordinary guarded
 // load/act/save/deliver shape.
 //
@@ -24,8 +25,10 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
@@ -64,7 +67,10 @@ type SetSneakingOutput struct {
 // Errors include ErrNilInput, ErrNoSessionID, ErrNoMemberID, ErrNoSession,
 // ErrNoEncounter, ErrNoMember (a stranger, or a member who is not a player: a
 // monster never sneaks), ErrWindowOpen, ErrInBubble (a member in a fight:
-// sneaking is declared in free roam), ErrClosed, and the ordinary
+// sneaking is declared in free roam), a [SeenError] unwrapping to ErrSeen
+// (declaring ON while a watcher already sees the member: the-world-runs R11,
+// rpg-project#768; nothing changed; it names only the watchers the member
+// sights), ErrClosed, and the ordinary
 // lock/read/save translations. Refusals name the verb.
 func (m *Manager) SetSneaking(ctx context.Context, in *SetSneakingInput) (*SetSneakingOutput, error) {
 	const verb = "set sneaking"
@@ -88,6 +94,10 @@ func (m *Manager) SetSneaking(ctx context.Context, in *SetSneakingInput) (*SetSn
 		Sneaking: in.Sneaking,
 	})
 	if err != nil {
+		var seen *encounter.SeenError
+		if errors.As(err, &seen) {
+			return nil, fmt.Errorf("%s: %w", verb, seenBy(scope.enc, in.Member, seen.Watchers))
+		}
 		return nil, fmt.Errorf("%s: %w", verb, translate(err))
 	}
 	saved, delivery, err := m.commit(ctx, scope)
@@ -95,4 +105,30 @@ func (m *Manager) SetSneaking(ctx context.Context, in *SetSneakingInput) (*SetSn
 		return nil, fmt.Errorf("%s: %w", verb, err)
 	}
 	return &SetSneakingOutput{Sneaking: out.Sneaking, Saved: saved, Delivery: delivery}, nil
+}
+
+// seenBy is the refusal of a sneak declared in plain view, as the player may
+// hear it: the composition's watchers, filtered to the ones the player's own
+// sightings hold live ([SeenError]). It reads the same sighting store the
+// panel reads ([encounter.Encounter.View]) and never re-derives who sees
+// whom. A sighting read that fails names nobody: the refusal stands, and an
+// unfiltered list is never the fallback.
+func seenBy(enc *encounter.Encounter, member string, watchers []encounter.MemberID) *SeenError {
+	out := &SeenError{Watchers: []string{}}
+	holdings, err := enc.View(&encounter.ViewInput{Member: encounter.MemberID(member)})
+	if err != nil {
+		return out
+	}
+	sighted := make(map[encounter.MemberID]bool, len(holdings))
+	for _, holding := range holdings {
+		if holding.CurrentOn(perception.Sight) {
+			sighted[encounter.MemberID(holding.Subject)] = true
+		}
+	}
+	for _, watcher := range watchers {
+		if sighted[watcher] {
+			out.Watchers = append(out.Watchers, string(watcher))
+		}
+	}
+	return out
 }
