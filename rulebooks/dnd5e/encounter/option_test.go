@@ -413,6 +413,20 @@ func (s *OptionTestSuite) TestARollReportedForAPlainLineIsRefused() {
 	}
 }
 
+// R5 holds only while a checked line still requires its roll: a checked line
+// spoken with no skill, or with one it does not offer, is refused before
+// anything is written.
+func (s *OptionTestSuite) TestACheckedLineWithoutItsRollIsRefused() {
+	for name, skill := range map[string]string{"no skill": "", "a skill it does not offer": "athletics"} {
+		s.Run(name, func() {
+			enc := s.scene()
+			_, err := s.speak(enc, "gossip", skill, true)
+			s.Require().ErrorIs(err, encounter.ErrNoOption)
+			s.Empty(s.beatsOfKind(enc, goblin, encounter.BeatSpoke), "refused before the beat")
+		})
+	}
+}
+
 // A plain line survives the blob: no check is written, and none comes back.
 func (s *OptionTestSuite) TestAPlainLineSurvivesAReload() {
 	enc := s.sceneWith([]encounter.Option{plainLine()})

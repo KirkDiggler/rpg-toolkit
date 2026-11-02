@@ -173,6 +173,18 @@ func TestAnOptionIsRefusedByName(t *testing.T) {
 			message: "this line rolls no check, so it cannot be missed — write `check` to give it a failure, or omit `failure`",
 		},
 		{
+			name:    "a check written with no value",
+			options: "          - id: hi\n            say: \"Hi.\"\n            check:\n",
+			path:    at + "[0].check",
+			message: "this option needs at least one way to make its check — an ability and a DC",
+		},
+		{
+			name:    "a check written null",
+			options: "          - { id: hi, say: \"Hi.\", check: ~ }\n",
+			path:    at + "[0].check",
+			message: "this option needs at least one way to make its check — an ability and a DC",
+		},
+		{
 			name:    "an empty check",
 			options: "          - { id: hi, say: \"Hi.\", check: [] }\n",
 			path:    at + "[0].check",

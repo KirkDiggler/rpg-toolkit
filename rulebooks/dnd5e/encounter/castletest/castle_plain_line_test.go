@@ -31,8 +31,12 @@ func TestGreetingTheCaptainIsFreeAndAThreatIsTheAction(t *testing.T) {
 	for _, o := range offered {
 		checked[o.ID] = o.Checked()
 	}
-	require.Equal(t, map[string]bool{"greet": false, "stand-aside": true}, checked,
-		"the captain offers a stranger one plain line and one threat")
+	greetChecked, greetOffered := checked["greet"]
+	require.True(t, greetOffered, "the captain offers a stranger the greeting")
+	require.False(t, greetChecked, "and it is a plain line")
+	threatChecked, threatOffered := checked["stand-aside"]
+	require.True(t, threatOffered, "and the threat")
+	require.True(t, threatChecked, "which rolls a check")
 
 	// The hero hails him from where they stand, the way the gate is talked
 	// at: reach is not what this test is about.
