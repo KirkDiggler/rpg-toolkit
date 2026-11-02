@@ -680,9 +680,14 @@ func spokePiece(payload []byte) ([]piece, error) {
 	if p.Prop != "" {
 		to = prop(p.Prop)
 	}
-	roll, err := rollOf(p.Calculation, nil, p.Total, intp(p.DC), boolp(p.Beaten))
-	if err != nil {
-		return nil, err
+	// A PLAIN LINE ROLLED NOTHING (rpg-project#785 R5), and its beat names no
+	// skill: it has no roll, rather than a zero rolled against a zero.
+	var roll *Roll
+	if p.Skill != "" {
+		var err error
+		if roll, err = rollOf(p.Calculation, nil, p.Total, intp(p.DC), boolp(p.Beaten)); err != nil {
+			return nil, err
+		}
 	}
 	act := SpeakAct{By: member(p.Actor), To: to, Option: p.Option, Line: p.Line, Skill: p.Skill, Roll: roll}
 	return one(piece{family: FamilyAct, body: act, opens: true})

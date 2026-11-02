@@ -935,9 +935,16 @@ func affordWhileFrozen(session, member string, open []interrupt.Window, clock Cl
 // at all. Move is not a row: free-roam movement takes no declaration id
 // (move.go refuses one).
 //
-// The menu and candidates are [buildSpeakOffer]'s, read by the same
+// The menu and candidates are [buildSpeakOffers]', read by the same
 // [readSpeakMenu]; the clock changes what the row COSTS and never what it
 // offers.
+//
+// # One row, not split by price
+//
+// The turn clock splits Speak into a free row and an action row
+// (rpg-project#785 R5). Here every row is [SlotNone] (S1's world pricing), so
+// the two would be one selector; a checked line's round of the world is the
+// composition's to charge when it lands, and a plain line's is nothing.
 func (m *Manager) speakRowOnTheWorldClock(
 	enc *encounter.Encounter, session, member string,
 ) ([]Declaration, error) {
