@@ -238,7 +238,7 @@ func (m *Manager) answerWindow(
 	// No cost: a taken offer is charged by resolution at the price its pause
 	// froze, and the declared action was paid for before the first pause.
 	out, err := resolution.Resolve(ctx, m.resolutionInput(ctx, scope, resolutionAsk{
-		World:        scope.enc.WorldView(),
+		Live:         scope.enc,
 		Participants: participants,
 		Machine:      machine,
 	}))

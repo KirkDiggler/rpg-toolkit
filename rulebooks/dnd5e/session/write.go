@@ -1160,66 +1160,58 @@ func (s *writeScope) replaceMonsterSheet(dirty *monster.Data) {
 	}
 }
 
-// adopt replaces the scope's encounter with one loaded from a world that came
-// back from somewhere else.
+// adopt makes the encounter a verb lent to a resolution the scope's world
+// again, once the resolution returns.
 //
-// ONE VERB NEEDS THIS AND MORE WILL. A resolution takes the world as data and
-// returns a different world as data — that is the seam's whole design — so a
-// verb that resolves through it is holding a stale encounter the moment Resolve
-// returns. Recording the outcome or saving from the old one would drop
-// everything the interaction did.
+// IT LOADS NOTHING (rpg-project#753, T12). A verb lends resolution the
+// encounter it holds ([resolution.Input.Live]) and resolution reads it without
+// writing to it, so the instance the verb lent is already the world the
+// interaction ran in. This used to load a third encounter from the data a
+// resolution handed back, itself loaded from the data the verb handed in: an
+// Attack on the 10k keep built the whole field three times.
 //
-// THE INVARIANT: after adopt, every earlier reference to the encounter is
-// DEAD. Read nothing from before it, and record only after it — the outcome is
-// a consequence of the interaction, so its beat belongs on the world the
-// interaction produced, in that order.
+// THE ROSTER IS RE-READ. PLACED AND WAITING (reserve.go, worldMembers): the
+// outcome recorded on this encounter a moment later may be the blow that
+// fells the member the reserve waits on, and the arrivals happen INSIDE that
+// record — the newcomers are assessed and sighted before this verb returns.
+// Seams seeded from the placed roster alone refused the first zombie by name
+// (Kirk's walk 4, 2026-09-05: "participation member reinforcement-1 has no
+// roster kind"), and the character's readied sheet was already written, so the
+// fighter's action was spent on a blow nobody was told. So the kinds are
+// replaced from the encounter as it stands now, before anything is recorded on
+// it, exactly as they were replaced from the world a resolution returned.
 //
-// It is a named method rather than an assignment inlined in the verb so the
-// next verb that resolves through data reuses this instead of hand-rolling the
-// swap, and so the novelty has exactly one home to document.
+// READ OFF THE INSTANCE, NOT A SNAPSHOT. The placed kinds come from the
+// encounter's own roster read ([encounter.Encounter.Members]); a WorldView
+// snapshot here walked every member and serialised the field on the 10k keep
+// for one map of kinds. The encounter offers no read of the waiting reserve
+// short of a snapshot, so the waiting kinds are kept from the scope's map,
+// which was seeded from placed AND waiting at the load and gains every member
+// the verb placed (joinInputFor). That is sound because a waiting member only
+// ever leaves the reserve by arriving: it moves to the placed roster with the
+// kind it waited with, and no verb removes a member from the encounter before
+// it lands, so a kept entry is never stale.
 //
-// It takes the verb's CONTEXT because one of the capabilities it rebinds needs
-// one: a compelled turn reads sheets and resolves a word, both of which happen
-// inside the call this is running in. Passed rather than lifted off a seam
-// that already captured one, so there is a single obvious answer to which call
-// a driven turn belongs to.
-func (m *Manager) adopt(ctx context.Context, scope *writeScope, world encounter.EncounterData) error {
-	// PLACED AND WAITING (reserve.go, worldMembers): the roster snapshot
-	// resolution returned, and the reserve behind it. The outcome recorded on
-	// this encounter a moment later may be the blow that fells the member the
-	// reserve waits on, and the arrivals happen INSIDE that record — the
-	// newcomers are assessed and sighted before this verb returns. Seams
-	// seeded from the placed roster alone refused the first zombie by name
-	// (Kirk's walk 4, 2026-09-05: "participation member reinforcement-1 has
-	// no roster kind"), and the character's readied sheet was already
-	// written, so the fighter's action was spent on a blow nobody was told.
-	// Resolution returned this authoritative roster snapshot with the world.
-	// Replace kinds before constructing its encounter so every assessment made
-	// during load sees exactly that one snapshot.
-	scope.standing.kinds = encounterDataKinds(worldMembers(world))
-	// Every capability rebound to this scope ([Manager.writeCapabilities]),
-	// built after the kinds above so the seams answer from the returned roster.
-	// adopt REPLACES scope.enc, and the composition drives turns, walks,
-	// announces and rolls from inside its own verbs, so every capability the
-	// new encounter carries must be one that reads this scope.
-	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data:         world,
-		Capabilities: m.writeCapabilities(ctx, scope),
-	})
+// Errors: the encounter's roster read (ErrNoField when a member's cell cannot
+// be resolved), returned as it is.
+//
+// THE INVARIANT, unchanged: record only after adopt — the outcome is a
+// consequence of the interaction, so its beat belongs on the world the
+// interaction ran in, in that order. The act the verb opened, the capabilities
+// bound to this scope, and the standing seam's encounter all carry over
+// because they were never replaced.
+func (m *Manager) adopt(scope *writeScope) error {
+	placed, err := scope.enc.Members()
 	if err != nil {
-		return fmt.Errorf("%q: %w: %v", scope.encounter, ErrInvalidWorld, err)
+		return fmt.Errorf("adopting the lent world: %w", err)
 	}
-	// THE VERB'S ACT CARRIES OVER (rpg-project#627). The act stack is the
-	// encounter's in-memory state and never persisted, so the encounter
-	// loaded here starts with none; the verb is still the same act, and the
-	// outcome recorded on this world next is its beat.
-	if scope.act != "" {
-		if _, err := enc.OpenAct(&encounter.OpenActInput{Act: scope.act}); err != nil {
-			return fmt.Errorf("%q: %w", scope.encounter, translate(err))
+	kinds := encounterRosterKinds(placed)
+	for id, kind := range scope.standing.kinds {
+		if _, ok := kinds[id]; !ok {
+			kinds[id] = kind
 		}
 	}
-	scope.enc = enc
-	scope.standing.live.enc = enc
+	scope.standing.kinds = kinds
 	return nil
 }
 

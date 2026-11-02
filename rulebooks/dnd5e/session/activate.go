@@ -252,12 +252,12 @@ func (m *Manager) Activate(ctx context.Context, in *ActivateInput) (*ActivateOut
 			failures[0].member, ErrBadCharacter, failures[0].err)
 	}
 
-	// A pure view for resolution's Input.World — a mid-verb read, never the
-	// storage boundary (encounter v0.43.0, #1385).
-	world := scope.enc.WorldView()
+	// THE VERB'S OWN ENCOUNTER, lent: resolution reads it rather than
+	// loading a second one from its data (rpg-project#753, T12).
+	lent := scope.enc
 	// Cost is nil ON PURPOSE — see this verb's own doc.
 	out, err := resolution.Resolve(ctx, m.resolutionInput(ctx, scope, resolutionAsk{
-		World:        world,
+		Live:         lent,
 		Participants: cast,
 		Machine:      machine,
 	}))

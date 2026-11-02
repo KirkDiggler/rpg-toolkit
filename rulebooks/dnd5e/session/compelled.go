@@ -222,9 +222,9 @@ func (d compelledDriver) obey(
 		return nil, fmt.Errorf("compelled turn %q: %w", member, err)
 	}
 
-	// A pure view for resolution's Input.World — a mid-verb read, never the
-	// storage boundary (encounter v0.43.0, #1385).
-	world := d.scope.enc.WorldView()
+	// THE VERB'S OWN ENCOUNTER, lent: resolution reads it rather than
+	// loading a second one from its data (rpg-project#753, T12).
+	lent := d.scope.enc
 	out, err := resolution.Obey(d.ctx, &resolution.ObeyInput{
 		Interaction: d.m.resolutionInput(d.ctx, d.scope, resolutionAsk{
 			// Machine is deliberately absent: the word is the machine, and
@@ -232,10 +232,10 @@ func (d compelledDriver) obey(
 			//
 			// The input carries this verb's compelled driver, this wrapper
 			// included, because resolutionInput is the one builder. That is
-			// safe: resolution never drives a turn. It loads the world and
-			// reads it back as data, and calls no encounter verb, so neither
+			// safe: resolution never drives a turn. It reads the lent
+			// encounter and calls no encounter verb, so neither
 			// the driver nor the check resolver it carries is ever invoked.
-			World:        world,
+			Live:         lent,
 			Participants: cast,
 		}),
 		Member:   string(member),

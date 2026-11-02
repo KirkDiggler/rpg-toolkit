@@ -85,11 +85,11 @@ func (a announcerSeam) Announce(
 		return fmt.Errorf("announce: %w", err)
 	}
 
-	// A pure view for resolution's Input.World — a mid-verb read, never the
-	// storage boundary (encounter v0.43.0, #1385).
-	world := enc.WorldView()
+	// THE VERB'S OWN ENCOUNTER, lent: resolution reads it rather than
+	// loading a second one from its data (rpg-project#753, T12).
+	lent := enc
 	out, err := resolution.Resolve(ctx, a.m.resolutionInput(ctx, a.scope, resolutionAsk{
-		World:        world,
+		Live:         lent,
 		Participants: cast,
 		Machine:      machine,
 	}))

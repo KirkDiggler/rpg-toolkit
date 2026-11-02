@@ -112,7 +112,7 @@ func (s *StabilizationSessionSuite) TestCompiledProfilePersistsAndDeliversReplay
 			machine, err := resolution.NewAction(&resolution.ActionInput{Definition: definition, AttackerID: "alice", TargetIDs: targets, Roller: &diceSeam{roller: dice}})
 			s.Require().NoError(err)
 			out, err := resolution.Resolve(ctx, &resolution.Input{
-				World:        scope.enc.WorldView(),
+				Live:         scope.enc,
 				Participants: participants,
 				Machine:      machine,
 				Cost:         &resolution.Cost{PayerID: "alice", Profile: definition.Cost, SpellTurn: "turn1", Turn: &resolution.Turn{Number: 1}},
@@ -132,7 +132,7 @@ func (s *StabilizationSessionSuite) TestCompiledProfilePersistsAndDeliversReplay
 			results, pushes, err := castOutcome(out.Outcome, "alice", *offer.declaration.Spell)
 			s.Require().NoError(err)
 			s.Empty(pushes)
-			s.Require().NoError(mgr.adopt(ctx, scope, out.World))
+			s.Require().NoError(mgr.adopt(scope))
 			s.Require().NoError(mgr.saveDirty(ctx, scope, out))
 			_, err = scope.enc.RecordCast(&encounter.RecordCastInput{Actor: "alice", Spell: encounter.SpellIdentity{Ref: definition.Ref.String(), Name: definition.Name}, Targets: results})
 			s.Require().NoError(err)
@@ -182,7 +182,7 @@ func (s *StabilizationSessionSuite) TestCompiledProfilePersistsAndDeliversReplay
 			blocked.Field.Walls = append(blocked.Field.Walls, encounter.BoundaryData{
 				From: encounter.PositionData{X: 1, Y: 1}, To: encounter.PositionData{X: 2, Y: 1}, BlocksMovement: true,
 			})
-			s.Require().NoError(mgr.adopt(ctx, scope, blocked))
+			s.Require().NoError(loadWorldInto(ctx, mgr, scope, blocked))
 			input.Encounter = scope.enc
 			fresh, err := mgr.compileCastOffer(ctx, input)
 			s.Require().NoError(err)
@@ -198,4 +198,20 @@ func (s *StabilizationSessionSuite) TestCompiledProfilePersistsAndDeliversReplay
 			s.False(fresh.declaration.Available, "paid action cannot be offered again")
 		})
 	}
+}
+
+// loadWorldInto replaces scope's encounter with one loaded from world, bound
+// to scope's capabilities: a test's way to stand the verb in an edited world
+// (a wall added between two members) without a second launch.
+func loadWorldInto(ctx context.Context, mgr *Manager, scope *writeScope, world encounter.EncounterData) error {
+	scope.standing.kinds = encounterDataKinds(worldMembers(world))
+	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data: world, Capabilities: mgr.writeCapabilities(ctx, scope),
+	})
+	if err != nil {
+		return err
+	}
+	scope.enc = enc
+	scope.standing.live.enc = enc
+	return nil
 }

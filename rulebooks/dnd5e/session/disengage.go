@@ -72,10 +72,9 @@ func (s strikerSeam) Disengage(ctx context.Context, enc *encounter.Encounter, me
 		return fmt.Errorf("disengage: %w", translateResolution(err))
 	}
 
-	// A pure view for resolution's Input.World — a mid-verb read, never the
-	// storage boundary (encounter v0.43.0, #1385).
+	// THE VERB'S OWN ENCOUNTER, lent, mid-verb (rpg-project#753, T12).
 	out, err := resolution.Resolve(ctx, s.m.resolutionInput(ctx, s.scope, resolutionAsk{
-		World:        enc.WorldView(),
+		Live:         enc,
 		Participants: cast,
 		Machine:      machine,
 	}))

@@ -346,9 +346,9 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 	// one. Two rollers because they are two jobs — and BOTH are the host's
 	// (resolutionInput installs this session's dice), or the swing is resolved
 	// with randomness the host never supplied.
-	world := scope.enc.WorldView()
+	lent := scope.enc
 	out, err := resolution.Resolve(ctx, m.resolutionInput(ctx, scope, resolutionAsk{
-		World:        world,
+		Live:         lent,
 		Participants: cast,
 		Machine:      machine,
 		Cost:         cost,

@@ -90,11 +90,15 @@ func (m *Manager) readCapabilities(standing standingSeam, driver encounter.Drive
 	}
 }
 
-// resolutionAsk is what a verb or seam brings to a resolution: the world as
-// data, the cast, the interaction and its price. Everything else on the input
+// resolutionAsk is what a verb or seam brings to a resolution: the encounter
+// it holds, the cast, the interaction and its price. Everything else on the input
 // is this package's to compose.
 type resolutionAsk struct {
-	World        encounter.EncounterData
+	// Live is the encounter the verb already holds, lent to resolution
+	// ([resolution.Input.Live]) so it never loads a second one from data
+	// (rpg-project#753, T12). A seam lends the encounter it was handed, mid-verb
+	// and post-step; a verb lends scope.enc.
+	Live         *encounter.Encounter
 	Participants []resolution.Participant
 	Machine      resolution.Machine
 	// Cost is nil for a free action, which is the common case.
@@ -115,7 +119,7 @@ func (m *Manager) resolutionInput(ctx context.Context, scope *writeScope, ask re
 	capabilities := m.writeCapabilities(ctx, scope)
 	capabilities.Actors = resolution.Actors
 	return &resolution.Input{
-		World:        ask.World,
+		Live:         ask.Live,
 		Participants: ask.Participants,
 		Machine:      ask.Machine,
 		Cost:         ask.Cost,

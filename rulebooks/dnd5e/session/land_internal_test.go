@@ -121,12 +121,6 @@ func (s *LandSuite) SetupTest() {
 // world marked by the goblin's name, one dirty character, one dirty monster,
 // one closed and one opened area, and one concentration check and break.
 func (s *LandSuite) fullOutput() *resolution.Output {
-	world := s.scope.enc.WorldView()
-	for i := range world.Members {
-		if world.Members[i].ID == "goblin" {
-			world.Members[i].Name = "marked goblin"
-		}
-	}
 	fighter, err := s.characters.strikeCharacters.GetCharacter(context.Background(), "fighter")
 	s.Require().NoError(err)
 	fighter.HitPoints = 3
@@ -141,7 +135,6 @@ func (s *LandSuite) fullOutput() *resolution.Output {
 	goblin.HitPoints = 1
 	spell := encounter.SpellIdentity{Ref: refs.Spells.FogCloud().String(), Name: "Fog Cloud"}
 	return &resolution.Output{
-		World:           world,
 		DirtyCharacters: []*character.Data{fighter},
 		DirtyMonsters:   []*monster.Data{goblin},
 		ClosedAreas:     []string{"fighter"},
@@ -185,22 +178,14 @@ func (s *LandSuite) isOpen(id interrupt.WindowID) bool {
 	return false
 }
 
-func (s *LandSuite) goblinName(enc *encounter.Encounter) string {
-	for _, member := range enc.WorldView().Members {
-		if member.ID == "goblin" {
-			return member.Name
-		}
-	}
-	return ""
-}
-
 // TestEveryOutputFieldLandsOnce: every field of one output lands exactly once,
 // in the one order.
 //
 // The order is read off what each step leaves behind, probed at every point
 // the landing calls out of itself: each repository read and write, and the
-// Record, Window and Continue closures. adopt shows as the scope's encounter
-// changing and the areas as the area set changing; each is logged the first
+// Record, Window and Continue closures. adopt shows as the scope's roster
+// kinds being re-read off the lent encounter and the areas as the area set
+// changing; each is logged the first
 // time a probe sees it. The window a resume answered was consumed before the
 // resume, so a landing answers nothing.
 func (s *LandSuite) TestEveryOutputFieldLandsOnce() {
@@ -208,6 +193,8 @@ func (s *LandSuite) TestEveryOutputFieldLandsOnce() {
 	before := s.scope.enc
 	out := s.fullOutput()
 	wantChecks, wantBreaks := out.ConcentrationChecks, out.ConcentrationBreaks
+	// A stale roster, so the adopt step's re-read is visible.
+	s.scope.standing.kinds = map[string]encounter.MemberKind{}
 
 	var order []string
 	seen := map[string]bool{}
@@ -218,7 +205,7 @@ func (s *LandSuite) TestEveryOutputFieldLandsOnce() {
 				order = append(order, step)
 			}
 		}
-		note("adopt", s.scope.enc != before)
+		note("adopt", len(s.scope.standing.kinds) > 0)
 		areas := areaIDs(s.scope.enc)
 		note("areas", areas["cloud"] && !areas["fog"])
 	}
@@ -260,9 +247,10 @@ func (s *LandSuite) TestEveryOutputFieldLandsOnce() {
 	s.Require().NoError(err)
 	s.Require().NotNil(result)
 
-	s.NotSame(before, s.scope.enc, "the scope adopted the output's world")
-	s.Equal("marked goblin", s.goblinName(s.scope.enc), "the adopted world is the output's")
-	s.Same(s.scope.enc, recordedOn, "a verb's landing records on the adopted encounter")
+	s.Same(before, s.scope.enc, "the verb lent its encounter: nothing is loaded in its place")
+	s.Equal(encounterDataKinds(worldMembers(before.WorldView())), s.scope.standing.kinds,
+		"the roster is re-read off the lent encounter")
+	s.Same(s.scope.enc, recordedOn, "a verb's landing records on the encounter it lent")
 	s.Equal(1, s.characters.saved["fighter"], "the dirty character is saved once")
 	s.Equal(3, s.characters.byID["fighter"].HitPoints)
 	goblinHP := -1
@@ -305,10 +293,26 @@ func (s *LandSuite) TestASeamLandingAdoptsAndCommitsNothing() {
 	s.Equal(&landed{}, result)
 	s.Same(live, s.scope.enc, "a seam's landing adopts nothing")
 	s.Same(live, recordedOn, "Record received Live")
-	s.NotEqual("marked goblin", s.goblinName(s.scope.enc))
 	s.Equal(1, s.characters.saved["fighter"], "the sheets are still written")
 	s.Zero(s.encounters.saves, "nothing commits the encounter")
 	s.Zero(s.sessions.saves, "nothing commits the session")
+}
+
+// TestAnOutputCarryingAWorldIsRefused: every resolution here is lent the
+// encounter (rpg-project#753, T12), so a world on the output came from one that
+// loaded its own. Landing it would drop that world; it is refused, and nothing
+// is written.
+func (s *LandSuite) TestAnOutputCarryingAWorldIsRefused() {
+	out := s.fullOutput()
+	out.World = s.scope.enc.WorldView()
+	_, err := s.mgr.land(context.Background(), s.scope, out, &landing{Record: func(*encounter.Encounter, concentration) error {
+		s.Fail("a refused landing records nothing")
+		return nil
+	}})
+	s.Require().ErrorIs(err, ErrInvalidWorld)
+	s.Zero(s.characters.saved["fighter"], "no sheet is written")
+	s.Zero(s.encounters.saves)
+	s.Zero(s.sessions.saves)
 }
 
 // TestAnUndeclaredLandingRefusesConcentration: concentration with nothing to
