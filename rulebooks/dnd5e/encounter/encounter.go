@@ -1698,6 +1698,14 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 	if cause := action.cause; cause.IsValid() == nil {
 		payload["cause"] = cause.String()
 	}
+	// FORCED DISPLACEMENT IS EVIDENCE, NOT A GUESS (rpg-toolkit#2227). The
+	// key travels only when the engine classified this step as an external
+	// push or pull; absent retains the MoveStep zero-value truth that the
+	// mover walked. Keeping false absent matches cause's old record shape,
+	// so an older reader and an ordinary walk keep telling the same truth.
+	if action.forced {
+		payload["forced"] = true
+	}
 	if len(action.doors) > 0 {
 		// A step that went through a door names it. The BEAT does not
 		// change — it is still "moved", because that is what happened

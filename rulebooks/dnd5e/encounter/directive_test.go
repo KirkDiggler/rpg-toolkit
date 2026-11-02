@@ -244,6 +244,7 @@ func (s *DirectiveTestSuite) TestDirectMovesOffTurnAndTheBeatSaysWhy() {
 	last := beats[len(beats)-1]
 	s.Equal(string(goblin), last["member"])
 	s.Equal(thunderwaveRef.String(), last["cause"], "an observer can tell a shove from a step")
+	s.Equal(true, last["forced"], "a Thunderwave-shaped push is external displacement, not a walk")
 
 	clockOf, err := enc.ClockOf(&encounter.ClockOfInput{Member: alice})
 	s.Require().NoError(err)
@@ -268,6 +269,10 @@ func (s *DirectiveTestSuite) TestADirectiveThatProvokesSaysSoToTheMover() {
 	s.Require().Len(s.mover.calls, 1)
 	s.False(s.mover.calls[0].Forced, "a directive that provokes is announced like any other step")
 	s.Equal(thunderwaveRef, s.mover.calls[0].Cause, "it still says what moved them")
+
+	beats := s.movedBeats(alice)
+	s.Require().Len(beats, 1)
+	s.NotContains(beats[0], "forced", "a Dissonant Whispers-shaped rout remains a self-propelled walk")
 }
 
 // TestAPushedCreatureKeepsItsFacing is the lead's ruling on
@@ -324,6 +329,9 @@ func (s *DirectiveTestSuite) TestAChosenWalkIsNeitherForcedNorCaused() {
 		s.False(call.Forced, "a step a creature chose is not forced")
 		s.Equal(core.Ref{}, call.Cause, "and nothing caused it but the creature")
 	}
+	beats := s.movedBeats(alice)
+	s.Require().GreaterOrEqual(len(beats), 2, "the push and the chosen turn walk both reached the record")
+	s.NotContains(beats[len(beats)-1], "forced", "an ordinary Move keeps the legacy walk payload shape")
 }
 
 // TestAChosenStepCarriesNoCause.
