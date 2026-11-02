@@ -86,7 +86,9 @@ func (m *Manager) land(ctx context.Context, scope *writeScope, out *resolution.O
 	// encounter that called it is mid-verb.
 	enc := l.Live
 	if enc == nil {
-		m.adopt(scope)
+		if err := m.adopt(scope); err != nil {
+			return nil, err
+		}
 		enc = scope.enc
 	}
 

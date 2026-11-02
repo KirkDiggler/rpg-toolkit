@@ -1181,13 +1181,38 @@ func (s *writeScope) replaceMonsterSheet(dirty *monster.Data) {
 // replaced from the encounter as it stands now, before anything is recorded on
 // it, exactly as they were replaced from the world a resolution returned.
 //
+// READ OFF THE INSTANCE, NOT A SNAPSHOT. The placed kinds come from the
+// encounter's own roster read ([encounter.Encounter.Members]); a WorldView
+// snapshot here walked every member and serialised the field on the 10k keep
+// for one map of kinds. The encounter offers no read of the waiting reserve
+// short of a snapshot, so the waiting kinds are kept from the scope's map,
+// which was seeded from placed AND waiting at the load and gains every member
+// the verb placed (joinInputFor). That is sound because a waiting member only
+// ever leaves the reserve by arriving: it moves to the placed roster with the
+// kind it waited with, and no verb removes a member from the encounter before
+// it lands, so a kept entry is never stale.
+//
+// Errors: the encounter's roster read (ErrNoField when a member's cell cannot
+// be resolved), returned as it is.
+//
 // THE INVARIANT, unchanged: record only after adopt — the outcome is a
 // consequence of the interaction, so its beat belongs on the world the
 // interaction ran in, in that order. The act the verb opened, the capabilities
 // bound to this scope, and the standing seam's encounter all carry over
 // because they were never replaced.
-func (m *Manager) adopt(scope *writeScope) {
-	scope.standing.kinds = encounterDataKinds(worldMembers(scope.enc.WorldView()))
+func (m *Manager) adopt(scope *writeScope) error {
+	placed, err := scope.enc.Members()
+	if err != nil {
+		return fmt.Errorf("adopting the lent world: %w", err)
+	}
+	kinds := encounterRosterKinds(placed)
+	for id, kind := range scope.standing.kinds {
+		if _, ok := kinds[id]; !ok {
+			kinds[id] = kind
+		}
+	}
+	scope.standing.kinds = kinds
+	return nil
 }
 
 // persist writes the mutated aggregates back and reports the result.

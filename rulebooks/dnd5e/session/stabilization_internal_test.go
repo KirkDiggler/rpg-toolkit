@@ -132,7 +132,7 @@ func (s *StabilizationSessionSuite) TestCompiledProfilePersistsAndDeliversReplay
 			results, pushes, err := castOutcome(out.Outcome, "alice", *offer.declaration.Spell)
 			s.Require().NoError(err)
 			s.Empty(pushes)
-			mgr.adopt(scope)
+			s.Require().NoError(mgr.adopt(scope))
 			s.Require().NoError(mgr.saveDirty(ctx, scope, out))
 			_, err = scope.enc.RecordCast(&encounter.RecordCastInput{Actor: "alice", Spell: encounter.SpellIdentity{Ref: definition.Ref.String(), Name: definition.Name}, Targets: results})
 			s.Require().NoError(err)
