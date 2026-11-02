@@ -69,9 +69,17 @@ type Option struct {
 	Say string
 
 	// Check is the approaches through the line's check — the same list a
-	// lock carries, priced per route. REQUIRED, at least one, each with a DC
-	// of at least 1. CARRIED, NEVER COMPARED, as every check is here: the
-	// session rolls it, and this composition is told whether it was beaten.
+	// lock carries, priced per route, each with a DC of at least 1. CARRIED,
+	// NEVER COMPARED, as every check is here: the session rolls it, and this
+	// composition is told whether it was beaten.
+	//
+	// NIL IS A PLAIN LINE (rpg-project#785 R5: "the check is the action…
+	// speaking with no check would be a free action"). A plain line rolls
+	// nothing, lands no deed, is always answered from [Option.Success], and
+	// costs nothing on either clock: the world pays no round for it here, and
+	// the session spends no action slot for it. [Option.Checked] is the one
+	// question a caller asks to tell the two apart. A plain line carries no
+	// [Option.Failure] rows — it cannot be missed — and the door refuses them.
 	Check []CheckApproach
 
 	// Requires is what must hold for the SPEAKER before the line is offered
@@ -89,6 +97,13 @@ type Option struct {
 	// [AnswerFailure]. Nil answers nothing.
 	Failure []Answer `json:"Failure,omitempty"`
 }
+
+// Checked reports whether the line rolls a check — whether it carries any
+// [Option.Check] approach. A checked line is an action: the action slot on
+// the turn clock, one round of the world in free roam. A plain line is free
+// on both (rpg-project#785 R5). The session prices a Speak offer per option
+// by this answer.
+func (o Option) Checked() bool { return len(o.Check) != 0 }
 
 // TriggerHolds is a requirement that the speaker CARRIES a prop
 // (`requires: { holds: <prop id> }`, rpg-project#569).
@@ -340,12 +355,16 @@ type SpeakInput struct {
 	// Skill is the approach the check was made with — one of the option's
 	// [CheckApproach.Ability] words ([ErrNoOption] otherwise). It is what the
 	// deed is decided by ([deedForSkill], R3) and what the beat reports.
+	// EMPTY FOR A PLAIN LINE (rpg-project#785 R5), as DC, Total and
+	// Calculation are: nothing was rolled, and a roll reported for a line
+	// that rolls none is refused ([ErrNoOption]).
 	Skill string
 
 	// Beaten is whether the check beat the DC. CARRIED, NEVER COMPARED: this
 	// module holds no 5e, so who decides a total beats a difficulty lives on
 	// the other side of this seam. FALSE LANDS NO DEED and is not an error;
-	// it answers from the option's failure rows.
+	// it answers from the option's failure rows. Not asked of a plain line,
+	// which always lands: [SpeakOutput.Beaten] reports true for one.
 	Beaten bool
 
 	// DC and Total are the numbers the table sees, carried onto the beat so
@@ -401,9 +420,10 @@ type SpeakOutput struct {
 // roller → closed → actor is a member → target is a member and not the actor
 // → a creature target is not down → the actor is placed → the option is on
 // the target (a prop: the actor is shown it) and its requirement holds for
-// the actor → the skill is one of its approaches → a creature target can see
+// the actor → the roll fits the line (a checked line's skill is one of its
+// approaches; a plain line reports no roll) → a creature target can see
 // the actor → the beat → the deed → the answer → the world's price for an
-// action.
+// action, paid only for a checked line (rpg-project#785 R5).
 //
 // THE BEAT IS APPENDED BEFORE ITS CONSEQUENCES, the law
 // [Encounter.refreshSight] states: the line is the cause, and a stance beat
@@ -491,8 +511,8 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	if !ok {
 		return refuse(fmt.Errorf("speak: %q is not a line this speaker is offered: %w", in.OptionID, ErrNoOption))
 	}
-	if !slices.ContainsFunc(option.Check, func(a CheckApproach) bool { return a.Ability == in.Skill }) {
-		return refuse(fmt.Errorf("speak: line %q offers no %q approach: %w", in.OptionID, in.Skill, ErrNoOption))
+	if err := refuseRollMismatch(in, option); err != nil {
+		return refuse(err)
 	}
 	if in.Target != "" && !slices.Contains(witnesses, in.Target) {
 		return refuse(fmt.Errorf("speak: target %q cannot see the actor: %w", in.Target, ErrUnwitnessed))
@@ -505,8 +525,11 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 		return refuse(err)
 	}
 
+	// A PLAIN LINE LANDS: it rolls nothing, so there is nothing to miss.
+	beaten := in.Beaten || !option.Checked()
+
 	at := uint64(e.clock.ToData().HighWater)
-	seq, err := e.appendSpokeBeat(in, option, witnesses, at)
+	seq, err := e.appendSpokeBeat(in, option, beaten, witnesses, at)
 	if err != nil {
 		return nil, err
 	}
@@ -514,7 +537,7 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	// THE DEED IS THE SKILL'S (R3), and only a creature can hold one about
 	// being spoken to: a prop is persuaded of nothing.
 	landed := ""
-	if verb, lands := deedForSkill(in.Skill); lands && in.Beaten && in.Target != "" {
+	if verb, lands := deedForSkill(in.Skill); lands && beaten && in.Target != "" {
 		if err := e.landDeed(verb, in.Actor, in.Target, where, witnesses); err != nil {
 			return nil, fmt.Errorf("speak: %w", err)
 		}
@@ -522,13 +545,13 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	}
 
 	key, rows := AnswerFailure, option.Failure
-	if in.Beaten {
+	if beaten {
 		key, rows = AnswerSuccess, option.Success
 	}
 	answered, err := e.answer(ctx, answerInput{
 		creature: in.Target, prop: in.Prop, actor: in.Actor,
 		option: option.ID, key: key, rows: rows,
-		verb: verbSpeak, beaten: in.Beaten,
+		verb: verbSpeak, beaten: beaten,
 		witnesses: witnesses, at: at, roller: in.Roller,
 	})
 	if err != nil {
@@ -537,24 +560,50 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 
 	// A BEATEN LINE SPOKEN TO A PROP IS THAT PROP'S DEED (rpg-project#766 S4):
 	// `clock: bell:<prop>` for whoever listens for it — the bell rung.
-	if in.Prop != "" && in.Beaten {
+	if in.Prop != "" && beaten {
 		e.landClock(bellPrefix+string(in.Prop), "", at)
 	}
 
-	// THE WORLD'S PRICE FOR AN ACTION, paid after the answer has landed — the
-	// fact it taught, the deed it lodged, the running it set up — and before
+	// THE WORLD'S PRICE FOR AN ACTION — AND ONLY A CHECKED LINE IS ONE
+	// (rpg-project#785 R5: "the check is the action… speaking with no check
+	// would be a free action"). Paid after the answer has landed — the fact
+	// it taught, the deed it lodged, the running it set up — and before
 	// anything refreshes sight (design §5, worldtime.go). It is what makes a
-	// cowed goblin keep running while the party talks: the line that scared
-	// it pays the round its own `time` table then spends.
+	// cowed goblin keep running while the party talks: the threat that scared
+	// it pays the round its own `time` table then spends. A plain line pays
+	// nothing: the party can greet the captain without the world moving.
 	//
-	// Nothing at all for a member inside a fight, where the round prices time.
-	if err := e.spendWorldAction(in.Actor); err != nil {
-		return nil, fmt.Errorf("speak: %w", err)
+	// Nothing at all for a member inside a fight, either way: there the turn
+	// clock prices time, and the session owns the action slot.
+	if option.Checked() {
+		if err := e.spendWorldAction(in.Actor); err != nil {
+			return nil, fmt.Errorf("speak: %w", err)
+		}
 	}
 
 	return &SpeakOutput{
-		Beaten: in.Beaten, Witnesses: witnesses, Deed: landed, Seq: seq, Answered: answered.pick,
+		Beaten: beaten, Witnesses: witnesses, Deed: landed, Seq: seq, Answered: answered.pick,
 	}, nil
+}
+
+// refuseRollMismatch is Speak's roll door. A checked line must name one of
+// its approaches as the skill ([ErrNoOption] otherwise). A PLAIN LINE ROLLS
+// NOTHING (R5), so a skill, a DC, a total or a calculation reported for one
+// is a caller that rolled a check the line does not have — refused with
+// [ErrNoOption] rather than written onto a beat as if it had happened.
+// Beaten is not asked of a plain line: it lands either way.
+func refuseRollMismatch(in *SpeakInput, option Option) error {
+	if option.Checked() {
+		if !slices.ContainsFunc(option.Check, func(a CheckApproach) bool { return a.Ability == in.Skill }) {
+			return fmt.Errorf("speak: line %q offers no %q approach: %w", in.OptionID, in.Skill, ErrNoOption)
+		}
+		return nil
+	}
+	if in.Skill != "" || in.DC != 0 || in.Total != 0 || in.Calculation != nil {
+		return fmt.Errorf("speak: line %q rolls no check, and a roll was reported for it: %w", in.OptionID, ErrNoOption)
+	}
+
+	return nil
 }
 
 // refuseSpeakOutOfReach is Speak's reach door: a creature is measured by
@@ -603,14 +652,17 @@ func (e *Encounter) optionOffered(actor MemberID, options []Option, id string) (
 }
 
 // appendSpokeBeat writes what the table saw: who said what to whom, the skill,
-// the DC, the total, and whether it landed.
+// the DC, the total, and whether it landed. A plain line (R5) writes an empty
+// skill, a zero DC and total, and `beaten: true`: it rolled nothing and landed.
 //
 // EVERY WITNESS IS THE AUDIENCE, not just the two parties — everyone in the
 // set learns what happened. The numbers are written unconditionally, false
 // beside a miss included, and `target` and `prop` are both written with the
 // one not spoken to empty, for the reason a struck beat writes `critical:
 // false`: absent must not become a third state for a reader downstream.
-func (e *Encounter) appendSpokeBeat(in *SpeakInput, option Option, witnesses []MemberID, at uint64) (uint64, error) {
+func (e *Encounter) appendSpokeBeat(
+	in *SpeakInput, option Option, beaten bool, witnesses []MemberID, at uint64,
+) (uint64, error) {
 	body := map[string]interface{}{
 		"beat":   BeatSpoke,
 		"actor":  string(in.Actor),
@@ -621,7 +673,7 @@ func (e *Encounter) appendSpokeBeat(in *SpeakInput, option Option, witnesses []M
 		"skill":  in.Skill,
 		"dc":     in.DC,
 		"total":  in.Total,
-		"beaten": in.Beaten,
+		"beaten": beaten,
 	}
 	if in.Calculation != nil {
 		// Refused here rather than written: a beat is what the table saw, and
@@ -653,8 +705,8 @@ func (e *Encounter) appendSpokeBeat(in *SpeakInput, option Option, witnesses []M
 }
 
 // validateOptions refuses a list of options this composition could not run:
-// a line with no id or two lines under one, a line that says nothing, a check
-// with no way through or an approach with nothing to beat, a requirement that
+// a line with no id or two lines under one, a line that says nothing, a plain
+// line with failure rows or an approach with nothing to beat, a requirement that
 // is not a fact or a holding, and a row its verdict could not roll.
 //
 // AT THE DOOR, NOT AT THE ROLL — [validateTable]'s reason. A line that can
@@ -679,8 +731,12 @@ func validateOptions(options []Option) error {
 		if o.Say == "" {
 			return fmt.Errorf("option %q does not say what the character says", o.ID)
 		}
-		if len(o.Check) == 0 {
-			return fmt.Errorf("option %q has no way to make its check", o.ID)
+		// NO APPROACH IS A PLAIN LINE (rpg-project#785 R5), which cannot be
+		// missed. The authoring dialect refuses a `check: []` written empty;
+		// here an empty list and a nil one are the same line, as the clone
+		// across this door already makes them.
+		if !o.Checked() && len(o.Failure) != 0 {
+			return fmt.Errorf("option %q rolls no check and cannot be missed: it answers no failure rows", o.ID)
 		}
 		for _, a := range o.Check {
 			if a.Ability == "" {

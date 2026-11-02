@@ -1154,8 +1154,11 @@ type OptionSpec struct {
 	Say string `yaml:"say" json:"say"`
 
 	// Check is the approaches through the line's check — [CheckSpec], the
-	// list a lock carries. REQUIRED, at least one.
-	Check CheckSpec `yaml:"check" json:"check"`
+	// list a lock carries. ABSENT IS A PLAIN LINE (rpg-project#785 R5): it
+	// rolls nothing, costs nothing on either clock, is always answered from
+	// `success`, and may write no `failure`. Written, it lists at least one
+	// approach: `check: []` is refused, never read as absent.
+	Check CheckSpec `yaml:"check,omitempty" json:"check,omitempty"`
 
 	// Requires is what must hold for the speaker before the line is offered:
 	// a [PredicateSpec] of exactly one of two forms, `{ fact: <id> }` (the

@@ -1357,12 +1357,13 @@ func approachesDataFrom(approaches []CheckApproach) []CheckApproachData {
 
 // OptionData is the persistent representation of one [Option]: the line,
 // its check, its requirement as a persisted trigger, and both verdicts' rows
-// (rpg-project#569). Requires and the rows omit when unset; id, say and the
-// check are always written, because an option without them is refused.
+// (rpg-project#569). Requires and the rows omit when unset, and so does the
+// check: a plain line (rpg-project#785 R5) rolls none. Id and say are always
+// written, because an option without them is refused.
 type OptionData struct {
 	ID       string              `json:"id"`
 	Say      string              `json:"say"`
-	Check    []CheckApproachData `json:"check"`
+	Check    []CheckApproachData `json:"check,omitempty"`
 	Requires *TriggerData        `json:"requires,omitempty"`
 	Success  []AnswerData        `json:"success,omitempty"`
 	Failure  []AnswerData        `json:"failure,omitempty"`

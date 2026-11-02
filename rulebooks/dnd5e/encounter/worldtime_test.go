@@ -231,6 +231,99 @@ func (s *WorldTimeSuite) TestAThreatCostsItsActorARound() {
 	s.Equal(1, s.reading(enc), "the threat landed, and then the world moved on")
 }
 
+// talkLines is a creature's two kinds of line (rpg-project#785 R5): a
+// greeting that rolls nothing, and a threat that rolls Intimidation.
+func talkLines() []encounter.Option {
+	return []encounter.Option{
+		{ID: "greet", Say: "Evening.", Success: []encounter.Answer{{Weight: 1, Say: "Evening."}}},
+		{ID: "threat", Say: "Stand aside.", Check: []encounter.CheckApproach{{Ability: "intimidation", DC: 9}}},
+	}
+}
+
+// greet says the plain line; threaten says the checked one, beaten.
+func (s *WorldTimeSuite) greet(enc *encounter.Encounter, to encounter.MemberID) {
+	s.T().Helper()
+	out, err := enc.Speak(s.ctx, &encounter.SpeakInput{
+		Range: speakReach, Actor: alice, Target: to, OptionID: "greet", Roller: rollsLowest{},
+	})
+	s.Require().NoError(err)
+	s.True(out.Beaten, "a plain line rolls nothing, so it lands")
+}
+
+func (s *WorldTimeSuite) threaten(enc *encounter.Encounter, to encounter.MemberID) {
+	s.T().Helper()
+	_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
+		Range: speakReach, Actor: alice, Target: to, OptionID: "threat", Skill: "intimidation",
+		Beaten: true, DC: 9, Total: 14, Roller: rollsLowest{},
+	})
+	s.Require().NoError(err)
+}
+
+// ticks counts the `tick` beats alice's story carries — one per round the
+// world was paid.
+func (s *WorldTimeSuite) ticks(enc *encounter.Encounter) int {
+	s.T().Helper()
+	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+	n := 0
+	for _, entry := range story {
+		var beat map[string]any
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		if beat["beat"] == encounter.BeatTick {
+			n++
+		}
+	}
+
+	return n
+}
+
+// TestAPlainLineIsFreeAndACheckIsTheAction is rpg-project#785 R5 on the world
+// clock: "the check is the action… speaking with no check would be a free
+// action". Greeting the goblin passes no round and writes no tick; the threat
+// pays its round, as it did before the ruling.
+func (s *WorldTimeSuite) TestAPlainLineIsFreeAndACheckIsTheAction() {
+	enc := s.hall(
+		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer,
+			Position: spatial.Position{X: 1, Y: 1}},
+		encounter.MemberInput{ID: goblin, Kind: encounter.KindWorld,
+			Position: spatial.Position{X: 3, Y: 1}, Options: talkLines()},
+	)
+	on, err := enc.ClockOf(&encounter.ClockOfInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().NotEqual(encounter.ClockTurn, on.Kind, "precondition: free roam")
+
+	s.greet(enc, goblin)
+	s.greet(enc, goblin)
+	s.Zero(s.reading(enc), "two plain lines, and the world has not moved")
+	s.Zero(s.ticks(enc), "and no tick was written for them")
+
+	s.threaten(enc, goblin)
+	s.Equal(1, s.reading(enc), "the threat rolled a check, and a check is the action: one round")
+	s.Equal(1, s.ticks(enc), "and its tick is the one the story carries")
+}
+
+// TestALineInsideAFightPaysTheWorldNothingEitherWay: inside a fight the turn
+// clock prices time and the session owns the action slot, so neither kind of
+// line touches the world clock — the plain line is unchanged by R5.
+func (s *WorldTimeSuite) TestALineInsideAFightPaysTheWorldNothingEitherWay() {
+	enc := s.hall(
+		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer,
+			Position: spatial.Position{X: 1, Y: 1}},
+		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster,
+			Position: spatial.Position{X: 3, Y: 1}, Options: talkLines()},
+	)
+	on, err := enc.ClockOf(&encounter.ClockOfInput{Member: alice})
+	s.Require().NoError(err)
+	s.Require().Equal(encounter.ClockTurn, on.Kind, "precondition: seeing each other started a fight")
+	before, ticks := s.reading(enc), s.ticks(enc)
+
+	s.greet(enc, goblin)
+	s.Equal(before, s.reading(enc), "a plain line in a fight pays the world nothing")
+	s.threaten(enc, goblin)
+	s.Equal(before, s.reading(enc), "nor does a threat: the round prices time in here")
+	s.Equal(ticks, s.ticks(enc), "and no tick was written for either")
+}
+
 // --- a fight round -----------------------------------------------------------
 
 // TestAFightRoundIsARoundForEveryFighter is the third row, and the correction

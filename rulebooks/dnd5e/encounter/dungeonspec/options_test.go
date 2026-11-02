@@ -85,6 +85,19 @@ func TestRequiresCompilesToTheTriggerTheEngineReads(t *testing.T) {
 	require.Nil(t, bribe.Failure, "no failure rows written means none")
 }
 
+// A line with no `check` is a plain line (rpg-project#785 R5): it compiles
+// with no approaches, so the composition and the session read it as free.
+func TestALineWithNoCheckCompilesAsAPlainLine(t *testing.T) {
+	compiled := loadSource(t, optionsOnGoblin(`          - id: greet
+            say: "Evening, captain."
+            success: [{ say: "Evening." }]
+`))
+	greet := optionNamed(t, monsterNamed(t, compiled, "goblin-1").Options, "greet")
+	require.Nil(t, greet.Check, "no check written is no check")
+	require.False(t, greet.Checked(), "and the line reads as plain")
+	require.Equal(t, []encounter.Answer{{Weight: 1, Say: "Evening."}}, greet.Success)
+}
+
 // optionNamed is the compiled option one id names, required to exist so a
 // renamed line fails as a missing line rather than as an index out of range.
 func optionNamed(t *testing.T, options []encounter.Option, id string) encounter.Option {
@@ -154,10 +167,10 @@ func TestAnOptionIsRefusedByName(t *testing.T) {
 			message: `option "hi" is already declared at options[0]`,
 		},
 		{
-			name:    "no check",
-			options: "          - { id: hi, say: \"Hi.\" }\n",
-			path:    at + "[0].check",
-			message: "this option needs at least one way to make its check — an ability and a DC",
+			name:    "a plain line that can be missed",
+			options: "          - { id: hi, say: \"Hi.\", failure: [{ say: \"No.\" }] }\n",
+			path:    at + "[0].failure",
+			message: "this line rolls no check, so it cannot be missed — write `check` to give it a failure, or omit `failure`",
 		},
 		{
 			name:    "an empty check",

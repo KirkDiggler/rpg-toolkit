@@ -464,11 +464,12 @@ func retiredTableKey(key string) string {
 // the World Builder draws each on a form row and a second spelling of any is
 // the drift one grammar exists to prevent.
 const (
-	errOptionNoID      = "the option has no id"
-	errOptionNoSay     = "the option does not say what the character says"
-	errOptionNoCheck   = "this option needs at least one way to make its check — an ability and a DC"
-	errOptionPropFlees = "a prop cannot run: `flee` is a creature's answer"
-	errOptionsEmpty    = "`options` lists nothing — omit it, or write a line it can be spoken to with"
+	errOptionNoID       = "the option has no id"
+	errOptionNoSay      = "the option does not say what the character says"
+	errOptionNoCheck    = "this option needs at least one way to make its check — an ability and a DC"
+	errOptionPlainFails = "this line rolls no check, so it cannot be missed — write `check` to give it a failure, or omit `failure`"
+	errOptionPropFlees  = "a prop cannot run: `flee` is a creature's answer"
+	errOptionsEmpty     = "`options` lists nothing — omit it, or write a line it can be spoken to with"
 )
 
 // options validates the lines an author wrote on a creature or a prop
@@ -476,7 +477,7 @@ const (
 //
 // An empty list is refused whole ([errOptionsEmpty]). Refusals per option,
 // each its own sentence: no id; an id already used on
-// this binding; no line; a check with no way through, or an approach that
+// this binding; no line; a check written empty, or an approach that
 // rolls nothing or has nothing to beat ([grammar.approaches], the lock's own
 // grammar); a `requires` that is neither `{ fact }` nor `{ holds }`; a `holds`
 // naming a prop this dungeon does not place, or one nobody can pick up; a
@@ -511,7 +512,14 @@ func (g *grammar) options(path string, options []OptionSpec, props map[string]bo
 		if o.Say == "" {
 			g.fail(p+".say", "%s", errOptionNoSay)
 		}
-		g.approaches(p+".check", errOptionNoCheck, o.Check)
+		// ABSENT `check` IS A PLAIN LINE (rpg-project#785 R5): free on both
+		// clocks, never missed. Written empty is refused — the zero value
+		// must not lie about which of the two the author meant.
+		if o.Check != nil {
+			g.approaches(p+".check", errOptionNoCheck, o.Check)
+		} else if o.Failure != nil {
+			g.fail(p+"."+string(encounter.AnswerFailure), "%s", errOptionPlainFails)
+		}
 		g.optionRequires(p+".requires", o.Requires, props)
 		for _, verdict := range []struct {
 			key  string
