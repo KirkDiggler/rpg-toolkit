@@ -147,9 +147,11 @@ type AttackOutput struct {
 // and writes nothing at all. See [Manager.priceSwing] and
 // [character.CostOfSwing].
 //
-// ATTACK HAS NO WORLD-CLOCK OFFER. Afford returns no declarations in free roam,
-// so there is no valid selector to echo there; Move alone retains its explicit
-// empty-selector world-clock form.
+// ATTACK IS OFFERED ON BOTH CLOCKS (rpg-project#785). In free roam the swing
+// is the same compiled offer, priced out of one round lent to the action and
+// taken back before the sheet is written (worldround.go); the encounter's
+// aggression law turns a neutral pair hostile and the fight forms after the
+// blow. Move alone retains its explicit empty-selector world-clock form.
 //
 // # How it runs, and why the order is not a style choice
 //
@@ -260,20 +262,16 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		return nil, fmt.Errorf("attack: attacker %q: %w", in.Attacker, ErrNotYourTurn)
 	}
 
-	// Attack has no world-clock declaration. Keep its independent standing
-	// gate for historical refusal precedence, then reject every selector: there
-	// is no world-clock offer to select.
-	if ClockKind(clock.Kind) != ClockTurn {
-		if err := refuseIfDown(scope, "attacker", in.Attacker); err != nil {
-			return nil, fmt.Errorf("attack: %w", err)
-		}
-		if in.DeclarationID == "" {
-			return nil, fmt.Errorf("attack: %w", ErrNoDeclarationID)
-		}
-		return nil, fmt.Errorf("attack: %w", ErrStaleDeclaration)
-	}
+	// THE WORLD CLOCK IS A PLACE TO ACT (rpg-project#785, R1). A free-roam
+	// swing is declared, selected and resolved by exactly the path below,
+	// priced out of the one round its sheet is lent (worldround.go) and taken
+	// back before the sheet is written. The encounter charges the world its
+	// round when the outcome lands, and its aggression law turns a neutral
+	// pair hostile before the deed's testimony lands (R2); the fight then
+	// forms on the sight refresh, after the blow (R3).
+	lendWorldRound(scope, in.Attacker, clock)
 
-	// The turn path loads the actor strictly ONCE. The downed verdict and every
+	// The path loads the actor strictly ONCE. The downed verdict and every
 	// piece of the regenerated offer are derived from this same snapshot; a
 	// repository cannot answer standing to one gate and downed to compilation.
 	actor := m.loadActorSheet(ctx, in.Attacker)

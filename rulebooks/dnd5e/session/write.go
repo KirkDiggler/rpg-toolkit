@@ -1105,6 +1105,13 @@ type writeScope struct {
 	// it, so commit can tell a run this verb closed — whose seats it clears —
 	// from one that was already closed.
 	openAtLoad bool
+
+	// worldActor is the member acting on the world clock in this verb, whose
+	// sheet was lent one round's economy to price and pay with
+	// ([readyForClock]). [Manager.saveDirty] takes the round back before the
+	// sheet is written ([returnWorldRound]). Empty on the turn clock and for
+	// every verb that declares nothing.
+	worldActor string
 }
 
 // noteCharacterWritten records that this verb made a character's sheet

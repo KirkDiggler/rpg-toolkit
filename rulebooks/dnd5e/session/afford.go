@@ -482,8 +482,10 @@ type AffordOutput struct {
 // attack variant; DeathSave appears only for an eligible active Dying character.
 // Each offer carries an opaque selector execution must echo.
 // Move reports Remaining rather than a fixed price because a walk's cost
-// depends on a path this read is never given. On the world clock declarations
-// is the complete empty answer.
+// depends on a path this read is never given. On the world clock the same
+// rows compile for Attack, Activate and Cast, priced in rounds of the world
+// ([SlotNone], no turn-currency shortfall; rpg-project#785), beside Speak's
+// own world-clock row; Move, EndTurn and Death Save are turn-clock rows.
 //
 // # The gap this closes
 //
@@ -610,27 +612,26 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 		return affordWhileFrozen(in.Session, in.Member, open, ClockKind(clock.Kind))
 	}
 
-	// THE WORLD CLOCK OFFERS THE SOCIAL VERB, AND NOTHING ELSE (R3,
-	// rpg-project#457). This used to return an empty list on the reasoning
-	// that free roam has no economy and therefore nothing to price; the
-	// second half of that was never true — Move spends nothing there and
-	// happens anyway — and the front room goblin is the case that made it
-	// matter. A neutral creature standing in a doorway is exactly who a
-	// player wants to talk to, and there is no fight to start first.
+	// THE WORLD CLOCK OFFERS THE BAR (rpg-project#785, R1). The front room
+	// goblin's R3 (rpg-project#457) brought the social verb to free roam; the
+	// "and nothing else" that followed it was this function's line, not the
+	// ruling's, and Kirk's direction replaced it: "our bar should be available
+	// to us. if i want to cast a spell I should be able to."
 	//
-	// PRICED AT NOTHING, which is the world clock's own answer rather than a
-	// discount: [SlotNone] and no shortfall, because there is no budget to
-	// fall short of. Every OTHER verb stays off this panel — Attack, Cast and
-	// Activate all spend a turn's economy, and Move is deliberately not a row
-	// here (move.go refuses a world-clock declaration id for that reason).
-	if ClockKind(clock.Kind) != ClockTurn {
-		rows, err := m.speakRowOnTheWorldClock(enc, in.Session, in.Member)
-		if err != nil {
-			return nil, fmt.Errorf("afford: %w", err)
-		}
-
-		return &AffordOutput{Clock: ClockWorld, Declarations: rows}, nil
-	}
+	// So every verb the turn clock compiles is compiled here, by the same
+	// code, from the same sheet, with the same candidates, options, effect
+	// rows and information, and availability decided by each verb's own facts
+	// (range, target, sheet). What differs is the price: one round of the
+	// world per action, which the encounter charges when the deed lands. The
+	// rows say so with [SlotNone] and no turn-currency shortfall
+	// ([worldPriced]); a spell slot or a rage is still the sheet's own and is
+	// still shown and spent.
+	//
+	// Move is not a row: free-roam movement takes no declaration id (move.go
+	// refuses one) and the dock's floor click is the Move. EndTurn and Death
+	// Save are a turn's own and have no world-clock meaning. Speak keeps its
+	// own world-clock row, unpriced and sheetless, exactly as R3 shipped it.
+	world := ClockKind(clock.Kind) != ClockTurn
 
 	// NOT YOUR TURN, checked FIRST and cheaply — clock.Active is already in
 	// hand, no sheet touched — the same precedence Move's own gate keeps
@@ -641,7 +642,7 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 	// the verb, which is Afford's whole point. NotYourTurn blocks ALL THREE
 	// verbs the same way, so the sheet is never loaded for a member whose
 	// turn it is not.
-	if string(clock.Active) != in.Member {
+	if !world && string(clock.Active) != in.Member {
 		notYourTurn := Shortfall{Reason: ShortfallNotYourTurn, Text: "not your turn"}
 		return &AffordOutput{Clock: ClockTurn, Declarations: []Declaration{
 			describedBlocker(VerbAttack, TargetMember, notYourTurn),
@@ -666,11 +667,12 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 	// material, so the blocker and the declaration cannot disagree across two
 	// repository reads. EndTurn remains clock-only when that actor is downed or
 	// unreadable.
+	verbs := []Verb{VerbAttack, VerbMove, VerbActivate, VerbCast, VerbSpeak, VerbDeathSave, VerbEndTurn}
+	if world {
+		verbs = []Verb{VerbAttack, VerbActivate, VerbCast}
+	}
 	actor := m.loadActorSheet(ctx, in.Member)
-	offers, err := m.compileOffersFor(
-		ctx, enc, data, in.Session, in.Member, clock, actor,
-		VerbAttack, VerbMove, VerbActivate, VerbCast, VerbSpeak, VerbDeathSave, VerbEndTurn,
-	)
+	offers, err := m.compileOffersFor(ctx, enc, data, in.Session, in.Member, clock, actor, verbs...)
 	if err != nil {
 		return nil, fmt.Errorf("afford: %w", err)
 	}
@@ -690,16 +692,31 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 		return nil, fmt.Errorf("afford: %w", err)
 	}
 
-	declarations := make([]Declaration, 0, len(offers))
+	declarations := make([]Declaration, 0, len(offers)+1)
 	for _, o := range offers {
-		declarations = append(declarations, o.declaration)
+		declaration := o.declaration
+		if world {
+			if declaration, err = worldPriced(declaration); err != nil {
+				return nil, fmt.Errorf("afford: %w", err)
+			}
+		}
+		declarations = append(declarations, declaration)
+	}
+	kind := ClockTurn
+	if world {
+		speak, err := m.speakRowOnTheWorldClock(enc, in.Session, in.Member)
+		if err != nil {
+			return nil, fmt.Errorf("afford: %w", err)
+		}
+		declarations = append(declarations, speak...)
+		kind = ClockWorld
 	}
 	sortDeclarations(declarations)
 	preview, err := previewCastAim(enc, in.Member, in.CastAim, offers)
 	if err != nil {
 		return nil, fmt.Errorf("afford aim: %w", err)
 	}
-	return &AffordOutput{Clock: ClockTurn, Declarations: declarations, CastAim: preview}, nil
+	return &AffordOutput{Clock: kind, Declarations: declarations, CastAim: preview}, nil
 }
 
 // blockedDeclaration is the shape every early per-verb blocker emits:
@@ -855,26 +872,29 @@ func slotOf(p *combat.SpendProfile) Slot {
 func affordWhileFrozen(session, member string, open []interrupt.Window, clock ClockKind) (*AffordOutput, error) {
 	declarations := []Declaration{}
 
-	// A VERB IS MARKED UNAVAILABLE ONLY WHERE IT WAS A ROW. The turn-economy
-	// verbs were never offered to a world-clock member, so reporting a
-	// refusal for them there would be reporting a refusal for rows that were
-	// never rows.
+	// A VERB IS MARKED UNAVAILABLE ONLY WHERE IT WAS A ROW. Move and EndTurn
+	// are never offered to a world-clock member, so reporting a refusal for
+	// them there would be reporting a refusal for rows that were never rows.
 	//
 	// THE SOCIAL VERB IS A ROW ON BOTH CLOCKS as of R3 (rpg-project#457), so
 	// it is blocked on both. Before that ruling a frozen world-clock panel was
 	// the window alone and that was the whole truth; now, leaving it out would
 	// make the row simply VANISH while a window is open, which is the one
 	// thing this function exists to prevent.
+	//
+	// THE BAR IS A ROW ON BOTH CLOCKS as of rpg-project#785 (R1): Attack,
+	// Activate and Cast are offered in free roam, so they are blocked there
+	// too. Move and EndTurn stay turn-clock rows only.
 	frozen := Shortfall{Reason: ShortfallWindowOpen, Text: "an interrupt window is open"}
 	declarations = append(declarations,
 		describedBlocker(VerbSpeak, TargetMember, frozen),
+		describedBlocker(VerbAttack, TargetMember, frozen),
+		describedBlocker(VerbActivate, TargetNone, frozen),
+		describedBlocker(VerbCast, TargetNone, frozen),
 	)
 	if clock == ClockTurn {
 		declarations = append(declarations,
-			describedBlocker(VerbAttack, TargetMember, frozen),
 			describedBlocker(VerbMove, TargetPath, frozen),
-			describedBlocker(VerbActivate, TargetNone, frozen),
-			describedBlocker(VerbCast, TargetNone, frozen),
 			describedBlocker(VerbEndTurn, TargetNone, frozen),
 		)
 	}
@@ -907,12 +927,13 @@ func affordWhileFrozen(session, member string, open []interrupt.Window, clock Cl
 // a price is a question about a sheet, and there is no price here to ask
 // about.
 //
-// # One row, and no others
+// # Its own row, beside the bar
 //
-// Attack, Cast and Activate all spend a turn's economy and are not offered
-// here; Move is deliberately not a row either, because free-roam movement
-// takes no declaration id (move.go refuses one). That leaves exactly the verb
-// a player can use on a creature standing in a doorway with no fight running.
+// The other verbs on the world clock compile through the turn clock's path
+// with one lent round ([Manager.affordOnTheWorldClock]); Speak keeps this
+// sheetless row, which R3 (rpg-project#457) shipped and which needs no price
+// at all. Move is not a row: free-roam movement takes no declaration id
+// (move.go refuses one).
 //
 // The menu and candidates are [buildSpeakOffer]'s, read by the same
 // [readSpeakMenu]; the clock changes what the row COSTS and never what it

@@ -246,13 +246,20 @@ func TestDeathSaveAffordIsExplicitAndExclusive(t *testing.T) {
 	world, err := f.mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "bob"})
 	require.NoError(t, err)
 	require.Equal(t, session.ClockWorld, world.Clock)
-	// THE SOCIAL VERB AND NOTHING ELSE (R3, rpg-project#457): a world-clock
-	// member has no turn economy, so no verb that spends one is offered —
-	// Death Save least of all, which is this scene's own claim.
+	// THE BAR ON THE WORLD CLOCK (rpg-project#785): free roam offers the
+	// verbs a turn offers except the turn's own (Move, EndTurn, Death Save),
+	// and a dying member sees each of them blocked as downed. Death Save is
+	// still not offered, which is this scene's own claim.
 	require.NotContains(t, declarationVerbs(world.Declarations), session.VerbDeathSave,
 		"a dying world-clock character is not offered the explicit save")
-	require.Equal(t, []session.Verb{session.VerbSpeak},
-		declarationVerbs(world.Declarations), "free roam offers the social verb and no others")
+	for _, decl := range world.Declarations {
+		if decl.Verb == session.VerbSpeak {
+			continue
+		}
+		require.False(t, decl.Available, "%s: a dying member acts on neither clock", decl.Verb)
+		require.NotNil(t, decl.Why)
+		require.Equal(t, session.ShortfallDowned, decl.Why.Reason, "%s", decl.Verb)
+	}
 }
 
 func TestDeathSaveIsNotOfferedToNonActiveDyingCharacter(t *testing.T) {

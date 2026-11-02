@@ -1,0 +1,233 @@
+// Copyright (C) 2026 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package session_test
+
+// castle_free_roam_test.go is rpg-project#785 S1 on the QA castle: the bar on
+// the world clock. In free roam the party is offered the verbs a turn offers,
+// priced in rounds of the world (R1). A cast that hurts nobody passes a round
+// and forms nothing; a swing at the neutral captain lands, the aggression law
+// turns the garrison (R2), and the fight forms after the blow with the gate
+// posts in it (R3).
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
+)
+
+// freeRoamCastle is the castle opened for alice (a fighter) and a cleric at
+// the party start, outside the gatehouse.
+type freeRoamCastle struct {
+	mgr        *session.Manager
+	live       *actCapture
+	characters *fakeCharacters
+}
+
+func openTheCastleForTwo(t *testing.T, d20s ...int) *freeRoamCastle {
+	t.Helper()
+	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", encounterModule).Output()
+	require.NoError(t, err)
+	raw, err := os.ReadFile(filepath.Join(strings.TrimSpace(string(out)), castleFixture))
+	require.NoError(t, err)
+	compiled, err := dungeonspec.Load(raw)
+	require.NoError(t, err)
+
+	alice := armedFighter("alice")
+	alice.AbilityScores[abilities.CHA] = 16
+	cleric := healingCleric()
+	c := &freeRoamCastle{live: &actCapture{}, characters: newFakeCharacters(alice, cleric)}
+	c.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: c.live, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
+		PresentationIDs: testPresentationIDs{}, Dice: &castleDice{d20s: d20s}, TurnDriver: session.Driver(),
+		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: c.characters,
+	})
+	require.NoError(t, err)
+	_, err = c.mgr.Launch(context.Background(), &session.LaunchInput{
+		Session: "sess", Dungeon: &compiled, Party: []string{"alice", "cleric"},
+	})
+	require.NoError(t, err)
+	return c
+}
+
+// play runs one verb and returns every act it published.
+func (c *freeRoamCastle) play(t *testing.T, label string, verb func() error) beat {
+	t.Helper()
+	c.live.mu.Lock()
+	c.live.acts = nil
+	c.live.mu.Unlock()
+	require.NoError(t, verb(), label)
+	c.live.mu.Lock()
+	defer c.live.mu.Unlock()
+	return beat{label: label, acts: append([]session.Act(nil), c.live.acts...)}
+}
+
+func (c *freeRoamCastle) bar(t *testing.T, member string) *session.AffordOutput {
+	t.Helper()
+	out, err := c.mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: member})
+	require.NoError(t, err)
+	return out
+}
+
+func (c *freeRoamCastle) row(t *testing.T, member string, verb session.Verb, ref string) session.Declaration {
+	t.Helper()
+	for _, d := range c.bar(t, member).Declarations {
+		if d.Verb != verb {
+			continue
+		}
+		if ref == "" || (d.Spell != nil && d.Spell.Ref == ref) || (d.Ability != nil && d.Ability.Ref == ref) {
+			return d
+		}
+	}
+	require.Failf(t, "no row", "%s offered no %s row %s", member, verb, ref)
+	return session.Declaration{}
+}
+
+// TestAfford_WorldClockOffersTheBar: in free roam on the castle, the bar is
+// the turn's bar priced in rounds of the world. Alice is offered Attack and
+// her abilities, the cleric her spells, both the social verb; every row is
+// SlotNone with no turn-currency shortfall; Move, EndTurn and Death Save are
+// not world rows. The turn-clock goldens are pinned by the rest of the suite
+// (afford_test.go, the gatehouse route) and are unchanged.
+func TestAfford_WorldClockOffersTheBar(t *testing.T) {
+	c := openTheCastleForTwo(t, 18)
+
+	for member, want := range map[string][]session.Verb{
+		"alice":  {session.VerbAttack, session.VerbActivate, session.VerbSpeak},
+		"cleric": {session.VerbAttack, session.VerbCast, session.VerbSpeak},
+	} {
+		out := c.bar(t, member)
+		require.Equal(t, session.ClockWorld, out.Clock, "%s: free roam at the party start", member)
+		verbs := declarationVerbs(out.Declarations)
+		for _, verb := range want {
+			assert.Contains(t, verbs, verb, "%s: %s is on the free-roam bar", member, verb)
+		}
+		for _, turnOnly := range []session.Verb{session.VerbMove, session.VerbEndTurn, session.VerbDeathSave} {
+			assert.NotContains(t, verbs, turnOnly, "%s: %s is a turn's row", member, turnOnly)
+		}
+		for _, d := range out.Declarations {
+			assert.Equal(t, session.SlotNone, d.Slot, "%s %s: no slot on the world clock", member, d.Verb)
+			if d.Why != nil {
+				assert.NotEqual(t, session.ShortfallNotYourTurn, d.Why.Reason, "%s %s: nothing is greyed for a turn", member, d.Verb)
+				assert.NotContains(t, []session.Currency{session.CurrencyAction, session.CurrencyBonus, session.CurrencyReaction},
+					d.Why.Currency, "%s %s: no turn currency falls short", member, d.Verb)
+			}
+			for _, component := range d.Cost {
+				assert.Equal(t, session.CurrencyCharges, component.Currency, "%s %s: only the sheet's own charge is priced", member, d.Verb)
+			}
+		}
+	}
+
+	// Speak is the R3 row, unchanged: sheetless, unpriced, one row.
+	speak := c.row(t, "alice", session.VerbSpeak, "")
+	assert.Equal(t, session.SlotNone, speak.Slot)
+	assert.NotNil(t, speak.Information)
+
+	// A cast the cleric can make on herself out here: Guidance, available.
+	guidance := c.row(t, "cleric", session.VerbCast, refs.Spells.Guidance().String())
+	assert.True(t, guidance.Available, "%+v", guidance.Why)
+}
+
+// TestCastleFreeRoamCastAndSwing is the slice's walk as a script: the cleric
+// casts Guidance on herself in free roam and a round of the world passes and
+// nothing forms; alice walks up to the captain and swings, the blow lands,
+// the garrison turns hostile under the swing's act, and the fight forms with
+// the captain and both gate posts in it.
+func TestCastleFreeRoamCastAndSwing(t *testing.T) {
+	ctx := context.Background()
+	c := openTheCastleForTwo(t, 18)
+
+	// THE HARMLESS CAST: a round passes, nobody turns, no fight forms.
+	guidance := c.row(t, "cleric", session.VerbCast, refs.Spells.Guidance().String())
+	require.True(t, guidance.Available, "%+v", guidance.Why)
+	cast := c.play(t, "the cleric casts Guidance on herself", func() error {
+		_, err := c.mgr.Cast(ctx, &session.CastInput{
+			Session: "sess", Member: "cleric", DeclarationID: guidance.ID, Targets: []string{"cleric"},
+		})
+		return err
+	})
+	casts := where[session.CastAct](cast.to("cleric"), func(session.CastAct) bool { return true })
+	require.NotEmpty(t, casts, "the cast is told to its caster")
+	ticks := where[session.ClockEntry](cast.to("cleric"), func(e session.ClockEntry) bool { return e.Mark == session.ClockTick })
+	assert.NotEmpty(t, ticks, "a round of the world passes for the cast (R1)")
+	assert.Empty(t, where[session.StateChange](cast.to("cleric"), func(s session.StateChange) bool { return s.Change == session.StateStance }),
+		"a cast that hurts nobody turns nobody")
+	assert.Empty(t, where[session.ClockEntry](cast.to("cleric"), func(e session.ClockEntry) bool { return e.Mark == session.ClockFightFormed }),
+		"a cast that hurts nobody forms nothing")
+	assert.Nil(t, storedData(t, c.characters, "cleric").ActionEconomy, "the round lent to the cast is not kept")
+
+	// ALICE WALKS UP TO THE CAPTAIN, civil, on the world clock.
+	c.play(t, "alice walks up to the captain", func() error {
+		enc, err := c.mgr.LoadWorldForTest(ctx, "sess")
+		if err != nil {
+			return err
+		}
+		route, err := enc.Route(encounter.RouteInput{Mover: "alice", Policy: encounter.MoveToward, Anchor: standingAt(enc, "captain"), Budget: 200})
+		if err != nil {
+			return err
+		}
+		_, err = c.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: route.Path})
+		return err
+	})
+	attack := c.row(t, "alice", session.VerbAttack, "")
+	require.Equal(t, session.SlotNone, attack.Slot)
+	captain, ok := castCandidate(t, attack, "captain")
+	require.True(t, ok, "the captain is a candidate for the free-roam swing")
+	require.True(t, captain.Available, "alice stands beside the captain: %+v", captain.Why)
+
+	// THE FREE SWING: the deed lands on the world clock first (R3), the
+	// aggression law turns the garrison under the swing's act (R2), and the
+	// fight forms with the gate posts in it.
+	swing := c.play(t, "alice swings at the captain", func() error {
+		_, err := c.mgr.Attack(ctx, &session.AttackInput{
+			Session: "sess", Attacker: "alice", Target: "captain", DeclarationID: attack.ID,
+		})
+		return err
+	})
+	blow := only[session.AttackAct](t, swing.to("alice"))
+	assert.Equal(t, "captain", blow.body.To.ID)
+	assert.Equal(t, session.AttackHit, blow.body.Outcome, "the free blow lands")
+	turned := where[session.StateChange](swing.to("alice"), func(s session.StateChange) bool { return s.Change == session.StateStance })
+	require.NotEmpty(t, turned, "the garrison turns hostile")
+	assert.Equal(t, "hostile", turned[0].body.Stance.Stance)
+	formed := where[session.ClockEntry](swing.to("alice"), func(e session.ClockEntry) bool { return e.Mark == session.ClockFightFormed })
+	require.NotEmpty(t, formed, "the fight forms after the blow")
+	inFight := map[string]bool{}
+	for _, p := range formed[0].body.Fight.Order {
+		inFight[p.ID] = true
+	}
+	for _, id := range []string{"alice", "captain", "gate-1", "gate-2"} {
+		assert.True(t, inFight[id], "%s is in the fight the swing formed: %v", id, formed[0].body.Fight.Order)
+	}
+	// NO WORLD TICK IS ASSERTED FOR THE SWING. The encounter charges a world
+	// round for a cast and an activation, but its attack outcome unit carries
+	// no world actor (encounter outcome.go, prepareUnit), so a free-roam swing
+	// passes no round today. That is the encounter's to change; this seam
+	// opens the door and the encounter prices it.
+	turn, err := c.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
+	require.NoError(t, err)
+	assert.Equal(t, session.ClockTurn, turn.Clock, "the next look is a fight")
+	assert.Nil(t, storedData(t, c.characters, "alice").ActionEconomy,
+		"the round lent to the swing is not kept: the fight lights its own economy from cold")
+}
+
+// storedData is a member's stored sheet.
+func storedData(t *testing.T, chars *fakeCharacters, id string) *character.Data {
+	t.Helper()
+	sheet, err := chars.GetCharacter(context.Background(), id)
+	require.NoError(t, err, fmt.Sprintf("load %s", id))
+	return sheet
+}

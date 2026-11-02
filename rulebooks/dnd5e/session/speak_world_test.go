@@ -263,9 +263,16 @@ func (s *SpeakWorldSuite) TestAThreatAlsoLandsOnTheWorldClock() {
 func (s *SpeakWorldSuite) TestSpeakIsOfferedFreeInFreeRoam() {
 	mgr := s.front([]int{10})
 
-	rows := s.rows(mgr)
-	s.Require().Len(rows, 1, "free roam offers one row: the line")
-	decl := rows[0]
+	// The bar sits beside it (rpg-project#785); the Speak row itself is
+	// unchanged: one row, unpriced, sheetless.
+	speakRows := 0
+	for _, row := range s.rows(mgr) {
+		if row.Verb == session.VerbSpeak {
+			speakRows++
+		}
+	}
+	s.Require().Equal(1, speakRows, "free roam offers one Speak row: the line")
+	decl := s.rowFor(mgr, session.VerbSpeak)
 	s.Equal(session.VerbSpeak, decl.Verb)
 	s.True(decl.Available, "the goblin is standing right there")
 	s.Equal(session.SlotNone, decl.Slot, "nothing is spent in free roam")
@@ -448,9 +455,16 @@ func (s *SpeakWorldSuite) TestAFrozenFreeRoamPanelBlocksTheSpeakRowRatherThanDro
 	_, hasReact := byVerb[session.VerbReact]
 	s.True(hasReact, "the question itself is on the panel")
 
-	for _, verb := range []session.Verb{
-		session.VerbAttack, session.VerbMove, session.VerbActivate, session.VerbCast, session.VerbEndTurn,
-	} {
+	// THE BAR IS BLOCKED THE SAME WAY (rpg-project#785): Attack, Activate
+	// and Cast are free-roam rows now, so a window freezes them too.
+	for _, verb := range []session.Verb{session.VerbAttack, session.VerbActivate, session.VerbCast} {
+		blocked, ok := byVerb[verb]
+		s.Require().True(ok, "%s: a free-roam row stays on the frozen panel", verb)
+		s.False(blocked.Available, "%s", verb)
+		s.Require().NotNil(blocked.Why, "%s", verb)
+		s.Equal(session.ShortfallWindowOpen, blocked.Why.Reason, "%s", verb)
+	}
+	for _, verb := range []session.Verb{session.VerbMove, session.VerbEndTurn} {
 		s.NotContains(byVerb, verb, "%s: never a free-roam row, so never a free-roam refusal", verb)
 	}
 }

@@ -175,6 +175,9 @@ func (m *Manager) saveDirty(ctx context.Context, scope *writeScope, out *resolut
 		if data == nil {
 			continue
 		}
+		// THE LENT ROUND GOES BACK before the sheet is written: a world-clock
+		// actor's economy was the action's, never the sheet's (worldround.go).
+		returnWorldRound(scope, data)
 		if err := m.sheetsFor(scope).save(ctx, data); err != nil {
 			return err
 		}

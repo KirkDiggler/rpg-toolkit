@@ -120,8 +120,9 @@
 // downed blockers. It projects only seam-owned values and gives each compiled
 // offer an opaque deterministic selector. Attack, Cast, DeathSave, and EndTurn
 // require that ID back; Move requires it on the turn clock and requires it
-// empty on the world clock, where Afford
-// deliberately returns no declarations.
+// empty on the world clock, where Afford offers no Move row (free-roam
+// movement is undeclared). On the world clock Afford offers Attack, Activate,
+// Cast and Speak, priced in rounds of the world (rpg-project#785).
 //
 // A mutating verb reloads current state, regenerates only its own offer, and
 // selects the echoed ID before touching dice, movement, storage, or story.

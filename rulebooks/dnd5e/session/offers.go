@@ -116,7 +116,7 @@ type targetPreflight struct {
 }
 
 // compileOffersFor builds only the requested compiled offers for one member on
-// the turn clock, applying the same per-verb blocker matrix. [Manager.Afford]
+// either clock (the world clock readies one lent round, worldround.go), applying the same per-verb blocker matrix. [Manager.Afford]
 // requests all five verbs from one actor snapshot; Move and Attack each request
 // only their own offer before selecting an echoed ID. EndTurn execution keeps
 // its direct clock-only builder.
@@ -207,7 +207,7 @@ func (m *Manager) compileOffersFor(
 		// operation. Ready this ephemeral snapshot before asking eligibility;
 		// Afford never saves it, while execution hands this exact readied record
 		// to resolution for charge-and-save.
-		if err := resolution.ReadyForTurn(ctx, sheet, resolution.Turn{Number: clock.Round, Speed: sheet.GetSpeed()}); err != nil {
+		if err := readyForClock(ctx, sheet, clock); err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrBadCost, err)
 		}
 	}
@@ -235,8 +235,11 @@ func (m *Manager) compileOffersFor(
 	// Ready the sheet for the turn: Move reads CapacityLeft off the readied
 	// sheet, and Attack's price is the same readying's CostOfSwing. One
 	// readying serves both — priceSwing below re-readies idempotently, a
-	// no-op once the economy is filed under this turn.
-	if err := resolution.ReadyForTurn(ctx, sheet, resolution.Turn{Number: clock.Round, Speed: sheet.GetSpeed()}); err != nil {
+	// no-op once the economy is filed under this turn. On the world clock the
+	// turn is one fresh round lent to this action (worldround.go,
+	// rpg-project#785 R1), so every verb prices exactly as it does in a fight
+	// and nothing of the round survives the action.
+	if err := readyForClock(ctx, sheet, clock); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrBadCost, err)
 	}
 
@@ -346,12 +349,12 @@ func (m *Manager) compileOffersFor(
 	// different executable prices hash to the same offer. AssembleAttack clones
 	// this actual profile into Definition.Cost; the resolution Cost receives a
 	// second clone so selector material and execution data cannot alias.
-	price, err := m.priceSwing(ctx, enc, member, sheet)
+	price, err := m.priceSwing(ctx, clock, member, sheet)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrBadCost, err)
 	}
-	// price.cost is never nil here: priceSwing returns a nil cost only on
-	// the world clock, already ruled out by the caller.
+	// price.cost is never nil: priceSwing prices on either clock, against the
+	// economy readyForClock readied above.
 	pricedProfile := combatActions.CloneSpendProfile(price.cost.Profile)
 
 	// BAD ATTACK COMPILATION: a sheet that loads fine but names a weapon

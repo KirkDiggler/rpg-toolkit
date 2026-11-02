@@ -170,8 +170,8 @@ var (
 
 	// ErrNoDeclarationID is returned when Attack, Activate, Death Save, or
 	// EndTurn omits the opaque selector echoed from Afford, or when a turn-clock
-	// Move omits it. A world-clock Move is the deliberate exception: Afford has
-	// no world-clock declarations, so its selector must be empty.
+	// Move omits it. A world-clock Move is the deliberate exception: Afford
+	// offers no world-clock Move row, so its selector must be empty.
 	ErrNoDeclarationID = errors.New("empty declaration id")
 
 	// ErrStaleDeclaration is returned when an echoed selector does not name the

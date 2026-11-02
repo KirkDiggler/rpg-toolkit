@@ -555,9 +555,9 @@ func (s *AttackTestSuite) TestAFailedWorldSaveStillNamesTheSheetThatLanded() {
 		"the write the report names really did land")
 }
 
-// TestFreeRoamAttackHasNoDeclaration pins the production contract: Afford is
-// empty on the world clock, so Attack has no selector to echo there. A direct
-// free-roam swing is invalid input and rolls or writes nothing.
+// TestFreeRoamAttackHasNoDeclaration pins that a free-roam swing still needs
+// its selector: Afford offers one on the world clock (rpg-project#785), and a
+// swing that omits it is invalid input and rolls or writes nothing.
 func (s *AttackTestSuite) TestFreeRoamAttackHasNoDeclaration() {
 	roller := &sequenceDice{rolls: []int{15, 5}}
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
