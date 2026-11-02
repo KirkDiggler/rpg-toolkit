@@ -165,6 +165,29 @@ func (e *Encounter) seatOnWorldClock(id MemberID) error {
 	return nil
 }
 
+// chargeWorldRound is the world's price for an action whose actor was off
+// every fight when it acted, charged whether or not the action has since put
+// it in one (rpg-project#785 R1, R3): a swing from free roam lands, turns the
+// pair, forms the fight with the one it struck in it, and then the world
+// outside that fight lives the round the swing took. The actor's own share of
+// the round is harmless inside the fight: a member that returns to the world
+// clock catches its progress up to the reading ([Encounter.Transfer]).
+//
+// The caller decides who pays, by where the actor stood when it acted
+// ([Encounter.appendTrainAndNotice]); a member already in a fight when it
+// acted is priced by the turn clock and never reaches here.
+func (e *Encounter) chargeWorldRound(actor MemberID) error {
+	raised, err := e.advanceWorld(actor, 1)
+	if err != nil {
+		return fmt.Errorf("world action: %w", err)
+	}
+	if !raised {
+		return nil
+	}
+
+	return e.wake()
+}
+
 // spendWorldAction is what a verb the turn clock would price as an ACTION
 // costs on the world clock: one round, for the actor, once its outcome has
 // landed (design §5).

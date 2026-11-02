@@ -790,8 +790,9 @@ type preparedUnit struct {
 	// pass carries a stabilized or recovered death save's deferReconcile.
 	pass participationPassInput
 
-	// worldActor is an activation's actor, who pays the world-action price;
-	// empty otherwise.
+	// worldActor is the member who pays the world-action price: an
+	// activation's actor, or a struck, missed or warded attack's; empty
+	// otherwise.
 	worldActor MemberID
 }
 
@@ -828,6 +829,15 @@ func (e *Encounter) prepareUnit(index int, unit TrainUnit) (preparedUnit, error)
 	// control until the eventual turn-settlement boundary.
 	if in.Kind == OutcomeDeathSave && (in.DeathSave.Stabilized || in.DeathSave.Recovered) {
 		prepared.pass.deferReconcile = true
+	}
+	// A SWING IS AN ACTION, AND ON THE WORLD CLOCK AN ACTION COSTS A ROUND
+	// (rpg-project#785 R1), as a cast, a loot or a door verb does: struck,
+	// missed or warded off, the swinger spent it. Charged after the deed has
+	// landed, the aggression law has turned the pair, the fight it starts has
+	// formed and the consult has run (R3). A swinger already in a fight pays
+	// nothing: the turn clock prices the swing ([Encounter.appendTrainAndNotice]).
+	if in.Kind == OutcomeStruck || in.Kind == OutcomeMissed || in.Kind == OutcomeWarded {
+		prepared.worldActor = in.Actor
 	}
 	if in.Kind == OutcomeStruck || in.Kind == OutcomeMissed {
 		// subjects[1:] is the validated, sorted target list for these two
@@ -908,7 +918,24 @@ func (e *Encounter) appendTrainAndNotice(
 	// Whatever a failure leaves parked is dropped on the way out.
 	defer func() { e.holdEndings, e.heldEnding, e.deferredDrives = false, nil, nil }()
 
+	// WHO PAYS IS ASKED WHERE THEY STOOD WHEN THEY ACTED (rpg-project#785
+	// R1): an actor off every fight when its first unit starts pays a round
+	// of the world, even when its own deed has put it in a fight by the time
+	// the price is charged; one inside a fight pays nothing, even when its
+	// own blow ends that fight. ONCE PER ACTOR PER TRAIN: a train is one
+	// declared action — an Extra Attack's two swings, a multiattack — and an
+	// action is one round.
+	pays := make([]bool, len(units))
+	asked := make(map[MemberID]bool)
 	for i, unit := range units {
+		if unit.worldActor != "" && !asked[unit.worldActor] {
+			asked[unit.worldActor] = true
+			off, ferr := e.onTheWorldClock(unit.worldActor)
+			if ferr != nil {
+				return nil, nil, fmt.Errorf("%s: unit %d: %w", verb, i, ferr)
+			}
+			pays[i] = off
+		}
 		for j, beat := range unit.beats {
 			appended, err := e.appendBeat(&record.AppendInput{
 				At:       uint64(e.clock.ToData().HighWater),
@@ -966,16 +993,35 @@ func (e *Encounter) appendTrainAndNotice(
 	// THE WORLD'S PRICE FOR AN ACTION, paid after the outcome has landed and
 	// before anything else refreshes (design §5, worldtime.go): one round on
 	// the world clock for the actor, and the world thinks on it. Nothing at
-	// all for a member inside a fight, where the round is what prices time.
-	for _, unit := range units {
-		if unit.worldActor == "" {
+	// all for a member that acted inside a fight, where the round is what
+	// prices time, and nothing once an ending the train fired has closed the
+	// story.
+	for i, unit := range units {
+		if e.outcome != nil {
+			break
+		}
+		if !pays[i] {
 			continue
 		}
-		if err := e.spendWorldAction(unit.worldActor); err != nil {
+		if err := e.chargeWorldRound(unit.worldActor); err != nil {
 			return nil, nil, err
 		}
 	}
 	return landed, mergeIntelDeltas(intelDeltas, observed), nil
+}
+
+// onTheWorldClock answers whether a member is outside every fight, so an
+// action it takes is priced in rounds of the world. Empty asks nobody and
+// answers false.
+func (e *Encounter) onTheWorldClock(id MemberID) (bool, error) {
+	if id == "" {
+		return false, nil
+	}
+	bubble, err := e.bubbleFor(id)
+	if err != nil {
+		return false, err
+	}
+	return bubble == nil, nil
 }
 
 // TellConcentrationOutput is what [Encounter.TellConcentration] appended.

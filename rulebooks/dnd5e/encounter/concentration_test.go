@@ -76,10 +76,20 @@ func (s *RecordCastSuite) TestOneHitReadsStruckSavedEndedRemoved() {
 	enc := s.scene(standing)
 	callsBefore := standing.calls
 
+	// The skeleton swings from the world clock, so the train pays its round
+	// of the world after the consult (rpg-project#785 R1), and the round's
+	// own pass asks again. What the round costs is measured on a twin.
+	twinStanding := &countingStanding{}
+	twin := s.scene(twinStanding)
+	twinBefore := twinStanding.calls
+	s.Require().NoError(encounter.ExportedSpendWorldAction(twin, castSkeleton))
+	roundCost := twinStanding.calls - twinBefore
+
 	out, err := recordOne(enc, theSkeletonHits(brokenByDamage()))
 	s.Require().NoError(err)
 	s.Require().Len(out.FollowUpSeqs, 4)
-	s.Equal(callsBefore+1, standing.calls, "noticeDown is consulted once for the whole train")
+	s.Equal(callsBefore+1+roundCost, standing.calls,
+		"noticeDown is consulted once for the whole train, then the round asks its own")
 
 	seqs := append([]uint64{out.Seq}, out.FollowUpSeqs...)
 	for i := 1; i < len(seqs); i++ {
