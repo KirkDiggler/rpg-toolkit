@@ -39,13 +39,19 @@ var (
 	pauseFacingSouth2 = spatial.Position{X: 1, Y: 3}  // the rogue's other pacing cell
 )
 
-// pauseFacingSight lets everyone see twelve cells.
+// pauseFacingSight lets the rogue see twelve cells and the guard six: from
+// his post he does not see her, nine cells off, so she declares unseen
+// (nobody begins to sneak in plain view, sneaking R10 as amended by R11,
+// rpg-project#768), and from the faced waypoint, two cells off, he does.
 type pauseFacingSight struct{}
 
 func (pauseFacingSight) Sight(members []encounter.MemberID) (map[encounter.MemberID]int, error) {
 	out := make(map[encounter.MemberID]int, len(members))
 	for _, id := range members {
 		out[id] = 12
+		if id == pauseFacingGuard {
+			out[id] = 6
+		}
 	}
 
 	return out, nil
@@ -102,7 +108,11 @@ func openThePauseFacingSite(t *testing.T) *sneakSite {
 			Faction: encounter.FactionID(m.Faction), Table: m.Table, Facing: m.FacingDegrees,
 		})
 	}
-	site := &sneakSite{t: t, stealth: &sneakSiteStealth{d20s: []int{20, 20, 20, 20, 20, 20, 20, 20}}}
+	d20s := make([]int, 40)
+	for i := range d20s {
+		d20s[i] = 20
+	}
+	site := &sneakSite{t: t, stealth: &sneakSiteStealth{d20s: d20s}}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field:        compiled.Field,
 		Members:      members,
@@ -185,7 +195,7 @@ func TestPauseFacingSite(t *testing.T) {
 	require.InDelta(t, 180, coneBearing(pauseFacingFaced, pauseFacingSouth), 1e-6, "the rogue stands due south of it")
 
 	out, err := s.enc.SetSneaking(&encounter.SetSneakingInput{Member: pauseFacingRogue, Sneaking: true})
-	require.NoError(t, err)
+	require.NoError(t, err, "out of the guard's sight at his post, the rogue declares")
 	require.True(t, out.Sneaking)
 
 	// THE RULINGS ARE ASKED OF EVERY ROUND OF HIS. The rogue paces between

@@ -264,6 +264,12 @@ var (
 	// own time by the round; an hour inside one is not a thing it can mean.
 	ErrInBubble = errors.New("encounter: already in a bubble")
 
+	// ErrSeen indicates a sneak declared in a watcher's sight: a watcher
+	// holds the mover live or has the mover's cell in its zone (sneaking R10
+	// as amended by the-world-runs R11, rpg-project#768). The error names
+	// the watchers; nothing changed, nothing was rolled or written.
+	ErrSeen = errors.New("encounter: seen")
+
 	// ErrNoBubble is returned when a verb requires a running bubble and
 	// finds none: Transfer names ClockTurn while no fight is running, or
 	// Transfer-to-world, EndTurn, or Dissolve names a member who is on the

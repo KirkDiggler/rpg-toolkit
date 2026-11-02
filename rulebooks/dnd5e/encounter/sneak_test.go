@@ -4,7 +4,8 @@
 package encounter_test
 
 // sneak_test.go is SNEAKING's focused cases (rpg-project#606, rpg-toolkit#1020;
-// design R6–R12): the mode verb and its refusals, the plain-view lost verdict,
+// design R6–R12): the mode verb and its refusals, the plain-view refusal and
+// the declaration's beat (R10 as amended by R11, rpg-project#768),
 // one roll per entry, suppression through the real sight pass, the ghost a won
 // roll leaves, and every verb that shows the sneaker.
 //
@@ -23,7 +24,9 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
+	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -37,6 +40,11 @@ const (
 	sneakDeaf = encounter.MemberID("deaf")
 	// sneakBard is a second player, already fighting the knight.
 	sneakBard = encounter.MemberID("bard")
+	// sneakOnlooker stands beside the rogue and supplies no passive
+	// Perception: it judges no sneak, so a declaration in its sight is not
+	// refused (R10 as amended by R11), and it sees the sneaker by ordinary
+	// sight throughout — the witness a beaten watcher is held against.
+	sneakOnlooker = encounter.MemberID("onlooker")
 )
 
 // The knight sees four cells; the rogue sees everything.
@@ -174,12 +182,13 @@ func (s *SneakSuite) open(opts sneakOptions, script ...bool) {
 	}
 	members = append(members, opts.extra...)
 	sheets := sheetFacts{
-		sneakRogue:  {SpeedFeet: 30, PassivePerception: 12},
-		sneakKnight: {SpeedFeet: opts.knightSpeed, PassivePerception: 10, WatchResetCells: opts.reset},
-		sneakCook:   {PassivePerception: 9},
-		sneakSentry: {PassivePerception: 14},
-		sneakDeaf:   {},
-		sneakBard:   {SpeedFeet: 30, PassivePerception: 11},
+		sneakRogue:    {SpeedFeet: 30, PassivePerception: 12},
+		sneakKnight:   {SpeedFeet: opts.knightSpeed, PassivePerception: 10, WatchResetCells: opts.reset},
+		sneakCook:     {PassivePerception: 9},
+		sneakSentry:   {PassivePerception: 14},
+		sneakDeaf:     {},
+		sneakBard:     {SpeedFeet: 30, PassivePerception: 11},
+		sneakOnlooker: {},
 	}
 	s.caps = encounter.Capabilities{
 		Sight:         s.sight,
@@ -318,6 +327,14 @@ func cook() encounter.MemberInput {
 		Options: []encounter.Option{{ID: "hello", Say: "Hello.", Check: []encounter.CheckApproach{{Ability: "persuasion", DC: 10}}}}}
 }
 
+// onlooker is [sneakOnlooker] where the cook stands, with the cook's line.
+func onlooker() encounter.MemberInput {
+	in := cook()
+	in.ID = sneakOnlooker
+
+	return in
+}
+
 // TestRefusals: the mode is a player's, declared in free roam, on an open run
 // whose resolver can roll it.
 func (s *SneakSuite) TestRefusals() {
@@ -351,33 +368,84 @@ func (s *SneakSuite) TestRefusals() {
 	})
 }
 
-// TestDeclaringInPlainViewIsLost: the cook sees the rogue when the rogue
-// declares, so the pair is lost with no roll and no beat, and the cook keeps
-// holding the rogue (I1: nobody vanishes in plain view).
-func (s *SneakSuite) TestDeclaringInPlainViewIsLost() {
+// TestDeclaringInPlainViewIsRefused: the cook sees the rogue when the rogue
+// declares, so the declaration is refused with ErrSeen naming the cook (R10
+// as amended by R11): the mode does not change, nothing is rolled, nothing
+// is written, no verdict is held, and the cook still sees the rogue.
+func (s *SneakSuite) TestDeclaringInPlainViewIsRefused() {
 	s.open(sneakOptions{extra: []encounter.MemberInput{cook()}})
 	s.Require().True(s.seesLive(sneakCook, sneakRogue))
+	next := s.enc.ToData().Log.NextSeq
 
-	s.sneak(true)
+	out, err := s.enc.SetSneaking(&encounter.SetSneakingInput{Member: sneakRogue, Sneaking: true})
+	s.ErrorIs(err, encounter.ErrSeen)
+	s.ErrorContains(err, string(sneakCook), "the refusal names who sees the rogue")
+	s.NotContains(err.Error(), string(sneakKnight), "and not a watcher that does not")
+	s.Nil(out)
 
-	s.Empty(s.stealth.asked, "nobody rolls to vanish from a creature that sees them")
-	s.Empty(s.snuck(sneakRogue))
-	v, ok := s.verdict(sneakCook)
-	s.Require().True(ok, "the cook's pair holds a verdict")
-	s.Equal(encounter.SneakVerdictData{Beaten: false, Armed: false, InZone: true}, v)
+	s.False(s.enc.Sneaking(sneakRogue), "the mode did not change")
+	s.Empty(s.stealth.asked, "nothing rolled")
+	s.Equal(next, s.enc.ToData().Log.NextSeq, "nothing written")
+	s.Nil(s.enc.ToData().SneakVerdicts, "no verdict held")
 	s.True(s.seesLive(sneakCook, sneakRogue), "the cook still sees the rogue")
+}
 
-	s.walkTo(cellAt(5, 5))
-	s.Empty(s.stealth.asked, "a lost pair does not roll while it stands")
-	s.True(s.seesLive(sneakCook, sneakRogue))
-	_, knight := s.verdict(sneakKnight)
-	s.False(knight, "a watcher that never saw the rogue holds no verdict")
+// TestAnAcceptedDeclarationIsOnTheRecord: unseen, the rogue's declaration is
+// accepted and appends a `sneaking` beat {member, on: true}, the call's
+// first beat (before the refresh's); declaring it off appends {on: false}.
+func (s *SneakSuite) TestAnAcceptedDeclarationIsOnTheRecord() {
+	s.open(sneakOptions{})
+	s.Require().False(s.seesLive(sneakKnight, sneakRogue), "precondition: nobody sees the rogue")
+
+	for _, on := range []bool{true, false} {
+		next := s.enc.ToData().Log.NextSeq
+		s.sneak(on)
+		entries := s.enc.ToData().Log.Entries
+		var first *record.EntryData
+		for i := range entries {
+			if entries[i].Seq >= next {
+				first = &entries[i]
+				break
+			}
+		}
+		s.Require().NotNil(first, "on=%v wrote a beat", on)
+		var body map[string]any
+		s.Require().NoError(json.Unmarshal(first.Payload, &body))
+		s.Equal(map[string]any{"beat": encounter.BeatSneaking, "member": string(sneakRogue), "on": on}, body,
+			"on=%v: the declaration's first beat is the sneaking beat", on)
+		s.Equal(encounter.BeatSneaking, first.Tags["tag"])
+		s.Equal([]core.EntityID{core.EntityID(sneakRogue)}, first.Audience, "the mover's own beat")
+	}
+}
+
+// TestDeclaringOffIsOnTheRecordWherever: off is never refused — in a zone,
+// in plain view — and always writes its beat.
+func (s *SneakSuite) TestDeclaringOffIsOnTheRecordWherever() {
+	s.open(sneakOptions{}, true)
+	s.sneak(true)
+	s.walkTo(sneakInside)
+	s.Require().Len(s.stealth.asked, 1, "precondition: the crossing rolled")
+	before := s.countSneakingBeats()
+	s.sneak(false)
+	s.Equal(before+1, s.countSneakingBeats(), "off inside the knight's zone is written")
+}
+
+// countSneakingBeats is how many `sneaking` beats the record holds.
+func (s *SneakSuite) countSneakingBeats() int {
+	n := 0
+	for _, e := range s.enc.ToData().Log.Entries {
+		if e.Tags["tag"] == encounter.BeatSneaking {
+			n++
+		}
+	}
+
+	return n
 }
 
 // TestDeclaringTheModeHeldIsANoOp: on while on, and off while off, rolls
 // nothing, re-arms nothing, refreshes nothing and writes no beat.
 func (s *SneakSuite) TestDeclaringTheModeHeldIsANoOp() {
-	s.open(sneakOptions{extra: []encounter.MemberInput{cook()}})
+	s.open(sneakOptions{extra: []encounter.MemberInput{onlooker()}})
 	calls, beats := s.sight.calls, s.storyLen()
 	out := s.sneak(false)
 	s.Nil(out.IntelDeltas)
@@ -580,10 +648,16 @@ func (s *SneakSuite) TestASingleObserverPassJudgesOnlyItsObservers() {
 // TestShowingYourselfEndsTheMode: an attack, a cast and a spoken line each
 // end the mode and clear its verdicts (R7).
 func (s *SneakSuite) TestShowingYourselfEndsTheMode() {
-	s.Run("attack", func() {
-		s.open(sneakOptions{extra: []encounter.MemberInput{cook()}})
+	// showing opens the scene with the onlooker, declares, and wins the
+	// crossing into the knight's zone, so the mode holds a verdict to clear.
+	showing := func() {
+		s.open(sneakOptions{extra: []encounter.MemberInput{onlooker()}}, true)
 		s.sneak(true)
+		s.walkTo(sneakInside)
 		s.Require().NotNil(s.enc.ToData().SneakVerdicts)
+	}
+	s.Run("attack", func() {
+		showing()
 		_, err := s.enc.RecordTrain(&encounter.RecordTrainInput{Units: []encounter.TrainUnit{{Outcome: &encounter.RecordInput{
 			Kind: encounter.OutcomeMissed, Actor: sneakRogue, Targets: []encounter.MemberID{sneakKnight},
 			Attack: &encounter.AttackIdentity{Ref: "dnd5e:weapons:dagger", Name: "Dagger", DamageType: "piercing"},
@@ -593,8 +667,7 @@ func (s *SneakSuite) TestShowingYourselfEndsTheMode() {
 		s.Nil(s.enc.ToData().SneakVerdicts)
 	})
 	s.Run("cast", func() {
-		s.open(sneakOptions{extra: []encounter.MemberInput{cook()}})
-		s.sneak(true)
+		showing()
 		_, err := s.enc.RecordCast(&encounter.RecordCastInput{
 			Actor: sneakRogue, Spell: encounter.SpellIdentity{Ref: "dnd5e:spells:minor-illusion", Name: "Minor Illusion"},
 		})
@@ -603,11 +676,12 @@ func (s *SneakSuite) TestShowingYourselfEndsTheMode() {
 		s.Nil(s.enc.ToData().SneakVerdicts)
 	})
 	s.Run("speak", func() {
-		s.open(sneakOptions{extra: []encounter.MemberInput{cook()}})
-		s.sneak(true)
+		showing()
+		// The onlooker stands seven hexes back; this scene is about speech
+		// ending the mode, not about reach.
 		_, err := s.enc.Speak(context.Background(), &encounter.SpeakInput{
-			Range: speakReach,
-			Actor: sneakRogue, Target: sneakCook, OptionID: "hello", Skill: "persuasion",
+			Range: 8,
+			Actor: sneakRogue, Target: sneakOnlooker, OptionID: "hello", Skill: "persuasion",
 			Beaten: true, DC: 10, Total: 15, Roller: rollsLowest{},
 		})
 		s.Require().NoError(err)
@@ -615,9 +689,8 @@ func (s *SneakSuite) TestShowingYourselfEndsTheMode() {
 		s.Nil(s.enc.ToData().SneakVerdicts)
 	})
 	s.Run("exit", func() {
-		s.open(sneakOptions{extra: []encounter.MemberInput{cook()}})
-		s.sneak(true)
-		_, err := s.enc.Exit(&encounter.ExitInput{Member: sneakCook})
+		showing()
+		_, err := s.enc.Exit(&encounter.ExitInput{Member: sneakKnight})
 		s.Require().NoError(err)
 		s.True(s.enc.Sneaking(sneakRogue), "a watcher leaving ends nobody's mode")
 		s.Nil(s.enc.ToData().SneakVerdicts, "but no verdict names a member who left")
@@ -674,28 +747,28 @@ func (s *SneakSuite) TestAnUnsuppliedPassiveJudgesNoSneak() {
 // TestABeatenWatcherWitnessesNothingTheSneakerDoes: suppression is one answer
 // to "does this watcher see this member" (lead ruling on rpg-toolkit#2078).
 // The rogue beat the knight and opens a shut door inside the knight's zone:
-// the door's beat — whose audience must see its actor — goes to the cook,
-// whose pair is lost, and not to the knight; a pointed SeesWithin answers the
-// same way.
+// the door's beat — whose audience must see its actor — goes to the
+// onlooker, who sees by ordinary sight, and not to the knight; a pointed
+// SeesWithin answers the same way.
 func (s *SneakSuite) TestABeatenWatcherWitnessesNothingTheSneakerDoes() {
-	s.open(sneakOptions{sideDoor: true, knightSight: 6, extra: []encounter.MemberInput{cook()}}, true)
+	s.open(sneakOptions{sideDoor: true, knightSight: 6, extra: []encounter.MemberInput{onlooker()}}, true)
 	s.sneak(true)
 	s.walkTo(sneakInside)
 	s.Require().Len(s.stealth.asked, 1)
 	v, _ := s.verdict(sneakKnight)
 	s.Require().True(v.Beaten)
-	cookPair, _ := s.verdict(sneakCook)
-	s.Require().False(cookPair.Beaten, "the cook saw the declaration: its pair is lost")
+	_, judged := s.verdict(sneakOnlooker)
+	s.Require().False(judged, "the onlooker judges no sneak")
 
 	seen, known := s.enc.SeesWithin(sneakKnight, sneakRogue, 1000)
 	s.True(known)
 	s.False(seen, "the knight does not see the rogue it was beaten by")
-	seen, _ = s.enc.SeesWithin(sneakCook, sneakRogue, 1000)
+	seen, _ = s.enc.SeesWithin(sneakOnlooker, sneakRogue, 1000)
 	s.True(seen)
 
 	_, err := s.enc.OpenDoor(&encounter.OpenDoorInput{Door: sneakSideDoor, Actor: sneakRogue})
 	s.Require().NoError(err)
-	s.True(s.toldDoor(sneakCook), "the cook watched the rogue open it")
+	s.True(s.toldDoor(sneakOnlooker), "the onlooker watched the rogue open it")
 	s.False(s.toldDoor(sneakKnight), "the knight is no witness of what the rogue does")
 }
 
@@ -716,10 +789,10 @@ func (s *SneakSuite) toldDoor(audience encounter.MemberID) bool {
 
 // TestABeatenWatcherWitnessesNoDeed: the deed and equip audiences ask the same
 // sight answer as the pass (lead ruling on rpg-toolkit#2078). The rogue beat
-// the knight and draws a dagger in its zone: the cook, whose pair is lost,
-// sees the draw; the knight does not.
+// the knight and draws a dagger in its zone: the onlooker, who sees by
+// ordinary sight, sees the draw; the knight does not.
 func (s *SneakSuite) TestABeatenWatcherWitnessesNoDeed() {
-	s.open(sneakOptions{extra: []encounter.MemberInput{cook()}}, true)
+	s.open(sneakOptions{extra: []encounter.MemberInput{onlooker()}}, true)
 	s.sneak(true)
 	s.walkTo(sneakInside)
 	v, _ := s.verdict(sneakKnight)
@@ -728,7 +801,7 @@ func (s *SneakSuite) TestABeatenWatcherWitnessesNoDeed() {
 	out, err := s.enc.RecordEquip(&encounter.RecordEquipInput{Member: sneakRogue, Slot: "main_hand", Drawn: "dnd5e:weapons:dagger"})
 	s.Require().NoError(err)
 	s.Contains(out.Audience, sneakRogue)
-	s.Contains(out.Audience, sneakCook)
+	s.Contains(out.Audience, sneakOnlooker)
 	s.NotContains(out.Audience, sneakKnight, "the knight the rogue beat does not see the draw")
 	s.True(s.enc.Sneaking(sneakRogue), "drawing a blade is not showing yourself")
 }
@@ -766,8 +839,9 @@ func (s *SneakSuite) TestSpeakingToABeatenWatcherIsHeard() {
 // TestExitingWhileSneakingLeavesNoVerdict: the sneaker leaving ends the mode
 // and drops every verdict it held, so the run it leaves still loads.
 func (s *SneakSuite) TestExitingWhileSneakingLeavesNoVerdict() {
-	s.open(sneakOptions{extra: []encounter.MemberInput{cook()}})
+	s.open(sneakOptions{}, true)
 	s.sneak(true)
+	s.walkTo(sneakInside)
 	s.Require().NotNil(s.enc.ToData().SneakVerdicts)
 	_, err := s.enc.Exit(&encounter.ExitInput{Member: sneakRogue})
 	s.Require().NoError(err)

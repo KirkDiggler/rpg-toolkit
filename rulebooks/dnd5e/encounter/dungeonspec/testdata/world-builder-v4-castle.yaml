@@ -78,8 +78,10 @@
 # door into the great hall is LOCKED: thieves' tools at DC 13 pick it
 # silently, Strength at DC 15 forces it and crashes. The hall guard walks a
 # loop across the great hall between the kitchen door and the throne door.
-# A party that declares sneaking in the kitchen, picks the door and crosses
-# the hall past him reaches the throne door unseen
+# A party that picks the door, declares sneaking in the hall's corner south
+# of it (the cook and the scullion see every cell of the kitchen, and nobody
+# begins to sneak in sight: sneaking R10 as amended by R11, rpg-project#768)
+# and crosses the hall past him reaches the throne door unseen
 # (castle_king_kitchen_test.go). Every other route out of the kitchen picks
 # the lock first.
 #
@@ -109,7 +111,7 @@
 # sneaking behind the corner wall inside the gate, unseen, crosses to the gate
 # while both gate guards stand at their beat posts and is rolled against by
 # nobody; at their door posts the crossing rolls. Declaring in plain sight
-# does nothing (sneaking R10). Fighting the gate guards brings nobody: the
+# is refused (sneaking R10 as amended by R11). Fighting the gate guards brings nobody: the
 # far room's two guards, the reserves in the barracks, are the garrison's
 # and arrive only when the gate opens (`gate-opened`), walking to the gate
 # civil on the troupe route and hostile after a fight. These pieces were

@@ -95,6 +95,13 @@ func (w *world) speak(in encounter.SpeakInput) error {
 	return err
 }
 
+// sneak is one SetSneaking.
+func (w *world) sneak(member encounter.MemberID, on bool) error {
+	_, err := w.enc.SetSneaking(&encounter.SetSneakingInput{Member: member, Sneaking: on})
+
+	return err
+}
+
 // openDoor is one OpenDoor.
 func (w *world) openDoor(door encounter.DoorID, actor encounter.MemberID) error {
 	_, err := w.enc.OpenDoor(&encounter.OpenDoorInput{Door: door, Actor: actor})

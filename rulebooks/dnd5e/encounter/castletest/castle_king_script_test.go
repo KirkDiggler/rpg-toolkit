@@ -13,7 +13,7 @@ package castletest
 //  3. With the fact, the troupe talks its way in; without it, the line is not
 //     offered.
 //  4. Without it, sneak at the front door: the gate patrol leaves a window.
-//  5. Sneaking in plain sight does nothing.
+//  5. Sneaking in plain sight is refused (R11, rpg-project#768).
 //  6. Fight the gate guards: nobody comes.
 //  7. Open the gate: the far room answers.
 //
@@ -70,7 +70,8 @@ var (
 	// theCorner is the cell behind the corner wall, in the gatehouse's
 	// north-west: out of the gate's sight, so a party that walked in civil
 	// declares sneaking there unseen. The gatehouse is otherwise one open
-	// room, and a watcher who holds the party live judges a declaration lost.
+	// room, and a declaration a watcher sees is refused (sneaking R10 as
+	// amended by R11, rpg-project#768).
 	theCorner = castleCell(-3, 7)
 
 	// besideTheCorner is the floor just south of the corner, where a party
@@ -148,6 +149,31 @@ func (s *kingScene) stepTo(to spatial.Position) {
 		require.NoError(s.t, err, "the hero steps onto %v", to)
 	}
 	require.Equal(s.t, to, s.at(hero))
+}
+
+// declareBehindTheCorner steps the hero to [theCorner] and declares it
+// sneaking there, stepping out beside the corner and back while a patrol
+// that looks round the corner refuses it: a refused declaration changes
+// nothing, so it is simply made again.
+func (s *kingScene) declareBehindTheCorner() {
+	s.t.Helper()
+	s.stepTo(besideTheCorner)
+	_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: theCorner, EndWalk: true})
+	require.NoError(s.t, err)
+	for i := 0; i < 40; i++ {
+		_, err := s.enc.SetSneaking(&encounter.SetSneakingInput{Member: hero, Sneaking: true})
+		if err == nil {
+			return
+		}
+		require.ErrorIs(s.t, err, encounter.ErrSeen)
+		for _, to := range []spatial.Position{besideTheCorner, theCorner} {
+			round := s.enc.ToData().Clock.HighWater
+			_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: to, EndWalk: true})
+			require.NoError(s.t, err)
+			s.reloadOnRound(round)
+		}
+	}
+	require.FailNow(s.t, "the hero found the corner unwatched")
 }
 
 // pace walks the hero out and back between two adjacent cells, a cell per
@@ -430,8 +456,8 @@ func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 	t.Run("every loop the cell under the gate is watched, then unwatched two rounds running", func(t *testing.T) {
 		t.Parallel()
 		s := openTheScript(t, gatehouseSeat, scriptStealth())
+		s.declareBehindTheCorner()
 		s.stepTo(besideTheCorner)
-		s.declare(hero)
 
 		// watch is one round's reading of the cell under the gate: whether
 		// each gate guard's zone holds it.
@@ -575,35 +601,31 @@ func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 	})
 }
 
-// TestMadKingScriptSneakingInPlainSightDoesNothing is piece 5: declared in
-// the gatehouse, inside the gate's zones,
-// sneaking appends no beat, rolls nothing and turns nobody (sneaking R10: a
-// declaration in plain view is a lost verdict, unrolled).
-func TestMadKingScriptSneakingInPlainSightDoesNothing(t *testing.T) {
+// TestMadKingScriptSneakingInPlainSightIsRefused is piece 5: declared in
+// the gatehouse, in the gate's sight, sneaking is refused with ErrSeen
+// naming the gate's watchers (sneaking R10 as amended by R11,
+// rpg-project#768: "if anyone can see you you cannot go into sneaking"): the
+// mode does not change, no beat is written, nothing rolls and nobody turns.
+func TestMadKingScriptSneakingInPlainSightIsRefused(t *testing.T) {
 	t.Parallel()
 	stealth := scriptStealth()
 	s := openTheScript(t, gatehouseSeat, stealth)
 	before := s.enc.ToData().Log.NextSeq
 
 	out, err := s.enc.SetSneaking(&encounter.SetSneakingInput{Member: hero, Sneaking: true})
-	require.NoError(t, err)
-	require.True(t, out.Sneaking)
-	require.Nil(t, out.Formed)
-
-	inZone := false
-	for _, z := range zonesOf(t, s.enc, hero) {
-		inZone = inZone || cellSet(z.Cells)[s.at(hero)]
+	require.ErrorIs(t, err, encounter.ErrSeen)
+	require.Nil(t, out)
+	for _, watcher := range []encounter.MemberID{kingCaptain, kingGate1, kingGate2} {
+		require.ErrorContains(t, err, string(watcher), "the refusal names %s", watcher)
 	}
-	require.True(t, inZone, "precondition: the hero stands inside a watcher's zone")
 
+	require.False(t, s.enc.Sneaking(hero), "the mode did not change")
+	require.Empty(t, zonesOf(t, s.enc, hero), "not sneaking: no red floor")
 	require.Equal(t, before, s.enc.ToData().Log.NextSeq, "no beat")
 	require.Empty(t, stealth.asked, "nothing rolled")
+	require.Nil(t, s.enc.ToData().SneakVerdicts, "no verdict held")
 	require.Equal(t, encounter.StanceNeutral, s.stance(garrison, encounter.FactionParty), "no stance changed")
 	require.Equal(t, encounter.StanceNeutral, s.stance(townsfolk, encounter.FactionParty))
-	for watcher, v := range s.enc.ToData().SneakVerdicts[hero] {
-		require.False(t, v.Beaten, "%s holds a lost verdict", watcher)
-		require.False(t, v.Armed, "%s's pair does not roll", watcher)
-	}
 }
 
 // TestMadKingScriptFightBringsNobody is piece 6: the hero spears a gate guard,

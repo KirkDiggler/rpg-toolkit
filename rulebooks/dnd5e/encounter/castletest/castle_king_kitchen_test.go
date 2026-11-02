@@ -4,9 +4,18 @@
 package castletest
 
 // castle_king_kitchen_test.go is THE KITCHEN DOOR (rpg-project#606, sneaking
-// S1; the mad king use case §3, "Kitchen door"): the party declares sneaking
-// in the kitchen, picks the locked kitchen door, and crosses the great hall
-// past the hall guard's patrol to the throne door, unseen.
+// S1; the mad king use case §3, "Kitchen door"): the party picks the locked
+// kitchen door, declares sneaking in the great hall's corner south of it,
+// and crosses the hall past the hall guard's patrol to the throne door,
+// unseen.
+//
+// NOBODY BEGINS TO SNEAK IN THE KITCHEN (sneaking R10 as amended by the
+// world-runs R11, rpg-project#768: "if anyone can see you you cannot go into
+// sneaking"). The cook and the scullion see every cell of the kitchen, so a
+// declaration there is refused; the use case's "declare in the kitchen" is
+// now a declaration in the hall's corner, out of the kitchen's sight through
+// the open door and out of the hall guard's while he walks the throne
+// door's end of his loop. A finding for the content, stated on the PR.
 //
 // THE HALL GUARD IS THE GARRISON'S, AND THE GARRISON IS CIVIL to a party it
 // has not recognized. So being seen by him forms no fight: what sneaking buys
@@ -49,6 +58,12 @@ var pastTheThroneDoor = castleCell(0, -17)
 
 // pastTheKitchenDoor is the great hall's cell past the kitchen door.
 var pastTheKitchenDoor = castleCell(-14, -12)
+
+// theHallCorner is the great hall's floor south of the kitchen door: out of
+// the kitchen's sight through the open door, and out of the hall guard's
+// while he walks the throne door's end of his loop. Where a party that
+// picked the kitchen door declares sneaking unseen.
+var theHallCorner = castleCell(-11, -8)
 
 // partyStealth is each party member's scripted Stealth: a modifier and one
 // d20 per roll, decided against the DC handed in, as the session's check
@@ -145,12 +160,28 @@ func (s *kingScene) declare(who encounter.MemberID) {
 	require.True(s.t, out.Sneaking)
 }
 
-// TestMadKingKitchenDoorSneaksPastTheHall is the kitchen-door route: both
-// party members declare sneaking in the kitchen, the rogue picks the locked
-// door, and the party crosses the great hall to the throne door while the
-// hall guard walks his loop. Every entry into his zone rolls once per party
-// member; the 15s beat his passive 10, so no sighting of either lands, no
-// fight forms, and the party stands at the throne door.
+// declareInTheHallCorner walks each party member, not sneaking, from the
+// picked kitchen door to [theHallCorner] and declares it there, the hall
+// guard holding nobody before or after.
+func (s *kingScene) declareInTheHallCorner(who ...encounter.MemberID) {
+	s.t.Helper()
+	for _, m := range who {
+		s.walkMember(m, theHallCorner, false)
+	}
+	s.hallGuardHoldsNobody()
+	for _, m := range who {
+		s.declare(m)
+	}
+	s.hallGuardHoldsNobody()
+}
+
+// TestMadKingKitchenDoorSneaksPastTheHall is the kitchen-door route: the
+// rogue picks the locked door, both party members declare sneaking in the
+// hall's corner, and the party crosses the great hall to the throne door
+// while the hall guard walks his loop. Each party member is rolled once
+// against the hall guard and once against the cook, whose sight reaches
+// through the open door; the 15s beat both passives of 10, so no sighting
+// of either lands, no fight forms, and the party stands at the throne door.
 //
 // THE MUTATION IT KILLS: the same walk with nobody sneaking — the subtest
 // below — lands the hall guard's sighting of the party.
@@ -159,13 +190,16 @@ func TestMadKingKitchenDoorSneaksPastTheHall(t *testing.T) {
 	t.Run("sneaking", func(t *testing.T) {
 		t.Parallel()
 		s, stealth := kitchenParty(t)
-		s.declare(hero)
-		s.declare(kingFighter)
-		require.Empty(t, stealth.asked, "the kitchen door is shut: no watcher's zone holds the party yet")
+		for _, who := range []encounter.MemberID{hero, kingFighter} {
+			_, err := s.enc.SetSneaking(&encounter.SetSneakingInput{Member: who, Sneaking: true})
+			require.ErrorIs(t, err, encounter.ErrSeen, "the kitchen staff see %s declare", who)
+		}
 
 		s.walkTo(pastTheKitchenDoor)
 		s.pickTheKitchenDoor()
 		s.hallGuardHoldsNobody()
+		s.declareInTheHallCorner(hero, kingFighter)
+		require.Empty(t, stealth.asked, "nobody sees the corner: nothing rolled yet")
 		s.walkMember(hero, pastTheThroneDoor, true)
 		s.walkMember(kingFighter, pastTheThroneDoor, true)
 
@@ -178,11 +212,16 @@ func TestMadKingKitchenDoorSneaksPastTheHall(t *testing.T) {
 		rolled := map[encounter.MemberID]int{}
 		for _, in := range stealth.asked {
 			require.Equal(t, []encounter.CheckApproach{{Ability: "stealth", DC: 10}}, in.Approaches,
-				"every roll is against the hall guard's passive 10")
+				"every roll is against a passive of 10")
 			rolled[in.Member]++
 		}
-		require.Equal(t, 1, rolled[hero], "the rogue entered the hall guard's zone once")
-		require.Equal(t, 1, rolled[kingFighter], "and so did the fighter")
+		for _, who := range []encounter.MemberID{hero, kingFighter} {
+			require.Equal(t, 2, rolled[who], "%s entered two zones once each", who)
+			verdicts := s.enc.ToData().SneakVerdicts[who]
+			for _, watcher := range []encounter.MemberID{kingHall1, kingCook} {
+				require.True(t, verdicts[watcher].Beaten, "%s beat %s", who, watcher)
+			}
+		}
 	})
 
 	t.Run("without sneaking the hall guard sees the party", func(t *testing.T) {

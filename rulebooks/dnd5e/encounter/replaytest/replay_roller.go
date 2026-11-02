@@ -24,12 +24,14 @@
 //   - initiative and the driven swing are host rolls the record carries
 //     the result of (`bubble-formed`'s order; a swing's act-tagged
 //     `struck`/`missed`), and the replay's host reads them back from it;
-//   - a player's outcomes, falls and lines are verbs, read off the record;
-//   - check verdicts and concealed-door perceivers are not exercised: the
-//     routes ask none, and the tests' host refuses if asked;
+//   - a player's outcomes, falls, lines and sneak declarations are verbs,
+//     read off the record (a declaration's `sneaking` beat);
+//   - a sneak roll is a host check whose verdict the record carries (its
+//     `snuck` beat), read back the same way; concealed-door perceivers are
+//     not exercised, and the tests' host refuses if asked;
 //   - sight, sheets, equipment and conditions are the host's static facts,
 //     the same content both times, not rolls;
-//   - a sneak declaration and Speak's reach are not on the record at all.
+//   - Speak's reach is not on the record at all.
 package replaytest
 
 import (

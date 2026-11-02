@@ -31,19 +31,23 @@ import (
 )
 
 // host is the collaborators that roll: the world's die, the host's driven
-// swing and the host's initiative.
+// swing, the host's initiative and the host's Stealth.
 type host struct {
 	die        dice.Roller
 	striker    encounter.Striker
 	initiative encounter.InitiativeRoller
+	check      encounter.CheckResolver
 }
 
 // rollingHost is a played run's host: the world's die given, and the host's
-// own swings and initiative on a crypto die of their own.
+// own swings, initiative and Stealth on a crypto die of their own.
 func rollingHost(world dice.Roller) host {
 	own := dice.NewRoller()
 
-	return host{die: world, striker: rollingStriker{die: own}, initiative: shuffledInitiative{die: own}}
+	return host{
+		die: world, striker: rollingStriker{die: own}, initiative: shuffledInitiative{die: own},
+		check: hostStealth{die: own},
+	}
 }
 
 // recordHost is a replay's host: the world's die and the host's answers all
@@ -51,7 +55,10 @@ func rollingHost(world dice.Roller) host {
 func recordHost(t *testing.T, world dice.Roller, log []record.EntryData) host {
 	t.Helper()
 
-	return host{die: world, striker: newRecordStriker(t, log), initiative: newRecordInitiative(t, log)}
+	return host{
+		die: world, striker: newRecordStriker(t, log), initiative: newRecordInitiative(t, log),
+		check: newRecordStealth(t, log),
+	}
 }
 
 // recordInitiative answers each fight's initiative with the order the
@@ -157,13 +164,16 @@ func (r *recordStriker) Strike(
 }
 
 // remaining is how many of the record's host answers the replay did not use.
-func (h host) remaining() (swings, fights int) {
+func (h host) remaining() (swings, fights, sneaks int) {
 	if s, ok := h.striker.(*recordStriker); ok {
 		swings = len(s.swing) - s.next
 	}
 	if i, ok := h.initiative.(*recordInitiative); ok {
 		fights = len(i.orders) - i.next
 	}
+	if c, ok := h.check.(*recordStealth); ok {
+		sneaks = len(c.rolls) - c.next
+	}
 
-	return swings, fights
+	return swings, fights, sneaks
 }

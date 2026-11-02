@@ -32,16 +32,18 @@ package replaytest_test
 //   - Who is down (standing): the `down` beats after a player's outcome.
 //     The run's driven swings fell nobody, so a fall the HOST scores for a
 //     driven swing is not exercised.
-//   - Check resolver and witness (asksNoCheck, perceivesNothingAsked):
-//     outside the record, and unasked. These routes make no check and open
-//     no concealed door, and both refuse if asked. Whether the record
-//     carries a check's verdict (`snuck`, `discovery_checked` carry dc,
-//     total and beaten) is for a route that asks one.
+//   - Stealth (recordStealth, record_check_test.go): each sneak roll's
+//     `snuck` beat, DC, total and verdict. The record carries the verdict,
+//     not the d20. Any other check is unasked, and refused if asked.
+//   - Witness (perceivesNothingAsked): outside the record, and unasked.
+//     These routes open no concealed door, and it refuses if asked.
 //   - Sight, sheets, equipment, conditions, mover and announcer: the host's
 //     static facts and listeners, the same content both times.
-//   - Not on the record at all: a sneak declaration (sneaking R10 writes
-//     no beat), so the script's sneaking pieces are not replayed; and
-//     Speak's reach, the host's constant.
+//   - Not on the record at all: Speak's reach, the host's constant. A
+//     sneak declaration is: an accepted one writes a `sneaking` beat
+//     (sneaking R10 as amended by R11, rpg-project#768), and a refused one
+//     changes nothing, so a replay that never re-issues it lands the same
+//     log.
 //
 // IDS ARE MINTED, NOT ROLLED. A record id (and the correlation and act tag
 // built from one) is a ULID off the wall clock; the replay mints its own.
@@ -93,6 +95,7 @@ type verbBody struct {
 	Critical bool               `json:"critical"`
 	Attack   *attackOnTheRecord `json:"attack"`
 	Calc     *json.RawMessage   `json:"calculation"`
+	On       *bool              `json:"on"`
 }
 
 // attackOnTheRecord is an outcome beat's attack identity.
@@ -111,7 +114,8 @@ type attackOnTheRecord struct {
 //   - `door` by a player is the door verb that left the door in that state;
 //   - a player's own outcome (`struck`, `missed`) is a RecordTrain unit, and
 //     each `down` beat that follows it is a fall the host scored first;
-//   - `turn-ended` of a player is an EndTurn.
+//   - `turn-ended` of a player is an EndTurn;
+//   - `sneaking` of a player is a SetSneaking to the mode it names.
 //
 // A player's beat of any other kind is a verb this decoder cannot re-issue,
 // and fails the test by name: the record is then missing what the replay
@@ -157,6 +161,12 @@ func verbsOf(t *testing.T, entries []record.EntryData, players map[encounter.Mem
 		case b.Beat == encounter.BeatTurnEnded && players[member]:
 			out = append(out, verb{entry.Seq, fmt.Sprintf("EndTurn %s", member), func(w *world) error {
 				return w.endTurn(member)
+			}})
+		case b.Beat == encounter.BeatSneaking && players[member]:
+			require.NotNil(t, b.On, "sneaking beat seq %d names the mode", entry.Seq)
+			on := *b.On
+			out = append(out, verb{entry.Seq, fmt.Sprintf("SetSneaking %s %v", member, on), func(w *world) error {
+				return w.sneak(member, on)
 			}})
 		case b.Beat == encounter.BeatMoved, b.Beat == encounter.BeatSpoke, b.Beat == encounter.BeatDoor,
 			b.Beat == encounter.BeatTurnEnded:
@@ -211,7 +221,7 @@ func fallsAfter(t *testing.T, rest []record.EntryData, players map[encounter.Mem
 // isVerbBeat is whether a beat is one [verbsOf] reads as a player's verb.
 func isVerbBeat(b verbBody, players map[encounter.MemberID]bool) bool {
 	switch b.Beat {
-	case encounter.BeatMoved, encounter.BeatTurnEnded:
+	case encounter.BeatMoved, encounter.BeatTurnEnded, encounter.BeatSneaking:
 		return players[encounter.MemberID(b.Member)]
 	case encounter.BeatSpoke, encounter.BeatDoor, string(encounter.OutcomeStruck), string(encounter.OutcomeMissed):
 		return players[encounter.MemberID(b.Actor)]
@@ -324,18 +334,38 @@ func canonical(entries []record.EntryData) []string {
 // same log with every recorded roll read back.
 func replayRun(t *testing.T, open opener, play func(w *world)) []record.EntryData {
 	t.Helper()
-	die := newCountingDie()
-	run := openWorld(t, open, rollingHost(die))
-	play(run)
-	original := run.enc.ToData().Log.Entries
+
+	return replayRunUntil(t, open, play, 1, nil)
+}
+
+// replayRunUntil is [replayRun] of the first of up to tries played runs
+// whose log carries what the test needs (nil: any run), for a claim the
+// host's crypto die can deny one run: a driven hit, say.
+func replayRunUntil(
+	t *testing.T, open opener, play func(w *world), tries int, carries func([]record.EntryData) bool,
+) []record.EntryData {
+	t.Helper()
+	var die *countingDie
+	var original []record.EntryData
+	for try := 0; try < tries; try++ {
+		die = newCountingDie()
+		run := openWorld(t, open, rollingHost(die))
+		play(run)
+		original = run.enc.ToData().Log.Entries
+		if carries == nil || carries(original) {
+			break
+		}
+		require.Less(t, try, tries-1, "none of %d played runs carried what the test needs", tries)
+	}
 
 	requireEveryRollOnTheRecord(t, die, original)
 	got := replay(t, open, original)
 	requireSameLog(t, original, got.log)
 	require.Zero(t, got.roller.Remaining(), "the replay reads back every roll the record holds")
-	swings, fights := got.host.remaining()
+	swings, fights, sneaks := got.host.remaining()
 	require.Zero(t, swings, "the replay lands every driven swing the record holds")
 	require.Zero(t, fights, "the replay forms every fight the record holds")
+	require.Zero(t, sneaks, "the replay rolls every sneak the record holds")
 
 	return original
 }
@@ -357,12 +387,16 @@ func countBeats(t *testing.T, log []record.EntryData, kind string) int {
 // outcomes the host's striker landed.
 func countDrivenSwings(t *testing.T, log []record.EntryData) int {
 	t.Helper()
+
+	return countDriven(t, log, encounter.OutcomeStruck) + countDriven(t, log, encounter.OutcomeMissed)
+}
+
+// countDriven is how many driven swings of one outcome a log holds.
+func countDriven(t testing.TB, log []record.EntryData, kind encounter.OutcomeKind) int {
+	t.Helper()
 	n := 0
 	for _, e := range log {
-		if !strings.HasPrefix(e.Tags["act"], "attack:") {
-			continue
-		}
-		if kind := beatOf(t, e.Payload); kind == string(encounter.OutcomeStruck) || kind == string(encounter.OutcomeMissed) {
+		if strings.HasPrefix(e.Tags["act"], "attack:") && beatOf(t, e.Payload) == string(kind) {
 			n++
 		}
 	}
@@ -370,15 +404,16 @@ func countDrivenSwings(t *testing.T, log []record.EntryData) int {
 	return n
 }
 
+// drivenHitsTries is how many fights the fight route may play before one
+// lands a driven hit: each swing hits on an 11 or better, so a run of the
+// route's swings missing every time is rare, and eight such runs rarer.
+const drivenHitsTries = 8
+
 // TestReplay_CastleGateScript replays the QA castle's script
 // (castletest's castle_king_script_test.go) from its record: the routes
 // through the gate that the record can name every verb of.
 //
-// The script's two sneaking pieces (4, 5) are not here: a sneak declaration
-// writes no beat (sneaking R10: a declaration in plain view is a lost
-// verdict, unrolled and unwritten), so the record does not name the verb,
-// and a replay that guessed where it was declared would be a script, not a
-// replay. It is the slice's finding (rpg-project#775).
+// The script's two sneaking pieces (4, 5) are [TestReplay_CastleSneakPieces].
 func TestReplay_CastleGateScript(t *testing.T) {
 	t.Parallel()
 
@@ -427,7 +462,11 @@ func TestReplay_CastleGateScript(t *testing.T) {
 				Values: map[encounter.OutcomeValue]int{encounter.ValueAmount: 6},
 			}
 		}
-		log := replayRun(t, castleOpener(gatehouseSeat), func(w *world) {
+		// A RUN WITH A DRIVEN HIT (rpg-toolkit#2229 review): a run whose
+		// swings all missed would pass a replay that read back no swing's
+		// kind or amount, so the route plays until one hit lands.
+		hit := func(log []record.EntryData) bool { return countDriven(t, log, encounter.OutcomeStruck) > 0 }
+		log := replayRunUntil(t, castleOpener(gatehouseSeat), func(w *world) {
 			require.NoError(t, w.strike(struck(kingGate1), nil))
 			require.True(t, w.fighting(hero), "the fight forms at the gate")
 			for i := 0; i < 3; i++ {
@@ -443,9 +482,10 @@ func TestReplay_CastleGateScript(t *testing.T) {
 			}
 			require.NoError(t, w.openDoor(kingGateDoor, hero))
 			w.pace(hero, beneathTheGate, besideTheGate, 3)
-		})
+		}, drivenHitsTries, hit)
 		require.Equal(t, 3, countBeats(t, log, string(encounter.OutcomeDown)), "precondition: three fell")
 		require.Positive(t, countDrivenSwings(t, log), "precondition: driven attacks swung")
+		require.Positive(t, countDriven(t, log, encounter.OutcomeStruck), "precondition: a driven swing hit")
 		require.Positive(t, countBeats(t, log, encounter.BeatFightStarted), "precondition: a fight formed on the host's initiative")
 		require.Equal(t, 2, countBeats(t, log, encounter.BeatArrived), "precondition: the far room arrived")
 	})

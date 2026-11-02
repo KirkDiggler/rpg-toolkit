@@ -43,7 +43,10 @@ func TestMadKingGateGuardsDwellWatchingTheApproach(t *testing.T) {
 		at: gatehouseSeat, resolver: stealth, arcs: map[encounter.MemberID]int{kingGate1: 120, kingGate2: 120},
 	})
 	require.Equal(t, "Gatehouse", labelOf(t, theDoorway), "precondition: the doorway's inner cell is the gatehouse's")
-	s.declare(hero)
+	// Nobody begins to sneak in the gate's sight (R11): the hero declares
+	// behind the corner and comes back to the gatehouse floor.
+	s.declareBehindTheCorner()
+	s.stepTo(inTheGatehouse)
 	here := s.at(hero)
 	beside := spatial.Position{X: here.X - 1, Y: here.Y}
 
