@@ -298,15 +298,11 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 	if ClockKind(clock.Kind) == ClockTurn && string(clock.Active) != in.Member {
 		return nil, fmt.Errorf("cast: member %q: %w", in.Member, ErrNotYourTurn)
 	}
-	if ClockKind(clock.Kind) != ClockTurn {
-		// There are no world-clock casts. Afford returns no declarations
-		// there at all, so every selector is stale by construction — and an
-		// empty one is still the caller's omission rather than a stale offer.
-		if in.DeclarationID == "" {
-			return nil, fmt.Errorf("cast: %w", ErrNoDeclarationID)
-		}
-		return nil, fmt.Errorf("cast: %w", ErrStaleDeclaration)
-	}
+	// THE WORLD CLOCK IS A PLACE TO ACT (rpg-project#785, R1): the same
+	// declaration, selection and resolution as on the turn clock, priced out
+	// of the one round the sheet is lent (worldround.go), which is taken back
+	// before the sheet is written.
+	lendWorldRound(scope, in.Member, clock)
 
 	// Loaded strictly ONCE, so standing and every piece of the regenerated
 	// offer come from the same repository snapshot.

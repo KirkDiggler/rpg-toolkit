@@ -213,7 +213,7 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		if err = refuseIfDown(scope, "member", in.Member); err != nil {
 			return nil, fmt.Errorf("move: %w", err)
 		}
-		// Afford deliberately returns no world-clock declarations. Empty is the
+		// Afford deliberately offers no world-clock Move row. Empty is the
 		// only valid selector there; a non-empty ID left over from a dissolved
 		// fight must not turn into a free move.
 		if in.DeclarationID != "" {

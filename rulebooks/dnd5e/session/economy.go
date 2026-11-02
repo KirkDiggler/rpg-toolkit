@@ -29,8 +29,9 @@ import (
 // leaves behind. Handing the door the price while handing the cast the sheet as
 // it was stored would charge a bank nobody looked at.
 //
-// Both fields are nil in free roam, which is a price of nothing rather than a
-// missing one. See [Manager.priceSwing].
+// Both fields are set on either clock: on the world clock the price is drawn
+// from the one round lent to the action (worldround.go). See
+// [Manager.priceSwing].
 type swingPrice struct {
 	// cost is what the door charges, or nil to charge nothing.
 	cost *resolution.Cost
@@ -43,19 +44,16 @@ type swingPrice struct {
 // priceSwing works out what this swing costs its attacker, and readies the
 // sheet the door will charge for it.
 //
-// # Free roam charges nothing, and that is a ruling rather than a gap
+// # Free roam charges one lent round, and that is R1 (rpg-project#785)
 //
-// The action economy is a FIGHT's economy. That is not this package's opinion:
-// [combat.Ledger] opens with InCombat and refuses every payment from a holder
-// who is not in one, and a character on the world clock has no turn to spend a
-// turn's slots from. So a swing off the turn clock is passed no cost at all,
-// which is the same thing the verb did before this file existed.
-//
-// The alternative was tried on paper and is worse in a way worth recording: a
-// cost handed over in free roam is refused by the gate with "not in combat", so
-// every free-roam swing in the package — the duel every other test in this
-// suite is built on — would stop working. Charging nothing where there is no
-// economy is the honest reading of the same fact.
+// The action economy is a FIGHT's economy: [combat.Ledger] refuses every
+// payment from a holder with none. This used to mean a free-roam swing was
+// passed no cost at all, which was a fine answer while there was no free-roam
+// swing to price. The world clock is now a place to act (R1: one round of the
+// world per action), so the swing is priced exactly as in a fight, out of the
+// one fresh round [readyForClock] lends the action; the round is taken back
+// before the sheet is written, and the encounter charges the world its round
+// when the outcome lands.
 //
 // # The turn number is the round, and it is READ rather than invented
 //
@@ -86,24 +84,24 @@ type swingPrice struct {
 // conditions can be asked is still above this seam — but it is no longer
 // theoretical, and the day it is closed this comment is where to start.
 //
-// It takes the encounter rather than a *writeScope so a read verb can call it
-// too ([Manager.Afford] does): pricing a swing commits nothing on its own, and
-// a signature that could only be handed a write scope would say otherwise.
+// It takes the clock the caller already read rather than a *writeScope so a
+// read verb can call it too ([Manager.Afford] does): pricing a swing commits
+// nothing on its own, and a signature that could only be handed a write scope
+// would say otherwise.
 //
-// Returns ErrNoMember, ErrNoCharacter, ErrBadCharacter, ErrBadRepository, or
-// ErrBadCost.
+// Returns ErrBadCharacter or ErrBadCost.
 func (m *Manager) priceSwing(
-	ctx context.Context, enc *encounter.Encounter, attacker string, sheet *character.Character,
+	ctx context.Context, clock *encounter.ClockOfOutput, attacker string, sheet *character.Character,
 ) (*swingPrice, error) {
-	clock, err := enc.ClockOf(&encounter.ClockOfInput{Member: encounter.MemberID(attacker)})
-	if err != nil {
-		return nil, translate(err)
-	}
+	round := clock.Round
 	if ClockKind(clock.Kind) != ClockTurn {
-		return &swingPrice{}, nil
+		round = worldRoundNumber
 	}
-
-	if err := resolution.ReadyForTurn(ctx, sheet, resolution.Turn{Number: clock.Round, Speed: sheet.GetSpeed()}); err != nil {
+	// IDEMPOTENT READYING, never the world clock's reset: compileOffersFor
+	// has already lent the round with [readyForClock], and putting it out
+	// again here would be a second, silent reset of the bank the price is
+	// read from.
+	if err := resolution.ReadyForTurn(ctx, sheet, resolution.Turn{Number: round, Speed: sheet.GetSpeed()}); err != nil {
 		return nil, fmt.Errorf("attacker %q: %w: %v", attacker, ErrBadCost, err)
 	}
 
@@ -131,7 +129,7 @@ func (m *Manager) priceSwing(
 			// the backstop for the day this seam hands over a sheet it did not
 			// ready.
 			Turn: &resolution.Turn{
-				Number: clock.Round,
+				Number: round,
 				Speed:  sheet.GetSpeed(),
 			},
 		},

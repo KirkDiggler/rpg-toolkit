@@ -277,22 +277,22 @@ func (s *AffordSuite) TestANewTurnRefillsWhatAffordSees() {
 	s.Equal(session.SlotAction, s.attackDecl(out).Slot)
 }
 
-// TestFreeRoamAffordsTheSocialVerbsAndNothingElse is what this scene became
-// when R3 (rpg-project#457) ruled that a social verb is offered outside a
-// fight: "this will be the first getting verbs outside combat".
+// TestFreeRoamAffordsTheBarPricedInRounds is what this scene became when
+// rpg-project#785 ruled the world clock a place to act (R1: one round of the
+// world per action, no slot and no shortfall on the bar).
 //
-// IT USED TO ASSERT AN EMPTY PANEL, on the reasoning that a member with no
-// bubble has no economy to report. The first half of that is still true and
-// the rows say so — SlotNone, no shortfall, nothing to spend — but "no
-// economy" never meant "nothing to do": Move happens in free roam and always
-// did. The front room goblin is the case that made the difference matter, and
-// this scene now pins BOTH halves: the two social verbs are there, and no
-// verb that costs a turn's economy is.
-func (s *AffordSuite) TestFreeRoamAffordsTheSocialVerbsAndNothingElse() {
+// IT USED TO ASSERT THE SOCIAL VERB ALONE (R3, rpg-project#457), and before
+// that an empty panel. "And nothing else" was the implementation's line, not
+// the ruling's; Kirk's direction replaced it: "our bar should be available to
+// us." So the bar is here, and the world clock's price is what the rows say:
+// SlotNone on every row, and no turn-currency shortfall on any. Alice is alone,
+// so what keeps a row from her is the absence of anybody to aim it at.
+func (s *AffordSuite) TestFreeRoamAffordsTheBarPricedInRounds() {
 	sessions, encounters := newFakeSessions(), newFakeEncounters()
+	characters := testCharacters()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Pass{}, Sessions: sessions, Encounters: encounters,
-		Characters: testCharacters(),
+		Characters: characters,
 	})
 	s.Require().NoError(err)
 
@@ -302,22 +302,28 @@ func (s *AffordSuite) TestFreeRoamAffordsTheSocialVerbsAndNothingElse() {
 	s.Require().NoError(err)
 	s.Equal(session.ClockWorld, out.Clock)
 
-	verbs := make([]session.Verb, 0, len(out.Declarations))
-	for _, decl := range out.Declarations {
-		verbs = append(verbs, decl.Verb)
-		s.Equal(session.SlotNone, decl.Slot, "%s: free roam has no slot to draw from", decl.Verb)
-		s.Equal(session.TargetMember, decl.TargetKind, "%s: a line is aimed at somebody", decl.Verb)
-		// Alice is alone in this world, so the row is unavailable for want
-		// of somebody to speak to — and that is the ONLY reason they can be.
-		// A budget shortfall here would mean the world clock had grown an
-		// economy nobody gave it.
-		s.Require().NotNil(decl.Why, "%s: nobody is here to be spoken to", decl.Verb)
-		s.Equal(session.ShortfallNoTargetInReach, decl.Why.Reason,
-			"%s: the only thing missing in free roam is an audience", decl.Verb)
-		s.Empty(decl.Why.Currency, "%s: nothing is spent, so nothing is short", decl.Verb)
+	verbs := declarationVerbs(out.Declarations)
+	s.Contains(verbs, session.VerbAttack, "the bar's swing is offered in free roam")
+	s.Contains(verbs, session.VerbActivate, "the bar's abilities are offered in free roam")
+	s.Contains(verbs, session.VerbSpeak, "the social verb stays")
+	for _, turnOnly := range []session.Verb{session.VerbMove, session.VerbEndTurn, session.VerbDeathSave} {
+		s.NotContains(verbs, turnOnly, "%s is a turn's row, not the world's", turnOnly)
 	}
-	s.Equal([]session.Verb{session.VerbSpeak}, verbs,
-		"the social verb, and no verb that spends a turn's economy")
+	for _, decl := range out.Declarations {
+		s.Equal(session.SlotNone, decl.Slot, "%s: the world clock draws no slot", decl.Verb)
+		if decl.Why != nil {
+			s.NotContains([]session.Currency{session.CurrencyAction, session.CurrencyBonus, session.CurrencyReaction},
+				decl.Why.Currency, "%s: no turn currency falls short on the world clock", decl.Verb)
+		}
+	}
+	attack := declarationsByVerb(out.Declarations)[session.VerbAttack]
+	s.NotEmpty(attack.ID, "a compiled swing carries its selector")
+	s.Require().NotNil(attack.Why)
+	s.Equal(session.ShortfallNoTargetInReach, attack.Why.Reason, "alone, the swing has nobody to hit")
+	speak := declarationsByVerb(out.Declarations)[session.VerbSpeak]
+	s.Require().NotNil(speak.Why)
+	s.Equal(session.ShortfallNoTargetInReach, speak.Why.Reason, "alone, the line has nobody to hear it")
+	s.Nil(characters.byID["alice"].ActionEconomy, "the round Afford lent was never saved")
 }
 
 // TestAffordSavesNothing is TestARefusedSwingWritesNothing's own claim, asked
