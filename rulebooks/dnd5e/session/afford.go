@@ -930,7 +930,7 @@ func affordWhileFrozen(session, member string, open []interrupt.Window, clock Cl
 // # Its own row, beside the bar
 //
 // The other verbs on the world clock compile through the turn clock's path
-// with one lent round ([Manager.affordOnTheWorldClock]); Speak keeps this
+// with one lent round ([Manager.Afford], [readyForClock]); Speak keeps this
 // sheetless row, which R3 (rpg-project#457) shipped and which needs no price
 // at all. Move is not a row: free-roam movement takes no declaration id
 // (move.go refuses one).

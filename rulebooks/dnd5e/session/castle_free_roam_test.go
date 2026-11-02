@@ -215,13 +215,18 @@ func TestCastleFreeRoamCastAndSwing(t *testing.T) {
 	// NO WORLD TICK IS ASSERTED FOR THE SWING. The encounter charges a world
 	// round for a cast and an activation, but its attack outcome unit carries
 	// no world actor (encounter outcome.go, prepareUnit), so a free-roam swing
-	// passes no round today. That is the encounter's to change; this seam
-	// opens the door and the encounter prices it.
+	// passes no round at the encounter this module pins. The encounter fix is
+	// in flight on fix/fra-world-swing-pays-a-round; assert the tick here once
+	// this module pins it.
 	turn, err := c.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
 	require.NoError(t, err)
 	assert.Equal(t, session.ClockTurn, turn.Clock, "the next look is a fight")
-	assert.Nil(t, storedData(t, c.characters, "alice").ActionEconomy,
-		"the round lent to the swing is not kept: the fight lights its own economy from cold")
+	// THE FIGHT'S ENTRANT ECONOMY STANDS. The swing formed the fight in its
+	// own verb, and the boundary seated alice with the economy every entrant
+	// gets, reaction included: the lent round is dropped, never this.
+	entrant := storedData(t, c.characters, "alice").ActionEconomy
+	require.NotNil(t, entrant, "alice enters the fight she started with the entrant's economy")
+	assert.Equal(t, 1, entrant.ReactionsRemaining, "she holds her reaction before her first turn")
 }
 
 // storedData is a member's stored sheet.

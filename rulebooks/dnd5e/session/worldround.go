@@ -76,11 +76,28 @@ func lendWorldRound(scope *writeScope, actor string, clock *encounter.ClockOfOut
 // returnWorldRound puts out the lent economy on the world actor's sheet before
 // it is written. Everything else the action did to that sheet (a slot spent,
 // damage taken, a condition gained) is kept.
-func returnWorldRound(scope *writeScope, data *character.Data) {
+//
+// ONLY WHILE THE ACTOR IS STILL ON THE WORLD CLOCK. A deed can form a fight in
+// the same verb (R2, R3): the aggression law turns the pair, the boundary
+// machine seats the actor and lights the fight's entrant economy, reaction
+// included, and that landing is written through this same scope. The economy
+// on the sheet is then the fight's, not the lent round, so it stands. Once a
+// bubble holds the actor the lend is over: it is dropped for the rest of the
+// verb, and the round it lent was already replaced by the entrant's.
+func returnWorldRound(scope *writeScope, data *character.Data) error {
 	if scope.worldActor == "" || data == nil || data.ID != scope.worldActor {
-		return
+		return nil
+	}
+	clock, err := scope.enc.ClockOf(&encounter.ClockOfInput{Member: encounter.MemberID(data.ID)})
+	if err != nil {
+		return translate(err)
+	}
+	if ClockKind(clock.Kind) == ClockTurn {
+		scope.worldActor = ""
+		return nil
 	}
 	data.ActionEconomy = nil
+	return nil
 }
 
 // worldPriced is a compiled row's projection on the world clock: no slot is
