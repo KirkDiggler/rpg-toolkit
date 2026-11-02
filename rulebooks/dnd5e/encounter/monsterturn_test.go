@@ -2230,6 +2230,7 @@ func TestRoutedTowardWalksTheRouteAndEndsTheTurnAskedOnce(t *testing.T) {
 	require.Len(t, moved, 3, "three cells of the four between them")
 	for _, beat := range moved {
 		require.Equal(t, commandedRef.String(), beat["cause"], "every cell says what routed it")
+		require.NotContains(t, beat, "forced", "a commanded creature walks rather than being displaced")
 	}
 	require.True(t, turnEndedFor(t, enc, goblin), "and the walk ended the turn")
 }

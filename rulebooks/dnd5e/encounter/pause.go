@@ -977,6 +977,7 @@ func (e *Encounter) finishPausedIntent(
 		return 0, nil, false, stepErr
 	}
 	action.cause = p.cause
+	action.forced = p.forced
 	if stepped {
 		e.turnAlong(action) // a turn's walk is the walker's own (facing.go)
 		if _, berr := e.appendMovementBeat(action, p.audience, p.at); berr != nil {

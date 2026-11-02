@@ -483,7 +483,9 @@ func (s *HeldTestSuite) TestADirectivePauseOnAClosedEncounterIsRefusedAtLoad() {
 // the flag is persisted, and a persisted field that only one caller ever sets
 // is exactly the one that rots.
 func (s *HeldTestSuite) TestAHeldPushKeepsItsStanceAcrossTheHold() {
-	mover := &pausingMover{pauseAt: map[int]bool{0: true}}
+	// Let the first cell land before the second opens the window: the record
+	// then has a forced beat on each side of the persisted pause.
+	mover := &pausingMover{pauseAt: map[int]bool{1: true}}
 	enc := s.scene(mover, &downList{})
 
 	out, err := s.direct(enc, encounter.DirectInput{
@@ -491,6 +493,11 @@ func (s *HeldTestSuite) TestAHeldPushKeepsItsStanceAcrossTheHold() {
 	})
 	s.Require().NoError(err)
 	s.Require().True(out.Paused)
+	s.Equal(1, out.Moved, "the first half landed before the window")
+
+	before := s.beatsNamed(enc, alice, encounter.BeatMoved)
+	s.Require().Len(before, 1, "the first half wrote one movement beat")
+	s.Equal(true, before[0]["forced"], "the first half is external displacement")
 
 	reloaded, lerr := encounter.LoadEncounter(loadInput(enc.ToData(), mover, &downList{}))
 	s.Require().NoError(lerr, "and it survives the restart, which is where a dropped flag would show")
@@ -502,6 +509,11 @@ func (s *HeldTestSuite) TestAHeldPushKeepsItsStanceAcrossTheHold() {
 	for _, call := range mover.calls {
 		s.True(call.Forced, "every cell of a push is forced, before and after the hold")
 		s.Equal(thunderwaveRef, call.Cause)
+	}
+	moved := s.beatsNamed(reloaded, alice, encounter.BeatMoved)
+	s.Require().Len(moved, len(fleeRoute()), "the resumed half appended the remaining cells")
+	for i, beat := range moved {
+		s.Equal(true, beat["forced"], "movement beat %d retains the pushed stance across the pause", i)
 	}
 }
 

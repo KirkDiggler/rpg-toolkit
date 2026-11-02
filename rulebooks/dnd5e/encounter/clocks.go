@@ -1715,6 +1715,7 @@ func (e *Encounter) walkPath(
 			return res, stepErr
 		}
 		action.cause = cause
+		action.forced = forced
 		// A creature's own step turns it; an imposed one — a directive, an
 		// effect moving it — does not (facing.go).
 		if stepped && !imposed {

@@ -142,6 +142,7 @@ func (e *Encounter) walkHeld(ctx context.Context, h *pause, m *memberRecord) (wa
 		return walkResult{}, stepErr
 	}
 	action.cause = h.cause
+	action.forced = h.forced
 	if !stepped {
 		// The floor changed under the announced cell while the window was
 		// open. The walk stops here, exactly as walkPath stops for a wall.
