@@ -17,6 +17,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -160,4 +161,109 @@ func TestAStruckKnightStandsInTheFightAndTheWorldMovesOn(t *testing.T) {
 
 	s.reload()
 	require.Equal(t, before+1, s.enc.ToData().Clock.HighWater, "the world's round survives a reload")
+}
+
+// castleFireball is the spell the hero throws at the gate.
+var castleFireball = encounter.SpellIdentity{Ref: "dnd5e:spells:fireball", Name: "Fireball"}
+
+// castAt records the hero's fireball at the target, as the session tells it:
+// a failed Dexterity save that burns, or a made save that took nothing at all
+// (still an attempt to hurt, so still hostile intent).
+func (s *kingScene) castAt(target encounter.MemberID, burns bool) {
+	s.t.Helper()
+	roll, total := 4, 6
+	if !burns {
+		roll, total = 18, 20
+	}
+	modifier := total - roll
+	result := encounter.CastTargetResult{
+		Target: target,
+		Save: &encounter.CastSave{
+			Saver: target, Ability: "dexterity", Roll: roll, Total: total, DC: 15, Succeeded: !burns,
+			Calculation: &encounter.RollCalculation{
+				Components: []encounter.RollComponent{
+					{
+						Source: encounter.RollSource{Ref: castleFireball.Ref, Name: castleFireball.Name, SourceID: string(hero)},
+						Dice: &encounter.DiceTrace{Notation: "1d20", DieSize: 20,
+							OriginalRolls: []int{roll}, FinalRolls: []int{roll}, Subtotal: roll},
+					},
+					{Source: encounter.RollSource{Ref: "dnd5e:abilities:dexterity", Name: "dexterity"}, Modifier: &modifier},
+				},
+				Total: total,
+			},
+		},
+	}
+	if burns {
+		result.Results = []encounter.ActivationResult{{
+			Kind: encounter.ResultDamageApplied, Target: target,
+			Ref: castleFireball.Ref, Name: castleFireball.Name,
+			Amount: 7, Requested: 7, Before: 30, After: 23, DamageType: "fire",
+			Calculation: &encounter.RollCalculation{
+				Components: []encounter.RollComponent{{
+					Source: encounter.RollSource{Ref: castleFireball.Ref, Name: castleFireball.Name, SourceID: string(hero)},
+					Dice: &encounter.DiceTrace{Notation: "2d6", DieSize: 6,
+						OriginalRolls: []int{3, 4}, FinalRolls: []int{3, 4}, Subtotal: 7},
+				}},
+				Total: 7,
+			},
+		}}
+	}
+	_, err := s.enc.RecordCast(&encounter.RecordCastInput{
+		Actor: hero, Spell: castleFireball, Targets: []encounter.CastTargetResult{result},
+	})
+	require.NoError(s.t, err)
+}
+
+// TestWorldHostileCastPaysARound is the swing's rule at the cast's door
+// (rpg-project#785 R1): a fireball thrown at the captain from free roam
+// turns the garrison, forms the fight with the gate's posts in it, and then
+// the world outside the fight moves one round, raised by the world itself —
+// whether it burned him or he dodged it whole, since the attempt is the
+// provocation. A cast inside that fight pays the world nothing.
+func TestWorldHostileCastPaysARound(t *testing.T) {
+	t.Parallel()
+
+	for name, burns := range map[string]bool{"a hit": true, "nobody hurt, hostile all the same": false} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			s := openTheGateFight(t)
+			require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "precondition: the hero is in free roam")
+			require.Equal(t, encounter.StanceNeutral, s.stance(garrison, encounter.FactionParty),
+				"precondition: the garrison is civil")
+			before := s.enc.ToData().Clock
+			n := len(s.beats(hero))
+
+			s.castAt(kingCaptain, burns)
+
+			kinds := s.beatKindsSince(n)
+			after := s.enc.ToData().Clock
+			require.Equal(t, 1, countOf(kinds, encounter.BeatTick), "exactly one round of the world: %v", kinds)
+			require.Equal(t, before.HighWater+1, after.HighWater, "the world clock reads one round on")
+			require.Equal(t, before.DriverProgress[core.EntityID(hero)], after.DriverProgress[core.EntityID(hero)],
+				"raised by the world, not the hero: the turn clock prices a fighter's time")
+			stance, formed, tick := indexOf(kinds, "stance"), indexOf(kinds, encounter.BeatFightStarted),
+				indexOf(kinds, encounter.BeatTick)
+			require.GreaterOrEqual(t, stance, 0, "the garrison turned: %v", kinds)
+			require.Less(t, stance, formed, "then the fight forms: %v", kinds)
+			require.Less(t, formed, tick, "then the world moves: %v", kinds)
+			require.Equal(t, encounter.StanceHostile, s.stance(garrison, encounter.FactionParty))
+			for _, post := range []encounter.MemberID{hero, kingCaptain, kingGate1, kingGate2} {
+				require.Equal(t, encounter.ClockTurn, clockKind(t, s.enc, post), "%s is in the fight", post)
+			}
+		})
+	}
+
+	t.Run("a cast inside the fight pays the world nothing", func(t *testing.T) {
+		t.Parallel()
+		s := openTheGateFight(t)
+		s.castAt(kingCaptain, true)
+		require.Equal(t, encounter.ClockTurn, clockKind(t, s.enc, hero), "precondition: the first cast formed the fight")
+		before := s.enc.ToData().Clock.HighWater
+		n := len(s.beats(hero))
+
+		s.castAt(kingGate1, true)
+
+		require.Zero(t, countOf(s.beatKindsSince(n), encounter.BeatTick), "the turn clock prices it")
+		require.Equal(t, before, s.enc.ToData().Clock.HighWater, "the world clock has not moved")
+	})
 }
