@@ -438,7 +438,11 @@ func (e *Encounter) arrivalCell(at spatial.Position, floor func(spatial.Position
 	// (rpg-project#725, R4): an arrival bumped off its cell looks for room on
 	// the floor it can walk to, which a region boundary painted across an
 	// open hall does not cut and a wall does.
-	partition, owned := e.field.partitionAt(at)
+	parts, err := e.field.partitionsNow()
+	if err != nil {
+		return spatial.Position{}, fmt.Errorf("%s cannot arrive at %v: %w", what, at, err)
+	}
+	partition, owned := parts.of[at]
 	if !owned {
 		return spatial.Position{}, fmt.Errorf("%s cannot arrive at %v: something stands there and the cell is in no region to look for room in: %w",
 			what, at, ErrBadPlacement)
@@ -446,7 +450,7 @@ func (e *Encounter) arrivalCell(at spatial.Position, floor func(spatial.Position
 	found := false
 	var best spatial.Position
 	var bestDistance float64
-	for _, c := range e.field.partitionCells[partition] {
+	for _, c := range parts.cells[partition] {
 		if !free(c) {
 			continue
 		}

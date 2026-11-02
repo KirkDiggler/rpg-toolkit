@@ -395,7 +395,10 @@ func (e *Encounter) sweepPresence(at uint64) error {
 		// THE ROOM AS THE WALLS MAKE IT (rpg-project#725, R4): carrying a
 		// record into a mind's presence is being in the same partition, so a
 		// region boundary painted across an open hall separates nobody.
-		partition, owned := e.field.partitionAt(cell)
+		partition, owned, err := e.field.partitionAt(cell)
+		if err != nil {
+			return fmt.Errorf("presence transfer: %w", err)
+		}
 		if !owned {
 			continue
 		}
@@ -408,7 +411,11 @@ func (e *Encounter) sweepPresence(at uint64) error {
 			if !placed {
 				continue
 			}
-			if p, ok := e.field.partitionAt(mindCell); !ok || p != partition {
+			p, ok, err := e.field.partitionAt(mindCell)
+			if err != nil {
+				return fmt.Errorf("presence transfer: %w", err)
+			}
+			if !ok || p != partition {
 				continue
 			}
 			if down == nil {

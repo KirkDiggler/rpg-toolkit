@@ -81,8 +81,18 @@ func (e *Encounter) RegionAt(cell spatial.Position) (RegionID, bool) {
 //
 // Returns false for a cell that is not owned floor. The id is derived and
 // internal: compare two answers, never persist or send one.
+//
+// The partitions are derived on the first read ([field.partitionsNow],
+// rpg-project#762 T13). This read keeps its two answers: a field whose
+// partitions cannot be derived answers false here, and every verb that
+// decides on a partition — hearing, arrivals, the intel flip, a masked
+// threshold — returns that derivation's error instead.
 func (e *Encounter) PartitionAt(cell spatial.Position) (PartitionID, bool) {
-	return e.field.partitionAt(cell)
+	id, ok, err := e.field.partitionAt(cell)
+	if err != nil {
+		return "", false
+	}
+	return id, ok
 }
 
 // Region reports one region as authored: its name, its cells in absolute

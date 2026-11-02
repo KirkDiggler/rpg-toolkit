@@ -4,6 +4,7 @@
 package encounter
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 
@@ -25,8 +26,9 @@ import (
 // and labelled and nothing about how sound or sight crosses it.
 //
 // DERIVED, NEVER STORED (R8). The partitions are computed from the authored
-// regions, walls, props and doors at construction ([NewEncounter]) and again
-// at every load ([LoadEncounter]), and [FieldData] carries none of it: its
+// regions, walls, props and doors at construction ([NewEncounter]) and, after
+// a load ([LoadEncounter]), on the first read that needs them
+// ([partitionMemo], rpg-project#762 T13), and [FieldData] carries none of it: its
 // charter is authored truth only, and a derived division written beside the
 // thing it is derived from is a second answer waiting to disagree. Their ids
 // ([PartitionID]) are internal for the same reason — no atlas, beat or wire
@@ -76,7 +78,7 @@ func PartitionFloor(in PartitionFloorInput) (PartitionFloorOutput, error) {
 	if err := validateDoorInputs(f, in.Field.Doors); err != nil {
 		return PartitionFloorOutput{}, err
 	}
-	groups, footing, err := f.partitionFloor(in.Field.Doors)
+	groups, footing, err := f.partitionFloor(closedDoors(in.Field.Doors))
 	if err != nil {
 		return PartitionFloorOutput{}, err
 	}
@@ -100,41 +102,137 @@ func PartitionFloor(in PartitionFloorInput) (PartitionFloorOutput, error) {
 	return out, nil
 }
 
-// derivePartitions fills the field's partition maps from its own regions,
-// walls, props and the doors it was constructed with. Both construction seams
-// call it, after the doors are validated, so a field built at Setup and the
-// same field loaded from its data answer [field.partitionOf] identically.
+// fieldPartitions is the division itself as the field reads it: every owned
+// cell to the wall partition holding it, and each partition's cells,
+// absolute axial and sorted.
+type fieldPartitions struct {
+	of    map[spatial.Position]PartitionID
+	cells map[PartitionID][]spatial.Position
+}
+
+// partitionMemo is the field's SECOND DIVISION, DERIVED WHEN ASKED
+// (rpg-project#762 T13). A load used to pay the whole partition pass —
+// ~45 ms of ~87 on the 10k keep — before the verb it served had asked
+// anything of it, and a plain Move asks nothing: the partitions are read
+// where a sound hops, a mind is in a carrier's presence, an arrival is
+// bumped off its cell, a listener is told how far away a beat landed, or a
+// secret threshold is presented. So the memo holds what the pass needs —
+// the field's door geometry, every door closed, snapshot at construction —
+// and derives on the first read, ONCE for the instance's life.
+//
+// IN THE INSTANCE, NEVER IN THE RECORD. The law is unchanged: the field
+// indexes its placements and stores no derived data. [FieldData] carries
+// none of this; the memo dies with the instance (today, the verb), and a
+// longer-lived instance (rpg-project#770) keeps it longer for free.
+//
+// NOTHING INVALIDATES IT. The division reads only the field's fixed
+// geometry — immutable placed contributors and props, and every door as
+// closed whatever its state — so opening, closing or locking a door, a
+// member's walk, or a holdable prop picked up cannot change a partition
+// ([PartitionFloor]'s own contract). What a door's state does change is how
+// many hops a sound pays crossing it, which [Encounter.hopsFrom] reads live.
+//
+// NO LOCK. The encounter is one instance driven by one verb on one goroutine;
+// a lazily derived value there needs no mutex. Were an encounter ever read
+// from two goroutines at once, that would be a finding about the caller, not
+// a reason to lock here.
+//
+// A FAILED DERIVATION IS REMEMBERED and returned to every reader: the pass is
+// deterministic over the same geometry, so asking again would fail the same
+// way. Every verb that decides on a partition surfaces it.
+type partitionMemo struct {
+	doors       []*doorRecord // the construction-time doors, every one closed
+	derived     *fieldPartitions
+	err         error
+	derivations int // how many times the pass has run: once, or never
+}
+
+// closedDoors is the door geometry the partition pass reads: fresh records
+// (the input's edges and placement copied), every one closed.
+func closedDoors(doors []DoorInput) []*doorRecord {
+	records, _ := doorRecordsFrom(doors)
+	for _, door := range records {
+		door.state = DoorIsClosed()
+	}
+	return records
+}
+
+// deferPartitions gives the field its partition memo without running the
+// pass: the load seam ([LoadEncounter]) calls it after the doors are
+// validated, and the first reader derives ([field.partitionsNow]).
+func (f *field) deferPartitions(doors []DoorInput) {
+	f.partitions = &partitionMemo{doors: closedDoors(doors)}
+}
+
+// derivePartitions gives the field its partition memo and runs the pass now,
+// returning its error. The construction seam ([NewEncounter]) calls it so a
+// field that cannot be divided is refused where it is authored; the same
+// field loaded from its data defers the same pass and answers
+// [field.partitionAt] identically.
+func (f *field) derivePartitions(doors []DoorInput) error {
+	f.deferPartitions(doors)
+	if _, err := f.partitionsNow(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// errNoPartitionMemo is a field asked for its partitions that was compiled
+// for a question that does not need them (validation, static placements):
+// a bug in the asker, refused rather than answered "nowhere".
+var errNoPartitionMemo = errors.New("the field was compiled without its partitions")
+
+// partitionsNow is THE ONE ACCESSOR to the field's wall partitions: derived
+// on the first call, memoized for the instance's life ([partitionMemo]).
 //
 // Footing — permanent opaque floor bordering no single partition — is its own
 // partition, cell by cell: nobody stands there, so it can neither hear nor be
 // arrived on, and it is still owned floor. A compiled site has none (the
 // builder moved it to scenery); a field authored in code may.
-func (f *field) derivePartitions(doors []DoorInput) error {
-	groups, footing, err := f.partitionFloor(doors)
+func (f *field) partitionsNow() (*fieldPartitions, error) {
+	m := f.partitions
+	if m == nil {
+		return nil, errNoPartitionMemo
+	}
+	if m.derived != nil || m.err != nil {
+		return m.derived, m.err
+	}
+	m.derivations++
+	groups, footing, err := f.partitionFloor(m.doors)
 	if err != nil {
-		return fmt.Errorf("partition the floor: %w", err)
+		m.err = fmt.Errorf("partition the floor: %w", err)
+		return nil, m.err
 	}
 	for _, cell := range footing {
 		groups = append(groups, []spatial.Position{cell})
 	}
 	sort.Slice(groups, func(i, j int) bool { return cellBefore(groups[i][0], groups[j][0]) })
-	f.partitionOf = make(map[spatial.Position]PartitionID)
-	f.partitionCells = make(map[PartitionID][]spatial.Position, len(groups))
+	out := &fieldPartitions{
+		of:    make(map[spatial.Position]PartitionID),
+		cells: make(map[PartitionID][]spatial.Position, len(groups)),
+	}
 	for i, group := range groups {
 		id := PartitionID(fmt.Sprintf("p%d", i))
-		f.partitionCells[id] = group
+		out.cells[id] = group
 		for _, cell := range group {
-			f.partitionOf[cell] = id
+			out.of[cell] = id
 		}
 	}
-	return nil
+	m.derived = out
+	return out, nil
 }
 
 // partitionAt reports which wall partition holds an absolute cell — THE
-// partition lookup, the mechanical twin of [field.regionOf].
-func (f *field) partitionAt(cell spatial.Position) (PartitionID, bool) {
-	id, ok := f.partitionOf[cell]
-	return id, ok
+// partition lookup, the mechanical twin of [field.regionOf]. False for a cell
+// that is not owned floor; an error only when the partitions cannot be
+// derived ([field.partitionsNow]).
+func (f *field) partitionAt(cell spatial.Position) (PartitionID, bool, error) {
+	parts, err := f.partitionsNow()
+	if err != nil {
+		return "", false, err
+	}
+	id, ok := parts.of[cell]
+	return id, ok, nil
 }
 
 // partitionFloor is the division itself, in ABSOLUTE cells: every owned cell
@@ -143,8 +241,8 @@ func (f *field) partitionAt(cell spatial.Position) (PartitionID, bool) {
 // then opaque footing joined to its one clear neighbour or returned apart.
 // The field itself is not edited: the canvas is built on a shallow copy whose
 // contributor lists are fresh.
-func (f *field) partitionFloor(doorInputs []DoorInput) ([][]spatial.Position, []spatial.Position, error) {
-	canvas, err := f.partitionCanvas(doorInputs)
+func (f *field) partitionFloor(doors []*doorRecord) ([][]spatial.Position, []spatial.Position, error) {
+	canvas, err := f.partitionCanvas(doors)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -186,9 +284,9 @@ func (f *field) partitionFloor(doorInputs []DoorInput) ([][]spatial.Position, []
 
 // partitionCanvas is the canvas the partition pass reads: built on a shallow
 // copy of the field whose contributor lists are fresh and hold only the
-// FIXED ones — immutable placed contributors and props — with every door
-// closed. The field itself is not edited.
-func (f *field) partitionCanvas(doorInputs []DoorInput) (*canvasRoom, error) {
+// FIXED ones — immutable placed contributors and props — with the doors it
+// is given, every one closed ([closedDoors]). The field itself is not edited.
+func (f *field) partitionCanvas(doors []*doorRecord) (*canvasRoom, error) {
 	fixed := *f
 	fixed.holdings = nil
 	fixed.sightPass = nil
@@ -210,10 +308,6 @@ func (f *field) partitionCanvas(doorInputs []DoorInput) (*canvasRoom, error) {
 		if !p.Holdable && p.Arrives == nil {
 			fixed.props = append(fixed.props, p)
 		}
-	}
-	doors, _ := doorRecordsFrom(doorInputs)
-	for _, door := range doors {
-		door.state = DoorIsClosed()
 	}
 	return fixed.compileCanvas(doors, nil)
 }

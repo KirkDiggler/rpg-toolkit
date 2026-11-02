@@ -183,16 +183,20 @@ type partitionLink struct {
 // A DOOR WHOSE TWO SIDES ARE ONE PARTITION'S joins nothing: it is a door
 // inside a room, and crossing it changes no partition. Each pair of
 // partitions is linked once per door, however many crossings the door spans.
-func (e *Encounter) links() map[PartitionID][]partitionLink {
+func (e *Encounter) links() (map[PartitionID][]partitionLink, error) {
 	if e.partitionLinks != nil {
-		return e.partitionLinks
+		return e.partitionLinks, nil
+	}
+	parts, err := e.field.partitionsNow()
+	if err != nil {
+		return nil, fmt.Errorf("partition links: %w", err)
 	}
 	out := map[PartitionID][]partitionLink{}
 	for _, d := range e.doors {
 		joined := map[[2]PartitionID]bool{}
 		join := func(a, b spatial.Position) {
-			from, okFrom := e.field.partitionAt(a)
-			to, okTo := e.field.partitionAt(b)
+			from, okFrom := parts.of[a]
+			to, okTo := parts.of[b]
 			if !okFrom || !okTo || from == to {
 				return
 			}
@@ -216,7 +220,7 @@ func (e *Encounter) links() map[PartitionID][]partitionLink {
 	}
 	e.partitionLinks = out
 
-	return out
+	return out, nil
 }
 
 // hopsFrom is every wall partition a sound made in origin reaches, and how
@@ -224,9 +228,13 @@ func (e *Encounter) links() map[PartitionID][]partitionLink {
 // door crossed. The cheapest way through wins, so an open door beside a
 // closed one is the way the sound goes. origin itself is zero hops.
 //
-// A partition no door leads to is absent: no sound reaches it.
-func (e *Encounter) hopsFrom(origin PartitionID) map[PartitionID]int {
-	links := e.links()
+// A partition no door leads to is absent: no sound reaches it. An error only
+// when the partitions cannot be derived ([field.partitionsNow]).
+func (e *Encounter) hopsFrom(origin PartitionID) (map[PartitionID]int, error) {
+	links, err := e.links()
+	if err != nil {
+		return nil, err
+	}
 	dist := map[PartitionID]int{origin: 0}
 	done := map[PartitionID]bool{}
 	for {
@@ -241,7 +249,7 @@ func (e *Encounter) hopsFrom(origin PartitionID) map[PartitionID]int {
 			}
 		}
 		if best < 0 {
-			return dist
+			return dist, nil
 		}
 		done[at] = true
 		for _, l := range links[at] {
@@ -281,7 +289,11 @@ type hearing struct {
 // nothing at all — so the question is put only once a listener has qualified
 // on the arithmetic.
 func (e *Encounter) hearersOf(cell spatial.Position, dc int, maker MemberID) ([]hearing, error) {
-	origin, ok := e.field.partitionAt(cell)
+	parts, err := e.field.partitionsNow()
+	if err != nil {
+		return nil, fmt.Errorf("hearers: %w", err)
+	}
+	origin, ok := parts.of[cell]
 	if !ok {
 		return nil, nil
 	}
@@ -289,7 +301,10 @@ func (e *Encounter) hearersOf(cell spatial.Position, dc int, maker MemberID) ([]
 	if err != nil {
 		return nil, fmt.Errorf("hearers: %w", err)
 	}
-	hops := e.hopsFrom(origin)
+	hops, err := e.hopsFrom(origin)
+	if err != nil {
+		return nil, fmt.Errorf("hearers: %w", err)
+	}
 
 	ids := make([]MemberID, 0, len(e.members))
 	for id := range e.members {
@@ -306,7 +321,7 @@ func (e *Encounter) hearersOf(cell spatial.Position, dc int, maker MemberID) ([]
 		if err != nil {
 			continue
 		}
-		partition, ok := e.field.partitionAt(pos)
+		partition, ok := parts.of[pos]
 		if !ok {
 			continue
 		}

@@ -66,7 +66,8 @@ func TestADiagonalDoorJoinsOnlyTheCrossingItLiesAcross(t *testing.T) {
 	door := []DoorInput{{ID: "diagonal", Placement: &placement, State: DoorIsOpen()}}
 	require.NoError(t, f.derivePartitions(door))
 	partition := func(col int) PartitionID {
-		p, ok := f.partitionAt(f.cellAt(spatial.Position{X: float64(col), Y: 0}))
+		p, ok, err := f.partitionAt(f.cellAt(spatial.Position{X: float64(col), Y: 0}))
+		require.NoError(t, err)
 		require.True(t, ok)
 		return p
 	}
@@ -76,7 +77,8 @@ func TestADiagonalDoorJoinsOnlyTheCrossingItLiesAcross(t *testing.T) {
 
 	doors, _ := doorRecordsFrom(door)
 	e := &Encounter{field: f, doors: doors}
-	links := e.links()
+	links, err := e.links()
+	require.NoError(t, err)
 
 	var fromB []PartitionID
 	for _, l := range links[b] {

@@ -348,30 +348,39 @@ func (e *Encounter) matchOne(b wakeBeat) error {
 	return nil
 }
 
-// evFor is a landed beat as one listener is asked it.
-func (e *Encounter) evFor(id MemberID, m *memberRecord, b wakeBeat) wakeEv {
+// evFor is a landed beat as one listener is asked it. An error only when the
+// field's partitions cannot be derived ([field.partitionsNow]).
+func (e *Encounter) evFor(id MemberID, m *memberRecord, b wakeBeat) (wakeEv, error) {
 	ev := wakeEv{At: b.At, Distance: -1, Hops: -1}
 	if b.Cell == nil {
-		return ev
+		return ev, nil
 	}
 	own, err := e.cellOf(m)
 	if err != nil {
-		return ev
+		return ev, nil // an unplaced listener is at no distance, as before
 	}
 	ev.Distance = int(e.Distance(own, *b.Cell))
 	if b.Member == id && b.Beat == beatHeard {
 		ev.Hops = b.Hops
-		return ev
+		return ev, nil
 	}
-	if origin, ok := e.field.partitionAt(*b.Cell); ok {
-		if at, ok := e.field.partitionAt(own); ok {
-			if h, reached := e.hopsFrom(origin)[at]; reached {
+	parts, err := e.field.partitionsNow()
+	if err != nil {
+		return wakeEv{}, err
+	}
+	if origin, ok := parts.of[*b.Cell]; ok {
+		if at, ok := parts.of[own]; ok {
+			hops, err := e.hopsFrom(origin)
+			if err != nil {
+				return wakeEv{}, err
+			}
+			if h, reached := hops[at]; reached {
 				ev.Hops = h
 			}
 		}
 	}
 
-	return ev
+	return ev, nil
 }
 
 // react steps one listener's machine on a landed beat, when it is on the
@@ -400,7 +409,10 @@ func (e *Encounter) react(id MemberID, b wakeBeat, scope *machine.ScopeLeaf) err
 	if down[id] {
 		return nil
 	}
-	ev := e.evFor(id, m, b)
+	ev, err := e.evFor(id, m, b)
+	if err != nil {
+		return fmt.Errorf("world wakes %q on %s: %w", id, b.Beat, err)
+	}
 	if scope != nil && !inScope(ev, *scope) {
 		return nil // the cheap answer first: out of the state's own scope
 	}
