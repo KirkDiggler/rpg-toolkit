@@ -169,3 +169,18 @@ func (s *SpeakSuite) TestOnlyPlainLinesOfferOnlyTheFreeRow() {
 	s.True(free.Available)
 	s.Equal([]string{"greet"}, optionIDs(free))
 }
+
+// FREE IS NOT OUT OF TURN: on the turn clock a plain line is still the active
+// member's, refused on another member's turn exactly as a checked one is
+// (talking out of turn is a later ruling). The gate is asked before the line
+// is looked up, so the refusal is the turn's and not a missing line's.
+func (s *SpeakSuite) TestAPlainLineIsStillRefusedOffTurn() {
+	s.aGreetableGoblin()
+	mgr := s.aYard([]int{1, 1, 1, 1})
+	// The goblin's turn, authored: the Pass driver hands an ended turn
+	// straight back to alice, so endTurn cannot get here.
+	authorTurnClock(s.T(), s.encounters, testSession, []string{"alice", "goblin"}, 1)
+
+	_, err := s.say(mgr, "greet")
+	s.Require().ErrorIs(err, session.ErrNotYourTurn)
+}
