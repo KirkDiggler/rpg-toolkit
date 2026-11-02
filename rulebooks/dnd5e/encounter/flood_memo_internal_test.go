@@ -86,15 +86,15 @@ func (nobodySees) Sight(members []MemberID) (map[MemberID]int, error) {
 
 // TestAViewFloodsItsOwnCellOnceForEveryCreatureItSees: a goblin that sees
 // four players, none in its club's reach, routes to each and away from each.
-// Those eight routes read two fields, the walk out from its cell and the one
-// step away, and the view floods each once. Without the memo it floods
-// eight times.
+// The four steps away read one field, the one step away, and the view floods
+// it once; without the memo it floods four times. The four routes to them
+// flood nothing: each is one goal, searched toward (rpg-project#762, R10).
 func TestAViewFloodsItsOwnCellOnceForEveryCreatureItSees(t *testing.T) {
 	enc := floodMemoEncounter(t, true, spatial.Position{X: 1, Y: 1}, map[MemberID]spatial.Position{
 		"alice": {X: 8, Y: 2}, "bob": {X: 8, Y: 5}, "carol": {X: 8, Y: 8}, "dave": {X: 5, Y: 9},
 	})
 
-	before := enc.floodsComputed
+	before, settledBefore := enc.floodsComputed, enc.cellsSettled
 	view, err := enc.buildMonsterView(enc.members["goblin"], TurnBudget{AttacksLeft: 1, MovementFeet: 30}, 1)
 	require.NoError(t, err)
 
@@ -104,8 +104,9 @@ func TestAViewFloodsItsOwnCellOnceForEveryCreatureItSees(t *testing.T) {
 		require.NotEmpty(t, seen.Path, "the goblin has a route to %s", seen.ID)
 		require.NotEmpty(t, seen.AwayPath, "and a step away from them")
 	}
-	require.Equal(t, 2, enc.floodsComputed-before,
-		"one field for every route to them and one for every step away, each flooded once")
+	require.Equal(t, 1, enc.floodsComputed-before,
+		"one field for every step away, flooded once; the routes to them are searched")
+	require.Positive(t, enc.cellsSettled-settledBefore, "the routes to them were searched")
 }
 
 // TestTheMemoDiesWithTheRead: a read floods from the goblin's cell with bob

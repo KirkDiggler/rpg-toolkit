@@ -401,6 +401,12 @@ type Encounter struct {
 	// flooded, memo hits excluded (rpg-toolkit#2097). It is a measure, read
 	// by the package's own tests, and never decides anything.
 	floodsComputed int
+
+	// cellsSettled counts the cells the goal-directed search
+	// ([cellQuery.searchToward]) has settled this run (rpg-project#762, R10):
+	// the measure a route's reach is held to. Like floodsComputed, read by
+	// the package's own tests and never deciding anything.
+	cellsSettled int
 }
 
 // isIntegralHexCell reports whether pos names a whole axial cell —
