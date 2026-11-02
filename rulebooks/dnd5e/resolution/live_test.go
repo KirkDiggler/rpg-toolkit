@@ -98,6 +98,22 @@ func (s *MovementTestSuite) TestNeitherALentWorldNorWorldDataIsRefused() {
 	s.Require().ErrorIs(err, ErrBadWorld)
 }
 
+// A NIL ENCOUNTER IS NO WORLD: a typed-nil *encounter.Encounter lent as Live
+// is a non-nil interface, and it is refused like no world at all rather than
+// panicking on its first read.
+func (s *MovementTestSuite) TestANilLentEncounterIsRefusedAsNoWorld() {
+	machine, err := NewMovement(s.stepInput())
+	s.Require().NoError(err)
+	in := s.input(machine)
+	in.World = encounter.EncounterData{}
+	var none *encounter.Encounter
+	in.Live = none
+
+	out, err := Resolve(s.ctx, in)
+	s.Nil(out)
+	s.Require().ErrorIs(err, ErrBadWorld)
+}
+
 func jsonOf(s *MovementTestSuite, v any) string {
 	raw, err := json.Marshal(v)
 	s.Require().NoError(err)

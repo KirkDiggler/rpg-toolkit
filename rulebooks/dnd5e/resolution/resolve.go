@@ -149,7 +149,7 @@ func (in *Input) Validate() error {
 	// ONE WORLD. Two would leave this package choosing which one is true, and
 	// a lent encounter beside stale data is exactly the mismatch that choice
 	// would hide. (None is refused where the world is taken: see world.)
-	if in.Live != nil && !reflect.ValueOf(in.World).IsZero() {
+	if !isNil(in.Live) && !reflect.ValueOf(in.World).IsZero() {
 		return fmt.Errorf("%w: both a lent world and world data", ErrBadWorld)
 	}
 
@@ -520,12 +520,27 @@ func readOf(enc *encounter.Encounter) LiveWorld {
 	return enc
 }
 
+// isNil reports whether a lent world is absent in substance: a nil interface,
+// or an interface holding a nil pointer. The natural host holds a concrete
+// *encounter.Encounter, and a nil one assigned to [Input.Live] is a non-nil
+// interface whose first read dereferences nil. Counting it as absent makes a
+// nil encounter "no lent world", so [Input.Validate] and world refuse it with
+// [ErrBadWorld] instead of panicking. Reflection runs only for a pointer kind;
+// any other dynamic value is present.
+func isNil(live LiveWorld) bool {
+	if live == nil {
+		return true
+	}
+	v := reflect.ValueOf(live)
+	return v.Kind() == reflect.Pointer && v.IsNil()
+}
+
 // world is the world this interaction reads, and the data an output hands
 // back for it: the host's own world and nothing when it lent one, otherwise
 // the encounter loaded from its data and that encounter's data after the
 // interaction.
 func world(in *Input) (LiveWorld, func() encounter.EncounterData, error) {
-	if in.Live != nil {
+	if !isNil(in.Live) {
 		return in.Live, func() encounter.EncounterData { return encounter.EncounterData{} }, nil
 	}
 	// NO WORLD AT ALL: refused by name rather than handed to the loader to
