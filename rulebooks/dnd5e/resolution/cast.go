@@ -50,7 +50,7 @@ type castView struct {
 	// entries that have no world — a join, a check, a rest, a death save, a
 	// participation refresh. A side question with no run to fold over is
 	// unknown, never a guess from the kind of sheet somebody carries.
-	run *encounter.Encounter
+	run LiveWorld
 }
 
 var _ gamectx.Cast = (*castView)(nil)

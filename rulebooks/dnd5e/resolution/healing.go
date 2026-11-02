@@ -184,7 +184,7 @@ func RangedHealingTargets(ctx context.Context, input *RangedHealingTargetsInput)
 		if !combat.CanReceiveHealing(states[id]) {
 			continue
 		}
-		reach, err := rangedHealingReach(input.Room, input.Encounter, input.CasterID, id, input.RangeFeet)
+		reach, err := rangedHealingReach(input.Room, readOf(input.Encounter), input.CasterID, id, input.RangeFeet)
 		if err != nil {
 			return nil, err
 		}
@@ -216,7 +216,7 @@ func validateRangedHealingTarget(ctx context.Context, casterID, targetID string,
 	return nil
 }
 
-func rangedHealingReach(room spatial.Room, run *encounter.Encounter, casterID, targetID string, rangeFeet int) (bool, error) {
+func rangedHealingReach(room spatial.Room, run LiveWorld, casterID, targetID string, rangeFeet int) (bool, error) {
 	if room == nil || run == nil || rangeFeet <= 0 {
 		return false, fmt.Errorf("%w: ranged healing requires a room, encounter and positive range", ErrBadWorld)
 	}
