@@ -19,6 +19,30 @@ package replaytest_test
 //     picks, the same state beats, entry for entry — and it reads back every
 //     roll the record holds, no more and no fewer.
 //
+// THE PROOF'S SCOPE, collaborator by collaborator. The run is played on a
+// host that rolls: the world's die (crypto), and the host's own initiative
+// and driven swings on a crypto die of their own. The replay's host:
+//
+//   - World's die ([replaytest.RecordRoller]): the record's `tempered` and
+//     `answered` rolls. Claim 1 proves they are every roll it threw.
+//   - Initiative (recordInitiative): each fight's order from its
+//     `bubble-formed` beat. The record carries the order, not the dice.
+//   - Driven swing (recordStriker): each act-tagged `struck`/`missed`, kind
+//     and amount. The record carries the outcome, not the d20 or the d6.
+//   - Who is down (standing): the `down` beats after a player's outcome.
+//     The run's driven swings fell nobody, so a fall the HOST scores for a
+//     driven swing is not exercised.
+//   - Check resolver and witness (asksNoCheck, perceivesNothingAsked):
+//     outside the record, and unasked. These routes make no check and open
+//     no concealed door, and both refuse if asked. Whether the record
+//     carries a check's verdict (`snuck`, `discovery_checked` carry dc,
+//     total and beaten) is for a route that asks one.
+//   - Sight, sheets, equipment, conditions, mover and announcer: the host's
+//     static facts and listeners, the same content both times.
+//   - Not on the record at all: a sneak declaration (sneaking R10 writes
+//     no beat), so the script's sneaking pieces are not replayed; and
+//     Speak's reach, the host's constant.
+//
 // IDS ARE MINTED, NOT ROLLED. A record id (and the correlation and act tag
 // built from one) is a ULID off the wall clock; the replay mints its own.
 // The comparison holds them to a bijection — the n-th id the run minted is
@@ -200,7 +224,7 @@ func isVerbBeat(b verbBody, players map[encounter.MemberID]bool) bool {
 func playersOf(t testing.TB, open opener) map[encounter.MemberID]bool {
 	t.Helper()
 	out := map[encounter.MemberID]bool{}
-	for _, m := range open(t, newCountingDie(), &standing{}).Members {
+	for _, m := range open(t, rollingHost(newCountingDie()), &standing{}).Members {
 		if m.Kind == encounter.KindPlayer {
 			out[m.ID] = true
 		}
@@ -213,6 +237,7 @@ func playersOf(t testing.TB, open opener) map[encounter.MemberID]bool {
 type replayed struct {
 	log    []record.EntryData
 	roller *replaytest.RecordRoller
+	host   host
 }
 
 // replay opens the content again from round 0 on the record's own rolls and
@@ -222,13 +247,14 @@ func replay(t *testing.T, open opener, original []record.EntryData) replayed {
 	roller, err := replaytest.NewRecordRoller(original)
 	require.NoError(t, err)
 	roller.During("Setup")
-	w := openWorld(t, open, roller)
+	h := recordHost(t, roller, original)
+	w := openWorld(t, open, h)
 	for _, v := range verbsOf(t, original, playersOf(t, open)) {
 		roller.During(fmt.Sprintf("%s (beat seq %d)", v.name, v.seq))
 		require.NoError(t, v.issue(w), "the replay re-issues %s (beat seq %d)", v.name, v.seq)
 	}
 
-	return replayed{log: w.enc.ToData().Log.Entries, roller: roller}
+	return replayed{log: w.enc.ToData().Log.Entries, roller: roller, host: h}
 }
 
 // requireEveryRollOnTheRecord holds the faces the run's die threw against
@@ -299,7 +325,7 @@ func canonical(entries []record.EntryData) []string {
 func replayRun(t *testing.T, open opener, play func(w *world)) []record.EntryData {
 	t.Helper()
 	die := newCountingDie()
-	run := openWorld(t, open, die)
+	run := openWorld(t, open, rollingHost(die))
 	play(run)
 	original := run.enc.ToData().Log.Entries
 
@@ -307,6 +333,9 @@ func replayRun(t *testing.T, open opener, play func(w *world)) []record.EntryDat
 	got := replay(t, open, original)
 	requireSameLog(t, original, got.log)
 	require.Zero(t, got.roller.Remaining(), "the replay reads back every roll the record holds")
+	swings, fights := got.host.remaining()
+	require.Zero(t, swings, "the replay lands every driven swing the record holds")
+	require.Zero(t, fights, "the replay forms every fight the record holds")
 
 	return original
 }
@@ -317,6 +346,23 @@ func countBeats(t *testing.T, log []record.EntryData, kind string) int {
 	n := 0
 	for _, e := range log {
 		if beatOf(t, e.Payload) == kind {
+			n++
+		}
+	}
+
+	return n
+}
+
+// countDrivenSwings is how many driven swings a log holds: the act-tagged
+// outcomes the host's striker landed.
+func countDrivenSwings(t *testing.T, log []record.EntryData) int {
+	t.Helper()
+	n := 0
+	for _, e := range log {
+		if !strings.HasPrefix(e.Tags["act"], "attack:") {
+			continue
+		}
+		if kind := beatOf(t, e.Payload); kind == string(encounter.OutcomeStruck) || kind == string(encounter.OutcomeMissed) {
 			n++
 		}
 	}
@@ -399,7 +445,8 @@ func TestReplay_CastleGateScript(t *testing.T) {
 			w.pace(hero, beneathTheGate, besideTheGate, 3)
 		})
 		require.Equal(t, 3, countBeats(t, log, string(encounter.OutcomeDown)), "precondition: three fell")
-		require.Positive(t, countBeats(t, log, string(encounter.OutcomeMissed)), "precondition: driven attacks swung")
+		require.Positive(t, countDrivenSwings(t, log), "precondition: driven attacks swung")
+		require.Positive(t, countBeats(t, log, encounter.BeatFightStarted), "precondition: a fight formed on the host's initiative")
 		require.Equal(t, 2, countBeats(t, log, encounter.BeatArrived), "precondition: the far room arrived")
 	})
 }
@@ -410,11 +457,13 @@ func TestReplay_CastleGateScript(t *testing.T) {
 // keeps of rpg-project#766 S4: the posts on the default recipe, and the
 // posts asleep until a sound lands near them.
 //
-// UNDER -race ONLY THE POSTS ASLEEP (~150 s there, against ~17 s plain): the
-// default keep's replay is another ~190 s, which a race-detecting CI cannot
-// carry beside the encounter package's own budget. Plain `go test` runs both;
-// the castle's mutants (an unrecorded roll, a wrong face read back, a fall or
-// an EndTurn not read back) fail under either.
+// UNDER -race, THE POSTS ASLEEP FOR FOUR ROUNDS ([garrisonRounds]), about
+// 30 s there. Twenty rounds of both keeps cost about 340 s under -race, and
+// the encounter CI job ran 9m45s against its 10m budget with them in
+// (rpg-toolkit#2229 review). Plain `go test` replays both keeps for twenty
+// rounds, about 17 s and 21 s. The castle's mutants (an unrecorded roll, a
+// wrong face read back, a fall or an EndTurn not read back, a driven swing
+// or a fight's order not read back) fail under either.
 func TestReplay_GarrisonTwentyRounds(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -429,13 +478,24 @@ func TestReplay_GarrisonTwentyRounds(t *testing.T) {
 			open := garrisonOpener(tc.listen)
 			log := replayRun(t, open, func(w *world) {
 				start := w.at(garrisonWalker)
-				w.pace(garrisonWalker, start, besideFloor(t, w, garrisonWalker, start), 20)
-				require.GreaterOrEqual(t, w.round(), 20, "twenty world rounds ran")
+				w.pace(garrisonWalker, start, besideFloor(t, w, garrisonWalker, start), garrisonRounds())
+				require.GreaterOrEqual(t, w.round(), garrisonRounds(), "the world rounds ran")
 			})
 			require.Positive(t, countBeats(t, log, encounter.BeatAnswered), "precondition: the garrison picked")
 			require.Positive(t, countBeats(t, log, encounter.BeatTick), "precondition: the world clock ran")
 		})
 	}
+}
+
+// garrisonRounds is the twenty world rounds the garrison is replayed for,
+// or under -race the four a race-detecting CI can carry beside the encounter
+// package's own budget.
+func garrisonRounds() int {
+	if raceDetector {
+		return 4
+	}
+
+	return 20
 }
 
 // besideFloor is the first hex neighbour of a cell the member steps onto

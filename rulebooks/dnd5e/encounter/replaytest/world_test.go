@@ -32,7 +32,7 @@ const speakReach = 3
 
 // opener builds a run's SetupInput on a die: the same content and the same
 // host every time, so a replay opens exactly what the run opened.
-type opener func(t testing.TB, die dice.Roller, down *standing) *encounter.SetupInput
+type opener func(t testing.TB, h host, down *standing) *encounter.SetupInput
 
 // world is one run of an encounter on one die.
 type world struct {
@@ -44,14 +44,14 @@ type world struct {
 }
 
 // openWorld opens a run on a die.
-func openWorld(t testing.TB, open opener, die dice.Roller) *world {
+func openWorld(t testing.TB, open opener, h host) *world {
 	t.Helper()
 	down := &standing{down: map[encounter.MemberID]bool{}}
-	setup := open(t, die, down)
+	setup := open(t, h, down)
 	enc, err := encounter.NewEncounter(setup)
 	require.NoError(t, err)
 
-	return &world{t: t, enc: enc, die: die, down: down, caps: setup.Capabilities}
+	return &world{t: t, enc: enc, die: h.die, down: down, caps: setup.Capabilities}
 }
 
 // reload saves the encounter the way a host does — ToData, through JSON —

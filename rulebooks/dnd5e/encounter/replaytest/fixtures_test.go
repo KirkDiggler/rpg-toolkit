@@ -10,7 +10,6 @@ package replaytest_test
 import (
 	"testing"
 
-	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec/keepgen"
@@ -57,7 +56,7 @@ var (
 // every creature watching a 120-degree arc, the gate's watchers at passive
 // 11, 12 and 13, and nothing ever found.
 func castleOpener(at spatial.Position) opener {
-	return func(t testing.TB, die dice.Roller, down *standing) *encounter.SetupInput {
+	return func(t testing.TB, h host, down *standing) *encounter.SetupInput {
 		t.Helper()
 		compiled := loadFile(t, kingFixture)
 		arcs := map[encounter.MemberID]int{}
@@ -68,7 +67,7 @@ func castleOpener(at spatial.Position) opener {
 			members = append(members, monsterInput(m))
 		}
 
-		return setupOn(compiled, members, die, down, plainSheets{
+		return setupOn(compiled, members, h, down, plainSheets{
 			passive: map[encounter.MemberID]int{kingGate1: 11, kingGate2: 12, kingCaptain: 13},
 			arcs:    arcs,
 		})
@@ -89,7 +88,7 @@ const garrisonWalker = encounter.MemberID("walker")
 
 // garrisonOpener is the garrison keep with one walker at the party start.
 func garrisonOpener(listen bool) opener {
-	return func(t testing.TB, die dice.Roller, down *standing) *encounter.SetupInput {
+	return func(t testing.TB, h host, down *standing) *encounter.SetupInput {
 		t.Helper()
 		key := "garrison"
 		if listen {
@@ -107,7 +106,7 @@ func garrisonOpener(listen bool) opener {
 			members = append(members, monsterInput(m))
 		}
 
-		return setupOn(compiled, members, die, down, plainSheets{})
+		return setupOn(compiled, members, h, down, plainSheets{})
 	}
 }
 
@@ -126,9 +125,10 @@ func monsterInput(m dungeonspec.MonsterPlacement) encounter.MemberInput {
 }
 
 // setupOn is a SetupInput for compiled content and seated members, with the
-// world's die — the table driver's and the composition's — the one given.
+// host's collaborators that roll given: the world's die (the table
+// driver's and the composition's), the driven swing and initiative.
 func setupOn(
-	compiled dungeonspec.Compiled, members []encounter.MemberInput, die dice.Roller, down *standing, sheets plainSheets,
+	compiled dungeonspec.Compiled, members []encounter.MemberInput, h host, down *standing, sheets plainSheets,
 ) *encounter.SetupInput {
 	return &encounter.SetupInput{
 		Field:     compiled.Field,
@@ -141,13 +141,13 @@ func setupOn(
 			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        sheets,
 			Participation: down,
-			Initiative:    orderAsGiven{},
-			Driver:        encounter.TableDriver{Roller: die},
-			Roller:        die,
-			CheckResolver: nothingIsEverFound{},
-			Witness:       nobodyPerceivesAnything{},
+			Initiative:    h.initiative,
+			Driver:        encounter.TableDriver{Roller: h.die},
+			Roller:        h.die,
+			CheckResolver: asksNoCheck{},
+			Witness:       perceivesNothingAsked{},
 			Actors: encounter.Actors{
-				Striker:   missingStriker{},
+				Striker:   h.striker,
 				Mover:     quietMover{},
 				Announcer: quietAnnouncer{},
 			},

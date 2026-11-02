@@ -14,6 +14,22 @@
 // carry is a defect, and [RecordRoller] finds it: the replay asks for a die
 // the record never wrote and the roller says which beat it had reached and
 // which verb was asking.
+//
+// WHAT IS THE WORLD'S AND WHAT IS THE HOST'S. This package reads back the
+// world's rolls: the dice the composition and its table driver throw. The
+// host's collaborators answer from outside the world's die, and a replay
+// has to say, for each, where its answers come from (the tests' host,
+// replay_test.go):
+//
+//   - initiative and the driven swing are host rolls the record carries
+//     the result of (`bubble-formed`'s order; a swing's act-tagged
+//     `struck`/`missed`), and the replay's host reads them back from it;
+//   - a player's outcomes, falls and lines are verbs, read off the record;
+//   - check verdicts and concealed-door perceivers are not exercised: the
+//     routes ask none, and the tests' host refuses if asked;
+//   - sight, sheets, equipment and conditions are the host's static facts,
+//     the same content both times, not rolls;
+//   - a sneak declaration and Speak's reach are not on the record at all.
 package replaytest
 
 import (
@@ -37,7 +53,8 @@ var (
 	// record's road, and the face it would read back means nothing there.
 	ErrReplayMismatch = errors.New("replay: the record's next roll was thrown on another die")
 
-	// ErrBadBeat is a roll-bearing beat whose body cannot be read.
+	// ErrBadBeat is a beat whose body cannot be read, or a roll-bearing beat
+	// whose roll is not a face of a die.
 	ErrBadBeat = errors.New("replay: a roll-bearing beat that cannot be read")
 )
 
@@ -95,7 +112,9 @@ func RollsOf(entries []record.EntryData) ([]Roll, error) {
 	for _, entry := range entries {
 		var body rollBody
 		if err := json.Unmarshal(entry.Payload, &body); err != nil {
-			continue // not a JSON beat body; no roll rides on it
+			// FAIL CLOSED: every beat body is JSON, and one that is not
+			// might be a roll-bearing beat whose roll would drop silently.
+			return nil, fmt.Errorf("beat seq %d: %v: %w", entry.Seq, err, ErrBadBeat)
 		}
 		switch body.Beat {
 		case encounter.BeatTempered:

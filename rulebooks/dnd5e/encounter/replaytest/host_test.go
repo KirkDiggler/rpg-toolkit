@@ -15,6 +15,8 @@ package replaytest_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"slices"
 	"sync"
@@ -204,24 +206,51 @@ func (c *standing) Assess(members []encounter.MemberID) (*encounter.Participatio
 	return assessment, nil
 }
 
-// orderAsGiven returns the roster untouched: initiative is the host's, and
-// this host rolls none.
-type orderAsGiven struct{}
+// shuffledInitiative is the played run's initiative: the host's own roll,
+// on the host's die (never the world's, so the world's rolls stay the
+// record's `tempered` and `answered` beats alone). The order it lands is on
+// the record as the `bubble-formed` beat's `order`.
+type shuffledInitiative struct{ die dice.Roller }
 
-func (orderAsGiven) RollInitiative(members []encounter.MemberID) ([]encounter.MemberID, error) {
-	return members, nil
+func (s shuffledInitiative) RollInitiative(members []encounter.MemberID) ([]encounter.MemberID, error) {
+	out := slices.Clone(members)
+	for i := len(out) - 1; i > 0; i-- {
+		j, err := s.die.Roll(context.Background(), i+1)
+		if err != nil {
+			return nil, err
+		}
+		out[i], out[j-1] = out[j-1], out[i]
+	}
+
+	return out, nil
 }
 
-// missingStriker lands every driven swing as a miss.
-type missingStriker struct{}
+// rollingStriker is the played run's driven swing: the host's d20 against
+// an 11, a d6 on a hit, on the host's die. Nobody falls to it — who is
+// down is the host's own scoring, and this host scores falls only for the
+// player's outcomes. What it lands is on the record as the swing's
+// act-tagged `struck` or `missed` beat.
+type rollingStriker struct{ die dice.Roller }
 
-func (missingStriker) Strike(
-	_ context.Context, enc *encounter.Encounter, attacker, target encounter.MemberID, action core.Ref,
+func (s rollingStriker) Strike(
+	ctx context.Context, enc *encounter.Encounter, attacker, target encounter.MemberID, action core.Ref,
 ) error {
-	_, err := enc.RecordTrain(&encounter.RecordTrainInput{Units: []encounter.TrainUnit{{Outcome: &encounter.RecordInput{
+	d20, err := s.die.Roll(ctx, 20)
+	if err != nil {
+		return err
+	}
+	outcome := encounter.RecordInput{
 		Kind: encounter.OutcomeMissed, Actor: attacker, Targets: []encounter.MemberID{target},
 		Attack: &encounter.AttackIdentity{Ref: action.String(), Name: "Spear", DamageType: "piercing"},
-	}}}})
+	}
+	if d20 >= 11 {
+		d6, err := s.die.Roll(ctx, 6)
+		if err != nil {
+			return err
+		}
+		outcome.Kind, outcome.Values = encounter.OutcomeStruck, map[encounter.OutcomeValue]int{encounter.ValueAmount: d6}
+	}
+	_, err = enc.RecordTrain(&encounter.RecordTrainInput{Units: []encounter.TrainUnit{{Outcome: &outcome}}})
 
 	return err
 }
@@ -240,23 +269,32 @@ func (quietMover) Move(context.Context, *encounter.Encounter, encounter.MoveStep
 	return nil
 }
 
-// nothingIsEverFound resolves every check as a failure.
-type nothingIsEverFound struct{}
+// errNotAsked is a host collaborator asked what these routes never ask.
+var errNotAsked = errors.New("replaytest: this host is never asked that")
 
-func (nothingIsEverFound) ResolveCheck(*encounter.ResolveCheckInput) (*encounter.ResolveCheckOutput, error) {
-	return &encounter.ResolveCheckOutput{Beaten: false}, nil
+// errNotOnRecord is a replay's host asked for an answer the record does
+// not hold.
+var errNotOnRecord = errors.New("replaytest: the record holds no such answer")
+
+// asksNoCheck is the check resolver of a route that rolls no check: asked
+// for one, it refuses, so a check these routes make — and whether the
+// record carries its verdict — could not pass unseen.
+type asksNoCheck struct{}
+
+func (asksNoCheck) ResolveCheck(in *encounter.ResolveCheckInput) (*encounter.ResolveCheckOutput, error) {
+	return nil, fmt.Errorf("check for %s: %w", in.Member, errNotAsked)
 }
 
-func (nothingIsEverFound) ResolveDiscoveryCheck(*encounter.ResolveCheckInput) (*encounter.ResolveCheckOutput, error) {
-	return &encounter.ResolveCheckOutput{Beaten: false}, nil
+func (asksNoCheck) ResolveDiscoveryCheck(in *encounter.ResolveCheckInput) (*encounter.ResolveCheckOutput, error) {
+	return nil, fmt.Errorf("discovery check for %s: %w", in.Member, errNotAsked)
 }
 
-// nobodyPerceivesAnything answers that no member perceives any open
-// concealed door.
-type nobodyPerceivesAnything struct{}
+// perceivesNothingAsked is the witness of a route that opens no concealed
+// door: asked who perceives one, it refuses, for [asksNoCheck]'s reason.
+type perceivesNothingAsked struct{}
 
-func (nobodyPerceivesAnything) Perceivers(*encounter.PerceiversInput) ([]encounter.MemberID, error) {
-	return nil, nil
+func (perceivesNothingAsked) Perceivers(*encounter.PerceiversInput) ([]encounter.MemberID, error) {
+	return nil, fmt.Errorf("perceivers: %w", errNotAsked)
 }
 
 // beatOf is a log entry's beat kind.
