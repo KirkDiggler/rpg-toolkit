@@ -237,25 +237,26 @@ func machinePiece(payload []byte) ([]piece, error) {
 	}))
 }
 
-// walkPiece is one step. It extends an open walk of the same mover and cause,
-// and a new segment of a walk starts where the last one left the mover.
+// walkPiece is one step. It extends an open walk only when mover, cause and
+// forced stance match; a new segment starts where the last one left the mover.
 func walkPiece(payload []byte) ([]piece, error) {
 	var p struct {
 		Member   string           `json:"member"`
 		Position spatial.Position `json:"position"`
 		Doors    []string         `json:"doors"`
 		Cause    string           `json:"cause"`
+		Forced   bool             `json:"forced"`
 	}
 	if err := json.Unmarshal(payload, &p); err != nil {
 		return nil, err
 	}
 	step := WalkStep{Cell: p.Position, Doors: p.Doors}
-	walk := WalkAct{Mover: member(p.Member), Path: []WalkStep{step}, Cause: p.Cause}
+	walk := WalkAct{Mover: member(p.Member), Path: []WalkStep{step}, Cause: p.Cause, Forced: p.Forced}
 	return one(piece{
 		family: FamilyAct, body: walk,
 		absorb: func(open ActBody) (ActBody, bool) {
 			w, ok := open.(WalkAct)
-			if !ok || w.Mover != walk.Mover || w.Cause != walk.Cause {
+			if !ok || w.Mover != walk.Mover || w.Cause != walk.Cause || w.Forced != walk.Forced {
 				return nil, false
 			}
 			w.Path = append(append([]WalkStep(nil), w.Path...), step)
@@ -267,7 +268,7 @@ func walkPiece(payload []byte) ([]piece, error) {
 				return walk
 			}
 			from := WalkStep{Cell: w.Path[len(w.Path)-1].Cell}
-			return WalkAct{Mover: walk.Mover, Path: []WalkStep{from, step}, Cause: walk.Cause}
+			return WalkAct{Mover: walk.Mover, Path: []WalkStep{from, step}, Cause: walk.Cause, Forced: walk.Forced}
 		},
 	})
 }

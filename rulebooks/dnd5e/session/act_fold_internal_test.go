@@ -61,6 +61,96 @@ func path(w WalkAct) []spatial.Position {
 	return out
 }
 
+const recordedThunderwavePush = `{
+	"beat":"moved",
+	"member":"goblin",
+	"position":{"X":7,"Y":2},
+	"cause":"dnd5e:spells:thunderwave",
+	"forced":true
+}`
+
+// TestALegacyWalkPayloadDecodesAsAnOrdinaryWalk pins the zero-value law at
+// the payload seam: the key was absent before displacement was recorded.
+func (s *ActFoldSuite) TestALegacyWalkPayloadDecodesAsAnOrdinaryWalk() {
+	pieces, err := walkPiece([]byte(`{"beat":"moved","member":"goblin","position":{"X":7,"Y":2}}`))
+	s.Require().NoError(err)
+	s.Require().Len(pieces, 1)
+	walk := pieces[0].body.(WalkAct)
+	s.False(walk.Forced, "a payload with no evidence remains a chosen walk")
+}
+
+// TestAForcedWalkActRoundTripsThroughSerialization keeps the act body honest
+// for the host transport that serializes exported session values.
+func (s *ActFoldSuite) TestAForcedWalkActRoundTripsThroughSerialization() {
+	want := WalkAct{
+		Mover:  member("goblin"),
+		Path:   []WalkStep{{Cell: cell(7, 2)}},
+		Cause:  "dnd5e:spells:thunderwave",
+		Forced: true,
+	}
+	raw, err := json.Marshal(want)
+	s.Require().NoError(err)
+	var got WalkAct
+	s.Require().NoError(json.Unmarshal(raw, &got))
+	s.Equal(want, got)
+}
+
+// TestRecordedThunderwavePushDecodesAsForced is the real moved-beat shape
+// from the encounter record. Keep the fixture literal so a renamed or omitted
+// payload key fails at the session boundary rather than in a client.
+func (s *ActFoldSuite) TestRecordedThunderwavePushDecodesAsForced() {
+	pieces, err := walkPiece([]byte(recordedThunderwavePush))
+	s.Require().NoError(err)
+	s.Require().Len(pieces, 1)
+	walk := pieces[0].body.(WalkAct)
+	s.True(walk.Forced)
+	s.Equal("dnd5e:spells:thunderwave", walk.Cause)
+}
+
+// TestWalkActsDistinguishWalkRoutAndPush proves the stream's three movement
+// semantics: a chosen walk, a caused self-propelled rout, and a physical push.
+func (s *ActFoldSuite) TestWalkActsDistinguishWalkRoutAndPush() {
+	const (
+		walkAct = "move:01HZZZZZZZZZZZZZZZZZZZWALK"
+		routAct = "move:01HZZZZZZZZZZZZZZZZZZZROUT"
+		pushAct = "move:01HZZZZZZZZZZZZZZZZZZZPUSH"
+	)
+	acts := foldActs("sess", "fighter", []record.Entry{
+		s.beat(walkAct, map[string]any{"beat": encounter.BeatMoved, "member": "goblin", "position": cell(7, 2)}),
+		s.beat(routAct, map[string]any{"beat": encounter.BeatMoved, "member": "goblin", "position": cell(8, 2), "cause": "dnd5e:spells:dissonant-whispers"}),
+		s.beat(pushAct, map[string]any{"beat": encounter.BeatMoved, "member": "goblin", "position": cell(9, 2), "cause": "dnd5e:spells:thunderwave", "forced": true}),
+	})
+	s.Require().Len(acts, 3)
+
+	walk := acts[0].Body.(WalkAct)
+	rout := acts[1].Body.(WalkAct)
+	push := acts[2].Body.(WalkAct)
+	s.False(walk.Forced)
+	s.Empty(walk.Cause)
+	s.False(rout.Forced)
+	s.Equal("dnd5e:spells:dissonant-whispers", rout.Cause)
+	s.True(push.Forced)
+	s.Equal("dnd5e:spells:thunderwave", push.Cause)
+}
+
+// TestTheWalkFoldRefusesToMergeDifferentMovementSemantics is rpg-toolkit#2227
+// item 3: same mover and cause still form separate acts when one step pushes.
+func (s *ActFoldSuite) TestTheWalkFoldRefusesToMergeDifferentMovementSemantics() {
+	const move = "move:01HZZZZZZZZZZZZZZZZZZZWALK"
+	cause := "dnd5e:spells:thunderwave"
+	acts := foldActs("sess", "fighter", []record.Entry{
+		s.beat(move, map[string]any{"beat": encounter.BeatMoved, "member": "goblin", "position": cell(7, 2), "cause": cause}),
+		s.beat(move, map[string]any{"beat": encounter.BeatMoved, "member": "goblin", "position": cell(8, 2), "cause": cause, "forced": true}),
+	})
+	s.Require().Len(acts, 2, "a push may not be absorbed into a same-cause walk")
+
+	first := acts[0].Body.(WalkAct)
+	second := acts[1].Body.(WalkAct)
+	s.False(first.Forced)
+	s.True(second.Forced, "the continued segment inherits the incoming step, not the preceding walk")
+	s.Equal([]spatial.Position{cell(7, 2), cell(8, 2)}, path(second), "the segment still starts where the prior walk ended")
+}
+
 // TestFoldWalkWithMidWalkReaction is R6 and R19: a guard's walk a, b, c
 // (through a door), d, e with the fighter's opportunity attack after b folds
 // to two walk segments around one reaction, all under the walk's id, each
