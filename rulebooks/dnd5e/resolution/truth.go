@@ -7,7 +7,6 @@ import (
 	"context"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/gamectx"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -56,7 +55,7 @@ import (
 // reach one takes its context as `_`, so nothing is gated on that. It is still
 // the sharp edge nearest this function: a reader added to a typed handler would
 // fail closed and log nothing, which is rpg-toolkit#1251 said back to us.
-func installTruth(ctx context.Context, room spatial.Room, cast *Participants, run *encounter.Encounter) context.Context {
+func installTruth(ctx context.Context, room spatial.Room, cast *Participants, run LiveWorld) context.Context {
 	// INSTALL THE WORLD. One world, and it is installed every time.
 	//
 	// EVERY TIME is the half that bit. "Which room describes this interaction"

@@ -30,6 +30,7 @@ func (s *MovementTestSuite) lend(in *Input) *encounter.Encounter {
 // outcome, the dirty sheets and the hooks are the same; only Output.World
 // differs, empty for the lent one because nothing here wrote to it.
 func (s *MovementTestSuite) TestALentEncounterResolvesAsItsDataDoes() {
+	var lentBefore string
 	run := func(lent bool) (*Output, *encounter.Encounter) {
 		step := s.stepInput()
 		step.Roller = fixedRoller{face: 6}
@@ -40,6 +41,7 @@ func (s *MovementTestSuite) TestALentEncounterResolvesAsItsDataDoes() {
 		var live *encounter.Encounter
 		if lent {
 			live = s.lend(in)
+			lentBefore = jsonOf(s, live.ToData())
 		}
 		out, err := resolveOn(s.ctx, in, newSurface(events.NewEventBus()))
 		s.Require().NoError(err)
@@ -61,8 +63,10 @@ func (s *MovementTestSuite) TestALentEncounterResolvesAsItsDataDoes() {
 
 	s.Equal(jsonOf(s, encounter.EncounterData{}), jsonOf(s, lentOut.World),
 		"a lent encounter comes back as nothing to store")
+	s.Equal(lentBefore, jsonOf(s, live.ToData()),
+		"RESOLUTION NEVER WRITES THE WORLD: the lent instance's data is unchanged across Resolve")
 	s.Equal(jsonOf(s, loaded.World), jsonOf(s, live.ToData()),
-		"the lent instance is the world the loaded run handed back: nothing was written to it")
+		"and it is the world the loaded run handed back")
 }
 
 // ONE WORLD: a lent encounter beside world data is refused before anything
@@ -75,9 +79,23 @@ func (s *MovementTestSuite) TestALentEncounterBesideWorldDataIsRefused() {
 	s.lend(in)
 	in.World = world
 
-	_, err = Resolve(s.ctx, in)
+	out, err := Resolve(s.ctx, in)
+	s.Nil(out)
 	s.Require().Error(err)
 	s.True(errors.Is(err, ErrBadWorld), "got %v", err)
+}
+
+// NO WORLD AT ALL is refused too, before anything runs: an interaction
+// happens somewhere.
+func (s *MovementTestSuite) TestNeitherALentWorldNorWorldDataIsRefused() {
+	machine, err := NewMovement(s.stepInput())
+	s.Require().NoError(err)
+	in := s.input(machine)
+	in.World = encounter.EncounterData{}
+
+	out, err := Resolve(s.ctx, in)
+	s.Nil(out)
+	s.Require().ErrorIs(err, ErrBadWorld)
 }
 
 func jsonOf(s *MovementTestSuite, v any) string {

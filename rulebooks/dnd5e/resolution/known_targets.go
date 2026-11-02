@@ -67,7 +67,7 @@ func KnownCreatureTargets(ctx context.Context, in *KnownCreatureTargetsInput) (m
 		if !knownCreatureEligible(states[id]) {
 			continue
 		}
-		available, _, err := knownCreatureReach(in.Encounter, in.CasterID, id, in.RangeFeet, in.StaleTargetPolicy)
+		available, _, err := knownCreatureReach(readOf(in.Encounter), in.CasterID, id, in.RangeFeet, in.StaleTargetPolicy)
 		if err != nil {
 			return nil, err
 		}
@@ -126,7 +126,7 @@ func validateKnownCreatureTarget(ctx context.Context, cast *Participants, caster
 // Errors: an invalid policy ([ErrBadAction]); no encounter or a range that is
 // not positive ([ErrBadWorld]); the encounter refusing the aim, wrapped in
 // [ErrBadWorld].
-func knownCreatureReach(run *encounter.Encounter, casterID, targetID string, rangeFeet int, policy StaleTargetPolicy) (available, missed bool, err error) {
+func knownCreatureReach(run LiveWorld, casterID, targetID string, rangeFeet int, policy StaleTargetPolicy) (available, missed bool, err error) {
 	if err := policy.validate(); err != nil {
 		return false, false, err
 	}

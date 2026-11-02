@@ -77,6 +77,14 @@ var encounterReach = []string{"BelievedAim", "Canvas", "IsAllied", "IsHostile", 
 // worth stating plainly rather than leaving a reader to assume a completeness
 // the walk does not have: this is a fence around the direct calls, which is
 // where the reach has always been, not a proof that no indirection exists.
+//
+// # The one interface it does see: LiveWorld
+//
+// A host lends its encounter as [LiveWorld] (rpg-project#753, T12), and the
+// cast and the reach helpers now hold the run under that interface. Every call
+// through it is bounded by the TYPE SYSTEM to the interface's method set, so
+// the walk adds that method set whole: a method that joins LiveWorld joins the
+// reach, and this test asks for it to be declared like any direct call.
 func TestResolveTouchesTheEncounterThroughTwoMethods(t *testing.T) {
 	reached := encounterMethodsCalled(t)
 
@@ -123,6 +131,9 @@ func encounterMethodsCalled(t *testing.T) []string {
 			for _, method := range methodsOn(file, holder) {
 				seen[method] = true
 			}
+		}
+		for _, method := range interfaceMethods(file, "LiveWorld") {
+			seen[method] = true
 		}
 	}
 
@@ -217,14 +228,13 @@ func isEncounterPointer(expr ast.Expr, local string) bool {
 // (v.run.IsHostile). A field name shared with an unrelated struct would count
 // that struct's calls too, which can only ADD to the reach and fail loudly —
 // the honest direction for a fence to err in.
+//
+// A method VALUE counts as a call: enc.ToData handed on uncalled is still a
+// read of the encounter, made later by whoever calls it.
 func methodsOn(file *ast.File, holder string) []string {
 	var methods []string
 	ast.Inspect(file, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-		sel, ok := call.Fun.(*ast.SelectorExpr)
+		sel, ok := n.(*ast.SelectorExpr)
 		if !ok {
 			return true
 		}
@@ -242,5 +252,28 @@ func methodsOn(file *ast.File, holder string) []string {
 		return true
 	})
 
+	return methods
+}
+
+// interfaceMethods returns the methods declared on the named interface type in
+// this file, or nothing when the file does not declare it.
+func interfaceMethods(file *ast.File, name string) []string {
+	var methods []string
+	ast.Inspect(file, func(n ast.Node) bool {
+		spec, ok := n.(*ast.TypeSpec)
+		if !ok || spec.Name.Name != name {
+			return true
+		}
+		iface, ok := spec.Type.(*ast.InterfaceType)
+		if !ok {
+			return false
+		}
+		for _, field := range iface.Methods.List {
+			for _, method := range field.Names {
+				methods = append(methods, method.Name)
+			}
+		}
+		return false
+	})
 	return methods
 }

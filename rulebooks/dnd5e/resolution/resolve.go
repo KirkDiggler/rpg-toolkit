@@ -12,10 +12,12 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // Participant is one member's sheet on the way in. Exactly one of Character or
@@ -67,7 +69,8 @@ func (p Participant) validate() error {
 // Input is everything one interaction needs. All of it is data (R2).
 type Input struct {
 	// World is the encounter the interaction happens in, as the host stored it.
-	// Resolve loads it. Exactly one of World and [Input.Live] is set.
+	// Resolve loads it: the reload path, kept for a caller that holds no live
+	// instance. Exactly one of World and [Input.Live] is set.
 	World encounter.EncounterData
 
 	// Live is the encounter the interaction happens in, as the host already
@@ -80,16 +83,15 @@ type Input struct {
 	// host's instance is the very world the data describes, post-whatever the
 	// host just did to it.
 	//
-	// IT IS READ, NEVER WRITTEN. This package calls no encounter verb on it:
-	// it reads the room (already read-only by construction), sides, stances,
-	// sight and the area set, exactly what it reads off a world it loaded.
-	// So [Output.World] comes back empty for a lent encounter: nothing was
-	// done to it here that the host does not already hold.
+	// IT IS READ, NEVER WRITTEN, and its type says so: [LiveWorld] is the
+	// read surface this package uses, nothing more. So [Output.World] comes
+	// back empty for a lent world: nothing was done to it here that the host
+	// does not already hold.
 	//
 	// The capabilities still validate as for World, and the Roller is still
-	// the one this package reads. A lent encounter carries the capabilities
-	// the host built it with; the ones on this input are not rebound onto it.
-	Live *encounter.Encounter
+	// the one this package reads. A lent world carries the capabilities the
+	// host built it with; the ones on this input are not rebound onto it.
+	Live LiveWorld
 
 	// Participants are the sheets of everyone in the interaction. Pass everyone
 	// (R3) — applicability is the effect's predicate, not the caller's guess.
@@ -146,9 +148,9 @@ func (in *Input) Validate() error {
 
 	// ONE WORLD. Two would leave this package choosing which one is true, and
 	// a lent encounter beside stale data is exactly the mismatch that choice
-	// would hide.
+	// would hide. (None is refused where the world is taken: see world.)
 	if in.Live != nil && !reflect.ValueOf(in.World).IsZero() {
-		return fmt.Errorf("%w: both a lent encounter and world data", ErrBadWorld)
+		return fmt.Errorf("%w: both a lent world and world data", ErrBadWorld)
 	}
 
 	// A DRIVEN ACTIVATION CHARGES NOTHING, and this is where that is a law
@@ -325,7 +327,7 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 
 	roller := in.Roller
 
-	enc, err := world(in)
+	enc, stored, err := world(in)
 	if err != nil {
 		return nil, err
 	}
@@ -467,13 +469,8 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 		return nil, err
 	}
 
-	var stored encounter.EncounterData
-	if in.Live == nil {
-		stored = enc.ToData()
-	}
-
 	return &Output{
-		World:               stored,
+		World:               stored(),
 		OpenedAreas:         opened,
 		ClosedAreas:         closed,
 		DirtyCharacters:     dirty,
@@ -486,20 +483,64 @@ func resolveOn(ctx context.Context, in *Input, surf *surface) (*Output, error) {
 	}, nil
 }
 
-// world is the encounter this interaction reads: the host's own when it lent
-// one, otherwise the one loaded from its data.
-func world(in *Input) (*encounter.Encounter, error) {
+// LiveWorld is the read surface of an encounter this package uses: the room
+// the rules read, who stands with whom, who sees and holds whom, and the area
+// set. A
+// host lends one as [Input.Live]; *encounter.Encounter satisfies it.
+//
+// READ-ONLY BY TYPE. Nothing here moves, records, refreshes or ends anything,
+// because resolution calls no encounter verb; the room is read-only by
+// construction. A method that writes does not belong on this interface.
+type LiveWorld interface {
+	// Canvas is the encounter's own room, handed over to be read.
+	Canvas() (spatial.Room, error)
+	// IsHostile, IsAllied and StanceBetween are the faction graph's answers.
+	IsHostile(a, b encounter.MemberID) (hostile, known bool)
+	IsAllied(a, b encounter.MemberID) (allied, known bool)
+	StanceBetween(a, b encounter.MemberID) (encounter.Stance, error)
+	// SeesWithin is the live visibility and reach answer.
+	SeesWithin(observer, subject encounter.MemberID, rangeFeet int) (bool, bool)
+	// View is what a member holds of the others: its perception.
+	View(in *encounter.ViewInput) ([]perception.Holding, error)
+	// BelievedAim is where a caster believes a known creature stands.
+	BelievedAim(in *encounter.BelievedAimInput) (encounter.BelievedAimOutput, error)
+	// WorldView is the encounter as data, read for its area set.
+	WorldView() encounter.EncounterData
+}
+
+// compile-time proof the encounter is a world this package can be lent.
+var _ LiveWorld = (*encounter.Encounter)(nil)
+
+// readOf is enc as the read surface, and nil — an absent world, not a typed
+// nil inside an interface — when there is no encounter.
+func readOf(enc *encounter.Encounter) LiveWorld {
+	if enc == nil {
+		return nil
+	}
+	return enc
+}
+
+// world is the world this interaction reads, and the data an output hands
+// back for it: the host's own world and nothing when it lent one, otherwise
+// the encounter loaded from its data and that encounter's data after the
+// interaction.
+func world(in *Input) (LiveWorld, func() encounter.EncounterData, error) {
 	if in.Live != nil {
-		return in.Live, nil
+		return in.Live, func() encounter.EncounterData { return encounter.EncounterData{} }, nil
+	}
+	// NO WORLD AT ALL: refused by name rather than handed to the loader to
+	// fail on as malformed data. An interaction happens somewhere.
+	if reflect.ValueOf(in.World).IsZero() {
+		return nil, nil, fmt.Errorf("%w: neither a lent world nor world data", ErrBadWorld)
 	}
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:         in.World,
 		Capabilities: in.Capabilities,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("resolution: load world: %w", err)
+		return nil, nil, fmt.Errorf("resolution: load world: %w", err)
 	}
-	return enc, nil
+	return enc, enc.ToData, nil
 }
 
 // attachAll reconstitutes every participant onto the surface, in sorted ID
