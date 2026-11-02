@@ -296,7 +296,9 @@ func (s *BothWaysSuite) TestAFightFormedMidTrainDoesNotAskWhoIsStandingUntilTheE
 // boss behind it would be driven the moment the fight formed, and its strike
 // would tell the ant's fall before the second swing.
 // Nothing is driven mid-train: the post-train pass removes the ant, then
-// drives the boss, and the boss's turn follows the whole story.
+// drives the boss, and the boss's turn follows the whole story. Zed swung
+// from the world clock, so the train pays ONE round of the world, for both
+// swings, after all of it (rpg-project#785 R1).
 func (s *BothWaysSuite) TestFormationMidTrainDrivesNothingUntilTheEnd() {
 	const (
 		ant  = core.EntityID("ant")
@@ -331,7 +333,8 @@ func (s *BothWaysSuite) TestFormationMidTrainDrivesNothingUntilTheEnd() {
 	s.Equal([]string{"struck", "stance", "bubble-formed", "struck", "down"}, kinds[:5],
 		"nothing is told between the two swings but the fight forming: %v", kinds)
 	s.Equal(1, len(driver.calls), "and the boss is driven after the story, once")
-	s.Equal("turn-ended", kinds[len(kinds)-1], "its turn follows the whole story: %v", kinds)
+	s.Equal([]string{"turn-ended", "tick"}, kinds[len(kinds)-2:],
+		"its turn follows the whole story, and the world's one round follows that: %v", kinds)
 }
 
 // TestAClosedEncounterRefusesATrain: a closed story takes nothing but an
@@ -450,8 +453,13 @@ func TestAnActivationIsATrainOfOne(t *testing.T) {
 	require.Len(t, viaVerb.Seqs, 3)
 
 	requireTold(t, enc, alice, viaVerb.Seqs[0], "activated", "saved", "activation-result", "down")
+	// Alice acted inside the fight, and the fall her activation caused ended
+	// it: she is back on the world clock by the time the price would be
+	// charged, but the turn clock priced what she did, so the world charges
+	// nothing for it (rpg-project#785 R1: where she stood when she acted).
 	told := beatsFrom(t, enc, alice, viaVerb.Seqs[0])
-	require.Equal(t, "tick", told[len(told)-1], "the world-action price is paid after the consult")
+	require.Equal(t, "bubble-dissolved", told[len(told)-1], "the consult ends the fight")
+	require.NotContains(t, told, "tick", "an action taken inside a fight pays no round of the world")
 
 	otherCapability := &scriptedParticipation{}
 	other := aloneAgainstTheGoblin(t, otherCapability)

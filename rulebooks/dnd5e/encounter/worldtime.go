@@ -165,6 +165,74 @@ func (e *Encounter) seatOnWorldClock(id MemberID) error {
 	return nil
 }
 
+// worldDriver is the world clock's own driver on [clock.Tick]: the name a
+// round the world itself lives is advanced under, when the member whose deed
+// cost it is no longer on the world clock to drive it. Empty, because no
+// member can be named empty, so it can never be mistaken for one.
+const worldDriver = core.EntityID("")
+
+// deedMovesTheWorld is the price of an ACTION DONE ON THE WORLD CLOCK: a deed
+// done on the world clock moves the world a round, whoever it put in a fight
+// (rpg-project#785 R1, R3).
+//
+// A swing or a hostile cast from free roam turns the pair, and the turn forms
+// the fight in place, inside the deed, with the struck creature in it. By the
+// time the price is charged the actor is a fighter, and a fighter's time is
+// priced by the turn clock: [Encounter.spendWorldAction] would charge it
+// nothing, and the round the deed took would vanish. So the deed's round is
+// the world's, not the actor's.
+//
+// AN ACTOR STILL ON THE WORLD CLOCK DRIVES ITS OWN ROUND, exactly as
+// [Encounter.spendWorldAction] charges it: a harmless cast, a swing at a
+// creature whose faction is already hostile and out of sight, a swing that
+// turned nobody. Its progress is its own, and its next walk paces from it.
+//
+// AN ACTOR THE DEED PUT IN A FIGHT does not: the world clock raises itself by
+// one round under [worldDriver], and the wake pass runs for the creatures
+// still on the world clock. The fighters get nothing — not a wake, not a
+// budget they could spend — because the turn clock prices their time now.
+// Their own progress is left where it is, so the fight's first round is the
+// round the deed took, never a second one on top of it.
+//
+// The caller decides that the actor was on the world clock when it acted
+// ([Encounter.appendTrainAndNotice], [Encounter.RecordCast]): an actor
+// already in a fight when it acted is priced by the turn clock and never
+// reaches here, even when its own deed ends that fight.
+func (e *Encounter) deedMovesTheWorld(actor MemberID) error {
+	off, err := e.onTheWorldClock(actor)
+	if err != nil {
+		return fmt.Errorf("world action: %w", err)
+	}
+	if off {
+		return e.spendWorldAction(actor)
+	}
+
+	data := e.clock.ToData()
+	raised, err := e.advanceWorld(MemberID(worldDriver), data.HighWater+1-data.DriverProgress[worldDriver])
+	if err != nil {
+		return fmt.Errorf("world action: %w", err)
+	}
+	if !raised {
+		return nil
+	}
+
+	return e.wake()
+}
+
+// onTheWorldClock answers whether a member is outside every fight, so an
+// action it takes is priced in rounds of the world. Empty asks nobody and
+// answers false.
+func (e *Encounter) onTheWorldClock(id MemberID) (bool, error) {
+	if id == "" {
+		return false, nil
+	}
+	bubble, err := e.bubbleFor(id)
+	if err != nil {
+		return false, err
+	}
+	return bubble == nil, nil
+}
+
 // spendWorldAction is what a verb the turn clock would price as an ACTION
 // costs on the world clock: one round, for the actor, once its outcome has
 // landed (design §5).

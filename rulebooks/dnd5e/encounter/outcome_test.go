@@ -85,7 +85,7 @@ func (s *OutcomeTestSuite) TestARuleResolvedElsewhereReachesTheStory() {
 	story, err := enc.Story(&encounter.StoryInput{Audience: goblin})
 	s.Require().NoError(err)
 	s.Require().NotEmpty(story)
-	last := story[len(story)-1]
+	last := lastTold(story)
 	s.Equal(out.Seq, last.Seq, "TrainLanded.Seq references the beat it wrote")
 	s.Equal("outcome", last.Tags["tag"])
 
@@ -162,8 +162,11 @@ func (s *OutcomeTestSuite) TestAWardedAttackReachesTheStoryAndRejectsMismatches(
 	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
 	s.Require().NoError(err)
 	s.Require().NotEmpty(story)
-	last := story[len(story)-1]
+	last := lastTold(story)
 	s.Equal(out.Seq, last.Seq)
+	// Warded off is still a swing taken, and alice took it off any fight: it
+	// pays its round of the world like a hit or a miss (rpg-project#785 R1).
+	s.Equal("clock", story[len(story)-1].Tags["tag"], "the warded swing paid its round")
 
 	var beat map[string]any
 	s.Require().NoError(json.Unmarshal(last.Payload, &beat))
@@ -237,7 +240,7 @@ func (s *OutcomeTestSuite) TestAWardOutlivesTheCasterWhoLeft() {
 	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
 	s.Require().NoError(err)
 	s.Require().NotEmpty(story)
-	last := story[len(story)-1]
+	last := lastTold(story)
 	s.Equal(out.Seq, last.Seq)
 
 	var beat map[string]any
@@ -277,7 +280,7 @@ func (s *OutcomeTestSuite) TestABoughtItemReachesTheStoryAndRejectsMismatches() 
 	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
 	s.Require().NoError(err)
 	s.Require().NotEmpty(story)
-	last := story[len(story)-1]
+	last := lastTold(story)
 	s.Equal(out.Seq, last.Seq)
 
 	var beat map[string]any
@@ -338,7 +341,7 @@ func (s *OutcomeTestSuite) TestASoldItemReachesTheStoryAsItsOwnBeat() {
 	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
 	s.Require().NoError(err)
 	s.Require().NotEmpty(story)
-	last := story[len(story)-1]
+	last := lastTold(story)
 	s.Equal(out.Seq, last.Seq)
 
 	var beat map[string]any
@@ -388,7 +391,7 @@ func (s *OutcomeTestSuite) TestARecordedStrikeCarriesWhatWasSwung() {
 	s.Require().NotEmpty(story)
 
 	var beat map[string]any
-	s.Require().NoError(json.Unmarshal(story[len(story)-1].Payload, &beat))
+	s.Require().NoError(json.Unmarshal(lastTold(story).Payload, &beat))
 	s.Equal(true, beat["critical"])
 	attack, ok := beat["attack"].(map[string]any)
 	s.Require().True(ok, "attack identity present in the payload")
@@ -435,7 +438,7 @@ func (s *OutcomeTestSuite) TestARecordedStrikeCarriesOrderedDetail() {
 		story, serr := enc.Story(&encounter.StoryInput{Audience: goblin})
 		s.Require().NoError(serr)
 		s.Require().NotEmpty(story)
-		return story[len(story)-1].Payload
+		return lastTold(story).Payload
 	}
 
 	first := record()
@@ -500,7 +503,7 @@ func (s *OutcomeTestSuite) TestARecordedStruckDamageComponentCarriesOrderedRollF
 	var beat struct {
 		DamageComponents []encounter.DamageComponent `json:"damage_components"`
 	}
-	s.Require().NoError(json.Unmarshal(story[len(story)-1].Payload, &beat))
+	s.Require().NoError(json.Unmarshal(lastTold(story).Payload, &beat))
 	s.Require().Len(beat.DamageComponents, 2, "component order is preserved")
 
 	weapon := beat.DamageComponents[0]
@@ -765,7 +768,7 @@ func (s *OutcomeTestSuite) TestARecordedMissCarriesNoCriticalKey() {
 	story, err := enc.Story(&encounter.StoryInput{Audience: goblin})
 	s.Require().NoError(err)
 	var beat map[string]any
-	s.Require().NoError(json.Unmarshal(story[len(story)-1].Payload, &beat))
+	s.Require().NoError(json.Unmarshal(lastTold(story).Payload, &beat))
 	_, present := beat["critical"]
 	s.False(present)
 	attack, ok := beat["attack"].(map[string]any)
@@ -789,7 +792,7 @@ func (s *OutcomeTestSuite) TestTheTargetHearsItToo() {
 		story, serr := enc.Story(&encounter.StoryInput{Audience: who})
 		s.Require().NoError(serr)
 		var beat map[string]any
-		s.Require().NoError(json.Unmarshal(story[len(story)-1].Payload, &beat))
+		s.Require().NoError(json.Unmarshal(lastTold(story).Payload, &beat))
 		s.Equal("missed", beat["beat"], "%s hears it", who)
 	}
 }
@@ -1059,7 +1062,7 @@ func (s *OutcomeTestSuite) TestTheBeatSaysWhichReactionItWas() {
 		story, serr := enc.Story(&encounter.StoryInput{Audience: goblin})
 		s.Require().NoError(serr)
 		var beat map[string]any
-		s.Require().NoError(json.Unmarshal(story[len(story)-1].Payload, &beat))
+		s.Require().NoError(json.Unmarshal(lastTold(story).Payload, &beat))
 
 		reaction, ok := beat["reaction"].(map[string]any)
 		s.Require().True(ok, "the beat carries the reaction: %+v", beat)
@@ -1078,7 +1081,7 @@ func (s *OutcomeTestSuite) TestTheBeatSaysWhichReactionItWas() {
 		story, serr := enc.Story(&encounter.StoryInput{Audience: goblin})
 		s.Require().NoError(serr)
 		var beat map[string]any
-		s.Require().NoError(json.Unmarshal(story[len(story)-1].Payload, &beat))
+		s.Require().NoError(json.Unmarshal(lastTold(story).Payload, &beat))
 
 		_, present := beat["reaction"]
 		s.False(present, "absent, not empty: %+v", beat)
@@ -1090,9 +1093,10 @@ func (s *OutcomeTestSuite) TestTheBeatSaysWhichReactionItWas() {
 //
 // An outcome is a CONSEQUENCE — of a walk, an arrival, whatever produced it —
 // so it lands after that verb's own beat. Record holds that by appending its own
-// beat FIRST and refreshing no sight, detecting no trigger and moving no clock,
-// so there is nothing it could append ahead of the outcome and nothing it could
-// reorder.
+// beat FIRST and refreshing no sight and detecting no trigger ahead of it; the
+// round of the world a swing off a fight pays (rpg-project#785 R1) is charged
+// after it, so there is nothing it could append ahead of the outcome and
+// nothing it could reorder.
 //
 // Nobody is down in this scene, so the standing consult Record now runs
 // (rpg-toolkit#1083) finds nothing to say and the beat list is the same list it
@@ -1121,8 +1125,10 @@ func (s *OutcomeTestSuite) TestTheOutcomeLandsAfterTheVerbThatCausedIt() {
 		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
 		kinds = append(kinds, beat["beat"].(string))
 	}
-	s.Equal([]string{"scene-opened", "moved", "missed"}, kinds,
-		"recording appends exactly one beat and nothing before it")
+	// The swing was made off any fight, so it pays its round of the world
+	// after it (rpg-project#785 R1): the tick follows the miss, never leads it.
+	s.Equal([]string{"scene-opened", "moved", "missed", "tick"}, kinds,
+		"recording appends its one beat and nothing before it, then pays the round")
 }
 
 // TestAStrikeCarriesTheRollsPresentationToken pins the correlation half of an
@@ -1210,7 +1216,7 @@ func (s *OutcomeTestSuite) lastBeat(enc *encounter.Encounter) map[string]any {
 	s.Require().NoError(err)
 	s.Require().NotEmpty(story)
 	var beat map[string]any
-	s.Require().NoError(json.Unmarshal(story[len(story)-1].Payload, &beat))
+	s.Require().NoError(json.Unmarshal(lastTold(story).Payload, &beat))
 	return beat
 }
 
@@ -1401,7 +1407,7 @@ func (s *OutcomeTestSuite) TestAGrantOfExperienceReachesTheStoryAndRejectsMismat
 	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
 	s.Require().NoError(err)
 	s.Require().NotEmpty(story)
-	last := story[len(story)-1]
+	last := lastTold(story)
 	s.Equal(out.Seq, last.Seq)
 	s.Equal("outcome", last.Tags["tag"], "tagged like every other outcome beat")
 
@@ -1522,7 +1528,7 @@ func (s *OutcomeTestSuite) TestEveryGranteeCanReadTheirOwnGrant() {
 		story, serr := enc.Story(&encounter.StoryInput{Audience: reader})
 		s.Require().NoError(serr)
 		s.Require().NotEmpty(story)
-		s.Equal(out.Seq, story[len(story)-1].Seq, "%s is owed the beat that paid them", reader)
+		s.Equal(out.Seq, lastTold(story).Seq, "%s is owed the beat that paid them", reader)
 	}
 }
 
@@ -1655,7 +1661,7 @@ func (s *OutcomeTestSuite) TestAGrantSurvivesTheRoundTrip() {
 	story, err := reloaded.Story(&encounter.StoryInput{Audience: bob})
 	s.Require().NoError(err)
 	s.Require().NotEmpty(story)
-	last := story[len(story)-1]
+	last := lastTold(story)
 	s.Equal(out.Seq, last.Seq)
 
 	var beat map[string]any
@@ -1683,4 +1689,16 @@ func recordOne(e *encounter.Encounter, in *encounter.RecordInput) (*encounter.Tr
 		return nil, err
 	}
 	return &out.Units[0], nil
+}
+
+// lastTold is the last beat of a story that is not the world clock's: a swing
+// recorded off a fight pays its round of the world (rpg-project#785 R1), so
+// the `tick` it paid follows the beat this suite is asking about.
+func lastTold(story []record.Entry) record.Entry {
+	for i := len(story) - 1; i >= 0; i-- {
+		if story[i].Tags["tag"] != "clock" {
+			return story[i]
+		}
+	}
+	return record.Entry{}
 }
