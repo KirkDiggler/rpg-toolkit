@@ -266,8 +266,9 @@ var (
 
 	// ErrSeen indicates a sneak declared in a watcher's sight: a watcher
 	// holds the mover live or has the mover's cell in its zone (sneaking R10
-	// as amended by the-world-runs R11, rpg-project#768). The error names
-	// the watchers; nothing changed, nothing was rolled or written.
+	// as amended by the-world-runs R11, rpg-project#768). It arrives as a
+	// [SeenError] naming the watchers; nothing changed, nothing was rolled
+	// or written.
 	ErrSeen = errors.New("encounter: seen")
 
 	// ErrNoBubble is returned when a verb requires a running bubble and
