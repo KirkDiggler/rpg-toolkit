@@ -212,12 +212,34 @@ func TestCastleFreeRoamCastAndSwing(t *testing.T) {
 	for _, id := range []string{"alice", "captain", "gate-1", "gate-2"} {
 		assert.True(t, inFight[id], "%s is in the fight the swing formed: %v", id, formed[0].body.Fight.Order)
 	}
-	// NO WORLD TICK IS ASSERTED FOR THE SWING. The encounter charges a world
-	// round for a cast and an activation, but its attack outcome unit carries
-	// no world actor (encounter outcome.go, prepareUnit), so a free-roam swing
-	// passes no round at the encounter this module pins. The encounter fix is
-	// in flight on fix/fra-world-swing-pays-a-round; assert the tick here once
-	// this module pins it.
+	// THEN ONE WORLD ROUND (R1): the free swing pays the world's price for an
+	// action, as a cast does (encounter v0.170.1, rpg-toolkit#2239), after
+	// the blow, the turn and the fight it formed.
+	swingTicks := where[session.ClockEntry](swing.to("alice"), func(e session.ClockEntry) bool { return e.Mark == session.ClockTick })
+	require.Len(t, swingTicks, 1, "the free swing passes one round of the world")
+	assert.Equal(t, blow.act.Act, swingTicks[0].act.Act, "the round is the swing's own")
+	order := map[string]int{}
+	for i, a := range swing.to("alice") {
+		switch body := a.Body.(type) {
+		case session.AttackAct:
+			order["blow"] = i
+		case session.StateChange:
+			if body.Change == session.StateStance {
+				order["stance"] = i
+			}
+		case session.ClockEntry:
+			if body.Mark == session.ClockFightFormed {
+				order["formed"] = i
+			}
+			if body.Mark == session.ClockTick {
+				order["tick"] = i
+			}
+		}
+	}
+	assert.Less(t, order["blow"], order["stance"], "the blow lands before the garrison turns")
+	assert.Less(t, order["stance"], order["formed"], "the garrison turns before the fight forms")
+	assert.Less(t, order["formed"], order["tick"], "then the world's round")
+
 	turn, err := c.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
 	require.NoError(t, err)
 	assert.Equal(t, session.ClockTurn, turn.Clock, "the next look is a fight")
@@ -227,6 +249,20 @@ func TestCastleFreeRoamCastAndSwing(t *testing.T) {
 	entrant := storedData(t, c.characters, "alice").ActionEconomy
 	require.NotNil(t, entrant, "alice enters the fight she started with the entrant's economy")
 	assert.Equal(t, 1, entrant.ReactionsRemaining, "she holds her reaction before her first turn")
+
+	// A SECOND SWING INSIDE THE FIGHT TICKS NOTHING: the round prices time
+	// there, and a turn-clock action paying a world round would cost twice.
+	require.Equal(t, "alice", string(turn.Active), "alice acts first in the fight she started")
+	second := c.play(t, "alice swings again, inside the fight", func() error {
+		_, err := c.mgr.Attack(ctx, &session.AttackInput{
+			Session: "sess", Attacker: "alice", Target: "captain",
+			DeclarationID: currentAttackID(t, c.mgr, "sess", "alice"),
+		})
+		return err
+	})
+	require.NotEmpty(t, where[session.AttackAct](second.to("alice"), func(session.AttackAct) bool { return true }), "the second swing is told")
+	assert.Empty(t, where[session.ClockEntry](second.to("alice"), func(e session.ClockEntry) bool { return e.Mark == session.ClockTick }),
+		"a swing on the turn clock pays no world round")
 }
 
 // storedData is a member's stored sheet.
