@@ -295,7 +295,11 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 	if len(masked) > 0 {
 		for _, r := range full.Regions {
 			for _, c := range r.Cells {
-				if p, ok := e.field.partitionAt(c); ok && !hiddenCells[c] && !masked[c] {
+				p, ok, err := e.field.partitionAt(c)
+				if err != nil {
+					return Atlas{}, fmt.Errorf("atlas for %q: %w", member, err)
+				}
+				if ok && !hiddenCells[c] && !masked[c] {
 					presented[p] = true
 				}
 			}
@@ -309,7 +313,11 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 				continue
 			}
 			if masked[c] {
-				if p, ok := e.field.partitionAt(c); !ok || !presented[p] {
+				p, ok, err := e.field.partitionAt(c)
+				if err != nil {
+					return Atlas{}, fmt.Errorf("atlas for %q: %w", member, err)
+				}
+				if !ok || !presented[p] {
 					continue
 				}
 			}

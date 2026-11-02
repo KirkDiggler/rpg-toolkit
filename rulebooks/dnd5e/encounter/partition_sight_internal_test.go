@@ -103,7 +103,7 @@ func TestPartitionSightAnswersWhatTheCanvasAnswers(t *testing.T) {
 			f, err = compileField(in)
 			require.NoError(t, err)
 			require.NoError(t, validateDoorInputs(f, in.Doors))
-			canvas, err := f.partitionCanvas(in.Doors)
+			canvas, err := f.partitionCanvas(closedDoors(in.Doors))
 			require.NoError(t, err)
 			sight := newPartitionSight(canvas)
 			obstructions := canvasSightObstructions{canvas: canvas}
