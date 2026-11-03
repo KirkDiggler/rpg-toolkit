@@ -133,9 +133,12 @@ func TestARoutedTurnIsNeverDisplaced(t *testing.T) {
 }
 
 // TestAHeldDirectiveResumesWithItsKind: a compelled directive paused on a
-// window keeps its kind on every beat after the resume, through a reload.
+// window keeps its kind on every beat after the resume, through a reload —
+// and through a SECOND hold the resumed walk opens (held.go's re-pause).
 func TestAHeldDirectiveResumesWithItsKind(t *testing.T) {
-	mover := &pausingMover{pauseAt: map[int]bool{1: true}}
+	// Call 1 holds the second cell; the resume hand-steps it and announces
+	// the third (call 2), which holds again.
+	mover := &pausingMover{pauseAt: map[int]bool{1: true, 2: true}}
 	enc := routedScene(t, mover, &downList{}, passDriver{})
 	out, err := directOnce(t, enc, encounter.DirectInput{
 		Mover: goblin, Cause: whispersRef, Route: fleeRoute(), Kind: encounter.MoveCompelled,
@@ -150,9 +153,20 @@ func TestAHeldDirectiveResumesWithItsKind(t *testing.T) {
 
 	loaded, lerr := encounter.LoadEncounter(loadInput(data, mover, &downList{}))
 	require.NoError(t, lerr)
-	_, rerr := loaded.Resume(context.Background())
+	again, rerr := loaded.Resume(context.Background())
 	require.NoError(t, rerr)
+	require.True(t, again.Paused, "the resumed walk held a second time")
 
+	second := loaded.ToData()
+	require.NotNil(t, second.Pause)
+	require.Equal(t, "compelled", second.Pause.MoveKind, "the second hold stores the kind too")
+	reloaded, lerr := encounter.LoadEncounter(loadInput(second, mover, &downList{}))
+	require.NoError(t, lerr)
+	_, rerr = reloaded.Resume(context.Background())
+	require.NoError(t, rerr)
+	loaded = reloaded
+
+	require.Len(t, mover.calls, 3, "three announced cells across two holds")
 	for _, call := range mover.calls {
 		require.Equal(t, encounter.MoveCompelled, call.Kind, "every announced cell, before and after the hold")
 	}
@@ -180,7 +194,10 @@ func TestAPausedRoutedTurnResumesWithItsKind(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			mover := &pausingMover{pauseAt: map[int]bool{1: true}}
+			// Call 1 holds the second cell; the resume hand-steps it and
+			// announces the third (call 2), which holds again (pause.go's
+			// re-pause of a resumed turn).
+			mover := &pausingMover{pauseAt: map[int]bool{1: true, 2: true}}
 			driver := &scriptedDriver{intents: []encounter.TurnIntent{encounter.Routed{
 				Policy: encounter.MoveAway, Anchor: alice, Cause: tc.cause, Kind: tc.kind,
 			}}}
@@ -195,8 +212,18 @@ func TestAPausedRoutedTurnResumesWithItsKind(t *testing.T) {
 
 			loaded, lerr := encounter.LoadEncounter(loadInput(data, mover, &downList{}))
 			require.NoError(t, lerr)
-			_, rerr := loaded.Resume(context.Background())
+			again, rerr := loaded.Resume(context.Background())
 			require.NoError(t, rerr)
+			require.True(t, again.Paused, "the resumed turn held a second time")
+
+			second := loaded.ToData()
+			require.NotNil(t, second.Pause)
+			require.Equal(t, tc.wantKind, second.Pause.MoveKind, "the second hold stores the kind too")
+			reloaded, lerr := encounter.LoadEncounter(loadInput(second, mover, &downList{}))
+			require.NoError(t, lerr)
+			_, rerr = reloaded.Resume(context.Background())
+			require.NoError(t, rerr)
+			loaded = reloaded
 
 			moved := movedBeatsOf(t, loaded, alice)
 			require.Greater(t, len(moved), 2, "the resumed half walked on")
@@ -238,6 +265,7 @@ func TestAStoredPauseLoadsItsKind(t *testing.T) {
 		for _, beat := range movedBeatsOf(t, loaded, alice) {
 			kinds = append(kinds, beat["kind"])
 		}
+		require.NotEmpty(t, kinds, "the resume walked, so there are beats to read")
 		return kinds
 	}
 
