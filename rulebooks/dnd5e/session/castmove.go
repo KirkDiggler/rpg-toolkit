@@ -30,6 +30,9 @@ import (
 // — and the walk happens AFTER it, so the movement beats follow the cast beat
 // in the order a client animates them. Thunder, then the slide.
 //
+// A shove is walked by the record itself, inside the cast landing, and only
+// a flee is walked after it ([landingPushes], rpg-project#831).
+//
 // # What is not reconciled
 //
 // The board can change between the two. A push routed through a cell that
@@ -230,6 +233,55 @@ func walkCastPushes(
 		}
 	}
 	return false, nil
+}
+
+// landingPushes splits a cast's routed pushes into the shoves
+// [encounter.Encounter.RecordCast] walks inside the cast landing and the
+// pushes this package walks after the record.
+//
+// # A shove is part of the landing (rpg-project#785 R3, #831)
+//
+// The deed lands, then the fight forms inside the deed, and a push is part of
+// the deed landing. RecordCast is where a hostile cast from free roam turns
+// the pair, forms the fight, plays its first turns and charges the world its
+// round, so a shove walked after it moved creatures that had already fought
+// from the cells the blast threw them out of. Handed to RecordCast, a shove
+// walks after the cast's own beats and before the deed, on every clock: the
+// thunder, the slide, then whatever the deed sets off.
+//
+// # A push that provokes still walks after the record
+//
+// A provoking push (a flee) is the only push that can stop to ask a player
+// about a cell ([walkCastPushes]), and a held walk cannot sit in the middle of
+// a landing RecordCast finishes before it returns. So a flee walks here, after
+// the record, as it always has. From free roam that is still after the fight
+// the cast formed: the known half of rpg-project#831 that is left, not a rule.
+//
+// A push with no route (a wall at its back) walks nowhere and is dropped from
+// both: the cast's own moved result already says so.
+func landingPushes(pushes []castPush) (shoves []encounter.CastPush, flees []castPush) {
+	for _, push := range pushes {
+		if len(push.route) == 0 {
+			continue
+		}
+		if !displaces(push.move.Provokes) {
+			flees = append(flees, push)
+			continue
+		}
+		shoves = append(shoves, encounter.CastPush{Mover: push.target, Route: push.route})
+	}
+	return shoves, flees
+}
+
+// displaces reports whether a cast's move moves the body without its legs (a
+// shove, Thunderwave) rather than the creature's own legs under the caster's
+// order (a flee, Dissonant Whispers), from the one word content says about it.
+//
+// It reads through [moveKindFor], the one crossing from content's Provokes to a
+// kind (rpg-toolkit#2246), so the shove-or-flee split and the kind a walk
+// carries come from one function.
+func displaces(provokes bool) bool {
+	return moveKindFor(provokes) == encounter.MoveDisplaced
 }
 
 // moveKindFor names the kind a cast's move walks with, from the one word

@@ -501,7 +501,8 @@ func (m *Manager) finishCast(
 	// writes nothing, so the cast's own beat can say the blast moved somebody
 	// one cell instead of two; the walk that follows puts the movement beats
 	// after the cast beat, which is the order a client animates them in.
-	// Thunder, then the slide. See [castPush].
+	// Thunder, then the slide. See [castPush]. A shove is walked by the
+	// record itself, inside the cast landing: see [landingPushes].
 	if err := routeCastPushes(scope.enc, sheetsBeside(scope.standing), pushes, targetResults); err != nil {
 		return nil, fmt.Errorf("cast: %w", err)
 	}
@@ -513,6 +514,13 @@ func (m *Manager) finishCast(
 	// noticed from the sheet this call already wrote. If that consult fails,
 	// the mechanical sheet writes remain durable and are named by
 	// reportUnrecorded while this unsaved encounter scope is dropped.
+	// THE SHOVES LAND INSIDE THE CAST (rpg-project#785 R3, #831): RecordCast
+	// walks them after its own beats and before the deed, which is where a
+	// hostile cast from free roam forms its fight. A flee is walked after the
+	// record, in Continue. Split once, here, so neither step reads a value the
+	// other rewrote. See [landingPushes].
+	shoves, flees := landingPushes(pushes)
+
 	var paused bool
 	result, err := m.land(ctx, scope, out, &landing{
 		Record: func(enc *encounter.Encounter, told concentration) error {
@@ -530,6 +538,7 @@ func (m *Manager) finishCast(
 				// resolution has already put them in the order they happened.
 				ConcentrationChecks: told.Checks,
 				ConcentrationBreaks: told.Breaks,
+				Pushes:              shoves,
 			})
 			return err
 		},
@@ -555,7 +564,8 @@ func (m *Manager) finishCast(
 				}
 			}
 
-			// The pushes, now that the cast beat naming them is on the story.
+			// The pushes the record left ([landingPushes]: a flee), now that
+			// the cast beat naming them is on the story.
 			// A failure here leaves the cast recorded and the shove untaken,
 			// which is the same shape RecordCast's own failure has and is
 			// reported the same way: the durable writes are named and this
@@ -570,7 +580,7 @@ func (m *Manager) finishCast(
 			// verb commits, and says on its own output that the walk is
 			// unfinished.
 			var err error
-			paused, err = walkCastPushes(ctx, enc, pushes, spellRef)
+			paused, err = walkCastPushes(ctx, enc, flees, spellRef)
 			return err
 		},
 	})
