@@ -514,16 +514,16 @@ func (m *Manager) finishCast(
 	// noticed from the sheet this call already wrote. If that consult fails,
 	// the mechanical sheet writes remain durable and are named by
 	// reportUnrecorded while this unsaved encounter scope is dropped.
+	// THE SHOVES LAND INSIDE THE CAST (rpg-project#785 R3, #831): RecordCast
+	// walks them after its own beats and before the deed, which is where a
+	// hostile cast from free roam forms its fight. A flee is walked after the
+	// record, in Continue. Split once, here, so neither step reads a value the
+	// other rewrote. See [landingPushes].
+	shoves, flees := landingPushes(pushes)
+
 	var paused bool
 	result, err := m.land(ctx, scope, out, &landing{
 		Record: func(enc *encounter.Encounter, told concentration) error {
-			// THE SHOVES LAND INSIDE THE CAST (rpg-project#785 R3, #831):
-			// RecordCast walks them after its own beats and before the deed,
-			// which is where a hostile cast from free roam forms its fight.
-			// A flee stays here for the walk below. See [landingPushes].
-			shoves, rest := landingPushes(pushes)
-			pushes = rest
-
 			_, err := enc.RecordCast(&encounter.RecordCastInput{
 				Actor: encounter.MemberID(member),
 				Spell: encounter.SpellIdentity{
@@ -580,7 +580,7 @@ func (m *Manager) finishCast(
 			// verb commits, and says on its own output that the walk is
 			// unfinished.
 			var err error
-			paused, err = walkCastPushes(ctx, enc, pushes, spellRef)
+			paused, err = walkCastPushes(ctx, enc, flees, spellRef)
 			return err
 		},
 	})

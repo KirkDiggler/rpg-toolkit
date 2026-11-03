@@ -259,18 +259,32 @@ func walkCastPushes(
 //
 // A push with no route (a wall at its back) walks nowhere and is dropped from
 // both: the cast's own moved result already says so.
-func landingPushes(pushes []castPush) (shoves []encounter.CastPush, rest []castPush) {
+func landingPushes(pushes []castPush) (shoves []encounter.CastPush, flees []castPush) {
 	for _, push := range pushes {
 		if len(push.route) == 0 {
 			continue
 		}
-		if push.move.Provokes {
-			rest = append(rest, push)
+		if !displaces(push.move.Provokes) {
+			flees = append(flees, push)
 			continue
 		}
 		shoves = append(shoves, encounter.CastPush{Mover: push.target, Route: push.route})
 	}
-	return shoves, rest
+	return shoves, flees
+}
+
+// displaces reports whether a cast's move moves the body without its legs (a
+// shove, Thunderwave) rather than the creature's own legs under the caster's
+// order (a flee, Dissonant Whispers), from the one word content says about it.
+//
+// THE ONE PLACE this package reads Provokes as a kind of move ([walkCastPushes]
+// hands the flag to the encounter unread). rpg-toolkit#2246 names that crossing
+// moveKindFor, over encounter.MoveKind, which the encounter this module pins
+// does not have yet (rpg-toolkit#2245). At that merge this body becomes
+// `moveKindFor(provokes) == encounter.MoveDisplaced`, so the shove-or-flee
+// split and the kind a walk carries come from one function.
+func displaces(provokes bool) bool {
+	return !provokes
 }
 
 // routePolicy maps the content's word for how a creature is moved onto the
