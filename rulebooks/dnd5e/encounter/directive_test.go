@@ -290,28 +290,47 @@ func (s *DirectiveTestSuite) TestADirectiveThatProvokesSaysSoToTheMover() {
 }
 
 // TestAPushedCreatureKeepsItsFacing is the lead's ruling on
-// rpg-toolkit#2073: only a creature's own steps and intents turn it. A push
-// carries the goblin east, which a step of its own would turn it to (90);
-// shoved, it keeps the unstated 180 it was seated with. A rout — a directive
-// that provokes — is imposed all the same, and keeps it too.
+// rpg-toolkit#2073, narrowed by rpg-project#829 (design R2): a body moved
+// without its legs does not turn. A push carries the goblin east, which a
+// step of its own would turn it to (90); shoved, it keeps the unstated 180 it
+// was seated with.
 func (s *DirectiveTestSuite) TestAPushedCreatureKeepsItsFacing() {
-	for _, kind := range []encounter.MoveKind{encounter.MoveDisplaced, encounter.MoveCompelled} {
-		enc := s.lineScene(false)
-		_, err := enc.Direct(context.Background(), encounter.DirectInput{
-			Mover: goblin, Cause: thunderwaveRef, Route: []spatial.Position{cellAt(2, 0), cellAt(3, 0)},
-			Kind: kind,
-		})
-		s.Require().NoError(err)
-		s.Require().Equal(cellAt(3, 0), s.cellOfMember(goblin), "the directive moved it")
+	enc := s.lineScene(false)
+	_, err := enc.Direct(context.Background(), encounter.DirectInput{
+		Mover: goblin, Cause: thunderwaveRef, Route: []spatial.Position{cellAt(2, 0), cellAt(3, 0)},
+		Kind: encounter.MoveDisplaced,
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(cellAt(3, 0), s.cellOfMember(goblin), "the directive moved it")
+	s.Equal(encounter.UnstatedFacing, s.facingOfMember(enc, goblin), "a pushed creature did not turn")
+}
 
-		members, err := enc.Members()
-		s.Require().NoError(err)
-		for _, m := range members {
-			if m.ID == goblin {
-				s.Equal(encounter.UnstatedFacing, m.Facing, "%s: a moved creature did not turn", kind)
-			}
+// TestAWhisperedCreatureTurnsToFaceItsFlight is rpg-project#829 (design R2):
+// FACING FOLLOWS THE LEGS. A compelled directive is a Dissonant Whispers
+// flee: imposed for its route and its doors, but the creature's own legs walk
+// it, so it turns along its steps the way its own walk does and ends facing
+// its last step — east, 90, not the 180 it was seated with.
+func (s *DirectiveTestSuite) TestAWhisperedCreatureTurnsToFaceItsFlight() {
+	enc := s.lineScene(false)
+	_, err := enc.Direct(context.Background(), encounter.DirectInput{
+		Mover: goblin, Cause: thunderwaveRef, Route: []spatial.Position{cellAt(2, 0), cellAt(3, 0)},
+		Kind: encounter.MoveCompelled,
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(cellAt(3, 0), s.cellOfMember(goblin), "the directive moved it")
+	s.Equal(90.0, s.facingOfMember(enc, goblin), "a compelled creature faces the way its legs carried it")
+}
+
+func (s *DirectiveTestSuite) facingOfMember(enc *encounter.Encounter, id encounter.MemberID) float64 {
+	members, err := enc.Members()
+	s.Require().NoError(err)
+	for _, m := range members {
+		if m.ID == id {
+			return m.Facing
 		}
 	}
+	s.Require().Fail("no such member", "%s is not on the roster", id)
+	return 0
 }
 
 // TestAChosenWalkIsNeitherForcedNorCaused.

@@ -32,19 +32,22 @@ import (
 //     opportunity attack included: a [Mover] records the reaction through
 //     the same train, with the mover still on the cell it is leaving.
 //
-// ONLY A CREATURE'S OWN STEPS AND INTENTS TURN IT (lead ruling on
-// rpg-toolkit#2073). A forced move — a push, a pull, a shove, any walk an
-// effect imposes through [Encounter.Direct] — does not: the mover keeps the
-// facing it had, because being shoved backwards is not turning round. So the
-// turn is written where a walk is the walker's own ([Encounter.Step], a
-// driven or world-round walk, a resumed turn), never in the step every walk
-// shares.
+// FACING FOLLOWS THE LEGS (rpg-project#829, design R2, narrowing the lead
+// ruling on rpg-toolkit#2073). A step the creature's own legs take turns it,
+// whoever chose the route: its own walk ([Encounter.Step], a driven or
+// world-round walk, a resumed turn) and a compelled one alike. Only a body
+// moved without its legs — [MoveDisplaced], a push, a pull, a shove — keeps
+// the facing it had, because being shoved backwards is not turning round.
+// The rule reads the step's [MoveKind], never whether the walk was imposed:
+// [Encounter.Direct] imposes a Dissonant Whispers flee as surely as a
+// Thunderwave push, but only the push is displaced.
 //
 // A [Routed] WALK IS THE CREATURE'S OWN. Its doc calls it "somebody else's"
 // because somebody else chose the route — a table's `toward` or `away`, a
 // Command — but the creature's own legs walk it, on its own turn, so it turns
-// along its steps and ends facing the anchor it closed on. Imposed means an
-// effect moved the body, which is [Encounter.Direct] and nothing else.
+// along its steps and ends facing the anchor it closed on. A compelled
+// [Encounter.Direct] flee has no anchor to close on, so it ends facing its
+// last step.
 //
 // ONE SOURCE FOR WHERE A CREATURE TURNS TO (lead ruling on
 // rpg-toolkit#2073): the cell it HOLDS for its target, through [faceHeld] —
@@ -175,9 +178,9 @@ func (e *Encounter) faceToward(m *memberRecord, cell spatial.Position) {
 	}
 }
 
-// turnAlong turns a creature along a step it took itself: the bearing from
+// turnAlong turns a creature along a step its legs took: the bearing from
 // the cell it left to the cell it took. A zero-distance step has no direction
-// and keeps the facing it had. Callers whose walk is imposed do not ask.
+// and keeps the facing it had. Callers whose step is displaced do not ask.
 func (e *Encounter) turnAlong(action executedAction) {
 	if degrees, ok := bearing(e.field.orientation, action.from, action.to); ok {
 		action.member.Facing = degrees

@@ -143,6 +143,11 @@ func (e *Encounter) walkHeld(ctx context.Context, h *pause, m *memberRecord) (wa
 	}
 	action.cause = h.cause
 	action.kind = h.moveKind
+	if stepped && !h.moveKind.Displaced() {
+		// The first resumed cell turns under the same rule as every other
+		// step of the walk: legs turn, a displaced body does not (facing.go).
+		e.turnAlong(action)
+	}
 	if !stepped {
 		// The floor changed under the announced cell while the window was
 		// open. The walk stops here, exactly as walkPath stops for a wall.
