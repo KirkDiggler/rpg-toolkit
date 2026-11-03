@@ -5,6 +5,7 @@ package encounter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -102,18 +103,16 @@ func (d TableDriver) Act(view MonsterView) (Decision, error) {
 		Key: AnswerTime, Table: table, Temper: view.Temper, Facts: factsFromView(view), Die: d.Roller,
 	})
 	if err != nil {
+		// pick never answers silence for AnswerTime — an empty table is a
+		// hold — but silence here would be a nil dereference inside a driver,
+		// which is the one failure mode this seam turns into an aborted verb
+		// rather than a crash. Silence is [behavior.ErrSilent] (#2220).
+		if errors.Is(err, behavior.ErrSilent) {
+			return Decision{}, fmt.Errorf("table driver %q: %w", view.Self, ErrBadAnswer)
+		}
 		return Decision{}, fmt.Errorf("table driver %q: %w", view.Self, err)
 	}
-	if chosen != nil {
-		chosen.Key = key
-	}
-	// pick never answers nil for AnswerTime — an empty table is a hold — but
-	// a nil here would be a nil-pointer panic inside a driver, which is the
-	// one failure mode this seam turns into an aborted verb rather than a
-	// crash.
-	if chosen == nil {
-		return Decision{}, fmt.Errorf("table driver %q: %w", view.Self, ErrBadAnswer)
-	}
+	chosen.Key = key
 
 	intent, err := d.intentFor(view, chosen.Answer)
 	if err != nil {

@@ -5,6 +5,7 @@ package encounter
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -144,7 +145,7 @@ func (e *Encounter) noticeDown(
 	var intelDeltas map[MemberID]*IntelDelta
 	for _, id := range removed {
 		bubble, berr := e.bubbleFor(id)
-		if berr != nil {
+		if berr != nil && !errors.Is(berr, errNotInBubble) {
 			return nil, nil, fmt.Errorf("participation bubble %q: %w", id, berr)
 		}
 		if bubble == nil {

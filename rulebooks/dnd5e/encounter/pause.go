@@ -6,6 +6,7 @@ package encounter
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -797,7 +798,7 @@ func (e *Encounter) resumeTurn(ctx context.Context) (*ResumeOutput, error) {
 	// happened and the body is still in the cell it was leaving. So there is
 	// no turn left to finish; there is only the rest of the fight to drive.
 	bubble, berr := e.bubbleFor(p.member)
-	if berr != nil {
+	if berr != nil && !errors.Is(berr, errNotInBubble) {
 		return nil, fmt.Errorf("resume turn %q: %w", p.member, berr)
 	}
 	moverLeft := bubble == nil

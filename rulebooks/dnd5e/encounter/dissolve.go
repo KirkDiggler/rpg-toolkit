@@ -4,6 +4,7 @@
 package encounter
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
@@ -169,7 +170,7 @@ func (e *Encounter) Dissolve(in *DissolveInput) (*DissolveOutput, error) {
 		return nil, fmt.Errorf("dissolve %q: %w", in.Member, ErrNotMember)
 	}
 	bubble, err := e.bubbleFor(in.Member)
-	if err != nil {
+	if err != nil && !errors.Is(err, errNotInBubble) {
 		return nil, fmt.Errorf("dissolve %q: %w", in.Member, err)
 	}
 	if bubble == nil {

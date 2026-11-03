@@ -5,7 +5,7 @@ go 1.27.0
 require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.12.1
 	github.com/KirkDiggler/rpg-toolkit/dice v0.3.2
-	github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.18.0
+	github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.18.1-0.20261103185726-7af6cc2a6d8f
 	github.com/KirkDiggler/rpg-toolkit/mind/machine v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/mind/perception v0.3.0
 	github.com/KirkDiggler/rpg-toolkit/play/clock v0.1.0

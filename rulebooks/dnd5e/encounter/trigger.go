@@ -4,6 +4,7 @@
 package encounter
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 
@@ -324,7 +325,7 @@ func (e *Encounter) anchorsAFight(a, b MemberID) (bool, error) {
 			return true, nil
 		}
 		bubble, err := e.bubbleFor(id)
-		if err != nil {
+		if err != nil && !errors.Is(err, errNotInBubble) {
 			return false, err
 		}
 		if bubble != nil {
@@ -393,7 +394,7 @@ func (e *Encounter) pullInWatchers(engaged map[MemberID]bool, contact map[Member
 				continue
 			}
 			bubble, err := e.bubbleFor(x)
-			if err != nil {
+			if err != nil && !errors.Is(err, errNotInBubble) {
 				return err
 			}
 			if bubble != nil {
@@ -449,7 +450,7 @@ func (e *Encounter) formation(engaged map[MemberID]bool, contact map[MemberID]bo
 		var joined []MemberID
 		for _, id := range form {
 			bubble, err := e.bubbleFor(id)
-			if err != nil {
+			if err != nil && !errors.Is(err, errNotInBubble) {
 				return nil, err
 			}
 			if bubble == nil {

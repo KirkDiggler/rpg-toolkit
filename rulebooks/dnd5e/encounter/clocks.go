@@ -88,7 +88,7 @@ func (e *Encounter) ClockOf(in *ClockOfInput) (*ClockOfOutput, error) {
 	}
 
 	bubble, err := e.bubbleFor(in.Member)
-	if err != nil {
+	if err != nil && !errors.Is(err, errNotInBubble) {
 		return nil, fmt.Errorf("clock_of %q: %w", in.Member, err)
 	}
 	if bubble == nil {
@@ -141,8 +141,15 @@ func (e *Encounter) ClockOf(in *ClockOfInput) (*ClockOfOutput, error) {
 	}, nil
 }
 
-// bubbleFor returns the bubble holding this member, or nil if they are on the
-// world clock. Never returns two: R6 is validated on load and upheld by every
+// errNotInBubble is bubbleFor's news that no bubble holds this member. The
+// usual reading is the world clock; a member on NO clock — a Dissolve that
+// failed half-way — reads the same here, which is why clock_of re-checks
+// before believing it (#2220: an error may carry the news, not the blame).
+// Unexported because it never crosses the package's API.
+var errNotInBubble = errors.New("no bubble holds this member")
+
+// bubbleFor returns the bubble holding this member, or [errNotInBubble] when
+// none does. Never two bubbles: R6 is validated on load and upheld by every
 // verb that moves a member between clocks.
 func (e *Encounter) bubbleFor(id MemberID) (*clock.Turn, error) {
 	for _, b := range e.bubbles {
@@ -154,7 +161,7 @@ func (e *Encounter) bubbleFor(id MemberID) (*clock.Turn, error) {
 			return b, nil
 		}
 	}
-	return nil, nil
+	return nil, errNotInBubble
 }
 
 // leaveAnyClock removes a member from whichever clock holds them.
@@ -165,7 +172,7 @@ func (e *Encounter) bubbleFor(id MemberID) (*clock.Turn, error) {
 // the members most likely to be leaving — the ones in a fight.
 func (e *Encounter) leaveAnyClock(id MemberID) (map[MemberID]*IntelDelta, error) {
 	bubble, err := e.bubbleFor(id)
-	if err != nil {
+	if err != nil && !errors.Is(err, errNotInBubble) {
 		return nil, err
 	}
 	if bubble != nil {
@@ -1058,7 +1065,7 @@ func (e *Encounter) executeTurnIntent(
 		// step that would leave a hostile's reach, and the walk below is then
 		// the same walk it always was.
 		disengageDeltas, derr := e.disengageBeforeWalk(activeID, m, it.Path, budget)
-		if derr != nil {
+		if derr != nil && !errors.Is(derr, errNoDisengage) {
 			return false, nil, derr
 		}
 
@@ -1104,7 +1111,7 @@ func (e *Encounter) executeTurnIntent(
 		budget.MovementFeet -= res.moved * FeetPerCell
 
 		intelDeltas, serr := e.settleWalkOn(coords.Clock, audience, res.moved+res.opened)
-		if serr != nil {
+		if serr != nil && !errors.Is(serr, errNoSettle) {
 			return false, nil, serr
 		}
 		intelDeltas = mergeIntelDeltas(disengageDeltas, intelDeltas)
@@ -1240,7 +1247,7 @@ func (e *Encounter) executeTurnIntent(
 		// sent running still spends its bonus action to get out cleanly. The
 		// route is known now, so its steps are too.
 		disengageDeltas, derr := e.disengageBeforeWalk(activeID, m, route.Path, budget)
-		if derr != nil {
+		if derr != nil && !errors.Is(derr, errNoDisengage) {
 			return false, nil, derr
 		}
 
@@ -1274,7 +1281,7 @@ func (e *Encounter) executeTurnIntent(
 		budget.MovementFeet -= res.moved * FeetPerCell
 
 		intelDeltas, serr := e.settleWalkOn(coords.Clock, audience, res.moved+res.opened)
-		if serr != nil {
+		if serr != nil && !errors.Is(serr, errNoSettle) {
 			return false, nil, serr
 		}
 		intelDeltas = mergeIntelDeltas(disengageDeltas, intelDeltas)
@@ -1432,18 +1439,24 @@ const meleeReachCells = 1
 // ASK, THEN SPEND, THEN TELL. A Disengager that fails aborts the verb with
 // nothing spent and nothing told, so the story never claims a disengage the
 // sheet did not take.
+// errNoDisengage is disengageBeforeWalk's news that this walk needs no
+// bonus-action Disengage: no disengager is wired, the budget has no bonus
+// action, there is no path, or the sheet has none to spend (#2220: an error
+// may carry the news, not the blame).
+var errNoDisengage = errors.New("no disengage before this walk")
+
 func (e *Encounter) disengageBeforeWalk(
 	member MemberID, m *memberRecord, path []spatial.Position, budget *TurnBudget,
 ) (map[MemberID]*IntelDelta, error) {
 	if e.disengager == nil || budget.BonusActions <= 0 || len(path) == 0 {
-		return nil, nil
+		return nil, errNoDisengage
 	}
 	sheet, err := e.sheetOf(member)
 	if err != nil {
 		return nil, fmt.Errorf("disengage %q: %w", member, err)
 	}
 	if sheet.BonusDisengage.Ref == "" {
-		return nil, nil
+		return nil, errNoDisengage
 	}
 	// The cells it will walk, judged as the walk judges them: its own walk,
 	// with the doors it opens standing open ([Encounter.walkableEnd]).
@@ -1452,14 +1465,14 @@ func (e *Encounter) disengageBeforeWalk(
 		return nil, fmt.Errorf("disengage %q: %w", member, err)
 	}
 	if len(walked) == 0 {
-		return nil, nil
+		return nil, errNoDisengage
 	}
 	leaves, err := e.walkLeavesHostileReach(member, m, walked)
 	if err != nil {
 		return nil, fmt.Errorf("disengage %q: %w", member, err)
 	}
 	if !leaves {
-		return nil, nil
+		return nil, errNoDisengage
 	}
 
 	// context.Background() for the Striker call's reason: no verb on this
@@ -1991,9 +2004,14 @@ func (e *Encounter) walkWorld(
 // would run the whole sweep once per creature the world thought for, and would
 // form a fight in the middle of the world's own pass, before the rest of the
 // creatures had moved.
+// errNoSettle is settleWalkOn's news that this clock settles nothing here:
+// a round of the world owns its own refresh, so the walk's caller takes no
+// deltas from it (#2220: an error may carry the news, not the blame).
+var errNoSettle = errors.New("this clock settles nothing here")
+
 func (e *Encounter) settleWalkOn(kind ClockKind, audience []MemberID, moved int) (map[MemberID]*IntelDelta, error) {
 	if kind == ClockWorld {
-		return nil, nil
+		return nil, errNoSettle
 	}
 
 	return e.settleWalk(audience, moved)
@@ -2807,7 +2825,7 @@ func (e *Encounter) formWithParticipation(
 			return nil, fmt.Errorf("form: %q: %w", id, ErrNotMember)
 		}
 		bubble, err := e.bubbleFor(id)
-		if err != nil {
+		if err != nil && !errors.Is(err, errNotInBubble) {
 			return nil, fmt.Errorf("form %q: %w", id, err)
 		}
 		if bubble != nil {
@@ -2989,7 +3007,7 @@ func (e *Encounter) transfer(in *TransferInput, driveAfterRemove bool) (*Transfe
 		return nil, fmt.Errorf("transfer %q: world npc cannot enter a fight: %w", in.Member, ErrBadMember)
 	}
 	bubble, err := e.bubbleFor(in.Member)
-	if err != nil {
+	if err != nil && !errors.Is(err, errNotInBubble) {
 		return nil, fmt.Errorf("transfer %q: %w", in.Member, err)
 	}
 	var intelDeltas map[MemberID]*IntelDelta
@@ -3181,7 +3199,7 @@ func (e *Encounter) EndTurn(in *EndTurnInput) (*EndTurnOutput, error) {
 		return nil, fmt.Errorf("end turn %q: %w", in.Member, ErrNotMember)
 	}
 	bubble, err := e.bubbleFor(in.Member)
-	if err != nil {
+	if err != nil && !errors.Is(err, errNotInBubble) {
 		return nil, fmt.Errorf("end turn %q: %w", in.Member, err)
 	}
 	if bubble == nil {
