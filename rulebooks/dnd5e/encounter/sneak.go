@@ -5,6 +5,7 @@ package encounter
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -156,7 +157,7 @@ func (e *Encounter) SetSneaking(in *SetSneakingInput) (*SetSneakingOutput, error
 		return nil, fmt.Errorf("set sneaking: %w", ErrClosed)
 	}
 	bubble, err := e.bubbleFor(in.Member)
-	if err != nil {
+	if err != nil && !errors.Is(err, errNotInBubble) {
 		return nil, fmt.Errorf("set sneaking %q: %w", in.Member, err)
 	}
 	if bubble != nil {

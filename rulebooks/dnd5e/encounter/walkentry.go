@@ -1,6 +1,7 @@
 package encounter
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
@@ -54,7 +55,7 @@ func (e *Encounter) AdmitWalk(in *AdmitWalkInput) (*AdmitWalkOutput, error) {
 		return nil, ErrNotMember
 	}
 	bubble, err := e.bubbleFor(in.Member)
-	if err != nil {
+	if err != nil && !errors.Is(err, errNotInBubble) {
 		return nil, err
 	}
 	out := &AdmitWalkOutput{}

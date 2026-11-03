@@ -6,6 +6,7 @@ package encounter
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -227,7 +228,7 @@ func (e *Encounter) onTheWorldClock(id MemberID) (bool, error) {
 		return false, nil
 	}
 	bubble, err := e.bubbleFor(id)
-	if err != nil {
+	if err != nil && !errors.Is(err, errNotInBubble) {
 		return false, err
 	}
 	return bubble == nil, nil
@@ -249,7 +250,7 @@ func (e *Encounter) onTheWorldClock(id MemberID) (bool, error) {
 // costs outside one.
 func (e *Encounter) spendWorldAction(actor MemberID) error {
 	bubble, err := e.bubbleFor(actor)
-	if err != nil {
+	if err != nil && !errors.Is(err, errNotInBubble) {
 		return fmt.Errorf("world action: %w", err)
 	}
 	if bubble != nil {
@@ -295,7 +296,7 @@ func (e *Encounter) spendWorldPace(mover MemberID) error {
 	}
 
 	bubble, err := e.bubbleFor(mover)
-	if err != nil {
+	if err != nil && !errors.Is(err, errNotInBubble) {
 		return fmt.Errorf("world pace: %w", err)
 	}
 	if bubble != nil {

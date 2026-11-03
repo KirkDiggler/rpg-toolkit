@@ -5,6 +5,7 @@ package encounter
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
@@ -222,7 +223,7 @@ func (e *Encounter) RecordRest(in *RecordRestInput) (*RecordRestOutput, error) {
 			return nil, err
 		}
 		bubble, err := e.bubbleFor(m.Member)
-		if err != nil {
+		if err != nil && !errors.Is(err, errNotInBubble) {
 			return nil, fmt.Errorf("record rest: %w", err)
 		}
 		if bubble != nil {
