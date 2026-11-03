@@ -23,7 +23,10 @@ import "fmt"
 // exactly one word, so nothing can switch a reaction off by forgetting.
 //
 // What a kind MEANS for a reaction is the rules layer's (C1): this module
-// carries it and does not act on it.
+// carries it and does not act on it. What it means for FACING is this
+// module's, because facing is member state the engine writes (facing.go):
+// legs turn, so every kind but displaced turns along its steps
+// (rpg-project#829, design R2).
 type MoveKind string
 
 const (

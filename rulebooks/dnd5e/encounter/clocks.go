@@ -1597,6 +1597,11 @@ func (e *Encounter) walkPath(
 	var res walkResult
 	kind = kind.named()
 
+	// `imposed` means one thing here: the doors. A creature's own walk opens
+	// the doors it reaches; a walk an effect imposes ([Encounter.Direct])
+	// meets them as they are. Which way the walker faces is the kind's
+	// question, not this flag's.
+	//
 	// THE WALK ENDS WHERE ITS WALKER CAN STAND ([Encounter.walkableEnd]):
 	// the tail a budget cut onto an ally is dropped before the first step,
 	// judged over the whole walk with the doors a creature's own walk
@@ -1725,9 +1730,12 @@ func (e *Encounter) walkPath(
 		}
 		action.cause = cause
 		action.kind = kind
-		// A creature's own step turns it; an imposed one — a directive, an
-		// effect moving it — does not (facing.go).
-		if stepped && !imposed {
+		// FACING FOLLOWS THE LEGS (rpg-project#829): a step the creature's
+		// legs take turns it, its own or compelled; a displaced body keeps
+		// the facing it had (facing.go). It is the kind, never `imposed`:
+		// a compelled directive is imposed for its doors and walked all
+		// the same.
+		if stepped && !kind.Displaced() {
 			e.turnAlong(action)
 		}
 		if !stepped {

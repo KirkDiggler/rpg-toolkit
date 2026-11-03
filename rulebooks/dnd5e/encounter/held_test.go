@@ -518,6 +518,43 @@ func (s *HeldTestSuite) TestAHeldPushKeepsItsStanceAcrossTheHold() {
 	}
 }
 
+// TestAHeldFleeTurnsOnItsFirstResumedCell is rpg-project#829 (design R2) at
+// the one step walkPath does not take: the announced cell a resume steps by
+// hand. A one-cell flee held at that cell has no later step to turn it, so a
+// compelled walk that faces its route has to turn there, and a displaced one
+// must not.
+func (s *HeldTestSuite) TestAHeldFleeTurnsOnItsFirstResumedCell() {
+	for _, tc := range []struct {
+		kind encounter.MoveKind
+		want float64
+	}{
+		{encounter.MoveCompelled, 90},                       // (6,2) to (7,2) is east on a pointy-top yard
+		{encounter.MoveDisplaced, encounter.UnstatedFacing}, // shoved, it keeps the facing it had
+	} {
+		mover := &pausingMover{pauseAt: map[int]bool{0: true}}
+		enc := s.scene(mover, &downList{})
+		out, err := s.direct(enc, encounter.DirectInput{
+			Mover: goblin, Cause: whispersRef, Route: []spatial.Position{cellAt(7, 2)}, Kind: tc.kind,
+		})
+		s.Require().NoError(err)
+		s.Require().True(out.Paused, "%s: the only cell was announced and held", tc.kind)
+
+		reloaded, lerr := encounter.LoadEncounter(loadInput(enc.ToData(), &pausingMover{}, &downList{}))
+		s.Require().NoError(lerr)
+		_, rerr := reloaded.Resume(context.Background())
+		s.Require().NoError(rerr)
+		s.Require().Equal(cellAt(7, 2), s.positionOf(reloaded, goblin), "%s: the resume took the cell", tc.kind)
+
+		members, merr := reloaded.Members()
+		s.Require().NoError(merr)
+		for _, m := range members {
+			if m.ID == goblin {
+				s.Equal(tc.want, m.Facing, "%s: the hand-taken cell turns as the walk's own steps do", tc.kind)
+			}
+		}
+	}
+}
+
 // TestTheFloorChangingUnderAHeldWalkStopsItAndSaysSo is the case a directed
 // walk has and a driven turn does not: the route was priced before the window
 // opened, and the window is exactly the stretch of time in which the map can
