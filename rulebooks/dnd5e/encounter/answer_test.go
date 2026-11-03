@@ -1014,6 +1014,7 @@ func TestAPathWalksItsLoopAndResumesAtTheNearest(t *testing.T) {
 	// three, so the first is where it goes back to.
 	off := spatial.Position{X: 13, Y: 1}
 	_, err := enc.Direct(context.Background(), encounter.DirectInput{
+		Kind:  encounter.MoveDisplaced,
 		Mover: hWalker, Route: []spatial.Position{off},
 		Cause: core.Ref{Module: "test", Type: "spell", ID: "command"},
 	})

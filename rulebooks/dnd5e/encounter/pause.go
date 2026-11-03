@@ -112,8 +112,10 @@ const (
 //
 // The walk's own fields are shared. `cause` is the effect moving the
 // creature, which every beat of its walk names: required on a directive, and
-// the zero Ref on a turn's own [Move] (a [Routed] turn names one). `forced` is
-// the stance a directive's [Mover] was told about, and is a directive's only.
+// the zero Ref on a turn's own [Move] (a [Routed] turn names one). `moveKind`
+// is the [MoveKind] the walk was started with — a directive's compelled or
+// displaced, a Routed turn's intent kind, own on a creature's own Move — so a
+// resumed walk's later beats keep the kind its first beats had.
 // `turn` is present exactly on a turn and carries what the turn interrupted.
 //
 // The bubble and the *memberRecord are deliberately NOT here. Both are
@@ -130,7 +132,7 @@ type pause struct {
 	audience  []MemberID
 	cause     core.Ref
 	turn      *turnPause
-	forced    bool
+	moveKind  MoveKind
 
 	// act is the act the paused walk or strike belongs to (act.go), so the
 	// cells walked after the answer carry the same id as the cells before
@@ -230,9 +232,16 @@ type PauseData struct {
 	// Turn is present EXACTLY on a [PauseTurn]: the turn the walk interrupted.
 	Turn *TurnPauseData `json:"turn,omitempty"`
 
-	// Forced is what a directive's [Mover] was told about this step's stance —
-	// [DirectInput.Provokes], inverted, exactly as the live walk carried it.
-	// A directive's only; refused on a turn.
+	// MoveKind is the [MoveKind] the held walk was started with, exactly as
+	// the live walk carried it: compelled or displaced on a directive,
+	// compelled on a compelled [Routed] turn, empty for own. On load a stored
+	// word wins; a pause from before the kind derives it from Forced alone
+	// (true is displaced, else own).
+	MoveKind string `json:"move_kind,omitempty"`
+
+	// Forced is DEPRECATED, a mirror of MoveKind == displaced, still written
+	// so a reader that does not know MoveKind keeps the push's stance. A turn
+	// is never displaced, so it is refused on a turn.
 	Forced bool `json:"forced,omitempty"`
 
 	// ActID is the id of the act the paused walk or strike belongs to,
@@ -335,7 +344,8 @@ func pauseDataFrom(p *pause) *PauseData {
 		At:        p.at,
 		Audience:  append([]MemberID(nil), p.audience...),
 		Cause:     causeString(p.cause),
-		Forced:    p.forced,
+		MoveKind:  p.moveKind.beatWord(),
+		Forced:    p.moveKind.Displaced(),
 		ActID:     p.act,
 		OuterIDs:  append([]string(nil), p.outer...),
 	}
@@ -405,6 +415,10 @@ func pauseFrom(d *PauseData) (*pause, error) {
 		return nil, fmt.Errorf(
 			"load encounter pause %q: cause %q: %w: %w", d.Member, d.Cause, ErrInvalidData, cerr)
 	}
+	moveKind, kerr := moveKindFromData(d.MoveKind, d.Forced)
+	if kerr != nil {
+		return nil, fmt.Errorf("load encounter pause %q: %w: %w", d.Member, kerr, ErrInvalidData)
+	}
 	remaining := make([]spatial.Position, len(d.Remaining))
 	for i, c := range d.Remaining {
 		remaining[i] = spatial.Position{X: c.X, Y: c.Y}
@@ -419,7 +433,7 @@ func pauseFrom(d *PauseData) (*pause, error) {
 		at:        d.At,
 		audience:  append([]MemberID(nil), d.Audience...),
 		cause:     cause,
-		forced:    d.Forced,
+		moveKind:  moveKind,
 		act:       d.ActID,
 		outer:     append([]string(nil), d.OuterIDs...),
 	}
@@ -505,8 +519,12 @@ func validatePause(d *PauseData, members map[core.EntityID]struct{}) error {
 	if d.Kind == PauseDirective && d.Turn != nil {
 		return fmt.Errorf("load encounter pause %q: a directive carries a turn: %w", d.Member, ErrInvalidData)
 	}
-	if d.Kind == PauseTurn && d.Forced {
-		return fmt.Errorf("load encounter pause %q: a turn is never forced: %w", d.Member, ErrInvalidData)
+	moveKind, err := moveKindFromData(d.MoveKind, d.Forced)
+	if err != nil {
+		return fmt.Errorf("load encounter pause %q: %w: %w", d.Member, err, ErrInvalidData)
+	}
+	if d.Kind == PauseTurn && moveKind.Displaced() {
+		return fmt.Errorf("load encounter pause %q: a turn is never displaced: %w", d.Member, ErrInvalidData)
 	}
 	if d.Kind == PauseDirective {
 		if _, err := core.ParseString(d.Cause); err != nil {
@@ -977,7 +995,7 @@ func (e *Encounter) finishPausedIntent(
 		return 0, nil, false, stepErr
 	}
 	action.cause = p.cause
-	action.forced = p.forced
+	action.kind = p.moveKind
 	if stepped {
 		e.turnAlong(action) // a turn's walk is the walker's own (facing.go)
 		if _, berr := e.appendMovementBeat(action, p.audience, p.at); berr != nil {
@@ -990,7 +1008,7 @@ func (e *Encounter) finishPausedIntent(
 	if stepped && len(p.remaining) > 1 {
 		// Every LATER cell is an ordinary announced step, and may pause
 		// again.
-		rest, werr := e.walkPath(ctx, p.member, m, p.remaining[1:], p.audience, p.at, p.cause, false, false)
+		rest, werr := e.walkPath(ctx, p.member, m, p.remaining[1:], p.audience, p.at, p.cause, p.moveKind, false)
 		if werr != nil {
 			return 0, nil, false, fmt.Errorf("resume move: %w", werr)
 		}
@@ -1028,6 +1046,7 @@ func (e *Encounter) finishPausedIntent(
 			at:        p.at,
 			audience:  p.audience,
 			cause:     p.cause,
+			moveKind:  p.moveKind,
 			act:       p.act,
 			outer:     p.outer,
 			turn: &turnPause{

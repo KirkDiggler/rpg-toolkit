@@ -460,11 +460,11 @@ type announcedStep struct {
 	Mover    encounter.MemberID
 	From, To spatial.Position
 
-	// Cause and Forced are what the step says about WHY it is happening: the
-	// effect that moved this creature, and whether they were moved rather
-	// than walking. Both zero for a step somebody chose.
-	Cause  core.Ref
-	Forced bool
+	// Cause and Kind are what the step says about WHY it is happening: the
+	// effect that moved this creature, and how the body moved. Both zero for
+	// a step somebody chose.
+	Cause core.Ref
+	Kind  encounter.MoveKind
 
 	// StoodAt is where the encounter itself had this member when the
 	// announcement arrived, read back rather than echoed.
@@ -495,7 +495,7 @@ func (r *recordingMover) Move(_ context.Context, enc *encounter.Encounter, step 
 func announcedOf(step encounter.MoveStep) announcedStep {
 	return announcedStep{
 		Mover: step.Mover, From: step.From, To: step.To,
-		Cause: step.Cause, Forced: step.Forced,
+		Cause: step.Cause, Kind: step.Kind,
 	}
 }
 
@@ -2151,7 +2151,7 @@ func routedScene(
 // and said nothing the second time".
 func routedDriver(policy encounter.MovePolicy, anchor encounter.MemberID) *scriptedDriver {
 	return &scriptedDriver{intents: []encounter.TurnIntent{
-		encounter.Routed{Policy: policy, Anchor: anchor, Cause: commandedRef},
+		encounter.Routed{Policy: policy, Anchor: anchor, Cause: commandedRef, Kind: encounter.MoveCompelled},
 	}}
 }
 
@@ -2184,11 +2184,11 @@ func positionOfMember(t *testing.T, enc *encounter.Encounter, id encounter.Membe
 // TestARoutedWalkIsAnnouncedAsWalkingAndNamesWhatRoutedIt.
 //
 // The two things every cell of a compelled walk tells the [Mover], and the
-// ruling of this slice is the second one: Forced is FALSE. A commanded
+// ruling of this slice is the second one: the kind is COMPELLED. A commanded
 // creature is WALKING, under somebody else's orders, so its steps provoke
 // exactly as its own would — the ghoul that obeys "approach" is struck on the
-// way in. Being compelled is not being shoved, and Forced is what a directive
-// sets when a creature is MOVED rather than moving.
+// way in. Being compelled is not being shoved, and displaced is what a
+// directive names when a creature is MOVED rather than moving (rpg-project#825).
 //
 // Design §5.4's first prose said the flag was set; §5.3's own table gives
 // Approach and Flee Provokes:true, and Direct maps forced = !Provokes. The
@@ -2205,7 +2205,7 @@ func TestARoutedWalkIsAnnouncedAsWalkingAndNamesWhatRoutedIt(t *testing.T) {
 
 	require.NotEmpty(t, mover.calls, "the walk announced its cells")
 	for i, step := range mover.calls {
-		require.False(t, step.Forced, "step %d: a compelled creature walks, and walking provokes", i)
+		require.Equal(t, encounter.MoveCompelled, step.Kind, "step %d: a compelled creature walks, and walking provokes", i)
 		require.Equal(t, commandedRef, step.Cause, "step %d: and every step says what routed it", i)
 	}
 }

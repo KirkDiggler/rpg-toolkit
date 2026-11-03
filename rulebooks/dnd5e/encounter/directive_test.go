@@ -223,6 +223,7 @@ func (s *DirectiveTestSuite) TestDirectMovesOffTurnAndTheBeatSaysWhy() {
 	s.Require().NoError(err)
 
 	out, err := enc.Direct(context.Background(), encounter.DirectInput{
+		Kind:  encounter.MoveDisplaced,
 		Mover: goblin, Cause: thunderwaveRef, Route: route.Path,
 	})
 	s.Require().NoError(err)
@@ -236,7 +237,7 @@ func (s *DirectiveTestSuite) TestDirectMovesOffTurnAndTheBeatSaysWhy() {
 	s.Equal(route.Path[0], s.mover.calls[0].To)
 	s.Equal(s.moverCell, s.mover.calls[0].StoodAt,
 		"announced BEFORE the step, exactly as a chosen walk announces it")
-	s.True(s.mover.calls[0].Forced, "a push that does not provoke says so to the Mover")
+	s.Equal(encounter.MoveDisplaced, s.mover.calls[0].Kind, "a push says so to the Mover")
 	s.Equal(thunderwaveRef, s.mover.calls[0].Cause, "and names what is doing the pushing")
 
 	beats := s.movedBeats(alice)
@@ -245,6 +246,7 @@ func (s *DirectiveTestSuite) TestDirectMovesOffTurnAndTheBeatSaysWhy() {
 	s.Equal(string(goblin), last["member"])
 	s.Equal(thunderwaveRef.String(), last["cause"], "an observer can tell a shove from a step")
 	s.Equal(true, last["forced"], "a Thunderwave-shaped push is external displacement, not a walk")
+	s.Equal("displaced", last["kind"], "and the beat names the kind")
 
 	clockOf, err := enc.ClockOf(&encounter.ClockOfInput{Member: alice})
 	s.Require().NoError(err)
@@ -262,17 +264,29 @@ func (s *DirectiveTestSuite) TestADirectiveThatProvokesSaysSoToTheMover() {
 
 	_, err := enc.Direct(context.Background(), encounter.DirectInput{
 		Mover: goblin, Cause: thunderwaveRef, Route: []spatial.Position{cellAt(2, 0)},
-		Provokes: true,
+		Kind: encounter.MoveCompelled,
 	})
 	s.Require().NoError(err)
 
 	s.Require().Len(s.mover.calls, 1)
-	s.False(s.mover.calls[0].Forced, "a directive that provokes is announced like any other step")
+	s.Equal(encounter.MoveCompelled, s.mover.calls[0].Kind, "a directive that provokes is announced as compelled")
 	s.Equal(thunderwaveRef, s.mover.calls[0].Cause, "it still says what moved them")
 
 	beats := s.movedBeats(alice)
 	s.Require().Len(beats, 1)
 	s.NotContains(beats[0], "forced", "a Dissonant Whispers-shaped rout remains a self-propelled walk")
+	s.Equal("compelled", beats[0]["kind"], "and the beat names its kind")
+
+	// The push half: the same directive with the other kind says displaced.
+	push := s.lineScene(false)
+	s.mover.calls = nil
+	_, err = push.Direct(context.Background(), encounter.DirectInput{
+		Mover: goblin, Cause: thunderwaveRef, Route: []spatial.Position{cellAt(2, 0)},
+		Kind: encounter.MoveDisplaced,
+	})
+	s.Require().NoError(err)
+	s.Require().Len(s.mover.calls, 1)
+	s.Equal(encounter.MoveDisplaced, s.mover.calls[0].Kind, "a push is announced as displaced")
 }
 
 // TestAPushedCreatureKeepsItsFacing is the lead's ruling on
@@ -281,11 +295,11 @@ func (s *DirectiveTestSuite) TestADirectiveThatProvokesSaysSoToTheMover() {
 // shoved, it keeps the unstated 180 it was seated with. A rout — a directive
 // that provokes — is imposed all the same, and keeps it too.
 func (s *DirectiveTestSuite) TestAPushedCreatureKeepsItsFacing() {
-	for _, provokes := range []bool{false, true} {
+	for _, kind := range []encounter.MoveKind{encounter.MoveDisplaced, encounter.MoveCompelled} {
 		enc := s.lineScene(false)
 		_, err := enc.Direct(context.Background(), encounter.DirectInput{
 			Mover: goblin, Cause: thunderwaveRef, Route: []spatial.Position{cellAt(2, 0), cellAt(3, 0)},
-			Provokes: provokes,
+			Kind: kind,
 		})
 		s.Require().NoError(err)
 		s.Require().Equal(cellAt(3, 0), s.cellOfMember(goblin), "the directive moved it")
@@ -294,7 +308,7 @@ func (s *DirectiveTestSuite) TestAPushedCreatureKeepsItsFacing() {
 		s.Require().NoError(err)
 		for _, m := range members {
 			if m.ID == goblin {
-				s.Equal(encounter.UnstatedFacing, m.Facing, "provokes=%v: a moved creature did not turn", provokes)
+				s.Equal(encounter.UnstatedFacing, m.Facing, "%s: a moved creature did not turn", kind)
 			}
 		}
 	}
@@ -303,9 +317,9 @@ func (s *DirectiveTestSuite) TestAPushedCreatureKeepsItsFacing() {
 // TestAChosenWalkIsNeitherForcedNorCaused.
 //
 // THE ZERO VALUE HAS TO BE THE WALK. Every existing Mover call in this module
-// is a step somebody chose, and the flag is named Forced rather than Provokes
-// precisely so that forgetting it cannot switch an opportunity attack off —
-// false means "ordinary walk", which is the least permissive reading.
+// is a step somebody chose, and the kind's zero value is own precisely so that
+// forgetting it cannot switch an opportunity attack off — own means "ordinary
+// walk", which is the least permissive reading.
 func (s *DirectiveTestSuite) TestAChosenWalkIsNeitherForcedNorCaused() {
 	// The goblin's own driver walks it one cell, which is walkPath's path
 	// rather than Direct's — the same body, reached the other way.
@@ -315,23 +329,25 @@ func (s *DirectiveTestSuite) TestAChosenWalkIsNeitherForcedNorCaused() {
 	enc := s.lineScene(false)
 
 	_, err := enc.Direct(context.Background(), encounter.DirectInput{
+		Kind:  encounter.MoveDisplaced,
 		Mover: goblin, Cause: thunderwaveRef, Route: []spatial.Position{cellAt(2, 0)},
 	})
 	s.Require().NoError(err)
 	s.Require().Len(s.mover.calls, 1)
-	s.Require().True(s.mover.calls[0].Forced, "the push is the forced one")
+	s.Require().Equal(encounter.MoveDisplaced, s.mover.calls[0].Kind, "the push is the displaced one")
 
 	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
 	s.Require().NoError(err)
 
 	s.Require().Greater(len(s.mover.calls), 1, "the driven turn walked")
 	for _, call := range s.mover.calls[1:] {
-		s.False(call.Forced, "a step a creature chose is not forced")
+		s.True(call.Kind.Own(), "a step a creature chose is its own")
 		s.Equal(core.Ref{}, call.Cause, "and nothing caused it but the creature")
 	}
 	beats := s.movedBeats(alice)
 	s.Require().GreaterOrEqual(len(beats), 2, "the push and the chosen turn walk both reached the record")
 	s.NotContains(beats[len(beats)-1], "forced", "an ordinary Move keeps the legacy walk payload shape")
+	s.NotContains(beats[len(beats)-1], "kind", "and names no kind: absent is own")
 }
 
 // TestAChosenStepCarriesNoCause.
@@ -345,6 +361,7 @@ func (s *DirectiveTestSuite) TestAChosenStepCarriesNoCause() {
 	s.Require().Error(err, "goblin is standing there")
 
 	_, err = enc.Direct(context.Background(), encounter.DirectInput{
+		Kind:  encounter.MoveDisplaced,
 		Mover: goblin, Cause: thunderwaveRef, Route: []spatial.Position{cellAt(2, 0)},
 	})
 	s.Require().NoError(err)
@@ -405,6 +422,7 @@ func (s *DirectiveTestSuite) TestDirectRefusesAMoveThatNamesNoCause() {
 	enc := s.lineScene(false)
 
 	_, err := enc.Direct(context.Background(), encounter.DirectInput{
+		Kind:  encounter.MoveDisplaced,
 		Mover: goblin, Route: []spatial.Position{cellAt(2, 0)},
 	})
 	s.ErrorIs(err, encounter.ErrNoCause)
