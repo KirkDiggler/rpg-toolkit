@@ -10,11 +10,6 @@ import (
 // ValidateWalkEnd refuses a known occupied destination before a voluntary walk
 // starts. Unknown occupants are not queried; Step rechecks truth on arrival.
 // Errors preserve missing observation contracts rather than treating them as fog.
-//
-// A SEEN, NON-HOSTILE BODY THAT BLOCKS IS NOT REFUSED (rpg-project#836): the
-// gesture is walking into him, and the walk's own step stops at his cell and
-// says who stands there. A hostile body, and a pass-through one the walk could
-// cross but never stop on, are still refused here.
 func (e *Encounter) ValidateWalkEnd(in CellAtInput) error {
 	passages, err := e.ObservedPassages(&ViewInput{Member: in.Mover})
 	if err != nil {
@@ -28,15 +23,6 @@ func (e *Encounter) ValidateWalkEnd(in CellAtInput) error {
 		passage, current := passages[holding.Subject]
 		if !current || passage == PassageStandable {
 			continue
-		}
-		if passage == PassageBlocked {
-			stance, serr := e.BelievedStance(in.Mover, holding.Subject)
-			if serr != nil {
-				return serr
-			}
-			if stance != StanceHostile {
-				continue
-			}
 		}
 		seen, ok := DecodeSightTestimony(holding.Payload)
 		if ok && seen.State == LocationKnown && seen.Position == in.Cell {

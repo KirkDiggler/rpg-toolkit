@@ -1261,7 +1261,7 @@ func (e *Encounter) placementOf(record *memberRecord) (Member, error) {
 		Facing:         record.Facing,
 		Table:          cloneTable(record.Table),
 		Temper:         record.Temper,
-		BlocksMovement: record.BlocksMovement,
+		BlocksMovement: e.memberBlocks(record.ID),
 		Faction:        factionOf(record),
 	}, nil
 }

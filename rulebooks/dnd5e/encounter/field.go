@@ -1541,8 +1541,11 @@ type Member struct {
 	Table  Table
 	Temper Temper
 
-	// BlocksMovement carries forward [MemberInput.BlocksMovement]/
-	// [JoinInput.BlocksMovement] verbatim — see that field's own doc.
+	// BlocksMovement is whether this member's body blocks now: its current
+	// state when it has [MemberInput.BlockingStates] (rpg-project#836), else
+	// [MemberInput.BlocksMovement]/[JoinInput.BlocksMovement] as declared.
+	// The same read the fold and the canvas make, so the row cannot disagree
+	// with them.
 	BlocksMovement bool
 
 	// Faction is the faction this member belongs to, RESOLVED: the one the

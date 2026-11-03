@@ -453,7 +453,7 @@ func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 
 	t.Run("posted, gate-1 holds the crossing every round, and the dash stops at him", func(t *testing.T) {
 		t.Parallel()
-		s := openTheSneak(t)
+		s, _ := openTheSneak(t)
 		s.declareBehindTheCorner()
 		s.stepTo(besideTheCorner)
 
@@ -501,7 +501,7 @@ func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 
 	t.Run("drawn off by a voice, the sneaker crosses on gate-2's blind beat", func(t *testing.T) {
 		t.Parallel()
-		s := openTheSneak(t)
+		s, stealth := openTheSneak(t)
 		s.declareBehindTheCorner()
 		s.stepTo(besideTheCorner)
 		// gate-2 has just come to her beat post: she stands there this round
@@ -524,6 +524,9 @@ func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 		require.NotEqual(t, beneathTheGate, s.at(kingGate1), "the voice drew gate-1 off the crossing")
 		require.Equal(t, eastBeatPost, s.at(kingGate2), "precondition: gate-2 still stands her blind beat")
 
+		// IN THE WINDOW NOTHING ROLLS: the hero's Stealth wins every roll, so
+		// only the resolver and the record can say whether anybody looked.
+		asked, snuck := len(stealth.asked), len(s.beatsOf(hero, encounter.BeatSnuck))
 		for i, cell := range theDash {
 			if s.at(hero) == cell {
 				continue // the pace may have left the hero on the dash's first cell
@@ -534,6 +537,8 @@ func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 		}
 		require.Equal(t, beneathTheGate, s.at(hero), "the sneaker stands beneath the gate")
 		require.True(t, s.enc.Sneaking(hero), "still sneaking")
+		require.Len(t, stealth.asked, asked, "nobody rolled against the dash")
+		require.Len(t, s.beatsOf(hero, encounter.BeatSnuck), snuck, "no snuck beat")
 		for _, z := range zonesOf(t, s.enc, hero) {
 			if z.Watcher == kingGate2 {
 				require.False(t, cellSet(z.Cells)[beneathTheGate], "gate-2 does not watch the cell under the gate")
@@ -543,19 +548,23 @@ func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 }
 
 // openTheSneak opens [openTheScript]'s castle with a companion outside beside
-// the stranger, whose word to him makes the noise the sneak needs.
-func openTheSneak(t *testing.T) *kingScene {
+// the stranger, whose word to him makes the noise the sneak needs, and
+// returns the stealth resolver every sneak roll is asked of.
+func openTheSneak(t *testing.T) (*kingScene, *partyStealth) {
 	t.Helper()
 	arcs := map[encounter.MemberID]int{}
 	for _, m := range loadContent(t, kingFixture).Monsters {
 		arcs[encounter.MemberID(m.MemberID)] = 120
 	}
 
-	return openTheCastleAs(t, castleHost{
-		at: gatehouseSeat, arcs: arcs, resolver: scriptStealth(),
+	stealth := scriptStealth()
+	s := openTheCastleAs(t, castleHost{
+		at: gatehouseSeat, arcs: arcs, resolver: stealth,
 		passive: map[encounter.MemberID]int{kingGate1: gate1Passive, kingGate2: gate2Passive, kingCaptain: captainPassive},
 		players: []encounter.MemberInput{{ID: sneakCompanion, Kind: encounter.KindPlayer, Position: besideTheStranger}},
 	})
+
+	return s, stealth
 }
 
 // sneakCompanion is the sneak's second party member, outside beside the

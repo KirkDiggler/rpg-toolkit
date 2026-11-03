@@ -237,18 +237,6 @@ func TestADrivenWalkStopsSilentlyAtABody(t *testing.T) {
 	require.False(t, stepped, "and stops")
 }
 
-func TestAWalkMayAimAtASeenNeutralBodyButNotAHostileOne(t *testing.T) {
-	enc := postedHall(t, postedMember(t))
-	require.NoError(t, enc.ValidateWalkEnd(CellAtInput{Mover: "alice", Cell: postedPost}),
-		"walking into a posted neutral is the gesture: the step stops it, the preflight does not")
-
-	guard := postedMember(t)
-	guard.Faction = ""
-	hostile := postedHall(t, guard)
-	require.ErrorIs(t, hostile.ValidateWalkEnd(CellAtInput{Mover: "alice", Cell: postedPost}), ErrBadPlacement,
-		"a hostile body stays unplannable")
-}
-
 func TestAStoredEncounterLoadsItsBlocking(t *testing.T) {
 	waiting := postedMember(t)
 	waiting.ID, waiting.Position, waiting.Arrives = "relief", spatial.Position{X: 6, Y: 3}, TriggerRound{Round: 99}
@@ -353,4 +341,29 @@ func TestADownedPostedBodyIsStoodOn(t *testing.T) {
 	require.Equal(t, PassageStandable, passageAt(t, enc, postedPost), "the fold: a downed monster's cell is standable")
 	_, err = enc.Step(&StepInput{Member: "alice", To: postedPost, EndWalk: true})
 	require.NoError(t, err, "and the canvas agrees: the step is taken")
+}
+
+// TestTheRosterReportsTheStateItBlocksIn: the roster row's BlocksMovement is
+// the same read the fold makes, so a host shown the row sees the post held
+// and then given up (one answer, B2).
+func TestTheRosterReportsTheStateItBlocksIn(t *testing.T) {
+	enc := postedHall(t, postedMember(t))
+	row := func() Member {
+		t.Helper()
+		members, err := enc.Members()
+		require.NoError(t, err)
+		for _, m := range members {
+			if m.ID == postedGuard {
+				return m
+			}
+		}
+		require.FailNow(t, "the guard is on the roster")
+
+		return Member{}
+	}
+	require.True(t, row().BlocksMovement, "posted, the row says he blocks")
+
+	cowGuard(t, enc)
+
+	require.False(t, row().BlocksMovement, "cowed, the row says he does not")
 }
