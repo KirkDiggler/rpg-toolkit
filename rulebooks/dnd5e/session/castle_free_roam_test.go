@@ -13,6 +13,7 @@ package session_test
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,6 +29,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // freeRoamCastle is the castle opened for alice (a fighter) and a cleric at
@@ -40,6 +43,15 @@ type freeRoamCastle struct {
 
 func openTheCastleForTwo(t *testing.T, d20s ...int) *freeRoamCastle {
 	t.Helper()
+	alice := armedFighter("alice")
+	alice.AbilityScores[abilities.CHA] = 16
+	return openTheCastleFor(t, []*character.Data{alice, healingCleric()}, d20s...)
+}
+
+// openTheCastleFor is the castle opened for the given party at the party
+// start, outside the gatehouse.
+func openTheCastleFor(t *testing.T, party []*character.Data, d20s ...int) *freeRoamCastle {
+	t.Helper()
 	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", encounterModule).Output()
 	require.NoError(t, err)
 	raw, err := os.ReadFile(filepath.Join(strings.TrimSpace(string(out)), castleFixture))
@@ -47,17 +59,18 @@ func openTheCastleForTwo(t *testing.T, d20s ...int) *freeRoamCastle {
 	compiled, err := dungeonspec.Load(raw)
 	require.NoError(t, err)
 
-	alice := armedFighter("alice")
-	alice.AbilityScores[abilities.CHA] = 16
-	cleric := healingCleric()
-	c := &freeRoamCastle{live: &actCapture{}, characters: newFakeCharacters(alice, cleric)}
+	ids := make([]string, 0, len(party))
+	for _, sheet := range party {
+		ids = append(ids, sheet.ID)
+	}
+	c := &freeRoamCastle{live: &actCapture{}, characters: newFakeCharacters(party...)}
 	c.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: c.live, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: &castleDice{d20s: d20s}, TurnDriver: session.Driver(),
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: c.characters,
 	})
 	require.NoError(t, err)
 	_, err = c.mgr.Launch(context.Background(), &session.LaunchInput{
-		Session: "sess", Dungeon: &compiled, Party: []string{"alice", "cleric"},
+		Session: "sess", Dungeon: &compiled, Party: ids,
 	})
 	require.NoError(t, err)
 	return c
@@ -271,4 +284,96 @@ func storedData(t *testing.T, chars *fakeCharacters, id string) *character.Data 
 	sheet, err := chars.GetCharacter(context.Background(), id)
 	require.NoError(t, err, fmt.Sprintf("load %s", id))
 	return sheet
+}
+
+// TestCastleFreeRoamThunderwaveShovesBeforeTheFight is rpg-project#831: the
+// bard walks up to the gatehouse in free roam and casts Thunderwave at the
+// captain. The cast is hostile, so the garrison turns and the fight forms
+// inside the deed (#785 R3), and the shove is part of the deed landing: every
+// moved beat the spell caused is on the story before the fight forms and
+// before any turn of it passes, and a pushed guard's own first step leaves
+// from the cell the blast threw it to.
+func TestCastleFreeRoamThunderwaveShovesBeforeTheFight(t *testing.T) {
+	ctx := context.Background()
+	// The d20s in the order they are rolled: the two saves fail (1, 1), so
+	// the cube shoves both guards it caught; the bard loses initiative (1)
+	// and the garrison wins it (20s), so the fight's first turns are played
+	// inside the cast, as on the walk; the guards' swings miss (1), so the
+	// bard stands and the story stays open.
+	c := openTheCastleFor(t, []*character.Data{castingBardWithSpells("bard", spells.Thunderwave)}, 1, 1, 1, 20, 20, 20, 1)
+
+	c.play(t, "the bard walks up to the captain", func() error {
+		enc, err := c.mgr.LoadWorldForTest(ctx, "sess")
+		if err != nil {
+			return err
+		}
+		route, err := enc.Route(encounter.RouteInput{Mover: "bard", Policy: encounter.MoveToward, Anchor: standingAt(enc, "captain"), Budget: 200})
+		if err != nil {
+			return err
+		}
+		_, err = c.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "bard", Path: route.Path})
+		return err
+	})
+	turn, err := c.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "bard"})
+	require.NoError(t, err)
+	require.NotEqual(t, session.ClockTurn, turn.Clock, "the bard casts from free roam")
+
+	before := lastSeq(storyBeats(t, c.mgr, "sess", "bard"))
+	enc, err := c.mgr.LoadWorldForTest(ctx, "sess")
+	require.NoError(t, err)
+	aim := standingAt(enc, "captain")
+	row := c.row(t, "bard", session.VerbCast, refs.Spells.Thunderwave().String())
+	require.True(t, row.Available, "%+v", row.Why)
+	_, err = c.mgr.Cast(ctx, &session.CastInput{Session: "sess", Member: "bard", Cell: &aim, DeclarationID: row.ID})
+	require.NoError(t, err)
+
+	type movedBeat struct {
+		Member   string           `json:"member"`
+		Cause    string           `json:"cause"`
+		Position spatial.Position `json:"position"`
+	}
+	thunder := refs.Spells.Thunderwave().String()
+	story := storyBeatsAfter(t, c.mgr, "sess", "bard", before)
+	formedAt, lastPushAt := -1, -1
+	var turnsEndedAt []int
+	pushedTo := map[string]spatial.Position{}
+	firstStep := map[string]spatial.Position{}
+	for i, b := range story {
+		switch b.Beat {
+		case encounter.BeatFightStarted:
+			if formedAt < 0 {
+				formedAt = i
+			}
+		case encounter.BeatTurnEnded:
+			turnsEndedAt = append(turnsEndedAt, i)
+		case encounter.BeatMoved:
+			var m movedBeat
+			b.decode(t, &m)
+			if m.Cause == thunder {
+				lastPushAt = i
+				pushedTo[m.Member] = m.Position
+				continue
+			}
+			if _, pushed := pushedTo[m.Member]; pushed && formedAt >= 0 {
+				if _, seen := firstStep[m.Member]; !seen {
+					firstStep[m.Member] = m.Position
+				}
+			}
+		}
+	}
+
+	require.NotEmpty(t, pushedTo, "the failed saves were shoved")
+	require.GreaterOrEqual(t, formedAt, 0, "the hostile cast forms the fight")
+	require.NotEmpty(t, turnsEndedAt, "the garrison won initiative and took its turns inside the cast")
+	assert.Less(t, lastPushAt, formedAt, "every shove lands before the fight forms (#785 R3)")
+	assert.Less(t, lastPushAt, turnsEndedAt[0], "every shove lands before any turn of the fight passes")
+
+	// A PUSHED GUARD'S OWN FIRST STEP LEAVES FROM THE CELL THE BLAST THREW IT
+	// TO, never from where it stood before the thunder (rpg-project#831).
+	require.NotEmpty(t, firstStep, "a pushed guard walked on its first turn")
+	for member, step := range firstStep {
+		from := pushedTo[member]
+		assert.LessOrEqual(t, math.Max(math.Abs(step.X-from.X), math.Abs(step.Y-from.Y)), 1.0,
+			"%s's first step %v leaves from its pushed cell %v", member, step, from)
+	}
 }

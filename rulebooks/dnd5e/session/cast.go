@@ -501,7 +501,9 @@ func (m *Manager) finishCast(
 	// writes nothing, so the cast's own beat can say the blast moved somebody
 	// one cell instead of two; the walk that follows puts the movement beats
 	// after the cast beat, which is the order a client animates them in.
-	// Thunder, then the slide. See [castPush].
+	// Thunder, then the slide. See [castPush]. On the world clock a shove
+	// walks before the record instead, because the record is where the fight
+	// forms: see [landingPushes].
 	if err := routeCastPushes(scope.enc, sheetsBeside(scope.standing), pushes, targetResults); err != nil {
 		return nil, fmt.Errorf("cast: %w", err)
 	}
@@ -516,7 +518,22 @@ func (m *Manager) finishCast(
 	var paused bool
 	result, err := m.land(ctx, scope, out, &landing{
 		Record: func(enc *encounter.Encounter, told concentration) error {
-			_, err := enc.RecordCast(&encounter.RecordCastInput{
+			// ON THE WORLD CLOCK THE SHOVE IS PART OF THE LANDING
+			// (rpg-project#785 R3, #831). RecordCast lands the deed, and a
+			// hostile deed off every fight forms the fight and plays its
+			// first turns before it returns. A shove walked after it is a
+			// shove the fight never saw: the guards act from the cells the
+			// blast threw them out of, then teleport. See [landingPushes].
+			first, rest, err := landingPushes(enc, member, pushes)
+			if err != nil {
+				return err
+			}
+			pushes = rest
+			if err := walkPushesThatLand(ctx, enc, first, spellRef); err != nil {
+				return err
+			}
+
+			_, err = enc.RecordCast(&encounter.RecordCastInput{
 				Actor: encounter.MemberID(member),
 				Spell: encounter.SpellIdentity{
 					Ref:  spell.Ref,
@@ -555,7 +572,9 @@ func (m *Manager) finishCast(
 				}
 			}
 
-			// The pushes, now that the cast beat naming them is on the story.
+			// The pushes left after the record ([landingPushes]: every push
+			// inside a fight, a flee on the world clock), now that the cast
+			// beat naming them is on the story.
 			// A failure here leaves the cast recorded and the shove untaken,
 			// which is the same shape RecordCast's own failure has and is
 			// reported the same way: the durable writes are named and this
