@@ -8,6 +8,7 @@ Bug [rpg-project#831](https://github.com/KirkDiggler/rpg-project/issues/831), la
 - `RecordCast` walks them at [`cast.go:440`](https://github.com/KirkDiggler/rpg-toolkit/blob/3a325117/rulebooks/dnd5e/encounter/cast.go#L440), after the cast's own beats and before `landAttack`. On every clock the record reads cast, saves and damage, moved, stance, bubble-formed, first turns, world round.
 - [`preparePushes`](https://github.com/KirkDiggler/rpg-toolkit/blob/3a325117/rulebooks/dnd5e/encounter/cast.go#L497) refuses a push before the first append when it names a creature the cast did not target, when the spell ref does not parse, or when a walk is held.
 - [`walkCastPushes`](https://github.com/KirkDiggler/rpg-toolkit/blob/3a325117/rulebooks/dnd5e/encounter/cast.go#L538) walks through `Direct` with `Provokes: false` written out. It refuses a pause rather than carry it into the deed.
+- The tests are [`TestACastsShovesLandInsideItsLandingOnTheWorldClock`](https://github.com/KirkDiggler/rpg-toolkit/blob/3a325117/rulebooks/dnd5e/encounter/cast_landing_test.go#L146) and [`TestAPushOnSomebodyTheCastDidNotReachIsRefusedBeforeAnyBeat`](https://github.com/KirkDiggler/rpg-toolkit/blob/3a325117/rulebooks/dnd5e/encounter/cast_landing_test.go#L207). Walking the pushes after the deed fails three assertions.
 
 ## Decided
 
@@ -25,6 +26,5 @@ Bug [rpg-project#831](https://github.com/KirkDiggler/rpg-project/issues/831), la
 
 - The first shape of the fix, the session-only first commit of #2247, walked the shoves before `RecordCast`. That put the moved beats ahead of the cast beat. The record is the replay, so that told the wrong story, and the fix moved here.
 - The first head of this PR shipped without this record, and with an unformatted test file, so CI failed its dirty-tree check.
-- Tests are [`TestACastsShovesLandInsideItsLandingOnTheWorldClock`](https://github.com/KirkDiggler/rpg-toolkit/blob/3a325117/rulebooks/dnd5e/encounter/cast_landing_test.go#L146) and [`TestAPushOnSomebodyTheCastDidNotReachIsRefusedBeforeAnyBeat`](https://github.com/KirkDiggler/rpg-toolkit/blob/3a325117/rulebooks/dnd5e/encounter/cast_landing_test.go#L207). Walking the pushes after the deed fails three assertions.
 
 — cross-team agent, on behalf of KirkDiggler
