@@ -6,7 +6,8 @@ Bug [rpg-project#831](https://github.com/KirkDiggler/rpg-project/issues/831), la
 
 - [`landingPushes`](https://github.com/KirkDiggler/rpg-toolkit/blob/48a91b1e/rulebooks/dnd5e/session/castmove.go#L262) splits a cast's routed pushes once, before the landing, at [`cast.go:522`](https://github.com/KirkDiggler/rpg-toolkit/blob/48a91b1e/rulebooks/dnd5e/session/cast.go#L522). Shoves go to `RecordCast` at [`cast.go:541`](https://github.com/KirkDiggler/rpg-toolkit/blob/48a91b1e/rulebooks/dnd5e/session/cast.go#L541). Flees are walked in Continue through `walkCastPushes`, as before.
 - [`displaces`](https://github.com/KirkDiggler/rpg-toolkit/blob/48a91b1e/rulebooks/dnd5e/session/castmove.go#L286) is the one place this package reads `Provokes` as a kind of move.
-- `go.mod` pins encounter to the #2248 head as a pseudo-version, with no replace.
+- `go.mod` pins encounter as a pseudo-version of 3a325117, the last #2248 commit inside the encounter module, with no replace.
+- The test [`TestCastleFreeRoamThunderwaveShovesBeforeTheFight`](https://github.com/KirkDiggler/rpg-toolkit/blob/48a91b1e/rulebooks/dnd5e/session/castle_free_roam_test.go#L296) asserts cast before shove, shove before the fight forms, shove before the first turn ends, and a pushed guard's first step from its pushed cell.
 
 ## Decided
 
@@ -24,6 +25,5 @@ Bug [rpg-project#831](https://github.com/KirkDiggler/rpg-project/issues/831), la
 - The first commit walked the shoves before `RecordCast` on the world clock. That put the moved beats ahead of the cast beat, which tells the wrong story in the record. The encounter half replaced it.
 - The Record closure reassigned the captured `pushes`, which Continue then read. That was safe only because `land` calls Record once. The split now happens before `land`.
 - Two heads failed CI's dirty-tree check: once on an untidied `go.sum`, once for want of this record.
-- The test [`TestCastleFreeRoamThunderwaveShovesBeforeTheFight`](https://github.com/KirkDiggler/rpg-toolkit/blob/48a91b1e/rulebooks/dnd5e/session/castle_free_roam_test.go#L296) asserts cast before shove, shove before the fight forms, shove before the first turn ends, and a pushed guard's first step from its pushed cell.
 
 — cross-team agent, on behalf of KirkDiggler
