@@ -217,10 +217,10 @@ func walkCastPushes(
 			continue
 		}
 		walked, err := enc.Direct(ctx, encounter.DirectInput{
-			Mover:    push.target,
-			Cause:    cause,
-			Route:    push.route,
-			Provokes: push.move.Provokes,
+			Mover: push.target,
+			Cause: cause,
+			Route: push.route,
+			Kind:  moveKindFor(push.move.Provokes),
 		})
 		if err != nil {
 			return false, fmt.Errorf("cast push: %w", translate(err))
@@ -230,6 +230,20 @@ func walkCastPushes(
 		}
 	}
 	return false, nil
+}
+
+// moveKindFor names the kind a cast's move walks with, from the one word
+// content says about it (rpg-project#825, design Findings). Content keeps
+// `Provokes` until a spell pushes a body that should provoke: a move that
+// provokes is the target's own legs under the caster's order (Dissonant
+// Whispers, compelled); one that does not is the body moved without its legs
+// (Thunderwave, displaced). THE ONE CROSSING: nothing else in this package
+// turns Provokes into a kind.
+func moveKindFor(provokes bool) encounter.MoveKind {
+	if provokes {
+		return encounter.MoveCompelled
+	}
+	return encounter.MoveDisplaced
 }
 
 // routePolicy maps the content's word for how a creature is moved onto the

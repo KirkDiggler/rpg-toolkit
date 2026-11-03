@@ -131,29 +131,29 @@ func (s moverSeam) Move(
 // nothing at all for a step somebody chose.
 //
 // TWO FIELDS COLLAPSE INTO ONE ANSWER, and the collapse is the rule.
-// [encounter.MoveStep] carries Forced and Cause separately because the
+// [encounter.MoveStep] carries Kind and Cause separately because the
 // composition has no idea what either is for; [resolution.MovementInput] asks
 // one question — are the triggers suppressed, and by what — because the fold
 // needs a name to refuse in. A prevention source reading "something" is not a
-// name, so a forced step with no cause still hands over the zero ref rather
-// than nil: the step was forced, and the honest record of a forced step by
-// nobody is a forced step by nobody.
+// name, so a displaced step with no cause still hands over the zero ref rather
+// than nil: the step was displaced, and the honest record of a push by nobody
+// is a push by nobody.
 //
-// NIL IS THE PROVOKING CASE on both sides of this line, which is why nothing
-// here reads Cause on its own. A forced move that PROVOKES — Dissonant
-// Whispers sends its target running and the running provokes — reaches this
-// seam with Forced false, because encounter inverts Direct's own Provokes flag
-// before it builds the step. This function must not second-guess that: reading
-// a non-zero Cause as "suppress" would silence the one directive whose whole
-// point is that it does not.
+// PROVOKING IS READ FROM THE KIND (rpg-project#825, design R1): own and
+// compelled provoke, displaced never does. NIL IS THE PROVOKING CASE on both
+// sides of this line, which is why nothing here reads Cause on its own. A
+// compelled move — Dissonant Whispers sends its target running, Command sends
+// it on its turn — reaches this seam with a cause and the kind compelled. This
+// function must not second-guess that: reading a non-zero Cause as "suppress"
+// would silence the one directive whose whole point is that it does not.
 //
 // THAT DAY CAME. Dissonant Whispers ships, so the paragraph above describes
 // live traffic rather than a case being held open — and it is the reason
 // [Manager.React] can replay a held flee with the two fields its window does
-// not store. A mutant that read Cause when Forced is false would swallow every
+// not store. A mutant that read Cause on a step that is not displaced would swallow every
 // swing the whisper is supposed to buy.
 func forcedBy(step encounter.MoveStep) *core.Ref {
-	if !step.Forced {
+	if !step.Kind.Displaced() {
 		return nil
 	}
 	cause := step.Cause

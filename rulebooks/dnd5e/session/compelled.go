@@ -359,5 +359,9 @@ func compelledIntent(
 		Policy: policy,
 		Anchor: encounter.MemberID(move.AnchorID),
 		Cause:  *refs.Conditions.Commanded(),
+		// THE ONE ROUTED INTENT THAT IS COMPELLED: the creature's own legs,
+		// under the caster's word (rpg-project#825, design R1). Every other
+		// Routed this package builds (routedToEncounter) is the creature's own.
+		Kind: encounter.MoveCompelled,
 	}, nil
 }

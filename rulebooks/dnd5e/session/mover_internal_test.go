@@ -157,8 +157,22 @@ func (s *ForcedStepSuite) TestAStepSomethingImposedProvokesNothing() {
 	s.Empty(
 		s.takeStep(encounter.MoveStep{
 			Mover: "fighter", From: s.fighterAt, To: s.awayAt,
-			Cause: thunderwaveCause(), Forced: true,
+			Cause: thunderwaveCause(), Kind: encounter.MoveDisplaced,
 		}),
 		"nobody chose to leave anybody's reach",
+	)
+}
+
+// TestACompelledStepStillProvokes. The same two cells under somebody else's
+// order: her own legs carry her out, so the skeleton bites (rpg-project#825,
+// design R1). A cause alone never suppresses.
+func (s *ForcedStepSuite) TestACompelledStepStillProvokes() {
+	s.Contains(
+		s.takeStep(encounter.MoveStep{
+			Mover: "fighter", From: s.fighterAt, To: s.awayAt,
+			Cause: thunderwaveCause(), Kind: encounter.MoveCompelled,
+		}),
+		refs.Conditions.OpportunityAttack().String(),
+		"a compelled walk out of reach provokes",
 	)
 }
