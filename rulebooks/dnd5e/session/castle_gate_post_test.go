@@ -63,8 +63,7 @@ func stateOf(t *testing.T, enc *encounter.Encounter, id encounter.MemberID) stri
 	return ""
 }
 
-// walkInto is alice's route toward cell, ending on it: the gesture of
-// clicking the cell itself.
+// walkInto is alice's route toward cell, ending on it.
 func (c *freeRoamCastle) walkInto(t *testing.T, cell spatial.Position) []spatial.Position {
 	t.Helper()
 	route, err := c.world(t).Route(encounter.RouteInput{Mover: "alice", Policy: encounter.MoveToward, Anchor: cell, Budget: 200})
@@ -96,14 +95,18 @@ func TestCastleTheGuardHoldsTheGate(t *testing.T) {
 	crossing := gate1.Position
 	require.Contains(t, []string{"", "posted"}, stateOf(t, c.world(t), "gate-1"), "precondition: gate-1 is posted")
 
-	// THE BUMP: alice walks into him. Every cell up to his is walked; his is
-	// not, and the Move says who stopped her.
+	// THE BUMP: alice walks for the cell past him, through the gate, and his
+	// cell is the only way there.
+	// The walk aims past him, never at him: every cell up to his is walked,
+	// his is not, and the Move says who stopped her.
 	path := c.walkInto(t, crossing)
 	require.GreaterOrEqual(t, len(path), 2, "precondition: the walk has a cell before his")
-	bump := c.move(t, path)
+	before := path[len(path)-2]
+	beyond := spatial.Position{X: 2*crossing.X - before.X, Y: 2*crossing.Y - before.Y}
+	bump := c.move(t, append(path, beyond))
 	require.Equal(t, session.MovementStopped, bump.Status, "the walk stops at him")
 	require.Equal(t, gate1.Name+" stands in the way", bump.StopReason, "and names the guard she sees")
-	short := path[len(path)-2]
+	short := before
 	require.NotEmpty(t, bump.Steps, "the steps before him were walked")
 	require.Equal(t, short, bump.Steps[len(bump.Steps)-1].Position, "the last step taken is the cell before his")
 	require.Equal(t, short, c.where(t, "alice"), "she stands one cell short of him")
