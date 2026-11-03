@@ -37,8 +37,14 @@ func (e *Encounter) ValidateWalkEnd(in CellAtInput) error {
 // errors never use this marker. Unwrap preserves the original refusal.
 type StepObstructedError struct{ cause error }
 
-// PublicReason omits identities that the mover may not have observed.
+// PublicReason omits identities that the mover may not have observed. A body
+// in the way is named when the mover saw it and is "someone" otherwise
+// ([ErrBodyInTheWay]), checked first.
 func (e *StepObstructedError) PublicReason() string {
+	var body *bodyRefusalError
+	if errors.As(e.cause, &body) {
+		return body.public
+	}
 	if errors.Is(e.cause, ErrBadPlacement) {
 		return "movement stopped at an obstruction"
 	}

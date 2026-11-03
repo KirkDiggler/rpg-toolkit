@@ -301,6 +301,39 @@ tables:
       # sneak window. Neither beat post sees round the corner wall.
       - use: guard-base
         with: { path: [{ q: -5, r: 8, wait: 1, facing: ne }, { q: -5, r: 10, wait: 1, facing: se }, { q: -7, r: 10 }] }
+    # Hand edit (rpg-project#836, the guard holds the gate, R4 A): gate-1's
+    # post. Posted, he stands the gate's one crossing, the cell beneath the
+    # gate in front of the shut door, and never leaves it by time: his time
+    # here is the post, not the loop. The guard's own fight comes first
+    # (the alarm, the dasher, the pursuit, the clang he runs to). A voice
+    # heard this round draws him toward it: the one way a body leaves the
+    # post without a fight, a fact or a push. Nothing else does.
+    post:
+      - say: To arms! Intruders at the gate!
+        when:
+          - enemy: seen
+          - not:
+              fact: alarm-raised
+        fact: alarm-raised
+      - use: dasher
+      - use: pursuer
+        when: { enemy: lost }
+      - use: alarm-reactor
+      - when:
+          - enemy: none
+          - heard: { kind: voice, within: 1 }
+        toward: sound
+      - when:
+          - enemy: none
+          - not:
+              heard: { kind: voice, within: 1 }
+        toward: { at: { q: -3, r: 7 } }
+    # Hand edit (rpg-project#836, R3 C): cowed, he has stood aside, and
+    # his next beat walks him to the west door post, off the crossing, so
+    # the picture matches the open cell.
+    cowed:
+      - when: { enemy: none }
+        toward: { at: { q: -5, r: 8 } }
   gate-patrol-east:
     time:
       # Hand edit: a gate guard who witnessed the turn marches with the
@@ -1543,10 +1576,14 @@ room:
     monsterDeclarations:
       - id: gate-1
         ref: dnd5e:monsters:guard
+        # Hand edit (rpg-project#836, R4 A): posted on the gate's one
+        # crossing, the cell beneath the gate in front of the shut door,
+        # facing the incomers.
         startingCell:
           location:
-            q: -7
-            r: 10
+            q: -3
+            r: 7
+          facing: s
         appearanceRef: dnd5e:npcs:kingdom:soldier-male-01
       - id: gate-2
         ref: dnd5e:monsters:guard
@@ -1681,20 +1718,42 @@ room:
       gate-1:
         faction: garrison
         table: gate-patrol
-        # Hand edit (rpg-project#766 S4): the gate post listens. It walks its
-        # loop on its `time` table in either state; a sound within six hexes
-        # turns it alert in the raise the sound landed, and three rounds on
-        # it stands down. Its turns are the same turns; the record says when
-        # it heard.
+        # Hand edit (rpg-project#766 S4): the gate post listens. A sound
+        # within six hexes turns it alert in the raise the sound landed, and
+        # three rounds on it stands down. Its turns are the same turns; the
+        # record says when it heard.
+        #
+        # Hand edit (rpg-project#836, the guard holds the gate): posted and
+        # alert, his body holds the crossing (`blocks`), and his time is the
+        # post (`pick: post`), never the loop. The captain's word ends the
+        # post in the beat he learns it: cowed (a stand-aside he witnessed,
+        # or the troupe let through) or turned (the garrison is the
+        # party's), neither of which blocks.
+        # Cowed walks him to his door post; turned marches on time's own row.
         states:
           initial: posted
           posted:
+            blocks: true
             transitions:
-              - { on: time, do: [{ pick: time }] }
+              - { on: fact, when: { fact: guards-turned }, to: turned, reason: the garrison turned }
+              - { on: fact, when: { fact: gate-cowed }, to: cowed, reason: stood aside }
+              - { on: fact, when: { fact: troupe-admitted }, to: cowed, reason: let the troupe through }
+              - { on: time, do: [{ pick: post }] }
               - { on: heard, within: 6, to: alert, do: [{ anchor: true }], reason: heard something }
           alert:
+            blocks: true
             transitions:
-              - { on: time, rounds: 3, to: posted, do: [{ pick: time }], reason: nothing came of it }
+              - { on: fact, when: { fact: guards-turned }, to: turned, reason: the garrison turned }
+              - { on: fact, when: { fact: gate-cowed }, to: cowed, reason: stood aside }
+              - { on: fact, when: { fact: troupe-admitted }, to: cowed, reason: let the troupe through }
+              - { on: time, rounds: 3, to: posted, do: [{ pick: post }], reason: nothing came of it }
+              - { on: time, do: [{ pick: post }] }
+          cowed:
+            transitions:
+              - { on: fact, when: { fact: guards-turned }, to: turned, reason: the garrison turned }
+              - { on: time, do: [{ pick: cowed }] }
+          turned:
+            transitions:
               - { on: time, do: [{ pick: time }] }
       gate-2:
         faction: garrison
@@ -1716,7 +1775,10 @@ room:
             requires:
               fact: feast-tonight
             success:
+              # Hand edit (rpg-project#836): the troupe is let through, and
+              # the gate post who hears his captain say so stands aside.
               - say: Through to the hall, then. Don’t dawdle.
+                fact: troupe-admitted
             failure:
               - say: Troupe? There’s no— GUARDS!
                 fact: party-recognized

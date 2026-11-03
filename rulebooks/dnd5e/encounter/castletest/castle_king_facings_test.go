@@ -145,6 +145,9 @@ func TestMadKingTheCaptainWatchesWhoComesToTheGate(t *testing.T) {
 		at: outsideTheGate, resolver: stealth, arcs: map[encounter.MemberID]int{kingCaptain: 120},
 		passive: map[encounter.MemberID]int{kingCaptain: captainPassive},
 	})
+	// The cell beneath the gate is gate-1's post (rpg-project#836): he is
+	// down here, so the cell behind the captain is free to stand on.
+	s.standing.down[kingGate1] = true
 	s.declare(hero)
 	s.open(kingGateDoor)
 

@@ -158,7 +158,8 @@ func (s *CellFactsTestSuite) TestAStepOntoAHostileCreatureIsRefusedByName() {
 	// space is closed.
 	_, err := s.enc.Step(&encounter.StepInput{Member: s.hero, To: cellAt(13, 7)})
 	s.Require().Error(err)
-	s.ErrorIs(err, encounter.ErrBadPlacement)
+	// A body in the way has its own sentinel (rpg-project#836, B6).
+	s.ErrorIs(err, encounter.ErrBodyInTheWay)
 	s.ErrorContains(err, string(s.secondGoblin))
 }
 

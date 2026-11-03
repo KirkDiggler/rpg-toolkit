@@ -164,7 +164,7 @@ func (e *Encounter) ValidateBoard(in *BoardInput) error {
 		// The canvas refuses a cell a blocking entity already stands on, and
 		// Join would learn that at its first write. A board learns it here,
 		// against the run and against every member placed before this one.
-		entity := &memberEntity{id: string(m.Member), kind: m.Kind, blocksMovement: m.BlocksMovement}
+		entity := &memberEntity{id: string(m.Member), kind: m.Kind}
 		if !e.canvas.CanPlaceEntity(entity, m.Cell) {
 			return fmt.Errorf("board: members[%d]: cell %v is taken: %w", i, m.Cell, ErrBadPlacement)
 		}
@@ -172,7 +172,12 @@ func (e *Encounter) ValidateBoard(in *BoardInput) error {
 		if by, taken := blocked[cell]; taken {
 			return fmt.Errorf("board: members[%d]: cell %v is taken by %q: %w", i, m.Cell, by, ErrBadPlacement)
 		}
-		if m.BlocksMovement {
+		// HOW IT WILL STAND WHEN IT ARRIVES: its recipe's first state when
+		// it has blocking states (rpg-project#836), else its declared word —
+		// the read [Encounter.memberBlocks] makes of the same member once
+		// admitted.
+		admitted := memberRecord{Recipe: m.Machine, BlockingStates: m.BlockingStates, BlocksMovement: m.BlocksMovement}
+		if admitted.blocksIn("") {
 			blocked[cell] = m.Member
 		}
 	}

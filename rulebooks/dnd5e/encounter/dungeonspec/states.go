@@ -61,9 +61,18 @@ type StatesSpec struct {
 
 // StateSpec is one state: what it listens for, in order, the first whose
 // conditions hold firing. Terminal ends the machine and carries none.
+//
+// Blocks is whether the creature's body blocks while it is in this state
+// (rpg-project#836): a guard `posted` to hold a cell blocks it, and one
+// `cowed` off his post does not. Compiled into the placement's
+// [MonsterPlacement.BlockingStates], the encounter's binding onto the recipe,
+// never into the recipe (a machine state carries only its transitions). A
+// creature none of whose states blocks blocks as it is declared. Refused on a
+// terminal state, which ends the machine and holds no post.
 type StateSpec struct {
 	Transitions []TransitionSpec `yaml:"transitions,omitempty" json:"transitions,omitempty"`
 	Terminal    bool             `yaml:"terminal,omitempty" json:"terminal,omitempty"`
+	Blocks      bool             `yaml:"blocks,omitempty" json:"blocks,omitempty"`
 }
 
 // TransitionSpec is one transition: on a beat, when its conditions hold, do
@@ -264,6 +273,9 @@ func (g *grammar) placeStates(path string, s *StatesSpec, owner string) {
 		if st.Terminal && len(st.Transitions) > 0 {
 			fail(sp+".terminal", "a terminal state ends the machine and listens for nothing")
 		}
+		if st.Terminal && st.Blocks {
+			fail(sp+".blocks", "a terminal state ends the machine and holds no post: `blocks` is for a state the creature stands in")
+		}
 		for i, t := range st.Transitions {
 			tp := fmt.Sprintf("%s.transitions[%d]", sp, i)
 			if !encounter.ValidMachineBeat(t.On) {
@@ -389,6 +401,27 @@ func recipeOf(s *StatesSpec, owner string) (*machine.Recipe, error) {
 	}
 
 	return out, nil
+}
+
+// blockingOf is the states a creature's body blocks in, in name order: those
+// its winning states block is written `blocks: true` on — its own, else its
+// faction's, the layer [machineOf] reads — or nil when none is.
+func blockingOf(own, faction *StatesSpec) []string {
+	s := own
+	if s == nil {
+		s = faction
+	}
+	if s == nil {
+		return nil
+	}
+	var out []string
+	for _, name := range s.stateNames() {
+		if s.States[name].Blocks {
+			out = append(out, name)
+		}
+	}
+
+	return out
 }
 
 // machineOf is a creature's compiled recipe: its own states, else its
