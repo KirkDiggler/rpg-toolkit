@@ -689,6 +689,15 @@ type Routed struct {
 	// a sound, or back to a route: the walk is routed for the added
 	// movement the run buys, and costs what a dashing Move costs.
 	Dash bool
+
+	// Kind is how this walk moves the body ([MoveKind]), and the zero value
+	// is own: a table chase, a search, a patrol rejoin is the creature's own
+	// walk however it was routed. Only a compulsion's intent (Command, the
+	// session's compelled driver) names [MoveCompelled]. A turn walks on its
+	// own legs, so [MoveDisplaced] is refused ([ErrBadMoveKind]). The kind
+	// is never read off [Routed.Cause]: a cause names what moved the body,
+	// not how.
+	Kind MoveKind
 }
 
 // isTurnIntent marks Routed as a TurnIntent.
@@ -978,7 +987,7 @@ type Mover interface {
 // # The zero value is a walk somebody chose
 //
 // That is the whole reason this is a struct rather than more parameters, and
-// the reason the flag is named Forced rather than Provokes. Every field left
+// the reason the field is a [MoveKind] whose zero value is own. Every field left
 // unset describes the ordinary case — a creature walking of its own accord,
 // which provokes opportunity attacks and has no cause to name. A [Mover] that
 // reads a field nobody filled in gets the LEAST permissive answer, so nothing
@@ -1006,13 +1015,16 @@ type MoveStep struct {
 	// "something" is not a name.
 	Cause core.Ref
 
-	// Forced reports that this creature is being MOVED rather than moving:
-	// pushed, pulled, routed. A forced move does not offer opportunity
-	// attacks, because nobody chose to leave anybody's reach.
+	// Kind is how the body moved ([MoveKind]): the zero value and [MoveOwn]
+	// are a walk the creature chose, [MoveCompelled] its legs under an order,
+	// [MoveDisplaced] a body moved without its legs. Only a displaced step
+	// leaves nobody's reach by choice, so only [MoveKind.Displaced] may
+	// switch a reaction off.
 	//
 	// It is a fact about the step, not an instruction. What a [Mover] does
 	// with it is the rules layer's — today, seeding the movement chain with a
-	// prevention source naming [MoveStep.Cause] so the existing fold drops
-	// the triggers. This module cannot know that and does not.
-	Forced bool
+	// prevention source naming [MoveStep.Cause] for a displaced step so the
+	// existing fold drops the triggers. This module cannot know that and does
+	// not.
+	Kind MoveKind
 }

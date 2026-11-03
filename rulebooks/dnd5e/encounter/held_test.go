@@ -81,7 +81,7 @@ func (s *HeldTestSuite) scene(mover encounter.Mover, standing encounter.Particip
 // flee sends the goblin down fleeRoute as a provoking directive.
 func (s *HeldTestSuite) flee(enc *encounter.Encounter) (encounter.DirectOutput, error) {
 	return s.direct(enc, encounter.DirectInput{
-		Mover: goblin, Cause: whispersRef, Route: fleeRoute(), Provokes: true,
+		Mover: goblin, Cause: whispersRef, Route: fleeRoute(), Kind: encounter.MoveCompelled,
 	})
 }
 
@@ -232,7 +232,7 @@ func (s *HeldTestSuite) TestResumeStepsTheHeldAnnouncedCellWithoutASecondAnnounc
 	s.Equal(1, announced, "the announced cell is stepped, not announced a second time")
 	for _, call := range mover.calls {
 		s.Equal(whispersRef, call.Cause, "every announced cell of a flee names the spell")
-		s.False(call.Forced, "and a flee provokes, so it is not forced")
+		s.Equal(encounter.MoveCompelled, call.Kind, "and a flee is compelled, so it provokes")
 	}
 
 	moved := s.beatsNamed(enc, alice, "moved")
@@ -284,7 +284,7 @@ func (s *HeldTestSuite) TestAHeldDirectiveRoundTripsThroughOnePause() {
 	s.Equal(1, announced, "the announced cell is stepped, not announced a second time")
 	for _, call := range mover.calls {
 		s.Equal(whispersRef, call.Cause, "every announced cell of a flee names the spell")
-		s.False(call.Forced, "and a flee provokes, so it is not forced")
+		s.Equal(encounter.MoveCompelled, call.Kind, "and a flee is compelled, so it provokes")
 	}
 
 	moved := s.beatsNamed(loaded, alice, "moved")
@@ -391,7 +391,7 @@ func (s *HeldTestSuite) TestASecondDirectiveIsRefusedWhileOneIsHeld() {
 	s.Require().NoError(err)
 
 	_, derr := s.direct(enc, encounter.DirectInput{
-		Mover: alice, Cause: whispersRef, Route: []spatial.Position{cellAt(2, 3)}, Provokes: false,
+		Mover: alice, Cause: whispersRef, Route: []spatial.Position{cellAt(2, 3)}, Kind: encounter.MoveDisplaced,
 	})
 	s.Require().ErrorIs(derr, encounter.ErrTurnPaused, "somebody else's push waits too")
 	s.Equal(cellAt(2, 2), s.positionOf(enc, alice), "and moves nobody")
@@ -489,7 +489,7 @@ func (s *HeldTestSuite) TestAHeldPushKeepsItsStanceAcrossTheHold() {
 	enc := s.scene(mover, &downList{})
 
 	out, err := s.direct(enc, encounter.DirectInput{
-		Mover: goblin, Cause: thunderwaveRef, Route: fleeRoute(), Provokes: false,
+		Mover: goblin, Cause: thunderwaveRef, Route: fleeRoute(), Kind: encounter.MoveDisplaced,
 	})
 	s.Require().NoError(err)
 	s.Require().True(out.Paused)
@@ -507,13 +507,14 @@ func (s *HeldTestSuite) TestAHeldPushKeepsItsStanceAcrossTheHold() {
 
 	s.Require().Greater(len(mover.calls), 1)
 	for _, call := range mover.calls {
-		s.True(call.Forced, "every cell of a push is forced, before and after the hold")
+		s.Equal(encounter.MoveDisplaced, call.Kind, "every cell of a push is displaced, before and after the hold")
 		s.Equal(thunderwaveRef, call.Cause)
 	}
 	moved := s.beatsNamed(reloaded, alice, encounter.BeatMoved)
 	s.Require().Len(moved, len(fleeRoute()), "the resumed half appended the remaining cells")
 	for i, beat := range moved {
 		s.Equal(true, beat["forced"], "movement beat %d retains the pushed stance across the pause", i)
+		s.Equal("displaced", beat["kind"], "movement beat %d keeps its kind across the pause", i)
 	}
 }
 

@@ -317,6 +317,7 @@ func (s *ConcealmentSuite) TestTheMasqueradeIsGeometryForWhoeverCannotSeePastIt(
 		enc := s.play(alcoveField(), findsNothing{}, seat)
 
 		out, err := enc.Direct(context.Background(), encounter.DirectInput{
+			Kind:  encounter.MoveDisplaced,
 			Mover: walker, Cause: thunderwaveRef, Route: []spatial.Position{cellAt(3, 1)},
 		})
 		s.Require().NoError(err)

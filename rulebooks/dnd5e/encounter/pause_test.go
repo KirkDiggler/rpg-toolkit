@@ -343,20 +343,20 @@ func (s *PauseTestSuite) TestAPausedWalkStillEndsFacingItsTarget() {
 // the held directive's own walk. Pushed, it still faces the unstated 180 —
 // for a push, and for a provoking rout, the one an opportunity attack pauses.
 func (s *PauseTestSuite) TestAPausedPushResumedKeepsItsFacing() {
-	for _, provokes := range []bool{false, true} {
+	for _, kind := range []encounter.MoveKind{encounter.MoveDisplaced, encounter.MoveCompelled} {
 		mover := &pausingMover{pauseAt: map[int]bool{1: true}}
 		enc := s.sceneWithDriver(mover, &downList{}, passDriver{})
 		route := []spatial.Position{{X: 6, Y: 2}, {X: 7, Y: 2}, {X: 8, Y: 2}}
 		out, err := enc.Direct(context.Background(), encounter.DirectInput{
-			Mover: goblin, Cause: thunderwaveRef, Route: route, Provokes: provokes,
+			Mover: goblin, Cause: thunderwaveRef, Route: route, Kind: kind,
 		})
 		s.Require().NoError(err)
-		s.Require().True(out.Paused, "provokes=%v: the second step's window holds the push", provokes)
+		s.Require().True(out.Paused, "%s: the second step's window holds the push", kind)
 
 		_, err = enc.Resume(context.Background())
 		s.Require().NoError(err)
 		s.Require().Equal(spatial.Position{X: 8, Y: 2}, s.positionOf(enc, goblin), "the whole push landed")
-		s.Equal(encounter.UnstatedFacing, s.facingOf(enc, goblin), "provokes=%v: a pushed creature does not turn", provokes)
+		s.Equal(encounter.UnstatedFacing, s.facingOf(enc, goblin), "%s: a pushed creature does not turn", kind)
 	}
 }
 
@@ -478,6 +478,9 @@ func (s *PauseTestSuite) TestAPauseWithTheWrongArmIsRefused() {
 			p.Cause = "dnd5e:spells:dissonant-whispers"
 		}},
 		{"a turn that is forced", func(p *encounter.PauseData) { p.Forced = true }},
+		{"a turn that is displaced", func(p *encounter.PauseData) { p.MoveKind = "displaced"; p.Forced = true }},
+		{"a move kind nobody wrote", func(p *encounter.PauseData) { p.MoveKind = "sideways" }},
+		{"a move kind that disagrees with forced", func(p *encounter.PauseData) { p.MoveKind = "compelled"; p.Forced = true }},
 		{"a kind nobody wrote", func(p *encounter.PauseData) { p.Kind = "sideways" }},
 		{"a directive with no cause", func(p *encounter.PauseData) {
 			p.Kind = encounter.PauseDirective

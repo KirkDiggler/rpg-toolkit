@@ -199,6 +199,7 @@ func (s *PassageSuite) TestDrivenStepDoesNotSwallowProviderErrorWithPlacementSen
 	failure := fmt.Errorf("provider placement lookup failed: %w", encounter.ErrBadPlacement)
 	s.life.err = failure
 	_, err := s.enc.Direct(context.Background(), encounter.DirectInput{
+		Kind:  encounter.MoveDisplaced,
 		Mover: alice, Route: []spatial.Position{cellAt(1, 0)},
 		Cause: core.Ref{Module: "test", Type: "effect", ID: "push"},
 	})
