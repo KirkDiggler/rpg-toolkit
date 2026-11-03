@@ -238,25 +238,34 @@ func machinePiece(payload []byte) ([]piece, error) {
 }
 
 // walkPiece is one step. It extends an open walk only when mover, cause and
-// forced stance match; a new segment starts where the last one left the mover.
+// kind match; a new segment starts where the last one left the mover.
+//
+// A beat from before the kind (rpg-project#825) derives it from `forced`
+// alone: true is displaced, anything else own. A cause never derives a kind:
+// a Dash and a table walk carry a cause and are own.
 func walkPiece(payload []byte) ([]piece, error) {
 	var p struct {
 		Member   string           `json:"member"`
 		Position spatial.Position `json:"position"`
 		Doors    []string         `json:"doors"`
 		Cause    string           `json:"cause"`
+		Kind     string           `json:"kind"`
 		Forced   bool             `json:"forced"`
 	}
 	if err := json.Unmarshal(payload, &p); err != nil {
 		return nil, err
 	}
+	kind := beatMoveKind(p.Kind, p.Forced)
 	step := WalkStep{Cell: p.Position, Doors: p.Doors}
-	walk := WalkAct{Mover: member(p.Member), Path: []WalkStep{step}, Cause: p.Cause, Forced: p.Forced}
+	walk := WalkAct{
+		Mover: member(p.Member), Path: []WalkStep{step}, Cause: p.Cause,
+		Kind: kind, Forced: kind == MoveDisplaced,
+	}
 	return one(piece{
 		family: FamilyAct, body: walk,
 		absorb: func(open ActBody) (ActBody, bool) {
 			w, ok := open.(WalkAct)
-			if !ok || w.Mover != walk.Mover || w.Cause != walk.Cause || w.Forced != walk.Forced {
+			if !ok || w.Mover != walk.Mover || w.Cause != walk.Cause || w.Kind != walk.Kind {
 				return nil, false
 			}
 			w.Path = append(append([]WalkStep(nil), w.Path...), step)
@@ -268,9 +277,28 @@ func walkPiece(payload []byte) ([]piece, error) {
 				return walk
 			}
 			from := WalkStep{Cell: w.Path[len(w.Path)-1].Cell}
-			return WalkAct{Mover: walk.Mover, Path: []WalkStep{from, step}, Cause: walk.Cause, Forced: walk.Forced}
+			return WalkAct{
+				Mover: walk.Mover, Path: []WalkStep{from, step}, Cause: walk.Cause,
+				Kind: walk.Kind, Forced: walk.Forced,
+			}
 		},
 	})
+}
+
+// beatMoveKind reads a moved beat's kind: the stored word when there is one,
+// else `forced` alone (true is displaced, else own). Absent is own. A word
+// this package does not know reads as own — the record is a story, and a
+// reader that cannot place a word tells the least permissive one.
+func beatMoveKind(word string, forced bool) MoveKind {
+	switch k := MoveKind(word); k {
+	case MoveCompelled, MoveDisplaced:
+		return k
+	case "":
+		if forced {
+			return MoveDisplaced
+		}
+	}
+	return MoveOwn
 }
 
 // outcomeFields are the keys every attack outcome beat shares.

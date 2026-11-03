@@ -34,9 +34,29 @@ type WalkAct struct {
 	Path []WalkStep
 	// Cause is what moved them, when something did (moved `cause`).
 	Cause string
-	// Forced is true for external physical displacement (push/pull), not a chosen or self-propelled move; absent/legacy means the mover walked.
+	// Kind is how the body moved (rpg-project#825, design R1): own,
+	// compelled or displaced. A walk segment never mixes kinds.
+	Kind MoveKind `json:"kind"`
+	// Forced is DEPRECATED: a mirror of Kind == [MoveDisplaced], kept for
+	// readers that do not know Kind. Read Kind.
 	Forced bool `json:"forced"`
 }
+
+// MoveKind is how a body moved on a walk: its own walk, its legs under
+// somebody else's order, or moved without its legs. The same three words the
+// encounter writes on a moved beat.
+type MoveKind string
+
+const (
+	// MoveOwn is a walk the creature chose.
+	MoveOwn MoveKind = "own"
+	// MoveCompelled is the creature's own legs under somebody else's order
+	// (Command, Dissonant Whispers): it walks, and it provokes.
+	MoveCompelled MoveKind = "compelled"
+	// MoveDisplaced is a body moved without its legs (Thunderwave): it never
+	// provokes.
+	MoveDisplaced MoveKind = "displaced"
+)
 
 // AttackOutcome is how a swing ended.
 type AttackOutcome string

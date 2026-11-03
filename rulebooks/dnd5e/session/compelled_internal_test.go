@@ -45,7 +45,8 @@ func TestOneImposedMoveBecomesARoutedTurnNamingTheCompulsion(t *testing.T) {
 		Policy: encounter.MoveToward,
 		Anchor: "bard",
 		Cause:  *refs.Conditions.Commanded(),
-	}, intent, "the anchor and the policy come from the word; the cause is what gave it")
+		Kind:   encounter.MoveCompelled,
+	}, intent, "the anchor and the policy come from the word; the cause is what gave it; the walk is compelled")
 
 	away, err := compelledIntent("skeleton", []resolution.ImposedEffect{
 		imposedMove(combatActions.MoveAway, "bard"),
@@ -226,7 +227,7 @@ func TestAHostsOwnRoutedCrossesTheSeam(t *testing.T) {
 		Policy: encounter.MoveAway,
 		Anchor: "fighter",
 		Cause:  *refs.Conditions.Commanded(),
-	}, intent)
+	}, intent, "a host's own Routed is own (zero kind), whatever cause it names: a cause never decides the kind")
 }
 
 // TestARoutedCauseThatWillNotParseIsRefused — refused HERE rather than passed
