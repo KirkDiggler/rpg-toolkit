@@ -184,3 +184,23 @@ func (s *MoveSuite) TestCloningCarriesTheMoveSomewhereElse() {
 	clone.Move.Cells = 30
 	s.Equal(2, original.Move.Cells, "editing a clone must not reach the original")
 }
+
+// TestForOptionsZeroDistanceIsASignal — an authored option that chose zero
+// cells is the player's decision, not a missing value: #2220 makes it
+// [actions.ErrZeroDistance], a signal the caller branches on, so it cannot be
+// mistaken for a failure or a nil dereference. The bound option keeps its
+// distance and leaves without the rest of the menu.
+func (s *MoveSuite) TestForOptionsZeroDistanceIsASignal() {
+	m := actions.CastMove{Policy: actions.MovePull, Cells: 2,
+		CellsByOption: map[string]int{"no-pull": 0, "pull-10": 2}}
+
+	move, err := m.ForOption("no-pull")
+	s.Require().Nil(move)
+	s.Require().ErrorIs(err, actions.ErrZeroDistance)
+
+	move, err = m.ForOption("pull-10")
+	s.Require().NoError(err)
+	s.Require().NotNil(move)
+	s.Equal(2, move.Cells)
+	s.Nil(move.CellsByOption, "the option is bound; the menu leaves with the copy")
+}

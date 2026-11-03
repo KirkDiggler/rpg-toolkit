@@ -998,10 +998,11 @@ func (s *CastContentSuite) TestThornWhipDeclaresOptionalOnHitPull() {
 	s.False(d.Cast.Move.Provokes)
 	for option, cells := range map[string]int{"no-pull": 0, "pull-5": 1, "pull-10": 2} {
 		move, err := d.Cast.Move.ForOption(option)
-		s.Require().NoError(err)
 		if cells == 0 {
-			s.Nil(move)
+			s.Require().Nil(move)
+			s.Require().ErrorIs(err, actions.ErrZeroDistance)
 		} else {
+			s.Require().NoError(err)
 			s.Require().NotNil(move)
 			s.Equal(cells, move.Cells)
 		}

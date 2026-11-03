@@ -150,7 +150,7 @@ func New(cfg Config) (*World, error) {
 	}
 
 	tracker, err := newTracker(cfg)
-	if err != nil {
+	if err != nil && !errors.Is(err, errNoGoals) {
 		return nil, err
 	}
 
@@ -223,12 +223,20 @@ func (w *World) Act(ctx context.Context, act Act) (Result, error) {
 	}, nil
 }
 
-// newTracker builds the goal tracker, or nothing at all for a world with no
-// goals. A clock without goals is harmless; goals without a clock are refused
-// by [goal.NewTracker], which is where that message belongs.
+// errNoGoals is newTracker's signal that a world authored no goals: not a
+// failure — New consumes it and the world runs without a tracker (#2220: an
+// error may carry news, not blame). Unexported because the news never leaves
+// this package; a world with goals and no clock is a different, real error,
+// and it belongs to [goal.NewTracker].
+var errNoGoals = errors.New("no goals — nothing to track")
+
+// newTracker builds the goal tracker for a world with goals. A world with
+// none answers [errNoGoals], and the caller runs without a tracker, because
+// a clock without goals is harmless; goals without a clock are refused by
+// [goal.NewTracker], which is where that message belongs.
 func newTracker(cfg Config) (*goal.Tracker, error) {
 	if len(cfg.Goals) == 0 {
-		return nil, nil
+		return nil, errNoGoals
 	}
 
 	return goal.NewTracker(goal.TrackerConfig{Clock: cfg.Clock, Goals: cfg.Goals})

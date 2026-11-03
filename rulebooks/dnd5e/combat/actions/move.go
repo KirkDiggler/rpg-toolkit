@@ -4,9 +4,17 @@
 package actions
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 )
+
+// ErrZeroDistance is the answer ForOption gives an authored option that
+// chose zero cells: the player's explicit decision that nothing moves. A
+// signal, not a failure (#2220: exactly one of a valid object or an error,
+// and an error may be a signal) — the caller branches on it and spends
+// nothing.
+var ErrZeroDistance = errors.New("actions: explicit zero-distance choice")
 
 // MovePolicy is HOW a creature moved against its will is moved: the shape of
 // the route, stated as a rule rather than as cells.
@@ -170,8 +178,9 @@ func (m CastMove) Validate() error {
 // Clone detaches option budgets from the authored content.
 func (m CastMove) Clone() CastMove { m.CellsByOption = maps.Clone(m.CellsByOption); return m }
 
-// ForOption binds a validated cast option. Nil means an explicit zero-distance
-// choice. An undeclared option is refused before payment by the cast door.
+// ForOption binds a validated cast option. An explicit zero-distance choice
+// answers [ErrZeroDistance] — a signal, not a failure — and an undeclared
+// option is refused before payment by the cast door.
 func (m CastMove) ForOption(option string) (*CastMove, error) {
 	copy := m.Clone()
 	if len(m.CellsByOption) > 0 {
@@ -180,7 +189,7 @@ func (m CastMove) ForOption(option string) (*CastMove, error) {
 			return nil, fmt.Errorf("unknown move option %q", option)
 		}
 		if cells == 0 {
-			return nil, nil
+			return nil, ErrZeroDistance
 		}
 		copy.Cells = cells
 	}

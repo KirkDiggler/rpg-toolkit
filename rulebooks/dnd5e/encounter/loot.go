@@ -5,6 +5,7 @@ package encounter
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
@@ -340,7 +341,7 @@ func (e *Encounter) isDown(member MemberID) (bool, error) {
 // member in one acts through their own turn or waits.
 func (e *Encounter) refuseOffTurn(verb string, member MemberID) error {
 	bubble, err := e.bubbleFor(member)
-	if err != nil {
+	if err != nil && !errors.Is(err, errNotInBubble) {
 		return fmt.Errorf("%s: %w", verb, err)
 	}
 	if bubble == nil {

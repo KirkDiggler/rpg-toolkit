@@ -337,26 +337,35 @@ func (s *PauseTestSuite) TestAPausedWalkStillEndsFacingItsTarget() {
 }
 
 // TestAPausedPushResumedKeepsItsFacing is the forced-move ruling on its
-// paused branch (rpg-toolkit#2073 review). The push carries the goblin three
-// cells east, which a walk of its own would turn it to (90); the second step's
-// window holds it, the resume hand-takes that cell and walks the third through
-// the held directive's own walk. Pushed, it still faces the unstated 180 —
-// for a push, and for a provoking rout, the one an opportunity attack pauses.
+// paused branch (rpg-toolkit#2073 review), narrowed by rpg-project#829
+// (design R2, facing follows the legs). The directive carries the goblin
+// three cells east, which a walk of its own would turn it to (90); the second
+// step's window holds it, the resume hand-takes that cell and walks the third
+// through the held directive's own walk. Pushed, it still faces the unstated
+// 180. Compelled — the Dissonant Whispers rout an opportunity attack pauses —
+// its legs walk it, so it ends facing its flight, 90, across the hold.
 func (s *PauseTestSuite) TestAPausedPushResumedKeepsItsFacing() {
-	for _, kind := range []encounter.MoveKind{encounter.MoveDisplaced, encounter.MoveCompelled} {
+	for _, tc := range []struct {
+		kind encounter.MoveKind
+		want float64
+		why  string
+	}{
+		{encounter.MoveDisplaced, encounter.UnstatedFacing, "a pushed creature does not turn"},
+		{encounter.MoveCompelled, 90, "a compelled creature faces its flight across the hold"},
+	} {
 		mover := &pausingMover{pauseAt: map[int]bool{1: true}}
 		enc := s.sceneWithDriver(mover, &downList{}, passDriver{})
 		route := []spatial.Position{{X: 6, Y: 2}, {X: 7, Y: 2}, {X: 8, Y: 2}}
 		out, err := enc.Direct(context.Background(), encounter.DirectInput{
-			Mover: goblin, Cause: thunderwaveRef, Route: route, Kind: kind,
+			Mover: goblin, Cause: thunderwaveRef, Route: route, Kind: tc.kind,
 		})
 		s.Require().NoError(err)
-		s.Require().True(out.Paused, "%s: the second step's window holds the push", kind)
+		s.Require().True(out.Paused, "%s: the second step's window holds the walk", tc.kind)
 
 		_, err = enc.Resume(context.Background())
 		s.Require().NoError(err)
-		s.Require().Equal(spatial.Position{X: 8, Y: 2}, s.positionOf(enc, goblin), "the whole push landed")
-		s.Equal(encounter.UnstatedFacing, s.facingOf(enc, goblin), "%s: a pushed creature does not turn", kind)
+		s.Require().Equal(spatial.Position{X: 8, Y: 2}, s.positionOf(enc, goblin), "the whole route landed")
+		s.Equal(tc.want, s.facingOf(enc, goblin), "%s: %s", tc.kind, tc.why)
 	}
 }
 

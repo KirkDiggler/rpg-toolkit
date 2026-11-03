@@ -129,6 +129,13 @@ var (
 	// the meaning of.
 	ErrBadMix = errors.New("behavior: temperament mix cannot be dealt")
 
+	// ErrSilent reports a key with nothing eligible on any trigger but
+	// [KeyTime]: the table had nothing to say, which is silence — an answer,
+	// not a failure (#2220: exactly one of a valid object or an error, and an
+	// error may be a signal). The raise site wraps it with the key, so a
+	// caller reads it with [errors.Is] and a log names what went unanswered.
+	ErrSilent = errors.New("behavior: nothing eligible")
+
 	// ErrBadWhen reports a `when` entry this table cannot read: one naming
 	// more than one condition or none, a `heard` with no kind or a span
 	// below 1, or a deed's `within` or scope on a condition that is not a
@@ -1639,10 +1646,11 @@ type PickInput struct {
 // its own; [Die.Roll] takes one because a shared roller does, and there is
 // nowhere else to put it that is not a context in a struct.
 //
-// Returns (nil, nil) for a key with nothing eligible on any trigger BUT
+// Returns [ErrSilent] for a key with nothing eligible on any trigger BUT
 // [KeyTime] — silence, which is distinguishable from an entry that fired and
-// did nothing: one writes no beat at all. [KeyTime] answers a hold instead,
-// because a creature that was given time and did nothing still had its turn.
+// did nothing: one writes no beat at all, and silence is a signal, not a
+// failure (#2220). [KeyTime] answers a hold instead, because a creature that
+// was given time and did nothing still had its turn.
 func Pick(ctx context.Context, in *PickInput) (*PickOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("pick: %w", ErrNilInput)
@@ -1656,7 +1664,7 @@ func Pick(ctx context.Context, in *PickInput) (*PickOutput, error) {
 			return holdPick(key, temper.Word, top.rows), nil
 		}
 
-		return nil, nil
+		return nil, fmt.Errorf("pick %q: %w", key, ErrSilent)
 	}
 	if top.of < 1 {
 		// Every eligible entry loaded to nothing: an author's weights are

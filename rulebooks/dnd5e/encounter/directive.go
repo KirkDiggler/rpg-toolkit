@@ -671,8 +671,10 @@ func (e *Encounter) Direct(ctx context.Context, in DirectInput) (DirectOutput, e
 	audience := e.audienceFor(subjectBeat, in.Mover)
 	at := uint64(e.clock.ToData().HighWater)
 
-	// IMPOSED: whatever moved them, the mover did not turn to walk it, so it
-	// keeps the facing it had (facing.go).
+	// IMPOSED for its doors: a directive meets them as they are. Which way
+	// the mover faces is its kind's (facing.go, rpg-project#829): a
+	// compelled flee turns along its route, a displaced body keeps the
+	// facing it had.
 	res, err := e.walkPath(ctx, in.Mover, m, in.Route, audience, at, in.Cause, in.Kind, true)
 	if err != nil {
 		return DirectOutput{}, fmt.Errorf("direct %q: %w", in.Mover, err)

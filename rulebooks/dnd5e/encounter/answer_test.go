@@ -52,6 +52,14 @@ func threat(success, failure []encounter.Answer) encounter.Option {
 // no wall between them and — deliberately — NO FIGHT. Nothing here is
 // hostile, nobody rolled initiative, and the goblin still gets to act.
 func (s *AnswerTestSuite) front(table encounter.Table, options ...encounter.Option) *encounter.Encounter {
+	return s.frontWithTemper(table, encounter.Temper{}, options...)
+}
+
+// frontWithTemper is front with the goblin's nerve dealt by the author
+// rather than left as the soldier a zero temperament is.
+func (s *AnswerTestSuite) frontWithTemper(
+	table encounter.Table, temper encounter.Temper, options ...encounter.Option,
+) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:   openAir(),
@@ -65,7 +73,7 @@ func (s *AnswerTestSuite) front(table encounter.Table, options ...encounter.Opti
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1},
-				Faction: campFaction, Table: table, Options: options},
+				Faction: campFaction, Table: table, Options: options, Temper: temper},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
@@ -445,6 +453,32 @@ func (s *AnswerTestSuite) TestNoTableMeansNoRollAndNoBeat() {
 		s.Require().NoError(err)
 		s.Empty(s.answeredBeats(enc, alice), "the failed half was never authored")
 	})
+}
+
+// A roll this composition could not make is REFUSED, not silenced: #2220
+// made silence a signal ([behavior.ErrSilent]) and the review round's mutant
+// proved nothing pinned that ONLY silence is swallowed. A temperament that
+// zeroes the one word the line loads turns the die to size zero, and the verb
+// must refuse with [behavior.ErrBadTable] — not answer as though the table
+// had said nothing. The roller is refusesToRoll for the same reason: the
+// refusal happens before any die is thrown.
+func (s *AnswerTestSuite) TestAZeroLoadedAnswerIsRefusedNotSilenced() {
+	// The goblin's nerve has been dealt: every number in the profile is a
+	// real one but the flee's, which is zero — a temperament, not a missing
+	// one — and the line's only eligible answer is that word.
+	enc := s.frontWithTemper(nil,
+		encounter.Temper{Word: "broken", Profile: encounter.TemperProfile{
+			Attack: 100, Toward: 100, Away: 100, Flee: 0, Hold: 100}},
+		threat([]encounter.Answer{{Weight: 1, Flee: true}}, nil))
+
+	_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
+		Range:    speakReach,
+		OptionID: "threat", Skill: "intimidation", Actor: alice, Target: goblin, Beaten: true, DC: 9, Total: 14,
+		Roller: refusesToRoll{fail: func(why string) { s.Fail(why) }},
+	})
+	s.Require().ErrorIs(err, behavior.ErrBadTable)
+	s.Contains(err.Error(), "speak", "the verb wraps the refusal in its own name")
+	s.Empty(s.answeredBeats(enc, alice), "nothing was answered and no beat was written")
 }
 
 // The die is supplied, never defaulted: a verb handed no roller is refused

@@ -122,7 +122,7 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 	// what a bubble member acts through, and for everyone but the member
 	// the clock is waiting on, that structure says wait, not walk.
 	bubble, err := e.bubbleFor(in.Member)
-	if err != nil {
+	if err != nil && !errors.Is(err, errNotInBubble) {
 		return nil, fmt.Errorf("step: %w", err)
 	}
 	if bubble != nil {

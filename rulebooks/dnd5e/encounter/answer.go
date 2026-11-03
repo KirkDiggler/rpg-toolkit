@@ -6,6 +6,7 @@ package encounter
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -160,7 +161,9 @@ type answerOutput struct {
 //
 // NO ELIGIBLE ENTRY, NO ROLL, NO BEAT. An option that authored nothing for
 // this verdict produces silence, which is distinguishable from an entry that
-// fired and did nothing: one writes no beat at all.
+// fired and did nothing: one writes no beat at all. Silence arrives as
+// [behavior.ErrSilent], consumed at the roll (#2220: exactly one of a valid
+// object or an error).
 //
 // ONE EVALUATOR FOR A CREATURE AND A PROP. The rows are the option's, so the
 // pick is [behavior.Pick] over a one-key table of them. A creature's
@@ -196,10 +199,12 @@ func (e *Encounter) answer(ctx context.Context, in answerInput) (answerOutput, e
 		Key: in.key, Table: Table{in.key: in.rows}, Temper: temper, Facts: facts, Die: in.roller,
 	})
 	if err != nil {
+		// Silence is a signal, not a failure: no eligible entry writes no
+		// beat, which is what an empty answer has always meant.
+		if errors.Is(err, behavior.ErrSilent) {
+			return answerOutput{}, nil
+		}
 		return answerOutput{}, fmt.Errorf("answer: %w", err)
-	}
-	if chosen == nil {
-		return answerOutput{}, nil
 	}
 
 	if chosen.Answer.Fact != "" {
