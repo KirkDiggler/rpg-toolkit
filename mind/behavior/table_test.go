@@ -474,6 +474,25 @@ func (s *TableSuite) TestAHoldStillSaysWhyEveryRowWasOut() {
 	}, chosen.Rows)
 }
 
+// TestAnUnmatchedEventAnswersErrSilentNotNothing: a key with nothing eligible
+// on any trigger BUT `time` is silence — no beat at all — and #2220 makes
+// silence a signal, not a missing value: the caller reads it with errors.Is
+// and cannot mistake it for a failure, or dereference a nothing. The wrap is
+// pinned too, because the raise site names the key the table had no answer
+// for.
+func (s *TableSuite) TestAnUnmatchedEventAnswersErrSilentNotNothing() {
+	table := behavior.Table{behavior.KeyTime: {
+		{Weight: 1, Attack: &behavior.Selector{Word: behavior.SelectorEnemy}},
+	}}
+
+	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
+		Key: "appeal", Table: table, Facts: canAct, Die: &facedDie{face: 1}})
+
+	s.Require().Nil(chosen)
+	s.Require().ErrorIs(err, behavior.ErrSilent)
+	s.Contains(err.Error(), `"appeal"`, "the wrap names the key that went unanswered")
+}
+
 // --- the loaded die ----------------------------------------------------------
 
 // TestTheBeatsArithmeticAddsUp is R7: every candidate carries its authored
@@ -608,14 +627,15 @@ func (s *TableSuite) TestZeroEligibleUnderTimeIsAHoldThatSaysSo() {
 	s.Zero(chosen.Roll, "and nothing was rolled")
 }
 
-// TestZeroEligibleUnderASocialKeyIsSilence keeps the shipped answer: a
-// placement that authored nothing for this outcome produces no beat at all,
-// which is distinguishable from an entry that fired and did nothing.
+// TestZeroEligibleUnderASocialKeyIsSilence keeps the shipped answer — no
+// beat at all — under #2220's ruling: silence is [behavior.ErrSilent], a
+// signal and not a (nil, nil) the caller must guess at, and still
+// distinguishable from an entry that fired and did nothing.
 func (s *TableSuite) TestZeroEligibleUnderASocialKeyIsSilence() {
 	chosen, err := behavior.Pick(context.Background(), &behavior.PickInput{
 		Key: anEventKey, Table: behavior.Table{}, Die: &facedDie{face: 1}})
-	s.Require().NoError(err)
-	s.Nil(chosen)
+	s.Require().Nil(chosen)
+	s.Require().ErrorIs(err, behavior.ErrSilent)
 }
 
 // TestAPickWithNoDieIsRefusedByName: the roller is optional at construction
