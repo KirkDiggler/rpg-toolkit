@@ -231,6 +231,10 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 		// dungeonspec (rpg-project#766 S4): carried through the door as they
 		// were compiled. Nil stays nil, which is the default recipe.
 		join.Machine = monster.placement.Machine
+		// The states of that recipe in which the body blocks (rpg-project#836,
+		// the author's `blocks: true`): carried beside it, or a posted guard
+		// is seated as a body anyone walks through. Nil blocks as declared.
+		join.BlockingStates = monster.placement.BlockingStates
 		// The author's facing, lowered to a bearing by the compile (sneaking
 		// R13); nil leaves the composition's rule bearing of 180.
 		join.Facing = monster.placement.FacingDegrees

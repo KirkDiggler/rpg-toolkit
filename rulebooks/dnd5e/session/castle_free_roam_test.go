@@ -288,19 +288,20 @@ func storedData(t *testing.T, chars *fakeCharacters, id string) *character.Data 
 
 // TestCastleFreeRoamThunderwaveShovesBeforeTheFight is rpg-project#831: the
 // bard walks up to the gatehouse in free roam and casts Thunderwave at the
-// captain. The cast is hostile, so the garrison turns and the fight forms
+// gate guards beside the captain. The cast is hostile, so the garrison turns and the fight forms
 // inside the deed (#785 R3), and the shove is part of the deed landing: every
 // moved beat the spell caused follows the cast beat and is on the story
 // before the fight forms and before any turn of it passes, and a pushed
 // guard's own first step leaves from the cell the blast threw it to.
 func TestCastleFreeRoamThunderwaveShovesBeforeTheFight(t *testing.T) {
 	ctx := context.Background()
-	// The d20s in the order they are rolled: the two saves fail (1, 1), so
-	// the cube shoves both guards it caught; the bard loses initiative (1)
-	// and the garrison wins it (20s), so the fight's first turns are played
-	// inside the cast, as on the walk; the guards' swings miss (1), so the
-	// bard stands and the story stays open.
-	c := openTheCastleFor(t, []*character.Data{castingBardWithSpells("bard", spells.Thunderwave)}, 1, 1, 1, 20, 20, 20, 1)
+	// The d20s in the order they are rolled: the three saves fail (1, 1, 1),
+	// so the cube shoves everyone it caught who has room to go (gate-1,
+	// posted beneath the shut gate since rpg-project#836, has none); the bard
+	// loses initiative (1) and the garrison wins it (20s), so the fight's
+	// first turns are played inside the cast, as on the walk; the guards'
+	// swings miss (1), so the bard stands and the story stays open.
+	c := openTheCastleFor(t, []*character.Data{castingBardWithSpells("bard", spells.Thunderwave)}, 1, 1, 1, 1, 20, 20, 20, 1)
 
 	c.play(t, "the bard walks up to the captain", func() error {
 		enc, err := c.mgr.LoadWorldForTest(ctx, "sess")
@@ -321,7 +322,7 @@ func TestCastleFreeRoamThunderwaveShovesBeforeTheFight(t *testing.T) {
 	before := lastSeq(storyBeats(t, c.mgr, "sess", "bard"))
 	enc, err := c.mgr.LoadWorldForTest(ctx, "sess")
 	require.NoError(t, err)
-	aim := standingAt(enc, "captain")
+	aim := standingAt(enc, "gate-2")
 	row := c.row(t, "bard", session.VerbCast, refs.Spells.Thunderwave().String())
 	require.True(t, row.Available, "%+v", row.Why)
 	_, err = c.mgr.Cast(ctx, &session.CastInput{Session: "sess", Member: "bard", Cell: &aim, DeclarationID: row.ID})
