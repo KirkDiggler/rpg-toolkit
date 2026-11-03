@@ -803,4 +803,12 @@ var (
 	// observer is entitled to be wrong about must at least have been recorded
 	// correctly first.
 	ErrNoCause = errors.New("encounter: a move somebody else decided names no cause")
+
+	// ErrBadMoveKind is a walk that names a [MoveKind] its site cannot carry
+	// (rpg-project#825, design R1): a directive that names no kind, or names
+	// own (a directive is somebody else's decision, so it is compelled or
+	// displaced, and a directive that forgot to say which is a bug, not a
+	// default); a [Routed] turn that names displaced (a turn walks on its own
+	// legs); or a stored word this build does not write.
+	ErrBadMoveKind = errors.New("encounter: a walk names a move kind its site cannot carry")
 )

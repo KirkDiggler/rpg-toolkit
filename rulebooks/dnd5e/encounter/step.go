@@ -50,15 +50,15 @@ type executedAction struct {
 	// case and means exactly what it says: this creature walked because it
 	// chose to.
 	//
-	// forced inherits [MoveStep.Forced]'s zero-value law: a step nobody
-	// classified is a walk somebody chose. True is external displacement.
+	// kind inherits [MoveStep.Kind]'s zero-value law: a step nobody
+	// classified is a walk somebody chose ([MoveKind]).
 	//
 	// It rides HERE rather than as a parameter on [Encounter.appendMovementBeat]
 	// because a step and the beat that narrates it are one thing, and three
 	// unrelated call sites passing an empty Ref forever would be ceremony
 	// standing in for a fact.
-	cause  core.Ref
-	forced bool
+	cause core.Ref
+	kind  MoveKind
 }
 
 // Step moves a member ONE STEP to a dungeon-absolute cell and says what

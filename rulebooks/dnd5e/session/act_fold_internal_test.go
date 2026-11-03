@@ -77,6 +77,51 @@ func (s *ActFoldSuite) TestALegacyWalkPayloadDecodesAsAnOrdinaryWalk() {
 	s.Require().Len(pieces, 1)
 	walk := pieces[0].body.(WalkAct)
 	s.False(walk.Forced, "a payload with no evidence remains a chosen walk")
+	s.Equal(MoveOwn, walk.Kind, "and its kind is own")
+}
+
+// TestALegacyBeatDerivesItsKind: a beat written before the kind derives it
+// from `forced` alone. A cause never decides the kind (rpg-project#825).
+func (s *ActFoldSuite) TestALegacyBeatDerivesItsKind() {
+	cases := []struct {
+		name    string
+		payload string
+		want    MoveKind
+	}{
+		{"no cause, no forced", `{"beat":"moved","member":"goblin","position":{"X":7,"Y":2}}`, MoveOwn},
+		{"a cause, no forced", `{"beat":"moved","member":"goblin","position":{"X":7,"Y":2},"cause":"dnd5e:spells:dissonant-whispers"}`, MoveOwn},
+		{"forced", recordedThunderwavePush, MoveDisplaced},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			pieces, err := walkPiece([]byte(tc.payload))
+			s.Require().NoError(err)
+			s.Require().Len(pieces, 1)
+			walk := pieces[0].body.(WalkAct)
+			s.Equal(tc.want, walk.Kind)
+			s.Equal(tc.want == MoveDisplaced, walk.Forced, "forced mirrors displaced")
+		})
+	}
+}
+
+// TestAWalkSegmentBreaksWhenTheKindChanges: same mover, same cause, compelled
+// then displaced — two walks, because a segment never mixes kinds.
+func (s *ActFoldSuite) TestAWalkSegmentBreaksWhenTheKindChanges() {
+	const move = "move:01HZZZZZZZZZZZZZZZZZZZWALK"
+	cause := "dnd5e:spells:thunderwave"
+	acts := foldActs("sess", "fighter", []record.Entry{
+		s.beat(move, map[string]any{"beat": encounter.BeatMoved, "member": "goblin", "position": cell(7, 2), "cause": cause, "kind": "compelled"}),
+		s.beat(move, map[string]any{"beat": encounter.BeatMoved, "member": "goblin", "position": cell(8, 2), "cause": cause, "kind": "compelled"}),
+		s.beat(move, map[string]any{"beat": encounter.BeatMoved, "member": "goblin", "position": cell(9, 2), "cause": cause, "kind": "displaced", "forced": true}),
+	})
+	s.Require().Len(acts, 2, "the kind changed, so the walk broke")
+	first := acts[0].Body.(WalkAct)
+	second := acts[1].Body.(WalkAct)
+	s.Equal(MoveCompelled, first.Kind)
+	s.Len(first.Path, 2, "the two compelled steps are one walk")
+	s.Equal(MoveDisplaced, second.Kind)
+	s.True(second.Forced)
+	s.Equal([]spatial.Position{cell(8, 2), cell(9, 2)}, path(second), "the segment still starts where the prior walk ended")
 }
 
 // TestAForcedWalkActRoundTripsThroughSerialization keeps the act body honest
@@ -86,6 +131,7 @@ func (s *ActFoldSuite) TestAForcedWalkActRoundTripsThroughSerialization() {
 		Mover:  member("goblin"),
 		Path:   []WalkStep{{Cell: cell(7, 2)}},
 		Cause:  "dnd5e:spells:thunderwave",
+		Kind:   MoveDisplaced,
 		Forced: true,
 	}
 	raw, err := json.Marshal(want)
@@ -93,6 +139,7 @@ func (s *ActFoldSuite) TestAForcedWalkActRoundTripsThroughSerialization() {
 	var wire map[string]json.RawMessage
 	s.Require().NoError(json.Unmarshal(raw, &wire))
 	s.Contains(wire, "forced", "the serialized WalkAct keeps the beat payload's forced key")
+	s.Contains(wire, "kind", "and carries the kind")
 	var got WalkAct
 	s.Require().NoError(json.Unmarshal(raw, &got))
 	s.Equal(want, got)
@@ -107,31 +154,42 @@ func (s *ActFoldSuite) TestRecordedThunderwavePushDecodesAsForced() {
 	s.Require().Len(pieces, 1)
 	walk := pieces[0].body.(WalkAct)
 	s.True(walk.Forced)
+	s.Equal(MoveDisplaced, walk.Kind, "a legacy forced beat is displaced")
 	s.Equal("dnd5e:spells:thunderwave", walk.Cause)
 }
 
 // TestWalkActsDistinguishWalkRoutAndPush proves the stream's three movement
-// semantics: a chosen walk, a caused self-propelled rout, and a physical push.
+// semantics by kind: a chosen walk (own), a Dissonant Whispers flee and a
+// Command flee (compelled), and a Thunderwave push (displaced).
 func (s *ActFoldSuite) TestWalkActsDistinguishWalkRoutAndPush() {
 	const (
-		walkAct = "move:01HZZZZZZZZZZZZZZZZZZZWALK"
-		routAct = "move:01HZZZZZZZZZZZZZZZZZZZROUT"
-		pushAct = "move:01HZZZZZZZZZZZZZZZZZZZPUSH"
+		walkAct    = "move:01HZZZZZZZZZZZZZZZZZZZWALK"
+		routAct    = "move:01HZZZZZZZZZZZZZZZZZZZROUT"
+		commandAct = "move:01HZZZZZZZZZZZZZZZZZZCMND"
+		pushAct    = "move:01HZZZZZZZZZZZZZZZZZZZPUSH"
 	)
 	acts := foldActs("sess", "fighter", []record.Entry{
 		s.beat(walkAct, map[string]any{"beat": encounter.BeatMoved, "member": "goblin", "position": cell(7, 2)}),
-		s.beat(routAct, map[string]any{"beat": encounter.BeatMoved, "member": "goblin", "position": cell(8, 2), "cause": "dnd5e:spells:dissonant-whispers"}),
-		s.beat(pushAct, map[string]any{"beat": encounter.BeatMoved, "member": "goblin", "position": cell(9, 2), "cause": "dnd5e:spells:thunderwave", "forced": true}),
+		s.beat(routAct, map[string]any{"beat": encounter.BeatMoved, "member": "goblin", "position": cell(8, 2), "cause": "dnd5e:spells:dissonant-whispers", "kind": "compelled"}),
+		s.beat(commandAct, map[string]any{"beat": encounter.BeatMoved, "member": "goblin", "position": cell(9, 2), "cause": "dnd5e:conditions:commanded", "kind": "compelled"}),
+		s.beat(pushAct, map[string]any{"beat": encounter.BeatMoved, "member": "goblin", "position": cell(10, 2), "cause": "dnd5e:spells:thunderwave", "kind": "displaced", "forced": true}),
 	})
-	s.Require().Len(acts, 3)
+	s.Require().Len(acts, 4)
 
 	walk := acts[0].Body.(WalkAct)
 	rout := acts[1].Body.(WalkAct)
-	push := acts[2].Body.(WalkAct)
+	command := acts[2].Body.(WalkAct)
+	push := acts[3].Body.(WalkAct)
+	s.Equal(MoveOwn, walk.Kind)
 	s.False(walk.Forced)
 	s.Empty(walk.Cause)
+	s.Equal(MoveCompelled, rout.Kind)
 	s.False(rout.Forced)
 	s.Equal("dnd5e:spells:dissonant-whispers", rout.Cause)
+	s.Equal(MoveCompelled, command.Kind)
+	s.False(command.Forced)
+	s.Equal("dnd5e:conditions:commanded", command.Cause)
+	s.Equal(MoveDisplaced, push.Kind)
 	s.True(push.Forced)
 	s.Equal("dnd5e:spells:thunderwave", push.Cause)
 }

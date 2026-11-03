@@ -220,10 +220,10 @@ func walkCastPushes(
 			continue
 		}
 		walked, err := enc.Direct(ctx, encounter.DirectInput{
-			Mover:    push.target,
-			Cause:    cause,
-			Route:    push.route,
-			Provokes: push.move.Provokes,
+			Mover: push.target,
+			Cause: cause,
+			Route: push.route,
+			Kind:  moveKindFor(push.move.Provokes),
 		})
 		if err != nil {
 			return false, fmt.Errorf("cast push: %w", translate(err))
@@ -277,14 +277,25 @@ func landingPushes(pushes []castPush) (shoves []encounter.CastPush, flees []cast
 // shove, Thunderwave) rather than the creature's own legs under the caster's
 // order (a flee, Dissonant Whispers), from the one word content says about it.
 //
-// THE ONE PLACE this package reads Provokes as a kind of move ([walkCastPushes]
-// hands the flag to the encounter unread). rpg-toolkit#2246 names that crossing
-// moveKindFor, over encounter.MoveKind, which the encounter this module pins
-// does not have yet (rpg-toolkit#2245). At that merge this body becomes
-// `moveKindFor(provokes) == encounter.MoveDisplaced`, so the shove-or-flee
-// split and the kind a walk carries come from one function.
+// It reads through [moveKindFor], the one crossing from content's Provokes to a
+// kind (rpg-toolkit#2246), so the shove-or-flee split and the kind a walk
+// carries come from one function.
 func displaces(provokes bool) bool {
-	return !provokes
+	return moveKindFor(provokes) == encounter.MoveDisplaced
+}
+
+// moveKindFor names the kind a cast's move walks with, from the one word
+// content says about it (rpg-project#825, design Findings). Content keeps
+// `Provokes` until a spell pushes a body that should provoke: a move that
+// provokes is the target's own legs under the caster's order (Dissonant
+// Whispers, compelled); one that does not is the body moved without its legs
+// (Thunderwave, displaced). THE ONE CROSSING: nothing else in this package
+// turns Provokes into a kind.
+func moveKindFor(provokes bool) encounter.MoveKind {
+	if provokes {
+		return encounter.MoveCompelled
+	}
+	return encounter.MoveDisplaced
 }
 
 // routePolicy maps the content's word for how a creature is moved onto the

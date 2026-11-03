@@ -10,6 +10,7 @@ import (
 
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
 )
 
 // castmove_internal_test.go pins the crossing itself, which the verb cannot
@@ -47,4 +48,21 @@ func TestRoutePolicyRefusesAWordTheCompositionHasNoExecutorFor(t *testing.T) {
 	crossed, ok := routePolicy(combatActions.MovePolicy("sideways"))
 	require.False(t, ok, "a policy with no executor is refused, not passed through")
 	require.Empty(t, crossed, "and nothing is invented to carry across")
+}
+
+// TestACastsMoveNamesItsKindFromTheContent is the one crossing from content's
+// `Provokes` to the directive's kind (rpg-project#825, design Findings), read
+// off the shipped spell content rather than restated: Thunderwave's push is
+// displaced, Dissonant Whispers' flee is compelled.
+func TestACastsMoveNamesItsKindFromTheContent(t *testing.T) {
+	for spell, want := range map[spells.Spell]encounter.MoveKind{
+		spells.Thunderwave:       encounter.MoveDisplaced,
+		spells.DissonantWhispers: encounter.MoveCompelled,
+	} {
+		def := spells.CastDefinition(spells.CastDefinitionInput{Spell: spell, SpellSaveDC: 13})
+		require.NotNil(t, def, "%s has cast content", spell)
+		require.NotNil(t, def.Cast, "%s casts", spell)
+		require.NotNil(t, def.Cast.Move, "%s moves its target", spell)
+		require.Equal(t, want, moveKindFor(def.Cast.Move.Provokes), "%s", spell)
+	}
 }
