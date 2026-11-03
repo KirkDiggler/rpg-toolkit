@@ -4,10 +4,13 @@
 package encounter
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // BeatCast is the "beat" value of the story beat this composition appends when
@@ -258,6 +261,34 @@ type RecordCastInput struct {
 	// break, in the order they were rolled. Their saved beats are appended
 	// before any break's, so a reader sees every check this cast asked for.
 	ConcentrationChecks []ConcentrationCheck
+
+	// Pushes are the creatures this cast shoves, each along the cells the
+	// caller already routed ([Encounter.Route]), in the order they walk.
+	// Every one is walked as [Encounter.Direct] walks a displacement: it
+	// provokes nobody, keeps its facing, and every moved beat names the spell
+	// as its cause.
+	//
+	// A PUSH IS PART OF THE CAST LANDING (rpg-project#785 R3, #831), so it
+	// walks inside this verb: after the cast's own beats, before the deed
+	// lands. The deed is where a hostile cast from free roam turns the pair,
+	// forms the fight and plays its first turns, and a fight formed before the
+	// shove fights from the cells the blast threw everybody out of. Inside a
+	// fight nothing takes a turn between the two, so the story reads the same
+	// on both clocks: the thunder, the slide, then whatever the deed sets off.
+	//
+	// A push that PROVOKES (a flee) is not one of these. It can stop to ask a
+	// player about a step, and a held walk cannot sit in the middle of a
+	// landing this verb finishes before it returns; the caller walks it after,
+	// through [Encounter.Direct]. Empty is the ordinary case.
+	Pushes []CastPush
+}
+
+// CastPush is one shove a cast imposed: who moves, and the cells they cross.
+// An empty Route is a creature pushed nowhere (a wall at its back), already
+// told on the cast's own moved result, and walks nothing.
+type CastPush struct {
+	Mover MemberID
+	Route []spatial.Position
 }
 
 // RecordCastOutput reports where every transaction beat landed and any intel
@@ -357,10 +388,23 @@ type concentrationEndedPayload struct {
 // identity, a save with no ability or authoritative calculation, a roll that
 // is not a d20, unknown result kind, a missing/forbidden kind field, or a
 // healing or damage whose calculation is absent, structurally inconsistent, or
-// whose Total does not equal the requested amount), an append error, or
-// anything the Standing capability returns from noticeDown.
+// whose Total does not equal the requested amount, a push on a member the cast
+// did not target), ErrNoCause (pushes under a spell ref that does not parse),
+// ErrTurnPaused (pushes while a walk is held), an append error, anything
+// [Encounter.Direct] returns for a push, or anything the Standing capability
+// returns from noticeDown.
+//
+// # A push walks inside the landing
+//
+// [RecordCastInput.Pushes] walk after the cast's own beats and before the
+// deed, on every clock: the thunder, the slide, then the stance, the fight
+// and the world's round a hostile cast from free roam sets off.
 func (e *Encounter) RecordCast(in *RecordCastInput) (*RecordCastOutput, error) {
 	prepared, err := e.prepareCast(in)
+	if err != nil {
+		return nil, err
+	}
+	cause, err := e.preparePushes(in)
 	if err != nil {
 		return nil, err
 	}
@@ -389,6 +433,12 @@ func (e *Encounter) RecordCast(in *RecordCastInput) (*RecordCastOutput, error) {
 			return nil, fmt.Errorf("record cast: append beat %d: %w", i, appendErr)
 		}
 		seqs = append(seqs, appended.Seq)
+	}
+
+	// THE SHOVES, before the deed (RecordCastInput.Pushes): the fight a hostile
+	// cast forms below forms around the cells the blast left everybody in.
+	if err := e.walkCastPushes(in.Pushes, cause); err != nil {
+		return nil, fmt.Errorf("record cast: %w", err)
 	}
 
 	// PROVOCATION IS THE DELIVERY'S, NOT THE ARM'S (rpg-project#493, R5;
@@ -435,6 +485,76 @@ func (e *Encounter) RecordCast(in *RecordCastInput) (*RecordCastOutput, error) {
 	}
 
 	return &RecordCastOutput{Seqs: seqs, IntelDeltas: intelDeltas}, nil
+}
+
+// preparePushes validates a cast's pushes before the first append, so a push
+// this verb would refuse cannot leave half a cast in the story, and answers
+// the cause every moved beat names: the spell.
+//
+// A HELD WALK REFUSES ANY PUSH, as [Encounter.Direct] refuses one: the one
+// pause slot is taken, and the table is waiting on its answer. A cast with no
+// pushes is still recorded over a pause, as it always was.
+func (e *Encounter) preparePushes(in *RecordCastInput) (core.Ref, error) {
+	if len(in.Pushes) == 0 {
+		return core.Ref{}, nil
+	}
+	cause, err := core.ParseString(in.Spell.Ref)
+	if err != nil {
+		return core.Ref{}, fmt.Errorf("record cast: push cause %q: %w: %w", in.Spell.Ref, ErrNoCause, err)
+	}
+	if e.Paused() {
+		return core.Ref{}, fmt.Errorf("record cast: push: %q is already waiting on an answer: %w",
+			e.PausedMember(), ErrTurnPaused)
+	}
+	targets := make(map[MemberID]bool, len(in.Targets))
+	for _, target := range in.Targets {
+		targets[target.Target] = true
+	}
+	for i, push := range in.Pushes {
+		if push.Mover == "" {
+			return core.Ref{}, fmt.Errorf("record cast: push %d: %w", i, ErrNoMember)
+		}
+		if _, ok := e.members[push.Mover]; !ok {
+			return core.Ref{}, fmt.Errorf("record cast: push %d: %q: %w", i, push.Mover, ErrNotMember)
+		}
+		if !targets[push.Mover] {
+			return core.Ref{}, fmt.Errorf("record cast: push %d: %q is not one of the cast's targets: %w",
+				i, push.Mover, ErrInvalidData)
+		}
+	}
+	return *cause, nil
+}
+
+// walkCastPushes walks a cast's pushes in order through [Encounter.Direct].
+//
+// context.Background() for clocks.go's reason: no verb on this composition
+// accepts a caller context, and the [Mover] seam is the only reader.
+//
+// A PAUSE IS REFUSED, NOT CARRIED. A displacement provokes nobody, so the
+// Mover has nothing to ask about it; a walk that stopped to ask anyway would
+// leave a held walk in the middle of a landing that goes on to land a deed and
+// may form a fight. The cast beats are already appended by then, so this is
+// the caller rule in doc.go: discard the encounter unsaved.
+func (e *Encounter) walkCastPushes(pushes []CastPush, cause core.Ref) error {
+	for _, push := range pushes {
+		walked, err := e.Direct(context.Background(), DirectInput{
+			Mover: push.Mover,
+			Cause: cause,
+			Route: push.Route,
+			// A SHOVE, NAMED: the push this verb walks is a displacement, and
+			// it is spelled rather than left to the zero value so a change to
+			// how a directive says so has to be made here too.
+			Provokes: false,
+		})
+		if err != nil {
+			return fmt.Errorf("push %q: %w", push.Mover, err)
+		}
+		if walked.Paused {
+			return fmt.Errorf("push %q stopped to ask about a step that provokes nobody: %w",
+				push.Mover, ErrInvalidData)
+		}
+	}
+	return nil
 }
 
 // prepareCast validates and marshals the complete transaction before the
