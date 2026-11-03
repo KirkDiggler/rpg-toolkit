@@ -177,7 +177,9 @@ type Sheets interface {
 // arithmetic of 10 plus a modifier produces, and a watch arc no circle holds.
 func (e *Encounter) sheetsNow() (map[MemberID]SheetFacts, error) {
 	if len(e.members) == 0 {
-		return nil, nil
+		// The projection of nobody is empty, not absent (#2220: zero values
+		// tell the truth — no news to carry).
+		return map[MemberID]SheetFacts{}, nil
 	}
 
 	roster := make([]MemberID, 0, len(e.members))

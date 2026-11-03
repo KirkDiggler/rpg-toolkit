@@ -183,7 +183,7 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 	}
 
 	fired, err := e.firedReachedPosition(member, action.to, at)
-	if err != nil {
+	if err != nil && !errors.Is(err, errNoEnding) {
 		return nil, fmt.Errorf("step ending: %w", err)
 	}
 

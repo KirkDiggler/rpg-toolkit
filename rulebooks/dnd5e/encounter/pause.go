@@ -407,9 +407,14 @@ func causeString(cause core.Ref) string {
 // runs after the world is built. A parse that succeeded there succeeds here,
 // and the error arm is kept rather than discarded so a future change to either
 // cannot make this one lie by silence.
+// errNoPause is pauseFrom's news that the blob carries no pause: nothing was
+// mid-walk when it was saved, and the encounter loads with nothing to resume
+// (#2220: an error may carry the news, not the blame).
+var errNoPause = errors.New("no pause to load")
+
 func pauseFrom(d *PauseData) (*pause, error) {
 	if d == nil {
-		return nil, nil
+		return nil, errNoPause
 	}
 	cause, cerr := parseCause(d.Cause)
 	if cerr != nil {
@@ -1032,7 +1037,7 @@ func (e *Encounter) finishPausedIntent(
 	}
 
 	deltas, serr := e.settleWalk(p.audience, res.moved+res.opened)
-	if serr != nil {
+	if serr != nil && !errors.Is(serr, errNoSettle) {
 		return 0, deltas, false, serr
 	}
 

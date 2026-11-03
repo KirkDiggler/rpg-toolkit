@@ -4,6 +4,7 @@
 package encounter
 
 import (
+	"errors"
 	"fmt"
 )
 
@@ -106,7 +107,7 @@ func (e *Encounter) Board(in *BoardInput) (*BoardOutput, error) {
 		m := &in.Members[i]
 		if e.outcome == nil {
 			fired, err := e.firedReachedPosition(records[i], m.Cell, at)
-			if err != nil {
+			if err != nil && !errors.Is(err, errNoEnding) {
 				return nil, fmt.Errorf("board: members[%d] ending: %w", i, err)
 			}
 			out.Outcome = fired

@@ -127,7 +127,9 @@ type Equipment interface {
 // accepted. See [Equipment] for why those are different claims.
 func (e *Encounter) equipmentNow() (map[MemberID]*HeldEquipment, error) {
 	if len(e.members) == 0 {
-		return nil, nil
+		// The projection of nobody is empty, not absent (#2220: zero values
+		// tell the truth — no news to carry).
+		return map[MemberID]*HeldEquipment{}, nil
 	}
 
 	roster := make([]MemberID, 0, len(e.members))
