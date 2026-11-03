@@ -10,6 +10,7 @@ Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), 
 - `MemberData.BlockingStates` and `ReserveData.BlockingStates` persist beside the recipe. A record without them loads as before; a stored name the recipe lacks is `ErrInvalidData` (B4).
 - `ErrBodyInTheWay`, not wrapping `ErrBadPlacement`. A step refused only by a body returns it inside `StepObstructedError`. `PublicReason` says "<name> stands in the way" for a body the mover sees and "someone stands in the way" otherwise. The driven walk stops at one silently (B6).
 - The dialect's `blocks: true` on a state compiles into `MonsterPlacement.BlockingStates`, and is refused on a terminal state (C1).
+- A `toward` an authored cell the creature already stands on passes with "already there", so a posted guard's stayed beat says why (found by the session goldens).
 - The castle mirror: gate-1 posted on the crossing, `cowed` and `turned`, the post key with a voice draw, and the troupe's admission fact. Castle and replay tests re-aimed (Q1).
 
 ## Decided

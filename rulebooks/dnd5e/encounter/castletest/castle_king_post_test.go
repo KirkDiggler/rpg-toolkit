@@ -17,6 +17,7 @@ package castletest
 // route host, whose die picks every level's first row.
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -143,4 +144,35 @@ func TestMadKingTheGuardHoldsTheGate(t *testing.T) {
 		require.Equal(t, "turned", machineState(t, s.enc, kingGate1), "he left the post in the round he heard it")
 		require.NotEqual(t, encounter.PassageBlocked, s.passageFor(crossing), "the crossing is open")
 	})
+}
+
+// TestMadKingThePostSaysWhyItStays: a posted guard's time beat, standing the
+// crossing he is already on, is a `stayed` beat that says why. A stayed beat
+// with no reason reads as a creature nobody asked (rpg-project#465).
+func TestMadKingThePostSaysWhyItStays(t *testing.T) {
+	t.Parallel()
+	s := openTheScript(t, gatehouseSeat, nil)
+	for i := 0; i < 2; i++ {
+		s.aRoundPasses()
+	}
+	require.Equal(t, beneathTheGate, s.at(kingGate1), "precondition: he holds the crossing")
+
+	story, err := s.enc.Story(&encounter.StoryInput{Audience: hero})
+	require.NoError(t, err)
+	var whys []string
+	for _, entry := range story {
+		var b struct {
+			Beat   string `json:"beat"`
+			Member string `json:"member"`
+			Why    string `json:"why"`
+		}
+		require.NoError(t, json.Unmarshal(entry.Payload, &b))
+		if b.Beat == encounter.BeatStayed && b.Member == string(kingGate1) {
+			whys = append(whys, b.Why)
+		}
+	}
+	require.NotEmpty(t, whys, "his rounds on the post are told as stayed beats")
+	for _, why := range whys {
+		require.Equal(t, "already there", why, "and each says why he stayed")
+	}
 }
