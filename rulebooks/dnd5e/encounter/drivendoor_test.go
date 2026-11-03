@@ -328,6 +328,7 @@ func (s *DrivenDoorSuite) TestADirectedWalkThroughAShutDoorStopsAtIt() {
 	route := []spatial.Position{cellAt(6, 5), cellAt(7, 5), cellAt(8, 5), cellAt(9, 5), cellAt(10, 5), cellAt(11, 5)}
 
 	out, err := enc.Direct(context.Background(), encounter.DirectInput{
+		Kind:  encounter.MoveDisplaced,
 		Mover: noiseKeen, Cause: core.Ref{Module: "test", Type: "spell", ID: "shove"}, Route: route,
 	})
 	s.Require().NoError(err)

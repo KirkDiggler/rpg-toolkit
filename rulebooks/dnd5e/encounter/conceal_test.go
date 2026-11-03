@@ -648,6 +648,7 @@ func (s *ConcealSuite) TestAnUnknownOpenDoorIsAWallToWalkIntoAndTeachesWhoeverIs
 
 	s.Run("being shoved through it teaches the crosser", func() {
 		_, derr := enc.Direct(context.Background(), encounter.DirectInput{
+			Kind:  encounter.MoveDisplaced,
 			Mover: buddy, Cause: veilShove, Route: []spatial.Position{cellAt(4, concealRow)},
 		})
 		s.Require().NoError(derr)

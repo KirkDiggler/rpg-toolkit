@@ -541,10 +541,10 @@ func (e *Encounter) walkCastPushes(pushes []CastPush, cause core.Ref) error {
 			Mover: push.Mover,
 			Cause: cause,
 			Route: push.Route,
-			// A SHOVE, NAMED: the push this verb walks is a displacement, and
-			// it is spelled rather than left to the zero value so a change to
-			// how a directive says so has to be made here too.
-			Provokes: false,
+			// A SHOVE, NAMED: the push this verb walks is a displacement
+			// (rpg-project#825, design R1). Direct refuses a directive that
+			// names no kind, so it is spelled here.
+			Kind: MoveDisplaced,
 		})
 		if err != nil {
 			return fmt.Errorf("push %q: %w", push.Mover, err)

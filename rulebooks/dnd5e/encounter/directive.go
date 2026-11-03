@@ -545,15 +545,16 @@ type DirectInput struct {
 	// priced the move is the caller that decided how much of it happens.
 	Route []spatial.Position
 
-	// Provokes is whether this move offers opportunity attacks. It reaches
-	// the [Mover] inverted, as [MoveStep.Forced], because THAT zero value is
-	// the safe one: a step nobody filled a field in for is an ordinary walk
-	// that provokes, and no amount of forgetting can switch a reaction off.
-	//
-	// False is the push — the least permissive directive there is, and
-	// Thunderwave's. True is the rout: Dissonant Whispers sends a creature
-	// fleeing and it IS struck on the way out.
-	Provokes bool
+	// Kind is how this directive moves the body, and it reaches the [Mover]
+	// as [MoveStep.Kind]. REQUIRED, and only two words are a directive's:
+	// [MoveDisplaced] is the push (Thunderwave), which leaves nobody's reach
+	// by choice; [MoveCompelled] is the rout (Dissonant Whispers), whose legs
+	// carry it away and which IS struck on the way out. A directive is
+	// somebody else's decision, so it is never own, and a directive that
+	// names no kind is refused ([ErrBadMoveKind]) rather than defaulted: the
+	// safe default for a step is own, and own is the one word a directive
+	// cannot mean.
+	Kind MoveKind
 }
 
 // DirectOutput is what the directed walk did.
@@ -605,10 +606,10 @@ type DirectOutput struct {
 //
 // # Provoking, and who decides
 //
-// [DirectInput.Provokes] reaches the [Mover] as [MoveStep.Forced], inverted, so
-// the zero value on the wire is the ordinary walk. This module carries the flag
-// and does not act on it: what a forced step means for a reaction is a rule,
-// and rules live above a module whose go.mod cannot import the rulebook (C1).
+// [DirectInput.Kind] reaches the [Mover] as [MoveStep.Kind] and every beat of
+// the walk names it. This module carries the kind and does not act on it: what
+// a displaced step means for a reaction is a rule, and rules live above a
+// module whose go.mod cannot import the rulebook (C1).
 //
 // # A window mid-push is HELD, not refused
 //
@@ -631,7 +632,8 @@ type DirectOutput struct {
 // would leave the reaction it exists for checking reach against a body that is
 // no longer there.
 //
-// Refusals: [ErrNoMember], [ErrClosed], [ErrNotMember], [ErrNoCause], and
+// Refusals: [ErrNoMember], [ErrClosed], [ErrNotMember], [ErrNoCause],
+// [ErrBadMoveKind] for a kind that is not compelled or displaced, and
 // [ErrTurnPaused] while any walk is held.
 func (e *Encounter) Direct(ctx context.Context, in DirectInput) (DirectOutput, error) {
 	if in.Mover == "" {
@@ -646,6 +648,11 @@ func (e *Encounter) Direct(ctx context.Context, in DirectInput) (DirectOutput, e
 	}
 	if err := in.Cause.IsValid(); err != nil {
 		return DirectOutput{}, fmt.Errorf("direct %q: %w: %w", in.Mover, ErrNoCause, err)
+	}
+	// FAIL CLOSED: a directive names the kind it moves the body with, and
+	// own is not one (DirectInput.Kind's doc).
+	if in.Kind != MoveCompelled && in.Kind != MoveDisplaced {
+		return DirectOutput{}, fmt.Errorf("direct %q: kind %q: %w", in.Mover, in.Kind, ErrBadMoveKind)
 	}
 	// A HELD TABLE TAKES NO SECOND DIRECTIVE — see this verb's own doc. It
 	// covers the paused member themself, who could never be pushed, and
@@ -666,7 +673,7 @@ func (e *Encounter) Direct(ctx context.Context, in DirectInput) (DirectOutput, e
 
 	// IMPOSED: whatever moved them, the mover did not turn to walk it, so it
 	// keeps the facing it had (facing.go).
-	res, err := e.walkPath(ctx, in.Mover, m, in.Route, audience, at, in.Cause, !in.Provokes, true)
+	res, err := e.walkPath(ctx, in.Mover, m, in.Route, audience, at, in.Cause, in.Kind, true)
 	if err != nil {
 		return DirectOutput{}, fmt.Errorf("direct %q: %w", in.Mover, err)
 	}
@@ -701,7 +708,7 @@ func (e *Encounter) Direct(ctx context.Context, in DirectInput) (DirectOutput, e
 			at:        at,
 			audience:  audience,
 			cause:     in.Cause,
-			forced:    !in.Provokes,
+			moveKind:  in.Kind,
 			act:       e.CurrentAct(),
 			outer:     e.outerActs(),
 		}

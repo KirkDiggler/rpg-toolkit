@@ -1698,12 +1698,17 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 	if cause := action.cause; cause.IsValid() == nil {
 		payload["cause"] = cause.String()
 	}
-	// FORCED DISPLACEMENT IS EVIDENCE, NOT A GUESS (rpg-toolkit#2227). The
-	// key travels only when the engine classified this step as an external
-	// push or pull; absent retains the MoveStep zero-value truth that the
-	// mover walked. Keeping false absent matches cause's old record shape,
-	// so an older reader and an ordinary walk keep telling the same truth.
-	if action.forced {
+	// THE BEAT NAMES ITS KIND (rpg-project#825, design R1): `compelled` or
+	// `displaced`, absent for own, so every own record keeps the shape it
+	// always had and an absent kind on a stored beat means own.
+	//
+	// `forced` IS A DEPRECATED MIRROR, written exactly when the kind is
+	// displaced (rpg-toolkit#2227's key), so a reader that does not know
+	// `kind` keeps telling a push from a walk.
+	if word := action.kind.beatWord(); word != "" {
+		payload["kind"] = word
+	}
+	if action.kind.Displaced() {
 		payload["forced"] = true
 	}
 	if len(action.doors) > 0 {

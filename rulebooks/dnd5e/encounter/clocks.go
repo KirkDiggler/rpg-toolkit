@@ -1073,7 +1073,8 @@ func (e *Encounter) executeTurnIntent(
 			cause = tableCauseDash
 		}
 
-		res, werr := e.walkFor(coords.Clock, context.Background(), activeID, m, it.Path, audience, at, cause)
+		// OWN, Dash or no Dash: a cause names what moved the body, never how.
+		res, werr := e.walkFor(coords.Clock, context.Background(), activeID, m, it.Path, audience, at, cause, MoveOwn)
 		if werr != nil {
 			return false, nil, werr
 		}
@@ -1164,6 +1165,12 @@ func (e *Encounter) executeTurnIntent(
 		if cerr := it.Cause.IsValid(); cerr != nil {
 			return false, nil, fmt.Errorf("routed %q: %w: %w", activeID, ErrNoCause, cerr)
 		}
+		// A TURN WALKS ON ITS OWN LEGS (rpg-project#825, design R1): own (the
+		// zero value) or compelled, never displaced. The same malformed-intent
+		// class as an unnamed cause, for the same reason.
+		if it.Kind.Displaced() || !it.Kind.known() {
+			return false, nil, fmt.Errorf("routed %q: kind %q: %w", activeID, it.Kind, ErrBadMoveKind)
+		}
 
 		// AN ANCHOR NOBODY IS STANDING ON, on the other hand, IS a decision:
 		// a driver naming a member who has left the map or was never on it
@@ -1239,11 +1246,11 @@ func (e *Encounter) executeTurnIntent(
 
 		audience := e.audienceFor(subjectBeat, activeID)
 
-		// forced=false: this creature IS walking, under somebody else's
-		// orders, and it provokes exactly as its own walk would — the rout
-		// Dissonant Whispers already sends through Direct with Provokes
-		// true. Being compelled to run is not being shoved.
-		res, werr := e.walkFor(coords.Clock, context.Background(), activeID, m, route.Path, audience, at, it.Cause)
+		// THE INTENT'S KIND: this creature IS walking — of its own accord on a
+		// table chase (the zero value), or under somebody else's orders
+		// (compelled) — and either way it provokes exactly as its own walk
+		// would. Being compelled to run is not being shoved.
+		res, werr := e.walkFor(coords.Clock, context.Background(), activeID, m, route.Path, audience, at, it.Cause, it.Kind)
 		if werr != nil {
 			return false, nil, werr
 		}
@@ -1287,6 +1294,7 @@ func (e *Encounter) executeTurnIntent(
 				at:        at,
 				audience:  audience,
 				cause:     it.Cause,
+				moveKind:  it.Kind,
 				act:       e.CurrentAct(),
 				outer:     e.outerActs(),
 				turn: &turnPause{
@@ -1577,15 +1585,17 @@ type walkResult struct {
 // A second loop for the directed case would be two answers to "what stops a
 // step", which is rpg-toolkit#1652 one layer up. What differs is carried as
 // data: `mover` need not hold the active turn, `cause` names the effect that
-// moved them on every beat this appends, and `forced` tells the [Mover] whether
-// this creature is walking or being walked. A [Routed] turn uses all three at
-// once — it IS the mover's turn, it names the compulsion, and the creature is
-// walking rather than being walked, so it provokes.
+// moved them on every beat this appends, and `kind` ([MoveKind]) tells the
+// [Mover] and every beat whether this creature is walking, walking under an
+// order, or being walked. A compelled [Routed] turn uses all three at once —
+// it IS the mover's turn, it names the compulsion, and the creature is walking
+// rather than being walked, so it provokes.
 func (e *Encounter) walkPath(
 	ctx context.Context, mover MemberID, m *memberRecord,
-	path []spatial.Position, audience []MemberID, at uint64, cause core.Ref, forced, imposed bool,
+	path []spatial.Position, audience []MemberID, at uint64, cause core.Ref, kind MoveKind, imposed bool,
 ) (walkResult, error) {
 	var res walkResult
+	kind = kind.named()
 
 	// THE WALK ENDS WHERE ITS WALKER CAN STAND ([Encounter.walkableEnd]):
 	// the tail a budget cut onto an ally is dropped before the first step,
@@ -1629,13 +1639,12 @@ func (e *Encounter) walkPath(
 			}
 		}
 
-		// FORCED IS THE CALLER'S ANSWER, carried and not decided here. A
-		// creature's own Move intent, the resume of one, and a Routed turn
-		// all pass false: all three are somebody walking, however little
-		// choice they had about it. [Encounter.Direct] passes the inverse of
-		// its own Provokes, because being MOVED is the thing it knows and
-		// this loop does not.
-		step := MoveStep{Mover: mover, From: from, To: cell, Cause: cause, Forced: forced}
+		// THE KIND IS THE CALLER'S ANSWER, carried and not decided here. A
+		// creature's own Move intent passes own; a Routed turn passes its
+		// intent's kind; [Encounter.Direct] passes its caller's, because
+		// whoever decided the walk is the one who knows how the body moved
+		// and this loop does not.
+		step := MoveStep{Mover: mover, From: from, To: cell, Cause: cause, Kind: kind}
 		if merr := e.mover.Move(ctx, e, step); merr != nil {
 			// A PAUSE IS NEWS, NOT A MALFUNCTION. Somebody is being asked
 			// about this step; it is announced and not taken, and the rest
@@ -1715,7 +1724,7 @@ func (e *Encounter) walkPath(
 			return res, stepErr
 		}
 		action.cause = cause
-		action.forced = forced
+		action.kind = kind
 		// A creature's own step turns it; an imposed one — a directive, an
 		// effect moving it — does not (facing.go).
 		if stepped && !imposed {
@@ -1894,13 +1903,13 @@ func (e *Encounter) routedRoute(
 // same call the turn clock already makes.
 func (e *Encounter) walkFor(
 	kind ClockKind, ctx context.Context, mover MemberID, m *memberRecord,
-	path []spatial.Position, audience []MemberID, at uint64, cause core.Ref,
+	path []spatial.Position, audience []MemberID, at uint64, cause core.Ref, moveKind MoveKind,
 ) (walkResult, error) {
 	if kind == ClockWorld {
-		return e.walkWorld(mover, m, path, audience, at, cause)
+		return e.walkWorld(mover, m, path, audience, at, cause, moveKind)
 	}
 
-	return e.walkPath(ctx, mover, m, path, audience, at, cause, false, false)
+	return e.walkPath(ctx, mover, m, path, audience, at, cause, moveKind, false)
 }
 
 // walkWorld takes each cell of a path on the world clock: no announcement, no
@@ -1914,7 +1923,7 @@ func (e *Encounter) walkFor(
 // once, before it steps anybody.
 func (e *Encounter) walkWorld(
 	mover MemberID, m *memberRecord,
-	path []spatial.Position, audience []MemberID, at uint64, cause core.Ref,
+	path []spatial.Position, audience []MemberID, at uint64, cause core.Ref, kind MoveKind,
 ) (walkResult, error) {
 	var res walkResult
 
@@ -1943,6 +1952,7 @@ func (e *Encounter) walkWorld(
 			return res, stepErr
 		}
 		action.cause = cause
+		action.kind = kind
 		if !stepped {
 			break
 		}

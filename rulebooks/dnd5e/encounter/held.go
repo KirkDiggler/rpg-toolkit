@@ -100,7 +100,7 @@ func (e *Encounter) resumeDirective(ctx context.Context) (*ResumeOutput, error) 
 			at:        h.at,
 			audience:  h.audience,
 			cause:     h.cause,
-			forced:    h.forced,
+			moveKind:  h.moveKind,
 			act:       h.act,
 			outer:     h.outer,
 		}
@@ -142,7 +142,7 @@ func (e *Encounter) walkHeld(ctx context.Context, h *pause, m *memberRecord) (wa
 		return walkResult{}, stepErr
 	}
 	action.cause = h.cause
-	action.forced = h.forced
+	action.kind = h.moveKind
 	if !stepped {
 		// The floor changed under the announced cell while the window was
 		// open. The walk stops here, exactly as walkPath stops for a wall.
@@ -154,7 +154,7 @@ func (e *Encounter) walkHeld(ctx context.Context, h *pause, m *memberRecord) (wa
 
 	res := walkResult{moved: 1}
 	if len(h.remaining) > 1 {
-		rest, werr := e.walkPath(ctx, h.member, m, h.remaining[1:], h.audience, h.at, h.cause, h.forced, true)
+		rest, werr := e.walkPath(ctx, h.member, m, h.remaining[1:], h.audience, h.at, h.cause, h.moveKind, true)
 		if werr != nil {
 			return walkResult{}, fmt.Errorf("resume directive %q: %w", h.member, werr)
 		}
