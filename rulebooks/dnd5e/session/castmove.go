@@ -30,8 +30,8 @@ import (
 // — and the walk happens AFTER it, so the movement beats follow the cast beat
 // in the order a client animates them. Thunder, then the slide.
 //
-// On the world clock a shove walks before the record instead, because the
-// record is where the fight forms ([landingPushes], rpg-project#831).
+// A shove is walked by the record itself, inside the cast landing, and only
+// a flee is walked after it ([landingPushes], rpg-project#831).
 //
 // # What is not reconciled
 //
@@ -235,76 +235,42 @@ func walkCastPushes(
 	return false, nil
 }
 
-// landingPushes splits a cast's routed pushes into the ones that walk BEFORE
-// [encounter.Encounter.RecordCast] and the ones that walk after it, asked of
-// the caster's clock at the moment the cast lands.
+// landingPushes splits a cast's routed pushes into the shoves
+// [encounter.Encounter.RecordCast] walks inside the cast landing and the
+// pushes this package walks after the record.
 //
-// # Inside a fight, all of them walk after
-//
-// Nothing runs between RecordCast and the walk there: the cast is the
-// caster's own turn, the deed forms nothing new that takes a turn, and the
-// movement beats follow the cast beat that reported them. Thunder, then the
-// slide, exactly as [castPush] describes.
-//
-// # On the world clock, a shove walks first (rpg-project#785 R3)
+// # A shove is part of the landing (rpg-project#785 R3, #831)
 //
 // The deed lands, then the fight forms inside the deed, and a push is part of
-// the deed landing. RecordCast is where the fight forms: the hostile delivery
-// turns the pair, the formation rolls initiative and plays the fight's first
-// turns, and the world is charged its round, all before it returns. A shove
-// walked after that is walked under a fight that already acted from the
-// cells the blast threw everybody out of (rpg-project#831). So off every fight
-// the shove walks before the record, and its movement beats come ahead of the
-// cast beat that reports how far it went. That is the price of the one seam
-// this module holds: the cast beat and the deed are one call below it.
+// the deed landing. RecordCast is where a hostile cast from free roam turns
+// the pair, forms the fight, plays its first turns and charges the world its
+// round, so a shove walked after it moved creatures that had already fought
+// from the cells the blast threw them out of. Handed to RecordCast, a shove
+// walks after the cast's own beats and before the deed, on every clock: the
+// thunder, the slide, then whatever the deed sets off.
 //
-// # A push that provokes still walks after, everywhere
+// # A push that provokes still walks after the record
 //
 // A provoking push (a flee) is the only push that can stop to ask a player
-// about a cell ([walkCastPushes]). Walked before the record it would ask
-// about a step caused by a cast the story has not told yet, and the swing it
-// asks for could form the fight on its own, ahead of the deed that caused the
-// flee. Holding the cast's own landing on that question is a second hold the
-// composition does not have, so a flee from free roam keeps today's order: the
-// cast lands, then the creature runs. That is a known gap, named on
-// rpg-project#831, not a rule.
-func landingPushes(
-	enc *encounter.Encounter, caster string, pushes []castPush,
-) (first, rest []castPush, err error) {
-	if len(pushes) == 0 {
-		return nil, nil, nil
-	}
-	clock, err := enc.ClockOf(&encounter.ClockOfInput{Member: encounter.MemberID(caster)})
-	if err != nil {
-		return nil, nil, fmt.Errorf("cast push: %w", translate(err))
-	}
-	if ClockKind(clock.Kind) == ClockTurn {
-		return nil, pushes, nil
-	}
+// about a cell ([walkCastPushes]), and a held walk cannot sit in the middle of
+// a landing RecordCast finishes before it returns. So a flee walks here, after
+// the record, as it always has. From free roam that is still after the fight
+// the cast formed: the known half of rpg-project#831 that is left, not a rule.
+//
+// A push with no route (a wall at its back) walks nowhere and is dropped from
+// both: the cast's own moved result already says so.
+func landingPushes(pushes []castPush) (shoves []encounter.CastPush, rest []castPush) {
 	for _, push := range pushes {
+		if len(push.route) == 0 {
+			continue
+		}
 		if push.move.Provokes {
 			rest = append(rest, push)
 			continue
 		}
-		first = append(first, push)
+		shoves = append(shoves, encounter.CastPush{Mover: push.target, Route: push.route})
 	}
-	return first, rest, nil
-}
-
-// walkPushesThatLand walks the pushes [landingPushes] put ahead of the
-// record. None of them provokes, so none of them can stop to ask anybody, and
-// a pause here would be a held walk under a cast the story has not told yet:
-// refused rather than carried, because the record that follows would land
-// the deed and form a fight around a table that is waiting on an answer.
-func walkPushesThatLand(ctx context.Context, enc *encounter.Encounter, pushes []castPush, cause core.Ref) error {
-	paused, err := walkCastPushes(ctx, enc, pushes, cause)
-	if err != nil {
-		return err
-	}
-	if paused {
-		return fmt.Errorf("%w: a shove that provokes nobody stopped to ask before its cast landed", ErrInvalidWorld)
-	}
-	return nil
+	return shoves, rest
 }
 
 // routePolicy maps the content's word for how a creature is moved onto the

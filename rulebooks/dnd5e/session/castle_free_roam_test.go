@@ -290,9 +290,9 @@ func storedData(t *testing.T, chars *fakeCharacters, id string) *character.Data 
 // bard walks up to the gatehouse in free roam and casts Thunderwave at the
 // captain. The cast is hostile, so the garrison turns and the fight forms
 // inside the deed (#785 R3), and the shove is part of the deed landing: every
-// moved beat the spell caused is on the story before the fight forms and
-// before any turn of it passes, and a pushed guard's own first step leaves
-// from the cell the blast threw it to.
+// moved beat the spell caused follows the cast beat and is on the story
+// before the fight forms and before any turn of it passes, and a pushed
+// guard's own first step leaves from the cell the blast threw it to.
 func TestCastleFreeRoamThunderwaveShovesBeforeTheFight(t *testing.T) {
 	ctx := context.Background()
 	// The d20s in the order they are rolled: the two saves fail (1, 1), so
@@ -334,12 +334,16 @@ func TestCastleFreeRoamThunderwaveShovesBeforeTheFight(t *testing.T) {
 	}
 	thunder := refs.Spells.Thunderwave().String()
 	story := storyBeatsAfter(t, c.mgr, "sess", "bard", before)
-	formedAt, lastPushAt := -1, -1
+	castAt, firstPushAt, formedAt, lastPushAt := -1, -1, -1, -1
 	var turnsEndedAt []int
 	pushedTo := map[string]spatial.Position{}
 	firstStep := map[string]spatial.Position{}
 	for i, b := range story {
 		switch b.Beat {
+		case encounter.BeatCast:
+			if castAt < 0 {
+				castAt = i
+			}
 		case encounter.BeatFightStarted:
 			if formedAt < 0 {
 				formedAt = i
@@ -350,6 +354,9 @@ func TestCastleFreeRoamThunderwaveShovesBeforeTheFight(t *testing.T) {
 			var m movedBeat
 			b.decode(t, &m)
 			if m.Cause == thunder {
+				if firstPushAt < 0 {
+					firstPushAt = i
+				}
 				lastPushAt = i
 				pushedTo[m.Member] = m.Position
 				continue
@@ -365,6 +372,8 @@ func TestCastleFreeRoamThunderwaveShovesBeforeTheFight(t *testing.T) {
 	require.NotEmpty(t, pushedTo, "the failed saves were shoved")
 	require.GreaterOrEqual(t, formedAt, 0, "the hostile cast forms the fight")
 	require.NotEmpty(t, turnsEndedAt, "the garrison won initiative and took its turns inside the cast")
+	require.GreaterOrEqual(t, castAt, 0, "the cast is told")
+	assert.Less(t, castAt, firstPushAt, "the thunder, then the slide: the record is the replay")
 	assert.Less(t, lastPushAt, formedAt, "every shove lands before the fight forms (#785 R3)")
 	assert.Less(t, lastPushAt, turnsEndedAt[0], "every shove lands before any turn of the fight passes")
 
