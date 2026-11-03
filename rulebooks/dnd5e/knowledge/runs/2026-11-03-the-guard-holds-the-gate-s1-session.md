@@ -4,8 +4,8 @@ Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), 
 
 ## Shipped
 
-- `go.mod` pins encounter at `v0.174.1-0.20261103223351-1348abbe853a`, #2258's final head, with no replace. Earlier commits pinned f0240055 and d6b62bc3.
-- That pseudo-version is temporary. A follow-up commit moves the pin to the encounter release tag CI mints when #2258 merges, before this PR merges.
+- `go.mod` pins encounter at its release tag `v0.175.0`, which CI minted when #2258 merged, with no replace. Earlier commits pinned the pseudo-versions of f0240055, d6b62bc3 and 1348abbe while #2258 was in review.
+- The tag requires `mind/behavior` v0.18.1, so minimum version selection moves that pin from v0.18.0.
 - Launch hands the placement's blocking states to the join beside its recipe at [`launch.go:237`](https://github.com/KirkDiggler/rpg-toolkit/blob/c9842667/rulebooks/dnd5e/session/launch.go#L237). Without it the castle's gate-1 is seated as a body anyone walks through.
 - [`TestLaunch_PlacementBlockingStatesReachTheSeatedMember`](https://github.com/KirkDiggler/rpg-toolkit/blob/c9842667/rulebooks/dnd5e/session/launch_machine_test.go#L90) asserts the compiled states reach the seated member unchanged.
 - [`TestCastleTheGuardHoldsTheGate`](https://github.com/KirkDiggler/rpg-toolkit/blob/c9842667/rulebooks/dnd5e/session/castle_gate_post_test.go#L93) walks alice toward the cell past gate-1, across the shut gate door. His body refuses the step before the door would. The walk aims past him, never at him. The Move answers `stopped` with "Guard stands in the way", one cell short. After the captain stands aside with gate-1 watching, he is `cowed` and the next walk crosses.
