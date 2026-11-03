@@ -22,3 +22,4 @@ Part of [rpg-toolkit#2220](https://github.com/KirkDiggler/rpg-toolkit/issues/222
 ## Mistaken
 
 - Two measurement faults stacked: the scan ran in a main checkout 4 commits behind `origin/main`, and `--enable-only` did not carry the config's `max-same-issues: 0`, so every count ≥3 read as exactly 3. The corrected scan runs from a detached worktree at `origin/main` with `--max-same-issues 0 --max-issues-per-linter 0` explicit — [#2220](https://github.com/KirkDiggler/rpg-toolkit/issues/2220).
+- The two new pins were written into `clocks_internal_test.go` as a new file, overwriting 306 committed lines of four white-box tests — the file existed at base; it was never checked. Restored in the same PR, the pins appended to it; the four restored tests validate this tranche's form and clock_of seams — [clocks_internal_test.go](https://github.com/KirkDiggler/rpg-toolkit/blob/main/rulebooks/dnd5e/encounter/clocks_internal_test.go).
