@@ -806,9 +806,10 @@ func (s *RecordCastSuite) TestRecordCastClosedShapes() {
 	)
 	s.Equal([]string{"Attack", "Target", "Missed", "Save", "Warded", "Results"}, structFieldNames(encounter.CastTargetResult{}))
 	s.Equal(
-		[]string{"Actor", "Spell", "Targets", "ConcentrationBreaks", "ConcentrationChecks"},
+		[]string{"Actor", "Spell", "Targets", "ConcentrationBreaks", "ConcentrationChecks", "Pushes"},
 		structFieldNames(encounter.RecordCastInput{}),
 	)
+	s.Equal([]string{"Mover", "Route"}, structFieldNames(encounter.CastPush{}))
 	s.Equal(
 		[]string{"Caster", "Spell", "Reason", "Save", "Removed"},
 		structFieldNames(encounter.ConcentrationBreak{}),
