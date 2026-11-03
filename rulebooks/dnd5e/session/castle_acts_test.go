@@ -705,7 +705,7 @@ func Example_theGatehouseActs() {
 	// time         table_answer captain answers time with "hold", no roll
 	// time         table_answer cook answers time with "hold", rolled 1 of 100
 	// time         table_answer gate-1 answers post with "toward", rolled 1 of 50
-	// move         act 1        gate-1 stays:
+	// pass         act 1        gate-1 stays: already there
 	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-2,10)
 	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
@@ -944,7 +944,7 @@ func Example_theTroupeActs() {
 	// time         table_answer captain answers time with "hold", no roll
 	// time         table_answer cook answers time with "hold", rolled 1 of 100
 	// time         table_answer gate-1 answers post with "toward", rolled 1 of 50
-	// move         act 1        gate-1 stays:
+	// pass         act 1        gate-1 stays: already there
 	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-3,9) (-4,10)
 	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
@@ -1037,7 +1037,7 @@ func Example_theTroupeActs() {
 	// time         table_answer captain answers time with "hold", no roll
 	// time         table_answer cook answers time with "hold", rolled 1 of 100
 	// time         table_answer gate-1 answers cowed with "toward", rolled 1 of 50
-	// move         act 1        gate-1 stays:
+	// pass         act 1        gate-1 stays: already there
 	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-3,10) (-2,10)
 	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
