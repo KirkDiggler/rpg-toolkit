@@ -186,6 +186,12 @@ type Encounter struct {
 	// [Encounter.wakePass].
 	reactionPicked bool
 
+	// blockingTurned says a transition in the pass in progress took a body
+	// into or out of a blocking state (rpg-project#836), so the pass's look
+	// runs even on a fight round that raised nothing: what its observers
+	// hold of that body's blocking is stale until it does.
+	blockingTurned bool
+
 	// pendingCells is every cell a change touched since the last look
 	// (rpg-project#762): a step's two ends, a door's cells, a creature turning
 	// where it stands, what a hold or an arrival moved. EVERY LOOK COVERS IT
@@ -765,6 +771,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			DefaultActivityRef: m.DefaultActivityRef,
 			Facing:             m.Facing,
 			Options:            m.Options, Table: m.Table, Machine: m.Machine,
+			BlockingStates: m.BlockingStates,
 		}); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
 		}
@@ -992,7 +999,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			BlocksMovement:     mi.BlocksMovement,
 			Faction:            mi.Faction,
 		}
-		if err = e.useRecipe(member, mi.Machine); err != nil {
+		if err = e.useRecipe(member, mi.Machine, mi.BlockingStates); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
 		}
 
@@ -1009,11 +1016,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		}
 		memberIDs = append(memberIDs, mi.ID)
 
-		entity := &memberEntity{
-			id:             string(mi.ID),
-			kind:           mi.Kind,
-			blocksMovement: mi.BlocksMovement,
-		}
+		entity := e.newMemberEntity(mi.ID, mi.Kind)
 
 		// Authored offset at the seat, absolute on the canvas: converted
 		// through the field's one conversion, exactly as every region cell
@@ -2157,7 +2160,9 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 		// local so its address is a value for exactly this subject, not the
 		// range variable.
 		isDown := down[subjectID]
-		blocksMovement := e.members[subjectID].BlocksMovement
+		// SEEN AS IT IS NOW: a posted body is seen holding its cell, and
+		// one that stood aside is seen not to (rpg-project#836, B5).
+		blocksMovement := e.memberBlocks(subjectID)
 		facing := e.members[subjectID].Facing
 		payload, perr := encodeSighting(SightTestimony{
 			State:              LocationKnown,
@@ -2509,6 +2514,7 @@ func (e *Encounter) validateJoin(in *JoinInput) error {
 		DefaultActivityRef: in.DefaultActivityRef,
 		Facing:             in.Facing,
 		Options:            in.Options, Table: in.Table, Machine: in.Machine,
+		BlockingStates: in.BlockingStates,
 	}); err != nil {
 		return fmt.Errorf("join: %w", err)
 	}
@@ -2601,7 +2607,7 @@ func (e *Encounter) admitMember(in *JoinInput) (*memberRecord, *JoinOutput, erro
 		BlocksMovement:     in.BlocksMovement,
 		Faction:            in.Faction,
 	}
-	if err := e.useRecipe(member, in.Machine); err != nil {
+	if err := e.useRecipe(member, in.Machine, in.BlockingStates); err != nil {
 		return nil, nil, fmt.Errorf("join: %w", err)
 	}
 
@@ -2626,11 +2632,7 @@ func (e *Encounter) admitMember(in *JoinInput) (*memberRecord, *JoinOutput, erro
 		}, nil
 	}
 
-	entity := &memberEntity{
-		id:             string(in.Member),
-		kind:           in.Kind,
-		blocksMovement: in.BlocksMovement,
-	}
+	entity := e.newMemberEntity(in.Member, in.Kind)
 
 	if err := e.canvas.PlaceEntity(entity, in.Cell); err != nil {
 		return nil, nil, fmt.Errorf("join placement: %w: %w", ErrBadPlacement, err)
@@ -3015,11 +3017,44 @@ type memberEntity struct {
 	id   string
 	kind MemberKind
 
-	// blocksMovement carries the member's authored BlocksMovement fact
-	// (rpg-toolkit#1434) into the canvas's own occupancy seam. False for
-	// every member before this field existed, and still false for any
-	// caller who doesn't set it — see MemberInput.BlocksMovement's doc.
-	blocksMovement bool
+	// blocks answers whether this member's body blocks NOW, for the canvas's
+	// own occupancy seam (spatial's placement check). A READ THROUGH THE
+	// ENCOUNTER ([Encounter.memberBlocks]), never a copy (rpg-project#836):
+	// a posted body blocks by its machine state, and a stored flag here
+	// would be a second answer the canvas and the fold could disagree on
+	// the beat a transition fires.
+	blocks func() bool
+}
+
+// newMemberEntity is a member's canvas entity, reading its blocking through
+// the encounter ([Encounter.canvasBlocks]).
+func (e *Encounter) newMemberEntity(id MemberID, kind MemberKind) *memberEntity {
+	return &memberEntity{id: string(id), kind: kind, blocks: func() bool { return e.canvasBlocks(id) }}
+}
+
+// canvasBlocks is the canvas's answer for a member's body: the fold's
+// occupant rule without stance, which the canvas cannot ask per mover. A
+// body that blocks ([Encounter.memberBlocks]) blocks unless it is a downed
+// monster, whose cell the fold calls standable whatever its state
+// ([occupantPassage]), so a step the fold allows is never refused underneath
+// it (rpg-project#836, B3).
+//
+// WHO IS DOWN IS ASKED ONLY HERE, AND ONLY OF A BLOCKING MONSTER: the canvas
+// asks this of the bodies on a cell somebody is being placed on, so the
+// participation read runs when a placement meets a body that would block, and
+// never on open floor. It cannot be stored beside the body for the reason
+// nothing about standing is (participation.go). A read that fails blocks: a
+// world that cannot say who is down does not walk anyone onto a guess.
+func (e *Encounter) canvasBlocks(id MemberID) bool {
+	if !e.memberBlocks(id) {
+		return false
+	}
+	if m := e.members[id]; m == nil || m.Kind != KindMonster {
+		return true
+	}
+	down, err := e.downNow()
+
+	return err != nil || !down[id]
 }
 
 // GetID returns the member's ID
@@ -3042,11 +3077,11 @@ func (m *memberEntity) BlocksLineOfSight() bool {
 	return false
 }
 
-// BlocksMovement reports the member's authored BlocksMovement fact
-// (rpg-toolkit#1434). False for a caller who never set it — the behavior
-// every member had before this field existed.
+// BlocksMovement reports whether the member's body blocks now: its current
+// state when it has blocking states, else its authored BlocksMovement fact
+// (rpg-toolkit#1434), false for a caller who never set it.
 func (m *memberEntity) BlocksMovement() bool {
-	return m.blocksMovement
+	return m.blocks != nil && m.blocks()
 }
 
 // prepareEndedRemovals validates and shapes the conditions a departure or an

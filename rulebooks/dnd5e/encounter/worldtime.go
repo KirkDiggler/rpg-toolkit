@@ -424,6 +424,7 @@ func (e *Encounter) wakePass(raised, world bool) error {
 	e.worldThinking = true
 	e.wakeMatched = 0
 	e.reactionPicked = false
+	e.blockingTurned = false
 	defer func() { e.worldThinking = false }()
 
 	at := uint64(e.clock.ToData().HighWater)
@@ -523,7 +524,7 @@ func (e *Encounter) wakePass(raised, world bool) error {
 	// A ROUND THAT RAISED NOTHING REFRESHES SIGHT ONLY IF A REACTION MOVED
 	// SOMEBODY: a fight round whose listeners only changed state, or did
 	// nothing, changed no geometry and nobody's view (review of #2219).
-	if !raised && !e.reactionPicked {
+	if !raised && !e.reactionPicked && !e.blockingTurned {
 		return nil
 	}
 	// AND THE REFRESH COSTS ITS REACH (rpg-project#762): the members within

@@ -6,8 +6,9 @@ package castletest
 // castle_king_pursuit_test.go is PURSUIT AT THE GATE (rpg-project#668,
 // ideas/smarter-monsters): a gate guard who loses sight of the hero walks to
 // where he last saw him, searches six cells on the way the hero was heading,
-// gives up, and walks back to his loop. A guard who never saw the hero keeps
-// his loop.
+// gives up, and walks back to his loop. A guard who never saw the hero
+// never hunts him: posted since rpg-project#836, he goes back to hold the
+// gate.
 //
 // THE FIXTURE IS CHOSEN TO PROVE THE MECHANIC. gate-2 and the captain are
 // down, so gate-1 is the only one hunting; the hero runs at sixty feet and the
@@ -47,6 +48,13 @@ var (
 	pursuitHide = castleCell(-7, 7)
 )
 
+// pursuitGuardStart is where gate-1 starts for the pursuit: the end of his
+// patrol loop, west of the beat post (an offset cell). Posted on the crossing
+// since rpg-project#836, he holds the gate on the world clock; in a fight his
+// turns are his `time` table, the loop and the pursuit, which is what this
+// file proves, so the fixture starts him where that table's loop does.
+var pursuitGuardStart = spatial.Position{X: -2, Y: 10}
+
 // openThePursuit opens the castle for the pursuit routes with the hero at an
 // offset cell facing west, and only gate-1 on its feet among the gate.
 func openThePursuit(t *testing.T, at spatial.Position) *kingScene {
@@ -55,6 +63,7 @@ func openThePursuit(t *testing.T, at spatial.Position) *kingScene {
 	s := openTheCastleAs(t, castleHost{
 		at: at, heroFacing: &west, sightFt: 30,
 		speedFt: map[encounter.MemberID]int{hero: 60},
+		starts:  map[encounter.MemberID]spatial.Position{kingGate1: pursuitGuardStart},
 	})
 	s.standing.down[kingGate2] = true
 	s.standing.down[kingCaptain] = true
@@ -200,7 +209,10 @@ func TestMadKingGateGuardPursuesTheRememberedHero(t *testing.T) {
 		require.Equal(t, 6.0, s.enc.Distance(lastSeen, s.at(kingGate1)), "six cells on from the corner")
 	})
 
-	t.Run("a guard that never saw the hero stays on his loop", func(t *testing.T) {
+	// Re-aimed by rpg-project#836 (R4 A): gate-1 is posted, so a guard who
+	// never saw the hero holds the gate rather than walking the loop. The
+	// claim is the same: he never hunts what he never saw.
+	t.Run("a guard that never saw the hero goes back to hold the gate", func(t *testing.T) {
 		t.Parallel()
 		s := openThePursuit(t, spatial.Position{X: -7, Y: 7})
 		require.Equal(t, pursuitHide, s.at(hero), "precondition: the hero starts in hiding")
@@ -209,9 +221,7 @@ func TestMadKingGateGuardPursuesTheRememberedHero(t *testing.T) {
 		s.struck(kingGate1, false)
 		require.True(t, s.hostile(hero, kingGate1), "precondition: the spear turned gate-1")
 
-		posts := []spatial.Position{westDoorPost, westBeatPost}
-		visited := map[spatial.Position]bool{}
-		for round := 0; round < 8 && len(visited) < len(posts); round++ {
+		for round := 0; round < 8 && s.at(kingGate1) != beneathTheGate; round++ {
 			start := s.enc.ToData().Clock.HighWater
 			if clockKind(t, s.enc, hero) == encounter.ClockTurn {
 				s.endTurn()
@@ -223,12 +233,7 @@ func TestMadKingGateGuardPursuesTheRememberedHero(t *testing.T) {
 			require.False(t, held, "round %d: still never seen", round)
 			require.Equal(t, labelOf(t, westBeatPost), labelOf(t, s.at(kingGate1)),
 				"round %d: he stays in the gatehouse", round)
-			for _, post := range posts {
-				if s.at(kingGate1) == post {
-					visited[post] = true
-				}
-			}
 		}
-		require.Len(t, visited, len(posts), "he walks his loop, both posts")
+		require.Equal(t, beneathTheGate, s.at(kingGate1), "he holds the crossing")
 	})
 }

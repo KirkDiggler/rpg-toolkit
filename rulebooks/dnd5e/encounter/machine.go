@@ -299,13 +299,65 @@ func recipeKey(r *machine.Recipe) (string, error) {
 	return r.Ref.String() + "#" + hex.EncodeToString(sum[:8]), nil
 }
 
+// validateBlockingStates refuses blocking states nothing can name: any on a
+// member with no authored recipe (fail closed: a blocking state with no state
+// to be in is a bug, never a body that silently never blocks), and a name the
+// recipe does not declare (rpg-project#836).
+func validateBlockingStates(r *machine.Recipe, states []string) error {
+	if len(states) == 0 {
+		return nil
+	}
+	if r == nil {
+		return fmt.Errorf("blocking states %v name states of no recipe: blocking states need authored states", states)
+	}
+	for _, name := range states {
+		if _, ok := r.States[name]; !ok {
+			return fmt.Errorf("blocking state %q is not a state of its recipe", name)
+		}
+	}
+
+	return nil
+}
+
+// memberBlocks is whether a member's body blocks now (rpg-project#836, B1):
+// with blocking states, exactly while its current machine state is one of
+// them; without, as its creation declared ([MemberInput.BlocksMovement]),
+// whatever machine it runs. Read on every call, by the fold, the canvas, the
+// board and the sighting alike, and never stored. A member not on the roster
+// blocks nothing.
+func (e *Encounter) memberBlocks(id MemberID) bool {
+	m, ok := e.members[id]
+	if !ok {
+		return false
+	}
+
+	return m.blocksIn(m.Machine.State)
+}
+
+// blocksIn is whether this member's body blocks in a state, the empty state
+// being its recipe's initial one (the fresh blob's).
+func (m *memberRecord) blocksIn(state string) bool {
+	if len(m.BlockingStates) == 0 {
+		return m.BlocksMovement
+	}
+	if state == "" && m.Recipe != nil {
+		state = m.Recipe.Initial
+	}
+
+	return slices.Contains(m.BlockingStates, state)
+}
+
 // useRecipe gives a member its own copy of an authored recipe and compiles it into the encounter's program
 // cache, once per distinct recipe, and records the key on the member. A
 // member with no recipe runs the default and is left as it is.
 //
 // Errors: the recipe's own refusals ([compileRecipe]), wrapped in
 // [ErrBadMember].
-func (e *Encounter) useRecipe(m *memberRecord, r *machine.Recipe) error {
+func (e *Encounter) useRecipe(m *memberRecord, r *machine.Recipe, blocking []string) error {
+	if err := validateBlockingStates(r, blocking); err != nil {
+		return fmt.Errorf("member %s: %w: %w", m.ID, err, ErrBadMember)
+	}
+	m.BlockingStates = slices.Clone(blocking)
 	if r == nil {
 		m.Recipe, m.recipeKey = nil, ""
 		return nil

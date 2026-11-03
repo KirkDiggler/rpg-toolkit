@@ -451,6 +451,17 @@ func (e *Encounter) afterStep(id MemberID, m *memberRecord, p *machine.Program, 
 		if !hasWake(stepped.Acts) {
 			m.Machine.WakeAt = nil
 		}
+		// A BODY THAT STOPS OR STARTS BLOCKING CHANGED ITS CELL
+		// (rpg-project#836, B2/B5): nothing is stored to update, since the
+		// fold and the canvas read the state, but whoever sees the body holds
+		// its blocking as seen, so the cell goes to the next look like any
+		// cell a change touched.
+		if m.blocksIn(stepped.From) != m.blocksIn(stepped.To) {
+			if cell, placed := e.canvas.GetEntityPosition(string(id)); placed {
+				e.noteChanged(cell)
+				e.blockingTurned = true
+			}
+		}
 	}
 	// THE ROUNDS THIS STEP PAYS, read before the pick can raise the world
 	// again: one for its own, and every round it slept before it (an

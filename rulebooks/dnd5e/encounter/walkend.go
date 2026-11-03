@@ -10,6 +10,11 @@ import (
 // ValidateWalkEnd refuses a known occupied destination before a voluntary walk
 // starts. Unknown occupants are not queried; Step rechecks truth on arrival.
 // Errors preserve missing observation contracts rather than treating them as fog.
+//
+// A SEEN, NON-HOSTILE BODY THAT BLOCKS IS NOT REFUSED (rpg-project#836): the
+// gesture is walking into him, and the walk's own step stops at his cell and
+// says who stands there. A hostile body, and a pass-through one the walk could
+// cross but never stop on, are still refused here.
 func (e *Encounter) ValidateWalkEnd(in CellAtInput) error {
 	passages, err := e.ObservedPassages(&ViewInput{Member: in.Mover})
 	if err != nil {
@@ -24,6 +29,15 @@ func (e *Encounter) ValidateWalkEnd(in CellAtInput) error {
 		if !current || passage == PassageStandable {
 			continue
 		}
+		if passage == PassageBlocked {
+			stance, serr := e.BelievedStance(in.Mover, holding.Subject)
+			if serr != nil {
+				return serr
+			}
+			if stance != StanceHostile {
+				continue
+			}
+		}
 		seen, ok := DecodeSightTestimony(holding.Payload)
 		if ok && seen.State == LocationKnown && seen.Position == in.Cell {
 			return fmt.Errorf("walk destination is not standable: %w", ErrBadPlacement)
@@ -37,8 +51,14 @@ func (e *Encounter) ValidateWalkEnd(in CellAtInput) error {
 // errors never use this marker. Unwrap preserves the original refusal.
 type StepObstructedError struct{ cause error }
 
-// PublicReason omits identities that the mover may not have observed.
+// PublicReason omits identities that the mover may not have observed. A body
+// in the way is named when the mover saw it and is "someone" otherwise
+// ([ErrBodyInTheWay]), checked first.
 func (e *StepObstructedError) PublicReason() string {
+	var body *bodyRefusalError
+	if errors.As(e.cause, &body) {
+		return body.public
+	}
 	if errors.Is(e.cause, ErrBadPlacement) {
 		return "movement stopped at an obstruction"
 	}

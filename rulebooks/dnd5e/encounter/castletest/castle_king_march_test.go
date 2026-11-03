@@ -55,7 +55,9 @@ func marchBeats(t *testing.T, s *kingScene, from int) []marchBeat {
 func TestReserves_MarchOnFightRounds(t *testing.T) {
 	t.Parallel()
 	s := openTheScript(t, gatehouseSeat, nil)
-	s.stepTo(beneathTheGate)
+	// Beside the crossing, not on it: gate-1 holds the cell beneath the gate
+	// (rpg-project#836), and the door is in reach from the cell beside it.
+	s.stepTo(besideTheCrossing)
 	s.struck(kingGate1, false)
 	require.Equal(t, encounter.ClockTurn, clockKind(t, s.enc, hero), "precondition: the gate fight is on")
 	s.open(kingGateDoor)
@@ -114,7 +116,7 @@ func TestReserves_MarchOnFightRounds(t *testing.T) {
 	mark, err := s.enc.Story(&encounter.StoryInput{Audience: hero})
 	require.NoError(t, err)
 	from := s.enc.ToData().Clock.HighWater
-	require.True(t, s.pace(beneathTheGate, castleCell(-1, 7), 24, func() bool {
+	require.True(t, s.pace(besideTheCrossing, castleCell(-2, 7), 24, func() bool {
 		return s.enc.ToData().Clock.HighWater >= from+2
 	}), "precondition: two world rounds passed")
 	back := map[string]bool{}

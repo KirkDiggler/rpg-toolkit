@@ -27,9 +27,10 @@ var theDoorway = castleCell(0, 12)
 
 // TestMadKingGateGuardsDwellWatchingTheApproach paces a sneaking hero in the
 // gatehouse, where it sees both gate guards, with an arc of 120 scripted for
-// both, until a gate
-// guard has stood out a dwell at each of the four posts; on every round of it
-// he faces the post's word and his zone holds the cell the post watches.
+// both, until gate-2, who walks the loop, has stood out a dwell at each of
+// her two posts; on every round of it she faces the post's word and her zone
+// holds the cell the post watches. (gate-1 holds the crossing since
+// rpg-project#836 and dwells at no post.)
 func TestMadKingGateGuardsDwellWatchingTheApproach(t *testing.T) {
 	t.Parallel()
 	stealth := &partyStealth{
@@ -57,10 +58,10 @@ func TestMadKingGateGuardsDwellWatchingTheApproach(t *testing.T) {
 		facing  float64
 		watches spatial.Position
 	}
+	// gate-2's two: gate-1 holds the crossing (rpg-project#836, R4 A) and
+	// gate-2 keeps the loop, so the loop's posts are hers alone.
 	posts := map[spatial.Position]post{
-		westDoorPost: {45, beneathTheGate},  // ne
 		eastDoorPost: {315, beneathTheGate}, // nw
-		westBeatPost: {135, theDoorway},     // se
 		eastBeatPost: {225, theDoorway},     // sw
 	}
 	for at, p := range posts {
@@ -75,7 +76,7 @@ func TestMadKingGateGuardsDwellWatchingTheApproach(t *testing.T) {
 		_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: to, EndWalk: true})
 		require.NoError(t, err)
 		require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "the civil garrison forms no fight")
-		for _, guard := range []encounter.MemberID{kingGate1, kingGate2} {
+		for _, guard := range []encounter.MemberID{kingGate2} {
 			dwell := dwellOf(t, s.enc, guard)
 			if dwell == nil {
 				continue

@@ -328,7 +328,7 @@ func (e *Encounter) arrivals(holds func(Trigger) (string, bool), at uint64) erro
 // in the same order — then the fact, then the beat.
 func (e *Encounter) arriveMember(rm *reservedMember, cause string, at uint64) error {
 	id := rm.record.ID
-	entity := &memberEntity{id: string(id), kind: rm.record.Kind, blocksMovement: rm.record.BlocksMovement}
+	entity := e.newMemberEntity(id, rm.record.Kind)
 	// STANDABLE INCLUDES UNCOVERED (issue #1753): the same standing fact a
 	// join and a step read. A member does not materialize inside a table;
 	// arrivalCell looks for the nearest cell that is both.

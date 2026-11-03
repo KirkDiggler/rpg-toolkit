@@ -170,6 +170,15 @@ type castleHost struct {
 	// site cut from the castle plays through the castle's own host
 	// (rpg-project#717's ally-walk).
 	fixture string
+
+	// starts moves a creature's first cell from the file's, for a route whose
+	// fixture is chosen to prove a mechanic rather than the castle's picture.
+	starts map[encounter.MemberID]spatial.Position
+
+	// sightOf is how far a creature sees in feet when it is not the host's
+	// sightFt: zero blinds it, for a route that needs a creature who saw
+	// nothing.
+	sightOf map[encounter.MemberID]int
 }
 
 // openTheCastleAs compiles the file and opens it the way the host says.
@@ -193,18 +202,25 @@ func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 		for _, h := range m.Holds {
 			holds = append(holds, encounter.IntelID(h))
 		}
+		at := m.At
+		if moved, ok := host.starts[encounter.MemberID(m.MemberID)]; ok {
+			at = moved
+		}
 		members = append(members, encounter.MemberInput{
 			ID:       encounter.MemberID(m.MemberID),
 			Kind:     encounter.KindMonster,
-			Position: m.At,
+			Position: at,
 			Faction:  encounter.FactionID(m.Faction),
 			Table:    m.Table,
 			Options:  m.Options,
 			Arrives:  m.Arrives,
 			Machine:  m.Machine,
-			Temper:   soldierProfiles(m.Temper),
-			Holds:    holds,
-			Facing:   m.FacingDegrees,
+			// The posted body's blocking states (rpg-project#836), as the
+			// session's launch hands them beside the recipe.
+			BlockingStates: m.BlockingStates,
+			Temper:         soldierProfiles(m.Temper),
+			Holds:          holds,
+			Facing:         m.FacingDegrees,
 		})
 	}
 
@@ -233,7 +249,7 @@ func (host castleHost) capabilities(strikes *[]cellsStrike, standing *castleStan
 	}
 
 	return encounter.Capabilities{
-		Sight:         castleSight{feet: host.sightFt},
+		Sight:         castleSight{feet: host.sightFt, own: host.sightOf},
 		Equipment:     encounter.UnobservedEquipment{},
 		Conditions:    encounter.UnobservedEquipment{},
 		Sheets:        castleSheets{passive: host.passive, arcs: host.arcs, speed: host.speedFt},
@@ -555,7 +571,10 @@ const sessionSightFeet = 120
 
 // castleSight is a torchlit castle: everybody sees sixty feet, or what the
 // host says ([castleHost.sightFt]).
-type castleSight struct{ feet int }
+type castleSight struct {
+	feet int
+	own  map[encounter.MemberID]int
+}
 
 func (s castleSight) Sight(members []encounter.MemberID) (map[encounter.MemberID]int, error) {
 	feet := s.feet
@@ -565,6 +584,9 @@ func (s castleSight) Sight(members []encounter.MemberID) (map[encounter.MemberID
 	out := make(map[encounter.MemberID]int, len(members))
 	for _, id := range members {
 		out[id] = encounter.CellsFromFeet(feet)
+		if own, ok := s.own[id]; ok {
+			out[id] = encounter.CellsFromFeet(own)
+		}
 	}
 
 	return out, nil
