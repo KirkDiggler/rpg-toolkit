@@ -95,10 +95,12 @@ func TestCastleTheGuardHoldsTheGate(t *testing.T) {
 	crossing := gate1.Position
 	require.Contains(t, []string{"", "posted"}, stateOf(t, c.world(t), "gate-1"), "precondition: gate-1 is posted")
 
-	// THE BUMP: alice walks for the cell past him, through the gate, and his
-	// cell is the only way there.
-	// The walk aims past him, never at him: every cell up to his is walked,
-	// his is not, and the Move says who stopped her.
+	// THE BUMP: the walk's goal is `beyond`, the cell past him across the
+	// shut gate door, and his cell is on the way to it. The door stays shut
+	// in this test, so the walk could never reach `beyond`; the point is the
+	// order of refusals. The body refusal comes before the door's: every cell
+	// up to his is walked, his is not, and the Move names him. The walk aims
+	// past him, never at him.
 	path := c.walkInto(t, crossing)
 	require.GreaterOrEqual(t, len(path), 2, "precondition: the walk has a cell before his")
 	before := path[len(path)-2]

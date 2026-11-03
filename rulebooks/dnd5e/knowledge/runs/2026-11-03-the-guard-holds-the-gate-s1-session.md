@@ -5,9 +5,10 @@ Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), 
 ## Shipped
 
 - `go.mod` pins encounter at `v0.174.1-0.20261103223351-1348abbe853a`, #2258's final head, with no replace. Earlier commits pinned f0240055 and d6b62bc3.
+- That pseudo-version is temporary. A follow-up commit moves the pin to the encounter release tag CI mints when #2258 merges, before this PR merges.
 - Launch hands the placement's blocking states to the join beside its recipe at [`launch.go:237`](https://github.com/KirkDiggler/rpg-toolkit/blob/c9842667/rulebooks/dnd5e/session/launch.go#L237). Without it the castle's gate-1 is seated as a body anyone walks through.
 - [`TestLaunch_PlacementBlockingStatesReachTheSeatedMember`](https://github.com/KirkDiggler/rpg-toolkit/blob/c9842667/rulebooks/dnd5e/session/launch_machine_test.go#L90) asserts the compiled states reach the seated member unchanged.
-- [`TestCastleTheGuardHoldsTheGate`](https://github.com/KirkDiggler/rpg-toolkit/blob/c9842667/rulebooks/dnd5e/session/castle_gate_post_test.go#L93) walks alice toward the cell past gate-1, with his cell the only way there. The walk aims past him, never at him. The Move answers `stopped` with "Guard stands in the way", one cell short. After the captain stands aside with gate-1 watching, he is `cowed` and the next walk crosses.
+- [`TestCastleTheGuardHoldsTheGate`](https://github.com/KirkDiggler/rpg-toolkit/blob/c9842667/rulebooks/dnd5e/session/castle_gate_post_test.go#L93) walks alice toward the cell past gate-1, across the shut gate door. His body refuses the step before the door would. The walk aims past him, never at him. The Move answers `stopped` with "Guard stands in the way", one cell short. After the captain stands aside with gate-1 watching, he is `cowed` and the next walk crosses.
 - [`TestABumpOnTheTurnClockPaysNoMovement`](https://github.com/KirkDiggler/rpg-toolkit/blob/c9842667/rulebooks/dnd5e/session/move_turnclock_test.go#L342) asserts the walked cell is paid and the bump is not. Paying the bump fails it.
 - The gatehouse and troupe goldens, and their transcript prose, follow gate-1 onto his post. The thunderwave test aims at gate-2 and fails three saves, because gate-1 beneath the shut gate has nowhere to be shoved.
 
