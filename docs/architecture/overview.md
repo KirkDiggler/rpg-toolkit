@@ -120,7 +120,6 @@ module is historical only.
 | mechanics/effects | `mechanics/effects/` | Mechanics | Shared effect infrastructure (tracker, behaviors) |
 | mechanics/conditions | `mechanics/conditions/` | Mechanics | Condition manager, simple/enhanced condition types |
 | mechanics/resources | `mechanics/resources/` | Mechanics | Resource pools (spell slots, ki, rage uses) |
-| mechanics/proficiency | `mechanics/proficiency/` | Mechanics | Proficiency system |
 | mechanics/spells | `mechanics/spells/` | Mechanics | Spell slots, concentration, spell list |
 | tools/spatial | `tools/spatial/` | Tools | Hex/Square/Gridless room + multi-room orchestration |
 | tools/environments | `tools/environments/` | Tools | Environment persistence, graph generation, multi-room dungeon graph |
