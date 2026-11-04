@@ -1,6 +1,6 @@
 ---
 name: mechanics modules
-description: Effects, proficiency and resources — mechanics infrastructure; rulebook features have their own implementation
+description: Effects and resources — mechanics infrastructure; rulebook features and proficiencies have their own implementations
 updated: 2026-05-04
 confidence: medium-high — verified by reading go.mod files, key source files, and the rpg-api import graph per audit 049
 ---
@@ -24,7 +24,7 @@ confidence: medium-high — verified by reading go.mod files, key source files, 
 > See `events.md` for the new events API and `docs/journey/049-rpg-api-toolkit-usage-audit.md`
 > for the consumer-side usage data.
 
-Current mechanics modules are `effects`, `proficiency` and `resources`; see
+Current mechanics modules are `effects` and `resources`; see
 [the checked module map](../../../knowledge/map.md). The conditions/spells
 sections below describe already-retired modules, not supported current APIs.
 
@@ -97,25 +97,6 @@ Resource pools and counters for finite game resources.
 No go.mod issues. Tests cover happy paths. Edge cases (refill to zero,
 consume past limit) not explicitly tested, but the pool logic is
 straightforward enough that this is low risk.
-
----
-
-## mechanics/proficiency — B
-
-**Path:** `mechanics/proficiency/`
-**Module:** `github.com/KirkDiggler/rpg-toolkit/mechanics/proficiency`
-
-Proficiency system. Tracks what an entity is proficient with and calculates
-proficiency-bonus-adjusted modifiers.
-
-### Key types
-- `Proficiency` interface
-- `SimpleProfiler` — concrete implementation
-
-### go.mod: clean (issue #613 resolved 2026-05-04)
-Pinned to published `core v0.9.3`, `events v0.1.0`, `mechanics/effects v0.2.1`,
-`dice v0.1.0`. No replace directives. `go test -race ./...` passes against
-published versions.
 
 ---
 

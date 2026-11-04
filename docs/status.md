@@ -925,11 +925,9 @@ See "Paused / on hold" below.
     tools/spatial, tools/environments, tools/spawn, tools/selectables. These
     pin events v0.6.x.
   - **Old API:** mechanics/effects (matches published v0.2.1),
-    mechanics/conditions, mechanics/spells, game, mechanics/proficiency. These pin events v0.1.x in their go.mod;
+    mechanics/conditions, mechanics/spells, game. These pin events v0.1.x in their go.mod;
     conditions/spells additionally use APIs not present in v0.1.0, which is
-    why their replace directives point at local source. Proficiency builds
-    cleanly against v0.1.0 because it only consumes effects (which itself
-    works against v0.1.0).
+    why their replace directives point at local source.
   - **No events dependency at all:** items.
 
   Closing #617 means rewriting effects/conditions/spells against
@@ -1016,7 +1014,6 @@ See quality.md for grade and rationale.
 | mechanics/resources | Medium-high — passes tests, no known gaps |
 | mechanics/effects | Medium — no suite-pattern tests; functional |
 | mechanics/spells | Medium — go.mod drift; tests present but CI unclear |
-| mechanics/proficiency | Medium — replace directive in go.mod |
 | tools/spatial | High — comprehensive hex/square/gridless + orchestrator; pathfinder gap in square grid |
 | tools/environments | Medium-high — persistence and pathfinding covered; thin on edge cases |
 | tools/selectables | Medium-high — passes, good pattern |
@@ -1046,7 +1043,7 @@ No issue or branch exists yet. Treat this as pre-planned but unscheduled.
 
 ### go.mod replace directive cleanup
 
-`mechanics/conditions`, `mechanics/spells`, `mechanics/proficiency`, and `items`
+`mechanics/conditions`, `mechanics/spells`, and `items`
 all have replace directives committed to main. Each needs a cleanup PR to pin
 real published versions and remove the directives.
 

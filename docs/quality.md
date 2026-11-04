@@ -104,12 +104,6 @@ consume past limit) could be more explicit.
 
 See mechanics/effects above — same module.
 
-### mechanics/proficiency — B
-
-`simple.go` has tests. go.mod is clean — replace directive removed (issue #613
-resolved 2026-05-04). `proficiency.go` interface is clean but `doc.go` is the
-only documentation of package-level intent. No examples.
-
 ### mechanics/spells — B-
 
 Spell slots, concentration, spell list — all have tests and pass. The go.mod
@@ -385,7 +379,7 @@ Held back from B by the absence of any tests at the base-module level.
 |---|---|
 | A / A- | core, rpgerr, dice, rulebooks/dnd5e/customization, rulebooks/dnd5e/combat |
 | B+ | game, events, mechanics/resources, tools/spatial, tools/selectables, rulebooks/dnd5e, rulebooks/dnd5e/conditions |
-| B | mechanics/effects, mechanics/conditions, mechanics/proficiency, tools/environments, tools/spawn |
+| B | mechanics/effects, mechanics/conditions, tools/environments, tools/spawn |
 | B- | mechanics/spells |
 | C | items |
 
