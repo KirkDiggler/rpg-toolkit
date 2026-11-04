@@ -4,8 +4,9 @@ Date: 2026-11-04
 
 ## Status
 
-Proposed — architectural investigation in progress. The ring-authored ability
-level is settled below; composition/API, uses and grant lifetime remain open.
+Proposed — architectural investigation in progress. Ring-authored level (R1),
+item-owned pools (R2) and the item-composer direction (R3) are settled below.
+Concrete contracts, charge counts, restoration and grant lifetime remain open.
 
 Consumer slice: [Keep signature combat and loot S1 — Second Wind ring](https://github.com/KirkDiggler/rpg-project/issues/862),
 under [#850](https://github.com/KirkDiggler/rpg-project/issues/850).
@@ -68,7 +69,7 @@ keep this option as the baseline, not a reason to alter the wearer's class level
 
 ### B. Compose the grant with reusable activation and effect behavior
 
-**Recommended direction to investigate, not an accepted API.** The item grants
+**Selected composition direction (R3), not an accepted API.** The item grants
 an opportunity to use an ability; activation handles its declared cost and
 immediate consequence; ongoing effects use the existing effects composition
 where their lifetime requires it. A consumer example establishes the required
@@ -89,10 +90,9 @@ to explain why a locally working ring alone would be insufficient evidence.
 
 ## Decision
 
-No implementation choice is accepted yet. Investigate B against the ring use case,
-using A's existing behavior as a comparison baseline. The operator has authorized
-the ADR/investigation and the item-level parameter below, not a public API,
-migration or the remaining item rules.
+Investigate B as the selected item-composer direction, using A's existing behavior
+as a comparison baseline. The operator has settled the responsibilities in R1–R3,
+not a concrete API, implementation plan, migration or the remaining item rules.
 
 The proposed separation to exercise is:
 
@@ -129,13 +129,32 @@ The operator suggested rarity might determine the item's level. That remains a
 possibility, not an accepted rarity-to-level mapping or a requirement to implement
 rarity now. Level 1 and level 3 are examples, not a declared exhaustive range.
 
+**R2 — Charges belong to the item instance.** Settled by KirkDiggler, 2026-11-04.
+The ring's use pool is separate from class-granted uses and other item instances.
+Spending it does not spend the wearer's class pool. The pool follows the ring:
+transfer or re-equipping does not refill it. Remaining uses must survive the
+item's supported save/load round-trip. The examples of a Raging ring and a
+Reckless Attack hotdog motivate reuse; their detailed gameplay is not selected.
+Whether several abilities on one item share that item's pool remains open.
+
+**R3 — The item is a composer.** Settled direction from KirkDiggler, 2026-11-04.
+An item composes underlying reusable effect behavior with orchestration of usage
+and resource pools, analogous to a condition composing effects for its own
+lifetime. It is not merely metadata pointing at an independently budgeted class
+feature, nor a new copy of healing/Rage behavior per item. The composition supplies
+parameters and connects access, its item-owned budget and the resulting behavior.
+This assigns responsibilities; it does not choose an executable item interface,
+a second payment path or a common package for every kind of composer. The action
+and resolution boundaries described above still constrain the implementation.
+
 ### Open requirements and decisions
 
-1. **Uses and restoration:** which use pool belongs to the item or beneficiary;
-   how does it coexist with a class-granted use; what restores it?
+1. **Pool configuration and restoration:** how many uses does this ring carry,
+   what restores them, and can several abilities on one item share a pool?
 2. **Grant lifetime:** when does possession/equipment make the ability available;
-   what survives removal, re-equipping or transfer; what happens to an effect
-   already produced? Immediate HP already regained is distinct from future access.
+   what happens to an already-produced ongoing effect when equipment is removed?
+   R2 settles that moving or re-equipping the ring does not refresh its budget.
+   Immediate HP already regained is distinct from future access.
 3. **Consumer contract:** what form makes the granted ability inspectable and
    executable without content-ref dispatch, duplicate rules or double payment?
 4. **Identity and reload:** what distinguishes separate grants and which mutable
@@ -154,6 +173,9 @@ for designing all equipment, spells or conditions.
 - With a controlled d10 result of 6, level-1 and level-3 ring grants produce
   healing calculations of 7 and 9 for a wearer with no fighter levels. Class-level
   data remains unchanged; actual restored HP still respects the recipient's rules.
+- Spending a ring use leaves class-granted and other item-instance pools unchanged.
+  Transfer, re-equipping and save/load preserve the remaining ring budget; source
+  identity is not confused with the shared ability ref.
 - The agreed grant/use/removal and round-trip cases show one owner for each
   mutation and lifetime. Availability agrees with execution; refused uses do
   not silently spend resources.
