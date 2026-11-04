@@ -5,6 +5,7 @@ package encounter
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -3568,7 +3569,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// validation above already proved parses; the arm is kept rather than
 	// discarded so neither half can start lying by silence.
 	e.pause, err = pauseFrom(data.Pause)
-	if err != nil {
+	if err != nil && !errors.Is(err, errNoPause) {
 		return nil, err
 	}
 

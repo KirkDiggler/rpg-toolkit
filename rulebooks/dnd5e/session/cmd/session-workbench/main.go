@@ -181,7 +181,9 @@ type memCharacterConfig struct {
 func (m *memCharacterConfig) DiscoverySharing(_ context.Context, id string) (*bool, error) {
 	choice, ok := m.sharing[id]
 	if !ok {
-		return nil, nil
+		// The interface's spelled contract: not chosen is ErrNotFound, never
+		// (nil, nil) — the reader consumes it and answers the default (#2220).
+		return nil, session.ErrNotFound
 	}
 	return &choice, nil
 }

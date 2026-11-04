@@ -185,7 +185,12 @@ func (e *Encounter) leaveAnyClock(id MemberID) (map[MemberID]*IntelDelta, error)
 		// The exiting member may have been active; see driveIfStillRunning
 		// (rpg-toolkit#1162) — Exit reaches this the same as a mid-fight
 		// Transfer does.
-		return e.driveIfStillRunning(bubble)
+		deltas, derr := e.driveIfStillRunning(bubble)
+		if derr != nil && !errors.Is(derr, errNoDrive) {
+			return nil, derr
+		}
+
+		return deltas, nil
 	}
 	_, lerr := e.clock.Leave(&clock.LeaveInput{ID: core.EntityID(id)})
 	e.disarm(id)
@@ -1991,7 +1996,7 @@ func (e *Encounter) walkWorld(
 		// filter means). The walk stops there: a closed run records nothing
 		// more.
 		fired, ferr := e.firedReachedPosition(m, cell, at)
-		if ferr != nil {
+		if ferr != nil && !errors.Is(ferr, errNoEnding) {
 			return res, fmt.Errorf("world move ending: %w", ferr)
 		}
 		if fired != nil {
@@ -2012,10 +2017,11 @@ func (e *Encounter) walkWorld(
 // would run the whole sweep once per creature the world thought for, and would
 // form a fight in the middle of the world's own pass, before the rest of the
 // creatures had moved.
-// errNoSettle is settleWalkOn's news that this clock settles nothing here:
-// a round of the world owns its own refresh, so the walk's caller takes no
-// deltas from it (#2220: an error may carry the news, not the blame).
-var errNoSettle = errors.New("this clock settles nothing here")
+// errNoSettle is the settle seams' news that nothing was settled: settleWalkOn
+// for a world round — its verb owns the refresh — and settleWalk for a walk
+// that moved nobody. Either way the caller keeps its verb and its deltas,
+// which stay nil (#2220: an error may carry the news, not the blame).
+var errNoSettle = errors.New("nothing was settled here")
 
 func (e *Encounter) settleWalkOn(kind ClockKind, audience []MemberID, moved int) (map[MemberID]*IntelDelta, error) {
 	if kind == ClockWorld {
@@ -2051,7 +2057,7 @@ func (e *Encounter) settleWalkOn(kind ClockKind, audience []MemberID, moved int)
 // world has moved past is the client's decision, not this module's.
 func (e *Encounter) settleWalk(audience []MemberID, moved int) (map[MemberID]*IntelDelta, error) {
 	if moved == 0 {
-		return nil, nil
+		return nil, errNoSettle
 	}
 	intelDeltas, _, serr := e.refreshSight(audience)
 	if serr != nil {
@@ -2710,18 +2716,24 @@ func beforeInScanOrder(a, b spatial.Position) bool {
 // (rpg-toolkit#1162). Both callers reach this through the SAME
 // driveMonsterTurns, so there remains exactly one place that decides what an
 // unplayed member does.
+// errNoDrive is driveIfStillRunning's news that nothing was driven: the
+// fight is paused waiting on an answer, or its order ran out of members to
+// act. Either way the caller keeps its deltas and its verb (#2220: an error
+// may carry the news, not the blame).
+var errNoDrive = errors.New("nothing was driven")
+
 func (e *Encounter) driveIfStillRunning(bubble *clock.Turn) (map[MemberID]*IntelDelta, error) {
 	// The pause guard, as above: a fight waiting on an answer advances only
 	// through Resume.
 	if e.Paused() {
-		return nil, nil
+		return nil, errNoDrive
 	}
 	order, err := bubble.Order()
 	if err != nil {
 		return nil, fmt.Errorf("drive if still running: %w", err)
 	}
 	if len(order) == 0 {
-		return nil, nil
+		return nil, errNoDrive
 	}
 
 	// UNLIKE EndTurn and form, a player-free bubble IS reachable here: Exit
@@ -2732,7 +2744,7 @@ func (e *Encounter) driveIfStillRunning(bubble *clock.Turn) (map[MemberID]*Intel
 	// driven-through turn back to, so this is a no-op rather than the defect
 	// ErrNoPlayerInBubble names for EndTurn/form's unreachable case.
 	if !e.bubbleHasPlayer(order) {
-		return nil, nil
+		return nil, errNoDrive
 	}
 
 	_, _, deltas, err := e.driveMonsterTurns(bubble)
@@ -3090,7 +3102,7 @@ func (e *Encounter) transfer(in *TransferInput, driveAfterRemove bool) (*Transfe
 		if departedWasActive && driveAfterRemove {
 			var derr error
 			intelDeltas, derr = e.driveIfStillRunning(bubble)
-			if derr != nil {
+			if derr != nil && !errors.Is(derr, errNoDrive) {
 				return nil, fmt.Errorf("transfer %q: %w", in.Member, derr)
 			}
 		}

@@ -5,6 +5,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -74,16 +75,22 @@ func (m *Manager) attackLanding(
 		outcome := out.Outcome
 		l.Record = func(enc *encounter.Encounter, told concentration) error {
 			hit, err := m.recordAttack(enc, story, outcome, told)
+			if err != nil && !errors.Is(err, errNoUnit) {
+				return err
+			}
 			got.hit = hit
-			return err
+			return nil
 		}
 	}
 	if out.Posed != nil {
 		pause := *out.Posed
 		l.Window = func(enc *encounter.Encounter) error {
 			beat, err := openWindow(enc, scope, pause, story)
+			if err != nil && !errors.Is(err, errNoWindow) {
+				return err
+			}
 			got.window = beat
-			return err
+			return nil
 		}
 	}
 	return l
@@ -100,6 +107,12 @@ func (m *Manager) attackLanding(
 // end state of the whole output and tell the fall ahead of the blow that
 // caused it (rpg-toolkit#2002). It returns the lone hit's record for a verb
 // that reports one.
+// errNoUnit is recordAttack's news that no single unit came out of the
+// landing — either nothing landed, or a landing of many units with none
+// singled out for the caller's beat (#2220: an error may carry the news,
+// not the blame).
+var errNoUnit = errors.New("no single unit came out of this landing")
+
 func (m *Manager) recordAttack(
 	enc *encounter.Encounter, story windowStory, outcome resolution.Outcome, told concentration,
 ) (*encounter.TrainLanded, error) {
@@ -109,7 +122,7 @@ func (m *Manager) recordAttack(
 	case resolution.StrikeOutcome:
 		if o.Continued {
 			retaliation, err := retaliationUnit(o.Retaliation, told)
-			if err != nil {
+			if err != nil && !errors.Is(err, errNoRetaliation) {
 				return nil, err
 			}
 			if retaliation != nil {
@@ -121,7 +134,7 @@ func (m *Manager) recordAttack(
 		units = append(units, encounter.TrainUnit{Outcome: recordStrike(story.Attacker, story.Target, o,
 			attackRefFor(story.Definition), story.PresentationID, told.Checks, told.Breaks)})
 		retaliation, err := retaliationUnit(o.Retaliation, concentration{})
-		if err != nil {
+		if err != nil && !errors.Is(err, errNoRetaliation) {
 			return nil, err
 		}
 		if retaliation != nil {
@@ -142,7 +155,7 @@ func (m *Manager) recordAttack(
 			// could be recorded nowhere, and dropping it would lose a save.
 			return nil, fmt.Errorf("strike: %w: concentration with no beat to follow", ErrInvalidWorld)
 		}
-		return nil, nil
+		return nil, errNoUnit
 	}
 	out, err := enc.RecordTrain(&encounter.RecordTrainInput{Units: units})
 	if err != nil {
@@ -151,7 +164,7 @@ func (m *Manager) recordAttack(
 	if lone {
 		return &out.Units[0], nil
 	}
-	return nil, nil
+	return nil, errNoUnit
 }
 
 // sequenceUnits is a sequence's settled steps as train units, in story order.
@@ -207,7 +220,7 @@ func sequenceUnits(story windowStory, sequence resolution.SequenceOutcome) ([]en
 		swing.Sequence = identity
 		units = append(units, encounter.TrainUnit{Outcome: swing})
 		retaliation, err := retaliationUnit(step.Strike.Retaliation, concentration{})
-		if err != nil {
+		if err != nil && !errors.Is(err, errNoRetaliation) {
 			return nil, err
 		}
 		if retaliation != nil {
@@ -315,7 +328,7 @@ func stepRecord(moved resolution.MovementOutcome) (func(*encounter.Encounter, co
 		beat.Reaction = &encounter.ReactionIdentity{Ref: reaction.ConditionRef, Name: reaction.ConditionName}
 		units = append(units, encounter.TrainUnit{Outcome: beat})
 		retaliation, err := retaliationUnit(reaction.Struck.Retaliation, concentration{})
-		if err != nil {
+		if err != nil && !errors.Is(err, errNoRetaliation) {
 			return nil, err
 		}
 		if retaliation != nil {
@@ -342,7 +355,7 @@ func recordTrain(enc *encounter.Encounter, units []encounter.TrainUnit) error {
 // without one the checks and breaks would be dropped, so it refuses.
 func continuedUnit(r *resolution.RetaliationOutcome, told concentration) (*encounter.TrainUnit, error) {
 	unit, err := retaliationUnit(r, told)
-	if err != nil {
+	if err != nil && !errors.Is(err, errNoRetaliation) {
 		return nil, err
 	}
 	if unit == nil && !told.empty() {
@@ -351,12 +364,17 @@ func continuedUnit(r *resolution.RetaliationOutcome, told concentration) (*encou
 	return unit, nil
 }
 
+// errNoRetaliation is retaliationUnit's news that nothing struck back: the
+// strike carried no taken reaction, so there is no unit to record (#2220:
+// an error may carry the news, not the blame).
+var errNoRetaliation = errors.New("nothing struck back")
+
 // retaliationUnit is the save and effects a taken post-hit reaction imposed,
 // as an activation unit carrying the concentration its damage tested. Nil
 // builds nothing.
 func retaliationUnit(r *resolution.RetaliationOutcome, told concentration) (*encounter.TrainUnit, error) {
 	if r == nil {
-		return nil, nil
+		return nil, errNoRetaliation
 	}
 	ref := SpellRef{Ref: r.Offer.Ref.String(), Name: r.Offer.Name}
 	save, err := castSave(resolution.CastTargetOutcome{TargetID: r.TargetID, Save: &r.Result}, r.Offer.Ref)
@@ -382,6 +400,11 @@ func retaliationUnit(r *resolution.RetaliationOutcome, told concentration) (*enc
 // beat that asks, where the story has one: a player's own attack paused on
 // its d20, and a cast's save offered a die with no choices. Every other
 // window is told by the composition's own beats.
+// errNoWindow is openWindow's news that this story kind poses no roll
+// window — the caller resumes without a beat (#2220: an error may carry the
+// news, not the blame).
+var errNoWindow = errors.New("no roll window for this story")
+
 func openWindow(
 	enc *encounter.Encounter, scope *writeScope, pause resolution.Pause, story windowStory,
 ) (*encounter.RollWindowOutput, error) {
@@ -409,7 +432,9 @@ func openWindow(
 			Total:    ask.Total,
 		})
 	default:
-		return nil, nil
+		// errNoWindow: this story kind opens no roll window — the resume
+		// proceeds without one (#2220: an error may carry the news).
+		return nil, errNoWindow
 	}
 }
 
