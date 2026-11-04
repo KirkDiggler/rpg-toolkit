@@ -5,6 +5,7 @@ package encounter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
 
@@ -84,7 +85,7 @@ func (e *Encounter) resumeDirective(ctx context.Context) (*ResumeOutput, error) 
 
 	out := &ResumeOutput{Kind: PauseDirective, Moved: h.moved + res.moved}
 	deltas, serr := e.settleWalk(h.audience, res.moved)
-	if serr != nil {
+	if serr != nil && !errors.Is(serr, errNoSettle) {
 		return nil, fmt.Errorf("resume directive %q: %w", h.member, serr)
 	}
 	out.IntelDeltas = deltas

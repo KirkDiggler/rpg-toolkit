@@ -47,14 +47,11 @@ linters:
       - path: _test\.go
         linters: [dupl, errcheck, goconst, gosec, gocyclo, nilnil]
 
-      # #2220's drain: these two modules still carry (nil, nil) returns the
-      # ruling is converting to sentinels — encounter's remaining tranches
-      # and session's PR delete their line here as they land. Every other
-      # module is protected now. Paths are module-relative (CI lints from
-      # each module dir), and only these modules carry these packages.
-      - path: ^encounter/
-        linters: [nilnil]
-
+      # #2220's drain: session still carries (nil, nil) returns the ruling is
+      # converting to sentinels — its PR deletes this line when it lands.
+      # Every other module is protected now. Paths are module-relative (CI
+      # lints from each module dir), and only this module carries this
+      # package.
       - path: ^session/
         linters: [nilnil]
 
