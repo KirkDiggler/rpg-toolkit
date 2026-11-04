@@ -120,7 +120,6 @@ module is historical only.
 | mechanics/effects | `mechanics/effects/` | Mechanics | Shared effect infrastructure (tracker, behaviors) |
 | mechanics/conditions | `mechanics/conditions/` | Mechanics | Condition manager, simple/enhanced condition types |
 | mechanics/resources | `mechanics/resources/` | Mechanics | Resource pools (spell slots, ki, rage uses) |
-| mechanics/features | `mechanics/features/` | Mechanics | Feature loader infrastructure |
 | mechanics/proficiency | `mechanics/proficiency/` | Mechanics | Proficiency system |
 | mechanics/spells | `mechanics/spells/` | Mechanics | Spell slots, concentration, spell list |
 | tools/spatial | `tools/spatial/` | Tools | Hex/Square/Gridless room + multi-room orchestration |
@@ -148,9 +147,6 @@ The `dungeon/` package (`dungeon.go`, `dungeon_data.go`, `types.go`) provides pr
 ### Rule: Test coverage at the rule layer
 **Violated by `rulebooks/dnd5e/backgrounds/grants.go` (172 lines) and `rulebooks/dnd5e/races/grants.go` (109 lines):**
 Both files implement grant logic (skill proficiencies, language grants, weapon and armor grants by race). Neither has a `*_test.go` file. Verified: `find rulebooks/dnd5e/backgrounds -name "*_test.go"` returns empty. Tracked in issue #615.
-
-**Violated by `mechanics/features/` base module:**
-`loader.go`, `feature.go`, `simple_feature.go` — no test files in the base module. Only `mock/` exists. Feature loader is tested indirectly via `rulebooks/dnd5e/features`. Direct unit tests for routing and error paths are absent.
 
 ### Rule: Square-grid intra-room pathfinding
 **Gap: `PathFinder` interface is hex-only (`tools/spatial/pathfinder.go:9`):**

@@ -46,7 +46,6 @@ flowchart TD
 
   subgraph MECH["Mechanics"]
     EFF["mechanics/effects"]
-    FEAT["mechanics/features"]
     PROF["mechanics/proficiency"]
     RES["mechanics/resources"]
   end
@@ -71,7 +70,6 @@ flowchart TD
   ENV --> SEL & SPATIAL & EV
   SEL --> DICE & EV
   SPATIAL --> GAME & EV
-  FEAT --> EFF & EV
   PROF --> EFF & EV
   EFF --> DICE & EV
   GAME --> EV
@@ -93,7 +91,7 @@ repo is `(…)`; neither is read as a module.
 - Must not cross: an import from a Core module to anything above Core.
 
 **Mechanics ↔ Rulebooks**
-- Flows: generic mechanic infrastructure (resource pools, effect tracking, feature loading, proficiency) that a rulebook fills with its own meaning.
+- Flows: generic mechanic infrastructure (resource pools, effect tracking, proficiency) that a rulebook fills with its own meaning.
 - Must not cross: a game's rule into Mechanics; the toolkit provides proficiency, the game defines what Acrobatics means ([`CLAUDE.md`](../CLAUDE.md), "Toolkit is infrastructure, not implementation").
 
 **Tools ↔ Mind and Rulebooks**
