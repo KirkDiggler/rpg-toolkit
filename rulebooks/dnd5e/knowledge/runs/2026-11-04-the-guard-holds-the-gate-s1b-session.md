@@ -4,7 +4,7 @@ Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), 
 
 ## Shipped
 
-- `go.mod` pins encounter at the pseudo-version of #2263's head 87b8d2df while it is in review, after b727dad4 before R7, 61f09764 before `DoorHeldFor`, 979466c0 before its reach check, and 06567a22 before its R7 review. The release tag replaces it once #2263 merges.
+- `go.mod` pins encounter at its release tag `v0.176.0`, which CI minted when #2263 merged, with no replace. Earlier commits pinned the pseudo-versions of b727dad4, 61f09764 (R7), 979466c0 (`DoorHeldFor`), 06567a22 (its reach check) and 87b8d2df (its R7 review) while #2263 was in review.
 - `mind/machine` becomes a direct requirement. The turn-clock test builds a posted recipe with it.
 - Launch hands the placement's posts to the join beside its blocking states at [`launch.go:242`](https://github.com/KirkDiggler/rpg-toolkit/blob/c6ccada9/rulebooks/dnd5e/session/launch.go#L242). Without it the castle's gate-1 holds his one cell, and the party steps through the opening beside him.
 - [`TestCastleTheLaunchSeatsTheGatePost`](https://github.com/KirkDiggler/rpg-toolkit/blob/c6ccada9/rulebooks/dnd5e/session/castle_gate_hold_test.go#L67) asserts gate-1 is seated with the posts the author wrote, both cells and the qualified door, and gate-2 with none.
