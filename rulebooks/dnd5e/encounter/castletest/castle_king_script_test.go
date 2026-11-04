@@ -429,10 +429,16 @@ func TestMadKingScriptTheTroupeNeedsTheFeast(t *testing.T) {
 	require.Equal(t, encounter.StanceNeutral, s.stance(garrison, encounter.FactionParty))
 	require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "nobody fights")
 
-	// Let through, the troupe opens the gate, and the far room comes civil
-	// (piece 7's other half; its test is the fight's).
-	s.stepTo(beneathTheGate)
+	// Let through, the troupe passes the posted guard by its fact
+	// (rpg-project#857, R6): he stays posted on his cell beneath the gate,
+	// and the hero opens the gate from the opening's other cell. The far
+	// room comes civil (piece 7's other half; its test is the fight's).
+	s.onHisPost(kingGate1, "the troupe does not cow him")
+	s.stepTo(besideTheCrossing)
 	s.open(kingGateDoor)
+	require.Equal(t, beneathTheGate, s.at(kingGate1), "he stands his post while the troupe opens the gate")
+	s.crosses(pastTheGate, "the troupe crosses by its pass")
+	s.onHisPost(kingGate1, "and he is still posted after it")
 	for _, id := range []encounter.MemberID{kingReserve, kingReserve2} {
 		require.Contains(t, memberIDsOf(t, s.enc), id, "%s answers the gate", id)
 		require.False(t, s.hostile(hero, id), "%s comes civil", id)

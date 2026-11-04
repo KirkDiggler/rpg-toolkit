@@ -180,6 +180,16 @@ func TestDungeonspec_StatesRefusals(t *testing.T) {
 			path:   at + ".a.holds.door", words: []string{"a post names the door whose opening it holds"},
 		},
 		{
+			name:   "holds against a word that is no direction",
+			states: "          initial: a\n          a: { holds: { door: gate, against: inward }, transitions: [{ on: time, do: [{ pick: time }] }] }\n",
+			path:   at + ".a.holds.against", words: []string{`"inward" is not a way a post holds`, "both", "entering", "leaving"},
+		},
+		{
+			name:   "holds with a pass nobody sets",
+			states: "          initial: a\n          a: { holds: { door: gate, pass: nobody-knows }, transitions: [{ on: time, do: [{ pick: time }] }] }\n",
+			path:   at + ".a.holds.pass", words: []string{`"nobody-knows" is not a fact this file sets`},
+		},
+		{
 			name:   "holds from a cell that is not floor",
 			states: "          initial: a\n          a: { holds: { door: postern, at: [{ q: 9, r: 9 }] }, transitions: [{ on: time, do: [{ pick: time }] }] }\n",
 			path:   at + ".a.holds.at[0]", words: []string{"{q: 9, r: 9}", "not floor"},
@@ -272,20 +282,23 @@ func TestDungeonspec_BlocksCompilesToBlockingStates(t *testing.T) {
 	require.NoError(t, err, "the door seats the blocking states the dialect compiled")
 }
 
-// TestDungeonspec_HoldsCompilesToPosts (rpg-project#852): a state written
-// `holds: { door, at }` compiles to the encounter's post, its door qualified
-// to `<key>/<id>` and its cells the axial cells the author wrote. The
-// castle's gate post holds the gate door from both gatehouse-side cells of
-// the opening while posted or alert; cowed and turned hold nothing, and the
-// other gate guard holds no post.
+// TestDungeonspec_HoldsCompilesToPosts (rpg-project#852, #857): a state
+// written `holds: { door, at, against, pass }` compiles to the encounter's
+// post, its door qualified to `<key>/<id>`, its cells the axial cells the
+// author wrote, and its settings the words written. The castle's gate post
+// holds the gate door from both gatehouse-side cells of the opening while
+// posted or alert, against arrivals, with the troupe's fact its pass; cowed
+// and turned hold nothing, and the other gate guard holds no post.
 func TestDungeonspec_HoldsCompilesToPosts(t *testing.T) {
 	raw, err := os.ReadFile("testdata/world-builder-v4-castle.yaml")
 	require.NoError(t, err)
 	compiled := loadSource(t, string(raw))
 
 	gate := encounter.Post{
-		Door:  "the-mad-king/gate-wall-door",
-		Cells: []spatial.Position{{X: -3, Y: 7}, {X: -4, Y: 7}},
+		Door:    "the-mad-king/gate-wall-door",
+		Cells:   []spatial.Position{{X: -3, Y: 7}, {X: -4, Y: 7}},
+		Against: encounter.PostEntering,
+		Pass:    "troupe-admitted",
 	}
 	require.Equal(t, map[string]encounter.Post{"posted": gate, "alert": gate}, monsterNamed(t, compiled, "gate-1").Posts,
 		"posted and alert hold the gate; cowed and turned hold nothing")

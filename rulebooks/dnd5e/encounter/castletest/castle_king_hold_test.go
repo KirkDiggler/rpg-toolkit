@@ -12,6 +12,11 @@ package castletest
 // opening passes; and a second holder keeps it held when one is downed.
 //
 // The dice are not walked: the stand-aside is won by the route host.
+//
+// S1c (rpg-project#857, R6): the post holds `against: entering` with the
+// troupe's fact its pass. It bars the way from the gatehouse into the
+// courtyard, lets the party walk back out, and lets the troupe through
+// while he stays posted. Both ways, the default, is a test post here.
 
 import (
 	"encoding/json"
@@ -137,10 +142,13 @@ func TestMadKingThePostHoldsTheGatesPassage(t *testing.T) {
 
 	t.Run("with gate-2 posted on the same door, downing one does not open it", func(t *testing.T) {
 		t.Parallel()
+		// A test post set both ways: the hero comes from the courtyard,
+		// the way the castle's entering post lets through.
 		s := openTheHeldGate(t, castleHost{
-			at:         pastTheGateSeat,
-			postedLike: []encounter.MemberID{kingGate2},
-			starts:     map[encounter.MemberID]spatial.Position{kingGate2: besideTheCrossingSeat},
+			at:          pastTheGateSeat,
+			postedLike:  []encounter.MemberID{kingGate2},
+			starts:      map[encounter.MemberID]spatial.Position{kingGate2: besideTheCrossingSeat},
+			gateAgainst: encounter.PostBothWays,
 		})
 		require.Equal(t, besideTheCrossing, s.at(kingGate2), "precondition: gate-2 stands on the post's other cell")
 
@@ -200,4 +208,79 @@ func TestMadKingTheHeldGateDoorRefusesTheParty(t *testing.T) {
 
 	s.storedIn(kingGate1, "cowed")
 	s.open(kingGateDoor)
+}
+
+// TestMadKingTheTroupePassesThePostedGuard (rpg-project#857, R6): the
+// troupe line won, the hero crosses the gate inward while gate-1 stays
+// posted on his cell. The captain's word is the hero's pass; it does not
+// move the guard.
+func TestMadKingTheTroupePassesThePostedGuard(t *testing.T) {
+	t.Parallel()
+	s := openTheCastle(t, partyStart(t))
+	s.heardTheStranger(true)
+	s.walkTo(s.at(kingCaptain))
+	s.said(kingCaptain, "troupe", "performance", true)
+	require.True(t, s.learners("troupe-admitted")[hero], "precondition: the hero knows the troupe was let through")
+
+	s.stepTo(besideTheCrossing)
+	require.Equal(t, beneathTheGate, s.at(kingGate1), "precondition: gate-1 stands on his post beneath the gate")
+	s.onHisPost(kingGate1, "precondition: and is posted")
+	held, _, err := s.enc.DoorHeldFor(hero, kingGateDoor)
+	require.NoError(t, err)
+	require.False(t, held, "the pass works the gate door")
+	s.open(kingGateDoor)
+	s.crosses(pastTheGate, "the troupe crosses inward past the posted guard")
+
+	s.onHisPost(kingGate1, "at the crossing he is still posted")
+	require.Equal(t, beneathTheGate, s.at(kingGate1), "on his cell")
+	seen, err := s.enc.ObservedHolds(&encounter.ViewInput{Member: hero})
+	require.NoError(t, err)
+	require.NotContains(t, seen, kingGate1, "the hero, with the pass, is told no hold")
+}
+
+// TestMadKingTheGateLetsThePartyOut (rpg-project#857, R6): from inside, the
+// party walks out past the posted guard unchallenged, because the castle's
+// post checks arrivals. The same gate with a test post set both ways bars
+// the same party on the way out.
+func TestMadKingTheGateLetsThePartyOut(t *testing.T) {
+	t.Parallel()
+
+	t.Run("against entering, as the file sets it, the party walks out", func(t *testing.T) {
+		t.Parallel()
+		s := openTheHeldGate(t, castleHost{at: pastTheGateSeat})
+		require.Equal(t, beneathTheGate, s.at(kingGate1), "precondition: gate-1 is on his post")
+		s.crosses(besideTheCrossing, "out of the courtyard, past the posted guard")
+		s.onHisPost(kingGate1, "still posted")
+		require.Equal(t, string(kingGate1)+" bars the way", s.barred(pastTheGate), "and the way back in is barred")
+	})
+
+	t.Run("a test post set both ways bars the same party on the way out", func(t *testing.T) {
+		t.Parallel()
+		s := openTheHeldGate(t, castleHost{at: pastTheGateSeat, gateAgainst: encounter.PostBothWays})
+		require.Equal(t, string(kingGate1)+" bars the way", s.barred(besideTheCrossing))
+	})
+
+	t.Run("the arrivals stay barred at the shut gate door", func(t *testing.T) {
+		t.Parallel()
+		s := openTheCastleAs(t, castleHost{at: besideTheCrossingSeat})
+		_, err := s.enc.OpenDoor(&encounter.OpenDoorInput{Door: kingGateDoor, Actor: hero})
+		require.ErrorIs(t, err, encounter.ErrDoorHeld, "from the gatehouse, the door is held against the hero")
+		inside := openTheCastleAs(t, castleHost{at: pastTheGateSeat})
+		inside.open(kingGateDoor)
+	})
+}
+
+// onHisPost requires a gate guard in a state whose post holds the gate:
+// posted (the recipe's initial state, which the record writes as empty) or
+// alert, the state a voice he hears turns him to. Cowed and turned hold
+// nothing.
+func (s *kingScene) onHisPost(id encounter.MemberID, msg string) {
+	s.t.Helper()
+	state := ""
+	for _, m := range s.enc.ToData().Members {
+		if m.ID == id && m.Machine != nil {
+			state = m.Machine.State
+		}
+	}
+	require.Contains(s.t, []string{"", "posted", "alert"}, state, msg)
 }

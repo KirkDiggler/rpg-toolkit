@@ -1726,9 +1726,8 @@ room:
         # Hand edit (rpg-project#836, the guard holds the gate): posted and
         # alert, his body holds the crossing (`blocks`), and his time is the
         # post (`pick: post`), never the loop. The captain's word ends the
-        # post in the beat he learns it: cowed (a stand-aside he witnessed,
-        # or the troupe let through) or turned (the garrison is the
-        # party's), neither of which blocks.
+        # post in the beat he learns it: cowed (a stand-aside he witnessed)
+        # or turned (the garrison is the party's), neither of which blocks.
         # Cowed walks him to his door post; turned marches on time's own row.
         #
         # Hand edit (rpg-project#852, R5): a post holds a passage, not a
@@ -1736,24 +1735,29 @@ room:
         # either gatehouse-side cell of it (`holds`): no stranger crosses
         # it while he stands on one, open door or shut. Drawn off, cowed,
         # turned or downed, he holds nothing.
+        #
+        # Hand edit (rpg-project#857, R6): the post checks arrivals. It
+        # holds `against: entering`, a crossing from the gatehouse into the
+        # courtyard, and lets the party walk back out. A troupe the captain
+        # let through knows `troupe-admitted` and passes him by it while he
+        # stays posted; the troupe no longer cows him. Cowing stays with the
+        # stand-aside (`gate-cowed`).
         states:
           initial: posted
           posted:
             blocks: true
-            holds: { door: gate-wall-door, at: [{ q: -3, r: 7 }, { q: -4, r: 7 }] }
+            holds: { door: gate-wall-door, at: [{ q: -3, r: 7 }, { q: -4, r: 7 }], against: entering, pass: troupe-admitted }
             transitions:
               - { on: fact, when: { fact: guards-turned }, to: turned, reason: the garrison turned }
               - { on: fact, when: { fact: gate-cowed }, to: cowed, reason: stood aside }
-              - { on: fact, when: { fact: troupe-admitted }, to: cowed, reason: let the troupe through }
               - { on: time, do: [{ pick: post }] }
               - { on: heard, within: 6, to: alert, do: [{ anchor: true }], reason: heard something }
           alert:
             blocks: true
-            holds: { door: gate-wall-door, at: [{ q: -3, r: 7 }, { q: -4, r: 7 }] }
+            holds: { door: gate-wall-door, at: [{ q: -3, r: 7 }, { q: -4, r: 7 }], against: entering, pass: troupe-admitted }
             transitions:
               - { on: fact, when: { fact: guards-turned }, to: turned, reason: the garrison turned }
               - { on: fact, when: { fact: gate-cowed }, to: cowed, reason: stood aside }
-              - { on: fact, when: { fact: troupe-admitted }, to: cowed, reason: let the troupe through }
               - { on: time, rounds: 3, to: posted, do: [{ pick: post }], reason: nothing came of it }
               - { on: time, do: [{ pick: post }] }
           cowed:
@@ -1783,8 +1787,9 @@ room:
             requires:
               fact: feast-tonight
             success:
-              # Hand edit (rpg-project#836): the troupe is let through, and
-              # the gate post who hears his captain say so stands aside.
+              # Hand edit (rpg-project#836, #857): the troupe is let through.
+              # The fact is the troupe's pass at the gate post, who stays
+              # posted and lets them by.
               - say: Through to the hall, then. Don’t dawdle.
                 fact: troupe-admitted
             failure:

@@ -143,14 +143,22 @@ func openTheCastleWithEars(
 	return openTheCastleAs(t, castleHost{at: at, doors: doors, passive: passive})
 }
 
-// postsOf is a creature's compiled posts as this host seats them: gate-1's
-// none when the host opens the gate unheld.
+// postsOf is a creature's compiled posts as this host seats them: each
+// post of the gate door set to [castleHost.gateAgainst] when the host names
+// a direction.
 func postsOf(host castleHost, m dungeonspec.MonsterPlacement) map[string]encounter.Post {
-	if host.gateUnheld && encounter.MemberID(m.MemberID) == kingGate1 {
-		return nil
+	if host.gateAgainst == "" || len(m.Posts) == 0 {
+		return m.Posts
+	}
+	out := make(map[string]encounter.Post, len(m.Posts))
+	for state, p := range m.Posts {
+		if p.Door == kingGateDoor {
+			p.Against = host.gateAgainst
+		}
+		out[state] = p
 	}
 
-	return m.Posts
+	return out
 }
 
 // castleHost is everything a route may set about how the castle is opened:
@@ -191,14 +199,11 @@ type castleHost struct {
 	// nothing.
 	sightOf map[encounter.MemberID]int
 
-	// gateUnheld opens the castle with gate-1's post holding no passage: his
-	// body still blocks his cell, as in S1 (rpg-project#836), but the gate
-	// door's opening is not held (rpg-project#852). OPT-IN BY NAME, and only
-	// for the routes that walk from inside the castle OUT through the gate
-	// to the captain: whether a post holds an opening both ways is R6
-	// (rpg-project#835), open. A route walking IN past the posted guard is
-	// held, as R5 rules, and never sets this.
-	gateUnheld bool
+	// gateAgainst is a TEST POST: the gate door's posts set to hold this
+	// direction rather than the file's `entering` (rpg-project#857, R6), for
+	// a route that proves the default both ways on the castle's own gate.
+	// Empty keeps the file's.
+	gateAgainst encounter.PostDirection
 
 	// postedLike seats each listed creature with gate-1's compiled states,
 	// blocking states and posts, so a route can stand a second holder on the
