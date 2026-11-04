@@ -4,6 +4,7 @@
 package session
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -57,7 +58,7 @@ func castOutcome(
 			continue
 		}
 		save, err := castSave(target, cast.Spell)
-		if err != nil {
+		if err != nil && !errors.Is(err, errNoSave) {
 			return nil, nil, err
 		}
 		results := make([]encounter.ActivationResult, 0, len(target.Applied))
@@ -120,13 +121,16 @@ func castWarded(warded *resolution.WardOutcome, actor string) *encounter.WardedD
 
 // castSave reads the gate's saving throw, or nothing when there was no gate.
 //
-// NIL IS THE HONEST ZERO, and it is resolution's own spelling: a nil Save says
-// "there is no saved beat to write" without a second boolean that could
-// disagree with it. True Strike delivers a condition and rolls nothing, and a
-// save beat reading 0 against DC 0 would say a roll happened that never did.
+// errNoSave IS THE HONEST ZERO, and it is resolution's own spelling respelled:
+// a nil Save says "there is no saved beat to write" without a second boolean
+// that could disagree with it. True Strike delivers a condition and rolls
+// nothing, and a save beat reading 0 against DC 0 would say a roll happened
+// that never did.
+var errNoSave = errors.New("no saving throw was rolled")
+
 func castSave(target resolution.CastTargetOutcome, spell core.Ref) (*encounter.CastSave, error) {
 	if target.Save == nil {
-		return nil, nil
+		return nil, errNoSave
 	}
 	if target.Save.Save.Result == nil {
 		// A contest reporting no saving throw result rolled nothing, and a beat

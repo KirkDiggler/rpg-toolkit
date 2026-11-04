@@ -4,9 +4,9 @@ version: "2"
 # (golangci-lint discovers the nearest config walking up from the module dir),
 # so the dnd5e subtree lints against THIS file, not the root's linter set —
 # ~3.5k findings the root linters would raise, measured 2026-11-03, filed
-# as its own issue (#2254). nilnil lives in BOTH files until that is ruled
-# on; the drain exclusion below keeps session's conversion (#2220) from
-# failing CI while its PR lands.
+# as its own issue. nilnil lives in BOTH files until that is ruled on;
+# session's conversion (#2220) is done, so no drain exclusion remains
+# here beyond the permanent test-fixture one.
 linters:
   default: standard
   enable:
@@ -14,9 +14,6 @@ linters:
   exclusions:
     rules:
       - path: _test\.go
-        linters: [nilnil]
-
-      - path: ^session/
         linters: [nilnil]
 
 linters-settings:
