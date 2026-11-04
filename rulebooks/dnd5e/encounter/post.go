@@ -4,6 +4,7 @@
 package encounter
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -456,30 +457,41 @@ func (e *DoorHeldError) Unwrap() []error { return []error{ErrDoorHeld, ErrBodyIn
 // none, so a refusal never confirms who stands where the actor cannot see.
 func (e *DoorHeldError) PublicReason() string { return e.public }
 
-// DoorHeldAgainst answers whether a post holds a door against an actor, as
-// the door verbs will: nil when it does not, a [*DoorHeldError] when it
-// does. A host asks it BEFORE rolling anything for a verb on the door (a
-// lock's check), so a held door is refused before any die is cast.
+// DoorHeldFor answers whether a post holds a door against an actor, by the
+// hold read the door verbs make: held and the [DoorHeldError.PublicReason]
+// the verb would refuse with ("<name> bars the door", or "someone bars the
+// door"), or false and "". A host asks it BEFORE rolling anything for a
+// verb on the door — a lock's check, a pause that check may pose — so a
+// held door is answered by the holder, not the lock. The verbs still refuse
+// with the typed error on their own.
 //
 // The door and the actor are asked as the verbs ask them: the probe law
-// first, so a door hidden to the actor answers [ErrNoDoor]. An empty actor
-// is nobody's hands and is never held against.
+// first, so an unknown door and a door hidden to the actor both answer
+// [ErrNoDoor], byte for byte. An empty actor is nobody's hands and is never
+// held against.
 //
-// Errors: [ErrNoDoor]; [ErrNotMember]; the participation read; the
-// [*DoorHeldError].
-func (e *Encounter) DoorHeldAgainst(door DoorID, actor MemberID) error {
+// Errors: [ErrNoDoor]; [ErrNotMember]; the participation read.
+func (e *Encounter) DoorHeldFor(actor MemberID, door DoorID) (held bool, reason string, err error) {
 	d, err := e.doorOf(door)
 	if err != nil {
-		return fmt.Errorf("door held: %w", err)
+		return false, "", fmt.Errorf("door held: %w", err)
 	}
 	if err := e.probeDoor(d, actor); err != nil {
-		return fmt.Errorf("door held: %w", err)
+		return false, "", fmt.Errorf("door held: %w", err)
 	}
 	if err := e.doorActorOf(actor); err != nil {
-		return fmt.Errorf("door held %q: %w", d.id, err)
+		return false, "", fmt.Errorf("door held %q: %w", d.id, err)
 	}
-
-	return e.refuseHeldDoor(d, actor)
+	refusal := e.refuseHeldDoor(d, actor)
+	var heldErr *DoorHeldError
+	switch {
+	case refusal == nil:
+		return false, "", nil
+	case errors.As(refusal, &heldErr):
+		return true, heldErr.PublicReason(), nil
+	default:
+		return false, "", fmt.Errorf("door held %q: %w", d.id, refusal)
+	}
 }
 
 // refuseHeldDoor refuses a door verb on a door a post holds against the

@@ -417,7 +417,7 @@ func (e *Encounter) Unlock(in *UnlockInput) (*UnlockOutput, error) {
 		return nil, err
 	}
 	// Before the lock is read: a held door takes no attempt, and a host asks
-	// [Encounter.DoorHeldAgainst] before it rolls one.
+	// [Encounter.DoorHeldFor] before it rolls one.
 	if err := e.refuseHeldDoor(door, in.Actor); err != nil {
 		return nil, fmt.Errorf("unlock %q: %w", door.id, err)
 	}

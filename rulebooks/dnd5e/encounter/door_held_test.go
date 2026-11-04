@@ -44,7 +44,28 @@ func TestAStrangerCannotOpenAHeldDoor(t *testing.T) {
 	_, err := enc.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: "alice"})
 	requireDoorHeld(t, err, "Gate guard bars the door")
 	require.Equal(t, DoorClosed, enc.doorsByID[holdLeaf].state.Kind(), "and the door stays shut")
-	requireDoorHeld(t, enc.DoorHeldAgainst(holdLeaf, "alice"), "Gate guard bars the door")
+	require.NotErrorIs(t, err, ErrBadDoor, "a held door is not a bad door")
+}
+
+func TestDoorHeldForAnswersBeforeAnythingIsRolled(t *testing.T) {
+	enc := heldGateHall(t, DoorIsLocked(heldLock))
+	held, reason, err := enc.DoorHeldFor("alice", holdLeaf)
+	require.NoError(t, err)
+	require.True(t, held, "held against the stranger")
+	require.Equal(t, "Gate guard bars the door", reason, "with the reason the verb would give")
+
+	held, reason, err = enc.DoorHeldFor(postedGuard, holdLeaf)
+	require.NoError(t, err)
+	require.False(t, held, "not against the holder himself")
+	require.Empty(t, reason)
+
+	cowGuard(t, enc)
+	held, _, err = enc.DoorHeldFor("alice", holdLeaf)
+	require.NoError(t, err)
+	require.False(t, held, "cowed, he holds nothing")
+
+	_, _, err = enc.DoorHeldFor("alice", "hall/postern")
+	require.ErrorIs(t, err, ErrNoDoor, "an unknown door is no door, as every door verb says")
 }
 
 func TestAnUnseenHolderBarsTheDoorAsSomeone(t *testing.T) {
@@ -58,7 +79,6 @@ func TestAnUnseenHolderBarsTheDoorAsSomeone(t *testing.T) {
 func TestTheHolderAndAnAllyWorkAHeldDoor(t *testing.T) {
 	porter := MemberInput{ID: "porter", Kind: KindMonster, Faction: postedGarrison, Position: holdNorthEast, Table: holds()}
 	enc := heldGateHall(t, DoorIsClosed(), porter)
-	require.NoError(t, enc.DoorHeldAgainst(holdLeaf, postedGuard), "nothing is held against the holder")
 	_, err := enc.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: postedGuard})
 	require.NoError(t, err, "the holder opens his own door")
 	_, err = enc.CloseDoor(&CloseDoorInput{Door: holdLeaf, Actor: "porter"})
@@ -76,10 +96,12 @@ func TestAStrangerCannotCloseAHeldDoor(t *testing.T) {
 
 func TestAHeldLockTakesNoAttempt(t *testing.T) {
 	enc := heldGateHall(t, DoorIsLocked(heldLock))
-	requireDoorHeld(t, enc.DoorHeldAgainst(holdLeaf, "alice"), "Gate guard bars the door")
+	held, _, err := enc.DoorHeldFor("alice", holdLeaf)
+	require.NoError(t, err)
+	require.True(t, held, "precondition: a host asking first is told the door is held")
 	before := enc.ToData()
 
-	_, err := enc.Unlock(&UnlockInput{Door: holdLeaf, Actor: "alice", Beaten: true, Total: 20, Applied: heldLock.Approaches[0]})
+	_, err = enc.Unlock(&UnlockInput{Door: holdLeaf, Actor: "alice", Beaten: true, Total: 20, Applied: heldLock.Approaches[0]})
 	requireDoorHeld(t, err, "Gate guard bars the door")
 	require.Equal(t, DoorLocked, enc.doorsByID[holdLeaf].state.Kind(), "a beaten lock on a held door is not opened")
 	after := enc.ToData()
@@ -100,7 +122,9 @@ func TestAHeldDoorOpensWhenTheHoldIsEmptied(t *testing.T) {
 			in.Participation = down
 			enc, err := NewEncounter(in)
 			require.NoError(t, err)
-			requireDoorHeld(t, enc.DoorHeldAgainst(holdLeaf, "alice"), "Gate guard bars the door")
+			held, _, err := enc.DoorHeldFor("alice", holdLeaf)
+			require.NoError(t, err)
+			require.True(t, held, "precondition: held")
 
 			empty(t, enc, down)
 			_, err = enc.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: "alice"})

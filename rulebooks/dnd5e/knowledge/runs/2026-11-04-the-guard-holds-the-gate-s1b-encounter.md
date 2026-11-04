@@ -13,7 +13,7 @@ Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), 
 - Sight testimony stores `holds_door`, stripped on delivery like conditions. `ObservedHolds` answers per viewer and omits allies and hidden doors. A transition that changes the post a state names notes the cell for the look (H5).
 - `Atlas()` lists a footprint door's crossings as `AtlasDoorway{Crossing: true}`. The door-revealed beat and the room reveal carry them marked `crossing: true` (H6).
 - A held door refuses its verbs (R7). `OpenDoor`, `CloseDoor` and `Unlock` on a door a post holds are refused to any actor not allied with a holder, by the same hold read the crossing makes. The order is probe, actor, reach, held, then the lock and state. The refusal is a `*DoorHeldError`, which is both `ErrDoorHeld` and `ErrBodyInTheWay`. Its `PublicReason` is "<name> bars the door" for the nearest holder the actor sees, else "someone bars the door". The holder himself and his allies work the door as before. An empty actor, nobody's hands, is never held against.
-- `Encounter.DoorHeldAgainst(door, actor)` answers the same refusal without acting, so a host can ask it before it rolls a lock's check.
+- `Encounter.DoorHeldFor(actor, door) (held, reason, err)` answers the same hold read without acting: true with the public reason the verb would give, so a host can ask it before it rolls a lock's check or poses a pause. An unknown or hidden door answers `ErrNoDoor`, as every door verb does under the probe law. The refusal does not wrap `ErrBadDoor`.
 - The dialect's `holds: { door, at }` on a state compiles to `MonsterPlacement.Posts`, the door qualified to `<key>/<id>`. An unknown door, a non-floor cell and `holds` on a terminal state are refused at their paths.
 - The castle mirror: gate-1's `posted` and `alert` hold `gate-wall-door` at `{q: -3, r: 7}` and `{q: -4, r: 7}`.
 
@@ -33,7 +33,7 @@ Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), 
 - The hold bars the opening both ways. A hero coming from the kitchen out through the gate to the captain is barred by gate-1. Whether a post holds an opening inbound only is R6 (rpg-project#835), open; the ten outbound routes run unheld until it is ruled.
 - A shut door hides a holder on its far side, so the stop says "someone bars the way". The castle's guard stands on the party's side, so his name is told.
 - The voice that draws gate-1 is heard in the round it also walks him off, so no sound leaves him alert on his post. The castle's alert case stands him alert in a stored record.
-- The session rolls a lock's check before it calls `Unlock` (`session/doors.go`), so `Unlock`'s own refusal comes after the roll. T12 must ask `DoorHeldAgainst` before it stages the check, or a held lock is still rolled against.
+- The session rolls a lock's check before it calls `Unlock` (`session/doors.go`), so `Unlock`'s own refusal comes after the roll. T12 must ask `DoorHeldFor` before it stages the check, or a held lock is still rolled against.
 - R7 also stops the operator's walk step "open the gate door first from beside the crossing" while gate-1 is posted. The walk opens it only once the post is emptied.
 - The session's launch copies `BlockingStates` from the placement by hand (`session/launch.go:237`). T12 must copy `Posts` beside it, or the api castle holds nothing. The plan's T12 does not list it.
 - `Atlas.Doorways` gained a `Crossing` field with no JSON tag, so every compiled golden's edge doorways carry `"Crossing": false`.
