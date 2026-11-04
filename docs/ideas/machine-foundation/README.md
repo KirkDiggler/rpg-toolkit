@@ -299,6 +299,7 @@ contribution cleanup. It should not require a dependency from mind to combat.
 | Concern | Owning source |
 |---|---|
 | Machine contract, data, vocabulary, stepping | [`mind/machine/doc.go`](../../../mind/machine/doc.go), [`recipe.go`](../../../mind/machine/recipe.go), [`vocabulary.go`](../../../mind/machine/vocabulary.go), [`step.go`](../../../mind/machine/step.go) |
+| Executable single-path guard probe | [`mind/machine/guard_journey_test.go`](../../../mind/machine/guard_journey_test.go): caller-supplied inputs and table-name outputs, not live keep delivery or concurrent roles |
 | Due and listener indexes | [`mind/machine/due.go`](../../../mind/machine/due.go), [`listeners.go`](../../../mind/machine/listeners.go) |
 | Machine authoring/lowering and state-bound posts | [`encounter/dungeonspec/states.go`](../../../rulebooks/dnd5e/encounter/dungeonspec/states.go), [`encounter/post.go`](../../../rulebooks/dnd5e/encounter/post.go) |
 | Encounter binding and delivery | [`encounter/machine.go`](../../../rulebooks/dnd5e/encounter/machine.go), [`wakebeats.go`](../../../rulebooks/dnd5e/encounter/wakebeats.go) |
