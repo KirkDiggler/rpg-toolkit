@@ -181,6 +181,11 @@ func TestCastleABothWaysPostBarsTheWayOut(t *testing.T) {
 	c := insideTheGate(t, "open", nil)
 	c.setTheGatePostInTheRecord(t, encounter.PostBothWays)
 
+	seen := c.sightingOf(t, "alice", "gate-1")
+	require.Equal(t, []string{"sight"}, seen.CurrentVia, "precondition: she sees him from the courtyard")
+	require.Equal(t, castleGateDoor, seen.HoldsDoor, "he holds the gate door against her")
+	require.Equal(t, "both", seen.HoldsAgainst, "both ways, as the test post sets it")
+
 	out := c.move(t, []spatial.Position{besideTheCastleGate})
 	require.Equal(t, session.MovementStopped, out.Status, "a both-ways post bars the way out")
 	require.Contains(t, out.StopReason, "bars the way", "as a hold, not a body")
