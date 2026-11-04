@@ -68,6 +68,17 @@ func TestDoorHeldForAnswersBeforeAnythingIsRolled(t *testing.T) {
 	require.ErrorIs(t, err, ErrNoDoor, "an unknown door is no door, as every door verb says")
 }
 
+func TestDoorHeldForAsksReachBeforeTheHold(t *testing.T) {
+	enc := heldGateHall(t, DoorIsLocked(heldLock))
+	placeAt(t, enc, "alice", holdOffPost)
+	held, reason, err := enc.DoorHeldFor("alice", holdLeaf)
+	require.ErrorIs(t, err, ErrOutOfRange, "out of reach is answered by the distance, as the verbs answer it")
+	require.False(t, held, "and not by the hold")
+	require.Empty(t, reason)
+	_, uerr := enc.Unlock(&UnlockInput{Door: holdLeaf, Actor: "alice", Beaten: true, Total: 20, Applied: heldLock.Approaches[0]})
+	require.ErrorIs(t, uerr, ErrOutOfRange, "the verb agrees")
+}
+
 func TestAnUnseenHolderBarsTheDoorAsSomeone(t *testing.T) {
 	guard := holder(t, postedGuard, holdSouthWest, holdLeaf, holdSouthWest)
 	enc, err := NewEncounter(holdSetup(wakeBlind{}, holdLeafDoor(DoorIsClosed()), holdSouthEast, guard))

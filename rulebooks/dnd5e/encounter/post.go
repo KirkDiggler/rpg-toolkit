@@ -465,12 +465,14 @@ func (e *DoorHeldError) PublicReason() string { return e.public }
 // held door is answered by the holder, not the lock. The verbs still refuse
 // with the typed error on their own.
 //
-// The door and the actor are asked as the verbs ask them: the probe law
-// first, so an unknown door and a door hidden to the actor both answer
-// [ErrNoDoor], byte for byte. An empty actor is nobody's hands and is never
+// The door and the actor are asked as the verbs ask them, in their order:
+// the probe law first, so an unknown door and a door hidden to the actor
+// both answer [ErrNoDoor], byte for byte; then the actor; then reach, so a
+// door out of reach answers [ErrOutOfRange] before any hold is read. An empty actor is nobody's hands and is never
 // held against.
 //
-// Errors: [ErrNoDoor]; [ErrNotMember]; the participation read.
+// Errors: [ErrNoDoor]; [ErrNotMember]; [ErrOutOfRange] and the reach
+// refusals the verbs give; the participation read.
 func (e *Encounter) DoorHeldFor(actor MemberID, door DoorID) (held bool, reason string, err error) {
 	d, err := e.doorOf(door)
 	if err != nil {
@@ -481,6 +483,11 @@ func (e *Encounter) DoorHeldFor(actor MemberID, door DoorID) (held bool, reason 
 	}
 	if err := e.doorActorOf(actor); err != nil {
 		return false, "", fmt.Errorf("door held %q: %w", d.id, err)
+	}
+	// REACH BEFORE THE HOLD, as every verb asks it: a door out of reach is
+	// answered by the distance, never by whoever holds it.
+	if err := e.refuseOutOfDoorReach("door held", d, actor); err != nil {
+		return false, "", err
 	}
 	refusal := e.refuseHeldDoor(d, actor)
 	var heldErr *DoorHeldError
