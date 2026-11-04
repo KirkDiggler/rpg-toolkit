@@ -52,7 +52,7 @@ func TestAContinuedStrikeWithNothingToCarryItsConcentrationIsRefused(t *testing.
 	require.True(t, errors.Is(err, ErrInvalidWorld))
 
 	got, err := (&Manager{}).recordAttack(nil, story, resolution.StrikeOutcome{Continued: true}, concentration{})
-	require.NoError(t, err, "and with nothing to tell, nothing is recorded")
+	require.ErrorIs(t, err, errNoUnit, "with nothing to tell, nothing is recorded — the news, not a failure")
 	require.Nil(t, got)
 }
 

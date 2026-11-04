@@ -5,6 +5,7 @@ package encounter
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -424,13 +425,18 @@ type ExperienceGrant struct {
 // rulebook: a cause, at least one payee, a name for each, and a positive
 // amount. What it cannot hold — that the amounts are the right amounts — is
 // exactly what the caller already settled before calling.
+// errNoExperience is preparedExperience's news that this outcome kind
+// carries no experience detail: the caller records the outcome and nothing
+// more (#2220: an error may carry the news, not the blame).
+var errNoExperience = errors.New("this outcome carries no experience")
+
 func preparedExperience(in *RecordInput) (*ExperienceDetail, error) {
 	if in.Kind != OutcomeExperienceGained {
 		if in.Experience != nil {
 			return nil, fmt.Errorf(
 				"record: experience detail does not match outcome kind %q: %w", in.Kind, ErrInvalidData)
 		}
-		return nil, nil
+		return nil, errNoExperience
 	}
 	if in.Experience == nil {
 		return nil, fmt.Errorf("record: experience detail is required: %w", ErrInvalidData)
@@ -1188,7 +1194,7 @@ func (e *Encounter) prepareRecord(in *RecordInput) ([]preparedActivationBeat, er
 		return nil, fmt.Errorf("record: warded detail does not match outcome kind %q: %w", in.Kind, ErrInvalidData)
 	}
 	experience, expErr := preparedExperience(in)
-	if expErr != nil {
+	if expErr != nil && !errors.Is(expErr, errNoExperience) {
 		return nil, expErr
 	}
 	if in.PresentationID != "" && in.Kind != OutcomeStruck && in.Kind != OutcomeMissed {

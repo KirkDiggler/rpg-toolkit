@@ -314,7 +314,9 @@ func (e *Encounter) firstContactWithNewEnemies(
 		}
 	}
 	if len(newly) == 0 {
-		return nil, nil
+		// No pair turned hostile: the answer is nobody, not absent (#2220:
+		// zero values tell the truth).
+		return map[MemberID]*IntelDelta{}, nil
 	}
 
 	out := make(map[MemberID]*IntelDelta)

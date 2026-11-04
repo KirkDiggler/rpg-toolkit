@@ -330,3 +330,58 @@ func TestDisengageBeforeWalkAnswersNoDisengage(t *testing.T) {
 	require.Nil(t, deltas)
 	require.ErrorIs(t, err, errNoDisengage)
 }
+
+// --- #2220's tranche 2 --------------------------------------------------------
+
+// TestSettleWalkAnswersNoSettleWhenNobodyMoved and
+// TestDriveIfStillRunningAnswersNoDriveWhilePaused pin the law at the two
+// seams tranche 2 converted: a walk that moved nobody settles nothing, and a
+// paused fight drives nothing — news on the error channel, not (nil, nil),
+// which could not be told from a wiring failure.
+
+func TestSettleWalkAnswersNoSettleWhenNobodyMoved(t *testing.T) {
+	var e Encounter
+
+	deltas, err := e.settleWalk(nil, 0)
+	require.Nil(t, deltas)
+	require.ErrorIs(t, err, errNoSettle)
+}
+
+func TestDriveIfStillRunningAnswersNoDriveWhilePaused(t *testing.T) {
+	var e Encounter
+	e.pause = &pause{kind: PauseTurn}
+
+	deltas, err := e.driveIfStillRunning(nil)
+	require.Nil(t, deltas)
+	require.ErrorIs(t, err, errNoDrive)
+}
+
+// TestNoEndingAnswersErrNoEnding and the three below it pin tranche 2's
+// pointer-shaped seams, where a nil value could not be told from a wiring
+// failure — the news is on the error channel (#2220).
+
+func TestNoEndingAnswersErrNoEnding(t *testing.T) {
+	var e Encounter // no endings compiled: nothing can fire
+
+	outcome, err := e.firedReachedPosition(&memberRecord{}, spatial.Position{}, 0)
+	require.Nil(t, outcome)
+	require.ErrorIs(t, err, errNoEnding)
+}
+
+func TestNoPauseAnswersErrNoPause(t *testing.T) {
+	p, err := pauseFrom(nil)
+	require.Nil(t, p)
+	require.ErrorIs(t, err, errNoPause)
+}
+
+func TestNoExperienceAnswersErrNoExperience(t *testing.T) {
+	detail, err := preparedExperience(&RecordInput{Kind: OutcomeStruck})
+	require.Nil(t, detail)
+	require.ErrorIs(t, err, errNoExperience)
+}
+
+func TestNoDeltaAnswersErrNoDelta(t *testing.T) {
+	delta, err := memberPerceptionDelta(nil)
+	require.Nil(t, delta)
+	require.ErrorIs(t, err, errNoDelta)
+}
