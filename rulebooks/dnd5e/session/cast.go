@@ -552,7 +552,7 @@ func (m *Manager) finishCast(
 						continue
 					}
 					retaliation, err := retaliationUnit(target.Attack.Retaliation, concentration{})
-					if err != nil {
+					if err != nil && !errors.Is(err, errNoRetaliation) {
 						return err
 					}
 					if retaliation != nil {
@@ -643,7 +643,10 @@ func (m *Manager) poseCastWindow(
 		Window: func(enc *encounter.Encounter) error {
 			var err error
 			beat, err = openWindow(enc, scope, pause, story)
-			return err
+			if err != nil && !errors.Is(err, errNoWindow) {
+				return err
+			}
+			return nil
 		},
 	})
 	if err != nil {

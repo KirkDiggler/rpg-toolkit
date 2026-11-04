@@ -145,7 +145,9 @@ type Sight interface {
 // See [Sight] for why the second is stricter here than it is there.
 func (e *Encounter) sightNow() (map[MemberID]int, error) {
 	if len(e.members) == 0 {
-		return nil, nil
+		// The projection of nobody is empty, not absent (#2220: zero values
+		// tell the truth — no news to carry).
+		return map[MemberID]int{}, nil
 	}
 
 	roster := make([]MemberID, 0, len(e.members))

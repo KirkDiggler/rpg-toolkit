@@ -41,22 +41,11 @@ linters:
       # (Migrated from the v1 `issues.exclude-rules` block: golangci-lint v2
       # silently ignores v1-syntax sections, so under the v2.15.0 pin these
       # findings fired in _test.go files while that block sat in the file. #2148.)
-      # nilnil joins them by ruling (#2220): the two test-stub findings are
-      # faithful to the seam they fake, so holding tests to the law is a
+      # nilnil joins them by ruling (#2220): the test-stub findings are
+      # faithful to the seams they fake, so holding tests to the law is a
       # seam reshape, not a test fix.
       - path: _test\.go
         linters: [dupl, errcheck, goconst, gosec, gocyclo, nilnil]
-
-      # #2220's drain: these two modules still carry (nil, nil) returns the
-      # ruling is converting to sentinels — encounter's remaining tranches
-      # and session's PR delete their line here as they land. Every other
-      # module is protected now. Paths are module-relative (CI lints from
-      # each module dir), and only these modules carry these packages.
-      - path: ^encounter/
-        linters: [nilnil]
-
-      - path: ^session/
-        linters: [nilnil]
 
       # refs/ namespace pattern is intentionally similar for IDE discoverability
       - path: refs/

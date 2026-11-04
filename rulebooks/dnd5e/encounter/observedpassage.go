@@ -58,7 +58,9 @@ func (e *Encounter) ObservedPassages(in *ViewInput) (map[MemberID]Passage, error
 // at everybody because a blob is old.
 func (e *Encounter) refreshChangedStanding(state *participationState) (map[MemberID]*IntelDelta, error) {
 	if e.outcome != nil {
-		return nil, nil
+		// A closed encounter changes nobody's standing: the answer is empty,
+		// not absent (#2220: zero values tell the truth).
+		return map[MemberID]*IntelDelta{}, nil
 	}
 	changed := map[MemberID]bool{}
 	for _, observer := range e.rosterIDs() {
@@ -83,7 +85,9 @@ func (e *Encounter) refreshChangedStanding(state *participationState) (map[Membe
 		}
 	}
 	if len(changed) == 0 {
-		return nil, nil
+		// Nobody's facing went stale: the answer is empty, not absent (#2220:
+		// zero values tell the truth).
+		return map[MemberID]*IntelDelta{}, nil
 	}
 	deltas, err := e.rebuildPercepts(e.rosterIDs())
 	if err != nil {

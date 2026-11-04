@@ -4,6 +4,7 @@
 package encounter
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -73,9 +74,15 @@ func (s memberReportStore) Report(in perception.ReportInput) (*perception.Report
 // the private store qualifies the identity of everything it observes. A first
 // contact's payload is the delivered form ([deliveredSightPayload]): the delta
 // is handed out, and seen conditions do not leave with it.
+// errNoDelta is memberPerceptionDelta's news that a perception change carried
+// nothing to project. The caller's loop assigns the result into its map and
+// dereferences it, so the (nil, nil) this replaces was a latent nil deref,
+// not a quiet skip — the news is loud where the silence was a trap (#2220).
+var errNoDelta = errors.New("this perception change carries no member delta")
+
 func memberPerceptionDelta(in *perception.Delta) (*IntelDelta, error) {
 	if in == nil {
-		return nil, nil
+		return nil, errNoDelta
 	}
 	out := &IntelDelta{}
 	for _, presence := range in.FirstContact {
