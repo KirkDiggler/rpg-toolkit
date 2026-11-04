@@ -95,6 +95,7 @@ func heldRefusal(t *testing.T, err error) string {
 	require.ErrorIs(t, err, session.ErrDoorHeld, "a held door refuses her hand")
 	var held *session.DoorHeldError
 	require.ErrorAs(t, err, &held, "and the refusal carries its reason")
+	require.Equal(t, held.Reason, held.Error(), "and a host printing the error shows the reason")
 	for name, sentinel := range compositionSentinels {
 		require.NotErrorIs(t, err, sentinel, "the composition's %s never leaks", name)
 	}

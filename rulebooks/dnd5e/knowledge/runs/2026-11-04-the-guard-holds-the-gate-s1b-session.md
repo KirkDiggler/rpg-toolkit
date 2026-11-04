@@ -31,6 +31,7 @@ Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), 
 ## Not walked
 
 - A guard drawn off his post by a voice. At the session it needs the stranger's companion seated outside, which this castle launch does not seat. The encounter's castle test covers it, and the session copies the encounter's answer.
+- gate-1 standing on (-4,7), the post's other cell. Every session test seats him on (-3,7). The launch copies both post cells by value, and the encounter's `TestAPostHoldsBothCellsOfAFootprintOpening` runs the guard on each cell.
 - A path from the courtyard side of the opening. Nobody reaches the courtyard while gate-1 holds the gate.
 
 ## R7: a held door refuses its door verbs
@@ -43,7 +44,7 @@ Ruled on lane #835, with the #855 design review's two additions.
 - [`TestCastleAHeldDoorRefusesItsDoorVerbs`](https://github.com/KirkDiggler/rpg-toolkit/blob/d2251f22/rulebooks/dnd5e/session/castle_gate_hold_test.go#L222): OpenDoor and CloseDoor are refused with "Guard bars the door" and the gate is unchanged. Once gate-1 is cowed she opens it.
 - [`TestCastleAHeldLockedDoorIsAnsweredByTheGuard`](https://github.com/KirkDiggler/rpg-toolkit/blob/d2251f22/rulebooks/dnd5e/session/castle_gate_hold_test.go#L256): the gate is locked in the record before alice arrives, so she knows the lock. Unlock is refused by the guard, and the castle dice count no die thrown. Dropping the pre-check fails it.
 - [`TestAHeldDoorClosesAPausedUnlock`](https://github.com/KirkDiggler/rpg-toolkit/blob/d2251f22/rulebooks/dnd5e/session/held_unlock_resume_test.go#L62): a skeleton behind the gate stands to its post while her Guidance answer waits. Her answer is refused with "someone bars the door", the window is closed, her die is not spent, and the next Unlock meets the hold rather than a frozen session. Dropping the check fails all three.
-- [`TestTranslateCarriesAHeldDoorWithItsReason`](https://github.com/KirkDiggler/rpg-toolkit/blob/d2251f22/rulebooks/dnd5e/session/translate_internal_test.go#L373) covers the arm both ways.
+- [`TestTranslateCarriesAHeldDoorWithItsReason`](https://github.com/KirkDiggler/rpg-toolkit/blob/d2251f22/rulebooks/dnd5e/session/translate_internal_test.go#L373) covers the arm both ways for the sentinels. It does not pin the reason: the encounter's reason field is unexported, so the package cannot build a reasoned held error. The castle tests pin the reason, and `heldRefusal` also requires `Error()` to return it.
 - The castle tests now open and lock the gate in the stored record. The hold test keeps its shut-door half before the open one.
 
 ### Found in R7

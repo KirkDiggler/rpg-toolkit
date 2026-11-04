@@ -370,6 +370,12 @@ func TestCauseOfIsTotalOverTheCompositionsCauses(t *testing.T) {
 // body-in-the-way sentinels; the session's refusal carries neither, only its
 // own ErrDoorHeld and the reason. A door the field lacks is still no
 // connection: the held arm never swallows ErrNoDoor or ErrBadDoor.
+//
+// THE REASON ITSELF IS NOT PINNED HERE. The encounter's reason field is
+// unexported, so this package cannot build a held error that carries one,
+// and the bare sentinel below answers an empty DoorHeldError too: a mutant
+// that drops the errors.As arm passes this test. The castle tests pin the
+// reason (castle_gate_hold_test.go, heldRefusal and its callers).
 func TestTranslateCarriesAHeldDoorWithItsReason(t *testing.T) {
 	inner := fmt.Errorf("open door: %w", &encounter.DoorHeldError{Door: "hall/gate", Holder: "gate-1"})
 	got := translate(inner)
