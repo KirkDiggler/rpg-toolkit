@@ -268,13 +268,8 @@ func (e *Encounter) heldCrossings(down map[MemberID]bool) map[DoorEdge][]postHol
 	if len(e.posted) == 0 {
 		return nil
 	}
-	ids := make([]MemberID, 0, len(e.posted))
-	for id := range e.posted {
-		ids = append(ids, id)
-	}
-	slices.Sort(ids)
 	var out map[DoorEdge][]postHolder
-	for _, id := range ids {
+	for _, id := range sortedPosted(e.posted) {
 		door, holds := e.memberHolds(id, down)
 		if !holds {
 			continue
@@ -371,16 +366,7 @@ func (q *cellQuery) heldEdge(mover MemberID, from, to spatial.Position) bool {
 // mover sees now, "<name> bars the way", and "someone bars the way" when it
 // sees none. The barrier it names inside is that holder, else the nearest.
 func (e *Encounter) holdRefusal(mover MemberID, holders []MemberID, cell spatial.Position) error {
-	barrier, who := holders[0], "someone"
-	for _, h := range holders {
-		if sees, err := e.currentlySees(mover, h); err == nil && sees {
-			barrier, who = h, string(h)
-			if m, ok := e.members[h]; ok && m.Name != "" {
-				who = m.Name
-			}
-			break
-		}
-	}
+	barrier, who := e.seenHolder(mover, holders)
 
 	return &bodyRefusalError{barrier: barrier, at: cell, public: who + " bars the way"}
 }
@@ -439,4 +425,123 @@ func (e *Encounter) loadPosts(m *memberRecord, stored map[string]PostData) error
 	}
 
 	return e.usePosts(m, posts, spatial.Position{})
+}
+
+// DoorHeldError is a door verb refused because a post holds the door
+// against the actor (rpg-project#835 R7): [Encounter.OpenDoor],
+// [Encounter.CloseDoor] and [Encounter.Unlock] on a door a non-allied
+// holder holds. It is both [ErrDoorHeld] and [ErrBodyInTheWay], so a host
+// that maps a body in the way maps this too, and one that wants the door
+// case asks for ErrDoorHeld.
+type DoorHeldError struct {
+	// Door is the door refused.
+	Door DoorID
+
+	// Holder is the nearest holder the actor sees, else the nearest holder.
+	Holder MemberID
+
+	public string
+}
+
+// Error names the door and the holder, for logs.
+func (e *DoorHeldError) Error() string {
+	return fmt.Sprintf("door %q is held by %s: %s", e.Door, e.Holder, ErrDoorHeld)
+}
+
+// Unwrap answers both sentinels.
+func (e *DoorHeldError) Unwrap() []error { return []error{ErrDoorHeld, ErrBodyInTheWay} }
+
+// PublicReason is the sentence the actor is told: "<name> bars the door"
+// for the nearest holder it sees now, "someone bars the door" when it sees
+// none, so a refusal never confirms who stands where the actor cannot see.
+func (e *DoorHeldError) PublicReason() string { return e.public }
+
+// DoorHeldAgainst answers whether a post holds a door against an actor, as
+// the door verbs will: nil when it does not, a [*DoorHeldError] when it
+// does. A host asks it BEFORE rolling anything for a verb on the door (a
+// lock's check), so a held door is refused before any die is cast.
+//
+// The door and the actor are asked as the verbs ask them: the probe law
+// first, so a door hidden to the actor answers [ErrNoDoor]. An empty actor
+// is nobody's hands and is never held against.
+//
+// Errors: [ErrNoDoor]; [ErrNotMember]; the participation read; the
+// [*DoorHeldError].
+func (e *Encounter) DoorHeldAgainst(door DoorID, actor MemberID) error {
+	d, err := e.doorOf(door)
+	if err != nil {
+		return fmt.Errorf("door held: %w", err)
+	}
+	if err := e.probeDoor(d, actor); err != nil {
+		return fmt.Errorf("door held: %w", err)
+	}
+	if err := e.doorActorOf(actor); err != nil {
+		return fmt.Errorf("door held %q: %w", d.id, err)
+	}
+
+	return e.refuseHeldDoor(d, actor)
+}
+
+// refuseHeldDoor refuses a door verb on a door a post holds against the
+// actor (R7): the same hold read the crossing makes — a holder in a holding
+// state, up and on a post cell — and the same alliance rule, so the holder
+// himself and his allies work the door as before. A walk never reaches
+// this: it never opens a held door ([cellQuery.doorToOpen]).
+func (e *Encounter) refuseHeldDoor(d *doorRecord, actor MemberID) error {
+	if actor == "" || len(e.posted) == 0 {
+		return nil
+	}
+	down, err := e.downNow()
+	if err != nil {
+		return &passageReadError{cause: err}
+	}
+	from, _ := e.canvas.GetEntityPosition(string(actor))
+	var holders []MemberID
+	for _, id := range sortedPosted(e.posted) {
+		held, holds := e.memberHolds(id, down)
+		if !holds || held != d.id || id == actor {
+			continue
+		}
+		if allied, _ := e.IsAllied(actor, id); allied {
+			continue
+		}
+		holders = append(holders, id)
+	}
+	if len(holders) == 0 {
+		return nil
+	}
+	sort.SliceStable(holders, func(i, j int) bool {
+		a, _ := e.canvas.GetEntityPosition(string(holders[i]))
+		b, _ := e.canvas.GetEntityPosition(string(holders[j]))
+		return e.Distance(from, a) < e.Distance(from, b)
+	})
+	holder, who := e.seenHolder(actor, holders)
+
+	return &DoorHeldError{Door: d.id, Holder: holder, public: who + " bars the door"}
+}
+
+// seenHolder is the nearest holder the actor sees now and its name, else
+// the nearest holder and "someone".
+func (e *Encounter) seenHolder(actor MemberID, holders []MemberID) (MemberID, string) {
+	for _, h := range holders {
+		if sees, err := e.currentlySees(actor, h); err == nil && sees {
+			if m, ok := e.members[h]; ok && m.Name != "" {
+				return h, m.Name
+			}
+			return h, string(h)
+		}
+	}
+
+	return holders[0], "someone"
+}
+
+// sortedPosted is the posted members in id order (C8).
+func sortedPosted(posted map[MemberID]bool) []MemberID {
+	ids := make([]MemberID, 0, len(posted))
+	for id := range posted {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+
+	return ids
 }

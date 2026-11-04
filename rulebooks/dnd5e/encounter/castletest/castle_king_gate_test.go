@@ -66,6 +66,9 @@ func TestMadKingEveryRoomHasOneWayIn(t *testing.T) {
 		onlyTheGatehouse("from inside the doorway")
 		s.walkTo(castleCell(0, 6))
 		onlyTheGatehouse("from the gate")
+		// The gate door is held while gate-1 is posted (rpg-project#835
+		// R7): the record stands him cowed, and the hero opens it.
+		s.storedIn(kingGate1, "cowed")
 		s.open(kingGateDoor)
 		require.NotZero(t, s.seenRooms()[courtyard], "the open gate shows the courtyard")
 	})
@@ -595,7 +598,8 @@ func TestMadKingTroupeBlown(t *testing.T) {
 // learns the guards have turned.
 func TestMadKingScout(t *testing.T) {
 	t.Parallel()
-	s := openTheCastle(t, besideTheCook)
+	// Outbound through the held gate: unheld pending R6 (rpg-project#835, open: does a post hold both ways).
+	s := openTheCastleAs(t, castleHost{at: besideTheCook, gateUnheld: true})
 
 	t.Run("control: the captain withholds the line from a hero who has not heard about Ashford", func(t *testing.T) {
 		options, err := s.enc.OptionsFor(hero, kingCaptain)

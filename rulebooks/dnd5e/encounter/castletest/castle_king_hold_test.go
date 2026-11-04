@@ -183,3 +183,21 @@ func (s *kingScene) storedIn(id encounter.MemberID, state string) {
 		}
 	}
 }
+
+// TestMadKingTheHeldGateDoorRefusesTheParty is R7 (rpg-project#835): with
+// gate-1 posted, the hero beside the shut gate door cannot open it, and is
+// told who bars it; cowed, he opens it.
+func TestMadKingTheHeldGateDoorRefusesTheParty(t *testing.T) {
+	t.Parallel()
+	s := openTheCastleAs(t, castleHost{at: besideTheCrossingSeat})
+	require.Equal(t, beneathTheGate, s.at(kingGate1), "precondition: gate-1 is on his post")
+
+	_, err := s.enc.OpenDoor(&encounter.OpenDoorInput{Door: kingGateDoor, Actor: hero})
+	require.ErrorIs(t, err, encounter.ErrDoorHeld, "the held gate door refuses the hero")
+	var held *encounter.DoorHeldError
+	require.ErrorAs(t, err, &held)
+	require.Equal(t, string(kingGate1)+" bars the door", held.PublicReason(), "and names the guard he sees")
+
+	s.storedIn(kingGate1, "cowed")
+	s.open(kingGateDoor)
+}
