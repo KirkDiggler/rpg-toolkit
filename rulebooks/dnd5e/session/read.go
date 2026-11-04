@@ -458,12 +458,21 @@ func projectView(enc *encounter.Encounter, in *ViewInput) (*ViewOutput, error) {
 	if err != nil {
 		return nil, fmt.Errorf("view passage: %w", err)
 	}
+	// THE DOORS SEEN HOLDERS BAR against this viewer (rpg-project#852, R5),
+	// the encounter's answer: its sight testimony keeps the held door and
+	// strips it on delivery, so this read is the door's one way out, with
+	// memories, allies and doors the viewer has not found already left out.
+	holds, err := enc.ObservedHolds(&encounter.ViewInput{Member: encounter.MemberID(in.Member)})
+	if err != nil {
+		return nil, fmt.Errorf("view holds: %w", translate(err))
+	}
 	stances, err := believedStances(enc, in.Member, roster)
 	if err != nil {
 		return nil, fmt.Errorf("view stance: %w", err)
 	}
 	out := projectSightings(holdings, rosterNames(roster), rosterKinds(roster), stances)
 	for i := range out {
+		out[i].HoldsDoor = string(holds[encounter.MemberID(out[i].Subject)])
 		passage, exists := passages[encounter.MemberID(out[i].Subject)]
 		if !exists {
 			continue

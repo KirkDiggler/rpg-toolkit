@@ -162,7 +162,9 @@ type Atlas struct {
 	// Boundaries is every wall and barrier on the map, sorted by endpoint.
 	Boundaries []AtlasBoundary `json:"boundaries,omitempty"`
 
-	// Doorways is every door's every edge, sorted by door ID then cell.
+	// Doorways is every door's every edge, sorted by door ID then cell, and
+	// every footprint door's crossings beside them, each marked
+	// [AtlasDoorway.Crossing] (rpg-project#852).
 	Doorways []AtlasDoorway `json:"doorways,omitempty"`
 
 	// Segments is every wall AS THE LINE IT IS, in the order the author drew
@@ -650,6 +652,14 @@ type AtlasDoorway struct {
 
 	// To is the other, adjacent to From.
 	To spatial.Position `json:"to"`
+
+	// Crossing says the pair is a FOOTPRINT DOOR'S CROSSING (rpg-project#852,
+	// H6): the door is a placed rectangle the map already draws as its asset
+	// ([Atlas.Placed]), and this pair is one of the crossings it closes.
+	// False is an edge door's edge. A reader that plans a route or grades fog
+	// reads both kinds; a renderer draws a doorway only for an edge door, or
+	// it draws the castle gate twice.
+	Crossing bool `json:"crossing,omitempty"`
 }
 
 // AtlasSegment is one authored wall as a line: two ends, and the height it is
@@ -1018,6 +1028,16 @@ type Sighting struct {
 	// Passage is present only for current, located sight testimony.
 	Passage Passage `json:"passage,omitempty"`
 
+	// HoldsDoor is the door whose opening the subject holds against THIS
+	// VIEWER (rpg-project#852, R5): a posted guard standing on his post bars
+	// its crossings, open or shut, to anyone not allied with him. Qualified as
+	// the Atlas's doorways name it ("the-mad-king/gate-wall-door"). The
+	// composition's answer ([encounter.Encounter.ObservedHolds]) carried as
+	// given: present only for a live sighting, never for a memory, never for
+	// an ally (an ally is barred by nothing), and never for a door this viewer
+	// has not found. Empty holds nothing.
+	HoldsDoor string `json:"holds_door,omitempty"`
+
 	// Subject names what is perceived.
 	Subject string `json:"subject"`
 
@@ -1316,11 +1336,13 @@ type RevealedDoor struct {
 	// atlas's doorway list — a wide door's edges arrive together, Door
 	// filled on each.
 	//
-	// EMPTY FOR A FOOTPRINT DOOR, which stands in no crossing and has no
-	// doorway to append (rpg-project#485). Its rectangle reaches the
-	// recipient on the atlas re-read this beat asks for, where [Atlas.Placed]
-	// carries it, not through this list — see [ConcealmentRevealedBody]'s own
-	// doc on what the beat does not carry.
+	// A FOOTPRINT DOOR'S CROSSINGS ARRIVE MARKED (rpg-project#852, H6): the
+	// crossings its rectangle closes, each with [AtlasDoorway.Crossing] true,
+	// exactly as the atlas lists them, so a planner that appends them knows
+	// the door is there. Its rectangle still reaches the recipient on the
+	// atlas re-read this beat asks for, where [Atlas.Placed] carries it, not
+	// through this list — see [ConcealmentRevealedBody]'s own doc on what the
+	// beat does not carry.
 	Doorways []AtlasDoorway `json:"doorways,omitempty"`
 
 	// Approaches is the lock's authored routes, present only while the
