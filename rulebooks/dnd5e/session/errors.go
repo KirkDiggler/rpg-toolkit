@@ -244,6 +244,14 @@ var (
 	// remedy is OpenDoor, not different coordinates.
 	ErrDoorShut = errors.New("door is shut")
 
+	// ErrDoorHeld is returned when a door verb (OpenDoor, CloseDoor, Unlock)
+	// is refused because a holder bars the door (rpg-project#852, R7): a
+	// posted body standing on its post holds the door against anyone not
+	// allied with it. A fact about the game, not a defect: the same call
+	// succeeds once the holder leaves its post, is cowed, turned or downed.
+	// The detail is [DoorHeldError], whose Reason a host renders.
+	ErrDoorHeld = errors.New("door is held")
+
 	// ErrNoIntel is the translation of a composition-side refusal about an
 	// intel record: a spawn naming a record the dungeon does not declare
 	// (rpg-project#372).
@@ -946,6 +954,29 @@ func (e *SeenError) Error() string {
 
 // Unwrap makes errors.Is(err, ErrSeen) true for this detail type.
 func (e *SeenError) Unwrap() error { return ErrSeen }
+
+// DoorHeldError is [ErrDoorHeld]'s detail: who bars the door, as the
+// refused member sees it (rpg-project#852, R7).
+//
+// THE COMPOSITION'S PUBLIC REASON, CARRIED AS WRITTEN. The encounter names
+// the nearest holder the member observes ("the Guard bars the door") and
+// otherwise no one ("someone bars the door"); the session decides nothing
+// about who may be named.
+type DoorHeldError struct {
+	// Reason is the sentence a host shows the player.
+	Reason string
+}
+
+// Error is the reason, or the bare refusal when there is none.
+func (e *DoorHeldError) Error() string {
+	if e.Reason == "" {
+		return ErrDoorHeld.Error()
+	}
+	return e.Reason
+}
+
+// Unwrap makes errors.Is(err, ErrDoorHeld) true for this detail type.
+func (e *DoorHeldError) Unwrap() error { return ErrDoorHeld }
 
 // WindowOpenError is [ErrWindowOpen]'s detail: which windows are open and who
 // each of them is waiting on.

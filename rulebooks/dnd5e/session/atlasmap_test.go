@@ -115,9 +115,9 @@ func (s *AtlasMapSuite) TestNothingOnTheMapNamesARoom() {
 		"a region is a named set of cells and the facts true of that area — never a frame of its own",
 	)
 	s.Equal(
-		[]string{"Door", "From", "To"},
+		[]string{"Door", "From", "To", "Crossing"},
 		fieldsOf(session.AtlasDoorway{}),
-		"a doorway is a door's identity and two cells",
+		"a doorway is a door's identity and two cells, and whether they are a footprint door's crossing",
 	)
 	s.Equal(
 		[]string{"ID", "Holdable", "Ref", "At", "BlocksMovement", "BlocksLineOfSight",

@@ -5,6 +5,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -188,6 +189,17 @@ func (m *Manager) answerWindow(
 	w, err := thawWindow(window.Payload, string(window.Audience))
 	if err != nil {
 		return nil, err
+	}
+	// A PAUSED UNLOCK ON A DOOR HELD SINCE (rpg-project#852, R7): the hold
+	// answers before the resumed die is read, and the pause is CLOSED, never
+	// left open. The window is declined whatever the answer was, so a taken
+	// offer is not spent, and the decline is committed before the refusal
+	// returns: a refusal that dropped the scope would leave the window in
+	// the ledger and the session frozen behind it.
+	if w.Story.Kind == storyCheck && w.Story.Door != "" {
+		if held := refuseHeldDoor(scope.enc, w.Story.Door, w.Audience); held != nil {
+			return nil, m.declineHeldUnlock(ctx, scope, window, held)
+		}
 	}
 	if err := closeWindow(scope, window, a.ledger()); err != nil {
 		return nil, err
@@ -430,4 +442,25 @@ func holdRemainingWindows(scope *writeScope) error {
 func reactDeclarationID(session, member string, window interrupt.WindowID) (string, error) {
 	id, _, err := selectorIDFor(session, member, VerbReact, SlotReaction, nil, nil, "", windowIDString(window))
 	return id, err
+}
+
+// declineHeldUnlock closes a paused unlock's window declined, commits it,
+// and answers with the held refusal: the attempt ends with no verdict and
+// the lock as it was.
+func (m *Manager) declineHeldUnlock(
+	ctx context.Context, scope *writeScope, window interrupt.Window, held error,
+) error {
+	var refusal *DoorHeldError
+	if !errors.As(held, &refusal) {
+		// Not a hold: a door or member the composition refuses outright,
+		// which the scope drops as any other failed answer.
+		return held
+	}
+	if err := closeWindow(scope, window, ledgerDecline); err != nil {
+		return err
+	}
+	if _, _, err := m.commit(ctx, scope); err != nil {
+		return err
+	}
+	return refusal
 }

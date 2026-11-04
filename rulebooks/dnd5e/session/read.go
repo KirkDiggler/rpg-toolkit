@@ -458,12 +458,21 @@ func projectView(enc *encounter.Encounter, in *ViewInput) (*ViewOutput, error) {
 	if err != nil {
 		return nil, fmt.Errorf("view passage: %w", err)
 	}
+	// THE DOORS SEEN HOLDERS BAR against this viewer (rpg-project#852, R5),
+	// the encounter's answer: its sight testimony keeps the held door and
+	// strips it on delivery, so this read is the door's one way out, with
+	// memories, allies and doors the viewer has not found already left out.
+	holds, err := enc.ObservedHolds(&encounter.ViewInput{Member: encounter.MemberID(in.Member)})
+	if err != nil {
+		return nil, fmt.Errorf("view holds: %w", translate(err))
+	}
 	stances, err := believedStances(enc, in.Member, roster)
 	if err != nil {
 		return nil, fmt.Errorf("view stance: %w", err)
 	}
 	out := projectSightings(holdings, rosterNames(roster), rosterKinds(roster), stances)
 	for i := range out {
+		out[i].HoldsDoor = string(holds[encounter.MemberID(out[i].Subject)])
 		passage, exists := passages[encounter.MemberID(out[i].Subject)]
 		if !exists {
 			continue
@@ -703,7 +712,20 @@ func (m *Manager) loadGivenWorld(
 // host can still match on theirs. Where the inner message is worth keeping, the
 // call site keeps it with %v, which is text rather than a chain.
 func translate(err error) error {
+	// A HELD DOOR (rpg-project#852, R7) arrives with its reason, the one
+	// translation that carries detail. The arm matches the composition's
+	// typed held error by type, never by a sentinel it unwraps to, so it
+	// stands first and catches the held door whatever else that error may
+	// answer, and never a door the field lacks (ErrNoDoor, ErrBadDoor).
+	var held *encounter.DoorHeldError
+	if errors.As(err, &held) {
+		return &DoorHeldError{Reason: held.PublicReason()}
+	}
 	switch {
+	case errors.Is(err, encounter.ErrDoorHeld):
+		// The bare sentinel, which no composition path returns today: the
+		// refusal without a reason.
+		return &DoorHeldError{}
 	case errors.Is(err, encounter.ErrTrimmed):
 		return fmt.Errorf("%w", ErrStoryTrimmed)
 	case errors.Is(err, encounter.ErrNoMember):

@@ -235,6 +235,11 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 		// the author's `blocks: true`): carried beside it, or a posted guard
 		// is seated as a body anyone walks through. Nil blocks as declared.
 		join.BlockingStates = monster.placement.BlockingStates
+		// The doors those states hold (rpg-project#852, R5, the author's
+		// `holds`): carried beside the blocking states, or a posted guard
+		// holds his one cell and the party steps through the opening beside
+		// him. Nil holds nothing.
+		join.Posts = monster.placement.Posts
 		// The author's facing, lowered to a bearing by the compile (sneaking
 		// R13); nil leaves the composition's rule bearing of 180.
 		join.Facing = monster.placement.FacingDegrees
