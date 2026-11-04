@@ -444,8 +444,12 @@ func projectApproach(a encounter.CheckApproach) DoorApproach {
 // verb that rolls on a door asks it first, so a held door is refused before
 // any die is cast.
 func refuseHeldDoor(enc *encounter.Encounter, door, member string) error {
-	if err := enc.DoorHeldAgainst(encounter.DoorID(door), encounter.MemberID(member)); err != nil {
+	held, reason, err := enc.DoorHeldFor(encounter.MemberID(member), encounter.DoorID(door))
+	if err != nil {
 		return translate(err)
+	}
+	if held {
+		return &DoorHeldError{Reason: reason}
 	}
 	return nil
 }

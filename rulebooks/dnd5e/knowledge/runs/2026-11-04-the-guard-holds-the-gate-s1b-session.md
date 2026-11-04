@@ -4,7 +4,7 @@ Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), 
 
 ## Shipped
 
-- `go.mod` pins encounter at the pseudo-version of #2263's head 61f09764 while it is in review, after b727dad4 before R7. The release tag replaces it once #2263 merges.
+- `go.mod` pins encounter at the pseudo-version of #2263's head 979466c0 while it is in review, after b727dad4 before R7 and 61f09764 before `DoorHeldFor`. The release tag replaces it once #2263 merges.
 - `mind/machine` becomes a direct requirement. The turn-clock test builds a posted recipe with it.
 - Launch hands the placement's posts to the join beside its blocking states at [`launch.go:242`](https://github.com/KirkDiggler/rpg-toolkit/blob/c6ccada9/rulebooks/dnd5e/session/launch.go#L242). Without it the castle's gate-1 holds his one cell, and the party steps through the opening beside him.
 - [`TestCastleTheLaunchSeatsTheGatePost`](https://github.com/KirkDiggler/rpg-toolkit/blob/c6ccada9/rulebooks/dnd5e/session/castle_gate_hold_test.go#L67) asserts gate-1 is seated with the posts the author wrote, both cells and the qualified door, and gate-2 with none.
@@ -38,7 +38,7 @@ Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), 
 Ruled on lane #835, with the #855 design review's two additions.
 
 - A held door's refusal crosses as `ErrDoorHeld`, with `DoorHeldError{Reason}` carrying the encounter's public reason as written. The arm sits at the top of [`translate`](https://github.com/KirkDiggler/rpg-toolkit/blob/d2251f22/rulebooks/dnd5e/session/read.go#L720). The encounter's error answers both its door-held and its body-in-the-way sentinels, so the arm comes before anything the second could match. It matches the held error alone, so `ErrNoDoor` and `ErrBadDoor` stay no connection.
-- Unlock asks `DoorHeldAgainst` before it reads the lock at [`doors.go:298`](https://github.com/KirkDiggler/rpg-toolkit/blob/d2251f22/rulebooks/dnd5e/session/doors.go#L298). A held lock throws no die and poses no Guidance pause.
+- Unlock asks `DoorHeldFor` (held and its public reason) before it reads the lock at [`doors.go:298`](https://github.com/KirkDiggler/rpg-toolkit/blob/d2251f22/rulebooks/dnd5e/session/doors.go#L298). A held lock throws no die and poses no Guidance pause.
 - A paused unlock whose door is held by the time it is answered is declined, committed, then refused ([`declineHeldUnlock`](https://github.com/KirkDiggler/rpg-toolkit/blob/d2251f22/rulebooks/dnd5e/session/react.go#L450)). A refusal that dropped the scope would leave the window in the ledger and the session frozen.
 - [`TestCastleAHeldDoorRefusesItsDoorVerbs`](https://github.com/KirkDiggler/rpg-toolkit/blob/d2251f22/rulebooks/dnd5e/session/castle_gate_hold_test.go#L222): OpenDoor and CloseDoor are refused with "Guard bars the door" and the gate is unchanged. Once gate-1 is cowed she opens it.
 - [`TestCastleAHeldLockedDoorIsAnsweredByTheGuard`](https://github.com/KirkDiggler/rpg-toolkit/blob/d2251f22/rulebooks/dnd5e/session/castle_gate_hold_test.go#L256): the gate is locked in the record before alice arrives, so she knows the lock. Unlock is refused by the guard, and the castle dice count no die thrown. Dropping the pre-check fails it.
@@ -49,6 +49,6 @@ Ruled on lane #835, with the #855 design review's two additions.
 ### Found in R7
 
 - Unlock reads the lock through what the member knows of the door. A lock set in the record after alice saw the gate shut never rolls, so the first locked test passed without the pre-check. The gate is now locked before she arrives, with a precondition that she knows it.
-- `DoorHeldAgainst` does not check reach, while the encounter's door verbs check reach before the hold. An Unlock from out of reach on a held door now answers the hold rather than out of range.
+- `DoorHeldFor` does not check reach, while the encounter's door verbs check reach before the hold. An Unlock from out of reach on a held door now answers the hold rather than out of range.
 
 — cross-team agent, on behalf of KirkDiggler
