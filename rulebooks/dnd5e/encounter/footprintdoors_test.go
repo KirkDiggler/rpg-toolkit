@@ -212,15 +212,21 @@ func (s *FootprintDoorSuite) TestAnOpenLeafIsTheGapItWasBefore() {
 }
 
 // TestTheLeafIsNotADoorwayAndStillHasAState pins R4 and the pin on
-// rpg-toolkit#1850: a footprint door never appears in [Atlas.Doorways] —
-// which is edge-shaped and is what the web's legacy renderer reads — while
-// [Encounter.Doors] lists it under the id the client joins live state by.
+// rpg-toolkit#1850, as rpg-project#852 (H6) re-aimed it: a footprint door's
+// [Atlas.Doorways] are its crossings, every one marked
+// [encounter.AtlasDoorway.Crossing] so the web's edge renderer skips them
+// while its planner reads them, and [Encounter.Doors] lists it under the id
+// the client joins live state by.
 func (s *FootprintDoorSuite) TestTheLeafIsNotADoorwayAndStillHasAState() {
 	enc := s.setup(footprintDoorField(encounter.DoorIsClosed()))
 
 	atlas, err := enc.Atlas()
 	s.Require().NoError(err)
-	s.Empty(atlas.Doorways, "a footprint door stands in no crossing, so it is no doorway")
+	s.NotEmpty(atlas.Doorways, "a footprint door's crossings are listed")
+	for _, dw := range atlas.Doorways {
+		s.Equal(theLeaf, dw.Door)
+		s.True(dw.Crossing, "and each is marked a crossing, never an edge to draw")
+	}
 
 	doors := enc.Doors()
 	s.Require().Len(doors, 1)

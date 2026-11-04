@@ -316,6 +316,12 @@ type MonsterPlacement struct {
 	// recipe. Nil when no state blocks, which is the body as declared.
 	BlockingStates []string `json:"BlockingStates,omitempty"`
 
+	// Posts is, by state of Machine, the post that state holds
+	// (rpg-project#852, states.go's `holds`), each door qualified to the
+	// encounter's id — for a host to hand to [encounter.MemberInput.Posts]
+	// beside the recipe. Nil when no state holds a passage.
+	Posts map[string]encounter.Post `json:"Posts,omitempty"`
+
 	// Arrives is the predicate that brings this monster into the run
 	// ([PlaceSpec.Arrives]), compiled to the composition's own trigger by
 	// [predicateOf] — for a host to hand to [encounter.MemberInput.Arrives]
@@ -1519,6 +1525,9 @@ type creatureOrders struct {
 	Temper  string
 	Actions []string
 	States  *StatesSpec
+
+	// Key is the document's key, which a post's door id is qualified by.
+	Key string
 }
 
 // ordersOf is a creature's compiled orders: its faction's answer table with
@@ -1540,6 +1549,7 @@ func ordersOf(c creatureOrders, from inherited, o encounter.Orientation) Monster
 		Machine: machineOf(c.States, from.states[side], c.ID, side),
 
 		BlockingStates: blockingOf(c.States, from.states[side]),
+		Posts:          postsOf(c.States, from.states[side], c.Key),
 	}
 }
 
@@ -1568,7 +1578,7 @@ func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 		}
 		mp := ordersOf(creatureOrders{
 			ID: p.ID, Ref: p.Ref, Faction: p.Faction,
-			On: p.On, Temper: p.Temper, Actions: p.Actions,
+			On: p.On, Temper: p.Temper, Actions: p.Actions, Key: spec.Key,
 		}, from, o)
 		mp.Region = owner[encounter.HexCellAt(o, p.At[0], p.At[1])]
 		mp.At = authored(p.At)

@@ -232,7 +232,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		on := layerSpecs(rootTableOn(spec.Tables, b.Table), b.On)
 		mp := ordersOf(creatureOrders{
 			ID: m.ID, Ref: m.Ref, Faction: b.Faction,
-			On: on, Temper: b.Temper, Actions: b.Actions, States: b.States,
+			On: on, Temper: b.Temper, Actions: b.Actions, States: b.States, Key: spec.Key,
 		}, from, encounter.HexesArePointyTop())
 		// Action augmentation remains carrier data: the session owns resolution
 		// against the base monster and so receives both authored lists verbatim.

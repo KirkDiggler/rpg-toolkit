@@ -35,6 +35,9 @@ func toTheCaptainWithTheTruth(t *testing.T, path string) *kingScene {
 		at:      besideTheCook,
 		doors:   map[encounter.DoorID]encounter.DoorState{kingThroneDoor: encounter.DoorIsOpen()},
 		fixture: path,
+		// From the kitchen out through the gate: R5 would hold it against
+		// the hero both ways (rpg-project#852).
+		gateUnheld: true,
 	})
 	s.said(kingCook, "gossip", "persuasion", true)
 	s.said(kingCook, "ashford", "persuasion", true)

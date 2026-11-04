@@ -89,6 +89,17 @@ type SightTestimony struct {
 	// BlocksMovement is the observed physical obstruction policy. Nil means unobserved.
 	BlocksMovement *bool
 
+	// HoldsDoor is the door the subject was seen holding: its state names a
+	// post, it was up and it stood on one of the post's cells
+	// (rpg-project#852, post.go). Empty means it was seen holding none, or
+	// was written before sightings carried the hold.
+	//
+	// STORED, NEVER DELIVERED, as Conditions is: whom the hold bars is a
+	// fact about the viewer and the holder, and a door's id is a secret to
+	// a viewer who has not found it, so it leaves this module only through
+	// [Encounter.ObservedHolds], which answers per viewer.
+	HoldsDoor DoorID
+
 	// Equipment is what the subject was seen holding. Nil means their hands
 	// were not observed, which is not the same as seeing empty hands; see
 	// [Equipment] for the two claims.
@@ -150,6 +161,7 @@ type sightWire struct {
 	Y                  *float64   `json:"y,omitempty"`
 	Down               *bool      `json:"down,omitempty"`
 	BlocksMovement     *bool      `json:"blocks_movement,omitempty"`
+	HoldsDoor          string     `json:"holds_door,omitempty"`
 	Equipment          *handsWire `json:"equipment,omitempty"`
 	// Conditions is a pointer to a slice so that nil (not observed) omits the
 	// key while an observed empty set encodes [].
@@ -164,7 +176,7 @@ type sightWire struct {
 // a testimony that then reads as confident.
 var sightPayloadFields = map[string]struct{}{
 	"state": {}, "x": {}, "y": {}, "down": {}, "equipment": {}, "blocks_movement": {}, "conditions": {}, "appearance_ref": {},
-	"facing": {}, "heading": {}, "default_activity_ref": {},
+	"facing": {}, "heading": {}, "default_activity_ref": {}, "holds_door": {},
 }
 
 // EncodeSightTestimony encodes sight testimony in the canonical tagged wire
@@ -188,7 +200,7 @@ func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 	case LocationKnown, LocationLost:
 		x, y := testimony.Position.X, testimony.Position.Y
 		wire := sightWire{State: string(testimony.State), X: &x, Y: &y, Down: testimony.Down, BlocksMovement: testimony.BlocksMovement, AppearanceRef: testimony.AppearanceRef, Facing: testimony.Facing,
-			Heading: testimony.Heading, DefaultActivityRef: testimony.DefaultActivityRef}
+			Heading: testimony.Heading, DefaultActivityRef: testimony.DefaultActivityRef, HoldsDoor: string(testimony.HoldsDoor)}
 		if testimony.Equipment != nil {
 			wire.Equipment = &handsWire{
 				MainHand: testimony.Equipment.MainHand,
@@ -215,6 +227,9 @@ func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 		}
 		if testimony.BlocksMovement != nil {
 			return nil, asInvalidData(fmt.Errorf("unknown location cannot carry obstruction"))
+		}
+		if testimony.HoldsDoor != "" {
+			return nil, asInvalidData(fmt.Errorf("unknown location cannot carry a hold"))
 		}
 		if testimony.Down != nil {
 			return nil, asInvalidData(fmt.Errorf("unknown location cannot carry standing"))
@@ -253,9 +268,12 @@ func EncodeSightTestimony(testimony SightTestimony) ([]byte, error) {
 // module's edge, and the only place that edge exists is here: a host cannot
 // strip what it was never told was there.
 //
-// A payload whose testimony carries no conditions is returned unchanged,
-// byte for byte, so a delivered payload is exactly what it was before
-// sightings learned conditions. A payload that does not decode is returned
+// THE HOLD STOPS AT THE SAME EDGE ([SightTestimony.HoldsDoor]): whom it
+// bars is a fact about a viewer, answered by [Encounter.ObservedHolds].
+//
+// A payload whose testimony carries no conditions and no hold is returned
+// unchanged, byte for byte, so a delivered payload is exactly what it was
+// before sightings learned conditions. A payload that does not decode is returned
 // unchanged too, unless it claims a conditions key — that one is refused
 // (ErrInvalidData) rather than relayed, because passing it on is the leak
 // this function exists to prevent.
@@ -270,10 +288,10 @@ func deliveredSightPayload(payload []byte) ([]byte, error) {
 		}
 		return append([]byte(nil), payload...), nil
 	}
-	if testimony.Conditions == nil {
+	if testimony.Conditions == nil && testimony.HoldsDoor == "" {
 		return append([]byte(nil), payload...), nil
 	}
-	testimony.Conditions = nil
+	testimony.Conditions, testimony.HoldsDoor = nil, ""
 	out, err := EncodeSightTestimony(testimony)
 	if err != nil {
 		return nil, fmt.Errorf("deliver sight testimony: %w", err)
@@ -340,6 +358,12 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 	_, activityPresent := fields["default_activity_ref"]
 	_, facingPresent := fields["facing"]
 	_, headingPresent := fields["heading"]
+	_, holdsPresent := fields["holds_door"]
+	// A present key must name a door: "holds_door": "" claims a hold and
+	// names none.
+	if holdsPresent && wire.HoldsDoor == "" {
+		return SightTestimony{}, false
+	}
 	// A present key must hold a bearing: "facing": null would decode as not
 	// observed while claiming the key, and a value outside [0, 360) is a
 	// facing no build writes.
@@ -385,6 +409,7 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 			Position:           spatial.Position{X: *wire.X, Y: *wire.Y},
 			Down:               wire.Down,
 			BlocksMovement:     wire.BlocksMovement,
+			HoldsDoor:          DoorID(wire.HoldsDoor),
 			Equipment:          hands,
 			Conditions:         held,
 			AppearanceRef:      wire.AppearanceRef,
@@ -396,7 +421,7 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 		// Nobody in view has a position, a standing, hands or conditions to
 		// observe.
 		if xPresent || yPresent || downPresent || equipmentPresent || blocksPresent || conditionsPresent || appearancePresent ||
-			facingPresent || headingPresent || activityPresent {
+			facingPresent || headingPresent || activityPresent || holdsPresent {
 			return SightTestimony{}, false
 		}
 		return SightTestimony{State: LocationUnknown}, true

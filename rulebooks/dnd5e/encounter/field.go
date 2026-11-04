@@ -1031,6 +1031,18 @@ type MemberInput struct {
 	// on a member with no authored recipe, is [ErrBadMember].
 	BlockingStates []string
 
+	// Posts names, by state of [MemberInput.Machine], the post that state
+	// holds (rpg-project#852, post.go): the door whose opening a holder in
+	// that state bars to every mover not allied with it, while it is up and
+	// stands on one of the post's cells. Empty [Post.Cells] means the cell
+	// the member is placed at. Nil holds no passage, which is every member
+	// before posts existed.
+	//
+	// VALIDATED AT THIS DOOR: a state the recipe does not declare, posts on
+	// a member with no authored recipe, a door this field does not have, or
+	// a cell that is not floor, is [ErrBadMember].
+	Posts map[string]Post
+
 	// Holds is the intel records this member carries, by record id
 	// (rpg-project#372, design §3) — the author's placement, seeded at
 	// construction as holdings nobody but the engine ever sees. Optional;
@@ -1144,6 +1156,7 @@ type memberFacts struct {
 	Table              Table
 	Machine            *machine.Recipe
 	BlockingStates     []string
+	Posts              map[string]Post
 }
 
 // validateMemberFacts refuses a defective authored check or table. Callers ask
@@ -1173,6 +1186,9 @@ func validateMemberFacts(in memberFacts) error {
 		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
 	}
 	if err := validateBlockingStates(in.Machine, in.BlockingStates); err != nil {
+		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
+	}
+	if err := validatePostStates(in.Machine, in.Posts); err != nil {
 		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
 	}
 
@@ -1622,6 +1638,12 @@ type memberRecord struct {
 	// BlocksMovement. Read through [Encounter.memberBlocks], never copied.
 	BlockingStates []string
 
+	// Posts is [MemberInput.Posts], validated against Recipe and the field
+	// at every door ([Encounter.usePosts]), every post's cells resolved, and
+	// persisted beside it. Read through [Encounter.memberHolds], never
+	// copied.
+	Posts map[string]Post
+
 	// Machine is this creature's machine blob (machine.go, rpg-project#766
 	// S3): its current state, bag, wake and anchor. The zero blob is the
 	// recipe's initial state. Only a member [Encounter.programFor] gives a
@@ -1879,6 +1901,10 @@ type JoinInput struct {
 	// BlockingStates — see [MemberInput.BlockingStates]'s own doc, validated
 	// against [JoinInput.Machine] at this door the same way.
 	BlockingStates []string
+
+	// Posts — see [MemberInput.Posts]'s own doc, validated at this door the
+	// same way; an empty [Post.Cells] means [JoinInput.Cell].
+	Posts map[string]Post
 
 	// Holds is the intel records this member carries, by record id
 	// (rpg-project#372, design §3) — [MemberInput.Holds] for a member who

@@ -192,6 +192,15 @@ type Encounter struct {
 	// hold of that body's blocking is stale until it does.
 	blockingTurned bool
 
+	// posted is every member admitted with posts (post.go), so the hold is
+	// asked of them alone and of nobody on a field where nobody holds. A
+	// member that has left is still listed and holds nothing.
+	posted map[MemberID]bool
+
+	// openings is every door's crossings, normalized, for the hold
+	// ([Encounter.doorOpening]): geometry, computed once per door asked.
+	openings map[DoorID][]DoorEdge
+
 	// pendingCells is every cell a change touched since the last look
 	// (rpg-project#762): a step's two ends, a door's cells, a creature turning
 	// where it stands, what a hold or an arrival moved. EVERY LOOK COVERS IT
@@ -771,7 +780,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			DefaultActivityRef: m.DefaultActivityRef,
 			Facing:             m.Facing,
 			Options:            m.Options, Table: m.Table, Machine: m.Machine,
-			BlockingStates: m.BlockingStates,
+			BlockingStates: m.BlockingStates, Posts: m.Posts,
 		}); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
 		}
@@ -1000,6 +1009,9 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			Faction:            mi.Faction,
 		}
 		if err = e.useRecipe(member, mi.Machine, mi.BlockingStates); err != nil {
+			return nil, fmt.Errorf("newencounter: %w", err)
+		}
+		if err = e.usePosts(member, mi.Posts, f.cellAt(mi.Position)); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
 		}
 
@@ -2163,6 +2175,10 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 		// SEEN AS IT IS NOW: a posted body is seen holding its cell, and
 		// one that stood aside is seen not to (rpg-project#836, B5).
 		blocksMovement := e.memberBlocks(subjectID)
+		// AND HOLDING HIS POST AS HE IS NOW (rpg-project#852, H5): the door
+		// a seen holder bars, read from his state, his cell and his
+		// standing in this pass.
+		holdsDoor, _ := e.memberHolds(subjectID, down)
 		facing := e.members[subjectID].Facing
 		payload, perr := encodeSighting(SightTestimony{
 			State:              LocationKnown,
@@ -2171,6 +2187,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 			Conditions:         held[subjectID],
 			Down:               &isDown,
 			BlocksMovement:     &blocksMovement,
+			HoldsDoor:          holdsDoor,
 			AppearanceRef:      e.members[subjectID].AppearanceRef,
 			DefaultActivityRef: e.members[subjectID].DefaultActivityRef,
 			// FACING IS SEEN, beside where (design R13): snapshotted into
@@ -2514,7 +2531,7 @@ func (e *Encounter) validateJoin(in *JoinInput) error {
 		DefaultActivityRef: in.DefaultActivityRef,
 		Facing:             in.Facing,
 		Options:            in.Options, Table: in.Table, Machine: in.Machine,
-		BlockingStates: in.BlockingStates,
+		BlockingStates: in.BlockingStates, Posts: in.Posts,
 	}); err != nil {
 		return fmt.Errorf("join: %w", err)
 	}
@@ -2608,6 +2625,9 @@ func (e *Encounter) admitMember(in *JoinInput) (*memberRecord, *JoinOutput, erro
 		Faction:            in.Faction,
 	}
 	if err := e.useRecipe(member, in.Machine, in.BlockingStates); err != nil {
+		return nil, nil, fmt.Errorf("join: %w", err)
+	}
+	if err := e.usePosts(member, in.Posts, in.Cell); err != nil {
 		return nil, nil, fmt.Errorf("join: %w", err)
 	}
 

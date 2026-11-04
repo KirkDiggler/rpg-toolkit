@@ -455,8 +455,11 @@ func (e *Encounter) afterStep(id MemberID, m *memberRecord, p *machine.Program, 
 		// (rpg-project#836, B2/B5): nothing is stored to update, since the
 		// fold and the canvas read the state, but whoever sees the body holds
 		// its blocking as seen, so the cell goes to the next look like any
-		// cell a change touched.
-		if m.blocksIn(stepped.From) != m.blocksIn(stepped.To) {
+		// cell a change touched. A state that names another post, or none,
+		// changes what his post holds the same way (rpg-project#852, H5).
+		fromPost, heldFrom := m.postIn(stepped.From)
+		toPost, heldTo := m.postIn(stepped.To)
+		if m.blocksIn(stepped.From) != m.blocksIn(stepped.To) || !samePost(fromPost, heldFrom, toPost, heldTo) {
 			if cell, placed := e.canvas.GetEntityPosition(string(id)); placed {
 				e.noteChanged(cell)
 				e.blockingTurned = true

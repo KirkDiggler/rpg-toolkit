@@ -1730,10 +1730,17 @@ room:
         # or the troupe let through) or turned (the garrison is the
         # party's), neither of which blocks.
         # Cowed walks him to his door post; turned marches on time's own row.
+        #
+        # Hand edit (rpg-project#852, R5): a post holds a passage, not a
+        # cell. Posted and alert, he holds the gate door's opening from
+        # either gatehouse-side cell of it (`holds`): no stranger crosses
+        # it while he stands on one, open door or shut. Drawn off, cowed,
+        # turned or downed, he holds nothing.
         states:
           initial: posted
           posted:
             blocks: true
+            holds: { door: gate-wall-door, at: [{ q: -3, r: 7 }, { q: -4, r: 7 }] }
             transitions:
               - { on: fact, when: { fact: guards-turned }, to: turned, reason: the garrison turned }
               - { on: fact, when: { fact: gate-cowed }, to: cowed, reason: stood aside }
@@ -1742,6 +1749,7 @@ room:
               - { on: heard, within: 6, to: alert, do: [{ anchor: true }], reason: heard something }
           alert:
             blocks: true
+            holds: { door: gate-wall-door, at: [{ q: -3, r: 7 }, { q: -4, r: 7 }] }
             transitions:
               - { on: fact, when: { fact: guards-turned }, to: turned, reason: the garrison turned }
               - { on: fact, when: { fact: gate-cowed }, to: cowed, reason: stood aside }

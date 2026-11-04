@@ -266,6 +266,22 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position, endWal
 	// move below refuses the unplaced member as it always has.
 	crossingBlocked := false
 	if placed {
+		// A HELD CROSSING IS REFUSED BY ITS HOLDER, BEFORE ANY DOOR
+		// (rpg-project#852, H2/H4): a post bars its opening as a shut door
+		// does, open or shut, so the stop names the holder and never the
+		// door, even beside him. Per mover, read beside the masquerade and
+		// out of the crossing fold every mover shares. Not for a crossing
+		// the mover's own atlas draws as wall: the masquerade answers that
+		// one below in the canvas's own words.
+		if !e.masqueradeBlocks(member.ID, here, to) {
+			holders, herr := e.heldOnTheWay(member.ID, here, to)
+			if herr != nil {
+				return executedAction{}, herr
+			}
+			if len(holders) > 0 {
+				return executedAction{}, &StepObstructedError{cause: e.holdRefusal(member.ID, holders, to)}
+			}
+		}
 		prop, crossed, cerr := e.crossingBlocked(here, to)
 		if cerr != nil {
 			return executedAction{}, fmt.Errorf("crossing from %v into %v: %w", here, to, cerr)

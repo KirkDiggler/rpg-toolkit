@@ -50,6 +50,8 @@ import (
 //     the walk exactly as before, and the creature stops where it always did.
 //   - A door HIDDEN to the walker: what it has not found is wall to it, and
 //     the masquerade law already keeps its route off one.
+//   - A door its post HOLDS against the walker (rpg-project#852): the hold
+//     is asked before the door, and the walk stops at the post.
 //   - Anything on a walk that is nobody's choice: a push, a pull, a rout
 //     ([Encounter.Direct]) and the public [Encounter.Route] stop at a shut
 //     door as they always have. Being shoved into a door is not opening it.
@@ -78,6 +80,11 @@ import (
 // this question's: the caller asks them of the cell as it always has, and a
 // door standing open says nothing about them.
 func (q *cellQuery) doorToOpen(walker MemberID, from, to spatial.Position) (*doorRecord, bool, error) {
+	// A WALK NEVER OPENS A HELD DOOR (rpg-project#852): the hold is asked
+	// before the door, so the step meets the post, not the door.
+	if q.heldEdge(walker, from, to) {
+		return nil, false, nil
+	}
 	prop, blocked, err := q.crossingBlocked(from, to)
 	if err != nil {
 		return nil, false, err

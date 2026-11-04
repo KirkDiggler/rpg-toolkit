@@ -211,11 +211,10 @@ func (e *Encounter) links() (map[PartitionID][]partitionLink, error) {
 			out[from] = append(out[from], partitionLink{to: to, door: d})
 			out[to] = append(out[to], partitionLink{to: from, door: d})
 		}
-		for _, edge := range d.edges {
+		// Its edges and its crossings, from the per-door cache the atlas and
+		// the hold read too ([Encounter.openingOf]).
+		for _, edge := range e.openingOf(d) {
 			join(edge.From, edge.To)
-		}
-		for _, crossing := range e.field.doorCrossings(d) {
-			join(crossing[0], crossing[1])
 		}
 	}
 	e.partitionLinks = out

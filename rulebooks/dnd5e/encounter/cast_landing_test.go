@@ -75,7 +75,7 @@ func openTheGatehouseForTheBard(t *testing.T) *encounter.Encounter {
 		members = append(members, encounter.MemberInput{
 			ID: encounter.MemberID(m.MemberID), Kind: encounter.KindMonster, Position: m.At,
 			Faction: encounter.FactionID(m.Faction), Table: m.Table, Options: m.Options,
-			Arrives: m.Arrives, Temper: soldierTemper(m.Temper), Facing: m.FacingDegrees, Machine: m.Machine, BlockingStates: m.BlockingStates,
+			Arrives: m.Arrives, Temper: soldierTemper(m.Temper), Facing: m.FacingDegrees, Machine: m.Machine, BlockingStates: m.BlockingStates, Posts: m.Posts,
 		})
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -126,18 +126,18 @@ func thunderwaveOn(t *testing.T, enc *encounter.Encounter, guard encounter.Membe
 	require.NoError(t, err)
 	require.NotEmpty(t, route.Path, "%s has somewhere to be thrown", guard)
 	return encounter.CastTargetResult{
-		Target: guard,
-		Save: &encounter.CastSave{
-			Saver: guard, Ability: "constitution", Roll: 1, Total: 3, DC: 13,
-			Calculation: saveCalculation(clThunderwave, "constitution", 1, 3),
-		},
-		Results: []encounter.ActivationResult{{
-			Kind: encounter.ResultMoved, Target: guard, Ref: clThunderwave.Ref, Name: clThunderwave.Name,
-			Moved: len(route.Path), StoppedBy: route.StoppedBy,
-		}},
-	}, encounter.CastPush{
-		Mover: guard, Route: route.Path,
-	}
+			Target: guard,
+			Save: &encounter.CastSave{
+				Saver: guard, Ability: "constitution", Roll: 1, Total: 3, DC: 13,
+				Calculation: saveCalculation(clThunderwave, "constitution", 1, 3),
+			},
+			Results: []encounter.ActivationResult{{
+				Kind: encounter.ResultMoved, Target: guard, Ref: clThunderwave.Ref, Name: clThunderwave.Name,
+				Moved: len(route.Path), StoppedBy: route.StoppedBy,
+			}},
+		}, encounter.CastPush{
+			Mover: guard, Route: route.Path,
+		}
 }
 
 // TestACastsShovesLandInsideItsLandingOnTheWorldClock: the cast beat, then the

@@ -27,6 +27,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"testing"
 
@@ -134,12 +135,26 @@ func openTheCastleWithDoors(t testing.TB, at spatial.Position, doors map[encount
 // openTheCastleWithEars is [openTheCastleWithDoors] with some members'
 // passive Perception other than the host's 10, so a test can find the DC a
 // sound reaches a room at.
+//
+// THE GATE IS UNHELD here ([castleHost.gateUnheld]): every route opened this
+// way is about something else, and the ones that reach the captain walk
+// from inside the castle out through the gate (rpg-project#852).
 func openTheCastleWithEars(
 	t testing.TB, at spatial.Position, doors map[encounter.DoorID]encounter.DoorState, passive map[encounter.MemberID]int,
 ) *kingScene {
 	t.Helper()
 
-	return openTheCastleAs(t, castleHost{at: at, doors: doors, passive: passive})
+	return openTheCastleAs(t, castleHost{at: at, doors: doors, passive: passive, gateUnheld: true})
+}
+
+// postsOf is a creature's compiled posts as this host seats them: gate-1's
+// none when the host opens the gate unheld.
+func postsOf(host castleHost, m dungeonspec.MonsterPlacement) map[string]encounter.Post {
+	if host.gateUnheld && encounter.MemberID(m.MemberID) == kingGate1 {
+		return nil
+	}
+
+	return m.Posts
 }
 
 // castleHost is everything a route may set about how the castle is opened:
@@ -179,6 +194,18 @@ type castleHost struct {
 	// sightFt: zero blinds it, for a route that needs a creature who saw
 	// nothing.
 	sightOf map[encounter.MemberID]int
+
+	// gateUnheld opens the castle with gate-1's post holding no passage: his
+	// body still blocks his cell, as in S1 (rpg-project#836), but the gate
+	// door's opening is not held (rpg-project#852). For routes about
+	// something else that cross the gate, from inside the castle or into it,
+	// which R5's hold would bar both ways.
+	gateUnheld bool
+
+	// postedLike seats each listed creature with gate-1's compiled states,
+	// blocking states and posts, so a route can stand a second holder on the
+	// gate (rpg-project#852's group rule).
+	postedLike []encounter.MemberID
 }
 
 // openTheCastleAs compiles the file and opens it the way the host says.
@@ -206,6 +233,13 @@ func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 		if moved, ok := host.starts[encounter.MemberID(m.MemberID)]; ok {
 			at = moved
 		}
+		if slices.Contains(host.postedLike, encounter.MemberID(m.MemberID)) {
+			for _, g := range compiled.Monsters {
+				if encounter.MemberID(g.MemberID) == kingGate1 {
+					m.Machine, m.BlockingStates, m.Posts = g.Machine, g.BlockingStates, g.Posts
+				}
+			}
+		}
 		members = append(members, encounter.MemberInput{
 			ID:       encounter.MemberID(m.MemberID),
 			Kind:     encounter.KindMonster,
@@ -217,10 +251,10 @@ func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 			Machine:  m.Machine,
 			// The posted body's blocking states (rpg-project#836), as the
 			// session's launch hands them beside the recipe.
-			BlockingStates: m.BlockingStates,
-			Temper:         soldierProfiles(m.Temper),
-			Holds:          holds,
-			Facing:         m.FacingDegrees,
+			BlockingStates: m.BlockingStates, Posts: postsOf(host, m),
+			Temper: soldierProfiles(m.Temper),
+			Holds:  holds,
+			Facing: m.FacingDegrees,
 		})
 	}
 

@@ -54,8 +54,9 @@ type Atlas struct {
 
 	// Doorways is every door's every edge, sorted by door ID then cell. A
 	// doorway is two adjacent floor cells with a door on the edge between
-	// them; what state that door is in is [Encounter.Doors]' business, not
-	// a snapshot's.
+	// them, or, marked [AtlasDoorway.Crossing], a crossing a footprint
+	// door's rectangle lies across; what state that door is in is
+	// [Encounter.Doors]' business, not a snapshot's.
 	Doorways []AtlasDoorway
 
 	// Segments is every authored wall AS THE LINE IT IS, in authored order:
@@ -437,6 +438,13 @@ type AtlasDoorway struct {
 
 	// To is the other, adjacent to From.
 	To spatial.Position
+
+	// Crossing says the pair is a footprint door's crossing, one its
+	// rectangle lies across (rpg-project#852), and not an edge door's edge.
+	// The map already draws a footprint door as its placed asset, so a
+	// reader that plans or grades fog reads both kinds, and a renderer draws
+	// a doorway only for an edge door.
+	Crossing bool
 }
 
 // Atlas returns a deterministic, construction-time snapshot of the field in
@@ -631,6 +639,16 @@ func (e *Encounter) Atlas() (Atlas, error) {
 	for _, d := range e.doors {
 		for _, edge := range d.edges {
 			out.Doorways = append(out.Doorways, AtlasDoorway{Door: d.id, From: edge.From, To: edge.To})
+		}
+		// A FOOTPRINT DOOR'S CROSSINGS ARE ITS DOORWAYS TOO (rpg-project#852,
+		// H6), marked so: the door stands between those cells as surely as
+		// an edge door stands on its edge, and a planner that cannot see it
+		// plans through a shut gate. The same geometry the hold and the
+		// hearing graph read, computed once per door.
+		if d.placement != nil {
+			for _, edge := range e.openingOf(d) {
+				out.Doorways = append(out.Doorways, AtlasDoorway{Door: d.id, From: edge.From, To: edge.To, Crossing: true})
+			}
 		}
 	}
 	sort.Slice(out.Doorways, func(i, j int) bool {

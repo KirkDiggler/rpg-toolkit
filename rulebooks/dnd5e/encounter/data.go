@@ -526,6 +526,9 @@ type ReserveData struct {
 	// BlockingStates is [MemberData.BlockingStates] for a member still
 	// waiting, refused at load as the member's are.
 	BlockingStates []string `json:"blocking_states,omitempty"`
+	// Posts is [MemberData.Posts] for a member still waiting, refused at
+	// load as the member's are.
+	Posts map[string]PostData `json:"posts,omitempty"`
 
 	BlocksMovement bool        `json:"blocks_movement,omitempty"`
 	Faction        FactionID   `json:"faction,omitempty"`
@@ -2175,6 +2178,14 @@ type MemberData struct {
 	// with no recipe, is refused at load (ErrInvalidData).
 	BlockingStates []string `json:"blocking_states,omitempty"`
 
+	// Posts is memberRecord.Posts (rpg-project#852): by state of Recipe, the
+	// post that state holds, each with its cells resolved. Omitted when the
+	// member holds no passage, which is what a record from before posts
+	// loads as. A state the recipe lacks, a door the field lacks, a cell
+	// that is not floor, or a post with no cells is refused at load
+	// (ErrInvalidData).
+	Posts map[string]PostData `json:"posts,omitempty"`
+
 	// Clock is memberRecord.Clock (R5): the clock this member is seated on,
 	// omitted for the world clock. This build knows the world clock alone,
 	// so any other name is refused at load (ErrInvalidData).
@@ -2353,6 +2364,7 @@ func (e *Encounter) snapshot() EncounterData {
 			Machine:            machineDataFrom(e.programFor(m), m.Machine),
 			Recipe:             m.Recipe,
 			BlockingStates:     slices.Clone(m.BlockingStates),
+			Posts:              postsDataFrom(m.Posts),
 			Clock:              m.Clock,
 			TableHash:          maps.Clone(m.TableHash),
 			BlocksMovement:     m.BlocksMovement,
@@ -2445,6 +2457,7 @@ func (e *Encounter) snapshot() EncounterData {
 			Temper:             undealtTemperDataFrom(rm.record.Temper),
 			Recipe:             rm.record.Recipe,
 			BlockingStates:     slices.Clone(rm.record.BlockingStates),
+			Posts:              postsDataFrom(rm.record.Posts),
 			BlocksMovement:     rm.record.BlocksMovement,
 			Faction:            rm.record.Faction,
 			Holds:              append([]IntelID(nil), rm.holds...),
@@ -3481,6 +3494,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		if rerr := e.useRecipe(member, m.Recipe, m.BlockingStates); rerr != nil {
 			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, rerr)
 		}
+		if perr := e.loadPosts(member, m.Posts); perr != nil {
+			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, perr)
+		}
 		blob, merr := machineFromData(e.programFor(member), m.Machine)
 		if merr != nil {
 			return nil, fmt.Errorf("load encounter: member %q: %s: %w", m.ID, merr, ErrInvalidData)
@@ -3538,6 +3554,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 		if rerr := e.useRecipe(&rm.record, r.Recipe, r.BlockingStates); rerr != nil {
 			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, rerr)
+		}
+		if perr := e.loadPosts(&rm.record, r.Posts); perr != nil {
+			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, perr)
 		}
 		e.reserveMember(rm)
 	}

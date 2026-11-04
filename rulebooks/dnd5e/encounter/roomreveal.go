@@ -118,7 +118,13 @@ func (e *Encounter) appendCellsRevealedBeat(member MemberID, before Atlas) error
 	doorways := make([]map[string]interface{}, 0)
 	for _, doorway := range after.Doorways {
 		if !hadDoorway[doorway] {
-			doorways = append(doorways, map[string]interface{}{"door": doorway.Door, "from": doorway.From, "to": doorway.To})
+			entry := map[string]interface{}{"door": doorway.Door, "from": doorway.From, "to": doorway.To}
+			// A footprint door's crossing says so (rpg-project#852), as the
+			// atlas does; an edge door's doorway reads as it always has.
+			if doorway.Crossing {
+				entry["crossing"] = true
+			}
+			doorways = append(doorways, entry)
 		}
 	}
 	hadPlaced := make(map[PropID]bool, len(before.Placed))

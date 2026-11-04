@@ -108,6 +108,7 @@ func Validate(spec *Spec) []FieldError {
 		Cells:        floorCells{orientation: v.orientation, owner: v.owner},
 		Facts:        specFacts(spec),
 		Picked:       picksIn(spec.Factions, nil),
+		Doors:        specDoorIDs(spec),
 	})
 	if v.geometryUsable() {
 		// SCENERY FIRST inside the geometry block: everything below asks

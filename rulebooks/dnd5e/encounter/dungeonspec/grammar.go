@@ -317,6 +317,10 @@ type grammarInput struct {
 	Members members
 	Cells   cells
 
+	// Doors is every door id this document declares, as its author wrote
+	// it: what a state's `holds: { door }` may name (rpg-project#852).
+	Doors map[string]bool
+
 	// Picked is every table key a creature's states pick ([picksIn],
 	// rpg-project#766 S4): a key a table may carry beside `time`, judged as
 	// `time` is.
@@ -368,6 +372,9 @@ type grammar struct {
 
 	// picked is [grammarInput.Picked].
 	picked map[string]bool
+
+	// doors is [grammarInput.Doors].
+	doors map[string]bool
 }
 
 // newGrammar builds the grammar one dialect's document is judged by.
@@ -382,6 +389,7 @@ func newGrammar(in grammarInput) *grammar {
 		facts:                in.Facts,
 		bundled:              in.Bundled,
 		picked:               in.Picked,
+		doors:                in.Doors,
 	}
 }
 
