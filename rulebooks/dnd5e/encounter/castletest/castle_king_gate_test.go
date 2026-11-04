@@ -243,13 +243,13 @@ func (s *kingScene) unseenByTheKing(where string) {
 	require.False(s.t, sees(theKing, s.at(hero)), "%s, the king does not see the hero", where)
 }
 
-// seatAt is the authored offset cell a member is placed at for a
-// dungeon-absolute cell: [castleCell] read backwards.
 // inTheYardSeat is the courtyard floor north of the gate, as an offset seat:
 // where the room routes start, past the gate gate-1's post holds against the
 // party start (rpg-project#852, R5).
 var inTheYardSeat = spatial.Position{X: 0, Y: 4}
 
+// seatAt is the authored offset cell a member is placed at for a
+// dungeon-absolute cell: [castleCell] read backwards.
 func seatAt(cell spatial.Position) spatial.Position {
 	col, row := encounter.OffsetOf(encounter.HexesArePointyTop(), cell)
 
