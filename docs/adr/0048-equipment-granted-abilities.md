@@ -5,8 +5,9 @@ Date: 2026-11-04
 ## Status
 
 Proposed — architectural investigation in progress. Ring-authored level (R1),
-item-owned pools (R2) and the item-composer direction (R3) are settled below.
-Concrete contracts, charge counts, restoration and grant lifetime remain open.
+item-owned pools (R2), item composition (R3) and configurable normal recovery
+(R4) are settled below. Concrete contracts, charge counts, rest eligibility and
+grant lifetime remain open.
 
 Consumer slice: [Keep signature combat and loot S1 — Second Wind ring](https://github.com/KirkDiggler/rpg-project/issues/862),
 under [#850](https://github.com/KirkDiggler/rpg-project/issues/850).
@@ -147,10 +148,26 @@ This assigns responsibilities; it does not choose an executable item interface,
 a second payment path or a common package for every kind of composer. The action
 and resolution boundaries described above still constrain the implementation.
 
+**R4 — Normal recovery, authored as configuration.** Settled by KirkDiggler,
+2026-11-04. The first Second Wind ring restores its own pool on a short or long
+rest, matching the existing class feature's recovery policy. Recovery restores
+the pool to its configured capacity, whose value is still open. The restoration
+trigger is item/pool configuration, not a special case embedded in Second Wind's
+healing behavior. Which character's rest reaches the item depends on the grant's
+association/eligibility rules, still to be settled below.
+
+The operator's ultimate goal is to author this configuration in the studio.
+Exercise explicit authored configuration in the example; do not hard-code the
+policy by ability ref or build the studio editor in this slice. This selects an
+authoring direction, not a schema, UI or exhaustive list of recharge mechanisms.
+It does not select a recharge rule for the illustrative Raging ring or hotdog.
+
 ### Open requirements and decisions
 
-1. **Pool configuration and restoration:** how many uses does this ring carry,
-   what restores them, and can several abilities on one item share a pool?
+1. **Pool capacity and sharing:** how many uses does this ring carry, and can
+   several abilities on one item share a pool? R4 settles the first ring's normal
+   short-or-long-rest recovery; which wearer's rest reaches it remains part of
+   the attachment/eligibility question.
 2. **Grant lifetime:** when does possession/equipment make the ability available;
    what happens to an already-produced ongoing effect when equipment is removed?
    R2 settles that moving or re-equipping the ring does not refresh its budget.
@@ -176,6 +193,9 @@ for designing all equipment, spells or conditions.
 - Spending a ring use leaves class-granted and other item-instance pools unchanged.
   Transfer, re-equipping and save/load preserve the remaining ring budget; source
   identity is not confused with the shared ability ref.
+- Once rest eligibility is agreed, an eligible short rest and an eligible long
+  rest each restore the ring pool to its configured capacity. An unrelated
+  character's rest must not refill it merely because a rest event occurred.
 - The agreed grant/use/removal and round-trip cases show one owner for each
   mutation and lifetime. Availability agrees with execution; refused uses do
   not silently spend resources.

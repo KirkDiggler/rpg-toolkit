@@ -65,8 +65,10 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
   *(proposed; investigation open)* — Use a Second Wind ring consumer to investigate
   grant, activation/cost and effect composition. The ring supplies its ability's
   level (R1), owns its charges across transfer (R2), and composes reusable effects
-  with usage/resource orchestration (R3). Concrete contracts and recharge remain
-  open; shared-machine extraction is outside this decision.
+  with usage/resource orchestration (R3). Short-or-long-rest recovery is authored
+  configuration (R4), with studio authoring the later goal. Concrete contracts,
+  capacity and rest eligibility remain open; shared-machine extraction is outside
+  this decision.
   *Question: can sources grant reusable abilities without copying behavior or
   hiding lifetime ownership?*
 - **0006** — Features: a registry for definitions, entity-centric storage for

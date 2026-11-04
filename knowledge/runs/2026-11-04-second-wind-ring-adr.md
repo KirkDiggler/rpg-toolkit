@@ -4,7 +4,7 @@ Slice [rpg-project#862](https://github.com/KirkDiggler/rpg-project/issues/862) o
 
 ## Shipped
 
-- No implementation shipped; the architectural choice remains Proposed, with R1–R3 (ring level, item-owned pools and item composition) recorded separately from open API/recharge/lifetime decisions — [ADR-0048](../../docs/adr/0048-equipment-granted-abilities.md).
+- No implementation shipped; the architectural choice remains Proposed, with R1–R4 (ring level, item-owned pools, composition and configurable recovery) recorded separately from open API/capacity/eligibility decisions — [ADR-0048](../../docs/adr/0048-equipment-granted-abilities.md).
 
 ## Decided
 
@@ -13,6 +13,8 @@ Slice [rpg-project#862](https://github.com/KirkDiggler/rpg-project/issues/862) o
 - KirkDiggler, 2026-11-04: the ring supplies its Second Wind level; level-1 and level-3 rings are examples, while rarity selecting the level remains a suggestion rather than a settled mapping — [R1](../../docs/adr/0048-equipment-granted-abilities.md#settled-use-case-parameter).
 
 - KirkDiggler, 2026-11-04: the item owns a separate pool that remains spent across transfer/re-equipping (R2); the item composes reusable effects with usage/resource orchestration (R3), while API/recharge remain open — [requirements](../../docs/adr/0048-equipment-granted-abilities.md#settled-use-case-parameter).
+
+- KirkDiggler, 2026-11-04: the first Second Wind ring uses normal short-or-long-rest recovery (R4); studio-configurable item/pool policy is the ultimate goal, not an editor deliverable for this slice — [requirement](../../docs/adr/0048-equipment-granted-abilities.md#settled-use-case-parameter).
 
 ## Found
 
