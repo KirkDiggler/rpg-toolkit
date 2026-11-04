@@ -60,6 +60,9 @@ func TestReserves_MarchOnFightRounds(t *testing.T) {
 	s.stepTo(besideTheCrossing)
 	s.struck(kingGate1, false)
 	require.Equal(t, encounter.ClockTurn, clockKind(t, s.enc, hero), "precondition: the gate fight is on")
+	// The gate door is held while gate-1 stands his post (rpg-project#835
+	// R7): he falls first, and the fight goes on.
+	s.standing.down[kingGate1] = true
 	s.open(kingGateDoor)
 	reserves := []encounter.MemberID{kingReserve, kingReserve2}
 	for _, id := range reserves {

@@ -31,7 +31,8 @@ func turnTheGarrison(t *testing.T) (*kingScene, map[encounter.MemberID]spatial.P
 	t.Helper()
 	// THE THRONE DOOR IS SHUT, as the file authors it: the march opens it
 	// on its way (rpg-project#715).
-	s := openTheCastle(t, besideTheCook)
+	// Outbound through the held gate: unheld pending R6 (rpg-project#835, open: does a post hold both ways).
+	s := openTheCastleAs(t, castleHost{at: besideTheCook, gateUnheld: true})
 	s.said(kingCook, "gossip", "persuasion", true)
 	s.said(kingCook, "ashford", "persuasion", true)
 	s.outOfTheKitchen()

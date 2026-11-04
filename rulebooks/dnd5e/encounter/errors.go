@@ -672,6 +672,12 @@ var (
 	// one who does not. A driven walk stops at one silently.
 	ErrBodyInTheWay = errors.New("encounter: a body is in the way")
 
+	// ErrDoorHeld is returned, inside a [*DoorHeldError], when OpenDoor, CloseDoor or Unlock is asked of a
+	// door a post holds against the actor (rpg-project#835 R7): a holder
+	// not allied with it, in a holding state, up and on a post cell. Its
+	// public reason names the holder the actor sees, else "someone".
+	ErrDoorHeld = errors.New("encounter: the door is held")
+
 	// ErrOutOfRange is returned when Interact's target stands farther than
 	// the configured range (default: adjacent, one cell) from the actor.
 	ErrOutOfRange = errors.New("encounter: target out of range")

@@ -2587,6 +2587,13 @@ func (e *cellQuery) walkerEdge(
 		if crossingErr != nil {
 			return false
 		}
+		// A HELD CROSSING IS CLOSED TO THIS MOVER (rpg-project#852, H2),
+		// open door or shut, before the door pass is asked: a route never
+		// plans through a post it would be refused at, and a walk never
+		// opens a held door. Per mover, so out of the shared crossing memo.
+		if e.heldEdge(mover, a, b) {
+			return false
+		}
 		// A DOOR THIS WALK WOULD OPEN is not in its way: the step onto
 		// it is the step through it, and costs what any step costs. Asked
 		// only of a step something closes, so an open floor pays nothing

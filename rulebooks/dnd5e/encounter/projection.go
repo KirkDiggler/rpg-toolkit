@@ -426,8 +426,14 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		}
 		out.Boundaries = append(out.Boundaries, b)
 	}
+	// AN EDGE DOOR'S EDGES ONLY: a footprint door's crossing is no edge a
+	// wall could stand on, and a hidden one's must stay masked below as the
+	// floor beside it is (rpg-project#852).
 	doorEdge := make(map[DoorEdge]bool, len(full.Doorways))
 	for _, dw := range full.Doorways {
+		if dw.Crossing {
+			continue
+		}
 		doorEdge[normalizeDoorEdge(DoorEdge{From: dw.From, To: dw.To})] = true
 	}
 	for _, id := range sortedDoorIDs(unknownDoors) {

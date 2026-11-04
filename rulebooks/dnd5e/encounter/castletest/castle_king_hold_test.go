@@ -1,0 +1,203 @@
+// Copyright (C) 2026 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package castletest
+
+// castle_king_hold_test.go is A POST HOLDS A PASSAGE on the castle
+// (rpg-project#852, S1b of the guard holds the gate, R5): the gate is a
+// two-cell opening with a double door, and gate-1's `posted` and `alert`
+// states hold the gate door's opening from either gatehouse-side cell of
+// it. With the door open and gate-1 on his post, no step through either
+// cell passes, and the stop names him; drawn off, cowed or downed, the
+// opening passes; and a second holder keeps it held when one is downed.
+//
+// The dice are not walked: the stand-aside is won by the route host.
+
+import (
+	"encoding/json"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
+)
+
+// The opening's cells as offset seats, for [castleHost.at] and
+// [castleHost.starts]: beneath the gate, beside it along the gate wall,
+// and the courtyard cell past the door.
+var (
+	beneathTheGateSeat    = spatial.Position{X: 0, Y: 7}
+	besideTheCrossingSeat = spatial.Position{X: -1, Y: 7}
+	pastTheGateSeat       = spatial.Position{X: 0, Y: 6}
+)
+
+// openTheHeldGate opens the castle with the gate door open and the sneak's
+// companion outside beside the stranger, whose word is a voice the post
+// hears.
+func openTheHeldGate(t *testing.T, host castleHost) *kingScene {
+	t.Helper()
+	host.doors = map[encounter.DoorID]encounter.DoorState{kingGateDoor: encounter.DoorIsOpen()}
+	host.players = []encounter.MemberInput{{ID: sneakCompanion, Kind: encounter.KindPlayer, Position: besideTheStranger}}
+
+	return openTheCastleAs(t, host)
+}
+
+// barred steps the hero and returns the stop's public reason, requiring a
+// held step: refused as a body is, never as the door, moving nobody.
+func (s *kingScene) barred(to spatial.Position) string {
+	s.t.Helper()
+	from := s.at(hero)
+	_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: to})
+	require.ErrorIs(s.t, err, encounter.ErrBodyInTheWay, "the held opening stops the hero")
+	var stop *encounter.StepObstructedError
+	require.ErrorAs(s.t, err, &stop)
+	require.Equal(s.t, from, s.at(hero), "and the refused step moved nobody")
+
+	return stop.PublicReason()
+}
+
+// crosses requires the hero's step to land.
+func (s *kingScene) crosses(to spatial.Position, msg string) {
+	s.t.Helper()
+	_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: to})
+	require.NoError(s.t, err, msg)
+	require.Equal(s.t, to, s.at(hero), msg)
+}
+
+func TestMadKingThePostHoldsTheGatesPassage(t *testing.T) {
+	t.Parallel()
+	held := string(kingGate1) + " bars the way"
+
+	t.Run("posted, neither cell of the open gate passes, and the stop names him", func(t *testing.T) {
+		t.Parallel()
+		s := openTheHeldGate(t, castleHost{at: besideTheCrossingSeat})
+		require.Equal(t, beneathTheGate, s.at(kingGate1), "precondition: gate-1 is on his post beneath the gate")
+		require.Equal(t, held, s.barred(pastTheGate), "beside him, through the opening's other cell")
+
+		other := openTheHeldGate(t, castleHost{
+			at: beneathTheGateSeat, starts: map[encounter.MemberID]spatial.Position{kingGate1: besideTheCrossingSeat},
+		})
+		require.Equal(t, besideTheCrossing, other.at(kingGate1), "precondition: gate-1 stands on his other post cell")
+		require.Equal(t, held, other.barred(pastTheGate), "and from his other post cell, through the first")
+	})
+
+	t.Run("alert on his post, still held", func(t *testing.T) {
+		t.Parallel()
+		s := openTheHeldGate(t, castleHost{at: besideTheCrossingSeat})
+		s.storedIn(kingGate1, "alert")
+		require.Equal(t, beneathTheGate, s.at(kingGate1), "precondition: alert on his post")
+		require.Equal(t, held, s.barred(pastTheGate), "alert on his post, he holds the gate")
+	})
+
+	t.Run("drawn off by a voice, it opens", func(t *testing.T) {
+		t.Parallel()
+		s := openTheHeldGate(t, castleHost{at: besideTheCrossingSeat})
+		require.Equal(t, held, s.barred(pastTheGate), "precondition: held")
+		s.voiceOutside()
+		// He answers the voice on the world's next round and walks back to
+		// his post after it, so the hero paces until he is off both post
+		// cells and the hero stands beside the crossing again.
+		offPost := func() bool {
+			at := s.at(kingGate1)
+			return at != beneathTheGate && at != besideTheCrossing && s.at(hero) == besideTheCrossing
+		}
+		require.True(t, s.pace(besideTheCrossing, westDoorPost, 24, offPost), "the voice draws him off his post")
+		s.crosses(pastTheGate, "drawn off, he holds nothing: the hero crosses")
+	})
+
+	t.Run("cowed, the opening passes", func(t *testing.T) {
+		t.Parallel()
+		s := openTheHeldGate(t, castleHost{at: gatehouseSeat})
+		s.walkTo(s.at(kingCaptain))
+		s.said(kingCaptain, "stand-aside", "intimidation", true)
+		require.Equal(t, "cowed", machineState(t, s.enc, kingGate1), "precondition: he stood aside")
+		s.stepTo(besideTheCrossing)
+		s.crosses(pastTheGate, "cowed, he holds nothing")
+	})
+
+	t.Run("turned, the opening passes", func(t *testing.T) {
+		t.Parallel()
+		// The state alone, stored: still neutral to the party, so what
+		// opens the gate is that `turned` holds nothing, not the stance.
+		s := openTheHeldGate(t, castleHost{at: besideTheCrossingSeat})
+		s.storedIn(kingGate1, "turned")
+		require.Equal(t, beneathTheGate, s.at(kingGate1), "precondition: still standing beneath the gate")
+		require.False(t, s.hostile(hero, kingGate1), "precondition: and still neutral")
+		s.crosses(pastTheGate, "turned, he holds nothing")
+	})
+
+	t.Run("downed, the opening passes", func(t *testing.T) {
+		t.Parallel()
+		s := openTheHeldGate(t, castleHost{at: besideTheCrossingSeat})
+		require.Equal(t, held, s.barred(pastTheGate), "precondition: held")
+		s.standing.down[kingGate1] = true
+		s.crosses(pastTheGate, "downed, he holds nothing")
+	})
+
+	t.Run("with gate-2 posted on the same door, downing one does not open it", func(t *testing.T) {
+		t.Parallel()
+		s := openTheHeldGate(t, castleHost{
+			at:         pastTheGateSeat,
+			postedLike: []encounter.MemberID{kingGate2},
+			starts:     map[encounter.MemberID]spatial.Position{kingGate2: besideTheCrossingSeat},
+		})
+		require.Equal(t, besideTheCrossing, s.at(kingGate2), "precondition: gate-2 stands on the post's other cell")
+
+		s.standing.down[kingGate1] = true
+		require.Equal(t, string(kingGate2)+" bars the way", s.barred(beneathTheGate),
+			"gate-1 down, gate-2 still holds the opening, across his cell")
+
+		s.standing.down[kingGate2] = true
+		s.crosses(beneathTheGate, "both down, the opening passes")
+	})
+}
+
+// storedIn saves the run, stands a creature in a state of its recipe in the
+// record, and loads it back: an alert guard without the sound that would
+// also walk him (the post's voice row draws him in the round he hears it).
+func (s *kingScene) storedIn(id encounter.MemberID, state string) {
+	s.t.Helper()
+	blob, err := json.Marshal(s.enc.ToData())
+	require.NoError(s.t, err)
+	var data encounter.EncounterData
+	require.NoError(s.t, json.Unmarshal(blob, &data))
+	found := false
+	for i := range data.Members {
+		if data.Members[i].ID == id {
+			if data.Members[i].Machine == nil {
+				data.Members[i].Machine = &encounter.MachineData{}
+			}
+			data.Members[i].Machine.State, found = state, true
+		}
+	}
+	require.True(s.t, found, "%s is in the run", id)
+	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		Data: data, Capabilities: s.host.capabilities(s.strikes, s.standing),
+	})
+	require.NoError(s.t, err, "the record loads with %s %s", id, state)
+	s.enc = enc
+	for _, m := range s.enc.ToData().Members {
+		if m.ID == id {
+			require.Equal(s.t, state, m.Machine.State)
+		}
+	}
+}
+
+// TestMadKingTheHeldGateDoorRefusesTheParty is R7 (rpg-project#835): with
+// gate-1 posted, the hero beside the shut gate door cannot open it, and is
+// told who bars it; cowed, he opens it.
+func TestMadKingTheHeldGateDoorRefusesTheParty(t *testing.T) {
+	t.Parallel()
+	s := openTheCastleAs(t, castleHost{at: besideTheCrossingSeat})
+	require.Equal(t, beneathTheGate, s.at(kingGate1), "precondition: gate-1 is on his post")
+
+	_, err := s.enc.OpenDoor(&encounter.OpenDoorInput{Door: kingGateDoor, Actor: hero})
+	require.ErrorIs(t, err, encounter.ErrDoorHeld, "the held gate door refuses the hero")
+	var held *encounter.DoorHeldError
+	require.ErrorAs(t, err, &held)
+	require.Equal(t, string(kingGate1)+" bars the door", held.PublicReason(), "and names the guard he sees")
+
+	s.storedIn(kingGate1, "cowed")
+	s.open(kingGateDoor)
+}

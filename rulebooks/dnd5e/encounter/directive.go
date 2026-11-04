@@ -309,6 +309,11 @@ func (e *cellQuery) routeStraight(mover MemberID, from, end spatial.Position, bu
 // which admit only standable cells, and [Encounter.standableEnd], which admits
 // everything the step would enter and then asks where the walk may end.
 func (e *cellQuery) stepInto(mover MemberID, prev, cell spatial.Position) (CellFact, bool, error) {
+	// A held crossing is not crossed, as a shut door's is not
+	// (rpg-project#852): a walk is cut before it.
+	if e.heldEdge(mover, prev, cell) {
+		return CellFact{}, false, nil
+	}
 	_, blocked, err := e.crossingBlocked(prev, cell)
 	if err != nil {
 		return CellFact{}, false, err

@@ -283,6 +283,7 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 		Members:      roomMembers(gp),
 		Cells:        roomCells(gp),
 		Facts:        roomFacts(s),
+		Doors:        roomDoorIDs(gp),
 		Bundled:      true,
 	})
 	g.factions()

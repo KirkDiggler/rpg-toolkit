@@ -126,11 +126,11 @@ type OpenDoorOutput struct {
 // ([Encounter.refuseOutOfDoorReach]).
 //
 // Validation order (R5 atomicity): nil input → closed → no such door → the
-// probe law → the actor is a member → reach → locked → already open → the
-// change itself.
+// probe law → the actor is a member → reach → held → locked → already open →
+// the change itself.
 //
 // Errors: ErrNilInput, ErrClosed, ErrNoDoor, ErrNotMember, ErrBadPlacement,
-// ErrOutOfRange, ErrLocked, ErrBadDoor.
+// ErrOutOfRange, ErrDoorHeld, ErrLocked, ErrBadDoor.
 func (e *Encounter) OpenDoor(in *OpenDoorInput) (*OpenDoorOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("open door: %w", ErrNilInput)
@@ -151,6 +151,11 @@ func (e *Encounter) OpenDoor(in *OpenDoorInput) (*OpenDoorOutput, error) {
 	}
 	if err := e.refuseOutOfDoorReach("open door", door, in.Actor); err != nil {
 		return nil, err
+	}
+	// A HELD DOOR REFUSES ITS VERBS (rpg-project#835 R7), before its lock
+	// or its state is told: the holder bars it.
+	if err := e.refuseHeldDoor(door, in.Actor); err != nil {
+		return nil, fmt.Errorf("open door %q: %w", door.id, err)
 	}
 
 	if lock, locked := door.state.Lock(); locked {
@@ -219,11 +224,11 @@ type CloseDoorOutput struct {
 // ([Encounter.refuseOutOfDoorReach]).
 //
 // Validation order (R5 atomicity): nil input → closed → no such door → the
-// probe law → the actor is a member → reach → already closed → the change
-// itself.
+// probe law → the actor is a member → reach → held → already closed → the
+// change itself.
 //
 // Errors: ErrNilInput, ErrClosed, ErrNoDoor, ErrNotMember, ErrBadPlacement,
-// ErrOutOfRange, ErrBadDoor.
+// ErrOutOfRange, ErrDoorHeld, ErrBadDoor.
 func (e *Encounter) CloseDoor(in *CloseDoorInput) (*CloseDoorOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("close door: %w", ErrNilInput)
@@ -244,6 +249,9 @@ func (e *Encounter) CloseDoor(in *CloseDoorInput) (*CloseDoorOutput, error) {
 	}
 	if err := e.refuseOutOfDoorReach("close door", door, in.Actor); err != nil {
 		return nil, err
+	}
+	if err := e.refuseHeldDoor(door, in.Actor); err != nil {
+		return nil, fmt.Errorf("close door %q: %w", door.id, err)
 	}
 
 	if door.state.Kind() != DoorOpen {
@@ -381,11 +389,11 @@ type UnlockOutput struct {
 // the room is not one this attempt ever touched.
 //
 // Validation order (R5 atomicity): nil input → closed → no such door → the
-// probe law → the actor is a member → reach → not locked → the applied route
-// → the change itself.
+// probe law → the actor is a member → reach → held → not locked → the applied
+// route → the change itself.
 //
 // Errors: ErrNilInput, ErrClosed, ErrNoDoor, ErrNotMember, ErrBadPlacement,
-// ErrOutOfRange, ErrBadDoor.
+// ErrOutOfRange, ErrDoorHeld, ErrBadDoor.
 func (e *Encounter) Unlock(in *UnlockInput) (*UnlockOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("unlock: %w", ErrNilInput)
@@ -407,6 +415,11 @@ func (e *Encounter) Unlock(in *UnlockInput) (*UnlockOutput, error) {
 	}
 	if err := e.refuseOutOfDoorReach("unlock", door, in.Actor); err != nil {
 		return nil, err
+	}
+	// Before the lock is read: a held door takes no attempt, and a host asks
+	// [Encounter.DoorHeldFor] before it rolls one.
+	if err := e.refuseHeldDoor(door, in.Actor); err != nil {
+		return nil, fmt.Errorf("unlock %q: %w", door.id, err)
 	}
 
 	lock, locked := door.state.Lock()

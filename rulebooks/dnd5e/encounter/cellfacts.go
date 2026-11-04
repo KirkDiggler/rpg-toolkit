@@ -173,6 +173,13 @@ type cellQuery struct {
 	// pays for each answer once.
 	cells     map[CellAtInput]CellFact
 	crossings map[[2]spatial.Position]crossingAnswer
+
+	// held is this read's holds (post.go), taken once when a crossing is
+	// first asked about, under the same promise: nothing moves inside a
+	// read. KEPT APART FROM crossings, which every mover shares, because a
+	// hold is an answer about a mover and a holder ([cellQuery.heldEdge]).
+	held     map[DoorEdge][]postHolder
+	heldRead bool
 }
 
 // crossingAnswer is one memoized crossing fold: what closes it, if anything.

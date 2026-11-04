@@ -69,10 +69,27 @@ type StatesSpec struct {
 // never into the recipe (a machine state carries only its transitions). A
 // creature none of whose states blocks blocks as it is declared. Refused on a
 // terminal state, which ends the machine and holds no post.
+//
+// Holds is the post this state holds (rpg-project#852): the door whose
+// opening a creature in this state bars to every mover not allied with it,
+// while it stands on one of the post's cells. Compiled into the placement's
+// [MonsterPlacement.Posts], the encounter's binding onto the recipe, never
+// into the recipe. Refused on a terminal state, as `blocks` is.
 type StateSpec struct {
 	Transitions []TransitionSpec `yaml:"transitions,omitempty" json:"transitions,omitempty"`
 	Terminal    bool             `yaml:"terminal,omitempty" json:"terminal,omitempty"`
 	Blocks      bool             `yaml:"blocks,omitempty" json:"blocks,omitempty"`
+	Holds       *HoldsSpec       `yaml:"holds,omitempty" json:"holds,omitempty"`
+}
+
+// HoldsSpec is a state's post: `holds: { door: <id>, at: [{ q, r }, …] }`.
+// Door is the authored id of a door this document declares; At is the cells
+// a holder stands on to hold it, in the `{ q, r }` form a table's
+// `toward: { at }` uses, each refused unless it is floor. No `at` means the
+// cell the creature is placed at.
+type HoldsSpec struct {
+	Door string     `yaml:"door" json:"door"`
+	At   []RoomCell `yaml:"at,omitempty" json:"at,omitempty"`
 }
 
 // TransitionSpec is one transition: on a beat, when its conditions hold, do
@@ -276,6 +293,9 @@ func (g *grammar) placeStates(path string, s *StatesSpec, owner string) {
 		if st.Terminal && st.Blocks {
 			fail(sp+".blocks", "a terminal state ends the machine and holds no post: `blocks` is for a state the creature stands in")
 		}
+		if st.Holds != nil {
+			g.placeHolds(sp+".holds", st, fail)
+		}
 		for i, t := range st.Transitions {
 			tp := fmt.Sprintf("%s.transitions[%d]", sp, i)
 			if !encounter.ValidMachineBeat(t.On) {
@@ -403,6 +423,56 @@ func recipeOf(s *StatesSpec, owner string) (*machine.Recipe, error) {
 	return out, nil
 }
 
+// placeHolds judges a state's post: not on a terminal state, a door this
+// document declares, and cells that are floor in its frame.
+func (g *grammar) placeHolds(path string, st StateSpec, fail func(p, format string, args ...any)) {
+	if st.Terminal {
+		fail(path, "a terminal state ends the machine and holds no post: `holds` is for a state the creature stands in")
+	}
+	switch {
+	case st.Holds.Door == "":
+		fail(path+".door", "a post names the door whose opening it holds: write `door: <door id>`")
+	case !g.doors[st.Holds.Door]:
+		fail(path+".door", "%q is not a door this document declares", st.Holds.Door)
+	}
+	for i := range st.Holds.At {
+		answer := g.cells.cellAt(authoredCell{hex: &st.Holds.At[i]})
+		if answer.refusal != "" {
+			fail(fmt.Sprintf("%s.at[%d]", path, i), "%s", answer.refusal)
+		}
+	}
+}
+
+// postsOf is the posts a creature's winning states hold — its own, else its
+// faction's, the layer [machineOf] reads — each door qualified to the
+// encounter's `<key>/<id>`, or nil when none holds one.
+func postsOf(own, faction *StatesSpec, key string) map[string]encounter.Post {
+	s := own
+	if s == nil {
+		s = faction
+	}
+	if s == nil {
+		return nil
+	}
+	var out map[string]encounter.Post
+	for _, name := range s.stateNames() {
+		h := s.States[name].Holds
+		if h == nil {
+			continue
+		}
+		post := encounter.Post{Door: encounter.DoorID(key + "/" + h.Door)}
+		for _, cell := range h.At {
+			post.Cells = append(post.Cells, hexCell(cell))
+		}
+		if out == nil {
+			out = map[string]encounter.Post{}
+		}
+		out[name] = post
+	}
+
+	return out
+}
+
 // blockingOf is the states a creature's body blocks in, in name order: those
 // its winning states block is written `blocks: true` on — its own, else its
 // faction's, the layer [machineOf] reads — or nil when none is.
@@ -481,4 +551,25 @@ func (g *grammar) placeCreatureKeys(path, faction string, own map[string][]Answe
 		g.fail(path, "this creature's table carries %q and the states it runs never pick it: they pick %s",
 			key, strings.Join(picked, ", "))
 	}
+}
+
+// roomDoorIDs is every door a single-room document declares, by its
+// authored id: each has a binding, which is what lowers it to a door.
+func roomDoorIDs(gp *RoomGameplaySource) map[string]bool {
+	out := make(map[string]bool, len(gp.DoorBindings))
+	for id := range gp.DoorBindings {
+		out[id] = true
+	}
+
+	return out
+}
+
+// specDoorIDs is every door a v2 document declares, by its authored id.
+func specDoorIDs(spec *Spec) map[string]bool {
+	out := make(map[string]bool, len(spec.Doors))
+	for _, d := range spec.Doors {
+		out[d.ID] = true
+	}
+
+	return out
 }

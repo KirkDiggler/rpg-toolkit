@@ -216,9 +216,17 @@ func (e *Encounter) revealDoorsPayload(recipient MemberID, c *concealment) ([]ma
 		if !ok {
 			continue
 		}
-		doorways := make([]map[string]spatial.Position, 0, len(d.Edges))
+		doorways := make([]map[string]interface{}, 0, len(d.Edges))
 		for _, edge := range d.Edges {
-			doorways = append(doorways, map[string]spatial.Position{"from": edge.From, "to": edge.To})
+			doorways = append(doorways, map[string]interface{}{"from": edge.From, "to": edge.To})
+		}
+		// A FOOTPRINT DOOR'S CROSSINGS, marked (rpg-project#852, H6): a door
+		// revealed under fog reaches the map with the crossings it closes,
+		// as the atlas lists them, or a planner would walk through it.
+		if d.Placement != nil {
+			for _, edge := range e.doorOpening(d.ID) {
+				doorways = append(doorways, map[string]interface{}{"from": edge.From, "to": edge.To, "crossing": true})
+			}
 		}
 		entry := map[string]interface{}{
 			"door":     d.ID,
