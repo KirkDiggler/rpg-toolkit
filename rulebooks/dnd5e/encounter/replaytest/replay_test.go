@@ -480,15 +480,12 @@ func TestReplay_CastleGateScript(t *testing.T) {
 				require.NoError(t, w.strike(struck(id), []encounter.MemberID{id}))
 			}
 			require.False(t, w.fighting(hero), "the gate's three are down and the fight is over")
-			// gate-1 stays posted beneath the gate (rpg-project#857): the
-			// troupe opens it from the opening's other cell and paces
-			// through it by its pass, in past him and back out.
-			w.walkTo(hero, besideTheGate)
-			if w.at(hero) != besideTheGate {
-				require.NoError(t, w.step(hero, besideTheGate))
+			w.walkTo(hero, beneathTheGate)
+			if w.at(hero) != beneathTheGate {
+				require.NoError(t, w.step(hero, beneathTheGate))
 			}
 			require.NoError(t, w.openDoor(kingGateDoor, hero))
-			w.pace(hero, besideTheGate, castleCell(0, 6), 3)
+			w.pace(hero, beneathTheGate, besideTheGate, 3)
 		}, drivenHitsTries, hit)
 		require.Equal(t, 3, countBeats(t, log, string(encounter.OutcomeDown)), "precondition: three fell")
 		require.Positive(t, countDrivenSwings(t, log), "precondition: driven attacks swung")

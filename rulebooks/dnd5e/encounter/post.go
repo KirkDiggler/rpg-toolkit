@@ -648,6 +648,11 @@ func (e *Encounter) ObservedHolds(in *ViewInput) (map[MemberID]HeldDoor, error) 
 // name order whose post does, else a post of the door with no settings and
 // no cells. A sighting names the door; the settings are read here, at the
 // time of asking.
+//
+// THE FALLBACK IS FOR THE GAP BETWEEN A STATE CHANGE AND THE NEXT LOOK: the
+// viewer's sighting still names the door while his new state posts none
+// (cowed, not yet seen to stand aside). Without it the viewer would be told
+// a bare both-ways hold with no side, a direction the author never wrote.
 func (e *Encounter) livePost(id MemberID, door DoorID) Post {
 	m, ok := e.members[id]
 	if !ok {

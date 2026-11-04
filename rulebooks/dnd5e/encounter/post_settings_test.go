@@ -14,11 +14,13 @@ package encounter
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -474,4 +476,55 @@ func TestAStoredPostKeepsItsSettings(t *testing.T) {
 			require.ErrorIs(t, err, ErrInvalidData)
 		})
 	}
+}
+
+// TestASettingsChangeIsAPostChange: a state change between two posts on the
+// same door and cells that differ only in their settings changes what his
+// post holds, so his cell goes to the next look as any post change does
+// ([Encounter.afterStep], rpg-project#852 H5). Two states with the same
+// settings change nothing there.
+func TestASettingsChangeIsAPostChange(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		alert   PostDirection
+		changed bool
+	}{
+		{"entering to both ways", PostBothWays, true},
+		{"entering to entering", PostEntering, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			guard := gatehouseGuard(t, PostEntering, "")
+			alert := guard.Posts["alert"]
+			alert.Against = tc.alert
+			guard.Posts["alert"] = alert
+			enc := sidedHall(t, holdLeafDoor(DoorIsOpen()), holdSouthEast, guard)
+			m := enc.members[postedGuard]
+			p := enc.programFor(m)
+			require.NotNil(t, p)
+			enc.pendingCells, enc.blockingTurned = nil, false
+
+			m.Machine.State = "alert"
+			require.NoError(t, enc.afterStep(postedGuard, m, p, machine.Stepped{Fired: true, From: "posted", To: "alert"},
+				uint64(enc.clock.ToData().HighWater), false))
+			require.Equal(t, tc.changed, slices.Contains(enc.pendingCells, holdNorthWest), "his cell goes to the next look")
+			require.Equal(t, tc.changed, enc.blockingTurned)
+		})
+	}
+}
+
+// TestObservedHoldsReadTheAuthoredPostAfterHeLeavesIt: between a state
+// change and the next look, the viewer's current sighting still names the
+// door while his new state names no post. The settings then come from the
+// state of his that posts that door ([Encounter.livePost]), so the viewer is
+// told the authored direction and side, not a bare both ways.
+func TestObservedHoldsReadTheAuthoredPostAfterHeLeavesIt(t *testing.T) {
+	enc := sidedHall(t, holdLeafDoor(DoorIsOpen()), holdSouthEast, gatehouseGuard(t, PostEntering, ""))
+	enc.members[postedGuard].Machine.State = "cowed"
+	_, holds := enc.memberHolds(postedGuard, nil)
+	require.False(t, holds, "precondition: cowed, he holds nothing now")
+
+	held, err := enc.ObservedHolds(&ViewInput{Member: "alice"})
+	require.NoError(t, err)
+	require.Equal(t, HeldDoor{Door: holdLeaf, Against: PostEntering, Side: []spatial.Position{holdNorthWest, holdNorthEast}},
+		held[postedGuard], "the sighting not yet looked again, the settings are the post's he held")
 }
