@@ -1034,9 +1034,27 @@ type Sighting struct {
 	// the Atlas's doorways name it ("the-mad-king/gate-wall-door"). The
 	// composition's answer ([encounter.Encounter.ObservedHolds]) carried as
 	// given: present only for a live sighting, never for a memory, never for
-	// an ally (an ally is barred by nothing), and never for a door this viewer
-	// has not found. Empty holds nothing.
+	// an ally (an ally is barred by nothing), never for a door this viewer
+	// has not found, and never for a viewer who knows the post's pass fact
+	// (rpg-project#857): it walks through. A hold is told to a viewer on
+	// either side of a one-way post. Empty holds nothing.
 	HoldsDoor string `json:"holds_door,omitempty"`
+
+	// HoldsAgainst is which crossings of [Sighting.HoldsDoor] the holder bars
+	// (rpg-project#857, R6): "both", "entering" (a crossing that starts on
+	// the post's side, [Sighting.HoldsSide]) or "leaving" (one that starts
+	// off it). The composition's word carried as given, always one of the three
+	// when HoldsDoor is set and empty when it is not. A hold is told to a
+	// viewer on either side, so a client previews the barred crossings from
+	// any distance and orients them by HoldsSide.
+	HoldsAgainst string `json:"holds_against,omitempty"`
+
+	// HoldsSide is the held door's crossing cells on the post's side, one
+	// per crossing, each once, in the composition's cell order: a crossing
+	// starts on the post's side when it leaves one of these cells. Empty when
+	// HoldsDoor is, and when the post has no one side (a both-ways post whose
+	// crossings straddle no single region edge).
+	HoldsSide []spatial.Position `json:"holds_side,omitempty"`
 
 	// Subject names what is perceived.
 	Subject string `json:"subject"`

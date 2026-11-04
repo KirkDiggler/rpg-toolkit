@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -462,6 +463,9 @@ func projectView(enc *encounter.Encounter, in *ViewInput) (*ViewOutput, error) {
 	// the encounter's answer: its sight testimony keeps the held door and
 	// strips it on delivery, so this read is the door's one way out, with
 	// memories, allies and doors the viewer has not found already left out.
+	// The post's direction and side come with it (rpg-project#857, R6), read
+	// from the live post, and a viewer who knows the post's pass is told no
+	// hold at all.
 	holds, err := enc.ObservedHolds(&encounter.ViewInput{Member: encounter.MemberID(in.Member)})
 	if err != nil {
 		return nil, fmt.Errorf("view holds: %w", translate(err))
@@ -472,7 +476,11 @@ func projectView(enc *encounter.Encounter, in *ViewInput) (*ViewOutput, error) {
 	}
 	out := projectSightings(holdings, rosterNames(roster), rosterKinds(roster), stances)
 	for i := range out {
-		out[i].HoldsDoor = string(holds[encounter.MemberID(out[i].Subject)])
+		if held, ok := holds[encounter.MemberID(out[i].Subject)]; ok {
+			out[i].HoldsDoor = string(held.Door)
+			out[i].HoldsAgainst = string(held.Against)
+			out[i].HoldsSide = slices.Clone(held.Side)
+		}
 		passage, exists := passages[encounter.MemberID(out[i].Subject)]
 		if !exists {
 			continue
