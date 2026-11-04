@@ -4,11 +4,13 @@ Slice [rpg-project#862](https://github.com/KirkDiggler/rpg-project/issues/862) o
 
 ## Shipped
 
-- No implementation shipped; this checkpoint proposes an architectural question and alternatives, without accepting an API or item rules — [ADR-0048](../../docs/adr/0048-equipment-granted-abilities.md).
+- No implementation shipped; the architectural choice remains Proposed, with the ring-level requirement R1 recorded separately from open API/use-lifetime decisions — [ADR-0048](../../docs/adr/0048-equipment-granted-abilities.md).
 
 ## Decided
 
 - KirkDiggler, 2026-11-04: start with the equipment-granted Second Wind consumer decision; mind/machine frames its own problem and shared-machine extraction is not this decision — [slice direction](https://github.com/KirkDiggler/rpg-project/issues/862).
+
+- KirkDiggler, 2026-11-04: the ring supplies its Second Wind level; level-1 and level-3 rings are examples, while rarity selecting the level remains a suggestion rather than a settled mapping — [R1](../../docs/adr/0048-equipment-granted-abilities.md#settled-use-case-parameter).
 
 ## Found
 

@@ -63,8 +63,9 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
   distinct domain types.
 - **[0048-equipment-granted-abilities.md](0048-equipment-granted-abilities.md)**
   *(proposed; investigation open)* — Use a Second Wind ring consumer to investigate
-  grant, activation/cost and effect composition; no ring rules or shared-machine
-  extraction accepted. *Question: can sources grant reusable abilities without
+  grant, activation/cost and effect composition. The ring supplies its ability's
+  level (R1); uses, composition and shared-machine extraction are not decided.
+  *Question: can sources grant reusable abilities without
   copying behavior or hiding lifetime ownership?*
 - **0006** — Features: a registry for definitions, entity-centric storage for
   ownership. No central who-has-what table.

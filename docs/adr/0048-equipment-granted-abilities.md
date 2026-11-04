@@ -4,8 +4,8 @@ Date: 2026-11-04
 
 ## Status
 
-Proposed — investigation in progress; no architecture or ring gameplay choice is
-accepted by this record yet.
+Proposed — architectural investigation in progress. The ring-authored ability
+level is settled below; composition/API, uses and grant lifetime remain open.
 
 Consumer slice: [Keep signature combat and loot S1 — Second Wind ring](https://github.com/KirkDiggler/rpg-project/issues/862),
 under [#850](https://github.com/KirkDiggler/rpg-project/issues/850).
@@ -61,9 +61,10 @@ rather than teach the host or generic effects tool what this ring means.
 Reuse `features.SecondWind` with a new source of ownership. This is the shortest
 route to exercising the current class ability, its uses and rest behavior.
 However, it carries fighter eligibility, fighter-level scaling, private resource
-ownership and executable-feature activation. It may answer a deliberately
-fighter-only ring, but it does not by itself demonstrate the reusable grant and
-activation shape sought here. Inspect rather than silently weaken those rules.
+ownership and executable-feature activation. This option was considered while
+fighter-only ring behavior was still open. The operator's item-authored level
+requirement below means unmodified reuse cannot supply the ring's intended level;
+keep this option as the baseline, not a reason to alter the wearer's class levels.
 
 ### B. Compose the grant with reusable activation and effect behavior
 
@@ -88,9 +89,10 @@ to explain why a locally working ring alone would be insufficient evidence.
 
 ## Decision
 
-No implementation choice is accepted yet. Investigate B against a concrete ring
-use case and compare it with A using actual consumer evidence. The operator has
-authorized the ADR/investigation, not a public API, migration or guessed item rules.
+No implementation choice is accepted yet. Investigate B against the ring use case,
+using A's existing behavior as a comparison baseline. The operator has authorized
+the ADR/investigation and the item-level parameter below, not a public API,
+migration or the remaining item rules.
 
 The proposed separation to exercise is:
 
@@ -112,20 +114,34 @@ where applicable, preserving its generic import seam. Finding that the ring
 alone does not exercise an ongoing effect is evidence to record, not a reason
 to invent one. A contrasting consumer may then be proposed to test that seam.
 
+### Settled use-case parameter
+
+**R1 — Ring-authored Second Wind level.** Settled by KirkDiggler, 2026-11-04.
+The ring supplies the level for its granted Second Wind, rather than requiring
+that level from the wearer's Fighter class. Level-1 and level-3 rings are concrete
+examples: their granted uses heal `1d10 + 1` and `1d10 + 3`, respectively.
+The requirement is scoped to the granted ability; it does not authorize changing
+the wearer's class levels or overwriting a class-granted Second Wind's scaling.
+A wearer with no fighter levels can receive the ring-supplied level. This settles
+the level source, not unrelated eligibility/attunement rules.
+
+The operator suggested rarity might determine the item's level. That remains a
+possibility, not an accepted rarity-to-level mapping or a requirement to implement
+rarity now. Level 1 and level 3 are examples, not a declared exhaustive range.
+
 ### Open requirements and decisions
 
-1. **Eligibility and meaning:** does the ring grant Second Wind to a wearer with
-   no fighter levels? If so, what supplies its healing amount? Current class
-   restrictions are evidence about today's implementation, not a product ruling.
-2. **Uses and restoration:** which use pool belongs to the item or beneficiary;
+1. **Uses and restoration:** which use pool belongs to the item or beneficiary;
    how does it coexist with a class-granted use; what restores it?
-3. **Grant lifetime:** when does possession/equipment make the ability available;
+2. **Grant lifetime:** when does possession/equipment make the ability available;
    what survives removal, re-equipping or transfer; what happens to an effect
    already produced? Immediate HP already regained is distinct from future access.
-4. **Consumer contract:** what form makes the granted ability inspectable and
+3. **Consumer contract:** what form makes the granted ability inspectable and
    executable without content-ref dispatch, duplicate rules or double payment?
-5. **Identity and reload:** what distinguishes separate grants and which mutable
+4. **Identity and reload:** what distinguishes separate grants and which mutable
    facts must round-trip without minting uses or duplicating behavior?
+5. **Content policy, if needed later:** whether and how rarity selects the authored
+   level; no rarity table is needed to exercise explicit level-1/level-3 examples.
 
 The operator's pending choices live as a checklist on the PR/slice. Settle only
 what is needed for the bounded example; do not turn the ring into a prerequisite
@@ -135,6 +151,9 @@ for designing all equipment, spells or conditions.
 
 - A runnable consumer example uses actual reusable components; substitutes and
   unexercised boundaries are identified.
+- With a controlled d10 result of 6, level-1 and level-3 ring grants produce
+  healing calculations of 7 and 9 for a wearer with no fighter levels. Class-level
+  data remains unchanged; actual restored HP still respects the recipient's rules.
 - The agreed grant/use/removal and round-trip cases show one owner for each
   mutation and lifetime. Availability agrees with execution; refused uses do
   not silently spend resources.
