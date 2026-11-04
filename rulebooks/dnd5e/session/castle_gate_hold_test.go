@@ -300,3 +300,26 @@ func worldGateState(t *testing.T, c *freeRoamCastle) string {
 	require.FailNow(t, "the world holds no gate door")
 	return ""
 }
+
+// TestCastleAHeldDoorOutOfReachIsOutOfReach (rpg-project#852, R7): the
+// verbs' order holds at the session too. Alice sees the held, locked gate
+// from cells away: her Unlock is out of reach, not barred, and no die is
+// thrown.
+func TestCastleAHeldDoorOutOfReachIsOutOfReach(t *testing.T) {
+	c := openTheCastleForTwo(t, 18)
+	lock := &encounter.LockData{Approaches: []encounter.CheckApproachData{{Ability: "dex", DC: 15}}}
+	c.setTheGateInTheRecord(t, "locked", lock)
+	path := c.walkInto(t, besideTheCastleGate)
+	require.GreaterOrEqual(t, len(path), 4, "precondition: the walk to the gate is long enough to stop short")
+	short := c.move(t, path[:len(path)-3])
+	require.Equal(t, session.MovementCompleted, short.Status, "precondition: alice stops short: %s", short.StopReason)
+	known, err := c.mgr.Doors(context.Background(), &session.DoorsInput{Session: "sess", Member: "alice"})
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, slicesIndex(known.Doors, castleGateDoor), 0, "precondition: she knows the gate")
+
+	before := c.dice.rolls
+	_, err = c.mgr.Unlock(context.Background(), &session.UnlockInput{Session: "sess", Member: "alice", Door: castleGateDoor})
+	require.ErrorIs(t, err, session.ErrOutOfRange, "a lock across the gatehouse is out of reach first")
+	require.NotErrorIs(t, err, session.ErrDoorHeld, "and not barred, which she would only learn at the door")
+	require.Equal(t, before, c.dice.rolls, "no die is thrown")
+}

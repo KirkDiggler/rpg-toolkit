@@ -4,7 +4,7 @@ Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), 
 
 ## Shipped
 
-- `go.mod` pins encounter at the pseudo-version of #2263's head 979466c0 while it is in review, after b727dad4 before R7 and 61f09764 before `DoorHeldFor`. The release tag replaces it once #2263 merges.
+- `go.mod` pins encounter at the pseudo-version of #2263's head 06567a22 while it is in review, after b727dad4 before R7, 61f09764 before `DoorHeldFor`, and 979466c0 before its reach check. The release tag replaces it once #2263 merges.
 - `mind/machine` becomes a direct requirement. The turn-clock test builds a posted recipe with it.
 - Launch hands the placement's posts to the join beside its blocking states at [`launch.go:242`](https://github.com/KirkDiggler/rpg-toolkit/blob/c6ccada9/rulebooks/dnd5e/session/launch.go#L242). Without it the castle's gate-1 holds his one cell, and the party steps through the opening beside him.
 - [`TestCastleTheLaunchSeatsTheGatePost`](https://github.com/KirkDiggler/rpg-toolkit/blob/c6ccada9/rulebooks/dnd5e/session/castle_gate_hold_test.go#L67) asserts gate-1 is seated with the posts the author wrote, both cells and the qualified door, and gate-2 with none.
@@ -49,6 +49,6 @@ Ruled on lane #835, with the #855 design review's two additions.
 ### Found in R7
 
 - Unlock reads the lock through what the member knows of the door. A lock set in the record after alice saw the gate shut never rolls, so the first locked test passed without the pre-check. The gate is now locked before she arrives, with a precondition that she knows it.
-- `DoorHeldFor` does not check reach, while the encounter's door verbs check reach before the hold. An Unlock from out of reach on a held door now answers the hold rather than out of range.
+- `DoorHeldFor` at 979466c0 did not check reach, while the encounter's door verbs check reach before the hold, so an Unlock from out of reach on a held door answered the hold. 06567a22 checks reach first. `TestCastleAHeldDoorOutOfReachIsOutOfReach` pins the order: red on 979466c0, green on 06567a22.
 
 — cross-team agent, on behalf of KirkDiggler
