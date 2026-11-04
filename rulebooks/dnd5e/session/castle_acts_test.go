@@ -42,14 +42,18 @@ const castleFixture = "dungeonspec/testdata/world-builder-v4-castle.yaml"
 type castleDice struct {
 	mu   sync.Mutex
 	d20s []int
+	// rolls counts every die thrown, any size, for a test that must show
+	// none was.
+	rolls int
 }
 
 func (d *castleDice) Roll(_ context.Context, size int) (int, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.rolls++
 	if size != 20 {
 		return 1, nil
 	}
-	d.mu.Lock()
-	defer d.mu.Unlock()
 	face := d.d20s[0]
 	if len(d.d20s) > 1 {
 		d.d20s = d.d20s[1:]

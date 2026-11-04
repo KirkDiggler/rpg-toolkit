@@ -291,6 +291,14 @@ func (m *Manager) Unlock(ctx context.Context, in *UnlockInput) (*UnlockOutput, e
 		}
 	}
 
+	// A HELD DOOR IS ANSWERED BY ITS HOLDER, NOT ITS LOCK (rpg-project#852,
+	// R7): asked before anything rolls, so a held lock throws no die and
+	// poses no Guidance pause, and a held door with no lock never reaches
+	// the composition's unlock.
+	if err := refuseHeldDoor(scope.enc, in.Door, in.Member); err != nil {
+		return nil, fmt.Errorf("unlock: %w", err)
+	}
+
 	var applied encounter.CheckApproach
 	var calculation *encounter.RollCalculation
 	beaten, total := false, 0
@@ -428,4 +436,16 @@ func projectDoor(d encounter.Door) Door {
 // composition's type becomes this package's).
 func projectApproach(a encounter.CheckApproach) DoorApproach {
 	return DoorApproach{Ability: a.Ability, Tool: a.Tool, DC: a.DC}
+}
+
+// refuseHeldDoor asks the composition whether a post holds door against
+// member (rpg-project#852, R7), translated: nil when it does not, a
+// [*DoorHeldError] carrying the composition's public reason when it does. A
+// verb that rolls on a door asks it first, so a held door is refused before
+// any die is cast.
+func refuseHeldDoor(enc *encounter.Encounter, door, member string) error {
+	if err := enc.DoorHeldAgainst(encounter.DoorID(door), encounter.MemberID(member)); err != nil {
+		return translate(err)
+	}
+	return nil
 }

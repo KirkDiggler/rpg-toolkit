@@ -364,3 +364,27 @@ func TestCauseOfIsTotalOverTheCompositionsCauses(t *testing.T) {
 			"and the unrecognised cause is named, so the gap is findable")
 	})
 }
+
+// TestTranslateCarriesAHeldDoorWithItsReason (rpg-project#852, R7): the
+// composition's held-door error answers both its door-held and its
+// body-in-the-way sentinels; the session's refusal carries neither, only its
+// own ErrDoorHeld and the reason. A door the field lacks is still no
+// connection: the held arm never swallows ErrNoDoor or ErrBadDoor.
+func TestTranslateCarriesAHeldDoorWithItsReason(t *testing.T) {
+	inner := fmt.Errorf("open door: %w", &encounter.DoorHeldError{Door: "hall/gate", Holder: "gate-1"})
+	got := translate(inner)
+	require.ErrorIs(t, got, ErrDoorHeld)
+	var held *DoorHeldError
+	require.ErrorAs(t, got, &held)
+	require.NotErrorIs(t, got, encounter.ErrDoorHeld, "the composition's sentinel does not leak")
+	require.NotErrorIs(t, got, encounter.ErrBodyInTheWay, "nor its body-in-the-way twin")
+
+	bare := translate(encounter.ErrDoorHeld)
+	require.ErrorIs(t, bare, ErrDoorHeld, "the bare sentinel is the same refusal")
+	require.NotErrorIs(t, bare, encounter.ErrDoorHeld)
+
+	for _, door := range []error{encounter.ErrNoDoor, encounter.ErrBadDoor} {
+		require.ErrorIs(t, translate(door), ErrNoConnection, "%v is still no connection", door)
+		require.NotErrorIs(t, translate(door), ErrDoorHeld, "%v is never a held door", door)
+	}
+}
