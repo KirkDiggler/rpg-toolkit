@@ -925,15 +925,14 @@ See "Paused / on hold" below.
     tools/spatial, tools/environments, tools/spawn, tools/selectables. These
     pin events v0.6.x.
   - **Old API:** mechanics/effects (matches published v0.2.1),
-    mechanics/conditions, mechanics/spells, mechanics/features, game,
-    mechanics/proficiency. These pin events v0.1.x in their go.mod;
+    mechanics/conditions, mechanics/spells, game, mechanics/proficiency. These pin events v0.1.x in their go.mod;
     conditions/spells additionally use APIs not present in v0.1.0, which is
     why their replace directives point at local source. Proficiency builds
     cleanly against v0.1.0 because it only consumes effects (which itself
     works against v0.1.0).
   - **No events dependency at all:** items.
 
-  Closing #617 means rewriting effects/conditions/spells/features against
+  Closing #617 means rewriting effects/conditions/spells against
   the new typed-topic shape, not version-bumping the events line. That is
   a real refactor, not a hygiene task.
 
@@ -1001,9 +1000,6 @@ These gaps are preserved as delivery history for the retired module, not active 
 
 ### Mechanics
 
-- **`mechanics/features`** has no test files at all (only `mock/`). The feature
-  loader and `SimpleFeature` are untested directly.
-
 - **`mechanics/spells`** has test files but the go.mod has a `go mod tidy` needed
   warning, and the replace directives mean CI state is unclear.
 
@@ -1019,7 +1015,6 @@ See quality.md for grade and rationale.
 | mechanics/conditions | Medium — good coverage for dnd5e conditions; base module has go.mod drift |
 | mechanics/resources | Medium-high — passes tests, no known gaps |
 | mechanics/effects | Medium — no suite-pattern tests; functional |
-| mechanics/features | Low-medium — no tests in base module |
 | mechanics/spells | Medium — go.mod drift; tests present but CI unclear |
 | mechanics/proficiency | Medium — replace directive in go.mod |
 | tools/spatial | High — comprehensive hex/square/gridless + orchestrator; pathfinder gap in square grid |

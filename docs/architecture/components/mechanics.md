@@ -1,6 +1,6 @@
 ---
 name: mechanics modules
-description: Conditions, effects, features, proficiency, resources, spells — the modifier pipeline infrastructure (toolkit-internal; not directly imported by rpg-api)
+description: Effects, proficiency and resources — mechanics infrastructure; rulebook features have their own implementation
 updated: 2026-05-04
 confidence: medium-high — verified by reading go.mod files, key source files, and the rpg-api import graph per audit 049
 ---
@@ -24,8 +24,9 @@ confidence: medium-high — verified by reading go.mod files, key source files, 
 > See `events.md` for the new events API and `docs/journey/049-rpg-api-toolkit-usage-audit.md`
 > for the consumer-side usage data.
 
-Six sub-modules that implement the D&D/RPG modifier pipeline infrastructure.
-All depend on `core` and `events`; none depend on `rulebooks/dnd5e`.
+Current mechanics modules are `effects`, `proficiency` and `resources`; see
+[the checked module map](../../../knowledge/map.md). The conditions/spells
+sections below describe already-retired modules, not supported current APIs.
 
 ## mechanics/effects — B
 
@@ -96,35 +97,6 @@ Resource pools and counters for finite game resources.
 No go.mod issues. Tests cover happy paths. Edge cases (refill to zero,
 consume past limit) not explicitly tested, but the pool logic is
 straightforward enough that this is low risk.
-
----
-
-## mechanics/features — C
-
-**Path:** `mechanics/features/`
-**Module:** `github.com/KirkDiggler/rpg-toolkit/mechanics/features`
-
-Feature loader infrastructure. The base module provides the routing layer;
-rulebooks provide implementations.
-
-### Key types
-- `FeatureData` interface — gives loaders access to a feature's `Ref()` and `JSON()`
-- `Loader` — routes `FeatureData` to the correct implementation by ref
-- `SimpleFeature` — a basic feature that fires a callback on activation
-
-### go.mod: no issues
-Clean dependencies — only `core`.
-
-### Critical gap (issue #615 adjacent)
-`loader.go`, `feature.go`, `simple_feature.go` — **zero test files in the base
-module.** Only `mock/` exists. The feature loader routing logic and error
-paths are untested at the module level. Indirect coverage exists through
-`rulebooks/dnd5e/features`, but a bug in `Loader.Route()` error handling
-would not be caught by running `cd mechanics/features && go test ./...` —
-that command prints "no test files."
-
-Grade would move to B with tests that exercise the loader routing and error
-paths.
 
 ---
 

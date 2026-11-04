@@ -104,15 +104,6 @@ consume past limit) could be more explicit.
 
 See mechanics/effects above — same module.
 
-### mechanics/features — C
-
-The `features/loader.go`, `features/feature.go`, and `features/simple_feature.go`
-have **zero test files** in the base module. Only a `mock/` subpackage exists.
-The feature loader is tested indirectly via `rulebooks/dnd5e/features`, but direct
-unit tests for the base infrastructure are absent. For a module that other layers
-depend on, this is a real gap. Grade would move to B with tests that exercise the
-loader routing and error paths.
-
 ### mechanics/proficiency — B
 
 `simple.go` has tests. go.mod is clean — replace directive removed (issue #613
@@ -396,7 +387,7 @@ Held back from B by the absence of any tests at the base-module level.
 | B+ | game, events, mechanics/resources, tools/spatial, tools/selectables, rulebooks/dnd5e, rulebooks/dnd5e/conditions |
 | B | mechanics/effects, mechanics/conditions, mechanics/proficiency, tools/environments, tools/spawn |
 | B- | mechanics/spells |
-| C | mechanics/features, items |
+| C | items |
 
 Wave 2.11d moves: `rulebooks/dnd5e/combat` A- → A (AttackContext-as-pure-data +
 PostAttackRollChain), `rulebooks/dnd5e/conditions` broken out as own
