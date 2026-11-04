@@ -55,7 +55,7 @@ In the affected `go.mod`, remove all `replace` blocks. Update `require` versions
 
 Reference versions to consult:
 - `tools/spatial/go.mod` — clean published pins, target for the v0.6.x events world
-- `mechanics/effects/go.mod` — pins events v0.1.0; matches published v0.2.1; modules in the v0.1.x world should use compatible pins
+- A removed module's historical pin is not a current provider example; consult a surviving consumer's `go.mod` and the provider's published tags.
 
 ### 3. Run go mod tidy
 
