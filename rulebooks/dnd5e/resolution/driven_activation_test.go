@@ -102,7 +102,11 @@ func (s *ActivationTestSuite) TestADrivenMonsterDisengageLandsDisengagingOnItsSh
 		"the player's Disengage source, and one application")
 
 	goblin := s.dirtyMonster(out, goblinID)
-	s.Equal([]string{refs.Conditions.Disengaging().String()}, monsterConditionRefs(goblin))
+	// Nimble Escape lands its own trait condition beside the Disengaging it
+	// spent (dnd5e #2032, picked up by the v0.213.2 pin): the sheet says what
+	// granted the disengage as well as the disengage.
+	s.Equal([]string{refs.MonsterTraits.NimbleEscape().String(), refs.Conditions.Disengaging().String()},
+		monsterConditionRefs(goblin))
 
 	got, ok := out.Outcome.(ActivationOutcome)
 	s.Require().True(ok, "a driven activation reports an activation outcome, the player arm's shape")
@@ -194,8 +198,10 @@ func (s *ActivationTestSuite) TestASecondDrivenDisengageReplacesTheFirst() {
 	s.Require().NoError(err)
 
 	goblin := s.dirtyMonster(second, goblinID)
-	s.Equal([]string{refs.Conditions.Disengaging().String()}, monsterConditionRefs(goblin),
-		"one Disengaging, not two")
+	// The trait condition rides along once (#2032); the REPLACEMENT claim is
+	// the Disengaging itself.
+	s.Equal([]string{refs.MonsterTraits.NimbleEscape().String(), refs.Conditions.Disengaging().String()},
+		monsterConditionRefs(goblin), "one Disengaging, not two")
 
 	got, ok := second.Outcome.(ActivationOutcome)
 	s.Require().True(ok)
