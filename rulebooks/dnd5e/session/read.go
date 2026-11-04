@@ -713,10 +713,10 @@ func (m *Manager) loadGivenWorld(
 // call site keeps it with %v, which is text rather than a chain.
 func translate(err error) error {
 	// A HELD DOOR (rpg-project#852, R7) arrives with its reason, the one
-	// translation that carries detail: the composition's error answers both
-	// its door-held and its body-in-the-way sentinels, so this arm comes
-	// before any arm that could match the latter, and it matches the held
-	// error alone, never a door the field lacks (ErrNoDoor, ErrBadDoor).
+	// translation that carries detail. The arm matches the composition's
+	// typed held error by type, never by a sentinel it unwraps to, so it
+	// stands first and catches the held door whatever else that error may
+	// answer, and never a door the field lacks (ErrNoDoor, ErrBadDoor).
 	var held *encounter.DoorHeldError
 	if errors.As(err, &held) {
 		return &DoorHeldError{Reason: held.PublicReason()}

@@ -366,9 +366,9 @@ func TestCauseOfIsTotalOverTheCompositionsCauses(t *testing.T) {
 }
 
 // TestTranslateCarriesAHeldDoorWithItsReason (rpg-project#852, R7): the
-// composition's held-door error answers both its door-held and its
-// body-in-the-way sentinels; the session's refusal carries neither, only its
-// own ErrDoorHeld and the reason. A door the field lacks is still no
+// composition's held-door error crosses as the session's own ErrDoorHeld and
+// the reason, carrying no composition sentinel: not ErrDoorHeld, and not
+// ErrBodyInTheWay, which the held error once also answered. A door the field lacks is still no
 // connection: the held arm never swallows ErrNoDoor or ErrBadDoor.
 //
 // THE REASON ITSELF IS NOT PINNED HERE. The encounter's reason field is
@@ -383,7 +383,7 @@ func TestTranslateCarriesAHeldDoorWithItsReason(t *testing.T) {
 	var held *DoorHeldError
 	require.ErrorAs(t, got, &held)
 	require.NotErrorIs(t, got, encounter.ErrDoorHeld, "the composition's sentinel does not leak")
-	require.NotErrorIs(t, got, encounter.ErrBodyInTheWay, "nor its body-in-the-way twin")
+	require.NotErrorIs(t, got, encounter.ErrBodyInTheWay, "nor a body in the way")
 
 	bare := translate(encounter.ErrDoorHeld)
 	require.ErrorIs(t, bare, ErrDoorHeld, "the bare sentinel is the same refusal")
