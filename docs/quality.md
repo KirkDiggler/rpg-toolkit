@@ -75,43 +75,15 @@ is a naming smell — suggest renaming or collapsing. Mock provided. One gap:
 
 ## Mechanics
 
-### mechanics/effects — B
-
-Tracker, core, behaviors, composed condition — all pass tests. Infrastructure for
-the condition/proficiency pipeline. Tests are flat (not suite pattern) but cover
-meaningful behavior. The `mock/` subpackage exists but has no tests of the mock
-itself. Grade held back from B+ because test style is inconsistent with the rest of
-the repo and there is no explicit documentation of when to use `effects` vs
-`conditions` directly.
-
-### mechanics/conditions — B
-
-The base module (`manager`, `simple`, `enhanced`, `builder`) is functional.
-go.mod still carries 4 replace directives because the source has drifted past
-published versions of the events API (issue #617). Cleaning up the directives
-requires migrating the module to events v0.6.x; deferred until the playtest
-exercises conditions in their newer form. `simple_test.go` and
-`enhanced_test.go` are flat style (not suite). Actual condition behavior is
-well-exercised at the `rulebooks/dnd5e` level which uses this module heavily.
+`mechanics/resources` is the only current module in this layer. The effects
+composer is a separate prototype under `examples/effects`, not a supported
+replacement API. See the [mechanics guide](architecture/components/mechanics.md).
 
 ### mechanics/resources — B+
 
 Pool and counter pass. Clean resource management (spell slots, ki, rage uses).
 No go.mod issues. Tests cover the main happy paths; edge cases (refill to zero,
 consume past limit) could be more explicit.
-
-### mechanics/effects (composed) — B
-
-See mechanics/effects above — same module.
-
-### mechanics/spells — B-
-
-Spell slots, concentration, spell list — all have tests and pass. The go.mod
-still carries 6 replace directives (most of any module). Same root cause as
-conditions: source has drifted past published events v0.1.x. Migration
-deferred to issue #617 (playtest doesn't exercise spells yet). Tests are flat
-(not suite) for most files. Concentration logic (`concentration.go`) has test
-coverage. Spell events pattern is tested. No known logic bugs.
 
 ---
 
@@ -379,8 +351,7 @@ Held back from B by the absence of any tests at the base-module level.
 |---|---|
 | A / A- | core, rpgerr, dice, rulebooks/dnd5e/customization, rulebooks/dnd5e/combat |
 | B+ | game, events, mechanics/resources, tools/spatial, tools/selectables, rulebooks/dnd5e, rulebooks/dnd5e/conditions |
-| B | mechanics/effects, mechanics/conditions, tools/environments, tools/spawn |
-| B- | mechanics/spells |
+| B | tools/environments, tools/spawn |
 | C | items |
 
 Wave 2.11d moves: `rulebooks/dnd5e/combat` A- → A (AttackContext-as-pure-data +

@@ -902,37 +902,18 @@ See "Paused / on hold" below.
 
 ## Known rough edges
 
-### Module hygiene — active build failures
+### Mechanics retirement and the remaining live dependency
 
-- **`mechanics/conditions/go.mod` and `mechanics/spells/go.mod` carry committed
-  local `replace` directives** that mask source drift against the events
-  module. Their main-branch source uses the **old events API**
-  (`events.Event`, `events.HandlerFunc`, `event.Context().GetString()`,
-  `event.Context().AddModifier()`) — a shape that no published events version
-  exposes today. The replace directives point `events => ../../events` so the
-  build can find these symbols somewhere; without that pointer the source
-  doesn't compile. The 4-class playtest doesn't exercise either module so
-  this is deferred — tracked as **issue #617**. Issue #613 (the directive
-  cleanup) had its items + proficiency portion resolved 2026-05-04; the
-  conditions/spells portion rolls into #617.
+`mechanics/resources` is the only current mechanics module. It backs the
+rulebook's `combat.RecoverableResource`, character resource storage and rest
+recovery; it is not dead infrastructure. Legacy effects, features and
+proficiency are retired rather than migrated. The earlier conditions/spells
+retirement is historical too, not an outstanding events-API migration.
 
-- **events API rewrite, not version bump.** The events module has been
-  rewritten on main from a typed-event API (`events.Event`, `HandlerFunc`,
-  `Context().GetString()` / `.Set()` / `.AddModifier()`) to a typed-topic API
-  (`TypedTopic[T]`, `ChainedTopic[T]`, `BusEffect`, `StagedChain`). Two
-  worlds today:
-  - **New API (current main events surface):** rulebooks/dnd5e (+ subpackages),
-    tools/spatial, tools/environments, tools/spawn, tools/selectables. These
-    pin events v0.6.x.
-  - **Old API:** mechanics/effects (matches published v0.2.1),
-    mechanics/conditions, mechanics/spells, game. These pin events v0.1.x in their go.mod;
-    conditions/spells additionally use APIs not present in v0.1.0, which is
-    why their replace directives point at local source.
-  - **No events dependency at all:** items.
-
-  Closing #617 means rewriting effects/conditions/spells against
-  the new typed-topic shape, not version-bumping the events line. That is
-  a real refactor, not a hygiene task.
+`examples/effects` remains a prototype, and `mind/machine` remains an
+independent implementation. Their future evolution is separate from removing
+unused modules. See the [mechanics guide](architecture/components/mechanics.md)
+and [retirement record](https://github.com/KirkDiggler/rpg-project/issues/853).
 
 ### Spatial
 
@@ -996,11 +977,6 @@ These gaps are preserved as delivery history for the retired module, not active 
   effect bus) is unexplained in any ADR. ADR-0024 covers typed topics but not the
   two-bus split. Easy for new contributors to wire the wrong one.
 
-### Mechanics
-
-- **`mechanics/spells`** has test files but the go.mod has a `go mod tidy` needed
-  warning, and the replace directives mean CI state is unclear.
-
 ## Per-subsystem confidence
 
 See quality.md for grade and rationale.
@@ -1010,10 +986,7 @@ See quality.md for grade and rationale.
 | core | High — stable foundation, clean interfaces, good tests |
 | events | Medium-high — typed topics work well; dual-bus split undocumented |
 | dice | High — well-tested including pool, lazy, modifier, notation |
-| mechanics/conditions | Medium — good coverage for dnd5e conditions; base module has go.mod drift |
 | mechanics/resources | Medium-high — passes tests, no known gaps |
-| mechanics/effects | Medium — no suite-pattern tests; functional |
-| mechanics/spells | Medium — go.mod drift; tests present but CI unclear |
 | tools/spatial | High — comprehensive hex/square/gridless + orchestrator; pathfinder gap in square grid |
 | tools/environments | Medium-high — persistence and pathfinding covered; thin on edge cases |
 | tools/selectables | Medium-high — passes, good pattern |
@@ -1043,9 +1016,9 @@ No issue or branch exists yet. Treat this as pre-planned but unscheduled.
 
 ### go.mod replace directive cleanup
 
-`mechanics/conditions`, `mechanics/spells`, and `items`
-all have replace directives committed to main. Each needs a cleanup PR to pin
-real published versions and remove the directives.
+The legacy mechanics migration is retired, not upcoming work. For live
+modules, use the [provider-pin workflow](how-to/fix-go-mod-replace-directives.md)
+and inspect their current `go.mod` rather than reviving the old module list.
 
 ### Stale branch triage
 

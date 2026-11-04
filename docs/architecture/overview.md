@@ -2,7 +2,7 @@
 name: rpg-toolkit architecture overview
 description: Layer rules (module dependency diagram now in knowledge/map.md) + rules-vs-room seam, persistence pattern, and the boundary with rpg-api — lead-framed with toolkit-as-product
 updated: 2026-10-27
-confidence: medium — the module dependency diagram moved to knowledge/map.md, checked against go.mod files in CI; the prose and the module map table were last verified 2026-08-23, and the table still names the deleted mechanics/conditions and mechanics/spells and omits npc, world and mind/behavior
+confidence: medium — knowledge/map.md is checked against go.mod files in CI; the mechanics rows match the current tree, but other prose and the table remain incomplete; use knowledge/map.md for the full module census
 ---
 
 # rpg-toolkit architecture overview
@@ -117,10 +117,7 @@ module is historical only.
 | play/interrupt | `play/interrupt/` | Play primitive | Owned interruption windows and answer custody contracts |
 | play/record | `play/record/` | Play primitive | Append-only play record contracts |
 | mind/perception | `mind/perception/` | Mind primitive | One `Pass`, one `Delta` per observer over `play/intel`: the per-observer loop and geometry-free contract a composition needs, none of the geometry itself |
-| mechanics/effects | `mechanics/effects/` | Mechanics | Shared effect infrastructure (tracker, behaviors) |
-| mechanics/conditions | `mechanics/conditions/` | Mechanics | Condition manager, simple/enhanced condition types |
-| mechanics/resources | `mechanics/resources/` | Mechanics | Resource pools (spell slots, ki, rage uses) |
-| mechanics/spells | `mechanics/spells/` | Mechanics | Spell slots, concentration, spell list |
+| mechanics/resources | `mechanics/resources/` | Mechanics | Resource balances, counters and pools; the rulebook supplies recovery rules |
 | tools/spatial | `tools/spatial/` | Tools | Hex/Square/Gridless room + multi-room orchestration |
 | tools/environments | `tools/environments/` | Tools | Environment persistence, graph generation, multi-room dungeon graph |
 | tools/selectables | `tools/selectables/` | Tools | Weighted random selection tables |
@@ -131,13 +128,6 @@ module is historical only.
 | rulebooks/dnd5e/session | `rulebooks/dnd5e/session/` | Rulebooks (D&D 5e) | Host-facing session seam: repository/event interfaces, ID-based verbs, translated outputs |
 
 ## Code violations against these rules (2026-05-02)
-
-### Rule: No local `replace` directives on main
-**Violated by two modules committed to main (verified 2026-08-10):**
-- `mechanics/conditions/go.mod` — 4 replace directives (`core`, `dice`, `events`, `effects`)
-- `mechanics/spells/go.mod` — 6 replace directives (`core`, `dice`, `events`, `conditions`, `effects`, `resources`)
-
-Tracked in issue #613. These work locally but break CI because published module resolution fails when directives are present.
 
 ### Rule: Higher layers only; Tools is not Rulebooks
 **Potential violation: `rulebooks/dnd5e/dungeon/` inside the rulebook:**

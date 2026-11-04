@@ -181,32 +181,19 @@ relies on `EventBus` and `NewEventBus` only.
 
 ## Rewrite history (issue #617)
 
-The events module was rewritten from a typed-event API (`Event`,
-`HandlerFunc`, `event.Context().GetString()`, `event.Context().AddModifier()`)
-to the current typed-topic API (`TypedTopic[T]`, `ChainedTopic[T]`,
-`BusEffect`, `StagedChain`). Several modules under `mechanics/*`
-(`mechanics/conditions`, `mechanics/effects`, `mechanics/features`,
-`mechanics/spells`) still carry source written against the old shape — they
-reference `events.Event` and `events.HandlerFunc` symbols that no longer
-exist on either the local or any published events module. Those modules
-carry `replace` directives in their `go.mod` pointing `events => ../../events`,
-but since the local `events` only exposes the typed-topic API, the directives
-don't actually let those modules build against the old symbols — running
-`go mod tidy` or `go build ./...` inside them fails. The directives are a
-holdover from before the events rewrite landed.
-
-Closing #617 means rewriting those mechanics modules against the typed-topic
-API — a real refactor, not a version bump. The 4-class playtest doesn't
-exercise them directly (rpg-api consumes their refactored cousins through
-`rulebooks/dnd5e/*`), so the migration is deferred. See `mechanics.md` and
-the components-doc audit
-(`docs/journey/049-rpg-api-toolkit-usage-audit.md`) for the consumer view.
+The events module's old typed-event API and the former mechanics migration
+are historical context, not a current dependency path. The legacy mechanics
+modules are retired; there is no pending rewrite of them against typed topics.
+The active D&D condition/feature implementations live in the rulebook, and
+`mechanics/resources` supplies generic balances without importing events.
+See [mechanics](mechanics.md) for current consumers and the linked retirement
+record; the earlier usage audit remains under `docs/journey/` as history.
 
 ## Known gaps
 
 - **No ADR for the EventBus vs. BusEffect split.** New contributors will default to whichever they find first. The right heuristic: use `EventBus` for stateless observers; use `BusEffect` (or `ConditionBehavior` inside dnd5e) for stateful game mechanics that have a lifecycle (applied/removed).
 - Example tests (`example_journey_test.go`, `example_magic_test.go`) are not in suite pattern — acceptable for examples but inconsistent with the rest of the repo.
-- Version spread across the toolkit: the `game` module pins `events v0.1.1` while newer modules use `v0.6.2`. Until #617 closes, mixing modules with different events versions can produce subtle subscription-shape mismatches.
+- Inspect current consumers' `go.mod` pins before mixing event API versions. The retired mechanics migration (#617) is not a prerequisite for active rulebook work.
 
 ## Verification
 
