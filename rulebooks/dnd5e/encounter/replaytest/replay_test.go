@@ -421,7 +421,8 @@ func TestReplay_CastleGateScript(t *testing.T) {
 	// start the hero paces while the gate patrol walks, hears the stranger
 	// out on a lost check, talks the troupe past the captain on a won one,
 	// opens the gate on the far room (two arrivals, a temper dealt at each
-	// door), and paces under it while the far room walks up.
+	// door), and paces through it past the posted guard while the far room
+	// walks up.
 	t.Run("the troupe through the gate", func(t *testing.T) {
 		t.Parallel()
 		start := loadFile(t, kingFixture).PartyStart[0].At
@@ -436,12 +437,15 @@ func TestReplay_CastleGateScript(t *testing.T) {
 			require.NoError(t, w.speak(encounter.SpeakInput{
 				Actor: hero, Target: kingCaptain, OptionID: "troupe", Skill: "performance", Beaten: true, DC: 15, Total: 20,
 			}))
-			w.walkTo(hero, beneathTheGate)
-			if w.at(hero) != beneathTheGate {
-				require.NoError(t, w.step(hero, beneathTheGate))
+			// gate-1 stays posted beneath the gate (rpg-project#857): the
+			// troupe opens it from the opening's other cell and paces
+			// through it by its pass, in past him and back out.
+			w.walkTo(hero, besideTheGate)
+			if w.at(hero) != besideTheGate {
+				require.NoError(t, w.step(hero, besideTheGate))
 			}
 			require.NoError(t, w.openDoor(kingGateDoor, hero))
-			w.pace(hero, beneathTheGate, besideTheGate, 3)
+			w.pace(hero, besideTheGate, castleCell(0, 6), 3)
 			require.False(t, w.fighting(hero), "the troupe was let through: nobody fights")
 		})
 		require.Equal(t, 2, countBeats(t, log, encounter.BeatArrived), "precondition: the far room arrived")
@@ -476,12 +480,15 @@ func TestReplay_CastleGateScript(t *testing.T) {
 				require.NoError(t, w.strike(struck(id), []encounter.MemberID{id}))
 			}
 			require.False(t, w.fighting(hero), "the gate's three are down and the fight is over")
-			w.walkTo(hero, beneathTheGate)
-			if w.at(hero) != beneathTheGate {
-				require.NoError(t, w.step(hero, beneathTheGate))
+			// gate-1 stays posted beneath the gate (rpg-project#857): the
+			// troupe opens it from the opening's other cell and paces
+			// through it by its pass, in past him and back out.
+			w.walkTo(hero, besideTheGate)
+			if w.at(hero) != besideTheGate {
+				require.NoError(t, w.step(hero, besideTheGate))
 			}
 			require.NoError(t, w.openDoor(kingGateDoor, hero))
-			w.pace(hero, beneathTheGate, besideTheGate, 3)
+			w.pace(hero, besideTheGate, castleCell(0, 6), 3)
 		}, drivenHitsTries, hit)
 		require.Equal(t, 3, countBeats(t, log, string(encounter.OutcomeDown)), "precondition: three fell")
 		require.Positive(t, countDrivenSwings(t, log), "precondition: driven attacks swung")

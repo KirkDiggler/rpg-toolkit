@@ -440,8 +440,7 @@ var troupeRoutes = []troupeRoute{
 	{
 		name: "the cook's gossip",
 		toTheCaptain: func(t *testing.T) *kingScene {
-			// Outbound through the held gate: unheld pending R6 (rpg-project#835, open: does a post hold both ways).
-			s := openTheCastleAs(t, castleHost{at: besideTheCook, gateUnheld: true})
+			s := openTheCastleAs(t, castleHost{at: besideTheCook})
 			s.said(kingCook, "gossip", "persuasion", true)
 			require.True(t, s.learners("feast-tonight")[hero], "the cook told the hero")
 			s.outOfTheKitchen()
@@ -461,8 +460,10 @@ var troupeRoutes = []troupeRoute{
 			s.walkTo(s.at(kingCaptain))
 			return s
 		},
+		// gate-1 stays posted beneath the gate (rpg-project#857): the troupe
+		// opens it from the opening's other cell and passes him by its fact.
 		intoTheYard: func(s *kingScene) {
-			s.stepTo(beneathTheGate)
+			s.stepTo(besideTheCrossing)
 			s.open(kingGateDoor)
 			s.walkTo(castleCell(0, -6))
 			s.open(kingHallDoor)
@@ -598,8 +599,7 @@ func TestMadKingTroupeBlown(t *testing.T) {
 // learns the guards have turned.
 func TestMadKingScout(t *testing.T) {
 	t.Parallel()
-	// Outbound through the held gate: unheld pending R6 (rpg-project#835, open: does a post hold both ways).
-	s := openTheCastleAs(t, castleHost{at: besideTheCook, gateUnheld: true})
+	s := openTheCastleAs(t, castleHost{at: besideTheCook})
 
 	t.Run("control: the captain withholds the line from a hero who has not heard about Ashford", func(t *testing.T) {
 		options, err := s.enc.OptionsFor(hero, kingCaptain)

@@ -102,8 +102,7 @@ func TestMadKingPickingTheCellLockEndsTheRunFreed(t *testing.T) {
 // the garrison's `until` turns it on the party.
 func TestMadKingTheOrdersTurnTheGarrison(t *testing.T) {
 	t.Parallel()
-	// Outbound through the held gate: unheld pending R6 (rpg-project#835, open: does a post hold both ways).
-	s := openTheCastleAs(t, castleHost{at: besideTheCook, gateUnheld: true})
+	s := openTheCastleAs(t, castleHost{at: besideTheCook})
 
 	s.walkTo(castleCell(-24, -12))
 	_, err := s.enc.Hold(&encounter.HoldInput{Member: hero, Target: kingOrders})

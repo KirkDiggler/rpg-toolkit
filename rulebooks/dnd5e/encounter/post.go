@@ -51,6 +51,23 @@ import (
 // An edge door's edges; a footprint door's crossings, read from its
 // rectangle ([field.doorCrossings]). Both are geometry, computed once per
 // door ([Encounter.doorOpening]).
+//
+// # Both ways, unless the setting says a direction (rpg-project#857, R6)
+//
+// A post bars its opening both ways by default. Its setting may name one
+// direction ([Post.Against]): entering bars a crossing that starts on the
+// post's side, the region its cells stand in, and leaving bars the reverse.
+// Regions do not follow walls, so a directed post is refused unless every
+// crossing of its door has exactly one cell on that side. The direction is
+// decided by the cell a crossing starts on, so the undirected crossing memo
+// never holds it.
+//
+// # A pass fact walks through
+//
+// A post's setting may name a fact ([Post.Pass]). A mover who knows it
+// crosses the held opening and works its door as an ally does. The fact is
+// the mover's own, read from the journal ([encounterWorld.knowsFact]), once
+// per mover and fact in a read ([cellQuery.knowsPass]).
 
 // Post is what a state holds: the door whose opening it bars, and the
 // dungeon-absolute cells a holder stands on to bar it (the frame
@@ -62,7 +79,40 @@ type Post struct {
 
 	// Cells is where a holder stands to hold it.
 	Cells []spatial.Position
+
+	// Against is which crossings of the opening the post bars: empty or
+	// [PostBothWays] bars both, [PostEntering] a crossing that starts on the
+	// post's side, [PostLeaving] one that ends there.
+	Against PostDirection
+
+	// Pass is the fact a mover who knows it walks through on, as an ally
+	// does. Empty: none.
+	Pass FactID
 }
+
+// PostDirection is which way a post bars its opening (rpg-project#857, R6).
+// The post's side is the region its cells stand in.
+type PostDirection string
+
+const (
+	// PostBothWays bars every crossing of the opening. The default: an empty
+	// direction reads as this one.
+	PostBothWays PostDirection = "both"
+
+	// PostEntering bars a crossing that starts on the post's side and ends
+	// on the far side.
+	PostEntering PostDirection = "entering"
+
+	// PostLeaving bars a crossing that starts on the far side and ends on
+	// the post's side.
+	PostLeaving PostDirection = "leaving"
+)
+
+// directed reports whether a direction bars one way only.
+func (d PostDirection) directed() bool { return d == PostEntering || d == PostLeaving }
+
+// known reports whether a direction is one of the three words, or empty.
+func (d PostDirection) known() bool { return d == "" || d == PostBothWays || d.directed() }
 
 // PostData is a [Post] as the record stores it.
 type PostData struct {
@@ -71,6 +121,13 @@ type PostData struct {
 
 	// Cells is [Post.Cells], resolved: never empty in a stored record.
 	Cells []spatial.Position `json:"cells"`
+
+	// Against is [Post.Against]. Absent in a record from before it existed,
+	// which loads as both ways.
+	Against PostDirection `json:"against,omitempty"`
+
+	// Pass is [Post.Pass]. Absent: no pass.
+	Pass FactID `json:"pass,omitempty"`
 }
 
 // postsDataFrom is a member's posts as the record stores them, nil for none.
@@ -80,7 +137,7 @@ func postsDataFrom(posts map[string]Post) map[string]PostData {
 	}
 	out := make(map[string]PostData, len(posts))
 	for state, p := range posts {
-		out[state] = PostData{Door: p.Door, Cells: slices.Clone(p.Cells)}
+		out[state] = PostData{Door: p.Door, Cells: slices.Clone(p.Cells), Against: p.Against, Pass: p.Pass}
 	}
 
 	return out
@@ -99,7 +156,7 @@ func postsFromData(posts map[string]PostData) (map[string]Post, error) {
 		if len(p.Cells) == 0 {
 			return nil, fmt.Errorf("post %q names no cell: a stored post carries its cells", state)
 		}
-		out[state] = Post{Door: p.Door, Cells: slices.Clone(p.Cells)}
+		out[state] = Post{Door: p.Door, Cells: slices.Clone(p.Cells), Against: p.Against, Pass: p.Pass}
 	}
 
 	return out, nil
@@ -125,9 +182,10 @@ func validatePostStates(r *machine.Recipe, posts map[string]Post) error {
 }
 
 // usePosts gives a member its own copy of its posts, each refused when it
-// names a state its recipe lacks, a door this field lacks, or a cell that is
-// not floor, and each with no cells resolved to `at`, the cell it is placed
-// at.
+// names a state its recipe lacks, a door this field lacks, a cell that is
+// not floor, or a direction that is not one of the three words, or names a
+// direction its door cannot have ([Encounter.postSide]); and each with no
+// cells resolved to `at`, the cell it is placed at.
 //
 // Errors: the refusal, wrapped in [ErrBadMember].
 func (e *Encounter) usePosts(m *memberRecord, posts map[string]Post, at spatial.Position) error {
@@ -154,7 +212,17 @@ func (e *Encounter) usePosts(m *memberRecord, posts map[string]Post, at spatial.
 				return fmt.Errorf("member %s: post %q stands on %v, which is not floor: %w", m.ID, state, cell, ErrBadMember)
 			}
 		}
-		out[state] = Post{Door: p.Door, Cells: cells}
+		post := Post{Door: p.Door, Cells: cells, Against: p.Against, Pass: p.Pass}
+		if !post.Against.known() {
+			return fmt.Errorf("member %s: post %q holds against %q: a post holds both, entering or leaving: %w",
+				m.ID, state, post.Against, ErrBadMember)
+		}
+		if post.Against.directed() {
+			if _, err := e.postSide(post); err != nil {
+				return fmt.Errorf("member %s: post %q holds %s: %w: %w", m.ID, state, post.Against, err, ErrBadMember)
+			}
+		}
+		out[state] = post
 	}
 	m.Posts = out
 	if e.posted == nil {
@@ -192,7 +260,75 @@ func (m *memberRecord) postIn(state string) (Post, bool) {
 
 // samePost reports whether two states name the same post.
 func samePost(a Post, okA bool, b Post, okB bool) bool {
-	return okA == okB && a.Door == b.Door && slices.Equal(a.Cells, b.Cells)
+	return okA == okB && a.Door == b.Door && slices.Equal(a.Cells, b.Cells) &&
+		a.direction() == b.direction() && a.Pass == b.Pass
+}
+
+// direction is the post's direction, an empty one read as both ways.
+func (p Post) direction() PostDirection {
+	if p.Against == "" {
+		return PostBothWays
+	}
+
+	return p.Against
+}
+
+// postSide is the crossing cells of a post's door that stand on the post's
+// side, the region its cells stand in, in cell order with none twice: one
+// per crossing. Refused unless the cells stand in one region and every
+// crossing of the door has exactly one cell in it: regions do not follow
+// walls (region.go), so a crossing with both cells, or neither, on the
+// post's side would make a direction mean both ways, or no way.
+func (e *Encounter) postSide(p Post) ([]spatial.Position, error) {
+	if len(p.Cells) == 0 {
+		return nil, errors.New("a post with a direction stands somewhere")
+	}
+	side, ok := e.field.regionOf(p.Cells[0])
+	if !ok {
+		return nil, fmt.Errorf("its cell %v stands in no region, so it has no side", p.Cells[0])
+	}
+	for _, cell := range p.Cells[1:] {
+		if r, ok := e.field.regionOf(cell); !ok || r != side {
+			return nil, fmt.Errorf("its cells %v and %v stand in two regions, so it has no one side", p.Cells[0], cell)
+		}
+	}
+	var out []spatial.Position
+	for _, edge := range e.doorOpening(p.Door) {
+		from, _ := e.field.regionOf(edge.From)
+		to, _ := e.field.regionOf(edge.To)
+		switch onFrom, onTo := from == side, to == side; {
+		case onFrom && onTo:
+			return nil, fmt.Errorf("its door's crossing %v-%v stands wholly on its side %q", edge.From, edge.To, side)
+		case !onFrom && !onTo:
+			return nil, fmt.Errorf("its door's crossing %v-%v does not touch its side %q", edge.From, edge.To, side)
+		case onFrom:
+			out = append(out, edge.From)
+		default:
+			out = append(out, edge.To)
+		}
+	}
+	sortCells(out)
+	out = slices.Compact(out)
+
+	return out, nil
+}
+
+// barsFrom reports whether a post's direction bars a crossing that starts
+// at `from`: both ways bars every crossing; entering, one that starts on the
+// post's side; leaving, one that starts off it. Usable only on a post its
+// door admitted ([Encounter.usePosts] refuses a direction with no one side).
+func (e *Encounter) barsFrom(p Post, from spatial.Position) bool {
+	if !p.Against.directed() {
+		return true
+	}
+	side, _ := e.field.regionOf(p.Cells[0])
+	here, ok := e.field.regionOf(from)
+	onSide := ok && here == side
+	if p.Against == PostEntering {
+		return onSide
+	}
+
+	return !onSide
 }
 
 // memberHolds is the door a member holds now and whether it holds one: its
@@ -204,30 +340,38 @@ func samePost(a Post, okA bool, b Post, okB bool) bool {
 // here. A read that fails holds: a world that cannot say who is down does
 // not open a gate on a guess.
 func (e *Encounter) memberHolds(id MemberID, down map[MemberID]bool) (DoorID, bool) {
+	post, ok := e.heldPost(id, down)
+
+	return post.Door, ok
+}
+
+// heldPost is [Encounter.memberHolds] answering the whole post held, its
+// settings with it.
+func (e *Encounter) heldPost(id MemberID, down map[MemberID]bool) (Post, bool) {
 	m, ok := e.members[id]
 	if !ok {
-		return "", false
+		return Post{}, false
 	}
 	post, ok := m.postIn(m.Machine.State)
 	if !ok {
-		return "", false
+		return Post{}, false
 	}
 	cell, placed := e.canvas.GetEntityPosition(string(id))
 	if !placed || !slices.Contains(post.Cells, cell) {
-		return "", false
+		return Post{}, false
 	}
 	if down == nil {
 		read, err := e.downNow()
 		if err != nil {
-			return post.Door, true
+			return post, true
 		}
 		down = read
 	}
 	if down[id] {
-		return "", false
+		return Post{}, false
 	}
 
-	return post.Door, true
+	return post, true
 }
 
 // doorOpening is a door's crossings, normalized: an edge door's edges, a
@@ -272,43 +416,87 @@ func (e *Encounter) heldCrossings(down map[MemberID]bool) map[DoorEdge][]postHol
 	}
 	var out map[DoorEdge][]postHolder
 	for _, id := range sortedPosted(e.posted) {
-		door, holds := e.memberHolds(id, down)
+		post, holds := e.heldPost(id, down)
 		if !holds {
 			continue
 		}
-		for _, edge := range e.doorOpening(door) {
+		for _, edge := range e.doorOpening(post.Door) {
 			if out == nil {
 				out = map[DoorEdge][]postHolder{}
 			}
-			out[edge] = append(out[edge], postHolder{holder: id, door: door})
+			out[edge] = append(out[edge], postHolder{holder: id, post: post})
 		}
 	}
 
 	return out
 }
 
-// postHolder is one holder of a crossing and the door it holds there.
+// postHolder is one holder of a crossing and the post it holds there.
 type postHolder struct {
 	holder MemberID
-	door   DoorID
+	post   Post
 }
 
-// heldAgainst is the members holding the crossing between two adjacent
-// cells against a mover, nearest the mover's side first, then by id: every
-// holder not allied with it, of a door the mover can see as a door (one it
-// has not found is wall to it, and the masquerade answers it). Empty when
-// the crossing is not held against it.
-func (e *Encounter) heldAgainst(held map[DoorEdge][]postHolder, mover MemberID, from, to spatial.Position) []MemberID {
+// passReads is one read's answers to "does this mover know this pass
+// fact": the journal scanned once per mover and fact, under the promise
+// every read memo rests on, that nothing moves inside a read.
+type passReads map[passKey]bool
+
+// passKey is one mover and one pass fact.
+type passKey struct {
+	mover MemberID
+	fact  FactID
+}
+
+// knows is whether the mover knows the fact, read from the journal the
+// first time this read asks it.
+func (r passReads) knows(e *Encounter, mover MemberID, fact FactID) bool {
+	key := passKey{mover: mover, fact: fact}
+	if known, ok := r[key]; ok {
+		return known
+	}
+	known := e.world.knowsFact(mover, fact)
+	r[key] = known
+
+	return known
+}
+
+// bars reports whether a post bars a mover crossing from `from`, the post's
+// holder and its allies already set aside: its direction bars a crossing
+// starting there ([Encounter.barsFrom]), and the mover does not know its
+// pass. The direction is asked first, so a crossing it lets through reads
+// no journal.
+func (e *Encounter) bars(p Post, mover MemberID, from spatial.Position, passes passReads) bool {
+	if !e.barsFrom(p, from) {
+		return false
+	}
+
+	return p.Pass == "" || !passes.knows(e, mover, p.Pass)
+}
+
+// heldAgainst is the members holding the crossing from one adjacent cell to
+// another against a mover, nearest the mover's side first, then by id:
+// every holder not allied with it, of a door the mover can see as a door
+// (one it has not found is wall to it, and the masquerade answers it),
+// whose post bars this mover this way ([Encounter.bars]). Empty when the
+// crossing is not held against it. `passes` is the caller's read of the
+// mover's pass facts, never nil.
+func (e *Encounter) heldAgainst(
+	held map[DoorEdge][]postHolder, mover MemberID, from, to spatial.Position, passes passReads,
+) []MemberID {
 	if len(held) == 0 || from == to {
 		return nil
 	}
 	holders := held[normalizeDoorEdge(DoorEdge{From: from, To: to})]
 	var out []MemberID
 	for _, h := range holders {
-		if h.holder == mover || e.hiddenDoorTo(mover, h.door) {
+		if h.holder == mover || e.hiddenDoorTo(mover, h.post.Door) {
 			continue
 		}
 		if allied, _ := e.IsAllied(mover, h.holder); allied {
+			continue
+		}
+		if !e.bars(h.post, mover, from, passes) {
 			continue
 		}
 		out = append(out, h.holder)
@@ -341,8 +529,9 @@ func (e *Encounter) heldOnTheWay(mover MemberID, from, to spatial.Position) ([]M
 		return nil, nil
 	}
 	ray := spatial.CanonicalBoundaryRay(e.canvas.GetGrid(), from, to)
+	passes := passReads{}
 	for i := 1; i < len(ray); i++ {
-		if holders := e.heldAgainst(held, mover, ray[i-1], ray[i]); len(holders) > 0 {
+		if holders := e.heldAgainst(held, mover, ray[i-1], ray[i], passes); len(holders) > 0 {
 			return holders, nil
 		}
 	}
@@ -350,17 +539,21 @@ func (e *Encounter) heldOnTheWay(mover MemberID, from, to spatial.Position) ([]M
 	return nil, nil
 }
 
-// heldEdge is [Encounter.heldAgainst] for a read: the read's holds, taken
-// once from its own participation read, since nothing moves inside a read.
+// heldEdge is [Encounter.heldAgainst] for a read, the crossing from `from`
+// to `to` in that order: the read's holds, taken once from its own
+// participation read, and its pass answers, read once per mover and fact,
+// since nothing moves inside a read. The direction is the crossing's own and
+// is decided here, never in the undirected crossing memo.
 func (q *cellQuery) heldEdge(mover MemberID, from, to spatial.Position) bool {
 	if len(q.posted) == 0 {
 		return false
 	}
 	if !q.heldRead {
 		q.held, q.heldRead = q.heldCrossings(q.down), true
+		q.passes = passReads{}
 	}
 
-	return len(q.heldAgainst(q.held, mover, from, to)) > 0
+	return len(q.heldAgainst(q.held, mover, from, to, q.passes)) > 0
 }
 
 // holdRefusal is the refusal of a step across a held crossing (H4): a
@@ -373,15 +566,40 @@ func (e *Encounter) holdRefusal(mover MemberID, holders []MemberID, cell spatial
 	return &bodyRefusalError{barrier: barrier, at: cell, public: who + " bars the way"}
 }
 
+// HeldDoor is a door a body the viewer sees holds against it
+// ([Encounter.ObservedHolds]), with the post's settings read at the time of
+// asking: enough for a viewer anywhere to preview which crossings it is
+// barred from.
+type HeldDoor struct {
+	// Door is the door whose opening is held.
+	Door DoorID
+
+	// Against is the post's direction, always one of the three words: an
+	// unset one is [PostBothWays].
+	Against PostDirection
+
+	// Side is the door's crossing cells on the post's side, the region its
+	// cells stand in, in cell order: one per crossing, a cell two crossings
+	// share named once. A crossing starts on the post's side when it leaves
+	// one of these cells. Nil when the door has no one side for the post
+	// (a both-ways post whose crossings straddle no single region edge).
+	Side []spatial.Position
+}
+
 // ObservedHolds answers, for a viewer, the door each body it sees now holds
 // against it: from its current sight testimony, so a hold the viewer has not
 // seen is not told, and a body seen to step off its post is seen to hold
-// nothing (H5). A body the viewer believes allied is omitted, as is a door
-// hidden to the viewer. Memories and unknown locations are absent.
+// nothing (H5). The settings are read from the holder's live post for that
+// door, never from the testimony: they are the post's, not something the
+// viewer saw. A hold is told to a viewer in any region, whatever way it
+// faces, because a direction bars the viewer some way (rpg-project#857); a
+// body the viewer believes allied is omitted, as is a door hidden to the
+// viewer and a post whose pass fact the viewer knows. Memories and unknown
+// locations are absent.
 //
 // Errors: [ErrNilInput]; a sight testimony that does not decode; the
 // viewer's view or belief read.
-func (e *Encounter) ObservedHolds(in *ViewInput) (map[MemberID]DoorID, error) {
+func (e *Encounter) ObservedHolds(in *ViewInput) (map[MemberID]HeldDoor, error) {
 	if in == nil {
 		return nil, ErrNilInput
 	}
@@ -392,7 +610,7 @@ func (e *Encounter) ObservedHolds(in *ViewInput) (map[MemberID]DoorID, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[MemberID]DoorID)
+	out := make(map[MemberID]HeldDoor)
 	for _, holding := range holdings {
 		if !holding.CurrentOn(perception.Sight) || holding.Subject == in.Member {
 			continue
@@ -404,6 +622,10 @@ func (e *Encounter) ObservedHolds(in *ViewInput) (map[MemberID]DoorID, error) {
 		if seen.State == LocationUnknown || seen.HoldsDoor == "" || e.hiddenDoorTo(in.Member, seen.HoldsDoor) {
 			continue
 		}
+		post := e.livePost(MemberID(holding.Subject), seen.HoldsDoor)
+		if post.Pass != "" && e.world.knowsFact(in.Member, post.Pass) {
+			continue
+		}
 		stance, err := e.BelievedStance(in.Member, holding.Subject)
 		if err != nil {
 			return nil, fmt.Errorf("holds for %q: %w", holding.Subject, err)
@@ -411,10 +633,36 @@ func (e *Encounter) ObservedHolds(in *ViewInput) (map[MemberID]DoorID, error) {
 		if stance == StanceAllied {
 			continue
 		}
-		out[holding.Subject] = seen.HoldsDoor
+		side, err := e.postSide(post)
+		if err != nil {
+			side = nil
+		}
+		out[holding.Subject] = HeldDoor{Door: seen.HoldsDoor, Against: post.direction(), Side: side}
 	}
 
 	return out, nil
+}
+
+// livePost is the post a member holds a door by now: its current state's,
+// when that state's post names the door, else the first of its states in
+// name order whose post does, else a post of the door with no settings and
+// no cells. A sighting names the door; the settings are read here, at the
+// time of asking.
+func (e *Encounter) livePost(id MemberID, door DoorID) Post {
+	m, ok := e.members[id]
+	if !ok {
+		return Post{Door: door}
+	}
+	if p, ok := m.postIn(m.Machine.State); ok && p.Door == door {
+		return p
+	}
+	for _, state := range sortedPostStates(m.Posts) {
+		if p := m.Posts[state]; p.Door == door {
+			return p
+		}
+	}
+
+	return Post{Door: door}
 }
 
 // loadPosts is [Encounter.usePosts] for a stored record, whose posts carry
@@ -504,8 +752,12 @@ func (e *Encounter) DoorHeldFor(actor MemberID, door DoorID) (held bool, reason 
 // refuseHeldDoor refuses a door verb on a door a post holds against the
 // actor (R7): the same hold read the crossing makes — a holder in a holding
 // state, up and on a post cell — and the same alliance rule, so the holder
-// himself and his allies work the door as before. A walk never reaches
-// this: it never opens a held door ([cellQuery.doorToOpen]).
+// himself and his allies work the door as before. The post's settings are
+// read as a crossing reads them, with the actor's own cell as the side it
+// acts from: an entering post bars an actor on its side, a leaving post one
+// off it, and a mover who knows the pass works the door (rpg-project#857).
+// A walk never reaches this: it never opens a held door
+// ([cellQuery.doorToOpen]).
 func (e *Encounter) refuseHeldDoor(d *doorRecord, actor MemberID) error {
 	if actor == "" || len(e.posted) == 0 {
 		return nil
@@ -515,13 +767,17 @@ func (e *Encounter) refuseHeldDoor(d *doorRecord, actor MemberID) error {
 		return &passageReadError{cause: err}
 	}
 	from, _ := e.canvas.GetEntityPosition(string(actor))
+	passes := passReads{}
 	var holders []MemberID
 	for _, id := range sortedPosted(e.posted) {
-		held, holds := e.memberHolds(id, down)
-		if !holds || held != d.id || id == actor {
+		post, holds := e.heldPost(id, down)
+		if !holds || post.Door != d.id || id == actor {
 			continue
 		}
 		if allied, _ := e.IsAllied(actor, id); allied {
+			continue
+		}
+		if !e.bars(post, actor, from, passes) {
 			continue
 		}
 		holders = append(holders, id)

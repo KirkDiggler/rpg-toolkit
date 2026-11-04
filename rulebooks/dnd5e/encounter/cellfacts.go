@@ -180,6 +180,11 @@ type cellQuery struct {
 	// hold is an answer about a mover and a holder ([cellQuery.heldEdge]).
 	held     map[DoorEdge][]postHolder
 	heldRead bool
+
+	// passes is this read's answers to which pass facts a mover knows
+	// (rpg-project#857): a route across several held edges reads the
+	// mover's journal once per fact. Made with held.
+	passes passReads
 }
 
 // crossingAnswer is one memoized crossing fold: what closes it, if anything.

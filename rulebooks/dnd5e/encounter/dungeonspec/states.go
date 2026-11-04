@@ -82,14 +82,24 @@ type StateSpec struct {
 	Holds       *HoldsSpec       `yaml:"holds,omitempty" json:"holds,omitempty"`
 }
 
-// HoldsSpec is a state's post: `holds: { door: <id>, at: [{ q, r }, …] }`.
+// HoldsSpec is a state's post:
+// `holds: { door: <id>, at: [{ q, r }, …], against: <direction>, pass: <fact> }`.
 // Door is the authored id of a door this document declares; At is the cells
 // a holder stands on to hold it, in the `{ q, r }` form a table's
 // `toward: { at }` uses, each refused unless it is floor. No `at` means the
 // cell the creature is placed at.
+//
+// Against and Pass are the post's settings (rpg-project#857, R6). Against is
+// `both` (the default when absent), `entering` (bars a crossing from the
+// post's side, the region its cells stand in, to the far side) or `leaving`
+// (the reverse); any other word is refused, and a direction whose door has
+// no one side per crossing is refused when the encounter seats the post.
+// Pass names a fact this document sets: a mover who knows it walks through.
 type HoldsSpec struct {
-	Door string     `yaml:"door" json:"door"`
-	At   []RoomCell `yaml:"at,omitempty" json:"at,omitempty"`
+	Door    string     `yaml:"door" json:"door"`
+	At      []RoomCell `yaml:"at,omitempty" json:"at,omitempty"`
+	Against string     `yaml:"against,omitempty" json:"against,omitempty"`
+	Pass    string     `yaml:"pass,omitempty" json:"pass,omitempty"`
 }
 
 // TransitionSpec is one transition: on a beat, when its conditions hold, do
@@ -441,6 +451,16 @@ func (g *grammar) placeHolds(path string, st StateSpec, fail func(p, format stri
 			fail(fmt.Sprintf("%s.at[%d]", path, i), "%s", answer.refusal)
 		}
 	}
+	switch encounter.PostDirection(st.Holds.Against) {
+	case "", encounter.PostBothWays, encounter.PostEntering, encounter.PostLeaving:
+	default:
+		fail(path+".against", "%q is not a way a post holds: write `both`, `entering` or `leaving`", st.Holds.Against)
+	}
+	// A PASS NOBODY CAN LEARN never lets anybody through, as a `when` fact
+	// that matches nothing never holds.
+	if st.Holds.Pass != "" && !g.facts[st.Holds.Pass] {
+		fail(path+".pass", "%q is not a fact this file sets, so nobody could ever know the pass", st.Holds.Pass)
+	}
 }
 
 // postsOf is the posts a creature's winning states hold — its own, else its
@@ -460,7 +480,11 @@ func postsOf(own, faction *StatesSpec, key string) map[string]encounter.Post {
 		if h == nil {
 			continue
 		}
-		post := encounter.Post{Door: encounter.DoorID(key + "/" + h.Door)}
+		post := encounter.Post{
+			Door:    encounter.DoorID(key + "/" + h.Door),
+			Against: encounter.PostDirection(h.Against),
+			Pass:    encounter.FactID(h.Pass),
+		}
 		for _, cell := range h.At {
 			post.Cells = append(post.Cells, hexCell(cell))
 		}
