@@ -5,6 +5,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -219,7 +220,7 @@ func (m *Manager) equipSeated(
 		return nil, err
 	}
 	fight, err := m.equipTurn(ctx, scope, id, record)
-	if err != nil {
+	if err != nil && !errors.Is(err, errNoTurn) {
 		return nil, err
 	}
 
@@ -278,6 +279,11 @@ func (m *Manager) equipSeated(
 // is the bubble's round, read rather than invented, as for a swing
 // (economy.go). Readying a sheet whose economy was never lit is resolution's:
 // its equip entry readies the turn before it prices the change.
+// errNoTurn is equipTurn's news that the member is not on the turn clock,
+// so there is no turn for the equip to ready — the world clock prices the
+// change itself (#2220: an error may carry the news, not the blame).
+var errNoTurn = errors.New("no turn to ready")
+
 func (m *Manager) equipTurn(
 	ctx context.Context, scope *writeScope, id string, record *character.Data,
 ) (*resolution.Turn, error) {
@@ -286,7 +292,7 @@ func (m *Manager) equipTurn(
 		return nil, translate(err)
 	}
 	if ClockKind(clock.Kind) != ClockTurn {
-		return nil, nil
+		return nil, errNoTurn
 	}
 	if string(clock.Active) != id {
 		return nil, fmt.Errorf("character %q: %w", id, ErrNotYourTurn)

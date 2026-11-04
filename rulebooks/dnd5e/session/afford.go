@@ -5,6 +5,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -713,7 +714,7 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 	}
 	sortDeclarations(declarations)
 	preview, err := previewCastAim(enc, in.Member, in.CastAim, offers)
-	if err != nil {
+	if err != nil && !errors.Is(err, errNoPreview) {
 		return nil, fmt.Errorf("afford aim: %w", err)
 	}
 	return &AffordOutput{Clock: kind, Declarations: declarations, CastAim: preview}, nil
