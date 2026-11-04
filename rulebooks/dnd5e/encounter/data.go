@@ -5,6 +5,7 @@ package encounter
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"slices"
@@ -523,6 +524,9 @@ type ReserveData struct {
 	Temper  UndealtTemperData       `json:"temper,omitzero"`
 	// Recipe is [MemberData.Recipe] for a member still waiting.
 	Recipe *machine.Recipe `json:"recipe,omitempty"`
+	// BlockingStates is [MemberData.BlockingStates] for a member still
+	// waiting, refused at load as the member's are.
+	BlockingStates []string `json:"blocking_states,omitempty"`
 
 	BlocksMovement bool        `json:"blocks_movement,omitempty"`
 	Faction        FactionID   `json:"faction,omitempty"`
@@ -2165,6 +2169,13 @@ type MemberData struct {
 	// as at every door, and refused (ErrInvalidData) as the door refuses it.
 	Recipe *machine.Recipe `json:"recipe,omitempty"`
 
+	// BlockingStates is memberRecord.BlockingStates (rpg-project#836): the
+	// states of Recipe in which this body blocks, omitted when it has none,
+	// which is what a record from before them loads as (the body blocks as
+	// BlocksMovement says). A name the recipe lacks, or any on a member
+	// with no recipe, is refused at load (ErrInvalidData).
+	BlockingStates []string `json:"blocking_states,omitempty"`
+
 	// Clock is memberRecord.Clock (R5): the clock this member is seated on,
 	// omitted for the world clock. This build knows the world clock alone,
 	// so any other name is refused at load (ErrInvalidData).
@@ -2342,6 +2353,7 @@ func (e *Encounter) snapshot() EncounterData {
 			Dwell:              dwellDataFrom(m.Dwell),
 			Machine:            machineDataFrom(e.programFor(m), m.Machine),
 			Recipe:             m.Recipe,
+			BlockingStates:     slices.Clone(m.BlockingStates),
 			Clock:              m.Clock,
 			TableHash:          maps.Clone(m.TableHash),
 			BlocksMovement:     m.BlocksMovement,
@@ -2433,6 +2445,7 @@ func (e *Encounter) snapshot() EncounterData {
 			Table:              tableDataFrom(rm.record.Table),
 			Temper:             undealtTemperDataFrom(rm.record.Temper),
 			Recipe:             rm.record.Recipe,
+			BlockingStates:     slices.Clone(rm.record.BlockingStates),
 			BlocksMovement:     rm.record.BlocksMovement,
 			Faction:            rm.record.Faction,
 			Holds:              append([]IntelID(nil), rm.holds...),
@@ -3082,6 +3095,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			Facing:             r.Facing,
 			Table:              tableFromData(r.Table),
 			Machine:            r.Recipe,
+			BlockingStates:     r.BlockingStates,
 		}); err != nil {
 			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, err)
 		}
@@ -3441,11 +3455,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 
 	// Re-place members at persisted positions (no surveil here — outcomes already in intel)
 	for _, m := range data.Members {
-		entity := &memberEntity{
-			id:             string(m.ID),
-			kind:           m.Kind,
-			blocksMovement: m.BlocksMovement,
-		}
+		entity := e.newMemberEntity(m.ID, m.Kind)
 
 		if err = e.canvas.PlaceEntity(entity, spatial.Position{X: m.Cell.X, Y: m.Cell.Y}); err != nil {
 			return nil, fmt.Errorf("load encounter member placement: %w: %w: %w", ErrInvalidData, ErrBadPlacement, err)
@@ -3469,7 +3479,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			BlocksMovement:     m.BlocksMovement,
 			Faction:            m.Faction,
 		}
-		if rerr := e.useRecipe(member, m.Recipe); rerr != nil {
+		if rerr := e.useRecipe(member, m.Recipe, m.BlockingStates); rerr != nil {
 			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, rerr)
 		}
 		blob, merr := machineFromData(e.programFor(member), m.Machine)
@@ -3527,7 +3537,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			holds:   append([]IntelID(nil), r.Holds...),
 			arrives: reserveTriggers[i],
 		}
-		if rerr := e.useRecipe(&rm.record, r.Recipe); rerr != nil {
+		if rerr := e.useRecipe(&rm.record, r.Recipe, r.BlockingStates); rerr != nil {
 			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, rerr)
 		}
 		e.reserveMember(rm)
@@ -3559,7 +3569,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// validation above already proved parses; the arm is kept rather than
 	// discarded so neither half can start lying by silence.
 	e.pause, err = pauseFrom(data.Pause)
-	if err != nil {
+	if err != nil && !errors.Is(err, errNoPause) {
 		return nil, err
 	}
 

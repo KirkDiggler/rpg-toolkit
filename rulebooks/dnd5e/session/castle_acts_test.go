@@ -364,7 +364,7 @@ func TestCastleActsTranscript(t *testing.T) {
 	assert.Equal(t, "…go on, then. I saw nothing.", line.body.Answer.Say)
 
 	// THE WORLD'S ROUND: each pick a table answer under a time act, and
-	// gate-1's patrol a walk.
+	// gate-1's walk off the crossing a walk.
 	var picks int
 	for _, act := range cowed.to("alice") {
 		if answer, ok := act.Body.(session.TableAnswer); ok && answer.Key == "time" {
@@ -374,11 +374,12 @@ func TestCastleActsTranscript(t *testing.T) {
 		}
 	}
 	assert.Positive(t, picks, "the world took its round")
-	// The walk in lands on no fixed round of the patrol's loop, so gate-1
-	// may stand a post through the line's round: his pacing is asked of the
-	// rounds alice spends walking in and talking.
+	// gate-1 is posted on the crossing (rpg-project#836) and stands it while
+	// alice walks in; cowed by the line he watched, his table walks him to
+	// his door post. That walk is asked of the rounds alice spends walking in
+	// and talking, not of one fixed round.
 	patrol := where[session.WalkAct](append(walkedIn.to("alice"), cowed.to("alice")...), func(w session.WalkAct) bool { return w.Mover.ID == "gate-1" })
-	require.NotEmpty(t, patrol, "gate-1 paces the gatehouse")
+	require.NotEmpty(t, patrol, "gate-1 walks off the crossing")
 	assert.True(t, strings.HasPrefix(patrol[0].act.Act, "move:"), patrol[0].act.Act)
 
 	// THE LINE THAT FAILS: the garrison turns and a fight forms, under the
@@ -695,7 +696,6 @@ func Example_theGatehouseActs() {
 	// move         perception   alice learns 1 region(s)
 	// move         act 2        alice walks (-3,16) (-4,16)
 	// move         perception   alice learns 1 region(s)
-	// move         perception   alice sees [gate-1], loses [], sees [] change
 	// move         act 3        alice walks (-4,16) (-5,16)
 	// move         perception   alice learns 2 region(s)
 	// move         act 4        alice walks (-5,16) (-6,16)
@@ -704,10 +704,8 @@ func Example_theGatehouseActs() {
 	// move         clock        tick 1
 	// time         table_answer captain answers time with "hold", no roll
 	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
-	// move         act 1        gate-1 walks (-6,9) (-5,8)
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
-	// pass         act 1        gate-1 stays: standing at its waypoint
+	// time         table_answer gate-1 answers post with "toward", rolled 1 of 50
+	// pass         act 1        gate-1 stays: already there
 	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-2,10)
 	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
@@ -740,7 +738,7 @@ func Example_theGatehouseActs() {
 	// time         table_answer sergeant answers time with "hold", rolled 1 of 100
 	// time         table_answer turnkey answers time with "hold", rolled 1 of 100
 	// move         perception   alice learns 1 region(s)
-	// move         perception   alice sees [captain], loses [], sees [] change
+	// move         perception   alice sees [captain gate-1], loses [], sees [] change
 	// move         act 6        alice walks (-6,14) (-6,13)
 	// move         perception   alice learns 1 region(s)
 	// move         perception   alice sees [gate-2], loses [], sees [] change
@@ -752,11 +750,11 @@ func Example_theGatehouseActs() {
 	// speak        act 1        alice to captain, "stand-aside" (intimidation): rolled 1d20+3 = 17, beat 14; captain answers "…go on, then. I saw nothing."
 	// speak        perception   alice hears voice
 	// speak        clock        tick 2
-	// speak        state        gate-1: posted -> alert (heard something)
+	// speak        state        gate-1: posted -> cowed (stood aside)
 	// time         table_answer captain answers time with "hold", no roll
 	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
-	// pass         act 1        gate-1 stays: standing at its waypoint
+	// time         table_answer gate-1 answers cowed with "toward", rolled 1 of 50
+	// move         act 1        gate-1 walks (-4,7) (-5,8)
 	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// pass         act 1        gate-2 stays: standing at its waypoint
 	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
@@ -861,10 +859,8 @@ func Example_theTroupeActs() {
 	// speak        clock        tick 1
 	// time         table_answer captain answers time with "hold", no roll
 	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
-	// move         act 1        gate-1 walks (-6,9) (-5,8)
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
-	// pass         act 1        gate-1 stays: standing at its waypoint
+	// time         table_answer gate-1 answers post with "toward", rolled 1 of 50
+	// move         act 1        gate-1 walks (-3,8) (-3,9) (-3,10) (-3,11) (-3,12) (-2,12)
 	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-2,10)
 	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
@@ -905,8 +901,8 @@ func Example_theTroupeActs() {
 	// move         clock        tick 2
 	// time         table_answer captain answers time with "hold", no roll
 	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
-	// pass         act 1        gate-1 stays: standing at its waypoint
+	// time         table_answer gate-1 answers post with "toward", rolled 1 of 50
+	// move         act 1        gate-1 walks (-3,12) (-3,11) (-3,10) (-3,9) (-3,8) (-3,7)
 	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// pass         act 1        gate-2 stays: standing at its waypoint
 	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
@@ -933,10 +929,9 @@ func Example_theTroupeActs() {
 	// time         table_answer sergeant answers time with "hold", rolled 1 of 100
 	// time         table_answer turnkey answers time with "hold", rolled 1 of 100
 	// move         perception   alice learns 1 region(s)
-	// move         perception   alice sees [gate-1], loses [], sees [] change
 	// move         act 4        alice walks (-6,15) (-6,14)
 	// move         perception   alice learns 1 region(s)
-	// move         perception   alice sees [captain], loses [], sees [] change
+	// move         perception   alice sees [captain gate-1], loses [], sees [] change
 	// move         act 5        alice walks (-6,14) (-6,13)
 	// move         perception   alice learns 1 region(s)
 	// move         perception   alice sees [gate-2], loses [], sees [] change
@@ -948,10 +943,8 @@ func Example_theTroupeActs() {
 	// move         clock        tick 3
 	// time         table_answer captain answers time with "hold", no roll
 	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
-	// move         act 1        gate-1 walks (-5,9) (-5,10)
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
-	// pass         act 1        gate-1 stays: standing at its waypoint
+	// time         table_answer gate-1 answers post with "toward", rolled 1 of 50
+	// pass         act 1        gate-1 stays: already there
 	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-3,9) (-4,10)
 	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
@@ -987,11 +980,11 @@ func Example_theTroupeActs() {
 	// speak        act 1        alice to captain, "troupe" (performance): rolled 1d20+3 = 15, beat 13; captain answers "Through to the hall, then. Don’t dawdle."
 	// speak        perception   alice hears voice
 	// speak        clock        tick 4
-	// speak        state        gate-1: posted -> alert (heard something)
+	// speak        state        gate-1: posted -> cowed (let the troupe through)
 	// time         table_answer captain answers time with "hold", no roll
 	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
-	// pass         act 1        gate-1 stays: standing at its waypoint
+	// time         table_answer gate-1 answers cowed with "toward", rolled 1 of 50
+	// move         act 1        gate-1 walks (-4,7) (-5,8)
 	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// pass         act 1        gate-2 stays: standing at its waypoint
 	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
@@ -1043,12 +1036,8 @@ func Example_theTroupeActs() {
 	// move         clock        tick 5
 	// time         table_answer captain answers time with "hold", no roll
 	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
-	// move         act 1        gate-1 walks (-6,10) (-7,10)
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
-	// move         act 1        gate-1 walks (-6,9) (-5,8)
-	// time         table_answer gate-1 answers time with "toward", rolled 1 of 100
-	// pass         act 1        gate-1 stays: standing at its waypoint
+	// time         table_answer gate-1 answers cowed with "toward", rolled 1 of 50
+	// pass         act 1        gate-1 stays: already there
 	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-3,10) (-2,10)
 	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100

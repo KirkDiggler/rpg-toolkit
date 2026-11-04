@@ -56,11 +56,17 @@ var (
 // every creature watching a 120-degree arc, the gate's watchers at passive
 // 11, 12 and 13, and nothing ever found.
 func castleOpener(at spatial.Position) opener {
+	return castleOpenerWith(at)
+}
+
+// castleOpenerWith is [castleOpener] with more of the party placed beside the
+// hero, each where it is given.
+func castleOpenerWith(at spatial.Position, party ...encounter.MemberInput) opener {
 	return func(t testing.TB, h host, down *standing) *encounter.SetupInput {
 		t.Helper()
 		compiled := loadFile(t, kingFixture)
 		arcs := map[encounter.MemberID]int{}
-		members := []encounter.MemberInput{{ID: hero, Kind: encounter.KindPlayer, Position: at}}
+		members := append([]encounter.MemberInput{{ID: hero, Kind: encounter.KindPlayer, Position: at}}, party...)
 		for _, m := range compiled.Monsters {
 			id := encounter.MemberID(m.MemberID)
 			arcs[id] = 120
@@ -120,7 +126,7 @@ func monsterInput(m dungeonspec.MonsterPlacement) encounter.MemberInput {
 	return encounter.MemberInput{
 		ID: encounter.MemberID(m.MemberID), Kind: encounter.KindMonster, Position: m.At,
 		Faction: encounter.FactionID(m.Faction), Table: m.Table, Options: m.Options, Arrives: m.Arrives,
-		Machine: m.Machine, Temper: soldierProfiles(m.Temper), Holds: holds, Facing: m.FacingDegrees,
+		Machine: m.Machine, BlockingStates: m.BlockingStates, Temper: soldierProfiles(m.Temper), Holds: holds, Facing: m.FacingDegrees,
 	}
 }
 

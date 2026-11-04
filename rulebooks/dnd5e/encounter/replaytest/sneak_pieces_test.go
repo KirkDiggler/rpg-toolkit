@@ -12,12 +12,10 @@ package replaytest_test
 // nothing, so the replay, which never re-issues it, lands the same log.
 
 import (
-	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -38,19 +36,15 @@ var (
 	// adjacent cell at a time.
 	theDash = []spatial.Position{castleCell(-3, 8), castleCell(-2, 8), castleCell(-2, 7), castleCell(-1, 7), castleCell(0, 7)}
 
-	// The posts: each gate guard stands at a door post watching the cell
-	// under the gate, then at a beat post watching the incomers.
-	westDoorPost = castleCell(-1, 8)
-	eastDoorPost = castleCell(2, 8)
-	westBeatPost = castleCell(0, 10)
+	// eastBeatPost is gate-2's beat post, where she stands with her back to
+	// the gate, watching the incomers.
 	eastBeatPost = castleCell(1, 10)
-)
 
-// gate1Passive and gate2Passive are the gate guards' passives on
-// [castleOpener]'s host, so a roll's DC names the guard it was against.
-const (
-	gate1Passive = 11
-	gate2Passive = 12
+	// sneakCompanion is the sneak's second party member, outside beside the
+	// stranger (besideTheStranger, an offset cell), whose word to him makes
+	// the noise.
+	sneakCompanion    = encounter.MemberID("companion")
+	besideTheStranger = spatial.Position{X: 6, Y: 14}
 )
 
 // dwellOf is a member's dwell as the run persists it, or nil.
@@ -66,16 +60,6 @@ func (w *world) dwellOf(id encounter.MemberID) *encounter.DwellData {
 	return nil
 }
 
-// justArrived is whether both gate guards stand at the given posts with a
-// round of the dwell still to stand.
-func (w *world) justArrived(west, east spatial.Position) bool {
-	w.t.Helper()
-	g1, g2 := w.dwellOf(kingGate1), w.dwellOf(kingGate2)
-
-	return g1 != nil && g2 != nil && g1.Rounds > 0 && g2.Rounds > 0 &&
-		w.at(kingGate1) == west && w.at(kingGate2) == east
-}
-
 // paceUntil walks a member out and back between two adjacent cells until a
 // condition holds, and requires that it came to hold.
 func (w *world) paceUntil(member encounter.MemberID, a, b spatial.Position, steps int, until func() bool) {
@@ -89,17 +73,6 @@ func (w *world) paceUntil(member encounter.MemberID, a, b spatial.Position, step
 		require.NoError(w.t, w.step(member, to))
 	}
 	require.True(w.t, until(), "the condition came to hold within %d steps", steps)
-}
-
-// snuckDC is the DC a `snuck` beat's roll faced.
-func snuckDC(t *testing.T, payload []byte) int {
-	t.Helper()
-	var b struct {
-		DC int `json:"dc"`
-	}
-	require.NoError(t, json.Unmarshal(payload, &b))
-
-	return b.DC
 }
 
 // toTheCorner walks the hero, not sneaking, from the gatehouse to the cell
@@ -118,46 +91,66 @@ func (w *world) toTheCorner() {
 func TestReplay_CastleSneakPieces(t *testing.T) {
 	t.Parallel()
 
-	// Piece 4, the sneak window at the door: the hero declares behind the
-	// corner once both gate guards have just come to the given posts, dashes
-	// to the cell under the gate, and declares off there. At the beat posts
-	// nothing rolls; at the door posts the dash rolls against both guards,
-	// on the host's own die, won or lost.
-	dash := func(t *testing.T, west, east spatial.Position) []record.EntryData {
-		t.Helper()
-		return replayRun(t, castleOpener(gatehouseSeat), func(w *world) {
-			w.walkTo(hero, besideTheCorner)
-			if w.at(hero) != besideTheCorner {
-				require.NoError(t, w.step(hero, besideTheCorner))
+	// Piece 4, re-aimed by rpg-project#836 (R4 A): gate-1 holds the crossing,
+	// gate-2 walks the loop. Posted, the dash is stopped by his body, which
+	// writes nothing. Drawn off by a voice (a companion outside asks the
+	// stranger about the bustle), he leaves the crossing for a round, and the
+	// dash crosses on gate-2's blind beat. Each lands the same log replayed.
+	toTheDash := func(w *world) {
+		w.walkTo(hero, besideTheCorner)
+		if w.at(hero) != besideTheCorner {
+			require.NoError(w.t, w.step(hero, besideTheCorner))
+		}
+		require.NoError(w.t, w.step(hero, theCorner))
+		require.NoError(w.t, w.sneak(hero, true), "behind the corner nobody sees the hero declare")
+		require.NoError(w.t, w.step(hero, besideTheCorner))
+		// gate-2 has just come to her beat post: she stands there this round
+		// and the next, with her back to the gate.
+		w.paceUntil(hero, besideTheCorner, besideThat, 60, func() bool {
+			d := w.dwellOf(kingGate2)
+			return d != nil && d.Rounds > 0 && w.at(kingGate2) == eastBeatPost
+		})
+	}
+	t.Run("piece 4: posted, the dash stops at the guard", func(t *testing.T) {
+		t.Parallel()
+		log := replayRun(t, castleOpener(gatehouseSeat), func(w *world) {
+			toTheDash(w)
+			require.Equal(t, beneathTheGate, w.at(kingGate1), "precondition: gate-1 holds the crossing")
+			for _, cell := range theDash[:len(theDash)-1] {
+				if w.at(hero) != cell {
+					require.NoError(t, w.step(hero, cell))
+				}
 			}
-			w.paceUntil(hero, besideTheCorner, besideThat, 60, func() bool { return w.justArrived(west, east) })
-			require.NoError(t, w.step(hero, theCorner))
-			require.NoError(t, w.sneak(hero, true), "behind the corner nobody sees the hero declare")
+			require.ErrorIs(t, w.step(hero, beneathTheGate), encounter.ErrBodyInTheWay, "the posted body stops the dash")
+			require.Equal(t, theDash[len(theDash)-2], w.at(hero), "one cell short of him")
+			require.False(t, w.fighting(hero), "the civil gate forms no fight")
+			require.NoError(t, w.sneak(hero, false))
+		})
+		require.Equal(t, 2, countBeats(t, log, encounter.BeatSneaking), "precondition: on and off are on the record")
+	})
+	t.Run("piece 4: drawn off by a voice, the dash in gate-2's window", func(t *testing.T) {
+		t.Parallel()
+		log := replayRun(t, castleOpenerWith(gatehouseSeat, encounter.MemberInput{
+			ID: sneakCompanion, Kind: encounter.KindPlayer, Position: besideTheStranger,
+		}), func(w *world) {
+			toTheDash(w)
+			require.NoError(t, w.speak(encounter.SpeakInput{
+				Actor: sneakCompanion, Target: kingPedlar, OptionID: "tonight", Skill: "persuasion", Beaten: true, DC: 15, Total: 20,
+			}), "the stranger answers the companion aloud")
+			start := w.round()
+			w.paceUntil(hero, besideTheCorner, besideThat, 12, func() bool { return w.round() > start })
+			require.NotEqual(t, beneathTheGate, w.at(kingGate1), "the voice drew gate-1 off the crossing")
+			require.Equal(t, eastBeatPost, w.at(kingGate2), "precondition: gate-2 still stands her blind beat")
 			for _, cell := range theDash {
-				require.NoError(t, w.step(hero, cell))
+				if w.at(hero) != cell {
+					require.NoError(t, w.step(hero, cell))
+				}
 			}
 			require.Equal(t, beneathTheGate, w.at(hero))
 			require.False(t, w.fighting(hero), "the civil gate forms no fight")
 			require.NoError(t, w.sneak(hero, false))
 		})
-	}
-	t.Run("piece 4: the dash in the window", func(t *testing.T) {
-		t.Parallel()
-		log := dash(t, westBeatPost, eastBeatPost)
 		require.Equal(t, 2, countBeats(t, log, encounter.BeatSneaking), "precondition: on and off are on the record")
-		require.Zero(t, countBeats(t, log, encounter.BeatSnuck), "precondition: in the window nothing rolled")
-	})
-	t.Run("piece 4: the dash at the door posts", func(t *testing.T) {
-		t.Parallel()
-		log := dash(t, westDoorPost, eastDoorPost)
-		require.Equal(t, 2, countBeats(t, log, encounter.BeatSneaking), "precondition: on and off are on the record")
-		dcs := map[int]bool{}
-		for _, e := range log {
-			if beatOf(t, e.Payload) == encounter.BeatSnuck {
-				dcs[snuckDC(t, e.Payload)] = true
-			}
-		}
-		require.True(t, dcs[gate1Passive] && dcs[gate2Passive], "precondition: the dash rolled against both gate guards")
 	})
 
 	// Piece 5, sneaking in plain sight: declared in the gatehouse, in the

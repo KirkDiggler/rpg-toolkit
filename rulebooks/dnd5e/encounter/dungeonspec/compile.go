@@ -310,6 +310,12 @@ type MonsterPlacement struct {
 	// neither authored one, which is the default recipe.
 	Machine *machine.Recipe `json:"Machine,omitempty"`
 
+	// BlockingStates is the states of Machine its body blocks in
+	// (rpg-project#836, states.go's `blocks: true`), in name order — for a
+	// host to hand to [encounter.MemberInput.BlockingStates] beside the
+	// recipe. Nil when no state blocks, which is the body as declared.
+	BlockingStates []string `json:"BlockingStates,omitempty"`
+
 	// Arrives is the predicate that brings this monster into the run
 	// ([PlaceSpec.Arrives]), compiled to the composition's own trigger by
 	// [predicateOf] — for a host to hand to [encounter.MemberInput.Arrives]
@@ -1532,6 +1538,8 @@ func ordersOf(c creatureOrders, from inherited, o encounter.Orientation) Monster
 		Table:   encounter.Layer(tableOf(from.on[side], o), tableOf(c.On, o)),
 		Temper:  temperOf(c.Temper, from.temper[side]),
 		Machine: machineOf(c.States, from.states[side], c.ID, side),
+
+		BlockingStates: blockingOf(c.States, from.states[side]),
 	}
 }
 

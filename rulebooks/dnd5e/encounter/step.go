@@ -183,7 +183,7 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 	}
 
 	fired, err := e.firedReachedPosition(member, action.to, at)
-	if err != nil {
+	if err != nil && !errors.Is(err, errNoEnding) {
 		return nil, fmt.Errorf("step ending: %w", err)
 	}
 
@@ -344,6 +344,13 @@ func (e *Encounter) stepMember(member *memberRecord, to spatial.Position, endWal
 			}
 			return executedAction{}, &StepObstructedError{cause: shutDoorRefusal(door)}
 		}
+		// A BODY IN THE WAY IS NAMED AS A BODY (rpg-project#836, B6): when
+		// the only thing holding the cell is a creature, the stop says who,
+		// as a shut door says it is shut. A field, a door or a prop on the
+		// same cell keeps its own sentence below.
+		if barrier, ok := bodyInTheWay(fact); ok {
+			return executedAction{}, &StepObstructedError{cause: e.bodyRefusal(member.ID, barrier, to)}
+		}
 		refusal := fmt.Errorf("cell %v %s: %w", to, e.blockedBy(fact, to), ErrBadPlacement)
 		for _, contrib := range fact.Contribs {
 			if contrib.Blocks && contrib.Kind == ContribField {
@@ -444,10 +451,64 @@ func (e *Encounter) stepTo(member *memberRecord, to spatial.Position) (executedA
 		if errors.As(err, &readErr) {
 			return executedAction{}, false, err
 		}
-		if errors.Is(err, ErrBadPlacement) || errors.Is(err, ErrDoorShut) || errors.Is(err, ErrLocked) {
+		if errors.Is(err, ErrBadPlacement) || errors.Is(err, ErrDoorShut) || errors.Is(err, ErrLocked) || errors.Is(err, ErrBodyInTheWay) {
 			return executedAction{}, false, nil
 		}
 		return executedAction{}, false, err
 	}
 	return action, true, nil
+}
+
+// bodyInTheWay is the creature holding a Blocked cell when a creature is the
+// only thing that blocks it: no field, door or prop among its blocking
+// contributors. The first blocking member in the fold's order otherwise.
+func bodyInTheWay(fact CellFact) (MemberID, bool) {
+	var barrier MemberID
+	for _, c := range fact.Contribs {
+		if !c.Blocks {
+			continue
+		}
+		if c.Kind != ContribMember {
+			return "", false
+		}
+		if barrier == "" {
+			barrier = MemberID(c.ID)
+		}
+	}
+
+	return barrier, barrier != ""
+}
+
+// bodyRefusalError is a step stopped by a body (rpg-project#836, B6). It
+// wraps [ErrBodyInTheWay]; its public sentence was decided when the step was
+// refused, from what the mover saw then: the body's name when the mover sees
+// it, "someone" when it does not, so a stop never confirms who stands where
+// the mover cannot see.
+type bodyRefusalError struct {
+	barrier MemberID
+	at      spatial.Position
+	public  string
+}
+
+func (e *bodyRefusalError) Error() string {
+	return fmt.Sprintf("cell %v is held by %s: %s", e.at, e.barrier, ErrBodyInTheWay)
+}
+
+func (e *bodyRefusalError) Unwrap() error { return ErrBodyInTheWay }
+
+// bodyRefusal is the refusal of a step into a body's cell, its public
+// sentence naming the body only to a mover who sees it now. A body with no
+// name is called by its id. A failed read of the mover's view is told as
+// "someone": the refusal stands either way, and a sentence is no place to
+// guess at what was seen.
+func (e *Encounter) bodyRefusal(mover, barrier MemberID, cell spatial.Position) error {
+	who := "someone"
+	if sees, err := e.currentlySees(mover, barrier); err == nil && sees {
+		who = string(barrier)
+		if m, ok := e.members[barrier]; ok && m.Name != "" {
+			who = m.Name
+		}
+	}
+
+	return &bodyRefusalError{barrier: barrier, at: cell, public: who + " stands in the way"}
 }

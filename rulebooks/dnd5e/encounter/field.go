@@ -1012,6 +1012,25 @@ type MemberInput struct {
 	// its caller opts in.
 	BlocksMovement bool
 
+	// BlockingStates names the states of [MemberInput.Machine] in which this
+	// member's body blocks (rpg-project#836, the guard holds the gate): a
+	// creature posted to hold a cell blocks exactly while its current state is
+	// one of these, and stands aside the moment a transition takes it to one
+	// that is not. Empty means the body blocks as [MemberInput.BlocksMovement]
+	// says, whatever machine it runs, which is every member before this field
+	// existed. Non-empty, it is the whole answer and BlocksMovement is not
+	// asked.
+	//
+	// READ FROM THE STATE, NEVER STORED BESIDE IT: the fold, the canvas, the
+	// board and what an observer sees all ask the current state, so a
+	// transition opens or closes the cell in the beat it fires. The names are
+	// the encounter's binding onto a recipe the machine knows nothing about
+	// (a recipe state carries only its transitions).
+	//
+	// VALIDATED AT THIS DOOR: a name the recipe does not declare, or any name
+	// on a member with no authored recipe, is [ErrBadMember].
+	BlockingStates []string
+
 	// Holds is the intel records this member carries, by record id
 	// (rpg-project#372, design §3) — the author's placement, seeded at
 	// construction as holdings nobody but the engine ever sees. Optional;
@@ -1124,6 +1143,7 @@ type memberFacts struct {
 	Options            []Option
 	Table              Table
 	Machine            *machine.Recipe
+	BlockingStates     []string
 }
 
 // validateMemberFacts refuses a defective authored check or table. Callers ask
@@ -1150,6 +1170,9 @@ func validateMemberFacts(in memberFacts) error {
 	// A table this composition could not roll is refused at whichever door
 	// the member came in through, never at the roll (answer.go).
 	if err := validateOrders(in.Table, in.Machine); err != nil {
+		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
+	}
+	if err := validateBlockingStates(in.Machine, in.BlockingStates); err != nil {
 		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
 	}
 
@@ -1518,8 +1541,11 @@ type Member struct {
 	Table  Table
 	Temper Temper
 
-	// BlocksMovement carries forward [MemberInput.BlocksMovement]/
-	// [JoinInput.BlocksMovement] verbatim — see that field's own doc.
+	// BlocksMovement is whether this member's body blocks now: its current
+	// state when it has [MemberInput.BlockingStates] (rpg-project#836), else
+	// [MemberInput.BlocksMovement]/[JoinInput.BlocksMovement] as declared.
+	// The same read the fold and the canvas make, so the row cannot disagree
+	// with them.
 	BlocksMovement bool
 
 	// Faction is the faction this member belongs to, RESOLVED: the one the
@@ -1589,6 +1615,12 @@ type memberRecord struct {
 	// derived at every door ([Encounter.useRecipe]) and never stored.
 	Recipe    *machine.Recipe
 	recipeKey string
+
+	// BlockingStates is [MemberInput.BlockingStates]: the states of Recipe in
+	// which this body blocks, validated against it at every door
+	// ([Encounter.useRecipe]) and persisted beside it. Empty defers to
+	// BlocksMovement. Read through [Encounter.memberBlocks], never copied.
+	BlockingStates []string
 
 	// Machine is this creature's machine blob (machine.go, rpg-project#766
 	// S3): its current state, bag, wake and anchor. The zero blob is the
@@ -1843,6 +1875,10 @@ type JoinInput struct {
 	// BlocksMovement — see [MemberInput.BlocksMovement]'s own doc. A joiner
 	// arriving mid-scene carries it exactly as an authored one does.
 	BlocksMovement bool
+
+	// BlockingStates — see [MemberInput.BlockingStates]'s own doc, validated
+	// against [JoinInput.Machine] at this door the same way.
+	BlockingStates []string
 
 	// Holds is the intel records this member carries, by record id
 	// (rpg-project#372, design §3) — [MemberInput.Holds] for a member who

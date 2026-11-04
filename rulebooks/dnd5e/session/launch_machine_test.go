@@ -68,3 +68,32 @@ func keysOf[V any](m map[string]V) []string {
 	}
 	return out
 }
+
+// postedCookStates is cookStates with the post blocking (rpg-project#836):
+// posted, the cook's body holds its cell; alert, it does not.
+const postedCookStates = `cook-1:
+        faction: kitchen
+        states:
+          initial: posted
+          posted:
+            blocks: true
+            transitions:
+              - { on: heard, within: 6, to: alert }
+          alert:
+            transitions:
+              - { on: time, rounds: 3, to: posted }`
+
+// TestLaunch_PlacementBlockingStatesReachTheSeatedMember (rpg-project#836):
+// the states an author marked `blocks` cross the door beside the recipe, so
+// the seated cook blocks by its state. A launch that carried the recipe and
+// dropped the binding would seat a body that never blocks.
+func (s *LaunchTemplateSuite) TestLaunch_PlacementBlockingStatesReachTheSeatedMember() {
+	dungeon := s.castle([2]string{"cook-1: {faction: kitchen}", postedCookStates})
+	compiled := s.placement(dungeon, "cook-1").BlockingStates
+	s.Require().Equal([]string{"posted"}, compiled, "precondition: the compile bound the post")
+
+	s.Require().NoError(s.launch(dungeon))
+
+	s.Equal(compiled, s.member("cook-1").BlockingStates, "the door carries the blocking states unchanged")
+	s.Empty(s.member("guard-1").BlockingStates, "a binding without states blocks as it is declared")
+}

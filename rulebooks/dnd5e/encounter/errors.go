@@ -663,6 +663,15 @@ var (
 	// arithmetic that is fine.
 	ErrDoorShut = errors.New("encounter: door is shut")
 
+	// ErrBodyInTheWay is returned, inside a [StepObstructedError], when a
+	// step's destination is held by a body that blocks: a creature in a
+	// blocking state, one declared [MemberInput.BlocksMovement], or a hostile
+	// (rpg-project#836). Distinct from [ErrBadPlacement] for [ErrDoorShut]'s
+	// reason: the cell is real and somebody stands in it, and the stop's
+	// public reason names him to a mover who sees him and says "someone" to
+	// one who does not. A driven walk stops at one silently.
+	ErrBodyInTheWay = errors.New("encounter: a body is in the way")
+
 	// ErrOutOfRange is returned when Interact's target stands farther than
 	// the configured range (default: adjacent, one cell) from the actor.
 	ErrOutOfRange = errors.New("encounter: target out of range")

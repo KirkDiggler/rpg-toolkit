@@ -12,7 +12,9 @@ package castletest
 //     feast, on a line whose success and failure both teach it.
 //  3. With the fact, the troupe talks its way in; without it, the line is not
 //     offered.
-//  4. Without it, sneak at the front door: the gate patrol leaves a window.
+//  4. Without it, sneak at the front door: a voice draws the posted guard off
+//     the crossing, and the sneaker crosses on the patrol's blind beat
+//     (rpg-project#836, R4 A).
 //  5. Sneaking in plain sight is refused (R11, rpg-project#768).
 //  6. Fight the gate guards: nobody comes.
 //  7. Open the gate: the far room answers.
@@ -31,6 +33,7 @@ package castletest
 // shows, so the script is asked of cones.
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"testing"
@@ -86,6 +89,11 @@ var (
 	// pastTheGate is the courtyard cell under the gate, past the shut door: a
 	// walk toward it ends beneath the gate.
 	pastTheGate = castleCell(0, 6)
+
+	// besideTheCrossing is the gatehouse cell west of the one beneath the
+	// gate, along the gate wall: where a party stands beside the posted
+	// guard (rpg-project#836).
+	besideTheCrossing = castleCell(-1, 7)
 )
 
 // The gate patrol's posts as the file writes them: each guard stands at a
@@ -291,16 +299,6 @@ func (s *kingScene) offers(target encounter.MemberID, option string) bool {
 	return false
 }
 
-// atPosts reports whether both gate guards dwell on the two given posts.
-func (s *kingScene) atPosts(west, east spatial.Position) bool {
-	s.t.Helper()
-	g1, g2 := dwellOf(s.t.(*testing.T), s.enc, kingGate1), dwellOf(s.t.(*testing.T), s.enc, kingGate2)
-
-	return g1 != nil && g2 != nil &&
-		spatial.Position{X: g1.Cell.X, Y: g1.Cell.Y} == west && s.at(kingGate1) == west &&
-		spatial.Position{X: g2.Cell.X, Y: g2.Cell.Y} == east && s.at(kingGate2) == east
-}
-
 // heardTheStranger walks the hero to the stranger beside the start and has
 // it ask what the bustle is, the check beaten or not.
 func (s *kingScene) heardTheStranger(beaten bool) {
@@ -442,163 +440,150 @@ func TestMadKingScriptTheTroupeNeedsTheFeast(t *testing.T) {
 	require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "nobody fights")
 }
 
-// TestMadKingScriptASneakWindowAtTheDoor is piece 4: the gate patrol stands
-// at its door posts watching the cell under the gate, then at its beat posts
-// with its back to it. Every loop of the patrol watches the cell under the
-// gate and then leaves it unwatched for two rounds running. The window is the
-// beat: a hero who declares behind the
-// corner and crosses to the gate then is rolled against by nobody, and no
-// zone holds the cell under the gate; the same crossing while the door posts
-// are kept is rolled against both gate guards, whose zones both hold it.
+// TestMadKingScriptASneakWindowAtTheDoor is piece 4, re-aimed by
+// rpg-project#836 (R4 A): the gate holds one body and one eye. gate-1 is
+// posted on the crossing, the cell beneath the gate, and holds it through
+// any number of rounds: a sneaker who dashes for it is stopped by the body,
+// seen or not. gate-2 walks the loop, and two rounds of every four stands at
+// her beat post with her back to the gate. The sneak is two moves: a voice
+// draws gate-1 off the crossing for one round (his post's `heard` row), and
+// the sneaker crosses in that round while gate-2 is on her blind beat.
 func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 	t.Parallel()
 
-	t.Run("every loop the cell under the gate is watched, then unwatched two rounds running", func(t *testing.T) {
+	t.Run("posted, gate-1 holds the crossing every round, and the dash stops at him", func(t *testing.T) {
 		t.Parallel()
-		s := openTheScript(t, gatehouseSeat, scriptStealth())
+		s, _ := openTheSneak(t)
 		s.declareBehindTheCorner()
 		s.stepTo(besideTheCorner)
 
-		// watch is one round's reading of the cell under the gate: whether
-		// each gate guard's zone holds it.
-		type watch struct{ gate1, gate2 bool }
-		watched := func() watch {
-			var w watch
+		// gate2Watches is one round's reading: whether gate-2's zone holds the
+		// cell under the gate.
+		gate2Watches := func() bool {
 			for _, z := range zonesOf(t, s.enc, hero) {
-				in := cellSet(z.Cells)[beneathTheGate]
-				switch z.Watcher {
-				case kingGate1:
-					w.gate1 = in
-				case kingGate2:
-					w.gate2 = in
+				if z.Watcher == kingGate2 {
+					return cellSet(z.Cells)[beneathTheGate]
 				}
 			}
-			return w
+			return false
 		}
-
-		// A loop begins on the round both gate guards come to their door
-		// posts, and runs to the next such round. The rounds before the first
-		// arrival are no loop. Two whole loops are enough to show the window
-		// comes round again.
-		var loops [][]watch
-		var current []watch
-		wasAtTheDoor := false
+		watched, blind, longestBlind := 0, 0, 0
 		beside := castleCell(-4, 8)
-		for round := 0; round < 20 && len(loops) < 2; round++ {
-			atTheDoor := s.atPosts(westDoorPost, eastDoorPost)
-			if atTheDoor && !wasAtTheDoor {
-				if current != nil {
-					loops = append(loops, current)
-					if len(loops) == 2 {
-						break
-					}
-				}
-				current = []watch{}
-			}
-			wasAtTheDoor = atTheDoor
-			if current != nil {
-				current = append(current, watched())
+		for round := 0; round < 12; round++ {
+			require.Equal(t, beneathTheGate, s.at(kingGate1), "round %d: gate-1 stands the crossing", round)
+			if gate2Watches() {
+				watched++
+				blind = 0
+			} else {
+				blind++
+				longestBlind = max(longestBlind, blind)
 			}
 			start := s.enc.ToData().Clock.HighWater
 			require.True(t, s.pace(besideTheCorner, beside, 12, func() bool { return s.enc.ToData().Clock.HighWater > start }),
 				"a round passes")
 		}
-		require.GreaterOrEqual(t, len(loops), 2, "the patrol walks whole loops")
+		require.Positive(t, watched, "some rounds gate-2 watches the cell under the gate")
+		require.GreaterOrEqual(t, longestBlind, 2, "and two rounds running she does not: her blind beat")
 
-		for i, loop := range loops {
-			both, run, longest := false, 0, 0
-			for _, w := range loop {
-				if w.gate1 && w.gate2 {
-					both = true
-				}
-				if !w.gate1 && !w.gate2 {
-					run++
-					longest = max(longest, run)
-				} else {
-					run = 0
-				}
-			}
-			require.True(t, both, "loop %d: some round both gate guards watch the cell under the gate", i)
-			require.GreaterOrEqual(t, longest, 2, "loop %d: two rounds running neither does: the window", i)
-		}
-	})
-
-	// dash opens the hero in the gatehouse, declares it behind the corner
-	// once both gate guards have just come to the given posts, then walks it
-	// to the cell under the gate.
-	dash := func(t *testing.T, west, east spatial.Position) (*kingScene, *partyStealth, int) {
-		t.Helper()
-		stealth := scriptStealth()
-		s := openTheScript(t, gatehouseSeat, stealth)
-		s.stepTo(besideTheCorner)
-		// Just arrived: both still have a round of the dwell to stand, so the
-		// dash crosses while they keep the posts (the walk in from outside
-		// puts the party at the corner on no fixed round of the loop).
-		justArrived := func() bool {
-			g1, g2 := dwellOf(t, s.enc, kingGate1), dwellOf(t, s.enc, kingGate2)
-			return s.atPosts(west, east) && g1.Rounds > 0 && g2.Rounds > 0
-		}
-		require.True(t, s.pace(besideTheCorner, castleCell(-4, 8), 60, justArrived),
-			"the gate guards come to the posts")
+		// The dash, posted: every step but the last is taken, and the last
+		// is stopped by the body on the crossing.
 		_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: theCorner, EndWalk: true})
 		require.NoError(t, err)
-		s.declare(hero)
-		_, judged := s.enc.ToData().SneakVerdicts[hero][kingGate1]
-		require.False(t, judged, "behind the corner gate-1 does not see the hero declare")
-		_, judged = s.enc.ToData().SneakVerdicts[hero][kingGate2]
-		require.False(t, judged, "nor gate-2")
-		_, judged = s.enc.ToData().SneakVerdicts[hero][kingCaptain]
-		require.False(t, judged, "nor the captain")
-
-		snuck := len(s.beatsOf(hero, encounter.BeatSnuck))
-		for i, cell := range theDash {
-			if i > 0 {
-				require.Equal(t, 1.0, s.enc.Distance(theDash[i-1], cell), "the dash steps to an adjacent cell")
-			}
+		for _, cell := range theDash[:len(theDash)-1] {
 			_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: cell})
 			require.NoError(t, err)
+		}
+		_, err = s.enc.Step(&encounter.StepInput{Member: hero, To: beneathTheGate, EndWalk: true})
+		require.ErrorIs(t, err, encounter.ErrBodyInTheWay, "the posted body stops the sneaker as it stops anyone")
+		require.Equal(t, theDash[len(theDash)-2], s.at(hero), "the walk stopped one cell short of him")
+		require.Equal(t, beneathTheGate, s.at(kingGate1), "and he still holds the crossing")
+	})
+
+	t.Run("drawn off by a voice, the sneaker crosses on gate-2's blind beat", func(t *testing.T) {
+		t.Parallel()
+		s, stealth := openTheSneak(t)
+		s.declareBehindTheCorner()
+		s.stepTo(besideTheCorner)
+		// gate-2 has just come to her beat post: she stands there this round
+		// and the next, with her back to the gate.
+		justArrived := func() bool {
+			d := dwellOf(t, s.enc, kingGate2)
+			return d != nil && s.at(kingGate2) == eastBeatPost && d.Rounds > 0
+		}
+		beside := castleCell(-4, 8)
+		require.True(t, s.pace(besideTheCorner, beside, 60, justArrived), "gate-2 comes to her beat post")
+		require.Equal(t, beneathTheGate, s.at(kingGate1), "precondition: gate-1 holds the crossing")
+
+		// The noise: the companion outside asks the stranger about the
+		// bustle, and the stranger's answer is a voice the post hears. He
+		// answers it on the world's next round, and the sneaker goes then.
+		s.voiceOutside()
+		start := s.enc.ToData().Clock.HighWater
+		require.True(t, s.pace(besideTheCorner, beside, 12, func() bool { return s.enc.ToData().Clock.HighWater > start }),
+			"a round passes")
+		require.NotEqual(t, beneathTheGate, s.at(kingGate1), "the voice drew gate-1 off the crossing")
+		require.Equal(t, eastBeatPost, s.at(kingGate2), "precondition: gate-2 still stands her blind beat")
+
+		// IN THE WINDOW NOTHING ROLLS: the hero's Stealth wins every roll, so
+		// only the resolver and the record can say whether anybody looked.
+		asked, snuck := len(stealth.asked), len(s.beatsOf(hero, encounter.BeatSnuck))
+		for i, cell := range theDash {
+			if s.at(hero) == cell {
+				continue // the pace may have left the hero on the dash's first cell
+			}
+			_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: cell, EndWalk: i == len(theDash)-1})
+			require.NoError(t, err, "the dash steps onto %v", cell)
 			require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "no fight formed")
 		}
-		require.Equal(t, beneathTheGate, s.at(hero))
+		require.Equal(t, beneathTheGate, s.at(hero), "the sneaker stands beneath the gate")
+		require.True(t, s.enc.Sneaking(hero), "still sneaking")
+		require.Len(t, stealth.asked, asked, "nobody rolled against the dash")
+		require.Len(t, s.beatsOf(hero, encounter.BeatSnuck), snuck, "no snuck beat")
+		for _, z := range zonesOf(t, s.enc, hero) {
+			if z.Watcher == kingGate2 {
+				require.False(t, cellSet(z.Cells)[beneathTheGate], "gate-2 does not watch the cell under the gate")
+			}
+		}
+	})
+}
 
-		return s, stealth, snuck
+// openTheSneak opens [openTheScript]'s castle with a companion outside beside
+// the stranger, whose word to him makes the noise the sneak needs, and
+// returns the stealth resolver every sneak roll is asked of.
+func openTheSneak(t *testing.T) (*kingScene, *partyStealth) {
+	t.Helper()
+	arcs := map[encounter.MemberID]int{}
+	for _, m := range loadContent(t, kingFixture).Monsters {
+		arcs[encounter.MemberID(m.MemberID)] = 120
 	}
 
-	t.Run("in the window nothing rolls", func(t *testing.T) {
-		t.Parallel()
-		s, stealth, before := dash(t, westBeatPost, eastBeatPost)
-		require.Empty(t, stealth.asked, "nobody rolled against the hero")
-		require.Len(t, s.beatsOf(hero, encounter.BeatSnuck), before, "no snuck beat")
-		for _, z := range zonesOf(t, s.enc, hero) {
-			require.False(t, cellSet(z.Cells)[beneathTheGate], "%s does not watch the cell under the gate", z.Watcher)
-		}
+	stealth := scriptStealth()
+	s := openTheCastleAs(t, castleHost{
+		at: gatehouseSeat, arcs: arcs, resolver: stealth,
+		passive: map[encounter.MemberID]int{kingGate1: gate1Passive, kingGate2: gate2Passive, kingCaptain: captainPassive},
+		players: []encounter.MemberInput{{ID: sneakCompanion, Kind: encounter.KindPlayer, Position: besideTheStranger}},
 	})
 
-	t.Run("at the door posts the crossing rolls against both gate guards", func(t *testing.T) {
-		t.Parallel()
-		s, stealth, before := dash(t, westDoorPost, eastDoorPost)
-		dcs := map[int]bool{}
-		for _, in := range stealth.asked {
-			dcs[in.Approaches[0].DC] = true
-		}
-		require.True(t, dcs[gate1Passive], "rolled against gate-1")
-		require.True(t, dcs[gate2Passive], "rolled against gate-2")
-		watchers := map[string]bool{}
-		for _, b := range s.beatsOf(hero, encounter.BeatSnuck)[before:] {
-			watchers[b.Watcher] = true
-		}
-		require.True(t, watchers[string(kingGate1)], "a snuck beat names gate-1")
-		require.True(t, watchers[string(kingGate2)], "a snuck beat names gate-2")
-		for _, guard := range []encounter.MemberID{kingGate1, kingGate2} {
-			var zone map[spatial.Position]bool
-			for _, z := range zonesOf(t, s.enc, hero) {
-				if z.Watcher == guard {
-					zone = cellSet(z.Cells)
-				}
-			}
-			require.True(t, zone[beneathTheGate], "%s watches the cell under the gate from its door post", guard)
-		}
+	return s, stealth
+}
+
+// sneakCompanion is the sneak's second party member, outside beside the
+// stranger, and besideTheStranger the cell it stands on (offset).
+var (
+	sneakCompanion    = encounter.MemberID("companion")
+	besideTheStranger = spatial.Position{X: 6, Y: 14}
+)
+
+// voiceOutside has the companion ask the stranger about the bustle: the
+// stranger answers aloud, a voice the gate post hears, and the world round
+// the asking takes is the round the post answers it in.
+func (s *kingScene) voiceOutside() {
+	s.t.Helper()
+	_, err := s.enc.Speak(context.Background(), &encounter.SpeakInput{
+		Range: speakReach, Actor: sneakCompanion, Target: kingPedlar, OptionID: "tonight", Skill: "persuasion",
+		Beaten: true, DC: 15, Total: 20, Roller: rollsOne{},
 	})
+	require.NoError(s.t, err, "the stranger answers the companion")
 }
 
 // TestMadKingScriptSneakingInPlainSightIsRefused is piece 5: declared in

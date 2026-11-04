@@ -334,3 +334,59 @@ func (s *MoveTurnClockSuite) TestWorldClockMoveNeverTouchesTheEconomy() {
 	// nobody saves.
 	s.Nil(characters.byID["alice"].ActionEconomy, "a free-roam read never lights a stored sheet")
 }
+
+// TestABumpOnTheTurnClockPaysNoMovement (rpg-project#836, D4): alice walks
+// one cell, then into the skeleton's. The cell she walked is paid; the step
+// the skeleton's body refused is not a step and costs nothing; the walk
+// answers `stopped` where she stood.
+func (s *MoveTurnClockSuite) TestABumpOnTheTurnClockPaysNoMovement() {
+	ctx := context.Background()
+	enc, err := s.mgr.LoadWorldForTest(ctx, "sess")
+	s.Require().NoError(err)
+	alice, skel := standingAt(enc, "alice"), standingAt(enc, "skel-1")
+	step := enc.Distance(alice, skel)
+	free := func(cell spatial.Position) bool {
+		fact, ferr := enc.CellAt(encounter.CellAtInput{Cell: cell, Mover: "alice"})
+		s.Require().NoError(ferr)
+		return fact.Passage == encounter.PassageStandable
+	}
+	neighbors := func(of spatial.Position) []spatial.Position {
+		out := make([]spatial.Position, 0, 6)
+		for _, d := range [][2]float64{{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, -1}, {-1, 1}} {
+			out = append(out, spatial.Position{X: of.X + d[0], Y: of.Y + d[1]})
+		}
+		return out
+	}
+	// first is a free cell beside both; beyond is a free cell past the
+	// skeleton, so the walk's end is not his cell.
+	var first, beyond *spatial.Position
+	for _, c := range neighbors(alice) {
+		if c != skel && free(c) && enc.Distance(c, skel) == step {
+			first = &c
+			break
+		}
+	}
+	s.Require().NotNil(first, "precondition: a free cell beside alice and the skeleton")
+	for _, c := range neighbors(skel) {
+		if c != alice && c != *first && free(c) && enc.Distance(c, *first) > step {
+			beyond = &c
+			break
+		}
+	}
+	s.Require().NotNil(beyond, "precondition: a free cell past the skeleton")
+
+	before := s.moveDecl(s.afford("alice")).Remaining
+	s.Require().NotNil(before)
+
+	out, err := s.mgr.Move(ctx, &session.MoveInput{
+		Session: "sess", Member: "alice", DeclarationID: currentMoveID(s.T(), s.mgr, "sess", "alice"),
+		Path: []spatial.Position{*first, skel, *beyond},
+	})
+	s.Require().NoError(err, "a body in the way is a stop, not a refusal")
+	s.Equal(session.MovementStopped, out.Status)
+	s.Contains(out.StopReason, "stands in the way", "the stop says a body held the cell")
+	s.Require().NotEmpty(out.Steps)
+	s.Equal(*first, out.Steps[len(out.Steps)-1].Position, "the step before him stays")
+	s.Equal(*first, s.where("alice"))
+	s.Equal(*before-5, s.storedMovement("alice"), "the walked cell is paid, the bump is not")
+}

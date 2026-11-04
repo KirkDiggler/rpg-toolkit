@@ -87,6 +87,7 @@ var compositionSentinels = map[string]error{
 	"encounter.ErrBadDoor":                encounter.ErrBadDoor,
 	"encounter.ErrLocked":                 encounter.ErrLocked,
 	"encounter.ErrDoorShut":               encounter.ErrDoorShut,
+	"encounter.ErrBodyInTheWay":           encounter.ErrBodyInTheWay,
 	"encounter.ErrNoRegion":               encounter.ErrNoRegion,
 	"encounter.ErrInBubble":               encounter.ErrInBubble,
 	"encounter.ErrSeen":                   encounter.ErrSeen,

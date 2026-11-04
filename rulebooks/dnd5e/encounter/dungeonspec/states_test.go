@@ -162,6 +162,11 @@ func TestDungeonspec_StatesRefusals(t *testing.T) {
 			path:   at + ".a.transitions[0].do[0]", words: []string{"an act is one of"},
 		},
 		{
+			name:   "blocks on a terminal state",
+			states: "          initial: a\n          a: { transitions: [{ on: time, to: b }] }\n          b: { terminal: true, blocks: true }\n",
+			path:   at + ".b.blocks", words: []string{"a terminal state ends the machine"},
+		},
+		{
 			name:   "a pick of a verdict",
 			states: "          initial: a\n          a: { transitions: [{ on: time, do: [{ pick: success }] }] }\n",
 			path:   at, words: []string{`pick "success" is not a key`},
@@ -197,4 +202,49 @@ func TestDungeonspec_StatesRefusals(t *testing.T) {
 		requireExactDefect(t, refusals(t, v4With("tables:\n  drill:\n    march:\n      - { hold: {} }", "")),
 			"tables.drill.on.march", `"march" is not a trigger this build rolls: they are time`)
 	})
+}
+
+// TestDungeonspec_BlocksCompilesToBlockingStates (rpg-project#836, C1): a
+// state written `blocks: true` is one the creature's body blocks in. The
+// compile collects them, in name order, beside the recipe they name, for the
+// creature whose states win; a creature with no blocking state carries none,
+// and the encounter's door seats what the dialect compiled.
+func TestDungeonspec_BlocksCompilesToBlockingStates(t *testing.T) {
+	compiled := loadSource(t, v4With("", `    monsterBindings:
+      goblin-1:
+        on: { time: [{ hold: {} }] }
+        states:
+          initial: posted
+          posted:
+            blocks: true
+            transitions:
+              - { on: fact, when: { fact: gate-cowed }, to: cowed }
+              - { on: heard, within: 6, to: alert }
+          alert:
+            blocks: true
+            transitions:
+              - { on: time, rounds: 3, to: posted }
+          cowed:
+            transitions:
+              - { on: time, do: [{ pick: time }] }`))
+
+	posted := monsterNamed(t, compiled, "goblin-1")
+	require.Equal(t, []string{"alert", "posted"}, posted.BlockingStates, "every state written blocks, in name order")
+	require.Empty(t, monsterNamed(t, compiled, "goblin-2").BlockingStates, "a creature with no states blocks as it is declared")
+
+	members := []encounter.MemberInput{{ID: "hero", Kind: encounter.KindPlayer, Position: compiled.PartyStart[0].At}}
+	for _, m := range compiled.Monsters {
+		members = append(members, encounter.MemberInput{
+			ID: encounter.MemberID(m.MemberID), Kind: encounter.KindMonster, Position: m.At,
+			Faction: encounter.FactionID(m.Faction), Table: m.Table, Machine: m.Machine, BlockingStates: m.BlockingStates,
+		})
+	}
+	_, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field:        compiled.Field,
+		Members:      members,
+		Endings:      append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, compiled.Endings...),
+		Retention:    encounter.RetentionUnbounded,
+		Capabilities: facingCapabilities(),
+	})
+	require.NoError(t, err, "the door seats the blocking states the dialect compiled")
 }

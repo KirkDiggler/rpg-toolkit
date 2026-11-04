@@ -255,6 +255,13 @@ func (d TableDriver) walkIntent(view MonsterView, entry Answer, sel Selector, p 
 
 	if at := sel.At; at != nil {
 		cell := *at
+		// ALREADY ON THE CELL, THE ROW STANDS AND SAYS SO, as a `toward`
+		// already in reach does: a guard posted on a crossing spends every
+		// round there (rpg-project#836), and a stayed beat with no reason
+		// reads as a creature nobody asked.
+		if view.Position == cell {
+			return Pass{Cause: p.cause, Why: towardAlreadyThere}
+		}
 
 		return Routed{Policy: MoveToward, AnchorAt: &cell, Cause: p.cause, Dash: p.dash}
 	}
@@ -385,6 +392,10 @@ func (d TableDriver) inSight(view MonsterView, target MemberID) bool {
 
 	return false
 }
+
+// towardAlreadyThere is the sentence a `toward` an authored cell the creature
+// already stands on tells on its stayed beat.
+const towardAlreadyThere = "already there"
 
 // towardAlreadyInReach is the sentence a `toward` whose target is already
 // within range of one of the creature's actions tells on its stayed beat.
