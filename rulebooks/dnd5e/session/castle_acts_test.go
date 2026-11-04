@@ -220,17 +220,14 @@ func playTheGatehouse() []beat {
 	return beats
 }
 
-// beneathTheGate is the gatehouse cell under the gate door,
-// dungeon-absolute.
-var beneathTheGate = spatial.Position{X: -3, Y: 7}
-
 // castleGate is the gate door's id, as the atlas's doorways name it.
 const castleGate = "the-mad-king/gate-wall-door"
 
 // playTheTroupe is the troupe route through the session seam: alice steps
 // over to the stranger beside the start and asks him what the bustle is
 // (15 against 5), walks in to the captain and passes as the
-// feast's players (15 against 13), walks under the gate and opens it, and the
+// feast's players (15 against 13), walks to the gate and opens it beside its
+// posted guard, and the
 // far room's two guards arrive and walk to the gate, civil.
 func playTheTroupe() []beat {
 	ctx := context.Background()
@@ -287,16 +284,20 @@ func playTheTroupe() []beat {
 		return toward(func(enc *encounter.Encounter) spatial.Position { return standingAt(enc, "captain") }, false)
 	})
 	play("alice tells the captain they are the troupe", speak("captain", "troupe"))
-	play("alice walks under the gate", func() error { return toward(at(beneathTheGate), true) })
+	// gate-1 stays posted beneath the gate (rpg-project#857, R6): the troupe
+	// is let through by its fact, not by cowing him, so alice works the gate
+	// from the opening's other cell beside him.
+	beside := besideTheCastleGate
+	play("alice walks to the gate", func() error { return toward(at(beside), true) })
 	play("alice opens the gate", func() error {
 		_, err := g.mgr.OpenDoor(ctx, &session.OpenDoorInput{Session: "sess", Member: "alice", Door: castleGate})
 		return err
 	})
 	// A round on the world clock is six cells walked: out a cell and back,
 	// three times.
-	beside := spatial.Position{X: -4, Y: 7}
+	behind := spatial.Position{X: -5, Y: 8}
 	play("alice waits at the gate", func() error {
-		return walk([]spatial.Position{beside, beneathTheGate, beside, beneathTheGate, beside, beneathTheGate})
+		return walk([]spatial.Position{behind, beside, behind, beside, behind, beside})
 	})
 	return beats
 }
@@ -984,11 +985,11 @@ func Example_theTroupeActs() {
 	// speak        act 1        alice to captain, "troupe" (performance): rolled 1d20+3 = 15, beat 13; captain answers "Through to the hall, then. Don’t dawdle."
 	// speak        perception   alice hears voice
 	// speak        clock        tick 4
-	// speak        state        gate-1: posted -> cowed (let the troupe through)
+	// speak        state        gate-1: posted -> alert (heard something)
 	// time         table_answer captain answers time with "hold", no roll
 	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer gate-1 answers cowed with "toward", rolled 1 of 50
-	// move         act 1        gate-1 walks (-4,7) (-5,8)
+	// time         table_answer gate-1 answers post with "toward", rolled 1 of 50
+	// move         act 1        gate-1 stays:
 	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// pass         act 1        gate-2 stays: standing at its waypoint
 	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
@@ -1020,8 +1021,8 @@ func Example_theTroupeActs() {
 	// time         table_answer scullion answers time with "hold", rolled 1 of 100
 	// time         table_answer sergeant answers time with "hold", rolled 1 of 100
 	// time         table_answer turnkey answers time with "hold", rolled 1 of 100
-	// -- alice walks under the gate --
-	// move         act 1        alice walks (-5,8) (-4,7) (-3,7)
+	// -- alice walks to the gate --
+	// move         act 1        alice walks (-5,8) (-4,7)
 	// -- alice opens the gate --
 	// open_door    act 1        alice's door the-mad-king/gate-wall-door is open
 	// open_door    clock        reserve-1 arrives (monster)
@@ -1029,18 +1030,13 @@ func Example_theTroupeActs() {
 	// open_door    clock        reserve-2 arrives (monster)
 	// open_door    table_answer reserve-2 is dealt "coward", rolled 1 of 3
 	// open_door    perception   alice learns 2 region(s)
-	// open_door    perception   alice sees [reserve-1 reserve-2 sergeant turnkey], loses [], sees [] change
+	// open_door    perception   alice sees [], loses [], sees [] change
 	// -- alice waits at the gate --
-	// move         act 1        alice walks (-4,7)
-	// move         perception   alice learns 2 region(s)
-	// move         perception   alice sees [], loses [reserve-1 reserve-2 sergeant turnkey], sees [] change
-	// move         act 2        alice walks (-4,7) (-3,7)
-	// move         perception   alice sees [reserve-1 reserve-2 sergeant turnkey], loses [], sees [] change
-	// move         act 3        alice walks (-3,7) (-4,7)
+	// move         act 1        alice walks (-5,8) (-4,7) (-5,8) (-4,7)
 	// move         clock        tick 5
 	// time         table_answer captain answers time with "hold", no roll
 	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer gate-1 answers cowed with "toward", rolled 1 of 50
+	// time         table_answer gate-1 answers post with "toward", rolled 1 of 50
 	// pass         act 1        gate-1 stays: already there
 	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-3,10) (-2,10)
@@ -1075,11 +1071,5 @@ func Example_theTroupeActs() {
 	// time         table_answer scullion answers time with "hold", rolled 1 of 100
 	// time         table_answer sergeant answers time with "hold", rolled 1 of 100
 	// time         table_answer turnkey answers time with "hold", rolled 1 of 100
-	// move         perception   alice sees [], loses [reserve-1 reserve-2 sergeant turnkey], sees [] change
-	// move         act 4        alice walks (-4,7) (-3,7)
-	// move         perception   alice sees [reserve-1 reserve-2 sergeant turnkey], loses [], sees [] change
-	// move         act 5        alice walks (-3,7) (-4,7)
-	// move         perception   alice sees [], loses [reserve-1 reserve-2 sergeant turnkey], sees [] change
-	// move         act 6        alice walks (-4,7) (-3,7)
-	// move         perception   alice sees [reserve-1 reserve-2 sergeant turnkey], loses [], sees [] change
+	// move         act 2        alice walks (-4,7) (-5,8) (-4,7)
 }

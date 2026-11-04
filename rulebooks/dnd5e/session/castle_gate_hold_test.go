@@ -116,7 +116,13 @@ func (c *freeRoamCastle) openTheGate(t *testing.T) {
 // party steps through beside him (the S1 walk, rpg-project#841).
 func TestCastleTheLaunchSeatsTheGatePost(t *testing.T) {
 	c := openTheCastleForTwo(t, 18)
-	post := encounter.PostData{Door: castleGateDoor, Cells: []spatial.Position{beneathTheCastleGate, besideTheCastleGate}}
+	// With its settings (rpg-project#857, R6): it checks arrivals, and the
+	// troupe's fact is its pass. The dungeonspec compiles them into the post
+	// itself, so the launch carries them by carrying the post.
+	post := encounter.PostData{
+		Door: castleGateDoor, Cells: []spatial.Position{beneathTheCastleGate, besideTheCastleGate},
+		Against: encounter.PostEntering, Pass: "troupe-admitted",
+	}
 	for _, m := range c.world(t).ToData().Members {
 		if m.ID == "gate-1" {
 			require.Equal(t, map[string]encounter.PostData{"posted": post, "alert": post}, m.Posts,
