@@ -14,6 +14,7 @@ package encounter
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"slices"
 	"testing"
 
@@ -21,6 +22,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -679,4 +681,106 @@ func TestAHoldThatDoesNotBlockIsStillSeenToEnd(t *testing.T) {
 	held, err = enc.ObservedHolds(&ViewInput{Member: "alice"})
 	require.NoError(t, err)
 	require.NotContains(t, held, postedGuard, "cowed, she sees the hold end, though his body never blocked")
+}
+
+// TestTheHoldIsNotDeliveredInASighting: the stored sighting carries the door
+// a seen holder holds, and the sighting a host relays to a client does not.
+// Whom a hold bars is a fact about a viewer, told by [Encounter.ObservedHolds].
+func TestTheHoldIsNotDeliveredInASighting(t *testing.T) {
+	enc := holdHall(t, holdLeafDoor(DoorIsOpen()), holdSouthEast,
+		holder(t, postedGuard, holdNorthWest, holdLeaf, holdNorthWest))
+	payloadOf := func(holdings []perception.Holding) map[string]any {
+		t.Helper()
+		for _, h := range holdings {
+			if h.Subject == postedGuard && h.Channel == perception.Sight {
+				var fields map[string]any
+				require.NoError(t, json.Unmarshal(h.Payload, &fields))
+				return fields
+			}
+		}
+		require.FailNow(t, "alice holds a sighting of the guard")
+		return nil
+	}
+
+	stored, err := enc.storedView(&ViewInput{Member: "alice"})
+	require.NoError(t, err)
+	require.Equal(t, string(holdLeaf), payloadOf(stored)["holds_door"], "precondition: the stored sighting holds the door")
+
+	delivered, err := enc.View(&ViewInput{Member: "alice"})
+	require.NoError(t, err)
+	require.NotContains(t, payloadOf(delivered), "holds_door", "the delivered sighting does not")
+}
+
+// TestAHoldOnADoorNotFoundIsNotTold: a seen holder of a door the viewer has
+// not found is not told as holding it; once the viewer finds the door, he is.
+func TestAHoldOnADoorNotFoundIsNotTold(t *testing.T) {
+	in := holdSetup(everyoneSeesTheWholeMap{}, holdLeafDoor(DoorIsClosed()), holdSouthEast,
+		holder(t, postedGuard, holdSouthWest, holdLeaf, holdSouthWest))
+	in.Field.Concealments = []ConcealmentInput{{ID: "secret-gate", Checks: []CheckApproach{{Ability: "perception", DC: 30}}, Doors: []DoorID{holdLeaf}}}
+	in.CheckResolver = holdNeverFinds{}
+	in.Witness = nobodyPerceives{}
+	enc, err := NewEncounter(in)
+	require.NoError(t, err)
+	require.True(t, enc.hiddenDoorTo("alice", holdLeaf), "precondition: alice has not found the door")
+	door, holds := enc.memberHolds(postedGuard, nil)
+	require.True(t, holds, "precondition: he holds it")
+	require.Equal(t, holdLeaf, door)
+
+	held, err := enc.ObservedHolds(&ViewInput{Member: "alice"})
+	require.NoError(t, err)
+	require.NotContains(t, held, postedGuard, "a door she has not found is not named to her")
+
+	require.NoError(t, enc.revealConcealmentTo("alice", enc.field.concealmentOf("secret-gate"), "test", 0))
+	held, err = enc.ObservedHolds(&ViewInput{Member: "alice"})
+	require.NoError(t, err)
+	require.Equal(t, holdLeaf, held[postedGuard], "found, it is")
+}
+
+// TestAPushStopsBeforeAHeldCrossing: a directive's walk is cut before a held
+// crossing, as before a shut door, so a push never leaves the mover on a cell
+// it may only pass through.
+func TestAPushStopsBeforeAHeldCrossing(t *testing.T) {
+	porter := MemberInput{ID: "porter", Kind: KindMonster, Faction: postedGarrison, Position: holdSouthEast, Table: holds()}
+	enc := holdHall(t, holdLeafDoor(DoorIsOpen()), holdSouthWest,
+		holder(t, postedGuard, holdNorthWest, holdLeaf, holdNorthWest), porter)
+	require.Equal(t, PassagePassThrough, passageAt(t, enc, holdSouthEast), "precondition: the porter's cell is passed, not stood on")
+
+	out, err := enc.Direct(context.Background(), DirectInput{
+		Mover: "alice", Cause: core.Ref{Module: "test", Type: "effects", ID: "shove"},
+		Route: []spatial.Position{holdSouthEast, holdNorthEast}, Kind: MoveDisplaced,
+	})
+	require.NoError(t, err)
+	require.Zero(t, out.Moved, "the push is cut before the held crossing, back to where she may stand")
+	at, _ := enc.canvas.GetEntityPosition("alice")
+	require.Equal(t, holdSouthWest, at, "she stays where she stood")
+}
+
+// holdFlakyDown is a participation whose read fails while fail is set.
+type holdFlakyDown struct{ fail *bool }
+
+func (d holdFlakyDown) Standing([]MemberID) ([]MemberID, error) { return nil, nil }
+
+func (d holdFlakyDown) Assess(members []MemberID) (*ParticipationAssessment, error) {
+	if *d.fail {
+		return nil, errors.New("participation is down")
+	}
+
+	return testAssessmentFromDown(members, nil), nil
+}
+
+// TestAFailedStandingReadHolds: a hold read with no participation in hand
+// asks for one, and a read that fails holds: a world that cannot say who
+// is down does not open a gate on a guess.
+func TestAFailedStandingReadHolds(t *testing.T) {
+	fail := false
+	in := holdSetup(everyoneSeesTheWholeMap{}, holdLeafDoor(DoorIsOpen()), holdSouthEast,
+		holder(t, postedGuard, holdNorthWest, holdLeaf, holdNorthWest))
+	in.Participation = holdFlakyDown{fail: &fail}
+	enc, err := NewEncounter(in)
+	require.NoError(t, err)
+
+	fail = true
+	door, holds := enc.memberHolds(postedGuard, nil)
+	require.True(t, holds, "the failed read holds")
+	require.Equal(t, holdLeaf, door)
 }

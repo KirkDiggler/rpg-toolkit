@@ -35,8 +35,9 @@ import (
 // and the open gate shows the courtyard.
 //
 // The kitchen, the chapel, the great hall and the throne room: with that
-// room's door shut and every other door open, the hero's route from the party
-// start toward the room's anchors (its floor along every border a partition or
+// room's door shut and every other door open, the hero's route from the yard
+// (the courtyard past the gate, which gate-1's post holds against the party
+// start, rpg-project#852 R5) toward the room's anchors (its floor along every border a partition or
 // moved wall closed, its far corners, its door) never enters the room, and no
 // cell of it is in sight from the yard cells a gap would show it from. With
 // the door open the route walks in, so the shut door is what refuses.
@@ -147,7 +148,7 @@ func TestMadKingEveryRoomHasOneWayIn(t *testing.T) {
 	} {
 		t.Run(room.name, func(t *testing.T) {
 			t.Parallel()
-			s := openTheCastleWithDoors(t, partyStart(t), onlyShut(room.door))
+			s := openTheCastleWithDoors(t, inTheYardSeat, onlyShut(room.door))
 			region, ok := s.enc.PartitionAt(room.in)
 			require.True(t, ok, "%v is %s's floor", room.in, room.name)
 
@@ -170,7 +171,7 @@ func TestMadKingEveryRoomHasOneWayIn(t *testing.T) {
 					"with its door shut, %s is out of sight from the yard at %v", room.name, from)
 			}
 
-			open := openTheCastleWithDoors(t, partyStart(t), onlyShut(""))
+			open := openTheCastleWithDoors(t, inTheYardSeat, onlyShut(""))
 			path := open.routeFor(room.in)
 			require.NotEmpty(t, path)
 			last, _ := open.enc.PartitionAt(path[len(path)-1])
@@ -241,6 +242,11 @@ func (s *kingScene) unseenByTheKing(where string) {
 
 // seatAt is the authored offset cell a member is placed at for a
 // dungeon-absolute cell: [castleCell] read backwards.
+// inTheYardSeat is the courtyard floor north of the gate, as an offset seat:
+// where the room routes start, past the gate gate-1's post holds against the
+// party start (rpg-project#852, R5).
+var inTheYardSeat = spatial.Position{X: 0, Y: 4}
+
 func seatAt(cell spatial.Position) spatial.Position {
 	col, row := encounter.OffsetOf(encounter.HexesArePointyTop(), cell)
 
@@ -431,7 +437,8 @@ var troupeRoutes = []troupeRoute{
 	{
 		name: "the cook's gossip",
 		toTheCaptain: func(t *testing.T) *kingScene {
-			s := openTheCastle(t, besideTheCook)
+			// Outbound through the held gate: unheld pending R6 (rpg-project#835, open: does a post hold both ways).
+			s := openTheCastleAs(t, castleHost{at: besideTheCook, gateUnheld: true})
 			s.said(kingCook, "gossip", "persuasion", true)
 			require.True(t, s.learners("feast-tonight")[hero], "the cook told the hero")
 			s.outOfTheKitchen()

@@ -21,11 +21,13 @@ Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), 
 - `memberHolds` takes the caller's participation read, since every reader already holds one. A failed read holds, as a failed canvas read blocks.
 - The step and the masquerade: a crossing the mover's own atlas draws as wall is answered by the masquerade, never by the hold, so a stop cannot name a holder behind a secret.
 - `ObservedHolds` reads the stored view, since the hold is not delivered. Allies are left out by believed stance, as `ObservedPassages` does.
-- Castle routes about something else open with `castleHost.gateUnheld`. `postedLike` stands gate-2 on the post for the group rule.
+- `castleHost.gateUnheld` is opt-in by name, and only on the nine routes that walk from inside the castle out through the gate to the captain, pending R6 (rpg-project#835, open: does a post hold both ways). They are `TestMadKingTroupe` and `TestMadKingTroupeBlown` (the cook's gossip), `TestMadKingTheCaptainsWordOutranksRecognition`, `TestMadKingACaptainWithNoFollowRowStaysBehind`, `TestMadKingTurnTheGarrison`, `TestMadKingDeposed`, `TestMadKingSlainAndDeposedEndsSlain`, `TestMadKingTheOrdersTurnTheGarrison` and `TestMadKingTheGuardHoldsTheGate`/turned. Nothing else sets it.
+- The two inbound routes keep the hold, as R5 rules. `TestMadKingEveryRoomHasOneWayIn` starts its room routes in the yard, so its shut-door half is not vacuous. `TestMadKingPickingTheCellLockEndsTheRunFreed` takes the gate by a cowed gate-1, stood so in the record.
+- `postedLike` stands gate-2 on the post for the group rule.
 
 ## Found
 
-- The hold bars the opening both ways. A hero coming from the kitchen out through the gate to the captain is barred by gate-1, so those routes now open the gate unheld. Whether a post holds an opening inbound only is a design question for the keep's use case.
+- The hold bars the opening both ways. A hero coming from the kitchen out through the gate to the captain is barred by gate-1. Whether a post holds an opening inbound only is R6 (rpg-project#835), open; the nine outbound routes run unheld until it is ruled.
 - A shut door hides a holder on its far side, so the stop says "someone bars the way". The castle's guard stands on the party's side, so his name is told.
 - The voice that draws gate-1 is heard in the round it also walks him off, so no sound leaves him alert on his post. The castle's alert case stands him alert in a stored record.
 - The session's launch copies `BlockingStates` from the placement by hand (`session/launch.go:237`). T12 must copy `Posts` beside it, or the api castle holds nothing. The plan's T12 does not list it.
@@ -33,6 +35,6 @@ Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), 
 
 ## Mistaken
 
-- `TestTheLeafIsNotADoorwayAndStillHasAState` pinned that a footprint door is never a doorway. H6 reverses it: its doorways are its crossings, each marked.
+- `TestTheLeafIsNotADoorwayAndStillHasAState` pinned that a footprint door is never a doorway. H6 reverses it: its doorways are its crossings, each marked. Renamed `TestTheLeafsDoorwaysAreItsMarkedCrossingsAndItStillHasAState`.
 
 — cross-team agent, on behalf of KirkDiggler

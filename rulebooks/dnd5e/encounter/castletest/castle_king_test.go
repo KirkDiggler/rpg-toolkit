@@ -135,16 +135,12 @@ func openTheCastleWithDoors(t testing.TB, at spatial.Position, doors map[encount
 // openTheCastleWithEars is [openTheCastleWithDoors] with some members'
 // passive Perception other than the host's 10, so a test can find the DC a
 // sound reaches a room at.
-//
-// THE GATE IS UNHELD here ([castleHost.gateUnheld]): every route opened this
-// way is about something else, and the ones that reach the captain walk
-// from inside the castle out through the gate (rpg-project#852).
 func openTheCastleWithEars(
 	t testing.TB, at spatial.Position, doors map[encounter.DoorID]encounter.DoorState, passive map[encounter.MemberID]int,
 ) *kingScene {
 	t.Helper()
 
-	return openTheCastleAs(t, castleHost{at: at, doors: doors, passive: passive, gateUnheld: true})
+	return openTheCastleAs(t, castleHost{at: at, doors: doors, passive: passive})
 }
 
 // postsOf is a creature's compiled posts as this host seats them: gate-1's
@@ -197,9 +193,11 @@ type castleHost struct {
 
 	// gateUnheld opens the castle with gate-1's post holding no passage: his
 	// body still blocks his cell, as in S1 (rpg-project#836), but the gate
-	// door's opening is not held (rpg-project#852). For routes about
-	// something else that cross the gate, from inside the castle or into it,
-	// which R5's hold would bar both ways.
+	// door's opening is not held (rpg-project#852). OPT-IN BY NAME, and only
+	// for the routes that walk from inside the castle OUT through the gate
+	// to the captain: whether a post holds an opening both ways is R6
+	// (rpg-project#835), open. A route walking IN past the posted guard is
+	// held, as R5 rules, and never sets this.
 	gateUnheld bool
 
 	// postedLike seats each listed creature with gate-1's compiled states,

@@ -211,13 +211,13 @@ func (s *FootprintDoorSuite) TestAnOpenLeafIsTheGapItWasBefore() {
 	s.Require().NoError(err)
 }
 
-// TestTheLeafIsNotADoorwayAndStillHasAState pins R4 and the pin on
+// TestTheLeafsDoorwaysAreItsMarkedCrossingsAndItStillHasAState pins R4 and the pin on
 // rpg-toolkit#1850, as rpg-project#852 (H6) re-aimed it: a footprint door's
 // [Atlas.Doorways] are its crossings, every one marked
 // [encounter.AtlasDoorway.Crossing] so the web's edge renderer skips them
 // while its planner reads them, and [Encounter.Doors] lists it under the id
 // the client joins live state by.
-func (s *FootprintDoorSuite) TestTheLeafIsNotADoorwayAndStillHasAState() {
+func (s *FootprintDoorSuite) TestTheLeafsDoorwaysAreItsMarkedCrossingsAndItStillHasAState() {
 	enc := s.setup(footprintDoorField(encounter.DoorIsClosed()))
 
 	atlas, err := enc.Atlas()
