@@ -86,12 +86,13 @@ func postsDataFrom(posts map[string]Post) map[string]PostData {
 	return out
 }
 
-// postsFromData is a stored record's posts, refused (an error the caller
-// wraps in [ErrInvalidData]) when a post names no cell: admission resolves
-// the default, so a stored post always carries its cells.
+// postsFromData is a stored record's posts, empty when it stores none,
+// refused (an error the caller wraps in [ErrInvalidData]) when a post names
+// no cell: admission resolves the default, so a stored post always carries
+// its cells.
 func postsFromData(posts map[string]PostData) (map[string]Post, error) {
 	if len(posts) == 0 {
-		return nil, nil
+		return map[string]Post{}, nil
 	}
 	out := make(map[string]Post, len(posts))
 	for state, p := range posts {
@@ -431,9 +432,8 @@ func (e *Encounter) loadPosts(m *memberRecord, stored map[string]PostData) error
 // DoorHeldError is a door verb refused because a post holds the door
 // against the actor (rpg-project#835 R7): [Encounter.OpenDoor],
 // [Encounter.CloseDoor] and [Encounter.Unlock] on a door a non-allied
-// holder holds. It is both [ErrDoorHeld] and [ErrBodyInTheWay], so a host
-// that maps a body in the way maps this too, and one that wants the door
-// case asks for ErrDoorHeld.
+// holder holds. It is [ErrDoorHeld] and nothing else: a door verb is not a
+// step, so the step's [ErrBodyInTheWay] stays the step's.
 type DoorHeldError struct {
 	// Door is the door refused.
 	Door DoorID
@@ -449,8 +449,8 @@ func (e *DoorHeldError) Error() string {
 	return fmt.Sprintf("door %q is held by %s: %s", e.Door, e.Holder, ErrDoorHeld)
 }
 
-// Unwrap answers both sentinels.
-func (e *DoorHeldError) Unwrap() []error { return []error{ErrDoorHeld, ErrBodyInTheWay} }
+// Unwrap answers [ErrDoorHeld].
+func (e *DoorHeldError) Unwrap() error { return ErrDoorHeld }
 
 // PublicReason is the sentence the actor is told: "<name> bars the door"
 // for the nearest holder it sees now, "someone bars the door" when it sees

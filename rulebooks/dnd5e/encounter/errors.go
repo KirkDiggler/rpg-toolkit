@@ -672,8 +672,7 @@ var (
 	// one who does not. A driven walk stops at one silently.
 	ErrBodyInTheWay = errors.New("encounter: a body is in the way")
 
-	// ErrDoorHeld is returned, inside a [*DoorHeldError] that is also
-	// [ErrBodyInTheWay], when OpenDoor, CloseDoor or Unlock is asked of a
+	// ErrDoorHeld is returned, inside a [*DoorHeldError], when OpenDoor, CloseDoor or Unlock is asked of a
 	// door a post holds against the actor (rpg-project#835 R7): a holder
 	// not allied with it, in a holding state, up and on a post cell. Its
 	// public reason names the holder the actor sees, else "someone".

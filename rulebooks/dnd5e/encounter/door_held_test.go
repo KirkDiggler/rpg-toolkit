@@ -32,7 +32,7 @@ func heldGateHall(t *testing.T, state DoorState, members ...MemberInput) *Encoun
 func requireDoorHeld(t *testing.T, err error, public string) {
 	t.Helper()
 	require.ErrorIs(t, err, ErrDoorHeld)
-	require.ErrorIs(t, err, ErrBodyInTheWay, "a held door is a body in the way to a host that maps that")
+	require.NotErrorIs(t, err, ErrBodyInTheWay, "a door verb is not a step: the step's sentinel stays the step's")
 	var held *DoorHeldError
 	require.ErrorAs(t, err, &held)
 	require.Equal(t, holdLeaf, held.Door)
@@ -142,4 +142,49 @@ func TestAHeldDoorOpensWhenTheHoldIsEmptied(t *testing.T) {
 			require.NoError(t, err, "%s, he holds nothing and the door opens", name)
 		})
 	}
+}
+
+// TestAHeldDoorNotFoundIsNoDoor: the query asks the probe law before the
+// hold, so a held door the actor has not found answers as a door that is not
+// there, never as held with the guard's name.
+func TestAHeldDoorNotFoundIsNoDoor(t *testing.T) {
+	in := holdSetup(everyoneSeesTheWholeMap{}, holdLeafDoor(DoorIsClosed()), holdSouthEast,
+		holder(t, postedGuard, holdSouthWest, holdLeaf, holdSouthWest))
+	in.Field.Concealments = []ConcealmentInput{{ID: "secret-gate", Checks: []CheckApproach{{Ability: "perception", DC: 30}}, Doors: []DoorID{holdLeaf}}}
+	in.CheckResolver = holdNeverFinds{}
+	in.Witness = nobodyPerceives{}
+	enc, err := NewEncounter(in)
+	require.NoError(t, err)
+	_, holds := enc.memberHolds(postedGuard, nil)
+	require.True(t, holds, "precondition: he holds the door")
+
+	held, reason, err := enc.DoorHeldFor("alice", holdLeaf)
+	require.ErrorIs(t, err, ErrNoDoor, "a door she has not found is no door to her")
+	require.False(t, held)
+	require.Empty(t, reason, "and nobody is named")
+	_, _, unknown := enc.DoorHeldFor("alice", "hall/postern")
+	require.ErrorIs(t, unknown, ErrNoDoor, "as an unknown door answers")
+}
+
+// TestAHeldLockedDoorNamesTheGuardNotTheLock: on a door that is both held
+// and locked, every verb is answered by the holder before the lock.
+func TestAHeldLockedDoorNamesTheGuardNotTheLock(t *testing.T) {
+	enc := heldGateHall(t, DoorIsLocked(heldLock))
+	_, err := enc.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: "alice"})
+	requireDoorHeld(t, err, "Gate guard bars the door")
+	require.NotErrorIs(t, err, ErrLocked, "open: the guard, not the lock")
+	_, err = enc.CloseDoor(&CloseDoorInput{Door: holdLeaf, Actor: "alice"})
+	requireDoorHeld(t, err, "Gate guard bars the door")
+	require.NotErrorIs(t, err, ErrBadDoor, "close: the guard, not the door's state")
+}
+
+// TestNobodysHandsAreNeverHeld: an empty actor is nobody's hands, and a held
+// door does not refuse it.
+func TestNobodysHandsAreNeverHeld(t *testing.T) {
+	enc := heldGateHall(t, DoorIsClosed())
+	held, _, err := enc.DoorHeldFor("", holdLeaf)
+	require.NoError(t, err)
+	require.False(t, held, "the query holds nothing against nobody")
+	_, err = enc.OpenDoor(&OpenDoorInput{Door: holdLeaf})
+	require.NoError(t, err, "and the verb opens it")
 }
