@@ -5,6 +5,7 @@ package encounter
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -1802,6 +1803,12 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 // (TriggerMemberDown, evaluated in noticeDown), and a second close here
 // would overwrite the first and narrate a second ended beat. The verb still
 // reports the close on its output — whichever trigger fired it.
+// errNoEnding is firedReachedPosition's news that no ending fired at this
+// position: the member came to rest and nothing happened, which the caller
+// reads as no outcome on its output (#2220: an error may carry the news, not
+// the blame).
+var errNoEnding = errors.New("no ending fired here")
+
 func (e *Encounter) firedReachedPosition(member *memberRecord, cell spatial.Position, at uint64) (*Outcome, error) {
 	if e.outcome != nil {
 		members := make([]MemberOutcome, len(e.outcome.Members))
@@ -1813,6 +1820,7 @@ func (e *Encounter) firedReachedPosition(member *memberRecord, cell spatial.Posi
 		trigger, ok := de.trigger.(TriggerReachedPosition)
 		if !ok {
 			continue // Not a ReachedPosition trigger
+
 		}
 		if de.cell.X != cell.X || de.cell.Y != cell.Y {
 			continue // Different cell
@@ -1826,7 +1834,7 @@ func (e *Encounter) firedReachedPosition(member *memberRecord, cell spatial.Posi
 
 		return e.closeWith(de.key, at)
 	}
-	return nil, nil
+	return nil, errNoEnding
 }
 
 // closeWith closes the encounter with the ending that fired: sets the
@@ -2473,7 +2481,7 @@ func (e *Encounter) Join(in *JoinInput) (*JoinOutput, error) {
 	// while the shared path held the member's current room; with one frame
 	// there is nothing left for a second implementation to differ about.
 	firedOutcome, err := e.firedReachedPosition(member, in.Cell, clockReadingForBeat)
-	if err != nil {
+	if err != nil && !errors.Is(err, errNoEnding) {
 		return nil, fmt.Errorf("join ending: %w", err)
 	}
 

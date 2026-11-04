@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -193,9 +194,12 @@ func newCast(in *ActionInput, normalizedTargetIDs []string) (Machine, error) {
 
 	if profile.Move != nil {
 		move, err := profile.Move.ForOption(in.Option)
-		if err != nil {
+		if err != nil && !errors.Is(err, combatActions.ErrZeroDistance) {
 			return nil, fmt.Errorf("%w: %w", ErrBadAction, err)
 		}
+		// Zero distance is the answer, not a failure: the actor chose
+		// "nothing moves", and ForOption hands back a nil move for it — a
+		// profile with no move says exactly that (#2220).
 		profile.Move = move
 	}
 

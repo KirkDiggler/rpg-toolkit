@@ -4,17 +4,23 @@
 package session
 
 import (
+	"errors"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"math"
 )
 
+// errNoPreview is previewCastAim's news that no preview exists: no aim was
+// given, the offer is not an aimed area spell, or the area obscures the sight
+// it would have shown (#2220: an error may carry the news, not the blame).
+var errNoPreview = errors.New("nothing to preview")
+
 // previewCastAim uses the same compiled offer and recipient derivation as Cast.
 // No persistence, event publication, dice, or resolution occurs here.
 func previewCastAim(enc *encounter.Encounter, member string, aim *CastAim, offers []compiledOffer) (*CastAimPreview, error) {
 	if aim == nil {
-		return nil, nil
+		return nil, errNoPreview
 	}
 	if aim.Cell == nil || math.IsNaN(aim.Cell.X) || math.IsNaN(aim.Cell.Y) || math.IsInf(aim.Cell.X, 0) || math.IsInf(aim.Cell.Y, 0) {
 		return nil, ErrBadCast
@@ -30,11 +36,11 @@ func previewCastAim(enc *encounter.Encounter, member string, aim *CastAim, offer
 		return nil, ErrStaleDeclaration
 	}
 	if selected.spell == nil || selected.spell.Cast == nil || selected.spell.Cast.Area == nil || selected.declaration.TargetKind != TargetCell {
-		return nil, nil
+		return nil, errNoPreview
 	}
 	profile := selected.spell.Cast
 	if profile.Area.ObscuresSight {
-		return nil, nil
+		return nil, errNoPreview
 	}
 	cell := *aim.Cell
 	out := &CastAimPreview{Aim: CastAim{DeclarationID: aim.DeclarationID, Cell: &cell}, Available: selected.declaration.Available, Why: selected.declaration.Why, AffectedMembers: []string{}}

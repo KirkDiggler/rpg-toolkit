@@ -158,7 +158,7 @@ func (s *RecordActivationSuite) TestRecordActivationSecondWind() {
 	s.Require().NoError(err)
 	s.Require().Len(out.Seqs, 2)
 	s.Less(out.Seqs[0], out.Seqs[1], "activation precedes its result")
-	s.Nil(out.IntelDeltas)
+	s.Empty(out.IntelDeltas, "nothing changed standing, so the record carries no deltas — empty, not absent (#2220)")
 	s.Equal(callsBefore+3, standing.calls,
 		"one consult for the transaction itself, and two more for the round of the world it pays for (rpg-project#465): the percept rebuild and the notice pass")
 

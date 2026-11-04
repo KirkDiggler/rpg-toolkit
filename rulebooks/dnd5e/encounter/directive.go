@@ -5,6 +5,7 @@ package encounter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -699,7 +700,7 @@ func (e *Encounter) Direct(ctx context.Context, in DirectInput) (DirectOutput, e
 	// can see whom changed with them. A walk that stopped half way still
 	// walked its half (clocks.go's own note on settling at a pause).
 	deltas, serr := e.settleWalk(audience, res.moved)
-	if serr != nil {
+	if serr != nil && !errors.Is(serr, errNoSettle) {
 		return DirectOutput{}, fmt.Errorf("direct %q: %w", in.Mover, serr)
 	}
 	out.IntelDeltas = deltas
