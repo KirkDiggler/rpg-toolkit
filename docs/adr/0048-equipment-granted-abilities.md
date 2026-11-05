@@ -4,11 +4,15 @@ Date: 2026-11-04
 
 ## Status
 
-Proposed — architectural investigation in progress. Ring-authored level (R1),
-item-owned pools (R2), item composition (R3) and configurable normal recovery
-(R4) and the one-charge first fixture (R5) are settled below. An exported
-experimental item package is available under examples; its interfaces are not
-accepted production contracts. Rest eligibility and broader grant lifetimes remain open.
+Accepted
+
+**Scope: composition and ownership only.** Accepted by KirkDiggler on
+2026-11-05, after inspecting the example and agreeing to this bounded scope.
+
+The Decision section establishes responsibilities that implementations follow.
+It does not accept the prototype's exact API, resolver protocol, extraction home,
+or production integration plan. Experimental evidence is marked separately below;
+acceptance is not implementation completion or a permanent naming/schema freeze.
 
 Consumer slice: [Keep signature combat and loot S1 — Second Wind ring](https://github.com/KirkDiggler/rpg-project/issues/862),
 under [#850](https://github.com/KirkDiggler/rpg-project/issues/850).
@@ -57,7 +61,7 @@ interpretation separate from producers. [ADR-0038](0038-resolution-owns-the-bus.
 owns interaction wiring. A general composition should preserve these boundaries
 rather than teach the host or generic effects tool what this ring means.
 
-## Alternatives under investigation
+## Alternatives considered
 
 ### A. Grant the existing feature object directly
 
@@ -71,7 +75,7 @@ keep this option as the baseline, not a reason to alter the wearer's class level
 
 ### B. Compose the grant with reusable activation and effect behavior
 
-**Selected composition direction (R3), not an accepted API.** The item grants
+**Chosen for composition and ownership (R3), not for a fixed API.** The item grants
 an opportunity to use an ability; activation handles its declared cost and
 immediate consequence; ongoing effects use the existing effects composition
 where their lifetime requires it. A consumer example establishes the required
@@ -92,11 +96,30 @@ to explain why a locally working ring alone would be insufficient evidence.
 
 ## Decision
 
-Investigate B as the selected item-composer direction, using A's existing behavior
-as a comparison baseline. The operator has settled the responsibilities in R1–R3,
-not a concrete API, implementation plan, migration or the remaining item rules.
+Choose B: equipment composes grants with reusable ability/effect behavior rather
+than implementing each item's rules independently. Four boundaries govern that
+composition:
 
-The proposed separation to exercise is:
+1. **The item is a composer.** It connects authored grants, their parameters,
+   availability and item-owned usage budgets to reusable behavior. It does not
+   duplicate the rulebook's healing, Rage or other ability implementation.
+2. **Item-specific pools belong to the instance.** Their mutable state is distinct
+   from class-granted and other-item pools and remains with the item through
+   transfer and supported reload. A content/recipe ref is not an instance ID.
+3. **Grants are inspectable data; the consumer owns meaning.** The rules consumer
+   validates/interprets the ability and owns effect-specific behavior and delivery.
+   Each cost and resulting mutation has one owner, not two payment/application paths.
+4. **Representations have distinct responsibilities.** Authored configuration,
+   live mutable state, saved irreducible state and derived views are not competing
+   mutation authorities. Returning a view or saved snapshot does not expose the
+   live item's mutable state.
+
+These boundaries—not the prototype's type names or generic function signatures—
+are the accepted architectural decision. Unmodified class-feature reuse (A) does
+not satisfy the ring's parameter/ownership requirements; per-item behavior copies
+(C) do not satisfy the reusable-tool goal.
+
+The responsibility separation is:
 
 ```text
 ring / other source
@@ -105,7 +128,7 @@ ring / other source
         → immediate consequence and/or ongoing effect
 ```
 
-These are responsibilities to examine, not four required new packages. Sharing
+These are responsibility boundaries, not four required new packages. Sharing
 underlying behavior does not mean that an immediate heal must become a persistent
 condition or that every ability needs a state machine.
 
@@ -171,6 +194,8 @@ checks. Capacity remains authored configuration; this does not fix every item's
 budget to one. Explicit holder association in a probe is test setup, not a
 production equipment/attunement ruling.
 
+## Experimental evidence (non-normative)
+
 ### Consumer probe checkpoint
 
 The first cut of [PR #2273](https://github.com/KirkDiggler/rpg-toolkit/pull/2273)
@@ -219,7 +244,11 @@ exercising a contrasting consumer where needed, not more final item settings.
 The [journal checkpoint](https://github.com/KirkDiggler/rpg-project/blob/docs/second-wind-ring/docs/journal/second-wind-ring/2026-11-05-from-probe-to-item-composer.md)
 records the commands, mutations, CI correction and remaining limits.
 
-### Open requirements and decisions
+## Open integration and extraction questions
+
+These questions guide subsequent experiments and implementation design. They are
+not silently answered by acceptance of the ownership decision, nor a requirement
+to finish the whole game before recording that decision.
 
 1. **Pool sharing in authored content:** the candidate can bind grants to the
    same named item pool and tests that ownership. Which real abilities/items
@@ -228,10 +257,13 @@ records the commands, mutations, CI correction and remaining limits.
    what happens to an already-produced ongoing effect when equipment is removed?
    R2 settles that moving or re-equipping the ring does not refresh its budget.
    Immediate HP already regained is distinct from future access.
-3. **Consumer contract:** what form makes the granted ability inspectable and
-   executable without content-ref dispatch, duplicate rules or double payment?
-4. **Identity and reload:** what distinguishes separate grants and which mutable
-   facts must round-trip without minting uses or duplicating behavior?
+3. **Production activation contract:** how do grants map to canonical action
+   declarations without teaching resolution content identities, duplicating rules
+   or paying twice? The exact `Use[Result]` protocol is not selected by this ADR.
+4. **Production identity and reload integration:** how do instance identity and
+   irreducible item state connect to existing inventory/definition storage without
+   minting uses or duplicating behavior? Their ownership is settled; the storage
+   and wire contracts are not.
 5. **Content policy, if needed later:** whether and how rarity selects the authored
    level; no rarity table is needed to exercise explicit level-1/level-3 examples.
 
@@ -239,7 +271,12 @@ The operator's pending choices live as a checklist on the PR/slice. Settle only
 what is needed for the bounded example; do not turn the ring into a prerequisite
 for designing all equipment, spells or conditions.
 
-### Evidence required before accepting the architectural choice
+### Evidence before extraction or production adoption
+
+The isolated example supplies evidence for the accepted ownership boundaries.
+The checks below retain the broader integration bar: some are exercised in the
+example, while unrun production boundaries remain unproved. They are not being
+marked passed or waived by changing this ADR's status.
 
 - A runnable consumer example uses actual reusable components; substitutes and
   unexercised boundaries are identified.
@@ -260,8 +297,9 @@ for designing all equipment, spells or conditions.
 - The record identifies which effects capabilities were consumed, which were
   missing and which were not needed. No successful ring is presented as proof
   of all spell/condition composition.
-- Evidence and alternatives support the decision, then the owning review and
-  operator agreement are recorded before changing status to Accepted.
+- Extraction and production plans resolve their affected contracts and receive
+  the owning review, operator decisions and required verification. This ADR's
+  acceptance does not approve those plans, a merge, or a release.
 
 ### Outside this decision
 
@@ -296,6 +334,6 @@ journey.
 
 - The existing Fighter feature remains unchanged during investigation.
 - Actual item rules may differ from class rules while sharing a lower operation.
-- Revisit the recommendation if the agreed use case is fully served by existing
-  contracts, if a proposed shared boundary requires unrelated consumer policy,
-  or if the example cannot establish a single owner for state and mutation.
+- Revisit or supersede this decision if later consumer evidence shows a different
+  ownership boundary is needed. Preserve the reasoning rather than rewriting the
+  earlier choice as inevitable; an accepted decision is not a frozen example API.

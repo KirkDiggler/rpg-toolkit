@@ -4,7 +4,7 @@ Slice [rpg-project#862](https://github.com/KirkDiggler/rpg-project/issues/862) o
 
 ## Shipped
 
-- No implementation shipped; the architectural choice remains Proposed, with R1–R5 (ring level, item-owned pools, composition, recovery and a one-charge fixture) recorded separately from open production API/eligibility decisions — [ADR-0048](../../docs/adr/0048-equipment-granted-abilities.md).
+- ADR-0048 records accepted composition/ownership boundaries, with R1–R5 and experimental evidence separated from open production API/eligibility decisions; no implementation release or merge is claimed by this documentation checkpoint — [ADR-0048](../../docs/adr/0048-equipment-granted-abilities.md).
 
 ## Decided
 
@@ -17,6 +17,8 @@ Slice [rpg-project#862](https://github.com/KirkDiggler/rpg-project/issues/862) o
 - KirkDiggler, 2026-11-04: the first Second Wind ring uses normal short-or-long-rest recovery (R4); studio-configurable item/pool policy is the ultimate goal, not an editor deliverable for this slice — [requirement](../../docs/adr/0048-equipment-granted-abilities.md#settled-use-case-parameter).
 
 - KirkDiggler, 2026-11-04: use one charge for the first fixture (R5), then focus on a separate consumer example and its seams rather than serial final-configuration checks — [probe direction](https://github.com/KirkDiggler/rpg-project/issues/862#issuecomment-6648142433).
+
+- KirkDiggler accepted the bounded ownership/composition decision on 2026-11-05 after inspecting the example; exact APIs, broader lifetimes and extraction/integration stay open because the example does not prove those contracts — [accepted scope](../../docs/adr/0048-equipment-granted-abilities.md#decision).
 
 ## Found
 
