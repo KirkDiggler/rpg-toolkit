@@ -26,7 +26,7 @@ Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), 
 
 - The encounter review asked that a held OpenDoor or CloseDoor never read as success ([#2278](https://github.com/KirkDiggler/rpg-toolkit/pull/2278)). All three verbs already carried `Refused`. CloseDoor gained its own castle test, `TestCastleClosingTheHeldDoorIsABump`, and the open and close tests now also assert the record's door state.
 
-- At encounter 71b133ae, gate-1's line and state change folded under a fresh `time` act, apart from the bump's act. Encounter 99898e6c reopens the bump's act for them ([#2278](https://github.com/KirkDiggler/rpg-toolkit/pull/2278)). The step, open and close bump tests assert that the BarredAct, his state change and his TableAnswer share one act correlation (`Act.Act`) and verb, which the web keys on. His text is in `Say`, with an empty `Word`.
+- At encounter 71b133ae, gate-1's line and state change folded under a fresh `time` act, apart from the bump's act. Encounter 99898e6c reopens the bump's act for them ([#2278](https://github.com/KirkDiggler/rpg-toolkit/pull/2278)). The step, open, close and unlock bump tests assert that the BarredAct, his state change and his TableAnswer share one act correlation (`Act.Act`) and verb, which the web keys on. His text is in `Say`, with an empty `Word`.
 - The castle dice counter counted gate-1's d100 table die as a roll. The held-unlock test now counts d20 checks, so it still proves no lock check was rolled.
 
 ## Mistaken
