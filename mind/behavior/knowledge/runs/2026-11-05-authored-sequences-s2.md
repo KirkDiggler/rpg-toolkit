@@ -4,9 +4,11 @@ Slice [rpg-project#871](https://github.com/KirkDiggler/rpg-project/issues/871), 
 
 ## Shipped
 
-- Implemented the first working `mind/behavior.ExpandSequence` producer checkpoint, authored JSON source fixtures and structural/ownership/parameter tests; the slice's joined journey and final review remain in progress, and nothing is merged — [slice brief](https://github.com/KirkDiggler/rpg-project/issues/871).
+- Implemented `mind/behavior.ExpandSequence`, authored JSON source fixtures, structural/ownership/parameter tests and joined component journeys; publication/review is separate from merge and live adoption — [slice brief](https://github.com/KirkDiggler/rpg-project/issues/871).
 
 - Added the joined real-component Patrol traces (West 0→4→0, Court 10→12→14→10), exact d200 investigation branches, completion/hold/reload checks and the non-movement repeated-lines control — [toolkit#2284](https://github.com/KirkDiggler/rpg-toolkit/pull/2284).
+
+- Added the source → binding → expanded-output walkthrough and producer godoc, including caller-owned actual completion, original-configuration reload and explicit studio/world limits — [toolkit#2284](https://github.com/KirkDiggler/rpg-toolkit/pull/2284).
 
 ## Decided
 
@@ -19,6 +21,8 @@ Slice [rpg-project#871](https://github.com/KirkDiggler/rpg-project/issues/871), 
 - Initial API tests failed to compile because the producer types/function were missing; after implementation, the owning-module race suite passes (root 1.153s, sound 1.016s, stage 1.016s; deed has no tests) and lint reports zero issues; these are component checks, not studio/live adoption — [Task 1 contract](https://github.com/KirkDiggler/rpg-project/blob/docs/behavior-bindings/ideas/behavior-bindings/plan-s2.md#task-1-production-finite-expansion-and-refusals).
 
 - The joined checks pass with production expansion, real machine/composer/picker and exact dice; full module race passes (root 1.197s, sound 1.017s, stage 1.017s) and lint reports zero issues — [toolkit#2284](https://github.com/KirkDiggler/rpg-toolkit/pull/2284).
+
+- Two intentional production mutants fail at assertions: wrong `$next` yields West 0 instead of 4 / Court 10 instead of 12, and a completion map pointing to `time` trips `ErrSelectionRequired`; both restored and the production SHA-256 matches the pre-mutation file — [regression-control receipt](https://github.com/KirkDiggler/rpg-toolkit/pull/2284).
 
 ## Mistaken
 
