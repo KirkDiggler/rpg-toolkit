@@ -84,6 +84,11 @@ type executedAction struct {
 // not (rpg-toolkit#1169), or ErrBadPlacement — for a cell no authored room
 // owns (void is not floor), for a wall in the way, or for any other placement
 // the canvas refuses.
+//
+// A BODY IN THE WAY IS NOT AN ERROR (rpg-project#842): a step refused by a
+// member's cell, or by a crossing its post holds, writes [BeatBarred], is
+// heard by the body at once, and returns its output with
+// [StepOutput.Stopped] set and nothing moved or spent.
 func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("step: %w", ErrNilInput)
@@ -137,6 +142,13 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 
 	action, err := e.stepMember(member, in.To, in.EndWalk)
 	if err != nil {
+		// A BODY STOPS THE STEP AND HEARS IT (rpg-project#842, D1/D5): the
+		// bump is answered with output, never an error, and nothing is
+		// spent. Every other refusal is what it was.
+		var body *bodyRefusalError
+		if errors.As(err, &body) {
+			return e.stepBumped(in.Member, body)
+		}
 		return nil, fmt.Errorf("step: %w", err)
 	}
 	// A player's step is their own: it turns them along it (facing.go).
@@ -197,6 +209,30 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 	out.Stepped.Member = in.Member
 	out.Stepped.From = action.from
 	out.Stepped.To = action.to
+	return out, nil
+}
+
+// stepBumped is a player's step a body refused, answered (barred.go): the
+// [BeatBarred] beat matched on the barrier, and the output of his answer.
+// Nothing moved and nothing is spent: no pace, so a bump never raises the
+// world, and on the turn clock the refused step is not a step.
+func (e *Encounter) stepBumped(mover MemberID, body *bodyRefusalError) (*StepOutput, error) {
+	bumped, err := e.bump(bumpInput{mover: mover, barrier: body.barrier, at: body.at})
+	if err != nil {
+		return nil, fmt.Errorf("step: %w", err)
+	}
+	here, _ := e.canvas.GetEntityPosition(string(mover))
+	out := &StepOutput{
+		IntelDeltas: bumped.deltas,
+		Seq:         bumped.seq,
+		Outcome:     bumped.outcome,
+		Formed:      bumped.formed,
+		Stopped:     &StepStop{Barrier: body.barrier, Cell: body.at, Reason: body.public},
+	}
+	out.Stepped.Member = mover
+	out.Stepped.From = here
+	out.Stepped.To = here
+
 	return out, nil
 }
 

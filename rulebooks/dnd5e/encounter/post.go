@@ -682,11 +682,10 @@ func (e *Encounter) loadPosts(m *memberRecord, stored map[string]PostData) error
 	return e.usePosts(m, posts, spatial.Position{})
 }
 
-// DoorHeldError is a door verb refused because a post holds the door
-// against the actor (rpg-project#835 R7): [Encounter.OpenDoor],
-// [Encounter.CloseDoor] and [Encounter.Unlock] on a door a non-allied
-// holder holds. It is [ErrDoorHeld] and nothing else: a door verb is not a
-// step, so the step's [ErrBodyInTheWay] stays the step's.
+// DoorHeldError is the hold the door verbs read (rpg-project#835 R7): a door
+// a non-allied holder holds against the actor. It is [ErrDoorHeld] and
+// nothing else. [Encounter.DoorHeldFor] answers from it; the verbs answer it
+// with a [DoorRefusal] on their output (rpg-project#842).
 type DoorHeldError struct {
 	// Door is the door refused.
 	Door DoorID

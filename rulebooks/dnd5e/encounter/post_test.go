@@ -131,22 +131,19 @@ func holdHall(t *testing.T, door DoorInput, alice spatial.Position, members ...M
 func heldStop(t *testing.T, enc *Encounter, to spatial.Position) string {
 	t.Helper()
 	before, _ := enc.canvas.GetEntityPosition("alice")
-	_, err := enc.Step(&StepInput{Member: "alice", To: to})
-	require.ErrorIs(t, err, ErrBodyInTheWay, "a held crossing stops the step as a body does")
-	require.NotErrorIs(t, err, ErrDoorShut, "and never as the door")
-	var stop *StepObstructedError
-	require.ErrorAs(t, err, &stop, "the walk stops; it does not break")
+	out, err := enc.Step(&StepInput{Member: "alice", To: to})
+	stop := requireStopped(t, out, err, "a held crossing stops the step as a body does, never as the door")
 	after, _ := enc.canvas.GetEntityPosition("alice")
 	require.Equal(t, before, after, "the refused step moved nobody")
 
-	return stop.PublicReason()
+	return stop.Reason
 }
 
 // steps requires alice's step to land.
 func steps(t *testing.T, enc *Encounter, to spatial.Position, msg string) {
 	t.Helper()
-	_, err := enc.Step(&StepInput{Member: "alice", To: to})
-	require.NoError(t, err, msg)
+	out, err := enc.Step(&StepInput{Member: "alice", To: to})
+	requireMoved(t, out, err, msg)
 	at, _ := enc.canvas.GetEntityPosition("alice")
 	require.Equal(t, to, at, msg)
 }
@@ -172,8 +169,8 @@ func TestAPostHoldsBothCellsOfAFootprintOpening(t *testing.T) {
 
 			require.Equal(t, "Gate guard bars the way", heldStop(t, enc, tc.beside),
 				"the cell beside him is held, by his name")
-			_, err := enc.Step(&StepInput{Member: "alice", To: tc.guard})
-			require.ErrorIs(t, err, ErrBodyInTheWay, "his own cell is refused as before")
+			out, err := enc.Step(&StepInput{Member: "alice", To: tc.guard})
+			requireStopped(t, out, err, "his own cell is refused as before")
 		})
 	}
 }
@@ -237,8 +234,8 @@ func TestAnAllyCrossesAHeldOpening(t *testing.T) {
 	porter := MemberInput{ID: "porter", Kind: KindMonster, Faction: postedGarrison, Position: holdSouthEast, Table: holds()}
 	enc := holdHall(t, holdLeafDoor(DoorIsOpen()), holdBeside,
 		holder(t, postedGuard, holdNorthWest, holdLeaf, holdNorthWest), porter)
-	_, err := enc.Step(&StepInput{Member: "porter", To: holdNorthEast})
-	require.NoError(t, err, "his own side crosses the opening he holds")
+	out, err := enc.Step(&StepInput{Member: "porter", To: holdNorthEast})
+	requireMoved(t, out, err, "his own side crosses the opening he holds")
 	require.Equal(t, "Gate guard bars the way", func() string {
 		placeAt(t, enc, "alice", holdSouthEast)
 		return heldStop(t, enc, holdNorthEast)
@@ -343,8 +340,8 @@ func TestTheGroupHoldsTheGate(t *testing.T) {
 	down[postedGuard] = true
 	require.Equal(t, "Gate guard bars the way", heldStop(t, enc, holdNorthWest),
 		"one down, the other still holds the opening, even across the downed one's cell")
-	_, err = enc.Step(&StepInput{Member: "alice", To: holdSouthEast})
-	require.NoError(t, err)
+	out, err := enc.Step(&StepInput{Member: "alice", To: holdSouthEast})
+	requireMoved(t, out, err, "beside the opening")
 	require.Equal(t, "Gate guard bars the way", heldStop(t, enc, holdNorthWest), "from either side of the opening")
 
 	down["gate-2"] = true

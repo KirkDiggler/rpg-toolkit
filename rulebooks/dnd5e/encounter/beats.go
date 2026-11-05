@@ -90,6 +90,18 @@ const (
 	// stow then the draw, on one correlation ([Encounter.RecordEquip]).
 	BeatEquipmentChanged = "equipment-changed"
 
+	// BeatBarred records a player's attempt stopped by a body
+	// (rpg-project#842, the guard holds the gate R2, R7): a step refused by
+	// a member's cell or by a crossing its post holds, or a door verb a
+	// post holds. Its payload names the mover, the barrier (the body in the
+	// way, or the nearest holder the mover sees, else the nearest holder),
+	// and for a step the cell it was refused into (his own cell, or the far
+	// cell of a held crossing), for a door verb the door and the verb
+	// (`open`, `close`, `unlock`) and no cell. The
+	// barrier hears it at once ([Encounter.bump]); walls, doors, fields and
+	// driven walks never write one.
+	BeatBarred = "barred"
+
 	// BeatRested records a member resting: the kind of rest and what it
 	// restored ([Encounter.RecordRest]).
 	BeatRested = "rested"

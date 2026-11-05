@@ -27,24 +27,45 @@ func heldGateHall(t *testing.T, state DoorState, members ...MemberInput) *Encoun
 	return holdHall(t, holdLeafDoor(state), holdSouthEast, append([]MemberInput{guard}, members...)...)
 }
 
-// requireDoorHeld requires a door verb's refusal is the held door's, naming
-// who the actor is told bars it.
-func requireDoorHeld(t *testing.T, err error, public string) {
+// requireDoorHeld requires a door verb answered with the held door's
+// refusal (rpg-project#842: the attempt is a bump, answered with output),
+// naming who the actor is told bars it.
+func requireDoorHeld(t *testing.T, refused *DoorRefusal, err error, public string) {
 	t.Helper()
-	require.ErrorIs(t, err, ErrDoorHeld)
-	require.NotErrorIs(t, err, ErrBodyInTheWay, "a door verb is not a step: the step's sentinel stays the step's")
-	var held *DoorHeldError
-	require.ErrorAs(t, err, &held)
-	require.Equal(t, holdLeaf, held.Door)
-	require.Equal(t, public, held.PublicReason())
+	require.NoError(t, err, "a held door's verb is answered, not refused")
+	require.NotNil(t, refused, "the output says the door is held")
+	require.Equal(t, postedGuard, refused.Holder)
+	require.Equal(t, public, refused.Reason)
+}
+
+// openRefusal, closeRefusal and unlockRefusal are a door verb's refusal off
+// its output, nil with the error when the verb failed.
+func openRefusal(out *OpenDoorOutput, err error) (*DoorRefusal, error) {
+	if out == nil {
+		return nil, err
+	}
+	return out.Refused, err
+}
+
+func closeRefusal(out *CloseDoorOutput, err error) (*DoorRefusal, error) {
+	if out == nil {
+		return nil, err
+	}
+	return out.Refused, err
+}
+
+func unlockRefusal(out *UnlockOutput, err error) (*DoorRefusal, error) {
+	if out == nil {
+		return nil, err
+	}
+	return out.Refused, err
 }
 
 func TestAStrangerCannotOpenAHeldDoor(t *testing.T) {
 	enc := heldGateHall(t, DoorIsClosed())
-	_, err := enc.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: "alice"})
-	requireDoorHeld(t, err, "Gate guard bars the door")
+	refused, err := openRefusal(enc.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: "alice"}))
+	requireDoorHeld(t, refused, err, "Gate guard bars the door")
 	require.Equal(t, DoorClosed, enc.doorsByID[holdLeaf].state.Kind(), "and the door stays shut")
-	require.NotErrorIs(t, err, ErrBadDoor, "a held door is not a bad door")
 }
 
 func TestDoorHeldForAnswersBeforeAnythingIsRolled(t *testing.T) {
@@ -83,25 +104,25 @@ func TestAnUnseenHolderBarsTheDoorAsSomeone(t *testing.T) {
 	guard := holder(t, postedGuard, holdSouthWest, holdLeaf, holdSouthWest)
 	enc, err := NewEncounter(holdSetup(wakeBlind{}, holdLeafDoor(DoorIsClosed()), holdSouthEast, guard))
 	require.NoError(t, err)
-	_, err = enc.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: "alice"})
-	requireDoorHeld(t, err, "someone bars the door")
+	refused, err := openRefusal(enc.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: "alice"}))
+	requireDoorHeld(t, refused, err, "someone bars the door")
 }
 
 func TestTheHolderAndAnAllyWorkAHeldDoor(t *testing.T) {
 	porter := MemberInput{ID: "porter", Kind: KindMonster, Faction: postedGarrison, Position: holdNorthEast, Table: holds()}
 	enc := heldGateHall(t, DoorIsClosed(), porter)
-	_, err := enc.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: postedGuard})
-	require.NoError(t, err, "the holder opens his own door")
-	_, err = enc.CloseDoor(&CloseDoorInput{Door: holdLeaf, Actor: "porter"})
-	require.NoError(t, err, "and his ally shuts it")
-	_, err = enc.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: "porter"})
-	require.NoError(t, err, "and opens it")
+	refused, err := openRefusal(enc.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: postedGuard}))
+	requireDoorWorked(t, refused, err, "the holder opens his own door")
+	refused, err = closeRefusal(enc.CloseDoor(&CloseDoorInput{Door: holdLeaf, Actor: "porter"}))
+	requireDoorWorked(t, refused, err, "and his ally shuts it")
+	refused, err = openRefusal(enc.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: "porter"}))
+	requireDoorWorked(t, refused, err, "and opens it")
 }
 
 func TestAStrangerCannotCloseAHeldDoor(t *testing.T) {
 	enc := heldGateHall(t, DoorIsOpen())
-	_, err := enc.CloseDoor(&CloseDoorInput{Door: holdLeaf, Actor: "alice"})
-	requireDoorHeld(t, err, "Gate guard bars the door")
+	refused, err := closeRefusal(enc.CloseDoor(&CloseDoorInput{Door: holdLeaf, Actor: "alice"}))
+	requireDoorHeld(t, refused, err, "Gate guard bars the door")
 	require.Equal(t, DoorOpen, enc.doorsByID[holdLeaf].state.Kind(), "and the door stays open")
 }
 
@@ -112,8 +133,8 @@ func TestAHeldLockTakesNoAttempt(t *testing.T) {
 	require.True(t, held, "precondition: a host asking first is told the door is held")
 	before := enc.ToData()
 
-	_, err = enc.Unlock(&UnlockInput{Door: holdLeaf, Actor: "alice", Beaten: true, Total: 20, Applied: heldLock.Approaches[0]})
-	requireDoorHeld(t, err, "Gate guard bars the door")
+	refused, err := unlockRefusal(enc.Unlock(&UnlockInput{Door: holdLeaf, Actor: "alice", Beaten: true, Total: 20, Applied: heldLock.Approaches[0]}))
+	requireDoorHeld(t, refused, err, "Gate guard bars the door")
 	require.Equal(t, DoorLocked, enc.doorsByID[holdLeaf].state.Kind(), "a beaten lock on a held door is not opened")
 	after := enc.ToData()
 	require.Equal(t, before.Clock.HighWater, after.Clock.HighWater, "no world round is spent on an attempt that never happened")
@@ -138,8 +159,8 @@ func TestAHeldDoorOpensWhenTheHoldIsEmptied(t *testing.T) {
 			require.True(t, held, "precondition: held")
 
 			empty(t, enc, down)
-			_, err = enc.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: "alice"})
-			require.NoError(t, err, "%s, he holds nothing and the door opens", name)
+			refused, err := openRefusal(enc.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: "alice"}))
+			requireDoorWorked(t, refused, err, name+", he holds nothing and the door opens")
 		})
 	}
 }
@@ -170,12 +191,10 @@ func TestAHeldDoorNotFoundIsNoDoor(t *testing.T) {
 // and locked, every verb is answered by the holder before the lock.
 func TestAHeldLockedDoorNamesTheGuardNotTheLock(t *testing.T) {
 	enc := heldGateHall(t, DoorIsLocked(heldLock))
-	_, err := enc.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: "alice"})
-	requireDoorHeld(t, err, "Gate guard bars the door")
-	require.NotErrorIs(t, err, ErrLocked, "open: the guard, not the lock")
-	_, err = enc.CloseDoor(&CloseDoorInput{Door: holdLeaf, Actor: "alice"})
-	requireDoorHeld(t, err, "Gate guard bars the door")
-	require.NotErrorIs(t, err, ErrBadDoor, "close: the guard, not the door's state")
+	refused, err := openRefusal(enc.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: "alice"}))
+	requireDoorHeld(t, refused, err, "Gate guard bars the door")
+	refused, err = closeRefusal(enc.CloseDoor(&CloseDoorInput{Door: holdLeaf, Actor: "alice"}))
+	requireDoorHeld(t, refused, err, "Gate guard bars the door")
 }
 
 // TestNobodysHandsAreNeverHeld: an empty actor is nobody's hands, and a held
@@ -185,6 +204,6 @@ func TestNobodysHandsAreNeverHeld(t *testing.T) {
 	held, _, err := enc.DoorHeldFor("", holdLeaf)
 	require.NoError(t, err)
 	require.False(t, held, "the query holds nothing against nobody")
-	_, err = enc.OpenDoor(&OpenDoorInput{Door: holdLeaf})
-	require.NoError(t, err, "and the verb opens it")
+	refused, err := openRefusal(enc.OpenDoor(&OpenDoorInput{Door: holdLeaf}))
+	requireDoorWorked(t, refused, err, "and the verb opens it")
 }

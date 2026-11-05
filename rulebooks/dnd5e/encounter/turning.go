@@ -286,8 +286,12 @@ func (e *Encounter) formOnStance(before, after map[factionPair]Stance) error {
 	if err != nil {
 		return err
 	}
-	if _, _, err := e.applyVerdict(verdict, participation); err != nil {
+	formed, _, err := e.applyVerdict(verdict, participation)
+	if err != nil {
 		return err
+	}
+	if formed != nil {
+		e.stanceFormed = formed
 	}
 	return nil
 }

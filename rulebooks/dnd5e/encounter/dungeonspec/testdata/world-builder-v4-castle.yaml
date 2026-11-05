@@ -334,6 +334,13 @@ tables:
     cowed:
       - when: { enemy: none }
         toward: { at: { q: -5, r: 8 } }
+    # Hand edit (rpg-project#842, R2): the bump speaks. Walked into, or
+    # barred at the gate door, gate-1 asks what you want; bumped again
+    # while he is still challenging, he says it shorter.
+    barred:
+      - say: Whoa there, buddy. Can I help you?
+    challenged:
+      - say: I said, can I help you?
   gate-patrol-east:
     time:
       # Hand edit: a gate guard who witnessed the turn marches with the
@@ -1742,6 +1749,13 @@ room:
         # let through knows `troupe-admitted` and passes him by it while he
         # stays posted; the troupe no longer cows him. Cowing stays with the
         # stand-aside (`gate-cowed`).
+        #
+        # Hand edit (rpg-project#842, R2, R7): the bump speaks. A step into
+        # him or across the opening he holds, or a hand on the gate door he
+        # holds, is `barred`, heard by him alone at once. Posted or alert,
+        # he turns challenged and asks his question (`pick: barred`);
+        # challenged holds as posted does, and a second bump gets the
+        # shorter line (`pick: challenged`). Three rounds on he is posted.
         states:
           initial: posted
           posted:
@@ -1750,6 +1764,7 @@ room:
             transitions:
               - { on: fact, when: { fact: guards-turned }, to: turned, reason: the garrison turned }
               - { on: fact, when: { fact: gate-cowed }, to: cowed, reason: stood aside }
+              - { on: barred, to: challenged, do: [{ pick: barred }, { anchor: true }], reason: walked into him }
               - { on: time, do: [{ pick: post }] }
               - { on: heard, within: 6, to: alert, do: [{ anchor: true }], reason: heard something }
           alert:
@@ -1758,6 +1773,16 @@ room:
             transitions:
               - { on: fact, when: { fact: guards-turned }, to: turned, reason: the garrison turned }
               - { on: fact, when: { fact: gate-cowed }, to: cowed, reason: stood aside }
+              - { on: barred, to: challenged, do: [{ pick: barred }, { anchor: true }], reason: walked into him }
+              - { on: time, rounds: 3, to: posted, do: [{ pick: post }], reason: nothing came of it }
+              - { on: time, do: [{ pick: post }] }
+          challenged:
+            blocks: true
+            holds: { door: gate-wall-door, at: [{ q: -3, r: 7 }, { q: -4, r: 7 }], against: entering, pass: troupe-admitted }
+            transitions:
+              - { on: fact, when: { fact: guards-turned }, to: turned, reason: the garrison turned }
+              - { on: fact, when: { fact: gate-cowed }, to: cowed, reason: stood aside }
+              - { on: barred, do: [{ pick: challenged }] }
               - { on: time, rounds: 3, to: posted, do: [{ pick: post }], reason: nothing came of it }
               - { on: time, do: [{ pick: post }] }
           cowed:

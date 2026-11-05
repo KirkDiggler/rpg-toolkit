@@ -32,6 +32,11 @@ import (
 // them. A beat lands only when somebody listens for it, so content with no
 // authored recipe lands nothing and its record is what it was.
 //
+// ONE BEAT IS NEVER LANDED: a bump ([beatBarred], barred.go). A player's
+// attempt stopped by a body is a touch on one creature now, not time passing
+// for the world, so it is matched on the barrier alone in the verb that
+// bumped, and nothing that has landed is matched with it.
+//
 // LANDED BEATS PERSIST UNTIL THE RAISE THAT MATCHES THEM. A clang in a fight
 // turn, or a step short of a pace, raises nothing; the beat waits for the
 // round that does, and a save between the two keeps it
@@ -61,6 +66,10 @@ const (
 	beatDeed machine.Beat = "deed"
 	// beatSeen is an opposed subject coming into the listener's sight.
 	beatSeen machine.Beat = "seen"
+	// beatBarred is a bump on the listener (barred.go, rpg-project#842): a
+	// player's attempt stopped by its body, matched on it alone in the verb
+	// that bumped and never landed.
+	beatBarred machine.Beat = "barred"
 	// beatFact is a fact the listener learned.
 	beatFact machine.Beat = "fact"
 	// beatClock prefixes a clock's round: `clock:world`, `clock:fight`,

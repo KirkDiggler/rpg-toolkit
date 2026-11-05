@@ -156,11 +156,13 @@ func (s *CellFactsTestSuite) TestAStepOntoAHostileCreatureIsRefusedByName() {
 	// path consulted stance, so a player walked onto an enemy's cell as long
 	// as the enemy had not set BlocksMovement. 2014 says a hostile creature's
 	// space is closed.
-	_, err := s.enc.Step(&encounter.StepInput{Member: s.hero, To: cellAt(13, 7)})
-	s.Require().Error(err)
-	// A body in the way has its own sentinel (rpg-project#836, B6).
-	s.ErrorIs(err, encounter.ErrBodyInTheWay)
-	s.ErrorContains(err, string(s.secondGoblin))
+	// A body in the way stops the step by name (rpg-project#836, B6), and
+	// the step answers it with output (rpg-project#842).
+	out, err := s.enc.Step(&encounter.StepInput{Member: s.hero, To: cellAt(13, 7)})
+	s.Require().NoError(err)
+	s.Require().NotNil(out.Stopped)
+	s.Equal(s.secondGoblin, out.Stopped.Barrier)
+	s.Equal(cellAt(13, 7), out.Stopped.Cell)
 }
 
 func (s *CellFactsTestSuite) TestAStepOntoOpenFloorStillSucceeds() {

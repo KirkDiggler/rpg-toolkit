@@ -300,8 +300,8 @@ func TestDungeonspec_HoldsCompilesToPosts(t *testing.T) {
 		Against: encounter.PostEntering,
 		Pass:    "troupe-admitted",
 	}
-	require.Equal(t, map[string]encounter.Post{"posted": gate, "alert": gate}, monsterNamed(t, compiled, "gate-1").Posts,
-		"posted and alert hold the gate; cowed and turned hold nothing")
+	require.Equal(t, map[string]encounter.Post{"posted": gate, "alert": gate, "challenged": gate}, monsterNamed(t, compiled, "gate-1").Posts,
+		"posted, alert and challenged hold the gate; cowed and turned hold nothing")
 	require.Nil(t, monsterNamed(t, compiled, "gate-2").Posts, "the other gate guard holds no post")
 	require.True(t, slices.ContainsFunc(compiled.Field.Doors, func(d encounter.DoorInput) bool { return d.ID == gate.Door }),
 		"the qualified id is the door the field compiles")

@@ -83,11 +83,11 @@ func TestMadKingTheGuardHoldsTheGate(t *testing.T) {
 		require.Equal(t, encounter.PassageBlocked, s.passageFor(crossing), "posted, his body holds the cell")
 
 		s.stepTo(besideTheCrossing)
-		_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: beneathTheGate})
-		var stop *encounter.StepObstructedError
-		require.ErrorAs(t, err, &stop, "the walk stops")
-		require.ErrorIs(t, err, encounter.ErrBodyInTheWay)
-		require.Equal(t, string(kingGate1)+" stands in the way", stop.PublicReason(), "and names the guard the hero sees")
+		out, err := s.enc.Step(&encounter.StepInput{Member: hero, To: beneathTheGate})
+		require.NoError(t, err, "a bump is answered, not refused (rpg-project#842)")
+		require.NotNil(t, out.Stopped, "the walk stops")
+		require.Equal(t, kingGate1, out.Stopped.Barrier)
+		require.Equal(t, string(kingGate1)+" stands in the way", out.Stopped.Reason, "and names the guard the hero sees")
 		require.Equal(t, besideTheCrossing, s.at(hero), "one cell short of him")
 		require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "a bump is not a fight")
 

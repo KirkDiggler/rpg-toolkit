@@ -499,8 +499,9 @@ func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 			_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: cell})
 			require.NoError(t, err)
 		}
-		_, err = s.enc.Step(&encounter.StepInput{Member: hero, To: beneathTheGate, EndWalk: true})
-		require.ErrorIs(t, err, encounter.ErrBodyInTheWay, "the posted body stops the sneaker as it stops anyone")
+		out, err := s.enc.Step(&encounter.StepInput{Member: hero, To: beneathTheGate, EndWalk: true})
+		require.NoError(t, err)
+		require.NotNil(t, out.Stopped, "the posted body stops the sneaker as it stops anyone")
 		require.Equal(t, theDash[len(theDash)-2], s.at(hero), "the walk stopped one cell short of him")
 		require.Equal(t, beneathTheGate, s.at(kingGate1), "and he still holds the crossing")
 	})

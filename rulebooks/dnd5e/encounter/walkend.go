@@ -10,6 +10,13 @@ import (
 // ValidateWalkEnd refuses a known occupied destination before a voluntary walk
 // starts. Unknown occupants are not queried; Step rechecks truth on arrival.
 // Errors preserve missing observation contracts rather than treating them as fog.
+//
+// A BODY THE WALKER SEES BLOCKING IS A GOAL (rpg-project#835 R8): a click on
+// the posted guard walks up to him, and the last step, refused by his body,
+// is the bump ([Encounter.Step], [StepOutput.Stopped]), so the walker ends
+// on the cell before him. A body it sees pass-through is still refused:
+// nobody ends on that cell. Read from what the walker observes, never the
+// live state.
 func (e *Encounter) ValidateWalkEnd(in CellAtInput) error {
 	passages, err := e.ObservedPassages(&ViewInput{Member: in.Mover})
 	if err != nil {
@@ -21,7 +28,7 @@ func (e *Encounter) ValidateWalkEnd(in CellAtInput) error {
 	}
 	for _, holding := range holdings {
 		passage, current := passages[holding.Subject]
-		if !current || passage == PassageStandable {
+		if !current || passage == PassageStandable || passage == PassageBlocked {
 			continue
 		}
 		seen, ok := DecodeSightTestimony(holding.Payload)
