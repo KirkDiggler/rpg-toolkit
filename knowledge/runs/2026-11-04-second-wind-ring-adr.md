@@ -4,7 +4,7 @@ Slice [rpg-project#862](https://github.com/KirkDiggler/rpg-project/issues/862) o
 
 ## Shipped
 
-- No implementation shipped; the architectural choice remains Proposed, with R1–R4 (ring level, item-owned pools, composition and configurable recovery) recorded separately from open API/capacity/eligibility decisions — [ADR-0048](../../docs/adr/0048-equipment-granted-abilities.md).
+- No implementation shipped; the architectural choice remains Proposed, with R1–R5 (ring level, item-owned pools, composition, recovery and a one-charge fixture) recorded separately from open production API/eligibility decisions — [ADR-0048](../../docs/adr/0048-equipment-granted-abilities.md).
 
 ## Decided
 
@@ -16,7 +16,11 @@ Slice [rpg-project#862](https://github.com/KirkDiggler/rpg-project/issues/862) o
 
 - KirkDiggler, 2026-11-04: the first Second Wind ring uses normal short-or-long-rest recovery (R4); studio-configurable item/pool policy is the ultimate goal, not an editor deliverable for this slice — [requirement](../../docs/adr/0048-equipment-granted-abilities.md#settled-use-case-parameter).
 
+- KirkDiggler, 2026-11-04: use one charge for the first fixture (R5), then focus on a separate consumer example and its seams rather than serial final-configuration checks — [probe direction](https://github.com/KirkDiggler/rpg-project/issues/862#issuecomment-6648142433).
+
 ## Found
+
+- The test-only consumer exercises real effects/resource/healing dependencies, with no public item API; local offer/action integration and item-state reporting remain explicit gaps — [probe PR #2273](https://github.com/KirkDiggler/rpg-toolkit/pull/2273).
 
 - Existing Second Wind requires fighter levels, owns uses/rest recovery and publishes immediate healing; the fresh existing-component tests pass, while no ring consumer exists in this checkpoint — [journal evidence](https://github.com/KirkDiggler/rpg-project/blob/docs/second-wind-ring/docs/journal/second-wind-ring/2026-11-04-what-the-ring-grants.md#evidence).
 - The rulebook already has healing arithmetic independent of spell/bus delivery; the effects prototype's state-held outputs are a different responsibility — [ADR context](../../docs/adr/0048-equipment-granted-abilities.md#what-exists).

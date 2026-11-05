@@ -6,8 +6,9 @@ Date: 2026-11-04
 
 Proposed — architectural investigation in progress. Ring-authored level (R1),
 item-owned pools (R2), item composition (R3) and configurable normal recovery
-(R4) are settled below. Concrete contracts, charge counts, rest eligibility and
-grant lifetime remain open.
+(R4) and the one-charge first fixture (R5) are settled below. A test-only consumer
+probe is available; concrete production contracts, rest eligibility and grant
+lifetime remain open.
 
 Consumer slice: [Keep signature combat and loot S1 — Second Wind ring](https://github.com/KirkDiggler/rpg-project/issues/862),
 under [#850](https://github.com/KirkDiggler/rpg-project/issues/850).
@@ -162,12 +163,42 @@ policy by ability ref or build the studio editor in this slice. This selects an
 authoring direction, not a schema, UI or exhaustive list of recharge mechanisms.
 It does not select a recharge rule for the illustrative Raging ring or hotdog.
 
+**R5 — One charge is enough for the first consumer fixture.** Settled by
+KirkDiggler, 2026-11-04. Use capacity one, then focus the investigation on an
+example package consuming the effects tools rather than serial final-configuration
+checks. Capacity remains authored configuration; this does not fix every item's
+budget to one. Explicit holder association in a probe is test setup, not a
+production equipment/attunement ruling.
+
+### Consumer probe checkpoint
+
+[Test-only `examples/items`, PR #2273](https://github.com/KirkDiggler/rpg-toolkit/pull/2273)
+consumes the real effects composer, numerical resource tracker and healing
+operation. Its eight suite cases and runnable example exercise attachment,
+authored level/recovery, two-item budgets, targeted rest and state round-trip.
+It exports no item runtime API and changes no provider package.
+
+The probe demonstrates one consumer wiring, not acceptance of it. In particular:
+
+- Recipe-local output IDs are equal across two rings; consumer context supplies
+  distinct item-instance IDs and budgets.
+- The effects package supplies lifecycle/validation; the consumer still supplies
+  the grant/recovery vocabulary and owns pool state outside the effect bag.
+- The local inert offer does not cross the real `actions.Definition`, action-economy,
+  resolution or HP-delivery boundary. A class-granted pool is not integrated.
+- A single attached state suffices; no state transition is exercised or required
+  by this probe. It supplies no evidence for shared-machine extraction.
+
+The next architectural focus is the **grant/activation consumer contract** and
+its ownership, not another catalogue of final item settings. The
+[journal](https://github.com/KirkDiggler/rpg-project/blob/docs/second-wind-ring/docs/journal/second-wind-ring/2026-11-04-consumer-probe-exposes-the-seams.md)
+records the evidence and the assumptions kept local to the probe.
+
 ### Open requirements and decisions
 
-1. **Pool capacity and sharing:** how many uses does this ring carry, and can
-   several abilities on one item share a pool? R4 settles the first ring's normal
-   short-or-long-rest recovery; which wearer's rest reaches it remains part of
-   the attachment/eligibility question.
+1. **Pool sharing, for a consumer that needs it:** can several abilities on one
+   item share a pool? R5 settles this fixture's capacity; R4 settles its recovery.
+   Neither requires designing every future item before testing the current seams.
 2. **Grant lifetime:** when does possession/equipment make the ability available;
    what happens to an already-produced ongoing effect when equipment is removed?
    R2 settles that moving or re-equipping the ring does not refresh its budget.
