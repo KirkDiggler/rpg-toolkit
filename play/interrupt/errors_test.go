@@ -7,8 +7,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
 )
 
 func TestSentinelsAreDistinct(t *testing.T) {

@@ -43,7 +43,10 @@ func (d *Due[K]) Disarm(k K) {
 func (d *Due[K]) Pop(upTo uint64) []K {
 	var out []K
 	for len(d.h.entries) > 0 && d.h.entries[0].at <= upTo {
-		out = append(out, heap.Pop(&d.h).(dueEntry[K]).key)
+		// The heap holds only dueEntry[K]; the comma-ok spells that
+		// invariant for errcheck rather than asserting it blind.
+		popped, _ := heap.Pop(&d.h).(dueEntry[K])
+		out = append(out, popped.key)
 	}
 	return out
 }
@@ -82,7 +85,7 @@ func (h *dueHeap[K]) Swap(i, j int) {
 }
 
 func (h *dueHeap[K]) Push(x any) {
-	e := x.(dueEntry[K])
+	e, _ := x.(dueEntry[K]) // the heap holds only dueEntry[K]
 	h.index[e.key] = len(h.entries)
 	h.entries = append(h.entries, e)
 }

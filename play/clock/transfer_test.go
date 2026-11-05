@@ -6,9 +6,10 @@ package clock_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
-	"github.com/stretchr/testify/require"
 )
 
 func TestTransferTickToTurn(t *testing.T) {

@@ -1096,7 +1096,13 @@ func (g *GraphBasedGenerator) createSpatialRoomWithWallsUnsafe(
 
 	// Place wall entities in the spatial room
 	for _, wallEntity := range wallEntities {
-		entity := wallEntity.(*WallEntity)
+		entity, ok := wallEntity.(*WallEntity)
+		if !ok {
+			// Fail closed on the impossible: the builder creates only wall
+			// entities, and a silent zero would place nothing where a wall
+			// belongs.
+			return nil, fmt.Errorf("wall entity of unexpected type %T", wallEntity)
+		}
 		err := room.PlaceEntity(entity, entity.GetPosition())
 		if err != nil {
 			return nil, fmt.Errorf("failed to place wall entity %s: %w", entity.GetID(), err)
