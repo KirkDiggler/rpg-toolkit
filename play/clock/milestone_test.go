@@ -6,8 +6,9 @@ package clock_test
 import (
 	"testing"
 
-	"github.com/KirkDiggler/rpg-toolkit/play/clock"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/KirkDiggler/rpg-toolkit/play/clock"
 )
 
 func TestMilestoneKindVocabularyIsClosed(t *testing.T) {

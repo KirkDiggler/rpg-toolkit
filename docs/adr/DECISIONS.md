@@ -29,6 +29,10 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
   identity and policies, rulebooks own concrete vendors, and movement is a named
   policy rather than `BlocksMovement bool`. *Rule: shared content should not
   inherit the limits of today's runtime adapter.*
+- **[0049-behavior-is-a-composer.md](0049-behavior-is-a-composer.md)** *(accepted responsibility)* —
+  `mind/behavior` owns reusable behavior composition; parameters describe their
+  mechanical constraints, with no separate quality-profile framework required.
+  *Boundary: reuse definitions, isolate progress, and keep value selection with producers.*
 - **0021** *(superseded by ADR-0045)* — Actions were executable internal
   rulebook objects; ADR-0045 replaces them with shared inert definitions.
 - **0022** — `Repository (data) → Loader (domain objects) → Orchestrator (workflow)`.

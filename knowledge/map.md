@@ -63,7 +63,7 @@ flowchart TD
   EXP --> WORLD
   EXB --> EXP
   RB --> MIND & PLAY & WORLD & NPC & SPATIAL & ENV & RES & EV & DICE & ERR
-  BEH --> PERC & SPATIAL
+  BEH --> MACH & PERC & SPATIAL
   PERC --> PLAY
   SPAWN --> ENV & SPATIAL
   ENV --> SEL & SPATIAL & EV
@@ -104,7 +104,8 @@ repo is `(…)`; neither is read as a module.
 - Must not cross: a meaning for testimony into `mind/perception`, which holds it opaquely ([ADR-0047](../docs/adr/0047-encounter-owns-location-knowledge.md)); any knowledge of perception into `play/intel`.
 
 **Mind ↔ Rulebooks**
-- Flows: downward, a creature's facts, its authored table and a die; upward, testimony and a pick with its whole arithmetic, as values ([`mind/behavior/doc.go`](../mind/behavior/doc.go)).
+- Walkthrough: [machines, behaviors and the world outside them](../docs/architecture/components/mind.md), with overview and zoom-in diagrams.
+- Flows: downward, a creature's facts, authored tables or ordered materialized behavior instances, and a die; upward, testimony, private continuation data and a selected pick with its arithmetic, as values. The caller delivers inputs and executes the chosen word; composition does not execute it ([`mind/behavior/doc.go`](../mind/behavior/doc.go)).
 - Must not cross: a rulebook import or a game rule into Mind; testimony read upward as live truth, since it is per observer and may be false.
 - Seam (`mind/machine`): the encounter supplies the vocabulary (its beats and facts) and executes the picks a step returns; the machine never imports a rulebook or a bus ([`mind/machine/doc.go`](../mind/machine/doc.go)).
 

@@ -35,17 +35,71 @@ linters:
     - unparam        # Find unused parameters
     - whitespace     # Check unnecessary newlines
 
+  # Live since #2153's ruling (2026-11-04): this block sat at the top level in
+  # v1 syntax, silently ignored by every v2 pin — the settings were authored,
+  # never enforced. lll's limit moves from the authored 140 to 200 by ruling:
+  # the config is pragmatic about widescreens, with golangci's recommended set
+  # as the standing direction for everything else.
+  settings:
+    dupl:
+      threshold: 150
+
+    errcheck:
+      check-type-assertions: true
+
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+
+    gocyclo:
+      min-complexity: 30
+
+    lll:
+      line-length: 200
+      tab-width: 4
+
+    nakedret:
+      max-func-lines: 30
+
+    prealloc:
+      simple: true
+      range-loops: true
+      for-loops: false
+
+    revive:
+      severity: warning
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: if-return
+        - name: increment-decrement
+        - name: var-naming
+        - name: var-declaration
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: unexported-return
+        - name: indent-error-flow
+        - name: errorf
+
   exclusions:
     rules:
       # Test files are fixtures, not product — these linters skip them.
       # (Migrated from the v1 `issues.exclude-rules` block: golangci-lint v2
       # silently ignores v1-syntax sections, so under the v2.15.0 pin these
       # findings fired in _test.go files while that block sat in the file. #2148.)
-      # nilnil joins them by ruling (#2220): the test-stub findings are
-      # faithful to the seams they fake, so holding tests to the law is a
-      # seam reshape, not a test fix.
+      # nilnil joined by ruling (#2220): the test-stub findings are faithful
+      # to the seams they fake, so holding tests to the law is a seam
+      # reshape, not a test fix. lll joined by ruling (#2153): fixtures wrap
+      # their tables as they please; product lines answer the 200 limit.
       - path: _test\.go
-        linters: [dupl, errcheck, goconst, gosec, gocyclo, nilnil]
+        linters: [dupl, errcheck, goconst, gosec, gocyclo, lll, nilnil]
 
       # refs/ namespace pattern is intentionally similar for IDE discoverability
       - path: refs/
@@ -65,79 +119,6 @@ linters:
       - vendor/
       - _gen\.go
 
-# DEAD under golangci-lint v2: this v1-syntax section is silently ignored by
-# every v2 pin — the runtime drops it without a word and only
-# `golangci-lint config verify` notices. Restoring it is not a config fix but
-# a gate-policy change: these settings have never been enforced on this tree,
-# and re-arming them fires ~380 findings (measured 2026-10-29; per-setting
-# inventory and decision menu in #2153). Do not nest this under
-# `linters.settings` without that decision.
-linters-settings:
-  dupl:
-    threshold: 150
-  
-  errcheck:
-    check-type-assertions: true
-  
-  goconst:
-    min-len: 3
-    min-occurrences: 3
-  
-  gocritic:
-    enabled-tags:
-      - diagnostic
-      - experimental
-      - opinionated
-      - performance
-      - style
-    disabled-checks:
-      - dupImport # https://github.com/go-critic/go-critic/issues/845
-      - whyNoLint
-  
-  gocyclo:
-    min-complexity: 15
-  
-  govet:
-    check-shadowing: true
-  
-  lll:
-    line-length: 140
-    tab-width: 4
-  
-  misspell:
-    locale: US
-  
-  nakedret:
-    max-func-lines: 30
-  
-  prealloc:
-    simple: true
-    range-loops: true
-    for-loops: false
-  
-  revive:
-    ignore-generated-header: true
-    severity: warning
-    rules:
-      - name: blank-imports
-      - name: context-as-argument
-      - name: context-keys-type
-      - name: dot-imports
-      - name: error-return
-      - name: error-strings
-      - name: error-naming
-      - name: if-return
-      - name: increment-decrement
-      - name: var-naming
-      - name: var-declaration
-      - name: package-comments
-      - name: range
-      - name: receiver-naming
-      - name: time-naming
-      - name: unexported-return
-      - name: indent-error-flow
-      - name: errorf
-
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
@@ -147,10 +128,10 @@ formatters:
     - gofmt
     - goimports
 
-# DEAD under golangci-lint v2 — see the note on linters-settings above (#2153).
-formatters-settings:
-  gofmt:
-    simplify: true
-  
-  goimports:
-    local-prefixes: github.com/KirkDiggler
+  # Live since #2153's ruling (2026-11-04) — see the note on linters.settings.
+  settings:
+    gofmt:
+      simplify: true
+
+    goimports:
+      local-prefixes: [github.com/KirkDiggler]

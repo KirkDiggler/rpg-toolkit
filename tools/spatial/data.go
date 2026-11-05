@@ -148,8 +148,9 @@ func (r *BasicRoom) ToData() RoomData {
 		gridType = GridTypeSquare
 	case GridShapeHex:
 		gridType = GridTypeHex
-		// Hex grid shape will always be *HexGrid
-		hexGrid := r.grid.(*HexGrid)
+		// Hex grid shape will always be *HexGrid — the comma-ok spells that
+		// invariant for errcheck rather than asserting it blind.
+		hexGrid, _ := r.grid.(*HexGrid)
 		// HexGrid.GetOrientation() returns HexOrientation type
 		// We want hexFlatTop to be true when orientation is flat-top
 		hexFlatTop = hexGrid.GetOrientation() == HexOrientationFlatTop
@@ -167,8 +168,8 @@ func (r *BasicRoom) ToData() RoomData {
 	var cubeEntities map[string]EntityCubePlacement
 
 	if gridType == GridTypeHex {
-		// For hex grids, use cube coordinates
-		hexGrid := r.grid.(*HexGrid)
+		// For hex grids, use cube coordinates — always *HexGrid here too.
+		hexGrid, _ := r.grid.(*HexGrid)
 		orientation := hexGrid.GetOrientation()
 		cubeEntities = make(map[string]EntityCubePlacement)
 

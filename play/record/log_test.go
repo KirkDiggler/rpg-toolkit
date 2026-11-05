@@ -8,9 +8,10 @@ import (
 	"math"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
-	"github.com/stretchr/testify/suite"
 )
 
 type RecordSuite struct {

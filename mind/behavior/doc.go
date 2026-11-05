@@ -1,10 +1,32 @@
 // Copyright (C) 2026 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Package behavior is the mind's POLICY primitive: the creature's TABLE, and
-// the vocabulary of deeds a table can ask about.
+// Package behavior composes independent behavior instances and evaluates
+// authored weighted policy. The composer uses mind/machine for private progress;
+// the table remains the real selector, with the vocabulary supplied by its caller.
 //
-// # The two halves, and the one sentence
+// # Composition
+//
+// [NewComposer] takes materialized [InstanceSpec] values in authored priority
+// order. Each instance owns a machine blob. [Composer.Observe] delivers data-only
+// inputs, broadcast or addressed to one instance; an action request is refused,
+// not silently dropped. [Composer.Decide] previews the instances and rolls only
+// the first requesting one's table. Losing requests retain their progress.
+// Data-only transitions can commit alongside the winner. A no-candidate hold
+// retains its pending step; an explicitly selected Hold row can progress.
+//
+// Results are values. The caller executes the selected word and sends completion
+// back to its owning instance, rather than rolling again or broadcasting another
+// behavior's completion. No geometry, actor registry, bus or clock is added here.
+// Input time remains the caller's; retained progress is not a virtual paused clock.
+//
+// [Composer.ToData] saves private progress plus configuration identity. A
+// [LoadComposer] caller supplies the original materialized configuration; changed
+// definitions/order and malformed progress are refused, never silently rebound.
+// [CheckParameters] validates producer-supplied scalar values from mechanical
+// metadata. It does not bind templates, sample values or define a quality profile.
+//
+// # Policy and testimony
 //
 // mind/perception says what a creature KNOWS. This module says what it DOES
 // with that — by rolling on an authored weighted table, loaded by the
@@ -28,8 +50,9 @@
 //
 // # It knows no game, which is the point
 //
-// This module holds no board, no clock, no rules and no opinion about what
-// anybody does next. It names exactly one trigger, [KeyTime] — a creature
+// This module holds no board, no clock, no rulebook rules and supplies no
+// behavioral policy of its own; the instance order and tables are authored.
+// It names exactly one trigger, [KeyTime] — a creature
 // having time is the one thing every game has — and every other key is the
 // caller's to name, seal and refuse. It seals no temperament vocabulary: any
 // word that arrives with a profile is multiplied by it. It carries a
