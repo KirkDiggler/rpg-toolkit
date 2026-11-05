@@ -315,7 +315,7 @@ func checkApproachSource(applied encounter.CheckApproach, skill skills.Skill) (*
 	if ability, err := abilities.GetByID(applied.Ability); err == nil {
 		return attackAbilityRef(ability), ability.Display()
 	}
-	return nil, string(applied.Ability)
+	return nil, applied.Ability
 }
 
 // skillRef maps a resolved skill to its ref, or nil for a bare-ability route

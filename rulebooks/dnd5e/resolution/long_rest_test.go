@@ -116,7 +116,7 @@ func (s *LongRestTestSuite) TestFighterRecoveryIsCompleteAndIndependent() {
 	s.Require().Equal(2, got.Resources[fighterRestPool].Current,
 		"a character-owned short-rest pool also refills on a long rest")
 
-	var refilled []string
+	refilled := make([]string, 0, len(out.Result.Refilled))
 	for _, ref := range out.Result.Refilled {
 		refilled = append(refilled, ref.String())
 	}

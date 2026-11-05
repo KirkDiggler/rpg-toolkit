@@ -6,6 +6,7 @@ package resolution
 import (
 	"encoding/json"
 	"fmt"
+
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 )
 

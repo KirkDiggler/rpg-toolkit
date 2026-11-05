@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -17,7 +19,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
-	"github.com/stretchr/testify/require"
 )
 
 func wrathHero(t *testing.T) *character.Data {
@@ -99,7 +100,8 @@ func TestPostHitChoicesKeepDescriptionAcrossFreeze(t *testing.T) {
 	}
 	original := resume(out.Posed.Frozen)
 	rewritten := string(out.Posed.Frozen)
-	descriptions := []string{ask.Offer.Description}
+	descriptions := make([]string, 0, 1+len(ask.Offer.Choices))
+	descriptions = append(descriptions, ask.Offer.Description)
 	for _, choice := range ask.Offer.Choices {
 		descriptions = append(descriptions, choice.Description)
 	}

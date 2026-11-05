@@ -97,7 +97,7 @@ func (s *DepartTestSuite) scene(targets ...string) map[string]*character.Data {
 }
 
 func departRefs(s *DepartTestSuite, data *character.Data) []string {
-	var out []string
+	out := make([]string, 0, len(data.Conditions))
 	for _, raw := range data.Conditions {
 		var head struct {
 			Ref *core.Ref `json:"ref"`
@@ -211,7 +211,7 @@ func (s *DepartTestSuite) TestDepart() {
 		s.Equal(encounter.MemberID(departBob), held.Caster)
 		s.Equal(refs.Spells.Bless().String(), held.Spell.Ref)
 		s.Equal(DepartedReason, held.Reason)
-		var removedFrom []encounter.MemberID
+		removedFrom := make([]encounter.MemberID, 0, len(held.Removed))
 		for _, removed := range held.Removed {
 			removedFrom = append(removedFrom, removed.Address.MemberID)
 		}

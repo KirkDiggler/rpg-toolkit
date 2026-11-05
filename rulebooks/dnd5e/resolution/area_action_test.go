@@ -78,7 +78,7 @@ func (s *AreaActionTestSuite) TestAnAreaCastResolvesTheMembersItWasHanded() {
 	})
 	s.Require().NoError(err)
 
-	out, err := s.resolveArea(baneWorld(s.T(), 2), machine, fixtures.saver(14), baneCaster(1, 2))
+	out, err := s.resolveArea(baneWorld(s.T(), 2), machine, fixtures.saver(14), baneCaster(1))
 	s.Require().NoError(err)
 
 	outcome, ok := out.Outcome.(CastOutcome)
@@ -116,7 +116,7 @@ func (s *AreaActionTestSuite) TestAFootprintThatCatchesNobodyStillHappens() {
 	})
 	s.Require().NoError(err)
 
-	out, err := s.resolveArea(baneWorld(s.T(), 2), machine, fixtures.saver(14), baneCaster(1, 2))
+	out, err := s.resolveArea(baneWorld(s.T(), 2), machine, fixtures.saver(14), baneCaster(1))
 	s.Require().NoError(err)
 
 	outcome, ok := out.Outcome.(CastOutcome)
@@ -150,7 +150,7 @@ func (s *AreaActionTestSuite) TestADerivedMemberIsNotMeasuredFromTheCaster() {
 	s.Require().NoError(err)
 
 	// Far outside a five-foot burst by any reading of the grid.
-	out, err := s.resolveArea(baneWorld(s.T(), 12), machine, fixtures.saver(14), baneCaster(1, 2))
+	out, err := s.resolveArea(baneWorld(s.T(), 12), machine, fixtures.saver(14), baneCaster(1))
 	s.Require().NoError(err, "a derived member is not re-measured against the caster's range")
 
 	outcome, ok := out.Outcome.(CastOutcome)

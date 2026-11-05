@@ -4,6 +4,7 @@ package resolution
 
 import (
 	"encoding/json"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
@@ -25,7 +26,7 @@ func (s *CastActionTestSuite) TestGuidingBoltPaysAndDeliversOnlyOnHit() {
 			s.Require().NoError(err)
 			cost := baneCost()
 			cost.Profile = d.Cost
-			out, err := f.resolve(f.saver(14), machine, cost, baneCaster(1, 2))
+			out, err := f.resolve(f.saver(14), machine, cost, baneCaster(1))
 			s.Require().NoError(err)
 			outcome := s.castOutcome(out)
 			s.Require().Len(outcome.Targets, 1)

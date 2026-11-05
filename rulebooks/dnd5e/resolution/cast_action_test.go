@@ -79,7 +79,7 @@ func castCost() *Cost {
 }
 
 // cast builds the machine the door would build for one cantrip.
-func (s *CastActionTestSuite) cast(id spells.Spell, casterID, targetID string, roll int) Machine {
+func (s *CastActionTestSuite) cast(id spells.Spell, casterID string, roll int) Machine {
 	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: id, SpellSaveDC: spellSaveDC})
 	s.Require().NotNil(definition, "this build has cast content for %s", id)
 	definition.Cost = oneAction()
@@ -87,7 +87,7 @@ func (s *CastActionTestSuite) cast(id spells.Spell, casterID, targetID string, r
 	machine, err := NewAction(&ActionInput{
 		Definition: *definition,
 		AttackerID: casterID,
-		TargetIDs:  []string{targetID},
+		TargetIDs:  []string{heroID},
 		Roller:     facedRoller{d20: roll, other: psychicFace},
 	})
 	s.Require().NoError(err)
@@ -150,11 +150,11 @@ func baneCost() *Cost {
 	}
 }
 
-func baneCaster(actions, slots int) *character.Data {
+func baneCaster(actions int) *character.Data {
 	caster := (&ContestDamageTestSuite{}).bard(actions)
 	caster.Resources = map[coreResources.ResourceKey]character.RecoverableResourceData{
 		resources.SpellSlotLevel1: {
-			Current: slots, Maximum: 2, ResetType: coreResources.ResetLongRest,
+			Current: 2, Maximum: 2, ResetType: coreResources.ResetLongRest,
 		},
 	}
 	return caster
@@ -175,7 +175,7 @@ func (s *CastActionTestSuite) TestBanePaysOnceAndResolvesTargetsInCallerOrder() 
 			})
 			s.Require().NoError(err)
 
-			out, err := fixtures.resolve(fixtures.saver(14), machine, baneCost(), baneCaster(1, 2))
+			out, err := fixtures.resolve(fixtures.saver(14), machine, baneCost(), baneCaster(1))
 			s.Require().NoError(err)
 			outcome := s.castOutcome(out)
 			gotTargets := make([]string, len(outcome.Targets))
@@ -206,7 +206,7 @@ func (s *CastActionTestSuite) TestBaneRefusesMalformedWholeTargetListsBeforeRNG(
 	} {
 		s.Run(tc.name, func() {
 			roller := &countingCastRoller{facedRoller: facedRoller{d20: 1, other: 4}}
-			caster := baneCaster(1, 2)
+			caster := baneCaster(1)
 			caster.Conditions = []json.RawMessage{baneOwnerJSON(s.T(), bardID, 5)}
 			before, err := json.Marshal(caster)
 			s.Require().NoError(err)
@@ -231,7 +231,7 @@ func (s *CastActionTestSuite) TestBaneRejectsAnInvalidLaterTargetBeforeRNGOrMuta
 		TargetIDs: []string{heroID, wolfID, "absent"}, Roller: roller,
 	})
 	s.Require().NoError(err)
-	caster := baneCaster(1, 2)
+	caster := baneCaster(1)
 	caster.Conditions = []json.RawMessage{baneOwnerJSON(s.T(), bardID, 5)}
 	before, err := json.Marshal(caster)
 	s.Require().NoError(err)
@@ -249,7 +249,7 @@ func baneWorld(t *testing.T, targetX float64) encounter.EncounterData {
 	t.Helper()
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{Canvas: hexCanvas(), Regions: []encounter.RegionInput{
-			rectRegion("room", 0, 0, 20, 10),
+			rectRegion("room", 0, 20, 10),
 		}},
 		Members: []encounter.MemberInput{
 			{ID: bardID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
@@ -292,7 +292,7 @@ func (s *CastActionTestSuite) TestBaneRefusesStaleAndOutOfRangeTargetsBeforeDrop
 				TargetIDs: []string{heroID}, Roller: roller,
 			})
 			s.Require().NoError(err)
-			caster := baneCaster(1, 2)
+			caster := baneCaster(1)
 			caster.Conditions = []json.RawMessage{baneOwnerJSON(s.T(), bardID, 5)}
 			before, marshalErr := json.Marshal(caster)
 			s.Require().NoError(marshalErr)
@@ -338,13 +338,13 @@ func (s *CastActionTestSuite) TestViciousMockeryLandsDamageAndItsRider() {
 	fixtures := s.fixtures()
 
 	out, err := fixtures.resolve(
-		fixtures.saver(14), s.cast(spells.ViciousMockery, bardID, heroID, straightRoll),
+		fixtures.saver(14), s.cast(spells.ViciousMockery, bardID, straightRoll),
 		castCost(), fixtures.bard(1),
 	)
 	s.Require().NoError(err)
 
 	outcome := s.castOutcome(out)
-	s.Require().Equal(refs.Spells.ByID(string(spells.ViciousMockery)).String(), outcome.Spell.String())
+	s.Require().Equal(refs.Spells.ByID(spells.ViciousMockery).String(), outcome.Spell.String())
 	s.Require().Equal(bardID, outcome.CasterID)
 	s.Require().Equal(heroID, outcome.Targets[0].TargetID)
 
@@ -378,7 +378,7 @@ func (s *CastActionTestSuite) TestViciousMockeryLandsDamageAndItsRider() {
 	params := s.castParams(target, refs.Conditions.ViciousMockery().String())
 	s.Require().Equal(bardID, params[spells.ViciousMockeryCasterParameter],
 		"the counterpart the content named is the CASTER, written by resolution")
-	s.Require().Equal(refs.Spells.ByID(string(spells.ViciousMockery)).String(), params["source_ref"],
+	s.Require().Equal(refs.Spells.ByID(spells.ViciousMockery).String(), params["source_ref"],
 		"and the condition itself names WHICH spell applied it")
 
 	payer := fixtures.sheet(out, bardID)
@@ -390,7 +390,7 @@ func (s *CastActionTestSuite) TestAMadeSaveAgainstViciousMockeryDeliversNothing(
 	fixtures := s.fixtures()
 
 	out, err := fixtures.resolve(
-		fixtures.saver(14), s.cast(spells.ViciousMockery, bardID, heroID, advantageRoll),
+		fixtures.saver(14), s.cast(spells.ViciousMockery, bardID, advantageRoll),
 		castCost(), fixtures.bard(1),
 	)
 	s.Require().NoError(err)
@@ -420,13 +420,13 @@ func (s *CastActionTestSuite) TestTrueStrikeDeliversToTheCasterWithNoRoll() {
 	fixtures := s.fixtures()
 
 	out, err := fixtures.resolve(
-		fixtures.saver(14), s.cast(spells.TrueStrike, bardID, heroID, straightRoll),
+		fixtures.saver(14), s.cast(spells.TrueStrike, bardID, straightRoll),
 		castCost(), fixtures.bard(1),
 	)
 	s.Require().NoError(err)
 
 	outcome := s.castOutcome(out)
-	s.Require().Equal(refs.Spells.ByID(string(spells.TrueStrike)).String(), outcome.Spell.String(),
+	s.Require().Equal(refs.Spells.ByID(spells.TrueStrike).String(), outcome.Spell.String(),
 		"the outcome echoes the spell that ran")
 	s.Require().Nil(outcome.Targets[0].Save, "no gate means no saved beat to write")
 	s.Require().Len(outcome.Targets[0].Applied, 1, "one Gather, one condition, one effect")
@@ -438,7 +438,7 @@ func (s *CastActionTestSuite) TestTrueStrikeDeliversToTheCasterWithNoRoll() {
 	params := s.castParams(caster, refs.Conditions.TrueStrike().String())
 	s.Require().Equal(heroID, params[spells.TrueStrikeTargetParameter],
 		"the counterpart the content named is the TARGET, written by resolution")
-	s.Require().Equal(refs.Spells.ByID(string(spells.TrueStrike)).String(), params["source_ref"],
+	s.Require().Equal(refs.Spells.ByID(spells.TrueStrike).String(), params["source_ref"],
 		"and the condition itself names WHICH spell applied it")
 	s.Require().Zero(caster.ActionEconomy.ActionsRemaining, "charged at the door like any cast")
 
@@ -453,7 +453,7 @@ func (s *CastActionTestSuite) TestACastWithNoActionLeftIsRefusedAtTheDoor() {
 	fixtures := s.fixtures()
 
 	out, err := fixtures.resolve(
-		fixtures.saver(14), s.cast(spells.TrueStrike, bardID, heroID, straightRoll),
+		fixtures.saver(14), s.cast(spells.TrueStrike, bardID, straightRoll),
 		castCost(), fixtures.bard(0),
 	)
 
@@ -468,7 +468,7 @@ func (s *CastActionTestSuite) TestAGatedCastWithNoActionLeftIsRefusedBeforeTheSa
 	fixtures := s.fixtures()
 
 	_, err := fixtures.resolve(
-		fixtures.saver(14), s.cast(spells.ViciousMockery, bardID, heroID, straightRoll),
+		fixtures.saver(14), s.cast(spells.ViciousMockery, bardID, straightRoll),
 		castCost(), fixtures.bard(0),
 	)
 
@@ -556,7 +556,7 @@ func (s *CastActionTestSuite) TestTheCastBranchRefusesWhatItCannotDeliver() {
 	s.Run("a recipient who is not in the cast", func() {
 		fixtures := s.fixtures()
 		_, err := fixtures.resolve(
-			fixtures.saver(14), s.cast(spells.TrueStrike, "nobody", heroID, straightRoll), nil, nil,
+			fixtures.saver(14), s.cast(spells.TrueStrike, "nobody", straightRoll), nil, nil,
 		)
 		s.Require().ErrorIs(err, ErrBadActivation)
 	})
@@ -666,7 +666,7 @@ func (s *CastActionTestSuite) TestACastIsPreflightedBeforeTheDoorCharges() {
 	fixtures := s.fixtures()
 
 	out, err := fixtures.resolve(
-		fixtures.saver(14), s.cast(spells.TrueStrike, "nobody", heroID, straightRoll),
+		fixtures.saver(14), s.cast(spells.TrueStrike, "nobody", straightRoll),
 		castCost(), fixtures.bard(0),
 	)
 
@@ -730,7 +730,7 @@ func (s *CastActionTestSuite) TestACastsConditionsCarryTheSpellAsTheirSource() {
 		bus := events.NewEventBus()
 		seen := s.sourcesSeen(bus)
 
-		out := s.resolveOnBus(s.fixtures(), s.cast(spells.TrueStrike, bardID, heroID, straightRoll), bus)
+		out := s.resolveOnBus(s.fixtures(), s.cast(spells.TrueStrike, bardID, straightRoll), bus)
 
 		s.Require().Contains(kinds(s.castOutcome(out).Targets[0].Applied), ImposedCondition)
 		s.Require().Equal(dnd5eEvents.ConditionSourceSpell, seen[refs.Conditions.TrueStrike().String()])
@@ -740,7 +740,7 @@ func (s *CastActionTestSuite) TestACastsConditionsCarryTheSpellAsTheirSource() {
 		bus := events.NewEventBus()
 		seen := s.sourcesSeen(bus)
 
-		out := s.resolveOnBus(s.fixtures(), s.cast(spells.ViciousMockery, bardID, heroID, straightRoll), bus)
+		out := s.resolveOnBus(s.fixtures(), s.cast(spells.ViciousMockery, bardID, straightRoll), bus)
 
 		s.Require().Contains(kinds(s.castOutcome(out).Targets[0].Applied), ImposedCondition)
 		s.Require().Equal(dnd5eEvents.ConditionSourceSpell, seen[refs.Conditions.ViciousMockery().String()],
@@ -816,7 +816,7 @@ func (s *CastActionTestSuite) TestTheChosenWordIsWrittenOnAGatedCast() {
 			})
 			s.Require().NoError(err)
 
-			out, err := fixtures.resolve(fixtures.saver(14), machine, commandCost(), baneCaster(1, 2))
+			out, err := fixtures.resolve(fixtures.saver(14), machine, commandCost(), baneCaster(1))
 			s.Require().NoError(err)
 			outcome := s.castOutcome(out)
 			s.Require().Len(outcome.Targets, 1)
@@ -855,7 +855,7 @@ func (s *CastActionTestSuite) TestAnImposedConditionReadsItsRegistryName() {
 		Roller: facedRoller{d20: 1, other: psychicFace},
 	})
 	s.Require().NoError(err)
-	out, err := fixtures.resolve(fixtures.saver(14), machine, commandCost(), baneCaster(1, 2))
+	out, err := fixtures.resolve(fixtures.saver(14), machine, commandCost(), baneCaster(1))
 	s.Require().NoError(err)
 
 	var described []string
@@ -878,7 +878,7 @@ func (s *CastActionTestSuite) TestAMadeSaveLeavesNoWordBehind() {
 	})
 	s.Require().NoError(err)
 
-	out, err := fixtures.resolve(fixtures.saver(14), machine, commandCost(), baneCaster(1, 2))
+	out, err := fixtures.resolve(fixtures.saver(14), machine, commandCost(), baneCaster(1))
 	s.Require().NoError(err)
 	s.Require().True(s.castOutcome(out).Targets[0].Save.Succeeded)
 	s.Empty(s.castOutcome(out).Targets[0].Applied, "Command has no damage, so a made save delivers nothing")
@@ -1026,7 +1026,7 @@ func (s *CastActionTestSuite) TestASecondCommandReplacesTheFirst() {
 
 	out, err := resolveOn(s.ctx, &Input{
 		World:        fixtures.world(),
-		Participants: []Participant{{Character: target}, {Character: baneCaster(1, 2)}},
+		Participants: []Participant{{Character: target}, {Character: baneCaster(1)}},
 		Machine:      machine,
 		Cost:         commandCost(),
 		Capabilities: encounter.Capabilities{
@@ -1080,7 +1080,7 @@ func (s *CastActionTestSuite) TestAMonsterRecipientIsReplacedTheSameWay() {
 
 	out, err := resolveOn(s.ctx, &Input{
 		World:        fixtures.world(),
-		Participants: []Participant{{Monster: wolf}, {Character: baneCaster(1, 2)}},
+		Participants: []Participant{{Monster: wolf}, {Character: baneCaster(1)}},
 		Machine:      machine,
 		Cost:         commandCost(),
 		Capabilities: encounter.Capabilities{
@@ -1151,7 +1151,7 @@ func (s *CastActionTestSuite) TestTwoCastersBanesBothStandAndBothConcentrationsH
 
 	out, err := resolveOn(s.ctx, &Input{
 		World:        fixtures.world(),
-		Participants: []Participant{{Character: target}, {Monster: holder}, {Character: baneCaster(1, 2)}},
+		Participants: []Participant{{Character: target}, {Monster: holder}, {Character: baneCaster(1)}},
 		Machine:      machine,
 		Cost:         baneCost(),
 		Capabilities: encounter.Capabilities{
@@ -1202,7 +1202,7 @@ func (s *CastActionTestSuite) TestADifferentRefIsLeftWhereItIs() {
 
 	out, err := resolveOn(s.ctx, &Input{
 		World:        fixtures.world(),
-		Participants: []Participant{{Character: fixtures.saver(14, stored)}, {Character: baneCaster(1, 2)}},
+		Participants: []Participant{{Character: fixtures.saver(14, stored)}, {Character: baneCaster(1)}},
 		Machine:      machine,
 		Cost:         baneCost(),
 		Capabilities: encounter.Capabilities{
@@ -1267,7 +1267,7 @@ func (s *CastActionTestSuite) TestTwoCastersEachKeepTheirOwnCommandAndTheFirstAp
 
 	out, err := resolveOn(s.ctx, &Input{
 		World:        fixtures.world(),
-		Participants: []Participant{{Character: target}, {Character: baneCaster(1, 2)}},
+		Participants: []Participant{{Character: target}, {Character: baneCaster(1)}},
 		Machine:      machine,
 		Cost:         commandCost(),
 		Capabilities: encounter.Capabilities{

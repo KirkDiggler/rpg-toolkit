@@ -6,6 +6,7 @@ package resolution
 import (
 	"encoding/json"
 	"fmt"
+
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -16,7 +17,7 @@ import (
 
 func (s *CastActionTestSuite) TestSanctuaryRecipientCooldownSurvivesWardAndExpiresAfterReload() {
 	f := s.fixtures()
-	caster := baneCaster(1, 2)
+	caster := baneCaster(1)
 	caster.ActionEconomy.BonusActionsRemaining = 1
 	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.Sanctuary})
 	roller := &countingCastRoller{}

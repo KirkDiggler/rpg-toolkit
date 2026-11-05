@@ -46,9 +46,9 @@ func (s *ResistancePoseTestSuite) fixtures() *ContestDamageTestSuite {
 
 // resistanceJSON is one Resistance die already on a sheet, [baneOwnerJSON]'s
 // own pattern applied to [conditions.ResistanceCondition].
-func (s *ResistancePoseTestSuite) resistanceJSON(memberID, casterID string) json.RawMessage {
+func (s *ResistancePoseTestSuite) resistanceJSON() json.RawMessage {
 	condition, err := conditions.NewResistanceCondition(conditions.NewResistanceConditionInput{
-		MemberID: memberID, SourceID: casterID, SourceRef: refs.Spells.Resistance(),
+		MemberID: heroID, SourceID: "cleric-1", SourceRef: refs.Spells.Resistance(),
 	})
 	s.Require().NoError(err)
 	stored, err := condition.ToJSON()
@@ -68,7 +68,7 @@ func (s *ResistancePoseTestSuite) TestASaveNobodyOffersAnythingOnIsUnchanged() {
 	})
 	s.Require().NoError(err)
 
-	out, err := fixtures.resolve(fixtures.saver(14), machine, baneCost(), baneCaster(1, 2))
+	out, err := fixtures.resolve(fixtures.saver(14), machine, baneCost(), baneCaster(1))
 	s.Require().NoError(err)
 	s.Require().Nil(out.Posed, "nobody offered anything, so nothing was asked")
 	outcome := out.Outcome.(CastOutcome)
@@ -79,14 +79,14 @@ func (s *ResistancePoseTestSuite) TestASaveNobodyOffersAnythingOnIsUnchanged() {
 // Sacred Flame's own shape, exercised here through Bane's one-target arm.
 func (s *ResistancePoseTestSuite) TestASingleTargetSavePosesAndResumes() {
 	fixtures := s.fixtures()
-	saver := fixtures.saver(14, s.resistanceJSON(heroID, "cleric-1"))
+	saver := fixtures.saver(14, s.resistanceJSON())
 	roller := &countingCastRoller{facedRoller: facedRoller{d20: 10, other: 4}}
 	machine, err := NewAction(&ActionInput{
 		Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{heroID}, Roller: roller,
 	})
 	s.Require().NoError(err)
 
-	out, err := fixtures.resolve(saver, machine, baneCost(), baneCaster(1, 2))
+	out, err := fixtures.resolve(saver, machine, baneCost(), baneCaster(1))
 	s.Require().NoError(err)
 	s.Require().Nil(out.Outcome, "a posed machine produced nothing yet")
 	s.Require().NotNil(out.Posed)
@@ -104,7 +104,7 @@ func (s *ResistancePoseTestSuite) TestASingleTargetSavePosesAndResumes() {
 		})
 		s.Require().NoError(err)
 
-		resumedOut, err := fixtures.resolve(saver, resumed, nil, baneCaster(1, 2))
+		resumedOut, err := fixtures.resolve(saver, resumed, nil, baneCaster(1))
 		s.Require().NoError(err)
 		s.Require().Nil(resumedOut.Posed, "a resumed save finishes")
 		outcome := resumedOut.Outcome.(CastOutcome)
@@ -118,7 +118,7 @@ func (s *ResistancePoseTestSuite) TestASingleTargetSavePosesAndResumes() {
 		})
 		s.Require().NoError(err)
 
-		resumedOut, err := fixtures.resolve(saver, resumed, nil, baneCaster(1, 2))
+		resumedOut, err := fixtures.resolve(saver, resumed, nil, baneCaster(1))
 		s.Require().NoError(err)
 		s.Require().Nil(resumedOut.Posed)
 		outcome := resumedOut.Outcome.(CastOutcome)
@@ -132,14 +132,14 @@ func (s *ResistancePoseTestSuite) TestASingleTargetSavePosesAndResumes() {
 // suspended.
 func (s *ResistancePoseTestSuite) TestAPosedTargetLeavesLaterTargetsToRun() {
 	fixtures := s.fixtures()
-	saver := fixtures.saver(14, s.resistanceJSON(heroID, "cleric-1"))
+	saver := fixtures.saver(14, s.resistanceJSON())
 	roller := &countingCastRoller{facedRoller: facedRoller{d20: 10, other: 4}}
 	machine, err := NewAction(&ActionInput{
 		Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{heroID, wolfID}, Roller: roller,
 	})
 	s.Require().NoError(err)
 
-	out, err := fixtures.resolve(saver, machine, baneCost(), baneCaster(1, 2))
+	out, err := fixtures.resolve(saver, machine, baneCost(), baneCaster(1))
 	s.Require().NoError(err)
 	s.Require().NotNil(out.Posed, "hero (target 0) holds the die")
 
@@ -148,7 +148,7 @@ func (s *ResistancePoseTestSuite) TestAPosedTargetLeavesLaterTargetsToRun() {
 	})
 	s.Require().NoError(err)
 
-	resumedOut, err := fixtures.resolve(saver, resumed, nil, baneCaster(1, 2))
+	resumedOut, err := fixtures.resolve(saver, resumed, nil, baneCaster(1))
 	s.Require().NoError(err)
 	s.Require().Nil(resumedOut.Posed)
 	outcome := resumedOut.Outcome.(CastOutcome)

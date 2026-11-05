@@ -198,11 +198,12 @@ func (m *castResumeMachine) Start(ctx context.Context, cast *Participants) (Step
 			// charged the caster, and is not re-decided here.
 			var inner Machine
 			var err error
-			if m.definition.Cast.Attack != nil {
-				inner, err = newAttackCast(m.definition, m.cast.casterID, target.targetID, m.roller)
-			} else if gated {
+			switch {
+			case m.definition.Cast.Attack != nil:
+				inner = newAttackCast(m.definition, m.cast.casterID, target.targetID, m.roller)
+			case gated:
 				inner, err = newGatedCast(m.definition, m.cast.casterID, target.targetID, m.option, cause, m.roller)
-			} else {
+			default:
 				inner, err = newGatelessCast(m.definition, m.cast.casterID, target.targetID, m.option, m.roller)
 			}
 			if err != nil {

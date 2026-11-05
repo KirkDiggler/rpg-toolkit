@@ -13,8 +13,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/stretchr/testify/require"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 )
 
 // TestEntriesReturnAnswersNotSheets is the D11 pin: nothing an entry hands back

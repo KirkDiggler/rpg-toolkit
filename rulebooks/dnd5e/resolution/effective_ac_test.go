@@ -75,10 +75,10 @@ func (s *EffectiveACTestSuite) armoredHero(conds ...json.RawMessage) *character.
 		MaxHitPoints:     14,
 		ProficiencyBonus: 2,
 		Inventory: []character.InventoryItemData{
-			{Type: shared.EquipmentTypeArmor, ID: string(armor.ChainMail), Quantity: 1},
+			{Type: shared.EquipmentTypeArmor, ID: armor.ChainMail, Quantity: 1},
 		},
 		EquipmentSlots: character.EquipmentSlots{
-			character.SlotArmor: string(armor.ChainMail),
+			character.SlotArmor: armor.ChainMail,
 		},
 		Conditions: conds,
 	}
@@ -97,7 +97,7 @@ func (s *EffectiveACTestSuite) world() encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
-			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
+			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 10, 10)},
 		},
 		Members: []encounter.MemberInput{
 			{ID: heroID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 5}},
@@ -294,7 +294,7 @@ func (s *EffectiveACTestSuite) TestAMonsterTargetStillReportsItsStatBlockAC() {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
-			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
+			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 10, 10)},
 		},
 		Members: []encounter.MemberInput{
 			{ID: wolfID, Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 5}},
