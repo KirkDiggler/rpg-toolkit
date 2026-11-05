@@ -4,7 +4,7 @@ Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), 
 
 ## Shipped
 
-- `go.mod` pins encounter at the pseudo-version of #2278's head 71b133ae, `v0.177.1-0.20261105184751-71b133aeeed3`, with no replace. It becomes the encounter tag before merge.
+- `go.mod` pins encounter at the pseudo-version of #2278's head dcd8bfd6, `v0.177.1-0.20261105190547-dcd8bfd63e1e`, with no replace. The first push pinned 71b133ae; #2278's closure commit added tests and its record only. It becomes the encounter tag before merge.
 - Move reads the encounter's `Stopped` before `Stepped.To` ([`move.go:503`](https://github.com/KirkDiggler/rpg-toolkit/blob/a906f47c/rulebooks/dnd5e/session/move.go#L503)). A stopped step names the walker's own cell at both ends, so reading it as a step walked her onto her own cell and on down the path. The stop sets [`MoveOutput.Barred`](https://github.com/KirkDiggler/rpg-toolkit/blob/a906f47c/rulebooks/dnd5e/session/move.go#L115) (`barred`: `barrier`, `cell`, `reason`), `Status` stopped and `StopReason`. Nothing is paid, and the bump's intel, fight and ending ride the output.
 - OpenDoor, CloseDoor and Unlock carry [`Refused`](https://github.com/KirkDiggler/rpg-toolkit/blob/a906f47c/rulebooks/dnd5e/session/doors.go#L474) (`refused`: `holder`, `reason`) and return no error on a held door.
 - Unlock still asks `DoorHeldFor` first, so a held lock throws no check and poses no Guidance pause. It now calls the verb anyway ([`doors.go:325`](https://github.com/KirkDiggler/rpg-toolkit/blob/a906f47c/rulebooks/dnd5e/session/doors.go#L325)), and the encounter writes the bump.
@@ -23,6 +23,8 @@ Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), 
 - A Move ending on the guard's own cell is still refused up front by ValidateWalkEnd as a bad position. Every bump test aims past him, as a click on the courtyard does.
 
 ## Found
+
+- The encounter review asked that a held OpenDoor or CloseDoor never read as success ([#2278](https://github.com/KirkDiggler/rpg-toolkit/pull/2278)). All three verbs already carried `Refused`. CloseDoor gained its own castle test, `TestCastleClosingTheHeldDoorIsABump`, and the open and close tests now also assert the record's door state.
 
 - gate-1's line folds as a `table_answer` under a `time` act, separate from the bump's move act, with its text in `Say` and an empty `Word`. The api reads the say from there as it does for other picks.
 - The castle dice counter counted gate-1's d100 table die as a roll. The held-unlock test now counts d20 checks, so it still proves no lock check was rolled.

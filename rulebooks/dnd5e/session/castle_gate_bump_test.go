@@ -154,8 +154,33 @@ func TestCastleOpeningTheHeldDoorIsABump(t *testing.T) {
 	})
 	require.Equal(t, &session.DoorRefusal{Holder: "gate-1", Reason: gate1.Name + " bars the door"}, out.Refused)
 	require.Equal(t, "closed", out.Door.State, "the gate stays shut")
+	require.Equal(t, "closed", c.gateStateInTheRecord(t), "in the record too")
 	bumped := only[session.BarredAct](t, played.to("alice"))
 	require.Equal(t, session.BarredAct{Mover: aliceParty, Barrier: gate1Party, Door: castleGateDoor, Verb: "open"}, bumped.body)
 	require.Equal(t, "open_door", bumped.act.Verb, "under her OpenDoor")
+	require.Equal(t, theGuardsQuestion, guardSays(t, played.to("alice")))
+}
+
+// TestCastleClosingTheHeldDoorIsABump: CloseDoor on the open gate he holds
+// is answered with Refused, the door still open, and the act stream carries
+// the bump naming the door and the close, and his question.
+func TestCastleClosingTheHeldDoorIsABump(t *testing.T) {
+	c := openTheCastleForTwo(t, 18)
+	gate1 := memberOf(t, c.world(t), "gate-1")
+	c.besideTheGate(t)
+	c.openTheGateInTheRecord(t)
+
+	var out *session.CloseDoorOutput
+	played := c.play(t, "close the held gate", func() error {
+		var err error
+		out, err = c.mgr.CloseDoor(context.Background(), &session.CloseDoorInput{Session: "sess", Member: "alice", Door: castleGateDoor})
+		return err
+	})
+	require.Equal(t, &session.DoorRefusal{Holder: "gate-1", Reason: gate1.Name + " bars the door"}, out.Refused)
+	require.Equal(t, "open", out.Door.State, "the gate stays open")
+	require.Equal(t, "open", c.gateStateInTheRecord(t), "in the record too")
+	bumped := only[session.BarredAct](t, played.to("alice"))
+	require.Equal(t, session.BarredAct{Mover: aliceParty, Barrier: gate1Party, Door: castleGateDoor, Verb: "close"}, bumped.body)
+	require.Equal(t, "close_door", bumped.act.Verb, "under her CloseDoor")
 	require.Equal(t, theGuardsQuestion, guardSays(t, played.to("alice")))
 }
