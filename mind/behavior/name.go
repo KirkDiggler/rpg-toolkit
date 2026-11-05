@@ -133,7 +133,10 @@ var patterns sync.Map // string → *regexp.Regexp
 // compiled is the pattern anchored to the whole name, compiled once.
 func compiled(pattern string) (*regexp.Regexp, error) {
 	if re, ok := patterns.Load(pattern); ok {
-		return re.(*regexp.Regexp), nil
+		// The cache holds only compiled patterns; the comma-ok spells that
+		// invariant for errcheck rather than asserting it blind.
+		compiled, _ := re.(*regexp.Regexp)
+		return compiled, nil
 	}
 	re, err := regexp.Compile(`^(?:` + pattern + `)$`)
 	if err != nil {

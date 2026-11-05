@@ -8,8 +8,9 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 )
 
 type ActivitySuite struct{ suite.Suite }

@@ -6,9 +6,10 @@ package record_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
-	"github.com/stretchr/testify/require"
 )
 
 // TestTwoViewerStory is the AC1 integration spine: a two-viewer dungeon story

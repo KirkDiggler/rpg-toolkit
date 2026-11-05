@@ -12,8 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/stretchr/testify/suite"
+
+	"github.com/KirkDiggler/rpg-toolkit/play/record"
 )
 
 // fixedSource is a deterministic IDSource: a clock that only moves when the

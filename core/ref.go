@@ -195,11 +195,7 @@ func (id *Ref) validate() error {
 			"contains invalid characters (only letters, digits, underscore, and dash allowed)",
 			ErrInvalidCharacters)
 	}
-	if err := validateIDParts(id.ID); err != nil {
-		return err
-	}
-
-	return nil
+	return validateIDParts(id.ID)
 }
 
 // validateIDParts holds every part of an id to the identifier charset.
