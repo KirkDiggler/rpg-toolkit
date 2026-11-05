@@ -23,8 +23,11 @@ Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), 
 ## Found
 
 - The session asks `DoorHeldFor` before Unlock rolls, and refuses on its own. Until Task 7 calls the verb on a held door, a live Unlock attempt writes no bump.
+- The session's OpenDoor and CloseDoor still translate `encounter.ErrDoorHeld` into its held-door error ([session/read.go:728-736](https://github.com/KirkDiggler/rpg-toolkit/blob/d161e7bd/rulebooks/dnd5e/session/read.go#L728-L736)). After the re-pin, a held open or close returns a nil error with `Refused` set, so that translation never fires: the session must read `Refused` off the output.
 - After the re-pin, the session's `Move` must read `Stopped` before `Stepped.To`. A bump's `Stepped` reports the mover's own cell at both ends.
 - Replay re-issues a bump from the record ([replay_test.go](https://github.com/KirkDiggler/rpg-toolkit/blob/0dc1196d/rulebooks/dnd5e/encounter/replaytest/replay_test.go)): a step bump as a Step to its cell, a door bump as OpenDoor.
+- Scope tests ([#2278 review](https://github.com/KirkDiggler/rpg-toolkit/pull/2278#pullrequestreview-5790410979)): a holder three hexes off ignores `within: 1` and answers `within: 3`; a door bump is measured from the door's cell nearest the actor. Each fails with its mutant: a bump matched with no cell, a door bump measured from the farthest door cell, or from the actor's own cell.
+- The castle bump test pins `challenged` returning to `posted` after three rounds; changing the castle's `rounds: 3` to 30 fails it.
 - Mutants killed: landing the bump instead of matching it, matching everything landed, skipping the refresh, dropping the stance fight, the wrong barrier, no door field, a bump that spends pace, `barred` unscoped, `barred` unlisted.
 
 — cross-team agent, on behalf of KirkDiggler

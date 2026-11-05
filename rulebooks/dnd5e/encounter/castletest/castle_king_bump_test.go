@@ -69,6 +69,20 @@ func TestMadKingTheGuardAnswersTheBump(t *testing.T) {
 		require.Equal(t, gateQuestionAgain, lines[len(lines)-1], "a second bump gets the shorter line")
 		require.Equal(t, beneathTheGate, s.at(kingGate1), "and he still holds the crossing")
 		require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "a bump is not a fight")
+
+		// THE CASTLE'S OWN RETURN: three rounds on, challenged stands down
+		// to posted, still on his post, and a bump asks the question afresh.
+		for range 3 {
+			s.aRoundPasses()
+		}
+		require.Contains(t, []string{"", "posted"}, machineState(t, s.enc, kingGate1), "three rounds on, he is posted again")
+		require.Equal(t, beneathTheGate, s.at(kingGate1), "on his post")
+		if s.at(hero) != besideTheCrossing {
+			s.stepTo(besideTheCrossing)
+		}
+		s.bumps(beneathTheGate)
+		lines = s.gateLines()
+		require.Equal(t, gateQuestion, lines[len(lines)-1], "posted again, he asks afresh")
 	})
 
 	t.Run("across the open gate's other cell, the holder asks", func(t *testing.T) {

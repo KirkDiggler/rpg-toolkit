@@ -475,3 +475,51 @@ func TestAnAllyWorksAHeldDoorWithNoBump(t *testing.T) {
 	require.Equal(t, DoorOpen, out.State)
 	require.Empty(t, beatsTagged(t, enc, BeatBarred), "and bumps nobody")
 }
+
+// scopedHolder is [bumpHolder] whose posted state hears a bump only within
+// the hexes given, measured from the cell the bump names.
+func scopedHolder(t *testing.T, within int, at spatial.Position, door DoorID) MemberInput {
+	t.Helper()
+	h := bumpHolder(t, postedGuard, at, door, at)
+	posted := h.Machine.States["posted"]
+	for i, tr := range posted.Transitions {
+		if tr.On == beatBarred {
+			tr.When = &machine.Guard{Scope: &machine.ScopeLeaf{Within: within}}
+			posted.Transitions[i] = tr
+		}
+	}
+	h.Machine.States["posted"] = posted
+
+	return h
+}
+
+// TestABumpIsHeardWithinItsScope: a holder three hexes from the far cell of
+// the crossing ignores a bump he hears only within one hex, and answers one
+// he hears within three. The bump is measured from the cell it names.
+func TestABumpIsHeardWithinItsScope(t *testing.T) {
+	for within, answers := range map[int]bool{1: false, 3: true} {
+		enc := holdHall(t, holdLeafDoor(DoorIsOpen()), holdSouthEast, scopedHolder(t, within, holdOffPost, holdLeaf))
+		require.InDelta(t, 3.0, enc.Distance(holdOffPost, holdNorthEast), 0, "precondition: three hexes off")
+
+		bumped(t, enc, holdNorthEast, postedGuard)
+
+		require.Len(t, beatsTagged(t, enc, BeatBarred), 1, "within %d: the bump is written either way", within)
+		require.Equal(t, answers, len(answersBy(t, enc, postedGuard)) > 0, "within %d", within)
+	}
+}
+
+// TestADoorBumpIsMeasuredFromTheDoorBesideTheActor: alice at the edge door's
+// west side tries it; the bump is measured from the door's cell nearest her,
+// four hexes from a holder posted off to the east, never from the door's
+// cell nearest him (three) nor from where she stands (five).
+func TestADoorBumpIsMeasuredFromTheDoorBesideTheActor(t *testing.T) {
+	for within, answers := range map[int]bool{3: false, 4: true} {
+		enc := holdHall(t, holdEdgeDoor(DoorIsClosed()), holdSouthWest, scopedHolder(t, within, holdOffPost, holdEdge))
+		require.InDelta(t, 5.0, enc.Distance(holdOffPost, holdSouthWest), 0, "precondition: she stands five off")
+
+		refused, err := openRefusal(enc.OpenDoor(&OpenDoorInput{Door: holdEdge, Actor: "alice"}))
+		requireDoorHeld(t, refused, err, "Gate guard bars the door")
+
+		require.Equal(t, answers, len(answersBy(t, enc, postedGuard)) > 0, "within %d", within)
+	}
+}
