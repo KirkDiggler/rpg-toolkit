@@ -11,7 +11,11 @@ Slice [rpg-project#862](https://github.com/KirkDiggler/rpg-project/issues/862), 
 - KirkDiggler selected one charge for the first ring fixture and redirected the investigation from final configuration questions to an example consumer and the seams — [direction](https://github.com/KirkDiggler/rpg-project/issues/862#issuecomment-6648142433).
 - The probe keeps candidate wiring in test files, explicitly supplies a holder rather than inventing equipment eligibility, returns healing without HP mutation, and makes no production action/transaction claim — [probe assumptions](../../examples/items/README.md#probe-brief).
 
+- KirkDiggler requested readable construction inputs before growing the consumer; this probe now pins the separate provider cleanup and names its recipe, vocabulary, holder and source at the call site — [provider PR #2276](https://github.com/KirkDiggler/rpg-toolkit/pull/2276).
+
 ## Found
+
+- Adopting the pushed effects commit rejects the old positional call at compile time; migrating to ComposeInput preserves the full item suite, runnable example, race, vet and lint results — [named consumer input](../../examples/items/fixture_test.go).
 
 - Real effects attachment can supply a local grant and targeted recovery subscription; real resources track its independent budget, and real healing produces 7/9 for level-1/3 with a controlled d10 of 6 — [consumer tests](../../examples/items/items_test.go).
 - Two same-recipe instances receive identical recipe-local output IDs; distinct item sources and pools come from consumer context, not `effects.Host.Source` content identity — [observed boundaries](../../examples/items/README.md#observed-seams-and-limits).

@@ -135,7 +135,12 @@ func (i *item) attach(ctx context.Context, bus events.EventBus, holder string) e
 		Ref: ref, Initial: presentState, Bag: machine.Bag{},
 		States: map[string]machine.State{presentState: {Outputs: encoded}},
 	}
-	composed, err := effects.Compose(recipe, machine.Vocabulary{}, i.vocabulary(), holder, &ref, nil, "")
+	composed, err := effects.Compose(effects.ComposeInput{
+		Recipe:           recipe,
+		OutputVocabulary: i.vocabulary(),
+		HolderID:         holder,
+		SourceRef:        &ref,
+	})
 	if err != nil {
 		return err
 	}

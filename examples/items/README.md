@@ -58,6 +58,19 @@ go test -run Example -v ./...
 ```
 
 Dependencies use real pushed-commit pseudo-versions. No `replace` or `go.work`.
+The effects pin includes the [named-input provider cleanup](https://github.com/KirkDiggler/rpg-toolkit/pull/2276):
+
+```go
+composed, err := effects.Compose(effects.ComposeInput{
+    Recipe:           recipe,
+    OutputVocabulary: i.vocabulary(),
+    HolderID:         holder,
+    SourceRef:        &ref,
+})
+```
+
+This fixture needs no machine facts/beats or saved effect state, so those fields
+use their existing defaults; its mutable pool remains owned by the item.
 The module is an example and is not tagged or consumed by shipped code.
 
 ## Observed seams and limits
