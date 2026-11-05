@@ -200,6 +200,12 @@ type Encounter struct {
 	// reaches the bump's output. Nobody else reads it.
 	stanceFormed *FormedBubble
 
+	// reactAct is the act a reaction's pick reopens (act.go, Law 2): the act
+	// of the verb whose bump the barrier is answering, set by
+	// [Encounter.bump] for the match and empty otherwise, so a pick a clock
+	// raised mints its own `time:` act as before.
+	reactAct string
+
 	// posted is every member admitted with posts (post.go), so the hold is
 	// asked of them alone and of nobody on a field where nobody holds. A
 	// member that has left is still listed and holds nothing.

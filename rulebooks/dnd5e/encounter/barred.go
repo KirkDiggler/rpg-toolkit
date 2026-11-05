@@ -125,6 +125,12 @@ func (e *Encounter) bump(in bumpInput) (bumpOutput, error) {
 	// can see.
 	e.reactionPicked, e.blockingTurned, e.stanceFormed = false, false, nil
 	cell := in.at
+	// HIS ANSWER IS IN THE BUMP'S ACT (act.go, Law 2): a reaction reopens
+	// its trigger's act, so his pick, his line and his voice carry the id of
+	// the verb that bumped, and a reader ties his answer to the bump.
+	prevAct := e.reactAct
+	e.reactAct = e.CurrentAct()
+	defer func() { e.reactAct = prevAct }()
 	if err := e.matchOne(wakeBeat{Beat: beatBarred, Cell: &cell, Subject: in.mover, Member: in.barrier, At: at}); err != nil {
 		return bumpOutput{}, fmt.Errorf("barred: %w", err)
 	}

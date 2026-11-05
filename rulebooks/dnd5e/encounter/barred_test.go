@@ -523,3 +523,61 @@ func TestADoorBumpIsMeasuredFromTheDoorBesideTheActor(t *testing.T) {
 		require.Equal(t, answers, len(answersBy(t, enc, postedGuard)) > 0, "within %d", within)
 	}
 }
+
+// bumpActs is the correlation of every beat from the bump on, by beat kind,
+// requiring the bump, his turn, his answer and his voice are among them.
+func bumpActs(t *testing.T, enc *Encounter) map[string]string {
+	t.Helper()
+	story, err := enc.Story(&StoryInput{Audience: "alice"})
+	require.NoError(t, err)
+	out := map[string]string{}
+	from := false
+	for _, entry := range story {
+		var beat map[string]any
+		require.NoError(t, json.Unmarshal(entry.Payload, &beat))
+		kind, _ := beat["beat"].(string)
+		from = from || kind == BeatBarred
+		if from {
+			out[kind] = entry.Correlation
+		}
+	}
+	for _, kind := range []string{BeatBarred, BeatState, BeatAnswered, "heard"} {
+		require.Contains(t, out, kind, "the bump wrote %s", kind)
+	}
+
+	return out
+}
+
+// TestTheAnswerIsInTheBumpsAct is act.go's Law 2 for a bump: a reaction
+// reopens its trigger's act. The bump, his turn, his answer and his voice
+// share the act of the verb that bumped, a step's or a door verb's, so a
+// reader ties his line to the bump.
+func TestTheAnswerIsInTheBumpsAct(t *testing.T) {
+	t.Run("a step", func(t *testing.T) {
+		enc := postedHall(t, bumpGuard(t))
+		var act string
+		require.NoError(t, enc.inAct("move", "", func() error {
+			act = enc.CurrentAct()
+			bumped(t, enc, postedPost, postedGuard)
+			return nil
+		}))
+		for kind, corr := range bumpActs(t, enc) {
+			require.Equal(t, act, corr, "%s is in the move's act", kind)
+		}
+	})
+
+	t.Run("a door verb", func(t *testing.T) {
+		enc := holdHall(t, holdLeafDoor(DoorIsClosed()), holdSouthEast,
+			bumpHolder(t, postedGuard, holdSouthWest, holdLeaf, holdSouthWest))
+		var act string
+		require.NoError(t, enc.inAct("open_door", "", func() error {
+			act = enc.CurrentAct()
+			refused, err := openRefusal(enc.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: "alice"}))
+			requireDoorHeld(t, refused, err, "Gate guard bars the door")
+			return nil
+		}))
+		for kind, corr := range bumpActs(t, enc) {
+			require.Equal(t, act, corr, "%s is in the door verb's act", kind)
+		}
+	})
+}

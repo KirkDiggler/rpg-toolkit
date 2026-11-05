@@ -15,6 +15,8 @@ Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), 
 
 ## Decided
 
+- The barrier's pick reopens the bump's act (act.go, Law 2: a reaction reopens its trigger's id). Kirk's walk on :3031 showed his answered beat and his voice under a fresh `time:` act (record seq 169-170), so the web could not tie his line to the bump. `bump` now sets `reactAct` for the match, and `runIntents` reopens it for the pick and its intent. A clock-raised pick still mints `time:`. [`TestTheAnswerIsInTheBumpsAct`](https://github.com/KirkDiggler/rpg-toolkit/blob/hold-the-gate-s2-encounter/rulebooks/dnd5e/encounter/barred_test.go) asserts one correlation for the bump, his state, his answer and his voice, for a step and a door verb, and fails without the fix. The replay harness opens no acts, so its bumps mint `time:` as before and still replay.
+- A door bump's `door` is the qualified door id (`the-mad-king/gate-wall-door`), the same id the door verbs take and the `door` beat writes.
 - `alert` also answers a bump, beside `posted`. An alert guard on his post still holds the gate.
 - The refresh after a bump runs only when the reaction picked or turned a body's blocking. A bump nobody answers writes the one beat.
 - A door bump's scope is measured from the door's cell nearest the actor. That cell is not written on the beat.

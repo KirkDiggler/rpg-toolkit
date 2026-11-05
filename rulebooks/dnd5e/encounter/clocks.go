@@ -640,8 +640,16 @@ func (e *Encounter) runIntents(
 		// THE PICK IS ITS OWN ACT, `time:<seq>` (act.go, design R24): the
 		// creature's roll is a driven activation of its own, not part of
 		// whichever player verb raised the clock that drew it.
+		//
+		// A REACTION'S PICK REOPENS ITS TRIGGER'S ACT instead (act.go, Law
+		// 2): a bump's answer is part of the verb that bumped
+		// ([Encounter.reactAct]), and so is what it does.
+		pickVerb, intentAct := "time", ""
+		if e.reactAct != "" {
+			pickVerb, intentAct = "", e.reactAct
+		}
 		if decision.Pick != nil && (j == startJ || len(decision.Pick.Candidates) > 0) {
-			if perr := e.inAct("time", "", func() error {
+			if perr := e.inAct(pickVerb, intentAct, func() error {
 				if berr := e.appendPickBeat(activeID, decision.Pick, intentTarget(decision.Intent)); berr != nil {
 					return berr
 				}
@@ -659,7 +667,7 @@ func (e *Encounter) runIntents(
 			done         bool
 			intentDeltas map[MemberID]*IntelDelta
 		)
-		dexecerr := e.inAct(intentVerb(decision.Intent), "", func() error {
+		dexecerr := e.inAct(intentVerb(decision.Intent), intentAct, func() error {
 			var xerr error
 			done, intentDeltas, xerr = e.executeTurnIntent(
 				activeID, m, view, decision.Intent, budget,
