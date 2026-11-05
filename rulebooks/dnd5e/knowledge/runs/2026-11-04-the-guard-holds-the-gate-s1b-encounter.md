@@ -1,5 +1,7 @@
 # 2026-11-04 · The guard holds the gate S1b · A post holds a passage
 
+processed: 2026-11-05T201556Z
+
 Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), slice [rpg-project#852](https://github.com/KirkDiggler/rpg-project/issues/852), lane [rpg-project#835](https://github.com/KirkDiggler/rpg-project/issues/835) (R5). Plan Task 11 in `ideas/the-guard-holds-the-gate/plan.md`, and R7 (lane #835: a held door refuses its verbs).
 
 ## Shipped

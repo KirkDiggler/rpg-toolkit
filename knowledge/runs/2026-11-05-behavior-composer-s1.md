@@ -1,5 +1,7 @@
 # Run — 2026-11-05 — NPC behavior S1
 
+processed: 2026-11-05T201556Z
+
 Slice [rpg-project#866](https://github.com/KirkDiggler/rpg-project/issues/866) of [#859](https://github.com/KirkDiggler/rpg-project/issues/859). Base: toolkit main [`3182088c`](https://github.com/KirkDiggler/rpg-toolkit/commit/3182088c4cf0898596aa0c0f4eafe50bc5cc6d21). Work is staged in module-bounded checkpoints; the issue owns completion.
 
 ## Shipped

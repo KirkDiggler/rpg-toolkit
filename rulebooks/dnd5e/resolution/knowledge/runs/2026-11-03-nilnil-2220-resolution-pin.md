@@ -1,5 +1,7 @@
 # Run — 2026-11-03 — nilnil #2220 — resolution's re-pin consumes ErrZeroDistance
 
+processed: 2026-11-05T201556Z
+
 Part of [rpg-toolkit#2220](https://github.com/KirkDiggler/rpg-toolkit/issues/2220). Base: `rpg-toolkit` `main` at ef4d22b0. The wave: #2250 made `ForOption`'s zero-distance answer `ErrZeroDistance`; resolution is its one consumer.
 
 ## Shipped

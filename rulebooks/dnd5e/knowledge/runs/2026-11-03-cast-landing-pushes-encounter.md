@@ -1,5 +1,7 @@
 # 2026-11-03 · A cast's shoves land inside its landing · Encounter
 
+processed: 2026-11-05T201556Z
+
 Bug [rpg-project#831](https://github.com/KirkDiggler/rpg-project/issues/831), law [rpg-project#785](https://github.com/KirkDiggler/rpg-project/issues/785) R3, seen on the S1 walk of [rpg-project#825](https://github.com/KirkDiggler/rpg-project/issues/825). Encounter PR [rpg-toolkit#2248](https://github.com/KirkDiggler/rpg-toolkit/pull/2248), with session [rpg-toolkit#2247](https://github.com/KirkDiggler/rpg-toolkit/pull/2247).
 
 ## Shipped

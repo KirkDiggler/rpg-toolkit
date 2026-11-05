@@ -1,5 +1,7 @@
 # Run — 2026-11-04 — Effects construction API cleanup
 
+processed: 2026-11-05T201556Z
+
 Prerequisite [rpg-toolkit#2275](https://github.com/KirkDiggler/rpg-toolkit/issues/2275) for [Keep equipment S1, rpg-project#862](https://github.com/KirkDiggler/rpg-project/issues/862). Base: toolkit main [3182088c](https://github.com/KirkDiggler/rpg-toolkit/commit/3182088c4cf0898596aa0c0f4eafe50bc5cc6d21).
 
 ## Shipped

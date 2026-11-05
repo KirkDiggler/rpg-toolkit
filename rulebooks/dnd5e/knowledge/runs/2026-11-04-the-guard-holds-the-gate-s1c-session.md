@@ -1,5 +1,7 @@
 # 2026-11-04 · The guard holds the gate, S1c · Session
 
+processed: 2026-11-05T201556Z
+
 Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), slice [rpg-project#857](https://github.com/KirkDiggler/rpg-project/issues/857), Task 18 of `ideas/the-guard-holds-the-gate/plan.md` (design R6). Session [rpg-toolkit#2269](https://github.com/KirkDiggler/rpg-toolkit/pull/2269), on encounter [rpg-toolkit#2268](https://github.com/KirkDiggler/rpg-toolkit/pull/2268).
 
 ## Shipped

@@ -1,5 +1,7 @@
 # 2026-11-04 · The guard holds the gate S1c · A post's direction and pass fact
 
+processed: 2026-11-05T201556Z
+
 Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), slice [rpg-project#857](https://github.com/KirkDiggler/rpg-project/issues/857), lane [rpg-project#835](https://github.com/KirkDiggler/rpg-project/issues/835) (R6). Plan Task 17 in `ideas/the-guard-holds-the-gate/plan.md`.
 
 ## Shipped

@@ -1,5 +1,7 @@
 # 2026-10-30 · Frank's list S9 · The ending's result reaches the session seam
 
+processed: 2026-11-05T201556Z
+
 Story [rpg-project#714](https://github.com/KirkDiggler/rpg-project/issues/714), slice [rpg-project#733](https://github.com/KirkDiggler/rpg-project/issues/733). Contract [rpg-api-protos#408](https://github.com/KirkDiggler/rpg-api-protos/pull/408), web [rpg-dnd5e-web#1361](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1361).
 
 ## Shipped

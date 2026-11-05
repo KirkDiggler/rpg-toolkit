@@ -1,5 +1,7 @@
 # 2026-11-02 · When things fire S1 · The encounter names the kind
 
+processed: 2026-11-05T201556Z
+
 Story [rpg-project#825](https://github.com/KirkDiggler/rpg-project/issues/825), slice [rpg-project#828](https://github.com/KirkDiggler/rpg-project/issues/828), design R1 B. Encounter PR [rpg-toolkit#2245](https://github.com/KirkDiggler/rpg-toolkit/pull/2245).
 
 ## Shipped

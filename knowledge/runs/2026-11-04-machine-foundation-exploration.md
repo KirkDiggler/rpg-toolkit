@@ -1,5 +1,7 @@
 # Run — 2026-11-04 — NPC machine foundation exploration
 
+processed: 2026-11-05T201556Z
+
 Story [rpg-project#859](https://github.com/KirkDiggler/rpg-project/issues/859). Base: toolkit main at [`532f4621`](https://github.com/KirkDiggler/rpg-toolkit/commit/532f46217ef01e51a5f746a87ab14d94a0d22a7e). This is a documentation exploration, not an implementing slice.
 
 ## Shipped
