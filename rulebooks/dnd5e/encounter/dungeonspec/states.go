@@ -42,9 +42,11 @@ import (
 // default recipe, `watch: on time, pick time`.
 //
 // THE BEATS ([encounter.MachineBeats]): `time`, `heard`, `deed` (or
-// `deed:<word>`), `seen`, `fact`, and `clock:<name>` — `clock:world`,
-// `clock:fight`, `clock:bell:<prop>`. `within` (hexes) and `regions` are
-// legal only on a beat that happened somewhere (`heard`, `deed`, `seen`).
+// `deed:<word>`), `seen`, `fact`, `barred`, and `clock:<name>` —
+// `clock:world`, `clock:fight`, `clock:bell:<prop>`. `barred` is a bump: a
+// player's step or door verb this creature's body stopped (rpg-project#842),
+// heard by him alone, at once. `within` (hexes) and `regions` are legal only
+// on a beat that happened somewhere (`heard`, `deed`, `seen`, `barred`).
 // `rounds: N` holds once N rounds have passed since the creature's anchor
 // (an `anchor` act). A `when` is one of `enemy`, `fact` or `not`.
 
@@ -319,7 +321,7 @@ func (g *grammar) placeStates(path string, s *StatesSpec, owner string) {
 			}
 			if (t.Within != 0 || t.Regions != 0) && !encounter.MachineBeatScoped(t.On) {
 				fail(tp+".within", "`%s` happened nowhere, so there is nothing to be within: "+
-					"`within` and `regions` are for heard, deed and seen", t.On)
+					"`within` and `regions` are for heard, deed, seen and barred", t.On)
 			}
 			if t.Within < 0 || t.Regions < 0 || t.Rounds < 0 {
 				fail(tp, "a distance or a span is counted from 1")

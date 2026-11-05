@@ -77,12 +77,18 @@ func teach(t *testing.T, enc *Encounter, member MemberID, fact FactID) {
 // requireBarredDoor requires a door verb refused by the hold. The name in
 // its sentence is the sight rule's ([Encounter.seenHolder]): from the far
 // side of a shut door the guard is unseen, "someone".
-func requireBarredDoor(t *testing.T, err error) {
+func requireBarredDoor(t *testing.T, refused *DoorRefusal, err error) {
 	t.Helper()
-	require.ErrorIs(t, err, ErrDoorHeld)
-	var held *DoorHeldError
-	require.ErrorAs(t, err, &held)
-	require.Contains(t, []string{"Gate guard bars the door", "someone bars the door"}, held.PublicReason())
+	require.NoError(t, err, "a held door's verb is answered, not refused")
+	require.NotNil(t, refused, "the output says the door is held")
+	require.Contains(t, []string{"Gate guard bars the door", "someone bars the door"}, refused.Reason)
+}
+
+// requireDoorWorked requires a door verb that was not held.
+func requireDoorWorked(t *testing.T, refused *DoorRefusal, err error, msg string) {
+	t.Helper()
+	require.NoError(t, err, msg)
+	require.Nil(t, refused, msg)
 }
 
 // crossing is one way across the leaf: out of the gatehouse into the yard,
@@ -164,15 +170,15 @@ func requireEveryReaderAgrees(t *testing.T, against PostDirection, way crossing,
 		enc := sidedHall(t, holdLeafDoor(DoorIsClosed()), way.from, guard())
 		held, reason, err := enc.DoorHeldFor("alice", holdLeaf)
 		require.NoError(t, err)
-		_, openErr := enc.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: "alice"})
+		refused, openErr := openRefusal(enc.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: "alice"}))
 		if barred {
 			require.True(t, held)
 			require.Contains(t, reason, "bars the door")
-			requireBarredDoor(t, openErr)
+			requireBarredDoor(t, refused, openErr)
 			return
 		}
 		require.False(t, held)
-		require.NoError(t, openErr, "the door opens from the side the post does not bar")
+		requireDoorWorked(t, refused, openErr, "the door opens from the side the post does not bar")
 	})
 }
 
@@ -213,16 +219,16 @@ func TestAPassFactWalksThroughAHold(t *testing.T) {
 
 	placeAt(t, enc, "alice", holdOffPost)
 	placeAt(t, enc, "porter", holdSouthEast)
-	_, err := enc.Step(&StepInput{Member: "porter", To: holdNorthEast})
-	require.NoError(t, err, "an ally needs no pass")
+	out, err := enc.Step(&StepInput{Member: "porter", To: holdNorthEast})
+	requireMoved(t, out, err, "an ally needs no pass")
 
 	t.Run("and the door verbs", func(t *testing.T) {
 		shut := sidedHall(t, holdLeafDoor(DoorIsClosed()), holdSouthEast, gatehouseGuard(t, PostBothWays, holdPass))
-		_, err := shut.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: "alice"})
-		requireBarredDoor(t, err)
+		refused, err := openRefusal(shut.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: "alice"}))
+		requireBarredDoor(t, refused, err)
 		teach(t, shut, "alice", holdPass)
-		_, err = shut.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: "alice"})
-		require.NoError(t, err, "knowing the pass, she works the door as an ally does")
+		refused, err = openRefusal(shut.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: "alice"}))
+		requireDoorWorked(t, refused, err, "knowing the pass, she works the door as an ally does")
 	})
 }
 
@@ -231,8 +237,8 @@ func TestThePassIsTheMoversOwn(t *testing.T) {
 	enc := sidedHall(t, holdLeafDoor(DoorIsOpen()), holdOffPost, gatehouseGuard(t, PostBothWays, holdPass), bob)
 	teach(t, enc, "alice", holdPass)
 
-	_, err := enc.Step(&StepInput{Member: "bob", To: holdNorthEast})
-	require.ErrorIs(t, err, ErrBodyInTheWay, "a companion who never learned it is barred")
+	out, err := enc.Step(&StepInput{Member: "bob", To: holdNorthEast})
+	requireStopped(t, out, err, "a companion who never learned it is barred")
 	at, _ := enc.canvas.GetEntityPosition("bob")
 	require.Equal(t, holdSouthEast, at)
 
@@ -301,15 +307,13 @@ func TestTheDoorVerbsReadTheSettings(t *testing.T) {
 			for _, verb := range []struct {
 				name  string
 				state DoorState
-				do    func(enc *Encounter) error
+				do    func(enc *Encounter) (*DoorRefusal, error)
 			}{
-				{"open", DoorIsClosed(), func(enc *Encounter) error {
-					_, err := enc.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: "alice"})
-					return err
+				{"open", DoorIsClosed(), func(enc *Encounter) (*DoorRefusal, error) {
+					return openRefusal(enc.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: "alice"}))
 				}},
-				{"close", DoorIsOpen(), func(enc *Encounter) error {
-					_, err := enc.CloseDoor(&CloseDoorInput{Door: holdLeaf, Actor: "alice"})
-					return err
+				{"close", DoorIsOpen(), func(enc *Encounter) (*DoorRefusal, error) {
+					return closeRefusal(enc.CloseDoor(&CloseDoorInput{Door: holdLeaf, Actor: "alice"}))
 				}},
 			} {
 				enc := sidedHall(t, holdLeafDoor(verb.state), tc.from, gatehouseGuard(t, tc.against, holdPass))
@@ -317,15 +321,18 @@ func TestTheDoorVerbsReadTheSettings(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, tc.barred, held, "%s: DoorHeldFor", verb.name)
 				if !tc.barred {
-					require.NoError(t, verb.do(enc), "%s: not barred from this side", verb.name)
+					refused, err := verb.do(enc)
+					requireDoorWorked(t, refused, err, verb.name+": not barred from this side")
 					continue
 				}
-				requireBarredDoor(t, verb.do(enc))
+				refused, err := verb.do(enc)
+				requireBarredDoor(t, refused, err)
 				teach(t, enc, "alice", holdPass)
 				held, _, err = enc.DoorHeldFor("alice", holdLeaf)
 				require.NoError(t, err)
 				require.False(t, held, "%s: with the pass, not held", verb.name)
-				require.NoError(t, verb.do(enc), "%s: with the pass, the verb works", verb.name)
+				refused, err = verb.do(enc)
+				requireDoorWorked(t, refused, err, verb.name+": with the pass, the verb works")
 			}
 		})
 	}

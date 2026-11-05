@@ -120,9 +120,12 @@ func (s *PassageSuite) TestDownedMonsterCannotOpenAnotherBlockingOccupant() {
 	s.Require().NoError(err)
 	fact := cellFactFor(s.T(), s.enc, encounter.CellAtInput{Cell: cellAt(1, 0), Mover: alice})
 	s.Equal(encounter.PassageBlocked, fact.Passage)
-	_, err = s.enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 0)})
-	// A body in the way has its own sentinel (rpg-project#836, B6).
-	s.Require().ErrorIs(err, encounter.ErrBodyInTheWay)
+	// A body in the way stops the step (rpg-project#836, B6), answered with
+	// output (rpg-project#842).
+	out, err := s.enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 0)})
+	s.Require().NoError(err)
+	s.Require().NotNil(out.Stopped)
+	s.Equal(encounter.MemberID("vendor"), out.Stopped.Barrier)
 }
 
 func (s *PassageSuite) TestReadStepAndRoutePreserveAssessmentFailure() {
@@ -224,9 +227,8 @@ func (s *PassageSuite) TestRecordedFallUpdatesWitnessPassageWithoutMovement() {
 // Re-aimed by rpg-project#836 (B6): a body the mover SEES is named, as a shut
 // door is; the one she does not see is "someone" (postedbody_test.go).
 func (s *PassageSuite) TestObstructionPublicReasonNamesOnlyASeenOccupant() {
-	_, err := s.enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 0)})
-	var obstruction *encounter.StepObstructedError
-	s.Require().ErrorAs(err, &obstruction)
-	s.Equal(string(goblin)+" stands in the way", obstruction.PublicReason(), "alice sees the goblin")
-	s.ErrorIs(err, encounter.ErrBodyInTheWay)
+	out, err := s.enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 0)})
+	s.Require().NoError(err)
+	s.Require().NotNil(out.Stopped)
+	s.Equal(string(goblin)+" stands in the way", out.Stopped.Reason, "alice sees the goblin")
 }

@@ -193,6 +193,13 @@ type Encounter struct {
 	// hold of that body's blocking is stale until it does.
 	blockingTurned bool
 
+	// stanceFormed is the last fight a stance turn formed
+	// ([Encounter.formOnStance]), which no verb's look reports because the
+	// turn formed it before the look ran. A bump ([Encounter.bump]) clears
+	// it, matches, and reads it, so a fight the barrier's answer formed
+	// reaches the bump's output. Nobody else reads it.
+	stanceFormed *FormedBubble
+
 	// posted is every member admitted with posts (post.go), so the hold is
 	// asked of them alone and of nobody on a field where nobody holds. A
 	// member that has left is still listed and holds nothing.

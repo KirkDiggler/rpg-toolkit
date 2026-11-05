@@ -85,7 +85,8 @@ type tickEv struct {
 
 // machineVocabulary is the vocabulary every recipe is compiled against
 // (design §3): the `time` beat, carrying its round; the scoped beats `heard`,
-// `deed` and `seen`, whose scope is hexes and regions from the listener; the
+// `deed`, `seen` and `barred` (a bump on the listener, barred.go), whose
+// scope is hexes and regions from the listener; the
 // unscoped `fact`, `clock:world` and `clock:fight`; and the fact `enemy`
 // (`seen`, `remembered` or `none`). [vocabularyFor] adds the words a recipe
 // names that are open sets: a deed word, a clock name, a fact.
@@ -99,6 +100,7 @@ func machineVocabulary() machine.Vocabulary {
 			beatHeard:                 scoped,
 			beatDeed:                  scoped,
 			beatSeen:                  scoped,
+			beatBarred:                scoped,
 			beatFact:                  unscoped,
 			clockBeat(worldClockName): unscoped,
 			clockBeat(clockFight):     unscoped,
@@ -754,7 +756,7 @@ func keyOr(key AnswerKey) AnswerKey {
 // `clock:bell:<prop>`, an area's clock.
 var MachineBeats = []string{
 	string(beatTime), string(beatHeard), string(beatDeed), string(beatSeen), string(beatFact),
-	beatClock + worldClockName, beatClock + clockFight,
+	beatClock + worldClockName, beatClock + clockFight, string(beatBarred),
 }
 
 // ValidMachineBeat reports whether a transition may be on this beat: one of
@@ -773,11 +775,12 @@ func ValidMachineBeat(on string) bool {
 }
 
 // MachineBeatScoped reports whether a beat carries a place a `within` or a
-// `regions` is measured from: `heard`, `deed` (and `deed:<word>`), `seen`.
-// `time`, `fact` and every clock carry none.
+// `regions` is measured from: `heard`, `deed` (and `deed:<word>`), `seen`,
+// and `barred`, measured from the cell the bump was stopped at. `time`,
+// `fact` and every clock carry none.
 func MachineBeatScoped(on string) bool {
 	switch {
-	case on == string(beatHeard), on == string(beatDeed), on == string(beatSeen):
+	case on == string(beatHeard), on == string(beatDeed), on == string(beatSeen), on == string(beatBarred):
 		return true
 	case strings.HasPrefix(on, deedPrefix):
 		return ValidMachineBeat(on)
