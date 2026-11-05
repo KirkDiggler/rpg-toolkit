@@ -20,7 +20,8 @@ Slice [rpg-project#862](https://github.com/KirkDiggler/rpg-project/issues/862) o
 
 ## Found
 
-- The test-only consumer exercises real effects/resource/healing dependencies, with no public item API; local offer/action integration and item-state reporting remain explicit gaps — [probe PR #2273](https://github.com/KirkDiggler/rpg-toolkit/pull/2273).
+- The initial test-only consumer exercises real effects/resource/healing dependencies; its local offer/action integration and item-state reporting are explicit gaps — [initial checkpoint](https://github.com/KirkDiggler/rpg-toolkit/blob/6169f235/examples/items/README.md).
+- After the effects cleanup merged, the consumer became an exported experimental Item/Offers/typed-Use package. Its isolated owner/view/state behavior is tested; production action, class-feature and world-delivery integration remain open — [package evidence](https://github.com/KirkDiggler/rpg-project/blob/docs/second-wind-ring/docs/journal/second-wind-ring/2026-11-05-from-probe-to-item-composer.md).
 
 - Existing Second Wind requires fighter levels, owns uses/rest recovery and publishes immediate healing; the fresh existing-component tests pass, while no ring consumer exists in this checkpoint — [journal evidence](https://github.com/KirkDiggler/rpg-project/blob/docs/second-wind-ring/docs/journal/second-wind-ring/2026-11-04-what-the-ring-grants.md#evidence).
 - The rulebook already has healing arithmetic independent of spell/bus delivery; the effects prototype's state-held outputs are a different responsibility — [ADR context](../../docs/adr/0048-equipment-granted-abilities.md#what-exists).

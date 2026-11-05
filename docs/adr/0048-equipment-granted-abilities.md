@@ -6,9 +6,9 @@ Date: 2026-11-04
 
 Proposed — architectural investigation in progress. Ring-authored level (R1),
 item-owned pools (R2), item composition (R3) and configurable normal recovery
-(R4) and the one-charge first fixture (R5) are settled below. A test-only consumer
-probe is available; concrete production contracts, rest eligibility and grant
-lifetime remain open.
+(R4) and the one-charge first fixture (R5) are settled below. An exported
+experimental item package is available under examples; its interfaces are not
+accepted production contracts. Rest eligibility and broader grant lifetimes remain open.
 
 Consumer slice: [Keep signature combat and loot S1 — Second Wind ring](https://github.com/KirkDiggler/rpg-project/issues/862),
 under [#850](https://github.com/KirkDiggler/rpg-project/issues/850).
@@ -109,9 +109,10 @@ These are responsibilities to examine, not four required new packages. Sharing
 underlying behavior does not mean that an immediate heal must become a persistent
 condition or that every ability needs a state machine.
 
-The example remains under `examples/`; its package name, module boundary,
-consumer vocabulary and public interfaces are decided in the checked plan after
-the use case and composition are agreed. Reuse the existing effects prototype
+The example remains under `examples/`. Its candidate interfaces may change as
+consumer evidence teaches a better shape; an example API is not a production
+contract or a selected extraction home. The current cut's [experiment plan](https://github.com/KirkDiggler/rpg-toolkit/blob/probe/862-items/examples/items/PLAN.md)
+names its responsibilities, tests and explicit limits. Reuse the existing effects prototype
 where applicable, preserving its generic import seam. Finding that the ring
 alone does not exercise an ongoing effect is evidence to record, not a reason
 to invent one. A contrasting consumer may then be proposed to test that seam.
@@ -152,7 +153,7 @@ and resolution boundaries described above still constrain the implementation.
 **R4 — Normal recovery, authored as configuration.** Settled by KirkDiggler,
 2026-11-04. The first Second Wind ring restores its own pool on a short or long
 rest, matching the existing class feature's recovery policy. Recovery restores
-the pool to its configured capacity, whose value is still open. The restoration
+the pool to its configured capacity; R5 selects one for the first fixture. The restoration
 trigger is item/pool configuration, not a special case embedded in Second Wind's
 healing behavior. Which character's rest reaches the item depends on the grant's
 association/eligibility rules, still to be settled below.
@@ -172,33 +173,57 @@ production equipment/attunement ruling.
 
 ### Consumer probe checkpoint
 
-[Test-only `examples/items`, PR #2273](https://github.com/KirkDiggler/rpg-toolkit/pull/2273)
-consumes the real effects composer, numerical resource tracker and healing
-operation. Its eight suite cases and runnable example exercise attachment,
-authored level/recovery, two-item budgets, targeted rest and state round-trip.
-It exports no item runtime API and changes no provider package.
+The first cut of [PR #2273](https://github.com/KirkDiggler/rpg-toolkit/pull/2273)
+was test-only wiring. After the operator requested continuing the item package,
+it became an exported **experimental** composer under `examples/items`, consuming
+the merged effects cleanup, existing numerical resources and a separate test
+consumer that calls real healing arithmetic.
 
-The probe demonstrates one consumer wiring, not acceptance of it. In particular:
+The candidate separates these responsibilities:
 
-- Recipe-local output IDs are equal across two rings; consumer context supplies
-  distinct item-instance IDs and budgets.
-- The effects package supplies lifecycle/validation; the consumer still supplies
-  the grant/recovery vocabulary and owns pool state outside the effect bag.
-- The local inert offer does not cross the real `actions.Definition`, action-economy,
-  resolution or HP-delivery boundary. A class-granted pool is not integrated.
-- A single attached state suffices; no state transition is exercised or required
-  by this probe. It supplies no evidence for shared-machine extraction.
+| Surface | Owns / refuses |
+|---|---|
+| `Definition` | Authored grant refs/parameters and named pool policy; no runtime hooks |
+| `New(Config)` / `Item` | Validated instance identity and pool mutation; no rulebook imports |
+| `Attach` / `Detach` | Real effects grant/recovery outputs on the caller's bus; no equipment eligibility decision |
+| `Offers` | Copied declaration/source/budget views; not complete actor affordability |
+| `Use[Result]` | Item charge orchestration and a typed consumer outcome; no world delivery or rule interpretation |
+| `Data` | Identity, definition ref and remaining pool counts; no bus, closure or projected offer |
 
-The next architectural focus is the **grant/activation consumer contract** and
-its ownership, not another catalogue of final item settings. The
-[journal](https://github.com/KirkDiggler/rpg-project/blob/docs/second-wind-ring/docs/journal/second-wind-ring/2026-11-04-consumer-probe-exposes-the-seams.md)
-records the evidence and the assumptions kept local to the probe.
+This is evidence for a boundary, not acceptance of its spelling or full schema:
+
+- Item-instance identity is explicit, rather than inferred from recipe-local
+  output IDs. Two items remain independent; explicit pool references can express
+  sharing within one item. Returned views cannot mutate the live instance.
+- The consumer validates/interprets its ability parameters. The prototype uses
+  `example:abilities:second_wind`, not a claim that the production feature loader
+  accepts this new grant schema. Healing arithmetic is reused; full class-feature
+  definition/activation reuse is not yet demonstrated.
+- Only the use operation is generic, so its typed result can cross the boundary
+  without a D&D import or an untyped/JSON result conversion in Item. Its resolver
+  must compute a value without world delivery or reentrant item mutation; refund
+  is local to that contract, not arbitrary transactional rollback.
+- The grant does not yet cross production `actions.Definition`, actor action-economy,
+  resolution-machine or HP-delivery boundaries. Do not charge its item pool in two places.
+- The generated effects recipe has one attached state and no mutable bag. Pool
+  state belongs to Item; a host must snapshot it after use/recovery. Arbitrary
+  passive/stateful item recipes, interruption flows and automatic state-reporting
+  protocols are not proved by this cut.
+
+The existing top-level [`items` module](../../items/item.go) declares property and
+equipment interfaces, not this grant/pool composition. The example neither
+replaces those interfaces nor fixes its extraction home by name.
+
+The next focus is inspecting this **candidate grant/activation contract** and
+exercising a contrasting consumer where needed, not more final item settings.
+The [journal checkpoint](https://github.com/KirkDiggler/rpg-project/blob/docs/second-wind-ring/docs/journal/second-wind-ring/2026-11-05-from-probe-to-item-composer.md)
+records the commands, mutations, CI correction and remaining limits.
 
 ### Open requirements and decisions
 
-1. **Pool sharing, for a consumer that needs it:** can several abilities on one
-   item share a pool? R5 settles this fixture's capacity; R4 settles its recovery.
-   Neither requires designing every future item before testing the current seams.
+1. **Pool sharing in authored content:** the candidate can bind grants to the
+   same named item pool and tests that ownership. Which real abilities/items
+   should share one remains a content decision, not a prerequisite to this probe.
 2. **Grant lifetime:** when does possession/equipment make the ability available;
    what happens to an already-produced ongoing effect when equipment is removed?
    R2 settles that moving or re-equipping the ring does not refresh its budget.

@@ -71,8 +71,9 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
   level (R1), owns its charges across transfer (R2), and composes reusable effects
   with usage/resource orchestration (R3). Short-or-long-rest recovery is authored
   configuration (R4), with studio authoring the later goal; the first consumer
-  fixture has one charge (R5). A test-only item probe informs the still-open
-  grant/action contract and rest eligibility; machine extraction is outside scope.
+  fixture has one charge (R5). An experimental item/offer/typed-use package informs
+  the still-open production grant/action contract and rest eligibility; machine
+  extraction is outside scope.
   *Question: can sources grant reusable abilities without copying behavior or
   hiding lifetime ownership?*
 - **0006** — Features: a registry for definitions, entity-centric storage for
