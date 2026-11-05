@@ -1,5 +1,7 @@
 # Run — 2026-11-04 — executable guard machine probe
 
+processed: 2026-11-05T201556Z
+
 Story [rpg-project#859](https://github.com/KirkDiggler/rpg-project/issues/859). Base: exploration head [`03b1f543`](https://github.com/KirkDiggler/rpg-toolkit/commit/03b1f5430599e2d910dc9e1784f1676eaa93dc03), with production machine code unchanged from main `532f4621`.
 
 ## Shipped
