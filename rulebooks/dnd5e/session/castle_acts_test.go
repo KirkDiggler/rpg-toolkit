@@ -45,6 +45,9 @@ type castleDice struct {
 	// rolls counts every die thrown, any size, for a test that must show
 	// none was.
 	rolls int
+	// checks counts the d20s thrown, for a test that must show no check was
+	// rolled while a table die was (a guard's answer to a bump).
+	checks int
 }
 
 func (d *castleDice) Roll(_ context.Context, size int) (int, error) {
@@ -54,6 +57,7 @@ func (d *castleDice) Roll(_ context.Context, size int) (int, error) {
 	if size != 20 {
 		return 1, nil
 	}
+	d.checks++
 	face := d.d20s[0]
 	if len(d.d20s) > 1 {
 		d.d20s = d.d20s[1:]
@@ -625,6 +629,11 @@ func describe(body session.ActBody) string {
 			s += ", " + roll(b.Roll)
 		}
 		return s
+	case session.BarredAct:
+		if b.Cell == nil {
+			return fmt.Sprintf("%s is barred from %s %s by %s", b.Mover.ID, b.Verb, b.Door, b.Barrier.ID)
+		}
+		return fmt.Sprintf("%s is barred at (%g,%g) by %s", b.Mover.ID, b.Cell.X, b.Cell.Y, b.Barrier.ID)
 	case session.SneakAct:
 		return fmt.Sprintf("%s sneaks past %s: %s", b.By.ID, b.Watcher.ID, roll(b.Roll))
 	case session.StayAct:

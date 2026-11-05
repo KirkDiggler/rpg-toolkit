@@ -365,30 +365,11 @@ func TestCauseOfIsTotalOverTheCompositionsCauses(t *testing.T) {
 	})
 }
 
-// TestTranslateCarriesAHeldDoorWithItsReason (rpg-project#852, R7): the
-// composition's held-door error crosses as the session's own ErrDoorHeld and
-// the reason, carrying no composition sentinel: not ErrDoorHeld, and not
-// ErrBodyInTheWay, which the held error once also answered. A door the field lacks is still no
-// connection: the held arm never swallows ErrNoDoor or ErrBadDoor.
-//
-// THE REASON ITSELF IS NOT PINNED HERE. The encounter's reason field is
-// unexported, so this package cannot build a held error that carries one,
-// and the bare sentinel below answers an empty DoorHeldError too: a mutant
-// that drops the errors.As arm passes this test. The castle tests pin the
-// reason (castle_gate_hold_test.go, heldRefusal and its callers).
-func TestTranslateCarriesAHeldDoorWithItsReason(t *testing.T) {
-	inner := fmt.Errorf("open door: %w", &encounter.DoorHeldError{Door: "hall/gate", Holder: "gate-1"})
-	got := translate(inner)
-	require.ErrorIs(t, got, ErrDoorHeld)
-	var held *DoorHeldError
-	require.ErrorAs(t, got, &held)
-	require.NotErrorIs(t, got, encounter.ErrDoorHeld, "the composition's sentinel does not leak")
-	require.NotErrorIs(t, got, encounter.ErrBodyInTheWay, "nor a body in the way")
-
-	bare := translate(encounter.ErrDoorHeld)
-	require.ErrorIs(t, bare, ErrDoorHeld, "the bare sentinel is the same refusal")
-	require.NotErrorIs(t, bare, encounter.ErrDoorHeld)
-
+// TestTranslateNeverMakesAHeldDoor (rpg-project#842): the held-door arms
+// are gone. A door the field lacks is no connection, and nothing translated
+// from the composition becomes the session's ErrDoorHeld, which only React's
+// paused Unlock returns.
+func TestTranslateNeverMakesAHeldDoor(t *testing.T) {
 	for _, door := range []error{encounter.ErrNoDoor, encounter.ErrBadDoor} {
 		require.ErrorIs(t, translate(door), ErrNoConnection, "%v is still no connection", door)
 		require.NotErrorIs(t, translate(door), ErrDoorHeld, "%v is never a held door", door)
