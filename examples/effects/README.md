@@ -27,6 +27,31 @@ hook first, while the outputs still answer, and only then detaches. The
 composer also answers the information rows: one per current output, from the
 same guard that execution asks.
 
+## Constructing an instance
+
+Construction names the consumer vocabulary separately from the instance data:
+
+```go
+composed, err := effects.New(effects.Config{
+    Recipe:            recipe,
+    MachineVocabulary: factsAndBeats,
+    OutputVocabulary:  outputKinds,
+    HolderID:          holderID,
+    SourceRef:         sourceRef,
+    Parameters:        savedBag,
+    State:             savedState,
+})
+```
+
+For a fresh instance, omit `Parameters` and `State`: the recipe's bag defaults
+and initial state are used. A nil `SourceRef` means no applying source.
+Construction still validates before attachment; call `Apply` with the bus.
+
+Direct machine consumers use `machine.New(machine.Config{Program: program,
+HolderID: holderID})`. A supplied `Bag` remains owned by that machine without
+copying; nil requests a fresh default bag. `State` defaults to initial, and
+`Apply` retains responsibility for refusing unknown/terminal states.
+
 ## Rage, line by line
 
 This is the recipe the tests carry, which is the design's `raging`. It is

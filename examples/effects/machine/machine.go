@@ -47,18 +47,37 @@ type Machine struct {
 	onChanged    []func(context.Context) error
 }
 
-// New returns a machine for holder in state over bag. An empty state is the
-// recipe's initial state; a nil bag is the recipe's declared zero bag. bag
-// should come from Program.NewBag; New does not copy it. The machine is not
-// attached until Apply.
-func New(p *Program, holder string, source *core.Ref, bag Bag, state string) *Machine {
+// Config names the validated program and instance state used to make a machine.
+type Config struct {
+	// Program must be non-nil and obtained from Recipe.Compile.
+	Program *Program
+	// HolderID identifies the entity whose beats this instance follows.
+	HolderID string
+	// SourceRef identifies the applying content; nil means no source.
+	SourceRef *core.Ref
+	// Bag should come from Program.NewBag. A non-nil bag is used without
+	// copying; nil creates a fresh copy of the recipe's declared zero bag.
+	Bag Bag
+	// State selects the saved state, or the initial state when empty.
+	// Apply, not New, refuses an unknown or terminal state.
+	State string
+}
+
+// New returns an unattached machine from input. It preserves a supplied bag's
+// ownership and selects defaults only for a nil Bag or empty State. It performs
+// no additional validation; Apply validates the selected state before subscribing.
+func New(input Config) *Machine {
+	state := input.State
 	if state == "" {
-		state = p.Initial()
+		state = input.Program.Initial()
 	}
+	bag := input.Bag
 	if bag == nil {
-		bag = p.recipe.Bag.Clone()
+		bag = input.Program.recipe.Bag.Clone()
 	}
-	return &Machine{p: p, holder: holder, source: source, bag: bag, current: state}
+	return &Machine{
+		p: input.Program, holder: input.HolderID, source: input.SourceRef, bag: bag, current: state,
+	}
 }
 
 // OnTransition registers a listener called, in registration order, each
