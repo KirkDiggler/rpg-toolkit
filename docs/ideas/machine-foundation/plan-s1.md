@@ -14,7 +14,7 @@ Finish line: implemented module APIs, real-component scenario and refusal/reload
 - **Runtime:** `Composer` owns one private `machine.Blob` and compiled program per instance. Definitions/tables are copied at ingress. No actor registry, bus, geometry, rulebook, persistence I/O or goroutines.
 - **Data:** `ComposerData` contains ordered `InstanceData{ID, Definition string, Blob machine.Blob}`. Definition is a deterministic digest of the materialized specification; it identifies which configuration the continuation belongs to, not a second mutable configuration. Reload receives the original config, refuses different instance order/configuration, and restores only validated blobs. The caller retains the immutable started configuration.
 - **Projection:** results carry committed machine steps, selected instance/pick, and deferred instance IDs. Returned selections and snapshots do not alias owned state/configuration.
-- `Observe` delivers a data-only input to every instance. If any firing transition requests a Pick, refuse with `ErrSelectionRequired`; do not silently execute or drop it. No state changes on error.
+- `Observe` delivers a data-only input to every instance by default; an explicit instance ID targets completion/feedback to its owning attachment. If any firing transition requests a Pick, refuse with `ErrSelectionRequired`; do not silently execute or drop it. No state changes on error.
 - `Decide` previews every instance on detached blobs. Commit data-only transitions; among transitions requesting a Pick, select the first instance in authored order and preserve the losing instances' original blobs. Invoke the existing weighted picker only for that selected instance. A selected empty/ineligible table produces its existing hold, not a fallback into a lower-priority role; because no row was selected, its action-producing machine step is not committed. An explicitly selected Hold row is eligible work and does commit. Return values; never execute a selected word.
 - A transition may request at most one table pick in this first composer. Refuse a definition that requests more, rather than silently losing work. No general resource-lane scheduler is claimed.
 - A failed decision leaves composer-owned state unchanged. Consumed dice or side effects in caller callbacks are not rolled back. Readers should be pure; no general transaction/compensation system is introduced.
@@ -67,14 +67,14 @@ All tasks change the same owning module, in order. Repository-level plan/run doc
 
 - `InstanceSpec{ID string; Recipe machine.Recipe; Table Table}`.
 - `ComposerConfig{Instances []InstanceSpec; Vocabulary machine.Vocabulary}`; `NewComposer(*ComposerConfig) (*Composer, error)`.
-- `ObserveInput{On machine.Beat; Event, Env any; Now uint64}`; `ObserveOutput{Steps []InstanceStep}`; `InstanceStep{ID string; Step machine.Stepped}`; `Composer.Observe(*ObserveInput) (*ObserveOutput, error)`.
+- `ObserveInput{Instance string; On machine.Beat; Event, Env any; Now uint64}`; `ObserveOutput{Steps []InstanceStep}`; `InstanceStep{ID string; Step machine.Stepped}`; `Composer.Observe(*ObserveInput) (*ObserveOutput, error)`.
 - `DecideInput{On machine.Beat; Event, Env any; Now uint64; Facts Facts; Temper Temper; Die Die}`; `DecideOutput{Instance string; Pick *PickOutput; Steps []InstanceStep; Deferred []string}`; `Composer.Decide(context.Context, *DecideInput) (*DecideOutput, error)`.
 - `ComposerData{Instances []InstanceData}`; `InstanceData{ID, Definition string; Blob machine.Blob}`; `ToData() ComposerData`; `LoadComposerInput{Config ComposerConfig; Data ComposerData}`; `LoadComposer(*LoadComposerInput) (*Composer, error)`.
-- Errors: `ErrBadComposition`, `ErrBadComposerData`, `ErrSelectionRequired`; reuse `ErrNilInput` and the existing picker/provider sentinels in wrapped errors.
+- Errors: `ErrBadComposition`, `ErrBadComposerData`, `ErrSelectionRequired`, `ErrUnknownInstance`; reuse `ErrNilInput` and the existing picker/provider sentinels in wrapped errors.
 
 **Construction:** copy materialized specs via deterministic JSON; validate IDs/order, recipe compilation, declared fact readers, referenced table keys, at most one pick per transition, positive row weights and existing row validation plus one outcome word. Empty named tables remain legal holds. Compute a stable per-spec digest. Empty composition is legal; unknown input beats still refuse.
 
-**Observation/decision:** work on cloned blobs until successful. On Decide, re-key the selected table through existing `KeyTime` semantics so no eligible action is an explained hold; restore its authored key on the result. Deep-copy the selected answer before returning. A selection error commits no blobs. A no-candidate hold preserves the selected instance's prior blob while committing data-only steps; an explicit Hold row commits normally. Observations that produce a Pick refuse without changes. Emit only committed step results; name losing action candidates as deferred. No state observer/publisher callbacks.
+**Observation/decision:** work on cloned blobs until successful. On Decide, re-key the selected table through existing `KeyTime` semantics so no eligible action is an explained hold; restore its authored key on the result. Copy selected rows before passing them to caller fact callbacks, and deep-copy the selected answer before returning. A callback must not receive a writer to owned configuration. A selection error commits no blobs. A no-candidate hold preserves the selected instance's prior blob while committing data-only steps; an explicit Hold row commits normally. Observations that produce a Pick refuse without changes. Emit only committed step results; name losing action candidates as deferred. No state observer/publisher callbacks.
 
 **Data:** clone bags and optional stamps on export/import. Load must match count, ID/order and definition digest, require a known nonempty state, and validate declared bag keys/scalar kinds. It does not call Step to validate a blob or look up edited content. It does not persist compiled programs/indexes or duplicate the materialized specs in the progress data.
 
@@ -89,15 +89,15 @@ All tasks change the same owning module, in order. Repository-level plan/run doc
 ## Task 3: Joined patrol/investigation proof and owning documentation
 
 **Delivers:** the selected first capability through real components and a truthful handoff.
-**Files:** create `mind/behavior/patrol_composition_test.go`; update `mind/behavior/doc.go`, `README.md`; add the module's `knowledge/runs/2026-11-05-behavior-composer-s1.md`. Update the separate project journal with observed evidence, not a copied backlog.
+**Files:** create `mind/behavior/patrol_composition_test.go`, `composer_bench_test.go`; update `mind/behavior/doc.go`, `README.md`, and the root `knowledge/map.md` dependency edge; keep the PR's run record at root `knowledge/runs/2026-11-05-behavior-composer-s1.md`, the level spanning code plus map/plan. Update the separate project journal with observed evidence, not a copied backlog.
 
 **Fixture:** materialize an investigation recipe using checked `investigation_rounds` (first fixture 2, metadata range 1–4; fixture choices, not game defaults). Priority order is investigation then patrol. Patrol advances from its first leg to the next only on an arrival input. A matching clang activates investigation; a later round ends it. Two equally weighted investigation movement answers produce different real picks at faces 1 and 101 of d200. The next patrol choice still names its unfinished waypoint, not a reset/recomputed route. The composer never resolves geometry or executes movement.
 
 **Tests:** `PatrolCompositionSuite` proves initial patrol → arrival/progress → clang → exclusive investigation → completion → same pending patrol leg. Exercise both hand-chosen investigation roll branches, a reload during investigation, irrelevant/unknown clang, no movement budget (hold/no roll), and metadata changing the authored investigation duration. Assert exact die sizes/calls and returned destinations, not a mocked picker. Snapshot/load uses the same original materialized config. No registry/template callback performs hidden coordination.
 
-- [ ] Add the scenario and failure/boundary cases; verify they distinguish the missing continuation/selection behavior.
-- [ ] Update godoc/README with the new responsibilities, Observe/Decide distinction, configuration/progress separation, and exclusions.
-- [ ] Run full module gates and a targeted mutation control proving deferred progress cannot advance.
+- [x] Add the scenario and failure/boundary cases; verify they distinguish the missing continuation/selection behavior.
+- [x] Update godoc/README with the new responsibilities, Observe/Decide distinction, configuration/progress separation, and exclusions.
+- [x] Run full module gates and a targeted mutation control proving deferred progress cannot advance.
 - [ ] Publish the run/journal receipts, obtain one independent whole-PR review, address required findings, and report actual PR readiness without merging.
 
 **Verification:** `go test -count=1 -run '^TestPatrolCompositionSuite$' -v ./...`, complete module race suite and lint; `git diff --check`; `PRE_COMMIT_CACHE=false .githooks/pre-commit` from the worktree root with this module staged. No root make target that writes unrelated modules or invokes go.work. Baseline effects/machine is read-only. No browser walk is claimed: this slice adds no live adapter or dungeonspec field; the studio round-trip requirement applies when that authoring field is introduced.
@@ -127,5 +127,7 @@ All tasks change the same owning module, in order. Repository-level plan/run doc
 | Composer output | Future live execution adapter | chosen row and explanations, not executed movement | Not changed in this checkpoint | explicitly not claimed as keep/browser delivery |
 
 Plan check: all current in-scope requirements have named proof. Binding/template authoring, live encounter routing, spatial recipient indexing, generalized memory policies, multiple action lanes, virtual paused clocks, asynchronous recovery and effects adoption are not implemented by this checkpoint. No other module is silently used as a scratch integration layer.
+
+Integration findings: completion must be addressable by the selected instance ID, otherwise two attachments of one definition can both advance. `ObserveInput.Instance` now supplies that existing-owner address; empty retains broadcast semantics. A regression also demonstrated `Facts.Threat` could mutate a stored selector through the picker input; copying selected rows before that boundary closes the alias. Both refinements preserve the agreed ownership rather than adding a new coordinator or memory authority.
 
 — monster-ai agent, on behalf of KirkDiggler

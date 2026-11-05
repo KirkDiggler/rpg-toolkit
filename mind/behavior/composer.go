@@ -22,6 +22,8 @@ var (
 	// ErrSelectionRequired reports an observation whose transition requests
 	// a table pick. Use Decide for an action-selection opportunity instead.
 	ErrSelectionRequired = errors.New("behavior: input requires selection")
+	// ErrUnknownInstance reports an observation addressed to no attachment.
+	ErrUnknownInstance = errors.New("behavior: unknown instance")
 )
 
 // InstanceSpec is a materialized behavior binding. ID identifies this
@@ -50,6 +52,7 @@ type ComposerConfig struct {
 type Composer struct {
 	instances []composedInstance
 	beats     map[machine.Beat]machine.BeatSpec
+	byID      map[string]int
 }
 
 type composedInstance struct {
@@ -73,17 +76,17 @@ func NewComposer(in *ComposerConfig) (*Composer, error) {
 			return nil, fmt.Errorf("%w: fact %q has no reader", ErrBadComposition, name)
 		}
 	}
-	out := &Composer{beats: maps.Clone(in.Vocabulary.Beats)}
-	seen := make(map[string]bool, len(in.Instances))
+	out := &Composer{beats: maps.Clone(in.Vocabulary.Beats), byID: make(map[string]int, len(in.Instances))}
 	for _, spec := range in.Instances {
-		if spec.ID == "" || seen[spec.ID] {
+		_, exists := out.byID[spec.ID]
+		if spec.ID == "" || exists {
 			return nil, fmt.Errorf("%w: empty or duplicate instance ID %q", ErrBadComposition, spec.ID)
 		}
-		seen[spec.ID] = true
 		instance, err := compileInstance(spec, in.Vocabulary)
 		if err != nil {
 			return nil, fmt.Errorf("%w: instance %q: %w", ErrBadComposition, spec.ID, err)
 		}
+		out.byID[spec.ID] = len(out.instances)
 		out.instances = append(out.instances, instance)
 	}
 	return out, nil
@@ -167,10 +170,13 @@ func checkCompositionRows(rows []Answer) error {
 // ObserveInput is one delivered data-only occurrence. Env supplies the caller's
 // facts, Event the beat-specific value, and Now the caller's clock reading.
 type ObserveInput struct {
-	On    machine.Beat
-	Event any
-	Env   any
-	Now   uint64
+	// Instance addresses completion/feedback to one attachment. Empty broadcasts
+	// a shared occurrence; it does not mean an unnamed instance.
+	Instance string
+	On       machine.Beat
+	Event    any
+	Env      any
+	Now      uint64
 }
 
 // InstanceStep identifies one fired machine transition committed by a verb.
@@ -187,7 +193,8 @@ type ObserveOutput struct {
 	Steps []InstanceStep
 }
 
-// Observe steps all instances without rolling. A firing Pick returns
+// Observe steps the addressed instance, or all instances for a broadcast,
+// without rolling. An unknown address returns ErrUnknownInstance. A firing Pick returns
 // ErrSelectionRequired without committing any blob; actions are never silently
 // dropped. Nil input returns ErrNilInput and an unknown beat ErrUnknownBeat.
 func (c *Composer) Observe(in *ObserveInput) (*ObserveOutput, error) {
@@ -266,8 +273,14 @@ func (c *Composer) Decide(ctx context.Context, in *DecideInput) (*DecideOutput, 
 	if selected >= 0 {
 		instance := &c.instances[selected]
 		key := proposals[selected].pick
+		// Facts can include caller callbacks that inspect a row. They must
+		// not receive a writable alias into our immutable configuration.
+		rows, err := copyCompositionValue(instance.spec.Table[key])
+		if err != nil {
+			return nil, fmt.Errorf("instance %q table: %w", instance.spec.ID, err)
+		}
 		pick, err := Pick(ctx, &PickInput{
-			Key: KeyTime, Table: Table{KeyTime: instance.spec.Table[key]},
+			Key: KeyTime, Table: Table{KeyTime: rows},
 			Facts: in.Facts, Temper: in.Temper, Die: in.Die,
 		})
 		if err != nil {
@@ -292,24 +305,33 @@ func (c *Composer) Decide(ctx context.Context, in *DecideInput) (*DecideOutput, 
 }
 
 type compositionProposal struct {
-	blob machine.Blob
-	step machine.Stepped
-	pick AnswerKey
+	touched bool
+	blob    machine.Blob
+	step    machine.Stepped
+	pick    AnswerKey
 }
 
 func (c *Composer) preview(in *ObserveInput) ([]compositionProposal, error) {
 	if _, exists := c.beats[in.On]; !exists {
 		return nil, fmt.Errorf("%w: %q", machine.ErrUnknownBeat, in.On)
 	}
+	first, limit := 0, len(c.instances)
+	if in.Instance != "" {
+		index, exists := c.byID[in.Instance]
+		if !exists {
+			return nil, fmt.Errorf("%w: %q", ErrUnknownInstance, in.Instance)
+		}
+		first, limit = index, index+1
+	}
 	out := make([]compositionProposal, len(c.instances))
-	for i := range c.instances {
+	for i := first; i < limit; i++ {
 		instance := &c.instances[i]
 		blob := cloneCompositionBlob(instance.blob)
 		step, err := instance.program.Step(&blob, in.On, in.Event, in.Env, in.Now)
 		if err != nil {
 			return nil, fmt.Errorf("instance %q: %w", instance.spec.ID, err)
 		}
-		out[i] = compositionProposal{blob: blob, step: step}
+		out[i] = compositionProposal{touched: true, blob: blob, step: step}
 		for _, act := range step.Acts {
 			if act.Pick != "" {
 				out[i].pick = AnswerKey(act.Pick)
@@ -320,6 +342,9 @@ func (c *Composer) preview(in *ObserveInput) ([]compositionProposal, error) {
 }
 
 func (c *Composer) commit(i int, proposal compositionProposal, steps *[]InstanceStep) {
+	if !proposal.touched {
+		return
+	}
 	c.instances[i].blob = proposal.blob
 	if proposal.step.Fired {
 		*steps = append(*steps, InstanceStep{ID: c.instances[i].spec.ID, Step: proposal.step})

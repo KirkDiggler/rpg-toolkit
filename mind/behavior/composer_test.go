@@ -172,6 +172,27 @@ func (s *composerSuite) TestObservationRefusalCommitsNoneOfTheBroadcast() {
 	s.Equal(before, composer.ToData(), "the earlier data-only update must not leak through the later refusal")
 }
 
+func (s *composerSuite) TestCompletionCanAddressOneOfTwoInstancesOfTheSameDefinition() {
+	first := compositionSpec("east", "unused", 1)
+	first.Recipe.States["ready"] = machine.State{Transitions: []machine.Transition{{On: composeHeard, To: "spent"}}}
+	second := first
+	second.ID = "west"
+	config := compositionConfig(first, second)
+	composer, err := behavior.NewComposer(&config)
+	s.Require().NoError(err)
+	out, err := composer.Observe(&behavior.ObserveInput{Instance: "east", On: composeHeard})
+	s.Require().NoError(err)
+	s.Require().Len(out.Steps, 1)
+	s.Equal("east", out.Steps[0].ID)
+	s.Equal("spent", composer.ToData().Instances[0].Blob.State)
+	s.Equal("ready", composer.ToData().Instances[1].Blob.State, "completion must not advance an unrelated attachment")
+	before := composer.ToData()
+	out, err = composer.Observe(&behavior.ObserveInput{Instance: "missing", On: composeHeard})
+	s.ErrorIs(err, behavior.ErrUnknownInstance)
+	s.Nil(out)
+	s.Equal(before, composer.ToData())
+}
+
 func (s *composerSuite) TestRollFailureCommitsNoPrivateProgress() {
 	passive := compositionSpec("listener", "unused", 1)
 	passive.Recipe.States["ready"] = machine.State{Transitions: []machine.Transition{{
@@ -256,6 +277,36 @@ func (s *composerSuite) TestConfigurationAndReturnedAnswersAreDetached() {
 	s.Require().NoError(err)
 	s.Equal(spatial.Position{X: 4, Y: 2}, *out.Pick.Answer.Toward.At)
 	s.Equal(2, die.used)
+}
+
+func (s *composerSuite) TestFactProjectionCannotMutateTheStoredTable() {
+	spec := compositionSpec("walk", "unused", 1)
+	spec.Recipe.States["ready"] = machine.State{Transitions: []machine.Transition{
+		{On: composeTick, Do: []machine.Act{{Pick: "work"}}},
+	}}
+	spec.Table["work"] = []behavior.Answer{{Weight: 1,
+		When:   []behavior.When{{Threat: behavior.ThreatNone}},
+		Toward: &behavior.Selector{At: &spatial.Position{X: 4}},
+	}}
+	config := compositionConfig(spec)
+	composer, err := behavior.NewComposer(&config)
+	s.Require().NoError(err)
+	die := &exactDie{steps: []rollStep{{sides: 100, face: 1}, {sides: 100, face: 1}}}
+	_, err = composer.Decide(context.Background(), &behavior.DecideInput{
+		On: composeTick, Die: die,
+		Facts: behavior.Facts{CanMove: true, Threat: func(row behavior.Answer) behavior.ThreatWord {
+			row.Toward.At.X = 99
+			return behavior.ThreatNone
+		}},
+	})
+	s.Require().NoError(err)
+	out, err := composer.Decide(context.Background(), &behavior.DecideInput{
+		On: composeTick, Die: die, Facts: behavior.Facts{CanMove: true,
+			Threat: func(behavior.Answer) behavior.ThreatWord { return behavior.ThreatNone }},
+	})
+	s.Require().NoError(err)
+	s.Equal(spatial.Position{X: 4}, *out.Pick.Answer.Toward.At,
+		"a fact reader must not gain a writer to the stored definition")
 }
 
 func (s *composerSuite) TestSnapshotRoundTripAndCopyOut() {
