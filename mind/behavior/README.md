@@ -4,6 +4,10 @@ mind/perception says what a creature **knows**. This module composes authored
 behavior instances with private progress and selects from their weighted tables.
 It returns decisions; the caller gives those decisions their game meaning.
 
+For the big picture and a closer look inside the state machine, start with the
+[mind architecture walkthrough](../../docs/architecture/components/mind.md):
+overview, machine/composer zooms, and the guard traced through both.
+
 | Here | What it owns |
 |---|---|
 | composition | `Composer`, `Observe`, `Decide`, `ToData` / `LoadComposer` — private progress and one ordered selection lane |

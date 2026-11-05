@@ -10,6 +10,8 @@ Slice [rpg-project#866](https://github.com/KirkDiggler/rpg-project/issues/866) o
 
 - Real patrol/investigation composition fixture: both d200 branches, addressed arrival, retained pending leg, parameter-driven duration, budget holds and JSON reload — [scenario](../../mind/behavior/patrol_composition_test.go).
 
+- Teammate-facing architecture walkthrough: overview, machine/composer/state zoom-ins, real guard trace, ownership and integration limits; no new runtime contract or live-adoption claim — [guide](../../docs/architecture/components/mind.md).
+
 ## Decided
 
 - KirkDiggler approved the composer role and mechanically descriptive parameter metadata; no separate quality-profile framework is required up front — [agreement](https://github.com/KirkDiggler/rpg-project/issues/866#issuecomment-6650897115).
@@ -29,6 +31,8 @@ Slice [rpg-project#866](https://github.com/KirkDiggler/rpg-project/issues/866) o
 - Two-role/one-row decision microbenchmark: 13,554 ns/op, 4,003 B/op and 34 allocations on this host, including defensive copies but excluding real RNG, geometry and execution; not a keep performance claim — [benchmark](../../mind/behavior/composer_bench_test.go).
 
 - Independent review at code head `38dae150` found no Critical, Important or Minor findings, ran the focused suites, independently killed/restored the wrong-bag-kind loader mutant and verified head-specific CI — [published review](https://github.com/KirkDiggler/rpg-toolkit/pull/2277#pullrequestreview-5781061951).
+
+- Architecture guide diagrams render successfully as four SVGs in isolated headless system Chrome and were visually checked; the configuration/progress diagram uses a vertical layout to keep labels readable. No browser setup or runtime changes — [guide](../../docs/architecture/components/mind.md).
 
 ## Mistaken
 
