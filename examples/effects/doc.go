@@ -10,6 +10,17 @@
 // The design is design.md on the idea branch docs/idea-composable-conditions,
 // in https://github.com/KirkDiggler/rpg-toolkit/tree/docs/idea-composable-conditions/docs/ideas/composable-conditions
 //
+// # Construction
+//
+// New takes one Config. Recipe, MachineVocabulary and OutputVocabulary
+// name the authored structure and the consumer's words; HolderID and SourceRef
+// name this instance's recipient and applying content. Parameters fills its bag
+// over the recipe defaults. State selects a saved state; empty means initial.
+// Nil Parameters uses the defaults, and nil SourceRef means no source.
+//
+// New returns a *Composed and an error; it does not attach to a bus. Named
+// fields keep fresh construction and restoration readable at the call site.
+//
 // # Composed
 //
 // Composed is the condition a registry builds. It owns one machine, the
@@ -30,7 +41,7 @@
 //   - Params holds the kind's own fields, which only the kind reads and
 //     validates.
 //
-// A recipe carries outputs as opaque JSON on its states, and Compose decodes
+// A recipe carries outputs as opaque JSON on its states, and New decodes
 // them.
 //
 //	{kind: damage_bonus, when: all(melee, weapon pool, ability = str),
@@ -79,7 +90,7 @@
 //
 // # Lifecycle
 //
-// Compose validates everything that can be checked at load. It refuses a
+// New validates everything that can be checked at load. It refuses a
 // kind, amount, fact or flag that is not in a vocabulary or not declared,
 // and an amount that sets other than one field. It passes the bag keys that
 // output guards read to the machine's Validate. It fills the instance's bag

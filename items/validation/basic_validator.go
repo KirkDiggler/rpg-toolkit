@@ -119,11 +119,7 @@ func (v *BasicValidator) CanAttune(character Character, item items.EquippableIte
 	}
 
 	// Check restrictions
-	if err := v.validateRestrictions(character, item); err != nil {
-		return err
-	}
-
-	return nil
+	return v.validateRestrictions(character, item)
 }
 
 // CanUseWeapon checks if a character can effectively use a weapon

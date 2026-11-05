@@ -32,7 +32,7 @@ const (
 // Output is one contribution a state makes while the machine sits in it:
 // the kind that attaches it, an optional guard over the frame, an optional
 // amount, and the kind's own params, which the kind validates. A recipe
-// carries outputs as opaque JSON on its states; Compose decodes them.
+// carries outputs as opaque JSON on its states; New decodes them.
 type Output struct {
 	When   *machine.Guard `json:"when,omitzero"`
 	Amount *Amount        `json:"amount,omitzero"`

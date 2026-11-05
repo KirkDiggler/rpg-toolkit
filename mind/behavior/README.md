@@ -1,16 +1,94 @@
-# mind/behavior — the creature's table, and the deeds channel
+# mind/behavior — composition, weighted policy and testimony
 
-mind/perception says what a creature **knows**. This module says what it
-**does** with that: it rolls an authored weighted table.
+mind/perception says what a creature **knows**. This module composes authored
+behavior instances with private progress and selects from their weighted tables.
+It returns decisions; the caller gives those decisions their game meaning.
+
+For the big picture and a closer look inside the state machine, start with the
+[mind architecture walkthrough](../../docs/architecture/components/mind.md):
+overview, machine/composer zooms, and the guard traced through both.
 
 | Here | What it owns |
 |---|---|
-| the root package | `Table`, `Layer`, `Pick`, `Deal` — the policy primitive and its evaluator |
+| composition | `Composer`, `Observe`, `Decide`, `ToData` / `LoadComposer` — private progress and one ordered selection lane |
+| parameter metadata | `ParameterSpec`, `CheckParameters` — mechanical constraints for producer-supplied scalar values |
+| policy | `Table`, `Layer`, `Pick`, `Deal` — the weighted evaluator, unchanged by composition |
 | [`deed`](./deed) | What a deed is — verb, actor, target, place — and how it is encoded on the deeds channel |
 | [`stage`](./stage) | `Land`: telling every witness what they saw, in their own terms |
 
 It holds no map, no clock, no rules, and no opinion about what anybody does
 next. The board, the rulebook and the clock all belong to whoever calls it.
+
+## Composition
+
+A `ComposerConfig` supplies materialized `InstanceSpec{ID, Recipe, Table}` values
+in highest-priority-first order and a `machine.Vocabulary`. A recipe's Ref names
+the definition; ID names one attachment. Two attachments can reuse a definition
+without sharing mutable progress. Construction copies the definitions and
+refuses malformed recipes/rows, missing picked tables and multiple picks on
+one transition.
+
+There are two explicit verbs:
+
+- **`Observe`** delivers a data-only input to all instances, or to the one named
+  by `ObserveInput.Instance`. Use the selected instance ID to address completion
+  feedback. An unknown address refuses; an input that requests a Pick returns
+  `ErrSelectionRequired` without committing any instance. Observation is not
+  implicit permission to act.
+- **`Decide`** offers one selection opportunity. It previews the real machines
+  on detached blobs, chooses the first instance requesting a pick, and invokes
+  the existing weighted evaluator on that instance's table. Only one role gets
+  that opportunity; authored row weights still choose within the role. Losing
+  action requests retain their original blobs, while data-only transitions can
+  commit alongside the winner.
+
+A selected table with no eligible row returns the existing explained hold and
+rolls nothing. It does not fall through to a lower-priority role or consume its
+own pending step. An explicitly selected Hold row is eligible work and can
+advance its authored machine transition. Selection is not execution: use the
+returned row, do not call the picker again, and author completion inputs when
+actual completion should advance the behavior.
+
+Returned steps describe committed transitions, and `Deferred` names requests
+suppressed by priority. A successful machine input can consume a wake without
+firing, so the step list is not a persistence dirty flag. Errors commit no
+composer-owned state; external dice/reader side effects are not rolled back.
+The instance list is fixed for this composer's lifetime. This first tool is one
+selection lane, not a general multi-resource scheduler or dynamic attachment
+manager. Caller-supplied time is not reinterpreted as per-role paused time.
+
+### Configuration and continuation are different
+
+`ToData` returns ordered instance IDs, definition digests and private machine
+blobs. The original materialized configuration stays with its owning content/
+composition; it is not duplicated into every progress snapshot. `LoadComposer`
+receives that configuration and refuses different definitions/order, unknown
+states, undeclared bag keys or wrong scalar kinds. It invokes no Step, sampler
+or die while loading. Configuration ingress, returned answers, caller row
+projections and snapshots do not provide aliases into owned state.
+
+### Mechanical parameters
+
+`CheckParameters` is a producer-ingress tool. `ParameterSpec` describes a name,
+scalar kind, requiredness, optional integer bounds/string choices, and opaque
+unit/description metadata. It refuses unknown or missing required parameters,
+wrong kinds and invalid constraints. It preserves supplied false/zero/empty
+values, supplies no defaults, and returns detached typed Go scalars.
+
+A producer uses those checked values to construct ordinary materialized recipes
+and tables. There is no template language or sampler hidden in the composer.
+Schema metadata can round-trip as JSON; a JSON value producer still decodes by
+that schema rather than assuming untyped float coercion is supported. More
+contextual checks belong to the owner of the parameter's meaning.
+
+The executable [patrol/investigation fixture](patrol_composition_test.go) binds
+an investigation window, changes roles on supplied information, uses exact
+scripted rolls against the real picker, and resumes the pending patrol leg
+across a JSON reload. It does not execute movement or choose a universal spatial
+rejoin policy. No live encounter adapter, new dungeonspec field, studio editor
+support, global listener index, general memory policy or recovery engine is
+introduced by this module checkpoint. The existing `Selector.Path` behavior is
+unchanged; a retained composition is not an automatic migration of live patrols.
 
 ## The table
 

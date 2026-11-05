@@ -216,10 +216,7 @@ func validate(data *Data) error {
 	if err := validateDispositionPolicy(data.DispositionPolicy); err != nil {
 		return err
 	}
-	if err := validateMovementPolicy(data.MovementPolicy); err != nil {
-		return err
-	}
-	return nil
+	return validateMovementPolicy(data.MovementPolicy)
 }
 
 func defaultCombatPolicy(policy CombatPolicy) CombatPolicy {
