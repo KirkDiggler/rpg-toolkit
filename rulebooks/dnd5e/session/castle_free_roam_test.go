@@ -39,6 +39,8 @@ type freeRoamCastle struct {
 	mgr        *session.Manager
 	live       *actCapture
 	characters *fakeCharacters
+	encounters *fakeEncounters
+	dice       *castleDice
 }
 
 func openTheCastleForTwo(t *testing.T, d20s ...int) *freeRoamCastle {
@@ -63,10 +65,10 @@ func openTheCastleFor(t *testing.T, party []*character.Data, d20s ...int) *freeR
 	for _, sheet := range party {
 		ids = append(ids, sheet.ID)
 	}
-	c := &freeRoamCastle{live: &actCapture{}, characters: newFakeCharacters(party...)}
+	c := &freeRoamCastle{live: &actCapture{}, characters: newFakeCharacters(party...), encounters: newFakeEncounters(), dice: &castleDice{d20s: d20s}}
 	c.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: c.live, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
-		PresentationIDs: testPresentationIDs{}, Dice: &castleDice{d20s: d20s}, TurnDriver: session.Driver(),
-		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: c.characters,
+		PresentationIDs: testPresentationIDs{}, Dice: c.dice, TurnDriver: session.Driver(),
+		Sessions: newFakeSessions(), Encounters: c.encounters, Characters: c.characters,
 	})
 	require.NoError(t, err)
 	_, err = c.mgr.Launch(context.Background(), &session.LaunchInput{

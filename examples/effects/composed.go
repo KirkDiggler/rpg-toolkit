@@ -17,7 +17,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/examples/effects/machine"
 )
 
-// ErrInvalidOutput wraps every refusal Compose makes of a recipe's outputs.
+// ErrInvalidOutput wraps every refusal New makes of a recipe's outputs.
 var ErrInvalidOutput = errors.New("invalid output")
 
 // ErrNoAmount is returned by Bound.Amount for an output without an amount.
@@ -93,43 +93,63 @@ type decoded struct {
 	fn    AmountFn
 }
 
-// Compose validates r's outputs against ov and r against v, fills the
-// instance's bag from params (ruling 3), and returns the condition for
-// holder in state (empty for the recipe's initial state), not yet applied.
-// It refuses, wrapping ErrInvalidOutput or the machine's errors: an output
-// that does not decode; a kind not in ov, or one missing Attach or Assess;
-// params the kind's Check refuses; an amount that sets other than one field
-// or names a function ov does not hold; an output guard over an unknown fact
-// or an undeclared flag; any refusal of machine.Validate; a parameter naming
-// no bag key; and a state the recipe does not declare.
-func Compose(
-	r machine.Recipe, v machine.Vocabulary, ov OutputVocabulary,
-	holder string, source *core.Ref, params machine.Bag, state string,
-) (*Composed, error) {
-	outs, keys, err := decodeOutputs(r, ov)
+// Config names the recipe, consumer vocabulary and instance data used to
+// construct a composed condition. It contains no bus: Apply owns attachment.
+type Config struct {
+	// Recipe declares the states, outputs, transitions and bag defaults.
+	Recipe machine.Recipe
+	// MachineVocabulary supplies the facts and beats used by the recipe.
+	MachineVocabulary machine.Vocabulary
+	// OutputVocabulary supplies output kinds, amounts and lifecycle hooks.
+	OutputVocabulary OutputVocabulary
+	// HolderID identifies the entity receiving the composed condition.
+	HolderID string
+	// SourceRef identifies the applying content; nil means no source.
+	SourceRef *core.Ref
+	// Parameters fills declared bag keys over the recipe defaults. Nil uses
+	// those defaults; a saved bag can be supplied to restore an instance.
+	Parameters machine.Bag
+	// State restores a declared state. Empty selects the recipe's initial state.
+	State string
+}
+
+// New validates the recipe and its outputs against the supplied vocabularies,
+// fills the instance bag from Parameters, and returns a condition not yet applied.
+// It refuses, wrapping ErrInvalidOutput or the machine's errors: an output that
+// does not decode; an unknown kind or one missing Attach or Assess; parameters
+// the kind's Check refuses; an invalid or unknown amount; a guard over an unknown
+// fact or undeclared flag; any machine.Validate refusal; a parameter naming no
+// bag key; and a state the recipe does not declare.
+func New(input Config) (*Composed, error) {
+	outs, keys, err := decodeOutputs(input.Recipe, input.OutputVocabulary)
 	if err != nil {
 		return nil, err
 	}
-	p, err := r.Compile(v, keys...)
+	p, err := input.Recipe.Compile(input.MachineVocabulary, keys...)
 	if err != nil {
 		return nil, err
 	}
-	if state != "" && !p.HasState(state) {
-		return nil, fmt.Errorf("%w: %s: state %q", machine.ErrUnknownState, r.Ref.String(), state)
+	if input.State != "" && !p.HasState(input.State) {
+		return nil, fmt.Errorf("%w: %s: state %q", machine.ErrUnknownState, input.Recipe.Ref.String(), input.State)
 	}
-	bag, err := p.NewBag(params)
+	bag, err := p.NewBag(input.Parameters)
 	if err != nil {
 		return nil, err
 	}
-	m := machine.New(p, holder, source, bag, state)
-	c := &Composed{m: m, ov: ov, host: Host{Holder: holder, Ref: m.Ref(), Source: source}, outputs: map[string][]*Bound{}}
+	m := machine.New(machine.Config{
+		Program: p, HolderID: input.HolderID, SourceRef: input.SourceRef, Bag: bag, State: input.State,
+	})
+	c := &Composed{
+		m: m, ov: input.OutputVocabulary,
+		host: Host{Holder: input.HolderID, Ref: m.Ref(), Source: input.SourceRef}, outputs: map[string][]*Bound{},
+	}
 	for _, d := range outs {
 		when, err := p.CompileGuard(d.out.When, "")
 		if err != nil {
 			return nil, fmt.Errorf("state %q output %d: %w", d.state, d.index, err)
 		}
 		c.outputs[d.state] = append(c.outputs[d.state], &Bound{
-			id:   fmt.Sprintf("%s#%s.%d", r.Ref.String(), d.state, d.index),
+			id:   fmt.Sprintf("%s#%s.%d", input.Recipe.Ref.String(), d.state, d.index),
 			out:  d.out,
 			host: c.host, when: when, amount: d.fn, m: m,
 		})

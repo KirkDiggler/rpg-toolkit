@@ -391,14 +391,14 @@ func TestWhatAnObserverHoldsOfTheHold(t *testing.T) {
 	porter := MemberInput{ID: "porter", Kind: KindMonster, Faction: postedGarrison, Position: holdBeside, Table: holds()}
 	enc := holdHall(t, holdLeafDoor(DoorIsOpen()), holdSouthEast,
 		holder(t, postedGuard, holdNorthWest, holdLeaf, holdNorthWest), porter)
-	seen := func(viewer MemberID) map[MemberID]DoorID {
+	seen := func(viewer MemberID) map[MemberID]HeldDoor {
 		t.Helper()
 		held, err := enc.ObservedHolds(&ViewInput{Member: viewer})
 		require.NoError(t, err)
 		return held
 	}
 
-	require.Equal(t, holdLeaf, seen("alice")[postedGuard], "alice sees him bar the gate against her")
+	require.Equal(t, holdLeaf, seen("alice")[postedGuard].Door, "alice sees him bar the gate against her")
 	require.NotContains(t, seen("porter"), postedGuard, "an ally is not barred, and is told nothing")
 
 	cowGuard(t, enc)
@@ -674,7 +674,7 @@ func TestAHoldThatDoesNotBlockIsStillSeenToEnd(t *testing.T) {
 	enc := holdHall(t, holdLeafDoor(DoorIsOpen()), holdSouthEast, guard)
 	held, err := enc.ObservedHolds(&ViewInput{Member: "alice"})
 	require.NoError(t, err)
-	require.Equal(t, holdLeaf, held[postedGuard], "precondition: alice sees him hold the gate")
+	require.Equal(t, holdLeaf, held[postedGuard].Door, "precondition: alice sees him hold the gate")
 
 	cowGuard(t, enc)
 
@@ -733,7 +733,7 @@ func TestAHoldOnADoorNotFoundIsNotTold(t *testing.T) {
 	require.NoError(t, enc.revealConcealmentTo("alice", enc.field.concealmentOf("secret-gate"), "test", 0))
 	held, err = enc.ObservedHolds(&ViewInput{Member: "alice"})
 	require.NoError(t, err)
-	require.Equal(t, holdLeaf, held[postedGuard], "found, it is")
+	require.Equal(t, holdLeaf, held[postedGuard].Door, "found, it is")
 }
 
 // TestAPushStopsBeforeAHeldCrossing: a directive's walk is cut before a held

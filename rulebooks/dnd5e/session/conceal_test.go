@@ -428,6 +428,36 @@ func (s *ConcealSuite) revealedIn(beat witnessed) revealedPayload {
 	return body
 }
 
+// revealedAct is the reveal of concealment in the acts the session
+// published to member: the session's own projection of the beat, doorways
+// named and marked.
+func (s *ConcealSuite) revealedAct(member, concealment string) *session.SecretRevealed {
+	s.T().Helper()
+	for _, act := range s.stream.published {
+		p, ok := act.Body.(session.Perception)
+		if !ok || p.Revealed == nil || p.Revealed.Concealment != concealment || p.Observer.ID != member {
+			continue
+		}
+		return p.Revealed
+	}
+	s.Require().Failf("no reveal", "no act revealed %s to %s", concealment, member)
+	return nil
+}
+
+// doorwaysOf is the doorways member's map lists for door.
+func (s *ConcealSuite) doorwaysOf(member, door string) []session.AtlasDoorway {
+	s.T().Helper()
+	atlas, err := s.mgr.Atlas(context.Background(), &session.AtlasInput{Session: "sess", Member: member})
+	s.Require().NoError(err)
+	var out []session.AtlasDoorway
+	for _, d := range atlas.Doorways {
+		if d.Door == door {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
 // veilPath is the walk from where concealedWorld seats alice to the cell
 // beside the veil, where the production discovery sweep rolls the vault's find
 // check. nichePath is the walk from the same cell to the one beside the
@@ -511,6 +541,12 @@ func (s *ConcealSuite) TestDiscoveryRevealsToTheFinderAlone() {
 	s.Equal(cell(5, 0), body.Doors[0].Doorways[0].From,
 		"the beat carries the crossing the cached atlas's doorway list gains")
 	s.Equal(cell(6, 0), body.Doors[0].Doorways[0].To)
+	vault := s.revealedAct("alice", vaultSecret)
+	s.Require().Len(vault.Doors, 1)
+	s.Require().NotEmpty(vault.Doors[0].Doorways)
+	for _, d := range vault.Doors[0].Doorways {
+		s.False(d.Crossing, "an edge door's revealed doorway is not a crossing")
+	}
 	s.Empty(body.Doors[0].Approaches, "an unlocked door carries no lock routes")
 
 	s.ElementsMatch(hexCells(rectCells(6, 0, 6, 6)), body.Cells,
@@ -1263,9 +1299,19 @@ func (s *ConcealSuite) TestAFootprintDoorStandingOpenIsPerceivedThroughItsCells(
 	s.Require().Len(body.Doors, 1)
 	s.Equal("leaf", body.Doors[0].Door)
 	s.Equal("open", body.Doors[0].State, "which is how she came to be told")
-	s.Empty(body.Doors[0].Doorways,
-		"a footprint door stands in no crossing, so there is no doorway to patch in — "+
-			"its rectangle reaches her through the atlas re-read this beat tells her to make")
+	// A FOOTPRINT DOOR'S CROSSINGS arrive marked (rpg-project#852, H6): the
+	// reveal act carries the doorways her map now lists for the leaf, each
+	// one a crossing, so a revealed footprint door joins the cached atlas
+	// as an edge door does.
+	revealed := s.revealedAct("alice", leafSecret)
+	s.Require().Len(revealed.Doors, 1)
+	s.Require().NotEmpty(revealed.Doors[0].Doorways, "the leaf's crossings ride the reveal")
+	for _, d := range revealed.Doors[0].Doorways {
+		s.Equal("leaf", d.Door, "each crossing names the leaf")
+		s.True(d.Crossing, "and is marked a footprint door's crossing")
+	}
+	s.ElementsMatch(s.doorwaysOf("alice", "leaf"), revealed.Doors[0].Doorways,
+		"the reveal carries the leaf's doorways as her map lists them")
 
 	// And the negative half, which is what makes the positive one a claim
 	// about SIGHT rather than about everybody: five feet from the far corner

@@ -60,7 +60,7 @@ func Example() {
 		return
 	}
 	ctx, bus := context.Background(), events.NewEventBus()
-	m := machine.New(program, candle, nil, nil, "")
+	m := machine.New(machine.Config{Program: program, HolderID: candle})
 	m.OnTransition(func(_ context.Context, t machine.Transitioned) error {
 		fmt.Printf("%s -> %s %q\n", t.From, t.To, t.Reason)
 		return nil

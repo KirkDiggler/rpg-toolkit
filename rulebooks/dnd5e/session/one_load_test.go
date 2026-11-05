@@ -121,7 +121,9 @@ func TestOpenDoorLoadsOnce(t *testing.T) {
 	walkOnto(func(enc *encounter.Encounter) spatial.Position { return standingAt(enc, "captain") }, false)
 	_, err = g.mgr.Speak(ctx, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "troupe"})
 	require.NoError(t, err)
-	walkOnto(func(*encounter.Encounter) spatial.Position { return beneathTheGate }, true)
+	// gate-1 stays posted beneath the gate (rpg-project#857): the troupe opens
+	// it from the opening's other cell.
+	walkOnto(func(*encounter.Encounter) spatial.Position { return besideTheCastleGate }, true)
 
 	loads := session.CountEncounterLoadsForTest(t)
 	loadsOnce(t, loads, "OpenDoor", func() error {

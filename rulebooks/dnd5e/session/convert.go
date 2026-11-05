@@ -177,9 +177,10 @@ func projectAtlas(in encounter.Atlas) Atlas {
 
 	for _, d := range in.Doorways {
 		out.Doorways = append(out.Doorways, AtlasDoorway{
-			Door: string(d.Door),
-			From: d.From,
-			To:   d.To,
+			Door:     string(d.Door),
+			From:     d.From,
+			To:       d.To,
+			Crossing: d.Crossing,
 		})
 	}
 

@@ -692,6 +692,47 @@ func (s *ActFoldSuite) TestRevealedDoorwaysNameTheirDoor() {
 	s.Equal("concealed-vault/inner-door", r.Doors[0].Doorways[0].Door, "a doorway naming its own door keeps it")
 }
 
+// TestRevealedCrossingsKeepTheirMark is rpg-project#852 (H6): a footprint
+// door's crossings arrive on both reveal beats marked `crossing`, and the act
+// carries the mark onto the doorway; an edge door's doorway arrives unmarked
+// and reads false. Mutant: dropping the field's tag fails both true rows.
+func (s *ActFoldSuite) TestRevealedCrossingsKeepTheirMark() {
+	from, to := cell(4, 2), cell(5, 2)
+	perceived := func(payload map[string]any) Perception {
+		acts := foldActs("sess", "fighter", []record.Entry{s.beat("search:01HZZZZZZZZZZZZZZZZZZZVALT", payload)})
+		s.Require().Len(acts, 1)
+		p, ok := acts[0].Body.(Perception)
+		s.Require().True(ok, "%T", acts[0].Body)
+		return p
+	}
+	secret := func(doorway map[string]any) []AtlasDoorway {
+		p := perceived(map[string]any{
+			"beat": encounter.BeatConcealmentRevealed, "concealment": "c",
+			"doors": []map[string]any{{"door": "c/leaf", "state": "open", "doorways": []map[string]any{doorway}}},
+		})
+		s.Require().NotNil(p.Revealed)
+		s.Require().Len(p.Revealed.Doors, 1)
+		return p.Revealed.Doors[0].Doorways
+	}
+	s.Equal([]AtlasDoorway{{Door: "c/leaf", From: from, To: to, Crossing: true}},
+		secret(map[string]any{"from": from, "to": to, "crossing": true}), "a revealed footprint door's crossing is marked")
+	s.Equal([]AtlasDoorway{{Door: "c/leaf", From: from, To: to}},
+		secret(map[string]any{"from": from, "to": to}), "an edge door's revealed doorway is not")
+
+	cells := perceived(map[string]any{
+		"beat": encounter.BeatCellsRevealed,
+		"doorways": []map[string]any{
+			{"door": "hall/gate", "from": from, "to": to, "crossing": true},
+			{"door": "hall/edge", "from": to, "to": from},
+		},
+	})
+	s.Require().NotNil(cells.Cells)
+	s.Equal([]AtlasDoorway{
+		{Door: "hall/gate", From: from, To: to, Crossing: true},
+		{Door: "hall/edge", From: to, To: from},
+	}, cells.Cells.Doorways, "cells learned carry each doorway's mark as the beat wrote it")
+}
+
 // TestCastActivationCarriesItsSpell is #643 F and rpg-toolkit#2100: Bane's
 // cast, its save, then the activation-result applying Baned fold to an
 // ActivateAct under the cast's act id that names the spell as its ability,

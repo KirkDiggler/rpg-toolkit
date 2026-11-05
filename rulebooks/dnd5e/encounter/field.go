@@ -1036,11 +1036,14 @@ type MemberInput struct {
 	// that state bars to every mover not allied with it, while it is up and
 	// stands on one of the post's cells. Empty [Post.Cells] means the cell
 	// the member is placed at. Nil holds no passage, which is every member
-	// before posts existed.
+	// before posts existed. A post's settings ([Post.Against], [Post.Pass],
+	// rpg-project#857) say which way it bars and which fact walks through.
 	//
 	// VALIDATED AT THIS DOOR: a state the recipe does not declare, posts on
-	// a member with no authored recipe, a door this field does not have, or
-	// a cell that is not floor, is [ErrBadMember].
+	// a member with no authored recipe, a door this field does not have, a
+	// cell that is not floor, a direction that is not one of the three
+	// words, or a direction whose door has no one side per crossing, is
+	// [ErrBadMember].
 	Posts map[string]Post
 
 	// Holds is the intel records this member carries, by record id

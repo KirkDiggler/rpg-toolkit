@@ -6,6 +6,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.12.1
 	github.com/KirkDiggler/rpg-toolkit/dice v0.3.2
 	github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.18.1
+	github.com/KirkDiggler/rpg-toolkit/mind/machine v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/mind/perception v0.3.0
 	github.com/KirkDiggler/rpg-toolkit/npc v0.2.0
 	github.com/KirkDiggler/rpg-toolkit/play/intel v0.4.0
@@ -13,7 +14,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.2.0
 	github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.213.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.175.0
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.177.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.74.0
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.16.1
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467
@@ -24,7 +25,6 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/events v0.6.3 // indirect
 	github.com/KirkDiggler/rpg-toolkit/game v0.1.0 // indirect
 	github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.3.1 // indirect
-	github.com/KirkDiggler/rpg-toolkit/mind/machine v0.1.0 // indirect
 	github.com/KirkDiggler/rpg-toolkit/play/clock v0.1.0 // indirect
 	github.com/KirkDiggler/rpg-toolkit/world v0.4.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
