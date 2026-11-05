@@ -47,7 +47,7 @@ func (s *lifecycleSuite) SetupTest() {
 // Rage names six beats: two trackers' and four transition beats'.
 func (s *lifecycleSuite) TestApplySubscribesOncePerTrackerAndBeat() {
 	bus := &countingBus{EventBus: events.NewEventBus()}
-	m := machine.New(s.p, holder, nil, nil, "")
+	m := machine.New(machine.Config{Program: s.p, HolderID: holder})
 	s.False(m.IsApplied())
 	s.Require().NoError(m.Apply(s.ctx, bus))
 	s.True(m.IsApplied())
@@ -72,7 +72,7 @@ func (s *lifecycleSuite) TestAFailedApplyRollsBack() {
 	s.Require().NoError(err)
 
 	bus := &countingBus{EventBus: events.NewEventBus()}
-	m := machine.New(p, holder, nil, nil, "")
+	m := machine.New(machine.Config{Program: p, HolderID: holder})
 	err = m.Apply(s.ctx, bus)
 	s.Require().Error(err)
 	s.Contains(err.Error(), "bus refused")
@@ -82,7 +82,9 @@ func (s *lifecycleSuite) TestAFailedApplyRollsBack() {
 
 func (s *lifecycleSuite) TestApplyRefusesAnUnknownOrTerminalState() {
 	for _, state := range []string{"sulking", stEnded} {
-		err := machine.New(s.p, holder, nil, nil, state).Apply(s.ctx, events.NewEventBus())
+		err := machine.New(machine.Config{
+			Program: s.p, HolderID: holder, State: state,
+		}).Apply(s.ctx, events.NewEventBus())
 		s.Require().ErrorIs(err, machine.ErrUnknownState, state)
 	}
 }
@@ -91,7 +93,9 @@ func (s *lifecycleSuite) TestToBlobIsTheHeaderStateAndBag() {
 	source := rageSource()
 	bag, err := s.p.NewBag(map[string]any{machine.KeyRoundActivated: 2})
 	s.Require().NoError(err)
-	m := machine.New(s.p, holder, source, bag, stRaging)
+	m := machine.New(machine.Config{
+		Program: s.p, HolderID: holder, SourceRef: source, Bag: bag, State: stRaging,
+	})
 
 	b := m.ToBlob()
 	s.Equal(ragingRef, b.Ref)
