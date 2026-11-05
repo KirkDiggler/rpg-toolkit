@@ -98,7 +98,7 @@ All tasks change the same owning module, in order. Repository-level plan/run doc
 - [x] Add the scenario and failure/boundary cases; verify they distinguish the missing continuation/selection behavior.
 - [x] Update godoc/README with the new responsibilities, Observe/Decide distinction, configuration/progress separation, and exclusions.
 - [x] Run full module gates and a targeted mutation control proving deferred progress cannot advance.
-- [ ] Publish the run/journal receipts, obtain one independent whole-PR review, address required findings, and report actual PR readiness without merging.
+- [x] Publish the run/journal receipts, obtain one independent whole-PR review, address required findings, and report actual PR readiness without merging. Independent review of code head `38dae150` found no Critical, Important or Minor findings ([review](https://github.com/KirkDiggler/rpg-toolkit/pull/2277#pullrequestreview-5781061951)); live adoption and merge remain outside this checkpoint.
 
 **Verification:** `go test -count=1 -run '^TestPatrolCompositionSuite$' -v ./...`, complete module race suite and lint; `git diff --check`; `PRE_COMMIT_CACHE=false .githooks/pre-commit` from the worktree root with this module staged. No root make target that writes unrelated modules or invokes go.work. Baseline effects/machine is read-only. No browser walk is claimed: this slice adds no live adapter or dungeonspec field; the studio round-trip requirement applies when that authoring field is introduced.
 

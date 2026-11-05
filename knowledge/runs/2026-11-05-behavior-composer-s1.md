@@ -28,6 +28,8 @@ Slice [rpg-project#866](https://github.com/KirkDiggler/rpg-project/issues/866) o
 - Restored full-module race tests and lint pass; temporary deferred-progress and upper-bound mutations fail the intended assertions and are not committed — [composer tests](../../mind/behavior/composer_test.go), [parameter tests](../../mind/behavior/parameters_test.go).
 - Two-role/one-row decision microbenchmark: 13,554 ns/op, 4,003 B/op and 34 allocations on this host, including defensive copies but excluding real RNG, geometry and execution; not a keep performance claim — [benchmark](../../mind/behavior/composer_bench_test.go).
 
+- Independent review at code head `38dae150` found no Critical, Important or Minor findings, ran the focused suites, independently killed/restored the wrong-bag-kind loader mutant and verified head-specific CI — [published review](https://github.com/KirkDiggler/rpg-toolkit/pull/2277#pullrequestreview-5781061951).
+
 ## Mistaken
 
 - The initial selected-answer copy happened after a caller fact callback could mutate the stored table; a regression observed expected X=4 versus actual X=99. Copying selected rows before the picker and detaching its result closes both sides of that boundary — [alias regression](../../mind/behavior/composer_test.go).
