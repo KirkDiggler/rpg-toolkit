@@ -294,12 +294,15 @@ func TestCastleAHeldLockedDoorIsAnsweredByTheGuard(t *testing.T) {
 	require.Equal(t, "locked", c.gateStateInTheRecord(t), "and the lock stands")
 
 	// THE ATTEMPT IS THE BUMP: written, folded, and answered.
-	barred := only[session.BarredAct](t, bump.to("alice")).body
+	bumped := only[session.BarredAct](t, bump.to("alice"))
+	barred := bumped.body
 	require.Equal(t, session.BarredAct{
 		Mover: session.Party{Kind: session.PartyMember, ID: "alice"}, Barrier: session.Party{Kind: session.PartyMember, ID: "gate-1"},
 		Door: castleGateDoor, Verb: "unlock",
 	}, barred, "the bump names the door and the verb, and no cell")
 	require.Equal(t, theGuardsQuestion, guardSays(t, bump.to("alice")), "and he asks what she wants")
+	require.Equal(t, "unlock", bumped.act.Verb, "under her Unlock")
+	answeredUnder(t, bump.to("alice"), bumped)
 }
 
 // slicesIndex is the index of door id in doors, failing the caller's
