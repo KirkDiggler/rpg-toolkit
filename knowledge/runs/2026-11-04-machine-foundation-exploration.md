@@ -15,6 +15,8 @@ Story [rpg-project#859](https://github.com/KirkDiggler/rpg-project/issues/859). 
 
 - KirkDiggler, 2026-11-05: procedural generation and suitable parameter values are part of the authoring goal, and the behavior-composer direction deserves an ADR proposal; this does not accept its public APIs, generation profiles or implementation — [direction and evidence](https://github.com/KirkDiggler/rpg-project/issues/859#issuecomment-6648962999).
 
+- 2026-11-05: KirkDiggler approved proceeding with the composer responsibility and mechanical parameter metadata; a separate quality-profile framework is not required up front, and implementation proceeds through S1 without merge authorization — [agreement](https://github.com/KirkDiggler/rpg-project/issues/866#issuecomment-6650897115).
+
 ## Found
 
 - The encounter's machine input delivery waits for a world-clock raise and excludes fight-clock actors, while plain speech pays no round and effects handles bus inputs synchronously; information delivery and action permission need separate consideration — [source-pinned evidence](https://github.com/KirkDiggler/rpg-project/issues/859#issuecomment-6642383444).

@@ -4,12 +4,15 @@ Date: 2026-11-05
 
 ## Status
 
-**Proposed. Not accepted or implemented.**
+**Accepted — composition responsibility and mechanical parameter-metadata direction, 2026-11-05.**
 
-This records a candidate responsibility boundary for
+Acceptance is recorded on [NPC behavior S1](https://github.com/KirkDiggler/rpg-project/issues/866#issuecomment-6650897115).
+It is not a claim that the new APIs are implemented or that a merge is authorized.
+
+This records the agreed responsibility boundary for
 [rpg-project#859](https://github.com/KirkDiggler/rpg-project/issues/859).
-It does not select public APIs, migrate either machine, or authorize production
-implementation. The [exploration walkthrough](../ideas/machine-foundation/README.md)
+The bounded implementation proceeds through S1's checked plan. This record does
+not prescribe every public API, migrate either machine, or authorize a merge. The [exploration walkthrough](../ideas/machine-foundation/README.md)
 explains the starting seams; the
 [work journal](https://github.com/KirkDiggler/rpg-project/pull/864) preserves the
 investigation. Implementation contracts still require design agreement. The related
@@ -98,15 +101,15 @@ matching terminology. Earlier records and their statuses remain unchanged.
 | Alternative | Benefit | Cost / why not the proposed direction |
 |---|---|---|
 | **Keep composition entirely in the encounter; retain `mind/behavior` as the picker** | Preserves the current cut and avoids an unused general layer. | Remains viable if the next consumer probes show only encounter-specific wiring is needed. It offers no shared behavior-instance contract by itself; different producers can drift into different ways to assemble the same behavior. |
-| **Make `mind/behavior` the reusable composer, using the existing primitives and picker** | Gives the designer's reusable behavior one owner above the mechanisms it combines. | Preferred proposal. Expands the module's responsibility, requires explicit lifecycle/binding contracts, and risks becoming a catch-all unless execution, knowledge interpretation and parameter selection remain outside it. |
+| **Make `mind/behavior` the reusable composer, using the existing primitives and picker** | Gives the designer's reusable behavior one owner above the mechanisms it combines. | Selected direction. Expands the module's responsibility, requires explicit lifecycle/binding contracts, and risks becoming a catch-all unless execution, knowledge interpretation and parameter selection remain outside it. |
 | **Keep the picker narrow and add a separate composer module** | Makes the selection/composition distinction explicit in package boundaries. | A real alternative if keeping both in `mind/behavior` obscures the seam. Adds another public module and consumer boundary before their value is demonstrated; no package name or extraction is selected now. |
 | **Put composition and generation in `mind/machine`** | One apparent entry point for authoring and runtime. | Not recommended: conflates state progression with NPC composition, content choice and execution. It would burden a possible effects consumer with responsibilities that do not belong to its machine. |
 
 ## Decision
 
-**Propose `mind/behavior` as the composer of reusable, parameterized behavior
-instances over the mind primitives.** This is a proposed role for the module,
-not a claim that the module already has the interfaces below.
+**`mind/behavior` owns composition of reusable, parameterized behavior instances
+over the mind primitives.** This is the agreed role for the module, not a claim
+that it already implements every interface or integration described below.
 
 ### Definitions, bindings and private progress
 
@@ -128,25 +131,27 @@ proposal does not select a move or rename of that implementation.
 
 ### Parameter contracts versus choosing good values
 
-| Concern | Proposed responsibility |
+| Concern | Responsibility |
 |---|---|
 | Parameter name, type, unit, requiredness and any explicit default | The behavior definition/contract, in a form producers can inspect and validators can check. |
 | Structural validity and compatible bindings | The shared composition validator/compiler; domain checks are supplied by their owning vocabulary/capabilities rather than hard-coded game rules. |
 | Valid routes, references, capabilities and site constraints | Their existing content/spatial/rulebook owners, consulted explicitly by generation or binding validation. |
-| Which valid combination suits a role and encounter | Designer-authored generation profiles and the generator that applies them. This is content policy, not runtime machine policy. |
+| What makes a value mechanically suitable | Parameter metadata declares supported types and constraints; producers choose values against those constraints and explicit context. A separate quality-profile framework is not required. |
 | Progress of one running behavior | Its runtime instance and lifecycle contract, not the shared definition or a generator's mutable configuration. |
 
-A generation profile may choose combinations of values together, constrain a
-later choice using an earlier one, or derive a value from site/capability inputs.
-It is not limited to independent uniform ranges. The exact profile shape,
-sampling algorithm and quality criteria remain open.
+The first mechanism is **mechanical parameter metadata**: supported types,
+requiredness, bounds and choices, with context-sensitive checks at the owner
+of the value. Producers can use that description to choose suitable values.
+A separate profile language or quality optimizer is not a prerequisite.
 
-**Valid and good are different questions.** Type/range checks can reject
-nonsense; they do not establish that a patrol is interesting, that an
-investigation is appropriately persistent, or that a low-priority duty ever
-gets useful time. Profiles need explicit goals and evidence against them,
-including meaningful deterministic examples and broader sampling/playtest where
-appropriate. There is no universal good-parameter function implied here.
+Later generation may choose correlated values or derive them from site and
+capability inputs when a concrete use case needs that mechanism. Mechanical
+suitability is not a claim that generated play is interesting or balanced;
+those claims still need appropriate evidence, not an extra framework up front.
+
+This refines the initial proposal's profile-oriented cut: the operator ruled
+that a parameter describing mechanically what is good for its value is enough
+to proceed. Profile/sampling machinery remains optional future work.
 
 Unsupported words, unresolved required values and incompatible combinations
 should be diagnosable at the owning boundary, not silently replaced with a
@@ -224,8 +229,8 @@ These are expected benefits, not measured delivery results.
   a wire format, a schema language, an async runtime or an implementation plan.
 - Benchmark fixtures may retain their regenerate-only contract; ordinary
   editable generated content is a different producer/consumer use case.
-- Acceptance would require reconciling the affected design/package contracts;
-  this Proposed record leaves current behavior and other ADR statuses intact.
+- Implementation reconciles the affected design/package contracts as its slices
+  land. Acceptance of this role changes no other ADR status or live behavior by itself.
 
 ## Example
 
@@ -239,7 +244,7 @@ flowchart TD
     Site[Site and capability inputs] --> Generate
     Generate --> Bound
     Bound --> Validate[Shared binding validation]
-    Validate --> Composer[mind/behavior: proposed composer]
+    Validate --> Composer[mind/behavior: composer responsibility]
     Facts[Observer-safe facts and delivered inputs] --> Composer
     Composer --> Machine[mind/machine: lifecycle mechanics]
     Composer --> Picker[Weighted action selection]
@@ -270,8 +275,9 @@ These questions and prospective checks guide review and later slices. They are
 not completed evidence or a requirement to build the entire system before
 choosing where composition belongs:
 
-- Compare composition in `mind/behavior` with a separate composer using a real
-  consumer. Identify which existing picker contracts stay unchanged.
+- Keep the accepted composer cohesive through real consumers. Revisit a separate
+  module only if evidence shows this boundary cannot stay clear; preserve the
+  existing picker contracts rather than re-opening the role without cause.
 - Define the minimum definition/binding/instance contract and ownership of a
   retained continuation. Settle S1's concrete resume behavior without hiding it
   in test helpers or silently changing existing patrol policy.
@@ -282,11 +288,12 @@ choosing where composition belongs:
   save/load without resampling, and priority versus weighted choice.
 - Walk a studio load/edit/save/compile round trip for any new authoring fields.
   A valid emitted file or passing Go literal is not proof of editor support.
-- Establish what makes one generation profile suitable, rather than claiming
-  that structural validation proves interesting or balanced content.
+- Define the mechanical constraints of each actual parameter. Do not require a
+  generation-profile framework, or claim those checks prove interesting or
+  balanced content.
 
 The existing single-path unit probe and keep generator are starting evidence,
-not acceptance of this architecture. Investigation continues in
+not proof of the new composer implementation. Work continues in
 [rpg-project#859](https://github.com/KirkDiggler/rpg-project/issues/859) and its
 journal; exact API, generation-profile representation, lifecycle conflict rules
 and implementation/release slices remain open.
