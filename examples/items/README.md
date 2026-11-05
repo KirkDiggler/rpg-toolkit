@@ -6,6 +6,11 @@ inform [Proposed ADR-0048](https://github.com/KirkDiggler/rpg-toolkit/pull/2272)
 The first cut was test-only wiring; this cut gives that wiring an item-owned
 boundary that a separate consumer can use and challenge.
 
+The existing top-level [`items` module](../../items/item.go) declares property and
+equipment interfaces plus validation, not this grant/pool composer. This example
+does not replace that module or claim to implement its full equipment interfaces;
+extraction ownership remains a question to resolve with actual consumers.
+
 ## The shape
 
 ```text
