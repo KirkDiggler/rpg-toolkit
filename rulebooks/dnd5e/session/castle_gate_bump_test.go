@@ -17,6 +17,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -204,4 +205,68 @@ func TestCastleClosingTheHeldDoorIsABump(t *testing.T) {
 	require.Equal(t, "close_door", bumped.act.Verb, "under her CloseDoor")
 	require.Equal(t, theGuardsQuestion, guardSays(t, played.to("alice")))
 	answeredUnder(t, played.to("alice"), bumped)
+}
+
+// TestCastleAClickOnTheGuardIsABump (rpg-project#835 R8): a click on a
+// blocking body sends a Move with his cell as the goal. The session walks
+// it, the step into him is the bump, and she stops on the cell before him.
+// From beside him that is no step at all. From the party start the walk
+// goes as far as the cell before him. Either way the bump, his turn and his
+// line are one act under her Move.
+func TestCastleAClickOnTheGuardIsABump(t *testing.T) {
+	t.Run("from beside him", func(t *testing.T) {
+		c := openTheCastleForTwo(t, 18)
+		gate1 := memberOf(t, c.world(t), "gate-1")
+		c.besideTheGate(t)
+
+		out, played := c.bump(t, beneathTheCastleGate)
+		require.Equal(t, session.MovementStopped, out.Status)
+		require.Equal(t, &session.Barred{Barrier: "gate-1", Cell: beneathTheCastleGate, Reason: gate1.Name + " stands in the way"}, out.Barred)
+		require.Empty(t, out.Steps, "no step past where she stood")
+		require.Equal(t, besideTheCastleGate, c.where(t, "alice"))
+		bumped := only[session.BarredAct](t, played.to("alice"))
+		require.Equal(t, "move", bumped.act.Verb, "under her Move")
+		require.Equal(t, theGuardsQuestion, guardSays(t, played.to("alice")))
+		answeredUnder(t, played.to("alice"), bumped)
+	})
+	t.Run("from the party start", func(t *testing.T) {
+		c := openTheCastleForTwo(t, 18)
+		path := c.walkInto(t, beneathTheCastleGate)
+		require.GreaterOrEqual(t, len(path), 2, "precondition: the walk has a cell before his")
+		before := path[len(path)-2]
+
+		out, played := c.bump(t, path...)
+		require.Equal(t, session.MovementStopped, out.Status)
+		require.NotNil(t, out.Barred, "the last step is the bump")
+		require.Equal(t, beneathTheCastleGate, out.Barred.Cell)
+		require.Len(t, out.Steps, len(path)-1, "every cell before his is walked")
+		require.Equal(t, before, c.where(t, "alice"), "she stops on the cell before him")
+		bumped := only[session.BarredAct](t, played.to("alice"))
+		answeredUnder(t, played.to("alice"), bumped)
+	})
+}
+
+// TestCastleAClickOnAPassableBodyIsRefused: the goal R8 opens is a cell a
+// body blocks. A body she may pass but not stop on, her ally the cleric or
+// the neutral pedlar, is still refused before any step, as the composition's
+// ValidateWalkEnd answers: ErrBadPosition, she has not moved, and nothing is
+// written. Neither hears a bump.
+func TestCastleAClickOnAPassableBodyIsRefused(t *testing.T) {
+	for _, who := range []string{"cleric", "pedlar"} {
+		t.Run(who, func(t *testing.T) {
+			c := openTheCastleForTwo(t, 18)
+			start := c.where(t, "alice")
+			path := c.walkInto(t, memberOf(t, c.world(t), encounter.MemberID(who)).Position)
+			c.live.mu.Lock()
+			c.live.acts = nil
+			c.live.mu.Unlock()
+
+			_, err := c.mgr.Move(context.Background(), &session.MoveInput{Session: "sess", Member: "alice", Path: path})
+			require.ErrorIs(t, err, session.ErrBadPosition, "a passable body's cell is no place to stop")
+			require.Equal(t, start, c.where(t, "alice"), "and she has not moved")
+			c.live.mu.Lock()
+			defer c.live.mu.Unlock()
+			require.Empty(t, where[session.BarredAct](c.live.acts, func(session.BarredAct) bool { return true }), "no bump is written")
+		})
+	}
 }
