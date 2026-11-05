@@ -9,6 +9,10 @@ The concrete types below describe existing boundaries. The designer-facing
 connections are proposals to test against those boundaries; they are not a
 claim that the complete keep journeys are authorable today. There is no new
 `design.md` yet. Evidence and pending decisions belong to the linked story/PR.
+The proposed composer boundary, including studio and procedural-generation
+consumers, is recorded in [ADR-0049](../../adr/0049-behavior-is-a-composer.md).
+It is not accepted architecture; the existing-component diagram below remains
+the inspected starting shape.
 
 ## What this is
 
