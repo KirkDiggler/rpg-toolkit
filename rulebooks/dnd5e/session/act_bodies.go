@@ -318,9 +318,14 @@ type DoorAct struct {
 // BarredAct is a player's attempt stopped by a body (barred,
 // rpg-project#842, the guard holds the gate R2 and R7): a step refused by a
 // member's cell or by a crossing its post holds, or a door verb a post
-// holds. The barrier heard it at once; his answer (his line, a state he
-// entered) folds as its own pieces. Its recipients are the record's: the
-// encounter scopes the beat as it scopes `heard`.
+// holds. His answer (his line, a state he entered) folds as its own
+// pieces.
+//
+// NOT SCOPED AS `heard`. A `heard` beat goes to its listener alone. The
+// barred beat's machine match is on the barrier alone, but its record entry
+// is a subject beat with the encounter's roster-wide audience, so every
+// member's stream receives this act. The session copies the record's
+// audience and filters nothing.
 type BarredAct struct {
 	// Mover is who was stopped (barred `mover`).
 	Mover Party

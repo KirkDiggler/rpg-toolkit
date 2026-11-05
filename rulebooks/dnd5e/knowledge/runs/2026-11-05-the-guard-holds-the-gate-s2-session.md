@@ -31,6 +31,7 @@ Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), 
 
 ## Mistaken
 
-- None.
+- The first push left translate's two held-door arms in place, though no composition verb returns a held error at this pin ([#2280 review](https://github.com/KirkDiggler/rpg-toolkit/pull/2280#pullrequestreview-5790690191)). Both arms and their internal test are deleted. React's paused Unlock still returns ErrDoorHeld, which it builds from DoorHeldFor without passing through translate.
+- BarredAct's doc said the beat is scoped as `heard` is ([#2280 review](https://github.com/KirkDiggler/rpg-toolkit/pull/2280#pullrequestreview-5790690191)). It is not. `heard` goes to its listener alone, while the bump matches the barrier alone and records a roster-wide subject beat. The doc now says that.
 
 — cross-team agent, on behalf of KirkDiggler
