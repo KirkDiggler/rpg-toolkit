@@ -10,9 +10,10 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
+
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/examples/items"
-	"github.com/stretchr/testify/suite"
 )
 
 type compositionSuite struct{ suite.Suite }

@@ -33,4 +33,9 @@ Slice [rpg-project#862](https://github.com/KirkDiggler/rpg-project/issues/862), 
 
 ## Mistaken
 
+- A malformed import edit was caught by go fmt before commit; the known-good test file was restored and only the import grouping reapplied — [checked test source](../../examples/items/items_test.go).
+
+- The exported-package checkpoint's local lint used the older base config; CI's merge tree included newly enabled goimports grouping from #2279. Merging main reproduced the failure locally; separating testify from local imports fixes the code without weakening the policy — [failing CI evidence](https://github.com/KirkDiggler/rpg-toolkit/actions/runs/42101345612/job/127504747950).
+- An ad hoc Markdown-link check initially mistook an inline generic Go signature for a link; excluding code spans/fences verifies the real links. The source documents did not need that false-positive edit — [experiment documentation](../../examples/items/README.md).
+
 - The initial test-only scaffold did not compile before its fixture helpers existed; this was a missing consumer, not a failing provider behavior. One line-length lint finding was corrected before publication — [fixture and tests](../../examples/items/items_test.go).
