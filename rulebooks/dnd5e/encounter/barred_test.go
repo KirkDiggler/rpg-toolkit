@@ -649,3 +649,39 @@ func TestAFightTurnAfterABumpMintsItsOwnAct(t *testing.T) {
 	require.NotEqual(t, act, turn, "his fight turn is not")
 	require.True(t, strings.HasPrefix(turn, "time:"), "it mints its own act: %s", turn)
 }
+
+// TestAWalkMayEndOnABodyItSeesBlocking is R8 (rpg-project#835): a click on
+// a blocking body sends a walk with his cell as its goal. The walk end
+// accepts it, because the last step is refused and writes the bump, and the
+// mover ends on the cell before him.
+func TestAWalkMayEndOnABodyItSeesBlocking(t *testing.T) {
+	enc := postedHall(t, bumpGuard(t))
+	held, err := enc.ObservedPassages(&ViewInput{Member: "alice"})
+	require.NoError(t, err)
+	require.Equal(t, PassageBlocked, held[postedGuard], "precondition: alice sees him blocking")
+
+	require.NoError(t, enc.ValidateWalkEnd(CellAtInput{Cell: postedPost, Mover: "alice"}), "his cell is a walk's goal")
+
+	require.NoError(t, enc.inAct("move", "", func() error {
+		act := enc.CurrentAct()
+		out, err := enc.Step(&StepInput{Member: "alice", To: postedPost, EndWalk: true})
+		stop := requireStopped(t, out, err, "the last step is the bump")
+		require.Equal(t, postedGuard, stop.Barrier)
+		for kind, corr := range bumpActs(t, enc) {
+			require.Equal(t, act, corr, "%s is in the walk's act", kind)
+		}
+		return nil
+	}))
+}
+
+// TestAWalkMayNotEndOnABodyItSeesPassThrough: nobody ends on a neutral's
+// cell that does not block, so its cell is still refused as a goal.
+func TestAWalkMayNotEndOnABodyItSeesPassThrough(t *testing.T) {
+	bystander := MemberInput{ID: "porter", Kind: KindMonster, Faction: postedGarrison, Position: postedPost, Table: holds()}
+	enc := postedHall(t, bystander)
+	held, err := enc.ObservedPassages(&ViewInput{Member: "alice"})
+	require.NoError(t, err)
+	require.Equal(t, PassagePassThrough, held["porter"], "precondition: alice sees him pass-through")
+
+	require.ErrorIs(t, enc.ValidateWalkEnd(CellAtInput{Cell: postedPost, Mover: "alice"}), ErrBadPlacement)
+}
