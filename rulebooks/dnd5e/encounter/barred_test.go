@@ -14,6 +14,7 @@ package encounter
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -580,4 +581,71 @@ func TestTheAnswerIsInTheBumpsAct(t *testing.T) {
 			require.Equal(t, act, corr, "%s is in the door verb's act", kind)
 		}
 	})
+}
+
+// guardFirst rolls the gate guard to the top of a fight's order.
+type guardFirst struct{}
+
+func (guardFirst) RollInitiative(members []MemberID) ([]MemberID, error) {
+	out := []MemberID{}
+	for _, id := range members {
+		if id == postedGuard {
+			out = append([]MemberID{id}, out...)
+			continue
+		}
+		out = append(out, id)
+	}
+
+	return out, nil
+}
+
+// TestAFightTurnAfterABumpMintsItsOwnAct: only a world-clock reaction
+// reopens the bump's act. When his answer starts a fight and he acts first,
+// his first fight turn is a driven activation of its own, a `time:` act.
+func TestAFightTurnAfterABumpMintsItsOwnAct(t *testing.T) {
+	g := bumpGuard(t)
+	g.Table["barred"] = []Answer{{Weight: 1, Say: "It's them!", Fact: string(bumpKnown)}}
+	in := postedSetup(everyoneSeesTheWholeMap{}, g)
+	in.Field.Factions = []FactionInput{{ID: postedGarrison, Mind: postedGuard}}
+	in.Field.Dispositions = []DispositionInput{{
+		Between: [2]FactionID{postedGarrison, FactionParty}, Stance: StanceNeutral,
+		Until: []UntilStep{{When: TriggerFact{Fact: bumpKnown}, Then: StanceHostile}},
+	}}
+	in.Initiative = guardFirst{}
+	enc, err := NewEncounter(in)
+	require.NoError(t, err)
+
+	var act string
+	require.NoError(t, enc.inAct("move", "", func() error {
+		act = enc.CurrentAct()
+		out := bumped(t, enc, postedPost, postedGuard)
+		require.NotNil(t, out.Formed, "precondition: his answer started a fight")
+		require.Equal(t, postedGuard, out.Formed.Order[0], "precondition: and he acts first")
+		return nil
+	}))
+
+	story, err := enc.Story(&StoryInput{Audience: "alice"})
+	require.NoError(t, err)
+	// His answer is his first answered beat; his fight turn's pick is the
+	// first one after the fight formed.
+	var answer, turn string
+	formed := false
+	for _, entry := range story {
+		var beat map[string]any
+		require.NoError(t, json.Unmarshal(entry.Payload, &beat))
+		formed = formed || beat["beat"] == BeatFightStarted
+		if beat["beat"] != BeatAnswered || beat["creature"] != string(postedGuard) {
+			continue
+		}
+		switch {
+		case answer == "":
+			answer = entry.Correlation
+		case formed && turn == "":
+			turn = entry.Correlation
+		}
+	}
+	require.Equal(t, act, answer, "his answer is in the bump's act")
+	require.NotEmpty(t, turn, "precondition: he took his fight turn")
+	require.NotEqual(t, act, turn, "his fight turn is not")
+	require.True(t, strings.HasPrefix(turn, "time:"), "it mints its own act: %s", turn)
 }

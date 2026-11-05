@@ -643,9 +643,11 @@ func (e *Encounter) runIntents(
 		//
 		// A REACTION'S PICK REOPENS ITS TRIGGER'S ACT instead (act.go, Law
 		// 2): a bump's answer is part of the verb that bumped
-		// ([Encounter.reactAct]), and so is what it does.
+		// ([Encounter.reactAct]), and so is what it does. ONLY ON THE WORLD
+		// CLOCK: a fight his answer starts is a fight of its own, and its
+		// turns mint their own acts.
 		pickVerb, intentAct := "time", ""
-		if e.reactAct != "" {
+		if e.reactAct != "" && kind == ClockWorld {
 			pickVerb, intentAct = "", e.reactAct
 		}
 		if decision.Pick != nil && (j == startJ || len(decision.Pick.Candidates) > 0) {
