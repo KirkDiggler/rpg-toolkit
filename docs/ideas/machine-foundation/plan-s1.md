@@ -15,7 +15,7 @@ Finish line: implemented module APIs, real-component scenario and refusal/reload
 - **Data:** `ComposerData` contains ordered `InstanceData{ID, Definition string, Blob machine.Blob}`. Definition is a deterministic digest of the materialized specification; it identifies which configuration the continuation belongs to, not a second mutable configuration. Reload receives the original config, refuses different instance order/configuration, and restores only validated blobs. The caller retains the immutable started configuration.
 - **Projection:** results carry committed machine steps, selected instance/pick, and deferred instance IDs. Returned selections and snapshots do not alias owned state/configuration.
 - `Observe` delivers a data-only input to every instance. If any firing transition requests a Pick, refuse with `ErrSelectionRequired`; do not silently execute or drop it. No state changes on error.
-- `Decide` previews every instance on detached blobs. Commit data-only transitions; among transitions requesting a Pick, select the first instance in authored order and preserve the losing instances' original blobs. Invoke the existing weighted picker only for that selected instance. A selected empty/ineligible table produces its existing hold, not a fallback into a lower-priority role. Return values; never execute a selected word.
+- `Decide` previews every instance on detached blobs. Commit data-only transitions; among transitions requesting a Pick, select the first instance in authored order and preserve the losing instances' original blobs. Invoke the existing weighted picker only for that selected instance. A selected empty/ineligible table produces its existing hold, not a fallback into a lower-priority role; because no row was selected, its action-producing machine step is not committed. An explicitly selected Hold row is eligible work and does commit. Return values; never execute a selected word.
 - A transition may request at most one table pick in this first composer. Refuse a definition that requests more, rather than silently losing work. No general resource-lane scheduler is claimed.
 - A failed decision leaves composer-owned state unchanged. Consumed dice or side effects in caller callbacks are not rolled back. Readers should be pure; no general transaction/compensation system is introduced.
 - Time remains caller-supplied. Retaining a blob does not promise a virtual paused clock for every timer. The patrol fixture advances its pending leg only on an arrival input; this slice does not change current encounter patrol/dwell behavior.
@@ -74,15 +74,15 @@ All tasks change the same owning module, in order. Repository-level plan/run doc
 
 **Construction:** copy materialized specs via deterministic JSON; validate IDs/order, recipe compilation, declared fact readers, referenced table keys, at most one pick per transition, positive row weights and existing row validation plus one outcome word. Empty named tables remain legal holds. Compute a stable per-spec digest. Empty composition is legal; unknown input beats still refuse.
 
-**Observation/decision:** work on cloned blobs until successful. On Decide, re-key the selected table through existing `KeyTime` semantics so no eligible action is an explained hold; restore its authored key on the result. Deep-copy the selected answer before returning. A selection error commits no blobs. Observations that produce a Pick refuse without changes. Emit only committed step results; name losing action candidates as deferred. No state observer/publisher callbacks.
+**Observation/decision:** work on cloned blobs until successful. On Decide, re-key the selected table through existing `KeyTime` semantics so no eligible action is an explained hold; restore its authored key on the result. Deep-copy the selected answer before returning. A selection error commits no blobs. A no-candidate hold preserves the selected instance's prior blob while committing data-only steps; an explicit Hold row commits normally. Observations that produce a Pick refuse without changes. Emit only committed step results; name losing action candidates as deferred. No state observer/publisher callbacks.
 
 **Data:** clone bags and optional stamps on export/import. Load must match count, ID/order and definition digest, require a known nonempty state, and validate declared bag keys/scalar kinds. It does not call Step to validate a blob or look up edited content. It does not persist compiled programs/indexes or duplicate the materialized specs in the progress data.
 
 **Tests:** `ComposerSuite` covers priority independent of weight, deferred-state preservation, data-only updates, explicit observation refusal, roll-error atomicity, unknown/nil inputs, constructor/table refusals, independent instances/copy-out, JSON reload, changed-config/order refusal and malformed blobs. Expected values are hand-checked. Use a strict scripted die that checks requested size and exhaustion; it is the only selection double.
 
-- [ ] Add focused tests, run red, then implement the real composition/data owners.
-- [ ] Run focused and full module gates and commit a working checkpoint.
-- [ ] Open the implementing draft on its first working push, linked to #866/#859.
+- [x] Add focused tests, run red, then implement the real composition/data owners.
+- [x] Run focused and full module gates and commit a working checkpoint.
+- [x] Open the implementing draft on its first working push, linked to #866/#859 (toolkit#2277).
 
 **Verification:** from `mind/behavior`: `go test -count=1 -run '^TestComposerSuite$' ./...`; `go test -race -count=1 ./...`; `golangci-lint run ./...`. Expect literal winning picks and unchanged deferred snapshots; invalid inputs return named errors, not panics or nil/nil.
 

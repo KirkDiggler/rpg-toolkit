@@ -6,10 +6,14 @@ Slice [rpg-project#866](https://github.com/KirkDiggler/rpg-project/issues/866) o
 
 - Mechanical scalar parameter metadata and producer validation, with no sampling, implicit defaults or template engine — [parameters.go](../../parameters.go).
 
+- Composer observation/ordered selection and strict private-state reload, using the actual machine and picker rather than a test coordinator — [composer.go](../../composer.go), [composer_data.go](../../composer_data.go).
+
 ## Decided
 
 - KirkDiggler approved the composer role and mechanically descriptive parameter metadata; no separate quality-profile framework is required up front — [agreement](https://github.com/KirkDiggler/rpg-project/issues/866#issuecomment-6650897115).
 - The checkpoint consumes materialized recipes/tables and keeps saved continuation separate from configuration; exact physical patrol rejoining remains a consumer/content policy rather than a universal kernel choice — [checked plan](https://github.com/KirkDiggler/rpg-project/issues/866#issuecomment-6651019347).
+
+- No-candidate holds keep the requesting continuation unchanged; explicitly selected Hold rows can progress. This preserves the distinction between receiving an opportunity and finding eligible work — [composer tests](../../composer_test.go).
 
 ## Found
 
