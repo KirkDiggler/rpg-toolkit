@@ -10,165 +10,293 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/suite"
-
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/examples/items"
+	"github.com/stretchr/testify/suite"
 )
 
 type compositionSuite struct{ suite.Suite }
 
-func (s *compositionSuite) ring(id string, level, remaining int) *item {
+func (s *compositionSuite) ring(id string, level, remaining int) *items.Item {
 	s.T().Helper()
-	out, err := composeItem(composeItemInput{
-		Definition: ringDefinition(level), State: instanceData{ID: id, Remaining: remaining},
-	})
+	state := items.Data{ID: id, DefinitionRef: ringDefinition(level).Ref, Pools: map[string]int{chargePool: remaining}}
+	item, err := items.New(ringConfig(id, level, &state))
 	s.Require().NoError(err)
-	return out.Item
+	return item
 }
 
-func (s *compositionSuite) attach(i *item, bus events.EventBus, holder string) {
+func (s *compositionSuite) attach(item *items.Item, bus events.EventBus, holder string) {
 	s.T().Helper()
-	s.Require().NoError(i.attach(context.Background(), bus, holder))
-	s.T().Cleanup(func() { s.NoError(i.detach(context.Background())) })
+	s.Require().NoError(item.Attach(context.Background(), items.AttachInput{Bus: bus, HolderID: holder}))
+	s.T().Cleanup(func() { s.NoError(item.Detach(context.Background())) })
 }
 
-// Detects a missing grant attachment, ignoring item level, or duplicating healing.
+func (s *compositionSuite) available(item *items.Item, holder string) bool {
+	s.T().Helper()
+	out, err := item.Offers(items.OffersInput{HolderID: holder})
+	s.Require().NoError(err)
+	for _, offer := range out.Grants {
+		if offer.ID == windGrant {
+			return offer.Affordable
+		}
+	}
+	return false
+}
+
+func (s *compositionSuite) rest(bus events.EventBus, holder string, trigger items.Trigger) {
+	s.T().Helper()
+	s.Require().NoError(items.RecoveryTopic.On(bus).Publish(context.Background(), items.RecoveryEvent{
+		HolderID: holder, Trigger: trigger,
+	}))
+}
+
 func (s *compositionSuite) TestConfiguredLevelFlowsThroughComposedGrantToRealHealing() {
 	for _, tc := range []struct{ level, want int }{{1, 7}, {3, 9}} {
 		s.Run(fmt.Sprintf("level_%d", tc.level), func() {
 			i := s.ring("ring-a", tc.level, 1)
-			s.False(i.available())
+			s.False(s.available(i, "non-fighter"))
 			s.attach(i, events.NewEventBus(), "non-fighter")
-			s.True(i.available())
+			s.True(s.available(i, "non-fighter"))
 			roller := &fixedRoller{face: 6}
-			out, err := i.use(useInput{Holder: "non-fighter", Roller: roller})
+			out, err := useRing(context.Background(), i, "non-fighter", roller)
 			s.Require().NoError(err)
-			s.Equal(tc.want, out.Calculation.Total)
-			s.Len(out.Calculation.Components, 2)
-			s.Equal("ring-a", out.Calculation.Components[0].Source.SourceID)
-			s.Equal("ring-a", out.Calculation.Components[1].Source.SourceID)
-			s.Equal(0, i.pool.Current)
-			s.False(i.available())
+			s.Equal(tc.want, out.Result.Total)
+			s.Len(out.Result.Components, 2)
+			s.Equal("ring-a", out.Result.Components[0].Source.SourceID)
+			s.Equal("ring-a", out.Result.Components[1].Source.SourceID)
+			s.Zero(out.Remaining)
+			s.Zero(i.Data().Pools[chargePool])
+			s.False(s.available(i, "non-fighter"))
 			s.Equal(1, roller.calls)
 		})
 	}
 }
 
-// Detects budgets accidentally keyed by the shared recipe/ability rather than item.
 func (s *compositionSuite) TestSameDefinitionItemsHaveIndependentBudgetsAndSources() {
 	bus := events.NewEventBus()
 	a, b := s.ring("ring-a", 3, 1), s.ring("ring-b", 3, 1)
 	s.attach(a, bus, "wearer")
 	s.attach(b, bus, "wearer")
-	aResult, err := a.use(useInput{Holder: "wearer", Roller: &fixedRoller{face: 6}})
+	aResult, err := useRing(context.Background(), a, "wearer", &fixedRoller{face: 6})
 	s.Require().NoError(err)
-	s.Equal(0, a.pool.Current)
-	s.Equal(1, b.pool.Current)
-	bResult, err := b.use(useInput{Holder: "wearer", Roller: &fixedRoller{face: 6}})
+	s.Zero(a.Data().Pools[chargePool])
+	s.Equal(1, b.Data().Pools[chargePool])
+	bResult, err := useRing(context.Background(), b, "wearer", &fixedRoller{face: 6})
 	s.Require().NoError(err)
-	s.Equal("ring-a", aResult.Calculation.Components[0].Source.SourceID)
-	s.Equal("ring-b", bResult.Calculation.Components[0].Source.SourceID)
-	// Characterization, not an asserted global-ID contract: these IDs reveal the
-	// context the consumer must supply around the existing effects boundary.
-	s.T().Logf("provider output IDs: %q / %q; source item IDs: ring-a / ring-b", a.outputID, b.outputID)
+	s.Equal("ring-a", aResult.Source.ItemID)
+	s.Equal("ring-b", bResult.Source.ItemID)
+	s.Equal(aResult.Source.ItemRef, bResult.Source.ItemRef)
 }
 
-// Detects premature payment/rolling, wrong-holder access, and lingering grants.
 func (s *compositionSuite) TestRefusedUsesDoNotRollOrSpend() {
 	i := s.ring("ring", 1, 1)
 	roller := &fixedRoller{face: 6}
-	_, err := i.use(useInput{Holder: "wearer", Roller: roller})
-	s.Error(err)
+	_, err := useRing(context.Background(), i, "wearer", roller)
+	s.ErrorIs(err, items.ErrUnavailable)
 	s.attach(i, events.NewEventBus(), "wearer")
-	_, err = i.use(useInput{Holder: "stranger", Roller: roller})
-	s.Error(err)
-	s.Equal(1, i.pool.Current)
+	_, err = useRing(context.Background(), i, "stranger", roller)
+	s.ErrorIs(err, items.ErrUnavailable)
+	s.Equal(1, i.Data().Pools[chargePool])
 	s.Zero(roller.calls)
-	_, err = i.use(useInput{Holder: "wearer", Roller: roller})
+	_, err = useRing(context.Background(), i, "wearer", roller)
 	s.Require().NoError(err)
-	_, err = i.use(useInput{Holder: "wearer", Roller: roller})
-	s.Error(err)
-	s.Equal(1, roller.calls, "exhaustion must refuse before dice")
-	s.Require().NoError(i.detach(context.Background()))
-	s.False(i.available())
+	_, err = useRing(context.Background(), i, "wearer", roller)
+	s.ErrorIs(err, items.ErrUnavailable)
+	s.Equal(1, roller.calls)
+	s.Require().NoError(i.Detach(context.Background()))
+	s.False(s.available(i, "wearer"))
 }
 
-// Detects lost item state or rest subscriptions that outlive their attachment.
 func (s *compositionSuite) TestTransferReloadAndRestRespectTheItemBudget() {
 	ctx, bus := context.Background(), events.NewEventBus()
 	i := s.ring("ring", 3, 1)
 	s.attach(i, bus, "old-holder")
-	_, err := i.use(useInput{Holder: "old-holder", Roller: &fixedRoller{face: 6}})
+	_, err := useRing(ctx, i, "old-holder", &fixedRoller{face: 6})
 	s.Require().NoError(err)
-	s.Require().NoError(i.detach(ctx))
-	s.Require().NoError(restTopic.On(bus).Publish(ctx, restEvent{Holder: "old-holder", Kind: shortRest}))
-	s.Zero(i.pool.Current, "detached consumer must not hear rest")
-	encoded, err := json.Marshal(i.data())
+	s.Require().NoError(i.Detach(ctx))
+	s.rest(bus, "old-holder", shortRest)
+	s.Zero(i.Data().Pools[chargePool])
+	encoded, err := json.Marshal(i.Data())
 	s.Require().NoError(err)
-	var restored instanceData
+	var restored items.Data
 	s.Require().NoError(json.Unmarshal(encoded, &restored))
-	out, err := composeItem(composeItemInput{Definition: ringDefinition(3), State: restored})
+	i, err = items.New(ringConfig("ring", 3, &restored))
 	s.Require().NoError(err)
-	i = out.Item
 	s.attach(i, bus, "new-holder")
-	s.False(i.available(), "transfer/reload must not mint a charge")
-	s.Require().NoError(restTopic.On(bus).Publish(ctx, restEvent{Holder: "old-holder", Kind: shortRest}))
-	s.Zero(i.pool.Current)
-	s.Require().NoError(restTopic.On(bus).Publish(ctx, restEvent{Holder: "new-holder", Kind: shortRest}))
-	s.Equal(1, i.pool.Current)
-	_, err = i.use(useInput{Holder: "new-holder", Roller: &fixedRoller{face: 6}})
+	s.False(s.available(i, "new-holder"))
+	s.rest(bus, "old-holder", shortRest)
+	s.Zero(i.Data().Pools[chargePool])
+	s.rest(bus, "new-holder", shortRest)
+	s.Equal(1, i.Data().Pools[chargePool])
+	_, err = useRing(ctx, i, "new-holder", &fixedRoller{face: 6})
 	s.Require().NoError(err)
-	s.Require().NoError(restTopic.On(bus).Publish(ctx, restEvent{Holder: "new-holder", Kind: longRest}))
-	s.Equal(1, i.pool.Current)
+	s.rest(bus, "new-holder", longRest)
+	s.Equal(1, i.Data().Pools[chargePool])
 }
 
-// The long-only variant is a seam test, not a newly selected ring rule.
 func (s *compositionSuite) TestRecoveryPolicyComesFromConfigurationNotAbilityRef() {
-	ctx, bus := context.Background(), events.NewEventBus()
+	bus := events.NewEventBus()
 	normal := s.ring("normal", 1, 0)
-	definition := ringDefinition(1)
-	definition.Recovery = []restKind{longRest}
-	out, err := composeItem(composeItemInput{Definition: definition, State: instanceData{ID: "long-only", Remaining: 0}})
+	cfg := ringConfig("long-only", 1, &items.Data{
+		ID: "long-only", DefinitionRef: ringDefinition(1).Ref, Pools: map[string]int{chargePool: 0},
+	})
+	pool := cfg.Definition.Pools[chargePool]
+	pool.RestoreOn = []items.Trigger{longRest}
+	cfg.Definition.Pools[chargePool] = pool
+	longOnly, err := items.New(cfg)
 	s.Require().NoError(err)
 	s.attach(normal, bus, "wearer")
-	s.attach(out.Item, bus, "wearer")
-	s.Require().NoError(restTopic.On(bus).Publish(ctx, restEvent{Holder: "wearer", Kind: shortRest}))
-	s.Equal(1, normal.pool.Current)
-	s.Zero(out.Item.pool.Current)
-	s.Require().NoError(restTopic.On(bus).Publish(ctx, restEvent{Holder: "wearer", Kind: longRest}))
-	s.Equal(1, out.Item.pool.Current)
+	s.attach(longOnly, bus, "wearer")
+	s.rest(bus, "wearer", shortRest)
+	s.Equal(1, normal.Data().Pools[chargePool])
+	s.Zero(longOnly.Data().Pools[chargePool])
+	s.rest(bus, "wearer", longRest)
+	s.Equal(1, longOnly.Data().Pools[chargePool])
 }
 
-// This rollback covers pure calculation before delivery, not distributed effects.
 func (s *compositionSuite) TestFailedCalculationReturnsTheReservedCharge() {
 	i := s.ring("ring", 1, 1)
 	s.attach(i, events.NewEventBus(), "wearer")
-	_, err := i.use(useInput{Holder: "wearer", Roller: &fixedRoller{err: errors.New("dice unavailable")}})
+	_, err := useRing(context.Background(), i, "wearer", &fixedRoller{err: errors.New("dice unavailable")})
 	s.Error(err)
-	s.Equal(1, i.pool.Current)
+	s.Equal(1, i.Data().Pools[chargePool])
 }
 
 func (s *compositionSuite) TestInvalidStateIsRefusedRatherThanClampedOrRefilled() {
 	for _, remaining := range []int{-1, 2} {
-		_, err := composeItem(composeItemInput{
-			Definition: ringDefinition(1), State: instanceData{ID: "ring", Remaining: remaining},
-		})
-		s.Error(err)
+		state := items.Data{ID: "ring", DefinitionRef: ringDefinition(1).Ref, Pools: map[string]int{chargePool: remaining}}
+		_, err := items.New(ringConfig("ring", 1, &state))
+		s.ErrorIs(err, items.ErrInvalidConfig)
 	}
-	_, err := composeItem(composeItemInput{Definition: ringDefinition(0), State: instanceData{ID: "ring", Remaining: 1}})
-	s.Error(err)
+	for _, state := range []items.Data{
+		{ID: "other", DefinitionRef: ringDefinition(1).Ref, Pools: map[string]int{chargePool: 1}},
+		{ID: "ring", DefinitionRef: ringDefinition(3).Ref, Pools: map[string]int{chargePool: 1}},
+		{ID: "ring", DefinitionRef: ringDefinition(1).Ref},
+	} {
+		_, err := items.New(ringConfig("ring", 1, &state))
+		s.ErrorIs(err, items.ErrInvalidConfig)
+	}
+	_, err := items.New(ringConfig("ring", 0, nil))
+	s.ErrorIs(err, items.ErrInvalidConfig)
 }
 
-// Detects hiding invalid authored vocabulary until after a grant becomes live.
 func (s *compositionSuite) TestInvalidRecoveryIsRefusedBeforeGrantAttachment() {
-	def := ringDefinition(1)
-	def.Recovery = []restKind{"unsupported"}
-	out, err := composeItem(composeItemInput{Definition: def, State: instanceData{ID: "ring", Remaining: 1}})
+	cfg := ringConfig("ring", 1, nil)
+	pool := cfg.Definition.Pools[chargePool]
+	pool.RestoreOn = []items.Trigger{"unsupported"}
+	cfg.Definition.Pools[chargePool] = pool
+	_, err := items.New(cfg)
+	s.ErrorIs(err, items.ErrInvalidConfig)
+}
+
+func (s *compositionSuite) TestReturnedViewsAndInputDefinitionsCannotMutateTheItem() {
+	cfg := ringConfig("ring", 3, nil)
+	i, err := items.New(cfg)
 	s.Require().NoError(err)
-	err = out.Item.attach(context.Background(), events.NewEventBus(), "wearer")
+	cfg.Definition.Grants[windGrant].Parameters[0] = '!'
+	delete(cfg.Definition.Pools, chargePool)
+	s.attach(i, events.NewEventBus(), "wearer")
+	view, err := i.Offers(items.OffersInput{HolderID: "wearer"})
+	s.Require().NoError(err)
+	s.Require().Len(view.Grants, 1)
+	view.Grants[0].Grant.Parameters[0] = '!'
+	state := i.Data()
+	state.Pools[chargePool] = 0
+	out, err := useRing(context.Background(), i, "wearer", &fixedRoller{face: 6})
+	s.Require().NoError(err)
+	s.Equal(9, out.Result.Total)
+	s.Zero(i.Data().Pools[chargePool])
+}
+
+func (s *compositionSuite) TestMissingResolverDoesNotConsumeTheGrant() {
+	i := s.ring("ring", 1, 1)
+	s.attach(i, events.NewEventBus(), "wearer")
+	_, err := items.Use[int](context.Background(), items.UseInput[int]{Item: i, HolderID: "wearer", GrantID: windGrant})
 	s.Error(err)
-	s.False(out.Item.available())
-	s.Equal(1, out.Item.pool.Current)
+	s.Equal(1, i.Data().Pools[chargePool])
+}
+
+func (s *compositionSuite) TestGrantPoolReferencesSelectTheMutationOwner() {
+	cfg := ringConfig("ring", 1, nil)
+	cfg.Definition.Grants["alternate"] = cfg.Definition.Grants[windGrant]
+	i, err := items.New(cfg)
+	s.Require().NoError(err)
+	s.attach(i, events.NewEventBus(), "wearer")
+	_, err = useRing(context.Background(), i, "wearer", &fixedRoller{face: 6})
+	s.Require().NoError(err)
+	view, err := i.Offers(items.OffersInput{HolderID: "wearer"})
+	s.Require().NoError(err)
+	s.Require().Len(view.Grants, 2)
+	s.Equal("alternate", view.Grants[0].ID)
+	s.Equal(windGrant, view.Grants[1].ID)
+	s.False(view.Grants[0].Affordable)
+	s.False(view.Grants[1].Affordable)
+	s.Zero(i.Data().Pools[chargePool])
+}
+
+func (s *compositionSuite) TestCancellationRefusesBeforeTheConsumerRuns() {
+	i := s.ring("ring", 1, 1)
+	s.attach(i, events.NewEventBus(), "wearer")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	roller := &fixedRoller{face: 6}
+	_, err := useRing(ctx, i, "wearer", roller)
+	s.ErrorIs(err, context.Canceled)
+	s.Zero(roller.calls)
+	s.Equal(1, i.Data().Pools[chargePool])
+}
+
+func (s *compositionSuite) TestInvalidDefinitionCannotCreateALiveGrant() {
+	cases := map[string]func(*items.Config){
+		"missing validator": func(c *items.Config) { c.ValidateGrant = nil },
+		"missing id":        func(c *items.Config) { c.ID = "" },
+		"missing name":      func(c *items.Config) { c.Definition.Name = "" },
+		"zero capacity":     func(c *items.Config) { c.Definition.Pools[chargePool] = items.PoolDefinition{} },
+		"unknown pool": func(c *items.Config) {
+			g := c.Definition.Grants[windGrant]
+			g.Pool = "missing"
+			c.Definition.Grants[windGrant] = g
+		},
+		"zero price": func(c *items.Config) {
+			g := c.Definition.Grants[windGrant]
+			g.Uses = 0
+			c.Definition.Grants[windGrant] = g
+		},
+		"unsupported ability": func(c *items.Config) {
+			g := c.Definition.Grants[windGrant]
+			g.Ref.ID = "unsupported"
+			c.Definition.Grants[windGrant] = g
+		},
+		"malformed parameters": func(c *items.Config) {
+			g := c.Definition.Grants[windGrant]
+			g.Parameters = []byte("!")
+			c.Definition.Grants[windGrant] = g
+		},
+	}
+	for name, change := range cases {
+		s.Run(name, func() {
+			cfg := ringConfig("ring", 1, nil)
+			change(&cfg)
+			_, err := items.New(cfg)
+			s.ErrorIs(err, items.ErrInvalidConfig)
+		})
+	}
+}
+
+func (s *compositionSuite) TestAuthoredDefinitionRoundTripsWithoutRuntimeHooks() {
+	encoded, err := json.Marshal(ringDefinition(3))
+	s.Require().NoError(err)
+	var definition items.Definition
+	s.Require().NoError(json.Unmarshal(encoded, &definition))
+	cfg := ringConfig("authored-ring", 3, nil)
+	cfg.Definition = definition
+	i, err := items.New(cfg)
+	s.Require().NoError(err)
+	s.attach(i, events.NewEventBus(), "wearer")
+	out, err := useRing(context.Background(), i, "wearer", &fixedRoller{face: 6})
+	s.Require().NoError(err)
+	s.Equal(9, out.Result.Total)
+	s.Equal("authored-ring", out.Source.ItemID)
 }
 
 func TestItemCompositionSeams(t *testing.T) { suite.Run(t, new(compositionSuite)) }

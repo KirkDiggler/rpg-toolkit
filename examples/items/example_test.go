@@ -8,42 +8,40 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/examples/items"
 )
 
 func Example_itemComposition() {
 	ctx, bus := context.Background(), events.NewEventBus()
-	out, err := composeItem(composeItemInput{
-		Definition: ringDefinition(3), State: instanceData{ID: "ring-17", Remaining: 1},
-	})
+	i, err := items.New(ringConfig("ring-17", 3, nil))
 	if err != nil {
 		panic(err)
 	}
-	i := out.Item
-	if err := i.attach(ctx, bus, "rook"); err != nil {
+	if err := i.Attach(ctx, items.AttachInput{Bus: bus, HolderID: "rook"}); err != nil {
 		panic(err)
 	}
-	result, err := i.use(useInput{Holder: "rook", Roller: &fixedRoller{face: 6}})
+	result, err := useRing(ctx, i, "rook", &fixedRoller{face: 6})
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("source: %s; healing calculation: %d\n", result.Calculation.Components[0].Source.SourceID, result.Calculation.Total)
-	fmt.Printf("charges after use: %d\n", i.data().Remaining)
-	if err := i.detach(ctx); err != nil {
+	fmt.Printf("source: %s; healing calculation: %d\n", result.Source.ItemID, result.Result.Total)
+	fmt.Printf("charges after use: %d\n", i.Data().Pools[chargePool])
+	if err := i.Detach(ctx); err != nil {
 		panic(err)
 	}
-	if err := i.attach(ctx, bus, "vale"); err != nil {
+	if err := i.Attach(ctx, items.AttachInput{Bus: bus, HolderID: "vale"}); err != nil {
 		panic(err)
 	}
-	fmt.Printf("charges after transfer: %d\n", i.data().Remaining)
-	if err := restTopic.On(bus).Publish(ctx, restEvent{Holder: "rook", Kind: shortRest}); err != nil {
+	fmt.Printf("charges after transfer: %d\n", i.Data().Pools[chargePool])
+	if err := items.RecoveryTopic.On(bus).Publish(ctx, items.RecoveryEvent{HolderID: "rook", Trigger: shortRest}); err != nil {
 		panic(err)
 	}
-	fmt.Printf("charges after old holder rests: %d\n", i.data().Remaining)
-	if err := restTopic.On(bus).Publish(ctx, restEvent{Holder: "vale", Kind: shortRest}); err != nil {
+	fmt.Printf("charges after old holder rests: %d\n", i.Data().Pools[chargePool])
+	if err := items.RecoveryTopic.On(bus).Publish(ctx, items.RecoveryEvent{HolderID: "vale", Trigger: shortRest}); err != nil {
 		panic(err)
 	}
-	fmt.Printf("charges after current holder rests: %d\n", i.data().Remaining)
-	if err := i.detach(ctx); err != nil {
+	fmt.Printf("charges after current holder rests: %d\n", i.Data().Pools[chargePool])
+	if err := i.Detach(ctx); err != nil {
 		panic(err)
 	}
 	// Output:

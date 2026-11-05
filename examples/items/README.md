@@ -1,119 +1,97 @@
-# Item composition: consumer seam probe
+# Item composition experiment
 
-A **test-only exploratory consumer**, not a public item library or production
-integration. [Keep equipment S1](https://github.com/KirkDiggler/rpg-project/issues/862)
-uses this example to inform [Proposed ADR-0048](https://github.com/KirkDiggler/rpg-toolkit/pull/2272).
+An **experimental package under `examples/`**, not an extracted production API.
+[Keep equipment S1](https://github.com/KirkDiggler/rpg-project/issues/862) uses it to
+inform [Proposed ADR-0048](https://github.com/KirkDiggler/rpg-toolkit/pull/2272).
+The first cut was test-only wiring; this cut gives that wiring an item-owned
+boundary that a separate consumer can use and challenge.
 
-The first fixture is a one-charge Second Wind ring, with an authored level and
-short-or-long-rest recovery. The user selected this fixture so we can investigate
-the seams rather than finish specifying every item rule.
-
-## Probe brief
+## The shape
 
 ```text
-item configuration + instance state
-    ├── effects.New
-    │     ├── grant_healing output: attaches/detaches an inert local offer
-    │     └── recover_pool output: attaches/detaches a targeted rest listener
-    ├── mechanics/resources.Resource: remaining/maximum charges
-    └── use: validate/pay → healing.Resolve → sourced calculation
+Definition: grants + named pools + recovery policy
+Config: definition + instance identity + optional saved Data + consumer validation
+                          │
+                     items.New
+                          │
+          Item.Attach on the caller's existing bus
+                          │
+        effects.New: one attached state, two output kinds
+                ├── grant availability
+                └── targeted pool recovery
+                          │
+          Offers: copied declarations + source + item affordability
+                          │
+          items.Use[Result]: reserve item charge
+                → consumer resolves a typed value
+                → return Result and settled budget facts
+                          │
+                caller delivers the result once
 ```
 
-The real effects composer receives a consumer-owned vocabulary. It does not
-learn item rules, the healing formula, or a new resource implementation. The
-consumer owns one item-instance budget. The real `healing.Resolve` supplies the
-calculation; the probe returns that result and **does not mutate HP**.
+The item package contains **no D&D imports, dice or HP mutation**. The test
+consumer supplies Second Wind's meaning through `ValidateGrant` and the pure
+resolver in [`fixture_test.go`](fixture_test.go), using real `healing.Resolve`.
+The item owns identity, pools, attachment, selection and accounting—not the rule.
+The fixture's grant ref is `example:abilities:second_wind`: its parameter contract
+belongs to this prototype consumer, not to the production feature persistence loader.
 
-The adapters and the local healing offer live in `_test.go`: they are proposed
-consumer wiring, not a new canonical action definition. There is no public item
-API, inventory, attunement system, class-feature migration or studio UI here.
-The existing effects/machine and mind/machine packages remain untouched.
+## Candidate API
 
-## Checks to exercise
+- **`New(Config)`** creates or strictly restores an item. `Definition` is plain
+  authored data; Config adds runtime validation and the supported recovery-trigger
+  vocabulary. Nil State explicitly creates a full-budget item; non-nil State must
+  match identity, definition and every declared pool, with in-range counts.
+- **`Item.Attach(ctx, AttachInput)` / `Detach(ctx)`** use the real effects composer
+  to attach/remove grant and recovery outputs. The caller supplies an eligible
+  holder and owns the bus. Detaching never refills the item.
+- **`Item.Offers(OffersInput)`** returns stable-order, copied grant declarations
+  with item-instance identity, definition ref, holder, remaining uses and
+  affordability. **Affordability is item-budget only**, not actor action economy
+  or all rulebook eligibility.
+- **`Use[Result](ctx, UseInput[Result])`** accepts a grant key, not caller-supplied
+  price or parameters. It reserves the item's authored cost, invokes the consumer
+  resolver, then returns its typed result and budget facts. A single generic
+  operation keeps rulebook result types out of Item without `any` results or a
+  JSON round-trip. Item and Config themselves are not generic.
+- **`Item.Data()`** returns a detached snapshot of identity, definition ref and
+  remaining pool counts. No projected offer, bus, attachment or runtime closure
+  is saved. The generated effects recipe has one state and no mutable bag.
 
-| Boundary | Observable check |
-|---|---|
-| Authored level → shared healing | Fixed d10 of 6 gives 7/9 for level-1/3 grants; no Fighter levels supplied |
-| Effects attachment → availability | Grant appears through `effects.New`/`Apply` and disappears on `Remove` |
-| Item instance → pool | Spending one of two same-definition rings leaves the other untouched |
-| Item source → result | Healing calculation identifies the particular source item |
-| Detach / transfer / reload → remaining uses | None silently refills the item |
-| Authored recovery → real bus | Matching short/long rest restores; unrelated actor and detached listener do not |
-| Same effect, alternate recovery fixture | A long-only test variant differs through configuration, not a ref switch |
-| Refused use → cost/roll | No grant or exhausted pool refuses before dice; failed pure calculation restores the fixture's reserved charge |
-
-For this probe, `Attach` supplies the eligible holder explicitly, like an
-interaction harness. It is **not a ruling** that a ring must be equipped, that a
-resting character owns every carried ring, or that detached items cannot recharge
-in production. Transfer is simulated by detaching one holder and attaching the
-same item to another. Failed-calculation refund is local probe wiring before any
-HP delivery, not a general transaction/rollback guarantee.
-
-## Run
-
-```sh
-cd examples/items
-go test -count=1 -race ./...
-go test -run Example -v ./...
-```
-
-Dependencies use real pushed-commit pseudo-versions. No `replace` or `go.work`.
-The effects pin includes the [named-input provider cleanup](https://github.com/KirkDiggler/rpg-toolkit/pull/2276):
+The consumer call looks like this (complete working code is in the fixture):
 
 ```go
-composed, err := effects.New(effects.Config{
-    Recipe:           recipe,
-    OutputVocabulary: i.vocabulary(),
-    HolderID:         holder,
-    SourceRef:        &ref,
+out, err := items.Use(ctx, items.UseInput[*dndevents.RollCalculation]{
+    Item:     ring,
+    HolderID: holderID,
+    GrantID:  "second_wind",
+    Resolve:  resolve,
 })
 ```
 
-This fixture needs no machine facts/beats or saved effect state, so those fields
-use their existing defaults; its mutable pool remains owned by the item.
-The module is an example and is not tagged or consumed by shipped code.
+`resolve` receives an `items.Offer` with the validated rule ref/parameters and
+source identity. It returns a calculation; it does not deliver healing or charge
+the item again. The result remains typed all the way back to the consumer.
 
-## Observed seams and limits
+## Instance identity and ownership
 
-| Responsibility | What this probe actually uses |
-|---|---|
-| Attach/detach and output validation | Real `effects.New`, `Apply`, `Remove`, `KindSpec` |
-| Grant and restoration meanings | Consumer-owned `grant_healing` / `recover_pool` vocabulary callbacks |
-| Item identity and remaining uses | Consumer instance ID plus real `mechanics/resources.Resource` |
-| Healing arithmetic and sourced breakdown | Real `healing.Resolve`; fixed dice only at the randomness seam |
-| Actual HP delivery and action economy | **Not integrated**; the fixture returns a calculation |
+Recipe-local `effects.Bound.ID` is not used as an item-instance ID. `Offer.Source`
+separates ItemID, ItemRef and HolderID. Two same-definition rings own independent
+resource objects; explicit grant pool references can also express sharing within
+one item without creating a second mutation owner. That representation does not
+select which future authored items should share budgets.
 
-**Identity is not supplied by the recipe.** Two instances report the identical
-provider output ID `example:items:second_wind_ring#present.0`; the consumer supplies
-`ring-a` and `ring-b` as separate item sources and owns separate pools. This is a
-local-ID boundary, not evidence that the provider promises globally unique IDs
-and breaks that promise. The probe does not abuse a content ref as instance state.
+Definitions and returned parameter buffers are copied. Editing an offered grant
+or saved pool map cannot alter the running item. Source Definition, live Item,
+saved Data and projected Offer have different responsibilities; only Item mutates
+its pools. A consumer may snapshot Data after use or recovery; there is no new
+automatic persistence or Changed-event protocol in this experiment.
 
-**The effects tool does not already contain D&D effect implementations.** Its
-consumer supplies the output vocabulary. Here the grant callback creates a local
-inert healing offer, and the recovery callback wires a rest listener. These are
-candidate adapters, not proof that a reusable grant vocabulary has been designed.
+## What the example proves
 
-**A real action consumer remains missing.** The local offer is not
-`actions.Definition`; this probe neither invents a standalone Healing arm nor
-disguises the ring as a spell. Integration with actual availability, payment,
-resolution and HP delivery is a separate design question. Class-pool coexistence
-is also not exercised against a real character; two-item independence is.
-
-**The item owns state outside the effect bag.** The saved item record contains
-only its ID and remaining charges; its authored definition is supplied again.
-The current effects `Changed` hook does not report these external pool changes.
-A production consumer must define that reporting/persistence seam. One-state
-attachment suffices here: no state transition is needed, so this does not prove
-that item usage needs a new machine or that existing machines should be unified.
-
-**The assertions detect a real wiring error.** Removing the holder filter from
-the recovery callback makes the transfer/reload test fail: the old holder's rest
-refills the transferred ring. Restoring that filter returns the suite to green.
-This demonstrates the fixture's targeted-rest behavior, not the final equipment
-eligibility policy.
-
-The runnable example verifies this output:
+The first fixture is a one-charge ring with authored level and short-or-long-rest
+recovery. The consumer gives no Fighter class level. With a controlled d10 of 6,
+level-1/3 grants return healing calculations of 7/9. The runnable example verifies:
 
 ```text
 source: ring-17; healing calculation: 9
@@ -123,5 +101,52 @@ charges after old holder rests: 0
 charges after current holder rests: 1
 ```
 
-A passing probe is not approval to promote this fixture or the effects module.
-The journal and ADR carry the reasoning and the next architectural decision.
+The suite exercises authored-definition JSON round-trip, independent items,
+explicit pool references, copied views, strict restoration, cancellation,
+invalid declarations, exhausted/wrong-holder
+refusal before dice, and refund of a failed pure calculation. A long-only fixture
+proves recovery is configured rather than selected by ability ref; it does not
+change the first ring's chosen normal recovery. An import-boundary test keeps
+rulebooks and dice outside the non-test package.
+
+Three targeted mutants are caught: remove the recovery holder filter (the wrong
+holder refills the ring), spend zero instead of the declared cost (successful use
+leaves a charge), or expose the internal parameter buffer (editing an offer
+corrupts later resolution). Restoring each returns the suite to green.
+
+## Boundaries still to learn
+
+- This is **not `actions.Definition` integration**. No production action-economy
+  payment, native acquisition, resolution-machine or HP-delivery path is claimed.
+  A production adapter must not charge the item both here and elsewhere.
+- The resolver contract is deliberately narrow: validate/compute a typed outcome
+  without world delivery, reentrant item mutation or publication of the result.
+  Only then is a failed local reservation safely refunded. Arbitrary effects,
+  interruption/reaction workflows and distributed rollback are not proved.
+- The first package generates grant/recovery outputs; arbitrary passive or
+  stateful item-effect recipes are **not** accepted by this API yet. A contrasting
+  consumer must establish that shape instead of the package claiming universality.
+- Attachment explicitly supplies the holder. This does not settle worn/carried/
+  attuned eligibility or whether detached items recharge in the game.
+- Class-pool coexistence is not exercised against a real character. Two-item
+  independence and a no-class-level consumer are narrower evidence.
+- The generated recipe needs no state transitions. This is not an argument for
+  another machine or extraction of a shared machine.
+
+## Run
+
+```sh
+cd examples/items
+go test -count=1 -race ./...
+go test -count=1 -run Example -v ./...
+go vet ./...
+golangci-lint run ./...
+```
+
+The effects cleanup [#2276](https://github.com/KirkDiggler/rpg-toolkit/pull/2276)
+is merged; the consumer pins its canonical main commit through a real
+pseudo-version. Examples are not tagged. No `replace` or `go.work`, no provider
+changes in this package cut, and no promotion implied by passing tests.
+
+[Experiment plan](PLAN.md). The journal and ADR record what the consumer teaches;
+these names and interfaces remain free to change before extraction.
