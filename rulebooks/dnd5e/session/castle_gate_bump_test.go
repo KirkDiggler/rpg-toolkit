@@ -46,6 +46,22 @@ func guardSays(t *testing.T, acts []session.Act) string {
 	return answers[0].body.Say
 }
 
+// answeredUnder requires gate-1's answer to bumped to share its act
+// correlation (rpg-project#842): the barred act, his state change and his
+// line are one act on the stream, never a fresh `time` act, because the web
+// keys the bubble on it.
+func answeredUnder(t *testing.T, acts []session.Act, bumped found[session.BarredAct]) {
+	t.Helper()
+	require.NotEmpty(t, bumped.act.Act, "the bump carries an act correlation")
+	answers := where[session.TableAnswer](acts, func(a session.TableAnswer) bool { return a.Who == gate1Party && a.Say != "" })
+	require.Len(t, answers, 1, "gate-1 says one line")
+	require.Equal(t, bumped.act.Act, answers[0].act.Act, "his line shares the bump's act")
+	require.Equal(t, bumped.act.Verb, answers[0].act.Verb, "under the same verb")
+	for _, st := range where[session.StateChange](acts, func(s session.StateChange) bool { return s.Party == gate1Party }) {
+		require.Equal(t, bumped.act.Act, st.act.Act, "his state change shares the bump's act")
+	}
+}
+
 // bump is alice's Move through gate-1's cell, played: the walk aims past
 // him, as a click on the courtyard does.
 func (c *freeRoamCastle) bump(t *testing.T, path ...spatial.Position) (*session.MoveOutput, beat) {
@@ -95,13 +111,16 @@ func TestCastleTheBumpSpeaks(t *testing.T) {
 	require.Len(t, turned, 1, "his machine turns once")
 	require.Equal(t, "challenged", turned[0].body.Machine.To, "he is challenged")
 	require.Equal(t, theGuardsQuestion, guardSays(t, alice), "and asks what she wants")
+	answeredUnder(t, alice, bumped)
 	require.Equal(t, "challenged", stateOf(t, c.world(t), "gate-1"), "the record holds him challenged")
 
 	again, second := c.bump(t, beneathTheCastleGate, pastTheCastleGate)
 	require.Equal(t, session.MovementStopped, again.Status, "challenged, he still holds")
 	require.NotNil(t, again.Barred, "and the second bump is barred")
-	only[session.BarredAct](t, second.to("alice"))
+	again2 := only[session.BarredAct](t, second.to("alice"))
 	require.Equal(t, theGuardsRepeat, guardSays(t, second.to("alice")), "the second bump gets the shorter line")
+	answeredUnder(t, second.to("alice"), again2)
+	require.NotEqual(t, bumped.act.Act, again2.act.Act, "each bump is its own act")
 }
 
 // TestCastleTheHeldCrossingIsABump: the opening's free cell is his to bar.
@@ -159,6 +178,7 @@ func TestCastleOpeningTheHeldDoorIsABump(t *testing.T) {
 	require.Equal(t, session.BarredAct{Mover: aliceParty, Barrier: gate1Party, Door: castleGateDoor, Verb: "open"}, bumped.body)
 	require.Equal(t, "open_door", bumped.act.Verb, "under her OpenDoor")
 	require.Equal(t, theGuardsQuestion, guardSays(t, played.to("alice")))
+	answeredUnder(t, played.to("alice"), bumped)
 }
 
 // TestCastleClosingTheHeldDoorIsABump: CloseDoor on the open gate he holds
@@ -183,4 +203,5 @@ func TestCastleClosingTheHeldDoorIsABump(t *testing.T) {
 	require.Equal(t, session.BarredAct{Mover: aliceParty, Barrier: gate1Party, Door: castleGateDoor, Verb: "close"}, bumped.body)
 	require.Equal(t, "close_door", bumped.act.Verb, "under her CloseDoor")
 	require.Equal(t, theGuardsQuestion, guardSays(t, played.to("alice")))
+	answeredUnder(t, played.to("alice"), bumped)
 }
