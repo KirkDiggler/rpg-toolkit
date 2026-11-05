@@ -1,6 +1,6 @@
 # Item package experiment — next cut
 
-Authority: the operator requested continuing the item example after merging the effects cleanup. This is an exploratory package under `examples/`, not extraction or production integration. [Slice #862](https://github.com/KirkDiggler/rpg-project/issues/862), [Proposed ADR](https://github.com/KirkDiggler/rpg-toolkit/pull/2272).
+Authority: the operator requested continuing the item example after merging the effects cleanup. This is an exploratory package under `examples/`, not extraction or production integration. [Slice #862](https://github.com/KirkDiggler/rpg-project/issues/862), [ADR-0048: accepted ownership boundaries, API still experimental](https://github.com/KirkDiggler/rpg-toolkit/pull/2272).
 
 ## Shape to exercise
 

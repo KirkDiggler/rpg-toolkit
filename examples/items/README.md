@@ -2,7 +2,7 @@
 
 An **experimental package under `examples/`**, not an extracted production API.
 [Keep equipment S1](https://github.com/KirkDiggler/rpg-project/issues/862) uses it to
-inform [Proposed ADR-0048](https://github.com/KirkDiggler/rpg-toolkit/pull/2272).
+inform [ADR-0048's accepted composition/ownership decision](https://github.com/KirkDiggler/rpg-toolkit/pull/2272).
 The first cut was test-only wiring; this cut gives that wiring an item-owned
 boundary that a separate consumer can use and challenge.
 
