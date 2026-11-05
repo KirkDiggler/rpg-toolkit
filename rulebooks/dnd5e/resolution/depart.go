@@ -380,6 +380,6 @@ func concentrationSpell(ref *core.Ref) bool {
 	if ref == nil || ref.Module != refs.Module || ref.Type != refs.TypeSpells {
 		return false
 	}
-	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.Spell(ref.ID)})
+	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: ref.ID})
 	return definition != nil && definition.Cast != nil && definition.Cast.Concentration != nil
 }

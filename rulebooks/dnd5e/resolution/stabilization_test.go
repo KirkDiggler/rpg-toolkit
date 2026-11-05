@@ -46,7 +46,7 @@ func (s *CastActionTestSuite) TestStabilizationDeliveryAndRefusal() {
 	} {
 		s.Run(tc.name, func() {
 			f := s.fixtures()
-			caster := baneCaster(tc.actions, 2)
+			caster := baneCaster(tc.actions)
 			caster.Conditions = []json.RawMessage{baneOwnerJSON(s.T(), bardID, 5)}
 			target := f.saver(tc.hp)
 			target.DeathSaveState = &tc.state
@@ -130,7 +130,7 @@ func (s *CastActionTestSuite) TestStabilizationTargets() {
 	s.Require().NoError(room.PlaceEntity(activationTestEntity{id: heroID}, spatial.Position{X: 3, Y: 1}))
 	target := f.saver(0)
 	target.DeathSaveState = &saves.DeathSaveState{Failures: 2}
-	input := &StabilizationTargetsInput{Room: room, CasterID: bardID, Candidates: []string{heroID, bardID, wolfID, "missing"}, Participants: []Participant{{Character: target}, {Character: baneCaster(1, 2)}, {Monster: f.wolfData()}}}
+	input := &StabilizationTargetsInput{Room: room, CasterID: bardID, Candidates: []string{heroID, bardID, wolfID, "missing"}, Participants: []Participant{{Character: target}, {Character: baneCaster(1)}, {Monster: f.wolfData()}}}
 	before, err := json.Marshal(target)
 	s.Require().NoError(err)
 	answers, err := StabilizationTargets(s.ctx, input)

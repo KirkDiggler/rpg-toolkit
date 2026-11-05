@@ -18,11 +18,11 @@ import (
 // OWN pin, and only a consumer linking everything together picks the newer
 // version by MVS. So the suite was green against a shape the product had
 // stopped building — which is this slice's recurring theme, one layer over.
-func rectRegion(id string, col, row, w, h int) encounter.RegionInput {
+func rectRegion(id string, col, w, h int) encounter.RegionInput {
 	cells := make([]spatial.Position, 0, w*h)
 	for r := 0; r < h; r++ {
 		for c := 0; c < w; c++ {
-			cells = append(cells, spatial.Position{X: float64(col + c), Y: float64(row + r)})
+			cells = append(cells, spatial.Position{X: float64(col + c), Y: float64(r)})
 		}
 	}
 	return encounter.RegionInput{

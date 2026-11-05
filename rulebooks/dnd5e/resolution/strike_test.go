@@ -6,11 +6,12 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -66,7 +67,7 @@ func actionWorld(t *testing.T, targetX float64) encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
-			Regions: []encounter.RegionInput{rectRegion("room", 0, 0, 30, 10)},
+			Regions: []encounter.RegionInput{rectRegion("room", 0, 30, 10)},
 		},
 		Members: []encounter.MemberInput{
 			{ID: wolfID, Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 1}},
@@ -137,7 +138,7 @@ func resolveActionDefinitionAgainstMonster(
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
-			Regions: []encounter.RegionInput{rectRegion("room", 0, 0, 10, 10)},
+			Regions: []encounter.RegionInput{rectRegion("room", 0, 10, 10)},
 		},
 		Members: []encounter.MemberInput{
 			{ID: wolfID, Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 1}},

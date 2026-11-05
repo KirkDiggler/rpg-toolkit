@@ -9,6 +9,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
@@ -26,7 +28,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
-	"github.com/stretchr/testify/suite"
 )
 
 const (
@@ -169,7 +170,7 @@ func (s *ActivationTestSuite) world(members ...encounter.MemberInput) encounter.
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
-			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
+			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 10, 10)},
 		},
 		Members: members,
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},

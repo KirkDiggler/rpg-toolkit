@@ -66,13 +66,13 @@ func monsterConditionRefs(data *monster.Data) []string {
 
 // dirtyMonster finds one monster's sheet among the sheets an output handed
 // back, failing the test when it came back clean.
-func (s *ActivationTestSuite) dirtyMonster(out *Output, id string) *monster.Data {
+func (s *ActivationTestSuite) dirtyMonster(out *Output) *monster.Data {
 	for _, sheet := range out.DirtyMonsters {
-		if sheet.ID == id {
+		if sheet.ID == goblinID {
 			return sheet
 		}
 	}
-	s.FailNow("monster sheet came back clean", "%q is not among the dirty monsters", id)
+	s.FailNow("monster sheet came back clean", "%q is not among the dirty monsters", goblinID)
 	return nil
 }
 
@@ -101,7 +101,7 @@ func (s *ActivationTestSuite) TestADrivenMonsterDisengageLandsDisengagingOnItsSh
 	s.Equal([]dnd5eEvents.ConditionSource{dnd5eEvents.ConditionSourceCombatAbility}, heard,
 		"the player's Disengage source, and one application")
 
-	goblin := s.dirtyMonster(out, goblinID)
+	goblin := s.dirtyMonster(out)
 	// Nimble Escape lands its own trait condition beside the Disengaging it
 	// spent (dnd5e #2032, picked up by the v0.213.2 pin): the sheet says what
 	// granted the disengage as well as the disengage.
@@ -194,10 +194,10 @@ func (s *ActivationTestSuite) TestASecondDrivenDisengageReplacesTheFirst() {
 	first, err := s.run(drivenDisengage(), s.drivenWorld(), s.drivenCast(monsters.NewGoblin(goblinID).ToData()))
 	s.Require().NoError(err)
 
-	second, err := s.run(drivenDisengage(), s.drivenWorld(), s.drivenCast(s.dirtyMonster(first, goblinID)))
+	second, err := s.run(drivenDisengage(), s.drivenWorld(), s.drivenCast(s.dirtyMonster(first)))
 	s.Require().NoError(err)
 
-	goblin := s.dirtyMonster(second, goblinID)
+	goblin := s.dirtyMonster(second)
 	// The trait condition rides along once (#2032); the REPLACEMENT claim is
 	// the Disengaging itself.
 	s.Equal([]string{refs.MonsterTraits.NimbleEscape().String(), refs.Conditions.Disengaging().String()},
@@ -237,7 +237,7 @@ func (s *ActivationTestSuite) TestADrivenDisengagePreventsTheOpportunityAttack()
 	activated, err := s.run(drivenDisengage(), world, s.drivenCast(monsters.NewGoblin(goblinID).ToData()))
 	s.Require().NoError(err)
 
-	moved := walk(s.dirtyMonster(activated, goblinID))
+	moved := walk(s.dirtyMonster(activated))
 	s.Empty(moved.Reactions, "a Disengaging goblin provokes nothing")
 	s.True(moved.OAPrevented, "the fold names the prevention")
 }

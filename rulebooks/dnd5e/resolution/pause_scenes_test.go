@@ -190,7 +190,7 @@ func postHitOnce(t *testing.T, bus events.EventBus) {
 // pausedMultiattack is a two-swing multiattack whose first swing hits a
 // concentrating caster holding Fog Cloud, who fails the check, and then poses
 // a post-hit reaction.
-func (s *ConcentrationTestSuite) pausedMultiattack() (*Output, encounter.EncounterData) {
+func (s *ConcentrationTestSuite) pausedMultiattack() *Output {
 	hold := conditions.NewConcentratingCondition(heroID, refs.Spells.FogCloud().String(), "Fog Cloud", 600)
 	holdJSON, err := hold.ToJSON()
 	s.Require().NoError(err)
@@ -218,7 +218,7 @@ func (s *ConcentrationTestSuite) pausedMultiattack() (*Output, encounter.Encount
 		},
 	}, newSurface(bus))
 	s.Require().NoError(err)
-	return out, world
+	return out
 }
 
 // TestAPostHitInsideASequenceReportsTheSettledSwingWithThePause: the swing
@@ -226,7 +226,7 @@ func (s *ConcentrationTestSuite) pausedMultiattack() (*Output, encounter.Encount
 // pause, on the paused output's sequence; the area that hold kept up closes
 // at the pause.
 func (s *ConcentrationTestSuite) TestAPostHitInsideASequenceReportsTheSettledSwingWithThePause() {
-	out, _ := s.pausedMultiattack()
+	out := s.pausedMultiattack()
 	s.Require().NotNil(out.Posed)
 	s.Equal(PausePostHit, out.Posed.Kind)
 
@@ -249,7 +249,7 @@ func (s *ConcentrationTestSuite) TestAPostHitInsideASequenceReportsTheSettledSwi
 // Decline() tells the paused swing's continued half — every hit field zero —
 // then the second swing, and nothing that was told at the pause.
 func (s *ConcentrationTestSuite) TestTheResumeReportsOnlyWhatSettledAfterThePause() {
-	out, _ := s.pausedMultiattack()
+	out := s.pausedMultiattack()
 	s.Require().NotNil(out.Posed)
 
 	// The second claw's d20 and damage: the resumed machine rolls with the
@@ -402,14 +402,14 @@ func (s *MovementTestSuite) TestDecliningAnOpportunitySpendsNothing() {
 // the cast once with every target.
 func (s *ResistancePoseTestSuite) TestASaveOfferInsideACastResumesTheCast() {
 	fixtures := s.fixtures()
-	saver := fixtures.saver(14, s.resistanceJSON(heroID, "cleric-1"))
+	saver := fixtures.saver(14, s.resistanceJSON())
 	roller := &countingCastRoller{facedRoller: facedRoller{d20: 10, other: 4}}
 	machine, err := NewAction(&ActionInput{
 		Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{heroID, wolfID}, Roller: roller,
 	})
 	s.Require().NoError(err)
 
-	out, err := fixtures.resolve(saver, machine, baneCost(), baneCaster(1, 2))
+	out, err := fixtures.resolve(saver, machine, baneCost(), baneCaster(1))
 	s.Require().NoError(err)
 	s.Require().NotNil(out.Posed)
 	s.Nil(out.Outcome, "a cast is one told unit, told when it finishes")
@@ -420,7 +420,7 @@ func (s *ResistancePoseTestSuite) TestASaveOfferInsideACastResumesTheCast() {
 
 	resumed, err := Resume(&ResumeInput{Pause: *out.Posed, Answer: Take(""), Roller: roller})
 	s.Require().NoError(err)
-	resumedOut, err := fixtures.resolve(saver, resumed, nil, baneCaster(1, 2))
+	resumedOut, err := fixtures.resolve(saver, resumed, nil, baneCaster(1))
 	s.Require().NoError(err)
 	s.Require().Nil(resumedOut.Posed)
 	outcome := resumedOut.Outcome.(CastOutcome)
@@ -533,7 +533,7 @@ func TestEveryPauseWritesOneHeader(t *testing.T) {
 			Roller: &countingCastRoller{facedRoller: facedRoller{d20: 10, other: 4}},
 		})
 		require.NoError(t, err)
-		out, err := fixtures.resolve(fixtures.saver(14, suite.resistanceJSON(heroID, "cleric-1")), machine, baneCost(), baneCaster(1, 2))
+		out, err := fixtures.resolve(fixtures.saver(14, suite.resistanceJSON()), machine, baneCost(), baneCaster(1))
 		require.NoError(t, err)
 		require.NotNil(t, out.Posed)
 		cast := check(t, *out.Posed, site{machineCast, PauseSaveRoll})
@@ -645,7 +645,7 @@ func (s *ConcentrationTestSuite) resolveCastScene(
 	participants []Participant, machine Machine, cost *Cost, bus events.EventBus,
 ) *Output {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field: encounter.FieldInput{Canvas: hexCanvas(), Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)}},
+		Field: encounter.FieldInput{Canvas: hexCanvas(), Regions: []encounter.RegionInput{rectRegion("room-1", 0, 10, 10)}},
 		Members: []encounter.MemberInput{
 			{ID: heroID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: allyID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 2}},
@@ -759,7 +759,7 @@ func (s *ConcentrationTestSuite) TestAPostHitInsideACastTellsTheHitsBreakAtThePa
 	cost.Profile = definition.Cost
 	cast := []Participant{
 		{Character: s.fixtures().saver(40, s.holding(heroID, wolfID)...)},
-		{Character: baneCaster(1, 2)}, {Monster: s.fixtures().wolfData()},
+		{Character: baneCaster(1)}, {Monster: s.fixtures().wolfData()},
 	}
 	machine, err := NewAction(&ActionInput{
 		Definition: *definition, AttackerID: bardID, TargetIDs: []string{heroID},

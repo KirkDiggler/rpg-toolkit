@@ -64,7 +64,7 @@ func (s *ConcentrationTestSuite) TestAFogCloudReportsOneOpenedAreaAndWritesNoShe
 		Machine: machine,
 		Cost:    castCost(),
 		Participants: []Participant{
-			{Character: fixtures.saver(14)}, {Monster: fixtures.wolfData()}, {Character: baneCaster(1, 2)},
+			{Character: fixtures.saver(14)}, {Monster: fixtures.wolfData()}, {Character: baneCaster(1)},
 		},
 		Capabilities: encounter.Capabilities{
 			Initiative:    orderAsGiven{},
@@ -147,7 +147,7 @@ func (s *ConcentrationTestSuite) TestARecastClosesTheOldAreaAndOpensTheNew() {
 	hold := conditions.NewConcentratingCondition(bardID, refs.Spells.FogCloud().String(), "Fog Cloud", 600)
 	holdJSON, err := hold.ToJSON()
 	s.Require().NoError(err)
-	bard := baneCaster(1, 2)
+	bard := baneCaster(1)
 	bard.Conditions = append(bard.Conditions, holdJSON)
 
 	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.FogCloud, SpellSaveDC: spellSaveDC})

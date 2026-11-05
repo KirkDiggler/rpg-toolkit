@@ -569,13 +569,14 @@ func (m *strikeMachine) afterAttackChain(ctx context.Context, folded dnd5eEvents
 		return nil, fmt.Errorf("resolve attack contributions: %w", err)
 	}
 	bonus := folded.AttackBonus
-	components := []dnd5eEvents.RollComponent{
-		{Source: d20Source, Dice: d20.Trace},
-		{
+	components := make([]dnd5eEvents.RollComponent, 0, 2+len(resolved.Components))
+	components = append(components,
+		dnd5eEvents.RollComponent{Source: d20Source, Dice: d20.Trace},
+		dnd5eEvents.RollComponent{
 			Source:   dnd5eEvents.RollSource{Ref: cloneCoreRef(&m.in.Definition.Ref), Name: m.in.Definition.Name},
 			Modifier: &bonus,
 		},
-	}
+	)
 	components = append(components, resolved.Components...)
 	calculation := dnd5eEvents.NewRollCalculation(components)
 	if err := dnd5eEvents.ValidateRollCalculation(calculation); err != nil {
@@ -963,7 +964,8 @@ func (m *strikeMachine) nextCondition(index int) (Step, error) {
 		return publishPreparedCondition(
 			prepared, m.cast, m.in.TargetID, dnd5eEvents.ConditionSourceDamage,
 			func(replaced []ImposedEffect) (Step, error) {
-				imposed := append(replaced, prepared.atStake(m.in.TargetID))
+				imposed := replaced
+				imposed = append(imposed, prepared.atStake(m.in.TargetID))
 				m.outcome.Conditions = append(m.outcome.Conditions, ConditionOutcome{
 					Ref: application.Ref, Applied: true, Imposed: imposed,
 				})

@@ -65,7 +65,7 @@ func (s *DamageCustodyTestSuite) biteOnBus(
 	attack := data.Actions[0]
 
 	return resolveOn(s.ctx, &Input{
-		World:        s.roomWith(encounter.MemberID(wolfID), encounter.MemberID(target.ID)),
+		World:        s.roomWith(encounter.MemberID(target.ID)),
 		Participants: []Participant{{Monster: data}, {Monster: target}},
 		Machine: NewStrike(&StrikeInput{
 			AttackerID: wolfID,
@@ -186,7 +186,7 @@ func (s *DamageCustodyTestSuite) TestANegativeDealtTotalLandsAsZero() {
 
 	target := monsters.NewWolf(secondWolfID).ToData()
 	out, err := resolveOn(s.ctx, &Input{
-		World:        s.roomWith(encounter.MemberID(wolfID), encounter.MemberID(target.ID)),
+		World:        s.roomWith(encounter.MemberID(target.ID)),
 		Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Monster: target}},
 		Machine: NewStrike(&StrikeInput{
 			AttackerID: wolfID, TargetID: target.ID, Definition: definition,
@@ -248,7 +248,7 @@ func (s *DamageCustodyTestSuite) TestTheStrikeOutcomeOwnsThePublisherTraceAfterT
 
 	target := monsters.NewWolf(secondWolfID).ToData()
 	out, err := resolveOn(s.ctx, &Input{
-		World:        s.roomWith(encounter.MemberID(wolfID), encounter.MemberID(target.ID)),
+		World:        s.roomWith(encounter.MemberID(target.ID)),
 		Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Monster: target}},
 		Machine: NewStrike(&StrikeInput{
 			AttackerID: wolfID,
@@ -902,7 +902,7 @@ func (s *DamageCustodyTestSuite) TestTwoPoolsUseOneFoldAndOneApplication() {
 	}
 
 	out, err := resolveOn(s.ctx, &Input{
-		World: s.roomWith(encounter.MemberID(wolfID), encounter.MemberID(target.ID)),
+		World: s.roomWith(encounter.MemberID(target.ID)),
 		Participants: []Participant{
 			{Monster: monsters.NewWolf(wolfID).ToData()},
 			{Monster: target},
@@ -945,7 +945,7 @@ func (s *DamageCustodyTestSuite) TestTypedOutcomePreservesMixedVulnerabilityAndI
 	)
 	target := monsters.NewWolf(secondWolfID).ToData()
 	out, err := resolveOn(s.ctx, &Input{
-		World:        s.roomWith(encounter.MemberID(wolfID), encounter.MemberID(target.ID)),
+		World:        s.roomWith(encounter.MemberID(target.ID)),
 		Participants: []Participant{{Monster: monsters.NewWolf(wolfID).ToData()}, {Monster: target}},
 		Machine: NewStrike(&StrikeInput{
 			AttackerID: wolfID,
@@ -986,7 +986,7 @@ func (s *DamageCustodyTestSuite) TestARagingTargetsResistanceReadsTheEventsDamag
 	world, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
-			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
+			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 10, 10)},
 		},
 		Members: []encounter.MemberInput{
 			{ID: heroID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 5}},
@@ -1155,14 +1155,14 @@ func (s *DamageCustodyTestSuite) addFlatOnBus(bus events.EventBus, amount int, t
 // roomWith puts two monsters a cell apart. Monster-versus-monster on purpose:
 // it keeps a character's AC chain out of the arithmetic under test, and the
 // damage fold is the same fold whoever is swinging.
-func (s *DamageCustodyTestSuite) roomWith(attacker, target encounter.MemberID) encounter.EncounterData {
+func (s *DamageCustodyTestSuite) roomWith(target encounter.MemberID) encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
-			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
+			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 10, 10)},
 		},
 		Members: []encounter.MemberInput{
-			{ID: attacker, Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 5}},
+			{ID: encounter.MemberID(wolfID), Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 5}},
 			{ID: target, Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 6}},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},

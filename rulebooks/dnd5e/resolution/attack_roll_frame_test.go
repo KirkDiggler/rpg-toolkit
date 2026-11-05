@@ -68,7 +68,6 @@ func (s *FrameTestSuite) TestAttackActionFactsReadTheWeapon() {
 
 	s.Equal(contributions.Known(true), attackActionFacts(dagger().Attack, true).Opportunity,
 		"opportunity is the caller's, not the profile's")
-
 }
 
 // TestAttackActionFactsThrownWeaponIsNotARangedWeapon: a thrown handaxe is not

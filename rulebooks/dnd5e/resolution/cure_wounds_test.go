@@ -9,6 +9,8 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -20,13 +22,12 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
-	"github.com/stretchr/testify/require"
 )
 
 func TestHealingPublicationFailureDoesNotPromiseRollback(t *testing.T) {
 	ctx := context.Background()
 	bus := events.NewEventBus()
-	stored := baneCaster(1, 2)
+	stored := baneCaster(1)
 	stored.HitPoints = 1
 	sheet, err := character.Load(ctx, stored)
 	require.NoError(t, err)
@@ -61,7 +62,7 @@ func (s *CastActionTestSuite) TestCureWoundsMonsterTypesAndConcentration() {
 	} {
 		s.Run(tc.name, func() {
 			f := s.fixtures()
-			caster := baneCaster(1, 2)
+			caster := baneCaster(1)
 			caster.Conditions = []json.RawMessage{baneOwnerJSON(s.T(), bardID, 5)}
 			ch, err := character.Load(s.ctx, caster)
 			s.Require().NoError(err)
@@ -118,7 +119,7 @@ func (s *CastActionTestSuite) TestCureWoundsMonsterTypesAndConcentration() {
 
 func (s *CastActionTestSuite) TestCureWoundsPhysicalBarrierRefusesBeforePayment() {
 	f := s.fixtures()
-	caster := baneCaster(1, 2)
+	caster := baneCaster(1)
 	ch, err := character.Load(s.ctx, caster)
 	s.Require().NoError(err)
 	definition := ch.CastDefinition(spells.CureWounds)
@@ -172,7 +173,7 @@ func (s *CastActionTestSuite) TestHealingTargetsDoesNotRequireCreatureClassifica
 			room := spatial.NewBasicRoom(spatial.BasicRoomConfig{ID: "healing-targets", Grid: spatial.NewHexGrid(spatial.HexGridConfig{Width: 8, Height: 8})})
 			s.Require().NoError(room.PlaceEntity(activationTestEntity{id: bardID}, spatial.Position{X: 2, Y: 1}))
 			s.Require().NoError(room.PlaceEntity(activationTestEntity{id: wolfID}, spatial.Position{X: 3, Y: 1}))
-			answers, err := HealingTargets(s.ctx, &HealingTargetsInput{Room: room, CasterID: bardID, Candidates: []string{wolfID}, Participants: []Participant{{Character: baneCaster(1, 2)}, {Monster: target}}})
+			answers, err := HealingTargets(s.ctx, &HealingTargetsInput{Room: room, CasterID: bardID, Candidates: []string{wolfID}, Participants: []Participant{{Character: baneCaster(1)}, {Monster: target}}})
 			s.Require().NoError(err)
 			if tc.want {
 				s.Equal(map[string]bool{wolfID: true}, answers)

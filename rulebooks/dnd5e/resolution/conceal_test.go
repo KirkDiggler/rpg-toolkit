@@ -59,12 +59,12 @@ func concealedWorld(t *testing.T) encounter.EncounterData {
 		Field: encounter.FieldInput{
 			Canvas: hexCanvas(),
 			Regions: []encounter.RegionInput{
-				rectRegion("hall", 0, 0, 6, 6),
-				rectRegion("vault", 6, 0, 6, 6),
+				rectRegion("hall", 0, 6, 6),
+				rectRegion("vault", 6, 6, 6),
 			},
 			Concealments: []encounter.ConcealmentInput{{
 				ID: "vault-secret", Checks: []encounter.CheckApproach{{Ability: "perception", DC: 12}},
-				Cells: rectRegion("vault", 6, 0, 6, 6).Cells,
+				Cells: rectRegion("vault", 6, 6, 6).Cells,
 			}},
 		},
 		Members: []encounter.MemberInput{

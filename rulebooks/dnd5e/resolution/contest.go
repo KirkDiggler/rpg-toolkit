@@ -1290,7 +1290,7 @@ func (m *contestMachine) resolve(ability abilities.Ability, dc int, save SaveOut
 		AtStake:   atStake,
 	}
 
-	done := func() (Step, error) { return Done{Outcome: outcome}, nil }
+	done := func() Step { return Done{Outcome: outcome} }
 
 	// deliverDamage is the damage phase both branches share: roll it, apply it,
 	// say what landed, answer what came back, then tail-call `then`. Named once
@@ -1311,22 +1311,26 @@ func (m *contestMachine) resolve(ability abilities.Ability, dc int, save SaveOut
 
 	if outcome.Succeeded {
 		if m.in.Gate.OnSuccess != saves.Half {
-			return done()
+			return done(), nil
 		}
 
-		return deliverDamage(true, func(context.Context) (Step, error) { return done() })
+		return deliverDamage(true, func(context.Context) (Step, error) { return done(), nil })
 	}
 
-	deliverMove := func() (Step, error) {
+	// The error is deferred, not absent: imposeMove hands back a Gather that
+	// runs — and can fail — inside the step machine, and the signature is
+	// payForMove's continuation shape. unparam's always-nil read is the
+	// forced one. (#2254)
+	deliverMove := func() (Step, error) { //nolint:unparam // the signature is forced; the error is the Gather's
 		if m.in.Move == nil {
-			return done()
+			return done(), nil
 		}
 
 		return imposeMove(*m.in.Move, m.in.Cause, m.cast, m.in.SaverID,
 			func(directed ImposedEffect) (Step, error) {
 				outcome.Imposed = append(outcome.Imposed, directed)
-				return done()
-			}, done), nil
+				return done(), nil
+			}, func() (Step, error) { return done(), nil }), nil
 	}
 
 	payTheMove := func() (Step, error) {
@@ -1338,8 +1342,8 @@ func (m *contestMachine) resolve(ability abilities.Ability, dc int, save SaveOut
 			deliverMove,
 			func(unpaid ImposedEffect) (Step, error) {
 				outcome.Imposed = append(outcome.Imposed, unpaid)
-				return done()
-			}, done), nil
+				return done(), nil
+			}, func() (Step, error) { return done(), nil }), nil
 	}
 
 	deliverRemoval := func() (Step, error) {

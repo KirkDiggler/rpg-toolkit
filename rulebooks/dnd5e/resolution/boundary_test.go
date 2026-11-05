@@ -7,13 +7,14 @@ import (
 	"context"
 	"testing"
 
+	"github.com/stretchr/testify/suite"
+
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
-	"github.com/stretchr/testify/suite"
 )
 
 type BoundaryTestSuite struct {
@@ -88,7 +89,7 @@ func (s *BoundaryTestSuite) world() encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
-			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
+			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 10, 10)},
 		},
 		Members: []encounter.MemberInput{
 			{ID: heroID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
