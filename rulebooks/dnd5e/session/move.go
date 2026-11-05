@@ -179,8 +179,8 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		return nil, fmt.Errorf("move: %w", ErrNotYourTurn)
 	}
 
-	if err = validateGoal(scope.enc, encounter.MemberID(in.Member), in.Path[len(in.Path)-1]); err != nil {
-		return nil, fmt.Errorf("move destination: %w", err)
+	if err = scope.enc.ValidateWalkEnd(encounter.CellAtInput{Mover: encounter.MemberID(in.Member), Cell: in.Path[len(in.Path)-1]}); err != nil {
+		return nil, fmt.Errorf("move destination: %w", translate(err))
 	}
 
 	var cost *walkCost
@@ -275,33 +275,6 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		Saved:        report,
 		Delivery:     delivery,
 	}, nil
-}
-
-// validateGoal refuses a walk whose goal is a known body the walker may pass
-// but never stop on (a seen ally's cell), before any step is taken
-// ([encounter.Encounter.ValidateWalkEnd]).
-//
-// A GOAL A BODY BLOCKS IS WALKED (rpg-project#835 R8): a click on a blocking
-// body sends a Move with his cell as the goal, and the answer is the bump,
-// not a refusal. When the composition's own fold says the goal is closed to
-// this walker ([encounter.PassageBlocked]), the walk goes ahead and the
-// step into the cell meets the body there, which writes `barred` and stops
-// the walker on the cell before. This decides nothing of its own: the
-// passage is the composition's answer, and a wall or a shut door on the
-// goal is still refused by the step in its own words.
-func validateGoal(enc *encounter.Encounter, mover encounter.MemberID, goal spatial.Position) error {
-	refusal := enc.ValidateWalkEnd(encounter.CellAtInput{Mover: mover, Cell: goal})
-	if refusal == nil {
-		return nil
-	}
-	fact, err := enc.CellAt(encounter.CellAtInput{Mover: mover, Cell: goal})
-	if err != nil {
-		return translate(err)
-	}
-	if fact.Passage == encounter.PassageBlocked {
-		return nil
-	}
-	return translate(refusal)
 }
 
 // walkCost is what one walk costs its walker, and the sheet that will be
