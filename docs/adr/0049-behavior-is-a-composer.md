@@ -52,24 +52,46 @@ contract as hand-authored ones, rather than require a second runtime language.
   generation precedent, not an existing general behavior library or a promise
   that those measurement fixtures become hand-editable.
 
-### Related decisions
+### Composition-era foundation
 
-[ADR-0016](0016-behavior-system-architecture.md) is an earlier proposed behavior
-architecture. This proposal revisits the composition concern, **not** its
-`BehaviorContext`, fixed priority categories, event-publishing interface or
-multiple AI paradigms. The current package godoc and code, rather than those
-illustrative interfaces, describe the implemented system. No status or
-supersession change to ADR-0016 is made while this proposal remains open.
+The starting model is **tools composed from tools, not a new mind application**.
+This proposal argues from the current contracts and inspected code:
 
-[ADR-0043](0043-a-monsters-turn-has-a-driver.md), including its one-driver
-amendment, remains the execution boundary. The composer is not a second turn
-driver or replacement action economy.
-[ADR-0047](0047-encounter-owns-location-knowledge.md) supplies the ownership
-boundary for interpreting spatial testimony; this proposal does not reinstate
-historical arrival-correction behavior or move geometry into mind.
-[ADR-0014](0014-environment-selectables-integration.md) supplies the relevant
-principle that selection chooses generation parameters/profiles rather than
-replacing generation; its old example APIs are not adopted here.
+- The [toolkit's layering contract](../../CLAUDE.md#how-live-play-is-layered)
+  separates leaves, compositions and the host seam; each layer absorbs wiring
+  so the layer beneath it does not have to.
+- [`play/`](../../play/README.md) provides focused, value-returning leaves with
+  explicit ownership and refusals. It is a model for boundaries, not a promise
+  that a composition automatically inherits every leaf's guarantees.
+- [`world`](../../world/doc.go) demonstrates a small composer over independent
+  tools and supplied rulebook decisions. Its particular act loop is not an API
+  being transplanted into behavior.
+- The current [encounter contract](../../rulebooks/dnd5e/encounter/doc.go)
+  describes its composition and its ownership of location knowledge. Those
+  current responsibilities, not an older arrival-correction design, ground the
+  refusals below.
+- The inspected execution callback is
+  [`Driver.Act(MonsterView) (Decision, error)`](../../rulebooks/dnd5e/encounter/turndriver.go),
+  consumed through the current table/intent path. That is a fact about the
+  existing code, not proof that an older design named "driver" is still the
+  architectural foundation or that this exact API must remain forever.
+
+### Historical context, not inherited authority
+
+[ADR-0016](0016-behavior-system-architecture.md),
+[ADR-0014](0014-environment-selectables-integration.md) and
+[ADR-0043](0043-a-monsters-turn-has-a-driver.md) record earlier investigation
+stages. They are not parent contracts for this proposal. Their example
+interfaces, priority categories, application shapes and generation machinery
+are not revived here. The older
+[location-knowledge record](0047-encounter-owns-location-knowledge.md) is history
+too; current behavior is grounded in the encounter contract above.
+
+**Correction to the initial draft:** it used older ADRs as present-day support;
+the operator's review identified the shift to composition and "tools and not
+applications" as the relevant foundation. The proposal now stands on that
+current model and its own consumer need, rather than inheriting authority from
+matching terminology. Earlier records and their statuses remain unchanged.
 
 ## Alternatives
 

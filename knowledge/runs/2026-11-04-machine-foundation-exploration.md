@@ -27,4 +27,5 @@ Story [rpg-project#859](https://github.com/KirkDiggler/rpg-project/issues/859). 
 
 ## Mistaken
 
-- None observed; the explored connections are explicitly proposals rather than a claim that the current generic step already supplies richer encounter inputs or consequences — [scope](https://github.com/KirkDiggler/rpg-project/issues/859).
+- 2026-11-04: none observed; the explored connections are explicitly proposals rather than a claim that the current generic step already supplies richer encounter inputs or consequences — [scope](https://github.com/KirkDiggler/rpg-project/issues/859).
+- 2026-11-05: the initial ADR-0049 borrowed standing authority from older ADRs because names/principles looked related; operator review identified different architectural eras, so the proposal now cites current play/world/layering and inspected execution/knowledge contracts, with older ADRs explicitly historical and unchanged — [visible correction](../../docs/adr/0049-behavior-is-a-composer.md#historical-context-not-inherited-authority).
