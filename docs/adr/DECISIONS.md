@@ -65,12 +65,6 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
   concept.*
 - **0005** — Effects compose from shared behavioural components while staying
   distinct domain types.
-- **[0048-equipment-granted-abilities.md](0048-equipment-granted-abilities.md)**
-  *(accepted — composition/ownership only)* — Items compose inspectable grants
-  and instance-owned pools; the rules consumer owns ability meaning and delivery.
-  Authored configuration, live state, saved state and views have distinct roles.
-  *Rule: reuse behavior without moving its meaning or duplicating mutation owners.*
-  Prototype APIs, extraction home and production integration remain open.
 - **0006** — Features: a registry for definitions, entity-centric storage for
   ownership. No central who-has-what table.
 - **0007** — `ProcessRestoration(trigger)` replaced `ProcessShortRest`/
@@ -85,6 +79,12 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
   standard `ToData`/`LoadFromData` round-trip — no injected "hydrator". *Rule:
   apply the existing serialise↔runtime pattern one level up rather than inventing
   a subsystem.*
+- **[0048-equipment-granted-abilities.md](0048-equipment-granted-abilities.md)**
+  *(accepted — composition/ownership only)* — Items compose inspectable grants
+  and instance-owned pools; the rules consumer owns ability meaning and delivery.
+  Authored configuration, live state, saved state and views have distinct roles.
+  *Rule: reuse behavior without moving its meaning or duplicating mutation owners.*
+  Prototype APIs, extraction home and production integration remain open.
 
 ## Combat
 
