@@ -48,7 +48,7 @@ func familyOf(beat string) (Family, bool) {
 		encounter.BeatSaved, encounter.BeatActivated, encounter.BeatActivationResult,
 		encounter.BeatSpoke, string(encounter.OutcomeDeathSave), encounter.BeatLooted,
 		encounter.BeatHeld, encounter.BeatDropped, encounter.BeatDoor, encounter.BeatEquipmentChanged,
-		encounter.BeatStayed, encounter.BeatSnuck, encounter.BeatRested:
+		encounter.BeatStayed, encounter.BeatSnuck, encounter.BeatRested, encounter.BeatBarred:
 		return FamilyAct, true
 	case string(encounter.OutcomeStruck), string(encounter.OutcomeMissed), string(encounter.OutcomeWarded):
 		return FamilyAct, true // FamilyReaction when the beat carries a reaction ref
@@ -152,6 +152,8 @@ func decodePieces(recipient, tag, beat string, payload []byte) ([]piece, error) 
 		return one(actPiece(DropAct{By: member(p.Member), Prop: prop(p.Prop), Cell: p.Position}))
 	case encounter.BeatDoor:
 		return doorPiece(payload)
+	case encounter.BeatBarred:
+		return barredPiece(payload)
 	case encounter.BeatEquipmentChanged:
 		var p struct {
 			Member string `json:"member"`
@@ -212,6 +214,33 @@ func actPiece(body ActBody) piece { return piece{family: FamilyAct, body: body} 
 
 // statePiece is a FamilyState piece.
 func statePiece(body StateChange) piece { return piece{family: FamilyState, body: body} }
+
+// barredPiece is a bump (barred): one act naming the mover, the barrier, and
+// the refused cell for a step or the door and verb for a door verb. A beat
+// naming no mover or no barrier, or neither a cell nor a door, is
+// unreadable, never a blank line: the writer names both parties and one of
+// the two places every time.
+func barredPiece(payload []byte) ([]piece, error) {
+	var p struct {
+		Mover   string            `json:"mover"`
+		Barrier string            `json:"barrier"`
+		Cell    *spatial.Position `json:"cell"`
+		Door    string            `json:"door"`
+		Verb    string            `json:"verb"`
+	}
+	if err := json.Unmarshal(payload, &p); err != nil {
+		return nil, err
+	}
+	if p.Mover == "" || p.Barrier == "" {
+		return nil, fmt.Errorf("names no mover or no barrier")
+	}
+	if p.Cell == nil && p.Door == "" {
+		return nil, fmt.Errorf("names neither a cell nor a door")
+	}
+	return one(actPiece(BarredAct{
+		Mover: member(p.Mover), Barrier: member(p.Barrier), Cell: p.Cell, Door: p.Door, Verb: p.Verb,
+	}))
+}
 
 // machinePiece is a creature's machine entering a state (state): one state
 // piece naming the creature, the state it left, the state it entered and

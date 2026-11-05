@@ -56,6 +56,14 @@ type CloseDoorOutput struct {
 	// one would be the place a formation went unrecorded.
 	Formed *Formed `json:"formed,omitempty"`
 
+	// Refused is present when a post holds the door against Member
+	// (rpg-project#842, the guard holds the gate R7): the attempt is the
+	// bump. The door is unchanged and Door.State is the state it is still
+	// in. It is an answer, never an error: the `barred` beat was written,
+	// the holder heard it at once, and what his answer made is in
+	// Discovered, Formed and the act stream.
+	Refused *DoorRefusal `json:"refused,omitempty"`
+
 	Saved    SaveReport     `json:"saved"`
 	Delivery DeliveryReport `json:"delivery"`
 }
@@ -73,6 +81,10 @@ type CloseDoorOutput struct {
 // composition against every cell the door stands on (reach zero meaning
 // adjacent), after the probe law and before the state check — so a hand across
 // the room is told it cannot reach rather than that the door is shut.
+//
+// A DOOR A POST HOLDS against Member is answered, not refused
+// (rpg-project#842): the output carries [CloseDoorOutput.Refused], the door
+// is unchanged, and the attempt is a `barred` beat the holder hears at once.
 //
 // CLOSING DOES NOT LOCK. A beaten lock stays beaten; shutting a door gives an
 // ordinary closed door. That ruling is the composition's and this seam adds
@@ -120,6 +132,7 @@ func (m *Manager) CloseDoor(ctx context.Context, in *CloseDoorInput) (*CloseDoor
 		Door:       Door{ID: closed.Door, State: string(closed.State)},
 		Discovered: projectDiscoveries(closed.IntelDeltas),
 		Formed:     projectFormed(closed.Formed),
+		Refused:    projectRefusal(closed.Refused),
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil

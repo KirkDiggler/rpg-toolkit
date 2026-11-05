@@ -385,6 +385,8 @@ func (s *MoveTurnClockSuite) TestABumpOnTheTurnClockPaysNoMovement() {
 	s.Require().NoError(err, "a body in the way is a stop, not a refusal")
 	s.Equal(session.MovementStopped, out.Status)
 	s.Contains(out.StopReason, "stands in the way", "the stop says a body held the cell")
+	s.Require().NotNil(out.Barred, "the bump is an answer on the output")
+	s.Equal(skel, out.Barred.Cell, "refused into his cell")
 	s.Require().NotEmpty(out.Steps)
 	s.Equal(*first, out.Steps[len(out.Steps)-1].Position, "the step before him stays")
 	s.Equal(*first, s.where("alice"))

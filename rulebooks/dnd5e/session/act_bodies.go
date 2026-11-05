@@ -315,6 +315,28 @@ type DoorAct struct {
 	Roll *Roll
 }
 
+// BarredAct is a player's attempt stopped by a body (barred,
+// rpg-project#842, the guard holds the gate R2 and R7): a step refused by a
+// member's cell or by a crossing its post holds, or a door verb a post
+// holds. The barrier heard it at once; his answer (his line, a state he
+// entered) folds as its own pieces. Its recipients are the record's: the
+// encounter scopes the beat as it scopes `heard`.
+type BarredAct struct {
+	// Mover is who was stopped (barred `mover`).
+	Mover Party
+	// Barrier is the body in the way (barred `barrier`).
+	Barrier Party
+	// Cell is the cell a step was refused into (barred `cell`). Nil for a
+	// door verb, which names its door instead.
+	Cell *spatial.Position
+	// Door is the door a door verb was refused at (barred `door`), empty
+	// for a step.
+	Door string
+	// Verb is the door verb refused (barred `verb`: `open`, `close`,
+	// `unlock`), empty for a step.
+	Verb string
+}
+
 // EquipAct is an item drawn or stowed (equipment-changed).
 type EquipAct struct {
 	// By is whose equipment changed (equipment-changed `member`).
@@ -793,6 +815,7 @@ func (LootAct) isActBody()      {}
 func (HoldAct) isActBody()      {}
 func (DropAct) isActBody()      {}
 func (DoorAct) isActBody()      {}
+func (BarredAct) isActBody()    {}
 func (EquipAct) isActBody()     {}
 func (StayAct) isActBody()      {}
 func (SneakAct) isActBody()     {}

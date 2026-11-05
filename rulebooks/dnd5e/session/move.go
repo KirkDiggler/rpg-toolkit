@@ -104,6 +104,16 @@ type MoveOutput struct {
 	// cells were not attempted: a fight member does not free-roam.
 	Formed *Formed `json:"formed,omitempty"`
 
+	// Barred is present when a body stopped the walk (rpg-project#842, the
+	// guard holds the gate R2): a member on the next cell, or a crossing a
+	// post holds. The walker did not take that step, Status is
+	// [MovementStopped], StopReason is Barred.Reason, and the remaining cells
+	// were not attempted. It is an answer, never an error: the bump is a
+	// `barred` beat the barrier heard at once, and what his answer made
+	// (his line, an intel change, a fight in Formed, an ending in Outcome)
+	// is in this output and the act stream like any other step's.
+	Barred *Barred `json:"barred,omitempty"`
+
 	// Saved names what was persisted.
 	Saved SaveReport `json:"saved"`
 
@@ -261,6 +271,7 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		Discovered:   nilIfEmpty(res.discovered),
 		Outcome:      res.outcome,
 		Formed:       res.formed,
+		Barred:       res.barred,
 		Saved:        report,
 		Delivery:     delivery,
 	}, nil
@@ -322,7 +333,26 @@ type walkResult struct {
 	discovered   map[string]Discovery
 	outcome      *Outcome
 	formed       *Formed
+	barred       *Barred
 	joinedCombat bool
+}
+
+// Barred is a walk stopped by a body ([MoveOutput.Barred]): the
+// composition's [encounter.StepStop], carried as written.
+type Barred struct {
+	// Barrier is the body in the way: the member on the cell, or for a held
+	// crossing the nearest holder the walker sees, else the nearest holder.
+	// It is the one member the `barred` beat landed on.
+	Barrier string `json:"barrier"`
+
+	// Cell is the cell the step was aimed at and refused into: the
+	// barrier's own cell, or the far cell of a held crossing.
+	Cell spatial.Position `json:"cell"`
+
+	// Reason is the public sentence the walker is told: "<name> stands in
+	// the way", "<name> bars the way", or "someone ..." for a body the
+	// walker does not see.
+	Reason string `json:"reason"`
 }
 
 // runWalk steps a member along a path, stopping at the first fight, the first
@@ -463,6 +493,24 @@ func (m *Manager) runWalk(
 			// moved in memory for the steps already taken, but that encounter is
 			// discarded unsaved, so the persisted world is untouched.
 			return nil, refusedStep(i, len(path), cell, err)
+		}
+
+		// A BODY STOPPED THE STEP (rpg-project#842), READ BEFORE Stepped.To:
+		// a stopped step names the walker's own cell at both ends, so reading
+		// it as a step would walk her onto the cell she already stands on and
+		// on to the next. Nothing moved and nothing is paid; what the
+		// barrier's answer made is news like any step's.
+		if stepped.Stopped != nil {
+			res.barred = &Barred{
+				Barrier: string(stepped.Stopped.Barrier),
+				Cell:    stepped.Stopped.Cell,
+				Reason:  stepped.Stopped.Reason,
+			}
+			res.stopReason = stepped.Stopped.Reason
+			mergeDiscoveries(res.discovered, projectDiscoveries(stepped.IntelDeltas))
+			res.outcome = projectOutcome(stepped.Outcome)
+			res.formed = projectFormed(stepped.Formed)
+			return res, nil
 		}
 
 		if clock.Kind == encounter.ClockTurn {
