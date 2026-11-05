@@ -36,6 +36,8 @@ current factory/registry paths, and full load/round-trip expectations.
 
 ## Current-reference documentation
 
+- [Mind architecture walkthrough](architecture/components/mind.md) — overview
+  with zoom-ins on one machine, behavior composition, parameters and saved progress
 - [Architecture overview](architecture/overview.md) — modules, layer direction,
   host boundary, and clearly labelled pending migrations
 - [Data model](architecture/data-model.md) — runtime/data and
