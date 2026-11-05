@@ -32,7 +32,7 @@ same guard that execution asks.
 Construction names the consumer vocabulary separately from the instance data:
 
 ```go
-composed, err := effects.Compose(effects.ComposeInput{
+composed, err := effects.New(effects.Config{
     Recipe:            recipe,
     MachineVocabulary: factsAndBeats,
     OutputVocabulary:  outputKinds,
@@ -47,7 +47,7 @@ For a fresh instance, omit `Parameters` and `State`: the recipe's bag defaults
 and initial state are used. A nil `SourceRef` means no applying source.
 Construction still validates before attachment; call `Apply` with the bus.
 
-Direct machine consumers use `machine.New(machine.NewInput{Program: program,
+Direct machine consumers use `machine.New(machine.Config{Program: program,
 HolderID: holderID})`. A supplied `Bag` remains owned by that machine without
 copying; nil requests a fresh default bag. `State` defaults to initial, and
 `Apply` retains responsibility for refusing unknown/terminal states.

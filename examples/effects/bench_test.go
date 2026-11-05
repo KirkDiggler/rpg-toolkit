@@ -45,7 +45,7 @@ func BenchmarkBeatTurnEnd(b *testing.B) {
 	ctx := context.Background()
 	newRaging := func(b *testing.B) events.EventBus {
 		bag := machine.Bag{machine.KeyRoundActivated: 1, machine.KeySawTurnEnd: true}
-		c, err := effects.Compose(effects.ComposeInput{
+		c, err := effects.New(effects.Config{
 			Recipe: rageRecipe(), MachineVocabulary: rageVocabulary(), OutputVocabulary: outputVocabulary(),
 			HolderID: holder, Parameters: bag, State: stRaging,
 		})

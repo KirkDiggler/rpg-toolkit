@@ -169,7 +169,7 @@
 //
 // # Machine lifecycle
 //
-// New takes a NewInput naming Program, HolderID, SourceRef, Bag and State.
+// New takes a Config naming Program, HolderID, SourceRef, Bag and State.
 // Program is non-nil and comes from Recipe.Compile. Nil SourceRef means no
 // applying content. Empty State means the initial state; nil Bag gets a fresh
 // default bag, while a supplied bag (from Program.NewBag) is used without copying.

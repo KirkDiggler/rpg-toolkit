@@ -47,8 +47,8 @@ type Machine struct {
 	onChanged    []func(context.Context) error
 }
 
-// NewInput names the validated program and instance state used to make a machine.
-type NewInput struct {
+// Config names the validated program and instance state used to make a machine.
+type Config struct {
 	// Program must be non-nil and obtained from Recipe.Compile.
 	Program *Program
 	// HolderID identifies the entity whose beats this instance follows.
@@ -66,7 +66,7 @@ type NewInput struct {
 // New returns an unattached machine from input. It preserves a supplied bag's
 // ownership and selects defaults only for a nil Bag or empty State. It performs
 // no additional validation; Apply validates the selected state before subscribing.
-func New(input NewInput) *Machine {
+func New(input Config) *Machine {
 	state := input.State
 	if state == "" {
 		state = input.Program.Initial()
