@@ -4,7 +4,7 @@ Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), 
 
 ## Shipped
 
-- `go.mod` pins encounter at the pseudo-version of #2278's head 99898e6c, `v0.177.1-0.20261105193737-99898e6c7f97`, with no replace. Earlier pushes pinned 71b133ae and dcd8bfd6. It becomes the encounter tag before merge.
+- `go.mod` pins encounter at the pseudo-version of #2278's head d610e5d6, `v0.177.1-0.20261105195202-d610e5d6d288`, with no replace. Earlier pushes pinned 71b133ae, dcd8bfd6 and 99898e6c. It becomes the encounter tag before merge.
 - Move reads the encounter's `Stopped` before `Stepped.To` ([`move.go:503`](https://github.com/KirkDiggler/rpg-toolkit/blob/a906f47c/rulebooks/dnd5e/session/move.go#L503)). A stopped step names the walker's own cell at both ends, so reading it as a step walked her onto her own cell and on down the path. The stop sets [`MoveOutput.Barred`](https://github.com/KirkDiggler/rpg-toolkit/blob/a906f47c/rulebooks/dnd5e/session/move.go#L115) (`barred`: `barrier`, `cell`, `reason`), `Status` stopped and `StopReason`. Nothing is paid, and the bump's intel, fight and ending ride the output.
 - OpenDoor, CloseDoor and Unlock carry [`Refused`](https://github.com/KirkDiggler/rpg-toolkit/blob/a906f47c/rulebooks/dnd5e/session/doors.go#L474) (`refused`: `holder`, `reason`) and return no error on a held door.
 - Unlock still asks `DoorHeldFor` first, so a held lock throws no check and poses no Guidance pause. It now calls the verb anyway ([`doors.go:325`](https://github.com/KirkDiggler/rpg-toolkit/blob/a906f47c/rulebooks/dnd5e/session/doors.go#L325)), and the encounter writes the bump.
