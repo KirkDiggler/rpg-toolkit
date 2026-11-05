@@ -169,8 +169,11 @@
 //
 // # Machine lifecycle
 //
-// New makes a Machine for one holder from a Program, a bag and a state. An
-// empty state means the initial state.
+// New takes a NewInput naming Program, HolderID, SourceRef, Bag and State.
+// Program is non-nil and comes from Recipe.Compile. Nil SourceRef means no
+// applying content. Empty State means the initial state; nil Bag gets a fresh
+// default bag, while a supplied bag (from Program.NewBag) is used without copying.
+// State refusal still occurs at Apply; construction does not attach anything.
 //
 //   - Apply subscribes each tracker, plus one handler per beat that the
 //     recipe's transitions name. If any subscription fails, it undoes the

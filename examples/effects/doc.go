@@ -10,6 +10,17 @@
 // The design is design.md on the idea branch docs/idea-composable-conditions,
 // in https://github.com/KirkDiggler/rpg-toolkit/tree/docs/idea-composable-conditions/docs/ideas/composable-conditions
 //
+// # Construction
+//
+// Compose takes one ComposeInput. Recipe, MachineVocabulary and OutputVocabulary
+// name the authored structure and the consumer's words; HolderID and SourceRef
+// name this instance's recipient and applying content. Parameters fills its bag
+// over the recipe defaults. State selects a saved state; empty means initial.
+// Nil Parameters uses the defaults, and nil SourceRef means no source.
+//
+// Compose returns a *Composed and an error; it does not attach to a bus. Named
+// fields keep fresh construction and restoration readable at the call site.
+//
 // # Composed
 //
 // Composed is the condition a registry builds. It owns one machine, the

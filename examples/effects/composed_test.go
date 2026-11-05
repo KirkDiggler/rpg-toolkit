@@ -41,7 +41,10 @@ type rig struct {
 
 func newRig(s *suite.Suite, r machine.Recipe, ov effects.OutputVocabulary) *rig {
 	source := &core.Ref{Module: "dnd5e", Type: "features", ID: "rage"}
-	c, err := effects.Compose(r, rageVocabulary(), ov, holder, source, nil, "")
+	c, err := effects.Compose(effects.ComposeInput{
+		Recipe: r, MachineVocabulary: rageVocabulary(), OutputVocabulary: ov,
+		HolderID: holder, SourceRef: source,
+	})
 	s.Require().NoError(err)
 	rg := &rig{s: s, ctx: context.Background(), bus: events.NewEventBus(), c: c}
 	_, err = removedTopic.On(rg.bus).Subscribe(rg.ctx, func(_ context.Context, e removed) error {
@@ -268,7 +271,10 @@ func (s *composeSuite) TestRefusals() {
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
-			_, err := effects.Compose(tc.recipe, rageVocabulary(), outputVocabulary(), holder, nil, tc.params, "")
+			_, err := effects.Compose(effects.ComposeInput{
+				Recipe: tc.recipe, MachineVocabulary: rageVocabulary(), OutputVocabulary: outputVocabulary(),
+				HolderID: holder, Parameters: tc.params,
+			})
 			s.Require().Error(err)
 			s.Contains(err.Error(), tc.want)
 		})
@@ -282,7 +288,9 @@ func (s *composeSuite) TestAKeyOnlyAnOutputReadsIsRead() {
 		Kind: kindAdvantage, When: &machine.Guard{Flag: "is_frenzied"}, Params: jsontext.Value(`{"on":"saving_throws"}`),
 	}))
 	r.Bag["is_frenzied"] = false
-	_, err := effects.Compose(r, rageVocabulary(), outputVocabulary(), holder, nil, nil, "")
+	_, err := effects.Compose(effects.ComposeInput{
+		Recipe: r, MachineVocabulary: rageVocabulary(), OutputVocabulary: outputVocabulary(), HolderID: holder,
+	})
 	s.Require().NoError(err)
 }
 
@@ -297,8 +305,10 @@ func (s *composeSuite) TestToJSONIsTheFlatBlobAndLoadsBack() {
 
 	var b machine.Blob
 	s.Require().NoError(json.Unmarshal(data, &b))
-	loaded, err := effects.Compose(rageRecipe(), rageVocabulary(), outputVocabulary(),
-		b.MemberID, b.Source, b.Bag, b.State)
+	loaded, err := effects.Compose(effects.ComposeInput{
+		Recipe: rageRecipe(), MachineVocabulary: rageVocabulary(), OutputVocabulary: outputVocabulary(),
+		HolderID: b.MemberID, SourceRef: b.Source, Parameters: b.Bag, State: b.State,
+	})
 	s.Require().NoError(err)
 	again, err := loaded.ToJSON()
 	s.Require().NoError(err)

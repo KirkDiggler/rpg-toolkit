@@ -29,7 +29,7 @@ func newRageRig(s *suite.Suite, r machine.Recipe) *rageRig {
 	p, err := r.Compile(rageVocabulary())
 	s.Require().NoError(err)
 	rig := &rageRig{s: s, ctx: context.Background(), bus: events.NewEventBus()}
-	rig.m = machine.New(p, holder, rageSource(), nil, "")
+	rig.m = machine.New(machine.NewInput{Program: p, HolderID: holder, SourceRef: rageSource()})
 	rig.m.OnTransition(func(_ context.Context, t machine.Transitioned) error {
 		rig.seen = append(rig.seen, t)
 		return nil
