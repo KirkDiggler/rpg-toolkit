@@ -168,7 +168,7 @@ func sequenceInitials(items []jsontext.Value, parameters map[string]jsontext.Val
 			return nil, fmt.Errorf("item[%d]: %w", i, err)
 		}
 		r := sequenceResolver{item: validated, parameters: parameters}
-		raw, err := r.value(initial, "body.recipe.initial")
+		raw, err := r.value(initial, "body/recipe/initial")
 		if err != nil {
 			return nil, fmt.Errorf("item[%d]: %w", i, err)
 		}
@@ -199,7 +199,7 @@ func expandSequenceItem(id string, index int, item jsontext.Value, next string,
 		out.Vocabulary.Beats[beat] = machine.BeatSpec{}
 		out.Completions[key] = beat
 	}
-	r := sequenceResolver{item: item, parameters: parameters, next: next, done: done}
+	r := sequenceResolver{item: item, parameters: parameters, next: next, done: done, nextSites: make(map[string]bool)}
 	raw, err := r.value(template.body, "body")
 	if err != nil {
 		return err
@@ -216,7 +216,7 @@ func expandSequenceItem(id string, index int, item jsontext.Value, next string,
 	}
 	for _, name := range slices.Sorted(maps.Keys(body.Recipe.States)) {
 		state := body.Recipe.States[name]
-		if err := scopeSequenceState(&state, body, index, next); err != nil {
+		if err := scopeSequenceState(&state, body, index, sequencePath("body/recipe/states", name), r.nextSites); err != nil {
 			return fmt.Errorf("state %q: %w", name, err)
 		}
 		key := sequenceName(index, name)
@@ -231,15 +231,14 @@ func expandSequenceItem(id string, index int, item jsontext.Value, next string,
 	return nil
 }
 
-func scopeSequenceState(state *machine.State, body sequenceBody, index int, next string) error {
+func scopeSequenceState(state *machine.State, body sequenceBody, index int, path string, nextSites map[string]bool) error {
 	for i := range state.Transitions {
 		t := &state.Transitions[i]
-		if t.To != "" {
-			if _, local := body.Recipe.States[t.To]; local {
-				t.To = sequenceName(index, t.To)
-			} else if t.To != next {
+		if t.To != "" && !nextSites[fmt.Sprintf("%s/transitions/%d/to", path, i)] {
+			if _, local := body.Recipe.States[t.To]; !local {
 				return fmt.Errorf("unknown local destination %q", t.To)
 			}
+			t.To = sequenceName(index, t.To)
 		}
 		if err := scopeSequenceGuard(t.When, body.Recipe.Bag, index); err != nil {
 			return err

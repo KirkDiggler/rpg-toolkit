@@ -173,6 +173,41 @@ func (s *sequenceSuite) TestOutputsAreDetachedAndDeterministic() {
 	s.ErrorContains(err, "collision")
 }
 
+func (s *sequenceSuite) TestNextReferenceCannotBeCapturedByLocalName() {
+	in := &behavior.ExpandSequenceInput{ID: "lines", Definition: sequenceDefinition(s.T(), "lines"),
+		Items: []jsontext.Value{[]byte(`"alpha"`), []byte(`"beta"`)}, Vocabulary: sequenceVocabulary()}
+	in.Vocabulary.Beats["visit-local"] = machine.BeatSpec{}
+	in.Definition.Body = []byte(`{
+		"recipe":{"initial":"speak","states":{
+			"speak":{"transitions":[
+				{"on":"time","do":[{"pick":"line"}]},
+				{"on":{"$done":"line"},"to":{"$next":true}},
+				{"on":"visit-local","to":"item/1/speak"}
+			]},
+			"item/1/speak":{"transitions":[{"on":"time","do":[{"pick":"trap"}]}]}
+		}},
+		"table":{"line":[{"Weight":1,"Say":{"$item":true}}],"trap":[{"Weight":1,"Say":"captured"}]}
+	}`)
+	bound, err := behavior.ExpandSequence(in)
+	s.Require().NoError(err)
+	for _, tc := range []struct{ event, want string }{{"complete", "beta"}, {"visit-local", "captured"}} {
+		c, err := behavior.NewComposer(&behavior.ComposerConfig{Instances: []behavior.InstanceSpec{bound.Instance}, Vocabulary: bound.Vocabulary})
+		s.Require().NoError(err)
+		die := &exactDie{steps: []rollStep{{sides: 100, face: 1}, {sides: 100, face: 1}}}
+		first, err := c.Decide(context.Background(), &behavior.DecideInput{On: "time", Event: uint64(0), Die: die})
+		s.Require().NoError(err)
+		on := machine.Beat(tc.event)
+		if tc.event == "complete" {
+			on = bound.Completions[first.Pick.Key]
+		}
+		_, err = c.Observe(&behavior.ObserveInput{Instance: "lines", On: on})
+		s.Require().NoError(err)
+		out, err := c.Decide(context.Background(), &behavior.DecideInput{On: "time", Event: uint64(1), Die: die})
+		s.Require().NoError(err)
+		s.Equal(tc.want, out.Pick.Answer.Say, "explicit next and literal local references have different identities")
+	}
+}
+
 func (s *sequenceSuite) TestLocalBagReferencesAreScoped() {
 	in := &behavior.ExpandSequenceInput{ID: "lines", Definition: sequenceDefinition(s.T(), "lines"),
 		Items: []jsontext.Value{[]byte(`"alpha"`), []byte(`"beta"`)}, Vocabulary: sequenceVocabulary()}

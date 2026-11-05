@@ -76,6 +76,13 @@ type sequenceResolver struct {
 	parameters map[string]jsontext.Value
 	next       string
 	done       map[string]string
+	// nextSites preserves reference identity across JSON decoding. A local name
+	// that happens to equal a generated destination cannot capture $next.
+	nextSites map[string]bool
+}
+
+func sequencePath(parent, key string) string {
+	return parent + "/" + strings.ReplaceAll(strings.ReplaceAll(key, "~", "~0"), "/", "~1")
 }
 
 // value never revisits an inserted value. A supplied literal that resembles a
@@ -100,7 +107,7 @@ func (r sequenceResolver) value(raw jsontext.Value, path string) (jsontext.Value
 			}
 		}
 		for _, key := range slices.Sorted(maps.Keys(object)) {
-			value, err := r.value(object[key], path+"."+key)
+			value, err := r.value(object[key], sequencePath(path, key))
 			if err != nil {
 				return nil, err
 			}
@@ -113,7 +120,7 @@ func (r sequenceResolver) value(raw jsontext.Value, path string) (jsontext.Value
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
 		for i := range array {
-			value, err := r.value(array[i], fmt.Sprintf("%s[%d]", path, i))
+			value, err := r.value(array[i], fmt.Sprintf("%s/%d", path, i))
 			if err != nil {
 				return nil, err
 			}
@@ -142,6 +149,7 @@ func (r sequenceResolver) reference(key string, raw jsontext.Value, path string)
 		if r.next == "" {
 			return nil, fmt.Errorf("%s: next cannot determine the initial state", path)
 		}
+		r.nextSites[path] = true
 		return json.Marshal(r.next)
 	case "$param", "$done":
 		var name string
