@@ -13,6 +13,8 @@ Slice [rpg-project#862](https://github.com/KirkDiggler/rpg-project/issues/862), 
 
 - KirkDiggler requested readable construction inputs before growing the consumer; this probe now pins the separate provider cleanup and names its recipe, vocabulary, holder and source at the call site — [provider PR #2276](https://github.com/KirkDiggler/rpg-toolkit/pull/2276).
 
+- KirkDiggler refined the construction convention to package-qualified New(Config), avoiding NewInput and stuttering type names; the consumer follows the revised provider without changing its probe behavior — [provider PR #2276](https://github.com/KirkDiggler/rpg-toolkit/pull/2276).
+
 ## Found
 
 - Adopting the pushed effects commit rejects the old positional call at compile time; migrating to ComposeInput preserves the full item suite, runnable example, race, vet and lint results — [named consumer input](../../examples/items/fixture_test.go).

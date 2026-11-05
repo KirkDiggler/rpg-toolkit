@@ -12,7 +12,7 @@ the seams rather than finish specifying every item rule.
 
 ```text
 item configuration + instance state
-    ├── effects.Compose
+    ├── effects.New
     │     ├── grant_healing output: attaches/detaches an inert local offer
     │     └── recover_pool output: attaches/detaches a targeted rest listener
     ├── mechanics/resources.Resource: remaining/maximum charges
@@ -34,7 +34,7 @@ The existing effects/machine and mind/machine packages remain untouched.
 | Boundary | Observable check |
 |---|---|
 | Authored level → shared healing | Fixed d10 of 6 gives 7/9 for level-1/3 grants; no Fighter levels supplied |
-| Effects attachment → availability | Grant appears through `effects.Compose`/`Apply` and disappears on `Remove` |
+| Effects attachment → availability | Grant appears through `effects.New`/`Apply` and disappears on `Remove` |
 | Item instance → pool | Spending one of two same-definition rings leaves the other untouched |
 | Item source → result | Healing calculation identifies the particular source item |
 | Detach / transfer / reload → remaining uses | None silently refills the item |
@@ -61,7 +61,7 @@ Dependencies use real pushed-commit pseudo-versions. No `replace` or `go.work`.
 The effects pin includes the [named-input provider cleanup](https://github.com/KirkDiggler/rpg-toolkit/pull/2276):
 
 ```go
-composed, err := effects.Compose(effects.ComposeInput{
+composed, err := effects.New(effects.Config{
     Recipe:           recipe,
     OutputVocabulary: i.vocabulary(),
     HolderID:         holder,
@@ -77,7 +77,7 @@ The module is an example and is not tagged or consumed by shipped code.
 
 | Responsibility | What this probe actually uses |
 |---|---|
-| Attach/detach and output validation | Real `effects.Compose`, `Apply`, `Remove`, `KindSpec` |
+| Attach/detach and output validation | Real `effects.New`, `Apply`, `Remove`, `KindSpec` |
 | Grant and restoration meanings | Consumer-owned `grant_healing` / `recover_pool` vocabulary callbacks |
 | Item identity and remaining uses | Consumer instance ID plus real `mechanics/resources.Resource` |
 | Healing arithmetic and sourced breakdown | Real `healing.Resolve`; fixed dice only at the randomness seam |
