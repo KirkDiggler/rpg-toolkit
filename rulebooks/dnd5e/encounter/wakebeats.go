@@ -103,6 +103,7 @@ func clockBeat(name string) machine.Beat { return machine.Beat(beatClock + name)
 // on, with the regions it crossed to reach them.
 type wakeBeat struct {
 	Beat    machine.Beat
+	Kind    string // the heard occurrence's kind; empty means unknown, never a later holding
 	Cell    *spatial.Position
 	Subject MemberID
 	Member  MemberID
@@ -115,6 +116,7 @@ type wakeBeat struct {
 // was from the listener in hexes and regions (-1 when the beat names no
 // place, which no scope admits).
 type wakeEv struct {
+	Kind     string
 	At       uint64
 	Distance int
 	Hops     int
@@ -179,7 +181,7 @@ func (e *Encounter) land(b wakeBeat) {
 }
 
 // landHeard lands a sound on each hearer that listens for `heard`.
-func (e *Encounter) landHeard(heard []hearing, where spatial.Position, maker MemberID, at uint64) {
+func (e *Encounter) landHeard(heard []hearing, kind string, where spatial.Position, maker MemberID, at uint64) {
 	if !e.listened(beatHeard) {
 		return
 	}
@@ -188,7 +190,7 @@ func (e *Encounter) landHeard(heard []hearing, where spatial.Position, maker Mem
 			continue
 		}
 		cell := where
-		e.land(wakeBeat{Beat: beatHeard, Cell: &cell, Subject: maker, Member: h.member, Hops: h.hops, At: at})
+		e.land(wakeBeat{Beat: beatHeard, Kind: kind, Cell: &cell, Subject: maker, Member: h.member, Hops: h.hops, At: at})
 	}
 }
 
@@ -360,7 +362,7 @@ func (e *Encounter) matchOne(b wakeBeat) error {
 // evFor is a landed beat as one listener is asked it. An error only when the
 // field's partitions cannot be derived ([field.partitionsNow]).
 func (e *Encounter) evFor(id MemberID, m *memberRecord, b wakeBeat) (wakeEv, error) {
-	ev := wakeEv{At: b.At, Distance: -1, Hops: -1}
+	ev := wakeEv{Kind: b.Kind, At: b.At, Distance: -1, Hops: -1}
 	if b.Cell == nil {
 		return ev, nil
 	}
@@ -602,6 +604,9 @@ func (e *Encounter) landFightRound(fighters []MemberID, at uint64) {
 // targeted beat landed on, the faction a `clock: fight` addresses, the
 // regions a sound crossed, and the round it happened in.
 type WakeBeatData struct {
+	// Kind is this heard occurrence's sound kind, not a lookup of current
+	// holdings. Empty remains unknown and no maker is added to wakeEv.
+	Kind    string        `json:"kind,omitempty"`
 	Beat    string        `json:"beat"`
 	Cell    *PositionData `json:"cell,omitempty"`
 	Subject MemberID      `json:"subject,omitempty"`
@@ -619,7 +624,7 @@ func wakeBeatsData(in []wakeBeat) []WakeBeatData {
 	out := make([]WakeBeatData, len(in))
 	for i, b := range in {
 		d := WakeBeatData{
-			Beat: string(b.Beat), Subject: b.Subject, Member: b.Member,
+			Beat: string(b.Beat), Kind: b.Kind, Subject: b.Subject, Member: b.Member,
 			Faction: b.Faction, Hops: b.Hops, At: b.At,
 		}
 		if b.Cell != nil {
@@ -641,7 +646,7 @@ func wakeBeatsFrom(in []WakeBeatData) []wakeBeat {
 	out := make([]wakeBeat, len(in))
 	for i, d := range in {
 		b := wakeBeat{
-			Beat: machine.Beat(d.Beat), Subject: d.Subject, Member: d.Member,
+			Beat: machine.Beat(d.Beat), Kind: d.Kind, Subject: d.Subject, Member: d.Member,
 			Faction: d.Faction, Hops: d.Hops, At: d.At,
 		}
 		if d.Cell != nil {

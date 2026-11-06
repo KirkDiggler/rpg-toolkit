@@ -135,7 +135,19 @@
 // unit, rolls its `time` table, and spends one. A creature that walks into an
 // opposed member's sight forms or joins a fight by the ordinary path.
 //
+// # Translating a selected answer
+//
+// [IntentForAnswer] turns an already-selected behavior answer into the ordinary
+// [TurnIntent], using only the supplied observer-local view and its budget. It
+// never selects a row or rolls again. Translation is not execution or completion:
+// a routed turn ending, or a budget-exhausted Pass, does not prove arrival.
+//
 // # Hearing
+//
+// A queued heard occurrence carries its own kind through save/reload and delivery,
+// even when another sound arrives before the clock is raised. An absent kind
+// remains unknown; delivery never reconstructs it from the latest holdings or
+// exposes the private maker as a heard fact.
 //
 // A deed makes a sound (noise.go, rpg-project#569 R4/R5): an attack recorded
 // struck or missed clangs, a door forced by Strength crashes, a cast that
