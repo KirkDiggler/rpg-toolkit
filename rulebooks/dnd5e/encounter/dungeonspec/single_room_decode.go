@@ -521,26 +521,32 @@ func regionsShape(gp *yaml.Node, add errSink) {
 		if lighting := requireMapping(region, "lighting", p, add); lighting != nil {
 			requireNumber(lighting, "intensity", p+".lighting", add)
 		}
+		groundShape(region, p, add)
 		rows := requireSequence(region, "cells", p, add)
 		if rows == nil {
 			continue
 		}
-		for j, row := range rows.Content {
-			rp := fmt.Sprintf("%s.cells[%d]", p, j)
-			row = resolveNode(row)
-			entryShape(row, rp, add)
-			if row == nil || row.Kind != yaml.MappingNode {
-				continue
-			}
-			requireInteger(row, "r", rp, add)
-			spans := requireSequence(row, "q", rp, add)
-			if spans == nil {
-				continue
-			}
-			for k, span := range spans.Content {
-				if !integerPair(resolveNode(span)) {
-					add(fmt.Sprintf("%s.q[%d]", rp, k), errNotAnIntegerPair)
-				}
+		cellRowsShape(rows, p+".cells", add)
+	}
+}
+
+// cellRowsShape is the shared row-run shape for region floor and ground paint.
+func cellRowsShape(rows *yaml.Node, path string, add errSink) {
+	for j, row := range rows.Content {
+		rp := fmt.Sprintf("%s[%d]", path, j)
+		row = resolveNode(row)
+		entryShape(row, rp, add)
+		if row == nil || row.Kind != yaml.MappingNode {
+			continue
+		}
+		requireInteger(row, "r", rp, add)
+		spans := requireSequence(row, "q", rp, add)
+		if spans == nil {
+			continue
+		}
+		for k, span := range spans.Content {
+			if !integerPair(resolveNode(span)) {
+				add(fmt.Sprintf("%s.q[%d]", rp, k), errNotAnIntegerPair)
 			}
 		}
 	}
@@ -764,6 +770,7 @@ func gameplayValues(gp *RoomGameplaySource, read roomRead, add errSink) {
 		add("room.room.implicitRegionId", errRequired)
 	}
 	regionValues(gp.Regions, add)
+	groundValues(gp.Regions, add)
 	propDeclarationValues(gp.PropDeclarations, read.ItemIDs, add)
 	arrangementDeclarationValues(gp.ArrangementDeclarations, add)
 	monsterValues(gp.MonsterDeclarations, add)

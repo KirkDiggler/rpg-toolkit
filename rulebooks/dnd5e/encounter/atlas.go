@@ -306,6 +306,9 @@ type AtlasRegion struct {
 	// Lighting is the region's light level, carried unread.
 	Lighting Lighting
 
+	// Ground carries appearance only for Cells in this delivered region.
+	Ground *RegionGround
+
 	// A REGION NO LONGER REPORTS WHETHER IT IS HIDDEN. It carried
 	// `Concealed bool` while a region was the thing that could be hidden;
 	// the concealment primitive replaced the flag (rpg-project#490), and
@@ -565,6 +568,7 @@ func (e *Encounter) Atlas() (Atlas, error) {
 			Cells:     append([]spatial.Position(nil), f.regionCells[r.ID]...),
 			Archetype: r.Archetype,
 			Lighting:  *r.Lighting,
+			Ground:    copyRegionGround(f.regionGround[r.ID], nil),
 		})
 	}
 	sort.Slice(out.Regions, func(i, j int) bool { return out.Regions[i].ID < out.Regions[j].ID })

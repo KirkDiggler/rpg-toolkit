@@ -266,6 +266,10 @@ type RegionInput struct {
 	// default.
 	Lighting *Lighting
 
+	// Ground is optional appearance; paint cells are owned authored offsets.
+	// It is captured, never interpreted as a movement or visibility rule.
+	Ground *RegionGround
+
 	// A REGION NO LONGER SAYS WHETHER IT IS HIDDEN (rpg-project#490). It
 	// carried `Concealed bool` until the concealment primitive landed, and
 	// what replaced it is [FieldInput.Concealments] — a concealment listing
