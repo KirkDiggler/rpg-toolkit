@@ -26,6 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -76,6 +77,13 @@ type gatehouse struct {
 // openTheGatehouse launches the castle. It panics rather than failing a
 // test, so the Example can tell the same scene.
 func openTheGatehouse(d20s ...int) *gatehouse {
+	alice := armedFighter("alice")
+	alice.AbilityScores[abilities.CHA] = 16
+	return openTheGatehouseAs(alice, d20s...)
+}
+
+// openTheGatehouseAs is [openTheGatehouse] with alice as given.
+func openTheGatehouseAs(alice *character.Data, d20s ...int) *gatehouse {
 	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", encounterModule).Output()
 	if err != nil {
 		panic(err)
@@ -88,8 +96,6 @@ func openTheGatehouse(d20s ...int) *gatehouse {
 	if err != nil {
 		panic(err)
 	}
-	alice := armedFighter("alice")
-	alice.AbilityScores[abilities.CHA] = 16
 	g := &gatehouse{sessions: newFakeSessions(), live: &actCapture{}}
 	g.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: g.live, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: &castleDice{d20s: d20s}, TurnDriver: session.Driver(),

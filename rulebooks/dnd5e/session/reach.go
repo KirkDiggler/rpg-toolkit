@@ -4,6 +4,10 @@
 package session
 
 import (
+	"fmt"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -57,4 +61,56 @@ func sheetSpeeds(sheets sheetSeam, members []encounter.MemberID) (map[string]int
 // encounter.CellsFromFeet; a cell is five feet.
 func inRange(enc *encounter.Encounter, from, to spatial.Position, rangeFeet int) bool {
 	return enc.Distance(from, to) <= float64(encounter.CellsFromFeet(rangeFeet))
+}
+
+// approachCandidates names, on each out-of-reach Attack candidate, the cell
+// the actor's own walk this turn ends on within rangeFeet and in sight of it
+// (rpg-project#872 D4) — [TargetCandidate.Approach]. The encounter answers
+// it ([encounter.Encounter.Approaches]): where a walk ends is a placement
+// question, and this seam only says how far the walk may go.
+//
+// THE BUDGET IS THE MOVE'S OWN. On the turn clock it is the movement the
+// readied sheet has left — the capacity a Move is priced against, five feet
+// a cell — and only for the active member, whose Move alone is accepted. On
+// the world clock a walk spends nothing, so it is unbounded.
+//
+// ONE READ PER AFFORD, and none when every candidate is in reach or the
+// candidates are refused for anything but reach.
+func approachCandidates(
+	enc *encounter.Encounter, clock *encounter.ClockOfOutput, member string, sheet *character.Character,
+	candidates []targetPreflight, rangeFeet int,
+) ([]targetPreflight, error) {
+	var targets []encounter.MemberID
+	rows := map[encounter.MemberID]int{}
+	for i, c := range candidates {
+		if c.available || c.why == nil || c.why.Reason != ShortfallTargetOutOfReach {
+			continue
+		}
+		rows[encounter.MemberID(c.member)] = i
+		targets = append(targets, encounter.MemberID(c.member))
+	}
+	if len(targets) == 0 {
+		return candidates, nil
+	}
+	in := encounter.ApproachesInput{Mover: encounter.MemberID(member), Targets: targets, RangeFeet: rangeFeet}
+	if ClockKind(clock.Kind) == ClockTurn {
+		if string(clock.Active) != member {
+			return candidates, nil
+		}
+		in.Budget = max(0, encounter.CellsFromFeet(sheet.CapacityLeft(combat.CapacityMovement)))
+	} else {
+		in.Unbounded = true
+	}
+	out, err := enc.Approaches(in)
+	if err != nil {
+		return nil, fmt.Errorf("attack approaches: %w", translate(err))
+	}
+	for _, a := range out.Approaches {
+		if !a.Reached || len(a.Path) == 0 {
+			continue
+		}
+		cell := a.Cell
+		candidates[rows[a.Target]].approach = &cell
+	}
+	return candidates, nil
 }

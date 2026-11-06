@@ -113,6 +113,10 @@ type targetPreflight struct {
 	// candidate-level reason (ShortfallTargetOutOfReach today); global
 	// turn/economy reasons are never copied here.
 	why *Shortfall
+	// approach is the cell the actor's own walk this turn ends on within
+	// reach of an out-of-reach candidate ([approachCandidates]), nil
+	// otherwise.
+	approach *spatial.Position
 }
 
 // compileOffersFor builds only the requested compiled offers for one member on
@@ -409,6 +413,12 @@ func (m *Manager) compileOffersFor(
 	// AttackTarget: Dying and Stabilized remain; Dead and Defeated do not. The
 	// executor regenerates this same offer, so it needs no second target rule.
 	candidates, err = filterAttackTargets(ctx, candidates, cast)
+	if err != nil {
+		return nil, err
+	}
+	// Where a walk this turn closes an out-of-reach candidate's gap
+	// (rpg-project#872 D4): one bounded read, after the universe is final.
+	candidates, err = approachCandidates(enc, clock, member, sheet, candidates, definition.Attack.Delivery.MaxRangeFeet())
 	if err != nil {
 		return nil, err
 	}
@@ -1166,6 +1176,10 @@ func cloneTargetPreflights(in []targetPreflight) []targetPreflight {
 			why := *candidate.why
 			out[i].why = &why
 		}
+		if candidate.approach != nil {
+			cell := *candidate.approach
+			out[i].approach = &cell
+		}
 	}
 	return out
 }
@@ -1180,10 +1194,16 @@ func projectCandidates(candidates []targetPreflight) []TargetCandidate {
 			copied := *c.why
 			why = &copied
 		}
+		var approach *spatial.Position
+		if c.approach != nil {
+			cell := *c.approach
+			approach = &cell
+		}
 		out = append(out, TargetCandidate{
 			Member:    c.member,
 			Available: c.available,
 			Why:       why,
+			Approach:  approach,
 		})
 	}
 	return out

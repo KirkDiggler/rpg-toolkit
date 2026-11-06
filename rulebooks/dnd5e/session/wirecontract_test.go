@@ -255,3 +255,24 @@ func TestTheEffectRowWireNamesMatchTheContract(t *testing.T) {
 	require.NoError(t, json.Unmarshal(bare["candidates"], &bareCandidates))
 	require.NotContains(t, bareCandidates[0], "effects", "nor does a candidate that answers as declared")
 }
+
+// TestTheApproachWireNameMatchesTheContract pins TargetCandidate's
+// `approach` (rpg-project#872 D4, rpg-api-protos#420's field 6): the cell
+// when a walk this turn reaches the candidate, and no key at all when none
+// is named.
+func TestTheApproachWireNameMatchesTheContract(t *testing.T) {
+	keys := func(v any) map[string]json.RawMessage {
+		raw, err := json.Marshal(v)
+		require.NoError(t, err)
+		var out map[string]json.RawMessage
+		require.NoError(t, json.Unmarshal(raw, &out))
+		return out
+	}
+	cell := spatial.Position{X: -3, Y: 8}
+	named := keys(session.TargetCandidate{Member: "gate-1", Approach: &cell})
+	require.Contains(t, named, "approach")
+	var got spatial.Position
+	require.NoError(t, json.Unmarshal(named["approach"], &got))
+	require.Equal(t, cell, got)
+	require.NotContains(t, keys(session.TargetCandidate{Member: "gate-1"}), "approach", "no cell spends no key")
+}
