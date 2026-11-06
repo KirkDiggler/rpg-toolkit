@@ -11,6 +11,7 @@ package encounter_test
 // order.
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -232,6 +233,53 @@ func (s *ApproachesSuite) TestAShutDoorClosesThePlayersWalk() {
 	s.holdsTheLaw(open, alice, s.one(open, encounter.ApproachesInput{Mover: alice, Targets: []encounter.MemberID{goblin}, RangeFeet: 5, Budget: 20}), 1)
 }
 
+// TestUnreachableTargetsCostOneFloor is free roam's bound: the first search
+// that finds nothing has settled the floor, and the targets after it read
+// that field, so nothing floods. The answers are the bounded flood's.
+func (s *ApproachesSuite) TestUnreachableTargetsCostOneFloor() {
+	// The orc closes the corridor: the goblin and the wolf beyond him are
+	// seen and no walk reaches them; the rat behind alice is two steps off.
+	enc := s.corridor(approachPlayer(alice, 3, 0), approachMonster("rat", 0, 0), approachMonster("orc", 5, 0),
+		approachMonster(goblin, 7, 0), approachMonster("wolf", 9, 0))
+	targets := []encounter.MemberID{goblin, "rat", "wolf"}
+	before := enc.ExportedFloodsComputed()
+	free, err := enc.Approaches(encounter.ApproachesInput{Mover: alice, Targets: targets, RangeFeet: 5, Unbounded: true})
+	s.Require().NoError(err)
+	s.Equal(before, enc.ExportedFloodsComputed(), "the failed search's field is the flood; nothing floods again")
+	s.False(free.Approaches[0].Reached)
+	s.True(free.Approaches[1].Reached, "the rat after the failed search is answered from its field")
+	s.Equal(cellAt(1, 0), free.Approaches[1].Cell)
+	s.Equal([]spatial.Position{cellAt(2, 0), cellAt(1, 0)}, free.Approaches[1].Path)
+	s.False(free.Approaches[2].Reached)
+
+	flooded, err := enc.Approaches(encounter.ApproachesInput{Mover: alice, Targets: targets, RangeFeet: 5, Budget: 100})
+	s.Require().NoError(err)
+	s.Equal(flooded, free, "the same answers as a flood")
+}
+
+// TestManyTargetsTakeOneFlood: past the search count, one unbounded flood
+// answers them all, with the searches' answers.
+func (s *ApproachesSuite) TestManyTargetsTakeOneFlood() {
+	members := []encounter.MemberInput{approachPlayer(alice, 0, 0)}
+	var targets []encounter.MemberID
+	for i, at := range [][2]int{{9, 0}, {9, 9}, {0, 9}, {5, 5}, {7, 2}} {
+		id := encounter.MemberID(fmt.Sprintf("m%d", i))
+		members = append(members, approachMonster(id, at[0], at[1]))
+		targets = append(targets, id)
+	}
+	enc := s.room(members...)
+	before := enc.ExportedFloodsComputed()
+	many, err := enc.Approaches(encounter.ApproachesInput{Mover: alice, Targets: targets, RangeFeet: 5, Unbounded: true})
+	s.Require().NoError(err)
+	s.Equal(before+1, enc.ExportedFloodsComputed(), "five targets take one flood")
+	for i, got := range many.Approaches {
+		one := s.one(enc, encounter.ApproachesInput{Mover: alice, Targets: targets[i : i+1], RangeFeet: 5, Unbounded: true})
+		s.Equal(one, got, "%s: the flood answers as its own search does", got.Target)
+		s.holdsTheLaw(enc, alice, got, 1)
+	}
+	s.Equal(before+1, enc.ExportedFloodsComputed(), "a search for one target floods nothing")
+}
+
 func (s *ApproachesSuite) TestTiesBreakInScanOrder() {
 	enc := s.room(approachPlayer(alice, 1, 1), approachMonster(goblin, 6, 6))
 	in := encounter.ApproachesInput{Mover: alice, Targets: []encounter.MemberID{goblin}, RangeFeet: 5, Unbounded: true}
@@ -268,7 +316,8 @@ func oracleApproach(
 }
 
 // TestApproaches_CastleHoldsTheOracle is the property on the mad king's
-// castle with its garrison: every player asked of every monster, at a
+// castle with its garrison: every player asked of every monster (all at
+// once, and each alone), at a
 // sword's five feet and a glaive's ten, unbounded and at a fight's thirty
 // feet, gets the oracle's cell or — exactly when the oracle finds none — no
 // cell, and every cell it names holds the law.
@@ -297,6 +346,13 @@ func TestApproaches_CastleHoldsTheOracle(t *testing.T) {
 				require.Len(t, out.Approaches, len(targets))
 				for i, got := range out.Approaches {
 					require.Equal(t, targets[i], got.Target)
+					// Asked alone the target is searched for, not flooded:
+					// the same answer either way.
+					alone := in
+					alone.Targets = targets[i : i+1]
+					single, err := enc.Approaches(alone)
+					require.NoError(t, err)
+					require.Equal(t, got, single.Approaches[0], "%s to %s asked alone", p, got.Target)
 					want, ok := oracleOrNone(t, enc, p, got.Target, reach, budget, dist)
 					require.Equal(t, ok, got.Reached, "%s to %s at %d ft, budget %d", p, got.Target, feet, budget)
 					if !ok {

@@ -125,3 +125,6 @@ func (e *Encounter) ExportedSeesFrom(observer MemberID, cell spatial.Position, s
 	positions := map[MemberID]spatial.Position{observer: cell, subject: at}
 	return e.newSightReach(positions, ranges).Reaches("sight", observer, subject), nil
 }
+
+// ExportedFloodsComputed is how many distance fields this run has flooded.
+func (e *Encounter) ExportedFloodsComputed() int { return e.floodsComputed }

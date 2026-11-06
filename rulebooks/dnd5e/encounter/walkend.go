@@ -18,41 +18,25 @@ import (
 // nobody ends on that cell. Read from what the walker observes, never the
 // live state.
 func (e *Encounter) ValidateWalkEnd(in CellAtInput) error {
-	refused, err := e.walkEndsRefused(in.Mover)
+	passages, err := e.ObservedPassages(&ViewInput{Member: in.Mover})
 	if err != nil {
 		return err
 	}
-	if refused[in.Cell] {
-		return fmt.Errorf("walk destination is not standable: %w", ErrBadPlacement)
-	}
-	return nil
-}
-
-// walkEndsRefused is [Encounter.ValidateWalkEnd]'s law read once for every
-// cell: the cells the mover sees a pass-through body standing on. One read,
-// so a caller asking it of many cells ([Encounter.Approaches]) asks the
-// walker's view once and cannot hold a second copy of the rule.
-func (e *Encounter) walkEndsRefused(mover MemberID) (map[spatial.Position]bool, error) {
-	passages, err := e.ObservedPassages(&ViewInput{Member: mover})
+	holdings, err := e.View(&ViewInput{Member: in.Mover})
 	if err != nil {
-		return nil, err
+		return err
 	}
-	holdings, err := e.View(&ViewInput{Member: mover})
-	if err != nil {
-		return nil, err
-	}
-	refused := map[spatial.Position]bool{}
 	for _, holding := range holdings {
 		passage, current := passages[holding.Subject]
 		if !current || passage == PassageStandable || passage == PassageBlocked {
 			continue
 		}
 		seen, ok := DecodeSightTestimony(holding.Payload)
-		if ok && seen.State == LocationKnown {
-			refused[seen.Position] = true
+		if ok && seen.State == LocationKnown && seen.Position == in.Cell {
+			return fmt.Errorf("walk destination is not standable: %w", ErrBadPlacement)
 		}
 	}
-	return refused, nil
+	return nil
 }
 
 // StepObstructedError is an ordinary obstacle encountered by a valid step.

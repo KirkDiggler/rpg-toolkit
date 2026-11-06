@@ -95,6 +95,22 @@ func (e *cellQuery) searchToward(
 	forgiven func(spatial.Position) (bool, error), opens bool,
 	stop func(spatial.Position) (bool, error),
 ) ([]spatial.Position, bool, error) {
+	path, ok, _, err := e.searchTowardField(mover, walker, from, anchor, within, forgiven, opens, stop)
+	return path, ok, err
+}
+
+// searchTowardField is [cellQuery.searchToward] that also hands back what it
+// settled. When it finds NO stop it has settled every cell the walk reaches,
+// each at its true distance and entered from the flood's own predecessor
+// (see the file's doc), so the field it returns then IS the unbounded flood
+// from `from` by the same edge rule — a caller asking more of that floor
+// reads it rather than flooding again. When it finds a stop the field is
+// partial and means nothing to anyone else.
+func (e *cellQuery) searchTowardField(
+	mover, walker MemberID, from, anchor spatial.Position, within float64,
+	forgiven func(spatial.Position) (bool, error), opens bool,
+	stop func(spatial.Position) (bool, error),
+) ([]spatial.Position, bool, spatial.FieldOutput, error) {
 	grid := e.canvas.GetGrid()
 	passable, edgeErr := e.walkerEdge(mover, walker, forgiven, opens)
 	heuristic := func(cell spatial.Position) int {
@@ -124,7 +140,7 @@ func (e *cellQuery) searchToward(
 		e.cellsSettled++
 		ok, err := stop(cur.pos)
 		if err != nil {
-			return nil, false, err
+			return nil, false, spatial.FieldOutput{}, err
 		}
 		if ok && (!found || cur.g < bestDist || (cur.g == bestDist && beforeInScanOrder(cur.pos, best))) {
 			best, bestDist, found = cur.pos, cur.g, true
@@ -156,10 +172,11 @@ func (e *cellQuery) searchToward(
 		}
 	}
 	if *edgeErr != nil {
-		return nil, false, *edgeErr
+		return nil, false, spatial.FieldOutput{}, *edgeErr
 	}
+	field := spatial.FieldOutput{Dist: dist, Prev: prev}
 	if !found {
-		return nil, false, nil
+		return nil, false, field, nil
 	}
 
 	var rev []spatial.Position
@@ -169,7 +186,7 @@ func (e *cellQuery) searchToward(
 	for i, j := 0, len(rev)-1; i < j; i, j = i+1, j-1 {
 		rev[i], rev[j] = rev[j], rev[i]
 	}
-	return rev, true, nil
+	return rev, true, field, nil
 }
 
 // searchItem is one cell waiting to be settled: g its steps from the source,
