@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>A Game I Could Build With</title>
+<link rel="canonical" href="https://kirkdiggler.github.io/rpg-toolkit/a-game-i-could-build-with/">
+<meta property="og:site_name" content="rpg-toolkit">
+<meta property="og:type" content="article">
+<meta property="og:title" content="A Game I Could Build With">
+<meta property="og:description" content="A living world for streamer communities needed more than a working application. Simple tools began to make the ambition achievable.">
+<meta property="og:url" content="https://kirkdiggler.github.io/rpg-toolkit/a-game-i-could-build-with/">
+<meta property="og:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/a-game-i-could-build-with.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="A Game I Could Build With. A living world for a community. Simple tools to build it.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="A Game I Could Build With">
+<meta name="twitter:description" content="A living world for streamer communities needed more than a working application. Simple tools began to make the ambition achievable.">
+<meta name="twitter:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/a-game-i-could-build-with.png">
+<meta name="twitter:image:alt" content="A Game I Could Build With. A living world for a community. Simple tools to build it.">
+<meta name="description" content="A living world for streamer communities needed more than a working encounter application. Intel and clock began to make it something I could build with.">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath fill='%2311141a' d='M0 0h64v64H0z'/%3E%3Cpath fill='%231b2236' stroke='%237189d7' stroke-width='3' stroke-linejoin='round' d='M32 4 59 20 54 48 32 61 10 48 5 20Z M32 4 17 25 47 25 32 4 M5 20 17 25 10 48 32 38 54 48 47 25 59 20 M17 25 32 38 47 25 M32 38v23'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&amp;display=swap">
+<style>
+:root{--ground:#11141a;--surface:#181c23;--primary:#f1f3f5;--muted:#c2c8d0;--faint:#9da7b4;--rule:#343b46;--rule-strong:#4c5665;--accent:#7189d7;--bright:#9baded;--accent-soft:#1b2236;--pressure:#c96d62;--pressure-text:#e49b91;--pressure-soft:#2b1e20}
+*{box-sizing:border-box}
+html{background:var(--ground);color-scheme:dark;overflow-x:clip}
+body{margin:0;background:var(--ground);color:var(--primary);font-family:"Source Serif 4",Georgia,serif;font-size:17px;line-height:1.64;-webkit-font-smoothing:antialiased}
+:focus-visible{outline:2px solid var(--bright);outline-offset:4px}
+a{color:var(--bright);text-underline-offset:3px}
+.page{max-width:1180px;margin:0 auto;padding:22px 24px 100px}
+.draft-banner{padding:.62rem .9rem;border-block:1px solid var(--pressure);color:var(--pressure-text);font:500 .7rem/1.6 "IBM Plex Mono",monospace;letter-spacing:.06em;text-align:center}
+.draft-banner strong{font-weight:600;text-transform:uppercase;letter-spacing:.11em}
+header{padding:78px 72px 66px;border-bottom:1px solid var(--rule)}
+.eyebrow,.question-label,.date-label,code,.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+.eyebrow{color:var(--bright);font-size:.76rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+h1,h2,.end-question{font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-weight:600;line-height:1.03;text-wrap:balance}
+h1{max-width:950px;margin:.3em 0 .3em;font-size:clamp(3.7rem,8vw,6.2rem);letter-spacing:-.035em}
+.dek{max-width:790px;margin:0;color:var(--muted);font-size:clamp(1.1rem,2vw,1.3rem);line-height:1.55}
+.origin-links{display:flex;flex-wrap:wrap;gap:1.7rem;max-width:900px;margin-top:1.7rem}
+.origin-link{display:flex;align-items:baseline;gap:.8rem;padding:.65rem 0;border-block:1px solid var(--rule);color:inherit;text-decoration:none}
+.origin-link span{color:var(--bright);font:600 .68rem/1.4 "IBM Plex Mono",monospace;letter-spacing:.1em;text-transform:uppercase}
+.origin-link strong{font:600 1rem/1.3 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}
+.origin-link:hover strong{color:var(--bright)}
+.opening-proof{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:36px;border-block:1px solid var(--rule)}
+.opening-proof div{padding:14px 18px 14px 0}.opening-proof div+div{padding-left:18px;border-left:1px solid var(--rule)}
+.opening-proof b{display:block;font:600 1.04rem/1.5 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}.opening-proof span{color:var(--muted);font-size:.86rem}
+.legend{display:flex;flex-wrap:wrap;gap:1.5rem;margin-top:20px;color:var(--faint);font:500 .69rem/1.4 "IBM Plex Mono",monospace;letter-spacing:.07em;text-transform:uppercase}
+.legend span{display:inline-flex;align-items:center;gap:.48rem}.legend i{width:22px;height:2px;background:var(--accent)}.legend span+span i{background:var(--pressure)}
+.timeline{position:relative}.timeline::before{content:"";position:absolute;inset-block:0;left:55px;width:1px;background:var(--rule-strong)}
+.timeline-panel{position:relative;display:grid;grid-template-columns:112px minmax(0,1fr);gap:24px}
+.rail{position:relative;padding-top:47px;text-align:right}.node{position:absolute;top:50px;right:-8px;z-index:2;width:18px;height:18px;border:4px solid var(--ground);border-radius:50%;background:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.rail-number{display:block;padding-right:22px;color:var(--bright);font:600 1.25rem/1 "IBM Plex Mono",monospace}
+.date-label{display:block;max-width:92px;margin:12px 16px 0 auto;color:var(--faint);font-size:.68rem;letter-spacing:.07em;line-height:1.5;text-transform:uppercase}
+.pressure-panel .node{background:var(--pressure);box-shadow:0 0 0 1px var(--pressure)}.pressure-panel .rail-number,.pressure-panel .question-label{color:var(--pressure-text)}
+.panel-body{min-width:0;padding:48px 40px 58px;border-bottom:1px solid var(--rule)}
+.question-label{margin-bottom:7px;color:var(--bright);font-size:.73rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
+h2{max-width:870px;margin:0 0 .65em;font-size:clamp(2.1rem,4.4vw,3.2rem);letter-spacing:-.02em}
+p{max-width:74ch;margin:.76em 0}.lead,.reflection{color:var(--muted);font-size:1.07rem}.lead strong{color:var(--primary)}
+code{color:var(--bright);font-size:.87em}
+figure{margin:28px 0 16px;padding:18px 0 13px;overflow-x:auto;overscroll-behavior-inline:contain;border-block:1px solid var(--rule-strong);scrollbar-color:var(--rule-strong) var(--ground)}
+figure svg{display:block;width:100%;min-width:840px;height:auto;margin:0 auto}
+figcaption{max-width:78ch;margin-top:14px;color:var(--faint);font:400 .81rem/1.6 "IBM Plex Mono",monospace}
+.law{max-width:810px;margin:20px 0 0;padding:.55rem 0 .55rem 1rem;border-left:2px solid var(--accent);color:var(--muted);font:400 .85rem/1.55 "IBM Plex Mono",monospace}.law b{color:var(--primary);font-weight:500}
+.pressure-law{border-left-color:var(--pressure)}
+.end-question{max-width:860px;margin:32px 0 0;padding-top:26px;border-top:1px solid var(--rule);font-size:clamp(1.9rem,3.6vw,2.7rem)}
+footer{max-width:920px;margin:64px 0 0 136px;padding-top:28px;border-top:1px solid var(--rule);color:var(--muted)}footer h2{margin-bottom:.7rem;font-size:1.4rem}footer p{margin:.7rem 0;font-size:.86rem}footer a{white-space:nowrap}footer .scope{color:var(--faint);font:400 .75rem/1.65 "IBM Plex Mono",monospace}
+svg text{fill:var(--primary);font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:18px}
+svg .t-title{font-size:22px;font-weight:600}svg .t-big{font-size:29px;font-weight:600}svg .mono{font-size:15px}svg .label{fill:var(--muted);font:500 13px "IBM Plex Mono",monospace;letter-spacing:.8px}svg .small{fill:var(--muted);font-size:16px}svg .blue{fill:var(--bright)}svg .rust{fill:var(--pressure-text)}svg .faint{fill:var(--faint)}
+svg .box{fill:var(--surface);stroke:var(--rule-strong);stroke-width:1.3}svg .soft{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.5}svg .pressure{fill:var(--pressure-soft);stroke:var(--pressure);stroke-width:1.5}svg .ghost{fill:none;stroke:var(--rule-strong);stroke-width:1.4;stroke-dasharray:7 6}
+svg .wire{fill:none;stroke:var(--muted);stroke-width:1.5}svg .wire-blue{fill:none;stroke:var(--accent);stroke-width:2}svg .wire-rust{fill:none;stroke:var(--pressure);stroke-width:2}svg .dash{stroke-dasharray:7 6}
+figure::before{display:none}
+@media(max-width:760px){
+ .page{padding:14px 14px 70px}.draft-banner{text-align:left;font-size:.65rem}header{padding:50px 14px 48px 42px}
+ .origin-links{display:block}.origin-link{align-items:flex-start;flex-direction:column;gap:.25rem}.opening-proof{grid-template-columns:1fr}.opening-proof div{padding:11px 0}.opening-proof div+div{padding-left:0;border-top:1px solid var(--rule);border-left:0}.legend{flex-direction:column;gap:.6rem}
+ .timeline::before{left:16px}.timeline-panel{grid-template-columns:34px minmax(0,1fr);gap:8px}.rail{padding-top:39px}.node{top:42px;right:9px;width:14px;height:14px;border-width:3px}.rail-number{font-size:0;padding:0}.date-label{position:absolute;top:62px;left:-5px;width:max-content;max-width:none;margin:0;transform:rotate(-90deg) translateX(-100%);transform-origin:top left;font-size:.62rem;white-space:nowrap}
+ .panel-body{padding:40px 13px 46px}figure{padding:14px 0 10px}figure svg{min-width:900px}footer{margin:48px 0 0 42px}
+ figure::before{content:"Swipe diagram →";position:sticky;left:0;z-index:2;display:block;width:max-content;margin:0 0 11px;padding:.3rem 0;border-block:1px solid var(--accent);background:var(--ground);color:var(--bright);font:500 .69rem/1.3 "IBM Plex Mono",monospace;letter-spacing:.08em;text-transform:uppercase}
+}
+@media(max-width:420px){body{font-size:16px}header{padding-left:38px}h1{font-size:3.35rem}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<main class="page">
+  <header>
+    <div class="eyebrow">Architectural field notes · Finding the tools</div>
+    <h1>A Game I Could Build With</h1>
+    <p class="dek">What if a streamer’s community could build its own history through play? Not just finish dungeons, but change the world they returned to. <a href="https://kirkdiggler.github.io/rpg-toolkit/living-world/">The Living World</a> is that vision: <strong>the same starting content, different communities, different futures.</strong> Finding the tools to build it changed the direction of the game.</p>
+    <nav class="origin-links" aria-label="Field-note navigation">
+      <a class="origin-link" href="https://kirkdiggler.github.io/rpg-toolkit/one-world-different-views/"><span>Previous field note</span><strong>One World, Different Views →</strong></a>
+    </nav>
+    <div class="opening-proof" aria-label="Story coordinates"><div><b>Ambition</b><span>a world for a community</span></div><div><b>Pressure</b><span>an application, not a toolbox</span></div><div><b>Turn</b><span>small pieces, composed</span></div></div>
+    <div class="legend" aria-label="Diagram legend"><span><i></i>possibilities and composition</span><span><i></i>constraints and consequences</span></div>
+  </header>
+
+  <div class="timeline" aria-label="Five panels: the community ambition, the application constraint, two simple tools, a split party, and a living-world horizon">
+    <section class="timeline-panel" id="panel-1" data-panel="1" aria-labelledby="panel-1-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">01</span><span class="date-label">The ambition</span></div>
+      <div class="panel-body">
+        <div class="question-label">More than another dungeon run</div>
+        <h2 id="panel-1-title">A world that belonged to its community</h2>
+        <p class="lead">Streamers already set subscriber goals to unlock extra time or a weekend stream. What if turning a goblin camp together unlocked that weekend stream? I wanted a business that gave those customers something worth building around: a world their players could change. Failed hostage rescues could create future enemies. Another Discord server could play the same starting content and end up with a different history.</p>
+        <figure tabindex="0" aria-label="Diagram: the same hostage scenario can leave two communities with different histories">
+          <svg viewBox="0 0 960 340" role="img" aria-labelledby="d1-title d1-desc">
+            <title id="d1-title">The same beginning, different histories</title>
+            <desc id="d1-desc">A proposed hostage-rescue scenario is played independently in two Discord communities. Rescued hostages can populate one town, while failed rescues can turn hostages into future enemies in the other. This illustrates the ambition, not a deployed customer experience.</desc>
+            <defs><marker id="d1-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--muted)"/></marker></defs>
+            <rect x="274" y="20" width="412" height="70" class="box"/>
+            <text x="480" y="63" text-anchor="middle" class="t-title">The same hostage-rescue scenario</text>
+            <path d="M480 90V122H245V160" class="wire" marker-end="url(#d1-arrow)"/>
+            <path d="M480 122H715V160" class="wire" marker-end="url(#d1-arrow)"/>
+            <rect x="28" y="170" width="434" height="140" class="soft"/>
+            <text x="52" y="202" class="label blue">ONE COMMUNITY</text>
+            <text x="52" y="244" class="t-big">People rescued</text>
+            <text x="52" y="280" class="small">New faces in the town. New possibilities.</text>
+            <rect x="498" y="170" width="434" height="140" class="pressure"/>
+            <text x="522" y="202" class="label rust">ANOTHER COMMUNITY</text>
+            <text x="522" y="244" class="t-big">Rescues failed</text>
+            <text x="522" y="280" class="small">Some captives become the next enemies.</text>
+          </svg>
+          <figcaption>The ambition: outcomes become the community’s history, not just a results screen.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="timeline-panel pressure-panel" id="panel-2" data-panel="2" aria-labelledby="panel-2-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">02</span><span class="date-label">The constraint</span></div>
+      <div class="panel-body">
+        <div class="question-label">Working was not the same as useful</div>
+        <h2 id="panel-2-title">I had an application, not the tools</h2>
+        <p class="lead">Moving Encounter into the toolkit had made its shape easier to see. I knew it was still an application. The crisis came from trying to see how the Living World could come to life inside it. Movement, knowledge, combat and time were tangled together. The prototype had taught us valuable things, but I couldn’t pick up its pieces and build the situations I imagined. A tool builder without tools: that was what needed to change.</p>
+        <figure tabindex="0" aria-label="Diagram: new situations all require changes inside the same encounter application">
+          <svg viewBox="0 0 960 290" role="img" aria-labelledby="d2-title d2-desc">
+            <title id="d2-title">Every possibility reaches into the application</title>
+            <desc id="d2-desc">A creature learning something, changing its behavior, or entering a local fight all reach into one application-shaped Encounter. The diagram is a conceptual account of coupled responsibilities, not a literal call graph.</desc>
+            <defs><marker id="d2-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--pressure)"/></marker></defs>
+            <rect x="28" y="20" width="274" height="65" class="box"/><text x="165" y="60" text-anchor="middle" class="t-title">Learn something</text>
+            <rect x="343" y="20" width="274" height="65" class="box"/><text x="480" y="60" text-anchor="middle" class="t-title">React differently</text>
+            <rect x="658" y="20" width="274" height="65" class="box"/><text x="795" y="60" text-anchor="middle" class="t-title">Enter a local fight</text>
+            <path d="M165 85V146" class="wire-rust" marker-end="url(#d2-arrow)"/>
+            <path d="M480 85V146" class="wire-rust" marker-end="url(#d2-arrow)"/>
+            <path d="M795 85V146" class="wire-rust" marker-end="url(#d2-arrow)"/>
+            <rect x="28" y="156" width="904" height="108" class="pressure"/>
+            <text x="480" y="199" text-anchor="middle" class="t-big">Encounter — the application</text>
+            <text x="480" y="238" text-anchor="middle" class="mono rust">movement · knowledge · combat · time</text>
+          </svg>
+          <figcaption>The responsibilities were present. Independently useful tools were not.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="timeline-panel" id="panel-3" data-panel="3" aria-labelledby="panel-3-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">03</span><span class="date-label">The tools</span></div>
+      <div class="panel-body">
+        <div class="question-label">Small enough to use together</div>
+        <h2 id="panel-3-title">Knowledge and time became pieces</h2>
+        <p class="lead">Two of the simplest packages made the biggest difference. <code>Intel</code> held what an observer knew, whether that observer was a player or a monster. <code>Clock</code> handled advancement through turns or world time. Neither needed to understand the whole encounter. The composition could read what someone had learned and decide whether they belonged in a fight. Knowledge could matter without becoming another rule hidden inside the clock.</p>
+        <figure tabindex="0" aria-label="Diagram: Encounter reads intel and uses clock; the two tools do not depend on one another">
+          <svg viewBox="0 0 960 370" role="img" aria-labelledby="d3-title d3-desc">
+            <title id="d3-title">The composition supplies the meaning</title>
+            <desc id="d3-desc">Intel returns what each observer knows. Encounter interprets that information and decides who enters combat. Clock provides the scheduling machinery. The arrows describe how the composition uses the tools, not dependencies between the packages.</desc>
+            <defs><marker id="d3-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--accent)"/></marker></defs>
+            <rect x="28" y="24" width="380" height="112" class="box"/>
+            <text x="52" y="60" class="label blue">PLAY / INTEL</text>
+            <text x="52" y="103" class="t-big">What this observer knows</text>
+            <rect x="552" y="24" width="380" height="112" class="box"/>
+            <text x="576" y="60" class="label blue">PLAY / CLOCK</text>
+            <text x="576" y="103" class="t-big">When this member advances</text>
+            <path d="M218 136V223" class="wire-blue" marker-end="url(#d3-arrow)"/>
+            <text x="240" y="185" class="small">knowledge returned</text>
+            <path d="M742 232V145" class="wire-blue" marker-end="url(#d3-arrow)"/>
+            <text x="764" y="185" class="small">members transferred</text>
+            <rect x="28" y="232" width="904" height="112" class="soft"/>
+            <text x="52" y="268" class="label blue">ENCOUNTER · THE COMPOSITION</text>
+            <text x="52" y="311" class="t-big">“You noticed each other. This fight includes you.”</text>
+          </svg>
+          <figcaption>Intel doesn’t start fights. Clock doesn’t decide what knowledge means. Encounter composes them.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section class="timeline-panel" id="panel-4" data-panel="4" aria-labelledby="panel-4-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">04</span><span class="date-label">The proof</span></div>
+      <div class="panel-body">
+        <div class="question-label">One fight, not everybody’s fight</div>
+        <h2 id="panel-4-title">The straggler could keep moving</h2>
+        <p class="lead">Divinity: Original Sin 2 gave me the picture of a fight forming locally. Our composition made landed intel the input, rather than a simple proximity rule. In the split-party test, Alice and a goblin entered combat while the others stayed on the world clock. Carl could still move. The fight hadn’t stopped the world. That was a small example with an enormous implication.</p>
+        <figure tabindex="0" aria-label="Diagram: Alice and the goblin take turns while the remaining party stays on world time">
+          <svg viewBox="0 0 960 360" role="img" aria-labelledby="d4-title d4-desc">
+            <title id="d4-title">One encounter, two ways of advancing</title>
+            <desc id="d4-desc">In the historical split-party test, Alice and a goblin notice each other and enter a turn clock. Bob, Carl and Dana remain on the world clock; Carl can move while the fight runs. A later explicit transfer can move a member into the fight. These boxes represent clock membership, not a proximity radius.</desc>
+            <defs><marker id="d4-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--accent)"/></marker></defs>
+            <rect x="28" y="24" width="414" height="205" class="soft"/>
+            <text x="52" y="61" class="label blue">TURN CLOCK</text>
+            <text x="52" y="105" class="t-big">Alice + goblin</text>
+            <text x="52" y="147" class="t-title">Alice’s turn → goblin’s turn</text>
+            <text x="52" y="192" class="small">Contact brought these two into combat.</text>
+            <rect x="518" y="24" width="414" height="205" class="box"/>
+            <text x="542" y="61" class="label blue">WORLD CLOCK</text>
+            <text x="542" y="105" class="t-big">Bob + Carl + Dana</text>
+            <text x="542" y="147" class="t-title">Carl moves. The world advances.</text>
+            <text x="542" y="192" class="small">They are not waiting for Alice’s turn.</text>
+            <path d="M725 229V296H235V238" class="wire-blue" marker-end="url(#d4-arrow)"/>
+            <text x="480" y="337" text-anchor="middle" class="mono blue">A later transfer can bring a straggler into the fight.</text>
+          </svg>
+          <figcaption>The test exercises the composition, not just two clocks in isolation.</figcaption>
+        </figure>
+        <p class="reflection">What if sneaking or an illusion kept the relevant intel from landing? Those weren’t finished features. They were possibilities I could now see a way to build.</p>
+      </div>
+    </section>
+
+    <section class="timeline-panel" id="panel-5" data-panel="5" aria-labelledby="panel-5-title">
+      <div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">05</span><span class="date-label">The horizon</span></div>
+      <div class="panel-body">
+        <div class="question-label">The beginning of building seriously</div>
+        <h2 id="panel-5-title">Something to build with</h2>
+        <p class="lead">Seeing those pieces compose was when the game began to feel serious to me. The <code>play/*</code> tools, and later the <code>world/*</code> examples, made the ambition tangible. Not a finished living world, but scaffolding that could support one. A community’s shared goal, a rescue that changed tomorrow’s enemies, a camp that believed the wrong person: these were becoming things I could reason about building.</p>
+        <p class="reflection">I collected the larger vision and its executable examples in <a href="https://kirkdiggler.github.io/rpg-toolkit/living-world/">The Living World →</a>.</p>
+        <p class="end-question">I didn’t have the whole world yet.<br>I was beginning to have the tools to build it.</p>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <h2>Evidence trail</h2>
+    <p>The Living World ambition and the feeling of being a tool builder without tools are my recollections. The <a href="https://github.com/KirkDiggler/rpg-toolkit/blob/f1a1163d18b8f4b1792c7a87e40491b782cbd45c/docs/journey/051-encounter-reset-application-to-toolkit.md">August 8 reset record</a> names the application/toolbox distinction. The old application kept running while the new pieces were built.</p>
+    <p>The <a href="https://github.com/KirkDiggler/rpg-toolkit/blob/f3e74cf8ef76b84772dc1db19cb05eb20a3fb210/rulebooks/dnd5e/encounter/trigger.go">August 15 trigger composition</a> reads intel’s first-contact reports. The <a href="https://github.com/KirkDiggler/rpg-toolkit/blob/f3e74cf8ef76b84772dc1db19cb05eb20a3fb210/rulebooks/dnd5e/encounter/clocks_test.go#L420-L558">split-party test</a> asserts the fight and continuing free roam; its later straggler entry uses an explicit transfer. That version used symmetric sight, supported one fight bubble, and did not implement the stealth or illusion possibilities described here.</p>
+    <p>The <a href="https://github.com/KirkDiggler/rpg-toolkit/blob/30124e0a/examples/world/README.md">August 30 camp example</a> and <a href="https://github.com/KirkDiggler/rpg-toolkit/commit/e6071776">August 31 world graduation</a> are a later, parallel expression of composition, not a claim that Encounter was extracted from those packages. The written Living World record follows the reset; it does not date when I first imagined it.</p>
+    <p class="scope">Retrospective field note. Historical code and test assertions inspected, not rerun for this article. The community scenarios describe a vision and bounded examples, not a delivered streamer service.</p>
+  </footer>
+</main>
+</body>
+</html>
