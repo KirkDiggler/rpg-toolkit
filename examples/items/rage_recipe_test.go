@@ -11,9 +11,9 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/examples/effects"
-	"github.com/KirkDiggler/rpg-toolkit/examples/effects/machine"
 	"github.com/KirkDiggler/rpg-toolkit/examples/items"
+	"github.com/KirkDiggler/rpg-toolkit/mechanics/effects"
+	"github.com/KirkDiggler/rpg-toolkit/mechanics/effects/machine"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 )
 
@@ -101,7 +101,7 @@ func useRage(ctx context.Context, item *items.Item, holder string) (*items.UseOu
 				return nil, err
 			}
 			sourceRef := offer.Source.ItemRef
-			effect, err := effects.New(effects.Config{
+			effect, err := effects.Compose(effects.ComposeInput{
 				Recipe: recipe, MachineVocabulary: itemRageVocabulary(),
 				OutputVocabulary: itemRageOutputs(offer.Source), HolderID: offer.Source.HolderID, SourceRef: &sourceRef,
 			})
