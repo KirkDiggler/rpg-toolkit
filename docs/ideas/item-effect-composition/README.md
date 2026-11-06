@@ -42,7 +42,7 @@ flowchart TB
     end
     ID --> ITEM
 
-    subgraph RULEBOOK["Rulebook and interaction composition"]
+    subgraph RULEBOOK["Rulebook"]
         ACT["Activation / resolution<br/>eligibility and coordinated costs"]
         FACTORY["conditions registry / factory<br/>one named definition, fresh instance"]
         KINDS["Rulebook effect kinds and vocabulary<br/>damage bonus, resistance, advantage"]

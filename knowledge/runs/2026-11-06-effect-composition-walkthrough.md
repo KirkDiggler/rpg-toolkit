@@ -18,4 +18,4 @@ Documentation work [rpg-project#876](https://github.com/KirkDiggler/rpg-project/
 
 ## Mistaken
 
-- No runtime defect or implementation completion is claimed by this documentation work — [scope](https://github.com/KirkDiggler/rpg-project/issues/876).
+- The first diagram's two-line cluster title crowded a node; a shorter title renders clearly. Both Mermaid diagrams are rendered and visually inspected with headless system Chrome; no browser configuration or runtime dependency change is needed — [component shape](../../docs/ideas/item-effect-composition/README.md#component-shape).

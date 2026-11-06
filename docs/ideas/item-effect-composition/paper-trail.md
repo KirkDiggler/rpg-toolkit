@@ -7,9 +7,9 @@ and delivery state. Each document below answers a different question.
 ```mermaid
 flowchart TD
     NEED["Experience / customer need"] --> NOTES["Journal and experiments"]
-    NOTES --> DECISION["ADR: chosen boundary and consequences"]
-    DECISION --> EXPLAIN["Walkthrough: layers and contracts"]
-    EXPLAIN --> PLAN["Checked implementation plan"]
+    NOTES --> EXPLAIN["Walkthrough: layers and contracts"]
+    EXPLAIN <--> DECISION["ADR: chosen boundary and consequences"]
+    DECISION --> PLAN["Checked implementation plan"]
     PLAN --> BUILD["Slice issues, code and PR evidence"]
     BUILD --> RECORD["Observed implementation record"]
     RECORD --> ARTICLE["Retrospective field note"]
