@@ -110,7 +110,7 @@ func (s *AtlasMapSuite) TestNothingOnTheMapNamesARoom() {
 			"scenario off the geometry (rpg-project#368 §5)",
 	)
 	s.Equal(
-		[]string{"ID", "Name", "Cells", "Archetype", "Lighting"},
+		[]string{"ID", "Name", "Cells", "Archetype", "Lighting", "Ground"},
 		fieldsOf(session.AtlasRegion{}),
 		"a region is a named set of cells and the facts true of that area — never a frame of its own",
 	)
