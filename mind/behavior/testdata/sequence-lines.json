@@ -1,0 +1,16 @@
+{
+  "ref": "example:behaviors:announcements",
+  "end": "stop",
+  "body": {
+    "recipe": {
+      "initial": "speak",
+      "states": {
+        "speak": {"transitions": [
+          {"on": "time", "do": [{"pick": "line"}]},
+          {"on": {"$done": "line"}, "to": {"$next": true}}
+        ]}
+      }
+    },
+    "table": {"line": [{"Weight": 1, "Say": {"$item": true}}]}
+  }
+}

@@ -26,6 +26,18 @@
 // [CheckParameters] validates producer-supplied scalar values from mechanical
 // metadata. It does not bind templates, sample values or define a quality profile.
 //
+// # Bind-time finite sequences
+//
+// [ExpandSequence] is a producer utility, separate from runtime execution. It
+// expands a [SequenceDefinition]'s data-authored recipe/table body over finite
+// supplied items and returns an ordinary [InstanceSpec], a detached vocabulary,
+// and completion/source mappings. Item-local state, table and bag references are
+// qualified. The existing scalar checker validates named values, and the real
+// composer validates the result. Binding never rolls or runs a fact reader.
+// Catalogs, defaults, domain/coordinate checks and actual completion delivery
+// stay with the producer/caller. This introduces no new studio source field,
+// runtime interpreter or asynchronous completion/deduplication protocol.
+//
 // # Policy and testimony
 //
 // mind/perception says what a creature KNOWS. This module says what it DOES

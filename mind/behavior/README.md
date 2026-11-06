@@ -12,6 +12,7 @@ overview, machine/composer zooms, and the guard traced through both.
 |---|---|
 | composition | `Composer`, `Observe`, `Decide`, `ToData` / `LoadComposer` — private progress and one ordered selection lane |
 | parameter metadata | `ParameterSpec`, `CheckParameters` — mechanical constraints for producer-supplied scalar values |
+| finite expansion | `SequenceDefinition`, `ExpandSequence` — a producer utility emitting ordinary instances, completion maps and source maps before runtime |
 | policy | `Table`, `Layer`, `Pick`, `Deal` — the weighted evaluator, unchanged by composition |
 | [`deed`](./deed) | What a deed is — verb, actor, target, place — and how it is encoded on the deeds channel |
 | [`stage`](./stage) | `Land`: telling every witness what they saw, in their own terms |
@@ -89,6 +90,19 @@ rejoin policy. No live encounter adapter, new dungeonspec field, studio editor
 support, global listener index, general memory policy or recovery engine is
 introduced by this module checkpoint. The existing `Selector.Path` behavior is
 unchanged; a retained composition is not an automatic migration of live patrols.
+
+### Authored finite sequences
+
+`ExpandSequence` materializes a data-authored recipe/table body over a supplied
+finite list. It reuses parameter checking and composer validation, qualifies local
+state/table/bag names and supplies completion/source mappings. It does not alter
+`Composer` execution or interpret geometry. Catalogs, explicit defaults, domain
+checks and actual completion delivery remain with the caller.
+
+[One Patrol, two routes](sequence.md) shows the complete source, binding values,
+expanded state/table outline and tested paths. The same producer also expands
+spoken lines, so the example is not a Patrol-specific factory. This is a component
+input contract, not a new studio/dungeonspec field or a live-game integration.
 
 ## The table
 
