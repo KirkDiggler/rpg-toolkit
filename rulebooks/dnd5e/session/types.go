@@ -2136,6 +2136,26 @@ type TargetCandidate struct {
 	// actor has not sighted it holding anything. They never change
 	// Available.
 	HeldEffects []EffectRow `json:"held_effects,omitempty"`
+
+	// Approach is the cell the attacker's own walk THIS TURN ends on within
+	// the weapon's reach of this candidate, and in sight of it
+	// (rpg-project#872 D4): the answer to "can I reach him this turn, and
+	// where do I stop", so a client walks there and swings without deriving
+	// reach or a path budget itself.
+	//
+	// Set ONLY when the candidate is out of reach (Available false,
+	// [ShortfallTargetOutOfReach]) and a walk this turn reaches it. Nil when
+	// it is already in reach, when no walk this turn does, and on every
+	// other verb. In a fight "this turn" is the movement the turn has left
+	// (the Move declaration's Remaining); in free roam there is no budget.
+	//
+	// THE LAW: a Move whose path is a shortest walk to this cell is not
+	// refused for its goal or its length, and once the walk arrives the
+	// Attack on this candidate is available. The cheapest such cell, ties
+	// broken by X then Y ([encounter.Encounter.Approaches]). A walk the world
+	// cuts short is a short walk; a client asks Afford again rather than
+	// swinging from where it stopped. Dungeon-absolute, like every cell here.
+	Approach *spatial.Position `json:"approach,omitempty"`
 }
 
 // Discovery is what changed in one observer's perception.
