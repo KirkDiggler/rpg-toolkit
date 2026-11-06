@@ -95,3 +95,36 @@ func (e *Encounter) ExportedReachable(mover MemberID, from spatial.Position) ([]
 	sort.Slice(cells, func(i, j int) bool { return beforeInScanOrder(cells[i], cells[j]) })
 	return cells, field.Dist, nil
 }
+
+// ExportedWalkFlood is the flood a player's own walk is held to: the
+// mover's own picture, no door opened, unbounded — the oracle
+// [Encounter.Approaches] is checked against.
+func (e *Encounter) ExportedWalkFlood(mover MemberID, from spatial.Position) (map[spatial.Position]int, error) {
+	q, err := e.cellQuery()
+	if err != nil {
+		return nil, err
+	}
+	field, err := q.floodFrom(mover, mover, from, nil, 0, false)
+	if err != nil {
+		return nil, err
+	}
+	return field.Dist, nil
+}
+
+// ExportedSeesFrom is the one sight test asked as if observer stood on cell
+// and subject where it stands.
+func (e *Encounter) ExportedSeesFrom(observer MemberID, cell spatial.Position, subject MemberID) (bool, error) {
+	at, ok := e.canvas.GetEntityPosition(string(subject))
+	if !ok {
+		return false, nil
+	}
+	ranges, err := e.sightOf([]MemberID{observer})
+	if err != nil {
+		return false, err
+	}
+	positions := map[MemberID]spatial.Position{observer: cell, subject: at}
+	return e.newSightReach(positions, ranges).Reaches("sight", observer, subject), nil
+}
+
+// ExportedFloodsComputed is how many distance fields this run has flooded.
+func (e *Encounter) ExportedFloodsComputed() int { return e.floodsComputed }
