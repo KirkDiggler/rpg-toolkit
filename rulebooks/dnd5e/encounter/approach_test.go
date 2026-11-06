@@ -214,6 +214,9 @@ func (s *ApproachesSuite) TestAWallIsNotReachTheWalkGoesRound() {
 	s.Contains(got.Path, cellAt(10, 5), "the walk goes through the doorway")
 	s.NotContains([]spatial.Position{cellAt(9, 1), cellAt(9, 2), cellAt(9, 3)}, got.Cell,
 		"never a cell across the wall from him")
+	// A fight's budget floods instead of searching, and answers the same.
+	budgeted := s.one(enc, encounter.ApproachesInput{Mover: alice, Targets: []encounter.MemberID{goblin}, RangeFeet: 5, Budget: 20})
+	s.Equal(got, budgeted)
 }
 
 func (s *ApproachesSuite) TestAShutDoorClosesThePlayersWalk() {
@@ -222,6 +225,11 @@ func (s *ApproachesSuite) TestAShutDoorClosesThePlayersWalk() {
 	enc := s.twoRooms(encounter.DoorIsClosed(), approachPlayer(alice, 8, 5), approachMonster(goblin, 14, 5))
 	got := s.one(enc, encounter.ApproachesInput{Mover: alice, Targets: []encounter.MemberID{goblin}, RangeFeet: 5, Unbounded: true})
 	s.False(got.Reached)
+	budgeted := s.one(enc, encounter.ApproachesInput{Mover: alice, Targets: []encounter.MemberID{goblin}, RangeFeet: 5, Budget: 20})
+	s.False(budgeted.Reached, "nor does a fight's budget open it")
+
+	open := s.twoRooms(encounter.DoorIsOpen(), approachPlayer(alice, 8, 5), approachMonster(goblin, 14, 5))
+	s.holdsTheLaw(open, alice, s.one(open, encounter.ApproachesInput{Mover: alice, Targets: []encounter.MemberID{goblin}, RangeFeet: 5, Budget: 20}), 1)
 }
 
 func (s *ApproachesSuite) TestTiesBreakInScanOrder() {

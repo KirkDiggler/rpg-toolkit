@@ -81,9 +81,14 @@ type ApproachesOutput struct {
 // across a wall from the target is within reach and sees nothing, and an
 // attack names only a member its attacker sees.
 //
-// ONE FLOOD PER CALL, bounded by the budget, however many targets are
-// asked, and none at all when every target is already in reach. Each target
-// then reads only the cells within reach of it.
+// A BUDGET IS ONE FLOOD, bounded by it, however many targets are asked:
+// each target then reads only the cells within reach of it. NO BUDGET IS
+// ONE SEARCH PER TARGET ([cellQuery.searchToward]), because an unbounded
+// flood is the whole floor (~48 ms on the 10k keep) while a search toward
+// one target settles the cells near its path and returns the flood's own
+// cell and path, by that search's promise (rpg-project#762, R10). A target
+// no walk reaches costs its search the floor the mover can walk. Neither
+// runs when every target is already in reach.
 //
 // READ LIVE, as the step reads it. A body the mover has not seen still
 // stops the walk, and still shapes this answer; that is the step's own
@@ -150,6 +155,44 @@ func (e *Encounter) Approaches(in ApproachesInput) (ApproachesOutput, error) {
 	if len(todo) == 0 {
 		return out, nil
 	}
+	q, err := e.cellQuery()
+	if err != nil {
+		return ApproachesOutput{}, fmt.Errorf("approaches: %w", err)
+	}
+	refused, err := e.walkEndsRefused(in.Mover)
+	if err != nil {
+		return ApproachesOutput{}, fmt.Errorf("approaches %q: %w", in.Mover, err)
+	}
+	// ends is the law for one target's cell, past the flood's own rules:
+	// Standable, not refused as a walk end, the target seen from it.
+	ends := func(cell spatial.Position, target MemberID, at spatial.Position) (bool, error) {
+		fact, err := q.cellAt(CellAtInput{Cell: cell, Mover: in.Mover})
+		if err != nil {
+			return false, err
+		}
+		return fact.Passage == PassageStandable && !refused[cell] && sees(cell, target, at), nil
+	}
+
+	if in.Unbounded && q.searchable() {
+		for _, p := range todo {
+			target := in.Targets[p.row]
+			path, found, err := q.searchToward(in.Mover, in.Mover, from, p.at, float64(reach), nil, false,
+				func(cell spatial.Position) (bool, error) {
+					if cell == from || e.Distance(cell, p.at) > float64(reach) {
+						return false, nil
+					}
+					return ends(cell, target, p.at)
+				})
+			if err != nil {
+				return ApproachesOutput{}, fmt.Errorf("approaches %q: %w", in.Mover, err)
+			}
+			if found {
+				out.Approaches[p.row] = Approach{Target: target, Reached: true, Cell: path[len(path)-1], Path: path}
+			}
+		}
+		return out, nil
+	}
+
 	// LIMIT ZERO IS THE WHOLE FLOOR ([cellQuery.floodFrom]), so a real
 	// budget of zero says so before it asks.
 	limit := 0
@@ -159,44 +202,33 @@ func (e *Encounter) Approaches(in ApproachesInput) (ApproachesOutput, error) {
 		}
 		limit = in.Budget
 	}
-
-	q, err := e.cellQuery()
-	if err != nil {
-		return ApproachesOutput{}, fmt.Errorf("approaches: %w", err)
-	}
 	field, err := q.floodFrom(in.Mover, in.Mover, from, nil, limit, false)
 	if err != nil {
 		return ApproachesOutput{}, fmt.Errorf("approaches %q: %w", in.Mover, err)
 	}
-	refused, err := e.walkEndsRefused(in.Mover)
-	if err != nil {
-		return ApproachesOutput{}, fmt.Errorf("approaches %q: %w", in.Mover, err)
-	}
-
 	for _, p := range todo {
 		target := in.Targets[p.row]
 		// The cells the walk could end on for this target: those within
 		// reach of it that the flood reached, cheapest first.
-		var ends []spatial.Position
+		var cells []spatial.Position
 		for _, cell := range e.cellsWithin(p.at, reach) {
 			if _, reached := field.Dist[cell]; reached && cell != from {
-				ends = append(ends, cell)
+				cells = append(cells, cell)
 			}
 		}
-		sort.Slice(ends, func(i, j int) bool {
-			di, dj := field.Dist[ends[i]], field.Dist[ends[j]]
+		sort.Slice(cells, func(i, j int) bool {
+			di, dj := field.Dist[cells[i]], field.Dist[cells[j]]
 			if di != dj {
 				return di < dj
 			}
-			return beforeInScanOrder(ends[i], ends[j])
+			return beforeInScanOrder(cells[i], cells[j])
 		})
-		for _, cell := range ends {
-			// May cross a cell, may not stop on it: the end is Standable.
-			fact, err := q.cellAt(CellAtInput{Cell: cell, Mover: in.Mover})
+		for _, cell := range cells {
+			ok, err := ends(cell, target, p.at)
 			if err != nil {
 				return ApproachesOutput{}, fmt.Errorf("approaches %q: %w", in.Mover, err)
 			}
-			if fact.Passage != PassageStandable || refused[cell] || !sees(cell, target, p.at) {
+			if !ok {
 				continue
 			}
 			path, found := field.PathTo(cell)
