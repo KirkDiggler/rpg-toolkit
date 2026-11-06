@@ -1,4 +1,4 @@
-module github.com/KirkDiggler/rpg-toolkit/examples/effects
+module github.com/KirkDiggler/rpg-toolkit/mechanics/effects
 
 go 1.27.0
 

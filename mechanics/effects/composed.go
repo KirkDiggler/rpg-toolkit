@@ -14,10 +14,10 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/examples/effects/machine"
+	"github.com/KirkDiggler/rpg-toolkit/mechanics/effects/machine"
 )
 
-// ErrInvalidOutput wraps every refusal New makes of a recipe's outputs.
+// ErrInvalidOutput wraps every refusal Compose makes of a recipe's outputs.
 var ErrInvalidOutput = errors.New("invalid output")
 
 // ErrNoAmount is returned by Bound.Amount for an output without an amount.
@@ -93,9 +93,9 @@ type decoded struct {
 	fn    AmountFn
 }
 
-// Config names the recipe, consumer vocabulary and instance data used to
+// ComposeInput names the recipe, consumer vocabulary and instance data used to
 // construct a composed condition. It contains no bus: Apply owns attachment.
-type Config struct {
+type ComposeInput struct {
 	// Recipe declares the states, outputs, transitions and bag defaults.
 	Recipe machine.Recipe
 	// MachineVocabulary supplies the facts and beats used by the recipe.
@@ -113,14 +113,14 @@ type Config struct {
 	State string
 }
 
-// New validates the recipe and its outputs against the supplied vocabularies,
+// Compose validates the recipe and its outputs against the supplied vocabularies,
 // fills the instance bag from Parameters, and returns a condition not yet applied.
 // It refuses, wrapping ErrInvalidOutput or the machine's errors: an output that
 // does not decode; an unknown kind or one missing Attach or Assess; parameters
 // the kind's Check refuses; an invalid or unknown amount; a guard over an unknown
 // fact or undeclared flag; any machine.Validate refusal; a parameter naming no
 // bag key; and a state the recipe does not declare.
-func New(input Config) (*Composed, error) {
+func Compose(input ComposeInput) (*Composed, error) {
 	outs, keys, err := decodeOutputs(input.Recipe, input.OutputVocabulary)
 	if err != nil {
 		return nil, err

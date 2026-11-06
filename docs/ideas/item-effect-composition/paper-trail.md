@@ -29,13 +29,13 @@ canonical skills and repository instructions govern when each is needed.
 | What did we inspect, try and learn? | `rpg-project/docs/journal/second-wind-ring/`; [journal record #863](https://github.com/KirkDiggler/rpg-project/pull/863), plus the example PRs | `work-records` journal guide |
 | What architectural decision binds the work? | [ADR-0048](../../adr/0048-equipment-granted-abilities.md), in the context of [ADR-0038](../../adr/0038-resolution-owns-the-bus.md) and [ADR-0045](../../adr/0045-actions-are-data.md) | Owning ADR conventions and `work-records` decision-record guide |
 | How do the layers fit and where does a change belong? | [This folder's README](README.md), linked from the architecture/docs index | `design` walkthrough guide |
-| What exact work implements an agreed contract? | [Extraction plan](plan.md), with scope and its remaining module-home decision on [#705](https://github.com/KirkDiggler/rpg-project/issues/705) | `design` implementation-planning guide; `story` for selected slices |
+| What exact work implements an agreed contract? | [Extraction plan](plan.md), with scope and the settled module-home decision on [#705](https://github.com/KirkDiggler/rpg-project/issues/705) | `design` implementation-planning guide; `story` for selected slices |
 | What was built and verified per deliverable? | Slice issues and PRs, with owning-module tests, run records and observed integration evidence | `build-slice`, owning repo instructions, applicable `walk` / `pr-review` gates |
 | How does the final implementation compare with the decision and plan? | `implementation.md` beside the plan, written from actual implementation evidence | Toolkit idea-record convention; links to code/PRs, versions, verification and deviations |
 | How do we share the story afterward? | A separate field-note draft drawing on the records | `work-records` field-note guide; publishing remains explicit |
 
-[The extraction plan](plan.md) names a bounded first cut and its explicit open
-module-home choice. `implementation.md` remains the intended home for observed
+[The extraction plan](plan.md) names a bounded first cut and its settled
+`mechanics/effects` module home. `implementation.md` remains the intended home for observed
 results after execution; it is not a placeholder report of work that has not
 happened. The example plans in the consumer PRs are **experiment plans**, not a
 substitute for the extraction/production-adoption plan.

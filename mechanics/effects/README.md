@@ -1,11 +1,19 @@
-# examples/effects
+# mechanics/effects
 
-Conditions composed from effects. Two tools, formed here together, with tests
-as their only customer and a Rage-shaped vocabulary. When the dnd5e
-conditions first consume them, they are promoted to a module of their own.
+Generic composition of configured effects. This module contains the composer
+and its `machine` package; neither imports a rulebook. Consumers supply the
+vocabulary and rules. The item examples are the first extraction consumers;
+production condition migration is separate work.
+
+The current API replaces the retired implementation formerly published under
+this module path. Existing v0.2.1-and-earlier pins retain their own code; this is
+not a compatibility wrapper or a fresh v0.1.0. CI determines the next release
+after merge. No release tag is implied merely by this source tree.
 
 - Design: [`docs/ideas/composable-conditions/design.md`](https://github.com/KirkDiggler/rpg-toolkit/blob/docs/idea-composable-conditions/docs/ideas/composable-conditions/design.md) on the idea branch
 - Story: [rpg-project#703](https://github.com/KirkDiggler/rpg-project/issues/703)
+- Extraction and current ordering: [#705](https://github.com/KirkDiggler/rpg-project/issues/705)
+- Layer walkthrough: [item/effect composition](../../docs/ideas/item-effect-composition/README.md)
 - Godoc: `go doc ./machine` and `go doc .` walk every piece in the order you
   meet it.
 
@@ -32,7 +40,7 @@ same guard that execution asks.
 Construction names the consumer vocabulary separately from the instance data:
 
 ```go
-composed, err := effects.New(effects.Config{
+composed, err := effects.Compose(effects.ComposeInput{
     Recipe:            recipe,
     MachineVocabulary: factsAndBeats,
     OutputVocabulary:  outputKinds,
@@ -163,7 +171,7 @@ finding, added to the vocabulary with its test. It is never worked around.
 ## Run it
 
 ```sh
-cd examples/effects
+cd mechanics/effects
 go test ./...                          # seams, Validate, guards, the Rage walk, the composer
 go test ./machine -run Example -v      # the runnable candle example
 go test -run '^$' -bench . ./...       # BenchmarkGuardAnswer, BenchmarkBeatTurnEnd

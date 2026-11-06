@@ -1,6 +1,6 @@
 # Effects extraction — first implementation cut
 
-**Status:** structurally checked against the inspected provider/consumers; **not executable until H1 (module home) is settled**. Paths below use the recommended `effects/` home. This is the one architectural choice requested, not another approval of the planning process.
+**Status:** checked for execution. H1 is settled by KirkDiggler on 2026-11-06: `mechanics/effects/`, with machine in the same module. The naming decision is `effects.Compose(effects.ComposeInput{...})` and `machine.New(machine.Config{...})`. No merge/release is authorized by executing this plan.
 
 **Goal:** extract the existing generic effects composer and its machine as one independently versioned module, and prove the Second Wind/Rage/loot examples consume it without behavior changes.
 
@@ -8,21 +8,22 @@
 
 **Finish line:** a checked provider PR plus migrated example-consumer PRs, evidence against their actual pins, and an accurate implementation record. Provider merge/tag and consumer final re-pins follow explicit merge authority; this plan does not authorize automatic merges. Examples remain examples; no production item feature is claimed.
 
-## Scope and unresolved choice
+## Scope and settled choices
 
-**H1 — recommended home:** `effects/`, module
-`github.com/KirkDiggler/rpg-toolkit/effects`, with `effects/machine` a package inside
-that module. Keep the present `New(Config)` surfaces for this cut. The components
-and release unit already exist; this is promotion, not another machine design.
+**H1 — settled home:** `mechanics/effects/`, module
+`github.com/KirkDiggler/rpg-toolkit/mechanics/effects`; `machine/` remains a package
+inside that release unit. The mechanics layer groups generic composition with
+other rulebook-neutral mechanisms such as resources. It does not contain D&D rules.
 
-Alternative: `mechanics/effects` expresses the same generic layer but restores the
-path of the retired implementation. Both homes can respect dependency direction;
-top-level `effects` names this composer's responsibility directly. `core/effect`
-is not the recommendation: core supplies types/contracts, while this runtime
-owns event-driven composition. A third shared machine module is outside scope.
+The first plan proposed top-level `effects/` for its standalone name. The operator
+preferred the mechanics home after comparing the layer fit; its old module history
+is retained, not its retired implementation. `core/effect` is not selected because
+core supplies types/contracts, not this event-driven runtime. No third/shared
+machine is extracted.
 
-The existing record deliberately leaves the home until extraction. H1 must be
-recorded on #705 before source files or consumer imports are moved.
+The public composition operation is `Compose(ComposeInput)`, with the same named
+fields and `*Composed, error` result. The machine keeps `New(Config)`. These naming
+changes are explicit; runtime/data/lifecycle semantics do not change.
 
 **Excluded:** rulebook effect-kind relocation, shared production Raging factory,
 legacy condition/class migration, designer schema/editor, inventory/storage APIs,
@@ -39,9 +40,11 @@ Those remain later contracts/slices, not prerequisites smuggled into this move.
   the inspected main tree. The retired rulebook representation is not adopted.
 - CI discovers surviving modules from changed Go paths; a removed old module
   contributes no build directory. The provider PR moves one logical release unit
-  and leaves only `effects/go.mod`, not a second compatibility module.
-- The tagger excludes `examples/*`, but automatically initializes a new ordinary
-  module at v0.1.0. Observe the actual tag after an authorized merge; never mint it.
+  and leaves only `mechanics/effects/go.mod`, not a second compatibility module.
+- The tagger excludes `examples/*`. The chosen path has tags through
+  `mechanics/effects/v0.2.1`; that tag is an ancestor of inspected main. This is a
+  deliberate replacement API on the next pre-v1 version, not a fresh v0.1.0.
+  Observe CI's actual tag after an authorized merge; never mint or reuse one.
 - Current imported types, field/default semantics, validation, source/holder
   identity, lifecycle ordering and serialized blobs are preserved.
 - Work in the named isolated worktrees. Consumers pin pushed provider commits
@@ -49,21 +52,21 @@ Those remain later contracts/slices, not prerequisites smuggled into this move.
 
 ## Task 1 — extract the provider without redesign
 
-**Owner:** toolkit, the single surviving `effects` Go module; repo-level docs may accompany it.
+**Owner:** toolkit, the single surviving `mechanics/effects` Go module; repo-level docs may accompany it.
 
-**Files:** move `examples/effects/` to `effects/`, preserving its tests and prior
-run record. Update `effects/go.mod`, actual Go imports, composer/machine import
+**Files:** move `examples/effects/` to `mechanics/effects/`, preserving its tests and prior
+run record. Update `mechanics/effects/go.mod`, actual Go imports, composer/machine import
 seam allow-lists and negative import cases. Update live documentation links in
 `knowledge/map.md`, `docs/architecture/components/mechanics.md`,
 `docs/ideas/item-effect-composition/README.md`,
 `docs/ideas/machine-foundation/README.md`, `docs/adr/0048-equipment-granted-abilities.md`,
 `docs/status.md` and `docs/quality.md`. Historical pinned run records are not
 rewritten; `mind/machine/doc.go`'s historical origin statement is not a dependency.
-Record the items-first promotion amendment in the owning knowledge record without
-erasing the earlier decision. Add this slice's run record.
+Record the items-first promotion amendment in this slice's run record for ingest,
+without manually rewriting the historical knowledge decisions. Add that run record.
 
 **Contract:** consumers import the new module path and its `machine` package.
-`effects.Config`, `Composed`, `OutputVocabulary`, `KindSpec`, machine recipe,
+`effects.ComposeInput` (the renamed construction Config), `Composed`, `OutputVocabulary`, `KindSpec`, machine recipe,
 program, guard and blob contracts are unchanged. There is no forwarding package
 at the old import path; previously pinned old commits remain valid history.
 
@@ -76,8 +79,8 @@ its composer. Preserve byte-equal restore and publish-before-detach assertions.
 
 - [ ] Baseline existing module race tests and example.
 - [ ] Move the module; migrate actual imports and live links, not historical prose wholesale.
-- [ ] Compare Go source before/after with import-path changes normalized; any behavior delta requires explanation, not silent inclusion.
-- [ ] In `effects`: `go fmt ./...`, `go mod tidy`, `go test -count=1 -race ./...`, `go test -run Example -v ./machine`, `go vet ./...`, `golangci-lint run ./...`, benchmark smoke with `-benchtime=1x`.
+- [ ] Compare Go source before/after with import paths and the explicit Compose/ComposeInput rename normalized; any behavior delta requires explanation, not silent inclusion.
+- [ ] In `mechanics/effects`: `go fmt ./...`, `go mod tidy`, `go test -count=1 -race ./...`, `go test -run Example -v ./machine`, `go vet ./...`, `golangci-lint run ./...`, benchmark smoke with `-benchtime=1x`.
 - [ ] Verify no old example-module imports remain in current provider Go files/go.mod, and no second go.mod or compatibility alias remains at the old location.
 - [ ] Stage the moved module, then run `scripts/check-knowledge-map.sh`, `scripts/check-decisions.sh`, doc-link/genre checks and `git diff --cached --check`.
 - [ ] Push the provider and open a draft; report its real head for consumer adoption.
@@ -90,8 +93,9 @@ merge is needed to begin this integration.
 
 **Files:** `examples/items/item.go`, `seam_test.go`, `go.mod`, `go.sum`, README and
 run record in S1; S2 additionally `rage_recipe_test.go`, `rage_vocabulary_test.go`
-and its relevant example docs/run record. Update imports to `effects` and
-`effects/machine`, including the import-boundary test. Keep rulebook dependencies
+and its relevant example docs/run record. Update imports to `mechanics/effects`
+and `mechanics/effects/machine`, including the import-boundary test, and migrate
+composition calls to `effects.Compose(effects.ComposeInput{...})`. Keep rulebook dependencies
 in the consumer tests, not the generic item package.
 
 **Contract:** the item composer and Rage preparation resolve exactly one effects
@@ -105,7 +109,7 @@ item state and prepared-result behavior do not change as part of re-pinning.
 the generic import-boundary test. Preserve 7/9 healing calculations, Rage's four
 benefits/lifetimes, item provenance, spent loot and explicit commit-on-success limits.
 
-- [ ] Use `go get github.com/KirkDiggler/rpg-toolkit/effects@<pushed-provider-sha>` and `go mod tidy`; remove the unused old module requirement through Go tooling.
+- [ ] Use `go get github.com/KirkDiggler/rpg-toolkit/mechanics/effects@<pushed-provider-sha>` and `go mod tidy`; remove the unused old module requirement through Go tooling.
 - [ ] Run full-module race tests, both examples, vet and lint in the relevant worktree. Read actual output; an import-only compile is not consumer evidence.
 - [ ] Confirm module/import inventory contains no `examples/effects` dependency.
 - [ ] Re-run one lifecycle/identity mutant behind the existing consumers if the migration touches that seam; do not invent behavior changes merely for a rename.
@@ -114,7 +118,7 @@ benefits/lifetimes, item provenance, spent loot and explicit commit-on-success l
 ## Task 3 — release/adoption evidence, only with the required authority
 
 **Order:** provider review/gates → authorized provider merge → observe CI's real
-`effects/v…` tag → re-pin item consumers → focused verification / applicable review.
+`mechanics/effects/v…` tag → re-pin item consumers → focused verification / applicable review.
 Retarget S2 to main before its base branch is merged/deleted; its current stacked
 base does not trigger automatic PR CI. Do not claim no checks means green.
 
@@ -139,12 +143,12 @@ base does not trigger automatic PR CI. Do not claim no checks means green.
 
 | Provider | Consumer | Produced / consumed contract | Availability | Proof |
 |---|---|---|---|---|
-| Existing composer/machine | New module home | Same API/data/lifecycle, new import prefix | H1 pending; code exists | Provider suite and normalized diff |
+| Existing composer/machine | Mechanics module home | Same data/lifecycle, named Compose input and new import prefix | H1 settled; code exists | Provider suite and normalized diff |
 | Pushed effects extraction head | Item S1 | Config, Composed and effect vocabulary | Task 1 before Task 2 | Real Go pseudo-version + item suite |
 | Updated S1 + effects head | Rage/loot S2 | Same typed prepared effects and machine recipe | Merge S1 branch into S2; no rebase | Rage/loot suite + import inventory |
 | CI-published effects tag | Final consumers | Same tested provider content on released pin | Authorized merge/tag before final adoption | Tag inspection and re-pin verification |
 
 Planning check: requirements and interfaces have owners and named evidence.
 Runtime API/wire, storage and rulebook migration are deliberately excluded, not
-silently deferred required work. **H1 remains the explicit execution blocker.**
-After it is resolved, the faithful plan needs no separate procedural approval.
+silently deferred required work. **H1 is settled; the scoped plan can execute.**
+New ownership/lifecycle changes still return to design rather than being hidden in the move.

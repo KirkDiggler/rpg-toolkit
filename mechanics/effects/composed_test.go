@@ -14,8 +14,8 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/examples/effects"
-	"github.com/KirkDiggler/rpg-toolkit/examples/effects/machine"
+	"github.com/KirkDiggler/rpg-toolkit/mechanics/effects"
+	"github.com/KirkDiggler/rpg-toolkit/mechanics/effects/machine"
 )
 
 // conditionBehavior is the rulebook's ConditionBehavior method set, copied
@@ -41,7 +41,7 @@ type rig struct {
 
 func newRig(s *suite.Suite, r machine.Recipe, ov effects.OutputVocabulary) *rig {
 	source := &core.Ref{Module: "dnd5e", Type: "features", ID: "rage"}
-	c, err := effects.New(effects.Config{
+	c, err := effects.Compose(effects.ComposeInput{
 		Recipe: r, MachineVocabulary: rageVocabulary(), OutputVocabulary: ov,
 		HolderID: holder, SourceRef: source,
 	})
@@ -271,7 +271,7 @@ func (s *composeSuite) TestRefusals() {
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
-			_, err := effects.New(effects.Config{
+			_, err := effects.Compose(effects.ComposeInput{
 				Recipe: tc.recipe, MachineVocabulary: rageVocabulary(), OutputVocabulary: outputVocabulary(),
 				HolderID: holder, Parameters: tc.params,
 			})
@@ -288,7 +288,7 @@ func (s *composeSuite) TestAKeyOnlyAnOutputReadsIsRead() {
 		Kind: kindAdvantage, When: &machine.Guard{Flag: "is_frenzied"}, Params: jsontext.Value(`{"on":"saving_throws"}`),
 	}))
 	r.Bag["is_frenzied"] = false
-	_, err := effects.New(effects.Config{
+	_, err := effects.Compose(effects.ComposeInput{
 		Recipe: r, MachineVocabulary: rageVocabulary(), OutputVocabulary: outputVocabulary(), HolderID: holder,
 	})
 	s.Require().NoError(err)
@@ -305,7 +305,7 @@ func (s *composeSuite) TestToJSONIsTheFlatBlobAndLoadsBack() {
 
 	var b machine.Blob
 	s.Require().NoError(json.Unmarshal(data, &b))
-	loaded, err := effects.New(effects.Config{
+	loaded, err := effects.Compose(effects.ComposeInput{
 		Recipe: rageRecipe(), MachineVocabulary: rageVocabulary(), OutputVocabulary: outputVocabulary(),
 		HolderID: b.MemberID, SourceRef: b.Source, Parameters: b.Bag, State: b.State,
 	})

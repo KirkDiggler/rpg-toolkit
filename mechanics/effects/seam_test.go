@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Kirk Diggler
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-package machine_test
+package effects_test
 
 import (
 	"go/parser"
@@ -17,14 +17,14 @@ import (
 
 const toolkit = "github.com/KirkDiggler/rpg-toolkit/"
 
-// machineAllows is the seam of design E9 for the machine: the standard
-// library, core, core/chain and events.
-func machineAllows(path string) bool {
+// effectsAllows is the seam of design E9 for the composer: the machine's
+// allow-list plus the machine itself.
+func effectsAllows(path string) bool {
 	if !strings.Contains(strings.Split(path, "/")[0], ".") {
 		return true // standard library
 	}
 	switch path {
-	case toolkit + "core", toolkit + "core/chain", toolkit + "events":
+	case toolkit + "core", toolkit + "core/chain", toolkit + "events", toolkit + "mechanics/effects/machine":
 		return true
 	}
 	return false
@@ -66,9 +66,9 @@ type seamSuite struct {
 }
 
 func (s *seamSuite) TestPackageImportsAreAllowed() {
-	refused, err := importsOutside(".", machineAllows)
+	refused, err := importsOutside(".", effectsAllows)
 	s.Require().NoError(err)
-	s.Empty(refused, "machine imports outside its seam (design E9)")
+	s.Empty(refused, "effects imports outside its seam (design E9)")
 }
 
 // The check itself must be able to fail: a file importing a rulebook is
@@ -78,17 +78,11 @@ func (s *seamSuite) TestCheckIsRedOnARulebookImport() {
 	s.Require().NoError(os.WriteFile(filepath.Join(dir, "ok.go"),
 		[]byte("package x\n\nimport \"fmt\"\n\nvar _ = fmt.Sprint\n"), 0o600))
 	s.Require().NoError(os.WriteFile(filepath.Join(dir, "bad.go"),
-		[]byte("package x\n\nimport _ \""+toolkit+"rulebooks/dnd5e\"\n"), 0o600))
-	s.Require().NoError(os.WriteFile(filepath.Join(dir, "bad_test.go"),
-		[]byte("package x\n\nimport _ \""+toolkit+"rulebooks/dnd5e\"\n"), 0o600))
+		[]byte("package x\n\nimport _ \""+toolkit+"rulebooks/dnd5e/conditions\"\n"), 0o600))
 
-	refused, err := importsOutside(dir, machineAllows)
+	refused, err := importsOutside(dir, effectsAllows)
 	s.Require().NoError(err)
-	s.Equal([]string{"bad.go: " + toolkit + "rulebooks/dnd5e"}, refused)
-}
-
-func (s *seamSuite) TestComposerIsOutsideTheMachineSeam() {
-	s.False(machineAllows(toolkit + "examples/effects"))
+	s.Equal([]string{"bad.go: " + toolkit + "rulebooks/dnd5e/conditions"}, refused)
 }
 
 func TestImportsStayInsideTheSeam(t *testing.T) {

@@ -1,13 +1,13 @@
 ---
 name: mechanics modules
-description: The live generic resources module and its boundary with rulebook recovery rules
-updated: 2026-11-03
+description: Generic resources and effect composition, with rulebook meaning supplied by consumers
+updated: 2026-11-06
 ---
 
 # Mechanics
 
-The current module in this layer is
-[`mechanics/resources`](../../../mechanics/resources/). The
+This layer contains [`mechanics/resources`](../../../mechanics/resources/) and
+[`mechanics/effects`](../../../mechanics/effects/). The
 [checked module map](../../../knowledge/map.md) is the module census.
 
 ## Resources
@@ -33,15 +33,16 @@ module is unused.
 
 ## Effects and the state machines
 
-[`examples/effects`](../../../examples/effects/) is a prototype composer with
-its own event-driven machine. [`mind/machine`](../../../mind/machine/) is the
+[`mechanics/effects`](../../../mechanics/effects/) composes configured outputs
+around its own event-driven `machine` package. [`mind/machine`](../../../mind/machine/) is the
 separate bus-free machine used by encounter scheduling. They remain separate
 implementations; a possible shared base is not a current dependency.
 
-The prototype is not a published replacement for the retired legacy mechanics
-APIs. Promotion belongs to the
-[composable-conditions story](https://github.com/KirkDiggler/rpg-project/issues/703).
-D&D's active conditions, features and proficiencies remain in the rulebook.
+The composer is the replacement implementation at this module path, not the old
+legacy API. Its source movement does not itself prove a published release or
+production rulebook adoption; that evidence belongs to [the extraction slice](https://github.com/KirkDiggler/rpg-project/issues/705).
+Item consumers drive this extraction before existing condition migration.
+D&D effect meanings and named condition definitions remain rulebook-owned.
 
 ## Verification
 
