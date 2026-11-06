@@ -18,11 +18,11 @@ import (
 // not the consumer tests that intentionally use real Second Wind healing.
 func TestItemPackageStaysInsideItsGenericSeam(t *testing.T) {
 	allowed := map[string]bool{
-		"github.com/KirkDiggler/rpg-toolkit/core":                     true,
-		"github.com/KirkDiggler/rpg-toolkit/events":                   true,
-		"github.com/KirkDiggler/rpg-toolkit/examples/effects":         true,
-		"github.com/KirkDiggler/rpg-toolkit/examples/effects/machine": true,
-		"github.com/KirkDiggler/rpg-toolkit/mechanics/resources":      true,
+		"github.com/KirkDiggler/rpg-toolkit/core":                      true,
+		"github.com/KirkDiggler/rpg-toolkit/events":                    true,
+		"github.com/KirkDiggler/rpg-toolkit/mechanics/effects":         true,
+		"github.com/KirkDiggler/rpg-toolkit/mechanics/effects/machine": true,
+		"github.com/KirkDiggler/rpg-toolkit/mechanics/resources":       true,
 	}
 	entries, err := os.ReadDir(".")
 	require.NoError(t, err)
