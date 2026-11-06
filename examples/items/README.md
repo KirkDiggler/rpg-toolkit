@@ -16,6 +16,10 @@ equipment interfaces plus validation, not this grant/pool composer. This example
 does not replace that module or claim to implement its full equipment interfaces;
 extraction ownership remains a question to resolve with actual consumers.
 
+The generic effect runtime is `mechanics/effects`, consumed through
+`effects.Compose(effects.ComposeInput{...})`. Its version is pinned in
+[`go.mod`](go.mod); the item API itself remains experimental.
+
 ## The shape
 
 ```text
@@ -26,7 +30,7 @@ Config: definition + instance identity + optional saved Data + consumer validati
                           │
           Item.Attach on the caller's existing bus
                           │
-        effects.New: one attached state, two output kinds
+        effects.Compose: one attached state, two output kinds
                 ├── grant availability
                 └── targeted pool recovery
                           │

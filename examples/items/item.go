@@ -15,8 +15,8 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/examples/effects"
-	"github.com/KirkDiggler/rpg-toolkit/examples/effects/machine"
+	"github.com/KirkDiggler/rpg-toolkit/mechanics/effects"
+	"github.com/KirkDiggler/rpg-toolkit/mechanics/effects/machine"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/resources"
 )
 
@@ -137,7 +137,7 @@ func (i *Item) Attach(ctx context.Context, input AttachInput) error {
 	if i.composed != nil {
 		return machine.ErrAlreadyApplied
 	}
-	c, err := effects.New(effects.Config{
+	c, err := effects.Compose(effects.ComposeInput{
 		Recipe: i.recipe, OutputVocabulary: i.vocabulary(), HolderID: input.HolderID, SourceRef: &i.def.Ref,
 	})
 	if err != nil {
