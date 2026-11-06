@@ -39,6 +39,12 @@ superseded as current guidance by the shipped separate modules
 `rulebooks/dnd5e/encounter`, `rulebooks/dnd5e/resolution`, and
 `rulebooks/dnd5e/session`.
 
+For the item/effects initiative, the
+[composition walkthrough](../ideas/item-effect-composition/README.md) applies
+these layer boundaries to effect kinds, condition definitions, grants, runtime
+instances and host-owned storage. It distinguishes existing interfaces from the
+target contracts and links ADR-0048 rather than introducing a second decision.
+
 ## The persistence pattern
 
 Every stateful toolkit component implements exactly two methods:
