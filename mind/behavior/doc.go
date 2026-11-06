@@ -26,6 +26,17 @@
 // [CheckParameters] validates producer-supplied scalar values from mechanical
 // metadata. It does not bind templates, sample values or define a quality profile.
 //
+// # Derived inspection and wake admission
+//
+// [Composer.Inspect] describes every instance's own state, listeners, timed
+// beats and due/wake values as detached data; [Composer.StateOf] reads one
+// state/definition identity without copying all schedules. Neither steps or
+// calls vocabulary readers. The caller owns the resulting indexes and chooses
+// which opportunity is legal. Timed input skips an instance before its future
+// wake; non-timed observations remain deliverable. [Composer.DelayWakes] applies
+// a caller-chosen span to existing wakes, with overflow checked before any
+// mutation, and never shifts anchors or owns a clock.
+//
 // # Bind-time finite sequences
 //
 // [ExpandSequence] is a producer utility, separate from runtime execution. It
