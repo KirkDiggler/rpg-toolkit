@@ -18,6 +18,11 @@ Consumer slice: [Keep signature combat and loot S1 — Second Wind ring](https:/
 under [#850](https://github.com/KirkDiggler/rpg-project/issues/850).
 Existing effects work remains owned by [#703](https://github.com/KirkDiggler/rpg-project/issues/703).
 
+The [layer walkthrough](../ideas/item-effect-composition/README.md) explains how
+these responsibilities fit the larger architecture. Its [paper-trail map](../ideas/item-effect-composition/paper-trail.md)
+connects the investigation to checked plans and observed implementation; neither
+adds a second authority for this decision.
+
 ## Context
 
 The keep needs equipment whose abilities work for its NPC owners and can become
