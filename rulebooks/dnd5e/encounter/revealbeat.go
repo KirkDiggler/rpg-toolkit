@@ -300,13 +300,21 @@ func regionTouches(r AtlasRegion, owned map[spatial.Position]bool) bool {
 func revealRegionsPayload(regions []AtlasRegion) []map[string]interface{} {
 	out := make([]map[string]interface{}, 0, len(regions))
 	for _, r := range regions {
-		out = append(out, map[string]interface{}{
+		entry := map[string]interface{}{
 			"id":        r.ID,
 			"name":      r.Name,
 			"cells":     r.Cells,
 			"archetype": r.Archetype,
 			"lighting":  map[string]float64{"intensity": r.Lighting.Intensity},
-		})
+		}
+		if r.Ground != nil {
+			paint := make([]map[string]interface{}, 0, len(r.Ground.Paint))
+			for _, row := range r.Ground.Paint {
+				paint = append(paint, map[string]interface{}{"ref": row.Ref, "cells": row.Cells})
+			}
+			entry["ground"] = map[string]interface{}{"baseRef": r.Ground.BaseRef, "paint": paint}
+		}
+		out = append(out, entry)
 	}
 
 	return out

@@ -327,11 +327,12 @@ type CanvasData struct {
 // at load, refused by name when absent, never defaulted — a region whose
 // light nobody stated is a fact this module may not invent (rpg-toolkit#1033).
 type RegionData struct {
-	ID        string         `json:"id"`
-	Name      string         `json:"name,omitempty"`
-	Cells     []PositionData `json:"cells"`
-	Archetype string         `json:"archetype"`
-	Lighting  *LightingData  `json:"lighting"`
+	ID        string            `json:"id"`
+	Name      string            `json:"name,omitempty"`
+	Cells     []PositionData    `json:"cells"`
+	Archetype string            `json:"archetype"`
+	Lighting  *LightingData     `json:"lighting"`
+	Ground    *RegionGroundData `json:"ground,omitempty"`
 
 	// Concealed is a TOMBSTONE: the key a region wrote while a region was
 	// the thing that could be hidden (rpg-toolkit#1371 through
@@ -2513,6 +2514,7 @@ func fieldDataFrom(f *field) FieldData {
 		out.Regions[i] = RegionData{
 			ID: r.ID, Name: r.Name, Cells: cells, Archetype: r.Archetype,
 			Lighting: &LightingData{Intensity: &intensity},
+			Ground:   regionGroundData(r.Ground),
 		}
 	}
 
@@ -3859,6 +3861,7 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 		in.Regions[i] = RegionInput{
 			ID: rd.ID, Name: rd.Name, Cells: cells, Archetype: rd.Archetype,
 			Lighting: &Lighting{Intensity: *rd.Lighting.Intensity},
+			Ground:   regionGroundFromData(rd.Ground),
 		}
 	}
 

@@ -80,6 +80,7 @@ func singleRoomRegions(field encounter.FieldInput, authored []authoredRegion) (s
 				fmt.Sprintf("room.room.regions[%d].cells", a.index), "every cell is wall footing")
 		}
 		region.Cells = kept
+		region.Ground = groundWithoutFooting(region.Ground, kept)
 		out.regions = append(out.regions, region)
 	}
 	return out, nil
@@ -104,6 +105,7 @@ func authoredRegionInputs(gp *RoomGameplaySource, o spatial.HexOrientation) []au
 		out = append(out, authoredRegion{index: i, input: encounter.RegionInput{
 			ID: region.ID, Name: region.Name, Cells: cells, Archetype: "crypt",
 			Lighting: &encounter.Lighting{Intensity: region.Lighting.Intensity},
+			Ground:   lowerRegionGround(region.Ground, o),
 		}})
 	}
 	return out
