@@ -327,8 +327,15 @@ type Encounter struct {
 	// plain dungeon has sides and knowledge too, and what it skips is the
 	// concealment capabilities and the sweep's work, which keeps its blob
 	// byte-identical to what it was before.
-	world     *encounterWorld
-	discovery map[MemberID]DiscoveryStateData
+	world *encounterWorld
+	// wakeParticipation is the one participation assessment a wake pass
+	// reads (rpg-project#879 S3b): every woken creature asked the host anew,
+	// a hundred assessments of the same roster per raise. Set by the first
+	// ask inside [Encounter.wakePass], dropped when the pass ends, when an
+	// intent other than a Pass has executed and when a member is noticed
+	// down, the three moments inside a pass at which the answer can change.
+	wakeParticipation *participationState
+	discovery         map[MemberID]DiscoveryStateData
 
 	// sneakVerdicts is every standing Stealth verdict, by sneaking mover then
 	// by watcher (sneak.go, rpg-project#606 R10): discovery's attempt shape,

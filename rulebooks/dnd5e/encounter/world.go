@@ -166,6 +166,14 @@ type encounterWorld struct {
 	structure *graph.World
 	log       *journal.Journal
 
+	// knownMemo and stanceMemo are the last answers of [encounterWorld.knownFacts]
+	// and [Encounter.stanceAs] with the journal length they were folded at
+	// (rpg-project#879 S3b). The journal is append-only, so an unchanged
+	// length is an unchanged fold; both folds used to copy the whole journal
+	// on every question, once per observer per sight pass.
+	knownMemo  map[MemberID]knownFactsMemo
+	stanceMemo map[journal.EntityID]stanceStateMemo
+
 	// concealments is every concealment's ID, sorted (C8 — the sweep walks
 	// it, and beat order is observable).
 	//
@@ -507,6 +515,32 @@ func (w *encounterWorld) anyoneKnowsFact(id FactID) bool {
 // reads as [Facts.Known] (rpg-project#569 R6). The same journal and the same
 // subject rule, so the list and the single question cannot disagree.
 func (w *encounterWorld) knownFacts(member MemberID) []string {
+	if memo, hit := w.knownMemo[member]; hit && memo.at == w.log.Len() {
+		return append([]string(nil), memo.facts...)
+	}
+	out := w.foldKnownFacts(member)
+	if w.knownMemo == nil {
+		w.knownMemo = map[MemberID]knownFactsMemo{}
+	}
+	w.knownMemo[member] = knownFactsMemo{at: w.log.Len(), facts: out}
+
+	return append([]string(nil), out...)
+}
+
+// knownFactsMemo is one member's folded facts at a journal length.
+type knownFactsMemo struct {
+	at    int
+	facts []string
+}
+
+// stanceStateMemo is one observer's folded graph state at a journal length.
+type stanceStateMemo struct {
+	at    int
+	state *graph.State
+}
+
+// foldKnownFacts is [encounterWorld.knownFacts]'s fold, uncached.
+func (w *encounterWorld) foldKnownFacts(member MemberID) []string {
 	var out []string
 	seen := map[string]bool{}
 	for _, f := range w.log.All() {
@@ -574,7 +608,7 @@ func (e *Encounter) stanceBetween(pair factionPair) Stance {
 // it: the hostile edge, the allied edge, or neither, which is neutral.
 func (e *Encounter) stanceAs(observer journal.EntityID, pair factionPair) Stance {
 	a, b := factionEntityID(pair.a), factionEntityID(pair.b)
-	state := e.world.structure.StateFor(observer, e.world.log)
+	state := e.world.stateFor(observer)
 	switch {
 	case state.HasEdge(a, relHostileTo, b):
 		return StanceHostile
@@ -883,4 +917,19 @@ func (e *Encounter) stanceTable() map[factionPair]Stance {
 		out[pair] = e.stanceBetween(pair)
 	}
 	return out
+}
+
+// stateFor is the graph's present as observer holds it, folded once per
+// journal length and read back until a fact lands ([encounterWorld.stanceMemo]).
+func (w *encounterWorld) stateFor(observer journal.EntityID) *graph.State {
+	if memo, hit := w.stanceMemo[observer]; hit && memo.at == w.log.Len() {
+		return memo.state
+	}
+	state := w.structure.StateFor(observer, w.log)
+	if w.stanceMemo == nil {
+		w.stanceMemo = map[journal.EntityID]stanceStateMemo{}
+	}
+	w.stanceMemo[observer] = stanceStateMemo{at: w.log.Len(), state: state}
+
+	return state
 }

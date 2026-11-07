@@ -69,6 +69,12 @@ type ClockOfOutput struct {
 	Order []MemberID
 }
 
+// WorldRound is the world clock's high-water mark: the round the free-roaming
+// world has reached, which a Move advances every time a walker's pace reaches
+// its own speed. A cheap read for a host or a harness that wants the round
+// without the record; it never errs.
+func (e *Encounter) WorldRound() int { return e.clock.ToData().HighWater }
+
 // ClockOf reports which clock a member is on.
 //
 // This is the query the composition is expected to be asked constantly, and it
@@ -960,6 +966,11 @@ func (e *Encounter) executeTurnIntent(
 	activeID MemberID, m *memberRecord, view MonsterView, intent TurnIntent, budget *TurnBudget,
 	coords turnCoords,
 ) (done bool, deltas map[MemberID]*IntelDelta, err error) {
+	if _, pass := intent.(Pass); !pass {
+		// Anything but a Pass may change who stands: the wake's one
+		// participation assessment is dropped once it has executed.
+		defer func() { e.wakeParticipation = nil }()
+	}
 	switch it := intent.(type) {
 	case Pass:
 		// A PASS THAT NAMES ITS CAUSE IS TOLD (rpg-toolkit#2001): the word

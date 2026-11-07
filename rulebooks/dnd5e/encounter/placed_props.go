@@ -640,12 +640,30 @@ func (f *field) blockingDoorFootprints() []*doorRecord {
 	if len(f.doorFootprints) == 0 {
 		return nil
 	}
+	if len(f.blockingMask) == len(f.doorFootprints) {
+		same := true
+		for i, d := range f.doorFootprints {
+			if d.blocks() != f.blockingMask[i] {
+				same = false
+				break
+			}
+		}
+		if same {
+			return f.blockingDoors
+		}
+	} else {
+		f.blockingMask = make([]bool, len(f.doorFootprints))
+	}
 	out := make([]*doorRecord, 0, len(f.doorFootprints))
-	for _, d := range f.doorFootprints {
-		if d.blocks() {
+	for i, d := range f.doorFootprints {
+		f.blockingMask[i] = d.blocks()
+		if f.blockingMask[i] {
 			out = append(out, d)
 		}
 	}
+	// SHARED, NOT COPIED: every caller ranges over the answer and keeps
+	// nothing, so the same slice serves until a door's reading changes.
+	f.blockingDoors = out
 
 	return out
 }
