@@ -77,13 +77,13 @@ at the old import path; previously pinned old commits remain valid history.
 allow the new child path and still refuse rulebook imports / machine importing
 its composer. Preserve byte-equal restore and publish-before-detach assertions.
 
-- [ ] Baseline existing module race tests and example.
-- [ ] Move the module; migrate actual imports and live links, not historical prose wholesale.
-- [ ] Compare Go source before/after with import paths and the explicit Compose/ComposeInput rename normalized; any behavior delta requires explanation, not silent inclusion.
-- [ ] In `mechanics/effects`: `go fmt ./...`, `go mod tidy`, `go test -count=1 -race ./...`, `go test -run Example -v ./machine`, `go vet ./...`, `golangci-lint run ./...`, benchmark smoke with `-benchtime=1x`.
-- [ ] Verify no old example-module imports remain in current provider Go files/go.mod, and no second go.mod or compatibility alias remains at the old location.
-- [ ] Stage the moved module, then run `scripts/check-knowledge-map.sh`, `scripts/check-decisions.sh`, doc-link/genre checks and `git diff --cached --check`.
-- [ ] Push the provider and open a draft; report its real head for consumer adoption.
+- [x] Baseline existing module race tests and example.
+- [x] Move the module; migrate actual imports and live links, not historical prose wholesale.
+- [x] Compare Go source before/after with import paths and the explicit Compose/ComposeInput rename normalized: all 25 ASTs match.
+- [x] In `mechanics/effects`: `go fmt ./...`, `go mod tidy`, `go test -count=1 -race ./...`, `go test -run Example -v ./machine`, `go vet ./...`, `golangci-lint run ./...`, benchmark smoke with `-benchtime=1x`.
+- [x] Verify no old example-module imports remain in current provider Go files/go.mod, and no second go.mod or compatibility alias remains at the old location.
+- [x] Stage the moved module, then run map/digest/link/genre/whitespace checks. Genre retains 44 pre-existing advisory findings; see [evidence](implementation.md).
+- [x] Push the provider and open a draft; consumer source checkpoint is `e15c6e54` in #2291.
 
 ## Task 2 — migrate both item consumers against the pushed provider
 
@@ -109,11 +109,11 @@ item state and prepared-result behavior do not change as part of re-pinning.
 the generic import-boundary test. Preserve 7/9 healing calculations, Rage's four
 benefits/lifetimes, item provenance, spent loot and explicit commit-on-success limits.
 
-- [ ] Use `go get github.com/KirkDiggler/rpg-toolkit/mechanics/effects@<pushed-provider-sha>` and `go mod tidy`; remove the unused old module requirement through Go tooling.
-- [ ] Run full-module race tests, both examples, vet and lint in the relevant worktree. Read actual output; an import-only compile is not consumer evidence.
-- [ ] Confirm module/import inventory contains no `examples/effects` dependency.
-- [ ] Re-run one lifecycle/identity mutant behind the existing consumers if the migration touches that seam; do not invent behavior changes merely for a rename.
-- [ ] Push each consumer checkpoint and keep it draft while publication/re-pin requirements remain outstanding.
+- [x] Use `go get github.com/KirkDiggler/rpg-toolkit/mechanics/effects@<pushed-provider-sha>` and `go mod tidy`; remove the unused old module requirement through Go tooling.
+- [x] Run full-module race tests, both examples, vet and lint in the relevant worktree. Read actual output; an import-only compile is not consumer evidence.
+- [x] Confirm module/import inventory contains no `examples/effects` dependency.
+- [x] Assess the conditional lifecycle/identity mutant: not applicable to unchanged runtime ASTs and untouched behavior; retain the existing meaningful tests.
+- [x] Push each consumer checkpoint and keep it draft while publication/re-pin requirements remain outstanding. S1 `7d7ef342`, S2 `7dadbb64`; [evidence](implementation.md).
 
 ## Task 3 — release/adoption evidence, only with the required authority
 
@@ -124,8 +124,8 @@ base does not trigger automatic PR CI. Do not claim no checks means green.
 
 - [ ] Record the head-specific provider verdict and CI; obtain merge authority rather than inferring it from approval of the walkthrough.
 - [ ] After an authorized merge, observe the actual provider tag and re-pin consumers with `go get`; repeat consumer checks against the tag.
-- [ ] Write `implementation.md` beside this plan from observed module paths, versions, contracts, results and deviations. Explicitly name still-unrun production boundaries.
-- [ ] Update #705 / linked consumer issues and source maps. Do not close broader condition/item stories on the first provider merge.
+- [x] Write `implementation.md` from observed source/consumer checkpoints, contracts, results and deviations; release remains outstanding. Explicitly name still-unrun production boundaries.
+- [x] Update #705 / linked consumer issues and source maps with source integration evidence, leaving release/adoption outstanding. Do not close broader condition/item stories on the first provider merge.
 
 ## Requirement coverage
 
@@ -144,11 +144,11 @@ base does not trigger automatic PR CI. Do not claim no checks means green.
 | Provider | Consumer | Produced / consumed contract | Availability | Proof |
 |---|---|---|---|---|
 | Existing composer/machine | Mechanics module home | Same data/lifecycle, named Compose input and new import prefix | H1 settled; code exists | Provider suite and normalized diff |
-| Pushed effects extraction head | Item S1 | Config, Composed and effect vocabulary | Task 1 before Task 2 | Real Go pseudo-version + item suite |
+| Pushed effects extraction head | Item S1 | ComposeInput, Composed and effect vocabulary | Provider `e15c6e54` consumed | Real Go pseudo-version + item suite |
 | Updated S1 + effects head | Rage/loot S2 | Same typed prepared effects and machine recipe | Merge S1 branch into S2; no rebase | Rage/loot suite + import inventory |
 | CI-published effects tag | Final consumers | Same tested provider content on released pin | Authorized merge/tag before final adoption | Tag inspection and re-pin verification |
 
 Planning check: requirements and interfaces have owners and named evidence.
-Runtime API/wire, storage and rulebook migration are deliberately excluded, not
+Server API/wire, storage and rulebook migration are deliberately excluded, not
 silently deferred required work. **H1 is settled; the scoped plan can execute.**
 New ownership/lifecycle changes still return to design rather than being hidden in the move.

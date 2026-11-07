@@ -31,13 +31,13 @@ canonical skills and repository instructions govern when each is needed.
 | How do the layers fit and where does a change belong? | [This folder's README](README.md), linked from the architecture/docs index | `design` walkthrough guide |
 | What exact work implements an agreed contract? | [Extraction plan](plan.md), with scope and the settled module-home decision on [#705](https://github.com/KirkDiggler/rpg-project/issues/705) | `design` implementation-planning guide; `story` for selected slices |
 | What was built and verified per deliverable? | Slice issues and PRs, with owning-module tests, run records and observed integration evidence | `build-slice`, owning repo instructions, applicable `walk` / `pr-review` gates |
-| How does the final implementation compare with the decision and plan? | `implementation.md` beside the plan, written from actual implementation evidence | Toolkit idea-record convention; links to code/PRs, versions, verification and deviations |
+| How does the implementation compare with the decision and plan? | [Observed implementation record](implementation.md), including incomplete release/adoption work | Toolkit idea-record convention; links to code/PRs, versions, verification and deviations |
 | How do we share the story afterward? | A separate field-note draft drawing on the records | `work-records` field-note guide; publishing remains explicit |
 
 [The extraction plan](plan.md) names a bounded first cut and its settled
-`mechanics/effects` module home. `implementation.md` remains the intended home for observed
-results after execution; it is not a placeholder report of work that has not
-happened. The example plans in the consumer PRs are **experiment plans**, not a
+`mechanics/effects` module home. [The implementation record](implementation.md)
+reports the provider and real consumer checkpoints; it explicitly separates
+passing source integration from still-unfinished release/tag adoption. The example plans in the consumer PRs are **experiment plans**, not a
 substitute for the extraction/production-adoption plan.
 
 The extraction issue carries the current items-first direction and the retained,
