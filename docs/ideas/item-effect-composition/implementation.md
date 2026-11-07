@@ -1,8 +1,8 @@
 # Generic effects extraction — implementation evidence
 
-**Status at the released-pin checkpoint (2026-11-07):** provider merged and
-released as **mechanics/effects v0.3.0**; both item consumers pin that tag and
-pass their repeated local gates. Consumer PR merge receipts remain on #705.
+**Status (2026-11-07):** provider and both item consumers merged. The provider
+is released as **mechanics/effects v0.3.0**; both consumers pin that tag and
+passed repeated local gates and final-head CI. Merge receipts are below and on #705.
 This is the observed first-cut result, not proof of production condition/inventory adoption. [Plan](plan.md), [slice #705](https://github.com/KirkDiggler/rpg-project/issues/705).
 
 ## Observed checkpoints
@@ -35,9 +35,19 @@ package, copied runtime, `replace`, or `go.work`.
   queries for v0.1.0, v0.2.0 and v0.2.1 return the published rationale, preserving
   access to old pins. The first probe immediately after tagging saw stale proxy
   metadata; direct lookup and subsequent normal proxy queries confirm propagation.
-- S2 targets main before any parent branch deletion. Current head CI/reviews and
-  final consumer merge receipts are recorded on [#705](https://github.com/KirkDiggler/rpg-project/issues/705)
-  and the PRs, rather than predicted here. Examples are never tagged.
+- S2 was retargeted to main before parent merge/deletion. S1 #2273 merged as
+  `b76a1f6dd65954055bd9cabb80110552d4811889`; S2 #2287 merged as
+  `3b82d2e4acf876bad21fd808ac11db662f60ddcc`. Examples are never tagged.
+- One proportionate consumer review inspected S1 and then S2's additions, without
+  duplicating the shared code review. Three Minor documentation findings were
+  addressed and all threads resolved; no runtime blockers remained. Focused final
+  verdicts: [S1 at 5c25762c](https://github.com/KirkDiggler/rpg-toolkit/pull/2273#pullrequestreview-5809002802)
+  and [S2 at 98667400](https://github.com/KirkDiggler/rpg-toolkit/pull/2287#pullrequestreview-5809012790).
+  Final-head CI passed: [S1](https://github.com/KirkDiggler/rpg-toolkit/actions/runs/42320776906)
+  and [S2](https://github.com/KirkDiggler/rpg-toolkit/actions/runs/42321053762).
+- S1's main catch-up conflicted only in the module map; S2's post-squash catch-up
+  conflicted only on its README introduction. Both retained the intended content;
+  no runtime Go or dependency changes were introduced by those resolutions.
 
 ## Contracts retained and spelling changed
 
@@ -104,8 +114,8 @@ the staged deletion/new destination were checked explicitly before committing.
 ## Still required before final adoption
 
 - Provider review, merge, actual tag, consumer re-pins/re-tests and S2 retargeting
-  are observed above. Final consumer head verdicts and merge receipts belong to
-  #705 and the PRs; this checkpoint does not manufacture future merge SHAs.
+  and final consumer reviews/merges are observed above. No delivery step remains
+  for this bounded first cut; the production boundaries below remain outside it.
 - Production action definitions/economy, shared rulebook effect vocabulary and
   condition factories, class-feature reuse, provenance beyond a content SourceRef,
   stacking/eligibility, designer parameter schemas, native encounter inventory,
