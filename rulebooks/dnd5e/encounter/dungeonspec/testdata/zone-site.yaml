@@ -74,11 +74,11 @@ room:
     regions:
       - id: room-1-region
         name: Zone Site
-        lighting: { intensity: 1 }
+        lighting: {intensity: 1}
         cells: []
       - id: region-near-room
         name: Near room
-        lighting: { intensity: 1 }
+        lighting: {intensity: 1}
         cells:
           - r: -3
             q: [[-6, 1]]
@@ -96,7 +96,7 @@ room:
             q: [[-9, -2]]
       - id: region-far-room
         name: Far room
-        lighting: { intensity: 1 }
+        lighting: {intensity: 1}
         cells:
           - r: -3
             q: [[2, 9]]
@@ -133,33 +133,66 @@ room:
     monsterBindings:
       sentry:
         faction: keep
-        on:
-          time:
-            - when:
-                enemy: reach
-              attack: enemy
-            - when:
-                enemy: seen
-              toward: enemy
-            - when:
-                enemy: none
-              toward:
-                path:
-                  - q: -3
-                    r: 3
-                  - q: -2
-                    r: 0
-                  - q: -4
-                    r: 0
-                  - q: -5
-                    r: 3
+        behaviors:
+          - id: policy
+            use: sentry-policy
       warden:
         faction: keep
-        on:
-          time:
-            - when:
-                enemy: reach
-              attack: enemy
-            - when:
-                enemy: seen
-              toward: enemy
+        behaviors:
+          - id: policy
+            use: warden-policy
+behaviorDefinitions:
+  sentry-policy:
+    recipe:
+      ref: site:behaviors:sentry-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        - when:
+            enemy: reach
+          attack: enemy
+        - when:
+            enemy: seen
+          toward: enemy
+        - when:
+            enemy: none
+          toward:
+            path:
+              - q: -3
+                r: 3
+              - q: -2
+                r: 0
+              - q: -4
+                r: 0
+              - q: -5
+                r: 3
+  warden-policy:
+    recipe:
+      ref: site:behaviors:warden-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        - when:
+            enemy: reach
+          attack: enemy
+        - when:
+            enemy: seen
+          toward: enemy

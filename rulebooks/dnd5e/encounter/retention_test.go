@@ -404,7 +404,7 @@ func (s *RetentionTestSuite) TestVerbBeatsSurviveTheVerb() {
 			// see is a monster in a fight, and the world does not move fight
 			// members — the wall is what lets the patroller patrol.
 			{ID: "watcher", Kind: encounter.KindPlayer, Position: spatial.Position{X: 10, Y: 0}},
-			{ID: "pacer", Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 1}, Table: walksTo(cellAt(5, 5))},
+			{ID: "pacer", Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 1}, Behaviors: ordinaryBehavior(walksTo(cellAt(5, 5)))},
 		},
 		Endings:   []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
 		Retention: 1,
@@ -416,6 +416,7 @@ func (s *RetentionTestSuite) TestVerbBeatsSurviveTheVerb() {
 			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        tableDriver(),
+			Roller:        rollsLowest{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},

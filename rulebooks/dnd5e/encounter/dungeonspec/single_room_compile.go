@@ -221,19 +221,18 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 		// Its membership comes off the actor and its orders off the binding —
 		// absent is the zero block, which orders nothing.
 		b := spec.Room.Gameplay.MonsterBindings[m.ID]
-		// AND A NAMED ROOT TABLE IS THE BASE ITS OWN `on:` LAYS OVER
-		// (rpg-toolkit#1897). [ordersOf] already layers a creature's `on:`
-		// over its faction's key by key; naming a table inserts one more
-		// source UNDER those two, through the SAME [encounter.Layer] — so
-		// there is no second layering rule and no new meaning for "nearer
-		// wins wholesale". An id this document does not declare cannot reach
-		// here: `bindingTable` refuses it by name at the author's path before
-		// the compile is called.
-		on := layerSpecs(rootTableOn(spec.Tables, b.Table), b.On)
-		mp := ordersOf(creatureOrders{
+		// Materialize the canonical ordered attachments. Inheritance chooses
+		// a whole source binding list; no old machine/table importer or
+		// runtime lookup survives this producer boundary.
+		bound, berr := roomBehaviorInput(spec, m.ID)
+		if berr != nil {
+			return Compiled{}, berr
+		}
+		mp := MonsterPlacement{
 			ID: m.ID, Ref: m.Ref, Faction: b.Faction,
-			On: on, Temper: b.Temper, Actions: b.Actions, States: b.States, Key: spec.Key,
-		}, from, encounter.HexesArePointyTop())
+			Temper: temperOf(b.Temper, from.temper[sideOf(b.Faction)]), Actions: slices.Clone(b.Actions),
+			Behaviors: bound.Input, BlockingStates: bound.BlockingStates, Posts: bound.Posts,
+		}
 		// Action augmentation remains carrier data: the session owns resolution
 		// against the base monster and so receives both authored lists verbatim.
 		mp.AddActions = slices.Clone(b.AddActions)

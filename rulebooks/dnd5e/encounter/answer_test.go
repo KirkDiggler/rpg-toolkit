@@ -73,7 +73,7 @@ func (s *AnswerTestSuite) frontWithTemper(
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1},
-				Faction: campFaction, Table: table, Options: options, Temper: temper},
+				Faction: campFaction, Behaviors: ordinaryBehavior(table), Options: options, Temper: temper},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
@@ -262,7 +262,7 @@ func (s *AnswerTestSuite) neutralFront(table encounter.Table, options ...encount
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1},
-				Faction: "goblins", Table: table, Options: options},
+				Faction: "goblins", Behaviors: ordinaryBehavior(table), Options: options},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
@@ -494,11 +494,12 @@ func (s *AnswerTestSuite) TestAVerbWithNoDieIsRefused() {
 // A table this composition could not roll is refused at the door the member
 // came in through, never at the roll.
 func (s *AnswerTestSuite) TestAnUnrollableTableIsRefusedAtTheDoor() {
-	s.Run("an outcome key this build does not land", func() {
+	s.Run("the recipe picks an absent table", func() {
 		_, err := encounter.NewEncounter(s.setupWith(encounter.Table{
 			"bribed": {{Weight: 1, Say: "ok"}},
 		}))
-		s.Require().ErrorIs(err, encounter.ErrBadAnswer)
+		s.Require().ErrorIs(err, encounter.ErrBadMember)
+		s.Contains(err.Error(), "absent table")
 	})
 
 	s.Run("an entry that can never fire", func() {
@@ -528,7 +529,7 @@ func (s *AnswerTestSuite) setupWith(table encounter.Table) *encounter.SetupInput
 		},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 1}},
-			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1}, Table: table},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1}, Behaviors: ordinaryBehavior(table)},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
@@ -727,7 +728,7 @@ func (s *AnswerTestSuite) neutralFrontPair(table encounter.Table, options ...enc
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 1},
-				Faction: "goblins", Table: table, Options: options},
+				Faction: "goblins", Behaviors: ordinaryBehavior(table), Options: options},
 			{ID: "cousin", Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 5},
 				Faction: "goblins", Options: []encounter.Option{threat(nil, nil)}},
 		},
@@ -740,6 +741,7 @@ func (s *AnswerTestSuite) neutralFrontPair(table encounter.Table, options ...enc
 			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        tableDriver(),
+			Roller:        rollsLowest{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -862,7 +864,7 @@ const (
 // tabled is a monster at an authored [col,row] with its own table.
 func tabled(id encounter.MemberID, col, row int, table encounter.Table) encounter.MemberInput {
 	m := at(id, encounter.KindMonster, col, row)
-	m.Table = table
+	m.Behaviors = ordinaryBehavior(table)
 
 	return m
 }
@@ -1323,13 +1325,13 @@ func TestACrossbowOnTheWorldClockRaisesTheAlarmRatherThanFreezing(t *testing.T) 
 		tableDriver(),
 		at(noiseAlice, encounter.KindPlayer, 2, 8),
 		encounter.MemberInput{ID: "bandit", Kind: encounter.KindMonster, Faction: "watch",
-			Position: spatial.Position{X: 1, Y: 1}, Table: encounter.Table{encounter.AnswerTime: {
+			Position: spatial.Position{X: 1, Y: 1}, Behaviors: ordinaryBehavior(encounter.Table{encounter.AnswerTime: {
 				{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyReach}},
 					Attack: &encounter.Selector{Word: encounter.SelectorEnemy}},
 				{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemySeen}}, Say: "To arms!", Fact: hAlarm},
 				{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyNone}},
 					Toward: &encounter.Selector{Path: route}},
-			}}},
+			}})},
 		encounter.MemberInput{ID: "ganger", Kind: encounter.KindMonster, Faction: "gang",
 			Position: spatial.Position{X: 8, Y: 9}},
 	)

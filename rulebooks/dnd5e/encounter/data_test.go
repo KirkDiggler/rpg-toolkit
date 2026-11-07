@@ -860,7 +860,7 @@ func (s *DataTestSuite) TestATableSurvivesAReload() {
 			// A table and a speed: this one walks. The sealed wall keeps it
 			// out of the player's sight, so it stays the world's to think for
 			// rather than being caught in a fight at first light.
-			{ID: "goblin", Kind: encounter.KindMonster, Position: spatial.Position{X: 8, Y: 8}, Table: walksTo(cellAt(4, 8))},
+			{ID: "goblin", Kind: encounter.KindMonster, Position: spatial.Position{X: 8, Y: 8}, Behaviors: ordinaryBehavior(walksTo(cellAt(4, 8)))},
 			// No table at all, which is the zero value telling the truth: a
 			// creature nobody wrote orders for holds.
 			{ID: "rat", Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 8}},
@@ -882,6 +882,7 @@ func (s *DataTestSuite) TestATableSurvivesAReload() {
 			},
 		},
 	}
+	setup.Roller = rollsLowest{}
 	enc1, err := encounter.NewEncounter(setup)
 	s.Require().NoError(err)
 
@@ -893,27 +894,14 @@ func (s *DataTestSuite) TestATableSurvivesAReload() {
 			goblinRow = m
 		}
 	}
-	s.Require().NotEmpty(goblinRow.Table, "the goblin's own orders are on its row, not in a spec somebody has to re-read")
+	s.Require().NotNil(goblinRow.Behaviors, "the original configuration is stored, not re-read from source")
+	s.Require().NotEmpty(goblinRow.Behaviors.Instances[0].Instance.Table)
 
 	// NOTHING IS RE-ATTACHED. The load input has no seam for behaviour any
 	// more, which is the whole claim: a policy that had to be handed back in
 	// was a policy that could be handed back in DIFFERENTLY.
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data1,
-		Capabilities: encounter.Capabilities{
-			Sight:         everyoneSeesTheWholeMap{},
-			Equipment:     encounter.UnobservedEquipment{},
-			Conditions:    encounter.UnobservedEquipment{},
-			Sheets:        sheets,
-			Participation: everyoneStanding{},
-			Initiative:    orderAsGiven{},
-			Driver:        tableDriver(),
-			Actors: encounter.Actors{
-				Striker:   passStriker{},
-				Mover:     quietMover{},
-				Announcer: quietAnnouncer{},
-			},
-		},
+		Data: data1, Capabilities: setup.Capabilities,
 	})
 	s.Require().NoError(err)
 

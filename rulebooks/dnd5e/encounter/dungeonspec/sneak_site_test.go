@@ -136,7 +136,7 @@ func openTheSneakSite(t *testing.T, d20s ...int) *sneakSite {
 	for _, m := range compiled.Monsters {
 		members = append(members, encounter.MemberInput{
 			ID: encounter.MemberID(m.MemberID), Kind: encounter.KindMonster, Position: m.At,
-			Faction: encounter.FactionID(m.Faction), Table: m.Table, Facing: m.FacingDegrees,
+			Faction: encounter.FactionID(m.Faction), Behaviors: m.Behaviors, Facing: m.FacingDegrees,
 		})
 	}
 	site := &sneakSite{t: t, stealth: &sneakSiteStealth{d20s: d20s}, speeds: &[]int{}}
@@ -152,7 +152,7 @@ func openTheSneakSite(t *testing.T, d20s ...int) *sneakSite {
 			Sheets:        sneakSiteSheets{enc: &site.enc, speeds: site.speeds},
 			Participation: &castleStanding{down: map[encounter.MemberID]bool{}},
 			Initiative:    orderAsGiven{},
-			Driver:        encounter.TableDriver{Roller: rollsOne{}},
+			Driver:        encounter.BehaviorDriver{},
 			Roller:        rollsOne{},
 			CheckResolver: site.stealth,
 			Witness:       nobodyPerceivesAnything{},

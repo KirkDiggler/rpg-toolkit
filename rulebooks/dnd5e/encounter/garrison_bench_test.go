@@ -63,7 +63,7 @@ func benchGarrisonMove(b *testing.B, listen bool) {
 		members = append(members, encounter.MemberInput{
 			ID: encounter.MemberID(m.MemberID), Kind: encounter.KindMonster, Position: m.At,
 			Faction: encounter.FactionID(m.Faction), Table: m.Table, Options: m.Options,
-			Arrives: m.Arrives, Temper: soldierTemper(m.Temper), Facing: m.FacingDegrees, Machine: m.Machine, BlockingStates: m.BlockingStates, Posts: m.Posts,
+			Arrives: m.Arrives, Temper: soldierTemper(m.Temper), Facing: m.FacingDegrees, Behaviors: m.Behaviors, Machine: m.Machine, BlockingStates: m.BlockingStates, Posts: m.Posts,
 		})
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -77,7 +77,7 @@ func benchGarrisonMove(b *testing.B, listen bool) {
 			Sheets:        walksThirty{},
 			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
-			Driver:        encounter.TableDriver{Roller: rollsLowest{}},
+			Driver:        encounter.BehaviorDriver{},
 			Roller:        rollsLowest{},
 			CheckResolver: findsNothing{},
 			Witness:       nobodyPerceives{},

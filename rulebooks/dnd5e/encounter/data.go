@@ -522,7 +522,10 @@ type ReserveData struct {
 	Options []OptionData            `json:"options,omitempty"`
 	Table   map[string][]AnswerData `json:"table,omitempty"`
 	Temper  UndealtTemperData       `json:"temper,omitzero"`
-	// Recipe is [MemberData.Recipe] for a member still waiting.
+	// Behaviors is canonical policy retained while this member is in reserve.
+	Behaviors *BehaviorData `json:"behaviors,omitempty"`
+
+	// Recipe recognizes a retired field so it is refused, not silently reset.
 	Recipe *machine.Recipe `json:"recipe,omitempty"`
 	// BlockingStates is [MemberData.BlockingStates] for a member still
 	// waiting, refused at load as the member's are.
@@ -1956,16 +1959,20 @@ func undealtTemperFromData(d UndealtTemperData) Temper {
 // [mintedFactIDs] so a world blob may name a fact only an answer plants.
 // Sorted by the table's own key order is not required: mintedFactIDs sorts
 // what it is given.
-func taughtFactsOf(data map[string][]AnswerData) []FactID {
+func taughtFactsOf(data *BehaviorData) []FactID {
+	if data == nil {
+		return nil
+	}
 	var out []FactID
-	for _, rows := range data {
-		for _, row := range wordRowsData(rows) {
-			if row.Fact != "" {
-				out = append(out, row.Fact)
+	for _, bound := range data.Instances {
+		for _, rows := range bound.Instance.Table {
+			for _, row := range wordRows(rows) {
+				if row.Fact != "" {
+					out = append(out, FactID(row.Fact))
+				}
 			}
 		}
 	}
-
 	return out
 }
 
@@ -2088,9 +2095,11 @@ func convertDoorDataToDoorInput(doors []DoorData) ([]DoorInput, error) {
 // no installed base — only a hand-kept fixture, which is exactly what should be
 // recreated rather than reinterpreted.
 type MemberData struct {
-	ID   MemberID   `json:"id"`
-	Kind MemberKind `json:"kind"`
-	Name string     `json:"name,omitempty"`
+	// Behaviors is the original canonical configuration and its private progress.
+	Behaviors *BehaviorData `json:"behaviors,omitempty"`
+	ID        MemberID      `json:"id"`
+	Kind      MemberKind    `json:"kind"`
+	Name      string        `json:"name,omitempty"`
 	// AppearanceRef is authored content, not the observer's captured answer.
 	AppearanceRef string `json:"appearance_ref,omitempty"`
 	// DefaultActivityRef is authored content, separate from captured testimony.
@@ -2362,8 +2371,7 @@ func (e *Encounter) snapshot() EncounterData {
 			Facing:             &facing,
 			Sneaking:           m.Sneaking,
 			Dwell:              dwellDataFrom(m.Dwell),
-			Machine:            machineDataFrom(e.programFor(m), m.Machine),
-			Recipe:             m.Recipe,
+			Behaviors:          m.behaviors.toData(),
 			BlockingStates:     slices.Clone(m.BlockingStates),
 			Posts:              postsDataFrom(m.Posts),
 			Clock:              m.Clock,
@@ -2456,7 +2464,7 @@ func (e *Encounter) snapshot() EncounterData {
 			Options:            optionsDataFrom(rm.record.Options),
 			Table:              tableDataFrom(rm.record.Table),
 			Temper:             undealtTemperDataFrom(rm.record.Temper),
-			Recipe:             rm.record.Recipe,
+			Behaviors:          rm.record.behaviors.toData(),
 			BlockingStates:     slices.Clone(rm.record.BlockingStates),
 			Posts:              postsDataFrom(rm.record.Posts),
 			BlocksMovement:     rm.record.BlocksMovement,
@@ -3055,8 +3063,8 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		// the same reason: LoadEncounter is the trust boundary for a blob
 		// somebody edited, and an unknown outcome key would otherwise sit in
 		// the run looking authored until a player finally spoke to it.
-		if err := validateOrders(tableFromData(m.Table), m.Recipe); err != nil {
-			return nil, fmt.Errorf("load encounter: member %q: %w: %w", m.ID, ErrInvalidData, err)
+		if len(m.Table) != 0 || m.Recipe != nil || m.Machine != nil {
+			return nil, fmt.Errorf("load encounter: member %q needs canonical behaviors, not retired machine/table data: %w", m.ID, ErrInvalidData)
 		}
 
 		// And its lines, for the table's reason, by the same two refusals
@@ -3108,6 +3116,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			Facing:             r.Facing,
 			Table:              tableFromData(r.Table),
 			Machine:            r.Recipe,
+			Behaviors:          behaviorInputOf(r.Behaviors),
 			BlockingStates:     r.BlockingStates,
 		}); err != nil {
 			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, err)
@@ -3168,11 +3177,11 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		// when it stands on the floor.
 		taught := make([]FactID, 0, len(data.Members)+len(data.Reserve))
 		for _, m := range data.Members {
-			taught = append(taught, taughtFactsOf(m.Table)...)
+			taught = append(taught, taughtFactsOf(m.Behaviors)...)
 			taught = append(taught, taughtOptionFactsOf(m.Options)...)
 		}
 		for _, r := range data.Reserve {
-			taught = append(taught, taughtFactsOf(r.Table)...)
+			taught = append(taught, taughtFactsOf(r.Behaviors)...)
 			taught = append(taught, taughtOptionFactsOf(r.Options)...)
 		}
 		mintable := mintedFactIDs(f, triggersOf(endingInputsForValidation), taught)
@@ -3350,12 +3359,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// rebuild below reaches Atlas, which folds it, so a nil here would be a
 	// panic on the load path rather than an empty answer.
 	world := newEncounterWorld()
-	programs, err := compilePrograms()
-	if err != nil {
-		return nil, fmt.Errorf("load encounter: %w", err)
-	}
 	e := &Encounter{
-		programs:      programs,
 		discovery:     copyDiscoveryStates(data.Discovery),
 		sneakVerdicts: copySneakVerdicts(data.SneakVerdicts),
 		sightSweeps:   copySightSweeps(data.SightSweeps),
@@ -3492,17 +3496,12 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			BlocksMovement:     m.BlocksMovement,
 			Faction:            m.Faction,
 		}
-		if rerr := e.useRecipe(member, m.Recipe, m.BlockingStates); rerr != nil {
+		if rerr := e.useBehaviors(member, nil, m.Behaviors, m.BlockingStates); rerr != nil {
 			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, rerr)
 		}
 		if perr := e.loadPosts(member, m.Posts); perr != nil {
 			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, perr)
 		}
-		blob, merr := machineFromData(e.programFor(member), m.Machine)
-		if merr != nil {
-			return nil, fmt.Errorf("load encounter: member %q: %s: %w", m.ID, merr, ErrInvalidData)
-		}
-		member.Machine = blob
 		e.members[m.ID] = member
 		e.everMembers[m.ID] = true
 
@@ -3523,6 +3522,16 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 		if _, cerr := e.clock.Join(&clock.JoinInput{ID: core.EntityID(m.ID)}); cerr != nil {
 			return nil, fmt.Errorf("load encounter member %q world clock: %w: %w", m.ID, ErrInvalidData, cerr)
+		}
+	}
+
+	if e.pause != nil && e.pause.turn != nil && e.pause.turn.behavior != nil {
+		work := e.pause.turn.behavior
+		if work.Kind != BehaviorArrival || e.pause.turn.afterStrike {
+			return nil, fmt.Errorf("load encounter: held behavior must be an arrival: %w", ErrInvalidData)
+		}
+		if err := e.members[e.pause.member].behaviors.validateWork(work); err != nil {
+			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 		}
 	}
 
@@ -3553,7 +3562,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			holds:   append([]IntelID(nil), r.Holds...),
 			arrives: reserveTriggers[i],
 		}
-		if rerr := e.useRecipe(&rm.record, r.Recipe, r.BlockingStates); rerr != nil {
+		if rerr := e.useBehaviors(&rm.record, nil, r.Behaviors, r.BlockingStates); rerr != nil {
 			return nil, fmt.Errorf("load encounter: reserve: %w: %w", ErrInvalidData, rerr)
 		}
 		if perr := e.loadPosts(&rm.record, r.Posts); perr != nil {
