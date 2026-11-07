@@ -101,7 +101,12 @@ func TestTheTwoDialectsCompileTheSameOrders(t *testing.T) {
 			require.Equal(t, want.ID, got.ID)
 			require.Equal(t, want.Ref, got.Ref)
 			require.Equal(t, want.Faction, got.Faction, "the membership, as authored")
-			require.Equal(t, want.Table, got.Table, "the faction's table with the creature's laid over")
+			if len(want.Table) > 0 {
+				require.NotNil(t, got.Behaviors)
+				require.Equal(t, want.Table, got.Behaviors.Instances[0].Instance.Table, "the authored rows survive the representation change")
+			} else {
+				require.Nil(t, got.Behaviors)
+			}
 			require.Equal(t, want.Options, got.Options, "the lines it can be spoken to with")
 			require.Equal(t, want.Temper, got.Temper, "the creature's word, else the faction's mix")
 			require.Equal(t, want.Actions, got.Actions, "verbatim, in the author's order")
@@ -119,7 +124,7 @@ func TestTheTwoDialectsCompileTheSameOrders(t *testing.T) {
 	require.Equal(t, "lean-on-it", goblin.Options[0].ID, "the line the site file writes")
 	require.Equal(t, []encounter.CheckApproach{{Ability: "intimidation", DC: 12}}, goblin.Options[0].Check,
 		"and the check that line rolls")
-	require.Len(t, goblin.Table["time"], 1, "replaced wholesale, not merged with the faction's two")
+	require.Len(t, goblin.Behaviors.Instances[0].Instance.Table["time"], 1, "replaced wholesale, not merged with the faction's two")
 	require.Equal(t, []string{"dnd5e:weapons:scimitar", "dnd5e:weapons:shortbow"}, goblin.Actions)
 
 	// And a creature nobody authored anything for carries nothing at all —
@@ -162,20 +167,20 @@ func TestSingleRoomSiteRefusals(t *testing.T) {
 		},
 		{
 			name: "an offset cell, which is not this dialect's spelling",
-			old:  "            - {when: {enemy: reach}, hold: {}}",
-			repl: "            - {when: {enemy: none}, toward: {at: [3, 4]}}",
+			old:  "        - {when: {enemy: reach}, hold: {}}",
+			repl: "        - {when: {enemy: none}, toward: {at: [3, 4]}}",
 			want: FieldError{
-				Path: "room.room.monsterBindings.goblin-1.on.time[0].toward.at",
+				Path: "behaviorDefinitions.goblin-1-policy.table.time[0].toward.at",
 				Message: "at names a cell of this room, written { q, r } as its walkable hexes are: " +
 					"[col, row] is an offset in a document orientation this dialect does not have",
 			},
 		},
 		{
 			name: "an offset cell under a word that is not `toward`, which is still the spelling's defect",
-			old:  "            - {when: {enemy: reach}, hold: {}}",
-			repl: "            - {when: {enemy: none}, attack: {at: [3, 4]}}",
+			old:  "        - {when: {enemy: reach}, hold: {}}",
+			repl: "        - {when: {enemy: none}, attack: {at: [3, 4]}}",
 			want: FieldError{
-				Path: "room.room.monsterBindings.goblin-1.on.time[0].attack.at",
+				Path: "behaviorDefinitions.goblin-1-policy.table.time[0].attack.at",
 				Message: "at names a cell of this room, written { q, r } as its walkable hexes are: " +
 					"[col, row] is an offset in a document orientation this dialect does not have",
 			},
@@ -187,15 +192,6 @@ func TestSingleRoomSiteRefusals(t *testing.T) {
 			want: FieldError{
 				Path:    "room.room.monsterBindings.goblin-1.temper",
 				Message: "\"brave\" is not a temperament this build ships: they are soldier, coward, aggressive",
-			},
-		},
-		{
-			name: "a trigger nothing rolls",
-			old:  "        on:\n          time:\n",
-			repl: "        on:\n          sunrise:\n",
-			want: FieldError{
-				Path:    "room.room.monsterBindings.goblin-1.on.sunrise",
-				Message: "\"sunrise\" is not a trigger this build rolls: they are time",
 			},
 		},
 		{
@@ -258,7 +254,7 @@ func TestUnknownKeysInsideTheSiteKeysAreNamed(t *testing.T) {
 			repl: "        temper: coward\n        mind: goblin-1",
 			want: FieldError{
 				Path:    "room.room.monsterBindings.goblin-1.mind",
-				Message: `"mind" is not a key this build reads: they are actions, addActions, arrives, dropActions, faction, holds, on, options, states, table, temper`,
+				Message: `"mind" is not a key this build reads: they are actions, addActions, arrives, behaviorState, behaviors, blockingStates, dropActions, faction, holds, on, options, posts, states, table, temper`,
 			},
 		},
 		{
@@ -267,13 +263,13 @@ func TestUnknownKeysInsideTheSiteKeysAreNamed(t *testing.T) {
 			repl: "  - id: goblins\n    stance: hostile",
 			want: FieldError{
 				Path:    "factions[0].stance",
-				Message: `"stance" is not a key this build reads: they are id, mind, on, options, states, table, temper`,
+				Message: `"stance" is not a key this build reads: they are behaviorState, behaviors, blockingStates, id, mind, on, options, posts, states, table, temper`,
 			},
 		},
 		{
 			name: "beside a creature",
-			old:  "startingCell: { location: { q: 0, r: -1 } }}",
-			repl: "startingCell: { location: { q: 0, r: -1 } }, temper: coward}",
+			old:  "startingCell: {location: {q: 0, r: -1}}}",
+			repl: "startingCell: {location: {q: 0, r: -1}}, temper: coward}",
 			want: FieldError{
 				Path:    "room.room.monsterDeclarations[2].temper",
 				Message: `"temper" is not a key this build reads: they are appearanceRef, defaultActivityRef, id, ref, startingCell`,
@@ -286,7 +282,7 @@ func TestUnknownKeysInsideTheSiteKeysAreNamed(t *testing.T) {
 			want: FieldError{
 				Path: "height",
 				Message: `"height" is not a key this build reads: ` +
-					"they are bundles, concealments, dispositions, endings, exits, factions, intel, key, play, room, scenarios, tables, templates, version",
+					"they are behaviorDefinitions, bundles, concealments, dispositions, endings, exits, factions, intel, key, play, room, scenarios, tables, templates, version",
 			},
 		},
 		{
@@ -329,9 +325,9 @@ func TestTheSiteDocumentReportsEveryUnknownKey(t *testing.T) {
 	require.ErrorAs(t, err, &validation)
 	require.Equal(t, []FieldError{
 		{Path: "height", Message: `"height" is not a key this build reads: ` +
-			"they are bundles, concealments, dispositions, endings, exits, factions, intel, key, play, room, scenarios, tables, templates, version"},
+			"they are behaviorDefinitions, bundles, concealments, dispositions, endings, exits, factions, intel, key, play, room, scenarios, tables, templates, version"},
 		{Path: "room.room.monsterBindings.goblin-1.tempre",
-			Message: `"tempre" is not a key this build reads: they are actions, addActions, arrives, dropActions, faction, holds, on, options, states, table, temper`},
+			Message: `"tempre" is not a key this build reads: they are actions, addActions, arrives, behaviorState, behaviors, blockingStates, dropActions, faction, holds, on, options, posts, states, table, temper`},
 	}, validation.Errors, "both of them, in the order they were written")
 }
 
@@ -411,7 +407,8 @@ func TestTheV4FixtureRoundTripsItsSiteKeys(t *testing.T) {
 	bindings := decoded.Spec.Room.Gameplay.MonsterBindings
 	require.Len(t, bindings, 2)
 	require.Equal(t, "coward", bindings["goblin-1"].Temper)
-	require.Len(t, bindings["goblin-1"].On["time"], 1)
+	require.Len(t, *bindings["goblin-1"].Behaviors, 1)
+	require.Equal(t, "goblin-1-policy", (*bindings["goblin-1"].Behaviors)[0].Use)
 	require.Equal(t, []string{"dnd5e:weapons:scimitar", "dnd5e:weapons:shortbow"}, bindings["goblin-1"].Actions)
 	require.Empty(t, bindings["skeleton-a"].Temper)
 	require.Nil(t, bindings["skeleton-a"].On)
@@ -471,10 +468,10 @@ func TestTheSiteScopeShapeWalkNamesItsDefects(t *testing.T) {
 			want: FieldError{Path: "room.room.monsterBindings.skeleton-a", Message: "must not be null"},
 		},
 		{
-			name: "an answer table authored as nothing",
-			old:  "        on:\n          time:\n            - {when: {enemy: reach}, hold: {}}",
-			repl: "        on: null",
-			want: FieldError{Path: "room.room.monsterBindings.goblin-1.on", Message: "must not be null"},
+			name: "a behavior list authored as nothing",
+			old:  "        behaviors:\n          - id: policy\n            use: goblin-1-policy",
+			repl: "        behaviors: null",
+			want: FieldError{Path: "room.room.monsterBindings.goblin-1.behaviors", Message: "must not be null"},
 		},
 		{
 			name: "an arms list authored as nothing",
@@ -520,19 +517,16 @@ func TestTheSiteScopeShapeWalkNamesItsDefects(t *testing.T) {
 // of it instead of the creature's id. The axial spelling at the same level is
 // TestTheFactionLevelCellTakesTheRoomFrameToo's.
 func TestTheFactionLevelOffsetCellIsRefusedToo(t *testing.T) {
-	raw, err := os.ReadFile(v4SitePath)
-	require.NoError(t, err)
-	source := swapOneIn(t, raw,
-		"        - {when: {enemy: reach}, attack: enemy}",
-		"        - {when: {enemy: none}, toward: {at: [3, 4]}}")
+	raw := factionPatrolSource(t)
+	source := swapOneIn(t, raw, gateRoute, "toward: {at: [3, 4]}")
 
-	_, err = Load(source)
+	_, err := Load(source)
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrBadSpec)
 	var validation *ValidationError
 	require.ErrorAs(t, err, &validation)
 	require.Contains(t, validation.Errors, FieldError{
-		Path: "factions[0].on.time[0].toward.at",
+		Path: "behaviorDefinitions.gate-patrol-policy.table.time[0].toward.at",
 		Message: "at names a cell of this room, written { q, r } as its walkable hexes are: " +
 			"[col, row] is an offset in a document orientation this dialect does not have",
 	})
@@ -569,18 +563,15 @@ func TestTheV2DialectStillResolvesCellSelectors(t *testing.T) {
 // rpg-project#605). The route this dialect does take is `{ q, r }` waypoints
 // (v4_at_path_test.go).
 func TestTheSingleRoomRefusesAnOffsetRoute(t *testing.T) {
-	raw, err := os.ReadFile(v4SitePath)
-	require.NoError(t, err)
-	source := swapOneIn(t, raw,
-		"        - {when: {enemy: reach}, attack: enemy}",
-		"        - {when: {enemy: none}, toward: {path: [[3, 4], [5, 4]]}}")
+	raw := factionPatrolSource(t)
+	source := swapOneIn(t, raw, gateRoute, "toward: {path: [[3, 4], [5, 4]]}")
 
-	_, err = Load(source)
+	_, err := Load(source)
 	require.Error(t, err)
 	var validation *ValidationError
 	require.ErrorAs(t, err, &validation)
 	require.Contains(t, validation.Errors, FieldError{
-		Path: "factions[0].on.time[0].toward.path",
+		Path: "behaviorDefinitions.gate-patrol-policy.table.time[0].toward.path",
 		Message: "path names a route of this room's cells, each written { q, r } as its walkable hexes are: " +
 			"[col, row] is an offset in a document orientation this dialect does not have",
 	})

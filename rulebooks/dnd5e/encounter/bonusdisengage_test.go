@@ -327,7 +327,7 @@ func TestWorldWalkAsksNoDisengage(t *testing.T) {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: worldField(),
 		Members: []encounter.MemberInput{
-			{ID: goblin, Kind: encounter.KindMonster, Position: cellAt(1, 0), Table: walksTo(cellAt(3, 0))},
+			{ID: goblin, Kind: encounter.KindMonster, Position: cellAt(1, 0), Behaviors: ordinaryBehavior(walksTo(cellAt(3, 0)))},
 			{ID: "vendor", Kind: encounter.KindWorld, Position: cellAt(0, 0)},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
@@ -339,6 +339,7 @@ func TestWorldWalkAsksNoDisengage(t *testing.T) {
 			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        tableDriver(),
+			Roller:        rollsLowest{},
 			Actors: encounter.Actors{
 				Striker:    passStriker{},
 				Mover:      quietMover{},

@@ -5,6 +5,7 @@ package keepgen
 
 import (
 	"bytes"
+	_ "embed"
 	"fmt"
 	"math"
 	"strconv"
@@ -189,32 +190,14 @@ func emitSite(p *Plan, l *layout, s *site, o Options) (emitted, error) {
 	return emitted{doc: []byte(b.String()), geometryBytes: geometry}, nil
 }
 
-// emitOrders writes the garrison's tables and its faction, when it has one:
-// a `patrol-<i>` table per patrol, walking its loop with nobody to chase,
-// then the `post` the rest hold, then the side with its soldier/coward mix,
-// and its disposition: neutral to the party.
+// emitOrders writes shared authored behavior definitions once, then the
+// garrison's temperament mix and neutral disposition. Routes are supplied by
+// emitBindings; this producer never generates a behavior graph per patrol.
 func emitOrders(b *strings.Builder, s *site) {
 	if len(s.orders) == 0 {
 		return
 	}
-	b.WriteString("tables:\n")
-	posts := 0
-	for i, ord := range s.orders {
-		if ord.route == nil {
-			posts++
-			continue
-		}
-		wps := make([]string, len(ord.route))
-		for j, c := range ord.route {
-			a := c.axial()
-			wps[j] = fmt.Sprintf("{ q: %d, r: %d }", a.Q, a.R)
-		}
-		fmt.Fprintf(b, "  %s:\n    time:\n      - { when: { enemy: none }, toward: { path: [%s] } }\n",
-			patrolTable(i), strings.Join(wps, ", "))
-	}
-	if posts > 0 {
-		fmt.Fprintf(b, "  %s:\n    time:\n      - { hold: {} }\n", postTable)
-	}
+	b.WriteString(garrisonBehaviors)
 	fmt.Fprintf(b, "factions:\n  - { id: %s, temper: { soldier: 2, coward: 1 } }\n", garrisonFaction)
 	// NEUTRAL TO THE PARTY, the castle's own disposition (rpg-project#771):
 	// a garrison watches a visitor rather than attacking it, so no fight
@@ -222,28 +205,37 @@ func emitOrders(b *strings.Builder, s *site) {
 	fmt.Fprintf(b, "dispositions:\n  - between:\n      - %s\n      - party\n    stance: neutral\n", garrisonFaction)
 }
 
-// postStates is a listening post's recipe ([Options.PostsListen]), one flow
-// mapping: posted until a sound within six hexes, alert for three rounds.
-const postStates = "{ initial: posted, " +
-	"posted: { transitions: [{ on: heard, within: 6, to: alert, do: [{ anchor: true }] }] }, " +
-	"alert: { transitions: [{ on: time, rounds: 3, to: posted }, { on: time, do: [{ pick: time }] }] } }"
+// The generator supplies values to shared authored definitions; it does not
+// manufacture a Patrol graph or maintain private runtime progress.
+//
+//go:embed behaviors.yaml
+var garrisonBehaviors string
 
-// emitBindings binds each ordered monster to the garrison and its table.
+// emitBindings supplies actor-local attachments and finite route values to
+// the shared definitions. The native compiler owns their materialization.
 func emitBindings(b *strings.Builder, s *site) {
 	if len(s.orders) == 0 {
 		return
 	}
 	b.WriteString("    monsterBindings:\n")
-	for i, ord := range s.orders {
-		table := postTable
-		if ord.route != nil {
-			table = patrolTable(i)
-		}
-		if ord.route == nil && s.postsListen {
-			fmt.Fprintf(b, "      %s: { faction: %s, table: %s, states: %s }\n", s.monsters[ord.monster].id, garrisonFaction, table, postStates)
+	for _, ord := range s.orders {
+		id := s.monsters[ord.monster].id
+		if len(ord.route) > 0 {
+			items := make([]string, len(ord.route))
+			for j := range ord.route {
+				// Begin with the next leg, not an artificial arrival at the
+				// cell where the generator just placed the actor.
+				cell := ord.route[(j+1)%len(ord.route)].axial()
+				items[j] = fmt.Sprintf("{ q: %d, r: %d }", cell.Q, cell.R)
+			}
+			fmt.Fprintf(b, "      %s: { faction: %s, behaviors: [{ id: duty, use: patrol, items: [%s] }] }\n", id, garrisonFaction, strings.Join(items, ", "))
 			continue
 		}
-		fmt.Fprintf(b, "      %s: { faction: %s, table: %s }\n", s.monsters[ord.monster].id, garrisonFaction, table)
+		definition := "post"
+		if s.postsListen {
+			definition = "listening-post"
+		}
+		fmt.Fprintf(b, "      %s: { faction: %s, behaviors: [{ id: duty, use: %s }] }\n", id, garrisonFaction, definition)
 	}
 }
 

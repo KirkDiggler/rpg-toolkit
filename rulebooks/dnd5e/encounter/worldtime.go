@@ -121,9 +121,7 @@ func (e *Encounter) elapseWorld(span int) error {
 		return fmt.Errorf("elapse %d rounds: %w", span, err)
 	}
 	e.clock = jumped
-	e.jumpWake(uint64(span))
-
-	return nil
+	return e.jumpWake(uint64(span))
 }
 
 // seatOnWorldClock puts a NEWCOMER on the world clock at the world's own
@@ -151,9 +149,7 @@ func (e *Encounter) seatOnWorldClock(id MemberID) error {
 	// And what its first state listens for (rpg-project#766 S4): a
 	// newcomer's ears are on from the round it arrives.
 	if m, ok := e.members[id]; ok {
-		if p := e.programFor(m); p != nil {
-			e.listeners.Set(id, p.Listens(&m.Machine))
-		}
+		e.relistBehavior(m)
 	}
 	behind := data.HighWater - data.DriverProgress[core.EntityID(id)]
 	if behind <= 0 {

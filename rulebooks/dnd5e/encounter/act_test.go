@@ -431,7 +431,7 @@ func (s *ActTestSuite) TestTimePickIsItsOwnAct() {
 		}},
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Faction: "vendors",
-			Position: spatial.Position{X: 20, Y: 6}, Table: hunts()},
+			Position: spatial.Position{X: 20, Y: 6}, Behaviors: ordinaryBehavior(hunts())},
 	)
 
 	walk := s.open(enc, "move", "")

@@ -129,11 +129,14 @@
 // cells together is one round and not four — and a driver called "world" would
 // have made a long fight the front runner forever.
 //
-// When time passes, THE WORLD THINKS, inside the same call that raised the
-// high-water and after the verb's own beats: every standing monster on the
-// world clock with budget and a table is given one turn's worth of doing per
-// unit, rolls its `time` table, and spends one. A creature that walks into an
-// opposed member's sight forms or joins a fight by the ordinary path.
+// When time passes, THE WORLD THINKS inside the call that raised the high-water.
+// Canonical behavior instances explicitly subscribe to world `time` or fight
+// `turn` opportunities; clock notifications grant neither. The supplied Driver
+// runs first, then a Delegated decision selects once through the actor's Composer.
+// Empty compositions invent no policy. Only actual execution can complete selected
+// work; partial/blocked movement retains it, and a held turn resumes without a
+// second roll. A creature walking into opposed sight forms or joins a fight by
+// the ordinary path.
 //
 // # Translating a selected answer
 //

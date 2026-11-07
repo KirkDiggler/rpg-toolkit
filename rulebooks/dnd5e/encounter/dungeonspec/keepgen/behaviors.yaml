@@ -1,0 +1,42 @@
+behaviorDefinitions:
+  patrol:
+    ref: keepgen:behaviors:patrol
+    end: repeat
+    body:
+      recipe:
+        initial: walk
+        states:
+          walk:
+            transitions:
+              - {on: time, do: [{pick: move}]}
+              - {on: {$done: move}, to: {$next: true}}
+      table:
+        move:
+          - {Weight: 1, When: [{Enemy: none}], Toward: {At: {$item: true}}}
+  post:
+    recipe:
+      ref: keepgen:behaviors:post
+      initial: posted
+      states:
+        posted:
+          transitions:
+            - {on: time, do: [{pick: hold}]}
+            - {on: turn, do: [{pick: hold}]}
+    table:
+      hold: [{hold: {}}]
+  listening-post:
+    recipe:
+      ref: keepgen:behaviors:listening-post
+      initial: posted
+      states:
+        posted:
+          transitions:
+            - {on: heard, when: {scope: {within: 6}}, to: alert, do: [{anchor: true}]}
+            - {on: turn, do: [{pick: hold}]}
+        alert:
+          transitions:
+            - {on: time, when: {rounds: {op: gte, n: 3}}, to: posted}
+            - {on: time, do: [{pick: hold}]}
+            - {on: turn, do: [{pick: hold}]}
+    table:
+      hold: [{hold: {}}]

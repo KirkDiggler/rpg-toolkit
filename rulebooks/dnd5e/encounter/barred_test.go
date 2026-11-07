@@ -43,11 +43,13 @@ func bumpRecipe(t *testing.T) *machine.Recipe {
 		"posted": {Transitions: []machine.Transition{
 			{On: beatFact, When: cowed, To: "cowed", Reason: "cowed"},
 			{On: beatBarred, To: "challenged", Do: []machine.Act{{Pick: "barred"}, {Anchor: true}}, Reason: "bumped"},
+			{On: beatTurn, Do: []machine.Act{{Pick: string(AnswerTime)}}},
 			pickTime,
 		}},
 		"challenged": {Transitions: []machine.Transition{
 			{On: beatFact, When: cowed, To: "cowed", Reason: "cowed"},
 			{On: beatBarred, Do: []machine.Act{{Pick: "challenged"}}},
+			{On: beatTurn, Do: []machine.Act{{Pick: string(AnswerTime)}}},
 			{On: beatTime, When: &machine.Guard{Rounds: &machine.RoundsLeaf{Op: machine.OpGte, N: 3}}, To: "posted", Reason: "nothing came of it"},
 			pickTime,
 		}},
@@ -68,8 +70,8 @@ func bumpTable() Table {
 func bumpGuard(t *testing.T) MemberInput {
 	t.Helper()
 	g := postedMember(t)
-	g.Machine = bumpRecipe(t)
-	g.Table = bumpTable()
+	g.Behaviors.Instances[0].Instance.Recipe = *bumpRecipe(t)
+	g.Behaviors.Instances[0].Instance.Table = bumpTable()
 	g.BlockingStates = []string{"posted", "challenged"}
 
 	return g
@@ -81,8 +83,8 @@ func bumpHolder(t *testing.T, id MemberID, at spatial.Position, door DoorID, cel
 	t.Helper()
 	h := holder(t, id, at, door, cells...)
 	post := Post{Door: door, Cells: cells}
-	h.Machine = bumpRecipe(t)
-	h.Table = bumpTable()
+	h.Behaviors.Instances[0].Instance.Recipe = *bumpRecipe(t)
+	h.Behaviors.Instances[0].Instance.Table = bumpTable()
 	h.BlockingStates = []string{"posted", "challenged"}
 	h.Posts = map[string]Post{"posted": post, "challenged": post}
 
@@ -159,7 +161,7 @@ func TestABumpWritesBarredThenTheAnswer(t *testing.T) {
 			barred = beat
 		case beat["beat"] == BeatState && beat["member"] == string(postedGuard):
 			state = beat
-		case beat["beat"] == BeatAnswered && beat["creature"] == string(postedGuard) && beat["key"] == "barred":
+		case beat["beat"] == BeatAnswered && beat["creature"] == string(postedGuard) && beat["key"] == "behavior/6:policy/barred":
 			answered = beat
 		}
 	}
@@ -329,7 +331,7 @@ func TestASecondBumpGetsTheChallengedRow(t *testing.T) {
 	answers := answersBy(t, enc, postedGuard)
 	require.NotEmpty(t, answers)
 	last := answers[len(answers)-1]
-	require.Equal(t, "challenged", last["key"], "a bump while challenging picks the shorter row")
+	require.Equal(t, "behavior/6:policy/challenged", last["key"], "a bump while challenging picks the shorter row")
 	require.Equal(t, bumpAgainLine, last["say"])
 	require.Equal(t, "challenged", stateOf(enc, postedGuard))
 
@@ -374,7 +376,7 @@ func TestABumpSpendsNothing(t *testing.T) {
 
 func TestABumpThatFormsAFightReturnsIt(t *testing.T) {
 	g := bumpGuard(t)
-	g.Table["barred"] = []Answer{{Weight: 1, Say: "It's them!", Fact: string(bumpKnown)}}
+	g.Behaviors.Instances[0].Instance.Table["barred"] = []Answer{{Weight: 1, Say: "It's them!", Fact: string(bumpKnown)}}
 	in := postedSetup(everyoneSeesTheWholeMap{}, g)
 	in.Field.Factions = []FactionInput{{ID: postedGarrison, Mind: postedGuard}}
 	in.Field.Dispositions = []DispositionInput{{
@@ -466,7 +468,7 @@ func TestARefusedDoorVerbIsABump(t *testing.T) {
 }
 
 func TestAnAllyWorksAHeldDoorWithNoBump(t *testing.T) {
-	porter := MemberInput{ID: "porter", Kind: KindMonster, Faction: postedGarrison, Position: holdSouthEast, Table: holds()}
+	porter := MemberInput{ID: "porter", Kind: KindMonster, Faction: postedGarrison, Position: holdSouthEast, Behaviors: ordinaryBehavior(holds())}
 	enc := holdHall(t, holdLeafDoor(DoorIsClosed()), holdNorthEast,
 		bumpHolder(t, postedGuard, holdSouthWest, holdLeaf, holdSouthWest), porter)
 
@@ -482,14 +484,14 @@ func TestAnAllyWorksAHeldDoorWithNoBump(t *testing.T) {
 func scopedHolder(t *testing.T, within int, at spatial.Position, door DoorID) MemberInput {
 	t.Helper()
 	h := bumpHolder(t, postedGuard, at, door, at)
-	posted := h.Machine.States["posted"]
+	posted := h.Behaviors.Instances[0].Instance.Recipe.States["posted"]
 	for i, tr := range posted.Transitions {
 		if tr.On == beatBarred {
 			tr.When = &machine.Guard{Scope: &machine.ScopeLeaf{Within: within}}
 			posted.Transitions[i] = tr
 		}
 	}
-	h.Machine.States["posted"] = posted
+	h.Behaviors.Instances[0].Instance.Recipe.States["posted"] = posted
 
 	return h
 }
@@ -604,7 +606,7 @@ func (guardFirst) RollInitiative(members []MemberID) ([]MemberID, error) {
 // his first fight turn is a driven activation of its own, a `time:` act.
 func TestAFightTurnAfterABumpMintsItsOwnAct(t *testing.T) {
 	g := bumpGuard(t)
-	g.Table["barred"] = []Answer{{Weight: 1, Say: "It's them!", Fact: string(bumpKnown)}}
+	g.Behaviors.Instances[0].Instance.Table["barred"] = []Answer{{Weight: 1, Say: "It's them!", Fact: string(bumpKnown)}}
 	in := postedSetup(everyoneSeesTheWholeMap{}, g)
 	in.Field.Factions = []FactionInput{{ID: postedGarrison, Mind: postedGuard}}
 	in.Field.Dispositions = []DispositionInput{{
@@ -677,7 +679,7 @@ func TestAWalkMayEndOnABodyItSeesBlocking(t *testing.T) {
 // TestAWalkMayNotEndOnABodyItSeesPassThrough: nobody ends on a neutral's
 // cell that does not block, so its cell is still refused as a goal.
 func TestAWalkMayNotEndOnABodyItSeesPassThrough(t *testing.T) {
-	bystander := MemberInput{ID: "porter", Kind: KindMonster, Faction: postedGarrison, Position: postedPost, Table: holds()}
+	bystander := MemberInput{ID: "porter", Kind: KindMonster, Faction: postedGarrison, Position: postedPost, Behaviors: ordinaryBehavior(holds())}
 	enc := postedHall(t, bystander)
 	held, err := enc.ObservedPassages(&ViewInput{Member: "alice"})
 	require.NoError(t, err)

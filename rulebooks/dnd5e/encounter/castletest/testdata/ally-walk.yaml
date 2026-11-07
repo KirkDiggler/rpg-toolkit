@@ -53,47 +53,23 @@ templates:
     armor: dnd5e:armor:leather
     abilities: {str: 15, con: 14}
     actions: ['dnd5e:weapons:mace']
-tables:
-  veteran:
-    time:
-    - when: {enemy: reach}
-      attack: enemy
-    - when: {enemy: seen}
-      toward: enemy
-    - when:
-      - {fact: veteran-joined}
-      - {enemy: none}
-      toward: ally
-    - when:
-      - not: {fact: veteran-joined}
-      - {enemy: none}
-      hold: {}
-  thug:
-    time:
-    - when: {enemy: reach}
-      attack: enemy
-    - when: {enemy: seen}
-      toward: enemy
-    - when: {enemy: none}
-      hold: {}
 factions:
-- {id: veterans}
-- {id: thugs}
+  - {id: veterans}
+  - {id: thugs}
 dispositions:
-- between: [party, veterans]
-  stance: neutral
-  until: {fact: veteran-joined, then: allied}
-- between: [veterans, thugs]
-  stance: neutral
-  until: {fact: veteran-joined}
-- between: [thugs, party]
-  stance: hostile
+  - between: [party, veterans]
+    stance: neutral
+    until: {fact: veteran-joined, then: allied}
+  - between: [veterans, thugs]
+    stance: neutral
+    until: {fact: veteran-joined}
+  - between: [thugs, party]
+    stance: hostile
 room:
   version: 3
   id: ally-walk-room
   name: Ally Walk (S3 companions)
-  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up, distanceUnit: world-scene-unit, hexRadius: 1,
-    footprintFrame: owner-local-xz}
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up, distanceUnit: world-scene-unit, hexRadius: 1, footprintFrame: owner-local-xz}
   scene:
     version: 3
     id: ally-walk-scene
@@ -103,73 +79,73 @@ room:
   room:
     implicitRegionId: ally-walk-region
     walls:
-    - id: gate-wall
-      label: gate-wall
-      line:
-        start: {x: -9.5, z: 9.75}
-        end: {x: 9.5, z: 9.75}
-      appearance: {assetRef: 'dnd5e:env:dark-fortress:45_wall_01', height: 3, thickness: 0.3, elevation: 0}
-      blocker:
-        blocksMovement: true
-        blocksLineOfSight: true
-        footprint: {width: 19, depth: 0.5, offsetX: 0, offsetZ: 0}
-      openings:
-      - id: gate-wall-opening
-        position: 9.5
-        width: 2
-        door: {id: gate-wall-door, assetRef: 'dnd5e:env:dark-fortress:wall_door_double_01'}
-    - id: gate-corner-wall
-      label: gate-corner-wall
-      line:
-        start: {x: -3.897114317029974, z: 9.75}
-        end: {x: -3.897114317029974, z: 11.75}
-      appearance: {assetRef: 'dnd5e:env:dark-fortress:45_wall_01', height: 3, thickness: 0.3, elevation: 0}
-      blocker:
-        blocksMovement: true
-        blocksLineOfSight: true
-        footprint: {width: 2.0, depth: 0.5, offsetX: 0, offsetZ: 0}
-      openings: []
-    - id: gatehouse-west-wall
-      label: gatehouse-west-wall
-      line:
-        start: {x: -7.794228634059947, z: 9.75}
-        end: {x: -7.794228634059947, z: 18.75}
-      appearance: {assetRef: 'dnd5e:env:dark-fortress:45_wall_01', height: 3, thickness: 0.3, elevation: 0}
-      blocker:
-        blocksMovement: true
-        blocksLineOfSight: true
-        footprint: {width: 9, depth: 0.5, offsetX: 0, offsetZ: 0}
-      openings: []
-    - id: gatehouse-east-wall
-      label: gatehouse-east-wall
-      line:
-        start: {x: 8.660254037844386, z: 9.75}
-        end: {x: 8.660254037844386, z: 18.75}
-      appearance: {assetRef: 'dnd5e:env:dark-fortress:45_wall_01', height: 3, thickness: 0.3, elevation: 0}
-      blocker:
-        blocksMovement: true
-        blocksLineOfSight: true
-        footprint: {width: 9, depth: 0.5, offsetX: 0, offsetZ: 0}
-      openings: []
-    - id: gatehouse-south-wall
-      label: gatehouse-south-wall
-      line:
-        start: {x: -7.794228634059947, z: 18.75}
-        end: {x: 8.660254037844386, z: 18.75}
-      appearance: {assetRef: 'dnd5e:env:dark-fortress:45_wall_01', height: 3, thickness: 0.3, elevation: 0}
-      blocker:
-        blocksMovement: true
-        blocksLineOfSight: true
-        footprint: {width: 16.454482671904334, depth: 0.5, offsetX: 0, offsetZ: 0}
-      openings:
-      - id: be88f72a-91bb-4568-baea-6b3c8e99ccd8
-        position: 7.901156922328045
-        width: 1.8749944567680359
-        door: {id: 26369b41-e58f-475d-963a-95086d4cd868, assetRef: 'dnd5e:env:dark-fortress:wall_door_double_01'}
+      - id: gate-wall
+        label: gate-wall
+        line:
+          start: {x: -9.5, z: 9.75}
+          end: {x: 9.5, z: 9.75}
+        appearance: {assetRef: 'dnd5e:env:dark-fortress:45_wall_01', height: 3, thickness: 0.3, elevation: 0}
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint: {width: 19, depth: 0.5, offsetX: 0, offsetZ: 0}
+        openings:
+          - id: gate-wall-opening
+            position: 9.5
+            width: 2
+            door: {id: gate-wall-door, assetRef: 'dnd5e:env:dark-fortress:wall_door_double_01'}
+      - id: gate-corner-wall
+        label: gate-corner-wall
+        line:
+          start: {x: -3.897114317029974, z: 9.75}
+          end: {x: -3.897114317029974, z: 11.75}
+        appearance: {assetRef: 'dnd5e:env:dark-fortress:45_wall_01', height: 3, thickness: 0.3, elevation: 0}
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint: {width: 2.0, depth: 0.5, offsetX: 0, offsetZ: 0}
+        openings: []
+      - id: gatehouse-west-wall
+        label: gatehouse-west-wall
+        line:
+          start: {x: -7.794228634059947, z: 9.75}
+          end: {x: -7.794228634059947, z: 18.75}
+        appearance: {assetRef: 'dnd5e:env:dark-fortress:45_wall_01', height: 3, thickness: 0.3, elevation: 0}
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint: {width: 9, depth: 0.5, offsetX: 0, offsetZ: 0}
+        openings: []
+      - id: gatehouse-east-wall
+        label: gatehouse-east-wall
+        line:
+          start: {x: 8.660254037844386, z: 9.75}
+          end: {x: 8.660254037844386, z: 18.75}
+        appearance: {assetRef: 'dnd5e:env:dark-fortress:45_wall_01', height: 3, thickness: 0.3, elevation: 0}
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint: {width: 9, depth: 0.5, offsetX: 0, offsetZ: 0}
+        openings: []
+      - id: gatehouse-south-wall
+        label: gatehouse-south-wall
+        line:
+          start: {x: -7.794228634059947, z: 18.75}
+          end: {x: 8.660254037844386, z: 18.75}
+        appearance: {assetRef: 'dnd5e:env:dark-fortress:45_wall_01', height: 3, thickness: 0.3, elevation: 0}
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint: {width: 16.454482671904334, depth: 0.5, offsetX: 0, offsetZ: 0}
+        openings:
+          - id: be88f72a-91bb-4568-baea-6b3c8e99ccd8
+            position: 7.901156922328045
+            width: 1.8749944567680359
+            door: {id: 26369b41-e58f-475d-963a-95086d4cd868, assetRef: 'dnd5e:env:dark-fortress:wall_door_double_01'}
     regions:
       - id: ally-walk-region
         name: Ally Walk (S3 companions)
-        lighting: { intensity: 1 }
+        lighting: {intensity: 1}
         cells:
           - r: 5
             q: [[-7, 2]]
@@ -200,42 +176,114 @@ room:
     propDeclarations: {}
     arrangementDeclarations: {}
     monsterDeclarations:
-    - id: veteran
-      ref: dnd5e:monsters:veteran
-      startingCell:
-        location: {q: -6, r: 15}
-        facing: e
-      appearanceRef: dnd5e:npcs:kingdom:soldier-male-01
-    - id: thug-1
-      ref: dnd5e:monsters:thug
-      startingCell:
-        location: {q: -10, r: 12}
-        facing: e
-      appearanceRef: dnd5e:npcs:kingdom:soldier-female-01
-    - id: thug-2
-      ref: dnd5e:monsters:thug
-      startingCell:
-        location: {q: -2, r: 12}
-        facing: w
-      appearanceRef: dnd5e:npcs:kingdom:soldier-male-01
+      - id: veteran
+        ref: dnd5e:monsters:veteran
+        startingCell:
+          location: {q: -6, r: 15}
+          facing: e
+        appearanceRef: dnd5e:npcs:kingdom:soldier-male-01
+      - id: thug-1
+        ref: dnd5e:monsters:thug
+        startingCell:
+          location: {q: -10, r: 12}
+          facing: e
+        appearanceRef: dnd5e:npcs:kingdom:soldier-female-01
+      - id: thug-2
+        ref: dnd5e:monsters:thug
+        startingCell:
+          location: {q: -2, r: 12}
+          facing: w
+        appearanceRef: dnd5e:npcs:kingdom:soldier-male-01
     partyStart: {q: -2, r: 16}
     monsterBindings:
       veteran:
         faction: veterans
-        table: veteran
         options:
-        - id: join
-          say: Fight with us.
-          check:
-          - {ability: persuasion, dc: 10}
-          success:
-          - say: Aye. Lead on.
-            fact: veteran-joined
-          failure:
-          - say: Not today.
-      thug-1: {faction: thugs, table: thug}
-      thug-2: {faction: thugs, table: thug}
+          - id: join
+            say: Fight with us.
+            check:
+              - {ability: persuasion, dc: 10}
+            success:
+              - say: Aye. Lead on.
+                fact: veteran-joined
+            failure:
+              - say: Not today.
+        behaviors:
+          - id: policy
+            use: veteran-policy
+      thug-1: {faction: thugs, behaviors: [{id: policy, use: thug-1-policy}]}
+      thug-2: {faction: thugs, behaviors: [{id: policy, use: thug-2-policy}]}
     doorBindings:
       gate-wall-door:
         closed: true
       26369b41-e58f-475d-963a-95086d4cd868: {}
+behaviorDefinitions:
+  veteran-policy:
+    recipe:
+      ref: site:behaviors:veteran-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        - when: {enemy: reach}
+          attack: enemy
+        - when: {enemy: seen}
+          toward: enemy
+        - when:
+            - {fact: veteran-joined}
+            - {enemy: none}
+          toward: ally
+        - when:
+            - not: {fact: veteran-joined}
+            - {enemy: none}
+          hold: {}
+  thug-1-policy:
+    recipe:
+      ref: site:behaviors:thug-1-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        - when: {enemy: reach}
+          attack: enemy
+        - when: {enemy: seen}
+          toward: enemy
+        - when: {enemy: none}
+          hold: {}
+  thug-2-policy:
+    recipe:
+      ref: site:behaviors:thug-2-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        - when: {enemy: reach}
+          attack: enemy
+        - when: {enemy: seen}
+          toward: enemy
+        - when: {enemy: none}
+          hold: {}

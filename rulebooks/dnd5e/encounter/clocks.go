@@ -618,9 +618,21 @@ func (e *Encounter) runIntents(
 		}
 		view.Clock = kind
 
-		decision, derr := e.driver.Act(view)
+		now := uint64(e.clock.ToData().HighWater)
+		opportunity := behaviorOpportunity{on: beatTurn, event: tickEv{Round: now}, now: now}
+		if kind == ClockWorld {
+			opportunity.on = beatTime
+			if j == startJ && e.opportunity != nil {
+				opportunity = *e.opportunity
+			}
+		}
+		selected, derr := e.selectDecision(m, view, opportunity)
 		if derr != nil {
 			return nil, fmt.Errorf("act: %w", derr)
+		}
+		decision := selected.decision
+		if opportunity.on != beatTime && opportunity.on != beatTurn && decision.Pick != nil && decision.Pick.Entry >= 0 {
+			e.reactionPicked = true
 		}
 
 		// THE PICK'S BEAT COMES FIRST, because the roll is the CAUSE of the
@@ -652,7 +664,7 @@ func (e *Encounter) runIntents(
 		}
 		if decision.Pick != nil && (j == startJ || len(decision.Pick.Candidates) > 0) {
 			if perr := e.inAct(pickVerb, intentAct, func() error {
-				if berr := e.appendPickBeat(activeID, decision.Pick, intentTarget(decision.Intent)); berr != nil {
+				if berr := e.appendPickBeat(activeID, decision.Pick, intentTarget(decision.Intent), selected.instance); berr != nil {
 					return berr
 				}
 				// WHAT THE PICK SAID, AFTER THE PICK (rpg-project#569 R6): the
@@ -685,7 +697,11 @@ func (e *Encounter) runIntents(
 		// encounter's own pause rather than a return value, because a
 		// resume finishes this same loop from where it stopped.
 		if e.turnPaused() {
+			e.pause.turn.behavior = workFromData(workDataFrom(selected.work))
 			return turnDeltas, nil
+		}
+		if err := e.completeBehaviorWork(m, selected.work); err != nil {
+			return turnDeltas, err
 		}
 
 		if done {
@@ -732,13 +748,21 @@ func (e *Encounter) runIntents(
 //
 // TARGET IS WHOM THE PICK'S INTENT ACTS ON ([intentTarget]), written on the
 // beat so a reader sees whom `attacker` or `enemy` named (rpg-project#669).
-func (e *Encounter) appendPickBeat(member MemberID, chosen *Pick, target MemberID) error {
+func (e *Encounter) appendPickBeat(member MemberID, chosen *Pick, target MemberID, instance string) error {
 	at := uint64(e.clock.ToData().HighWater)
 	// THE SYMBOLS FIRST (rpg-project#674): the member's own table for this
 	// key, described before the first pick that indexes it — the table the
 	// driver was handed ([MonsterView.Table] is the member's).
 	if m, ok := e.members[member]; ok {
-		if err := e.describeTable(member, "", chosen.Key, m.Table[chosen.Key], m.Temper, at); err != nil {
+		rows := m.Table[chosen.Key]
+		if instance != "" {
+			bound := m.behaviors.input.Instances[m.behaviors.byID[instance]]
+			rows = bound.Instance.Table[chosen.Key]
+			qualified := *chosen
+			qualified.Key = AnswerKey(fmt.Sprintf("behavior/%d:%s/%s", len(instance), instance, chosen.Key))
+			chosen = &qualified
+		}
+		if err := e.describeTable(member, "", chosen.Key, rows, m.Temper, at); err != nil {
 			return fmt.Errorf("pick beat: %w", err)
 		}
 	}
@@ -961,6 +985,8 @@ func (e *Encounter) executeTurnIntent(
 	coords turnCoords,
 ) (done bool, deltas map[MemberID]*IntelDelta, err error) {
 	switch it := intent.(type) {
+	case Delegated:
+		return false, nil, fmt.Errorf("unresolved behavior delegation: %w", ErrBadIntent)
 	case Pass:
 		// A PASS THAT NAMES ITS CAUSE IS TOLD (rpg-toolkit#2001): the word
 		// the driver carried out needed no doing, and the story says so
@@ -2323,7 +2349,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 	// for a table that asks `threat`: in sight and standing, or remembered,
 	// from where this monster believes it stands.
 	var threats []ThreatZone
-	if tableNamesThreat(m.Table[keyOr(e.pickKey)]) {
+	if m.behaviorNamesThreat() {
 		if query == nil {
 			if query, err = e.cellQuery(); err != nil {
 				return MonsterView{}, fmt.Errorf("view threats: %w", err)

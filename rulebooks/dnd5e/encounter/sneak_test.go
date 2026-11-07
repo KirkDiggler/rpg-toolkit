@@ -176,7 +176,7 @@ func (s *SneakSuite) open(opts sneakOptions, script ...bool) {
 	members := []encounter.MemberInput{{ID: sneakRogue, Kind: encounter.KindPlayer, Position: offsetOf(4, 5)}}
 	if !opts.noKnight {
 		members = append(members, encounter.MemberInput{
-			ID: sneakKnight, Kind: encounter.KindMonster, Position: offsetOf(14, 5), Table: opts.knightTable,
+			ID: sneakKnight, Kind: encounter.KindMonster, Position: offsetOf(14, 5), Behaviors: ordinaryBehavior(opts.knightTable),
 			Options: opts.knightOptions,
 		})
 	}
@@ -198,6 +198,7 @@ func (s *SneakSuite) open(opts sneakOptions, script ...bool) {
 		Participation: everyoneStanding{},
 		Initiative:    orderAsGiven{},
 		Driver:        tableDriver(),
+		Roller:        rollsLowest{},
 		Actors: encounter.Actors{
 			Striker:   passStriker{},
 			Mover:     quietMover{},

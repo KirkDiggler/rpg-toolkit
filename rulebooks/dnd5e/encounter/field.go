@@ -993,6 +993,10 @@ type MemberInput struct {
 	// skeleton, and with no table there is nothing for it to pick.
 	Machine *machine.Recipe
 
+	// Behaviors is the canonical ordered policy. Table/Machine inputs are
+	// unsupported and refused rather than imported into another runner.
+	Behaviors *BehaviorInput
+
 	// Temper is the temperament loading this member's die: the word and the
 	// percent profile that word means, or a faction's MIX for this
 	// composition to deal one from at the door ([Temper], design §3).
@@ -1158,6 +1162,7 @@ type memberFacts struct {
 	Options            []Option
 	Table              Table
 	Machine            *machine.Recipe
+	Behaviors          *BehaviorInput
 	BlockingStates     []string
 	Posts              map[string]Post
 }
@@ -1183,15 +1188,17 @@ func validateMemberFacts(in memberFacts) error {
 	if err := validateOptions(in.Options); err != nil {
 		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
 	}
-	// A table this composition could not roll is refused at whichever door
-	// the member came in through, never at the roll (answer.go).
-	if err := validateOrders(in.Table, in.Machine); err != nil {
+	if len(in.Table) != 0 || in.Machine != nil {
+		return fmt.Errorf("member %s: use canonical behaviors, not Table/Machine: %w", in.ID, ErrBadMember)
+	}
+	bound, err := newBehaviorRuntime(in.Behaviors, nil)
+	if err != nil {
 		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
 	}
-	if err := validateBlockingStates(in.Machine, in.BlockingStates); err != nil {
+	if err := validateBlockingStates(bound.bodyRecipe(), in.BlockingStates); err != nil {
 		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
 	}
-	if err := validatePostStates(in.Machine, in.Posts); err != nil {
+	if err := validatePostStates(bound.bodyRecipe(), in.Posts); err != nil {
 		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
 	}
 
@@ -1589,6 +1596,7 @@ type Member struct {
 // sat here from rpg-project#254 until then as copies taken at Join that no
 // verb refreshed.
 type memberRecord struct {
+	behaviors          *behaviorRuntime
 	ID                 MemberID
 	Kind               MemberKind
 	Name               string
@@ -1628,16 +1636,8 @@ type memberRecord struct {
 	// and persisted.
 	Dwell *dwell
 
-	// Recipe is [MemberInput.Machine], the authored recipe this creature
-	// runs, or nil for the default (rpg-project#766 S4). Persisted, as the
-	// table is. recipeKey is its program's key in [Encounter.programs],
-	// derived at every door ([Encounter.useRecipe]) and never stored.
-	Recipe    *machine.Recipe
-	recipeKey string
-
-	// BlockingStates is [MemberInput.BlockingStates]: the states of Recipe in
-	// which this body blocks, validated against it at every door
-	// ([Encounter.useRecipe]) and persisted beside it. Empty defers to
+	// BlockingStates names states of the designated behavior body instance.
+	// Validated at every door and persisted with its binding. Empty defers to
 	// BlocksMovement. Read through [Encounter.memberBlocks], never copied.
 	BlockingStates []string
 
@@ -1646,15 +1646,6 @@ type memberRecord struct {
 	// persisted beside it. Read through [Encounter.memberHolds], never
 	// copied.
 	Posts map[string]Post
-
-	// Machine is this creature's machine blob (machine.go, rpg-project#766
-	// S3): its current state, bag, wake and anchor. The zero blob is the
-	// recipe's initial state. Only a member [Encounter.programFor] gives a
-	// program steps it; for anyone else it stays zero. A dwell is not a
-	// wake: a dwelling creature stays due every round (its patrol row holds,
-	// rows above it fire). Only an authored wake_in act sets the wake.
-	// Persisted.
-	Machine machine.Blob
 
 	// Clock names the clock this member is seated on (R5); empty is the
 	// world clock. Every member is on the world clock in this slice; S7
@@ -1917,6 +1908,9 @@ type JoinInput struct {
 	Options []Option
 	Table   Table
 	Temper  Temper
+
+	// Behaviors carries canonical materialized policy for this joiner.
+	Behaviors *BehaviorInput
 
 	// Machine is [MemberInput.Machine] for a joiner: its authored recipe,
 	// validated at this door the same way, or nil for the default.
