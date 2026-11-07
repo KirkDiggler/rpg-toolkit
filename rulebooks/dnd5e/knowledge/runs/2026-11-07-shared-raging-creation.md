@@ -1,0 +1,24 @@
+# 2026-11-07 — shared rulebook composition consumer
+
+Work: [Composable conditions S10 #882](https://github.com/KirkDiggler/rpg-project/issues/882), [approved design/plan #2295](https://github.com/KirkDiggler/rpg-toolkit/pull/2295).
+
+## Shipped
+
+- Working vocabulary checkpoint replaces the unused effects representation with a closed kind table, typed queries, real-chain damage/resistance/save/check behavior and provenance binding; native creator/codec migration remains in progress, not delivered — [package contract](../../effects/doc.go).
+- Consumes pushed S9 provider 605694f3 at its Go-generated v0.3.1-0.20261107191014-605694f3c24f pin. MVS selects core v0.12.0/events v0.6.3; full D&D root race/vet/lint gates pass after adoption — [module pins](../../go.mod).
+
+## Decided
+
+- Kind meaning belongs in one registry, shared by execution and information; condition lifecycle hooks stay with the condition owner, because origin is not its stacking address — [vocabulary](../../effects/vocabulary.go).
+- Known different query domains are not applicable; missing required facts remain Depends and fail execution, never silently switch the rule off — [assessment](../../effects/kinds.go).
+
+## Found
+
+- Real-chain tests prove fixed +3 without class levels, class +2/+3/+4, holder/weapon/ability scope, physical damage reduction, save/check distinction and origin in actual contributions; malformed outputs and ambiguous queries refuse — [tests](../../effects/vocabulary_test.go).
+- The provider pin's core/events upgrade is compatible with the full current D&D root suite; this is not native resolution/session/API adoption evidence — [scope](https://github.com/KirkDiggler/rpg-project/issues/882).
+
+## Mistaken
+
+- The initial static kind table formed a Go initialization cycle through attachment → dispatch → table. Separate registry lookup from the shared evaluator: attachment evaluates its already-selected meaning, while public information dispatches once. One registry and one evaluator remain — [evaluation boundary](../../effects/kinds.go).
+
+— cross-team agent, on behalf of KirkDiggler

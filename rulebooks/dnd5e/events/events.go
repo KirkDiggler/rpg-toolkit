@@ -69,6 +69,20 @@ type ConditionBehavior interface {
 	ToJSON() (json.RawMessage, error)
 }
 
+// ConditionOrigin identifies the granting content and the entity that supplied
+// it. EntityID may be a character or item instance; it is provenance, not the
+// recipient or a source-qualified stacking address.
+type ConditionOrigin struct {
+	Ref      core.Ref `json:"ref"`
+	EntityID string   `json:"entity_id"`
+}
+
+// ConditionOriginProvider exposes a condition's immutable granting origin,
+// independently of ConditionAddressProvider and its stacking identity.
+type ConditionOriginProvider interface {
+	ConditionOrigin() ConditionOrigin
+}
+
 // ConditionAddressProvider is the optional capability for a condition whose
 // identity is source-qualified. A condition with no source qualifier (Prone,
 // Dodging, Hidden, Raging) omits it and is addressed with an exact empty
