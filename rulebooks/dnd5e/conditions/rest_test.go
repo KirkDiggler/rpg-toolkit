@@ -118,7 +118,7 @@ func TestRagingConditionEndsOnAnyRestControl(t *testing.T) {
 		t.Run(string(restType), func(t *testing.T) {
 			ctx := context.Background()
 			bus := events.NewEventBus()
-			raging := &RagingCondition{CharacterID: restTestMemberID}
+			raging := composedRageForTest(restTestMemberID)
 
 			var removed []dnd5eEvents.ConditionRemovedEvent
 			_, err := dnd5eEvents.ConditionRemovedTopic.On(bus).Subscribe(ctx,

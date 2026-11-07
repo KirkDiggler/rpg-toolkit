@@ -4,8 +4,11 @@ Work: [Composable conditions S10 #882](https://github.com/KirkDiggler/rpg-projec
 
 ## Shipped
 
-- Working vocabulary checkpoint replaces the unused effects representation with a closed kind table, typed queries, real-chain damage/resistance/save/check behavior and provenance binding; native creator/codec migration remains in progress, not delivered — [package contract](../../effects/doc.go).
+- Working vocabulary checkpoint replaces the unused effects representation with a closed kind table, typed queries, real-chain damage/resistance/save/check behavior and provenance binding; the complete migration remains in progress, not delivered — [package contract](../../effects/doc.go).
 - Consumes pushed S9 provider 605694f3 at its Go-generated v0.3.1-0.20261107191014-605694f3c24f pin. MVS selects core v0.12.0/events v0.6.3; full D&D root race/vet/lint gates pass after adoption — [module pins](../../go.mod).
+
+- The registry now creates/restores canonical composed Raging, and native Rage requests that same creator before class payment. Strict restore rejects old/null/partial state; snapshots retain binding/origin/progress. Legacy handwritten type/test removal and downstream adoption remain unfinished — [creator tests](../../conditions/composed_raging_test.go).
+- Native character activation → save → strict reload → first turn proves the change reaches IsDirty and survives another save/reload without refilling class charges; suppressing the rulebook Changed publication fails the dirty-state assertion — [native test](../../character/rage_while_raging_test.go).
 
 ## Decided
 
@@ -16,6 +19,8 @@ Work: [Composable conditions S10 #882](https://github.com/KirkDiggler/rpg-projec
 
 - Real-chain tests prove fixed +3 without class levels, class +2/+3/+4, holder/weapon/ability scope, physical damage reduction, save/check distinction and origin in actual contributions; malformed outputs and ambiguous queries refuse — [tests](../../effects/vocabulary_test.go).
 - The provider pin's core/events upgrade is compatible with the full current D&D root suite; this is not native resolution/session/API adoption evidence — [scope](https://github.com/KirkDiggler/rpg-project/issues/882).
+
+- Saved refs must remain canonical strings for native readers. A regression test caught encoding a non-addressable core.Ref value as an object; encoding the addressed data struct invokes its canonical marshaler — [reader contract test](../../conditions/composed_raging_test.go).
 
 ## Mistaken
 

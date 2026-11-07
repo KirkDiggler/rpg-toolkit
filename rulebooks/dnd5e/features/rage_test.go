@@ -2,6 +2,7 @@ package features
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -133,15 +134,20 @@ func (s *RageTestSuite) TestActivatePublishesCondition() {
 	s.Equal(dnd5eEvents.ConditionSourceFeature, receivedEvent.Source)
 
 	// Check condition was created properly
-	ragingCond, ok := receivedEvent.Condition.(*conditions.RagingCondition)
-	s.True(ok, "Event condition should be *RagingCondition")
-	s.NotNil(ragingCond)
-	s.Equal("barbarian-1", ragingCond.CharacterID)
+	ragingCond, ok := receivedEvent.Condition.(*conditions.ComposedCondition)
+	s.Require().True(ok, "native Rage must use the shared composed creator")
 	raw, err := ragingCond.ToJSON()
 	s.Require().NoError(err)
-	s.NotContains(string(raw), "level", "the raging condition stores no barbarian level")
-	s.NotContains(string(raw), "damage_bonus", "the bonus is read from each attack's frame")
-	s.Equal("rage-feature", ragingCond.Source)
+	var data conditions.ComposedData
+	s.Require().NoError(json.Unmarshal(raw, &data))
+	s.Equal("barbarian-1", data.MemberID)
+	s.Require().NotNil(data.Origin)
+	s.Equal(*refs.Features.Rage(), data.Origin.Ref)
+	s.Equal("barbarian-1", data.Origin.EntityID)
+	s.JSONEq(`{"damage_bonus":{"barbarian_level":true}}`, string(data.Bindings), "persist the strategy, never a cached class level or computed bonus")
+	s.Require().NotNil(data.Runtime)
+	s.NotContains(data.Runtime.Bag, "level")
+	s.NotContains(data.Runtime.Bag, "damage_bonus")
 }
 
 // TestRageRefusesAnOwnerWithNoBarbarianLevels: whether rages are unlimited
