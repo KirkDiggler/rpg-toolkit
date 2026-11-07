@@ -270,7 +270,10 @@ type RememberedMember struct {
 	DistanceCells float64
 
 	// Path is the exact-cell shortest route to Position. It contains no live
-	// standing or reach information and is nil when Position is unreachable.
+	// standing or reach information and is nil when Position is unreachable,
+	// and nil when the member's table has no row that reads a route
+	// ([tableReadsRoutes], rpg-project#879 S3); a member with no table always
+	// gets it.
 	Path []spatial.Position
 
 	// ReachTail is how many of Path's LAST cells a walk may leave untaken and
@@ -409,19 +412,21 @@ type SeenMember struct {
 	// never farther than the shortest route needs. A driver moving along
 	// Path therefore never has to separately check InReach before issuing
 	// a Move — Path itself already stops exactly where InReach would turn
-	// true. Empty in two cases a caller does not need to tell apart: no
-	// walkable route exists, or this member is already within reach
-	// without moving at all (Distance already <= its own best reach).
+	// true. Empty in three cases a caller does not need to tell apart: no
+	// walkable route exists, this member is already within reach without
+	// moving at all (Distance already <= its own best reach), or the
+	// member's table has no row that reads a route ([tableReadsRoutes],
+	// rpg-project#879 S3). A member with no table always gets it.
 	//
 	// DATA, NOT A LIVE CAPABILITY (supersedes an earlier closure-based
 	// design this PR shipped and walked back): MonsterView must stay
 	// loggable, replayable and fixture-buildable (rpg-project#235's Debug
 	// Feed journey; the monster-ai brainstorm's "perception is data, the
 	// decision layer never reaches live state") — a func field breaks all
-	// three. Computed once per Seen member, per Act call — ONE BFS PER
-	// SIGHTING, not one for the chosen target alone; noted here as the
-	// acknowledged cost of keeping this a plain value rather than a lazy
-	// callback.
+	// three. Computed once per Seen member, per Act call, for a table that
+	// can read it — ONE BFS PER SIGHTING, not one for the chosen target
+	// alone; noted here as the acknowledged cost of keeping this a plain
+	// value rather than a lazy callback.
 	Path []spatial.Position
 
 	// AwayPath is one step that puts more of the board between this member
@@ -429,7 +434,9 @@ type SeenMember struct {
 	// cell — or nil when every step leads closer or nowhere. A driver that
 	// keeps its distance reads it rather than reaching for the canvas
 	// (rule A2): fleeing into a corner is not fleeing, and the board is
-	// what knows where the corners are.
+	// what knows where the corners are. Nil, like Path, when the member's
+	// table has no row that reads a route; a member with no table always
+	// gets it.
 	AwayPath []spatial.Position
 }
 

@@ -13,9 +13,9 @@ import (
 )
 
 // TestTableReadsRoutes pins which authored rows can read a route off the view
-// (rpg-project#879 S3): a selector word on a movement verb, a search, an
-// `enemy` band measured in steps, or any of those inside a bundle. A hold, a
-// route of cells and `enemy: none` cannot.
+// (rpg-project#879 S3): `toward` or `dash` naming a member by a word, an
+// `enemy` band measured in steps, or either inside a bundle. A hold, a route
+// of cells, a sound, an attack, an away, a search and `enemy: none` cannot.
 func TestTableReadsRoutes(t *testing.T) {
 	cell := Selector{At: &[]spatial.Position{{X: 1, Y: 1}}[0]}
 	for _, tc := range []struct {
@@ -30,9 +30,10 @@ func TestTableReadsRoutes(t *testing.T) {
 		{"enemy seen, hold", []Answer{{When: []When{{Enemy: EnemySeen}}, Hold: true}}, false},
 		{"toward an ally", []Answer{{Toward: &Selector{Word: SelectorAlly}}}, true},
 		{"dash at the nearest enemy", []Answer{{Dash: &Selector{Word: SelectorEnemy}}}, true},
-		{"away from the nearest enemy", []Answer{{Away: &Selector{Word: SelectorEnemy}}}, true},
-		{"attack the nearest enemy", []Answer{{Attack: &Selector{Word: SelectorEnemy}}}, true},
-		{"search", []Answer{{Search: &behavior.Search{}}}, true},
+		{"toward a sound", []Answer{{Toward: &Selector{Word: SelectorSound}}}, false},
+		{"away from the nearest enemy", []Answer{{Away: &Selector{Word: SelectorEnemy}}}, false},
+		{"attack the nearest enemy", []Answer{{Attack: &Selector{Word: SelectorEnemy}}}, false},
+		{"search", []Answer{{Search: &behavior.Search{}}}, false},
 		{"enemy walk", []Answer{{When: []When{{Enemy: EnemyWalk}}, Hold: true}}, true},
 		{"not enemy far", []Answer{{When: []When{{Not: &When{Enemy: EnemyFar}}}, Hold: true}}, true},
 		{"inside a bundle", []Answer{{Rows: []Answer{{Hold: true}, {Toward: &Selector{Word: SelectorAlly}}}}}, true},

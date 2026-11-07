@@ -3371,20 +3371,19 @@ func (e *Encounter) routeWithin(mover MemberID, from, anchor spatial.Position, w
 }
 
 // tableReadsRoutes reports whether any row of rows, or of a bundle it opens,
-// can read a route off the view: a selector word on a movement verb, a
-// search, or an `enemy` band that is measured in steps (walk, dash, far).
-// A member with no table is driven by something this package cannot see,
-// and keeps every route.
+// can read a route off the view: `toward` or `dash` naming a member by a
+// selector word (a sound is a place, routed when the row fires), or an
+// `enemy` band measured in steps (walk, dash, far). An attack reads reach,
+// a search reads trails and an `away` routes itself when it fires, so none
+// of them needs a route in the view. A member with no table is driven by
+// something this package cannot see, and keeps every route.
 func tableReadsRoutes(rows []Answer) bool {
 	for i := range rows {
 		r := &rows[i]
-		for _, sel := range []*Selector{r.Toward, r.Dash, r.Away, r.Attack} {
-			if sel != nil && sel.Word != "" {
+		for _, sel := range []*Selector{r.Toward, r.Dash} {
+			if sel != nil && sel.Word != "" && sel.Word != SelectorSound {
 				return true
 			}
-		}
-		if r.Search != nil {
-			return true
 		}
 		for j := range r.When {
 			for w := &r.When[j]; w != nil; w = w.Not {
