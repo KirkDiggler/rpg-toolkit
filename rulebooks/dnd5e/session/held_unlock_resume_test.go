@@ -94,7 +94,11 @@ func (s *GuidedUnlockSuite) TestAHeldDoorClosesAPausedUnlock() {
 
 	// NOT FROZEN: the next door verb is asked of the door, not refused by a
 	// window still waiting.
-	_, err = mgr.Unlock(context.Background(), &session.UnlockInput{Session: "sess", Member: "alice", Door: "gate"})
-	s.Require().ErrorIs(err, session.ErrDoorHeld, "the next attempt meets the hold")
-	s.NotErrorIs(err, session.ErrWindowOpen, "and no window is left open")
+	// The next attempt meets the hold as an answer, not an error
+	// (rpg-project#842): no window is left open to refuse it.
+	next, err := mgr.Unlock(context.Background(), &session.UnlockInput{Session: "sess", Member: "alice", Door: "gate"})
+	s.Require().NoError(err, "no window is left open")
+	s.Require().NotNil(next.Refused, "the next attempt meets the hold")
+	s.Equal("skel-1", next.Refused.Holder)
+	s.Equal("someone bars the door", next.Refused.Reason, "she still cannot see the skeleton")
 }

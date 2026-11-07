@@ -41,9 +41,9 @@ func protector(t *testing.T) *character.Data {
 		},
 		HitPoints: 12, MaxHitPoints: 12, ProficiencyBonus: 2,
 		Inventory: []character.InventoryItemData{
-			{Type: shared.EquipmentTypeArmor, ID: string(armor.Shield), Quantity: 1},
+			{Type: shared.EquipmentTypeArmor, ID: armor.Shield, Quantity: 1},
 		},
-		EquipmentSlots: character.EquipmentSlots{character.SlotOffHand: string(armor.Shield)},
+		EquipmentSlots: character.EquipmentSlots{character.SlotOffHand: armor.Shield},
 		Conditions:     []json.RawMessage{style},
 		ActionEconomy: &character.ActionEconomyData{
 			TurnNumber: 1, ActionsRemaining: 1, BonusActionsRemaining: 1,
@@ -66,7 +66,7 @@ func protectionWorld(t *testing.T, placeProtector bool) encounter.EncounterData 
 		})
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field:   encounter.FieldInput{Canvas: hexCanvas(), Regions: []encounter.RegionInput{rectRegion("room", 0, 0, 10, 4)}},
+		Field:   encounter.FieldInput{Canvas: hexCanvas(), Regions: []encounter.RegionInput{rectRegion("room", 0, 10, 4)}},
 		Members: members,
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{

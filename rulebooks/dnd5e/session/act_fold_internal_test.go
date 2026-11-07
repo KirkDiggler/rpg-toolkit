@@ -885,6 +885,50 @@ func (s *ActFoldSuite) TestFold_StateBeatNamingNoStateIsUndecoded() {
 	}
 }
 
+// TestFold_Barred is rpg-project#842: a bump, written as the encounter
+// writes it (barred.go), folds into one act. A step's names the cell it was
+// refused into and no door; a door verb's names the door and the verb and
+// no cell.
+func (s *ActFoldSuite) TestFold_Barred() {
+	cell := spatial.Position{X: -3, Y: 7}
+	for name, tc := range map[string]struct {
+		fields map[string]any
+		want   BarredAct
+	}{
+		"a step": {
+			fields: map[string]any{"beat": encounter.BeatBarred, "mover": "alice", "barrier": "gate-1", "cell": cell},
+			want:   BarredAct{Mover: member("alice"), Barrier: member("gate-1"), Cell: &cell},
+		},
+		"a door verb": {
+			fields: map[string]any{"beat": encounter.BeatBarred, "mover": "alice", "barrier": "gate-1", "door": "keep/gate", "verb": "unlock"},
+			want:   BarredAct{Mover: member("alice"), Barrier: member("gate-1"), Door: "keep/gate", Verb: "unlock"},
+		},
+	} {
+		acts := foldActs("sess", "alice", []record.Entry{s.beat("", tc.fields)})
+
+		s.Require().Len(acts, 1, name)
+		s.Equal(FamilyAct, acts[0].Family, name)
+		s.Empty(acts[0].Undecoded, name)
+		s.Equal(tc.want, acts[0].Body, name)
+	}
+}
+
+// TestFold_BarredNamingNoPartyOrPlaceIsUndecoded is the bump failing
+// closed: the writer names both parties and a cell or a door every time.
+func (s *ActFoldSuite) TestFold_BarredNamingNoPartyOrPlaceIsUndecoded() {
+	for name, fields := range map[string]map[string]any{
+		"no mover":   {"beat": encounter.BeatBarred, "barrier": "gate-1", "door": "keep/gate"},
+		"no barrier": {"beat": encounter.BeatBarred, "mover": "alice", "door": "keep/gate"},
+		"no place":   {"beat": encounter.BeatBarred, "mover": "alice", "barrier": "gate-1"},
+	} {
+		acts := foldActs("sess", "alice", []record.Entry{s.beat("", fields)})
+
+		s.Require().Len(acts, 1, name)
+		s.Equal(FamilyAct, acts[0].Family, name)
+		s.NotEmpty(acts[0].Undecoded, name)
+	}
+}
+
 // TestFold_WakeCut is rpg-project#766 S6: a raise cut at the bound, written
 // as the encounter writes it (wakebeats.go appendWakeCutBeat), folds into
 // one clock entry naming the cut, what it matched and what it dropped.

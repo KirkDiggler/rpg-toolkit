@@ -67,14 +67,14 @@ const (
 
 // economy is a turn's worth of action economy, filed under a turn number, with
 // whatever the Attack action has already banked.
-func (s *CostTestSuite) economy(turn, actions, banked int) *character.ActionEconomyData {
+func (s *CostTestSuite) economy(actions, banked int) *character.ActionEconomyData {
 	granted := map[character.GrantedActionKey]int{}
 	if banked > 0 {
 		granted[character.GrantedAttacks] = banked
 	}
 
 	return &character.ActionEconomyData{
-		TurnNumber:            turn,
+		TurnNumber:            firstTurn,
 		ActionsRemaining:      actions,
 		BonusActionsRemaining: 1,
 		ReactionsRemaining:    1,
@@ -106,9 +106,9 @@ func (s *CostTestSuite) hero(econ *character.ActionEconomyData) *character.Data 
 		ProficiencyBonus:    2,
 		WeaponProficiencies: []proficiencies.Weapon{proficiencies.WeaponSimple, proficiencies.WeaponMartial},
 		Inventory: []character.InventoryItemData{
-			{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Longsword), Quantity: 1},
+			{Type: shared.EquipmentTypeWeapon, ID: weapons.Longsword, Quantity: 1},
 		},
-		EquipmentSlots: character.EquipmentSlots{character.SlotMainHand: string(weapons.Longsword)},
+		EquipmentSlots: character.EquipmentSlots{character.SlotMainHand: weapons.Longsword},
 		ActionEconomy:  econ,
 	}
 }
@@ -141,7 +141,7 @@ func (s *CostTestSuite) world() encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
-			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
+			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 10, 10)},
 		},
 		Members: []encounter.MemberInput{
 			{ID: heroID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 5, Y: 5}},
@@ -290,7 +290,7 @@ func (m *failingPreflightMachine) Start(_ context.Context, cast *Participants) (
 }
 
 func (s *CostTestSuite) TestStartFailurePaysNothing() {
-	hero := s.hero(s.economy(firstTurn, 1, bankedAttacks))
+	hero := s.hero(s.economy(1, bankedAttacks))
 	machine := &failingPreflightMachine{}
 
 	out, err := Resolve(s.ctx, &Input{
@@ -325,7 +325,7 @@ func (s *CostTestSuite) TestStartFailurePaysNothing() {
 // taken — so there is no banked swing for this strike to spend. The refusal has
 // to arrive after pure preflight but before dice or mutation.
 func (s *CostTestSuite) TestAnActorWhoCannotPayPreflightsButNeverExecutes() {
-	hero := s.hero(s.economy(firstTurn, 1, 0))
+	hero := s.hero(s.economy(1, 0))
 	roller := &countingRoller{}
 
 	out, machine, err := s.swing(hero, &Cost{
@@ -361,7 +361,7 @@ func (s *CostTestSuite) TestAnUnaffordableStrikePublishesNoACChain() {
 		})
 	s.Require().NoError(err)
 
-	hero := s.hero(s.economy(firstTurn, 1, 0))
+	hero := s.hero(s.economy(1, 0))
 	wolf := monsters.NewWolf(wolfID).ToData()
 	roller := &countingRoller{}
 	out, err := resolveOn(s.ctx, &Input{
@@ -394,7 +394,7 @@ func (s *CostTestSuite) TestAnUnaffordableStrikePublishesNoACChain() {
 // cannot execute it yet. Strike must reject that limitation during its own
 // Start, before the door spends or any attack phase can mutate a participant.
 func (s *CostTestSuite) TestARecurringOnHitGateFailsBeforePaymentDiceOrMutation() {
-	hero := s.hero(s.economy(firstTurn, 1, bankedAttacks))
+	hero := s.hero(s.economy(1, bankedAttacks))
 	definition, err := character.AssembleAttack(s.load(hero), &character.AssembleAttackInput{
 		Slot: character.SlotMainHand,
 	})
@@ -470,7 +470,7 @@ func (s *CostTestSuite) TestARecurringOnHitGateFailsBeforePaymentDiceOrMutation(
 // gate check below it is still reached by gates content DOES admit, which
 // TestARecurringOnHitGateFailsBeforePaymentDiceOrMutation pins.
 func (s *CostTestSuite) TestAHalfOnHitRiderFailsBeforePaymentDiceOrMutation() {
-	hero := s.hero(s.economy(firstTurn, 1, bankedAttacks))
+	hero := s.hero(s.economy(1, bankedAttacks))
 	definition, err := character.AssembleAttack(s.load(hero), &character.AssembleAttackInput{
 		Slot: character.SlotMainHand,
 	})
@@ -522,7 +522,7 @@ func (s *CostTestSuite) TestAHalfOnHitRiderFailsBeforePaymentDiceOrMutation() {
 // economy had to mark (#1087): a miss changes nothing else, so without the mark
 // the debit would serialize perfectly and then be dropped by the write-back.
 func (s *CostTestSuite) TestAPaidStrikeSpendsTheBankEvenWhenItMisses() {
-	hero := s.hero(s.economy(firstTurn, 1, bankedAttacks))
+	hero := s.hero(s.economy(1, bankedAttacks))
 	roller := &countingRoller{}
 
 	out, machine, err := s.swing(hero, &Cost{
@@ -552,7 +552,7 @@ func (s *CostTestSuite) TestAPaidStrikeSpendsTheBankEvenWhenItMisses() {
 // Every other suite in this package is the wider version of this pin — none of
 // them passes a cost, and none of them changed.
 func (s *CostTestSuite) TestANilCostChargesNothing() {
-	hero := s.hero(s.economy(firstTurn, 1, bankedAttacks))
+	hero := s.hero(s.economy(1, bankedAttacks))
 
 	out, machine, err := s.swing(hero, nil, &countingRoller{})
 
@@ -581,7 +581,7 @@ func (s *CostTestSuite) TestTwoActionsInOneTurnAndTheSecondIsRefused() {
 		}
 	}
 
-	hero := s.hero(s.economy(firstTurn, 1, 0))
+	hero := s.hero(s.economy(1, 0))
 
 	first, err := s.declare(hero, cost(hero, firstTurn))
 	s.Require().NoError(err)
@@ -609,7 +609,7 @@ func (s *CostTestSuite) TestTwoActionsInOneTurnAndTheSecondIsRefused() {
 // here is the one the economy is already filed under, so the refresh is on its
 // write-nothing path and the refusal is the only thing that could have written.
 func (s *CostTestSuite) TestARefusedPaymentWritesNothingBack() {
-	hero := s.hero(s.economy(firstTurn, 1, 0))
+	hero := s.hero(s.economy(1, 0))
 
 	before, err := json.Marshal(hero)
 	s.Require().NoError(err)
@@ -637,7 +637,7 @@ func (s *CostTestSuite) TestARefusedPaymentWritesNothingBack() {
 // debit, and the message says that rather than pretending the wolf was never
 // passed in.
 func (s *CostTestSuite) TestACostNamingAMonsterIsRefusedByName() {
-	hero := s.hero(s.economy(firstTurn, 1, bankedAttacks))
+	hero := s.hero(s.economy(1, bankedAttacks))
 
 	out, machine, err := s.swing(hero, &Cost{
 		PayerID: wolfID,
@@ -653,7 +653,7 @@ func (s *CostTestSuite) TestACostNamingAMonsterIsRefusedByName() {
 }
 
 func (s *CostTestSuite) TestACostNamingSomebodyNotPassedInIsRefused() {
-	hero := s.hero(s.economy(firstTurn, 1, bankedAttacks))
+	hero := s.hero(s.economy(1, bankedAttacks))
 
 	out, machine, err := s.swing(hero, &Cost{
 		PayerID: "ghost",
@@ -689,7 +689,7 @@ func (s *CostTestSuite) TestAnActorWithNoEconomyIsRefusedRatherThanChargedNothin
 // ---------------------------------------------------------------------------
 
 func (s *CostTestSuite) TestACostThatNamesNoPayerIsRefused() {
-	hero := s.hero(s.economy(firstTurn, 1, bankedAttacks))
+	hero := s.hero(s.economy(1, bankedAttacks))
 
 	out, machine, err := s.swing(hero, &Cost{Profile: s.strikeCost(hero)}, &countingRoller{})
 
@@ -703,7 +703,7 @@ func (s *CostTestSuite) TestACostThatNamesNoPayerIsRefused() {
 // told "you are out of actions" about a typo would go looking at the wrong
 // sheet.
 func (s *CostTestSuite) TestACostKeyedToACurrencyNoLedgerHoldsIsRefused() {
-	hero := s.hero(s.economy(firstTurn, 1, bankedAttacks))
+	hero := s.hero(s.economy(1, bankedAttacks))
 
 	out, machine, err := s.swing(hero, &Cost{
 		PayerID: heroID,
@@ -723,7 +723,7 @@ func (s *CostTestSuite) TestACostKeyedToACurrencyNoLedgerHoldsIsRefused() {
 // The world here is one this package cannot make sense of, and the malformed
 // cost has to beat it to the answer.
 func (s *CostTestSuite) TestAMalformedCostIsRefusedBeforeTheWorldIsLoaded() {
-	hero := s.hero(s.economy(firstTurn, 1, bankedAttacks))
+	hero := s.hero(s.economy(1, bankedAttacks))
 
 	out, err := Resolve(s.ctx, &Input{
 		World:        encounter.EncounterData{},
@@ -759,7 +759,7 @@ func (s *CostTestSuite) TestAMalformedCostIsRefusedBeforeTheWorldIsLoaded() {
 // that read the sheet's own accessor would answer 30 here and be wrong for
 // anyone hasted, slowed or unarmored-moving.
 func (s *CostTestSuite) TestTheDoorRefillsAStaleBankFromTheSuppliedTurn() {
-	hero := s.hero(s.economy(firstTurn, 0, 0))
+	hero := s.hero(s.economy(0, 0))
 
 	out, err := s.declare(hero, &Cost{
 		PayerID: heroID,
@@ -779,7 +779,7 @@ func (s *CostTestSuite) TestTheDoorRefillsAStaleBankFromTheSuppliedTurn() {
 // stored, and an actor who spent their action last turn is refused rather than
 // quietly handed a fresh one.
 func (s *CostTestSuite) TestWithoutATurnTheBankIsChargedExactlyAsStored() {
-	hero := s.hero(s.economy(firstTurn, 0, 0))
+	hero := s.hero(s.economy(0, 0))
 
 	_, err := s.declare(hero, &Cost{PayerID: heroID, Profile: s.attackCost(hero)})
 
@@ -790,7 +790,7 @@ func (s *CostTestSuite) TestWithoutATurnTheBankIsChargedExactlyAsStored() {
 // stale: the refresh is something a cost brings with it, not something every
 // resolution does to whoever happens to be in the cast.
 func (s *CostTestSuite) TestAFreeActionNeverRefreshesTheBank() {
-	hero := s.hero(s.economy(firstTurn, 0, 0))
+	hero := s.hero(s.economy(0, 0))
 
 	out, err := s.declare(hero, nil)
 
@@ -803,7 +803,7 @@ func (s *CostTestSuite) TestAFreeActionNeverRefreshesTheBank() {
 // which is what lets a caller say "this actor is acting now, and it is free"
 // without the two statements having to travel separately.
 func (s *CostTestSuite) TestACostWithNoProfileRefreshesAndChargesNothing() {
-	hero := s.hero(s.economy(firstTurn, 0, 0))
+	hero := s.hero(s.economy(0, 0))
 
 	out, err := s.declare(hero, &Cost{
 		PayerID: heroID,
@@ -839,7 +839,7 @@ func (s *CostTestSuite) raging() json.RawMessage {
 func (s *CostTestSuite) TestARefusedPaymentLeavesNothingOnTheBus() {
 	inner := events.NewEventBus()
 
-	hero := s.hero(s.economy(firstTurn, 1, 0))
+	hero := s.hero(s.economy(1, 0))
 	hero.Conditions = []json.RawMessage{s.raging()}
 
 	out, err := resolveOn(s.ctx, &Input{

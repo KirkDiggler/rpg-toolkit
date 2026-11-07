@@ -36,6 +36,10 @@ current factory/registry paths, and full load/round-trip expectations.
 
 ## Current-reference documentation
 
+- [Item/effect composition walkthrough](ideas/item-effect-composition/README.md) —
+  the layers behind ADR-0048, with existing interfaces distinguished from target
+  factory/vocabulary contracts; [connected paper trail](ideas/item-effect-composition/paper-trail.md)
+  links the decision to planning and observed implementation
 - [Mind architecture walkthrough](architecture/components/mind.md) — overview
   with zoom-ins on one machine, behavior composition, parameters and saved progress
 - [Architecture overview](architecture/overview.md) — modules, layer direction,

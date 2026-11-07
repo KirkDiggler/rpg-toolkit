@@ -244,12 +244,16 @@ var (
 	// remedy is OpenDoor, not different coordinates.
 	ErrDoorShut = errors.New("door is shut")
 
-	// ErrDoorHeld is returned when a door verb (OpenDoor, CloseDoor, Unlock)
-	// is refused because a holder bars the door (rpg-project#852, R7): a
-	// posted body standing on its post holds the door against anyone not
-	// allied with it. A fact about the game, not a defect: the same call
-	// succeeds once the holder leaves its post, is cowed, turned or downed.
-	// The detail is [DoorHeldError], whose Reason a host renders.
+	// ErrDoorHeld is returned when a paused Unlock is answered through React
+	// after a holder came to bar the door (rpg-project#852, R7): a posted
+	// body standing on its post holds the door against anyone not allied
+	// with it. A fact about the game, not a defect: the same call succeeds
+	// once the holder leaves its post, is cowed, turned or downed. The detail
+	// is [DoorHeldError], whose Reason a host renders.
+	//
+	// The live door verbs (OpenDoor, CloseDoor, Unlock) no longer return it
+	// (rpg-project#842): their attempt is the bump the holder hears, and
+	// their output carries [DoorRefusal] instead.
 	ErrDoorHeld = errors.New("door is held")
 
 	// ErrNoIntel is the translation of a composition-side refusal about an

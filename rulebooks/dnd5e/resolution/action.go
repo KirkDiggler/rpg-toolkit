@@ -37,6 +37,7 @@ type ActionInput struct {
 	AttackerID string
 
 	// TargetID is the legacy single-target spelling.
+	//
 	// Deprecated: use TargetIDs; put a single target in a one-element slice.
 	TargetID string
 
@@ -246,11 +247,12 @@ func newCast(in *ActionInput, normalizedTargetIDs []string) (Machine, error) {
 	for _, targetID := range targetIDs {
 		var inner Machine
 		var err error
-		if profile.Attack != nil {
-			inner, err = newAttackCast(definition, casterID, targetID, in.Roller)
-		} else if profile.Save != nil {
+		switch {
+		case profile.Attack != nil:
+			inner = newAttackCast(definition, casterID, targetID, in.Roller)
+		case profile.Save != nil:
 			inner, err = newGatedCast(definition, casterID, targetID, in.Option, cause, in.Roller)
-		} else {
+		default:
 			inner, err = newGatelessCast(definition, casterID, targetID, in.Option, in.Roller)
 		}
 		if err != nil {
@@ -404,15 +406,16 @@ func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, erro
 		}
 		if target.targetID != "" {
 			var err error
-			if m.profile.Target == combatActions.CastTargetKnownCreature {
+			switch {
+			case m.profile.Target == combatActions.CastTargetKnownCreature:
 				target.missed, err = validateKnownCreatureTarget(ctx, cast, m.casterID, target.targetID, m.profile.RangeFeet, m.staleTargetPolicy)
-			} else if m.profile.Target == combatActions.CastTargetTouch {
+			case m.profile.Target == combatActions.CastTargetTouch:
 				err = validateTouchTarget(ctx, m.casterID, target.targetID)
-			} else if m.profile.Healing != nil {
+			case m.profile.Healing != nil:
 				err = validateRangedHealingTarget(ctx, m.casterID, target.targetID, m.profile.RangeFeet)
-			} else if m.derivedTargets {
+			case m.derivedTargets:
 				err = castRecipientIsEligible(cast, target.targetID)
-			} else {
+			default:
 				err = validateCastTarget(ctx, cast, m.casterID, target.targetID, m.profile.RangeFeet)
 			}
 			if err != nil {
@@ -774,7 +777,9 @@ func deliveredEffects(spell core.Ref, effects []ActivationEffect) ([]ImposedEffe
 			if err != nil {
 				return nil, err
 			}
-			applied = append(applied, ImposedEffect{Kind: ImposedHealing, Ref: ref, Description: effect.Name, RecipientID: effect.TargetID, Amount: effect.Amount, Requested: effect.Requested, Before: effect.Before, After: effect.After, Calculation: dnd5eEvents.CloneRollCalculation(effect.Calculation)})
+			applied = append(applied, ImposedEffect{Kind: ImposedHealing, Ref: ref, Description: effect.Name,
+				RecipientID: effect.TargetID, Amount: effect.Amount, Requested: effect.Requested, Before: effect.Before,
+				After: effect.After, Calculation: dnd5eEvents.CloneRollCalculation(effect.Calculation)})
 			continue
 		}
 		if effect.Kind != EffectConditionApplied {
@@ -1060,7 +1065,9 @@ func newGatelessCast(definition combatActions.Definition, casterID, targetID, op
 			return nil, fmt.Errorf("%w: healing requires a roller", ErrBadAction)
 		}
 		ref := definition.Ref
-		prepared.healing = &preparedHealing{declaration: profile.Healing.Clone(), targetID: targetID, source: dnd5eEvents.RollSource{Ref: &ref, Name: definition.Name, SourceID: casterID}, excludes: append([]string(nil), profile.HealingExcludes...), roller: roller}
+		prepared.healing = &preparedHealing{declaration: profile.Healing.Clone(), targetID: targetID,
+			source:   dnd5eEvents.RollSource{Ref: &ref, Name: definition.Name, SourceID: casterID},
+			excludes: append([]string(nil), profile.HealingExcludes...), roller: roller}
 	}
 	return NewActivation(&ActivationInput{
 		MemberID: casterID,
@@ -1171,10 +1178,10 @@ func (m *castMachine) independentEffect(ref *core.Ref) bool {
 
 // newAttackCast delegates a cast's attack delivery to the ordinary strike path.
 // Payment belongs to the outer cast; the inner definition declares no cost.
-func newAttackCast(definition combatActions.Definition, casterID, targetID string, roller dice.Roller) (Machine, error) {
+func newAttackCast(definition combatActions.Definition, casterID, targetID string, roller dice.Roller) Machine {
 	attack := definition.Cast.Attack.Clone()
 	return NewStrike(&StrikeInput{AttackerID: casterID, TargetID: targetID,
-		Definition: combatActions.Definition{Ref: definition.Ref, Name: definition.Name, Attack: &attack}, Roller: roller}), nil
+		Definition: combatActions.Definition{Ref: definition.Ref, Name: definition.Name, Attack: &attack}, Roller: roller})
 }
 
 // areaMembershipSourceID is the opaque source id an area's membership label

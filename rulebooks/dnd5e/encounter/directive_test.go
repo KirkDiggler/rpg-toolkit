@@ -376,8 +376,9 @@ func (s *DirectiveTestSuite) TestAChosenWalkIsNeitherForcedNorCaused() {
 func (s *DirectiveTestSuite) TestAChosenStepCarriesNoCause() {
 	enc := s.lineScene(false)
 
-	_, err := enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 0)})
-	s.Require().Error(err, "goblin is standing there")
+	out, err := enc.Step(&encounter.StepInput{Member: alice, To: cellAt(1, 0)})
+	s.Require().NoError(err)
+	s.Require().NotNil(out.Stopped, "goblin is standing there")
 
 	_, err = enc.Direct(context.Background(), encounter.DirectInput{
 		Kind:  encounter.MoveDisplaced,

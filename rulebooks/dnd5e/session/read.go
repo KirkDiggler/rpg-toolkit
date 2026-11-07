@@ -720,20 +720,12 @@ func (m *Manager) loadGivenWorld(
 // host can still match on theirs. Where the inner message is worth keeping, the
 // call site keeps it with %v, which is text rather than a chain.
 func translate(err error) error {
-	// A HELD DOOR (rpg-project#852, R7) arrives with its reason, the one
-	// translation that carries detail. The arm matches the composition's
-	// typed held error by type, never by a sentinel it unwraps to, so it
-	// stands first and catches the held door whatever else that error may
-	// answer, and never a door the field lacks (ErrNoDoor, ErrBadDoor).
-	var held *encounter.DoorHeldError
-	if errors.As(err, &held) {
-		return &DoorHeldError{Reason: held.PublicReason()}
-	}
+	// NO HELD-DOOR ARM (rpg-project#842): the composition's door verbs answer
+	// a held door with output (Refused), never an error, and its typed held
+	// error never leaves the composition. The one held refusal this package
+	// returns, a paused Unlock answered through React, is built from
+	// DoorHeldFor's answer in refuseHeldDoor and never passes through here.
 	switch {
-	case errors.Is(err, encounter.ErrDoorHeld):
-		// The bare sentinel, which no composition path returns today: the
-		// refusal without a reason.
-		return &DoorHeldError{}
 	case errors.Is(err, encounter.ErrTrimmed):
 		return fmt.Errorf("%w", ErrStoryTrimmed)
 	case errors.Is(err, encounter.ErrNoMember):

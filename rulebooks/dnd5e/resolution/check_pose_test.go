@@ -71,7 +71,7 @@ func (s *CheckPoseTestSuite) guided() json.RawMessage {
 func (s *CheckPoseTestSuite) check(data *character.Data) (*CheckOutput, error) {
 	return MakeCheck(s.ctx, &CheckInput{
 		Character:  data,
-		Approaches: []encounter.CheckApproach{route(string(skills.Perception), 10)},
+		Approaches: []encounter.CheckApproach{route(skills.Perception, 10)},
 		Roller:     s.roller,
 	})
 }
@@ -183,7 +183,7 @@ func (s *CheckPoseTestSuite) TestResumeCheckRefusesAnyOtherMachine() {
 	s.Require().NoError(err)
 	h, err := readFrozen(posed.Posed.Frozen)
 	s.Require().NoError(err)
-	foreign, err := writeFrozen(machinePostRoll, PauseCheckRoll, json.RawMessage(h.State))
+	foreign, err := writeFrozen(machinePostRoll, PauseCheckRoll, h.State)
 	s.Require().NoError(err)
 	pause := *posed.Posed
 	pause.Frozen = foreign

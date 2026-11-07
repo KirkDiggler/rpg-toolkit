@@ -31,11 +31,11 @@ const (
 )
 
 var (
-	eqLongsword  = string(weapons.Longsword)
-	eqHandaxe    = string(weapons.Handaxe)
-	eqGreatsword = string(weapons.Greatsword)
-	eqShield     = string(armor.Shield)
-	eqChainMail  = string(armor.ChainMail)
+	eqLongsword  = weapons.Longsword
+	eqHandaxe    = weapons.Handaxe
+	eqGreatsword = weapons.Greatsword
+	eqShield     = armor.Shield
+	eqChainMail  = armor.ChainMail
 )
 
 // EquipTestSuite proves the door charges an in-fight equipment change before
@@ -380,7 +380,6 @@ func (s *EquipTestSuite) TestRequestsTheSheetCannotMakeAreBadEquip() {
 		s.Require().NotErrorIs(err, ErrCannotPay)
 		s.Require().Nil(out)
 	})
-
 }
 
 // The first act of a fight can be an equip: a sheet with no stored economy

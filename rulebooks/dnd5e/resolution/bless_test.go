@@ -69,7 +69,7 @@ func (s *CastActionTestSuite) blessRun(world encounter.EncounterData, participan
 func (s *CastActionTestSuite) TestBlessTwoLiveCastersReloadRollsAndQualifiedRecast() {
 	f := s.fixtures()
 	d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.Bless})
-	first, err := s.blessAttempt(f.world(), baneCaster(1, 2), f.saver(14), []string{heroID}, StaleTargetRefuse, &countingCastRoller{})
+	first, err := s.blessAttempt(f.world(), baneCaster(1), f.saver(14), []string{heroID}, StaleTargetRefuse, &countingCastRoller{})
 	s.Require().NoError(err)
 	// Round-trip the actual delivered sheet before a second caster blesses it.
 	raw, err := json.Marshal(f.sheet(first, heroID))
@@ -122,7 +122,7 @@ func (s *CastActionTestSuite) TestBlessTwoLiveCastersReloadRollsAndQualifiedReca
 
 func (s *CastActionTestSuite) TestBlessAllMissPaysAndDropsPreviousConcentration() {
 	f := s.fixtures()
-	first, err := s.blessAttempt(f.world(), baneCaster(1, 2), f.saver(14), []string{heroID}, StaleTargetRefuse, &countingCastRoller{})
+	first, err := s.blessAttempt(f.world(), baneCaster(1), f.saver(14), []string{heroID}, StaleTargetRefuse, &countingCastRoller{})
 	s.Require().NoError(err)
 	caster := f.sheet(first, bardID)
 	caster.ActionEconomy.ActionsRemaining = 1
@@ -163,7 +163,7 @@ func (s *CastActionTestSuite) TestBlessAllMissPaysAndDropsPreviousConcentration(
 
 func (s *CastActionTestSuite) TestBlessDurationExpiresAllDeliveredChildrenAfterReload() {
 	f := s.fixtures()
-	out, err := s.blessAttempt(f.world(), baneCaster(1, 2), f.saver(14), []string{heroID, bardID}, StaleTargetRefuse, &countingCastRoller{})
+	out, err := s.blessAttempt(f.world(), baneCaster(1), f.saver(14), []string{heroID, bardID}, StaleTargetRefuse, &countingCastRoller{})
 	s.Require().NoError(err)
 	caster, target := f.sheet(out, bardID), f.sheet(out, heroID)
 	for turn := 0; turn <= 10; turn++ {
@@ -200,7 +200,7 @@ func (s *CastActionTestSuite) TestBlessLifeStatesAndSameAddressReplacement() {
 				s.Require().NoError(err)
 				target.Conditions = []json.RawMessage{raw}
 			}
-			out, err := s.blessAttempt(f.world(), baneCaster(1, 2), target, []string{heroID}, StaleTargetRefuse, &countingCastRoller{})
+			out, err := s.blessAttempt(f.world(), baneCaster(1), target, []string{heroID}, StaleTargetRefuse, &countingCastRoller{})
 			if state == "dead" {
 				s.ErrorIs(err, ErrBadAction)
 				s.Nil(out)
@@ -238,7 +238,7 @@ func (s *CastActionTestSuite) TestBlessKnownSelfDyingAndMonsterPayOnce() {
 	world := f.world()
 	s.rememberedHero(&world, encounter.LocationKnown, spatial.Position{X: 1, Y: 1})
 	roll := &countingCastRoller{}
-	out, err := s.blessAttempt(world, baneCaster(1, 2), f.saver(0), []string{heroID, bardID, wolfID}, StaleTargetRefuse, roll)
+	out, err := s.blessAttempt(world, baneCaster(1), f.saver(0), []string{heroID, bardID, wolfID}, StaleTargetRefuse, roll)
 	s.Require().NoError(err)
 	result := s.castOutcome(out)
 	s.Require().Len(result.Targets, 3)
@@ -263,7 +263,7 @@ func (s *CastActionTestSuite) TestBlessStalePoliciesAndMixedRecipients() {
 			f := s.fixtures()
 			world := f.world()
 			s.rememberedHero(&world, encounter.LocationKnown, spatial.Position{X: 1, Y: 2})
-			caster := baneCaster(1, 2)
+			caster := baneCaster(1)
 			before, err := json.Marshal(caster)
 			s.Require().NoError(err)
 			roll := &countingCastRoller{}
@@ -315,7 +315,7 @@ func (s *CastActionTestSuite) TestBlessRefusesUnknownBlockedOutOfRangeAndBadPoli
 			case "duplicate":
 				targets = []string{heroID, heroID}
 			}
-			caster := baneCaster(1, 2)
+			caster := baneCaster(1)
 			roll := &countingCastRoller{}
 			out, err := s.blessAttempt(world, caster, f.saver(14), targets, policy, roll)
 			s.Error(err)
@@ -350,7 +350,7 @@ func (s *CastActionTestSuite) TestBlessTargetProjectionHonorsPolicyWithoutReveal
 	})
 	s.Require().NoError(err)
 	input := &KnownCreatureTargetsInput{Encounter: run, CasterID: bardID, RangeFeet: 30,
-		Candidates: []string{bardID, heroID, wolfID}, Participants: []Participant{{Character: baneCaster(1, 2)}, {Character: f.saver(0)}, {Monster: f.wolfData()}}}
+		Candidates: []string{bardID, heroID, wolfID}, Participants: []Participant{{Character: baneCaster(1)}, {Character: f.saver(0)}, {Monster: f.wolfData()}}}
 	for _, policy := range []StaleTargetPolicy{StaleTargetRefuse, StaleTargetAttempt} {
 		input.StaleTargetPolicy = policy
 		answers, err := KnownCreatureTargets(s.ctx, input)
@@ -367,7 +367,7 @@ func (s *CastActionTestSuite) TestABlessedConditionReadsItsRegistryName() {
 	s.Require().NotEmpty(display.Name)
 
 	f := s.fixtures()
-	out, err := s.blessAttempt(f.world(), baneCaster(1, 2), f.saver(14), []string{heroID}, StaleTargetRefuse, &countingCastRoller{})
+	out, err := s.blessAttempt(f.world(), baneCaster(1), f.saver(14), []string{heroID}, StaleTargetRefuse, &countingCastRoller{})
 	s.Require().NoError(err)
 
 	var described []string
@@ -385,7 +385,7 @@ func (s *CastActionTestSuite) TestABlessedConditionReadsItsRegistryName() {
 // instance detail, so no delivered condition of a Bless cast carries one.
 func (s *CastActionTestSuite) TestAGatelessConditionWithNothingToSayCarriesNoDetail() {
 	f := s.fixtures()
-	out, err := s.blessAttempt(f.world(), baneCaster(1, 2), f.saver(14), []string{heroID}, StaleTargetRefuse, &countingCastRoller{})
+	out, err := s.blessAttempt(f.world(), baneCaster(1), f.saver(14), []string{heroID}, StaleTargetRefuse, &countingCastRoller{})
 	s.Require().NoError(err)
 
 	var blessed int

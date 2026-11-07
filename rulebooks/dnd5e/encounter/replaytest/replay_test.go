@@ -79,6 +79,9 @@ type verb struct {
 type verbBody struct {
 	Beat     string             `json:"beat"`
 	Member   string             `json:"member"`
+	Mover    string             `json:"mover"`
+	Cell     *spatial.Position  `json:"cell"`
+	Verb     string             `json:"verb"`
 	Position *spatial.Position  `json:"position"`
 	Actor    string             `json:"actor"`
 	Target   string             `json:"target"`
@@ -114,6 +117,8 @@ type attackOnTheRecord struct {
 //   - `door` by a player is the door verb that left the door in that state;
 //   - a player's own outcome (`struck`, `missed`) is a RecordTrain unit, and
 //     each `down` beat that follows it is a fall the host scored first;
+//   - `barred` of a player is the attempt a body stopped: a Step to the
+//     cell it names, or for a door the verb it names (rpg-project#842);
 //   - `turn-ended` of a player is an EndTurn;
 //   - `sneaking` of a player is a SetSneaking to the mode it names.
 //
@@ -158,6 +163,22 @@ func verbsOf(t *testing.T, entries []record.EntryData, players map[encounter.Mem
 			falls := fallsAfter(t, entries[i+1:], players)
 			out = append(out, verb{entry.Seq, fmt.Sprintf("RecordTrain %s %s %v (falls %v)", actor, b.Beat, b.Targets, falls),
 				func(w *world) error { return w.strike(outcome, falls) }})
+		case b.Beat == encounter.BeatBarred && players[encounter.MemberID(b.Mover)]:
+			mover := encounter.MemberID(b.Mover)
+			if b.Door == "" {
+				require.NotNil(t, b.Cell, "barred beat seq %d names a cell", entry.Seq)
+				to := *b.Cell
+				out = append(out, verb{entry.Seq, fmt.Sprintf("Step %s to %v (barred)", mover, to), func(w *world) error {
+					return w.step(mover, to)
+				}})
+				continue
+			}
+			require.Equal(t, "open", b.Verb,
+				"barred beat seq %d: only a barred open is re-issued; %q needs its verb read here", entry.Seq, b.Verb)
+			door := encounter.DoorID(b.Door)
+			out = append(out, verb{entry.Seq, fmt.Sprintf("OpenDoor %s by %s (barred)", door, mover), func(w *world) error {
+				return w.openDoor(door, mover)
+			}})
 		case b.Beat == encounter.BeatTurnEnded && players[member]:
 			out = append(out, verb{entry.Seq, fmt.Sprintf("EndTurn %s", member), func(w *world) error {
 				return w.endTurn(member)
@@ -225,6 +246,8 @@ func isVerbBeat(b verbBody, players map[encounter.MemberID]bool) bool {
 		return players[encounter.MemberID(b.Member)]
 	case encounter.BeatSpoke, encounter.BeatDoor, string(encounter.OutcomeStruck), string(encounter.OutcomeMissed):
 		return players[encounter.MemberID(b.Actor)]
+	case encounter.BeatBarred:
+		return players[encounter.MemberID(b.Mover)]
 	}
 
 	return false

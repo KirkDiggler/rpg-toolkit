@@ -108,6 +108,14 @@ type OpenDoorOutput struct {
 	// Formed is present when what the door revealed started a fight.
 	Formed *Formed `json:"formed,omitempty"`
 
+	// Refused is present when a post holds the door against Member
+	// (rpg-project#842, the guard holds the gate R7): the attempt is the
+	// bump. The door is unchanged and Door.State is the state it is still
+	// in. It is an answer, never an error: the `barred` beat was written,
+	// the holder heard it at once, and what his answer made is in
+	// Discovered, Formed and the act stream.
+	Refused *DoorRefusal `json:"refused,omitempty"`
+
 	Saved    SaveReport     `json:"saved"`
 	Delivery DeliveryReport `json:"delivery"`
 }
@@ -127,6 +135,10 @@ type OpenDoorOutput struct {
 // lock would cost — and AFTER the probe law, so a concealed door nobody has
 // found still answers as no door at all rather than confirming there is
 // something to be out of range of.
+//
+// A DOOR A POST HOLDS against Member is answered, not refused
+// (rpg-project#842): the output carries [OpenDoorOutput.Refused], the door is
+// unchanged, and the attempt is a `barred` beat the holder hears at once.
 func (m *Manager) OpenDoor(ctx context.Context, in *OpenDoorInput) (*OpenDoorOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("opendoor: %w", ErrNilInput)
@@ -165,6 +177,7 @@ func (m *Manager) OpenDoor(ctx context.Context, in *OpenDoorInput) (*OpenDoorOut
 		Door:       Door{ID: opened.Door, State: string(opened.State)},
 		Discovered: projectDiscoveries(opened.IntelDeltas),
 		Formed:     projectFormed(opened.Formed),
+		Refused:    projectRefusal(opened.Refused),
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil
@@ -228,6 +241,14 @@ type UnlockOutput struct {
 	// alongside it, for [resolution.Ask]'s reason.
 	Roll *int `json:"roll,omitempty"`
 
+	// Refused is present when a post holds the door against Member
+	// (rpg-project#842, the guard holds the gate R7): the attempt is the
+	// bump. The door is unchanged and Door.State is the state it is still
+	// in. No die was thrown: Beaten, Total, DC and Applied are zero. It is an answer, never an error: the `barred` beat was written,
+	// the holder heard it at once, and what his answer made is in
+	// Discovered, Formed and the act stream.
+	Refused *DoorRefusal `json:"refused,omitempty"`
+
 	Saved    SaveReport     `json:"saved"`
 	Delivery DeliveryReport `json:"delivery"`
 }
@@ -253,6 +274,11 @@ type UnlockOutput struct {
 // rather than by remembering to. A failed attempt on a known lock is an
 // outcome, not an error: the door is unchanged, the attempt is narrated, and
 // the caller may try again.
+//
+// A DOOR A POST HOLDS against Member is answered by its holder, not its lock
+// (rpg-project#842): no die is thrown and no Guidance pause is posed, the
+// verb is still called so the composition writes the `barred` beat the
+// holder hears, and the output carries [UnlockOutput.Refused].
 func (m *Manager) Unlock(ctx context.Context, in *UnlockInput) (*UnlockOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("unlock: %w", ErrNilInput)
@@ -293,16 +319,18 @@ func (m *Manager) Unlock(ctx context.Context, in *UnlockInput) (*UnlockOutput, e
 
 	// A HELD DOOR IS ANSWERED BY ITS HOLDER, NOT ITS LOCK (rpg-project#852,
 	// R7): asked before anything rolls, so a held lock throws no die and
-	// poses no Guidance pause, and a held door with no lock never reaches
-	// the composition's unlock.
-	if err := refuseHeldDoor(scope.enc, in.Door, in.Member); err != nil {
-		return nil, fmt.Errorf("unlock: %w", err)
+	// poses no Guidance pause. The verb is still called (rpg-project#842):
+	// the composition refuses the attempt itself, and that refusal is the
+	// bump the holder hears. Refusing here instead would write nothing.
+	held, _, err := scope.enc.DoorHeldFor(encounter.MemberID(in.Member), encounter.DoorID(in.Door))
+	if err != nil {
+		return nil, fmt.Errorf("unlock: %w", translate(err))
 	}
 
 	var applied encounter.CheckApproach
 	var calculation *encounter.RollCalculation
 	beaten, total := false, 0
-	if locked {
+	if locked && !held {
 		if err := m.stageCheck(ctx, scope, "member", in.Member); err != nil {
 			return nil, fmt.Errorf("unlock: %w", err)
 		}
@@ -356,6 +384,7 @@ func (m *Manager) Unlock(ctx context.Context, in *UnlockInput) (*UnlockOutput, e
 		Door:       Door{ID: unlocked.Door, State: string(unlocked.State)},
 		Discovered: projectDiscoveries(unlocked.IntelDeltas),
 		Formed:     projectFormed(unlocked.Formed),
+		Refused:    projectRefusal(unlocked.Refused),
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil
@@ -438,11 +467,34 @@ func projectApproach(a encounter.CheckApproach) DoorApproach {
 	return DoorApproach{Ability: a.Ability, Tool: a.Tool, DC: a.DC}
 }
 
+// DoorRefusal is a door verb refused because a post holds the door against
+// the actor ([OpenDoorOutput.Refused], [CloseDoorOutput.Refused],
+// [UnlockOutput.Refused]): the composition's [encounter.DoorRefusal],
+// carried as written.
+type DoorRefusal struct {
+	// Holder is the nearest holder the actor sees, else the nearest holder:
+	// the one member the `barred` beat landed on.
+	Holder string `json:"holder"`
+
+	// Reason is the public sentence: "<name> bars the door", or "someone
+	// bars the door" when the actor sees no holder.
+	Reason string `json:"reason"`
+}
+
+// projectRefusal is the one translation of the composition's door refusal,
+// nil for a verb that changed the door.
+func projectRefusal(r *encounter.DoorRefusal) *DoorRefusal {
+	if r == nil {
+		return nil
+	}
+	return &DoorRefusal{Holder: string(r.Holder), Reason: r.Reason}
+}
+
 // refuseHeldDoor asks the composition whether a post holds door against
 // member (rpg-project#852, R7), translated: nil when it does not, a
-// [*DoorHeldError] carrying the composition's public reason when it does. A
-// verb that rolls on a door asks it first, so a held door is refused before
-// any die is cast.
+// [*DoorHeldError] carrying the composition's public reason when it does.
+// A paused Unlock's answer asks it first, so a door held since the pause is
+// refused before the resumed die is read.
 func refuseHeldDoor(enc *encounter.Encounter, door, member string) error {
 	held, reason, err := enc.DoorHeldFor(encounter.MemberID(member), encounter.DoorID(door))
 	if err != nil {

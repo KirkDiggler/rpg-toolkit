@@ -17,7 +17,7 @@ func (s *CastActionTestSuite) TestThornWhipPullChoicesOnlyApplyOnHit() {
 				s.Require().NoError(err)
 				cost := baneCost()
 				cost.Profile = d.Cost
-				out, err := f.resolve(f.saver(14), machine, cost, baneCaster(1, 2))
+				out, err := f.resolve(f.saver(14), machine, cost, baneCaster(1))
 				s.Require().NoError(err)
 				target := s.castOutcome(out).Targets[0]
 				s.Require().NotNil(target.Attack)

@@ -121,7 +121,9 @@ func TestReplay_CastleSneakPieces(t *testing.T) {
 					require.NoError(t, w.step(hero, cell))
 				}
 			}
-			require.ErrorIs(t, w.step(hero, beneathTheGate), encounter.ErrBodyInTheWay, "the posted body stops the dash")
+			// A bump is answered, not refused (rpg-project#842): the step
+			// is taken as a stop, and the hero stays put.
+			require.NoError(t, w.step(hero, beneathTheGate), "the posted body stops the dash")
 			require.Equal(t, theDash[len(theDash)-2], w.at(hero), "one cell short of him")
 			require.False(t, w.fighting(hero), "the civil gate forms no fight")
 			require.NoError(t, w.sneak(hero, false))

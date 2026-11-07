@@ -326,6 +326,12 @@ func (c *Composer) preview(in *ObserveInput) ([]compositionProposal, error) {
 	out := make([]compositionProposal, len(c.instances))
 	for i := first; i < limit; i++ {
 		instance := &c.instances[i]
+		// The actor may be due because a different instance is awake. A timed
+		// delivery does not spend this instance's future wake or continuation.
+		// Non-timed observations remain deliverable to sleeping instances.
+		if c.beats[in.On].Timed && instance.blob.WakeAt != nil && in.Now < *instance.blob.WakeAt {
+			continue
+		}
 		blob := cloneCompositionBlob(instance.blob)
 		step, err := instance.program.Step(&blob, in.On, in.Event, in.Env, in.Now)
 		if err != nil {

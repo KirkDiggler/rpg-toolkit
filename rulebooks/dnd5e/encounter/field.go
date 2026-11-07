@@ -1781,6 +1781,22 @@ type CrossedDoor struct {
 	State DoorStateKind
 }
 
+// StepStop is a step stopped by a body ([StepOutput.Stopped]).
+type StepStop struct {
+	// Barrier is the body in the way: the member on the cell, or, for a held
+	// crossing, the nearest holder the mover sees, else the nearest holder.
+	// It is the one member the [BeatBarred] beat landed on.
+	Barrier MemberID
+
+	// Cell is the cell the step was aimed at, where it was stopped.
+	Cell spatial.Position
+
+	// Reason is the public sentence the mover is told: "<name> stands in the
+	// way" or "<name> bars the way" for a body the mover sees, "someone ..."
+	// for one it does not.
+	Reason string
+}
+
 // StepOutput reports what the step actually did.
 type StepOutput struct {
 	// Stepped is the movement, in dungeon-absolute cells at both ends —
@@ -1828,6 +1844,15 @@ type StepOutput struct {
 
 	// Formed is set when this step started a fight. Nil otherwise.
 	Formed *FormedBubble
+
+	// Stopped is set when a body stopped the step (rpg-project#842, D5): a
+	// member's cell, or a crossing its post holds. The step is answered with
+	// output, not an error: nothing moved (Stepped's From and To are both the
+	// cell the mover stands on), no pace was spent, Seq is the [BeatBarred]
+	// beat, and IntelDeltas, Formed and Outcome are what the barrier's answer
+	// to the bump produced. Nil for a step that moved. Walls, doors, fields
+	// and masked refusals still return a [StepObstructedError].
+	Stopped *StepStop
 }
 
 // JoinInput names who is arriving and the cell on the map they arrive at.

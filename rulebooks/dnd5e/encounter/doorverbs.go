@@ -97,9 +97,9 @@ type OpenDoorOutput struct {
 	// Door is the door's identifier.
 	Door DoorID
 
-	// State is what state it is in now — always [DoorOpen], and present so a
-	// caller reads the result off the answer rather than off the fact that it
-	// called.
+	// State is what state it is in now — always [DoorOpen] unless Refused,
+	// and present so a caller reads the result off the answer rather than off
+	// the fact that it called.
 	State DoorStateKind
 
 	// IntelDeltas maps member IDs to their updated percepts after the refresh.
@@ -112,6 +112,13 @@ type OpenDoorOutput struct {
 	// Formed is set when what the open door revealed started a fight. Nil
 	// otherwise.
 	Formed *FormedBubble
+
+	// Refused is set when a post holds the door against the actor
+	// (rpg-project#835 R7, #842): the attempt is the bump. The door is
+	// unchanged and State is the state it is still in; Seq is the
+	// [BeatBarred] beat, and IntelDeltas and Formed are what the holder's
+	// answer to it produced. Nil for a verb that changed the door.
+	Refused *DoorRefusal
 }
 
 // OpenDoor opens a door: its edges stop blocking, and whatever stood behind it
@@ -126,11 +133,13 @@ type OpenDoorOutput struct {
 // ([Encounter.refuseOutOfDoorReach]).
 //
 // Validation order (R5 atomicity): nil input → closed → no such door → the
-// probe law → the actor is a member → reach → held → locked → already open →
+// probe law → the actor is a member → reach → held (answered with
+// [OpenDoorOutput.Refused]) → locked → already open →
 // the change itself.
 //
 // Errors: ErrNilInput, ErrClosed, ErrNoDoor, ErrNotMember, ErrBadPlacement,
-// ErrOutOfRange, ErrDoorHeld, ErrLocked, ErrBadDoor.
+// ErrOutOfRange, ErrLocked, ErrBadDoor. A door a post holds is not an error:
+// the output carries [OpenDoorOutput.Refused] (rpg-project#842).
 func (e *Encounter) OpenDoor(in *OpenDoorInput) (*OpenDoorOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("open door: %w", ErrNilInput)
@@ -154,8 +163,14 @@ func (e *Encounter) OpenDoor(in *OpenDoorInput) (*OpenDoorOutput, error) {
 	}
 	// A HELD DOOR REFUSES ITS VERBS (rpg-project#835 R7), before its lock
 	// or its state is told: the holder bars it.
-	if err := e.refuseHeldDoor(door, in.Actor); err != nil {
-		return nil, fmt.Errorf("open door %q: %w", door.id, err)
+	if refused, held, err := e.heldDoorBump(door, in.Actor, doorVerbOpen); err != nil || held {
+		if err != nil {
+			return nil, fmt.Errorf("open door %q: %w", door.id, err)
+		}
+		return &OpenDoorOutput{
+			Door: door.id, State: door.state.Kind(), IntelDeltas: refused.out.deltas,
+			Seq: refused.out.seq, Formed: refused.out.formed, Refused: refused.refusal,
+		}, nil
 	}
 
 	if lock, locked := door.state.Lock(); locked {
@@ -193,7 +208,7 @@ type CloseDoorOutput struct {
 	// Door is the door's identifier.
 	Door DoorID
 
-	// State is what state it is in now — always [DoorClosed].
+	// State is what state it is in now — always [DoorClosed] unless Refused.
 	State DoorStateKind
 
 	// IntelDeltas maps member IDs to their updated percepts after the refresh.
@@ -209,6 +224,13 @@ type CloseDoorOutput struct {
 	// verb runs — a verb that could not report a formation would be the one
 	// place a fight went unrecorded.
 	Formed *FormedBubble
+
+	// Refused is set when a post holds the door against the actor
+	// (rpg-project#835 R7, #842): the attempt is the bump. The door is
+	// unchanged and State is the state it is still in; Seq is the
+	// [BeatBarred] beat, and IntelDeltas and Formed are what the holder's
+	// answer to it produced. Nil for a verb that changed the door.
+	Refused *DoorRefusal
 }
 
 // CloseDoor shuts a door: its edges block movement and sight again.
@@ -228,7 +250,8 @@ type CloseDoorOutput struct {
 // change itself.
 //
 // Errors: ErrNilInput, ErrClosed, ErrNoDoor, ErrNotMember, ErrBadPlacement,
-// ErrOutOfRange, ErrDoorHeld, ErrBadDoor.
+// ErrOutOfRange, ErrBadDoor. A door a post holds is not an error: the output
+// carries its Refused (rpg-project#842).
 func (e *Encounter) CloseDoor(in *CloseDoorInput) (*CloseDoorOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("close door: %w", ErrNilInput)
@@ -250,8 +273,14 @@ func (e *Encounter) CloseDoor(in *CloseDoorInput) (*CloseDoorOutput, error) {
 	if err := e.refuseOutOfDoorReach("close door", door, in.Actor); err != nil {
 		return nil, err
 	}
-	if err := e.refuseHeldDoor(door, in.Actor); err != nil {
-		return nil, fmt.Errorf("close door %q: %w", door.id, err)
+	if refused, held, err := e.heldDoorBump(door, in.Actor, doorVerbClose); err != nil || held {
+		if err != nil {
+			return nil, fmt.Errorf("close door %q: %w", door.id, err)
+		}
+		return &CloseDoorOutput{
+			Door: door.id, State: door.state.Kind(), IntelDeltas: refused.out.deltas,
+			Seq: refused.out.seq, Formed: refused.out.formed, Refused: refused.refusal,
+		}, nil
 	}
 
 	if door.state.Kind() != DoorOpen {
@@ -365,6 +394,13 @@ type UnlockOutput struct {
 
 	// Formed is set when what the opened door revealed started a fight.
 	Formed *FormedBubble
+
+	// Refused is set when a post holds the door against the actor
+	// (rpg-project#835 R7, #842): the attempt is the bump. The door is
+	// unchanged and State is the state it is still in; Seq is the
+	// [BeatBarred] beat, and IntelDeltas and Formed are what the holder's
+	// answer to it produced. Nil for a verb that changed the door.
+	Refused *DoorRefusal
 }
 
 // Unlock reports an attempt on a locked door, and OPENS it when the caller says
@@ -393,7 +429,8 @@ type UnlockOutput struct {
 // route → the change itself.
 //
 // Errors: ErrNilInput, ErrClosed, ErrNoDoor, ErrNotMember, ErrBadPlacement,
-// ErrOutOfRange, ErrDoorHeld, ErrBadDoor.
+// ErrOutOfRange, ErrBadDoor. A door a post holds is not an error: the output
+// carries its Refused (rpg-project#842).
 func (e *Encounter) Unlock(in *UnlockInput) (*UnlockOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("unlock: %w", ErrNilInput)
@@ -418,8 +455,14 @@ func (e *Encounter) Unlock(in *UnlockInput) (*UnlockOutput, error) {
 	}
 	// Before the lock is read: a held door takes no attempt, and a host asks
 	// [Encounter.DoorHeldFor] before it rolls one.
-	if err := e.refuseHeldDoor(door, in.Actor); err != nil {
-		return nil, fmt.Errorf("unlock %q: %w", door.id, err)
+	if refused, held, err := e.heldDoorBump(door, in.Actor, doorVerbUnlock); err != nil || held {
+		if err != nil {
+			return nil, fmt.Errorf("unlock %q: %w", door.id, err)
+		}
+		return &UnlockOutput{
+			Door: door.id, State: door.state.Kind(), IntelDeltas: refused.out.deltas,
+			Seq: refused.out.seq, Formed: refused.out.formed, Refused: refused.refusal,
+		}, nil
 	}
 
 	lock, locked := door.state.Lock()

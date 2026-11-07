@@ -108,7 +108,7 @@ func (s *ShortRestTestSuite) TestTheTraceSourcesEveryDieToTheResterAndTheRecordM
 	s.Equal(1, got.Resources[shortRestPool].Current, "a short-rest pool refilled")
 	s.Equal(0, got.Resources[longRestPool].Current, "a long-rest pool did not")
 
-	var refilled []string
+	refilled := make([]string, 0, len(out.Result.Refilled))
 	for _, ref := range out.Result.Refilled {
 		refilled = append(refilled, ref.String())
 	}
@@ -215,7 +215,7 @@ func (s *ShortRestTestSuite) blessHold(turnEnds int) (rester, ally *character.Da
 
 func restConditionRefs(t *testing.T, data *character.Data) []string {
 	t.Helper()
-	var out []string
+	out := make([]string, 0, len(data.Conditions))
 	for _, raw := range data.Conditions {
 		var head struct {
 			Ref *core.Ref `json:"ref"`
@@ -242,7 +242,7 @@ func (s *ShortRestTestSuite) TestAOneMinuteHoldEndsAndIsNamed() {
 	s.Equal(encounter.MemberID(shortResterID), held.Caster)
 	s.Equal(refs.Spells.Bless().String(), held.Spell.Ref)
 	s.Equal("rest", held.Reason, "the rulebook ends a hold on any rest")
-	var removedFrom []encounter.MemberID
+	removedFrom := make([]encounter.MemberID, 0, len(held.Removed))
 	for _, removed := range held.Removed {
 		s.Require().NotNil(removed.Address)
 		s.Equal(refs.Conditions.Blessed().String(), removed.Address.ConditionRef)

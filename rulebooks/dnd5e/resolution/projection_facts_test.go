@@ -71,20 +71,20 @@ func (s *ProjectionTestSuite) TestADualWielderProjectsBothHands() {
 	record := s.barbarian()
 	record.WeaponProficiencies = []proficiencies.Weapon{proficiencies.WeaponSimple, proficiencies.WeaponMartial}
 	record.Inventory = []character.InventoryItemData{
-		{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Shortsword), Quantity: 1},
-		{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Dagger), Quantity: 1},
+		{Type: shared.EquipmentTypeWeapon, ID: weapons.Shortsword, Quantity: 1},
+		{Type: shared.EquipmentTypeWeapon, ID: weapons.Dagger, Quantity: 1},
 	}
 	record.EquipmentSlots = character.EquipmentSlots{
-		character.SlotMainHand: string(weapons.Shortsword),
-		character.SlotOffHand:  string(weapons.Dagger),
+		character.SlotMainHand: weapons.Shortsword,
+		character.SlotOffHand:  weapons.Dagger,
 	}
 
 	out, err := ProjectCharacter(s.ctx, &ProjectCharacterInput{Character: record})
 	s.Require().NoError(err)
 
 	got := definitionRefs(out.Actions)
-	s.Contains(got, refs.Weapons.ByID(string(weapons.Shortsword)).String(), "the main hand")
-	s.Contains(got, refs.Weapons.ByID(string(weapons.Dagger)).String(), "and the off hand")
+	s.Contains(got, refs.Weapons.ByID(weapons.Shortsword).String(), "the main hand")
+	s.Contains(got, refs.Weapons.ByID(weapons.Dagger).String(), "and the off hand")
 	s.NotContains(got, refs.Weapons.UnarmedStrike().String(), "a held weapon is not also a punch")
 }
 
@@ -94,18 +94,18 @@ func (s *ProjectionTestSuite) TestAShieldInTheOffHandAddsNoAttack() {
 	record := s.barbarian()
 	record.WeaponProficiencies = []proficiencies.Weapon{proficiencies.WeaponSimple, proficiencies.WeaponMartial}
 	record.Inventory = []character.InventoryItemData{
-		{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Shortsword), Quantity: 1},
-		{Type: shared.EquipmentTypeArmor, ID: string(armor.Shield), Quantity: 1},
+		{Type: shared.EquipmentTypeWeapon, ID: weapons.Shortsword, Quantity: 1},
+		{Type: shared.EquipmentTypeArmor, ID: armor.Shield, Quantity: 1},
 	}
 	record.EquipmentSlots = character.EquipmentSlots{
-		character.SlotMainHand: string(weapons.Shortsword),
-		character.SlotOffHand:  string(armor.Shield),
+		character.SlotMainHand: weapons.Shortsword,
+		character.SlotOffHand:  armor.Shield,
 	}
 
 	out, err := ProjectCharacter(s.ctx, &ProjectCharacterInput{Character: record})
 	s.Require().NoError(err)
 
-	s.Equal([]string{refs.Weapons.ByID(string(weapons.Shortsword)).String()}, definitionRefs(out.Actions))
+	s.Equal([]string{refs.Weapons.ByID(weapons.Shortsword).String()}, definitionRefs(out.Actions))
 }
 
 // TWO OFFERS FOR ONE SWING are ErrConflictingOffers and never ErrBadAttack: a
@@ -117,14 +117,14 @@ func (s *ProjectionTestSuite) TestCompetingOffersAreNotABadAttack() {
 	record.ClassID = classes.Monk
 	record.WeaponProficiencies = []proficiencies.Weapon{proficiencies.WeaponSimple}
 	record.Inventory = []character.InventoryItemData{
-		{Type: shared.EquipmentTypeWeapon, ID: string(weapons.Club), Quantity: 1},
+		{Type: shared.EquipmentTypeWeapon, ID: weapons.Club, Quantity: 1},
 	}
-	record.EquipmentSlots = character.EquipmentSlots{character.SlotMainHand: string(weapons.Club)}
+	record.EquipmentSlots = character.EquipmentSlots{character.SlotMainHand: weapons.Club}
 	martialArts, err := conditions.NewMartialArtsCondition(
 		conditions.MartialArtsInput{MemberID: projectedHeroID}).ToJSON()
 	s.Require().NoError(err)
 	shillelagh, err := conditions.NewShillelaghCondition(projectedHeroID, conditions.ShillelaghConfig{
-		Weapons:    []conditions.HeldWeapon{{Slot: string(character.SlotMainHand), ItemID: string(weapons.Club)}},
+		Weapons:    []conditions.HeldWeapon{{Slot: string(character.SlotMainHand), ItemID: weapons.Club}},
 		WeaponSlot: string(character.SlotMainHand),
 		Ability:    abilities.WIS,
 	})

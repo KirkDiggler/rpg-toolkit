@@ -92,8 +92,8 @@ func walledWorld(t *testing.T) encounter.EncounterData {
 			// belonging to a room, which is the same fact said by the layer
 			// that actually owns it.
 			Regions: []encounter.RegionInput{
-				rectRegion("room-1", 0, 0, 10, 8),
-				rectRegion("room-2", 10, 0, 10, 8),
+				rectRegion("room-1", 0, 10, 8),
+				rectRegion("room-2", 10, 10, 8),
 			},
 			Walls: seam,
 		},

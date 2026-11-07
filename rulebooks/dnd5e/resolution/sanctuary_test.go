@@ -263,7 +263,7 @@ func TestSanctuaryBlocksABaneTargetOnAFailedWardSave(t *testing.T) {
 	out, err := Resolve(context.Background(), &Input{
 		World: fixtures.world(),
 		Participants: []Participant{
-			{Monster: wolf}, {Character: baneCaster(1, 2)}, {Character: clericWarder()},
+			{Monster: wolf}, {Character: baneCaster(1)}, {Character: clericWarder()},
 		},
 		Machine: machine,
 		Cost:    baneCost(),
@@ -307,7 +307,7 @@ func TestSanctuarySaveSuccessDoesNotGrantCasterImmunity(t *testing.T) {
 	out, err := Resolve(context.Background(), &Input{
 		World: fixtures.world(),
 		Participants: []Participant{
-			{Monster: wolf}, {Character: baneCaster(1, 2)}, {Character: clericWarder()},
+			{Monster: wolf}, {Character: baneCaster(1)}, {Character: clericWarder()},
 		},
 		Machine: machine,
 		Cost:    baneCost(),
@@ -338,7 +338,7 @@ func TestSanctuarySaveSuccessDoesNotGrantCasterImmunity(t *testing.T) {
 
 func TestCastingABaneEndsTheCastersOwnSanctuary(t *testing.T) {
 	fixtures := castFixtures(t)
-	caster := baneCaster(1, 2)
+	caster := baneCaster(1)
 	caster.Conditions = []json.RawMessage{sanctuaryJSON(t, bardID)}
 
 	roller := &actionRoller{singles: []int{10}}
@@ -384,7 +384,7 @@ func TestSanctuaryDoesNotGateANonHostileCast(t *testing.T) {
 	out, err := Resolve(context.Background(), &Input{
 		World: fixtures.world(),
 		Participants: []Participant{
-			{Character: saver}, {Monster: fixtures.wolfData()}, {Character: baneCaster(1, 2)},
+			{Character: saver}, {Monster: fixtures.wolfData()}, {Character: baneCaster(1)},
 		},
 		Machine: machine,
 		Cost:    baneCost(),
@@ -567,7 +567,7 @@ func touchWorld(t *testing.T) encounter.EncounterData {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
-			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 0, 10, 10)},
+			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 10, 10)},
 		},
 		Members: []encounter.MemberInput{
 			{ID: heroID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
@@ -599,7 +599,7 @@ func touchWorld(t *testing.T) encounter.EncounterData {
 // Before, the ward looked its caster up and, with the caster gone, every
 // strike at the warded ally refused — a stalled table.
 func TestAWardKeepsItsDCAfterItsCasterLeaves(t *testing.T) {
-	warded, err := castSanctuaryOnHero(t, baneCaster(1, 2))
+	warded, err := castSanctuaryOnHero(t, baneCaster(1))
 	require.NoError(t, err)
 
 	var dc int
@@ -655,7 +655,7 @@ func TestABaneOnAWardWhoseCasterLeftStillMeetsTheWard(t *testing.T) {
 	require.NoError(t, err)
 	out, err := Resolve(context.Background(), &Input{
 		World:        fixtures.world(),
-		Participants: []Participant{{Monster: wolf}, {Character: baneCaster(1, 2)}},
+		Participants: []Participant{{Monster: wolf}, {Character: baneCaster(1)}},
 		Machine:      machine,
 		Cost:         baneCost(),
 		Capabilities: encounter.Capabilities{
@@ -681,7 +681,7 @@ func TestABaneOnAWardWhoseCasterLeftStillMeetsTheWard(t *testing.T) {
 // that keeps one: the CAST is refused at the door, before any ward exists to
 // be rolled against at DC 0.
 func TestACasterWithNoSpellSaveDCCannotCastSanctuary(t *testing.T) {
-	caster := baneCaster(1, 2)
+	caster := baneCaster(1)
 	caster.ClassID = "fighter" // no spellcasting ability: SpellSaveDC is 0
 
 	warded, err := castSanctuaryOnHero(t, caster)
