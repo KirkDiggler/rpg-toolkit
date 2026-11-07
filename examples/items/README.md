@@ -6,6 +6,11 @@ inform [ADR-0048's accepted composition/ownership decision](https://github.com/K
 The first cut was test-only wiring; this cut gives that wiring an item-owned
 boundary that a separate consumer can use and challenge.
 
+The [Rage-granting loot example](RAGE.md) adds an ongoing effect and built items
+stored/retrieved outside encounters. It uses the same item API and real effects
+composition; items are the first consumers of the extracted runtime, with
+production condition migration following later.
+
 The existing top-level [`items` module](../../items/item.go) declares property and
 equipment interfaces plus validation, not this grant/pool composer. This example
 does not replace that module or claim to implement its full equipment interfaces;
