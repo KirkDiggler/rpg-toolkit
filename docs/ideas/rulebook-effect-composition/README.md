@@ -1,10 +1,10 @@
 # Shared rulebook effects and Raging creation
 
-This is the proposed contract for the Raging-only cut under [story #703](https://github.com/KirkDiggler/rpg-project/issues/703)
+This is the approved contract for the Raging-only cut under [story #703](https://github.com/KirkDiggler/rpg-project/issues/703)
 and its [design](design.md). It builds on the [item/effect layer walkthrough](../item-effect-composition/README.md):
 reusable D&D effect kinds, one named Raging definition, one registry and independent
 instances. It introduces no second effects engine or item-specific Rage implementation.
-**New types and methods below are proposed interfaces, not existing capabilities.**
+**New types and methods below are implementation contracts, not claims of existing capabilities.** The [checked plan](plan.md) owns execution and the [instance ADR](../../adr/0050-composed-condition-instances.md) owns the persisted boundary.
 
 ## Component shape
 

@@ -20,9 +20,9 @@ flowchart TD
 ```
 
 The governing ownership decision is [ADR-0048](../../adr/0048-equipment-granted-abilities.md).
-The [walkthrough](README.md) specifies this cut's proposed contracts. R1 and R2
-are settled; R3–R7 are the complete technical proposal to review together, not
-claims of implemented or individually approved APIs.
+The [walkthrough](README.md) specifies this cut's approved contracts. R1–R7
+are settled by the operator's approval of the complete design. Agreement is
+not a claim that these APIs are implemented; execution follows [the plan](plan.md).
 
 ## Law
 
@@ -83,17 +83,17 @@ claims of implemented or individually approved APIs.
 |---|---|---|---|---|
 | R1 | settled | Native Raging and item consumer share one creator; no catalog-wide migration | KirkDiggler | 2026-11-07 |
 | R2 | settled | New saved shape; no historical Rage save compatibility; characters may be recreated | KirkDiggler | 2026-11-07 |
-| R3 | open | Immutable bindings/origin plus one mutable runtime snapshot; explicit amount modes and by-ref identity | — | — |
-| R4 | open | Neutral composer queries, full-output validation and state-change notification needed by the rulebook adapter | — | — |
-| R5 | open | Canonical registry create/load contracts and strict current-format restoration | — | — |
-| R6 | open | Shared kind assessment and plural, domain-honest information rows | — | — |
-| R7 | open | Activation/delivery boundaries and explicit API/web consumer adoption | — | — |
+| R3 | settled | Immutable bindings/origin plus one mutable runtime snapshot; explicit amount modes and by-ref identity | KirkDiggler | 2026-11-07 |
+| R4 | settled | Neutral composer queries, full-output validation and state-change notification needed by the rulebook adapter | KirkDiggler | 2026-11-07 |
+| R5 | settled | Canonical registry create/load contracts and strict current-format restoration | KirkDiggler | 2026-11-07 |
+| R6 | settled | Shared kind assessment and plural, domain-honest information rows | KirkDiggler | 2026-11-07 |
+| R7 | settled | Activation/delivery boundaries and explicit API/web consumer adoption | KirkDiggler | 2026-11-07 |
 
 ## Open
 
-- R3–R7 form one proposed contract surface in the walkthrough. They need a
-  coherent design review before implementation, not separate permission prompts
-  for each method or field spelling.
+- No operator-owned design question blocks the scoped implementation. A newly
+  discovered ownership, lifecycle or user-visible change returns to design;
+  local implementation details do not require another approval.
 - No legacy-save migration choice remains open under R2.
 - Whole-catalog migration, feature-to-action-definition conversion, studio schema
   authoring, native item inventory, new eligibility/stacking rules and distributed
