@@ -105,7 +105,8 @@ func benchGarrisonMove(b *testing.B, listen bool) {
 	// two are told apart by the clock's high-water mark, read with the timer
 	// stopped, and reported beside ns/op so a change to either shows on its
 	// own line. blob-bytes is the whole record as the keep opens; the growth
-	// is what one op adds to it.
+	// is the net change one op makes to it after retention trims the log, so
+	// it can read negative on a quiet keep.
 	opening := blobBytes(b, enc)
 	var walkNs, raiseNs time.Duration
 	var walkSteps, raiseSteps int
@@ -137,17 +138,17 @@ func benchGarrisonMove(b *testing.B, listen bool) {
 	b.ReportMetric(float64(blobBytes(b, enc)-opening)/float64(b.N), "blob-growth-bytes/op")
 	b.ReportMetric(float64(raiseSteps)/float64(b.N), "raises/op")
 	if walkSteps > 0 {
-		b.ReportMetric(float64(walkNs.Milliseconds())/float64(walkSteps), "walk-step-ms")
+		b.ReportMetric(float64(walkNs)/float64(walkSteps)/float64(time.Millisecond), "walk-step-ms")
 	}
 	if raiseSteps > 0 {
-		b.ReportMetric(float64(raiseNs.Milliseconds())/float64(raiseSteps), "raise-step-ms")
+		b.ReportMetric(float64(raiseNs)/float64(raiseSteps)/float64(time.Millisecond), "raise-step-ms")
 	}
 }
 
 // worldRound is the world clock's high-water mark: the round the keep has
-// reached. Read through ToData because the encounter exposes no cheaper
-// reading and the benchmark takes it with the timer stopped.
-func worldRound(enc *encounter.Encounter) int { return enc.ToData().Clock.HighWater }
+// reached. WorldView is the pure read of the record; ToData would trim the
+// log on the way out, and a harness does not mutate what it measures.
+func worldRound(enc *encounter.Encounter) int { return enc.WorldView().Clock.HighWater }
 
 // blobBytes is the size of the whole saved record, the shape the host
 // writes on every verb today (rpg-project#770).
