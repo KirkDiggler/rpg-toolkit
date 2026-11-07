@@ -225,7 +225,7 @@ func (s *SpeakWorldSuite) speakingGoblin() *session.Manager {
 		line := appealLine()
 		line.Success = []encounter.Answer{{Weight: 1, Say: "Fine."}}
 		in.Options = []encounter.Option{line}
-		in.Table = encounter.Table{encounter.AnswerTime: {{Weight: 1, Hold: true}}}
+		in.Behaviors = ordinaryBehavior(encounter.Table{encounter.AnswerTime: {{Weight: 1, Hold: true}}})
 	}
 	mgr := s.front([]int{10, 1, 1})
 	out, err := s.appeal(mgr)
@@ -269,7 +269,7 @@ func (s *SpeakWorldSuite) TestFoldTimePick() {
 
 	var picks []session.Act
 	for _, act := range actsOf(s.T(), mgr, "alice", "").Acts {
-		if answer, ok := act.Body.(session.TableAnswer); ok && answer.Key == string(encounter.AnswerTime) {
+		if answer, ok := act.Body.(session.TableAnswer); ok && answer.Key == "behavior/6:policy/time" {
 			picks = append(picks, act)
 		}
 	}

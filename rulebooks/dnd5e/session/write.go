@@ -563,12 +563,9 @@ func joinInputFor(
 		// already in the composition's Option: carried off the compiled
 		// placement by Launch. Nil stays nil.
 		Options: social.Options,
-		// The creature's whole policy, already three layers deep
-		// (rpg-project#465): the rulebook's default for its kind under the
-		// author's faction orders under the author's placement orders. Laid
-		// by whichever verb built this placement, never here — this function
-		// places what it was handed.
-		Table: social.Table,
+		// The compiler's canonical policy crosses unchanged. An absent list
+		// stays absent; session invents no ordinary actor behavior.
+		Behaviors: social.Behaviors,
 		// And what loads its die, with the word's meaning already filled in
 		// from the rulebook. A faction's MIX crosses intact: the composition
 		// deals one word from it at this very door, through the world's dice
