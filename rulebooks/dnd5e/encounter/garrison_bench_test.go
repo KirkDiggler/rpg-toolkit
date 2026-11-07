@@ -4,7 +4,9 @@
 package encounter_test
 
 import (
+	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec/keepgen"
@@ -96,14 +98,67 @@ func benchGarrisonMove(b *testing.B, listen bool) {
 	start := whereIs(b, enc, player)
 	beside := besideStart(b, enc, player, start)
 	walk := []spatial.Position{beside, start, beside, start}
+
+	// WHAT THE VERB SPENDS, APART (rpg-project#879 S0): a step that raises the
+	// world clock pays for the garrison's turn as well as its own; one that
+	// does not pays only the player's walk and the player's own sight. The
+	// two are told apart by the clock's high-water mark, read with the timer
+	// stopped, and reported beside ns/op so a change to either shows on its
+	// own line. blob-bytes is the whole record as the keep opens; the growth
+	// is the net change one op makes to it after retention trims the log, so
+	// it can read negative on a quiet keep.
+	opening := blobBytes(b, enc)
+	var walkNs, raiseNs time.Duration
+	var walkSteps, raiseSteps int
+	before := worldRound(enc)
+	b.ReportAllocs()
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		for j, cell := range walk {
+			started := time.Now()
 			if _, err := enc.Step(&encounter.StepInput{Member: player, To: cell, EndWalk: j == len(walk)-1}); err != nil {
 				b.Fatalf("op %d step %d to %v: %v", i, j, cell, err)
 			}
+			took := time.Since(started)
+			b.StopTimer()
+			after := worldRound(enc)
+			if after != before {
+				raiseNs += took
+				raiseSteps++
+			} else {
+				walkNs += took
+				walkSteps++
+			}
+			before = after
+			b.StartTimer()
 		}
 	}
+	b.StopTimer()
+	b.ReportMetric(float64(opening), "blob-bytes")
+	b.ReportMetric(float64(blobBytes(b, enc)-opening)/float64(b.N), "blob-growth-bytes/op")
+	b.ReportMetric(float64(raiseSteps)/float64(b.N), "raises/op")
+	if walkSteps > 0 {
+		b.ReportMetric(float64(walkNs)/float64(walkSteps)/float64(time.Millisecond), "walk-step-ms")
+	}
+	if raiseSteps > 0 {
+		b.ReportMetric(float64(raiseNs)/float64(raiseSteps)/float64(time.Millisecond), "raise-step-ms")
+	}
+}
+
+// worldRound is the world clock's high-water mark: the round the keep has
+// reached. WorldView is the pure read of the record; ToData would trim the
+// log on the way out, and a harness does not mutate what it measures.
+func worldRound(enc *encounter.Encounter) int { return enc.WorldView().Clock.HighWater }
+
+// blobBytes is the size of the whole saved record, the shape the host
+// writes on every verb today (rpg-project#770).
+func blobBytes(b *testing.B, enc *encounter.Encounter) int {
+	b.Helper()
+	raw, err := json.Marshal(enc.ToData())
+	if err != nil {
+		b.Fatalf("marshal the record: %v", err)
+	}
+	return len(raw)
 }
 
 // besideStart is the first hex neighbour of start the player can step onto
