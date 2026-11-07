@@ -13,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/mechanics/effects/machine"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -28,10 +29,21 @@ import (
 type errorOnUnsubscribeBus struct {
 	events.EventBus
 	failIDs map[string]bool
+	ids     []string
+	removed []string
+}
+
+func (b *errorOnUnsubscribeBus) Subscribe(ctx context.Context, topic events.Topic, handler any) (string, error) {
+	id, err := b.EventBus.Subscribe(ctx, topic, handler)
+	if err == nil {
+		b.ids = append(b.ids, id)
+	}
+	return id, err
 }
 
 // Unsubscribe returns an error for IDs in failIDs, delegates to inner bus otherwise
 func (b *errorOnUnsubscribeBus) Unsubscribe(ctx context.Context, id string) error {
+	b.removed = append(b.removed, id)
 	if b.failIDs[id] {
 		return fmt.Errorf("subscription %s not found", id)
 	}
@@ -47,11 +59,25 @@ type ragingConditionInput struct {
 }
 
 // newRagingCondition creates a raging condition from input
-func newRagingCondition(input ragingConditionInput) *RagingCondition {
-	return &RagingCondition{
-		CharacterID: input.CharacterID,
-		Source:      input.Source,
-	}
+func newRagingCondition(input ragingConditionInput) *ComposedCondition {
+	// Level/DamageBonus in the old fixture annotations are not runtime inputs;
+	// the actual frame supplies class levels, exactly as in the original tests.
+	return composedRageForTest(input.CharacterID)
+}
+
+type ragingObservation struct {
+	DidAttackThisTurn bool
+	WasHitThisTurn    bool
+	SawTurnEnd        bool
+	RoundActivated    int
+	TurnsActive       int
+}
+
+// ragingState observes the actual runtime snapshot; it runs no lifecycle logic
+// and owns no mirrored mutable condition state.
+func ragingState(c *ComposedCondition) ragingObservation {
+	bag := c.runtime.Snapshot().Bag
+	return ragingObservation{DidAttackThisTurn: bag[ragingDidAttack].(bool), WasHitThisTurn: bag[ragingWasHit].(bool), SawTurnEnd: bag[machine.KeySawTurnEnd].(bool), RoundActivated: bag[machine.KeyRoundActivated].(int), TurnsActive: bag[machine.KeyTurnsActive].(int)}
 }
 
 // RagingConditionTestSuite tests the RagingCondition behavior
@@ -75,41 +101,23 @@ func TestRagingConditionTestSuite(t *testing.T) {
 // chain, which fires on both a hit and a miss -- not from the damage chain,
 // which only fires on a hit and was silently dropping rage on a miss.
 func (s *RagingConditionTestSuite) TestRagingConditionTracksAttackAttempts() {
-	// Create a raging condition
-	raging := newRagingCondition(ragingConditionInput{
-		CharacterID: "barbarian-1",
-		DamageBonus: 2,
-		Level:       5,
-		Source:      "dnd5e:features:rage",
-	})
-
-	// Apply it to subscribe to events
-	err := raging.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-
-	// Verify initial state
-	s.False(raging.DidAttackThisTurn)
-
-	s.Run("hit sets DidAttackThisTurn", func() {
-		raging.DidAttackThisTurn = false
-		err := s.executePostAttackRoll("barbarian-1", "goblin-1", true)
-		s.Require().NoError(err)
-		s.True(raging.DidAttackThisTurn)
-	})
-
-	s.Run("miss also sets DidAttackThisTurn -- RAW: an attempt counts", func() {
-		raging.DidAttackThisTurn = false
-		err := s.executePostAttackRoll("barbarian-1", "goblin-1", false)
-		s.Require().NoError(err)
-		s.True(raging.DidAttackThisTurn, "a missed attack attempt should still count as combat activity")
-	})
-
-	s.Run("other character's attack does not set DidAttackThisTurn", func() {
-		raging.DidAttackThisTurn = false
-		err := s.executePostAttackRoll("barbarian-2", "goblin-1", true)
-		s.Require().NoError(err)
-		s.False(raging.DidAttackThisTurn)
-	})
+	for _, tc := range []struct {
+		name, actor string
+		hit, want   bool
+	}{
+		{"hit sets activity", "barbarian-1", true, true},
+		{"miss also sets activity", "barbarian-1", false, true},
+		{"other actor does not sustain", "barbarian-2", true, false},
+	} {
+		s.Run(tc.name, func() {
+			raging := composedRageForTest("barbarian-1")
+			s.Require().NoError(raging.Apply(s.ctx, s.bus))
+			defer func() { s.NoError(raging.Remove(s.ctx, s.bus)) }()
+			s.False(ragingState(raging).DidAttackThisTurn)
+			s.Require().NoError(s.executePostAttackRoll(tc.actor, "goblin-1", tc.hit))
+			s.Equal(tc.want, ragingState(raging).DidAttackThisTurn)
+		})
+	}
 }
 
 // TestRagingConditionSustainsOnMissedAttack is the end-to-end regression test
@@ -172,7 +180,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionTracksDamage() {
 	s.Require().NoError(err)
 
 	// Verify initial state
-	s.False(raging.WasHitThisTurn)
+	s.False(ragingState(raging).WasHitThisTurn)
 
 	// Publish a damage event for this character
 	damageTopic := dnd5eEvents.DamageReceivedTopic.On(s.bus)
@@ -185,7 +193,7 @@ func (s *RagingConditionTestSuite) TestRagingConditionTracksDamage() {
 	s.Require().NoError(err)
 
 	// Check that the condition tracked being hit
-	s.True(raging.WasHitThisTurn)
+	s.True(ragingState(raging).WasHitThisTurn)
 }
 
 // TestTheTurnARageStartedIsNotChecked is the house rule, and it is deliberately
@@ -223,7 +231,7 @@ func (s *RagingConditionTestSuite) TestTheTurnARageStartedIsNotChecked() {
 	}))
 
 	s.Nil(removedEvent, "the turn a rage started is not checked -- RAW would have ended it here")
-	s.Equal(4, raging.RoundActivated,
+	s.Equal(4, ragingState(raging).RoundActivated,
 		"and that same turn end is what anchors the duration, from the clock's own round")
 }
 
@@ -309,9 +317,9 @@ func (s *RagingConditionTestSuite) TestRagingConditionContinuesWithCombatActivit
 	s.Nil(removedEvent, "Rage should continue when there's combat activity")
 
 	// Verify flags were reset for next turn
-	s.False(raging.DidAttackThisTurn)
-	s.False(raging.WasHitThisTurn)
-	s.Equal(1, raging.TurnsActive)
+	s.False(ragingState(raging).DidAttackThisTurn)
+	s.False(ragingState(raging).WasHitThisTurn)
+	s.Equal(1, ragingState(raging).TurnsActive)
 }
 
 func (s *RagingConditionTestSuite) TestRagingConditionEndsAfter10Rounds() {
@@ -1041,34 +1049,20 @@ func (s *RagingConditionTestSuite) TestARagingAttackersBonusFoldsOnTheDealtFoldO
 }
 
 func (s *RagingConditionTestSuite) TestRemoveContinuesOnStaleSubscription() {
-	// Apply a raging condition; it subscribes to every topic it answers on.
-	raging := newRagingCondition(ragingConditionInput{
-		CharacterID: "barbarian-1",
-		DamageBonus: 2,
-		Level:       5,
-		Source:      "dnd5e:features:rage",
-	})
-
-	err := raging.Apply(s.ctx, s.bus)
-	s.Require().NoError(err)
-	s.Require().NotEmpty(raging.subscriptionIDs)
-	total := len(raging.subscriptionIDs)
-
-	// Wrap the bus so that the first subscription ID fails on unsubscribe
-	failBus := &errorOnUnsubscribeBus{
-		EventBus: s.bus,
-		failIDs:  map[string]bool{raging.subscriptionIDs[0]: true},
-	}
-
-	// Remove should return an error but still clean up all other subscriptions
-	err = raging.Remove(s.ctx, failBus)
-	s.Require().Error(err, "Remove should report the failed unsubscribe")
-	s.Contains(err.Error(), fmt.Sprintf("1/%d", total), "error should report count of failures vs total")
-
-	// Condition should be fully cleaned up despite the error
-	s.Nil(raging.subscriptionIDs, "subscriptionIDs should be nil after Remove")
-	s.Nil(raging.bus, "bus should be nil after Remove")
-	s.False(raging.IsApplied(), "condition should no longer be applied")
+	raging := composedRageForTest("barbarian-1")
+	failBus := &errorOnUnsubscribeBus{EventBus: s.bus, failIDs: map[string]bool{}}
+	s.Require().NoError(raging.Apply(s.ctx, failBus))
+	s.Require().NotEmpty(failBus.ids)
+	// The first subscription is already gone; its reported error must not stop
+	// removal of the remaining real subscriptions.
+	s.Require().NoError(s.bus.Unsubscribe(s.ctx, failBus.ids[0]))
+	failBus.failIDs[failBus.ids[0]] = true
+	err := raging.Remove(s.ctx, failBus)
+	s.Require().Error(err)
+	s.ElementsMatch(failBus.ids, failBus.removed, "every subscription gets its removal attempt")
+	s.False(raging.IsApplied())
+	s.Require().NoError(dnd5eEvents.DamageReceivedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.DamageReceivedEvent{TargetID: "barbarian-1", Amount: 1}))
+	s.False(ragingState(raging).WasHitThisTurn, "removed tracking handlers no longer mutate the state")
 }
 
 func (s *RagingConditionTestSuite) TestRagingConditionGrantsAdvantageOnSTRSaves() {
@@ -1310,7 +1304,7 @@ func (s *RagingConditionTestSuite) TestTurnsActiveIsDerivedAndStillWhatTheClient
 		s.Require().NoError(turnEnds.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
 			SubjectID: "barbarian-1", Round: tc.round,
 		}))
-		s.Equal(tc.want, raging.TurnsActive,
+		s.Equal(tc.want, ragingState(raging).TurnsActive,
 			"round %d of a rage anchored at 4 is its turn %d", tc.round, tc.want)
 	}
 
@@ -1325,7 +1319,7 @@ func (s *RagingConditionTestSuite) TestTurnsActiveIsDerivedAndStillWhatTheClient
 // ragingWithRemovalWatch builds an applied rage and a handle on whatever
 // removes it, which is the shape every duration test below needs.
 func (s *RagingConditionTestSuite) ragingWithRemovalWatch() (
-	*RagingCondition, func() *dnd5eEvents.ConditionRemovedEvent,
+	*ComposedCondition, func() *dnd5eEvents.ConditionRemovedEvent,
 ) {
 	s.T().Helper()
 	raging := newRagingCondition(ragingConditionInput{
@@ -1370,8 +1364,8 @@ func (s *RagingConditionTestSuite) TestARoundlessTurnEndDoesNotGrantPerpetualGra
 	// A publisher that never stamps its rounds. The first is the graced turn.
 	s.Require().NoError(turnEnds.Publish(s.ctx, dnd5eEvents.TurnEndEvent{SubjectID: "barbarian-1"}))
 	s.Require().Nil(removed(), "the first turn end is graced whether or not it carries a round")
-	s.Require().True(raging.SawTurnEnd, "and the grace is spent, which is the thing the round cannot tell us")
-	s.Require().Zero(raging.RoundActivated, "with nothing to anchor to, it stays unanchored")
+	s.Require().True(ragingState(raging).SawTurnEnd, "and the grace is spent, which is the thing the round cannot tell us")
+	s.Require().Zero(ragingState(raging).RoundActivated, "with nothing to anchor to, it stays unanchored")
 
 	// The second is checked. No attack, no damage -- so it ends, exactly as it
 	// would with a well-formed round.
@@ -1389,13 +1383,13 @@ func (s *RagingConditionTestSuite) TestAnUnanchoredRageAnchorsAsSoonAsARoundArri
 	turnEnds := dnd5eEvents.TurnEndTopic.On(s.bus)
 
 	s.Require().NoError(turnEnds.Publish(s.ctx, dnd5eEvents.TurnEndEvent{SubjectID: "barbarian-1"}))
-	s.Require().Zero(raging.RoundActivated)
+	s.Require().Zero(ragingState(raging).RoundActivated)
 
 	s.Require().NoError(s.executePostAttackRoll("barbarian-1", "goblin-1", true))
 	s.Require().NoError(turnEnds.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
 		SubjectID: "barbarian-1", Round: 6,
 	}))
-	s.Equal(6, raging.RoundActivated, "the first round it is actually told becomes the anchor")
+	s.Equal(6, ragingState(raging).RoundActivated, "the first round it is actually told becomes the anchor")
 }
 
 // TestARoundGoingBACKWARDSEndsTheRage is the net under combat end.
@@ -1448,7 +1442,7 @@ func (s *RagingConditionTestSuite) TestARoundlessTurnEndDoesNotREADAsAClockReset
 	s.Require().NoError(turnEnds.Publish(s.ctx, dnd5eEvents.TurnEndEvent{SubjectID: "barbarian-1"}))
 
 	s.Nil(removed(), "a turn end with no round is unevaluable, not a reset")
-	s.Equal(3, raging.RoundActivated, "and it does not disturb the anchor")
+	s.Equal(3, ragingState(raging).RoundActivated, "and it does not disturb the anchor")
 }
 
 // TestANegativeRoundNeverBecomesTheAnchor pins the `event.Round > 0` guard on
@@ -1471,8 +1465,8 @@ func (s *RagingConditionTestSuite) TestANegativeRoundNeverBecomesTheAnchor() {
 	s.Require().NoError(turnEnds.Publish(s.ctx, dnd5eEvents.TurnEndEvent{
 		SubjectID: "barbarian-1", Round: -5,
 	}))
-	s.Require().Zero(raging.RoundActivated, "a negative round is not a round to measure from")
-	s.Require().True(raging.SawTurnEnd, "though it does spend the grace, like any other turn end")
+	s.Require().Zero(ragingState(raging).RoundActivated, "a negative round is not a round to measure from")
+	s.Require().True(ragingState(raging).SawTurnEnd, "though it does spend the grace, like any other turn end")
 
 	// And the rage recovers: the next real round anchors it honestly.
 	s.Require().NoError(s.executePostAttackRoll("barbarian-1", "goblin-1", true))
@@ -1480,8 +1474,8 @@ func (s *RagingConditionTestSuite) TestANegativeRoundNeverBecomesTheAnchor() {
 		SubjectID: "barbarian-1", Round: 2,
 	}))
 	s.Require().Nil(removed())
-	s.Equal(2, raging.RoundActivated)
-	s.Equal(1, raging.TurnsActive, "and its first counted turn is that one, not a number derived from -5")
+	s.Equal(2, ragingState(raging).RoundActivated)
+	s.Equal(1, ragingState(raging).TurnsActive, "and its first counted turn is that one, not a number derived from -5")
 }
 
 // TestRageEndsWhenTheBarbarianDropsToZero is rpg-toolkit#1965 tier 1 #3.

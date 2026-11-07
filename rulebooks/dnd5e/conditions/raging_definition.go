@@ -28,6 +28,15 @@ type RagingDamageBonus struct {
 	BarbarianLevel bool `json:"barbarian_level,omitempty"`
 }
 
+// rageDurationRounds is the rulebook's ten-round Rage duration.
+const rageDurationRounds = 10
+
+var ragingDescriptor = composedDescriptor(compositionDefinition{
+	ref:     *refs.Conditions.Raging(),
+	display: Display{Name: "Raging", Detail: "Adds your rage damage bonus to melee weapon attacks that use Strength. Also grants advantage on Strength-based skill checks and Strength saving throws, and resistance to bludgeoning, piercing, and slashing damage."},
+	bind:    bindRaging, validateState: validateRagingSnapshot,
+})
+
 const (
 	ragingFresh     = "fresh"
 	ragingLive      = "raging"

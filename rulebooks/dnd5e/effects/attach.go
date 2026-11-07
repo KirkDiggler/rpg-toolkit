@@ -40,7 +40,7 @@ func attachDamage(ctx context.Context, bus events.EventBus, out *generic.Bound, 
 			return c, nil
 		}
 		if event.Frame.Actor != event.AttackerID {
-			return c, fmt.Errorf("damage actor and frame disagree")
+			return c, fmt.Errorf("%w: damage actor and frame disagree", contributions.ErrRuleCannotAnswer)
 		}
 		answer, err := executeAssessment(assessmentInput(out, in, Query{Action: &event.Frame}), m)
 		if err != nil || answer.effect.State != contributions.StateApplies {

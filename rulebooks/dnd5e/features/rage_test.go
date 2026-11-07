@@ -218,9 +218,9 @@ func (s *RageTestSuite) TestToJSON() {
 func (s *RageTestSuite) TestRageRefusedWhileAlreadyRaging() {
 	for _, level := range []int{3, 20} {
 		owner := newStubEntityWithRage("barbarian-1", level)
-		owner.conditions = []dnd5eEvents.ConditionBehavior{
-			&conditions.RagingCondition{CharacterID: "barbarian-1"},
-		}
+		existing, createErr := conditions.CreateFromRef(&conditions.CreateFromRefInput{Ref: refs.Conditions.Raging().String(), MemberID: "barbarian-1", Origin: &dnd5eEvents.ConditionOrigin{Ref: *refs.Features.Rage(), EntityID: "barbarian-1"}, Config: json.RawMessage(`{"damage_bonus":{"barbarian_level":true}}`)})
+		s.Require().NoError(createErr)
+		owner.conditions = []dnd5eEvents.ConditionBehavior{existing.Condition}
 		rage := newRageForTest("rage-feature")
 		chargesBefore := owner.resources[resources.RageCharges]
 

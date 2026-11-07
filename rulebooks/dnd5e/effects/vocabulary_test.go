@@ -210,6 +210,37 @@ func (s *vocabularySuite) TestResistanceAndAdvantagesUseTheirOwnDomains() {
 	}
 }
 
+func (s *vocabularySuite) TestSaveShapedOutgoingDamageIsNotTheCastersSavingThrow() {
+	bound, err := dndfx.Bind(&dndfx.BindInput{Origin: s.origin(), DisplayName: "Authored bundle"})
+	s.Require().NoError(err)
+	recipe := s.recipe(fx.Amount{Fixed: new(3)})
+	state := recipe.States["active"]
+	var output fx.Output
+	s.Require().NoError(json.Unmarshal(state.Outputs[0], &output))
+	output.When = nil // a general damage bonus, not this test's weapon-only recipe
+	raw, err := json.Marshal(output)
+	s.Require().NoError(err)
+	state.Outputs[0] = raw
+	recipe.States["active"] = state
+	c, err := fx.Compose(fx.ComposeInput{Recipe: recipe, MachineVocabulary: bound.Machine, OutputVocabulary: bound.Outputs, HolderID: "holder"})
+	s.Require().NoError(err)
+	bus := events.NewEventBus()
+	s.Require().NoError(c.Apply(context.Background(), bus))
+	s.T().Cleanup(func() { s.NoError(c.Remove(context.Background(), bus)) })
+	frame := attackFrame(0)
+	frame.Action.Roll = contributions.Known(contributions.RollKindSavingThrow)
+	frame.Action.WeaponPool = contributions.Known(false)
+	dealt, err := s.foldDamage(bus, frame)
+	s.Require().NoError(err)
+	s.Equal(13, damageTotal(dealt), "a damage kind must not confuse the damage fold with the roll that produced it")
+	row, err := dndfx.Assess(&dndfx.AssessInput{Query: dndfx.Query{Action: &frame}, Output: c.CurrentOutputs()[2], Origin: s.origin(), DisplayName: "Authored bundle"})
+	s.Require().NoError(err)
+	s.Equal(contributions.StateDoesNotApply, row.Effect.State, "a caster forcing a Strength save is not making that save")
+	row, err = dndfx.Assess(&dndfx.AssessInput{Query: dndfx.Query{Save: &dndevents.SavingThrowChainEvent{SaverID: "holder", Ability: abilities.STR}}, Output: c.CurrentOutputs()[2], Origin: s.origin(), DisplayName: "Authored bundle"})
+	s.Require().NoError(err)
+	s.Equal(contributions.StateApplies, row.Effect.State)
+}
+
 func (s *vocabularySuite) TestKindValidationAndQueryRefusals() {
 	_, err := dndfx.Bind(nil)
 	s.Require().Error(err)

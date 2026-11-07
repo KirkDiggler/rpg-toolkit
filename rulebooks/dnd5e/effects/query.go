@@ -16,6 +16,8 @@ import (
 // zero fields requests descriptions without claiming any applied benefit. Events
 // and frames are borrowed for this read only and are never changed by assessment.
 type Query struct {
+	// Action describes the actor's outgoing action/damage, including save-shaped
+	// damage. Its Roll kind does not mean the actor is the saver; use Save for that.
 	Action   *contributions.Frame
 	Incoming *dndevents.IncomingDamageEvent
 	Save     *dndevents.SavingThrowChainEvent
@@ -26,7 +28,7 @@ type domain string
 
 const (
 	domainNone     domain = ""
-	domainAttack   domain = "attack"
+	domainDamage   domain = "outgoing_damage"
 	domainIncoming domain = "incoming_damage"
 	domainSave     domain = "saving_throw"
 	domainCheck    domain = "ability_check"
@@ -82,11 +84,9 @@ func (q Query) Validate() error {
 func (q Query) domain() domain {
 	switch {
 	case q.Action != nil:
-		roll, _ := q.Action.Action.Roll.Get()
-		if roll == contributions.RollKindSavingThrow {
-			return domainSave
-		}
-		return domainAttack
+		// The frame can describe a caster's save-shaped outgoing action. Its
+		// roll kind does not make the actor the saver; Save names that context.
+		return domainDamage
 	case q.Incoming != nil:
 		return domainIncoming
 	case q.Save != nil:

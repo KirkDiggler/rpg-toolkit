@@ -131,18 +131,19 @@ type ConditionBehavior interface {
 }
 ```
 
-`RagingCondition` at `rulebooks/dnd5e/conditions/raging.go` asserts this with
-`var _ dnd5eEvents.ConditionBehavior = (*RagingCondition)(nil)` and implements
+`ComposedCondition` at `rulebooks/dnd5e/conditions/composed.go` asserts this with
+`var _ dnd5eEvents.ConditionBehavior = (*ComposedCondition)(nil)` and implements
 Apply/Remove (subscribing handlers to the bus) — never CanActivate/Activate.
 
 **Mental model:**
 
 - **`core.Action[T]`** is the *activation* half — "thing a player or DM triggers" (Rage feature, Strike, Dodge as combat ability). Lives in `core/`.
-- **`dnd5eEvents.ConditionBehavior`** is the *passive/listener* half — "thing that subscribes to the bus and modifies chains while applied" (RagingCondition, Defense fighting style, Unconscious). Lives in `rulebooks/dnd5e/events/`.
+- **`dnd5eEvents.ConditionBehavior`** is the *passive/listener* half — "thing that subscribes to the bus and modifies chains while applied" (composed Raging, Defense fighting style, Unconscious). Lives in `rulebooks/dnd5e/events/`.
 
 A feature can both implement Action **and** apply a Condition as part of its
 Activate flow. Rage is the canonical case: `Rage.Activate` (an Action)
-constructs and applies a `RagingCondition` (a ConditionBehavior). They are
+requests Raging through the shared registry and publishes its ConditionBehavior
+for the caller's delivery path. They are
 **related but distinct interfaces** — not "the same thing under the hood."
 
 The toolkit also defines a generic `events.BusEffect` interface (in the
@@ -225,7 +226,7 @@ grep -n 'core\.Action\[FeatureInput\]\|CanActivate\|Activate implements' /home/k
 
 # ConditionBehavior interface and Raging's implementation
 grep -n 'type ConditionBehavior interface' /home/kirk/personal/rpg-toolkit/rulebooks/dnd5e/events/events.go
-grep -n 'ConditionBehavior\|func .* Apply\|func .* Remove' /home/kirk/personal/rpg-toolkit/rulebooks/dnd5e/conditions/raging.go
+grep -n 'ConditionBehavior\|func .* Apply\|func .* Remove' rulebooks/dnd5e/conditions/composed.go
 
 # rpg-api's core surface
 grep -rln '"github.com/KirkDiggler/rpg-toolkit/core"' /home/kirk/personal/rpg-api/internal/ /home/kirk/personal/rpg-api/cmd/ --include="*.go" | wc -l   # expect 8

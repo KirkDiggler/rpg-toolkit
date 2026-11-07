@@ -68,7 +68,7 @@ func damageMeaning(raw jsontext.Value) (meaning, error) {
 			return meaning{}, err
 		}
 	}
-	return meaning{domain: domainAttack, description: "Adds the configured damage bonus to matching attacks."}, nil
+	return meaning{domain: domainDamage, description: "Adds the configured damage bonus to matching outgoing damage."}, nil
 }
 func resistanceMeaning(raw jsontext.Value) (meaning, error) {
 	p, err := decodeParams[resistanceParams](raw)
@@ -234,7 +234,10 @@ func assessMeaning(in *AssessInput, m meaning) (assessment, error) {
 
 func executeAssessment(in *AssessInput, m meaning) (assessment, error) {
 	result, err := assessMeaning(in, m)
-	if err == nil && result.effect.State == contributions.StateDepends {
+	if err != nil {
+		return result, fmt.Errorf("%w: %w", contributions.ErrRuleCannotAnswer, err)
+	}
+	if result.effect.State == contributions.StateDepends {
 		err = fmt.Errorf("%w: %s", contributions.ErrRuleCannotAnswer, result.effect.Reason)
 	}
 	return result, err

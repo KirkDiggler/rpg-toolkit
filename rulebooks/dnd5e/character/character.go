@@ -684,7 +684,7 @@ func (c *Character) LongRest(ctx context.Context) (*LongRestOutput, error) {
 	// place, because a rest is one change to the sheet.
 	c.poolChanged()
 
-	// Publish RestEvent for conditions to react (e.g., RagingCondition removes itself)
+	// Publish RestEvent for conditions to react (e.g., composed Raging ends itself)
 	restTopic := dnd5eEvents.RestTopic.On(c.bus)
 	err = restTopic.Publish(ctx, dnd5eEvents.RestEvent{
 		RestType:    coreResources.ResetLongRest,
@@ -804,7 +804,7 @@ func restSatisfies(rest, reset coreResources.ResetType) bool {
 // turn topics after rpg-project#294, and that is the pass that took both.
 //
 // A condition still opts into combat-scoped lifetime by subscribing to
-// CombatEndTopic in its own Apply (see RagingCondition.onCombatEnd); one that
+// CombatEndTopic in its own Apply (see the Raging recipe); one that
 // should outlive combat simply does not subscribe. That was never a lifetime
 // taxonomy on Character, and deleting the publisher does not make it one.
 
@@ -990,7 +990,7 @@ func (c *Character) poolChanged() {
 // because it is still real and is now solved somewhere else.
 //
 // A condition keeps turn-scoped memory in its own fields —
-// RagingCondition.WasHitThisTurn, SneakAttackCondition.UsedThisTurn — and
+// Raging's runtime bag, SneakAttackCondition.UsedThisTurn — and
 // those fields serialize as part of THIS character. Nothing else notices when
 // one changes, and resolution hands back only participants that report
 // IsDirty, so a condition that updates itself in silence has its update

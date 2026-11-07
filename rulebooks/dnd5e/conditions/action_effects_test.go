@@ -49,8 +49,8 @@ func (s *actionEffectsSuite) assess(frame contributions.Frame, held ...dnd5eEven
 	return out.Effects
 }
 
-func (s *actionEffectsSuite) TestRowsMapAnswersOneToOne() {
-	rage := &RagingCondition{CharacterID: "rogue"}
+func (s *actionEffectsSuite) TestRowsKeepComposedOutputsAndSingleAnswersDistinct() {
+	rage := composedRageForTest("rogue")
 	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue"})
 	frame := rogueFrame(false)
 	frame.ActorClassLevels = rogueBarbarianLevels()
@@ -60,20 +60,29 @@ func (s *actionEffectsSuite) TestRowsMapAnswersOneToOne() {
 
 	effects := s.assess(frame, rage, sneak)
 
-	s.Require().Len(effects, 2)
-	s.Equal(contributions.Effect{
-		ID:            refs.Conditions.Raging().String(),
-		Source:        contributions.Source{Ref: refs.Conditions.Raging(), Name: "Raging"},
-		Description:   registry[refs.Conditions.Raging().String()].display.Detail,
-		State:         contributions.StateApplies,
-		Reason:        "The melee weapon attack uses Strength",
-		Participation: contributions.ContributesNow,
-		Benefit:       "+2 damage",
-	}, effects[0])
-	s.Equal(refs.Conditions.SneakAttack().String(), effects[1].ID)
-	s.Equal(contributions.StateDoesNotApply, effects[1].State)
-	s.Equal("Sneak Attack requires a finesse or ranged weapon", effects[1].Reason)
-	s.Empty(effects[1].Benefit)
+	s.Require().Len(effects, 5)
+	ids := map[string]bool{}
+	for i, row := range effects[:4] {
+		s.False(ids[row.ID])
+		ids[row.ID] = true
+		s.Equal(refs.Conditions.Raging(), row.Source.Ref)
+		s.Equal("Raging", row.Source.Name)
+		s.Equal("rogue", row.Source.SourceID)
+		s.NotEmpty(row.Description)
+		s.NotEmpty(row.Reason)
+		s.Equal(contributions.ContributesNow, row.Participation)
+		if i == 0 {
+			s.Equal(contributions.StateApplies, row.State)
+			s.Equal("+2 damage", row.Benefit)
+		} else {
+			s.Equal(contributions.StateDoesNotApply, row.State)
+			s.Empty(row.Benefit)
+		}
+	}
+	s.Equal(refs.Conditions.SneakAttack().String(), effects[4].ID)
+	s.Equal(contributions.StateDoesNotApply, effects[4].State)
+	s.Equal("Sneak Attack requires a finesse or ranged weapon", effects[4].Reason)
+	s.Empty(effects[4].Benefit)
 }
 
 func (s *actionEffectsSuite) TestSecondBlessDoesNotApplyWithReason() {
@@ -108,7 +117,7 @@ func (s *actionEffectsSuite) TestSelectedRollContributionsMatchAssessedApplies()
 		s.baned("rogue", "cultist-a"),
 		s.blessed("rogue", "cleric-b"),
 		s.baned("rogue", "cultist-b"),
-		&RagingCondition{CharacterID: "rogue"},
+		composedRageForTest("rogue"),
 	}
 	frame := rogueFrame(false)
 	frame.ActorClassLevels = rogueBarbarianLevels()
@@ -121,19 +130,24 @@ func (s *actionEffectsSuite) TestSelectedRollContributionsMatchAssessedApplies()
 
 	effects := s.assess(frame, held...)
 	var assessed []contributions.DiceContribution
-	for i, effect := range effects {
-		if effect.State != contributions.StateApplies {
-			continue
-		}
-		provider, ok := held[i].(dnd5eEvents.RollContributionProvider)
+	for _, condition := range held {
+		provider, ok := condition.(dnd5eEvents.RollContributionProvider)
 		if !ok {
 			continue
 		}
 		s.Require().Implements((*contributions.ActionAssessor)(nil), provider)
-		out, assessErr := held[i].(contributions.ActionAssessor).AssessAction(
-			&contributions.AssessActionInput{Frame: frame})
-		s.Require().NoError(assessErr)
-		assessed = append(assessed, out.Answer.Roll...)
+		source := ""
+		if addressed, ok := condition.(dnd5eEvents.ConditionAddressProvider); ok {
+			source = addressed.ConditionAddress().SourceID
+		}
+		for _, effect := range effects {
+			if effect.State != contributions.StateApplies || effect.Source.Ref.String() != condition.Ref().String() || effect.Source.SourceID != source {
+				continue
+			}
+			out, err := condition.(contributions.ActionAssessor).AssessAction(&contributions.AssessActionInput{Frame: frame})
+			s.Require().NoError(err)
+			assessed = append(assessed, out.Answer.Roll...)
+		}
 	}
 
 	s.Require().Len(selected.Contributions, 2)
@@ -236,7 +250,7 @@ func (s *actionEffectsSuite) TestBlessAndBaneDoNotApplyToAnotherMembersAttack() 
 func (s *actionEffectsSuite) TestAssessingSpendsNothing() {
 	sneak := NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue"})
 	inspired := NewInspiredCondition("rogue", "bard", "")
-	rage := &RagingCondition{CharacterID: "rogue"}
+	rage := composedRageForTest("rogue")
 	held := []dnd5eEvents.ConditionBehavior{sneak, inspired, rage}
 
 	before := make([]json.RawMessage, len(held))
@@ -250,7 +264,7 @@ func (s *actionEffectsSuite) TestAssessingSpendsNothing() {
 	frame.ActorClassLevels = rogueBarbarianLevels()
 	frame.Pairs = []contributions.PairFacts{knownPair("goblin", "fighter", 1.0, contributions.StanceHostile)}
 	effects := s.assess(frame, held...)
-	s.Require().Len(effects, 3)
+	s.Require().Len(effects, 6)
 	s.Equal(contributions.StateApplies, effects[0].State, "Sneak Attack applies and is still unspent")
 
 	for i, condition := range held {

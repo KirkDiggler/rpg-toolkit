@@ -713,7 +713,7 @@ type RestEvent struct {
 // ONE PER MEMBER, never one for the fight. Every attached effect hears every
 // publish on the interaction's single bus (R1), so a subscriber answers "is
 // this about me?" by comparing the subject against its own owner — which is
-// exactly what conditions.RagingCondition.onCombatEnd does. A subject-less
+// exactly what the composed Raging recipe does. A subject-less
 // "the fight ended" would match nobody and expire nothing.
 //
 // SubjectID is whoever that fight ended for: a player's character, or a monster
