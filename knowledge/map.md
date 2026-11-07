@@ -16,6 +16,7 @@ flowchart TD
     EXW["examples/world"]
     EXP["examples/perception"]
     EXB["examples/behavior"]
+    EXI["examples/items"]
   end
 
   RB[["Rulebooks: rulebooks/dnd5e<br/>see rulebooks/dnd5e/knowledge/map.md"]]
@@ -61,6 +62,7 @@ flowchart TD
   EXW --> RB & WORLD & DICE & EV
   EXP --> WORLD
   EXB --> EXP
+  EXI --> EFF & EV & RB & DICE & RES
   RB --> MIND & PLAY & WORLD & NPC & SPATIAL & ENV & RES & EV & DICE & ERR
   BEH --> MACH & PERC & SPATIAL
   PERC --> PLAY
