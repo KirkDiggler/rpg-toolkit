@@ -4,11 +4,6 @@
 package encounter
 
 import (
-	"encoding/binary"
-	"hash/fnv"
-	"math"
-
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -27,9 +22,11 @@ func (b visibleBits) set(i int)      { b[i/64] |= 1 << (uint(i) % 64) }
 func (b visibleBits) has(i int) bool { return b[i/64]&(1<<(uint(i)%64)) != 0 }
 
 // visibleFrom is the floor seen from key's cell: the cached bits when the
-// key was swept before under this blockers epoch, else one sweep of disk
-// through sees, cached for the next observer to stand there with the same
-// sight, opacity and concealment knowledge.
+// key was swept before, else one sweep of disk through sees, cached for the
+// next observer to stand there with the same sight, opacity and concealment
+// knowledge. The key carries every input the sweep reads ([sweepKeyOf],
+// [Encounter.sightOpacity]), so a hit is the same answer by construction;
+// the encounter frees entries whose opacity has passed and at the bound.
 //
 // THE RAYS ARE CAST ONCE PER CELL, NOT ONCE PER VISIT (rpg-project#879 F10):
 // a mover re-tested every unknown cell of its disk from every cell it stepped
@@ -58,45 +55,4 @@ func (e *Encounter) visibleFrom(key sightSweepKey, disk []spatial.Position, sees
 	e.visibleMisses++
 
 	return bits
-}
-
-// blockersEpoch names everything besides the sweep key that can change what
-// a cell sees: every door's state and every opaque entity's cell. Members
-// are never opaque ([memberEntity.BlocksLineOfSight]), so a member's walk
-// leaves the epoch alone. Read once per sight pass by
-// [Encounter.rebuildPercepts]; a changed value drops [Encounter.visibleCache].
-func (e *Encounter) blockersEpoch() uint64 {
-	h := fnv.New64a()
-	var buf [8]byte
-	for _, d := range e.doors {
-		_, _ = h.Write([]byte(d.id))
-		_, _ = h.Write([]byte(d.state.Kind()))
-		if d.blocks() {
-			_, _ = h.Write([]byte{1})
-		}
-		_, _ = h.Write([]byte{0})
-	}
-	// The canvas lists entities in no fixed order; opaque ones are few, so
-	// their contributions are combined order-free.
-	var opaque uint64
-	for id, ent := range e.canvas.GetAllEntities() {
-		if !entitiesBlockSight([]core.Entity{ent}) {
-			continue
-		}
-		at, placed := e.canvas.GetEntityPosition(id)
-		if !placed {
-			continue
-		}
-		one := fnv.New64a()
-		_, _ = one.Write([]byte(id))
-		binary.LittleEndian.PutUint64(buf[:], math.Float64bits(at.X))
-		_, _ = one.Write(buf[:])
-		binary.LittleEndian.PutUint64(buf[:], math.Float64bits(at.Y))
-		_, _ = one.Write(buf[:])
-		opaque += one.Sum64()
-	}
-	binary.LittleEndian.PutUint64(buf[:], opaque)
-	_, _ = h.Write(buf[:])
-
-	return h.Sum64()
 }

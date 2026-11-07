@@ -28,21 +28,22 @@ func TestAVisitedCellIsNotRecast(t *testing.T) {
 	requireNothingUnlearned(t, enc, "after the walk")
 }
 
-// TestADoorChangeDropsTheVisibleCache: a door is the cache's input besides
-// the key, so opening one changes the epoch and every observer sweeps again
-// against the open door; the walk after that hits again. Mutant: an epoch
-// blind to doors (the east room stays unknown, which the sweep test above
-// catches, and the misses do not climb, which this one pins).
+// TestADoorChangeDropsTheVisibleCache: a door is in the opacity every key
+// carries, so opening one forces a fresh sweep from every observer, the
+// open floor is learned, the orphaned entries are freed, and the walk after
+// it hits again. Mutants: entries kept across the open (the cache holds
+// more than one sweep per observer after it); a hit served across the open
+// (the east room stays unknown, which the oracle catches).
 func TestADoorChangeDropsTheVisibleCache(t *testing.T) {
 	enc := sweepScene(t)
-	epoch, misses := enc.visibleEpoch, enc.visibleMisses
+	misses := enc.visibleMisses
 	farEast := enc.field.cellAt(spatial.Position{X: 9, Y: 1})
 
 	_, err := enc.OpenDoor(&OpenDoorInput{Door: sweepNeckDor})
 	require.NoError(t, err)
 
-	require.NotEqual(t, epoch, enc.visibleEpoch, "the open changes the epoch")
 	require.Equal(t, misses+len(sweepMembers), enc.visibleMisses, "every observer sweeps again against the open door")
+	require.Len(t, enc.visibleCache, len(sweepMembers), "the shut door's entries are freed, not kept beside the open door's")
 	require.True(t, enc.world.knownCells(sweepWatchA)[farEast], "and sees down the neck")
 	hits := enc.visibleHits
 	walkAround(t, enc, 2)

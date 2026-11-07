@@ -349,13 +349,18 @@ type Encounter struct {
 
 	// visibleCache is the floor seen from a cell, by sweep key (rpg-project#879
 	// S2, R4): a bitset over the sweep disk in [field.sweepCells] order, kept
-	// across passes and dropped whole when [Encounter.blockersEpoch] changes.
-	// Members never block sight, so a key's answer depends on the doors and
-	// the props and on nothing a member does; an entry whose key carries no
-	// concealment is the site's in waiting (rpg-project#770). Bounded by
-	// visibleCacheEntries, never saved, rebuilt by use after a load.
+	// across passes. THE KEY IS THE SOUNDNESS: it fingerprints the observer's
+	// cell, range and concealment view and the field's opacity (doors, placed
+	// footprints, opaque entities, obscuring areas), every input seesCell can
+	// see change; members never block sight. An entry is instance state, since
+	// the opacity names this run's door states and prop positions; the site
+	// tier (rpg-project#770) could hold only the authored site's answer, which
+	// an entry equals while nothing has moved. Bounded by visibleCacheEntries,
+	// never saved, rebuilt by use after a load.
 	visibleCache map[sightSweepKey]visibleBits
-	visibleEpoch uint64
+	// visibleEpoch is the opacity the cached entries were swept under; a
+	// pass with a new opacity frees them, since their keys can no longer match.
+	visibleEpoch string
 	// visibleHits and visibleMisses count the cache's answers for the tests
 	// and the harness.
 	visibleHits, visibleMisses int
@@ -2075,12 +2080,6 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 	// One pass, one memo of the field's shared answers (rpg-toolkit#2097),
 	// dropped when the pass returns: see [sightPassMemo].
 	defer e.field.beginSightPass()()
-	// THE DOORS AND THE PROPS ARE THE CACHE'S ONLY OTHER INPUT: a changed
-	// epoch drops every cached disk before this pass reads one.
-	if epoch := e.blockersEpoch(); epoch != e.visibleEpoch {
-		e.visibleCache = nil
-		e.visibleEpoch = epoch
-	}
 
 	// Get current clock reading
 	clockReadingInt := e.clock.ToData().HighWater
@@ -2344,6 +2343,13 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 	}
 
 	opacity := e.sightOpacity()
+	// A CHANGED OPACITY ORPHANS EVERY CACHED DISK: their keys carry the old
+	// one and can never match again, so the memory is freed here rather than
+	// at the bound. Soundness is the key's, not this check's (visible.go).
+	if opacity != e.visibleEpoch {
+		e.visibleCache = nil
+		e.visibleEpoch = opacity
+	}
 	for _, observer := range observerIDs {
 		member, _ := subjectID(observer, memberSubjectKind)
 		if err := e.discoverCells(member, geometry, opacity); err != nil {
