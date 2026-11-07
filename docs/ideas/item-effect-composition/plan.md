@@ -122,8 +122,8 @@ benefits/lifetimes, item provenance, spent loot and explicit commit-on-success l
 Retarget S2 to main before its base branch is merged/deleted; its current stacked
 base does not trigger automatic PR CI. Do not claim no checks means green.
 
-- [ ] Record the head-specific provider verdict and CI; obtain merge authority rather than inferring it from approval of the walkthrough.
-- [ ] After an authorized merge, observe the actual provider tag and re-pin consumers with `go get`; repeat consumer checks against the tag.
+- [x] Record the head-specific provider verdict and CI; operator cleared continuing after the retraction. Provider merged as `c7cf2461` after independent review at `0477a36d`.
+- [x] Observe CI's actual `mechanics/effects/v0.3.0` tag and re-pin both consumers with `go get`; repeat race/example/vet/lint checks against the tag. [Release evidence](implementation.md#published-provider-and-released-consumer-adoption).
 - [x] Write `implementation.md` from observed source/consumer checkpoints, contracts, results and deviations; release remains outstanding. Explicitly name still-unrun production boundaries.
 - [x] Update #705 / linked consumer issues and source maps with source integration evidence, leaving release/adoption outstanding. Do not close broader condition/item stories on the first provider merge.
 

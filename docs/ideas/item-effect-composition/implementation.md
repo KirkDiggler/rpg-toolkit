@@ -1,8 +1,9 @@
 # Generic effects extraction — implementation evidence
 
-**Status:** provider and both item-consumer checkpoints implemented and pushed;
-**not merged or released**. This is the observed first-cut result, not proof of
-production condition/inventory adoption. [Plan](plan.md), [slice #705](https://github.com/KirkDiggler/rpg-project/issues/705).
+**Status at the released-pin checkpoint (2026-11-07):** provider merged and
+released as **mechanics/effects v0.3.0**; both item consumers pin that tag and
+pass their repeated local gates. Consumer PR merge receipts remain on #705.
+This is the observed first-cut result, not proof of production condition/inventory adoption. [Plan](plan.md), [slice #705](https://github.com/KirkDiggler/rpg-project/issues/705).
 
 ## Observed checkpoints
 
@@ -16,6 +17,24 @@ The provider baseline is main `aca78cdf`. The old `examples/effects` directory
 is removed in the provider branch; there is one surviving module, no forwarding
 package, copied runtime, `replace`, or `go.work`.
 
+## Published provider and released consumer adoption
+
+- Provider #2291 merged as `c7cf24617e7517ad24182afdac86df6650e43cf4` after the
+  [independent MERGE-READY review](https://github.com/KirkDiggler/rpg-toolkit/pull/2291#pullrequestreview-5808914357)
+  and green CI at `0477a36d`.
+- [CI tagging run 42319670436](https://github.com/KirkDiggler/rpg-toolkit/actions/runs/42319670436)
+  published `mechanics/effects/v0.3.0`; the tag dereferences to that merge commit.
+- Both consumers now pin `v0.3.0`, with fresh full-module race tests, examples,
+  vet and lint passing. S1 adoption commit is `161e24f2`; S2 merged that branch.
+  No runtime Go code changed during released-tag adoption.
+- Normal `go list -m -versions` now lists only v0.3.0. Explicit `-retracted`
+  queries for v0.1.0, v0.2.0 and v0.2.1 return the published rationale, preserving
+  access to old pins. The first probe immediately after tagging saw stale proxy
+  metadata; direct lookup and subsequent normal proxy queries confirm propagation.
+- S2 targets main before any parent branch deletion. Current head CI/reviews and
+  final consumer merge receipts are recorded on [#705](https://github.com/KirkDiggler/rpg-project/issues/705)
+  and the PRs, rather than predicted here. Examples are never tagged.
+
 ## Contracts retained and spelling changed
 
 The home is `github.com/KirkDiggler/rpg-toolkit/mechanics/effects`.
@@ -26,8 +45,9 @@ recipe, supplied vocabularies and instance inputs. It returns the same
 
 All 25 moved Go files were compared as parsed ASTs against the baseline. After
 normalizing only the import prefix and the agreed composer function/input-type
-rename, the trees are identical (comments/source positions excluded). `go.mod`
-changes only its module path and `go.sum` is byte-identical. This is behavior
+rename, the trees are identical (comments/source positions excluded). At the
+initial source checkpoint, `go.mod` changed only its module path and `go.sum`
+was byte-identical; the subsequent approved retraction adds release metadata. This is behavior
 preservation evidence, not a claim that every pre-existing behavior is ideal.
 
 Both consumers resolve exactly one effects module, at the new path. Their actual
@@ -79,10 +99,9 @@ the staged deletion/new destination were checked explicitly before committing.
 
 ## Still required before final adoption
 
-- Head-specific provider review and merge authority; then observe CI's real tag.
-- Re-pin both consumers to that tag and repeat their gates. They remain drafts
-  while their provider pin is a development pseudo-version.
-- Retarget S2 to main before S1's base branch is merged/deleted; obtain head CI.
+- Provider review, merge, actual tag, consumer re-pins/re-tests and S2 retargeting
+  are observed above. Final consumer head verdicts and merge receipts belong to
+  #705 and the PRs; this checkpoint does not manufacture future merge SHAs.
 - Production action definitions/economy, shared rulebook effect vocabulary and
   condition factories, class-feature reuse, provenance beyond a content SourceRef,
   stacking/eligibility, designer parameter schemas, native encounter inventory,

@@ -4,8 +4,10 @@ Work: [Rage/loot #2287](https://github.com/KirkDiggler/rpg-toolkit/pull/2287), [
 
 ## Shipped
 
-- Merged S1's provider re-pin, then migrated the Rage recipe/vocabulary to mechanics/effects and Compose(ComposeInput); the module resolves pushed provider e15c6e54 as v0.2.2-0.20261106234706-e15c6e54ef81, without replace/go.work — [go.mod](../../go.mod).
+- Initial integration merged S1's provider re-pin, then migrated the Rage recipe/vocabulary to mechanics/effects and Compose(ComposeInput), resolving pushed provider e15c6e54 as v0.2.2-0.20261106234706-e15c6e54ef81, without replace/go.work — [go.mod](../../go.mod).
 - Full module race tests, both runnable examples, vet and lint pass. go list dependency inventory contains no examples/effects package — [Rage tests](../../rage_item_test.go).
+
+- Released adoption on 2026-11-07 merges S1's mechanics/effects v0.3.0 pin and main catch-up; full race tests, both examples, vet and lint pass again. S2 now targets main for real head CI — [dependency](../../go.mod).
 
 ## Decided
 
@@ -17,6 +19,6 @@ Work: [Rage/loot #2287](https://github.com/KirkDiggler/rpg-toolkit/pull/2287), [
 
 ## Mistaken
 
-- This stacked PR still targets the S1 branch, so no automatic main-target PR CI is claimed. Re-target before parent branch deletion, and re-pin/re-test against the actual provider tag after its authorized merge — [PR](https://github.com/KirkDiggler/rpg-toolkit/pull/2287).
+- The initial stacked base could not supply main-target CI. S2 was retargeted before the parent merged/deleted; the released v0.3.0 pin and repeated local gates now permit the final head CI check — [PR](https://github.com/KirkDiggler/rpg-toolkit/pull/2287).
 
 — cross-team agent, on behalf of KirkDiggler
