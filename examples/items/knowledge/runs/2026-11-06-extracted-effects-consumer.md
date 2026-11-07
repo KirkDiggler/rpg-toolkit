@@ -17,8 +17,11 @@ Work: [items S1 #2273](https://github.com/KirkDiggler/rpg-toolkit/pull/2273), [p
 
 - Second Wind, source-local pools, charge preservation and targeted rest recovery remain exercised through the renamed composition entry — [fixture and tests](../../fixture_test.go).
 
+- Final pin audit found two inherited main-commit pseudo-versions. Resources v0.3.2 is tree-identical to the old pin; the D&D root at v0.213.5 differs only in run-record Markdown (nested modules excluded). Adopt those existing tags rather than claiming they needed a new release; full local gates pass again — [go.mod](../../go.mod).
+
 ## Mistaken
 
+- Review caught omitted direct dice/resources arrows in the module map and stale release wording in the example README; both are corrected without runtime changes — [README](../../README.md).
 - A pushed provider pseudo-version is not a released tag; the final v0.3.0 pin and repeated gates supply that missing evidence. Main catch-up conflicted only in the root module map: retain examples/items, remove examples/effects and retain mechanics/effects — [release sequence](https://github.com/KirkDiggler/rpg-toolkit/pull/2291).
 
 — cross-team agent, on behalf of KirkDiggler

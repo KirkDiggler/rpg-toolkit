@@ -62,7 +62,7 @@ flowchart TD
   EXW --> RB & WORLD & DICE & EV
   EXP --> WORLD
   EXB --> EXP
-  EXI --> EFF & EV & RB
+  EXI --> EFF & EV & RB & DICE & RES
   RB --> MIND & PLAY & WORLD & NPC & SPATIAL & ENV & RES & EV & DICE & ERR
   BEH --> MACH & PERC & SPATIAL
   PERC --> PLAY
