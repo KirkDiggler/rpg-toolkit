@@ -28,8 +28,8 @@ func TestTheJournalFoldsAreReadBackUntilAFactLands(t *testing.T) {
 	state1 := enc.world.stateFor(journal.EntityID(sweepWatchA))
 	require.Same(t, state1, enc.world.stateFor(journal.EntityID(sweepWatchA)), "the same length reads the same state back")
 
-	known := enc.world.knownFacts(sweepWatchA)
-	known = append(known, "a caller's own edit")
+	edited := append(enc.world.knownFacts(sweepWatchA), "a caller's own edit")
+	require.Contains(t, edited, "a caller's own edit")
 	require.NotContains(t, enc.world.knownFacts(sweepWatchA), "a caller's own edit", "the memo hands out a copy")
 
 	before := enc.world.log.Len()
