@@ -10,9 +10,13 @@ Slice [#874](https://github.com/KirkDiggler/rpg-project/issues/874), story [#867
 
 - Adopt the real pushed encounter commit as `v0.179.1-0.20261106192505-45055ff65bac`; keep this PR draft until the provider ships and the pin moves to its release tag — [encounter provider](https://github.com/KirkDiggler/rpg-toolkit/pull/2289).
 
+- Advance the development pin to `v0.179.1-0.20261107231809-241e42630804` so the SDK consumes the canonical castle ground fold-back rather than an older provider fixture; no session behavior changes and the released-tag gate remains — [encounter provider](https://github.com/KirkDiggler/rpg-toolkit/pull/2289).
+
 ## Found
 
 - The existing act-family decoders carry the new typed nested field without another visibility adapter; copy-out tests and both discovery cases pass, as do the complete module tests and zero-issue lint — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
+
+- Both module packages and zero-issue lint pass after the castle-content provider re-pin — [S2](https://github.com/KirkDiggler/rpg-project/issues/874).
 
 ## Mistaken
 
