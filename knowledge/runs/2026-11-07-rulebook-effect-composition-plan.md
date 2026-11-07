@@ -13,8 +13,9 @@ Work: [#703](https://github.com/KirkDiggler/rpg-project/issues/703), [design #22
 
 ## Found
 
-- Execution checkpoint: shared provider/root/item and native resolution/session/API/web branches are published; measured owning gates passed, but source-ID SDK publication, stack boot/walk, independent runtime review and release remain incomplete — [implementation record](../../docs/ideas/rulebook-effect-composition/implementation.md).
-- Native consumption exposed missing source identity in SDK/wire rows; session now preserves it and additive proto #422 is checked, awaiting operator publication authority — [publication question](https://github.com/KirkDiggler/rpg-project/issues/884#issuecomment-6713320177).
+- Follow-on after operator publication: v0.1.259 at generated 7dcb1b2 is adopted by API 2bf39e23 and web 156a39bc; full local consumer gates pass. The isolated :3307/:8307 stack boots with verified heads/content and error-free landing render, awaiting the operator's early look before gameplay QA/review — [boot and SDK receipts](../../docs/ideas/rulebook-effect-composition/implementation.md#published-sdk-adoption-and-isolated-boot).
+- Initial execution checkpoint: shared provider/root/item and native resolution/session/API/web branches are published; measured owning gates passed, but source-ID SDK publication, stack boot/walk, independent runtime review and release remain incomplete — [implementation record](../../docs/ideas/rulebook-effect-composition/implementation.md).
+- Native consumption exposed missing source identity in SDK/wire rows; session preserved it and additive proto #422 was checked, awaiting operator publication authority at that initial checkpoint — [publication question](https://github.com/KirkDiggler/rpg-project/issues/884#issuecomment-6713320177).
 
 - Inspected toolkit main 3972f948, API dev 590a201a and web dev 2150256f. Fresh mechanics/effects baseline race tests pass in the isolated S9 worktree — [provider](../../mechanics/effects/README.md).
 - The plan's requirement and seam tables carry the approved scope through typed provider APIs, registry construction/loading, actual native persistence and the web reader; no source-only success substitutes for integrated evidence — [checks](../../docs/ideas/rulebook-effect-composition/plan.md#requirement-coverage).
