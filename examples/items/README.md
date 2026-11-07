@@ -152,10 +152,11 @@ go vet ./...
 golangci-lint run ./...
 ```
 
-The effects cleanup [#2276](https://github.com/KirkDiggler/rpg-toolkit/pull/2276)
-is merged; the consumer pins its canonical main commit through a real
-pseudo-version. Examples are not tagged. No `replace` or `go.work`, no provider
-changes in this package cut, and no promotion implied by passing tests.
+The generic composer is released as `mechanics/effects v0.3.0` through
+[#2291](https://github.com/KirkDiggler/rpg-toolkit/pull/2291); this consumer pins
+that tag. The item package remains an experiment under `examples/` and is not
+tagged. No `replace` or `go.work`, no provider changes in this package cut, and
+no production item adoption is implied by passing tests.
 
 [Experiment plan](PLAN.md). The journal and ADR record what the consumer teaches;
 these names and interfaces remain free to change before extraction.
