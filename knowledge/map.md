@@ -16,7 +16,7 @@ flowchart TD
     EXW["examples/world"]
     EXP["examples/perception"]
     EXB["examples/behavior"]
-    EXE["examples/effects"]
+    EXI["examples/items"]
   end
 
   RB[["Rulebooks: rulebooks/dnd5e<br/>see rulebooks/dnd5e/knowledge/map.md"]]
@@ -46,6 +46,7 @@ flowchart TD
 
   subgraph MECH["Mechanics"]
     RES["mechanics/resources"]
+    EFF["mechanics/effects"]
   end
 
   subgraph CORE["Core"]
@@ -61,6 +62,7 @@ flowchart TD
   EXW --> RB & WORLD & DICE & EV
   EXP --> WORLD
   EXB --> EXP
+  EXI --> EFF & EV & RB & DICE & RES
   RB --> MIND & PLAY & WORLD & NPC & SPATIAL & ENV & RES & EV & DICE & ERR
   BEH --> MACH & PERC & SPATIAL
   PERC --> PLAY
@@ -69,6 +71,7 @@ flowchart TD
   SEL --> DICE & EV
   SPATIAL --> GAME & EV
   GAME --> EV
+  EFF --> EV
 ```
 
 Arrows are direct `go.mod` requires; edges into `core` are left out because
@@ -87,7 +90,7 @@ repo is `(…)`; neither is read as a module.
 - Must not cross: an import from a Core module to anything above Core.
 
 **Mechanics ↔ Rulebooks**
-- Flows: resource balances, counters and pools from `mechanics/resources`; the rulebook supplies their meaning and recovery behavior.
+- Flows: resource balances, counters and pools from `mechanics/resources`, and configured effect composition/state lifecycle from `mechanics/effects`; consumers supply rulebook vocabulary, meanings and recovery behavior.
 - Must not cross: a game's rule into Mechanics; the resource tracks a balance, while the rulebook decides what a spell slot is and when it recovers ([`CLAUDE.md`](../CLAUDE.md), "Toolkit is infrastructure, not implementation").
 
 **Tools ↔ Mind and Rulebooks**
