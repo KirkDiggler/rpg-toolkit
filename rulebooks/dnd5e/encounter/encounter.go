@@ -347,6 +347,19 @@ type Encounter struct {
 	// process, for the tests that prove the skip. Never persisted.
 	sightSweepsRun map[MemberID]int
 
+	// visibleCache is the floor seen from a cell, by sweep key (rpg-project#879
+	// S2, R4): a bitset over the sweep disk in [field.sweepCells] order, kept
+	// across passes and dropped whole when [Encounter.blockersEpoch] changes.
+	// Members never block sight, so a key's answer depends on the doors and
+	// the props and on nothing a member does; an entry whose key carries no
+	// concealment is the site's in waiting (rpg-project#770). Bounded by
+	// visibleCacheEntries, never saved, rebuilt by use after a load.
+	visibleCache map[sightSweepKey]visibleBits
+	visibleEpoch uint64
+	// visibleHits and visibleMisses count the cache's answers for the tests
+	// and the harness.
+	visibleHits, visibleMisses int
+
 	// holdings is WHO HAS WHAT: a reader over the world's journal for the
 	// holdings, takings and drops (rpg-project#368, design §5). An
 	// encounter where nobody holds anything writes no such facts and no
@@ -2062,6 +2075,12 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 	// One pass, one memo of the field's shared answers (rpg-toolkit#2097),
 	// dropped when the pass returns: see [sightPassMemo].
 	defer e.field.beginSightPass()()
+	// THE DOORS AND THE PROPS ARE THE CACHE'S ONLY OTHER INPUT: a changed
+	// epoch drops every cached disk before this pass reads one.
+	if epoch := e.blockersEpoch(); epoch != e.visibleEpoch {
+		e.visibleCache = nil
+		e.visibleEpoch = epoch
+	}
 
 	// Get current clock reading
 	clockReadingInt := e.clock.ToData().HighWater
