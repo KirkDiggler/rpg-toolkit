@@ -38,8 +38,8 @@ The decision question is:
 
 ### What exists
 
-- [`examples/effects`](../../examples/effects/README.md) is an implemented
-  prototype with Rage-shaped test customers. Its [`Composed`](../../examples/effects/composed.go)
+- [`mechanics/effects`](../../mechanics/effects/README.md) supplies the generic
+  composer, with Rage-shaped tests and item consumers. Its [`Composed`](../../mechanics/effects/composed.go)
   runs an effects machine and attaches the outputs of its current state. Its
   vocabulary is supplied by a consumer; neither generic tool imports a rulebook.
 - The [composable-conditions design](https://github.com/KirkDiggler/rpg-toolkit/blob/aa41ff1e65a6c3bd3f591849a33f892f18919449/docs/ideas/composable-conditions/design.md)
@@ -84,7 +84,7 @@ keep this option as the baseline, not a reason to alter the wearer's class level
 an opportunity to use an ability; activation handles its declared cost and
 immediate consequence; ongoing effects use the existing effects composition
 where their lifetime requires it. A consumer example establishes the required
-connections without putting equipment rules into `examples/effects`.
+connections without putting equipment rules into `mechanics/effects`.
 
 This separates a source of an ability from its implementation and lets classes,
 items and later consumers share behavior without requiring identical eligibility
@@ -311,7 +311,7 @@ marked passed or waived by changing this ADR's status.
 Shared-machine extraction is a different, downstream question. The mind/machine
 investigation has its own consumer need; its findings can inform later comparison
 without becoming this example's prerequisite. This ADR does not select
-`core/machine`, promote `examples/effects`, replace #703's provider slices, migrate
+`core/machine`, perform the effects extraction, replace #703's provider slices, migrate
 production class features, add studio authoring or deliver the keep's item/loan
 journey.
 

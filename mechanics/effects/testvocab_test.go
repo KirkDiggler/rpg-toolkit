@@ -14,8 +14,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/examples/effects"
-	"github.com/KirkDiggler/rpg-toolkit/examples/effects/machine"
+	"github.com/KirkDiggler/rpg-toolkit/mechanics/effects"
+	"github.com/KirkDiggler/rpg-toolkit/mechanics/effects/machine"
 )
 
 // The composer's Rage-shaped test vocabulary (ruling 4). The machine's side

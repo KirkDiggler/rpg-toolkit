@@ -81,7 +81,7 @@ file adapter is a host demonstration, not a repository dependency in either tool
 | Rulebook effect kinds | Mechanical meanings and parameter validation | `effects.KindSpec` (`Check`, `Attach`, `Assess`) and `AmountFn`; typed rulebook events/frames → chain contributions and information rows |
 | Rulebook vocabulary | Names that a recipe may use | `machine.Vocabulary` facts/beats plus `effects.OutputVocabulary` kinds/amounts/hooks → the generic constructor's supplied capabilities |
 | Conditions definitions/registry | Named reusable compositions, display, creation and restoration | Target: recipe + binding → `ConditionBehavior`; existing entry is `CreateFromRefInput{Ref, Config, MemberID, SourceRef}` / `CreateFromRefOutput`, with registry-owned create/load |
-| Generic effects composer | Recipe/output validation, attaching current outputs, removal ordering | `effects.New(effects.Config)` → `*effects.Composed`; `Apply`/`Remove`, `Rows`, `ToJSON` |
+| Generic effects composer | Recipe/output validation, attaching current outputs, removal ordering | `effects.Compose(effects.ComposeInput)` → `*effects.Composed`; `Apply`/`Remove`, `Rows`, `ToJSON` |
 | Effects machine | State, transitions, guards, trackers and its bag | `machine.Recipe` + vocabulary → `Program`; `machine.New(machine.Config)` → runtime state, transition/change notifications and `Blob` |
 | Item composer | Instance identity, grants and its own mutable pools | Experimental `Definition`/`Config`/`Data` → `Item`; copied `Offers`; `Use[Result]` → typed consumer result and item-budget facts |
 | Class/other grant sources | Their own access rules, parameter sources and budgets | Source-specific rulebook data → access to the same named ability/condition definition; not a copy of its behavior |
@@ -123,7 +123,7 @@ illustrate the path, not a universal rarity or item rule.
    neither source defines a second Raging implementation.
 4. **Bind the shared definition.** Activation supplies the condition ref,
    recipient, parameters and source identity to the rulebook factory. The factory
-   uses the Raging recipe and the rulebook vocabulary with `effects.New`. A new
+   uses the Raging recipe and the rulebook vocabulary with `effects.Compose`. A new
    active instance is created; the definition is shared, its mutable state is not.
    In the example, the analogous preparation returns `rageActivation` containing
    `Source` and an unapplied `*effects.Composed`; it is not a production factory API.
@@ -218,8 +218,8 @@ the boundaries; it does not accept an additional package or protocol.
 | Larger layer/import map | [knowledge/map.md](../../../knowledge/map.md), [architecture overview](../../architecture/overview.md) |
 | Accepted item ownership | [ADR-0048](../../adr/0048-equipment-granted-abilities.md) |
 | Bus and action boundaries | [ADR-0038](../../adr/0038-resolution-owns-the-bus.md), [ADR-0045](../../adr/0045-actions-are-data.md) |
-| Generic composition and vocabulary | [examples/effects/doc.go](../../../examples/effects/doc.go), [vocabulary.go](../../../examples/effects/vocabulary.go), `effects.Config`, `Composed` |
-| Machine contracts | [examples/effects/machine/doc.go](../../../examples/effects/machine/doc.go), `Recipe`, `Vocabulary`, `Program`, `Blob` |
+| Generic composition and vocabulary | [mechanics/effects/doc.go](../../../mechanics/effects/doc.go), [vocabulary.go](../../../mechanics/effects/vocabulary.go), `effects.ComposeInput`, `Composed` |
+| Machine contracts | [mechanics/effects/machine/doc.go](../../../mechanics/effects/machine/doc.go), `Recipe`, `Vocabulary`, `Program`, `Blob` |
 | Current condition registry/factory | [descriptor.go](../../../rulebooks/dnd5e/conditions/descriptor.go), [factory.go](../../../rulebooks/dnd5e/conditions/factory.go), [loader.go](../../../rulebooks/dnd5e/conditions/loader.go) |
 | Current class Rage construction | [features/rage.go](../../../rulebooks/dnd5e/features/rage.go), `Rage.Activate` |
 | Experimental item API | `examples/items/{definition,item,use}.go`, [item example record](https://github.com/KirkDiggler/rpg-toolkit/pull/2273/files) |

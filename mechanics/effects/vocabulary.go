@@ -30,7 +30,7 @@ type OutputVocabulary struct {
 
 // KindSpec is one output kind: the Go code that knows its chain and stage.
 //
-//   - Check validates the output's params at New; nil accepts any.
+//   - Check validates the output's params at Compose; nil accepts any.
 //   - Attach subscribes the output on bus and returns how to detach it.
 //   - Assess answers the output's information row for a frame; the same
 //     guard answers execution and information.

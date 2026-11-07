@@ -11,7 +11,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/examples/effects/machine"
+	"github.com/KirkDiggler/rpg-toolkit/mechanics/effects/machine"
 )
 
 // The guard probe: a frame that is a map of fact values, where a missing

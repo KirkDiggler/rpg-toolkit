@@ -9,8 +9,8 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core/chain"
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/examples/effects"
-	"github.com/KirkDiggler/rpg-toolkit/examples/effects/machine"
+	"github.com/KirkDiggler/rpg-toolkit/mechanics/effects"
+	"github.com/KirkDiggler/rpg-toolkit/mechanics/effects/machine"
 )
 
 // BenchmarkGuardAnswer is the Rage damage guard (three facts under all)
@@ -45,7 +45,7 @@ func BenchmarkBeatTurnEnd(b *testing.B) {
 	ctx := context.Background()
 	newRaging := func(b *testing.B) events.EventBus {
 		bag := machine.Bag{machine.KeyRoundActivated: 1, machine.KeySawTurnEnd: true}
-		c, err := effects.New(effects.Config{
+		c, err := effects.Compose(effects.ComposeInput{
 			Recipe: rageRecipe(), MachineVocabulary: rageVocabulary(), OutputVocabulary: outputVocabulary(),
 			HolderID: holder, Parameters: bag, State: stRaging,
 		})
