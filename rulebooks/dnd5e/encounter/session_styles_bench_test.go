@@ -12,11 +12,15 @@ import (
 )
 
 // A small simulation for rpg-project#879 R3: N games served by one process.
-// "rebuild" is today's server: every verb unmarshals the record, rebuilds the
-// encounter, steps, and marshals the whole record back. "live" keeps N built
-// encounters resident and each verb steps and marshals the checkpoint.
-// "live-nosave" shows the checkpoint's share. One verb = one Step; a game's
-// turn is the garrison bench's four-cell pace; games are served round-robin.
+// "rebuild" is today's server with one cell per verb: every verb unmarshals
+// the record, rebuilds the encounter, steps, and marshals the whole record
+// back. "rebuild-walk" is today's server with the whole pace as one Move verb:
+// one rebuild, four steps, one save, which is how session.Move spends a path.
+// "live" keeps N built encounters resident and each verb steps and marshals
+// the checkpoint. "live-nosave" shows the checkpoint's share. A game's turn
+// is the garrison bench's four-cell pace; games are served round-robin, one
+// game per op, so -benchtime must be at least the game count for every game
+// to take a turn.
 
 func simCaps() encounter.Capabilities {
 	return encounter.Capabilities{
@@ -28,7 +32,7 @@ func simCaps() encounter.Capabilities {
 }
 
 func simKeep(b *testing.B) (*encounter.Encounter, []spatial.Position) {
-	compiled := compiledOnce(b, "sim-garrison-10000", func() ([]byte, error) {
+	compiled := compiledOnce(b, "keep-garrison-10000", func() ([]byte, error) {
 		opts := keepgen.DefaultOptions()
 		opts.Hexes, opts.Seed, opts.Key = 10000, 1, "bench-keep-garrison"
 		opts.Garrison, opts.Patrols, opts.PostsListen = 99, 20, false
@@ -66,7 +70,7 @@ func heapMB() float64 {
 
 func BenchmarkSessionStyles(b *testing.B) {
 	for _, games := range []int{1, 8, 32} {
-		for _, style := range []string{"rebuild", "live", "live-nosave"} {
+		for _, style := range []string{"rebuild", "rebuild-walk", "live", "live-nosave"} {
 			b.Run(fmt.Sprintf("%s/games=%d", style, games), func(b *testing.B) { benchSessionStyle(b, style, games) })
 		}
 	}
@@ -80,7 +84,7 @@ func benchSessionStyle(b *testing.B, style string, games int) {
 	var blobs [][]byte
 	var live []*encounter.Encounter
 	switch style {
-	case "rebuild":
+	case "rebuild", "rebuild-walk":
 		enc, w := simKeep(b)
 		walk = w
 		raw, err := json.Marshal(enc.ToData())
@@ -105,6 +109,28 @@ func benchSessionStyle(b *testing.B, style string, games int) {
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		g := i % games
+		if style == "rebuild-walk" {
+			var data encounter.EncounterData
+			if err := json.Unmarshal(blobs[g], &data); err != nil {
+				b.Fatal(err)
+			}
+			enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Capabilities: simCaps()})
+			if err != nil {
+				b.Fatal(err)
+			}
+			for j, cell := range walk {
+				if _, err := enc.Step(&encounter.StepInput{Member: player, To: cell, EndWalk: j == len(walk)-1}); err != nil {
+					b.Fatalf("game %d step %d: %v", g, j, err)
+				}
+			}
+			raw, err := json.Marshal(enc.ToData())
+			if err != nil {
+				b.Fatal(err)
+			}
+			blobs[g] = raw
+			saved += len(raw)
+			continue
+		}
 		for j, cell := range walk {
 			in := &encounter.StepInput{Member: player, To: cell, EndWalk: j == len(walk)-1}
 			switch style {
