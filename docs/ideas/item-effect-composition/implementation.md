@@ -65,7 +65,12 @@ The first plan recommended a top-level module. The operator selected the mechani
 layer and Compose/ComposeInput spelling before source moved. The selected module
 path has history through `mechanics/effects/v0.2.1`, confirmed as an ancestor of
 main; it is **not** a new module starting at v0.1.0. Existing version pins retain
-the retired implementation. The new API needs CI's actual next pre-v1 release.
+the retired implementation. After the initial source checkpoint, KirkDiggler
+approved `retract [v0.1.0, v0.2.1]` with an explanatory comment in go.mod. The
+range withdraws the legacy API from automatic selection without deleting tags
+or preventing explicit pinned builds. Consumers discover the retraction through
+the next published release; it is not a compatibility shim or an automatic
+migration. The new API needs CI's actual next pre-v1 release.
 
 Historical knowledge decisions were not hand-edited. The new run record carries
 the current ruling for ingest; live source maps and guides reflect the moved code.

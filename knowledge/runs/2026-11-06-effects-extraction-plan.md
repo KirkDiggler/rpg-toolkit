@@ -14,6 +14,8 @@ Slice [rpg-project#705](https://github.com/KirkDiggler/rpg-project/issues/705) u
 - KirkDiggler settled H1 on 2026-11-06: mechanics/effects, with machine inside the release unit; Compose(ComposeInput) names composition while machine.New(Config) remains construction. The first top-level-home proposal is retained in the plan's reasoning — [settled choices](../../docs/ideas/item-effect-composition/plan.md#scope-and-settled-choices).
 - Keep this cut mechanical and items-first; rulebook vocabulary, condition factories/migration and editor descriptors remain separate contracts rather than hidden prerequisites — [scope](../../docs/ideas/item-effect-composition/plan.md#scope-and-settled-choices).
 
+- KirkDiggler approved retracting v0.1.0 through v0.2.1 because those tags contain the deliberately retired legacy API; keep explicit pinned builds and immutable tags available, while Go's next published release carries the withdrawal rationale — [module retraction](../../mechanics/effects/go.mod).
+
 ## Found
 
 - The live Go-import census places provider imports in examples/effects and consumer imports in examples/items; historical origin notes and pinned run records also name the example path but are not dependencies — [inspected baseline and migration tasks](../../docs/ideas/item-effect-composition/plan.md).
