@@ -4,7 +4,7 @@ This is the approved contract for the Raging-only cut under [story #703](https:/
 and its [design](design.md). It builds on the [item/effect layer walkthrough](../item-effect-composition/README.md):
 reusable D&D effect kinds, one named Raging definition, one registry and independent
 instances. It introduces no second effects engine or item-specific Rage implementation.
-**New types and methods below are implementation contracts, not claims of existing capabilities.** The [checked plan](plan.md) owns execution and the [instance ADR](../../adr/0050-composed-condition-instances.md) owns the persisted boundary.
+**New types and methods below are implementation contracts, not claims of existing capabilities.** The [checked plan](plan.md) owns execution and the [instance ADR](../../adr/0050-composed-condition-instances.md) owns the persisted boundary. Observed source-stage results and remaining delivery proof live in the [implementation record](implementation.md).
 
 ## Component shape
 

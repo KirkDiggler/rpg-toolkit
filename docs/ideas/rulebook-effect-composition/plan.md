@@ -42,7 +42,9 @@ Finish line: bounded slices below built/tested on real pushed pins, an isolated 
 | [Composable conditions S9 #881](https://github.com/KirkDiggler/rpg-project/issues/881) | Neutral effect validation/query/change-notification support | `mechanics/effects`; `.worktrees/raging-effects-support` |
 | [Composable conditions S10 #882](https://github.com/KirkDiggler/rpg-project/issues/882) | One shared rulebook Raging definition and native creator | `rulebooks/dnd5e`; `.worktrees/raging-rulebook` |
 | [Composable conditions S11 #883](https://github.com/KirkDiggler/rpg-project/issues/883) | Item/loot consumer of the shared creator | `examples/items`; `.worktrees/raging-items` |
-| [Composable conditions S12 #884](https://github.com/KirkDiggler/rpg-project/issues/884) | Native load/act/save/information and reader adoption | separate `resolution` and `session` module PRs in `.worktrees/raging-resolution`, `.worktrees/raging-session`; API `.worktrees/raging-composition`; web `.worktrees/raging-composition` |
+| [Composable conditions S12 #884](https://github.com/KirkDiggler/rpg-project/issues/884) | Native load/act/save/information and reader adoption | separate `resolution` and `session` module PRs in `.worktrees/raging-resolution`, `.worktrees/raging-session`; protos `.worktrees/raging-provenance`; API `.worktrees/raging-composition`; web `.worktrees/raging-composition` |
+
+Current source heads, measured gates and incomplete publication/native proof are recorded in [implementation.md](implementation.md). Source implementation is not release completion.
 
 S9 → S10 → S11 and S12. Within S12: resolution → session → API; web reader can be built independently against the agreed current data fixture but joins the real stack before readiness. Runtime branches start from the owning base (`main` toolkit, `dev` API/web); consumers get exact pushed provider SHAs through Go tooling. A fresh builder obtains the design/plan from #2295, not from assumed copies in a runtime branch.
 
@@ -131,23 +133,26 @@ S9 → S10 → S11 and S12. Within S12: resolution → session → API; web read
 
 **Files:** resolution `go.mod/go.sum`, Rage fixtures in `resolve_test.go`, `check_test.go`, `contest_test.go`, `dirty_test.go`, `long_rest_test.go`, `contest_fold_test.go`, `cost_test.go`, `damage_custody_test.go`; add `raging_composition_test.go`. Session `go.mod/go.sum`, Rage fixtures in `conditions_test.go`, `death_test.go`, `information_test.go`, `clockboundary_test.go`; add `raging_composition_test.go`. Inventory concrete Raging type references before changing; update every affected fixture in these modules, not unrelated callers pinned to old versions.
 
-- [ ] Resolution `TestRagingCompositionSurvivesInteractionReload`: native activation, actual turn end, dirty output and next interaction reload preserve current state/bindings; expiry/removal exact; no extra clock grace. Exercise real resolution bus/collector, not an adapter mock.
-- [ ] Session `TestRagingCompositionLoadActSaveInformation`: normally built Barbarian activation spends its resource, persisted canonical data is reloaded on later verbs; declaration rows preserve four distinct source-aware answers without altering action selectors. Native boundaries `TestNoBusLivesInThisModule` / `TestNoInnerTypeCrossesTheBoundary` stay green.
-- [ ] Preserve existing clock-boundary and condition-removal fixtures; run each module's full race/vet/lint gates, commit/push separately.
+- [x] Resolution `TestRagingCompositionSurvivesInteractionReload` (#2304): native activation, actual turn end, dirty output and next interaction reload preserve current state/bindings; expiry/removal exact; no extra clock grace. Exercise real resolution bus/collector, not an adapter mock.
+- [x] Session native load/act/save/information proof (#2306): extend existing `TestRagingAgainIsRefusedAndThePanelSurvives`, `TestAttackDeclarationCarriesRageRow` and read/selector tests rather than duplicate their harness under the provisional plan name. Assert payment, persisted first-turn progress/origin, four distinct rows and stable selectors. Native no-bus/no-inner-type boundaries stay green.
+- [x] Preserve existing clock-boundary and condition-removal fixtures; run each module's full race/vet/lint gates, commit/push separately.
+- [x] Preserve `contributions.Source.SourceID` in SDK `EffectRow.SourceID`; `TestEffectProjectionRetainsSourceEntityWithoutChangingRowIdentity` catches the missing value without repurposing opaque row identity.
+- [ ] Publish additive proto `EffectRow.source_id = 9` (#422), then adopt the actual CI-generated Go/TS SDK and map/test the field at the API/client boundary. Contract checks and generation CI pass; operator merge authorization is still required. This corrects the initial assumption that the existing wire already carried every source fact, not the approved provenance requirement.
 
 **API files:** `go.mod/go.sum`, `internal/handlers/dnd5e/v1alpha1/character/converters_test.go`, and existing engine/integration fixtures that use Raging; add a focused integration test beside the existing harness. `converters.go` is read-only unless opaque pass-through/metadata adaptation actually requires a change.
 
-- [ ] `TestConvertCharacterDataToProto_WithComposedRaging`: canonical raw JSON retained, ref/name/description supplied by registry; no derived numerical rule added to API. Unknown/bad condition behavior remains fail-closed.
+- [x] `TestConvertCharacterDataToProto_WithComposedRaging` (API #1193): canonical raw JSON retained, ref/name/description supplied by registry; no derived numerical rule added to API. Unknown/bad condition behavior remains fail-closed.
 - [ ] Pin actual pushed session/root/resolution graph; verify fresh character creation, native activation, read and reload through existing API paths. No new RPC or permission classification is needed absent an actual wire change.
-- [ ] Run API `make test` and `make ci-check`; publish a draft with local-stack integration still explicitly pending.
+- [x] Run API `make test` and `make ci-check`; publish #1193 as a draft with source-ID SDK adoption and local-stack integration explicitly pending. `ComposedRagingAcceptanceSuite/TestNativeActivationFirstBoundaryAndInformationReload` proves real handler/Redis activation, payment, first-boundary persistence and information reload; it does not replace normal-character creation/browser proof.
 
 ### Task 6 / S12 — reader and isolated native walk
 
 **Web files:** `src/types/conditionData.ts`, its tests, `src/components/features/ConditionBadge.tsx`, and a component test alongside it. Other condition readers remain intact; no new rendering system.
 
-- [ ] `isRagingData` identifies the canonical ref/current shape, not removed damage_bonus/level fields. New tests accept current shape without those fields and refuse missing/invalid runtime data.
-- [ ] Badge tests use current data to display server description and runtime turn progress without a fabricated +N bonus or rules calculated from bindings; action-dependent values remain typed server answers. Preserve other condition-type tests.
-- [ ] RED/GREEN focused Vitest; `npm run ci-check` once at PR update boundary. No guessed generated bindings/proto regeneration when the wire contract is unchanged.
+- [x] `isRagingData` identifies the canonical ref/current shape, not removed damage_bonus/level fields. New tests accept current shape without those fields and refuse missing/invalid runtime data.
+- [x] Badge tests use current data to display server description and runtime turn progress without a fabricated +N bonus or rules calculated from bindings; action-dependent values remain typed server answers. Preserve other condition-type tests.
+- [x] RED/GREEN focused Vitest; complete `npm run ci-check` passed before draft web #1398. The initial command timed out and was rerun with a larger bound, not a reduced suite.
+- [ ] Adopt the published source-ID SDK from proto #422; never invent generated bindings or locally substitute a guessed contract.
 - [ ] Build the normal stack in an isolated named environment using committed API provider pins and web branch; verify actual served revisions/content. Never replace sources, reset operator characters or touch :3030/:8115 unasked.
 - [ ] Boot and show the operator the early native view before independent review/walk. Try-it: create a fresh Barbarian → activate Rage → use a Strength melee action and inspect rows → end first turn → read/reload → sustain/expire → rest; observe correct budget, progress, domain-specific answers and removal. Item-specific provenance/storage remains proved by the separate real-chain example.
 - [ ] After the operator's look/go, perform standing/relevant QA and one independent review round, publish dispositions, then obtain explicit merge authority. Re-pin providers to actual CI tags inside-out and repeat consumer gates; update implementation record and close only the delivered slices.
@@ -175,6 +180,6 @@ S9 → S10 → S11 and S12. Within S12: resolution → session → API; web read
 | D&D root | Items / resolution / session | ConditionBehavior plus current ComposedData and plural information | Real pushed pin; remove concrete legacy fixtures, keep behavioral assertions |
 | Resolution | Session | Dirty sheets, condition removal and information rows through existing ports | Real interaction/reload and no-inner-type/bus boundary suites |
 | Session/root | API | Existing verb/data boundary, canonical opaque condition data | Existing handler/harness with normal exact module graph |
-| API | Web | Existing condition ref/description/data plus information rows | No new wire type assumed; actual response and rendered native walk |
+| API | Web | Existing condition ref/description/data plus information rows, with additive source_id | Proto #422 publication and exact generated SDK adoption before source-aware native wire/browser proof |
 
 Checked translation: every approved requirement has an owner and concrete evidence; one action Frame is not falsely widened to all domains; definitions/bindings have a producer before consumers; old-data fallback is explicitly absent. No operator-owned design choice remains open. Any unanticipated ownership/wire/gameplay change stops only the affected task and is recorded on #2295, not hidden behind weaker acceptance.
