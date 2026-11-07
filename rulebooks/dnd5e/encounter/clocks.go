@@ -2183,6 +2183,14 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 	var remembered []RememberedMember
 	var lost []LostMember
 	var query *cellQuery
+	// ROUTES ARE SEARCHED WHEN A ROW CAN READ THEM (rpg-project#879 S3, R4):
+	// a view used to search a route toward and a route away from every
+	// member it saw, on every opportunity, and in a keep of posts and patrols
+	// not one of those searches was read (F13: 930 per op). The table says
+	// once what its rows can read; a member with no table is driven by
+	// something this package cannot see and keeps every route. Threat zones
+	// below follow the same rule for `threat`.
+	wantRoutes := m.Table == nil || tableReadsRoutes(m.Table[keyOr(e.pickKey)])
 	for _, h := range holdings {
 		// Only location testimony from the sight channel is meaningful here.
 		// Unknown testimony deliberately populates neither collection.
@@ -2233,12 +2241,17 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		// it right now, which are different questions the moment a second
 		// channel or a Report exists.
 		if !h.CurrentOn(perception.Sight) {
-			path, reachable, routeErr := query.routeToRemembered(m.ID, ownCell, pos)
-			if routeErr != nil {
-				return MonsterView{}, routeErr
-			}
-			if !reachable {
-				path = nil
+			var path []spatial.Position
+			if wantRoutes {
+				var reachable bool
+				var routeErr error
+				path, reachable, routeErr = query.routeToRemembered(m.ID, ownCell, pos)
+				if routeErr != nil {
+					return MonsterView{}, routeErr
+				}
+				if !reachable {
+					path = nil
+				}
 			}
 			remembered = append(remembered, RememberedMember{
 				ID:            subjectID,
@@ -2289,16 +2302,19 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		// walkable answer rather than a proxy for it. One search per
 		// sighting, every Act call, toward pos and settling the cells near
 		// its path rather than the floor (rpg-project#762, R10).
-		path, _, routeErr := query.routeWithin(m.ID, ownCell, pos, float64(closeTo))
-
-		if routeErr != nil {
-			return MonsterView{}, routeErr
+		var path, awayPath []spatial.Position
+		if wantRoutes {
+			var routeErr error
+			path, _, routeErr = query.routeWithin(m.ID, ownCell, pos, float64(closeTo))
+			if routeErr != nil {
+				return MonsterView{}, routeErr
+			}
+			away, routeErr := query.routeAway(m.ID, ownCell, pos, 1, true)
+			if routeErr != nil {
+				return MonsterView{}, routeErr
+			}
+			awayPath = away.Path
 		}
-		away, routeErr := query.routeAway(m.ID, ownCell, pos, 1, true)
-		if routeErr != nil {
-			return MonsterView{}, routeErr
-		}
-		awayPath := away.Path
 
 		seen = append(seen, SeenMember{
 			ID:            subjectID,
@@ -3352,4 +3368,35 @@ func (e *Encounter) routeWithin(mover MemberID, from, anchor spatial.Position, w
 		return nil, false, err
 	}
 	return q.routeWithin(mover, from, anchor, within)
+}
+
+// tableReadsRoutes reports whether any row of rows, or of a bundle it opens,
+// can read a route off the view: a selector word on a movement verb, a
+// search, or an `enemy` band that is measured in steps (walk, dash, far).
+// A member with no table is driven by something this package cannot see,
+// and keeps every route.
+func tableReadsRoutes(rows []Answer) bool {
+	for i := range rows {
+		r := &rows[i]
+		for _, sel := range []*Selector{r.Toward, r.Dash, r.Away, r.Attack} {
+			if sel != nil && sel.Word != "" {
+				return true
+			}
+		}
+		if r.Search != nil {
+			return true
+		}
+		for j := range r.When {
+			for w := &r.When[j]; w != nil; w = w.Not {
+				switch w.Enemy {
+				case EnemyWalk, EnemyDash, EnemyFar:
+					return true
+				}
+			}
+		}
+		if tableReadsRoutes(r.Rows) {
+			return true
+		}
+	}
+	return false
 }
