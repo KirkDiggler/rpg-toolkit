@@ -108,9 +108,11 @@ saved State fails the spent-instance assertion. Both mutants are removed.
 Production condition registration/stacking, casting/concentration or armor
 eligibility, actor bonus-action payment, and complete class-feature reuse are not
 implemented by this consumer. No condition is migrated. The encounter is a test
-host on a real event bus, not the live encounter/session SDK. Extraction home,
-real storage contracts and production integration still need their checked plan.
+host on a real event bus, not the live encounter/session SDK. Real storage
+contracts and production integration still need their checked plan.
 
-The next provider plan must follow the operator's current ordering: item consumers
-justify extraction first; the old combined condition-first promotion plan is
-superseded, with its parity requirements preserved for later adoption.
+The items-first generic provider extraction is complete at `mechanics/effects
+v0.3.0`, which this consumer pins. See the [checked plan](../../docs/ideas/item-effect-composition/plan.md)
+and [implementation evidence](../../docs/ideas/item-effect-composition/implementation.md).
+The old combined condition-first promotion plan is superseded, with its parity
+requirements preserved for later condition adoption.

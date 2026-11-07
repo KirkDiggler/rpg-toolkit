@@ -17,8 +17,11 @@ Work: [Rage/loot #2287](https://github.com/KirkDiggler/rpg-toolkit/pull/2287), [
 
 - Stored-before-encounter loot restores identity and spent charges against the extracted provider; the damage/save/check chains and lifecycle tests still pass — [loot example](../../loot_example_test.go).
 
+- Final adoption also uses S1's code-equivalent released resources v0.3.2 and D&D v0.213.5 pins; full race/example/vet/lint gates pass with no direct pseudo-versions remaining — [go.mod](../../go.mod).
+
 ## Mistaken
 
+- Review caught stale future-tense provider-planning language in RAGE.md; it now links the completed generic extraction while keeping real storage and production integration explicitly unimplemented — [guide](../../RAGE.md).
 - The initial stacked base could not supply main-target CI. S2 was retargeted before the parent merged/deleted; the released v0.3.0 pin and repeated local gates now permit the final head CI check — [PR](https://github.com/KirkDiggler/rpg-toolkit/pull/2287).
 
 — cross-team agent, on behalf of KirkDiggler

@@ -26,7 +26,11 @@ package, copied runtime, `replace`, or `go.work`.
   published `mechanics/effects/v0.3.0`; the tag dereferences to that merge commit.
 - Both consumers now pin `v0.3.0`, with fresh full-module race tests, examples,
   vet and lint passing. S1 adoption commit is `161e24f2`; S2 merged that branch.
-  No runtime Go code changed during released-tag adoption.
+  No runtime Go code changed during released-tag adoption. Final pin audit also
+  replaced inherited main-commit pseudo-versions with code-equivalent existing
+  tags: resources v0.3.2 and D&D v0.213.5 (only historical Markdown differs for
+  D&D, excluding its independently versioned child modules). Both full local
+  gates pass again; no direct pseudo-version remains.
 - Normal `go list -m -versions` now lists only v0.3.0. Explicit `-retracted`
   queries for v0.1.0, v0.2.0 and v0.2.1 return the published rationale, preserving
   access to old pins. The first probe immediately after tagging saw stale proxy
