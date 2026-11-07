@@ -139,7 +139,7 @@ condition or that every ability needs a state machine.
 
 The example remains under `examples/`. Its candidate interfaces may change as
 consumer evidence teaches a better shape; an example API is not a production
-contract or a selected extraction home. The current cut's [experiment plan](https://github.com/KirkDiggler/rpg-toolkit/blob/probe/862-items/examples/items/PLAN.md)
+contract or a selected extraction home. The current cut's [experiment plan](https://github.com/KirkDiggler/rpg-toolkit/blob/main/examples/items/PLAN.md)
 names its responsibilities, tests and explicit limits. Reuse the existing effects prototype
 where applicable, preserving its generic import seam. Finding that the ring
 alone does not exercise an ongoing effect is evidence to record, not a reason

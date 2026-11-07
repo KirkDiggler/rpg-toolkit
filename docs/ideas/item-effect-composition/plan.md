@@ -1,6 +1,6 @@
 # Effects extraction — first implementation cut
 
-**Status:** checked for execution. H1 is settled by KirkDiggler on 2026-11-06: `mechanics/effects/`, with machine in the same module. The naming decision is `effects.Compose(effects.ComposeInput{...})` and `machine.New(machine.Config{...})`. No merge/release is authorized by executing this plan.
+**Status:** completed for the bounded first cut; provider released and both consumers merged. See [observed implementation and merge receipts](implementation.md). Originally checked for execution. H1 is settled by KirkDiggler on 2026-11-06: `mechanics/effects/`, with machine in the same module. The naming decision is `effects.Compose(effects.ComposeInput{...})` and `machine.New(machine.Config{...})`. No merge/release is authorized by executing this plan.
 
 **Goal:** extract the existing generic effects composer and its machine as one independently versioned module, and prove the Second Wind/Rage/loot examples consume it without behavior changes.
 
