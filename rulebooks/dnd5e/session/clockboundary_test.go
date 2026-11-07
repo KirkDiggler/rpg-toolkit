@@ -207,9 +207,7 @@ func (s *ClockBoundaryTestSuite) TestSneakAttackForgetsItsDiceWhenTheTurnEnds() 
 // through resolution, the announcer seam, and the persisted sheet, not just
 // the condition's own unit test.
 func (s *ClockBoundaryTestSuite) TestRageLapsesWhenTheBarbarianDidNothing() {
-	mgr := s.fightAs(classes.Barbarian, s.raw(&conditions.RagingCondition{
-		CharacterID: "alice", Source: "dnd5e:features:rage",
-	}))
+	mgr := s.fightAs(classes.Barbarian, s.raw(ragingForTest("alice")))
 	s.Require().NotNil(s.held("alice", refs.Conditions.Raging().String()), "alice starts raging")
 
 	// Alice's own turn ends: graced, and anchored to the round the clock says.
@@ -436,9 +434,7 @@ func (s *ClockBoundaryTestSuite) enrage(id string) {
 	s.Require().NoError(err)
 	sheet.ClassID = classes.Barbarian
 	sheet.Levels = syntheticLevels(classes.Barbarian, 3)
-	sheet.Conditions = []json.RawMessage{s.raw(&conditions.RagingCondition{
-		CharacterID: id, Source: "dnd5e:features:rage",
-	})}
+	sheet.Conditions = []json.RawMessage{s.raw(ragingForTest(id))}
 	s.Require().NoError(s.characters.SaveCharacter(s.ctx, sheet))
 }
 
@@ -456,9 +452,7 @@ func (s *ClockBoundaryTestSuite) enrage(id string) {
 // (rpg-project#319 Phase 6); the composition announcing the fight's end is the
 // only thing that raises the boundary now, which is what this test drives.
 func (s *ClockBoundaryTestSuite) TestRageEndsWhenTheFightDoes() {
-	mgr := s.fightAs(classes.Barbarian, s.raw(&conditions.RagingCondition{
-		CharacterID: "alice", Source: "dnd5e:features:rage",
-	}))
+	mgr := s.fightAs(classes.Barbarian, s.raw(ragingForTest("alice")))
 	s.Require().NotNil(s.held("alice", refs.Conditions.Raging().String()), "alice starts the fight raging")
 
 	s.dissolve(mgr, "alice")

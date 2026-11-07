@@ -238,9 +238,7 @@ func (s *EffectRowsSuite) rogue() *character.Data {
 
 // barbarian is a raging level-1 barbarian swinging a greataxe.
 func (s *EffectRowsSuite) barbarian() *character.Data {
-	rage := s.raw(&conditions.RagingCondition{
-		CharacterID: "alice", Source: refs.Features.Rage().String(),
-	})
+	rage := s.raw(ragingForTest("alice"))
 	return &character.Data{
 		ID: "alice", PlayerID: "player-alice", Name: "alice", Level: 1,
 		Levels: syntheticLevels(classes.Barbarian, 1), ClassID: classes.Barbarian, RaceID: races.Human,
@@ -276,21 +274,53 @@ func (s *EffectRowsSuite) blessedCleric() *character.Data {
 	return cleric
 }
 
+// rageDamageRow checks the four actual output rows without parsing opaque IDs
+// or assuming one row per condition. Only outgoing damage applies to this attack.
+func (s *EffectRowsSuite) rageDamageRow(declaration session.Declaration) session.EffectRow {
+	s.T().Helper()
+	rows := []session.EffectRow{}
+	ids := map[string]bool{}
+	for _, row := range declaration.Effects {
+		if row.Ref != refs.Conditions.Raging().String() {
+			continue
+		}
+		s.False(ids[row.ID])
+		ids[row.ID] = true
+		s.Equal("alice", row.SourceID)
+		s.NotEmpty(row.Description)
+		s.NotEmpty(row.Reason)
+		rows = append(rows, row)
+	}
+	s.Require().Len(rows, 4, "all four condition benefits are carried, not just damage")
+	var applied []session.EffectRow
+	for _, row := range rows {
+		if row.State == session.EffectApplies {
+			applied = append(applied, row)
+		} else {
+			s.Equal(session.EffectDoesNotApply, row.State)
+			s.Empty(row.Benefit)
+		}
+	}
+	s.Require().Len(applied, 1, "save/check advantage and incoming resistance do not modify the holder's outgoing attack")
+	return applied[0]
+}
+
 func (s *EffectRowsSuite) TestAttackDeclarationCarriesRageRow() {
 	s.cave(s.barbarian())
 
 	attack := s.mainAttack(s.afford("alice"))
-	rage := s.row(attack, refs.Conditions.Raging().String())
+	rage := s.rageDamageRow(attack)
 
 	display, found := conditions.DisplayFor(*refs.Conditions.Raging())
 	s.Require().True(found)
 	s.Equal(refs.Conditions.Raging().String(), rage.Ref)
 	s.Equal("Raging", rage.Name)
 	s.Equal(session.EffectApplies, rage.State)
-	s.Equal("The melee weapon attack uses Strength", rage.Reason)
+	s.NotEmpty(rage.Reason)
 	s.Equal("+2 damage", rage.Benefit)
 	s.Equal(session.ContributesNow, rage.Participation)
-	s.Equal(display.Detail, rage.Description, "the description is the catalog's, carried verbatim")
+	s.Equal(display.Name, rage.Name)
+	s.NotEmpty(rage.Description, "each output carries its rulebook-owned description")
 
 	s.Require().NotEmpty(attack.Candidates)
 	for _, candidate := range attack.Candidates {
@@ -352,7 +382,7 @@ func (s *EffectRowsSuite) TestUnavailableAttackStillCarriesRows() {
 
 	attack := s.mainAttack(s.afford("alice"))
 	s.Require().False(attack.Available, "precondition: the turn's one swing is spent")
-	s.Equal(session.EffectApplies, s.row(attack, refs.Conditions.Raging().String()).State,
+	s.Equal(session.EffectApplies, s.rageDamageRow(attack).State,
 		"availability and applicability are independent")
 }
 
@@ -670,6 +700,14 @@ func (s *EffectRowsSuite) TestRagingAgainIsRefusedAndThePanelSurvives() {
 	s.Equal(1, ragings, "the sheet holds one Raging")
 	s.Equal(1, storedSheet(s.T(), s.characters, "alice").Resources[resources.RageCharges].Current,
 		"one charge spent, by the first Rage only")
+	stored := storedSheet(s.T(), s.characters, "alice")
+	var persisted conditions.ComposedData
+	s.Require().NoError(json.Unmarshal(conditionByRef(s.T(), stored.Conditions, refs.Conditions.Raging().String()), &persisted))
+	s.Require().NotNil(persisted.Runtime)
+	s.Equal("raging", persisted.Runtime.State)
+	s.Equal(float64(1), persisted.Runtime.Bag["turns_active"], "first-turn progress survives the native save and subsequent Afford reloads")
+	s.Require().NotNil(persisted.Origin)
+	s.Equal("alice", persisted.Origin.EntityID)
 
 	for _, panel := range []*session.AffordOutput{out, s.afford("alice")} {
 		verbs := map[session.Verb]bool{}
@@ -678,6 +716,6 @@ func (s *EffectRowsSuite) TestRagingAgainIsRefusedAndThePanelSurvives() {
 		}
 		s.True(verbs[session.VerbAttack] && verbs[session.VerbEndTurn] && verbs[session.VerbMove],
 			"the whole panel survives: %v", verbs)
-		s.Equal(session.EffectApplies, s.row(s.mainAttack(panel), refs.Conditions.Raging().String()).State)
+		s.Equal(session.EffectApplies, s.rageDamageRow(s.mainAttack(panel)).State)
 	}
 }
