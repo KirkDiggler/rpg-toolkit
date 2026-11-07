@@ -69,7 +69,7 @@ func (s *HoldOutSuite) camp() *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
-			Regions: []encounter.RegionInput{rectRegion("yard", 0, 0, 8, 4)},
+			Regions: []encounter.RegionInput{rectRegion("yard", 0, 8, 4)},
 			Intel:   []encounter.IntelRecord{{ID: holdOutRecord, Reveals: encounter.RevealTargets{Fact: holdOutFact}}},
 			Props: []encounter.PropInput{{
 				ID: holdOutLetter, Ref: "dnd5e:props:scroll", At: spatial.Position{X: 0, Y: 1},

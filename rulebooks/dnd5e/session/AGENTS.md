@@ -93,6 +93,16 @@ are `resolution.InformAttack`'s answers over the actor's own
 nothing. Off turn, while frozen, on the world clock and on blockers there are
 no rows.
 
+**An out-of-reach Attack candidate names its approach (rpg-project#872 D4).**
+`TargetCandidate.Approach` is the cell the attacker's own walk this turn ends
+on within the weapon's reach and in sight of that candidate, set only when it
+is out of reach and such a walk exists. [`reach.go`](./reach.go)'s
+`approachCandidates` asks `encounter.Approaches` once per compiled Attack, after
+the candidate universe is final; this seam supplies only the budget (the
+readied sheet's movement left on the active member's turn, none on the world
+clock) and decides nothing about where the walk ends. It is not selector
+material.
+
 **What a member holds rides sightings (R16, R19).** The equipment seam also
 answers the composition's `Conditions` capability
 ([`conditions_seen.go`](./conditions_seen.go)), so each sighting snapshots the

@@ -114,7 +114,7 @@ func (s *CheckTestSuite) check(data *character.Data, approaches ...encounter.Che
 // Raging's own predicate — advantage on Strength-based checks — reached the
 // d20 through resolution's bus.
 func (s *CheckTestSuite) TestARagingCheckerGetsAdvantageOnAnAthleticsCheck() {
-	out, err := s.check(s.seeker(s.raging()), route(string(skills.Athletics), 12))
+	out, err := s.check(s.seeker(s.raging()), route(skills.Athletics, 12))
 	s.Require().NoError(err)
 
 	s.Require().Equal(advantageRoll, out.Result.Roll,
@@ -154,7 +154,7 @@ func dieOf(t *testing.T, calculation *dnd5eEvents.RollCalculation) *dnd5eEvents.
 // The control that makes the headline mean something: the same checker, the
 // same route, no condition — a straight roll.
 func (s *CheckTestSuite) TestTheSameCheckerWithoutRageRollsStraight() {
-	out, err := s.check(s.seeker(), route(string(skills.Athletics), 12))
+	out, err := s.check(s.seeker(), route(skills.Athletics, 12))
 	s.Require().NoError(err)
 
 	s.Require().Equal(straightRoll, out.Result.Roll)
@@ -167,7 +167,7 @@ func (s *CheckTestSuite) TestTheSameCheckerWithoutRageRollsStraight() {
 // Perception check exactly as for an Athletics one, and declines — WIS is not
 // its business.
 func (s *CheckTestSuite) TestRagingDeclinesAPerceptionCheckOnItsOwn() {
-	out, err := s.check(s.seeker(s.raging()), route(string(skills.Perception), 12))
+	out, err := s.check(s.seeker(s.raging()), route(skills.Perception, 12))
 	s.Require().NoError(err)
 
 	s.Require().Equal(straightRoll, out.Result.Roll)
@@ -180,11 +180,11 @@ func (s *CheckTestSuite) TestRagingDeclinesAPerceptionCheckOnItsOwn() {
 func (s *CheckTestSuite) TestBestApproachPricesRoutesSeparately() {
 	out, err := s.check(s.seeker(),
 		route(string(abilities.STR), 15),
-		route(string(skills.Perception), 10),
+		route(skills.Perception, 10),
 	)
 	s.Require().NoError(err)
 
-	s.Require().Equal(string(skills.Perception), out.Applied.Ability)
+	s.Require().Equal(skills.Perception, out.Applied.Ability)
 	s.Require().Equal(10, out.Applied.DC, "the verdict names the DC actually faced")
 	s.Require().Equal(straightRoll+3, out.Result.Total, "perception is WIS +1 with proficiency +2")
 }
@@ -225,7 +225,7 @@ func (s *CheckTestSuite) TestABareAbilityRouteRollsTheRawAbility() {
 // thing: a nil input and a nil roller are wiring, an empty or malformed route
 // list is content, a broken sheet is data.
 func (s *CheckTestSuite) TestRefusalsByName() {
-	valid := []encounter.CheckApproach{route(string(skills.Perception), 10)}
+	valid := []encounter.CheckApproach{route(skills.Perception, 10)}
 
 	s.Run("nil input is refused", func() {
 		_, err := MakeCheck(s.ctx, nil)
@@ -281,7 +281,7 @@ func (s *CheckTestSuite) TestTheCheckLeavesNothingOnTheBus() {
 
 	out, err := makeCheckOn(s.ctx, &CheckInput{
 		Character:  s.seeker(s.raging()),
-		Approaches: []encounter.CheckApproach{route(string(skills.Athletics), 12)},
+		Approaches: []encounter.CheckApproach{route(skills.Athletics, 12)},
 		Roller:     s.roller,
 	}, newSurface(inner))
 	s.Require().NoError(err)
@@ -318,7 +318,7 @@ func (s *CheckTestSuite) TestRageOverAnUntrainedSkillIsPlainAdvantage() {
 
 	out, err := MakeCheck(s.ctx, &CheckInput{
 		Character:  untrainedSeeker,
-		Approaches: []encounter.CheckApproach{route(string(skills.Athletics), 12)},
+		Approaches: []encounter.CheckApproach{route(skills.Athletics, 12)},
 		Roller:     s.roller,
 	})
 	s.Require().NoError(err)
@@ -345,7 +345,7 @@ func (s *CheckTestSuite) TestAPosedCheckAsksWithTheWholeRoll() {
 
 	out, err := MakeCheck(s.ctx, &CheckInput{
 		Character:  untrainedSeeker,
-		Approaches: []encounter.CheckApproach{route(string(skills.Athletics), 12)},
+		Approaches: []encounter.CheckApproach{route(skills.Athletics, 12)},
 		Roller:     s.roller,
 	})
 	s.Require().NoError(err)

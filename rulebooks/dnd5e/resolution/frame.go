@@ -105,7 +105,7 @@ func attackActionFacts(p *combatActions.AttackProfile, opportunity bool) contrib
 		return facts
 	}
 	facts.Weapon = contributions.Known(p.Weapon.Ref.String())
-	if weapon, err := weapons.GetByID(weapons.WeaponID(p.Weapon.Ref.ID)); err == nil {
+	if weapon, err := weapons.GetByID(p.Weapon.Ref.ID); err == nil {
 		facts.Finesse = contributions.Known(weapon.HasProperty(weapons.PropertyFinesse))
 		facts.RangedWeapon = contributions.Known(weapon.IsRanged())
 	}

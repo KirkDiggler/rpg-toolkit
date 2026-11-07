@@ -53,13 +53,12 @@ func openTheHeldGate(t *testing.T, host castleHost) *kingScene {
 func (s *kingScene) barred(to spatial.Position) string {
 	s.t.Helper()
 	from := s.at(hero)
-	_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: to})
-	require.ErrorIs(s.t, err, encounter.ErrBodyInTheWay, "the held opening stops the hero")
-	var stop *encounter.StepObstructedError
-	require.ErrorAs(s.t, err, &stop)
+	out, err := s.enc.Step(&encounter.StepInput{Member: hero, To: to})
+	require.NoError(s.t, err, "a bump is answered, not refused (rpg-project#842)")
+	require.NotNil(s.t, out.Stopped, "the held opening stops the hero")
 	require.Equal(s.t, from, s.at(hero), "and the refused step moved nobody")
 
-	return stop.PublicReason()
+	return out.Stopped.Reason
 }
 
 // crosses requires the hero's step to land.
@@ -200,11 +199,11 @@ func TestMadKingTheHeldGateDoorRefusesTheParty(t *testing.T) {
 	s := openTheCastleAs(t, castleHost{at: besideTheCrossingSeat})
 	require.Equal(t, beneathTheGate, s.at(kingGate1), "precondition: gate-1 is on his post")
 
-	_, err := s.enc.OpenDoor(&encounter.OpenDoorInput{Door: kingGateDoor, Actor: hero})
-	require.ErrorIs(t, err, encounter.ErrDoorHeld, "the held gate door refuses the hero")
-	var held *encounter.DoorHeldError
-	require.ErrorAs(t, err, &held)
-	require.Equal(t, string(kingGate1)+" bars the door", held.PublicReason(), "and names the guard he sees")
+	out, err := s.enc.OpenDoor(&encounter.OpenDoorInput{Door: kingGateDoor, Actor: hero})
+	require.NoError(t, err, "a held door's verb is answered, not refused (rpg-project#842)")
+	require.NotNil(t, out.Refused, "the held gate door refuses the hero")
+	require.Equal(t, string(kingGate1)+" bars the door", out.Refused.Reason, "and names the guard he sees")
+	require.Equal(t, encounter.DoorClosed, out.State, "and stays shut")
 
 	s.storedIn(kingGate1, "cowed")
 	s.open(kingGateDoor)
@@ -263,8 +262,9 @@ func TestMadKingTheGateLetsThePartyOut(t *testing.T) {
 	t.Run("the arrivals stay barred at the shut gate door", func(t *testing.T) {
 		t.Parallel()
 		s := openTheCastleAs(t, castleHost{at: besideTheCrossingSeat})
-		_, err := s.enc.OpenDoor(&encounter.OpenDoorInput{Door: kingGateDoor, Actor: hero})
-		require.ErrorIs(t, err, encounter.ErrDoorHeld, "from the gatehouse, the door is held against the hero")
+		out, err := s.enc.OpenDoor(&encounter.OpenDoorInput{Door: kingGateDoor, Actor: hero})
+		require.NoError(t, err)
+		require.NotNil(t, out.Refused, "from the gatehouse, the door is held against the hero")
 		inside := openTheCastleAs(t, castleHost{at: pastTheGateSeat})
 		inside.open(kingGateDoor)
 	})

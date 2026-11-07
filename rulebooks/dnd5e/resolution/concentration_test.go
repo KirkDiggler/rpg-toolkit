@@ -172,14 +172,14 @@ var (
 	trueStrike    = refs.Conditions.TrueStrike().String()
 )
 
-func (s *ConcentrationTestSuite) conditionRefs(out *Output, id string) []string {
+func (s *ConcentrationTestSuite) conditionRefs(out *Output) []string {
 	for _, data := range out.DirtyCharacters {
-		if data.ID != id {
+		if data.ID != heroID {
 			continue
 		}
 		return storedRefs(s.T(), data.Conditions)
 	}
-	s.Require().Failf("sheet not dirty", "%s did not come back changed", id)
+	s.Require().Failf("sheet not dirty", "%s did not come back changed", heroID)
 
 	return nil
 }
@@ -243,7 +243,7 @@ func (s *ConcentrationTestSuite) TestAStrikeOnAConcentratingCasterRunsTheCheckIn
 	s.Equal(conditions.ConcentrationEndedDamage, (*removals)[1].Reason)
 
 	// And on the sheet: both are gone.
-	s.Empty(s.conditionRefs(out, heroID), "the child went with the parent")
+	s.Empty(s.conditionRefs(out), "the child went with the parent")
 }
 
 func (s *ConcentrationTestSuite) TestBaneAppliesToConcentrationSaveAndRecordCalculation() {
@@ -308,7 +308,7 @@ func (s *ConcentrationTestSuite) TestAMadeCheckRemovesNothing() {
 	s.Equal(20, kept.Save.Total)
 	s.Equal(conditions.ConcentrationDCFloor, kept.Save.DC)
 	s.True(kept.Save.Succeeded, "encounter refuses a check recorded as having changed nothing")
-	s.ElementsMatch([]string{concentrating, trueStrike}, s.conditionRefs(out, heroID),
+	s.ElementsMatch([]string{concentrating, trueStrike}, s.conditionRefs(out),
 		"the hold and its child are both still there")
 }
 
@@ -395,7 +395,7 @@ func (s *ConcentrationTestSuite) TestACasterDroppedToZeroLosesTheSpellWithNoRoll
 	s.Equal(trueStrikeAddress(heroID).ConditionRef, (*removals)[0].ConditionRef)
 	s.Equal(concentratingAddress(heroID).ConditionRef, (*removals)[1].ConditionRef)
 
-	s.Empty(s.conditionRefs(out, heroID), "the hold and its child are both gone")
+	s.Empty(s.conditionRefs(out), "the hold and its child are both gone")
 }
 
 // Two follow-ups from one interaction are two nested checks, in append order,
@@ -618,7 +618,7 @@ func (s *ConcentrationTestSuite) TestBaneAllSaveRecastReplacesOnlyItsQualifiedOw
 	unrelatedChild := dnd5eEvents.ConditionAddress{
 		MemberID: heroID, ConditionRef: refs.Conditions.Baned().String(), SourceID: wolfID,
 	}
-	caster := baneCaster(1, 2)
+	caster := baneCaster(1)
 	caster.Conditions = []json.RawMessage{baneOwnerJSON(s.T(), bardID, 6, oldChild)}
 	target := fixtures.saver(14,
 		baneConditionJSON(s.T(), heroID, bardID),
@@ -839,7 +839,7 @@ func (s *ConcentrationTestSuite) TestTheSpellsOwnDurationEndsItAtATurnEnd() {
 	s.Equal(encounter.MemberID(heroID), broke.Removed[0].Address.MemberID)
 	s.Equal(refs.Conditions.TrueStrike().String(), broke.Removed[0].Address.ConditionRef)
 
-	s.Empty(s.conditionRefs(out, heroID), "the hold and its child are both gone")
+	s.Empty(s.conditionRefs(out), "the hold and its child are both gone")
 }
 
 // A turn end with the clock still running ends nothing, so a boundary that
@@ -851,7 +851,7 @@ func (s *ConcentrationTestSuite) TestATurnEndWithTimeLeftEndsNothing() {
 	)
 
 	s.Empty(out.ConcentrationBreaks)
-	s.ElementsMatch([]string{concentrating, trueStrike}, s.conditionRefs(out, heroID),
+	s.ElementsMatch([]string{concentrating, trueStrike}, s.conditionRefs(out),
 		"the hold is still there, one turn shorter")
 }
 
@@ -865,7 +865,7 @@ func (s *ConcentrationTestSuite) TestCombatEndingEndsTheHold() {
 	broke := s.onlyBreak(out, heroID, conditions.ConcentrationEndedCombatEnd)
 	s.Require().Len(broke.Removed, 1)
 	s.Equal(refs.Conditions.TrueStrike().String(), broke.Removed[0].Address.ConditionRef)
-	s.Empty(s.conditionRefs(out, heroID))
+	s.Empty(s.conditionRefs(out))
 }
 
 // The last child ending on its own account ends the spell: True Strike is
@@ -908,7 +908,7 @@ func (s *ConcentrationTestSuite) TestTheLastChildEndingEndsTheSpell() {
 
 	broke := s.onlyBreak(out, heroID, conditions.ConcentrationEndedSpellEnded)
 	s.Empty(broke.Removed, "the child ended itself; the hold took nothing else off")
-	s.Empty(s.conditionRefs(out, heroID))
+	s.Empty(s.conditionRefs(out))
 }
 
 // The SECOND call site. A cast that deals damage reports it and runs what came
@@ -972,7 +972,7 @@ func (s *ConcentrationTestSuite) TestCastDamageReportsItselfAndRunsTheCheck() {
 	s.Equal("True Strike", out.ConcentrationChecks[0].Spell.Name)
 	s.True(out.ConcentrationChecks[0].Save.Succeeded)
 	s.ElementsMatch([]string{concentrating, trueStrike, refs.Conditions.ViciousMockery().String()},
-		s.conditionRefs(out, heroID), "the hold, its child, and the cantrip's rider")
+		s.conditionRefs(out), "the hold, its child, and the cantrip's rider")
 }
 
 // The cast call site's OTHER half: a cantrip's damage breaks the spell its
@@ -1034,7 +1034,7 @@ func (s *ConcentrationTestSuite) TestCastDamageBreaksTheTargetsConcentration() {
 
 	// The strip, on the sheet: the hold and its child are gone and only the
 	// cantrip's own rider is left.
-	s.ElementsMatch([]string{refs.Conditions.ViciousMockery().String()}, s.conditionRefs(out, heroID))
+	s.ElementsMatch([]string{refs.Conditions.ViciousMockery().String()}, s.conditionRefs(out))
 }
 
 // TestTheMirrorCarriesTheKeepRecord pins the seam where the record would

@@ -6,7 +6,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.12.0
 	github.com/KirkDiggler/rpg-toolkit/dice v0.3.2
 	github.com/KirkDiggler/rpg-toolkit/events v0.6.3
-	github.com/KirkDiggler/rpg-toolkit/mechanics/effects v0.2.2-0.20261106234706-e15c6e54ef81
+	github.com/KirkDiggler/rpg-toolkit/mechanics/effects v0.3.0
 	github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.3.3-0.20261104214233-3182088c4cf0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.213.6-0.20261104214233-3182088c4cf0
 	github.com/stretchr/testify v1.11.1

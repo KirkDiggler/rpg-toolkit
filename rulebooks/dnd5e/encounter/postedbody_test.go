@@ -36,6 +36,23 @@ var (
 	postedPast  = spatial.Position{X: 3, Y: 1}
 )
 
+// requireStopped requires a step answered as a body stop (rpg-project#842):
+// no error, the output's stop set, and returns the stop.
+func requireStopped(t *testing.T, out *StepOutput, err error, msg string) *StepStop {
+	t.Helper()
+	require.NoError(t, err, msg)
+	require.NotNil(t, out.Stopped, msg)
+
+	return out.Stopped
+}
+
+// requireMoved requires a step that was taken: no error and no stop.
+func requireMoved(t *testing.T, out *StepOutput, err error, msg string) {
+	t.Helper()
+	require.NoError(t, err, msg)
+	require.Nil(t, out.Stopped, msg)
+}
+
 // postedRecipe is a gate post's states: posted, standing its post on time,
 // until it learns gate-cowed; cowed, which stands too and does not block.
 func postedGuardRecipe(t *testing.T) *machine.Recipe {
@@ -110,11 +127,9 @@ func TestAPostedNeutralBodyBlocksAStepAndARoute(t *testing.T) {
 
 	require.Equal(t, PassageBlocked, passageAt(t, enc, postedPost), "a posted body is Blocked")
 
-	_, err := enc.Step(&StepInput{Member: "alice", To: postedPost})
-	require.ErrorIs(t, err, ErrBodyInTheWay)
-	require.NotErrorIs(t, err, ErrBadPlacement, "a body is not a bad placement")
-	var stop *StepObstructedError
-	require.ErrorAs(t, err, &stop, "a body stops the walk; it does not break it")
+	out, err := enc.Step(&StepInput{Member: "alice", To: postedPost})
+	stop := requireStopped(t, out, err, "a body stops the walk; it does not break it")
+	require.Equal(t, postedGuard, stop.Barrier)
 	at, _ := enc.canvas.GetEntityPosition("alice")
 	require.Equal(t, postedAlice, at, "the refused step moved nobody")
 
@@ -128,14 +143,14 @@ func TestAPostedNeutralBodyBlocksAStepAndARoute(t *testing.T) {
 
 func TestLeavingThePostOpensTheCellInThatBeat(t *testing.T) {
 	enc := postedHall(t, postedMember(t))
-	_, err := enc.Step(&StepInput{Member: "alice", To: postedPost})
-	require.ErrorIs(t, err, ErrBodyInTheWay, "precondition: posted, he holds the cell")
+	out, err := enc.Step(&StepInput{Member: "alice", To: postedPost})
+	requireStopped(t, out, err, "precondition: posted, he holds the cell")
 
 	cowGuard(t, enc)
 
 	require.Equal(t, PassagePassThrough, passageAt(t, enc, postedPost), "cowed, his space is a neutral's again")
-	_, err = enc.Step(&StepInput{Member: "alice", To: postedPost})
-	require.NoError(t, err, "the next step passes, with nothing reloaded or refreshed by hand")
+	out, err = enc.Step(&StepInput{Member: "alice", To: postedPost})
+	requireMoved(t, out, err, "the next step passes, with nothing reloaded or refreshed by hand")
 }
 
 func TestTheCanvasAndTheFoldAgreeAfterATransition(t *testing.T) {
@@ -219,11 +234,9 @@ func TestABodyRefusalNamesTheBody(t *testing.T) {
 		t.Helper()
 		enc, err := NewEncounter(postedSetup(sight, postedMember(t)))
 		require.NoError(t, err)
-		_, err = enc.Step(&StepInput{Member: "alice", To: postedPost})
-		var stop *StepObstructedError
-		require.ErrorAs(t, err, &stop)
+		out, err := enc.Step(&StepInput{Member: "alice", To: postedPost})
 
-		return stop.PublicReason()
+		return requireStopped(t, out, err, "a body stops the step").Reason
 	}
 
 	require.Equal(t, "Gate guard stands in the way", reason(t, everyoneSeesTheWholeMap{}), "a body she sees is named")
@@ -294,8 +307,8 @@ func TestAStoredEncounterLoadsItsBlocking(t *testing.T) {
 		require.True(t, slices.ContainsFunc(data.Reserve, func(r ReserveData) bool {
 			return r.ID == "relief" && slices.Equal(r.BlockingStates, []string{"posted"})
 		}), "the reserve keeps its blocking states too")
-		_, err = enc.Step(&StepInput{Member: "alice", To: postedPost})
-		require.ErrorIs(t, err, ErrBodyInTheWay, "and the loaded guard still holds his post")
+		out, err := enc.Step(&StepInput{Member: "alice", To: postedPost})
+		requireStopped(t, out, err, "and the loaded guard still holds his post")
 	})
 
 	t.Run("a record without them loads as today", func(t *testing.T) {
@@ -339,8 +352,8 @@ func TestADownedPostedBodyIsStoodOn(t *testing.T) {
 	down[postedGuard] = true
 	require.Equal(t, "posted", stateOf(enc, postedGuard), "precondition: still posted")
 	require.Equal(t, PassageStandable, passageAt(t, enc, postedPost), "the fold: a downed monster's cell is standable")
-	_, err = enc.Step(&StepInput{Member: "alice", To: postedPost, EndWalk: true})
-	require.NoError(t, err, "and the canvas agrees: the step is taken")
+	out, err := enc.Step(&StepInput{Member: "alice", To: postedPost, EndWalk: true})
+	requireMoved(t, out, err, "and the canvas agrees: the step is taken")
 }
 
 // TestTheRosterReportsTheStateItBlocksIn: the roster row's BlocksMovement is

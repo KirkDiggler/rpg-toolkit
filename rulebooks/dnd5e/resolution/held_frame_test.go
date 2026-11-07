@@ -114,7 +114,7 @@ func (s *FrameTestSuite) heldEncounter(h *heldScene) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:   hexCanvas(),
-			Regions:  []encounter.RegionInput{rectRegion("cave", 0, 0, 10, 5)},
+			Regions:  []encounter.RegionInput{rectRegion("cave", 0, 10, 5)},
 			Factions: []encounter.FactionInput{{ID: informGoblins}},
 			Dispositions: []encounter.DispositionInput{{
 				Between: [2]encounter.FactionID{informGoblins, encounter.FactionParty}, Stance: encounter.StanceHostile,
@@ -202,9 +202,9 @@ func (s *FrameTestSuite) strikeHeld(
 	}, newSurface(bus))
 }
 
-func (s *FrameTestSuite) faerieFireJSON(member string) json.RawMessage {
+func (s *FrameTestSuite) faerieFireJSON() json.RawMessage {
 	fire, err := conditions.NewFaerieFireCondition(conditions.NewFaerieFireConditionInput{
-		MemberID: member, SourceID: heldCaster, SourceRef: refs.Spells.FaerieFire(),
+		MemberID: informGoblin1, SourceID: heldCaster, SourceRef: refs.Spells.FaerieFire(),
 	})
 	s.Require().NoError(err)
 	raw, err := fire.ToJSON()
@@ -340,7 +340,7 @@ func (s *FrameTestSuite) TestInformationFrameSeesOnlyObserverToSighted() {
 // so its candidate carries the row; goblin two is seen holding nothing, so its
 // candidate carries none; the actor's own rows never carry a target's effect.
 func (s *FrameTestSuite) TestInformAttackHeldRowsPerTarget() {
-	scene := s.newHeldScene(2, s.faerieFireJSON(informGoblin1))
+	scene := s.newHeldScene(2, s.faerieFireJSON())
 	out := s.informHeld(s.heldEncounter(scene), dagger(), informGoblin1, informGoblin2)
 
 	row, found := rowNamed(out.HeldByTarget[informGoblin1], faerieFireRowID)
@@ -362,7 +362,7 @@ func (s *FrameTestSuite) TestInformAttackHeldRowsPerTarget() {
 // observed no conditions, and a candidate not sighted at all, carry no held
 // rows and are no error — no effect is known to exist there.
 func (s *FrameTestSuite) TestUnknownHoldingsGiveNoRowsAndNoError() {
-	scene := s.newHeldScene(2, s.faerieFireJSON(informGoblin1))
+	scene := s.newHeldScene(2, s.faerieFireJSON())
 	scene.unobserved = map[encounter.MemberID]bool{informGoblin1: true}
 	scene.sight = sightOf{informRogue: 3}
 	out := s.informHeld(s.heldEncounter(scene), dagger(), informGoblin1, informGoblin2)
@@ -378,7 +378,7 @@ func (s *FrameTestSuite) TestUnknownHoldingsGiveNoRowsAndNoError() {
 // pass, and the rows still show only what was seen. The next sight refresh
 // sees it.
 func (s *FrameTestSuite) TestHeldRowsAreTestimony() {
-	scene := s.newHeldScene(2, s.faerieFireJSON(informGoblin1))
+	scene := s.newHeldScene(2, s.faerieFireJSON())
 	enc := s.heldEncounter(scene)
 	before := s.informHeld(enc, dagger(), informGoblin1)
 
@@ -418,12 +418,12 @@ func (s *FrameTestSuite) TestHeldRowAgreesWithTheStrike() {
 	}{
 		{
 			name: "faerie fire, the rogue sees the goblin", goblinX: 2, sight: everyoneSeesTheWholeMap{},
-			held: func() json.RawMessage { return s.faerieFireJSON(informGoblin1) }, attack: dagger(),
+			held: func() json.RawMessage { return s.faerieFireJSON() }, attack: dagger(),
 			rowID: faerieFireRowID, row: contributions.StateApplies, benefit: "Advantage on the attack roll", advantage: fire,
 		},
 		{
 			name: "faerie fire, the rogue cannot see the goblin", goblinX: 4, sight: sightOf{informRogue: 1},
-			held: func() json.RawMessage { return s.faerieFireJSON(informGoblin1) }, attack: handaxe(),
+			held: func() json.RawMessage { return s.faerieFireJSON() }, attack: handaxe(),
 			rowID: faerieFireRowID,
 		},
 		{
@@ -487,7 +487,7 @@ func (s *FrameTestSuite) newHeldSceneLike(h *heldScene, held json.RawMessage) *h
 // each participant holds and who sees whom, from authoritative state, and the
 // damage frame is that frame with only Advantage settled.
 func (s *FrameTestSuite) TestStrikeFrameCarriesHeldAndSight() {
-	scene := s.newHeldScene(2, s.faerieFireJSON(informGoblin1))
+	scene := s.newHeldScene(2, s.faerieFireJSON())
 	bus := events.NewEventBus()
 	rolled := s.watchAttackFrames(bus)
 	spy := s.watchFrames(bus)
@@ -523,7 +523,7 @@ func (s *FrameTestSuite) TestStrikeFrameCarriesHeldAndSight() {
 // frame the rule cannot answer from (R13), so a dropped condition or a lost
 // source qualifier must not get past here.
 func (s *FrameTestSuite) TestExecutionHeldIsEveryLoadedAddress() {
-	scene := s.newHeldScene(2, s.faerieFireJSON(informGoblin1), s.proneJSON(informGoblin1))
+	scene := s.newHeldScene(2, s.faerieFireJSON(), s.proneJSON(informGoblin1))
 	rogue := s.heldRogue()
 	bus := events.NewEventBus()
 	rolled := s.watchAttackFrames(bus)
@@ -581,7 +581,7 @@ func (s *FrameTestSuite) TestUnreadableStoredConditionFailsTheStrike() {
 // Faerie Fire rule, asked over the same unknown, cannot answer either, so no
 // path grants or withholds its advantage silently.
 func (s *FrameTestSuite) TestStrikeFailsWhenSightCannotBeAnswered() {
-	scene := s.newHeldScene(2, s.faerieFireJSON(informGoblin1))
+	scene := s.newHeldScene(2, s.faerieFireJSON())
 	scene.sight = failingSight{}
 	before := scene.goblin.HitPoints
 	bus := events.NewEventBus()

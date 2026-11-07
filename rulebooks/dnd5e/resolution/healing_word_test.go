@@ -5,6 +5,7 @@ package resolution
 
 import (
 	"encoding/json"
+
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
@@ -18,7 +19,7 @@ import (
 )
 
 func (s *CastActionTestSuite) TestFreeSpellStillRestrictsSameTurnReactionWithoutRefillingIt() {
-	caster := baneCaster(1, 2)
+	caster := baneCaster(1)
 	caster.ActionEconomy.BonusActionsRemaining = 1
 	caster.ActionEconomy.ReactionsRemaining = 1
 	d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.HealingWord})
@@ -73,7 +74,7 @@ func (s *CastActionTestSuite) TestRangedHealingProjectionIncludesSelfDyingAndUnt
 	input := &RangedHealingTargetsInput{Encounter: run, RangeFeet: 60,
 		HealingTargetsInput: HealingTargetsInput{Room: room, CasterID: bardID,
 			Candidates:   []string{bardID, heroID, wolfID},
-			Participants: []Participant{{Character: baneCaster(1, 2)}, {Character: f.saver(0)}, {Monster: wolf}}}}
+			Participants: []Participant{{Character: baneCaster(1)}, {Character: f.saver(0)}, {Monster: wolf}}}}
 	answers, err := RangedHealingTargets(s.ctx, input)
 	s.Require().NoError(err)
 	s.Equal(map[string]bool{bardID: true, heroID: true, wolfID: true}, answers)
@@ -110,8 +111,8 @@ func (s *CastActionTestSuite) spellAttempt(caster *character.Data, definition *c
 func (s *CastActionTestSuite) TestSpellRestrictionSurvivesReloadInBothOrders() {
 	for _, pair := range [][2]spells.Spell{{spells.HealingWord, spells.CureWounds}, {spells.CureWounds, spells.HealingWord},
 		{spells.HealingWord, spells.SacredFlame}, {spells.SacredFlame, spells.HealingWord}} {
-		s.Run(string(pair[0])+" then "+string(pair[1]), func() {
-			caster := baneCaster(1, 2)
+		s.Run(pair[0]+" then "+pair[1], func() {
+			caster := baneCaster(1)
 			caster.ActionEconomy.BonusActionsRemaining = 1
 			for index, id := range pair {
 				ch, err := character.Load(s.ctx, caster)
@@ -149,7 +150,7 @@ func (s *CastActionTestSuite) TestSpellRestrictionSurvivesReloadInBothOrders() {
 func (s *CastActionTestSuite) TestCostedCastRequiresCompleteDeclaration() {
 	for _, missing := range []string{"turn", "classification", "payer"} {
 		s.Run(missing, func() {
-			caster := baneCaster(1, 2)
+			caster := baneCaster(1)
 			caster.ActionEconomy.BonusActionsRemaining = 1
 			d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.HealingWord})
 			cost := &Cost{PayerID: bardID, Profile: d.Cost, SpellTurn: "turn"}
@@ -173,7 +174,7 @@ func (s *CastActionTestSuite) TestCostedCastRequiresCompleteDeclaration() {
 
 func (s *CastActionTestSuite) TestHealingWordHealsDyingRecipientBeyondTouch() {
 	f := s.fixtures()
-	caster := baneCaster(1, 2)
+	caster := baneCaster(1)
 	caster.ActionEconomy.BonusActionsRemaining = 1
 	target := f.saver(0)
 	ch, err := character.Load(s.ctx, caster)
@@ -221,7 +222,7 @@ func (s *CastActionTestSuite) TestHealingWordRejectsUnseenOrOutOfRangeBeforePaym
 		s.Run(reason, func() {
 			f := s.fixtures()
 			world := f.world()
-			caster := baneCaster(1, 2)
+			caster := baneCaster(1)
 			caster.ActionEconomy.BonusActionsRemaining = 1
 			ch, err := character.Load(s.ctx, caster)
 			s.Require().NoError(err)

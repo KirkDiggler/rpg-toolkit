@@ -534,7 +534,7 @@ func (s *FrameTestSuite) TestStrikeFailsWhenAnOfferRuleCannotAnswer() {
 func (s *FrameTestSuite) TestAPlacedMemberWithNoFactionIsKnownNoSide() {
 	const shopkeeperID = "shopkeeper"
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field: encounter.FieldInput{Canvas: hexCanvas(), Regions: []encounter.RegionInput{rectRegion("room", 0, 0, 10, 4)}},
+		Field: encounter.FieldInput{Canvas: hexCanvas(), Regions: []encounter.RegionInput{rectRegion("room", 0, 10, 4)}},
 		Members: []encounter.MemberInput{
 			{ID: wolfID, Kind: encounter.KindMonster, Position: spatial.Position{X: 1, Y: 1}},
 			{ID: heroID, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 1}},

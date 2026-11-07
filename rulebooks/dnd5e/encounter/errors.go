@@ -663,19 +663,21 @@ var (
 	// arithmetic that is fine.
 	ErrDoorShut = errors.New("encounter: door is shut")
 
-	// ErrBodyInTheWay is returned, inside a [StepObstructedError], when a
-	// step's destination is held by a body that blocks: a creature in a
-	// blocking state, one declared [MemberInput.BlocksMovement], or a hostile
-	// (rpg-project#836). Distinct from [ErrBadPlacement] for [ErrDoorShut]'s
-	// reason: the cell is real and somebody stands in it, and the stop's
-	// public reason names him to a mover who sees him and says "someone" to
-	// one who does not. A driven walk stops at one silently.
+	// ErrBodyInTheWay is a step stopped by a body that blocks: a creature in
+	// a blocking state, one declared [MemberInput.BlocksMovement], a hostile,
+	// or a post holding the crossing (rpg-project#836, #852). Distinct from
+	// [ErrBadPlacement] for [ErrDoorShut]'s reason: the cell is real and
+	// somebody stands in it. A driven walk stops at one silently. A player's
+	// [Encounter.Step] does not return it: since rpg-project#842 a body stop
+	// is a bump, answered with [StepOutput.Stopped].
 	ErrBodyInTheWay = errors.New("encounter: a body is in the way")
 
-	// ErrDoorHeld is returned, inside a [*DoorHeldError], when OpenDoor, CloseDoor or Unlock is asked of a
-	// door a post holds against the actor (rpg-project#835 R7): a holder
-	// not allied with it, in a holding state, up and on a post cell. Its
-	// public reason names the holder the actor sees, else "someone".
+	// ErrDoorHeld is a door a post holds against an actor (rpg-project#835
+	// R7): a holder not allied with it, in a holding state, up and on a post
+	// cell. Its [*DoorHeldError]'s public reason names the holder the actor
+	// sees, else "someone"; [Encounter.DoorHeldFor] reads it. OpenDoor,
+	// CloseDoor and Unlock do not return it: since rpg-project#842 the
+	// attempt is a bump, answered with the output's Refused.
 	ErrDoorHeld = errors.New("encounter: the door is held")
 
 	// ErrOutOfRange is returned when Interact's target stands farther than

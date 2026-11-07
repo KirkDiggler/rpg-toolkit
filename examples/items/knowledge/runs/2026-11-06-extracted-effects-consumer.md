@@ -4,8 +4,10 @@ Work: [items S1 #2273](https://github.com/KirkDiggler/rpg-toolkit/pull/2273), [p
 
 ## Shipped
 
-- S1 imports mechanics/effects and calls Compose(ComposeInput), with no item-behavior changes; go.mod pins the pushed provider e15c6e54 as v0.2.2-0.20261106234706-e15c6e54ef81, without replace/go.work — [dependency](../../go.mod).
+- Initial S1 integration imported mechanics/effects and called Compose(ComposeInput), with no item-behavior changes; it pinned pushed provider e15c6e54 as v0.2.2-0.20261106234706-e15c6e54ef81, without replace/go.work — [dependency](../../go.mod).
 - Full module race tests, runnable example, vet and lint pass; dependency inventory contains no examples/effects package — [tests](../../items_test.go).
+
+- Released adoption on 2026-11-07 pins mechanics/effects v0.3.0 after provider merge c7cf2461 and successful CI tagging; full race/example/vet/lint gates pass again — [dependency](../../go.mod).
 
 ## Decided
 
@@ -17,6 +19,6 @@ Work: [items S1 #2273](https://github.com/KirkDiggler/rpg-toolkit/pull/2273), [p
 
 ## Mistaken
 
-- A pushed provider pseudo-version is not a released tag. The consumer must be re-pinned and re-tested after an authorized provider merge and CI-generated tag — [release sequence](https://github.com/KirkDiggler/rpg-toolkit/pull/2291).
+- A pushed provider pseudo-version is not a released tag; the final v0.3.0 pin and repeated gates supply that missing evidence. Main catch-up conflicted only in the root module map: retain examples/items, remove examples/effects and retain mechanics/effects — [release sequence](https://github.com/KirkDiggler/rpg-toolkit/pull/2291).
 
 — cross-team agent, on behalf of KirkDiggler

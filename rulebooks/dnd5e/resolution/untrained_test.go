@@ -93,7 +93,7 @@ func (s *UntrainedTestSuite) check(approaches ...encounter.CheckApproach) *Check
 // Charisma modifier — no second face, no keep rule, and no "Untrained" source
 // recorded over the die.
 func (s *UntrainedTestSuite) TestAnUntrainedSkillRollsOnePlainD20() {
-	out := s.check(route(string(skills.Persuasion), 10))
+	out := s.check(route(skills.Persuasion, 10))
 
 	s.Require().Equal(untrainedHigh, out.Result.Roll,
 		"the single die; a pair kept low would have produced the other face")
@@ -109,7 +109,7 @@ func (s *UntrainedTestSuite) TestAnUntrainedSkillRollsOnePlainD20() {
 // The control: the same roller, a skill the character took — the same single
 // die, plus the proficiency bonus.
 func (s *UntrainedTestSuite) TestATrainedCheckerAddsTheBonus() {
-	out := s.check(route(string(skills.Intimidation), 10))
+	out := s.check(route(skills.Intimidation, 10))
 
 	s.Require().Equal(untrainedHigh, out.Result.Roll)
 	s.Require().Equal(untrainedHigh+4, out.Result.Total, "CHA +2 and proficiency +2")

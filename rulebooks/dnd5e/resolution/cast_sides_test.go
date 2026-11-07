@@ -51,7 +51,7 @@ func sidesRun(t *testing.T) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
-			Regions: []encounter.RegionInput{rectRegion("floor", 0, 0, 10, 10)},
+			Regions: []encounter.RegionInput{rectRegion("floor", 0, 10, 10)},
 		},
 		Members: []encounter.MemberInput{
 			{ID: heroA, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},

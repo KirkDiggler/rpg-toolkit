@@ -88,18 +88,15 @@ func (c *freeRoamCastle) gateStateInTheRecord(t *testing.T) string {
 	return ""
 }
 
-// heldRefusal requires err to be the session's held-door refusal, carrying
-// no composition sentinel, and returns its reason.
-func heldRefusal(t *testing.T, err error) string {
+// heldRefusal requires a door verb's answer to be refused by a hold
+// (rpg-project#842): no error, the refusal on the output naming gate-1, and
+// returns its reason.
+func heldRefusal(t *testing.T, err error, refused *session.DoorRefusal) string {
 	t.Helper()
-	require.ErrorIs(t, err, session.ErrDoorHeld, "a held door refuses her hand")
-	var held *session.DoorHeldError
-	require.ErrorAs(t, err, &held, "and the refusal carries its reason")
-	require.Equal(t, held.Reason, held.Error(), "and a host printing the error shows the reason")
-	for name, sentinel := range compositionSentinels {
-		require.NotErrorIs(t, err, sentinel, "the composition's %s never leaks", name)
-	}
-	return held.Reason
+	require.NoError(t, err, "a held door answers her hand, never errs")
+	require.NotNil(t, refused, "a held door refuses her hand")
+	require.Equal(t, "gate-1", refused.Holder, "and names the guard who holds it")
+	return refused.Reason
 }
 
 // openTheGate pushes the gate door open, alice beside it.
@@ -125,7 +122,7 @@ func TestCastleTheLaunchSeatsTheGatePost(t *testing.T) {
 	}
 	for _, m := range c.world(t).ToData().Members {
 		if m.ID == "gate-1" {
-			require.Equal(t, map[string]encounter.PostData{"posted": post, "alert": post}, m.Posts,
+			require.Equal(t, map[string]encounter.PostData{"posted": post, "alert": post, "challenged": post}, m.Posts,
 				"gate-1 is seated with the post the author wrote")
 		}
 		if m.ID == "gate-2" {
@@ -233,14 +230,18 @@ func TestCastleAHeldDoorRefusesItsDoorVerbs(t *testing.T) {
 	require.Equal(t, session.MovementCompleted, walked.Status, "precondition: alice beside the gate: %s", walked.StopReason)
 	barred := gate1.Name + " bars the door"
 
-	_, err := c.mgr.OpenDoor(context.Background(), &session.OpenDoorInput{Session: "sess", Member: "alice", Door: castleGateDoor})
-	require.Equal(t, barred, heldRefusal(t, err), "OpenDoor names the guard she sees")
+	opened, err := c.mgr.OpenDoor(context.Background(), &session.OpenDoorInput{Session: "sess", Member: "alice", Door: castleGateDoor})
+	require.NoError(t, err)
+	require.Equal(t, barred, heldRefusal(t, err, opened.Refused), "OpenDoor names the guard she sees")
+	require.Equal(t, "closed", opened.Door.State, "the answer says the door is still shut")
 	require.Equal(t, "closed", c.gateStateInTheRecord(t), "and the gate stays shut")
 
 	c.openTheGateInTheRecord(t)
 	require.Equal(t, "open", worldGateState(t, c), "precondition: the gate stands open in the world")
-	_, err = c.mgr.CloseDoor(context.Background(), &session.CloseDoorInput{Session: "sess", Member: "alice", Door: castleGateDoor})
-	require.Equal(t, barred, heldRefusal(t, err), "CloseDoor is refused the same way")
+	closed, err := c.mgr.CloseDoor(context.Background(), &session.CloseDoorInput{Session: "sess", Member: "alice", Door: castleGateDoor})
+	require.NoError(t, err)
+	require.Equal(t, barred, heldRefusal(t, err, closed.Refused), "CloseDoor is refused the same way")
+	require.Equal(t, "open", closed.Door.State, "the answer says the door still stands open")
 	require.Equal(t, "open", c.gateStateInTheRecord(t), "and the gate stays open")
 	c.setTheGateInTheRecord(t, "closed", nil)
 
@@ -259,7 +260,9 @@ func TestCastleAHeldDoorRefusesItsDoorVerbs(t *testing.T) {
 // TestCastleAHeldLockedDoorIsAnsweredByTheGuard (rpg-project#852, R7; #855
 // review): the gate locked and held, alice's Unlock is refused by the guard
 // before the lock is faced. No die is thrown, no Guidance pause is posed,
-// and the lock stays as it was.
+// and the lock stays as it was. The attempt is the bump (rpg-project#842):
+// the verb is called, the encounter writes `barred` naming the door and the
+// verb, and gate-1 answers with his line.
 func TestCastleAHeldLockedDoorIsAnsweredByTheGuard(t *testing.T) {
 	c := openTheCastleForTwo(t, 18)
 	gate1 := memberOf(t, c.world(t), "gate-1")
@@ -276,12 +279,30 @@ func TestCastleAHeldLockedDoorIsAnsweredByTheGuard(t *testing.T) {
 	require.Equal(t, "locked", known.Doors[i].State, "precondition: she knows it locked, so an unheld attempt would roll")
 	require.NotNil(t, known.Doors[i].Lock, "precondition: with its lock")
 
-	before := c.dice.rolls
-	out, err := c.mgr.Unlock(context.Background(), &session.UnlockInput{Session: "sess", Member: "alice", Door: castleGateDoor})
-	require.Equal(t, gate1.Name+" bars the door", heldRefusal(t, err), "the guard answers, not the lock")
-	require.Nil(t, out, "no attempt, so no pause and no verdict")
-	require.Equal(t, before, c.dice.rolls, "no die is thrown at a held lock")
+	before := c.dice.checks
+	var out *session.UnlockOutput
+	bump := c.play(t, "unlock the held gate", func() error {
+		out, err = c.mgr.Unlock(context.Background(), &session.UnlockInput{Session: "sess", Member: "alice", Door: castleGateDoor})
+		return err
+	})
+	require.Equal(t, gate1.Name+" bars the door", heldRefusal(t, err, out.Refused), "the guard answers, not the lock")
+	require.False(t, out.Paused, "no attempt, so no pause")
+	require.False(t, out.Beaten, "and no verdict")
+	require.Zero(t, out.DC, "and no DC faced")
+	require.Equal(t, "locked", out.Door.State, "the answer says the lock stands")
+	require.Equal(t, before, c.dice.checks, "no check is rolled at a held lock (his answer throws only its table die)")
 	require.Equal(t, "locked", c.gateStateInTheRecord(t), "and the lock stands")
+
+	// THE ATTEMPT IS THE BUMP: written, folded, and answered.
+	bumped := only[session.BarredAct](t, bump.to("alice"))
+	barred := bumped.body
+	require.Equal(t, session.BarredAct{
+		Mover: session.Party{Kind: session.PartyMember, ID: "alice"}, Barrier: session.Party{Kind: session.PartyMember, ID: "gate-1"},
+		Door: castleGateDoor, Verb: "unlock",
+	}, barred, "the bump names the door and the verb, and no cell")
+	require.Equal(t, theGuardsQuestion, guardSays(t, bump.to("alice")), "and he asks what she wants")
+	require.Equal(t, "unlock", bumped.act.Verb, "under her Unlock")
+	answeredUnder(t, bump.to("alice"), bumped)
 }
 
 // slicesIndex is the index of door id in doors, failing the caller's

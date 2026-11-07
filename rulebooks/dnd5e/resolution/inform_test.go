@@ -80,7 +80,7 @@ func (s *InformAttackTestSuite) scene(sight encounter.Sight, withFighter bool) *
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: encounter.FieldInput{
 			Canvas:   hexCanvas(),
-			Regions:  []encounter.RegionInput{rectRegion("cave", 0, 0, 10, 5)},
+			Regions:  []encounter.RegionInput{rectRegion("cave", 0, 10, 5)},
 			Factions: []encounter.FactionInput{{ID: informGoblins}},
 			Dispositions: []encounter.DispositionInput{{
 				Between: [2]encounter.FactionID{informGoblins, encounter.FactionParty}, Stance: encounter.StanceHostile,
@@ -255,7 +255,7 @@ func (s *FrameTestSuite) TestAMonsterTargetsTraitsYieldNoRow() {
 	scene := s.newHeldScene(2,
 		conditions.MustImmunityJSON(informGoblin1, damage.Poison),
 		conditions.MustVulnerabilityJSON(informGoblin1, damage.Bludgeoning),
-		s.faerieFireJSON(informGoblin1),
+		s.faerieFireJSON(),
 	)
 	scene.goblin.Ref = refs.Monsters.Skeleton()
 	enc := s.heldEncounter(scene)
