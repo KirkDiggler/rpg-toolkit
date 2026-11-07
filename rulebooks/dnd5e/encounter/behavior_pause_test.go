@@ -58,6 +58,34 @@ func (s *behaviorPauseSuite) TestSelectedWorkSurvivesTwoPausesWithoutRerolling()
 	s.Require().NoError(err)
 	s.Require().True(e.Paused())
 	s.Require().NotNil(e.pause.turn.behavior)
+	// A held claim must be rejected at Load, before any resumed movement.
+	// Each case starts from a fresh, otherwise-valid real paused snapshot.
+	for _, field := range []string{"instance", "definition", "state", "key", "on", "goal", "nil-goal", "kind"} {
+		s.Run("refuse-corrupt-"+field, func() {
+			data := e.ToData()
+			work := data.Pause.Turn.Behavior
+			switch field {
+			case "instance":
+				work.Instance = "other"
+			case "definition":
+				work.Definition = "other"
+			case "state":
+				work.State = "other"
+			case "key":
+				work.Key = "other"
+			case "on":
+				work.On = "other"
+			case "goal":
+				work.Goal.X = 18
+			case "nil-goal":
+				work.Goal = nil
+			case "kind":
+				work.Kind = BehaviorDelivered
+			}
+			_, loadErr := LoadEncounter(&LoadEncounterInput{Data: data, Capabilities: in.Capabilities})
+			s.ErrorIs(loadErr, ErrInvalidData)
+		})
+	}
 	claim := workDataFrom(e.pause.turn.behavior)
 	s.Equal(spatial.Position{X: 3}, e.pause.from)
 	s.Equal(15, e.pause.turn.budget.MovementFeet)

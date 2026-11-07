@@ -261,7 +261,8 @@ func TestSetup_MachineRefusals(t *testing.T) {
 	}
 
 	march := recipe(t, "waiting", map[string]machine.State{
-		"waiting": {Transitions: []machine.Transition{{On: clockBeat("bell:gong"), Do: []machine.Act{{Pick: "march"}}}}},
+		"waiting":  {Transitions: []machine.Transition{{On: clockBeat("bell:gong"), To: "marching"}}},
+		"marching": {Transitions: []machine.Transition{{On: beatTime, Do: []machine.Act{{Pick: "march"}}}}},
 	})
 	m := listener("m", 4, 1, march)
 	m.Behaviors.Instances[0].Instance.Table = Table{"march": {{Weight: 1, Hold: true}}}

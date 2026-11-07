@@ -3525,16 +3525,6 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 	}
 
-	if e.pause != nil && e.pause.turn != nil && e.pause.turn.behavior != nil {
-		work := e.pause.turn.behavior
-		if work.Kind != BehaviorArrival || e.pause.turn.afterStrike {
-			return nil, fmt.Errorf("load encounter: held behavior must be an arrival: %w", ErrInvalidData)
-		}
-		if err := e.members[e.pause.member].behaviors.validateWork(work); err != nil {
-			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
-		}
-	}
-
 	// Restore the full ever-members set (exited members keep Story access)
 	for _, em := range data.EverMembers {
 		e.everMembers[em] = true
@@ -3599,6 +3589,17 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	e.pause, err = pauseFrom(data.Pause)
 	if err != nil && !errors.Is(err, errNoPause) {
 		return nil, err
+	}
+	// The claim belongs to the restored pause. Validate it before accepting
+	// the loaded world, not after Resume has already executed held movement.
+	if e.pause != nil && e.pause.turn != nil && e.pause.turn.behavior != nil {
+		work := e.pause.turn.behavior
+		if work.Kind != BehaviorArrival || e.pause.turn.afterStrike {
+			return nil, fmt.Errorf("load encounter: held behavior must be an arrival: %w", ErrInvalidData)
+		}
+		if err := e.members[e.pause.member].behaviors.validateWork(work); err != nil {
+			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+		}
 	}
 
 	// Restore outcome if present

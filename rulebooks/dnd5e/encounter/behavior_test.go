@@ -160,20 +160,20 @@ func (s *behaviorConsumerSuite) TestWorldDutyIsNotOfferedAFightTurn() {
 }
 
 func (s *behaviorConsumerSuite) TestNotificationCannotAuthorizeSelection() {
-	guard := listener("guard", 4, 0, recipe(s.T(), "ready", map[string]machine.State{
-		"ready": {Transitions: []machine.Transition{{On: clockBeat(clockFight), To: "spent", Do: []machine.Act{{Pick: string(AnswerTime)}}}}},
-		"spent": {},
-	}))
-	in := wakeSetup(BehaviorDriver{}, guard)
-	die := &behaviorRolls{}
-	in.Roller = die
-	e, err := NewEncounter(in)
-	s.Require().NoError(err)
-	before := e.members["guard"].behaviors.composer.ToData()
-	e.landClock(clockFight, FactionMonsters, 1)
-	s.Require().ErrorIs(e.matchLanded(), behavior.ErrSelectionRequired)
-	s.Equal(before, e.members["guard"].behaviors.composer.ToData())
-	s.Zero(die.calls)
+	for _, on := range []machine.Beat{clockBeat(worldClockName), clockBeat(clockFight), beatHeard, beatSeen, beatDeed, beatFact} {
+		s.Run(string(on), func() {
+			guard := listener("guard", 4, 0, recipe(s.T(), "ready", map[string]machine.State{
+				"ready": {Transitions: []machine.Transition{{On: on, To: "spent", Do: []machine.Act{{Pick: string(AnswerTime)}}}}},
+				"spent": {},
+			}))
+			in := wakeSetup(BehaviorDriver{}, guard)
+			die := &behaviorRolls{}
+			in.Roller = die
+			_, err := NewEncounter(in)
+			s.ErrorIs(err, ErrBadMember, "invalid action authority refuses at ingress, not during the next paid verb")
+			s.Zero(die.calls)
+		})
+	}
 }
 
 func (s *behaviorConsumerSuite) TestTwoRoutesInvestigateAndResumeTheUnfinishedLeg() {

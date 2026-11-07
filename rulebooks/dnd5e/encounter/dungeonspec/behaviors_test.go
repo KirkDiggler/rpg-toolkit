@@ -58,6 +58,30 @@ func (s *behaviorSourceSuite) TestBindingsPreserveDefinitionAndAttachmentIdentit
 	s.Equal(spatial.Position{X: 14}, *c.Instance.Table["item/0/move"][0].Toward.At)
 }
 
+func (s *behaviorSourceSuite) TestNotificationSelectionsRefuseBeforeSourceAcceptance() {
+	for _, on := range []string{"clock:world", "clock:fight", "heard", "seen", "deed", "fact"} {
+		for _, form := range []string{"sequence", "concrete"} {
+			s.Run(form+"/"+on, func() {
+				from, to := "{on: time, do: [{pick: move}]}", "{on: '"+on+"', do: [{pick: move}]}"
+				if form == "concrete" {
+					from, to = "{on: time, do: [{pick: look}]}", "{on: '"+on+"', do: [{pick: look}]}"
+				}
+				bad := strings.Replace(string(s.raw), from, to, 1)
+				s.Require().NotEqual(string(s.raw), bad)
+				_, err := dungeonspec.Load([]byte(bad))
+				s.ErrorIs(err, dungeonspec.ErrBadSpec)
+			})
+		}
+	}
+	for _, on := range []string{"time", "turn", "barred"} {
+		s.Run("authorized/"+on, func() {
+			raw := strings.Replace(string(s.raw), "{on: time, do: [{pick: move}]}", "{on: "+on+", do: [{pick: move}]}", 1)
+			_, err := dungeonspec.Load([]byte(raw))
+			s.NoError(err, "world/turn opportunities and the explicitly authorized barred reaction retain selection")
+		})
+	}
+}
+
 func (s *behaviorSourceSuite) TestConcreteDefinitionReusesSourceBundles() {
 	raw := "bundles:\n  inspect:\n    params: {target: null}\n    rows: [{toward: {at: $target}}]\n" + string(s.raw)
 	raw = strings.Replace(raw, "- {weight: 1, toward: {at: {q: 2, r: 2}}}", "- {use: inspect, with: {target: {q: 2, r: 2}}}", 1)

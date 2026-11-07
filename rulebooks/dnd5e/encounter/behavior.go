@@ -10,6 +10,7 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
@@ -101,6 +102,21 @@ func newBehaviorRuntime(in *BehaviorInput, progress *behavior.ComposerData) (*be
 			return nil, fmt.Errorf("behaviors: duplicate attachment %q", spec.ID)
 		}
 		byID[spec.ID] = i
+		// Generic machine/composer validation knows structure, not the
+		// encounter's action authority. Observe-only inputs cannot request a
+		// pick, even conditionally; barred is the explicit targeted exception.
+		for _, name := range slices.Sorted(maps.Keys(spec.Recipe.States)) {
+			for index, transition := range spec.Recipe.States[name].Transitions {
+				if transition.On == beatTime || transition.On == beatTurn || transition.On == beatBarred {
+					continue
+				}
+				for _, act := range transition.Do {
+					if act.Pick != "" {
+						return nil, fmt.Errorf("behaviors %q state %q transition %d: selection is only authorized on time, turn or barred, not %q", spec.ID, name, index, transition.On)
+					}
+				}
+			}
+		}
 		for key, rows := range spec.Table {
 			if isOptionKey(key) || IsRetiredTableKey(key) {
 				return nil, fmt.Errorf("behaviors %q: invalid ordinary table key %q: %w", spec.ID, key, ErrBadAnswer)
