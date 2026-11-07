@@ -116,10 +116,7 @@ func (s *ContestTestSuite) hero(conds ...json.RawMessage) *character.Data {
 }
 
 func (s *ContestTestSuite) raging() json.RawMessage {
-	raw, err := (&conditions.RagingCondition{
-		CharacterID: heroID,
-		Source:      "rage",
-	}).ToJSON()
+	raw, err := ragingForTest(s.T(), heroID).ToJSON()
 	s.Require().NoError(err)
 
 	return raw

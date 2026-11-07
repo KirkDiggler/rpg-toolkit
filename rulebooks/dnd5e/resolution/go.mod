@@ -7,7 +7,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/dice v0.3.2
 	github.com/KirkDiggler/rpg-toolkit/events v0.6.3
 	github.com/KirkDiggler/rpg-toolkit/mind/perception v0.3.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.213.2
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.213.6-0.20261107204029-3e771a63d64e
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.126.0
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.16.1
 	github.com/stretchr/testify v1.11.1
@@ -15,6 +15,7 @@ require (
 
 require (
 	github.com/KirkDiggler/rpg-toolkit/game v0.1.0 // indirect
+	github.com/KirkDiggler/rpg-toolkit/mechanics/effects v0.3.1-0.20261107191014-605694f3c24f // indirect
 	github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.3.1 // indirect
 	github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.6.0 // indirect
 	github.com/KirkDiggler/rpg-toolkit/play/clock v0.1.0 // indirect
