@@ -7,9 +7,10 @@ go 1.27.0
 retract v0.199.1
 
 require (
-	github.com/KirkDiggler/rpg-toolkit/core v0.11.0
+	github.com/KirkDiggler/rpg-toolkit/core v0.12.0
 	github.com/KirkDiggler/rpg-toolkit/dice v0.3.2
-	github.com/KirkDiggler/rpg-toolkit/events v0.6.2
+	github.com/KirkDiggler/rpg-toolkit/events v0.6.3
+	github.com/KirkDiggler/rpg-toolkit/mechanics/effects v0.4.0
 	github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.3.1
 	github.com/KirkDiggler/rpg-toolkit/npc v0.2.0
 	github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1
