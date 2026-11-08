@@ -23,8 +23,9 @@ flowchart TD
     CHILD --> SAVE
 ```
 
-[The walkthrough](README.md) defines the proposed contracts. R1–R2 record
-agreement on the shape; R3–R10 remain a coherent detailed-design proposal.
+[The walkthrough](README.md) defines the approved contracts. R1–R10 are settled;
+the current-format cut assumes freshly created characters and carries no
+historical-save compatibility path. Agreement is not an implementation claim.
 The earlier reuse-only concentration cut is superseded by concentration as a
 composed part; the operator's words and the alternatives live in the
 [shape discussion](https://github.com/KirkDiggler/rpg-project/issues/706#issuecomment-6725313075).
@@ -82,7 +83,7 @@ baseline for that independent consumer.
     bindings, complete part snapshots and role-appropriate lifetime data.
     Invalid/missing state is refused, never defaulted or refilled. Obsolete
     Bless/Bane/concentration records are not silently converted or reset under
-    the proposed clean-format cut; the independent Raging format is unchanged.
+    the fresh-character cut; the independent Raging format is unchanged.
 12. **R9 — one concentration implementation.** Existing concentration callers use
     the same composed maintenance parts and protocol. Their recipient conditions
     need not all become composed in this cut. Existing replacement, zero-delivery,
@@ -103,23 +104,23 @@ baseline for that independent consumer.
 |---|---|---|---|---|
 | R1 | settled | Concentration is a reusable effect alongside payloads; resistance sustained by another entity is a design example | KirkDiggler | 2026-11-08 |
 | R2 | settled | One authored application, shared lifetime, linked entity-local attachments rather than central runtime persistence | KirkDiggler | 2026-11-08 |
-| R3 | open | Local assemblies of existing composed runtimes; generic lifetime value, deterministic part order and neutral machine additions | — | — |
-| R4 | open | Application/attachment/address identities, coordinator custody, link validation and saved representation | — | — |
-| R5 | open | Typed scalar/dice amount results, pull contributions and one assessment path | — | — |
-| R6 | open | Prepare/deliver/seal contracts and rulebook concentration claims | — | — |
-| R7 | open | Exactly-once end protocol, errors, partial child loss and teardown ordering | — | — |
-| R8 | open | Strict new linked format without historical Bless/Bane/concentration normalization; Raging unchanged | — | — |
-| R9 | open | Migrate shared concentration upkeep, preserve other payloads and bound native/wire scope | — | — |
-| R10 | open | Native Bless/Bane acceptance and composed-resistance proof; remaining catalog/studio/item work excluded | — | — |
+| R3 | settled | Local assemblies of existing composed runtimes; generic lifetime value, deterministic part order and neutral machine additions | KirkDiggler | 2026-11-08 |
+| R4 | settled | Application/attachment/address identities, coordinator custody, link validation and saved representation | KirkDiggler | 2026-11-08 |
+| R5 | settled | Typed scalar/dice amount results, pull contributions and one assessment path | KirkDiggler | 2026-11-08 |
+| R6 | settled | Prepare/deliver/seal contracts and rulebook concentration claims | KirkDiggler | 2026-11-08 |
+| R7 | settled | Exactly-once end protocol, errors, partial child loss and teardown ordering | KirkDiggler | 2026-11-08 |
+| R8 | settled | Fresh characters; one current linked format, no historical reader/dual writer/normalization or old concentration runtime; Raging remains a current independent consumer | KirkDiggler | 2026-11-08 |
+| R9 | settled | Migrate shared concentration upkeep, preserve other payloads and bound native/wire scope | KirkDiggler | 2026-11-08 |
+| R10 | settled | Native Bless/Bane acceptance and composed-resistance proof; remaining catalog/studio/item work excluded | KirkDiggler | 2026-11-08 |
 
 ## Open
 
-- R3–R10 require agreement on the complete walkthrough, not approval of each
-  field separately. [The slice](https://github.com/KirkDiggler/rpg-project/issues/706)
-  carries the decision checklist and evidence.
-- R8 is a new saved-format decision; the earlier permission for the Raging cut
-  is not silently extended to these records. The recommendation is strict
-  current-format loading with explicit recreation only when requested.
+- No operator-owned decision blocks the scoped implementation. The checked plan
+  follows the approved contracts; a new architectural gap returns only its
+  affected decision. [The slice](https://github.com/KirkDiggler/rpg-project/issues/706)
+  carries execution evidence and remaining delivery gates.
+- R8 is settled explicitly for this cut. No compatibility experiment, automatic
+  reset, or dual old/new concentration path is required.
 - Non-spell native concentration presentation is deferred until its first native
   consumer. This cut proves such a source in toolkit-level composition tests,
   while browser acceptance covers real Bless/Bane spell sources.

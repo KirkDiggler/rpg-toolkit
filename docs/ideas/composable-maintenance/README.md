@@ -1,6 +1,6 @@
 # Composable maintenance: one application, several holders
 
-This is the detailed-design proposal for [Composable conditions S3](https://github.com/KirkDiggler/rpg-project/issues/706), governed by the [design](design.md). New symbols below are proposed contracts, not claims that those APIs exist. The composition uses the existing `mechanics/effects` machine, rulebook kind vocabulary, condition registry, recipient roll-contribution protocol and resolution follow-up machinery. It adds no global runtime or persistence service.
+This is the approved detailed design for [Composable conditions S3](https://github.com/KirkDiggler/rpg-project/issues/706), governed by the [design](design.md). New symbols below name the implementation contracts, not claims that those APIs exist. The composition uses the existing `mechanics/effects` machine, rulebook kind vocabulary, condition registry, recipient roll-contribution protocol and resolution follow-up machinery. It adds no global runtime or persistence service.
 
 ## Component shape
 
@@ -120,7 +120,7 @@ The current Raging `ComposedData` representation and its single-part runtime rem
 
 Load refuses unknown roles/kinds/refs, missing parts, invalid local state, non-live coordinator lifetime, duplicate identities, a recipient carrying owner state, an owner missing its lifetime, and state not compatible with its immutable bindings. Cross-attachment consistency is checked when the interaction's complete participant set is available. Recipient-only information can describe its own stored contribution without inventing an unavailable owner's countdown.
 
-R8 proposes no historical Bless/Bane/concentration reader or automatic reset. It requires operator agreement because the previous clean-format ruling was scoped to Raging. Unmigrated payload formats are not obsolete formats and continue through their current loaders.
+R8 assumes freshly created characters: there is no historical Bless/Bane/concentration reader, dual writer, normalization pass, automatic reset or parallel old concentration engine. Unmigrated payloads remain current behavior, not compatibility branches. Raging remains an independent current consumer; preserving it is not support for obsolete Raging data.
 
 ### The reusable meanings
 
@@ -207,7 +207,7 @@ Merging these answers would make loss of one source strip another, turn provenan
 | One coordinator lifetime | Shared cancellation without duplicated checks/clocks | Generic lifetime value plus exact rulebook transport | Complete concentration handler on every recipient |
 | Typed scalar/dice result | Information stays non-random and honest | Provider consumers adopt the changed amount API on real pins | Roll a die to satisfy an integer accessor |
 | Shared upkeep migration | No old/new concentration engines | All current concentration paths need regression coverage | Bless/Bane-only special case |
-| Strict new linked codec (proposed) | One current authority and no silent normalization | Operator may explicitly recreate affected old characters | Compatibility reader inferred from the Rage ruling |
+| Strict current linked codec | One authority without compatibility branches | Freshly created characters are the supported baseline | Historical reader, dual writer or automatic reset |
 
 ## Edges
 
@@ -237,4 +237,4 @@ The participant universe is not inferred from what happened to attach. Departure
 | Holder views and keepers | `rulebooks/dnd5e/character`, `monstertraits` |
 | Host boundary and presentation | `rulebooks/dnd5e/session`; existing API converters and web condition/effect readers |
 
-The [acceptance matrix](acceptance.md) names the required evidence and boundaries. Delivery state and investigation receipts belong to the issue/PR, not this walkthrough.
+The [acceptance matrix](acceptance.md) names the required evidence and boundaries; the [checked implementation plan](plan.md) translates the agreed contracts into tasks. Delivery state and investigation receipts belong to the issue/PR, not this walkthrough.

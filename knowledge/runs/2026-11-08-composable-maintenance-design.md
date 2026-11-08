@@ -8,6 +8,7 @@ Slice [rpg-project#706](https://github.com/KirkDiggler/rpg-project/issues/706) o
 
 ## Decided
 
+- KirkDiggler approved the detailed contracts on 2026-11-08 and explicitly requires fresh characters rather than two paths: no historical reader, dual writer, normalization or old concentration runtime; the checked plan carries implementation and proof ownership — [approval](https://github.com/KirkDiggler/rpg-toolkit/pull/2323#issuecomment-6726787390).
 - KirkDiggler selected concentration as a reusable effect alongside payloads, using resistance sustained by another entity as the composition example, rather than merely preserving the handwritten concentration owner — [direction and shape](https://github.com/KirkDiggler/rpg-project/issues/706#issuecomment-6725313075).
 - KirkDiggler selected linked entity-local attachments with one shared lifetime on 2026-11-08; central multi-holder persistence is not selected, and approval of the detailed interfaces is still separate — [shape confirmation](https://github.com/KirkDiggler/rpg-project/issues/706#issuecomment-6725611193).
 - Propose local assemblies of the existing runtime, not merged first-match transition lists or another state interpreter; propose a typed scalar/dice result instead of rolling to obtain an integer — [contracts](../../docs/ideas/composable-maintenance/README.md#local-assemblies-are-composition-not-a-second-runner).
@@ -15,6 +16,7 @@ Slice [rpg-project#706](https://github.com/KirkDiggler/rpg-project/issues/706) o
 
 ## Found
 
+- Planning inventories 51 concrete toolkit caller/fixture files and distinguishes the current Raging consumer from obsolete compatibility paths; session/depart.go replaces an initially guessed leave.go path in the visible checks — [caller inventory](../../docs/ideas/composable-maintenance/callers.md).
 - The generic composer binds all outputs to one holder and its AmountFn returns int; these are current first-consumer boundaries, not existing support for linked lifetimes or unresolved evaluated amounts — [inspection receipts](https://github.com/KirkDiggler/rpg-project/issues/706#issuecomment-6725313075).
 - Native cast replacement, departure and character views depend on the concrete concentration condition; shared upkeep migration affects existing concentration spells even when their payload types remain unchanged — [native integration](../../docs/ideas/composable-maintenance/README.md#existing-native-integration).
 - The machine takes the first matching transition per beat; concatenating independent duration/maintenance parts would not make both react — [machine source](https://github.com/KirkDiggler/rpg-toolkit/blob/49e9918b/mechanics/effects/machine/machine.go).

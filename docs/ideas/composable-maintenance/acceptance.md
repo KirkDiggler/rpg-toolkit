@@ -1,6 +1,6 @@
 # Composable maintenance — acceptance and evidence boundaries
 
-This is the verification brief for [the proposed contracts](README.md), not a checked implementation plan or a record of passing new tests. Exact test files, names, mutants and dependency pins belong to the implementation plan derived after design agreement. Existing baseline receipts live on [S3 #706](https://github.com/KirkDiggler/rpg-project/issues/706).
+This is the verification brief for [the approved contracts](README.md), not a checked implementation plan or a record of passing new tests. Exact test files, names, mutants and dependency pins belong to the implementation plan derived after design agreement. Existing baseline receipts live on [S3 #706](https://github.com/KirkDiggler/rpg-project/issues/706).
 
 ## Named scenarios
 
@@ -37,12 +37,12 @@ The normal native journey uses freshly created eligible characters, actual spell
 
 The concentrated-resistance example is architectural/tool proof, not a new production spell, item acquisition route or studio feature. Non-spell presentation through spell-specific wire messages is not claimed. It must not be implemented by labeling an item or feature as a spell.
 
-No automatic character resets, local Go replacement graph, hand-generated proto bindings, manual tags, unrelated stack changes or production promotion are included. R8's proposed new-format decision is pending; it is not inferred from the prior Rage migration.
+No automatic character resets, local Go replacement graph, hand-generated proto bindings, manual tags, unrelated stack changes or production promotion are included. R8 explicitly assumes fresh characters and one current path. There is no legacy-save reader, dual writer, normalization pass or parallel old concentration engine.
 
 ## Finish line for this design pass
 
 - Shape approval remains recorded separately from detailed-contract approval.
 - Walkthrough and four-section design name the interfaces, state owners, end/refusal behavior, consumer boundaries and costs.
 - All current native concentration consumers are accounted for, including unchanged payloads and area/departure paths.
-- New design decisions are presented together on the design PR, including the saved-format recommendation and the non-spell native boundary.
+- Detailed contracts are approved together on the design PR, including fresh-character-only data and the non-spell native boundary.
 - No implementation or completed native QA is claimed by publishing these documents.
