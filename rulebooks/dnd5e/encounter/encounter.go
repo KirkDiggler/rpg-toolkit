@@ -213,9 +213,11 @@ type Encounter struct {
 	// member that has left is still listed and holds nothing.
 	posted map[MemberID]bool
 
-	// openings is every door's crossings, normalized, for the hold
-	// ([Encounter.doorOpening]): geometry, computed once per door asked.
-	openings map[DoorID][]DoorEdge
+	// sightReads is each held sighting's decoded testimony, by observer,
+	// subject and channel, beside the payload it was decoded from
+	// (sightread.go, rpg-project#879 S9). Instance state: filled on first
+	// read, never persisted.
+	sightReads map[sightSlot]sightRead
 
 	// pendingCells is every cell a change touched since the last look
 	// (rpg-project#762): a step's two ends, a door's cells, a creature turning
@@ -1656,7 +1658,10 @@ func (e *Encounter) addOutranged(in map[MemberID]bool, sight map[MemberID]int) e
 		if !placed {
 			continue
 		}
-		held, err := e.memberIntel(id)
+		// The store's own holdings, [Encounter.memberIntel]'s filter applied
+		// in place: a sighting of anything but a member is not asked.
+		observer := sightMember(id)
+		held, err := e.intelLog.Held(observer)
 		if err != nil {
 			return err
 		}
@@ -1664,7 +1669,12 @@ func (e *Encounter) addOutranged(in map[MemberID]bool, sight map[MemberID]int) e
 			if !h.CurrentOn(perception.Sight) {
 				continue
 			}
-			seen, ok := DecodeSightTestimony(h.Payload)
+			if h.Channel == perception.Sight {
+				if _, member := subjectID(h.Subject, memberSubjectKind); !member {
+					continue
+				}
+			}
+			seen, ok := e.heldSight(observer, h)
 			if !ok || seen.State != LocationKnown {
 				continue
 			}
@@ -2292,6 +2302,9 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 	// seenAs is each placed subject's index in presences, for the heading
 	// variants headingPasses builds.
 	seenAs := make(map[MemberID]int, len(roster))
+	// seen is the testimony each placed subject's base payload was encoded
+	// from, so a heading variant is built from it rather than decoded back.
+	seen := make(map[MemberID]SightTestimony, len(roster))
 	for _, subjectID := range roster {
 		cell, ok := e.canvas.GetEntityPosition(string(subjectID))
 		if !ok {
@@ -2314,7 +2327,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 		// standing in this pass.
 		holdsDoor, _ := e.memberHolds(subjectID, down)
 		facing := e.members[subjectID].Facing
-		payload, perr := encodeSighting(SightTestimony{
+		testimony := SightTestimony{
 			State:              LocationKnown,
 			Position:           cell,
 			Equipment:          hands[subjectID],
@@ -2328,11 +2341,13 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 			// the one payload this subject is encoded into this pass, so a
 			// memory keeps the facing it last saw.
 			Facing: &facing,
-		})
+		}
+		payload, perr := encodeSighting(testimony)
 		if perr != nil {
 			return nil, fmt.Errorf("encode sight testimony: %w", perr)
 		}
 		presences = append(presences, perception.Presence{ID: sightMember(subjectID), Payload: payload})
+		seen[subjectID] = testimony
 	}
 
 	// UNPLACED OBSERVERS AND NON-MEMBERS ARE FILTERED OUT, and this is the one
@@ -2410,7 +2425,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 	}
 	// THE WAY EACH OBSERVER SAW THEM GO (rpg-project#679 R10, #673 R8): one
 	// pass per distinct set of headings, every observer in exactly one.
-	passes, err := e.headingPasses(observerIDs, presences, positions, seenAs)
+	passes, err := e.headingPasses(observerIDs, presences, positions, seenAs, seen)
 	if err != nil {
 		return nil, err
 	}
