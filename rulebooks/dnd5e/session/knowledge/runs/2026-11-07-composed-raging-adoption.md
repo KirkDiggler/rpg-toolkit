@@ -14,6 +14,8 @@ Work: [Composable conditions S12 #884](https://github.com/KirkDiggler/rpg-projec
 
 ## Found
 
+- Later API-head CI was absent because dev's newly landed performance pins conflicted with this wave. Merged origin/main into the session branch, retained the shared Raging root/resolution pins, and adopted released encounter v0.181.0 plus its route-observation documentation rather than undoing the landed work. Full session race suite passed in 404.681 seconds; vet/lint passed — [S12](https://github.com/KirkDiggler/rpg-project/issues/884).
+
 - Removed concrete-type fixtures and old one-row/flat-data assertions initially failed. Their replacements retain current identity, state, budget, information and restart facts; old snapshot prose is not a reason to drop the approved four-row result — [current data assertions](../../conditions_test.go).
 - The complete race suite exceeded the initial 180-second command bound, then passed in 424.817 seconds; after the deprecated-field fix it passed again in 416.490 seconds. Vet and lint pass. No timeout was counted as a success or hidden with a skipped suite — [slice evidence](https://github.com/KirkDiggler/rpg-project/issues/884).
 
