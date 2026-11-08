@@ -6,6 +6,7 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -38,9 +39,17 @@ type ContinuationRunner interface {
 	// in.Continue to be called exactly once, and may do so before or after
 	// returning. An error means Run did not and will not call Continue: the
 	// verb then gives the guard back, saves nothing, and answers with that
-	// error, exactly as a refusal before the hand-off would. A host that
+	// error, exactly as a refusal before the hand-off would. So does a Run
+	// that panics before continuing, and a continuation it stashed is then
+	// spent: a later Continue answers [ErrContinuationSpent]. A host that
 	// queues the continuation and fails later still calls Continue; the
 	// continuation's own report is where the rest's failure is told.
+	//
+	// A HOST THAT NEVER CALLS Continue HOLDS THE SESSION FOREVER. The guard
+	// stays held until the locker's own expiry, if it has one, and the
+	// answered steps never reach the record. The SDK cannot mend this
+	// without a timer or a goroutine of its own, and it starts neither: it
+	// is a host bug, not a leak.
 	Run(ctx context.Context, in *RunContinuationInput) error
 }
 
@@ -62,8 +71,19 @@ type RunContinuationInput struct {
 	// the request's. A second call answers [ErrContinuationSpent].
 	//
 	// It returns what the answer could not carry: how the rest of the verb
-	// ended, what it saved and what it delivered. An error is the rest's
-	// refusal or failure, with what had already landed named in it (S6).
+	// ended, what it saved and what it delivered.
+	//
+	// AN ERROR VOIDS THE WHOLE VERB, the answered steps included. Nothing a
+	// continued verb does is saved before its rest, so a rest that fails
+	// (a refused step, a save that did not land) persists none of it: the
+	// answer's Steps and Through name moves and a record entry the store
+	// never got. This is the durability window rpg-project#879 names
+	// (§Where the instance lives). The host must log the error and tell
+	// the client its walk did not happen, so it re-reads from before the
+	// move; the next verb loads from the store and sees the world as it was.
+	// What an S6 partial save had already landed is named in the error. A
+	// nil context is refused with ErrNilInput and leaves the continuation
+	// unspent.
 	Continue func(ctx context.Context) (*ContinuationReport, error)
 }
 
@@ -115,8 +135,15 @@ type MoveRest struct {
 // a continuation that deferred release does nothing and the continuation
 // gives the guard back instead. The guard is given back once, whichever gets
 // there, so a runner that panics after continuing cannot release it twice.
+//
+// claimed is who owns the rest of the verb: the continuation, when Continue
+// runs it, or the verb itself, when the verb gives the guard back first (a
+// runner that refused, or one that panicked after stashing the
+// continuation). Whichever claims first wins, so the rest never runs once
+// the verb has let the guard go.
 type heldGuard struct {
 	release   func()
+	claimed   atomic.Bool
 	handedOff bool
 }
 
@@ -125,44 +152,50 @@ func newHeldGuard(release func()) *heldGuard {
 }
 
 // verbRelease is the verb's own deferred release: the guard, unless it was
-// handed off. Read only on the verb's goroutine, after the hand-off.
+// handed off, and the continuation with it, so a continuation stashed by a
+// runner that then failed can never run without the guard. Read only on the
+// verb's goroutine, after the hand-off.
 func (g *heldGuard) verbRelease() {
 	if !g.handedOff {
+		g.claimed.CompareAndSwap(false, true)
 		g.release()
 	}
 }
 
 // handOff gives the rest of a verb to the host's runner. ctx is the
 // request's own context, never vctx: Run's context is what a runner derives
-// the continuation's from, and a vctx parented on itself never answers.
-// rest performs it under the context Continue is given. On a nil error the guard belongs to the continuation, which
-// releases it when it ends. On an error the continuation never ran and never
-// will, and the guard is still the verb's to release.
+// the continuation's from, and a vctx parented on itself never answers. rest
+// performs the rest under the context Continue is given.
+//
+// On a nil error the guard belongs to the continuation, which releases it
+// when it ends. On an error the continuation never ran and never will, and
+// the guard is still the verb's to release.
 func (m *Manager) handOff(
 	ctx context.Context, session string, verb Verb, vctx *verbContext, guard *heldGuard,
 	rest func(ctx context.Context) (*ContinuationReport, error),
 ) error {
-	var claimed atomic.Bool
 	in := &RunContinuationInput{
 		Session: session,
 		Verb:    verb,
 		Continue: func(ctx context.Context) (*ContinuationReport, error) {
-			if !claimed.CompareAndSwap(false, true) {
+			// Refused before it is claimed, so a nil context leaves the
+			// continuation to be called again properly.
+			if ctx == nil {
+				return nil, fmt.Errorf("continue: %w", ErrNilInput)
+			}
+			if !guard.claimed.CompareAndSwap(false, true) {
 				return nil, ErrContinuationSpent
 			}
 			defer guard.release()
-			if ctx == nil {
-				return nil, ErrNilInput
-			}
 			vctx.switchTo(ctx)
 			return rest(ctx)
 		},
 	}
 	if err := m.continuations.Run(ctx, in); err != nil {
-		if claimed.CompareAndSwap(false, true) {
+		if guard.claimed.CompareAndSwap(false, true) {
 			// Never continued and never will be: the guard is still the
 			// verb's, and nothing the rest would have saved was saved.
-			return errRunnerRefused{err: err}
+			return fmt.Errorf("continuation runner: %w", err)
 		}
 		// The runner continued and then reported an error of its own: the
 		// guard is the continuation's, and the answer still stands.
@@ -171,14 +204,12 @@ func (m *Manager) handOff(
 	return nil
 }
 
-// errRunnerRefused marks a runner that declined the continuation, so the verb
-// knows the guard is still its own to release.
-type errRunnerRefused struct{ err error }
-
-func (e errRunnerRefused) Error() string { return "continuation runner: " + e.err.Error() }
-func (e errRunnerRefused) Unwrap() error { return e.err }
-
 // verbContext is the context a continuing verb's collaborators are handed.
+//
+// A COLLABORATOR MUST NOT CACHE A CONTEXT DERIVED FROM IT across the
+// hand-off. A child derived before the switch (WithCancel, WithTimeout)
+// stays bound to the request's context and ends with the request. Nothing
+// in the toolkit does so today: every collaborator derives per call.
 //
 // The host seams an encounter is loaded with keep the context they were
 // built under, and a continued verb outlives its request: the rest runs

@@ -138,6 +138,13 @@ type MoveOutput struct {
 	//
 	// False whenever no pace came due along the path, and always without a
 	// runner: the answer is then the whole walk, saved and delivered.
+	//
+	// A CONTINUING ANSWER STANDS ONLY IF ITS REST LANDS. Nothing is saved
+	// before the rest runs, so a continuation that fails persists none of
+	// the walk, the answered steps included: Steps and Through then name
+	// moves the record never got (rpg-project#879, §Where the instance
+	// lives). The host learns it from the continuation's error and must
+	// tell the client to re-read from before the move.
 	Continues bool `json:"continues,omitempty"`
 
 	// Through is the record id the answer covers up to when Continues is

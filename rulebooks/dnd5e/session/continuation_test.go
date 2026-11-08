@@ -102,13 +102,32 @@ func (l *slotLocker) LockCharacter(context.Context, *session.LockCharacterInput)
 // contextCharacters refuses a sheet read under a finished context, the way a
 // host repository honouring its context would. A continuation still calling
 // the host under the request's context after the request ended fails here.
-type contextCharacters struct{ *fakeCharacters }
+//
+// It also keeps every sheet read in order. A walk's admission, its step's
+// announcement and its sight each read sheets, so the trace is the work a
+// walk did: a continued walk that repeated any of it for the due cell reads
+// more than a whole walk of the same path does.
+type contextCharacters struct {
+	*fakeCharacters
+	reads *[]string
+}
 
 func (c contextCharacters) GetCharacter(ctx context.Context, id string) (*character.Data, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	*c.reads = append(*c.reads, id)
 	return c.fakeCharacters.GetCharacter(ctx, id)
+}
+
+// panickingRunner keeps the continuation and then panics before running it:
+// a host bug, and the verb must not leave the rest runnable without the
+// guard.
+type panickingRunner struct{ stashed *session.RunContinuationInput }
+
+func (r *panickingRunner) Run(_ context.Context, in *session.RunContinuationInput) error {
+	r.stashed = in
+	panic("runner broke after keeping the continuation")
 }
 
 // continuedRun is one manager over its own stores.
@@ -118,6 +137,7 @@ type continuedRun struct {
 	stream     *fakeStream
 	locker     *slotLocker
 	runner     *capturingRunner
+	reads      []string
 }
 
 type ContinuationSuite struct{ suite.Suite }
@@ -132,14 +152,24 @@ const continuationCamp encounter.FactionID = "camp"
 // one long hall, alice (a dwarf, twenty-five feet: five cells a world round)
 // at its west end, and a goblin who holds when it has time.
 func (s *ContinuationSuite) launch(runner *capturingRunner) *continuedRun {
+	if runner == nil {
+		return s.launchWith(nil)
+	}
+	run := s.launchWith(runner)
+	run.runner = runner
+	return run
+}
+
+// launchWith is launch for any runner, nil for none.
+func (s *ContinuationSuite) launchWith(runner session.ContinuationRunner) *continuedRun {
 	run := &continuedRun{
-		encounters: newFakeEncounters(), stream: &fakeStream{}, locker: newSlotLocker(), runner: runner,
+		encounters: newFakeEncounters(), stream: &fakeStream{}, locker: newSlotLocker(),
 	}
 	cfg := &session.Config{
 		Record: session.DiscardRecord{}, Acts: run.stream, Seats: newFakeSeats(),
 		CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(), Sessions: newFakeSessions(),
-		Encounters: run.encounters, Characters: contextCharacters{testCharacters()},
+		Encounters: run.encounters, Characters: contextCharacters{testCharacters(), &run.reads},
 		Locker: run.locker,
 	}
 	if runner != nil {
@@ -166,6 +196,7 @@ func (s *ContinuationSuite) launch(runner *capturingRunner) *continuedRun {
 		Endings:  []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
 	})
 	run.stream.published = nil
+	run.reads = nil
 	return run
 }
 
@@ -261,6 +292,17 @@ func (s *ContinuationSuite) TestAContinuedWalkDeliversWhatAWholeWalkDelivers() {
 		"a continued walk delivers exactly the acts a whole walk does, in order")
 	s.Equal(canonicalRecord(s.record(whole)), canonicalRecord(s.record(continued)),
 		"and records exactly the same story")
+	// THE SPLIT'S PLACE IN THE CELL. The record cannot see it here: a
+	// world-clock step draws no reaction (reactions are a fight's), so the
+	// due cell's admission and announcement write nothing. The host can see
+	// it: the announcement reads the walker's sheet, and a split placed after
+	// it would read it once in the answer and again in the rest. The only
+	// other difference is the asks themselves: PaceDue reads the walker's
+	// sheet (the pace is the speed of the moment), once per answered step and
+	// once for the due one.
+	asks := len(answer.Steps) + 1
+	s.Equal(len(whole.reads)+asks, len(continued.reads),
+		"the answer and the rest together did exactly the work a whole walk does, and asked")
 
 	moves := s.alicesMoves(continued)
 	walked := moves[len(moves)-len(longWalk()):]
@@ -348,7 +390,9 @@ func (s *ContinuationSuite) TestTheContinuationHoldsTheGuard() {
 	_, err = run.runner.handed[0].Continue(context.Background())
 	s.Require().NoError(err)
 
-	_, err = run.mgr.Status(context.Background(), &session.StatusInput{Session: testSession})
+	after, cancelAfter := context.WithTimeout(context.Background(), time.Second)
+	defer cancelAfter()
+	_, err = run.mgr.Status(after, &session.StatusInput{Session: testSession})
 	s.Require().NoError(err, "the continuation gave the guard back")
 }
 
@@ -366,6 +410,45 @@ func (s *ContinuationSuite) TestAContinuationRunsOnce() {
 	_, err = handed.Continue(context.Background())
 	s.ErrorIs(err, session.ErrContinuationSpent)
 	s.Equal(released, run.locker.releases, "the guard was given back once")
+}
+
+// TestARunnerThatPanicsSpendsTheContinuation: a runner that keeps the
+// continuation and then panics leaves Move with the guard given back, and
+// the continuation it kept is spent: a later Continue is refused and saves
+// nothing, so the rest can never run without the guard.
+func (s *ContinuationSuite) TestARunnerThatPanicsSpendsTheContinuation() {
+	runner := &panickingRunner{}
+	run := s.launchWith(runner)
+	savesBefore, releasesBefore := run.encounters.saves, run.locker.releases
+
+	s.Panics(func() {
+		_, _ = s.move(run, context.Background(), longWalk())
+	})
+	s.Require().NotNil(runner.stashed)
+	s.Equal(releasesBefore+1, run.locker.releases, "the panicking verb gave its guard back")
+
+	_, err := runner.stashed.Continue(context.Background())
+	s.ErrorIs(err, session.ErrContinuationSpent, "the kept continuation died with the verb")
+	s.Equal(savesBefore, run.encounters.saves, "nothing was saved")
+	s.Equal(releasesBefore+1, run.locker.releases, "and the guard was not given back twice")
+	s.Empty(run.stream.published)
+}
+
+// TestContinueRefusesANilContextAndStaysRunnable: a nil context is refused
+// before the continuation is claimed, so the host can still continue it.
+func (s *ContinuationSuite) TestContinueRefusesANilContextAndStaysRunnable() {
+	run := s.launch(&capturingRunner{})
+	_, err := s.move(run, context.Background(), longWalk())
+	s.Require().NoError(err)
+	handed := run.runner.handed[0]
+
+	//nolint:staticcheck // the nil context is the subject
+	_, err = handed.Continue(nil)
+	s.ErrorIs(err, session.ErrNilInput)
+
+	report, err := handed.Continue(context.Background())
+	s.Require().NoError(err, "the refusal left the continuation runnable")
+	s.Equal(session.MovementCompleted, report.Move.Status)
 }
 
 // TestARefusedHandOffReleasesTheGuard: a runner that will not take the rest
