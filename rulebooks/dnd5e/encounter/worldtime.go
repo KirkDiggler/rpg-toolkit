@@ -295,19 +295,10 @@ func (e *Encounter) spendWorldPace(mover MemberID) error {
 		return nil
 	}
 
-	bubble, err := e.bubbleFor(mover)
-	if err != nil && !errors.Is(err, errNotInBubble) {
-		return fmt.Errorf("world pace: %w", err)
-	}
-	if bubble != nil {
-		return nil
-	}
-
-	sheet, err := e.sheetOf(mover)
+	perRound, err := e.worldPacePerRound(mover)
 	if err != nil {
 		return fmt.Errorf("world pace: %w", err)
 	}
-	perRound := CellsFromFeet(sheet.SpeedFeet)
 	if perRound <= 0 {
 		return nil
 	}
@@ -327,6 +318,91 @@ func (e *Encounter) spendWorldPace(mover MemberID) error {
 	}
 
 	return e.wake()
+}
+
+// worldPacePerRound is how many cells of walking pay one world round for a
+// member, or zero when their walking pays nothing at all: the ONE statement
+// of the pace rule that both [Encounter.spendWorldPace] (which pays it) and
+// [Encounter.PaceDue] (which predicts it) read, so the prediction cannot
+// drift from the payment.
+//
+// Zero for a bubble member (the turn clock prices their time, not pace) and
+// for a sheet whose speed is zero (a creature that cannot walk paces
+// nothing). Otherwise [CellsFromFeet] of the sheet's speed, asked each time
+// and never stored. Errors are the bubble lookup's and the sheet's.
+func (e *Encounter) worldPacePerRound(mover MemberID) (int, error) {
+	bubble, err := e.bubbleFor(mover)
+	if err != nil && !errors.Is(err, errNotInBubble) {
+		return 0, err
+	}
+	if bubble != nil {
+		return 0, nil
+	}
+
+	sheet, err := e.sheetOf(mover)
+	if err != nil {
+		return 0, err
+	}
+	perRound := CellsFromFeet(sheet.SpeedFeet)
+	if perRound <= 0 {
+		return 0, nil
+	}
+	return perRound, nil
+}
+
+// PaceDueInput asks whether a member's next step pays a world round.
+type PaceDueInput struct {
+	// Member is the walker asked about. MUST be non-empty.
+	Member MemberID
+}
+
+// PaceDueOutput answers [Encounter.PaceDue].
+type PaceDueOutput struct {
+	// Due is true when the member's NEXT [Encounter.Step] would pay a world
+	// round, and so raise the world and wake whoever is due.
+	Due bool
+}
+
+// PaceDue says whether a member's NEXT step would pay a world round: the step
+// whose pace accrual reaches their speed in [Encounter.spendWorldPace].
+//
+// WHY IT EXISTS (rpg-project#879 S1). The session answers a Move with the
+// player's steps up to the point a pace comes due, and runs the step that
+// pays the round, the raise and the rest of the walk afterwards as a
+// continuation, so the verb answers before the world runs. It cannot know
+// which step raises unless the encounter says so, and the encounter owns
+// that rule.
+//
+// THE SAME RULE, NOT A COPY. Both this and the payment read
+// [Encounter.worldPacePerRound]: a bubble member is never due (the turn
+// clock prices their time), a zero-speed sheet is never due (it paces
+// nothing), and otherwise the step is due when PaceCells+1 reaches the
+// cells-per-round of the sheet's speed.
+//
+// A READ: nothing is written and no beat is appended.
+//
+// Errors: ErrNilInput, ErrNoMember for an empty member, ErrNotMember for one
+// the encounter does not hold, and the sheet's own error.
+func (e *Encounter) PaceDue(in *PaceDueInput) (*PaceDueOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("pace due: %w", ErrNilInput)
+	}
+	if in.Member == "" {
+		return nil, fmt.Errorf("pace due: %w", ErrNoMember)
+	}
+	m, ok := e.members[in.Member]
+	if !ok {
+		return nil, fmt.Errorf("pace due %q: %w", in.Member, ErrNotMember)
+	}
+
+	perRound, err := e.worldPacePerRound(in.Member)
+	if err != nil {
+		return nil, fmt.Errorf("pace due: %w", err)
+	}
+	if perRound <= 0 {
+		return &PaceDueOutput{}, nil
+	}
+	return &PaceDueOutput{Due: m.PaceCells+1 >= perRound}, nil
 }
 
 // spendRound is the fight's own advance: ONE ROUND PER BUBBLE MEMBER, each
