@@ -2,6 +2,8 @@
 
 > Execute directly under the workspace build-slice contract and test-driven development. The operator approved the complete design; this checked plan introduces no further planning-approval gate. Checkboxes are execution state, not claims of results.
 
+**Execution outcome:** the runtime wave is merged and released; [implementation.md](implementation.md#released-adoption) carries exact tags, commits and observed gates, and [qa.md](qa.md) distinguishes live observations from named test-backed proof. The original proof labels below are planning intent, not a claim that every provisional test name or probe was run verbatim.
+
 **Goal:** one rulebook-owned Raging composition used by native Barbarian activation and the item example, with current-format persistence and honest native information/readers.
 
 **Architecture:** conditions owns the registry, validated immutable bindings/origin and codec; D&D effects owns reusable mechanical meanings; mechanics/effects owns lifecycle execution and neutral observations. Hosts persist values and render owned facts, never interpret Rage rules.
@@ -157,7 +159,7 @@ S9 → S10 → S11 and S12. Within S12: resolution → session → API; web read
 - [x] Build normal isolated `local/raging-composition` on :3307/:8307 with API 2bf39e23 and web 156a39bc; verify served heads, healthy API and matching local/container walk-site hash. Landing renders without browser errors and the real client lists the site. No operator stack/characters touched.
 - [x] Operator early look received: “raging is acting like normal.” The one independent round is published, with no original code findings. Native QA then found #2312; its narrow fix requires focused closure, not another whole round. The overall QA/release task below remains incomplete. Try-it: create a fresh Barbarian → activate Rage → use a Strength melee action and inspect rows → end first turn → read/reload → sustain/expire → rest; observe correct budget, progress, domain-specific answers and removal. Item-specific provenance/storage remains proved by the separate real-chain example.
 - [x] After the operator's look, perform bounded native QA and relevant castle fight repeat; publish one independent round and focused #2312 closure. [qa.md](qa.md) distinguishes actual browser/RPC observations from named dice-dependent tests; no remaining code finding is waived.
-- [ ] Obtain explicit merge authority; reconcile remaining parallel pin updates, re-pin providers to actual CI tags inside-out and repeat required consumer gates/head CI. Update implementation receipts and close only delivered slices.
+- [x] Operator authorized merge-out; parallel pin updates reconciled without source-conflict edits, providers merged/tagged inside-out, consumers re-pinned to published tags and required gates/head CI passed. Exact receipts are in implementation.md; owning issues carry slice closure and cleanup.
 
 ## Requirement coverage
 

@@ -4,10 +4,12 @@ Work: [#703](https://github.com/KirkDiggler/rpg-project/issues/703), [design #22
 
 ## Shipped
 
+- Authorized runtime merge-out completed: effects v0.4.0, D&D v0.214.0, resolution v0.74.3, session v0.170.0; item example intentionally untagged; API 4b4b081b and web adc9f641 merged to dev with released pins and fresh head gates — [release receipts](../../docs/ideas/rulebook-effect-composition/implementation.md#released-adoption).
 - Accepted design/ADR and checked execution plan published before runtime edits; no completed implementation, native walk or release is claimed — [plan](../../docs/ideas/rulebook-effect-composition/plan.md).
 
 ## Decided
 
+- Preserve parallel landed work while releasing: dependency-only conflict resolutions retained newer encounter v0.184.0 and published proto v0.1.260 instead of downgrading their consumers. Catch-up merges preserved their source; re-pin edits themselves changed manifests/checksums only. Journal project#863 stays open and no dev-to-main promotion or operator-stack restart is included — [release scope](../../docs/ideas/rulebook-effect-composition/implementation.md#released-adoption).
 - KirkDiggler approved the complete design and proceeding. R1–R7 are settled; no additional planning approval, legacy Rage compatibility, automatic character reset or unrequested merge is authorized — [design](../../docs/ideas/rulebook-effect-composition/design.md).
 - Slice by deliverable: S9 neutral provider support, S10 shared rulebook creator, S11 item consumer, S12 native persistence/information/reader adoption; nested toolkit modules remain separate PRs — [tracked slices](../../docs/ideas/rulebook-effect-composition/plan.md#slice-sequence-and-worktrees).
 

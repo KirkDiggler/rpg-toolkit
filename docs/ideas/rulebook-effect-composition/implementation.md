@@ -1,8 +1,8 @@
-# Shared Raging composition — implementation checkpoint
+# Shared Raging composition — implementation and release record
 
-Written 2026-11-07. Scope and completion remain owned by [story #703](https://github.com/KirkDiggler/rpg-project/issues/703) and [S9–S12](plan.md#slice-sequence-and-worktrees). This records source-stage work and the subsequent isolated boot, not a release or native-walk closeout.
+Written 2026-11-07. Scope and completion remain owned by [story #703](https://github.com/KirkDiggler/rpg-project/issues/703) and [S9–S12](plan.md#slice-sequence-and-worktrees). This preserves the source-stage checkpoints and native QA, followed by the authorized release receipts below. The broader conditions/items stories remain open.
 
-## Source heads
+## Pre-release source checkpoints
 
 | Slice / owner | PR / head | Observed scope |
 |---|---|---|
@@ -15,7 +15,25 @@ Written 2026-11-07. Scope and completion remain owned by [story #703](https://gi
 | S12 API | [#1193](https://github.com/KirkDiggler/rpg-api/pull/1193), `f843fde` | Current raw data, origin/description and source-ID wire mapping; real handler/Redis integration |
 | S12 web | [#1398](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1398), `156a39bc` | Canonical reader; no client bonus formula; published SDK and source-ID preservation |
 
-Runtime PRs remain drafts on development pins or incomplete integration. No toolkit provider was merged merely to unblock a consumer; no legacy Rage codec, silent reset, replace/go.work or manual tag was added.
+At those checkpoints, runtime PRs remained drafts on development pins or incomplete integration. No toolkit provider was merged merely to unblock development; no legacy Rage codec, silent reset, replace/go.work or manual tag was added.
+
+## Released adoption
+
+The operator explicitly authorized inside-out merge/tag/re-pin after the bounded QA and focused review closure. Each module merged after CI-green head-pinned COMMENT gate verdicts; consumers adopted actual published tags, with tests/lint and fresh CI/verdicts after re-pins.
+
+| Deliverable | Merged PR / commit | Published/adopted result |
+|---|---|---|
+| S9 generic observations/validation/notification | [toolkit #2297](https://github.com/KirkDiggler/rpg-toolkit/pull/2297), `f1169db7a33375a41989d6be217ab78e9020913a` | `mechanics/effects/v0.4.0` |
+| S10 shared rulebook/native creator and sustain fix | [toolkit #2299](https://github.com/KirkDiggler/rpg-toolkit/pull/2299), `66cca6e8b05c45e0bd3a04e675906673fd8e1e3d` | `rulebooks/dnd5e/v0.214.0` |
+| S11 shared item consumer | [toolkit #2300](https://github.com/KirkDiggler/rpg-toolkit/pull/2300), `b77d520a9fe6758a5302b837a07e5f8916106214` | Intentionally untagged example; effects v0.4.0 / D&D v0.214.0 |
+| S12 resolution | [toolkit #2304](https://github.com/KirkDiggler/rpg-toolkit/pull/2304), `37c2460addaa19822a5684631e49e789f4855f82` | `rulebooks/dnd5e/resolution/v0.74.3` |
+| S12 session | [toolkit #2306](https://github.com/KirkDiggler/rpg-toolkit/pull/2306), `6237e39cf73ce97e7c4fab1eed72f7b0f1209404` | `rulebooks/dnd5e/session/v0.170.0` |
+| S12 API | [API #1193](https://github.com/KirkDiggler/rpg-api/pull/1193), `4b4b081b68c95580a1ffbb90735a25cddc9b2675` | Merged to `dev` with all toolkit pins released |
+| S12 web | [web #1398](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1398), `adc9f64103f9f171d510f72d862f0ab46a1cfd4c` | Merged to `dev`; published proto v0.1.260 retained |
+
+Each toolkit tag was verified at its exact merge commit, not inferred from CI intent. The proto source-ID addition first published v0.1.259 at 7dcb1b2; final API/web retain the later published v0.1.260 at generated d83fdfa5 from parallel work. The Go SDK's submodule pseudo-version identifies that published generated commit, not an unmerged provider. Final API module inventory contains no toolkit development pseudo-versions.
+
+Release catch-ups preserved landed optional continuations, per-verb attachment, delta folding, commit-counted buffers and listener integration from the parallel performance wave; no source conflict was hand-resolved. Final API retains encounter v0.184.0. Re-pin edits themselves were only go.mod/go.sum; catch-up merges are separately identified in git. Full API make test/ci-check and final-head build/test CI passed; web full ci-check and head CI passed. No dev → main promotion or operator-stack rebuild was performed.
 
 ## Verification receipts
 
@@ -63,9 +81,12 @@ Positive damage-only sustain is explicitly test-backed under the walk skill's di
 
 Focused closure: [root review 5815981056](https://github.com/KirkDiggler/rpg-toolkit/pull/2299#pullrequestreview-5815981056), [resolution review 5815981097](https://github.com/KirkDiggler/rpg-toolkit/pull/2304#pullrequestreview-5815981097); no narrow finding. No new whole-diff round was run.
 
-## Still unproved / incomplete
+## Remaining scope and limits
 
-- Current API-head base reconciliation and CI after parallel dev pin changes.
-- Authorized inside-out merges, actual provider tags, final consumer re-pins and release receipts.
+- Other condition families, native item inventory and designer tooling were not part of this Raging-only cut.
+- The positive incoming-damage sustain branch remains explicitly test-backed, not a manufactured live-hit claim; see the QA receipt.
+- [API #1196](https://github.com/KirkDiggler/rpg-api/issues/1196) tracks local walk-fixture discovery in shipped-content tests.
+- [Journal #863](https://github.com/KirkDiggler/rpg-project/pull/863) stays open; future field-note/recording work and the broader stories are separate.
+- Promotion from API/web dev to main remains the operator's release gate.
 
-No stack was booted in the initial source checkpoint; the follow-on isolated boot is recorded above. The operator's :3030/:8115 and character data were untouched. The independent round, focused QA-finding closure and bounded native QA are recorded above; release prerequisites remain incomplete. No slice is closed by this record.
+No stack was booted in the initial source checkpoint; the follow-on isolated boot is recorded above. The operator's :3030/:8115 and character data were untouched. The independent round, focused QA-finding closure, bounded native QA and released adoption are recorded above. Slice closure and exact-path cleanup are reported on their owning issues after these receipts; this record does not authorize unrelated cleanup.
