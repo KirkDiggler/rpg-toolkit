@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
@@ -89,14 +90,51 @@ func (m *Manager) Acts(ctx context.Context, in *ActsInput) (*ActsOutput, error) 
 	return &ActsOutput{Acts: actsAfter(in.Session, in.Member, entries, after), Restarted: read.Restarted}, nil
 }
 
-// commitActs is one commit's act batch: for each member ever in the run, the
-// acts after the last beat that member held before this verb, folded from
-// the LIVE story before the save-point ToData trims it (the same reason
+// ActListeners is what an [ActStream] may also be: the stream's own answer
+// to who can receive a live act in a session right now — the members with a
+// subscriber open. It is optional. A stream that implements it has the
+// commit fold acts only for the members it names; a stream that does not
+// gets every member ever in the run, as before.
+//
+// NOBODY LOSES AN ACT BY NOT LISTENING. Catch-up is [Manager.Acts], which
+// folds on demand from the member's own retained story through the same
+// fold, so a subscriber that arrives after a commit reads, after the last
+// id it holds, exactly the acts it would have been handed live.
+//
+// Listening is asked once per commit, after the verb and before the save,
+// and must be cheap. An error is not a verb failure: the commit folds for
+// every member, as a stream that cannot say would get. A name that is not a
+// member of the run is ignored.
+type ActListeners interface {
+	// Listening names the members of session who can receive a live act.
+	Listening(ctx context.Context, session string) ([]string, error)
+}
+
+// actStory is the one story read the live fold makes: member's story from
+// the commit's baseline, widened to the acts it continues. A package
+// variable so a test can watch what each commit reads, against the baseline
+// it was given rather than the read's own input ([WatchActFoldForTest]).
+var actStory = func(enc *encounter.Encounter, baseline uint64, member encounter.MemberID) ([]record.Entry, error) {
+	return enc.Story(&encounter.StoryInput{Audience: member, AfterSeq: baseline, WholeActs: true})
+}
+
+// commitActs is one commit's act batch: for each recipient, the acts after
+// the last beat that recipient held before this verb, folded from the LIVE
+// story before the save-point ToData trims it (the same reason
 // [commitRecord] reads early).
-func commitActs(scope *writeScope, members []encounter.MemberID) []Act {
+//
+// THE FOLD READS THE VERB'S DELTA. Each recipient's story is read from the
+// scope's baseline, widened back only to the first beat of an act the delta
+// continues ([encounter.StoryInput.WholeActs]) — exactly the entries
+// [actsAfter] folds from a whole story — so what a commit reads follows the
+// verb and the acts it touched, never the length of the record. The held id
+// is the last entry of that slice before the baseline; when the slice holds
+// none, no act it folds can be at or before what the recipient held, and
+// actsAfter's cut is "".
+func commitActs(ctx context.Context, scope *writeScope, stream ActStream, members []encounter.MemberID) []Act {
 	var out []Act
-	for _, member := range members {
-		entries, err := scope.enc.Story(&encounter.StoryInput{Audience: member})
+	for _, member := range actRecipients(ctx, scope.session, stream, members) {
+		entries, err := actStory(scope.enc, scope.baseline, member)
 		if err != nil {
 			continue // best effort: one unreadable recipient must not silence the rest
 		}
@@ -108,6 +146,31 @@ func commitActs(scope *writeScope, members []encounter.MemberID) []Act {
 			held = e.ID
 		}
 		out = append(out, actsAfter(scope.session, string(member), entries, held)...)
+	}
+	return out
+}
+
+// actRecipients is who the commit folds live acts for: the members the
+// stream says are listening, in the run's own member order, or every member
+// when the stream cannot say ([ActListeners]).
+func actRecipients(ctx context.Context, session string, stream ActStream, members []encounter.MemberID) []encounter.MemberID {
+	listeners, ok := stream.(ActListeners)
+	if !ok {
+		return members
+	}
+	listening, err := listeners.Listening(ctx, session)
+	if err != nil {
+		return members // best effort: a stream that cannot say gets everyone
+	}
+	named := make(map[string]bool, len(listening))
+	for _, id := range listening {
+		named[id] = true
+	}
+	var out []encounter.MemberID
+	for _, member := range members {
+		if named[string(member)] {
+			out = append(out, member)
+		}
 	}
 	return out
 }
