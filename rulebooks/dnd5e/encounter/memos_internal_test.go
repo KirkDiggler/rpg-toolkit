@@ -94,6 +94,10 @@ func TestTheBlockingDoorSliceSurvivesThePartitionPass(t *testing.T) {
 	require.Empty(t, f.blockingDoorFootprints(), "open: nothing blocks")
 	mask := f.blockingMask
 
+	// NewEncounter derived the partitions before the doors were attached, so
+	// the pass is forced the way LoadEncounter defers it, else this is a memo
+	// hit and the copy never runs.
+	f.partitions = &partitionMemo{doors: f.partitions.doors}
 	_, err := f.partitionsNow()
 	require.NoError(t, err)
 	require.Equal(t, mask, f.blockingMask, "the pass left the live mask alone")
