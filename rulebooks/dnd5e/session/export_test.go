@@ -11,6 +11,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 )
 
 // LoadWorldForTest composes a session's world exactly as a read does, so an
@@ -146,4 +147,33 @@ func WatchActFoldForTest(t testing.TB, sessionID string) *ActFoldWatch {
 	}
 	t.Cleanup(func() { actStory = previous })
 	return w
+}
+
+// CountParticipationAttachesForTest counts what the standing seam hands
+// resolution's participation entry until t ends: the assessments, and the
+// monster sheets attached for them. Every assessment asks about its players first, in
+// one call that carries no monster (possibly an empty one), so a call with no
+// monster in it is one assessment. The test that calls it must not run in parallel: the
+// count is package-wide.
+func CountParticipationAttachesForTest(t testing.TB) func() (assessments, monsterSheets int) {
+	t.Helper()
+	var nAssessments, nSheets atomic.Int64
+	previous := participationOf
+	participationOf = func(ctx context.Context, in *resolution.ParticipationInput) (*resolution.ParticipationOutput, error) {
+		monsters := 0
+		if in != nil {
+			for _, p := range in.Participants {
+				if p.Monster != nil {
+					monsters++
+				}
+			}
+		}
+		nSheets.Add(int64(monsters))
+		if monsters == 0 {
+			nAssessments.Add(1)
+		}
+		return previous(ctx, in)
+	}
+	t.Cleanup(func() { participationOf = previous })
+	return func() (int, int) { return int(nAssessments.Load()), int(nSheets.Load()) }
 }
