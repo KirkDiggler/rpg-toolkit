@@ -171,6 +171,18 @@ func TestABumpWritesBarredThenTheAnswer(t *testing.T) {
 	require.Equal(t, map[string]any{"x": postedPost.X, "y": postedPost.Y}, barred["cell"])
 	require.NotContains(t, barred, "door", "a step names no door")
 	require.Equal(t, float64(out.Seq), barred["seq"], "the output's seq is the bump's")
+	// AND ITS ID IS THE BUMP'S (rpg-project#879 S1): the record id a stream
+	// consumer resumes after names the barred beat, the same entry as Seq.
+	require.NotEmpty(t, out.ID, "a bump names the id of the beat it wrote")
+	story, err := enc.Story(&StoryInput{Audience: "alice"})
+	require.NoError(t, err)
+	var barredID string
+	for _, entry := range story {
+		if entry.Seq == out.Seq {
+			barredID = entry.ID
+		}
+	}
+	require.Equal(t, barredID, out.ID, "the output's id is the barred beat's")
 
 	require.NotNil(t, state, "he heard it at once: his state turned in this step")
 	require.Equal(t, "challenged", state["to"])

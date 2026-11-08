@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
@@ -326,8 +328,15 @@ type Encounter struct {
 	// plain dungeon has sides and knowledge too, and what it skips is the
 	// concealment capabilities and the sweep's work, which keeps its blob
 	// byte-identical to what it was before.
-	world     *encounterWorld
-	discovery map[MemberID]DiscoveryStateData
+	world *encounterWorld
+	// wakeParticipation is the one participation assessment a wake pass
+	// reads (rpg-project#879 S3b): every woken creature asked the host anew,
+	// a hundred assessments of the same roster per raise. Set by the first
+	// ask inside [Encounter.wakePass], dropped when the pass ends, when an
+	// intent other than a Pass has executed and when a member is noticed
+	// down, the three moments inside a pass at which the answer can change.
+	wakeParticipation *participationState
+	discovery         map[MemberID]DiscoveryStateData
 
 	// sneakVerdicts is every standing Stealth verdict, by sneaking mover then
 	// by watcher (sneak.go, rpg-project#606 R10): discovery's attempt shape,
@@ -1405,8 +1414,94 @@ func (e *Encounter) Story(in *StoryInput) ([]record.Entry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("story: %w", err)
 	}
+	if !in.WholeActs || in.AfterSeq == 0 || len(entries) == 0 {
+		return entries, nil
+	}
 
+	from, err := e.wholeActsFrom(in.Audience, in.AfterSeq, entries)
+	if err != nil {
+		return nil, fmt.Errorf("story: %w", err)
+	}
+	if from >= in.AfterSeq {
+		return entries, nil
+	}
+	entries, err = e.story.SliceFor(&record.SliceForInput{Viewer: in.Audience, FromSeq: from})
+	if err != nil {
+		return nil, fmt.Errorf("story: %w", err)
+	}
 	return entries, nil
+}
+
+// wholeActsFrom is where [StoryInput.WholeActs] begins a slice: the seq of
+// the audience's first entry of the earliest act in delta that began before
+// afterSeq, or afterSeq when none did. delta is the audience's entries at or
+// after afterSeq, non-empty.
+//
+// Only a REOPENED act is looked up: one whose id sorts below the record's
+// entry at afterSeq-1, whoever it was for. An act's id is minted from the
+// record's increasing id space before its first beat, so an act whose id
+// sorts above that entry was opened inside the delta and has no beat before
+// it. A tag that is not `<verb>:<record id>` (a beat written before the v2
+// ids) is looked up too, since its id says nothing about when it began.
+func (e *Encounter) wholeActsFrom(audience MemberID, afterSeq uint64, delta []record.Entry) (uint64, error) {
+	from := afterSeq
+	before := ""
+	beforeRead := false
+	looked := map[string]bool{}
+	for _, entry := range delta {
+		act := entry.Tags[ActTag]
+		if act == "" || looked[act] {
+			continue
+		}
+		looked[act] = true
+		if i := strings.IndexByte(act, ':'); i >= 0 && isRecordID(act[i+1:]) {
+			if !beforeRead {
+				id, err := e.recordIDAt(afterSeq - 1)
+				if err != nil {
+					return 0, err
+				}
+				before, beforeRead = id, true
+			}
+			if before == "" || act[i+1:] > before {
+				continue
+			}
+		}
+		beats, err := lookupActBeats(e, act)
+		if err != nil {
+			return 0, err
+		}
+		for _, beat := range beats {
+			if beat.Seq >= from {
+				break
+			}
+			if slices.Contains(beat.Audience, core.EntityID(audience)) {
+				from = beat.Seq
+				break
+			}
+		}
+	}
+	return from, nil
+}
+
+// recordIDAt is the id of the retained entry at seq, whoever it was for, or
+// "" when none is retained. It scans by seq and copies only the entries from
+// seq on — the verb's own, when seq is just below its baseline.
+func (e *Encounter) recordIDAt(seq uint64) (string, error) {
+	tail, err := e.story.All(&record.AllInput{FromSeq: seq})
+	if err != nil {
+		return "", err
+	}
+	if len(tail) == 0 || tail[0].Seq != seq {
+		return "", nil
+	}
+	return tail[0].ID, nil
+}
+
+// lookupActBeats is every retained entry of one act, whoever it was for: the
+// whole-record scan [Encounter.wholeActsFrom] pays only for a reopened act.
+// A variable so a test can count the scans.
+var lookupActBeats = func(e *Encounter, act string) ([]record.Entry, error) {
+	return e.story.All(&record.AllInput{Tags: map[string]string{ActTag: act}})
 }
 
 // moveMember executes a spatial move for a member and returns the old position if successful,
@@ -1714,7 +1809,7 @@ func (e *Encounter) audienceFor(class beatClass, subjects ...MemberID) []MemberI
 // not here, because Pump needs its pre-Phase-1 snapshot reused across every
 // movement beat in one tick rather than a fresh roster read per action (see
 // Pump's own comment on why).
-func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberID, at uint64) (uint64, error) {
+func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberID, at uint64) (*record.AppendOutput, error) {
 	audience = e.frontierAudience(action, audience)
 	// Both ends of a step are cells the next look is asked of
 	// ([Encounter.pendingCells]), whoever's look that is.
@@ -1788,7 +1883,7 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 	// propagate theirs; this is the movement half catching up.
 	beatBytes, err := json.Marshal(payload)
 	if err != nil {
-		return 0, fmt.Errorf("marshal moved beat: %w", err)
+		return nil, fmt.Errorf("marshal moved beat: %w", err)
 	}
 
 	appendOut, err := e.appendBeat(&record.AppendInput{
@@ -1798,12 +1893,12 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 		Payload:  beatBytes,
 	})
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	if err := e.appendStepAreaTransitions(action.member.ID, action.from, action.to); err != nil {
-		return 0, err
+		return nil, err
 	}
-	return appendOut.Seq, nil
+	return appendOut, nil
 }
 
 // firedReachedPosition evaluates every declared ReachedPosition ending against

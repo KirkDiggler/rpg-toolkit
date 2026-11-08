@@ -82,6 +82,19 @@ type participationState struct {
 // participationNow asks one stable, complete question and validates the
 // capability's answer before any caller acts on it.
 func (e *Encounter) participationNow() (*participationState, error) {
+	if e.worldThinking && e.wakeParticipation != nil {
+		return e.wakeParticipation, nil
+	}
+	state, err := e.assessParticipation()
+	if err == nil && e.worldThinking {
+		e.wakeParticipation = state
+	}
+	return state, err
+}
+
+// assessParticipation asks the host for the roster's participation now and
+// checks the answer: the uncached half of [Encounter.participationNow].
+func (e *Encounter) assessParticipation() (*participationState, error) {
 	if len(e.members) == 0 {
 		return &participationState{
 			assessment: &ParticipationAssessment{},

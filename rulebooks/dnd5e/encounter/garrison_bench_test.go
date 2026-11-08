@@ -146,9 +146,9 @@ func benchGarrisonMove(b *testing.B, listen bool) {
 }
 
 // worldRound is the world clock's high-water mark: the round the keep has
-// reached. WorldView is the pure read of the record; ToData would trim the
-// log on the way out, and a harness does not mutate what it measures.
-func worldRound(enc *encounter.Encounter) int { return enc.WorldView().Clock.HighWater }
+// reached, read without the record so the harness allocates nothing it is
+// not measuring.
+func worldRound(enc *encounter.Encounter) int { return enc.WorldRound() }
 
 // blobBytes is the size of the whole saved record, the shape the host
 // writes on every verb today (rpg-project#770).

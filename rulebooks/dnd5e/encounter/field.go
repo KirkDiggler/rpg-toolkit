@@ -1505,6 +1505,28 @@ type StoryInput struct {
 	//
 	// To resume after entry N, pass N+1.
 	AfterSeq uint64
+
+	// WholeActs widens the slice back so every act it touches is whole: when
+	// an entry at or after AfterSeq carries an [ActTag] whose act also has
+	// entries for this audience before AfterSeq, the slice begins at the
+	// audience's first retained entry of the earliest such act, and holds
+	// every entry for this audience from there on. Without one, the slice
+	// is exactly what AfterSeq alone returns.
+	//
+	// It is the read a fold of one verb's delta needs: an act outlives a
+	// call (a walk held by a reaction window, a continuation), and a fold
+	// that numbers an act's segments or continues its walk reads what came
+	// before in the same act. It copies the delta and those acts, never the
+	// story before them, so what it copies follows the verb, not the record.
+	//
+	// An act opened inside the delta cannot reach before it (an act's id is
+	// minted before its first beat, from the record's own increasing id
+	// space), so only an act REOPENED by the delta — one whose id sorts below
+	// the record's entry at AfterSeq-1 — is looked up, and only that lookup
+	// scans the whole record. A verb that continues nothing pays no scan
+	// beyond the plain slice's. Ignored when AfterSeq is zero: the slice is
+	// already whole.
+	WholeActs bool
 }
 
 // Member represents a member's public read-side data: who they are, and
@@ -1829,6 +1851,12 @@ type StepOutput struct {
 	// Seq is the sequence number of the recorded movement beat.
 	Seq uint64
 
+	// ID is the record id ([record.Entry.ID], a 26-char ULID) of the beat
+	// Seq names: the id a stream consumer resumes after (rpg-project#879
+	// S1), so a host that answers a walk part way can hand the client the
+	// exact point the rest of the story continues from.
+	ID string
+
 	// Outcome is the encounter outcome if an ending fired underfoot; nil
 	// otherwise.
 	Outcome *Outcome
@@ -1839,7 +1867,7 @@ type StepOutput struct {
 	// Stopped is set when a body stopped the step (rpg-project#842, D5): a
 	// member's cell, or a crossing its post holds. The step is answered with
 	// output, not an error: nothing moved (Stepped's From and To are both the
-	// cell the mover stands on), no pace was spent, Seq is the [BeatBarred]
+	// cell the mover stands on), no pace was spent, Seq (and ID) is the [BeatBarred]
 	// beat, and IntelDeltas, Formed and Outcome are what the barrier's answer
 	// to the bump produced. Nil for a step that moved. Walls, doors, fields
 	// and masked refusals still return a [StepObstructedError].
