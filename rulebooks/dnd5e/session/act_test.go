@@ -213,7 +213,7 @@ func (s *SpeakWorldSuite) TestSpeakAnswerSharesSpeakAct() {
 		line := appealLine()
 		line.Success = []encounter.Answer{{Weight: 1, Say: "Fine."}}
 		in.Options = []encounter.Option{line}
-		in.Table = encounter.Table{encounter.AnswerTime: {{Weight: 1, Hold: true}}}
+		in.Behaviors = ordinaryBehavior(encounter.Table{encounter.AnswerTime: {{Weight: 1, Hold: true}}})
 	}
 	mgr := s.front([]int{10, 1, 1})
 
@@ -228,7 +228,7 @@ func (s *SpeakWorldSuite) TestSpeakAnswerSharesSpeakAct() {
 	s.Require().Len(spoken, 1)
 	speak := requireOneAct(s.T(), append(spoke, spoken...), "speak")
 
-	picks := eventsOf(s.T(), events, encounter.BeatAnswered, "key", string(encounter.AnswerTime))
+	picks := eventsOf(s.T(), events, encounter.BeatAnswered, "key", "behavior/6:policy/time")
 	s.Require().NotEmpty(picks, "the line cost the world a round and the goblin was asked")
 	for _, p := range picks {
 		requireActID(s.T(), p.Correlation, "time")

@@ -28,7 +28,7 @@ func (s *GuidedUnlockSuite) heldVaultSkeleton() dungeonspec.MonsterPlacement {
 	ref, err := core.ParseString("dnd5e:machines:vault-post")
 	s.Require().NoError(err)
 	skeleton := monsterAt("skel-1", refs.Monsters.Skeleton().String(), 9, 3)
-	skeleton.Machine = &machine.Recipe{Ref: *ref, Initial: "idle", States: map[string]machine.State{"idle": {}, "posted": {}}}
+	skeleton.Behaviors.Instances[0].Instance.Recipe = machine.Recipe{Ref: *ref, Initial: "idle", States: map[string]machine.State{"idle": {}, "posted": {}}}
 	skeleton.Posts = map[string]encounter.Post{"posted": {Door: "gate", Cells: []spatial.Position{hexCell(9, 3)}}}
 	return skeleton
 }
@@ -39,11 +39,15 @@ func (s *GuidedUnlockSuite) standToPost(id, state string) {
 	s.Require().True(ok, "the launch saved the world")
 	for i := range data.Members {
 		if data.Members[i].ID == encounter.MemberID(id) {
-			if data.Members[i].Machine == nil {
-				data.Members[i].Machine = &encounter.MachineData{}
+			b := data.Members[i].Behaviors
+			s.Require().NotNil(b)
+			for j := range b.Progress.Instances {
+				if b.Progress.Instances[j].ID == b.BodyInstance {
+					b.Progress.Instances[j].Blob.State = state
+					return
+				}
 			}
-			data.Members[i].Machine.State = state
-			return
+			s.Require().FailNow("designated body is present")
 		}
 	}
 	s.Require().Failf("no member", "the world holds no %s", id)

@@ -181,7 +181,7 @@ func (s *ContinuationSuite) launchWith(runner session.ContinuationRunner) *conti
 
 	goblin := monsterAt("goblin", refs.Monsters.Goblin().String(), 11, 3)
 	goblin.Faction = string(continuationCamp)
-	goblin.Table = encounter.Table{encounter.AnswerTime: {{Weight: 1, Hold: true}}}
+	goblin.Behaviors = ordinaryBehavior(encounter.Table{encounter.AnswerTime: {{Weight: 1, Hold: true}}})
 	launchScene(s.T(), mgr, scene{
 		Field: encounter.FieldInput{
 			Canvas:   pointyCanvas(),
