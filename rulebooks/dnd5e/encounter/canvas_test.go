@@ -303,8 +303,8 @@ func TestAnOldDialectBlobIsRefusedByName(t *testing.T) {
 	const oldDialect = `{
 		"clock": {"budgets": {"p1": 0}},
 		"intel": {},
-		"log": {"next_seq": 2, "entries": [
-			{"seq": 1, "audience": ["p1"], "tags": {"tag": "scene"},
+		"log": {"next_seq": 2, "audiences": [["p1"]], "entries": [
+			{"seq": 1, "audience": 1, "tags": {"tag": "scene"},
 			 "payload": "eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="}
 		]},
 		"field": {"canvas": {"void": "opaque"}, "rooms": [{"id": "room1", "width": 5, "height": 5, "origin": {"x": 0, "y": 0}}]},

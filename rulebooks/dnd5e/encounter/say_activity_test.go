@@ -29,7 +29,7 @@ func (s *AnswerTestSuite) TestSayActivitySelectedRecordSurvivesReloadAndKeepsAud
 				s.Equal("Let me think.", beats[0]["say"])
 				s.Equal(map[string]any{"ref": "dnd5e:activities:thoughtful", "cycles": float64(2)}, beats[0]["activity"])
 			}
-			for _, entry := range enc.ToData().Log.Entries {
+			for _, entry := range recordEntries(s.T(), enc, 1) {
 				var beat map[string]any
 				s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
 				if beat["beat"] == encounter.BeatAnswered {
