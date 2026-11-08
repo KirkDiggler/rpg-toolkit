@@ -1510,13 +1510,15 @@ type StoryInput struct {
 	// call (a walk held by a reaction window, a continuation), and a fold
 	// that numbers an act's segments or continues its walk reads what came
 	// before in the same act. It copies the delta and those acts, never the
-	// story before them, so its cost follows the verb, not the record.
+	// story before them, so what it copies follows the verb, not the record.
 	//
-	// An act minted after this audience's first entry at AfterSeq cannot
-	// reach before it (an act's id is minted before its first beat, from the
-	// record's own increasing id space), so only an act already open by then
-	// is looked up. Ignored when AfterSeq is zero: the slice is already
-	// whole.
+	// An act opened inside the delta cannot reach before it (an act's id is
+	// minted before its first beat, from the record's own increasing id
+	// space), so only an act REOPENED by the delta — one whose id sorts below
+	// the record's entry at AfterSeq-1 — is looked up, and only that lookup
+	// scans the whole record. A verb that continues nothing pays no scan
+	// beyond the plain slice's. Ignored when AfterSeq is zero: the slice is
+	// already whole.
 	WholeActs bool
 }
 

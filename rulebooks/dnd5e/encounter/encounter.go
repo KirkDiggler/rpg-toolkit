@@ -1444,13 +1444,16 @@ func (e *Encounter) Story(in *StoryInput) ([]record.Entry, error) {
 // afterSeq, or afterSeq when none did. delta is the audience's entries at or
 // after afterSeq, non-empty.
 //
-// Only an act whose id sorts below delta's first entry is looked up: an act
-// minted after that entry was appended has every beat after it. A tag that is
-// not `<verb>:<record id>` (a beat written before the v2 ids) is looked up
-// too, since its id says nothing about when it began.
+// Only a REOPENED act is looked up: one whose id sorts below the record's
+// entry at afterSeq-1, whoever it was for. An act's id is minted from the
+// record's increasing id space before its first beat, so an act whose id
+// sorts above that entry was opened inside the delta and has no beat before
+// it. A tag that is not `<verb>:<record id>` (a beat written before the v2
+// ids) is looked up too, since its id says nothing about when it began.
 func (e *Encounter) wholeActsFrom(audience MemberID, afterSeq uint64, delta []record.Entry) (uint64, error) {
 	from := afterSeq
-	first := delta[0].ID
+	before := ""
+	beforeRead := false
 	looked := map[string]bool{}
 	for _, entry := range delta {
 		act := entry.Tags[ActTag]
@@ -1458,10 +1461,19 @@ func (e *Encounter) wholeActsFrom(audience MemberID, afterSeq uint64, delta []re
 			continue
 		}
 		looked[act] = true
-		if i := strings.IndexByte(act, ':'); i >= 0 && isRecordID(act[i+1:]) && act[i+1:] > first {
-			continue
+		if i := strings.IndexByte(act, ':'); i >= 0 && isRecordID(act[i+1:]) {
+			if !beforeRead {
+				id, err := e.recordIDAt(afterSeq - 1)
+				if err != nil {
+					return 0, err
+				}
+				before, beforeRead = id, true
+			}
+			if before == "" || act[i+1:] > before {
+				continue
+			}
 		}
-		beats, err := e.story.All(&record.AllInput{Tags: map[string]string{ActTag: act}})
+		beats, err := lookupActBeats(e, act)
 		if err != nil {
 			return 0, err
 		}
@@ -1476,6 +1488,27 @@ func (e *Encounter) wholeActsFrom(audience MemberID, afterSeq uint64, delta []re
 		}
 	}
 	return from, nil
+}
+
+// recordIDAt is the id of the retained entry at seq, whoever it was for, or
+// "" when none is retained. It scans by seq and copies only the entries from
+// seq on — the verb's own, when seq is just below its baseline.
+func (e *Encounter) recordIDAt(seq uint64) (string, error) {
+	tail, err := e.story.All(&record.AllInput{FromSeq: seq})
+	if err != nil {
+		return "", err
+	}
+	if len(tail) == 0 || tail[0].Seq != seq {
+		return "", nil
+	}
+	return tail[0].ID, nil
+}
+
+// lookupActBeats is every retained entry of one act, whoever it was for: the
+// whole-record scan [Encounter.wholeActsFrom] pays only for a reopened act.
+// A variable so a test can count the scans.
+var lookupActBeats = func(e *Encounter, act string) ([]record.Entry, error) {
+	return e.story.All(&record.AllInput{Tags: map[string]string{ActTag: act}})
 }
 
 // moveMember executes a spatial move for a member and returns the old position if successful,

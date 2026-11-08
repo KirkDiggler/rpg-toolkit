@@ -595,8 +595,11 @@ func (s *ActTestSuite) TestWholeActsReachesBackToTheActsFirstBeat() {
 }
 
 // TestWholeActsLeavesAFreshActAlone: a delta whose acts all began inside it
-// is exactly the plain slice from AfterSeq.
+// is exactly the plain slice from AfterSeq, and costs no whole-record act
+// lookup — the delta's own act included, though its id was minted before
+// the delta's first beat.
 func (s *ActTestSuite) TestWholeActsLeavesAFreshActAlone() {
+	lookups := encounter.CountActLookupsForTest(s.T())
 	enc := s.pair(&downList{})
 
 	s.open(enc, "attack", "")
@@ -612,22 +615,47 @@ func (s *ActTestSuite) TestWholeActsLeavesAFreshActAlone() {
 	plain, err := enc.Story(&encounter.StoryInput{Audience: alice, AfterSeq: baseline})
 	s.Require().NoError(err)
 	s.Require().NotEmpty(plain)
+	looked := lookups()
 	got, err := enc.Story(&encounter.StoryInput{Audience: alice, AfterSeq: baseline, WholeActs: true})
 	s.Require().NoError(err)
 	s.Equal(plain, got)
+	s.Equal(looked, lookups(), "a fresh act is never looked up")
 }
 
-// TestWholeActsFromZeroIsTheWholeStory: from the start, every act is
-// already whole.
-func (s *ActTestSuite) TestWholeActsFromZeroIsTheWholeStory() {
+// TestWholeActsBeginsAtTheAudiencesOwnFirstBeat: a held act whose first beat
+// went to someone else begins, for this audience, at the first of its beats
+// this audience was told — so a beat of another act between the two stays
+// out of the slice.
+func (s *ActTestSuite) TestWholeActsBeginsAtTheAudiencesOwnFirstBeat() {
 	enc := s.pair(&downList{})
+
+	held := s.open(enc, "move", "")
+	s.Require().NoError(enc.AppendBeatForTest(goblin))
+	s.Require().NoError(enc.CloseAct())
 	s.open(enc, "attack", "")
-	s.missAt(enc)
+	s.Require().NoError(enc.AppendBeatForTest(alice, goblin))
+	s.Require().NoError(enc.CloseAct())
+	s.open(enc, "move", held)
+	s.Require().NoError(enc.AppendBeatForTest(alice, goblin))
 	s.Require().NoError(enc.CloseAct())
 
-	plain, err := enc.Story(&encounter.StoryInput{Audience: alice})
+	baseline, err := enc.NextStorySeq()
 	s.Require().NoError(err)
-	got, err := enc.Story(&encounter.StoryInput{Audience: alice, WholeActs: true})
+	s.open(enc, "move", held)
+	s.Require().NoError(enc.AppendBeatForTest(alice, goblin))
+	s.Require().NoError(enc.CloseAct())
+
+	whole, err := enc.Story(&encounter.StoryInput{Audience: alice})
 	s.Require().NoError(err)
-	s.Equal(plain, got)
+	var first uint64
+	for _, e := range whole {
+		if e.Tags[encounter.ActTag] == held {
+			first = e.Seq
+			break
+		}
+	}
+	s.Require().Less(first, baseline, "alice was told the held act before the delta")
+	got, err := enc.Story(&encounter.StoryInput{Audience: alice, AfterSeq: baseline, WholeActs: true})
+	s.Require().NoError(err)
+	s.Equal(wholeFrom(whole, first), got)
 }
