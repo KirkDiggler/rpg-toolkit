@@ -1162,6 +1162,9 @@ func (s *writeScope) replaceMonsterSheet(dirty *monster.Data) {
 				seenConditions(s.data.NPCs[i].ID, s.data.NPCs[i].Conditions))
 		}
 		s.data.NPCs[i] = *dirty
+		// The sheet changed: the verb's kept participation answer for it is
+		// about a sheet that no longer exists (participationMemo).
+		s.standing.memo.forget(dirty.ID)
 		s.touched = true
 		return
 	}

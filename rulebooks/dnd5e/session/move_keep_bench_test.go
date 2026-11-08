@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"os"
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -64,9 +65,16 @@ func TestMoveMedian_KeepGarrison10k(t *testing.T) {
 		t.Skip("set T12_MOVE_BENCH=1 to price a Move on the garrison keep")
 	}
 	const launches, moves = 9, 5
+	// MOVE_BENCH_STEPS lengthens each Move's path east (default one cell);
+	// eight is the live measure's path (rpg-project#879 F16).
+	steps := 1
+	if v, err := strconv.Atoi(os.Getenv("MOVE_BENCH_STEPS")); err == nil && v > 0 {
+		steps = v
+	}
 	compiled := garrisonKeep(t)
 	ctx := context.Background()
 	var samples []time.Duration
+	var assessments, attached, counted int
 	for range launches {
 		mgr, err := session.NewManager(&session.Config{
 			Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
@@ -83,20 +91,28 @@ func TestMoveMedian_KeepGarrison10k(t *testing.T) {
 		}
 		at := aliceAt(ctx, t, mgr)
 		for i := range moves {
-			next := spatial.Position{X: at.X + 1, Y: at.Y}
+			path := make([]spatial.Position, 0, steps)
+			for step := 1; step <= steps; step++ {
+				path = append(path, spatial.Position{X: at.X + float64(step), Y: at.Y})
+			}
+			count := session.CountParticipationAttachesForTest(t)
 			start := time.Now()
-			_, err := mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: []spatial.Position{next}})
+			_, err := mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: path})
 			took := time.Since(start)
+			a, s := count()
+			assessments, attached, counted = assessments+a, attached+s, counted+1
 			if err != nil {
 				t.Fatalf("move %d east of %v: %v", i+1, at, err)
 			}
 			samples = append(samples, took)
-			at = next
+			at = aliceAt(ctx, t, mgr) // a walk may stop short
 		}
 	}
 	slices.Sort(samples)
 	t.Logf("Move on bench-keep-garrison, %d samples: median %.1f ms, min %.1f ms, max %.1f ms",
 		len(samples), ms(samples[len(samples)/2]), ms(samples[0]), ms(samples[len(samples)-1]))
+	t.Logf("per Move: %.1f standing assessments, %.1f monster sheets attached",
+		float64(assessments)/float64(counted), float64(attached)/float64(counted))
 }
 
 func ms(d time.Duration) float64 { return float64(d.Microseconds()) / 1000 }

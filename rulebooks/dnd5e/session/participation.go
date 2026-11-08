@@ -76,9 +76,12 @@ func (s standingSeam) participation(
 	// carry: what each member is holding. A compulsion is a condition on a
 	// sheet, and the sheet is already in hand — fetching it again would be a
 	// second snapshot free to disagree with the one the life state came from.
-	stored := storedConditionsOf(characters, monsters)
+	compelled := make(map[string]bool, len(members))
+	for id, stored := range storedConditionsOf(characters, nil) {
+		compelled[id] = holdsCompulsion(stored)
+	}
 
-	characterParticipation, err := resolution.Participation(s.ctx, &resolution.ParticipationInput{
+	characterParticipation, err := participationOf(s.ctx, &resolution.ParticipationInput{
 		Participants: characters,
 	})
 	if err != nil {
@@ -88,14 +91,12 @@ func (s standingSeam) participation(
 		facts[member.Member] = member
 	}
 
-	monsterParticipation, err := resolution.Participation(s.ctx, &resolution.ParticipationInput{
-		Participants: monsters,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidSession, err)
-	}
-	for _, member := range monsterParticipation.Members {
-		facts[member.Member] = member
+	// Monsters through the verb's memo (participationMemo): a sheet already
+	// attached and answered in this verb is not attached again, and only the
+	// ones nobody has asked about yet — or that this verb has written since —
+	// go to resolution, together, on one bus.
+	if err := s.memo.monsters(s.ctx, monsters, facts, compelled); err != nil {
+		return nil, err
 	}
 
 	assessment := &encounter.ParticipationAssessment{}
@@ -122,7 +123,7 @@ func (s standingSeam) participation(
 			}
 		}
 
-		mapped, err := encounterParticipation(id, fact.Participation, stored[string(id)])
+		mapped, err := encounterParticipation(id, fact.Participation, compelled[string(id)])
 		if err != nil {
 			return nil, err
 		}
@@ -200,9 +201,10 @@ func storedConditionsOf(characters, monsters []resolution.Participant) map[strin
 // this member act normally — and the design's sentence is true again through
 // it: a dying commanded fighter still dies on schedule.
 //
-// WHAT THIS FUNCTION DOES NOT DO is decide what the compulsion means. It asks
-// the conditions package whether the sheet holds one ref, which is a lookup;
-// the word inside it, the anchor it measures from and the walk it produces all
+// WHAT THIS FUNCTION DOES NOT DO is decide what the compulsion means. It is
+// told whether the sheet holds one ref ([holdsCompulsion], a lookup the
+// conditions package answers, kept per verb for a monster by
+// [participationMemo]); the word inside it, the anchor it measures from and the walk it produces all
 // belong to the layers that own rules.
 //
 // # A blob nobody can read is not a compulsion
@@ -223,7 +225,7 @@ func storedConditionsOf(characters, monsters []resolution.Participant) map[strin
 // two readers of one record that the snapshot above exists to prevent — and it
 // would stop a whole fight over a byte the loader had already thrown away.
 func encounterParticipation(
-	id encounter.MemberID, participation combat.Participation, stored []json.RawMessage,
+	id encounter.MemberID, participation combat.Participation, compelled bool,
 ) (encounter.MemberParticipation, error) {
 	member := encounter.MemberParticipation{
 		Member: id, Down: participation.Down,
@@ -238,7 +240,7 @@ func encounterParticipation(
 	default:
 		member.Turn = encounter.TurnParticipationRemove
 	}
-	if member.Turn == encounter.TurnParticipationWait && member.Contact && holdsCompulsion(stored) {
+	if member.Turn == encounter.TurnParticipationWait && member.Contact && compelled {
 		member.Turn = encounter.TurnParticipationDriven
 	}
 	if member.Turn == encounter.TurnParticipationRemove && member.Contact {
