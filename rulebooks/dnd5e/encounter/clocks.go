@@ -69,6 +69,12 @@ type ClockOfOutput struct {
 	Order []MemberID
 }
 
+// WorldRound is the world clock's high-water mark: the round the free-roaming
+// world has reached, which a Move advances every time a walker's pace reaches
+// its own speed. A cheap read for a host or a harness that wants the round
+// without the record; it never errs.
+func (e *Encounter) WorldRound() int { return e.clock.ToData().HighWater }
+
 // ClockOf reports which clock a member is on.
 //
 // This is the query the composition is expected to be asked constantly, and it
@@ -960,6 +966,11 @@ func (e *Encounter) executeTurnIntent(
 	activeID MemberID, m *memberRecord, view MonsterView, intent TurnIntent, budget *TurnBudget,
 	coords turnCoords,
 ) (done bool, deltas map[MemberID]*IntelDelta, err error) {
+	if _, pass := intent.(Pass); !pass {
+		// Anything but a Pass may change who stands: the wake's one
+		// participation assessment is dropped once it has executed.
+		defer func() { e.wakeParticipation = nil }()
+	}
 	switch it := intent.(type) {
 	case Pass:
 		// A PASS THAT NAMES ITS CAUSE IS TOLD (rpg-toolkit#2001): the word
@@ -1678,7 +1689,12 @@ func (e *Encounter) walkPath(
 		// whoever decided the walk is the one who knows how the body moved
 		// and this loop does not.
 		step := MoveStep{Mover: mover, From: from, To: cell, Cause: cause, Kind: kind}
-		if merr := e.mover.Move(ctx, e, step); merr != nil {
+		merr := e.mover.Move(ctx, e, step)
+		// THE MOVER IS A MOMENT STANDING CAN CHANGE with no intent ending: a
+		// reaction it fires can drop the walker, and the per-cell ask below
+		// must see it, inside a wake pass as anywhere else.
+		e.wakeParticipation = nil
+		if merr != nil {
 			// A PAUSE IS NEWS, NOT A MALFUNCTION. Somebody is being asked
 			// about this step; it is announced and not taken, and the rest
 			// of the path — this cell first — waits with them. Every other

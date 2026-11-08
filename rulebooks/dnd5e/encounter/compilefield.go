@@ -143,6 +143,14 @@ type field struct {
 	// seams hand the compiled door records over — so a field that was built
 	// without doors has none of these, exactly as it has no canvas.
 	doorFootprints []*doorRecord
+	// blockingDoors is [field.blockingDoorFootprints]'s last answer and
+	// blockingMask the blocks() reading of every footprint door it was taken
+	// under, index for index with doorFootprints (rpg-project#879 F5: the
+	// slice was rebuilt on every crossing check, 20 MB a Move). A call
+	// compares the readings and rebuilds only when a door has changed, so no
+	// writer of a door's state has to remember the cache.
+	blockingDoors []*doorRecord
+	blockingMask  []bool
 
 	// openedFacts is every fact a door teaches when it opens
 	// ([DoorInput.Opened], rpg-project#569 R12), read off the authored

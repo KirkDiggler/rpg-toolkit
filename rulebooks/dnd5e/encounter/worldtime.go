@@ -426,7 +426,8 @@ func (e *Encounter) wakePass(raised, world bool) error {
 	e.wakeMatched = 0
 	e.reactionPicked = false
 	e.blockingTurned = false
-	defer func() { e.worldThinking = false }()
+	e.wakeParticipation = nil
+	defer func() { e.worldThinking, e.wakeParticipation = false, nil }()
 
 	at := uint64(e.clock.ToData().HighWater)
 	if raised {
