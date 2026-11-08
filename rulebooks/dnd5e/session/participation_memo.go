@@ -30,7 +30,11 @@ import (
 // whole-cast attach would give for it.
 //
 // The memo dies with the seam: [Manager.standingFor] builds a new one for
-// every verb (S1, S4), so nothing kept here outlives the call that kept it.
+// every verb (S1, S4), so nothing kept here outlives the verb that kept it. A
+// Move that answers before the world runs (rpg-project#879 R2) carries its
+// scope, memo included, into its continuation; that is still the same verb,
+// under the session guard it never gave back, so no other writer can change a
+// sheet in between.
 //
 // # A sheet written is a sheet re-read
 //

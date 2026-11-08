@@ -75,6 +75,7 @@ func TestMoveMedian_KeepGarrison10k(t *testing.T) {
 	ctx := context.Background()
 	var samples []time.Duration
 	var assessments, attached, counted int
+	count := session.CountParticipationAttachesForTest(t)
 	for range launches {
 		mgr, err := session.NewManager(&session.Config{
 			Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
@@ -95,12 +96,14 @@ func TestMoveMedian_KeepGarrison10k(t *testing.T) {
 			for step := 1; step <= steps; step++ {
 				path = append(path, spatial.Position{X: at.X + float64(step), Y: at.Y})
 			}
-			count := session.CountParticipationAttachesForTest(t)
+			assessedBefore, attachedBefore := count()
 			start := time.Now()
 			_, err := mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: path})
 			took := time.Since(start)
-			a, s := count()
-			assessments, attached, counted = assessments+a, attached+s, counted+1
+			assessedAfter, attachedAfter := count()
+			assessments += assessedAfter - assessedBefore
+			attached += attachedAfter - attachedBefore
+			counted++
 			if err != nil {
 				t.Fatalf("move %d east of %v: %v", i+1, at, err)
 			}

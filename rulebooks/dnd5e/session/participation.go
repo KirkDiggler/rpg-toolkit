@@ -204,8 +204,8 @@ func storedConditionsOf(characters, monsters []resolution.Participant) map[strin
 // WHAT THIS FUNCTION DOES NOT DO is decide what the compulsion means. It is
 // told whether the sheet holds one ref ([holdsCompulsion], a lookup the
 // conditions package answers, kept per verb for a monster by
-// [participationMemo]); the word inside it, the anchor it measures from and the walk it produces all
-// belong to the layers that own rules.
+// [participationMemo]); the word inside it, the anchor it measures from and
+// the walk it produces all belong to the layers that own rules.
 //
 // # A blob nobody can read is not a compulsion
 //
