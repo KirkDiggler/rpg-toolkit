@@ -1498,6 +1498,26 @@ type StoryInput struct {
 	//
 	// To resume after entry N, pass N+1.
 	AfterSeq uint64
+
+	// WholeActs widens the slice back so every act it touches is whole: when
+	// an entry at or after AfterSeq carries an [ActTag] whose act also has
+	// entries for this audience before AfterSeq, the slice begins at the
+	// audience's first retained entry of the earliest such act, and holds
+	// every entry for this audience from there on. Without one, the slice
+	// is exactly what AfterSeq alone returns.
+	//
+	// It is the read a fold of one verb's delta needs: an act outlives a
+	// call (a walk held by a reaction window, a continuation), and a fold
+	// that numbers an act's segments or continues its walk reads what came
+	// before in the same act. It copies the delta and those acts, never the
+	// story before them, so its cost follows the verb, not the record.
+	//
+	// An act minted after this audience's first entry at AfterSeq cannot
+	// reach before it (an act's id is minted before its first beat, from the
+	// record's own increasing id space), so only an act already open by then
+	// is looked up. Ignored when AfterSeq is zero: the slice is already
+	// whole.
+	WholeActs bool
 }
 
 // Member represents a member's public read-side data: who they are, and

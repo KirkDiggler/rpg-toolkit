@@ -18,6 +18,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -545,4 +546,88 @@ func firstOfAct(entries []told, act string, skip ...string) uint64 {
 		}
 	}
 	return 0
+}
+
+// wholeFrom is the audience's whole story from its first entry whose seq is
+// at least from — the slice a WholeActs read must equal.
+func wholeFrom(entries []record.Entry, from uint64) []record.Entry {
+	for i, e := range entries {
+		if e.Seq >= from {
+			return entries[i:]
+		}
+	}
+	return nil
+}
+
+// TestWholeActsReachesBackToTheActsFirstBeat: a delta that continues an act
+// opened before it is read from that act's first beat for the audience, and
+// holds everything after it, the other act between them included.
+func (s *ActTestSuite) TestWholeActsReachesBackToTheActsFirstBeat() {
+	enc := s.pair(&downList{})
+
+	held := s.open(enc, "move", "")
+	s.missAt(enc)
+	s.Require().NoError(enc.CloseAct())
+	s.open(enc, "attack", "")
+	s.missAt(enc)
+	s.Require().NoError(enc.CloseAct())
+
+	baseline, err := enc.NextStorySeq()
+	s.Require().NoError(err)
+	s.open(enc, "move", held)
+	s.missAt(enc)
+	s.Require().NoError(enc.CloseAct())
+
+	whole, err := enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+	got, err := enc.Story(&encounter.StoryInput{Audience: alice, AfterSeq: baseline, WholeActs: true})
+	s.Require().NoError(err)
+
+	var first uint64
+	for _, e := range whole {
+		if e.Tags[encounter.ActTag] == held {
+			first = e.Seq
+			break
+		}
+	}
+	s.Require().Less(first, baseline, "the held act began before the delta")
+	s.Equal(wholeFrom(whole, first), got)
+}
+
+// TestWholeActsLeavesAFreshActAlone: a delta whose acts all began inside it
+// is exactly the plain slice from AfterSeq.
+func (s *ActTestSuite) TestWholeActsLeavesAFreshActAlone() {
+	enc := s.pair(&downList{})
+
+	s.open(enc, "attack", "")
+	s.missAt(enc)
+	s.Require().NoError(enc.CloseAct())
+
+	baseline, err := enc.NextStorySeq()
+	s.Require().NoError(err)
+	s.open(enc, "attack", "")
+	s.missAt(enc)
+	s.Require().NoError(enc.CloseAct())
+
+	plain, err := enc.Story(&encounter.StoryInput{Audience: alice, AfterSeq: baseline})
+	s.Require().NoError(err)
+	s.Require().NotEmpty(plain)
+	got, err := enc.Story(&encounter.StoryInput{Audience: alice, AfterSeq: baseline, WholeActs: true})
+	s.Require().NoError(err)
+	s.Equal(plain, got)
+}
+
+// TestWholeActsFromZeroIsTheWholeStory: from the start, every act is
+// already whole.
+func (s *ActTestSuite) TestWholeActsFromZeroIsTheWholeStory() {
+	enc := s.pair(&downList{})
+	s.open(enc, "attack", "")
+	s.missAt(enc)
+	s.Require().NoError(enc.CloseAct())
+
+	plain, err := enc.Story(&encounter.StoryInput{Audience: alice})
+	s.Require().NoError(err)
+	got, err := enc.Story(&encounter.StoryInput{Audience: alice, WholeActs: true})
+	s.Require().NoError(err)
+	s.Equal(plain, got)
 }

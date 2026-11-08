@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
@@ -1419,8 +1421,61 @@ func (e *Encounter) Story(in *StoryInput) ([]record.Entry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("story: %w", err)
 	}
+	if !in.WholeActs || in.AfterSeq == 0 || len(entries) == 0 {
+		return entries, nil
+	}
 
+	from, err := e.wholeActsFrom(in.Audience, in.AfterSeq, entries)
+	if err != nil {
+		return nil, fmt.Errorf("story: %w", err)
+	}
+	if from >= in.AfterSeq {
+		return entries, nil
+	}
+	entries, err = e.story.SliceFor(&record.SliceForInput{Viewer: in.Audience, FromSeq: from})
+	if err != nil {
+		return nil, fmt.Errorf("story: %w", err)
+	}
 	return entries, nil
+}
+
+// wholeActsFrom is where [StoryInput.WholeActs] begins a slice: the seq of
+// the audience's first entry of the earliest act in delta that began before
+// afterSeq, or afterSeq when none did. delta is the audience's entries at or
+// after afterSeq, non-empty.
+//
+// Only an act whose id sorts below delta's first entry is looked up: an act
+// minted after that entry was appended has every beat after it. A tag that is
+// not `<verb>:<record id>` (a beat written before the v2 ids) is looked up
+// too, since its id says nothing about when it began.
+func (e *Encounter) wholeActsFrom(audience MemberID, afterSeq uint64, delta []record.Entry) (uint64, error) {
+	from := afterSeq
+	first := delta[0].ID
+	looked := map[string]bool{}
+	for _, entry := range delta {
+		act := entry.Tags[ActTag]
+		if act == "" || looked[act] {
+			continue
+		}
+		looked[act] = true
+		if i := strings.IndexByte(act, ':'); i >= 0 && isRecordID(act[i+1:]) && act[i+1:] > first {
+			continue
+		}
+		beats, err := e.story.All(&record.AllInput{Tags: map[string]string{ActTag: act}})
+		if err != nil {
+			return 0, err
+		}
+		for _, beat := range beats {
+			if beat.Seq >= from {
+				break
+			}
+			if slices.Contains(beat.Audience, core.EntityID(audience)) {
+				from = beat.Seq
+				break
+			}
+		}
+	}
+	return from, nil
 }
 
 // moveMember executes a spatial move for a member and returns the old position if successful,
