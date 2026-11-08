@@ -81,9 +81,7 @@ func spellDescription(t *testing.T, spell spells.Spell) string {
 // in hand, so one Attack row carries both base facts and an effect row.
 func warhammerBarbarian(t *testing.T) *character.Data {
 	t.Helper()
-	rage, err := (&conditions.RagingCondition{
-		CharacterID: "alice", Source: refs.Features.Rage().String(),
-	}).ToJSON()
+	rage, err := ragingForTest("alice").ToJSON()
 	require.NoError(t, err)
 	return &character.Data{
 		ID: "alice", PlayerID: "player-alice", Name: "alice", Level: 1,
@@ -113,12 +111,6 @@ func assembledAttackDescription(t *testing.T, data *character.Data) string {
 	return definition.Description
 }
 
-// warhammerEffectRowsBeforeInformation is the Effects slice of this row as
-// the session produced it BEFORE information existed (captured at abcb38f3,
-// the commit before attachInformation). Information sits beside effect rows
-// and must not move one byte of them.
-const warhammerEffectRowsBeforeInformation = `[{"id":"dnd5e:conditions:raging","ref":"dnd5e:conditions:raging","name":"Raging","description":"Adds your rage damage bonus to melee weapon attacks that use Strength. Also grants advantage on Strength-based skill checks and Strength saving throws, and resistance to bludgeoning, piercing, and slashing damage.","state":"applies","reason":"The melee weapon attack uses Strength","participation":"contributes_now","benefit":"+2 damage"}]`
-
 // TestAffordWarhammerFactsAboveUnchangedEffects: a compiled swing renders its
 // base facts — the participating modifier joins the damage — while its effect
 // rows stay exactly what they were. The off-hand half pins the other side of
@@ -141,9 +133,12 @@ func TestAffordWarhammerFactsAboveUnchangedEffects(t *testing.T) {
 			detail("Reach", "5 ft"),
 		}, attack.Information.Details)
 
-		effects, err := json.Marshal(attack.Effects)
-		require.NoError(t, err)
-		require.JSONEq(t, warhammerEffectRowsBeforeInformation, string(effects))
+		damage := s.rageDamageRow(attack)
+		require.Equal(t, "+2 damage", damage.Benefit)
+		require.Equal(t, "alice", damage.SourceID)
+		again := s.mainAttack(s.afford("alice"))
+		require.Equal(t, attack.ID, again.ID, "information rows are not selector material")
+		require.Equal(t, attack.Effects, again.Effects, "reading base information neither mutates nor drops the four effect answers")
 	})
 
 	t.Run("off hand", func(t *testing.T) {

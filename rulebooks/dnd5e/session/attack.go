@@ -331,7 +331,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 	machine, err := resolution.NewAction(&resolution.ActionInput{
 		Definition: definition,
 		AttackerID: in.Attacker,
-		TargetID:   in.Target,
+		TargetIDs:  []string{in.Target},
 		Roller:     &diceSeam{roller: m.dice},
 	})
 	if err != nil {
