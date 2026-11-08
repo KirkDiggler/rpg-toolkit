@@ -273,8 +273,8 @@ func row(frame any, o *effects.Bound) (effects.Row, error) {
 }
 
 var damageBonusKind = effects.KindSpec{
-	Check: func(raw jsontext.Value) error {
-		_, err := decode[damageBonusParams](raw)
+	Check: func(out effects.Output) error {
+		_, err := decode[damageBonusParams](out.Params)
 		return err
 	},
 	Attach: func(ctx context.Context, bus events.EventBus, o *effects.Bound) (effects.Detach, error) {
@@ -310,8 +310,8 @@ var damageBonusKind = effects.KindSpec{
 }
 
 var resistKind = effects.KindSpec{
-	Check: func(raw jsontext.Value) error {
-		_, err := decode[resistParams](raw)
+	Check: func(out effects.Output) error {
+		_, err := decode[resistParams](out.Params)
 		return err
 	},
 	Attach: func(ctx context.Context, bus events.EventBus, o *effects.Bound) (effects.Detach, error) {
@@ -339,8 +339,8 @@ var resistKind = effects.KindSpec{
 }
 
 var advantageKind = effects.KindSpec{
-	Check: func(raw jsontext.Value) error {
-		_, err := decode[advantageParams](raw)
+	Check: func(out effects.Output) error {
+		_, err := decode[advantageParams](out.Params)
 		return err
 	},
 	Attach: func(ctx context.Context, bus events.EventBus, o *effects.Bound) (effects.Detach, error) {

@@ -50,11 +50,16 @@ func (b *Bound) ID() string { return b.id }
 // Kind returns the output's kind.
 func (b *Bound) Kind() KindName { return b.out.Kind }
 
-// Params returns the output's params for the kind to decode.
-func (b *Bound) Params() jsontext.Value { return b.out.Params }
+// Params returns an owned copy of the output's params for the kind to decode.
+func (b *Bound) Params() jsontext.Value { return slices.Clone(b.out.Params) }
 
-// Host returns the condition as the output sees it.
-func (b *Bound) Host() Host { return b.host }
+// Host returns the condition as the output sees it, with detached ref values.
+func (b *Bound) Host() Host {
+	host := b.host
+	host.Ref = cloneRef(host.Ref)
+	host.Source = cloneRef(host.Source)
+	return host
+}
 
 // Answer evaluates the output's guard over frame and the condition's bag. A
 // guard over an unknown fact answers machine.Depends.
@@ -179,7 +184,7 @@ func decodeOutputs(r machine.Recipe, ov OutputVocabulary) ([]decoded, []string, 
 				return nil, nil, refuse(state, i, "kind %q is not in the output vocabulary", o.Kind)
 			}
 			if spec.Check != nil {
-				if err := spec.Check(o.Params); err != nil {
+				if err := spec.Check(o); err != nil {
 					return nil, nil, refuse(state, i, "kind %q refused its params: %v", o.Kind, err)
 				}
 			}
@@ -277,7 +282,8 @@ func (c *Composed) detach(ctx context.Context) error {
 
 // onTransition swaps the outputs: on a terminal state End runs first, while
 // the outputs still answer, then everything detaches (E5); otherwise the
-// old state's outputs detach and the new state's attach.
+// old state's outputs detach and the new state's attach, then Changed reports
+// the successful nonterminal state change.
 func (c *Composed) onTransition(ctx context.Context, t machine.Transitioned) error {
 	if c.m.Program().IsTerminal(t.To) {
 		var err error
@@ -291,7 +297,10 @@ func (c *Composed) onTransition(ctx context.Context, t machine.Transitioned) err
 	if err := c.detach(ctx); err != nil {
 		return err
 	}
-	return c.attach(ctx, t.To)
+	if err := c.attach(ctx, t.To); err != nil {
+		return err
+	}
+	return c.onChanged(ctx)
 }
 
 func (c *Composed) onChanged(ctx context.Context) error {
