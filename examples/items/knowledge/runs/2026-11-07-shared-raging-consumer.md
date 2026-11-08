@@ -13,6 +13,8 @@ Work: [Composable conditions S11 #883](https://github.com/KirkDiggler/rpg-projec
 
 ## Found
 
+- Adopt root c00e0d76's native post-apply sustain fix. The item lifecycle test first failed because its fixture still emitted legacy DamageReceived; it and the wrong-holder fixture now emit DamageTaken. Full race/examples/vet/lint pass with no private item mechanic added — [#2312](https://github.com/KirkDiggler/rpg-toolkit/issues/2312).
+
 - The canonical-creator test failed against the private example condition ref/flat blob before migration, then passed through the shared registry. The authored +3 loot fixture still produces base 10 plus 3 without class levels — [loot](../../loot_example_test.go).
 - Dependencies resolve actual pushed rulebook 15a223ef and effects 605694f3, without replace/go.work; this checkpoint is not final released-tag adoption — [go.mod](../../go.mod).
 

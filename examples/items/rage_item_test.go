@@ -203,8 +203,8 @@ func (s *rageItemSuite) TestGraceMissedAttackAndDamageSustainThenInactivityEnds(
 	s.attack(rageHolder) // A miss is still an attack attempt.
 	s.turn(rageHolder, 2)
 	s.Equal(rageLive, s.state())
-	s.Require().NoError(dndevents.DamageReceivedTopic.On(s.bus).Publish(s.ctx,
-		dndevents.DamageReceivedEvent{TargetID: rageHolder, Amount: 1}))
+	s.Require().NoError(dndevents.DamageTakenTopic.On(s.bus).Publish(s.ctx,
+		&dndevents.DamageTakenEvent{MemberID: rageHolder, Amount: 1}))
 	s.turn(rageHolder, 3)
 	s.Equal(rageLive, s.state())
 	s.turn(rageHolder, 4)
@@ -313,8 +313,8 @@ func (s *rageItemSuite) TestOtherActorsActivityDoesNotSustainTheHolder() {
 	s.apply()
 	s.turn(rageHolder, 1)
 	s.attack("other")
-	s.Require().NoError(dndevents.DamageReceivedTopic.On(s.bus).Publish(s.ctx,
-		dndevents.DamageReceivedEvent{TargetID: "other", Amount: 1}))
+	s.Require().NoError(dndevents.DamageTakenTopic.On(s.bus).Publish(s.ctx,
+		&dndevents.DamageTakenEvent{MemberID: "other", Amount: 1}))
 	s.turn(rageHolder, 2)
 	s.endedFor("no_combat_activity")
 }
