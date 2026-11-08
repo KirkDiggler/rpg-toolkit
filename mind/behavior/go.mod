@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.12.1
-	github.com/KirkDiggler/rpg-toolkit/mind/machine v0.1.1
+	github.com/KirkDiggler/rpg-toolkit/mind/machine v0.1.3-0.20261108192129-aa9db6628c18
 	github.com/KirkDiggler/rpg-toolkit/mind/perception v0.3.0
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.15.0
 	github.com/stretchr/testify v1.11.1
