@@ -48,10 +48,7 @@ func (s *PureLoadTestSuite) SetupTest() {
 // the loader carrying it rather than about this test's JSON matching the
 // serializer's field order.
 func ragingBlob(s *suite.Suite) json.RawMessage {
-	raging := &conditions.RagingCondition{
-		CharacterID: "char-load",
-		Source:      "rage",
-	}
+	raging := composedCharacterRage(s, "char-load")
 
 	raw, err := raging.ToJSON()
 	s.Require().NoError(err)

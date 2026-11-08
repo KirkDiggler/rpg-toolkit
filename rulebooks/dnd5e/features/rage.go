@@ -140,6 +140,20 @@ func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInp
 	if err != nil {
 		return err
 	}
+	// Prepare through the shared rulebook creator before any construction
+	// refusal can spend a class-owned charge. Delivery retains its existing boundary.
+	config, err := json.Marshal(conditions.RagingBindings{DamageBonus: conditions.RagingDamageBonus{BarbarianLevel: true}})
+	if err != nil {
+		return rpgerr.Wrapf(err, "failed to encode Rage bindings")
+	}
+	prepared, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{
+		Ref: refs.Conditions.Raging().String(), MemberID: owner.GetID(), Config: config,
+		Origin: &dnd5eEvents.ConditionOrigin{Ref: *refs.Features.Rage(), EntityID: owner.GetID()},
+	})
+	if err != nil {
+		return rpgerr.Wrapf(err, "failed to prepare Raging")
+	}
+
 	// Consume a use (unless level 20)
 	if level < unlimitedRageLevel {
 		accessor, ok := owner.(coreResources.ResourceAccessor)
@@ -151,19 +165,13 @@ func (r *Rage) Activate(ctx context.Context, owner core.Entity, input FeatureInp
 		}
 	}
 
-	// Create the raging condition
-	ragingCondition := &conditions.RagingCondition{
-		CharacterID: owner.GetID(),
-		Source:      r.id,
-	}
-
 	// Publish condition applied event with the actual condition
 	if input.Bus != nil {
 		topic := dnd5eEvents.ConditionAppliedTopic.On(input.Bus)
 		err := topic.Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
 			Target:    owner,
 			Source:    dnd5eEvents.ConditionSourceFeature,
-			Condition: ragingCondition,
+			Condition: prepared.Condition,
 		})
 		if err != nil {
 			return rpgerr.Wrapf(err, "failed to publish rage condition")

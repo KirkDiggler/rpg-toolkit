@@ -1162,6 +1162,9 @@ func (s *writeScope) replaceMonsterSheet(dirty *monster.Data) {
 				seenConditions(s.data.NPCs[i].ID, s.data.NPCs[i].Conditions))
 		}
 		s.data.NPCs[i] = *dirty
+		// The sheet changed: the verb's kept participation answer for it is
+		// about a sheet that no longer exists (participationMemo).
+		s.standing.memo.forget(dirty.ID)
 		s.touched = true
 		return
 	}
@@ -1355,7 +1358,7 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 
 	view := scope.enc.WorldView()
 	recorded := commitRecord(scope)
-	acts := commitActs(scope, view.EverMembers)
+	acts := commitActs(ctx, scope, m.acts, view.EverMembers)
 
 	// THE final storage boundary: this ToData runs after the verb's complete
 	// delta has been numbered and projected. Everything before this line read

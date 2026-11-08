@@ -63,7 +63,7 @@ flowchart TD
   EXP --> WORLD
   EXB --> EXP
   EXI --> EFF & EV & RB & DICE & RES
-  RB --> MIND & PLAY & WORLD & NPC & SPATIAL & ENV & RES & EV & DICE & ERR
+  RB --> MIND & PLAY & WORLD & NPC & SPATIAL & ENV & RES & EFF & EV & DICE & ERR
   BEH --> MACH & PERC & SPATIAL
   PERC --> PLAY
   SPAWN --> ENV & SPATIAL

@@ -19,7 +19,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster/monsters"
@@ -819,10 +818,7 @@ func (s *CostTestSuite) TestACostWithNoProfileRefreshesAndChargesNothing() {
 // raging is a condition that subscribes on attach and can be heard afterwards,
 // which is what makes it a probe for whether anything survived.
 func (s *CostTestSuite) raging() json.RawMessage {
-	raw, err := (&conditions.RagingCondition{
-		CharacterID: heroID,
-		Source:      "rage",
-	}).ToJSON()
+	raw, err := ragingForTest(s.T(), heroID).ToJSON()
 	s.Require().NoError(err)
 
 	return raw

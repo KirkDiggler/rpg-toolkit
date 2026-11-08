@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	dndevents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
@@ -77,6 +79,44 @@ func (s *RageWhileRagingSuite) TestActivatingRageWhileRagingIsRefused() {
 	s.Equal(1, s.ragingCount(char), "one Raging condition on the sheet")
 	s.Equal(charges, char.GetResource(resources.RageCharges).Current(), "no charge spent")
 	s.Equal(bonus, char.GetActionEconomy().BonusActionsRemaining, "no bonus action spent")
+}
+
+func (s *RageWhileRagingSuite) TestNativeFirstTurnIsSavedThroughTheSharedCreator() {
+	char := s.barbarian()
+	before := char.GetResource(resources.RageCharges).Current()
+	activated, err := char.ActivateAbility(s.ctx, &ActivateAbilityInput{AbilityRef: refs.Features.Rage()})
+	s.Require().NoError(err)
+	s.Require().True(activated.Success, activated.Error)
+	s.Equal(before-1, char.GetResource(resources.RageCharges).Current())
+	data, err := char.ToData()
+	s.Require().NoError(err)
+	loaded, err := Load(s.ctx, data)
+	s.Require().NoError(err)
+	s.False(loaded.IsDirty())
+	bus := events.NewEventBus()
+	s.Require().NoError(Attach(s.ctx, loaded, bus))
+	s.Require().NoError(dndevents.TurnEndTopic.On(bus).Publish(s.ctx, dndevents.TurnEndEvent{SubjectID: loaded.GetID(), Round: 4}))
+	s.True(loaded.IsDirty(), "the first nonterminal state transition must reach native persistence")
+	stored, err := loaded.ToData()
+	s.Require().NoError(err)
+	again, err := Load(s.ctx, stored)
+	s.Require().NoError(err)
+	s.Equal(before-1, again.GetResource(resources.RageCharges).Current(), "reload never refills the class pool")
+	found := false
+	for _, condition := range again.GetConditions() {
+		if condition.Ref().String() != refs.Conditions.Raging().String() {
+			continue
+		}
+		raw, err := condition.ToJSON()
+		s.Require().NoError(err)
+		var saved conditions.ComposedData
+		s.Require().NoError(json.Unmarshal(raw, &saved))
+		s.Equal("raging", saved.Runtime.State)
+		s.Equal(float64(1), saved.Runtime.Bag["turns_active"])
+		s.Equal(again.GetID(), saved.Origin.EntityID)
+		found = true
+	}
+	s.True(found)
 }
 
 func (s *RageWhileRagingSuite) TestRageReadsUnavailableWhileRaging() {

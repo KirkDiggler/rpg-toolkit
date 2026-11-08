@@ -1,9 +1,9 @@
 # Rage-granting loot: an ongoing-effect consumer
 
-[Keep equipment S2 — #873](https://github.com/KirkDiggler/rpg-project/issues/873).
-This extends the Second Wind consumer without changing the generic `items` or
-`effects` packages. The outcome being investigated is effects extraction driven
-by items first; production condition migration follows later (#703 / #705).
+The original [Keep equipment S2 experiment](https://github.com/KirkDiggler/rpg-project/issues/873)
+now consumes the shared rulebook creator under [Composable conditions S11](https://github.com/KirkDiggler/rpg-project/issues/883).
+The item remains an experimental grant/pool composer; it does not implement Rage
+mechanics or claim native inventory integration.
 
 ## One artifact, three lifetimes
 
@@ -14,7 +14,7 @@ outside encounters:
 encounter-like host:
   attach item to holder → grant is visible
   items.Use[*rageActivation] → charge spent, effect prepared but NOT applied
-  caller applies effects.Composed → Rage's outputs and machine become active
+  caller applies the returned ConditionBehavior → shared Raging becomes active
 
 then independently:
   detach/transfer item → its grant association changes; budget stays spent
@@ -28,11 +28,11 @@ and can explicitly remove an effect when that policy requires it.
 
 ## What is real here
 
-- `rage_recipe_test.go` authors states/transitions over the existing machine,
-  following the established Rage-shaped prototype. No handwritten state runner.
-- `rage_vocabulary_test.go` is a consumer plug over actual D&D typed topics and
-  damage, incoming-damage, save and skill-check chains—not a wrapper around the
-  handwritten `RagingCondition`.
+- `rage_grant_test.go` delegates binding validation and creation to the condition
+  registry. The consumer owns no Rage recipe, vocabulary or state runner.
+- `conditions.CreateFromRef` returns the canonical rulebook Raging composition,
+  using the same creator as the native class feature; real D&D damage, incoming,
+  save and check chains exercise its behavior.
 - Damage uses authoritative `contributions.Frame` facts. Unknown relevant facts
   refuse the fold rather than silently dropping the bonus. Incoming damage uses
   the actual immutable-input check and `combat.SettleDamage`.
@@ -43,8 +43,8 @@ and can explicitly remove an effect when that policy requires it.
 - Contribution provenance carries the item instance ID. The effect remains bound
   to its original recipient if the source item is later handed elsewhere.
 
-The example uses its own ability/condition refs and a representative one-charge,
-+2, long-rest item definition. A persisted +3 variant proves retrieval honors
+The example keeps its own grant/item refs but uses the canonical Raging condition
+ref and binding schema, with a representative one-charge, +2, long-rest definition. A persisted +3 variant proves retrieval honors
 stored authored data rather than silently reconstructing the default fixture.
 Those values do not select production rarity/equipment rules.
 
@@ -105,14 +105,15 @@ saved State fails the spent-instance assertion. Both mutants are removed.
 
 ## What this does not certify
 
-Production condition registration/stacking, casting/concentration or armor
+Native item stacking/eligibility, casting/concentration or armor
 eligibility, actor bonus-action payment, and complete class-feature reuse are not
-implemented by this consumer. No condition is migrated. The encounter is a test
+implemented by this consumer. The shared rulebook creator owns the Raging migration;
+this example does not certify that entire native journey. The encounter is a test
 host on a real event bus, not the live encounter/session SDK. Real storage
 contracts and production integration still need their checked plan.
 
-The items-first generic provider extraction is complete at `mechanics/effects
-v0.3.0`, which this consumer pins. See the [checked plan](../../docs/ideas/item-effect-composition/plan.md)
+The effects and rulebook dependencies are explicit in [go.mod](go.mod); development
+checkpoints use actual pushed commits until the wave adopts its release tags. See the [checked plan](../../docs/ideas/item-effect-composition/plan.md)
 and [implementation evidence](../../docs/ideas/item-effect-composition/implementation.md).
 The old combined condition-first promotion plan is superseded, with its parity
 requirements preserved for later condition adoption.
