@@ -106,7 +106,10 @@ func (m *Manager) Acts(ctx context.Context, in *ActsInput) (*ActsOutput, error) 
 // listening from the moment it subscribes, and caught up after, has no gap:
 // a commit before the subscription is in the catch-up read, and one after it
 // is folded live. A client that read catch-up first and subscribed later
-// would miss the commits between the two.
+// would miss the commits between the two. The same order makes the race
+// between Listening and PublishActs harmless: a member that subscribes after
+// a commit asked Listening is not folded for that commit, and its catch-up
+// read, made after it subscribed, returns that act.
 //
 // Listening is asked once per commit, after the verb and before the save,
 // and must be cheap. An error is not a verb failure: the commit folds for
