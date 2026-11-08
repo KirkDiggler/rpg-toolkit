@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
 type PendingWritesSuite struct{ suite.Suite }
@@ -93,4 +94,48 @@ func (s *PendingWritesSuite) TestAWriteAfterTheFencedSaveIsRefused() {
 	sheets, seats := m.pending.take("sess")
 	s.Empty(sheets, "nothing was held for a save that already landed")
 	s.Empty(seats)
+}
+
+// countingFenced is a fenced repository that lands every save and counts
+// them; the plain methods are never reached on the fenced path.
+type countingFenced struct {
+	EncounterRepository
+	saves int
+}
+
+func (c *countingFenced) GetFencedEncounter(context.Context, *GetFencedEncounterInput) (*GetFencedEncounterOutput, error) {
+	return nil, ErrNotFound
+}
+
+func (c *countingFenced) SaveFenced(_ context.Context, in *SaveFencedInput) (*SaveFencedOutput, error) {
+	c.saves++
+	return &SaveFencedOutput{Version: in.Expected + 1}, nil
+}
+
+// TestALandedFencedSaveRefusesTheScopesLaterWrites drives the arming itself:
+// once a scope's fenced save lands, a sheet write and a seat write on that
+// scope each fail with a SaveError wrapping ErrBadRepository, and neither is
+// held for a save that will never come (rpg-toolkit#2332).
+func (s *PendingWritesSuite) TestALandedFencedSaveRefusesTheScopesLaterWrites() {
+	repo := &countingFenced{}
+	m := &Manager{fenced: repo, pending: newPendingWrites()}
+	scope := &writeScope{session: "sess", encounter: "sess", fence: checkpointFence{held: true}}
+	_, err := m.persistFenced(context.Background(), scope, &encounter.EncounterData{}, SaveReport{})
+	s.Require().NoError(err)
+
+	err = m.sheetsFor(scope).save(context.Background(), &character.Data{ID: "alice"})
+	s.ErrorIs(err, ErrBadRepository)
+	var saveErr *SaveError
+	s.Require().ErrorAs(err, &saveErr)
+	s.Equal([]string{"character:alice"}, saveErr.Report.Failed)
+
+	err = m.writeSeat(context.Background(), scope, "alice", "")
+	s.ErrorIs(err, ErrBadRepository)
+	s.Require().ErrorAs(err, &saveErr)
+	s.Equal([]string{"seat:alice"}, saveErr.Report.Failed)
+
+	sheets, seats := m.pending.take("sess")
+	s.Empty(sheets, "the late sheet was not held")
+	s.Empty(seats, "the late seat was not held")
+	s.Equal(1, repo.saves, "nothing reached the store after the one save")
 }

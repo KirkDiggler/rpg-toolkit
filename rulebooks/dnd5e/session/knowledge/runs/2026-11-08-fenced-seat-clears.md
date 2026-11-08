@@ -21,4 +21,5 @@ Fixes [rpg-toolkit#2332](https://github.com/KirkDiggler/rpg-toolkit/issues/2332)
 ## Evidence
 
 - `TestAnExitUnderTheFenceClearsTheLeaversSeat` and `TestARunClosingUnderTheFenceClearsEverySeat` fail against main's `write.go` and pass here; `TestAStaleExitKeepsTheSeat` and `TestAWriteAfterTheFencedSaveIsRefused` cover the stale and late-write cases.
+- `TestALandedFencedSaveRefusesTheScopesLaterWrites` drives a real fenced save and then writes on the same scope; it fails with the arming line in `persistFenced` removed. `TestTheClearedSeatsGuardIsHeldAcrossTheSave` checks alice's character guard from inside `SaveFenced`; it fails when commit gives the guards back before the save.
 - `go test -race -count=1 ./rulebooks/dnd5e/session/...` passes, on play/record v0.3.0 too; `golangci-lint run ./rulebooks/dnd5e/session/...` reports 0 issues.
