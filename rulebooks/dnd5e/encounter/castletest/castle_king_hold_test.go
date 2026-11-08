@@ -172,10 +172,13 @@ func (s *kingScene) storedIn(id encounter.MemberID, state string) {
 	found := false
 	for i := range data.Members {
 		if data.Members[i].ID == id {
-			if data.Members[i].Machine == nil {
-				data.Members[i].Machine = &encounter.MachineData{}
+			b := data.Members[i].Behaviors
+			require.NotNil(s.t, b)
+			for j := range b.Progress.Instances {
+				if b.Progress.Instances[j].ID == b.BodyInstance {
+					b.Progress.Instances[j].Blob.State, found = state, true
+				}
 			}
-			data.Members[i].Machine.State, found = state, true
 		}
 	}
 	require.True(s.t, found, "%s is in the run", id)
@@ -184,11 +187,7 @@ func (s *kingScene) storedIn(id encounter.MemberID, state string) {
 	})
 	require.NoError(s.t, err, "the record loads with %s %s", id, state)
 	s.enc = enc
-	for _, m := range s.enc.ToData().Members {
-		if m.ID == id {
-			require.Equal(s.t, state, m.Machine.State)
-		}
-	}
+	require.Equal(s.t, state, machineState(s.t, s.enc, id))
 }
 
 // TestMadKingTheHeldGateDoorRefusesTheParty is R7 (rpg-project#835): with
@@ -276,11 +275,6 @@ func TestMadKingTheGateLetsThePartyOut(t *testing.T) {
 // nothing.
 func (s *kingScene) onHisPost(id encounter.MemberID, msg string) {
 	s.t.Helper()
-	state := ""
-	for _, m := range s.enc.ToData().Members {
-		if m.ID == id && m.Machine != nil {
-			state = m.Machine.State
-		}
-	}
-	require.Contains(s.t, []string{"", "posted", "alert"}, state, msg)
+	state := machineState(s.t, s.enc, id)
+	require.Contains(s.t, []string{"posted", "alert"}, state, msg)
 }

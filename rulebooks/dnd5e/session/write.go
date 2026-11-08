@@ -563,12 +563,9 @@ func joinInputFor(
 		// already in the composition's Option: carried off the compiled
 		// placement by Launch. Nil stays nil.
 		Options: social.Options,
-		// The creature's whole policy, already three layers deep
-		// (rpg-project#465): the rulebook's default for its kind under the
-		// author's faction orders under the author's placement orders. Laid
-		// by whichever verb built this placement, never here — this function
-		// places what it was handed.
-		Table: social.Table,
+		// The compiler's canonical policy crosses unchanged. An absent list
+		// stays absent; session invents no ordinary actor behavior.
+		Behaviors: social.Behaviors,
 		// And what loads its die, with the word's meaning already filled in
 		// from the rulebook. A faction's MIX crosses intact: the composition
 		// deals one word from it at this very door, through the world's dice
@@ -1162,6 +1159,9 @@ func (s *writeScope) replaceMonsterSheet(dirty *monster.Data) {
 				seenConditions(s.data.NPCs[i].ID, s.data.NPCs[i].Conditions))
 		}
 		s.data.NPCs[i] = *dirty
+		// The sheet changed: the verb's kept participation answer for it is
+		// about a sheet that no longer exists (participationMemo).
+		s.standing.memo.forget(dirty.ID)
 		s.touched = true
 		return
 	}
@@ -1355,7 +1355,7 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 
 	view := scope.enc.WorldView()
 	recorded := commitRecord(scope)
-	acts := commitActs(scope, view.EverMembers)
+	acts := commitActs(ctx, scope, m.acts, view.EverMembers)
 
 	// THE final storage boundary: this ToData runs after the verb's complete
 	// delta has been numbered and projected. Everything before this line read

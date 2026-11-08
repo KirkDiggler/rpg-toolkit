@@ -230,8 +230,8 @@ func (i *Item) vocabulary() effects.OutputVocabulary {
 	}
 	return effects.OutputVocabulary{Kinds: map[effects.KindName]effects.KindSpec{
 		kindGrant: {
-			Check: func(raw jsontext.Value) error {
-				key, err := bindingKey(raw)
+			Check: func(out effects.Output) error {
+				key, err := bindingKey(out.Params)
 				if err != nil {
 					return err
 				}
@@ -251,8 +251,8 @@ func (i *Item) vocabulary() effects.OutputVocabulary {
 			Assess: assess,
 		},
 		kindRecover: {
-			Check: func(raw jsontext.Value) error {
-				key, err := bindingKey(raw)
+			Check: func(out effects.Output) error {
+				key, err := bindingKey(out.Params)
 				if err != nil {
 					return err
 				}

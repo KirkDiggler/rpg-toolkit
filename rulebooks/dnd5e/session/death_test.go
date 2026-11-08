@@ -14,7 +14,6 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
@@ -548,9 +547,7 @@ func (s *DeathTestSuite) TestAKillingAttackReportsTheNestedBoundarySaveFailure()
 	alice := armedFighter("alice")
 	alice.ClassID = classes.Barbarian
 	alice.Levels = syntheticLevels(classes.Barbarian, 3)
-	rage, err := (&conditions.RagingCondition{
-		CharacterID: "alice", Source: "dnd5e:features:rage",
-	}).ToJSON()
+	rage, err := ragingForTest("alice").ToJSON()
 	s.Require().NoError(err)
 
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()

@@ -25,7 +25,7 @@ import (
 func simCaps() encounter.Capabilities {
 	return encounter.Capabilities{
 		Sight: &sightList{fallback: 24}, Equipment: encounter.UnobservedEquipment{}, Conditions: encounter.UnobservedEquipment{},
-		Sheets: walksThirty{}, Participation: everyoneStanding{}, Initiative: orderAsGiven{}, Driver: encounter.TableDriver{Roller: rollsLowest{}},
+		Sheets: walksThirty{}, Participation: everyoneStanding{}, Initiative: orderAsGiven{}, Driver: encounter.BehaviorDriver{},
 		Roller: rollsLowest{}, CheckResolver: findsNothing{}, Witness: nobodyPerceives{},
 		Actors: encounter.Actors{Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}},
 	}
@@ -43,8 +43,8 @@ func simKeep(b *testing.B) (*encounter.Encounter, []spatial.Position) {
 	for _, m := range compiled.Monsters {
 		members = append(members, encounter.MemberInput{
 			ID: encounter.MemberID(m.MemberID), Kind: encounter.KindMonster, Position: m.At,
-			Faction: encounter.FactionID(m.Faction), Table: m.Table, Options: m.Options,
-			Arrives: m.Arrives, Temper: soldierTemper(m.Temper), Facing: m.FacingDegrees, Machine: m.Machine, BlockingStates: m.BlockingStates, Posts: m.Posts,
+			Faction: encounter.FactionID(m.Faction), Behaviors: m.Behaviors, Options: m.Options,
+			Arrives: m.Arrives, Temper: soldierTemper(m.Temper), Facing: m.FacingDegrees, BlockingStates: m.BlockingStates, Posts: m.Posts,
 		})
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
@@ -54,6 +54,11 @@ func simKeep(b *testing.B) (*encounter.Encounter, []spatial.Position) {
 	})
 	if err != nil {
 		b.Fatal(err)
+	}
+	for _, member := range enc.ToData().Members {
+		if member.Kind == encounter.KindMonster && member.Behaviors == nil {
+			b.Fatalf("simulation dropped authored behavior for %s", member.ID)
+		}
 	}
 	player := keepPlayers[0]
 	start := whereIs(b, enc, player)

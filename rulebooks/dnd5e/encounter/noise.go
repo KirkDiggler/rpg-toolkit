@@ -397,7 +397,7 @@ func (e *Encounter) makeSound(cause string, maker MemberID, at uint64) error {
 	}
 	// AND ON EVERY HEARER WHOSE STATE LISTENS (rpg-project#766 S4): the
 	// sound wakes it in the raise it landed in (wakebeats.go).
-	e.landHeard(heard, where, maker, at)
+	e.landHeard(heard, kind, where, maker, at)
 
 	for _, h := range heard {
 		if e.members[h.member].Kind != KindPlayer {

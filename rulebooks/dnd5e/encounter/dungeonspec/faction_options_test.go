@@ -135,12 +135,8 @@ place:
 // only a faction's line can satisfy is legal, because the facts universe
 // counts the faction's rows.
 func (s *FactionOptionsSuite) TestAFactTheFactionsLineTeachesIsAFactThisFileSets() {
-	loadSource(s.T(), s.v4(bandLines,
-		"      goblin-1:\n"+
-			"        faction: band\n"+
-			"        on:\n"+
-			"          time:\n"+
-			"            - { when: { fact: /band-.*/ }, hold: {} }\n"))
+	root := bandLines + "\nbehaviorDefinitions:\n  notice:\n    recipe: {ref: 'example:behaviors:notice', initial: ready, states: {ready: {transitions: [{on: time, do: [{pick: time}]}]}}}\n    table: {time: [{when: {fact: /band-.*/}, hold: {}}]}\n"
+	loadSource(s.T(), s.v4(root, "      goblin-1: {faction: band, behaviors: [{id: duty, use: notice}]}\n"))
 }
 
 // TestABundleRowInAFactionsLineIsResolved: `use:` in a faction's verdict is

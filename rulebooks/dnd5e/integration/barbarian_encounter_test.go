@@ -221,14 +221,13 @@ func (s *BarbarianEncounterSuite) TestRage_EndsAfter10Turns() {
 		s.Require().NoError(err)
 
 		turnEndTopic := dnd5eEvents.TurnEndTopic.On(s.bus)
-		damageTopic := dnd5eEvents.DamageReceivedTopic.On(s.bus)
+		damageTopic := dnd5eEvents.DamageTakenTopic.On(s.bus)
 
 		// Simulate 10 turns with combat activity each turn
 		for round := 1; round <= 10; round++ {
 			// Take damage to maintain rage
-			err = damageTopic.Publish(s.ctx, dnd5eEvents.DamageReceivedEvent{
-				TargetID: s.barbarian.GetID(),
-				SourceID: s.goblin.GetID(),
+			err = damageTopic.Publish(s.ctx, &dnd5eEvents.DamageTakenEvent{
+				MemberID: s.barbarian.GetID(),
 				Amount:   1,
 			})
 			s.Require().NoError(err)

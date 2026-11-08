@@ -312,12 +312,11 @@ func (m *Manager) resolveTurnDriver(ctx context.Context, sessionID string) (enco
 		return nil, fmt.Errorf("session %q: %w", sessionID, ErrNoTurnDriver)
 	}
 
-	// [Driver] — the creature's own table — is not wrapped but RECOGNISED, and
-	// built one layer down around this session's dice. It cannot cross the
-	// projecting seam: the twin view carries no table, no temperament and no
-	// deeds, and a pick's arithmetic has nowhere to ride back on. See
-	// [tableDriver] for the whole argument.
-	return encounterDriverFor(driver, m.encounterDice()), nil
+	// [Driver] is recognized as the encounter's ordinary behavior marker.
+	// Canonical configuration, progress and selected-row arithmetic stay below
+	// the host-facing twin; the write scope supplies shared dice and compulsion
+	// precedence. Custom drivers retain their projection seam.
+	return encounterDriverFor(driver), nil
 }
 
 // encounterDice is this session's shared randomness in the shape the

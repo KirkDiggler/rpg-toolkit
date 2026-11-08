@@ -157,11 +157,12 @@ go vet ./...
 golangci-lint run ./...
 ```
 
-The generic composer is released as `mechanics/effects v0.3.0` through
-[#2291](https://github.com/KirkDiggler/rpg-toolkit/pull/2291); this consumer pins
-that tag. The item package remains an experiment under `examples/` and is not
-tagged. No `replace` or `go.work`, no provider changes in this package cut, and
-no production item adoption is implied by passing tests.
+The generic composer is supplied by `mechanics/effects`; exact provider/root
+pins are in [go.mod](go.mod). Shared rulebook creation is tracked by
+[S11 #883](https://github.com/KirkDiggler/rpg-project/issues/883); its draft uses
+actual pushed commits until released tags are adopted. The item package remains
+an untagged experiment. No `replace` or `go.work`, and no production item adoption
+is implied by passing tests.
 
 [Experiment plan](PLAN.md). The journal and ADR record what the consumer teaches;
 these names and interfaces remain free to change before extraction.

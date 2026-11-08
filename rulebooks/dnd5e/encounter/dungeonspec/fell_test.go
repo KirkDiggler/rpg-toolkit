@@ -109,13 +109,13 @@ func TestTheCastleSealsWhoToItsMonsters(t *testing.T) {
 	raw, err := os.ReadFile("testdata/world-builder-v4-castle.yaml")
 	require.NoError(t, err)
 	source := string(raw)
-	require.Contains(t, source, "fell: { who: king, within: 3, on: ally }", "the castle's knights wait on the king")
+	require.Contains(t, source, "fell: {who: king, within: 3, on: ally}", "the castle's knights wait on the king")
 
 	_, err = dungeonspec.Load(raw)
 	require.NoError(t, err, "the castle as committed loads")
 
 	_, err = dungeonspec.Load([]byte(strings.Replace(source, "who: king", "who: altar", 1)))
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "tables.keep-patrol.on.time[0].when")
+	require.Contains(t, err.Error(), "behaviorDefinitions.keep-1-policy.table.time")
 	require.Contains(t, err.Error(), `"altar" is not a placement in this dungeon`)
 }

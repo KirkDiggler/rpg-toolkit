@@ -64,7 +64,7 @@ func openThePursuitHall(t *testing.T, heroAt spatial.Position) (*encounter.Encou
 	for _, m := range compiled.Monsters {
 		members = append(members, encounter.MemberInput{
 			ID: encounter.MemberID(m.MemberID), Kind: encounter.KindMonster, Position: m.At,
-			Faction: encounter.FactionID(m.Faction), Table: m.Table, Facing: m.FacingDegrees,
+			Faction: encounter.FactionID(m.Faction), Behaviors: m.Behaviors, Facing: m.FacingDegrees,
 		})
 	}
 	strikes := &[]cellsStrike{}
@@ -80,7 +80,7 @@ func openThePursuitHall(t *testing.T, heroAt spatial.Position) (*encounter.Encou
 			Sheets:        pursuitSheets{},
 			Participation: &castleStanding{down: map[encounter.MemberID]bool{}},
 			Initiative:    orderAsGiven{},
-			Driver:        encounter.TableDriver{Roller: rollsOne{}},
+			Driver:        encounter.BehaviorDriver{},
 			Roller:        rollsOne{},
 			Witness:       nobodyPerceivesAnything{},
 			Actors: encounter.Actors{

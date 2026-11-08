@@ -317,9 +317,9 @@ func (s *OpposedFightsSuite) TestAGuardWhoTurnedOnTheThugsJoinsThePartysFight() 
 		{Weight: 1, Hold: true},
 	}}
 	captain := monster(ofCaptain, ofGarrison, 3, 1)
-	captain.Table = swings
+	captain.Behaviors = ordinaryBehavior(swings)
 	thug := monster(ofThug, ofThugs, 2, 1)
-	thug.Table = swings
+	thug.Behaviors = ordinaryBehavior(swings)
 	melee := encounter.SheetFacts{SpeedFeet: 30, Actions: []encounter.ActionView{{Ref: ofClub, RangeFeet: 5}}}
 	striker := &scriptedStriker{kind: encounter.OutcomeMissed}
 

@@ -74,7 +74,7 @@ func TestMadKingGateGuardsTreeIsInTheRecord(t *testing.T) {
 	for _, entry := range story {
 		var b pathBeat
 		require.NoError(t, json.Unmarshal(entry.Payload, &b))
-		if b.Creature != string(kingGate1) || b.Key != string(encounter.AnswerTime) {
+		if b.Creature != string(kingGate1) || b.Key != "behavior/6:policy/time" {
 			continue
 		}
 		switch b.Beat {
@@ -95,7 +95,7 @@ func TestMadKingGateGuardsTreeIsInTheRecord(t *testing.T) {
 	base := rows[2]
 	require.Equal(t, "guard-base", base.From)
 	require.Equal(t, map[string]string{
-		"path": "[{q: -5, r: 8, wait: 1, facing: ne}, {q: -5, r: 10, wait: 1, facing: se}, {q: -7, r: 10}]"},
+		"path": `[{"facing": "ne", "q": -5, "r": 8, "wait": 1}, {"facing": "se", "q": -5, "r": 10, "wait": 1}, {"q": -7, "r": 10}]`},
 		base.Params, "the guard's own route, passed to the base")
 	require.Empty(t, base.Word, "a group carries no word")
 	require.Len(t, base.Rows, 4, "the base is a bundle of bundles")

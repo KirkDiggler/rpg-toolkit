@@ -40,10 +40,13 @@ type headingPass struct {
 // heading otherwise (each distinct (subject, heading) encoded once).
 //
 // presences is the base pass, in which every placed member at seenAs[id] was
-// encoded with no heading; positions is where each placed member stands now.
+// encoded with no heading from seen[id]; positions is where each placed
+// member stands now. A variant starts from seen[id], the testimony the base
+// was encoded from, never from decoding the base again (rpg-project#879 S9).
 func (e *Encounter) headingPasses(
 	observers []core.EntityID, presences []perception.Presence,
 	positions map[MemberID]spatial.Position, seenAs map[MemberID]int,
+	seen map[MemberID]SightTestimony,
 ) ([]headingPass, error) {
 	type variant struct {
 		subject MemberID
@@ -77,9 +80,8 @@ func (e *Encounter) headingPasses(
 				v := variant{subject: id, heading: headings[id]}
 				payload, ok := encoded[v]
 				if !ok {
-					base := g.presences[seenAs[id]]
-					testimony, decoded := DecodeSightTestimony(base.Payload)
-					if !decoded {
+					testimony, known := seen[id]
+					if !known {
 						return nil, fmt.Errorf("heading of %q: %w", id, ErrInvalidData)
 					}
 					h := v.heading
@@ -132,7 +134,7 @@ func (e *Encounter) headingsSeenBy(
 		if !placed {
 			continue
 		}
-		before, ok := DecodeSightTestimony(h.Payload)
+		before, ok := e.heldSight(observer, h)
 		if !ok || before.State == LocationUnknown {
 			continue
 		}

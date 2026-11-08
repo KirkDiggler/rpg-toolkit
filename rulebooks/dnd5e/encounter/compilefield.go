@@ -152,6 +152,19 @@ type field struct {
 	blockingDoors []*doorRecord
 	blockingMask  []bool
 
+	// doorOpenings is every attached door's opening, normalized
+	// ([field.doorOpening], rpg-project#879 S9): the crossings a door's
+	// rectangle lies across, which depend on the floor and the door's
+	// placement and on nothing a game changes. SITE DATA (R4), so it lives
+	// on the field and not on the instance. BUILT EAGERLY when the doors
+	// attach ([field.attachDoorFootprints]) and never written after, so a
+	// field shared by several games (R3, the site tier) is only ever read:
+	// new door content is a new attach and a new map, and the floor never
+	// changes without a new field. A fresh map on every attach, never one
+	// written in place, so the field's shallow copies
+	// ([field.partitionCanvas]) never write the live field's.
+	doorOpenings map[DoorID][]DoorEdge
+
 	// openedFacts is every fact a door teaches when it opens
 	// ([DoorInput.Opened], rpg-project#569 R12), read off the authored
 	// doors at compile so [mintedFactIDs] can count them: a door's fact is

@@ -411,6 +411,12 @@ type RevealsSpec struct {
 // `monsters` is where every monster with no `faction` already is. Declaring
 // `monsters` is legal, and is how the unauthored side is given a mind.
 type FactionSpec struct {
+	// Behaviors is inherited as a whole list when a placement omits its own.
+	Behaviors      *[]BehaviorBindingSpec `yaml:"behaviors,omitempty" json:"behaviors,omitempty"`
+	BehaviorState  string                 `yaml:"behaviorState,omitempty" json:"behaviorState,omitempty"`
+	BlockingStates *[]string              `yaml:"blockingStates,omitempty" json:"blockingStates,omitempty"`
+	Posts          map[string]HoldsSpec   `yaml:"posts,omitempty" json:"posts,omitempty"`
+
 	// ID names the faction, and is what a placement's `faction`, a
 	// disposition's `between` and a scenario's `convince` name. REQUIRED
 	// non-empty and unique; `party` is refused by name.

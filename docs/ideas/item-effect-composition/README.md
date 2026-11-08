@@ -80,18 +80,18 @@ file adapter is a host demonstration, not a repository dependency in either tool
 | Authoring front ends | Human-friendly construction of definitions | Go literals or editor data → the same validated composition/item data; editor-facing schema is not yet selected |
 | Rulebook effect kinds | Mechanical meanings and parameter validation | `effects.KindSpec` (`Check`, `Attach`, `Assess`) and `AmountFn`; typed rulebook events/frames → chain contributions and information rows |
 | Rulebook vocabulary | Names that a recipe may use | `machine.Vocabulary` facts/beats plus `effects.OutputVocabulary` kinds/amounts/hooks → the generic constructor's supplied capabilities |
-| Conditions definitions/registry | Named reusable compositions, display, creation and restoration | Target: recipe + binding → `ConditionBehavior`; existing entry is `CreateFromRefInput{Ref, Config, MemberID, SourceRef}` / `CreateFromRefOutput`, with registry-owned create/load |
+| Conditions definitions/registry | Named reusable compositions, display, creation and restoration | Composed Raging: `CreateFromRefInput{Ref, Config, MemberID, Origin}` → `ConditionBehavior`, with registry-owned binding validation and strict `ComposedData` create/load |
 | Generic effects composer | Recipe/output validation, attaching current outputs, removal ordering | `effects.Compose(effects.ComposeInput)` → `*effects.Composed`; `Apply`/`Remove`, `Rows`, `ToJSON` |
 | Effects machine | State, transitions, guards, trackers and its bag | `machine.Recipe` + vocabulary → `Program`; `machine.New(machine.Config)` → runtime state, transition/change notifications and `Blob` |
 | Item composer | Instance identity, grants and its own mutable pools | Experimental `Definition`/`Config`/`Data` → `Item`; copied `Offers`; `Use[Result]` → typed consumer result and item-budget facts |
 | Class/other grant sources | Their own access rules, parameter sources and budgets | Source-specific rulebook data → access to the same named ability/condition definition; not a copy of its behavior |
 | Resolution / session / host | Interaction execution, caller-owned bus, load–act–save coordination and concrete persistence adapters | References and validated intent → results/state; concrete storage remains outside rule content and generic tools |
 
-The condition row describes a **target use of the existing registry seam**, not a
-claim that its factory already builds composed Raging for both sources. Its
-`SourceRef` is a content ref; carrying an item instance ID through the production
-binding remains an explicit contract question. Do not disguise an instance ID as
-another content ref merely to fit the current signature.
+Composed Raging uses the existing registry seam. Its `Origin` separates granting
+content ref from source entity ID, and `ComposedData` retains immutable bindings
+beside one runtime snapshot. The legacy `SourceRef` field remains for other
+condition constructors; it is not a substitute for instance provenance. Do not
+disguise an item ID as a content ref or a stacking qualifier.
 
 ### Refusals
 
@@ -125,8 +125,9 @@ illustrate the path, not a universal rarity or item rule.
    recipient, parameters and source identity to the rulebook factory. The factory
    uses the Raging recipe and the rulebook vocabulary with `effects.Compose`. A new
    active instance is created; the definition is shared, its mutable state is not.
-   In the example, the analogous preparation returns `rageActivation` containing
-   `Source` and an unapplied `*effects.Composed`; it is not a production factory API.
+   The example preparation returns `rageActivation` containing its item `Source`
+   and the shared creator's unapplied `ConditionBehavior`; this is not a claim of
+   production item inventory or a final grant API.
 5. **Attach and calculate.** The caller applies the prepared instance to its
    interaction bus. On a matching `DamageChainEvent`, the rulebook kind reads
    `contributions.Frame`, evaluates the configured guard/amount, and contributes
@@ -184,19 +185,18 @@ the boundaries; it does not accept an additional package or protocol.
   reaction/interruption flows, condition registration and delivery remain separate
   integration questions under the ADR's open scope.
 - **Meaningful source identity must survive.** A recipe/content ref is not the
-  item instance ID. The example carries both; the production factory/registry
-  binding must do so without losing provenance or duplicating state authority.
+  item instance ID. `ConditionOrigin` carries both without qualifying Raging's
+  by-ref stacking identity; the codec preserves them separately from mutable state.
 - **Extraction order is not ownership.** Items can drive generic effects extraction
   while condition definitions remain the intended rulebook home for shared named
   compositions. That does not require migrating the entire handwritten condition
   catalog first. The owning scope/order record is
   [rpg-project#703](https://github.com/KirkDiggler/rpg-project/issues/703) /
   [#705](https://github.com/KirkDiggler/rpg-project/issues/705), not a second plan here.
-- **Existing similarly named code is not proof of this architecture.** The current
-  `rulebooks/dnd5e/effects/types.go` is an older representation, not the new
-  `KindSpec` vocabulary. The top-level `items` interfaces describe properties and
-  equipment, not this prototype's grant/pool composer. Reconciliation is an
-  extraction/design task, not an implicit replacement by name.
+- **Names do not collapse responsibilities.** `rulebooks/dnd5e/effects` supplies
+  reusable mechanical meanings; it does not own named condition recipes or item
+  budgets. The top-level `items` interfaces describe properties and equipment,
+  not the experimental grant/pool composer.
 
 ## Where a change lands
 
@@ -223,7 +223,7 @@ the boundaries; it does not accept an additional package or protocol.
 | Current condition registry/factory | [descriptor.go](../../../rulebooks/dnd5e/conditions/descriptor.go), [factory.go](../../../rulebooks/dnd5e/conditions/factory.go), [loader.go](../../../rulebooks/dnd5e/conditions/loader.go) |
 | Current class Rage construction | [features/rage.go](../../../rulebooks/dnd5e/features/rage.go), `Rage.Activate` |
 | Experimental item API | `examples/items/{definition,item,use}.go`, [item example record](https://github.com/KirkDiggler/rpg-toolkit/pull/2273/files) |
-| Rage recipe and real rulebook vocabulary example | `examples/items/rage_recipe_test.go`, `rage_vocabulary_test.go`, [consumer record](https://github.com/KirkDiggler/rpg-toolkit/pull/2287/files) |
+| Shared Rage recipe and rulebook vocabulary | `rulebooks/dnd5e/conditions/raging_definition.go`, `rulebooks/dnd5e/effects/`; item adapter `examples/items/rage_grant_test.go` ([consumer](https://github.com/KirkDiggler/rpg-toolkit/pull/2300/files)) |
 | Encounter-independent artifacts and commit boundary | `examples/items/loot_example_test.go`, [consumer record](https://github.com/KirkDiggler/rpg-toolkit/pull/2287/files) |
 
 For the derivation, checked plan, implementation evidence and eventual public

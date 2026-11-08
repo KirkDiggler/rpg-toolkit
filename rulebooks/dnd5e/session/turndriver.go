@@ -20,14 +20,14 @@ import (
 // composition's interface directly would name a module this SDK intends to
 // keep replaceable underneath it.
 //
-// WIRE [Driver] — the creature's own authored table, which is what every
-// monster in a real run is driven by (rpg-project#465). session.Pass{} remains
+// WIRE [Driver] for canonical authored behavior owned by the encounter.
+// session.Pass{} remains
 // for v1's original whole answer: every unplayed member's turn ends the moment
 // the clock reaches it, which is what a workbench and most fixtures want.
 //
 // A HOST'S OWN DRIVER ROLLS NOTHING, and the view it is handed says so: this
 // twin carries no table, no temperament and no deeds, because the one driver
-// that reads those never crosses this boundary (see [tableDriver]). What a
+// that reads those never crosses this boundary (see [behaviorDriver]). What a
 // driver written against this interface gets is what it always got — position,
 // actions, sight, memory, budget — and what it answers with is an intent.
 type TurnDriver interface {
@@ -469,7 +469,7 @@ type turnDriverSeam struct {
 // (rpg-project#465); a driver on this side of the boundary was handed a view
 // with no table in it and rolled nothing, so the composition writes no answer
 // beat for the turn it takes. The one driver that DOES roll never comes
-// through here — see [tableDriver].
+// through here — see [behaviorDriver].
 func (s turnDriverSeam) Act(view encounter.MonsterView) (encounter.Decision, error) {
 	intent, err := s.driver.Act(projectMonsterView(view))
 	if err != nil {

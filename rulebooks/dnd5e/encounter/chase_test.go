@@ -58,13 +58,14 @@ func TestVaultChase(t *testing.T) {
 		},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 5}},
-			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 8}, Table: hunts()},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 8}, Behaviors: ordinaryBehavior(hunts())},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: sanctuaryEnding, Trigger: encounter.TriggerReachedPosition{
 				Position: spatial.Position{X: 18, Y: 8}}}, // the vault's own [8,8], anchored at [10,0]
 		},
 		Capabilities: encounter.Capabilities{
+			Roller:        rollsLowest{},
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
 			Conditions:    encounter.UnobservedEquipment{},
@@ -128,6 +129,7 @@ func TestVaultChase(t *testing.T) {
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
+			Roller:        rollsLowest{},
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
 			Conditions:    encounter.UnobservedEquipment{},

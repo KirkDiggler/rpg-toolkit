@@ -49,50 +49,7 @@ func BenchmarkGarrisonMove(b *testing.B) {
 
 func benchGarrisonMove(b *testing.B, listen bool) {
 	b.StopTimer()
-	key := "keep-garrison-10000"
-	if listen {
-		key += "-posts-listen"
-	}
-	compiled := compiledOnce(b, key, func() ([]byte, error) {
-		opts := keepgen.DefaultOptions()
-		opts.Hexes, opts.Seed, opts.Key = 10000, 1, "bench-keep-garrison"
-		opts.Garrison, opts.Patrols, opts.PostsListen = 99, 20, listen
-		raw, _, err := keepgen.Generate(keepgen.DefaultPlan(), opts)
-		return raw, err
-	})
-	members := []encounter.MemberInput{{ID: keepPlayers[0], Kind: encounter.KindPlayer, Position: compiled.PartyStart[0].At}}
-	for _, m := range compiled.Monsters {
-		members = append(members, encounter.MemberInput{
-			ID: encounter.MemberID(m.MemberID), Kind: encounter.KindMonster, Position: m.At,
-			Faction: encounter.FactionID(m.Faction), Table: m.Table, Options: m.Options,
-			Arrives: m.Arrives, Temper: soldierTemper(m.Temper), Facing: m.FacingDegrees, Machine: m.Machine, BlockingStates: m.BlockingStates, Posts: m.Posts,
-		})
-	}
-	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field:   compiled.Field,
-		Members: members,
-		Endings: append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, compiled.Endings...),
-		Capabilities: encounter.Capabilities{
-			Sight:         &sightList{fallback: 24},
-			Equipment:     encounter.UnobservedEquipment{},
-			Conditions:    encounter.UnobservedEquipment{},
-			Sheets:        walksThirty{},
-			Participation: everyoneStanding{},
-			Initiative:    orderAsGiven{},
-			Driver:        encounter.TableDriver{Roller: rollsLowest{}},
-			Roller:        rollsLowest{},
-			CheckResolver: findsNothing{},
-			Witness:       nobodyPerceives{},
-			Actors: encounter.Actors{
-				Striker:   passStriker{},
-				Mover:     quietMover{},
-				Announcer: quietAnnouncer{},
-			},
-		},
-	})
-	if err != nil {
-		b.Fatalf("open the garrison keep: %v", err)
-	}
+	enc := openGarrisonKeep(b, listen)
 
 	player := keepPlayers[0]
 	start := whereIs(b, enc, player)
@@ -143,6 +100,62 @@ func benchGarrisonMove(b *testing.B, listen bool) {
 	if raiseSteps > 0 {
 		b.ReportMetric(float64(raiseNs)/float64(raiseSteps)/float64(time.Millisecond), "raise-step-ms")
 	}
+}
+
+// openGarrisonKeep opens the garrison keep [BenchmarkGarrisonMove] paces:
+// with listen, the posts-asleep keep.
+func openGarrisonKeep(tb testing.TB, listen bool) *encounter.Encounter {
+	tb.Helper()
+	key := "keep-garrison-10000"
+	if listen {
+		key += "-posts-listen"
+	}
+	compiled := compiledOnce(tb, key, func() ([]byte, error) {
+		opts := keepgen.DefaultOptions()
+		opts.Hexes, opts.Seed, opts.Key = 10000, 1, "bench-keep-garrison"
+		opts.Garrison, opts.Patrols, opts.PostsListen = 99, 20, listen
+		raw, _, err := keepgen.Generate(keepgen.DefaultPlan(), opts)
+		return raw, err
+	})
+	members := []encounter.MemberInput{{ID: keepPlayers[0], Kind: encounter.KindPlayer, Position: compiled.PartyStart[0].At}}
+	for _, m := range compiled.Monsters {
+		members = append(members, encounter.MemberInput{
+			ID: encounter.MemberID(m.MemberID), Kind: encounter.KindMonster, Position: m.At,
+			Faction: encounter.FactionID(m.Faction), Table: m.Table, Options: m.Options,
+			Arrives: m.Arrives, Temper: soldierTemper(m.Temper), Facing: m.FacingDegrees, Behaviors: m.Behaviors, Machine: m.Machine, BlockingStates: m.BlockingStates, Posts: m.Posts,
+		})
+		forwarded := members[len(members)-1].Behaviors
+		if m.Behaviors != nil && (forwarded == nil || len(forwarded.Instances) != len(m.Behaviors.Instances)) {
+			tb.Fatalf("garrison setup dropped authored behavior for %s", m.MemberID)
+		}
+	}
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field:   compiled.Field,
+		Members: members,
+		Endings: append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, compiled.Endings...),
+		Capabilities: encounter.Capabilities{
+			Sight:         &sightList{fallback: 24},
+			Equipment:     encounter.UnobservedEquipment{},
+			Conditions:    encounter.UnobservedEquipment{},
+			Sheets:        walksThirty{},
+			Participation: everyoneStanding{},
+			Initiative:    orderAsGiven{},
+			Driver:        encounter.BehaviorDriver{},
+			Roller:        rollsLowest{},
+			CheckResolver: findsNothing{},
+			Witness:       nobodyPerceives{},
+			Actors: encounter.Actors{
+				Striker:   passStriker{},
+				Mover:     quietMover{},
+				Announcer: quietAnnouncer{},
+			},
+		},
+	})
+	if err != nil {
+		tb.Fatalf("open the garrison keep: %v", err)
+	}
+
+	return enc
 }
 
 // worldRound is the world clock's high-water mark: the round the keep has

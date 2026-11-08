@@ -62,8 +62,7 @@ func retrieveBuiltItem(paths itemArtifactPaths) (*items.Item, error) {
 		ValidateGrant: func(grant items.Grant) error {
 			switch grant.Ref {
 			case rageRef:
-				_, err := parseRage(grant)
-				return err
+				return validateRageGrant(grant)
 			case windRef:
 				return validateSecondWind(grant)
 			default:
@@ -79,7 +78,7 @@ func TestBuiltItemIsRetrievedBeforeAnEncounterAndLootPreservesIt(t *testing.T) {
 	// An authored variation proves retrieval consumes the saved definition,
 	// rather than silently rebuilding the default fixture with a +2 bonus.
 	grant := cfg.Definition.Grants[rageGrant]
-	grant.Parameters = json.RawMessage(`{"damage_bonus":3}`)
+	grant.Parameters = json.RawMessage(`{"damage_bonus":{"fixed":3}}`)
 	cfg.Definition.Grants[rageGrant] = grant
 	built, err := items.New(cfg)
 	require.NoError(t, err)

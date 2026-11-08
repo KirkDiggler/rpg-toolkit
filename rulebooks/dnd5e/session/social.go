@@ -451,10 +451,9 @@ type socialPlacement struct {
 	// creature nobody wrote a line for, which cannot be spoken to.
 	Options []encounter.Option
 
-	// Table is the creature's whole policy, ALREADY FOLDED: the rulebook's
-	// default for its kind under the author's two layers. Whichever verb built
-	// this placement did the folding ([foldedTable]); [place] carries it.
-	Table encounter.Table
+	// Behaviors is the producer's canonical materialized policy, carried
+	// without adding defaults, expanding definitions or owning progress.
+	Behaviors *encounter.BehaviorInput
 
 	// Temper is its temperament with the profile already filled in from the
 	// rulebook, or a faction's mix for the composition to deal one from

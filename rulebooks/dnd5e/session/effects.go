@@ -62,6 +62,10 @@ type EffectRow struct {
 	// Name is the effect's display name.
 	Name string `json:"name"`
 
+	// SourceID is the contributing entity's identity, which may be an item or
+	// actor. Empty means unspecified; it is not a stacking qualifier or row ID.
+	SourceID string `json:"source_id,omitempty"`
+
 	// Description is what the effect does, authored beside its rule —
 	// separate from Reason, which is why it does or does not apply here.
 	Description string `json:"description"`
@@ -273,7 +277,7 @@ func effectRowOf(effect contributions.Effect) (EffectRow, error) {
 		ref = effect.Source.Ref.String()
 	}
 	return EffectRow{
-		ID: effect.ID, Ref: ref, Name: effect.Source.Name, Description: effect.Description,
+		ID: effect.ID, Ref: ref, Name: effect.Source.Name, SourceID: effect.Source.SourceID, Description: effect.Description,
 		State: state, Reason: effect.Reason, Participation: participation, Benefit: effect.Benefit,
 	}, nil
 }

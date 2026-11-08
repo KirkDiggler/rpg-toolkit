@@ -86,6 +86,12 @@ because this directory's `README.md` index silently drifted to listing 7 of 37.
   *Rule: reuse behavior without moving its meaning or duplicating mutation owners.*
   Prototype APIs, extraction home and production integration remain open.
 
+- **[0050-composed-condition-instances.md](0050-composed-condition-instances.md)**
+  *(accepted)* — A rulebook composed instance owns immutable bindings/origin and
+  one mutable runtime snapshot under the existing condition registry. Raging's
+  new format has no historical reader/writer; affected characters are recreated.
+  *Rule: persist irreducible source/binding facts without caching derived rules or duplicating mutable state.*
+
 ## Combat
 
 - **0026** — Damage is two-phase: **Resolve** (chain gathers modifiers) → **Apply**

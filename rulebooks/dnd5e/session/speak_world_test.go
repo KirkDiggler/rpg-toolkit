@@ -690,7 +690,7 @@ func (s *SpeakWorldSuite) TestATrainedCheckerCarriesNoRule() {
 func (s *SpeakWorldSuite) TestAWorldRoundRollsThroughTheSessionsOwnDice() {
 	s.driver = session.Driver()
 	s.authored = func(in *dungeonspec.MonsterPlacement) {
-		in.Table = encounter.Table{encounter.AnswerTime: {{Weight: 1, Hold: true}}}
+		in.Behaviors = ordinaryBehavior(encounter.Table{encounter.AnswerTime: {{Weight: 1, Hold: true}}})
 	}
 	// The d20 for the line, then the world's own die for the goblin's turn.
 	// The line has no answer rows, so 42 can only be the `time` pick.
@@ -701,7 +701,7 @@ func (s *SpeakWorldSuite) TestAWorldRoundRollsThroughTheSessionsOwnDice() {
 
 	var body answeredBeat
 	s.Require().True(s.lastBeat(mgr, encounter.BeatAnswered, &body), "the world thought, and a creature's pick is a beat")
-	s.Equal(string(encounter.AnswerTime), body.Key, "this was time passing, not anybody speaking")
+	s.Equal("behavior/6:policy/time", body.Key, "this was time passing, not anybody speaking")
 	s.Empty(body.Verb, "nothing spoke, and an empty verb is that answer rather than a gap")
 	s.Empty(body.Option, "a time pick names no option")
 	s.False(body.Beaten, "and there was no verdict to be beaten")

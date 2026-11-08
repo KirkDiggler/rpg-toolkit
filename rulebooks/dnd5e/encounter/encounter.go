@@ -180,6 +180,10 @@ type Encounter struct {
 	// [Encounter.runPick] for the view it builds; empty is `time`.
 	pickKey AnswerKey
 
+	// opportunity identifies the first delivery in a world/reaction budget.
+	// Reconsults use a fresh time/turn opportunity, never replay this occurrence.
+	opportunity *behaviorOpportunity
+
 	// wakeMatched is how many landed beats the pass in progress has matched,
 	// against [wakeBeatBound]; reset by every [Encounter.wakePass].
 	wakeMatched int
@@ -213,9 +217,11 @@ type Encounter struct {
 	// member that has left is still listed and holds nothing.
 	posted map[MemberID]bool
 
-	// openings is every door's crossings, normalized, for the hold
-	// ([Encounter.doorOpening]): geometry, computed once per door asked.
-	openings map[DoorID][]DoorEdge
+	// sightReads is each held sighting's decoded testimony, by observer,
+	// subject and channel, beside the payload it was decoded from
+	// (sightread.go, rpg-project#879 S9). Instance state: filled on first
+	// read, never persisted.
+	sightReads map[sightSlot]sightRead
 
 	// pendingCells is every cell a change touched since the last look
 	// (rpg-project#762): a step's two ends, a door's cells, a creature turning
@@ -266,11 +272,6 @@ type Encounter struct {
 	// persisted. The default recipe listens for nothing but time, which the
 	// heap answers, so it is empty until a recipe listens (S4).
 	listeners machine.Listeners[MemberID]
-
-	// programs is every recipe this build ships, compiled once per encounter
-	// against the encounter's vocabulary, keyed by the recipe's ref
-	// ([compilePrograms]).
-	programs map[string]*machine.Program
 
 	// participation answers who is down and who counts as present. Required at
 	// both constructors and never defaulted; see [Participation].
@@ -369,7 +370,9 @@ type Encounter struct {
 	visibleCache map[sightSweepKey]visibleBits
 	// visibleCacheEntries is visibleCache's bound, [visibleCacheBound] from
 	// every constructor. The encounter's own, so a test that shrinks it
-	// shares it with no other encounter (rpg-toolkit#2317).
+	// shares it with no other encounter (rpg-toolkit#2317). An encounter
+	// comes from [NewEncounter] or [LoadEncounter]: a zero-value Encounter
+	// has a bound of 0 and drops its cache on every sweep.
 	visibleCacheEntries int
 
 	// sightEncoder replaces [EncodeSightTestimony] in [Encounter.encodeSighting]
@@ -847,7 +850,7 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 			AppearanceRef:      m.AppearanceRef,
 			DefaultActivityRef: m.DefaultActivityRef,
 			Facing:             m.Facing,
-			Options:            m.Options, Table: m.Table, Machine: m.Machine,
+			Options:            m.Options, Table: m.Table, Machine: m.Machine, Behaviors: m.Behaviors,
 			BlockingStates: m.BlockingStates, Posts: m.Posts,
 		}); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
@@ -982,15 +985,9 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 
-	programs, err := compilePrograms()
-	if err != nil {
-		return nil, fmt.Errorf("newencounter: %w", err)
-	}
-
 	// After validation passes, construct (R5: no observable state until success)
 	e := &Encounter{
 		visibleCacheEntries: visibleCacheEntries,
-		programs:            programs,
 		members:             make(map[MemberID]*memberRecord),
 		everMembers:         make(map[MemberID]bool),
 		field:               f,
@@ -1077,7 +1074,7 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 			BlocksMovement:     mi.BlocksMovement,
 			Faction:            mi.Faction,
 		}
-		if err = e.useRecipe(member, mi.Machine, mi.BlockingStates); err != nil {
+		if err = e.useBehaviors(member, mi.Behaviors, nil, mi.BlockingStates); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
 		}
 		if err = e.usePosts(member, mi.Posts, f.cellAt(mi.Position)); err != nil {
@@ -1684,7 +1681,10 @@ func (e *Encounter) addOutranged(in map[MemberID]bool, sight map[MemberID]int) e
 		if !placed {
 			continue
 		}
-		held, err := e.memberIntel(id)
+		// The store's own holdings, [Encounter.memberIntel]'s filter applied
+		// in place: a sighting of anything but a member is not asked.
+		observer := sightMember(id)
+		held, err := e.intelLog.Held(observer)
 		if err != nil {
 			return err
 		}
@@ -1692,7 +1692,12 @@ func (e *Encounter) addOutranged(in map[MemberID]bool, sight map[MemberID]int) e
 			if !h.CurrentOn(perception.Sight) {
 				continue
 			}
-			seen, ok := DecodeSightTestimony(h.Payload)
+			if h.Channel == perception.Sight {
+				if _, member := subjectID(h.Subject, memberSubjectKind); !member {
+					continue
+				}
+			}
+			seen, ok := e.heldSight(observer, h)
 			if !ok || seen.State != LocationKnown {
 				continue
 			}
@@ -2313,6 +2318,9 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 	// seenAs is each placed subject's index in presences, for the heading
 	// variants headingPasses builds.
 	seenAs := make(map[MemberID]int, len(roster))
+	// seen is the testimony each placed subject's base payload was encoded
+	// from, so a heading variant is built from it rather than decoded back.
+	seen := make(map[MemberID]SightTestimony, len(roster))
 	for _, subjectID := range roster {
 		cell, ok := e.canvas.GetEntityPosition(string(subjectID))
 		if !ok {
@@ -2335,7 +2343,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 		// standing in this pass.
 		holdsDoor, _ := e.memberHolds(subjectID, down)
 		facing := e.members[subjectID].Facing
-		payload, perr := e.encodeSighting(SightTestimony{
+		testimony := SightTestimony{
 			State:              LocationKnown,
 			Position:           cell,
 			Equipment:          hands[subjectID],
@@ -2349,11 +2357,13 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 			// the one payload this subject is encoded into this pass, so a
 			// memory keeps the facing it last saw.
 			Facing: &facing,
-		})
+		}
+		payload, perr := e.encodeSighting(testimony)
 		if perr != nil {
 			return nil, fmt.Errorf("encode sight testimony: %w", perr)
 		}
 		presences = append(presences, perception.Presence{ID: sightMember(subjectID), Payload: payload})
+		seen[subjectID] = testimony
 	}
 
 	// UNPLACED OBSERVERS AND NON-MEMBERS ARE FILTERED OUT, and this is the one
@@ -2431,7 +2441,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 	}
 	// THE WAY EACH OBSERVER SAW THEM GO (rpg-project#679 R10, #673 R8): one
 	// pass per distinct set of headings, every observer in exactly one.
-	passes, err := e.headingPasses(observerIDs, presences, positions, seenAs)
+	passes, err := e.headingPasses(observerIDs, presences, positions, seenAs, seen)
 	if err != nil {
 		return nil, err
 	}
@@ -2692,7 +2702,7 @@ func (e *Encounter) validateJoin(in *JoinInput) error {
 		AppearanceRef:      in.AppearanceRef,
 		DefaultActivityRef: in.DefaultActivityRef,
 		Facing:             in.Facing,
-		Options:            in.Options, Table: in.Table, Machine: in.Machine,
+		Options:            in.Options, Table: in.Table, Machine: in.Machine, Behaviors: in.Behaviors,
 		BlockingStates: in.BlockingStates, Posts: in.Posts,
 	}); err != nil {
 		return fmt.Errorf("join: %w", err)
@@ -2786,7 +2796,7 @@ func (e *Encounter) admitMember(in *JoinInput) (*memberRecord, *JoinOutput, erro
 		BlocksMovement:     in.BlocksMovement,
 		Faction:            in.Faction,
 	}
-	if err := e.useRecipe(member, in.Machine, in.BlockingStates); err != nil {
+	if err := e.useBehaviors(member, in.Behaviors, nil, in.BlockingStates); err != nil {
 		return nil, nil, fmt.Errorf("join: %w", err)
 	}
 	if err := e.usePosts(member, in.Posts, in.Cell); err != nil {

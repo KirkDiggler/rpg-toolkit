@@ -25,13 +25,6 @@ dispositions:
       - watch
       - party
     stance: neutral
-tables:
-  pacing:
-    time:
-      # Hand edit: the guard paces his loop, and the waypoint at the east
-      # end of row 0 states how long he stands there and which way he faces.
-      - when: { enemy: none }
-        toward: { path: [{ q: -6, r: 0 }, { q: 2, r: 0, wait: 2, facing: s }, { q: -2, r: 4 }] }
 room:
   version: 3
   id: room-1
@@ -54,11 +47,11 @@ room:
     regions:
       - id: room-1-region
         name: Pause Facing Site
-        lighting: { intensity: 1 }
+        lighting: {intensity: 1}
         cells: []
       - id: region-hall
         name: Hall
-        lighting: { intensity: 1 }
+        lighting: {intensity: 1}
         cells:
           - r: -4
             q: [[-6, 9]]
@@ -97,4 +90,26 @@ room:
     monsterBindings:
       guard:
         faction: watch
-        table: pacing
+        behaviors:
+          - id: policy
+            use: guard-policy
+behaviorDefinitions:
+  guard-policy:
+    recipe:
+      ref: site:behaviors:guard-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        # Hand edit: the guard paces his loop, and the waypoint at the east
+        # end of row 0 states how long he stands there and which way he faces.
+        - when: {enemy: none}
+          toward: {path: [{q: -6, r: 0}, {q: 2, r: 0, wait: 2, facing: s}, {q: -2, r: 4}]}
