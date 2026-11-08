@@ -40,6 +40,8 @@ type BehaviorData struct {
 	Instances    []BoundBehavior       `json:"instances"`
 	BodyInstance string                `json:"body_instance,omitempty"`
 	Progress     behavior.ComposerData `json:"progress"`
+	// SymbolsRecorded is diagnostic bookkeeping for this immutable definition.
+	SymbolsRecorded bool `json:"symbols_recorded,omitempty"`
 }
 
 // MarshalJSON preserves the canonical recipe encoding when EncounterData is
@@ -72,10 +74,11 @@ func (BehaviorDriver) Act(MonsterView) (Decision, error) {
 }
 
 type behaviorRuntime struct {
-	definition string
-	input      BehaviorInput
-	composer   *behavior.Composer
-	byID       map[string]int
+	definition      string
+	input           BehaviorInput
+	composer        *behavior.Composer
+	byID            map[string]int
+	symbolsRecorded bool
 }
 
 func newBehaviorRuntime(in *BehaviorInput, progress *behavior.ComposerData) (*behaviorRuntime, error) {
@@ -203,7 +206,7 @@ func (b *behaviorRuntime) toData() *BehaviorData {
 	if err := json.Unmarshal(raw, &detached); err != nil {
 		panic(err)
 	}
-	return &BehaviorData{Definition: b.definition, Instances: detached.Instances, BodyInstance: detached.BodyInstance, Progress: b.composer.ToData()}
+	return &BehaviorData{Definition: b.definition, Instances: detached.Instances, BodyInstance: detached.BodyInstance, Progress: b.composer.ToData(), SymbolsRecorded: b.symbolsRecorded}
 }
 
 func (e *Encounter) useBehaviors(m *memberRecord, in *BehaviorInput, data *BehaviorData, blocking []string) error {
@@ -222,6 +225,9 @@ func (e *Encounter) useBehaviors(m *memberRecord, in *BehaviorInput, data *Behav
 	if err := validateBlockingStates(b.bodyRecipe(), blocking); err != nil {
 		return fmt.Errorf("member %q: %w: %w", m.ID, ErrBadMember, err)
 	}
+	if data != nil {
+		b.symbolsRecorded = data.SymbolsRecorded
+	}
 	m.behaviors = b
 	m.BlockingStates = slices.Clone(blocking)
 	return nil
@@ -237,6 +243,7 @@ type selectedBehavior struct {
 	decision Decision
 	instance string
 	work     *BehaviorWork
+	trace    *behaviorDecisionTrace
 }
 
 func (e *Encounter) selectDecision(m *memberRecord, view MonsterView, opportunity behaviorOpportunity) (selectedBehavior, error) {
@@ -244,8 +251,13 @@ func (e *Encounter) selectDecision(m *memberRecord, view MonsterView, opportunit
 	if err != nil {
 		return selectedBehavior{}, err
 	}
+	tracing := m.behaviors != nil && len(m.behaviors.input.Instances) > 0
 	if _, delegated := d.Intent.(Delegated); !delegated {
-		return selectedBehavior{decision: d}, nil
+		out := selectedBehavior{decision: d}
+		if tracing {
+			out.trace = &behaviorDecisionTrace{on: opportunity.on, now: opportunity.now, operation: behaviorTraceDriver}
+		}
+		return out, nil
 	}
 	if d.Pick != nil {
 		return selectedBehavior{}, fmt.Errorf("delegation with an already-selected pick: %w", ErrBadIntent)
@@ -254,7 +266,7 @@ func (e *Encounter) selectDecision(m *memberRecord, view MonsterView, opportunit
 	env.event = opportunity.event
 	chosen, err := m.behaviors.composer.Decide(context.Background(), &behavior.DecideInput{
 		On: opportunity.on, Event: opportunity.event, Env: env, Now: opportunity.now,
-		Facts: factsFromView(view), Temper: view.Temper, Die: e.roller,
+		Facts: factsFromView(view), Temper: view.Temper, Die: e.roller, Trace: tracing,
 	})
 	if err != nil {
 		if errors.Is(err, behavior.ErrNoDie) {
@@ -268,8 +280,12 @@ func (e *Encounter) selectDecision(m *memberRecord, view MonsterView, opportunit
 	if err := e.behaviorStepped(m, chosen.Steps); err != nil {
 		return selectedBehavior{}, err
 	}
+	var trace *behaviorDecisionTrace
+	if tracing {
+		trace = &behaviorDecisionTrace{on: opportunity.on, now: opportunity.now, operation: behaviorTraceDecide, outcomes: chosen.Outcomes}
+	}
 	if chosen.Pick == nil {
-		return selectedBehavior{decision: Decision{Intent: Pass{}}}, nil
+		return selectedBehavior{decision: Decision{Intent: Pass{}}, trace: trace}, nil
 	}
 	translated, err := IntentForAnswer(&IntentForAnswerInput{View: view, Answer: chosen.Pick.Answer})
 	if err != nil {
@@ -279,7 +295,7 @@ func (e *Encounter) selectDecision(m *memberRecord, view MonsterView, opportunit
 	if err != nil {
 		return selectedBehavior{}, err
 	}
-	return selectedBehavior{decision: Decision{Intent: translated.Intent, Pick: chosen.Pick}, instance: chosen.Instance, work: work.Work}, nil
+	return selectedBehavior{decision: Decision{Intent: translated.Intent, Pick: chosen.Pick}, instance: chosen.Instance, work: work.Work, trace: trace}, nil
 }
 
 func (e *Encounter) behaviorStepped(m *memberRecord, steps []behavior.InstanceStep) error {
