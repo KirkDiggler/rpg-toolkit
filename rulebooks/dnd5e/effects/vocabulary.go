@@ -62,7 +62,11 @@ func Bind(in *BindInput) (*BindOutput, error) {
 				if err != nil {
 					return generic.Row{}, err
 				}
-				row := generic.Row{Kind: out.Kind(), Reason: answer.effect.Reason, Amount: answer.amount}
+				row := generic.Row{Kind: out.Kind(), Reason: answer.effect.Reason}
+				if answer.effect.State == contributions.StateApplies && out.HasAmount() {
+					amount := answer.amount
+					row.Amount = &generic.AmountResult{Scalar: &amount}
+				}
 				switch answer.effect.State {
 				case contributions.StateApplies:
 					row.Verdict = machine.Applies

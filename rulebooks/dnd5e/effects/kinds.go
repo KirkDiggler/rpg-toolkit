@@ -211,7 +211,11 @@ func assessMeaning(in *AssessInput, m meaning) (assessment, error) {
 		return result, fmt.Errorf("unknown applicability verdict %q", verdict)
 	}
 	if in.Output.HasAmount() {
-		result.amount, err = in.Output.Amount(in.Query)
+		var described generic.AmountResult
+		described, err = in.Output.Amount(in.Query)
+		if err == nil {
+			result.amount, err = described.ScalarValue()
+		}
 		if err != nil {
 			if errors.Is(err, contributions.ErrRuleCannotAnswer) {
 				result.effect.State = contributions.StateDepends
