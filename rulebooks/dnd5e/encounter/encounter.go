@@ -1728,7 +1728,7 @@ func (e *Encounter) audienceFor(class beatClass, subjects ...MemberID) []MemberI
 // not here, because Pump needs its pre-Phase-1 snapshot reused across every
 // movement beat in one tick rather than a fresh roster read per action (see
 // Pump's own comment on why).
-func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberID, at uint64) (uint64, error) {
+func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberID, at uint64) (*record.AppendOutput, error) {
 	audience = e.frontierAudience(action, audience)
 	// Both ends of a step are cells the next look is asked of
 	// ([Encounter.pendingCells]), whoever's look that is.
@@ -1802,7 +1802,7 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 	// propagate theirs; this is the movement half catching up.
 	beatBytes, err := json.Marshal(payload)
 	if err != nil {
-		return 0, fmt.Errorf("marshal moved beat: %w", err)
+		return nil, fmt.Errorf("marshal moved beat: %w", err)
 	}
 
 	appendOut, err := e.appendBeat(&record.AppendInput{
@@ -1812,12 +1812,12 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 		Payload:  beatBytes,
 	})
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	if err := e.appendStepAreaTransitions(action.member.ID, action.from, action.to); err != nil {
-		return 0, err
+		return nil, err
 	}
-	return appendOut.Seq, nil
+	return appendOut, nil
 }
 
 // firedReachedPosition evaluates every declared ReachedPosition ending against

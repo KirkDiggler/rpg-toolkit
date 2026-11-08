@@ -1838,6 +1838,12 @@ type StepOutput struct {
 	// Seq is the sequence number of the recorded movement beat.
 	Seq uint64
 
+	// ID is the record id ([record.Entry.ID], a 26-char ULID) of the beat
+	// Seq names: the id a stream consumer resumes after (rpg-project#879
+	// S1), so a host that answers a walk part way can hand the client the
+	// exact point the rest of the story continues from.
+	ID string
+
 	// Outcome is the encounter outcome if an ending fired underfoot; nil
 	// otherwise.
 	Outcome *Outcome
@@ -1848,7 +1854,7 @@ type StepOutput struct {
 	// Stopped is set when a body stopped the step (rpg-project#842, D5): a
 	// member's cell, or a crossing its post holds. The step is answered with
 	// output, not an error: nothing moved (Stepped's From and To are both the
-	// cell the mover stands on), no pace was spent, Seq is the [BeatBarred]
+	// cell the mover stands on), no pace was spent, Seq (and ID) is the [BeatBarred]
 	// beat, and IntelDeltas, Formed and Outcome are what the barrier's answer
 	// to the bump produced. Nil for a step that moved. Walls, doors, fields
 	// and masked refusals still return a [StepObstructedError].
