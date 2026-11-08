@@ -33,8 +33,6 @@ var ErrBadOptions = errors.New("keepgen: bad options")
 const (
 	// garrisonFaction is the one side every ordered monster joins.
 	garrisonFaction = "garrison"
-	// postTable is the table of a monster that holds where it stands.
-	postTable = "post"
 	// maxLeg is the longest leg a route is drawn with, in steps.
 	maxLeg = 3
 )
@@ -50,9 +48,6 @@ type order struct {
 	monster int
 	route   []cell
 }
-
-// patrolTable is the table id of the i-th patrol.
-func patrolTable(i int) string { return fmt.Sprintf("patrol-%d", i) }
 
 // placeGarrison gives the first o.Garrison monsters their orders.
 func (s *site) placeGarrison(owner map[cell]int, occupied, taken map[cell]bool, o Options) error {

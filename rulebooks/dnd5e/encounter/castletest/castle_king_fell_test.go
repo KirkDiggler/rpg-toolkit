@@ -51,7 +51,7 @@ func openTheFall(t *testing.T) *kingScene {
 			keep2 = m.At
 		}
 		if id == kingKeep1 || id == kingKeep2 {
-			row := m.Table[encounter.AnswerTime][fellRowEntry]
+			row := m.Behaviors.Instances[0].Instance.Table[encounter.AnswerTime][fellRowEntry]
 			require.Equal(t, []encounter.When{{Deed: "fell", Within: 3, Who: theKing, Scope: encounter.ScopeAlly}},
 				row.When, "precondition: %s's first row waits on the king's fall", id)
 		}

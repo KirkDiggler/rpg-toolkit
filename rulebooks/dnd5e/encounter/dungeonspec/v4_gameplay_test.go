@@ -581,11 +581,11 @@ func TestATypoInsideTheNewKeysIsNamedAtItsV4Path(t *testing.T) {
 // exists.
 func TestTheNewKeysAreOfferedByTheUnknownKeyRefusal(t *testing.T) {
 	requireExactDefect(t, refusals(t, v4With("heigth: 3", "")), "heigth",
-		`"heigth" is not a key this build reads: they are bundles, concealments, dispositions, endings, exits, factions, intel, key, play, room, scenarios, tables, templates, version`)
+		`"heigth" is not a key this build reads: they are behaviorDefinitions, bundles, concealments, dispositions, endings, exits, factions, intel, key, play, room, scenarios, tables, templates, version`)
 
 	requireExactDefect(t, refusals(t, v4With("", "    monsterBindings:\n      goblin-1: { tempre: coward }")),
 		"room.room.monsterBindings.goblin-1.tempre",
-		`"tempre" is not a key this build reads: they are actions, addActions, arrives, dropActions, faction, holds, on, options, states, table, temper`)
+		`"tempre" is not a key this build reads: they are actions, addActions, arrives, behaviorState, behaviors, blockingStates, dropActions, faction, holds, on, options, posts, states, table, temper`)
 }
 
 // A binding whose creature is gone is named ONCE. Its contents are not asked

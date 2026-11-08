@@ -42,28 +42,42 @@ func TestTableReadsRoutes(t *testing.T) {
 	}
 }
 
-// TestAViewSearchesRoutesOnlyForATableThatReadsThem: the same encounter, the
-// same sighting, three tables. A hold-only table gets no route to the hero; a
-// table that walks toward an ally gets one; a member with no table keeps
-// every route, because its driver is not this package's to read. Mutant: a
-// gate that forgets the tableless case (the ally test above it fails too).
+// Canonical policy must keep the route-on-demand optimization: exact-cell
+// duties need no per-sighting route; any attachment that reads one must get
+// it, including a lower-priority role. No policy keeps opaque host routes.
 func TestAViewSearchesRoutesOnlyForATableThatReadsThem(t *testing.T) {
 	enc := alliesEnc(t, StanceAllied)
 	veteran := enc.members["veteran"]
 	budget := TurnBudget{AttacksLeft: 1, MovementFeet: 30}
 
-	veteran.Table = Table{AnswerTime: {{Hold: true}}}
+	require.NoError(t, enc.useBehaviors(veteran, ordinaryBehavior(Table{AnswerTime: {{Weight: 1, Hold: true}}}), nil, nil))
 	view, err := enc.buildMonsterView(veteran, budget, 0)
 	require.NoError(t, err)
 	require.Empty(t, seenOf(t, view, "hero").Path, "a table that only holds reads no route")
 	require.Empty(t, seenOf(t, view, "hero").AwayPath)
 
-	veteran.Table = follower()
+	require.NoError(t, enc.useBehaviors(veteran, ordinaryBehavior(follower()), nil, nil))
 	view, err = enc.buildMonsterView(veteran, budget, 0)
 	require.NoError(t, err)
 	require.NotEmpty(t, seenOf(t, view, "hero").Path, "a table that walks toward an ally reads its route")
 
-	veteran.Table = nil
+	// Selection has not happened while the view is built. Union the tables
+	// conservatively rather than pre-running the composer or dropping a role.
+	quiet := ordinaryBehavior(Table{AnswerTime: {{Weight: 1, Hold: true}}}).Instances[0]
+	quiet.Instance.ID = "quiet"
+	following := ordinaryBehavior(follower()).Instances[0]
+	following.Instance.ID = "following"
+	require.NoError(t, enc.useBehaviors(veteran, &BehaviorInput{Instances: []BoundBehavior{quiet, following}}, nil, nil))
+	view, err = enc.buildMonsterView(veteran, budget, 0)
+	require.NoError(t, err)
+	require.NotEmpty(t, seenOf(t, view, "hero").Path, "a lower-priority attachment's route is still supplied")
+
+	require.NoError(t, enc.useBehaviors(veteran, ordinaryBehavior(Table{AnswerTime: {{Weight: 1, Toward: &Selector{At: &spatial.Position{X: 5, Y: 1}}}}}), nil, nil))
+	view, err = enc.buildMonsterView(veteran, budget, 0)
+	require.NoError(t, err)
+	require.Empty(t, seenOf(t, view, "hero").Path, "an authored exact-cell leg routes only when executed")
+
+	require.NoError(t, enc.useBehaviors(veteran, nil, nil, nil))
 	view, err = enc.buildMonsterView(veteran, budget, 0)
 	require.NoError(t, err)
 	require.NotEmpty(t, seenOf(t, view, "hero").Path, "no table: a driver this package cannot see may read it")

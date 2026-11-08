@@ -77,6 +77,7 @@ func (s *deathScene) sceneDriven(
 		Capabilities: encounter.Capabilities{
 			Initiative:    orderAsGiven{},
 			Driver:        driver,
+			Roller:        rollsLowest{},
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
 			Conditions:    encounter.UnobservedEquipment{},
@@ -111,7 +112,7 @@ func (s *deathScene) pacingPair(standing encounter.Participation) *encounter.Enc
 
 	return s.sceneDriven(standing, tableDriver(), sheetFacts{goblin: {SpeedFeet: 5}, alice: {}},
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 0, Y: 2}},
-		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 0, Y: 10}, Table: walksTo(spatial.Position{X: 2, Y: 10})},
+		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 0, Y: 10}, Behaviors: ordinaryBehavior(walksTo(spatial.Position{X: 2, Y: 10}))},
 	)
 }
 

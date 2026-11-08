@@ -1,0 +1,20 @@
+{
+  "ref": "example:behaviors:patrol-both",
+  "parameters": [{"name": "weight", "kind": "int", "required": true, "min": 1, "max": 3}],
+  "end": "repeat",
+  "body": {
+    "recipe": {
+      "initial": "walk",
+      "states": {
+        "walk": {"transitions": [
+          {"on": "time", "do": [{"pick": "move"}]},
+          {"on": "turn", "do": [{"pick": "move"}]},
+          {"on": {"$done": "move"}, "to": {"$next": true}}
+        ]}
+      }
+    },
+    "table": {
+      "move": [{"Weight": {"$param": "weight"}, "Toward": {"At": {"$item": true}}}]
+    }
+  }
+}

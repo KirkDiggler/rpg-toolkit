@@ -73,16 +73,16 @@ func postedGuardRecipe(t *testing.T) *machine.Recipe {
 func postedMember(t *testing.T) MemberInput {
 	t.Helper()
 
-	return MemberInput{
-		ID: postedGuard, Kind: KindMonster, Name: "Gate guard", Faction: postedGarrison,
-		Position: postedPost, Table: holds(), Machine: postedGuardRecipe(t), BlockingStates: []string{"posted"},
-	}
+	m := listener(postedGuard, postedPost.X, postedPost.Y, postedGuardRecipe(t))
+	m.Name, m.Faction = "Gate guard", postedGarrison
+	m.BlockingStates = []string{"posted"}
+	return m
 }
 
 // postedSetup is a 10×5 hall everyone sees across, alice in the party and a
 // garrison neutral to it, on the table driver, with every member given.
 func postedSetup(sight Sight, members ...MemberInput) *SetupInput {
-	in := wakeSetup(&askedDriver{inner: TableDriver{Roller: wakeRollsOne{}}}, members...)
+	in := wakeSetup(&askedDriver{inner: BehaviorDriver{}}, members...)
 	in.Field.Regions = []RegionInput{rectRegion("hall", 0, 0, 10, 5)}
 	in.Field.Factions = []FactionInput{{ID: postedGarrison}}
 	in.Field.Dispositions = []DispositionInput{{Between: [2]FactionID{postedGarrison, FactionParty}, Stance: StanceNeutral}}
@@ -186,7 +186,8 @@ func TestAHostileBodyBlocksInAnyState(t *testing.T) {
 	hostile, _ := enc.IsHostile("alice", postedGuard)
 	require.True(t, hostile, "precondition: a monster of the monsters' side")
 
-	enc.members[postedGuard].Machine.State = "cowed"
+	teach(t, enc, postedGuard, postedCowed)
+	require.NoError(t, enc.matchLanded())
 	require.False(t, enc.memberBlocks(postedGuard), "precondition: cowed does not block")
 	require.Equal(t, PassageBlocked, passageAt(t, enc, postedPost), "hostility blocks whatever the state")
 }
@@ -195,10 +196,10 @@ func TestATabledMonsterDeclaredBlockingStillBlocks(t *testing.T) {
 	for _, declared := range []bool{true, false} {
 		guard := MemberInput{
 			ID: postedGuard, Kind: KindMonster, Faction: postedGarrison, Position: postedPost,
-			Table: holds(), BlocksMovement: declared,
+			Behaviors: ordinaryBehavior(holds()), BlocksMovement: declared,
 		}
 		enc := postedHall(t, guard)
-		require.NotNil(t, enc.programFor(enc.members[postedGuard]), "precondition: he runs the default machine")
+		require.NotNil(t, enc.members[postedGuard].behaviors, "precondition: one canonical runtime")
 		want := PassagePassThrough
 		if declared {
 			want = PassageBlocked
@@ -209,14 +210,14 @@ func TestATabledMonsterDeclaredBlockingStillBlocks(t *testing.T) {
 
 func TestBlockingStatesAreRefusedWithoutARecipe(t *testing.T) {
 	guard := postedMember(t)
-	guard.Machine = nil
+	guard.Behaviors = nil
 	_, err := NewEncounter(postedSetup(everyoneSeesTheWholeMap{}, guard))
 	require.ErrorIs(t, err, ErrBadMember, "a blocking state with no recipe to name it")
 
 	enc := postedHall(t)
 	_, err = enc.Join(&JoinInput{
 		Member: postedGuard, Kind: KindMonster, Faction: postedGarrison, Cell: postedPost,
-		Table: holds(), BlockingStates: []string{"posted"},
+		Behaviors: ordinaryBehavior(holds()), BlockingStates: []string{"posted"},
 	})
 	require.ErrorIs(t, err, ErrBadMember, "and at the join door")
 }

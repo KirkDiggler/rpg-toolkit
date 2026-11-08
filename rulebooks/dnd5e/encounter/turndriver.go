@@ -271,9 +271,9 @@ type RememberedMember struct {
 
 	// Path is the exact-cell shortest route to Position. It contains no live
 	// standing or reach information and is nil when Position is unreachable,
-	// and nil when the member's table has no row that reads a route
-	// ([tableReadsRoutes], rpg-project#879 S3); a member with no table always
-	// gets it.
+	// and nil when none of the member's canonical behavior tables reads a route
+	// ([memberRecord.behaviorReadsRoutes], rpg-project#879 S3). A member with
+	// no authored behavior keeps routes for its opaque host driver.
 	Path []spatial.Position
 
 	// ReachTail is how many of Path's LAST cells a walk may leave untaken and
@@ -415,8 +415,9 @@ type SeenMember struct {
 	// true. Empty in three cases a caller does not need to tell apart: no
 	// walkable route exists, this member is already within reach without
 	// moving at all (Distance already <= its own best reach), or the
-	// member's table has no row that reads a route ([tableReadsRoutes],
-	// rpg-project#879 S3). A member with no table always gets it.
+	// member's canonical behavior tables have no row that reads a route
+	// ([memberRecord.behaviorReadsRoutes], rpg-project#879 S3). A member with
+	// no authored behavior always gets it.
 	//
 	// DATA, NOT A LIVE CAPABILITY (supersedes an earlier closure-based
 	// design this PR shipped and walked back): MonsterView must stay
@@ -434,9 +435,9 @@ type SeenMember struct {
 	// cell — or nil when every step leads closer or nowhere. A driver that
 	// keeps its distance reads it rather than reaching for the canvas
 	// (rule A2): fleeing into a corner is not fleeing, and the board is
-	// what knows where the corners are. Nil, like Path, when the member's
-	// table has no row that reads a route; a member with no table always
-	// gets it.
+	// what knows where the corners are. Nil, like Path, when none of the
+	// member's canonical behavior tables reads a route; no authored behavior
+	// keeps all routes.
 	AwayPath []spatial.Position
 }
 

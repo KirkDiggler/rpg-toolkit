@@ -6,7 +6,6 @@ package keepgen
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -19,15 +18,12 @@ import (
 // garrisonDoc is the part of a generated document the garrison writes, read
 // back as plain YAML: what the file says, not what the generator meant.
 type garrisonDoc struct {
-	Tables map[string]struct {
-		Time []struct {
-			When   map[string]string `yaml:"when"`
-			Hold   *struct{}         `yaml:"hold"`
-			Toward *struct {
-				Path []struct{ Q, R int } `yaml:"path"`
-			} `yaml:"toward"`
-		} `yaml:"time"`
-	} `yaml:"tables"`
+	Definitions map[string]struct {
+		Ref   string `yaml:"ref"`
+		Table map[string][]struct {
+			Hold *struct{} `yaml:"hold"`
+		} `yaml:"table"`
+	} `yaml:"behaviorDefinitions"`
 	Factions []struct {
 		ID     string         `yaml:"id"`
 		Temper map[string]int `yaml:"temper"`
@@ -41,8 +37,12 @@ type garrisonDoc struct {
 				} `yaml:"startingCell"`
 			} `yaml:"monsterDeclarations"`
 			MonsterBindings map[string]struct {
-				Faction string `yaml:"faction"`
-				Table   string `yaml:"table"`
+				Faction   string `yaml:"faction"`
+				Behaviors []struct {
+					ID    string               `yaml:"id"`
+					Use   string               `yaml:"use"`
+					Items []struct{ Q, R int } `yaml:"items"`
+				} `yaml:"behaviors"`
 			} `yaml:"monsterBindings"`
 		} `yaml:"room"`
 	} `yaml:"room"`
@@ -77,11 +77,10 @@ func TestGarrison_EmitsBindings(t *testing.T) {
 	require.Equal(t, "garrison", d.Factions[0].ID)
 	require.Equal(t, map[string]int{"soldier": 2, "coward": 1}, d.Factions[0].Temper)
 
-	require.Len(t, d.Tables, 3, "post and two patrols")
-	post, ok := d.Tables["post"]
+	require.Equal(t, "keepgen:behaviors:patrol", d.Definitions["patrol"].Ref)
+	post, ok := d.Definitions["post"]
 	require.True(t, ok)
-	require.Len(t, post.Time, 1)
-	require.NotNil(t, post.Time[0].Hold)
+	require.NotNil(t, post.Table["hold"][0].Hold)
 
 	decls := d.Room.Room.MonsterDeclarations
 	require.Len(t, d.Room.Room.MonsterBindings, 5)
@@ -89,23 +88,18 @@ func TestGarrison_EmitsBindings(t *testing.T) {
 		b, ok := d.Room.Room.MonsterBindings[decls[i].ID]
 		require.True(t, ok, "monster %d (%s) is bound", i, decls[i].ID)
 		require.Equal(t, "garrison", b.Faction)
+		require.Len(t, b.Behaviors, 1)
+		require.Equal(t, "duty", b.Behaviors[0].ID)
 		if i >= 2 {
-			require.Equal(t, "post", b.Table)
+			require.Equal(t, "post", b.Behaviors[0].Use)
 			continue
 		}
-		name := fmt.Sprintf("patrol-%d", i)
-		require.Equal(t, name, b.Table)
-		tbl, ok := d.Tables[name]
-		require.True(t, ok)
-		require.Len(t, tbl.Time, 1)
-		require.Equal(t, map[string]string{"enemy": "none"}, tbl.Time[0].When)
-		require.NotNil(t, tbl.Time[0].Toward)
-		path := tbl.Time[0].Toward.Path
-		// A three-cell loop: the route closes itself, last leg back to the
-		// first waypoint (encounter patrol.go), so the first is not repeated.
+		require.Equal(t, "patrol", b.Behaviors[0].Use)
+		path := b.Behaviors[0].Items
 		require.Len(t, path, 3)
 		start := decls[i].StartingCell.Location
-		require.Equal(t, start, path[0], "the patrol starts on its own cell")
+		require.Equal(t, start, path[2], "the loop returns to the authored start")
+		require.NotEqual(t, start, path[0], "the first opportunity starts its next leg, not a synthetic arrival")
 	}
 }
 
@@ -155,7 +149,7 @@ func TestGarrison_OffIsGolden(t *testing.T) {
 // goldenGarrison is the SHA-256 of the 10,000-hex keep at seed 1 and the
 // default densities, garrison 99, patrols 20, key bench-keep-garrison,
 // command line "keepgen".
-const goldenGarrison = "4595da98b9f5bcef25155274d4a9a2978bbc83ca723dacc7de68990a9832395e"
+const goldenGarrison = "0682f23aa193e3a8fac4b723d47bf9935542e880c0805bf591c0bf44210757ce"
 
 // TestGenerate_GoldenGarrison pins the garrison document's bytes.
 func TestGenerate_GoldenGarrison(t *testing.T) {
@@ -197,13 +191,13 @@ func TestGarrison_RouteCellsAreFloor(t *testing.T) {
 	patrols := 0
 	for _, m := range d.Room.Room.MonsterDeclarations {
 		b, ok := d.Room.Room.MonsterBindings[m.ID]
-		if !ok || b.Table == "post" {
+		if !ok || b.Behaviors[0].Use != "patrol" {
 			continue
 		}
 		patrols++
 		home, ok := regionOf[spatial.Position{X: float64(m.StartingCell.Location.Q), Y: float64(m.StartingCell.Location.R)}]
 		require.True(t, ok, "%s stands on floor", m.ID)
-		path := d.Tables[b.Table].Time[0].Toward.Path
+		path := b.Behaviors[0].Items
 		wps := make([]spatial.Position, len(path))
 		for i, c := range path {
 			wps[i] = spatial.Position{X: float64(c.Q), Y: float64(c.R)}
@@ -278,15 +272,18 @@ func TestGarrison_PostsListen(t *testing.T) {
 		if m.Faction != garrisonFaction {
 			continue
 		}
-		if m.Machine == nil {
+		require.NotNil(t, m.Behaviors)
+		recipe := m.Behaviors.Instances[0].Instance.Recipe
+		if recipe.Ref.ID == "patrol" {
 			patrols++
 			continue
 		}
 		posts++
-		require.Equal(t, "posted", m.Machine.Initial, "%s starts posted", m.MemberID)
-		require.Empty(t, m.Machine.States["posted"].Transitions[1:], "posted listens for the one sound")
-		require.Equal(t, "heard", string(m.Machine.States["posted"].Transitions[0].On))
-		require.NoError(t, encounter.ValidateMachine(m.Machine))
+		require.Equal(t, "posted", recipe.Initial, "%s starts posted", m.MemberID)
+		require.Equal(t, "heard", string(recipe.States["posted"].Transitions[0].On))
+		require.Equal(t, "turn", string(recipe.States["posted"].Transitions[1].On), "fight opportunity is explicit, not world time")
+		_, err := encounter.CheckBehaviors(&encounter.CheckBehaviorsInput{Behaviors: *m.Behaviors})
+		require.NoError(t, err)
 	}
 	require.Equal(t, 3, posts, "every post listens")
 	require.Equal(t, 2, patrols, "the patrols run the default")
@@ -297,5 +294,5 @@ func TestGarrison_PostsListen(t *testing.T) {
 
 	off, _, err := Generate(DefaultPlan(), garrisonOptions(5, 2))
 	require.NoError(t, err)
-	require.NotContains(t, string(off), "states:", "off, no post carries a recipe")
+	require.NotContains(t, string(off), "use: listening-post", "off, posts bind the ordinary post definition")
 }

@@ -122,8 +122,12 @@ func openGarrisonKeep(tb testing.TB, listen bool) *encounter.Encounter {
 		members = append(members, encounter.MemberInput{
 			ID: encounter.MemberID(m.MemberID), Kind: encounter.KindMonster, Position: m.At,
 			Faction: encounter.FactionID(m.Faction), Table: m.Table, Options: m.Options,
-			Arrives: m.Arrives, Temper: soldierTemper(m.Temper), Facing: m.FacingDegrees, Machine: m.Machine, BlockingStates: m.BlockingStates, Posts: m.Posts,
+			Arrives: m.Arrives, Temper: soldierTemper(m.Temper), Facing: m.FacingDegrees, Behaviors: m.Behaviors, Machine: m.Machine, BlockingStates: m.BlockingStates, Posts: m.Posts,
 		})
+		forwarded := members[len(members)-1].Behaviors
+		if m.Behaviors != nil && (forwarded == nil || len(forwarded.Instances) != len(m.Behaviors.Instances)) {
+			tb.Fatalf("garrison setup dropped authored behavior for %s", m.MemberID)
+		}
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field:   compiled.Field,
@@ -136,7 +140,7 @@ func openGarrisonKeep(tb testing.TB, listen bool) *encounter.Encounter {
 			Sheets:        walksThirty{},
 			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
-			Driver:        encounter.TableDriver{Roller: rollsLowest{}},
+			Driver:        encounter.BehaviorDriver{},
 			Roller:        rollsLowest{},
 			CheckResolver: findsNothing{},
 			Witness:       nobodyPerceives{},

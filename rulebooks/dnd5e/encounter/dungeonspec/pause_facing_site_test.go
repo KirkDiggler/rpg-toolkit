@@ -105,7 +105,7 @@ func openThePauseFacingSite(t *testing.T) *sneakSite {
 	for _, m := range compiled.Monsters {
 		members = append(members, encounter.MemberInput{
 			ID: encounter.MemberID(m.MemberID), Kind: encounter.KindMonster, Position: m.At,
-			Faction: encounter.FactionID(m.Faction), Table: m.Table, Facing: m.FacingDegrees,
+			Faction: encounter.FactionID(m.Faction), Behaviors: m.Behaviors, Facing: m.FacingDegrees,
 		})
 	}
 	d20s := make([]int, 40)
@@ -145,7 +145,7 @@ func pauseFacingCapabilities(site *sneakSite) encounter.Capabilities {
 		Sheets:        pauseFacingSheets{enc: &site.enc},
 		Participation: &castleStanding{down: map[encounter.MemberID]bool{}},
 		Initiative:    orderAsGiven{},
-		Driver:        encounter.TableDriver{Roller: rollsOne{}},
+		Driver:        encounter.BehaviorDriver{},
 		Roller:        rollsOne{},
 		CheckResolver: site.stealth,
 		Witness:       nobodyPerceivesAnything{},
@@ -174,18 +174,18 @@ func TestPauseFacingSite(t *testing.T) {
 	// placement's sentence.
 	raw, err := os.ReadFile(pauseFacingSiteFixture)
 	require.NoError(t, err)
-	_, err = dungeonspec.Load([]byte(strings.Replace(string(raw), "facing: s }", "facing: south }", 1)))
+	_, err = dungeonspec.Load([]byte(strings.Replace(string(raw), "facing: s}", "facing: south}", 1)))
 	require.ErrorIs(t, err, dungeonspec.ErrBadSpec)
-	require.ErrorContains(t, err, `tables.pacing.on.time[0].toward.path[1].facing: "south" is not a compass direction: `+
+	require.ErrorContains(t, err, `behaviorDefinitions.guard-policy.table.time[0].toward.path[1].facing: "south" is not a compass direction: `+
 		"a facing is one of n|ne|e|se|s|sw|w|nw")
 	_, err = dungeonspec.Load([]byte(strings.Replace(string(raw), "r: 0, wait: 2,", "r: 0, wait: -1,", 1)))
 	require.ErrorIs(t, err, dungeonspec.ErrBadSpec)
-	require.ErrorContains(t, err, "tables.pacing.on.time[0].toward.path[1].wait: "+
+	require.ErrorContains(t, err, "behaviorDefinitions.guard-policy.table.time[0].toward.path[1].wait: "+
 		"a wait is how many rounds the walker stands here, and -1 is negative")
 
-	_, err = dungeonspec.Load([]byte(strings.Replace(string(raw), "r: 0, wait: 2, facing: s }", "r: 0, facing: s }", 1)))
+	_, err = dungeonspec.Load([]byte(strings.Replace(string(raw), "r: 0, wait: 2, facing: s}", "r: 0, facing: s}", 1)))
 	require.ErrorIs(t, err, dungeonspec.ErrBadSpec)
-	require.ErrorContains(t, err, "tables.pacing.on.time[0].toward.path[1].facing: "+
+	require.ErrorContains(t, err, "behaviorDefinitions.guard-policy.table.time[0].toward.path[1].facing: "+
 		"a facing is taken while standing; give the waypoint a wait")
 
 	s := openThePauseFacingSite(t)

@@ -103,6 +103,7 @@ func clockBeat(name string) machine.Beat { return machine.Beat(beatClock + name)
 // on, with the regions it crossed to reach them.
 type wakeBeat struct {
 	Beat    machine.Beat
+	Kind    string // the heard occurrence's kind; empty means unknown, never a later holding
 	Cell    *spatial.Position
 	Subject MemberID
 	Member  MemberID
@@ -115,6 +116,7 @@ type wakeBeat struct {
 // was from the listener in hexes and regions (-1 when the beat names no
 // place, which no scope admits).
 type wakeEv struct {
+	Kind     string
 	At       uint64
 	Distance int
 	Hops     int
@@ -179,7 +181,7 @@ func (e *Encounter) land(b wakeBeat) {
 }
 
 // landHeard lands a sound on each hearer that listens for `heard`.
-func (e *Encounter) landHeard(heard []hearing, where spatial.Position, maker MemberID, at uint64) {
+func (e *Encounter) landHeard(heard []hearing, kind string, where spatial.Position, maker MemberID, at uint64) {
 	if !e.listened(beatHeard) {
 		return
 	}
@@ -188,7 +190,7 @@ func (e *Encounter) landHeard(heard []hearing, where spatial.Position, maker Mem
 			continue
 		}
 		cell := where
-		e.land(wakeBeat{Beat: beatHeard, Cell: &cell, Subject: maker, Member: h.member, Hops: h.hops, At: at})
+		e.land(wakeBeat{Beat: beatHeard, Kind: kind, Cell: &cell, Subject: maker, Member: h.member, Hops: h.hops, At: at})
 	}
 }
 
@@ -360,7 +362,7 @@ func (e *Encounter) matchOne(b wakeBeat) error {
 // evFor is a landed beat as one listener is asked it. An error only when the
 // field's partitions cannot be derived ([field.partitionsNow]).
 func (e *Encounter) evFor(id MemberID, m *memberRecord, b wakeBeat) (wakeEv, error) {
-	ev := wakeEv{At: b.At, Distance: -1, Hops: -1}
+	ev := wakeEv{Kind: b.Kind, At: b.At, Distance: -1, Hops: -1}
 	if b.Cell == nil {
 		return ev, nil
 	}
@@ -400,41 +402,46 @@ func (e *Encounter) evFor(id MemberID, m *memberRecord, b wakeBeat) (wakeEv, err
 // Errors: a machine refused its blob, or a pick failed.
 func (e *Encounter) react(id MemberID, b wakeBeat, scope *machine.ScopeLeaf) error {
 	m, ok := e.members[id]
-	if !ok || !onDefaultClock(m) {
-		return nil
-	}
-	p := e.programFor(m)
-	if p == nil {
-		return nil
-	}
-	on, err := e.onWorldClock(id)
-	if err != nil || !on {
-		return err
-	}
-	down, err := e.downNow()
-	if err != nil {
-		return fmt.Errorf("world wakes standing: %w", err)
-	}
-	if down[id] {
+	if !ok || !onDefaultClock(m) || m.behaviors == nil {
 		return nil
 	}
 	ev, err := e.evFor(id, m, b)
 	if err != nil {
-		return fmt.Errorf("world wakes %q on %s: %w", id, b.Beat, err)
+		return err
 	}
 	if scope != nil && !inScope(ev, *scope) {
-		return nil // the cheap answer first: out of the state's own scope
-	}
-	now := uint64(e.clock.ToData().HighWater)
-	stepped, err := p.Step(&m.Machine, b.Beat, ev, e.envFor(id), now)
-	if err != nil {
-		return fmt.Errorf("world wakes %q on %s: %w", id, b.Beat, err)
-	}
-	if !stepped.Fired {
 		return nil
 	}
-
-	return e.afterStep(id, m, p, stepped, now, false)
+	now := uint64(e.clock.ToData().HighWater)
+	if b.Beat == beatBarred {
+		// A bump is the existing explicitly authorized targeted reaction.
+		// No other observation is upgraded to an action opportunity.
+		on, err := e.onWorldClock(id)
+		if err != nil || !on {
+			return err
+		}
+		down, err := e.downNow()
+		if err != nil || down[id] {
+			return err
+		}
+		if err := e.runBehaviorOpportunity(id, m, behaviorOpportunity{on: b.Beat, event: ev, now: now}); err != nil {
+			return err
+		}
+	} else {
+		env := e.envFor(id)
+		env.event = ev
+		observed, err := m.behaviors.composer.Observe(&behavior.ObserveInput{On: b.Beat, Event: ev, Env: env, Now: now})
+		if err != nil {
+			return err
+		} // ErrSelectionRequired never retries with Decide
+		if env.err != nil {
+			return env.err
+		}
+		if err := e.behaviorStepped(m, observed.Steps); err != nil {
+			return err
+		}
+	}
+	return e.rearmObservedBehavior(m, now)
 }
 
 // afterStep is what both a time step and a reaction do once the machine has
@@ -448,93 +455,21 @@ func (e *Encounter) react(id MemberID, b wakeBeat, scope *machine.ScopeLeaf) err
 // spend is true for a `time` step, which pays one round of its own and the
 // rounds it slept before it; a reaction spends nothing ([Encounter.forgiveOwed]
 // when it re-arms).
-func (e *Encounter) afterStep(id MemberID, m *memberRecord, p *machine.Program, stepped machine.Stepped, round uint64, spend bool) error {
-	if stepped.To != "" {
-		if err := e.appendStateBeat(id, stepped); err != nil {
-			return err
-		}
-		e.listeners.Set(id, p.Listens(&m.Machine))
-		// A NEW STATE ENDS THE OLD ONE'S SLEEP unless the transition slept
-		// again: a guard woken by a clang is awake, not asleep until the
-		// round its old wake named.
-		if !hasWake(stepped.Acts) {
-			m.Machine.WakeAt = nil
-		}
-		// A BODY THAT STOPS OR STARTS BLOCKING CHANGED ITS CELL
-		// (rpg-project#836, B2/B5): nothing is stored to update, since the
-		// fold and the canvas read the state, but whoever sees the body holds
-		// its blocking as seen, so the cell goes to the next look like any
-		// cell a change touched. A state that names another post, or none,
-		// changes what his post holds the same way (rpg-project#852, H5).
-		fromPost, heldFrom := m.postIn(stepped.From)
-		toPost, heldTo := m.postIn(stepped.To)
-		if m.blocksIn(stepped.From) != m.blocksIn(stepped.To) || !samePost(fromPost, heldFrom, toPost, heldTo) {
-			if cell, placed := e.canvas.GetEntityPosition(string(id)); placed {
-				e.noteChanged(cell)
-				e.blockingTurned = true
-			}
-		}
-	}
-	// THE ROUNDS THIS STEP PAYS, read before the pick can raise the world
-	// again: one for its own, and every round it slept before it (an
-	// authored wake_in), so what stays owed is exactly the rounds after the
-	// one it stepped in — the catch-up the heap still holds (#774).
-	pay := 0
-	if spend {
-		budget, err := e.clock.Budget(&clock.BudgetInput{ID: core.EntityID(id)})
-		if err != nil {
-			return fmt.Errorf("world wakes budget %q: %w", id, err)
-		}
-		pay = budget - int(uint64(e.clock.ToData().HighWater)-round) //nolint:gosec // rounds are far below the int range
-		pay = max(1, min(pay, budget))
-	}
-	for _, act := range stepped.Acts {
-		if act.Pick == "" {
-			continue
-		}
-		if !spend {
-			e.reactionPicked = true
-		}
-		if err := e.runPick(id, m, AnswerKey(act.Pick)); err != nil {
-			return err
-		}
-		if e.outcome != nil {
-			return nil
-		}
-	}
-
-	on, err := e.onWorldClock(id)
-	if err != nil || !on {
+func (e *Encounter) rearmObservedBehavior(m *memberRecord, now uint64) error {
+	on, err := e.onWorldClock(m.ID)
+	if err != nil {
 		return err
 	}
-	if spend {
-		if pay > 0 {
-			if _, err := e.clock.Spend(&clock.SpendInput{ID: core.EntityID(id), Amount: pay}); err != nil {
-				return fmt.Errorf("world wakes spend %q: %w", id, err)
-			}
-		}
-		e.armAt(id, round)
+	if !on {
+		e.disarm(m.ID)
 		return nil
 	}
-	if stepped.To != "" || hasWake(stepped.Acts) {
-		now := uint64(e.clock.ToData().HighWater)
-		// A CREATURE ALREADY DUE KEEPS ITS ROUND. A posted guard who hears
-		// the clang that the raise's own verb made is due in this raise; the
-		// alert it enters wants time too, so it is asked in this raise, as
-		// it would have been — a reaction never costs a turn (R4).
-		if cur, armed := e.dueAt[id]; armed && cur <= now+1 && !hasWake(stepped.Acts) {
-			if _, due := p.DueAt(&m.Machine, now); due {
-				return nil
-			}
-		}
-		e.armAt(id, now)
-		// Armed from a reaction at the next round at the earliest, or taken
-		// off the heap: nothing is owed, and the rounds it slept through are
-		// not owed either.
-		return e.forgiveOwed(id)
+	at, due := m.behaviorDue(now)
+	if cur, armed := e.dueAt[m.ID]; armed && due && at == now+1 && cur <= now+1 {
+		return nil // an already-owed ordinary opportunity is not stolen by news
 	}
-
-	return nil
+	e.armAt(m.ID, now)
+	return e.forgiveOwed(m.ID)
 }
 
 // forgiveOwed spends a member's whole world budget: the rounds it was granted
@@ -556,17 +491,6 @@ func (e *Encounter) forgiveOwed(id MemberID) error {
 	}
 
 	return nil
-}
-
-// hasWake reports whether a transition's acts arm a wake.
-func hasWake(acts []machine.Act) bool {
-	for _, a := range acts {
-		if a.WakeIn > 0 {
-			return true
-		}
-	}
-
-	return false
 }
 
 // landFightRound lands `clock: fight` once for every faction among a fight
@@ -602,6 +526,9 @@ func (e *Encounter) landFightRound(fighters []MemberID, at uint64) {
 // targeted beat landed on, the faction a `clock: fight` addresses, the
 // regions a sound crossed, and the round it happened in.
 type WakeBeatData struct {
+	// Kind is this heard occurrence's sound kind, not a lookup of current
+	// holdings. Empty remains unknown and no maker is added to wakeEv.
+	Kind    string        `json:"kind,omitempty"`
 	Beat    string        `json:"beat"`
 	Cell    *PositionData `json:"cell,omitempty"`
 	Subject MemberID      `json:"subject,omitempty"`
@@ -619,7 +546,7 @@ func wakeBeatsData(in []wakeBeat) []WakeBeatData {
 	out := make([]WakeBeatData, len(in))
 	for i, b := range in {
 		d := WakeBeatData{
-			Beat: string(b.Beat), Subject: b.Subject, Member: b.Member,
+			Beat: string(b.Beat), Kind: b.Kind, Subject: b.Subject, Member: b.Member,
 			Faction: b.Faction, Hops: b.Hops, At: b.At,
 		}
 		if b.Cell != nil {
@@ -641,7 +568,7 @@ func wakeBeatsFrom(in []WakeBeatData) []wakeBeat {
 	out := make([]wakeBeat, len(in))
 	for i, d := range in {
 		b := wakeBeat{
-			Beat: machine.Beat(d.Beat), Subject: d.Subject, Member: d.Member,
+			Beat: machine.Beat(d.Beat), Kind: d.Kind, Subject: d.Subject, Member: d.Member,
 			Faction: d.Faction, Hops: d.Hops, At: d.At,
 		}
 		if d.Cell != nil {

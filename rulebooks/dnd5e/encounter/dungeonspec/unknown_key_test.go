@@ -89,7 +89,7 @@ func TestTheThreeGradesTheWorldBuilderShows(t *testing.T) {
 			old:  factionLine, replacement: `  - { id: raiders, mind: chief, tempre: coward }`,
 			want: dungeonspec.FieldError{
 				Path:    "factions[0].tempre",
-				Message: `"tempre" is not a key this build reads: they are id, mind, on, options, states, table, temper`,
+				Message: `"tempre" is not a key this build reads: they are behaviorState, behaviors, blockingStates, id, mind, on, options, posts, states, table, temper`,
 			},
 		},
 	}
@@ -176,7 +176,7 @@ func TestEveryUnknownKeyInTheFileIsReported(t *testing.T) {
 	require.Equal(t, []dungeonspec.FieldError{
 		{Path: "height", Message: `"height" is not a key this build reads: ` + theRootKeys},
 		{Path: "factions[0].tempre",
-			Message: `"tempre" is not a key this build reads: they are id, mind, on, options, states, table, temper`},
+			Message: `"tempre" is not a key this build reads: they are behaviorState, behaviors, blockingStates, id, mind, on, options, posts, states, table, temper`},
 	}, defects, "both of them, in the order they were written")
 }
 
@@ -204,7 +204,7 @@ func TestAShapeReadByHandOffersNoList(t *testing.T) {
 
 	byTheDecoder := loadDefects(t, edited(t, factionLine, `  - { id: raiders, mind: chief, tempre: coward }`))
 	require.Contains(t, byTheDecoder, dungeonspec.FieldError{Path: "factions[0].tempre",
-		Message: `"tempre" is not a key this build reads: they are id, mind, on, options, states, table, temper`})
+		Message: `"tempre" is not a key this build reads: they are behaviorState, behaviors, blockingStates, id, mind, on, options, posts, states, table, temper`})
 }
 
 // TestAKeyTheWalkCannotPlaceKeepsItsLine is the one case a path is not
