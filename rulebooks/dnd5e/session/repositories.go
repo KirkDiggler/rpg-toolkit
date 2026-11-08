@@ -132,7 +132,10 @@ type CharacterRepository interface {
 // different process or an out-of-band repository writer.
 //
 // Exclusion is not a transaction: a failed multi-repository save still carries
-// the existing partial SaveReport. Character verbs (Equip, Unequip, LevelUp)
+// the existing partial SaveReport. A host whose encounter repository carries
+// [FencedEncounterRepository] gets one fenced transaction for the world and
+// the session record instead (checkpoint.go); character sheets stay plain
+// writes under their guard. Character verbs (Equip, Unequip, LevelUp)
 // act under the guard their character's seat names — the session's, or the
 // character's own while unseated (seats.go) — so every writer of a character
 // record holds the right guard. Durable exploration profiles shared across

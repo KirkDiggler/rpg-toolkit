@@ -61,6 +61,15 @@ creature's own authored table, rolled through this session's dice
 (rpg-project#465) — which holds nothing between turns and so belongs in the
 first. `TurnDrivers` remains for a host with a stateful driver of its own.
 
+**The save can be fenced** ([`checkpoint.go`](./checkpoint.go)). An encounter
+repository that also implements `FencedEncounterRepository` is found by type
+assertion, never a Config field: a write verb loads the store's checkpoint
+version with the world, and saves the world and the touched session record in
+one transaction that lands only if that version still holds. A stale save
+writes nothing and delivers nothing (`ErrStaleCheckpoint`). The record's
+`NextSeq` is not the fence: a beatless verb does not advance it. A plain
+repository keeps the two unfenced writes.
+
 **The one driver is RECOGNISED, not wrapped** ([`driver.go`](./driver.go)).
 Every other driver crosses the boundary by projection — the composition's
 `MonsterView` flattens onto this package's twin on the way in, its `TurnIntent`

@@ -17,7 +17,13 @@ var ErrBadSessionLock = errors.New("session locker returned no release")
 // Managers sharing storage must share a coordination domain. Implementations
 // must be concurrency-safe, honor cancellation while waiting, and retain
 // exclusion until Release is called, including after the request is canceled.
-// They must not expire a held lock while the operation can still write.
+// A held session lock that can expire while the operation can still write (a
+// lease in a shared store, which cannot promise otherwise) needs the fence: the
+// host must supply a [FencedEncounterRepository], whose save names the
+// checkpoint version the operation loaded, so a writer whose lease ran out
+// fails closed with [ErrStaleCheckpoint] instead of saving over its successor.
+// Without that capability the lock must not expire while the operation can
+// still write.
 //
 // The SDK calls this before repository access for every public operation with a
 // Session input, including reads and Launch, and releases after the last
