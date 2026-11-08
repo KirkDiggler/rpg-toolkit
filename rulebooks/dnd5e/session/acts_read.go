@@ -101,6 +101,13 @@ func (m *Manager) Acts(ctx context.Context, in *ActsInput) (*ActsOutput, error) 
 // fold, so a subscriber that arrives after a commit reads, after the last
 // id it holds, exactly the acts it would have been handed live.
 //
+// THAT RELIES ON ONE ORDER: a client subscribes to the live stream BEFORE it
+// reads catch-up (as the api's StreamEvents does). A member counted as
+// listening from the moment it subscribes, and caught up after, has no gap:
+// a commit before the subscription is in the catch-up read, and one after it
+// is folded live. A client that read catch-up first and subscribed later
+// would miss the commits between the two.
+//
 // Listening is asked once per commit, after the verb and before the save,
 // and must be cheap. An error is not a verb failure: the commit folds for
 // every member, as a stream that cannot say would get. A name that is not a
