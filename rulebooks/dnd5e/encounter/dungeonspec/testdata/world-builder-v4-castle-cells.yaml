@@ -40,34 +40,6 @@ intel:
   - id: key-bearer
     reveals:
       fact: sergeant-holds-keys
-tables:
-  cell-guard:
-    time:
-      - when:
-          - fact: alarm-raised
-          - enemy: reach
-        attack: enemy
-        weight: 4
-      - when:
-          - fact: alarm-raised
-          - not:
-              enemy: reach
-        toward: enemy
-        weight: 4
-      - when:
-          heard:
-            kind: clang
-            within: 2
-        say: Steel in the cells! Sound the alarm!
-        fact: alarm-raised
-        weight: 3
-      - when:
-          enemy: seen
-        say: Intruders in the cells! Sound the alarm!
-        fact: alarm-raised
-        weight: 3
-      - hold: {}
-        weight: 1
 exits:
   - id: stair-up
     cell:
@@ -237,7 +209,7 @@ room:
     regions:
       - id: befdc82b-46d1-40b3-ad9f-5e3931b9a56c-region
         name: The Mad King
-        lighting: { intensity: 1 }
+        lighting: {intensity: 1}
         cells:
           - r: 1
             q: [[-16, 15]]
@@ -334,10 +306,11 @@ room:
     monsterBindings:
       44f4aa72-bd03-46b4-b8f4-d5dc2e895cff:
         faction: garrison
-        table: cell-guard
+        behaviors:
+          - id: policy
+            use: 44f4aa72-bd03-46b4-b8f4-d5dc2e895cff-policy
       7b8b5d1c-1b8f-4ea1-a681-5abab9420d0a:
         faction: garrison
-        table: cell-guard
         options:
           - id: offer-the-purse
             say: Offer the purse.
@@ -351,6 +324,9 @@ room:
                 fact: guard-bribed
             failure:
               - say: You think I can be bought? Back off.
+        behaviors:
+          - id: policy
+            use: 7b8b5d1c-1b8f-4ea1-a681-5abab9420d0a-policy
       9c2196fe-2d70-4d68-a06a-f7c9438c766a:
         faction: prisoners
         holds:
@@ -467,3 +443,84 @@ room:
     propBindings:
       purse:
         holdable: true
+behaviorDefinitions:
+  44f4aa72-bd03-46b4-b8f4-d5dc2e895cff-policy:
+    recipe:
+      ref: site:behaviors:44f4aa72-bd03-46b4-b8f4-d5dc2e895cff-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        - when:
+            - fact: alarm-raised
+            - enemy: reach
+          attack: enemy
+          weight: 4
+        - when:
+            - fact: alarm-raised
+            - not:
+                enemy: reach
+          toward: enemy
+          weight: 4
+        - when:
+            heard:
+              kind: clang
+              within: 2
+          say: Steel in the cells! Sound the alarm!
+          fact: alarm-raised
+          weight: 3
+        - when:
+            enemy: seen
+          say: Intruders in the cells! Sound the alarm!
+          fact: alarm-raised
+          weight: 3
+        - hold: {}
+          weight: 1
+  7b8b5d1c-1b8f-4ea1-a681-5abab9420d0a-policy:
+    recipe:
+      ref: site:behaviors:7b8b5d1c-1b8f-4ea1-a681-5abab9420d0a-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        - when:
+            - fact: alarm-raised
+            - enemy: reach
+          attack: enemy
+          weight: 4
+        - when:
+            - fact: alarm-raised
+            - not:
+                enemy: reach
+          toward: enemy
+          weight: 4
+        - when:
+            heard:
+              kind: clang
+              within: 2
+          say: Steel in the cells! Sound the alarm!
+          fact: alarm-raised
+          weight: 3
+        - when:
+            enemy: seen
+          say: Intruders in the cells! Sound the alarm!
+          fact: alarm-raised
+          weight: 3
+        - hold: {}
+          weight: 1

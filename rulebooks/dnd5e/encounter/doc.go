@@ -129,13 +129,28 @@
 // cells together is one round and not four — and a driver called "world" would
 // have made a long fight the front runner forever.
 //
-// When time passes, THE WORLD THINKS, inside the same call that raised the
-// high-water and after the verb's own beats: every standing monster on the
-// world clock with budget and a table is given one turn's worth of doing per
-// unit, rolls its `time` table, and spends one. A creature that walks into an
-// opposed member's sight forms or joins a fight by the ordinary path.
+// When time passes, THE WORLD THINKS inside the call that raised the high-water.
+// Canonical behavior instances explicitly subscribe to world `time` or fight
+// `turn` opportunities; clock notifications grant neither. The supplied Driver
+// runs first, then a Delegated decision selects once through the actor's Composer.
+// Empty compositions invent no policy. Only actual execution can complete selected
+// work; partial/blocked movement retains it, and a held turn resumes without a
+// second roll. A creature walking into opposed sight forms or joins a fight by
+// the ordinary path.
+//
+// # Translating a selected answer
+//
+// [IntentForAnswer] turns an already-selected behavior answer into the ordinary
+// [TurnIntent], using only the supplied observer-local view and its budget. It
+// never selects a row or rolls again. Translation is not execution or completion:
+// a routed turn ending, or a budget-exhausted Pass, does not prove arrival.
 //
 // # Hearing
+//
+// A queued heard occurrence carries its own kind through save/reload and delivery,
+// even when another sound arrives before the clock is raised. An absent kind
+// remains unknown; delivery never reconstructs it from the latest holdings or
+// exposes the private maker as a heard fact.
 //
 // A deed makes a sound (noise.go, rpg-project#569 R4/R5): an attack recorded
 // struck or missed clangs, a door forced by Strength crashes, a cast that

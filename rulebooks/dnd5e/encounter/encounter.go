@@ -180,6 +180,10 @@ type Encounter struct {
 	// [Encounter.runPick] for the view it builds; empty is `time`.
 	pickKey AnswerKey
 
+	// opportunity identifies the first delivery in a world/reaction budget.
+	// Reconsults use a fresh time/turn opportunity, never replay this occurrence.
+	opportunity *behaviorOpportunity
+
 	// wakeMatched is how many landed beats the pass in progress has matched,
 	// against [wakeBeatBound]; reset by every [Encounter.wakePass].
 	wakeMatched int
@@ -268,11 +272,6 @@ type Encounter struct {
 	// persisted. The default recipe listens for nothing but time, which the
 	// heap answers, so it is empty until a recipe listens (S4).
 	listeners machine.Listeners[MemberID]
-
-	// programs is every recipe this build ships, compiled once per encounter
-	// against the encounter's vocabulary, keyed by the recipe's ref
-	// ([compilePrograms]).
-	programs map[string]*machine.Program
 
 	// participation answers who is down and who counts as present. Required at
 	// both constructors and never defaulted; see [Participation].
@@ -822,7 +821,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			AppearanceRef:      m.AppearanceRef,
 			DefaultActivityRef: m.DefaultActivityRef,
 			Facing:             m.Facing,
-			Options:            m.Options, Table: m.Table, Machine: m.Machine,
+			Options:            m.Options, Table: m.Table, Machine: m.Machine, Behaviors: m.Behaviors,
 			BlockingStates: m.BlockingStates, Posts: m.Posts,
 		}); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
@@ -957,14 +956,8 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 
-	programs, err := compilePrograms()
-	if err != nil {
-		return nil, fmt.Errorf("newencounter: %w", err)
-	}
-
 	// After validation passes, construct (R5: no observable state until success)
 	e := &Encounter{
-		programs:      programs,
 		members:       make(map[MemberID]*memberRecord),
 		everMembers:   make(map[MemberID]bool),
 		field:         f,
@@ -1051,7 +1044,7 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 			BlocksMovement:     mi.BlocksMovement,
 			Faction:            mi.Faction,
 		}
-		if err = e.useRecipe(member, mi.Machine, mi.BlockingStates); err != nil {
+		if err = e.useBehaviors(member, mi.Behaviors, nil, mi.BlockingStates); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
 		}
 		if err = e.usePosts(member, mi.Posts, f.cellAt(mi.Position)); err != nil {
@@ -2686,7 +2679,7 @@ func (e *Encounter) validateJoin(in *JoinInput) error {
 		AppearanceRef:      in.AppearanceRef,
 		DefaultActivityRef: in.DefaultActivityRef,
 		Facing:             in.Facing,
-		Options:            in.Options, Table: in.Table, Machine: in.Machine,
+		Options:            in.Options, Table: in.Table, Machine: in.Machine, Behaviors: in.Behaviors,
 		BlockingStates: in.BlockingStates, Posts: in.Posts,
 	}); err != nil {
 		return fmt.Errorf("join: %w", err)
@@ -2780,7 +2773,7 @@ func (e *Encounter) admitMember(in *JoinInput) (*memberRecord, *JoinOutput, erro
 		BlocksMovement:     in.BlocksMovement,
 		Faction:            in.Faction,
 	}
-	if err := e.useRecipe(member, in.Machine, in.BlockingStates); err != nil {
+	if err := e.useBehaviors(member, in.Behaviors, nil, in.BlockingStates); err != nil {
 		return nil, nil, fmt.Errorf("join: %w", err)
 	}
 	if err := e.usePosts(member, in.Posts, in.Cell); err != nil {

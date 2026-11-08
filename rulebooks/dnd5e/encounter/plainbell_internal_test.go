@@ -20,10 +20,10 @@ import (
 func TestAPlainLineToAPropRingsItsBellAndPaysNoRound(t *testing.T) {
 	no := false
 	march := recipe(t, "waiting", map[string]machine.State{
-		"waiting": {Transitions: []machine.Transition{{On: clockBeat("bell:gong"), Do: []machine.Act{{Pick: "march"}}}}},
+		"waiting": {Transitions: []machine.Transition{{On: clockBeat("bell:gong"), To: "heard"}}},
+		"heard":   {},
 	})
 	m := listener("m", 4, 1, march)
-	m.Table = Table{"march": {{Weight: 1, Hold: true}}}
 	in := wakeSetup(passDriver{}, m)
 	in.Field.Props = []PropInput{{
 		ID: "gong", Ref: "test:props:gong", At: spatial.Position{X: 1, Y: 1},

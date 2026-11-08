@@ -61,6 +61,7 @@ func (s *SessionVerbsSuite) scene(members ...encounter.MemberInput) *encounter.E
 			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        tableDriver(),
+			Roller:        rollsLowest{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -341,7 +342,7 @@ func (s *SessionVerbsSuite) TestAShortRestIsAnHourAndNothingElse() {
 		encounter.MemberInput{ID: bob, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 3}},
 		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 4}},
 		encounter.MemberInput{ID: billy, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 10}},
-		encounter.MemberInput{ID: denLurker, Kind: encounter.KindMonster, Position: spatial.Position{X: 20, Y: 1}, Table: walksTo(cellAt(23, 1))},
+		encounter.MemberInput{ID: denLurker, Kind: encounter.KindMonster, Position: spatial.Position{X: 20, Y: 1}, Behaviors: ordinaryBehavior(walksTo(cellAt(23, 1)))},
 	)
 	for member, want := range map[encounter.MemberID]encounter.ClockKind{
 		alice: encounter.ClockTurn, billy: encounter.ClockWorld, denLurker: encounter.ClockWorld,

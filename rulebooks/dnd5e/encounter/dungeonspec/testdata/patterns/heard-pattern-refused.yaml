@@ -1,16 +1,14 @@
-# The refused twin of heard-pattern.yaml (rpg-project#684 L3): no sound
-# this build makes is a bell or a gong, so the condition could never hold,
-# and the form refuses it rather than accepting a row that never fires.
+# A heard pattern matching no supported sound is refused by its source path.
+# Bells and gongs are not sound kinds in this vocabulary; the source is not
+# silently accepted as a behavior that can never activate.
 version: 5
-key: heard-pattern-refused
+key: heard-pattern
 play: {void: transparent, lighting: bright, standing: centre-covered}
 room:
   version: 3
   id: room-1
   name: Gatehouse
-  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
-    distanceUnit: world-scene-unit, hexRadius: 1,
-    footprintFrame: owner-local-xz}
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up, distanceUnit: world-scene-unit, hexRadius: 1, footprintFrame: owner-local-xz}
   scene:
     version: 1
     id: scene-1
@@ -23,7 +21,7 @@ room:
     regions:
       - id: room-1-region
         name: Gatehouse
-        lighting: { intensity: 1 }
+        lighting: {intensity: 1}
         cells:
           - r: -3
             q: [[0, 3]]
@@ -43,15 +41,48 @@ room:
     arrangementDeclarations: {}
     partyStart: {q: -3, r: 0}
     monsterDeclarations:
-      - {id: gate-patrol, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: -2, r: 0 } }}
-      - {id: keep-patrol, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 0, r: 0 } }}
+      - {id: gate-patrol, ref: 'dnd5e:monsters:goblin', startingCell: {location: {q: -2, r: 0}}}
+      - {id: keep-patrol, ref: 'dnd5e:monsters:goblin', startingCell: {location: {q: 0, r: 0}}}
     monsterBindings:
       gate-patrol:
-        on:
-          time:
-            - {when: {heard: {kind: '/bell|gong/', within: 2}}, toward: sound}
-            - {when: {enemy: none}, toward: {path: [{q: -2, r: 0}, {q: 0, r: -2}, {q: 2, r: 0}, {q: 0, r: 2}]}}
+        behaviors:
+          - id: policy
+            use: gate-patrol-policy
       keep-patrol:
-        on:
-          time:
-            - {when: {enemy: none}, toward: {at: {q: 1, r: 1}}}
+        behaviors:
+          - id: policy
+            use: keep-patrol-policy
+behaviorDefinitions:
+  gate-patrol-policy:
+    recipe:
+      ref: site:behaviors:gate-patrol-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        - {when: {heard: {kind: '/bell|gong/', within: 2}}, toward: sound}
+        - {when: {enemy: none}, toward: {path: [{q: -2, r: 0}, {q: 0, r: -2}, {q: 2, r: 0}, {q: 0, r: 2}]}}
+  keep-patrol-policy:
+    recipe:
+      ref: site:behaviors:keep-patrol-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        - {when: {enemy: none}, toward: {at: {q: 1, r: 1}}}

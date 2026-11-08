@@ -86,8 +86,8 @@ func marchingCaptain(t *testing.T) string {
 	t.Helper()
 	raw, err := os.ReadFile(kingFixture)
 	require.NoError(t, err)
-	follow := "      - when: [{ fact: guards-turned }, { enemy: none }]\n        toward: ally\n"
-	march := "      - when: [{ fact: guards-turned }, { enemy: none }]\n        toward: { at: { q: 10, r: -19 } }\n"
+	follow := "        - when: [{fact: guards-turned}, {enemy: none}]\n          toward: ally\n"
+	march := "        - when: [{fact: guards-turned}, {enemy: none}]\n          toward: {at: {q: 10, r: -19}}\n"
 	source := string(raw)
 	require.Equal(t, 1, strings.Count(source, follow), "the castle carries the captain's follow row once")
 	path := filepath.Join(t.TempDir(), "marching-captain.yaml")

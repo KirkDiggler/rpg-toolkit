@@ -28,14 +28,17 @@ import (
 
 // machineState is a member's machine state as the record holds it, the
 // recipe's initial state written as empty.
-func machineState(t *testing.T, enc *encounter.Encounter, id encounter.MemberID) string {
+func machineState(t testing.TB, enc *encounter.Encounter, id encounter.MemberID) string {
 	t.Helper()
 	for _, m := range enc.ToData().Members {
 		if m.ID == id {
-			if m.Machine == nil {
-				return ""
+			require.NotNil(t, m.Behaviors)
+			for _, instance := range m.Behaviors.Progress.Instances {
+				if instance.ID == m.Behaviors.BodyInstance {
+					return instance.Blob.State
+				}
 			}
-			return m.Machine.State
+			require.FailNow(t, "designated body instance exists")
 		}
 	}
 	require.FailNowf(t, "not in the run", "%s", id)
@@ -127,7 +130,7 @@ func TestMadKingTheGuardHoldsTheGate(t *testing.T) {
 		for i := 0; i < 3; i++ {
 			s.aRoundPasses()
 		}
-		require.Equal(t, "", machineState(t, s.enc, kingGate1), "still posted")
+		require.Equal(t, "posted", machineState(t, s.enc, kingGate1), "still posted")
 		require.Equal(t, beneathTheGate, s.at(kingGate1), "still on the crossing")
 		require.Equal(t, encounter.PassageBlocked, s.passageFor(crossing), "still holding it")
 	})

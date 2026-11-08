@@ -21,6 +21,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
+	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -155,7 +157,11 @@ func cellsFight(t *testing.T, compiled dungeonspec.Compiled) (*encounter.Encount
 		}
 		sheets[id] = club
 		members = append(members, encounter.MemberInput{
-			ID: id, Kind: encounter.KindMonster, Position: at, Faction: encounter.FactionID(m.Faction), Table: swings,
+			ID: id, Kind: encounter.KindMonster, Position: at, Faction: encounter.FactionID(m.Faction),
+			Behaviors: &encounter.BehaviorInput{Instances: []encounter.BoundBehavior{{Instance: behavior.InstanceSpec{
+				ID: "combat", Table: swings, Recipe: machine.Recipe{Ref: core.Ref{Module: "test", Type: "behaviors", ID: "combat"}, Initial: "ready",
+					States: map[string]machine.State{"ready": {Transitions: []machine.Transition{{On: "turn", Do: []machine.Act{{Pick: "time"}}}}}}},
+			}}}},
 		})
 	}
 	strikes := &[]cellsStrike{}
@@ -170,7 +176,7 @@ func cellsFight(t *testing.T, compiled dungeonspec.Compiled) (*encounter.Encount
 			Sheets:        sheets,
 			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
-			Driver:        encounter.TableDriver{Roller: rollsOne{}},
+			Driver:        encounter.BehaviorDriver{},
 			Roller:        rollsOne{},
 			CheckResolver: nothingIsEverFound{},
 			Witness:       nobodyPerceivesAnything{},

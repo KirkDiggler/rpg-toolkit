@@ -52,7 +52,7 @@ func symbolsSceneWith(t *testing.T, table encounter.Table) (*encounter.Encounter
 	t.Helper()
 	members := []encounter.MemberInput{
 		{ID: alice, Kind: encounter.KindPlayer, Position: seat(4, 4)},
-		{ID: goblin, Kind: encounter.KindMonster, Position: seat(5, 4), Table: table,
+		{ID: goblin, Kind: encounter.KindMonster, Position: seat(5, 4), Behaviors: ordinaryBehavior(table),
 			Temper: encounter.Temper{Word: "coward", Profile: encounter.TemperProfile{
 				Attack: 50, Toward: 50, Away: 300, Flee: 300, Hold: 100}}},
 	}
@@ -118,7 +118,7 @@ func TestTheTableIsDescribedBeforeItsFirstAnswer(t *testing.T) {
 
 	table := beats[0]
 	require.Equal(t, string(goblin), table["creature"])
-	require.Equal(t, string(encounter.AnswerTime), table["key"])
+	require.Equal(t, "behavior/6:policy/time", table["key"])
 	require.Equal(t, "", table["option"], "the creature's own table, not an option's")
 	require.Equal(t, "coward", table["temper"])
 	require.Equal(t, map[string]any{
@@ -173,7 +173,7 @@ func TestAReloadDescribesNoTableTheRecordHolds(t *testing.T) {
 		}
 	}
 	require.NotNil(t, saved)
-	require.Contains(t, saved.TableHash, string(encounter.AnswerTime), "the description is remembered in the blob")
+	require.Contains(t, saved.TableHash, "behavior/6:policy/time", "the instance-qualified description is remembered in the blob")
 
 	t.Run("the same table is not described again", func(t *testing.T) {
 		loaded := reloadSymbols(t, enc.ToData(), members)
@@ -182,24 +182,26 @@ func TestAReloadDescribesNoTableTheRecordHolds(t *testing.T) {
 		require.Len(t, goblinBeatsOf(t, loaded, encounter.BeatTable), 1, "and no second description")
 	})
 
-	t.Run("a changed table is described exactly once more", func(t *testing.T) {
+	t.Run("saved configuration cannot be edited under existing progress", func(t *testing.T) {
 		changed := enc.ToData()
 		for i := range changed.Members {
-			if changed.Members[i].ID != goblin {
-				continue
+			if changed.Members[i].ID == goblin {
+				changed.Members[i].Behaviors.Instances[0].Instance.Table[encounter.AnswerTime][1].Weight = 5
 			}
-			rows := changed.Members[i].Table[string(encounter.AnswerTime)]
-			rows[1].Weight = 5
 		}
-		loaded := reloadSymbols(t, changed, members)
-		goblinTurn(t, loaded)
-		goblinTurn(t, loaded)
-		require.GreaterOrEqual(t, len(goblinBeatsOf(t, loaded, encounter.BeatAnswered)), picked+2,
-			"precondition: more than one pick after the edit")
-		tables := goblinBeatsOf(t, loaded, encounter.BeatTable)
-		require.Len(t, tables, 2, "one for the old table, one for the edited, none for the repeat")
-		edited := tables[1]["rows"].([]any)[1].(map[string]any)
-		require.Equal(t, 5.0, edited["weight"], "and it describes the table as edited")
+		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: changed, Capabilities: symbolsCaps(members)})
+		require.ErrorIs(t, err, encounter.ErrInvalidData)
+	})
+	t.Run("a newly authored run describes its changed table once", func(t *testing.T) {
+		table := silenceTable()
+		table[encounter.AnswerTime][1].Weight = 5
+		fresh, _ := symbolsSceneWith(t, table)
+		goblinTurn(t, fresh)
+		goblinTurn(t, fresh)
+		tables := goblinBeatsOf(t, fresh, encounter.BeatTable)
+		require.Len(t, tables, 1)
+		edited := tables[0]["rows"].([]any)[1].(map[string]any)
+		require.Equal(t, 5.0, edited["weight"])
 	})
 }
 

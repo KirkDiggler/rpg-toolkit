@@ -165,6 +165,9 @@ type Seat struct {
 // MonsterPlacement is one authored monster: where it stands, and every word
 // about it this package is not allowed to interpret.
 type MonsterPlacement struct {
+	// Behaviors carries canonical materialized instances, not source uses or progress.
+	Behaviors *encounter.BehaviorInput `json:"Behaviors,omitempty"`
+
 	// Ref is content's identifier, exactly as authored.
 	Ref string
 
