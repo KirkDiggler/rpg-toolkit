@@ -295,6 +295,41 @@ func (s *ContinuationSuite) TestAWalkThatPaysNoRoundAnswersWhole() {
 	s.Equal(releasesBefore+1, run.locker.releases, "the verb gave its guard back")
 }
 
+// TestAContinuingAnswerWithNoStepsStillNamesItsResumePoint: a walker whose
+// very next step pays the round answers with no steps, and Through is still
+// a resume point: the newest record entry at the answer, before every moved
+// beat the continuation records.
+func (s *ContinuationSuite) TestAContinuingAnswerWithNoStepsStillNamesItsResumePoint() {
+	run := s.launch(&capturingRunner{})
+	// Four cells of alice's five: no round is paid, and her next step pays it.
+	first, err := s.move(run, context.Background(), eastFrom(5))
+	s.Require().NoError(err)
+	s.Require().False(first.Continues, "four cells pay no round")
+
+	rest := []spatial.Position{hexCell(6, 1), hexCell(7, 1), hexCell(8, 1)}
+	answer, err := s.move(run, context.Background(), rest)
+	s.Require().NoError(err)
+	s.Require().True(answer.Continues)
+	s.Empty(answer.Steps, "the first step is the one that pays the round")
+	s.NotEmpty(answer.Through, "an answer with no steps still names where it covers up to")
+
+	report, err := run.runner.handed[0].Continue(context.Background())
+	s.Require().NoError(err)
+	s.Require().NotNil(report.Move)
+	s.Equal(rest, positionsOf(report.Move.Steps))
+
+	var after []session.RecordEvent
+	for _, move := range s.alicesMoves(run) {
+		if move.ID > answer.Through {
+			after = append(after, move)
+		}
+	}
+	s.Require().NotEmpty(after)
+	moves := s.alicesMoves(run)
+	s.Equal(moves[len(moves)-len(rest):], after,
+		"every moved beat of the continuation, and only those, come after Through")
+}
+
 // TestTheContinuationHoldsTheGuard: until the rest has run, the session is
 // the continuation's, and the next verb waits; once it has, the next verb
 // proceeds.

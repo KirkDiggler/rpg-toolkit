@@ -140,10 +140,12 @@ type MoveOutput struct {
 	// runner: the answer is then the whole walk, saved and delivered.
 	Continues bool `json:"continues,omitempty"`
 
-	// Through is the record id of the moved beat of the last step in Steps
-	// when Continues is true: the point the rest of the walk continues from
-	// on the stream. Empty when the answer carries no steps (the very first
-	// step paid the round) and whenever Continues is false.
+	// Through is the record id the answer covers up to when Continues is
+	// true; the walker's own moved beats after it continue the walk. It is
+	// the moved beat of the last step in Steps, or, for an answer with no
+	// steps (the very first step pays the round), the last record entry at
+	// the moment of the answer. Empty only when Continues is false, or when
+	// the record holds no entry at all.
 	Through string `json:"through,omitempty"`
 }
 
@@ -308,12 +310,16 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		// answer is the steps so far; that step, the raise it fires inside,
 		// the steps after, the save and the delivery are the continuation's,
 		// in exactly the order a whole walk takes them.
+		through, throughErr := answerThrough(scope, res)
+		if throughErr != nil {
+			return nil, fmt.Errorf("move: %w", throughErr)
+		}
 		answer := &MoveOutput{
 			Status:     MovementContinuing,
 			Steps:      res.steps,
 			Discovered: nilIfEmpty(res.discovered),
 			Continues:  true,
-			Through:    res.through,
+			Through:    through,
 		}
 		err = m.handOff(request, in.Session, VerbMove, vctx, guard,
 			func(ctx context.Context) (*ContinuationReport, error) {
@@ -426,6 +432,24 @@ func (m *Manager) continueWalk(
 			Barred:       res.barred,
 		},
 	}, nil
+}
+
+// answerThrough is the record id a continuing answer covers up to
+// ([MoveOutput.Through]): the last step's moved beat, or with no steps the
+// newest entry the record holds, so a client always has a point to resume
+// from. Empty only for an empty record.
+func answerThrough(scope *writeScope, res *walkResult) (string, error) {
+	if res.through != "" {
+		return res.through, nil
+	}
+	read, err := scope.enc.ReadRecord(&encounter.ReadRecordInput{})
+	if err != nil {
+		return "", translate(err)
+	}
+	if len(read.Entries) == 0 {
+		return "", nil
+	}
+	return read.Entries[len(read.Entries)-1].ID, nil
 }
 
 // walkResume is where a walk stopped before a step that pays a round: the
