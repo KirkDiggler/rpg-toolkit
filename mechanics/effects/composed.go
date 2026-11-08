@@ -96,6 +96,8 @@ type Composed struct {
 	outputs  map[string][]*Bound
 	attached []Detach
 	bus      events.EventBus
+	// endState is an observation cursor during End-before-detach, not saved state.
+	endState *string
 }
 
 type decoded struct {
@@ -259,6 +261,7 @@ func (c *Composed) Apply(ctx context.Context, bus events.EventBus) error {
 // the joined detach errors and is a no-op when not applied.
 func (c *Composed) Remove(ctx context.Context, bus events.EventBus) error {
 	err := c.detach(ctx)
+	c.endState = nil
 	c.bus = nil
 	return errors.Join(err, c.m.Remove(ctx, bus))
 }
@@ -274,7 +277,7 @@ func (c *Composed) ToJSON() (jsonv1.RawMessage, error) {
 // frame, one per output in recipe order. A guard that depends is a row with
 // machine.Depends, not an error; a kind's Assess error is returned.
 func (c *Composed) Rows(frame any) ([]Row, error) {
-	outs := c.outputs[c.m.State()]
+	outs := c.CurrentOutputs()
 	rows := make([]Row, 0, len(outs))
 	for _, o := range outs {
 		row, err := c.ov.Kinds[o.Kind()].Assess(frame, o)
@@ -316,6 +319,8 @@ func (c *Composed) detach(ctx context.Context) error {
 // the successful nonterminal state change.
 func (c *Composed) onTransition(ctx context.Context, t machine.Transitioned) error {
 	if c.m.Program().IsTerminal(t.To) {
+		c.endState = &t.From
+		defer func() { c.endState = nil }()
 		var err error
 		if c.ov.End != nil {
 			err = c.ov.End(ctx, c.bus, c.host, t.Reason)

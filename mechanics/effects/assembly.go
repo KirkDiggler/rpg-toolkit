@@ -7,10 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/mechanics/effects/machine"
 )
 
 // ErrInvalidAssembly marks an invalid local assembly definition or operation.
@@ -141,6 +143,7 @@ func Assemble(input AssemblyInput) (*Assembly, error) {
 			return nil, fmt.Errorf("%w: part %q has unknown terminal scope %q", ErrInvalidAssembly, part.Key, part.OnTerminal)
 		}
 		bound := part.Compose
+		bound.MachineVocabulary = a.gateReactions(bound.MachineVocabulary)
 		bound.InstanceKey = fmt.Sprintf("%d:%s/%s", len(input.Key), input.Key, part.Key)
 		bound.OutputVocabulary.End = func(ctx context.Context, bus events.EventBus, _ Host, reason string) error {
 			return a.partEnded(ctx, bus, AssemblyEnd{AssemblyKey: a.key, PartKey: part.Key, Scope: part.OnTerminal, Reason: reason})
@@ -162,7 +165,9 @@ func Assemble(input AssemblyInput) (*Assembly, error) {
 
 // RestoreAssembly requires every part's explicit state and complete declared
 // bag. Completed local parts remain completed; terminal application-maintenance
-// state cannot be restored as a live application. Inputs are not retained.
+// state cannot be restored as a live application. Snapshot inputs are copied;
+// definition recipes, vocabularies and referenced values remain borrowed and
+// must be immutable, as required by Compose and Recipe.Compile.
 func RestoreAssembly(input RestoreAssemblyInput) (*Assembly, error) {
 	if input.Snapshot == nil || len(input.Snapshot.Parts) != len(input.Definition.Parts) {
 		return nil, fmt.Errorf("%w: snapshot must name every part exactly once", ErrInvalidAssembly)
@@ -233,21 +238,43 @@ func (a *Assembly) Snapshot() AssemblySnapshot {
 }
 
 // CurrentOutputs returns live local outputs in declared part/output order.
-// Ordinary detachment does not erase information; a gameplay application end does.
+// Ordinary detachment does not erase information. End reporting retains selectable
+// contributions until ordered cleanup completes, including pre-terminal outputs.
 func (a *Assembly) CurrentOutputs() []PartOutput {
 	var outputs []PartOutput
-	if a.ending {
+	if a.ending && a.bus == nil {
 		return outputs
 	}
 	for _, part := range a.parts {
-		if part.runtime.m.Program().IsTerminal(part.runtime.State()) {
-			continue
-		}
 		for _, output := range part.runtime.CurrentOutputs() {
 			outputs = append(outputs, PartOutput{PartKey: part.key, Output: output})
 		}
 	}
 	return outputs
+}
+
+// gateReactions gates the existing dispatch entry for both trackers and
+// transitions. Output subscriptions remain live to answer end-time folds/queries.
+// Copying the beat map prevents this assembly's gate from changing another
+// assembly that borrows the same immutable vocabulary.
+func (a *Assembly) gateReactions(vocabulary machine.Vocabulary) machine.Vocabulary {
+	vocabulary.Beats = maps.Clone(vocabulary.Beats)
+	for name, spec := range vocabulary.Beats {
+		if spec.Subscribe == nil {
+			continue // preserve the compiler's missing-subscription refusal
+		}
+		subscribe := spec.Subscribe
+		spec.Subscribe = func(ctx context.Context, bus events.EventBus, handler func(context.Context, any) error) (string, error) {
+			return subscribe(ctx, bus, func(ctx context.Context, event any) error {
+				if a.ending {
+					return nil
+				}
+				return handler(ctx, event)
+			})
+		}
+		vocabulary.Beats[name] = spec
+	}
+	return vocabulary
 }
 
 func (a *Assembly) partChanged(ctx context.Context, bus events.EventBus, key string) error {

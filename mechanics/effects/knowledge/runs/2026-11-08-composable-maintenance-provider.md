@@ -14,12 +14,15 @@ Slice [rpg-project#903](https://github.com/KirkDiggler/rpg-project/issues/903), 
 
 ## Decided
 
+- Gate the existing machine-vocabulary dispatch entry, not output contribution handlers or an invented interpreter; retain an ephemeral pre-terminal observation cursor while End runs, with Snapshot still reporting actual machine state — [end findings](https://github.com/KirkDiggler/rpg-toolkit/pull/2327#pullrequestreview-5819824571).
+- Narrow restore ownership documentation to copied snapshots and borrowed immutable definitions rather than changing the underlying constructor ownership contract during this fix — [ownership finding](https://github.com/KirkDiggler/rpg-toolkit/pull/2327#discussion_r4507948139).
 - Assembly construction refuses mixed holders, a part-supplied second namespace, nested lifecycle hooks and already-terminal application maintenance; the neutral assembly, not a silent override, owns those contracts — [S13](https://github.com/KirkDiggler/rpg-project/issues/903).
 - Known duplicate loss notices are idempotent only while membership is live; after end acceptance membership is frozen, so the transport suppresses its re-entrant child notices rather than changing an already-issued plan — [approved end contract](https://github.com/KirkDiggler/rpg-toolkit/blob/design/bless-bane-composition/docs/ideas/composable-maintenance/README.md#shared-lifetime-and-the-coordinator).
 - Restore accepts an empty live subset without recreating declared members, but never a missing/non-live snapshot; current-state data is not fresh construction — [fresh-character ruling](https://github.com/KirkDiggler/rpg-toolkit/pull/2323#issuecomment-6726787390).
 
 ## Found
 
+- Independent review reproduced query outputs disappearing inside End and nested machine reactions mutating/detaching siblings before reporting finished; permanent multi-part regressions reproduce both failures before the fix — [review](https://github.com/KirkDiggler/rpg-toolkit/pull/2327#pullrequestreview-5819824571).
 - T1 tests first fail to compile on the absent Lifetime API, then pass with implementation; full module race/vet/lint pass, retaining the generic import seam — [T1 proof contract](https://github.com/KirkDiggler/rpg-toolkit/blob/design/bless-bane-composition/docs/ideas/composable-maintenance/plan.md#t1--neutral-lifetime-value).
 - A mutant accepting repeated end requests makes TestEndIsAuthorizedOrderedAndIdempotent fail on repeated plans and replaced reasons; exact restoration returns it green — [S13](https://github.com/KirkDiggler/rpg-project/issues/903).
 
@@ -31,4 +34,5 @@ Slice [rpg-project#903](https://github.com/KirkDiggler/rpg-project/issues/903), 
 
 ## Mistaken
 
+- The first end test folded only subscribed damage, so it missed query availability and nested sibling reactions. A callback-level ending guard ran after machine mutation; the corrected tests observe queries, state, trackers and damage inside End, not only after teardown — [review reproduction](https://github.com/KirkDiggler/rpg-toolkit/pull/2327#discussion_r4507948135).
 - Exact-text documentation edits were rejected before a file change; reading the current block and replacing that exact block resolved them. No runtime failure or test skip was concealed — [S13](https://github.com/KirkDiggler/rpg-project/issues/903).

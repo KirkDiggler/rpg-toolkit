@@ -86,12 +86,18 @@ values for one holder. Each uses the existing machine; transitions from differen
 parts are not flattened into one first-match list. `EndPart` completes only that
 part and reports Changed. `EndApplication` requires a lifecycle end hook, reports
 once while contributions are still attached, and then detaches all local parts.
+During that report, query-only and subscribed contributions remain available,
+including the terminating part's pre-terminal outputs. Machine beat and tracker
+dispatch is gated before reactions run, so reentrant transport cannot mutate or
+detach sibling parts mid-report.
 
 The assembly owns part instance namespaces and End/Changed hooks. Supplying a
 second namespace or nested hooks is refused, as are mixed holders, duplicate
 keys and already-terminal required maintenance. `Remove` is interaction teardown,
 not a gameplay end. `RestoreAssembly` requires exact saved part coverage and
-never revives a completed local part.
+never revives a completed local part. Saved snapshot inputs are copied; definition
+recipes, vocabularies and referenced construction values remain borrowed and
+must be immutable, as required by `Compose` and `Recipe.Compile`.
 
 `Lifetime` is a separate neutral value for the shared coordinator: ordered opaque
 member keys, authorized ender keys, and one accepted end plan. It publishes

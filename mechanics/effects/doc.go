@@ -132,7 +132,10 @@
 // supplies no nested lifecycle hooks or instance namespace: the assembly owns
 // both. The same beat can update multiple parts without flattening their rules
 // into one first-match transition list. Application end is reported once while
-// contributions still answer, then all local parts detach. Remove only detaches.
+// subscribed and query contributions still answer, including pre-terminal
+// outputs. During that report, the assembly gates beat/ tracker dispatch before
+// sibling reactions can mutate state or detach outputs. Then all local parts
+// detach. Remove only detaches.
 //
 // AssemblySnapshot stores every part, including locally completed ones.
 // RestoreAssembly refuses missing state and terminal required maintenance, and
