@@ -14,6 +14,7 @@ Work: [Composable conditions S12 #884](https://github.com/KirkDiggler/rpg-projec
 
 ## Found
 
+- Adopted resolution e6e26a2d/root c00e0d76 for the QA-discovered damage-sustain gap, retaining encounter v0.181.0. Full session race passed in 374.526 seconds; vet/lint passed, without changing the SDK's lifecycle ownership — [#2312](https://github.com/KirkDiggler/rpg-toolkit/issues/2312).
 - Later API-head CI was absent because dev's newly landed performance pins conflicted with this wave. Merged origin/main into the session branch, retained the shared Raging root/resolution pins, and adopted released encounter v0.181.0 plus its route-observation documentation rather than undoing the landed work. Full session race suite passed in 404.681 seconds; vet/lint passed — [S12](https://github.com/KirkDiggler/rpg-project/issues/884).
 
 - Removed concrete-type fixtures and old one-row/flat-data assertions initially failed. Their replacements retain current identity, state, budget, information and restart facts; old snapshot prose is not a reason to drop the approved four-row result — [current data assertions](../../conditions_test.go).
