@@ -83,16 +83,23 @@ func (s *ConditionsTestSuite) managerOverStores(
 // still raging".
 func ragingDwarf(id string) *character.Data {
 	data := dwarfCharacter(id)
-	raging := &conditions.RagingCondition{
-		CharacterID:       id,
-		Source:            refs.Features.Rage().String(),
-		TurnsActive:       2,
-		WasHitThisTurn:    true,
-		DidAttackThisTurn: true,
-	}
-	blob, err := raging.ToJSON()
+	blob, err := ragingForTest(id).ToJSON()
 	if err != nil {
 		panic("building the raging fixture: " + err.Error())
+	}
+	var saved conditions.ComposedData
+	if err := json.Unmarshal(blob, &saved); err != nil {
+		panic(err)
+	}
+	saved.Runtime.State = "raging"
+	saved.Runtime.Bag["saw_turn_end"] = true
+	saved.Runtime.Bag["round_activated"] = 1
+	saved.Runtime.Bag["turns_active"] = 2
+	saved.Runtime.Bag["was_hit_this_turn"] = true
+	saved.Runtime.Bag["did_attack_this_turn"] = true
+	blob, err = json.Marshal(&saved)
+	if err != nil {
+		panic(err)
 	}
 	data.Conditions = []json.RawMessage{blob}
 	return data
@@ -206,13 +213,16 @@ func (s *ConditionsTestSuite) TestTheRageSurvivesTheFightAndARestart() {
 	rage := conditionByRef(s.T(), stored.Conditions, refs.Conditions.Raging().String())
 	s.Require().NotNil(rage, "she is still raging on the far side")
 
-	var got conditions.RagingData
+	var got conditions.ComposedData
 	s.Require().NoError(json.Unmarshal(rage, &got))
 	s.Equal(refs.Conditions.Raging().String(), got.Ref.String())
-	s.Equal(2, got.TurnsActive, "the rage remembers how long it has run")
-	s.True(got.WasHitThisTurn, "and what happened to her during it")
-	s.True(got.DidAttackThisTurn)
-	s.Equal(refs.Features.Rage().String(), got.Source)
+	s.Require().NotNil(got.Runtime)
+	s.Equal(float64(2), got.Runtime.Bag["turns_active"], "the rage remembers how long it has run")
+	s.Equal(true, got.Runtime.Bag["was_hit_this_turn"], "and what happened to her during it")
+	s.Equal(true, got.Runtime.Bag["did_attack_this_turn"])
+	s.Require().NotNil(got.Origin)
+	s.Equal(refs.Features.Rage().String(), got.Origin.Ref.String())
+	s.Equal(got.MemberID, got.Origin.EntityID)
 }
 
 // roundTripAllStores marshals all three repositories through JSON into fresh
