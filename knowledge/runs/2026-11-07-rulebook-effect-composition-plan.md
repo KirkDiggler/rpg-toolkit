@@ -13,6 +13,7 @@ Work: [#703](https://github.com/KirkDiggler/rpg-project/issues/703), [design #22
 
 ## Found
 
+- After the operator's normal-behavior report, the independent round published seven reviews with no original code findings. Real native QA then exposed the inherited damage-sustain subscription gap; the root binding and a real resolution regression are fixed and consumer gates pass, while affected live recheck/focused closure remain pending — [#2312](https://github.com/KirkDiggler/rpg-toolkit/issues/2312).
 - Follow-on after operator publication: v0.1.259 at generated 7dcb1b2 is adopted by API 2bf39e23 and web 156a39bc; full local consumer gates pass. The isolated :3307/:8307 stack boots with verified heads/content and error-free landing render, awaiting the operator's early look before gameplay QA/review — [boot and SDK receipts](../../docs/ideas/rulebook-effect-composition/implementation.md#published-sdk-adoption-and-isolated-boot).
 - Initial execution checkpoint: shared provider/root/item and native resolution/session/API/web branches are published; measured owning gates passed, but source-ID SDK publication, stack boot/walk, independent runtime review and release remain incomplete — [implementation record](../../docs/ideas/rulebook-effect-composition/implementation.md).
 - Native consumption exposed missing source identity in SDK/wire rows; session preserved it and additive proto #422 was checked, awaiting operator publication authority at that initial checkpoint — [publication question](https://github.com/KirkDiggler/rpg-project/issues/884#issuecomment-6713320177).
@@ -22,6 +23,7 @@ Work: [#703](https://github.com/KirkDiggler/rpg-project/issues/703), [design #22
 
 ## Mistaken
 
+- Migrating the old damage subscriber and its manually published fixtures preserved an existing native-path bug. Actual post-apply damage did not set the saved sustain flag; the correction uses the documented notification and a real damage → persistence → new-interaction test rather than republishing the legacy instruction — [native evidence](../../docs/ideas/rulebook-effect-composition/implementation.md#independent-round-and-qa-after-the-early-look).
 - The initial wire assumption missed SourceID; the plan now names the additive field and generated consumer pins rather than permitting an opaque-ID workaround. Initial session/API/web command budgets also ended incomplete gates; larger bounded reruns retained the full suites — [execution evidence](../../docs/ideas/rulebook-effect-composition/implementation.md).
 
 - No new execution mistake observed at this planning checkpoint; the earlier unnecessary compatibility assumption remains visibly superseded in the design record — [ADR-0050](../../docs/adr/0050-composed-condition-instances.md).

@@ -7,12 +7,12 @@ Written 2026-11-07. Scope and completion remain owned by [story #703](https://gi
 | Slice / owner | PR / head | Observed scope |
 |---|---|---|
 | S9 mechanics/effects | [#2297](https://github.com/KirkDiggler/rpg-toolkit/pull/2297), `605694f3` | Owned snapshot/output observations, complete-output validation, nonterminal Changed notification |
-| S10 D&D root | [#2299](https://github.com/KirkDiggler/rpg-toolkit/pull/2299), `3e771a63` | Shared kind registry, one composed Raging definition/codec, native Rage creator and four-domain information |
-| S11 items | [#2300](https://github.com/KirkDiggler/rpg-toolkit/pull/2300), `b2dfcf14` | Item grant uses shared creator; private Rage recipe/vocabulary removed; spent loot and active-condition restoration retained |
-| S12 resolution | [#2304](https://github.com/KirkDiggler/rpg-toolkit/pull/2304), `9425c9da` | Real native activation → boundary → interaction reload and current-format fixtures |
-| S12 session | [#2306](https://github.com/KirkDiggler/rpg-toolkit/pull/2306), `2909290a` | Native Afford/payment/progress tests, plural rows, source entity ID retained |
+| S10 D&D root | [#2299](https://github.com/KirkDiggler/rpg-toolkit/pull/2299), `c00e0d76` | Shared kind registry, one composed Raging definition/codec, native Rage creator and four-domain information |
+| S11 items | [#2300](https://github.com/KirkDiggler/rpg-toolkit/pull/2300), `085a7608` | Item grant uses shared creator; private Rage recipe/vocabulary removed; spent loot and active-condition restoration retained |
+| S12 resolution | [#2304](https://github.com/KirkDiggler/rpg-toolkit/pull/2304), `e6e26a2d` | Real native activation and damage → dirty save → interaction reload; current-format fixtures |
+| S12 session | [#2306](https://github.com/KirkDiggler/rpg-toolkit/pull/2306), `277ed80e` | Native Afford/payment/progress tests, plural rows, source entity ID retained |
 | S12 protos | [#422](https://github.com/KirkDiggler/rpg-api-protos/pull/422), merge `1fc63b4` | Operator merged; generated v0.1.259 at `7dcb1b2` published and adopted |
-| S12 API | [#1193](https://github.com/KirkDiggler/rpg-api/pull/1193), `2bf39e23` | Current raw data, origin/description and source-ID wire mapping; real handler/Redis integration |
+| S12 API | [#1193](https://github.com/KirkDiggler/rpg-api/pull/1193), `f843fde` | Current raw data, origin/description and source-ID wire mapping; real handler/Redis integration |
 | S12 web | [#1398](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1398), `156a39bc` | Canonical reader; no client bonus formula; published SDK and source-ID preservation |
 
 Runtime PRs remain drafts on development pins or incomplete integration. No toolkit provider was merged merely to unblock a consumer; no legacy Rage codec, silent reset, replace/go.work or manual tag was added.
@@ -43,10 +43,23 @@ This updates the original plan's wire assumption without revisiting Raging-only 
 - Local untracked `content/raging-composition-walk.yaml` cuts open courtyard cells and the unchanged captain template from the castle, placing the captain beside the party without a compulsory fight or travel. The live registry lists **Raging Composition Walk**. Local and container `/content/raging-composition-walk.yaml` SHA-256 both equal `660b20dd089b9cc4f7760fd84c267da7a54ec24d8e6c2d3f5a1e264e90c43115`.
 - Landing page screenshot was rendered and inspected with zero browser console/page errors; live registry queried through the real web client. The shared screenshot helper lacked its Playwright Chromium binary, so the probe used installed Chrome in a fresh headless context. An initial container hash command used the wrong path; inspecting the mount identified `/content`, whose hash matches above. A direct JSON curl was refused (415); the real client's transport succeeded. None of these boot probes is gameplay QA.
 
+## Independent round and QA after the early look
+
+The operator reported “raging is acting like normal.” The one independent round then published seven head-specific reviews with no concrete code findings: toolkit [#2297](https://github.com/KirkDiggler/rpg-toolkit/pull/2297#pullrequestreview-5815655441), [#2299](https://github.com/KirkDiggler/rpg-toolkit/pull/2299#pullrequestreview-5815655472), [#2300](https://github.com/KirkDiggler/rpg-toolkit/pull/2300#pullrequestreview-5815655517), [#2304](https://github.com/KirkDiggler/rpg-toolkit/pull/2304#pullrequestreview-5815655559), [#2306](https://github.com/KirkDiggler/rpg-toolkit/pull/2306#pullrequestreview-5815655593), [API #1193](https://github.com/KirkDiggler/rpg-api/pull/1193#pullrequestreview-5815655627), [web #1398](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1398#pullrequestreview-5815655668). Remaining QA/release/CI prerequisites were explicit; no merge authorization was inferred.
+
+API CI was absent because landed performance pins conflicted with the branch. Merged toolkit main into session (9f462d97) and dev into API (40fe078), preserving encounter v0.181.0 and the Raging graph. Full gates passed; API 40fe078 got green build/test CI. Later dev pin work advanced again; current API-head base reconciliation/CI remains pending, not a green result inferred from 40fe078.
+
+Two fresh identities were created through normal draft/finalize RPCs, with no injected active condition or deleted character. Two isolated browser contexts rendered the real game. Native session `4b770757-0ae5-41de-9699-5028ca878501` showed actor Rage charge 2 → 1 while observer stayed 2; both received activation act `activate:01M6W9QMX5058S0S5WZK2YCDFN`. The first boundary persisted state raging, anchor 1, turns_active 1; full browser reload retained it and the spent charge. Four rows reached the rendered DOM with source identity, only +2 outgoing damage applying. A missed attack set the sustain flag and the next boundary reached turns_active 2. Combat end by decision removed Raging; short rest healed HP 2 → 10, spent a hit die, did not refill long-rest Rage charges and did not recreate the condition. These are bounded observations, not all seven checklist boxes declared complete. The native HUD uses server ConditionView; the otherwise unmounted raw ConditionBadge has component proof, not a claim it appeared in that HUD.
+
+That walk found [#2312](https://github.com/KirkDiggler/rpg-toolkit/issues/2312): a real NPC hit correctly resisted 10 → 5 left was_hit_this_turn false. The shared vocabulary had inherited the old handwritten condition's legacy DamageReceived subscription. Native resolution intentionally publishes post-apply DamageTaken instead to avoid double application. Fixed the rulebook binding to positive applied facts, not the publisher. Strengthened root and real-resolution tests failed before the fix and passed afterward: consumed grace, one HP application, no legacy notification, dirty snapshot, reload, one sustain and later inactivity removal. Root c00e0d76 / resolution e6e26a2d / items 085a7608 / session 277ed80e / API f843fde carry the fix with full owning gates passing; session race took 374.526 seconds. The isolated stack now serves API f843fde with web 156a39bc, without resetting Redis. Only focused review closure of this concrete new QA finding is warranted.
+
+The local untracked walk YAML initially contaminated shipped-content glob tests during catch-up gates. Moving only that local file out for the full gates and restoring it afterward resolved those failures without skipped tests or changes to served content; [API #1196](https://github.com/KirkDiggler/rpg-api/issues/1196) records the fixture-discovery gap. Browser mount transcripts retain React StrictMode cleanup AbortError logs; no warning-free game-view claim is made.
+
 ## Still unproved / incomplete
 
-- Normal fresh-character creation and the complete Rage journey on the exact isolated stack.
-- Operator early view/go, standing/relevant native walk and one independent runtime review round.
+- Affected live recheck of the damage-sustain correction, remaining native QA and the castle repeat.
+- Focused independent closure for #2312 (not another whole-diff round).
+- Current API-head base reconciliation and CI after parallel dev pin changes.
 - Authorized inside-out merges, actual provider tags, final consumer re-pins and release receipts.
 
-No stack was booted in the initial source checkpoint; the follow-on isolated boot is recorded above. The operator's :3030/:8115 and character data were untouched. No gameplay walk or independent runtime review has started, and no slice is closed by this record.
+No stack was booted in the initial source checkpoint; the follow-on isolated boot is recorded above. The operator's :3030/:8115 and character data were untouched. The initial independent round and bounded native QA are recorded above; the QA finding's closure and remaining checks are incomplete. No slice is closed by this record.
