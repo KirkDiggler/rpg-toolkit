@@ -13,9 +13,9 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/play/interrupt v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.2.0
 	github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.213.6-0.20261108005816-c00e0d7608dd
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.214.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.182.0
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.74.3-0.20261108010049-e6e26a2d847c
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.74.3
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.16.1
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467
 	github.com/stretchr/testify v1.11.1
@@ -24,7 +24,7 @@ require (
 require (
 	github.com/KirkDiggler/rpg-toolkit/events v0.6.3 // indirect
 	github.com/KirkDiggler/rpg-toolkit/game v0.1.0 // indirect
-	github.com/KirkDiggler/rpg-toolkit/mechanics/effects v0.3.1-0.20261107191014-605694f3c24f // indirect
+	github.com/KirkDiggler/rpg-toolkit/mechanics/effects v0.4.0 // indirect
 	github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.3.1 // indirect
 	github.com/KirkDiggler/rpg-toolkit/play/clock v0.1.0 // indirect
 	github.com/KirkDiggler/rpg-toolkit/world v0.4.0 // indirect
