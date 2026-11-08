@@ -14,6 +14,7 @@ Work: [Composable conditions S12 #884](https://github.com/KirkDiggler/rpg-projec
 
 ## Found
 
+- Authorized merge-out preflight merged current main, preserving released encounter v0.182.0 and the already-landed optional Move continuation implementation. Conflicts were dependency files only; no hand-edited Go conflict. A host without a ContinuationRunner keeps synchronous behavior. Full session race passed in 459.788 seconds; vet/lint passed — [continuation contract](../../continuation.go).
 - Adopted resolution e6e26a2d/root c00e0d76 for the QA-discovered damage-sustain gap, retaining encounter v0.181.0. Full session race passed in 374.526 seconds; vet/lint passed, without changing the SDK's lifecycle ownership — [#2312](https://github.com/KirkDiggler/rpg-toolkit/issues/2312).
 - Later API-head CI was absent because dev's newly landed performance pins conflicted with this wave. Merged origin/main into the session branch, retained the shared Raging root/resolution pins, and adopted released encounter v0.181.0 plus its route-observation documentation rather than undoing the landed work. Full session race suite passed in 404.681 seconds; vet/lint passed — [S12](https://github.com/KirkDiggler/rpg-project/issues/884).
 

@@ -327,8 +327,15 @@ type Encounter struct {
 	// plain dungeon has sides and knowledge too, and what it skips is the
 	// concealment capabilities and the sweep's work, which keeps its blob
 	// byte-identical to what it was before.
-	world     *encounterWorld
-	discovery map[MemberID]DiscoveryStateData
+	world *encounterWorld
+	// wakeParticipation is the one participation assessment a wake pass
+	// reads (rpg-project#879 S3b): every woken creature asked the host anew,
+	// a hundred assessments of the same roster per raise. Set by the first
+	// ask inside [Encounter.wakePass], dropped when the pass ends, when an
+	// intent other than a Pass has executed and when a member is noticed
+	// down, the three moments inside a pass at which the answer can change.
+	wakeParticipation *participationState
+	discovery         map[MemberID]DiscoveryStateData
 
 	// sneakVerdicts is every standing Stealth verdict, by sneaking mover then
 	// by watcher (sneak.go, rpg-project#606 R10): discovery's attempt shape,
@@ -1721,7 +1728,7 @@ func (e *Encounter) audienceFor(class beatClass, subjects ...MemberID) []MemberI
 // not here, because Pump needs its pre-Phase-1 snapshot reused across every
 // movement beat in one tick rather than a fresh roster read per action (see
 // Pump's own comment on why).
-func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberID, at uint64) (uint64, error) {
+func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberID, at uint64) (*record.AppendOutput, error) {
 	audience = e.frontierAudience(action, audience)
 	// Both ends of a step are cells the next look is asked of
 	// ([Encounter.pendingCells]), whoever's look that is.
@@ -1795,7 +1802,7 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 	// propagate theirs; this is the movement half catching up.
 	beatBytes, err := json.Marshal(payload)
 	if err != nil {
-		return 0, fmt.Errorf("marshal moved beat: %w", err)
+		return nil, fmt.Errorf("marshal moved beat: %w", err)
 	}
 
 	appendOut, err := e.appendBeat(&record.AppendInput{
@@ -1805,12 +1812,12 @@ func (e *Encounter) appendMovementBeat(action executedAction, audience []MemberI
 		Payload:  beatBytes,
 	})
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	if err := e.appendStepAreaTransitions(action.member.ID, action.from, action.to); err != nil {
-		return 0, err
+		return nil, err
 	}
-	return appendOut.Seq, nil
+	return appendOut, nil
 }
 
 // firedReachedPosition evaluates every declared ReachedPosition ending against
