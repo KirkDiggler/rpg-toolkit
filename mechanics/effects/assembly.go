@@ -158,6 +158,7 @@ func Assemble(input AssemblyInput) (*Assembly, error) {
 		if part.OnTerminal == EndApplication && composed.m.Program().IsTerminal(composed.State()) {
 			return nil, fmt.Errorf("%w: part %q is already application-terminal", ErrInvalidAssembly, part.Key)
 		}
+		composed.reactionsAllowed = func() bool { return !a.ending }
 		a.parts = append(a.parts, assemblyPart{key: part.Key, runtime: composed})
 	}
 	return a, nil

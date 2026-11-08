@@ -91,6 +91,8 @@
 //   - Params returns an owned copy of the kind's fields.
 //   - Answer evaluates the output's guard over a frame and the live bag.
 //   - Amount returns an owned, validated scalar or unresolved dice description.
+//   - CanReact distinguishes permission to request new work from a contribution
+//     that still answers during End; it is false while unattached or ending.
 //
 // A kind never sees the machine, the recipe or another output.
 //

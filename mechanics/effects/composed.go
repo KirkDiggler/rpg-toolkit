@@ -35,12 +35,13 @@ type Row struct {
 // Bound is one output bound to its condition: what a kind's Attach and
 // Assess are handed.
 type Bound struct {
-	id     string
-	out    Output
-	host   Host
-	when   *machine.CompiledGuard
-	amount AmountFn
-	m      *machine.Machine
+	id       string
+	out      Output
+	host     Host
+	when     *machine.CompiledGuard
+	amount   AmountFn
+	m        *machine.Machine
+	reactive func() bool
 }
 
 // ID returns an id unique to this output within its condition (ref, state
@@ -64,6 +65,11 @@ func (b *Bound) Host() Host {
 // Answer evaluates the output's guard over frame and the condition's bag. A
 // guard over an unknown fact answers machine.Depends.
 func (b *Bound) Answer(frame any) (machine.Verdict, string) { return b.m.Answer(b.when, frame) }
+
+// CanReact reports whether this currently attached output may request new work.
+// It is false for stale-state handles and during application end reporting, even
+// while Answer/Amount still describe contributions for the event being resolved.
+func (b *Bound) CanReact() bool { return b.reactive != nil && b.reactive() }
 
 // HasAmount reports whether the output carries an amount.
 func (b *Bound) HasAmount() bool { return b.out.Amount != nil }
@@ -98,6 +104,8 @@ type Composed struct {
 	bus      events.EventBus
 	// endState is an observation cursor during End-before-detach, not saved state.
 	endState *string
+	// reactionsAllowed is optional assembly-owned dispatch permission, not state.
+	reactionsAllowed func() bool
 }
 
 type decoded struct {
@@ -173,6 +181,10 @@ func Compose(input ComposeInput) (*Composed, error) {
 			id:   id,
 			out:  d.out,
 			host: c.host, when: when, amount: d.fn, m: m,
+			reactive: func() bool {
+				return m.IsApplied() && m.State() == d.state &&
+					(c.reactionsAllowed == nil || c.reactionsAllowed())
+			},
 		})
 	}
 	m.OnTransition(c.onTransition)
