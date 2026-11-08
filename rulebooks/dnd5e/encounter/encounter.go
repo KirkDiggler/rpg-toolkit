@@ -367,6 +367,26 @@ type Encounter struct {
 	// an entry equals while nothing has moved. Bounded by visibleCacheEntries,
 	// never saved, rebuilt by use after a load.
 	visibleCache map[sightSweepKey]visibleBits
+	// visibleCacheEntries is visibleCache's bound, [visibleCacheBound] from
+	// every constructor. The encounter's own, so a test that shrinks it
+	// shares it with no other encounter (rpg-toolkit#2317).
+	visibleCacheEntries int
+
+	// sightEncoder replaces [EncodeSightTestimony] in [Encounter.encodeSighting]
+	// so a test can count the calls (#1691). The whole point of moving the
+	// loop into mind/perception is that the count is N for N members rather
+	// than N² — identical bytes, encoded once, handed to every observer who
+	// perceives them — and a cost nothing asserts is a cost that comes back
+	// the next time somebody reaches for a nested loop. Nil outside a test.
+	// A field, not a package variable, so a test's encoder is never read by
+	// another encounter running beside it (rpg-toolkit#2317).
+	sightEncoder func(SightTestimony) ([]byte, error)
+	// rebuildProbe is told every observer list [Encounter.rebuildPercepts] is
+	// asked to rebuild (rpg-project#762), so a test can say a member beyond
+	// the sight bound of what changed was never looked for, for the same
+	// reason as sightEncoder. Nil outside a test; the encounter's own for the
+	// same reason (rpg-toolkit#2317).
+	rebuildProbe func(observers []MemberID)
 	// visibleEpoch is the opacity the cached entries were swept under; a
 	// pass with a new opacity frees them, since their keys can no longer match.
 	visibleEpoch string
@@ -765,6 +785,13 @@ func validateIntelTargets(f *field) error {
 // member seats (integral, on floor), ending trigger validity, spatial
 // placement errors.
 func NewEncounter(in *SetupInput) (*Encounter, error) {
+	return newEncounter(in, visibleCacheBound)
+}
+
+// newEncounter is [NewEncounter] with the visible cache's bound named, so a
+// test builds its encounter with a small bound before any pass reads it
+// (rpg-toolkit#2317). Every other caller passes [visibleCacheBound].
+func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 	// Validation order: nil, no rooms, no endings, reserved ending, empty ID, duplicates
 	if in == nil {
 		return nil, fmt.Errorf("newencounter: %w", ErrNilInput)
@@ -962,24 +989,25 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 
 	// After validation passes, construct (R5: no observable state until success)
 	e := &Encounter{
-		programs:      programs,
-		members:       make(map[MemberID]*memberRecord),
-		everMembers:   make(map[MemberID]bool),
-		field:         f,
-		initiative:    in.Initiative,
-		participation: in.Participation,
-		sight:         in.Sight,
-		equipment:     in.Equipment,
-		conditions:    in.Conditions,
-		sheets:        in.Sheets,
-		driver:        in.Driver,
-		roller:        in.Roller,
-		striker:       in.Striker,
-		disengager:    in.Disengager,
-		mover:         in.Mover,
-		announcer:     in.Announcer,
-		endings:       nil,
-		retention:     normalizeRetention(in.Retention),
+		visibleCacheEntries: visibleCacheEntries,
+		programs:            programs,
+		members:             make(map[MemberID]*memberRecord),
+		everMembers:         make(map[MemberID]bool),
+		field:               f,
+		initiative:          in.Initiative,
+		participation:       in.Participation,
+		sight:               in.Sight,
+		equipment:           in.Equipment,
+		conditions:          in.Conditions,
+		sheets:              in.Sheets,
+		driver:              in.Driver,
+		roller:              in.Roller,
+		striker:             in.Striker,
+		disengager:          in.Disengager,
+		mover:               in.Mover,
+		announcer:           in.Announcer,
+		endings:             nil,
+		retention:           normalizeRetention(in.Retention),
 	}
 	e.doors, e.doorsByID = doorRecordsFrom(in.Field.Doors)
 
@@ -2138,22 +2166,15 @@ func (e *Encounter) refreshSightDeclaring(
 	return deltas, formed, nil
 }
 
-// encodeSighting is the encoder one pass runs, once per placed member.
-//
-// INDIRECTED THROUGH A VARIABLE so a test can count the calls (#1691). The
-// whole point of moving the loop into mind/perception is that the count is N
-// for N members rather than N² — identical bytes, encoded once, handed to
-// every observer who perceives them — and a cost nothing asserts is a cost
-// that comes back the next time somebody reaches for a nested loop. Nothing
-// but a test ever assigns this.
-var encodeSighting = EncodeSightTestimony
-
-// rebuildProbe is told every observer list [Encounter.rebuildPercepts] is
-// asked to rebuild (rpg-project#762), so a test can say a member beyond the
-// sight bound of what changed was never looked for — the same indirection
-// as [encodeSighting], for the same reason: a cost nothing asserts comes
-// back. Nil outside a test, and nothing but a test assigns it.
-var rebuildProbe func(observers []MemberID)
+// encodeSighting is the encoder one pass runs, once per placed member:
+// [EncodeSightTestimony], unless a test handed this encounter a counting
+// encoder in [Encounter.sightEncoder].
+func (e *Encounter) encodeSighting(testimony SightTestimony) ([]byte, error) {
+	if e.sightEncoder != nil {
+		return e.sightEncoder(testimony)
+	}
+	return EncodeSightTestimony(testimony)
+}
 
 // rebuildPercepts rebuilds the complete percept for all given observers and
 // returns a map of member IDs to encounter-owned intel deltas. The current
@@ -2221,8 +2242,8 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 		observers = all
 	}
 	e.pendingCells = e.pendingCells[:0]
-	if rebuildProbe != nil {
-		rebuildProbe(observers)
+	if e.rebuildProbe != nil {
+		e.rebuildProbe(observers)
 	}
 
 	// Asked fresh for this refresh too, for the same C8 reason, and beside
@@ -2314,7 +2335,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 		// standing in this pass.
 		holdsDoor, _ := e.memberHolds(subjectID, down)
 		facing := e.members[subjectID].Facing
-		payload, perr := encodeSighting(SightTestimony{
+		payload, perr := e.encodeSighting(SightTestimony{
 			State:              LocationKnown,
 			Position:           cell,
 			Equipment:          hands[subjectID],

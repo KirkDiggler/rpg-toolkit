@@ -425,7 +425,7 @@ func farObserverUntouched(t *testing.T, enc *encounter.Encounter) {
 	// cells of a thirty-foot walker raise no round (six do), so no patrol
 	// walks and the step's own look is the only one the probe can see.
 	rebuilt := map[encounter.MemberID]bool{}
-	restore := encounter.ExportedProbeRebuilds(func(observers []encounter.MemberID) {
+	restore := enc.ExportedProbeRebuilds(func(observers []encounter.MemberID) {
 		for _, id := range observers {
 			rebuilt[id] = true
 		}
@@ -490,7 +490,7 @@ func TestDoor_RefreshesRayCrossers(t *testing.T) {
 	require.InDelta(t, 30, enc.Distance(whereIs(t, enc, far), door), 0, "far stands 30 hexes from the door")
 
 	rebuilt := map[encounter.MemberID]bool{}
-	restore := encounter.ExportedProbeRebuilds(func(observers []encounter.MemberID) {
+	restore := enc.ExportedProbeRebuilds(func(observers []encounter.MemberID) {
 		for _, id := range observers {
 			rebuilt[id] = true
 		}

@@ -3355,10 +3355,11 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		return nil, fmt.Errorf("load encounter: %w", err)
 	}
 	e := &Encounter{
-		programs:      programs,
-		discovery:     copyDiscoveryStates(data.Discovery),
-		sneakVerdicts: copySneakVerdicts(data.SneakVerdicts),
-		sightSweeps:   copySightSweeps(data.SightSweeps),
+		visibleCacheEntries: visibleCacheBound,
+		programs:            programs,
+		discovery:           copyDiscoveryStates(data.Discovery),
+		sneakVerdicts:       copySneakVerdicts(data.SneakVerdicts),
+		sightSweeps:         copySightSweeps(data.SightSweeps),
 		// THE LAST LOOK IS THE SAVED HIGH-WATER (rpg-project#762): a verb
 		// ends with a look, so the reading a blob was saved at is the one
 		// every current sighting in it is known true at. Derived, not stored.

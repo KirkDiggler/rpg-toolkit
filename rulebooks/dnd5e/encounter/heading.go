@@ -85,7 +85,7 @@ func (e *Encounter) headingPasses(
 					h := v.heading
 					testimony.Heading = &h
 					var err error
-					if payload, err = encodeSighting(testimony); err != nil {
+					if payload, err = e.encodeSighting(testimony); err != nil {
 						return nil, fmt.Errorf("encode sight testimony: %w", err)
 					}
 					encoded[v] = payload

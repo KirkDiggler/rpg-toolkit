@@ -7,10 +7,13 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// visibleCacheEntries bounds [Encounter.visibleCache]: at the bound the whole
+// visibleCacheBound bounds [Encounter.visibleCache]: at the bound the whole
 // cache is dropped and refilled by use, which costs one sweep per visited key
-// again and nothing else. A var so a test can shrink it.
-var visibleCacheEntries = 4096
+// again and nothing else. Every constructor copies it into
+// [Encounter.visibleCacheEntries]; a test shrinks its own encounter's bound
+// through [newEncounter], never a value another encounter reads
+// (rpg-toolkit#2317).
+const visibleCacheBound = 4096
 
 // visibleBits is one sweep's answer as a bitset over the sweep disk in
 // [field.sweepCells] order: bit i set means disk[i] is visible from the key's
@@ -45,7 +48,7 @@ func (e *Encounter) visibleFrom(key sightSweepKey, disk []spatial.Position, sees
 			bits.set(i)
 		}
 	}
-	if len(e.visibleCache) >= visibleCacheEntries {
+	if len(e.visibleCache) >= e.visibleCacheEntries {
 		e.visibleCache = nil
 	}
 	if e.visibleCache == nil {
