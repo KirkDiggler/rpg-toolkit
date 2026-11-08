@@ -59,7 +59,7 @@ Release-unit deliverables under story #703: [S13 #903](https://github.com/KirkDi
 
 Use the existing `dnd5e/effects` package for part declarations/binders: inspected imports do not depend on combat/actions, so actions may consume its declaration types without a cycle. Confirm the seam with `go list` after edits; separate data-only declarations if later imports require it, without introducing another catalog.
 
-- `effects.PartDeclaration{Key string, Kind generic.KindName, Params json.RawMessage, OnTerminal generic.EndScope}` is authored data. `effects.BindPart(BindPartInput)(*BindPartOutput,error)` consumes `{Declaration PartDeclaration, HolderID,ApplicationID string, Origin events.ConditionOrigin, Owner events.ConditionAddress}` and produces `{Part generic.PartInput, Capabilities PartCapabilities}`. `PartCapabilities{Concentration,Duration bool}` declares static capabilities; `InspectPart(InspectPartInput{Declaration PartDeclaration, Snapshot generic.Snapshot})(*PartInfo,error)` interprets owned runtime state and returns optional concentration/duration information without callers reading bag keys. The same kind table owns validation and meaning; named descriptors select it.
+- `effects.PartDeclaration{Key string, Kind generic.KindName, Params json.RawMessage, OnTerminal generic.EndScope}` is authored data. `effects.BindPart(BindPartInput)(*BindPartOutput,error)` consumes `{Declaration PartDeclaration, Ref core.Ref, HolderID,ApplicationID,DisplayName string, Origin events.ConditionOrigin, Owner events.ConditionAddress}` and produces `{Part generic.PartInput, Capabilities PartCapabilities}`. `PartCapabilities{Concentration,Duration bool}` declares static capabilities; `InspectPart(InspectPartInput{Declaration PartDeclaration, Snapshot generic.Snapshot})(*PartInfo,error)` interprets owned runtime state and returns optional concentration/duration information without callers reading bag keys. The same kind table owns validation and meaning; named descriptors select it.
 - `conditions.ApplicationSpec{CoordinatorParts []effects.PartDeclaration, Recipients []RecipientSpec}`; recipient specs name a canonical attachment ref and validated config, with explicit shared or independent lifetime. `PrepareApplicationInput{ID,CoordinatorID string, Origin ConditionOrigin, Spec ApplicationSpec, Existing []ParticipantConditions}` produces immutable `PreparedApplication`, including an optional exact `Replacement` concentration-owner address. It attaches/spends/rolls/removes nothing.
 - `ParticipantConditions{MemberID string, Conditions []events.ConditionBehavior}` names the supplied universe. `BindApplicationsInput{Participants []ParticipantConditions, Bus events.EventBus}` produces an interaction-local `ApplicationBinding`; it validates existing linked graphs and binds runtime transport. It is neither a condition catalog nor a persistent/global index.
 - `CreateRecipientInput{Prepared *PreparedApplication, SpecIndex int, MemberID string}` produces `CreateRecipientOutput{Condition ConditionBehavior, Receipt DeliveryReceipt}` through the existing registry. `DeliveryReceipt{Key string, Address ConditionAddress, LinkMode LinkMode}` with explicit `LinkComposed` or `LinkAdopted` records only actual admitted delivery; the mode distinguishes backlink-bearing composed nodes and explicitly adopted current payloads.
@@ -72,6 +72,8 @@ Use the existing `dnd5e/effects` package for part declarations/binders: inspecte
 
 ## Task contracts
 
+Execution checkpoint: generic T1–T4 are source-complete in [toolkit #2327](https://github.com/KirkDiggler/rpg-toolkit/pull/2327), through `cc0c8dee`, with missing-API RED, targeted behavioral/mutation RED and full module race/vet/lint GREEN. Their consumer integration, independent wave review and release remain pending. T5 starts with root adoption at `5145b708` in [toolkit #2329](https://github.com/KirkDiggler/rpg-toolkit/pull/2329): provider pin and existing scalar meanings compile, with full root race/vet/lint green. New part/application implementation and T5–T13 remain incomplete.
+
 Each behavioral task follows these steps: add named assertions → observe the expected RED → implement only its contract → run focused checks → run its owning release-unit gates before pushing → update run record and commit. Tests below are required assertions, not completed receipts.
 
 ### T1 — Neutral lifetime value
@@ -80,10 +82,10 @@ Each behavioral task follows these steps: add named assertions → observe the e
 **Files:** create `mechanics/effects/lifetime.go`, `lifetime_test.go`; update module `doc.go` and add its dated run record.
 **Interfaces:** generic Lifetime contracts above; no bus, rulebook imports or hidden IDs.
 **Behavior/tests:** `TestLifetimeSuite/TestEndIsAuthorizedOrderedAndIdempotent`: members a,b; remove a; end by authorized duration with reason expired yields only b; repeat damage end preserves expired and yields no second plan. `TestSnapshotDoesNotAliasCallerOrRuntime`: mutate constructor slices, snapshot slices and plan slices without changing internal state. `TestRestoreRejectsMissingDuplicateForeignOrNonLiveState`: absent snapshot/phase, repeated a, unknown x, Ending/Ended all refused. `TestMembershipAndCompletionRefusals`: unknown removal, removal after end, unauthorized/empty reason and completion before request fail; known duplicate removal is a no-op.
-- [ ] Add tests and observe missing Lifetime API failure.
-- [ ] Implement defensive values and state transitions.
-- [ ] Run `go test ./... -run TestLifetimeSuite -count=1` in mechanics/effects; mutation that accepts a second end must fail the first test.
-- [ ] Run module gates, record and commit the meaningful provider checkpoint.
+- [x] Add tests and observe missing Lifetime API failure.
+- [x] Implement defensive values and state transitions.
+- [x] Run `go test ./... -run TestLifetimeSuite -count=1` in mechanics/effects; mutation that accepts a second end fails the first test.
+- [x] Run module gates, record and commit checkpoint `646c3117`.
 **Evidence:** exact test output and commit, not an application/runtime delivery claim.
 
 ### T2 — Descriptive amounts and query-only kinds
@@ -92,10 +94,10 @@ Each behavioral task follows these steps: add named assertions → observe the e
 **Files:** create `amount_result.go`, `amount_result_test.go`; modify `output.go`, `vocabulary.go`, `composed.go`, `composed_test.go`, `testvocab_test.go`, `observations_test.go`, `doc.go`.
 **Interfaces:** AmountResult, AmountFn, KindSpec.Execution, InstanceKey contracts above.
 **Tests:** `TestAmountResultSuite/TestDiceIsNeverEvaluatedByInspection` uses a dice description and a roller spy with zero calls; `TestScalarZeroIsPresentAndDiceRefusesScalarRead`; `TestInvalidUnionIsRefused`; `TestQueryKindHasNoSubscriptionAndStillRequiresAssessment`; `TestSubscribedKindStillRequiresAttach`; `TestInstanceKeysSeparateEqualRecipeOutputs`. Update existing numeric fixtures to explicit scalar results; no legacy integer adapter.
-- [ ] Write failing assertions and run the named suites.
-- [ ] Change the single amount contract and kind validation; update all module consumers.
-- [ ] Verify `go test ./... -count=1` and that swapping the instance prefix/returning a scalar for dice fails the named assertions.
-- [ ] Update docs/run record and commit after module gates.
+- [x] Write failing assertions and run the named suites.
+- [x] Change the single amount contract and kind validation; update all module consumers.
+- [x] Verify `go test ./... -count=1`; instance-prefix mutant fails the identity assertion.
+- [x] Update docs/run record and commit `5cdd2cb3` after module gates.
 
 ### T3 — Neutral countdown operations
 
@@ -103,10 +105,10 @@ Each behavioral task follows these steps: add named assertions → observe the e
 **Files:** modify `machine/{recipe,guard,acts,validate,machine}.go`; create `machine/bag_arithmetic_test.go`; update `machine/doc.go` and validation/JSON tests.
 **Interfaces:** BagLeaf/AddAct above; internal `run` returns `(changed bool, err error)` and applies a transition's acts only after all writes validate.
 **Tests:** `TestBagArithmeticSuite/TestCounterGuardAndDeltaRoundTrip` starts remaining=2, fires two declared beats, gets 1 then terminal with unchanged input recipe; `TestRefusesUnknownWrongTypedAndMultipleActForms`; `TestOverflowDoesNotPartiallyWriteOrNotify` puts MaxInt at n and an earlier flag write in the same transition, then adds 1 and expects neither write nor Changed; `TestBagUnknownIsNotFalse` preserves three-valued semantics.
-- [ ] RED with new guard/act shapes.
-- [ ] Implement validation, owned staged bag changes and overflow refusal.
-- [ ] Run `go test ./machine -count=1`; retain all existing Rage machine semantics and seam tests.
-- [ ] Record mutation of overflow guard and commit after owning module gates.
+- [x] RED with new guard/act shapes.
+- [x] Implement validation, owned staged bag changes and overflow refusal.
+- [x] Run `go test ./machine -count=1`; retain all existing Rage machine semantics and seam tests.
+- [x] Record overflow-guard mutation and commit `b0b6ce6a` after module gates.
 
 ### T4 — Local assembly of existing runtimes
 
@@ -114,10 +116,10 @@ Each behavioral task follows these steps: add named assertions → observe the e
 **Files:** create `assembly.go`, `assembly_test.go`; modify `composed.go` only for InstanceKey integration; update `doc.go`, `README.md`, seam/run records.
 **Interfaces:** Assembly contracts above. No part may supply End/Changed hooks; assembly owns the lifecycle routing.
 **Tests:** `TestAssemblySuite/TestTwoPartsReactToOneBeat` updates two differently keyed bags once; `TestPartCompletionDoesNotEndSibling`; `TestApplicationEndRoutesOnceBeforeDetach`; `TestRestoredCompletedPartDoesNotRevive`; `TestMissingOrTerminalMaintenanceSnapshotIsRefused`; `TestLaterAttachFailureUnwindsEarlierParts`; `TestRemoveOnlyDetachesAndSnapshotsAreOwned`; `TestDuplicateKeysOrNestedLifecycleHooksAreRefused`.
-- [ ] RED suites.
-- [ ] Compose each part, namespace output IDs and route callbacks without flattening transitions.
-- [ ] Run `go test -race ./...`, `go vet ./...`, `golangci-lint run ./...` in mechanics/effects; seam tests retain existing allowed imports.
-- [ ] Push the complete provider draft, with T1–T4 evidence and no merge/tag claim.
+- [x] RED suites.
+- [x] Compose each part, namespace output IDs and route callbacks without flattening transitions.
+- [x] Run `go test -race ./...`, `go vet ./...`, `golangci-lint run ./...` in mechanics/effects; seam tests retain existing allowed imports.
+- [x] Push provider draft #2327 at `cc0c8dee`, with T1–T4 evidence and no merge/tag claim.
 
 ### T5 — Rulebook part meanings and typed contribution adoption
 
@@ -252,6 +254,7 @@ Each behavioral task follows these steps: add named assertions → observe the e
 - **Hidden concrete concentration callers:** 51 toolkit Go files are inventoried in [callers.md](callers.md); T6/T8–T10 own their fixture/protocol migration. Preserve assertions rather than deleting evidence.
 - **Fresh-data ruling:** resolved by removal/refusal tests. Current Raging and unmigrated payloads are not obsolete compatibility paths.
 - **Authored data dependency:** inspected imports permit action maintenance declarations to consume root effect declarations; verify no cycle at T8, keeping pure declaration data separate if needed.
+- **Part binding metadata:** root Bind already requires authored display/origin, and current outputs carry their attachment ref. BindPartInput therefore explicitly receives Ref and DisplayName; neither is inferred from a part kind or opaque instance ID. This fills the agreed binding contract rather than adding a new metadata authority.
 - **Scoped generation safety:** application ID is distinct from recipient replacement address; T7 validates current ownership, and T9/T10 retain ID across a frozen continuation.
 - **Missing native consumer fact:** none required for the scoped spell path today. A newly exposed fact is an architectural gap at that boundary, not an excuse for a client calculation.
 - **Path check:** the initial task sketch said session/leave.go; inspection identifies session/depart.go. The task now names the real path; no worker is left to guess it.
