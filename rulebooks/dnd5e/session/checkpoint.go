@@ -140,6 +140,23 @@ type SaveFencedOutput struct {
 type checkpointFence struct {
 	held    bool
 	version uint64
+
+	// saved reports that this scope's fenced save landed. A sheet or seat
+	// written after it has no save left to ride, so it is refused
+	// ([errWrittenAfterTheSave]) rather than dropped at the guard's release.
+	saved bool
+}
+
+// errWrittenAfterTheSave is a fenced verb writing a sheet or seat after its
+// one fenced save already landed: the piece has no save to ride and would be
+// dropped when the guard is released, so the write is refused loudly
+// (rpg-toolkit#2332, a seat clear that ran after the save and never landed).
+func errWrittenAfterTheSave(scope *writeScope, aggregate string) error {
+	return &SaveError{
+		Report: SaveReport{Failed: []string{aggregate}},
+		Err: fmt.Errorf("%s written after session %q's fenced save landed: %w",
+			aggregate, scope.session, ErrBadRepository),
+	}
 }
 
 // fetchFencedWorld is [Manager.fetchWorld] through the fenced capability: the
@@ -188,6 +205,7 @@ func (m *Manager) persistFenced(
 		report.Failed = append(report.Failed, aggregates...)
 		return report, &SaveError{Report: report, Err: fmt.Errorf("saving world: %w", err)}
 	}
+	scope.fence.saved = true
 	report.Written = append(report.Written, aggregates...)
 	return report, nil
 }

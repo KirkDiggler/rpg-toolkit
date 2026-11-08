@@ -76,3 +76,21 @@ func (s *PendingWritesSuite) TestTakeIsTheSessionsOwnInIDOrder() {
 	again, _ := p.take("sess")
 	s.Empty(again, "taken pieces are gone")
 }
+
+// TestAWriteAfterTheFencedSaveIsRefused: a piece written once the scope's
+// fenced save has landed has nothing left to ride, so it is refused rather
+// than dropped silently at the guard's release (rpg-toolkit#2332).
+func (s *PendingWritesSuite) TestAWriteAfterTheFencedSaveIsRefused() {
+	m := &Manager{pending: newPendingWrites()}
+	scope := &writeScope{session: "sess", fence: checkpointFence{held: true, saved: true}}
+
+	err := m.sheetsFor(scope).save(context.Background(), &character.Data{ID: "alice"})
+	s.ErrorIs(err, ErrBadRepository)
+	s.ErrorIs(err, ErrSaveFailed)
+	err = m.writeSeat(context.Background(), scope, "alice", "")
+	s.ErrorIs(err, ErrBadRepository)
+
+	sheets, seats := m.pending.take("sess")
+	s.Empty(sheets, "nothing was held for a save that already landed")
+	s.Empty(seats)
+}

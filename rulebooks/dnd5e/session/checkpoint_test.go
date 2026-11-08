@@ -500,3 +500,64 @@ func (s *CheckpointFenceSuite) TestASeatedLevelRidesTheFence() {
 	s.Equal(versionBefore+1, s.store.versions[testSession], "the level moved the run's checkpoint")
 	s.Zero(s.store.chars.saves, "the level never went around the fence")
 }
+
+// pair launches alice and bob in one hall over the fenced store, so one
+// leaving does not close the run.
+func (s *CheckpointFenceSuite) pair() *session.Manager {
+	mgr := s.manager(&fakeStream{}, nil)
+	sc := authoredWorld()
+	sc.Party = append(sc.Party, seatAt("bob", 2, 2))
+	_, err := mgr.Launch(context.Background(), sceneInput(sc))
+	s.Require().NoError(err)
+	s.Require().Equal("sess", s.seatOf("alice"))
+	s.Require().Equal("sess", s.seatOf("bob"))
+	return mgr
+}
+
+func (s *CheckpointFenceSuite) seatOf(character string) string {
+	s.store.seats.mu.Lock()
+	defer s.store.seats.mu.Unlock()
+	return s.store.seats.byID[character].Session
+}
+
+// TestAnExitUnderTheFenceClearsTheLeaversSeat is rpg-toolkit#2332: Exit
+// cleared the seat after its commit, the fenced save had already landed,
+// and the clear was dropped with the guard. Fenced, the clear rides the save.
+func (s *CheckpointFenceSuite) TestAnExitUnderTheFenceClearsTheLeaversSeat() {
+	mgr := s.pair()
+
+	out, err := mgr.Exit(context.Background(), &session.ExitInput{Session: testSession, Member: "alice"})
+
+	s.Require().NoError(err)
+	s.Empty(s.seatOf("alice"), "the leaver's seat is cleared in the store")
+	s.Equal("sess", s.seatOf("bob"), "the one who stayed is still seated")
+	s.Contains(out.Saved.Written, "seat:alice")
+	s.Zero(s.store.seats.saves, "the clear rode the fenced save")
+}
+
+// TestARunClosingUnderTheFenceClearsEverySeat is the commit's half: End
+// closes the run, and every player's seat clears in the same fenced save.
+func (s *CheckpointFenceSuite) TestARunClosingUnderTheFenceClearsEverySeat() {
+	mgr := s.pair()
+
+	out, err := mgr.End(context.Background(), &session.EndInput{Session: testSession, Ending: session.EndingWithdrawn})
+
+	s.Require().NoError(err)
+	s.Empty(s.seatOf("alice"))
+	s.Empty(s.seatOf("bob"))
+	s.Contains(out.Saved.Written, "seat:alice")
+	s.Contains(out.Saved.Written, "seat:bob")
+	s.Zero(s.store.seats.saves, "the clears rode the fenced save")
+}
+
+// TestAStaleExitKeepsTheSeat: the clear is one of the pieces, so a stale
+// Exit lands it no more than the world.
+func (s *CheckpointFenceSuite) TestAStaleExitKeepsTheSeat() {
+	mgr := s.pair()
+	s.store.onGet = func() { s.store.versions[testSession]++ }
+
+	_, err := mgr.Exit(context.Background(), &session.ExitInput{Session: testSession, Member: "alice"})
+
+	s.Require().ErrorIs(err, session.ErrStaleCheckpoint)
+	s.Equal("sess", s.seatOf("alice"))
+}
