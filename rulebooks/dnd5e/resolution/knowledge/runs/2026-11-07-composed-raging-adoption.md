@@ -13,6 +13,8 @@ Work: [Composable conditions S12 #884](https://github.com/KirkDiggler/rpg-projec
 
 ## Found
 
+- Native QA exposed the inherited legacy damage-sustain subscription. TestNativeDamageSustainsRagingAcrossReload failed on root 3e771a63 after a real resisted NPC strike (HP 15 → 12), then passed on c00e0d76: positive applied damage persists activity, survives a new interaction/boundary once, then inactivity ends it; no legacy DamageReceived notification is emitted. Full module race/vet/lint pass — [#2312](https://github.com/KirkDiggler/rpg-toolkit/issues/2312).
+
 - Updating the provider exposed compile errors at eight concrete legacy fixture sites, then one flat-state assertion failed. Current canonical fixture/reader changes restore those tests; the new three-interaction proof reaches the actual bus and dirty output, not a mock — [proof](../../raging_composition_test.go).
 
 ## Mistaken
