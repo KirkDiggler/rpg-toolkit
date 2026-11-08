@@ -344,10 +344,7 @@ func (s *LongRestTestSuite) barbarian() *character.Data {
 		Source:   "dnd5e:classes:barbarian",
 	}).ToJSON()
 	s.Require().NoError(err)
-	raging, err := (&conditions.RagingCondition{
-		CharacterID: longRestBarbarianID,
-		Source:      "dnd5e:features:rage",
-	}).ToJSON()
+	raging, err := ragingForTest(s.T(), longRestBarbarianID).ToJSON()
 	s.Require().NoError(err)
 
 	return &character.Data{
