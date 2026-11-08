@@ -5,6 +5,7 @@ package encounter
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"slices"
 
@@ -629,6 +630,9 @@ func (f *field) attachDoorFootprints(doors []*doorRecord) {
 	// records', and a shallow copy of the field ([field.partitionCanvas])
 	// must never find the live field's mask through them.
 	f.blockingDoors, f.blockingMask = nil, nil
+	// New door content, new openings: the memo is keyed by id, and a door
+	// re-authored under the same id is a different rectangle.
+	f.doorOpenings = nil
 	for _, d := range doors {
 		if d.placement != nil {
 			f.doorFootprints = append(f.doorFootprints, d)
@@ -770,6 +774,29 @@ func (f *field) doorAcrossCrossing(from, to spatial.Position) *doorRecord {
 	return nil
 }
 
+// doorOpening is a door's opening, normalized: an edge door's edges, a
+// footprint door's crossings ([field.doorCrossings]). Computed once per door
+// per field and held in [field.doorOpenings]; see there for why it is the
+// field's and how it is kept fresh.
+func (f *field) doorOpening(d *doorRecord) []DoorEdge {
+	if out, ok := f.doorOpenings[d.id]; ok {
+		return out
+	}
+	out := make([]DoorEdge, 0, len(d.edges))
+	for _, edge := range d.edges {
+		out = append(out, normalizeDoorEdge(edge))
+	}
+	for _, crossing := range f.doorCrossings(d) {
+		out = append(out, normalizeDoorEdge(DoorEdge{From: crossing[0], To: crossing[1]}))
+	}
+	next := make(map[DoorID][]DoorEdge, len(f.doorOpenings)+1)
+	maps.Copy(next, f.doorOpenings)
+	next[d.id] = out
+	f.doorOpenings = next
+
+	return out
+}
+
 // doorCrossings is every crossing between two adjacent floor cells that a
 // footprint door's rectangle lies across, whatever the door's state: the
 // trace [field.doorAcrossCrossing] asks of a shut door before a step, asked
@@ -779,15 +806,34 @@ func (f *field) doorAcrossCrossing(from, to spatial.Position) *doorRecord {
 //
 // GEOMETRY, NOT STATE: an open door still stands between the two rooms it
 // joins, which is what the hearing graph ([Encounter.links]) needs — whether
-// it is shut is read live, per sound. The bounds pre-filter skips every
-// crossing the rectangle cannot reach, so this is one trace per crossing
-// near the door, once per encounter.
+// it is shut is read live, per sound. Read through [field.doorOpening],
+// which holds the answer as site data.
+//
+// THE CELLS NEAR THE DOOR, NOT THE FLOOR (rpg-project#879 S9, F17): a
+// crossing the rectangle lies across is one cell long, so its earlier cell's
+// centre is within a cell of the rectangle's reach. The field's bucketed
+// centres ([cellCentres.within]) list a superset of those cells in floor
+// order, and the reach pre-filter and the trace below decide exactly as they
+// did over the whole floor. A field with no buckets (built by hand) or a
+// door whose reach cannot be measured walks the whole floor.
 func (f *field) doorCrossings(d *doorRecord) [][2]spatial.Position {
 	if d.placement == nil {
 		return nil
 	}
+	cells := f.cells
+	if f.centres != nil && d.reach.ok {
+		o, pad := d.placement.Origin, 2*float64(placedPlaneCellWidth)
+		near := f.centres.within(
+			spatial.Point{X: o.X + d.reach.minX - pad, Y: o.Y + d.reach.minY - pad},
+			spatial.Point{X: o.X + d.reach.maxX + pad, Y: o.Y + d.reach.maxY + pad},
+		)
+		cells = make([]spatial.Position, len(near))
+		for i, k := range near {
+			cells[i] = f.cells[k]
+		}
+	}
 	var out [][2]spatial.Position
-	for _, cell := range f.cells {
+	for _, cell := range cells {
 		a := f.plane.CellCentre(cell)
 		for _, next := range adjacencyGrid.GetNeighbors(cell) {
 			if !cellBefore(cell, next) || !f.isFloor(next) {
