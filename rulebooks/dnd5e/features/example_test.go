@@ -9,7 +9,6 @@ import (
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -47,9 +46,7 @@ func Example() {
 		if event.Condition.Ref().String() == refs.Conditions.Raging().String() {
 			// The damage bonus is not on the condition: each attack reads it
 			// from the barbarian's level in its frame.
-			if _, ok := event.Condition.(*conditions.RagingCondition); ok {
-				fmt.Printf("%s is now raging!\n", event.Target.GetID())
-			}
+			fmt.Printf("%s is now raging!\n", event.Target.GetID())
 		}
 
 		return nil

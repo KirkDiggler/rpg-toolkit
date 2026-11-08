@@ -60,6 +60,25 @@ HolderID: holderID})`. A supplied `Bag` remains owned by that machine without
 copying; nil requests a fresh default bag. `State` defaults to initial, and
 `Apply` retains responsibility for refusing unknown/terminal states.
 
+## Validation and observation boundaries
+
+`KindSpec.Check` receives the complete `Output`, not only its raw params. A kind
+can reject a missing amount or an invalid combination before anything attaches.
+Consumers migrating from a params-only Check decode `out.Params` in that one hook.
+
+`Composed.Snapshot()` returns `{State, Bag}` as owned values for a caller-owned
+instance codec; it does not include rulebook origin/bindings or replace the
+generic `ToJSON` format. `CurrentOutputs()` returns a defensive slice of current
+observational handles. `Bound.Params()` and `Host()` detach their returned data.
+Guards on a retained handle still read live state; use Snapshot for saved state
+and fetch current handles after transitions.
+
+`Changed` reports bag mutations and successful nonterminal state transitions,
+after new outputs attach. Its error reaches the beat publisher; this is not
+rollback of the changed runtime. Failed output attachment does not report a
+successful change. Terminal transitions retain End-before-detach without an
+extra Changed notification.
+
 ## Rage, line by line
 
 This is the recipe the tests carry, which is the design's `raging`. It is

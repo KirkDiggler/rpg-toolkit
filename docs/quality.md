@@ -221,7 +221,7 @@ one-off).
 Conditions implementing the typed-data-JSON pattern (per CLAUDE.md
 "Feature/Condition Serialization Pattern"):
 
-- `RagingCondition` (Barbarian) — original reference impl, AttackChain
+- Composed Raging (class/item bindings) — shared registry creator, real rulebook chains, strict current-format persistence
   subscriber.
 - `SneakAttackCondition` (Rogue) — DamageChain subscriber, marks
   eligibility + adds dice.

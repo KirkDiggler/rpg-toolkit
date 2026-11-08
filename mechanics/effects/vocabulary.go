@@ -5,7 +5,6 @@ package effects
 
 import (
 	"context"
-	"encoding/json/jsontext"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
@@ -24,18 +23,20 @@ type OutputVocabulary struct {
 	End func(ctx context.Context, bus events.EventBus, h Host, reason string) error
 
 	// Changed is called when a tracker or a staying transition changes the
-	// bag. Nil publishes nothing.
+	// bag, or after a nonterminal transition successfully attaches its new
+	// outputs. Terminal transitions use End instead. Nil publishes nothing.
 	Changed func(ctx context.Context, bus events.EventBus, h Host) error
 }
 
 // KindSpec is one output kind: the Go code that knows its chain and stage.
 //
-//   - Check validates the output's params at Compose; nil accepts any.
+//   - Check validates the complete output at Compose, including requirements
+//     on its amount and params; nil adds no kind-specific validation.
 //   - Attach subscribes the output on bus and returns how to detach it.
 //   - Assess answers the output's information row for a frame; the same
 //     guard answers execution and information.
 type KindSpec struct {
-	Check  func(params jsontext.Value) error
+	Check  func(output Output) error
 	Attach func(ctx context.Context, bus events.EventBus, o *Bound) (Detach, error)
 	Assess func(frame any, o *Bound) (Row, error)
 }

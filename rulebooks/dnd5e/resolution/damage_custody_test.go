@@ -1013,10 +1013,7 @@ func (s *DamageCustodyTestSuite) TestARagingTargetsResistanceReadsTheEventsDamag
 	data := monsters.NewWolf(wolfID).ToData()
 	attack := data.Actions[0]
 
-	raging, err := (&conditions.RagingCondition{
-		CharacterID: heroID,
-		Source:      "rage",
-	}).ToJSON()
+	raging, err := ragingForTest(s.T(), heroID).ToJSON()
 	s.Require().NoError(err)
 
 	out, err := Resolve(s.ctx, &Input{

@@ -27,8 +27,9 @@
 // outputs of every state compiled up front, and the detach functions of the
 // outputs attached now. It has Ref, IsApplied, Apply, Remove and ToJSON, so
 // it satisfies a rulebook's condition behaviour structurally while
-// importing none of it. ToJSON writes the machine's flat blob, so a
-// composed Rage persists the same keys that today's Rage does.
+// importing none of it. ToJSON writes the machine's flat blob. Snapshot
+// returns typed lifecycle state for a consumer that owns a richer saved-instance
+// format, without an intermediate JSON encode/decode.
 //
 // # Output
 //
@@ -62,13 +63,14 @@
 // OutputVocabulary is the rulebook's plug into the composer. It has four
 // parts:
 //
-//   - Kinds maps a KindName to a KindSpec. Check validates the params at
-//     load. Attach subscribes the output to its chain and returns a Detach.
+//   - Kinds maps a KindName to a KindSpec. Check validates the complete Output
+//     at construction, including amount/parameter requirements. Attach subscribes the output to its chain and returns a Detach.
 //     Assess answers the output's information row.
 //   - Amounts maps an AmountName to the function that computes it from a
 //     frame.
 //   - End is called when the machine enters its terminal state.
-//   - Changed is called when the bag changes.
+//   - Changed is called when the bag changes or a nonterminal transition
+//     successfully attaches its new outputs. Terminal transitions use End.
 //
 // The plug supplies End because removing a condition is announced on a
 // rulebook topic. The machine and the composer both stay ignorant of that
@@ -81,8 +83,8 @@
 //
 //   - ID is unique per ref, state and index, which makes it fit for a chain
 //     modifier.
-//   - Host returns the holder, ref and source.
-//   - Params returns the kind's fields.
+//   - Host returns the holder, ref and source with detached ref values.
+//   - Params returns an owned copy of the kind's fields.
 //   - Answer evaluates the output's guard over a frame and the live bag.
 //   - Amount computes the output's amount from a frame.
 //
@@ -102,6 +104,13 @@
 // answer, and only then does everything detach (design E5: publish, then
 // detach). Remove detaches without publishing, because an outside removal
 // is announced by whoever removes.
+//
+// # Observations
+//
+// Snapshot returns an owned state/bag value. CurrentOutputs returns a defensive
+// slice of observational Bound handles for the current state. These queries do
+// not attach, publish or mutate. Handles read the live bag through Answer, so
+// callers fetch current outputs again after transitions; Snapshot retains state.
 //
 // # Rows
 //

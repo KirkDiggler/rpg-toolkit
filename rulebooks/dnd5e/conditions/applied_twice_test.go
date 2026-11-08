@@ -5,6 +5,7 @@ package conditions_test
 
 import (
 	"context"
+	"encoding/json"
 	"maps"
 	"slices"
 	"testing"
@@ -65,7 +66,9 @@ func (s *AppliedTwiceSuite) fixtures() map[string]func() dnd5eEvents.ConditionBe
 	id := sheetID
 	return map[string]func() dnd5eEvents.ConditionBehavior{
 		refs.Conditions.Raging().String(): func() dnd5eEvents.ConditionBehavior {
-			return &conditions.RagingCondition{CharacterID: id}
+			out, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{Ref: refs.Conditions.Raging().String(), MemberID: id, Origin: &dnd5eEvents.ConditionOrigin{Ref: *refs.Features.Rage(), EntityID: id}, Config: json.RawMessage(`{"damage_bonus":{"barbarian_level":true}}`)})
+			s.Require().NoError(err)
+			return out.Condition
 		},
 		refs.Conditions.SneakAttack().String(): func() dnd5eEvents.ConditionBehavior {
 			return conditions.NewSneakAttackCondition(conditions.SneakAttackInput{MemberID: id})

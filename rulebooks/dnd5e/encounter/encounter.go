@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
@@ -211,9 +213,11 @@ type Encounter struct {
 	// member that has left is still listed and holds nothing.
 	posted map[MemberID]bool
 
-	// openings is every door's crossings, normalized, for the hold
-	// ([Encounter.doorOpening]): geometry, computed once per door asked.
-	openings map[DoorID][]DoorEdge
+	// sightReads is each held sighting's decoded testimony, by observer,
+	// subject and channel, beside the payload it was decoded from
+	// (sightread.go, rpg-project#879 S9). Instance state: filled on first
+	// read, never persisted.
+	sightReads map[sightSlot]sightRead
 
 	// pendingCells is every cell a change touched since the last look
 	// (rpg-project#762): a step's two ends, a door's cells, a creature turning
@@ -1419,8 +1423,94 @@ func (e *Encounter) Story(in *StoryInput) ([]record.Entry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("story: %w", err)
 	}
+	if !in.WholeActs || in.AfterSeq == 0 || len(entries) == 0 {
+		return entries, nil
+	}
 
+	from, err := e.wholeActsFrom(in.Audience, in.AfterSeq, entries)
+	if err != nil {
+		return nil, fmt.Errorf("story: %w", err)
+	}
+	if from >= in.AfterSeq {
+		return entries, nil
+	}
+	entries, err = e.story.SliceFor(&record.SliceForInput{Viewer: in.Audience, FromSeq: from})
+	if err != nil {
+		return nil, fmt.Errorf("story: %w", err)
+	}
 	return entries, nil
+}
+
+// wholeActsFrom is where [StoryInput.WholeActs] begins a slice: the seq of
+// the audience's first entry of the earliest act in delta that began before
+// afterSeq, or afterSeq when none did. delta is the audience's entries at or
+// after afterSeq, non-empty.
+//
+// Only a REOPENED act is looked up: one whose id sorts below the record's
+// entry at afterSeq-1, whoever it was for. An act's id is minted from the
+// record's increasing id space before its first beat, so an act whose id
+// sorts above that entry was opened inside the delta and has no beat before
+// it. A tag that is not `<verb>:<record id>` (a beat written before the v2
+// ids) is looked up too, since its id says nothing about when it began.
+func (e *Encounter) wholeActsFrom(audience MemberID, afterSeq uint64, delta []record.Entry) (uint64, error) {
+	from := afterSeq
+	before := ""
+	beforeRead := false
+	looked := map[string]bool{}
+	for _, entry := range delta {
+		act := entry.Tags[ActTag]
+		if act == "" || looked[act] {
+			continue
+		}
+		looked[act] = true
+		if i := strings.IndexByte(act, ':'); i >= 0 && isRecordID(act[i+1:]) {
+			if !beforeRead {
+				id, err := e.recordIDAt(afterSeq - 1)
+				if err != nil {
+					return 0, err
+				}
+				before, beforeRead = id, true
+			}
+			if before == "" || act[i+1:] > before {
+				continue
+			}
+		}
+		beats, err := lookupActBeats(e, act)
+		if err != nil {
+			return 0, err
+		}
+		for _, beat := range beats {
+			if beat.Seq >= from {
+				break
+			}
+			if slices.Contains(beat.Audience, core.EntityID(audience)) {
+				from = beat.Seq
+				break
+			}
+		}
+	}
+	return from, nil
+}
+
+// recordIDAt is the id of the retained entry at seq, whoever it was for, or
+// "" when none is retained. It scans by seq and copies only the entries from
+// seq on — the verb's own, when seq is just below its baseline.
+func (e *Encounter) recordIDAt(seq uint64) (string, error) {
+	tail, err := e.story.All(&record.AllInput{FromSeq: seq})
+	if err != nil {
+		return "", err
+	}
+	if len(tail) == 0 || tail[0].Seq != seq {
+		return "", nil
+	}
+	return tail[0].ID, nil
+}
+
+// lookupActBeats is every retained entry of one act, whoever it was for: the
+// whole-record scan [Encounter.wholeActsFrom] pays only for a reopened act.
+// A variable so a test can count the scans.
+var lookupActBeats = func(e *Encounter, act string) ([]record.Entry, error) {
+	return e.story.All(&record.AllInput{Tags: map[string]string{ActTag: act}})
 }
 
 // moveMember executes a spatial move for a member and returns the old position if successful,
@@ -1568,7 +1658,10 @@ func (e *Encounter) addOutranged(in map[MemberID]bool, sight map[MemberID]int) e
 		if !placed {
 			continue
 		}
-		held, err := e.memberIntel(id)
+		// The store's own holdings, [Encounter.memberIntel]'s filter applied
+		// in place: a sighting of anything but a member is not asked.
+		observer := sightMember(id)
+		held, err := e.intelLog.Held(observer)
 		if err != nil {
 			return err
 		}
@@ -1576,7 +1669,12 @@ func (e *Encounter) addOutranged(in map[MemberID]bool, sight map[MemberID]int) e
 			if !h.CurrentOn(perception.Sight) {
 				continue
 			}
-			seen, ok := DecodeSightTestimony(h.Payload)
+			if h.Channel == perception.Sight {
+				if _, member := subjectID(h.Subject, memberSubjectKind); !member {
+					continue
+				}
+			}
+			seen, ok := e.heldSight(observer, h)
 			if !ok || seen.State != LocationKnown {
 				continue
 			}
@@ -2204,6 +2302,9 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 	// seenAs is each placed subject's index in presences, for the heading
 	// variants headingPasses builds.
 	seenAs := make(map[MemberID]int, len(roster))
+	// seen is the testimony each placed subject's base payload was encoded
+	// from, so a heading variant is built from it rather than decoded back.
+	seen := make(map[MemberID]SightTestimony, len(roster))
 	for _, subjectID := range roster {
 		cell, ok := e.canvas.GetEntityPosition(string(subjectID))
 		if !ok {
@@ -2226,7 +2327,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 		// standing in this pass.
 		holdsDoor, _ := e.memberHolds(subjectID, down)
 		facing := e.members[subjectID].Facing
-		payload, perr := encodeSighting(SightTestimony{
+		testimony := SightTestimony{
 			State:              LocationKnown,
 			Position:           cell,
 			Equipment:          hands[subjectID],
@@ -2240,11 +2341,13 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 			// the one payload this subject is encoded into this pass, so a
 			// memory keeps the facing it last saw.
 			Facing: &facing,
-		})
+		}
+		payload, perr := encodeSighting(testimony)
 		if perr != nil {
 			return nil, fmt.Errorf("encode sight testimony: %w", perr)
 		}
 		presences = append(presences, perception.Presence{ID: sightMember(subjectID), Payload: payload})
+		seen[subjectID] = testimony
 	}
 
 	// UNPLACED OBSERVERS AND NON-MEMBERS ARE FILTERED OUT, and this is the one
@@ -2322,7 +2425,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 	}
 	// THE WAY EACH OBSERVER SAW THEM GO (rpg-project#679 R10, #673 R8): one
 	// pass per distinct set of headings, every observer in exactly one.
-	passes, err := e.headingPasses(observerIDs, presences, positions, seenAs)
+	passes, err := e.headingPasses(observerIDs, presences, positions, seenAs, seen)
 	if err != nil {
 		return nil, err
 	}

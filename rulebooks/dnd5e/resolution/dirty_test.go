@@ -65,13 +65,10 @@ func (s *DirtyTestSuite) SetupTest() {
 // damage, so nothing touches their hit points, and this interaction carries no
 // Cost, so nothing touches their action economy. Those are the two accidents
 // that were marking sheets dirty on the condition's behalf. With both gone,
-// RagingCondition.markDirty is the only thing left that can put this sheet in
+// The composed condition's state-change fact is the only thing that can put this sheet in
 // the output.
 func (s *DirtyTestSuite) ragingHero() *character.Data {
-	raging, err := (&conditions.RagingCondition{
-		CharacterID: heroID,
-		Source:      "dnd5e:features:rage",
-	}).ToJSON()
+	raging, err := ragingForTest(s.T(), heroID).ToJSON()
 	s.Require().NoError(err)
 
 	return &character.Data{
@@ -164,9 +161,10 @@ func (s *DirtyTestSuite) TestAConditionThatChangesItselfComesBackToBeStored() {
 
 	sheet := out.DirtyCharacters[0].Conditions
 	s.Require().ElementsMatch([]string{refs.Conditions.Raging().String()}, storedRefs(s.T(), sheet))
-	var stored map[string]any
+	var stored conditions.ComposedData
 	s.Require().NoError(json.Unmarshal(conditionWithRefOrNil(sheet, refs.Conditions.Raging()), &stored))
-	s.Require().Equal(true, stored["did_attack_this_turn"],
+	s.Require().NotNil(stored.Runtime)
+	s.Require().Equal(true, stored.Runtime.Bag["did_attack_this_turn"],
 		"and the change is IN the blob that gets stored, not only on the live object")
 }
 
