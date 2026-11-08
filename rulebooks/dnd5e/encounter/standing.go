@@ -57,6 +57,7 @@ type participationPassInput struct {
 func (e *Encounter) noticeDown(
 	inputs ...participationPassInput,
 ) (*participationState, map[MemberID]*IntelDelta, error) {
+	e.wakeParticipation = nil
 	in := participationPassInput{}
 	if len(inputs) > 0 {
 		in = inputs[0]

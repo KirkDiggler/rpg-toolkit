@@ -186,7 +186,9 @@ type RememberedMember struct {
 	DistanceCells float64
 
 	// Path is the exact-cell route toward Position; it is empty or nil when the
-	// remembered cell is unreachable.
+	// remembered cell is unreachable, and nil when the member's table has no
+	// row that reads a route (encounter v0.181.0, rpg-project#879 S3); a
+	// member with no table always gets it.
 	Path []spatial.Position
 }
 
@@ -314,8 +316,10 @@ type SeenMember struct {
 	// Path is the shortest walkable route from this member's own position
 	// toward this sighting, ending on the nearest cell from which the
 	// sighting is within this member's own longest reach. Empty when
-	// unreachable, or when this member is already within reach without
-	// moving at all.
+	// unreachable, when this member is already within reach without
+	// moving at all, or when the member's table has no row that reads a
+	// route (encounter v0.181.0, rpg-project#879 S3); a member with no table
+	// always gets it.
 	Path []spatial.Position
 
 	// AwayPath is one step that puts more of the board between this member
@@ -323,7 +327,9 @@ type SeenMember struct {
 	// or empty when every step leads closer or nowhere. A driver that
 	// keeps its distance reads it rather than reaching for the canvas
 	// (rule A2): fleeing into a corner is not fleeing, and the board is
-	// what knows where the corners are.
+	// what knows where the corners are. Empty, like Path, when the member's
+	// table has no row that reads a route; a member with no table always
+	// gets it.
 	AwayPath []spatial.Position
 }
 

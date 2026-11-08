@@ -52,15 +52,21 @@ var _ encounter.Participation = standingSeam{}
 // seam is built fresh for every verb (S1, S4). One never outlives the call that
 // made it, and there is nothing here to go stale between two of them.
 //
-// # No cache, deliberately
+// # Re-read on write, not on every consult
 //
-// Every consult re-reads. The composition asks again rather than remembering
-// (its [encounter.Standing] doc says why), and this side must not quietly undo
-// that by remembering on its behalf: a swing writes a damaged sheet part-way
+// The composition asks again rather than remembering (its
+// [encounter.Standing] doc says why), and this side must not quietly undo that
+// by remembering on its behalf: a swing writes a damaged sheet part-way
 // through its own verb, so an answer cached at the top of the call would be
-// answering about a world that no longer exists. The cost is a repository read
-// per player per consult, and a walk consults once per step — real, measured in
-// key-value gets, and cheaper than the class of bug a cache buys.
+// answering about a world that no longer exists.
+//
+// A player is re-read at every consult: a repository read per player per
+// consult. A MONSTER's answer is kept for the verb and forgotten the moment
+// the verb writes that monster's sheet ([participationMemo], rpg-project#892):
+// a hundred-strong garrison re-attached at every patrol step was the cost of
+// the raise, and a step writes no sheet. The law the paragraph above states
+// still holds — a written sheet is what the next consult reads — because the
+// write is what forgets.
 type standingSeam struct {
 	// ctx is the verb's own. See the type's godoc.
 	ctx context.Context
@@ -87,6 +93,12 @@ type standingSeam struct {
 	// [sheetSeam.factsOf], for the one fact the session answers from the
 	// encounter's own state: whether a member is sneaking (design R8).
 	live *liveEncounter
+
+	// memo is this verb's kept monster participation answers
+	// ([participationMemo]), shared by pointer so every copy of the seam —
+	// the sheet, equipment and conditions seams beside it included — keeps
+	// and forgets the same answers. Nil keeps nothing.
+	memo *participationMemo
 }
 
 // liveEncounter is the slot [standingSeam.live] points at: nil until the
@@ -119,7 +131,7 @@ func (m *Manager) standingFor(
 	for id, kind := range kinds {
 		copiedKinds[id] = kind
 	}
-	return standingSeam{ctx: ctx, sheets: m.sheetsFor(nil), data: data, kinds: copiedKinds, live: &liveEncounter{}}
+	return standingSeam{ctx: ctx, sheets: m.sheetsFor(nil), data: data, kinds: copiedKinds, live: &liveEncounter{}, memo: newParticipationMemo()}
 }
 
 // Assess returns the provider-derived scheduling/contact answer, Down

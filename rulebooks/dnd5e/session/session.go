@@ -36,6 +36,13 @@ type Config struct {
 	// the same coordination domain. No lock implementation lives in the SDK.
 	Locker SessionLocker
 
+	// Continuations runs the part of a verb that follows its answer
+	// (rpg-project#879 R2): a Move answers with the walker's own steps up to
+	// the step that pays a world round, and hands the rest to this runner
+	// with the session's guard still held. Optional: nil runs every verb
+	// whole before it answers, exactly as before. See [ContinuationRunner].
+	Continuations ContinuationRunner
+
 	// CharacterConfig is the host's character configuration, read at every
 	// write verb for each player's discovery-sharing choice (rpg-project#753
 	// R2). Required: automatic discovery needs each finder's audience, so a
@@ -167,6 +174,7 @@ type Manager struct {
 	staleTargetPolicy StaleTargetPolicy
 	sessions          SessionRepository
 	locker            SessionLocker
+	continuations     ContinuationRunner
 	characterConfig   CharacterConfigReader
 	encounters        EncounterRepository
 	characters        CharacterRepository
@@ -263,6 +271,7 @@ func NewManager(cfg *Config) (*Manager, error) {
 		staleTargetPolicy: cfg.StaleTargetPolicy,
 		sessions:          cfg.Sessions,
 		locker:            cfg.Locker,
+		continuations:     cfg.Continuations,
 		characterConfig:   cfg.CharacterConfig,
 		encounters:        cfg.Encounters,
 		characters:        cfg.Characters,
