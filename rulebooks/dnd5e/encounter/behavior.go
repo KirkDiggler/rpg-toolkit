@@ -311,6 +311,24 @@ func behaviorInputOf(data *BehaviorData) *BehaviorInput {
 	return &BehaviorInput{Instances: data.Instances, BodyInstance: data.BodyInstance}
 }
 
+// behaviorReadsRoutes carries the route-on-demand contract across canonical
+// attachments. Before selection, any attachment may supply the winning table,
+// so use their conservative union without stepping guards or choosing twice.
+// No authored policy retains the full view for an opaque host driver.
+func (m *memberRecord) behaviorReadsRoutes() bool {
+	if m.behaviors == nil || len(m.behaviors.input.Instances) == 0 {
+		return true
+	}
+	for _, bound := range m.behaviors.input.Instances {
+		for _, rows := range bound.Instance.Table {
+			if tableReadsRoutes(rows) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (m *memberRecord) behaviorNamesThreat() bool {
 	if m.behaviors == nil {
 		return false

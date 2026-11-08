@@ -2228,11 +2228,11 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 	// ROUTES ARE SEARCHED WHEN A ROW CAN READ THEM (rpg-project#879 S3, R4):
 	// a view used to search a route toward and a route away from every
 	// member it saw, on every opportunity, and in a keep of posts and patrols
-	// not one of those searches was read (F13: 930 per op). The table says
-	// once what its rows can read; a member with no table is driven by
-	// something this package cannot see and keeps every route. Threat zones
-	// below follow the same rule for `threat`.
-	wantRoutes := m.Table == nil || tableReadsRoutes(m.Table[keyOr(e.pickKey)])
+	// not one of those searches was read (F13: 930 per op). Canonical
+	// attachments supply a conservative union of their row requirements;
+	// selection has not happened yet. No authored policy keeps every route
+	// for an opaque host driver. Threat zones follow the same source boundary.
+	wantRoutes := m.behaviorReadsRoutes()
 	for _, h := range holdings {
 		// Only location testimony from the sight channel is meaningful here.
 		// Unknown testimony deliberately populates neither collection.
