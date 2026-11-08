@@ -5,7 +5,6 @@ package encounter
 
 import (
 	"fmt"
-	"maps"
 	"math"
 	"slices"
 
@@ -630,14 +629,17 @@ func (f *field) attachDoorFootprints(doors []*doorRecord) {
 	// records', and a shallow copy of the field ([field.partitionCanvas])
 	// must never find the live field's mask through them.
 	f.blockingDoors, f.blockingMask = nil, nil
-	// New door content, new openings: the memo is keyed by id, and a door
-	// re-authored under the same id is a different rectangle.
-	f.doorOpenings = nil
+	// New door content, new openings, built here and never written after
+	// ([field.doorOpenings]): a fresh map, so a shallow copy attaching its
+	// own doors never touches the map the field it was copied from holds.
+	openings := make(map[DoorID][]DoorEdge, len(doors))
 	for _, d := range doors {
 		if d.placement != nil {
 			f.doorFootprints = append(f.doorFootprints, d)
 		}
+		openings[d.id] = f.measureDoorOpening(d)
 	}
+	f.doorOpenings = openings
 }
 
 // blockingDoorFootprints is every footprint door whose state blocks right
@@ -775,13 +777,20 @@ func (f *field) doorAcrossCrossing(from, to spatial.Position) *doorRecord {
 }
 
 // doorOpening is a door's opening, normalized: an edge door's edges, a
-// footprint door's crossings ([field.doorCrossings]). Computed once per door
-// per field and held in [field.doorOpenings]; see there for why it is the
-// field's and how it is kept fresh.
+// footprint door's crossings ([field.doorCrossings]). Read from
+// [field.doorOpenings], built when the doors attached; a door that was never
+// attached is measured and answered, and nothing is written.
 func (f *field) doorOpening(d *doorRecord) []DoorEdge {
 	if out, ok := f.doorOpenings[d.id]; ok {
 		return out
 	}
+
+	return f.measureDoorOpening(d)
+}
+
+// measureDoorOpening is [field.doorOpening] computed: the door's edges, then
+// its crossings, each normalized.
+func (f *field) measureDoorOpening(d *doorRecord) []DoorEdge {
 	out := make([]DoorEdge, 0, len(d.edges))
 	for _, edge := range d.edges {
 		out = append(out, normalizeDoorEdge(edge))
@@ -789,10 +798,6 @@ func (f *field) doorOpening(d *doorRecord) []DoorEdge {
 	for _, crossing := range f.doorCrossings(d) {
 		out = append(out, normalizeDoorEdge(DoorEdge{From: crossing[0], To: crossing[1]}))
 	}
-	next := make(map[DoorID][]DoorEdge, len(f.doorOpenings)+1)
-	maps.Copy(next, f.doorOpenings)
-	next[d.id] = out
-	f.doorOpenings = next
 
 	return out
 }

@@ -126,26 +126,38 @@ func TestAReAuthoredDoorIsAskedAgain(t *testing.T) {
 func TestAShallowCopyNeverWritesTheFieldsOpenings(t *testing.T) {
 	enc := holdHall(t, holdLeafDoor(DoorIsClosed()), holdSouthEast)
 	f := enc.field
-	f.doorOpening(enc.doorsByID[holdLeaf])
+	want := f.doorOpenings[holdLeaf]
+	require.NotEmpty(t, want, "precondition: the leaf's opening was built when the doors attached")
 
 	copied := *f
 	other := leafAt("other", spatial.Point{X: 30, Y: 10}, 90, spatial.Box{W: 1, D: 6})
-	copied.doorOpening(other)
+	copied.attachDoorFootprints([]*doorRecord{other})
 
-	require.Contains(t, copied.doorOpenings, DoorID("other"), "precondition: the copy holds what it asked")
-	require.NotContains(t, f.doorOpenings, DoorID("other"), "the live field's memo is not the copy's to write")
+	require.Contains(t, copied.doorOpenings, DoorID("other"), "precondition: the copy holds the doors it attached")
+	require.NotContains(t, f.doorOpenings, DoorID("other"), "the live field's openings are not the copy's to write")
+	require.Equal(t, want, f.doorOpenings[holdLeaf], "and the live field still holds its own door's")
 }
 
-func TestADoorsOpeningIsAskedOncePerField(t *testing.T) {
+func TestADoorsOpeningIsBuiltWhenTheDoorsAttach(t *testing.T) {
 	enc := holdHall(t, holdLeafDoor(DoorIsClosed()), holdSouthEast)
 	f := enc.field
 	d := enc.doorsByID[holdLeaf]
-	first := f.doorOpening(d)
+	built, ok := f.doorOpenings[holdLeaf]
+	require.True(t, ok, "the opening is in the field before anybody asks")
+	require.Equal(t, wholeFloorOpening(f, d), built, "and it is the scan's")
 
-	// A sentinel in the memo is what a second read returns: the scan is not
-	// run again for a door already asked.
+	// A sentinel in the built map is what a read returns: the read does not
+	// scan again.
 	sentinel := []DoorEdge{{From: spatial.Position{X: 99, Y: 99}, To: spatial.Position{X: 100, Y: 99}}}
 	f.doorOpenings = map[DoorID][]DoorEdge{holdLeaf: sentinel}
-	require.Equal(t, sentinel, f.doorOpening(d), "the second read is the memo's")
-	require.NotEqual(t, sentinel, first, "precondition: the sentinel is not the answer")
+	require.Equal(t, sentinel, f.doorOpening(d), "a read is the built map's")
+}
+
+func TestAnUnattachedDoorIsMeasuredAndNothingIsWritten(t *testing.T) {
+	enc := holdHall(t, holdLeafDoor(DoorIsClosed()), holdSouthEast)
+	f := enc.field
+	stray := leafAt("stray", spatial.Point{X: 30, Y: 10}, 90, spatial.Box{W: 1, D: 6})
+
+	require.Equal(t, wholeFloorOpening(f, stray), f.doorOpening(stray), "a door never attached is answered by measuring it")
+	require.NotContains(t, f.doorOpenings, DoorID("stray"), "and the read writes nothing")
 }
