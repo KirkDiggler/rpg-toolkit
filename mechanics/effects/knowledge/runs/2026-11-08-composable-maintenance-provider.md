@@ -4,9 +4,11 @@ Slice [rpg-project#903](https://github.com/KirkDiggler/rpg-project/issues/903), 
 
 ## Shipped
 
-- Source-stage T1 supplies the neutral lifetime value, owned snapshots/plans, strict restore and scoped end acceptance; T3–T4 and release remain pending — [S13](https://github.com/KirkDiggler/rpg-project/issues/903).
+- Source-stage T1 supplies the neutral lifetime value, owned snapshots/plans, strict restore and scoped end acceptance; T4 and release remain pending — [S13](https://github.com/KirkDiggler/rpg-project/issues/903).
 
 - Source-stage T2 replaces the sole numeric evaluator result with a scalar/dice union, adds explicitly query-only output kinds and namespaces linked output identity; no compatibility evaluator is retained — [T2 contract](https://github.com/KirkDiggler/rpg-toolkit/blob/design/bless-bane-composition/docs/ideas/composable-maintenance/plan.md#t2--descriptive-amounts-and-query-only-kinds).
+
+- Source-stage T3 adds typed bag comparisons and checked integer deltas; one transition's acts are staged so overflow commits no earlier write or notification — [T3 contract](https://github.com/KirkDiggler/rpg-toolkit/blob/design/bless-bane-composition/docs/ideas/composable-maintenance/plan.md#t3--neutral-countdown-operations).
 
 ## Decided
 
@@ -19,6 +21,8 @@ Slice [rpg-project#903](https://github.com/KirkDiggler/rpg-project/issues/903), 
 - A mutant accepting repeated end requests makes TestEndIsAuthorizedOrderedAndIdempotent fail on repeated plans and replaced reasons; exact restoration returns it green — [S13](https://github.com/KirkDiggler/rpg-project/issues/903).
 
 - T2 begins with missing-API RED; changing instance-prefix selection makes equal recipes collide and fails the identity regression; restored code passes the full module suite — [T2 contract](https://github.com/KirkDiggler/rpg-toolkit/blob/design/bless-bane-composition/docs/ideas/composable-maintenance/plan.md#t2--descriptive-amounts-and-query-only-kinds).
+
+- T3 missing-API RED becomes green; disabling the overflow guard fails both bounds with wrapped values/partial state and an erroneous terminal transition, then exact restoration passes the full module gates — [T3 contract](https://github.com/KirkDiggler/rpg-toolkit/blob/design/bless-bane-composition/docs/ideas/composable-maintenance/plan.md#t3--neutral-countdown-operations).
 
 ## Mistaken
 

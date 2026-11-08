@@ -220,7 +220,10 @@ func (m *Machine) onBeat(ctx context.Context, b Beat, ev any) error {
 		if v, _ := t.guard.Answer(ev, m.bag, ev); v != Applies {
 			continue
 		}
-		changed := m.run(t.Do, t.spec, ev)
+		changed, err := m.run(t.Do, t.spec, ev)
+		if err != nil {
+			return err
+		}
 		if t.To != "" {
 			return m.enter(ctx, t.To, t.Reason)
 		}

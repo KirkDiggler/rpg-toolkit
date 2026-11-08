@@ -93,6 +93,11 @@
 //   - clear_flags sets the named bool keys back to false, which is the
 //     turn boundary for trackers.
 //   - set writes one declared key.
+//   - add applies a checked integer delta to one declared key.
+//
+// A transition stages its acts together. An invalid integer operation refuses
+// the transition without committing earlier writes, changing state or publishing
+// Changed. This is neutral bag arithmetic, not a built-in duration policy.
 //
 // # Guard and its leaves
 //
@@ -102,6 +107,8 @@
 //   - fact compares a vocabulary fact on the frame or event with an Op.
 //     Rage's damage bonus reads action.melee, action.weapon_pool and
 //     action.ability.
+//   - bag compares a declared scalar bag key with eq or gte; missing or
+//     wrong-typed runtime data answers Depends.
 //   - flag reads one bool in the bag.
 //   - rounds compares the beat's round with the bag's anchor, either as
 //     since_anchor (round - anchor, with an op) or as went_backwards.
