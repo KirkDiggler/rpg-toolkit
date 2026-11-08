@@ -445,7 +445,7 @@ func (s *CharacterConditionsTestSuite) TestCharacterConditionRoundTrip() {
 	ragingCond := composedCharacterRage(&s.Suite, "char-rt")
 	s.Require().NoError(ragingCond.Apply(s.ctx, s.bus))
 	for round := 1; round <= 3; round++ {
-		s.Require().NoError(dnd5eEvents.DamageReceivedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.DamageReceivedEvent{TargetID: "char-rt", Amount: 1, DamageType: damage.Slashing}))
+		s.Require().NoError(dnd5eEvents.DamageTakenTopic.On(s.bus).Publish(s.ctx, &dnd5eEvents.DamageTakenEvent{MemberID: "char-rt", Amount: 1, DamageType: damage.Slashing}))
 		s.Require().NoError(dnd5eEvents.TurnEndTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.TurnEndEvent{SubjectID: "char-rt", Round: round}))
 	}
 	rawJSON, err := ragingCond.ToJSON()

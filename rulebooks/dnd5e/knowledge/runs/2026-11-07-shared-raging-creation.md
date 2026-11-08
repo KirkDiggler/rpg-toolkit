@@ -17,6 +17,8 @@ Work: [Composable conditions S10 #882](https://github.com/KirkDiggler/rpg-projec
 
 ## Found
 
+- Native QA found that a real resisted hit (10 → 5, HP 7 → 2) did not set the sustain flag. The shared activity beat now observes positive post-apply DamageTaken facts rather than the legacy DamageReceived instruction-like topic; nil/zero/other-holder facts do not sustain it and dropped-to-zero still ends it. The strengthened condition test failed before the fix; full root race/vet/lint pass afterward — [QA finding #2312](https://github.com/KirkDiggler/rpg-toolkit/issues/2312).
+
 - Real-chain tests prove fixed +3 without class levels, class +2/+3/+4, holder/weapon/ability scope, physical damage reduction, save/check distinction and origin in actual contributions; malformed outputs and ambiguous queries refuse — [tests](../../effects/vocabulary_test.go).
 - The provider pin's core/events upgrade is compatible with the full current D&D root suite; this is not native resolution/session/API adoption evidence — [scope](https://github.com/KirkDiggler/rpg-project/issues/882).
 
@@ -28,6 +30,8 @@ Work: [Composable conditions S10 #882](https://github.com/KirkDiggler/rpg-projec
 - Removing the common recipient guard makes the other-actor information assertion fail. The mutation is restored, as is the prior native Changed-publication mutation — [recipient assertion](../../conditions/raging_assessment_test.go).
 
 ## Mistaken
+
+- The first migration retained the handwritten Rage's legacy damage subscription and ported unit fixtures that manually emitted it. That preserved a native-path bug; real resolution intentionally emits only DamageTaken to avoid duplicate damage. Resolution now supplies the complementary real strike → save/reload regression in its own module, rather than adding a legacy publisher — [#2312](https://github.com/KirkDiggler/rpg-toolkit/issues/2312).
 
 - The initial static kind table formed a Go initialization cycle through attachment → dispatch → table. Separate registry lookup from the shared evaluator: attachment evaluates its already-selected meaning, while public information dispatches once. One registry and one evaluator remain — [evaluation boundary](../../effects/kinds.go).
 

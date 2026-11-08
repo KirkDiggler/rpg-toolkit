@@ -82,7 +82,7 @@ func (s *LoaderTestSuite) executeDamageChain(
 func (s *LoaderTestSuite) TestLoadRagingCondition() {
 	original := composedRageForTest("barbarian-1")
 	s.Require().NoError(original.Apply(s.ctx, s.bus))
-	s.Require().NoError(dnd5eEvents.DamageReceivedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.DamageReceivedEvent{TargetID: "barbarian-1"}))
+	s.Require().NoError(dnd5eEvents.DamageTakenTopic.On(s.bus).Publish(s.ctx, &dnd5eEvents.DamageTakenEvent{MemberID: "barbarian-1", Amount: 1}))
 	_, err := dnd5eEvents.PostAttackRollChain.On(s.bus).PublishWithChain(s.ctx, &dnd5eEvents.PostAttackRollEvent{AttackerID: "barbarian-1"}, events.NewStagedChain[*dnd5eEvents.PostAttackRollEvent](combat.ModifierStages))
 	s.Require().NoError(err)
 	raw, err := original.ToJSON()

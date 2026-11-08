@@ -183,10 +183,9 @@ func (s *RagingConditionTestSuite) TestRagingConditionTracksDamage() {
 	s.False(ragingState(raging).WasHitThisTurn)
 
 	// Publish a damage event for this character
-	damageTopic := dnd5eEvents.DamageReceivedTopic.On(s.bus)
-	err = damageTopic.Publish(s.ctx, dnd5eEvents.DamageReceivedEvent{
-		TargetID:   "barbarian-1",
-		SourceID:   "goblin-1",
+	damageTopic := dnd5eEvents.DamageTakenTopic.On(s.bus)
+	err = damageTopic.Publish(s.ctx, &dnd5eEvents.DamageTakenEvent{
+		MemberID:   "barbarian-1",
 		Amount:     5,
 		DamageType: damage.Slashing,
 	})
@@ -1061,7 +1060,7 @@ func (s *RagingConditionTestSuite) TestRemoveContinuesOnStaleSubscription() {
 	s.Require().Error(err)
 	s.ElementsMatch(failBus.ids, failBus.removed, "every subscription gets its removal attempt")
 	s.False(raging.IsApplied())
-	s.Require().NoError(dnd5eEvents.DamageReceivedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.DamageReceivedEvent{TargetID: "barbarian-1", Amount: 1}))
+	s.Require().NoError(dnd5eEvents.DamageTakenTopic.On(s.bus).Publish(s.ctx, &dnd5eEvents.DamageTakenEvent{MemberID: "barbarian-1", Amount: 1}))
 	s.False(ragingState(raging).WasHitThisTurn, "removed tracking handlers no longer mutate the state")
 }
 
@@ -1506,6 +1505,12 @@ func (s *RagingConditionTestSuite) TestRageEndsWhenTheBarbarianDropsToZero() {
 func (s *RagingConditionTestSuite) TestRageSurvivesDamageThatDoesNotDropTheBarbarian() {
 	raging, removed := s.ragingWithRemovalWatch()
 	damageTaken := dnd5eEvents.DamageTakenTopic.On(s.bus)
+	// Consume grace first: this must be damage sustain, not a fresh condition surviving once.
+	s.Require().NoError(dnd5eEvents.TurnEndTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.TurnEndEvent{SubjectID: "barbarian-1", Round: 1}))
+	for _, fact := range []*dnd5eEvents.DamageTakenEvent{nil, {MemberID: "barbarian-1", Amount: 0}, {MemberID: "goblin-1", Amount: 5}} {
+		s.Require().NoError(damageTaken.Publish(s.ctx, fact))
+		s.False(ragingState(raging).WasHitThisTurn, "only positive applied damage to this holder sustains Rage")
+	}
 
 	s.Require().NoError(damageTaken.Publish(s.ctx, &dnd5eEvents.DamageTakenEvent{
 		MemberID: "barbarian-1", Amount: 5, DamageType: damage.Slashing,
@@ -1514,6 +1519,8 @@ func (s *RagingConditionTestSuite) TestRageSurvivesDamageThatDoesNotDropTheBarba
 		MemberID: "goblin-1", Amount: 7, DamageType: damage.Slashing, DroppedToZero: true,
 	}))
 
+	s.True(ragingState(raging).WasHitThisTurn, "native post-apply damage must mark activity")
+	s.Require().NoError(dnd5eEvents.TurnEndTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.TurnEndEvent{SubjectID: "barbarian-1", Round: 2}))
 	s.Nil(removed())
 	s.True(raging.IsApplied())
 }

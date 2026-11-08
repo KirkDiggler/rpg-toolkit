@@ -25,7 +25,8 @@ const (
 	Holder machine.Selector = "holder"
 	// BeatTurnEnd names an entity's turn end and current round.
 	BeatTurnEnd machine.Beat = "turn_end"
-	// BeatDamageReceived names damage received, for activity tracking.
+	// BeatDamageReceived observes positive, already-applied DamageTaken facts.
+	// It never subscribes to the legacy instruction-like DamageReceived topic.
 	BeatDamageReceived machine.Beat = "damage_received"
 	// BeatAttackAttempt observes attack rolls, including misses.
 	BeatAttackAttempt machine.Beat = "attack_attempt"
@@ -125,10 +126,15 @@ func machineVocabulary() machine.Vocabulary {
 			return string(ability), known
 		}},
 	}, Beats: map[machine.Beat]machine.BeatSpec{
-		BeatTurnEnd:        typedBeat(dndevents.TurnEndTopic, func(e dndevents.TurnEndEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, func(e dndevents.TurnEndEvent) (int, bool) { return e.Round, e.Round > 0 }),
-		BeatDamageReceived: typedBeat(dndevents.DamageReceivedTopic, func(e dndevents.DamageReceivedEvent) (string, bool) { return e.TargetID, e.TargetID != "" }, nil),
-		BeatRest:           typedBeat(dndevents.RestTopic, func(e dndevents.RestEvent) (string, bool) { return e.CharacterID, e.CharacterID != "" }, nil),
-		BeatCombatEnd:      typedBeat(dndevents.CombatEndTopic, func(e dndevents.CombatEndEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, nil),
+		BeatTurnEnd: typedBeat(dndevents.TurnEndTopic, func(e dndevents.TurnEndEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, func(e dndevents.TurnEndEvent) (int, bool) { return e.Round, e.Round > 0 }),
+		BeatDamageReceived: typedBeat(dndevents.DamageTakenTopic, func(e *dndevents.DamageTakenEvent) (string, bool) {
+			if e == nil || e.Amount <= 0 {
+				return "", false
+			}
+			return e.MemberID, e.MemberID != ""
+		}, nil),
+		BeatRest:      typedBeat(dndevents.RestTopic, func(e dndevents.RestEvent) (string, bool) { return e.CharacterID, e.CharacterID != "" }, nil),
+		BeatCombatEnd: typedBeat(dndevents.CombatEndTopic, func(e dndevents.CombatEndEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, nil),
 		BeatDroppedToZero: typedBeat(dndevents.DamageTakenTopic, func(e *dndevents.DamageTakenEvent) (string, bool) {
 			if e == nil || !e.DroppedToZero {
 				return "", false
