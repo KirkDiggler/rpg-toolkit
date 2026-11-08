@@ -4,14 +4,17 @@ Slice [rpg-project#903](https://github.com/KirkDiggler/rpg-project/issues/903), 
 
 ## Shipped
 
-- Source-stage T1 supplies the neutral lifetime value, owned snapshots/plans, strict restore and scoped end acceptance; T4 and release remain pending — [S13](https://github.com/KirkDiggler/rpg-project/issues/903).
+- Source-stage T1 supplies the neutral lifetime value, owned snapshots/plans, strict restore and scoped end acceptance; consumer integration, independent wave review and release remain pending — [S13](https://github.com/KirkDiggler/rpg-project/issues/903).
 
 - Source-stage T2 replaces the sole numeric evaluator result with a scalar/dice union, adds explicitly query-only output kinds and namespaces linked output identity; no compatibility evaluator is retained — [T2 contract](https://github.com/KirkDiggler/rpg-toolkit/blob/design/bless-bane-composition/docs/ideas/composable-maintenance/plan.md#t2--descriptive-amounts-and-query-only-kinds).
 
 - Source-stage T3 adds typed bag comparisons and checked integer deltas; one transition's acts are staged so overflow commits no earlier write or notification — [T3 contract](https://github.com/KirkDiggler/rpg-toolkit/blob/design/bless-bane-composition/docs/ideas/composable-maintenance/plan.md#t3--neutral-countdown-operations).
 
+- Source-stage T4 composes independent existing runtimes with local/application terminal scopes, strict restoration, teardown custody and output namespaces; the provider's T1–T4 are implemented, not released — [T4 contract](https://github.com/KirkDiggler/rpg-toolkit/blob/design/bless-bane-composition/docs/ideas/composable-maintenance/plan.md#t4--local-assembly-of-existing-runtimes).
+
 ## Decided
 
+- Assembly construction refuses mixed holders, a part-supplied second namespace, nested lifecycle hooks and already-terminal application maintenance; the neutral assembly, not a silent override, owns those contracts — [S13](https://github.com/KirkDiggler/rpg-project/issues/903).
 - Known duplicate loss notices are idempotent only while membership is live; after end acceptance membership is frozen, so the transport suppresses its re-entrant child notices rather than changing an already-issued plan — [approved end contract](https://github.com/KirkDiggler/rpg-toolkit/blob/design/bless-bane-composition/docs/ideas/composable-maintenance/README.md#shared-lifetime-and-the-coordinator).
 - Restore accepts an empty live subset without recreating declared members, but never a missing/non-live snapshot; current-state data is not fresh construction — [fresh-character ruling](https://github.com/KirkDiggler/rpg-toolkit/pull/2323#issuecomment-6726787390).
 
@@ -23,6 +26,8 @@ Slice [rpg-project#903](https://github.com/KirkDiggler/rpg-project/issues/903), 
 - T2 begins with missing-API RED; changing instance-prefix selection makes equal recipes collide and fails the identity regression; restored code passes the full module suite — [T2 contract](https://github.com/KirkDiggler/rpg-toolkit/blob/design/bless-bane-composition/docs/ideas/composable-maintenance/plan.md#t2--descriptive-amounts-and-query-only-kinds).
 
 - T3 missing-API RED becomes green; disabling the overflow guard fails both bounds with wrapped values/partial state and an erroneous terminal transition, then exact restoration passes the full module gates — [T3 contract](https://github.com/KirkDiggler/rpg-toolkit/blob/design/bless-bane-composition/docs/ideas/composable-maintenance/plan.md#t3--neutral-countdown-operations).
+
+- T4 missing-API RED becomes green; disabling local-completion Changed fails the saved-state notification regression, then restoration passes full module race/vet/lint. Additional constructor assertions first fail on conflicting namespace/dead maintenance and then pass with refusals — [T4 contract](https://github.com/KirkDiggler/rpg-toolkit/blob/design/bless-bane-composition/docs/ideas/composable-maintenance/plan.md#t4--local-assembly-of-existing-runtimes).
 
 ## Mistaken
 

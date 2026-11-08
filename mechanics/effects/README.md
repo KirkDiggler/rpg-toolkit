@@ -17,7 +17,7 @@ after merge. No release tag is implied merely by this source tree.
 - Godoc: `go doc ./machine` and `go doc .` walk every piece in the order you
   meet it.
 
-## The two tools
+## Runtime and composition
 
 **`machine` is a state machine over a bag that fires configured events on
 transition.** A recipe names states, the transitions between them, and the
@@ -78,6 +78,37 @@ after new outputs attach. Its error reaches the beat publisher; this is not
 rollback of the changed runtime. Failed output attachment does not report a
 successful change. Terminal transitions retain End-before-detach without an
 extra Changed notification.
+
+## Independent parts and linked lifetimes
+
+`Assemble(AssemblyInput)` groups ordered `PartInput{Key, Compose, OnTerminal}`
+values for one holder. Each uses the existing machine; transitions from different
+parts are not flattened into one first-match list. `EndPart` completes only that
+part and reports Changed. `EndApplication` requires a lifecycle end hook, reports
+once while contributions are still attached, and then detaches all local parts.
+
+The assembly owns part instance namespaces and End/Changed hooks. Supplying a
+second namespace or nested hooks is refused, as are mixed holders, duplicate
+keys and already-terminal required maintenance. `Remove` is interaction teardown,
+not a gameplay end. `RestoreAssembly` requires exact saved part coverage and
+never revives a completed local part.
+
+`Lifetime` is a separate neutral value for the shared coordinator: ordered opaque
+member keys, authorized ender keys, and one accepted end plan. It publishes
+nothing and knows no rulebook addresses. `MemberRemoved` distinguishes actual
+last-member loss from empty creation. `RestoreLifetime` restores an explicit live
+subset rather than refilling membership from defaults. The consumer delivers the
+plan, then calls `CompleteEnd`.
+
+Amounts use a single `AmountResult` contract: a scalar or unresolved dice, not
+both. `ScalarValue` refuses dice rather than rolling. Query-only kinds declare
+`KindQuery` and have no Attach function; both query and subscribed kinds validate
+outputs and provide assessment. Rows use a nil amount for absence, not zero.
+
+Neutral `Guard.Bag` comparisons and `Act.Add` integer deltas support consumer
+countdowns. A transition stages all its acts; overflow refuses it without partial
+writes, a state transition or Changed notification. These operations know no D&D
+clock or concentration rule.
 
 ## Rage, line by line
 

@@ -125,6 +125,21 @@
 // resistance and two advantages) where the hand-written condition answers
 // one.
 //
+// # Local assemblies
+//
+// Assemble binds ordered, independently reacting Composed parts to one holder.
+// Each part has a stable key and explicit EndPart or EndApplication scope. It
+// supplies no nested lifecycle hooks or instance namespace: the assembly owns
+// both. The same beat can update multiple parts without flattening their rules
+// into one first-match transition list. Application end is reported once while
+// contributions still answer, then all local parts detach. Remove only detaches.
+//
+// AssemblySnapshot stores every part, including locally completed ones.
+// RestoreAssembly refuses missing state and terminal required maintenance, and
+// never reattaches completed local parts. Lifecycle.Changed reports local
+// completion as well as nonterminal changes, so a save cannot revive a part.
+// CurrentOutputs carries part keys and instance-qualified output identities.
+//
 // # Shared lifetime values
 //
 // Lifetime is the neutral value an application coordinator owns. NewLifetime
