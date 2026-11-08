@@ -56,7 +56,9 @@
 // An Amount sets exactly one field: fixed, dice, by_class_level or
 // ability_modifier. The field's name is the AmountName that the vocabulary
 // must hold, and the field's value is that function's parameters. Rage uses
-// by_class_level.
+// by_class_level. Evaluation returns an AmountResult: either a present scalar
+// or unresolved dice, never an implicit roll. ScalarValue refuses a dice result;
+// a row with no answered amount uses nil rather than an invented zero.
 //
 // # OutputVocabulary
 //
@@ -64,8 +66,10 @@
 // parts:
 //
 //   - Kinds maps a KindName to a KindSpec. Check validates the complete Output
-//     at construction, including amount/parameter requirements. Attach subscribes the output to its chain and returns a Detach.
-//     Assess answers the output's information row.
+//     at construction, including amount/parameter requirements. A subscribed kind
+//     requires Attach and returns a Detach. A query-only kind forbids Attach;
+//     the consumer selects its contribution through description instead.
+//     Both kinds require Assess for their information row.
 //   - Amounts maps an AmountName to the function that computes it from a
 //     frame.
 //   - End is called when the machine enters its terminal state.
@@ -81,12 +85,12 @@
 // A Bound is one output bound to its condition. It is what Attach and Assess
 // receive.
 //
-//   - ID is unique per ref, state and index, which makes it fit for a chain
-//     modifier.
+//   - ID names ref, state and index, prefixed by InstanceKey when supplied.
+//     Assemblies can therefore separate equal recipes from different instances.
 //   - Host returns the holder, ref and source with detached ref values.
 //   - Params returns an owned copy of the kind's fields.
 //   - Answer evaluates the output's guard over a frame and the live bag.
-//   - Amount computes the output's amount from a frame.
+//   - Amount returns an owned, validated scalar or unresolved dice description.
 //
 // A kind never sees the machine, the recipe or another output.
 //
