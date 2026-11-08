@@ -63,11 +63,13 @@ import (
 // THE RAISE IS THE ANSWER, not the milestone. clock.Advance always reports a
 // Ticked milestone and a Ready snapshot, whether or not anything was granted:
 // a driver behind the front runner catches up silently, and its catching up is
-// not time passing for anybody else. Comparing the high-water before and after
-// is the only question this composition has — "did anybody gain a round" — and
-// it is what decides whether the world wakes.
+// not time passing for anybody else. Whether the advance passes the
+// high-water is the only question this composition has — "did anybody gain a
+// round" — and it is what decides whether the world wakes. It is asked of
+// [Encounter.worldRaises] before the advance, the same predicate
+// [Encounter.PaceDue] asks, so the prediction and the raise are one rule.
 func (e *Encounter) advanceWorld(driver MemberID, displacement int) (bool, error) {
-	before := e.clock.ToData().HighWater
+	raises := e.worldRaises(driver, displacement)
 	if _, err := e.clock.Advance(&clock.AdvanceInput{
 		Driver:       core.EntityID(driver),
 		Displacement: displacement,
@@ -75,7 +77,20 @@ func (e *Encounter) advanceWorld(driver MemberID, displacement int) (bool, error
 		return false, fmt.Errorf("advance %q: %w", driver, err)
 	}
 
-	return e.clock.ToData().HighWater > before, nil
+	return raises, nil
+}
+
+// worldRaises is whether advancing driver by displacement would raise the
+// world clock's high-water: the clock leaf's own rule (clock.Tick.Advance
+// grants a round only when the driver's cumulative progress passes the
+// high-water), asked of its state without advancing it. A driver behind the
+// front runner catches up without raising anything.
+//
+// [Encounter.advanceWorld] answers with it and [Encounter.PaceDue] predicts
+// with it, so the two cannot disagree about which advance raises.
+func (e *Encounter) worldRaises(driver MemberID, displacement int) bool {
+	data := e.clock.ToData()
+	return data.DriverProgress[core.EntityID(driver)]+displacement > data.HighWater
 }
 
 // elapseWorld JUMPS the world clock by span rounds: time that passed
@@ -358,13 +373,16 @@ type PaceDueInput struct {
 
 // PaceDueOutput answers [Encounter.PaceDue].
 type PaceDueOutput struct {
-	// Due is true when the member's NEXT [Encounter.Step] would pay a world
-	// round, and so raise the world and wake whoever is due.
+	// Due is true when the member's NEXT [Encounter.Step] would raise the
+	// world clock, and so wake whoever is due.
 	Due bool
 }
 
-// PaceDue says whether a member's NEXT step would pay a world round: the step
-// whose pace accrual reaches their speed in [Encounter.spendWorldPace].
+// PaceDue says whether a member's NEXT step would RAISE THE WORLD: the step
+// whose pace accrual reaches their speed in [Encounter.spendWorldPace], AND
+// whose round, advanced under their name, passes the clock's high-water in
+// [Encounter.advanceWorld]. A member walking behind the front runner pays
+// pace without raising anything, and is not due.
 //
 // WHY IT EXISTS (rpg-project#879 S1). The session answers a Move with the
 // player's steps up to the point a pace comes due, and runs the step that
@@ -373,11 +391,18 @@ type PaceDueOutput struct {
 // which step raises unless the encounter says so, and the encounter owns
 // that rule.
 //
-// THE SAME RULE, NOT A COPY. Both this and the payment read
-// [Encounter.worldPacePerRound]: a bubble member is never due (the turn
-// clock prices their time), a zero-speed sheet is never due (it paces
-// nothing), and otherwise the step is due when PaceCells+1 reaches the
-// cells-per-round of the sheet's speed.
+// THE SAME RULES, NOT COPIES. Both this and the step read
+// [Encounter.worldPacePerRound] and [Encounter.worldRaises]: a bubble member
+// is never due (the turn clock prices their time), a zero-speed sheet is
+// never due (it paces nothing), and otherwise the step is due when
+// PaceCells+1 reaches the cells-per-round of the sheet's speed and one more
+// round under the member's name passes the high-water.
+//
+// WHAT IT DOES NOT CHECK: whether the step itself would be refused. A closed
+// encounter, a paused member and the turn gate all refuse [Encounter.Step]
+// before any pace is spent, and a step into a body is a bump that spends
+// none; the caller learns those from the step. PaceDue answers only "if
+// this member's next step lands, does it raise the world".
 //
 // A READ: nothing is written and no beat is appended.
 //
@@ -402,7 +427,10 @@ func (e *Encounter) PaceDue(in *PaceDueInput) (*PaceDueOutput, error) {
 	if perRound <= 0 {
 		return &PaceDueOutput{}, nil
 	}
-	return &PaceDueOutput{Due: m.PaceCells+1 >= perRound}, nil
+	if m.PaceCells+1 < perRound {
+		return &PaceDueOutput{}, nil
+	}
+	return &PaceDueOutput{Due: e.worldRaises(in.Member, 1)}, nil
 }
 
 // spendRound is the fight's own advance: ONE ROUND PER BUBBLE MEMBER, each
