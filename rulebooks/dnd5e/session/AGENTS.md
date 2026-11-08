@@ -64,11 +64,13 @@ first. `TurnDrivers` remains for a host with a stateful driver of its own.
 **The save can be fenced** ([`checkpoint.go`](./checkpoint.go)). An encounter
 repository that also implements `FencedEncounterRepository` is found by type
 assertion, never a Config field: a write verb loads the store's checkpoint
-version with the world, and saves the world and the touched session record in
-one transaction that lands only if that version still holds. A stale save
-writes nothing and delivers nothing (`ErrStaleCheckpoint`). The record's
-`NextSeq` is not the fence: a beatless verb does not advance it. A plain
-repository keeps the two unfenced writes.
+version with the world, and saves everything it wrote under the session's
+guard (the world, the session record, seats, sheets) in one transaction that
+lands only if that version still holds. Under the fence a sheet or seat write
+is held in the Manager's pending overlay, read back by the same verb, and
+dropped when the guard is released. A stale save writes nothing and delivers
+nothing (`ErrStaleCheckpoint`). The record's `NextSeq` is not the fence: a
+beatless verb does not advance it. A plain repository keeps today's writes.
 
 **The one driver is RECOGNISED, not wrapped** ([`driver.go`](./driver.go)).
 Every other driver crosses the boundary by projection — the composition's

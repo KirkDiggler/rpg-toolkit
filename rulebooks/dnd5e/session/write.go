@@ -1138,11 +1138,18 @@ type writeScope struct {
 // a count of how many times it was touched (Copilot's own finding on PR
 // #1222).
 func (s *writeScope) noteCharacterWritten(id string) {
+	s.noteSheetTouched(id)
+	s.noteWritten("character:" + id)
+}
+
+// noteSheetTouched records a member whose sheet this verb changed, without
+// naming it on the report: a fenced verb's sheet is named when its fenced
+// save lands (checkpoint.go).
+func (s *writeScope) noteSheetTouched(id string) {
 	if s.sheetsWritten == nil {
 		s.sheetsWritten = make(map[encounter.MemberID]bool)
 	}
 	s.sheetsWritten[encounter.MemberID(id)] = true
-	s.noteWritten("character:" + id)
 }
 
 // noteWritten records one aggregate this verb made durable before persist,

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 
@@ -21,14 +22,19 @@ import (
 
 // fencedStore is an in-memory FencedEncounterRepository over the ordinary
 // fakes: a version per encounter, incremented on every save that lands, and
-// a save that names any other version refused with ErrStaleCheckpoint.
-//
-// Its plain SaveEncounter and SaveSession count calls, so a test can prove a
-// fenced host is never written around the fence.
+// a save that names any other version refused with ErrStaleCheckpoint. A
+// landed save writes every piece it carries straight into the fakes' maps,
+// so the fakes' own save counters count only plain writes, which a fenced
+// host must never get.
 type fencedStore struct {
 	*fakeEncounters
 	sessions *fakeSessions
+	chars    *fakeCharacters
+	seats    *fakeSeats
 	versions map[string]uint64
+
+	// expected is the Expected of every SaveFenced call, landed or not.
+	expected []uint64
 
 	// plainSaves counts SaveEncounter calls, which a fenced host never gets.
 	plainSaves int
@@ -49,6 +55,8 @@ func newFencedStore() *fencedStore {
 	return &fencedStore{
 		fakeEncounters: newFakeEncounters(),
 		sessions:       newFakeSessions(),
+		chars:          testCharacters(),
+		seats:          newFakeSeats(),
 		versions:       map[string]uint64{},
 	}
 }
@@ -69,6 +77,7 @@ func (f *fencedStore) GetFencedEncounter(
 }
 
 func (f *fencedStore) SaveFenced(_ context.Context, in *session.SaveFencedInput) (*session.SaveFencedOutput, error) {
+	f.expected = append(f.expected, in.Expected)
 	if held := f.versions[in.Encounter]; held != in.Expected {
 		f.refusals++
 		return nil, fmt.Errorf("encounter %q at %d, save expected %d: %w",
@@ -79,6 +88,14 @@ func (f *fencedStore) SaveFenced(_ context.Context, in *session.SaveFencedInput)
 		f.sessions.byID[in.Session.ID] = in.Session
 		f.sessionWrites++
 	}
+	for _, sheet := range in.Characters {
+		f.chars.byID[sheet.ID] = sheet
+	}
+	f.seats.mu.Lock()
+	for _, seat := range in.Seats {
+		f.seats.byID[seat.Character] = *seat
+	}
+	f.seats.mu.Unlock()
 	f.versions[in.Encounter]++
 	f.fencedSaves++
 	return &session.SaveFencedOutput{Version: f.versions[in.Encounter]}, nil
@@ -119,25 +136,27 @@ func (f *fencedStore) snapshot(id string) []byte {
 type CheckpointFenceSuite struct {
 	suite.Suite
 	store *fencedStore
-	chars *fakeCharacters
 }
 
 func TestCheckpointFenceSuite(t *testing.T) { suite.Run(t, new(CheckpointFenceSuite)) }
 
 func (s *CheckpointFenceSuite) SetupTest() {
 	s.store = newFencedStore()
-	s.chars = testCharacters()
 }
 
-// manager is one process over the shared store, with its own act stream and
-// its own seats (a seat is a character's, and both processes seat alice in
-// the same run).
+// manager is one process over the shared store, with its own act stream.
 func (s *CheckpointFenceSuite) manager(acts *fakeStream, runner session.ContinuationRunner) *session.Manager {
+	return s.managerWith(acts, runner, testDice{})
+}
+
+func (s *CheckpointFenceSuite) managerWith(
+	acts *fakeStream, runner session.ContinuationRunner, dice session.Roller,
+) *session.Manager {
 	cfg := &session.Config{
-		Record: session.DiscardRecord{}, Acts: acts, Seats: newFakeSeats(),
+		Record: session.DiscardRecord{}, Acts: acts, Seats: s.store.seats,
 		CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
-		Dice: testDice{}, TurnDriver: session.Driver(),
-		Sessions: storeSessions{store: s.store}, Encounters: s.store, Characters: s.chars,
+		Dice: dice, TurnDriver: session.Driver(),
+		Sessions: storeSessions{store: s.store}, Encounters: s.store, Characters: s.store.chars,
 	}
 	if runner != nil {
 		cfg.Continuations = runner
@@ -189,7 +208,8 @@ func (s *CheckpointFenceSuite) TestTheSecondWriterAtOneVersionFailsClosed() {
 	s.Equal(1, s.store.refusals)
 	s.Equal(uint64(2), s.store.versions[testSession], "only the winner's save advanced the version")
 	s.Equal(winnerWorld, s.store.snapshot(testSession), "the store holds the winner's world")
-	s.Equal(sessionWritesAfterWinner, s.store.sessionWrites, "the loser wrote no session record")
+	s.Equal(sessionWritesAfterWinner, s.store.sessionWrites,
+		"pins the double: a refused save writes no session record")
 	s.NotEmpty(winnerActs.published, "the winner's walk was delivered")
 	s.Empty(loserActs.published, "no act of the loser's reached a subscriber")
 	s.Zero(s.store.plainSaves, "a fenced host is never written around the fence")
@@ -217,6 +237,8 @@ func (s *CheckpointFenceSuite) TestARacingLaunchWritesNoSessionRecord() {
 	s.Equal(1, s.store.sessionWrites, "only the winner's session record landed")
 	s.Equal(uint64(1), s.store.versions[testSession])
 	s.Zero(s.store.sessions.saves, "a fenced host's session record never goes through SaveSession")
+	s.Zero(s.store.seats.saves, "nor its seats through SaveSeat")
+	s.Zero(s.store.chars.saves, "nor its sheets through SaveCharacter")
 	s.NotEmpty(winnerActs.published)
 	s.Empty(loserActs.published, "the losing launch delivered nothing")
 }
@@ -295,10 +317,10 @@ func (s *CheckpointFenceSuite) TestAFencedReadKeepsTheContract() {
 	_, err := mgr.Launch(context.Background(), sceneInput(authoredWorld()))
 	s.Require().NoError(err)
 	mgr, err = session.NewManager(&session.Config{
-		Record: session.DiscardRecord{}, Acts: &fakeStream{}, Seats: newFakeSeats(),
+		Record: session.DiscardRecord{}, Acts: &fakeStream{}, Seats: s.store.seats,
 		CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
-		Sessions: storeSessions{store: s.store}, Encounters: emptyReadStore{s.store}, Characters: s.chars,
+		Sessions: storeSessions{store: s.store}, Encounters: emptyReadStore{s.store}, Characters: s.store.chars,
 	})
 	s.Require().NoError(err)
 
@@ -326,10 +348,10 @@ func (n noAdvanceStore) SaveFenced(_ context.Context, in *session.SaveFencedInpu
 
 func (s *CheckpointFenceSuite) TestASaveThatDoesNotAdvanceTheVersionIsABrokenRepository() {
 	mgr, err := session.NewManager(&session.Config{
-		Record: session.DiscardRecord{}, Acts: &fakeStream{}, Seats: newFakeSeats(),
+		Record: session.DiscardRecord{}, Acts: &fakeStream{}, Seats: s.store.seats,
 		CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
 		Dice: testDice{}, TurnDriver: session.Driver(),
-		Sessions: storeSessions{store: s.store}, Encounters: noAdvanceStore{s.store}, Characters: s.chars,
+		Sessions: storeSessions{store: s.store}, Encounters: noAdvanceStore{s.store}, Characters: s.store.chars,
 	})
 	s.Require().NoError(err)
 
@@ -337,4 +359,144 @@ func (s *CheckpointFenceSuite) TestASaveThatDoesNotAdvanceTheVersionIsABrokenRep
 
 	s.ErrorIs(err, session.ErrBadRepository)
 	s.False(errors.Is(err, session.ErrStaleCheckpoint), "a broken repository is not a stale writer")
+}
+
+// fight is aFight's scene over the fenced store: an armed alice beside a
+// skeleton, the launch forms the fight, and alice's turn is first.
+func (s *CheckpointFenceSuite) fight(rolls ...int) *session.Manager {
+	s.store.chars.byID["alice"] = withFreeReactions(armedFighter("alice"))
+	const initiativeRolls = 2
+	roller := &sequenceDice{rolls: append(make([]int, initiativeRolls), rolls...)}
+	mgr, err := session.NewManager(&session.Config{
+		Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: s.store.seats,
+		CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
+		Dice: roller, TurnDriver: session.Pass{},
+		Sessions: storeSessions{store: s.store}, Encounters: s.store, Characters: s.store.chars,
+	})
+	s.Require().NoError(err)
+	launched, err := mgr.Launch(context.Background(), sceneInput(scene{
+		Field:    encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 8, 8)}},
+		Party:    []sceneSeat{seatAt("alice", 1, 1)},
+		Monsters: []dungeonspec.MonsterPlacement{monsterAt("skeleton", refs.Monsters.Skeleton().String(), 2, 1)},
+	}))
+	s.Require().NoError(err)
+	s.Require().NotEmpty(launched.Formed, "the launch forms the fight")
+	roller.next = initiativeRolls
+	return mgr
+}
+
+func (s *CheckpointFenceSuite) sheetBytes(id string) []byte {
+	raw, err := json.Marshal(s.store.chars.byID[id])
+	s.Require().NoError(err)
+	return raw
+}
+
+func (s *CheckpointFenceSuite) walkAway(mgr *session.Manager) (*session.MoveOutput, error) {
+	return mgr.Move(context.Background(), &session.MoveInput{
+		Session: testSession, Member: "alice", Path: pathAwayFromSkeleton(),
+		DeclarationID: currentMoveID(s.T(), mgr, testSession, "alice"),
+	})
+}
+
+// TestAStaleFightMoveWritesNoSheet is the review's probe kept: a Move in a
+// fight spends the walker's movement, a sheet write. Under the fence that
+// sheet rides the one fenced save, so a writer whose version moved lands
+// neither the world nor the sheet.
+func (s *CheckpointFenceSuite) TestAStaleFightMoveWritesNoSheet() {
+	mgr := s.fight(1, 1)
+	sheetBefore := s.sheetBytes("alice")
+	s.store.onGet = func() { s.store.versions[testSession]++ }
+
+	_, err := s.walkAway(mgr)
+
+	s.Require().ErrorIs(err, session.ErrStaleCheckpoint)
+	var saveErr *session.SaveError
+	s.Require().ErrorAs(err, &saveErr)
+	s.NotContains(saveErr.Report.Written, "character:alice", "the walker's sheet did not land")
+	s.Contains(saveErr.Report.Failed, "character:alice", "it failed with the world")
+	s.Equal(sheetBefore, s.sheetBytes("alice"), "the store keeps the sheet the stale writer loaded")
+	s.Zero(s.store.chars.saves, "no sheet went around the fence")
+
+	// The refused walk's spent movement died with its guard: the same walk
+	// again starts from the stored sheet, which still has the movement.
+	_, err = s.walkAway(mgr)
+	s.Require().NoError(err, "nothing the refused verb wrote is visible to the next")
+}
+
+// TestAFencedFightMoveLandsWhatAPlainOneDoes is the other half: the same
+// Move, not stale, lands the walker's sheet in the fenced save, and the
+// sheet and its report are what the plain path writes for the same scene.
+// The sheets a verb defers are read back by that same verb from the
+// overlay, so any difference here would be a read that missed its write.
+func (s *CheckpointFenceSuite) TestAFencedFightMoveLandsWhatAPlainOneDoes() {
+	mgr := s.fight(1, 1)
+	sheetBefore := s.sheetBytes("alice")
+	out, err := s.walkAway(mgr)
+	s.Require().NoError(err)
+
+	s.Contains(out.Saved.Written, "character:alice")
+	s.NotEqual(sheetBefore, s.sheetBytes("alice"), "the walk spent movement on the sheet")
+	s.Zero(s.store.chars.saves, "the sheet landed in the fenced save, not through SaveCharacter")
+
+	plain, _, _, plainChars := aFight(s.T(), armedFighter("alice"), []int{1, 1})
+	plainOut, err := plain.Move(context.Background(), &session.MoveInput{
+		Session: testSession, Member: "alice", Path: pathAwayFromSkeleton(),
+		DeclarationID: currentMoveID(s.T(), plain, testSession, "alice"),
+	})
+	s.Require().NoError(err)
+	// The stamp is the clock's, not the walk's.
+	plainAlice, fencedAlice := *plainChars.byID["alice"], *s.store.chars.byID["alice"]
+	plainAlice.UpdatedAt, fencedAlice.UpdatedAt = time.Time{}, time.Time{}
+	plainRaw, err := json.Marshal(plainAlice)
+	s.Require().NoError(err)
+	fencedRaw, err := json.Marshal(fencedAlice)
+	s.Require().NoError(err)
+	s.JSONEq(string(plainRaw), string(fencedRaw), "the fenced sheet persists as the plain one")
+	s.ElementsMatch(plainOut.Saved.Written, out.Saved.Written, "and the report names the same aggregates")
+}
+
+// TestTheSaveIsFencedOnTheVersionTheVerbLoaded loads at a version Launch
+// never leaves (7), so a session that handed back anything but what it read
+// would be caught: the save names 7 and lands at 8.
+func (s *CheckpointFenceSuite) TestTheSaveIsFencedOnTheVersionTheVerbLoaded() {
+	mgr := s.manager(&fakeStream{}, nil)
+	_, err := mgr.Launch(context.Background(), sceneInput(authoredWorld()))
+	s.Require().NoError(err)
+	s.store.versions[testSession] = 7
+	s.store.expected = nil
+
+	_, err = s.moveAlice(mgr, spatial.Position{X: 2, Y: 1})
+
+	s.Require().NoError(err)
+	s.Equal([]uint64{7}, s.store.expected)
+	s.Equal(uint64(8), s.store.versions[testSession])
+}
+
+// TestASeatedLevelRidesTheFence covers the one verb that writes a seated
+// sheet without opening its run: under the fence the level lands in a fenced
+// save of that run, and a stale one lands nothing.
+func (s *CheckpointFenceSuite) TestASeatedLevelRidesTheFence() {
+	s.store.chars.byID["alice"] = advancingFighter("alice")
+	mgr := s.manager(&fakeStream{}, nil)
+	_, err := mgr.Launch(context.Background(), sceneInput(authoredWorld()))
+	s.Require().NoError(err)
+	level := func() (*session.LevelUpOutput, error) {
+		return mgr.LevelUp(context.Background(), &session.LevelUpInput{
+			Character: "alice", HitPointMethod: session.HitPointsAverage,
+		})
+	}
+
+	s.store.onGet = func() { s.store.versions[testSession]++ }
+	sheetBefore := s.sheetBytes("alice")
+	_, err = level()
+	s.Require().ErrorIs(err, session.ErrStaleCheckpoint)
+	s.Equal(sheetBefore, s.sheetBytes("alice"), "a stale level lands nothing")
+
+	versionBefore := s.store.versions[testSession]
+	out, err := level()
+	s.Require().NoError(err)
+	s.Contains(out.Saved.Written, "character:alice")
+	s.Equal(2, s.store.chars.byID["alice"].Level)
+	s.Equal(versionBefore+1, s.store.versions[testSession], "the level moved the run's checkpoint")
+	s.Zero(s.store.chars.saves, "the level never went around the fence")
 }
