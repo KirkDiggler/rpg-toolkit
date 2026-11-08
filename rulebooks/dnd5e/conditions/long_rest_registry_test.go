@@ -34,6 +34,7 @@ type longRestCase struct {
 	expectedSourceID string
 	outcome          longRestOutcome
 	removalReason    string
+	endedState       string // explicit current-format state after removal, when represented
 }
 
 // longRestCases is deliberately authored independently of the registry.
@@ -48,14 +49,19 @@ var longRestCases = map[string]longRestCase{
 	refs.Conditions.Raging().String(): {
 		data: json.RawMessage(`{
 			"ref":{"module":"dnd5e","type":"conditions","id":"raging"},
-			"member_id":"member-1","damage_bonus":2,"level":5,"source":"dnd5e:features:rage",
-			"saw_turn_end":true,"round_activated":2,"turns_active":3,
-			"was_hit_this_turn":true,"did_attack_this_turn":true
+			"member_id":"member-1",
+   "origin":{"ref":"dnd5e:features:rage","entity_id":"member-1"},
+   "bindings":{"damage_bonus":{"barbarian_level":true}},
+   "runtime":{"state":"raging","bag":{
+    "saw_turn_end":true,"round_activated":2,"turns_active":3,
+    "was_hit_this_turn":true,"did_attack_this_turn":true
+   }}
 		}`),
 		ownerID:       "member-1",
 		expectedRef:   refs.Conditions.Raging(),
 		outcome:       longRestRemove,
 		removalReason: "rest",
+		endedState:    "ended",
 	},
 	refs.Conditions.BrutalCritical().String(): {
 		data: json.RawMessage(`{
@@ -536,7 +542,17 @@ func TestLongRestRegistryBehavior(t *testing.T) {
 
 			case longRestRemove:
 				require.False(t, condition.IsApplied())
-				require.JSONEq(t, string(before), string(after))
+				expected := before
+				if testCase.endedState != "" {
+					var data map[string]any
+					require.NoError(t, json.Unmarshal(before, &data))
+					runtime, ok := data["runtime"].(map[string]any)
+					require.True(t, ok)
+					runtime["state"] = testCase.endedState
+					expected, err = json.Marshal(data)
+					require.NoError(t, err)
+				}
+				require.JSONEq(t, string(expected), string(after))
 				require.Equal(t, []dnd5eEvents.ConditionRemovedEvent{{
 					MemberID:     testCase.ownerID,
 					ConditionRef: testCase.expectedRef.String(),

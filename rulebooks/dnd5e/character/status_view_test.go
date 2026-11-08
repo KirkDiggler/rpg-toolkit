@@ -209,10 +209,15 @@ func (s *canonicalEffectDetailsSuite) TestReadPreservesCharacterAndEffectIdentit
 		MemberID: char.GetID(), SourceID: sourceID, SourceRef: refs.Spells.Bless(),
 	})
 	s.Require().NoError(err)
-	raging := &conditions.RagingCondition{
-		CharacterID: char.GetID(),
-		Source:      refs.Features.Rage().String(), TurnsActive: 3, WasHitThisTurn: true,
+	raging := composedCharacterRage(&s.Suite, char.GetID())
+	probe := events.NewEventBus()
+	s.Require().NoError(raging.Apply(ctx, probe))
+	for round := 2; round <= 4; round++ {
+		s.Require().NoError(dnd5eEvents.DamageTakenTopic.On(probe).Publish(ctx, &dnd5eEvents.DamageTakenEvent{MemberID: char.GetID(), Amount: 1}))
+		s.Require().NoError(dnd5eEvents.TurnEndTopic.On(probe).Publish(ctx, dnd5eEvents.TurnEndEvent{SubjectID: char.GetID(), Round: round}))
 	}
+	s.Require().NoError(dnd5eEvents.DamageTakenTopic.On(probe).Publish(ctx, &dnd5eEvents.DamageTakenEvent{MemberID: char.GetID(), Amount: 1}))
+	s.Require().NoError(raging.Remove(ctx, probe))
 	char.conditions = append(char.conditions, raging, blessed)
 	beforeData := mustToData(s.T(), char)
 	before, err := json.Marshal(beforeData)

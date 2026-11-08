@@ -4,7 +4,9 @@ Authority: [Keep equipment S2 #873](https://github.com/KirkDiggler/rpg-project/i
 
 ## Shape
 
-A separate consumer supplies a Rage recipe and a vocabulary over real D&D event/chain types. `items.Use[*rageActivation]` prepares an unattached `effects.Composed` and returns source identity with it. The caller applies it on its own bus. The generic item package remains unaware of Rage and of encounters.
+**Historical experiment plan:** the current shared-creator adoption is governed by [Composable conditions S11 #883](https://github.com/KirkDiggler/rpg-project/issues/883) and [the approved plan #2295](https://github.com/KirkDiggler/rpg-toolkit/pull/2295). The original consumer-owned recipe/vocabulary below is removed in that adoption; [RAGE.md](RAGE.md) describes the current boundary.
+
+The original separate consumer supplies a Rage recipe and a vocabulary over real D&D event/chain types. `items.Use[*rageActivation]` prepares an unattached `effects.Composed` and returns source identity with it. The caller applies it on its own bus. The generic item package remains unaware of Rage and of encounters.
 
 The recipe covers the same four benefit kinds and lifecycle reasons as the existing Rage-shaped effects prototype: Strength melee weapon damage bonus, physical resistance, Strength save/check advantage; first-turn grace, attack/hit sustain, inactivity, ten-round expiry, clock reset, unconsciousness, rest and combat end. The example does not claim production condition registration, casting restrictions, actor bonus-action payment or full rulebook migration.
 

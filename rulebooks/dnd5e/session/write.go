@@ -1355,7 +1355,7 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 
 	view := scope.enc.WorldView()
 	recorded := commitRecord(scope)
-	acts := commitActs(scope, view.EverMembers)
+	acts := commitActs(ctx, scope, m.acts, view.EverMembers)
 
 	// THE final storage boundary: this ToData runs after the verb's complete
 	// delta has been numbered and projected. Everything before this line read

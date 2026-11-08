@@ -25,6 +25,9 @@ type CreateFromRefInput struct {
 	// e.g., "dnd5e:classes:barbarian" for class-granted conditions
 	// e.g., "dnd5e:features:rage" for feature-activated conditions
 	SourceRef string
+	// Origin identifies granting content and source entity for composed definitions.
+	// Legacy definitions refuse it rather than silently discard provenance.
+	Origin *dnd5eEvents.ConditionOrigin
 }
 
 // CreateFromRefOutput provides the result of creating a condition from a ref
@@ -61,6 +64,9 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 	entry, err := lookup(ref.String())
 	if err != nil {
 		return nil, err
+	}
+	if input.Origin != nil && entry.composition == nil {
+		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "condition does not support Origin: "+ref.String())
 	}
 	if entry.create == nil {
 		return nil, rpgerr.WrapWithCode(ErrNotCreatable, rpgerr.CodeInvalidArgument,
@@ -118,22 +124,6 @@ func createUnarmoredDefense(config json.RawMessage, characterID, sourceRef strin
 		Type:     variant,
 		Source:   sourceRef,
 	}), nil
-}
-
-// createRaging creates a raging condition. Rage takes no config: its damage
-// bonus is read from the attacker's barbarian levels in each attack's frame,
-// so no level or bonus is accepted, stored or defaulted.
-func createRaging(characterID, sourceRef string) *RagingCondition {
-	// Default to rage feature ref if not specified
-	source := sourceRef
-	if source == "" {
-		source = refs.Features.Rage().String()
-	}
-
-	return &RagingCondition{
-		CharacterID: characterID,
-		Source:      source,
-	}
 }
 
 // createBrutalCritical creates a brutal critical condition. It takes no

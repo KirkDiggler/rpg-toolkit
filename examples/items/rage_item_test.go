@@ -5,6 +5,7 @@ package items_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -14,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/examples/items"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dndevents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -50,6 +52,15 @@ func (s *rageItemSuite) SetupTest() {
 	})
 }
 
+func (s *rageItemSuite) state() string {
+	raw, err := s.active.Effect.ToJSON()
+	s.Require().NoError(err)
+	var data conditions.ComposedData
+	s.Require().NoError(json.Unmarshal(raw, &data))
+	s.Require().NotNil(data.Runtime)
+	return data.Runtime.State
+}
+
 func (s *rageItemSuite) apply() { s.Require().NoError(s.active.Effect.Apply(s.ctx, s.bus)) }
 func (s *rageItemSuite) turn(holder string, round int) {
 	s.Require().NoError(dndevents.TurnEndTopic.On(s.bus).Publish(s.ctx,
@@ -81,6 +92,40 @@ func (s *rageItemSuite) endedFor(reason string) {
 	s.False(s.active.Effect.IsApplied())
 	s.Equal(10, s.bonus(rageHolder, abilities.STR, true, true))
 	s.Zero(s.ring.Data().Pools[chargePool], "ending an effect is not restoring the item")
+}
+
+func (s *rageItemSuite) TestPreparedResultUsesTheCanonicalSharedCreator() {
+	s.Equal("dnd5e:conditions:raging", s.active.Effect.Ref().String())
+	raw, err := s.active.Effect.ToJSON()
+	s.Require().NoError(err)
+	var data conditions.ComposedData
+	s.Require().NoError(json.Unmarshal(raw, &data))
+	s.Require().NotNil(data.Origin)
+	s.Equal("rage-ring-17", data.Origin.EntityID)
+	s.Equal(rageHolder, data.MemberID)
+	s.JSONEq(`{"damage_bonus":{"fixed":2}}`, string(data.Bindings))
+	s.Require().NotNil(data.Runtime)
+	s.Equal("fresh", data.Runtime.State)
+}
+
+func (s *rageItemSuite) TestRestoredActiveResultSurvivesItemTransfer() {
+	s.apply()
+	s.turn(rageHolder, 4)
+	raw, err := s.active.Effect.ToJSON()
+	s.Require().NoError(err)
+	s.Require().NoError(s.active.Effect.Remove(s.ctx, s.bus))
+	s.Require().NoError(s.ring.Detach(s.ctx))
+	s.Require().NoError(s.ring.Attach(s.ctx, items.AttachInput{Bus: s.bus, HolderID: "new-holder"}))
+	restored, err := conditions.LoadJSON(raw)
+	s.Require().NoError(err)
+	s.Require().NoError(restored.Apply(s.ctx, s.bus))
+	s.T().Cleanup(func() { s.NoError(restored.Remove(s.ctx, s.bus)) })
+	s.Equal(12, s.bonus(rageHolder, abilities.STR, true, true))
+	s.Equal(10, s.bonus("new-holder", abilities.STR, true, true))
+	s.Zero(s.ring.Data().Pools[chargePool])
+	s.turn(rageHolder, 5)
+	s.False(restored.IsApplied(), "a restored active effect gets no new grace")
+	s.Equal(10, s.bonus(rageHolder, abilities.STR, true, true))
 }
 
 func (s *rageItemSuite) TestPreparedResultIsNotAppliedUntilTheCallerActs() {
@@ -152,16 +197,16 @@ func (s *rageItemSuite) TestStrengthSavesAndChecksGainAdvantageOnlyForTheHolder(
 func (s *rageItemSuite) TestGraceMissedAttackAndDamageSustainThenInactivityEnds() {
 	s.apply()
 	s.turn("other", 1)
-	s.Equal(rageFresh, s.active.Effect.State())
+	s.Equal(rageFresh, s.state())
 	s.turn(rageHolder, 1)
-	s.Equal(rageLive, s.active.Effect.State())
+	s.Equal(rageLive, s.state())
 	s.attack(rageHolder) // A miss is still an attack attempt.
 	s.turn(rageHolder, 2)
-	s.Equal(rageLive, s.active.Effect.State())
-	s.Require().NoError(dndevents.DamageReceivedTopic.On(s.bus).Publish(s.ctx,
-		dndevents.DamageReceivedEvent{TargetID: rageHolder, Amount: 1}))
+	s.Equal(rageLive, s.state())
+	s.Require().NoError(dndevents.DamageTakenTopic.On(s.bus).Publish(s.ctx,
+		&dndevents.DamageTakenEvent{MemberID: rageHolder, Amount: 1}))
 	s.turn(rageHolder, 3)
-	s.Equal(rageLive, s.active.Effect.State())
+	s.Equal(rageLive, s.state())
 	s.turn(rageHolder, 4)
 	s.endedFor("no_combat_activity")
 }
@@ -173,7 +218,7 @@ func (s *rageItemSuite) TestTenRoundsEndEvenWhenAttacksSustainIt() {
 		s.attack(rageHolder)
 		s.turn(rageHolder, round)
 	}
-	s.Equal(rageLive, s.active.Effect.State())
+	s.Equal(rageLive, s.state())
 	s.attack(rageHolder)
 	s.turn(rageHolder, 10)
 	s.endedFor("duration_expired")
@@ -268,8 +313,8 @@ func (s *rageItemSuite) TestOtherActorsActivityDoesNotSustainTheHolder() {
 	s.apply()
 	s.turn(rageHolder, 1)
 	s.attack("other")
-	s.Require().NoError(dndevents.DamageReceivedTopic.On(s.bus).Publish(s.ctx,
-		dndevents.DamageReceivedEvent{TargetID: "other", Amount: 1}))
+	s.Require().NoError(dndevents.DamageTakenTopic.On(s.bus).Publish(s.ctx,
+		&dndevents.DamageTakenEvent{MemberID: "other", Amount: 1}))
 	s.turn(rageHolder, 2)
 	s.endedFor("no_combat_activity")
 }

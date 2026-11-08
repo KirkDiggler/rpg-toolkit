@@ -224,7 +224,7 @@ func TestWeaponAttackOverrideAsksTheEntry(t *testing.T) {
 
 	t.Run("raging makes no offer", func(t *testing.T) {
 		out, err := WeaponAttackOverride(&WeaponAttackOverrideInput{
-			Condition: &RagingCondition{CharacterID: "barb-1"},
+			Condition: composedRageForTest("barb-1"),
 			Swing:     &weaponattack.OverrideInput{Slot: "main_hand", Levels: monkLevels(1)},
 		})
 		require.NoError(t, err)

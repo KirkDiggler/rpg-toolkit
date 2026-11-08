@@ -80,33 +80,27 @@ func (s *LoaderTestSuite) executeDamageChain(
 }
 
 func (s *LoaderTestSuite) TestLoadRagingCondition() {
-	// Create a raging condition
-	original := &RagingCondition{
-		CharacterID:       "barbarian-1",
-		Source:            "dnd5e:features:rage",
-		TurnsActive:       3,
-		WasHitThisTurn:    true,
-		DidAttackThisTurn: true,
-	}
-
-	// Serialize to JSON
-	jsonData, err := original.ToJSON()
+	original := composedRageForTest("barbarian-1")
+	s.Require().NoError(original.Apply(s.ctx, s.bus))
+	s.Require().NoError(dnd5eEvents.DamageTakenTopic.On(s.bus).Publish(s.ctx, &dnd5eEvents.DamageTakenEvent{MemberID: "barbarian-1", Amount: 1}))
+	_, err := dnd5eEvents.PostAttackRollChain.On(s.bus).PublishWithChain(s.ctx, &dnd5eEvents.PostAttackRollEvent{AttackerID: "barbarian-1"}, events.NewStagedChain[*dnd5eEvents.PostAttackRollEvent](combat.ModifierStages))
 	s.Require().NoError(err)
-
-	// Load from JSON
-	loaded, err := LoadJSON(jsonData)
+	raw, err := original.ToJSON()
 	s.Require().NoError(err)
-
-	// Verify it's a RagingCondition
-	raging, ok := loaded.(*RagingCondition)
-	s.Require().True(ok, "Expected *RagingCondition")
-
-	// Verify all fields match
-	s.Equal(original.CharacterID, raging.CharacterID)
-	s.Equal(original.Source, raging.Source)
-	s.Equal(original.TurnsActive, raging.TurnsActive)
-	s.Equal(original.WasHitThisTurn, raging.WasHitThisTurn)
-	s.Equal(original.DidAttackThisTurn, raging.DidAttackThisTurn)
+	s.Require().NoError(original.Remove(s.ctx, s.bus))
+	loaded, err := LoadJSON(raw)
+	s.Require().NoError(err)
+	s.False(loaded.IsApplied())
+	saved, err := loaded.ToJSON()
+	s.Require().NoError(err)
+	s.JSONEq(string(raw), string(saved))
+	var data ComposedData
+	s.Require().NoError(json.Unmarshal(saved, &data))
+	s.Equal("barbarian-1", data.MemberID)
+	s.Equal("barbarian-1", data.Origin.EntityID)
+	s.Equal(true, data.Runtime.Bag["was_hit_this_turn"])
+	s.Equal(true, data.Runtime.Bag["did_attack_this_turn"])
+	s.JSONEq(`{"damage_bonus":{"barbarian_level":true}}`, string(data.Bindings))
 }
 
 func (s *LoaderTestSuite) TestLoadBrutalCriticalCondition() {
@@ -211,14 +205,7 @@ func (s *LoaderTestSuite) TestLoadInvalidJSON() {
 }
 
 func (s *LoaderTestSuite) TestRagingConditionRoundTripWithSubscriptions() {
-	// Create a raging condition with known state
-	original := &RagingCondition{
-		CharacterID:       "barbarian-1",
-		Source:            "dnd5e:features:rage",
-		TurnsActive:       3,
-		WasHitThisTurn:    true,
-		DidAttackThisTurn: true,
-	}
+	original := composedRageForTest("barbarian-1")
 
 	// Apply the original to the bus
 	err := original.Apply(s.ctx, s.bus)
@@ -233,8 +220,7 @@ func (s *LoaderTestSuite) TestRagingConditionRoundTripWithSubscriptions() {
 	loaded, err := LoadJSON(jsonData)
 	s.Require().NoError(err)
 
-	raging, ok := loaded.(*RagingCondition)
-	s.Require().True(ok, "Expected *RagingCondition")
+	raging := loaded
 
 	// The loader does NOT call Apply — so IsApplied should be false
 	s.False(raging.IsApplied(), "deserialized condition should not be applied yet")
@@ -262,10 +248,7 @@ func (s *LoaderTestSuite) TestRagingConditionRoundTripWithSubscriptions() {
 
 func (s *LoaderTestSuite) TestRagingConditionRoundTripCleanup() {
 	// Create condition, Apply, serialize, deserialize, Apply the loaded copy, then Remove
-	original := &RagingCondition{
-		CharacterID: "barbarian-1",
-		Source:      "dnd5e:features:rage",
-	}
+	original := composedRageForTest("barbarian-1")
 
 	err := original.Apply(s.ctx, s.bus)
 	s.Require().NoError(err)
@@ -277,8 +260,7 @@ func (s *LoaderTestSuite) TestRagingConditionRoundTripCleanup() {
 	loaded, err := LoadJSON(jsonData)
 	s.Require().NoError(err)
 
-	raging, ok := loaded.(*RagingCondition)
-	s.Require().True(ok)
+	raging := loaded
 
 	// Remove the original first
 	err = original.Remove(s.ctx, s.bus)
@@ -318,7 +300,7 @@ func TestEveryLoadedConditionNamesItsCanonicalRef(t *testing.T) {
 		behavior func() dnd5eEvents.ConditionBehavior
 	}{
 		{"raging", refs.Conditions.Raging(), func() dnd5eEvents.ConditionBehavior {
-			return &RagingCondition{CharacterID: "barbarian-1"}
+			return composedRageForTest("barbarian-1")
 		}},
 		{"brutal_critical", refs.Conditions.BrutalCritical(), func() dnd5eEvents.ConditionBehavior {
 			return NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "barbarian-1"})
