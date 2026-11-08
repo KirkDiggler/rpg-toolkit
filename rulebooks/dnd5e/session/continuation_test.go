@@ -29,6 +29,33 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
+// detachingRunner continues at once, the way a host's runner documented on
+// [session.RunContinuationInput.Continue] does: under its Run context with
+// the request's cancel removed. It keeps the report so a test can read it.
+type detachingRunner struct {
+	report *session.ContinuationReport
+	err    error
+}
+
+func (r *detachingRunner) Run(ctx context.Context, in *session.RunContinuationInput) error {
+	r.report, r.err = in.Continue(context.WithoutCancel(ctx))
+	return nil
+}
+
+type requestKey struct{}
+
+// valueCharacters reads a request value on every sheet read, the way a host
+// repository reading a trace id from its context does.
+type valueCharacters struct {
+	*fakeCharacters
+	seen *[]any
+}
+
+func (c valueCharacters) GetCharacter(ctx context.Context, id string) (*character.Data, error) {
+	*c.seen = append(*c.seen, ctx.Value(requestKey{}))
+	return c.fakeCharacters.GetCharacter(ctx, id)
+}
+
 // capturingRunner holds the continuation it is handed without running it, so
 // a test decides when the rest of the verb happens.
 type capturingRunner struct {
@@ -386,6 +413,44 @@ func canonicalRecord(events []session.RecordEvent) []session.RecordEvent {
 		out = append(out, e)
 	}
 	return out
+}
+
+// TestARunnerContinuingUnderItsRunContextCompletes: a runner that continues
+// under context.WithoutCancel of the context Run was handed (the documented
+// shape) completes the walk, and the host's collaborators still read the
+// request's values through it. Run being handed the verb's own context made
+// that context its own parent, and the first value read never returned.
+func (s *ContinuationSuite) TestARunnerContinuingUnderItsRunContextCompletes() {
+	runner := &detachingRunner{}
+	var seen []any
+	mgr, err := session.NewManager(&session.Config{
+		Record: session.DiscardRecord{}, Acts: &fakeStream{}, Seats: newFakeSeats(),
+		CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
+		Dice: testDice{}, TurnDriver: session.Driver(), Sessions: newFakeSessions(),
+		Encounters: newFakeEncounters(), Characters: valueCharacters{testCharacters(), &seen},
+		Continuations: runner,
+	})
+	s.Require().NoError(err)
+	launchScene(s.T(), mgr, scene{
+		Field:   encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 13, 4)}},
+		Party:   []sceneSeat{seatAt("alice", 1, 1)},
+		Endings: []encounter.EndingInput{{Key: "out", Trigger: encounter.TriggerExternal{}}},
+	})
+	seen = nil
+
+	request := context.WithValue(context.Background(), requestKey{}, "trace-1")
+	answer, err := mgr.Move(request, &session.MoveInput{Session: testSession, Member: "alice", Path: longWalk()})
+	s.Require().NoError(err)
+	s.Require().True(answer.Continues)
+	s.Require().NoError(runner.err)
+	s.Require().NotNil(runner.report)
+	s.Require().NotNil(runner.report.Move)
+	s.Equal(session.MovementCompleted, runner.report.Move.Status)
+	s.NotZero(runner.report.Saved)
+	s.Require().NotEmpty(seen, "the walk read sheets")
+	for _, value := range seen {
+		s.Equal("trace-1", value, "every sheet read carried the request's value")
+	}
 }
 
 // positionsOf is the cells a walk's steps entered.

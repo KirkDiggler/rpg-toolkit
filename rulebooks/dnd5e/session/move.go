@@ -181,6 +181,11 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 	// A walk that may continue is opened under a context the hand-off can
 	// re-parent: the encounter's host seams keep the context they are
 	// built under, and the rest runs after the request's has ended.
+	//
+	// The runner is handed the REQUEST's context, never this one: a runner
+	// continuing under a context derived from it would re-parent the verb's
+	// context onto itself.
+	request := ctx
 	var vctx *verbContext
 	if m.continuations != nil {
 		vctx = newVerbContext(ctx)
@@ -310,7 +315,7 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 			Continues:  true,
 			Through:    res.through,
 		}
-		err = m.handOff(ctx, in.Session, VerbMove, vctx, guard,
+		err = m.handOff(request, in.Session, VerbMove, vctx, guard,
 			func(ctx context.Context) (*ContinuationReport, error) {
 				return m.continueWalk(ctx, scope, in.Member, in.Path, rest)
 			})

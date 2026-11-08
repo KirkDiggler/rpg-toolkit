@@ -132,8 +132,10 @@ func (g *heldGuard) verbRelease() {
 	}
 }
 
-// handOff gives the rest of a verb to the host's runner. rest performs it
-// under ctx. On a nil error the guard belongs to the continuation, which
+// handOff gives the rest of a verb to the host's runner. ctx is the
+// request's own context, never vctx: Run's context is what a runner derives
+// the continuation's from, and a vctx parented on itself never answers.
+// rest performs it under the context Continue is given. On a nil error the guard belongs to the continuation, which
 // releases it when it ends. On an error the continuation never ran and never
 // will, and the guard is still the verb's to release.
 func (m *Manager) handOff(
