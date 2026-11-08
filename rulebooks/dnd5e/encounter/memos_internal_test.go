@@ -77,7 +77,6 @@ func TestAWakePassAssessesParticipationOnce(t *testing.T) {
 	enc.wakeParticipation = nil
 }
 
-
 // TestTheBlockingDoorSliceSurvivesThePartitionPass (rpg-project#879 S3b): the
 // partition pass copies the field by value and attaches closed door records
 // to the copy; the live field's kept slice and mask must not be reached
