@@ -625,6 +625,10 @@ func validatePlacement(p spatial.FootprintPlacement) error {
 // update — the exact duality [DoorEdge] has no flags in order to avoid.
 func (f *field) attachDoorFootprints(doors []*doorRecord) {
 	f.doorFootprints = nil
+	// New records, new readings: the kept slice and its mask are the old
+	// records', and a shallow copy of the field ([field.partitionCanvas])
+	// must never find the live field's mask through them.
+	f.blockingDoors, f.blockingMask = nil, nil
 	for _, d := range doors {
 		if d.placement != nil {
 			f.doorFootprints = append(f.doorFootprints, d)
@@ -651,19 +655,21 @@ func (f *field) blockingDoorFootprints() []*doorRecord {
 		if same {
 			return f.blockingDoors
 		}
-	} else {
-		f.blockingMask = make([]bool, len(f.doorFootprints))
 	}
+	// A FRESH MASK ON EVERY REBUILD, NEVER A WRITE INTO THE OLD ONE: a
+	// shallow copy of the field shares the old array, and a copy that
+	// rebuilt in place would corrupt the live field's reading.
+	mask := make([]bool, len(f.doorFootprints))
 	out := make([]*doorRecord, 0, len(f.doorFootprints))
 	for i, d := range f.doorFootprints {
-		f.blockingMask[i] = d.blocks()
-		if f.blockingMask[i] {
+		mask[i] = d.blocks()
+		if mask[i] {
 			out = append(out, d)
 		}
 	}
 	// SHARED, NOT COPIED: every caller ranges over the answer and keeps
 	// nothing, so the same slice serves until a door's reading changes.
-	f.blockingDoors = out
+	f.blockingDoors, f.blockingMask = out, mask
 
 	return out
 }

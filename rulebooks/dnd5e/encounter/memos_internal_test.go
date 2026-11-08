@@ -76,3 +76,29 @@ func TestAWakePassAssessesParticipationOnce(t *testing.T) {
 	enc.worldThinking = false
 	enc.wakeParticipation = nil
 }
+
+
+// TestTheBlockingDoorSliceSurvivesThePartitionPass (rpg-project#879 S3b): the
+// partition pass copies the field by value and attaches closed door records
+// to the copy; the live field's kept slice and mask must not be reached
+// through that copy. Open the door, read (nothing blocks), run the pass,
+// shut the door, read again: the door blocks. Mutant: a rebuild that writes
+// into the old mask (the copy marks the live mask "blocking" while the live
+// slice still omits the door, and the shut door is served as open).
+func TestTheBlockingDoorSliceSurvivesThePartitionPass(t *testing.T) {
+	enc, _ := sightPassScene(t)
+	f := enc.field
+	require.Len(t, f.doorFootprints, 1, "precondition: one footprint door")
+	door := f.doorFootprints[0]
+
+	door.state = DoorIsOpen()
+	require.Empty(t, f.blockingDoorFootprints(), "open: nothing blocks")
+	mask := f.blockingMask
+
+	_, err := f.partitionsNow()
+	require.NoError(t, err)
+	require.Equal(t, mask, f.blockingMask, "the pass left the live mask alone")
+
+	door.state = DoorIsClosed()
+	require.Len(t, f.blockingDoorFootprints(), 1, "shut: the door blocks again")
+}

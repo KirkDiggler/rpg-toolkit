@@ -1689,7 +1689,12 @@ func (e *Encounter) walkPath(
 		// whoever decided the walk is the one who knows how the body moved
 		// and this loop does not.
 		step := MoveStep{Mover: mover, From: from, To: cell, Cause: cause, Kind: kind}
-		if merr := e.mover.Move(ctx, e, step); merr != nil {
+		merr := e.mover.Move(ctx, e, step)
+		// THE MOVER IS A MOMENT STANDING CAN CHANGE with no intent ending: a
+		// reaction it fires can drop the walker, and the per-cell ask below
+		// must see it, inside a wake pass as anywhere else.
+		e.wakeParticipation = nil
+		if merr != nil {
 			// A PAUSE IS NEWS, NOT A MALFUNCTION. Somebody is being asked
 			// about this step; it is announced and not taken, and the rest
 			// of the path — this cell first — waits with them. Every other

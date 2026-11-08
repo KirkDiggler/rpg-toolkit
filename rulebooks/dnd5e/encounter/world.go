@@ -227,6 +227,10 @@ func (e *Encounter) buildWorld() error {
 		e.world = w
 	}
 	w.concealments = nil
+	// A new declaration is a new fold: the stance memo keys on the journal
+	// and the structure both, and the roster a pass assessed is gone.
+	w.stanceMemo, w.knownMemo = nil, nil
+	e.wakeParticipation = nil
 	w.minds = make(map[FactionID]MemberID)
 	w.observers = make(map[factionPair][]MemberID)
 
