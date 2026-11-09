@@ -4,7 +4,7 @@ Base: `rpg-toolkit` `main` at f61e4379, after [#2336](https://github.com/KirkDig
 
 ## Shipped
 
-- `scripts/test-budget.sh` reads `go test -json`. Its `log` mode prints what plain `go test` prints: package lines, build errors, and the output of failing or unfinished tests. Its `check` mode writes the ten slowest top-level tests to the job summary. It fails naming each test over `TEST_BUDGET` (5s) that the module's `testbudget.allow` does not name.
+- `scripts/test-budget.sh` reads `go test -json`. Its `log` mode prints what plain `go test` prints: package lines, build errors, and the output of failing or unfinished tests. Its `check` mode writes the ten slowest top-level tests to the job summary. It fails naming each test over `TEST_BUDGET` (5s) that the module's allowlist does not name. `-module <dir>` reads that allowlist from `.github/testbudget/<dir>.allow`, outside the module, so editing one mints no module tag. A module without a file has no exceptions. The change detector maps an allowlist edit to its module.
 - An allowlist entry is `<import path>/<test>  # reason`. The import path is go test -json's `Package` field, so one entry exempts one package's test. A bare name, a missing reason, or "not yet sized" alone is an error.
 - Every allowed test is logged with its time. A line that a run did not need says "within the budget this run".
 - The module step, including each encounter shard, and the test-all job run tests with `-json` through the log filter. A separate step runs the check. `scripts/test-budget.test.sh` holds the cases and runs in its own cheap job.
@@ -34,14 +34,17 @@ The test-all loop ran the same way on a module with a failing test. It exits 1 w
 | [42687404397](https://github.com/KirkDiggler/rpg-toolkit/actions/runs/42687404397) | c056746a | red: first CI inventory, 19 encounter tests and 1 rulebooks/dnd5e test over 5s that the local run kept under it |
 | [42694712241](https://github.com/KirkDiggler/rpg-toolkit/actions/runs/42694712241) | b21f515d | red: names only `TestBudgetProofSleepsSixSeconds (dice) took 6.01s`, the temporary probe |
 | [42695321108](https://github.com/KirkDiggler/rpg-toolkit/actions/runs/42695321108) | 82a5970d | green: probe removed, package-qualified allowlists |
+| [42698617914](https://github.com/KirkDiggler/rpg-toolkit/actions/runs/42698617914) | 96c05291 | red: the test-all job fails at "Run tests on all modules" with `TestFailingProbe` (`t.Fatal("probe")` in dice), through the `-json` pipe, after the pipefail fix |
+
+The slow probe proves the budget. The failing probe proves the pipe keeps go test's exit. The run at the final head, after both probes are removed, is green.
 
 ## Seeded allowlists
 
 | file | entries | why it cannot shrink | near budget | to be sized |
 |---|---|---|---|---|
-| `rulebooks/dnd5e/testbudget.allow` | 1 | 1 | 0 | 0 |
-| `rulebooks/dnd5e/encounter/testbudget.allow` | 56 | 3 | 17 | 36 ([#2342](https://github.com/KirkDiggler/rpg-toolkit/issues/2342); one points at [#2340](https://github.com/KirkDiggler/rpg-toolkit/issues/2340)) |
-| `rulebooks/dnd5e/session/testbudget.allow` | 32 | 0 | 15 | 17 ([#2343](https://github.com/KirkDiggler/rpg-toolkit/issues/2343)) |
+| `.github/testbudget/rulebooks/dnd5e.allow` | 1 | 1 | 0 | 0 |
+| `.github/testbudget/rulebooks/dnd5e/encounter.allow` | 56 | 3 | 17 | 36 ([#2342](https://github.com/KirkDiggler/rpg-toolkit/issues/2342); one points at [#2340](https://github.com/KirkDiggler/rpg-toolkit/issues/2340)) |
+| `.github/testbudget/rulebooks/dnd5e/session.allow` | 32 | 0 | 15 | 17 ([#2343](https://github.com/KirkDiggler/rpg-toolkit/issues/2343)) |
 
 Other modules had no test over 5s on CI.
 
@@ -55,6 +58,6 @@ Other modules had no test over 5s on CI.
 ```
 cd rulebooks/dnd5e/<module>
 go test -race -count=1 -timeout 40m -json ./... > out.json
-"$(git rev-parse --show-toplevel)/scripts/test-budget.sh" check -allow testbudget.allow < out.json
+"$(git rev-parse --show-toplevel)/scripts/test-budget.sh" check -module rulebooks/dnd5e/<module> < out.json
 ./scripts/test-budget.test.sh
 ```

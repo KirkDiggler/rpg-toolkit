@@ -17,7 +17,10 @@ env:
   # scripts/test-budget.sh writes the module's ten slowest top-level tests to
   # the job summary and fails the job naming each top-level test that takes
   # longer than TEST_BUDGET under -race. A test may stay over the budget only
-  # when the module's testbudget.allow names it: one test per line, as its
+  # when the module's allowlist, .github/testbudget/<module dir>.allow (for
+  # example .github/testbudget/rulebooks/dnd5e/encounter.allow), names it.
+  # The allowlists live outside the modules so editing one mints no module
+  # tag; a module without a file has no exceptions. One test per line, as its
   # package's import path (go test -json's Package field), a slash and the
   # top-level test name, with its reason after a "#" on the same line: why it
   # is over budget (what it builds or sweeps and why that cannot shrink), or
@@ -28,7 +31,7 @@ env:
   # The budget is judged on CI's timing, not a dev box's. A slow test is a
   # finding: size the fixture to the cases it proves, or name it with a
   # reason (rpg-project#907). Locally:
-  # go test -race -json ./... | "$(git rev-parse --show-toplevel)/scripts/test-budget.sh" check -allow testbudget.allow
+  # go test -race -json ./... | "$(git rev-parse --show-toplevel)/scripts/test-budget.sh" check -module <module dir>
   TEST_BUDGET: 5s
   # The encounter module outgrew one CI job (rpg-toolkit#2335). It runs as
   # three shards: "heavy" runs these root-package tests with -run, "rest" runs
@@ -125,8 +128,13 @@ jobs:
         fi
 
         CHANGED_FILES=$(echo "$ALL_CHANGED" | grep '\.go$' || true)
+
+        # A test budget allowlist lives outside its module
+        # (.github/testbudget/<module dir>.allow); a change to one checks
+        # that module.
+        ALLOW_MODULES=$(echo "$ALL_CHANGED" | sed -n 's#^\.github/testbudget/\(.*\)\.allow$#\1#p')
         
-        if [[ -z "$CHANGED_FILES" ]]; then
+        if [[ -z "$CHANGED_FILES" && -z "$ALLOW_MODULES" ]]; then
           echo "No Go files changed"
           echo "modules=[]" >> $GITHUB_OUTPUT
           echo "should_run_all=false" >> $GITHUB_OUTPUT
@@ -140,6 +148,11 @@ jobs:
           while [[ ! -f "$dir/go.mod" && "$dir" != "." && "$dir" != "/" ]]; do
             dir=$(dirname "$dir")
           done
+          if [[ -f "$dir/go.mod" ]]; then
+            MODULES+=("$dir")
+          fi
+        done
+        for dir in $ALLOW_MODULES; do
           if [[ -f "$dir/go.mod" ]]; then
             MODULES+=("$dir")
           fi
@@ -279,7 +292,7 @@ jobs:
           exit 0
         fi
         "$GITHUB_WORKSPACE/scripts/test-budget.sh" check -budget "$TEST_BUDGET" \
-          -allow "${{ matrix.module }}/testbudget.allow" \
+          -module "${{ matrix.module }}" \
           -label "${{ matrix.module }} (${{ matrix.shard }})" \
           < "$RUNNER_TEMP/test.json"
 
@@ -343,7 +356,7 @@ jobs:
           name=$(basename "$json" .json)
           dir=${name//__//}
           "$GITHUB_WORKSPACE/scripts/test-budget.sh" check -budget "$TEST_BUDGET" \
-            -allow "$dir/testbudget.allow" -label "$dir" < "$json" || status=1
+            -module "$dir" < "$json" || status=1
         done
         exit $status
 

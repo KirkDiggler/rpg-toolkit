@@ -8,12 +8,19 @@
 #       fails (or never finishes). Passing tests stay quiet. Always exits 0;
 #       go test's own exit status is the caller's (use `set -o pipefail`).
 #
-#   test-budget.sh check [-budget 5s] [-allow FILE] [-label NAME]
+#   test-budget.sh check [-budget 5s] [-module PATH | -allow FILE] [-label NAME]
 #       Fold the elapsed time of every top-level test (no "/" in its name),
 #       per package. Write the ten slowest as a Markdown table to
 #       $GITHUB_STEP_SUMMARY when it is set, else to stdout. Exit 1 naming
 #       each test over the budget that FILE does not list. Exit 2 when FILE
 #       has a line without a reason.
+#
+# -module PATH reads the module's allowlist from
+# .github/testbudget/PATH.allow at the repository root (PATH as the module's
+# directory, slashes kept, e.g. rulebooks/dnd5e/encounter) and labels the
+# table with PATH. The allowlists live there, not in the module, so editing
+# one mints no module tag. -allow FILE reads FILE instead. An absent file
+# means the module has no exceptions.
 #
 # The allowlist names one test per line, as its package's import path (the
 # "Package" field of go test -json), a slash and the top-level test name, with
@@ -81,11 +88,17 @@ parse_seconds() {
 }
 
 cmd_check() {
-  local budget=5 allow="" label=""
+  local budget=5 allow="" label="" root
+  root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
   while [[ $# -gt 0 ]]; do
     case $1 in
       -budget) budget=$(parse_seconds "${2:?-budget needs a value}"); shift 2 ;;
       -allow) allow=${2:?-allow needs a path}; shift 2 ;;
+      -module)
+        allow="$root/.github/testbudget/${2:?-module needs a path}.allow"
+        label=${label:-$2}
+        shift 2
+        ;;
       -label) label=${2:?-label needs a value}; shift 2 ;;
       *) usage ;;
     esac
@@ -166,7 +179,8 @@ cmd_check() {
     return 0
   fi
 
-  local allow_path=${allow:-testbudget.allow}
+  local allow_path=${allow:-"(none: pass -module or -allow)"}
+  allow_path=${allow_path#"$root/"}
   echo "test-budget: over the ${budget}s budget${label:+ in $label}:" >&2
   while read -r pkg test s; do
     echo "  $test ($pkg) took ${s}s" >&2

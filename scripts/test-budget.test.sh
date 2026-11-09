@@ -112,6 +112,24 @@ check two_packages -allow "$scratch/ok.allow"
 [[ $err == *"TestSlow ($pkg/other) took 6.4s"* ]] || fail "the other package's TestSlow is not named: $err"
 [[ $err != *"TestSlow ($pkg) took"* ]] || fail "the allowed package's TestSlow was named: $err"
 
+run_case "-module reads .github/testbudget/<module>.allow from the repository root"
+fake=$scratch/repo
+mkdir -p "$fake/scripts" "$fake/.github/testbudget/rulebooks"
+cp "$script" "$fake/scripts/test-budget.sh"
+printf '%s/TestSlow  # sleeps on purpose for this case\n' "$pkg" >"$fake/.github/testbudget/rulebooks/small.allow"
+set +e
+slow_stream | (cd "$scratch" && "$fake/scripts/test-budget.sh" check -module rulebooks/small) >"$scratch/out" 2>"$scratch/err"
+status=$?
+set -e
+[[ $status -eq 0 ]] || fail "exit $status, want 0: $(cat "$scratch/err")"
+grep -q '^### Slowest tests — rulebooks/small' "$scratch/out" || fail "table not labelled with the module: $(cat "$scratch/out")"
+set +e
+slow_stream | "$fake/scripts/test-budget.sh" check -module rulebooks/absent >"$scratch/out" 2>"$scratch/err"
+status=$?
+set -e
+[[ $status -eq 1 ]] || fail "absent allowlist: exit $status, want 1 (no exceptions)"
+grep -q '.github/testbudget/rulebooks/absent.allow' "$scratch/err" || fail "the message does not name where the allowlist goes: $(cat "$scratch/err")"
+
 run_case "-budget raises the bar"
 check slow_stream -budget 7s
 [[ $status -eq 0 ]] || fail "exit $status, want 0: $err"
