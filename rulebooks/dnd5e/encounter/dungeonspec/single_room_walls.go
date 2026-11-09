@@ -158,6 +158,7 @@ func wallsShape(gp *yaml.Node, add errSink) {
 			wallPointShape(line, "end", p+".line", add)
 		}
 		if appearance := requireMapping(w, "appearance", p, add); appearance != nil {
+			readMaterialOverrides(appearance, p+".appearance", add)
 			requireString(appearance, "assetRef", p+".appearance", add)
 			for _, k := range [...]string{"height", "thickness", "elevation"} {
 				requireNumber(appearance, k, p+".appearance", add)
@@ -900,13 +901,14 @@ func canonicalStructuralWalls(key string, walls []RoomWall) ([]encounter.Structu
 		dirX, dirZ := dx/length, dz/length
 
 		lowered := encounter.StructuralWallInput{
-			ID:        encounter.PropID(wall.ID),
-			Ref:       wall.Appearance.AssetRef,
-			From:      spatial.Point{X: start.X * k, Y: start.Z * k},
-			To:        spatial.Point{X: end.X * k, Y: end.Z * k},
-			Height:    wall.Appearance.Height * k,
-			Thickness: wall.Appearance.Thickness * k,
-			Elevation: wall.Appearance.Elevation * k,
+			ID:                encounter.PropID(wall.ID),
+			Ref:               wall.Appearance.AssetRef,
+			From:              spatial.Point{X: start.X * k, Y: start.Z * k},
+			To:                spatial.Point{X: end.X * k, Y: end.Z * k},
+			Height:            wall.Appearance.Height * k,
+			Thickness:         wall.Appearance.Thickness * k,
+			Elevation:         wall.Appearance.Elevation * k,
+			MaterialOverrides: materialOverridesOf(wall.Appearance.MaterialOverrides),
 		}
 		for j := range wall.Openings {
 			opening := wall.Openings[j]

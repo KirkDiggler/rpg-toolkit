@@ -329,6 +329,7 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		}
 		entry := r
 		entry.Cells = cells
+		entry.Ground = groundForCells(r.Ground, cells)
 		out.Regions = append(out.Regions, entry)
 	}
 	for _, p := range full.Props {
@@ -363,7 +364,8 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		if wallPresent {
 			wall = AtlasStructuralWall{
 				ID: w.id, Ref: w.ref, From: w.from, To: w.to,
-				Height: w.height, Thickness: w.thickness, Elevation: w.elevation,
+				MaterialOverrides: cloneMaterialOverrides(w.materialOverrides),
+				Height:            w.height, Thickness: w.thickness, Elevation: w.elevation,
 				FootprintCells: footprints[w.id],
 				Openings:       make([]AtlasStructuralOpening, 0, len(w.openings)),
 			}

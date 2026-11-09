@@ -26,7 +26,6 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
-	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -406,15 +405,9 @@ func (s *SneakSuite) TestAnAcceptedDeclarationIsOnTheRecord() {
 	for _, on := range []bool{true, false} {
 		next := s.enc.ToData().Log.NextSeq
 		s.sneak(on)
-		entries := s.enc.ToData().Log.Entries
-		var first *record.EntryData
-		for i := range entries {
-			if entries[i].Seq >= next {
-				first = &entries[i]
-				break
-			}
-		}
-		s.Require().NotNil(first, "on=%v wrote a beat", on)
+		entries := recordEntries(s.T(), s.enc, next)
+		s.Require().NotEmpty(entries, "on=%v wrote a beat", on)
+		first := entries[0]
 		var body map[string]any
 		s.Require().NoError(json.Unmarshal(first.Payload, &body))
 		s.Equal(map[string]any{"beat": encounter.BeatSneaking, "member": string(sneakRogue), "on": on}, body,

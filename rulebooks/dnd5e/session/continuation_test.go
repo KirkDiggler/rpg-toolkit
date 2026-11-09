@@ -516,14 +516,41 @@ func canonicalActs(acts []session.Act) []session.Act {
 	return out
 }
 
+// A cross-record diagnostic link must preserve its target when independent
+// runs mint different IDs. Removing the link would hide a real mismatch.
+func (s *ContinuationSuite) TestCanonicalRecordKeepsDiagnosticLinksRelative() {
+	rows := []session.RecordEvent{
+		{ID: "pick-id", Beat: encounter.BeatAnswered, Fields: json.RawMessage(`{}`)},
+		{ID: "decision-id", Beat: encounter.BeatBehaviorDecision, Fields: json.RawMessage(`{"pick_record":"pick-id"}`)},
+		{ID: "work-id", Beat: encounter.BeatBehaviorWork, Fields: json.RawMessage(`{"decision_record":"decision-id"}`)},
+	}
+	normal := canonicalRecord(rows)
+	s.Equal(`{"pick_record":"#1"}`, string(normal[1].Fields))
+	s.Equal(`{"decision_record":"#2"}`, string(normal[2].Fields))
+	rows[1].Fields = json.RawMessage(`{"pick_record":"work-id"}`)
+	wrong := canonicalRecord(rows)
+	s.Equal(`{"pick_record":"#3"}`, string(wrong[1].Fields))
+	s.NotEqual(normal, wrong, "normalization must not erase a wrong target")
+}
+
 // canonicalRecord is a record with its ids made ordinal. An act id also
 // appears inside a beat's fields, so those are compared with every id in
 // them made ordinal too.
 func canonicalRecord(events []session.RecordEvent) []session.RecordEvent {
 	ids, acts := ordinals{}, ordinals{}
+	for _, e := range events {
+		ids.of(e.ID)
+	}
 	out := make([]session.RecordEvent, 0, len(events))
 	for _, e := range events {
 		fields := string(e.Fields)
+		// Diagnostic backlinks are record IDs, not act IDs. Keep their actual
+		// relationship through the same bijection; don't omit those fields.
+		for original, ordinal := range ids {
+			if original != "" {
+				fields = strings.ReplaceAll(fields, `"`+original+`"`, `"`+ordinal+`"`)
+			}
+		}
 		if e.Act != "" {
 			fields = strings.ReplaceAll(fields, e.Act, acts.of(e.Act))
 		}

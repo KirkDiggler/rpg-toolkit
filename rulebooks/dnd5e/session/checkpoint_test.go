@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -49,6 +50,8 @@ type fencedStore struct {
 	onGet func()
 	// onGetSession, when set, runs once after the next GetSession has read.
 	onGetSession func()
+	// onSave, when set, runs at the start of every SaveFenced.
+	onSave func(in *session.SaveFencedInput)
 }
 
 func newFencedStore() *fencedStore {
@@ -78,6 +81,9 @@ func (f *fencedStore) GetFencedEncounter(
 
 func (f *fencedStore) SaveFenced(_ context.Context, in *session.SaveFencedInput) (*session.SaveFencedOutput, error) {
 	f.expected = append(f.expected, in.Expected)
+	if f.onSave != nil {
+		f.onSave(in)
+	}
 	if held := f.versions[in.Encounter]; held != in.Expected {
 		f.refusals++
 		return nil, fmt.Errorf("encounter %q at %d, save expected %d: %w",
@@ -499,4 +505,126 @@ func (s *CheckpointFenceSuite) TestASeatedLevelRidesTheFence() {
 	s.Equal(2, s.store.chars.byID["alice"].Level)
 	s.Equal(versionBefore+1, s.store.versions[testSession], "the level moved the run's checkpoint")
 	s.Zero(s.store.chars.saves, "the level never went around the fence")
+}
+
+// pair launches alice and bob in one hall over the fenced store, so one
+// leaving does not close the run.
+func (s *CheckpointFenceSuite) pair() *session.Manager {
+	mgr := s.manager(&fakeStream{}, nil)
+	sc := authoredWorld()
+	sc.Party = append(sc.Party, seatAt("bob", 2, 2))
+	_, err := mgr.Launch(context.Background(), sceneInput(sc))
+	s.Require().NoError(err)
+	s.Require().Equal("sess", s.seatOf("alice"))
+	s.Require().Equal("sess", s.seatOf("bob"))
+	return mgr
+}
+
+func (s *CheckpointFenceSuite) seatOf(character string) string {
+	s.store.seats.mu.Lock()
+	defer s.store.seats.mu.Unlock()
+	return s.store.seats.byID[character].Session
+}
+
+// TestAnExitUnderTheFenceClearsTheLeaversSeat is rpg-toolkit#2332: Exit
+// cleared the seat after its commit, the fenced save had already landed,
+// and the clear was dropped with the guard. Fenced, the clear rides the save.
+func (s *CheckpointFenceSuite) TestAnExitUnderTheFenceClearsTheLeaversSeat() {
+	mgr := s.pair()
+
+	out, err := mgr.Exit(context.Background(), &session.ExitInput{Session: testSession, Member: "alice"})
+
+	s.Require().NoError(err)
+	s.Empty(s.seatOf("alice"), "the leaver's seat is cleared in the store")
+	s.Equal("sess", s.seatOf("bob"), "the one who stayed is still seated")
+	s.Contains(out.Saved.Written, "seat:alice")
+	s.Zero(s.store.seats.saves, "the clear rode the fenced save")
+}
+
+// TestARunClosingUnderTheFenceClearsEverySeat is the commit's half: End
+// closes the run, and every player's seat clears in the same fenced save.
+func (s *CheckpointFenceSuite) TestARunClosingUnderTheFenceClearsEverySeat() {
+	mgr := s.pair()
+
+	out, err := mgr.End(context.Background(), &session.EndInput{Session: testSession, Ending: session.EndingWithdrawn})
+
+	s.Require().NoError(err)
+	s.Empty(s.seatOf("alice"))
+	s.Empty(s.seatOf("bob"))
+	s.Contains(out.Saved.Written, "seat:alice")
+	s.Contains(out.Saved.Written, "seat:bob")
+	s.Zero(s.store.seats.saves, "the clears rode the fenced save")
+}
+
+// TestAStaleExitKeepsTheSeat: the clear is one of the pieces, so a stale
+// Exit lands it no more than the world.
+func (s *CheckpointFenceSuite) TestAStaleExitKeepsTheSeat() {
+	mgr := s.pair()
+	s.store.onGet = func() { s.store.versions[testSession]++ }
+
+	_, err := mgr.Exit(context.Background(), &session.ExitInput{Session: testSession, Member: "alice"})
+
+	s.Require().ErrorIs(err, session.ErrStaleCheckpoint)
+	s.Equal("sess", s.seatOf("alice"))
+}
+
+// heldLocker grants every guard at once and records which character guards
+// are held, so a test can look at them from inside the save.
+type heldLocker struct {
+	mu         sync.Mutex
+	characters map[string]bool
+}
+
+func (l *heldLocker) LockSession(context.Context, *session.LockSessionInput) (*session.LockSessionOutput, error) {
+	return &session.LockSessionOutput{Release: func() {}}, nil
+}
+
+func (l *heldLocker) LockCharacter(_ context.Context, in *session.LockCharacterInput) (*session.LockCharacterOutput, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.characters[in.Character] = true
+	return &session.LockCharacterOutput{Release: func() {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		delete(l.characters, in.Character)
+	}}, nil
+}
+
+func (l *heldLocker) held(character string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.characters[character]
+}
+
+// TestTheClearedSeatsGuardIsHeldAcrossTheSave: a seat changes under both
+// guards, so the leaver's character guard is still held when the save that
+// clears the seat runs. Released before it, a second verb could seat alice
+// between the clear and the save.
+func (s *CheckpointFenceSuite) TestTheClearedSeatsGuardIsHeldAcrossTheSave() {
+	locker := &heldLocker{characters: map[string]bool{}}
+	mgr, err := session.NewManager(&session.Config{
+		Record: session.DiscardRecord{}, Acts: &fakeStream{}, Seats: s.store.seats,
+		CharacterConfig: newFakeCharacterConfig(), PresentationIDs: testPresentationIDs{},
+		Dice: testDice{}, TurnDriver: session.Driver(), Locker: locker,
+		Sessions: storeSessions{store: s.store}, Encounters: s.store, Characters: s.store.chars,
+	})
+	s.Require().NoError(err)
+	sc := authoredWorld()
+	sc.Party = append(sc.Party, seatAt("bob", 2, 2))
+	_, err = mgr.Launch(context.Background(), sceneInput(sc))
+	s.Require().NoError(err)
+
+	heldAtSave := false
+	s.store.onSave = func(in *session.SaveFencedInput) {
+		for _, seat := range in.Seats {
+			if seat.Character == "alice" {
+				heldAtSave = locker.held("alice")
+			}
+		}
+	}
+	_, err = mgr.Exit(context.Background(), &session.ExitInput{Session: testSession, Member: "alice"})
+
+	s.Require().NoError(err)
+	s.True(heldAtSave, "alice's guard was held when the save clearing her seat ran")
+	s.False(locker.held("alice"), "and given back after it")
 }

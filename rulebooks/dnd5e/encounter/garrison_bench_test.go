@@ -5,6 +5,7 @@ package encounter_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -91,6 +92,24 @@ func benchGarrisonMove(b *testing.B, listen bool) {
 		}
 	}
 	b.StopTimer()
+	// Read before blobBytes enforces the32-entry save window. These payload
+	// counts expose the capture cost, including first-use symbols amortized
+	// over this run; saved-blob growth alone would hide most diagnostic volume.
+	recorded, err := enc.ReadRecord(&encounter.ReadRecordInput{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	var diagnosticCount, diagnosticBytes, payloadBytes int
+	for _, entry := range recorded.Entries {
+		payloadBytes += len(entry.Payload)
+		if strings.HasPrefix(entry.Tags["tag"], "behavior_") {
+			diagnosticCount++
+			diagnosticBytes += len(entry.Payload)
+		}
+	}
+	b.ReportMetric(float64(diagnosticCount)/float64(b.N), "diagnostic-records/op")
+	b.ReportMetric(float64(diagnosticBytes)/float64(b.N), "diagnostic-payload-bytes/op")
+	b.ReportMetric(float64(payloadBytes)/float64(b.N), "record-payload-bytes/op")
 	b.ReportMetric(float64(opening), "blob-bytes")
 	b.ReportMetric(float64(blobBytes(b, enc)-opening)/float64(b.N), "blob-growth-bytes/op")
 	b.ReportMetric(float64(raiseSteps)/float64(b.N), "raises/op")

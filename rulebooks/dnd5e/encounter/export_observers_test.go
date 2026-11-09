@@ -23,13 +23,13 @@ func (e *Encounter) ExportedObserversOf(cells []spatial.Position, declared []Mem
 	return e.observersOf(cells, declared)
 }
 
-// ExportedProbeRebuilds hands fn every observer list
+// ExportedProbeRebuilds hands fn every observer list e's
 // [Encounter.rebuildPercepts] is asked to rebuild until the returned func
 // puts the probe back.
-func ExportedProbeRebuilds(fn func(observers []MemberID)) func() {
-	prev := rebuildProbe
-	rebuildProbe = fn
-	return func() { rebuildProbe = prev }
+func (e *Encounter) ExportedProbeRebuilds(fn func(observers []MemberID)) func() {
+	prev := e.rebuildProbe
+	e.rebuildProbe = fn
+	return func() { e.rebuildProbe = prev }
 }
 
 // ExportedEveryoneLooks makes every look of e the whole roster's, as before

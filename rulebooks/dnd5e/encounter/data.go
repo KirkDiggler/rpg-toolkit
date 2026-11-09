@@ -327,11 +327,12 @@ type CanvasData struct {
 // at load, refused by name when absent, never defaulted — a region whose
 // light nobody stated is a fact this module may not invent (rpg-toolkit#1033).
 type RegionData struct {
-	ID        string         `json:"id"`
-	Name      string         `json:"name,omitempty"`
-	Cells     []PositionData `json:"cells"`
-	Archetype string         `json:"archetype"`
-	Lighting  *LightingData  `json:"lighting"`
+	ID        string            `json:"id"`
+	Name      string            `json:"name,omitempty"`
+	Cells     []PositionData    `json:"cells"`
+	Archetype string            `json:"archetype"`
+	Lighting  *LightingData     `json:"lighting"`
+	Ground    *RegionGroundData `json:"ground,omitempty"`
 
 	// Concealed is a TOMBSTONE: the key a region wrote while a region was
 	// the thing that could be hidden (rpg-toolkit#1371 through
@@ -785,14 +786,15 @@ type AxialPointData struct {
 // with no elevation), so absence and zero have to be told apart by the shape.
 // Openings omit when there are none, which is the same fact as an absent list.
 type StructuralWallData struct {
-	ID        string                  `json:"id"`
-	Ref       string                  `json:"ref"`
-	From      PositionData            `json:"from"`
-	To        PositionData            `json:"to"`
-	Height    float64                 `json:"height"`
-	Thickness float64                 `json:"thickness"`
-	Elevation float64                 `json:"elevation"`
-	Openings  []StructuralOpeningData `json:"openings,omitempty"`
+	ID                string                  `json:"id"`
+	Ref               string                  `json:"ref"`
+	From              PositionData            `json:"from"`
+	To                PositionData            `json:"to"`
+	Height            float64                 `json:"height"`
+	Thickness         float64                 `json:"thickness"`
+	Elevation         float64                 `json:"elevation"`
+	Openings          []StructuralOpeningData `json:"openings,omitempty"`
+	MaterialOverrides []MaterialOverrideData  `json:"material_overrides,omitempty"`
 }
 
 // StructuralOpeningData is the persistent representation of a
@@ -2521,6 +2523,7 @@ func fieldDataFrom(f *field) FieldData {
 		out.Regions[i] = RegionData{
 			ID: r.ID, Name: r.Name, Cells: cells, Archetype: r.Archetype,
 			Lighting: &LightingData{Intensity: &intensity},
+			Ground:   regionGroundData(r.Ground),
 		}
 	}
 
@@ -2675,13 +2678,14 @@ func fieldDataFrom(f *field) FieldData {
 		for i := range f.structuralWalls {
 			w := &f.structuralWalls[i]
 			swd := StructuralWallData{
-				ID:        w.id,
-				Ref:       w.ref,
-				From:      PositionData{X: w.from.X, Y: w.from.Y},
-				To:        PositionData{X: w.to.X, Y: w.to.Y},
-				Height:    w.height,
-				Thickness: w.thickness,
-				Elevation: w.elevation,
+				ID:                w.id,
+				Ref:               w.ref,
+				From:              PositionData{X: w.from.X, Y: w.from.Y},
+				To:                PositionData{X: w.to.X, Y: w.to.Y},
+				Height:            w.height,
+				Thickness:         w.thickness,
+				Elevation:         w.elevation,
+				MaterialOverrides: materialOverridesData(w.materialOverrides),
 			}
 			for j := range w.openings {
 				o := &w.openings[j]
@@ -3360,9 +3364,10 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// panic on the load path rather than an empty answer.
 	world := newEncounterWorld()
 	e := &Encounter{
-		discovery:     copyDiscoveryStates(data.Discovery),
-		sneakVerdicts: copySneakVerdicts(data.SneakVerdicts),
-		sightSweeps:   copySightSweeps(data.SightSweeps),
+		visibleCacheEntries: visibleCacheBound,
+		discovery:           copyDiscoveryStates(data.Discovery),
+		sneakVerdicts:       copySneakVerdicts(data.SneakVerdicts),
+		sightSweeps:         copySightSweeps(data.SightSweeps),
 		// THE LAST LOOK IS THE SAVED HIGH-WATER (rpg-project#762): a verb
 		// ends with a look, so the reading a blob was saved at is the one
 		// every current sighting in it is known true at. Derived, not stored.
@@ -3869,6 +3874,7 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 		in.Regions[i] = RegionInput{
 			ID: rd.ID, Name: rd.Name, Cells: cells, Archetype: rd.Archetype,
 			Lighting: &Lighting{Intensity: *rd.Lighting.Intensity},
+			Ground:   regionGroundFromData(rd.Ground),
 		}
 	}
 
@@ -3916,13 +3922,14 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 
 	for _, swd := range fd.StructuralWalls {
 		w := StructuralWallInput{
-			ID:        swd.ID,
-			Ref:       swd.Ref,
-			From:      spatial.Point{X: swd.From.X, Y: swd.From.Y},
-			To:        spatial.Point{X: swd.To.X, Y: swd.To.Y},
-			Height:    swd.Height,
-			Thickness: swd.Thickness,
-			Elevation: swd.Elevation,
+			ID:                swd.ID,
+			Ref:               swd.Ref,
+			From:              spatial.Point{X: swd.From.X, Y: swd.From.Y},
+			To:                spatial.Point{X: swd.To.X, Y: swd.To.Y},
+			Height:            swd.Height,
+			Thickness:         swd.Thickness,
+			Elevation:         swd.Elevation,
+			MaterialOverrides: materialOverridesFromData(swd.MaterialOverrides),
 		}
 		for _, sod := range swd.Openings {
 			o := StructuralOpeningInput{ID: sod.ID, Position: sod.Position, Width: sod.Width}

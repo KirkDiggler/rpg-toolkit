@@ -842,6 +842,20 @@ func (s *ActFoldSuite) TestFoldATableBeatIsNoAct() {
 	}
 }
 
+// Diagnostic evidence stays record-only even if an entry is accidentally
+// audienced. It cannot become an undecoded clock act or a public state change.
+func (s *ActFoldSuite) TestBehaviorDiagnosticsAreRecordOnly() {
+	for _, kind := range []string{encounter.BeatBehaviorConfig, encounter.BeatBehaviorDecision, encounter.BeatBehaviorWork} {
+		s.Run(kind, func() {
+			entry := s.beat("time:01HZZZZZZZZZZZZZZZZZZZPICK", map[string]any{
+				"beat": kind, "schema": 1, "member": "guard", "config": "original",
+				"on": "heard", "operation": "observe", "status": "partial",
+			})
+			s.Empty(foldActs("sess", "fighter", []record.Entry{entry}), "diagnostics must not enter player narrative")
+		})
+	}
+}
+
 // TestFold_StateBeat is rpg-project#766 S6: the castle reserve's machine
 // entering `marching` because the gate is fighting, written as the encounter
 // writes it (machine.go appendStateBeat, audience the whole roster), folds
