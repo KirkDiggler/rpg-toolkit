@@ -124,6 +124,11 @@ func (m *Manager) Seat(ctx context.Context, in *SeatInput) (*SeatOutput, error) 
 // Returns ErrBadRepository for a repository that reports success with no data
 // or with another character's seat, and any other repository error wrapped.
 func (m *Manager) seatOf(ctx context.Context, character string) (string, error) {
+	if m.pending != nil {
+		if held, ok := m.pending.seat(character); ok {
+			return held.Session, nil
+		}
+	}
 	seat, err := m.seats.GetSeat(ctx, character)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -147,6 +152,11 @@ func (m *Manager) seatOf(ctx context.Context, character string) (string, error) 
 // and the seat that did not land (S6).
 func (m *Manager) writeSeat(ctx context.Context, scope *writeScope, character, session string) error {
 	aggregate := "seat:" + character
+	if scope.fence.held {
+		// Fenced: the seat rides the verb's one fenced save (checkpoint.go).
+		m.pending.putSeat(scope.session, SeatData{Character: character, Session: session})
+		return nil
+	}
 	if err := m.seats.SaveSeat(ctx, &SeatData{Character: character, Session: session}); err != nil {
 		return &SaveError{
 			Report: SaveReport{
