@@ -127,6 +127,9 @@ func (s sheetStore) save(ctx context.Context, data *character.Data) error {
 	if s.scope.fence.held {
 		// Fenced: the sheet rides the verb's one fenced save (checkpoint.go),
 		// and is named on the report when that save lands.
+		if s.scope.fence.saved {
+			return errWrittenAfterTheSave(s.scope, "character:"+data.ID)
+		}
 		if err := s.pending.putSheet(s.scope.session, data); err != nil {
 			return saveErrorAfterWrites(s.scope, "character:"+data.ID, err)
 		}
