@@ -154,6 +154,9 @@ func (m *Manager) writeSeat(ctx context.Context, scope *writeScope, character, s
 	aggregate := "seat:" + character
 	if scope.fence.held {
 		// Fenced: the seat rides the verb's one fenced save (checkpoint.go).
+		if scope.fence.saved {
+			return errWrittenAfterTheSave(scope, aggregate)
+		}
 		m.pending.putSeat(scope.session, SeatData{Character: character, Session: session})
 		return nil
 	}
@@ -208,15 +211,28 @@ func (m *Manager) refuseSeatedElsewhere(ctx context.Context, session, character 
 // A seat naming a different run is left alone: this run's ending is not that
 // run's business.
 func (m *Manager) clearSeats(ctx context.Context, scope *writeScope, characters []string) error {
+	release, err := m.clearSeatsHeld(ctx, scope, characters)
+	release()
+	return err
+}
+
+// clearSeatsHeld is [Manager.clearSeats] that hands the character guards it
+// took back to the caller instead of giving them back itself, so a fenced
+// commit can hold them across the save its cleared seats ride. The release
+// is never nil, and gives back only what this call took.
+func (m *Manager) clearSeatsHeld(ctx context.Context, scope *writeScope, characters []string) (func(), error) {
 	if len(characters) == 0 {
-		return nil
+		return func() {}, nil
 	}
 	release, err := m.acquireCharactersFor(ctx, scope, characters...)
 	if err != nil {
-		return saveErrorAfterWrites(scope, "", err)
+		return func() {}, saveErrorAfterWrites(scope, "", err)
 	}
-	defer release()
+	return release, m.writeClearedSeats(ctx, scope, characters)
+}
 
+// writeClearedSeats writes the clears, under guards the caller holds.
+func (m *Manager) writeClearedSeats(ctx context.Context, scope *writeScope, characters []string) error {
 	ordered := append([]string(nil), characters...)
 	sort.Strings(ordered)
 	for _, character := range ordered {

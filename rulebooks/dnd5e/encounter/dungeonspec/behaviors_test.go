@@ -6,6 +6,7 @@ package dungeonspec_test
 import (
 	"context"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 	"os"
 	"strings"
@@ -317,7 +318,8 @@ func (s *behaviorSourceSuite) TestAuthoredSiteDrivesRealMovementAndReload() {
 	die := &behaviorSourceDie{}
 	caps.Driver, caps.Roller, caps.Sheets = encounter.BehaviorDriver{}, die, behaviorSourceSheets{}
 	e, err := encounter.NewEncounter(&encounter.SetupInput{Field: compiled.Field, Members: members,
-		Endings: []encounter.EndingInput{{Key: "stop", Trigger: encounter.TriggerExternal{}}}, Capabilities: caps})
+		Retention: encounter.RetentionUnbounded, // the real session host's capture policy
+		Endings:   []encounter.EndingInput{{Key: "stop", Trigger: encounter.TriggerExternal{}}}, Capabilities: caps})
 	s.Require().NoError(err)
 	for _, cell := range []spatial.Position{{X: 1, Y: 2}, {X: 0, Y: 2}, {X: 1, Y: 2}} {
 		_, err := e.Step(&encounter.StepInput{Member: "hero", To: cell})
@@ -338,4 +340,28 @@ func (s *behaviorSourceSuite) TestAuthoredSiteDrivesRealMovementAndReload() {
 	s.Equal(spatial.Position{X: 6, Y: 1}, positions["west"])
 	s.Equal(spatial.Position{X: 14}, positions["court"])
 	s.Equal(6, die.calls, "three real opportunities, two guards, no selection on reload or completion")
+	// Runtime symbols must describe the real compiler's bound configuration,
+	// not a separate fixture representation or a new expansion on reload.
+	record, err := e.ReadRecord(&encounter.ReadRecordInput{})
+	s.Require().NoError(err)
+	symbols := map[string]json.RawMessage{}
+	count := 0
+	for _, entry := range record.Entries {
+		var symbol struct {
+			Beat          string          `json:"beat"`
+			Member        string          `json:"member"`
+			Configuration json.RawMessage `json:"configuration"`
+		}
+		s.Require().NoError(json.Unmarshal(entry.Payload, &symbol))
+		if symbol.Beat == encounter.BeatBehaviorConfig {
+			count++
+			symbols[symbol.Member] = symbol.Configuration
+		}
+	}
+	s.Require().Equal(2, count, "one exact configuration for each actor, not one per reload")
+	for _, monster := range compiled.Monsters {
+		expected, err := jsonv2.Marshal(monster.Behaviors)
+		s.Require().NoError(err)
+		s.JSONEq(string(expected), string(symbols[monster.MemberID]))
+	}
 }
