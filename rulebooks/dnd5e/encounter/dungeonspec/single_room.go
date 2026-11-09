@@ -919,6 +919,7 @@ type RoomRegion struct {
 	Name     string        `yaml:"name" json:"name"`
 	Lighting RoomLighting  `yaml:"lighting" json:"lighting"`
 	Cells    []RoomCellRow `yaml:"cells" json:"cells"`
+	Ground   *RoomGround   `yaml:"ground,omitempty" json:"ground,omitempty"`
 }
 
 // RoomLighting is a region's light level, the encounter's own word: an

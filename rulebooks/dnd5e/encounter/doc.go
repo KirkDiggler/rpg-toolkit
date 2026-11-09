@@ -245,6 +245,16 @@
 // never supplies a carrier or destination. Pickups and door changes notify
 // actual witnesses, not everybody who remembers the subject.
 //
+// # Region ground appearance
+//
+// RegionInput.Ground is optional, opaque appearance: a base ref and explicit
+// paint on owned cells. Construction converts paint cells once, captures a
+// detached authored copy for persistence, and never derives movement, elevation
+// or sight from a ref. Absence preserves the consumer's existing default.
+// AtlasFor and every discovery payload restrict paint to their delivered
+// region cells; no hidden paint map travels with a partial region. Saved
+// appearance is immutable and is not enriched from later source edits.
+//
 // # Authored member appearance
 //
 // MemberInput and JoinInput may supply an opaque AppearanceRef, independent of

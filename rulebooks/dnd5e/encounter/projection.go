@@ -329,6 +329,7 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		}
 		entry := r
 		entry.Cells = cells
+		entry.Ground = groundForCells(r.Ground, cells)
 		out.Regions = append(out.Regions, entry)
 	}
 	for _, p := range full.Props {
