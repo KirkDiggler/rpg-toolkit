@@ -56,11 +56,11 @@ The generic tool never interprets a D&D address, spell ref, damage type, concent
 
 ### Local assemblies are composition, not a second runner
 
-`AssemblyInput.Parts` is an ordered list of `PartInput{Key, Compose, OnTerminal}`. `Key` is a required stable local identifier; duplicate/empty keys are refused. `Compose` is the existing `ComposeInput`. `OnTerminal` explicitly chooses local-part completion or a request to end the linked application. No scope is inferred from a kind's name.
+`AssemblyInput.Parts` is an ordered list of `PartInput{Key, Compose, OnTerminal}`. `Key` is a required stable local identifier; duplicate/empty keys are refused. `Compose` is the existing `ComposeInput`. `OnTerminal` explicitly chooses local-part completion, local-attachment end, or a request to end the linked application. `EndAttachment` is the recipient-loss case: its ordinary rest-policy part ends that recipient without automatically ending other recipients. No scope is inferred from a kind's name.
 
 Every part uses the existing machine. Their bags and state names are private to their keys. Two parts listening to the same occurrence both get their own machine evaluation while the application remains live. Concatenating their transitions into one recipe would incorrectly let the first matching transition suppress the other part (R3).
 
-A local terminal part remains terminal in `AssemblySnapshot.Parts`; restoration never recreates it. It is not reattached. A required maintenance part saved terminal while its application is still live is invalid data. A complete snapshot names every declared part exactly once. Empty/missing snapshots are not fresh construction.
+A local terminal part remains terminal in `AssemblySnapshot.Parts`; restoration never recreates it. It is not reattached. A terminal attachment-ending or application-maintenance part cannot be restored as a live attachment/application. A complete snapshot names every declared part exactly once. Empty/missing snapshots are not fresh construction.
 
 The assembly attaches parts in declared order and unwinds successfully attached parts if a later attachment fails. `Remove` detaches without ending gameplay. A bound part key prefixes its output identifiers with the local attachment instance key, so two casters' equal recipes cannot collide in a chain or information row.
 
