@@ -14,7 +14,7 @@ func (s *SpeakWorldSuite) TestSayActivityReachesTheActFromCapturedRecordOnly() {
 		line.Success = []encounter.Answer{{Weight: 1, Say: "Let me think.",
 			Activity: &behavior.ActivityCue{Ref: "dnd5e:activities:thoughtful", Cycles: 2}}}
 		in.Options = []encounter.Option{line}
-		in.Table = encounter.Table{encounter.AnswerTime: {{Weight: 1, Hold: true}}}
+		in.Behaviors = ordinaryBehavior(encounter.Table{encounter.AnswerTime: {{Weight: 1, Hold: true}}})
 	}
 	mgr := s.front([]int{10, 1, 1})
 	out, err := s.appeal(mgr)

@@ -904,15 +904,17 @@ See "Paused / on hold" below.
 
 ### Mechanics retirement and the remaining live dependency
 
-`mechanics/resources` is the only current mechanics module. It backs the
+`mechanics/resources` remains a live mechanics dependency. It backs the
 rulebook's `combat.RecoverableResource`, character resource storage and rest
 recovery; it is not dead infrastructure. Legacy effects, features and
 proficiency are retired rather than migrated. The earlier conditions/spells
 retirement is historical too, not an outstanding events-API migration.
 
-`examples/effects` remains a prototype, and `mind/machine` remains an
-independent implementation. Their future evolution is separate from removing
-unused modules. See the [mechanics guide](architecture/components/mechanics.md)
+The generic effects composer occupies `mechanics/effects`, with its own machine
+inside the module; `mind/machine` remains independent. This is the new
+implementation, not restoration of the retired API. Its release/adoption status
+is tracked in [#705](https://github.com/KirkDiggler/rpg-project/issues/705), separately
+from legacy retirement and later production condition migration. See the [mechanics guide](architecture/components/mechanics.md)
 and [retirement record](https://github.com/KirkDiggler/rpg-project/issues/853).
 
 ### Spatial

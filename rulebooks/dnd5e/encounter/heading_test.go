@@ -257,11 +257,11 @@ func TestABlobFromBeforeTheHeadingIsRefusedAtLoad(t *testing.T) {
 	}}
 	enc := facingFight(t, []encounter.MemberInput{
 		{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 4}},
-		{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 7, Y: 4}, Table: table},
+		{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 7, Y: 4}, Behaviors: ordinaryBehavior(table)},
 	}, passDriver{}, &scriptedStriker{kind: encounter.OutcomeMissed}, quietMover{})
 	blob, err := json.Marshal(enc.ToData())
 	require.NoError(t, err)
-	require.Contains(t, string(blob), `"search":{"distance":6,"heading":"went"}`, "precondition: today's blob names the word")
+	require.Contains(t, string(blob), `"Search":{"Distance":6,"Heading":"went"}`, "precondition: canonical configuration names the word")
 
 	load := func(raw string) error {
 		var data encounter.EncounterData
@@ -272,7 +272,7 @@ func TestABlobFromBeforeTheHeadingIsRefusedAtLoad(t *testing.T) {
 	}
 	require.NoError(t, load(string(blob)), "the blob with its heading loads")
 
-	old := strings.Replace(string(blob), `"search":{"distance":6,"heading":"went"}`, `"search":{"distance":6}`, 1)
+	old := strings.Replace(string(blob), `"Search":{"Distance":6,"Heading":"went"}`, `"Search":{"Distance":6}`, 1)
 	err = load(old)
 	require.ErrorIs(t, err, encounter.ErrInvalidData)
 	require.ErrorIs(t, err, behavior.ErrBadSearch)

@@ -41,7 +41,7 @@ func TestAHeldCrossingOnTheTurnClockPaysNoMovement(t *testing.T) {
 	ref, err := core.ParseString("dnd5e:machines:posted")
 	require.NoError(t, err)
 	skeleton := monsterAt("skel-1", refs.Monsters.Skeleton().String(), 3, 1)
-	skeleton.Machine = &machine.Recipe{Ref: *ref, Initial: "posted", States: map[string]machine.State{"posted": {}}}
+	skeleton.Behaviors.Instances[0].Instance.Recipe = machine.Recipe{Ref: *ref, Initial: "posted", States: map[string]machine.State{"posted": {}}}
 	skeleton.Posts = map[string]encounter.Post{"posted": {Door: "gate", Cells: []spatial.Position{post}}}
 
 	launched := launchScene(t, mgr, scene{

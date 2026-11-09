@@ -303,7 +303,7 @@ func (s *BeatOrderTestSuite) blockedScene(table ...encounter.Table) *encounter.E
 	driver := encounter.Driver(passDriver{})
 	sheets := sheetFacts{alice: {}, goblin: {}}
 	if len(table) > 0 {
-		monster.Table = table[0]
+		monster.Behaviors = ordinaryBehavior(table[0])
 		sheets[goblin] = encounter.SheetFacts{SpeedFeet: 30}
 		driver = tableDriver()
 	}
@@ -323,6 +323,7 @@ func (s *BeatOrderTestSuite) blockedScene(table ...encounter.Table) *encounter.E
 			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        driver,
+			Roller:        rollsLowest{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},

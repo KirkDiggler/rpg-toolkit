@@ -69,6 +69,36 @@ func AssessActionEffects(in *AssessActionEffectsInput) (*AssessActionEffectsOutp
 			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "condition %s bears on actions but has no description", ref.String())
 		}
 
+		if plural, ok := condition.(contributions.ActionEffectsAssessor); ok && own.kind == bearingAnswers {
+			answer, err := plural.AssessActionEffects(&contributions.AssessActionInput{Frame: in.Frame.Clone()})
+			if err != nil {
+				return nil, fmt.Errorf("assess %s: %w", ref.String(), err)
+			}
+			if answer == nil {
+				return nil, rpgerr.Newf(rpgerr.CodeInternal, "condition %s returned no effects", ref.String())
+			}
+			for _, row := range answer.Effects {
+				if row.ID == "" || row.Source.Ref == nil || row.Source.Ref.String() != ref.String() || row.Source.Name == "" || row.Description == "" {
+					return nil, rpgerr.Newf(rpgerr.CodeInternal, "condition %s returned an invalid effect row", ref.String())
+				}
+				switch row.State {
+				case contributions.StateApplies, contributions.StateDoesNotApply, contributions.StateDepends, contributions.StateUnavailable:
+				default:
+					return nil, rpgerr.Newf(rpgerr.CodeInternal, "condition %s returned unknown effect state %q", ref.String(), row.State)
+				}
+				if row.State != contributions.StateApplies && row.Benefit != "" {
+					return nil, rpgerr.Newf(rpgerr.CodeInternal, "condition %s returned an unapplied benefit", ref.String())
+				}
+				if _, duplicate := ids[row.ID]; duplicate {
+					return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "duplicate effect row id %q", row.ID)
+				}
+				ids[row.ID] = struct{}{}
+				row.Participation = own.participation
+				effects = append(effects, row)
+			}
+			continue
+		}
+
 		effect := contributions.Effect{
 			ID:            ref.String(),
 			Source:        contributions.Source{Ref: &ref, Name: display.Name},

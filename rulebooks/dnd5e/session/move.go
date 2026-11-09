@@ -72,6 +72,10 @@ const (
 	MovementCompleted MovementStatus = "completed"
 	MovementPaused    MovementStatus = "paused"
 	MovementStopped   MovementStatus = "stopped"
+	// MovementContinuing is an answer given before the walk ended: the next
+	// step pays a world round, and that step and everything after it run
+	// after the answer as a continuation ([MoveOutput.Continues]).
+	MovementContinuing MovementStatus = "continuing"
 )
 
 // MoveOutput reports how far the member got and what it revealed.
@@ -119,6 +123,37 @@ type MoveOutput struct {
 
 	// Delivery names what reached the event stream.
 	Delivery DeliveryReport `json:"delivery"`
+
+	// Continues is true when the walk answered before it ended
+	// (rpg-project#879 R2, "the verb answers before the world runs"): the
+	// host configured [Config.Continuations] and the walker's next step pays
+	// a world round. Status is then [MovementContinuing]; Steps and
+	// Discovered are the steps taken before that one; Outcome, Formed,
+	// Barred and JoinedCombat are empty because the walk has not ended; and
+	// Saved and Delivery are empty because nothing is saved or delivered
+	// until the rest has run. The remaining steps arrive on the stream as
+	// the walker's own moved beats after Through, in the same order and
+	// beside the same world beats a whole walk records; the continuation's
+	// [ContinuationReport] is how the walk ended.
+	//
+	// False whenever no pace came due along the path, and always without a
+	// runner: the answer is then the whole walk, saved and delivered.
+	//
+	// A CONTINUING ANSWER STANDS ONLY IF ITS REST LANDS. Nothing is saved
+	// before the rest runs, so a continuation that fails persists none of
+	// the walk, the answered steps included: Steps and Through then name
+	// moves the record never got (rpg-project#879, §Where the instance
+	// lives). The host learns it from the continuation's error and must
+	// tell the client to re-read from before the move.
+	Continues bool `json:"continues,omitempty"`
+
+	// Through is the record id the answer covers up to when Continues is
+	// true; the walker's own moved beats after it continue the walk. It is
+	// the moved beat of the last step in Steps, or, for an answer with no
+	// steps (the very first step pays the round), the last record entry at
+	// the moment of the answer. Empty only when Continues is false, or when
+	// the record holds no entry at all.
+	Through string `json:"through,omitempty"`
 }
 
 // There were TraverseInput and TraverseOutput here, and a Traverse verb that
@@ -133,6 +168,11 @@ type MoveOutput struct {
 // step, and resumed walks pay only for additional completed steps. A visible
 // teammate in combat admits the walker before entering their occupied cell.
 // Input, placement, participation, and persistence errors remain errors.
+//
+// With [Config.Continuations] set, a world-clock walk whose next step pays a
+// round answers before that step ([MoveOutput.Continues]) and hands the rest
+// to the runner with the session's guard still held; see
+// [ContinuationRunner]. Without one the whole walk runs before the answer.
 func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("move: %w", ErrNilInput)
@@ -141,7 +181,25 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 	if lockErr != nil {
 		return nil, lockErr
 	}
+	// THE GUARD IS THE CONTINUATION'S ONCE IT IS HANDED OFF: every return
+	// before that releases it here, and a continued walk releases it when
+	// its rest ends.
+	guard := newHeldGuard(release)
+	release = guard.verbRelease
 	defer release()
+	// A walk that may continue is opened under a context the hand-off can
+	// re-parent: the encounter's host seams keep the context they are
+	// built under, and the rest runs after the request's has ended.
+	//
+	// The runner is handed the REQUEST's context, never this one: a runner
+	// continuing under a context derived from it would re-parent the verb's
+	// context onto itself.
+	request := ctx
+	var vctx *verbContext
+	if m.continuations != nil {
+		vctx = newVerbContext(ctx)
+		ctx = vctx
+	}
 	if in.Member == "" {
 		return nil, fmt.Errorf("move: %w", ErrNoMemberID)
 	}
@@ -247,11 +305,37 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 	}
 
 	// runWalk asks per cell instead and this verb asks not at all.
-	res, err := m.runWalk(ctx, scope, in.Member, in.Path)
+	res, rest, err := m.startWalk(ctx, scope, in.Member, in.Path, m.continuations != nil)
 	if err != nil {
 		// A cell's opportunity attack can already have saved sheets before a
 		// later cell refuses, so the refusal names what landed (S6).
 		return nil, fmt.Errorf("move: %w", saveErrorAfterWrites(scope, "", err))
+	}
+
+	if rest != nil {
+		// A PACE CAME DUE: the walker's next step pays a world round. The
+		// answer is the steps so far; that step, the raise it fires inside,
+		// the steps after, the save and the delivery are the continuation's,
+		// in exactly the order a whole walk takes them.
+		through, throughErr := answerThrough(scope, res)
+		if throughErr != nil {
+			return nil, fmt.Errorf("move: %w", throughErr)
+		}
+		answer := &MoveOutput{
+			Status:     MovementContinuing,
+			Steps:      res.steps,
+			Discovered: nilIfEmpty(res.discovered),
+			Continues:  true,
+			Through:    through,
+		}
+		err = m.handOff(request, in.Session, VerbMove, vctx, guard,
+			func(ctx context.Context) (*ContinuationReport, error) {
+				return m.continueWalk(ctx, scope, in.Member, in.Path, rest)
+			})
+		if err != nil {
+			return nil, fmt.Errorf("move: %w", err)
+		}
+		return answer, nil
 	}
 
 	if err = m.saveWalkProgress(ctx, scope); err != nil {
@@ -325,6 +409,63 @@ func (m *Manager) saveWalker(ctx context.Context, scope *writeScope, sheet *char
 	return m.sheetsFor(scope).save(ctx, data)
 }
 
+// continueWalk is the rest of a continued Move: the walk from the step that
+// pays a round to its end, then the save and the delivery a whole walk makes.
+func (m *Manager) continueWalk(
+	ctx context.Context, scope *writeScope, member string, path []spatial.Position, rest *walkResume,
+) (*ContinuationReport, error) {
+	res := newWalkResult()
+	if err := m.walk(ctx, scope, member, path, *rest, false, res); err != nil {
+		return nil, fmt.Errorf("move: %w", saveErrorAfterWrites(scope, "", err))
+	}
+	if err := m.saveWalkProgress(ctx, scope); err != nil {
+		return nil, err
+	}
+	report, delivery, err := m.commit(ctx, scope)
+	if err != nil {
+		return nil, fmt.Errorf("move: %w", err)
+	}
+	return &ContinuationReport{
+		Saved:    report,
+		Delivery: delivery,
+		Move: &MoveRest{
+			Status:       res.status,
+			StopReason:   res.stopReason,
+			JoinedCombat: res.joinedCombat,
+			Steps:        res.steps,
+			Discovered:   nilIfEmpty(res.discovered),
+			Outcome:      res.outcome,
+			Formed:       res.formed,
+			Barred:       res.barred,
+		},
+	}, nil
+}
+
+// answerThrough is the record id a continuing answer covers up to
+// ([MoveOutput.Through]): the last step's moved beat, or with no steps the
+// newest entry the record holds, so a client always has a point to resume
+// from. Empty only for an empty record.
+func answerThrough(scope *writeScope, res *walkResult) (string, error) {
+	if res.through != "" {
+		return res.through, nil
+	}
+	read, err := scope.enc.ReadRecord(&encounter.ReadRecordInput{})
+	if err != nil {
+		return "", translate(err)
+	}
+	if len(read.Entries) == 0 {
+		return "", nil
+	}
+	return read.Entries[len(read.Entries)-1].ID, nil
+}
+
+// walkResume is where a walk stopped before a step that pays a round: the
+// index of that step in the path and the cell the walker stands on.
+type walkResume struct {
+	at   int
+	from spatial.Position
+}
+
 // walkResult is what one run of the walk produced.
 type walkResult struct {
 	stopReason   string
@@ -335,6 +476,15 @@ type walkResult struct {
 	formed       *Formed
 	barred       *Barred
 	joinedCombat bool
+	// through is the record id of the last moved step's beat.
+	through string
+	// resume is set when the walk stopped before a step that pays a world
+	// round ([Manager.startWalk]'s untilDue): the rest starts there.
+	resume *walkResume
+}
+
+func newWalkResult() *walkResult {
+	return &walkResult{discovered: map[string]Discovery{}, status: MovementStopped}
 }
 
 // Barred is a walk stopped by a body ([MoveOutput.Barred]): the
@@ -376,29 +526,69 @@ type Barred struct {
 func (m *Manager) runWalk(
 	ctx context.Context, scope *writeScope, member string, path []spatial.Position,
 ) (*walkResult, error) {
-	res := &walkResult{discovered: map[string]Discovery{}, status: MovementStopped}
+	res, _, err := m.startWalk(ctx, scope, member, path, false)
+	return res, err
+}
+
+// startWalk is [Manager.runWalk] from the walker's own cell. untilDue stops
+// the walk before the first step that pays a world round
+// ([encounter.Encounter.PaceDue]) and answers where it stopped; the steps
+// taken so far are in the result.
+func (m *Manager) startWalk(
+	ctx context.Context, scope *writeScope, member string, path []spatial.Position, untilDue bool,
+) (*walkResult, *walkResume, error) {
+	res := newWalkResult()
 
 	// Where the walker STILL stands, advanced from each step's own answer
 	// rather than from the cell that was asked for — the same reason the loop
 	// below reads stepped.Stepped.To instead of cell.
 	roster, err := scope.enc.Members()
 	if err != nil {
-		return nil, translate(err)
+		return nil, nil, translate(err)
 	}
 	from, placed := rosterPositions(roster)[member]
 	if !placed {
-		return nil, fmt.Errorf("member %q is not placed: %w", member, ErrNoMember)
+		return nil, nil, fmt.Errorf("member %q is not placed: %w", member, ErrNoMember)
 	}
+	if err := m.walk(ctx, scope, member, path, walkResume{from: from}, untilDue, res); err != nil {
+		return nil, nil, err
+	}
+	return res, res.resume, nil
+}
 
-	for i, cell := range path {
+// walk steps from path[start.at], with the walker on start.from, into res.
+// When untilDue stops it before a step that pays a world round, res.resume
+// is where; every other end is in res too.
+func (m *Manager) walk(
+	ctx context.Context, scope *writeScope, member string, path []spatial.Position,
+	start walkResume, untilDue bool, res *walkResult,
+) error {
+	from := start.from
+	for i := start.at; i < len(path); i++ {
+		cell := path[i]
+		// THE SPLIT COMES BEFORE THE ANNOUNCEMENT (rpg-project#879 R2): the
+		// raise fires inside the Step that pays the round, and that step's
+		// admission and announcement (and any reaction to it) belong with
+		// it, so the continuation takes the due cell from the top exactly as
+		// a whole walk would. PaceDue is a read; asking changes nothing.
+		if untilDue {
+			due, dueErr := scope.enc.PaceDue(&encounter.PaceDueInput{Member: encounter.MemberID(member)})
+			if dueErr != nil {
+				return translate(dueErr)
+			}
+			if due.Due {
+				res.resume = &walkResume{at: i, from: from}
+				return nil
+			}
+		}
 		admission, admissionErr := scope.enc.AdmitWalk(&encounter.AdmitWalkInput{Member: encounter.MemberID(member)})
 		if admissionErr != nil {
-			return nil, translate(admissionErr)
+			return translate(admissionErr)
 		}
 		mergeDiscoveries(res.discovered, projectDiscoveries(admission.IntelDeltas))
 		if admission.Joined {
 			res.joinedCombat = true
-			return res, nil
+			return nil
 		}
 		scope.walkContinuation = path[i:]
 		// ANNOUNCED BEFORE IT IS TAKEN, which is [encounter.Mover]'s contract
@@ -422,9 +612,9 @@ func (m *Manager) runWalk(
 			var paused *encounter.StepPausedError
 			if errors.As(err, &paused) {
 				res.status = MovementPaused
-				return res, nil
+				return nil
 			}
-			return nil, fmt.Errorf("step %d of %d to (%v,%v): %w", i+1, len(path), cell.X, cell.Y, err)
+			return fmt.Errorf("step %d of %d to (%v,%v): %w", i+1, len(path), cell.X, cell.Y, err)
 		}
 
 		// A REACTION THAT DROPPED THE WALKER STOPS THE WALK, and the walker
@@ -442,28 +632,28 @@ func (m *Manager) runWalk(
 		// Seen.Standing from the sight testimony rather than this consult.
 		down, standingErr := discoveryStanding(scope)
 		if standingErr != nil {
-			return nil, standingErr
+			return standingErr
 		}
 		if down[member] {
 			// A STOP, NOT A FAILURE, reported the way every other early stop
 			// is: the cells already walked are in res.steps, the ones after
 			// this are not, and the blow that felled the walker is in the
 			// story with its reaction named.
-			return res, nil
+			return nil
 		}
 
 		clock, clockErr := scope.enc.ClockOf(&encounter.ClockOfInput{Member: encounter.MemberID(member)})
 		if clockErr != nil {
-			return nil, translate(clockErr)
+			return translate(clockErr)
 		}
 		if clock.Kind == encounter.ClockTurn {
 			if string(clock.Active) != member {
-				return res, nil
+				return nil
 			}
 			if scope.walker == nil {
 				data, loadErr := m.sheetsFor(nil).load(ctx, "walker", member)
 				if loadErr != nil {
-					return nil, loadErr
+					return loadErr
 				}
 				scope.walker = data
 			}
@@ -471,10 +661,10 @@ func (m *Manager) runWalk(
 		if clock.Kind == encounter.ClockTurn {
 			sheet, loadErr := character.Load(ctx, scope.walker)
 			if loadErr != nil {
-				return nil, fmt.Errorf("walk sheet: %w", loadErr)
+				return fmt.Errorf("walk sheet: %w", loadErr)
 			}
 			if !combat.CanPay(sheet, &combat.SpendProfile{Capacity: map[combat.CapacityType]int{combat.CapacityMovement: 5}}) {
-				return res, nil
+				return nil
 			}
 		}
 
@@ -487,12 +677,12 @@ func (m *Manager) runWalk(
 			var obstruction *encounter.StepObstructedError
 			if errors.As(err, &obstruction) {
 				res.stopReason = obstruction.PublicReason()
-				return res, nil
+				return nil
 			}
 			// Nothing is saved on a mid-walk rejection. The member has really
 			// moved in memory for the steps already taken, but that encounter is
 			// discarded unsaved, so the persisted world is untouched.
-			return nil, refusedStep(i, len(path), cell, err)
+			return refusedStep(i, len(path), cell, err)
 		}
 
 		// A BODY STOPPED THE STEP (rpg-project#842), READ BEFORE Stepped.To:
@@ -510,20 +700,20 @@ func (m *Manager) runWalk(
 			mergeDiscoveries(res.discovered, projectDiscoveries(stepped.IntelDeltas))
 			res.outcome = projectOutcome(stepped.Outcome)
 			res.formed = projectFormed(stepped.Formed)
-			return res, nil
+			return nil
 		}
 
 		if clock.Kind == encounter.ClockTurn {
 			sheet, loadErr := character.Load(ctx, scope.walker)
 			if loadErr != nil {
-				return nil, fmt.Errorf("walk sheet: %w", loadErr)
+				return fmt.Errorf("walk sheet: %w", loadErr)
 			}
 			if payErr := combat.Pay(sheet, &combat.SpendProfile{Capacity: map[combat.CapacityType]int{combat.CapacityMovement: 5}}); payErr != nil {
-				return nil, fmt.Errorf("walk step: %w", payErr)
+				return fmt.Errorf("walk step: %w", payErr)
 			}
 			walker, dataErr := sheet.ToData()
 			if dataErr != nil {
-				return nil, fmt.Errorf("walk sheet: %w: %v", ErrBadCharacter, dataErr)
+				return fmt.Errorf("walk sheet: %w: %v", ErrBadCharacter, dataErr)
 			}
 			scope.walker = walker
 		}
@@ -544,6 +734,7 @@ func (m *Manager) runWalk(
 		res.steps = append(res.steps, Step{
 			Position: stepped.Stepped.To,
 		})
+		res.through = stepped.ID
 		from = stepped.Stepped.To
 		mergeDiscoveries(res.discovered, projectDiscoveries(stepped.IntelDeltas))
 
@@ -552,17 +743,17 @@ func (m *Manager) runWalk(
 			// a closed encounter refuses movement anyway, and attempting them
 			// would turn a clean stop into a rejection the caller must interpret.
 			res.outcome = projectOutcome(stepped.Outcome)
-			return res, nil
+			return nil
 		}
 
 		if stepped.Formed != nil {
 			res.formed = projectFormed(stepped.Formed)
-			return res, nil
+			return nil
 		}
 	}
 
 	res.status = MovementCompleted
-	return res, nil
+	return nil
 }
 
 // refusedStep says why a step the composition refused was refused, in this

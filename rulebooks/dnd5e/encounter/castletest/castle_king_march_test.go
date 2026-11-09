@@ -3,12 +3,9 @@
 
 package castletest
 
-// castle_king_march_test.go is THE RESERVES MARCH ON THE FIGHT'S CLOCK
-// (rpg-project#766 S4, #661): the reserves' `arrives: { fact: gate-opened }`
-// still brings them in, and what they do once in is now an authored recipe,
-// not an engine path. Waiting, they keep their `time` table; every round of a
-// fight the garrison is engaged in they march one leg on `march`; the first
-// round of the world after it, they wait again.
+// The reserves' fight-round notification prepares their authored marching state.
+// Actual movement waits for a priced world opportunity: catching up to an existing
+// high-water grants no free leg. R6 separates news from permission.
 
 import (
 	"encoding/json"
@@ -52,7 +49,7 @@ func marchBeats(t *testing.T, s *kingScene, from int) []marchBeat {
 // once. (A second round brings them into the hero's sight and the fight,
 // which is the march arriving.) When the fight is over and the hero walks, the world's first round
 // puts them back to waiting, and the round after they roll their `time`.
-func TestReserves_MarchOnFightRounds(t *testing.T) {
+func TestReserves_NotificationsPrepareAPricedMarch(t *testing.T) {
 	t.Parallel()
 	s := openTheScript(t, gatehouseSeat, nil)
 	// Beside the crossing, not on it: gate-1 holds the cell beneath the gate
@@ -76,13 +73,13 @@ func TestReserves_MarchOnFightRounds(t *testing.T) {
 		start[id] = s.enc.Distance(s.at(id), gate)
 	}
 
-	// ONE ROUND: a second brings them in sight of the hero and into the
-	// fight, which is the march doing its job, and the half below needs them
-	// out of it when the fight ends.
-	const rounds = 1
+	// The first fight round catches up to the existing high-water: it is
+	// news, not a world budget. The second raises time and pays one march.
+	const rounds = 2
 	for round := 1; round <= rounds; round++ {
 		mark, err := s.enc.Story(&encounter.StoryInput{Audience: hero})
 		require.NoError(t, err)
+		beforeClock := s.enc.ToData().Clock
 		s.endTurn()
 		for _, id := range reserves {
 			require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, id), "one leg does not bring %s into the fight", id)
@@ -94,7 +91,15 @@ func TestReserves_MarchOnFightRounds(t *testing.T) {
 			}
 		}
 		for _, id := range reserves {
-			require.Equal(t, []string{"march"}, picks[id], "round %d: %s marches one leg and is asked nothing else", round, id)
+			if round == 1 {
+				require.Equal(t, beforeClock.HighWater, s.enc.ToData().Clock.HighWater)
+				require.Empty(t, picks[id], "clock notification grants no free action")
+				require.Equal(t, start[id], s.enc.Distance(s.at(id), gate), "unpaid news moves nobody")
+				require.Equal(t, "marching", machineState(t, s.enc, id), "news prepares the authored state")
+			} else {
+				require.Equal(t, beforeClock.HighWater+1, s.enc.ToData().Clock.HighWater)
+				require.Equal(t, []string{"behavior/6:policy/march"}, picks[id], "the priced world opportunity moves one leg")
+			}
 		}
 	}
 	for _, id := range reserves {
@@ -128,7 +133,7 @@ func TestReserves_MarchOnFightRounds(t *testing.T) {
 		if b.Beat == encounter.BeatState && b.From == "marching" && b.To == "waiting" {
 			back[b.Member] = true
 		}
-		if b.Beat == encounter.BeatAnswered && b.Key == string(encounter.AnswerTime) {
+		if b.Beat == encounter.BeatAnswered && b.Key == "behavior/6:policy/time" {
 			timed[b.Creature] = true
 		}
 	}

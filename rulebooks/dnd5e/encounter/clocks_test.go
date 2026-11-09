@@ -900,7 +900,7 @@ func (s *ClocksTestSuite) TestTheWorldDoesNotThinkForAFightMonster() {
 		// fight holds it.
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
-			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 7, Y: 7}, Table: walksTo(wanderTo)},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 7, Y: 7}, Behaviors: ordinaryBehavior(walksTo(wanderTo))},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "called", Trigger: encounter.TriggerExternal{}},
@@ -913,6 +913,7 @@ func (s *ClocksTestSuite) TestTheWorldDoesNotThinkForAFightMonster() {
 			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        tableDriver(),
+			Roller:        rollsLowest{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},

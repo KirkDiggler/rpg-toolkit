@@ -147,6 +147,27 @@ type field struct {
 	// seams hand the compiled door records over — so a field that was built
 	// without doors has none of these, exactly as it has no canvas.
 	doorFootprints []*doorRecord
+	// blockingDoors is [field.blockingDoorFootprints]'s last answer and
+	// blockingMask the blocks() reading of every footprint door it was taken
+	// under, index for index with doorFootprints (rpg-project#879 F5: the
+	// slice was rebuilt on every crossing check, 20 MB a Move). A call
+	// compares the readings and rebuilds only when a door has changed, so no
+	// writer of a door's state has to remember the cache.
+	blockingDoors []*doorRecord
+	blockingMask  []bool
+
+	// doorOpenings is every attached door's opening, normalized
+	// ([field.doorOpening], rpg-project#879 S9): the crossings a door's
+	// rectangle lies across, which depend on the floor and the door's
+	// placement and on nothing a game changes. SITE DATA (R4), so it lives
+	// on the field and not on the instance. BUILT EAGERLY when the doors
+	// attach ([field.attachDoorFootprints]) and never written after, so a
+	// field shared by several games (R3, the site tier) is only ever read:
+	// new door content is a new attach and a new map, and the floor never
+	// changes without a new field. A fresh map on every attach, never one
+	// written in place, so the field's shallow copies
+	// ([field.partitionCanvas]) never write the live field's.
+	doorOpenings map[DoorID][]DoorEdge
 
 	// openedFacts is every fact a door teaches when it opens
 	// ([DoorInput.Opened], rpg-project#569 R12), read off the authored

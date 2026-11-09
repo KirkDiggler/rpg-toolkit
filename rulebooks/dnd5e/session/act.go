@@ -173,6 +173,9 @@ func prop(id string) Party {
 // is (S10): it runs after the save has landed, a failure does not fail the
 // verb, and a recipient that missed acts catches up with [Manager.Acts]
 // after the last act id it holds.
+//
+// A stream that knows who is subscribed may also implement [ActListeners];
+// the commit then folds live acts only for those members.
 type ActStream interface {
 	// PublishActs delivers one commit's acts, each recipient's in record
 	// order.

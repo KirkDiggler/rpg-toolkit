@@ -11,6 +11,7 @@ overview, machine/composer zooms, and the guard traced through both.
 | Here | What it owns |
 |---|---|
 | composition | `Composer`, `Observe`, `Decide`, `ToData` / `LoadComposer` — private progress and one ordered selection lane |
+| caller inspection | `Inspect`, `StateOf`, `DelayWakes` — derived per-instance state/scheduling and explicit caller-chosen wake shifts |
 | parameter metadata | `ParameterSpec`, `CheckParameters` — mechanical constraints for producer-supplied scalar values |
 | finite expansion | `SequenceDefinition`, `ExpandSequence` — a producer utility emitting ordinary instances, completion maps and source maps before runtime |
 | policy | `Table`, `Layer`, `Pick`, `Deal` — the weighted evaluator, unchanged by composition |
@@ -57,6 +58,22 @@ composer-owned state; external dice/reader side effects are not rolled back.
 The instance list is fixed for this composer's lifetime. This first tool is one
 selection lane, not a general multi-resource scheduler or dynamic attachment
 manager. Caller-supplied time is not reinterpreted as per-role paused time.
+
+### Caller inspection and wake admission
+
+`Inspect` returns every instance's state, immutable definition identity, its own
+non-timed listener scopes, distinct current-state timed beats, due time and stored
+wake. It copies returned slices/pointers and invokes no vocabulary callbacks.
+It does not merge away another instance's scope or choose which kind of timed
+opportunity the caller should offer. `StateOf` reads one instance's state/digest
+without deriving the whole schedule, so physical-state consumers need no mirrored
+blob. Nil inputs and unknown instance IDs fail by name.
+
+A timed input does not step an instance before its future wake, even when another
+role made the actor due. Non-timed observations remain deliverable. `DelayWakes`
+expresses a caller-chosen time jump: it shifts only existing wakes, not anchors,
+states or bags. It checks all overflows before changing any instance; zero span
+changes none. The caller still owns clocks, indexes and action permissions.
 
 ### Configuration and continuation are different
 

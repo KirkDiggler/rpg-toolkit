@@ -65,8 +65,9 @@ Family laws, restated as binding:
   reachable non-empty log has consecutive retained Seqs); for non-empty
   logs, `NextSeq` != last `Seq` + 1 (exactly — no verb can produce
   slack); for empty logs, stored `NextSeq: 1` (fresh encodes as 0 per
-  R8; trimmed-empty is always >= 2); an audience containing empty IDs
-  or duplicates; tag maps containing empty keys; nil payloads (empty
+  R8; trimmed-empty is always >= 2); an audience table row that is
+  empty, contains empty IDs or duplicates, or repeats another row; an
+  entry's audience reference past the table; tag maps containing empty keys; nil payloads (empty
   non-nil is legal). Affirmative
   notes, not rejections: an empty entries slice is legal with stored
   `NextSeq` 0 (fresh) or >= 2 (trimmed-empty — reachable and MUST
@@ -139,10 +140,16 @@ Family laws, restated as binding:
 
 ## Persistence
 
-`LogData` = `struct{ NextSeq uint64; Entries []EntryData }` (tags
-`next_seq,omitempty` / `entries,omitempty`; `EntryData` mirrors `Entry`
+`LogData` = `struct{ NextSeq uint64; Audiences [][]core.EntityID; Entries []EntryData }` (tags
+`next_seq,omitempty` / `audiences,omitempty` / `entries,omitempty`; `EntryData` mirrors `Entry`
 with tags `seq`/`at,omitempty`/`correlation,omitempty`/`audience,omitempty`/
-`tags,omitempty`/`payload`; `encoding/json` sorts map keys, so the
+`tags,omitempty`/`payload`, except that its audience is `AudienceRef uint32`,
+a 1-based reference into `Audiences` with 0 for the empty audience. The
+audience table stores each distinct audience once, in first-seen order
+(rpg-project#896, F20: on a 100-member keep the inline roster was 73% of
+the session blob; a roster-wide entry is now about 230 bytes, not 2.6 KB).
+In memory `Entry.Audience` stays explicit and materialised; entries naming
+the same row share one immutable slice; `encoding/json` sorts map keys, so the
 golden-JSON test stays deterministic). Struct wrapper so the zero value marshals `{}` (R8). Family
 conventions: deep copies both directions; wire shape pinned by a
 golden-JSON test. Size note: the log grows with time by design; the

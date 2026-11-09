@@ -201,12 +201,12 @@ bundles:
   # Walk to where you last saw them; when that cell is empty, search on the
   # way they went.
   pursuer:
-    params: { distance: 6, heading: went }
+    params: {distance: 6, heading: went}
     rows:
-      - when: { enemy: remembered }
+      - when: {enemy: remembered}
         toward: enemy
-      - when: { enemy: lost }
-        search: { distance: $distance, heading: $heading }
+      - when: {enemy: lost}
+        search: {distance: $distance, heading: $heading}
   # Run to steel being swung nearby.
   alarm-reactor:
     rows:
@@ -220,9 +220,9 @@ bundles:
   # only while you hold your attacker so, and the group with it.
   revenger:
     rows:
-      - when: { attacked: { within: 2 } }
+      - when: {attacked: {within: 2}}
         attack: attacker
-      - when: { attacked: { within: 2 } }
+      - when: {attacked: {within: 2}}
         toward: attacker
   # Hand edit (rpg-project#671, S4 dash; lane #683 D6, D8): close at the
   # pace the gap needs. Strike them in reach; walk when a walk gets you there
@@ -231,20 +231,20 @@ bundles:
   # A run spends the swing, so only a guard more than a run away runs.
   dasher:
     rows:
-      - when: { enemy: reach }
+      - when: {enemy: reach}
         attack: enemy
-      - when: { enemy: walk }
+      - when: {enemy: walk}
         toward: enemy
-      - when: { enemy: dash }
+      - when: {enemy: dash}
         toward: enemy
-      - when: { enemy: far }
+      - when: {enemy: far}
         dash: enemy
   # With nobody to chase, walk the route.
   patrol:
-    params: { path: ~ }
+    params: {path: ~}
     rows:
-      - when: { enemy: none }
-        toward: { path: $path }
+      - when: {enemy: none}
+        toward: {path: $path}
   # Hand edit (rpg-project#670, N2): the base every gate guard starts from,
   # a bundle of bundles. Pursuit, the clang, and the guard's own loop, whose
   # route each guard passes in; `$path` crosses into the patrol one level
@@ -252,222 +252,16 @@ bundles:
   # approach: a table that uses this base carries no plain `reach` or `seen`
   # rows of its own.
   guard-base:
-    params: { path: ~ }
+    params: {path: ~}
     rows:
       - use: dasher
       # Hand edit (rpg-project#671): the pursuit for a cold trail only; the
       # dasher closes on a memory (answer-the-gate's reason).
       - use: pursuer
-        when: { enemy: lost }
+        when: {enemy: lost}
       - use: alarm-reactor
       - use: patrol
-        with: { path: $path }
-tables:
-  gate-patrol:
-    time:
-      # Hand edit: a gate guard who witnessed the turn marches with the
-      # captain, on storm-the-keep's own row.
-      - when: [{ fact: guards-turned }, { enemy: none }]
-        toward: { at: { q: 10, r: -19 } }
-      - say: To arms! Intruders at the gate!
-        when:
-          - enemy: seen
-          - not:
-              fact: alarm-raised
-        fact: alarm-raised
-      # Hand edit (rpg-project#671): no plain approach rows here. The base's
-      # dasher is the approach: in reach he strikes, within a run he walks
-      # up, beyond one he runs. A plain `seen` row beside it would split his
-      # roll between walking and running.
-      #
-      # Hand edit (rpg-project#668, #670): the guard's base, as one line:
-      # pursuit (lost from sight, he walks to where he last saw you, then
-      # searches six cells on the way you went), the clang he runs to, and
-      # his loop home.
-      #
-      # Hand edit (the QA castle's step 4, rpg-project#639): gate-1's loop.
-      # He stands a round at the door post west of the captain turned ne to
-      # the cell under the gate, walks to the beat post north of the south
-      # doorway and stands a round there turned se to the incomers (#624), and
-      # walks back round by the west. gate-patrol-east is its mirror for
-      # gate-2, so the two keep step: in two world rounds of every four both
-      # stand at their beat posts with their backs to the gate. That is the
-      # sneak window. Neither beat post sees round the corner wall.
-      - use: guard-base
-        with: { path: [{ q: -5, r: 8, wait: 1, facing: ne }, { q: -5, r: 10, wait: 1, facing: se }, { q: -7, r: 10 }] }
-  gate-patrol-east:
-    time:
-      # Hand edit: a gate guard who witnessed the turn marches with the
-      # captain, on storm-the-keep's own row.
-      - when: [{ fact: guards-turned }, { enemy: none }]
-        toward: { at: { q: 10, r: -19 } }
-      - say: To arms! Intruders at the gate!
-        when:
-          - enemy: seen
-          - not:
-              fact: alarm-raised
-        fact: alarm-raised
-      # Hand edit (rpg-project#671): no plain approach rows; the base's dasher
-      # is the approach, gate-patrol's reason.
-      #
-      # Hand edit (rpg-project#668, #670): the guard's base, as one line.
-      #
-      # Hand edit (rpg-project#639): gate-2's loop, gate-patrol's mirror: nw
-      # at the door post east of the captain, sw at the beat post.
-      - use: guard-base
-        with: { path: [{ q: -2, r: 8, wait: 1, facing: nw }, { q: -4, r: 10, wait: 1, facing: sw }, { q: -2, r: 10 }] }
-  keep-patrol:
-    time:
-      # Hand edit (rpg-project#716, Frank's list S2): a knight who SAW the
-      # king fall breaks and runs from the fight; one who did not fights
-      # on until somebody tells him. Testimony, not a world flag: the row
-      # reads the fall this knight holds. `on: ally` because the king is
-      # the knight's side, not the knight himself.
-      - when: { fell: { who: king, within: 3, on: ally } }
-        away: enemy
-        weight: 3
-      - say: Protect the king!
-        when:
-          - enemy: seen
-          - not:
-              fact: alarm-raised
-        fact: alarm-raised
-      - when:
-          enemy: reach
-        attack: enemy
-      - when:
-          enemy: seen
-        toward: enemy
-      # Hand edit: on the alarm, fall back beside the king, in his corner.
-      - when: { fact: alarm-raised }
-        toward: { at: { q: 4, r: -18 } }
-      - when:
-          heard:
-            kind: voice
-            within: 3
-        toward: sound
-      # Hand edit: this knight paces the throne room's west side, a loop that
-      # stays clear of the throne door's line from the hall.
-      - when: { enemy: none }
-        toward: { path: [{ q: 4, r: -19 }, { q: 7, r: -19 }, { q: 7, r: -21 }, { q: 5, r: -21 }] }
-  keep-patrol-east:
-    time:
-      # Hand edit (rpg-project#716, Frank's list S2): a knight who SAW the
-      # king fall breaks and runs from the fight; one who did not fights
-      # on until somebody tells him. Testimony, not a world flag: the row
-      # reads the fall this knight holds. `on: ally` because the king is
-      # the knight's side, not the knight himself.
-      - when: { fell: { who: king, within: 3, on: ally } }
-        away: enemy
-        weight: 3
-      - say: Protect the king!
-        when:
-          - enemy: seen
-          - not:
-              fact: alarm-raised
-        fact: alarm-raised
-      - when:
-          enemy: reach
-        attack: enemy
-      - when:
-          enemy: seen
-        toward: enemy
-      # Hand edit: on the alarm, fall back beside the king, in his corner.
-      - when: { fact: alarm-raised }
-        toward: { at: { q: 4, r: -18 } }
-      - when:
-          heard:
-            kind: voice
-            within: 3
-        toward: sound
-      # Hand edit: this knight paces the throne room's east side, a loop that
-      # stays clear of the throne door's line from the hall.
-      - when: { enemy: none }
-        toward: { path: [{ q: 13, r: -19 }, { q: 16, r: -19 }, { q: 16, r: -21 }, { q: 14, r: -21 }] }
-  cell-guard:
-    time:
-      - weight: 4
-        when:
-          - fact: alarm-raised
-          - enemy: reach
-        attack: enemy
-      - weight: 4
-        when:
-          - fact: alarm-raised
-          - not:
-              enemy: reach
-        toward: enemy
-      - weight: 3
-        say: Steel in the cells! Sound the alarm!
-        when:
-          heard:
-            kind: clang
-            within: 2
-        fact: alarm-raised
-      - weight: 3
-        say: Intruders in the cells! Sound the alarm!
-        when:
-          enemy: seen
-        fact: alarm-raised
-      - weight: 1
-        hold: {}
-  hall-patrol:
-    time:
-      # Hand edit: the hall guard is storm-the-keep's soldier when the
-      # garrison turns, and until then walks a loop across the great hall
-      # between the kitchen door and the throne door (sneaking S1,
-      # rpg-project#606): the watcher a party sneaking from the kitchen to the
-      # throne room has to get past.
-      - when: [{ fact: guards-turned }, { enemy: none }]
-        toward: { at: { q: 10, r: -19 } }
-      - when:
-          enemy: reach
-        attack: enemy
-      - when:
-          enemy: seen
-        toward: enemy
-      - when: { enemy: none }
-        toward: { path: [{ q: -2, r: -12 }, { q: 6, r: -12 }, { q: 6, r: -15 }, { q: 1, r: -15 }] }
-  storm-the-keep:
-    time:
-      # Hand edit (smarter monsters S2, rpg-project#669): the captain goes for
-      # whoever hit him, past a nearer enemy, as one line. Otherwise the rows
-      # below are the fallback, through the roll.
-      - use: revenger
-      # Hand edit: a turned garrison marches on the throne room until it sees
-      # a loyalist (use case R8's list form). `enemy: none`, not `not: { enemy:
-      # seen }`: the bands are exclusive (R11), so an enemy in reach is not
-      # "seen", and the negation would march a captain past the knight
-      # swinging at him.
-      - when: [{ fact: guards-turned }, { enemy: none }]
-        toward: { at: { q: 10, r: -19 } }
-      - when:
-          enemy: reach
-        attack: enemy
-      - when:
-          enemy: seen
-        toward: enemy
-  answer-the-gate:
-    time:
-      # Hand edit (rpg-project#671): the reserves run to the gate. The dasher
-      # is their whole approach, seen or remembered: in reach they strike,
-      # within a run they walk up, beyond one they run. No plain `reach` or
-      # `seen` row beside it, which would split the roll between walking and
-      # running.
-      - use: dasher
-      # Hand edit (rpg-project#661, #671): the gate guards' pursuit, for a
-      # trail gone cold only. A reserve who walked to where he last saw you and
-      # found nobody searches six cells on the way you went. While he still
-      # remembers you, the dasher closes on the memory, and the pursuer's own
-      # walk would only split his roll.
-      - use: pursuer
-        when: { enemy: lost }
-      # Hand edit (the QA castle's step 7, rpg-project#639): the far room
-      # answers the gate. Arrived on `gate-opened`, a guard with no enemy in
-      # sight walks to the yard two cells in from the gate, so the two who
-      # answer do not stand in the gate's one crossing.
-      - when: { enemy: none }
-        toward: { at: { q: -2, r: 4 } }
+        with: {path: $path}
 factions:
   - id: garrison
     mind: captain
@@ -7584,16 +7378,21 @@ room:
     monsterBindings:
       gate-1:
         faction: garrison
-        table: gate-patrol
+        behaviors:
+          - id: policy
+            use: gate-1-policy
       gate-2:
         faction: garrison
-        table: gate-patrol-east
+        behaviors:
+          - id: policy
+            use: gate-2-policy
       hall-1:
         faction: garrison
-        table: hall-patrol
+        behaviors:
+          - id: policy
+            use: hall-1-policy
       captain:
         faction: garrison
-        table: storm-the-keep
         options:
           - id: troupe
             say: We’re the troupe for tonight’s feast.
@@ -7648,6 +7447,9 @@ room:
                 fact: throne-taken
             failure:
               - say: We’ll hold what we can.
+        behaviors:
+          - id: policy
+            use: captain-policy
       cook:
         faction: kitchen
         options:
@@ -7657,8 +7459,7 @@ room:
               - ability: persuasion
                 dc: 10
             success:
-              - say: Feast for the whole court, and him sitting there grinning after what he did
-                  to Ashford.
+              - say: Feast for the whole court, and him sitting there grinning after what he did to Ashford.
                 fact: feast-tonight
             failure:
               - say: Out of my kitchen.
@@ -7688,30 +7489,42 @@ room:
               - say: Keep your coin.
       keep-1:
         faction: loyalists
-        table: keep-patrol
+        behaviors:
+          - id: policy
+            use: keep-1-policy
       keep-2:
         faction: loyalists
-        table: keep-patrol-east
+        behaviors:
+          - id: policy
+            use: keep-2-policy
       king:
         faction: loyalists
       reserve-1:
         faction: garrison
-        table: answer-the-gate
         arrives:
           fact: gate-opened
+        behaviors:
+          - id: policy
+            use: reserve-1-policy
       reserve-2:
         faction: garrison
-        table: answer-the-gate
         arrives:
           fact: gate-opened
+        behaviors:
+          - id: policy
+            use: reserve-2-policy
       scullion:
         faction: kitchen
       sergeant:
         faction: garrison
-        table: cell-guard
+        behaviors:
+          - id: policy
+            use: sergeant-policy
       turnkey:
         faction: garrison
-        table: cell-guard
+        behaviors:
+          - id: policy
+            use: turnkey-policy
       prisoner-1:
         faction: prisoners
         options:
@@ -7721,8 +7534,7 @@ room:
               - ability: persuasion
                 dc: 8
             success:
-              - say: Through the great hall, in the throne room. He holds court there, mad as a
-                  hare.
+              - say: Through the great hall, in the throne room. He holds court there, mad as a hare.
                 fact: king-in-throne-room
             failure:
               - say: Why should I tell you? Get me out first.
@@ -7748,8 +7560,7 @@ room:
               - ability: persuasion
                 dc: 8
             success:
-              - say: Through the great hall, in the throne room. He holds court there, mad as a
-                  hare.
+              - say: Through the great hall, in the throne room. He holds court there, mad as a hare.
                 fact: king-in-throne-room
             failure:
               - say: Why should I tell you? Get me out first.
@@ -7775,8 +7586,7 @@ room:
               - ability: persuasion
                 dc: 8
             success:
-              - say: Through the great hall, in the throne room. He holds court there, mad as a
-                  hare.
+              - say: Through the great hall, in the throne room. He holds court there, mad as a hare.
                 fact: king-in-throne-room
             failure:
               - say: Why should I tell you? Get me out first.
@@ -7802,8 +7612,7 @@ room:
               - ability: persuasion
                 dc: 8
             success:
-              - say: Through the great hall, in the throne room. He holds court there, mad as a
-                  hare.
+              - say: Through the great hall, in the throne room. He holds court there, mad as a hare.
                 fact: king-in-throne-room
             failure:
               - say: Why should I tell you? Get me out first.
@@ -7891,3 +7700,387 @@ room:
                 fact: king-is-cultist
             failure:
               - say: Old stone, old candles.
+behaviorDefinitions:
+  gate-1-policy:
+    recipe:
+      ref: site:behaviors:gate-1-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        # Hand edit: a gate guard who witnessed the turn marches with the
+        # captain, on storm-the-keep's own row.
+        - when: [{fact: guards-turned}, {enemy: none}]
+          toward: {at: {q: 10, r: -19}}
+        - say: To arms! Intruders at the gate!
+          when:
+            - enemy: seen
+            - not:
+                fact: alarm-raised
+          fact: alarm-raised
+        # Hand edit (rpg-project#671): no plain approach rows here. The base's
+        # dasher is the approach: in reach he strikes, within a run he walks
+        # up, beyond one he runs. A plain `seen` row beside it would split his
+        # roll between walking and running.
+        #
+        # Hand edit (rpg-project#668, #670): the guard's base, as one line:
+        # pursuit (lost from sight, he walks to where he last saw you, then
+        # searches six cells on the way you went), the clang he runs to, and
+        # his loop home.
+        #
+        # Hand edit (the QA castle's step 4, rpg-project#639): gate-1's loop.
+        # He stands a round at the door post west of the captain turned ne to
+        # the cell under the gate, walks to the beat post north of the south
+        # doorway and stands a round there turned se to the incomers (#624), and
+        # walks back round by the west. gate-patrol-east is its mirror for
+        # gate-2, so the two keep step: in two world rounds of every four both
+        # stand at their beat posts with their backs to the gate. That is the
+        # sneak window. Neither beat post sees round the corner wall.
+        - use: guard-base
+          with: {path: [{q: -5, r: 8, wait: 1, facing: ne}, {q: -5, r: 10, wait: 1, facing: se}, {q: -7, r: 10}]}
+  gate-2-policy:
+    recipe:
+      ref: site:behaviors:gate-2-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        # Hand edit: a gate guard who witnessed the turn marches with the
+        # captain, on storm-the-keep's own row.
+        - when: [{fact: guards-turned}, {enemy: none}]
+          toward: {at: {q: 10, r: -19}}
+        - say: To arms! Intruders at the gate!
+          when:
+            - enemy: seen
+            - not:
+                fact: alarm-raised
+          fact: alarm-raised
+        # Hand edit (rpg-project#671): no plain approach rows; the base's dasher
+        # is the approach, gate-patrol's reason.
+        #
+        # Hand edit (rpg-project#668, #670): the guard's base, as one line.
+        #
+        # Hand edit (rpg-project#639): gate-2's loop, gate-patrol's mirror: nw
+        # at the door post east of the captain, sw at the beat post.
+        - use: guard-base
+          with: {path: [{q: -2, r: 8, wait: 1, facing: nw}, {q: -4, r: 10, wait: 1, facing: sw}, {q: -2, r: 10}]}
+  captain-policy:
+    recipe:
+      ref: site:behaviors:captain-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        # Hand edit (smarter monsters S2, rpg-project#669): the captain goes for
+        # whoever hit him, past a nearer enemy, as one line. Otherwise the rows
+        # below are the fallback, through the roll.
+        - use: revenger
+        # Hand edit: a turned garrison marches on the throne room until it sees
+        # a loyalist (use case R8's list form). `enemy: none`, not `not: { enemy:
+        # seen }`: the bands are exclusive (R11), so an enemy in reach is not
+        # "seen", and the negation would march a captain past the knight
+        # swinging at him.
+        - when: [{fact: guards-turned}, {enemy: none}]
+          toward: {at: {q: 10, r: -19}}
+        - when:
+            enemy: reach
+          attack: enemy
+        - when:
+            enemy: seen
+          toward: enemy
+  reserve-1-policy:
+    recipe:
+      ref: site:behaviors:reserve-1-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        # Hand edit (rpg-project#671): the reserves run to the gate. The dasher
+        # is their whole approach, seen or remembered: in reach they strike,
+        # within a run they walk up, beyond one they run. No plain `reach` or
+        # `seen` row beside it, which would split the roll between walking and
+        # running.
+        - use: dasher
+        # Hand edit (rpg-project#661, #671): the gate guards' pursuit, for a
+        # trail gone cold only. A reserve who walked to where he last saw you and
+        # found nobody searches six cells on the way you went. While he still
+        # remembers you, the dasher closes on the memory, and the pursuer's own
+        # walk would only split his roll.
+        - use: pursuer
+          when: {enemy: lost}
+        # Hand edit (the QA castle's step 7, rpg-project#639): the far room
+        # answers the gate. Arrived on `gate-opened`, a guard with no enemy in
+        # sight walks to the yard two cells in from the gate, so the two who
+        # answer do not stand in the gate's one crossing.
+        - when: {enemy: none}
+          toward: {at: {q: -2, r: 4}}
+  reserve-2-policy:
+    recipe:
+      ref: site:behaviors:reserve-2-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        # Hand edit (rpg-project#671): the reserves run to the gate. The dasher
+        # is their whole approach, seen or remembered: in reach they strike,
+        # within a run they walk up, beyond one they run. No plain `reach` or
+        # `seen` row beside it, which would split the roll between walking and
+        # running.
+        - use: dasher
+        # Hand edit (rpg-project#661, #671): the gate guards' pursuit, for a
+        # trail gone cold only. A reserve who walked to where he last saw you and
+        # found nobody searches six cells on the way you went. While he still
+        # remembers you, the dasher closes on the memory, and the pursuer's own
+        # walk would only split his roll.
+        - use: pursuer
+          when: {enemy: lost}
+        # Hand edit (the QA castle's step 7, rpg-project#639): the far room
+        # answers the gate. Arrived on `gate-opened`, a guard with no enemy in
+        # sight walks to the yard two cells in from the gate, so the two who
+        # answer do not stand in the gate's one crossing.
+        - when: {enemy: none}
+          toward: {at: {q: -2, r: 4}}
+  hall-1-policy:
+    recipe:
+      ref: site:behaviors:hall-1-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        # Hand edit: the hall guard is storm-the-keep's soldier when the
+        # garrison turns, and until then walks a loop across the great hall
+        # between the kitchen door and the throne door (sneaking S1,
+        # rpg-project#606): the watcher a party sneaking from the kitchen to the
+        # throne room has to get past.
+        - when: [{fact: guards-turned}, {enemy: none}]
+          toward: {at: {q: 10, r: -19}}
+        - when:
+            enemy: reach
+          attack: enemy
+        - when:
+            enemy: seen
+          toward: enemy
+        - when: {enemy: none}
+          toward: {path: [{q: -2, r: -12}, {q: 6, r: -12}, {q: 6, r: -15}, {q: 1, r: -15}]}
+  keep-1-policy:
+    recipe:
+      ref: site:behaviors:keep-1-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        # Hand edit (rpg-project#716, Frank's list S2): a knight who SAW the
+        # king fall breaks and runs from the fight; one who did not fights
+        # on until somebody tells him. Testimony, not a world flag: the row
+        # reads the fall this knight holds. `on: ally` because the king is
+        # the knight's side, not the knight himself.
+        - when: {fell: {who: king, within: 3, on: ally}}
+          away: enemy
+          weight: 3
+        - say: Protect the king!
+          when:
+            - enemy: seen
+            - not:
+                fact: alarm-raised
+          fact: alarm-raised
+        - when:
+            enemy: reach
+          attack: enemy
+        - when:
+            enemy: seen
+          toward: enemy
+        # Hand edit: on the alarm, fall back beside the king, in his corner.
+        - when: {fact: alarm-raised}
+          toward: {at: {q: 4, r: -18}}
+        - when:
+            heard:
+              kind: voice
+              within: 3
+          toward: sound
+        # Hand edit: this knight paces the throne room's west side, a loop that
+        # stays clear of the throne door's line from the hall.
+        - when: {enemy: none}
+          toward: {path: [{q: 4, r: -19}, {q: 7, r: -19}, {q: 7, r: -21}, {q: 5, r: -21}]}
+  keep-2-policy:
+    recipe:
+      ref: site:behaviors:keep-2-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        # Hand edit (rpg-project#716, Frank's list S2): a knight who SAW the
+        # king fall breaks and runs from the fight; one who did not fights
+        # on until somebody tells him. Testimony, not a world flag: the row
+        # reads the fall this knight holds. `on: ally` because the king is
+        # the knight's side, not the knight himself.
+        - when: {fell: {who: king, within: 3, on: ally}}
+          away: enemy
+          weight: 3
+        - say: Protect the king!
+          when:
+            - enemy: seen
+            - not:
+                fact: alarm-raised
+          fact: alarm-raised
+        - when:
+            enemy: reach
+          attack: enemy
+        - when:
+            enemy: seen
+          toward: enemy
+        # Hand edit: on the alarm, fall back beside the king, in his corner.
+        - when: {fact: alarm-raised}
+          toward: {at: {q: 4, r: -18}}
+        - when:
+            heard:
+              kind: voice
+              within: 3
+          toward: sound
+        # Hand edit: this knight paces the throne room's east side, a loop that
+        # stays clear of the throne door's line from the hall.
+        - when: {enemy: none}
+          toward: {path: [{q: 13, r: -19}, {q: 16, r: -19}, {q: 16, r: -21}, {q: 14, r: -21}]}
+  sergeant-policy:
+    recipe:
+      ref: site:behaviors:sergeant-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        - weight: 4
+          when:
+            - fact: alarm-raised
+            - enemy: reach
+          attack: enemy
+        - weight: 4
+          when:
+            - fact: alarm-raised
+            - not:
+                enemy: reach
+          toward: enemy
+        - weight: 3
+          say: Steel in the cells! Sound the alarm!
+          when:
+            heard:
+              kind: clang
+              within: 2
+          fact: alarm-raised
+        - weight: 3
+          say: Intruders in the cells! Sound the alarm!
+          when:
+            enemy: seen
+          fact: alarm-raised
+        - weight: 1
+          hold: {}
+  turnkey-policy:
+    recipe:
+      ref: site:behaviors:turnkey-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        - weight: 4
+          when:
+            - fact: alarm-raised
+            - enemy: reach
+          attack: enemy
+        - weight: 4
+          when:
+            - fact: alarm-raised
+            - not:
+                enemy: reach
+          toward: enemy
+        - weight: 3
+          say: Steel in the cells! Sound the alarm!
+          when:
+            heard:
+              kind: clang
+              within: 2
+          fact: alarm-raised
+        - weight: 3
+          say: Intruders in the cells! Sound the alarm!
+          when:
+            enemy: seen
+          fact: alarm-raised
+        - weight: 1
+          hold: {}

@@ -290,6 +290,7 @@ func (f *field) partitionCanvas(doors []*doorRecord) (*canvasRoom, error) {
 	fixed := *f
 	fixed.holdings = nil
 	fixed.sightPass = nil
+	fixed.blockingDoors, fixed.blockingMask = nil, nil
 	fixed.placed = make([]placedContributor, 0, len(f.placed))
 	for _, p := range f.placed {
 		if !p.mutable() {

@@ -52,7 +52,7 @@ room:
     regions:
       - id: room-1-region
         name: Facing Site
-        lighting: { intensity: 1 }
+        lighting: {intensity: 1}
         cells:
           - r: -5
             q: [[0, 5]]
@@ -98,24 +98,57 @@ room:
     monsterBindings:
       knight:
         faction: watch
-        on:
-          time:
-            - when:
-                enemy: none
-              toward:
-                path:
-                  - q: 0
-                    r: -3
-                  - q: 0
-                    r: 3
-                  - q: 3
-                    r: 0
-                  - q: 3
-                    r: -3
+        behaviors:
+          - id: policy
+            use: knight-policy
       guard:
         faction: garrison
-        on:
-          time:
-            - when:
-                enemy: seen
-              toward: enemy
+        behaviors:
+          - id: policy
+            use: guard-policy
+behaviorDefinitions:
+  knight-policy:
+    recipe:
+      ref: site:behaviors:knight-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        - when:
+            enemy: none
+          toward:
+            path:
+              - q: 0
+                r: -3
+              - q: 0
+                r: 3
+              - q: 3
+                r: 0
+              - q: 3
+                r: -3
+  guard-policy:
+    recipe:
+      ref: site:behaviors:guard-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        - when:
+            enemy: seen
+          toward: enemy

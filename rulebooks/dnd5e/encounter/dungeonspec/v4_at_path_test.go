@@ -87,7 +87,7 @@ func TestTheRoomFrameCompilesTheSamePatrolAsV2(t *testing.T) {
 	}
 	for _, id := range []string{"gate-patrol", "keep-patrol"} {
 		t.Run(id, func(t *testing.T) {
-			got := byID(room, id).Table[encounter.AnswerTime]
+			got := byID(room, id).Behaviors.Instances[0].Instance.Table[encounter.AnswerTime]
 			want := byID(twin, id).Table[encounter.AnswerTime]
 			require.NotEmpty(t, want)
 			require.NotNil(t, want[0].Toward)
@@ -97,12 +97,12 @@ func TestTheRoomFrameCompilesTheSamePatrolAsV2(t *testing.T) {
 
 	// Not two empty selectors agreeing: the route really is the four hexes
 	// the room wrote, in order, and the cell is the one it wrote.
-	gate := byID(room, "gate-patrol").Table[encounter.AnswerTime][0].Toward
+	gate := byID(room, "gate-patrol").Behaviors.Instances[0].Instance.Table[encounter.AnswerTime][0].Toward
 	require.Equal(t, hexCell(RoomCell{Q: -2, R: 0}), gate.Path[0])
 	require.Equal(t, hexCell(RoomCell{Q: 0, R: -2}), gate.Path[1])
 	require.Equal(t, hexCell(RoomCell{Q: 2, R: 0}), gate.Path[2])
 	require.Equal(t, hexCell(RoomCell{Q: 0, R: 2}), gate.Path[3])
-	keep := byID(room, "keep-patrol").Table[encounter.AnswerTime][0].Toward
+	keep := byID(room, "keep-patrol").Behaviors.Instances[0].Instance.Table[encounter.AnswerTime][0].Toward
 	require.NotNil(t, keep.At)
 	require.Equal(t, hexCell(RoomCell{Q: 1, R: 1}), *keep.At)
 }
@@ -134,7 +134,7 @@ const (
 func TestTheOffsetSpellingIsRefusedInTheRoom(t *testing.T) {
 	errs := patrolsRefusal(t, keepAt, "toward: {at: [4, 2]}")
 	require.Contains(t, errs, FieldError{
-		Path: "room.room.monsterBindings.keep-patrol.on.time[0].toward.at",
+		Path: "behaviorDefinitions.keep-patrol-policy.table.time[0].toward.at",
 		Message: "at names a cell of this room, written { q, r } as its walkable hexes are: " +
 			"[col, row] is an offset in a document orientation this dialect does not have",
 	})
@@ -142,7 +142,7 @@ func TestTheOffsetSpellingIsRefusedInTheRoom(t *testing.T) {
 	// And a route with ONE offset waypoint is refused whole, once.
 	errs = patrolsRefusal(t, gateRoute, "toward: {path: [{q: -2, r: 0}, [0, -2], {q: 2, r: 0}]}")
 	require.Contains(t, errs, FieldError{
-		Path: "room.room.monsterBindings.gate-patrol.on.time[0].toward.path",
+		Path: "behaviorDefinitions.gate-patrol-policy.table.time[0].toward.path",
 		Message: "path names a route of this room's cells, each written { q, r } as its walkable hexes are: " +
 			"[col, row] is an offset in a document orientation this dialect does not have",
 	})
@@ -156,13 +156,13 @@ func TestAWaypointOffTheFloorIsRefusedByIndex(t *testing.T) {
 	errs := patrolsRefusal(t, gateRoute,
 		"toward: {path: [{q: -2, r: 0}, {q: 5, r: -2}, {q: 2, r: 0}, {q: 0, r: 2}]}")
 	require.Contains(t, errs, FieldError{
-		Path:    "room.room.monsterBindings.gate-patrol.on.time[0].toward.path[1]",
+		Path:    "behaviorDefinitions.gate-patrol-policy.table.time[0].toward.path[1]",
 		Message: "this walks to {q: 5, r: -2}, which is not floor",
 	})
 
 	errs = patrolsRefusal(t, keepAt, "toward: {at: {q: 9, r: 9}}")
 	require.Contains(t, errs, FieldError{
-		Path:    "room.room.monsterBindings.keep-patrol.on.time[0].toward.at",
+		Path:    "behaviorDefinitions.keep-patrol-policy.table.time[0].toward.at",
 		Message: "this walks to {q: 9, r: 9}, which is not floor",
 	})
 }
@@ -175,7 +175,7 @@ func TestARouteThatRetracesItselfReachesTheRoomAuthor(t *testing.T) {
 	// Out east along r = 0 and back again: the second leg walks the first.
 	errs := patrolsRefusal(t, gateRoute, "toward: {path: [{q: -2, r: 0}, {q: 2, r: 0}, {q: 0, r: 0}]}")
 	require.Contains(t, errs, FieldError{
-		Path: "room.room.monsterBindings.gate-patrol.on.time[0].toward.path",
+		Path: "behaviorDefinitions.gate-patrol-policy.table.time[0].toward.path",
 		Message: "this route retraces itself at {q: 1, r: 0}: a patrol walks a loop — " +
 			"add a waypoint so no leg crosses another",
 	})
@@ -190,14 +190,14 @@ func TestALegOffTheFloorReachesTheRoomAuthor(t *testing.T) {
 	// Cut the centre out of the floor: the diamond's legs go round it, but a
 	// route straight across does not.
 	holed := swapOneIn(t, raw, "          - r: 0\n            q: [[-3, 3]]\n", "          - r: 0\n            q: [[-3, -1], [1, 3]]\n")
-	holed = swapOneIn(t, holed, "startingCell: { location: { q: 0, r: 0 } }", "startingCell: { location: { q: 1, r: 0 } }")
+	holed = swapOneIn(t, holed, "startingCell: {location: {q: 0, r: 0}}", "startingCell: {location: {q: 1, r: 0}}")
 	holed = swapOneIn(t, holed, gateRoute, "toward: {path: [{q: -2, r: 0}, {q: 2, r: 0}, {q: 0, r: 2}]}")
 	_, err = Load(holed)
 	require.Error(t, err)
 	var validation *ValidationError
 	require.ErrorAs(t, err, &validation)
 	require.Contains(t, validation.Errors, FieldError{
-		Path: "room.room.monsterBindings.gate-patrol.on.time[0].toward.path",
+		Path: "behaviorDefinitions.gate-patrol-policy.table.time[0].toward.path",
 		Message: "leg 1 of this route walks through {q: 0, r: 0}, which is not floor: " +
 			"move a waypoint so the line between them stays on the floor",
 	})
@@ -210,7 +210,7 @@ func TestACellUnderAttackIsTheWordsDefectInTheRoom(t *testing.T) {
 	errs := patrolsRefusal(t, keepAt, "attack: {at: {q: 1, r: 1}}")
 	var found bool
 	for _, e := range errs {
-		if e.Path == "room.room.monsterBindings.keep-patrol.on.time[0].attack" &&
+		if e.Path == "behaviorDefinitions.keep-patrol-policy.table.time[0].attack" &&
 			strings.HasPrefix(e.Message, "a cell is somewhere to walk toward, and `attack` acts on a creature") {
 			found = true
 		}
@@ -221,23 +221,26 @@ func TestACellUnderAttackIsTheWordsDefectInTheRoom(t *testing.T) {
 // TestTheFactionLevelCellTakesTheRoomFrameToo: a faction's inherited `on:` is
 // judged by the same grammar a binding's is, so it takes `{ q, r }` and
 // refuses the offset at `factions[0]…` in the same sentences.
-func TestTheFactionLevelCellTakesTheRoomFrameToo(t *testing.T) {
-	raw, err := os.ReadFile(v4SitePath)
+func factionPatrolSource(t *testing.T) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(v4PatrolsPath)
 	require.NoError(t, err)
-	const row = "        - {when: {enemy: reach}, attack: enemy}"
+	raw = swapOneIn(t, raw, "room:\n  version: 3", "factions:\n  - id: watch\n    behaviors: [{id: duty, use: gate-patrol-policy}]\nroom:\n  version: 3")
+	return swapOneIn(t, raw, "      gate-patrol:\n        behaviors:\n          - id: policy\n            use: gate-patrol-policy", "      gate-patrol:\n        faction: watch")
+}
 
-	_, err = Load(swapOneIn(t, raw, row, "        - {when: {enemy: none}, toward: {at: {q: 1, r: 0}}}"))
-	require.NoError(t, err, "a walkable hex of the room, at the faction level")
-	_, err = Load(swapOneIn(t, raw, row,
-		"        - {when: {enemy: none}, toward: {path: [{q: -1, r: 0}, {q: 1, r: -1}, {q: 0, r: 1}]}}"))
-	require.NoError(t, err, "a route of walkable hexes, at the faction level")
-
-	_, err = Load(swapOneIn(t, raw, row, "        - {when: {enemy: none}, toward: {at: {q: 4, r: 4}}}"))
+func TestTheFactionLevelCellTakesTheRoomFrameToo(t *testing.T) {
+	raw := factionPatrolSource(t)
+	compiled, err := Load(swapOneIn(t, raw, gateRoute, "toward: {at: {q: 1, r: 0}}"))
+	require.NoError(t, err)
+	require.Equal(t, "duty", compiled.Monsters[0].Behaviors.Instances[0].Instance.ID)
+	require.Equal(t, hexCell(RoomCell{Q: 1}), *compiled.Monsters[0].Behaviors.Instances[0].Instance.Table[encounter.AnswerTime][0].Toward.At)
+	_, err = Load(swapOneIn(t, raw, gateRoute, "toward: {path: [{q: -1, r: 0}, {q: 1, r: -1}, {q: 0, r: 1}]}"))
+	require.NoError(t, err)
+	_, err = Load(swapOneIn(t, raw, gateRoute, "toward: {at: {q: 4, r: 4}}"))
 	var validation *ValidationError
 	require.ErrorAs(t, err, &validation)
-	require.Contains(t, validation.Errors, FieldError{
-		Path: "factions[0].on.time[0].toward.at", Message: "this walks to {q: 4, r: 4}, which is not floor",
-	})
+	require.Contains(t, validation.Errors, FieldError{Path: "behaviorDefinitions.gate-patrol-policy.table.time[0].toward.at", Message: "this walks to {q: 4, r: 4}, which is not floor"})
 }
 
 // TestTheV2DialectRefusesTheRoomsSpelling is the other side: v2's frame is its

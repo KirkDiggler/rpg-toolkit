@@ -37,6 +37,8 @@ var (
 	ErrBadBag = errors.New("machine: bad bag")
 	// ErrBadState refuses a terminal state that carries transitions.
 	ErrBadState = errors.New("machine: bad state")
+	// ErrNilInput refuses a TraceStep with no input.
+	ErrNilInput = errors.New("machine: nil input")
 	// ErrNilBlob refuses a Step on no blob.
 	ErrNilBlob = errors.New("machine: nil blob")
 )

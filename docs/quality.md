@@ -75,9 +75,11 @@ is a naming smell — suggest renaming or collapsing. Mock provided. One gap:
 
 ## Mechanics
 
-`mechanics/resources` is the only current module in this layer. The effects
-composer is a separate prototype under `examples/effects`, not a supported
-replacement API. See the [mechanics guide](architecture/components/mechanics.md).
+This layer contains `mechanics/resources` and the generic composer at
+`mechanics/effects`. The latter replaces the retired implementation at that path;
+source extraction is not a claim of production rulebook adoption. Release and
+consumer evidence belong to [#705](https://github.com/KirkDiggler/rpg-project/issues/705).
+See the [mechanics guide](architecture/components/mechanics.md).
 
 ### mechanics/resources — B+
 
@@ -219,7 +221,7 @@ one-off).
 Conditions implementing the typed-data-JSON pattern (per CLAUDE.md
 "Feature/Condition Serialization Pattern"):
 
-- `RagingCondition` (Barbarian) — original reference impl, AttackChain
+- Composed Raging (class/item bindings) — shared registry creator, real rulebook chains, strict current-format persistence
   subscriber.
 - `SneakAttackCondition` (Rogue) — DamageChain subscriber, marks
   eligibility + adds dice.

@@ -1,91 +1,63 @@
-// Package effects provides D&D 5e spell and ability effects
+// Copyright (C) 2026 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 package effects
 
-// EffectType categorizes different effects
-type EffectType string
+import (
+	"fmt"
 
-const (
-	// EffectBless represents the Bless spell effect (+1d4 to attacks and saves)
-	EffectBless EffectType = "bless"
-	// EffectShield represents Shield spell (+5 AC for 1 round)
-	EffectShield EffectType = "shield"
-	// EffectMageArmor represents Mage Armor spell (13 + Dex AC)
-	EffectMageArmor EffectType = "mage_armor"
-	// EffectHaste represents Haste spell (+2 AC, double speed, additional action)
-	EffectHaste EffectType = "haste"
-	// EffectSlow represents Slow spell (-2 AC, halved speed, limited actions)
-	EffectSlow EffectType = "slow"
-	// EffectBarkskin represents Barkskin spell (minimum 16 AC)
-	EffectBarkskin EffectType = "barkskin"
-
-	// EffectRage represents the Barbarian rage effect
-	EffectRage EffectType = "rage"
-	// EffectRecklessAttack represents Barbarian reckless attack (advantage on attacks)
-	EffectRecklessAttack EffectType = "reckless_attack"
-	// EffectDivineSmite represents Paladin divine smite (extra radiant damage)
-	EffectDivineSmite EffectType = "divine_smite"
-	// EffectSneakAttack represents Rogue sneak attack (extra damage dice)
-	EffectSneakAttack EffectType = "sneak_attack"
-
-	// EffectMagicWeapon represents magic weapon bonuses
-	EffectMagicWeapon EffectType = "magic_weapon"
-	// EffectMagicArmor represents magical armor enhancement bonuses
-	EffectMagicArmor EffectType = "magic_armor"
+	generic "github.com/KirkDiggler/rpg-toolkit/mechanics/effects"
+	"github.com/KirkDiggler/rpg-toolkit/mechanics/effects/machine"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
+	dndevents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
-// Effect represents a temporary effect on a character
-type Effect struct {
-	Type       EffectType `json:"type"`
-	Source     string     `json:"source"`      // Who/what created this effect
-	SourceType string     `json:"source_type"` // "spell", "item", "feature"
-	Duration   string     `json:"duration,omitempty"`
+// Kind names the supported reusable mechanical meanings, not named conditions.
+const (
+	KindDamageBonus generic.KindName = "damage_bonus"
+	KindResistance  generic.KindName = "resistance"
+	KindAdvantage   generic.KindName = "advantage"
+)
 
-	// Common modifiers (simplified for persistence)
-	AttackBonus string `json:"attack_bonus,omitempty"` // "+1", "+1d4"
-	DamageBonus string `json:"damage_bonus,omitempty"` // "+2", "+1d6"
-	ACBonus     int    `json:"ac_bonus,omitempty"`
-	SaveBonus   string `json:"save_bonus,omitempty"` // "+1", "+1d4"
-
-	// Other properties
-	Concentration bool `json:"concentration,omitempty"`
-	Data          any  `json:"data,omitempty"` // Effect-specific data
+// BindInput supplies immutable instance attribution for the rulebook vocabulary.
+// Origin is not a condition's stacking qualifier; DisplayName is authored by its
+// descriptor rather than inferred from a ref or a particular source type.
+type BindInput struct {
+	Origin      dndevents.ConditionOrigin
+	DisplayName string
 }
 
-// NewBlessEffect creates a Bless spell effect
-func NewBlessEffect(source string) Effect {
-	return Effect{
-		Type:          EffectBless,
-		Source:        source,
-		SourceType:    "spell",
-		AttackBonus:   "+1d4",
-		SaveBonus:     "+1d4",
-		Duration:      "1_minute",
-		Concentration: true,
-	}
+// BindOutput supplies the two generic vocabularies. The condition owner supplies
+// its own End/Changed hooks; a kind does not decide condition address or custody.
+type BindOutput struct {
+	Machine machine.Vocabulary
+	Outputs generic.OutputVocabulary
 }
 
-// NewShieldEffect creates a Shield spell effect (+5 AC)
-func NewShieldEffect(source string) Effect {
-	return Effect{
-		Type:       EffectShield,
-		Source:     source,
-		SourceType: "spell",
-		ACBonus:    5,
-		Duration:   "1_round",
-	}
+// AssessInput asks one bound output about one typed rulebook context. No context
+// requests its description without an applied benefit. No operation mutates it.
+type AssessInput struct {
+	Query       Query
+	Output      *generic.Bound
+	Origin      dndevents.ConditionOrigin
+	DisplayName string
 }
 
-// NewRageEffect creates a Barbarian rage effect
-func NewRageEffect(source string) Effect {
-	return Effect{
-		Type:        EffectRage,
-		Source:      source,
-		SourceType:  "feature",
-		DamageBonus: "+2", // Varies by barbarian level
-		Duration:    "1_minute",
-		Data: map[string]any{
-			"resistance": []string{"bludgeoning", "piercing", "slashing"},
-			"advantage":  []string{"strength_checks", "strength_saves"},
-		},
+// AssessOutput carries one domain-honest information row, never an action grant.
+type AssessOutput struct{ Effect contributions.Effect }
+
+func validateBinding(in *BindInput) error {
+	if in == nil {
+		return fmt.Errorf("effect vocabulary requires input")
 	}
+	if err := in.Origin.Ref.IsValid(); err != nil {
+		return fmt.Errorf("effect origin ref: %w", err)
+	}
+	if in.Origin.EntityID == "" {
+		return fmt.Errorf("effect origin entity_id is required")
+	}
+	if in.DisplayName == "" {
+		return fmt.Errorf("effect display name is required")
+	}
+	return nil
 }

@@ -19,30 +19,25 @@
 # says; an author never writes that line and cannot turn it off.
 version: 5
 key: truce-v4
-play: { void: transparent, lighting: bright, standing: centre-covered }
-
+play: {void: transparent, lighting: bright, standing: centre-covered}
 factions:
   - id: goblins
-    temper: { coward: 1, soldier: 1 }
+    temper: {coward: 1, soldier: 1}
   - id: guards
-    temper: { soldier: 1 }
-
+    temper: {soldier: 1}
 dispositions:
   # "The wolves are calm until you kill the alpha." Kill the scout and the
   # whole camp is on you — not the one goblin who saw it, the camp.
-  - { between: [goblins, party], stance: neutral, until: { down: scout } }
+  - {between: [goblins, party], stance: neutral, until: {down: scout}}
   # "The guards are civil until midnight." Nothing happens; the clock runs
   # out. Round 3 is a FIGHT's round (design R9), so a party that never comes
   # to blows with anyone walks past these two forever.
-  - { between: [guards, party], stance: neutral, until: { round: 3 } }
-
+  - {between: [guards, party], stance: neutral, until: {round: 3}}
 room:
   version: 3
   id: room-1
   name: The Truce
-  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
-    distanceUnit: world-scene-unit, hexRadius: 1,
-    footprintFrame: owner-local-xz}
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up, distanceUnit: world-scene-unit, hexRadius: 1, footprintFrame: owner-local-xz}
   scene:
     version: 1
     id: scene-1
@@ -54,7 +49,7 @@ room:
     regions:
       - id: room-1-region
         name: The Truce
-        lighting: { intensity: 1 }
+        lighting: {intensity: 1}
         cells:
           - r: -2
             q: [[0, 2]]
@@ -73,10 +68,10 @@ room:
       # THE SCOUT IS THE PREDICATE, and it is an ordinary goblin otherwise:
       # nothing on the placement says it is load-bearing. The disposition
       # names it, and that is the whole of what makes this camp turnable.
-      - {id: scout, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: -1 } }}
-      - {id: goblin-2, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: -2 } }}
-      - {id: guard-1, ref: 'dnd5e:monsters:bandit', startingCell: { location: { q: 0, r: 2 } }}
-      - {id: guard-2, ref: 'dnd5e:monsters:bandit', startingCell: { location: { q: -1, r: 2 } }}
+      - {id: scout, ref: 'dnd5e:monsters:goblin', startingCell: {location: {q: 2, r: -1}}}
+      - {id: goblin-2, ref: 'dnd5e:monsters:goblin', startingCell: {location: {q: 2, r: -2}}}
+      - {id: guard-1, ref: 'dnd5e:monsters:bandit', startingCell: {location: {q: 0, r: 2}}}
+      - {id: guard-2, ref: 'dnd5e:monsters:bandit', startingCell: {location: {q: -1, r: 2}}}
     monsterBindings:
       guard-2: {faction: guards}
       goblin-2: {faction: goblins}
@@ -86,9 +81,26 @@ room:
       guard-1:
         faction: guards
         actions: ['dnd5e:weapons:scimitar']
-        on:
-          time:
-            - { when: { attacked: { within: 3 } }, attack: attacker, weight: 3 }
-            - { when: { enemy: reach },            attack: enemy }
-            - { when: { enemy: seen },             toward: enemy }
-            - { when: { enemy: none },             hold: {} }
+        behaviors:
+          - id: policy
+            use: guard-1-policy
+behaviorDefinitions:
+  guard-1-policy:
+    recipe:
+      ref: site:behaviors:guard-1-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        - {when: {attacked: {within: 3}}, attack: attacker, weight: 3}
+        - {when: {enemy: reach}, attack: enemy}
+        - {when: {enemy: seen}, toward: enemy}
+        - {when: {enemy: none}, hold: {}}

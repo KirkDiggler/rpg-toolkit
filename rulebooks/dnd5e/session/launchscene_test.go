@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
+	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -96,7 +98,35 @@ func sceneInput(sc scene) *session.LaunchInput {
 func monsterAt(id, ref string, col, row int) dungeonspec.MonsterPlacement {
 	return dungeonspec.MonsterPlacement{
 		Ref: ref, ID: id, MemberID: id, At: spatial.Position{X: float64(col), Y: float64(row)},
+		Behaviors: ordinaryBehavior(fixtureCombatTable()),
 	}
+}
+
+// ordinaryBehavior is explicit test configuration, not a session default or
+// test-only runner. Real source-boundary tests load complete authored YAML.
+func ordinaryBehavior(table encounter.Table) *encounter.BehaviorInput {
+	if len(table) == 0 {
+		return nil
+	}
+	return &encounter.BehaviorInput{Instances: []encounter.BoundBehavior{{Instance: behavior.InstanceSpec{
+		ID: "policy", Table: table,
+		Recipe: machine.Recipe{Ref: core.Ref{Module: "test", Type: "behaviors", ID: "ordinary"}, Initial: "ready",
+			States: map[string]machine.State{"ready": {Transitions: []machine.Transition{
+				{On: "time", Do: []machine.Act{{Pick: "time"}}},
+				{On: "turn", Do: []machine.Act{{Pick: "time"}}},
+			}}}},
+	}}}}
+}
+
+func fixtureCombatTable() encounter.Table {
+	return encounter.Table{encounter.AnswerTime: {
+		{Weight: 3, When: []encounter.When{{Deed: "fled", Within: 3}}, Away: &encounter.Selector{Word: encounter.SelectorActor}},
+		{Weight: 3, When: []encounter.When{{Deed: "attacked", Within: 3}}, Attack: &encounter.Selector{Word: encounter.SelectorAttacker}},
+		{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyReach}}, Attack: &encounter.Selector{Word: encounter.SelectorEnemy}},
+		{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemySeen}}, Toward: &encounter.Selector{Word: encounter.SelectorEnemy}},
+		{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyRemembered}}, Toward: &encounter.Selector{Word: encounter.SelectorEnemy}},
+		{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyNone}}, Hold: true},
+	}}
 }
 
 // seatAt is a party seat on an authored cell.

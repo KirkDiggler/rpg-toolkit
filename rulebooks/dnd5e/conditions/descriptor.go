@@ -65,6 +65,10 @@ type descriptor struct {
 	// attacks…"), never in the holder's "you".
 	display Display
 
+	// composition is the binding/recipe contract for a composed condition.
+	// Nil keeps the existing handwritten constructor/format contract.
+	composition *compositionDefinition
+
 	// load restores a stored blob. Required.
 	load func(json.RawMessage) (dnd5eEvents.ConditionBehavior, error)
 

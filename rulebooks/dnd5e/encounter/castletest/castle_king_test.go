@@ -239,19 +239,18 @@ func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 		if slices.Contains(host.postedLike, encounter.MemberID(m.MemberID)) {
 			for _, g := range compiled.Monsters {
 				if encounter.MemberID(g.MemberID) == kingGate1 {
-					m.Machine, m.BlockingStates, m.Posts = g.Machine, g.BlockingStates, g.Posts
+					m.Behaviors, m.BlockingStates, m.Posts = g.Behaviors, g.BlockingStates, g.Posts
 				}
 			}
 		}
 		members = append(members, encounter.MemberInput{
-			ID:       encounter.MemberID(m.MemberID),
-			Kind:     encounter.KindMonster,
-			Position: at,
-			Faction:  encounter.FactionID(m.Faction),
-			Table:    m.Table,
-			Options:  m.Options,
-			Arrives:  m.Arrives,
-			Machine:  m.Machine,
+			ID:        encounter.MemberID(m.MemberID),
+			Kind:      encounter.KindMonster,
+			Position:  at,
+			Faction:   encounter.FactionID(m.Faction),
+			Behaviors: m.Behaviors,
+			Options:   m.Options,
+			Arrives:   m.Arrives,
 			// The posted body's blocking states (rpg-project#836), as the
 			// session's launch hands them beside the recipe.
 			BlockingStates: m.BlockingStates, Posts: postsOf(host, m),
@@ -292,7 +291,7 @@ func (host castleHost) capabilities(strikes *[]cellsStrike, standing *castleStan
 		Sheets:        castleSheets{passive: host.passive, arcs: host.arcs, speed: host.speedFt},
 		Participation: standing,
 		Initiative:    orderAsGiven{},
-		Driver:        encounter.TableDriver{Roller: rollsOne{}},
+		Driver:        encounter.BehaviorDriver{},
 		Roller:        rollsOne{},
 		CheckResolver: resolver,
 		Witness:       nobodyPerceivesAnything{},

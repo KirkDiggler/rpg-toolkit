@@ -114,12 +114,12 @@ func (d TableDriver) Act(view MonsterView) (Decision, error) {
 	}
 	chosen.Key = key
 
-	intent, err := d.intentFor(view, chosen.Answer)
+	translated, err := IntentForAnswer(&IntentForAnswerInput{View: view, Answer: chosen.Answer})
 	if err != nil {
 		return Decision{}, err
 	}
 
-	return Decision{Intent: intent, Pick: chosen}, nil
+	return Decision{Intent: translated.Intent, Pick: chosen}, nil
 }
 
 // intentFor translates one fired entry into the intent that carries it out.

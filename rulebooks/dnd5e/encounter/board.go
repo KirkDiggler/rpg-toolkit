@@ -177,8 +177,11 @@ func (e *Encounter) ValidateBoard(in *BoardInput) error {
 		// it has blocking states (rpg-project#836), else its declared word —
 		// the read [Encounter.memberBlocks] makes of the same member once
 		// admitted.
-		admitted := memberRecord{Recipe: m.Machine, BlockingStates: m.BlockingStates, BlocksMovement: m.BlocksMovement}
-		if admitted.blocksIn("") {
+		admitted := memberRecord{ID: m.Member, BlocksMovement: m.BlocksMovement}
+		if err := e.useBehaviors(&admitted, m.Behaviors, nil, m.BlockingStates); err != nil {
+			return err
+		}
+		if admitted.blocksIn(admitted.bodyState()) {
 			blocked[cell] = m.Member
 		}
 	}

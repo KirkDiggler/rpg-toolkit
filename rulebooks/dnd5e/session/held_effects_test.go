@@ -93,6 +93,7 @@ func (s *EffectRowsSuite) TestCandidateCarriesFaerieFireHeldRow() {
 		ID:            "target:" + refs.Conditions.FaerieFire().String() + "@" + erAlly,
 		Ref:           refs.Conditions.FaerieFire().String(),
 		Name:          conditions.FaerieFireName,
+		SourceID:      erAlly,
 		Description:   display.Detail,
 		State:         session.EffectApplies,
 		Reason:        "You can see the outlined target",

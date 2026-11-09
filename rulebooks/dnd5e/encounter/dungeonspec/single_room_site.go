@@ -176,6 +176,7 @@ func siteScopeShape(doc *yaml.Node, add errSink) {
 
 func factionShape(fa *yaml.Node, p string, add errSink) {
 	fa = resolveNode(fa)
+	behaviorBindingsShape(fa, p, add)
 	if fa == nil || fa.Kind != yaml.MappingNode {
 		return
 	}
@@ -219,6 +220,7 @@ func monsterBindingsShape(gp *yaml.Node, add errSink) {
 		if b.Kind != yaml.MappingNode {
 			continue
 		}
+		behaviorBindingsShape(b, p, add)
 		optionalNode(b, "on", p, add)
 		// A binding's `temper` is a placement's own WORD, so an empty one is
 		// [optionalReference]'s case: a name that names nothing.
@@ -287,7 +289,15 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 		Bundled:      true,
 	})
 	g.factions()
+	behaviorSourceValues(s, add)
 	g.factionOrders()
+	for _, id := range sortedKeys(s.BehaviorDefinitions) {
+		for _, key := range sortedKeys(s.BehaviorDefinitions[id].table) {
+			for i, row := range s.BehaviorDefinitions[id].table[key] {
+				g.answerEntry(fmt.Sprintf("behaviorDefinitions.%s.table.%s[%d]", id, key, i), key, row)
+			}
+		}
+	}
 	// THE ROOT TABLES, EACH JUDGED BY THE SAME GRAMMAR A BINDING'S OWN `on:`
 	// GETS (rpg-toolkit#1897). Asked here rather than in the member loop
 	// below because a table is NOT OWNED by any creature — that is the whole

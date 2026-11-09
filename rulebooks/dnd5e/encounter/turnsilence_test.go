@@ -168,7 +168,7 @@ func TestAnAttackRowWithItsAttackerOutOfReachIsNotOnTheTable(t *testing.T) {
 	striker := &scriptedStriker{kind: encounter.OutcomeMissed}
 	enc := silenceScene(t, []encounter.MemberInput{
 		{ID: alice, Kind: encounter.KindPlayer, Position: seat(2, 3)},
-		{ID: goblin, Kind: encounter.KindMonster, Position: seat(8, 3), Table: vengeanceTable()},
+		{ID: goblin, Kind: encounter.KindMonster, Position: seat(8, 3), Behaviors: ordinaryBehavior(vengeanceTable())},
 	}, tableDriver(), quietMover{}, striker, everyoneStanding{})
 
 	_, err := recordOne(enc, &encounter.RecordInput{
@@ -274,7 +274,7 @@ func TestTowardATargetAlreadyInReachStaysAndSaysSo(t *testing.T) {
 	striker := &scriptedStriker{kind: encounter.OutcomeMissed}
 	enc := silenceScene(t, []encounter.MemberInput{
 		{ID: alice, Kind: encounter.KindPlayer, Position: seat(4, 4)},
-		{ID: goblin, Kind: encounter.KindMonster, Position: seat(5, 4), Table: silenceTable()},
+		{ID: goblin, Kind: encounter.KindMonster, Position: seat(5, 4), Behaviors: ordinaryBehavior(silenceTable())},
 	}, tableDriver(), mover, striker, everyoneStanding{})
 
 	_, err := recordOne(enc, &encounter.RecordInput{
@@ -378,7 +378,7 @@ func TestAnOpportunityAttackMidWalkRepointsAttacker(t *testing.T) {
 	mover := &reachLeavingMover{reactors: []encounter.MemberID{fighter, bard}, asked: map[encounter.MemberID]bool{}}
 	striker := &scriptedStriker{kind: encounter.OutcomeStruck}
 	members := []encounter.MemberInput{
-		{ID: goblin, Kind: encounter.KindMonster, Position: seat(5, 2), Table: silenceTable()},
+		{ID: goblin, Kind: encounter.KindMonster, Position: seat(5, 2), Behaviors: ordinaryBehavior(silenceTable())},
 		{ID: bard, Kind: encounter.KindPlayer, Position: seat(9, 1)},
 		{ID: fighter, Kind: encounter.KindPlayer, Position: seat(6, 1)},
 	}
