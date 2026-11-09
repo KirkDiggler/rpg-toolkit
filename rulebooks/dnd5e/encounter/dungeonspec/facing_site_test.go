@@ -52,7 +52,7 @@ func facingCapabilities() encounter.Capabilities {
 		Sheets:        castleSheets{},
 		Participation: &castleStanding{down: map[encounter.MemberID]bool{}},
 		Initiative:    orderAsGiven{},
-		Driver:        encounter.TableDriver{Roller: rollsOne{}},
+		Driver:        encounter.BehaviorDriver{},
 		Roller:        rollsOne{},
 		CheckResolver: nothingIsEverFound{},
 		Witness:       nobodyPerceivesAnything{},
@@ -74,12 +74,12 @@ func openTheFacingSite(t *testing.T) *encounter.Encounter {
 	members := []encounter.MemberInput{{ID: facingHero, Kind: encounter.KindPlayer, Position: start}}
 	for _, m := range compiled.Monsters {
 		members = append(members, encounter.MemberInput{
-			ID:       encounter.MemberID(m.MemberID),
-			Kind:     encounter.KindMonster,
-			Position: m.At,
-			Faction:  encounter.FactionID(m.Faction),
-			Table:    m.Table,
-			Facing:   m.FacingDegrees,
+			ID:        encounter.MemberID(m.MemberID),
+			Kind:      encounter.KindMonster,
+			Position:  m.At,
+			Faction:   encounter.FactionID(m.Faction),
+			Behaviors: m.Behaviors,
+			Facing:    m.FacingDegrees,
 		})
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{

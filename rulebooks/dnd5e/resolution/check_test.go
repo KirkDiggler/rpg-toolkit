@@ -91,10 +91,7 @@ func (s *CheckTestSuite) guided() json.RawMessage {
 }
 
 func (s *CheckTestSuite) raging() json.RawMessage {
-	raw, err := (&conditions.RagingCondition{
-		CharacterID: seekerID,
-		Source:      "rage",
-	}).ToJSON()
+	raw, err := ragingForTest(s.T(), seekerID).ToJSON()
 	s.Require().NoError(err)
 
 	return raw

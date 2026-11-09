@@ -112,7 +112,6 @@ type LaunchOutput struct {
 type launchMonster struct {
 	placement dungeonspec.MonsterPlacement
 	sheet     *monster.Data
-	table     encounter.Table
 	temper    encounter.Temper
 }
 
@@ -219,21 +218,16 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 			encounter.HexCellAt(orientation, int(at.X), int(at.Y)),
 			false, monster.placement.Holds, monster.placement.Faction, monster.placement.Arrives,
 			socialPlacement{
-				Options: monster.placement.Options,
-				Table:   monster.table, Temper: monster.temper,
+				Options:   monster.placement.Options,
+				Behaviors: monster.placement.Behaviors, Temper: monster.temper,
 			})
 		if err != nil {
 			return nil, fmt.Errorf("launch: %w", err)
 		}
 		join.AppearanceRef = monster.placement.AppearanceRef
 		join.DefaultActivityRef = monster.placement.DefaultActivityRef
-		// The author's states, compiled to the machine's recipe by the
-		// dungeonspec (rpg-project#766 S4): carried through the door as they
-		// were compiled. Nil stays nil, which is the default recipe.
-		join.Machine = monster.placement.Machine
-		// The states of that recipe in which the body blocks (rpg-project#836,
-		// the author's `blocks: true`): carried beside it, or a posted guard
-		// is seated as a body anyone walks through. Nil blocks as declared.
+		// Physical bindings name states on the designated behavior instance,
+		// never an unrelated role's private progress. Carry the compiled names.
 		join.BlockingStates = monster.placement.BlockingStates
 		// The doors those states hold (rpg-project#852, R5, the author's
 		// `holds`): carried beside the blocking states, or a posted guard
@@ -360,15 +354,14 @@ func resolveLaunchMonsters(dungeon *dungeonspec.Compiled) ([]launchMonster, erro
 		if err != nil {
 			return nil, fmt.Errorf("monster %q: %w", placement.MemberID, err)
 		}
-		table, err := foldedTable(sheet.Ref, placement.Table)
-		if err != nil {
-			return nil, fmt.Errorf("monster %q: %w", placement.MemberID, err)
+		if len(placement.Table) != 0 || placement.Machine != nil {
+			return nil, fmt.Errorf("monster %q: use canonical behaviors, not legacy table/machine input: %w", placement.MemberID, ErrInvalidWorld)
 		}
 		temper, err := resolvedTemper(placement.Temper)
 		if err != nil {
 			return nil, fmt.Errorf("monster %q: %w", placement.MemberID, err)
 		}
-		out = append(out, launchMonster{placement: placement, sheet: sheet, table: table, temper: temper})
+		out = append(out, launchMonster{placement: placement, sheet: sheet, temper: temper})
 	}
 	return out, nil
 }

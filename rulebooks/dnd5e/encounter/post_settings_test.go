@@ -20,7 +20,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
@@ -203,7 +202,7 @@ func TestALeavingPostLetsTheArrivalsIn(t *testing.T) {
 }
 
 func TestAPassFactWalksThroughAHold(t *testing.T) {
-	porter := MemberInput{ID: "porter", Kind: KindMonster, Faction: postedGarrison, Position: holdBeside, Table: holds()}
+	porter := MemberInput{ID: "porter", Kind: KindMonster, Faction: postedGarrison, Position: holdBeside, Behaviors: ordinaryBehavior(holds())}
 	enc := sidedHall(t, holdLeafDoor(DoorIsOpen()), holdSouthEast, gatehouseGuard(t, PostBothWays, holdPass), porter)
 
 	require.Equal(t, "Gate guard bars the way", heldStop(t, enc, holdNorthEast), "without the pass, barred")
@@ -285,7 +284,7 @@ func TestADirectedPostNeedsOneSidePerCrossing(t *testing.T) {
 		enc := holdHall(t, holdLeafDoor(DoorIsOpen()), holdSouthEast)
 		_, err := enc.Join(&JoinInput{
 			Member: postedGuard, Kind: KindMonster, Faction: postedGarrison, Cell: holdNorthWest,
-			Table: holds(), Machine: holdRecipe(t), Posts: map[string]Post{"posted": {Door: holdLeaf, Against: PostEntering}},
+			Behaviors: fixtureBehavior(*holdRecipe(t), holds()), Posts: map[string]Post{"posted": {Door: holdLeaf, Against: PostEntering}},
 		})
 		require.ErrorIs(t, err, ErrBadMember, "the one-region hall gives the post no side")
 	})
@@ -339,7 +338,7 @@ func TestTheDoorVerbsReadTheSettings(t *testing.T) {
 }
 
 func TestObservedHoldsFollowTheSettings(t *testing.T) {
-	porter := MemberInput{ID: "porter", Kind: KindMonster, Faction: postedGarrison, Position: holdBeside, Table: holds()}
+	porter := MemberInput{ID: "porter", Kind: KindMonster, Faction: postedGarrison, Position: holdBeside, Behaviors: ordinaryBehavior(holds())}
 	bob := MemberInput{ID: "bob", Kind: KindPlayer, Position: spatial.Position{X: 7, Y: 0}}
 	enc := sidedHall(t, holdLeafDoor(DoorIsOpen()), holdSouthEast, gatehouseGuard(t, PostEntering, holdPass), porter, bob)
 	seen := func(viewer MemberID) map[MemberID]HeldDoor {
@@ -505,14 +504,9 @@ func TestASettingsChangeIsAPostChange(t *testing.T) {
 			alert.Against = tc.alert
 			guard.Posts["alert"] = alert
 			enc := sidedHall(t, holdLeafDoor(DoorIsOpen()), holdSouthEast, guard)
-			m := enc.members[postedGuard]
-			p := enc.programFor(m)
-			require.NotNil(t, p)
 			enc.pendingCells, enc.blockingTurned = nil, false
-
-			m.Machine.State = "alert"
-			require.NoError(t, enc.afterStep(postedGuard, m, p, machine.Stepped{Fired: true, From: "posted", To: "alert"},
-				uint64(enc.clock.ToData().HighWater), false))
+			teach(t, enc, postedGuard, holdAlarm)
+			require.NoError(t, enc.matchLanded())
 			require.Equal(t, tc.changed, slices.Contains(enc.pendingCells, holdNorthWest), "his cell goes to the next look")
 			require.Equal(t, tc.changed, enc.blockingTurned)
 		})
@@ -526,7 +520,8 @@ func TestASettingsChangeIsAPostChange(t *testing.T) {
 // told the authored direction and side, not a bare both ways.
 func TestObservedHoldsReadTheAuthoredPostAfterHeLeavesIt(t *testing.T) {
 	enc := sidedHall(t, holdLeafDoor(DoorIsOpen()), holdSouthEast, gatehouseGuard(t, PostEntering, ""))
-	enc.members[postedGuard].Machine.State = "cowed"
+	teach(t, enc, postedGuard, postedCowed)
+	require.NoError(t, enc.matchLanded())
 	_, holds := enc.memberHolds(postedGuard, nil)
 	require.False(t, holds, "precondition: cowed, he holds nothing now")
 

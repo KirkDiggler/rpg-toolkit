@@ -52,7 +52,10 @@ type CommandTurnSuite struct {
 	// driver of its own. Nil means the real behavior, which is what every
 	// compelled test wants: a compelled turn that leaked through to it would
 	// produce a view.
-	behind session.TurnDriver
+	behind     session.TurnDriver
+	canonical  bool
+	policy     *encounter.BehaviorInput
+	policyDice *commandPolicyDice
 }
 
 func TestCommandTurnSuite(t *testing.T) {
@@ -89,9 +92,19 @@ func (s *CommandTurnSuite) scene(
 		s.behind = session.Pass{}
 	}
 	s.driver = &recordingBehavior{next: s.behind}
+	var driver session.TurnDriver = s.driver
+	var roller interface {
+		Roll(context.Context, int) (int, error)
+	} = whisperDice{}
+	if s.canonical {
+		driver = session.Driver()
+	}
+	if s.policyDice != nil {
+		roller = s.policyDice
+	}
 
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
-		PresentationIDs: testPresentationIDs{}, Dice: whisperDice{}, TurnDriver: s.driver,
+		PresentationIDs: testPresentationIDs{}, Dice: roller, TurnDriver: driver,
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
 	})
 	s.Require().NoError(err)
@@ -106,7 +119,7 @@ func (s *CommandTurnSuite) scene(
 		tomb.Party = append(tomb.Party, sceneSeat{ID: sheet.ID, At: authoredOf(cell)})
 	}
 	tomb.Monsters = []dungeonspec.MonsterPlacement{{
-		Ref: refs.Monsters.Skeleton().String(), ID: "skeleton", MemberID: "skeleton", At: authoredOf(skeletonAt),
+		Ref: refs.Monsters.Skeleton().String(), ID: "skeleton", MemberID: "skeleton", At: authoredOf(skeletonAt), Behaviors: s.policy,
 	}}
 	launched := launchScene(s.T(), mgr, tomb)
 	s.Require().NotEmpty(launched.Formed, "arriving in plain sight must start a fight")
@@ -367,6 +380,39 @@ func (s *CommandTurnSuite) TestApproachWalksTheCreatureToTheCasterWithoutAskingI
 		}
 	}
 	s.Equal(1, ended, "the walk IS the turn, so the turn ends with it")
+}
+
+type commandPolicyDice struct{ choices int }
+
+func (d *commandPolicyDice) Roll(ctx context.Context, size int) (int, error) {
+	if size == 100 {
+		d.choices++
+	}
+	return (whisperDice{}).Roll(ctx, size)
+}
+
+func (s *CommandTurnSuite) TestCanonicalBrainWaitsUntilCompulsionEnds() {
+	s.canonical, s.policyDice = true, &commandPolicyDice{}
+	s.policy = ordinaryBehavior(encounter.Table{encounter.AnswerTime: {{Weight: 1, Hold: true}}})
+	defer func() { s.canonical, s.policy, s.policyDice = false, nil, nil }()
+	s.duel()
+	before, err := s.encounters.GetEncounter(context.Background(), "sess")
+	s.Require().NoError(err)
+	_, err = s.command("skeleton", spells.CommandWordApproach)
+	s.Require().NoError(err)
+	s.Require().NoError(s.endTurn("bard"))
+	after, err := s.encounters.GetEncounter(context.Background(), "sess")
+	s.Require().NoError(err)
+	for i, member := range before.Members {
+		if member.ID == "skeleton" {
+			s.Require().NotNil(member.Behaviors)
+			s.Equal(member.Behaviors.Progress, after.Members[i].Behaviors.Progress)
+		}
+	}
+	s.Equal(hexCell(1, 0), s.where("skeleton"), "the real commanded walk still executes")
+	s.Zero(s.policyDice.choices, "compulsion performs no ordinary behavior selection")
+	s.Require().NoError(s.endTurn("bard"))
+	s.Equal(1, s.policyDice.choices, "once the command ends, the same canonical brain is actually consulted")
 }
 
 // TestFleeWalksTheCreatureAwayAndEndsTheTurn is acceptance 6. The same

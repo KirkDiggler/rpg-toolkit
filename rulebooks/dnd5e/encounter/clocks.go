@@ -69,6 +69,12 @@ type ClockOfOutput struct {
 	Order []MemberID
 }
 
+// WorldRound is the world clock's high-water mark: the round the free-roaming
+// world has reached, which a Move advances every time a walker's pace reaches
+// its own speed. A cheap read for a host or a harness that wants the round
+// without the record; it never errs.
+func (e *Encounter) WorldRound() int { return e.clock.ToData().HighWater }
+
 // ClockOf reports which clock a member is on.
 //
 // This is the query the composition is expected to be asked constantly, and it
@@ -618,9 +624,21 @@ func (e *Encounter) runIntents(
 		}
 		view.Clock = kind
 
-		decision, derr := e.driver.Act(view)
+		now := uint64(e.clock.ToData().HighWater)
+		opportunity := behaviorOpportunity{on: beatTurn, event: tickEv{Round: now}, now: now}
+		if kind == ClockWorld {
+			opportunity.on = beatTime
+			if j == startJ && e.opportunity != nil {
+				opportunity = *e.opportunity
+			}
+		}
+		selected, derr := e.selectDecision(m, view, opportunity)
 		if derr != nil {
 			return nil, fmt.Errorf("act: %w", derr)
+		}
+		decision := selected.decision
+		if opportunity.on != beatTime && opportunity.on != beatTurn && decision.Pick != nil && decision.Pick.Entry >= 0 {
+			e.reactionPicked = true
 		}
 
 		// THE PICK'S BEAT COMES FIRST, because the roll is the CAUSE of the
@@ -652,7 +670,7 @@ func (e *Encounter) runIntents(
 		}
 		if decision.Pick != nil && (j == startJ || len(decision.Pick.Candidates) > 0) {
 			if perr := e.inAct(pickVerb, intentAct, func() error {
-				if berr := e.appendPickBeat(activeID, decision.Pick, intentTarget(decision.Intent)); berr != nil {
+				if berr := e.appendPickBeat(activeID, decision.Pick, intentTarget(decision.Intent), selected.instance); berr != nil {
 					return berr
 				}
 				// WHAT THE PICK SAID, AFTER THE PICK (rpg-project#569 R6): the
@@ -685,7 +703,11 @@ func (e *Encounter) runIntents(
 		// encounter's own pause rather than a return value, because a
 		// resume finishes this same loop from where it stopped.
 		if e.turnPaused() {
+			e.pause.turn.behavior = workFromData(workDataFrom(selected.work))
 			return turnDeltas, nil
+		}
+		if err := e.completeBehaviorWork(m, selected.work); err != nil {
+			return turnDeltas, err
 		}
 
 		if done {
@@ -732,13 +754,21 @@ func (e *Encounter) runIntents(
 //
 // TARGET IS WHOM THE PICK'S INTENT ACTS ON ([intentTarget]), written on the
 // beat so a reader sees whom `attacker` or `enemy` named (rpg-project#669).
-func (e *Encounter) appendPickBeat(member MemberID, chosen *Pick, target MemberID) error {
+func (e *Encounter) appendPickBeat(member MemberID, chosen *Pick, target MemberID, instance string) error {
 	at := uint64(e.clock.ToData().HighWater)
 	// THE SYMBOLS FIRST (rpg-project#674): the member's own table for this
 	// key, described before the first pick that indexes it — the table the
 	// driver was handed ([MonsterView.Table] is the member's).
 	if m, ok := e.members[member]; ok {
-		if err := e.describeTable(member, "", chosen.Key, m.Table[chosen.Key], m.Temper, at); err != nil {
+		rows := m.Table[chosen.Key]
+		if instance != "" {
+			bound := m.behaviors.input.Instances[m.behaviors.byID[instance]]
+			rows = bound.Instance.Table[chosen.Key]
+			qualified := *chosen
+			qualified.Key = AnswerKey(fmt.Sprintf("behavior/%d:%s/%s", len(instance), instance, chosen.Key))
+			chosen = &qualified
+		}
+		if err := e.describeTable(member, "", chosen.Key, rows, m.Temper, at); err != nil {
 			return fmt.Errorf("pick beat: %w", err)
 		}
 	}
@@ -960,7 +990,14 @@ func (e *Encounter) executeTurnIntent(
 	activeID MemberID, m *memberRecord, view MonsterView, intent TurnIntent, budget *TurnBudget,
 	coords turnCoords,
 ) (done bool, deltas map[MemberID]*IntelDelta, err error) {
+	if _, pass := intent.(Pass); !pass {
+		// Anything but a Pass may change who stands: the wake's one
+		// participation assessment is dropped once it has executed.
+		defer func() { e.wakeParticipation = nil }()
+	}
 	switch it := intent.(type) {
+	case Delegated:
+		return false, nil, fmt.Errorf("unresolved behavior delegation: %w", ErrBadIntent)
 	case Pass:
 		// A PASS THAT NAMES ITS CAUSE IS TOLD (rpg-toolkit#2001): the word
 		// the driver carried out needed no doing, and the story says so
@@ -1678,7 +1715,12 @@ func (e *Encounter) walkPath(
 		// whoever decided the walk is the one who knows how the body moved
 		// and this loop does not.
 		step := MoveStep{Mover: mover, From: from, To: cell, Cause: cause, Kind: kind}
-		if merr := e.mover.Move(ctx, e, step); merr != nil {
+		merr := e.mover.Move(ctx, e, step)
+		// THE MOVER IS A MOMENT STANDING CAN CHANGE with no intent ending: a
+		// reaction it fires can drop the walker, and the per-cell ask below
+		// must see it, inside a wake pass as anywhere else.
+		e.wakeParticipation = nil
+		if merr != nil {
 			// A PAUSE IS NEWS, NOT A MALFUNCTION. Somebody is being asked
 			// about this step; it is announced and not taken, and the rest
 			// of the path — this cell first — waits with them. Every other
@@ -2183,6 +2225,14 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 	var remembered []RememberedMember
 	var lost []LostMember
 	var query *cellQuery
+	// ROUTES ARE SEARCHED WHEN A ROW CAN READ THEM (rpg-project#879 S3, R4):
+	// a view used to search a route toward and a route away from every
+	// member it saw, on every opportunity, and in a keep of posts and patrols
+	// not one of those searches was read (F13: 930 per op). Canonical
+	// attachments supply a conservative union of their row requirements;
+	// selection has not happened yet. No authored policy keeps every route
+	// for an opaque host driver. Threat zones follow the same source boundary.
+	wantRoutes := m.behaviorReadsRoutes()
 	for _, h := range holdings {
 		// Only location testimony from the sight channel is meaningful here.
 		// Unknown testimony deliberately populates neither collection.
@@ -2233,12 +2283,17 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		// it right now, which are different questions the moment a second
 		// channel or a Report exists.
 		if !h.CurrentOn(perception.Sight) {
-			path, reachable, routeErr := query.routeToRemembered(m.ID, ownCell, pos)
-			if routeErr != nil {
-				return MonsterView{}, routeErr
-			}
-			if !reachable {
-				path = nil
+			var path []spatial.Position
+			if wantRoutes {
+				var reachable bool
+				var routeErr error
+				path, reachable, routeErr = query.routeToRemembered(m.ID, ownCell, pos)
+				if routeErr != nil {
+					return MonsterView{}, routeErr
+				}
+				if !reachable {
+					path = nil
+				}
 			}
 			remembered = append(remembered, RememberedMember{
 				ID:            subjectID,
@@ -2289,16 +2344,19 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 		// walkable answer rather than a proxy for it. One search per
 		// sighting, every Act call, toward pos and settling the cells near
 		// its path rather than the floor (rpg-project#762, R10).
-		path, _, routeErr := query.routeWithin(m.ID, ownCell, pos, float64(closeTo))
-
-		if routeErr != nil {
-			return MonsterView{}, routeErr
+		var path, awayPath []spatial.Position
+		if wantRoutes {
+			var routeErr error
+			path, _, routeErr = query.routeWithin(m.ID, ownCell, pos, float64(closeTo))
+			if routeErr != nil {
+				return MonsterView{}, routeErr
+			}
+			away, routeErr := query.routeAway(m.ID, ownCell, pos, 1, true)
+			if routeErr != nil {
+				return MonsterView{}, routeErr
+			}
+			awayPath = away.Path
 		}
-		away, routeErr := query.routeAway(m.ID, ownCell, pos, 1, true)
-		if routeErr != nil {
-			return MonsterView{}, routeErr
-		}
-		awayPath := away.Path
 
 		seen = append(seen, SeenMember{
 			ID:            subjectID,
@@ -2323,7 +2381,7 @@ func (e *Encounter) buildMonsterView(m *memberRecord, budget TurnBudget, round i
 	// for a table that asks `threat`: in sight and standing, or remembered,
 	// from where this monster believes it stands.
 	var threats []ThreatZone
-	if tableNamesThreat(m.Table[keyOr(e.pickKey)]) {
+	if m.behaviorNamesThreat() {
 		if query == nil {
 			if query, err = e.cellQuery(); err != nil {
 				return MonsterView{}, fmt.Errorf("view threats: %w", err)
@@ -3352,4 +3410,34 @@ func (e *Encounter) routeWithin(mover MemberID, from, anchor spatial.Position, w
 		return nil, false, err
 	}
 	return q.routeWithin(mover, from, anchor, within)
+}
+
+// tableReadsRoutes reports whether any row of rows, or of a bundle it opens,
+// can read a route off the view: `toward` or `dash` naming a member by a
+// selector word (a sound is a place, routed when the row fires), or an
+// `enemy` band measured in steps (walk, dash, far). An attack reads reach,
+// a search reads trails and an `away` routes itself when it fires, so none
+// of them needs a route in the view. A member with no table is driven by
+// something this package cannot see, and keeps every route.
+func tableReadsRoutes(rows []Answer) bool {
+	for i := range rows {
+		r := &rows[i]
+		for _, sel := range []*Selector{r.Toward, r.Dash} {
+			if sel != nil && sel.Word != "" && sel.Word != SelectorSound {
+				return true
+			}
+		}
+		for j := range r.When {
+			for w := &r.When[j]; w != nil; w = w.Not {
+				switch w.Enemy {
+				case EnemyWalk, EnemyDash, EnemyFar:
+					return true
+				}
+			}
+		}
+		if tableReadsRoutes(r.Rows) {
+			return true
+		}
+	}
+	return false
 }

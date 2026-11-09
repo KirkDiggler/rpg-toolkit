@@ -389,7 +389,7 @@ func (s *WorldTimeSuite) TestACreatureWithNothingOpposedHoldsAndTheBeatSaysSo() 
 		// A monster, so the world thinks for it — and on a side nobody is
 		// against, so it is opposed to nobody however crowded the hall is.
 		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Faction: "vendors",
-			Position: spatial.Position{X: 20, Y: 6}, Table: hunts()},
+			Position: spatial.Position{X: 20, Y: 6}, Behaviors: ordinaryBehavior(hunts())},
 	)
 
 	started := whereIs(s.T(), enc, goblin)
@@ -402,7 +402,7 @@ func (s *WorldTimeSuite) TestACreatureWithNothingOpposedHoldsAndTheBeatSaysSo() 
 	pick := s.lastPick(enc, goblin)
 	s.Require().NotNil(pick, "and it WAS asked — a beat is the only account of that")
 	s.Equal("hold", pick["word"])
-	s.Equal(string(encounter.AnswerTime), pick["key"])
+	s.Equal("behavior/6:policy/time", pick["key"])
 }
 
 // TestAnAttackOffTheTurnClockIsAnError: an enemy in reach on the world clock
@@ -433,8 +433,8 @@ func (s *WorldTimeSuite) TestAnAttackOffTheTurnClockIsAnError() {
 			// for — and carrying a table, because a creature with none is
 			// never consulted at all.
 			{ID: goblin, Kind: encounter.KindMonster, Faction: "vendors",
-				Position: spatial.Position{X: 20, Y: 6},
-				Table:    encounter.Table{encounter.AnswerTime: {{Weight: 1, Hold: true}}}},
+				Position:  spatial.Position{X: 20, Y: 6},
+				Behaviors: ordinaryBehavior(encounter.Table{encounter.AnswerTime: {{Weight: 1, Hold: true}}})},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
@@ -658,7 +658,7 @@ func (s *WorldTimeSuite) TestTheDefaultTableClosesAndThenSwings() {
 			// cannot touch her where it stands, and it can reach her if it
 			// walks. That gap is the whole scene.
 			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 5, Y: 1},
-				Table: theDefaultThugTable()},
+				Behaviors: ordinaryBehavior(theDefaultThugTable())},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
@@ -742,10 +742,10 @@ func (s *WorldTimeSuite) TestASpentCreatureIsNotAskedToSwingAgain() {
 				// ONLY `attack`, and nothing else: with no `hold` beneath it
 				// the second consult has nothing at all on the table, which
 				// is the empty pick this rule is really about.
-				Table: encounter.Table{encounter.AnswerTime: {
+				Behaviors: ordinaryBehavior(encounter.Table{encounter.AnswerTime: {
 					{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyReach}},
 						Attack: &encounter.Selector{Word: encounter.SelectorEnemy}},
-				}},
+				}}),
 			},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
@@ -843,8 +843,8 @@ func (s *WorldTimeSuite) TestAnOrderedCellSomebodyIsStandingOnIsStillWalkedTowar
 			{ID: "squatter", Kind: encounter.KindMonster, Faction: "squatters",
 				Position: spatial.Position{X: 3, Y: 3}},
 			{ID: "bandit", Kind: encounter.KindMonster, Faction: "bandits",
-				Position: spatial.Position{X: 15, Y: 3},
-				Table:    walksTo(target)},
+				Position:  spatial.Position{X: 15, Y: 3},
+				Behaviors: ordinaryBehavior(walksTo(target))},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
@@ -901,8 +901,8 @@ func (s *WorldTimeSuite) TestAWalkThatMovesNobodySaysSo() {
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer,
 			Position: spatial.Position{X: 1, Y: 1}},
 		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Faction: "vendors",
-			Position: spatial.Position{X: 25, Y: 6},
-			Table:    walksTo(standing)},
+			Position:  spatial.Position{X: 25, Y: 6},
+			Behaviors: ordinaryBehavior(walksTo(standing))},
 	)
 
 	s.Require().Equal(standing, whereIs(s.T(), enc, goblin), "precondition: it is already there")
@@ -992,9 +992,9 @@ func TestAnAlarmThatFormsAFightMidTickCompletesTheTick(t *testing.T) {
 		tableDriver(),
 		at(noiseAlice, encounter.KindPlayer, 2, 8),
 		encounter.MemberInput{ID: bandit, Kind: encounter.KindMonster, Faction: "watch",
-			Position: spatial.Position{X: 3, Y: 6}, Table: alarmTable},
+			Position: spatial.Position{X: 3, Y: 6}, Behaviors: ordinaryBehavior(alarmTable)},
 		encounter.MemberInput{ID: guard2, Kind: encounter.KindMonster, Faction: "watch",
-			Position: spatial.Position{X: 4, Y: 6}, Table: encounter.Table{encounter.AnswerTime: {{Weight: 1, Hold: true}}}},
+			Position: spatial.Position{X: 4, Y: 6}, Behaviors: ordinaryBehavior(encounter.Table{encounter.AnswerTime: {{Weight: 1, Hold: true}}})},
 		encounter.MemberInput{ID: ganger, Kind: encounter.KindMonster, Faction: "gang",
 			Position: spatial.Position{X: 6, Y: 2}},
 	)
@@ -1027,7 +1027,7 @@ func TestAnAlarmThatFormsAFightMidTickCompletesTheTick(t *testing.T) {
 
 	picks := map[string]int{}
 	for _, beat := range storyBeats(t, enc, noiseAlice) {
-		if beat["beat"] == encounter.BeatAnswered && beat["key"] == string(encounter.AnswerTime) {
+		if beat["beat"] == encounter.BeatAnswered && beat["key"] == "behavior/6:policy/time" {
 			picks[beat["creature"].(string)]++
 		}
 	}

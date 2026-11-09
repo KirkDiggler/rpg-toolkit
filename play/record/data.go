@@ -5,6 +5,8 @@ package record
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 )
@@ -17,6 +19,13 @@ import (
 type LogData struct {
 	// NextSeq is the sequence number the next Append will assign (or 0 for fresh).
 	NextSeq uint64 `json:"next_seq,omitempty"`
+	// Audiences is the audience table: each distinct audience among the
+	// retained entries, stored once, in the order an entry first names it
+	// (rpg-project#896, F20: on a 100-member keep the per-entry roster was
+	// 73% of the session blob). A row is the exact ordered id list, non-empty
+	// and duplicate-free; no two rows are the same list. An entry names its
+	// row by EntryData.AudienceRef.
+	Audiences [][]core.EntityID `json:"audiences,omitempty"`
 	// Entries are the retained log entries, deep-copied from the runtime log.
 	Entries []EntryData `json:"entries,omitempty"`
 	// LastID is the last id the log issued, written only when it is above
@@ -38,8 +47,13 @@ type EntryData struct {
 	At uint64 `json:"at,omitempty"`
 	// Correlation is an opaque caller token grouping cause and effects.
 	Correlation string `json:"correlation,omitempty"`
-	// Audience is the roster of viewers.
-	Audience []core.EntityID `json:"audience,omitempty"`
+	// AudienceRef names the entry's roster of viewers in LogData.Audiences,
+	// 1-based: ref n is Audiences[n-1]. Zero is the empty audience (no
+	// viewer, the GM/debug beat), so the zero value tells the truth and an
+	// empty audience never takes a table row. The JSON key is "audience": a
+	// blob from before the table, which held the inline array there, fails
+	// to decode instead of loading every entry audience-less.
+	AudienceRef uint32 `json:"audience,omitempty"`
 	// Tags is the caller-chosen question-surface.
 	Tags map[string]string `json:"tags,omitempty"`
 	// Payload is the opaque composition-encoded story beats.
@@ -71,6 +85,7 @@ func (l *Log) ToData() LogData {
 	}
 
 	if len(l.entries) > 0 {
+		var table audienceTable
 		data.Entries = make([]EntryData, len(l.entries))
 		for i, e := range l.entries {
 			data.Entries[i] = EntryData{
@@ -78,11 +93,12 @@ func (l *Log) ToData() LogData {
 				ID:          e.id,
 				At:          e.at,
 				Correlation: e.correlation,
-				Audience:    copyAudience(e.audience),
+				AudienceRef: table.ref(e.audience),
 				Tags:        copyTags(e.tags),
 				Payload:     copyPayload(e.payload),
 			}
 		}
+		data.Audiences = table.rows
 	}
 
 	return data
@@ -91,7 +107,8 @@ func (l *Log) ToData() LogData {
 // LoadLog reconstructs a Log from persisted LogData.
 // Validates per design R9: rejects non-contiguous/zero Seqs, mismatched
 // NextSeq-to-lastSeq relationship, stored NextSeq 1 (fresh encodes as 0),
-// invalid audiences (empty IDs, duplicates), invalid tags (empty keys),
+// invalid audience table rows (empty rows, empty IDs, duplicate IDs, a row
+// stored twice), audience references past the table, invalid tags (empty keys),
 // and nil payloads. Deep-copies all data; empty→nil normalization preserved.
 // Returns ErrInvalidData for any R9 rejection with verb-context wrapping.
 //
@@ -168,12 +185,34 @@ func LoadLog(data LogData, opts ...Option) (*Log, error) {
 		return nil, fmt.Errorf("%s: %w", msg, ErrInvalidData)
 	}
 
+	// Validate the audience table: each row a legal, non-empty audience,
+	// and no audience stored twice (ToData writes each distinct one once).
+	rows := make([][]core.EntityID, len(data.Audiences))
+	seenRow := make(map[string]int, len(data.Audiences))
+	for i, row := range data.Audiences {
+		if len(row) == 0 {
+			return nil, fmt.Errorf("load log: audiences[%d] empty (the empty audience is ref 0): %w",
+				i, ErrInvalidData)
+		}
+		if err := validateAudience(row); err != nil {
+			return nil, fmt.Errorf("load log: audiences[%d] %v: %w", i, err, ErrInvalidData)
+		}
+		key := audienceKey(row)
+		if prev, ok := seenRow[key]; ok {
+			return nil, fmt.Errorf("load log: audiences[%d] repeats audiences[%d]: %w", i, prev, ErrInvalidData)
+		}
+		seenRow[key] = i
+		// One materialised copy per row, shared by every entry naming it:
+		// entries are immutable and every read copies out.
+		rows[i] = copyAudience(row)
+	}
+
 	// Validate per-entry constraints
 	for i, ed := range data.Entries {
-		// Validate audience (no empty IDs, no duplicates)
-		if err := validateAudience(ed.Audience); err != nil {
-			// Include validation detail in message without double-wrapping
-			return nil, fmt.Errorf("load log: entry[%d] %v: %w", i, err, ErrInvalidData)
+		// Validate the audience reference (0 = no viewer, n = rows[n-1])
+		if int(ed.AudienceRef) > len(rows) {
+			return nil, fmt.Errorf("load log: entry[%d] audience %d past the table of %d: %w",
+				i, ed.AudienceRef, len(rows), ErrInvalidData)
 		}
 
 		// Validate tags (no empty keys)
@@ -218,7 +257,7 @@ func LoadLog(data LogData, opts ...Option) (*Log, error) {
 			id:          ids[i].String(),
 			at:          ed.At,
 			correlation: ed.Correlation,
-			audience:    copyAudience(ed.Audience),
+			audience:    resolveAudience(rows, ed.AudienceRef),
 			tags:        copyTags(ed.Tags),
 			payload:     copyPayload(ed.Payload),
 		}
@@ -228,4 +267,59 @@ func LoadLog(data LogData, opts ...Option) (*Log, error) {
 	l.nextSeq = data.NextSeq
 	l.last = last
 	return l, nil
+}
+
+// audienceTable builds LogData.Audiences: each distinct audience once, in
+// first-seen order, keyed by the exact ordered id list.
+type audienceTable struct {
+	rows  [][]core.EntityID
+	index map[string]uint32
+	// last is the previous entry's audience and its ref: consecutive entries
+	// usually share one backing slice (Append and LoadLog share it), so the
+	// common case skips building the key.
+	last    []core.EntityID
+	lastRef uint32
+}
+
+// ref returns the 1-based table reference of aud, adding a deep-copied row
+// on first sight; the empty audience is ref 0 and takes no row.
+func (t *audienceTable) ref(aud []core.EntityID) uint32 {
+	if len(aud) == 0 {
+		return 0
+	}
+	if len(t.last) == len(aud) && &t.last[0] == &aud[0] {
+		return t.lastRef
+	}
+	key := audienceKey(aud)
+	r, ok := t.index[key]
+	if !ok {
+		if t.index == nil {
+			t.index = make(map[string]uint32)
+		}
+		t.rows = append(t.rows, copyAudience(aud))
+		r = uint32(len(t.rows)) //nolint:gosec // rows never outnumber the retained entries
+		t.index[key] = r
+	}
+	t.last, t.lastRef = aud, r
+	return r
+}
+
+// audienceKey is the exact ordered id list as a map key; each id is length
+// prefixed so no two different lists share a key.
+func audienceKey(aud []core.EntityID) string {
+	var b strings.Builder
+	for _, id := range aud {
+		b.WriteString(strconv.Itoa(len(id)))
+		b.WriteByte(':')
+		b.WriteString(string(id))
+	}
+	return b.String()
+}
+
+// resolveAudience returns the row a validated reference names, nil for 0.
+func resolveAudience(rows [][]core.EntityID, ref uint32) []core.EntityID {
+	if ref == 0 {
+		return nil
+	}
+	return rows[ref-1]
 }

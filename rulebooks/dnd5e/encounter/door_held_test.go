@@ -109,7 +109,7 @@ func TestAnUnseenHolderBarsTheDoorAsSomeone(t *testing.T) {
 }
 
 func TestTheHolderAndAnAllyWorkAHeldDoor(t *testing.T) {
-	porter := MemberInput{ID: "porter", Kind: KindMonster, Faction: postedGarrison, Position: holdNorthEast, Table: holds()}
+	porter := MemberInput{ID: "porter", Kind: KindMonster, Faction: postedGarrison, Position: holdNorthEast, Behaviors: ordinaryBehavior(holds())}
 	enc := heldGateHall(t, DoorIsClosed(), porter)
 	refused, err := openRefusal(enc.OpenDoor(&OpenDoorInput{Door: holdLeaf, Actor: postedGuard}))
 	requireDoorWorked(t, refused, err, "the holder opens his own door")

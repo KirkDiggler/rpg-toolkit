@@ -85,7 +85,7 @@ func openTheZoneSite(t *testing.T) (*encounter.Encounter, *sneakSiteStealth) {
 	for _, m := range compiled.Monsters {
 		members = append(members, encounter.MemberInput{
 			ID: encounter.MemberID(m.MemberID), Kind: encounter.KindMonster, Position: m.At,
-			Faction: encounter.FactionID(m.Faction), Table: m.Table, Facing: m.FacingDegrees,
+			Faction: encounter.FactionID(m.Faction), Behaviors: m.Behaviors, Facing: m.FacingDegrees,
 		})
 	}
 	stealth := &sneakSiteStealth{}
@@ -102,7 +102,7 @@ func openTheZoneSite(t *testing.T) (*encounter.Encounter, *sneakSiteStealth) {
 			Sheets:        zoneSiteSheets{enc: &enc},
 			Participation: &castleStanding{down: map[encounter.MemberID]bool{}},
 			Initiative:    orderAsGiven{},
-			Driver:        encounter.TableDriver{Roller: rollsOne{}},
+			Driver:        encounter.BehaviorDriver{},
 			Roller:        rollsOne{},
 			CheckResolver: stealth,
 			Witness:       nobodyPerceivesAnything{},

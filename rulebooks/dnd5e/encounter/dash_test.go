@@ -158,10 +158,10 @@ func (s *DashSuite) TestTheMoveWordsHoldInTheirBands() {
 		enc := s.hall(&swingRecorder{},
 			encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: onRow(1)},
 			encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: onRow(1 + gap),
-				Table: encounter.Table{encounter.AnswerTime: {
+				Behaviors: ordinaryBehavior(encounter.Table{encounter.AnswerTime: {
 					enemyIs(encounter.EnemyReach), enemyIs(encounter.EnemyWalk),
 					enemyIs(encounter.EnemyDash), enemyIs(encounter.EnemyFar),
-				}}},
+				}})},
 		)
 		s.goblinsTurn(enc)
 
@@ -180,7 +180,7 @@ func (s *DashSuite) TestADashRunsTwiceTheCellsAndDoesNotSwing() {
 	striker := &swingRecorder{}
 	enc := s.hall(striker,
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: onRow(1)},
-		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: onRow(14), Table: bandRunner()},
+		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: onRow(14), Behaviors: ordinaryBehavior(bandRunner())},
 	)
 	s.goblinsTurn(enc)
 
@@ -212,12 +212,12 @@ func (s *DashSuite) TestARunWithTheSwingSpentIsNotOnTheTable() {
 	enc := s.hall(striker,
 		encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: onRow(1)},
 		encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: onRow(2),
-			Table: encounter.Table{encounter.AnswerTime: {
+			Behaviors: ordinaryBehavior(encounter.Table{encounter.AnswerTime: {
 				{Weight: 1, When: []encounter.When{{Enemy: encounter.EnemyReach}},
 					Attack: &encounter.Selector{Word: encounter.SelectorEnemy}},
 				{Weight: 1, Dash: &encounter.Selector{At: &far}},
 				{Weight: 1, Hold: true},
-			}}},
+			}})},
 	)
 	s.goblinsTurn(enc)
 
@@ -266,7 +266,7 @@ func (s *DashSuite) TestACarefulDasherRunsOnlyWhenNobodyElseCouldReachWhereItLan
 		s.Run(tc.name, func() {
 			enc := s.hall(&swingRecorder{},
 				encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: onRow(10)},
-				encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: onRow(23), Table: careful},
+				encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Position: onRow(23), Behaviors: ordinaryBehavior(careful)},
 				encounter.MemberInput{ID: bob, Kind: encounter.KindPlayer, Position: onRow(tc.bob)},
 			)
 			s.goblinsTurn(enc)
@@ -311,7 +311,7 @@ func (s *DashSuite) TestADashOnTheWorldClockAddsItsSpeed() {
 				}},
 				encounter.MemberInput{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
 				encounter.MemberInput{ID: goblin, Kind: encounter.KindMonster, Faction: "vendors",
-					Position: spatial.Position{X: 2, Y: 6}, Table: encounter.Table{encounter.AnswerTime: {tc.row}}},
+					Position: spatial.Position{X: 2, Y: 6}, Behaviors: ordinaryBehavior(encounter.Table{encounter.AnswerTime: {tc.row}})},
 			)
 			s.Require().NoError(encounter.ExportedSpendWorldAction(enc, alice))
 

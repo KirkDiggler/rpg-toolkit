@@ -126,7 +126,7 @@ func monsterInput(m dungeonspec.MonsterPlacement) encounter.MemberInput {
 	return encounter.MemberInput{
 		ID: encounter.MemberID(m.MemberID), Kind: encounter.KindMonster, Position: m.At,
 		Faction: encounter.FactionID(m.Faction), Table: m.Table, Options: m.Options, Arrives: m.Arrives,
-		Machine: m.Machine, BlockingStates: m.BlockingStates, Posts: m.Posts, Temper: soldierProfiles(m.Temper), Holds: holds, Facing: m.FacingDegrees,
+		Behaviors: m.Behaviors, Machine: m.Machine, BlockingStates: m.BlockingStates, Posts: m.Posts, Temper: soldierProfiles(m.Temper), Holds: holds, Facing: m.FacingDegrees,
 	}
 }
 
@@ -149,7 +149,7 @@ func setupOn(
 			Sheets:        sheets,
 			Participation: down,
 			Initiative:    h.initiative,
-			Driver:        encounter.TableDriver{Roller: h.die},
+			Driver:        encounter.BehaviorDriver{},
 			Roller:        h.die,
 			CheckResolver: h.check,
 			Witness:       perceivesNothingAsked{},

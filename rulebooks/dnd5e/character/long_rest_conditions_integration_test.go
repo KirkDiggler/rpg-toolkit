@@ -39,9 +39,13 @@ var attachedLongRestCases = []attachedLongRestCase{
 		outcome:     attachedLongRestRemove,
 		persisted: json.RawMessage(`{
 			"ref":{"module":"dnd5e","type":"conditions","id":"raging"},
-			"member_id":"condition-rest-member","damage_bonus":2,"level":5,
-			"source":"dnd5e:features:rage","saw_turn_end":true,"round_activated":2,
-			"turns_active":3,"was_hit_this_turn":true,"did_attack_this_turn":true
+			"member_id":"condition-rest-member",
+   "origin":{"ref":"dnd5e:features:rage","entity_id":"condition-rest-member"},
+   "bindings":{"damage_bonus":{"barbarian_level":true}},
+   "runtime":{"state":"raging","bag":{
+    "saw_turn_end":true,"round_activated":2,"turns_active":3,
+    "was_hit_this_turn":true,"did_attack_this_turn":true
+   }}
 		}`),
 	},
 	{

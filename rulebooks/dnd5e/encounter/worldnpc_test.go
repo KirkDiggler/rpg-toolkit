@@ -54,6 +54,7 @@ func (s *WorldNPCSuite) baseSetupSheets(sheets encounter.Sheets, members ...enco
 			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        tableDriver(),
+			Roller:        rollsLowest{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -120,7 +121,7 @@ func (s *WorldNPCSuite) TestAPlayerAndAWorldNPCInMutualSightNeverFormABubble() {
 func (s *WorldNPCSuite) TestAMonstersWorldDrivenWalkIntoAWorldNPCFormsNoFight() {
 	enc, err := s.baseSetupSheets(sheetFacts{goblin: {SpeedFeet: 5}, "vendor": {}},
 		encounter.MemberInput{
-			ID: goblin, Kind: encounter.KindMonster, Position: cellAt(0, 0), Table: walksTo(cellAt(2, 0)),
+			ID: goblin, Kind: encounter.KindMonster, Position: cellAt(0, 0), Behaviors: ordinaryBehavior(walksTo(cellAt(2, 0))),
 		},
 		encounter.MemberInput{ID: "vendor", Kind: encounter.KindWorld, Position: cellAt(1, 0)},
 	)

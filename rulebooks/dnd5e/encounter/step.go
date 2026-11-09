@@ -162,7 +162,7 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 	// The beat BEFORE the sight refresh: the step is the cause, anything
 	// trigger detection appends is its effect (the law is stated at
 	// refreshSight).
-	seq, err := e.appendMovementBeat(action, audience, at)
+	moved, err := e.appendMovementBeat(action, audience, at)
 	if err != nil {
 		return nil, fmt.Errorf("step append beat: %w", err)
 	}
@@ -202,7 +202,8 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 	out := &StepOutput{
 		Doors:       action.doors,
 		IntelDeltas: intelDeltas,
-		Seq:         seq,
+		Seq:         moved.Seq,
+		ID:          moved.ID,
 		Outcome:     fired,
 		Formed:      formed,
 	}
@@ -225,6 +226,7 @@ func (e *Encounter) stepBumped(mover MemberID, body *bodyRefusalError) (*StepOut
 	out := &StepOutput{
 		IntelDeltas: bumped.deltas,
 		Seq:         bumped.seq,
+		ID:          bumped.id,
 		Outcome:     bumped.outcome,
 		Formed:      bumped.formed,
 		Stopped:     &StepStop{Barrier: body.barrier, Cell: body.at, Reason: body.public},

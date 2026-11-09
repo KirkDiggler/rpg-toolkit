@@ -18,30 +18,25 @@
 # of their table without the standing order.
 version: 5
 key: front-room-v4
-play: { void: transparent, lighting: bright, standing: centre-covered }
-
+play: {void: transparent, lighting: bright, standing: centre-covered}
 factions:
   # FOUR GOBLINS, FOUR BEHAVIOURS. The mix is a d4 thrown once per goblin at
   # spawn with the faction as the die's entity. What a goblin SAYS when spoken
   # to lives on the option it answers (rpg-project#569 R2), so it is on the one
   # goblin somebody can speak to, below.
   - id: goblins
-    temper: { coward: 2, soldier: 1, aggressive: 1 }
+    temper: {coward: 2, soldier: 1, aggressive: 1}
   - id: bandits
-    temper: { coward: 1, soldier: 2, aggressive: 1 }
-
+    temper: {coward: 1, soldier: 2, aggressive: 1}
 dispositions:
   # The whole front room, in one line. Delete it and this becomes a fight.
-  - { between: [goblins, party], stance: neutral }
-  - { between: [bandits, party], stance: hostile }
-
+  - {between: [goblins, party], stance: neutral}
+  - {between: [bandits, party], stance: hostile}
 room:
   version: 3
   id: room-1
   name: Front Room
-  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
-    distanceUnit: world-scene-unit, hexRadius: 1,
-    footprintFrame: owner-local-xz}
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up, distanceUnit: world-scene-unit, hexRadius: 1, footprintFrame: owner-local-xz}
   scene:
     version: 1
     id: scene-1
@@ -53,7 +48,7 @@ room:
     regions:
       - id: room-1-region
         name: Front Room
-        lighting: { intensity: 1 }
+        lighting: {intensity: 1}
         cells:
           - r: -2
             q: [[0, 2]]
@@ -74,12 +69,12 @@ room:
       # own worked example (rpg-toolkit#1899): "two guards face the door" --
       # the authored word pinned end-to-end through decode, compile and the
       # golden picture, the way tomb-faced-props.yaml pins v2 prop facings.
-      - {id: front-goblin, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: -1 }, facing: w }}
-      - {id: front-goblin-2, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: -2 }, facing: w }}
-      - {id: front-goblin-3, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 1, r: 1 } }}
-      - {id: front-goblin-4, ref: 'dnd5e:monsters:goblin', startingCell: { location: { q: 2, r: 0 } }}
-      - {id: bandit-1, ref: 'dnd5e:monsters:bandit', startingCell: { location: { q: 0, r: 2 } }}
-      - {id: bandit-2, ref: 'dnd5e:monsters:bandit', startingCell: { location: { q: -1, r: 2 } }}
+      - {id: front-goblin, ref: 'dnd5e:monsters:goblin', startingCell: {location: {q: 2, r: -1}, facing: w}}
+      - {id: front-goblin-2, ref: 'dnd5e:monsters:goblin', startingCell: {location: {q: 2, r: -2}, facing: w}}
+      - {id: front-goblin-3, ref: 'dnd5e:monsters:goblin', startingCell: {location: {q: 1, r: 1}}}
+      - {id: front-goblin-4, ref: 'dnd5e:monsters:goblin', startingCell: {location: {q: 2, r: 0}}}
+      - {id: bandit-1, ref: 'dnd5e:monsters:bandit', startingCell: {location: {q: 0, r: 2}}}
+      - {id: bandit-2, ref: 'dnd5e:monsters:bandit', startingCell: {location: {q: -1, r: 2}}}
     monsterBindings:
       front-goblin-2: {faction: goblins}
       front-goblin-3: {faction: goblins}
@@ -96,22 +91,22 @@ room:
         options:
           - id: lean-on-it
             say: "Where's the cellar? Tell me or you're next."
-            check: [{ ability: intimidation, dc: 12 }]
+            check: [{ability: intimidation, dc: 12}]
             success:
-              - { weight: 70, say: "Fine! FINE. The cellar door is behind the barrels. Just don't.", fact: goblin-cowed }
-              - { weight: 30, say: 'Boss! BOSS!', flee: {} }
+              - {weight: 70, say: "Fine! FINE. The cellar door is behind the barrels. Just don't.", fact: goblin-cowed}
+              - {weight: 30, say: 'Boss! BOSS!', flee: {}}
             failure:
-              - { say: 'Big talk, for someone standing in my doorway.' }
+              - {say: 'Big talk, for someone standing in my doorway.'}
           - id: talk-it-round
             say: "We're not here for you. Where did the bandits go?"
-            check: [{ ability: persuasion, dc: 10 }]
+            check: [{ability: persuasion, dc: 10}]
             success:
-              - { say: 'Bandits took the cellar. Go left at the rope, and mind the third step.' }
+              - {say: 'Bandits took the cellar. Go left at the rope, and mind the third step.'}
             # A failed appeal, and the lie is a FACT like any other. The
             # bandits' `arrives` below reads it; there is no truth bit anywhere
             # on the wire.
             failure:
-              - { weight: 100, say: "Cellar's empty, friend. Nothing down there but rats. Straight on through.", fact: cellar-is-clear }
+              - {weight: 100, say: "Cellar's empty, friend. Nothing down there but rats. Straight on through.", fact: cellar-is-clear}
       # THE OTHER THREE ARE DELIBERATELY PLAIN and have no lines at all: a
       # creature nobody wrote an option for cannot be spoken to (R2). That is
       # the control the walk needs.
@@ -122,22 +117,55 @@ room:
       bandit-1:
         faction: bandits
         actions: ['dnd5e:weapons:scimitar', 'dnd5e:weapons:light-crossbow']
-        arrives: { fact: cellar-is-clear }
-        on:
-          time:
-            - { when: { fled: { within: 3 } },     away: actor,      weight: 3 }
-            - { when: { attacked: { within: 3 } }, attack: attacker, weight: 3 }
-            - { when: { enemy: reach },            attack: enemy }
-            - { when: { enemy: seen },             toward: enemy }
-            - { when: { enemy: remembered },       toward: enemy }
+        arrives: {fact: cellar-is-clear}
+        behaviors:
+          - id: policy
+            use: bandit-1-policy
       bandit-2:
         faction: bandits
         actions: ['dnd5e:weapons:light-crossbow']
-        arrives: { fact: cellar-is-clear }
-        on:
-          time:
-            - { when: { fled: { within: 3 } },     away: actor,      weight: 3 }
-            - { when: { attacked: { within: 3 } }, attack: attacker, weight: 3 }
-            - { when: { enemy: reach },            attack: enemy }
-            - { when: { enemy: seen },             toward: enemy }
-            - { when: { enemy: remembered },       toward: enemy }
+        arrives: {fact: cellar-is-clear}
+        behaviors:
+          - id: policy
+            use: bandit-2-policy
+behaviorDefinitions:
+  bandit-1-policy:
+    recipe:
+      ref: site:behaviors:bandit-1-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        - {when: {fled: {within: 3}}, away: actor, weight: 3}
+        - {when: {attacked: {within: 3}}, attack: attacker, weight: 3}
+        - {when: {enemy: reach}, attack: enemy}
+        - {when: {enemy: seen}, toward: enemy}
+        - {when: {enemy: remembered}, toward: enemy}
+  bandit-2-policy:
+    recipe:
+      ref: site:behaviors:bandit-2-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        - {when: {fled: {within: 3}}, away: actor, weight: 3}
+        - {when: {attacked: {within: 3}}, attack: attacker, weight: 3}
+        - {when: {enemy: reach}, attack: enemy}
+        - {when: {enemy: seen}, toward: enemy}
+        - {when: {enemy: remembered}, toward: enemy}

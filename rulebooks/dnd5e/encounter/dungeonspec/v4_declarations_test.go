@@ -15,12 +15,12 @@ func declarationSource(root, binding string) string {
 }
 
 func TestV4DeclarationsBindFactionAndInheritOrders(t *testing.T) {
-	source := declarationSource("factions:\n  - { id: watch, mind: goblin-1, table: drill }\ntables:\n  drill:\n    time:\n      - { hold: {} }\n", "    monsterBindings:\n      goblin-1: { faction: watch }\n      goblin-2: { faction: watch }\n")
+	source := declarationSource("factions:\n  - {id: watch, mind: goblin-1, behaviors: [{id: duty, use: drill}]}\nbehaviorDefinitions:\n  drill:\n    recipe: {ref: 'example:behaviors:drill', initial: ready, states: {ready: {transitions: [{on: time, do: [{pick: time}]}]}}}\n    table: {time: [{hold: {}}]}\n", "    monsterBindings:\n      goblin-1: { faction: watch }\n      goblin-2: { faction: watch }\n")
 	compiled := loadSource(t, source)
 	for _, id := range []string{"goblin-1", "goblin-2"} {
 		m := monsterNamed(t, compiled, id)
 		require.Equal(t, "watch", m.Faction)
-		require.True(t, m.Table["time"][0].Hold)
+		require.True(t, m.Behaviors.Instances[0].Instance.Table["time"][0].Hold)
 	}
 }
 

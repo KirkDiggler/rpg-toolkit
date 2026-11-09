@@ -96,7 +96,7 @@ func (s *HearingSuite) SetupTest() {
 	dull := monsterAt("dull", "dnd5e:monsters:dull-guard", 11, 1)
 	thug := monsterAt("thug", refs.Monsters.Goblin().String(), 2, 1)
 	keen.Faction, dull.Faction, thug.Faction = string(hearingCastle), string(hearingCastle), string(hearingThugs)
-	keen.Table, dull.Table = guardOrders(), guardOrders()
+	keen.Behaviors, dull.Behaviors = ordinaryBehavior(guardOrders()), ordinaryBehavior(guardOrders())
 
 	sc := scene{
 		Field: encounter.FieldInput{
@@ -215,7 +215,7 @@ func (s *HearingSuite) timePick(creature string) answered {
 	for _, beat := range beatsNamed(storyBeats(s.T(), s.mgr, "sess", "alice"), encounter.BeatAnswered) {
 		var body answered
 		beat.decode(s.T(), &body)
-		if body.Creature == creature && body.Key == string(encounter.AnswerTime) {
+		if body.Creature == creature && body.Key == "behavior/6:policy/time" {
 			last = &body
 		}
 	}

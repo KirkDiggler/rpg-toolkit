@@ -189,7 +189,7 @@ func validatePostStates(r *machine.Recipe, posts map[string]Post) error {
 //
 // Errors: the refusal, wrapped in [ErrBadMember].
 func (e *Encounter) usePosts(m *memberRecord, posts map[string]Post, at spatial.Position) error {
-	if err := validatePostStates(m.Recipe, posts); err != nil {
+	if err := validatePostStates(m.behaviors.bodyRecipe(), posts); err != nil {
 		return fmt.Errorf("member %s: %w: %w", m.ID, err, ErrBadMember)
 	}
 	m.Posts = nil
@@ -249,9 +249,6 @@ func sortedPostStates(posts map[string]Post) []string {
 func (m *memberRecord) postIn(state string) (Post, bool) {
 	if len(m.Posts) == 0 {
 		return Post{}, false
-	}
-	if state == "" && m.Recipe != nil {
-		state = m.Recipe.Initial
 	}
 	p, ok := m.Posts[state]
 
@@ -352,7 +349,7 @@ func (e *Encounter) heldPost(id MemberID, down map[MemberID]bool) (Post, bool) {
 	if !ok {
 		return Post{}, false
 	}
-	post, ok := m.postIn(m.Machine.State)
+	post, ok := m.postIn(m.bodyState())
 	if !ok {
 		return Post{}, false
 	}
@@ -375,8 +372,8 @@ func (e *Encounter) heldPost(id MemberID, down map[MemberID]bool) (Post, bool) {
 }
 
 // doorOpening is a door's crossings, normalized: an edge door's edges, a
-// footprint door's crossings ([field.doorCrossings]). Geometry, computed
-// once per door, for the reason [Encounter.links] is.
+// footprint door's crossings ([field.doorCrossings]). Site data, held on the
+// field ([field.doorOpening]), for the reason [Encounter.links] is.
 func (e *Encounter) doorOpening(id DoorID) []DoorEdge {
 	d, ok := e.doorsByID[id]
 	if !ok {
@@ -388,22 +385,7 @@ func (e *Encounter) doorOpening(id DoorID) []DoorEdge {
 
 // openingOf is [Encounter.doorOpening] for a door record in hand.
 func (e *Encounter) openingOf(d *doorRecord) []DoorEdge {
-	if out, ok := e.openings[d.id]; ok {
-		return out
-	}
-	out := make([]DoorEdge, 0, len(d.edges))
-	for _, edge := range d.edges {
-		out = append(out, normalizeDoorEdge(edge))
-	}
-	for _, crossing := range e.field.doorCrossings(d) {
-		out = append(out, normalizeDoorEdge(DoorEdge{From: crossing[0], To: crossing[1]}))
-	}
-	if e.openings == nil {
-		e.openings = map[DoorID][]DoorEdge{}
-	}
-	e.openings[d.id] = out
-
-	return out
+	return e.field.doorOpening(d)
 }
 
 // heldCrossings is every crossing held now and its holders, in id order:
@@ -658,7 +640,7 @@ func (e *Encounter) livePost(id MemberID, door DoorID) Post {
 	if !ok {
 		return Post{Door: door}
 	}
-	if p, ok := m.postIn(m.Machine.State); ok && p.Door == door {
+	if p, ok := m.postIn(m.bodyState()); ok && p.Door == door {
 		return p
 	}
 	for _, state := range sortedPostStates(m.Posts) {

@@ -408,7 +408,7 @@ func (s *StepSuite) sceneWithMonsterAtPace(
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field: stepField(),
 		Members: []encounter.MemberInput{
-			{ID: goblin, Kind: encounter.KindMonster, Position: stepSeat(stepWestOrigin, at), Table: table},
+			{ID: goblin, Kind: encounter.KindMonster, Position: stepSeat(stepWestOrigin, at), Behaviors: ordinaryBehavior(table)},
 		},
 		Endings: []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
@@ -419,6 +419,7 @@ func (s *StepSuite) sceneWithMonsterAtPace(
 			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        tableDriver(),
+			Roller:        rollsLowest{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},

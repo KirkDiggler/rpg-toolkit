@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
@@ -132,11 +133,26 @@ func TestTheAllyWordIsReadOnTheWalkingWordsAndRefusedOnAttack(t *testing.T) {
 // table, storm-the-keep.
 func castleWithCaptainRow(t *testing.T, row string) string {
 	t.Helper()
-	raw := castleSource(t)
-	anchor := "  answer-the-gate:\n"
-	require.Equal(t, 1, strings.Count(raw, anchor), "the table after storm-the-keep is there once")
-
-	return strings.Replace(raw, anchor, row+anchor, 1)
+	var doc, addition yaml.Node
+	require.NoError(t, yaml.Unmarshal([]byte(castleSource(t)), &doc))
+	require.NoError(t, yaml.Unmarshal([]byte(row), &addition))
+	at := doc.Content[0]
+	for _, key := range []string{"behaviorDefinitions", "captain-policy", "table", "time"} {
+		var next *yaml.Node
+		for i := 0; i+1 < len(at.Content); i += 2 {
+			if at.Content[i].Value == key {
+				next = at.Content[i+1]
+				break
+			}
+		}
+		require.NotNil(t, next, "source path contains %s", key)
+		at = next
+	}
+	require.Equal(t, yaml.SequenceNode, at.Kind)
+	at.Content = append(at.Content, addition.Content[0].Content...)
+	out, err := yaml.Marshal(&doc)
+	require.NoError(t, err)
+	return string(out)
 }
 
 // castleSource is the castle fixture's bytes.
@@ -155,7 +171,7 @@ func stormTheKeepRows(t *testing.T, source string) []encounter.Answer {
 	require.NoError(t, err)
 	for _, m := range compiled.Monsters {
 		if m.MemberID == "captain" {
-			return m.Table[encounter.AnswerTime]
+			return m.Behaviors.Instances[0].Instance.Table[encounter.AnswerTime]
 		}
 	}
 	require.FailNow(t, "the castle has its captain")

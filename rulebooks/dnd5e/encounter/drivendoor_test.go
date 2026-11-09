@@ -58,7 +58,7 @@ func (s *DrivenDoorSuite) drivenHall(ab encounter.DoorState, members ...encounte
 // is through door-ab.
 func marcher() encounter.MemberInput {
 	m := at(noiseKeen, encounter.KindMonster, 5, 5)
-	m.Table = walksTo(cellAt(11, 5))
+	m.Behaviors = ordinaryBehavior(walksTo(cellAt(11, 5)))
 
 	return m
 }
@@ -259,7 +259,7 @@ func (s *DrivenDoorSuite) TestAPatrolLoopsThroughTheShutDoor() {
 func patrolHall() (*encounter.SetupInput, []spatial.Position) {
 	route := []spatial.Position{cellAt(3, 4), cellAt(15, 4), cellAt(15, 5), cellAt(3, 5)}
 	guard := at(noiseKeen, encounter.KindMonster, 3, 4)
-	guard.Table = encounter.Table{encounter.AnswerTime: {{Weight: 1, Toward: &encounter.Selector{Path: route}}}}
+	guard.Behaviors = ordinaryBehavior(encounter.Table{encounter.AnswerTime: {{Weight: 1, Toward: &encounter.Selector{Path: route}}}})
 
 	in := noiseHallSetup(encounter.DoorIsClosed(), encounter.DoorIsClosed(), drivenDoorSheets, tableDriver(),
 		guard, at(noiseAlice, encounter.KindPlayer, 25, 2))
@@ -347,7 +347,7 @@ func (s *DrivenDoorSuite) TestADirectedWalkThroughAShutDoorStopsAtIt() {
 func (s *DrivenDoorSuite) TestADoorOpenedBeforeAPausedStepIsSeen() {
 	guard := at(noiseKeen, encounter.KindMonster, 9, 5)
 	guard.Faction = "" // opposed to the party: the fight is on
-	guard.Table = walksTo(cellAt(12, 5))
+	guard.Behaviors = ordinaryBehavior(walksTo(cellAt(12, 5)))
 	in := noiseHallSetup(encounter.DoorIsClosed(), encounter.DoorIsClosed(), drivenDoorSheets, tableDriver(),
 		at(noiseAlice, encounter.KindPlayer, 4, 5), guard, at(noiseSharp, encounter.KindPlayer, 15, 5))
 	in.Field.Doors[0].Opened = drivenDoorFact
@@ -390,7 +390,7 @@ func (s *DrivenDoorSuite) TestAPursuerOpensTheDoorShutInItsFace() {
 	// No faction: opposed to the party, so seeing her starts the fight.
 	guard := at(noiseKeen, encounter.KindMonster, 6, 5)
 	guard.Faction = ""
-	guard.Table = hunts()
+	guard.Behaviors = ordinaryBehavior(hunts())
 	enc := s.drivenHall(encounter.DoorIsOpen(), alice, guard)
 	on, err := enc.ClockOf(&encounter.ClockOfInput{Member: noiseAlice})
 	s.Require().NoError(err)

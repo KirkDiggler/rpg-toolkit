@@ -340,8 +340,13 @@ func (s *composerSuite) TestSnapshotRoundTripAndCopyOut() {
 	got.Instances[0].Blob.Bag["count"] = 88
 	s.Equal(2, loaded.ToData().Instances[0].Blob.Bag["count"])
 	die = &exactDie{steps: []rollStep{{sides: 100, face: 1}}}
-	out, err := loaded.Decide(context.Background(), &behavior.DecideInput{On: composeTick, Die: die})
+	out, err := loaded.Decide(context.Background(), &behavior.DecideInput{On: composeTick, Now: 8, Die: die})
 	s.Require().NoError(err)
+	s.Nil(out.Pick, "a restored future wake still blocks early timed selection")
+	s.Zero(die.used)
+	out, err = loaded.Decide(context.Background(), &behavior.DecideInput{On: composeTick, Now: 9, Die: die})
+	s.Require().NoError(err)
+	s.Require().NotNil(out.Pick)
 	s.Equal("already progressed", out.Pick.Answer.Say)
 }
 

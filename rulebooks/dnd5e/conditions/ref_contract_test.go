@@ -90,7 +90,7 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 		"shield_of_faith":   shieldOfFaith,
 		"divine_favor":      divineFavor,
 		"guiding_bolt":      guidingBolt,
-		"raging":            &RagingCondition{CharacterID: "m1"},
+		"raging":            composedRageForTest("m1"),
 		"brutal_critical":   NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "m1", Roller: roller}),
 		"unarmored_defense": NewUnarmoredDefenseCondition(UnarmoredDefenseInput{MemberID: "m1", Type: UnarmoredDefenseBarbarian}),
 		"fs_archery":        NewFightingStyleArcheryCondition("m1"),
