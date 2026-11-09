@@ -127,6 +127,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.should_run_all == 'false' && needs.changes.outputs.modules != '[]'
     runs-on: ubuntu-latest
+    # The job holds setup, lint and the module's test binaries (run in
+    # parallel), each binary capped at 25m below. 40m is that cap plus setup.
+    timeout-minutes: 40
     strategy:
       matrix:
         module: ${{ fromJson(needs.changes.outputs.modules) }}
@@ -170,7 +173,10 @@ jobs:
         golangci-lint run ./...
         
         echo "→ Running tests..."
-        go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+        # Each test binary gets 25m, not Go's default 10m. This buys time, not
+        # speed: the encounter root package passed 10m under race+cover on CI
+        # runners (rpg-toolkit#2320, #2331). Sharding it is rpg-toolkit#2335.
+        go test -race -timeout 25m -coverprofile=coverage.txt -covermode=atomic ./...
         
         echo "✅ Module ${{ matrix.module }} passed all checks"
     
