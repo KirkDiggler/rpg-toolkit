@@ -23,7 +23,7 @@ Local wall times, 32 cores, load 6–12 from parallel agents, `-race -count=1`:
 - `test-changed` builds its matrix as an `include` list in the `changes` job: one `{module, shard: all}` per changed module, three entries for `rulebooks/dnd5e/encounter`.
 - `heavy` runs the root package with `-run "$ENCOUNTER_HEAVY_TESTS"`. `rest` runs it with `-skip "$ENCOUNTER_HEAVY_TESTS"` plus fmt, tidy and lint. `subpackages` runs every other encounter package unfiltered.
 - The regex is one workflow `env` value, so `-run` and `-skip` cannot drift. Each job writes its test time to the job summary.
-- The shard commands carry `-timeout 25m`. [#2336](https://github.com/KirkDiggler/rpg-toolkit/pull/2336) gives every module the same budget.
+- Every test command keeps the `-timeout 25m` from [#2336](https://github.com/KirkDiggler/rpg-toolkit/pull/2336), merged into this branch.
 
 ## Decided
 
