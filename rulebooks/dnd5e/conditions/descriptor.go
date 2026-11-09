@@ -69,6 +69,9 @@ type descriptor struct {
 	// Nil keeps the existing handwritten constructor/format contract.
 	composition *compositionDefinition
 
+	// acceptsOrigin declares the current explicit-provenance creation contract.
+	acceptsOrigin bool
+
 	// load restores a stored blob. Required.
 	load func(json.RawMessage) (dnd5eEvents.ConditionBehavior, error)
 

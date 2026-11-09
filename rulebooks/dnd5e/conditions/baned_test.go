@@ -74,7 +74,8 @@ func TestBanedConditionDescribesUnresolvedAttackAndSavePenalty(t *testing.T) {
 		dnd5eEvents.RollKindSavingThrow,
 	} {
 		input := &dnd5eEvents.DescribeRollContributionsInput{Kind: kind}
-		metadata := condition.RollContributionMetadata(input)
+		metadata, err := condition.RollContributionMetadata(input)
+		require.NoError(t, err)
 		require.True(t, metadata.Applicable)
 		require.Equal(t, BanedContributionGroup, metadata.Group)
 
@@ -88,8 +89,9 @@ func TestBanedConditionDescribesUnresolvedAttackAndSavePenalty(t *testing.T) {
 		}}, output.Contributions)
 	}
 
-	metadata := condition.RollContributionMetadata(
+	metadata, err := condition.RollContributionMetadata(
 		&dnd5eEvents.DescribeRollContributionsInput{Kind: dnd5eEvents.RollKind("damage")})
+	require.NoError(t, err)
 	require.False(t, metadata.Applicable)
 }
 
@@ -157,11 +159,14 @@ func (s *syntheticContributionCondition) ToJSON() (json.RawMessage, error) {
 }
 func (s *syntheticContributionCondition) RollContributionMetadata(
 	input *dnd5eEvents.DescribeRollContributionsInput,
-) dnd5eEvents.RollContributionMetadataOutput {
+) (dnd5eEvents.RollContributionMetadataOutput, error) {
 	return dnd5eEvents.RollContributionMetadataOutput{
 		Applicable: input != nil && input.Kind == dnd5eEvents.RollKindAttack,
 		Group:      "synthetic-blessing",
-	}
+	}, nil
+}
+func (s *syntheticContributionCondition) RollContributors() []dnd5eEvents.RollContributionProvider {
+	return []dnd5eEvents.RollContributionProvider{s}
 }
 func (s *syntheticContributionCondition) DescribeRollContributions(
 	_ *dnd5eEvents.DescribeRollContributionsInput,

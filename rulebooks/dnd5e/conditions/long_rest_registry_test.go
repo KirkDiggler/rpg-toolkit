@@ -42,6 +42,12 @@ type longRestCase struct {
 // name its long-rest rule without deriving either the fixture or expectation
 // from production dispatch.
 var longRestCases = map[string]longRestCase{
+	// This configured payload has no local rest rule; shared owner end policies
+	// belong to linked-application transport verification, not inference by ref.
+	refs.Conditions.LinkedEffects().String(): {
+		data:    json.RawMessage(`{"ref":"dnd5e:conditions:linked-effects","member_id":"member-1","address_source_id":"caster","application_id":"application","role":"recipient","origin":{"ref":"dnd5e:spells:bless","entity_id":"caster"},"bindings":{"name":"Ward","owner":{"member_id":"caster","condition_ref":"dnd5e:conditions:linked-effects","source_id":"application"},"member_key":"payload","parts":[{"key":"resistance","kind":"resistance","params":{"types":["slashing"]},"on_terminal":"part"}]},"runtime":{"parts":{"parts":{"resistance":{"state":"active","bag":{}}}}}}`),
+		ownerID: "member-1", expectedRef: refs.Conditions.LinkedEffects(), expectedSourceID: "caster", outcome: longRestRetain,
+	},
 	refs.Conditions.Shillelagh().String(): {
 		data:    json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"shillelagh"},"member_id":"member-1","weapon":{"slot":"main_hand","item_id":"club"},"ability":"wis","turn_ends_left":10,"skip_first_turn_end":true}`),
 		ownerID: "member-1", expectedRef: refs.Conditions.Shillelagh(), expectedSourceID: "member-1", outcome: longRestRemove, removalReason: "rest",

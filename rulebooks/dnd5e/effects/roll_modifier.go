@@ -172,7 +172,7 @@ func assessRollModifier(in *AssessInput, m meaning) (assessment, error) {
 		return result, err
 	}
 	sourceRef := in.Origin.Ref
-	result.effect = contributions.Effect{ID: in.Output.ID(), Source: contributions.Source{Ref: &sourceRef, Name: in.DisplayName, SourceID: in.Origin.EntityID}, Description: m.description, Participation: contributions.ContributesNow}
+	result.effect = contributions.Effect{ID: in.Output.ID(), RollGroup: params.Group, Source: contributions.Source{Ref: in.Output.Host().Ref, Name: in.DisplayName, SourceID: in.Origin.EntityID}, Description: m.description, Participation: contributions.ContributesNow}
 	subject, kind, known := rollContext(in.Query)
 	if !known {
 		result.effect.State = contributions.StateDepends

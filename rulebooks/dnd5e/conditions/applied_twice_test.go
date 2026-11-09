@@ -65,6 +65,14 @@ func (s *AppliedTwiceSuite) must(condition dnd5eEvents.ConditionBehavior, err er
 func (s *AppliedTwiceSuite) fixtures() map[string]func() dnd5eEvents.ConditionBehavior {
 	id := sheetID
 	return map[string]func() dnd5eEvents.ConditionBehavior{
+		refs.Conditions.LinkedEffects().String(): func() dnd5eEvents.ConditionBehavior {
+			// Local payload replacement remains a keeper contract; application admission is tested separately.
+			out, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{Ref: refs.Conditions.LinkedEffects().String(), MemberID: id,
+				Origin: &dnd5eEvents.ConditionOrigin{Ref: *refs.Spells.Bless(), EntityID: "caster"},
+				Config: json.RawMessage(`{"application_id":"application","role":"recipient","address_source_id":"caster","bindings":{"name":"Blessed","member_key":"payload","owner":{"member_id":"caster","condition_ref":"dnd5e:conditions:linked-effects","source_id":"application"},"parts":[{"key":"dice","kind":"roll_modifier","params":{"dice":"1d4","group":"bless","rolls":["attack","saving_throw"]},"on_terminal":"part"}]}}`)})
+			s.Require().NoError(err)
+			return out.Condition
+		},
 		refs.Conditions.Raging().String(): func() dnd5eEvents.ConditionBehavior {
 			out, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{Ref: refs.Conditions.Raging().String(), MemberID: id, Origin: &dnd5eEvents.ConditionOrigin{Ref: *refs.Features.Rage(), EntityID: id}, Config: json.RawMessage(`{"damage_bonus":{"barbarian_level":true}}`)})
 			s.Require().NoError(err)

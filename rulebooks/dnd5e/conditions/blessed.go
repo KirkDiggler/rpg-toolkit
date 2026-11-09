@@ -155,13 +155,18 @@ func (b *BlessedCondition) loadJSON(data json.RawMessage) error {
 // throws in its own equal-potency stacking group.
 func (b *BlessedCondition) RollContributionMetadata(
 	input *dnd5eEvents.DescribeRollContributionsInput,
-) dnd5eEvents.RollContributionMetadataOutput {
+) (dnd5eEvents.RollContributionMetadataOutput, error) {
 	applicable := input != nil && (input.Kind == dnd5eEvents.RollKindAttack ||
 		input.Kind == dnd5eEvents.RollKindSavingThrow)
 	return dnd5eEvents.RollContributionMetadataOutput{
 		Applicable: applicable,
 		Group:      BlessedContributionGroup,
-	}
+	}, nil
+}
+
+// RollContributors exposes this current payload through the shared per-part selector.
+func (b *BlessedCondition) RollContributors() []dnd5eEvents.RollContributionProvider {
+	return []dnd5eEvents.RollContributionProvider{b}
 }
 
 // DescribeRollContributions describes one unresolved additive d4 for an
@@ -169,7 +174,11 @@ func (b *BlessedCondition) RollContributionMetadata(
 func (b *BlessedCondition) DescribeRollContributions(
 	input *dnd5eEvents.DescribeRollContributionsInput,
 ) (*dnd5eEvents.DescribeRollContributionsOutput, error) {
-	if !b.RollContributionMetadata(input).Applicable {
+	metadata, err := b.RollContributionMetadata(input)
+	if err != nil {
+		return nil, err
+	}
+	if !metadata.Applicable {
 		return &dnd5eEvents.DescribeRollContributionsOutput{}, nil
 	}
 	return &dnd5eEvents.DescribeRollContributionsOutput{
@@ -223,7 +232,11 @@ func assessRollContribution(in *assessRollContributionInput) (*contributions.Ass
 		out.Answer.Decision = contributions.Decision{Applicability: contributions.DoesNotApply, Reason: in.NotRecipient}
 		return out, nil
 	}
-	if !in.Provider.RollContributionMetadata(request).Applicable {
+	metadata, err := in.Provider.RollContributionMetadata(request)
+	if err != nil {
+		return nil, err
+	}
+	if !metadata.Applicable {
 		out.Answer.Decision = contributions.Decision{Applicability: contributions.DoesNotApply, Reason: in.DoesNotApply}
 		return out, nil
 	}

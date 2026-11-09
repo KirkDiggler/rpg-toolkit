@@ -22,9 +22,10 @@ func TestActionBearingSuite(t *testing.T) { suite.Run(t, new(actionBearingSuite)
 
 func (s *actionBearingSuite) TestAnsweringLoadersImplementAnInformationCapability() {
 	fixtures := map[string]dnd5eEvents.ConditionBehavior{
-		refs.Conditions.Raging().String():      composedRageForTest("barb"),
-		refs.Conditions.SneakAttack().String(): NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue"}),
-		refs.Conditions.Inspired().String():    NewInspiredCondition("rogue", "bard", ""),
+		refs.Conditions.LinkedEffects().String(): linkedForTest("rogue"),
+		refs.Conditions.Raging().String():        composedRageForTest("barb"),
+		refs.Conditions.SneakAttack().String():   NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue"}),
+		refs.Conditions.Inspired().String():      NewInspiredCondition("rogue", "bard", ""),
 
 		refs.Conditions.Prone().String():                            NewProneCondition("rogue"),
 		refs.Conditions.Hidden().String():                           NewHiddenCondition("rogue"),

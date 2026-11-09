@@ -155,13 +155,18 @@ func (b *BanedCondition) loadJSON(data json.RawMessage) error {
 // throws in its own equal-potency stacking group.
 func (b *BanedCondition) RollContributionMetadata(
 	input *dnd5eEvents.DescribeRollContributionsInput,
-) dnd5eEvents.RollContributionMetadataOutput {
+) (dnd5eEvents.RollContributionMetadataOutput, error) {
 	applicable := input != nil && (input.Kind == dnd5eEvents.RollKindAttack ||
 		input.Kind == dnd5eEvents.RollKindSavingThrow)
 	return dnd5eEvents.RollContributionMetadataOutput{
 		Applicable: applicable,
 		Group:      BanedContributionGroup,
-	}
+	}, nil
+}
+
+// RollContributors exposes this current payload through the shared per-part selector.
+func (b *BanedCondition) RollContributors() []dnd5eEvents.RollContributionProvider {
+	return []dnd5eEvents.RollContributionProvider{b}
 }
 
 // DescribeRollContributions describes one unresolved subtractive d4 for an
@@ -169,7 +174,11 @@ func (b *BanedCondition) RollContributionMetadata(
 func (b *BanedCondition) DescribeRollContributions(
 	input *dnd5eEvents.DescribeRollContributionsInput,
 ) (*dnd5eEvents.DescribeRollContributionsOutput, error) {
-	if !b.RollContributionMetadata(input).Applicable {
+	metadata, err := b.RollContributionMetadata(input)
+	if err != nil {
+		return nil, err
+	}
+	if !metadata.Applicable {
 		return &dnd5eEvents.DescribeRollContributionsOutput{}, nil
 	}
 	return &dnd5eEvents.DescribeRollContributionsOutput{
@@ -203,28 +212,34 @@ func DescribeSelectedRollContributions(
 	output := &dnd5eEvents.DescribeRollContributionsOutput{}
 	groups := newRollGroupSelection(input.Request)
 	for _, condition := range input.Conditions {
-		provider, ok := condition.(dnd5eEvents.RollContributionProvider)
+		set, ok := condition.(dnd5eEvents.RollContributionSet)
 		if !ok {
 			continue
 		}
-		applicable := provider.RollContributionMetadata(input.Request).Applicable
-		claim, err := groups.claim(&rollClaimInput{Provider: provider, Applies: applicable})
-		if err != nil {
-			return nil, err
+		for _, provider := range set.RollContributors() {
+			if provider == nil {
+				return nil, fmt.Errorf("condition %T exposes a nil roll contributor", condition)
+			}
+			metadata, err := provider.RollContributionMetadata(input.Request)
+			if err != nil {
+				return nil, err
+			}
+			claim, err := groups.claim(&rollClaimInput{Metadata: metadata, Applies: metadata.Applicable})
+			if err != nil {
+				return nil, err
+			}
+			if !claim.Applicable || claim.Shadowed {
+				continue
+			}
+			described, err := provider.DescribeRollContributions(input.Request)
+			if err != nil {
+				return nil, fmt.Errorf("describe roll contributions from %T: %w", condition, err)
+			}
+			if described == nil {
+				return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "roll contribution provider %T returned nil output", provider)
+			}
+			output.Contributions = append(output.Contributions, described.Contributions...)
 		}
-		if !claim.Applicable || claim.Shadowed {
-			continue
-		}
-
-		described, err := provider.DescribeRollContributions(input.Request)
-		if err != nil {
-			return nil, fmt.Errorf("describe roll contributions from %T: %w", condition, err)
-		}
-		if described == nil {
-			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
-				"roll contribution provider %T returned nil output", condition)
-		}
-		output.Contributions = append(output.Contributions, described.Contributions...)
 	}
 	return output, nil
 }
@@ -244,7 +259,7 @@ func newRollGroupSelection(request *dnd5eEvents.DescribeRollContributionsInput) 
 // rollClaimInput names a provider in persisted order, whether its rule applies,
 // and the name it is known by in a shadowed provider's reason.
 type rollClaimInput struct {
-	Provider dnd5eEvents.RollContributionProvider
+	Metadata dnd5eEvents.RollContributionMetadataOutput
 	Applies  bool
 	Name     string
 }
@@ -260,14 +275,14 @@ type rollClaimOutput struct {
 // claim records an applying provider as its group's holder unless an earlier
 // provider holds it. An applicable provider with an empty group is an error.
 func (s *rollGroupSelection) claim(in *rollClaimInput) (*rollClaimOutput, error) {
-	metadata := in.Provider.RollContributionMetadata(s.request)
+	metadata := in.Metadata
 	out := &rollClaimOutput{Applicable: metadata.Applicable}
 	if !metadata.Applicable || !in.Applies {
 		return out, nil
 	}
 	if metadata.Group == "" {
 		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
-			"roll contribution provider %T declared an empty stacking group", in.Provider)
+			"applicable roll contribution %q declared an empty stacking group", in.Name)
 	}
 	if holder, held := s.holders[metadata.Group]; held {
 		out.Shadowed = true

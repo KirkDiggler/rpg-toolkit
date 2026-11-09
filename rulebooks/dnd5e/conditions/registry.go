@@ -53,6 +53,7 @@ var descriptors = []descriptor{
 	viciousMockeryDescriptor,
 	commandedDescriptor,
 	concentratingDescriptor,
+	linkedDescriptor,
 	blessedDescriptor,
 	banedDescriptor,
 	divineFavorDescriptor,

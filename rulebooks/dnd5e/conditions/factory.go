@@ -65,7 +65,7 @@ func CreateFromRef(input *CreateFromRefInput) (*CreateFromRefOutput, error) {
 	if err != nil {
 		return nil, err
 	}
-	if input.Origin != nil && entry.composition == nil {
+	if input.Origin != nil && !entry.acceptsOrigin {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "condition does not support Origin: "+ref.String())
 	}
 	if entry.create == nil {

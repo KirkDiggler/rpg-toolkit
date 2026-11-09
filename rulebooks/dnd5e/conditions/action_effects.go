@@ -93,6 +93,17 @@ func AssessActionEffects(in *AssessActionEffectsInput) (*AssessActionEffectsOutp
 					return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "duplicate effect row id %q", row.ID)
 				}
 				ids[row.ID] = struct{}{}
+				if row.RollGroup != "" && row.State == contributions.StateApplies {
+					claim, err := groups.claim(&rollClaimInput{Metadata: dnd5eEvents.RollContributionMetadataOutput{Applicable: true, Group: row.RollGroup}, Applies: true, Name: row.Source.Name})
+					if err != nil {
+						return nil, err
+					}
+					if claim.Shadowed {
+						row.State = contributions.StateDoesNotApply
+						row.Reason = "Another " + claim.HeldBy + " already adds to this roll"
+						row.Benefit = ""
+					}
+				}
 				row.Participation = own.participation
 				effects = append(effects, row)
 			}
@@ -176,7 +187,11 @@ func answerEffect(in *answerEffectInput) error {
 	if len(answer.Roll) == 0 {
 		return rpgerr.Newf(rpgerr.CodeInternal, "roll contribution %s applies but describes no dice", ref)
 	}
-	claim, err := in.Groups.claim(&rollClaimInput{Provider: provider, Applies: true, Name: answer.Roll[0].Source.Name})
+	metadata, err := provider.RollContributionMetadata(in.Groups.request)
+	if err != nil {
+		return fmt.Errorf("assess %s metadata: %w", ref, err)
+	}
+	claim, err := in.Groups.claim(&rollClaimInput{Metadata: metadata, Applies: true, Name: answer.Roll[0].Source.Name})
 	if err != nil {
 		return fmt.Errorf("assess %s: %w", ref, err)
 	}
