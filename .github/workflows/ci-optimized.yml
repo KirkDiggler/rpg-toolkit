@@ -230,7 +230,9 @@ jobs:
         
         echo "→ Running tests..."
         # -json feeds the test budget step; the log filter prints what plain
-        # go test would. pipefail (the runner's default) keeps go test's exit.
+        # go test would. A run: step without shell: is bash -e, no pipefail,
+        # so without this line the filter's exit 0 hides a failing test.
+        set -o pipefail
         budgeted() {
           "$@" | tee "$RUNNER_TEMP/test.json" | "$GITHUB_WORKSPACE/scripts/test-budget.sh" log
         }
@@ -313,6 +315,9 @@ jobs:
     # make test-all's loop, with -json per module for the test budget step.
     - name: Run tests on all modules
       run: |
+        # bash -e has no pipefail: without it the log filter's exit 0 hides
+        # a failing test.
+        set -o pipefail
         mkdir -p "$RUNNER_TEMP/test-json"
         find . -name "go.mod" -type f -not -path "./vendor/*" | sort | while read -r modfile; do
           dir=$(dirname "$modfile")
