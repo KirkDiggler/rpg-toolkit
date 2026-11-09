@@ -938,11 +938,14 @@ func (e *Encounter) finishTurnFromPause(
 		return false, fmt.Errorf("resume turn %q: %w", p.member, rerr)
 	}
 	if e.turnPaused() {
+		if err := e.appendBehaviorWork(&behaviorWorkRecordInput{member: m, work: p.turn.behavior, status: behaviorWorkPaused, act: p.act}); err != nil {
+			return false, err
+		}
 		*seq = walkSeq
 		return true, nil
 	}
 
-	if err := e.completeBehaviorWork(m, p.turn.behavior); err != nil {
+	if err := e.completeBehaviorWork(m, p.turn.behavior, p.act); err != nil {
 		return false, err
 	}
 
