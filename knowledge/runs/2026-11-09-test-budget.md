@@ -8,7 +8,24 @@ Base: `rpg-toolkit` `main` at f61e4379, after [#2336](https://github.com/KirkDig
 - An allowlist entry is `<import path>/<test>  # reason`. The import path is go test -json's `Package` field, so one entry exempts one package's test. A bare name, a missing reason, or "not yet sized" alone is an error.
 - Every allowed test is logged with its time. A line that a run did not need says "within the budget this run".
 - The module step, including each encounter shard, and the test-all job run tests with `-json` through the log filter. A separate step runs the check. `scripts/test-budget.test.sh` holds the cases and runs in its own cheap job.
-- Both test steps set `pipefail`. A `run:` step without `shell:` is `bash -e`, so without it the filter's exit 0 hid a failing test. A local run of the test-all step on a module with a failing test exits 0 without the line and 1 with it.
+- Both piping steps, "Check module" and "Run tests on all modules", carry `shell: bash`, which runs them as `bash --noprofile --norc -eo pipefail`. That is the load-bearing guarantee. A `run:` step without `shell:` is `bash -e`, where the log filter's exit 0 hid a failing test. Each step also sets `set -o pipefail`, so the commands keep the guarantee when copied out.
+
+## The pipe keeps go test's exit
+
+The "Check module" step body ran locally against a scratch module. Its root package holds `TestHeavy` and `TestRest`, and its subpackage holds `TestSub`. Each test calls `t.Fatal("probe")` when `PROBE` names it, and `ENCOUNTER_HEAVY_TESTS='^(TestHeavy)$'`. The lint tools were stubbed.
+
+| shard | probe | shell: bash + set | shell: bash only | old: bash -e, no set |
+|---|---|---|---|---|
+| all | sub | 1 | 1 | 0 |
+| all | none | 0 | 0 | 0 |
+| heavy | heavy | 1 | 1 | 0 |
+| heavy | rest | 0 | 0 | 0 |
+| rest | rest | 1 | 1 | 0 |
+| rest | heavy | 0 | 0 | 0 |
+| subpackages | sub | 1 | 1 | 0 |
+| subpackages | none | 0 | 0 | 0 |
+
+The test-all loop ran the same way on a module with a failing test. It exits 1 with pipefail and 0 without it.
 
 ## Proof
 

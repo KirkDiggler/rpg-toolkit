@@ -205,7 +205,13 @@ jobs:
     # No coverage in CI: nobody reads the file, and atomic cover is most of the
     # race test time. Locally: `make coverage` (a few modules), or in a module
     # `go test -race -coverprofile=coverage.txt -covermode=atomic ./...`.
+    # shell: bash is load-bearing: it runs the step as bash -eo pipefail, so
+    # a failing go test fails the step through the log filter's pipe. A run:
+    # step without shell: is bash -e only, where the filter's exit 0 hides
+    # the failure. The set -o pipefail below is the same guarantee for anyone
+    # who copies the commands out of this step.
     - name: Check module ${{ matrix.module }} (${{ matrix.shard }})
+      shell: bash
       env:
         SHARD: ${{ matrix.shard }}
       run: |
@@ -230,8 +236,7 @@ jobs:
         
         echo "→ Running tests..."
         # -json feeds the test budget step; the log filter prints what plain
-        # go test would. A run: step without shell: is bash -e, no pipefail,
-        # so without this line the filter's exit 0 hides a failing test.
+        # go test would. pipefail keeps go test's exit (see shell: above).
         set -o pipefail
         budgeted() {
           "$@" | tee "$RUNNER_TEMP/test.json" | "$GITHUB_WORKSPACE/scripts/test-budget.sh" log
@@ -313,10 +318,11 @@ jobs:
       run: make lint-all
     
     # make test-all's loop, with -json per module for the test budget step.
+    # shell: bash is load-bearing (bash -eo pipefail), as in "Check module":
+    # without pipefail the log filter's exit 0 hides a failing test.
     - name: Run tests on all modules
+      shell: bash
       run: |
-        # bash -e has no pipefail: without it the log filter's exit 0 hides
-        # a failing test.
         set -o pipefail
         mkdir -p "$RUNNER_TEMP/test-json"
         find . -name "go.mod" -type f -not -path "./vendor/*" | sort | while read -r modfile; do
