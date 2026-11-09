@@ -3360,9 +3360,10 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// panic on the load path rather than an empty answer.
 	world := newEncounterWorld()
 	e := &Encounter{
-		discovery:     copyDiscoveryStates(data.Discovery),
-		sneakVerdicts: copySneakVerdicts(data.SneakVerdicts),
-		sightSweeps:   copySightSweeps(data.SightSweeps),
+		visibleCacheEntries: visibleCacheBound,
+		discovery:           copyDiscoveryStates(data.Discovery),
+		sneakVerdicts:       copySneakVerdicts(data.SneakVerdicts),
+		sightSweeps:         copySightSweeps(data.SightSweeps),
 		// THE LAST LOOK IS THE SAVED HIGH-WATER (rpg-project#762): a verb
 		// ends with a look, so the reading a blob was saved at is the one
 		// every current sighting in it is known true at. Derived, not stored.

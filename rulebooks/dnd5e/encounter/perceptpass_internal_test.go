@@ -193,12 +193,10 @@ func TestOnePassEncodesOnePayloadPerMember(t *testing.T) {
 
 	// Counted around one pass only: first light ran its own.
 	encodes := 0
-	original := encodeSighting
-	encodeSighting = func(testimony SightTestimony) ([]byte, error) {
+	enc.sightEncoder = func(testimony SightTestimony) ([]byte, error) {
 		encodes++
-		return original(testimony)
+		return EncodeSightTestimony(testimony)
 	}
-	defer func() { encodeSighting = original }()
 
 	_, err := enc.rebuildPercepts(enc.rosterIDs())
 	require.NoError(t, err)
