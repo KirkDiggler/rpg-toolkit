@@ -127,6 +127,11 @@ func validateLinkedData(data LinkedConditionData) error {
 		if data.AddressSourceID != data.ApplicationID || data.Bindings.Owner != nil || data.Bindings.MemberKey != "" {
 			return fmt.Errorf("coordinator identity/bindings disagree with its application")
 		}
+		for _, part := range data.Bindings.Parts {
+			if part.OnTerminal == generic.EndAttachment {
+				return fmt.Errorf("coordinator expiry must end its application, not abandon its members")
+			}
+		}
 		keys := map[string]bool{}
 		addresses := map[dndevents.ConditionAddress]bool{}
 		for _, member := range data.Bindings.Members {
@@ -152,7 +157,7 @@ func validateLinkedData(data LinkedConditionData) error {
 			return fmt.Errorf("recipient link disagrees with its application or points to itself")
 		}
 		for _, part := range data.Bindings.Parts {
-			if part.OnTerminal != generic.EndPart {
+			if part.OnTerminal == generic.EndApplication {
 				return fmt.Errorf("recipient parts cannot own application upkeep")
 			}
 		}

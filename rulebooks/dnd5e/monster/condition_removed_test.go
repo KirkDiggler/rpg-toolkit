@@ -5,6 +5,7 @@ package monster_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -28,11 +29,14 @@ func TestWrongBaneSourceDoesNotRemoveOrDirtyMonster(t *testing.T) {
 	ctx := context.Background()
 	bus := events.NewEventBus()
 	m := monster.New(monster.Config{ID: "skeleton-1", Name: "Skeleton", HP: 13, AC: 13})
-	bane, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
-		MemberID: "skeleton-1", SourceID: "bard-a", SourceRef: refs.Spells.Bane(),
-	})
+	owner := dnd5eEvents.ConditionAddress{MemberID: "bard-a", ConditionRef: refs.Conditions.LinkedEffects().String(), SourceID: "application:bard-a"}
+	config, err := json.Marshal(conditions.LinkedConditionConfig{ApplicationID: owner.SourceID, AddressSourceID: "bard-a", Role: conditions.LinkedRecipient,
+		Bindings: &conditions.LinkedBindings{Name: "Bane", Owner: &owner, MemberKey: "skeleton-1"}})
 	require.NoError(t, err)
-	require.NoError(t, m.AddLoadedCondition(bane))
+	bane, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{Ref: refs.Conditions.Baned().String(), MemberID: "skeleton-1",
+		Origin: &dnd5eEvents.ConditionOrigin{Ref: *refs.Spells.Bane(), EntityID: "bard-a"}, Config: config})
+	require.NoError(t, err)
+	require.NoError(t, m.AddLoadedCondition(bane.Condition))
 	require.NoError(t, m.SheetKeeper().Apply(ctx, bus))
 	require.False(t, m.IsDirty())
 

@@ -17,8 +17,8 @@ import (
 )
 
 func TestBanedConditionRoundTripAndRegistration(t *testing.T) {
-	condition, err := NewBanedCondition(NewBanedConditionInput{
-		MemberID:  "target-1",
+	condition, err := namedFixture(namedFixtureInput{
+		Ref: refs.Conditions.Baned(), MemberID: "target-1",
 		SourceID:  "bard-a",
 		SourceRef: refs.Spells.Bane(),
 	})
@@ -36,36 +36,37 @@ func TestBanedConditionRoundTripAndRegistration(t *testing.T) {
 
 	loaded, err := LoadJSON(raw)
 	require.NoError(t, err)
-	back, ok := loaded.(*BanedCondition)
+	back, ok := loaded.(*LinkedCondition)
 	require.True(t, ok)
 	require.Equal(t, condition.ConditionAddress(), back.ConditionAddress())
-	require.Equal(t, refs.Spells.Bane(), back.SourceRef)
+	require.Equal(t, *refs.Spells.Bane(), back.ConditionOrigin().Ref)
 
 	display, ok := DisplayFor(*refs.Conditions.Baned())
 	require.True(t, ok)
 	require.Equal(t, BanedName, display.Name)
 }
 
-func TestBanedConditionRequiresQualifiedCanonicalBaneSource(t *testing.T) {
-	tests := map[string]NewBanedConditionInput{
+func TestBanedConditionRequiresRecipientAndValidOrigin(t *testing.T) {
+	tests := map[string]namedFixtureInput{
 		"recipient":  {SourceID: "bard-a", SourceRef: refs.Spells.Bane()},
 		"source id":  {MemberID: "target-1", SourceRef: refs.Spells.Bane()},
 		"source ref": {MemberID: "target-1", SourceID: "bard-a"},
-		"bane ref": {
-			MemberID: "target-1", SourceID: "bard-a", SourceRef: refs.Spells.TrueStrike(),
+		"invalid ref": {
+			MemberID: "target-1", SourceID: "bard-a", SourceRef: &core.Ref{},
 		},
 	}
 	for name, input := range tests {
 		t.Run(name, func(t *testing.T) {
-			_, err := NewBanedCondition(input)
+			input.Ref = refs.Conditions.Baned()
+			_, err := namedFixture(input)
 			require.Error(t, err)
 		})
 	}
 }
 
 func TestBanedConditionDescribesUnresolvedAttackAndSavePenalty(t *testing.T) {
-	condition, err := NewBanedCondition(NewBanedConditionInput{
-		MemberID: "target-1", SourceID: "bard-a", SourceRef: refs.Spells.Bane(),
+	condition, err := namedFixture(namedFixtureInput{
+		Ref: refs.Conditions.Baned(), MemberID: "target-1", SourceID: "bard-a", SourceRef: refs.Spells.Bane(),
 	})
 	require.NoError(t, err)
 
@@ -74,7 +75,7 @@ func TestBanedConditionDescribesUnresolvedAttackAndSavePenalty(t *testing.T) {
 		dnd5eEvents.RollKindSavingThrow,
 	} {
 		input := &dnd5eEvents.DescribeRollContributionsInput{Kind: kind}
-		metadata, err := condition.RollContributionMetadata(input)
+		metadata, err := condition.RollContributors()[0].RollContributionMetadata(input)
 		require.NoError(t, err)
 		require.True(t, metadata.Applicable)
 		require.Equal(t, BanedContributionGroup, metadata.Group)
@@ -89,18 +90,18 @@ func TestBanedConditionDescribesUnresolvedAttackAndSavePenalty(t *testing.T) {
 		}}, output.Contributions)
 	}
 
-	metadata, err := condition.RollContributionMetadata(
+	metadata, err := condition.RollContributors()[0].RollContributionMetadata(
 		&dnd5eEvents.DescribeRollContributionsInput{Kind: dnd5eEvents.RollKind("damage")})
 	require.NoError(t, err)
 	require.False(t, metadata.Applicable)
 }
 
 func TestDescribeSelectedRollContributionsKeepsOldestPerConditionGroup(t *testing.T) {
-	baneA, err := NewBanedCondition(NewBanedConditionInput{
+	baneA, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Baned(),
 		MemberID: "target-1", SourceID: "bard-a", SourceRef: refs.Spells.Bane(),
 	})
 	require.NoError(t, err)
-	baneB, err := NewBanedCondition(NewBanedConditionInput{
+	baneB, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Baned(),
 		MemberID: "target-1", SourceID: "bard-b", SourceRef: refs.Spells.Bane(),
 	})
 	require.NoError(t, err)

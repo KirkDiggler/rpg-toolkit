@@ -28,13 +28,15 @@ const (
 )
 
 type longRestCase struct {
-	data             json.RawMessage
-	ownerID          string
-	expectedRef      *core.Ref
-	expectedSourceID string
-	outcome          longRestOutcome
-	removalReason    string
-	endedState       string // explicit current-format state after removal, when represented
+	data                  json.RawMessage
+	ownerID               string
+	expectedRef           *core.Ref
+	expectedSourceID      string
+	expectedApplicationID string
+	endedPart             string
+	outcome               longRestOutcome
+	removalReason         string
+	endedState            string // explicit current-format state after removal, when represented
 }
 
 // longRestCases is deliberately authored independently of the registry.
@@ -278,11 +280,8 @@ var longRestCases = map[string]longRestCase{
 		removalReason: "rest",
 	},
 	refs.Conditions.Blessed().String(): {
-		data: json.RawMessage(`{
-			"ref":{"module":"dnd5e","type":"conditions","id":"blessed"},
-			"member_id":"member-1","source_id":"cleric-1",
-			"source_ref":{"module":"dnd5e","type":"spells","id":"bless"}
-		}`),
+		data:                  namedBlobForTest(namedFixtureInput{Ref: refs.Conditions.Blessed(), MemberID: "member-1", SourceID: "cleric-1", SourceRef: refs.Spells.Bless()}),
+		expectedApplicationID: "application:cleric-1", endedPart: "rest",
 		ownerID:          "member-1",
 		expectedRef:      refs.Conditions.Blessed(),
 		expectedSourceID: "cleric-1",
@@ -390,11 +389,8 @@ var longRestCases = map[string]longRestCase{
 		removalReason: "rest",
 	},
 	refs.Conditions.Baned().String(): {
-		data: json.RawMessage(`{
-			"ref":{"module":"dnd5e","type":"conditions","id":"baned"},
-			"member_id":"member-1","source_id":"bard-1",
-			"source_ref":{"module":"dnd5e","type":"spells","id":"bane"}
-		}`),
+		data:                  namedBlobForTest(namedFixtureInput{Ref: refs.Conditions.Baned(), MemberID: "member-1", SourceID: "bard-1", SourceRef: refs.Spells.Bane()}),
+		expectedApplicationID: "application:bard-1", endedPart: "rest",
 		ownerID:          "member-1",
 		expectedRef:      refs.Conditions.Baned(),
 		expectedSourceID: "bard-1",
@@ -558,12 +554,22 @@ func TestLongRestRegistryBehavior(t *testing.T) {
 					expected, err = json.Marshal(data)
 					require.NoError(t, err)
 				}
+				if testCase.endedPart != "" {
+					var data LinkedConditionData
+					require.NoError(t, json.Unmarshal(before, &data))
+					part := data.Runtime.Parts.Parts[testCase.endedPart]
+					part.State = "ended"
+					data.Runtime.Parts.Parts[testCase.endedPart] = part
+					expected, err = json.Marshal(data)
+					require.NoError(t, err)
+				}
 				require.JSONEq(t, string(expected), string(after))
 				require.Equal(t, []dnd5eEvents.ConditionRemovedEvent{{
-					MemberID:     testCase.ownerID,
-					ConditionRef: testCase.expectedRef.String(),
-					SourceID:     testCase.expectedSourceID,
-					Reason:       testCase.removalReason,
+					MemberID:      testCase.ownerID,
+					ConditionRef:  testCase.expectedRef.String(),
+					SourceID:      testCase.expectedSourceID,
+					ApplicationID: testCase.expectedApplicationID,
+					Reason:        testCase.removalReason,
 				}}, removed)
 				require.Empty(t, changed)
 
@@ -605,10 +611,11 @@ func TestShortRestRegistryBehavior(t *testing.T) {
 			if testCase.outcome == longRestRemove && testCase.removalReason == "rest" {
 				require.False(t, condition.IsApplied(), "a short rest ends it")
 				require.Equal(t, []dnd5eEvents.ConditionRemovedEvent{{
-					MemberID:     testCase.ownerID,
-					ConditionRef: testCase.expectedRef.String(),
-					SourceID:     testCase.expectedSourceID,
-					Reason:       "rest",
+					MemberID:      testCase.ownerID,
+					ConditionRef:  testCase.expectedRef.String(),
+					SourceID:      testCase.expectedSourceID,
+					ApplicationID: testCase.expectedApplicationID,
+					Reason:        "rest",
 				}}, removed)
 				return
 			}

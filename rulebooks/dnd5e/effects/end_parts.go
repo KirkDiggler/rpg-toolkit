@@ -42,8 +42,8 @@ func endPartRecipe(ref core.Ref, transition machine.Transition) machine.Recipe {
 }
 
 func parseEndOn(declaration PartDeclaration) (endOnParams, error) {
-	if declaration.OnTerminal != generic.EndApplication {
-		return endOnParams{}, fmt.Errorf("end policy must end its application")
+	if declaration.OnTerminal != generic.EndApplication && declaration.OnTerminal != generic.EndAttachment {
+		return endOnParams{}, fmt.Errorf("end policy must end its attachment or application")
 	}
 	params, err := decodeParams[endOnParams](jsontext.Value(declaration.Params))
 	if err != nil {

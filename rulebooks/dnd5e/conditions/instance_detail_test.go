@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // These tests use literal words: the spells package imports conditions, so its
@@ -46,7 +47,7 @@ func (s *InstanceDetailSuite) TestALoadedCommandedTellsTheSameWord() {
 func (s *InstanceDetailSuite) TestAConditionWithNothingToSayHasNoDetail() {
 	ref, err := core.ParseString("dnd5e:spells:bless")
 	s.Require().NoError(err)
-	blessed, err := NewBlessedCondition(NewBlessedConditionInput{
+	blessed, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Blessed(),
 		MemberID: "goblin", SourceID: "cleric", SourceRef: ref,
 	})
 	s.Require().NoError(err)

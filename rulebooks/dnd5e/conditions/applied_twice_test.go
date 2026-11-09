@@ -12,6 +12,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -82,12 +83,10 @@ func (s *AppliedTwiceSuite) fixtures() map[string]func() dnd5eEvents.ConditionBe
 			return conditions.NewSneakAttackCondition(conditions.SneakAttackInput{MemberID: id})
 		},
 		refs.Conditions.Blessed().String(): func() dnd5eEvents.ConditionBehavior {
-			return s.must(conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{
-				MemberID: id, SourceID: "cleric", SourceRef: refs.Spells.Bless()}))
+			return s.namedPayload(refs.Conditions.Blessed().String(), "cleric", refs.Spells.Bless().String())
 		},
 		refs.Conditions.Baned().String(): func() dnd5eEvents.ConditionBehavior {
-			return s.must(conditions.NewBanedCondition(conditions.NewBanedConditionInput{
-				MemberID: id, SourceID: "cultist", SourceRef: refs.Spells.Bane()}))
+			return s.namedPayload(refs.Conditions.Baned().String(), "cultist", refs.Spells.Bane().String())
 		},
 		refs.Conditions.Inspired().String(): func() dnd5eEvents.ConditionBehavior {
 			return conditions.NewInspiredCondition(id, "bard", "")
@@ -197,6 +196,19 @@ func (s *AppliedTwiceSuite) TestEveryBearingConditionAppliedTwiceLeavesOne() {
 		s.Require().NoError(err, "%s: effect rows list without a duplicate id", ref)
 		s.Require().NotNil(out, ref)
 	}
+}
+
+func (s *AppliedTwiceSuite) namedPayload(ref, source, sourceRef string) dnd5eEvents.ConditionBehavior {
+	origin, err := core.ParseString(sourceRef)
+	s.Require().NoError(err)
+	owner := dnd5eEvents.ConditionAddress{MemberID: source, ConditionRef: refs.Conditions.LinkedEffects().String(), SourceID: "application:" + source}
+	raw, err := json.Marshal(conditions.LinkedConditionConfig{ApplicationID: owner.SourceID, AddressSourceID: source, Role: conditions.LinkedRecipient,
+		Bindings: &conditions.LinkedBindings{Name: "Roll modifier", Owner: &owner, MemberKey: sheetID}})
+	s.Require().NoError(err)
+	out, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{Ref: ref, MemberID: sheetID,
+		Origin: &dnd5eEvents.ConditionOrigin{Ref: *origin, EntityID: source}, Config: raw})
+	s.Require().NoError(err)
+	return out.Condition
 }
 
 func (s *AppliedTwiceSuite) apply(condition dnd5eEvents.ConditionBehavior) {

@@ -170,15 +170,24 @@ func PrepareApplication(in *PrepareApplicationInput) (*PreparedApplication, erro
 		if spec.Lifetime != LifetimeShared && spec.Lifetime != LifetimeIndependent {
 			return nil, fmt.Errorf("recipient %d needs an explicit lifetime policy", i)
 		}
-		spec.Parts = cloneDeclarations(in.Spec.Recipients[i].Parts)
+		authoredParts := in.Spec.Recipients[i].Parts
+		if authoredParts == nil && entry.linkedParts != nil {
+			authoredParts = entry.linkedParts
+		}
+		spec.Parts = cloneDeclarations(authoredParts)
 		spec.Config = slices.Clone(in.Spec.Recipients[i].Config)
 		if entry.linked {
-			if spec.Lifetime != LifetimeShared || spec.AddressSourceID == "" || in.Spec.Recipients[i].Parts == nil || len(spec.Config) != 0 {
+			if spec.Lifetime != LifetimeShared || spec.AddressSourceID == "" || authoredParts == nil || len(spec.Config) != 0 {
 				return nil, fmt.Errorf("linked recipient %d requires shared parts and explicit address identity", i)
+			}
+			if entry.linkedParts != nil {
+				if err := sameLinkedParts(spec.Parts, entry.linkedParts); err != nil {
+					return nil, err
+				}
 			}
 			keys := map[string]bool{}
 			for _, part := range spec.Parts {
-				if keys[part.Key] || part.OnTerminal != generic.EndPart {
+				if keys[part.Key] || part.OnTerminal == generic.EndApplication {
 					return nil, fmt.Errorf("recipient %d has duplicate keys or application upkeep", i)
 				}
 				keys[part.Key] = true

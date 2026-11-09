@@ -15,7 +15,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
@@ -185,13 +184,13 @@ func (s *ClericFinalizeSuite) TestStatusProjectionAfterFinalizationAndReload() {
 
 	s.Require().NoError(char.UseResource(resources.SpellSlotLevel1, 1))
 	for _, source := range []string{"caster-a", "caster-b"} {
-		blessed, createErr := conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{
+		blessed, createErr := namedFixture(namedFixtureInput{Ref: refs.Conditions.Blessed(),
 			MemberID: char.GetID(), SourceID: source, SourceRef: refs.Spells.Bless(),
 		})
 		s.Require().NoError(createErr)
 		char.conditions = append(char.conditions, blessed)
 	}
-	baned, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
+	baned, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Baned(),
 		MemberID: char.GetID(), SourceID: "caster-c", SourceRef: refs.Spells.Bane(),
 	})
 	s.Require().NoError(err)

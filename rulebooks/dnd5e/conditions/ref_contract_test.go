@@ -21,7 +21,7 @@ import (
 // route. Kept honest by TestRefContractCoversEveryLoadedCondition.
 func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 	roller := dice.NewRoller()
-	baned, err := NewBanedCondition(NewBanedConditionInput{
+	baned, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Baned(),
 		MemberID: "m1", SourceID: "bard-1", SourceRef: refs.Spells.Bane(),
 	})
 	if err != nil {
@@ -31,7 +31,7 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 	if err != nil {
 		panic(err)
 	}
-	blessed, err := NewBlessedCondition(NewBlessedConditionInput{
+	blessed, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Blessed(),
 		MemberID: "m1", SourceID: "cleric-1", SourceRef: refs.Spells.Bless(),
 	})
 	if err != nil {

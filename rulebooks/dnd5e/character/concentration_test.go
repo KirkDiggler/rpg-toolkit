@@ -110,13 +110,9 @@ func (s *ConcentrationKeeperSuite) TestAPrunedConditionIsUnsubscribed() {
 }
 
 func (s *ConcentrationKeeperSuite) TestTwoRealBaneOwnersRemoveOnlyTheirQualifiedChildren() {
-	baneA, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
-		MemberID: "target-1", SourceID: "bard-a", SourceRef: refs.Spells.Bane(),
-	})
+	baneA, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Baned(), MemberID: "target-1", SourceID: "bard-a", SourceRef: refs.Spells.Bane()})
 	s.Require().NoError(err)
-	baneB, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
-		MemberID: "target-1", SourceID: "bard-b", SourceRef: refs.Spells.Bane(),
-	})
+	baneB, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Baned(), MemberID: "target-1", SourceID: "bard-b", SourceRef: refs.Spells.Bane()})
 	s.Require().NoError(err)
 	holdA := conditions.NewConcentratingConditionWithInput(conditions.NewConcentratingConditionInput{
 		MemberID: "bard-a", SourceID: "bard-a", SpellRef: refs.Spells.Bane().String(),
@@ -177,13 +173,9 @@ func (s *ConcentrationKeeperSuite) TestTwoRealBaneOwnersRemoveOnlyTheirQualified
 }
 
 func (s *ConcentrationKeeperSuite) TestLongRestRemovesOnlyTheQualifiedBaneOwnerAndChildren() {
-	baneA, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
-		MemberID: "target-1", SourceID: "bard-a", SourceRef: refs.Spells.Bane(),
-	})
+	baneA, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Baned(), MemberID: "target-1", SourceID: "bard-a", SourceRef: refs.Spells.Bane()})
 	s.Require().NoError(err)
-	baneB, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
-		MemberID: "target-1", SourceID: "bard-b", SourceRef: refs.Spells.Bane(),
-	})
+	baneB, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Baned(), MemberID: "target-1", SourceID: "bard-b", SourceRef: refs.Spells.Bane()})
 	s.Require().NoError(err)
 	holdA := conditions.NewConcentratingConditionWithInput(conditions.NewConcentratingConditionInput{
 		MemberID: "bard-a", SourceID: "bard-a", SpellRef: refs.Spells.Bane().String(),
@@ -252,7 +244,7 @@ func (s *ConcentrationKeeperSuite) TestLongRestRemovesOnlyTheQualifiedBaneOwnerA
 }
 
 func (s *ConcentrationKeeperSuite) TestWrongBaneSourceDoesNotRemoveOrDirtyCharacter() {
-	bane, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
+	bane, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Baned(),
 		MemberID: "bard-1", SourceID: "bard-a", SourceRef: refs.Spells.Bane(),
 	})
 	s.Require().NoError(err)

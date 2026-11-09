@@ -206,7 +206,11 @@ func assessRollModifier(in *AssessInput, m meaning) (assessment, error) {
 	if params.Subtract {
 		sign = "−"
 	}
-	result.effect.Benefit = sign + value.Dice + " to the roll"
+	noun := "attack roll"
+	if kind == contributions.RollKindSavingThrow {
+		noun = "saving throw"
+	}
+	result.effect.Benefit = sign + value.Dice + " to the " + noun
 	result.roll = []dndevents.DiceContribution{{Dice: value.Dice, Subtract: params.Subtract,
 		Source: dndevents.RollSource{Ref: &sourceRef, Name: in.DisplayName, SourceID: in.Origin.EntityID}}}
 	return result, nil

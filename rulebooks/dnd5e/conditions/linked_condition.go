@@ -180,7 +180,14 @@ func (c *LinkedCondition) partChanged(ctx context.Context, bus events.EventBus, 
 	})
 }
 
-func (c *LinkedCondition) partEnded(ctx context.Context, _ events.EventBus, end generic.AssemblyEnd) error {
+func (c *LinkedCondition) partEnded(ctx context.Context, bus events.EventBus, end generic.AssemblyEnd) error {
+	if end.Scope == generic.EndAttachment {
+		address := c.ConditionAddress()
+		return dndevents.ConditionRemovedTopic.On(bus).Publish(ctx, dndevents.ConditionRemovedEvent{
+			MemberID: address.MemberID, ConditionRef: address.ConditionRef, SourceID: address.SourceID,
+			ApplicationID: c.application, Reason: end.Reason,
+		})
+	}
 	if end.Scope == generic.EndPart {
 		snapshot := c.assembly.Snapshot()
 		for _, part := range c.definition.Parts {

@@ -21,7 +21,7 @@ func TestBlessedCharacterSuite(t *testing.T) { suite.Run(t, new(BlessedCharacter
 
 func (s *BlessedCharacterSuite) TestBlessChangesADeathSaveAfterJSONReload() {
 	char := dyingCharacterForTurn(s.T(), &saves.DeathSaveState{})
-	blessed, err := conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{
+	blessed, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Blessed(),
 		MemberID: char.GetID(), SourceID: "cleric", SourceRef: refs.Spells.Bless(),
 	})
 	s.Require().NoError(err)
@@ -47,7 +47,7 @@ func (s *ConcentrationKeeperSuite) TestBlessOwnersCleanUpOnlyTheirOwnRecipientsA
 	var owners []*Character
 	var children []dnd5eEvents.ConditionBehavior
 	for _, caster := range []string{"cleric-a", "cleric-b"} {
-		child, err := conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{
+		child, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Blessed(),
 			MemberID: "target", SourceID: caster, SourceRef: refs.Spells.Bless(),
 		})
 		s.Require().NoError(err)
