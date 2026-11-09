@@ -170,6 +170,9 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-go-${{ matrix.module }}-
     
+    # No coverage in CI: nobody reads the file, and atomic cover is most of the
+    # race test time. Locally: `make coverage` (a few modules), or in a module
+    # `go test -race -coverprofile=coverage.txt -covermode=atomic ./...`.
     - name: Check module ${{ matrix.module }} (${{ matrix.shard }})
       env:
         SHARD: ${{ matrix.shard }}
@@ -197,24 +200,19 @@ jobs:
         start=$(date +%s)
         case "$SHARD" in
           all)
-            go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+            go test -race ./...
             ;;
           # -timeout 25m on the shards: their own budget; rpg-toolkit#2336
           # gives every module's test step the same.
           heavy)
-            # No cover here: atomic cover nearly triples these oracle tests
-            # (230 s against 82 s locally), and no step reads coverage.txt.
-            # The rest shard still covers the root package.
             go test -race -timeout 25m -run "$ENCOUNTER_HEAVY_TESTS" .
             ;;
           rest)
-            go test -race -timeout 25m -skip "$ENCOUNTER_HEAVY_TESTS" \
-              -coverprofile=coverage.txt -covermode=atomic .
+            go test -race -timeout 25m -skip "$ENCOUNTER_HEAVY_TESTS" .
             ;;
           subpackages)
             # Unfiltered, so a subpackage test sharing a heavy name still runs.
-            go test -race -timeout 25m -coverprofile=coverage.txt -covermode=atomic \
-              $(go list ./... | grep -vxF "$(go list .)")
+            go test -race -timeout 25m $(go list ./... | grep -vxF "$(go list .)")
             ;;
           *)
             echo "❌ Unknown shard: $SHARD"
