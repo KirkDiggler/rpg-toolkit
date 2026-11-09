@@ -16,6 +16,7 @@ Base: `rpg-toolkit` `main` at d7c8ea06. Blocked PRs: [#2320](https://github.com/
 - CI trend for the root package under race + cover: 319 s, 406 s, 505 s across S7–S9 of rpg-project#879, then past 600 s on #2320 and #2331. CI runners are about 3x the dev box.
 - Local inventory: package 188 s, 242 s wall with build, 526 top-level tests, all pass. Machine: 32 cores, load 23–25 during the run.
 - The head dominates: top 3 tests 84 s (45%), top 15 138 s; 498 tests under 1 s sum to 26 s.
+- Every branch of "Detect changed modules" that set `should_run_all=true` left `modules` unset, so `test-changed`'s matrix evaluated `fromJson('')` even with its `if` false; the job graph failed and the required `ci-status` never reported (main's push run 42670064127 shows "failure" with every job green). Those branches now also write `modules=[]`.
 
 Commands:
 
