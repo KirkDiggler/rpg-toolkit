@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec/keepgen"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -102,21 +103,28 @@ func benchGarrisonMove(b *testing.B, listen bool) {
 	}
 }
 
-// openGarrisonKeep opens the garrison keep [BenchmarkGarrisonMove] paces:
-// with listen, the posts-asleep keep.
-func openGarrisonKeep(tb testing.TB, listen bool) *encounter.Encounter {
+// compiledGarrisonKeep is the shared authored site, before a caller decides
+// which members its question needs. With listen, it is the posts-asleep keep.
+func compiledGarrisonKeep(tb testing.TB, listen bool) dungeonspec.Compiled {
 	tb.Helper()
 	key := "keep-garrison-10000"
 	if listen {
 		key += "-posts-listen"
 	}
-	compiled := compiledOnce(tb, key, func() ([]byte, error) {
+	return compiledOnce(tb, key, func() ([]byte, error) {
 		opts := keepgen.DefaultOptions()
 		opts.Hexes, opts.Seed, opts.Key = 10000, 1, "bench-keep-garrison"
 		opts.Garrison, opts.Patrols, opts.PostsListen = 99, 20, listen
 		raw, _, err := keepgen.Generate(keepgen.DefaultPlan(), opts)
 		return raw, err
 	})
+}
+
+// openGarrisonKeep opens the garrison keep [BenchmarkGarrisonMove] paces:
+// with listen, the posts-asleep keep. Gameplay benchmarks keep the full roster.
+func openGarrisonKeep(tb testing.TB, listen bool) *encounter.Encounter {
+	tb.Helper()
+	compiled := compiledGarrisonKeep(tb, listen)
 	members := []encounter.MemberInput{{ID: keepPlayers[0], Kind: encounter.KindPlayer, Position: compiled.PartyStart[0].At}}
 	for _, m := range compiled.Monsters {
 		members = append(members, encounter.MemberInput{

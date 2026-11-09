@@ -14,12 +14,15 @@ import (
 
 // TestTheGarrisonsDoorOpeningsAreTheWholeFloorScans holds every footprint
 // door of the garrison keep to the whole-floor scan (rpg-project#879 S9): the
-// field's answer, read from the cells near each door, is the scan's.
+// field's answer, read from the cells near each door, is the scan's. The
+// entire authored floor and every door stay in the fixture; no member needs
+// to see or walk it to answer this static geometry question.
 func TestTheGarrisonsDoorOpeningsAreTheWholeFloorScans(t *testing.T) {
 	if testing.Short() {
 		t.Skip("opens the 10k garrison keep")
 	}
-	enc := openGarrisonKeep(t, false)
+	compiled := compiledGarrisonKeep(t, false)
+	enc := openCompiled(t, compiled, nil, false, findsNothing{})
 	asked, crossings, differ := encounter.FootprintDoorOpeningsAgainstScan(enc)
 	require.Positive(t, asked, "precondition: the keep has footprint doors")
 	require.Positive(t, crossings, "precondition: they lie across crossings")
