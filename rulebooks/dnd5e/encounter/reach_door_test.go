@@ -153,16 +153,48 @@ func TestAtlas_ReadsTheIndex(t *testing.T) {
 }
 
 // TestPlacedReach_AgreesWithTheWalk: every placement a lane or a centre
-// touches is one the reach index names, on the castle and the 10k keep —
-// seeded lanes up to sight length, and their start cells' centres.
+// touches is one the reach index names, on the castle and the keep — seeded
+// lanes up to sight length, and their start cells' centres.
+//
+// THE KEEP IS THE SMALL ONE (rpg-project#909). The fast path is
+// [field.placedNear]'s bucketed index; the oracle walks every standing
+// placement. What the comparison needs is placements blocking and not, at
+// the angles the generator turns them, lanes long and short across rooms and
+// the courtyard, and the castle's authored props beside them: the castle as
+// it is and [smallKeepPlan]'s keep, every room of the plan in 1,230 hexes.
+// The 10k keep's comparison is [BenchmarkPlacedReachAgreesKeep10k].
 func TestPlacedReach_AgreesWithTheWalk(t *testing.T) {
-	castle, _ := openSite(t, 0, true)
-	touched, err := castle.ExportedPlacedReachAgrees(2000, 25, 1)
-	require.NoError(t, err, "castle")
-	require.Positive(t, touched, "precondition: castle lanes meet placements")
-	touched, err = sharedKeep10k(t).ExportedPlacedReachAgrees(2000, 25, 2)
-	require.NoError(t, err, "keep")
-	require.Positive(t, touched, "precondition: keep lanes meet placements")
+	t.Run("castle", func(t *testing.T) {
+		castle, _ := openSite(t, 0, true)
+		touched, err := castle.ExportedPlacedReachAgrees(2000, 25, 1)
+		require.NoError(t, err)
+		require.Positive(t, touched, "precondition: castle lanes meet placements")
+	})
+	t.Run("keep", func(t *testing.T) {
+		compiled := smallKeep(t, false)
+		keep := openCompiled(t, compiled, seatedParty(compiled)[:2], false, findsNothing{})
+		touched, err := keep.ExportedPlacedReachAgrees(2000, 25, 2)
+		require.NoError(t, err)
+		require.Positive(t, touched, "precondition: keep lanes meet placements")
+	})
+}
+
+// BenchmarkPlacedReachAgreesKeep10k is the comparison on the 10k keep
+// (rpg-project#909): what [TestPlacedReach_AgreesWithTheWalk] was gated on
+// before the small keep, kept as a number a measurement asks for by name,
+// never a CI gate. It fails if one lane's touching placement is missing from
+// the index.
+//
+//	go test -run '^$' -bench BenchmarkPlacedReachAgreesKeep10k -benchtime 1x .
+func BenchmarkPlacedReachAgreesKeep10k(b *testing.B) {
+	keep := sharedKeep10k(b)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		touched, err := keep.ExportedPlacedReachAgrees(2000, 25, 2)
+		if err != nil || touched == 0 {
+			b.Fatalf("touched %d: %v", touched, err)
+		}
+	}
 }
 
 // TestPlacedReach_ADroppedBlockerIsAskedWhereItLies: a crate that blocks

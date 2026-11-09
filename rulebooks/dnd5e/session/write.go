@@ -717,11 +717,16 @@ func (m *Manager) Exit(ctx context.Context, in *ExitInput) (*ExitOutput, error) 
 		return nil, fmt.Errorf("exit: %w", translate(err))
 	}
 
+	// Fenced, the leaver's seat is cleared inside the commit's one save
+	// (rpg-toolkit#2332); plain, after it, below.
+	if player && scope.fence.held {
+		scope.seatClears = append(scope.seatClears, in.Member)
+	}
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
 		return nil, fmt.Errorf("exit: %w", err)
 	}
-	if player {
+	if player && !scope.fence.held {
 		if err := m.clearSeats(ctx, scope, []string{in.Member}); err != nil {
 			return nil, fmt.Errorf("exit: %w", err)
 		}
@@ -875,7 +880,17 @@ func (m *Manager) openScope(
 		ledger:    ledger,
 		driver:    driver,
 	}
-	if world == nil {
+	switch {
+	case world != nil:
+		// Launch's fresh board. Fenced, no checkpoint exists yet, so its
+		// first save lands only on a store that holds none (a racing Launch
+		// fails closed); plain, the fence stays unheld.
+		scope.fence = checkpointFence{held: m.fenced != nil}
+	case m.fenced != nil:
+		if world, scope.fence, err = m.fetchFencedWorld(ctx, data.Encounter); err != nil {
+			return nil, err
+		}
+	default:
 		if world, err = m.fetchWorld(ctx, data.Encounter); err != nil {
 			return nil, err
 		}
@@ -997,6 +1012,17 @@ type writeScope struct {
 	data      *SessionData
 	enc       *encounter.Encounter
 	baseline  uint64
+
+	// fence is the checkpoint version this verb loaded when the host's
+	// repository is fenced, and persist saves against it (checkpoint.go).
+	// The baseline above is NOT the fence: a beatless verb does not advance
+	// it. Unheld when the repository is plain.
+	fence checkpointFence
+
+	// seatClears is the players whose seats a fenced verb clears in its
+	// commit, beside a closed run's (Exit's leaver). Empty on the plain path,
+	// which clears after the save.
+	seatClears []string
 
 	// act is the id of the act this verb opened on enc ([writeScope.openAct]),
 	// or "" for a scope that opened none: `<verb>:<id>`. commit closes it.
@@ -1122,11 +1148,18 @@ type writeScope struct {
 // a count of how many times it was touched (Copilot's own finding on PR
 // #1222).
 func (s *writeScope) noteCharacterWritten(id string) {
+	s.noteSheetTouched(id)
+	s.noteWritten("character:" + id)
+}
+
+// noteSheetTouched records a member whose sheet this verb changed, without
+// naming it on the report: a fenced verb's sheet is named when its fenced
+// save lands (checkpoint.go).
+func (s *writeScope) noteSheetTouched(id string) {
 	if s.sheetsWritten == nil {
 		s.sheetsWritten = make(map[encounter.MemberID]bool)
 	}
 	s.sheetsWritten[encounter.MemberID(id)] = true
-	s.noteWritten("character:" + id)
 }
 
 // noteWritten records one aggregate this verb made durable before persist,
@@ -1246,6 +1279,13 @@ func (m *Manager) adopt(scope *writeScope) error {
 // is told exactly which aggregate is missing — that is S6's whole job — and
 // repairing it needs a decision, not a retry. Making the entry verbs idempotent
 // for this case is the fix, and it is not this wave's.
+//
+// A FENCED HOST HAS NEITHER HALF-STATE. When the encounter repository carries
+// [FencedEncounterRepository], the world and the touched session record go in
+// one save, in one transaction, fenced on the checkpoint version this verb
+// loaded: both land or neither does, and a stale fence lands nothing and
+// unwraps to [ErrStaleCheckpoint]. commit delivers only after persist reports
+// success, so a stale verb also tells nobody anything.
 func (m *Manager) persist(
 	ctx context.Context, scope *writeScope, data encounter.EncounterData,
 ) (SaveReport, error) {
@@ -1258,6 +1298,12 @@ func (m *Manager) persist(
 	// second time. Copied rather than aliased so appending below cannot reach
 	// back into the scope.
 	report := SaveReport{Written: append([]string(nil), scope.written...)}
+
+	// A fenced host takes both aggregates in one transaction fenced on the
+	// version this verb loaded; a stale save writes nothing (checkpoint.go).
+	if scope.fence.held {
+		return m.persistFenced(ctx, scope, &data, report)
+	}
 
 	if err := m.encounters.SaveEncounter(ctx, scope.encounter, &data); err != nil {
 		report.Failed = []string{"encounter:" + scope.encounter}
@@ -1362,6 +1408,23 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 	// that whole delta; everything after reads only what storage keeps.
 	world := scope.enc.ToData()
 
+	// FENCED, THE SEATS CLEAR INSIDE THE SAVE (rpg-toolkit#2332). The plain
+	// order below, clears after the run is durable, would leave a fenced
+	// clear with no save to ride. Under the fence there is no "after": the
+	// clears and the run land in one transaction or not at all, so they are
+	// written first, and the character guards they take are held across it.
+	if scope.fence.held {
+		players, err := m.closedRunPlayers(scope)
+		if err != nil {
+			return SaveReport{Written: append([]string(nil), scope.written...)}, DeliveryReport{}, err
+		}
+		release, err := m.clearSeatsHeld(ctx, scope, append(players, scope.seatClears...))
+		defer release()
+		if err != nil {
+			return SaveReport{Written: append([]string(nil), scope.written...)}, DeliveryReport{}, err
+		}
+	}
+
 	report, err := m.persist(ctx, scope, world)
 	if err != nil {
 		return report, DeliveryReport{}, err
@@ -1370,9 +1433,11 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 	// THE RUN THIS VERB CLOSED RELEASES ITS SEATS, after the run that no
 	// longer holds anyone is durable (seats.go says why that order). The
 	// clear is reported on the same report: its aggregates join what persist
-	// already wrote.
-	if err := m.clearSeatsOfAClosedRun(ctx, scope); err != nil {
-		return report, DeliveryReport{}, err
+	// already wrote. A fenced run's seats were cleared inside its save.
+	if !scope.fence.held {
+		if err := m.clearSeatsOfAClosedRun(ctx, scope); err != nil {
+			return report, DeliveryReport{}, err
+		}
 	}
 	report.Written = mergeReportIdentities(report.Written, scope.written)
 	var delivery DeliveryReport
@@ -1422,15 +1487,25 @@ const (
 // was already closed when the verb loaded it, or is still open, clears
 // nothing.
 func (m *Manager) clearSeatsOfAClosedRun(ctx context.Context, scope *writeScope) error {
+	players, err := m.closedRunPlayers(scope)
+	if err != nil {
+		return err
+	}
+	return m.clearSeats(ctx, scope, players)
+}
+
+// closedRunPlayers is every player whose seat this verb's closing of the run
+// releases: none when the run was already closed at load or is still open.
+func (m *Manager) closedRunPlayers(scope *writeScope) ([]string, error) {
 	if !scope.openAtLoad {
-		return nil
+		return nil, nil
 	}
 	status, err := scope.enc.Status()
 	if err != nil {
-		return saveErrorAfterWrites(scope, "", translate(err))
+		return nil, saveErrorAfterWrites(scope, "", translate(err))
 	}
 	if status.Open || status.Outcome == nil {
-		return nil
+		return nil, nil
 	}
 	var players []string
 	for _, member := range status.Outcome.Members {
@@ -1438,7 +1513,7 @@ func (m *Manager) clearSeatsOfAClosedRun(ctx context.Context, scope *writeScope)
 			players = append(players, string(member.ID))
 		}
 	}
-	return m.clearSeats(ctx, scope, players)
+	return players, nil
 }
 
 // exitDissolvedCombatants clears the action economy of every player whose

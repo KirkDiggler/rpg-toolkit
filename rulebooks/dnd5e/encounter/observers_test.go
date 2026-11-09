@@ -29,7 +29,13 @@ var hexSteps = []spatial.Position{{X: 1, Y: 0}, {X: -1, Y: 0}, {X: 0, Y: 1}, {X:
 // openDriven opens a compiled site with the party and every monster, on the
 // table driver the garrison bench runs: creatures that walk when the world
 // clock raises, so a player's step reaches the wake pass's own refresh.
-func openDriven(t *testing.T, compiled dungeonspec.Compiled) *encounter.Encounter {
+func openDriven(t testing.TB, compiled dungeonspec.Compiled) *encounter.Encounter {
+	t.Helper()
+	return openDrivenSeeing(t, compiled, 24)
+}
+
+// openDrivenSeeing is [openDriven] with every member seeing sight cells.
+func openDrivenSeeing(t testing.TB, compiled dungeonspec.Compiled, sight int) *encounter.Encounter {
 	t.Helper()
 	members := seatedParty(compiled)
 	for _, m := range compiled.Monsters {
@@ -44,7 +50,7 @@ func openDriven(t *testing.T, compiled dungeonspec.Compiled) *encounter.Encounte
 		Members: members,
 		Endings: append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, compiled.Endings...),
 		Capabilities: encounter.Capabilities{
-			Sight:         &sightList{fallback: 24},
+			Sight:         &sightList{fallback: sight},
 			Equipment:     encounter.UnobservedEquipment{},
 			Conditions:    encounter.UnobservedEquipment{},
 			Sheets:        walksThirty{},
@@ -68,7 +74,7 @@ func openDriven(t *testing.T, compiled dungeonspec.Compiled) *encounter.Encounte
 
 // garrisonKeep is the bench's posts-asleep garrison: the 10k keep with 99
 // creatures given orders and 20 of them walking patrols.
-func garrisonKeep(t *testing.T) dungeonspec.Compiled {
+func garrisonKeep(t testing.TB) dungeonspec.Compiled {
 	t.Helper()
 	return compiledOnce(t, "keep-garrison-10000-posts-listen", func() ([]byte, error) {
 		opts := keepgen.DefaultOptions()
@@ -85,141 +91,185 @@ func garrisonKeep(t *testing.T) dungeonspec.Compiled {
 // rpg-project#762 ([encounter.Encounter.ExportedEveryoneLooks]). The same
 // random verbs land on both — players' steps (mostly one walker, so the clock
 // raises and the garrison walks through the wake pass) and doors opened and
-// shut — on the castle and on the 10k garrison keep, and after each one
-// every member's holdings, known cells and every MEMORY's Confirmed stamp
-// must match the oracle's ([encounter.Encounter.ExportedPercepts] says what a
+// shut — on the castle and on a garrison keep, and after each one every
+// member's holdings, known cells and every MEMORY's Confirmed stamp must
+// match the oracle's ([encounter.Encounter.ExportedPercepts] says what a
 // current holding's stamp is not compared for).
+//
+// THE KEEP IS THE SMALL ONE (rpg-project#909). The fast path is
+// [Encounter.observersWithin]'s bound — the members within sight of a
+// changed cell — and the oracle is the whole roster. What a row needs is a
+// step that lands, a door that swings, a creature that walks in a wake pass
+// and a memory that forms, each compared at once. The castle brings what no
+// generated keep has: a posted guard, arrivals and creatures on a table
+// alone. The keep row is the 10k garrison's row as it was — twelve verbs,
+// one walker pacing so its steps raise the clock, posts listening, a patrol
+// walking — on [smallKeep]'s garrison, with sight scaled to the keep: 8
+// cells across a site 41 wide, as 24 is across the 10k one's 100, so
+// creatures stand one cell past a door's sight as they do in the 10k keep's
+// grounds.
+// That rim is the case the bound's +1 exists for: shrunk to bare sight, the
+// keep row fails at move 6 (the 10k row failed at move 10). About a second
+// where the 10k keep took fifteen. It is still NOT RUN UNDER -race, as the
+// 10k row was not: the oracle's every look is the whole garrison's, which the
+// race detector slows to 8 s here, the property is single-goroutine, and
+// under -race TestDoor_RefreshesTheRimObserver fails the same mutant. Every
+// plain `go test` runs both rows. The 10k garrison's comparison is
+// [BenchmarkObserversOfEqualsFullRefreshKeep10k].
 func TestObserversOf_EqualsFullRefresh(t *testing.T) {
-	for _, tc := range []struct {
-		name  string
-		site  func(t *testing.T) dungeonspec.Compiled
-		moves int
-		// doorOdds is one door swing in this many moves.
-		doorOdds int
-		// noRace skips the run in a -race binary.
-		noRace bool
-		// pace makes every step the one walker's, back and forth beside
-		// its start, so a short run lands every step and still raises the
-		// clock (six of its cells are a round).
-		pace bool
-	}{
+	for _, row := range []refreshRow{
 		// The castle compares after every one of twenty verbs, a quarter of
-		// them doors, and runs under -race too.
-		{"castle", func(t *testing.T) dungeonspec.Compiled { return compiledSite(t, 0) }, 20, 4, false, false},
-		// The keep is BOUNDED, and NOT RUN UNDER -race: twelve verbs (ten
-		// paces and two door swings at this seed, plus the probe step), one
-		// walker pacing so its steps raise the clock and walk the garrison,
-		// and a memory forms — all required below. Its twin looks with the
-		// whole garrison on every look, which the race detector slows ~30x
-		// (456 s locally against 15 s), past Go's ten-minute package
-		// timeout. The property is single-goroutine, so -race adds nothing
-		// here; every plain `go test` runs it, and it fails both mutants it
-		// exists for (the bound shrunk to bare sight, at move 10; a step's
-		// cells dropped, at move 4). Under -race the same two are failed by
-		// TestDoor_RefreshesTheRimObserver and by the castle run.
-		{"keep-10k", garrisonKeep, 12, 6, true, true},
+		// them doors.
+		{"castle", func(tb testing.TB) dungeonspec.Compiled { return compiledSite(tb, 0) }, 20, 4, false, false, 0},
+		// The keep: twelve verbs, one walker pacing, a door in six, sight
+		// scaled to the keep.
+		{"keep", func(tb testing.TB) dungeonspec.Compiled { return smallKeep(tb, true) }, 12, 6, true, true, 8},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if tc.noRace && raceDetector {
-				t.Skip("the 10k keep's twin is ~30x slower under -race; plain go test runs it")
+		t.Run(row.name, func(t *testing.T) {
+			if row.noRace && raceDetector {
+				t.Skip("the keep's twin looks with the whole garrison, ~8x slower under -race; plain go test runs it")
 			}
-			compiled := tc.site(t)
-			enc, oracle := openDriven(t, compiled), openDriven(t, compiled)
-			oracle.ExportedEveryoneLooks()
-			agree := func(what string, args ...interface{}) {
-				t.Helper()
-				got, err := enc.ExportedPercepts()
-				require.NoError(t, err)
-				want, err := oracle.ExportedPercepts()
-				require.NoError(t, err)
-				for id, w := range want {
-					require.Equal(t, w, got[id], "member %q after %s", id, fmt.Sprintf(what, args...))
-				}
-			}
-			agree("first light")
-			started := monsterCells(t, enc)
-			rng := rand.New(rand.NewPCG(762, 1)) //nolint:gosec // a seeded walk, not a secret
-			doors := enc.Doors()
-			stepped, swung, memories := 0, 0, 0
-			start := whereIs(t, enc, keepPlayers[0])
-			var beside spatial.Position
-			if tc.pace {
-				// Found as the bench finds it: step there on both twins and
-				// back, held to the oracle like every other verb.
-				for _, d := range hexSteps {
-					cell := spatial.Position{X: start.X + d.X, Y: start.Y + d.Y}
-					_, err := enc.Step(&encounter.StepInput{Member: keepPlayers[0], To: cell, EndWalk: true})
-					_, oerr := oracle.Step(&encounter.StepInput{Member: keepPlayers[0], To: cell, EndWalk: true})
-					require.Equal(t, oerr == nil, err == nil, "probe step to %v answers alike", cell)
-					if err != nil {
-						continue
-					}
-					beside = cell
-					agree("the probe step to %v", cell)
-					break
-				}
-				require.NotEqual(t, start, beside, "the walker has a cell to pace to")
-			}
-			for i := 0; i < tc.moves; i++ {
-				if len(doors) > 0 && rng.IntN(tc.doorOdds) == 0 {
-					d := doors[rng.IntN(len(doors))]
-					open := enc.Doors()[indexOfDoor(enc.Doors(), d.ID)].State.Kind() == encounter.DoorOpen
-					var err, oerr error
-					if open {
-						_, err = enc.CloseDoor(&encounter.CloseDoorInput{Door: d.ID})
-						_, oerr = oracle.CloseDoor(&encounter.CloseDoorInput{Door: d.ID})
-					} else {
-						_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: d.ID})
-						_, oerr = oracle.OpenDoor(&encounter.OpenDoorInput{Door: d.ID})
-					}
-					require.Equal(t, oerr == nil, err == nil, "move %d: door %q answers alike", i, d.ID)
-					if err == nil {
-						swung++
-						agree("move %d: door %q", i, d.ID)
-					}
-					continue
-				}
-				player := keepPlayers[0]
-				if !tc.pace && rng.IntN(4) == 0 {
-					player = keepPlayers[rng.IntN(len(keepPlayers))]
-				}
-				at := whereIs(t, enc, player)
-				d := hexSteps[rng.IntN(len(hexSteps))]
-				to := spatial.Position{X: at.X + d.X, Y: at.Y + d.Y}
-				if tc.pace {
-					to = beside
-					if at == beside {
-						to = start
-					}
-				}
-				_, err := enc.Step(&encounter.StepInput{Member: player, To: to, EndWalk: true})
-				_, oerr := oracle.Step(&encounter.StepInput{Member: player, To: to, EndWalk: true})
-				require.Equal(t, oerr == nil, err == nil, "move %d: %q to %v answers alike", i, player, to)
-				if err != nil {
-					continue
-				}
-				stepped++
-				agree("move %d: %q to %v", i, player, to)
-			}
-			got, err := enc.ExportedPercepts()
-			require.NoError(t, err)
-			for _, p := range got {
-				memories += strings.Count(p, "confirmed=")
-			}
-			require.Positive(t, stepped, "some step landed, or the property was never asked")
-			walked := 0
-			for id, cell := range monsterCells(t, enc) {
-				if started[id] != cell {
-					walked++
-				}
-			}
-			t.Logf("%s: %d steps, %d door swings, %d creatures walked, %d memories",
-				tc.name, stepped, swung, walked, memories)
-			require.Positive(t, walked, "some creature walked in a wake pass, or its refresh was never asked")
-			require.Positive(t, memories, "some memory formed, or its stamp was never compared")
-			require.Positive(t, swung, "some door swung, or a door's look was never compared")
+			requireEqualsFullRefresh(t, row)
 		})
 	}
+}
+
+// BenchmarkObserversOfEqualsFullRefreshKeep10k is the comparison on the 10k
+// garrison keep (rpg-project#909): the row [TestObserversOf_EqualsFullRefresh]
+// ran, outside -race only, before the small keep — a number a measurement
+// asks for by name, never a CI gate. Each iteration opens both twins and
+// lands the row's twelve verbs, failing at the first percept that differs.
+//
+//	go test -run '^$' -bench BenchmarkObserversOfEqualsFullRefreshKeep10k -benchtime 1x .
+func BenchmarkObserversOfEqualsFullRefreshKeep10k(b *testing.B) {
+	row := refreshRow{"keep-10k", garrisonKeep, 12, 6, true, true, 0}
+	for i := 0; i < b.N; i++ {
+		requireEqualsFullRefresh(b, row)
+	}
+}
+
+// refreshRow is one site [requireEqualsFullRefresh] lands verbs on.
+type refreshRow struct {
+	name  string
+	site  func(tb testing.TB) dungeonspec.Compiled
+	moves int
+	// doorOdds is one door swing in this many moves.
+	doorOdds int
+	// pace makes every step the one walker's, back and forth beside its
+	// start, so a short run lands every step and still raises the clock
+	// (six of its cells are a round).
+	pace bool
+	// noRace skips the row in a -race binary.
+	noRace bool
+	// sight is every member's sight in cells; zero is the rulebook's 120
+	// feet, 24.
+	sight int
+}
+
+// requireEqualsFullRefresh opens the row's site twice, the oracle looking
+// with everyone, lands the row's seeded verbs on both and requires every
+// member's percepts alike after each.
+func requireEqualsFullRefresh(tb testing.TB, row refreshRow) {
+	tb.Helper()
+	compiled := row.site(tb)
+	sight := row.sight
+	if sight == 0 {
+		sight = 24
+	}
+	enc, oracle := openDrivenSeeing(tb, compiled, sight), openDrivenSeeing(tb, compiled, sight)
+	oracle.ExportedEveryoneLooks()
+	agree := func(what string, args ...interface{}) {
+		tb.Helper()
+		got, err := enc.ExportedPercepts()
+		require.NoError(tb, err)
+		want, err := oracle.ExportedPercepts()
+		require.NoError(tb, err)
+		for id, w := range want {
+			require.Equal(tb, w, got[id], "member %q after %s", id, fmt.Sprintf(what, args...))
+		}
+	}
+	agree("first light")
+	started := monsterCells(tb, enc)
+	rng := rand.New(rand.NewPCG(762, 1)) //nolint:gosec // a seeded walk, not a secret
+	doors := enc.Doors()
+	stepped, swung, memories := 0, 0, 0
+	start := whereIs(tb, enc, keepPlayers[0])
+	var beside spatial.Position
+	if row.pace {
+		// Found as the bench finds it: step there on both twins and
+		// back, held to the oracle like every other verb.
+		for _, d := range hexSteps {
+			cell := spatial.Position{X: start.X + d.X, Y: start.Y + d.Y}
+			_, err := enc.Step(&encounter.StepInput{Member: keepPlayers[0], To: cell, EndWalk: true})
+			_, oerr := oracle.Step(&encounter.StepInput{Member: keepPlayers[0], To: cell, EndWalk: true})
+			require.Equal(tb, oerr == nil, err == nil, "probe step to %v answers alike", cell)
+			if err != nil {
+				continue
+			}
+			beside = cell
+			agree("the probe step to %v", cell)
+			break
+		}
+		require.NotEqual(tb, start, beside, "the walker has a cell to pace to")
+	}
+	for i := 0; i < row.moves; i++ {
+		if len(doors) > 0 && rng.IntN(row.doorOdds) == 0 {
+			d := doors[rng.IntN(len(doors))]
+			open := enc.Doors()[indexOfDoor(enc.Doors(), d.ID)].State.Kind() == encounter.DoorOpen
+			var err, oerr error
+			if open {
+				_, err = enc.CloseDoor(&encounter.CloseDoorInput{Door: d.ID})
+				_, oerr = oracle.CloseDoor(&encounter.CloseDoorInput{Door: d.ID})
+			} else {
+				_, err = enc.OpenDoor(&encounter.OpenDoorInput{Door: d.ID})
+				_, oerr = oracle.OpenDoor(&encounter.OpenDoorInput{Door: d.ID})
+			}
+			require.Equal(tb, oerr == nil, err == nil, "move %d: door %q answers alike", i, d.ID)
+			if err == nil {
+				swung++
+				agree("move %d: door %q", i, d.ID)
+			}
+			continue
+		}
+		player := keepPlayers[0]
+		if !row.pace && rng.IntN(4) == 0 {
+			player = keepPlayers[rng.IntN(len(keepPlayers))]
+		}
+		at := whereIs(tb, enc, player)
+		d := hexSteps[rng.IntN(len(hexSteps))]
+		to := spatial.Position{X: at.X + d.X, Y: at.Y + d.Y}
+		if row.pace {
+			to = beside
+			if at == beside {
+				to = start
+			}
+		}
+		_, err := enc.Step(&encounter.StepInput{Member: player, To: to, EndWalk: true})
+		_, oerr := oracle.Step(&encounter.StepInput{Member: player, To: to, EndWalk: true})
+		require.Equal(tb, oerr == nil, err == nil, "move %d: %q to %v answers alike", i, player, to)
+		if err != nil {
+			continue
+		}
+		stepped++
+		agree("move %d: %q to %v", i, player, to)
+	}
+	got, err := enc.ExportedPercepts()
+	require.NoError(tb, err)
+	for _, p := range got {
+		memories += strings.Count(p, "confirmed=")
+	}
+	require.Positive(tb, stepped, "some step landed, or the property was never asked")
+	walked := 0
+	for id, cell := range monsterCells(tb, enc) {
+		if started[id] != cell {
+			walked++
+		}
+	}
+	tb.Logf("%s: %d steps, %d door swings, %d creatures walked, %d memories",
+		row.name, stepped, swung, walked, memories)
+	require.Positive(tb, walked, "some creature walked in a wake pass, or its refresh was never asked")
+	require.Positive(tb, memories, "some memory formed, or its stamp was never compared")
+	require.Positive(tb, swung, "some door swung, or a door's look was never compared")
 }
 
 // TestObserversOf_AMemoryIsStampedAtTheLastRoundItWasSeen is the probe from
@@ -362,7 +412,7 @@ func TestObserversOf_AMemoryIsStampedTheSameAcrossAReload(t *testing.T) {
 }
 
 // monsterCells is where every monster stands now.
-func monsterCells(t *testing.T, enc *encounter.Encounter) map[encounter.MemberID]spatial.Position {
+func monsterCells(t testing.TB, enc *encounter.Encounter) map[encounter.MemberID]spatial.Position {
 	t.Helper()
 	members, err := enc.Members()
 	require.NoError(t, err)
@@ -393,10 +443,10 @@ func indexOfDoor(doors []encounter.Door, id encounter.DoorID) int {
 func TestObserversOf_FarObserverUntouched(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
-		site   func(t *testing.T) dungeonspec.Compiled
+		site   func(tb testing.TB) dungeonspec.Compiled
 		noRace bool
 	}{
-		{"castle", func(t *testing.T) dungeonspec.Compiled { return compiledSite(t, 0) }, false},
+		{"castle", func(tb testing.TB) dungeonspec.Compiled { return compiledSite(tb, 0) }, false},
 		{"keep-10k", garrisonKeep, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
