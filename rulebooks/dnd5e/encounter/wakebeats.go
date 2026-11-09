@@ -430,7 +430,7 @@ func (e *Encounter) react(id MemberID, b wakeBeat, scope *machine.ScopeLeaf) err
 	} else {
 		env := e.envFor(id)
 		env.event = ev
-		observed, err := m.behaviors.composer.Observe(&behavior.ObserveInput{On: b.Beat, Event: ev, Env: env, Now: now})
+		observed, err := m.behaviors.composer.Observe(&behavior.ObserveInput{On: b.Beat, Event: ev, Env: env, Now: now, Trace: true})
 		if err != nil {
 			return err
 		} // ErrSelectionRequired never retries with Decide
@@ -439,6 +439,12 @@ func (e *Encounter) react(id MemberID, b wakeBeat, scope *machine.ScopeLeaf) err
 		}
 		if err := e.behaviorStepped(m, observed.Steps); err != nil {
 			return err
+		}
+		if len(observed.Outcomes) > 0 {
+			if _, err := e.appendBehaviorDecision(&behaviorDecisionRecordInput{member: m,
+				trace: &behaviorDecisionTrace{on: b.Beat, now: now, operation: behaviorTraceObserve, outcomes: observed.Outcomes}}); err != nil {
+				return err
+			}
 		}
 	}
 	return e.rearmObservedBehavior(m, now)

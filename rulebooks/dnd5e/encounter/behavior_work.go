@@ -35,17 +35,20 @@ type BehaviorWork struct {
 	On         machine.Beat
 	Kind       BehaviorWorkKind
 	Goal       *spatial.Position
+	// DecisionRecord is diagnostic correlation, never completion authority.
+	DecisionRecord string
 }
 
 // BehaviorWorkData persists the same selected work through a held turn.
 type BehaviorWorkData struct {
-	Instance   string             `json:"instance"`
-	Definition string             `json:"definition"`
-	State      string             `json:"state"`
-	Key        behavior.AnswerKey `json:"key"`
-	On         machine.Beat       `json:"on"`
-	Kind       BehaviorWorkKind   `json:"kind"`
-	Goal       *PositionData      `json:"goal,omitempty"`
+	Instance       string             `json:"instance"`
+	Definition     string             `json:"definition"`
+	State          string             `json:"state"`
+	Key            behavior.AnswerKey `json:"key"`
+	On             machine.Beat       `json:"on"`
+	Kind           BehaviorWorkKind   `json:"kind"`
+	Goal           *PositionData      `json:"goal,omitempty"`
+	DecisionRecord string             `json:"decision_record,omitempty"`
 }
 
 type completionShape struct {
@@ -159,7 +162,7 @@ func rowsCompleteAs(rows []Answer, work *BehaviorWork) bool {
 	return false
 }
 
-func (e *Encounter) completeBehaviorWork(m *memberRecord, work *BehaviorWork) error {
+func (e *Encounter) completeBehaviorWork(m *memberRecord, work *BehaviorWork, executionAct string) error {
 	if work == nil {
 		return nil
 	}
@@ -171,11 +174,15 @@ func (e *Encounter) completeBehaviorWork(m *memberRecord, work *BehaviorWork) er
 		return err
 	}
 	if state.State != work.State {
-		return nil // an inactive step's old completion cannot advance another step
+		// An inactive step's old completion cannot advance another step.
+		return e.appendBehaviorWork(&behaviorWorkRecordInput{member: m, work: work, status: behaviorWorkAbandoned, reason: "state_changed", act: executionAct})
 	}
 	down, err := e.downNow()
-	if err != nil || down[m.ID] {
+	if err != nil {
 		return err
+	}
+	if down[m.ID] {
+		return e.appendBehaviorWork(&behaviorWorkRecordInput{member: m, work: work, status: behaviorWorkAbandoned, reason: "inactive", act: executionAct})
 	}
 	if work.Kind == BehaviorArrival {
 		cell, err := e.cellOf(m)
@@ -183,16 +190,25 @@ func (e *Encounter) completeBehaviorWork(m *memberRecord, work *BehaviorWork) er
 			return err
 		}
 		if cell != *work.Goal {
-			return nil // turn-end, a blocked route or a partial walk is not arrival
+			// Turn-end, a blocked route or a partial walk is not arrival.
+			return e.appendBehaviorWork(&behaviorWorkRecordInput{member: m, work: work, status: behaviorWorkPartial, reason: "goal_not_reached", act: executionAct})
 		}
 	}
+	now := uint64(e.clock.ToData().HighWater)
 	out, err := m.behaviors.composer.Observe(&behavior.ObserveInput{
-		Instance: work.Instance, On: work.On, Env: e.envFor(m.ID), Now: uint64(e.clock.ToData().HighWater),
+		Instance: work.Instance, On: work.On, Env: e.envFor(m.ID), Now: now, Trace: true,
 	})
 	if err != nil {
 		return err // completion never retries with Decide
 	}
-	return e.behaviorStepped(m, out.Steps)
+	if err := e.behaviorStepped(m, out.Steps); err != nil {
+		return err
+	}
+	if _, err := e.appendBehaviorDecision(&behaviorDecisionRecordInput{member: m, act: executionAct,
+		trace: &behaviorDecisionTrace{on: work.On, now: now, operation: behaviorTraceComplete, outcomes: out.Outcomes}}); err != nil {
+		return err
+	}
+	return e.appendBehaviorWork(&behaviorWorkRecordInput{member: m, work: work, status: behaviorWorkCompleted, act: executionAct})
 }
 
 func workDataFrom(work *BehaviorWork) *BehaviorWorkData {
@@ -200,7 +216,7 @@ func workDataFrom(work *BehaviorWork) *BehaviorWorkData {
 		return nil
 	}
 	out := &BehaviorWorkData{Instance: work.Instance, Definition: work.Definition, State: work.State,
-		Key: work.Key, On: work.On, Kind: work.Kind}
+		Key: work.Key, On: work.On, Kind: work.Kind, DecisionRecord: work.DecisionRecord}
 	if work.Goal != nil {
 		out.Goal = &PositionData{X: work.Goal.X, Y: work.Goal.Y}
 	}
@@ -212,7 +228,7 @@ func workFromData(data *BehaviorWorkData) *BehaviorWork {
 		return nil
 	}
 	out := &BehaviorWork{Instance: data.Instance, Definition: data.Definition, State: data.State,
-		Key: data.Key, On: data.On, Kind: data.Kind}
+		Key: data.Key, On: data.On, Kind: data.Kind, DecisionRecord: data.DecisionRecord}
 	if data.Goal != nil {
 		out.Goal = &spatial.Position{X: data.Goal.X, Y: data.Goal.Y}
 	}

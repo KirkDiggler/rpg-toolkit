@@ -101,6 +101,22 @@ type verbBody struct {
 	On       *bool              `json:"on"`
 }
 
+// verbHeader reads only routing identity before a record is known to be a
+// player's command. Other kinds own their fields: a diagnostic's string "on"
+// is not the boolean mode of a sneaking command. All records still participate
+// in requireSameLog; this only controls which inputs the replay re-issues.
+func verbHeader(t *testing.T, entry record.EntryData) verbBody {
+	t.Helper()
+	var header struct {
+		Beat   string `json:"beat"`
+		Member string `json:"member"`
+		Actor  string `json:"actor"`
+		Mover  string `json:"mover"`
+	}
+	require.NoError(t, json.Unmarshal(entry.Payload, &header), "beat seq %d", entry.Seq)
+	return verbBody{Beat: header.Beat, Member: header.Member, Actor: header.Actor, Mover: header.Mover}
+}
+
 // attackOnTheRecord is an outcome beat's attack identity.
 type attackOnTheRecord struct {
 	Ref        string `json:"ref"`
@@ -132,7 +148,10 @@ func verbsOf(t *testing.T, entries []record.EntryData, players map[encounter.Mem
 		if _, driven := entry.Tags["act"]; driven {
 			continue
 		}
-		var b verbBody
+		b := verbHeader(t, entry)
+		if !isVerbBeat(b, players) {
+			continue
+		}
 		require.NoError(t, json.Unmarshal(entry.Payload, &b), "beat seq %d", entry.Seq)
 		member, actor := encounter.MemberID(b.Member), encounter.MemberID(b.Actor)
 		switch {
@@ -225,8 +244,7 @@ func fallsAfter(t *testing.T, rest []record.EntryData, players map[encounter.Mem
 		if _, driven := entry.Tags["act"]; driven {
 			continue
 		}
-		var b verbBody
-		require.NoError(t, json.Unmarshal(entry.Payload, &b))
+		b := verbHeader(t, entry)
 		if b.Beat == string(encounter.OutcomeDown) {
 			out = append(out, encounter.MemberID(b.Member))
 			continue
