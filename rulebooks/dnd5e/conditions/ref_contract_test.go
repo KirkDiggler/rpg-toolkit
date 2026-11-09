@@ -113,7 +113,6 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 		"blade_ward":                             NewBladeWardCondition("m1", "", 2),
 		"commanded":                              commanded,
 		"true_strike":                            NewTrueStrikeCondition("m1", "goblin-1", ""),
-		"concentrating":                          NewConcentratingCondition("m1", refs.Spells.TrueStrike().String(), TrueStrikeName, 2),
 		"baned":                                  baned,
 		"blessed":                                blessed,
 		"guided":                                 guided,

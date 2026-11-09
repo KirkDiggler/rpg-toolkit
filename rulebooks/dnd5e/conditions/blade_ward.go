@@ -57,7 +57,7 @@ type BladeWardConditionData struct {
 // # It holds its own clock, because nothing else does
 //
 // True Strike is a concentration cantrip and lets the caster's
-// [ConcentratingCondition] own its duration. Blade Ward is not concentration,
+// linked maintenance owner own its duration. Blade Ward is not concentration,
 // so the count lives here. Two turn ends rather than one for the reason
 // spells.TrueStrikeTurnEnds is also two: a cantrip costs an action, so the ward
 // is always traced DURING the caster's own turn, and the very next turn end on

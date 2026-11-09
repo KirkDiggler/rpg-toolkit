@@ -65,12 +65,16 @@ func TestAPrunedConditionIsUnsubscribedFromAMonster(t *testing.T) {
 		ID: "skeleton-1", Name: "Skeleton", HitPoints: 13, MaxHitPoints: 13, ArmorClass: 13,
 	})
 	require.NoError(t, err)
+	binding, err := conditions.BindApplications(&conditions.BindApplicationsInput{Participants: []conditions.ParticipantConditions{{MemberID: "skeleton-1"}}, Bus: bus})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, binding.Close(ctx)) }()
 	require.NoError(t, m.SheetKeeper().Apply(ctx, bus))
-
-	hold := conditions.NewConcentratingCondition(
-		"skeleton-1", refs.Spells.TrueStrike().String(), conditions.TrueStrikeName, 2)
+	hold, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{Ref: refs.Conditions.LinkedEffects().String(), MemberID: "skeleton-1",
+		Origin: &dnd5eEvents.ConditionOrigin{Ref: *refs.Spells.TrueStrike(), EntityID: "skeleton-1"},
+		Config: json.RawMessage(`{"application_id":"application:skeleton-1","address_source_id":"application:skeleton-1","role":"coordinator","bindings":{"name":"True Strike","parts":[{"key":"hold","kind":"concentration","on_terminal":"application"}]}}`)})
+	require.NoError(t, err)
 	require.NoError(t, dnd5eEvents.ConditionAppliedTopic.On(bus).Publish(ctx,
-		dnd5eEvents.ConditionAppliedEvent{Target: m, Condition: hold}))
+		dnd5eEvents.ConditionAppliedEvent{Target: m, Condition: hold.Condition}))
 	require.Len(t, m.GetConditions(), 1)
 
 	before := &dnd5eEvents.DamageTakenEvent{MemberID: "skeleton-1", Amount: 12}
@@ -81,7 +85,8 @@ func TestAPrunedConditionIsUnsubscribedFromAMonster(t *testing.T) {
 	require.NoError(t, dnd5eEvents.ConditionRemovedTopic.On(bus).Publish(ctx,
 		dnd5eEvents.ConditionRemovedEvent{
 			MemberID:     "skeleton-1",
-			ConditionRef: refs.Conditions.Concentrating().String(),
+			ConditionRef: refs.Conditions.LinkedEffects().String(),
+			SourceID:     "application:skeleton-1",
 			Reason:       conditions.ConcentrationEndedRecast,
 		}))
 

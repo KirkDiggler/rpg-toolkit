@@ -58,9 +58,7 @@ var (
 	// given and the caster the word is measured from.
 	conditionCommanded = &core.Ref{Module: Module, Type: TypeConditions, ID: "commanded"}
 
-	// Concentration (rpg-project#407): the owner on the caster's sheet that
-	// holds what its spell left behind.
-	conditionConcentrating = &core.Ref{Module: Module, Type: TypeConditions, ID: "concentrating"}
+	// Linked application attachments compose maintenance and payload behavior.
 	conditionLinkedEffects = &core.Ref{Module: Module, Type: TypeConditions, ID: "linked-effects"}
 
 	// Guided (docs/ideas/cleric): the d4 Guidance leaves on the touched
@@ -193,11 +191,6 @@ func (n conditionsNS) BladeWard() *core.Ref { return conditionBladeWard }
 // Commanded returns the ref for the CommandedCondition, applied to the creature
 // that failed its save against Command and driving its next turn.
 func (n conditionsNS) Commanded() *core.Ref { return conditionCommanded }
-
-// Concentrating returns the ref for the ConcentratingCondition, applied to the
-// CASTER of a concentration spell and holding the addresses of the effects
-// that spell left on the board.
-func (n conditionsNS) Concentrating() *core.Ref { return conditionConcentrating }
 
 // LinkedEffects names a neutral linked application attachment, not a concentration rule.
 func (n conditionsNS) LinkedEffects() *core.Ref { return conditionLinkedEffects }

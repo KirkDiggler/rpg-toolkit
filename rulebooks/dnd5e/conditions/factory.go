@@ -9,7 +9,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // CreateFromRefInput provides input for creating a condition from a ref string
@@ -454,57 +453,6 @@ func createSanctuaryImmune(config json.RawMessage, memberID, sourceRef string) (
 // SpellRef and SpellName name what is being held together; TurnEnds is the
 // spell's own duration; Children are the addresses it already left behind,
 // present for a hold rebuilt rather than freshly cast.
-type concentratingConfig struct {
-	SpellRef         string                         `json:"spell_ref"`
-	SpellName        string                         `json:"spell_name"`
-	TurnEnds         int                            `json:"turn_ends"`
-	SkipFirstTurnEnd bool                           `json:"skip_first_turn_end"`
-	Children         []dnd5eEvents.ConditionAddress `json:"children"`
-}
-
-// createConcentrating creates a concentrating condition from config. The member
-// is the CASTER — the hold is theirs.
-//
-// A missing spell falls back to the ref of whatever granted the condition,
-// which for a cast IS the spell. Both empty is refused rather than defaulted:
-// concentration on nothing is a badge with no spell behind it, and the check it
-// would provoke would have nothing at stake. A duration of zero is refused for
-// the same reason a profile's is — a hold whose clock already ran out.
-func createConcentrating(config json.RawMessage, memberID, sourceRef string) (*ConcentratingCondition, error) {
-	var cfg concentratingConfig
-	if len(config) > 0 {
-		if err := json.Unmarshal(config, &cfg); err != nil {
-			return nil, rpgerr.Wrap(err, "failed to parse concentrating config")
-		}
-	}
-
-	spellRef := cfg.SpellRef
-	if spellRef == "" {
-		spellRef = sourceRef
-	}
-	if spellRef == "" {
-		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "concentrating config requires 'spell_ref' field")
-	}
-	if cfg.TurnEnds <= 0 {
-		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "concentrating config requires a positive 'turn_ends'")
-	}
-
-	sourceID := ""
-	if spellRef == refs.Spells.Bane().String() {
-		sourceID = memberID
-	}
-	condition := NewConcentratingConditionWithInput(NewConcentratingConditionInput{
-		MemberID:         memberID,
-		SourceID:         sourceID,
-		SpellRef:         spellRef,
-		SpellName:        cfg.SpellName,
-		TurnEnds:         cfg.TurnEnds,
-		SkipFirstTurnEnd: cfg.SkipFirstTurnEnd,
-	})
-	condition.Children = cfg.Children
-	return condition, nil
-}
-
 // createGuidingBolt builds the on-hit target light from its originating caster.
 func createGuidingBolt(config json.RawMessage, memberID, sourceRef string) (*GuidingBoltCondition, error) {
 	var cfg sanctuaryImmuneConfig

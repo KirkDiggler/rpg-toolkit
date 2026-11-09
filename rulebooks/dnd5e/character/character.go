@@ -1626,38 +1626,28 @@ func (c *Character) onConditionRemoved(
 	return nil
 }
 
-// ConcentrationView is what a character answers about the spell it is holding
-// together: which spell, what to call it, and how many effects it owns.
-//
-// A VIEW RATHER THAN THE CONDITION, so no caller has to type-assert over
-// GetConditions to find out. The caster answers whether it is concentrating,
-// because the caster is where the answer lives.
+// ConcentrationView is a detached view of the composed maintenance claim.
+// Held is explicit; malformed or multiple claims are errors, not absence.
 type ConcentrationView struct {
-	// SpellRef is what is being concentrated on, as a ref string.
-	SpellRef string
-
-	// SpellName is what to call it.
-	SpellName string
-
-	// ChildCount is how many effects the spell has left on the board.
+	Held       bool
+	SourceRef  string
+	SourceName string
+	Owner      dnd5eEvents.ConditionAddress
 	ChildCount int
 }
 
-// Concentration reports the spell this character is holding together, and
-// false when it is holding none.
-func (c *Character) Concentration() (ConcentrationView, bool) {
-	for _, cond := range c.conditions {
-		holding, ok := cond.(*conditions.ConcentratingCondition)
-		if !ok {
-			continue
-		}
-		return ConcentrationView{
-			SpellRef:   holding.SpellRef,
-			SpellName:  holding.SpellName,
-			ChildCount: len(holding.Children),
-		}, true
+// Concentration asks the maintenance protocol without asserting a concrete
+// condition type or reconstructing state from persisted JSON.
+func (c *Character) Concentration() (ConcentrationView, error) {
+	out, err := conditions.ConcentrationHeld(&conditions.ConcentrationQueryInput{Conditions: c.conditions})
+	if err != nil {
+		return ConcentrationView{}, err
 	}
-	return ConcentrationView{}, false
+	if !out.Held {
+		return ConcentrationView{}, nil
+	}
+	return ConcentrationView{Held: true, SourceRef: out.Info.SourceRef.String(), SourceName: out.Info.SourceName,
+		Owner: out.Info.Owner, ChildCount: out.Info.ChildCount}, nil
 }
 
 // onConditionStateChanged records that a condition hanging on this sheet

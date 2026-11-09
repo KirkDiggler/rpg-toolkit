@@ -38,7 +38,14 @@ func (s *applicationBindingSuite) blob(member string, config conditions.LinkedCo
 	return stored
 }
 
-func (s *applicationBindingSuite) sheets() []*character.Character {
+func (s *applicationBindingSuite) sheets() []*character.Character { return s.sheetsClock(1, false) }
+
+func (s *applicationBindingSuite) sheetsClock(turns int, skip bool) []*character.Character {
+	clock, err := json.Marshal(struct {
+		TurnEnds int  `json:"turn_ends"`
+		Skip     bool `json:"skip_first"`
+	}{turns, skip})
+	s.Require().NoError(err)
 	owner := dndevents.ConditionAddress{MemberID: "caster", ConditionRef: refs.Conditions.LinkedEffects().String(), SourceID: "app"}
 	members := []conditions.LinkedMemberBinding{
 		{Key: "one", Address: dndevents.ConditionAddress{MemberID: "one", ConditionRef: refs.Conditions.LinkedEffects().String(), SourceID: "caster"}, Mode: conditions.LinkComposed},
@@ -47,7 +54,9 @@ func (s *applicationBindingSuite) sheets() []*character.Character {
 	ownerBlob := s.blob("caster", conditions.LinkedConditionConfig{ApplicationID: "app", Role: conditions.LinkedCoordinator, AddressSourceID: "app",
 		Bindings: &conditions.LinkedBindings{Name: "Bless", Members: members, Parts: []dndfx.PartDeclaration{
 			{Key: "hold", Kind: dndfx.KindConcentration, OnTerminal: fx.EndApplication},
-			{Key: "duration", Kind: dndfx.KindDuration, Params: json.RawMessage(`{"turn_ends":1}`), OnTerminal: fx.EndApplication},
+			{Key: "duration", Kind: dndfx.KindDuration, Params: clock, OnTerminal: fx.EndApplication},
+			{Key: "rest", Kind: dndfx.KindEndOn, Params: json.RawMessage(`{"beat":"rest","reason":"rest"}`), OnTerminal: fx.EndApplication},
+			{Key: "combat", Kind: dndfx.KindEndOn, Params: json.RawMessage(`{"beat":"combat_end","reason":"combat_end"}`), OnTerminal: fx.EndApplication},
 			{Key: "empty", Kind: dndfx.KindUntilEmpty, OnTerminal: fx.EndApplication},
 		}}})
 	var sheets []*character.Character
