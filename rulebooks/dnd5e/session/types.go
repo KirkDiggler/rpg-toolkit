@@ -736,6 +736,9 @@ type AtlasStructuralWall struct {
 	Thickness float64 `json:"thickness"`
 	Elevation float64 `json:"elevation"`
 
+	// MaterialOverrides are the same captured choices as the permitted wall.
+	MaterialOverrides []MaterialOverride `json:"material_overrides,omitempty"`
+
 	// FootprintCells is every floor cell the wall's presence footprint
 	// overlaps by positive area, in order along the wall from From to To,
 	// carried verbatim from [encounter.AtlasStructuralWall.FootprintCells]
