@@ -84,7 +84,9 @@ extra Changed notification.
 `Assemble(AssemblyInput)` groups ordered `PartInput{Key, Compose, OnTerminal}`
 values for one holder. Each uses the existing machine; transitions from different
 parts are not flattened into one first-match list. `EndPart` completes only that
-part and reports Changed. `EndApplication` requires a lifecycle end hook, reports
+part and reports Changed. `EndAttachment` requires an end hook and ends all local
+parts without requesting that other holders end; `EndApplication` requests the
+shared application end. Both attachment/application scopes report
 once while contributions are still attached, and then detaches all local parts.
 During that report, query-only and subscribed contributions remain available,
 including the terminating part's pre-terminal outputs. Machine beat and tracker
@@ -98,6 +100,10 @@ not a gameplay end. `RestoreAssembly` requires exact saved part coverage and
 never revives a completed local part. Saved snapshot inputs are copied; definition
 recipes, vocabularies and referenced construction values remain borrowed and
 must be immutable, as required by `Compose` and `Recipe.Compile`.
+
+`BeginEnd` lets an external lifetime owner close local reaction permission before
+ordered removal without calling a second end hook. Contributions remain available
+until `Remove`; the operation neither selects a reason nor owns membership.
 
 `Lifetime` is a separate neutral value for the shared coordinator: ordered opaque
 member keys, authorized ender keys, and one accepted end plan. It publishes
