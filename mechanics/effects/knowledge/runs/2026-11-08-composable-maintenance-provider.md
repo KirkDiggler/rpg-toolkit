@@ -14,6 +14,7 @@ Slice [rpg-project#903](https://github.com/KirkDiggler/rpg-project/issues/903), 
 
 ## Decided
 
+- Linked transport needs BeginEnd to close each still-attached recipient's reaction permission before ordered cross-holder removal; it reuses the assembly gate, emits nothing, and leaves contributions available until Remove. Missing-API RED and the focused external-owner test pass before root adoption — [S14 transport](https://github.com/KirkDiggler/rpg-project/issues/904).
 - The concentration consumer needs a bound CanReact query: an output that requests a new save must stop while contributions still answer End. It reads existing attachment/state/assembly permission, adding no lifecycle authority or rulebook dependency; missing-API RED then full provider gates pass — [root consumer](https://github.com/KirkDiggler/rpg-project/issues/904).
 - Gate the existing machine-vocabulary dispatch entry, not output contribution handlers or an invented interpreter; retain an ephemeral pre-terminal observation cursor while End runs, with Snapshot still reporting actual machine state — [end findings](https://github.com/KirkDiggler/rpg-toolkit/pull/2327#pullrequestreview-5819824571).
 - Narrow restore ownership documentation to copied snapshots and borrowed immutable definitions rather than changing the underlying constructor ownership contract during this fix — [ownership finding](https://github.com/KirkDiggler/rpg-toolkit/pull/2327#discussion_r4507948139).

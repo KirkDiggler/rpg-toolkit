@@ -214,6 +214,21 @@ func (a *Assembly) Apply(ctx context.Context, bus events.EventBus) error {
 	return nil
 }
 
+// BeginEnd closes permission for new reactions while retaining contributions
+// until Remove. An external lifetime owner uses it before ordered linked removal;
+// it invokes no callback and claims no shared lifetime authority. It is idempotent
+// once ending starts and refuses an ordinary detached assembly.
+func (a *Assembly) BeginEnd() error {
+	if a.ending {
+		return nil
+	}
+	if a.bus == nil {
+		return fmt.Errorf("%w: cannot begin end while detached", ErrInvalidAssembly)
+	}
+	a.ending = true
+	return nil
+}
+
 // Remove tears down all local parts in reverse order without publishing an end.
 // Repetition is harmless. A gameplay end remains ended; ordinary teardown leaves
 // the saved state available for information or another interaction.
