@@ -79,8 +79,8 @@ func (s *applicationBindingSuite) TestEveryOwnedEndPathPublishesOneFact() {
 			s.Require().NoError(err)
 			s.Require().Len(ended, 1)
 			s.Equal(reason, ended[0].Reason)
-			s.Equal("caster", ended[0].CasterID)
-			s.Equal(refs.Spells.Bless().String(), ended[0].SpellRef)
+			s.Equal("caster", ended[0].MaintainerID)
+			s.Equal(refs.Spells.Bless().String(), ended[0].SourceRef.String())
 			for _, sheet := range sheets {
 				s.Empty(sheet.GetConditions())
 			}

@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character/choices"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/effects"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/languages"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
@@ -384,7 +385,9 @@ func (s *ClericFinalizeSuite) TestChosenResistanceCompilesAfterDraftAndCharacter
 	s.Require().NotNil(definition)
 	s.Require().NoError(definition.Validate())
 	s.Nil(definition.Cast.Save, "the saving throw the die joins is the saver's own, not this cast's gate")
-	s.Require().NotNil(definition.Cast.Concentration)
+	maintenance, err := effects.DescribeMaintenance(&effects.DescribeMaintenanceInput{Parts: definition.Cast.Maintenance})
+	s.Require().NoError(err)
+	s.True(maintenance.Concentration)
 	s.Empty(definition.Cost.Pools)
 	_, err = loaded.StatusView(&StatusViewInput{})
 	s.NoError(err, "private-sheet projection accepts the normally finalized cleric")

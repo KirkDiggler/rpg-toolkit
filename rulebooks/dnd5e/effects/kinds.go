@@ -25,6 +25,7 @@ type kindDefinition struct {
 	validatePart func(PartDeclaration) error
 	part         func(*BindPartInput) (boundPart, error)
 	inspectPart  func(*InspectPartInput) (*PartInfo, error)
+	describePart func(PartDeclaration) (partDescription, error)
 	check        func(generic.Output) error
 	meaning      func(jsontext.Value) (meaning, error)
 	attach       func(context.Context, events.EventBus, *generic.Bound, BindInput) (generic.Detach, error)
@@ -56,9 +57,9 @@ var kindTable = map[generic.KindName]kindDefinition{
 	KindDamageBonus: {check: checkDamage, meaning: damageMeaning, attach: attachDamage},
 	KindResistance:  {validatePart: validateResistancePart, part: bindResistancePart, inspectPart: inspectResistancePart, check: checkResistance, meaning: resistanceMeaning, attach: attachResistance},
 	KindAdvantage:   {check: checkAdvantage, meaning: advantageMeaning, attach: attachAdvantage},
-	KindConcentration: {validatePart: checkUnparameterizedMaintenance, part: bindConcentrationPart, inspectPart: inspectConcentrationPart,
+	KindConcentration: {describePart: describeConcentrationPart, validatePart: checkUnparameterizedMaintenance, part: bindConcentrationPart, inspectPart: inspectConcentrationPart,
 		check: checkConcentrationOutput, meaning: concentrationMeaning, attach: attachConcentration},
-	KindDuration:   {validatePart: validateDurationPart, part: bindDurationPart, inspectPart: inspectDurationPart},
+	KindDuration:   {describePart: describeDurationPart, validatePart: validateDurationPart, part: bindDurationPart, inspectPart: inspectDurationPart},
 	KindUntilEmpty: {validatePart: checkUnparameterizedMaintenance, part: bindUntilEmptyPart, inspectPart: inspectUntilEmptyPart},
 	KindEndOn:      {validatePart: validateEndOnPart, part: bindEndOnPart, inspectPart: inspectEndOnPart},
 	KindRollModifier: {validatePart: validateRollPart, part: bindRollModifierPart, inspectPart: inspectRollModifierPart, execution: generic.KindQuery,

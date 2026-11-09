@@ -9,6 +9,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/effects"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
 
@@ -69,7 +70,7 @@ type CastFacts struct {
 	Effects         []EffectFact
 	Healing         *HealingFact
 	Area            *CastArea
-	Concentration   *CastConcentration
+	Maintenance     effects.MaintenanceDescription
 }
 
 // TargetsFact is the cast's targeting rule and cardinality.
@@ -158,7 +159,10 @@ func Describe(in *DescribeInput) (*DescribeOutput, error) {
 		}
 	}
 	if cast := in.Definition.Cast; cast != nil {
-		facts := castFacts(cast)
+		facts, err := castFacts(cast)
+		if err != nil {
+			return nil, err
+		}
 		out.Facts.Cast = &facts
 		for _, pool := range cast.Damage {
 			out.Facts.Damage = append(out.Facts.Damage, plainDamageFact(pool))
@@ -202,7 +206,7 @@ func plainDamageFact(pool damage.Damage) DamageFact {
 	return DamageFact{Dice: pool.Dice, FlatBonus: pool.FlatBonus, Type: pool.Type}
 }
 
-func castFacts(cast *CastProfile) CastFacts {
+func castFacts(cast *CastProfile) (CastFacts, error) {
 	facts := CastFacts{
 		RangeFeet: cast.RangeFeet,
 		Targets:   TargetsFact{Rule: cast.Target, Min: cast.MinTargets, Max: cast.MaxTargets},
@@ -238,9 +242,10 @@ func castFacts(cast *CastProfile) CastFacts {
 		area := *cast.Area
 		facts.Area = &area
 	}
-	if cast.Concentration != nil {
-		concentration := *cast.Concentration
-		facts.Concentration = &concentration
+	maintenance, err := effects.DescribeMaintenance(&effects.DescribeMaintenanceInput{Parts: cast.Maintenance})
+	if err != nil {
+		return CastFacts{}, err
 	}
-	return facts
+	facts.Maintenance = *maintenance
+	return facts, nil
 }

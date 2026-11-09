@@ -75,8 +75,7 @@ type InspectPartInput struct {
 }
 
 type boundPart struct {
-	recipe       machine.Recipe
-	capabilities PartCapabilities
+	recipe machine.Recipe
 }
 
 // BindPart builds a reusable part without payment, attachment or dice. It refuses
@@ -96,6 +95,10 @@ func BindPart(in *BindPartInput) (*BindPartOutput, error) {
 	if !ok || definition.part == nil {
 		return nil, fmt.Errorf("unsupported effect part %q", in.Declaration.Kind)
 	}
+	description, err := describePart(in.Declaration)
+	if err != nil {
+		return nil, err
+	}
 	part, err := definition.part(in)
 	if err != nil {
 		return nil, err
@@ -111,7 +114,7 @@ func BindPart(in *BindPartInput) (*BindPartOutput, error) {
 				Recipe: part.recipe, HolderID: in.HolderID, SourceRef: &origin.Ref,
 				MachineVocabulary: vocabulary.Machine, OutputVocabulary: vocabulary.Outputs,
 			}},
-		Capabilities: part.capabilities,
+		Capabilities: description.capabilities,
 	}, nil
 }
 

@@ -375,7 +375,7 @@ var castContent = map[Spell]castProfileBuilder{
 				Effects: []actions.CastEffect{{
 					Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.Blessed(), CounterpartKey: "source_id",
 				}},
-				Concentration: &actions.CastConcentration{TurnEnds: 10, SkipFirstTurnEnd: true},
+				Maintenance: spellMaintenance(spellMaintenanceInput{turnEnds: 10, skipFirst: true}),
 			}
 		},
 	},
@@ -389,9 +389,9 @@ var castContent = map[Spell]castProfileBuilder{
 					Footprint: actions.Footprint{Shape: actions.AreaBox, SizeFeet: 20, Origin: actions.AreaOriginPoint},
 					Catches:   actions.AreaCatchesEveryone,
 				},
-				Save:          &saves.SaveGate{Abilities: []abilities.Ability{abilities.DEX}, DC: saves.DCStatic(spellSaveDC), OnSuccess: saves.Negated, Recurrence: saves.RecurrenceNone},
-				Effects:       []actions.CastEffect{{Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.FaerieFire(), CounterpartKey: "source_id"}},
-				Concentration: &actions.CastConcentration{TurnEnds: 10, SkipFirstTurnEnd: true},
+				Save:        &saves.SaveGate{Abilities: []abilities.Ability{abilities.DEX}, DC: saves.DCStatic(spellSaveDC), OnSuccess: saves.Negated, Recurrence: saves.RecurrenceNone},
+				Effects:     []actions.CastEffect{{Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.FaerieFire(), CounterpartKey: "source_id"}},
+				Maintenance: spellMaintenance(spellMaintenanceInput{turnEnds: 10, skipFirst: true}),
 			}
 		},
 	},
@@ -409,7 +409,7 @@ var castContent = map[Spell]castProfileBuilder{
 					MembershipName: fogCloudMembershipName,
 				},
 				// One hour in the current turn-count model. Wind dispersal is deferred.
-				Concentration: &actions.CastConcentration{TurnEnds: 600, SkipFirstTurnEnd: true},
+				Maintenance: spellMaintenance(spellMaintenanceInput{turnEnds: 600, skipFirst: true}),
 			}
 		},
 	},
@@ -422,8 +422,8 @@ var castContent = map[Spell]castProfileBuilder{
 		build: func(_ int) actions.CastProfile {
 			return actions.CastProfile{
 				RangeFeet: 5, Target: actions.CastTargetSelf,
-				Effects:       []actions.CastEffect{{Recipient: actions.CastRecipientCaster, Ref: *refs.Conditions.DivineFavor()}},
-				Concentration: &actions.CastConcentration{TurnEnds: 10, SkipFirstTurnEnd: true},
+				Effects:     []actions.CastEffect{{Recipient: actions.CastRecipientCaster, Ref: *refs.Conditions.DivineFavor()}},
+				Maintenance: spellMaintenance(spellMaintenanceInput{turnEnds: 10, skipFirst: true}),
 			}
 		},
 	},
@@ -436,8 +436,8 @@ var castContent = map[Spell]castProfileBuilder{
 		build: func(_ int) actions.CastProfile {
 			return actions.CastProfile{
 				RangeFeet: 60, Target: actions.CastTargetKnownCreature, MinTargets: 1, MaxTargets: 1,
-				Effects:       []actions.CastEffect{{Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.ShieldOfFaith(), CounterpartKey: "source_id"}},
-				Concentration: &actions.CastConcentration{TurnEnds: 100, SkipFirstTurnEnd: true},
+				Effects:     []actions.CastEffect{{Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.ShieldOfFaith(), CounterpartKey: "source_id"}},
+				Maintenance: spellMaintenance(spellMaintenanceInput{turnEnds: 100, skipFirst: true}),
 			}
 		},
 	},
@@ -478,7 +478,7 @@ var castContent = map[Spell]castProfileBuilder{
 					IndependentDuration: true,
 				}},
 				RecipientBlockedBy: []core.Ref{*refs.Conditions.SanctuaryImmune()},
-				Concentration:      &actions.CastConcentration{TurnEnds: SanctuaryTurnEnds, SkipFirstTurnEnd: true},
+				Maintenance:        spellMaintenance(spellMaintenanceInput{turnEnds: SanctuaryTurnEnds, skipFirst: true}),
 			}
 		},
 	},
@@ -510,9 +510,7 @@ var castContent = map[Spell]castProfileBuilder{
 					Ref:            *refs.Conditions.Baned(),
 					CounterpartKey: BaneCasterParameter,
 				}},
-				Concentration: &actions.CastConcentration{
-					TurnEnds: BaneTurnEnds, SkipFirstTurnEnd: true,
-				},
+				Maintenance: spellMaintenance(spellMaintenanceInput{turnEnds: BaneTurnEnds, skipFirst: true}),
 			}
 		},
 	},
@@ -749,7 +747,7 @@ var castContent = map[Spell]castProfileBuilder{
 				Effects: []actions.CastEffect{{
 					Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.Guided(), CounterpartKey: "source_id",
 				}},
-				Concentration: &actions.CastConcentration{TurnEnds: GuidanceTurnEnds, SkipFirstTurnEnd: true},
+				Maintenance: spellMaintenance(spellMaintenanceInput{turnEnds: GuidanceTurnEnds, skipFirst: true}),
 			}
 		},
 	},
@@ -767,7 +765,7 @@ var castContent = map[Spell]castProfileBuilder{
 				Effects: []actions.CastEffect{{
 					Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.Resistance(), CounterpartKey: "source_id",
 				}},
-				Concentration: &actions.CastConcentration{TurnEnds: ResistanceTurnEnds, SkipFirstTurnEnd: true},
+				Maintenance: spellMaintenance(spellMaintenanceInput{turnEnds: ResistanceTurnEnds, skipFirst: true}),
 			}
 		},
 	},
@@ -894,7 +892,7 @@ var castContent = map[Spell]castProfileBuilder{
 				// RAW's True Strike is a concentration cantrip, and here it is
 				// one: the caster holds it for two turn ends and the advantage
 				// ends with the hold.
-				Concentration: &actions.CastConcentration{TurnEnds: TrueStrikeTurnEnds},
+				Maintenance: spellMaintenance(spellMaintenanceInput{turnEnds: TrueStrikeTurnEnds}),
 				Effects: []actions.CastEffect{{
 					Recipient:      actions.CastRecipientCaster,
 					Ref:            *refs.Conditions.TrueStrike(),

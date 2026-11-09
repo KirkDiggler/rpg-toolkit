@@ -59,7 +59,7 @@ func bindDurationPart(in *BindPartInput) (boundPart, error) {
 			{On: BeatTurnEnd, About: Holder, To: partStateActive},
 		}}
 	}
-	return boundPart{recipe: recipe, capabilities: PartCapabilities{Duration: true}}, nil
+	return boundPart{recipe: recipe}, nil
 }
 
 func inspectDurationPart(in *InspectPartInput) (*PartInfo, error) {

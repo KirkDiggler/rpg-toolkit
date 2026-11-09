@@ -66,7 +66,7 @@ func bindConcentrationPart(in *BindPartInput) (boundPart, error) {
 			}},
 			partStateEnded: {Terminal: true},
 		},
-	}, capabilities: PartCapabilities{Concentration: true}}, nil
+	}}, nil
 }
 
 func concentrationMeaning(raw jsontext.Value) (meaning, error) {

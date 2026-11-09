@@ -291,7 +291,7 @@ func (b *ApplicationBinding) endOwner(ctx context.Context, owner *LinkedConditio
 	}
 	if owner.concentrates {
 		if err := dndevents.ConcentrationEndedTopic.On(b.bus).Publish(ctx, dndevents.ConcentrationEndedEvent{
-			CasterID: owner.member, SpellRef: owner.origin.Ref.String(), SpellName: owner.bindings.Name,
+			MaintainerID: owner.member, SourceRef: owner.origin.Ref, SourceName: owner.bindings.Name,
 			Reason: plan.Reason, Removed: removed,
 		}); err != nil {
 			return err

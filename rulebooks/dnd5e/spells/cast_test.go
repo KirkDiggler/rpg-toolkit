@@ -49,14 +49,12 @@ func (s *CastContentSuite) TestBlessDeclaresKnownTargetsAndOwnedConcentration() 
 	s.Equal(actions.CastRecipientTarget, d.Cast.Effects[0].Recipient)
 	s.Equal(*refs.Conditions.Blessed(), d.Cast.Effects[0].Ref)
 	s.Equal("source_id", d.Cast.Effects[0].CounterpartKey)
-	s.Require().NotNil(d.Cast.Concentration)
-	s.Equal(10, d.Cast.Concentration.TurnEnds)
-	s.True(d.Cast.Concentration.SkipFirstTurnEnd)
+	s.assertMaintenance(d.Cast, 10, true)
 	clone := d.Clone()
 	clone.Cast.Effects[0].CounterpartKey = "wrong"
-	clone.Cast.Concentration.TurnEnds = 1
+	clone.Cast.Maintenance[1].Params[0] = '!'
 	s.Equal("source_id", d.Cast.Effects[0].CounterpartKey)
-	s.Equal(10, d.Cast.Concentration.TurnEnds)
+	s.assertMaintenance(d.Cast, 10, true)
 	for _, bounds := range [][2]int{{0, 3}, {2, 1}} {
 		invalid := d.Clone()
 		invalid.Cast.MinTargets, invalid.Cast.MaxTargets = bounds[0], bounds[1]
@@ -83,14 +81,12 @@ func (s *CastContentSuite) TestGuidanceDeclaresTouchAndOwnedConcentration() {
 	s.Equal(actions.CastRecipientTarget, d.Cast.Effects[0].Recipient)
 	s.Equal(*refs.Conditions.Guided(), d.Cast.Effects[0].Ref)
 	s.Equal("source_id", d.Cast.Effects[0].CounterpartKey)
-	s.Require().NotNil(d.Cast.Concentration, "up to one minute, the same duration category as Bless")
-	s.Equal(10, d.Cast.Concentration.TurnEnds)
-	s.True(d.Cast.Concentration.SkipFirstTurnEnd)
+	s.assertMaintenance(d.Cast, 10, true)
 	clone := d.Clone()
 	clone.Cast.Effects[0].CounterpartKey = "wrong"
-	clone.Cast.Concentration.TurnEnds = 1
+	clone.Cast.Maintenance[1].Params[0] = '!'
 	s.Equal("source_id", d.Cast.Effects[0].CounterpartKey)
-	s.Equal(10, d.Cast.Concentration.TurnEnds)
+	s.assertMaintenance(d.Cast, 10, true)
 	raw, err := json.Marshal(d)
 	s.Require().NoError(err)
 	var reloaded actions.Definition
@@ -118,14 +114,12 @@ func (s *CastContentSuite) TestResistanceDeclaresTouchAndOwnedConcentration() {
 	s.Equal(actions.CastRecipientTarget, d.Cast.Effects[0].Recipient)
 	s.Equal(*refs.Conditions.Resistance(), d.Cast.Effects[0].Ref)
 	s.Equal("source_id", d.Cast.Effects[0].CounterpartKey)
-	s.Require().NotNil(d.Cast.Concentration, "up to one minute, the same duration category as Guidance")
-	s.Equal(10, d.Cast.Concentration.TurnEnds)
-	s.True(d.Cast.Concentration.SkipFirstTurnEnd)
+	s.assertMaintenance(d.Cast, 10, true)
 	clone := d.Clone()
 	clone.Cast.Effects[0].CounterpartKey = "wrong"
-	clone.Cast.Concentration.TurnEnds = 1
+	clone.Cast.Maintenance[1].Params[0] = '!'
 	s.Equal("source_id", d.Cast.Effects[0].CounterpartKey)
-	s.Equal(10, d.Cast.Concentration.TurnEnds)
+	s.assertMaintenance(d.Cast, 10, true)
 	raw, err := json.Marshal(d)
 	s.Require().NoError(err)
 	var reloaded actions.Definition
@@ -161,14 +155,12 @@ func (s *CastContentSuite) TestSanctuaryDeclaresTouchBonusActionAndOwnedConcentr
 	s.Equal("save_dc", d.Cast.Effects[0].SaveDCKey, "the ward records the caster's DC when it lands")
 	s.Empty(d.Cast.Effects[1].SaveDCKey, "the immunity rolls nothing and keeps no DC")
 	s.Equal("source_id", d.Cast.Effects[0].CounterpartKey)
-	s.Require().NotNil(d.Cast.Concentration, "up to one minute, the same duration category as Guidance")
-	s.Equal(10, d.Cast.Concentration.TurnEnds)
-	s.True(d.Cast.Concentration.SkipFirstTurnEnd)
+	s.assertMaintenance(d.Cast, 10, true)
 	clone := d.Clone()
 	clone.Cast.Effects[0].CounterpartKey = "wrong"
-	clone.Cast.Concentration.TurnEnds = 1
+	clone.Cast.Maintenance[1].Params[0] = '!'
 	s.Equal("source_id", d.Cast.Effects[0].CounterpartKey)
-	s.Equal(10, d.Cast.Concentration.TurnEnds)
+	s.assertMaintenance(d.Cast, 10, true)
 	raw, err := json.Marshal(d)
 	s.Require().NoError(err)
 	var reloaded actions.Definition
@@ -194,7 +186,7 @@ func (s *CastContentSuite) TestHealingWordDeclaresRangedBonusActionHealing() {
 	s.Equal("1d4", d.Cast.Healing.Dice)
 	s.Equal([]string{"undead", "construct"}, d.Cast.HealingExcludes)
 	s.Nil(d.Cast.Save)
-	s.Nil(d.Cast.Concentration)
+	s.False(s.maintenance(d.Cast).Concentration)
 	s.Empty(d.Cast.Damage)
 	s.Empty(d.Cast.Effects)
 	// Neither callers nor a cloned definition can alter future compilations.
@@ -263,9 +255,7 @@ func (s *CastContentSuite) TestBaneCompilesItsCompleteLevelOneProfile() {
 	s.Require().Len(profile.Effects, 1)
 	s.Equal(actions.CastRecipientTarget, profile.Effects[0].Recipient)
 	s.Equal(*refs.Conditions.Baned(), profile.Effects[0].Ref)
-	s.Require().NotNil(profile.Concentration)
-	s.Equal(10, profile.Concentration.TurnEnds)
-	s.True(profile.Concentration.SkipFirstTurnEnd)
+	s.assertMaintenance(profile, 10, true)
 	s.True(spells.HasCastProfile(spells.Bane))
 	s.Equal([]spells.Spell{spells.Bane}, spells.Castable([]spells.Spell{spells.CharmPerson, spells.Bane}))
 }
@@ -294,7 +284,7 @@ func (s *CastContentSuite) TestSacredFlameCarriesOnlyItsSaveAndRadiantDamage() {
 	s.Equal("1d8", profile.Damage[0].Dice)
 	s.Equal(damage.Radiant, profile.Damage[0].Type)
 	s.Empty(profile.Effects, "Sacred Flame leaves no condition behind")
-	s.Nil(profile.Concentration)
+	s.False(s.maintenance(profile).Concentration)
 }
 
 func (s *CastContentSuite) TestTollTheDeadCarriesBothDamagePoolsWISAndNecrotic() {
@@ -325,7 +315,7 @@ func (s *CastContentSuite) TestTollTheDeadCarriesBothDamagePoolsWISAndNecrotic()
 	s.Equal("1d12", profile.DamageIfInjured[0].Dice, "the larger pool, RAW's own wording")
 	s.Equal(damage.Necrotic, profile.DamageIfInjured[0].Type)
 	s.Empty(profile.Effects, "Toll the Dead leaves no condition behind")
-	s.Nil(profile.Concentration)
+	s.False(s.maintenance(profile).Concentration)
 }
 
 func (s *CastContentSuite) TestWordOfRadianceCarriesItsBurstConstitutionSaveAndRadiantDamage() {
@@ -355,7 +345,7 @@ func (s *CastContentSuite) TestWordOfRadianceCarriesItsBurstConstitutionSaveAndR
 	s.Equal(damage.Radiant, profile.Damage[0].Type)
 	s.Empty(profile.DamageIfInjured)
 	s.Empty(profile.Effects)
-	s.Nil(profile.Concentration)
+	s.False(s.maintenance(profile).Concentration)
 }
 
 func (s *CastContentSuite) TestClericCastableSubsetDoesNotEnableOtherKnownCantrips() {
@@ -459,8 +449,7 @@ func (s *CastContentSuite) TestTrueStrikeDeclaresConcentration() {
 	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.TrueStrike, SpellSaveDC: 13})
 
 	s.Require().NotNil(definition)
-	s.Require().NotNil(definition.Cast.Concentration)
-	s.Equal(spells.TrueStrikeTurnEnds, definition.Cast.Concentration.TurnEnds)
+	s.assertMaintenance(definition.Cast, spells.TrueStrikeTurnEnds, false)
 	s.Equal(2, spells.TrueStrikeTurnEnds,
 		"the end of the casting turn, then the end of the next one")
 }
@@ -469,7 +458,7 @@ func (s *CastContentSuite) TestViciousMockeryDeclaresNone() {
 	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.ViciousMockery, SpellSaveDC: 13})
 
 	s.Require().NotNil(definition)
-	s.Nil(definition.Cast.Concentration, "an insult that landed needs nobody to hold it")
+	s.False(s.maintenance(definition.Cast).Concentration, "an insult that landed needs nobody to hold it")
 }
 
 func (s *CastContentSuite) TestACantripWithNoContentMintsNothing() {
@@ -771,7 +760,7 @@ func (s *CastContentSuite) TestGuidingBoltDeclaresSpellAttackAndOnHitLight() {
 	s.Equal(1, d.Cost.Slots[coreCombat.ActionStandard])
 	s.Equal(1, d.Cost.Pools[resources.SpellSlotLevel1])
 	s.Equal(120, d.Cast.RangeFeet)
-	s.Nil(d.Cast.Concentration)
+	s.False(s.maintenance(d.Cast).Concentration)
 	s.Nil(d.Cast.Save)
 	a := d.Cast.Attack
 	s.Require().NotNil(a)
@@ -795,7 +784,7 @@ func (s *CastContentSuite) TestInflictWoundsDeclaresTouchSpellAttack() {
 	s.Equal(actions.CastTargetTouch, d.Cast.Target)
 	s.Nil(d.Cast.Attack.Delivery.Ranged)
 	s.Equal(5, d.Cast.Attack.Delivery.Melee.ReachFeet)
-	s.Nil(d.Cast.Concentration)
+	s.False(s.maintenance(d.Cast).Concentration)
 	s.Nil(d.Cast.Save)
 	a := d.Cast.Attack
 	s.Require().NotNil(a)
@@ -823,9 +812,7 @@ func (s *CastContentSuite) TestShieldOfFaithDeclaresBonusActionAndOwnedProtectio
 	s.Require().Len(d.Cast.Effects, 1)
 	s.Equal(*refs.Conditions.ShieldOfFaith(), d.Cast.Effects[0].Ref)
 	s.Equal("source_id", d.Cast.Effects[0].CounterpartKey)
-	s.Require().NotNil(d.Cast.Concentration)
-	s.Equal(100, d.Cast.Concentration.TurnEnds)
-	s.True(d.Cast.Concentration.SkipFirstTurnEnd)
+	s.assertMaintenance(d.Cast, 100, true)
 	s.Nil(d.Cast.Attack)
 	s.Nil(d.Cast.Save)
 }
@@ -847,9 +834,7 @@ func (s *CastContentSuite) TestDivineFavorDeclaresBonusActionAndOwnedProtection(
 	s.Equal(*refs.Conditions.DivineFavor(), d.Cast.Effects[0].Ref)
 	s.Empty(d.Cast.Effects[0].CounterpartKey)
 	s.Equal(actions.CastRecipientCaster, d.Cast.Effects[0].Recipient)
-	s.Require().NotNil(d.Cast.Concentration)
-	s.Equal(10, d.Cast.Concentration.TurnEnds)
-	s.True(d.Cast.Concentration.SkipFirstTurnEnd)
+	s.assertMaintenance(d.Cast, 10, true)
 	s.Nil(d.Cast.Attack)
 	s.Nil(d.Cast.Save)
 }
@@ -870,14 +855,13 @@ func (s *CastContentSuite) TestFogCloudDeclaresPersistentSightWithoutRecipientsO
 	s.True(d.Cast.Area.ObscuresSight)
 	s.Equal(refs.Conditions.InFog().String(), d.Cast.Area.MembershipRef)
 	s.Equal("In Fog", d.Cast.Area.MembershipName)
-	s.Equal(600, d.Cast.Concentration.TurnEnds)
-	s.True(d.Cast.Concentration.SkipFirstTurnEnd)
+	s.assertMaintenance(d.Cast, 600, true)
 	s.Empty(d.Cast.Damage)
 	s.Empty(d.Cast.Effects)
 	s.Nil(d.Cast.Save)
 	s.Nil(d.Cast.Healing)
 	clone := d.Clone()
-	clone.Cast.Concentration = nil
+	clone.Cast.Maintenance = nil
 	s.Error(clone.Validate())
 	clone = d.Clone()
 	clone.Cast.Area.ObscuresSight = false
@@ -901,7 +885,7 @@ func (s *CastContentSuite) TestBurningHandsDeclaresTriangleAndDexterityHalfFire(
 	s.Equal(saves.Half, d.Cast.Save.OnSuccess)
 	s.Equal([]damage.Damage{{Dice: "3d6", Type: damage.Fire}}, d.Cast.Damage)
 	s.Nil(d.Cast.Move)
-	s.Nil(d.Cast.Concentration)
+	s.False(s.maintenance(d.Cast).Concentration)
 	s.Contains(spells.Selectable([]spells.Spell{spells.BurningHands}), spells.BurningHands)
 }
 
@@ -921,8 +905,7 @@ func (s *CastContentSuite) TestFaerieFireDeclaresSharedPointBoxSaveAndConcentrat
 	s.Equal(60, d.Cast.RangeFeet)
 	s.Equal(*refs.Conditions.FaerieFire(), d.Cast.Effects[0].Ref)
 	s.Nil(d.Cast.Move)
-	s.Equal(10, d.Cast.Concentration.TurnEnds)
-	s.True(d.Cast.Concentration.SkipFirstTurnEnd)
+	s.assertMaintenance(d.Cast, 10, true)
 	s.Contains(spells.Selectable([]spells.Spell{spells.FaerieFire}), spells.FaerieFire)
 }
 
@@ -950,7 +933,7 @@ func (s *CastContentSuite) TestPoisonSprayCarriesOnlyItsSaveAndPoisonDamage() {
 	s.Equal("1d12", profile.Damage[0].Dice)
 	s.Equal(damage.Poison, profile.Damage[0].Type)
 	s.Empty(profile.Effects, "Poison Spray leaves no condition behind")
-	s.Nil(profile.Concentration)
+	s.False(s.maintenance(profile).Concentration)
 }
 
 func (s *CastContentSuite) TestShillelaghRequiresHeldEligibleWeaponAndBindsOneOrOffersBoth() {
@@ -966,7 +949,7 @@ func (s *CastContentSuite) TestShillelaghRequiresHeldEligibleWeaponAndBindsOneOr
 	s.Empty(d.Cost.Pools)
 	s.Equal(0, d.Cast.Casting.Level)
 	s.Equal(combat.SpellCastingBonusAction, d.Cast.Casting.Time)
-	s.Nil(d.Cast.Concentration)
+	s.False(s.maintenance(d.Cast).Concentration)
 	s.Empty(d.Cast.Options)
 	s.Empty(d.Cast.Damage)
 	s.Nil(d.Cast.Attack)
@@ -990,7 +973,7 @@ func (s *CastContentSuite) TestThornWhipDeclaresOptionalOnHitPull() {
 	s.Equal(1, d.Cost.Slots[coreCombat.ActionStandard])
 	s.Empty(d.Cost.Pools)
 	s.Nil(d.Cast.Save)
-	s.Nil(d.Cast.Concentration)
+	s.False(s.maintenance(d.Cast).Concentration)
 	s.Require().NotNil(d.Cast.Attack.Delivery.Melee)
 	s.Equal(30, d.Cast.Attack.Delivery.Melee.ReachFeet)
 	s.Equal(actions.MovePull, d.Cast.Move.Policy)
