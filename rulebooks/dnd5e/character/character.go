@@ -1589,7 +1589,7 @@ func (c *Character) onConditionRemoved(
 	for _, cond := range c.conditions {
 		// All three identity fields match exactly. An empty source names only a
 		// condition that has no source qualifier and is never a wildcard.
-		if conditions.ConditionAddressOf(c.id, cond) != event.Address() {
+		if !conditions.ConditionRemovalMatches(conditions.ConditionRemovalMatchesInput{MemberID: c.id, Condition: cond, Event: event}) {
 			filtered = append(filtered, cond)
 			continue
 		}

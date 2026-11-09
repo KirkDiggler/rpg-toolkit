@@ -43,6 +43,8 @@ type LinkedCondition struct {
 	lifetime      *generic.Lifetime
 	definition    generic.AssemblyInput
 	transport     linkedTransport
+	// concentrates is a declared capability, not a copy of mutable hold state.
+	concentrates bool
 }
 
 var (
@@ -87,6 +89,7 @@ func buildLinked(data LinkedConditionData, restored bool) (*LinkedCondition, err
 		return nil, fmt.Errorf("linked application declares multiple concentration claims")
 	}
 	c.definition = definition
+	c.concentrates = concentrationCount == 1
 	var err error
 	if restored {
 		c.assembly, err = generic.RestoreAssembly(generic.RestoreAssemblyInput{Definition: definition, Snapshot: data.Runtime.Parts})
@@ -213,5 +216,5 @@ func (c *LinkedCondition) AssessActionEffects(in *contributions.AssessActionInpu
 var linkedDescriptor = descriptor{
 	ref:     refs.Conditions.LinkedEffects(),
 	display: Display{Name: "Linked effects", Detail: "Contributes its configured effects under one linked application."},
-	load:    loadLinked, create: createLinked, acceptsOrigin: true, ownAction: answersNow, againstHolder: notBearing,
+	load:    loadLinked, create: createLinked, acceptsOrigin: true, linked: true, ownAction: answersNow, againstHolder: notBearing,
 }

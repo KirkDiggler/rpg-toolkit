@@ -20,13 +20,14 @@ import (
 )
 
 type kindDefinition struct {
-	execution   generic.KindExecution
-	assess      func(*AssessInput, meaning) (assessment, error)
-	part        func(*BindPartInput) (boundPart, error)
-	inspectPart func(*InspectPartInput) (*PartInfo, error)
-	check       func(generic.Output) error
-	meaning     func(jsontext.Value) (meaning, error)
-	attach      func(context.Context, events.EventBus, *generic.Bound, BindInput) (generic.Detach, error)
+	execution    generic.KindExecution
+	assess       func(*AssessInput, meaning) (assessment, error)
+	validatePart func(PartDeclaration) error
+	part         func(*BindPartInput) (boundPart, error)
+	inspectPart  func(*InspectPartInput) (*PartInfo, error)
+	check        func(generic.Output) error
+	meaning      func(jsontext.Value) (meaning, error)
+	attach       func(context.Context, events.EventBus, *generic.Bound, BindInput) (generic.Detach, error)
 }
 
 type meaning struct {
@@ -53,14 +54,14 @@ type assessment struct {
 // and richer rulebook assessment all resolve through these same entries.
 var kindTable = map[generic.KindName]kindDefinition{
 	KindDamageBonus: {check: checkDamage, meaning: damageMeaning, attach: attachDamage},
-	KindResistance:  {part: bindResistancePart, inspectPart: inspectResistancePart, check: checkResistance, meaning: resistanceMeaning, attach: attachResistance},
+	KindResistance:  {validatePart: validateResistancePart, part: bindResistancePart, inspectPart: inspectResistancePart, check: checkResistance, meaning: resistanceMeaning, attach: attachResistance},
 	KindAdvantage:   {check: checkAdvantage, meaning: advantageMeaning, attach: attachAdvantage},
-	KindConcentration: {part: bindConcentrationPart, inspectPart: inspectConcentrationPart,
+	KindConcentration: {validatePart: checkUnparameterizedMaintenance, part: bindConcentrationPart, inspectPart: inspectConcentrationPart,
 		check: checkConcentrationOutput, meaning: concentrationMeaning, attach: attachConcentration},
-	KindDuration:   {part: bindDurationPart, inspectPart: inspectDurationPart},
-	KindUntilEmpty: {part: bindUntilEmptyPart, inspectPart: inspectUntilEmptyPart},
-	KindEndOn:      {part: bindEndOnPart, inspectPart: inspectEndOnPart},
-	KindRollModifier: {part: bindRollModifierPart, inspectPart: inspectRollModifierPart, execution: generic.KindQuery,
+	KindDuration:   {validatePart: validateDurationPart, part: bindDurationPart, inspectPart: inspectDurationPart},
+	KindUntilEmpty: {validatePart: checkUnparameterizedMaintenance, part: bindUntilEmptyPart, inspectPart: inspectUntilEmptyPart},
+	KindEndOn:      {validatePart: validateEndOnPart, part: bindEndOnPart, inspectPart: inspectEndOnPart},
+	KindRollModifier: {validatePart: validateRollPart, part: bindRollModifierPart, inspectPart: inspectRollModifierPart, execution: generic.KindQuery,
 		check: checkRollModifier, meaning: rollMeaning, assess: assessRollModifier},
 }
 

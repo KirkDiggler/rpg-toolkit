@@ -610,10 +610,14 @@ type ConditionAppliedEvent struct {
 // that its condition ended; what a keeper does about that — drop it from the
 // list, mark the sheet dirty — is the keeper's rule about its own sheet.
 type ConditionRemovedEvent struct {
-	MemberID     string // whose sheet carried the condition that ended
-	ConditionRef string // which condition ended, as the ref its Ref() returns
-	SourceID     string // exact source qualifier; empty names only a condition with none
-	Reason       string // why, for a log that wants to say so
+	// ApplicationID identifies the ended linked invocation separately from its
+	// reusable replacement address. Linked transport always supplies it; empty
+	// is an unversioned exact-address fact from an existing current publisher.
+	ApplicationID string
+	MemberID      string // whose sheet carried the condition that ended
+	ConditionRef  string // which condition ended, as the ref its Ref() returns
+	SourceID      string // exact source qualifier; empty names only a condition with none
+	Reason        string // why, for a log that wants to say so
 }
 
 // Address returns the removal's exact three-field condition identity.

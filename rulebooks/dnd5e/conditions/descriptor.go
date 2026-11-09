@@ -71,6 +71,8 @@ type descriptor struct {
 
 	// acceptsOrigin declares the current explicit-provenance creation contract.
 	acceptsOrigin bool
+	// linked declares the current application-aware construction/codec contract.
+	linked bool
 
 	// load restores a stored blob. Required.
 	load func(json.RawMessage) (dnd5eEvents.ConditionBehavior, error)
