@@ -786,14 +786,15 @@ type AxialPointData struct {
 // with no elevation), so absence and zero have to be told apart by the shape.
 // Openings omit when there are none, which is the same fact as an absent list.
 type StructuralWallData struct {
-	ID        string                  `json:"id"`
-	Ref       string                  `json:"ref"`
-	From      PositionData            `json:"from"`
-	To        PositionData            `json:"to"`
-	Height    float64                 `json:"height"`
-	Thickness float64                 `json:"thickness"`
-	Elevation float64                 `json:"elevation"`
-	Openings  []StructuralOpeningData `json:"openings,omitempty"`
+	ID                string                  `json:"id"`
+	Ref               string                  `json:"ref"`
+	From              PositionData            `json:"from"`
+	To                PositionData            `json:"to"`
+	Height            float64                 `json:"height"`
+	Thickness         float64                 `json:"thickness"`
+	Elevation         float64                 `json:"elevation"`
+	Openings          []StructuralOpeningData `json:"openings,omitempty"`
+	MaterialOverrides []MaterialOverrideData  `json:"material_overrides,omitempty"`
 }
 
 // StructuralOpeningData is the persistent representation of a
@@ -2677,13 +2678,14 @@ func fieldDataFrom(f *field) FieldData {
 		for i := range f.structuralWalls {
 			w := &f.structuralWalls[i]
 			swd := StructuralWallData{
-				ID:        w.id,
-				Ref:       w.ref,
-				From:      PositionData{X: w.from.X, Y: w.from.Y},
-				To:        PositionData{X: w.to.X, Y: w.to.Y},
-				Height:    w.height,
-				Thickness: w.thickness,
-				Elevation: w.elevation,
+				ID:                w.id,
+				Ref:               w.ref,
+				From:              PositionData{X: w.from.X, Y: w.from.Y},
+				To:                PositionData{X: w.to.X, Y: w.to.Y},
+				Height:            w.height,
+				Thickness:         w.thickness,
+				Elevation:         w.elevation,
+				MaterialOverrides: materialOverridesData(w.materialOverrides),
 			}
 			for j := range w.openings {
 				o := &w.openings[j]
@@ -3920,13 +3922,14 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 
 	for _, swd := range fd.StructuralWalls {
 		w := StructuralWallInput{
-			ID:        swd.ID,
-			Ref:       swd.Ref,
-			From:      spatial.Point{X: swd.From.X, Y: swd.From.Y},
-			To:        spatial.Point{X: swd.To.X, Y: swd.To.Y},
-			Height:    swd.Height,
-			Thickness: swd.Thickness,
-			Elevation: swd.Elevation,
+			ID:                swd.ID,
+			Ref:               swd.Ref,
+			From:              spatial.Point{X: swd.From.X, Y: swd.From.Y},
+			To:                spatial.Point{X: swd.To.X, Y: swd.To.Y},
+			Height:            swd.Height,
+			Thickness:         swd.Thickness,
+			Elevation:         swd.Elevation,
+			MaterialOverrides: materialOverridesFromData(swd.MaterialOverrides),
 		}
 		for _, sod := range swd.Openings {
 			o := StructuralOpeningInput{ID: sod.ID, Position: sod.Position, Width: sod.Width}

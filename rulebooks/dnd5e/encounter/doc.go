@@ -292,6 +292,11 @@
 // Definitions and captured observations persist with the encounter. No profile
 // or runtime source-document fetch supplies a second answer. Opening-attached
 // doors remain exclusively in the structural layout channel.
+// MaterialOverrides carry nonblank surface/material identities with that same
+// captured owner. They never resolve resources or define mechanical substance.
+// All input, data and projection lists are detached; an absent list retains
+// original authored appearance. Structural walls carry the same opaque choices
+// only when their existing permitted-identity projection supplies the wall.
 //
 // # Structural walls and their permitted cuts (rpg-project#169)
 //

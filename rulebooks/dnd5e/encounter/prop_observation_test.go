@@ -105,7 +105,7 @@ func (s *PropObservationSuite) TestFootprintMemoryKeepsItsShapeAndNeedsCompleteE
 	box := placed("b", coveredBox(12, centreOf(cellAt(4, 1))), false, false)
 	box.Holdable = true
 	field.Placed = []encounter.PlacedPropInput{box}
-	field.PropPresentations = []encounter.PropPresentation{{ID: "b", Ref: "test:props:chest", Origin: box.Placement.Origin, HeightScale: 1.25, Elevation: 2}}
+	field.PropPresentations = []encounter.PropPresentation{{ID: "b", Ref: "test:props:chest", Origin: box.Placement.Origin, HeightScale: 1.25, Elevation: 2, MaterialOverrides: []encounter.MaterialOverride{{SurfaceID: "atlas", MaterialRef: "captured-look"}}}}
 	var err error
 	s.enc, err = encounter.NewEncounter(&encounter.SetupInput{
 		Field:   field,
@@ -132,6 +132,10 @@ func (s *PropObservationSuite) TestFootprintMemoryKeepsItsShapeAndNeedsCompleteE
 	s.Require().NotNil(before.Presentation)
 	s.Equal(box.Placement.Origin, before.Presentation.Origin)
 	s.Equal(1.25, before.Presentation.HeightScale)
+	s.Require().Equal([]encounter.MaterialOverride{{SurfaceID: "atlas", MaterialRef: "captured-look"}}, before.Presentation.MaterialOverrides)
+	before.Presentation.MaterialOverrides[0].MaterialRef = "caller-mutation"
+	s.Equal("captured-look", s.prop(propObserver).Presentation.MaterialOverrides[0].MaterialRef, "sighting copy must be detached")
+	before.Presentation.MaterialOverrides[0].MaterialRef = "captured-look"
 	s.Greater(len(before.Placed.Cells), 1)
 	s.Equal(box.Placement, before.Placed.Placement)
 	s.withdraw()

@@ -223,6 +223,9 @@ type AtlasStructuralWall struct {
 	// canonical feet ([StructuralWallInput]).
 	Height, Thickness, Elevation float64
 
+	// MaterialOverrides are detached captured choices for this permitted wall.
+	MaterialOverrides []MaterialOverride
+
 	// FootprintCells is every floor cell the wall's presence footprint
 	// overlaps by positive area — the same support that decides whether the
 	// wall is presented, so a presented wall's list is never empty — in order

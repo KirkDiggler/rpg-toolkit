@@ -68,6 +68,9 @@ type StructuralWallInput struct {
 	// authoring dialect is where a catalog membership is refused.
 	Ref string
 
+	// MaterialOverrides are captured opaque visual choices, never blocker facts.
+	MaterialOverrides []MaterialOverride
+
 	// From and To are the wall's two ends in canonical feet. REQUIRED finite,
 	// representable and distinct: the line must have a positive length.
 	From, To spatial.Point
@@ -146,13 +149,14 @@ type StructuralDoorBindingInput struct {
 // structuralWall is one compiled structural wall: the input facts, deep-copied
 // so a caller mutating the input it handed in cannot reach internal state.
 type structuralWall struct {
-	id        PropID
-	ref       string
-	from, to  spatial.Point
-	height    float64
-	thickness float64
-	elevation float64
-	openings  []structuralOpening
+	id                PropID
+	ref               string
+	from, to          spatial.Point
+	height            float64
+	thickness         float64
+	elevation         float64
+	openings          []structuralOpening
+	materialOverrides []MaterialOverride
 }
 
 // structuralOpening is one compiled opening: its own facts and its optional
@@ -237,15 +241,19 @@ func structuralWallsFrom(f *field, in []StructuralWallInput, doors []DoorInput) 
 		if err != nil {
 			return nil, err
 		}
+		if err := validateMaterialOverrides(w.MaterialOverrides); err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
+		}
 		out[i] = structuralWall{
-			id:        w.ID,
-			ref:       w.Ref,
-			from:      w.From,
-			to:        w.To,
-			height:    w.Height,
-			thickness: w.Thickness,
-			elevation: w.Elevation,
-			openings:  openings,
+			id:                w.ID,
+			ref:               w.Ref,
+			from:              w.From,
+			to:                w.To,
+			height:            w.Height,
+			thickness:         w.Thickness,
+			elevation:         w.Elevation,
+			openings:          openings,
+			materialOverrides: cloneMaterialOverrides(w.MaterialOverrides),
 		}
 	}
 

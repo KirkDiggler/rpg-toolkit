@@ -893,10 +893,11 @@ type RoomWallDoor struct {
 // in a catalog is the codec that owns that catalog (the web's) — not this
 // engine's.
 type RoomWallAppearance struct {
-	AssetRef  string  `yaml:"assetRef" json:"assetRef"`
-	Height    float64 `yaml:"height" json:"height"`
-	Thickness float64 `yaml:"thickness" json:"thickness"`
-	Elevation float64 `yaml:"elevation" json:"elevation"`
+	MaterialOverrides []RoomMaterialOverride `yaml:"materialOverrides,omitempty" json:"materialOverrides,omitempty"`
+	AssetRef          string                 `yaml:"assetRef" json:"assetRef"`
+	Height            float64                `yaml:"height" json:"height"`
+	Thickness         float64                `yaml:"thickness" json:"thickness"`
+	Elevation         float64                `yaml:"elevation" json:"elevation"`
 }
 
 // RoomRegion is one authored place on the site's floor (rpg-project#725): an
