@@ -334,6 +334,20 @@ type AtlasExit struct {
 	At spatial.Position `json:"at"`
 }
 
+// RegionGround is captured appearance, never a movement or elevation rule.
+// Empty BaseRef retains the existing default; unavailable explicit refs are errors.
+type RegionGround struct {
+	BaseRef string        `json:"baseRef,omitempty"`
+	Paint   []GroundPaint `json:"paint,omitempty"`
+}
+
+// GroundPaint explicitly names an appearance for supplied absolute region cells.
+// Partial discovery carries only the cells permitted by the encounter.
+type GroundPaint struct {
+	Ref   string             `json:"ref"`
+	Cells []spatial.Position `json:"cells"`
+}
+
 // AtlasRegion is one named set of cells with the world facts it carries.
 type AtlasRegion struct {
 	// ID is the region's identifier.
@@ -352,6 +366,9 @@ type AtlasRegion struct {
 
 	// Lighting is the region's light level.
 	Lighting Lighting `json:"lighting"`
+
+	// Ground is absent when no appearance was authored. Paint is limited to Cells.
+	Ground *RegionGround `json:"ground,omitempty"`
 }
 
 // Lighting is an area's light level: the dimmer on top of the archetype.

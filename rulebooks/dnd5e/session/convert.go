@@ -191,9 +191,21 @@ func projectAtlas(in encounter.Atlas) Atlas {
 			Cells:     append([]spatial.Position(nil), r.Cells...),
 			Archetype: r.Archetype,
 			Lighting:  Lighting{Intensity: r.Lighting.Intensity},
+			Ground:    projectRegionGround(r.Ground),
 		})
 	}
 
+	return out
+}
+
+func projectRegionGround(in *encounter.RegionGround) *RegionGround {
+	if in == nil {
+		return nil
+	}
+	out := &RegionGround{BaseRef: in.BaseRef}
+	for _, paint := range in.Paint {
+		out.Paint = append(out.Paint, GroundPaint{Ref: paint.Ref, Cells: append([]spatial.Position(nil), paint.Cells...)})
+	}
 	return out
 }
 
