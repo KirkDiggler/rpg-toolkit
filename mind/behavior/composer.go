@@ -177,6 +177,8 @@ type ObserveInput struct {
 	Event    any
 	Env      any
 	Now      uint64
+	// Trace requests one-pass evaluation and commit explanations.
+	Trace bool
 }
 
 // InstanceStep identifies one fired machine transition committed by a verb.
@@ -191,6 +193,8 @@ type InstanceStep struct {
 // ToData after successful verbs rather than treating Steps as a dirty flag.
 type ObserveOutput struct {
 	Steps []InstanceStep
+	// Outcomes are present only when tracing was requested.
+	Outcomes []InstanceOutcome
 }
 
 // Observe steps the addressed instance, or all instances for a broadcast,
@@ -211,8 +215,11 @@ func (c *Composer) Observe(in *ObserveInput) (*ObserveOutput, error) {
 		}
 	}
 	out := &ObserveOutput{}
-	for i, proposal := range proposals {
-		c.commit(i, proposal, &out.Steps)
+	for i := range proposals {
+		c.commit(i, &proposals[i], &out.Steps)
+	}
+	if in.Trace {
+		out.Outcomes = c.instanceOutcomes(proposals)
 	}
 	return out, nil
 }
@@ -228,6 +235,8 @@ type DecideInput struct {
 	Facts  Facts
 	Temper Temper
 	Die    Die
+	// Trace requests one-pass evaluation and commit explanations.
+	Trace bool
 }
 
 // DecideOutput carries one selected table result and committed transitions.
@@ -240,6 +249,9 @@ type DecideOutput struct {
 	Pick     *PickOutput
 	Steps    []InstanceStep
 	Deferred []string
+	// Outcomes distinguish proposals, selection, commits and nondelivery.
+	// They are absent when tracing was not requested.
+	Outcomes []InstanceOutcome
 }
 
 // Decide previews all machines, selects the first requesting instance, and
@@ -254,7 +266,7 @@ func (c *Composer) Decide(ctx context.Context, in *DecideInput) (*DecideOutput, 
 	if in == nil {
 		return nil, ErrNilInput
 	}
-	proposals, err := c.preview(&ObserveInput{On: in.On, Event: in.Event, Env: in.Env, Now: in.Now})
+	proposals, err := c.preview(&ObserveInput{On: in.On, Event: in.Event, Env: in.Env, Now: in.Now, Trace: in.Trace})
 	if err != nil {
 		return nil, err
 	}
@@ -294,21 +306,29 @@ func (c *Composer) Decide(ctx context.Context, in *DecideInput) (*DecideOutput, 
 			return nil, fmt.Errorf("instance %q result: %w", instance.spec.ID, err)
 		}
 		out.Instance, out.Pick = instance.spec.ID, &owned
+		proposals[selected].selected = true
 	}
-	for i, proposal := range proposals {
-		if proposal.pick != "" && (i != selected || out.Pick.Entry == -1) {
+	for i := range proposals {
+		if proposals[i].pick != "" && (i != selected || out.Pick.Entry == -1) {
 			continue
 		}
-		c.commit(i, proposal, &out.Steps)
+		c.commit(i, &proposals[i], &out.Steps)
+	}
+	if in.Trace {
+		out.Outcomes = c.instanceOutcomes(proposals)
 	}
 	return out, nil
 }
 
 type compositionProposal struct {
-	touched bool
-	blob    machine.Blob
-	step    machine.Stepped
-	pick    AnswerKey
+	touched   bool
+	committed bool
+	selected  bool
+	skipped   uint8
+	blob      machine.Blob
+	step      machine.Stepped
+	pick      AnswerKey
+	traced    *machine.TraceStepOutput
 }
 
 func (c *Composer) preview(in *ObserveInput) ([]compositionProposal, error) {
@@ -324,20 +344,38 @@ func (c *Composer) preview(in *ObserveInput) ([]compositionProposal, error) {
 		first, limit = index, index+1
 	}
 	out := make([]compositionProposal, len(c.instances))
+	if in.Trace && in.Instance != "" {
+		for i := range out {
+			if i < first || i >= limit {
+				out[i].skipped = traceNotAddressed
+			}
+		}
+	}
 	for i := first; i < limit; i++ {
 		instance := &c.instances[i]
 		// The actor may be due because a different instance is awake. A timed
 		// delivery does not spend this instance's future wake or continuation.
 		// Non-timed observations remain deliverable to sleeping instances.
 		if c.beats[in.On].Timed && instance.blob.WakeAt != nil && in.Now < *instance.blob.WakeAt {
+			out[i].skipped = traceSleeping
 			continue
 		}
 		blob := cloneCompositionBlob(instance.blob)
-		step, err := instance.program.Step(&blob, in.On, in.Event, in.Env, in.Now)
+		var step machine.Stepped
+		var traced *machine.TraceStepOutput
+		var err error
+		if in.Trace {
+			traced, err = instance.program.TraceStep(&machine.TraceStepInput{Blob: &blob, On: in.On, Event: in.Event, Env: in.Env, Now: in.Now})
+			if err == nil {
+				step = traced.Step
+			}
+		} else {
+			step, err = instance.program.Step(&blob, in.On, in.Event, in.Env, in.Now)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("instance %q: %w", instance.spec.ID, err)
 		}
-		out[i] = compositionProposal{touched: true, blob: blob, step: step}
+		out[i] = compositionProposal{touched: true, blob: blob, step: step, traced: traced}
 		for _, act := range step.Acts {
 			if act.Pick != "" {
 				out[i].pick = AnswerKey(act.Pick)
@@ -347,11 +385,12 @@ func (c *Composer) preview(in *ObserveInput) ([]compositionProposal, error) {
 	return out, nil
 }
 
-func (c *Composer) commit(i int, proposal compositionProposal, steps *[]InstanceStep) {
+func (c *Composer) commit(i int, proposal *compositionProposal, steps *[]InstanceStep) {
 	if !proposal.touched {
 		return
 	}
 	c.instances[i].blob = proposal.blob
+	proposal.committed = true
 	if proposal.step.Fired {
 		*steps = append(*steps, InstanceStep{ID: c.instances[i].spec.ID, Step: proposal.step})
 	}

@@ -104,6 +104,71 @@ func keepDocument(hexes int) (string, func() ([]byte, error)) {
 	}
 }
 
+// smallKeepHexes is [smallKeepPlan]'s whole floor at scale one.
+const smallKeepHexes = 1230
+
+// smallKeepPlan is the benchmark keep's own plan at the smallest size its
+// doors allow (rpg-project#909): the same 29 rooms on the same sides, the
+// courtyard, both grounds and all 36 doors, so every footprint door, every
+// wall a door is cut in and every room kind is the 10k keep's. Every room is
+// 5 hexes wide and 3 deep: keepgen cuts a door only in a wall at least 4 long
+// and 4 hexes across measure 3.46, while 3 rows measure enough. The hidden
+// stash and the tower are 3 wide, since their doors are in the walls they
+// share with their neighbours along the side, which keeps the north and
+// south sides one length; the larder is 6 deep, so the east side fills the
+// west side's rows; the grounds are 3 across. 1,230 hexes against the
+// keep's 10,000: fewer cells, the same keep.
+func smallKeepPlan() *keepgen.Plan {
+	p := keepgen.DefaultPlan()
+	for i := range p.Rooms {
+		r := &p.Rooms[i]
+		r.Width, r.Depth = 5, 3
+		switch r.ID {
+		case "hidden-stash", "tower":
+			r.Width = 3
+		case "larder":
+			r.Depth = 6
+		}
+	}
+	p.Grounds.West.Width, p.Grounds.South.Depth = 3, 3
+
+	return p
+}
+
+// smallKeep compiles [smallKeepPlan] once per binary, the way [garrisonKeep]
+// and [openGarrisonKeep] compile the 10k one: seed 1 and the default
+// densities. With garrison it is the observers' keep: four monsters per 100
+// hexes rather than one, every one given orders, posts listening and one
+// walking a patrol. The 10k garrison is 99 of its 100 monsters with 20
+// walking, and its open grounds put creatures one cell past sight of a door;
+// in 1,230 hexes the denser garrison is what puts them there, and a patrol's
+// route rarely fits a room 3 deep, so one walks.
+func smallKeep(tb testing.TB, garrison bool) dungeonspec.Compiled {
+	tb.Helper()
+	key := "small-keep"
+	if garrison {
+		key += "-garrison"
+	}
+	return compiledOnce(tb, key, func() ([]byte, error) {
+		opts := keepgen.DefaultOptions()
+		opts.Hexes, opts.Seed, opts.Key = smallKeepHexes, 1, "small-keep"
+		plan := smallKeepPlan()
+		if garrison {
+			opts.MonsterDensity = 4
+			_, report, err := keepgen.Generate(plan, opts)
+			if err != nil {
+				return nil, err
+			}
+			opts.Garrison, opts.Patrols, opts.PostsListen = report.Monsters, 1, true
+		}
+		raw, report, err := keepgen.Generate(plan, opts)
+		if err == nil && report.Hexes != smallKeepHexes {
+			err = fmt.Errorf("the small keep is %d hexes, not %d", report.Hexes, smallKeepHexes)
+		}
+		return raw, err
+	})
+}
+
 // keepPlayers is the party's member ids, best seat first.
 var keepPlayers = []encounter.MemberID{"p0", "p1", "p2", "p3"}
 
