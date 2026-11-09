@@ -35,6 +35,7 @@ Slice [rpg-project#904](https://github.com/KirkDiggler/rpg-project/issues/904), 
 
 ## Found
 
+- Native adoption exposes an open lifecycle boundary: Bane can persist earlier delivery while a later target waits for an answer, but the root binding requires sealed membership. R11 returns only this decision; neither bypassing validation nor delaying delivered effects is authorized — [R11](https://github.com/KirkDiggler/rpg-toolkit/pull/2323#issuecomment-6752508135).
 - The transport still wrote arbitrary origin refs into SpellRef. The new generic-source end-report test first failed against the missing neutral fields; it now passes with real non-spell creation, reload, concentration loss and recipient cleanup — [S14](https://github.com/KirkDiggler/rpg-project/issues/904).
 - Strict current cast decoding refuses an obsolete combined concentration field instead of silently dropping upkeep. Clone tests mutate declaration bytes, and frozen round trips preserve the authored grace and maximum — [S14](https://github.com/KirkDiggler/rpg-project/issues/904).
 - Historical concentration loading first succeeds where the new refusal test expects an error, then fails after retirement. Current ConcentrationHeld checks detect multiple claims; Character.Concentration propagates errors instead of converting invalid state to absence — [S14](https://github.com/KirkDiggler/rpg-project/issues/904).

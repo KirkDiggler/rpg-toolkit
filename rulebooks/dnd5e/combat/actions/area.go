@@ -60,8 +60,7 @@ const (
 //
 // Fold the exclusion into the shape and a stored footprint carries a field that
 // is meaningless for half its intended uses, which is the zero value that lies
-// — the same defect [CastConcentration]'s "a pointer rather than a bool"
-// rationale names. Keeping them apart is what leaves the lingering area
+// rather than truthful absence. Keeping them apart leaves the lingering area
 // buildable later without re-cutting this type.
 type Footprint struct {
 	// Shape is the kind of region covered.
