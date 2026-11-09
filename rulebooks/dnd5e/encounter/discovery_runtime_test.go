@@ -175,7 +175,7 @@ func (s *AutomaticDiscoverySuite) TestAudienceExcludesExitedReservedAndNonPlayer
 	s.Empty(s.results(enc, "monster"))
 	s.Empty(s.results(enc, "vendor"))
 	s.True(s.learned(enc, "present"))
-	for _, entry := range enc.ToData().Log.Entries {
+	for _, entry := range recordEntries(s.T(), enc, 1) {
 		var body map[string]any
 		s.Require().NoError(json.Unmarshal(entry.Payload, &body))
 		if body["beat"] == encounter.BeatDiscoveryChecked {
