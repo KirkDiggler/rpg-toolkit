@@ -625,11 +625,21 @@ func validatePlacement(p spatial.FootprintPlacement) error {
 // update — the exact duality [DoorEdge] has no flags in order to avoid.
 func (f *field) attachDoorFootprints(doors []*doorRecord) {
 	f.doorFootprints = nil
+	// New records, new readings: the kept slice and its mask are the old
+	// records', and a shallow copy of the field ([field.partitionCanvas])
+	// must never find the live field's mask through them.
+	f.blockingDoors, f.blockingMask = nil, nil
+	// New door content, new openings, built here and never written after
+	// ([field.doorOpenings]): a fresh map, so a shallow copy attaching its
+	// own doors never touches the map the field it was copied from holds.
+	openings := make(map[DoorID][]DoorEdge, len(doors))
 	for _, d := range doors {
 		if d.placement != nil {
 			f.doorFootprints = append(f.doorFootprints, d)
 		}
+		openings[d.id] = f.measureDoorOpening(d)
 	}
+	f.doorOpenings = openings
 }
 
 // blockingDoorFootprints is every footprint door whose state blocks right
@@ -640,12 +650,32 @@ func (f *field) blockingDoorFootprints() []*doorRecord {
 	if len(f.doorFootprints) == 0 {
 		return nil
 	}
+	if len(f.blockingMask) == len(f.doorFootprints) {
+		same := true
+		for i, d := range f.doorFootprints {
+			if d.blocks() != f.blockingMask[i] {
+				same = false
+				break
+			}
+		}
+		if same {
+			return f.blockingDoors
+		}
+	}
+	// A FRESH MASK ON EVERY REBUILD, NEVER A WRITE INTO THE OLD ONE: a
+	// shallow copy of the field shares the old array, and a copy that
+	// rebuilt in place would corrupt the live field's reading.
+	mask := make([]bool, len(f.doorFootprints))
 	out := make([]*doorRecord, 0, len(f.doorFootprints))
-	for _, d := range f.doorFootprints {
-		if d.blocks() {
+	for i, d := range f.doorFootprints {
+		mask[i] = d.blocks()
+		if mask[i] {
 			out = append(out, d)
 		}
 	}
+	// SHARED, NOT COPIED: every caller ranges over the answer and keeps
+	// nothing, so the same slice serves until a door's reading changes.
+	f.blockingDoors, f.blockingMask = out, mask
 
 	return out
 }
@@ -746,6 +776,32 @@ func (f *field) doorAcrossCrossing(from, to spatial.Position) *doorRecord {
 	return nil
 }
 
+// doorOpening is a door's opening, normalized: an edge door's edges, a
+// footprint door's crossings ([field.doorCrossings]). Read from
+// [field.doorOpenings], built when the doors attached; a door that was never
+// attached is measured and answered, and nothing is written.
+func (f *field) doorOpening(d *doorRecord) []DoorEdge {
+	if out, ok := f.doorOpenings[d.id]; ok {
+		return out
+	}
+
+	return f.measureDoorOpening(d)
+}
+
+// measureDoorOpening is [field.doorOpening] computed: the door's edges, then
+// its crossings, each normalized.
+func (f *field) measureDoorOpening(d *doorRecord) []DoorEdge {
+	out := make([]DoorEdge, 0, len(d.edges))
+	for _, edge := range d.edges {
+		out = append(out, normalizeDoorEdge(edge))
+	}
+	for _, crossing := range f.doorCrossings(d) {
+		out = append(out, normalizeDoorEdge(DoorEdge{From: crossing[0], To: crossing[1]}))
+	}
+
+	return out
+}
+
 // doorCrossings is every crossing between two adjacent floor cells that a
 // footprint door's rectangle lies across, whatever the door's state: the
 // trace [field.doorAcrossCrossing] asks of a shut door before a step, asked
@@ -755,15 +811,34 @@ func (f *field) doorAcrossCrossing(from, to spatial.Position) *doorRecord {
 //
 // GEOMETRY, NOT STATE: an open door still stands between the two rooms it
 // joins, which is what the hearing graph ([Encounter.links]) needs — whether
-// it is shut is read live, per sound. The bounds pre-filter skips every
-// crossing the rectangle cannot reach, so this is one trace per crossing
-// near the door, once per encounter.
+// it is shut is read live, per sound. Read through [field.doorOpening],
+// which holds the answer as site data.
+//
+// THE CELLS NEAR THE DOOR, NOT THE FLOOR (rpg-project#879 S9, F17): a
+// crossing the rectangle lies across is one cell long, so its earlier cell's
+// centre is within a cell of the rectangle's reach. The field's bucketed
+// centres ([cellCentres.within]) list a superset of those cells in floor
+// order, and the reach pre-filter and the trace below decide exactly as they
+// did over the whole floor. A field with no buckets (built by hand) or a
+// door whose reach cannot be measured walks the whole floor.
 func (f *field) doorCrossings(d *doorRecord) [][2]spatial.Position {
 	if d.placement == nil {
 		return nil
 	}
+	cells := f.cells
+	if f.centres != nil && d.reach.ok {
+		o, pad := d.placement.Origin, 2*float64(placedPlaneCellWidth)
+		near := f.centres.within(
+			spatial.Point{X: o.X + d.reach.minX - pad, Y: o.Y + d.reach.minY - pad},
+			spatial.Point{X: o.X + d.reach.maxX + pad, Y: o.Y + d.reach.maxY + pad},
+		)
+		cells = make([]spatial.Position, len(near))
+		for i, k := range near {
+			cells[i] = f.cells[k]
+		}
+	}
 	var out [][2]spatial.Position
-	for _, cell := range f.cells {
+	for _, cell := range cells {
 		a := f.plane.CellCentre(cell)
 		for _, next := range adjacencyGrid.GetNeighbors(cell) {
 			if !cellBefore(cell, next) || !f.isFloor(next) {

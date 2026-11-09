@@ -20,9 +20,9 @@ type actionBearingSuite struct{ suite.Suite }
 
 func TestActionBearingSuite(t *testing.T) { suite.Run(t, new(actionBearingSuite)) }
 
-func (s *actionBearingSuite) TestAnsweringLoadersImplementActionAssessor() {
+func (s *actionBearingSuite) TestAnsweringLoadersImplementAnInformationCapability() {
 	fixtures := map[string]dnd5eEvents.ConditionBehavior{
-		refs.Conditions.Raging().String():      &RagingCondition{CharacterID: "barb"},
+		refs.Conditions.Raging().String():      composedRageForTest("barb"),
 		refs.Conditions.SneakAttack().String(): NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue"}),
 		refs.Conditions.Inspired().String():    NewInspiredCondition("rogue", "bard", ""),
 
@@ -73,8 +73,9 @@ func (s *actionBearingSuite) TestAnsweringLoadersImplementActionAssessor() {
 		loaded, err := LoadJSON(data)
 		s.Require().NoError(err, ref)
 		s.Equal(ref, loaded.Ref().String())
-		_, answers := loaded.(contributions.ActionAssessor)
-		s.True(answers, "%s is registered as answering but the loaded condition is not an ActionAssessor", ref)
+		_, single := loaded.(contributions.ActionAssessor)
+		_, plural := loaded.(contributions.ActionEffectsAssessor)
+		s.True(single || plural, "%s is registered as answering but has no information capability", ref)
 	}
 }
 

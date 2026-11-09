@@ -66,6 +66,17 @@ type ActionAssessor interface {
 	AssessAction(*AssessActionInput) (*AssessActionOutput, error)
 }
 
+// AssessEffectsOutput carries distinct information rows from one composition.
+// Rows do not grant actions, settle advantage or mutate the owning condition.
+type AssessEffectsOutput struct{ Effects []Effect }
+
+// ActionEffectsAssessor is the plural information capability for a composition.
+// It follows ActionAssessor's read-only frame contract while keeping each output's
+// domain and source visible. Legacy single-answer conditions need not implement it.
+type ActionEffectsAssessor interface {
+	AssessActionEffects(*AssessActionInput) (*AssessEffectsOutput, error)
+}
+
 // EffectState is how one effect bears on an action, as the player sees it.
 type EffectState string
 

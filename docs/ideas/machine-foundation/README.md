@@ -77,7 +77,7 @@ flowchart TD
     Consequence --> Knowledge
     Consequence --> Record
     Selection --> Record
-    subgraph effects[examples/effects - separate consumer]
+    subgraph effects[mechanics/effects - separate consumer]
         Bus[Typed bus inputs] --> OtherMachine[effects/machine: current implementation]
         OtherMachine --> Composer[effects composer: active chain contributions]
     end
@@ -99,7 +99,7 @@ have their encounter journal path. Their existing owners remain authoritative.
 | `mind/behavior` and its encounter binding | Eligible choices, authored weights/temperament, and interpretation of the chosen word | `PickInput` → `Pick`; encounter `runPick` / driver path → intents and execution | Keep selection reusable rather than reimplementing the behavior table inside the machine. |
 | Encounter dialogue | Lines offered to a speaker and consequences of a selected line | `OptionsFor` → `[]Option`; `SpeakInput` → `SpeakOutput`; `Option.Requires`, `Success`, `Failure` | Add the relevant target's situation/knowledge to availability without confusing it with the speaker's knowledge. |
 | Encounter composition | Applying spatial, social and group-level consequences through their owners | `Stepped.Acts` → `runPick`; `MemberInput.Posts` binds a state's name to a `Post` | Coordinate admission, relocation and communication; their exact new contracts remain open. |
-| `examples/effects/machine` and composer | Effect-instance lifecycle, bus attachment and active contributions | `Machine.Apply` / `Remove`, `OnTransition` / `OnChanged`; composer attaches state outputs | Test whether a future bus-free core can serve these semantics without moving the bus or chains into it. |
+| `mechanics/effects/machine` and composer | Effect-instance lifecycle, bus attachment and active contributions | `Machine.Apply` / `Remove`, `OnTransition` / `OnChanged`; composer attaches state outputs | Test whether a future bus-free core can serve these semantics without moving the bus or chains into it. |
 | Host and presentation seams | Persistence orchestration and displaying returned results | `EncounterData`; `session.StateChange{Machine: *MachineChange}` | Preserve state/history and explain changes without deriving NPC decisions in the client. |
 
 ### Refusals to preserve
@@ -312,7 +312,7 @@ contribution cleanup. It should not require a dependency from mind to combat.
 | Behavior selection and spoken answers | [`mind/behavior/doc.go`](../../../mind/behavior/doc.go), [`encounter/answer.go`](../../../rulebooks/dnd5e/encounter/answer.go) |
 | Dialogue offers and execution | [`encounter/option.go`](../../../rulebooks/dnd5e/encounter/option.go) |
 | State-change explanation | [`session/act_bodies.go`](../../../rulebooks/dnd5e/session/act_bodies.go), [`act_family.go`](../../../rulebooks/dnd5e/session/act_family.go) |
-| Effects comparison | [`examples/effects/README.md`](../../../examples/effects/README.md), [`machine/machine.go`](../../../examples/effects/machine/machine.go), [`composed.go`](../../../examples/effects/composed.go) |
+| Effects comparison | [`mechanics/effects/README.md`](../../../mechanics/effects/README.md), [`machine/machine.go`](../../../mechanics/effects/machine/machine.go), [`composed.go`](../../../mechanics/effects/composed.go) |
 
 The related [mind vocabulary review](https://github.com/KirkDiggler/rpg-project/issues/700)
 keeps rulebook words as supplied inputs. The existing

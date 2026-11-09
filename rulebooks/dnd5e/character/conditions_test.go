@@ -19,6 +19,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/fightingstyles"
@@ -122,8 +123,7 @@ func (s *CharacterConditionsTestSuite) TestCharacterReceivesRageCondition() {
 	initialConds := char.GetConditions()
 	_, isUnarmoredDefense := conditionOfType[*conditions.UnarmoredDefenseCondition](initialConds)
 	s.True(isUnarmoredDefense, "Barbarian should start with the Unarmored Defense condition")
-	_, alreadyRaging := conditionOfType[*conditions.RagingCondition](initialConds)
-	s.False(alreadyRaging, "Barbarian should not start raging")
+	s.Zero(heldCount(initialConds, refs.Conditions.Raging().String()), "Barbarian should not start raging")
 
 	// Get rage feature
 	rageFeature := char.GetFeature("rage")
@@ -139,16 +139,18 @@ func (s *CharacterConditionsTestSuite) TestCharacterReceivesRageCondition() {
 	s.True(keptUnarmoredDefense, "Unarmored Defense stays after rage")
 
 	// Find and verify the raging condition
-	var ragingCond *conditions.RagingCondition
+	var ragingCond dnd5eEvents.ConditionBehavior
 	for _, c := range conds {
-		if rc, ok := c.(*conditions.RagingCondition); ok {
-			ragingCond = rc
+		if c.Ref().String() == refs.Conditions.Raging().String() {
+			ragingCond = c
 			break
 		}
 	}
 	s.Require().NotNil(ragingCond, "Should have raging condition")
-	s.Equal("char-1", ragingCond.CharacterID)
-	s.Equal("rage", ragingCond.Source)
+	saved := composedCharacterRageData(&s.Suite, ragingCond)
+	s.Equal("char-1", saved.MemberID)
+	s.Equal("char-1", saved.Origin.EntityID)
+	s.Equal(*refs.Features.Rage(), saved.Origin.Ref)
 }
 
 func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterConditions() {
@@ -205,10 +207,7 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterConditi
 	differentChar := &DummyEntity{id: "char-2"}
 
 	// Create a raging condition for the different character
-	ragingCond := &conditions.RagingCondition{
-		CharacterID: "char-2",
-		Source:      "test",
-	}
+	ragingCond := composedCharacterRage(&s.Suite, "char-2")
 
 	topic := dnd5eEvents.ConditionAppliedTopic.On(s.bus)
 	err = topic.Publish(s.ctx, dnd5eEvents.ConditionAppliedEvent{
@@ -225,8 +224,7 @@ func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterConditi
 
 	// Verify no raging condition was added
 	for _, cond := range char.GetConditions() {
-		_, isRaging := cond.(*conditions.RagingCondition)
-		s.False(isRaging, "Character should NOT have raging condition from another character")
+		s.NotEqual(refs.Conditions.Raging().String(), cond.Ref().String(), "Character should NOT have raging condition from another character")
 	}
 }
 
@@ -304,8 +302,7 @@ func (s *CharacterConditionsTestSuite) TestCharacterRemovesExpiredCondition() {
 	remainingConds := char.GetConditions()
 	_, isUnarmoredDefense := conditionOfType[*conditions.UnarmoredDefenseCondition](remainingConds)
 	s.True(isUnarmoredDefense, "Unarmored Defense remains after rage expires")
-	_, stillRaging := conditionOfType[*conditions.RagingCondition](remainingConds)
-	s.False(stillRaging, "Raging is gone after rage expires")
+	s.Zero(heldCount(remainingConds, refs.Conditions.Raging().String()), "Raging is gone after rage expires")
 }
 
 func (s *CharacterConditionsTestSuite) TestCharacterIgnoresOtherCharacterRemovals() {
@@ -444,15 +441,16 @@ func (s *CharacterConditionsTestSuite) TestMonkReceivesMartialArtsCondition() {
 }
 
 func (s *CharacterConditionsTestSuite) TestCharacterConditionRoundTrip() {
-	// Build a RagingCondition, serialize it to JSON
-	ragingCond := &conditions.RagingCondition{
-		CharacterID: "char-rt",
-		Source:      "rage",
-		TurnsActive: 3,
+	// Produce real runtime progress, then persist the current composed shape.
+	ragingCond := composedCharacterRage(&s.Suite, "char-rt")
+	s.Require().NoError(ragingCond.Apply(s.ctx, s.bus))
+	for round := 1; round <= 3; round++ {
+		s.Require().NoError(dnd5eEvents.DamageTakenTopic.On(s.bus).Publish(s.ctx, &dnd5eEvents.DamageTakenEvent{MemberID: "char-rt", Amount: 1, DamageType: damage.Slashing}))
+		s.Require().NoError(dnd5eEvents.TurnEndTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.TurnEndEvent{SubjectID: "char-rt", Round: round}))
 	}
-
 	rawJSON, err := ragingCond.ToJSON()
 	s.Require().NoError(err)
+	s.Require().NoError(ragingCond.Remove(s.ctx, s.bus))
 
 	// Build a minimal character Data with the serialized condition
 	data := &Data{
@@ -482,11 +480,18 @@ func (s *CharacterConditionsTestSuite) TestCharacterConditionRoundTrip() {
 	s.Require().NotNil(char)
 
 	// Verify the character has exactly one condition and it is applied
-	loadedCond, ok := conditionOfType[*conditions.RagingCondition](char.GetConditions())
-	s.Require().True(ok, "The condition loaded from data should be a RagingCondition")
+	var loadedCond dnd5eEvents.ConditionBehavior
+	for _, condition := range char.GetConditions() {
+		if condition.Ref().String() == refs.Conditions.Raging().String() {
+			loadedCond = condition
+			break
+		}
+	}
+	s.Require().NotNil(loadedCond, "The canonical Raging condition must survive loading")
 	s.True(loadedCond.IsApplied(), "Loaded condition should be applied (subscribed to bus)")
-	s.Equal("char-rt", loadedCond.CharacterID)
-	s.Equal(3, loadedCond.TurnsActive)
+	snapshot := composedCharacterRageData(&s.Suite, loadedCond)
+	s.Equal("char-rt", snapshot.MemberID)
+	s.Equal(float64(3), snapshot.Runtime.Bag["turns_active"])
 }
 
 // DummyEntity implements core.Entity for testing
@@ -518,7 +523,7 @@ func conditionOfType[T dnd5eEvents.ConditionBehavior](held []dnd5eEvents.Conditi
 func (s *CharacterConditionsTestSuite) requireUnarmoredDefenseAndRaging(char *Character, msg string) {
 	s.T().Helper()
 	_, unarmoredDefense := conditionOfType[*conditions.UnarmoredDefenseCondition](char.GetConditions())
-	_, raging := conditionOfType[*conditions.RagingCondition](char.GetConditions())
+	raging := heldCount(char.GetConditions(), refs.Conditions.Raging().String()) == 1
 	s.True(unarmoredDefense && raging, msg)
 }
 

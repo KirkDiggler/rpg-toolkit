@@ -5,6 +5,7 @@ package record
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 )
@@ -179,11 +180,18 @@ func (l *Log) Append(in *AppendInput) (*AppendOutput, error) {
 	l.nextSeq++
 	l.last = id
 
-	// Deep copy and normalize audience
+	// Deep copy and normalize audience. An audience identical to the
+	// previous entry's shares its backing slice: entries are immutable and
+	// every read copies out, so the share is never visible, and a keep
+	// whose beats all go to the roster holds the roster once.
 	var aud []core.EntityID
 	if len(in.Audience) > 0 {
-		aud = make([]core.EntityID, len(in.Audience))
-		copy(aud, in.Audience)
+		if n := len(l.entries); n > 0 && slices.Equal(l.entries[n-1].audience, in.Audience) {
+			aud = l.entries[n-1].audience
+		} else {
+			aud = make([]core.EntityID, len(in.Audience))
+			copy(aud, in.Audience)
+		}
 	}
 
 	// Deep copy and normalize tags

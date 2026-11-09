@@ -53,10 +53,13 @@ func stateOf(t *testing.T, enc *encounter.Encounter, id encounter.MemberID) stri
 	t.Helper()
 	for _, m := range enc.ToData().Members {
 		if m.ID == id {
-			if m.Machine == nil {
-				return ""
+			require.NotNil(t, m.Behaviors)
+			for _, instance := range m.Behaviors.Progress.Instances {
+				if instance.ID == m.Behaviors.BodyInstance {
+					return instance.Blob.State
+				}
 			}
-			return m.Machine.State
+			require.FailNow(t, "designated body instance exists")
 		}
 	}
 	require.FailNowf(t, "not in the run", "%s", id)

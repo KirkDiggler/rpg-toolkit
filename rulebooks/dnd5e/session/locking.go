@@ -17,7 +17,16 @@ var ErrBadSessionLock = errors.New("session locker returned no release")
 // Managers sharing storage must share a coordination domain. Implementations
 // must be concurrency-safe, honor cancellation while waiting, and retain
 // exclusion until Release is called, including after the request is canceled.
-// They must not expire a held lock while the operation can still write.
+// They must not expire a held lock while the operation can still write, with
+// one exception: a SESSION lock may expire (a lease in a shared store, which
+// cannot promise otherwise) when the host supplies a
+// [FencedEncounterRepository]. Every write made under a session's guard (the
+// world, the session record, the seats and the sheets of the characters it
+// holds) then rides one fenced save naming the checkpoint version the
+// operation loaded, so a writer whose lease ran out writes nothing and fails
+// closed with [ErrStaleCheckpoint] instead of saving over its successor. A
+// character's own guard (an unseated character's sheet) is not fenced and
+// must not expire while the operation can still write.
 //
 // The SDK calls this before repository access for every public operation with a
 // Session input, including reads and Launch, and releases after the last
@@ -74,6 +83,11 @@ func (m *Manager) acquireSession(ctx context.Context, id string) (func(), error)
 		}
 	}
 	return func() {
+		// What a fenced verb wrote and did not save dies with its guard
+		// (pendingWrites), before another verb can take the guard.
+		if m.pending != nil && id != "" {
+			m.pending.drop(id)
+		}
 		if held != nil {
 			held.Release()
 		}

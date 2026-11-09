@@ -9,6 +9,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
+	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -58,8 +61,26 @@ func twoRoomSealedWall() []encounter.WallInput { return squareSeamWall(9, 10) }
 // on what the table DECIDED, and a shuffled pick would make every assertion
 // depend on a roll nobody is testing. A fixture whose point IS the roll
 // installs its own die.
-func tableDriver() encounter.TableDriver {
-	return encounter.TableDriver{Roller: rollsLowest{}}
+func tableDriver() encounter.BehaviorDriver {
+	return encounter.BehaviorDriver{}
+}
+
+// ordinaryBehavior is explicit fixture data for an ordinary world/fight
+// policy. It contains no binder, picker, progress or execution implementation;
+// NewEncounter consumes the same InstanceSpec an authored producer supplies.
+// Sequence journey tests instead load their complete authored JSON fixtures.
+func ordinaryBehavior(table encounter.Table) *encounter.BehaviorInput {
+	if len(table) == 0 {
+		return nil
+	}
+	return &encounter.BehaviorInput{Instances: []encounter.BoundBehavior{{Instance: behavior.InstanceSpec{
+		ID: "policy", Table: table,
+		Recipe: machine.Recipe{Ref: core.Ref{Module: "test", Type: "behaviors", ID: "ordinary"}, Initial: "ready",
+			States: map[string]machine.State{"ready": {Transitions: []machine.Transition{
+				{On: "time", Do: []machine.Act{{Pick: "time"}}},
+				{On: "turn", Do: []machine.Act{{Pick: "time"}}},
+			}}}},
+	}}}}
 }
 
 // walksTo is the table a fixture gives a creature it wants walking to one

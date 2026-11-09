@@ -1496,6 +1496,58 @@ func (s *MonsterTurnTestSuite) TestAReactionThatDropsTheMoverStopsTheWalk() {
 		"and that is the cell the fatal step was announced from")
 }
 
+// TestAReactionThatDropsTheMoverStopsTheWalkInsideAWakePass (rpg-project#879
+// S3b): the same walk with the encounter marked as inside a wake pass, where
+// one participation assessment is kept. The Mover is a moment standing can
+// change with no intent ending, so the kept assessment is dropped when it
+// returns and the per-cell ask sees the fall. Mutant: a memo cleared only
+// when the intent ends (three cells announced, the mover walks out of the
+// cell it fell in).
+func (s *MonsterTurnTestSuite) TestAReactionThatDropsTheMoverStopsTheWalkInsideAWakePass() {
+	standing := &downList{}
+	mover := &droppingMover{standing: standing, after: 1}
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Canvas:  encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions: []encounter.RegionInput{rectRegion(room1, 0, 0, 10, 10)},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 2}},
+		},
+		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.Capabilities{
+			Sight:      everyoneSeesTheWholeMap{},
+			Equipment:  encounter.UnobservedEquipment{},
+			Conditions: encounter.UnobservedEquipment{},
+			Sheets: sheetFacts{goblin: {SpeedFeet: 30, Actions: []encounter.ActionView{
+				{Ref: testMeleeAction, Name: "Shortsword", RangeFeet: 5, Kind: "melee"},
+			}, Targeting: "closest"}, alice: {}, bob: {}, billy: {}, carol: {}},
+			Participation: standing,
+			Initiative:    orderAsGiven{},
+			Driver: &scriptedDriver{intents: []encounter.TurnIntent{
+				encounter.Move{Path: []spatial.Position{cellAt(5, 2), cellAt(4, 2), cellAt(3, 2)}},
+			}},
+			Actors: encounter.Actors{Striker: passStriker{}, Mover: mover, Announcer: quietAnnouncer{}},
+		},
+	})
+	s.Require().NoError(err)
+
+	enc.ExportedWorldThinking(true)
+	defer enc.ExportedWorldThinking(false)
+	_, err = enc.EndTurn(&encounter.EndTurnInput{Member: alice})
+	s.Require().NoError(err)
+
+	s.Require().Len(mover.calls, 2, "the third cell is never announced: the kept assessment was dropped when the Mover returned")
+	members, merr := enc.Members()
+	s.Require().NoError(merr)
+	for _, m := range members {
+		if m.ID == goblin {
+			s.Equal(cellAt(5, 2), m.Position, "the mover fell in the cell it was leaving")
+		}
+	}
+}
+
 // seenFor finds subject's own SeenMember entry in view.Seen, failing the
 // test if absent.
 func (s *MonsterTurnTestSuite) seenFor(view encounter.MonsterView, subject encounter.MemberID) encounter.SeenMember {

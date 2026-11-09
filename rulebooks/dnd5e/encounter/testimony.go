@@ -170,13 +170,41 @@ type sightWire struct {
 	Heading    *float64        `json:"heading,omitempty"`
 }
 
+// sightField is one key canonical sight testimony may carry, as a bit, so the
+// keys a payload carries are one word rather than a map ([sightFieldSet]).
+type sightField uint16
+
+const (
+	sightFieldState sightField = 1 << iota
+	sightFieldX
+	sightFieldY
+	sightFieldDown
+	sightFieldEquipment
+	sightFieldBlocksMovement
+	sightFieldConditions
+	sightFieldAppearanceRef
+	sightFieldFacing
+	sightFieldHeading
+	sightFieldDefaultActivityRef
+	sightFieldHoldsDoor
+)
+
+// sightFieldSet is the keys one payload carries.
+type sightFieldSet uint16
+
+// has reports whether the payload carried the key.
+func (s sightFieldSet) has(f sightField) bool { return s&sightFieldSet(f) != 0 }
+
 // sightPayloadFields is the complete set of keys canonical sight testimony may
 // carry. It is enumerated rather than inferred so that a key this build does
 // not understand is refused at the door instead of being silently dropped into
 // a testimony that then reads as confident.
-var sightPayloadFields = map[string]struct{}{
-	"state": {}, "x": {}, "y": {}, "down": {}, "equipment": {}, "blocks_movement": {}, "conditions": {}, "appearance_ref": {},
-	"facing": {}, "heading": {}, "default_activity_ref": {}, "holds_door": {},
+var sightPayloadFields = map[string]sightField{
+	"state": sightFieldState, "x": sightFieldX, "y": sightFieldY, "down": sightFieldDown,
+	"equipment": sightFieldEquipment, "blocks_movement": sightFieldBlocksMovement,
+	"conditions": sightFieldConditions, "appearance_ref": sightFieldAppearanceRef,
+	"facing": sightFieldFacing, "heading": sightFieldHeading,
+	"default_activity_ref": sightFieldDefaultActivityRef, "holds_door": sightFieldHoldsDoor,
 }
 
 // EncodeSightTestimony encodes sight testimony in the canonical tagged wire
@@ -327,7 +355,11 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 	if len(payload) == 0 {
 		return SightTestimony{}, false
 	}
-	if !hasStrictSightFields(payload) {
+	// THE KEYS ARE READ ONCE (rpg-project#879 S9, F17): the strict walk
+	// that refuses an unknown or repeated key also says which keys are
+	// present, which is all the struct decode below cannot tell.
+	present, strict := strictSightFields(payload)
+	if !strict {
 		return SightTestimony{}, false
 	}
 
@@ -342,23 +374,19 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 		return SightTestimony{}, false
 	}
 
-	// The wire struct cannot distinguish an omitted key from a zero value, so
-	// inspect the original object for which keys are present.
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(payload, &fields); err != nil {
-		return SightTestimony{}, false
-	}
-	_, xPresent := fields["x"]
-	_, yPresent := fields["y"]
-	_, downPresent := fields["down"]
-	_, equipmentPresent := fields["equipment"]
-	_, blocksPresent := fields["blocks_movement"]
-	_, conditionsPresent := fields["conditions"]
-	_, appearancePresent := fields["appearance_ref"]
-	_, activityPresent := fields["default_activity_ref"]
-	_, facingPresent := fields["facing"]
-	_, headingPresent := fields["heading"]
-	_, holdsPresent := fields["holds_door"]
+	// The wire struct cannot distinguish an omitted key from a zero value;
+	// the strict walk above recorded which keys the object carries.
+	xPresent := present.has(sightFieldX)
+	yPresent := present.has(sightFieldY)
+	downPresent := present.has(sightFieldDown)
+	equipmentPresent := present.has(sightFieldEquipment)
+	blocksPresent := present.has(sightFieldBlocksMovement)
+	conditionsPresent := present.has(sightFieldConditions)
+	appearancePresent := present.has(sightFieldAppearanceRef)
+	activityPresent := present.has(sightFieldDefaultActivityRef)
+	facingPresent := present.has(sightFieldFacing)
+	headingPresent := present.has(sightFieldHeading)
+	holdsPresent := present.has(sightFieldHoldsDoor)
 	// A present key must name a door: "holds_door": "" claims a hold and
 	// names none.
 	if holdsPresent && wire.HoldsDoor == "" {
@@ -430,49 +458,57 @@ func DecodeSightTestimony(payload []byte) (SightTestimony, bool) {
 	}
 }
 
-func hasStrictSightFields(payload []byte) bool {
+// strictSightFields walks a payload's top-level keys once: false for anything
+// but one JSON object whose keys are all canonical, none repeated, and nothing
+// after it; otherwise the set of keys it carries.
+func strictSightFields(payload []byte) (sightFieldSet, bool) {
 	dec := json.NewDecoder(bytes.NewReader(payload))
 	tok, err := dec.Token()
 	if err != nil {
-		return false
+		return 0, false
 	}
 	delim, ok := tok.(json.Delim)
 	if !ok || delim != '{' {
-		return false
+		return 0, false
 	}
 
-	seen := make(map[string]struct{}, len(sightPayloadFields))
+	var seen sightFieldSet
 	for dec.More() {
 		tok, err := dec.Token()
 		if err != nil {
-			return false
+			return 0, false
 		}
 		key, ok := tok.(string)
 		if !ok {
-			return false
+			return 0, false
 		}
-		if _, allowed := sightPayloadFields[key]; !allowed {
-			return false
+		field, allowed := sightPayloadFields[key]
+		if !allowed {
+			return 0, false
 		}
-		if _, duplicate := seen[key]; duplicate {
-			return false
+		if seen.has(field) {
+			return 0, false
 		}
-		seen[key] = struct{}{}
+		seen |= sightFieldSet(field)
 
 		var value json.RawMessage
 		if err := dec.Decode(&value); err != nil {
-			return false
+			return 0, false
 		}
 	}
 	tok, err = dec.Token()
 	if err != nil {
-		return false
+		return 0, false
 	}
 	closeDelim, ok := tok.(json.Delim)
 	if !ok || closeDelim != '}' {
-		return false
+		return 0, false
 	}
 
 	var trailing json.RawMessage
-	return dec.Decode(&trailing) == io.EOF
+	if dec.Decode(&trailing) != io.EOF {
+		return 0, false
+	}
+
+	return seen, true
 }

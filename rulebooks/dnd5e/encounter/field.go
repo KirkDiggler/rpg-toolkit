@@ -993,6 +993,10 @@ type MemberInput struct {
 	// skeleton, and with no table there is nothing for it to pick.
 	Machine *machine.Recipe
 
+	// Behaviors is the canonical ordered policy. Table/Machine inputs are
+	// unsupported and refused rather than imported into another runner.
+	Behaviors *BehaviorInput
+
 	// Temper is the temperament loading this member's die: the word and the
 	// percent profile that word means, or a faction's MIX for this
 	// composition to deal one from at the door ([Temper], design §3).
@@ -1158,6 +1162,7 @@ type memberFacts struct {
 	Options            []Option
 	Table              Table
 	Machine            *machine.Recipe
+	Behaviors          *BehaviorInput
 	BlockingStates     []string
 	Posts              map[string]Post
 }
@@ -1183,15 +1188,17 @@ func validateMemberFacts(in memberFacts) error {
 	if err := validateOptions(in.Options); err != nil {
 		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
 	}
-	// A table this composition could not roll is refused at whichever door
-	// the member came in through, never at the roll (answer.go).
-	if err := validateOrders(in.Table, in.Machine); err != nil {
+	if len(in.Table) != 0 || in.Machine != nil {
+		return fmt.Errorf("member %s: use canonical behaviors, not Table/Machine: %w", in.ID, ErrBadMember)
+	}
+	bound, err := newBehaviorRuntime(in.Behaviors, nil)
+	if err != nil {
 		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
 	}
-	if err := validateBlockingStates(in.Machine, in.BlockingStates); err != nil {
+	if err := validateBlockingStates(bound.bodyRecipe(), in.BlockingStates); err != nil {
 		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
 	}
-	if err := validatePostStates(in.Machine, in.Posts); err != nil {
+	if err := validatePostStates(bound.bodyRecipe(), in.Posts); err != nil {
 		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
 	}
 
@@ -1498,6 +1505,28 @@ type StoryInput struct {
 	//
 	// To resume after entry N, pass N+1.
 	AfterSeq uint64
+
+	// WholeActs widens the slice back so every act it touches is whole: when
+	// an entry at or after AfterSeq carries an [ActTag] whose act also has
+	// entries for this audience before AfterSeq, the slice begins at the
+	// audience's first retained entry of the earliest such act, and holds
+	// every entry for this audience from there on. Without one, the slice
+	// is exactly what AfterSeq alone returns.
+	//
+	// It is the read a fold of one verb's delta needs: an act outlives a
+	// call (a walk held by a reaction window, a continuation), and a fold
+	// that numbers an act's segments or continues its walk reads what came
+	// before in the same act. It copies the delta and those acts, never the
+	// story before them, so what it copies follows the verb, not the record.
+	//
+	// An act opened inside the delta cannot reach before it (an act's id is
+	// minted before its first beat, from the record's own increasing id
+	// space), so only an act REOPENED by the delta — one whose id sorts below
+	// the record's entry at AfterSeq-1 — is looked up, and only that lookup
+	// scans the whole record. A verb that continues nothing pays no scan
+	// beyond the plain slice's. Ignored when AfterSeq is zero: the slice is
+	// already whole.
+	WholeActs bool
 }
 
 // Member represents a member's public read-side data: who they are, and
@@ -1589,6 +1618,7 @@ type Member struct {
 // sat here from rpg-project#254 until then as copies taken at Join that no
 // verb refreshed.
 type memberRecord struct {
+	behaviors          *behaviorRuntime
 	ID                 MemberID
 	Kind               MemberKind
 	Name               string
@@ -1628,16 +1658,8 @@ type memberRecord struct {
 	// and persisted.
 	Dwell *dwell
 
-	// Recipe is [MemberInput.Machine], the authored recipe this creature
-	// runs, or nil for the default (rpg-project#766 S4). Persisted, as the
-	// table is. recipeKey is its program's key in [Encounter.programs],
-	// derived at every door ([Encounter.useRecipe]) and never stored.
-	Recipe    *machine.Recipe
-	recipeKey string
-
-	// BlockingStates is [MemberInput.BlockingStates]: the states of Recipe in
-	// which this body blocks, validated against it at every door
-	// ([Encounter.useRecipe]) and persisted beside it. Empty defers to
+	// BlockingStates names states of the designated behavior body instance.
+	// Validated at every door and persisted with its binding. Empty defers to
 	// BlocksMovement. Read through [Encounter.memberBlocks], never copied.
 	BlockingStates []string
 
@@ -1646,15 +1668,6 @@ type memberRecord struct {
 	// persisted beside it. Read through [Encounter.memberHolds], never
 	// copied.
 	Posts map[string]Post
-
-	// Machine is this creature's machine blob (machine.go, rpg-project#766
-	// S3): its current state, bag, wake and anchor. The zero blob is the
-	// recipe's initial state. Only a member [Encounter.programFor] gives a
-	// program steps it; for anyone else it stays zero. A dwell is not a
-	// wake: a dwelling creature stays due every round (its patrol row holds,
-	// rows above it fire). Only an authored wake_in act sets the wake.
-	// Persisted.
-	Machine machine.Blob
 
 	// Clock names the clock this member is seated on (R5); empty is the
 	// world clock. Every member is on the world clock in this slice; S7
@@ -1838,6 +1851,12 @@ type StepOutput struct {
 	// Seq is the sequence number of the recorded movement beat.
 	Seq uint64
 
+	// ID is the record id ([record.Entry.ID], a 26-char ULID) of the beat
+	// Seq names: the id a stream consumer resumes after (rpg-project#879
+	// S1), so a host that answers a walk part way can hand the client the
+	// exact point the rest of the story continues from.
+	ID string
+
 	// Outcome is the encounter outcome if an ending fired underfoot; nil
 	// otherwise.
 	Outcome *Outcome
@@ -1848,7 +1867,7 @@ type StepOutput struct {
 	// Stopped is set when a body stopped the step (rpg-project#842, D5): a
 	// member's cell, or a crossing its post holds. The step is answered with
 	// output, not an error: nothing moved (Stepped's From and To are both the
-	// cell the mover stands on), no pace was spent, Seq is the [BeatBarred]
+	// cell the mover stands on), no pace was spent, Seq (and ID) is the [BeatBarred]
 	// beat, and IntelDeltas, Formed and Outcome are what the barrier's answer
 	// to the bump produced. Nil for a step that moved. Walls, doors, fields
 	// and masked refusals still return a [StepObstructedError].
@@ -1917,6 +1936,9 @@ type JoinInput struct {
 	Options []Option
 	Table   Table
 	Temper  Temper
+
+	// Behaviors carries canonical materialized policy for this joiner.
+	Behaviors *BehaviorInput
 
 	// Machine is [MemberInput.Machine] for a joiner: its authored recipe,
 	// validated at this door the same way, or nil for the default.

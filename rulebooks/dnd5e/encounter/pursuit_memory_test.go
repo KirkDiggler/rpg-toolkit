@@ -365,7 +365,7 @@ func (s *MonsterTurnTestSuite) TestASearchRowSurvivesTheBlob() {
 		},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
-			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 2}, Table: table},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 3, Y: 2}, Behaviors: ordinaryBehavior(table)},
 		},
 		Endings: []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
@@ -385,7 +385,7 @@ func (s *MonsterTurnTestSuite) TestASearchRowSurvivesTheBlob() {
 		if m.ID != goblin {
 			continue
 		}
-		rows := m.Table[string(encounter.AnswerTime)]
+		rows := m.Behaviors.Instances[0].Instance.Table[encounter.AnswerTime]
 		s.Require().Len(rows, 1)
 		s.Require().NotNil(rows[0].Search, "the search row kept its word through the blob")
 		s.Equal(4, rows[0].Search.Distance)

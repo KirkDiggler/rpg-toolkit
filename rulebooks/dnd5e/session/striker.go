@@ -98,7 +98,7 @@ func (s strikerSeam) Strike(
 	machine, err := resolution.NewAction(&resolution.ActionInput{
 		Definition: definition,
 		AttackerID: string(attacker),
-		TargetID:   string(target),
+		TargetIDs:  []string{string(target)},
 		// The attacker's WHOLE action list, because a sequence's steps name
 		// components off it and this seam is the one place holding the stat
 		// block they live on. Supplied for every arm: a strike ignores it,

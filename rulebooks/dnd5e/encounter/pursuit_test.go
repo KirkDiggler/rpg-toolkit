@@ -86,7 +86,7 @@ func (s *PursuitSuite) SetupTest() {
 			// Alice stands at the threshold; the goblin is across the room
 			// with a clear line to her, so first light makes them mutual.
 			{ID: hunted, Kind: encounter.KindPlayer, Position: spatial.Position{X: 25, Y: 13}},
-			{ID: hunter, Kind: encounter.KindMonster, Position: spatial.Position{X: 21, Y: 13}, Table: hunts()},
+			{ID: hunter, Kind: encounter.KindMonster, Position: spatial.Position{X: 21, Y: 13}, Behaviors: ordinaryBehavior(hunts())},
 		},
 		Endings: []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
 		Capabilities: encounter.Capabilities{
@@ -97,6 +97,7 @@ func (s *PursuitSuite) SetupTest() {
 			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        tableDriver(),
+			Roller:        rollsLowest{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
@@ -258,7 +259,7 @@ func (s *PursuitSuite) freeRoamWalkingTo(cell spatial.Position) {
 		seat = cellAt(25, 12)
 	}
 	_, err = s.enc.Join(&encounter.JoinInput{
-		Member: straggler, Kind: encounter.KindMonster, Cell: seat, Table: walksTo(cell),
+		Member: straggler, Kind: encounter.KindMonster, Cell: seat, Behaviors: ordinaryBehavior(walksTo(cell)),
 	})
 	s.Require().NoError(err)
 

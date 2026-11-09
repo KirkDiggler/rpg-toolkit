@@ -115,6 +115,15 @@ func (m *Manager) LevelUp(ctx context.Context, in *LevelUpInput) (*LevelUpOutput
 	if err != nil {
 		return nil, fmt.Errorf("level up: character %q: %w: %v", in.Character, ErrBadCharacter, err)
 	}
+	if guard.session != "" && m.fenced != nil {
+		// Seated under a fenced host: the level rides a fenced save of the
+		// run that holds the character (checkpoint.go).
+		saved, err := m.saveSeatedSheetFenced(ctx, guard.session, record)
+		if err != nil {
+			return nil, fmt.Errorf("level up: %w", err)
+		}
+		return &LevelUpOutput{Saved: saved, Gained: levelGained(data.ClassID, advanced.Gained)}, nil
+	}
 	report := &writeScope{}
 	if err := m.sheetsFor(report).save(ctx, record); err != nil {
 		return nil, fmt.Errorf("level up: %w", err)

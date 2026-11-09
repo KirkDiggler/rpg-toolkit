@@ -36,6 +36,13 @@ type Config struct {
 	// the same coordination domain. No lock implementation lives in the SDK.
 	Locker SessionLocker
 
+	// Continuations runs the part of a verb that follows its answer
+	// (rpg-project#879 R2): a Move answers with the walker's own steps up to
+	// the step that pays a world round, and hands the rest to this runner
+	// with the session's guard still held. Optional: nil runs every verb
+	// whole before it answers, exactly as before. See [ContinuationRunner].
+	Continuations ContinuationRunner
+
 	// CharacterConfig is the host's character configuration, read at every
 	// write verb for each player's discovery-sharing choice (rpg-project#753
 	// R2). Required: automatic discovery needs each finder's audience, so a
@@ -167,14 +174,21 @@ type Manager struct {
 	staleTargetPolicy StaleTargetPolicy
 	sessions          SessionRepository
 	locker            SessionLocker
+	continuations     ContinuationRunner
 	characterConfig   CharacterConfigReader
 	encounters        EncounterRepository
-	characters        CharacterRepository
-	seats             SeatRepository
-	record            RecordStream
-	acts              ActStream
-	initiative        encounter.InitiativeRoller
-	presentationIDs   PresentationIDGenerator
+	// fenced is Encounters' optional fenced capability, or nil when the host's
+	// repository is plain (checkpoint.go).
+	fenced FencedEncounterRepository
+	// pending is the fenced verbs' unsaved sheets and seats; nil when the
+	// repository is plain (checkpoint.go).
+	pending         *pendingWrites
+	characters      CharacterRepository
+	seats           SeatRepository
+	record          RecordStream
+	acts            ActStream
+	initiative      encounter.InitiativeRoller
+	presentationIDs PresentationIDGenerator
 
 	// turnDrivers is where a verb's driver comes from, and the Manager holds
 	// no driver of its own beside it. A host that wired the stateless
@@ -259,12 +273,23 @@ func NewManager(cfg *Config) (*Manager, error) {
 		drivers = staticTurnDrivers{driver: cfg.TurnDriver}
 	}
 
+	// The fence is a capability found on the repository the host already
+	// wired, never a Config field (the Config rule above Characters).
+	fenced, _ := cfg.Encounters.(FencedEncounterRepository)
+	var pending *pendingWrites
+	if fenced != nil {
+		pending = newPendingWrites()
+	}
+
 	return &Manager{
 		staleTargetPolicy: cfg.StaleTargetPolicy,
 		sessions:          cfg.Sessions,
 		locker:            cfg.Locker,
+		continuations:     cfg.Continuations,
 		characterConfig:   cfg.CharacterConfig,
 		encounters:        cfg.Encounters,
+		fenced:            fenced,
+		pending:           pending,
 		characters:        cfg.Characters,
 		seats:             cfg.Seats,
 		record:            cfg.Record,
@@ -303,12 +328,11 @@ func (m *Manager) resolveTurnDriver(ctx context.Context, sessionID string) (enco
 		return nil, fmt.Errorf("session %q: %w", sessionID, ErrNoTurnDriver)
 	}
 
-	// [Driver] — the creature's own table — is not wrapped but RECOGNISED, and
-	// built one layer down around this session's dice. It cannot cross the
-	// projecting seam: the twin view carries no table, no temperament and no
-	// deeds, and a pick's arithmetic has nowhere to ride back on. See
-	// [tableDriver] for the whole argument.
-	return encounterDriverFor(driver, m.encounterDice()), nil
+	// [Driver] is recognized as the encounter's ordinary behavior marker.
+	// Canonical configuration, progress and selected-row arithmetic stay below
+	// the host-facing twin; the write scope supplies shared dice and compulsion
+	// precedence. Custom drivers retain their projection seam.
+	return encounterDriverFor(driver), nil
 }
 
 // encounterDice is this session's shared randomness in the shape the

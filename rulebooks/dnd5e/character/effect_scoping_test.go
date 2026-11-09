@@ -14,7 +14,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -92,10 +91,7 @@ func (s *EffectScopingTestSuite) SetupTest() {
 // ragingBarbarian returns character data carrying one persisted Raging
 // condition — the effect the saving-throw slice is built on.
 func (s *EffectScopingTestSuite) ragingBarbarian() *Data {
-	raging := &conditions.RagingCondition{
-		CharacterID: "char-scope",
-		Source:      "rage",
-	}
+	raging := composedCharacterRage(&s.Suite, "char-scope")
 
 	raw, err := raging.ToJSON()
 	s.Require().NoError(err)

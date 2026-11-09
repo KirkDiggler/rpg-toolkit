@@ -1,0 +1,19 @@
+{
+  "id": "investigate",
+  "recipe": {
+    "ref": "example:behaviors:investigate",
+    "initial": "idle",
+    "states": {
+      "idle": {"transitions": [{
+        "on": "heard",
+        "when": {"all": [{"scope": {"within": 4}}, {"fact": {"name": "heard.kind", "op": "eq", "value": "clang"}}]},
+        "to": "active", "do": [{"anchor": true}]
+      }]},
+      "active": {"transitions": [
+        {"on": "time", "when": {"rounds": {"op": "gte", "n": 2}}, "to": "idle"},
+        {"on": "time", "do": [{"pick": "look"}]}
+      ]}
+    }
+  },
+  "table": {"look": [{"Weight": 1, "Toward": {"At": {"x": 2, "y": 2}}}]}
+}

@@ -69,6 +69,20 @@ type ConditionBehavior interface {
 	ToJSON() (json.RawMessage, error)
 }
 
+// ConditionOrigin identifies the granting content and the entity that supplied
+// it. EntityID may be a character or item instance; it is provenance, not the
+// recipient or a source-qualified stacking address.
+type ConditionOrigin struct {
+	Ref      core.Ref `json:"ref"`
+	EntityID string   `json:"entity_id"`
+}
+
+// ConditionOriginProvider exposes a condition's immutable granting origin,
+// independently of ConditionAddressProvider and its stacking identity.
+type ConditionOriginProvider interface {
+	ConditionOrigin() ConditionOrigin
+}
+
 // ConditionAddressProvider is the optional capability for a condition whose
 // identity is source-qualified. A condition with no source qualifier (Prone,
 // Dodging, Hidden, Raging) omits it and is addressed with an exact empty
@@ -699,7 +713,7 @@ type RestEvent struct {
 // ONE PER MEMBER, never one for the fight. Every attached effect hears every
 // publish on the interaction's single bus (R1), so a subscriber answers "is
 // this about me?" by comparing the subject against its own owner — which is
-// exactly what conditions.RagingCondition.onCombatEnd does. A subject-less
+// exactly what the composed Raging recipe does. A subject-less
 // "the fight ended" would match nobody and expire nothing.
 //
 // SubjectID is whoever that fight ended for: a player's character, or a monster

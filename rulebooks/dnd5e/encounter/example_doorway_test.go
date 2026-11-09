@@ -54,7 +54,7 @@ func Example_theDoorway() {
 		Field: field,
 		Members: []encounter.MemberInput{
 			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 7, Y: 4}},
-			{ID: "goblin", Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 4}, Table: hunts()},
+			{ID: "goblin", Kind: encounter.KindMonster, Position: spatial.Position{X: 2, Y: 4}, Behaviors: ordinaryBehavior(hunts())},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "done", Trigger: encounter.TriggerExternal{}},
@@ -67,6 +67,7 @@ func Example_theDoorway() {
 			Participation: everyoneStanding{},
 			Initiative:    orderAsGiven{},
 			Driver:        tableDriver(),
+			Roller:        rollsLowest{},
 			Actors: encounter.Actors{
 				Striker:   passStriker{},
 				Mover:     quietMover{},
