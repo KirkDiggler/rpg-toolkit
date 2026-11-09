@@ -45,18 +45,18 @@ func groupedTable() encounter.Table {
 func TestAGroupAndAPatternSurviveTheBlob(t *testing.T) {
 	enc := facingFight(t, []encounter.MemberInput{
 		{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 4}},
-		{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 7, Y: 4}, Table: groupedTable()},
+		{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 7, Y: 4}, Behaviors: ordinaryBehavior(groupedTable())},
 	}, passDriver{}, &scriptedStriker{kind: encounter.OutcomeMissed}, quietMover{})
 
 	blob, err := json.Marshal(enc.ToData())
 	require.NoError(t, err)
-	for _, written := range []string{
-		`"rows":[{"weight":1,"when":[{"enemy":"remembered"}]`,
-		`"as":"toward"`, `"from":"pursuer"`, `"params":{"distance":"8","heading":"went"}`,
-		`"kind":"/clang|voice/"`, `"fact":"/alarm-.*/"`,
-	} {
-		require.Contains(t, string(blob), written)
-	}
+	persisted := goblinTableOf(t, blob)[encounter.AnswerTime]
+	require.Equal(t, "pursuer", persisted[0].From)
+	require.Equal(t, "toward", persisted[0].As)
+	require.Equal(t, map[string]string{"distance": "8", "heading": "went"}, persisted[0].Params)
+	require.Equal(t, groupedTable()[encounter.AnswerTime][0].Rows, persisted[0].Rows)
+	require.Equal(t, "clang|voice", persisted[1].When[0].Heard.Kind.Pattern)
+	require.Equal(t, "alarm-.*", persisted[2].When[0].Not.Fact.Pattern)
 
 	var data encounter.EncounterData
 	require.NoError(t, json.Unmarshal(blob, &data))
@@ -99,7 +99,7 @@ func joinGoblin(table encounter.Table) error {
 		},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 4}},
-			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 7, Y: 4}, Table: table},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 7, Y: 4}, Behaviors: ordinaryBehavior(table)},
 		},
 		Endings:   []encounter.EndingInput{{Key: "called", Trigger: encounter.TriggerExternal{}}},
 		Retention: encounter.RetentionUnbounded,
@@ -121,22 +121,17 @@ func joinGoblin(table encounter.Table) error {
 	return err
 }
 
-// goblinTableOf is the goblin's persisted table, as raw JSON, out of a blob.
-func goblinTableOf(t *testing.T, blob []byte) string {
+// goblinTableOf reads the original canonical instance configuration from JSON.
+func goblinTableOf(t *testing.T, blob []byte) encounter.Table {
 	t.Helper()
-	var data struct {
-		Members []struct {
-			ID    string          `json:"id"`
-			Table json.RawMessage `json:"table"`
-		} `json:"members"`
-	}
+	var data encounter.EncounterData
 	require.NoError(t, json.Unmarshal(blob, &data))
 	for _, m := range data.Members {
-		if m.ID == string(goblin) {
-			return string(m.Table)
+		if m.ID == goblin {
+			require.NotNil(t, m.Behaviors)
+			return m.Behaviors.Instances[0].Instance.Table
 		}
 	}
-	require.Fail(t, "the goblin is in the blob")
-
-	return ""
+	require.FailNow(t, "the goblin is in the blob")
+	return nil
 }

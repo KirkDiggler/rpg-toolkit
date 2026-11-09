@@ -31,11 +31,11 @@ func bundledPatrol(t *testing.T, bundles string, rows ...string) string {
 	raw, err := os.ReadFile("testdata/world-builder-v4-patrols.yaml")
 	require.NoError(t, err)
 	source := string(raw)
-	old := "            - {when: {enemy: none}, toward: {path: [{q: -2, r: 0}, {q: 0, r: -2}, {q: 2, r: 0}, {q: 0, r: 2}]}}\n"
+	old := "        - {when: {enemy: none}, toward: {path: [{q: -2, r: 0}, {q: 0, r: -2}, {q: 2, r: 0}, {q: 0, r: 2}]}}\n"
 	require.Contains(t, source, old, "the fixture still carries gate-patrol's one row")
 	table := ""
 	for _, row := range rows {
-		table += "            - " + strings.ReplaceAll(row, "\n", "\n              ") + "\n"
+		table += "        - " + strings.ReplaceAll(row, "\n", "\n          ") + "\n"
 	}
 	source = strings.Replace(source, old, table, 1)
 	if bundles != "" {
@@ -70,7 +70,7 @@ func gateTable(t *testing.T, source string) []encounter.Answer {
 	require.NoError(t, err)
 	for _, m := range compiled.Monsters {
 		if m.ID == "gate-patrol" {
-			return m.Table[encounter.AnswerTime]
+			return m.Behaviors.Instances[0].Instance.Table[encounter.AnswerTime]
 		}
 	}
 	require.Fail(t, "the fixture still places gate-patrol")
@@ -128,7 +128,7 @@ func TestARouteIsAParameter(t *testing.T) {
 	require.Len(t, used, 1)
 	require.Len(t, used[0].Rows, 1)
 	require.Equal(t, literal[0], used[0].Rows[0], "the route row, one group down")
-	require.Equal(t, "[{q: -2, r: 0}, {q: 0, r: -2}, {q: 2, r: 0}, {q: 0, r: 2}]", used[0].Params["path"])
+	require.Equal(t, `[{"q": -2, "r": 0}, {"q": 0, "r": -2}, {"q": 2, "r": 0}, {"q": 0, "r": 2}]`, used[0].Params["path"])
 }
 
 // TestABundleMayUseABundle: R14, a group inside a group, resolved by name
@@ -149,7 +149,7 @@ func TestABundleMayUseABundle(t *testing.T) {
 // TestTheFormRefusesWhatABundleCannotBe is the design's list of refusals,
 // each a sentence for the form at the path of the line that made it.
 func TestTheFormRefusesWhatABundleCannotBe(t *testing.T) {
-	const at = "room.room.monsterBindings.gate-patrol.on.time[0]"
+	const at = "behaviorDefinitions.gate-patrol-policy.table.time[0]"
 	home := "{ when: { enemy: none }, toward: " + loop + " }"
 	chain := ""
 	for i := 1; i <= behavior.MaxGroupDepth+1; i++ {
@@ -218,7 +218,7 @@ func TestTheFormRefusesWhatABundleCannotBe(t *testing.T) {
 // matches none is refused, never accepted as "never fires". And L2: a row
 // teaches a fact by name, never by pattern.
 func TestAFactPatternMustMatchAFactTheFileSets(t *testing.T) {
-	const at = "room.room.monsterBindings.gate-patrol.on.time"
+	const at = "behaviorDefinitions.gate-patrol-policy.table.time"
 	alarm := "{ when: { enemy: seen }, fact: guards-alarmed }"
 	ok := bundledPatrol(t, "", alarm, "{ when: { fact: /guards-.*/ }, hold: {} }")
 	require.Empty(t, roomDefects(t, ok))
@@ -261,7 +261,7 @@ func TestAHeardPatternMustMatchASoundTheFileMakes(t *testing.T) {
 	var listener []encounter.Answer
 	for _, m := range compiled.Monsters {
 		if m.ID == "gate-patrol" {
-			listener = m.Table[encounter.AnswerTime]
+			listener = m.Behaviors.Instances[0].Instance.Table[encounter.AnswerTime]
 		}
 	}
 	require.NotEmpty(t, listener)
@@ -283,9 +283,10 @@ func TestAUseRowMarshalsBackAsWritten(t *testing.T) {
 	source := bundledPatrol(t, pursuerBundle, "use: pursuer\nwith: { distance: 8 }\nweight: 2")
 	decoded, err := dungeonspec.DecodeSingleRoom(dungeonspec.SingleRoomDecodeInput{Source: []byte(source)})
 	require.NoError(t, err)
-	row := decoded.Spec.Room.Gameplay.MonsterBindings["gate-patrol"].On["time"][0]
-	require.NotEmpty(t, row.Rows, "the decode resolved the row")
-	again, err := yaml.Marshal(row)
+	compiled, err := dungeonspec.CompileSingleRoom(dungeonspec.CompileSingleRoomInput{Spec: decoded.Spec})
+	require.NoError(t, err)
+	require.NotEmpty(t, compiled.Monsters[0].Behaviors.Instances[0].Instance.Table["time"][0].Rows)
+	again, err := yaml.Marshal(decoded.Spec.BehaviorDefinitions["gate-patrol-policy"].Table)
 	require.NoError(t, err)
 	require.Contains(t, string(again), "use: pursuer")
 	require.Contains(t, string(again), "distance: 8")
@@ -336,7 +337,7 @@ func TestAParameterCrossesIntoABundleUsedInside(t *testing.T) {
       - use: patrol
         with: { path: $path }
 `, "use: guard-base"))
-	require.Contains(t, defects, "room.room.monsterBindings.gate-patrol.on.time[0].with: "+
+	require.Contains(t, defects, "behaviorDefinitions.gate-patrol-policy.table.time[0].with: "+
 		"bundle \"guard-base\" needs `path`: it has no default, so the use gives one")
 }
 
@@ -349,6 +350,6 @@ func TestABundleCycleThroughAnotherIsRefused(t *testing.T) {
   pong:
     rows: [ { use: ping } ]
 `, "use: ping", "{ when: { enemy: none }, toward: "+loop+" }"))
-	require.Contains(t, defects, "room.room.monsterBindings.gate-patrol.on.time[0].rows[0].rows[0].use: "+
+	require.Contains(t, defects, "behaviorDefinitions.gate-patrol-policy.table.time[0].rows[0].rows[0].use: "+
 		"bundle \"ping\" uses itself: ping → pong → ping; a group cannot hold the table it is in")
 }

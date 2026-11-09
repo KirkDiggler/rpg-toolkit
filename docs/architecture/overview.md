@@ -39,6 +39,12 @@ superseded as current guidance by the shipped separate modules
 `rulebooks/dnd5e/encounter`, `rulebooks/dnd5e/resolution`, and
 `rulebooks/dnd5e/session`.
 
+For the item/effects initiative, the
+[composition walkthrough](../ideas/item-effect-composition/README.md) applies
+these layer boundaries to effect kinds, condition definitions, grants, runtime
+instances and host-owned storage. It distinguishes existing interfaces from the
+target contracts and links ADR-0048 rather than introducing a second decision.
+
 ## The persistence pattern
 
 Every stateful toolkit component implements exactly two methods:
@@ -118,6 +124,7 @@ module is historical only.
 | play/record | `play/record/` | Play primitive | Append-only play record contracts |
 | mind/perception | `mind/perception/` | Mind primitive | One `Pass`, one `Delta` per observer over `play/intel`: the per-observer loop and geometry-free contract a composition needs, none of the geometry itself |
 | mechanics/resources | `mechanics/resources/` | Mechanics | Resource balances, counters and pools; the rulebook supplies recovery rules |
+| mechanics/effects | `mechanics/effects/` | Mechanics | Generic configured effect composition and its event-driven machine; consumers supply rulebook vocabulary |
 | tools/spatial | `tools/spatial/` | Tools | Hex/Square/Gridless room + multi-room orchestration |
 | tools/environments | `tools/environments/` | Tools | Environment persistence, graph generation, multi-room dungeon graph |
 | tools/selectables | `tools/selectables/` | Tools | Weighted random selection tables |

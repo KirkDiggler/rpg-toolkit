@@ -4,6 +4,7 @@
 package dungeonspec
 
 import (
+	"bytes"
 	"fmt"
 	"sort"
 	"strings"
@@ -89,6 +90,27 @@ func resolveBundles(s *SingleRoomSpec, add errSink) {
 	}
 	for _, id := range sortedTableIDs(s.Tables) {
 		r.on("tables."+id, s.Tables[id])
+	}
+	for _, id := range sortedKeys(s.BehaviorDefinitions) {
+		definition := s.BehaviorDefinitions[id]
+		definition.table = nil
+		if definition.Table != nil {
+			decoder := yaml.NewDecoder(bytes.NewReader(definition.Table.raw))
+			decoder.KnownFields(true)
+			if err := decoder.Decode(&definition.table); err != nil {
+				for _, defect := range decodeErrorsIn(err, definition.Table.raw, singleRoomCells{}.forms()) {
+					path := "behaviorDefinitions." + id + ".table"
+					if defect.Path != "" {
+						path += "." + defect.Path
+					}
+					add(path, defect.Message)
+				}
+			}
+		}
+		for _, key := range sortedKeys(definition.table) {
+			r.rows("behaviorDefinitions."+id+".table."+key, definition.table[key], nil)
+		}
+		s.BehaviorDefinitions[id] = definition
 	}
 	for i := range s.Factions {
 		r.on(fmt.Sprintf("factions[%d]", i), s.Factions[i].On)
@@ -415,6 +437,9 @@ func roomFacts(s *SingleRoomSpec) map[string]bool {
 	var lists [][]AnswerSpec
 	for _, id := range sortedTableIDs(s.Tables) {
 		lists = append(lists, onLists(s.Tables[id])...)
+	}
+	for _, id := range sortedKeys(s.BehaviorDefinitions) {
+		lists = append(lists, onLists(s.BehaviorDefinitions[id].table)...)
 	}
 	for _, f := range s.Factions {
 		lists = append(lists, onLists(f.On)...)

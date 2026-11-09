@@ -30,19 +30,14 @@ bundles:
   # a walk within one run of reach, and a run only while it gains a round.
   dasher:
     rows:
-      - when: { enemy: reach }
+      - when: {enemy: reach}
         attack: enemy
-      - when: { enemy: walk }
+      - when: {enemy: walk}
         toward: enemy
-      - when: { enemy: dash }
+      - when: {enemy: dash}
         toward: enemy
-      - when: { enemy: far }
+      - when: {enemy: far}
         dash: enemy
-tables:
-  runs-them-down:
-    time:
-      - use: dasher
-      - hold: {}
 room:
   version: 3
   id: room-1
@@ -65,11 +60,11 @@ room:
     regions:
       - id: room-1-region
         name: Pursuit Hall
-        lighting: { intensity: 1 }
+        lighting: {intensity: 1}
         cells: []
       - id: region-hall
         name: Hall
-        lighting: { intensity: 1 }
+        lighting: {intensity: 1}
         cells:
           - r: 0
             q: [[-10, 10]]
@@ -91,4 +86,24 @@ room:
     monsterBindings:
       guard:
         faction: watch
-        table: runs-them-down
+        behaviors:
+          - id: policy
+            use: guard-policy
+behaviorDefinitions:
+  guard-policy:
+    recipe:
+      ref: site:behaviors:guard-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        - use: dasher
+        - hold: {}

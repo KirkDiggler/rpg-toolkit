@@ -36,7 +36,7 @@ func (earsSheets) Sheets(members []MemberID) (map[MemberID]SheetFacts, error) {
 // earsHall is [wakeHall] with members who hear.
 func earsHall(t *testing.T, members ...MemberInput) (*Encounter, *askedDriver) {
 	t.Helper()
-	driver := &askedDriver{inner: TableDriver{Roller: wakeRollsOne{}}}
+	driver := &askedDriver{inner: BehaviorDriver{}}
 	in := wakeSetup(driver, members...)
 	in.Sheets = earsSheets{}
 	enc, err := NewEncounter(in)
@@ -57,7 +57,7 @@ func recipe(t *testing.T, initial string, states map[string]machine.State) *mach
 // listener is a monster at (col,row) holding on `time`, running r.
 func listener(id MemberID, col, row float64, r *machine.Recipe) MemberInput {
 	m := monster(id, col, row, holds())
-	m.Machine = r
+	m.Behaviors.Instances[0].Instance.Recipe = *r
 
 	return m
 }
@@ -75,12 +75,7 @@ func postedRecipe(t *testing.T) *machine.Recipe {
 
 // stateOf is a member's machine state, the initial one read for empty.
 func stateOf(enc *Encounter, id MemberID) string {
-	m := enc.members[id]
-	if m.Machine.State != "" {
-		return m.Machine.State
-	}
-
-	return enc.programFor(m).NewBlob().State
+	return enc.members[id].bodyState()
 }
 
 // TestWake_SoundWakesListenersSameRaise is W10: a clang lands on a posted
@@ -146,14 +141,14 @@ func TestWake_AsleepIgnoresFarSound(t *testing.T) {
 func TestWake_ClockFightOncePerFaction(t *testing.T) {
 	waiting := func() *machine.Recipe {
 		return recipe(t, "waiting", map[string]machine.State{
-			"waiting": {Transitions: []machine.Transition{
-				{On: clockBeat(clockFight), Do: []machine.Act{{Pick: string(AnswerTime)}}},
-			}},
+			"waiting": {Transitions: []machine.Transition{{On: clockBeat(clockFight), To: "once"}}},
+			"once":    {Transitions: []machine.Transition{{On: clockBeat(clockFight), To: "twice"}}},
+			"twice":   {},
 		})
 	}
 	other := listener("m-other", 16, 6, waiting())
 	other.Faction = "wanderers"
-	in := wakeSetup(&askedDriver{inner: TableDriver{Roller: wakeRollsOne{}}},
+	in := wakeSetup(&askedDriver{inner: BehaviorDriver{}},
 		monster("m-a", 4, 1, holds()), monster("m-b", 6, 1, holds()),
 		listener("m-res", 12, 6, waiting()), other,
 	)
@@ -171,7 +166,9 @@ func TestWake_ClockFightOncePerFaction(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, enc.wakePass(false, false))
 
-	require.Equal(t, []MemberID{"m-res"}, driver.asked, "the monsters' reserve picked once; the wanderer was not addressed")
+	require.Empty(t, driver.asked, "a clock notification grants no selection")
+	require.Equal(t, "once", enc.members["m-res"].bodyState(), "the monsters' reserve received one notification")
+	require.Equal(t, "waiting", enc.members["m-other"].bodyState(), "the other faction was not addressed")
 	after, err := enc.clock.Budget(&clock.BudgetInput{ID: "m-res"})
 	require.NoError(t, err)
 	require.Equal(t, before, after, "a reaction spends no world round")
@@ -250,9 +247,9 @@ func TestSetup_MachineRefusals(t *testing.T) {
 		"pick a verdict": listener("m", 4, 1, recipe(t, "a", map[string]machine.State{
 			"a": {Transitions: []machine.Transition{{On: beatTime, Do: []machine.Act{{Pick: string(AnswerSuccess)}}}}}})),
 		"no table": {ID: "m", Kind: KindMonster, Machine: postedRecipe(t)},
-		"key nothing picks": func() MemberInput {
+		"picked key absent": func() MemberInput {
 			m := listener("m", 4, 1, postedRecipe(t))
-			m.Table = Table{AnswerTime: holds()[AnswerTime], "march": holds()[AnswerTime]}
+			m.Behaviors.Instances[0].Instance.Table = Table{"march": holds()[AnswerTime]}
 			return m
 		}(),
 	}
@@ -264,10 +261,11 @@ func TestSetup_MachineRefusals(t *testing.T) {
 	}
 
 	march := recipe(t, "waiting", map[string]machine.State{
-		"waiting": {Transitions: []machine.Transition{{On: clockBeat("bell:gong"), Do: []machine.Act{{Pick: "march"}}}}},
+		"waiting":  {Transitions: []machine.Transition{{On: clockBeat("bell:gong"), To: "marching"}}},
+		"marching": {Transitions: []machine.Transition{{On: beatTime, Do: []machine.Act{{Pick: "march"}}}}},
 	})
 	m := listener("m", 4, 1, march)
-	m.Table = Table{"march": {{Weight: 1, Hold: true}}}
+	m.Behaviors.Instances[0].Instance.Table = Table{"march": {{Weight: 1, Hold: true}}}
 	_, err := NewEncounter(wakeSetup(passDriver{}, m))
 	require.NoError(t, err, "a key the recipe picks is a table key")
 }

@@ -457,8 +457,9 @@ func (s *RecordSuite) TestPersistenceGoldenJSON() {
 	s.Require().NoError(err)
 
 	// Exact golden JSON format with payload base64-encoded.
-	expectedJSON := `{"next_seq":2,"entries":[{"seq":1,"id":"01HF7YAT006FZMTH8Y8AF1G8GN","at":7,"correlation":"c1",` +
-		`"audience":["alice"],"tags":{"kind":"x"},"payload":"cA=="}]}`
+	expectedJSON := `{"next_seq":2,"audiences":[["alice"]],` +
+		`"entries":[{"seq":1,"id":"01HF7YAT006FZMTH8Y8AF1G8GN","at":7,"correlation":"c1",` +
+		`"audience":1,"tags":{"kind":"x"},"payload":"cA=="}]}`
 	s.JSONEq(expectedJSON, string(jsonBytes), "populated log must marshal to exact golden JSON")
 
 	// Trimmed-empty marshals {"next_seq":3} and the last id it issued
@@ -604,18 +605,20 @@ func (s *RecordSuite) TestLoadLogRejectsInvalid() {
 		{
 			name: "audience with empty ID",
 			data: record.LogData{
-				NextSeq: 2,
+				NextSeq:   2,
+				Audiences: [][]core.EntityID{{""}},
 				Entries: []record.EntryData{
-					{Seq: 1, Audience: []core.EntityID{""}, Payload: []byte("p")},
+					{Seq: 1, AudienceRef: 1, Payload: []byte("p")},
 				},
 			},
 		},
 		{
 			name: "audience with duplicates",
 			data: record.LogData{
-				NextSeq: 2,
+				NextSeq:   2,
+				Audiences: [][]core.EntityID{{alice, alice}},
 				Entries: []record.EntryData{
-					{Seq: 1, Audience: []core.EntityID{alice, alice}, Payload: []byte("p")},
+					{Seq: 1, AudienceRef: 1, Payload: []byte("p")},
 				},
 			},
 		},
@@ -701,8 +704,8 @@ func (s *RecordSuite) TestSnapshotImmunity() {
 	data := log2.ToData()
 	// In-place mutations on returned data
 	if len(data.Entries) > 0 {
-		if len(data.Entries[0].Audience) > 0 {
-			data.Entries[0].Audience[0] = mutated
+		if len(data.Audiences) > 0 {
+			data.Audiences[0][0] = mutated
 		}
 		if data.Entries[0].Tags != nil {
 			data.Entries[0].Tags["k"] = mutated
@@ -742,8 +745,8 @@ func (s *RecordSuite) TestSnapshotImmunity() {
 
 	// NOW mutate the caller's data3 in-place
 	if len(data3.Entries) > 0 {
-		if len(data3.Entries[0].Audience) > 0 {
-			data3.Entries[0].Audience[0] = mutated
+		if len(data3.Audiences) > 0 {
+			data3.Audiences[0][0] = mutated
 		}
 		if data3.Entries[0].Tags != nil {
 			data3.Entries[0].Tags["k"] = mutated

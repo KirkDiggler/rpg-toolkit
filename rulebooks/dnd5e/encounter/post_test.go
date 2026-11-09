@@ -92,12 +92,11 @@ func holder(t *testing.T, id MemberID, at spatial.Position, door DoorID, cells .
 	t.Helper()
 	post := Post{Door: door, Cells: cells}
 
-	return MemberInput{
-		ID: id, Kind: KindMonster, Name: "Gate guard", Faction: postedGarrison,
-		Position: at, Table: holds(), Machine: holdRecipe(t),
-		BlockingStates: []string{"posted", "alert"},
-		Posts:          map[string]Post{"posted": post, "alert": post},
-	}
+	m := listener(id, at.X, at.Y, holdRecipe(t))
+	m.Name, m.Faction = "Gate guard", postedGarrison
+	m.BlockingStates = []string{"posted", "alert"}
+	m.Posts = map[string]Post{"posted": post, "alert": post}
+	return m
 }
 
 // holdSetup is the posted hall with the door given and alice on the south
@@ -231,7 +230,7 @@ func TestAWalkNeverOpensAHeldDoor(t *testing.T) {
 }
 
 func TestAnAllyCrossesAHeldOpening(t *testing.T) {
-	porter := MemberInput{ID: "porter", Kind: KindMonster, Faction: postedGarrison, Position: holdSouthEast, Table: holds()}
+	porter := MemberInput{ID: "porter", Kind: KindMonster, Faction: postedGarrison, Position: holdSouthEast, Behaviors: ordinaryBehavior(holds())}
 	enc := holdHall(t, holdLeafDoor(DoorIsOpen()), holdBeside,
 		holder(t, postedGuard, holdNorthWest, holdLeaf, holdNorthWest), porter)
 	out, err := enc.Step(&StepInput{Member: "porter", To: holdNorthEast})
@@ -252,7 +251,7 @@ func TestTheHoldIsAStateAtAPlace(t *testing.T) {
 	placeAt(t, enc, postedGuard, holdNorthWest)
 	require.Equal(t, "Gate guard bars the way", heldStop(t, enc, holdNorthEast), "back on his cell, held in the same step")
 
-	enc.members[postedGuard].Machine.State = "cowed"
+	cowGuard(t, enc)
 	steps(t, enc, holdNorthEast, "on his cell in a state that holds nothing, the opening passes")
 }
 
@@ -385,7 +384,7 @@ func TestAnUnseenHolderIsSomeone(t *testing.T) {
 }
 
 func TestWhatAnObserverHoldsOfTheHold(t *testing.T) {
-	porter := MemberInput{ID: "porter", Kind: KindMonster, Faction: postedGarrison, Position: holdBeside, Table: holds()}
+	porter := MemberInput{ID: "porter", Kind: KindMonster, Faction: postedGarrison, Position: holdBeside, Behaviors: ordinaryBehavior(holds())}
 	enc := holdHall(t, holdLeafDoor(DoorIsOpen()), holdSouthEast,
 		holder(t, postedGuard, holdNorthWest, holdLeaf, holdNorthWest), porter)
 	seen := func(viewer MemberID) map[MemberID]HeldDoor {
@@ -423,7 +422,7 @@ func TestAPostIsRefusedAtTheDoor(t *testing.T) {
 		"a cell that is not floor": func(m *MemberInput) {
 			m.Posts["posted"] = Post{Door: holdLeaf, Cells: []spatial.Position{{X: 40, Y: 40}}}
 		},
-		"a post with no recipe": func(m *MemberInput) { m.Machine, m.BlockingStates = nil, nil },
+		"a post with no recipe": func(m *MemberInput) { m.Behaviors, m.BlockingStates = nil, nil },
 	} {
 		t.Run(name, func(t *testing.T) {
 			guard := holder(t, postedGuard, holdNorthWest, holdLeaf, holdNorthWest)
@@ -437,7 +436,7 @@ func TestAPostIsRefusedAtTheDoor(t *testing.T) {
 		enc := holdHall(t, holdLeafDoor(DoorIsOpen()), holdSouthEast)
 		_, err := enc.Join(&JoinInput{
 			Member: postedGuard, Kind: KindMonster, Faction: postedGarrison, Cell: holdNorthWest,
-			Table: holds(), Machine: holdRecipe(t), Posts: map[string]Post{"posted": {Door: "hall/postern"}},
+			Behaviors: fixtureBehavior(*holdRecipe(t), holds()), Posts: map[string]Post{"posted": {Door: "hall/postern"}},
 		})
 		require.ErrorIs(t, err, ErrBadMember)
 	})
@@ -453,7 +452,7 @@ func TestAPostWithNoCellsIsHeldWhereHeIsPlaced(t *testing.T) {
 	joined := holdHall(t, holdLeafDoor(DoorIsOpen()), holdSouthEast)
 	_, err := joined.Join(&JoinInput{
 		Member: postedGuard, Kind: KindMonster, Name: "Gate guard", Faction: postedGarrison, Cell: holdNorthWest,
-		Table: holds(), Machine: holdRecipe(t), Posts: map[string]Post{"posted": {Door: holdLeaf}},
+		Behaviors: fixtureBehavior(*holdRecipe(t), holds()), Posts: map[string]Post{"posted": {Door: holdLeaf}},
 	})
 	require.NoError(t, err)
 	require.Equal(t, "Gate guard bars the way", heldStop(t, joined, holdNorthEast), "a joiner holds where it joins")
@@ -737,7 +736,7 @@ func TestAHoldOnADoorNotFoundIsNotTold(t *testing.T) {
 // crossing, as before a shut door, so a push never leaves the mover on a cell
 // it may only pass through.
 func TestAPushStopsBeforeAHeldCrossing(t *testing.T) {
-	porter := MemberInput{ID: "porter", Kind: KindMonster, Faction: postedGarrison, Position: holdSouthEast, Table: holds()}
+	porter := MemberInput{ID: "porter", Kind: KindMonster, Faction: postedGarrison, Position: holdSouthEast, Behaviors: ordinaryBehavior(holds())}
 	enc := holdHall(t, holdLeafDoor(DoorIsOpen()), holdSouthWest,
 		holder(t, postedGuard, holdNorthWest, holdLeaf, holdNorthWest), porter)
 	require.Equal(t, PassagePassThrough, passageAt(t, enc, holdSouthEast), "precondition: the porter's cell is passed, not stood on")

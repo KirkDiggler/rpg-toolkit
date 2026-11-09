@@ -24,12 +24,12 @@ func fellWhoOf(t *testing.T, data encounter.EncounterData, id encounter.MemberID
 		if m.ID != id {
 			continue
 		}
-		rows := m.Table[string(encounter.AnswerTime)]
+		rows := m.Behaviors.Instances[0].Instance.Table[encounter.AnswerTime]
 		require.NotEmpty(t, rows)
 		require.NotEmpty(t, rows[0].When)
 		require.Equal(t, "fell", rows[0].When[0].Deed)
 
-		return rows[0].When[0].Who
+		return string(rows[0].When[0].Who)
 	}
 	require.FailNowf(t, "not in the blob", "%s", id)
 
@@ -42,7 +42,7 @@ func TestMadKingWhoSurvivesTheBlob(t *testing.T) {
 
 	blob, err := json.Marshal(s.enc.ToData())
 	require.NoError(t, err)
-	require.Contains(t, string(blob), `"who":"king"`, "the row's who is written by its own key")
+	require.Contains(t, string(blob), `"Who":"king"`, "the row's who is written by its own key")
 
 	var data encounter.EncounterData
 	require.NoError(t, json.Unmarshal(blob, &data))

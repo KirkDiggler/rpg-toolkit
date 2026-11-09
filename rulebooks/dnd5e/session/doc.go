@@ -52,6 +52,16 @@
 // are always taken session first, then characters in id order, and no verb
 // holds a character's guard while waiting for a session's.
 //
+// A VERB MAY ANSWER BEFORE ITS SAVE (rpg-project#879 R2). With
+// Config.Continuations set, a world-clock Move whose next step pays a round
+// answers with the steps before it (MoveOutput.Continues) and hands the rest
+// (that step, the raise inside it, the steps after, the save and the
+// delivery) to the host's ContinuationRunner with the session guard still
+// held. The continuation gives the guard back when it ends, so the next verb
+// waits for the world to finish, and delivery still waits for the save. The
+// SDK starts no goroutine to run it. Without a runner every verb runs whole
+// before it answers.
+//
 // Every character record a verb reads or writes goes through that verb's one
 // sheet store (store.go): one ErrNoCharacter for an absent sheet, every save
 // recorded on the verb's report.

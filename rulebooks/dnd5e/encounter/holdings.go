@@ -142,6 +142,15 @@ const (
 // does.
 type holdings struct {
 	log *journal.Journal
+
+	// The last fold and the journal length it was taken at (rpg-project#879
+	// S3b): the journal is append-only, so the same length is the same fold,
+	// and every caller only reads the answer. Before this the whole journal
+	// was copied on every question of who holds what.
+	foldedAt      int
+	folded        bool
+	foldedProps   map[PropID]MemberID
+	foldedRecords map[IntelID]map[MemberID]bool
 }
 
 // newHoldings returns the holdings reader over the one journal.
@@ -295,6 +304,12 @@ func (h *holdings) holdingsOf(member MemberID) []holding {
 // ONE WALK, TWO ANSWERS, because every question here needs the same walk and
 // two of them would be two chances to fold differently.
 func (h *holdings) fold() (props map[PropID]MemberID, records map[IntelID]map[MemberID]bool) {
+	if h.folded && h.foldedAt == h.log.Len() {
+		return h.foldedProps, h.foldedRecords
+	}
+	defer func() {
+		h.folded, h.foldedAt, h.foldedProps, h.foldedRecords = true, h.log.Len(), props, records
+	}()
 	props = map[PropID]MemberID{}
 	records = map[IntelID]map[MemberID]bool{}
 	for _, f := range h.log.All() {

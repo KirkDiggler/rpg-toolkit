@@ -382,7 +382,7 @@ func TestCastleActsTranscript(t *testing.T) {
 	// gate-1's walk off the crossing a walk.
 	var picks int
 	for _, act := range cowed.to("alice") {
-		if answer, ok := act.Body.(session.TableAnswer); ok && answer.Key == "time" {
+		if answer, ok := act.Body.(session.TableAnswer); ok && answer.Key == "behavior/6:policy/time" {
 			picks++
 			assert.True(t, strings.HasPrefix(act.Act, "time:"), act.Act)
 			assert.Equal(t, session.FamilyTableAnswer, act.Family)
@@ -722,41 +722,33 @@ func Example_theGatehouseActs() {
 	// move         perception   alice learns 1 region(s)
 	// move         act 5        alice walks (-6,16) (-6,15) (-6,14)
 	// move         clock        tick 1
-	// time         table_answer captain answers time with "hold", no roll
-	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer gate-1 answers post with "toward", rolled 1 of 50
+	// time         table_answer captain answers behavior/6:policy/time with "hold", no roll
+	// time         table_answer gate-1 answers behavior/6:policy/post with "toward", rolled 1 of 50
 	// pass         act 1        gate-1 stays: already there
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
+	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-2,10)
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
+	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-2,9) (-2,8)
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
+	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
 	// pass         act 1        gate-2 stays: standing at its waypoint
-	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer hall-1 answers behavior/6:policy/time with "toward", rolled 1 of 50
 	// move         act 1        hall-1 walks (13,-11) (12,-11) (11,-11) (10,-11) (9,-11) (8,-11)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (7,-19)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (7,-20) (7,-21)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (6,-21) (5,-21)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (5,-20)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (15,-19) (16,-19)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (16,-20) (16,-21)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (15,-21) (14,-21)
-	// time         table_answer king answers time with "hold", rolled 1 of 50
-	// time         table_answer pedlar answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-1 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-2 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-3 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-4 answers time with "hold", rolled 1 of 100
-	// time         table_answer scullion answers time with "hold", rolled 1 of 100
-	// time         table_answer sergeant answers time with "hold", rolled 1 of 100
-	// time         table_answer turnkey answers time with "hold", rolled 1 of 100
+	// time         table_answer sergeant answers behavior/6:policy/time with "hold", rolled 1 of 100
+	// time         table_answer turnkey answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// move         perception   alice learns 1 region(s)
 	// move         perception   alice sees [captain gate-1], loses [], sees [] change
 	// move         act 6        alice walks (-6,14) (-6,13)
@@ -771,35 +763,27 @@ func Example_theGatehouseActs() {
 	// speak        perception   alice hears voice
 	// speak        clock        tick 2
 	// speak        state        gate-1: posted -> cowed (stood aside)
-	// time         table_answer captain answers time with "hold", no roll
-	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer gate-1 answers cowed with "toward", rolled 1 of 50
+	// time         table_answer captain answers behavior/6:policy/time with "hold", no roll
+	// time         table_answer gate-1 answers behavior/6:policy/cowed with "toward", rolled 1 of 50
 	// move         act 1        gate-1 walks (-4,7) (-5,8)
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
+	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
 	// pass         act 1        gate-2 stays: standing at its waypoint
-	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer hall-1 answers behavior/6:policy/time with "toward", rolled 1 of 50
 	// move         act 1        hall-1 walks (7,-11) (6,-11) (6,-12)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (4,-19)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (5,-19) (6,-19) (7,-19)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (7,-20) (7,-21)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (14,-20) (13,-19)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (14,-19) (15,-19) (16,-19)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (16,-20)
-	// time         table_answer king answers time with "hold", rolled 1 of 50
-	// time         table_answer pedlar answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-1 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-2 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-3 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-4 answers time with "hold", rolled 1 of 100
-	// time         table_answer scullion answers time with "hold", rolled 1 of 100
-	// time         table_answer sergeant answers time with "hold", rolled 1 of 100
-	// time         table_answer turnkey answers time with "hold", rolled 1 of 100
+	// time         table_answer sergeant answers behavior/6:policy/time with "hold", rolled 1 of 100
+	// time         table_answer turnkey answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// -- alice tells him again --
 	// speak        act 1        alice to captain, "stand-aside" (intimidation): rolled 1d20+3 = 8, missed 14
 	// speak        state        garrison and party turn hostile
@@ -814,45 +798,37 @@ func Example_theGatehouseActs() {
 	// attack       perception   alice sees [], loses [], sees [gate-1] change
 	// -- alice ends her turn --
 	// end_turn     clock        alice's turn ends, captain's begins
-	// time         table_answer captain answers time with "attack", rolled 1 of 50
+	// time         table_answer captain answers behavior/6:policy/time with "attack", rolled 1 of 50
 	// attack       act 1        captain swings Longsword at alice: hit, rolled 1d20+5 = 20, beat 12, 3 damage
 	// attack       perception   alice hears clang
 	// attack       perception   alice sees [], loses [], sees [captain] change
-	// time         table_answer captain answers time with "toward", rolled 1 of 50
+	// time         table_answer captain answers behavior/6:policy/time with "toward", rolled 1 of 50
 	// pass         act 1        captain stays: already in reach
 	// end_turn     clock        captain's turn ends, gate-2's begins
-	// time         table_answer gate-2 answers time with "fact", rolled 1 of 200
+	// time         table_answer gate-2 answers behavior/6:policy/time with "fact", rolled 1 of 200
 	// time         perception   alice hears voice
 	// end_turn     clock        gate-2's turn ends, alice's begins
 	// end_turn     clock        tick 3
-	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer hall-1 answers behavior/6:policy/time with "toward", rolled 1 of 50
 	// move         act 1        hall-1 walks (6,-13) (6,-14) (6,-15)
-	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer hall-1 answers behavior/6:policy/time with "toward", rolled 1 of 50
 	// move         act 1        hall-1 walks (5,-15) (4,-15) (3,-15)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (6,-21) (5,-21)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (5,-20) (4,-19)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (5,-19) (6,-19)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (16,-21)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (15,-21) (14,-21)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (14,-20) (13,-19)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (14,-19)
-	// time         table_answer king answers time with "hold", rolled 1 of 50
-	// time         table_answer pedlar answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-1 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-2 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-3 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-4 answers time with "hold", rolled 1 of 100
-	// time         table_answer scullion answers time with "hold", rolled 1 of 100
-	// time         table_answer sergeant answers time with "hold", rolled 1 of 100
-	// time         table_answer turnkey answers time with "hold", rolled 1 of 100
+	// time         table_answer sergeant answers behavior/6:policy/time with "hold", rolled 1 of 100
+	// time         table_answer turnkey answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// -- alice falls back past the captain --
 	// move         reaction     captain swings Longsword at alice: hit, rolled 1d20+5 = 20, beat 12, 3 damage (Opportunity Attack)
 	// move         perception   alice hears clang
@@ -877,41 +853,33 @@ func Example_theTroupeActs() {
 	// speak        act 1        alice to pedlar, "tonight" (persuasion): rolled 1d20+3 = 15, beat 5; pedlar answers "Feast for the whole court tonight — they’ll want players."
 	// speak        perception   alice hears voice
 	// speak        clock        tick 1
-	// time         table_answer captain answers time with "hold", no roll
-	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer gate-1 answers post with "toward", rolled 1 of 50
+	// time         table_answer captain answers behavior/6:policy/time with "hold", no roll
+	// time         table_answer gate-1 answers behavior/6:policy/post with "toward", rolled 1 of 50
 	// move         act 1        gate-1 walks (-3,8) (-3,9) (-3,10) (-3,11) (-3,12) (-2,12)
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
+	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-2,10)
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
+	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-2,9) (-2,8)
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
+	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
 	// pass         act 1        gate-2 stays: standing at its waypoint
-	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer hall-1 answers behavior/6:policy/time with "toward", rolled 1 of 50
 	// move         act 1        hall-1 walks (13,-11) (12,-11) (11,-11) (10,-11) (9,-11) (8,-11)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (7,-19)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (7,-20) (7,-21)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (6,-21) (5,-21)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (5,-20)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (15,-19) (16,-19)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (16,-20) (16,-21)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (15,-21) (14,-21)
-	// time         table_answer king answers time with "hold", rolled 1 of 50
-	// time         table_answer pedlar answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-1 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-2 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-3 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-4 answers time with "hold", rolled 1 of 100
-	// time         table_answer scullion answers time with "hold", rolled 1 of 100
-	// time         table_answer sergeant answers time with "hold", rolled 1 of 100
-	// time         table_answer turnkey answers time with "hold", rolled 1 of 100
+	// time         table_answer sergeant answers behavior/6:policy/time with "hold", rolled 1 of 100
+	// time         table_answer turnkey answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// -- alice walks up to the captain --
 	// move         act 1        alice walks (-2,15) (-3,15) (-4,15)
 	// move         perception   alice learns 1 region(s)
@@ -919,35 +887,27 @@ func Example_theTroupeActs() {
 	// move         perception   alice learns 1 region(s)
 	// move         act 3        alice walks (-5,15) (-6,15)
 	// move         clock        tick 2
-	// time         table_answer captain answers time with "hold", no roll
-	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer gate-1 answers post with "toward", rolled 1 of 50
+	// time         table_answer captain answers behavior/6:policy/time with "hold", no roll
+	// time         table_answer gate-1 answers behavior/6:policy/post with "toward", rolled 1 of 50
 	// move         act 1        gate-1 walks (-3,12) (-3,11) (-3,10) (-3,9) (-3,8) (-3,7)
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
+	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
 	// pass         act 1        gate-2 stays: standing at its waypoint
-	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer hall-1 answers behavior/6:policy/time with "toward", rolled 1 of 50
 	// move         act 1        hall-1 walks (7,-11) (6,-11) (6,-12)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (4,-19)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (5,-19) (6,-19) (7,-19)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (7,-20) (7,-21)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (14,-20) (13,-19)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (14,-19) (15,-19) (16,-19)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (16,-20)
-	// time         table_answer king answers time with "hold", rolled 1 of 50
-	// time         table_answer pedlar answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-1 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-2 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-3 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-4 answers time with "hold", rolled 1 of 100
-	// time         table_answer scullion answers time with "hold", rolled 1 of 100
-	// time         table_answer sergeant answers time with "hold", rolled 1 of 100
-	// time         table_answer turnkey answers time with "hold", rolled 1 of 100
+	// time         table_answer sergeant answers behavior/6:policy/time with "hold", rolled 1 of 100
+	// time         table_answer turnkey answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// move         perception   alice learns 1 region(s)
 	// move         act 4        alice walks (-6,15) (-6,14)
 	// move         perception   alice learns 1 region(s)
@@ -961,81 +921,65 @@ func Example_theTroupeActs() {
 	// move         perception   alice sees [], loses [pedlar], sees [] change
 	// move         act 8        alice walks (-6,11) (-6,10) (-5,9)
 	// move         clock        tick 3
-	// time         table_answer captain answers time with "hold", no roll
-	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer gate-1 answers post with "toward", rolled 1 of 50
+	// time         table_answer captain answers behavior/6:policy/time with "hold", no roll
+	// time         table_answer gate-1 answers behavior/6:policy/post with "toward", rolled 1 of 50
 	// pass         act 1        gate-1 stays: already there
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
+	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-3,9) (-4,10)
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
+	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
 	// pass         act 1        gate-2 stays: standing at its waypoint
-	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer hall-1 answers behavior/6:policy/time with "toward", rolled 1 of 50
 	// move         act 1        hall-1 walks (6,-13) (6,-14) (6,-15)
-	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer hall-1 answers behavior/6:policy/time with "toward", rolled 1 of 50
 	// move         act 1        hall-1 walks (5,-15) (4,-15) (3,-15)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (6,-21) (5,-21)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (5,-20) (4,-19)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (5,-19) (6,-19)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (16,-21)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (15,-21) (14,-21)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (14,-20) (13,-19)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (14,-19)
-	// time         table_answer king answers time with "hold", rolled 1 of 50
-	// time         table_answer pedlar answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-1 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-2 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-3 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-4 answers time with "hold", rolled 1 of 100
-	// time         table_answer scullion answers time with "hold", rolled 1 of 100
-	// time         table_answer sergeant answers time with "hold", rolled 1 of 100
-	// time         table_answer turnkey answers time with "hold", rolled 1 of 100
+	// time         table_answer sergeant answers behavior/6:policy/time with "hold", rolled 1 of 100
+	// time         table_answer turnkey answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// -- alice tells the captain they are the troupe --
 	// speak        act 1        alice to captain, "troupe" (performance): rolled 1d20+3 = 15, beat 13; captain answers "Through to the hall, then. Don’t dawdle."
 	// speak        perception   alice hears voice
 	// speak        clock        tick 4
 	// speak        state        gate-1: posted -> alert (heard something)
-	// time         table_answer captain answers time with "hold", no roll
-	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer gate-1 answers post with "toward", rolled 1 of 50
+	// time         table_answer captain answers behavior/6:policy/time with "hold", no roll
+	// time         table_answer gate-1 answers behavior/6:policy/post with "toward", rolled 1 of 50
 	// move         act 1        gate-1 stays:
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
+	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
 	// pass         act 1        gate-2 stays: standing at its waypoint
-	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer hall-1 answers behavior/6:policy/time with "toward", rolled 1 of 50
 	// move         act 1        hall-1 walks (2,-15) (1,-15)
-	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer hall-1 answers behavior/6:policy/time with "toward", rolled 1 of 50
 	// move         act 1        hall-1 walks (0,-14) (-1,-13) (-2,-12)
-	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer hall-1 answers behavior/6:policy/time with "toward", rolled 1 of 50
 	// move         act 1        hall-1 walks (-1,-12)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (7,-19)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (7,-20) (7,-21)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (6,-21) (5,-21)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (5,-20)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (15,-19) (16,-19)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (16,-20) (16,-21)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (15,-21) (14,-21)
-	// time         table_answer king answers time with "hold", rolled 1 of 50
-	// time         table_answer pedlar answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-1 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-2 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-3 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-4 answers time with "hold", rolled 1 of 100
-	// time         table_answer scullion answers time with "hold", rolled 1 of 100
-	// time         table_answer sergeant answers time with "hold", rolled 1 of 100
-	// time         table_answer turnkey answers time with "hold", rolled 1 of 100
+	// time         table_answer sergeant answers behavior/6:policy/time with "hold", rolled 1 of 100
+	// time         table_answer turnkey answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// -- alice walks to the gate --
 	// move         act 1        alice walks (-5,8) (-4,7)
 	// -- alice opens the gate --
@@ -1049,42 +993,34 @@ func Example_theTroupeActs() {
 	// -- alice waits at the gate --
 	// move         act 1        alice walks (-5,8) (-4,7) (-5,8) (-4,7)
 	// move         clock        tick 5
-	// time         table_answer captain answers time with "hold", no roll
-	// time         table_answer cook answers time with "hold", rolled 1 of 100
-	// time         table_answer gate-1 answers post with "toward", rolled 1 of 50
+	// time         table_answer captain answers behavior/6:policy/time with "hold", no roll
+	// time         table_answer gate-1 answers behavior/6:policy/post with "toward", rolled 1 of 50
 	// pass         act 1        gate-1 stays: already there
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
+	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-3,10) (-2,10)
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
+	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-2,9) (-2,8)
-	// time         table_answer gate-2 answers time with "toward", rolled 1 of 100
+	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
 	// pass         act 1        gate-2 stays: standing at its waypoint
-	// time         table_answer hall-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer hall-1 answers behavior/6:policy/time with "toward", rolled 1 of 50
 	// move         act 1        hall-1 walks (0,-12) (1,-12) (2,-12) (3,-12) (4,-12) (5,-12)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (4,-19)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (5,-19) (6,-19) (7,-19)
-	// time         table_answer keep-1 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-1 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-1 walks (7,-20) (7,-21)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (14,-20) (13,-19)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (14,-19) (15,-19) (16,-19)
-	// time         table_answer keep-2 answers time with "toward", rolled 1 of 300
+	// time         table_answer keep-2 answers behavior/6:policy/time with "toward", rolled 1 of 300
 	// move         act 1        keep-2 walks (16,-20)
-	// time         table_answer king answers time with "hold", rolled 1 of 50
-	// time         table_answer pedlar answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-1 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-2 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-3 answers time with "hold", rolled 1 of 100
-	// time         table_answer prisoner-4 answers time with "hold", rolled 1 of 100
-	// time         table_answer reserve-1 answers time with "toward", rolled 1 of 50
+	// time         table_answer reserve-1 answers behavior/6:policy/time with "toward", rolled 1 of 50
 	// move         act 1        reserve-1 walks (-20,1) (-20,2) (-20,3) (-20,4) (-19,4) (-18,4)
-	// time         table_answer reserve-2 answers time with "toward", rolled 1 of 50
+	// time         table_answer reserve-2 answers behavior/6:policy/time with "toward", rolled 1 of 50
 	// move         act 1        reserve-2 walks (-19,4) (-18,4) (-17,4) (-16,4) (-15,4) (-14,4)
-	// time         table_answer scullion answers time with "hold", rolled 1 of 100
-	// time         table_answer sergeant answers time with "hold", rolled 1 of 100
-	// time         table_answer turnkey answers time with "hold", rolled 1 of 100
+	// time         table_answer sergeant answers behavior/6:policy/time with "hold", rolled 1 of 100
+	// time         table_answer turnkey answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// move         act 2        alice walks (-4,7) (-5,8) (-4,7)
 }

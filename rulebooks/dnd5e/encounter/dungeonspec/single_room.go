@@ -45,6 +45,9 @@ import "gopkg.in/yaml.v3"
 // id it must have, the id no two may share, and the standable floor it must
 // stand on. See [RoomExit].
 type SingleRoomSpec struct {
+	// BehaviorDefinitions is reusable native recipe/table or finite sequence source.
+	BehaviorDefinitions map[string]BehaviorDefinitionSpec `yaml:"behaviorDefinitions,omitempty" json:"behaviorDefinitions,omitempty"`
+
 	Version int            `yaml:"version" json:"version"`
 	Key     string         `yaml:"key" json:"key"`
 	Play    SingleRoomPlay `yaml:"play" json:"play"`
@@ -423,6 +426,14 @@ type RoomMonsterSource struct {
 // EVERY FIELD IS OPTIONAL, and the common state of this whole block is
 // absence: a creature with nothing to override needs no binding at all.
 type RoomMonsterBinding struct {
+	// Behaviors is the ordered attachment list; nil inherits, explicit [] replaces.
+	Behaviors *[]BehaviorBindingSpec `yaml:"behaviors,omitempty" json:"behaviors,omitempty"`
+	// BehaviorState selects the one instance supplying physical state.
+	BehaviorState string `yaml:"behaviorState,omitempty" json:"behaviorState,omitempty"`
+	// BlockingStates and Posts bind source state names on that instance.
+	BlockingStates *[]string            `yaml:"blockingStates,omitempty" json:"blockingStates,omitempty"`
+	Posts          map[string]HoldsSpec `yaml:"posts,omitempty" json:"posts,omitempty"`
+
 	// Faction names a declared side. Absence preserves the monster's default
 	// side; membership is a shared reference, not part of its declaration.
 	Faction string `yaml:"faction,omitempty" json:"faction,omitempty"`

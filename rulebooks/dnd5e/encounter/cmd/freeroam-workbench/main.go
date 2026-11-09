@@ -43,6 +43,8 @@ import (
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
+	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
@@ -135,7 +137,10 @@ func dungeonSetup() *encounter.SetupInput {
 			{ID: "alice", Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
 			{ID: "bella", Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 2}},
 			{ID: "goblin", Kind: encounter.KindMonster,
-				Position: spatial.Position{X: 6, Y: 10}, Table: goblinTable()},
+				Position: spatial.Position{X: 6, Y: 10}, Behaviors: &encounter.BehaviorInput{Instances: []encounter.BoundBehavior{{Instance: behavior.InstanceSpec{
+					ID: "duty", Table: goblinTable(), Recipe: machine.Recipe{Ref: core.Ref{Module: "demo", Type: "behaviors", ID: "duty"}, Initial: "ready",
+						States: map[string]machine.State{"ready": {Transitions: []machine.Transition{{On: "time", Do: []machine.Act{{Pick: "time"}}}}}}},
+				}}}}},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "stairs", Trigger: encounter.TriggerReachedPosition{

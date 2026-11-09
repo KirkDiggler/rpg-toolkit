@@ -77,6 +77,7 @@ const (
 // bumpOutput is what a bump wrote and what the barrier's answer made.
 type bumpOutput struct {
 	seq     uint64
+	id      string
 	deltas  map[MemberID]*IntelDelta
 	formed  *FormedBubble
 	outcome *Outcome
@@ -117,7 +118,7 @@ func (e *Encounter) bump(in bumpInput) (bumpOutput, error) {
 	if err != nil {
 		return bumpOutput{}, fmt.Errorf("barred beat: %w", err)
 	}
-	out := bumpOutput{seq: appended.Seq}
+	out := bumpOutput{seq: appended.Seq, id: appended.ID}
 
 	// THE PASS FLAGS ARE THIS BUMP'S. A bump is never inside a raise (the
 	// verbs that bump are a host's), and every raise resets them, so they say

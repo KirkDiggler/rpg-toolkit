@@ -162,6 +162,7 @@ type pause struct {
 // strike paused rather than its walk: there is nothing left to walk, only the
 // rest of the turn. Neither is re-derivable from the cells that remain.
 type turnPause struct {
+	behavior    *BehaviorWork
 	round       int
 	budget      TurnBudget
 	intent      int
@@ -264,6 +265,9 @@ type PauseData struct {
 // TurnPauseData is the persistent representation of what a paused TURN
 // carries beyond its walk — see [turnPause].
 type TurnPauseData struct {
+	// Behavior is the selected work resumed without choosing again.
+	Behavior *BehaviorWorkData `json:"behavior,omitempty"`
+
 	// Round is the bubble's round when the turn began, rebuilt into the
 	// monster view on resume.
 	Round int `json:"round"`
@@ -352,7 +356,8 @@ func pauseDataFrom(p *pause) *PauseData {
 	}
 	if p.turn != nil {
 		d.Turn = &TurnPauseData{
-			Round: p.turn.round,
+			Round:    p.turn.round,
+			Behavior: workDataFrom(p.turn.behavior),
 			Budget: TurnBudgetData{
 				AttacksLeft:  p.turn.budget.AttacksLeft,
 				MovementFeet: p.turn.budget.MovementFeet,
@@ -445,7 +450,8 @@ func pauseFrom(d *PauseData) (*pause, error) {
 	}
 	if d.Turn != nil {
 		p.turn = &turnPause{
-			round: d.Turn.Round,
+			round:    d.Turn.Round,
+			behavior: workFromData(d.Turn.Behavior),
 			budget: TurnBudget{
 				AttacksLeft:  d.Turn.Budget.AttacksLeft,
 				MovementFeet: d.Turn.Budget.MovementFeet,
@@ -936,6 +942,10 @@ func (e *Encounter) finishTurnFromPause(
 		return true, nil
 	}
 
+	if err := e.completeBehaviorWork(m, p.turn.behavior); err != nil {
+		return false, err
+	}
+
 	// TERMINAL ENDS THE TURN INSTEAD OF ASKING AGAIN. A [Routed] intent's
 	// whole turn is its walk, so once the walk is finished there is nothing
 	// left to run — and a resume that fell into runTurnIntents here would ask
@@ -1062,6 +1072,7 @@ func (e *Encounter) finishPausedIntent(
 				bound:    p.turn.bound,
 				terminal: p.turn.terminal,
 				face:     p.turn.face,
+				behavior: workFromData(workDataFrom(p.turn.behavior)),
 			},
 		}
 		wseq, berr := e.appendWindowOpenedBeat(

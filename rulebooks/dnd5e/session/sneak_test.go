@@ -69,7 +69,7 @@ func (s *SneakSuite) SetupTest() {
 func (s *SneakSuite) launch(hostile bool, table encounter.Table) {
 	s.T().Helper()
 	goblin := monsterAt("goblin", refs.Monsters.Goblin().String(), 9, 1)
-	goblin.Table = table
+	goblin.Behaviors = ordinaryBehavior(table)
 	facingTheDoor := 270.0
 	goblin.FacingDegrees = &facingTheDoor
 	field := encounter.FieldInput{

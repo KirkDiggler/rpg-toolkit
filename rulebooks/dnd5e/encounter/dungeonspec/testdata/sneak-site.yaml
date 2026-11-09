@@ -82,11 +82,11 @@ room:
     regions:
       - id: room-1-region
         name: Sneak Site
-        lighting: { intensity: 1 }
+        lighting: {intensity: 1}
         cells: []
       - id: region-near-room
         name: Near room
-        lighting: { intensity: 1 }
+        lighting: {intensity: 1}
         cells:
           - r: -3
             q: [[-6, 1]]
@@ -104,7 +104,7 @@ room:
             q: [[-9, -2]]
       - id: region-far-room
         name: Far room
-        lighting: { intensity: 1 }
+        lighting: {intensity: 1}
         cells:
           - r: -3
             q: [[2, 9]]
@@ -141,27 +141,44 @@ room:
     monsterBindings:
       knight:
         faction: keep
-        on:
-          time:
-            - when:
-                enemy: reach
-              attack: enemy
-            - when:
-                enemy: seen
-              toward: enemy
-            - when:
-                enemy: none
-              toward:
-                path:
-                  - q: 5
-                    r: 0
-                  - q: 4
-                    r: 2
-                  - q: 2
-                    r: 2
-                  - q: 4
-                    r: -2
-                  - q: 6
-                    r: -2
+        behaviors:
+          - id: policy
+            use: knight-policy
       cook:
         faction: kitchen
+behaviorDefinitions:
+  knight-policy:
+    recipe:
+      ref: site:behaviors:knight-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+    table:
+      time:
+        - when:
+            enemy: reach
+          attack: enemy
+        - when:
+            enemy: seen
+          toward: enemy
+        - when:
+            enemy: none
+          toward:
+            path:
+              - q: 5
+                r: 0
+              - q: 4
+                r: 2
+              - q: 2
+                r: 2
+              - q: 4
+                r: -2
+              - q: 6
+                r: -2

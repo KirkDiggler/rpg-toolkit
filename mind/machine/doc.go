@@ -40,6 +40,13 @@
 // (Set, Clear, Anchor, WakeIn) to the [Blob] it is handed. There are no
 // goroutines and no timers: time is the round the host passes in.
 //
+// [Program.TraceStep] runs the same evaluator with an optional explanation:
+// transition indices, actual guard verdicts and observed scalar inputs. Skipped
+// transitions and short-circuited children remain explicitly unevaluated. The
+// trace does not retain host objects, reread facts, or publish; a caller correlates
+// it with configuration symbols and distinguishes a preview from a committed
+// step. Ordinary Step does not allocate trace values.
+//
 // What persists is the Blob: the current state, the bag keys that differ
 // from their declared zero, the wake and the anchor. The indexes are never
 // persisted; a host rebuilds them from every blob's Listens and DueAt at

@@ -149,13 +149,14 @@ func vaultChaseHexSetup() *encounter.SetupInput {
 			// loses her AT the threshold, which is what leaves the ghost on
 			// the corridor's own gate cell one step away, and what makes the
 			// decider reach for the doorway on its second think.
-			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 9, Y: 4}, Table: hunts()},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 9, Y: 4}, Behaviors: ordinaryBehavior(hunts())},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: "sanctuary", Trigger: encounter.TriggerReachedPosition{
 				Position: spatial.Position{X: 12, Y: 6}}}, // the vault's own [2,6]
 		},
 		Capabilities: encounter.Capabilities{
+			Roller:        rollsLowest{},
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
 			Conditions:    encounter.UnobservedEquipment{},
@@ -359,6 +360,7 @@ func TestVaultChaseAbsoluteContinuity(t *testing.T) {
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
+			Roller:        rollsLowest{},
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
 			Conditions:    encounter.UnobservedEquipment{},

@@ -66,7 +66,7 @@ func TestTombWatch(t *testing.T) {
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
 			{ID: bella, Kind: encounter.KindPlayer, Position: spatial.Position{X: 3, Y: 2}},
-			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 10}, Table: walksTo(cellAt(5, 10))},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 10}, Behaviors: ordinaryBehavior(walksTo(cellAt(5, 10)))},
 		},
 		Endings: []encounter.EndingInput{
 			{Key: endingStairs, Trigger: encounter.TriggerReachedPosition{
@@ -74,6 +74,7 @@ func TestTombWatch(t *testing.T) {
 			{Key: withdrawEnding, Trigger: encounter.TriggerExternal{}},
 		},
 		Capabilities: encounter.Capabilities{
+			Roller:        rollsLowest{},
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
 			Conditions:    encounter.UnobservedEquipment{},
@@ -147,6 +148,7 @@ func TestTombWatch(t *testing.T) {
 	enc2, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
+			Roller:        rollsLowest{},
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
 			Conditions:    encounter.UnobservedEquipment{},

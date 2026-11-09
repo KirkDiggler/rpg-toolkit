@@ -18,6 +18,11 @@ Consumer slice: [Keep signature combat and loot S1 — Second Wind ring](https:/
 under [#850](https://github.com/KirkDiggler/rpg-project/issues/850).
 Existing effects work remains owned by [#703](https://github.com/KirkDiggler/rpg-project/issues/703).
 
+The [layer walkthrough](../ideas/item-effect-composition/README.md) explains how
+these responsibilities fit the larger architecture. Its [paper-trail map](../ideas/item-effect-composition/paper-trail.md)
+connects the investigation to checked plans and observed implementation; neither
+adds a second authority for this decision.
+
 ## Context
 
 The keep needs equipment whose abilities work for its NPC owners and can become
@@ -33,8 +38,8 @@ The decision question is:
 
 ### What exists
 
-- [`examples/effects`](../../examples/effects/README.md) is an implemented
-  prototype with Rage-shaped test customers. Its [`Composed`](../../examples/effects/composed.go)
+- [`mechanics/effects`](../../mechanics/effects/README.md) supplies the generic
+  composer, with Rage-shaped tests and item consumers. Its [`Composed`](../../mechanics/effects/composed.go)
   runs an effects machine and attaches the outputs of its current state. Its
   vocabulary is supplied by a consumer; neither generic tool imports a rulebook.
 - The [composable-conditions design](https://github.com/KirkDiggler/rpg-toolkit/blob/aa41ff1e65a6c3bd3f591849a33f892f18919449/docs/ideas/composable-conditions/design.md)
@@ -79,7 +84,7 @@ keep this option as the baseline, not a reason to alter the wearer's class level
 an opportunity to use an ability; activation handles its declared cost and
 immediate consequence; ongoing effects use the existing effects composition
 where their lifetime requires it. A consumer example establishes the required
-connections without putting equipment rules into `examples/effects`.
+connections without putting equipment rules into `mechanics/effects`.
 
 This separates a source of an ability from its implementation and lets classes,
 items and later consumers share behavior without requiring identical eligibility
@@ -134,7 +139,7 @@ condition or that every ability needs a state machine.
 
 The example remains under `examples/`. Its candidate interfaces may change as
 consumer evidence teaches a better shape; an example API is not a production
-contract or a selected extraction home. The current cut's [experiment plan](https://github.com/KirkDiggler/rpg-toolkit/blob/probe/862-items/examples/items/PLAN.md)
+contract or a selected extraction home. The current cut's [experiment plan](https://github.com/KirkDiggler/rpg-toolkit/blob/main/examples/items/PLAN.md)
 names its responsibilities, tests and explicit limits. Reuse the existing effects prototype
 where applicable, preserving its generic import seam. Finding that the ring
 alone does not exercise an ongoing effect is evidence to record, not a reason
@@ -306,7 +311,7 @@ marked passed or waived by changing this ADR's status.
 Shared-machine extraction is a different, downstream question. The mind/machine
 investigation has its own consumer need; its findings can inform later comparison
 without becoming this example's prerequisite. This ADR does not select
-`core/machine`, promote `examples/effects`, replace #703's provider slices, migrate
+`core/machine`, perform the effects extraction, replace #703's provider slices, migrate
 production class features, add studio authoring or deliver the keep's item/loan
 journey.
 
