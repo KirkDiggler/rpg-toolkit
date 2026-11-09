@@ -13,6 +13,14 @@ permissions:
 
 env:
   GOTOOLCHAIN: local
+  # The encounter module outgrew one CI job (rpg-toolkit#2335). It runs as
+  # three shards: "heavy" runs these root-package tests with -run, "rest" runs
+  # the root package with the same regex as -skip, and "subpackages" runs every
+  # other package unfiltered. One regex feeds both flags, so a test cannot fall
+  # between the shards. A test moves here when its own time says so; the job
+  # summary prints each shard's time.
+  SHARDED_MODULE: rulebooks/dnd5e/encounter
+  ENCOUNTER_HEAVY_TESTS: '^(TestObserversOf_EqualsFullRefresh|TestTheGarrisonsDoorOpeningsAreTheWholeFloorScans|TestPlacedReach_AgreesWithTheWalk)$'
 
 jobs:
   # Detect what changed
@@ -20,6 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       modules: ${{ steps.detect.outputs.modules }}
+      matrix: ${{ steps.detect.outputs.matrix }}
       all_modules: ${{ steps.detect.outputs.all_modules }}
       should_run_all: ${{ steps.detect.outputs.should_run_all }}
     steps:
@@ -119,18 +128,27 @@ jobs:
         UNIQUE_MODULES=$(printf '%s\n' "${MODULES[@]}" | sort -u | jq -R . | jq -s -c .)
         echo "modules=$UNIQUE_MODULES" >> $GITHUB_OUTPUT
         echo "should_run_all=false" >> $GITHUB_OUTPUT
+
+        # One job per module, except the sharded module, which gets three.
+        MATRIX=$(echo "$UNIQUE_MODULES" | jq -c --arg sharded "$SHARDED_MODULE" \
+          '[.[] | if . == $sharded then {module: ., shard: "heavy"}, {module: ., shard: "rest"}, {module: ., shard: "subpackages"} else {module: ., shard: "all"} end]')
+        echo "matrix=$MATRIX" >> $GITHUB_OUTPUT
         
         echo "Changed modules: $UNIQUE_MODULES"
+        echo "Test jobs: $MATRIX"
 
   # Run checks on changed modules only (for PRs)
   test-changed:
+    name: test-changed (${{ matrix.module }}${{ matrix.shard != 'all' && format(' {0}', matrix.shard) || '' }})
     needs: changes
     if: needs.changes.outputs.should_run_all == 'false' && needs.changes.outputs.modules != '[]'
     runs-on: ubuntu-latest
     strategy:
+      # include-only: each entry is one job, {module, shard}. A go-version axis
+      # here would collapse the entries into one combination, so the version
+      # is set on the setup-go step instead.
       matrix:
-        module: ${{ fromJson(needs.changes.outputs.modules) }}
-        go-version: ['1.27.x']
+        include: ${{ fromJson(needs.changes.outputs.matrix) }}
     
     steps:
     - uses: actions/checkout@v4
@@ -140,7 +158,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: ${{ matrix.go-version }}
+        go-version: '1.27.x'
     
     - name: Cache Go modules
       uses: actions/cache@v3
@@ -152,27 +170,65 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-go-${{ matrix.module }}-
     
-    - name: Check module ${{ matrix.module }}
+    - name: Check module ${{ matrix.module }} (${{ matrix.shard }})
+      env:
+        SHARD: ${{ matrix.shard }}
       run: |
-        echo "🔍 Checking module: ${{ matrix.module }}"
+        echo "🔍 Checking module: ${{ matrix.module }} (shard: $SHARD)"
         cd "${{ matrix.module }}"
-        
-        echo "→ Running go fmt..."
-        go fmt ./...
-        
-        echo "→ Running go mod tidy..."
-        go mod tidy
-        
-        echo "→ Installing golangci-lint..."
-        "$GITHUB_WORKSPACE/scripts/install-golangci-lint.sh"
 
-        echo "→ Running linter..."
-        golangci-lint run ./...
+        # fmt, tidy and lint run once per module, in the "all" or "rest" job;
+        # the other shards only run their tests.
+        if [[ "$SHARD" == "all" || "$SHARD" == "rest" ]]; then
+          echo "→ Running go fmt..."
+          go fmt ./...
+          
+          echo "→ Running go mod tidy..."
+          go mod tidy
+          
+          echo "→ Installing golangci-lint..."
+          "$GITHUB_WORKSPACE/scripts/install-golangci-lint.sh"
+
+          echo "→ Running linter..."
+          golangci-lint run ./...
+        fi
         
         echo "→ Running tests..."
-        go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+        start=$(date +%s)
+        case "$SHARD" in
+          all)
+            go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+            ;;
+          # -timeout 25m on the shards: their own budget; rpg-toolkit#2336
+          # gives every module's test step the same.
+          heavy)
+            # No cover here: atomic cover nearly triples these oracle tests
+            # (230 s against 82 s locally), and no step reads coverage.txt.
+            # The rest shard still covers the root package.
+            go test -race -timeout 25m -run "$ENCOUNTER_HEAVY_TESTS" .
+            ;;
+          rest)
+            go test -race -timeout 25m -skip "$ENCOUNTER_HEAVY_TESTS" \
+              -coverprofile=coverage.txt -covermode=atomic .
+            ;;
+          subpackages)
+            # Unfiltered, so a subpackage test sharing a heavy name still runs.
+            go test -race -timeout 25m -coverprofile=coverage.txt -covermode=atomic \
+              $(go list ./... | grep -vxF "$(go list .)")
+            ;;
+          *)
+            echo "❌ Unknown shard: $SHARD"
+            exit 1
+            ;;
+        esac
+        elapsed=$(( $(date +%s) - start ))
+        {
+          echo "| module | shard | tests |"
+          echo "|---|---|---|"
+          echo "| ${{ matrix.module }} | $SHARD | ${elapsed}s |"
+        } >> "$GITHUB_STEP_SUMMARY"
         
-        echo "✅ Module ${{ matrix.module }} passed all checks"
+        echo "✅ Module ${{ matrix.module }} ($SHARD) passed all checks"
     
     - name: Check for modifications
       run: |
