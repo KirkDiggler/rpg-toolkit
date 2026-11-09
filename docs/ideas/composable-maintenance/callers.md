@@ -6,6 +6,8 @@ This inventory is a migration worklist, not permission to delete tests. Preserve
 
 ## Root module — T6/T8
 
+Disposition: runtime/declarations migrated at `94aac8d9` / `8d37e5fd`, retired godoc links corrected at `4a73a227`. The inventory query now finds no old constructors/types in root source packages. Named definitions remain as current content, not compatibility runtimes. Cast facts derive from parts; condition/character views query maintenance. Root gameplay assertions were ported to the current creator and real linked keepers; full root race/vet/lint pass. Additional affected files discovered during compilation: `character/casting_test.go`, `conditions/target_held_test.go`, `events/damage_taken.go` and `refs/conditions.go`. Native nested modules below remain open, including the R11 paused-initial-delivery boundary.
+
 - `character/blessed_test.go`
 - `character/character.go`
 - `character/cleric_finalize_test.go`

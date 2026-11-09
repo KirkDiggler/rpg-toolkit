@@ -16,6 +16,7 @@ Slice [rpg-project#706](https://github.com/KirkDiggler/rpg-project/issues/706) o
 
 ## Found
 
+- T9's native characterization proves an earlier Bane recipient persists while a later recipient answers a save offer. The checked plan carried invocation identity but omitted the persisted partially delivered application; R11 reopens only that lifecycle boundary, and supersedes the earlier docs-only merge-ready verdict — [decision and proof](https://github.com/KirkDiggler/rpg-toolkit/pull/2323#issuecomment-6752508135).
 - Planning inventories 51 concrete toolkit caller/fixture files and distinguishes the current Raging consumer from obsolete compatibility paths; session/depart.go replaces an initially guessed leave.go path in the visible checks — [caller inventory](../../docs/ideas/composable-maintenance/callers.md).
 - The generic composer binds all outputs to one holder and its AmountFn returns int; these are current first-consumer boundaries, not existing support for linked lifetimes or unresolved evaluated amounts — [inspection receipts](https://github.com/KirkDiggler/rpg-project/issues/706#issuecomment-6725313075).
 - Native cast replacement, departure and character views depend on the concrete concentration condition; shared upkeep migration affects existing concentration spells even when their payload types remain unchanged — [native integration](../../docs/ideas/composable-maintenance/README.md#existing-native-integration).

@@ -112,13 +112,17 @@ baseline for that independent consumer.
 | R8 | settled | Fresh characters; one current linked format, no historical reader/dual writer/normalization or old concentration runtime; Raging remains a current independent consumer | KirkDiggler | 2026-11-08 |
 | R9 | settled | Migrate shared concentration upkeep, preserve other payloads and bound native/wire scope | KirkDiggler | 2026-11-08 |
 | R10 | settled | Native Bless/Bane acceptance and composed-resistance proof; remaining catalog/studio/item work excluded | KirkDiggler | 2026-11-08 |
+| R11 | open | Application custody and successful persistence during paused initial delivery | — | — |
 
 ## Open
 
-- No operator-owned decision blocks the scoped implementation. The checked plan
-  follows the approved contracts; a new architectural gap returns only its
-  affected decision. [The slice](https://github.com/KirkDiggler/rpg-project/issues/706)
-  carries execution evidence and remaining delivery gates.
+- R11 must settle how initial delivery crosses a persisted pause: an explicitly
+  resumable open application, or deferred shared-payload delivery. The current
+  sealed-only save contract does not settle this boundary. The
+  [decision and evidence](https://github.com/KirkDiggler/rpg-toolkit/pull/2323#issuecomment-6752508135)
+  hold the options; affected native implementation waits for that ruling.
+  [The slice](https://github.com/KirkDiggler/rpg-project/issues/706) carries the
+  remaining delivery gates.
 - R8 is settled explicitly for this cut. No compatibility experiment, automatic
   reset, or dual old/new concentration path is required.
 - Non-spell native concentration presentation is deferred until its first native
