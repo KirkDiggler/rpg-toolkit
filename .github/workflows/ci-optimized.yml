@@ -18,9 +18,12 @@ env:
   # the job summary and fails the job naming each top-level test that takes
   # longer than TEST_BUDGET under -race. A test may stay over the budget only
   # when the module's testbudget.allow names it, one test per line with its
-  # reason after a "#" on the same line; a line without a reason fails the
-  # job too. A slow test is a finding: size the fixture to the cases it
-  # proves, or name it with a reason (rpg-project#907). Locally:
+  # reason after a "#" on the same line: why it is over budget (what it builds
+  # or sweeps and why that cannot shrink), or the one issue that will size it.
+  # A line without a reason, or with "not yet sized" alone, fails the job too.
+  # The budget is judged on CI's timing, not a dev box's. A slow test is a
+  # finding: size the fixture to the cases it proves, or name it with a
+  # reason (rpg-project#907). Locally:
   # go test -race -json ./... | "$(git rev-parse --show-toplevel)/scripts/test-budget.sh" check -allow testbudget.allow
   TEST_BUDGET: 5s
   # The encounter module outgrew one CI job (rpg-toolkit#2335). It runs as

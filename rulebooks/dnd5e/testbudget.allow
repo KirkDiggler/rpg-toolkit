@@ -1,0 +1,6 @@
+# Top-level tests allowed over the CI test budget (TEST_BUDGET in
+# .github/workflows/ci-optimized.yml), judged on CI's timing. One test per
+# line, its reason after "#": why it cannot shrink, near budget, or the issue
+# that sizes it. Times: local -race on 32 cores / CI, 2026-11-09.
+
+TestOnlyTheDoorWidensACastMember  # type-checks every package of the rulebook; the whole tree is the case (- local, 41.21s CI)

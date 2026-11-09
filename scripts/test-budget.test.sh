@@ -72,6 +72,10 @@ printf '# header comment\n\nTestSlow  # sleeps on purpose for this case\n' >"$sc
 check slow_stream -allow "$scratch/ok.allow"
 [[ $status -eq 0 ]] || fail "exit $status, want 0: $err"
 [[ $out == *"TestSlow (allowed)"* ]] || fail "table does not mark TestSlow allowed: $out"
+[[ $out == *"allowed: TestSlow ($pkg) took 6.02s"* ]] || fail "log does not show the allowed test's time: $out"
+printf 'TestQuick  # was slow once\n' >"$scratch/stale.allow"
+check slow_stream -allow "$scratch/stale.allow" -budget 7s
+[[ $out == *"allowed: TestQuick ($pkg) took 0.01s, within the budget this run"* ]] || fail "a stale entry is not named: $out"
 
 run_case "an allowlist line without a reason is an error"
 printf 'TestSlow\n' >"$scratch/bare.allow"
@@ -83,6 +87,14 @@ run_case "a '#' with nothing after it is not a reason"
 printf 'TestSlow   #   \n' >"$scratch/empty.allow"
 check slow_stream -allow "$scratch/empty.allow"
 [[ $status -eq 2 ]] || fail "exit $status, want 2"
+
+run_case "'not yet sized' is not a reason"
+printf 'TestSlow  # Not yet sized\n' >"$scratch/parked.allow"
+check slow_stream -allow "$scratch/parked.allow"
+[[ $status -eq 2 ]] || fail "exit $status, want 2"
+printf 'TestSlow  # over budget, to be sized: rpg-toolkit#1\n' >"$scratch/issue.allow"
+check slow_stream -allow "$scratch/issue.allow"
+[[ $status -eq 0 ]] || fail "an issue reason: exit $status, want 0: $err"
 
 run_case "-budget raises the bar"
 check slow_stream -budget 7s

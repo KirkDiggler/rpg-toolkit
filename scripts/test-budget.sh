@@ -19,7 +19,11 @@
 #
 #   TestObserversOf_EqualsFullRefresh  # the castle row needs ... (rpg-project#909)
 #
-# A name matches that top-level test in any package of the module. Blank
+# A reason says why the test is over budget (what it builds or sweeps and why
+# that cannot shrink), or names the issue that will size it ("over budget, to
+# be sized: rpg-toolkit#NNNN"); "not yet sized" alone is no reason. The budget
+# is judged on CI's timing. A name matches that top-level test in any package
+# of the module. Blank
 # lines and lines starting with "#" are ignored. A test run more than once
 # (-count) is judged by its slowest run.
 #
@@ -28,7 +32,7 @@
 set -euo pipefail
 
 usage() {
-  sed -n '3,22p' "$0" | sed 's/^# \{0,1\}//' >&2
+  awk 'NR > 2 && !/^#/ { exit } NR > 2 { sub(/^# ?/, ""); print }' "$0" >&2
   exit 2
 }
 
@@ -96,8 +100,9 @@ cmd_check() {
       reason=""
       [[ $line == *"#"* ]] && reason=${line#*#}
       reason=${reason//[[:space:]]/}
-      if [[ -z $reason ]]; then
-        echo "test-budget: $allow:$n: '$name' has no reason; write it as '$name  # why it may be slow'" >&2
+      # "not yet sized" parks a test without saying why it is slow.
+      if [[ -z $reason || ${reason,,} == notyetsized* ]]; then
+        echo "test-budget: $allow:$n: '$name' has no reason; write why it is over budget (what it builds or sweeps and why that cannot shrink), or 'over budget, to be sized: <issue>'" >&2
         bad=1
         continue
       fi
@@ -120,7 +125,13 @@ cmd_check() {
       | map(. + {allowed: (.test as $t | $allowed | index($t) != null)})
       | sort_by(-.s, .pkg, .test)')
 
-  local out=${GITHUB_STEP_SUMMARY:-/dev/stdout}
+  # fd 3 is the summary; stdout itself when there is none (reopening
+  # /dev/stdout would write over the log lines that follow).
+  if [[ -n ${GITHUB_STEP_SUMMARY:-} ]]; then
+    exec 3>>"$GITHUB_STEP_SUMMARY"
+  else
+    exec 3>&1
+  fi
   {
     echo "### Slowest tests${label:+ — $label}"
     echo
@@ -133,7 +144,12 @@ cmd_check() {
           | "| \(.pkg | sub("^github\\.com/[^/]+/[^/]+/"; "")) | \(.test)\(if .s > $b then (if .allowed then " (allowed)" else " **over budget**" end) else "" end) | \(.s * 100 | round / 100) |"' <<<"$rows"
     fi
     echo
-  } >>"$out"
+  } >&3
+
+  # Allowed tests, with this run's time, so an entry that no longer needs its
+  # line shows up in the log.
+  jq -r --argjson b "$budget" '.[] | select(.allowed)
+      | "test-budget: allowed: \(.test) (\(.pkg)) took \(.s * 100 | round / 100)s\(if .s > $b then "" else ", within the budget this run" end)"' <<<"$rows"
 
   local over
   over=$(jq -r --argjson b "$budget" '.[] | select(.s > $b and (.allowed | not))
