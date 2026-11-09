@@ -26,6 +26,13 @@
 // [CheckParameters] validates producer-supplied scalar values from mechanical
 // metadata. It does not bind templates, sample values or define a quality profile.
 //
+// Observe and Decide can also return [InstanceOutcome] values when Trace is
+// requested. These pair the machine's actual one-pass guard observations with
+// the composer's selected/committed/skipped dispositions. The proposed machine
+// state is not necessarily the committed state: a deferred role and a
+// no-candidate hold keep their progress. Tracing never evaluates a deferred
+// role's table or rolls a second choice. Existing untraced results stay unchanged.
+//
 // # Derived inspection and wake admission
 //
 // [Composer.Inspect] describes every instance's own state, listeners, timed
