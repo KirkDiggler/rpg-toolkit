@@ -40,6 +40,9 @@ jobs:
       run: |
         # For main branch pushes, always run all
         if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
+          # The matrix of test-changed is evaluated even when its if is false;
+          # an unset modules output makes fromJson fail the whole job graph.
+          echo "modules=[]" >> $GITHUB_OUTPUT
           echo "should_run_all=true" >> $GITHUB_OUTPUT
           echo "Running all checks for main branch push"
           exit 0
@@ -48,6 +51,9 @@ jobs:
         # Manual recovery validates the selected main commit in full. Its
         # parent diff may contain only workflow files, not the missed module.
         if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          # The matrix of test-changed is evaluated even when its if is false;
+          # an unset modules output makes fromJson fail the whole job graph.
+          echo "modules=[]" >> $GITHUB_OUTPUT
           echo "should_run_all=true" >> $GITHUB_OUTPUT
           echo "Running all checks for manual recovery"
           exit 0
@@ -55,6 +61,9 @@ jobs:
 
         # Check if PR has "full-check" label
         if [[ "${{ contains(github.event.pull_request.labels.*.name, 'full-check') }}" == "true" ]]; then
+          # The matrix of test-changed is evaluated even when its if is false;
+          # an unset modules output makes fromJson fail the whole job graph.
+          echo "modules=[]" >> $GITHUB_OUTPUT
           echo "should_run_all=true" >> $GITHUB_OUTPUT
           echo "Running all checks due to 'full-check' label"
           exit 0
@@ -80,6 +89,9 @@ jobs:
         # Fail LOUD instead: an infrastructure change checks everything.
         INFRA_CHANGED=$(echo "$ALL_CHANGED" | grep -E '(^|/)\.golangci\.ya?ml$|^\.golangci-version$|^\.github/workflows/|^Makefile$|^scripts/' || true)
         if [[ -n "$INFRA_CHANGED" ]]; then
+          # The matrix of test-changed is evaluated even when its if is false;
+          # an unset modules output makes fromJson fail the whole job graph.
+          echo "modules=[]" >> $GITHUB_OUTPUT
           echo "should_run_all=true" >> $GITHUB_OUTPUT
           echo "Running all checks — lint/CI infrastructure changed:"
           echo "$INFRA_CHANGED"
@@ -127,6 +139,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.should_run_all == 'false' && needs.changes.outputs.modules != '[]'
     runs-on: ubuntu-latest
+    # The job holds setup, lint and the module's test binaries (run in
+    # parallel), each binary capped at 25m below. 40m is that cap plus setup.
+    timeout-minutes: 40
     strategy:
       matrix:
         module: ${{ fromJson(needs.changes.outputs.modules) }}
@@ -170,7 +185,10 @@ jobs:
         golangci-lint run ./...
         
         echo "→ Running tests..."
-        go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+        # Each test binary gets 25m, not Go's default 10m. This buys time, not
+        # speed: the encounter root package passed 10m under race+cover on CI
+        # runners (rpg-toolkit#2320, #2331). Sharding it is rpg-toolkit#2335.
+        go test -race -timeout 25m -coverprofile=coverage.txt -covermode=atomic ./...
         
         echo "✅ Module ${{ matrix.module }} passed all checks"
     
