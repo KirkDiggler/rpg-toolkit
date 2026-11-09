@@ -33,6 +33,9 @@ import (
 // act and puts nothing on any panel.
 var recordOnly = map[string]bool{
 	encounter.BeatTable:             true,
+	encounter.BeatBehaviorConfig:    true,
+	encounter.BeatBehaviorDecision:  true,
+	encounter.BeatBehaviorWork:      true,
 	encounter.BeatTransferred:       true,
 	encounter.BeatInteracted:        true,
 	string(encounter.OutcomeBought): true,

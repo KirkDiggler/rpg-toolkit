@@ -55,14 +55,13 @@ func TestADoorChangeDropsTheVisibleCache(t *testing.T) {
 // by use, costing one sweep per key again and no correctness. Mutant: a cache
 // that grows without bound (entries exceed the bound).
 func TestTheVisibleCacheIsBounded(t *testing.T) {
-	prev := visibleCacheEntries
-	visibleCacheEntries = 3
-	defer func() { visibleCacheEntries = prev }()
-	enc := sweepScene(t)
+	const bound = 3
+	enc, err := newEncounter(sweepSetup(), bound)
+	require.NoError(t, err)
 	for _, to := range []spatial.Position{{X: 1, Y: 2}, {X: 2, Y: 2}, {X: 3, Y: 2}, {X: 2, Y: 2}} {
-		_, err := enc.Step(&StepInput{Member: sweepWalker, To: enc.field.cellAt(to), EndWalk: true})
+		_, err = enc.Step(&StepInput{Member: sweepWalker, To: enc.field.cellAt(to), EndWalk: true})
 		require.NoError(t, err)
-		require.LessOrEqual(t, len(enc.visibleCache), visibleCacheEntries, "the cache never exceeds its bound")
+		require.LessOrEqual(t, len(enc.visibleCache), bound, "the cache never exceeds its bound")
 	}
 	requireNothingUnlearned(t, enc, "after the bounded walk")
 }

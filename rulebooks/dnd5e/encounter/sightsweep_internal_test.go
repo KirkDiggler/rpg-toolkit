@@ -65,7 +65,16 @@ func sweepCapabilities() Capabilities {
 
 func sweepScene(t *testing.T) *Encounter {
 	t.Helper()
-	enc, err := NewEncounter(&SetupInput{
+	enc, err := NewEncounter(sweepSetup())
+	require.NoError(t, err)
+
+	return enc
+}
+
+// sweepSetup is [sweepScene]'s input, for a test that builds the scene
+// through [newEncounter].
+func sweepSetup() *SetupInput {
+	return &SetupInput{
 		Field: sweepField(),
 		Members: []MemberInput{
 			{ID: sweepWatchA, Kind: KindPlayer, Position: spatial.Position{X: 0, Y: 1}},
@@ -75,10 +84,7 @@ func sweepScene(t *testing.T) *Encounter {
 		},
 		Endings:      []EndingInput{{Key: "withdrawn", Trigger: TriggerExternal{}}},
 		Capabilities: sweepCapabilities(),
-	})
-	require.NoError(t, err)
-
-	return enc
+	}
 }
 
 // walkAround steps the walker n times round the west room's south-west

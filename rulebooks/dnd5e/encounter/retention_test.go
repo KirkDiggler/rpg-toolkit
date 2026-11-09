@@ -384,7 +384,7 @@ func (s *RetentionTestSuite) TestUntrimmedEncounterHasNoFloor() {
 
 // TestVerbBeatsSurviveTheVerb is the #1381 pin. A single engine call that
 // mints more beats than the retention window must leave ALL of them readable
-// in the live Story: PR #1377's review reproduced a verb trimming its own
+// in the live record: PR #1377's review reproduced a verb trimming its own
 // beats mid-verb, past every cursor, so nothing could ever commit them. The
 // window is one and a round of the world mints three beats in one call — the
 // tick frame, the patroller's own pick and its movement — so per-append
@@ -434,14 +434,17 @@ func (s *RetentionTestSuite) TestVerbBeatsSurviveTheVerb() {
 
 	entries, err := enc.Story(&encounter.StoryInput{Audience: "watcher", AfterSeq: 0})
 	s.Require().NoError(err)
-	s.Len(entries, 5, "scene-opened, tick, table, pick, movement: the verb's own beats all survive the verb")
-	for i, entry := range entries {
+	s.Len(entries, 5, "scene-opened, tick, table, pick, movement: player-visible beats are unchanged")
+	all, err := enc.ReadRecord(&encounter.ReadRecordInput{})
+	s.Require().NoError(err)
+	s.Require().Len(all.Entries, 7, "the two private configuration/decision records survive too; audience gaps are not trimming")
+	for i, entry := range all.Entries {
 		s.Equal(uint64(i+1), entry.Seq, "nothing was trimmed out from under the verb")
 	}
 
 	data := enc.ToData()
 	s.Require().Len(data.Log.Entries, 1, "the boundary then emits exactly the window")
-	s.Equal(uint64(5), data.Log.Entries[0].Seq, "and keeps the newest beat")
+	s.Equal(uint64(7), data.Log.Entries[0].Seq, "and keeps the newest beat")
 
 	_, err = enc.Story(&encounter.StoryInput{Audience: "watcher", AfterSeq: 4})
 	s.ErrorIs(err, encounter.ErrTrimmed, "the floor advanced with the save, exactly as before")

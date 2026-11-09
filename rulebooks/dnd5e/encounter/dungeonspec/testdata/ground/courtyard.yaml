@@ -1,0 +1,45 @@
+version: 5
+key: courtyard-ground-walk
+play: {void: transparent, lighting: bright, standing: centre-covered}
+room:
+  version: 3
+  id: courtyard-ground
+  name: Courtyard ground walk
+  coordinateFrame:
+    horizontalPlane: world-xz
+    verticalAxis: world-y-up
+    distanceUnit: world-scene-unit
+    hexRadius: 1
+    footprintFrame: owner-local-xz
+  scene:
+    version: 1
+    id: courtyard-ground-scene
+    name: Courtyard ground walk
+    items: []
+    groups: []
+  room:
+    implicitRegionId: courtyard
+    regions:
+      - id: courtyard
+        name: Courtyard
+        lighting: {intensity: 1}
+        cells:
+          - {r: -1, q: [[-2, 2]]}
+          - {r: 0, q: [[-2, 2]]}
+          - {r: 1, q: [[-2, 2]]}
+        ground:
+          baseRef: dnd5e:ground:fantasy-kingdom:grass_01
+          paint:
+            - ref: dnd5e:ground:fantasy-kingdom:dirt_01
+              cells:
+                - {r: 0, q: [[0, 1]]}
+                - {r: 1, q: [[0, 0]]}
+      - id: gate
+        name: Gate approach
+        lighting: {intensity: 1}
+        cells:
+          - {r: 2, q: [[-1, 1]]}
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: {q: 0, r: 2}
+    monsterDeclarations: []

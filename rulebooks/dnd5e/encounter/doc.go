@@ -112,6 +112,23 @@
 // record after an id, every audience included — the debug stream's source.
 // The record's ids draw on [SetupInput.IDs], the wall clock by default.
 //
+// # Behavior diagnostics
+//
+// Canonical behavior inputs are described by [BeatBehaviorConfig], once per
+// member's immutable configuration. [BeatBehaviorDecision] carries actual
+// one-pass machine alternatives and composer commit dispositions. It references
+// the [BeatAnswered] record containing the selected table's arithmetic; a
+// repeated no-candidate answer suppressed from narration keeps its verdict in
+// diagnostics instead. [BeatBehaviorWork] separately reports actual partial,
+// paused and completed work and retains its decision-record backlink on a pause.
+//
+// These records have no player audience. They neither teach observations nor
+// replace the designated body's state beats; the host gates the debug record
+// surface. Configuration symbols contain original bound inputs, never current
+// editor source or a second live progress store. A host pruning the record must
+// archive its symbols for later inspection; current session captures are unbounded.
+// Missing symbols cannot be reconstructed from today's source.
+//
 // # Time on the world clock (rpg-project#465)
 //
 // The world clock advances ONLY BECAUSE SOMEBODY ACTS. A walk pays one round
@@ -227,6 +244,16 @@
 // only when all of its former spatial support is observed empty; omission alone
 // never supplies a carrier or destination. Pickups and door changes notify
 // actual witnesses, not everybody who remembers the subject.
+//
+// # Region ground appearance
+//
+// RegionInput.Ground is optional, opaque appearance: a base ref and explicit
+// paint on owned cells. Construction converts paint cells once, captures a
+// detached authored copy for persistence, and never derives movement, elevation
+// or sight from a ref. Absence preserves the consumer's existing default.
+// AtlasFor and every discovery payload restrict paint to their delivered
+// region cells; no hidden paint map travels with a partial region. Saved
+// appearance is immutable and is not enriched from later source edits.
 //
 // # Authored member appearance
 //

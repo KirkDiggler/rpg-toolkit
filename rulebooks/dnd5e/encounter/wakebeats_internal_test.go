@@ -326,12 +326,10 @@ func TestWake_FightRoundWithNoReactionPickRefreshesNoSight(t *testing.T) {
 	})
 	enc, driver := wakeHall(t, monster("m-fighter", 4, 1, holds()), listener("m-res", 12, 6, alarmed))
 	encodes := 0
-	saved := encodeSighting
-	encodeSighting = func(t SightTestimony) ([]byte, error) {
+	enc.sightEncoder = func(t SightTestimony) ([]byte, error) {
 		encodes++
-		return saved(t)
+		return EncodeSightTestimony(t)
 	}
-	defer func() { encodeSighting = saved }()
 
 	enc.landFightRound([]MemberID{"alice", "m-fighter"}, uint64(enc.clock.ToData().HighWater))
 	require.NoError(t, enc.wakePass(false, false))

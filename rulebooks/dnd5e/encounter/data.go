@@ -327,11 +327,12 @@ type CanvasData struct {
 // at load, refused by name when absent, never defaulted — a region whose
 // light nobody stated is a fact this module may not invent (rpg-toolkit#1033).
 type RegionData struct {
-	ID        string         `json:"id"`
-	Name      string         `json:"name,omitempty"`
-	Cells     []PositionData `json:"cells"`
-	Archetype string         `json:"archetype"`
-	Lighting  *LightingData  `json:"lighting"`
+	ID        string            `json:"id"`
+	Name      string            `json:"name,omitempty"`
+	Cells     []PositionData    `json:"cells"`
+	Archetype string            `json:"archetype"`
+	Lighting  *LightingData     `json:"lighting"`
+	Ground    *RegionGroundData `json:"ground,omitempty"`
 
 	// Concealed is a TOMBSTONE: the key a region wrote while a region was
 	// the thing that could be hidden (rpg-toolkit#1371 through
@@ -2521,6 +2522,7 @@ func fieldDataFrom(f *field) FieldData {
 		out.Regions[i] = RegionData{
 			ID: r.ID, Name: r.Name, Cells: cells, Archetype: r.Archetype,
 			Lighting: &LightingData{Intensity: &intensity},
+			Ground:   regionGroundData(r.Ground),
 		}
 	}
 
@@ -3360,9 +3362,10 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// panic on the load path rather than an empty answer.
 	world := newEncounterWorld()
 	e := &Encounter{
-		discovery:     copyDiscoveryStates(data.Discovery),
-		sneakVerdicts: copySneakVerdicts(data.SneakVerdicts),
-		sightSweeps:   copySightSweeps(data.SightSweeps),
+		visibleCacheEntries: visibleCacheBound,
+		discovery:           copyDiscoveryStates(data.Discovery),
+		sneakVerdicts:       copySneakVerdicts(data.SneakVerdicts),
+		sightSweeps:         copySightSweeps(data.SightSweeps),
 		// THE LAST LOOK IS THE SAVED HIGH-WATER (rpg-project#762): a verb
 		// ends with a look, so the reading a blob was saved at is the one
 		// every current sighting in it is known true at. Derived, not stored.
@@ -3869,6 +3872,7 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 		in.Regions[i] = RegionInput{
 			ID: rd.ID, Name: rd.Name, Cells: cells, Archetype: rd.Archetype,
 			Lighting: &Lighting{Intensity: *rd.Lighting.Intensity},
+			Ground:   regionGroundFromData(rd.Ground),
 		}
 	}
 
