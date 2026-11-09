@@ -18,13 +18,15 @@ import (
 // ErrInvalidAssembly marks an invalid local assembly definition or operation.
 var ErrInvalidAssembly = errors.New("invalid effect assembly")
 
-// EndScope states whether a part's terminal state completes that part or asks
-// the application's owner to end its shared lifetime.
+// EndScope states whether terminal state completes one part, ends its local
+// attachment, or asks the application's owner to end the shared lifetime.
 type EndScope string
 
 const (
 	// EndPart leaves other parts running and persists this part as completed.
 	EndPart EndScope = "part"
+	// EndAttachment ends all local parts without requesting the whole application.
+	EndAttachment EndScope = "attachment"
 	// EndApplication asks the owner to end, then detaches all local parts.
 	EndApplication EndScope = "application"
 )
@@ -53,7 +55,7 @@ type AssemblyChange struct {
 }
 
 // AssemblyLifecycle supplies lifecycle transport, not another state runner.
-// End is required for application-ending parts. Changed reports local state
+// End is required for attachment/application-ending parts. Changed reports local state
 // changes and local completion. Callbacks run on the attached interaction bus.
 type AssemblyLifecycle struct {
 	End     func(context.Context, events.EventBus, AssemblyEnd) error
@@ -135,9 +137,9 @@ func Assemble(input AssemblyInput) (*Assembly, error) {
 		}
 		switch part.OnTerminal {
 		case EndPart:
-		case EndApplication:
+		case EndApplication, EndAttachment:
 			if a.lifecycle.End == nil {
-				return nil, fmt.Errorf("%w: part %q requires application end transport", ErrInvalidAssembly, part.Key)
+				return nil, fmt.Errorf("%w: part %q requires attachment/application end transport", ErrInvalidAssembly, part.Key)
 			}
 		default:
 			return nil, fmt.Errorf("%w: part %q has unknown terminal scope %q", ErrInvalidAssembly, part.Key, part.OnTerminal)
@@ -155,8 +157,8 @@ func Assemble(input AssemblyInput) (*Assembly, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%w: part %q: %w", ErrInvalidAssembly, part.Key, err)
 		}
-		if part.OnTerminal == EndApplication && composed.m.Program().IsTerminal(composed.State()) {
-			return nil, fmt.Errorf("%w: part %q is already application-terminal", ErrInvalidAssembly, part.Key)
+		if part.OnTerminal != EndPart && composed.m.Program().IsTerminal(composed.State()) {
+			return nil, fmt.Errorf("%w: part %q is already attachment/application-terminal", ErrInvalidAssembly, part.Key)
 		}
 		composed.reactionsAllowed = func() bool { return !a.ending }
 		a.parts = append(a.parts, assemblyPart{key: part.Key, runtime: composed})
@@ -182,7 +184,7 @@ func RestoreAssembly(input RestoreAssemblyInput) (*Assembly, error) {
 			return nil, fmt.Errorf("%w: part %q requires complete saved state and bag", ErrInvalidAssembly, part.Key)
 		}
 		state, known := part.Compose.Recipe.States[saved.State]
-		if !known || (state.Terminal && part.OnTerminal == EndApplication) {
+		if !known || (state.Terminal && part.OnTerminal != EndPart) {
 			return nil, fmt.Errorf("%w: part %q cannot restore state %q", ErrInvalidAssembly, part.Key, saved.State)
 		}
 		for key := range part.Compose.Recipe.Bag {
@@ -304,7 +306,7 @@ func (a *Assembly) partEnded(ctx context.Context, bus events.EventBus, end Assem
 	if a.ending {
 		return nil
 	}
-	if end.Scope == EndApplication {
+	if end.Scope != EndPart {
 		a.ending = true
 		err := a.lifecycle.End(ctx, bus, end)
 		return errors.Join(err, a.Remove(ctx, bus))
