@@ -15,15 +15,17 @@
 #       each test over the budget that FILE does not list. Exit 2 when FILE
 #       has a line without a reason.
 #
-# The allowlist names one test per line with its reason on the same line:
+# The allowlist names one test per line, as its package's import path (the
+# "Package" field of go test -json), a slash and the top-level test name, with
+# its reason on the same line:
 #
-#   TestObserversOf_EqualsFullRefresh  # the castle row needs ... (rpg-project#909)
+#   github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/TestObserversOf_EqualsFullRefresh  # the castle row needs ... (rpg-project#909)
 #
 # A reason says why the test is over budget (what it builds or sweeps and why
 # that cannot shrink), or names the issue that will size it ("over budget, to
 # be sized: rpg-toolkit#NNNN"); "not yet sized" alone is no reason. The budget
-# is judged on CI's timing. A name matches that top-level test in any package
-# of the module. Blank
+# is judged on CI's timing. An entry matches that one package's test only; a
+# line that is not package-qualified is an error too. Blank
 # lines and lines starting with "#" are ignored. A test run more than once
 # (-count) is judged by its slowest run.
 #
@@ -101,6 +103,11 @@ cmd_check() {
       [[ $line == *"#"* ]] && reason=${line#*#}
       reason=${reason//[[:space:]]/}
       # "not yet sized" parks a test without saying why it is slow.
+      if [[ $name != ?*/?* ]]; then
+        echo "test-budget: $allow:$n: '$name' is not package-qualified; write it as '<import path>/$name', the Package field of go test -json" >&2
+        bad=1
+        continue
+      fi
       if [[ -z $reason || ${reason,,} == notyetsized* ]]; then
         echo "test-budget: $allow:$n: '$name' has no reason; write why it is over budget (what it builds or sweeps and why that cannot shrink), or 'over budget, to be sized: <issue>'" >&2
         bad=1
@@ -122,7 +129,7 @@ cmd_check() {
     jq -sc --argjson allowed "$allowed" '
       group_by([.Package, .Test])
       | map({pkg: .[0].Package, test: .[0].Test, s: (map(.Elapsed // 0) | max)})
-      | map(. + {allowed: (.test as $t | $allowed | index($t) != null)})
+      | map(. + {allowed: ((.pkg + "/" + .test) as $k | $allowed | index($k) != null)})
       | sort_by(-.s, .pkg, .test)')
 
   # fd 3 is the summary; stdout itself when there is none (reopening

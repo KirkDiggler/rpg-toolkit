@@ -68,33 +68,49 @@ check slow_stream -allow "$scratch/none.allow"
 [[ $err != *"TestParent"* ]] || fail "a 1 s parent with a slow subtest was judged: $err"
 
 run_case "the same test allowlisted with a reason passes"
-printf '# header comment\n\nTestSlow  # sleeps on purpose for this case\n' >"$scratch/ok.allow"
+printf '# header comment\n\n%s/TestSlow  # sleeps on purpose for this case\n' "$pkg" >"$scratch/ok.allow"
 check slow_stream -allow "$scratch/ok.allow"
 [[ $status -eq 0 ]] || fail "exit $status, want 0: $err"
 [[ $out == *"TestSlow (allowed)"* ]] || fail "table does not mark TestSlow allowed: $out"
 [[ $out == *"allowed: TestSlow ($pkg) took 6.02s"* ]] || fail "log does not show the allowed test's time: $out"
-printf 'TestQuick  # was slow once\n' >"$scratch/stale.allow"
+printf '%s/TestQuick  # was slow once\n' "$pkg" >"$scratch/stale.allow"
 check slow_stream -allow "$scratch/stale.allow" -budget 7s
 [[ $out == *"allowed: TestQuick ($pkg) took 0.01s, within the budget this run"* ]] || fail "a stale entry is not named: $out"
 
 run_case "an allowlist line without a reason is an error"
-printf 'TestSlow\n' >"$scratch/bare.allow"
+printf '%s/TestSlow\n' "$pkg" >"$scratch/bare.allow"
 check slow_stream -allow "$scratch/bare.allow"
 [[ $status -eq 2 ]] || fail "exit $status, want 2"
 [[ $err == *"bare.allow:1"* && $err == *"no reason"* ]] || fail "stderr does not point at the line: $err"
 
 run_case "a '#' with nothing after it is not a reason"
-printf 'TestSlow   #   \n' >"$scratch/empty.allow"
+printf '%s/TestSlow   #   \n' "$pkg" >"$scratch/empty.allow"
 check slow_stream -allow "$scratch/empty.allow"
 [[ $status -eq 2 ]] || fail "exit $status, want 2"
 
 run_case "'not yet sized' is not a reason"
-printf 'TestSlow  # Not yet sized\n' >"$scratch/parked.allow"
+printf '%s/TestSlow  # Not yet sized\n' "$pkg" >"$scratch/parked.allow"
 check slow_stream -allow "$scratch/parked.allow"
 [[ $status -eq 2 ]] || fail "exit $status, want 2"
-printf 'TestSlow  # over budget, to be sized: rpg-toolkit#1\n' >"$scratch/issue.allow"
+printf '%s/TestSlow  # over budget, to be sized: rpg-toolkit#1\n' "$pkg" >"$scratch/issue.allow"
 check slow_stream -allow "$scratch/issue.allow"
 [[ $status -eq 0 ]] || fail "an issue reason: exit $status, want 0: $err"
+
+run_case "an entry is package-qualified: a bare name is an error"
+printf 'TestSlow  # sleeps on purpose\n' >"$scratch/unqualified.allow"
+check slow_stream -allow "$scratch/unqualified.allow"
+[[ $status -eq 2 ]] || fail "exit $status, want 2"
+[[ $err == *"not package-qualified"* ]] || fail "stderr does not say why: $err"
+
+run_case "a same-named test in another package is not allowed by the first's entry"
+two_packages() {
+  slow_stream
+  event pass "$pkg/other" TestSlow 6.4
+}
+check two_packages -allow "$scratch/ok.allow"
+[[ $status -eq 1 ]] || fail "exit $status, want 1"
+[[ $err == *"TestSlow ($pkg/other) took 6.4s"* ]] || fail "the other package's TestSlow is not named: $err"
+[[ $err != *"TestSlow ($pkg) took"* ]] || fail "the allowed package's TestSlow was named: $err"
 
 run_case "-budget raises the bar"
 check slow_stream -budget 7s

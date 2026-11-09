@@ -17,9 +17,13 @@ env:
   # scripts/test-budget.sh writes the module's ten slowest top-level tests to
   # the job summary and fails the job naming each top-level test that takes
   # longer than TEST_BUDGET under -race. A test may stay over the budget only
-  # when the module's testbudget.allow names it, one test per line with its
-  # reason after a "#" on the same line: why it is over budget (what it builds
-  # or sweeps and why that cannot shrink), or the one issue that will size it.
+  # when the module's testbudget.allow names it: one test per line, as its
+  # package's import path (go test -json's Package field), a slash and the
+  # top-level test name, with its reason after a "#" on the same line: why it
+  # is over budget (what it builds or sweeps and why that cannot shrink), or
+  # the one issue that will size it. For example:
+  #   github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/TestObserversOf_EqualsFullRefresh  # the castle row needs a posted guard, arrivals and table-only creatures (rpg-project#909)
+  # A bare test name is an error: it would exempt every package's test.
   # A line without a reason, or with "not yet sized" alone, fails the job too.
   # The budget is judged on CI's timing, not a dev box's. A slow test is a
   # finding: size the fixture to the cases it proves, or name it with a
