@@ -24,8 +24,8 @@ github.com/KirkDiggler/rpg-toolkit/play/intel v0.4.0 h1:yX/5HaPKYJTIlGEywEKnQiQ+
 github.com/KirkDiggler/rpg-toolkit/play/intel v0.4.0/go.mod h1:BlYgBeigB1mUum7FG8AUxWX32tgBrBLFg4/t//+tSvk=
 github.com/KirkDiggler/rpg-toolkit/play/interrupt v0.1.0 h1:L9ozHqfxKo8Ca/z4EF/juHaDT62b343d43CRwW6kTlY=
 github.com/KirkDiggler/rpg-toolkit/play/interrupt v0.1.0/go.mod h1:IRzIF0Rp4mzlan3SxrRR41drGYsL3DY4p8oM7qRSBag=
-github.com/KirkDiggler/rpg-toolkit/play/record v0.2.0 h1:fiSh7Gr689aalOdarJaqIx8fNg/AbdhMJnYuleCX1xQ=
-github.com/KirkDiggler/rpg-toolkit/play/record v0.2.0/go.mod h1:URY6tA/joFr1iUmw7QHVFN5lzV9Aa214ygGmCGXk5dE=
+github.com/KirkDiggler/rpg-toolkit/play/record v0.3.0 h1:OdpM8ZxpaZMfi1z+XMuNY6s1QjhrQRr7q/nCULoajhc=
+github.com/KirkDiggler/rpg-toolkit/play/record v0.3.0/go.mod h1:nWzjz8HSBKwlVcY11lI6OqeijbBw5YgkpF10ZsA5I/8=
 github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1 h1:MtAEpVskb0lfb+oXO8xGrSQsDoHZdQ/kjdjh7b9IOdY=
 github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1/go.mod h1:wsyJmmf1X0iLFGy5Iyy5sUoZhXZQvuYVsKdXfc4b/T4=
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.214.0 h1:gwj2tYDffLgjJoj7qRtVGSzv9eUzigqNlRgkEywaFy0=

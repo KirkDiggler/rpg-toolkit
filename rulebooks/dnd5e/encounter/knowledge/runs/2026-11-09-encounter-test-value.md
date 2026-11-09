@@ -12,6 +12,7 @@
 
 ## Found
 
+- Later merged PR#2339 supersedes this fixture cut with a reviewed small keep retaining all36doors and explicit10k benchmarks. Catch-up preserves that upstream test and removes this branch's now-unneeded helper; only this audit record remains different from main — [upstream delivery](https://github.com/KirkDiggler/rpg-toolkit/pull/2339).
 - On exact inspection candidate93fdaedf, root race+atomic-coverage profiling passed443.027s;10of527top-level tests/groups accounted for290.88s. Expensive fixtures dominate this sample; it does not justify a suite-wide deletion policy — [measurement](https://github.com/KirkDiggler/rpg-toolkit/issues/2236#issuecomment-6747614792).
 - An isolated comparison retains identical FieldData/DoorData,36doors and108crossings: setup49.644→1.721s, while the complete oracle remains5.750/5.249s. After extraction on main, setup50.670/1.747s and oracle5.425/5.492s repeat that result; cold focused test22.26s includes compilation — [controlled proof](https://github.com/KirkDiggler/rpg-toolkit/issues/2236#issuecomment-6747614792).
 - A virtual production mutation dropping a crossing fails both old and new tests at the same nonempty-differences assertion, naming all36doors; source hash stays unchanged. The gameplay helper still opens its one player and99creatures — [refactor controls](https://github.com/KirkDiggler/rpg-toolkit/issues/2236#issuecomment-6747614792).
