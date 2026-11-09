@@ -136,17 +136,24 @@ type asked struct {
 //     Applies; any is Applies if any child is, else Depends if any is, else
 //     DoesNotApply; not swaps Applies and DoesNotApply and keeps Depends.
 //   - A flag reads the blob's bag, falling back to the declared zero.
-func (g *guard) answer(a *asked) (Verdict, string) {
+func (g *guard) answer(a *asked, trace *GuardTrace) (verdict Verdict, reason string) {
+	if trace != nil {
+		trace.Evaluated = true
+		if g != nil && len(g.kids) > 0 {
+			trace.Children = make([]GuardTrace, len(g.kids))
+		}
+		defer func() { trace.Verdict, trace.Reason = verdict, reason }()
+	}
 	if g == nil {
 		return Applies, "always"
 	}
 	switch g.kind {
 	case nodeAll:
-		return g.fold(a, DoesNotApply, Applies)
+		return g.fold(a, DoesNotApply, Applies, trace)
 	case nodeAny:
-		return g.fold(a, Applies, DoesNotApply)
+		return g.fold(a, Applies, DoesNotApply, trace)
 	case nodeNot:
-		v, reason := g.kids[0].answer(a)
+		v, reason := g.kids[0].answer(a, trace.child(0))
 		switch v {
 		case Applies:
 			return DoesNotApply, reason
@@ -156,6 +163,7 @@ func (g *guard) answer(a *asked) (Verdict, string) {
 		return v, reason
 	case nodeFact:
 		got, known := g.read(a.env)
+		trace.observe(got, known)
 		if !known {
 			return Depends, g.reason
 		}
@@ -165,19 +173,24 @@ func (g *guard) answer(a *asked) (Verdict, string) {
 		if !ok {
 			v = a.zero[g.flag]
 		}
+		trace.observe(v, true)
 		set, ok := v.(bool)
 		if !ok {
 			return Depends, g.reason
 		}
 		return verdictOf(set), g.reason
 	case nodeScope:
-		return verdictOf(g.inScope(a.ev, g.scope)), g.reason
+		inside := g.inScope(a.ev, g.scope)
+		trace.observe(inside, true)
+		return verdictOf(inside), g.reason
 	case nodeRounds:
 		round, ok := g.round(a.ev)
 		if !ok || a.blob.Anchor == nil {
+			trace.observe(nil, false)
 			return Depends, g.reason
 		}
 		since := int(int64(round) - int64(*a.blob.Anchor)) //nolint:gosec // rounds are far below the int64 range
+		trace.observe(since, true)
 		return compare(g.op, since, g.n), g.reason
 	}
 	return Depends, g.reason
@@ -186,10 +199,10 @@ func (g *guard) answer(a *asked) (Verdict, string) {
 // fold runs all (decisive DoesNotApply, otherwise Applies) or any (decisive
 // Applies, otherwise DoesNotApply): the first decisive child wins, else the
 // first Depends, else the default with the first child's reason.
-func (g *guard) fold(a *asked, decisive, otherwise Verdict) (Verdict, string) {
+func (g *guard) fold(a *asked, decisive, otherwise Verdict, trace *GuardTrace) (Verdict, string) {
 	dependsOn := ""
-	for _, kid := range g.kids {
-		v, reason := kid.answer(a)
+	for i, kid := range g.kids {
+		v, reason := kid.answer(a, trace.child(i))
 		if v == decisive {
 			return v, reason
 		}
