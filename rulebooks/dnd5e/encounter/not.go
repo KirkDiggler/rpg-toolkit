@@ -74,7 +74,7 @@ func (f *field) validateNot(what string, t TriggerNot, sentinel error) error {
 		return fmt.Errorf("%s names nothing to negate: %w", what, sentinel)
 	case TriggerNot:
 		return fmt.Errorf("%s: %s: %w", what, notOfNot, sentinel)
-	case TriggerLeft, TriggerHolds:
+	case TriggerLeft, TriggerHolds, TriggerInteraction:
 		return f.validatePredicate(what, inner, sentinel)
 	case TriggerStance:
 		return f.validateNotStance(what, inner, sentinel)

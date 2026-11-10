@@ -356,6 +356,12 @@ func (f *field) validatePredicate(what string, t Trigger, sentinel error) error 
 		// arrival or an until on it could never hold.
 		return fmt.Errorf("%s waits on holding %q, and a holding is only something an option requires: %w",
 			what, p.Prop, sentinel)
+	case TriggerInteraction:
+		// READ BY AN OPTION, NEVER WAITED FOR ([TriggerInteraction]), for
+		// holds' reason: nothing notices an interaction move in order to
+		// fire an ending, an arrival or an until on it.
+		return fmt.Errorf("%s waits on interaction %q, and an interaction's state is only something an option requires: %w",
+			what, p.Interaction, sentinel)
 	case TriggerRound:
 		if p.Round < 1 {
 			return fmt.Errorf("%s waits for round %d, and a round is counted from 1: %w", what, p.Round, sentinel)

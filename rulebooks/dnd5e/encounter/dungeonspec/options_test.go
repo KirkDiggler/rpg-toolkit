@@ -79,10 +79,53 @@ func TestRequiresCompilesToTheTriggerTheEngineReads(t *testing.T) {
             success: [{ say: "Saw who?" }]
 `))
 	goblin := monsterNamed(t, compiled, "goblin-1")
-	require.Equal(t, encounter.TriggerFact{Fact: "feast-tonight"}, optionNamed(t, goblin.Options, "gossip").Requires)
+	require.Equal(t, []encounter.Trigger{encounter.TriggerFact{Fact: "feast-tonight"}},
+		optionNamed(t, goblin.Options, "gossip").Requires, "one predicate written as a mapping is a list of one")
 	bribe := optionNamed(t, goblin.Options, "bribe")
-	require.Equal(t, encounter.TriggerHolds{Prop: "table"}, bribe.Requires)
+	require.Equal(t, []encounter.Trigger{encounter.TriggerHolds{Prop: "table"}}, bribe.Requires)
 	require.Nil(t, bribe.Failure, "no failure rows written means none")
+}
+
+// `requires` is one predicate or a LIST of them, all of which must hold
+// (rpg-project#922): a mapping and a list of one compile alike, and a list of
+// two compiles to both triggers in the order the author wrote them.
+func TestRequiresIsOneOrAListOfPredicates(t *testing.T) {
+	compiled := loadSource(t, optionsOnGoblin(`          - id: one
+            say: "Busy night?"
+            requires: { fact: feast-tonight }
+            success: [{ say: "Feast." }]
+          - id: listed-one
+            say: "Busy night, then?"
+            requires: [{ fact: feast-tonight }]
+            success: [{ say: "Feast." }]
+          - id: two
+            say: "We're the troupe."
+            requires:
+              - { fact: feast-tonight }
+              - { not: { holds: table } }
+            success: [{ say: "Through." }]
+`))
+	goblin := monsterNamed(t, compiled, "goblin-1")
+	feast := encounter.TriggerFact{Fact: "feast-tonight"}
+	require.Equal(t, []encounter.Trigger{feast}, optionNamed(t, goblin.Options, "one").Requires)
+	require.Equal(t, []encounter.Trigger{feast}, optionNamed(t, goblin.Options, "listed-one").Requires)
+	require.Equal(t, []encounter.Trigger{feast, encounter.TriggerNot{Inner: encounter.TriggerHolds{Prop: "table"}}},
+		optionNamed(t, goblin.Options, "two").Requires, "both, in authored order")
+}
+
+// An empty `requires` list is refused by name rather than read as absent, and
+// a bad item in a list is refused at its own index.
+func TestARequiresListIsJudgedPerItem(t *testing.T) {
+	_, err := dungeonspec.Load([]byte(optionsOnGoblin(`          - { id: hi, say: "Hi.", requires: [], success: [{ say: "Hi." }] }
+`)))
+	require.ErrorContains(t, err, "this requires lists nothing")
+
+	errs := refusals(t, optionsOnGoblin(`          - id: hi
+            say: "Hi."
+            requires: [{ fact: feast-tonight }, { holds: nope }]
+            success: [{ say: "Hi." }]
+`))
+	requireRefusedAt(t, errs, "room.room.monsterBindings.goblin-1.options[0].requires[1].holds", "not a prop in this dungeon")
 }
 
 // A line with no `check` is a plain line (rpg-project#785 R5): it compiles
@@ -195,7 +238,7 @@ func TestAnOptionIsRefusedByName(t *testing.T) {
 			options: "          - { id: hi, say: \"Hi.\", requires: { round: 2 }, " +
 				"check: [{ ability: persuasion, dc: 10 }] }\n",
 			path: at + "[0].requires",
-			message: "an option requires { fact: <id> }, { holds: <prop id> }, or { not: } one of them, " +
+			message: "an option requires one or a list of { fact: <id> }, { holds: <prop id> }, { interaction: { id, in: [<state>] } }, or { not: } one of them, " +
 				"and `round` is none of them",
 		},
 		{
