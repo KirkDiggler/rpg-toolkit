@@ -32,7 +32,6 @@ type pieceStore struct {
 	pieces map[encounter.PieceKey][]byte
 	marks  map[encounter.PieceKey]encounter.Mark
 	since  uint64
-	prev   []byte // the last rest's JSON, for the oracle
 }
 
 // save checkpoints enc, splits the rest against the held marks, writes what
@@ -214,7 +213,7 @@ func TestPieces_SavesWhatChanged(t *testing.T) {
 		}
 	}
 	require.NotEqual(t, start, beside, "the walker has a cell to pace to")
-	out, rest = s.save(t, enc)
+	_, rest = s.save(t, enc)
 	s.requireJoinsToRest(t, rest, "the probe step")
 	prev = rest
 
