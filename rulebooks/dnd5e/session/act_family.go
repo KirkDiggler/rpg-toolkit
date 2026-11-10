@@ -41,6 +41,7 @@ var recordOnly = map[string]bool{
 	string(encounter.OutcomeBought): true,
 	string(encounter.OutcomeSold):   true,
 	encounter.BeatSneaking:          true,
+	encounter.BeatInteraction:       true,
 }
 
 // familyOf is a beat name's family, and false for a beat with none — a

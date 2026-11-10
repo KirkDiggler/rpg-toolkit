@@ -73,12 +73,17 @@ type scriptedDice struct {
 	next  int
 }
 
-func (d *scriptedDice) Roll(_ context.Context, _ int) (int, error) {
+// Roll clamps the scripted face to the die (behavior v0.23.0 refuses a face
+// above the die size; the die's top face is the row the old picker landed).
+func (d *scriptedDice) Roll(_ context.Context, size int) (int, error) {
 	if d.next >= len(d.rolls) {
 		return 0, fmt.Errorf("scriptedDice: asked for roll %d of %d", d.next+1, len(d.rolls))
 	}
 	roll := d.rolls[d.next]
 	d.next++
+	if size >= 1 {
+		roll = min(roll, size)
+	}
 	return roll, nil
 }
 

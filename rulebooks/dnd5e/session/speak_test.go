@@ -749,7 +749,7 @@ func (s *SpeakSuite) TestALineWaitingOnAFactIsOfferedOnlyOnceTheSpeakerKnowsIt()
 		byName := encounter.Option{
 			ID: "by-name", Say: "Snikt. It is Snikt, isn't it?",
 			Check:    []encounter.CheckApproach{{Ability: "persuasion", DC: 5}},
-			Requires: encounter.TriggerFact{Fact: "goblin-name"},
+			Requires: []encounter.Trigger{encounter.TriggerFact{Fact: "goblin-name"}},
 		}
 		in.Options = []encounter.Option{line, byName}
 	}
