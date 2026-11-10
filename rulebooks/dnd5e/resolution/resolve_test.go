@@ -74,7 +74,14 @@ func (s *ResolveTestSuite) SetupTest() {
 // world is a two-member encounter, already normalised by a load/save cycle so
 // that "unchanged" can be asserted literally.
 func (s *ResolveTestSuite) world() encounter.EncounterData {
+	return s.encounterOn(nil).ToData()
+}
+
+// encounterOn is world's encounter, its site compiled into sites (nil is
+// [encounter.DefaultSites]).
+func (s *ResolveTestSuite) encounterOn(sites encounter.SiteProvider) *encounter.Encounter {
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Sites: sites,
 		Field: encounter.FieldInput{
 			Canvas:  hexCanvas(),
 			Regions: []encounter.RegionInput{rectRegion("room-1", 0, 10, 10)},
@@ -101,7 +108,7 @@ func (s *ResolveTestSuite) world() encounter.EncounterData {
 	})
 	s.Require().NoError(err)
 
-	return enc.ToData()
+	return enc
 }
 
 func (s *ResolveTestSuite) barbarian(conds ...json.RawMessage) *character.Data {
@@ -1141,9 +1148,13 @@ func TestResolveLoadsWithTheCapabilitiesItWasHanded(t *testing.T) {
 		require.NoError(t, format.Node(&sb, fset, kv.Value))
 		keys[kv.Key.(*ast.Ident).Name] = sb.String()
 	}
-	require.Len(t, keys, 2)
+	require.Len(t, keys, 4)
 	require.Equal(t, "in.World", keys["Data"])
 	require.Equal(t, "in.Capabilities", keys["Capabilities"])
+	// The host's site provider and piece reach the one load as supplied
+	// (rpg-project#879 S5): never a process default behind an injected one.
+	require.Equal(t, "in.Sites", keys["Sites"])
+	require.Equal(t, "in.Site", keys["Site"])
 
 	// Refusing stand-ins live in actors.go and nowhere else.
 	for _, name := range []string{"RefusingStriker", "RefusingMover", "RefusingAnnouncer"} {

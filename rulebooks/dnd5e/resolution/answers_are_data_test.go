@@ -79,8 +79,28 @@ func TestEntriesReturnAnswersNotSheets(t *testing.T) {
 // Every entry is a promise a human made and the compiler cannot keep, so each
 // one says what it is resting on.
 var allowedInterfaceFields = map[string]string{
-	"DirtyMonsters.Actions.Cast.Attack.OnHit.Save.DC":   "sealed in saves; same declarative DC as a direct attack rider",
-	"DirtyCharacters.Actions.Cast.Attack.OnHit.Save.DC": "sealed in saves; same declarative DC as a direct attack rider",
+	// A creature's machine (mind/machine) rides the world it stands in: its
+	// recipe's bag, a guard's compared value and a set act's value are the
+	// machine's SCALARS — bool, int or string, refused otherwise when the
+	// recipe compiles (machine.ErrBadBag, machine.ErrBadGuard). Persisted
+	// world data handed back to be stored, never a sheet.
+	"World.Members.Behaviors.Instances.Instance.Recipe.Bag":                                "mind/machine scalar: bool, int or string; world data, not a sheet",
+	"World.Members.Behaviors.Instances.Instance.Recipe.States.Transitions.When.Fact.Value": "mind/machine scalar: bool, int or string; world data, not a sheet",
+	"World.Members.Behaviors.Instances.Instance.Recipe.States.Transitions.Do.Set.Value":    "mind/machine scalar: bool, int or string; world data, not a sheet",
+	"World.Members.Behaviors.Progress.Instances.Blob.Bag":                                  "mind/machine scalar: bool, int or string; world data, not a sheet",
+	"World.Members.Machine.Bag":                                                            "mind/machine scalar: bool, int or string; world data, not a sheet",
+	"World.Members.Recipe.Bag":                                                             "mind/machine scalar: bool, int or string; world data, not a sheet",
+	"World.Members.Recipe.States.Transitions.When.Fact.Value":                              "mind/machine scalar: bool, int or string; world data, not a sheet",
+	"World.Members.Recipe.States.Transitions.Do.Set.Value":                                 "mind/machine scalar: bool, int or string; world data, not a sheet",
+	"World.Reserve.Behaviors.Instances.Instance.Recipe.Bag":                                "mind/machine scalar: bool, int or string; world data, not a sheet",
+	"World.Reserve.Behaviors.Instances.Instance.Recipe.States.Transitions.When.Fact.Value": "mind/machine scalar: bool, int or string; world data, not a sheet",
+	"World.Reserve.Behaviors.Instances.Instance.Recipe.States.Transitions.Do.Set.Value":    "mind/machine scalar: bool, int or string; world data, not a sheet",
+	"World.Reserve.Behaviors.Progress.Instances.Blob.Bag":                                  "mind/machine scalar: bool, int or string; world data, not a sheet",
+	"World.Reserve.Recipe.Bag":                                                             "mind/machine scalar: bool, int or string; world data, not a sheet",
+	"World.Reserve.Recipe.States.Transitions.When.Fact.Value":                              "mind/machine scalar: bool, int or string; world data, not a sheet",
+	"World.Reserve.Recipe.States.Transitions.Do.Set.Value":                                 "mind/machine scalar: bool, int or string; world data, not a sheet",
+	"DirtyMonsters.Actions.Cast.Attack.OnHit.Save.DC":                                      "sealed in saves; same declarative DC as a direct attack rider",
+	"DirtyCharacters.Actions.Cast.Attack.OnHit.Save.DC":                                    "sealed in saves; same declarative DC as a direct attack rider",
 	// Preflight's refusal causes are prose — they exist to be read by a person
 	// deciding which offer row is dead and why. A sheet smuggled behind an
 	// error would have to survive the entry's own construction, and Preflight
