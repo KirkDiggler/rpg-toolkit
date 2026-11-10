@@ -46,7 +46,8 @@ import (
 // # One predicate decides whether an address stands
 //
 // [Encounter.addressStands]: the member within the reach the host measures
-// Speak with and seen by the guard, the guard up and on the map, neither in
+// Speak with, seen by the guard and sighting him in turn (the answer
+// [Encounter.WithinReach] gives, so he is always on her Speak menu), the guard up and on the map, neither in
 // a fight, and the interaction still offering the member one of the guard's
 // lines. [Encounter.AddressFor] and the end-of-step sweep both ask it. When
 // it fails at a sweep, the address is cleared and [BeatAddressEnded] records
@@ -94,6 +95,9 @@ const (
 	AddressOutOfReach AddressEndReason = "out-of-reach"
 	// AddressUnseen: the guard no longer sees the member.
 	AddressUnseen AddressEndReason = "unseen"
+	// AddressOutOfSight: the member no longer sights the guard — the answer
+	// [Encounter.WithinReach] gives, so the guard is off her Speak menu.
+	AddressOutOfSight AddressEndReason = "out-of-sight"
 	// AddressNoReply: the interaction offers the member none of the guard's
 	// lines any more.
 	AddressNoReply AddressEndReason = "no-reply"
@@ -310,6 +314,17 @@ func (e *Encounter) addressStands(r *interactionRecord, a InteractionAddress, re
 	}
 	if !seen {
 		return AddressUnseen, nil
+	}
+	// SIGHT BOTH WAYS (rpg-toolkit#2370 review): the Speak menu the address
+	// rides on lists only creatures the member sights now
+	// ([Encounter.WithinReach]), so an address naming a guard she cannot see
+	// would open a panel with nothing in it and block every other carrier.
+	sighted, err := e.creaturesSightedBy(a.Member)
+	if err != nil {
+		return "", err
+	}
+	if !sighted[a.Guard] {
+		return AddressOutOfSight, nil
 	}
 	replies, err := e.offersReply(r.input.ID, a.Member, a.Guard)
 	if err != nil {

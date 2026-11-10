@@ -29,16 +29,28 @@ const (
 	hailVisitor = MemberID("billy")
 )
 
-// hailRecipe is the front gate: fresh until a claim admits.
+// hailRecipe is the front gate: fresh until a claim admits; a warning moves
+// it to warned (anchoring it), which still offers the claim.
 func hailRecipe() machine.Recipe {
 	return machine.Recipe{
 		Ref:     core.Ref{Module: "test", Type: "interactions", ID: "front-gate"},
 		Initial: "fresh",
 		States: map[string]machine.State{
-			"fresh":    {Transitions: []machine.Transition{{On: "admitted", To: "admitted", Reason: "let through"}}},
+			"fresh": {Transitions: []machine.Transition{
+				{On: "admitted", To: "admitted", Reason: "let through"},
+				{On: "warned", To: "warned", Do: []machine.Act{{Anchor: true}}, Reason: "warned once"},
+			}},
+			"warned":   {Transitions: []machine.Transition{{On: "admitted", To: "admitted", Reason: "let through"}}},
 			"admitted": {Terminal: true},
 		},
 	}
+}
+
+// warnTheGate advances the gate to warned, out of its initial state.
+func warnTheGate(t *testing.T, enc *Encounter) {
+	t.Helper()
+	require.NoError(t, enc.advanceInteraction(Option{ID: "warn", Advance: &Advance{Interaction: hailGate, Success: "warned"}}, true, nil, 0))
+	require.Equal(t, "warned", enc.interactions[hailGate].blob.State, "precondition: the gate moved on")
 }
 
 // hailClaim is the one claim at the gate: offered while it is fresh, and
@@ -46,7 +58,7 @@ func hailRecipe() machine.Recipe {
 func hailClaim() []Option {
 	return []Option{{
 		ID: "guest", Say: "We're invited.",
-		Requires: []Trigger{TriggerInteraction{Interaction: hailGate, In: []string{"fresh"}}},
+		Requires: []Trigger{TriggerInteraction{Interaction: hailGate, In: []string{"fresh", "warned"}}},
 		Advance:  &Advance{Interaction: hailGate, Success: "admitted"},
 		Success:  []Answer{{Weight: 1, Say: "In you go."}},
 	}}
@@ -209,7 +221,10 @@ func TestAnAddressSurvivesSaveAndLoad(t *testing.T) {
 func TestSteppingOutOfReachEndsTheAddressAndKeepsTheProgress(t *testing.T) {
 	enc := hailHall(t)
 	walk(t, enc, "alice", spatial.Position{X: 2, Y: 1}, spatial.Position{X: 3, Y: 1}, spatial.Position{X: 4, Y: 1})
+	warnTheGate(t, enc)
 	before := enc.ToData().Interactions[0].Blob
+	require.NotEqual(t, hailRecipe().Initial, before.State, "precondition: progress a reset would lose")
+	require.NotNil(t, before.Anchor, "precondition: and an anchor a reset would lose")
 
 	walk(t, enc, "alice", spatial.Position{X: 3, Y: 1})
 	require.Equal(t, 3.0, distanceTo(t, enc, "alice", hailGuard))
@@ -377,4 +392,59 @@ func TestASilentHailIsSpokenToNobody(t *testing.T) {
 	require.NotNil(t, picked, "precondition: his approached row was picked")
 	require.Equal(t, "", picked["say"])
 	require.Equal(t, "", picked["to"], "a row that says nothing is said to nobody")
+}
+
+// partialSight is everybody seeing far, but alice seeing only as far as her
+// own sight says — one cell when dim, far otherwise. Switchable mid-scene.
+type partialSight struct{ dim *bool }
+
+func (s partialSight) Sight(members []MemberID) (map[MemberID]int, error) {
+	out := make(map[MemberID]int, len(members))
+	for _, id := range members {
+		out[id] = 1_000_000
+		if id == "alice" && *s.dim {
+			out[id] = 1
+		}
+	}
+	return out, nil
+}
+
+// The review probe, turned round: a guard who sees a member who cannot see
+// him does not hail her, and her walk goes on.
+func TestAGuardSheCannotSeeDoesNotHail(t *testing.T) {
+	dim := true
+	enc, err := NewEncounter(hailSetup(t, partialSight{dim: &dim}))
+	require.NoError(t, err)
+
+	steps := walk(t, enc, "alice", spatial.Position{X: 2, Y: 1}, spatial.Position{X: 3, Y: 1}, spatial.Position{X: 4, Y: 1})
+	require.Equal(t, 2.0, distanceTo(t, enc, "alice", hailGuard), "precondition: inside the approach")
+	seen, err := enc.sees(hailGuard, "alice")
+	require.NoError(t, err)
+	require.True(t, seen, "precondition: he sees her")
+	for _, s := range steps {
+		require.Empty(t, s.Addressed, "no hail: she could not answer a guard she cannot see, so her walk is never stopped")
+	}
+	require.Nil(t, enc.interactions[hailGate].address)
+	require.Empty(t, beatsNamed(t, enc, BeatAddressed))
+}
+
+// A standing address ends when the member loses sight of the guard, and the
+// gate's progress stays where it was.
+func TestLosingSightOfTheGuardEndsTheAddress(t *testing.T) {
+	dim := false
+	enc, err := NewEncounter(hailSetup(t, partialSight{dim: &dim}))
+	require.NoError(t, err)
+	walk(t, enc, "alice", spatial.Position{X: 2, Y: 1}, spatial.Position{X: 3, Y: 1}, spatial.Position{X: 4, Y: 1})
+	require.NotNil(t, addressOf(t, enc, "alice"), "precondition: hailed")
+	warnTheGate(t, enc)
+	before := enc.ToData().Interactions[0].Blob
+
+	dim = true
+	walk(t, enc, "alice", spatial.Position{X: 4, Y: 2})
+	require.LessOrEqual(t, distanceTo(t, enc, "alice", hailGuard), float64(hailReach), "precondition: still in reach")
+	require.Nil(t, addressOf(t, enc, "alice"), "she cannot see him: the address is gone")
+	ended := beatsNamed(t, enc, BeatAddressEnded)
+	require.Len(t, ended, 1)
+	require.Equal(t, string(AddressOutOfSight), ended[0]["reason"])
+	require.Equal(t, before, enc.ToData().Interactions[0].Blob, "ending touches no progress")
 }

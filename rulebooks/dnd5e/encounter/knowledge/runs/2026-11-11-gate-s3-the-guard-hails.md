@@ -20,6 +20,7 @@ Slice [rpg-project#923](https://github.com/KirkDiggler/rpg-project/issues/923) o
 - The hail needs the guard to see the mover, using the same witness answer Speak uses, so a won sneak is not undone (the lead's assumption on the issue, not vetoed) — [https://github.com/KirkDiggler/rpg-project/issues/923](https://github.com/KirkDiggler/rpg-project/issues/923).
 - `TestMadKingThePostSaysWhyItStays` paces at the party start rather than the gatehouse, because the gatehouse hail is now a voice that draws gate-1 off the crossing — [67fbd38e](https://github.com/KirkDiggler/rpg-toolkit/commit/67fbd38e).
 - `to` is a new field rather than `target`, because `target` is the intent's target. It is written on every `answered` beat (empty when nobody), following that beat's every-field-written rule — [https://github.com/KirkDiggler/rpg-toolkit/pull/2370](https://github.com/KirkDiggler/rpg-toolkit/pull/2370).
+- The one predicate requires sight both ways: the guard sees the member, and the member sights the guard by the answer `WithinReach` uses (`creaturesSightedBy`). Without the second leg, an address could name a guard missing from the member's Speak menu. Ending for that leg uses a new reason, `out-of-sight`, distinct from `unseen` (the guard no longer sees her) — [review](https://github.com/KirkDiggler/rpg-toolkit/pull/2370#discussion_r4531324705).
 
 ## Found
 
@@ -32,3 +33,5 @@ Slice [rpg-project#923](https://github.com/KirkDiggler/rpg-project/issues/923) o
 ## Mistaken
 
 - Three of the first mutation probes left a variable unused, so the mutants did not compile and looked like survivors. Rerun so that each still compiled, every one fails a named test — [https://github.com/KirkDiggler/rpg-toolkit/pull/2370](https://github.com/KirkDiggler/rpg-toolkit/pull/2370).
+- The predicate first asked sight one way only (the guard sees the member), so under asymmetric sight a guard the member could not Speak to could hail her and block the other carriers. Caught by the independent review, now pinned by `TestAGuardSheCannotSeeDoesNotHail` and `TestLosingSightOfTheGuardEndsTheAddress` — [review](https://github.com/KirkDiggler/rpg-toolkit/pull/2370#discussion_r4531324705).
+- `TestSteppingOutOfReachEndsTheAddressAndKeepsTheProgress` compared a blob still in its initial state, so a sweep that reset progress survived. The gate is now advanced to `warned` (anchored) first, and the reset mutant fails — [review](https://github.com/KirkDiggler/rpg-toolkit/pull/2370#discussion_r4531324720).
