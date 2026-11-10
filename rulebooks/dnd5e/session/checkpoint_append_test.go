@@ -24,6 +24,8 @@ type appendingStore struct {
 	*fencedStore
 	rests    map[string]*encounter.EncounterData
 	segments map[string][]record.LogData
+	// floors is each encounter's retention floor as its last save named it.
+	floors map[string]uint64
 
 	// appends is every SaveAppended call, landed or not, in order.
 	appends []appendCall
@@ -49,6 +51,7 @@ func newAppendingStore() *appendingStore {
 		fencedStore: newFencedStore(),
 		rests:       map[string]*encounter.EncounterData{},
 		segments:    map[string][]record.LogData{},
+		floors:      map[string]uint64{},
 	}
 }
 
@@ -78,6 +81,10 @@ func (a *appendingStore) SaveAppended(
 	if len(in.Appended.Entries) > 0 {
 		segments = append(segments, in.Appended)
 	}
+	// The floor drops every segment wholly below it, as a host's store does.
+	for len(segments) > 0 && segmentLast(segments[0]) < in.Floor {
+		segments = segments[1:]
+	}
 	joined, err := joinSegments(in.Data.Log, in.Floor, segments)
 	if err != nil {
 		a.appends = append(a.appends, call)
@@ -99,7 +106,13 @@ func (a *appendingStore) SaveAppended(
 	a.appends = append(a.appends, call)
 	a.rests[in.Encounter] = in.Data
 	a.segments[in.Encounter] = segments
+	a.floors[in.Encounter] = in.Floor
 	return out, nil
+}
+
+// segmentLast is a non-empty segment's last seq.
+func segmentLast(seg record.LogData) uint64 {
+	return seg.Entries[len(seg.Entries)-1].Seq
 }
 
 // joinSegments is the record's join, in one place so the call shape lives
@@ -315,4 +328,39 @@ func (s *AppendedRecordSuite) TestAHostWithoutTheCapabilityGetsTheWholeWorld() {
 	s.Require().NotEmpty(last.Entries)
 	s.Equal(uint64(1), last.Entries[0].Seq, "the fenced save carries the whole record")
 	s.Len(last.Entries, int(last.NextSeq-1))
+}
+
+// TestABoundedRecordLoadsWhatItsWindowKeeps pins the floor end to end: a run
+// whose record keeps a window of five beats saves through the appending
+// capability, the store drops every segment wholly below the floor the save
+// names, and the joined record is exactly the window: the entries from the
+// floor through the last beat, which is what ToData keeps. A save that named
+// floor 0 would leave the store every old segment, and the join would start
+// at seq 1.
+func (s *AppendedRecordSuite) TestABoundedRecordLoadsWhatItsWindowKeeps() {
+	mgr := s.launched()
+	const window = 5
+	// The launched run keeps everything; give the stored world a window, the
+	// way a run built with a bounded Retention would carry it.
+	s.store.byID[testSession].Retention = window
+	s.store.rests[testSession].Retention = window
+
+	for i, to := range []spatial.Position{{X: 2, Y: 1}, {X: 3, Y: 1}, {X: 2, Y: 1}, {X: 3, Y: 1}} {
+		s.move(mgr, to)
+		save := s.store.lastAppend()
+		s.Require().True(save.landed, "move %d", i)
+		s.Require().Positive(save.floor, "move %d: a bounded record names its floor", i)
+
+		whole := s.stored().Log
+		next := storedNextSeq(s.stored())
+		s.Require().NotEmpty(whole.Entries, "move %d", i)
+		s.Equal(save.floor, whole.Entries[0].Seq, "move %d: the record starts at the floor", i)
+		s.Equal(next-1, whole.Entries[len(whole.Entries)-1].Seq, "move %d", i)
+		s.Len(whole.Entries, int(next-save.floor), "move %d: every beat of the window, gapless", i)
+		s.LessOrEqual(len(whole.Entries), window, "move %d: no more than the window", i)
+	}
+	s.Equal(s.store.floors[testSession], s.store.lastAppend().floor)
+	for _, seg := range s.store.segments[testSession] {
+		s.GreaterOrEqual(segmentLast(seg), s.store.floors[testSession], "no stored segment lies wholly below the floor")
+	}
 }

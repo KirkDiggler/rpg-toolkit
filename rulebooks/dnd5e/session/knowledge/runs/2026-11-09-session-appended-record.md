@@ -24,7 +24,9 @@ Base: `rpg-toolkit` `main` at 09147992. Story: [rpg-project#879](https://github.
 
 ## Mistaken
 
-- None this run.
+- Review of #2354 at c56ff0c4: the floor was never pinned, so a save that forced `Floor: 0` survived. The test store now drops segments below the floor its save names, and a bounded run's joined record must start at that floor; the mutant fails it.
+- The same review: `encounter.ErrBadSince` fell through translate's default arm. It now maps to `ErrBadRepository`, because the session reads Since from the stored record.
+- The run record first landed in the repo-root `knowledge/runs`; it belongs to the module.
 
 ## Verification
 
