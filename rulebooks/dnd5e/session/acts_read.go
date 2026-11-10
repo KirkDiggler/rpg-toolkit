@@ -133,24 +133,25 @@ var actStory = func(enc *encounter.Encounter, baseline uint64, member encounter.
 // story before the save-point ToData trims it (the same reason
 // [commitRecord] reads early).
 //
-// THE FOLD READS THE VERB'S DELTA. Each recipient's story is read from the
-// scope's baseline, widened back only to the first beat of an act the delta
+// THE FOLD READS THE COMMIT'S DELTA. Each recipient's story is read from
+// from, the scope's commit cursor ([writeScope.deltaFrom]): the act's
+// baseline, or after a pace commit landed the first seq it did not hold, widened back only to the first beat of an act the delta
 // continues ([encounter.StoryInput.WholeActs]) — exactly the entries
 // [actsAfter] folds from a whole story — so what a commit reads follows the
 // verb and the acts it touched, never the length of the record. The held id
 // is the last entry of that slice before the baseline; when the slice holds
 // none, no act it folds can be at or before what the recipient held, and
 // actsAfter's cut is "".
-func commitActs(ctx context.Context, scope *writeScope, stream ActStream, members []encounter.MemberID) []Act {
+func commitActs(ctx context.Context, scope *writeScope, stream ActStream, members []encounter.MemberID, from uint64) []Act {
 	var out []Act
 	for _, member := range actRecipients(ctx, scope.session, stream, members) {
-		entries, err := actStory(scope.enc, scope.baseline, member)
+		entries, err := actStory(scope.enc, from, member)
 		if err != nil {
 			continue // best effort: one unreadable recipient must not silence the rest
 		}
 		held := ""
 		for _, e := range entries {
-			if e.Seq >= scope.baseline {
+			if e.Seq >= from {
 				break
 			}
 			held = e.ID

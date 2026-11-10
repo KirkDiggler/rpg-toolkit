@@ -314,14 +314,18 @@ type checkpointFence struct {
 	// sends every piece.
 	marks map[encounter.PieceKey]encounter.Mark
 
-	// saved reports that this scope's fenced save landed. A sheet or seat
-	// written after it has no save left to ride, so it is refused
-	// ([errWrittenAfterTheSave]) rather than dropped at the guard's release.
+	// saved reports that this verb's LAST fenced save landed: set by the
+	// final commit ([Manager.commit]), never by a pace commit
+	// ([Manager.commitPace]), whose walk still writes sheets and seats for
+	// the next save to carry. A sheet or seat written after the last save
+	// has no save left to ride, so it is refused ([errWrittenAfterTheSave])
+	// rather than dropped at the guard's release. persistFenced itself does
+	// not set it.
 	saved bool
 }
 
 // errWrittenAfterTheSave is a fenced verb writing a sheet or seat after its
-// one fenced save already landed: the piece has no save to ride and would be
+// last fenced save already landed: the piece has no save to ride and would be
 // dropped when the guard is released, so the write is refused loudly
 // (rpg-toolkit#2332, a seat clear that ran after the save and never landed).
 func errWrittenAfterTheSave(scope *writeScope, aggregate string) error {
@@ -438,6 +442,11 @@ func splitStored(data *encounter.EncounterData, since uint64) (*encounter.ToChec
 // whole through SaveFenced. recordNext advances to the saved rest's NextSeq,
 // and the marks to the save's new marks, only once the save lands: a refused
 // save leaves both where they were, since the store still holds what it did.
+//
+// A verb may call it more than once (a continued walk's pace commits): each
+// landed save is fenced on the version the previous one made and appends from
+// where it ended. Marking the verb's last save is the caller's
+// (checkpointFence.saved).
 func (m *Manager) persistFenced(
 	ctx context.Context, scope *writeScope, world fencedWorld, report SaveReport,
 ) (SaveReport, error) {
@@ -493,7 +502,6 @@ func (m *Manager) persistFenced(
 		report.Failed = append(report.Failed, aggregates...)
 		return report, &SaveError{Report: report, Err: fmt.Errorf("saving world: %w", err)}
 	}
-	scope.fence.saved = true
 	scope.fence.version = out.Version
 	scope.fence.recordNext = nextSeqOf(data.Log)
 	if world.pieces != nil {
@@ -664,5 +672,9 @@ func (m *Manager) saveSeatedSheetFenced(ctx context.Context, session string, rec
 			return SaveReport{}, translate(err)
 		}
 	}
-	return m.persistFenced(ctx, scope, written, SaveReport{})
+	report, err := m.persistFenced(ctx, scope, written, SaveReport{})
+	if err == nil {
+		scope.fence.saved = true // one save, and the last
+	}
+	return report, err
 }

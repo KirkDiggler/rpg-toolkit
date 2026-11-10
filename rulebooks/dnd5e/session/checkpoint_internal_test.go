@@ -112,32 +112,21 @@ func (c *countingFenced) SaveFenced(_ context.Context, in *SaveFencedInput) (*Sa
 	return &SaveFencedOutput{Version: in.Expected + 1}, nil
 }
 
-// TestALandedFencedSaveRefusesTheScopesLaterWrites drives the arming itself:
-// once a scope's fenced save lands, a sheet write and a seat write on that
-// scope each fail with a SaveError wrapping ErrBadRepository, and neither is
-// held for a save that will never come (rpg-toolkit#2332).
-func (s *PendingWritesSuite) TestALandedFencedSaveRefusesTheScopesLaterWrites() {
+// TestAFencedSaveDoesNotArmTheRefusalByItself: persistFenced lands a save
+// and leaves the scope's later writes open; arming the refusal is the final
+// commit's (rpg-project#879 S13), since a verb that commits at each pace
+// boundary writes sheets between its saves. The arming itself is pinned by
+// PaceCommitInternalSuite.
+func (s *PendingWritesSuite) TestAFencedSaveDoesNotArmTheRefusalByItself() {
 	repo := &countingFenced{}
 	m := &Manager{fenced: repo, pending: newPendingWrites()}
 	scope := &writeScope{session: "sess", encounter: "sess", fence: checkpointFence{held: true}}
 	_, err := m.persistFenced(context.Background(), scope, fencedWorld{whole: &encounter.EncounterData{}}, SaveReport{})
 	s.Require().NoError(err)
-
-	err = m.sheetsFor(scope).save(context.Background(), &character.Data{ID: "alice"})
-	s.ErrorIs(err, ErrBadRepository)
-	var saveErr *SaveError
-	s.Require().ErrorAs(err, &saveErr)
-	s.Equal([]string{"character:alice"}, saveErr.Report.Failed)
-
-	err = m.writeSeat(context.Background(), scope, "alice", "")
-	s.ErrorIs(err, ErrBadRepository)
-	s.Require().ErrorAs(err, &saveErr)
-	s.Equal([]string{"seat:alice"}, saveErr.Report.Failed)
-
-	sheets, seats := m.pending.take("sess")
-	s.Empty(sheets, "the late sheet was not held")
-	s.Empty(seats, "the late seat was not held")
-	s.Equal(1, repo.saves, "nothing reached the store after the one save")
+	s.False(scope.fence.saved)
+	s.NoError(m.sheetsFor(scope).save(context.Background(), &character.Data{ID: "alice"}))
+	sheets, _ := m.pending.take("sess")
+	s.Len(sheets, 1, "the sheet is held for the next save")
 }
 
 // appendingRepo is an appending repository whose saves land or are refused

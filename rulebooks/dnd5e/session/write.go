@@ -1016,6 +1016,19 @@ type writeScope struct {
 	enc       *encounter.Encounter
 	baseline  uint64
 
+	// committed is the commit cursor: the first record seq the verb's last
+	// landed commit did not hold, or 0 before any commit landed. A verb that
+	// commits more than once (a continued walk's pace commits,
+	// rpg-project#879 R7) settles, saves and delivers each commit's delta
+	// from here, never again from the baseline; see [writeScope.deltaFrom].
+	// The baseline keeps its meaning, the act's start.
+	committed uint64
+
+	// savedThrough is the newest record id the verb's landed commits hold,
+	// "" before one lands: where a continuation that failed after a commit
+	// tells its host the store stops ([ContinuationReport.SavedThrough]).
+	savedThrough string
+
 	// fence is the checkpoint version this verb loaded when the host's
 	// repository is fenced, and persist saves against it (checkpoint.go).
 	// The baseline above is NOT the fence: a beatless verb does not advance
@@ -1360,10 +1373,37 @@ func (m *Manager) persist(ctx context.Context, scope *writeScope) (SaveReport, e
 // own delta, because what they settle is noticed by the composition at
 // whatever sight refresh caught it rather than declared by a verb — and they
 // read it from ONE encounter read, [encounter.Encounter.Settlement] bounded by
-// the scope's baseline, so the economy reset and the experience grant can
-// never disagree about what this act settled.
+// the commit cursor ([writeScope.deltaFrom]: the act's baseline, unless a
+// pace commit of this verb already landed), so the economy reset and the
+// experience grant can never disagree about what this commit settled.
 func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, DeliveryReport, error) {
-	settled, err := scope.enc.Settlement(&encounter.SettlementInput{FromSeq: scope.baseline})
+	return m.commitAt(ctx, scope, true)
+}
+
+// commitPace is a commit at a pace boundary inside a verb that goes on
+// (rpg-project#879 R7): a continued walk commits after each step that paid a
+// world round, so the raise's beats are saved and delivered at once instead
+// of after the walk's remaining steps. It is [Manager.commit] with the act
+// left open and the fence's saved flag left down: the steps after it still
+// write the walker's sheet and append to the same act, and the next commit,
+// pace or final, takes them.
+func (m *Manager) commitPace(ctx context.Context, scope *writeScope) (SaveReport, DeliveryReport, error) {
+	return m.commitAt(ctx, scope, false)
+}
+
+// commitAt is one commit of a verb's delta: everything recorded from the
+// scope's commit cursor ([writeScope.deltaFrom]), which is the act's baseline
+// until a pace commit lands and the record's next seq after it. Settlement,
+// the record batch and the act batch all read from that one cursor, so a verb
+// that commits twice settles, saves and delivers each beat exactly once. The
+// cursor advances only once the save lands: a refused save leaves it where it
+// was, and nothing after it is delivered.
+//
+// final closes the act and, under the fence, marks the verb's save as landed
+// (checkpointFence.saved); a pace commit does neither.
+func (m *Manager) commitAt(ctx context.Context, scope *writeScope, final bool) (SaveReport, DeliveryReport, error) {
+	from := scope.deltaFrom()
+	settled, err := scope.enc.Settlement(&encounter.SettlementInput{FromSeq: from})
 	if err != nil {
 		report := SaveReport{Written: append([]string(nil), scope.written...)}
 		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", fmt.Errorf("settlement: %w", translate(err)))
@@ -1403,8 +1443,10 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 	// after it. Delivery still WAITS for the save (S9): built here, handed
 	// to the streams only after persist reports the world durable.
 	// THE ACT CLOSES HERE (rpg-project#627): every beat this verb and its
-	// settlements appended is in, and nothing after this line appends.
-	if scope.act != "" {
+	// settlements appended is in, and nothing after this line appends. A
+	// pace commit leaves it open: the walk's remaining steps are the same
+	// act, and the final commit closes it.
+	if final && scope.act != "" {
 		if err := scope.enc.CloseAct(); err != nil {
 			report := SaveReport{Written: append([]string(nil), scope.written...)}
 			return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", translate(err))
@@ -1413,8 +1455,8 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 	}
 
 	view := scope.enc.WorldView()
-	recorded := commitRecord(scope)
-	acts := commitActs(ctx, scope, m.acts, view.EverMembers)
+	recorded, next, newest := commitRecord(scope, from)
+	acts := commitActs(ctx, scope, m.acts, view.EverMembers, from)
 
 	// FENCED, THE SEATS CLEAR INSIDE THE SAVE (rpg-toolkit#2332). The plain
 	// order below, clears after the run is durable, would leave a fenced
@@ -1440,6 +1482,18 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 	report, err := m.persist(ctx, scope)
 	if err != nil {
 		return report, DeliveryReport{}, err
+	}
+	// LANDED: the cursor moves past what this save holds, so the next commit
+	// settles and delivers only what came after it. Only the final commit
+	// marks the fenced save as the verb's last: after a pace commit the
+	// walk's next steps still write the walker's sheet, and those writes
+	// ride the next save rather than being refused.
+	scope.committed = next
+	if newest != "" {
+		scope.savedThrough = newest
+	}
+	if final && scope.fence.held {
+		scope.fence.saved = true
 	}
 
 	// THE RUN THIS VERB CLOSED RELEASES ITS SEATS, after the run that no
@@ -1553,7 +1607,8 @@ func (m *Manager) closedRunPlayers(scope *writeScope) ([]string, error) {
 // NOTICES defeat, never something a caller declares").
 //
 // Read off the encounter's own settlement facts ([encounter.Encounter.Settlement])
-// bounded by the scope's baseline: every fight that ended in this act, with
+// bounded by the commit cursor ([writeScope.deltaFrom]): every fight that
+// ended in this commit's delta, with
 // the members it held when it ended. The composition writes that fact in one
 // place, shared by an explicit [Manager.Dissolve] and the composition noticing
 // defeat on its own, so this one read covers both without knowing which
@@ -1659,11 +1714,18 @@ func (m *Manager) exitCombatIfPlayer(ctx context.Context, scope *writeScope, id 
 // never a second write cycle a failure between the two could leave half-done.
 //
 // WHAT IT READS is the act's own falls, from the settlement facts
-// [Manager.commit] reads once for the act ([encounter.Encounter.Settlement]
-// from the scope's baseline): each fall names the member, the kind the roster
-// held at the fall, and its sequence. That bound is also the idempotence: the
-// composition tells a fall once and the baseline moves past it with the act,
-// so a fall settles once and the next verb sees nothing to settle.
+// [Manager.commit] reads once per commit ([encounter.Encounter.Settlement]
+// from the commit cursor, [writeScope.deltaFrom]): each fall names the
+// member, the kind the roster held at the fall, and its sequence. That bound
+// is also the idempotence: the composition tells a fall once and the cursor
+// moves past it with the landed save, so a fall settles once and the next
+// commit, of this verb or the next, sees nothing to settle.
+//
+// A PACE COMMIT SETTLES ITS OWN FALLS (rpg-project#879 R7): a fall a world
+// round's raise caused is paid in the save that persists it, never deferred
+// to the walk's final commit. A fall saved without its grant would be past
+// every later cursor, so a crash between the two commits would lose the grant
+// for good.
 //
 // WHO IS A MONSTER comes from the ENCOUNTER, never from whether an ID
 // happens to load out of a store — exitDissolvedCombatants' doc has the ID
@@ -1920,4 +1982,13 @@ func (m *Manager) Recheck(ctx context.Context, in *RecheckInput) (*RecheckOutput
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil
+}
+
+// deltaFrom is where the next commit's delta starts: the commit cursor once a
+// commit has landed in this verb, the act's baseline before.
+func (s *writeScope) deltaFrom() uint64 {
+	if s.committed > s.baseline {
+		return s.committed
+	}
+	return s.baseline
 }
