@@ -43,6 +43,14 @@ type Config struct {
 	// whole before it answers, exactly as before. See [ContinuationRunner].
 	Continuations ContinuationRunner
 
+	// Sites resolves the compiled site every stored world names by hash
+	// (rpg-project#879 S5, sites.go): one site per content, shared by every
+	// game on it. Optional: nil is [encounter.DefaultSites], the in-process
+	// default, so a test host and a one-process server need nothing. A host
+	// that injects one has every load, Launch and resolution go through it,
+	// never the process default.
+	Sites encounter.SiteProvider
+
 	// CharacterConfig is the host's character configuration, read at every
 	// write verb for each player's discovery-sharing choice (rpg-project#753
 	// R2). Required: automatic discovery needs each finder's audience, so a
@@ -182,7 +190,12 @@ type Manager struct {
 	fenced FencedEncounterRepository
 	// pending is the fenced verbs' unsaved sheets and seats; nil when the
 	// repository is plain (checkpoint.go).
-	pending         *pendingWrites
+	pending *pendingWrites
+	// sites is Config.Sites, or [encounter.DefaultSites] when it was nil.
+	sites encounter.SiteProvider
+	// siteStore is Encounters' optional site capability, or nil when the
+	// host keeps its sites in process (sites.go).
+	siteStore       SiteRepository
 	characters      CharacterRepository
 	seats           SeatRepository
 	record          RecordStream
@@ -280,6 +293,13 @@ func NewManager(cfg *Config) (*Manager, error) {
 	if fenced != nil {
 		pending = newPendingWrites()
 	}
+	// The site piece is a capability of the same repository, found the same
+	// way (sites.go); the provider is optional with the in-process default.
+	siteStore, _ := cfg.Encounters.(SiteRepository)
+	var sites encounter.SiteProvider = encounter.DefaultSites()
+	if cfg.Sites != nil {
+		sites = cfg.Sites
+	}
 
 	return &Manager{
 		staleTargetPolicy: cfg.StaleTargetPolicy,
@@ -290,6 +310,8 @@ func NewManager(cfg *Config) (*Manager, error) {
 		encounters:        cfg.Encounters,
 		fenced:            fenced,
 		pending:           pending,
+		sites:             sites,
+		siteStore:         siteStore,
 		characters:        cfg.Characters,
 		seats:             cfg.Seats,
 		record:            cfg.Record,

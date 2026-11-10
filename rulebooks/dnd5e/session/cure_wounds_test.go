@@ -293,10 +293,12 @@ func (s *CastSuite) TestCureWoundsCanTouchKnownCreatureInDarkness() {
 	// Wounded after the launch: its first-admission rest would heal her.
 	s.characters.byID["patient"].HitPoints = 1
 	for _, world := range s.encounters.byID {
-		for i := range world.Field.Regions {
-			dark := 0.0
-			world.Field.Regions[i].Lighting = &encounter.LightingData{Intensity: &dark}
-		}
+		session.EditSiteForTest(s.T(), world, func(field *encounter.FieldData) {
+			for i := range field.Regions {
+				dark := 0.0
+				field.Regions[i].Lighting = &encounter.LightingData{Intensity: &dark}
+			}
+		})
 	}
 	_, err := s.mgr.Cast(context.Background(), &session.CastInput{Session: "sess", Member: "cleric", DeclarationID: s.castRow(spells.CureWounds).ID, Targets: []string{"patient"}})
 	s.Require().NoError(err)

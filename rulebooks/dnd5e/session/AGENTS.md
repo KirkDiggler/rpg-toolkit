@@ -72,6 +72,17 @@ dropped when the guard is released. A stale save writes nothing and delivers
 nothing (`ErrStaleCheckpoint`). The record's `NextSeq` is not the fence: a
 beatless verb does not advance it. A plain repository keeps today's writes.
 
+**The site is shared by hash** ([`sites.go`](./sites.go), rpg-project#879 S5).
+A stored world names its compiled site by `SiteHash` and never carries the
+field. `Config.Sites` resolves it on every load (nil is
+`encounter.DefaultSites`, the in-process default), Launch included, and rides
+on every resolution input. An encounter repository that also implements
+`SiteRepository` (found by type assertion, like the fence) stores the site
+piece by hash: Launch puts it before the checkpoint that names it, and a cold
+process whose provider misses reads it back and compiles it once. A hash
+neither holds fails the verb closed with `ErrUnknownSite`. The site tier is
+shared across games and read-only; the locker guards the instance tier only.
+
 **The one driver is RECOGNISED, not wrapped** ([`driver.go`](./driver.go)).
 Every other driver crosses the boundary by projection — the composition's
 `MonsterView` flattens onto this package's twin on the way in, its `TurnIntent`

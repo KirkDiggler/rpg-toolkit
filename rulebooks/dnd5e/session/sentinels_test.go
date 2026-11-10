@@ -73,6 +73,9 @@ var compositionSentinels = map[string]error{
 	"encounter.ErrClosed":          encounter.ErrClosed,
 	"encounter.ErrNoField":         encounter.ErrNoField,
 	"encounter.ErrBadPlacement":    encounter.ErrBadPlacement,
+	// A stored world naming a site nobody holds (rpg-project#879 S5) reaches
+	// a host as session.ErrUnknownSite beside ErrInvalidWorld, never as this.
+	"encounter.ErrUnknownSite": encounter.ErrUnknownSite,
 	// The field's construction refusals (rpg-project#256): a world that
 	// trips one fails to LOAD, and a load failure reaches a host as
 	// ErrInvalidWorld with the reason as text, never as one of these.
@@ -267,6 +270,7 @@ var sessionSentinels = map[string]error{
 	"ErrBadSessionLock":       session.ErrBadSessionLock,
 	"ErrContinuationSpent":    session.ErrContinuationSpent,
 	"ErrStaleCheckpoint":      session.ErrStaleCheckpoint,
+	"ErrUnknownSite":          session.ErrUnknownSite,
 	"ErrSaveFailed":           session.ErrSaveFailed,
 	"ErrBadTurnOutcome":       session.ErrBadTurnOutcome,
 	"ErrInvalidTradeOffer":    session.ErrInvalidTradeOffer,
