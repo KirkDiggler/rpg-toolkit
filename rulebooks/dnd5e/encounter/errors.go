@@ -317,6 +317,10 @@ var (
 	// between a first load and a reconnect (#937).
 	ErrTrimmed = errors.New("encounter: story range trimmed")
 
+	// ErrBadSince reports a [ToCheckpointInput.Since] past the story's
+	// NextSeq: a store cannot hold beats the encounter never wrote.
+	ErrBadSince = errors.New("encounter: checkpoint since past the story")
+
 	// ErrNoInitiative indicates Setup was given no InitiativeRoller. Trigger
 	// detection runs from first light, so every encounter needs one — refused
 	// at construction rather than at the moment a fight would have started.

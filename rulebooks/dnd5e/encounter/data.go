@@ -2325,7 +2325,7 @@ func (e *Encounter) ToData() EncounterData {
 		panic(fmt.Errorf("encounter: retention at storage boundary: %w", err))
 	}
 
-	return e.snapshot()
+	return e.snapshot(e.story.ToData())
 }
 
 // WorldView returns a read-only snapshot of this Encounter for mid-verb
@@ -2342,14 +2342,15 @@ func (e *Encounter) ToData() EncounterData {
 // EncounterData wholesale, so the save-vs-view distinction lives here, in
 // the name and this contract, not in the shape.
 func (e *Encounter) WorldView() EncounterData {
-	return e.snapshot()
+	return e.snapshot(e.story.ToData())
 }
 
 // snapshot renders the encounter's current state as EncounterData: the ONE
 // snapshot body behind both entries, so the storage boundary (ToData, which
 // trims first) and the pure read (WorldView, which never trims) cannot
-// drift.
-func (e *Encounter) snapshot() EncounterData {
+// drift. log is the record as the caller emits it: the whole retained log
+// for ToData and WorldView, the head alone for ToCheckpoint.
+func (e *Encounter) snapshot(log record.LogData) EncounterData {
 	// Members in sorted-ID order: an unchanged encounter must produce
 	// byte-identical snapshots (T6 review M1 — map iteration here made
 	// ToData nondeterministic and the round-trip suite ~16% flaky).
@@ -2492,7 +2493,7 @@ func (e *Encounter) snapshot() EncounterData {
 		Landed:             wakeBeatsData(e.landed),
 		Perception:         e.intelLog.ToData(),
 		PerceptionSubjects: perceptionSubjectVersion,
-		Log:                e.story.ToData(),
+		Log:                log,
 		SiteHash:           e.siteHash(),
 		Members:            membersData,
 		Doors:              doorData,
