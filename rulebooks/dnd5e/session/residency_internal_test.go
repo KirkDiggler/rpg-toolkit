@@ -4,9 +4,13 @@
 package session
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
 // resident is a copy of n estimated bytes, for the bound alone.
@@ -45,4 +49,46 @@ func TestMemoryResidencyBoundsByCountAndBytes(t *testing.T) {
 	def := NewResidency(nil)
 	require.Equal(t, DefaultResidentEntries, def.maxEntries)
 	require.Equal(t, int64(DefaultResidentMaxBytes), def.maxBytes)
+}
+
+// TestARecordThatMovedAfterTheSaveIsNotKept is the release's record guard on
+// its own: a staged copy whose record's next seq is past the one its save
+// left is dropped, and one at that seq is kept. The stage after a landed save
+// is the first guard; this one holds even if a copy were staged wrongly (a
+// stale save's copy has appended past what landed).
+func TestARecordThatMovedAfterTheSaveIsNotKept(t *testing.T) {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Canvas:  pointyCanvas(),
+			Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 6, 4)},
+		},
+		Endings:      []encounter.EndingInput{{Key: "done", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: encounter.RefusingCapabilities(),
+	})
+	require.NoError(t, err)
+	next, err := enc.NextStorySeq()
+	require.NoError(t, err)
+	require.Positive(t, next)
+
+	res := NewResidency(nil)
+	m := &Manager{versions: versionsNever{}, residency: res, staged: &stagedResidents{}}
+	stage := func(recordNext uint64) {
+		m.staged.put("s", &Resident{enc: enc, fence: checkpointFence{held: true, recordNext: recordNext}})
+	}
+
+	stage(next - 1) // saved before the record's last beat: it moved since
+	m.keepStaged("s")
+	require.Zero(t, res.Len(), "a copy whose record moved after its save is not kept")
+
+	stage(next)
+	m.keepStaged("s")
+	require.Equal(t, 1, res.Len(), "a copy at its save's record is kept")
+}
+
+// versionsNever is a reader the guard test never reads: it only has to be
+// there for the Manager to keep copies.
+type versionsNever struct{}
+
+func (versionsNever) GetCheckpointVersion(context.Context, string) (uint64, error) {
+	return 0, errors.New("not read")
 }

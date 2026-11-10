@@ -61,6 +61,12 @@ type Config struct {
 	// A host bounds it with its own [NewResidency], or supplies its own.
 	Residency Residency
 
+	// ResidencyObserver is told whether each fenced write verb on a stored
+	// world ran on the kept copy, and if not, which gate sent it to the
+	// store ([MissReason]). Optional: nil observes nothing. Never called for
+	// a host without [CheckpointVersionReader].
+	ResidencyObserver ResidencyObserver
+
 	// CharacterConfig is the host's character configuration, read at every
 	// write verb for each player's discovery-sharing choice (rpg-project#753
 	// R2). Required: automatic discovery needs each finder's audience, so a
@@ -220,6 +226,8 @@ type Manager struct {
 	// residency is Config.Residency, or the in-process default; read only
 	// when versions is set.
 	residency Residency
+	// observer is Config.ResidencyObserver, or nil.
+	observer ResidencyObserver
 	// staged is each session's copy its final commit staged, kept at the
 	// guard's release (residency.go).
 	staged          *stagedResidents
@@ -359,6 +367,7 @@ func NewManager(cfg *Config) (*Manager, error) {
 		siteStore:         siteStore,
 		versions:          versions,
 		residency:         residency,
+		observer:          cfg.ResidencyObserver,
 		staged:            &stagedResidents{},
 		characters:        cfg.Characters,
 		seats:             cfg.Seats,

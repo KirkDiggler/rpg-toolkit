@@ -116,6 +116,9 @@ landed and its batches went out: a stale save, a refused verb, a commit
 error, a canceled context, a continuation that failed after a pace commit, a
 panic in a host collaborator and a closed run keep nothing, by structure.
 Reads do not use the copy. A host without the reader loads every verb.
+`Config.ResidencyObserver` (optional) is told each fenced write verb's `Hit`,
+or its `Miss` and the gate it failed (`MissNoCopy`, `MissVersionMoved`,
+`MissReaderError`, `MissRebindRefused`), for a host's hit-rate log.
 
 **The site is shared by hash** ([`sites.go`](./sites.go), rpg-project#879 S5).
 A stored world names its compiled site by `SiteHash` and never carries the

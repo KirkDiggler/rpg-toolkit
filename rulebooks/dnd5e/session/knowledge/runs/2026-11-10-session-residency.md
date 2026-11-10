@@ -9,6 +9,9 @@ Story [rpg-project#879](https://github.com/KirkDiggler/rpg-project/issues/879) "
 - The verb path. `openScope` takes the copy on every fenced open, Launch included. For a stored world it reads the version once; on a match it rebinds the copy and runs on it with the fence it carries, and otherwise it drops the copy and loads. `commitAt`'s final commit stages the copy after its save landed and its batches went out. The guard's release keeps what was staged, beside the pending-writes drop. — [rpg-project#927](https://github.com/KirkDiggler/rpg-project/issues/927)
 - `residency_test.go` and `residency_internal_test.go`: the warm skip, another writer's save, each drop rule, a host without the reader, the bound, and the session-level equivalence. — [rpg-project#927](https://github.com/KirkDiggler/rpg-project/issues/927)
 
+- `Config.ResidencyObserver` (rpg-toolkit#2368 review): `Hit(session)` for a verb on the copy, `Miss(session, reason)` naming the gate it failed (`no_copy`, `version_moved`, `reader_error`, `rebind_refused`). Called only by the session, only for a fenced write verb on a stored world. — [rpg-project#927](https://github.com/KirkDiggler/rpg-project/issues/927)
+- `TestARecordThatMovedAfterTheSaveIsNotKept` pins the release's record guard on its own. — [rpg-project#927](https://github.com/KirkDiggler/rpg-project/issues/927)
+
 ## Decided
 
 - Keyed by session id, because the guard the copy rides is the session's. The handle carries the encounter id, and a record naming another encounter never uses it. — [rpg-project#927](https://github.com/KirkDiggler/rpg-project/issues/927)
@@ -45,7 +48,8 @@ Mutants, each applied alone and restored:
 | keep before the save result (stage before `persist`) | every residency test |
 | skip the version read | `TestAnotherWritersSaveDropsTheCopy`, `TestAStaleSaveKeepsNoCopy`, `TestACanceledVerbKeepsNoCopy`, `TestAWarmVerbSkipsTheLoad` |
 | keep after a stale save | survives alone: the release's record check drops the copy, whose record moved past what landed. With that check also removed, `TestAStaleSaveKeepsNoCopy` fails. |
-| the record check removed alone | survives: the stage after a landed save is the primary guard |
+| the record check removed alone | `TestARecordThatMovedAfterTheSaveIsNotKept` |
+| a reader error reported as a moved version | `TestTheObserverNamesEveryGate` |
 | the standing's kinds dropped | `TestAWarmVerbSkipsTheLoad`, `TestAnotherWritersSaveDropsTheCopy`, `TestAWarmRunWritesWhatAColdRunWrites` |
 | the act baseline set to 1 | `TestAWarmRunWritesWhatAColdRunWrites` (the acts delivered) |
 | the piece marks dropped | `TestAWarmRunWritesWhatAColdRunWrites` (the pieces saved) |

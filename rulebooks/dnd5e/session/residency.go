@@ -72,6 +72,39 @@ type Residency interface {
 	Keep(session string, r *Resident)
 }
 
+// ResidencyObserver is told, for every fenced write verb on a stored world,
+// whether it ran on the session's kept copy ([Config.ResidencyObserver],
+// rpg-project#927): the hit rate a host logs or exports. Called only by the
+// session, under the session's guard, before the verb runs; it must not call
+// back into the Manager. Optional: nil observes nothing.
+type ResidencyObserver interface {
+	// Hit reports a verb that ran on the kept copy.
+	Hit(session string)
+
+	// Miss reports a verb that loaded, and which gate sent it there.
+	Miss(session string, reason MissReason)
+}
+
+// MissReason names the gate a verb failed on its way to the kept copy.
+type MissReason string
+
+const (
+	// MissNoCopy: the residency held no copy for the session, or held one of
+	// another encounter than the session record names.
+	MissNoCopy MissReason = "no_copy"
+
+	// MissVersionMoved: the store's checkpoint version is not the one the
+	// copy was saved at; another save landed since.
+	MissVersionMoved MissReason = "version_moved"
+
+	// MissReaderError: the version read failed.
+	MissReaderError MissReason = "reader_error"
+
+	// MissRebindRefused: the copy refused this verb's capabilities
+	// ([encounter.Encounter.Rebind]).
+	MissRebindRefused MissReason = "rebind_refused"
+)
+
 // Resident is one session's kept copy: the encounter its last write verb
 // left, and what that verb's landed save left the fence at. Opaque: a host
 // holds it and hands it back, and never reaches the encounter through it.
@@ -254,17 +287,39 @@ func (m *Manager) residentOn() bool { return m.versions != nil }
 
 // takeResident takes the session's copy out of the residency, and returns it
 // only when it is of the encounter the record names and the store's version
-// is the one it was saved at. Anything else is dropped: the verb loads.
-func (m *Manager) takeResident(ctx context.Context, data *SessionData) *Resident {
+// is the one it was saved at. Anything else is dropped, and the reason says
+// which gate it failed: the verb loads.
+func (m *Manager) takeResident(ctx context.Context, data *SessionData) (*Resident, MissReason) {
 	r := m.residency.Take(data.ID)
 	if r == nil || r.encounter != data.Encounter {
-		return nil
+		return nil, MissNoCopy
 	}
 	version, err := m.versions.GetCheckpointVersion(ctx, data.Encounter)
-	if err != nil || version != r.fence.version {
-		return nil
+	if err != nil {
+		return nil, MissReaderError
 	}
-	return r
+	if version != r.fence.version {
+		return nil, MissVersionMoved
+	}
+	return r, ""
+}
+
+// residentScope binds the session's kept copy to the scope when every gate
+// passes, tells the observer which way it went, and reports whether the
+// scope now holds a world.
+func (m *Manager) residentScope(ctx context.Context, data *SessionData, scope *writeScope) bool {
+	r, reason := m.takeResident(ctx, data)
+	if r != nil && !m.openResident(ctx, data, scope, r) {
+		reason = MissRebindRefused
+	}
+	if m.observer != nil {
+		if reason == "" {
+			m.observer.Hit(data.ID)
+		} else {
+			m.observer.Miss(data.ID, reason)
+		}
+	}
+	return reason == ""
 }
 
 // openResident binds a taken copy to this verb's scope, as

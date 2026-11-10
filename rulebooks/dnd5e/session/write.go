@@ -885,16 +885,12 @@ func (m *Manager) openScope(
 	// only for a stored world whose version still matches it, and dropped
 	// otherwise. A copy that cannot be rebound is dropped and the world
 	// loads.
-	var resident *Resident
 	if m.residentOn() {
-		if world == nil {
-			resident = m.takeResident(ctx, data)
-		} else {
+		if world != nil {
 			m.residency.Take(sessionID)
+		} else if m.residentScope(ctx, data, scope) {
+			return m.openedScope(ctx, scope, extraMembers...)
 		}
-	}
-	if resident != nil && m.openResident(ctx, data, scope, resident) {
-		return m.openedScope(ctx, scope, extraMembers...)
 	}
 
 	switch {

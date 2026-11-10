@@ -45,6 +45,8 @@ type versionedStore struct {
 	// many have been asked; an error refuses the save.
 	onPieces func(n int) error
 	saves    int
+	// versionErr, when set, fails the next version read.
+	versionErr error
 }
 
 func newVersionedStore() *versionedStore { return &versionedStore{piecesStore: newPiecesStore()} }
@@ -58,6 +60,10 @@ func (v *versionedStore) GetFencedEncounter(
 
 func (v *versionedStore) GetCheckpointVersion(_ context.Context, enc string) (uint64, error) {
 	v.versionGets++
+	if err := v.versionErr; err != nil {
+		v.versionErr = nil
+		return 0, err
+	}
 	version := v.versions[enc]
 	if hook := v.onVersion; hook != nil {
 		v.onVersion = nil
@@ -511,4 +517,85 @@ func canonicalWorld(t *testing.T, store *piecesStore) string {
 		}
 		return seen[id]
 	})
+}
+
+// countingObserver records every Hit and Miss the session reports.
+type countingObserver struct {
+	hits   int
+	misses []session.MissReason
+}
+
+func (o *countingObserver) Hit(string) { o.hits++ }
+func (o *countingObserver) Miss(_ string, reason session.MissReason) {
+	o.misses = append(o.misses, reason)
+}
+
+// inFlightResidency hands back its copy with an act already open when spoil
+// is set, a copy Rebind refuses.
+type inFlightResidency struct {
+	*session.MemoryResidency
+	spoil bool
+}
+
+func (r *inFlightResidency) Take(id string) *session.Resident {
+	kept := r.MemoryResidency.Take(id)
+	if kept != nil && r.spoil {
+		r.spoil = false
+		if err := kept.OpenActForTest("spoiled"); err != nil {
+			panic(err)
+		}
+	}
+	return kept
+}
+
+// TestTheObserverNamesEveryGate: a warm verb is one Hit; each gate a verb
+// can fail on the way to the copy is one Miss naming it, and the verb loads.
+func TestTheObserverNamesEveryGate(t *testing.T) {
+	store := newVersionedStore()
+	obs := &countingObserver{}
+	res := &inFlightResidency{MemoryResidency: session.NewResidency(nil)}
+	mgr := residentManager(t, store.piecesStore, store, res, func(c *session.Config) { c.ResidencyObserver = obs })
+	other := residentManager(t, store.piecesStore, store, session.NewResidency(nil))
+	launchPlainKeep(t, mgr)
+	require.Zero(t, obs.hits, "Launch observes nothing")
+	require.Empty(t, obs.misses)
+	p := paceOf(t, mgr)
+
+	move(t, mgr, p.out)
+	require.Equal(t, 1, obs.hits, "a warm verb is a hit")
+
+	move(t, other, p.back)
+	move(t, mgr, p.out)
+	require.Equal(t, []session.MissReason{session.MissVersionMoved}, obs.misses, "another writer saved")
+
+	store.versionErr = errors.New("the store is unreachable")
+	move(t, mgr, p.back)
+	require.Equal(t, session.MissReaderError, obs.misses[len(obs.misses)-1])
+
+	res.spoil = true
+	move(t, mgr, p.out)
+	require.Equal(t, session.MissRebindRefused, obs.misses[len(obs.misses)-1])
+
+	res.Take(testSession)
+	move(t, mgr, p.back)
+	require.Equal(t, session.MissNoCopy, obs.misses[len(obs.misses)-1])
+
+	move(t, mgr, p.out)
+	require.Equal(t, 2, obs.hits, "the copy the last load kept is used again")
+	require.Len(t, obs.misses, 4, "one miss per gate, and nothing else")
+}
+
+// TestAHostWithoutTheReaderObservesNothing: no reader, no residency, nothing
+// to observe.
+func TestAHostWithoutTheReaderObservesNothing(t *testing.T) {
+	store := newPiecesStore()
+	obs := &countingObserver{}
+	mgr := residentManager(t, store, store, nil, func(c *session.Config) { c.ResidencyObserver = obs })
+	launchScene(t, mgr, scene{
+		Field: encounter.FieldInput{Canvas: pointyCanvas(), Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 6, 4)}},
+		Party: []sceneSeat{seatAt("alice", 1, 1)},
+	})
+	move(t, mgr, []spatial.Position{hexCell(2, 1)})
+	require.Zero(t, obs.hits)
+	require.Empty(t, obs.misses)
 }
