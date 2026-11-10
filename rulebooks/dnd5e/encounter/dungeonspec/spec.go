@@ -1169,10 +1169,12 @@ type OptionSpec struct {
 
 	// Requires is what must hold before the line is offered, EVERY ONE OF
 	// THEM (rpg-project#922): one [PredicateSpec] written as a mapping, or a
-	// list of them ([RequiresSpec]). Each is `{ fact: <id> }` (the speaker
-	// knows it), `{ holds: <prop id> }` (the speaker carries a placed prop
-	// somebody can pick up), or a `not` of one. Optional; absent is always
-	// offered.
+	// list of them ([RequiresSpec]). Each is either the SPEAKER's own read —
+	// `{ fact: <id> }` (the speaker knows it) or `{ holds: <prop id> }` (the
+	// speaker carries a placed prop somebody can pick up) — or the RUN's
+	// interaction state, `{ interaction: { id, in: [<state>] } }`, judged
+	// per run and not per speaker (#916 R2); or a `not` of one. Every item
+	// must hold. Optional; absent is always offered.
 	Requires RequiresSpec `yaml:"requires,omitempty" json:"requires,omitempty"`
 
 	// Advance is the root interaction this line's verdict steps

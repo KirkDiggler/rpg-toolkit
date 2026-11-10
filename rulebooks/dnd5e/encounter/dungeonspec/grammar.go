@@ -585,9 +585,11 @@ func (g *grammar) optionRequirements(path string, requires RequiresSpec, props m
 	}
 }
 
-// optionRequires judges one option's `requires`: absent, a fact, or a holding
-// of a placed prop somebody can pick up — and nothing else, because an option
-// is offered or not by what the SPEAKER knows and carries (R9).
+// optionRequires judges one item of an option's `requires`: the SPEAKER's
+// own read — a fact, or a holding of a placed prop somebody can pick up (R9)
+// — or the RUN's interaction state, judged per run and not per speaker
+// (rpg-project#922, #916 R2), or a `not` of one; nothing else. Every item
+// of the list must hold ([grammar.optionRequirements]).
 func (g *grammar) optionRequires(path string, p *PredicateSpec, props map[string]bool) {
 	if p.Form() == predicateNot {
 		// THE SPEAKER'S READ, NEGATED (rpg-project#719, D3): withheld from
