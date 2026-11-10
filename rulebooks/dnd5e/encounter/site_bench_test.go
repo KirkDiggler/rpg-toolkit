@@ -26,9 +26,9 @@ import (
 //
 //   - open: the keep stays open across ops, the bench's old shape;
 //
-//   - reloaded-shared: the keep is loaded from its checkpoint before every op
-//     (outside the timer) on a provider that keeps the site resident, which is
-//     what a live server's per-verb load is now;
+//   - reloaded-shared: the keep is loaded before every op (outside the timer)
+//     from the checkpoint the previous op saved, on a provider that keeps the
+//     site resident, which is what a live server's per-verb load is now;
 //
 //   - reloaded-cold: the same load on a fresh provider every op, the site
 //     compiled from its piece — what every load was before the site tier.
@@ -78,6 +78,9 @@ func benchWalkLine(b *testing.B, variant string) {
 			b.StartTimer()
 		}
 		b.StopTimer()
+		// The next op loads what this one saved, as the next verb does: the
+		// walker keeps what it learned (the walk ends where it began).
+		checkpoint = enc.ToData()
 	}
 	if walkSteps > 0 {
 		b.ReportMetric(float64(walkNs)/float64(walkSteps)/float64(time.Millisecond), "walk-step-ms")
