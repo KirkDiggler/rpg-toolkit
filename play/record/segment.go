@@ -9,8 +9,16 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 )
 
+// DataFromInput is the input to [Log.DataFrom].
+type DataFromInput struct {
+	// Since is the first seq the caller wants: for a store, the first seq it
+	// does not hold yet. Zero (or anything at or below the oldest retained
+	// seq) is every retained entry.
+	Since uint64
+}
+
 // DataFrom returns the persistent representation of the retained entries at
-// or after since: a SEGMENT, the unit a store appends (doc.go).
+// or after in.Since: a SEGMENT, the unit a store appends (doc.go).
 //
 // The result is a legal LogData on its own. Its audience table is built
 // first-seen over its own entries only, so it never leans on a table stored
@@ -19,11 +27,20 @@ import (
 // result carries the last id issued. The fresh-log convention holds: a
 // never-appended log returns the zero LogData (but for a minted LastID).
 //
-// Entries older than since are never copied. since at or below the oldest
-// retained seq returns every retained entry (DataFrom(0) is ToData); since at
-// or above NextSeq returns no entries, which is the HEAD a store keeps beside
-// its segments (JoinData).
-func (l *Log) DataFrom(since uint64) LogData {
+// Entries older than Since are never copied. Since at or below the oldest
+// retained seq returns every retained entry (Since 0 is ToData); Since at or
+// above NextSeq returns no entries, which is the HEAD a store keeps beside
+// its segments (JoinData). A nil input is refused with ErrNilInput.
+func (l *Log) DataFrom(in *DataFromInput) (LogData, error) {
+	if in == nil {
+		return LogData{}, ErrNilInput
+	}
+	return l.dataFrom(in.Since), nil
+}
+
+// dataFrom is DataFrom past its input check: the one body behind DataFrom
+// and ToData.
+func (l *Log) dataFrom(since uint64) LogData {
 	from := l.indexOf(since)
 	entries := l.entries[from:]
 
@@ -78,27 +95,51 @@ func (l *Log) indexOf(since uint64) int {
 	return int(off) //nolint:gosec // bounded by len(l.entries) above
 }
 
-// JoinData assembles one LogData from a head and the segments a store holds,
-// oldest first. The result is what ToData would have written for a log
-// holding the segments' entries: one audience table, re-interned first-seen
-// over the joined entries (each segment row is remapped once, not per entry),
-// the head's NextSeq, and the head's LastID unless the last joined entry
-// carries it.
+// JoinDataInput is the input to [JoinData].
+type JoinDataInput struct {
+	// Head is the newest DataFrom at NextSeq: NextSeq and LastID, no entries,
+	// no table.
+	Head LogData
+	// Floor is the seq below which the store may hold nothing: the oldest seq
+	// the log still retained at the last save (its trim floor; NextSeq when
+	// it retained none). Entries below Floor are dropped from every segment,
+	// and the store may already have dropped them. Zero (or 1) keeps
+	// everything and tolerates no missing seq.
+	Floor uint64
+	// Segments are the segments the store holds, oldest first: DataFrom
+	// outputs. Empty segments (a save that appended nothing) are skipped.
+	Segments []LogData
+}
+
+// JoinData assembles one LogData from the head and segments a store holds.
+// The result is what ToData wrote at the last save: the entries at or above
+// Floor, one audience table re-interned first-seen over them (each segment
+// row is remapped once, not per entry), the head's NextSeq, and the head's
+// LastID unless the last joined entry carries it.
 //
-// The head is the newest DataFrom(NextSeq): NextSeq and LastID, no entries,
-// no table. A segment is a DataFrom output. Empty segments (a save that
-// appended nothing) are skipped.
+// THE STORE TRIMS, THE JOIN TOLERATES. A log trims to its retention window
+// on save, so a segment can start above the store's last seq + 1 (a verb
+// appended more than the window), and the store drops segments wholly below
+// the floor while the one that straddles it keeps older entries. Below Floor
+// the join drops what it is handed and forgives what is missing; at or above
+// Floor every seq through NextSeq-1 must be present.
 //
 // JoinData refuses, wrapping ErrInvalidData and naming the reason: a head
-// with entries or a table; a segment whose entries are not gapless, whose
-// NextSeq is not its last seq + 1, whose table holds an empty, illegal or
-// repeated row, or whose entry names a row past its table; a segment that
-// leaves a gap after, or overlaps, the one before it; a head NextSeq that is
-// not the last joined seq + 1; a head LastID older than the last joined id.
+// with entries or a table; a Floor past the head's NextSeq; a segment whose
+// entries are not gapless, whose NextSeq is not its last seq + 1, whose table
+// holds an empty, illegal or repeated row, or whose entry names a row past
+// its table; a missing seq at or above Floor (gap); a segment that overlaps
+// the one before it at or above Floor; a head NextSeq that is not the last
+// joined seq + 1; a head LastID older than the last joined id. A nil input is
+// refused with ErrNilInput.
 //
 // The result's entries share Tags and Payload with the segments; LoadLog
 // deep-copies them, and so must any other caller that keeps the segments.
-func JoinData(head LogData, segments ...LogData) (LogData, error) {
+func JoinData(in *JoinDataInput) (LogData, error) {
+	if in == nil {
+		return LogData{}, ErrNilInput
+	}
+	head := in.Head
 	if len(head.Entries) > 0 {
 		return LogData{}, fmt.Errorf("join data: head holds %d entries, want none: %w",
 			len(head.Entries), ErrInvalidData)
@@ -107,36 +148,48 @@ func JoinData(head LogData, segments ...LogData) (LogData, error) {
 		return LogData{}, fmt.Errorf("join data: head holds %d audience rows, want none: %w",
 			len(head.Audiences), ErrInvalidData)
 	}
+	// The first seq that must be present: everything below it may be gone.
+	floor := max(in.Floor, 1)
+	next := max(head.NextSeq, 1) // fresh encodes NextSeq 0
+	if floor > next {
+		return LogData{}, fmt.Errorf("join data: floor %d is past the head's next_seq %d: %w",
+			in.Floor, next, ErrInvalidData)
+	}
 
 	total := 0
-	for _, seg := range segments {
-		total += len(seg.Entries)
-	}
-	if total == 0 {
-		return head, nil
-	}
-
-	out := LogData{NextSeq: head.NextSeq, Entries: make([]EntryData, 0, total)}
-	var table audienceTable
-	var prev uint64 // last joined seq, 0 before the first
-	for si, seg := range segments {
+	for si, seg := range in.Segments {
 		if len(seg.Entries) == 0 {
 			continue
 		}
 		if err := checkSegment(si, seg); err != nil {
 			return LogData{}, err
 		}
-		first := seg.Entries[0].Seq
-		if prev != 0 && first > prev+1 {
-			return LogData{}, fmt.Errorf("join data: segment[%d] starts at seq %d after seq %d (gap): %w",
-				si, first, prev, ErrInvalidData)
+		total += len(seg.Entries)
+	}
+
+	out := LogData{NextSeq: head.NextSeq, Entries: make([]EntryData, 0, total)}
+	var table audienceTable
+	want := floor // the next seq the join needs
+	for si, seg := range in.Segments {
+		kept := seg.Entries
+		for len(kept) > 0 && kept[0].Seq < want {
+			// Below the floor, or already joined: an overlap above the
+			// floor is refused, one below it is the straddler's past.
+			if kept[0].Seq >= floor {
+				return LogData{}, fmt.Errorf("join data: segment[%d] repeats seq %d (overlap): %w",
+					si, kept[0].Seq, ErrInvalidData)
+			}
+			kept = kept[1:]
 		}
-		if prev != 0 && first <= prev {
-			return LogData{}, fmt.Errorf("join data: segment[%d] starts at seq %d at or before seq %d (overlap): %w",
-				si, first, prev, ErrInvalidData)
+		if len(kept) == 0 {
+			continue
+		}
+		if kept[0].Seq > want {
+			return LogData{}, fmt.Errorf("join data: segment[%d] starts at seq %d, seq %d is missing at or above floor %d (gap): %w",
+				si, kept[0].Seq, want, floor, ErrInvalidData)
 		}
 		remap := make([]uint32, len(seg.Audiences)) // 0 = not yet interned
-		for _, ed := range seg.Entries {
+		for _, ed := range kept {
 			if ed.AudienceRef != 0 {
 				r := &remap[ed.AudienceRef-1]
 				if *r == 0 {
@@ -146,12 +199,19 @@ func JoinData(head LogData, segments ...LogData) (LogData, error) {
 			}
 			out.Entries = append(out.Entries, ed)
 		}
-		prev = seg.Entries[len(seg.Entries)-1].Seq
+		want = kept[len(kept)-1].Seq + 1
 	}
 
-	if head.NextSeq != prev+1 {
-		return LogData{}, fmt.Errorf("join data: head next_seq %d != last joined seq+1 (%d+1=%d): %w",
-			head.NextSeq, prev, prev+1, ErrInvalidData)
+	if len(out.Entries) == 0 {
+		if want != next {
+			return LogData{}, fmt.Errorf("join data: seqs %d through %d are missing at or above floor %d (gap): %w",
+				want, next-1, floor, ErrInvalidData)
+		}
+		return head, nil
+	}
+	if head.NextSeq != want {
+		return LogData{}, fmt.Errorf("join data: head next_seq %d != last joined seq+1 (%d): %w",
+			head.NextSeq, want, ErrInvalidData)
 	}
 	lastEntryID := out.Entries[len(out.Entries)-1].ID
 	switch {

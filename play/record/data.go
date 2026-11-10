@@ -66,9 +66,9 @@ type EntryData struct {
 // A trimmed-empty log (nextSeq >= 2, no entries) stores the real NextSeq.
 // A populated log stores NextSeq and deep-copied entries.
 //
-// ToData is DataFrom(0): every retained entry is at or after seq 0.
+// ToData is DataFrom at Since 0: every retained entry is at or after seq 0.
 func (l *Log) ToData() LogData {
-	return l.DataFrom(0)
+	return l.dataFrom(0)
 }
 
 // LoadLog reconstructs a Log from persisted LogData.
