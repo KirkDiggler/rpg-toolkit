@@ -27,8 +27,10 @@ var ErrBadSessionLock = errors.New("session locker returned no release")
 // closed with [ErrStaleCheckpoint] instead of saving over its successor. The
 // record's baseline lives beside that version: under
 // [AppendingEncounterRepository] the save appends the record from the first
-// seq the store does not hold, which the verb read with the version, and a
-// refused save leaves both where they were. A
+// seq the store does not hold, which the verb read with the version; under
+// [PiecesEncounterRepository] the marks of the pieces the store holds sit
+// beside it, read with the version and replaced only by a landed save. A
+// refused save leaves all of them where they were. A
 // character's own guard (an unseated character's sheet) is not fenced and
 // must not expire while the operation can still write.
 //

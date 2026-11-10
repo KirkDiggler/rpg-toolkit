@@ -86,6 +86,19 @@ fixed for the verb. Reads stay whole: the host joins rest and segments with
 without it still gets the whole world through `SaveFenced`, and nothing is
 added to `SaveFencedInput`, so a host cannot half-adopt it and drop the record.
 
+**The rest can be stored as pieces** ([`checkpoint.go`](./checkpoint.go),
+rpg-project#897 leg b). An appending repository that also implements
+`PiecesEncounterRepository` (type assertion again) is handed the rest split by
+`encounter.SplitPieces` into rpg-project#770's shapes: the head (every save),
+the roster one piece per member, knowledge one piece per observer, and the
+journal. Each piece carries a mark, a digest of its bytes; only the pieces
+whose mark moved are sent, removals are named, and `Data` is nil. The session
+holds the marks beside the record baseline (`checkpointFence.marks`): the
+fenced read's `Marks`, nil at Launch (every piece), replaced by the save's
+new marks only after it lands. Reads stay whole: the host joins its pieces
+with `encounter.JoinPieces` and then its segments. A host without it falls
+back to `SaveAppended`, then `SaveFenced`, then the plain writes, unchanged.
+
 **The site is shared by hash** ([`sites.go`](./sites.go), rpg-project#879 S5).
 A stored world names its compiled site by `SiteHash` and never carries the
 field. `Config.Sites` resolves it on every load (nil is

@@ -886,7 +886,8 @@ func (m *Manager) openScope(
 		// first save lands only on a store that holds none (a racing Launch
 		// fails closed); plain, the fence stays unheld.
 		// The store holds no record either, so an appending save sends the
-		// whole of it: since seq 1.
+		// whole of it: since seq 1. Nor does it hold a piece, so the marks
+		// stay nil and a pieces save sends every piece.
 		scope.fence = checkpointFence{held: m.fenced != nil, recordNext: 1}
 	case m.fenced != nil:
 		if world, scope.fence, err = m.fetchFencedWorld(ctx, data.Encounter); err != nil {

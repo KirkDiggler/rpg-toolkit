@@ -38,7 +38,7 @@ declaration, and `gorelease` gates every release.
 |---|---|
 | `session.go` | `Config`, `Manager`, total construction |
 | `repositories.go` | What the host implements for storage, and the constraints on it |
-| `checkpoint.go` | The optional storage capabilities: the fenced save, and the appended record (`AppendingEncounterRepository`: the rest plus the segment the store lacks) |
+| `checkpoint.go` | The optional storage capabilities: the fenced save, the appended record (`AppendingEncounterRepository`: the rest plus the segment the store lacks), and the rest as pieces (`PiecesEncounterRepository`: only the pieces whose mark moved, the marks held beside the record baseline) |
 | `data.go` | What this package persists |
 | `types.go` | What this package returns |
 | `convert.go` | The converter layer: inner shapes → ours |
