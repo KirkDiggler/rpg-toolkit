@@ -402,6 +402,22 @@ type Declaration struct {
 	// a TARGET offers, and the target travels with it.
 	SpeakOptions []SpeakOptionRow `json:"speak_options,omitempty"`
 
+	// Address is the guard addressing this member and the interaction he
+	// speaks for (rpg-project#923, the guard opens the conversation), present
+	// only on a [VerbSpeak] row in the ADDRESSED member's own menu and only
+	// while the address stands ([encounter.Encounter.AddressFor], measured at
+	// [InteractionReach]). Nil on every other member's rows and on every
+	// other verb. A client reads it as "open the reply panel on Guard".
+	//
+	// SpeakOptions lists that guard's lines whenever Address is set, because
+	// the encounter's one predicate admits an address only when the menu
+	// would offer him: the member within [InteractionReach] of the guard,
+	// SIGHT BOTH WAYS (he sees her, she sights him — the menu lists only
+	// creatures the member sights and that witness her), and the interaction
+	// still offering her one of his lines. Asymmetric sight ends the address
+	// (`out-of-sight`) rather than naming a guard the menu leaves out.
+	Address *Address `json:"address,omitempty"`
+
 	// Cost is generic provider-authored display data copied from the executable
 	// spend profile. Private resource keys never cross this seam.
 	Cost []CostComponent `json:"cost"`
@@ -961,6 +977,7 @@ func (m *Manager) speakRowOnTheWorldClock(
 		Verb: VerbSpeak, Slot: SlotNone, ID: id,
 		TargetKind: TargetMember, Candidates: projectCandidates(menu.targets),
 		SpeakOptions: menu.projectRows(),
+		Address:      menu.address,
 		Information:  sessionVerbInformation(VerbSpeak),
 	}
 	// NO SHEET AND NO PROFILE: free roam has no economy to fall short of, so

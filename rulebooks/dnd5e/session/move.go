@@ -118,6 +118,17 @@ type MoveOutput struct {
 	// is in this output and the act stream like any other step's.
 	Barred *Barred `json:"barred,omitempty"`
 
+	// Addressed is present when a guard hailed the walker on a step
+	// (rpg-project#923, the guard opens the conversation): a carrier of an
+	// interaction saw her come inside its approach distance and now
+	// addresses her. The step was taken and is in Steps; the remaining cells
+	// were dropped, never attempted and never resumed, and Status is
+	// [MovementStopped] unless the hail landed on the walk's last cell. It is
+	// an answer, never an error: the guard's line, when his machine has one,
+	// is a table answer under this Move's act, and the same address rides the
+	// walker's Speak row ([Declaration.Address]) for as long as it stands.
+	Addressed *Address `json:"addressed,omitempty"`
+
 	// Saved names what was persisted.
 	Saved SaveReport `json:"saved"`
 
@@ -360,6 +371,7 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 		Outcome:      res.outcome,
 		Formed:       res.formed,
 		Barred:       res.barred,
+		Addressed:    res.addressed,
 		Saved:        report,
 		Delivery:     delivery,
 	}, nil
@@ -461,6 +473,7 @@ func (m *Manager) continueWalk(
 		Outcome:      res.outcome,
 		Formed:       res.formed,
 		Barred:       res.barred,
+		Addressed:    res.addressed,
 	}
 	return landed, nil
 }
@@ -499,6 +512,7 @@ type walkResult struct {
 	outcome      *Outcome
 	formed       *Formed
 	barred       *Barred
+	addressed    *Address
 	joinedCombat bool
 	// through is the record id of the last moved step's beat.
 	through string
@@ -527,6 +541,24 @@ type Barred struct {
 	// the way", "<name> bars the way", or "someone ..." for a body the
 	// walker does not see.
 	Reason string `json:"reason"`
+}
+
+// Address is an interaction addressing a member (rpg-project#923): the
+// guard speaking to them and the interaction he speaks for. It is the
+// composition's [encounter.Addressed], carried as written, on a Move a hail
+// stopped ([MoveOutput.Addressed]) and on the addressed member's own Speak
+// row ([Declaration.Address]).
+type Address struct {
+	// Guard is the member addressing them: the carrier who hailed.
+	Guard string `json:"guard"`
+
+	// Interaction is the interaction the guard speaks for.
+	Interaction string `json:"interaction"`
+}
+
+// projectAddress is the composition's address in the seam's shape.
+func projectAddress(a encounter.Addressed) *Address {
+	return &Address{Guard: string(a.Guard), Interaction: string(a.Interaction)}
 }
 
 // runWalk steps a member along a path, stopping at the first fight, the first
@@ -725,6 +757,10 @@ func (m *Manager) walk(
 			Member:  encounter.MemberID(member),
 			To:      cell,
 			EndWalk: i == len(path)-1,
+			// THE SESSION OWNS THE REACH (offers.go): a standing address is
+			// measured at the distance Speak is, so an address never stands
+			// where the walker could not answer it.
+			Reach: InteractionReach,
 		})
 		if err != nil {
 			var obstruction *encounter.StepObstructedError
@@ -791,6 +827,15 @@ func (m *Manager) walk(
 		from = stepped.Stepped.To
 		mergeDiscoveries(res.discovered, projectDiscoveries(stepped.IntelDeltas))
 
+		// A HAIL STOPS THE WALK (rpg-project#923, ruled 2026-11-11: "I should
+		// stop walking"): the step was taken, a guard now addresses the
+		// walker, and the rest of the path is dropped, never resumed. Read
+		// before Outcome and Formed so a hail whose answer also ended the run
+		// or formed a fight is still reported.
+		if len(stepped.Addressed) > 0 {
+			res.addressed = projectAddress(stepped.Addressed[0])
+		}
+
 		if stepped.Outcome != nil {
 			// The encounter ended underfoot. Every remaining step is abandoned:
 			// a closed encounter refuses movement anyway, and attempting them
@@ -801,6 +846,10 @@ func (m *Manager) walk(
 
 		if stepped.Formed != nil {
 			res.formed = projectFormed(stepped.Formed)
+			return nil
+		}
+
+		if res.addressed != nil && i < len(path)-1 {
 			return nil
 		}
 

@@ -165,11 +165,12 @@ type MoveRest struct {
 	// steps, keyed by observer.
 	Discovered map[string]Discovery `json:"discovered,omitempty"`
 
-	// Outcome, Formed and Barred are [MoveOutput]'s, for a walk that ended
-	// in the rest.
-	Outcome *Outcome `json:"outcome,omitempty"`
-	Formed  *Formed  `json:"formed,omitempty"`
-	Barred  *Barred  `json:"barred,omitempty"`
+	// Outcome, Formed, Barred and Addressed are [MoveOutput]'s, for a walk
+	// that ended in the rest.
+	Outcome   *Outcome `json:"outcome,omitempty"`
+	Formed    *Formed  `json:"formed,omitempty"`
+	Barred    *Barred  `json:"barred,omitempty"`
+	Addressed *Address `json:"addressed,omitempty"`
 }
 
 // heldGuard is a verb's session guard that may change hands. The verb defers

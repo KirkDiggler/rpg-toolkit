@@ -34,7 +34,7 @@ func TestCastleGreetingTheCaptainIsFreeAndAThreatPaysTheRound(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		_, err = c.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: route.Path})
+		_, err = walkOn(ctx, c.mgr, &session.MoveInput{Session: "sess", Member: "alice", Path: route.Path})
 		return err
 	})
 

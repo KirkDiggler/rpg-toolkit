@@ -285,6 +285,7 @@ func (s *SpeakWorldSuite) TestFoldTimePick() {
 		s.Equal(answer.Roll.Dice[0], answer.Roll.Total)
 		s.LessOrEqual(answer.Roll.Total, answer.Roll.Of)
 		s.Equal("hold", answer.Word)
+		s.Equal(session.Party{}, answer.To, "a time pick speaks to nobody (rpg-project#923)")
 	}
 }
 
