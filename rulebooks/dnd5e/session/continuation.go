@@ -73,33 +73,75 @@ type RunContinuationInput struct {
 	// It returns what the answer could not carry: how the rest of the verb
 	// ended, what it saved and what it delivered.
 	//
-	// AN ERROR VOIDS THE WHOLE VERB, the answered steps included. Nothing a
-	// continued verb does is saved before its rest, so a rest that fails
-	// (a refused step, a save that did not land) persists none of it: the
-	// answer's Steps and Through name moves and a record entry the store
-	// never got. This is the durability window rpg-project#879 names
-	// (§Where the instance lives). The host must log the error and tell
-	// the client its walk did not happen, so it re-reads from before the
-	// move; the next verb loads from the store and sees the world as it was.
-	// What an S6 partial save had already landed is named in the error. A
-	// nil context is refused with ErrNilInput and leaves the continuation
-	// unspent.
+	// AN ERROR VOIDS WHAT FOLLOWS THE LAST LANDED COMMIT. A continued walk
+	// commits at each pace boundary (rpg-project#879 R7): each round's raise
+	// is saved and delivered before the walk's next step. A rest that fails
+	// (a refused step, a save that did not land) persists nothing after its
+	// last landed commit, and is never retried: a stale save means another
+	// writer owns the world, and a retry would replay the rest over it.
+	//
+	// With no commit landed (Commits 0), the error voids the whole verb, the
+	// answered steps included: the answer's Steps and Through name moves and
+	// a record entry the store never got. This is the durability window
+	// rpg-project#879 names (§Where the instance lives). The host must log
+	// the error and tell the client its walk did not happen, so it re-reads
+	// from before the move; the next verb loads from the store and sees the
+	// world as it was.
+	//
+	// With commits landed, the error comes BESIDE a non-nil report naming
+	// them: what they saved, what they delivered, and the newest record id
+	// they hold (SavedThrough). Every client was told exactly what the store
+	// holds; only the steps after it never happened. What an S6 partial
+	// save had already landed is named in the error. A nil context is
+	// refused with ErrNilInput and leaves the continuation unspent.
 	Continue func(ctx context.Context) (*ContinuationReport, error)
 }
 
 // ContinuationReport is what the rest of a verb did after its answer.
 type ContinuationReport struct {
-	// Saved names what the rest of the verb persisted: the whole verb's
-	// writes, since nothing is saved before the hand-off.
+	// Saved names what the rest of the verb persisted across its commits:
+	// the whole verb's writes once the last commit landed, since nothing is
+	// saved before the hand-off.
 	Saved SaveReport
 
-	// Delivery names what reached the event stream: the whole verb's acts,
-	// the answered steps' included, since delivery waits for the save (S9).
+	// Delivery names what failed to reach the live streams across the
+	// commits: the whole verb's acts, the answered steps' included, since
+	// delivery waits for each save (S9).
 	Delivery DeliveryReport
 
+	// Commits is how many commits the rest landed: one per pace boundary
+	// the walk crossed and one final (rpg-project#879 R7). Beside an error
+	// it is how far the rest got before it failed; 0 means nothing landed.
+	Commits int
+
+	// SavedThrough is the newest record id the landed commits saved and
+	// handed to the streams, or "" when they recorded nothing. Beside an
+	// error it is where the store, and every client, stops.
+	SavedThrough string
+
 	// Move is the rest of a continued Move: the steps taken after
-	// [MoveOutput.Through] and how the walk ended. Nil for any other verb.
+	// [MoveOutput.Through] and how the walk ended. Nil for any other verb,
+	// and beside an error.
 	Move *MoveRest
+}
+
+// landed adds one landed commit to the report.
+func (r *ContinuationReport) landed(saved SaveReport, delivery DeliveryReport, scope *writeScope) {
+	r.Commits++
+	r.Saved.Written = mergeReportIdentities(r.Saved.Written, saved.Written)
+	r.Delivery.Failed = mergeReportIdentities(r.Delivery.Failed, delivery.Failed)
+	if scope.savedThrough != "" {
+		r.SavedThrough = scope.savedThrough
+	}
+}
+
+// after is the rest's answer to a failure: the report of what landed beside
+// err, or nil beside it when nothing did.
+func (r *ContinuationReport) after(err error) (*ContinuationReport, error) {
+	if r.Commits == 0 {
+		return nil, err
+	}
+	return r, err
 }
 
 // MoveRest is the part of a walk taken after its answer: the same facts a

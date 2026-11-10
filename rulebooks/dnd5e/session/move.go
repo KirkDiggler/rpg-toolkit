@@ -305,7 +305,11 @@ func (m *Manager) Move(ctx context.Context, in *MoveInput) (*MoveOutput, error) 
 	}
 
 	// runWalk asks per cell instead and this verb asks not at all.
-	res, rest, err := m.startWalk(ctx, scope, in.Member, in.Path, m.continuations != nil)
+	boundary := paceThrough
+	if m.continuations != nil {
+		boundary = paceStopBefore
+	}
+	res, rest, err := m.startWalk(ctx, scope, in.Member, in.Path, boundary)
 	if err != nil {
 		// A cell's opportunity attack can already have saved sheets before a
 		// later cell refuses, so the refusal names what landed (S6).
@@ -410,35 +414,55 @@ func (m *Manager) saveWalker(ctx context.Context, scope *writeScope, sheet *char
 }
 
 // continueWalk is the rest of a continued Move: the walk from the step that
-// pays a round to its end, then the save and the delivery a whole walk makes.
+// pays a round to its end, committed at each pace boundary (rpg-project#879
+// R7): after every step that paid a world round and moved, the raise it fired
+// is saved and delivered before the next step is taken, and the walk's
+// remaining steps go in the next commit. The last commit is the final one,
+// which closes the walk's act.
+//
+// A failure after a commit landed voids only what follows it. The landed
+// commits stand and were delivered; nothing is retried (a retry would replay
+// what another writer now owns, which R7 refuses). The report of what landed
+// is returned beside the error.
 func (m *Manager) continueWalk(
 	ctx context.Context, scope *writeScope, member string, path []spatial.Position, rest *walkResume,
 ) (*ContinuationReport, error) {
 	res := newWalkResult()
-	if err := m.walk(ctx, scope, member, path, *rest, false, res); err != nil {
-		return nil, fmt.Errorf("move: %w", saveErrorAfterWrites(scope, "", err))
-	}
-	if err := m.saveWalkProgress(ctx, scope); err != nil {
-		return nil, err
+	landed := &ContinuationReport{}
+	at := *rest
+	for {
+		if err := m.walk(ctx, scope, member, path, at, paceStopAfter, res); err != nil {
+			return landed.after(fmt.Errorf("move: %w", saveErrorAfterWrites(scope, "", err)))
+		}
+		if err := m.saveWalkProgress(ctx, scope); err != nil {
+			return landed.after(err)
+		}
+		if res.resume == nil {
+			break
+		}
+		report, delivery, err := m.commitPace(ctx, scope)
+		if err != nil {
+			return landed.after(fmt.Errorf("move: %w", err))
+		}
+		landed.landed(report, delivery, scope)
+		at = *res.resume
 	}
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
-		return nil, fmt.Errorf("move: %w", err)
+		return landed.after(fmt.Errorf("move: %w", err))
 	}
-	return &ContinuationReport{
-		Saved:    report,
-		Delivery: delivery,
-		Move: &MoveRest{
-			Status:       res.status,
-			StopReason:   res.stopReason,
-			JoinedCombat: res.joinedCombat,
-			Steps:        res.steps,
-			Discovered:   nilIfEmpty(res.discovered),
-			Outcome:      res.outcome,
-			Formed:       res.formed,
-			Barred:       res.barred,
-		},
-	}, nil
+	landed.landed(report, delivery, scope)
+	landed.Move = &MoveRest{
+		Status:       res.status,
+		StopReason:   res.stopReason,
+		JoinedCombat: res.joinedCombat,
+		Steps:        res.steps,
+		Discovered:   nilIfEmpty(res.discovered),
+		Outcome:      res.outcome,
+		Formed:       res.formed,
+		Barred:       res.barred,
+	}
+	return landed, nil
 }
 
 // answerThrough is the record id a continuing answer covers up to
@@ -479,7 +503,7 @@ type walkResult struct {
 	// through is the record id of the last moved step's beat.
 	through string
 	// resume is set when the walk stopped before a step that pays a world
-	// round ([Manager.startWalk]'s untilDue): the rest starts there.
+	// round, or after one under paceStopAfter: the rest starts there.
 	resume *walkResume
 }
 
@@ -526,16 +550,33 @@ type Barred struct {
 func (m *Manager) runWalk(
 	ctx context.Context, scope *writeScope, member string, path []spatial.Position,
 ) (*walkResult, error) {
-	res, _, err := m.startWalk(ctx, scope, member, path, false)
+	res, _, err := m.startWalk(ctx, scope, member, path, paceThrough)
 	return res, err
 }
 
-// startWalk is [Manager.runWalk] from the walker's own cell. untilDue stops
-// the walk before the first step that pays a world round
+// paceBoundary is where a walk stops at a world round
+// ([encounter.Encounter.PaceDue]) so its caller can act there.
+type paceBoundary int
+
+const (
+	// paceThrough walks every step without stopping at a round.
+	paceThrough paceBoundary = iota
+	// paceStopBefore stops BEFORE the first step that pays a round: the
+	// answer of a continued Move (rpg-project#879 R2).
+	paceStopBefore
+	// paceStopAfter stops AFTER each step that paid a round and moved, so
+	// the continuation commits the raise that step fired before walking on
+	// (rpg-project#879 R7). The walk's last step never stops: the walk ends
+	// there anyway.
+	paceStopAfter
+)
+
+// startWalk is [Manager.runWalk] from the walker's own cell. paceStopBefore
+// stops the walk before the first step that pays a world round
 // ([encounter.Encounter.PaceDue]) and answers where it stopped; the steps
 // taken so far are in the result.
 func (m *Manager) startWalk(
-	ctx context.Context, scope *writeScope, member string, path []spatial.Position, untilDue bool,
+	ctx context.Context, scope *writeScope, member string, path []spatial.Position, boundary paceBoundary,
 ) (*walkResult, *walkResume, error) {
 	res := newWalkResult()
 
@@ -550,20 +591,23 @@ func (m *Manager) startWalk(
 	if !placed {
 		return nil, nil, fmt.Errorf("member %q is not placed: %w", member, ErrNoMember)
 	}
-	if err := m.walk(ctx, scope, member, path, walkResume{from: from}, untilDue, res); err != nil {
+	if err := m.walk(ctx, scope, member, path, walkResume{from: from}, boundary, res); err != nil {
 		return nil, nil, err
 	}
 	return res, res.resume, nil
 }
 
 // walk steps from path[start.at], with the walker on start.from, into res.
-// When untilDue stops it before a step that pays a world round, res.resume
-// is where; every other end is in res too.
+// When boundary stops it at a step that pays a world round, res.resume is
+// where the rest starts; every other end is in res too. res accumulates
+// across calls (steps, discoveries), so a walk resumed into the same res
+// reads as one walk.
 func (m *Manager) walk(
 	ctx context.Context, scope *writeScope, member string, path []spatial.Position,
-	start walkResume, untilDue bool, res *walkResult,
+	start walkResume, boundary paceBoundary, res *walkResult,
 ) error {
 	from := start.from
+	res.resume = nil
 	for i := start.at; i < len(path); i++ {
 		cell := path[i]
 		// THE SPLIT COMES BEFORE THE ANNOUNCEMENT (rpg-project#879 R2): the
@@ -571,12 +615,21 @@ func (m *Manager) walk(
 		// admission and announcement (and any reaction to it) belong with
 		// it, so the continuation takes the due cell from the top exactly as
 		// a whole walk would. PaceDue is a read; asking changes nothing.
-		if untilDue {
-			due, dueErr := scope.enc.PaceDue(&encounter.PaceDueInput{Member: encounter.MemberID(member)})
+		//
+		// Asked here for paceStopAfter too, BEFORE the step: once the step
+		// paid the round the pace is no longer due, so afterwards the
+		// question has no answer left to give. The answer is the shared
+		// rule's prediction (encounter's spendWorldPace pays by the same
+		// rule); a step it got wrong costs one commit too many or one too
+		// few, never a beat lost or told twice.
+		due := false
+		if boundary != paceThrough {
+			paced, dueErr := scope.enc.PaceDue(&encounter.PaceDueInput{Member: encounter.MemberID(member)})
 			if dueErr != nil {
 				return translate(dueErr)
 			}
-			if due.Due {
+			due = paced.Due
+			if due && boundary == paceStopBefore {
 				res.resume = &walkResume{at: i, from: from}
 				return nil
 			}
@@ -748,6 +801,16 @@ func (m *Manager) walk(
 
 		if stepped.Formed != nil {
 			res.formed = projectFormed(stepped.Formed)
+			return nil
+		}
+
+		// THE PACE BOUNDARY (rpg-project#879 R7): this step paid a world
+		// round and moved, so the raise it fired is in the record. The
+		// continuation commits it before the next step. The walk's last
+		// step never stops here: the walk ends with it and the final commit
+		// takes the raise.
+		if due && boundary == paceStopAfter && i < len(path)-1 {
+			res.resume = &walkResume{at: i + 1, from: from}
 			return nil
 		}
 	}
