@@ -52,9 +52,9 @@ Validation checks all row identities/verdicts/nonnegative inputs, including excl
 **Files:** create `selection/choose.go`, `selection/choose_test.go`, `selection/example_test.go`.
 **Interfaces:** Choose/Draw/Choice/DrawOutput/Die above, all consuming the same captured Evaluation; no re-evaluation or source callbacks.
 **Tests:** `TestChoiceSuite/TestEveryFaceUsesAuthoredOrder` enumerates faces1..10 for a6/4 pool with a zero-share row and asserts selected IDs plus exact die size/count; `TestExplicitChoiceDoesNotNeedRandomness` selects an eligible zero-share row; `TestSelectionRefusals` covers unknown/ineligible ID, nil/zero evaluation, empty vs zero-weight, missing die and nil context; `TestInvalidFacesAndDieErrors` covers0/negative/too-large/error, with no fabricated result; `TestChoiceEvidenceIsDetached` mutates output and draws again. Executable `Example_guardAndDialogue` uses a fact-gated guard search and explicit player reply, literal expected output; it is a usage proof, not new game functionality.
-- [ ] Add tests; observe expected missing-choice-API RED.
-- [ ] Implement Choose and one-die Draw with no implicit entropy.
-- [ ] Add/run the concrete example; run full module race gate and commit.
+- [x] Add tests; observe expected missing-choice-API RED.
+- [x] Implement Choose and one-die Draw with no implicit entropy.
+- [x] Add/run the concrete example; run full module race gate and commit.
 **Verification:** `go test -race -count=1 ./...`; actual draw arguments/calls asserted by a strict supplied test die.
 
 ### Task 3: The real behavior picker uses the primitive
