@@ -42,6 +42,8 @@ Command: `go test -run XXX -bench BenchmarkGarrisonWalkLine -benchtime 10x -coun
 - A step after a reload now costs about the same as a step on an open keep: 1.09 times. F23 had reloaded steps at about twice the open cost.
 - The first bench cut reloaded the same start checkpoint every op. That measured relearning, not sweeping: 22 ms against 11 ms. The chained checkpoint is the live shape.
 
+- The CI test budget caught a 25× regression on the first PR it ran on. `TestRegionSetupSuite` went from 0.28 s to 7.4 s under `-race`. The new Setup fingerprint walked a 4.2M-cell over-budget region before the compile could refuse it. A field over the cell budget is no longer fingerprinted, and `TestAFieldOverTheCellBudgetIsNotFingerprinted` pins it. — [rpg-toolkit#2345](https://github.com/KirkDiggler/rpg-toolkit/pull/2345)
+
 ## Mutation checks
 
 - An instance that runs on the site's own field, and so writes the site, is killed two ways. `TestAFootprintDoorIsTheGamesOwn` fails without the race detector. `TestTwoGamesOnOneSiteRunAtOnce` reports 34 data races under `-race`.

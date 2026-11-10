@@ -341,3 +341,13 @@ func TestTwoGamesDeriveTheSitesPartitionsAtOnce(t *testing.T) {
 	}
 	require.Equal(t, 1, games[0].site.field.partitions.derivations, "the site's pass ran once for both games")
 }
+
+// TestAFieldOverTheCellBudgetIsNotFingerprinted: the compile refuses a field
+// over the cell budget before converting a cell, so the provider's lookup
+// must not walk it first (the walk of 4.2M cells took a setup test from
+// 0.28 s to 7.4 s). Mutant: the budget check removed (the walk answers).
+func TestAFieldOverTheCellBudgetIsNotFingerprinted(t *testing.T) {
+	vast := FieldInput{Regions: []RegionInput{{ID: "vast", Cells: make([]spatial.Position, maxFieldCells+1)}}}
+	_, ok := fieldFingerprint(&vast)
+	require.False(t, ok, "an over-budget field is left to the compile to refuse")
+}
