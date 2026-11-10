@@ -3448,6 +3448,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	if err := validatePropInteractions(interactions, f); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
+	if err := validateInteractionAddresses(interactions, memberOptions); err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
 
 	// All validated; now reconstruct via the same path Setup uses. THE ONE
 	// WORLD's journal is built with the struct, not later: the percept

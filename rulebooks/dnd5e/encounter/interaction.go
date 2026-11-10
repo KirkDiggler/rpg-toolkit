@@ -66,6 +66,11 @@ type InteractionInput struct {
 	// line's verdict lands on it. REQUIRED: a valid ref, an initial state,
 	// no `pick` or `wake_in` act, and no guard that reads a fact or a scope.
 	Recipe machine.Recipe
+
+	// Approach is how near a carrier must see a character come to address
+	// them (address.go, rpg-project#923). Nil: nobody is ever hailed, and
+	// the definition's digest is what it was before the field existed.
+	Approach *InteractionApproach `json:",omitzero"`
 }
 
 // InteractionData is the persistent representation of one interaction
@@ -83,6 +88,14 @@ type InteractionData struct {
 
 	// Blob is the interaction's progress: its state and bag.
 	Blob machine.Blob `json:"blob"`
+
+	// Approach is [InteractionInput.Approach]; part of the definition the
+	// digest covers. Absent for none.
+	Approach *InteractionApproach `json:"approach,omitzero"`
+
+	// Address is who the interaction addresses now (address.go), absent for
+	// nobody. Load refuses one naming a member or guard the run lacks.
+	Address *InteractionAddress `json:"address,omitzero"`
 }
 
 // MarshalJSON writes the record through encoding/json v2, so the recipe and
@@ -108,6 +121,9 @@ type interactionRecord struct {
 	definition string
 	program    *machine.Program
 	blob       machine.Blob
+
+	// address is who the interaction addresses now; nil for nobody.
+	address *InteractionAddress
 }
 
 // hasState reports whether the interaction's recipe declares state.
@@ -140,9 +156,12 @@ func newInteractionRecord(in InteractionInput) (*interactionRecord, error) {
 	if err != nil {
 		return nil, fmt.Errorf("interaction %q: %w", in.ID, err)
 	}
-	owned := InteractionInput{ID: in.ID}
+	owned := InteractionInput{ID: in.ID, Approach: cloneApproach(in.Approach)}
 	if err := json.Unmarshal(raw, &owned.Recipe); err != nil {
 		return nil, fmt.Errorf("interaction %q: %w", in.ID, err)
+	}
+	if err := validateApproach(in.ID, owned.Approach); err != nil {
+		return nil, err
 	}
 	if err := owned.Recipe.Ref.IsValid(); err != nil {
 		return nil, fmt.Errorf("interaction %q recipe ref: %w", in.ID, err)
@@ -276,7 +295,12 @@ func interactionsDataFrom(interactions map[InteractionID]*interactionRecord) []I
 			at := *r.blob.Anchor
 			blob.Anchor = &at
 		}
-		out = append(out, InteractionData{ID: id, Definition: r.definition, Recipe: raw, Blob: blob})
+		data := InteractionData{ID: id, Definition: r.definition, Recipe: raw, Blob: blob, Approach: cloneApproach(r.input.Approach)}
+		if r.address != nil {
+			address := *r.address
+			data.Address = &address
+		}
+		out = append(out, data)
 	}
 	return out
 }
@@ -291,7 +315,7 @@ func interactionsFromData(data []InteractionData) (map[InteractionID]*interactio
 		if _, dup := out[d.ID]; dup {
 			return nil, fmt.Errorf("interaction %q is saved twice", d.ID)
 		}
-		in := InteractionInput{ID: d.ID}
+		in := InteractionInput{ID: d.ID, Approach: d.Approach}
 		if err := json.Unmarshal(d.Recipe, &in.Recipe); err != nil {
 			return nil, fmt.Errorf("interaction %q recipe: %w", d.ID, err)
 		}
@@ -306,6 +330,10 @@ func interactionsFromData(data []InteractionData) (map[InteractionID]*interactio
 			return nil, fmt.Errorf("interaction %q is saved in state %q, which its recipe does not declare", d.ID, d.Blob.State)
 		}
 		record.blob = d.Blob
+		if d.Address != nil {
+			address := *d.Address
+			record.address = &address
+		}
 		if record.blob.State == "" {
 			record.blob.State = record.input.Recipe.Initial
 		}

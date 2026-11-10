@@ -114,12 +114,12 @@ func newBehaviorRuntime(in *BehaviorInput, progress *behavior.ComposerData) (*be
 		// pick, even conditionally; barred is the explicit targeted exception.
 		for _, name := range slices.Sorted(maps.Keys(spec.Recipe.States)) {
 			for index, transition := range spec.Recipe.States[name].Transitions {
-				if transition.On == beatTime || transition.On == beatTurn || transition.On == beatBarred {
+				if transition.On == beatTime || transition.On == beatTurn || transition.On == beatBarred || transition.On == beatApproached {
 					continue
 				}
 				for _, act := range transition.Do {
 					if act.Pick != "" {
-						return nil, fmt.Errorf("behaviors %q state %q transition %d: selection is only authorized on time, turn or barred, not %q", spec.ID, name, index, transition.On)
+						return nil, fmt.Errorf("behaviors %q state %q transition %d: selection is only authorized on time, turn, barred or approached, not %q", spec.ID, name, index, transition.On)
 					}
 				}
 			}

@@ -1269,6 +1269,19 @@ func (a *AdvanceSpec) UnmarshalYAML(value *yaml.Node) error {
 type InteractionSpec struct {
 	// Recipe is the interaction as a machine. REQUIRED.
 	Recipe *BehaviorValue `yaml:"recipe" json:"recipe"`
+
+	// Approach is how near a carrier must see a character come to hail
+	// them (rpg-project#923): `approach: { within: N }`, N at least 1.
+	// Optional; absent, nobody is hailed.
+	Approach *InteractionApproachSpec `yaml:"approach,omitempty" json:"approach,omitempty"`
+}
+
+// InteractionApproachSpec is an interaction's `approach` (rpg-project#923): the
+// distance in cells a carrier hails from. The upper bound is the host's
+// Speak reach, refused by the host ([encounter.ValidateApproachReach]).
+type InteractionApproachSpec struct {
+	// Within is the distance in cells. REQUIRED, at least 1.
+	Within int `yaml:"within" json:"within"`
 }
 
 // AdvanceSpec is an option's `advance` (rpg-project#922): the root

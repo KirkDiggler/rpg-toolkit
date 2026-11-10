@@ -203,3 +203,36 @@ func TestAnInteractionRecipeIsJudgedAtItsPath(t *testing.T) {
 	_, err := dungeonspec.Load([]byte(v4With(recipe("      ref: site:interactions:front-gate\n      initial: fresh\n      states: { fresh: {} }\n    guards: [captain]\n"), "")))
 	require.ErrorContains(t, err, "guards", "an interaction's own keys are its recipe and nothing else")
 }
+
+// withApproach is frontGateSource with an `approach:` body under the
+// interaction, beside its recipe.
+func withApproach(body string) string {
+	return frontGateSource + "    approach: " + body + "\n"
+}
+
+// An interaction's approach distance lowers onto its definition
+// (rpg-project#923), and one with none lowers none.
+func TestAnInteractionApproachLowersOntoItsDefinition(t *testing.T) {
+	compiled := loadSource(t, gateWith(withApproach("{ within: 2 }"), guestClaim))
+	require.Len(t, compiled.Field.Interactions, 1)
+	require.Equal(t, &encounter.InteractionApproach{Within: 2}, compiled.Field.Interactions[0].Approach)
+
+	plain := loadSource(t, gateWith(frontGateSource, guestClaim))
+	require.Nil(t, plain.Field.Interactions[0].Approach, "no approach, nobody is hailed")
+}
+
+// A malformed approach is refused at compile, fail closed: no distance, a
+// zero or negative one, and an unknown key.
+func TestAMalformedApproachIsRefused(t *testing.T) {
+	for name, tc := range map[string]struct{ body, path, says string }{
+		"no distance": {"{}", "interactions.front-gate.approach.within", "at least 1"},
+		"zero":        {"{ within: 0 }", "interactions.front-gate.approach.within", "at least 1"},
+		"negative":    {"{ within: -2 }", "interactions.front-gate.approach.within", "at least 1"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			requireRefusedAt(t, refusals(t, gateWith(withApproach(tc.body), guestClaim)), tc.path, tc.says)
+		})
+	}
+	_, err := dungeonspec.Load([]byte(gateWith(withApproach("{ within: 2, shout: 9 }"), guestClaim)))
+	require.ErrorContains(t, err, "shout", "an approach's one key is its distance")
+}

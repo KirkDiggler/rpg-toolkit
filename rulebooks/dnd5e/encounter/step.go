@@ -199,7 +199,26 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 		return nil, fmt.Errorf("step ending: %w", err)
 	}
 
+	// THE GUARD HAILS (address.go, rpg-project#923): after the step's sight
+	// and its ending, so a carrier is asked of the mover where she now
+	// stands, and nobody hails into a closed encounter.
+	var addressed addressOutput
+	if fired == nil && e.outcome == nil {
+		addressed, err = e.addressAfterStep(in.Member, in.Reach)
+		if err != nil {
+			return nil, fmt.Errorf("step address: %w", err)
+		}
+		intelDeltas = mergeIntelDeltas(intelDeltas, addressed.deltas)
+		if addressed.formed != nil {
+			formed = addressed.formed
+		}
+		if e.outcome != nil {
+			fired = e.outcome
+		}
+	}
+
 	out := &StepOutput{
+		Addressed:   addressed.addressed,
 		Doors:       action.doors,
 		IntelDeltas: intelDeltas,
 		Seq:         moved.Seq,

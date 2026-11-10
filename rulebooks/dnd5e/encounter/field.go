@@ -1791,6 +1791,13 @@ type StepInput struct {
 	// EndWalk requires a standable destination for a voluntary walk endpoint.
 	EndWalk bool
 
+	// Reach is the cells the host measures Speak with ([SpeakInput.Range]):
+	// the distance a standing address is measured at when the step's sweep
+	// asks whether it still stands (address.go, rpg-project#923). Below an
+	// interaction's approach distance, zero included, that distance is
+	// measured instead.
+	Reach int
+
 	// Member is the ID of the member stepping.
 	Member MemberID
 
@@ -1890,6 +1897,14 @@ type StepOutput struct {
 	// to the bump produced. Nil for a step that moved. Walls, doors, fields
 	// and masked refusals still return a [StepObstructedError].
 	Stopped *StepStop
+
+	// Addressed is every address this step wrote (address.go,
+	// rpg-project#923): a carrier who saw the mover come inside an
+	// interaction's approach distance hails them. The step itself was taken;
+	// the HOST DROPS THE WALK'S REMAINING LEGS, so a walk reports only the
+	// steps it took. The hailing carrier's answer is in IntelDeltas, Formed
+	// and Outcome with the step's own. Empty when nobody hailed.
+	Addressed []Addressed
 }
 
 // JoinInput names who is arriving and the cell on the map they arrive at.
