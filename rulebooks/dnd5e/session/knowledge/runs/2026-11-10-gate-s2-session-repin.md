@@ -4,8 +4,8 @@ Slice [rpg-project#922](https://github.com/KirkDiggler/rpg-project/issues/922) o
 
 ## Shipped
 
-- Session pins encounter at the provider's pushed head `v0.190.1-0.20261110062610-2ad3ec2b8362` and `mind/behavior v0.23.0`; `play/record` follows to v0.4.0 transitively — [rpg-toolkit#2358](https://github.com/KirkDiggler/rpg-toolkit/pull/2358).
-- `encounter.BeatInteraction` is record-only in `act_family.go`, and `TestFoldAnInteractionBeatIsNoAct` proves the beat folds into no act and no "has no family" piece — [rpg-project#922 Task 6](https://github.com/KirkDiggler/rpg-project/issues/922).
+- Session pins encounter at the provider's pushed head `v0.190.1-0.20261110062610-2ad3ec2b8362` and `mind/behavior v0.23.0`; `play/record` follows to v0.4.0 transitively — [rpg-toolkit#2359](https://github.com/KirkDiggler/rpg-toolkit/pull/2359).
+- `encounter.BeatInteraction` is record-only in `act_family.go`, and `TestFoldAnInteractionBeatIsNoAct` proves the beat folds into no act and no "has no family" piece — [rpg-toolkit#2359](https://github.com/KirkDiggler/rpg-toolkit/pull/2359).
 - `speak_test.go` builds `Requires` in the list form `[]encounter.Trigger{...}`, asserting the same thing — [rpg-project#922 Task 1](https://github.com/KirkDiggler/rpg-project/issues/922).
 
 ## Decided
