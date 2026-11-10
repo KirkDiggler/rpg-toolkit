@@ -311,7 +311,7 @@ func (s *CastSuite) TestHealingWordRevalidatesSightAndTargetsBeforePayment() {
 				}
 			case "wall":
 				for _, world := range s.encounters.byID {
-					world.Field.Walls = append(world.Field.Walls, encounter.BoundaryData{
+					session.WithSiteWalls(s.T(), world, encounter.BoundaryData{
 						From: encounter.PositionData{X: 2, Y: 1}, To: encounter.PositionData{X: 3, Y: 1}, BlocksMovement: true, BlocksLineOfSight: true,
 					})
 				}

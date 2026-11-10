@@ -312,7 +312,7 @@ func (s *CastActionTestSuite) TestBlessRefusesUnknownBlockedOutOfRangeAndBadPoli
 			case "range":
 				s.rememberedHero(&world, encounter.LocationKnown, spatial.Position{X: 9, Y: 9})
 			case "wall":
-				world.Field.Walls = append(world.Field.Walls, encounter.BoundaryData{From: encounter.PositionData{X: 2, Y: 1}, To: encounter.PositionData{X: 3, Y: 1}, BlocksMovement: true, BlocksLineOfSight: true})
+				withWall(s.T(), &world, encounter.BoundaryData{From: encounter.PositionData{X: 2, Y: 1}, To: encounter.PositionData{X: 3, Y: 1}, BlocksMovement: true, BlocksLineOfSight: true})
 			case "no policy":
 				policy = ""
 			case "bad policy":

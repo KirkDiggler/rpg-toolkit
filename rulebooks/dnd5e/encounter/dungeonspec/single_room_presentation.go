@@ -52,6 +52,7 @@ func readPropPresentation(item *yaml.Node, id, path string, add errSink) (encoun
 			p.PointLight = readPropPointLight(n, path+".pointLight", reject)
 		}
 	}
+	p.MaterialOverrides = materialOverridesOf(readMaterialOverrides(item, path, reject))
 	return p, valid
 }
 

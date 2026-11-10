@@ -94,6 +94,23 @@ type Input struct {
 	// host built it with; the ones on this input are not rebound onto it.
 	Live LiveWorld
 
+	// Sites resolves [Input.World]'s site hash (rpg-project#879 S5: THE SITE
+	// IS CONTENT THE RECORD REFERENCES). The host's site provider, handed to
+	// the load exactly as supplied, so a host that injected one never has
+	// its world resolved against a process default behind its back. Optional:
+	// nil is [encounter.DefaultSites], the in-process default. A lent world
+	// is not loaded here and never asks it.
+	Sites encounter.SiteProvider
+
+	// Site is the site piece [Input.World] names by hash, for a host that
+	// stores it apart from the checkpoint and a provider that may not hold
+	// the hash yet: handed to the load, compiled on a provider miss and
+	// refused unless it hashes to the world's site. Optional; nil resolves
+	// by hash alone, and a hash the provider cannot resolve fails closed with
+	// [encounter.ErrUnknownSite]. Refused beside a lent world, which loads
+	// nothing.
+	Site *encounter.SiteData
+
 	// Participants are the sheets of everyone in the interaction. Pass everyone
 	// (R3) — applicability is the effect's predicate, not the caller's guess.
 	Participants []Participant
@@ -152,6 +169,12 @@ func (in *Input) Validate() error {
 	// would hide. (None is refused where the world is taken: see world.)
 	if !isNil(in.Live) && !reflect.ValueOf(in.World).IsZero() {
 		return fmt.Errorf("%w: both a lent world and world data", ErrBadWorld)
+	}
+	// A site piece is the source of a world this package LOADS; beside a lent
+	// world it describes nothing, and carrying it would hide which site the
+	// host thinks is in play.
+	if !isNil(in.Live) && in.Site != nil {
+		return fmt.Errorf("%w: a lent world and a site piece to load it with", ErrBadWorld)
 	}
 
 	// A DRIVEN ACTIVATION CHARGES NOTHING, and this is where that is a law
@@ -553,6 +576,8 @@ func world(in *Input) (LiveWorld, func() encounter.EncounterData, error) {
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:         in.World,
 		Capabilities: in.Capabilities,
+		Sites:        in.Sites,
+		Site:         in.Site,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("resolution: load world: %w", err)

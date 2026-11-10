@@ -96,7 +96,7 @@ func (s *AtlasRegionsSuite) TestFieldLoad_DerivesTheSamePartitions() {
 				s.Equal(wantOK, gotOK, "cell %v", c)
 				s.Equal(want, got, "cell %v", c)
 			}
-			raw, err := json.Marshal(enc.ToData().Field)
+			raw, err := json.Marshal(enc.Site().Data().Field)
 			s.Require().NoError(err)
 			s.False(strings.Contains(strings.ToLower(string(raw)), "partition"), "FieldData carries no partition")
 		})

@@ -97,6 +97,10 @@ type field struct {
 	// than re-derived per call.
 	regionCells map[RegionID][]spatial.Position
 
+	// regionGround is the captured appearance in absolute cells, derived once
+	// beside regionCells. The authored copy in regions owns persistence.
+	regionGround map[RegionID]*RegionGround
+
 	// partitions is the field's SECOND DIVISION: every owned cell to the
 	// wall partition holding it, and each partition's cells
 	// (rpg-project#725; partitions.go). DERIVED when first asked
@@ -164,6 +168,11 @@ type field struct {
 	// written in place, so the field's shallow copies
 	// ([field.partitionCanvas]) never write the live field's.
 	doorOpenings map[DoorID][]DoorEdge
+	// openingsAreSite says doorOpenings was measured by [CompileSite] from
+	// the site's own door geometry, which every instance's doors are checked
+	// to equal ([Site.checkDoors]): attaching an instance's records keeps the
+	// site's map rather than measuring the doors again (rpg-project#879 S5).
+	openingsAreSite bool
 
 	// openedFacts is every fact a door teaches when it opens
 	// ([DoorInput.Opened], rpg-project#569 R12), read off the authored
@@ -341,6 +350,7 @@ func compileField(in FieldInput) (*field, error) {
 		orientation:  in.Canvas.Orientation,
 		owner:        make(map[spatial.Position]RegionID),
 		regionCells:  make(map[RegionID][]spatial.Position, len(in.Regions)),
+		regionGround: make(map[RegionID]*RegionGround, len(in.Regions)),
 		sceneryCells: make(map[spatial.Position]bool, len(in.Scenery)),
 		sealedCells:  make(map[spatial.Position]bool, len(in.Sealed)),
 	}
@@ -514,13 +524,18 @@ func (f *field) compileRegions(regions []RegionInput) error {
 		sortCells(abs)
 		f.regionCells[r.ID] = abs
 		f.cells = append(f.cells, abs...)
+		if err := validateRegionGround(r.Ground, r.Cells); err != nil {
+			return fmt.Errorf("region %q: %w", r.ID, err)
+		}
+		f.regionGround[r.ID] = copyRegionGround(r.Ground, f.cellAt)
 
 		// Deep copy: Lighting is a pointer, and a caller editing theirs after
 		// construction must not change what ToData writes.
 		lighting := *r.Lighting
 		f.regions[i] = RegionInput{
 			ID: r.ID, Name: r.Name, Archetype: r.Archetype, Lighting: &lighting,
-			Cells: append([]spatial.Position(nil), r.Cells...),
+			Cells:  append([]spatial.Position(nil), r.Cells...),
+			Ground: copyRegionGround(r.Ground, nil),
 		}
 	}
 	sortCells(f.cells)

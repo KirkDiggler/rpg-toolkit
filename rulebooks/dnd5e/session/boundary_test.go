@@ -165,6 +165,15 @@ var contractTypes = map[string]string{
 	"encounter.Table":  "contract type: the author's own compiled policy, carried from dungeonspec to Launch",
 	"encounter.Temper": "contract type: the temperament the same compiler read, carried beside the table",
 
+	// Config.Sites (rpg-project#879 S5, sites.go). A host INJECTS a site
+	// provider (rpg-api backs one with its authored content) or passes the
+	// encounter's own in-process one, so it implements or names this
+	// interface: a contract, announced when it changes. Admitting the
+	// encounter's interface rather than a session twin is the point: the
+	// same provider serves the composition directly, and a twin would be
+	// an adapter around a value nobody on either side reshapes.
+	"encounter.SiteProvider": "contract type: the host-injected site provider beside the locker (rpg-project#879 S5)",
+
 	// Reachable from TradeOffer.Currency (trade.go, rpg-toolkit#1534, Wave
 	// 4). A caller CONSTRUCTS this value (it is the payment offered on
 	// Give, checked against a server-computed price) rather than only
@@ -235,6 +244,17 @@ var persistenceShapes = map[string]string{
 	// What is NOT admitted: monster.Monster, the runtime object. The loaded
 	// monster never crosses.
 	"monster.Data": "persistence shape: an NPC sheet the host stores but never builds",
+
+	// The site piece and the hash it is stored under (rpg-project#879 S5,
+	// sites.go), on [session.SiteRepository]. THE SITE IS CONTENT THE RECORD
+	// REFERENCES: the checkpoint names it by hash instead of carrying the
+	// field, and the host stores the piece apart, keyed by that hash. Would
+	// the host build one field by field? No: Launch mints both from the
+	// compiled dungeon, the host stores the bytes under the key and hands
+	// them back on a cold load. The hash is the same value
+	// EncounterData.SiteHash already carries across this seam.
+	"encounter.SiteData": "persistence shape: the site piece the host stores by hash but never builds",
+	"encounter.SiteHash": "persistence shape: the opaque key EncounterData already names its site piece by",
 }
 
 // allowed is the union the detector checks against.

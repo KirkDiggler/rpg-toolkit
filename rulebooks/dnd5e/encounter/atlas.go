@@ -223,6 +223,9 @@ type AtlasStructuralWall struct {
 	// canonical feet ([StructuralWallInput]).
 	Height, Thickness, Elevation float64
 
+	// MaterialOverrides are detached captured choices for this permitted wall.
+	MaterialOverrides []MaterialOverride
+
 	// FootprintCells is every floor cell the wall's presence footprint
 	// overlaps by positive area — the same support that decides whether the
 	// wall is presented, so a presented wall's list is never empty — in order
@@ -305,6 +308,9 @@ type AtlasRegion struct {
 
 	// Lighting is the region's light level, carried unread.
 	Lighting Lighting
+
+	// Ground carries appearance only for Cells in this delivered region.
+	Ground *RegionGround
 
 	// A REGION NO LONGER REPORTS WHETHER IT IS HIDDEN. It carried
 	// `Concealed bool` while a region was the thing that could be hidden;
@@ -565,6 +571,7 @@ func (e *Encounter) Atlas() (Atlas, error) {
 			Cells:     append([]spatial.Position(nil), f.regionCells[r.ID]...),
 			Archetype: r.Archetype,
 			Lighting:  *r.Lighting,
+			Ground:    copyRegionGround(f.regionGround[r.ID], nil),
 		})
 	}
 	sort.Slice(out.Regions, func(i, j int) bool { return out.Regions[i].ID < out.Regions[j].ID })

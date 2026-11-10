@@ -1442,9 +1442,10 @@ func (s *HoldingsSuite) TestAScrollStillTeachesAfterASaveAndLoad() {
 	enc := s.open(false)
 	data := enc.ToData()
 
+	site := enc.Site().Data()
 	s.Run("the prop's records are in the blob", func() {
 		var scrollData encounter.PropData
-		for _, p := range data.Field.Props {
+		for _, p := range site.Field.Props {
 			if p.ID == scroll {
 				scrollData = p
 			}

@@ -337,10 +337,14 @@ func TestAnOldDialectBlobIsRefusedByName(t *testing.T) {
 	})
 	require.Error(t, err, "a room-chain blob must not load as a region one")
 	require.ErrorIs(t, err, encounter.ErrInvalidData)
-	require.ErrorIs(t, err, encounter.ErrNoField)
-	require.Contains(t, err.Error(), "rpg-project#256",
-		"the refusal names the change, so whoever reads it knows what to recreate")
-	require.Contains(t, err.Error(), "rooms", "and names the key that gave the dialect away")
+	// EVERY BLOB THAT CARRIED ITS FIELD INLINE is refused at the first door
+	// now (rpg-project#879 S5): it names no site, and the refusal says so
+	// and says which change to recreate it for. The room chain inside that
+	// field never gets to speak; the site piece's own tombstone is pinned by
+	// TestAnOldBlobsRoomsAreRefusedLoudly.
+	require.ErrorIs(t, err, encounter.ErrUnknownSite)
+	require.Contains(t, err.Error(), "site_hash", "the refusal names the key the blob lacks")
+	require.Contains(t, err.Error(), "rpg-project#879", "and the change to recreate it for")
 }
 
 // TestAFieldAlwaysFitsOneGrid is W6: an axial hex grid is origin-CENTRED,

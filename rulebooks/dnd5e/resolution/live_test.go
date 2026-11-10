@@ -31,12 +31,16 @@ func (s *MovementTestSuite) lend(in *Input) *encounter.Encounter {
 // differs, empty for the lent one because nothing here wrote to it.
 func (s *MovementTestSuite) TestALentEncounterResolvesAsItsDataDoes() {
 	var lentBefore string
+	// ONE WORLD FOR BOTH RUNS: a world built twice mints its log ids twice,
+	// and the comparison below is of what Resolve did to the same data.
+	world := s.world()
 	run := func(lent bool) (*Output, *encounter.Encounter) {
 		step := s.stepInput()
 		step.Roller = fixedRoller{face: 6}
 		machine, err := NewMovement(step)
 		s.Require().NoError(err)
 		in := s.input(machine, heroID)
+		in.World = world
 		in.Roller = fixedRoller{face: 6}
 		var live *encounter.Encounter
 		if lent {

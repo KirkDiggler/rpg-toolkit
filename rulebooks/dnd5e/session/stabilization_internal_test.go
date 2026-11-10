@@ -179,7 +179,7 @@ func (s *StabilizationSessionSuite) TestCompiledProfilePersistsAndDeliversReplay
 			bob.HitPoints = 0
 			bob.DeathSaveState = &saves.DeathSaveState{Stabilized: true}
 			blocked := scope.enc.WorldView()
-			blocked.Field.Walls = append(blocked.Field.Walls, encounter.BoundaryData{
+			withSiteWalls(s.T(), &blocked, encounter.BoundaryData{
 				From: encounter.PositionData{X: 1, Y: 1}, To: encounter.PositionData{X: 2, Y: 1}, BlocksMovement: true,
 			})
 			s.Require().NoError(loadWorldInto(ctx, mgr, scope, blocked))

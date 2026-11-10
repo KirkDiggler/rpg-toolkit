@@ -226,9 +226,9 @@
 // regions own presentation: a name, a lighting, what the atlas groups a cell
 // under and what [Encounter.RegionAt] answers. The WALL PARTITIONS own
 // mechanics: the floor split wherever sight cannot cross — walls, every door
-// measured closed, permanent opaque props — derived at construction and at
-// every load from the persisted regions, walls and doors, never stored in
-// [FieldData] and never sent. Hearing hops, the party's seats, where a blocked
+// measured closed, permanent opaque props — derived once per compiled site
+// from its regions, walls and doors, never stored in [FieldData] and never
+// sent. Hearing hops, the party's seats, where a blocked
 // arrival looks for room, presence transfer and the secret-door masquerade
 // read the partition ([Encounter.PartitionAt]); an authored region boundary
 // decides nothing mechanical. A builder asks [PartitionFloor] for the same
@@ -244,6 +244,16 @@
 // only when all of its former spatial support is observed empty; omission alone
 // never supplies a carrier or destination. Pickups and door changes notify
 // actual witnesses, not everybody who remembers the subject.
+//
+// # Region ground appearance
+//
+// RegionInput.Ground is optional, opaque appearance: a base ref and explicit
+// paint on owned cells. Construction converts paint cells once, captures a
+// detached authored copy for persistence, and never derives movement, elevation
+// or sight from a ref. Absence preserves the consumer's existing default.
+// AtlasFor and every discovery payload restrict paint to their delivered
+// region cells; no hidden paint map travels with a partial region. Saved
+// appearance is immutable and is not enriched from later source edits.
 //
 // # Authored member appearance
 //
@@ -282,6 +292,11 @@
 // Definitions and captured observations persist with the encounter. No profile
 // or runtime source-document fetch supplies a second answer. Opening-attached
 // doors remain exclusively in the structural layout channel.
+// MaterialOverrides carry nonblank surface/material identities with that same
+// captured owner. They never resolve resources or define mechanical substance.
+// All input, data and projection lists are detached; an absent list retains
+// original authored appearance. Structural walls carry the same opaque choices
+// only when their existing permitted-identity projection supplies the wall.
 //
 // # Structural walls and their permitted cuts (rpg-project#169)
 //
@@ -291,7 +306,7 @@
 // its openings, each optionally bound to an existing footprint door. It enters
 // through [FieldInput.StructuralWalls], is validated at construction (references
 // resolve, geometry is finite and positive, openings fit and do not overlap),
-// persists through [FieldData], and leaves as two flat [Atlas] collections:
+// persists through the site's [FieldData], and leaves as two flat [Atlas] collections:
 // [Atlas.StructuralWalls] (a permitted cut list with no nested door metadata)
 // and [Atlas.StructuralDoors] (every independently permitted door's actual
 // canonical DoorID, ref, opening endpoints and dimensions).
@@ -531,6 +546,18 @@
 // Design contract: docs/ideas/encounter/design.md (composition laws C1–C8).
 // This is not a play/ leaf: the module composes published pieces and exposes
 // one aggregate persistence pair at the host seam.
+//
+// THE SITE IS CONTENT THE RECORD REFERENCES (rpg-project#879 S5, site.go).
+// The field compiles once per content into a [Site], keyed by its
+// [SiteHash] and shared read-only by every encounter on that content through
+// a [SiteProvider] (nil is [DefaultSites], the in-process default). The
+// checkpoint, [EncounterData], names the site by hash and never carries the
+// field; a host that stores the site piece ([Site.Data]) apart hands it back
+// through [LoadEncounterInput.Site] on a process that does not hold it, and a
+// hash nobody can resolve fails closed with [ErrUnknownSite]. What a cell
+// sees with no face hidden from its observer is site data too, kept by the
+// site per sight key, so a load does not sweep again what a game on the same
+// site already swept.
 //
 // Every cell of a field lives in one dungeon-absolute space (docs/ideas/
 // encounter-anchoring/design.md; regions since rpg-project#256, ADR-0044),

@@ -265,7 +265,8 @@ func (s *VoidSuite) TestTheDeclarationSurvivesASave() {
 	} {
 		s.Run(tc.name, func() {
 			data := s.gapped(tc.void).ToData()
-			s.Equal(string(tc.kind), data.Field.Canvas.Void, "the blob carries the word")
+			site := s.gapped(tc.void).Site().Data()
+			s.Equal(string(tc.kind), site.Field.Canvas.Void, "the blob carries the word")
 
 			back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 				Data: data,
@@ -301,9 +302,10 @@ func (s *VoidSuite) TestTheDeclarationSurvivesASave() {
 // under a guess would put a party in a dungeon whose walls the host never
 // authored, so it is refused, and the refusal names what is missing.
 func (s *VoidSuite) TestAnOldBlobIsRefusedByName() {
-	data := s.gapped(encounter.VoidIsOpaque()).ToData()
+	enc := s.gapped(encounter.VoidIsOpaque())
+	data := enc.ToData()
 
-	raw, err := json.Marshal(data)
+	raw, err := json.Marshal(enc.Site().Data())
 	s.Require().NoError(err)
 
 	var blob map[string]any
@@ -315,11 +317,10 @@ func (s *VoidSuite) TestAnOldBlobIsRefusedByName() {
 	raw, err = json.Marshal(blob)
 	s.Require().NoError(err)
 
-	var old encounter.EncounterData
+	var old encounter.SiteData
 	s.Require().NoError(json.Unmarshal(raw, &old))
 
-	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: old,
+	_, err = loadOverSite(data, old, encounter.LoadEncounterInput{
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
@@ -347,9 +348,10 @@ func (s *VoidSuite) TestAnOldBlobIsRefusedByName() {
 // dialect this build does not speak.
 func (s *VoidSuite) TestAnUnknownVoidIsRefusedByName() {
 	data := s.gapped(encounter.VoidIsOpaque()).ToData()
-	data.Field.Canvas.Void = "lava"
+	site := s.gapped(encounter.VoidIsOpaque()).Site().Data()
+	site.Field.Canvas.Void = "lava"
 
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+	_, err := loadOverSite(data, site, encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},

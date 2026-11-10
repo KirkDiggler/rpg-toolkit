@@ -13,6 +13,31 @@ permissions:
 
 env:
   GOTOOLCHAIN: local
+  # The test budget. Every module's tests run with -json, and
+  # scripts/test-budget.sh writes the module's ten slowest top-level tests to
+  # the job summary. TEST_BUDGET is the target: a top-level test over it
+  # under -race is reported "over target" with its seconds, in the summary
+  # and the log, and the job stays green. The job fails naming each test over
+  # twice the target (test-budget.sh -hard, default 2x). Why two lines: one
+  # test's CI time varies about 2x between runs, so a hard line at the target
+  # flaps on tests near it. The target is still 5s, and the sizing issues
+  # (rpg-toolkit#2342, #2343) stand. A test may stay over the hard line only
+  # when the module's allowlist, .github/testbudget/<module dir>.allow (for
+  # example .github/testbudget/rulebooks/dnd5e/encounter.allow), names it.
+  # The allowlists live outside the modules so editing one mints no module
+  # tag; a module without a file has no exceptions. One test per line, as its
+  # package's import path (go test -json's Package field), a slash and the
+  # top-level test name, with its reason after a "#" on the same line: why it
+  # is over budget (what it builds or sweeps and why that cannot shrink), or
+  # the one issue that will size it. For example:
+  #   github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/TestObserversOf_EqualsFullRefresh  # the castle row needs a posted guard, arrivals and table-only creatures (rpg-project#909)
+  # A bare test name is an error: it would exempt every package's test.
+  # A line without a reason, or with "not yet sized" alone, fails the job too.
+  # The budget is judged on CI's timing, not a dev box's. A slow test is a
+  # finding: size the fixture to the cases it proves, or name it with a
+  # reason (rpg-project#907). Locally:
+  # go test -race -json ./... | "$(git rev-parse --show-toplevel)/scripts/test-budget.sh" check -module <module dir>
+  TEST_BUDGET: 5s
   # The encounter module outgrew one CI job (rpg-toolkit#2335). It runs as
   # three shards: "heavy" runs these root-package tests with -run, "rest" runs
   # the root package with the same regex as -skip, and "subpackages" runs every
@@ -108,8 +133,13 @@ jobs:
         fi
 
         CHANGED_FILES=$(echo "$ALL_CHANGED" | grep '\.go$' || true)
+
+        # A test budget allowlist lives outside its module
+        # (.github/testbudget/<module dir>.allow); a change to one checks
+        # that module.
+        ALLOW_MODULES=$(echo "$ALL_CHANGED" | sed -n 's#^\.github/testbudget/\(.*\)\.allow$#\1#p')
         
-        if [[ -z "$CHANGED_FILES" ]]; then
+        if [[ -z "$CHANGED_FILES" && -z "$ALLOW_MODULES" ]]; then
           echo "No Go files changed"
           echo "modules=[]" >> $GITHUB_OUTPUT
           echo "should_run_all=false" >> $GITHUB_OUTPUT
@@ -123,6 +153,11 @@ jobs:
           while [[ ! -f "$dir/go.mod" && "$dir" != "." && "$dir" != "/" ]]; do
             dir=$(dirname "$dir")
           done
+          if [[ -f "$dir/go.mod" ]]; then
+            MODULES+=("$dir")
+          fi
+        done
+        for dir in $ALLOW_MODULES; do
           if [[ -f "$dir/go.mod" ]]; then
             MODULES+=("$dir")
           fi
@@ -188,7 +223,13 @@ jobs:
     # No coverage in CI: nobody reads the file, and atomic cover is most of the
     # race test time. Locally: `make coverage` (a few modules), or in a module
     # `go test -race -coverprofile=coverage.txt -covermode=atomic ./...`.
+    # shell: bash is load-bearing: it runs the step as bash -eo pipefail, so
+    # a failing go test fails the step through the log filter's pipe. A run:
+    # step without shell: is bash -e only, where the filter's exit 0 hides
+    # the failure. The set -o pipefail below is the same guarantee for anyone
+    # who copies the commands out of this step.
     - name: Check module ${{ matrix.module }} (${{ matrix.shard }})
+      shell: bash
       env:
         SHARD: ${{ matrix.shard }}
       run: |
@@ -212,21 +253,27 @@ jobs:
         fi
         
         echo "→ Running tests..."
+        # -json feeds the test budget step; the log filter prints what plain
+        # go test would. pipefail keeps go test's exit (see shell: above).
+        set -o pipefail
+        budgeted() {
+          "$@" | tee "$RUNNER_TEMP/test.json" | "$GITHUB_WORKSPACE/scripts/test-budget.sh" log
+        }
         start=$(date +%s)
         # Each test binary gets 25m, not Go's default 10m (rpg-toolkit#2336).
         case "$SHARD" in
           all)
-            go test -race -timeout 25m ./...
+            budgeted go test -race -json -timeout 25m ./...
             ;;
           heavy)
-            go test -race -timeout 25m -run "$ENCOUNTER_HEAVY_TESTS" .
+            budgeted go test -race -json -timeout 25m -run "$ENCOUNTER_HEAVY_TESTS" .
             ;;
           rest)
-            go test -race -timeout 25m -skip "$ENCOUNTER_HEAVY_TESTS" .
+            budgeted go test -race -json -timeout 25m -skip "$ENCOUNTER_HEAVY_TESTS" .
             ;;
           subpackages)
             # Unfiltered, so a subpackage test sharing a heavy name still runs.
-            go test -race -timeout 25m $(go list ./... | grep -vxF "$(go list .)")
+            budgeted go test -race -json -timeout 25m $(go list ./... | grep -vxF "$(go list .)")
             ;;
           *)
             echo "❌ Unknown shard: $SHARD"
@@ -241,7 +288,19 @@ jobs:
         } >> "$GITHUB_STEP_SUMMARY"
         
         echo "✅ Module ${{ matrix.module }} ($SHARD) passed all checks"
-    
+
+    - name: Test budget ${{ matrix.module }} (${{ matrix.shard }})
+      if: ${{ !cancelled() }}
+      run: |
+        if [[ ! -s "$RUNNER_TEMP/test.json" ]]; then
+          echo "No test output: the module step stopped before its tests."
+          exit 0
+        fi
+        "$GITHUB_WORKSPACE/scripts/test-budget.sh" check -budget "$TEST_BUDGET" \
+          -module "${{ matrix.module }}" \
+          -label "${{ matrix.module }} (${{ matrix.shard }})" \
+          < "$RUNNER_TEMP/test.json"
+
     - name: Check for modifications
       run: |
         if [[ -n $(git status --porcelain) ]]; then
@@ -276,9 +335,36 @@ jobs:
     - name: Run linter on all modules
       run: make lint-all
     
+    # make test-all's loop, with -json per module for the test budget step.
+    # shell: bash is load-bearing (bash -eo pipefail), as in "Check module":
+    # without pipefail the log filter's exit 0 hides a failing test.
     - name: Run tests on all modules
-      run: make test-all
-    
+      shell: bash
+      run: |
+        set -o pipefail
+        mkdir -p "$RUNNER_TEMP/test-json"
+        find . -name "go.mod" -type f -not -path "./vendor/*" | sort | while read -r modfile; do
+          dir=$(dirname "$modfile")
+          dir=${dir#./}
+          echo "→ Testing $dir..."
+          (cd "$dir" && go test -race -json ./... \
+            | tee "$RUNNER_TEMP/test-json/${dir//\//__}.json" \
+            | "$GITHUB_WORKSPACE/scripts/test-budget.sh" log) || exit 1
+        done
+
+    - name: Test budget, every module
+      if: ${{ !cancelled() }}
+      run: |
+        status=0
+        for json in "$RUNNER_TEMP"/test-json/*.json; do
+          [[ -s "$json" ]] || continue
+          name=$(basename "$json" .json)
+          dir=${name//__//}
+          "$GITHUB_WORKSPACE/scripts/test-budget.sh" check -budget "$TEST_BUDGET" \
+            -module "$dir" < "$json" || status=1
+        done
+        exit $status
+
     - name: Check go mod tidy on all modules
       run: |
         # Run go mod tidy on all modules
@@ -321,8 +407,17 @@ jobs:
     - name: The module tagger mints only where history allows
       run: ./scripts/auto-tag-modules.test.sh
 
+  # The test budget's reader decides which tests fail CI; its cases run on
+  # fixture streams. Cheap, no Go toolchain needed.
+  test-budget:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: The test budget reads go test -json as its cases say
+      run: ./scripts/test-budget.test.sh
+
   ci-status:
-    needs: [changes, test-changed, test-all, docs-decisions, knowledge-map, tagger]
+    needs: [changes, test-changed, test-all, docs-decisions, knowledge-map, tagger, test-budget]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -335,6 +430,7 @@ jobs:
         echo "ADR digest: ${{ needs.docs-decisions.result }}"
         echo "Knowledge maps: ${{ needs.knowledge-map.result }}"
         echo "Module tagger: ${{ needs.tagger.result }}"
+        echo "Test budget cases: ${{ needs.test-budget.result }}"
         
         # Fail if any required job failed
         if [[ "${{ needs.changes.result }}" == "failure" ]]; then
@@ -366,6 +462,11 @@ jobs:
 
         if [[ "${{ needs.tagger.result }}" == "failure" ]]; then
           echo "❌ The module tagger's cases failed"
+          exit 1
+        fi
+
+        if [[ "${{ needs.test-budget.result }}" == "failure" ]]; then
+          echo "❌ The test budget's cases failed"
           exit 1
         fi
         

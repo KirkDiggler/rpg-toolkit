@@ -149,7 +149,7 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 	if err != nil {
 		return nil, fmt.Errorf("launch: %w", err)
 	}
-	world, err := launchWorld(in.Dungeon)
+	world, site, err := launchWorld(in.Dungeon, m.sites)
 	if err != nil {
 		return nil, fmt.Errorf("launch: %w", err)
 	}
@@ -241,6 +241,14 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 	}
 	if err := scope.enc.ValidateBoard(&encounter.BoardInput{Members: board}); err != nil {
 		return nil, fmt.Errorf("launch: %w", translate(err))
+	}
+
+	// 2b. The site piece, before anything that names it is written (sites.go):
+	// the only place a site is first compiled from authored content, so the
+	// only place it is stored. Content-addressed, so a launch that fails
+	// after this leaves nothing wrong behind.
+	if err := m.storeSite(ctx, site); err != nil {
+		return nil, fmt.Errorf("launch: %w", err)
 	}
 
 	// 3. Rested, then seated: both land before the board is placed, so every
@@ -369,23 +377,28 @@ func resolveLaunchMonsters(dungeon *dungeonspec.Compiled) ([]launchMonster, erro
 // launchWorld builds the run's empty world from the compiled field and the
 // endings the dungeon declares: the party withdrawing, the boss going down
 // when it names one, every scenario it binds, and its own authored endings.
-// Nobody is on it yet.
-func launchWorld(dungeon *dungeonspec.Compiled) (*encounter.EncounterData, error) {
+// Nobody is on it yet. Its field compiles into sites once per content
+// (rpg-project#879 S5), and the compiled site comes back beside the world
+// that names it by hash.
+func launchWorld(
+	dungeon *dungeonspec.Compiled, sites encounter.SiteProvider,
+) (*encounter.EncounterData, *encounter.Site, error) {
 	endings, err := launchEndings(dungeon)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
 		Field:        dungeon.Field,
 		Endings:      endings,
 		Retention:    encounter.RetentionUnbounded,
 		Capabilities: encounter.RefusingCapabilities(),
+		Sites:        sites,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidWorld, err)
+		return nil, nil, fmt.Errorf("%w: %v", ErrInvalidWorld, err)
 	}
 	data := enc.ToData()
-	return &data, nil
+	return &data, enc.Site(), nil
 }
 
 // launchEndings is every ending a launched run declares, in a fixed order.

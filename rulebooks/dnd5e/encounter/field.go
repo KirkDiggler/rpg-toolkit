@@ -266,6 +266,10 @@ type RegionInput struct {
 	// default.
 	Lighting *Lighting
 
+	// Ground is optional appearance; paint cells are owned authored offsets.
+	// It is captured, never interpreted as a movement or visibility rule.
+	Ground *RegionGround
+
 	// A REGION NO LONGER SAYS WHETHER IT IS HIDDEN (rpg-project#490). It
 	// carried `Concealed bool` until the concealment primitive landed, and
 	// what replaced it is [FieldInput.Concealments] — a concealment listing
@@ -1477,6 +1481,12 @@ type SetupInput struct {
 	// holds no randomness of its own (C8); a caller that pins exact bytes
 	// supplies a fixed source.
 	IDs record.IDSource
+
+	// Sites resolves the compiled site the field compiles to, keyed by its
+	// content hash (site.go, rpg-project#879 S5). Optional: nil is
+	// [DefaultSites], the process-wide in-process provider. The same content
+	// set up twice is one site.
+	Sites SiteProvider
 }
 
 // ViewInput is used to query a member's current percepts.

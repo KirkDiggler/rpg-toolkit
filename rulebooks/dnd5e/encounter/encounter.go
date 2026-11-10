@@ -109,6 +109,12 @@ type Encounter struct {
 	// built from it and holds the same pointer — see [canvasRoom].
 	field *field
 
+	// site is the compiled site the field is a shallow copy of (site.go,
+	// rpg-project#879 S5): shared, read-only, the hash ToData writes in place
+	// of the field, and the home of the raw visible-from answers. Nil only on
+	// an Encounter built by hand in a test.
+	site *Site
+
 	// doors are every door in the field, sorted by ID (C8). A door's edges are
 	// construction truth; its STATE is the one thing here a verb changes
 	// mid-scene, and it is held once for however many edges the door has
@@ -362,11 +368,12 @@ type Encounter struct {
 	// across passes. THE KEY IS THE SOUNDNESS: it fingerprints the observer's
 	// cell, range and concealment view and the field's opacity (doors, placed
 	// footprints, opaque entities, obscuring areas), every input seesCell can
-	// see change; members never block sight. An entry is instance state, since
-	// the opacity names this run's door states and prop positions; the site
-	// tier (rpg-project#770) could hold only the authored site's answer, which
-	// an entry equals while nothing has moved. Bounded by visibleCacheEntries,
-	// never saved, rebuilt by use after a load.
+	// see change; members never block sight. Since rpg-project#879 S5 it
+	// holds only the CONCEALMENT LAYER: keys whose observer has a door or prop
+	// hidden from it. A key with no hidden face is the site's raw answer and
+	// lives on the site ([siteSight]), shared by every game on the content and
+	// kept across loads. Bounded by visibleCacheEntries, never saved, rebuilt
+	// by use after a load.
 	visibleCache map[sightSweepKey]visibleBits
 	// visibleCacheEntries is visibleCache's bound, [visibleCacheBound] from
 	// every constructor. The encounter's own, so a test that shrinks it
@@ -857,13 +864,17 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 		}
 	}
 
-	// Compile the field: the canvas's two declarations, the regions that make
-	// the floor, the props and walls on it — every rule about what a field
-	// may be, stated once and shared with Load (compileField).
-	f, err := compileField(in.Field)
+	// THE SITE (site.go, rpg-project#879 S5): the field compiled once per
+	// content and shared — the canvas's two declarations, the regions, the
+	// props and walls, the doors' geometry, the partitions, the doors a
+	// concealment names and the records' targets, every rule about what a
+	// field may be stated once in [CompileSite] and shared with Load. The
+	// encounter runs on its own shallow copy of the site's field.
+	site, err := resolveSite(in.Sites, &SiteInput{Field: &in.Field})
 	if err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
+	f := site.instanceField()
 
 	// A line requiring a holding must name a prop this field lets somebody
 	// pick up (option.go) — asked against the compiled field, so after it.
@@ -871,17 +882,6 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 		if err := f.validateOptionHolds(m.Options); err != nil {
 			return nil, fmt.Errorf("newencounter: member %s: %w: %w", m.ID, err, ErrBadMember)
 		}
-	}
-
-	// Check doors: names, states, and edges that are real crossings on real
-	// floor and belong to exactly one door (rpg-toolkit#1123).
-	if err = validateDoorInputs(f, in.Field.Doors); err != nil {
-		return nil, fmt.Errorf("newencounter: %w", err)
-	}
-	// THE SECOND DIVISION, derived here and at Load from the same authored
-	// geometry and never stored (partitions.go, rpg-project#725 R8).
-	if err = f.derivePartitions(in.Field.Doors); err != nil {
-		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 
 	// The two concealment capabilities, required exactly when the field
@@ -892,12 +892,6 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 	// find. AFTER the field and door validation on purpose: a malformed
 	// door is the author's earlier mistake, and refusing it as a missing
 	// capability would send them to the wrong seam.
-	// And the doors a concealment names, checked here for [field.intel]'s
-	// reason: the door list reaches this module beside the field.
-	if err = validateConcealmentDoors(f, in.Field.Doors); err != nil {
-		return nil, fmt.Errorf("newencounter: %w", err)
-	}
-
 	if fieldHasConcealment(in.Field.Concealments) {
 		if err := in.validateConcealed(); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
@@ -925,15 +919,10 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 		}
 	}
 
-	// A record's target must name a door this field declares, and a holder
-	// must name a record it declares (design §2). Refused here, before
-	// anything is built (R5): either one dangling is knowledge the author
-	// thinks they placed and did not. Whether the door is CONCEALED is
-	// deliberately not asked — revealing an ordinary door is inert, not an
-	// error ([RevealTargets.Door]).
-	if err = validateIntelTargets(f); err != nil {
-		return nil, fmt.Errorf("newencounter: %w", err)
-	}
+	// A holder must name a record the field declares (design §2); a
+	// record's own target was checked when the site compiled. Refused here,
+	// before anything is built (R5): a dangling one is knowledge the author
+	// thinks they placed and did not.
 	for _, mi := range in.Members {
 		for _, id := range mi.Holds {
 			if _, declared := f.intelByID[id]; !declared {
@@ -991,6 +980,7 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 		members:             make(map[MemberID]*memberRecord),
 		everMembers:         make(map[MemberID]bool),
 		field:               f,
+		site:                site,
 		initiative:          in.Initiative,
 		participation:       in.Participation,
 		sight:               in.Sight,

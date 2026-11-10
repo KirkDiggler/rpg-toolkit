@@ -40,6 +40,10 @@ var ErrBadSessionLock = errors.New("session locker returned no release")
 // a character's guard while waiting for a session's, so a host implementing
 // both with ordinary mutexes cannot deadlock through the SDK.
 //
+// The locker guards the INSTANCE tier, one game's world, and nothing else:
+// the SITE tier (Config.Sites, sites.go) is shared across games and read-only,
+// so it takes no session's guard.
+//
 // This does not make multiple repository writes transactional. A host with
 // multiple processes needs a shared coordinator; an in-process mutex alone
 // does not provide cross-process exclusion.

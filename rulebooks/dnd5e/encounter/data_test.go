@@ -175,8 +175,16 @@ func (s *DataTestSuite) TestGoldenJSONRich() {
 	// the four distinct audiences sit in the log's table in first-seen order,
 	// and each entry names its row, 1-based. [p1 g1] and [g1 p1] are two rows:
 	// the key is the exact ordered list.
-	expected := `{"sight_sweeps":{"g1":"4050ff98cfd894febf69c2a0d52667ae","p1":"b215f4fc11332d64d4210a2c5a50e1e3"},"clock":{"driver_progress":{"g1":1,"p1":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"active_idx":1,"round":2}],"perception":{"intel":{"holdings":{"member|g1":{"door|door1":{"payload":"eyJpZCI6ImRvb3IxIiwiZWRnZXMiOlt7ImZyb20iOnsieCI6LTgsInkiOjEwfSwidG8iOnsieCI6LTcsInkiOjEwfX1dLCJzdGF0ZSI6Im9wZW4ifQ==","channel":"sight","current_via":["sight"]},"member|p1":{"payload":"eyJzdGF0ZSI6Imtub3duIiwieCI6LTEzLCJ5Ijo3LCJkb3duIjpmYWxzZSwiYmxvY2tzX21vdmVtZW50IjpmYWxzZSwiZmFjaW5nIjoxODB9","channel":"sight","current_via":["sight"]}},"member|p1":{"door|door1":{"payload":"eyJpZCI6ImRvb3IxIiwiZWRnZXMiOlt7ImZyb20iOnsieCI6LTgsInkiOjEwfSwidG8iOnsieCI6LTcsInkiOjEwfX1dLCJzdGF0ZSI6Im9wZW4ifQ==","channel":"sight","current_via":["sight"]},"member|g1":{"payload":"eyJzdGF0ZSI6Imtub3duIiwieCI6LTUsInkiOjcsImRvd24iOmZhbHNlLCJibG9ja3NfbW92ZW1lbnQiOmZhbHNlLCJmYWNpbmciOjE4MH0=","channel":"sight","current_via":["sight"]}}}}},"perception_subjects":1,"log":{"next_seq":9,"audiences":[["p1","g1"],["g1"],["p1"],["g1","p1"]],"entries":[{"seq":1,"id":"01HF7YAT003RVQKEBZ99Y1AF3E","audience":1,"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"id":"01HF7YAT003RVQKEBZ9A1RJYZ7","audience":2,"tags":{"tag":"sight"},"payload":"eyJiZWF0Ijoic2lnaHRlZCIsImdhaW5lZCI6WyJwMSJdLCJrbm93bGVkZ2VfY2hhbmdlZCI6dHJ1ZX0="},{"seq":3,"id":"01HF7YAT003RVQKEBZ9A1ZBSCX","audience":3,"tags":{"tag":"sight"},"payload":"eyJiZWF0Ijoic2lnaHRlZCIsImdhaW5lZCI6WyJnMSJdLCJrbm93bGVkZ2VfY2hhbmdlZCI6dHJ1ZX0="},{"seq":4,"id":"01HF7YAT003RVQKEBZ9A1ZMYCF","audience":4,"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":5,"id":"01HF7YAT003RVQKEBZ9A1ZPFH9","audience":4,"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6ImcxIiwibmV4dCI6InAxIn0="},{"seq":6,"id":"01HF7YAT003RVQKEBZ9A1ZPFYH","audience":4,"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6InAxIiwibmV4dCI6ImcxIn0="},{"seq":7,"id":"01HF7YAT003RVQKEBZ9A1ZPFZN","at":1,"audience":4,"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"},{"seq":8,"id":"01HF7YAT003RVSFGJ3QM5K1KTP","at":1,"audience":4,"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6ImcxIiwibmV4dCI6InAxIn0="}]},"field":{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"crypt","name":"crypt","cells":[{"x":-10,"y":7},{"x":-9,"y":7},{"x":-8,"y":7},{"x":-7,"y":7},{"x":-6,"y":7},{"x":-5,"y":7},{"x":-4,"y":7},{"x":-3,"y":7},{"x":-10,"y":8},{"x":-9,"y":8},{"x":-8,"y":8},{"x":-7,"y":8},{"x":-6,"y":8},{"x":-5,"y":8},{"x":-4,"y":8},{"x":-3,"y":8},{"x":-10,"y":9},{"x":-9,"y":9},{"x":-8,"y":9},{"x":-7,"y":9},{"x":-6,"y":9},{"x":-5,"y":9},{"x":-4,"y":9},{"x":-3,"y":9},{"x":-10,"y":10},{"x":-9,"y":10},{"x":-8,"y":10},{"x":-7,"y":10},{"x":-6,"y":10},{"x":-5,"y":10},{"x":-4,"y":10},{"x":-3,"y":10},{"x":-10,"y":11},{"x":-9,"y":11},{"x":-8,"y":11},{"x":-7,"y":11},{"x":-6,"y":11},{"x":-5,"y":11},{"x":-4,"y":11},{"x":-3,"y":11},{"x":-10,"y":12},{"x":-9,"y":12},{"x":-8,"y":12},{"x":-7,"y":12},{"x":-6,"y":12},{"x":-5,"y":12},{"x":-4,"y":12},{"x":-3,"y":12},{"x":-10,"y":13},{"x":-9,"y":13},{"x":-8,"y":13},{"x":-7,"y":13},{"x":-6,"y":13},{"x":-5,"y":13},{"x":-4,"y":13},{"x":-3,"y":13},{"x":-10,"y":14},{"x":-9,"y":14},{"x":-8,"y":14},{"x":-7,"y":14},{"x":-6,"y":14},{"x":-5,"y":14},{"x":-4,"y":14},{"x":-3,"y":14}],"archetype":"crypt","lighting":{"intensity":1}},{"id":"hall","name":"hall","cells":[{"x":-2,"y":7},{"x":-1,"y":7},{"x":0,"y":7},{"x":1,"y":7},{"x":2,"y":7},{"x":3,"y":7},{"x":-2,"y":8},{"x":-1,"y":8},{"x":0,"y":8},{"x":1,"y":8},{"x":2,"y":8},{"x":3,"y":8},{"x":-2,"y":9},{"x":-1,"y":9},{"x":0,"y":9},{"x":1,"y":9},{"x":2,"y":9},{"x":3,"y":9},{"x":-2,"y":10},{"x":-1,"y":10},{"x":0,"y":10},{"x":1,"y":10},{"x":2,"y":10},{"x":3,"y":10},{"x":-2,"y":11},{"x":-1,"y":11},{"x":0,"y":11},{"x":1,"y":11},{"x":2,"y":11},{"x":3,"y":11},{"x":-2,"y":12},{"x":-1,"y":12},{"x":0,"y":12},{"x":1,"y":12},{"x":2,"y":12},{"x":3,"y":12}],"archetype":"crypt","lighting":{"intensity":1}}],"props":[{"ref":"test:props:rubble","at":{"x":-9,"y":9},"blocks_movement":true,"blocks_line_of_sight":true,"offset":[0,0,0]}],"walls":[{"from":{"x":-8,"y":9},"to":{"x":-8,"y":10},"blocks_movement":true,"blocks_line_of_sight":true}]},"members":[{"id":"g1","kind":"monster","cell":{"x":-5,"y":7},"facing":180},{"id":"p1","kind":"player","cell":{"x":-13,"y":7},"facing":180}],"doors":[{"id":"door1","edges":[{"from":{"x":-8,"y":10},"to":{"x":-7,"y":10}}],"state":"open"}],"journal":{"facts":[{"kind":"known:cells","actor":"p1","subject":"p1","audience":["p1"],"detail":"{\"rows\":[{\"r\":7,\"q\":[[-13,0]]},{\"r\":8,\"q\":[[-14,-1]]},{\"r\":9,\"q\":[[-14,-1]]},{\"r\":10,\"q\":[[-15,-14],[-12,-2]]},{\"r\":11,\"q\":[[-15,-14],[-12,-2]]},{\"r\":12,\"q\":[[-16,-14],[-12,-3]]},{\"r\":13,\"q\":[[-16,-14],[-12,-9]]},{\"r\":14,\"q\":[[-17,-14],[-12,-10]]}]}"},{"kind":"known:cells","actor":"g1","subject":"g1","audience":["g1"],"detail":"{\"rows\":[{\"r\":7,\"q\":[[-13,0]]},{\"r\":8,\"q\":[[-14,-1]]},{\"r\":9,\"q\":[[-14,-1]]},{\"r\":10,\"q\":[[-13,-2]]},{\"r\":11,\"q\":[[-15,-2]]},{\"r\":12,\"q\":[[-16,-3]]},{\"r\":13,\"q\":[[-16,-9]]},{\"r\":14,\"q\":[[-17,-10]]}]}"}]},"endings":[{"key":"guarded","kind":"reached_position","at":{"x":-7,"y":10},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
+	expected := `{"sight_sweeps":{"g1":"4050ff98cfd894febf69c2a0d52667ae","p1":"b215f4fc11332d64d4210a2c5a50e1e3"},"clock":{"driver_progress":{"g1":1,"p1":1},"high_water":1},"bubbles":[{"order":["g1","p1"],"active_idx":1,"round":2}],"perception":{"intel":{"holdings":{"member|g1":{"door|door1":{"payload":"eyJpZCI6ImRvb3IxIiwiZWRnZXMiOlt7ImZyb20iOnsieCI6LTgsInkiOjEwfSwidG8iOnsieCI6LTcsInkiOjEwfX1dLCJzdGF0ZSI6Im9wZW4ifQ==","channel":"sight","current_via":["sight"]},"member|p1":{"payload":"eyJzdGF0ZSI6Imtub3duIiwieCI6LTEzLCJ5Ijo3LCJkb3duIjpmYWxzZSwiYmxvY2tzX21vdmVtZW50IjpmYWxzZSwiZmFjaW5nIjoxODB9","channel":"sight","current_via":["sight"]}},"member|p1":{"door|door1":{"payload":"eyJpZCI6ImRvb3IxIiwiZWRnZXMiOlt7ImZyb20iOnsieCI6LTgsInkiOjEwfSwidG8iOnsieCI6LTcsInkiOjEwfX1dLCJzdGF0ZSI6Im9wZW4ifQ==","channel":"sight","current_via":["sight"]},"member|g1":{"payload":"eyJzdGF0ZSI6Imtub3duIiwieCI6LTUsInkiOjcsImRvd24iOmZhbHNlLCJibG9ja3NfbW92ZW1lbnQiOmZhbHNlLCJmYWNpbmciOjE4MH0=","channel":"sight","current_via":["sight"]}}}}},"perception_subjects":1,"log":{"next_seq":9,"audiences":[["p1","g1"],["g1"],["p1"],["g1","p1"]],"entries":[{"seq":1,"id":"01HF7YAT003RVQKEBZ99Y1AF3E","audience":1,"tags":{"tag":"scene"},"payload":"eyJiZWF0Ijoic2NlbmUtb3BlbmVkIn0="},{"seq":2,"id":"01HF7YAT003RVQKEBZ9A1RJYZ7","audience":2,"tags":{"tag":"sight"},"payload":"eyJiZWF0Ijoic2lnaHRlZCIsImdhaW5lZCI6WyJwMSJdLCJrbm93bGVkZ2VfY2hhbmdlZCI6dHJ1ZX0="},{"seq":3,"id":"01HF7YAT003RVQKEBZ9A1ZBSCX","audience":3,"tags":{"tag":"sight"},"payload":"eyJiZWF0Ijoic2lnaHRlZCIsImdhaW5lZCI6WyJnMSJdLCJrbm93bGVkZ2VfY2hhbmdlZCI6dHJ1ZX0="},{"seq":4,"id":"01HF7YAT003RVQKEBZ9A1ZMYCF","audience":4,"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoiYnViYmxlLWZvcm1lZCIsIm9yZGVyIjpbImcxIiwicDEiXX0="},{"seq":5,"id":"01HF7YAT003RVQKEBZ9A1ZPFH9","audience":4,"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6ImcxIiwibmV4dCI6InAxIn0="},{"seq":6,"id":"01HF7YAT003RVQKEBZ9A1ZPFYH","audience":4,"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6InAxIiwibmV4dCI6ImcxIn0="},{"seq":7,"id":"01HF7YAT003RVQKEBZ9A1ZPFZN","at":1,"audience":4,"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidGljayIsInRpY2siOjF9"},{"seq":8,"id":"01HF7YAT003RVSFGJ3QM5K1KTP","at":1,"audience":4,"tags":{"tag":"clock"},"payload":"eyJiZWF0IjoidHVybi1lbmRlZCIsIm1lbWJlciI6ImcxIiwibmV4dCI6InAxIn0="}]},"site_hash":"57f067248e2d3edaf1a7f8abd3f7a3e2b44e3ea6fbf529deb5275140227d07aa","members":[{"id":"g1","kind":"monster","cell":{"x":-5,"y":7},"facing":180},{"id":"p1","kind":"player","cell":{"x":-13,"y":7},"facing":180}],"doors":[{"id":"door1","edges":[{"from":{"x":-8,"y":10},"to":{"x":-7,"y":10}}],"state":"open"}],"journal":{"facts":[{"kind":"known:cells","actor":"p1","subject":"p1","audience":["p1"],"detail":"{\"rows\":[{\"r\":7,\"q\":[[-13,0]]},{\"r\":8,\"q\":[[-14,-1]]},{\"r\":9,\"q\":[[-14,-1]]},{\"r\":10,\"q\":[[-15,-14],[-12,-2]]},{\"r\":11,\"q\":[[-15,-14],[-12,-2]]},{\"r\":12,\"q\":[[-16,-14],[-12,-3]]},{\"r\":13,\"q\":[[-16,-14],[-12,-9]]},{\"r\":14,\"q\":[[-17,-14],[-12,-10]]}]}"},{"kind":"known:cells","actor":"g1","subject":"g1","audience":["g1"],"detail":"{\"rows\":[{\"r\":7,\"q\":[[-13,0]]},{\"r\":8,\"q\":[[-14,-1]]},{\"r\":9,\"q\":[[-14,-1]]},{\"r\":10,\"q\":[[-13,-2]]},{\"r\":11,\"q\":[[-15,-2]]},{\"r\":12,\"q\":[[-16,-3]]},{\"r\":13,\"q\":[[-16,-9]]},{\"r\":14,\"q\":[[-17,-10]]}]}"}]},"endings":[{"key":"guarded","kind":"reached_position","at":{"x":-7,"y":10},"member":"p1"},{"key":"leave","kind":"external"}],"ever_members":["g1","p1"],"retention":32}`
+	expectedField := `{"canvas":{"void":"opaque","orientation":"pointy"},"regions":[{"id":"crypt","name":"crypt","cells":[{"x":-10,"y":7},{"x":-9,"y":7},{"x":-8,"y":7},{"x":-7,"y":7},{"x":-6,"y":7},{"x":-5,"y":7},{"x":-4,"y":7},{"x":-3,"y":7},{"x":-10,"y":8},{"x":-9,"y":8},{"x":-8,"y":8},{"x":-7,"y":8},{"x":-6,"y":8},{"x":-5,"y":8},{"x":-4,"y":8},{"x":-3,"y":8},{"x":-10,"y":9},{"x":-9,"y":9},{"x":-8,"y":9},{"x":-7,"y":9},{"x":-6,"y":9},{"x":-5,"y":9},{"x":-4,"y":9},{"x":-3,"y":9},{"x":-10,"y":10},{"x":-9,"y":10},{"x":-8,"y":10},{"x":-7,"y":10},{"x":-6,"y":10},{"x":-5,"y":10},{"x":-4,"y":10},{"x":-3,"y":10},{"x":-10,"y":11},{"x":-9,"y":11},{"x":-8,"y":11},{"x":-7,"y":11},{"x":-6,"y":11},{"x":-5,"y":11},{"x":-4,"y":11},{"x":-3,"y":11},{"x":-10,"y":12},{"x":-9,"y":12},{"x":-8,"y":12},{"x":-7,"y":12},{"x":-6,"y":12},{"x":-5,"y":12},{"x":-4,"y":12},{"x":-3,"y":12},{"x":-10,"y":13},{"x":-9,"y":13},{"x":-8,"y":13},{"x":-7,"y":13},{"x":-6,"y":13},{"x":-5,"y":13},{"x":-4,"y":13},{"x":-3,"y":13},{"x":-10,"y":14},{"x":-9,"y":14},{"x":-8,"y":14},{"x":-7,"y":14},{"x":-6,"y":14},{"x":-5,"y":14},{"x":-4,"y":14},{"x":-3,"y":14}],"archetype":"crypt","lighting":{"intensity":1}},{"id":"hall","name":"hall","cells":[{"x":-2,"y":7},{"x":-1,"y":7},{"x":0,"y":7},{"x":1,"y":7},{"x":2,"y":7},{"x":3,"y":7},{"x":-2,"y":8},{"x":-1,"y":8},{"x":0,"y":8},{"x":1,"y":8},{"x":2,"y":8},{"x":3,"y":8},{"x":-2,"y":9},{"x":-1,"y":9},{"x":0,"y":9},{"x":1,"y":9},{"x":2,"y":9},{"x":3,"y":9},{"x":-2,"y":10},{"x":-1,"y":10},{"x":0,"y":10},{"x":1,"y":10},{"x":2,"y":10},{"x":3,"y":10},{"x":-2,"y":11},{"x":-1,"y":11},{"x":0,"y":11},{"x":1,"y":11},{"x":2,"y":11},{"x":3,"y":11},{"x":-2,"y":12},{"x":-1,"y":12},{"x":0,"y":12},{"x":1,"y":12},{"x":2,"y":12},{"x":3,"y":12}],"archetype":"crypt","lighting":{"intensity":1}}],"props":[{"ref":"test:props:rubble","at":{"x":-9,"y":9},"blocks_movement":true,"blocks_line_of_sight":true,"offset":[0,0,0]}],"walls":[{"from":{"x":-8,"y":9},"to":{"x":-8,"y":10},"blocks_movement":true,"blocks_line_of_sight":true}]}`
 	s.Equal(expected, string(bs))
+
+	// THE FIELD IS THE SITE PIECE NOW (rpg-project#879 S5): the bytes the
+	// checkpoint used to carry, unchanged, under the hash it names.
+	piece, err := json.Marshal(enc.Site().Data())
+	s.Require().NoError(err)
+	s.Contains(string(piece), `"field":`+expectedField)
+	s.Equal(encounter.SiteHash("57f067248e2d3edaf1a7f8abd3f7a3e2b44e3ea6fbf529deb5275140227d07aa"), enc.Site().Hash())
 }
 
 // TestEndingsOrderSurvivesReload pins C8 first-declared-wins across the
@@ -359,12 +367,13 @@ func (s *DataTestSuite) TestSetupInputNotAliased() {
 	setup.Field.Walls[0].From = spatial.Position{X: 4, Y: 4}
 
 	data := enc.ToData()
-	s.Require().Len(data.Field.Regions, 2)
-	s.Equal("r1", data.Field.Regions[0].ID, "the snapshot must not see the caller's vandalism")
-	s.Equal(encounter.PositionData{X: 0, Y: 1}, data.Field.Regions[0].Cells[0])
-	s.Equal(1.0, *data.Field.Regions[0].Lighting.Intensity)
-	s.Equal(encounter.PositionData{X: 3, Y: 4}, data.Field.Props[0].At)
-	s.Equal(encounter.PositionData{X: 4, Y: 1}, data.Field.Walls[0].From)
+	site := enc.Site().Data()
+	s.Require().Len(site.Field.Regions, 2)
+	s.Equal("r1", site.Field.Regions[0].ID, "the snapshot must not see the caller's vandalism")
+	s.Equal(encounter.PositionData{X: 0, Y: 1}, site.Field.Regions[0].Cells[0])
+	s.Equal(1.0, *site.Field.Regions[0].Lighting.Intensity)
+	s.Equal(encounter.PositionData{X: 3, Y: 4}, site.Field.Props[0].At)
+	s.Equal(encounter.PositionData{X: 4, Y: 1}, site.Field.Walls[0].From)
 
 	// And the corrupted-input snapshot must still LOAD (the M4 symptom
 	// was an encounter that became permanently unsavable).
@@ -475,7 +484,7 @@ func (s *DataTestSuite) TestRoundTripPostSetup() {
 		s.Equal(data1.Members, data2.Members)
 		s.Equal(data1.EverMembers, data2.EverMembers)
 		s.Equal(data1.Endings, data2.Endings)
-		s.Equal(data1.Field, data2.Field)
+		s.Equal(data1.SiteHash, data2.SiteHash)
 	})
 }
 
@@ -1028,19 +1037,36 @@ func pointyCanvasData() encounter.CanvasData {
 	return encounter.CanvasData{Void: "opaque", Orientation: "pointy"}
 }
 
-func validEncounterData() encounter.EncounterData {
-	return encounter.EncounterData{
-		// The subject namespace this build writes; load refuses any other.
-		PerceptionSubjects: 1,
+// loadFixture is a hand-built checkpoint and the field its site compiles
+// from (rpg-project#879 S5): the checkpoint names its site by hash, so a
+// fixture that edits the field edits the site piece beside it.
+type loadFixture struct {
+	encounter.EncounterData
+	Field encounter.FieldData
+}
+
+func validLoadFixture() loadFixture {
+	return loadFixture{
+		EncounterData: encounter.EncounterData{
+			// The subject namespace this build writes; load refuses any other.
+			PerceptionSubjects: 1,
+			Members: []encounter.MemberData{
+				{ID: "p1", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 1, Y: 1}}, /*ROOM:"r1"*/
+			},
+			Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
+			EverMembers: []encounter.MemberID{"p1"},
+		},
 		Field: encounter.FieldData{Canvas: pointyCanvasData(), Regions: []encounter.RegionData{
 			rectRegionData("r1", 0, 0, 5, 5),
 		}},
-		Members: []encounter.MemberData{
-			{ID: "p1", Kind: encounter.KindPlayer, Cell: &encounter.PositionData{X: 1, Y: 1}}, /*ROOM:"r1"*/
-		},
-		Endings:     []encounter.EndingData{{Key: "done", Kind: "external"}},
-		EverMembers: []encounter.MemberID{"p1"},
 	}
+}
+
+// validEncounterData is the valid fixture's checkpoint, its site kept in the
+// default provider.
+func validEncounterData() encounter.EncounterData {
+	f := validLoadFixture()
+	return withDefaultSite(f.Field, f.EncounterData)
 }
 
 // setSightHolding gives the fixture one sight testimony, current or a ghost.
@@ -1147,17 +1173,16 @@ func (s *DataTestSuite) TestLoadNilDecidersIsLegal() {
 // encounter_test.go's TestSetupPropOnBoundaryCellAccepted (#929 T3
 // trailing round N2).
 func (s *DataTestSuite) TestLoadPropOnBoundaryCellAccepted() {
+	field := encounter.FieldData{
+		Canvas:  pointyCanvasData(),
+		Regions: []encounter.RegionData{rectRegionData("hall", 0, 0, 5, 5)},
+		Props:   []encounter.PropData{rubbleData(0, 2), rubbleData(4, 2), rubbleData(2, 0), rubbleData(2, 4), rubbleData(0, 0), rubbleData(4, 4)},
+	}
 	data := encounter.EncounterData{
 		PerceptionSubjects: 1,
-		Field: encounter.FieldData{
-			Canvas:  pointyCanvasData(),
-			Regions: []encounter.RegionData{rectRegionData("hall", 0, 0, 5, 5)},
-			Props:   []encounter.PropData{rubbleData(0, 2), rubbleData(4, 2), rubbleData(2, 0), rubbleData(2, 4), rubbleData(0, 0), rubbleData(4, 4)},
-		},
-		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
+		Endings:            []encounter.EndingData{{Key: "done", Kind: "external"}},
 	}
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data,
+	_, err := loadOverSite(data, siteOf(field, data), encounter.LoadEncounterInput{
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
@@ -1180,16 +1205,15 @@ func (s *DataTestSuite) TestLoadPropOnBoundaryCellAccepted() {
 // encounter_test.go's TestSetupDuplicatePropRejected (#929 hardening
 // round D).
 func (s *DataTestSuite) TestLoadTwoPropsOnOneCellRejected() {
+	field := encounter.FieldData{
+		Canvas:  pointyCanvasData(),
+		Regions: []encounter.RegionData{rectRegionData("hall", 0, 0, 5, 5)},
+		Props:   []encounter.PropData{rubbleData(3, 3), rubbleData(3, 3)},
+	}
 	data := encounter.EncounterData{
-		Field: encounter.FieldData{
-			Canvas:  pointyCanvasData(),
-			Regions: []encounter.RegionData{rectRegionData("hall", 0, 0, 5, 5)},
-			Props:   []encounter.PropData{rubbleData(3, 3), rubbleData(3, 3)},
-		},
 		Endings: []encounter.EndingData{{Key: "done", Kind: "external"}},
 	}
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data,
+	_, err := loadOverSite(data, siteOf(field, data), encounter.LoadEncounterInput{
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
@@ -1215,18 +1239,17 @@ func (s *DataTestSuite) TestLoadTwoPropsOnOneCellRejected() {
 // encounter_test.go's TestSetupDuplicateEndingKeyRejected (#929
 // hardening round E).
 func (s *DataTestSuite) TestLoadDuplicateEndingKeyRejected() {
+	field := encounter.FieldData{
+		Canvas:  pointyCanvasData(),
+		Regions: []encounter.RegionData{rectRegionData("hall", 0, 0, 5, 5)},
+	}
 	data := encounter.EncounterData{
-		Field: encounter.FieldData{
-			Canvas:  pointyCanvasData(),
-			Regions: []encounter.RegionData{rectRegionData("hall", 0, 0, 5, 5)},
-		},
 		Endings: []encounter.EndingData{
 			{Key: "dup", Kind: "reached_position", At: &encounter.PositionData{X: 4, Y: 4}},
 			{Key: "dup", Kind: "external"},
 		},
 	}
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data,
+	_, err := loadOverSite(data, siteOf(field, data), encounter.LoadEncounterInput{
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
@@ -1256,75 +1279,74 @@ func (s *DataTestSuite) TestLoadDuplicateEndingKeyRejected() {
 func (s *DataTestSuite) TestLoadRejections() {
 	cases := []struct {
 		name     string
-		mutate   func(d *encounter.EncounterData)
+		mutate   func(d *loadFixture)
 		fragment string
 		alsoErr  error
 	}{
-		{"zero data", func(d *encounter.EncounterData) { *d = encounter.EncounterData{} }, "bad endings", nil},
-		{"no regions", func(d *encounter.EncounterData) { d.Field.Regions = nil; d.Members = nil; d.EverMembers = nil }, "no regions", encounter.ErrNoField},
-		{"the room-chain dialect", func(d *encounter.EncounterData) {
+		{"zero data", func(d *loadFixture) { d.EncounterData = encounter.EncounterData{} }, "bad endings", nil},
+		{"no regions", func(d *loadFixture) { d.Field.Regions = nil; d.Members = nil; d.EverMembers = nil }, "no regions", encounter.ErrNoField},
+		{"the room-chain dialect", func(d *loadFixture) {
 			d.Field.Regions = nil
 			d.Field.Rooms = json.RawMessage(`[{"id":"r1","width":5,"height":5}]`)
 		}, "rpg-project#256", encounter.ErrNoField},
-		{"no void", func(d *encounter.EncounterData) { d.Field.Canvas.Void = "" }, "void", encounter.ErrNoField},
-		{"no orientation", func(d *encounter.EncounterData) { d.Field.Canvas.Orientation = "" }, "orientation", encounter.ErrNoField},
-		{"a region with no cells", func(d *encounter.EncounterData) { d.Field.Regions[0].Cells = nil; d.Members = nil; d.EverMembers = nil }, "r1", encounter.ErrRegionEmpty},
-		{"a region with no lighting", func(d *encounter.EncounterData) { d.Field.Regions[0].Lighting = nil }, "r1", encounter.ErrRegionLightingMissing},
-		{"a region with no archetype", func(d *encounter.EncounterData) { d.Field.Regions[0].Archetype = "" }, "r1", encounter.ErrRegionArchetypeMissing},
-		{"a wall off the floor", func(d *encounter.EncounterData) {
+		{"no void", func(d *loadFixture) { d.Field.Canvas.Void = "" }, "void", encounter.ErrNoField},
+		{"no orientation", func(d *loadFixture) { d.Field.Canvas.Orientation = "" }, "orientation", encounter.ErrNoField},
+		{"a region with no cells", func(d *loadFixture) { d.Field.Regions[0].Cells = nil; d.Members = nil; d.EverMembers = nil }, "r1", encounter.ErrRegionEmpty},
+		{"a region with no lighting", func(d *loadFixture) { d.Field.Regions[0].Lighting = nil }, "r1", encounter.ErrRegionLightingMissing},
+		{"a region with no archetype", func(d *loadFixture) { d.Field.Regions[0].Archetype = "" }, "r1", encounter.ErrRegionArchetypeMissing},
+		{"a wall off the floor", func(d *loadFixture) {
 			d.Field.Walls = []encounter.BoundaryData{{From: encounter.PositionData{X: 4, Y: 0}, To: encounter.PositionData{X: 5, Y: 0}, BlocksMovement: true}}
 		}, "walls[0]", encounter.ErrEdgeOffFloor},
-		{"a wall between cells that do not touch", func(d *encounter.EncounterData) {
+		{"a wall between cells that do not touch", func(d *loadFixture) {
 			d.Field.Walls = []encounter.BoundaryData{{From: encounter.PositionData{X: 0, Y: 0}, To: encounter.PositionData{X: 2, Y: 0}, BlocksMovement: true}}
 		}, "walls[0]", encounter.ErrEdgeNotAdjacent},
-		{"no endings", func(d *encounter.EncounterData) { d.Endings = nil }, "bad endings", nil},
-		{"empty ending key", func(d *encounter.EncounterData) { d.Endings[0].Key = "" }, "bad endings", nil},
-		{"reserved ending key", func(d *encounter.EncounterData) { d.Endings[0].Key = "abandoned" }, "bad endings", nil},
-		{"unknown ending kind", func(d *encounter.EncounterData) { d.Endings[0].Kind = "psychic" }, "unknown ending kind", encounter.ErrNoEnding},
-		{"reached_position without position", func(d *encounter.EncounterData) {
+		{"no endings", func(d *loadFixture) { d.Endings = nil }, "bad endings", nil},
+		{"empty ending key", func(d *loadFixture) { d.Endings[0].Key = "" }, "bad endings", nil},
+		{"reserved ending key", func(d *loadFixture) { d.Endings[0].Key = "abandoned" }, "bad endings", nil},
+		{"unknown ending kind", func(d *loadFixture) { d.Endings[0].Kind = "psychic" }, "unknown ending kind", encounter.ErrNoEnding},
+		{"reached_position without position", func(d *loadFixture) {
 			d.Endings[0] = encounter.EndingData{Key: "done", Kind: "reached_position"}
 		}, "has no at", encounter.ErrNoEnding},
-		{"empty member id", func(d *encounter.EncounterData) { d.Members[0].ID = "" }, "empty member id", encounter.ErrNoMember},
-		{"duplicate member ids", func(d *encounter.EncounterData) {
+		{"empty member id", func(d *loadFixture) { d.Members[0].ID = "" }, "empty member id", encounter.ErrNoMember},
+		{"duplicate member ids", func(d *loadFixture) {
 			d.Members = append(d.Members, d.Members[0])
 		}, "duplicate member", encounter.ErrDuplicateMember},
-		{"member cell absent — the pre-#1106 room-local dialect", func(d *encounter.EncounterData) {
+		{"member cell absent — the pre-#1106 room-local dialect", func(d *loadFixture) {
 			d.Members[0].Cell = nil
 		}, "before rpg-toolkit#1106", encounter.ErrBadPlacement},
-		{"member cell owned by no region", func(d *encounter.EncounterData) {
+		{"member cell owned by no region", func(d *loadFixture) {
 			d.Members[0].Cell = &encounter.PositionData{X: 99, Y: 99}
 		}, "owned by no region", encounter.ErrBadPlacement},
-		{"outcome undeclared ending", func(d *encounter.EncounterData) {
+		{"outcome undeclared ending", func(d *loadFixture) {
 			d.Outcome = &encounter.OutcomeData{Ending: "never-declared"}
 		}, "outcome", encounter.ErrNoEnding},
-		{"abandoned outcome with members present", func(d *encounter.EncounterData) {
+		{"abandoned outcome with members present", func(d *loadFixture) {
 			d.Outcome = &encounter.OutcomeData{Ending: "abandoned"}
 		}, "abandoned outcome with members", encounter.ErrInvalidData},
 		// The "outcome member names a room the field does not have" case went
 		// with the field that carried it (rpg-toolkit#1108): the region is
 		// derived from the cell now, so the only way an outcome member can be
 		// somewhere impossible is by CELL, which is this case.
-		{"outcome member cell owned by no region", func(d *encounter.EncounterData) {
+		{"outcome member cell owned by no region", func(d *loadFixture) {
 			d.Outcome = &encounter.OutcomeData{Ending: "done", Members: []encounter.MemberOutcomeData{
 				{ID: "p1", Cell: &encounter.PositionData{X: 999, Y: 999}}}}
 		}, "owned by no region", encounter.ErrBadPlacement},
-		{"outcome member missing cell", func(d *encounter.EncounterData) {
+		{"outcome member missing cell", func(d *loadFixture) {
 			// Deletes the field from the wire path (nil), which is exactly what
 			// a pre-#1068 blob's room-local "position" key does on arrival —
 			// see dialect_test.go for that whole blob read end to end.
 			d.Outcome = &encounter.OutcomeData{Ending: "done", Members: []encounter.MemberOutcomeData{
 				{ID: "p1"}}}
 		}, "has no cell", encounter.ErrBadPlacement},
-		{"ever_members missing current member", func(d *encounter.EncounterData) {
+		{"ever_members missing current member", func(d *loadFixture) {
 			d.EverMembers = nil
 		}, "ever_members", encounter.ErrBadMember},
 	}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
-			data := validEncounterData()
+			data := validLoadFixture()
 			tc.mutate(&data)
-			_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-				Data: data,
+			_, err := loadOverSite(data.EncounterData, siteOf(data.Field, data.EncounterData), encounter.LoadEncounterInput{
 				Capabilities: encounter.Capabilities{
 					Sight:         everyoneSeesTheWholeMap{},
 					Equipment:     encounter.UnobservedEquipment{},

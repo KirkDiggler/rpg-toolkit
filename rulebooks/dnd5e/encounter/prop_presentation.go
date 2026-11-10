@@ -24,15 +24,16 @@ import (
 // an existing movement/drop fact rebases it through the authoritative cell.
 // Raw FieldInput callers own consistency of this legacy presentation seam.
 type PropPresentation struct {
-	ID            PropID
-	Ref           string
-	Origin        spatial.Point
-	Elevation     float64
-	FacingDegrees float64
-	HeightScale   float64
-	PointLight    *PropPointLight
-	DoorID        DoorID
-	Label         string
+	ID                PropID
+	Ref               string
+	Origin            spatial.Point
+	Elevation         float64
+	FacingDegrees     float64
+	HeightScale       float64
+	PointLight        *PropPointLight
+	DoorID            DoorID
+	Label             string
+	MaterialOverrides []MaterialOverride
 }
 
 // PropPointLight is explicitly authored visual emission relative to a prop.
@@ -49,15 +50,16 @@ type PropPointLight struct {
 // PropPresentationData persists one source definition or captured observation.
 // No editor document, parent association or mutable door state is embedded.
 type PropPresentationData struct {
-	ID            string              `json:"id"`
-	Ref           string              `json:"ref"`
-	Origin        spatial.Point       `json:"origin"`
-	Elevation     float64             `json:"elevation"`
-	FacingDegrees float64             `json:"facing_degrees"`
-	HeightScale   float64             `json:"height_scale"`
-	PointLight    *PropPointLightData `json:"point_light,omitempty"`
-	DoorID        string              `json:"door_id,omitempty"`
-	Label         string              `json:"label"`
+	ID                string                 `json:"id"`
+	Ref               string                 `json:"ref"`
+	Origin            spatial.Point          `json:"origin"`
+	Elevation         float64                `json:"elevation"`
+	FacingDegrees     float64                `json:"facing_degrees"`
+	HeightScale       float64                `json:"height_scale"`
+	PointLight        *PropPointLightData    `json:"point_light,omitempty"`
+	DoorID            string                 `json:"door_id,omitempty"`
+	Label             string                 `json:"label"`
+	MaterialOverrides []MaterialOverrideData `json:"material_overrides,omitempty"`
 }
 
 // PropPointLightData is the portable visual-light definition, never a rule fact.
@@ -73,6 +75,9 @@ type PropPointLightData struct {
 var propLightColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
 func validatePropPresentation(p PropPresentation) error {
+	if err := validateMaterialOverrides(p.MaterialOverrides); err != nil {
+		return fmt.Errorf("prop presentation %q: %w", p.ID, err)
+	}
 	if p.ID == "" || p.Ref == "" {
 		return fmt.Errorf("prop presentation needs a nonempty id and ref: %w", ErrNoField)
 	}
@@ -98,6 +103,7 @@ func validatePropPresentation(p PropPresentation) error {
 }
 
 func clonePropPresentation(p PropPresentation) PropPresentation {
+	p.MaterialOverrides = cloneMaterialOverrides(p.MaterialOverrides)
 	if p.PointLight != nil {
 		l := *p.PointLight
 		p.PointLight = &l
@@ -106,7 +112,7 @@ func clonePropPresentation(p PropPresentation) PropPresentation {
 }
 
 func propPresentationData(p PropPresentation) PropPresentationData {
-	d := PropPresentationData{ID: p.ID, Ref: p.Ref, Origin: p.Origin, Elevation: p.Elevation, FacingDegrees: p.FacingDegrees, HeightScale: p.HeightScale, DoorID: p.DoorID, Label: p.Label}
+	d := PropPresentationData{ID: p.ID, Ref: p.Ref, Origin: p.Origin, Elevation: p.Elevation, FacingDegrees: p.FacingDegrees, HeightScale: p.HeightScale, DoorID: p.DoorID, Label: p.Label, MaterialOverrides: materialOverridesData(p.MaterialOverrides)}
 	if l := p.PointLight; l != nil {
 		d.PointLight = &PropPointLightData{Enabled: l.Enabled, Offset: l.Offset, OffsetElevation: l.OffsetElevation, Color: l.Color, Intensity: l.Intensity, Range: l.Range}
 	}
@@ -114,7 +120,7 @@ func propPresentationData(p PropPresentation) PropPresentationData {
 }
 
 func propPresentationFromData(d PropPresentationData) PropPresentation {
-	p := PropPresentation{ID: d.ID, Ref: d.Ref, Origin: d.Origin, Elevation: d.Elevation, FacingDegrees: d.FacingDegrees, HeightScale: d.HeightScale, DoorID: d.DoorID, Label: d.Label}
+	p := PropPresentation{ID: d.ID, Ref: d.Ref, Origin: d.Origin, Elevation: d.Elevation, FacingDegrees: d.FacingDegrees, HeightScale: d.HeightScale, DoorID: d.DoorID, Label: d.Label, MaterialOverrides: materialOverridesFromData(d.MaterialOverrides)}
 	if l := d.PointLight; l != nil {
 		p.PointLight = &PropPointLight{Enabled: l.Enabled, Offset: l.Offset, OffsetElevation: l.OffsetElevation, Color: l.Color, Intensity: l.Intensity, Range: l.Range}
 	}
