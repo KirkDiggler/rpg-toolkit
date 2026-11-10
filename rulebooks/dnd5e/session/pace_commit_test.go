@@ -74,7 +74,7 @@ type PaceCommitSuite struct{ suite.Suite }
 func TestPaceCommitSuite(t *testing.T) { suite.Run(t, new(PaceCommitSuite)) }
 
 // launch starts the continuation hall (alice at its west end, twenty-five
-// feet a round, and a neutral goblin who holds) over shape, with a runner
+// feet a round, and a neutral goblin who walks west when a round wakes it) over shape, with a runner
 // when continued is true. The launch's own acts are dropped from the stream.
 func (s *PaceCommitSuite) launch(shape host, continued bool) *pacedRun {
 	run := &pacedRun{stream: &batchStream{}, plain: newFakeEncounters(), store: newPiecesStore()}
@@ -108,7 +108,12 @@ func (s *PaceCommitSuite) launch(shape host, continued bool) *pacedRun {
 
 	goblin := monsterAt("goblin", refs.Monsters.Goblin().String(), 11, 3)
 	goblin.Faction = string(continuationCamp)
-	goblin.Behaviors = ordinaryBehavior(encounter.Table{encounter.AnswerTime: {{Weight: 1, Hold: true}}})
+	// The goblin WALKS when a round wakes it, toward the hall's west end in
+	// alice's sight, so a creature's walk run sits beside hers at every pace
+	// boundary (act.go: a run never spans a commit).
+	goblin.Behaviors = ordinaryBehavior(encounter.Table{encounter.AnswerTime: {
+		{Weight: 1, Toward: &encounter.Selector{Path: []spatial.Position{hexCell(1, 3)}}},
+	}})
 	launchScene(s.T(), mgr, scene{
 		Field: encounter.FieldInput{
 			Canvas:   pointyCanvas(),
@@ -159,6 +164,17 @@ func perRecipient(acts []session.Act) map[string][]session.Act {
 	return out
 }
 
+// goblinWalks reports whether a batch carries the goblin's own walk for
+// alice: a creature's run, woken by the raise.
+func goblinWalks(batch []session.Act) bool {
+	for _, a := range batch {
+		if w, ok := a.Body.(session.WalkAct); ok && a.Recipient == "alice" && w.Mover.ID == "goblin" {
+			return true
+		}
+	}
+	return false
+}
+
 // hasTick reports whether a batch carries a world round's tick.
 func hasTick(batch []session.Act) bool {
 	for _, a := range batch {
@@ -192,6 +208,7 @@ func (s *PaceCommitSuite) TestAPaceCommitDeliversTheRaiseBeforeTheRest() {
 			s.Equal(2, report.Commits, "one pace commit and the final one")
 			s.Require().Len(run.stream.batches, 2, "each commit delivers its own batch")
 			s.True(hasTick(run.stream.batches[0]), "the first batch carries the raise")
+			s.True(goblinWalks(run.stream.batches[0]), "and the goblin's walk the raise woke")
 			s.False(hasTick(run.stream.batches[1]), "the second carries only the remaining steps")
 			s.Equal(session.MovementCompleted, report.Move.Status)
 
@@ -287,6 +304,25 @@ func (s *PaceCommitSuite) TestAOneRaiseWalkLandsTwoFencedSaves() {
 			s.Equal(calls[0].marks[key], mark, "an unsent piece keeps the first save's mark: %s", key)
 		}
 	}
+}
+
+// TestADueLastStepCommitsOnce: a walk whose due step is its last cell ends
+// with that step, so the rest makes one commit, the final one, and one
+// publish; a pace commit there would save and publish nothing new.
+func (s *PaceCommitSuite) TestADueLastStepCommitsOnce() {
+	run := s.launch(hostPieces, true)
+	path := eastFrom(6)
+	answer := s.move(run, path)
+	s.Require().True(answer.Continues)
+	s.Require().Len(answer.Steps, len(path)-1, "control: the due step is the walk's last")
+	callsBefore := len(run.store.calls)
+
+	report, err := s.continueRest(run)
+	s.Require().NoError(err)
+	s.Equal(1, report.Commits)
+	s.Len(run.stream.batches, 1)
+	s.True(hasTick(run.stream.batches[0]))
+	s.Len(run.store.calls[callsBefore:], 1, "one save")
 }
 
 // TestATwoRaiseWalkMakesThreeCommits: a walk whose rest pays two rounds

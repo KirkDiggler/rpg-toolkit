@@ -52,7 +52,12 @@ import (
 //     round's tick under the walk's act, audienced to every roster member.
 //     A tick is a clock entry, which folds into no walk, so it closes every
 //     recipient's walk run before the pace commit; the next commit's steps
-//     open a new segment of the same act.
+//     open a new segment of the same act. A creature the raise wakes walks
+//     AFTER the tick, so its run is still open at the pace commit. That is
+//     safe because creatures walk only inside raises: the walker's next
+//     beat, or failing that the next raise's own tick, closes it before it
+//     could continue in a later commit. A creature that walked outside a
+//     raise would break this.
 //
 // TestCatchUpEqualsLive and TestCatchUpEqualsLiveAcrossAPaceCommit are the
 // guards: a verb that continued an act across commits without a beat would
