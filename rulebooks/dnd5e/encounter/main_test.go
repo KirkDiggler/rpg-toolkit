@@ -20,14 +20,29 @@ import (
 // that reads it: the launch is a whole garrison's first look, most of a
 // minute under -race, and on its own goroutine it costs the run's wall clock
 // nothing the serial tests were not already spending. A run that selects no
-// such test (a single test, the benchmarks) never launches it.
+// such test (a single test, the benchmarks) never launches it. It compiles
+// the small keep's garrison the same way for [smallGarrisonReaders].
 func TestMain(m *testing.M) {
 	flag.Parse()
 	if run := flag.Lookup("test.run"); run != nil && selects(run.Value.String(), launchedKeepReaders...) {
 		go launchKeep10k()
 	}
+	if run := flag.Lookup("test.run"); run != nil && selects(run.Value.String(), smallGarrisonReaders...) {
+		go func() {
+			// A failure is the reader's to report: its compiledOnce
+			// gets the same error from the same once.
+			name, read := smallKeepDocument(true)
+			_, _ = compiledOnceErr(name, read)
+		}()
+	}
 	os.Exit(m.Run())
 }
+
+// smallGarrisonReaders are the tests that read [smallKeep]'s garrison under
+// -race. Its compile is about 3 s there; started beside the serial tests, a
+// package run's readers find it compiled, rather than the first of them
+// paying it against its own budget.
+var smallGarrisonReaders = []string{"TestPieces_SavesWhatChanged", "TestSnapshot_ByteIdenticalWithBehaviors"}
 
 // launchedKeepReaders are the tests that read [launchedKeep10k].
 var launchedKeepReaders = []string{"TestBlobSize_Keep10k"}

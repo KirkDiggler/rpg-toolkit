@@ -321,6 +321,23 @@ var (
 	// NextSeq: a store cannot hold beats the encounter never wrote.
 	ErrBadSince = errors.New("encounter: checkpoint since past the story")
 
+	// ErrMissingPiece reports a [JoinPieces] input without one of the
+	// pieces every rest has: the head, the roster, knowledge or the
+	// journal. The error names which. A store that lost a piece must
+	// refuse the checkpoint rather than load a world missing a shape.
+	ErrMissingPiece = errors.New("encounter: checkpoint piece missing")
+
+	// ErrBadPiece reports a [JoinPieces] piece that does not decode, a key
+	// that names no piece, a member piece holding another member, or an
+	// observer piece holding nothing. The error names the piece.
+	ErrBadPiece = errors.New("encounter: bad checkpoint piece")
+
+	// ErrRestCarriesRecord reports a rest handed to [SplitPieces], or a head
+	// handed to [JoinPieces], whose log carries entries or audiences. The
+	// record lives in the store's segments ([ToCheckpointOutput.Appended]);
+	// a piece carrying it would rewrite the record on every save.
+	ErrRestCarriesRecord = errors.New("encounter: checkpoint rest carries the record")
+
 	// ErrNoInitiative indicates Setup was given no InitiativeRoller. Trigger
 	// detection runs from first light, so every encounter needs one — refused
 	// at construction rather than at the moment a fight would have started.
