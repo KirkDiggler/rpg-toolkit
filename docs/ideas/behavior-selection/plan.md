@@ -40,9 +40,9 @@ Validation checks all row identities/verdicts/nonnegative inputs, including excl
 **Interfaces:** Evaluate/Evaluation/Inspect and value types above; no parent import.
 **Behavior:** validate identities, requirements and factors; capture their arrays; distinguish Unknown/Unmet; fold eligibility and checked multiplication/sum; return detached evidence. Constructed empty is valid; nil/zero is not.
 **Tests:** `TestSelectionSuite/TestRequirementsAndWeights` asserts literal shares6/4, total10, and separate unmet/unknown rows; `TestMalformedCandidates` covers blank/duplicate candidate, requirement and factor IDs, invalid verdict and negative values; `TestOverflowIsRefused` covers product and sum before any selection; `TestInspectionIsDetached` mutates input and an inspection and verifies original subsequent evidence; `TestEmptyAndUninitializedEvaluationsDiffer` distinguishes the constructor's empty pool from zero/nil.
-- [ ] Write named tests and observe expected compile RED for the new API.
-- [ ] Implement the value-only evaluator and inspect operation.
-- [ ] Run focused tests and full owning-module race gate; commit the meaningful checkpoint.
+- [x] Write named tests and observe expected compile RED for the new API.
+- [x] Implement the value-only evaluator and inspect operation.
+- [x] Run focused tests and full owning-module race gate; commit the meaningful checkpoint.
 **Verification:** from `mind/behavior`, `go test -race -count=1 ./selection` and `go test -race -count=1 ./...`; source boundary via `go list -f '{{join .Imports "\n"}}' ./selection`.
 **Evidence:** RED/GREEN logs, unchanged manifests, commit; no game/wire/persistence surface involved.
 
