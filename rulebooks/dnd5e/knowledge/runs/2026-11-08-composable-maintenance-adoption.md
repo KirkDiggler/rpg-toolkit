@@ -39,6 +39,7 @@ Slice [rpg-project#904](https://github.com/KirkDiggler/rpg-project/issues/904), 
 
 ## Found
 
+- Native declaration-to-creator probing exposed Bless/Bane still requesting the retired opaque source_id config through CounterpartKey. Both failed the current creator before correction; source identity now enters only through explicit origin/address bindings, with the creator test retaining both facts — [S14](https://github.com/KirkDiggler/rpg-project/issues/904).
 - Real keepers now save/reload an owner with one delivered and one pending recipient, preserve the earlier d4, resume by the same application and finalize the remaining entry. No-effect outcomes keep zero-delivery semantics; unfinalized actual delivery, changed intent, duplicate/ended finalization and late resurrection are refused — [R11](https://github.com/KirkDiggler/rpg-toolkit/pull/2323#issuecomment-6755782119).
 - Adopted missing-generation and repeated foreign-generation facts reproduced behavioral RED before correction. Dirty-notification and changed-intent mutants fail the resumed persistence tests; exact restoration passes the owning tests — [S14](https://github.com/KirkDiggler/rpg-project/issues/904).
 - Native adoption exposes an open lifecycle boundary: Bane can persist earlier delivery while a later target waits for an answer, but the root binding requires sealed membership. R11 returns only this decision; neither bypassing validation nor delaying delivered effects is authorized — [R11](https://github.com/KirkDiggler/rpg-toolkit/pull/2323#issuecomment-6752508135).

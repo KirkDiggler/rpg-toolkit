@@ -48,12 +48,12 @@ func (s *CastContentSuite) TestBlessDeclaresKnownTargetsAndOwnedConcentration() 
 	s.Require().Len(d.Cast.Effects, 1)
 	s.Equal(actions.CastRecipientTarget, d.Cast.Effects[0].Recipient)
 	s.Equal(*refs.Conditions.Blessed(), d.Cast.Effects[0].Ref)
-	s.Equal("source_id", d.Cast.Effects[0].CounterpartKey)
+	s.Empty(d.Cast.Effects[0].CounterpartKey, "linked delivery binds origin and address explicitly")
 	s.assertMaintenance(d.Cast, 10, true)
 	clone := d.Clone()
 	clone.Cast.Effects[0].CounterpartKey = "wrong"
 	clone.Cast.Maintenance[1].Params[0] = '!'
-	s.Equal("source_id", d.Cast.Effects[0].CounterpartKey)
+	s.Empty(d.Cast.Effects[0].CounterpartKey)
 	s.assertMaintenance(d.Cast, 10, true)
 	for _, bounds := range [][2]int{{0, 3}, {2, 1}} {
 		invalid := d.Clone()

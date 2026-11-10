@@ -30,9 +30,6 @@ const BaneRangeFeet = 30
 // BaneTurnEnds is the ten subsequent caster turn ends in Bane's one-minute duration.
 const BaneTurnEnds = 10
 
-// BaneCasterParameter names the caster provenance required by Baned.
-const BaneCasterParameter = "source_id"
-
 // TrueStrikeRangeFeet is how far a caster may point True Strike (PHB p.283).
 const TrueStrikeRangeFeet = 30
 
@@ -373,7 +370,7 @@ var castContent = map[Spell]castProfileBuilder{
 			return actions.CastProfile{
 				RangeFeet: 30, Target: actions.CastTargetKnownCreature, MinTargets: 1, MaxTargets: 3,
 				Effects: []actions.CastEffect{{
-					Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.Blessed(), CounterpartKey: "source_id",
+					Recipient: actions.CastRecipientTarget, Ref: *refs.Conditions.Blessed(),
 				}},
 				Maintenance: spellMaintenance(spellMaintenanceInput{turnEnds: 10, skipFirst: true}),
 			}
@@ -506,9 +503,8 @@ var castContent = map[Spell]castProfileBuilder{
 					Recurrence: saves.RecurrenceNone,
 				},
 				Effects: []actions.CastEffect{{
-					Recipient:      actions.CastRecipientTarget,
-					Ref:            *refs.Conditions.Baned(),
-					CounterpartKey: BaneCasterParameter,
+					Recipient: actions.CastRecipientTarget,
+					Ref:       *refs.Conditions.Baned(),
 				}},
 				Maintenance: spellMaintenance(spellMaintenanceInput{turnEnds: BaneTurnEnds, skipFirst: true}),
 			}
