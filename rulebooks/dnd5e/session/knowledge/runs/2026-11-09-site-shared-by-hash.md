@@ -12,7 +12,19 @@ Leg 2b of S5, [#914](https://github.com/KirkDiggler/rpg-project/issues/914), sto
 
 - `PutSite` runs once per Launch, not once per hash per process: the Manager stays stateless, and the piece is content-addressed so a repeat is a no-op write. A host that wants fewer writes checks the key in `PutSite`.
 - `encounter.SiteProvider` is admitted as a contract type, `SiteData` and `SiteHash` as persistence shapes (boundary_test.go): rpg-api injects the same provider the composition reads, so a session twin would be an adapter around a value nobody reshapes.
-- A warm load asks the provider by hash and hands no piece; a provider that evicts between that ask and the load fails that one verb closed. Not guarded: the default holds 16 sites.
+- Every load goes through one helper, `loadOnSite`, which asks the provider by hash, hands the stored piece on a miss, and maps a miss on every tier to `ErrUnknownSite` beside `ErrInvalidWorld`. The dungeon-map preview (`AtlasOf`) loads through it too.
+- A site evicted between the helper's ask and the load's own ask falls through to the stored piece exactly as a first miss does, so the answer never depends on when an eviction landed (review of rpg-toolkit#2349).
+
+## Found
+
+- Only five session test files read `EncounterData.Field`, not the ~25 counted before the work: the rest build worlds through Launch and never touch the field.
+- The checkpoint loses 37% of its bytes on the garrison keep (1.33 MB to 0.84 MB), and the piece (0.51 MB) is written once per Launch rather than on every save.
+- A cold process pays about 22 ms over a warm load to compile the site from its piece (62.7 against 40.9 ms) and is warm from its second load on.
+
+## Mistaken
+
+- The first head, 64e7e27e, asked the provider twice per load and let an eviction between the two asks reach the host as `ErrInvalidWorld` with the reason as text, not as `ErrUnknownSite`. Fixed by the fall-through above; `TestASiteEvictedBetweenTheTwoAsksFallsThroughToTheStoredPiece` pins it.
+- The same head pinned neither the Launch write order nor the preview load: moving `PutSite` after the checkpoint save, or dropping the provider from `AtlasOf`, passed every test. `TestLaunchStoresThePieceBeforeTheCheckpointThatNamesIt` and `TestTheMapPreviewLoadsThroughTheInjectedProvider` now fail on each.
 
 ## Evidence
 
@@ -34,4 +46,4 @@ golangci-lint run ./rulebooks/dnd5e/session/...
 ```
 
 - Race suite passes; lint 0 issues.
-- Mutants killed by `TestSiteSuite`: the stored piece not handed to the load; the provider not handed to the load.
+- Mutants killed by `TestSiteSuite`: the stored piece not handed to the load; the provider not handed to the load; `PutSite` moved after the checkpoint save; the preview's site compiled outside the provider; the eviction fall-through removed.

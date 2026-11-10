@@ -85,42 +85,70 @@ type PutSiteInput struct {
 // PutSiteOutput is empty: a stored piece has nothing to report.
 type PutSiteOutput struct{}
 
-// siteSource is what a load hands [encounter.LoadEncounterInput.Site]: the
-// stored piece, or nil when the provider already holds the site.
-type siteSource struct {
-	piece *encounter.SiteData
+// loadOnSite is the one way this package stands a stored world up:
+// [encounter.LoadEncounter] over in, with Config.Sites as its provider and the
+// site piece resolved by hash (sites.go). Its errors are already this
+// package's: [ErrUnknownSite] beside [ErrInvalidWorld] when no tier holds the
+// site, and otherwise [ErrInvalidWorld] with the composition's reason kept as
+// TEXT, never as a chain. A blob this seam cannot reconstitute fails several
+// modules deep, every one of which we intend to keep replaceable; %v hands
+// whoever debugs it the whole account and hands a host nothing to match on but
+// ours (S2).
+//
+// THE SITE, BY HASH: when the provider holds it the load hands no piece and
+// compiles nothing; when it does not, the host's stored piece is handed over
+// and compiled once; when neither has it the load fails closed by name. The
+// provider is asked twice on a warm load (here, then inside the load), and a
+// bounded provider can evict between the two. That second miss falls through
+// to the stored piece exactly as a first miss does, so the answer never
+// depends on when an eviction landed.
+func (m *Manager) loadOnSite(ctx context.Context, in *encounter.LoadEncounterInput) (*encounter.Encounter, error) {
+	hash := in.Data.SiteHash
+	in.Sites = m.sites
+	if hash != "" {
+		if _, err := m.sites.Site(ctx, &encounter.SiteInput{Hash: hash}); err != nil {
+			if !errors.Is(err, encounter.ErrUnknownSite) {
+				return nil, fmt.Errorf("site %s: %w: %v", hash, ErrInvalidWorld, err)
+			}
+			if in.Site, err = m.storedPiece(ctx, hash); err != nil {
+				return nil, err
+			}
+		}
+	}
+	enc, err := loadEncounter(in)
+	if err != nil && hash != "" && in.Site == nil && errors.Is(err, encounter.ErrUnknownSite) {
+		// Evicted between the two asks: the same fall-through as a first miss.
+		if in.Site, err = m.storedPiece(ctx, hash); err != nil {
+			return nil, err
+		}
+		enc, err = loadEncounter(in)
+	}
+	if err != nil {
+		if hash != "" && errors.Is(err, encounter.ErrUnknownSite) {
+			return nil, fmt.Errorf("site %s: %w: %w", hash, ErrInvalidWorld, ErrUnknownSite)
+		}
+		return nil, fmt.Errorf("%w: %v", ErrInvalidWorld, err)
+	}
+	return enc, nil
 }
 
-// sitePiece is the site source for a world naming hash: no piece when the
-// provider already holds it (a warm load compiles nothing), the repository's
-// stored piece when the provider does not, and ErrUnknownSite when neither has
-// it. An empty hash is the encounter's to refuse by name, so it passes through
-// with no piece.
-func (m *Manager) sitePiece(ctx context.Context, hash encounter.SiteHash) (siteSource, error) {
-	if hash == "" {
-		return siteSource{}, nil
-	}
-	_, err := m.sites.Site(ctx, &encounter.SiteInput{Hash: hash})
-	if err == nil {
-		return siteSource{}, nil
-	}
-	if !errors.Is(err, encounter.ErrUnknownSite) {
-		return siteSource{}, fmt.Errorf("site %s: %w: %v", hash, ErrInvalidWorld, err)
-	}
+// storedPiece is the host's stored piece for hash, or [ErrUnknownSite] beside
+// [ErrInvalidWorld] when the host keeps no pieces or holds none under it.
+func (m *Manager) storedPiece(ctx context.Context, hash encounter.SiteHash) (*encounter.SiteData, error) {
 	if m.siteStore == nil {
-		return siteSource{}, fmt.Errorf("site %s, and no site repository to ask: %w: %w", hash, ErrInvalidWorld, ErrUnknownSite)
+		return nil, fmt.Errorf("site %s, and no site repository to ask: %w: %w", hash, ErrInvalidWorld, ErrUnknownSite)
 	}
 	out, err := m.siteStore.GetSite(ctx, &GetSiteInput{Hash: hash})
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
-			return siteSource{}, fmt.Errorf("site %s: %w: %w", hash, ErrInvalidWorld, ErrUnknownSite)
+			return nil, fmt.Errorf("site %s: %w: %w", hash, ErrInvalidWorld, ErrUnknownSite)
 		}
-		return siteSource{}, fmt.Errorf("reading site %s: %w", hash, err)
+		return nil, fmt.Errorf("reading site %s: %w", hash, err)
 	}
 	if out == nil || out.Data == nil {
-		return siteSource{}, fmt.Errorf("site %s: GetSite reported success with no data: %w", hash, ErrBadRepository)
+		return nil, fmt.Errorf("site %s: GetSite reported success with no data: %w", hash, ErrBadRepository)
 	}
-	return siteSource{piece: out.Data}, nil
+	return out.Data, nil
 }
 
 // storeSite writes a freshly launched world's site piece to the host's

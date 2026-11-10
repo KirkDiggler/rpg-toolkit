@@ -295,7 +295,7 @@ func (m *Manager) Atlas(ctx context.Context, in *AtlasInput) (*Atlas, error) {
 //
 // Returns ErrNilInput for a nil input, ErrInvalidWorld for a nil dungeon or one
 // whose world will not build or load (two bosses, an unknown scenario).
-func (m *Manager) AtlasOf(_ context.Context, in *AtlasOfInput) (*Atlas, error) {
+func (m *Manager) AtlasOf(ctx context.Context, in *AtlasOfInput) (*Atlas, error) {
 	if in == nil {
 		return nil, fmt.Errorf("atlasof: %w", ErrNilInput)
 	}
@@ -306,13 +306,12 @@ func (m *Manager) AtlasOf(_ context.Context, in *AtlasOfInput) (*Atlas, error) {
 	if err != nil {
 		return nil, fmt.Errorf("atlasof: %w", err)
 	}
-	enc, err := loadEncounter(&encounter.LoadEncounterInput{
+	enc, err := m.loadOnSite(ctx, &encounter.LoadEncounterInput{
 		Data:         *world,
 		Capabilities: encounter.RefusingCapabilities(),
-		Sites:        m.sites,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("atlasof: %w: %v", ErrInvalidWorld, err)
+		return nil, fmt.Errorf("atlasof: %w", err)
 	}
 	atlas, err := enc.Atlas()
 	if err != nil {
@@ -677,26 +676,13 @@ func (m *Manager) loadGivenWorld(
 	} else {
 		capabilities = m.readCapabilities(standing, driver)
 	}
-	// THE SITE, BY HASH (sites.go): the provider's when it holds it, else
-	// the piece the host stored, else the verb fails closed by name.
-	source, err := m.sitePiece(ctx, world.SiteHash)
-	if err != nil {
-		return nil, 0, standingSeam{}, fmt.Errorf("%q: %w", encID, err)
-	}
-	enc, err := loadEncounter(&encounter.LoadEncounterInput{
+	// THE SITE, BY HASH, and the error already ours ([Manager.loadOnSite]).
+	enc, err := m.loadOnSite(ctx, &encounter.LoadEncounterInput{
 		Data:         *world,
 		Capabilities: capabilities,
-		Sites:        m.sites,
-		Site:         source.piece,
 	})
 	if err != nil {
-		// The reason is kept as TEXT, not as a chain. A blob this seam cannot
-		// reconstitute fails several modules deep — the composition's own
-		// validation, or a leaf's (clock, intel, record) underneath it — and
-		// every one of those is a module we intend to keep replaceable. %v
-		// hands whoever debugs it the whole account and hands a host nothing to
-		// match on but ours (S2).
-		return nil, 0, standingSeam{}, fmt.Errorf("%q: %w: %v", encID, ErrInvalidWorld, err)
+		return nil, 0, standingSeam{}, fmt.Errorf("%q: %w", encID, err)
 	}
 	standing.live.enc = enc
 	return enc, world.Log.NextSeq, standing, nil
