@@ -1,6 +1,6 @@
 # Run — 2026-11-10 — the session saves the rest as pieces
 
-Base: `rpg-toolkit` `main` at 79312d70. Story: [rpg-project#879](https://github.com/KirkDiggler/rpg-project/issues/879), card [rpg-project#897](https://github.com/KirkDiggler/rpg-project/issues/897) leg (b), PR 3 of 4. Upstream: encounter [#2362](https://github.com/KirkDiggler/rpg-toolkit/pull/2362) (`SplitPieces`/`JoinPieces` with marks), developed against its pushed commit 8d4793d8 by pseudo-version; re-pinned at its tag before merge.
+Base: `rpg-toolkit` `main` at 79312d70. Story: [rpg-project#879](https://github.com/KirkDiggler/rpg-project/issues/879), card [rpg-project#897](https://github.com/KirkDiggler/rpg-project/issues/897) leg (b), PR 3 of 4. Upstream: encounter [#2362](https://github.com/KirkDiggler/rpg-toolkit/pull/2362) (`SplitPieces`/`JoinPieces` with marks), developed against its pushed commit 8d4793d8 by pseudo-version, then pinned at its tag v0.192.0 (main 3b4e523b).
 
 ## Shipped
 
