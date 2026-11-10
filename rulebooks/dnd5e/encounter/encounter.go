@@ -115,6 +115,11 @@ type Encounter struct {
 	// an Encounter built by hand in a test.
 	site *Site
 
+	// interactions are the run's authored interaction instances by id
+	// (interaction.go, rpg-project#922): the entrance that remembers. Nil for
+	// a run whose content declares none, which writes no key.
+	interactions map[InteractionID]*interactionRecord
+
 	// doors are every door in the field, sorted by ID (C8). A door's edges are
 	// construction truth; its STATE is the one thing here a verb changes
 	// mid-scene, and it is held once for however many edges the door has
@@ -738,7 +743,7 @@ func validateEndingTriggers(f *field, endings []EndingInput) error {
 			if err := f.validatePredicate(fmt.Sprintf("ending %q", ei.Key), ei.Trigger, ErrNoEnding); err != nil {
 				return err
 			}
-		case TriggerRound, TriggerFact, TriggerStance, TriggerHolds:
+		case TriggerRound, TriggerFact, TriggerStance, TriggerHolds, TriggerInteraction:
 			if err := f.validatePredicate(fmt.Sprintf("ending %q", ei.Key), ei.Trigger, ErrNoEnding); err != nil {
 				return err
 			}
@@ -876,12 +881,26 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 	}
 	f := site.instanceField()
 
+	// THE RUN'S INTERACTIONS (interaction.go, rpg-project#922): authored on
+	// the field input, owned by the run, never site data.
+	interactions, err := compileInteractions(in.Field.Interactions)
+	if err != nil {
+		return nil, fmt.Errorf("newencounter: %w: %w", err, ErrNoField)
+	}
+
 	// A line requiring a holding must name a prop this field lets somebody
-	// pick up (option.go) — asked against the compiled field, so after it.
+	// pick up (option.go) — asked against the compiled field, so after it —
+	// and a line naming an interaction must name one this run has.
 	for _, m := range in.Members {
 		if err := f.validateOptionHolds(m.Options); err != nil {
 			return nil, fmt.Errorf("newencounter: member %s: %w: %w", m.ID, err, ErrBadMember)
 		}
+		if err := validateOptionInteractions(interactions, m.Options); err != nil {
+			return nil, fmt.Errorf("newencounter: member %s: %w: %w", m.ID, err, ErrBadMember)
+		}
+	}
+	if err := validatePropInteractions(interactions, f); err != nil {
+		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 
 	// The two concealment capabilities, required exactly when the field
@@ -995,6 +1014,7 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 		announcer:           in.Announcer,
 		endings:             nil,
 		retention:           normalizeRetention(in.Retention),
+		interactions:        interactions,
 	}
 	e.doors, e.doorsByID = doorRecordsFrom(in.Field.Doors)
 
@@ -2698,6 +2718,9 @@ func (e *Encounter) validateJoin(in *JoinInput) error {
 		return fmt.Errorf("join: %w", err)
 	}
 	if err := e.field.validateOptionHolds(in.Options); err != nil {
+		return fmt.Errorf("join: member %s: %w: %w", in.Member, err, ErrBadMember)
+	}
+	if err := validateOptionInteractions(e.interactions, in.Options); err != nil {
 		return fmt.Errorf("join: member %s: %w: %w", in.Member, err, ErrBadMember)
 	}
 

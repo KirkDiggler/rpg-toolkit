@@ -53,13 +53,13 @@ func goblinOptions() []encounter.Option {
 		},
 		{
 			ID: "ashford", Say: "What did he do to Ashford?",
-			Requires: encounter.TriggerFact{Fact: feastTonight},
+			Requires: []encounter.Trigger{encounter.TriggerFact{Fact: feastTonight}},
 			Check:    []encounter.CheckApproach{{Ability: "persuasion", DC: 12}},
 			Success:  []encounter.Answer{{Weight: 1, Say: "Burned it.", Fact: campFact}},
 		},
 		{
 			ID: "bribe", Say: "Ten gold says you never saw us.",
-			Requires: encounter.TriggerHolds{Prop: thePurse},
+			Requires: []encounter.Trigger{encounter.TriggerHolds{Prop: thePurse}},
 			Check:    []encounter.CheckApproach{{Ability: "persuasion", DC: 8}},
 			Success:  []encounter.Answer{{Weight: 1, Say: "Saw who?"}},
 		},
@@ -624,10 +624,10 @@ func (s *OptionTestSuite) TestAnOptionThatCouldNeverRunIsRefusedAtConstruction()
 			o.Success = []encounter.Answer{{Weight: 1, Hold: true}}
 		}},
 		{"a requirement that is not fact or holds", func(o *encounter.Option) {
-			o.Requires = encounter.TriggerRound{Round: 2}
+			o.Requires = []encounter.Trigger{encounter.TriggerRound{Round: 2}}
 		}},
 		{"holding a prop this field does not declare", func(o *encounter.Option) {
-			o.Requires = encounter.TriggerHolds{Prop: "lantern"}
+			o.Requires = []encounter.Trigger{encounter.TriggerHolds{Prop: "lantern"}}
 		}},
 	}
 	for _, test := range tests {
@@ -935,4 +935,38 @@ func (s *OptionTestSuite) TestReserveAndPlacedOptionsSurviveAReload() {
 	offered, err := reloaded.OptionsFor(alice, "guard")
 	s.Require().NoError(err, "the guard is on the roster now")
 	s.Contains(ids(offered), "gossip", "and it arrived speaking the lines it was saved with")
+}
+
+// TestLegacyRequiresObjectIsRefused: `requires` is persisted as a LIST
+// (rpg-project#922 Task 1). A blob that still carries the old single-object
+// form is refused when it is read, with [encounter.ErrInvalidData], never
+// read as a list of one or as no requirement at all — pre-release, a run
+// saved before the list starts again rather than being migrated.
+func (s *OptionTestSuite) TestLegacyRequiresObjectIsRefused() {
+	enc := s.sceneWith(goblinOptions())
+	raw, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+
+	var blob map[string]any
+	s.Require().NoError(json.Unmarshal(raw, &blob))
+	rewritten := 0
+	for _, m := range blob["members"].([]any) {
+		options, _ := m.(map[string]any)["options"].([]any)
+		for _, o := range options {
+			line := o.(map[string]any)
+			if list, ok := line["requires"].([]any); ok {
+				s.Require().Len(list, 1, "a fixture line with one requirement")
+				line["requires"] = list[0]
+				rewritten++
+			}
+		}
+	}
+	s.Require().Positive(rewritten, "the fixture carries a requirement to rewrite")
+	legacy, err := json.Marshal(blob)
+	s.Require().NoError(err)
+
+	var data encounter.EncounterData
+	err = json.Unmarshal(legacy, &data)
+	s.Require().ErrorIs(err, encounter.ErrInvalidData, "the old single-object form is refused by name")
+	s.ErrorContains(err, "requires")
 }

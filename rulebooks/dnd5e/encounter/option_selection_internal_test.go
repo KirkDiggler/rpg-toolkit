@@ -13,22 +13,24 @@ import (
 
 // OptionEvaluationSuite pins the one pool the offer and the door share
 // (rpg-project#921): one row per option in authored order, weight zero (a
-// line is chosen, never drawn), and one named `requires` verdict whose
-// reason names only the requirement's kind.
+// line is chosen, never drawn), and one named verdict per `requires` item
+// (rpg-project#922), each reason naming only the requirement's kind.
 type OptionEvaluationSuite struct {
 	suite.Suite
 }
 
 func TestOptionEvaluationSuite(t *testing.T) { suite.Run(t, new(OptionEvaluationSuite)) }
 
-// TestOnePoolOneRowPerOption judges the arms that need no board: nil holds,
-// a `not` over nil never holds, and a `not` over that holds again.
+// TestOnePoolOneRowPerOption judges the arms that need no board: no
+// requirement holds, a `not` over nil never holds, a `not` over that holds
+// again, and a pair holds only when both do.
 func (s *OptionEvaluationSuite) TestOnePoolOneRowPerOption() {
 	e := &Encounter{}
 	options := []Option{
 		{ID: "plain"},
-		{ID: "never", Requires: TriggerNot{}},
-		{ID: "twice", Requires: TriggerNot{Inner: TriggerNot{}}},
+		{ID: "never", Requires: []Trigger{TriggerNot{}}},
+		{ID: "twice", Requires: []Trigger{TriggerNot{Inner: TriggerNot{}}}},
+		{ID: "pair", Requires: []Trigger{TriggerNot{Inner: TriggerNot{}}, TriggerNot{}}},
 	}
 
 	evaluation, err := e.evaluateOptions("alice", options)
@@ -38,19 +40,22 @@ func (s *OptionEvaluationSuite) TestOnePoolOneRowPerOption() {
 
 	s.Require().Len(inspection.Rows, len(options))
 	want := []struct {
-		eligible bool
-		verdict  selection.Verdict
-		reason   string
+		eligible     bool
+		requirements []selection.Requirement
 	}{
-		{true, selection.Met, "none"},
-		{false, selection.Unmet, "not"},
-		{true, selection.Met, "not"},
+		{true, nil},
+		{false, []selection.Requirement{{ID: "requires:0:not", Verdict: selection.Unmet, Reason: "not"}}},
+		{true, []selection.Requirement{{ID: "requires:0:not", Verdict: selection.Met, Reason: "not"}}},
+		{false, []selection.Requirement{
+			{ID: "requires:0:not", Verdict: selection.Met, Reason: "not"},
+			{ID: "requires:1:not", Verdict: selection.Unmet, Reason: "not"},
+		}},
 	}
 	for i, row := range inspection.Rows {
 		s.Equal(options[i].ID, row.ID, "authored order")
 		s.Zero(row.BaseWeight, "%s: chosen, never drawn", row.ID)
 		s.Equal(want[i].eligible, row.Eligible, row.ID)
-		s.Equal([]selection.Requirement{{ID: "requires", Verdict: want[i].verdict, Reason: want[i].reason}}, row.Requirements, row.ID)
+		s.Equal(want[i].requirements, row.Requirements, "%s: one named verdict per requirement", row.ID)
 	}
 }
 
