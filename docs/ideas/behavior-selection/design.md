@@ -80,7 +80,9 @@ retains fact vocabulary, affordability, temperament interpretation, hierarchical
 traversal, and time-hold versus event-silence meanings. Groups are not flattened:
 only a selected group consumes its child die, and existing candidate/row/path
 outputs remain unchanged for valid inputs. There is no second weighted landing
-algorithm left in behavior.
+algorithm left in behavior. Spawn-time `Deal` also uses the primitive over
+its sorted word/share list, preserving valid selected profiles and raw die
+sizes; malformed or empty mixes are refused before inventing a word.
 
 ### R7 — Scope
 

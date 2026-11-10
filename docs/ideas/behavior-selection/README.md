@@ -29,6 +29,7 @@ flowchart TD
 | `selection.Draw` | One weighted choice from an evaluated pool | `DrawInput` and supplied `Die` → `DrawOutput` with choice, face and total |
 | `selection.Choose` | Explicit selection from that same pool | `ChooseInput` and ID → `Choice` with input index and row |
 | `behavior.Pick` | Fact/affordability vocabulary, nested traversal and hold/silence meaning | `PickInput` → existing `PickOutput`, using selection per level |
+| `behavior.Deal` | Sorted profile names and their authored raw shares | `DealInput` → existing `DealOutput`, using the same selection primitive |
 | Execution caller | Current authority, commitment and consequences | Selected identity → actual action or refusal |
 
 Selection cannot discover a hidden actor, interpret a trait, refresh a fact,
