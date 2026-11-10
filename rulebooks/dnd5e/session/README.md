@@ -39,6 +39,7 @@ declaration, and `gorelease` gates every release.
 | `session.go` | `Config`, `Manager`, total construction |
 | `repositories.go` | What the host implements for storage, and the constraints on it |
 | `checkpoint.go` | The optional storage capabilities: the fenced save, the appended record (`AppendingEncounterRepository`: the rest plus the segment the store lacks), and the rest as pieces (`PiecesEncounterRepository`: only the pieces whose mark moved, the marks held beside the record baseline) |
+| `residency.go` | The resident copy: a write verb's encounter kept between verbs, checked against the store's checkpoint version (`CheckpointVersionReader`), rebound per verb, bounded in process (`Config.Residency`, `NewResidency`) |
 | `data.go` | What this package persists |
 | `types.go` | What this package returns |
 | `convert.go` | The converter layer: inner shapes → ours |
@@ -72,6 +73,18 @@ Each commit settles, saves and delivers from where the last landed one stopped,
 so nothing is paid or told twice. Only the last commit closes the walk's act.
 A save refused stale mid-walk fails closed: the commits already landed stand
 and were delivered, nothing is retried, and the steps after them never happen.
+
+## The resident copy
+
+A fenced host that can read its checkpoint version (`CheckpointVersionReader`)
+gets its write verbs' encounters kept in memory between verbs (rpg-project#879
+S6, R6). The copy is a cache; the store is the authority. A verb takes the
+copy, reads the store's version once, and runs on the copy only when the
+version is the one the copy's own save left; otherwise it loads, as every
+verb did before. Only a verb whose final save landed puts a copy back, when
+its guard is released. Every other exit leaves nothing resident, and the next
+verb pays one load. `Config.Residency` bounds how many copies, and how many
+estimated bytes, a process keeps; nil is the in-process default.
 
 ## Reading it
 

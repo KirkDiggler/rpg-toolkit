@@ -186,3 +186,10 @@ var (
 	EditSiteForTest  = editSite
 	SiteFieldForTest = siteField
 )
+
+// OpenActForTest opens an act on a kept copy, so a test can hand the session
+// a copy its Rebind refuses (ErrVerbInFlight).
+func (r *Resident) OpenActForTest(verb string) error {
+	_, err := r.enc.OpenAct(&encounter.OpenActInput{Verb: verb})
+	return err
+}

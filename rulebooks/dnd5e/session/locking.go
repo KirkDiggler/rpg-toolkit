@@ -46,6 +46,12 @@ var ErrBadSessionLock = errors.New("session locker returned no release")
 // a character's guard while waiting for a session's, so a host implementing
 // both with ordinary mutexes cannot deadlock through the SDK.
 //
+// THE RESIDENT COPY RIDES THE SAME GUARD (residency.go): a write verb takes
+// its session's kept encounter when it opens and only the guard's release
+// keeps one back, so a copy is never used by two verbs at once. A host whose
+// lease can expire is still safe: the copy is checked against the store's
+// checkpoint version before use, and the fence refuses a late writer's save.
+//
 // The locker guards the INSTANCE tier, one game's world, and nothing else:
 // the SITE tier (Config.Sites, sites.go) is shared across games and read-only,
 // so it takes no session's guard.
@@ -93,6 +99,17 @@ func (m *Manager) acquireSession(ctx context.Context, id string) (func(), error)
 		}
 	}
 	return func() {
+		// THE RESIDENT COPY IS KEPT HERE, OR NOWHERE (residency.go): the copy
+		// the verb's final commit staged once its save landed and its
+		// batches went out. Every other exit staged nothing, and the copy
+		// the verb took on open is dropped with it: a stale save, a refused
+		// verb, a commit error, a canceled context, a continuation that
+		// failed after a pace commit, a panic in a host collaborator before
+		// the stage, a run that closed. Kept before the guard is given back,
+		// so the next verb on the session finds it.
+		if id != "" {
+			m.keepStaged(id)
+		}
 		// What a fenced verb wrote and did not save dies with its guard
 		// (pendingWrites), before another verb can take the guard.
 		if m.pending != nil && id != "" {
