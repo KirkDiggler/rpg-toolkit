@@ -6,10 +6,12 @@ package encounter
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/selection"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -193,7 +195,12 @@ func (e *Encounter) OptionsFor(actor, target MemberID) ([]Option, error) {
 		return []Option{}, nil
 	}
 
-	return e.offered(actor, record.Options), nil
+	offered, err := e.offered(actor, record.Options)
+	if err != nil {
+		return nil, fmt.Errorf("options for: %w", err)
+	}
+
+	return offered, nil
 }
 
 // PropOptionsFor is the options a prop offers one speaker: every option on
@@ -217,20 +224,90 @@ func (e *Encounter) PropOptionsFor(actor MemberID, prop PropID) ([]Option, error
 		return nil, fmt.Errorf("prop options for: %w", err)
 	}
 
-	return e.offered(actor, options), nil
+	offered, err := e.offered(actor, options)
+	if err != nil {
+		return nil, fmt.Errorf("prop options for: %w", err)
+	}
+
+	return offered, nil
 }
 
-// offered filters a target's options to the ones whose requirement holds for
-// the speaker, deep-copied so a caller's edit cannot reach the field.
-func (e *Encounter) offered(actor MemberID, options []Option) []Option {
-	out := make([]Option, 0, len(options))
+// optionRequirement names the one requirement every option row carries in
+// the pool [Encounter.evaluateOptions] builds: the option's `requires`.
+const optionRequirement = "requires"
+
+// evaluateOptions judges every option for one speaker as ONE POOL
+// (rpg-project#921), the judgment the offer ([Encounter.offered]) and the
+// door ([Encounter.optionOffered]) both read, so the two cannot disagree.
+// One candidate per option, in authored order: its id is the option's id,
+// its weight is zero — a line is chosen, never drawn (#917 R5) — and it
+// carries one named requirement, `requires`, Met or Unmet as
+// [Encounter.requirementHolds] answers for THIS speaker (R9), with a reason
+// naming only the requirement's kind. Never Unknown in this slice.
+//
+// Errors: a blank or duplicate option id is a construction defect the field
+// validator already refuses; one that reaches here is returned wrapping
+// [selection.ErrInvalidCandidate], never swallowed.
+func (e *Encounter) evaluateOptions(actor MemberID, options []Option) (*selection.Evaluation, error) {
+	candidates := make([]selection.Candidate, 0, len(options))
 	for _, o := range options {
+		verdict := selection.Unmet
 		if e.requirementHolds(actor, o.Requires) {
-			out = append(out, cloneOption(o))
+			verdict = selection.Met
+		}
+		candidates = append(candidates, selection.Candidate{
+			ID: o.ID,
+			Requirements: []selection.Requirement{{
+				ID: optionRequirement, Verdict: verdict, Reason: requirementKind(o.Requires),
+			}},
+		})
+	}
+	evaluation, err := selection.Evaluate(&selection.EvaluateInput{Candidates: candidates})
+	if err != nil {
+		return nil, fmt.Errorf("evaluate options: %w", err)
+	}
+
+	return evaluation, nil
+}
+
+// requirementKind names the kind of an option's `requires` and nothing of
+// its content, so a row's reason cannot leak the fact or prop it waits on.
+func requirementKind(requires Trigger) string {
+	switch requires.(type) {
+	case nil:
+		return "none"
+	case TriggerNot:
+		return "not"
+	case TriggerFact:
+		return "fact"
+	case TriggerHolds:
+		return "holds"
+	default:
+		return "unsupported"
+	}
+}
+
+// offered is the eligible rows of [Encounter.evaluateOptions]' pool — the
+// options whose requirement holds for the speaker — in authored order,
+// deep-copied so a caller's edit cannot reach the field. A gated line is
+// absent, never greyed (the probe law).
+func (e *Encounter) offered(actor MemberID, options []Option) ([]Option, error) {
+	evaluation, err := e.evaluateOptions(actor, options)
+	if err != nil {
+		return nil, err
+	}
+	inspection, err := evaluation.Inspect()
+	if err != nil {
+		return nil, fmt.Errorf("inspect options: %w", err)
+	}
+	out := make([]Option, 0, inspection.Eligible)
+	for i, row := range inspection.Rows {
+		if row.Eligible {
+			out = append(out, cloneOption(options[i]))
 		}
 	}
 
-	return out
+	return out, nil
 }
 
 // requirementHolds answers one option's `requires` for one speaker, against
@@ -507,9 +584,9 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 			return refuse(fmt.Errorf("speak: %w", err))
 		}
 	}
-	option, ok := e.optionOffered(in.Actor, options, in.OptionID)
-	if !ok {
-		return refuse(fmt.Errorf("speak: %q is not a line this speaker is offered: %w", in.OptionID, ErrNoOption))
+	option, err := e.optionOffered(in.Actor, options, in.OptionID)
+	if err != nil {
+		return refuse(fmt.Errorf("speak: %w", err))
 	}
 	if err := refuseRollMismatch(in, option); err != nil {
 		return refuse(err)
@@ -638,17 +715,28 @@ func (e *Encounter) refusePropOutOfReach(
 	return fmt.Errorf("%s: %s: %w", verb, prop, ErrOutOfRange)
 }
 
-// optionOffered finds an option by id among a target's options, and answers
-// it only when its requirement holds for the speaker — the door asking the
-// offer's own question, so the two cannot disagree.
-func (e *Encounter) optionOffered(actor MemberID, options []Option, id string) (Option, bool) {
-	for _, o := range options {
-		if o.ID == id {
-			return o, e.requirementHolds(actor, o.Requires)
-		}
+// optionOffered is Speak's option door: [selection.Choose] on the same pool
+// [Encounter.offered] reads ([Encounter.evaluateOptions]), so the door admits
+// exactly the lines the offer shows. A line the target does not have and a
+// line whose requirement does not hold for this speaker are one refusal,
+// [ErrNoOption], so the door cannot confirm a gated line exists.
+//
+// Errors: ErrNoOption; a pool that could not be built (see
+// [Encounter.evaluateOptions]).
+func (e *Encounter) optionOffered(actor MemberID, options []Option, id string) (Option, error) {
+	evaluation, err := e.evaluateOptions(actor, options)
+	if err != nil {
+		return Option{}, err
+	}
+	choice, err := selection.Choose(&selection.ChooseInput{Evaluation: evaluation, ID: id})
+	if errors.Is(err, selection.ErrUnknownID) || errors.Is(err, selection.ErrIneligible) {
+		return Option{}, fmt.Errorf("%q is not a line this speaker is offered: %w", id, ErrNoOption)
+	}
+	if err != nil {
+		return Option{}, fmt.Errorf("choose option %q: %w", id, err)
 	}
 
-	return Option{}, false
+	return options[choice.Index], nil
 }
 
 // appendSpokeBeat writes what the table saw: who said what to whom, the skill,
