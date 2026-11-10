@@ -17,7 +17,7 @@ var ErrInvalidLifetime = errors.New("invalid lifetime")
 type LifetimePhase string
 
 const (
-	// LifetimeLive admits member-loss notices and the first authorized end.
+	// LifetimeLive admits per-member finalization, loss notices and the first authorized end.
 	LifetimeLive LifetimePhase = "live"
 	// LifetimeEnding holds the first accepted end while its owner delivers the plan.
 	LifetimeEnding LifetimePhase = "ending"
@@ -25,8 +25,8 @@ const (
 	LifetimeEnded LifetimePhase = "ended"
 )
 
-// LifetimeInput declares opaque identity, ordered member keys and authorized enders.
-// Empty membership is valid. All supplied keys must be nonblank and unique within
+// LifetimeInput declares opaque identity, a fixed ordered intended-member list
+// and authorized enders. Each intended member begins pending; an empty list is valid. All supplied keys must be nonblank and unique within
 // their list. The caller owns the meaning of each key and its external uniqueness.
 type LifetimeInput struct {
 	ID      string
@@ -34,12 +34,14 @@ type LifetimeInput struct {
 	Enders  []string
 }
 
-// LifetimeSnapshot is an owned observation of phase and surviving member keys.
+// LifetimeSnapshot owns explicit disjoint pending/live subsets of the fixed list.
+// A declared key in neither subset is finalized without a live attachment.
 // Only a live snapshot can be restored: a completed application is removed by its
 // owner rather than persisted as a fresh or partially ended lifetime.
 type LifetimeSnapshot struct {
-	Phase       LifetimePhase `json:"phase"`
-	LiveMembers []string      `json:"live_members"`
+	Phase          LifetimePhase `json:"phase"`
+	PendingMembers []string      `json:"pending_members"`
+	LiveMembers    []string      `json:"live_members"`
 }
 
 // RestoreLifetimeInput binds immutable construction data to explicit saved state.
@@ -64,6 +66,21 @@ type EndPlan struct {
 	Members  []string
 }
 
+// FinalizeMemberInput resolves one pending intended member. Delivered means an
+// actual attachment exists; false resolves the entry without adding membership.
+// The neutral lifetime trusts its caller to verify that external fact.
+type FinalizeMemberInput struct {
+	Key       string
+	Delivered bool
+}
+
+// FinalizeMemberOutput reports live cardinality before and after finalization.
+// Resolving without delivery is not a member-loss notification.
+type FinalizeMemberOutput struct {
+	Before int
+	After  int
+}
+
 // MemberRemovedInput names a declared member that has ended independently.
 type MemberRemovedInput struct{ Key string }
 
@@ -83,11 +100,12 @@ type Lifetime struct {
 	members []string
 	enders  []string
 	live    map[string]struct{}
+	pending map[string]struct{}
 	phase   LifetimePhase
 	reason  string
 }
 
-// NewLifetime constructs live membership with defensive copies. It refuses a
+// NewLifetime copies the fixed intended list, initially all pending and none live. It refuses a
 // blank identity or blank/duplicate member or ender keys.
 func NewLifetime(input LifetimeInput) (*Lifetime, error) {
 	if strings.TrimSpace(input.ID) == "" {
@@ -108,19 +126,19 @@ func NewLifetime(input LifetimeInput) (*Lifetime, error) {
 			seen[key] = struct{}{}
 		}
 	}
-	live := make(map[string]struct{}, len(input.Members))
+	pending := make(map[string]struct{}, len(input.Members))
 	for _, key := range input.Members {
-		live[key] = struct{}{}
+		pending[key] = struct{}{}
 	}
 	return &Lifetime{
 		id: input.ID, members: slices.Clone(input.Members), enders: slices.Clone(input.Enders),
-		live: live, phase: LifetimeLive,
+		live: make(map[string]struct{}, len(input.Members)), pending: pending, phase: LifetimeLive,
 	}, nil
 }
 
-// RestoreLifetime restores an explicitly live subset of the declared membership.
-// It refuses missing/non-live state and duplicate or foreign keys; it never
-// restores omitted members from construction defaults. Input order cannot change
+// RestoreLifetime restores explicit disjoint pending/live subsets of the fixed list.
+// It refuses missing/non-live state, missing lists, duplicate/foreign keys or an
+// overlap; it never restores omitted members from construction defaults. Input order cannot change
 // the declared order of future end plans.
 func RestoreLifetime(input RestoreLifetimeInput) (*Lifetime, error) {
 	lifetime, err := NewLifetime(input.Definition)
@@ -130,7 +148,19 @@ func RestoreLifetime(input RestoreLifetimeInput) (*Lifetime, error) {
 	if input.Snapshot == nil || input.Snapshot.Phase != LifetimeLive {
 		return nil, fmt.Errorf("%w: %s: explicit live snapshot is required", ErrInvalidLifetime, lifetime.id)
 	}
-	clear(lifetime.live)
+	if input.Snapshot.PendingMembers == nil || input.Snapshot.LiveMembers == nil {
+		return nil, fmt.Errorf("%w: %s: explicit pending and live member lists are required", ErrInvalidLifetime, lifetime.id)
+	}
+	clear(lifetime.pending)
+	for _, key := range input.Snapshot.PendingMembers {
+		if !slices.Contains(lifetime.members, key) {
+			return nil, fmt.Errorf("%w: %s: foreign pending member %q", ErrInvalidLifetime, lifetime.id, key)
+		}
+		if _, exists := lifetime.pending[key]; exists {
+			return nil, fmt.Errorf("%w: %s: duplicate pending member %q", ErrInvalidLifetime, lifetime.id, key)
+		}
+		lifetime.pending[key] = struct{}{}
+	}
 	for _, key := range input.Snapshot.LiveMembers {
 		if !slices.Contains(lifetime.members, key) {
 			return nil, fmt.Errorf("%w: %s: foreign member %q", ErrInvalidLifetime, lifetime.id, key)
@@ -138,20 +168,27 @@ func RestoreLifetime(input RestoreLifetimeInput) (*Lifetime, error) {
 		if _, exists := lifetime.live[key]; exists {
 			return nil, fmt.Errorf("%w: %s: duplicate live member %q", ErrInvalidLifetime, lifetime.id, key)
 		}
+		if _, pending := lifetime.pending[key]; pending {
+			return nil, fmt.Errorf("%w: %s: member %q is both pending and live", ErrInvalidLifetime, lifetime.id, key)
+		}
 		lifetime.live[key] = struct{}{}
 	}
 	return lifetime, nil
 }
 
-// Snapshot returns an owned membership slice in declared order, never map order.
+// Snapshot returns owned explicit pending/live slices in declared order, never map order.
 func (l *Lifetime) Snapshot() LifetimeSnapshot {
 	members := make([]string, 0, len(l.live))
+	pending := make([]string, 0, len(l.pending))
 	for _, key := range l.members {
 		if _, live := l.live[key]; live {
 			members = append(members, key)
 		}
+		if _, waiting := l.pending[key]; waiting {
+			pending = append(pending, key)
+		}
 	}
-	return LifetimeSnapshot{Phase: l.phase, LiveMembers: members}
+	return LifetimeSnapshot{Phase: l.phase, PendingMembers: pending, LiveMembers: members}
 }
 
 // RequestEnd accepts the first authorized request and freezes membership for its
@@ -184,6 +221,27 @@ func (l *Lifetime) CompleteEnd() error {
 	default:
 		return fmt.Errorf("%w: %s: no accepted end to complete", ErrInvalidLifetime, l.id)
 	}
+}
+
+// FinalizeMember resolves one pending key exactly once. Unknown or finalized
+// keys and any finalization after end acceptance are refused without mutation.
+// A removed delivered member stays finalized and can never be re-admitted.
+func (l *Lifetime) FinalizeMember(input FinalizeMemberInput) (FinalizeMemberOutput, error) {
+	if l.phase != LifetimeLive {
+		return FinalizeMemberOutput{}, fmt.Errorf("%w: %s: membership is frozen while %s", ErrInvalidLifetime, l.id, l.phase)
+	}
+	if !slices.Contains(l.members, input.Key) {
+		return FinalizeMemberOutput{}, fmt.Errorf("%w: %s: unknown member %q", ErrInvalidLifetime, l.id, input.Key)
+	}
+	if _, pending := l.pending[input.Key]; !pending {
+		return FinalizeMemberOutput{}, fmt.Errorf("%w: %s: member %q is already finalized", ErrInvalidLifetime, l.id, input.Key)
+	}
+	before := len(l.live)
+	delete(l.pending, input.Key)
+	if input.Delivered {
+		l.live[input.Key] = struct{}{}
+	}
+	return FinalizeMemberOutput{Before: before, After: len(l.live)}, nil
 }
 
 // MemberRemoved removes one known live member and reports cardinality before and

@@ -105,12 +105,16 @@ must be immutable, as required by `Compose` and `Recipe.Compile`.
 ordered removal without calling a second end hook. Contributions remain available
 until `Remove`; the operation neither selects a reason nor owns membership.
 
-`Lifetime` is a separate neutral value for the shared coordinator: ordered opaque
-member keys, authorized ender keys, and one accepted end plan. It publishes
-nothing and knows no rulebook addresses. `MemberRemoved` distinguishes actual
-last-member loss from empty creation. `RestoreLifetime` restores an explicit live
-subset rather than refilling membership from defaults. The consumer delivers the
-plan, then calls `CompleteEnd`.
+`Lifetime` is a separate neutral value for the shared coordinator: a fixed ordered
+intended list, authorized ender keys, and one accepted end plan. All intended
+members start pending. `FinalizeMember` resolves one pending entry exactly once,
+with or without an actual delivered attachment. Pending entries are saveable but
+not active members; finalized entries cannot reopen. `MemberRemoved` distinguishes
+actual last-member loss from empty creation. `RestoreLifetime` requires explicit,
+disjoint pending/live subsets rather than refilling membership from defaults.
+Ending freezes both sets and its plan contains only live members. The consumer
+delivers that plan, then calls `CompleteEnd`. No whole-application delivery seal,
+rulebook address, bus publication or new lifecycle interpreter is introduced.
 
 Amounts use a single `AmountResult` contract: a scalar or unresolved dice, not
 both. `ScalarValue` refuses dice rather than rolling. Query-only kinds declare

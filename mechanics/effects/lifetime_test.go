@@ -22,10 +22,18 @@ func lifetimeDefinition() effects.LifetimeInput {
 	}
 }
 
+func (s *lifetimeSuite) deliverAll(lifetime *effects.Lifetime) {
+	for _, key := range lifetime.Snapshot().PendingMembers {
+		_, err := lifetime.FinalizeMember(effects.FinalizeMemberInput{Key: key, Delivered: true})
+		s.Require().NoError(err)
+	}
+}
+
 // Removing idempotence or ordering must produce a second plan or wrong members.
 func (s *lifetimeSuite) TestEndIsAuthorizedOrderedAndIdempotent() {
 	lifetime, err := effects.NewLifetime(lifetimeDefinition())
 	s.Require().NoError(err)
+	s.deliverAll(lifetime)
 	removed, err := lifetime.MemberRemoved(effects.MemberRemovedInput{Key: "a"})
 	s.Require().NoError(err)
 	s.Equal(effects.MemberRemovedOutput{Removed: true, Before: 3, After: 2}, removed)
@@ -56,6 +64,7 @@ func (s *lifetimeSuite) TestSnapshotDoesNotAliasCallerOrRuntime() {
 	definition := lifetimeDefinition()
 	lifetime, err := effects.NewLifetime(definition)
 	s.Require().NoError(err)
+	s.deliverAll(lifetime)
 	definition.Members[0] = "foreign"
 	definition.Enders[0] = "intruder"
 	snapshot := lifetime.Snapshot()
@@ -75,8 +84,8 @@ func (s *lifetimeSuite) TestRestoreRejectsMissingDuplicateForeignOrNonLiveState(
 	}{
 		{name: "missing"},
 		{name: "missing phase", snapshot: &effects.LifetimeSnapshot{LiveMembers: []string{"a"}}},
-		{name: "duplicate", snapshot: &effects.LifetimeSnapshot{Phase: effects.LifetimeLive, LiveMembers: []string{"a", "a"}}},
-		{name: "foreign", snapshot: &effects.LifetimeSnapshot{Phase: effects.LifetimeLive, LiveMembers: []string{"other"}}},
+		{name: "duplicate", snapshot: &effects.LifetimeSnapshot{Phase: effects.LifetimeLive, PendingMembers: []string{}, LiveMembers: []string{"a", "a"}}},
+		{name: "foreign", snapshot: &effects.LifetimeSnapshot{Phase: effects.LifetimeLive, PendingMembers: []string{}, LiveMembers: []string{"other"}}},
 		{name: "ending", snapshot: &effects.LifetimeSnapshot{Phase: effects.LifetimeEnding, LiveMembers: []string{"a"}}},
 		{name: "ended", snapshot: &effects.LifetimeSnapshot{Phase: effects.LifetimeEnded}},
 	} {
@@ -86,7 +95,7 @@ func (s *lifetimeSuite) TestRestoreRejectsMissingDuplicateForeignOrNonLiveState(
 			s.Nil(got)
 		})
 	}
-	snapshot := effects.LifetimeSnapshot{Phase: effects.LifetimeLive, LiveMembers: []string{"c", "b"}}
+	snapshot := effects.LifetimeSnapshot{Phase: effects.LifetimeLive, PendingMembers: []string{}, LiveMembers: []string{"c", "b"}}
 	lifetime, err := effects.RestoreLifetime(effects.RestoreLifetimeInput{Definition: lifetimeDefinition(), Snapshot: &snapshot})
 	s.Require().NoError(err)
 	snapshot.LiveMembers[0] = "foreign"
@@ -99,6 +108,7 @@ func (s *lifetimeSuite) TestRestoreRejectsMissingDuplicateForeignOrNonLiveState(
 func (s *lifetimeSuite) TestMembershipAndCompletionRefusals() {
 	lifetime, err := effects.NewLifetime(lifetimeDefinition())
 	s.Require().NoError(err)
+	s.deliverAll(lifetime)
 	s.Error(lifetime.CompleteEnd())
 	_, err = lifetime.MemberRemoved(effects.MemberRemovedInput{Key: "foreign"})
 	s.Error(err)
@@ -149,7 +159,7 @@ func (s *lifetimeSuite) TestEmptyLifetimeAndEmptyRestoreRemainLive() {
 	s.Require().NoError(err)
 	s.Equal(effects.LifetimeLive, lifetime.Snapshot().Phase)
 	s.Empty(lifetime.Snapshot().LiveMembers)
-	empty := effects.LifetimeSnapshot{Phase: effects.LifetimeLive}
+	empty := effects.LifetimeSnapshot{Phase: effects.LifetimeLive, PendingMembers: []string{}, LiveMembers: []string{}}
 	restored, err := effects.RestoreLifetime(effects.RestoreLifetimeInput{Definition: lifetimeDefinition(), Snapshot: &empty})
 	s.Require().NoError(err)
 	plan, err := restored.RequestEnd(effects.EndRequest{Requestor: "duration", Reason: "expired"})

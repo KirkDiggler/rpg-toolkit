@@ -12,8 +12,11 @@ Slice [rpg-project#903](https://github.com/KirkDiggler/rpg-project/issues/903), 
 
 - Source-stage T4 composes independent existing runtimes with local/application terminal scopes, strict restoration, teardown custody and output namespaces; the provider's T1–T4 are implemented, not released — [T4 contract](https://github.com/KirkDiggler/rpg-toolkit/blob/design/bless-bane-composition/docs/ideas/composable-maintenance/plan.md#t4--local-assembly-of-existing-runtimes).
 
+- R11 changes initial membership to a fixed pending list with independent FinalizeMember outcomes; snapshots carry explicit disjoint pending/live sets. Actual loss and end plans retain their existing semantics; no global open/sealed phase is added — [R11 ruling](https://github.com/KirkDiggler/rpg-toolkit/pull/2323#issuecomment-6755782119).
+
 ## Decided
 
+- A finalized key cannot reopen, even after its delivered member is removed; a key in neither pending nor live is finalized without a live attachment. This avoids another delivery-state copy while preventing resume from resurrecting an effect — [R11 ruling](https://github.com/KirkDiggler/rpg-toolkit/pull/2323#issuecomment-6755782119).
 - Recipient rest exposes the already-required distinction between part, attachment and shared-application lifetime. EndAttachment freezes/detaches one local assembly through the existing terminal routing without ending independent recipients; no second interpreter or spell-specific cleanup is added — [S14 retirement](https://github.com/KirkDiggler/rpg-project/issues/904).
 - Linked transport needs BeginEnd to close each still-attached recipient's reaction permission before ordered cross-holder removal; it reuses the assembly gate, emits nothing, and leaves contributions available until Remove. Missing-API RED and the focused external-owner test pass before root adoption — [S14 transport](https://github.com/KirkDiggler/rpg-project/issues/904).
 - The concentration consumer needs a bound CanReact query: an output that requests a new save must stop while contributions still answer End. It reads existing attachment/state/assembly permission, adding no lifecycle authority or rulebook dependency; missing-API RED then full provider gates pass — [root consumer](https://github.com/KirkDiggler/rpg-project/issues/904).
@@ -25,6 +28,7 @@ Slice [rpg-project#903](https://github.com/KirkDiggler/rpg-project/issues/903), 
 
 ## Found
 
+- Per-entry API tests first failed against missing pending/finalization operations, then passed; pending-as-live and reopen-finalized mutants fail their targeted tests. JSON snapshot/restore preserves unresolved entries and end plans include only actual live members — [R11 ruling](https://github.com/KirkDiggler/rpg-toolkit/pull/2323#issuecomment-6755782119).
 - Independent review reproduced query outputs disappearing inside End and nested machine reactions mutating/detaching siblings before reporting finished; permanent multi-part regressions reproduce both failures before the fix — [review](https://github.com/KirkDiggler/rpg-toolkit/pull/2327#pullrequestreview-5819824571).
 - T1 tests first fail to compile on the absent Lifetime API, then pass with implementation; full module race/vet/lint pass, retaining the generic import seam — [T1 proof contract](https://github.com/KirkDiggler/rpg-toolkit/blob/design/bless-bane-composition/docs/ideas/composable-maintenance/plan.md#t1--neutral-lifetime-value).
 - A mutant accepting repeated end requests makes TestEndIsAuthorizedOrderedAndIdempotent fail on repeated plans and replaced reasons; exact restoration returns it green — [S13](https://github.com/KirkDiggler/rpg-project/issues/903).

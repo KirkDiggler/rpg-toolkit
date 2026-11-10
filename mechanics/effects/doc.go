@@ -151,14 +151,18 @@
 // # Shared lifetime values
 //
 // Lifetime is the neutral value an application coordinator owns. NewLifetime
-// binds opaque ordered member keys and authorized ender keys. MemberRemoved
-// reports actual before/after membership, so empty creation is not confused
+// binds a fixed intended list, initially pending, and authorized ender keys.
+// FinalizeMember resolves each entry independently: delivered or no attachment.
+// Pending entries survive snapshots without becoming live members. Finalized
+// entries cannot reopen, including after removal. MemberRemoved reports actual
+// before/after membership, so empty creation is not confused
 // with losing the last member. RequestEnd freezes membership and yields one
 // ordered plan; repeated requests retain the original reason and yield no plan.
 // CompleteEnd follows successful delivery. Nothing here publishes or interprets
 // a key: the rulebook delivers the plan through its own exact-address protocol.
 // Snapshot and returned plans own their slices. RestoreLifetime requires an
-// explicitly live subset and never revives members from fresh defaults.
+// explicit disjoint pending/live subsets and never revives members from defaults.
+// There is no whole-application delivery seal or extra lifecycle interpreter.
 //
 // # What effects does not know
 //
