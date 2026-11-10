@@ -880,6 +880,23 @@ func (m *Manager) openScope(
 		ledger:    ledger,
 		driver:    driver,
 	}
+	// THE RESIDENT COPY (residency.go): taken out of the residency on every
+	// fenced open, Launch's included, so a copy in use is in no map; used
+	// only for a stored world whose version still matches it, and dropped
+	// otherwise. A copy that cannot be rebound is dropped and the world
+	// loads.
+	var resident *Resident
+	if m.residentOn() {
+		if world == nil {
+			resident = m.takeResident(ctx, data)
+		} else {
+			m.residency.Take(sessionID)
+		}
+	}
+	if resident != nil && m.openResident(ctx, data, scope, resident) {
+		return m.openedScope(ctx, scope, extraMembers...)
+	}
+
 	switch {
 	case world != nil:
 		// Launch's fresh board. Fenced, no checkpoint exists yet, so its
@@ -911,7 +928,13 @@ func (m *Manager) openScope(
 	scope.enc = enc
 	scope.baseline = baseline
 	scope.standing = standing
-	status, err := enc.Status()
+	return m.openedScope(ctx, scope, extraMembers...)
+}
+
+// openedScope finishes a scope whose world is bound, loaded or kept: what
+// the world's status was at the open, and the exploration the verb prepares.
+func (m *Manager) openedScope(ctx context.Context, scope *writeScope, extraMembers ...string) (*writeScope, error) {
+	status, err := scope.enc.Status()
 	if err != nil {
 		return nil, translate(err)
 	}
@@ -1512,6 +1535,12 @@ func (m *Manager) commitAt(ctx context.Context, scope *writeScope, final bool) (
 	}
 	if err := m.deliverActs(ctx, acts); err != nil {
 		delivery.Failed = append(delivery.Failed, DeliveryActs)
+	}
+	// THE VERB'S WORLD, STAGED TO STAY RESIDENT (residency.go), once its
+	// final save landed and its batches went to the streams: the guard's
+	// release keeps it. A pace commit stages nothing; the walk goes on.
+	if final {
+		m.stageResident(scope)
 	}
 	return report, delivery, nil
 }

@@ -57,6 +57,10 @@ var ErrStaleCheckpoint = errors.New("session checkpoint is stale")
 // (the plain path's mid-verb sheet writes are durable on their own). A walk's
 // spent movement is part of its commit, not written ahead of it.
 //
+// THE VERSION IS ALSO THE CACHE KEY. A host that can read it alone
+// ([CheckpointVersionReader]) gets a write verb's encounter kept resident
+// between verbs and checked against it (residency.go, rpg-project#879 S6).
+//
 // A host that wraps its repository (instrumentation, a cache) must forward
 // these methods, or the wrapper hides the capability and the session falls
 // back to plain writes.
@@ -527,8 +531,10 @@ func (m *Manager) persistFenced(
 // IT NEVER OUTLIVES THE GUARD. The fenced save takes the session's entries,
 // and releasing the session's guard drops whatever is left (a verb that
 // failed before its save), so nothing a verb did not save is visible to the
-// next. It is the only state a Manager holds, and only while a verb holds the
-// guard. Nil on a Manager whose repository is plain.
+// next. It is one of the two states a Manager holds, and only while a verb
+// holds the guard; the other is the resident copy (residency.go), staged at
+// the final commit and kept or forgotten at the same release. Nil on a
+// Manager whose repository is plain.
 type pendingWrites struct {
 	mu     sync.Mutex
 	sheets map[string]pendingSheet

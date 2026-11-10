@@ -68,7 +68,8 @@ version with the world, and saves everything it wrote under the session's
 guard (the world, the session record, seats, sheets) in one transaction that
 lands only if that version still holds. Under the fence a sheet or seat write
 is held in the Manager's pending overlay, read back by the same verb, and
-dropped when the guard is released. A stale save writes nothing and delivers
+dropped when the guard is released. The fenced read's version is also what
+a resident copy is checked against (below). A stale save writes nothing and delivers
 nothing (`ErrStaleCheckpoint`). The record's `NextSeq` is not the fence: a
 beatless verb does not advance it. A plain repository keeps today's writes.
 
@@ -98,6 +99,23 @@ fenced read's `Marks`, nil at Launch (every piece), replaced by the save's
 new marks only after it lands. Reads stay whole: the host joins its pieces
 with `encounter.JoinPieces` and then its segments. A host without it falls
 back to `SaveAppended`, then `SaveFenced`, then the plain writes, unchanged.
+
+**The encounter can stay resident** ([`residency.go`](./residency.go),
+rpg-project#879 S6). A fenced repository that also implements
+`CheckpointVersionReader` (type assertion again) lets a write verb's encounter
+stay in memory after its final save, as a cache of the store keyed by the
+checkpoint version that save left. The next write verb on the session reads
+the store's version (one GET); on a match it rebinds the kept copy to its own
+capabilities (`encounter.Encounter.Rebind`) and runs on it with the fence's
+version, record baseline and marks the copy carries, skipping the fenced read
+and the load; on a miss it drops the copy and loads. The copy is taken out of
+`Config.Residency` when a verb opens (nil is `NewResidency`, in process,
+bounded by count and estimated bytes) and kept again only by the guard's
+release, and only when the verb's final commit staged it after its save
+landed and its batches went out: a stale save, a refused verb, a commit
+error, a canceled context, a continuation that failed after a pace commit, a
+panic in a host collaborator and a closed run keep nothing, by structure.
+Reads do not use the copy. A host without the reader loads every verb.
 
 **The site is shared by hash** ([`sites.go`](./sites.go), rpg-project#879 S5).
 A stored world names its compiled site by `SiteHash` and never carries the
