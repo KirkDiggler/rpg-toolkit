@@ -1,6 +1,6 @@
 # Run — 2026-11-10 — S6 PR 2: the session keeps a write verb's encounter resident, checked by one version read
 
-Story [rpg-project#879](https://github.com/KirkDiggler/rpg-project/issues/879) "Alive, not lagging", slice S6 card [rpg-project#927](https://github.com/KirkDiggler/rpg-project/issues/927), PR 2 of 3. Base: `rpg-toolkit` `main` at [`178d11f4`](https://github.com/KirkDiggler/rpg-toolkit/commit/178d11f4). Encounter pinned at the pushed PR 1 commit [`3c3a5ddb`](https://github.com/KirkDiggler/rpg-toolkit/commit/3c3a5ddb) (rpg-toolkit#2367).
+Story [rpg-project#879](https://github.com/KirkDiggler/rpg-project/issues/879) "Alive, not lagging", slice S6 card [rpg-project#927](https://github.com/KirkDiggler/rpg-project/issues/927), PR 2 of 3. Base: `rpg-toolkit` `main` at [`178d11f4`](https://github.com/KirkDiggler/rpg-toolkit/commit/178d11f4). Encounter pinned at the pushed PR 1 commit [`c14f6bf6`](https://github.com/KirkDiggler/rpg-toolkit/commit/c14f6bf6) (rpg-toolkit#2367).
 
 ## Shipped
 
