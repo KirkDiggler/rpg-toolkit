@@ -16,7 +16,7 @@ Slice [rpg-project#921](https://github.com/KirkDiggler/rpg-project/issues/921) o
 
 ## Found
 
-- Only one encounter test die ignored its size (`facedDie`), and its faces (1 and 101 of 200) were already in range, so v0.23.0's refusal changed no expectation — [rpg-toolkit#2355](https://github.com/KirkDiggler/rpg-toolkit/pull/2355).
+- Two encounter test dice ignore their size. `facedDie` (pursuit_internal_test.go) is now clamped to `min(face, size)`; its faces (1 and 101 of 200) were already in range. `rollsFace` (testroller_test.go) also feeds `behavior.Pick` through the Speak answer roll (answer_test.go:202); its faces are in range, so it stays unclamped by choice. v0.23.0's refusal changed no expectation — [rpg-toolkit#2355](https://github.com/KirkDiggler/rpg-toolkit/pull/2355).
 - The encounter has no drop verb, so a prop line gated on holding is proved refused before the hold, not after a drop as the plan wrote — [rpg-toolkit#2355](https://github.com/KirkDiggler/rpg-toolkit/pull/2355).
 - The four public tests pass on base: the change is behavior-preserving, so the RED came from an internal test of the pool itself — [rpg-toolkit#2355](https://github.com/KirkDiggler/rpg-toolkit/pull/2355).
 

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/selection"
@@ -809,7 +810,9 @@ func (e *Encounter) appendSpokeBeat(
 func validateOptions(options []Option) error {
 	seen := make(map[string]bool, len(options))
 	for i, o := range options {
-		if o.ID == "" {
+		// A blank id names no line, and so does one of only spaces: the
+		// option pool (selection.Evaluate) refuses both, so both stop here.
+		if strings.TrimSpace(o.ID) == "" {
 			return fmt.Errorf("options[%d] has no id", i)
 		}
 		if seen[o.ID] {

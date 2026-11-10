@@ -65,3 +65,11 @@ func (s *OptionEvaluationSuite) TestADuplicateIDIsAnErrorNeverASilentOffer() {
 	_, err = e.offered("alice", []Option{{ID: "same"}, {ID: "same"}})
 	s.ErrorIs(err, selection.ErrInvalidCandidate)
 }
+
+// TestAWhitespaceIDIsRefusedAtConstruction: an id of only spaces is no id,
+// refused by the field validator with the blank-id message, so it can never
+// reach the pool that would refuse it there.
+func (s *OptionEvaluationSuite) TestAWhitespaceIDIsRefusedAtConstruction() {
+	err := validateOptions([]Option{{ID: "  ", Say: "Evening.", Success: []Answer{{Weight: 1, Say: "Evening."}}}})
+	s.ErrorContains(err, "options[0] has no id")
+}
