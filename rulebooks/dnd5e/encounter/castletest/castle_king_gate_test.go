@@ -4,8 +4,8 @@
 package castletest
 
 // castle_king_gate_test.go is THE GATE, FOUR WAYS (rpg-project#605, use case
-// §3): spear a guard, talk your way in as the feast's troupe, fail to, and
-// talk to the wrong guard. Each route is the compiled castle driven by the
+// §3): spear a guard, talk your way in as the feast's troupe, fail to (a
+// warning since rpg-project#922), and talk to the wrong guard. Each route is the compiled castle driven by the
 // verbs a player has; what it asserts is the use case's "asserted outcome"
 // for that row, and nothing about how the rest of the castle spent its time.
 
@@ -555,12 +555,16 @@ func TestMadKingTroupe(t *testing.T) {
 	}
 }
 
-// TestMadKingTroupeBlown is the troupe failing its check: the captain's
-// failure line writes `party-recognized` on the gate's witnesses, the
-// garrison turns because its mind witnessed it, and the fight forms in the
-// line's own call — the guards were in sight all along, and what changed was
-// the stance.
-func TestMadKingTroupeBlown(t *testing.T) {
+// TestMadKingTroupeWarned is the troupe failing its check. Before Gate S2
+// the captain's failure line wrote `party-recognized` and the garrison
+// turned on the spot; since rpg-project#922 the castle's gate remembers
+// instead: a first failed claim is the captain's warning, the front-gate
+// interaction stands `warned-troupe`, the troupe claim is gone while the
+// guest claim remains, and nobody is recognized or fighting. Recognition at
+// the gate is now a failed `stand-aside`
+// ([TestMadKingTheCaptainsWordOutranksRecognition]); a second failed claim
+// is [TestMadKingTwoFailedClaimsArrestTheEntrance].
+func TestMadKingTroupeWarned(t *testing.T) {
 	t.Parallel()
 	for _, route := range troupeRoutes {
 		t.Run(route.name, func(t *testing.T) {
@@ -569,24 +573,19 @@ func TestMadKingTroupeBlown(t *testing.T) {
 			require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, kingCaptain),
 				"precondition: the hero stands in front of the captain, and nobody is fighting")
 
-			s.said(kingCaptain, "troupe", "performance", false)
+			require.Equal(t, troupeWarning, s.claimed("troupe", "performance", false), "the captain warns the party")
 
-			t.Run("the gate witnessed the party being recognized", func(t *testing.T) {
-				learned := s.learners("party-recognized")
-				require.True(t, learned[kingCaptain], "the captain, the garrison's mind, saw through it")
-				require.True(t, learned[hero])
-				for _, id := range []encounter.MemberID{theKing, kingKeep1, kingKeep2} {
-					require.False(t, learned[id], "%s, in the keep, did not witness it: the court is not fooled or warned", id)
-				}
+			t.Run("the entrance remembers the failed claim", func(t *testing.T) {
+				require.Equal(t, "warned-troupe", s.entrance())
+				require.Equal(t, everyGateSpeaker(false), s.gateOffers(hero, "troupe"), "the troupe claim is gone at the whole gate")
+				require.Equal(t, everyGateSpeaker(true), s.gateOffers(hero, "guest"), "the guest claim remains")
 			})
 
-			t.Run("the garrison turned on a fact its mind witnessed", func(t *testing.T) {
-				require.Equal(t, encounter.StanceHostile, s.stance(garrison, encounter.FactionParty))
-			})
-
-			t.Run("and the fight formed in the same call, at the gate", func(t *testing.T) {
-				require.Equal(t, encounter.ClockTurn, clockKind(t, s.enc, hero))
-				require.Equal(t, encounter.ClockTurn, clockKind(t, s.enc, kingCaptain))
+			t.Run("nobody was recognized, and nobody is fighting", func(t *testing.T) {
+				require.Empty(t, s.learners("party-recognized"))
+				require.Equal(t, encounter.StanceNeutral, s.stance(garrison, encounter.FactionParty))
+				require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero))
+				require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, kingCaptain))
 			})
 		})
 	}
