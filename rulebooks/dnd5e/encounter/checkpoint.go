@@ -56,8 +56,15 @@ type ToCheckpointOutput struct {
 //
 //	record.JoinData(&record.JoinDataInput{Head: rest.Log, Floor: floor, Segments: stored})
 //
-// which is exactly ToData's Log at this save. The // encounter keeps no record of what any store holds: Since is an argument,
-// never a field.
+// which is exactly ToData's Log at this save. The encounter keeps no record
+// of what any store holds: Since is an argument, never a field.
+//
+// THE ORDER IS THE CONTRACT. Since is valid from 0 through the story's
+// NextSeq, and it is checked FIRST, before retention runs, so a refused call
+// changes nothing: the live log is not trimmed and the floor does not move.
+// Retention never moves NextSeq, so the check means the same on either side
+// of the trim. Appended is taken AFTER the trim: a Since below this save's
+// floor yields the segment from the floor, never an entry the trim dropped.
 func (e *Encounter) ToCheckpoint(in *ToCheckpointInput) (*ToCheckpointOutput, error) {
 	if in == nil {
 		return nil, ErrNilInput

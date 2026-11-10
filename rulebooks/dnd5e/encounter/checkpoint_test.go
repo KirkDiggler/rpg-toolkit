@@ -245,3 +245,26 @@ func TestCheckpointRefusesSincePastTheStory(t *testing.T) {
 	require.Empty(t, out.Appended.Entries)
 	require.Equal(t, before, enc.ToData())
 }
+
+// TestCheckpointRefusalTrimsNothing pins the order: under a window smaller
+// than the beats appended since the last trim, a Since past the story is
+// refused BEFORE retention runs, so the live log keeps every beat and a
+// later save still trims and reports the floor.
+func TestCheckpointRefusalTrimsNothing(t *testing.T) {
+	const window = 2
+	enc := openCheckpointKeep(t, window)
+	stepSome(t, enc, rand.New(rand.NewPCG(897, 5)), 4) //nolint:gosec // a seeded walk
+	live := enc.WorldView().Log.Entries
+	require.Greater(t, len(live), window, "more beats than the window, none trimmed yet")
+	next, err := enc.NextStorySeq()
+	require.NoError(t, err)
+
+	_, err = enc.ToCheckpoint(&encounter.ToCheckpointInput{Since: next + 1})
+	require.ErrorIs(t, err, encounter.ErrBadSince)
+	require.Equal(t, live, enc.WorldView().Log.Entries, "the refusal trimmed nothing")
+
+	out, err := enc.ToCheckpoint(&encounter.ToCheckpointInput{Since: 1})
+	require.NoError(t, err)
+	require.Equal(t, next-window, out.Floor, "the next save trims")
+	require.Equal(t, out.Floor, out.Appended.Entries[0].Seq, "Appended is taken after the trim")
+}
