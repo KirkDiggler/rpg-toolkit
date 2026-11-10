@@ -5,6 +5,7 @@ package conditions_test
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -71,7 +72,11 @@ func (s *applicationBindingSuite) TestPendingDeliveryIsSaveableAndResumesByExact
 	}
 	w.bus = events.NewEventBus()
 	w.binding = s.bind(w.sheets, w.bus)
-	resumed, err := conditions.ResumeApplication(&conditions.ResumeApplicationInput{ID: "pending", Spec: w.spec, Existing: bindingParticipants(w.sheets)})
+	frozenSpec, err := json.Marshal(w.spec)
+	s.Require().NoError(err)
+	var restoredSpec conditions.ApplicationSpec
+	s.Require().NoError(json.Unmarshal(frozenSpec, &restoredSpec))
+	resumed, err := conditions.ResumeApplication(&conditions.ResumeApplicationInput{ID: "pending", Spec: restoredSpec, Existing: bindingParticipants(w.sheets)})
 	s.Require().NoError(err)
 	w.prepared = resumed
 	w.owner = w.sheets[0].GetConditions()[0].(*conditions.LinkedCondition)

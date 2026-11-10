@@ -28,20 +28,20 @@ const (
 // RecipientSpec fixes one intended holder and registered delivery shape. Linked
 // payloads use Parts; adopted current payloads use Config. These cannot mix.
 type RecipientSpec struct {
-	MemberID        string
-	Ref             string
-	Name            string
-	AddressSourceID string
-	Parts           []dndfx.PartDeclaration
-	Config          json.RawMessage
-	Lifetime        RecipientLifetime
+	MemberID        string                  `json:"member_id"`
+	Ref             string                  `json:"ref"`
+	Name            string                  `json:"name,omitempty"`
+	AddressSourceID string                  `json:"address_source_id,omitempty"`
+	Parts           []dndfx.PartDeclaration `json:"parts,omitempty"`
+	Config          json.RawMessage         `json:"config,omitempty"`
+	Lifetime        RecipientLifetime       `json:"lifetime"`
 }
 
 // ApplicationSpec is authored composition, not mutable upkeep or an action cost.
 type ApplicationSpec struct {
-	Name             string
-	CoordinatorParts []dndfx.PartDeclaration
-	Recipients       []RecipientSpec
+	Name             string                  `json:"name"`
+	CoordinatorParts []dndfx.PartDeclaration `json:"coordinator_parts"`
+	Recipients       []RecipientSpec         `json:"recipients"`
 }
 
 // PrepareApplicationInput supplies identity and the complete preflight universe.
