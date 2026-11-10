@@ -10,6 +10,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
@@ -32,10 +33,12 @@ type frozenCastTargetState struct {
 // original [newCast] built one, and that construction takes the full
 // definition.
 type frozenCast struct {
-	Definition     combatActions.Definition `json:"definition"`
-	CasterID       string                   `json:"caster_id"`
-	Option         string                   `json:"option,omitempty"`
-	DerivedTargets bool                     `json:"derived_targets,omitempty"`
+	ApplicationID   string                      `json:"application_id,omitempty"`
+	ApplicationSpec *conditions.ApplicationSpec `json:"application_spec,omitempty"`
+	Definition      combatActions.Definition    `json:"definition"`
+	CasterID        string                      `json:"caster_id"`
+	Option          string                      `json:"option,omitempty"`
+	DerivedTargets  bool                        `json:"derived_targets,omitempty"`
 
 	// Targets is every target this cast named, in the SAME order
 	// [castMachine.targets] held them, so Index below addresses the same
@@ -80,7 +83,8 @@ func poseCast(m *castMachine, index int, inner Pause) (Step, error) {
 
 	profile := m.profile
 	frozen, err := writeFrozen(machineCast, inner.Kind, frozenCast{
-		Definition:     combatActions.Definition{Ref: m.spell, Name: m.spellName, Cast: &profile},
+		Definition:    combatActions.Definition{Ref: m.spell, Name: m.spellName, Cast: &profile},
+		ApplicationID: m.applicationID, ApplicationSpec: m.applicationSpec,
 		CasterID:       m.casterID,
 		Option:         m.option,
 		DerivedTargets: m.derivedTargets,
@@ -112,6 +116,16 @@ func resumeCast(h frozenHeader, in *ResumeInput) (Machine, error) {
 	if frozen.Definition.Cast == nil {
 		return nil, fmt.Errorf("%w: frozen cast has no cast profile", ErrBadFrozen)
 	}
+	if err := frozen.Definition.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrBadFrozen, err)
+	}
+	maintained := len(frozen.Definition.Cast.Maintenance) > 0
+	if maintained && (frozen.ApplicationID == "" || frozen.ApplicationSpec == nil) {
+		return nil, fmt.Errorf("%w: maintained cast lost its application identity or declaration", ErrBadFrozen)
+	}
+	if !maintained && (frozen.ApplicationID != "" || frozen.ApplicationSpec != nil) {
+		return nil, fmt.Errorf("%w: application identity without maintenance declaration", ErrBadFrozen)
+	}
 	if frozen.Index < 0 || frozen.Index >= len(frozen.Targets) {
 		return nil, fmt.Errorf("%w: frozen cast index %d is out of range for %d targets",
 			ErrBadFrozen, frozen.Index, len(frozen.Targets))
@@ -137,7 +151,7 @@ func resumeCast(h frozenHeader, in *ResumeInput) (Machine, error) {
 	profile := *frozen.Definition.Cast
 	m := &castMachine{
 		spell: frozen.Definition.Ref, spellName: frozen.Definition.Name, casterID: frozen.CasterID,
-		option: frozen.Option, profile: profile, concentration: profile.Concentration,
+		option: frozen.Option, profile: profile, applicationID: frozen.ApplicationID, applicationSpec: frozen.ApplicationSpec, roller: in.Roller,
 		targets: targets, derivedTargets: frozen.DerivedTargets, outcome: frozen.Outcome,
 	}
 
@@ -168,6 +182,9 @@ type castResumeMachine struct {
 
 func (m *castResumeMachine) Start(ctx context.Context, cast *Participants) (Step, error) {
 	m.cast.cast = cast
+	if err := m.cast.bindApplication(cast, true); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrBadFrozen, err)
+	}
 
 	cause := dnd5eEvents.SaveCause{
 		Trigger: dnd5eEvents.SaveTriggerSpell, EffectRef: &m.definition.Ref, InstigatorID: m.cast.casterID,
@@ -201,10 +218,12 @@ func (m *castResumeMachine) Start(ctx context.Context, cast *Participants) (Step
 			switch {
 			case m.definition.Cast.Attack != nil:
 				inner = newAttackCast(m.definition, m.cast.casterID, target.targetID, m.roller)
+			case m.cast.application != nil:
+				inner, err = m.cast.maintainedTarget(i)
 			case gated:
-				inner, err = newGatedCast(m.definition, m.cast.casterID, target.targetID, m.option, cause, m.roller)
+				inner, err = newGatedCast(m.definition, m.cast.casterID, target.targetID, m.option, cause, m.roller, nil)
 			default:
-				inner, err = newGatelessCast(m.definition, m.cast.casterID, target.targetID, m.option, m.roller)
+				inner, err = newGatelessCast(m.definition, m.cast.casterID, target.targetID, m.option, m.roller, nil)
 			}
 			if err != nil {
 				return nil, fmt.Errorf("target %d %q: %w", i, target.targetID, err)

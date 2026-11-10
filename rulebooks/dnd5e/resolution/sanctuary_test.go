@@ -256,7 +256,7 @@ func TestSanctuaryBlocksABaneTargetOnAFailedWardSave(t *testing.T) {
 	wolf.Conditions = []json.RawMessage{sanctuaryJSON(t, wolfID)}
 
 	roller := &actionRoller{singles: []int{5}} // bard's WIS ward save: fails
-	machine, err := NewAction(&ActionInput{
+	machine, err := NewAction(&ActionInput{ApplicationID: testApplicationID(t),
 		Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{wolfID}, Roller: roller,
 	})
 	require.NoError(t, err)
@@ -300,7 +300,7 @@ func TestSanctuarySaveSuccessDoesNotGrantCasterImmunity(t *testing.T) {
 	wolf.Conditions = []json.RawMessage{sanctuaryJSON(t, wolfID)}
 
 	roller := &actionRoller{singles: []int{20, 10}}
-	machine, err := NewAction(&ActionInput{
+	machine, err := NewAction(&ActionInput{ApplicationID: testApplicationID(t),
 		Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{wolfID}, Roller: roller,
 	})
 	require.NoError(t, err)
@@ -342,7 +342,7 @@ func TestCastingABaneEndsTheCastersOwnSanctuary(t *testing.T) {
 	caster.Conditions = []json.RawMessage{sanctuaryJSON(t, bardID)}
 
 	roller := &actionRoller{singles: []int{10}}
-	machine, err := NewAction(&ActionInput{
+	machine, err := NewAction(&ActionInput{ApplicationID: testApplicationID(t),
 		Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{wolfID}, Roller: roller,
 	})
 	require.NoError(t, err)
@@ -378,7 +378,7 @@ func TestSanctuaryDoesNotGateANonHostileCast(t *testing.T) {
 
 	roller := &actionRoller{singles: []int{10}}
 	machine, err := NewAction(&ActionInput{
-		Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{heroID}, Roller: roller,
+		ApplicationID: testApplicationID(t), Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{heroID}, Roller: roller,
 	})
 	require.NoError(t, err)
 	out, err := Resolve(context.Background(), &Input{
@@ -533,7 +533,7 @@ func castSanctuaryOnHero(t *testing.T, caster *character.Data) (*character.Data,
 	fixtures := castFixtures(t)
 	caster.ActionEconomy.BonusActionsRemaining = 1
 	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.Sanctuary})
-	machine, err := NewAction(&ActionInput{
+	machine, err := NewAction(&ActionInput{ApplicationID: testApplicationID(t),
 		Definition: *definition, AttackerID: bardID, TargetIDs: []string{heroID},
 		Roller: &countingCastRoller{},
 	})
@@ -649,7 +649,7 @@ func TestABaneOnAWardWhoseCasterLeftStillMeetsTheWard(t *testing.T) {
 	wolf.Conditions = []json.RawMessage{sanctuaryJSON(t, wolfID)}
 
 	roller := &actionRoller{singles: []int{5}}
-	machine, err := NewAction(&ActionInput{
+	machine, err := NewAction(&ActionInput{ApplicationID: testApplicationID(t),
 		Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{wolfID}, Roller: roller,
 	})
 	require.NoError(t, err)

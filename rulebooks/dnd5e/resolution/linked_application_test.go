@@ -17,7 +17,7 @@ import (
 func (s *ResistancePoseTestSuite) TestEarlierBaneRecipientIsPersistedBeforeLaterTargetAnswers() {
 	fixtures := s.fixtures()
 	saver := fixtures.saver(14, s.resistanceJSON())
-	machine, err := NewAction(&ActionInput{Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{wolfID, heroID}, Roller: facedRoller{d20: 1, other: 1}})
+	machine, err := NewAction(&ActionInput{ApplicationID: testApplicationID(s.T()), Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{wolfID, heroID}, Roller: facedRoller{d20: 1, other: 1}})
 	s.Require().NoError(err)
 	paused, err := fixtures.resolve(saver, machine, baneCost(), baneCaster(1))
 	s.Require().NoError(err)
