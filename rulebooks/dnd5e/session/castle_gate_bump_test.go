@@ -70,7 +70,7 @@ func (c *freeRoamCastle) bump(t *testing.T, path ...spatial.Position) (*session.
 	var out *session.MoveOutput
 	played := c.play(t, "bump", func() error {
 		var err error
-		out, err = c.mgr.Move(context.Background(), &session.MoveInput{Session: "sess", Member: "alice", Path: path})
+		out, err = walkOn(context.Background(), c.mgr, &session.MoveInput{Session: "sess", Member: "alice", Path: path})
 		return err
 	})
 	return out, played
@@ -112,6 +112,8 @@ func TestCastleTheBumpSpeaks(t *testing.T) {
 	require.Len(t, turned, 1, "his machine turns once")
 	require.Equal(t, "challenged", turned[0].body.Machine.To, "he is challenged")
 	require.Equal(t, theGuardsQuestion, guardSays(t, alice), "and asks what she wants")
+	spokenTo := where[session.TableAnswer](alice, func(a session.TableAnswer) bool { return a.Who == gate1Party && a.Say != "" })
+	require.Equal(t, aliceParty, spokenTo[0].body.To, "his line is spoken to the bumper (rpg-project#923)")
 	answeredUnder(t, alice, bumped)
 	require.Equal(t, "challenged", stateOf(t, c.world(t), "gate-1"), "the record holds him challenged")
 
@@ -148,6 +150,10 @@ func TestCastleTheHeldCrossingIsABump(t *testing.T) {
 func TestCastleAWallBumpWritesNothing(t *testing.T) {
 	c := openTheCastleForTwo(t, 18)
 	c.besideTheGate(t)
+	// The captain's hail on the road is a voice gate-1 hears, so he may be
+	// alert rather than posted by now (rpg-project#923); the wall changes
+	// neither.
+	before := stateOrPosted(stateOf(t, c.world(t), "gate-1"))
 
 	out, played := c.bump(t, throughTheGateWall, spatial.Position{X: -4, Y: 5})
 	require.Equal(t, session.MovementStopped, out.Status, "the wall stops the walk")
@@ -155,7 +161,7 @@ func TestCastleAWallBumpWritesNothing(t *testing.T) {
 	require.NotContains(t, out.StopReason, "gate-1", "and its reason names no one")
 	require.Empty(t, where[session.BarredAct](played.acts, func(session.BarredAct) bool { return true }), "nothing is written")
 	require.Empty(t, where[session.TableAnswer](played.acts, func(session.TableAnswer) bool { return true }), "nobody answers")
-	require.Equal(t, "posted", stateOrPosted(stateOf(t, c.world(t), "gate-1")), "he is still posted")
+	require.Equal(t, before, stateOrPosted(stateOf(t, c.world(t), "gate-1")), "the wall leaves him as he was")
 }
 
 // TestCastleOpeningTheHeldDoorIsABump: OpenDoor on the gate he holds is
@@ -261,7 +267,7 @@ func TestCastleAClickOnAPassableBodyIsRefused(t *testing.T) {
 			c.live.acts = nil
 			c.live.mu.Unlock()
 
-			_, err := c.mgr.Move(context.Background(), &session.MoveInput{Session: "sess", Member: "alice", Path: path})
+			_, err := walkOn(context.Background(), c.mgr, &session.MoveInput{Session: "sess", Member: "alice", Path: path})
 			require.ErrorIs(t, err, session.ErrBadPosition, "a passable body's cell is no place to stop")
 			require.Equal(t, start, c.where(t, "alice"), "and she has not moved")
 			c.live.mu.Lock()

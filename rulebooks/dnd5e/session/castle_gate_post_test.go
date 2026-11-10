@@ -78,9 +78,10 @@ func (c *freeRoamCastle) walkInto(t *testing.T, cell spatial.Position) []spatial
 	return path
 }
 
+// move is alice's walk along path, walked on through a hail ([walkOn]).
 func (c *freeRoamCastle) move(t *testing.T, path []spatial.Position) *session.MoveOutput {
 	t.Helper()
-	out, err := c.mgr.Move(context.Background(), &session.MoveInput{Session: "sess", Member: "alice", Path: path})
+	out, err := walkOn(context.Background(), c.mgr, &session.MoveInput{Session: "sess", Member: "alice", Path: path})
 	require.NoError(t, err)
 	return out
 }

@@ -763,6 +763,7 @@ func answeredPiece(tag string, payload []byte) ([]piece, error) {
 	var p struct {
 		Creature   string          `json:"creature"`
 		Prop       string          `json:"prop"`
+		To         string          `json:"to"`
 		Option     string          `json:"option"`
 		Key        string          `json:"key"`
 		Word       string          `json:"word"`
@@ -787,8 +788,12 @@ func answeredPiece(tag string, payload []byte) ([]piece, error) {
 	if p.Prop != "" {
 		who = prop(p.Prop)
 	}
+	var to Party
+	if p.To != "" {
+		to = member(p.To)
+	}
 	answer := TableAnswer{
-		Who: who, Option: p.Option, Key: p.Key, Word: p.Word, Selector: p.Selector,
+		Who: who, To: to, Option: p.Option, Key: p.Key, Word: p.Word, Selector: p.Selector,
 		Say: p.Say, Temperament: p.Temper, Entry: p.Entry,
 	}
 	if len(p.Activity) != 0 {

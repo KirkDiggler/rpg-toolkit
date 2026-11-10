@@ -9,10 +9,10 @@ package session_test
 // the rest of her walk, puts the address on her own Speak row and nobody
 // else's, and the hail reaches whoever witnesses it as the guard's answer.
 //
-// The castle the encounter module ships carries no approach yet, so these
-// tests open it with the hail written in ([hailingCastleEdits]): the front
-// gate's approach and the captain's hail line. The captain is the gate's
-// nearest carrier to a party walking up the road, so he is the one who hails.
+// The castle the encounter module ships carries the hail: the front gate's
+// `approach: { within: 2 }`, and an `on: approached` row and line for the
+// captain, gate-1 and gate-2. The captain is the gate's nearest carrier to a
+// party walking up the road, so he is the one who hails.
 
 import (
 	"context"
@@ -30,24 +30,8 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// theCaptainsHail is the captain's hail line on the hailing castle.
-const theCaptainsHail = "Hold up there, friend. What brings you to the gate?"
-
-// hailingCastleEdits are the castle's own text with the hail added: the
-// front gate's approach (its distance a %d), and the captain's
-// `on: approached` row and line. Each edit names text the castle must hold
-// exactly once.
-var hailingCastleEdits = [][2]string{
-	{"interactions:\n  front-gate:\n    recipe:\n", "interactions:\n  front-gate:\n    approach: { within: %d }\n    recipe:\n"},
-	{
-		"      ref: site:behaviors:captain-policy\n      initial: ready\n      states:\n        ready:\n          transitions:\n",
-		"      ref: site:behaviors:captain-policy\n      initial: ready\n      states:\n        ready:\n          transitions:\n            - on: approached\n              do:\n                - pick: approached\n",
-	},
-	{
-		"    table:\n      time:\n        # Hand edit (smarter monsters S2",
-		"    table:\n      approached:\n        - say: " + theCaptainsHail + "\n      time:\n        # Hand edit (smarter monsters S2",
-	},
-}
+// theCaptainsHail is the captain's hail line in the castle.
+const theCaptainsHail = "You there. Nobody passes this gate without my say. Speak."
 
 // The hail on the road to the gate: the cell alice is hailed on walking up
 // from the party start toward the gate, and the cells back down the road,
@@ -66,27 +50,21 @@ var captainParty = session.Party{Kind: session.PartyMember, ID: "captain"}
 // theFrontGateAddress is the captain addressing alice on the front gate.
 var theFrontGateAddress = &session.Address{Guard: "captain", Interaction: "front-gate"}
 
-// hailingCastleSource is the castle with [hailingCastleEdits] applied and the
-// front gate's approach at within.
-func hailingCastleSource(t *testing.T, within int) []byte {
+// castleWithApproach is the castle with the front gate's approach at within:
+// the castle's own `approach: { within: 2 }`, its distance replaced.
+func castleWithApproach(t *testing.T, within int) []byte {
 	t.Helper()
 	raw := string(castleSource(t))
-	for i, edit := range hailingCastleEdits {
-		require.Equal(t, 1, strings.Count(raw, edit[0]), "the castle holds the edited text once: %q", edit[0])
-		with := edit[1]
-		if i == 0 {
-			with = fmt.Sprintf(with, within)
-		}
-		raw = strings.Replace(raw, edit[0], with, 1)
-	}
-	return []byte(raw)
+	const authored = "approach: { within: 2 }"
+	require.Equal(t, 1, strings.Count(raw, authored), "the castle authors the front gate's approach once")
+	return []byte(strings.Replace(raw, authored, fmt.Sprintf("approach: { within: %d }", within), 1))
 }
 
-// openTheHailingCastle is the hailing castle opened for alice and the cleric,
-// the cleric watching the road.
+// openTheHailingCastle is the castle opened for alice and the cleric, the
+// cleric watching the road.
 func openTheHailingCastle(t *testing.T) *freeRoamCastle {
 	t.Helper()
-	c := openTheCastleFrom(t, hailingCastleSource(t, 2), []*character.Data{armedFighter("alice"), healingCleric()}, 18)
+	c := openTheCastleFor(t, []*character.Data{armedFighter("alice"), healingCleric()}, 18)
 	c.placeInTheRecord(t, "cleric", watchingTheRoad)
 	return c
 }
@@ -99,8 +77,9 @@ func (c *freeRoamCastle) walkUpToTheGate(t *testing.T) ([]spatial.Position, *ses
 	require.Contains(t, path, theHailCell, "precondition: the road passes the hail cell")
 	var out *session.MoveOutput
 	played := c.play(t, "alice walks up to the gate", func() error {
-		out = c.move(t, path)
-		return nil
+		var err error
+		out, err = c.mgr.Move(context.Background(), &session.MoveInput{Session: "sess", Member: "alice", Path: path})
+		return err
 	})
 	return path, out, played
 }
@@ -157,6 +136,7 @@ func TestCastleTheHailStopsTheWalk(t *testing.T) {
 	require.Len(t, hails, 1, "the captain says one line")
 	require.Equal(t, theCaptainsHail, hails[0].body.Say, "and it is his hail")
 	require.Equal(t, "move", hails[0].act.Verb, "under her Move")
+	require.Equal(t, aliceParty, hails[0].body.To, "and spoken to her")
 
 	// NOTHING RESUMES: the dropped cells are not walked by a later read.
 	c.bar(t, "alice")
@@ -273,7 +253,7 @@ func TestCastleABystanderListensIn(t *testing.T) {
 // approach of exactly the reach launches.
 func TestLaunchRefusesAnApproachBeyondSpeakReach(t *testing.T) {
 	launch := func(within int) error {
-		compiled, err := dungeonspec.Load(hailingCastleSource(t, within))
+		compiled, err := dungeonspec.Load(castleWithApproach(t, within))
 		require.NoError(t, err)
 		mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: &actCapture{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 			PresentationIDs: testPresentationIDs{}, Dice: &castleDice{d20s: []int{18}}, TurnDriver: session.Driver(),
@@ -288,4 +268,26 @@ func TestLaunchRefusesAnApproachBeyondSpeakReach(t *testing.T) {
 	require.ErrorIs(t, err, session.ErrInvalidWorld, "an approach beyond Speak reach is refused")
 	require.ErrorContains(t, err, "front-gate", "and the refusal names the interaction")
 	require.NoError(t, launch(session.InteractionReach), "an approach at Speak reach launches")
+}
+
+// walkOn is a walk clicked again each time a hail stops it short
+// (rpg-project#923): the castle's gate hails a party walking up the road, and
+// a test about anything else walks on through it, as a player does. A walk
+// already addressed draws no second hail, so the walk on completes or stops
+// for its own reason. The answer is the last Move's, with every step taken.
+func walkOn(ctx context.Context, mgr *session.Manager, in *session.MoveInput) (*session.MoveOutput, error) {
+	var steps []session.Step
+	path := in.Path
+	for {
+		out, err := mgr.Move(ctx, &session.MoveInput{Session: in.Session, Member: in.Member, DeclarationID: in.DeclarationID, Path: path})
+		if err != nil {
+			return nil, err
+		}
+		steps = append(steps, out.Steps...)
+		if out.Addressed == nil || out.Status != session.MovementStopped || len(out.Steps) == 0 {
+			out.Steps = steps
+			return out, nil
+		}
+		path = path[len(out.Steps):]
+	}
 }

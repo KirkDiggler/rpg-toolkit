@@ -218,7 +218,7 @@ func TestCastleFreeRoamCastAndSwing(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		_, err = c.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: route.Path})
+		_, err = walkOn(ctx, c.mgr, &session.MoveInput{Session: "sess", Member: "alice", Path: route.Path})
 		return err
 	})
 	attack := c.row(t, "alice", session.VerbAttack, "")
@@ -338,7 +338,7 @@ func TestCastleFreeRoamThunderwaveShovesBeforeTheFight(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		_, err = c.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "bard", Path: route.Path})
+		_, err = walkOn(ctx, c.mgr, &session.MoveInput{Session: "sess", Member: "bard", Path: route.Path})
 		return err
 	})
 	turn, err := c.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "bard"})
