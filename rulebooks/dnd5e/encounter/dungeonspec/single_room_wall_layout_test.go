@@ -72,7 +72,7 @@ func (s *SingleRoomWallLayoutSuite) TestTheSourceLineLowersToCanonicalFeetOnce()
 	k := feetPerSourceUnit
 	s.InDelta(5/math.Sqrt(3), k, 1e-15, "k is the approved across-the-flats scale")
 
-	lowered, err := canonicalStructuralWalls("vault-key", []RoomWall{s.layoutWitnessWall(s.witnessOpening())})
+	lowered, err := canonicalStructuralWalls("vault-key", []RoomWall{s.layoutWitnessWall(s.witnessOpening())}, nil)
 	s.Require().NoError(err)
 	s.Require().Len(lowered, 1)
 
@@ -114,7 +114,7 @@ func (s *SingleRoomWallLayoutSuite) TestThePhysicalBlockerKeepsItsOwnDepthAndOff
 	k := feetPerSourceUnit
 	wall := s.layoutWitnessWall(s.witnessOpening())
 
-	lowered, err := canonicalStructuralWalls("vault-key", []RoomWall{wall})
+	lowered, err := canonicalStructuralWalls("vault-key", []RoomWall{wall}, nil)
 	s.Require().NoError(err)
 	s.Require().Len(lowered, 1)
 	s.InDelta(0.3*k, lowered[0].Thickness, 1e-12)
@@ -140,7 +140,7 @@ func (s *SingleRoomWallLayoutSuite) TestThePhysicalBlockerKeepsItsOwnDepthAndOff
 func (s *SingleRoomWallLayoutSuite) TestABareOpeningCarriesNoDoor() {
 	opening := s.witnessOpening()
 	opening.Door = nil
-	lowered, err := canonicalStructuralWalls("vault-key", []RoomWall{s.layoutWitnessWall(opening)})
+	lowered, err := canonicalStructuralWalls("vault-key", []RoomWall{s.layoutWitnessWall(opening)}, nil)
 	s.Require().NoError(err)
 	s.Require().Len(lowered, 1)
 	s.Require().Len(lowered[0].Openings, 1)
@@ -160,7 +160,7 @@ func (s *SingleRoomWallLayoutSuite) TestTheDoorEndpointsFollowTheOpening() {
 		Start: RoomWallPoint{X: 0, Z: 0},
 		End:   RoomWallPoint{X: 10 / math.Sqrt(2), Z: 10 / math.Sqrt(2)},
 	}
-	lowered, err := canonicalStructuralWalls("vault-key", []RoomWall{wall})
+	lowered, err := canonicalStructuralWalls("vault-key", []RoomWall{wall}, nil)
 	s.Require().NoError(err)
 	s.Require().Len(lowered, 1)
 	s.Require().Len(lowered[0].Openings, 1)
@@ -182,14 +182,14 @@ func (s *SingleRoomWallLayoutSuite) TestTheDoorEndpointsFollowTheOpening() {
 func (s *SingleRoomWallLayoutSuite) TestALineWithNoLengthRefusesAHandAssembledSource() {
 	wall := s.layoutWitnessWall()
 	wall.Line.End = wall.Line.Start
-	_, err := canonicalStructuralWalls("vault-key", []RoomWall{wall})
+	_, err := canonicalStructuralWalls("vault-key", []RoomWall{wall}, nil)
 	s.Require().Error(err)
 }
 
 // TestAnEmptyWallListLowersToNothing keeps a wall-less room byte-identical:
 // no records, so no key is ever written.
 func (s *SingleRoomWallLayoutSuite) TestAnEmptyWallListLowersToNothing() {
-	lowered, err := canonicalStructuralWalls("vault-key", nil)
+	lowered, err := canonicalStructuralWalls("vault-key", nil, nil)
 	s.Require().NoError(err)
 	s.Nil(lowered)
 }
@@ -199,7 +199,7 @@ func (s *SingleRoomWallLayoutSuite) TestAnEmptyWallListLowersToNothing() {
 // exactly the string the author wrote.
 func (s *SingleRoomWallLayoutSuite) TestTheWitnessGeometryHasNoAssetDependency() {
 	wall := s.layoutWitnessWall(s.witnessOpening())
-	lowered, err := canonicalStructuralWalls("vault-key", []RoomWall{wall})
+	lowered, err := canonicalStructuralWalls("vault-key", []RoomWall{wall}, nil)
 	s.Require().NoError(err)
 	s.Equal(wall.Appearance.AssetRef, lowered[0].Ref)
 	s.Equal(wall.Openings[0].Door.AssetRef, lowered[0].Openings[0].Door.Ref)
@@ -216,9 +216,9 @@ func (s *SingleRoomWallLayoutSuite) TestAppearanceChangesTheLayoutButNotTheBlock
 		AssetRef: "a-completely-different-asset", Height: 40, Thickness: 9, Elevation: -12,
 	}
 
-	plainLayout, err := canonicalStructuralWalls("vault-key", []RoomWall{plain})
+	plainLayout, err := canonicalStructuralWalls("vault-key", []RoomWall{plain}, nil)
 	s.Require().NoError(err)
-	dressedLayout, err := canonicalStructuralWalls("vault-key", []RoomWall{dressed})
+	dressedLayout, err := canonicalStructuralWalls("vault-key", []RoomWall{dressed}, nil)
 	s.Require().NoError(err)
 	s.NotEqual(plainLayout, dressedLayout, "the assembled appearance is delivered layout now")
 	s.Equal("a-completely-different-asset", dressedLayout[0].Ref)

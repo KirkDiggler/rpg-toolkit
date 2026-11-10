@@ -225,6 +225,8 @@ type AtlasStructuralWall struct {
 
 	// MaterialOverrides are detached captured choices for this permitted wall.
 	MaterialOverrides []MaterialOverride
+	// FaceFinishes are detached explicit choices on this permitted wall's faces.
+	FaceFinishes []WallFaceFinish
 
 	// FootprintCells is every floor cell the wall's presence footprint
 	// overlaps by positive area — the same support that decides whether the
