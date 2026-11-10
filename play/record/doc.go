@@ -11,6 +11,16 @@
 // rpg-project ideas/event-stream R27). Ids draw their time and entropy from
 // an IDSource the caller may supply; the log holds no randomness of its own.
 //
+// SEGMENTS: a store need not rewrite the whole record on every save. A
+// segment is the unit a store appends: Log.DataFrom(since) returns the
+// entries at or after since, the first seq the store does not yet hold, as
+// a legal LogData with its own audience table, built over its own entries
+// only (a stored table is never leaned on: any TrimBefore renumbers a
+// rebuilt one). The head, DataFrom(NextSeq), carries NextSeq and LastID with
+// no entries. JoinData(head, segments...) re-interns the segments' tables
+// into one and returns what ToData writes, refusing gaps, overlaps and a
+// head that disagrees with the last segment by name (rpg-project#897).
+//
 // Design contract: docs/ideas/play/record/design.md (R1–R10). Leaf module:
 // depends only on core, takes no context.Context, returns results as
 // values, and never publishes.
