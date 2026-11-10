@@ -885,7 +885,9 @@ func (m *Manager) openScope(
 		// Launch's fresh board. Fenced, no checkpoint exists yet, so its
 		// first save lands only on a store that holds none (a racing Launch
 		// fails closed); plain, the fence stays unheld.
-		scope.fence = checkpointFence{held: m.fenced != nil}
+		// The store holds no record either, so an appending save sends the
+		// whole of it: since seq 1.
+		scope.fence = checkpointFence{held: m.fenced != nil, recordNext: 1}
 	case m.fenced != nil:
 		if world, scope.fence, err = m.fetchFencedWorld(ctx, data.Encounter); err != nil {
 			return nil, err
@@ -1016,7 +1018,9 @@ type writeScope struct {
 	// fence is the checkpoint version this verb loaded when the host's
 	// repository is fenced, and persist saves against it (checkpoint.go).
 	// The baseline above is NOT the fence: a beatless verb does not advance
-	// it. Unheld when the repository is plain.
+	// it. Unheld when the repository is plain. The fence also carries what
+	// record the store holds (recordNext), which is NOT the baseline either:
+	// the baseline is this act's delta boundary and stays put.
 	fence checkpointFence
 
 	// seatClears is the players whose seats a fenced verb clears in its
@@ -1286,10 +1290,11 @@ func (m *Manager) adopt(scope *writeScope) error {
 // loaded: both land or neither does, and a stale fence lands nothing and
 // unwraps to [ErrStaleCheckpoint]. commit delivers only after persist reports
 // success, so a stale verb also tells nobody anything.
-func (m *Manager) persist(
-	ctx context.Context, scope *writeScope, data encounter.EncounterData,
-) (SaveReport, error) {
-
+//
+// THE WORLD IS TAKEN HERE, at the storage boundary: ToData for a plain or a
+// whole-record fenced host, ToCheckpoint for an appending one, which never
+// copies the record's older entries (rpg-project#897 leg c).
+func (m *Manager) persist(ctx context.Context, scope *writeScope) (SaveReport, error) {
 	// The report opens with what the verb already made durable rather than
 	// starting from nothing, which is the whole of rpg-toolkit#1056: a swing
 	// writes the damaged sheet before it gets here, so a world save that fails
@@ -1302,8 +1307,15 @@ func (m *Manager) persist(
 	// A fenced host takes both aggregates in one transaction fenced on the
 	// version this verb loaded; a stale save writes nothing (checkpoint.go).
 	if scope.fence.held {
-		return m.persistFenced(ctx, scope, &data, report)
+		world, err := m.fencedWorldOf(scope)
+		if err != nil {
+			report.Failed = append(report.Failed, "encounter:"+scope.encounter)
+			return report, &SaveError{Report: report, Err: fmt.Errorf("saving world: %w", translate(err))}
+		}
+		return m.persistFenced(ctx, scope, world, report)
 	}
+
+	data := scope.enc.ToData()
 
 	if err := m.encounters.SaveEncounter(ctx, scope.encounter, &data); err != nil {
 		report.Failed = []string{"encounter:" + scope.encounter}
@@ -1403,11 +1415,6 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 	recorded := commitRecord(scope)
 	acts := commitActs(ctx, scope, m.acts, view.EverMembers)
 
-	// THE final storage boundary: this ToData runs after the verb's complete
-	// delta has been numbered and projected. Everything before this line read
-	// that whole delta; everything after reads only what storage keeps.
-	world := scope.enc.ToData()
-
 	// FENCED, THE SEATS CLEAR INSIDE THE SAVE (rpg-toolkit#2332). The plain
 	// order below, clears after the run is durable, would leave a fenced
 	// clear with no save to ride. Under the fence there is no "after": the
@@ -1425,7 +1432,11 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 		}
 	}
 
-	report, err := m.persist(ctx, scope, world)
+	// THE final storage boundary is persist's ToData (or, appending, its
+	// ToCheckpoint): it runs after the verb's complete delta has been
+	// numbered and projected. Everything before it read that whole delta;
+	// everything after reads only what storage keeps.
+	report, err := m.persist(ctx, scope)
 	if err != nil {
 		return report, DeliveryReport{}, err
 	}

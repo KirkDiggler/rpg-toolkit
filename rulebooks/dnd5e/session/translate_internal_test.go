@@ -107,6 +107,9 @@ func TestTranslateLetsNoCompositionSentinelThrough(t *testing.T) {
 		// keep the composition's words behind the boundary if that changes.
 		{"sheet answer skipped a member", encounter.ErrNoSheets, ErrNoSheet},
 		{"compiled world asked for sheets", encounter.ErrRefusingSheets, ErrInvalidWorld},
+		// An appending save asked for the record past the story's end: the
+		// store returned a record the encounter never wrote (rpg-project#897).
+		{"since past the story", encounter.ErrBadSince, ErrBadRepository},
 	}
 
 	for _, tc := range cases {

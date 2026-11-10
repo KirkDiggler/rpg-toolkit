@@ -11,6 +11,7 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
@@ -133,6 +134,75 @@ type SaveFencedOutput struct {
 	Version uint64
 }
 
+// AppendingEncounterRepository is an OPTIONAL refinement of
+// [FencedEncounterRepository], found by type assertion on Config.Encounters
+// like the fence itself (rpg-project#897 leg c). A host that has it stores
+// the story record as SEGMENTS it appends to, rather than rewriting the whole
+// record on every save: a verb's save carries the world without its record
+// (the REST) and only the entries the store does not hold yet.
+//
+// WHY A CAPABILITY, AND NOT FIELDS ON SaveFencedInput. A host that implements
+// SaveFenced and ignores a field it does not know would write the rest alone
+// and lose the record silently. A new method cannot be half-adopted: a host
+// either saves segments or is handed the whole world as before.
+//
+// WHAT THE STORE HOLDS IS THE SESSION'S TO TRACK. The session keeps the
+// record's next seq the store holds beside the checkpoint version
+// ([checkpointFence]): set from the loaded record on a fenced read, 1 at
+// Launch, advanced only after a save lands. While the fence holds, no other
+// save has landed, so the store still holds exactly that.
+//
+// THE READS STAY WHOLE. GetFencedEncounter and GetEncounter still return one
+// assembled [encounter.EncounterData]: the host joins the rest's log head
+// with its stored segments ([record.JoinData]); the session never sees a
+// segment on the way in.
+//
+// A host that wraps its repository must forward SaveAppended too, or the
+// wrapper hides it and the session falls back to SaveFenced with the whole
+// world (correct, and the cost this capability removes).
+type AppendingEncounterRepository interface {
+	FencedEncounterRepository
+
+	// SaveAppended is SaveFenced over a split world: in one transaction, only
+	// if the store's checkpoint version still equals in.Expected, it replaces
+	// the rest (in.Data, whose log is the head alone), appends in.Appended to
+	// the stored segments, drops every stored segment wholly below in.Floor,
+	// and writes the session record, sheets and seats as SaveFenced does; it
+	// then increments the version and returns the new one. Stale, it writes
+	// nothing and returns an error satisfying errors.Is(err,
+	// ErrStaleCheckpoint). Any error means nothing landed.
+	//
+	// Since 1 means the segment is the whole record: the store drops whatever
+	// record it held under this encounter before appending (a fresh Launch).
+	SaveAppended(ctx context.Context, in *SaveAppendedInput) (*SaveFencedOutput, error)
+}
+
+// SaveAppendedInput is one verb's save to an [AppendingEncounterRepository].
+//
+// The embedded SaveFencedInput carries every piece exactly as SaveFenced
+// takes it, except that Data is the REST: the world with its story log
+// replaced by the head (NextSeq and LastID, no entries, no audience table).
+// A rest decodes on its own as a legal trimmed-empty record, so the host must
+// never hand it to a reader without its segments.
+type SaveAppendedInput struct {
+	SaveFencedInput
+
+	// Appended is the record's entries at or after Since, with an audience
+	// table of their own ([record.Log.DataFrom]): the segment the store
+	// appends. It holds no entries for a verb that appended no beat; the
+	// store may skip an empty segment.
+	Appended record.LogData
+
+	// Since is the first record seq the store does not hold: 1 when it holds
+	// none (Launch), else the NextSeq of the record it last saved.
+	Since uint64
+
+	// Floor is the retention floor: the store may drop every stored segment
+	// whose entries all fall below it. Zero keeps everything (every run the
+	// session launches keeps its whole record).
+	Floor uint64
+}
+
 // checkpointFence is the version a write verb loaded, when the host's
 // repository is fenced. held false means UNKNOWN: the repository is plain and
 // the save is the two unfenced writes it has always been. held true with a
@@ -140,6 +210,19 @@ type SaveFencedOutput struct {
 type checkpointFence struct {
 	held    bool
 	version uint64
+
+	// recordNext is the first record seq the store does NOT hold: the
+	// loaded record's NextSeq on a fenced read (a fresh record's stored 0 is
+	// 1), 1 on Launch's fresh board, and the saved rest's NextSeq once a
+	// save lands, never before. An appending save sends the record from here
+	// ([AppendingEncounterRepository]).
+	//
+	// IT IS NOT THE ACT'S BASELINE (writeScope.baseline). The baseline is the
+	// act's delta boundary for its settlement and its acts, and it must stay
+	// fixed for the whole verb; recordNext moves with every landed save, and
+	// a verb that commits several times (rpg-project#879 R7's per-pace
+	// commits) moves it several times while the baseline stands still.
+	recordNext uint64
 
 	// saved reports that this scope's fenced save landed. A sheet or seat
 	// written after it has no save left to ride, so it is refused
@@ -173,16 +256,84 @@ func (m *Manager) fetchFencedWorld(ctx context.Context, encID string) (*encounte
 		return nil, checkpointFence{}, fmt.Errorf(
 			"%q: GetFencedEncounter reported success with no data: %w", encID, ErrBadRepository)
 	}
-	return out.Data, checkpointFence{held: true, version: out.Version}, nil
+	return out.Data, checkpointFence{
+		held: true, version: out.Version, recordNext: nextSeqOf(out.Data.Log),
+	}, nil
+}
+
+// nextSeqOf is the first seq a stored record does not hold: its NextSeq, or 1
+// for a fresh record, which the record stores as 0.
+func nextSeqOf(log record.LogData) uint64 {
+	if log.NextSeq == 0 {
+		return 1
+	}
+	return log.NextSeq
+}
+
+// fencedWorld is the world one fenced save writes: whole for a host that
+// rewrites the record (SaveFenced), split for one that appends it
+// (SaveAppended). Exactly one is set.
+type fencedWorld struct {
+	whole *encounter.EncounterData
+	split *encounter.ToCheckpointOutput
+}
+
+// fencedWorldOf takes the verb's world at the storage boundary: split from
+// the fence's recordNext when the host appends, whole otherwise.
+func (m *Manager) fencedWorldOf(scope *writeScope) (fencedWorld, error) {
+	if m.appending == nil {
+		data := scope.enc.ToData()
+		return fencedWorld{whole: &data}, nil
+	}
+	split, err := scope.enc.ToCheckpoint(&encounter.ToCheckpointInput{Since: scope.fence.recordNext})
+	if err != nil {
+		return fencedWorld{}, err
+	}
+	return fencedWorld{split: split}, nil
+}
+
+// splitStored splits a stored world the way ToCheckpoint splits a live one,
+// for a fenced save that writes the world back as it read it (a seated
+// sheet's level): the head as the rest's log, and the entries at or after
+// since, which for a world written back unchanged is none.
+func splitStored(data *encounter.EncounterData, since uint64) (*encounter.ToCheckpointOutput, error) {
+	log, err := record.LoadLog(data.Log)
+	if err != nil {
+		return nil, fmt.Errorf("splitting the stored record: %w: %v", ErrInvalidWorld, err)
+	}
+	next, err := log.NextSeq()
+	if err != nil {
+		return nil, fmt.Errorf("splitting the stored record: %w: %v", ErrInvalidWorld, err)
+	}
+	head, err := log.DataFrom(&record.DataFromInput{Since: next})
+	if err != nil {
+		return nil, fmt.Errorf("splitting the stored record: %w: %v", ErrInvalidWorld, err)
+	}
+	appended, err := log.DataFrom(&record.DataFromInput{Since: since})
+	if err != nil {
+		return nil, fmt.Errorf("splitting the stored record: %w: %v", ErrInvalidWorld, err)
+	}
+	rest := *data
+	rest.Log = head
+	return &encounter.ToCheckpointOutput{Rest: rest, Appended: appended}, nil
 }
 
 // persistFenced is [Manager.persist] over a fenced repository: the sheets and
 // seats the verb deferred, the world and, when touched, the session record,
 // in one fenced save. Any failure means none of them landed, so the report
 // names them all as failed; a stale fence unwraps to [ErrStaleCheckpoint].
+//
+// An appending host takes the split world through SaveAppended, from the
+// fence's recordNext; any other fenced host takes it whole through SaveFenced.
+// recordNext advances to the saved rest's NextSeq only once the save lands: a
+// refused save leaves it where it was, since the store still holds what it did.
 func (m *Manager) persistFenced(
-	ctx context.Context, scope *writeScope, data *encounter.EncounterData, report SaveReport,
+	ctx context.Context, scope *writeScope, world fencedWorld, report SaveReport,
 ) (SaveReport, error) {
+	data := world.whole
+	if world.split != nil {
+		data = &world.split.Rest
+	}
 	in := &SaveFencedInput{Encounter: scope.encounter, Data: data, Expected: scope.fence.version}
 	in.Characters, in.Seats = m.pending.take(scope.session)
 	var aggregates []string
@@ -197,7 +348,18 @@ func (m *Manager) persistFenced(
 		in.Session = scope.data
 		aggregates = append(aggregates, "session:"+scope.session)
 	}
-	out, err := m.fenced.SaveFenced(ctx, in)
+	var out *SaveFencedOutput
+	var err error
+	if world.split != nil {
+		out, err = m.appending.SaveAppended(ctx, &SaveAppendedInput{
+			SaveFencedInput: *in,
+			Appended:        world.split.Appended,
+			Since:           scope.fence.recordNext,
+			Floor:           world.split.Floor,
+		})
+	} else {
+		out, err = m.fenced.SaveFenced(ctx, in)
+	}
 	if err == nil && (out == nil || out.Version == in.Expected) {
 		err = fmt.Errorf("SaveFenced reported success without advancing the version: %w", ErrBadRepository)
 	}
@@ -206,6 +368,8 @@ func (m *Manager) persistFenced(
 		return report, &SaveError{Report: report, Err: fmt.Errorf("saving world: %w", err)}
 	}
 	scope.fence.saved = true
+	scope.fence.version = out.Version
+	scope.fence.recordNext = nextSeqOf(data.Log)
 	report.Written = append(report.Written, aggregates...)
 	return report, nil
 }
@@ -361,5 +525,13 @@ func (m *Manager) saveSeatedSheetFenced(ctx context.Context, session string, rec
 	if err := m.pending.putSheet(session, record); err != nil {
 		return SaveReport{}, err
 	}
-	return m.persistFenced(ctx, scope, world, SaveReport{})
+	written := fencedWorld{whole: world}
+	if m.appending != nil {
+		split, err := splitStored(world, fence.recordNext)
+		if err != nil {
+			return SaveReport{}, err
+		}
+		written = fencedWorld{split: split}
+	}
+	return m.persistFenced(ctx, scope, written, SaveReport{})
 }
