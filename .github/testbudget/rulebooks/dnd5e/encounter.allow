@@ -53,6 +53,7 @@ github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/TestPlacementIndex_
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/TestPropWithinReach_AgreesWithWithinReach  # over budget, to be sized: rpg-toolkit#2342 (2.84s local, 9.99s CI)
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/TestRecordActivationSuite  # near budget; runner variance, not a heavy fixture (4.9s local, 6.88s CI)
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/castletest/TestReserves_NotificationsPrepareAPricedMarch  # over budget, to be sized: rpg-toolkit#2342 (10.85s local, - CI)
+github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/TestResidentCopyWritesWhatAReloadWritesOnTheGarrison  # the listening posts and the patrol are the wake state (due, dueAt, listeners) the resident-copy gate must cover, and only the garrison has them; every verb loads 57 monsters twice (5.17s local, - CI)
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/TestRouteTo_Deterministic  # over budget, to be sized: rpg-toolkit#2342 (4.09s local, 10.71s CI)
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/TestRouteTo_EqualsFlood  # over budget, to be sized: rpg-toolkit#2342 (4.58s local, 10.66s CI)
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/TestRouteTo_VisitsNearThePath  # near budget; runner variance, not a heavy fixture (2.51s local, 5.97s CI)
