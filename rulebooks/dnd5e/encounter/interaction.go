@@ -87,10 +87,11 @@ type InteractionData struct {
 
 // MarshalJSON writes the record through encoding/json v2, so the recipe and
 // the blob keep their canonical encodings when a host writes [EncounterData]
-// through encoding/json v1 — [BehaviorData]'s reason.
+// through encoding/json v1 — [BehaviorData]'s reason. Deterministic for the
+// same reason as [BehaviorData.MarshalJSON]: the blob's bag is a map.
 func (d InteractionData) MarshalJSON() ([]byte, error) {
 	type plain InteractionData
-	return json.Marshal(plain(d))
+	return json.Marshal(plain(d), json.Deterministic(true))
 }
 
 // UnmarshalJSON reads the record through encoding/json v2, so the blob's bag
