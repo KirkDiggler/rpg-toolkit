@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -67,12 +68,25 @@ func TestTheProviderCompilesOnce(t *testing.T) {
 	a := sweepOn(t, sites)
 	b := sweepOn(t, sites)
 	require.Same(t, a.site, b.site, "one content, one site")
-	require.Equal(t, 1, sites.compiles, "compiled once")
+	require.Equal(t, 1, sites.compiles, "compiled once: the second Setup is found by its input's fingerprint")
+
+	// A door authored open is a different input and the same site: it
+	// compiles once more, and resolves to the site already held.
+	open := sweepSetup()
+	open.Sites = sites
+	open.Field.Doors[0].State = DoorIsOpen()
+	c, err := NewEncounter(open)
+	require.NoError(t, err)
+	require.Same(t, a.site, c.site, "a door's state is the game's, not the site's")
+	require.Equal(t, 2, sites.compiles, "a new input compiles once")
+	_, err = NewEncounter(open)
+	require.NoError(t, err)
+	require.Equal(t, 2, sites.compiles, "and never again")
 
 	loaded, err := LoadEncounter(&LoadEncounterInput{Data: a.ToData(), Sites: sites, Capabilities: sweepCapabilities()})
 	require.NoError(t, err)
 	require.Same(t, a.site, loaded.site, "a load on the warm provider reads the same site")
-	require.Equal(t, 1, sites.compiles, "and compiles nothing")
+	require.Equal(t, 2, sites.compiles, "and compiles nothing")
 
 	_, err = sites.Site(context.Background(), &SiteInput{Hash: "no-such-site"})
 	require.ErrorIs(t, err, ErrUnknownSite)
@@ -248,4 +262,82 @@ func TestAFootprintDoorIsTheGamesOwn(t *testing.T) {
 	require.Empty(t, a.field.blockingDoorFootprints(), "A's leaf is open: nothing of it blocks in A")
 	require.Len(t, b.field.blockingDoorFootprints(), 1, "B's leaf is still shut")
 	require.Equal(t, DoorIsClosed().Kind(), b.field.blockingDoorFootprints()[0].state.Kind())
+}
+
+// TestConcurrentAskersCompileOnce: eight goroutines asking a cold provider
+// for one site at once — by hash with its stored piece, and by the same
+// construction input — compile it once each way and share the answer. The
+// compile is slowed so the askers overlap. Mutant: no per-key sharing (the
+// counter reads eight).
+func TestConcurrentAskersCompileOnce(t *testing.T) {
+	piece := sweepOn(t, NewMemorySites(nil)).site.Data()
+	hash := sweepOn(t, NewMemorySites(nil)).site.Hash()
+	for _, by := range []string{"hash", "input"} {
+		t.Run(by, func(t *testing.T) {
+			sites := NewMemorySites(nil)
+			sites.beforeCompile = func() { time.Sleep(20 * time.Millisecond) }
+			const askers = 8
+			got := make([]*Site, askers)
+			errs := make([]error, askers)
+			start := make(chan struct{})
+			var wg sync.WaitGroup
+			for i := 0; i < askers; i++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					<-start
+					in := &SiteInput{Hash: hash, Data: &piece}
+					if by == "input" {
+						field := sweepField()
+						in = &SiteInput{Field: &field}
+					}
+					out, err := sites.Site(context.Background(), in)
+					errs[i] = err
+					if err == nil {
+						got[i] = out.Site
+					}
+				}()
+			}
+			close(start)
+			wg.Wait()
+			for i := range got {
+				require.NoError(t, errs[i])
+				require.Same(t, got[0], got[i], "every asker gets the one site")
+			}
+			require.Equal(t, 1, sites.compiles, "compiled once")
+		})
+	}
+}
+
+// TestTwoGamesDeriveTheSitesPartitionsAtOnce: two games on one cold site,
+// whose partitions are derived when first asked, both ask at once from two
+// goroutines. Under -race this pins the memo's lock; either way the pass runs
+// once. Mutant: the memo unlocked (a data race on the derivation).
+func TestTwoGamesDeriveTheSitesPartitionsAtOnce(t *testing.T) {
+	base := sweepOn(t, NewMemorySites(nil))
+	piece := base.site.Data()
+	sites := NewMemorySites(nil)
+	load := func() *Encounter {
+		enc, err := LoadEncounter(&LoadEncounterInput{Data: base.ToData(), Site: &piece, Sites: sites, Capabilities: sweepCapabilities()})
+		require.NoError(t, err)
+		return enc
+	}
+	games := []*Encounter{load(), load()}
+	require.Same(t, games[0].site, games[1].site, "precondition: one site")
+	require.Zero(t, games[0].site.field.partitions.derivations, "precondition: a cold load derives nothing")
+	cell := base.field.cellAt(spatial.Position{X: 0, Y: 1})
+	var wg sync.WaitGroup
+	errs := make([]error, len(games))
+	for i, enc := range games {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _, errs[i] = enc.field.partitionAt(cell)
+		}()
+	}
+	wg.Wait()
+	for _, err := range errs {
+		require.NoError(t, err)
+	}
+	require.Equal(t, 1, games[0].site.field.partitions.derivations, "the site's pass ran once for both games")
 }

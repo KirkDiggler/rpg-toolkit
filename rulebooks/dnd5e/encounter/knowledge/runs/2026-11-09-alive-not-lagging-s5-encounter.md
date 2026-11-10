@@ -47,6 +47,10 @@ Command: `go test -run XXX -bench BenchmarkGarrisonWalkLine -benchtime 10x -coun
 - An instance that runs on the site's own field, and so writes the site, is killed two ways. `TestAFootprintDoorIsTheGamesOwn` fails without the race detector. `TestTwoGamesOnOneSiteRunAtOnce` reports 34 data races under `-race`.
 - `ToData` dropping the hash is killed by three tests: the provider test, the checkpoint test and the reload test.
 - Raw answers kept on the instance are killed by `TestTheRawAnswerIsTheSitesAfterAReload`.
+- After review, Setup on a warm provider is looked up by a content fingerprint of its `FieldInput` and compiles nothing. The fingerprint is a lookup key, never the site hash. Concurrent askers for one key share a single compile. Three more mutants are killed:
+  - Setup recompiling on a warm provider fails `TestTheProviderCompilesOnce`.
+  - Dropping the per-key sharing fails both subtests of `TestConcurrentAskersCompileOnce`.
+  - Removing the partition memo's lock fails `TestTwoGamesDeriveTheSitesPartitionsAtOnce` with 2 data races under `-race`.
 
 ## Open for legs 2 and 3
 

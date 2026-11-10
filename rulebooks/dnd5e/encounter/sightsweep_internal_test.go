@@ -75,7 +75,7 @@ func sweepScene(t *testing.T) *Encounter {
 // reloads the scene: the scene was built on a private provider.
 func sweepSites(scene *Encounter) SiteProvider {
 	sites := NewMemorySites(nil)
-	sites.keep(scene.site)
+	sites.keep(scene.site, "")
 	return sites
 }
 

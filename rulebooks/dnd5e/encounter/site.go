@@ -357,15 +357,41 @@ type MemorySitesConfig struct {
 // USED site is evicted — an encounter already running on it keeps its pointer
 // and runs on; the next load of that hash needs a source again. Safe for
 // concurrent use.
+//
+// A SOURCE IS COMPILED AT MOST ONCE AT A TIME. A [FieldInput] is looked up by
+// its content fingerprint ([fieldFingerprint]) before anything compiles, so
+// the same content set up twice compiles once; a stored piece asked for by
+// hash is looked up by that hash. Callers asking for the same key while it
+// compiles wait for that one compile and share its answer.
 type MemorySites struct {
 	mu           sync.Mutex
 	entries      int
 	sightEntries int
 	byHash       map[SiteHash]*list.Element
-	order        *list.List // front is most recent; values are *Site
-	// compiles counts the sites compiled and kept, for the tests that pin
-	// "one compile per content".
+	order        *list.List // front is most recent; values are *memorySite
+	// byInput is each held site's construction-input fingerprints, to its hash.
+	byInput map[string]SiteHash
+	// inflight is the compile under way per key, so a second asker waits.
+	inflight map[string]*siteFlight
+	// compiles counts every [CompileSite] this provider ran, kept or not, for
+	// the tests that pin "one compile per content".
 	compiles int
+	// beforeCompile, when set by a test, runs before each compile: a delay
+	// that makes concurrent askers overlap.
+	beforeCompile func()
+}
+
+// memorySite is one held site and the input fingerprints that resolve to it.
+type memorySite struct {
+	site   *Site
+	inputs []string
+}
+
+// siteFlight is one compile under way and, once done, its answer.
+type siteFlight struct {
+	done chan struct{}
+	site *Site
+	err  error
 }
 
 // NewMemorySites is an empty provider under cfg (nil is every default).
@@ -375,6 +401,8 @@ func NewMemorySites(cfg *MemorySitesConfig) *MemorySites {
 		sightEntries: defaultSiteSightEntries,
 		byHash:       make(map[SiteHash]*list.Element),
 		order:        list.New(),
+		byInput:      make(map[string]SiteHash),
+		inflight:     make(map[string]*siteFlight),
 	}
 	if cfg != nil && cfg.Entries > 0 {
 		m.entries = cfg.Entries
@@ -408,15 +436,70 @@ func (m *MemorySites) Site(_ context.Context, in *SiteInput) (*SiteOutput, error
 		}
 		return nil, fmt.Errorf("site %s: %w", in.Hash, ErrUnknownSite)
 	}
+
+	// The key the compile is shared under: the input's fingerprint for a
+	// construction source (looked up first, so warm content compiles
+	// nothing), the hash for a stored piece. No key, no sharing.
+	var key, input string
+	if in.Field != nil {
+		if fp, ok := fieldFingerprint(in.Field); ok {
+			input, key = fp, "input:"+fp
+			if site, ok := m.lookupInput(fp); ok {
+				return &SiteOutput{Site: site}, nil
+			}
+		}
+	} else if in.Hash != "" {
+		key = "hash:" + string(in.Hash)
+	}
+
+	site, err := m.compileShared(key, input, in)
+	if err != nil {
+		return nil, err
+	}
+	if in.Hash != "" && site.hash != in.Hash {
+		return nil, fmt.Errorf("the source hashes to site %s, not the %s asked for: %w",
+			site.hash, in.Hash, ErrInvalidData)
+	}
+	return &SiteOutput{Site: site}, nil
+}
+
+// compileShared compiles in's source once per key at a time: a second asker
+// for a key under way waits for the first and takes its answer.
+func (m *MemorySites) compileShared(key, input string, in *SiteInput) (*Site, error) {
+	if key != "" {
+		m.mu.Lock()
+		if f, ok := m.inflight[key]; ok {
+			m.mu.Unlock()
+			<-f.done
+			return f.site, f.err
+		}
+		f := &siteFlight{done: make(chan struct{})}
+		m.inflight[key] = f
+		m.mu.Unlock()
+		defer func() {
+			m.mu.Lock()
+			delete(m.inflight, key)
+			m.mu.Unlock()
+			close(f.done)
+		}()
+		f.site, f.err = m.compile(input, in)
+		return f.site, f.err
+	}
+	return m.compile(input, in)
+}
+
+func (m *MemorySites) compile(input string, in *SiteInput) (*Site, error) {
+	if m.beforeCompile != nil {
+		m.beforeCompile()
+	}
+	m.mu.Lock()
+	m.compiles++
+	m.mu.Unlock()
 	out, err := CompileSite(&CompileSiteInput{Field: in.Field, Data: in.Data, SightEntries: m.sightEntries})
 	if err != nil {
 		return nil, err
 	}
-	if in.Hash != "" && out.Site.hash != in.Hash {
-		return nil, fmt.Errorf("the source hashes to site %s, not the %s asked for: %w",
-			out.Site.hash, in.Hash, ErrInvalidData)
-	}
-	return &SiteOutput{Site: m.keep(out.Site)}, nil
+	return m.keep(out.Site, input), nil
 }
 
 func (m *MemorySites) lookup(hash SiteHash) (*Site, bool) {
@@ -427,26 +510,48 @@ func (m *MemorySites) lookup(hash SiteHash) (*Site, bool) {
 		return nil, false
 	}
 	m.order.MoveToFront(el)
-	return el.Value.(*Site), true
+	return el.Value.(*memorySite).site, true
+}
+
+func (m *MemorySites) lookupInput(fp string) (*Site, bool) {
+	m.mu.Lock()
+	hash, ok := m.byInput[fp]
+	m.mu.Unlock()
+	if !ok {
+		return nil, false
+	}
+	return m.lookup(hash)
 }
 
 // keep stores a freshly compiled site, or returns the one already held under
-// its hash — the same content compiled twice is one site.
-func (m *MemorySites) keep(site *Site) *Site {
+// its hash — the same content compiled twice is one site — and remembers the
+// input fingerprint it was compiled from, if any.
+func (m *MemorySites) keep(site *Site, input string) *Site {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if el, ok := m.byHash[site.hash]; ok {
-		m.order.MoveToFront(el)
-		return el.Value.(*Site)
+	el, ok := m.byHash[site.hash]
+	if !ok {
+		el = m.order.PushFront(&memorySite{site: site})
+		m.byHash[site.hash] = el
 	}
-	m.byHash[site.hash] = m.order.PushFront(site)
-	m.compiles++
+	m.order.MoveToFront(el)
+	held := el.Value.(*memorySite)
+	if input != "" {
+		if _, known := m.byInput[input]; !known {
+			m.byInput[input] = held.site.hash
+			held.inputs = append(held.inputs, input)
+		}
+	}
 	for m.order.Len() > m.entries {
 		oldest := m.order.Back()
 		m.order.Remove(oldest)
-		delete(m.byHash, oldest.Value.(*Site).hash)
+		gone := oldest.Value.(*memorySite)
+		delete(m.byHash, gone.site.hash)
+		for _, fp := range gone.inputs {
+			delete(m.byInput, fp)
+		}
 	}
-	return site
+	return held.site
 }
 
 // resolveSite is the one call both construction seams make: the injected
