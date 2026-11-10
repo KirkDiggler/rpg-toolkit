@@ -362,6 +362,7 @@ other caller of the consult is a verb looking at a world something else changed.
 | `projection.go` | the field as ONE member knows it: the masquerade, the threshold an unfound wall-bound door masks as footing (a presented wall adds no cell, fog-of-war R9), and the height a mask wears |
 | `data.go` | `EncounterData` and the `ToData` / `LoadFromData` round trip |
 | `checkpoint.go` | `ToCheckpoint`: the rest whole, the story appended as one segment from the store's `Since`, and the retention floor (rpg-project#897) |
+| `pieces.go` | `SplitPieces` / `JoinPieces`: the rest as pieces by shape (the head every save, a member each, an observer each, the journal, the roster's and knowledge's shared parts), each with a 64-bit mark, so a store writes only the pieces whose mark moved (rpg-project#897 leg b) |
 
 ## Reading it
 
