@@ -218,6 +218,7 @@ func TestEveryContentFileCompilesToItsCommittedPicture(t *testing.T) {
 		"behavior-patrol-consumer.yaml",
 		"cone-site.yaml",
 		"facing-site.yaml",
+		"hail-site.yaml",
 		"pause-facing-site.yaml",
 		"pursuit-hall.yaml",
 		"reference-raider-camp.yaml",

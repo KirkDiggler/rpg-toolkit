@@ -32,7 +32,7 @@ func machineVocabulary() machine.Vocabulary {
 	return machine.Vocabulary{
 		Beats: map[machine.Beat]machine.BeatSpec{
 			beatTime: {Timed: true, Round: wakeRound}, beatTurn: {Timed: true, Round: wakeRound},
-			beatHeard: scoped, beatDeed: scoped, beatSeen: scoped, beatBarred: scoped,
+			beatHeard: scoped, beatDeed: scoped, beatSeen: scoped, beatBarred: scoped, beatApproached: scoped,
 			beatFact: unscoped, clockBeat(worldClockName): unscoped, clockBeat(clockFight): unscoped,
 		},
 		Facts: map[machine.FactName]machine.FactSpec{
@@ -393,7 +393,7 @@ func keyOr(key AnswerKey) AnswerKey {
 }
 
 // MachineBeats names the composition's public occurrence/opportunity vocabulary.
-var MachineBeats = []string{string(beatTime), string(beatTurn), string(beatHeard), string(beatDeed), string(beatSeen), string(beatFact), beatClock + worldClockName, beatClock + clockFight, string(beatBarred)}
+var MachineBeats = []string{string(beatTime), string(beatTurn), string(beatHeard), string(beatDeed), string(beatSeen), string(beatFact), beatClock + worldClockName, beatClock + clockFight, string(beatBarred), string(beatApproached)}
 
 // ValidMachineBeat admits a declared beat, named deed or named clock notification.
 func ValidMachineBeat(on string) bool {
@@ -410,7 +410,7 @@ func ValidMachineBeat(on string) bool {
 
 // MachineBeatScoped identifies inputs whose occurrence carries a place.
 func MachineBeatScoped(on string) bool {
-	return on == string(beatHeard) || on == string(beatDeed) || on == string(beatSeen) || on == string(beatBarred) || strings.HasPrefix(on, deedPrefix) && ValidMachineBeat(on)
+	return on == string(beatHeard) || on == string(beatDeed) || on == string(beatSeen) || on == string(beatBarred) || on == string(beatApproached) || strings.HasPrefix(on, deedPrefix) && ValidMachineBeat(on)
 }
 
 // MachineFact names an observer-local learned fact.

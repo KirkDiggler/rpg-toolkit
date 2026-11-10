@@ -2055,6 +2055,9 @@ room:
 # arrests, and either claim's success admits.
 interactions:
   front-gate:
+    # Hand edit (rpg-project#923, Gate S3): the guard opens the conversation.
+    # A gate speaker who sees a character come within two cells hails them.
+    approach: { within: 2 }
     recipe:
       ref: site:interactions:front-gate
       initial: fresh
@@ -2098,6 +2101,9 @@ behaviorDefinitions:
                   value: true
               to: cowed
               reason: stood aside
+            - on: approached
+              do:
+                - pick: approached
             - on: barred
               to: challenged
               do:
@@ -2137,6 +2143,9 @@ behaviorDefinitions:
                   value: true
               to: cowed
               reason: stood aside
+            - on: approached
+              do:
+                - pick: approached
             - on: barred
               do:
                 - pick: challenged
@@ -2189,6 +2198,9 @@ behaviorDefinitions:
                   value: true
               to: cowed
               reason: stood aside
+            - on: approached
+              do:
+                - pick: approached
             - on: barred
               to: challenged
               do:
@@ -2272,6 +2284,10 @@ behaviorDefinitions:
       cowed:
         - when: {enemy: none}
           toward: {at: {q: -5, r: 8}}
+      # Hand edit (rpg-project#923): his hail when a character comes within
+      # the gate's approach; the bump keeps its own lines.
+      approached:
+        - say: Easy there, friend. What brings you to the gate?
       barred:
         - say: Whoa there, buddy. Can I help you?
       challenged:
@@ -2283,6 +2299,10 @@ behaviorDefinitions:
       states:
         ready:
           transitions:
+            # Hand edit (rpg-project#923): the gate's hail.
+            - on: approached
+              do:
+                - pick: approached
             - on: time
               do:
                 - pick: time
@@ -2290,6 +2310,8 @@ behaviorDefinitions:
               do:
                 - pick: time
     table:
+      approached:
+        - say: Hold up. State your business at the gate.
       time:
         # Hand edit: a gate guard who witnessed the turn marches with the
         # captain, on storm-the-keep's own row.
@@ -2317,6 +2339,10 @@ behaviorDefinitions:
       states:
         ready:
           transitions:
+            # Hand edit (rpg-project#923): the gate's hail.
+            - on: approached
+              do:
+                - pick: approached
             - on: time
               do:
                 - pick: time
@@ -2324,6 +2350,8 @@ behaviorDefinitions:
               do:
                 - pick: time
     table:
+      approached:
+        - say: You there. Nobody passes this gate without my say. Speak.
       time:
         # Hand edit (smarter monsters S2, rpg-project#669): the captain goes for
         # whoever hit him, past a nearer enemy, as one line. Otherwise the rows

@@ -61,7 +61,15 @@ func interactionInputOf(id string, spec InteractionSpec, path string, add errSin
 		add(path+".recipe.ref", err.Error())
 		return encounter.InteractionInput{}, false
 	}
-	return encounter.InteractionInput{ID: encounter.InteractionID(id), Recipe: recipe}, true
+	in := encounter.InteractionInput{ID: encounter.InteractionID(id), Recipe: recipe}
+	if spec.Approach != nil {
+		if spec.Approach.Within < 1 {
+			add(path+".approach.within", "an approach is a distance of at least 1 cell")
+			return encounter.InteractionInput{}, false
+		}
+		in.Approach = &encounter.InteractionApproach{Within: spec.Approach.Within}
+	}
+	return in, true
 }
 
 // interactionsOf lowers the root interactions into the field's, in id

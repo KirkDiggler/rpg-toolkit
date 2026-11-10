@@ -534,6 +534,7 @@ func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 		// IN THE WINDOW NOTHING ROLLS: the hero's Stealth wins every roll, so
 		// only the resolver and the record can say whether anybody looked.
 		asked, snuck := len(stealth.asked), len(s.beatsOf(hero, encounter.BeatSnuck))
+		hailed := len(s.beatsOf(hero, encounter.BeatAddressed))
 		for i, cell := range theDash {
 			if s.at(hero) == cell {
 				continue // the pace may have left the hero on the dash's first cell
@@ -542,6 +543,14 @@ func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 			require.NoError(t, err, "the dash steps onto %v", cell)
 			require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "no fight formed")
 		}
+		// UNSEEN INSIDE THE APPROACH, NOBODY HAILS (rpg-project#923): the
+		// dash ends beside the captain, inside the gate's approach, and
+		// nobody who sees the sneaker addresses her.
+		require.LessOrEqual(t, s.enc.Distance(s.at(hero), s.at(kingCaptain)), 2.0, "precondition: inside the captain's approach")
+		require.Len(t, s.beatsOf(hero, encounter.BeatAddressed), hailed, "no hail for a sneaker nobody sees")
+		standing, err := s.enc.AddressFor(&encounter.AddressForInput{Member: hero})
+		require.NoError(t, err)
+		require.Nil(t, standing.Address, "and nobody addresses her")
 		require.Equal(t, beneathTheGate, s.at(hero), "the sneaker stands beneath the gate")
 		require.True(t, s.enc.Sneaking(hero), "still sneaking")
 		require.Len(t, stealth.asked, asked, "nobody rolled against the dash")
