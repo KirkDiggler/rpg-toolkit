@@ -26,7 +26,19 @@ import (
 // both then resolve to the one site their [SiteHash] names. A value the walk
 // cannot spell — a func, a channel, a structure deeper than any field has —
 // answers false, and the input is simply compiled.
+//
+// A FIELD OVER THE CELL BUDGET IS NOT WALKED: [compileField] refuses it
+// before converting a cell, and a walk of every cell it lists would cost
+// what the refusal exists to avoid. On the 10k garrison keep the walk is
+// about 3 ms against a 65 ms compile.
 func fieldFingerprint(in *FieldInput) (string, bool) {
+	cells := len(in.Scenery) + len(in.Sealed)
+	for _, r := range in.Regions {
+		cells += len(r.Cells)
+	}
+	if cells > maxFieldCells {
+		return "", false
+	}
 	h := sha256.New()
 	if !fingerprintValue(h, reflect.ValueOf(in).Elem(), 0) {
 		return "", false
