@@ -41,10 +41,10 @@ flowchart TD
 | Authored rulebook application | Which parts exist, their roles, parameters and terminal scope | `ApplicationSpec` → validated coordinator/recipient declarations |
 | Existing condition descriptor registry | Canonical attachment refs, loaders and named definition constraints | `CreateFromRefInput` / stored bytes → validated condition behavior |
 | Proposed `conditions.PrepareApplication` | Pure binding, required roles, identity validation and the rulebook concentration claim | `PrepareApplicationInput` → `PreparedApplication` |
-| Proposed `conditions.SealApplication` | The coordinator for the attachments delivery actually produced | prepared application + `DeliveryReceipt` values → coordinator condition |
+| `conditions.CreateApplication` / `ApplicationBinding.FinalizeRecipient` | Fixed intended bindings and individually finalized delivery outcomes | prepared application → pending coordinator; actual outcome → one finalized member |
 | Proposed `effects.Assembly` | A stable, ordered set of local parts; aggregate attach, inspection, snapshot and teardown | `AssemblyInput{Parts, Lifecycle}` → local assembly |
 | Existing `effects.Composed` / `machine.Machine` | One part's outputs and local state transitions | `ComposeInput` → part runtime / `Snapshot` |
-| Proposed `effects.Lifetime` | Shared live-member set and exactly-once end acceptance, with opaque keys | `LifetimeInput` / `LifetimeSnapshot`, member loss or `EndRequest` → `EndPlan` / membership result |
+| Proposed `effects.Lifetime` | Fixed intended keys, disjoint pending/live sets and exactly-once end acceptance | `LifetimeInput` / `LifetimeSnapshot`, per-key finalization, member loss or `EndRequest` → membership result / `EndPlan` |
 | Rulebook composed-condition adapter | Binding generic keys to `events.ConditionAddress`, instance codec, display and information | assembly/lifetime values + rulebook bindings → `ConditionBehavior`, linked data, information |
 | Proposed `conditions.BindApplications` / interaction-local `ApplicationBinding` | Validating links and delivering end plans against the declared participant universe | `BindApplicationsInput{Participants, Bus}` → binding for existing/new attachments, exact removal facts and teardown |
 | Rulebook kind meanings | Concentration, duration, resistance and roll modification | bound parameters + typed event/query → contribution, follow-up request or terminal result |
@@ -68,13 +68,13 @@ The neutral machine extensions needed by a turn-end countdown are an integer bag
 
 ### Shared lifetime and the coordinator
 
-`Lifetime` is a value owned by the coordinator, not a process or a registry. It accepts opaque member keys, has a live/ending/ended phase, and returns values rather than publishing. Its saved state contains only its phase and live member keys. Rulebook bindings resolve those keys to exact addresses.
+`Lifetime` is a value owned by the coordinator, not a process or a registry. It accepts opaque member keys, has a live/ending/ended phase, and returns values rather than publishing. Its saved state contains its phase and disjoint pending/live member keys. The immutable definition names every intended key; a key in neither set is finalized without a live attachment. Rulebook bindings resolve keys to exact addresses. No separate application-wide open/sealed phase is needed.
 
 `RequestEnd(EndRequest{Reason, Requestor})` requires a nonempty reason and a bound requestor allowed to end the application. The first valid request yields an ordered `EndPlan`; nested or duplicate requests yield an explicit already-ending/ended disposition, not a second plan. Snapshots handed to persistence are live; a successful gameplay end removes the coordinator rather than saving a dead application.
 
 `MemberRemoved(MemberKey)` forgets a live member once and reports before/after counts. An `until_empty` maintenance part can end an application when an actual member loss takes a nonempty set to zero. An application created with no delivered members does not thereby pretend its last member just ended. This distinction preserves current zero-delivery concentration and area behavior.
 
-The initial member bindings are sealed after delivery. Adding arbitrary new recipients to an existing application is not supported by this cut. Removing members changes only the lifetime's live-key set, not the immutable address bindings.
+The intended member bindings are fixed before delivery. Each pending key finalizes once: actual delivery joins the live set, while a resolved no-effect outcome does not. Both outcomes remove that key from pending. A finalized key cannot be reopened, including after its effect has been removed. Adding recipients outside the original list is not supported by this cut. Removing members changes only the lifetime's live-key set, not the immutable address bindings.
 
 The coordinator has a neutral registered attachment ref, proposed as `dnd5e:conditions:linked-effects`. Its concentration status is supplied by an active concentration part, not by that ref or a display label. Removing concentration from an authored application therefore does not leave a fake Concentrating condition behind.
 
@@ -93,9 +93,9 @@ The delivery caller supplies a unique application ID; the toolkit constructor do
 
 The root adapter maps these concepts to the existing registry and address protocol; `SourceID` on an address is not read as provenance. The coordinator holder is storage custody, not automatically a concentration claim: in this cut a concentration part binds its maintainer to that holder, but an application without that part has no concentration requirement. Effect information uses `ConditionOrigin`, and UI code never parses application IDs.
 
-A member binding contains the recipient's exact address and whether its current descriptor supports a linked backlink. New composed recipients persist the application/coordinator link. An unmigrated payload can be adopted by an exact parent-side address without rewriting its still-current codec; at most one coordinator may claim that attachment. Such adoption is explicit in the delivery receipt, not a wildcard lookup by ref.
+A member binding contains the recipient's exact address and whether its current descriptor supports a linked backlink. New composed recipients persist the application/coordinator link. An unmigrated payload can be adopted by an exact parent-side address without rewriting its still-current codec; at most one coordinator may claim that attachment. Such adoption is explicit in the intended binding and verified against actual delivery, not a wildcard lookup by ref.
 
-`BindApplications` receives the complete, explicitly supplied participant conditions after pure loading and before behavior attachment. It builds a transient address/application index and supplies the linked adapters' lifecycle transport for this interaction. New prepared deliveries register with that same binding before they can be sealed; they do not create another resolver or catalog. Its teardown revokes transport without ending applications. No index or runtime pointer survives the call.
+`BindApplications` receives the complete, explicitly supplied participant conditions after pure loading and before behavior attachment. It builds a transient address/application index and supplies the linked adapters' lifecycle transport for this interaction. The coordinator registers its fixed intended bindings before delivery. Actual delivered attachments and individually finalized entries use that same binding; they do not create another resolver or catalog. Its teardown revokes transport without ending applications. No index or runtime pointer survives the call.
 
 The interaction validates live address bindings before it can end them: holder loaded, attachment present, backlink matching where supported, and no competing owner claim. A replacement delivers the old exact removal before the new application attaches. If a member disappears in the current interaction, its removal updates the live set before any later end plan is formed. Stale/foreign links fail rather than removing the new occupant of an address (R4, R7).
 
@@ -105,7 +105,9 @@ The interaction validates live address bindings before it can end them: holder l
 
 `PrepareApplicationInput` names the application ID, origin, maintainer, candidate bindings and authored spec. Its output holds validated construction data and a rulebook-declared exclusive-concentration claim when a concentration part is present. It creates no subscriptions, spends nothing, displaces nothing and rolls nothing.
 
-For a cast, the existing door and target gates run normally. A successful target delivery constructs its local attachment and records `DeliveryReceipt{MemberKey, Address, LinkMode}`. Failed saves, targeting refusals and independent-duration payloads are not silently entered into shared membership. The seal step checks actual delivered attachments and creates the coordinator with that exact membership. Provisional attachments cannot leave the interaction as a successful, saveable result before sealing.
+For a cast, preparation constructs and validates the fixed intended recipient candidates before payment. The existing door pays, any replaced concentration is ended, and the coordinator attaches with those entries pending. A delivery finalizes its own entry only after the actual attachment is verified. A resolved target gate that delivers no effect finalizes that entry without adding a live member; independent-duration payloads remain outside shared membership.
+
+A window may save the coordinator, already delivered recipients and still-pending entries. Pending means no attachment has been delivered for that entry, not a missing live link. The continuation retains its paused machine and execution position; it does not carry a second membership list. Resuming uses the same application and cannot reopen a finalized entry or resurrect an ended/replaced application. Completing all entries needs no whole-application seal. Successful persistence still refuses orphaned, unfinalized actual deliveries or failed attachment.
 
 The new linked codec, proposed as `LinkedConditionData`, has these authorities:
 
@@ -154,7 +156,7 @@ Kinds declare subscribed or query-only execution. A query-only kind needs no fak
 
 A concentration save observes current effects, including the caster's own Bless, before failure cleanup. A subscriber queued in an event snapshot after a sibling ended the lifetime observes that it is ending and does no further work. Parts retain the interaction bus they were attached with for required end reporting, rather than dereferencing a bus field another subscriber has cleared.
 
-Invalid graphs are refused before mutation. An attachment failure unwinds local subscriptions. A later delivery/publish error fails the interaction; successful persistence must not be reported for an unsealed or failed application. These contracts do not promise a distributed transaction or arbitrary refunds. The host's existing load-act-save boundary persists only successful outputs.
+Invalid graphs are refused before mutation. An attachment failure unwinds local subscriptions. A later delivery/publish error fails the interaction; successful persistence must not be reported for an orphaned attachment, an unfinalized actual delivery or a failed application. Valid pending entries are not failures. These contracts do not promise a distributed transaction or arbitrary refunds. The host's existing load-act-save boundary persists only successful outputs.
 
 ### Existing native integration
 
@@ -174,9 +176,9 @@ Toolkit maintenance identity is a generic content ref/name. Existing spell-only 
 
 For the castle's ordinary fight path, a normally created caster casts Bless on itself and one ally.
 
-`spells.CastDefinition` supplies targeting/payment and an application with concentration, maximum duration and the roll-modifier payload. The call binds an application ID, caster origin and maintainer role. Resolution pays at its existing door and delivers two Blessed attachments. Their exact addresses enter two receipts; sealing creates one coordinator on the caster. The caster holds separate recipient and coordinator attachments, so losing its own Blessed child alone need not strip the ally's.
+`spells.CastDefinition` supplies targeting/payment and an application with concentration, maximum duration and the roll-modifier payload. The call binds an application ID, caster origin and maintainer role. Preparation fixes the two intended recipient bindings. Resolution pays at its existing door, attaches the coordinator with both pending, then delivers and independently finalizes two Blessed attachments. The caster holds separate recipient and coordinator attachments, so losing its own Blessed child alone need not strip the ally's.
 
-Session stores each entity's returned condition bytes. On the next interaction, assembly snapshots restore each local part, and the coordinator restores the one live-member set. Both recipients describe an unresolved additive d4; the attack/save path selects and rolls it, and the server reports the source and result. No saved die face is authoritative.
+Session stores each entity's returned condition bytes. On the next interaction, assembly snapshots restore each local part, and the coordinator restores its disjoint pending/live-member sets. Both recipients describe an unresolved additive d4; the attack/save path selects and rolls it, and the server reports the source and result. No saved die face is authoritative.
 
 An NPC strike applies damage to the caster. One concentration part describes one follow-up. The real save machine can select the caster's Bless die for that save. On failure the consequence ends the coordinator; its end plan removes the two exact Blessed attachments and reports the loss. Another caster's Bless on the ally remains, eligible for the next roll. A fresh reload has no expired application to recreate.
 
@@ -191,6 +193,7 @@ The composition proof replaces the payload with physical resistance while retain
 | Who caused it? | Immutable origin |
 | Which active instance is replaced? | Exact condition replacement address |
 | Which application ends? | Application identity and coordinator lifetime |
+| Which intended deliveries remain pending? | Coordinator lifetime; the continuation stores execution position, not another membership copy |
 | Which die contributes now? | Recipient contribution selector |
 | How long remains? | Duration part on the coordinator, when available |
 | Which parts have completed? | Their own assembly snapshots |
@@ -205,13 +208,14 @@ Merging these answers would make loss of one source strip another, turn provenan
 | Entity-local attachments | Preserves sheet custody and private contribution reads | Adapter validates links; interaction supplies the full affected universe | Central multi-holder object with new persistence/loading |
 | Existing runtime per part | Independent reactions and local state without another interpreter | Generic assembly stores keyed snapshots and deterministic order | Concatenating first-match transition lists |
 | One coordinator lifetime | Shared cancellation without duplicated checks/clocks | Generic lifetime value plus exact rulebook transport | Complete concentration handler on every recipient |
+| Fixed intent, per-entry finalization | Already delivered effects remain valid across saved windows | Pending/live state and exactly-once delivery validation | Whole-application sealing or delaying earlier effects until every target answers |
 | Typed scalar/dice result | Information stays non-random and honest | Provider consumers adopt the changed amount API on real pins | Roll a die to satisfy an integer accessor |
 | Shared upkeep migration | No old/new concentration engines | All current concentration paths need regression coverage | Bless/Bane-only special case |
 | Strict current linked codec | One authority without compatibility branches | Freshly created characters are the supported baseline | Historical reader, dual writer or automatic reset |
 
 ## Edges
 
-R9 preserves other concentration payloads without migrating their implementations. Non-spell native wire presentation is deferred until a native consumer; its toolkit capability is still tested. R10 excludes studio authoring, native item inventory, dynamic recipient recruitment, arbitrary component graphs, world-wide background cleanup and distributed rollback.
+R9 preserves other concentration payloads without migrating their implementations. Non-spell native wire presentation is deferred until a native consumer; its toolkit capability is still tested. R10 excludes studio authoring, native item inventory, recipient recruitment outside the fixed initial list, arbitrary component graphs, world-wide background cleanup and distributed rollback.
 
 The participant universe is not inferred from what happened to attach. Departure must settle membership before an entity leaves that universe; an unresolved cross-universe link is an explicit refusal, not successful cleanup. A richer cross-world lifetime service would reopen R2/R7 rather than be hidden in this adapter.
 

@@ -8,6 +8,7 @@ Slice [rpg-project#706](https://github.com/KirkDiggler/rpg-project/issues/706) o
 
 ## Decided
 
+- R11 is settled by Kirk: fixed intended list, independent per-recipient finalization, and pending entries valid across saved windows. The previous whole-application seal is superseded, not replaced by another global open/sealed state machine — [ruling](https://github.com/KirkDiggler/rpg-toolkit/pull/2323#issuecomment-6755782119).
 - KirkDiggler approved the detailed contracts on 2026-11-08 and explicitly requires fresh characters rather than two paths: no historical reader, dual writer, normalization or old concentration runtime; the checked plan carries implementation and proof ownership — [approval](https://github.com/KirkDiggler/rpg-toolkit/pull/2323#issuecomment-6726787390).
 - KirkDiggler selected concentration as a reusable effect alongside payloads, using resistance sustained by another entity as the composition example, rather than merely preserving the handwritten concentration owner — [direction and shape](https://github.com/KirkDiggler/rpg-project/issues/706#issuecomment-6725313075).
 - KirkDiggler selected linked entity-local attachments with one shared lifetime on 2026-11-08; central multi-holder persistence is not selected, and approval of the detailed interfaces is still separate — [shape confirmation](https://github.com/KirkDiggler/rpg-project/issues/706#issuecomment-6725611193).
@@ -16,6 +17,7 @@ Slice [rpg-project#706](https://github.com/KirkDiggler/rpg-project/issues/706) o
 
 ## Found
 
+- The per-recipient contract maps to the existing neutral lifetime phase plus disjoint pending/live subsets. Provider `de822f5e` passes round-trip/end/refusal tests, two killed mutants and full owning gates; root/native adoption is still separate work — [provider](https://github.com/KirkDiggler/rpg-toolkit/pull/2327).
 - T9's native characterization proves an earlier Bane recipient persists while a later recipient answers a save offer. The checked plan carried invocation identity but omitted the persisted partially delivered application; R11 reopens only that lifecycle boundary, and supersedes the earlier docs-only merge-ready verdict — [decision and proof](https://github.com/KirkDiggler/rpg-toolkit/pull/2323#issuecomment-6752508135).
 - Planning inventories 51 concrete toolkit caller/fixture files and distinguishes the current Raging consumer from obsolete compatibility paths; session/depart.go replaces an initially guessed leave.go path in the visible checks — [caller inventory](../../docs/ideas/composable-maintenance/callers.md).
 - The generic composer binds all outputs to one holder and its AmountFn returns int; these are current first-consumer boundaries, not existing support for linked lifetimes or unresolved evaluated amounts — [inspection receipts](https://github.com/KirkDiggler/rpg-project/issues/706#issuecomment-6725313075).
