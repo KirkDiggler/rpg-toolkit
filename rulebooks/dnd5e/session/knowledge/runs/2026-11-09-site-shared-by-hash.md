@@ -16,7 +16,7 @@ Leg 2b of S5, [#914](https://github.com/KirkDiggler/rpg-project/issues/914), sto
 
 ## Evidence
 
-Measured with the encounter at rpg-toolkit#2345 head `2cebdffd` and resolution at this leg's 2a commit through local replaces; "before" is origin/main `e4ac31f8`.
+Measured with the encounter at rpg-toolkit#2345 head `2cebdffd` and resolution at leg 2a's commit through local replaces, before the tags; the PR pins the tags those merged as (encounter v0.188.0, resolution v0.75.0) and its race suite passes on them. "Before" is origin/main `e4ac31f8`.
 
 | row (bench-keep-garrison, 10k) | before | after |
 |---|---|---|
