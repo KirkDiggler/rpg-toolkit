@@ -425,7 +425,7 @@ func (e *Encounter) react(id MemberID, b wakeBeat, scope *machine.ScopeLeaf) err
 		if err != nil || down[id] {
 			return err
 		}
-		if err := e.runBehaviorOpportunity(id, m, behaviorOpportunity{on: b.Beat, event: ev, now: now}); err != nil {
+		if err := e.runBehaviorOpportunity(id, m, behaviorOpportunity{on: b.Beat, event: ev, now: now, subject: b.Subject}); err != nil {
 			return err
 		}
 	} else {

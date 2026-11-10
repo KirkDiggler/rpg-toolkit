@@ -378,6 +378,11 @@ type answeredBy struct {
 	// target is the member a `time` pick's intent acts on ([intentTarget]),
 	// empty for a spoken answer and for an intent that names nobody.
 	target MemberID
+
+	// to is the member the picked line is spoken to (rpg-project#923): the
+	// mover a `barred` or `approached` reaction answers, when the row says
+	// something. Empty everywhere else.
+	to MemberID
 }
 
 // answeredBeatBody is the beat's payload for one pick — ONE BODY for a spoken
@@ -409,6 +414,7 @@ func answeredBeatBody(by answeredBy, chosen *Pick) map[string]interface{} {
 		"word":       answerWord(chosen.Answer),
 		"selector":   selectorWord(chosen.Answer),
 		"target":     string(by.target),
+		"to":         string(by.to),
 		"say":        chosen.Answer.Say,
 		"fact":       string(chosen.Answer.Fact),
 	}

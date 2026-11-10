@@ -241,6 +241,12 @@ type behaviorOpportunity struct {
 	on    machine.Beat
 	event any
 	now   uint64
+
+	// subject is the member a targeted reaction answers (rpg-project#923):
+	// the mover who bumped ([beatBarred]) or was hailed ([beatApproached]).
+	// A line picked on it is spoken TO them ([answeredBy.to]). Empty for
+	// time, turn and every other opportunity.
+	subject MemberID
 }
 
 type selectedBehavior struct {

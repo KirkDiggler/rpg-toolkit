@@ -309,3 +309,72 @@ func TestApproachReachIsTheHostsBound(t *testing.T) {
 		require.True(t, errors.Is(err, ErrNoField))
 	}
 }
+
+// answeredSaying is the answered beat of one creature saying line, decoded,
+// nil when there is none.
+func answeredSaying(t *testing.T, enc *Encounter, creature MemberID, line string) map[string]any {
+	t.Helper()
+	for _, b := range storyOf(t, enc) {
+		if b["beat"] == BeatAnswered && b["creature"] == string(creature) && b["say"] == line {
+			return b
+		}
+	}
+	return nil
+}
+
+func TestTheHailIsSpokenToTheMover(t *testing.T) {
+	enc := hailHall(t)
+	walk(t, enc, "alice", spatial.Position{X: 2, Y: 1}, spatial.Position{X: 3, Y: 1}, spatial.Position{X: 4, Y: 1})
+
+	hail := answeredSaying(t, enc, hailGuard, hailLine)
+	require.NotNil(t, hail)
+	require.Equal(t, "alice", hail["to"], "his hail is said to the member he addressed")
+	require.Equal(t, "", hail["target"], "the intent's target is not who he speaks to")
+}
+
+func TestTheBumpLineIsSpokenToTheMover(t *testing.T) {
+	enc := hailHall(t)
+	walk(t, enc, "alice", spatial.Position{X: 2, Y: 1}, spatial.Position{X: 3, Y: 1}, spatial.Position{X: 4, Y: 1}, spatial.Position{X: 5, Y: 1})
+	bumped(t, enc, spatial.Position{X: 6, Y: 1}, hailGuard)
+
+	line := answeredSaying(t, enc, hailGuard, bumpLine)
+	require.NotNil(t, line)
+	require.Equal(t, "alice", line["to"], "his bump line is said to the member who bumped")
+}
+
+func TestATimeLineIsSpokenToNobody(t *testing.T) {
+	const muttered = "Cold night for it."
+	crier := listener("crier", 8, 3, recipe(t, "ready", map[string]machine.State{"ready": {Transitions: []machine.Transition{pickTime}}}))
+	crier.Faction = postedGarrison
+	crier.Behaviors.Instances[0].Instance.Table = Table{AnswerTime: {{Weight: 1, Say: muttered}}}
+	enc := hailHall(t, crier)
+
+	require.NoError(t, enc.spendWorldAction("alice"))
+	line := answeredSaying(t, enc, "crier", muttered)
+	require.NotNil(t, line, "precondition: his time pick said something")
+	require.Equal(t, "", line["to"], "a line nobody prompted is said to nobody")
+}
+
+func TestASilentHailIsSpokenToNobody(t *testing.T) {
+	enc, err := NewEncounter(func() *SetupInput {
+		in := hailSetup(t, everyoneSeesTheWholeMap{})
+		for i := range in.Members {
+			if in.Members[i].ID == hailGuard {
+				in.Members[i].Behaviors.Instances[0].Instance.Table["approached"] = []Answer{{Weight: 1, Hold: true}}
+			}
+		}
+		return in
+	}())
+	require.NoError(t, err)
+	walk(t, enc, "alice", spatial.Position{X: 2, Y: 1}, spatial.Position{X: 3, Y: 1}, spatial.Position{X: 4, Y: 1})
+
+	var picked map[string]any
+	for _, b := range storyOf(t, enc) {
+		if b["beat"] == BeatAnswered && b["creature"] == string(hailGuard) && b["key"] == "behavior/6:policy/approached" {
+			picked = b
+		}
+	}
+	require.NotNil(t, picked, "precondition: his approached row was picked")
+	require.Equal(t, "", picked["say"])
+	require.Equal(t, "", picked["to"], "a row that says nothing is said to nobody")
+}
