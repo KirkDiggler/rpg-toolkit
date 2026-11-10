@@ -55,10 +55,21 @@ func TestPartitions_DerivedOnce(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, base.field.partitions.derivations, "Setup derives at the door that builds the place")
 
-	enc, err := LoadEncounter(&LoadEncounterInput{Data: base.ToData(), Capabilities: caps()})
+	// A WARM LOAD SHARES THE SITE (rpg-project#879 S5): the partitions are
+	// site data, derived once for every game on the content.
+	warm, err := LoadEncounter(&LoadEncounterInput{Data: base.ToData(), Capabilities: caps()})
+	require.NoError(t, err)
+	require.Same(t, base.field.partitions, warm.field.partitions, "the warm load reads the site's division")
+	require.Equal(t, 1, warm.field.partitions.derivations, "and derives nothing of its own")
+
+	// A COLD LOAD compiles the site from its piece and derives when asked.
+	piece := base.Site().Data()
+	enc, err := LoadEncounter(&LoadEncounterInput{
+		Data: base.ToData(), Site: &piece, Sites: NewMemorySites(nil), Capabilities: caps(),
+	})
 	require.NoError(t, err)
 	derivations := func() int { return enc.field.partitions.derivations }
-	require.Zero(t, derivations(), "a load derives nothing")
+	require.Zero(t, derivations(), "a cold load derives nothing")
 
 	// N plain steps: no sound, no door.
 	start := spatial.Position{X: 0, Y: 3}
@@ -81,7 +92,7 @@ func TestPartitions_DerivedOnce(t *testing.T) {
 	require.NoError(t, enc.makeSound(noiseSay, "talker", 0))
 	_, err = enc.Step(&StepInput{Member: "talker", To: beside, EndWalk: true})
 	require.NoError(t, err)
-	require.Equal(t, 1, derivations(), "and never again for the instance's life")
+	require.Equal(t, 1, derivations(), "and never again for the site's life")
 
 	// The lazily derived division answers exactly what Setup's eager one does.
 	for _, cell := range []spatial.Position{start, beside, {X: 8, Y: 8}, {X: 20, Y: 20}} {

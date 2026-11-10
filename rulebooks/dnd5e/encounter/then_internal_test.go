@@ -220,8 +220,9 @@ func TestTheFirstStepThatHoldsWins(t *testing.T) {
 		require.NoError(t, err)
 		var data EncounterData
 		require.NoError(t, json.Unmarshal(blob, &data))
-		require.Len(t, data.Field.Dispositions[0].Steps, 2, "%s: a list persists as its steps", name)
-		require.Nil(t, data.Field.Dispositions[0].Until, name)
+		site := enc.Site().Data()
+		require.Len(t, site.Field.Dispositions[0].Steps, 2, "%s: a list persists as its steps", name)
+		require.Nil(t, site.Field.Dispositions[0].Until, name)
 		loaded, err := LoadEncounter(&LoadEncounterInput{Data: data, Capabilities: thenSetup(nil).Capabilities})
 		require.NoError(t, err, name)
 		require.Equal(t, tc.want, stanceOf(t, loaded, FactionParty, "veterans"), "%s, loaded back", name)

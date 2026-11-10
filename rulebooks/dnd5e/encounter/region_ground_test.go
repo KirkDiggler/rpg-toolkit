@@ -37,8 +37,8 @@ func (s *AtlasRegionsSuite) TestGroundCapturedCopiedAndReloadedWithoutChangingCo
 		{Ref: groundDirt, Cells: []spatial.Position{{X: 5, Y: 4}, {X: 6, Y: 4}}},
 	}}
 	s.Require().Equal(expected, atlas.Regions[0].Ground)
-	s.Equal(groundField().Regions[0].Ground.BaseRef, back.ToData().Field.Regions[0].Ground.BaseRef)
-	s.Equal([]encounter.PositionData{{X: 7, Y: 4}, {X: 8, Y: 4}}, back.ToData().Field.Regions[0].Ground.Paint[1].Cells)
+	s.Equal(groundField().Regions[0].Ground.BaseRef, back.Site().Data().Field.Regions[0].Ground.BaseRef)
+	s.Equal([]encounter.PositionData{{X: 7, Y: 4}, {X: 8, Y: 4}}, back.Site().Data().Field.Regions[0].Ground.Paint[1].Cells)
 	atlas.Regions[0].Ground.Paint[0].Cells[0].X = 999
 	atlas.Regions[0].Ground.BaseRef = "outside"
 	fresh, err := back.Region("courtyard")
@@ -83,7 +83,7 @@ func (s *AtlasRegionsSuite) TestGroundDoesNotChangePartitionsAndAbsentGroundStay
 	atlas, err := enc.Atlas()
 	s.Require().NoError(err)
 	s.Nil(atlas.Regions[0].Ground)
-	s.Nil(enc.ToData().Field.Regions[0].Ground)
+	s.Nil(enc.Site().Data().Field.Regions[0].Ground)
 }
 
 func (s *AtlasRegionsSuite) TestGroundConcealmentMasksOnlyTheHiddenPaintCells() {
@@ -104,8 +104,9 @@ func (s *CellKnowledgeSuite) TestGroundSavedOutsideOwnerIsRefused() {
 	field.Regions[0].Ground = &encounter.RegionGround{Paint: []encounter.GroundPaint{{Ref: groundDirt, Cells: field.Regions[0].Cells[:1]}}}
 	s.startWith(field)
 	data := s.enc.ToData()
-	data.Field.Regions[0].Ground.Paint[0].Cells[0].X = 999
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Capabilities: s.capabilities()})
+	site := s.enc.Site().Data()
+	site.Field.Regions[0].Ground.Paint[0].Cells[0].X = 999
+	_, err := loadOverSite(data, site, encounter.LoadEncounterInput{Data: data, Capabilities: s.capabilities()})
 	s.ErrorIs(err, encounter.ErrNoField)
 }
 

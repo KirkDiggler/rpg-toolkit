@@ -579,13 +579,15 @@ func (s *DoorSuite) TestAHiddenDoorBlocksExactlyWhatItsStateBlocks() {
 	s.False(s.sees(enc, nessa, orin), "a hidden shut door blocks exactly what a shut door blocks")
 
 	data := enc.ToData()
+
+	site := enc.Site().Data()
 	s.Require().Len(data.Doors, 1)
-	s.Require().Len(data.Field.Concealments, 1)
+	s.Require().Len(site.Field.Concealments, 1)
 	s.Equal([]encounter.CheckApproachData{
 		{Ability: "perception", DC: 15},
 		{Ability: "investigation", Tool: "dnd5e:item:magnifying-glass", DC: 12},
-	}, data.Field.Concealments[0].Checks, "the blob carries the find check verbatim, beside the field")
-	s.Equal([]string{theDoor}, data.Field.Concealments[0].Doors)
+	}, site.Field.Concealments[0].Checks, "the blob carries the find check verbatim, beside the field")
+	s.Equal([]string{theDoor}, site.Field.Concealments[0].Doors)
 
 	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
@@ -609,13 +611,13 @@ func (s *DoorSuite) TestAHiddenDoorBlocksExactlyWhatItsStateBlocks() {
 	s.Require().NoError(err)
 	_, err = back.OpenDoor(&encounter.OpenDoorInput{Door: theDoor})
 	s.Require().NoError(err)
-	s.Equal(data.Field.Concealments, back.ToData().Field.Concealments,
+	s.Equal(site.Field.Concealments, back.Site().Data().Field.Concealments,
 		"reloaded and opened, still the same authored secret")
 
 	// The field that hides nothing says so by saying NOTHING: no
 	// concealments in, none out, no key in the blob.
 	plain := s.doorway(encounter.DoorIsClosed())
-	s.Nil(plain.ToData().Field.Concealments)
+	s.Nil(plain.Site().Data().Field.Concealments)
 }
 
 // TestABlobWithARetiredDoorFlagIsRefusedByName is the tombstone
@@ -770,11 +772,15 @@ func (s *DoorSuite) TestABlobWhoseDoorMakesNoSenseIsRefusedByName() {
 // The precedent is about SHAPES THAT MOVED (#1068's room-local cell, #1116's
 // undeclared void), not about every new field.
 func (s *DoorSuite) TestABlobFromBeforeDoorsExistedLoadsFine() {
-	data := s.doorway(encounter.DoorIsClosed()).ToData()
+	enc := s.doorway(encounter.DoorIsClosed())
+	data := enc.ToData()
 	data.Doors = nil
+	// Its site had none either: the doors are the site's geometry now
+	// (rpg-project#879 S5), so a doorless run is a doorless site.
+	site := enc.Site().Data()
+	site.Doors = nil
 
-	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data,
+	back, err := loadOverSite(data, site, encounter.LoadEncounterInput{
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
@@ -792,6 +798,12 @@ func (s *DoorSuite) TestABlobFromBeforeDoorsExistedLoadsFine() {
 	})
 	s.Require().NoError(err)
 	s.Empty(back.Doors(), "no doors, and no complaint about it")
+
+	// But a checkpoint that drops doors its site stands is not that blob: it
+	// was written against other content, and is refused.
+	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Capabilities: encounter.RefusingCapabilities()})
+	s.Require().ErrorIs(err, encounter.ErrInvalidData)
+	s.Contains(err.Error(), "doors' geometry")
 
 	// Asked of the MAP, not of percepts: LoadEncounter restores the intel the
 	// blob carries rather than re-surveying the world, so what these two hold

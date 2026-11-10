@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
 
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -118,12 +119,12 @@ type fieldPartitions struct {
 // bumped off its cell, a listener is told how far away a beat landed, or a
 // secret threshold is presented. So the memo holds what the pass needs —
 // the field's door geometry, every door closed, snapshot at construction —
-// and derives on the first read, ONCE for the instance's life.
+// and derives on the first read, ONCE for the site's life.
 //
-// IN THE INSTANCE, NEVER IN THE RECORD. The law is unchanged: the field
-// indexes its placements and stores no derived data. [FieldData] carries
-// none of this; the memo dies with the instance (today, the verb), and a
-// longer-lived instance (rpg-project#770) keeps it longer for free.
+// IN THE SITE, NEVER IN THE RECORD (rpg-project#879 S5). The field indexes
+// its placements and stores no derived data. [FieldData] carries none of
+// this; the memo rides the compiled [Site], so every game on the content
+// shares one derivation for as long as its provider holds the site.
 //
 // NOTHING INVALIDATES IT. The division reads only the field's fixed
 // geometry — immutable placed contributors and props, and every door as
@@ -132,15 +133,17 @@ type fieldPartitions struct {
 // ([PartitionFloor]'s own contract). What a door's state does change is how
 // many hops a sound pays crossing it, which [Encounter.hopsFrom] reads live.
 //
-// NO LOCK. The encounter is one instance driven by one verb on one goroutine;
-// a lazily derived value there needs no mutex. Were an encounter ever read
-// from two goroutines at once, that would be a finding about the caller, not
-// a reason to lock here.
+// LOCKED, BECAUSE IT IS SITE DATA (rpg-project#879 S5): the memo rides the
+// compiled [Site], whose field every game on that content shares through its
+// shallow copy, so two games on two goroutines may ask first at once. The
+// derivation is deterministic over the site's geometry; the lock only keeps
+// it to one run.
 //
 // A FAILED DERIVATION IS REMEMBERED and returned to every reader: the pass is
 // deterministic over the same geometry, so asking again would fail the same
 // way. Every verb that decides on a partition surfaces it.
 type partitionMemo struct {
+	mu          sync.Mutex
 	doors       []*doorRecord // the construction-time doors, every one closed
 	derived     *fieldPartitions
 	err         error
@@ -183,7 +186,7 @@ func (f *field) derivePartitions(doors []DoorInput) error {
 var errNoPartitionMemo = errors.New("the field was compiled without its partitions")
 
 // partitionsNow is THE ONE ACCESSOR to the field's wall partitions: derived
-// on the first call, memoized for the instance's life ([partitionMemo]).
+// on the first call, memoized for the site's life ([partitionMemo]).
 //
 // Footing — permanent opaque floor bordering no single partition — is its own
 // partition, cell by cell: nobody stands there, so it can neither hear nor be
@@ -194,6 +197,8 @@ func (f *field) partitionsNow() (*fieldPartitions, error) {
 	if m == nil {
 		return nil, errNoPartitionMemo
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.derived != nil || m.err != nil {
 		return m.derived, m.err
 	}

@@ -57,6 +57,7 @@ github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/TestRouteTo_Determi
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/TestRouteTo_EqualsFlood  # over budget, to be sized: rpg-toolkit#2342 (4.58s local, 10.66s CI)
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/TestRouteTo_VisitsNearThePath  # near budget; runner variance, not a heavy fixture (2.51s local, 5.97s CI)
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/TestShownTo_MatchesAtlasFor  # over budget, to be sized: rpg-toolkit#2342 (3.72s local, 8.8s CI)
+github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec/TestSingleRoomWallSuite  # over budget on main already, to be sized: rpg-toolkit#2342 (8.30-8.56s local on main e4ac31f8, 8.30-8.83s with rpg-project#879 S5; 21.23s CI)
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec/TestTheAllyWordIsReadOnTheWalkingWordsAndRefusedOnAttack  # near budget; runner variance, not a heavy fixture (2.5s local, 6.35s CI)
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/castletest/TestTheCastlePlaysFromItsBlob  # near budget; runner variance, not a heavy fixture (5.72s local, - CI)
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/TestTheFieldsCrossingsAreTheWholeFloorScans  # near budget; runner variance, not a heavy fixture (1.98s local, 5.86s CI)

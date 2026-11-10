@@ -311,12 +311,14 @@ func (s *PropsSuite) TestAPropSurvivesASave() {
 	enc := s.chamber("dnd5e:props:coffin", propTrue(), propFalse())
 
 	data := enc.ToData()
-	s.Require().Len(data.Field.Props, propRunLen)
-	s.Equal("dnd5e:props:coffin", data.Field.Props[0].Ref)
-	s.Require().NotNil(data.Field.Props[0].BlocksMovement)
-	s.True(*data.Field.Props[0].BlocksMovement)
-	s.Require().NotNil(data.Field.Props[0].BlocksLineOfSight)
-	s.False(*data.Field.Props[0].BlocksLineOfSight)
+
+	site := enc.Site().Data()
+	s.Require().Len(site.Field.Props, propRunLen)
+	s.Equal("dnd5e:props:coffin", site.Field.Props[0].Ref)
+	s.Require().NotNil(site.Field.Props[0].BlocksMovement)
+	s.True(*site.Field.Props[0].BlocksMovement)
+	s.Require().NotNil(site.Field.Props[0].BlocksLineOfSight)
+	s.False(*site.Field.Props[0].BlocksLineOfSight)
 
 	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
@@ -350,7 +352,7 @@ func (s *PropsSuite) TestAPropSurvivesASave() {
 func (s *PropsSuite) TestAnOldBlobsRoomsAreRefusedLoudly() {
 	enc := s.chamber("dnd5e:props:pillar", propTrue(), propTrue())
 
-	raw, err := json.Marshal(enc.ToData())
+	raw, err := json.Marshal(enc.Site().Data())
 	s.Require().NoError(err)
 
 	var generic map[string]any
@@ -369,11 +371,10 @@ func (s *PropsSuite) TestAnOldBlobsRoomsAreRefusedLoudly() {
 	rewound, err := json.Marshal(generic)
 	s.Require().NoError(err)
 
-	var data encounter.EncounterData
-	s.Require().NoError(json.Unmarshal(rewound, &data))
+	var site encounter.SiteData
+	s.Require().NoError(json.Unmarshal(rewound, &site))
 
-	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data,
+	_, err = loadOverSite(enc.ToData(), site, encounter.LoadEncounterInput{
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
@@ -408,9 +409,9 @@ func (s *PropsSuite) TestAPersistedPropMustSayWhatItDoesToo() {
 	loadWith := func(mutate func(*encounter.PropData)) error {
 		enc := s.chamber("dnd5e:props:pillar", propTrue(), propTrue())
 		data := enc.ToData()
-		mutate(&data.Field.Props[0])
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Data: data,
+		site := enc.Site().Data()
+		mutate(&site.Field.Props[0])
+		_, err := loadOverSite(data, site, encounter.LoadEncounterInput{
 			Capabilities: encounter.Capabilities{
 				Sight:         everyoneSeesTheWholeMap{},
 				Equipment:     encounter.UnobservedEquipment{},
@@ -492,13 +493,13 @@ func (s *PropsSuite) TestEditingTheSetupAfterwardsCannotChangeTheSavedDungeon() 
 	// The caller changes its mind about its own struct, after the fact.
 	solid = false
 
-	data := enc.ToData()
-	s.Require().Len(data.Field.Props, 1)
-	s.Require().NotNil(data.Field.Props[0].BlocksMovement)
-	s.True(*data.Field.Props[0].BlocksMovement,
+	site := enc.Site().Data()
+	s.Require().Len(site.Field.Props, 1)
+	s.Require().NotNil(site.Field.Props[0].BlocksMovement)
+	s.True(*site.Field.Props[0].BlocksMovement,
 		"the dungeon was built with a solid pillar and saves one")
-	s.Require().NotNil(data.Field.Props[0].BlocksLineOfSight)
-	s.True(*data.Field.Props[0].BlocksLineOfSight)
+	s.Require().NotNil(site.Field.Props[0].BlocksLineOfSight)
+	s.True(*site.Field.Props[0].BlocksLineOfSight)
 
 	// And the encounter that is actually running never wavered.
 	_, err = enc.Step(&encounter.StepInput{Member: delver, To: propAbs(5, 4)})
@@ -511,11 +512,11 @@ func (s *PropsSuite) TestEditingTheSetupAfterwardsCannotChangeTheSavedDungeon() 
 func (s *PropsSuite) TestASavedPropIsNotAliasedByTheSnapshot() {
 	enc := s.chamber("dnd5e:props:coffin", propTrue(), propFalse())
 
-	first := enc.ToData()
+	first := enc.Site().Data()
 	*first.Field.Props[0].BlocksMovement = false
 	*first.Field.Props[0].BlocksLineOfSight = true
 
-	second := enc.ToData()
+	second := enc.Site().Data()
 	s.True(*second.Field.Props[0].BlocksMovement,
 		"a second snapshot must not carry the first one's edits")
 	s.False(*second.Field.Props[0].BlocksLineOfSight)
@@ -617,9 +618,11 @@ func (s *PropsSuite) TestFacingAndOffsetSurviveASave() {
 	s.Require().NoError(err)
 
 	data := enc.ToData()
-	s.Require().Len(data.Field.Props, 1)
-	s.Equal("ne", data.Field.Props[0].Facing)
-	s.Equal([3]float64{0.25, -0.4}, data.Field.Props[0].Offset)
+
+	site := enc.Site().Data()
+	s.Require().Len(site.Field.Props, 1)
+	s.Equal("ne", site.Field.Props[0].Facing)
+	s.Equal([3]float64{0.25, -0.4}, site.Field.Props[0].Offset)
 
 	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,

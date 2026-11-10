@@ -52,7 +52,9 @@ Every noun below is one this module is the truth for. Nothing else may hold a se
   inventing a rule 5e does not have.
 - **The bus.** No direct `events` import exists in this package. Results are returned values; a
   rule that wants to react runs in `resolution` ([ADR-0038](../../../docs/adr/0038-resolution-owns-the-bus.md)).
-- **Storage.** It hands out `EncounterData` ([data.go](./data.go)); the host persists it.
+- **Storage.** It hands out `EncounterData` ([data.go](./data.go)) and the site piece
+  (`Site.Data`, [site.go](./site.go)); the host persists them. The checkpoint names its
+  site by content hash and never carries the field (rpg-project#879 S5).
 - **What an archetype implies.** W5: a region's archetype and lighting are authored, required,
   carried unread, and NEVER decide a mechanic.
 - **The editor document or what an asset means.** Groups, support/parent graphs,

@@ -168,6 +168,11 @@ type field struct {
 	// written in place, so the field's shallow copies
 	// ([field.partitionCanvas]) never write the live field's.
 	doorOpenings map[DoorID][]DoorEdge
+	// openingsAreSite says doorOpenings was measured by [CompileSite] from
+	// the site's own door geometry, which every instance's doors are checked
+	// to equal ([Site.checkDoors]): attaching an instance's records keeps the
+	// site's map rather than measuring the doors again (rpg-project#879 S5).
+	openingsAreSite bool
 
 	// openedFacts is every fact a door teaches when it opens
 	// ([DoorInput.Opened], rpg-project#569 R12), read off the authored

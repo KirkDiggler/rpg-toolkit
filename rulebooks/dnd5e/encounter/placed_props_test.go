@@ -492,10 +492,11 @@ func (s *PlacedPropsSuite) TestAHandEditedBlobPlacementIsRefusedAtLoad() {
 	enc, err := s.setup(placedField(placed("table-a", coveredBox(5, centreOf(cellAt(1, 1))), true, false)))
 	s.Require().NoError(err)
 	data := enc.ToData()
-	s.Require().Len(data.Field.Placed, 1)
-	data.Field.Placed[0].Placement.Footprint.W = 0
+	site := enc.Site().Data()
+	s.Require().Len(site.Field.Placed, 1)
+	site.Field.Placed[0].Placement.Footprint.W = 0
 
-	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
+	_, err = loadOverSite(data, site, encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
@@ -525,11 +526,13 @@ func (s *PlacedPropsSuite) TestSaveLoadRetainsPlacementsAndTheirFacts() {
 	s.Require().NoError(err)
 
 	data := enc.ToData()
-	s.Require().Len(data.Field.Placed, 2)
-	s.Equal("table-a", data.Field.Placed[0].ID)
-	s.True(data.Field.Placed[0].BlocksMovement)
-	s.False(data.Field.Placed[0].BlocksLineOfSight)
-	s.InDelta(5.0, data.Field.Placed[0].Placement.Footprint.W, 1e-12)
+
+	site := enc.Site().Data()
+	s.Require().Len(site.Field.Placed, 2)
+	s.Equal("table-a", site.Field.Placed[0].ID)
+	s.True(site.Field.Placed[0].BlocksMovement)
+	s.False(site.Field.Placed[0].BlocksLineOfSight)
+	s.InDelta(5.0, site.Field.Placed[0].Placement.Footprint.W, 1e-12)
 
 	loaded := s.loadFrom(data)
 
