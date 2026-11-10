@@ -79,3 +79,22 @@ func heldField(t *testing.T, self reflect.Value, name string) reflect.Value {
 type quietDisengager struct{}
 
 func (quietDisengager) Disengage(context.Context, *Encounter, MemberID) error { return nil }
+
+// TestRebindRefusesDuringADrivenTurnOrAWorldRound: the other half of
+// ErrVerbInFlight. With no act open, a rebind is still refused while a driven
+// turn (driving) or a world round (worldThinking) is in progress, and
+// accepted once it ends. Set directly: through the public verbs both run
+// inside an act, which would hide a guard cut to acts alone.
+func TestRebindRefusesDuringADrivenTurnOrAWorldRound(t *testing.T) {
+	enc, err := NewEncounter(wakeSetup(&askedDriver{inner: BehaviorDriver{}}))
+	require.NoError(t, err)
+	caps := wakeCapabilities(&askedDriver{inner: BehaviorDriver{}})
+	require.Empty(t, enc.acts, "no act is open")
+
+	for name, flag := range map[string]*bool{"a driven turn": &enc.driving, "a world round": &enc.worldThinking} {
+		*flag = true
+		require.ErrorIs(t, enc.Rebind(&RebindInput{Capabilities: caps}), ErrVerbInFlight, "refused during %s", name)
+		*flag = false
+		require.NoError(t, enc.Rebind(&RebindInput{Capabilities: caps}), "accepted once %s ends", name)
+	}
+}

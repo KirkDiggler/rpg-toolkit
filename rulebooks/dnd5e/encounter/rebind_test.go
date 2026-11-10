@@ -55,8 +55,11 @@ type residentRun struct {
 	clanged bool
 }
 
-// caps is a fresh set of capabilities for one verb: new values, so a kept
-// instance that still asked the last verb's would be asking another one.
+// caps is a fresh set of capabilities for one verb. Only Participation holds
+// state between verbs (the down list, which a kept instance still asking the
+// last verb's would read stale); the rest are stateless values, so a stale
+// die, sight or striker would answer the same here. That every capability is
+// rebound is held by TestRebindBindsEveryCapability, not by this gate.
 func (r *residentRun) caps() encounter.Capabilities {
 	caps := checkpointCapabilities()
 	caps.Participation = &downList{down: append([]encounter.MemberID(nil), r.down...)}
