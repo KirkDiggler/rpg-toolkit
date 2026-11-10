@@ -1,6 +1,6 @@
 # Run — 2026-11-09 — the session saves the record appended
 
-Base: `rpg-toolkit` `main` at 09147992. Story: [rpg-project#879](https://github.com/KirkDiggler/rpg-project/issues/879), card [rpg-project#897](https://github.com/KirkDiggler/rpg-project/issues/897) leg (c), PR 3 of 4. Upstream: record [#2352](https://github.com/KirkDiggler/rpg-toolkit/pull/2352) at 121095d5, encounter [#2353](https://github.com/KirkDiggler/rpg-toolkit/pull/2353) at bbddc944, both pinned by pseudo-version.
+Base: `rpg-toolkit` `main` at 09147992. Story: [rpg-project#879](https://github.com/KirkDiggler/rpg-project/issues/879), card [rpg-project#897](https://github.com/KirkDiggler/rpg-project/issues/897) leg (c), PR 3 of 4. Upstream: record [#2352](https://github.com/KirkDiggler/rpg-toolkit/pull/2352) and encounter [#2353](https://github.com/KirkDiggler/rpg-toolkit/pull/2353), developed against their pushed commits and pinned at their tags, play/record v0.4.0 and encounter v0.189.0.
 
 ## Shipped
 
@@ -20,7 +20,7 @@ Base: `rpg-toolkit` `main` at 09147992. Story: [rpg-project#879](https://github.
 ## Found
 
 - The boundary test caught `record.LogData` on the new input. It is the same bytes `EncounterData.Log` already carried, so it joined the persistence shapes rather than getting a twin.
-- The record branch moved `DataFrom` and `JoinData` to Input structs at 4cb96604 while the encounter branch still calls the old shape. This PR stays on the pair that builds together and re-pins when the encounter does.
+- The record moved `DataFrom` and `JoinData` to Input structs during review. The session had one production call site (`splitStored`) and one test helper to update at the re-pin, and the test store now passes its floor to the join.
 
 ## Mistaken
 

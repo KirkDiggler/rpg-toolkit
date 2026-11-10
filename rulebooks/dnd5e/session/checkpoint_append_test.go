@@ -104,8 +104,8 @@ func (a *appendingStore) SaveAppended(
 
 // joinSegments is the record's join, in one place so the call shape lives
 // here alone.
-func joinSegments(head record.LogData, _ uint64, segments []record.LogData) (record.LogData, error) {
-	return record.JoinData(head, segments...)
+func joinSegments(head record.LogData, floor uint64, segments []record.LogData) (record.LogData, error) {
+	return record.JoinData(&record.JoinDataInput{Head: head, Floor: floor, Segments: segments})
 }
 
 // lastAppend is the most recent SaveAppended call.

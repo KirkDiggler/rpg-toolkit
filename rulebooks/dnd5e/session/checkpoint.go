@@ -305,9 +305,17 @@ func splitStored(data *encounter.EncounterData, since uint64) (*encounter.ToChec
 	if err != nil {
 		return nil, fmt.Errorf("splitting the stored record: %w: %v", ErrInvalidWorld, err)
 	}
+	head, err := log.DataFrom(&record.DataFromInput{Since: next})
+	if err != nil {
+		return nil, fmt.Errorf("splitting the stored record: %w: %v", ErrInvalidWorld, err)
+	}
+	appended, err := log.DataFrom(&record.DataFromInput{Since: since})
+	if err != nil {
+		return nil, fmt.Errorf("splitting the stored record: %w: %v", ErrInvalidWorld, err)
+	}
 	rest := *data
-	rest.Log = log.DataFrom(next)
-	return &encounter.ToCheckpointOutput{Rest: rest, Appended: log.DataFrom(since)}, nil
+	rest.Log = head
+	return &encounter.ToCheckpointOutput{Rest: rest, Appended: appended}, nil
 }
 
 // persistFenced is [Manager.persist] over a fenced repository: the sheets and
