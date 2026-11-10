@@ -138,7 +138,9 @@ type CharacterRepository interface {
 // world, the session record, the seats and the seated characters' sheets,
 // lands together or not at all. One that also carries
 // [AppendingEncounterRepository] saves the story record as appended segments
-// in that same transaction rather than rewriting it whole. An unseated
+// in that same transaction rather than rewriting it whole, and one that also
+// carries [PiecesEncounterRepository] stores the rest as pieces and is sent
+// only the ones that moved. An unseated
 // character's sheet, written under its own guard, stays a plain write.
 // Character verbs (Equip, Unequip, LevelUp) act under the guard their
 // character's seat names — the session's, or the character's own while

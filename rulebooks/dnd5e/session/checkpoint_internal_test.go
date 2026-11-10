@@ -201,3 +201,74 @@ func (s *PendingWritesSuite) TestTheRetentionFloorRidesTheAppendedSave() {
 	s.Equal([]uint64{8}, repo.floors)
 	s.Equal([]uint64{12}, repo.sinces)
 }
+
+// piecesRepo is a pieces repository whose saves land or are refused on
+// demand, recording what each carried.
+type piecesRepo struct {
+	appendingRepo
+	saves []*SavePiecesInput
+}
+
+func (p *piecesRepo) SavePieces(_ context.Context, in *SavePiecesInput) (*SaveFencedOutput, error) {
+	p.saves = append(p.saves, in)
+	if p.stale {
+		return nil, ErrStaleCheckpoint
+	}
+	return &SaveFencedOutput{Version: in.Expected + 1}, nil
+}
+
+// TestMarksMoveOnlyWithALandedSave drives the marks beside the record
+// baseline: a refused pieces save leaves both where they were (the store
+// still holds what it did), and a landed one replaces the marks with the
+// save's new ones and moves recordNext, beside the version. The second save
+// splits against the marks the verb loaded, so it sends what the first would
+// have.
+func (s *PendingWritesSuite) TestMarksMoveOnlyWithALandedSave() {
+	repo := &piecesRepo{appendingRepo: appendingRepo{stale: true}}
+	m := &Manager{fenced: repo, appending: repo, pieces: repo, pending: newPendingWrites()}
+	rest := encounter.EncounterData{SiteHash: "site", Members: []encounter.MemberData{{ID: "alice"}}}
+	rest.Log.NextSeq = 9
+	held, err := encounter.SplitPieces(&encounter.SplitPiecesInput{Data: &rest})
+	s.Require().NoError(err)
+	loaded := held.Marks
+	rest.Members = append(rest.Members, encounter.MemberData{ID: "bob"})
+	scope := &writeScope{session: "sess", encounter: "sess",
+		fence: checkpointFence{held: true, version: 3, recordNext: 7, marks: loaded}}
+	split := &encounter.ToCheckpointOutput{Rest: rest}
+
+	world, err := m.piecesOf(split, scope.fence.marks)
+	s.Require().NoError(err)
+	_, err = m.persistFenced(context.Background(), scope, world, SaveReport{})
+	s.Require().ErrorIs(err, ErrStaleCheckpoint)
+	s.Equal(loaded, scope.fence.marks, "a refused save leaves the marks")
+	s.Equal(uint64(7), scope.fence.recordNext, "and the baseline")
+	s.Equal(uint64(3), scope.fence.version)
+
+	repo.stale = false
+	world, err = m.piecesOf(split, scope.fence.marks)
+	s.Require().NoError(err)
+	_, err = m.persistFenced(context.Background(), scope, world, SaveReport{})
+	s.Require().NoError(err)
+	s.Require().Len(repo.saves, 2)
+	for _, in := range repo.saves {
+		s.Equal(uint64(7), in.Since, "both saves sent from the baseline the verb loaded")
+		s.Nil(in.Data, "the pieces replace the rest")
+		s.ElementsMatch([]encounter.PieceKey{encounter.PieceHead, encounter.MemberPiece("bob")},
+			keysOfPieces(in.Pieces), "only the head and the new member, against the loaded marks")
+	}
+	s.Equal(repo.saves[1].Marks, scope.fence.marks, "a landed save holds its new marks")
+	s.NotEqual(loaded, scope.fence.marks)
+	s.Equal(uint64(9), scope.fence.recordNext)
+	s.Equal(uint64(4), scope.fence.version)
+	s.Empty(repo.sinces, "a pieces host is never handed SaveAppended")
+	s.Zero(repo.countingFenced.saves, "nor SaveFenced")
+}
+
+// keysOfPieces is a pieces map's keys.
+func keysOfPieces(pieces map[encounter.PieceKey]encounter.Piece) []encounter.PieceKey {
+	out := make([]encounter.PieceKey, 0, len(pieces))
+	for key := range pieces {
+		out = append(out, key)
+	}
+	return out
+}

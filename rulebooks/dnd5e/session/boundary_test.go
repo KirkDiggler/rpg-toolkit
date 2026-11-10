@@ -264,6 +264,19 @@ var persistenceShapes = map[string]string{
 	// field? No: the encounter mints every segment, and the host only reads
 	// the seqs it needs to order and drop them.
 	"record.LogData": "persistence shape: the record segment the host appends and joins but never builds",
+
+	// The rest's pieces and their marks (rpg-project#897 leg b,
+	// checkpoint.go), on [session.SavePiecesInput] and
+	// [session.GetFencedEncounterOutput]. They are the same bytes the rest
+	// (EncounterData) already carried across this seam, now handed over by
+	// shape: the host writes each piece under its key with its mark, and
+	// joins what it holds with encounter.JoinPieces on a read. Would the
+	// host build one field by field? No: encounter.SplitPieces mints every
+	// piece and mark; the host routes a key by its Shape and stores the
+	// opaque bytes and the opaque mark beside them.
+	"encounter.Piece":    "persistence shape: one piece of the rest the host stores by key but never builds",
+	"encounter.PieceKey": "persistence shape: the opaque key a piece is stored under, routed by its Shape",
+	"encounter.Mark":     "persistence shape: the opaque digest the host keeps beside a piece and hands back",
 }
 
 // allowed is the union the detector checks against.
