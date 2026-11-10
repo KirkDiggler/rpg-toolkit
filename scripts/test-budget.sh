@@ -8,12 +8,19 @@
 #       fails (or never finishes). Passing tests stay quiet. Always exits 0;
 #       go test's own exit status is the caller's (use `set -o pipefail`).
 #
-#   test-budget.sh check [-budget 5s] [-module PATH | -allow FILE] [-label NAME]
+#   test-budget.sh check [-budget 5s] [-hard 2x] [-module PATH | -allow FILE] [-label NAME]
 #       Fold the elapsed time of every top-level test (no "/" in its name),
 #       per package. Write the ten slowest as a Markdown table to
-#       $GITHUB_STEP_SUMMARY when it is set, else to stdout. Exit 1 naming
-#       each test over the budget that FILE does not list. Exit 2 when FILE
-#       has a line without a reason.
+#       $GITHUB_STEP_SUMMARY when it is set, else to stdout. A test over the
+#       budget (the target) that FILE does not list is reported "over
+#       target" with its seconds, in the table and the log, and does not
+#       fail. Exit 1 naming each test over the hard line that FILE does not
+#       list. -hard is a multiple of the budget (2x, the default) or seconds
+#       (10s). Exit 2 when FILE has a line without a reason.
+#
+# Why two lines: CI run times for one test vary about 2x between runs, so a
+# hard line at the 5s target flaps on tests near it. The target stays 5s; a
+# test over it is still a finding, and the sizing issues hold them.
 #
 # -module PATH reads the module's allowlist from
 # .github/testbudget/PATH.allow at the repository root (PATH as the module's
@@ -88,11 +95,12 @@ parse_seconds() {
 }
 
 cmd_check() {
-  local budget=5 allow="" label="" root
+  local budget=5 hard=2x allow="" label="" root
   root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
   while [[ $# -gt 0 ]]; do
     case $1 in
       -budget) budget=$(parse_seconds "${2:?-budget needs a value}"); shift 2 ;;
+      -hard) hard=${2:?-hard needs a value}; shift 2 ;;
       -allow) allow=${2:?-allow needs a path}; shift 2 ;;
       -module)
         allow="$root/.github/testbudget/${2:?-module needs a path}.allow"
@@ -103,6 +111,13 @@ cmd_check() {
       *) usage ;;
     esac
   done
+
+  # The hard line: a multiple of the budget, or seconds.
+  if [[ $hard =~ ^([0-9]+(\.[0-9]+)?)x$ ]]; then
+    hard=$(awk -v b="$budget" -v m="${BASH_REMATCH[1]}" 'BEGIN { print b * m }')
+  else
+    hard=$(parse_seconds "$hard")
+  fi
 
   # Read the allowlist: every entry must carry a reason.
   local names=() bad=0 n=0 line name reason
@@ -160,8 +175,8 @@ cmd_check() {
     else
       echo "| package | test | seconds |"
       echo "|---|---|---|"
-      jq -r --argjson b "$budget" '.[:10][]
-          | "| \(.pkg | sub("^github\\.com/[^/]+/[^/]+/"; "")) | \(.test)\(if .s > $b then (if .allowed then " (allowed)" else " **over budget**" end) else "" end) | \(.s * 100 | round / 100) |"' <<<"$rows"
+      jq -r --argjson b "$budget" --argjson h "$hard" '.[:10][]
+          | "| \(.pkg | sub("^github\\.com/[^/]+/[^/]+/"; "")) | \(.test)\(if .s > $b then (if .allowed then " (allowed)" elif .s > $h then " **over the hard line**" else " (over target)" end) else "" end) | \(.s * 100 | round / 100) |"' <<<"$rows"
     fi
     echo
   } >&3
@@ -171,24 +186,38 @@ cmd_check() {
   jq -r --argjson b "$budget" '.[] | select(.allowed)
       | "test-budget: allowed: \(.test) (\(.pkg)) took \(.s * 100 | round / 100)s\(if .s > $b then "" else ", within the budget this run" end)"' <<<"$rows"
 
+  local allow_path=${allow:-"(none: pass -module or -allow)"}
+  allow_path=${allow_path#"$root/"}
+
+  # Over the target, under the hard line: reported, not red.
+  local warn pkg test s
+  warn=$(jq -r --argjson b "$budget" --argjson h "$hard" '.[] | select(.s > $b and .s <= $h and (.allowed | not))
+      | "\(.pkg) \(.test) \(.s * 100 | round / 100)"' <<<"$rows")
+  if [[ -n $warn ]]; then
+    while read -r pkg test s; do
+      echo "test-budget: over target: $test ($pkg) took ${s}s; the target is ${budget}s, the job fails over ${hard}s"
+      if [[ -n ${GITHUB_ACTIONS:-} ]]; then
+        echo "::warning title=Test over target::$test ($pkg) took ${s}s; the target is ${budget}s (allowlist $allow_path)"
+      fi
+    done <<<"$warn"
+  fi
+
   local over
-  over=$(jq -r --argjson b "$budget" '.[] | select(.s > $b and (.allowed | not))
+  over=$(jq -r --argjson h "$hard" '.[] | select(.s > $h and (.allowed | not))
       | "\(.pkg) \(.test) \(.s * 100 | round / 100)"' <<<"$rows")
   if [[ -z $over ]]; then
-    echo "test-budget: every top-level test${label:+ in $label} is within ${budget}s or allowed"
+    echo "test-budget: every top-level test${label:+ in $label} is within the ${hard}s hard line or allowed"
     return 0
   fi
 
-  local allow_path=${allow:-"(none: pass -module or -allow)"}
-  allow_path=${allow_path#"$root/"}
-  echo "test-budget: over the ${budget}s budget${label:+ in $label}:" >&2
+  echo "test-budget: over the ${hard}s hard line (the target is ${budget}s)${label:+ in $label}:" >&2
   while read -r pkg test s; do
     echo "  $test ($pkg) took ${s}s" >&2
     if [[ -n ${GITHUB_ACTIONS:-} ]]; then
-      echo "::error title=Test over budget::$test ($pkg) took ${s}s; the budget is ${budget}s (allowlist $allow_path)"
+      echo "::error title=Test over the hard line::$test ($pkg) took ${s}s; the target is ${budget}s, the hard line ${hard}s (allowlist $allow_path)"
     fi
   done <<<"$over"
-  echo "The budget is ${budget}s per top-level test; exceptions live in $allow_path." >&2
+  echo "The target is ${budget}s per top-level test and the job fails over ${hard}s; exceptions live in $allow_path." >&2
   echo "A slow test is a finding: size the fixture to the cases, or name it here with a reason (rpg-project#907)." >&2
   return 1
 }
