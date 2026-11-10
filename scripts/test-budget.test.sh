@@ -33,13 +33,13 @@ event() {
 
 pkg=github.com/KirkDiggler/rpg-toolkit/small
 
-# A package with one 6 s test, a 6 s subtest under a fast parent (the parent
-# is what is judged), and a quick test.
+# A package with one 11 s test (over the 10 s hard line), an 11 s subtest
+# under a fast parent (the parent is what is judged), and a quick test.
 slow_stream() {
   event run "$pkg" TestSlow 0
-  event pass "$pkg" TestSlow 6.02
+  event pass "$pkg" TestSlow 11.02
   event run "$pkg" TestParent 0
-  event pass "$pkg" TestParent/sub 6.5
+  event pass "$pkg" TestParent/sub 11.5
   event pass "$pkg" TestParent 1.0
   event pass "$pkg" TestQuick 0.01
   printf '{"Action":"pass","Package":"%s","Elapsed":7.1}\n' "$pkg"
@@ -58,21 +58,22 @@ check() {
   err=$(cat "$scratch/err")
 }
 
-run_case "a 6 s test over the 5 s budget fails, naming it, the budget and the allowlist"
+run_case "an 11 s test over the 10 s hard line fails, naming it, the target, the hard line and the allowlist"
 check slow_stream -allow "$scratch/none.allow"
 [[ $status -eq 1 ]] || fail "exit $status, want 1"
 [[ $err == *"TestSlow"* ]] || fail "stderr does not name TestSlow: $err"
-[[ $err == *"5s budget"* ]] || fail "stderr does not name the budget: $err"
+[[ $err == *"10s hard line"* ]] || fail "stderr does not name the hard line: $err"
+[[ $err == *"target is 5s"* ]] || fail "stderr does not name the target: $err"
 [[ $err == *"$scratch/none.allow"* ]] || fail "stderr does not name the allowlist: $err"
 [[ $err == *"slow test is a finding"* ]] || fail "stderr does not carry the finding line: $err"
 [[ $err != *"TestParent"* ]] || fail "a 1 s parent with a slow subtest was judged: $err"
 
-run_case "the same test allowlisted with a reason passes"
+run_case "the same 11 s test allowlisted with a reason passes"
 printf '# header comment\n\n%s/TestSlow  # sleeps on purpose for this case\n' "$pkg" >"$scratch/ok.allow"
 check slow_stream -allow "$scratch/ok.allow"
 [[ $status -eq 0 ]] || fail "exit $status, want 0: $err"
 [[ $out == *"TestSlow (allowed)"* ]] || fail "table does not mark TestSlow allowed: $out"
-[[ $out == *"allowed: TestSlow ($pkg) took 6.02s"* ]] || fail "log does not show the allowed test's time: $out"
+[[ $out == *"allowed: TestSlow ($pkg) took 11.02s"* ]] || fail "log does not show the allowed test's time: $out"
 printf '%s/TestQuick  # was slow once\n' "$pkg" >"$scratch/stale.allow"
 check slow_stream -allow "$scratch/stale.allow" -budget 7s
 [[ $out == *"allowed: TestQuick ($pkg) took 0.01s, within the budget this run"* ]] || fail "a stale entry is not named: $out"
@@ -105,11 +106,11 @@ check slow_stream -allow "$scratch/unqualified.allow"
 run_case "a same-named test in another package is not allowed by the first's entry"
 two_packages() {
   slow_stream
-  event pass "$pkg/other" TestSlow 6.4
+  event pass "$pkg/other" TestSlow 11.4
 }
 check two_packages -allow "$scratch/ok.allow"
 [[ $status -eq 1 ]] || fail "exit $status, want 1"
-[[ $err == *"TestSlow ($pkg/other) took 6.4s"* ]] || fail "the other package's TestSlow is not named: $err"
+[[ $err == *"TestSlow ($pkg/other) took 11.4s"* ]] || fail "the other package's TestSlow is not named: $err"
 [[ $err != *"TestSlow ($pkg) took"* ]] || fail "the allowed package's TestSlow was named: $err"
 
 run_case "-module reads .github/testbudget/<module>.allow from the repository root"
@@ -129,6 +130,26 @@ status=$?
 set -e
 [[ $status -eq 1 ]] || fail "absent allowlist: exit $status, want 1 (no exceptions)"
 grep -q '.github/testbudget/rulebooks/absent.allow' "$scratch/err" || fail "the message does not name where the allowlist goes: $(cat "$scratch/err")"
+
+run_case "a 6 s test is over target: reported with its seconds, not red"
+near_stream() {
+  event pass "$pkg" TestNear 6.0
+  event pass "$pkg" TestQuick 0.01
+}
+check near_stream
+[[ $status -eq 0 ]] || fail "exit $status, want 0: $err"
+[[ $out == *"over target: TestNear ($pkg) took 6s; the target is 5s, the job fails over 10s"* ]] || fail "log does not report it over target: $out"
+[[ $out == *"| small | TestNear (over target) | 6 |"* ]] || fail "table does not mark it over target: $out"
+[[ -z $err ]] || fail "stderr not empty: $err"
+
+run_case "-hard moves the hard line: seconds or a multiple of the budget"
+check near_stream -hard 5.5s
+[[ $status -eq 1 && $err == *"TestNear"* ]] || fail "-hard 5.5s: exit $status, err $err"
+check slow_stream -hard 3x
+[[ $status -eq 0 ]] || fail "-hard 3x: exit $status, want 0: $err"
+[[ $out == *"over target: TestSlow"* ]] || fail "-hard 3x: TestSlow not reported over target: $out"
+check slow_stream -hard soon
+[[ $status -eq 2 ]] || fail "a bad -hard: exit $status, want 2"
 
 run_case "-budget raises the bar"
 check slow_stream -budget 7s
@@ -159,7 +180,7 @@ grep -q 'TestSlow' "$scratch/summary.md" || fail "no TestSlow row in the summary
 run_case "a failed test counts too, and non-JSON lines are ignored"
 mixed() {
   echo "go: downloading something"
-  event fail "$pkg" TestBroken 9.0
+  event fail "$pkg" TestBroken 19.0
 }
 check mixed
 [[ $status -eq 1 && $err == *"TestBroken"* ]] || fail "exit $status, err $err"
