@@ -300,6 +300,11 @@
 // no-op. Historical full-row updates retain their whole-record upsert
 // semantics.
 //
+// Wall FaceFinishes copy the captured positive-z/negative-z material choices
+// without resource lookup or regional mapping. Their lists are detached; reveal
+// decoding refuses unknown/duplicate sides and blank refs as one whole body.
+// Missing legacy lists stay absent. Opening-only replacements never change them.
+//
 // NOTHING IS DECIDED HERE. projectAtlas is a field-for-field copy; the reveal
 // decode is a shared helper that refuses a malformed or identity-less row whole
 // rather than handing a client a half-applied patch. A fixed row carries no
