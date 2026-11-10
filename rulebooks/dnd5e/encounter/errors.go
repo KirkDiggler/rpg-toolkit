@@ -338,6 +338,12 @@ var (
 	// a piece carrying it would rewrite the record on every save.
 	ErrRestCarriesRecord = errors.New("encounter: checkpoint rest carries the record")
 
+	// ErrVerbInFlight reports a [Encounter.Rebind] asked while a verb is
+	// still running on the encounter: an act is open, or a driven turn or a
+	// world round is in progress. Capabilities are swapped only between
+	// verbs, where nothing holds the old ones.
+	ErrVerbInFlight = errors.New("encounter: a verb is in flight")
+
 	// ErrNoInitiative indicates Setup was given no InitiativeRoller. Trigger
 	// detection runs from first light, so every encounter needs one — refused
 	// at construction rather than at the moment a fight would have started.
