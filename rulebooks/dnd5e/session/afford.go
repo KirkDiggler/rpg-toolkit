@@ -407,9 +407,15 @@ type Declaration struct {
 	// only on a [VerbSpeak] row in the ADDRESSED member's own menu and only
 	// while the address stands ([encounter.Encounter.AddressFor], measured at
 	// [InteractionReach]). Nil on every other member's rows and on every
-	// other verb. A client reads it as "open the reply panel on Guard": the
-	// approach distance is inside Speak reach, so SpeakOptions lists that
-	// guard's lines whenever Address is set.
+	// other verb. A client reads it as "open the reply panel on Guard".
+	//
+	// SpeakOptions lists that guard's lines whenever Address is set, because
+	// the encounter's one predicate admits an address only when the menu
+	// would offer him: the member within [InteractionReach] of the guard,
+	// SIGHT BOTH WAYS (he sees her, she sights him — the menu lists only
+	// creatures the member sights and that witness her), and the interaction
+	// still offering her one of his lines. Asymmetric sight ends the address
+	// (`out-of-sight`) rather than naming a guard the menu leaves out.
 	Address *Address `json:"address,omitempty"`
 
 	// Cost is generic provider-authored display data copied from the executable
