@@ -666,6 +666,11 @@ func predicateOf(p *PredicateSpec) encounter.Trigger {
 		// Scoped by what it wraps ([grammar.not]); the engine judges it at
 		// the inner form's own site (rpg-project#719).
 		return encounter.TriggerNot{Inner: predicateOf(p.Not)}
+	case predicateInteraction:
+		// An option's `requires` only (rpg-project#922); refused elsewhere.
+		return encounter.TriggerInteraction{
+			Interaction: encounter.InteractionID(p.Interaction.ID), In: append([]string(nil), p.Interaction.In...),
+		}
 	default:
 		return nil
 	}
@@ -1192,11 +1197,32 @@ func optionsOf(specs []OptionSpec, o encounter.Orientation) []encounter.Option {
 	}
 	out := make([]encounter.Option, 0, len(specs))
 	for _, opt := range specs {
-		out = append(out, encounter.Option{
+		option := encounter.Option{
 			ID: opt.ID, Say: opt.Say, Check: approachesOf(opt.Check),
-			Requires: predicateOf(opt.Requires),
+			Requires: requirementsOf(opt.Requires),
 			Success:  rowsOf(opt.Success, o), Failure: rowsOf(opt.Failure, o),
-		})
+		}
+		if a := opt.Advance; a != nil {
+			option.Advance = &encounter.Advance{
+				Interaction: encounter.InteractionID(a.Interaction),
+				Success:     machine.Beat(a.Success), Failure: machine.Beat(a.Failure),
+			}
+		}
+		out = append(out, option)
+	}
+
+	return out
+}
+
+// requirementsOf compiles an option's `requires`, one trigger per predicate
+// in authored order, nil staying nil.
+func requirementsOf(requires RequiresSpec) []encounter.Trigger {
+	if len(requires) == 0 {
+		return nil
+	}
+	out := make([]encounter.Trigger, 0, len(requires))
+	for i := range requires {
+		out = append(out, predicateOf(&requires[i]))
 	}
 
 	return out

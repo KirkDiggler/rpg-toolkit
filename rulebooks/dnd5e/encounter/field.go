@@ -750,6 +750,14 @@ type FieldInput struct {
 	// `party` is hostile to it; declared factions are neutral to each other
 	// and to `monsters`. See [DispositionInput].
 	Dispositions []DispositionInput
+
+	// Interactions are the run's authored interaction instances
+	// (interaction.go, rpg-project#922): the entrance that remembers.
+	// Optional; omitted means none, and a run with none writes no
+	// interaction key. CARRIED HERE so a host passes them with the field it
+	// already passes, and NOT SITE DATA: they are never in the site's hash —
+	// the definition and its progress are the run's ([EncounterData.Interactions]).
+	Interactions []InteractionInput
 }
 
 // IntelID is the author's name for one intel record — [IntelRecord.ID].

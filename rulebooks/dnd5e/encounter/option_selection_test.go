@@ -38,7 +38,7 @@ func plainSelectionLine() encounter.Option {
 }
 
 // gatedSelectionLine is a plain line offered only while requires holds.
-func gatedSelectionLine(id string, requires encounter.Trigger) encounter.Option {
+func gatedSelectionLine(id string, requires ...encounter.Trigger) encounter.Option {
 	return encounter.Option{
 		ID: id, Say: "I know what you did.", Requires: requires,
 		Success: []encounter.Answer{{Weight: 1, Say: "…keep your voice down."}},
@@ -203,4 +203,38 @@ func (s *OptionSelectionSuite) TestSneakingIsRestoredOnRefusal() {
 	s.True(scene.enc.Sneaking(sneakRogue), "the refusal put the mode back")
 	s.Equal(verdicts, scene.enc.ToData().SneakVerdicts, "and the verdicts with it")
 	s.Equal(before, scene.enc.ToData().Log.NextSeq, "and wrote nothing")
+}
+
+// TestEveryRequirementMustHold: a line with two requirements (rpg-project#922
+// Task 1) is one row with two named verdicts, and it is offered only when
+// BOTH hold — absent and refused at the door while either is Unmet, with no
+// beat written, and offered and admitted once both are Met.
+func (s *OptionSelectionSuite) TestEveryRequirementMustHold() {
+	enc := s.selectionScene([]encounter.Option{
+		plainSelectionLine(),
+		gatedSelectionLine("both", encounter.TriggerFact{Fact: cultistFact}, encounter.TriggerHolds{Prop: thePurse}),
+	}, nil)
+
+	offered, err := enc.OptionsFor(alice, goblin)
+	s.Require().NoError(err)
+	s.Equal([]string{"plain"}, ids(offered), "neither requirement holds")
+
+	s.teachAlice(enc)
+
+	offered, err = enc.OptionsFor(alice, goblin)
+	s.Require().NoError(err)
+	s.Equal([]string{"plain"}, ids(offered), "the fact holds and the holding does not: one Unmet is absent")
+	before := enc.ToData().Log.NextSeq
+	_, err = s.sayTo(enc, "both")
+	s.Require().ErrorIs(err, encounter.ErrNoOption, "and the door agrees")
+	s.Equal(before, enc.ToData().Log.NextSeq, "a refusal writes nothing")
+
+	_, err = enc.Hold(&encounter.HoldInput{Member: alice, Target: thePurse})
+	s.Require().NoError(err)
+
+	offered, err = enc.OptionsFor(alice, goblin)
+	s.Require().NoError(err)
+	s.Equal([]string{"plain", "both"}, ids(offered), "both hold")
+	_, err = s.sayTo(enc, "both")
+	s.NoError(err, "and the door admits it")
 }

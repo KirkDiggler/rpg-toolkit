@@ -367,6 +367,8 @@ func (g *grammar) predicate(path string, p *PredicateSpec, self *[2]string) {
 		g.fail(path+".holds", "%s", holdsOnlyRequires)
 	case predicateLeft:
 		g.fail(path+".left", "%s", leftOnlyEndings(p.Left))
+	case predicateInteraction:
+		g.fail(path+".interaction", "%s", interactionOnlyRequires)
 	case predicateNot:
 		g.not(path+".not", p.Not, self)
 	}
@@ -404,7 +406,7 @@ func (g *grammar) not(path string, p *PredicateSpec, self *[2]string) {
 		g.fail(path, "this predicate says nothing — %s", predicateForms)
 	case predicateNot:
 		g.fail(path, "%s", notOfNot)
-	case predicateHolds, predicateLeft:
+	case predicateHolds, predicateLeft, predicateInteraction:
 		g.predicate(path, p, self)
 	case predicateStance:
 		g.notStance(path+".stance", p.Stance, self)
@@ -484,6 +486,11 @@ func (g *grammar) stanceShape(path string, s *StancePredicateSpec) bool {
 // change in order to fire one.
 const holdsOnlyRequires = "`holds` is only something an option requires: it reads what the speaker carries, " +
 	"and nothing here speaks"
+
+// interactionOnlyRequires is the sentence `interaction` is refused with
+// anywhere but an option's `requires` (rpg-project#922).
+const interactionOnlyRequires = "`interaction` is only something an option requires: an interaction's state " +
+	"is read when a line is offered, and nothing waits for it to change"
 
 // stancePredicate checks the stance form: two factions that exist and
 // differ, a stance word, and a pair that can reach it — not one it holds

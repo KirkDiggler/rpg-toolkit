@@ -13,6 +13,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/selection"
+	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -56,7 +57,10 @@ import (
 // (R9): a fact that speaker knows, a prop that speaker carries. It is asked at
 // the offer ([Encounter.OptionsFor]) and again at the door ([Encounter.Speak]),
 // and nowhere else — which is why [TriggerHolds] exists only here and is
-// refused as an ending, an arrival or an until.
+// refused as an ending, an arrival or an until. [TriggerInteraction] is the
+// one requirement that reads the RUN rather than the speaker (rpg-project#922,
+// #916 R2: the entrance remembers for the run), and is refused in the same
+// three places.
 
 // Option is one line a character can say to a creature or a prop: what is
 // said, the check it rolls, what it waits on, and what is answered on each
@@ -85,12 +89,21 @@ type Option struct {
 	// [Option.Failure] rows — it cannot be missed — and the door refuses them.
 	Check []CheckApproach
 
-	// Requires is what must hold for the SPEAKER before the line is offered
-	// at all: nil for always, else a [TriggerFact] (the speaker knows the
-	// fact) or a [TriggerHolds] (the speaker carries the prop). No other
-	// trigger is a requirement, and the door refuses one ([ErrBadMember] on
-	// a member, [ErrNoField] on a prop).
-	Requires Trigger `json:"Requires,omitempty"`
+	// Requires is what must hold before the line is offered at all, EVERY
+	// ONE OF THEM (rpg-project#922): nil or empty for always, else a list of
+	// requirements, each a [TriggerFact] (the speaker knows the fact), a
+	// [TriggerHolds] (the speaker carries the prop), a [TriggerInteraction]
+	// (the run's interaction is in one of the named states — judged per run,
+	// not per speaker, #916 R2), or a `not` of one. Each
+	// is one named requirement in the pool [Encounter.evaluateOptions]
+	// builds, and the line is offered only when all of them are Met. No
+	// other trigger is a requirement, and a nil item names nothing; the door
+	// refuses both ([ErrBadMember] on a member, [ErrNoField] on a prop).
+	Requires []Trigger `json:"Requires,omitempty"`
+
+	// Advance is the interaction this line's verdict steps, and on which
+	// beat for each verdict (rpg-project#922). Nil advances nothing.
+	Advance *Advance `json:"Advance,omitempty"`
 
 	// Success is the rows answered when the check was beaten, rolled under
 	// [AnswerSuccess]. Nil answers nothing.
@@ -123,6 +136,56 @@ type TriggerHolds struct {
 
 // isTrigger marks TriggerHolds as a Trigger.
 func (t TriggerHolds) isTrigger() {}
+
+// TriggerInteraction is a requirement that one of the run's interactions is
+// in one of the named states (`requires: { interaction: { id, in: [...] } }`,
+// rpg-project#922).
+//
+// JUDGED PER RUN, NOT PER SPEAKER — the one requirement that ignores who is
+// speaking, by design: #916 R2, "the entrance remembers for the run" —
+// changing speaker or guard, backing away or reloading does not create a
+// fresh attempt. Read, never edge-fired, as [TriggerHolds] is: an ending, an
+// arrival and an until refuse it. The interaction must be one the run has
+// and every state one its recipe declares, refused at the door otherwise.
+type TriggerInteraction struct {
+	// Interaction is the interaction read. REQUIRED non-empty.
+	Interaction InteractionID
+
+	// In is the states any one of which satisfies the requirement.
+	// REQUIRED non-empty.
+	In []string
+}
+
+// isTrigger marks TriggerInteraction as a Trigger.
+func (t TriggerInteraction) isTrigger() {}
+
+// Advance is what a line's SETTLED VERDICT lands on one of the run's
+// interactions (rpg-project#922, #916 R3): the beat stepped on a beaten
+// check, and the beat stepped on a missed one. Which flavour row answered
+// does not advance anything; the verdict does.
+//
+// Stepped synchronously inside [Encounter.Speak], after the answer has
+// landed, so the very next offer reads the new state. A beat the current
+// state does not listen for steps nothing and writes no beat.
+type Advance struct {
+	// Interaction is the interaction stepped. REQUIRED, one the run has.
+	Interaction InteractionID
+
+	// Success is the beat stepped when the check was beaten (and for a
+	// plain line, which always lands). Empty steps nothing.
+	Success machine.Beat
+
+	// Failure is the beat stepped when the check was missed. Empty steps
+	// nothing.
+	Failure machine.Beat
+}
+
+// BeatInteraction is the "beat" value of the story beat this composition
+// appends when a line's verdict moves one of the run's interactions: its id,
+// the state it left and entered, the transition's reason, the option and
+// the verdict. Audienced to the line's witnesses. EXPORTED BECAUSE A DECODER
+// READS IT, as [BeatSpoke] is.
+const BeatInteraction = "interaction"
 
 // BeatSpoke is the "beat" value of the story beat this composition appends
 // when somebody speaks an option — landed or not.
@@ -233,18 +296,17 @@ func (e *Encounter) PropOptionsFor(actor MemberID, prop PropID) ([]Option, error
 	return offered, nil
 }
 
-// optionRequirement names the one requirement every option row carries in
-// the pool [Encounter.evaluateOptions] builds: the option's `requires`.
-const optionRequirement = "requires"
-
 // evaluateOptions judges every option for one speaker as ONE POOL
 // (rpg-project#921), the judgment the offer ([Encounter.offered]) and the
 // door ([Encounter.optionOffered]) both read, so the two cannot disagree.
 // One candidate per option, in authored order: its id is the option's id,
 // its weight is zero — a line is chosen, never drawn (#917 R5) — and it
-// carries one named requirement, `requires`, Met or Unmet as
-// [Encounter.requirementHolds] answers for THIS speaker (R9), with a reason
-// naming only the requirement's kind. Never Unknown in this slice.
+// carries ONE NAMED REQUIREMENT PER `requires` ITEM (rpg-project#922, #917
+// R2), `requires:<n>:<kind>`, Met or Unmet as [Encounter.requirementHolds]
+// answers for THIS speaker (R9), with a reason naming only the
+// requirement's kind. A line with no requirement carries none and is
+// eligible; a line with several is eligible only when every one is Met.
+// Never Unknown in this slice.
 //
 // Errors: a blank or duplicate option id is a construction defect the field
 // validator already refuses; one that reaches here is returned wrapping
@@ -252,16 +314,18 @@ const optionRequirement = "requires"
 func (e *Encounter) evaluateOptions(actor MemberID, options []Option) (*selection.Evaluation, error) {
 	candidates := make([]selection.Candidate, 0, len(options))
 	for _, o := range options {
-		verdict := selection.Unmet
-		if e.requirementHolds(actor, o.Requires) {
-			verdict = selection.Met
+		var requirements []selection.Requirement
+		for n, requires := range o.Requires {
+			verdict := selection.Unmet
+			if e.requirementHolds(actor, requires) {
+				verdict = selection.Met
+			}
+			kind := requirementKind(requires)
+			requirements = append(requirements, selection.Requirement{
+				ID: fmt.Sprintf("requires:%d:%s", n, kind), Verdict: verdict, Reason: kind,
+			})
 		}
-		candidates = append(candidates, selection.Candidate{
-			ID: o.ID,
-			Requirements: []selection.Requirement{{
-				ID: optionRequirement, Verdict: verdict, Reason: requirementKind(o.Requires),
-			}},
-		})
+		candidates = append(candidates, selection.Candidate{ID: o.ID, Requirements: requirements})
 	}
 	evaluation, err := selection.Evaluate(&selection.EvaluateInput{Candidates: candidates})
 	if err != nil {
@@ -283,6 +347,8 @@ func requirementKind(requires Trigger) string {
 		return "fact"
 	case TriggerHolds:
 		return "holds"
+	case TriggerInteraction:
+		return "interaction"
 	default:
 		return "unsupported"
 	}
@@ -333,6 +399,9 @@ func (e *Encounter) requirementHolds(actor MemberID, requires Trigger) bool {
 		return e.world.knowsFact(actor, t.Fact)
 	case TriggerHolds:
 		return slices.Contains(e.heldPropsOf(actor), t.Prop)
+	case TriggerInteraction:
+		// THE RUN'S, NOT THE SPEAKER'S (#916 R2): actor is not read.
+		return e.interactionIn(t.Interaction, t.In)
 	default:
 		return false
 	}
@@ -500,8 +569,9 @@ type SpeakOutput struct {
 // the target (a prop: the actor is shown it) and its requirement holds for
 // the actor → the roll fits the line (a checked line's skill is one of its
 // approaches; a plain line reports no roll) → a creature target can see
-// the actor → the beat → the deed → the answer → the world's price for an
-// action, paid only for a checked line (rpg-project#785 R5).
+// the actor → the beat → the deed → the answer → the interaction the line
+// advances (rpg-project#922) → the world's price for an action, paid only
+// for a checked line (rpg-project#785 R5).
 //
 // THE BEAT IS APPENDED BEFORE ITS CONSEQUENCES, the law
 // [Encounter.refreshSight] states: the line is the cause, and a stance beat
@@ -636,6 +706,14 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 		return nil, fmt.Errorf("speak: %w", err)
 	}
 
+	// THE VERDICT ADVANCES THE ENTRANCE (rpg-project#922, #916 R3): after the
+	// answer has landed and before anything else, stepped synchronously so
+	// the very next offer reads the new state — a landed beat would wait for
+	// the next raise and leave that offer stale.
+	if err := e.advanceInteraction(option, beaten, witnesses, at); err != nil {
+		return nil, fmt.Errorf("speak: %w", err)
+	}
+
 	// A BEATEN LINE SPOKEN TO A PROP IS THAT PROP'S DEED (rpg-project#766 S4):
 	// `clock: bell:<prop>` for whoever listens for it — the bell rung.
 	if in.Prop != "" && beaten {
@@ -662,6 +740,66 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	return &SpeakOutput{
 		Beaten: beaten, Witnesses: witnesses, Deed: landed, Seq: seq, Answered: answered.pick,
 	}, nil
+}
+
+// advanceInteraction steps the interaction a line's [Option.Advance] names
+// on the beat its verdict lands: Success for a beaten line, Failure for a
+// missed one. A fired transition that names a state appends a
+// [BeatInteraction] beat — the interaction, the state it left and entered,
+// the transition's reason, the option and the verdict — to the line's
+// witnesses. A beat the current state does not listen for, or a guard that
+// does not apply, steps nothing and writes nothing: the interaction stays
+// where it was.
+//
+// After every refusal of [Encounter.Speak]'s door, so a refused line never
+// steps it. Its own errors are construction defects the door already
+// refuses (an interaction the run lacks, a state its recipe lacks), surfaced
+// rather than swallowed.
+func (e *Encounter) advanceInteraction(option Option, beaten bool, witnesses []MemberID, at uint64) error {
+	a := option.Advance
+	if a == nil {
+		return nil
+	}
+	beat := a.Failure
+	if beaten {
+		beat = a.Success
+	}
+	if beat == "" {
+		return nil
+	}
+	inst, ok := e.interactions[a.Interaction]
+	if !ok {
+		return fmt.Errorf("option %q advances interaction %q, and the run has no such interaction", option.ID, a.Interaction)
+	}
+	blob := inst.blob
+	blob.Bag = inst.blob.Bag.Clone()
+	stepped, err := inst.program.Step(&blob, beat, at, nil, at)
+	if err != nil {
+		return fmt.Errorf("interaction %q: %w", a.Interaction, err)
+	}
+	inst.blob = blob
+	if !stepped.Fired || stepped.To == "" {
+		return nil
+	}
+	payload, err := json.Marshal(map[string]interface{}{
+		"beat":        BeatInteraction,
+		"interaction": string(a.Interaction),
+		"from":        stepped.From,
+		"to":          stepped.To,
+		"reason":      stepped.Reason,
+		"option":      option.ID,
+		"beaten":      beaten,
+	})
+	if err != nil {
+		return fmt.Errorf("interaction %q: marshal beat: %w", a.Interaction, err)
+	}
+	if _, err := e.appendBeat(&record.AppendInput{
+		At: at, Audience: witnesses, Tags: map[string]string{"tag": BeatInteraction}, Payload: payload,
+	}); err != nil {
+		return fmt.Errorf("interaction %q: %w", a.Interaction, err)
+	}
+
+	return nil
 }
 
 // refuseRollMismatch is Speak's roll door. A checked line must name one of
@@ -837,26 +975,21 @@ func validateOptions(options []Option) error {
 				return fmt.Errorf("option %q approach %q at DC %d has nothing to beat", o.ID, a.Ability, a.DC)
 			}
 		}
-		requires := o.Requires
-		if n, ok := requires.(TriggerNot); ok {
-			inner, err := validateReadNot(fmt.Sprintf("option %q requires", o.ID), n)
-			if err != nil {
+		for n, requires := range o.Requires {
+			if err := validateOptionRequirement(fmt.Sprintf("option %q requires[%d]", o.ID, n), requires); err != nil {
 				return err
 			}
-			requires = inner
 		}
-		switch t := requires.(type) {
-		case nil:
-		case TriggerFact:
-			if t.Fact == "" {
-				return fmt.Errorf("option %q requires a fact and names none", o.ID)
+		if a := o.Advance; a != nil {
+			if a.Interaction == "" {
+				return fmt.Errorf("option %q advances no interaction", o.ID)
 			}
-		case TriggerHolds:
-			if t.Prop == "" {
-				return fmt.Errorf("option %q requires holding a prop and names none", o.ID)
+			if a.Success == "" && a.Failure == "" {
+				return fmt.Errorf("option %q advances interaction %q on neither verdict", o.ID, a.Interaction)
 			}
-		default:
-			return fmt.Errorf("option %q requires a %T: an option requires a fact or a holding, or not one", o.ID, requires)
+			if !o.Checked() && a.Failure != "" {
+				return fmt.Errorf("option %q rolls no check and cannot be missed: it advances nothing on a failure", o.ID)
+			}
 		}
 		for _, verdict := range []struct {
 			key  AnswerKey
@@ -868,6 +1001,43 @@ func validateOptions(options []Option) error {
 				}
 			}
 		}
+	}
+
+	return nil
+}
+
+// validateOptionRequirement refuses one item of an option's `requires` this
+// composition cannot read: nothing at all, a fact or a holding that names
+// nothing, a `not` that cannot be one, and any trigger that is not a
+// requirement. what names the item, `option "x" requires[n]`.
+func validateOptionRequirement(what string, requires Trigger) error {
+	if n, ok := requires.(TriggerNot); ok {
+		inner, err := validateReadNot(what, n)
+		if err != nil {
+			return err
+		}
+		requires = inner
+	}
+	switch t := requires.(type) {
+	case nil:
+		return fmt.Errorf("%s names nothing: a requirement is a fact or a holding, or not one", what)
+	case TriggerFact:
+		if t.Fact == "" {
+			return fmt.Errorf("%s is a fact and names none", what)
+		}
+	case TriggerHolds:
+		if t.Prop == "" {
+			return fmt.Errorf("%s is holding a prop and names none", what)
+		}
+	case TriggerInteraction:
+		if t.Interaction == "" {
+			return fmt.Errorf("%s is an interaction's state and names no interaction", what)
+		}
+		if len(t.In) == 0 {
+			return fmt.Errorf("%s is interaction %q in no state, which nothing can meet", what, t.Interaction)
+		}
+	default:
+		return fmt.Errorf("%s is a %T: an option requires a fact, a holding or an interaction's state, or not one", what, requires)
 	}
 
 	return nil
@@ -904,16 +1074,18 @@ func validatePropOptions(id PropID, ref string, options []Option) error {
 // because only then is the holdable index whole.
 func (f *field) validateOptionHolds(options []Option) error {
 	for _, o := range options {
-		inner, _ := unwrapNot(o.Requires)
-		t, ok := inner.(TriggerHolds)
-		if !ok {
-			continue
-		}
-		if f.propIndexOf(t.Prop) < 0 && f.placedIndexOf(t.Prop) < 0 {
-			return fmt.Errorf("option %q requires holding %q, and no prop has that id", o.ID, t.Prop)
-		}
-		if !f.holdable[t.Prop] {
-			return fmt.Errorf("option %q requires holding %q, which nobody can pick up", o.ID, t.Prop)
+		for _, requires := range o.Requires {
+			inner, _ := unwrapNot(requires)
+			t, ok := inner.(TriggerHolds)
+			if !ok {
+				continue
+			}
+			if f.propIndexOf(t.Prop) < 0 && f.placedIndexOf(t.Prop) < 0 {
+				return fmt.Errorf("option %q requires holding %q, and no prop has that id", o.ID, t.Prop)
+			}
+			if !f.holdable[t.Prop] {
+				return fmt.Errorf("option %q requires holding %q, which nobody can pick up", o.ID, t.Prop)
+			}
 		}
 	}
 
@@ -935,14 +1107,46 @@ func cloneOptions(options []Option) []Option {
 	return out
 }
 
-// cloneOption deep-copies one option: its approaches and both verdicts' rows.
+// cloneOption deep-copies one option: its approaches, its requirements and
+// both verdicts' rows.
 func cloneOption(o Option) Option {
 	out := o
 	out.Check = copyApproaches(o.Check)
+	out.Requires = cloneRequirements(o.Requires)
+	if o.Advance != nil {
+		advance := *o.Advance
+		out.Advance = &advance
+	}
 	out.Success = cloneRows(o.Success)
 	out.Failure = cloneRows(o.Failure)
 
 	return out
+}
+
+// cloneRequirements deep-copies an option's requirements. Nil stays nil.
+func cloneRequirements(requires []Trigger) []Trigger {
+	if requires == nil {
+		return nil
+	}
+	out := make([]Trigger, 0, len(requires))
+	for _, t := range requires {
+		out = append(out, cloneRequirement(t))
+	}
+
+	return out
+}
+
+// cloneRequirement deep-copies one requirement; every kind but a `not` and
+// an interaction's states is a value already.
+func cloneRequirement(t Trigger) Trigger {
+	switch r := t.(type) {
+	case TriggerNot:
+		return TriggerNot{Inner: cloneRequirement(r.Inner)}
+	case TriggerInteraction:
+		return TriggerInteraction{Interaction: r.Interaction, In: slices.Clone(r.In)}
+	}
+
+	return t
 }
 
 // cloneRows deep-copies one verdict's rows. Nil stays nil.

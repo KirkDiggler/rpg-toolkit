@@ -1167,11 +1167,22 @@ type OptionSpec struct {
 	// as absent.
 	Check CheckSpec `yaml:"check,omitempty" json:"check,omitempty"`
 
-	// Requires is what must hold for the speaker before the line is offered:
-	// a [PredicateSpec] of exactly one of two forms, `{ fact: <id> }` (the
-	// speaker knows it) or `{ holds: <prop id> }` (the speaker carries a
-	// placed prop somebody can pick up). Optional; absent is always offered.
-	Requires *PredicateSpec `yaml:"requires,omitempty" json:"requires,omitempty"`
+	// Requires is what must hold before the line is offered, EVERY ONE OF
+	// THEM (rpg-project#922): one [PredicateSpec] written as a mapping, or a
+	// list of them ([RequiresSpec]). Each is either the SPEAKER's own read —
+	// `{ fact: <id> }` (the speaker knows it) or `{ holds: <prop id> }` (the
+	// speaker carries a placed prop somebody can pick up) — or the RUN's
+	// interaction state, `{ interaction: { id, in: [<state>] } }`, judged
+	// per run and not per speaker (#916 R2); or a `not` of one. Every item
+	// must hold. Optional; absent is always offered.
+	Requires RequiresSpec `yaml:"requires,omitempty" json:"requires,omitempty"`
+
+	// Advance is the root interaction this line's verdict steps
+	// (rpg-project#922): `{ interaction: <id>, success: <beat>, failure:
+	// <beat> }`. The verdict advances it; which row answered does not.
+	// Optional; each beat must be one the interaction's recipe listens for,
+	// at least one is written, and a plain line may name no failure.
+	Advance *AdvanceSpec `yaml:"advance,omitempty" json:"advance,omitempty"`
 
 	// Success is the rows answered when the check was beaten. Optional;
 	// absent answers nothing. Written but empty is refused.
@@ -1182,10 +1193,95 @@ type OptionSpec struct {
 	Failure []AnswerSpec `yaml:"failure,omitempty" json:"failure,omitempty"`
 }
 
+// RequiresSpec is an option's `requires` (rpg-project#922): one predicate
+// written as a mapping, which reads as a list of one, or a list of
+// predicates, ALL of which must hold. Nil is absent.
+type RequiresSpec []PredicateSpec
+
+// UnmarshalYAML reads one predicate mapping or a sequence of them, each by
+// [PredicateSpec.UnmarshalYAML]'s own rules, and refuses an empty list by
+// name — `requires: []` is not "always offered", it is an author halfway
+// through a list, and the zero value must not lie about which they meant.
+func (r *RequiresSpec) UnmarshalYAML(value *yaml.Node) error {
+	switch value.Kind {
+	case yaml.MappingNode:
+		var p PredicateSpec
+		if err := p.UnmarshalYAML(value); err != nil {
+			return err
+		}
+		*r = RequiresSpec{p}
+
+		return nil
+	case yaml.SequenceNode:
+		if len(value.Content) == 0 {
+			return fmt.Errorf("line %d: this requires lists nothing — write a predicate, or drop the requires", value.Line)
+		}
+		out := make(RequiresSpec, 0, len(value.Content))
+		for _, item := range value.Content {
+			var p PredicateSpec
+			if err := p.UnmarshalYAML(item); err != nil {
+				return err
+			}
+			out = append(out, p)
+		}
+		*r = out
+
+		return nil
+	default:
+		return fmt.Errorf("line %d: an option requires one predicate or a list of them: %s", value.Line, optionRequiresForms)
+	}
+}
+
 // optionKeys is every key an [OptionSpec] reads, for its hand-written
 // unknown-key refusal.
 var optionKeys = map[string]bool{
-	"id": true, "say": true, "check": true, "requires": true, "success": true, "failure": true,
+	"id": true, "say": true, "check": true, "requires": true, "advance": true, "success": true, "failure": true,
+}
+
+// UnmarshalYAML reads an advance, refusing an unknown key by name — it is
+// read inside [OptionSpec.UnmarshalYAML], which the decoder's KnownFields
+// does not reach.
+func (a *AdvanceSpec) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind != yaml.MappingNode {
+		return fmt.Errorf("line %d: an advance is { interaction: <id>, success: <beat>, failure: <beat> }", value.Line)
+	}
+	for i := 0; i < len(value.Content); i += 2 {
+		switch key := value.Content[i].Value; key {
+		case "interaction", "success", "failure":
+		default:
+			return fmt.Errorf("line %d: field %s not found in type dungeonspec.AdvanceSpec", value.Content[i].Line, key)
+		}
+	}
+	type plain AdvanceSpec
+	var obj plain
+	if err := value.Decode(&obj); err != nil {
+		return err
+	}
+	*a = AdvanceSpec(obj)
+
+	return nil
+}
+
+// InteractionSpec is one root `interactions:` entry (rpg-project#922): its
+// recipe, a native `machine.Recipe` read as `behaviorDefinitions`' own
+// `recipe:` is — unknown members refused, a valid `ref` required. It reads
+// no fact, picks nothing and nobody wakes it ([encounter.CheckInteraction]).
+type InteractionSpec struct {
+	// Recipe is the interaction as a machine. REQUIRED.
+	Recipe *BehaviorValue `yaml:"recipe" json:"recipe"`
+}
+
+// AdvanceSpec is an option's `advance` (rpg-project#922): the root
+// interaction stepped, and the beat each verdict steps it on.
+type AdvanceSpec struct {
+	// Interaction is the root `interactions:` entry stepped. REQUIRED.
+	Interaction string `yaml:"interaction" json:"interaction"`
+
+	// Success is the beat a beaten (or plain) line steps. Optional.
+	Success string `yaml:"success,omitempty" json:"success,omitempty"`
+
+	// Failure is the beat a missed line steps. Optional.
+	Failure string `yaml:"failure,omitempty" json:"failure,omitempty"`
 }
 
 // UnmarshalYAML reads one option, refusing an unknown key by name — for
