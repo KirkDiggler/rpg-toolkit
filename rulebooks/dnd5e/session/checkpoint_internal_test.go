@@ -146,10 +146,12 @@ type appendingRepo struct {
 	countingFenced
 	stale  bool
 	sinces []uint64
+	floors []uint64
 }
 
 func (a *appendingRepo) SaveAppended(_ context.Context, in *SaveAppendedInput) (*SaveFencedOutput, error) {
 	a.sinces = append(a.sinces, in.Since)
+	a.floors = append(a.floors, in.Floor)
 	if a.stale {
 		return nil, ErrStaleCheckpoint
 	}
@@ -181,4 +183,21 @@ func (s *PendingWritesSuite) TestRecordNextMovesOnlyWithALandedSave() {
 	s.Equal(uint64(9), scope.fence.recordNext, "a landed save moves it to the rest's NextSeq")
 	s.Equal(uint64(4), scope.fence.version)
 	s.Zero(repo.saves, "an appending host is never handed SaveFenced")
+}
+
+// TestTheRetentionFloorRidesTheAppendedSave: a bounded record's floor, which
+// the encounter reports beside its segment, reaches the store's save as is,
+// so the store may drop the segments wholly below it.
+func (s *PendingWritesSuite) TestTheRetentionFloorRidesTheAppendedSave() {
+	repo := &appendingRepo{}
+	m := &Manager{fenced: repo, appending: repo, pending: newPendingWrites()}
+	scope := &writeScope{session: "sess", encounter: "sess",
+		fence: checkpointFence{held: true, version: 1, recordNext: 12}}
+	split := &encounter.ToCheckpointOutput{Floor: 8}
+	split.Rest.Log.NextSeq = 15
+
+	_, err := m.persistFenced(context.Background(), scope, fencedWorld{split: split}, SaveReport{})
+	s.Require().NoError(err)
+	s.Equal([]uint64{8}, repo.floors)
+	s.Equal([]uint64{12}, repo.sinces)
 }
