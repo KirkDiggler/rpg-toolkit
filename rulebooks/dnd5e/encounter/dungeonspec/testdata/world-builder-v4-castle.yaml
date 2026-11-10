@@ -1525,6 +1525,58 @@ room:
     monsterBindings:
       gate-1:
         faction: garrison
+        # Hand edit (rpg-project#922): a creature's own options replace its
+        # faction's, so each gate speaker carries both claims and nothing else.
+        options:
+          # Hand edit (rpg-project#922, Gate S2): the entrance remembers. Two
+          # claims at the gate, one front-gate interaction between them: a
+          # first failure is a warning and closes that claim, a second
+          # failure arrests, and either success admits the party.
+          - id: guest
+            say: We’re invited guests of His Majesty, here for the feast.
+            check:
+              - ability: persuasion
+                dc: 11
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [fresh, warned-troupe]
+            advance:
+              interaction: front-gate
+              success: admitted
+              failure: guest-failed
+            success:
+              # The fact is the gate post's pass until Gate S5.
+              - say: Guests, is it? In you go. Mind your manners in the hall.
+                fact: troupe-admitted
+            failure:
+              - say: Guests? What’s going on here? Nobody told me of guests.
+          - id: troupe
+            say: We’re the troupe for tonight’s feast.
+            check:
+              - ability: performance
+                dc: 13
+              - ability: deception
+                dc: 15
+            requires:
+              - fact: feast-tonight
+              - interaction:
+                  id: front-gate
+                  in: [fresh, warned-guest]
+            advance:
+              interaction: front-gate
+              success: admitted
+              failure: troupe-failed
+            success:
+              # Hand edit (rpg-project#836, #857): the troupe is let through.
+              # The fact is the troupe's pass at the gate post, who stays
+              # posted and lets them by.
+              - say: Through to the hall, then. Don’t dawdle.
+                fact: troupe-admitted
+            failure:
+              # Hand edit (rpg-project#922): a first failure is a warning,
+              # not recognition; the second claim's failure arrests.
+              - say: Troupe? There’s no troupe on my list. What’s going on here?
         behaviors:
           - id: policy
             use: gate-1-policy
@@ -1563,6 +1615,58 @@ room:
                 r: 7
       gate-2:
         faction: garrison
+        # Hand edit (rpg-project#922): a creature's own options replace its
+        # faction's, so each gate speaker carries both claims and nothing else.
+        options:
+          # Hand edit (rpg-project#922, Gate S2): the entrance remembers. Two
+          # claims at the gate, one front-gate interaction between them: a
+          # first failure is a warning and closes that claim, a second
+          # failure arrests, and either success admits the party.
+          - id: guest
+            say: We’re invited guests of His Majesty, here for the feast.
+            check:
+              - ability: persuasion
+                dc: 11
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [fresh, warned-troupe]
+            advance:
+              interaction: front-gate
+              success: admitted
+              failure: guest-failed
+            success:
+              # The fact is the gate post's pass until Gate S5.
+              - say: Guests, is it? In you go. Mind your manners in the hall.
+                fact: troupe-admitted
+            failure:
+              - say: Guests? What’s going on here? Nobody told me of guests.
+          - id: troupe
+            say: We’re the troupe for tonight’s feast.
+            check:
+              - ability: performance
+                dc: 13
+              - ability: deception
+                dc: 15
+            requires:
+              - fact: feast-tonight
+              - interaction:
+                  id: front-gate
+                  in: [fresh, warned-guest]
+            advance:
+              interaction: front-gate
+              success: admitted
+              failure: troupe-failed
+            success:
+              # Hand edit (rpg-project#836, #857): the troupe is let through.
+              # The fact is the troupe's pass at the gate post, who stays
+              # posted and lets them by.
+              - say: Through to the hall, then. Don’t dawdle.
+                fact: troupe-admitted
+            failure:
+              # Hand edit (rpg-project#922): a first failure is a warning,
+              # not recognition; the second claim's failure arrests.
+              - say: Troupe? There’s no troupe on my list. What’s going on here?
         behaviors:
           - id: policy
             use: gate-2-policy
@@ -1574,6 +1678,29 @@ room:
       captain:
         faction: garrison
         options:
+          # Hand edit (rpg-project#922, Gate S2): the entrance remembers. Two
+          # claims at the gate, one front-gate interaction between them: a
+          # first failure is a warning and closes that claim, a second
+          # failure arrests, and either success admits the party.
+          - id: guest
+            say: We’re invited guests of His Majesty, here for the feast.
+            check:
+              - ability: persuasion
+                dc: 11
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [fresh, warned-troupe]
+            advance:
+              interaction: front-gate
+              success: admitted
+              failure: guest-failed
+            success:
+              # The fact is the gate post's pass until Gate S5.
+              - say: Guests, is it? In you go. Mind your manners in the hall.
+                fact: troupe-admitted
+            failure:
+              - say: Guests? What’s going on here? Nobody told me of guests.
           - id: troupe
             say: We’re the troupe for tonight’s feast.
             check:
@@ -1582,7 +1709,14 @@ room:
               - ability: deception
                 dc: 15
             requires:
-              fact: feast-tonight
+              - fact: feast-tonight
+              - interaction:
+                  id: front-gate
+                  in: [fresh, warned-guest]
+            advance:
+              interaction: front-gate
+              success: admitted
+              failure: troupe-failed
             success:
               # Hand edit (rpg-project#836, #857): the troupe is let through.
               # The fact is the troupe's pass at the gate post, who stays
@@ -1590,8 +1724,9 @@ room:
               - say: Through to the hall, then. Don’t dawdle.
                 fact: troupe-admitted
             failure:
-              - say: Troupe? There’s no— GUARDS!
-                fact: party-recognized
+              # Hand edit (rpg-project#922): a first failure is a warning,
+              # not recognition; the second claim's failure arrests.
+              - say: Troupe? There’s no troupe on my list. What’s going on here?
           - id: stand-aside
             say: Stand aside or bleed.
             check:
@@ -1914,6 +2049,31 @@ room:
                 fact: king-is-cultist
             failure:
               - say: Old stone, old candles.
+# Hand edit (rpg-project#922, Gate S2 of #769): the entrance remembers. The
+# front gate is one run-wide interaction every gate speaker reads and steps:
+# a failed claim warns and closes that claim, the other claim's failure then
+# arrests, and either claim's success admits.
+interactions:
+  front-gate:
+    recipe:
+      ref: site:interactions:front-gate
+      initial: fresh
+      states:
+        fresh:
+          transitions:
+            - { on: guest-failed, to: warned-guest, reason: the guest claim failed }
+            - { on: troupe-failed, to: warned-troupe, reason: the troupe claim failed }
+            - { on: admitted, to: admitted, reason: let through }
+        warned-guest:
+          transitions:
+            - { on: troupe-failed, to: arrested, reason: the second claim failed }
+            - { on: admitted, to: admitted, reason: let through }
+        warned-troupe:
+          transitions:
+            - { on: guest-failed, to: arrested, reason: the second claim failed }
+            - { on: admitted, to: admitted, reason: let through }
+        admitted: { terminal: true }
+        arrested: { terminal: true }
 behaviorDefinitions:
   gate-1-policy:
     recipe:
