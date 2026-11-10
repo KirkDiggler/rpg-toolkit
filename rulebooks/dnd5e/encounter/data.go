@@ -72,8 +72,14 @@ type EncounterData struct {
 	// refuses any value other than the one this build writes.
 	PerceptionSubjects uint32         `json:"perception_subjects,omitempty"`
 	Log                record.LogData `json:"log"`
-	Field              FieldData      `json:"field"`
-	Members            []MemberData   `json:"members"`
+	// SiteHash names the compiled site this encounter runs on (site.go,
+	// rpg-project#879 S5): THE SITE IS CONTENT THE RECORD REFERENCES, so the
+	// field is never written here. REQUIRED at load, and resolved through the
+	// load's [SiteProvider]; a hash the provider cannot resolve fails closed
+	// with [ErrUnknownSite]. A blob from before the site tier carried a
+	// `field` key and no hash, and is refused by name.
+	SiteHash SiteHash     `json:"site_hash"`
+	Members  []MemberData `json:"members"`
 	// Doors are the field's doors and the state each is in RIGHT NOW
 	// (rpg-toolkit#1123). Top level rather than inside Field, beside Members
 	// and for the same reason: a door's edges are construction truth but its
@@ -1195,21 +1201,22 @@ type FactData struct {
 // the same way: a blob claiming an allied pair turned hostile is claiming
 // something this field has no machinery for.
 func validateWorldFacts(
-	entries []journalEntry, concealments []ConcealmentInput, regions []RegionInput, floor *field, facts []FactID,
+	entries []journalEntry, floor *field, facts []FactID,
 	turnable []factionPair, everMembers []MemberID,
 ) error {
 	// kind -> the subject that kind's writer always records; "" for a fact
 	// kind, whose subject is its own actor.
 	minted := make(map[string]string)
-	for _, c := range concealments {
-		minted[string(concealmentKnownKind(c.ID))] = string(concealmentEntityID(c.ID))
+	for i := range floor.concealments {
+		id := floor.concealments[i].id
+		minted[string(concealmentKnownKind(id))] = string(concealmentEntityID(id))
 	}
 	for _, id := range facts {
 		minted[string(factKnownKind(id))] = ""
 	}
 	// The retired whole-room kind still loads, and teaches nothing
 	// ([legacyRoomKnownPrefix]); its shape is judged as it always was.
-	for _, region := range regions {
+	for _, region := range floor.regions {
 		minted[string(legacyRoomKnownKind(region.ID))] = ""
 	}
 	minted[string(cellsKnownKind)] = ""
@@ -2405,8 +2412,6 @@ func (e *Encounter) snapshot() EncounterData {
 		return 0
 	})
 
-	// Deep-copy field from the compiled field's authored inputs
-	fieldData := fieldDataFrom(e.field)
 	sightAreasData := sightAreasDataFrom(e.sightAreas)
 
 	// Doors, in the records' own stable ID order (C8) — the state each is in
@@ -2488,7 +2493,7 @@ func (e *Encounter) snapshot() EncounterData {
 		Perception:         e.intelLog.ToData(),
 		PerceptionSubjects: perceptionSubjectVersion,
 		Log:                e.story.ToData(),
-		Field:              fieldData,
+		SiteHash:           e.siteHash(),
 		Members:            membersData,
 		Doors:              doorData,
 		SightAreas:         sightAreasData,
@@ -2751,6 +2756,16 @@ type LoadEncounterInput struct {
 	// IDs is the id source, exactly as on [SetupInput]: optional, nil is
 	// the wall clock and crypto/rand.
 	IDs record.IDSource
+
+	// Sites resolves [EncounterData.SiteHash] (site.go): optional, nil is
+	// [DefaultSites].
+	Sites SiteProvider
+
+	// Site is the site's authored source, for a host that holds the site
+	// piece apart from the checkpoint and a provider that may not hold the
+	// hash yet: compiled on a miss and refused unless it hashes to
+	// [EncounterData.SiteHash]. Optional; nil asks the provider by hash alone.
+	Site *SiteData
 }
 
 // Validate reports whether the input is usable. It checks only the input's own
@@ -2779,12 +2794,14 @@ func (in *LoadEncounterInput) Validate() error {
 //
 // Validation order (R5 — validate all before constructing): no endings,
 // empty/reserved ending keys, duplicate ending keys, kind/reached_position
-// checks, undeclared outcome ending; THEN the field: the wire-only checks
-// (the room-chain tombstones, a void or orientation word that is absent or
-// unknown, a region or prop or lighting block whose REQUIRED pointer is
-// absent — concerns that exist only because the wire uses strings and
-// pointers where the construction form uses typed values), then the field
-// converted back into a [FieldInput] and handed to the SAME compileField and
+// checks, undeclared outcome ending; THEN THE SITE (site.go, rpg-project#879
+// S5): a checkpoint with no site hash is refused by name, the hash is
+// resolved through the provider (a miss with no piece fails closed with
+// [ErrUnknownSite]; a piece is compiled by the SAME [CompileSite] Setup's
+// field goes through, with the wire-only checks — the room-chain
+// tombstones, an absent or unknown void or orientation word, an absent
+// REQUIRED pointer — and every compileField rule), the checkpoint's doors
+// must stand where the site's do, and their states go through the SAME
 // validateDoorInputs Setup uses; THEN the concealment gate (the two
 // capabilities required exactly when the field carries concealed structure,
 // and the persisted world agreeing with the field — rpg-toolkit#1371); THEN
@@ -2803,7 +2820,7 @@ func (in *LoadEncounterInput) Validate() error {
 // is a real ordering asymmetry against the up-front list above; a future cleanup could
 // hoist it into the member validation loop instead.
 //
-// The field validation is deliberately the SAME Setup runs, not a parallel
+// The field validation, run when the site compiles, is deliberately the SAME Setup runs, not a parallel
 // reimplementation — Setup and Load diverging on the W-laws was flagged
 // explicitly in #929 T1 review as a drift risk. Every error the shared
 // validator returns is wrapped once more with ErrInvalidData (multi-%w, this
@@ -2927,56 +2944,45 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 	}
 
-	// Convert the wire representation back into a FieldInput — the ONLY
-	// load-specific pre-validation left (the tombstones, word resolution,
-	// and pointer presence: concerns that exist only because the wire form
-	// uses strings and pointers where the construction form uses typed
-	// values) — then hand off to the SAME compileField and validateDoorInputs
-	// Setup uses (see this function's doc comment).
-	fieldInput, err := fieldInputFrom(data.Field)
+	// THE SITE, BY HASH (site.go, rpg-project#879 S5): the field is content
+	// the record references, compiled once per process and shared. A blob
+	// with no hash is the pre-site dialect, which carried its field inline;
+	// a hash the provider cannot resolve fails closed by name. Everything a
+	// field can get wrong was refused when the site compiled ([CompileSite]),
+	// for both seams.
+	if data.SiteHash == "" {
+		return nil, fmt.Errorf(
+			"load encounter: the checkpoint names no site (site_hash) — a blob from before rpg-project#879 S5 carried its field inline, recreate the save: %w: %w",
+			ErrInvalidData, ErrUnknownSite)
+	}
+	site, err := resolveSite(input.Sites, &SiteInput{Hash: data.SiteHash, Data: input.Site})
 	if err != nil {
+		if errors.Is(err, ErrUnknownSite) {
+			return nil, fmt.Errorf("load encounter: %w", err)
+		}
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 
-	// Doors, through the SAME validator Setup runs (rpg-toolkit#1123). The
+	// Doors: the state is the checkpoint's, the geometry the site's. The
 	// load-only part is resolving the persisted word and lock back into a
-	// state; everything else a door can get wrong is checked once, in one
-	// place, for both seams.
+	// state; the geometry must be the site's own, and the state goes
+	// through the SAME validator Setup runs (rpg-toolkit#1123).
 	doorInputs, err := convertDoorDataToDoorInput(data.Doors)
 	if err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
-	// THE DOOR LIST RIDES THE FIELD INPUT, restored from its own wire half:
-	// the persisted doors live on EncounterData rather than on FieldData, so
-	// the two are put back together here, before the ONE shared compile, and
-	// a bound structural door's DoorID resolves at Load exactly as it does at
-	// Setup (rpg-project#169).
-	fieldInput.Doors = doorInputs
-	f, err := compileField(fieldInput)
-	if err != nil {
-		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	if err = site.checkDoors(doorInputs); err != nil {
+		return nil, fmt.Errorf("load encounter: %w", err)
 	}
+	f := site.instanceField()
 	if err = validateDoorInputs(f, doorInputs); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
-	// THE WALL PARTITIONS, derived again from what the data persisted — the
-	// regions, walls, props and doors — exactly as Setup derived them, but
-	// WHEN ASKED: a verb that reads no partition never pays the pass
-	// (rpg-project#762 T13). The data carries none of them (rpg-project#725
-	// R8, partitions.go).
-	f.deferPartitions(doorInputs)
 
 	// Concealment (rpg-toolkit#1371): the two capabilities are required
 	// exactly when the field declares a concealment — SetupInput's own
-	// rule, applied at the load door — and the persisted world must agree
-	// with the field it rides beside: a world for a field that hides nothing
-	// is a blob whose two halves disagree, and its facts must all be ones
-	// this field's concealments mint.
-	if err = validateConcealmentDoors(f, doorInputs); err != nil {
-		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
-	}
-
-	fieldConcealed := fieldHasConcealment(fieldInput.Concealments)
+	// rule, applied at the load door.
+	fieldConcealed := len(f.concealments) > 0
 	if fieldConcealed {
 		if err = input.validateConcealed(); err != nil {
 			return nil, fmt.Errorf("load encounter: %w", err)
@@ -3190,7 +3196,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 		mintable := mintedFactIDs(f, triggersOf(endingInputsForValidation), taught)
 		if err = validateWorldFacts(
-			worldFacts, fieldInput.Concealments, fieldInput.Regions, f, mintable, turnablePairsOf(f), data.EverMembers,
+			worldFacts, f, mintable, turnablePairsOf(f), data.EverMembers,
 		); err != nil {
 			return nil, fmt.Errorf("load encounter: %w", err)
 		}
@@ -3391,6 +3397,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		retention:     normalizeRetention(data.Retention),
 		logFloor:      logFloorOf(data.Log),
 		field:         f,
+		site:          site,
 		world:         world,
 		holdings:      newHoldings(world.log),
 	}
@@ -3416,14 +3423,6 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// into the one journal further down. Load-act-save, no migration: an
 	// absent journal on a concealed field is a run where nothing has happened
 	// yet.
-
-	// A record's target must name a concealment this field declares — the
-	// SAME check NewEncounter makes, against the same compiled field, so a
-	// blob and a fresh setup refuse identically rather than one loading what
-	// the other would not build.
-	if err = validateIntelTargets(f); err != nil {
-		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
-	}
 
 	// The journal replayed — see EncounterData.Journal. Every fact goes back
 	// in the ONE stored order, knowledge and holdings interleaved as they

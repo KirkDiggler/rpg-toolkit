@@ -125,6 +125,13 @@ func benchGarrisonMove(b *testing.B, listen bool) {
 // with listen, the posts-asleep keep.
 func openGarrisonKeep(tb testing.TB, listen bool) *encounter.Encounter {
 	tb.Helper()
+	return openGarrisonKeepOn(tb, listen, nil)
+}
+
+// openGarrisonKeepOn is [openGarrisonKeep] with its site resolved by sites
+// (nil is the default provider).
+func openGarrisonKeepOn(tb testing.TB, listen bool, sites encounter.SiteProvider) *encounter.Encounter {
+	tb.Helper()
 	key := "keep-garrison-10000"
 	if listen {
 		key += "-posts-listen"
@@ -149,32 +156,38 @@ func openGarrisonKeep(tb testing.TB, listen bool) *encounter.Encounter {
 		}
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field:   compiled.Field,
-		Members: members,
-		Endings: append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, compiled.Endings...),
-		Capabilities: encounter.Capabilities{
-			Sight:         &sightList{fallback: 24},
-			Equipment:     encounter.UnobservedEquipment{},
-			Conditions:    encounter.UnobservedEquipment{},
-			Sheets:        walksThirty{},
-			Participation: everyoneStanding{},
-			Initiative:    orderAsGiven{},
-			Driver:        encounter.BehaviorDriver{},
-			Roller:        rollsLowest{},
-			CheckResolver: findsNothing{},
-			Witness:       nobodyPerceives{},
-			Actors: encounter.Actors{
-				Striker:   passStriker{},
-				Mover:     quietMover{},
-				Announcer: quietAnnouncer{},
-			},
-		},
+		Field:        compiled.Field,
+		Sites:        sites,
+		Members:      members,
+		Endings:      append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, compiled.Endings...),
+		Capabilities: garrisonCapabilities(),
 	})
 	if err != nil {
 		tb.Fatalf("open the garrison keep: %v", err)
 	}
 
 	return enc
+}
+
+// garrisonCapabilities is what the garrison keep is built and loaded with.
+func garrisonCapabilities() encounter.Capabilities {
+	return encounter.Capabilities{
+		Sight:         &sightList{fallback: 24},
+		Equipment:     encounter.UnobservedEquipment{},
+		Conditions:    encounter.UnobservedEquipment{},
+		Sheets:        walksThirty{},
+		Participation: everyoneStanding{},
+		Initiative:    orderAsGiven{},
+		Driver:        encounter.BehaviorDriver{},
+		Roller:        rollsLowest{},
+		CheckResolver: findsNothing{},
+		Witness:       nobodyPerceives{},
+		Actors: encounter.Actors{
+			Striker:   passStriker{},
+			Mover:     quietMover{},
+			Announcer: quietAnnouncer{},
+		},
+	}
 }
 
 // worldRound is the world clock's high-water mark: the round the keep has

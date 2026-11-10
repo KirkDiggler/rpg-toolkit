@@ -196,8 +196,10 @@ func (s *ConcealmentSuite) TestTheNoticeIsCarriedAndUnread() {
 	s.Require().NoError(err)
 
 	data := enc.ToData()
-	s.Require().Len(data.Field.Concealments, 1)
-	s.Equal([]encounter.CheckApproachData{{Ability: "investigation", DC: 12}}, data.Field.Concealments[0].Notice)
+
+	site := enc.Site().Data()
+	s.Require().Len(site.Field.Concealments, 1)
+	s.Equal([]encounter.CheckApproachData{{Ability: "investigation", DC: 12}}, site.Field.Concealments[0].Notice)
 
 	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,
@@ -219,7 +221,7 @@ func (s *ConcealmentSuite) TestTheNoticeIsCarriedAndUnread() {
 		},
 	})
 	s.Require().NoError(err)
-	s.Equal(data.Field.Concealments, back.ToData().Field.Concealments, "round-trips unchanged")
+	s.Equal(site.Field.Concealments, back.Site().Data().Field.Concealments, "round-trips unchanged")
 
 	// A secret whose author declared no passive tell writes NO KEY AT ALL —
 	// the difference this build carries so the slice that reads it can tell
@@ -558,10 +560,12 @@ func (s *ConcealmentSuite) TestABlobWithARetiredRegionFlagIsRefusedByName() {
 	s.Require().NoError(err)
 
 	data := enc.ToData()
-	s.Require().NotEmpty(data.Field.Regions)
-	data.Field.Regions[1].Concealed = []byte("true")
 
-	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
+	site := enc.Site().Data()
+	s.Require().NotEmpty(site.Field.Regions)
+	site.Field.Regions[1].Concealed = []byte("true")
+
+	_, err = loadOverSite(data, site, encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},

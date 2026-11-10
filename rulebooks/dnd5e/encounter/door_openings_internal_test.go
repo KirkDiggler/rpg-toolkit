@@ -12,6 +12,7 @@ package encounter
 // memo.
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -108,9 +109,17 @@ func TestADoorInTheContentChangesTheOpenings(t *testing.T) {
 	}
 }
 
+// unsited is enc's field as a field compiled outside a site — a validation
+// seam's — whose openings are its own to measure when doors attach.
+func unsited(enc *Encounter) *field {
+	f := *enc.field
+	f.openingsAreSite = false
+	return &f
+}
+
 func TestAReAuthoredDoorIsAskedAgain(t *testing.T) {
 	enc := holdHall(t, holdLeafDoor(DoorIsClosed()), holdSouthEast)
-	f := enc.field
+	f := unsited(enc)
 	before := f.doorOpening(enc.doorsByID[holdLeaf])
 	require.NotEmpty(t, before, "precondition: the leaf lies across crossings")
 
@@ -125,7 +134,7 @@ func TestAReAuthoredDoorIsAskedAgain(t *testing.T) {
 
 func TestAShallowCopyNeverWritesTheFieldsOpenings(t *testing.T) {
 	enc := holdHall(t, holdLeafDoor(DoorIsClosed()), holdSouthEast)
-	f := enc.field
+	f := unsited(enc)
 	want := f.doorOpenings[holdLeaf]
 	require.NotEmpty(t, want, "precondition: the leaf's opening was built when the doors attached")
 
@@ -160,4 +169,19 @@ func TestAnUnattachedDoorIsMeasuredAndNothingIsWritten(t *testing.T) {
 
 	require.Equal(t, wholeFloorOpening(f, stray), f.doorOpening(stray), "a door never attached is answered by measuring it")
 	require.NotContains(t, f.doorOpenings, DoorID("stray"), "and the read writes nothing")
+}
+
+// TestASitesOpeningsAreKeptByEveryInstance (rpg-project#879 S5): the site
+// measures its doors once; an encounter attaching its own door records keeps
+// the site's map, the same map, and two encounters on one site share it.
+// Mutant: an attach that measures again (the instance's map is a new one).
+func TestASitesOpeningsAreKeptByEveryInstance(t *testing.T) {
+	a := holdHall(t, holdLeafDoor(DoorIsClosed()), holdSouthEast)
+	b := holdHall(t, holdLeafDoor(DoorIsOpen()), holdSouthEast)
+	require.Same(t, a.site, b.site, "precondition: one content, one site, whatever the doors' states")
+	require.NotEmpty(t, a.site.field.doorOpenings[holdLeaf], "precondition: the site measured the leaf")
+	require.Equal(t, reflect.ValueOf(a.site.field.doorOpenings).Pointer(), reflect.ValueOf(a.field.doorOpenings).Pointer(),
+		"the instance reads the site's map")
+	require.Equal(t, reflect.ValueOf(a.field.doorOpenings).Pointer(), reflect.ValueOf(b.field.doorOpenings).Pointer(),
+		"and so does every other instance on the site")
 }

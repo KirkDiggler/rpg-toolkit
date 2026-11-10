@@ -77,8 +77,11 @@ func TestARecordSavedWithTheOldPresentationKeyStillLoads(t *testing.T) {
 	fresh, err := encounter.NewEncounter(setup)
 	require.NoError(t, err)
 
-	plain, err := json.Marshal(fresh.ToData())
+	// The site piece (rpg-project#879 S5): the field lives there now, not in
+	// the checkpoint, so that is where an old key would sit.
+	plain, err := json.Marshal(fresh.Site().Data())
 	require.NoError(t, err)
+	checkpoint := fresh.ToData()
 
 	// The same record as a build that still carried the presentation would
 	// have written it: the key sits inside the field object, where FieldData
@@ -88,10 +91,9 @@ func TestARecordSavedWithTheOldPresentationKeyStillLoads(t *testing.T) {
 	require.NotEqual(t, string(plain), string(legacy), "the fixture actually carries the old key")
 
 	load := func(blob []byte) *encounter.Encounter {
-		var data encounter.EncounterData
-		require.NoError(t, json.Unmarshal(blob, &data))
-		enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Data: data,
+		var site encounter.SiteData
+		require.NoError(t, json.Unmarshal(blob, &site))
+		enc, err := loadOverSite(checkpoint, site, encounter.LoadEncounterInput{
 			Capabilities: encounter.Capabilities{
 				Sight:         everyoneSeesTheWholeMap{},
 				Equipment:     encounter.UnobservedEquipment{},
@@ -113,6 +115,8 @@ func TestARecordSavedWithTheOldPresentationKeyStillLoads(t *testing.T) {
 	}
 
 	fromLegacy, fromPlain := load(legacy), load(plain)
+	require.Equal(t, fresh.Site().Hash(), fromLegacy.Site().Hash(),
+		"the old key hashes to nothing: the same content is the same site")
 
 	// SAME ENCOUNTER. Compared as the record each one saves, which is the
 	// whole observable state: a difference anywhere — a cell, a member, the
@@ -128,6 +132,9 @@ func TestARecordSavedWithTheOldPresentationKeyStillLoads(t *testing.T) {
 	// so the first save after an upgrade is what drops it from the store.
 	require.NotContains(t, string(legacySaved), "room_scene")
 	require.NotContains(t, string(legacySaved), "torture-table")
+	legacyPiece, err := json.Marshal(fromLegacy.Site().Data())
+	require.NoError(t, err)
+	require.NotContains(t, string(legacyPiece), "room_scene", "nor does the site piece")
 
 	// The atlas the host projects carries none of it either — this is the
 	// seam the scene used to reach the player through.

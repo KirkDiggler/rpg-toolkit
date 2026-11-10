@@ -1481,6 +1481,12 @@ type SetupInput struct {
 	// holds no randomness of its own (C8); a caller that pins exact bytes
 	// supplies a fixed source.
 	IDs record.IDSource
+
+	// Sites resolves the compiled site the field compiles to, keyed by its
+	// content hash (site.go, rpg-project#879 S5). Optional: nil is
+	// [DefaultSites], the process-wide in-process provider. The same content
+	// set up twice is one site.
+	Sites SiteProvider
 }
 
 // ViewInput is used to query a member's current percepts.

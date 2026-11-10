@@ -528,6 +528,23 @@ type hiddenView struct {
 	unexploredCells map[spatial.Position]bool
 }
 
+// facesNone reports whether no door and no prop is hidden from this view:
+// the sight test then reads no concealment ([sightReach.seesCell]), so a
+// sweep under it is the site's raw answer ([Encounter.visibleFrom]).
+func (h hiddenView) facesNone() bool {
+	for _, hid := range h.doors {
+		if hid {
+			return false
+		}
+	}
+	for _, hid := range h.props {
+		if hid {
+			return false
+		}
+	}
+	return true
+}
+
 // hiddenFrom folds the member's own knowledge into what their atlas
 // withholds. A concealment they have found contributes nothing.
 func (e *Encounter) hiddenFrom(member MemberID) hiddenView {

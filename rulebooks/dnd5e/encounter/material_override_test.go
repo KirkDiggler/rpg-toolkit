@@ -23,9 +23,9 @@ func (s *StructuralWallSuite) TestMaterialOverridesAreCapturedAndDetachedAcrossH
 	s.Equal(want, atlas.PropPresentations[0].MaterialOverrides)
 	atlas.StructuralWalls[0].MaterialOverrides[0].MaterialRef = "edited-read"
 	atlas.PropPresentations[0].MaterialOverrides[0].MaterialRef = "edited-read"
-	data := enc.ToData()
-	data.Field.StructuralWalls[0].MaterialOverrides[0].MaterialRef = "edited-data"
-	data.Field.PropPresentations[0].MaterialOverrides[0].MaterialRef = "edited-data"
+	site := enc.Site().Data()
+	site.Field.StructuralWalls[0].MaterialOverrides[0].MaterialRef = "edited-data"
+	site.Field.PropPresentations[0].MaterialOverrides[0].MaterialRef = "edited-data"
 	next, err := s.reload(enc).AtlasFor("walker")
 	s.Require().NoError(err)
 	s.Equal(want, next.StructuralWalls[0].MaterialOverrides)
@@ -58,8 +58,9 @@ func (s *StructuralWallSuite) TestMalformedMaterialOverridesRefuseConstructionAn
 	}
 	enc := s.play(structuralField())
 	data := enc.ToData()
-	data.Field.StructuralWalls[0].MaterialOverrides = []encounter.MaterialOverrideData{{SurfaceID: "atlas", MaterialRef: ""}}
-	_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Capabilities: encounter.RefusingCapabilities()})
+	site := enc.Site().Data()
+	site.Field.StructuralWalls[0].MaterialOverrides = []encounter.MaterialOverrideData{{SurfaceID: "atlas", MaterialRef: ""}}
+	_, err := loadOverSite(data, site, encounter.LoadEncounterInput{Data: data, Capabilities: encounter.RefusingCapabilities()})
 	s.Error(err, "malformed persisted appearance must not load")
 }
 

@@ -71,10 +71,21 @@ func sweepScene(t *testing.T) *Encounter {
 	return enc
 }
 
+// sweepSites is a provider holding scene's own site, for a test that
+// reloads the scene: the scene was built on a private provider.
+func sweepSites(scene *Encounter) SiteProvider {
+	sites := NewMemorySites(nil)
+	sites.keep(scene.site)
+	return sites
+}
+
 // sweepSetup is [sweepScene]'s input, for a test that builds the scene
 // through [newEncounter].
 func sweepSetup() *SetupInput {
 	return &SetupInput{
+		// Its own provider: the cache counts below are this scene's alone,
+		// never a site an earlier test warmed (rpg-project#879 S5).
+		Sites: NewMemorySites(nil),
 		Field: sweepField(),
 		Members: []MemberInput{
 			{ID: sweepWatchA, Kind: KindPlayer, Position: spatial.Position{X: 0, Y: 1}},
@@ -201,10 +212,11 @@ func TestADoorChangeReSweepsEveryObserverWhoCouldSeeIt(t *testing.T) {
 // the oracle catches only if something changed, so the count pins it).
 func TestASaveWithoutSweepKeysSweepsOnceThenHolds(t *testing.T) {
 	t.Run("a save without keys", func(t *testing.T) {
-		data := sweepScene(t).ToData()
+		scene := sweepScene(t)
+		data := scene.ToData()
 		require.NotEmpty(t, data.SightSweeps, "precondition: a run with sight writes its keys")
 		data.SightSweeps = nil
-		enc, err := LoadEncounter(&LoadEncounterInput{Data: data, Capabilities: sweepCapabilities()})
+		enc, err := LoadEncounter(&LoadEncounterInput{Data: data, Sites: sweepSites(scene), Capabilities: sweepCapabilities()})
 		require.NoError(t, err)
 
 		walkAround(t, enc, 4)
@@ -215,8 +227,9 @@ func TestASaveWithoutSweepKeysSweepsOnceThenHolds(t *testing.T) {
 	})
 
 	t.Run("a save with keys", func(t *testing.T) {
-		data := sweepScene(t).ToData()
-		enc, err := LoadEncounter(&LoadEncounterInput{Data: data, Capabilities: sweepCapabilities()})
+		scene := sweepScene(t)
+		data := scene.ToData()
+		enc, err := LoadEncounter(&LoadEncounterInput{Data: data, Sites: sweepSites(scene), Capabilities: sweepCapabilities()})
 		require.NoError(t, err)
 
 		walkAround(t, enc, 4)

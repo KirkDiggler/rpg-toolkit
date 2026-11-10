@@ -121,7 +121,7 @@ func (s *AtlasRegionsSuite) TestAtlas_ConcealmentsRoundTripAndTheRegionCarriesNo
 		structFieldNames(encounter.AtlasRegion{}),
 		"a region entry says what it is, where it is and how it looks — never whether it is a secret")
 
-	out := back.ToData().Field.Concealments
+	out := back.Site().Data().Field.Concealments
 	s.Require().Len(out, 1)
 	s.Equal("tomb-secret", out[0].ID)
 	s.Equal([]encounter.CheckApproachData{{Ability: "perception", DC: 15}}, out[0].Checks)

@@ -227,7 +227,7 @@ func (e *Encounter) discoverCells(observer MemberID, reach sightReach, opacity s
 	known := e.world.knownCells(observer)
 	learned := make([]spatial.Position, 0)
 	disk := e.field.sweepCells(own, reach.cells[observer])
-	bits := e.visibleFrom(key, disk, func(cell spatial.Position) bool {
+	bits := e.visibleFrom(key, disk, hidden.facesNone(), func(cell spatial.Position) bool {
 		return cell == own || reach.seesCell(observer, cell, hidden)
 	})
 	for i, cell := range disk {
