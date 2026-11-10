@@ -45,10 +45,14 @@ type BehaviorData struct {
 }
 
 // MarshalJSON preserves the canonical recipe encoding when EncounterData is
-// written through encoding/json v1 by a host.
+// written through encoding/json v1 by a host. The encoding is deterministic:
+// a recipe's `states` and `table` maps come out in sorted key order, so an
+// unchanged member writes the same bytes on every save, the promise the
+// snapshot makes and every byte or digest comparison at the storage boundary
+// stands on (rpg-project#897).
 func (d BehaviorData) MarshalJSON() ([]byte, error) {
 	type plain BehaviorData
-	return json.Marshal(plain(d))
+	return json.Marshal(plain(d), json.Deterministic(true))
 }
 
 // UnmarshalJSON restores canonical scalar types in recipes before the loader
