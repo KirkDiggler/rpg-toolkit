@@ -72,6 +72,20 @@ dropped when the guard is released. A stale save writes nothing and delivers
 nothing (`ErrStaleCheckpoint`). The record's `NextSeq` is not the fence: a
 beatless verb does not advance it. A plain repository keeps today's writes.
 
+**The record can be appended** ([`checkpoint.go`](./checkpoint.go),
+rpg-project#897 leg c). A fenced repository that also implements
+`AppendingEncounterRepository` (type assertion again) is handed each save
+split: the REST (the world with its story log reduced to the head, NextSeq
+and LastID) plus the segment of record entries the store does not hold yet,
+`Since` the first seq it lacks, and a retention `Floor`. The session keeps
+that baseline beside the checkpoint version (`checkpointFence.recordNext`):
+from the loaded log on a fenced read, 1 at Launch (the whole record), and
+advanced only after a save lands. It is not the act's `baseline`, which stays
+fixed for the verb. Reads stay whole: the host joins rest and segments with
+`record.JoinData` in `GetFencedEncounter` and `GetEncounter`. A fenced host
+without it still gets the whole world through `SaveFenced`, and nothing is
+added to `SaveFencedInput`, so a host cannot half-adopt it and drop the record.
+
 **The site is shared by hash** ([`sites.go`](./sites.go), rpg-project#879 S5).
 A stored world names its compiled site by `SiteHash` and never carries the
 field. `Config.Sites` resolves it on every load (nil is

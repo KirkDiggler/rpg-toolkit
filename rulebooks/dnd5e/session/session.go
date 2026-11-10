@@ -188,6 +188,10 @@ type Manager struct {
 	// fenced is Encounters' optional fenced capability, or nil when the host's
 	// repository is plain (checkpoint.go).
 	fenced FencedEncounterRepository
+	// appending is Encounters' optional appending capability, or nil when the
+	// host's fenced repository rewrites the whole record on every save
+	// (checkpoint.go). Never set without fenced: it embeds it.
+	appending AppendingEncounterRepository
 	// pending is the fenced verbs' unsaved sheets and seats; nil when the
 	// repository is plain (checkpoint.go).
 	pending *pendingWrites
@@ -289,6 +293,9 @@ func NewManager(cfg *Config) (*Manager, error) {
 	// The fence is a capability found on the repository the host already
 	// wired, never a Config field (the Config rule above Characters).
 	fenced, _ := cfg.Encounters.(FencedEncounterRepository)
+	// Appending is a refinement of the fence, found the same way: a host
+	// that has it saves the record as segments rather than whole.
+	appending, _ := cfg.Encounters.(AppendingEncounterRepository)
 	var pending *pendingWrites
 	if fenced != nil {
 		pending = newPendingWrites()
@@ -309,6 +316,7 @@ func NewManager(cfg *Config) (*Manager, error) {
 		characterConfig:   cfg.CharacterConfig,
 		encounters:        cfg.Encounters,
 		fenced:            fenced,
+		appending:         appending,
 		pending:           pending,
 		sites:             sites,
 		siteStore:         siteStore,

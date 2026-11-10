@@ -24,7 +24,11 @@ var ErrBadSessionLock = errors.New("session locker returned no release")
 // world, the session record, the seats and the sheets of the characters it
 // holds) then rides one fenced save naming the checkpoint version the
 // operation loaded, so a writer whose lease ran out writes nothing and fails
-// closed with [ErrStaleCheckpoint] instead of saving over its successor. A
+// closed with [ErrStaleCheckpoint] instead of saving over its successor. The
+// record's baseline lives beside that version: under
+// [AppendingEncounterRepository] the save appends the record from the first
+// seq the store does not hold, which the verb read with the version, and a
+// refused save leaves both where they were. A
 // character's own guard (an unseated character's sheet) is not fenced and
 // must not expire while the operation can still write.
 //
