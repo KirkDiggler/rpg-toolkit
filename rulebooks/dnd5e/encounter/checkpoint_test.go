@@ -23,6 +23,7 @@ type checkpointStore struct {
 	rest     []byte
 	segments [][]byte
 	since    uint64 // the first seq the store does not hold
+	floor    uint64 // the floor of the last save, kept beside the rest
 }
 
 func (s *checkpointStore) save(t *testing.T, enc *encounter.Encounter) *encounter.ToCheckpointOutput {
@@ -48,6 +49,7 @@ func (s *checkpointStore) save(t *testing.T, enc *encounter.Encounter) *encounte
 		kept = append(kept, raw)
 	}
 	s.segments = kept
+	s.floor = out.Floor
 	s.since = out.Rest.Log.NextSeq
 	if s.since == 0 {
 		s.since = 1
@@ -64,7 +66,7 @@ func (s *checkpointStore) whole(t *testing.T) encounter.EncounterData {
 	for i, raw := range s.segments {
 		require.NoError(t, json.Unmarshal(raw, &segs[i]))
 	}
-	joined, err := record.JoinData(data.Log, segs...)
+	joined, err := record.JoinData(&record.JoinDataInput{Head: data.Log, Floor: s.floor, Segments: segs})
 	require.NoError(t, err)
 	data.Log = joined
 	return data
@@ -159,7 +161,7 @@ func TestCheckpointJoinsBackToToData(t *testing.T) {
 	for save := 0; save < 5; save++ {
 		before := store.since
 		out := store.save(t, enc)
-		require.Zero(t, out.Floor, "unbounded keeps everything")
+		require.LessOrEqual(t, out.Floor, uint64(1), "unbounded keeps everything")
 		if len(out.Appended.Entries) > 0 {
 			grew++
 		}
@@ -198,31 +200,33 @@ func TestCheckpointBeatlessVerbAppendsNothing(t *testing.T) {
 	require.Equal(t, asStored(t, enc.ToData()), store.whole(t))
 }
 
-// TestCheckpointBoundedReportsTheFloor: under a window the floor is what the
-// encounter trimmed below, the store drops the segments wholly under it, and
-// what it holds is ToData's record plus at most the straddling segment's
-// older entries.
+// TestCheckpointBoundedReportsTheFloor: under a window smaller than one
+// save's beats, Floor is the story's oldest retained seq, the segment starts
+// there rather than at the store's last seq + 1, the store drops segments
+// wholly below it, and the join at the floor is exactly ToData after every
+// save.
 func TestCheckpointBoundedReportsTheFloor(t *testing.T) {
 	const window = 4
 	enc := openCheckpointKeep(t, window)
 	store := &checkpointStore{since: 1}
 	rng := rand.New(rand.NewPCG(897, 9)) //nolint:gosec // a seeded walk
 
-	var floor uint64
-	for save := 0; save < 8 && floor == 0; save++ {
+	jumped := false
+	for save := 0; save < 8; save++ {
 		stepSome(t, enc, rng, 3)
-		floor = store.save(t, enc).Floor
+		before := store.since
+		out := store.save(t, enc)
+		want := asStored(t, enc.ToData())
+		if len(want.Log.Entries) > 0 {
+			require.Equal(t, want.Log.Entries[0].Seq, out.Floor, "save %d: the floor is the oldest retained seq", save)
+		}
+		if out.Floor > before {
+			jumped = true
+		}
+		require.Equal(t, want, store.whole(t), "save %d (since %d, floor %d): rest + segments is ToData", save, before, out.Floor)
 	}
-	require.NotZero(t, floor, "the window trimmed")
-	next := store.since
-	require.Equal(t, next-window, floor, "the floor is NextSeq less the window")
-
-	whole := store.whole(t)
-	want := asStored(t, enc.ToData())
-	require.GreaterOrEqual(t, len(whole.Log.Entries), len(want.Log.Entries))
-	require.LessOrEqual(t, whole.Log.Entries[0].Seq, floor)
-
-	require.Equal(t, loadWrites(t, want), loadWrites(t, whole), "the next load's retention trims the straddler")
+	require.True(t, jumped, "a save trimmed past the store's last seq + 1")
+	require.Equal(t, loadWrites(t, enc.ToData()), loadWrites(t, store.whole(t)))
 }
 
 func TestCheckpointRefusesSincePastTheStory(t *testing.T) {

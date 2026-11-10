@@ -35,9 +35,14 @@ type ToCheckpointOutput struct {
 	// holds no entries for a verb that appended no beat. Older entries are
 	// never copied.
 	Appended record.LogData
-	// Floor is the retention floor: the store may drop every stored entry
-	// below it, since the encounter has trimmed them. Zero under
-	// [RetentionUnbounded], and before the first trim, keeps everything.
+	// Floor is the story's floor after this save's trim: the oldest seq it
+	// retains, its NextSeq when it retains none, zero (or 1) for a log that
+	// has never lost a beat. The store drops every segment wholly below it
+	// and keeps it beside the rest, and the load passes it to
+	// [record.JoinData], which drops the straddling segment's older entries
+	// and tolerates the seqs the store no longer holds. Under
+	// [RetentionUnbounded] nothing is ever trimmed, so it never rises above
+	// the first seq.
 	Floor uint64
 }
 
@@ -46,16 +51,13 @@ type ToCheckpointOutput struct {
 // whole, the story as one segment from Since, and the floor below which the
 // store may forget. It is the storage boundary exactly as ToData is,
 // enforcing retention first. A store that held the record through Since-1
-// appends Appended, drops every stored segment wholly below Floor, and
-// joins what it holds with the head:
+// appends Appended, drops every stored segment wholly below Floor, keeps
+// Floor beside the rest, and on load joins what it holds:
 //
-//	record.JoinData(out.Rest.Log, stored..., out.Appended)
+//	record.JoinData(&record.JoinDataInput{Head: rest.Log, Floor: floor, Segments: stored})
 //
-// Under RetentionUnbounded that loads equal to ToData's Log. Under a bounded
-// window it is ToData's Log plus at most the older entries of the one
-// segment that straddles Floor, which the next load's retention trims. The
-// encounter keeps no record of what any store holds: Since
-// is an argument, never a field.
+// which is exactly ToData's Log at this save. The // encounter keeps no record of what any store holds: Since is an argument,
+// never a field.
 func (e *Encounter) ToCheckpoint(in *ToCheckpointInput) (*ToCheckpointOutput, error) {
 	if in == nil {
 		return nil, ErrNilInput
@@ -72,12 +74,17 @@ func (e *Encounter) ToCheckpoint(in *ToCheckpointInput) (*ToCheckpointOutput, er
 		return nil, fmt.Errorf("to checkpoint: retention: %w", err)
 	}
 
-	out := &ToCheckpointOutput{
-		Rest:     e.snapshot(e.story.DataFrom(next)),
-		Appended: e.story.DataFrom(in.Since),
+	head, err := e.story.DataFrom(&record.DataFromInput{Since: next})
+	if err != nil {
+		return nil, fmt.Errorf("to checkpoint: head: %w", err)
 	}
-	if e.retention != RetentionUnbounded {
-		out.Floor = e.logFloor
+	appended, err := e.story.DataFrom(&record.DataFromInput{Since: in.Since})
+	if err != nil {
+		return nil, fmt.Errorf("to checkpoint: segment: %w", err)
 	}
-	return out, nil
+	return &ToCheckpointOutput{
+		Rest:     e.snapshot(head),
+		Appended: appended,
+		Floor:    e.logFloor,
+	}, nil
 }
