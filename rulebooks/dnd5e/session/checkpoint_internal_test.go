@@ -120,7 +120,7 @@ func (s *PendingWritesSuite) TestALandedFencedSaveRefusesTheScopesLaterWrites() 
 	repo := &countingFenced{}
 	m := &Manager{fenced: repo, pending: newPendingWrites()}
 	scope := &writeScope{session: "sess", encounter: "sess", fence: checkpointFence{held: true}}
-	_, err := m.persistFenced(context.Background(), scope, &encounter.EncounterData{}, SaveReport{})
+	_, err := m.persistFenced(context.Background(), scope, fencedWorld{whole: &encounter.EncounterData{}}, SaveReport{})
 	s.Require().NoError(err)
 
 	err = m.sheetsFor(scope).save(context.Background(), &character.Data{ID: "alice"})
@@ -138,4 +138,47 @@ func (s *PendingWritesSuite) TestALandedFencedSaveRefusesTheScopesLaterWrites() 
 	s.Empty(sheets, "the late sheet was not held")
 	s.Empty(seats, "the late seat was not held")
 	s.Equal(1, repo.saves, "nothing reached the store after the one save")
+}
+
+// appendingRepo is an appending repository whose saves land or are refused
+// on demand, recording what each carried.
+type appendingRepo struct {
+	countingFenced
+	stale  bool
+	sinces []uint64
+}
+
+func (a *appendingRepo) SaveAppended(_ context.Context, in *SaveAppendedInput) (*SaveFencedOutput, error) {
+	a.sinces = append(a.sinces, in.Since)
+	if a.stale {
+		return nil, ErrStaleCheckpoint
+	}
+	return &SaveFencedOutput{Version: in.Expected + 1}, nil
+}
+
+// TestRecordNextMovesOnlyWithALandedSave drives the baseline itself: a
+// refused appending save leaves recordNext where it was (the store still
+// holds what it did), and a landed one moves it to the saved rest's NextSeq,
+// beside the version.
+func (s *PendingWritesSuite) TestRecordNextMovesOnlyWithALandedSave() {
+	repo := &appendingRepo{stale: true}
+	m := &Manager{fenced: repo, appending: repo, pending: newPendingWrites()}
+	scope := &writeScope{session: "sess", encounter: "sess",
+		fence: checkpointFence{held: true, version: 3, recordNext: 7}}
+	split := &encounter.ToCheckpointOutput{Rest: encounter.EncounterData{}}
+	split.Rest.Log.NextSeq = 9
+
+	_, err := m.persistFenced(context.Background(), scope, fencedWorld{split: split}, SaveReport{})
+	s.Require().ErrorIs(err, ErrStaleCheckpoint)
+	s.Equal(uint64(7), scope.fence.recordNext, "a refused save leaves the baseline")
+	s.Equal(uint64(3), scope.fence.version)
+	s.False(scope.fence.saved)
+
+	repo.stale = false
+	_, err = m.persistFenced(context.Background(), scope, fencedWorld{split: split}, SaveReport{})
+	s.Require().NoError(err)
+	s.Equal([]uint64{7, 7}, repo.sinces, "both saves sent from the baseline the verb loaded")
+	s.Equal(uint64(9), scope.fence.recordNext, "a landed save moves it to the rest's NextSeq")
+	s.Equal(uint64(4), scope.fence.version)
+	s.Zero(repo.saves, "an appending host is never handed SaveFenced")
 }

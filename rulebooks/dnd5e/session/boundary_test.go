@@ -255,6 +255,15 @@ var persistenceShapes = map[string]string{
 	// EncounterData.SiteHash already carries across this seam.
 	"encounter.SiteData": "persistence shape: the site piece the host stores by hash but never builds",
 	"encounter.SiteHash": "persistence shape: the opaque key EncounterData already names its site piece by",
+
+	// The story record's segment, on [session.SaveAppendedInput]
+	// (rpg-project#897 leg c, checkpoint.go). It is the same bytes
+	// EncounterData.Log already carried across this seam, now handed over in
+	// pieces: the host appends each segment as it comes and joins what it
+	// holds with record.JoinData on a read. Would the host build one field by
+	// field? No: the encounter mints every segment, and the host only reads
+	// the seqs it needs to order and drop them.
+	"record.LogData": "persistence shape: the record segment the host appends and joins but never builds",
 }
 
 // allowed is the union the detector checks against.
