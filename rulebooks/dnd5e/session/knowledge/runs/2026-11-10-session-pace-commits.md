@@ -36,3 +36,8 @@ Base: `rpg-toolkit` `main` at 56ab0946 (session v0.178.0, encounter v0.192.0). S
 - Mutant: commit the record and acts from `scope.baseline` instead of the cursor. It fails the delivery headline on all four hosts, the two-raise walk, catch-up across a pace commit and the continuation delivery test.
 - Mutant: set the saved flag on a pace commit. It fails `TestASheetWrittenAfterAPaceCommitRidesTheNextSave`.
 - Mutant: settle from `scope.baseline`. It fails `TestAFallIsSettledInThePaceCommitThatSavesIt` (the fall paid twice).
+
+## Review round
+
+- The walk's last-step guard was untested; dropping it survived and made an extra empty save and publish. `TestADueLastStepCommitsOnce` (a walk whose due step is its last cell) pins one commit, one publish and one save; the mutant now fails it.
+- The act doc says why a raise-woken creature's run, opened after the tick, is safe: creatures walk only inside raises. The pace suite's goblin now walks when a round wakes it, so the delivery and catch-up assertions cover a creature's run beside the walker's.
