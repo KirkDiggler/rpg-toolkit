@@ -679,7 +679,14 @@ func (e *Encounter) runIntents(
 				pickRecord := ""
 				if writePick {
 					var err error
-					pickRecord, err = e.appendPickBeat(activeID, decision.Pick, intentTarget(decision.Intent), selected.instance)
+					// A LINE SAID TO SOMEBODY (rpg-project#923): a reaction's
+					// line answers the member its wake names; nothing else
+					// is said to anyone.
+					var to MemberID
+					if decision.Pick.Answer.Say != "" {
+						to = opportunity.subject
+					}
+					pickRecord, err = e.appendPickBeat(activeID, decision.Pick, pickedFor{target: intentTarget(decision.Intent), to: to}, selected.instance)
 					if err != nil {
 						return err
 					}
@@ -772,6 +779,13 @@ func (e *Encounter) runIntents(
 	return turnDeltas, nil
 }
 
+// pickedFor is whom a pick's beat names: the intent's target, and the member
+// its line is spoken to.
+type pickedFor struct {
+	target MemberID
+	to     MemberID
+}
+
 // appendPickBeat writes the roll a [Driver] made on this member's own table —
 // the same [BeatAnswered] a social verdict's answer writes, under the `time`
 // key, so a reader has one beat to learn rather than two.
@@ -782,7 +796,11 @@ func (e *Encounter) runIntents(
 //
 // TARGET IS WHOM THE PICK'S INTENT ACTS ON ([intentTarget]), written on the
 // beat so a reader sees whom `attacker` or `enemy` named (rpg-project#669).
-func (e *Encounter) appendPickBeat(member MemberID, chosen *Pick, target MemberID, instance string) (string, error) {
+//
+// TO IS WHOM ITS LINE IS SPOKEN TO (rpg-project#923): the mover a `barred`
+// or `approached` reaction answers, written only when the row says
+// something; empty for a `time` pick and every other opportunity.
+func (e *Encounter) appendPickBeat(member MemberID, chosen *Pick, named pickedFor, instance string) (string, error) {
 	at := uint64(e.clock.ToData().HighWater)
 	// THE SYMBOLS FIRST (rpg-project#674): the member's own table for this
 	// key, described before the first pick that indexes it — the table the
@@ -801,7 +819,7 @@ func (e *Encounter) appendPickBeat(member MemberID, chosen *Pick, target MemberI
 		}
 	}
 
-	payload, err := json.Marshal(answeredBeatBody(answeredBy{creature: member, target: target}, chosen))
+	payload, err := json.Marshal(answeredBeatBody(answeredBy{creature: member, target: named.target, to: named.to}, chosen))
 	if err != nil {
 		return "", fmt.Errorf("pick beat: %w", err)
 	}
