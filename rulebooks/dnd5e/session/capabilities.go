@@ -124,5 +124,9 @@ func (m *Manager) resolutionInput(ctx context.Context, scope *writeScope, ask re
 		Machine:      ask.Machine,
 		Cost:         ask.Cost,
 		Capabilities: capabilities,
+		// The verb lends its world, so resolution loads nothing today; the
+		// provider rides anyway, so a load there would never fall back to
+		// the process default behind an injected one (rpg-project#879 S5).
+		Sites: m.sites,
 	}
 }

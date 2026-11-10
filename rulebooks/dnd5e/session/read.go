@@ -302,13 +302,14 @@ func (m *Manager) AtlasOf(_ context.Context, in *AtlasOfInput) (*Atlas, error) {
 	if in.Dungeon == nil {
 		return nil, fmt.Errorf("atlasof: no dungeon: %w", ErrInvalidWorld)
 	}
-	world, err := launchWorld(in.Dungeon)
+	world, _, err := launchWorld(in.Dungeon, m.sites)
 	if err != nil {
 		return nil, fmt.Errorf("atlasof: %w", err)
 	}
 	enc, err := loadEncounter(&encounter.LoadEncounterInput{
 		Data:         *world,
 		Capabilities: encounter.RefusingCapabilities(),
+		Sites:        m.sites,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("atlasof: %w: %v", ErrInvalidWorld, err)
@@ -676,9 +677,17 @@ func (m *Manager) loadGivenWorld(
 	} else {
 		capabilities = m.readCapabilities(standing, driver)
 	}
+	// THE SITE, BY HASH (sites.go): the provider's when it holds it, else
+	// the piece the host stored, else the verb fails closed by name.
+	source, err := m.sitePiece(ctx, world.SiteHash)
+	if err != nil {
+		return nil, 0, standingSeam{}, fmt.Errorf("%q: %w", encID, err)
+	}
 	enc, err := loadEncounter(&encounter.LoadEncounterInput{
 		Data:         *world,
 		Capabilities: capabilities,
+		Sites:        m.sites,
+		Site:         source.piece,
 	})
 	if err != nil {
 		// The reason is kept as TEXT, not as a chain. A blob this seam cannot

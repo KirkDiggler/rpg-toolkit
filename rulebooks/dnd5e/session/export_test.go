@@ -177,3 +177,12 @@ func CountParticipationAttachesForTest(t testing.TB) func() (assessments, monste
 	t.Cleanup(func() { participationOf = previous })
 	return func() (int, int) { return int(nAssessments.Load()), int(nSheets.Load()) }
 }
+
+// WithSiteWalls, EditSiteForTest and SiteFieldForTest reach a stored world's
+// site, which the checkpoint names by hash (rpg-project#879 S5): see
+// sitehelp_internal_test.go.
+var (
+	WithSiteWalls    = withSiteWalls
+	EditSiteForTest  = editSite
+	SiteFieldForTest = siteField
+)
