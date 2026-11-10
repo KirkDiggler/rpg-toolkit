@@ -823,6 +823,7 @@ func compileSpeakRow(
 		Verb: VerbSpeak, Slot: slot, ID: id,
 		TargetKind: TargetMember, Candidates: projectCandidates(menu.targets),
 		SpeakOptions: menu.projectRows(),
+		Address:      menu.address,
 	}
 	var priced *character.Character
 	if profile != nil {
@@ -886,6 +887,10 @@ type speakMenu struct {
 
 	// lines is the menu, in target order and then authored order.
 	lines []speakLine
+
+	// address is the interaction addressing the speaker now, nil for none
+	// ([Declaration.Address]). Every part of the menu carries it.
+	address *Address
 }
 
 // speakLine is one (target, option) pair on the menu.
@@ -922,6 +927,7 @@ func (m speakMenu) projectRows() []SpeakOptionRow {
 // the menu's own order.
 func (m speakMenu) byPrice() (plain, checked speakMenu) {
 	plain.witnesses, checked.witnesses = m.witnesses, m.witnesses
+	plain.address, checked.address = m.address, m.address
 	plainBy := map[string]bool{}
 	checkedBy := map[string]bool{}
 	for _, l := range m.lines {
@@ -1026,6 +1032,19 @@ func readSpeakMenu(enc *encounter.Encounter, member string) (speakMenu, error) {
 		for _, o := range lines {
 			menu.lines = append(menu.lines, speakLine{prop: string(prop), option: o})
 		}
+	}
+
+	// THE ADDRESS RIDES THE MENU (rpg-project#923): the composition's one
+	// predicate answers whether it stands, measured at the reach this menu
+	// was read within, so the row that names the guard always lists him.
+	addressed, err := enc.AddressFor(&encounter.AddressForInput{
+		Member: encounter.MemberID(member), Reach: InteractionReach,
+	})
+	if err != nil {
+		return speakMenu{}, badCostUnlessSheet(translate(err))
+	}
+	if addressed.Address != nil {
+		menu.address = projectAddress(*addressed.Address)
 	}
 
 	return menu, nil
