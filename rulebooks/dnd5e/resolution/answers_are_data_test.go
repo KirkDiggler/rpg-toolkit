@@ -82,12 +82,15 @@ var allowedInterfaceFields = map[string]string{
 	// A creature's machine (mind/machine) rides the world it stands in: its
 	// recipe's bag, a guard's compared value and a set act's value are the
 	// machine's SCALARS — bool, int or string, refused otherwise when the
-	// recipe compiles (machine.ErrBadBag, machine.ErrBadGuard). Persisted
-	// world data handed back to be stored, never a sheet.
+	// recipe compiles (machine.ErrBadBag, machine.ErrBadGuard). A saved
+	// progress blob's bag is checked on restore instead: mind/behavior's
+	// checkCompositionBlob refuses an undeclared key or a value whose kind is
+	// not its recipe's (behavior.ErrBadComposerData). Persisted world data
+	// handed back to be stored, never a sheet.
 	"World.Members.Behaviors.Instances.Instance.Recipe.Bag":                                "mind/machine scalar: bool, int or string; world data, not a sheet",
 	"World.Members.Behaviors.Instances.Instance.Recipe.States.Transitions.When.Fact.Value": "mind/machine scalar: bool, int or string; world data, not a sheet",
 	"World.Members.Behaviors.Instances.Instance.Recipe.States.Transitions.Do.Set.Value":    "mind/machine scalar: bool, int or string; world data, not a sheet",
-	"World.Members.Behaviors.Progress.Instances.Blob.Bag":                                  "mind/machine scalar: bool, int or string; world data, not a sheet",
+	"World.Members.Behaviors.Progress.Instances.Blob.Bag":                                  "saved progress bag: mind/behavior refuses an undeclared key or wrong scalar kind on restore",
 	"World.Members.Machine.Bag":                                                            "mind/machine scalar: bool, int or string; world data, not a sheet",
 	"World.Members.Recipe.Bag":                                                             "mind/machine scalar: bool, int or string; world data, not a sheet",
 	"World.Members.Recipe.States.Transitions.When.Fact.Value":                              "mind/machine scalar: bool, int or string; world data, not a sheet",
@@ -95,7 +98,7 @@ var allowedInterfaceFields = map[string]string{
 	"World.Reserve.Behaviors.Instances.Instance.Recipe.Bag":                                "mind/machine scalar: bool, int or string; world data, not a sheet",
 	"World.Reserve.Behaviors.Instances.Instance.Recipe.States.Transitions.When.Fact.Value": "mind/machine scalar: bool, int or string; world data, not a sheet",
 	"World.Reserve.Behaviors.Instances.Instance.Recipe.States.Transitions.Do.Set.Value":    "mind/machine scalar: bool, int or string; world data, not a sheet",
-	"World.Reserve.Behaviors.Progress.Instances.Blob.Bag":                                  "mind/machine scalar: bool, int or string; world data, not a sheet",
+	"World.Reserve.Behaviors.Progress.Instances.Blob.Bag":                                  "saved progress bag: mind/behavior refuses an undeclared key or wrong scalar kind on restore",
 	"World.Reserve.Recipe.Bag":                                                             "mind/machine scalar: bool, int or string; world data, not a sheet",
 	"World.Reserve.Recipe.States.Transitions.When.Fact.Value":                              "mind/machine scalar: bool, int or string; world data, not a sheet",
 	"World.Reserve.Recipe.States.Transitions.Do.Set.Value":                                 "mind/machine scalar: bool, int or string; world data, not a sheet",
