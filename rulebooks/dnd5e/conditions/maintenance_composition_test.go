@@ -43,16 +43,18 @@ func (s *applicationBindingSuite) ward(concentrating bool) wardFixture {
 	prepared, err := conditions.PrepareApplication(&conditions.PrepareApplicationInput{ID: "ward", CoordinatorID: "caster",
 		Origin: dndevents.ConditionOrigin{Ref: core.Ref{Module: "example", Type: "items", ID: "ward-ring"}, EntityID: "caster"},
 		Spec: conditions.ApplicationSpec{Name: "Shared physical ward", CoordinatorParts: parts, Recipients: []conditions.RecipientSpec{{
-			Ref: refs.Conditions.LinkedEffects().String(), Name: "Physical ward", AddressSourceID: "ward-ring", Lifetime: conditions.LifetimeShared,
+			MemberID: "one", Ref: refs.Conditions.LinkedEffects().String(), Name: "Physical ward", AddressSourceID: "ward-ring", Lifetime: conditions.LifetimeShared,
 			Parts: []dndfx.PartDeclaration{{Key: "resistance", Kind: dndfx.KindResistance, Params: json.RawMessage(`{"types":["bludgeoning","piercing","slashing"]}`), OnTerminal: generic.EndPart}},
 		}}}, Existing: bindingParticipants(sheets)})
 	s.Require().NoError(err)
-	created, err := conditions.CreateRecipient(&conditions.CreateRecipientInput{Prepared: prepared, SpecIndex: 0, MemberID: "one"})
+	coordinator, err := conditions.CreateApplication(&conditions.CreateApplicationInput{Prepared: prepared})
+	s.Require().NoError(err)
+	s.Require().NoError(dndevents.ConditionAppliedTopic.On(bus).Publish(ctx, dndevents.ConditionAppliedEvent{Target: sheets[0], Condition: coordinator.Condition}))
+	created, err := conditions.CreateRecipient(&conditions.CreateRecipientInput{Prepared: prepared, SpecIndex: 0})
 	s.Require().NoError(err)
 	s.Require().NoError(dndevents.ConditionAppliedTopic.On(bus).Publish(ctx, dndevents.ConditionAppliedEvent{Target: sheets[1], Condition: created.Condition}))
-	sealed, err := conditions.SealApplication(&conditions.SealApplicationInput{Prepared: prepared, Delivered: []conditions.DeliveryReceipt{created.Receipt}, Binding: binding})
+	_, err = binding.FinalizeRecipient(ctx, &conditions.FinalizeRecipientInput{ApplicationID: prepared.ID(), Key: created.Candidate.Key, Delivered: true})
 	s.Require().NoError(err)
-	s.Require().NoError(dndevents.ConditionAppliedTopic.On(bus).Publish(ctx, dndevents.ConditionAppliedEvent{Target: sheets[0], Condition: sealed.Condition}))
 	s.Require().NoError(binding.CheckComplete())
 	s.Require().NoError(binding.Close(ctx))
 	for i, sheet := range sheets {

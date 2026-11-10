@@ -46,5 +46,25 @@ func currentHoldFixture(in holdFixtureInput) (*conditions.LinkedCondition, error
 	if err != nil {
 		return nil, err
 	}
-	return out.Condition.(*conditions.LinkedCondition), nil
+	// This fixture represents already-delivered persisted members, not a fresh
+	// pending cast. Live creation/finalization is covered by real binding tests.
+	raw, err := out.Condition.ToJSON()
+	if err != nil {
+		return nil, err
+	}
+	var data conditions.LinkedConditionData
+	if err = json.Unmarshal(raw, &data); err != nil {
+		return nil, err
+	}
+	data.Runtime.Lifetime.LiveMembers = append([]string{}, data.Runtime.Lifetime.PendingMembers...)
+	data.Runtime.Lifetime.PendingMembers = []string{}
+	raw, err = json.Marshal(data)
+	if err != nil {
+		return nil, err
+	}
+	loaded, err := conditions.LoadJSON(raw)
+	if err != nil {
+		return nil, err
+	}
+	return loaded.(*conditions.LinkedCondition), nil
 }

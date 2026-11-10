@@ -35,6 +35,16 @@ func (s *applicationBindingSuite) blob(member string, config conditions.LinkedCo
 	s.Require().NoError(err)
 	stored, err := created.Condition.ToJSON()
 	s.Require().NoError(err)
+	// These fixtures represent an already-delivered persisted graph. Fresh
+	// pending construction is exercised through Prepare/CreateApplication instead.
+	if config.Role == conditions.LinkedCoordinator {
+		var data conditions.LinkedConditionData
+		s.Require().NoError(json.Unmarshal(stored, &data))
+		data.Runtime.Lifetime.LiveMembers = append([]string{}, data.Runtime.Lifetime.PendingMembers...)
+		data.Runtime.Lifetime.PendingMembers = []string{}
+		stored, err = json.Marshal(data)
+		s.Require().NoError(err)
+	}
 	return stored
 }
 

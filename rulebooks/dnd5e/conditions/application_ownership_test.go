@@ -75,7 +75,10 @@ func (s *applicationBindingSuite) TestSelfRecipientAndIndependentPayloadKeepThei
 	ctx, bus := context.Background(), events.NewEventBus()
 	binding := s.bind(sheets, bus)
 	spec := applicationSpec()
-	spec.Recipients = append(spec.Recipients, conditions.RecipientSpec{Ref: refs.Conditions.Dodging().String(), Lifetime: conditions.LifetimeIndependent})
+	spec.Recipients[0].MemberID = "caster"
+	other := spec.Recipients[0]
+	other.MemberID = "one"
+	spec.Recipients = append(spec.Recipients, other, conditions.RecipientSpec{MemberID: "one", Ref: refs.Conditions.Dodging().String(), Lifetime: conditions.LifetimeIndependent})
 	prepared, err := conditions.PrepareApplication(&conditions.PrepareApplicationInput{ID: "new-app", CoordinatorID: "caster",
 		Origin: dndevents.ConditionOrigin{Ref: *refs.Spells.Bless(), EntityID: "caster"}, Spec: spec, Existing: bindingParticipants(sheets)})
 	s.Require().NoError(err)
@@ -83,26 +86,28 @@ func (s *applicationBindingSuite) TestSelfRecipientAndIndependentPayloadKeepThei
 	s.Require().NoError(dndevents.ConditionRemovedTopic.On(bus).Publish(ctx, dndevents.ConditionRemovedEvent{
 		MemberID: old.MemberID, ConditionRef: old.ConditionRef, SourceID: old.SourceID, Reason: "recast",
 	}))
-	var receipts []conditions.DeliveryReceipt
-	for _, delivery := range []struct{ sheet, spec int }{{0, 0}, {1, 0}, {1, 1}} {
-		created, err := conditions.CreateRecipient(&conditions.CreateRecipientInput{Prepared: prepared, SpecIndex: delivery.spec, MemberID: sheets[delivery.sheet].GetID()})
+	coordinator, err := conditions.CreateApplication(&conditions.CreateApplicationInput{Prepared: prepared})
+	s.Require().NoError(err)
+	s.Require().NoError(dndevents.ConditionAppliedTopic.On(bus).Publish(ctx, dndevents.ConditionAppliedEvent{Target: sheets[0], Condition: coordinator.Condition}))
+	var receipts []conditions.RecipientCandidate
+	for _, delivery := range []struct{ sheet, spec int }{{0, 0}, {1, 1}, {1, 2}} {
+		created, err := conditions.CreateRecipient(&conditions.CreateRecipientInput{Prepared: prepared, SpecIndex: delivery.spec})
 		s.Require().NoError(err)
 		s.Require().NoError(dndevents.ConditionAppliedTopic.On(bus).Publish(ctx, dndevents.ConditionAppliedEvent{
 			Target: sheets[delivery.sheet], Source: dndevents.ConditionSourceSpell, Condition: created.Condition,
 		}))
-		receipts = append(receipts, created.Receipt)
+		receipts = append(receipts, created.Candidate)
+		if created.Candidate.Shared {
+			_, err = binding.FinalizeRecipient(ctx, &conditions.FinalizeRecipientInput{ApplicationID: prepared.ID(), Key: created.Candidate.Key, Delivered: true})
+			s.Require().NoError(err)
+		}
 	}
-	sealed, err := conditions.SealApplication(&conditions.SealApplicationInput{Prepared: prepared, Delivered: receipts, Binding: binding})
-	s.Require().NoError(err)
-	s.Require().NoError(dndevents.ConditionAppliedTopic.On(bus).Publish(ctx, dndevents.ConditionAppliedEvent{
-		Target: sheets[0], Source: dndevents.ConditionSourceSpell, Condition: sealed.Condition,
-	}))
 	s.Require().NoError(binding.CheckComplete())
 	self := receipts[0].Address
 	s.Require().NoError(dndevents.ConditionRemovedTopic.On(bus).Publish(ctx, dndevents.ConditionRemovedEvent{
 		MemberID: self.MemberID, ConditionRef: self.ConditionRef, SourceID: self.SourceID, ApplicationID: "new-app", Reason: "consumed",
 	}))
-	owner := sealed.Condition.(*conditions.LinkedCondition)
+	owner := coordinator.Condition.(*conditions.LinkedCondition)
 	s.Require().Len(owner.LinkedApplicationInfo().LiveMembers, 1)
 	s.Require().Len(sheets[0].GetConditions(), 1, "losing self's benefit does not end the remaining recipient")
 	s.Require().NoError(dndevents.TurnEndTopic.On(bus).Publish(ctx, dndevents.TurnEndEvent{SubjectID: "caster"}))

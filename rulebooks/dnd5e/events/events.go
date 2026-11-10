@@ -591,9 +591,12 @@ type HealingAppliedEvent struct {
 
 // ConditionAppliedEvent is published when a condition is applied to an entity
 type ConditionAppliedEvent struct {
-	Target    core.Entity       // Entity receiving the condition
-	Source    ConditionSource   // What caused this condition
-	Condition ConditionBehavior // The condition behavior to apply
+	// ApplicationID tags actual shared delivery, including an adopted payload
+	// whose current codec has no backlink. Unlinked independent delivery leaves it empty.
+	ApplicationID string
+	Target        core.Entity       // Entity receiving the condition
+	Source        ConditionSource   // What caused this condition
+	Condition     ConditionBehavior // The condition behavior to apply
 }
 
 // ConditionRemovedEvent is published when a condition ends.

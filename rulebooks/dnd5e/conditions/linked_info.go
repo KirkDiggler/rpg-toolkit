@@ -15,12 +15,13 @@ import (
 
 // LinkedApplicationInfo exposes copied identity/link facts, not runtime pointers.
 type LinkedApplicationInfo struct {
-	ID          string
-	Role        LinkedRole
-	Owner       dndevents.ConditionAddress
-	MemberKey   string
-	Members     []LinkedMemberBinding
-	LiveMembers []string
+	ID             string
+	Role           LinkedRole
+	Owner          dndevents.ConditionAddress
+	MemberKey      string
+	Members        []LinkedMemberBinding
+	LiveMembers    []string
+	PendingMembers []string
 }
 
 // ConcentrationInfo describes the source held by this coordinator.
@@ -52,7 +53,9 @@ func (c *LinkedCondition) LinkedApplicationInfo() LinkedApplicationInfo {
 		Members: slices.Clone(c.bindings.Members)}
 	if c.role == LinkedCoordinator {
 		info.Owner = c.ConditionAddress()
-		info.LiveMembers = c.lifetime.Snapshot().LiveMembers
+		snapshot := c.lifetime.Snapshot()
+		info.LiveMembers = snapshot.LiveMembers
+		info.PendingMembers = snapshot.PendingMembers
 	} else {
 		info.Owner = *c.bindings.Owner
 	}

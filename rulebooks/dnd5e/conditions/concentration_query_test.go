@@ -5,12 +5,15 @@ package conditions
 
 import (
 	"encoding/json"
+	generic "github.com/KirkDiggler/rpg-toolkit/mechanics/effects"
 
 	dndevents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
 func (s *linkedDataSuite) TestConcentrationQueryUsesMaintenanceAndRefusesTwoClaims() {
 	owner := s.create("caster-a", linkedOwnerConfig())
+	_, err := owner.lifetime.FinalizeMember(generic.FinalizeMemberInput{Key: "recipient", Delivered: true})
+	s.Require().NoError(err)
 	out, err := ConcentrationHeld(&ConcentrationQueryInput{Conditions: []dndevents.ConditionBehavior{owner}})
 	s.Require().NoError(err)
 	s.True(out.Held)

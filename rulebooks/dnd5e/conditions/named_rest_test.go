@@ -20,27 +20,30 @@ func (s *applicationBindingSuite) TestNamedRecipientRestEndsOnlyThatAttachment()
 	spec := applicationSpec()
 	spec.Recipients[0].Ref = refs.Conditions.Blessed().String()
 	spec.Recipients[0].Parts = nil // registry-owned named composition
+	second := spec.Recipients[0]
+	second.MemberID = "two"
+	spec.Recipients = append(spec.Recipients, second)
 	prepared, err := conditions.PrepareApplication(&conditions.PrepareApplicationInput{ID: "named", CoordinatorID: "caster",
 		Origin: dndevents.ConditionOrigin{Ref: *refs.Spells.Bless(), EntityID: "caster"}, Spec: spec, Existing: bindingParticipants(sheets)})
 	s.Require().NoError(err)
 	old, _ := prepared.Replacement()
 	s.Require().NoError(dndevents.ConditionRemovedTopic.On(bus).Publish(ctx, dndevents.ConditionRemovedEvent{MemberID: old.MemberID, ConditionRef: old.ConditionRef, SourceID: old.SourceID, Reason: "recast"}))
-	var receipts []conditions.DeliveryReceipt
-	for _, sheet := range sheets[1:] {
-		created, err := conditions.CreateRecipient(&conditions.CreateRecipientInput{Prepared: prepared, SpecIndex: 0, MemberID: sheet.GetID()})
+	coordinator, err := conditions.CreateApplication(&conditions.CreateApplicationInput{Prepared: prepared})
+	s.Require().NoError(err)
+	s.Require().NoError(dndevents.ConditionAppliedTopic.On(bus).Publish(ctx, dndevents.ConditionAppliedEvent{Target: sheets[0], Condition: coordinator.Condition}))
+	for index, sheet := range sheets[1:] {
+		created, err := conditions.CreateRecipient(&conditions.CreateRecipientInput{Prepared: prepared, SpecIndex: index})
 		s.Require().NoError(err)
 		s.Require().NoError(dndevents.ConditionAppliedTopic.On(bus).Publish(ctx, dndevents.ConditionAppliedEvent{Target: sheet, Condition: created.Condition, Source: dndevents.ConditionSourceSpell}))
-		receipts = append(receipts, created.Receipt)
+		_, err = binding.FinalizeRecipient(ctx, &conditions.FinalizeRecipientInput{ApplicationID: prepared.ID(), Key: created.Candidate.Key, Delivered: true})
+		s.Require().NoError(err)
 	}
-	sealed, err := conditions.SealApplication(&conditions.SealApplicationInput{Prepared: prepared, Delivered: receipts, Binding: binding})
-	s.Require().NoError(err)
-	s.Require().NoError(dndevents.ConditionAppliedTopic.On(bus).Publish(ctx, dndevents.ConditionAppliedEvent{Target: sheets[0], Condition: sealed.Condition, Source: dndevents.ConditionSourceSpell}))
 	s.Require().NoError(binding.CheckComplete())
 	s.Require().NoError(dndevents.RestTopic.On(bus).Publish(ctx, dndevents.RestEvent{CharacterID: "one", RestType: coreResources.ResetShortRest}))
 	s.Empty(sheets[1].GetConditions())
 	s.Require().Len(sheets[2].GetConditions(), 1)
 	s.Require().Len(sheets[0].GetConditions(), 1)
-	s.Require().Len(sealed.Condition.(*conditions.LinkedCondition).LinkedApplicationInfo().LiveMembers, 1)
+	s.Require().Len(coordinator.Condition.(*conditions.LinkedCondition).LinkedApplicationInfo().LiveMembers, 1)
 	s.Require().NoError(binding.CheckComplete())
 	s.Require().NoError(dndevents.RestTopic.On(bus).Publish(ctx, dndevents.RestEvent{CharacterID: "two", RestType: coreResources.ResetLongRest}))
 	s.Empty(sheets[2].GetConditions())

@@ -41,6 +41,7 @@ type ApplicationBinding struct {
 	bus          events.EventBus
 	holders      map[string]bool
 	conditions   map[dndevents.ConditionAddress]dndevents.ConditionBehavior
+	delivered    map[dndevents.ConditionAddress]applicationDelivery
 	owners       map[string]*LinkedCondition
 	owned        map[dndevents.ConditionAddress]linkedOwnership
 	linked       []*LinkedCondition
@@ -58,6 +59,7 @@ func BindApplications(in *BindApplicationsInput) (*ApplicationBinding, error) {
 	}
 	b := &ApplicationBinding{bus: in.Bus, holders: map[string]bool{},
 		conditions: map[dndevents.ConditionAddress]dndevents.ConditionBehavior{},
+		delivered:  map[dndevents.ConditionAddress]applicationDelivery{},
 		owners:     map[string]*LinkedCondition{}, owned: map[dndevents.ConditionAddress]linkedOwnership{}}
 	claims := map[string]bool{}
 	for _, participant := range in.Participants {
@@ -104,6 +106,9 @@ func BindApplications(in *BindApplicationsInput) (*ApplicationBinding, error) {
 	for _, linked := range b.linked {
 		if linked.role != LinkedCoordinator {
 			continue
+		}
+		if err := b.validateCoordinator(linked); err != nil {
+			return nil, err
 		}
 		for _, key := range linked.lifetime.Snapshot().LiveMembers {
 			member, ok := linked.memberBinding(key)
@@ -211,6 +216,7 @@ func (b *ApplicationBinding) onRemoved(ctx context.Context, event dndevents.Cond
 		}
 	}
 	delete(b.conditions, address)
+	delete(b.delivered, address)
 	delete(b.owned, address)
 	if !claimed || claim.owner.lifetime.Snapshot().Phase != generic.LifetimeLive {
 		return nil
@@ -246,6 +252,9 @@ func (b *ApplicationBinding) endCondition(ctx context.Context, request linkedEnd
 func (b *ApplicationBinding) endOwner(ctx context.Context, owner *LinkedCondition, requestor, reason string, ownerFact bool) error {
 	if owner.lifetime.Snapshot().Phase != generic.LifetimeLive {
 		return nil
+	}
+	if err := b.validateCoordinator(owner); err != nil {
+		return err
 	}
 	keys := owner.lifetime.Snapshot().LiveMembers
 	members := make([]LinkedMemberBinding, 0, len(keys))

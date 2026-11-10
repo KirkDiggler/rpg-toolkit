@@ -77,6 +77,10 @@ func (s *linkedDataSuite) load(data LinkedConditionData) (*LinkedCondition, erro
 
 func (s *linkedDataSuite) TestOwnerAndRecipientRoundTripWithoutDuplicatedState() {
 	owner := s.create("caster-a", linkedOwnerConfig())
+	s.Empty(owner.lifetime.Snapshot().LiveMembers)
+	s.Equal([]string{"recipient"}, owner.lifetime.Snapshot().PendingMembers)
+	_, err := owner.lifetime.FinalizeMember(generic.FinalizeMemberInput{Key: "recipient", Delivered: true})
+	s.Require().NoError(err)
 	recipient := s.create("recipient", linkedRecipientConfig())
 	ownerData, recipientData := s.data(owner), s.data(recipient)
 	s.Require().NotNil(ownerData.Runtime.Lifetime)

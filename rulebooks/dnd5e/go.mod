@@ -10,7 +10,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.12.0
 	github.com/KirkDiggler/rpg-toolkit/dice v0.3.2
 	github.com/KirkDiggler/rpg-toolkit/events v0.6.3
-	github.com/KirkDiggler/rpg-toolkit/mechanics/effects v0.4.1-0.20261109174434-3893625c42b2
+	github.com/KirkDiggler/rpg-toolkit/mechanics/effects v0.4.1-0.20261110010658-de822f5e7c40
 	github.com/KirkDiggler/rpg-toolkit/mechanics/resources v0.3.1
 	github.com/KirkDiggler/rpg-toolkit/npc v0.2.0
 	github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1
