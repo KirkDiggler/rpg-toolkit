@@ -19,6 +19,8 @@ Slice [rpg-project#922](https://github.com/KirkDiggler/rpg-project/issues/922) o
 - Only one castle route depended on a failed troupe claim teaching `party-recognized`; every other castle test passed on the new content unchanged — [rpg-project#922](https://github.com/KirkDiggler/rpg-project/issues/922).
 - The admitted hero still crosses gate-1's post on `troupe-admitted` after a warned guest claim, so the post's pass holds through the interaction — [rpg-project#922](https://github.com/KirkDiggler/rpg-project/issues/922).
 
+- The two entrance routes run the whole castle gate with a reload, which puts them over the CI test budget (14.4 s and 8.1 s on CI, 5.2 s and 3.3 s locally); they are allowlisted with that reason in `.github/testbudget/rulebooks/dnd5e/encounter.allow`, sized by the castle rather than the case — [toolkit #2369](https://github.com/KirkDiggler/rpg-toolkit/pull/2369).
+
 ## Mistaken
 
 - none observed — [rpg-project#922](https://github.com/KirkDiggler/rpg-project/issues/922).
