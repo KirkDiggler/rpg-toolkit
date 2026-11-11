@@ -762,7 +762,9 @@ func Example_theGatehouseActs() {
 	// speak        act 1        alice to captain, "stand-aside" (intimidation): rolled 1d20+3 = 17, beat 14; captain answers "…go on, then. I saw nothing."
 	// speak        perception   alice hears voice
 	// speak        clock        tick 2
+	// speak        state        captain: ready -> cowed (stood aside)
 	// speak        state        gate-1: posted -> cowed (stood aside)
+	// speak        state        gate-2: ready -> cowed (stood aside)
 	// time         table_answer captain answers behavior/6:policy/time with "hold", no roll
 	// time         table_answer gate-1 answers behavior/6:policy/cowed with "toward", rolled 1 of 50
 	// move         act 1        gate-1 walks (-4,7) (-5,8)

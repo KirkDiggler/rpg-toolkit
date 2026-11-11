@@ -77,7 +77,7 @@ func (c *freeRoamCastle) setTheGatePostInTheRecord(t *testing.T, against encount
 // back, so what she knows of the gate is what she sees from inside.
 func insideTheGate(t *testing.T, gateState string, lock *encounter.LockData) *freeRoamCastle {
 	t.Helper()
-	c := openTheCastleForTwo(t, 18)
+	c := openTheGateWithGateOneAlone(t, 18)
 	c.setTheGateInTheRecord(t, gateState, lock)
 	c.placeInTheRecord(t, "alice", pastTheCastleGate)
 	require.Equal(t, pastTheCastleGate, c.where(t, "alice"), "precondition: alice stands in the courtyard past the gate")
@@ -94,7 +94,7 @@ func insideTheGate(t *testing.T, gateState string, lock *encounter.LockData) *fr
 // copied as the composition answers it. His ally sees no hold and so none of
 // its settings.
 func TestCastleTheGateGuardIsSeenToCheckArrivals(t *testing.T) {
-	c := openTheCastleForTwo(t, 18)
+	c := openTheGateWithGateOneAlone(t, 18)
 	walked := c.move(t, c.walkInto(t, besideTheCastleGate))
 	require.Equal(t, session.MovementCompleted, walked.Status, "precondition: alice beside the gate: %s", walked.StopReason)
 	requireOnHisPost(t, c, "precondition: gate-1 is on his post")
@@ -127,7 +127,7 @@ func TestCastleTheGateGuardIsSeenToCheckArrivals(t *testing.T) {
 // her into the courtyard past him.
 func TestCastleTheTroupeIsToldNoHold(t *testing.T) {
 	// 12 + 3 beats the stranger's 5 and the captain's 13.
-	c := openTheCastleForTwo(t, 12, 12, 18)
+	c := openTheGateWithGateOneAlone(t, 12, 12, 18)
 	ctx := context.Background()
 	walkBeside := func(subject encounter.MemberID) {
 		if path := c.walkInto(t, memberOf(t, c.world(t), subject).Position); len(path) > 1 {
