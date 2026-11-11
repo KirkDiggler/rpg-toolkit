@@ -311,3 +311,34 @@ func TestALineGrantIsRefusedWhereItCannotLand(t *testing.T) {
 		require.NoError(t, err)
 	})
 }
+
+func TestARegrantFromAnotherSourceKeepsTheRecord(t *testing.T) {
+	// A guard who goes in on the topic, and would go on again were it to
+	// land twice.
+	r := topicRecipe(t)
+	held := &machine.Guard{Fact: &machine.FactLeaf{Name: MachineTopic(string(admittedTopic)), Op: machine.OpEq, Value: true}}
+	r.States["inside"] = machine.State{Transitions: []machine.Transition{
+		{On: beatTopic, When: held, To: "twice", Reason: "heard it again"}, pickTime,
+	}}
+	r.States["twice"] = machine.State{Transitions: []machine.Transition{pickTime}}
+	g := gateGuard(t, postedGuard, holdNorthWest)
+	g.Behaviors.Instances[0].Instance.Recipe = *r
+	enc, err := NewEncounter(recognisingSetup(t, true, g))
+	require.NoError(t, err)
+	admit(t, enc, postedGuard)
+	require.NoError(t, enc.spendWorldAction("alice"))
+	require.Equal(t, "inside", stateOf(enc, postedGuard), "precondition: the admission woke him")
+	first, err := enc.intelLog.AboutOn(sightMember(postedGuard), sightMember("alice"), perception.Topic(admittedTopic))
+	require.NoError(t, err)
+
+	// The hero vouches: the same topic about the same subject, another source.
+	_, err = say(t, enc, "alice", postedGuard, "vouch", true)
+	require.NoError(t, err)
+	require.NoError(t, enc.spendWorldAction("alice"))
+	again, err := enc.intelLog.AboutOn(sightMember(postedGuard), sightMember("alice"), perception.Topic(admittedTopic))
+	require.NoError(t, err)
+	require.Equal(t, first.Observed, again.Observed, "when he first recognised her is kept")
+	require.Equal(t, first.Payload, again.Payload, "and the record he had")
+	require.Greater(t, again.Confirmed, first.Confirmed, "the vouch confirms it")
+	require.Equal(t, "inside", stateOf(enc, postedGuard), "the topic wake does not fire a second time")
+}

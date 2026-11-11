@@ -48,16 +48,20 @@ const straggler = encounter.MemberID("straggler")
 // walk would otherwise be on each test's clock — and loaded back for every
 // test that starts from it.
 var admittedScene struct {
-	once     sync.Once
-	err      error
-	blob     []byte
-	compiled dungeonspec.Compiled
-	host     castleHost
+	once sync.Once
+	err  error
+	blob []byte
+	// inTheHall is the same run once the hero has followed the captain into
+	// the hall and stands beside him.
+	inTheHall []byte
+	compiled  dungeonspec.Compiled
+	host      castleHost
 }
 
 // admittedSceneTests are the tests that start from the admitted gate.
 var admittedSceneTests = []string{
 	"TestMadKingTheCaptainGoesIn", "TestMadKingAStragglerIsVouchedFor", "TestMadKingAStragglerMakesTheirOwnCase",
+	"TestMadKingTheCaptainsLineGrantsNothingAgain",
 }
 
 // TestMain builds the admitted gate's scene before any test runs, when the
@@ -126,7 +130,10 @@ func buildTheAdmittedScene() {
 	s.backOnHisPost()
 	blob, err := json.Marshal(s.enc.ToData())
 	require.NoError(tb, err)
-	admittedScene.blob, admittedScene.compiled, admittedScene.host = blob, s.compiled, s.host
+	s.walkTo(s.at(kingCaptain))
+	inTheHall, err := json.Marshal(s.enc.ToData())
+	require.NoError(tb, err)
+	admittedScene.blob, admittedScene.inTheHall, admittedScene.compiled, admittedScene.host = blob, inTheHall, s.compiled, s.host
 }
 
 // admittedWithAStraggler loads the admitted scene into a fresh run.
@@ -134,8 +141,14 @@ func admittedWithAStraggler(t *testing.T) *kingScene {
 	t.Helper()
 	admittedScene.once.Do(buildTheAdmittedScene)
 	require.NoError(t, admittedScene.err)
+	return loadTheScene(t, admittedScene.blob)
+}
+
+// loadTheScene loads one stored moment of the admitted scene.
+func loadTheScene(t *testing.T, blob []byte) *kingScene {
+	t.Helper()
 	var data encounter.EncounterData
-	require.NoError(t, json.Unmarshal(admittedScene.blob, &data))
+	require.NoError(t, json.Unmarshal(blob, &data))
 	s := &kingScene{
 		t: t, compiled: admittedScene.compiled, host: admittedScene.host,
 		strikes: &[]cellsStrike{}, standing: &castleStanding{down: map[encounter.MemberID]bool{}},
@@ -220,4 +233,21 @@ func TestMadKingAStragglerMakesTheirOwnCase(t *testing.T) {
 	require.NoError(t, s.speakAs(straggler, kingGate1, stragglerLine, true))
 	require.True(t, s.recognizes(kingGate1, straggler), "a won case admits the straggler")
 	require.True(t, s.recognizes(kingGate2, straggler), "and gate-2 heard it")
+}
+
+// TestMadKingTheCaptainsLineGrantsNothingAgain: the captain's line for whom
+// he recognises, said to him in the hall, writes no recognition and no beat.
+// A recognised-only line's answer does not re-grant (rpg-project#928).
+func TestMadKingTheCaptainsLineGrantsNothingAgain(t *testing.T) {
+	t.Parallel()
+	admittedScene.once.Do(buildTheAdmittedScene)
+	require.NoError(t, admittedScene.err)
+	s := loadTheScene(t, admittedScene.inTheHall)
+	region, ok := s.enc.RegionAt(s.at(hero))
+	require.True(t, ok)
+	require.Equal(t, encounter.RegionID("region-great-hall"), region, "precondition: the hero followed him into the hall")
+	granted := s.recognitionBeats()
+	require.NoError(t, s.speakAs(hero, kingCaptain, theWayIn, true), "the captain answers the line in the hall")
+	require.Equal(t, granted, s.recognitionBeats(), "speaking on grants no recognition and writes no beat")
+	require.True(t, s.recognizes(kingCaptain, hero), "and he still recognises the hero")
 }

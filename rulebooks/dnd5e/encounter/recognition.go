@@ -489,9 +489,18 @@ func (e *Encounter) holdTopic(
 	if err != nil {
 		return fmt.Errorf("recognition payload: %w", err)
 	}
+	// A RECORD ALREADY HELD IS KEPT (rpg-project#929): whatever source grants
+	// it again — the admission, then a vouch — the holder keeps the record he
+	// has, its first payload with it, so only a confirmation lands and when
+	// he first recognised the subject survives. The beat still says which
+	// line or outcome granted this time.
 	reports := make([]perception.Presence, 0, len(subjects))
 	for _, s := range subjects {
-		reports = append(reports, perception.Presence{ID: sightMember(s), Payload: payload})
+		report := perception.Presence{ID: sightMember(s), Payload: payload}
+		if held, err := e.intelLog.AboutOn(sightMember(holder), sightMember(s), perception.Topic(topic)); err == nil {
+			report.Payload = held.Payload
+		}
+		reports = append(reports, report)
 	}
 	reported, err := e.intelLog.Report(perception.ReportInput{
 		Observer: sightMember(holder), Channel: perception.Channel(channel), Topic: perception.Topic(topic),
