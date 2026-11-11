@@ -435,6 +435,7 @@ func TestMadKingScriptTheTroupeNeedsTheFeast(t *testing.T) {
 	// room comes civil (piece 7's other half; its test is the fight's).
 	s.onHisPost(kingGate1, "the troupe does not cow him")
 	s.stepTo(besideTheCrossing)
+	s.backOnHisPost()
 	s.open(kingGateDoor)
 	require.Equal(t, beneathTheGate, s.at(kingGate1), "he stands his post while the troupe opens the gate")
 	s.crosses(pastTheGate, "the troupe crosses by its pass")

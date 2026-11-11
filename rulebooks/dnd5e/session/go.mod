@@ -8,14 +8,14 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/mechanics/effects v0.4.1-0.20261110010658-de822f5e7c40
 	github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.23.0
 	github.com/KirkDiggler/rpg-toolkit/mind/machine v0.2.0
-	github.com/KirkDiggler/rpg-toolkit/mind/perception v0.3.0
+	github.com/KirkDiggler/rpg-toolkit/mind/perception v0.4.0
 	github.com/KirkDiggler/rpg-toolkit/npc v0.2.0
-	github.com/KirkDiggler/rpg-toolkit/play/intel v0.4.0
+	github.com/KirkDiggler/rpg-toolkit/play/intel v0.5.0
 	github.com/KirkDiggler/rpg-toolkit/play/interrupt v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.4.0
 	github.com/KirkDiggler/rpg-toolkit/rpgerr v0.1.1
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.214.1-0.20261110051122-76aeebcbead8
-	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.196.0
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e v0.214.1-0.20261111203919-87602d8f5c0c
+	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter v0.197.0
 	github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution v0.75.1-0.20261110055055-6618456dad36
 	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.16.1
 	github.com/cyberphone/json-canonicalization v0.0.0-20241213102144-19d51d7fe467

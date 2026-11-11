@@ -434,9 +434,16 @@ func (s *kingScene) walkTo(to spatial.Position) {
 	}
 }
 
-// open opens a door the hero is standing within reach of.
+// open opens a door the hero is standing within reach of, or finds it open:
+// after an admission the captain walks in through the gate and the hall door
+// (rpg-project#929), and leaves them standing open.
 func (s *kingScene) open(door encounter.DoorID) {
 	s.t.Helper()
+	for _, d := range s.enc.ToData().Doors {
+		if d.ID == door && d.State == "open" {
+			return
+		}
+	}
 	_, err := s.enc.OpenDoor(&encounter.OpenDoorInput{Door: door, Actor: hero})
 	require.NoError(s.t, err, "the hero reaches %s", door)
 }

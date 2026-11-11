@@ -183,3 +183,18 @@ func TestMadKingThePostSaysWhyItStays(t *testing.T) {
 		require.Equal(t, "already there", why, "and each says why he stayed")
 	}
 }
+
+// backOnHisPost lets rounds pass until gate-1 stands beneath the gate again.
+// The captain going in after an admission opens the gate and the hall door
+// (rpg-project#929); gate-1 hears the gate and is drawn a cell off his post
+// for a round before he walks back.
+func (s *kingScene) backOnHisPost() {
+	s.t.Helper()
+	for range 4 {
+		if s.at(kingGate1) == beneathTheGate {
+			return
+		}
+		s.aRoundPasses()
+	}
+	require.Equal(s.t, beneathTheGate, s.at(kingGate1), "gate-1 walks back to his post")
+}

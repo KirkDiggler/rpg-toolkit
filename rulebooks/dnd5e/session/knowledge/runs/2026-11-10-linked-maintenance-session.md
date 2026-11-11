@@ -13,6 +13,7 @@
 
 ## Found
 
+- Release preparation merges main's recognition adoption on top, preserving encounter v0.197.0, perception v0.4.0 and intel v0.5.0 while adopting the independently closed root source-identity fix. Only dependency files conflicted; full session race/vet/lint passes on the combined graph. These remain development pins until provider tags land — [authorized merge-out](https://github.com/KirkDiggler/rpg-project/issues/706#issuecomment-6808119565).
 - Removing the caller application identity or dropping dirty character persistence makes the real session window/reload regression fail; exact restoration passes. The test distinguishes provider behavior, host persistence and fresh-manager continuation from browser acceptance — [S14](https://github.com/KirkDiggler/rpg-project/issues/904).
 - A prior world-clock rows fixture had its Bless cleared by Launch's long rest, so it passed without the condition it claimed to exercise. Restoring the real precondition exposes the already-supported world-priced attack row; unrelated declarations still carry no attack rows — [S14](https://github.com/KirkDiggler/rpg-project/issues/904).
 - The landing-only structural test rejected a second dirty-peer save path in DeathSave. The verb now uses the existing landing to save, record and commit; no structural exemption was added — [S14](https://github.com/KirkDiggler/rpg-project/issues/904).

@@ -372,7 +372,7 @@ func roomBehaviorInput(s *SingleRoomSpec, id string) (behaviorLowering, error) {
 	return bindBehaviorSource(behaviorSourceInput{Definitions: s.BehaviorDefinitions, Bindings: uses, Body: body,
 		Blocking: blocks, Posts: posts, Path: "room.room.monsterBindings." + id, Key: s.Key,
 		Cells: roomCells(&s.Room.Gameplay), Doors: roomDoorIDs(&s.Room.Gameplay), Vocabulary: vocab,
-		Topics: grantedTopicsOf(s.Interactions)})
+		Topics: grantedTopicsOf(s)})
 }
 
 func roomBehaviorVocabulary(s *SingleRoomSpec) (machine.Vocabulary, error) {
@@ -398,7 +398,13 @@ func roomBehaviorVocabulary(s *SingleRoomSpec) (machine.Vocabulary, error) {
 			clocks = append(clocks, behaviorClockNames(node)...)
 		}
 	}
-	vocab, err := encounter.BehaviorVocabulary(&encounter.BehaviorVocabularyInput{Facts: facts, Clocks: clocks})
+	// A GUARD MAY READ A TOPIC HELD (rpg-project#929), `topic:<id>`, for any
+	// topic the document grants.
+	var topics []encounter.TopicID
+	for _, topic := range sortedKeys(grantedTopicsOf(s)) {
+		topics = append(topics, encounter.TopicID(topic))
+	}
+	vocab, err := encounter.BehaviorVocabulary(&encounter.BehaviorVocabularyInput{Facts: facts, Clocks: clocks, Topics: topics})
 	if err != nil {
 		return machine.Vocabulary{}, err
 	}
@@ -440,7 +446,7 @@ func behaviorSourceValues(s *SingleRoomSpec, add errSink) {
 		_, err := bindBehaviorSource(behaviorSourceInput{Definitions: s.BehaviorDefinitions, Bindings: faction.Behaviors,
 			Body: faction.BehaviorState, Blocking: faction.BlockingStates, Posts: faction.Posts,
 			Path: path, Key: s.Key, Cells: roomCells(&s.Room.Gameplay), Doors: roomDoorIDs(&s.Room.Gameplay), Vocabulary: vocab,
-			Topics: grantedTopicsOf(s.Interactions)})
+			Topics: grantedTopicsOf(s)})
 		report(err)
 	}
 	for _, actor := range s.Room.Gameplay.MonsterDeclarations {

@@ -88,17 +88,17 @@ func injectHolding(
 	stored, err := encounters.GetEncounter(context.Background(), testSession)
 	require.NoError(t, err)
 	if stored.Perception.Intel.Holdings == nil {
-		stored.Perception.Intel.Holdings = map[core.EntityID]map[intel.Subject]intel.HoldingData{}
+		stored.Perception.Intel.Holdings = map[core.EntityID]map[intel.Subject]map[intel.Topic]intel.HoldingData{}
 	}
 	obs := core.EntityID("member|alice")
 	if stored.Perception.Intel.Holdings[obs] == nil {
-		stored.Perception.Intel.Holdings[obs] = map[intel.Subject]intel.HoldingData{}
+		stored.Perception.Intel.Holdings[obs] = map[intel.Subject]map[intel.Topic]intel.HoldingData{}
 	}
-	stored.Perception.Intel.Holdings[obs][intel.Subject("member|"+subject)] = intel.HoldingData{
+	stored.Perception.Intel.Holdings[obs][intel.Subject("member|"+subject)] = map[intel.Topic]intel.HoldingData{"": {
 		Channel:    intel.Sight,
 		CurrentVia: currentVia,
 		Payload:    payload,
-	}
+	}}
 	require.NoError(t, encounters.SaveEncounter(context.Background(), testSession, stored))
 }
 
