@@ -179,7 +179,7 @@ func playTheGatehouse() []beat {
 		beats = append(beats, beat{label: label, acts: append([]session.Act(nil), g.live.acts...)})
 	}
 	standAside := func() error {
-		_, err := g.mgr.Speak(ctx, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "stand-aside"})
+		_, err := speakAsOffered(ctx, g.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "stand-aside"})
 		return err
 	}
 	walkToward := func(anchor func(*encounter.Encounter) spatial.Position, budget int) func() error {
@@ -281,7 +281,7 @@ func playTheTroupe() []beat {
 	}
 	speak := func(target, option string) func() error {
 		return func() error {
-			_, err := g.mgr.Speak(ctx, &session.SpeakInput{Session: "sess", Member: "alice", Target: target, OptionID: option})
+			_, err := speakAsOffered(ctx, g.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: target, OptionID: option})
 			return err
 		}
 	}

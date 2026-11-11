@@ -764,7 +764,7 @@ func (m *Manager) End(ctx context.Context, in *EndInput) (*EndOutput, error) {
 	}
 	defer release()
 
-	scope, err := m.openForChange(ctx, "end", in.Session)
+	scope, err := m.openForChangeBy(ctx, "end", in.Session, anyWaitingRoll)
 	if err != nil {
 		return nil, fmt.Errorf("end: %w", err)
 	}
@@ -976,6 +976,62 @@ func (m *Manager) openForChange(
 	return scope, nil
 }
 
+// anyWaitingRoll is the actor [Manager.openForChangeBy] is handed by a verb
+// that acts on the whole table rather than one member — a rest, which
+// passes everyone's time, and End and Dissolve, which close the run or a
+// member's part in it under a question nobody could then answer — so it
+// waits on every waiting roll, not on one member's.
+const anyWaitingRoll = ""
+
+// openForChangeBy is [Manager.openForChange] for a verb one member acts in,
+// refused while THAT MEMBER'S OWN ROLL WAITS (rpg-project#924).
+//
+// A waiting Speak check in free roam does not freeze the table
+// ([holdsTheTable]), so the freeze no longer stops its speaker from acting
+// on. While their roll waits a speaker may WALK — [Manager.Move] opens
+// through openForChange, and a walk out of reach lets the line go
+// ([closeAbandonedLines]) — answer it ([Manager.React]), and leave
+// ([Manager.Exit], which drops the hold). Every other verb of theirs is
+// refused [ErrWindowOpen], naming their waiting window: a second checked
+// line, an Unlock, a swing or a cast could each pose a second question to a
+// member already being asked one, and an action taken between the roll and
+// its verdict is an action taken inside somebody's decision. A verb that
+// moves the table's time (a rest) passes [anyWaitingRoll] and waits on every
+// waiting roll, as do End and Dissolve.
+func (m *Manager) openForChangeBy(ctx context.Context, verb, sessionID, actor string) (*writeScope, error) {
+	scope, err := m.openForChange(ctx, verb, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if err := scope.rollWaitsOn(actor); err != nil {
+		return nil, err
+	}
+	return scope, nil
+}
+
+// rollWaitsOn reports the open windows asking actor — every open window for
+// [anyWaitingRoll] — as a [WindowOpenError], or nil when none is. Called
+// after [writeScope.frozen] passed, so every window it can find is a waiting
+// line that holds no table.
+func (s *writeScope) rollWaitsOn(actor string) error {
+	open, err := s.ledger.Open()
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidSession, err)
+	}
+	detail := &WindowOpenError{}
+	for _, w := range open {
+		if actor != anyWaitingRoll && string(w.Audience) != actor {
+			continue
+		}
+		detail.Windows = append(detail.Windows, windowIDString(w.ID))
+		detail.Audiences = append(detail.Audiences, string(w.Audience))
+	}
+	if len(detail.Windows) == 0 {
+		return nil
+	}
+	return detail
+}
+
 // openAct opens this verb's act on the scope's encounter: verb minted when
 // act is empty, act (`<verb>:<id>`) reopened otherwise. A scope holds at
 // most one act of its own, which commit closes.
@@ -1003,6 +1059,9 @@ func (s *writeScope) frozen() error {
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidSession, err)
 	}
+	// A WAITING LINE IN FREE ROAM HOLDS ITS CONVERSATION, NOT THE TABLE
+	// (rpg-project#924, [holdsTheTable]).
+	open = tableHolders(s.enc, open)
 	if len(open) == 0 {
 		return nil
 	}
@@ -1421,6 +1480,13 @@ func (m *Manager) commitPace(ctx context.Context, scope *writeScope) (SaveReport
 // final closes the act and, under the fence, marks the verb's save as landed
 // (checkpointFence.saved); a pace commit does neither.
 func (m *Manager) commitAt(ctx context.Context, scope *writeScope, final bool) (SaveReport, DeliveryReport, error) {
+	// A WINDOW NEVER OUTLIVES THE LINE IT ASKS ABOUT (rpg-project#924): the
+	// verb whose step, strike or exit made the encounter release a waiting
+	// line's hold closes that line's window in the same save.
+	if err := closeAbandonedLines(scope); err != nil {
+		report := SaveReport{Written: append([]string(nil), scope.written...)}
+		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", err)
+	}
 	from := scope.deltaFrom()
 	settled, err := scope.enc.Settlement(&encounter.SettlementInput{FromSeq: from})
 	if err != nil {

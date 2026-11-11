@@ -124,7 +124,7 @@ func TestCastleTheGuardHoldsTheGate(t *testing.T) {
 	if toCaptain := c.walkInto(t, memberOf(t, c.world(t), "captain").Position); len(toCaptain) > 1 {
 		c.move(t, toCaptain[:len(toCaptain)-1])
 	}
-	_, err := c.mgr.Speak(context.Background(), &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "stand-aside"})
+	_, err := speakAsOffered(context.Background(), c.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "stand-aside"})
 	require.NoError(t, err)
 	require.Equal(t, "cowed", stateOf(t, c.world(t), "gate-1"), "he stood aside in the round he learned it")
 

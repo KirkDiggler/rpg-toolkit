@@ -239,7 +239,7 @@ func TestCastleABystanderListensIn(t *testing.T) {
 	require.Equal(t, theCaptainsHail, heard[0].body.Say)
 
 	greeted := c.play(t, "alice greets the captain", func() error {
-		_, err := c.mgr.Speak(context.Background(), &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "greet"})
+		_, err := speakAsOffered(context.Background(), c.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "greet"})
 		return err
 	})
 	spoken := where[session.SpeakAct](greeted.to("cleric"), func(s session.SpeakAct) bool { return s.By == aliceParty && s.To == captainParty })

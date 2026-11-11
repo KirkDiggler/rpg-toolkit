@@ -44,6 +44,10 @@ var recordOnly = map[string]bool{
 	encounter.BeatInteraction:       true,
 	encounter.BeatAddressed:         true,
 	encounter.BeatAddressEnded:      true,
+	// A line held or let go while its speaker decides on their roll
+	// (rpg-project#924). The panel reads the hold off the offer
+	// ([SpeakOptionRow.Pending]); the beat is the record's.
+	encounter.BeatInteractionHeld: true,
 }
 
 // familyOf is a beat name's family, and false for a beat with none — a

@@ -831,6 +831,12 @@ func translate(err error) error {
 		// the composition's — a resumed line whose fact was unlearned — and
 		// answered with the same word the seam's own read gives.
 		return fmt.Errorf("%w", ErrNoOption)
+	case errors.Is(err, encounter.ErrStaleOption):
+		// A reply from an older revision of the conversation (rpg-project#924).
+		return fmt.Errorf("%w", ErrStaleOption)
+	case errors.Is(err, encounter.ErrReserved):
+		// A line pending on somebody's waiting roll (rpg-project#924).
+		return fmt.Errorf("%w", ErrLineReserved)
 	case errors.Is(err, encounter.ErrTurnPaused):
 		// The composition refusing a verb because a driven turn is stopped
 		// mid-walk waiting on an answer. This seam's own word for that is

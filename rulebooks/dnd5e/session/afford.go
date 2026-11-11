@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
@@ -625,7 +626,16 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 	// ErrWindowOpen at its own door. A world-clock member has no such verbs to
 	// mark unavailable — the economy never applied to them — so their frozen
 	// panel is the window alone.
-	if len(open) > 0 {
+	//
+	// A WAITING LINE IN FREE ROAM DOES NOT FREEZE (rpg-project#924,
+	// [holdsTheTable]): everybody else gets the whole panel with the held
+	// lines pending. Its SPEAKER gets the frozen panel — their REACT row and
+	// every other row blocked — because every verb of theirs but a walk is
+	// refused while their roll waits ([Manager.openForChangeBy]), and a walk
+	// in free roam is the floor click, never a row.
+	if len(tableHolders(enc, open)) > 0 || slices.ContainsFunc(open, func(w interrupt.Window) bool {
+		return string(w.Audience) == in.Member
+	}) {
 		return affordWhileFrozen(in.Session, in.Member, open, ClockKind(clock.Kind))
 	}
 

@@ -64,7 +64,7 @@ func TestCastleGreetingTheCaptainIsFreeAndAThreatPaysTheRound(t *testing.T) {
 	}
 
 	greet := c.play(t, "alice greets the captain", func() error {
-		_, err := c.mgr.Speak(ctx, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "greet"})
+		_, err := speakAsOffered(ctx, c.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "greet"})
 		return err
 	})
 	line := only[session.SpeakAct](t, greet.to("alice"))
@@ -76,7 +76,7 @@ func TestCastleGreetingTheCaptainIsFreeAndAThreatPaysTheRound(t *testing.T) {
 	assert.Nil(t, storedData(t, c.characters, "alice").ActionEconomy, "nothing was lent her sheet")
 
 	threat := c.play(t, "alice tells the captain to stand aside", func() error {
-		_, err := c.mgr.Speak(ctx, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "stand-aside"})
+		_, err := speakAsOffered(ctx, c.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "stand-aside"})
 		return err
 	})
 	told := only[session.SpeakAct](t, threat.to("alice"))

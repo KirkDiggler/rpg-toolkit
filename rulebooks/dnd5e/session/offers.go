@@ -897,13 +897,15 @@ type speakMenu struct {
 type speakLine struct {
 	target string
 	prop   string
-	option encounter.Option
+	option encounter.OfferedOption
 }
 
 // projectRows is the menu as the seam's exported rows. Non-nil, so a row
 // with nothing on it says so with an empty list.
 //
-// EVERY LISTED LINE IS AVAILABLE. A line whose `requires` the speaker does
+// EVERY LISTED LINE IS AVAILABLE BUT A PENDING ONE (rpg-project#924), which
+// the composition says, verbatim with its interaction and revision, and this
+// seam never recomputes. A line whose `requires` the speaker does
 // not meet is not listed at all — listing it unavailable would confirm a line
 // the author hid behind a fact (R9) — and a creature that cannot see the
 // speaker is not a target. Whether the speaker can pay is the declaration's
@@ -911,11 +913,19 @@ type speakLine struct {
 func (m speakMenu) projectRows() []SpeakOptionRow {
 	out := make([]SpeakOptionRow, 0, len(m.lines))
 	for _, l := range m.lines {
-		out = append(out, SpeakOptionRow{
+		row := SpeakOptionRow{
 			Target: l.target, Prop: l.prop,
 			OptionID: l.option.ID, Line: l.option.Say,
-			Available: true,
-		})
+			Available:   !l.option.Pending,
+			Interaction: string(l.option.Interaction),
+			Revision:    l.option.Revision,
+			Pending:     l.option.Pending,
+			PendingOn:   string(l.option.PendingOn),
+		}
+		if l.option.Pending {
+			row.Why = &Shortfall{Reason: ShortfallLineReserved, Text: "this line waits on somebody's roll"}
+		}
+		out = append(out, row)
 	}
 	return out
 }

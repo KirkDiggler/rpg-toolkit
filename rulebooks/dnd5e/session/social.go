@@ -57,6 +57,10 @@ type speakLanding struct {
 	Prop     encounter.PropID
 	OptionID string
 
+	// Revision is the interaction revision the line was offered at — or,
+	// for a resumed line, the one it was reserved at (rpg-project#924).
+	Revision uint64
+
 	// Skill is the applied route's ability — what the composition decides
 	// the deed by (R3) and what the `spoke` beat reports.
 	Skill string
@@ -77,7 +81,7 @@ type speakLanding struct {
 func (m *Manager) landSpoken(ctx context.Context, enc *encounter.Encounter, in *speakLanding) (*encounter.SpeakOutput, error) {
 	return enc.Speak(ctx, &encounter.SpeakInput{
 		Actor: in.Actor, Target: in.Target, Prop: in.Prop,
-		OptionID: in.OptionID, Skill: in.Skill,
+		OptionID: in.OptionID, Revision: in.Revision, Skill: in.Skill,
 		// THE INTERACTION REACH, on every line: the composition's zero
 		// means adjacent, and the menu was read within this reach.
 		Range:  InteractionReach,
@@ -113,7 +117,7 @@ func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, erro
 		return nil, fmt.Errorf("%s: no line named: %w", VerbSpeak, ErrNoOption)
 	}
 
-	scope, err := m.openForChange(ctx, string(VerbSpeak), in.Session)
+	scope, err := m.openForChangeBy(ctx, string(VerbSpeak), in.Session, member)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
 	}
@@ -142,7 +146,7 @@ func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, erro
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
 	}
-	idx := slices.IndexFunc(lines, func(o encounter.Option) bool { return o.ID == in.OptionID })
+	idx := slices.IndexFunc(lines, func(o encounter.OfferedOption) bool { return o.ID == in.OptionID })
 	if idx < 0 {
 		return nil, fmt.Errorf("%s: %q is not a line this speaker is offered: %w", VerbSpeak, in.OptionID, ErrNoOption)
 	}
@@ -166,6 +170,18 @@ func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, erro
 	// way to being told so. The composition asks again at its own door.
 	if err := refuseSpeakOutOfReach(scope.enc, member, in.Target, in.Prop); err != nil {
 		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
+	}
+	// THE COMPOSITION'S REPLY DOOR, LAST BEFORE THE PRICE (rpg-project#924):
+	// the one door its Speak and Reserve ask, read-only. It adds the two
+	// refusals only the composition can judge — a reply at an older
+	// revision of the conversation (ErrStaleOption) and a line pending on
+	// somebody's waiting roll (ErrLineReserved) — so either one spends
+	// nothing, rolls nothing and records nothing.
+	if _, err := scope.enc.ChooseOption(&encounter.ChooseOptionInput{
+		Actor: encounter.MemberID(member), Target: encounter.MemberID(in.Target), Prop: encounter.PropID(in.Prop),
+		OptionID: in.OptionID, Revision: in.Revision, Range: InteractionReach,
+	}); err != nil {
+		return nil, fmt.Errorf("%s: %w", VerbSpeak, translate(err))
 	}
 
 	// A PLAIN LINE IS FREE ON BOTH CLOCKS (rpg-project#785 R5: "the check is
@@ -215,6 +231,7 @@ func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, erro
 		Target:      encounter.MemberID(in.Target),
 		Prop:        encounter.PropID(in.Prop),
 		OptionID:    in.OptionID,
+		Revision:    in.Revision,
 		Skill:       verdict.Applied.Ability,
 		Beaten:      verdict.Beaten,
 		DC:          verdict.Applied.DC,
@@ -252,6 +269,7 @@ func (m *Manager) speakPlain(ctx context.Context, scope *writeScope, in *SpeakIn
 		Target:   encounter.MemberID(in.Target),
 		Prop:     encounter.PropID(in.Prop),
 		OptionID: in.OptionID,
+		Revision: in.Revision,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", VerbSpeak, translate(err))
@@ -328,7 +346,7 @@ func refuseSpeakOutOfReach(enc *encounter.Encounter, member, target, prop string
 //
 // A prop is asked under the probe law: one this speaker cannot be shown is
 // ErrNoProp, exactly as an id that names nothing.
-func linesOffered(enc *encounter.Encounter, member, target, prop string) ([]encounter.Option, error) {
+func linesOffered(enc *encounter.Encounter, member, target, prop string) ([]encounter.OfferedOption, error) {
 	if prop != "" {
 		lines, err := enc.PropOptionsFor(encounter.MemberID(member), encounter.PropID(prop))
 		if err != nil {
@@ -402,6 +420,26 @@ func (m *Manager) poseSocialWindow(
 
 	offer := ReactionRef{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}
 	story := windowStory{Kind: storyCheck, Target: in.Target, Prop: in.Prop, Verb: VerbSpeak, Option: in.OptionID}
+
+	// THE WAITING LINE HOLDS ITS CONVERSATION (rpg-project#924): every line
+	// reading or advancing the interaction is pending for everyone until the
+	// window is answered. The story keeps the revision the line was offered
+	// at — what the settle must carry — and the revision the reservation
+	// moved it to, which is how the answer knows the hold is still THIS one
+	// ([reservationStands]). A line that reads no interaction reserves
+	// nothing, and the story carries neither.
+	reserved, err := scope.enc.Reserve(&encounter.ReserveInput{
+		Actor: encounter.MemberID(member), Target: encounter.MemberID(in.Target), Prop: encounter.PropID(in.Prop),
+		OptionID: in.OptionID, Revision: in.Revision, Range: InteractionReach,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", VerbSpeak, translate(err))
+	}
+	if reserved.Interaction != "" {
+		story.Interaction = string(reserved.Interaction)
+		story.Revision = in.Revision
+		story.Held = reserved.Revision
+	}
 	if err := poseWindow(scope, *posed, story); err != nil {
 		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
 	}

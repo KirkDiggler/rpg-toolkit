@@ -110,7 +110,7 @@ func (m *Manager) CloseDoor(ctx context.Context, in *CloseDoorInput) (*CloseDoor
 		return nil, fmt.Errorf("closedoor: %w", ErrNoConnection)
 	}
 
-	scope, err := m.openForChange(ctx, "close_door", in.Session)
+	scope, err := m.openForChangeBy(ctx, "close_door", in.Session, in.Member)
 	if err != nil {
 		return nil, fmt.Errorf("closedoor: %w", err)
 	}
