@@ -18,6 +18,9 @@ Work [Project #919](https://github.com/KirkDiggler/rpg-project/issues/919), impl
 - Full module race/atomic-coverage test run passes all nine packages using the upstream25-minute binary budget; root222.974s, dungeonspec111.080s; golangci-lint reports0issues. Other cached package passes remain identified as cached, not new timing measurements — [slice](https://github.com/KirkDiggler/rpg-project/issues/919).
 - Six compiled-content golden files add only `FaceFinishes:null` on32wall rows. Parsed comparisons after removing those new nil fields equal every prior value; no source castle, geometry, actor, region or rule fact changes — [slice](https://github.com/KirkDiggler/rpg-project/issues/919).
 
+- Independent review F1 found that full `Atlas()` omitted face choices although `AtlasFor` preserved them. Added the existing clone helper to that constructor and a RED→GREEN equality/alias-isolation regression for both readers. The full module gate/lint pass after refreshing one golden: eight face facts on four walls now match their authored source, with all other facts unchanged. The accepted player-rendering path is untouched — [F1](https://github.com/KirkDiggler/rpg-toolkit/pull/2356#discussion_r4543844099).
+
 ## Mistaken
 
+- Initial projection tests covered only the player reader, so the full authoring reader's omission escaped. The new regression checks both real readers and mutates each result to prove their copies stay isolated — [F1](https://github.com/KirkDiggler/rpg-toolkit/pull/2356#discussion_r4543844099).
 - The first full gate caught the six expected-but-not-yet-refreshed golden pictures. Inspected the failure, regenerated through the existing CONTENT_GOLDEN tool, and independently compared all old values before rerunning the full gate; no snapshot assertion was weakened — [slice](https://github.com/KirkDiggler/rpg-project/issues/919).

@@ -52,6 +52,33 @@ func (s *StructuralWallSuite) TestWallFaceChoicesSurviveColdSiteReload() {
 	s.NotEqual(originalHash, changed.ToData().SiteHash, "appearance belongs to the captured site identity")
 }
 
+func (s *StructuralWallSuite) TestWallFaceChoicesAgreeAcrossBothAtlasReaders() {
+	want := []encounter.WallFaceFinish{
+		{Side: encounter.WallFacePositiveZ, MaterialRef: "look:brick"},
+		{Side: encounter.WallFaceNegativeZ, MaterialRef: "look:stucco"},
+	}
+	field := structuralField()
+	field.StructuralWalls[0].FaceFinishes = append([]encounter.WallFaceFinish(nil), want...)
+	enc := s.play(field)
+	author, err := enc.Atlas()
+	s.Require().NoError(err)
+	player, err := enc.AtlasFor("walker")
+	s.Require().NoError(err)
+	s.Require().Len(author.StructuralWalls, 1)
+	s.Require().Len(player.StructuralWalls, 1)
+	s.Require().Equal(want, author.StructuralWalls[0].FaceFinishes)
+	s.Require().Equal(want, player.StructuralWalls[0].FaceFinishes)
+	author.StructuralWalls[0].FaceFinishes[0].MaterialRef = "author:mutation"
+	s.Equal("look:brick", player.StructuralWalls[0].FaceFinishes[0].MaterialRef)
+	player.StructuralWalls[0].FaceFinishes[1].MaterialRef = "player:mutation"
+	authorAgain, err := enc.Atlas()
+	s.Require().NoError(err)
+	playerAgain, err := enc.AtlasFor("walker")
+	s.Require().NoError(err)
+	s.Equal(want, authorAgain.StructuralWalls[0].FaceFinishes)
+	s.Equal(want, playerAgain.StructuralWalls[0].FaceFinishes)
+}
+
 func (s *StructuralWallSuite) TestInvalidFaceChoicesRefuseConstructionAndSiteLoad() {
 	for _, tc := range []struct {
 		name   string
