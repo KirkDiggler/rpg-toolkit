@@ -67,6 +67,8 @@ Use the existing `dnd5e/effects` package for part declarations/binders: inspecte
 - `ParticipantConditions{MemberID string, Conditions []events.ConditionBehavior}` names the supplied universe. `BindApplicationsInput{Participants []ParticipantConditions, Bus events.EventBus}` produces an interaction-local `ApplicationBinding`; it validates existing linked graphs and binds runtime transport. It is neither a condition catalog nor a persistent/global index.
 - `CreateRecipientInput{Prepared *PreparedApplication, SpecIndex int}` produces `CreateRecipientOutput{Condition ConditionBehavior, Candidate RecipientCandidate}` through the existing registry. `RecipientCandidate{Key string, Address ConditionAddress, LinkMode LinkMode, SpecIndex int, Shared bool}` identifies a fixed intended delivery, not evidence that it happened. `LinkComposed` and `LinkAdopted` distinguish backlink-bearing composed nodes and explicitly adopted current payloads. The recipient holder cannot be substituted after preparation.
 - Replace `SealApplication` with pure `CreateApplication(CreateApplicationInput{Prepared *PreparedApplication})(*CreateApplicationOutput,error)`, returning `{Condition ConditionBehavior}` with fixed shared-member bindings and all entries pending. The source publishes this coordinator after payment/replacement and before recipient delivery. Zero intended condition members remains valid for an area-only application.
+- `ResumeApplication(ResumeApplicationInput{ID string, Spec ApplicationSpec, Existing []ParticipantConditions})` reconstructs candidate creation against an existing exact live owner; it refuses changed intended bindings/maintenance and cannot create an owner or refill membership. The source's frozen declaration owns pending payload configuration; the coordinator owns membership. This is the R11 resume adapter, not another persisted runtime.
+- `ConditionAppliedEvent.ApplicationID` tags adopted shared delivery that has no saved backlink. The binding requires that generation at a pending adopted slot and verifies it before duplicate handling; a matching address alone is not evidence that this application delivered the attachment.
 - `ApplicationBinding.FinalizeRecipient(ctx, *FinalizeRecipientInput{ApplicationID,Key string, Delivered bool})(*FinalizeRecipientOutput,error)` reports `{Before,After int}` live counts. Delivered=true requires the actual candidate attachment, exact address/generation and successful Apply before joining membership. Delivered=false requires no attachment from this application at that slot and adds no live member. Either outcome removes pending status and marks coordinator data dirty. Independent-duration deliveries are outside shared membership. Unknown, repeated or ended/replaced application finalizations fail without mutation.
 - Linked removal facts carry `ConditionRemovedEvent.ApplicationID` separately from the reusable three-field replacement address. The binding refuses stale/foreign invocation facts before mutation; both keepers use `ConditionRemovalMatches` to prevent a stale tagged fact from deleting a replacement. Untagged current address facts remain exact-address operations, not historical saved-data compatibility.
 - `ApplicationBinding.CheckComplete()` is required at every successful mutable boundary, including a pause. It permits correctly bound pending entries without their own attachment, but refuses orphaned or unfinalized actual recipients, failed attachment and incomplete end state. Bind precedes behavior attachment, tracks actual application/removal facts, and requires exact old-address removal before a replacement is delivered.
@@ -107,9 +109,9 @@ Each behavioral task follows these steps: add named assertions → observe the e
 
 **Owner:** rulebook root, existing #2329/worktree. **Prerequisite:** pushed T1a. **Files:** `conditions/{application,application_delivery,application_binding,linked_data,linked_condition,linked_info}.go` and their tests; replace seal-specific tests/helpers, not behavior assertions. **Interfaces:** amended RecipientSpec.MemberID, RecipientCandidate, CreateApplication and FinalizeRecipient above. No historical linked decoder and no parallel old seal API.
 **Tests:** `TestApplicationBindingSuite/TestPendingDeliveryIsSaveableAndResumesByExactKey` uses real loaded keepers: owner with a,b pending → deliver/finalize a → CheckComplete → save/reload all → a still contributes, b still pending → finalize b → CheckComplete. `TestNoEffectFinalizationDoesNotInventMemberLoss` finalizes all pending outcomes absent and keeps the zero-delivery hold. `TestUnfinalizedActualDeliveryIsNotSaveable` refuses a published attachment not yet finalized. `TestForeignOrFinalizedRecipientCannotJoin` refuses wrong holder/address/generation, duplicate finalization and an already-removed entry without disturbing newer occupants. `TestEndingWithPendingDeliveriesCannotBeResurrected` removes only actual live recipients and refuses late completion of the same invocation. Existing rest/last-member-loss semantics stay unchanged; pending alone is never an active attachment or fabricated loss.
-- [ ] Pin pushed provider; RED strict pending codec/real-keeper tests.
-- [ ] Build every concrete candidate during pure preparation, bind the fixed list, create coordinator before delivery, finalize only actual outcomes and mark pending changes dirty.
-- [ ] Re-run all existing ownership/replacement/end/query tests; full root race/vet/lint, then push.
+- [x] Pin pushed provider `de822f5e`; missing per-entry API RED and real-keeper tests GREEN.
+- [x] Concrete preflight candidates, fixed pending owner, actual/no-effect finalization and dirty-state persistence implemented.
+- [x] Existing ownership/replacement/end/query tests and full root race/vet/lint pass at `5b03b53b`; dirty-state and changed-intent mutants fail. Native T9 remains separate.
 
 ### T2 — Descriptive amounts and query-only kinds
 
@@ -197,11 +199,11 @@ Historical source checkpoint below; whole-application sealing is superseded by R
 **Delivers:** R6/R7/R9 native concentration behavior. **Owner:** resolution module. **Prerequisites:** pushed root T8.
 **Files:** modify `resolution/{action,resolve,concentration,damagetaken,depart,long_rest,short_rest,projection,check}.go` as applicable to the truth-bearing entry inventory; create `resolution/linked_application_test.go`; update inspected concentration/Bless/cast/area/departure fixtures in caller inventory.
 **Interfaces:** root prepared application/binding APIs; existing cast outcome/FollowUp/removal fact protocols. Pass a stable application identity into cast creation and freeze/resume it; native callers supply current act identity plus an application ordinal, never silently regenerate on resume.
-**Tests:** `TestLinkedApplicationSuite/TestCastSealReloadAndExactRemoval`; `TestSelfBlessConcentrationUsesDieBeforeCleanup`; `TestTwoRecipientsProduceOneDamageFollowUp`; `TestARefusedCastDoesNotDisplaceOrPay`; `TestPaidZeroDeliveryAndRecastKeepCurrentSemantics`; `TestAreaOnlyAndIndependentPayloadUseSameUpkeep`; `TestDepartureRequiresAllAffectedHoldersAndLeavesNoOrphans`; `TestUnsupportedNonSpellNativePresentationIsRefusedByName`; existing `TestConcentrationSuite` and `TestCastActionTestSuite/TestBless` remain live regression proof.
-- [ ] Pin pushed root with go get/tidy; RED real resolver fixtures, not manual damage-received publishers.
-- [ ] Bind/validate at each applicable attach entry, migrate concrete assertions and preserve typed save/record paths.
-- [ ] Full module race/vet/lint; native damage trace applied once and exact linked dirty saves asserted.
-- [ ] Push draft; no unrun browser claim.
+**Tests:** `TestLinkedApplicationSuite/TestCastSealReloadAndExactRemoval`, `TestSelfBlessConcentrationUsesDieBeforeCleanup` (also asserts one follow-up for two recipients), `TestLongRestPersistsEveryAffectedHolder`, `TestUnsupportedNonSpellNativePresentationIsRefusedByName`, `TestUnfinalizedActualDeliveryCannotLeaveASuccessfulInteraction`. Reuse rather than duplicate the existing `TestConcentrationSuite/TestACastRefusedAtTheDoorDropsNothing`, `TestBaneAllSaveRecastReplacesOnlyItsQualifiedOwnerAndUsesCurrentSources`, area tests, `TestDepartSuite`, Sanctuary cooldown/independent-child tests and native Bless/Cast suites. Their fixture updates preserve behavioral assertions under current typed data.
+- [x] Root adoption observed removed-interface RED; real linked cast/pause/save/resume and source refusals now pass.
+- [x] Complete mutable pre-bind graph, protocol readers, fixed identity, per-entry delivery and frozen continuation implemented. Local read-only projections stay explicit.
+- [x] Full resolution race/vet/lint pass; Self-Bless observes its die before cleanup, two recipients yield one check, HP applies once. LongRest/DeathSave carry every affected holder. Boundary and identity mutants fail.
+- [x] Pushed #2344 at `823286a1`, then catch-up `6618456d` preserves main's Sites seam with fresh full gates. No browser claim.
 
 ### T10 — Session continuation, information and persistence
 
@@ -209,11 +211,11 @@ Historical source checkpoint below; whole-application sealing is superseded by R
 **Files:** modify `session/{cast,write,turn,rest,depart,information,effects}.go` only where actual protocol/pin changes require; create `session/linked_application_test.go`; update `concentration_break_test.go`, `turn_concentration_test.go`, `bless_test.go`, `bless_internal_test.go` and inventoried callers.
 **Interfaces:** stable native application identity from `scope.enc.CurrentAct()` with deterministic local ordinal; frozen continuation carries it; host receives data and information, no runtime objects.
 **R11 acceptance:** a paused multi-target Bane cast saves its paid coordinator and earlier delivered effect, exposes the earlier effect through a fresh interaction, then resumes the same invocation without repeated payment, repeated delivery or a copied membership authority. A no-effect answer finalizes only its own entry; an ended/replaced invocation cannot be revived.
-**Tests:** `TestLinkedSessionSuite/TestFreshCastRoundTripsAcrossInteractions`; `TestResumeKeepsApplicationIdentity`; `TestSourceRowsAndMaintenanceSummarySurviveReload`; `TestRecastRestLeaveAndAreaClosurePersistEveryDirtyHolder`; `TestRecipientInformationWithNoOwnerContextHasNoFakeCountdown`; existing effect-row identities and source IDs remain independently asserted.
-- [ ] RED the persistence/reader joins and adopt real provider pins.
-- [ ] Implement only host wiring and data custody; no concentration or dice rules in session.
-- [ ] Full session race/vet/lint and structural no-inner-type seam tests.
-- [ ] Push draft for API adoption.
+**Tests:** `TestCastSuite/TestLinkedApplicationPersistsEarlierDeliveryAcrossWindowReload` combines fresh-manager JSON persistence, unchanged invocation identity/payment, exact verdicts and recipient-only unknown countdown. Existing Cast/Resistance-window, Rest/Depart, TurnConcentration, Fog Cloud reload and source-aware effect-row suites remain live instead of duplicating those scenes; opaque row IDs are matched independently from ref/source facts.
+- [x] Current declaration/reader adoption RED, then real Manager Cast/React over JSON-round-tripped stores and a fresh Manager preserves earlier delivery and pending entries.
+- [x] Host-owned current-act/application ordinal, provider metadata and affected-holder custody; DeathSave uses the one landing, not a second persistence path.
+- [x] Full session race/vet/lint and no-bus/no-check/landing/exported-boundary structural gates pass; identity and dirty-persistence mutants fail.
+- [x] Pushed #2377 at `976ad1b1`, catch-up `ccb082c9` preserves checkpoint pieces, resident world, offer revisions and hail changes; full gates repeated.
 
 ### T11 — API/web current-data adoption
 
@@ -222,26 +224,26 @@ Historical source checkpoint below; whole-application sealing is superseded by R
 **Files (web):** `src/types/conditionData.ts`, `conditionData.test.ts`, `src/components/features/ConditionBadge.tsx` and tests; existing `combat-experience/EffectRows.test.tsx`, `actionTooltip.test.ts`, `ActionDockEffects.test.tsx` for native mounted projection proof.
 **Interfaces:** root-owned metadata and unchanged native spell SDK facts. API preserves raw bytes and maps metadata; web validates current shape, keeps bindings opaque and renders server facts. No new method permission or proto generation because no RPC/wire addition is planned.
 **Tests:** API `TestConvertLinkedConditionPreservesBytesSourceAndDescription`, `TestLinkedMaintenanceAcceptanceSuite/TestNativeCreationCastReloadAndConcentrationEnd` using actual handlers/miniredis; web `rejects obsolete linked condition data`, `renders server maintenance without calculating remaining turns`, `preserves selected dice and separate source identities`, plus mounted HUD regression. Explicitly distinguish a component-only badge from the native HUD.
-- [ ] RED current-reader/projection tests with provider-produced data.
-- [ ] Implement source mapping/readers, not rules or normalization.
-- [ ] API `make test` and `make ci-check`; web focused tests then one complete `npm run ci-check` at PR boundary.
-- [ ] Push drafts with exact dependency/SDK provenance and no native gameplay claim yet.
+- [x] API object-ref disappearance and native-v2 generic-label failures observed; root `be7c872a`/`678e9d74` own the description and private status projection. Web reader suite observed 11 RED cases against the old generic fallback.
+- [x] Opaque bytes and provider metadata pass through; obsolete/malformed linked records refuse; no bag interpretation or countdown arithmetic in API/web.
+- [x] API make test/ci-check pass. Web full ci-check: 794 files / 10274 tests pass, existing 1-file/6-test skips unchanged; mounted private rail, action dock and effect-row regressions pass.
+- [x] API #1225 `a8463915`, web #1410 `970625f9` pushed. Real API creation/cast/payment/reload/both private reads/end cleanup pass; browser gameplay acceptance remains T13.
 
 ### T12 — Existing item consumers still consume the provider
 
 **Delivers:** current Second Wind/Rage item examples remain valid after generic/root API changes. **Owner:** examples/items module. **Prerequisites:** root T8/provider T4.
 **Files:** `examples/items/go.mod`, `go.sum`, affected existing test consumers only, module run record. No native inventory implementation.
 **Tests:** retain fixed non-Barbarian Rage bonus, independent item/class pools, source identity, spent loot, transfer, reload and grace assertions. No compatibility shims for the old amount contract.
-- [ ] Adopt pushed providers and run examples/race/vet/lint in this module.
-- [ ] Correct direct API usage only if compilation identifies it; preserve all behavior assertions.
-- [ ] Push its own module draft with evidence and planned real-tag re-pin.
+- [x] Pushed effects `de822f5e` and root `678e9d74` adopted; full examples race/vet/lint pass.
+- [x] No source rewrite was required; all resource/provenance/Rage/loot/transfer/reload/grace assertions remain unchanged.
+- [x] #2379 `1f3848c7` pushed, real-tag re-pin still required before authorized merge.
 
 ### T13 — Native acceptance, review and authorized release
 
 **Delivers:** S3's integrated finish line. **Owner:** cross-team verification; no new gameplay owner. **Prerequisites:** T1–T12 green on pushed real pins.
 **Files/artifacts:** untracked API `content/composable-maintenance-walk.yaml`, local manifest `envs/local/composable-maintenance.env`, checked mounted content, `docs/ideas/composable-maintenance/{implementation,qa}.md`, issue checklist and PR receipts. Design worktree owns docs; source worktrees own code. Ports chosen only after checking availability.
 **Native scenario:** normally create eligible casters and recipient; verify acquisition/private sheet; cast multi-recipient Bless/Bane; inspect source-aware rows; reload; exercise replacement/removal/rest/departure. Repeat relevant castle fight path. Positive damage/concentration outcomes may be named real-path test-backed where dice miss in the bounded walk; never force live evidence. Resistance example remains toolkit proof.
-- [ ] Boot isolated stack, verify source/served content and pages, then give operator early look before independent review/walk.
+- [x] Isolated stack boots on web :3042 / API :8142 at API `a8463915`, web `970625f9`; browser landing and dungeon catalog render without page errors, served binary dependencies/content hashes verified. Operator early-look handoff is the next human step; independent review/full walk have not started.
 - [ ] One independent runtime review round, disposition findings, complete bounded native QA with measured evidence.
 - [ ] Report exact heads and remaining merge authority; do not auto-merge.
 - [ ] On explicit merge-out authorization, merge/tag/repin inside-out, rerun consumer gates/head CI, close only delivered slices and clean only this wave's stack/worktrees.
