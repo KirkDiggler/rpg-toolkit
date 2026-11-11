@@ -52,7 +52,10 @@ func setHolder(
 	t.Helper()
 	m := holder(t, id, at, door, cells...)
 	for state, p := range m.Posts {
-		p.Against, p.Pass = against, pass
+		p.Against, p.Pass = against, nil
+		if pass != "" {
+			p.Pass = []Trigger{TriggerFact{Fact: pass}}
+		}
 		m.Posts[state] = p
 	}
 
@@ -361,7 +364,7 @@ func TestObservedHoldsFollowTheSettings(t *testing.T) {
 	// THE SETTINGS ARE THE LIVE POST'S: changed with no new sighting, the
 	// answer follows them.
 	for state, p := range enc.members[postedGuard].Posts {
-		p.Against, p.Pass = "", ""
+		p.Against, p.Pass = "", nil
 		enc.members[postedGuard].Posts[state] = p
 	}
 	require.Equal(t, HeldDoor{Door: holdLeaf, Against: PostBothWays, Side: gatehouseSide}, seen("alice")[postedGuard],
@@ -389,7 +392,7 @@ func TestThePassIsReadOncePerPath(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.NotEqual(t, []spatial.Position{holdNorthEast}, path, "precondition: barred, the route goes round")
-	known, read := q.passes[passKey{mover: "alice", fact: holdPass}]
+	known, read := q.passes[passKey{mover: "alice", holder: postedGuard}]
 	require.True(t, read, "the route read her pass")
 	require.False(t, known)
 
@@ -448,7 +451,7 @@ func TestAStoredPostKeepsItsSettings(t *testing.T) {
 		for _, m := range enc.ToData().Members {
 			if m.ID == postedGuard {
 				require.Equal(t, PostEntering, m.Posts["posted"].Against)
-				require.Equal(t, holdPass, m.Posts["posted"].Pass)
+				require.Equal(t, []TriggerData{{Kind: "fact", Fact: holdPass}}, m.Posts["posted"].Pass)
 			}
 		}
 		require.Equal(t, "Gate guard bars the way", heldStop(t, enc, holdSouthEast), "the loaded post bars the way out of the gatehouse")

@@ -135,10 +135,10 @@ func TestCastleTheTroupeIsToldNoHold(t *testing.T) {
 		}
 	}
 	walkBeside("pedlar")
-	_, err := c.mgr.Speak(ctx, &session.SpeakInput{Session: "sess", Member: "alice", Target: "pedlar", OptionID: "tonight"})
+	_, err := speakAsOffered(ctx, c.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "pedlar", OptionID: "tonight"})
 	require.NoError(t, err)
 	walkBeside("captain")
-	_, err = c.mgr.Speak(ctx, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "troupe"})
+	_, err = speakAsOffered(ctx, c.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "troupe"})
 	require.NoError(t, err, "the captain lets the troupe through")
 
 	walked := c.move(t, c.walkInto(t, besideTheCastleGate))

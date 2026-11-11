@@ -154,7 +154,11 @@ func TestMadKingTheGuardHoldsTheGate(t *testing.T) {
 // with no reason reads as a creature nobody asked (rpg-project#465).
 func TestMadKingThePostSaysWhyItStays(t *testing.T) {
 	t.Parallel()
-	s := openTheScript(t, gatehouseSeat, nil)
+	// Paced at the party's start, out of every gate speaker's approach
+	// (rpg-project#923): in the gatehouse, gate-2 hails the hero, and gate-1
+	// hears that voice and leaves the crossing alert — the castle's own
+	// heard rule, not a stayed round on the post.
+	s := openTheScript(t, partyStart(t), nil)
 	for i := 0; i < 2; i++ {
 		s.aRoundPasses()
 	}

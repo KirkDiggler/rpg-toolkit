@@ -146,9 +146,9 @@ func (s *DialectSuite) TestARoomBearingSightPayloadIsRefused() {
 	} {
 		s.Run(payload, func() {
 			data := s.closedBlob()
-			holding := data.Perception.Intel.Holdings[core.EntityID("member|alice")]["member|bob"]
+			holding := data.Perception.Intel.Holdings[core.EntityID("member|alice")]["member|bob"][""]
 			holding.Payload = []byte(payload)
-			data.Perception.Intel.Holdings[core.EntityID("member|alice")]["member|bob"] = holding
+			data.Perception.Intel.Holdings[core.EntityID("member|alice")]["member|bob"][""] = holding
 
 			err := s.load(data)
 			s.Require().Error(err, "a sighting that names a room must not load")
@@ -188,11 +188,11 @@ func (s *DialectSuite) TestAnotherChannelsPayloadIsNotOurs() {
 	// Written with untyped constants: the channel type is play/intel's, which
 	// encounter no longer names (rpg-toolkit#1691), and perception's charter —
 	// Data.Intel is intel.Data verbatim — is what makes the map reachable here.
-	holding := data.Perception.Intel.Holdings[core.EntityID("member|alice")]["member|bob"]
+	holding := data.Perception.Intel.Holdings[core.EntityID("member|alice")]["member|bob"][""]
 	holding.Channel = "hearsay"
 	holding.CurrentVia = append(holding.CurrentVia[:0], "hearsay")
 	holding.Payload = []byte(aRoomBearingSighting)
-	data.Perception.Intel.Holdings[core.EntityID("member|alice")]["member|bob"] = holding
+	data.Perception.Intel.Holdings[core.EntityID("member|alice")]["member|bob"][""] = holding
 
 	s.Require().NoError(s.load(data),
 		"a channel this composition never writes is not this composition's business")
@@ -209,9 +209,10 @@ func (s *DialectSuite) TestAnotherChannelsPayloadIsNotOurs() {
 func (s *DialectSuite) TestTheRefusalNamesTheSameSightingEveryTime() {
 	data := s.closedBlob()
 	for observer, subjects := range data.Perception.Intel.Holdings {
-		for subject, holding := range subjects {
+		for subject, topics := range subjects {
+			holding := topics[""]
 			holding.Payload = []byte(aRoomBearingSighting)
-			data.Perception.Intel.Holdings[observer][subject] = holding
+			data.Perception.Intel.Holdings[observer][subject][""] = holding
 		}
 	}
 

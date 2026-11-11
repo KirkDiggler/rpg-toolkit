@@ -773,6 +773,13 @@ func translate(err error) error {
 		return fmt.Errorf("%w", ErrBadPosition)
 	case errors.Is(err, encounter.ErrOutOfRange):
 		return fmt.Errorf("%w", ErrOutOfRange)
+	case errors.Is(err, encounter.ErrBadSince):
+		// An appending save asked the encounter for its record from a seq
+		// past the story's end (rpg-project#897 leg c). The session reads
+		// that seq from the stored record, so the store handed back a record
+		// the encounter never wrote: the repository's fault, never the
+		// caller's.
+		return fmt.Errorf("%w: %v", ErrBadRepository, err)
 	case errors.Is(err, encounter.ErrNotDown):
 		// Loot's ordinary refusal: the body is up. Nothing to hide, so this
 		// says what it means (rpg-project#368 §4.2).
@@ -824,6 +831,12 @@ func translate(err error) error {
 		// the composition's — a resumed line whose fact was unlearned — and
 		// answered with the same word the seam's own read gives.
 		return fmt.Errorf("%w", ErrNoOption)
+	case errors.Is(err, encounter.ErrStaleOption):
+		// A reply from an older revision of the conversation (rpg-project#924).
+		return fmt.Errorf("%w", ErrStaleOption)
+	case errors.Is(err, encounter.ErrReserved):
+		// A line pending on somebody's waiting roll (rpg-project#924).
+		return fmt.Errorf("%w", ErrLineReserved)
 	case errors.Is(err, encounter.ErrTurnPaused):
 		// The composition refusing a verb because a driven turn is stopped
 		// mid-walk waiting on an answer. This seam's own word for that is

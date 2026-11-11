@@ -132,7 +132,7 @@ func (g *gatehouse) walkIn() error {
 	if len(path) == 0 || path[len(path)-1] != inTheGatehouse {
 		path = append(path, inTheGatehouse)
 	}
-	_, err = g.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: path})
+	_, err = walkOn(ctx, g.mgr, &session.MoveInput{Session: "sess", Member: "alice", Path: path})
 	return err
 }
 
@@ -179,7 +179,7 @@ func playTheGatehouse() []beat {
 		beats = append(beats, beat{label: label, acts: append([]session.Act(nil), g.live.acts...)})
 	}
 	standAside := func() error {
-		_, err := g.mgr.Speak(ctx, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "stand-aside"})
+		_, err := speakAsOffered(ctx, g.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "stand-aside"})
 		return err
 	}
 	walkToward := func(anchor func(*encounter.Encounter) spatial.Position, budget int) func() error {
@@ -192,7 +192,7 @@ func playTheGatehouse() []beat {
 			if err != nil {
 				return err
 			}
-			_, err = g.mgr.Move(ctx, &session.MoveInput{
+			_, err = walkOn(ctx, g.mgr, &session.MoveInput{
 				Session: "sess", Member: "alice", Path: route.Path,
 				DeclarationID: currentMoveID(panics{}, g.mgr, "sess", "alice"),
 			})
@@ -255,7 +255,7 @@ func playTheTroupe() []beat {
 	// walk walks alice along a path of cells, each adjacent to the last, on
 	// the world clock, where a move carries no declaration.
 	walk := func(path []spatial.Position) error {
-		_, err := g.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: path})
+		_, err := walkOn(ctx, g.mgr, &session.MoveInput{Session: "sess", Member: "alice", Path: path})
 		return err
 	}
 	// toward walks alice by the pathfinder's way toward a cell, onto it when
@@ -281,7 +281,7 @@ func playTheTroupe() []beat {
 	}
 	speak := func(target, option string) func() error {
 		return func() error {
-			_, err := g.mgr.Speak(ctx, &session.SpeakInput{Session: "sess", Member: "alice", Target: target, OptionID: option})
+			_, err := speakAsOffered(ctx, g.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: target, OptionID: option})
 			return err
 		}
 	}
@@ -919,11 +919,15 @@ func Example_theTroupeActs() {
 	// move         perception   alice learns 1 region(s)
 	// move         act 7        alice walks (-6,12) (-6,11)
 	// move         perception   alice sees [], loses [pedlar], sees [] change
-	// move         act 8        alice walks (-6,11) (-6,10) (-5,9)
+	// move         act 8        alice walks (-6,11) (-6,10)
+	// move         table_answer captain answers behavior/6:policy/approached with "", rolled 1 of 100
+	// move         perception   alice hears voice
+	// move         act 1        alice walks (-5,9)
 	// move         clock        tick 3
+	// move         state        gate-1: posted -> alert (heard something)
 	// time         table_answer captain answers behavior/6:policy/time with "hold", no roll
 	// time         table_answer gate-1 answers behavior/6:policy/post with "toward", rolled 1 of 50
-	// pass         act 1        gate-1 stays: already there
+	// move         act 1        gate-1 stays:
 	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-3,9) (-4,10)
 	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
@@ -952,7 +956,6 @@ func Example_theTroupeActs() {
 	// speak        act 1        alice to captain, "troupe" (performance): rolled 1d20+3 = 15, beat 13; captain answers "Through to the hall, then. Don’t dawdle."
 	// speak        perception   alice hears voice
 	// speak        clock        tick 4
-	// speak        state        gate-1: posted -> alert (heard something)
 	// time         table_answer captain answers behavior/6:policy/time with "hold", no roll
 	// time         table_answer gate-1 answers behavior/6:policy/post with "toward", rolled 1 of 50
 	// move         act 1        gate-1 stays:

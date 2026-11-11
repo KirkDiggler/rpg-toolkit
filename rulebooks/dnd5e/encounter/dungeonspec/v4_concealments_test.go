@@ -209,7 +209,7 @@ func TestTheUnknownKeyRefusalOffersConcealments(t *testing.T) {
 	errs := refusals(t, v4With("concealmets:\n  vault: { checks: [] }", ""))
 	requireExactDefect(t, errs, "concealmets",
 		`"concealmets" is not a key this build reads: they are behaviorDefinitions, bundles, concealments, dispositions, endings, `+
-			"exits, factions, intel, key, play, room, scenarios, tables, templates, version")
+			"exits, factions, intel, interactions, key, play, room, scenarios, tables, templates, version")
 }
 
 // TestADoorIsHiddenByBelongingRatherThanByAFlag is where the retired

@@ -96,12 +96,121 @@ type StateSpec struct {
 // post's side, the region its cells stand in, to the far side) or `leaving`
 // (the reverse); any other word is refused, and a direction whose door has
 // no one side per crossing is refused when the encounter seats the post.
-// Pass names a fact this document sets: a mover who knows it walks through.
+// Pass is what lets a mover through ([PassSpec]): a fact this document sets
+// (a password), or the requirement grammar an option's `requires` uses, read
+// with the mover as "me" and the post's holder as "the other party".
 type HoldsSpec struct {
 	Door    string     `yaml:"door" json:"door"`
 	At      []RoomCell `yaml:"at,omitempty" json:"at,omitempty"`
 	Against string     `yaml:"against,omitempty" json:"against,omitempty"`
-	Pass    string     `yaml:"pass,omitempty" json:"pass,omitempty"`
+	Pass    *PassSpec  `yaml:"pass,omitempty" json:"pass,omitempty"`
+}
+
+// PassSpec is a post's `pass` (rpg-project#928), in one of two spellings:
+//
+//	pass: troupe-password          # a fact the mover knows: a password
+//	pass: { recognized: admitted } # the post's holder holds the topic about the mover
+//
+// The second is the requirement grammar an option's `requires` uses ([RequiresSpec]:
+// one predicate or a list, every one of which must hold), judged with the
+// MOVER as "me" and the post's HOLDER as "the other party". On a pass it
+// takes `{ fact }`, `{ recognized }` and a `{ not }` of one: an
+// interaction's state is the run's, never the pair's, and a holding is not
+// yet a pass any content asks for. The bare word is kept as written, so a
+// document round-trips the way it was authored.
+type PassSpec struct {
+	// Fact is the bare-word spelling: the fact a mover who knows it walks
+	// through on.
+	Fact string
+
+	// Requires is the grammar spelling.
+	Requires RequiresSpec
+}
+
+// UnmarshalYAML reads a bare word as a fact and anything else as the
+// requirement grammar, by [RequiresSpec.UnmarshalYAML]'s own rules.
+func (p *PassSpec) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.ScalarNode {
+		if value.Value == "" {
+			return fmt.Errorf("line %d: a pass names a fact, or what lets the mover through: %s", value.Line, passForms)
+		}
+		*p = PassSpec{Fact: value.Value}
+		return nil
+	}
+	var requires RequiresSpec
+	if err := requires.UnmarshalYAML(value); err != nil {
+		return err
+	}
+	*p = PassSpec{Requires: requires}
+	return nil
+}
+
+// MarshalYAML writes the pass back in the spelling it was read in.
+func (p PassSpec) MarshalYAML() (any, error) {
+	if p.Fact != "" {
+		return p.Fact, nil
+	}
+	return []PredicateSpec(p.Requires), nil
+}
+
+// MarshalJSON writes the pass in the spelling it was read in.
+func (p PassSpec) MarshalJSON() ([]byte, error) {
+	if p.Fact != "" {
+		return json.Marshal(p.Fact)
+	}
+	return json.Marshal([]PredicateSpec(p.Requires))
+}
+
+// passForms is the sentence naming what a pass may say.
+const passForms = "a pass is a fact (`pass: <fact>`), or one or a list of { fact: <id> }, " +
+	"{ recognized: <topic> }, or { not: } one of them"
+
+// passRefusal judges a pass's grammar spelling: every predicate a fact, a
+// recognition on a topic some interaction grants (topics), or a `not` of
+// one. The first defect, at its own path under at, or "" for none. The
+// bare-word spelling is the caller's to judge against its facts.
+func passRefusal(at string, p *PassSpec, topics map[string]bool) (string, string) {
+	if p == nil {
+		return "", ""
+	}
+	for i := range p.Requires {
+		path := at
+		if len(p.Requires) > 1 {
+			path = fmt.Sprintf("%s[%d]", at, i)
+		}
+		pred := &p.Requires[i]
+		if pred.Form() == predicateNot {
+			path += ".not"
+			pred = pred.Not
+			if pred.Form() == predicateNot {
+				return path, notOfNot
+			}
+		}
+		switch pred.Form() {
+		case predicateFact:
+		case predicateRecognized:
+			if !topics[pred.Recognized] {
+				return path + ".recognized", fmt.Sprintf(
+					"%q is a topic no interaction's `outcomes` grants, so no holder could ever recognize anyone on it", pred.Recognized)
+			}
+		default:
+			return path, passForms
+		}
+	}
+	return "", ""
+}
+
+// passOf lowers a pass to the engine's requirement list ([encounter.Post.Pass]);
+// nil for none.
+func passOf(p *PassSpec) []encounter.Trigger {
+	switch {
+	case p == nil:
+		return nil
+	case p.Fact != "":
+		return []encounter.Trigger{encounter.TriggerFact{Fact: encounter.FactID(p.Fact)}}
+	default:
+		return requirementsOf(p.Requires)
+	}
 }
 
 // TransitionSpec is one transition: on a beat, when its conditions hold, do
@@ -460,8 +569,13 @@ func (g *grammar) placeHolds(path string, st StateSpec, fail func(p, format stri
 	}
 	// A PASS NOBODY CAN LEARN never lets anybody through, as a `when` fact
 	// that matches nothing never holds.
-	if st.Holds.Pass != "" && !g.facts[st.Holds.Pass] {
-		fail(path+".pass", "%q is not a fact this file sets, so nobody could ever know the pass", st.Holds.Pass)
+	if pass := st.Holds.Pass; pass != nil {
+		if pass.Fact != "" && !g.facts[pass.Fact] {
+			fail(path+".pass", "%q is not a fact this file sets, so nobody could ever know the pass", pass.Fact)
+		}
+		if at, refusal := passRefusal(path+".pass", pass, g.topics()); refusal != "" {
+			fail(at, "%s", refusal)
+		}
 	}
 }
 
@@ -485,7 +599,7 @@ func postsOf(own, faction *StatesSpec, key string) map[string]encounter.Post {
 		post := encounter.Post{
 			Door:    encounter.DoorID(key + "/" + h.Door),
 			Against: encounter.PostDirection(h.Against),
-			Pass:    encounter.FactID(h.Pass),
+			Pass:    passOf(h.Pass),
 		}
 		for _, cell := range h.At {
 			post.Cells = append(post.Cells, hexCell(cell))

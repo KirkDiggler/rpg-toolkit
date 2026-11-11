@@ -41,6 +41,20 @@ type freeRoamCastle struct {
 	characters *fakeCharacters
 	encounters *fakeEncounters
 	dice       *castleDice
+	sessions   *fakeSessions
+	seats      *fakeSeats
+}
+
+// manager is a Manager over the castle's own repositories: a second one is
+// the host reloading the session from what was saved.
+func (c *freeRoamCastle) manager(t *testing.T) *session.Manager {
+	t.Helper()
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: c.live, Seats: c.seats, CharacterConfig: newFakeCharacterConfig(),
+		PresentationIDs: testPresentationIDs{}, Dice: c.dice, TurnDriver: session.Driver(),
+		Sessions: c.sessions, Encounters: c.encounters, Characters: c.characters,
+	})
+	require.NoError(t, err)
+	return mgr
 }
 
 func openTheCastleForTwo(t *testing.T, d20s ...int) *freeRoamCastle {
@@ -54,10 +68,23 @@ func openTheCastleForTwo(t *testing.T, d20s ...int) *freeRoamCastle {
 // start, outside the gatehouse.
 func openTheCastleFor(t *testing.T, party []*character.Data, d20s ...int) *freeRoamCastle {
 	t.Helper()
+	return openTheCastleFrom(t, castleSource(t), party, d20s...)
+}
+
+// castleSource is the castle's YAML as the encounter module pinned here
+// ships it.
+func castleSource(t *testing.T) []byte {
+	t.Helper()
 	out, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", encounterModule).Output()
 	require.NoError(t, err)
 	raw, err := os.ReadFile(filepath.Join(strings.TrimSpace(string(out)), castleFixture))
 	require.NoError(t, err)
+	return raw
+}
+
+// openTheCastleFrom is [openTheCastleFor] over a given castle source.
+func openTheCastleFrom(t *testing.T, raw []byte, party []*character.Data, d20s ...int) *freeRoamCastle {
+	t.Helper()
 	compiled, err := dungeonspec.Load(raw)
 	require.NoError(t, err)
 
@@ -65,12 +92,9 @@ func openTheCastleFor(t *testing.T, party []*character.Data, d20s ...int) *freeR
 	for _, sheet := range party {
 		ids = append(ids, sheet.ID)
 	}
-	c := &freeRoamCastle{live: &actCapture{}, characters: newFakeCharacters(party...), encounters: newFakeEncounters(), dice: &castleDice{d20s: d20s}}
-	c.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: c.live, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
-		PresentationIDs: testPresentationIDs{}, Dice: c.dice, TurnDriver: session.Driver(),
-		Sessions: newFakeSessions(), Encounters: c.encounters, Characters: c.characters,
-	})
-	require.NoError(t, err)
+	c := &freeRoamCastle{live: &actCapture{}, characters: newFakeCharacters(party...), encounters: newFakeEncounters(), dice: &castleDice{d20s: d20s},
+		sessions: newFakeSessions(), seats: newFakeSeats()}
+	c.mgr = c.manager(t)
 	_, err = c.mgr.Launch(context.Background(), &session.LaunchInput{
 		Session: "sess", Dungeon: &compiled, Party: ids,
 	})
@@ -194,7 +218,7 @@ func TestCastleFreeRoamCastAndSwing(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		_, err = c.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: route.Path})
+		_, err = walkOn(ctx, c.mgr, &session.MoveInput{Session: "sess", Member: "alice", Path: route.Path})
 		return err
 	})
 	attack := c.row(t, "alice", session.VerbAttack, "")
@@ -314,7 +338,7 @@ func TestCastleFreeRoamThunderwaveShovesBeforeTheFight(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		_, err = c.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "bard", Path: route.Path})
+		_, err = walkOn(ctx, c.mgr, &session.MoveInput{Session: "sess", Member: "bard", Path: route.Path})
 		return err
 	})
 	turn, err := c.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "bard"})

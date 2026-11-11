@@ -521,6 +521,10 @@ func (m *Manager) landResumedSocial(
 		Target:   encounter.MemberID(story.Target),
 		Prop:     encounter.PropID(story.Prop),
 		OptionID: story.Option,
+		// THE RESERVED REVISION: the settle is admitted at the revision the
+		// line was offered and reserved at, and at no other
+		// (rpg-project#924). Zero for a line that reserved nothing.
+		Revision: story.Revision,
 		Skill:    out.Applied.Ability,
 		Beaten:   out.Result.Success,
 		DC:       out.Applied.DC,

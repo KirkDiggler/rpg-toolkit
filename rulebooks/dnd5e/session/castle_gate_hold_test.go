@@ -176,7 +176,7 @@ func TestCastleThePostHoldsTheGatesOpening(t *testing.T) {
 	if toCaptain := c.walkInto(t, memberOf(t, c.world(t), "captain").Position); len(toCaptain) > 1 {
 		c.move(t, toCaptain[:len(toCaptain)-1])
 	}
-	_, err := c.mgr.Speak(context.Background(), &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "stand-aside"})
+	_, err := speakAsOffered(context.Background(), c.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "stand-aside"})
 	require.NoError(t, err)
 	require.Equal(t, "cowed", stateOf(t, c.world(t), "gate-1"), "precondition: he stood aside")
 	cowed := c.sightingOf(t, "alice", "gate-1")
@@ -201,13 +201,16 @@ func TestCastleAMemoryOfTheGateGuardHoldsNoDoor(t *testing.T) {
 	start := c.where(t, "alice")
 	c.move(t, c.walkInto(t, besideTheCastleGate))
 	require.Equal(t, castleGateDoor, c.sightingOf(t, "alice", "gate-1").HoldsDoor, "precondition: seen on his post, he holds the gate")
+	// The captain's hail on the road is a voice gate-1 hears, so he may be
+	// alert rather than posted by now (rpg-project#923).
+	before := stateOrPosted(stateOf(t, c.world(t), "gate-1"))
 
 	away := c.move(t, c.walkInto(t, start))
 	require.Equal(t, session.MovementCompleted, away.Status, "precondition: alice walks back out: %s", away.StopReason)
 	memory := c.sightingOf(t, "alice", "gate-1")
 	require.Empty(t, memory.CurrentVia, "precondition: she remembers him rather than sees him")
 	require.Empty(t, memory.HoldsDoor, "a memory names no door")
-	require.Equal(t, "posted", stateOrPosted(stateOf(t, c.world(t), "gate-1")), "and he is still posted")
+	require.Equal(t, before, stateOrPosted(stateOf(t, c.world(t), "gate-1")), "and walking away leaves him as he was")
 }
 
 // stateOrPosted reads the castle guard's empty recorded state as its
@@ -248,7 +251,7 @@ func TestCastleAHeldDoorRefusesItsDoorVerbs(t *testing.T) {
 	if toCaptain := c.walkInto(t, memberOf(t, c.world(t), "captain").Position); len(toCaptain) > 1 {
 		c.move(t, toCaptain[:len(toCaptain)-1])
 	}
-	_, err = c.mgr.Speak(context.Background(), &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "stand-aside"})
+	_, err = speakAsOffered(context.Background(), c.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "stand-aside"})
 	require.NoError(t, err)
 	require.Equal(t, "cowed", stateOf(t, c.world(t), "gate-1"), "precondition: he stood aside")
 	if c.where(t, "alice") != besideTheCastleGate {

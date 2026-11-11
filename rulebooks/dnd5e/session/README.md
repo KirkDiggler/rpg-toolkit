@@ -38,6 +38,8 @@ declaration, and `gorelease` gates every release.
 |---|---|
 | `session.go` | `Config`, `Manager`, total construction |
 | `repositories.go` | What the host implements for storage, and the constraints on it |
+| `checkpoint.go` | The optional storage capabilities: the fenced save, the appended record (`AppendingEncounterRepository`: the rest plus the segment the store lacks), and the rest as pieces (`PiecesEncounterRepository`: only the pieces whose mark moved, the marks held beside the record baseline) |
+| `residency.go` | The resident copy: a write verb's encounter kept between verbs, checked against the store's checkpoint version (`CheckpointVersionReader`), rebound per verb, bounded in process (`Config.Residency`, `NewResidency`) |
 | `data.go` | What this package persists |
 | `types.go` | What this package returns |
 | `convert.go` | The converter layer: inner shapes → ours |
@@ -48,6 +50,7 @@ declaration, and `gorelease` gates every release.
 | `stream.go` | Per-recipient dense numbering: each member's delivered stream, counted for them |
 | `write.go` | `Join`, `Exit`, `End`, and the save/publish seam |
 | `move.go` | `Move` (walking a path) and `Traverse` |
+| `continuation.go` | The runner a host gives the rest of a verb to, after its answer |
 | `launch.go` | `Launch` — the whole board, the party seated and rested, one load-act-save |
 | `seats.go` | The seat: which run holds a character, and the guard a character verb acts under |
 | `store.go` | One sheet store per verb: the only caller of the character repository |
@@ -55,6 +58,33 @@ declaration, and `gorelease` gates every release.
 | `rest.go` | `Rest` — the party's short rest, one hour on the world clock |
 | `events.go` | Per-recipient fan-out |
 | `cmd/session-workbench` | Drives a whole session; run it |
+
+## A walk's commits
+
+A verb commits once: it settles, saves, and only then delivers (publish only
+after the save lands). A walk handed to a `ContinuationRunner` is the one verb
+that commits more than once. It answers before the first step that pays a world
+round; the rest then commits at **each pace boundary** (rpg-project#879 R7):
+after every step that paid a round, that round's raise is settled, saved in one
+fenced save and delivered at once, and the walk's remaining steps go in the next
+commit. A listener hears the raise without waiting for the walk to end.
+
+Each commit settles, saves and delivers from where the last landed one stopped,
+so nothing is paid or told twice. Only the last commit closes the walk's act.
+A save refused stale mid-walk fails closed: the commits already landed stand
+and were delivered, nothing is retried, and the steps after them never happen.
+
+## The resident copy
+
+A fenced host that can read its checkpoint version (`CheckpointVersionReader`)
+gets its write verbs' encounters kept in memory between verbs (rpg-project#879
+S6, R6). The copy is a cache; the store is the authority. A verb takes the
+copy, reads the store's version once, and runs on the copy only when the
+version is the one the copy's own save left; otherwise it loads, as every
+verb did before. Only a verb whose final save landed puts a copy back, when
+its guard is released. Every other exit leaves nothing resident, and the next
+verb pays one load. `Config.Residency` bounds how many copies, and how many
+estimated bytes, a process keeps; nil is the in-process default.
 
 ## Reading it
 

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 )
@@ -25,7 +26,25 @@ const Sight Channel = "sight"
 // Choosing subjects is part of the testimony.
 type Subject string
 
+// Topic names what a holding is about the subject: the third part of the
+// record after holder and subject. A holder keeps one holding per subject
+// PER TOPIC, so two different things held about one subject never
+// overwrite each other. Like Channel and Subject the vocabulary is open,
+// opaque and caller-chosen; intel never interprets it.
+//
+// The empty topic is the default and is legal everywhere: a caller that
+// never names a topic keeps exactly the one-holding-per-subject behaviour
+// the module had before topics existed.
+//
+// Example: a ledger clerk holds, about the account "acct-7", one holding on
+// the default topic (where its papers were last filed) and another on the
+// topic "audited" (that it was signed off) — refiling the papers never
+// touches the sign-off.
+type Topic string
+
 // Report is one piece of testimony: a subject and an opaque payload.
+// A report names no topic of its own: the verb's input names the one topic
+// every report in the call is about, as it names the one channel.
 // Payload is empty legal; nil and empty are the same legal empty payload.
 type Report struct {
 	Subject Subject
@@ -43,7 +62,7 @@ const (
 	Held Status = "held"
 )
 
-// Holding is the read-side value: a subject, payload, channel provenance,
+// Holding is the read-side value: a subject and topic, payload, channel provenance,
 // two timestamps, active channels (CurrentVia), and derived status. Observed
 // is when this payload was first seen; Confirmed is when it was last landed,
 // whether or not the content changed. Channel is provenance of the latest
@@ -56,6 +75,7 @@ const (
 // change, and Observed would silently read as always-fresh.
 type Holding struct {
 	Subject    Subject
+	Topic      Topic
 	Payload    []byte
 	Channel    Channel
 	Observed   uint64
@@ -67,8 +87,11 @@ type Holding struct {
 // Intel is the container for all observers' intel holdings.
 // Not safe for concurrent use. Zero value not usable; construct via
 // NewIntel or LoadIntel.
+//
+// A holding is keyed by (observer, subject, topic): holder and subject at
+// the outside edges, the topic carrying the relationship between them.
 type Intel struct {
-	holdings map[core.EntityID]map[Subject]*holding
+	holdings map[core.EntityID]map[Subject]map[Topic]*holding
 }
 
 // internal holding struct stores the mutable state.
@@ -83,19 +106,30 @@ type holding struct {
 // NewIntel creates a new Intel container.
 func NewIntel() (*Intel, error) {
 	return &Intel{
-		holdings: make(map[core.EntityID]map[Subject]*holding),
+		holdings: make(map[core.EntityID]map[Subject]map[Topic]*holding),
 	}, nil
 }
 
-// SurveilInput carries a complete percept for this observer+channel.
+// SurveilInput carries a complete percept for this observer+channel+topic.
+//
+// Topic scopes the complete-percept contract: the percept is complete for
+// this observer, on this channel, ABOUT THIS TOPIC, and nothing else. A
+// subject absent from the percept loses this channel only on its holding
+// for this topic; its holdings on every other topic are untouched. The
+// empty Topic is the default topic.
 type SurveilInput struct {
 	Observer core.EntityID
 	Channel  Channel
+	Topic    Topic
 	Percept  []Report
 	At       uint64
 }
 
 // SurveilOutput reports the deltas Surveil caused.
+//
+// Every subject it names is a holding on the input's one Topic: a pass
+// touches no other topic, so a subject here is never ambiguous about which
+// of its holdings moved.
 //
 // The four lists answer four different questions and are NOT a partition of
 // the percept. In particular see [SurveilOutput.Reacquired], which refines
@@ -163,17 +197,21 @@ type SurveilOutput struct {
 	Reacquired []Subject
 }
 
-// ReportInput is the input to the Report verb.
+// ReportInput is the input to the Report verb. Topic names the one topic
+// every report in the call is about; the empty Topic is the default topic.
 type ReportInput struct {
 	Observer core.EntityID
 	Channel  Channel
+	Topic    Topic
 	Reports  []Report
 	At       uint64
 }
 
-// Surveil records a complete percept for an observer+channel. Fading is
-// derived: every subject previously current via this channel but absent from
-// Percept has that channel removed from CurrentVia. If CurrentVia becomes
+// Surveil records a complete percept for an observer+channel+topic. Fading is
+// derived: every subject whose holding ON THIS TOPIC was previously current
+// via this channel but is absent from Percept has that channel removed from
+// that holding's CurrentVia. Holdings on other topics are never read or
+// written. If CurrentVia becomes
 // empty, the subject fades (still held — the ghost goblin). An empty Percept
 // is legal (seeing nothing: fades everything this channel sustained).
 //
@@ -221,13 +259,19 @@ func (i *Intel) Surveil(in *SurveilInput) (*SurveilOutput, error) {
 
 	// Ensure observer exists if we're about to do something
 	if i.holdings[in.Observer] == nil {
-		i.holdings[in.Observer] = make(map[Subject]*holding)
+		i.holdings[in.Observer] = make(map[Subject]map[Topic]*holding)
 	}
 
 	// FADE PASS: from pre-mutation state, remove channel from holdings
 	// whose currentVia contains this channel AND subject absent from deduped percept
 	var fadedSubjects []Subject
-	for subj, h := range i.holdings[in.Observer] {
+	for subj, topics := range i.holdings[in.Observer] {
+		// Only this pass's topic is in scope: a percept about one topic is
+		// silent about every other, so it can fade nothing there.
+		h, held := topics[in.Topic]
+		if !held {
+			continue
+		}
 		// Check if this subject was sustained by this channel
 		if _, ok := h.currentVia[in.Channel]; ok {
 			// Check if it's absent from the deduped percept
@@ -258,19 +302,20 @@ func (i *Intel) Surveil(in *SurveilInput) (*SurveilOutput, error) {
 
 	// LAND PASS: in post-dedupe percept order
 	for _, report := range deduped {
-		h, exists := i.holdings[in.Observer][report.Subject]
+		h, exists := i.holdings[in.Observer][report.Subject][in.Topic]
 		if !exists {
-			// Unknown subject: create holding with independent payload copy.
-			// First contact: observed and confirmed both start here.
+			// Unknown subject on this topic: create holding with independent
+			// payload copy. First contact: observed and confirmed both start
+			// here.
 			payloadCopy := make([]byte, len(report.Payload))
 			copy(payloadCopy, report.Payload)
-			i.holdings[in.Observer][report.Subject] = &holding{
+			i.put(in.Observer, report.Subject, in.Topic, &holding{
 				payload:    payloadCopy,
 				channel:    in.Channel,
 				observed:   in.At,
 				confirmed:  in.At,
 				currentVia: map[Channel]struct{}{in.Channel: {}},
-			}
+			})
 			// Return independent copy for FirstContact
 			fcPayload := make([]byte, len(report.Payload))
 			copy(fcPayload, report.Payload)
@@ -316,7 +361,8 @@ func (i *Intel) Surveil(in *SurveilInput) (*SurveilOutput, error) {
 	return out, nil
 }
 
-// ReportOutput is the output of the Report verb.
+// ReportOutput is the output of the Report verb. Like [SurveilOutput], every
+// subject it names is a holding on the input's one Topic.
 type ReportOutput struct {
 	FirstContact []Report
 	Updated      []Subject
@@ -332,8 +378,9 @@ type ReportOutput struct {
 	Changed []Subject
 }
 
-// Report lands discrete testimony as HELD. Unknown subjects create new
-// holdings; known subjects are overwritten. Dedupes first, last wins,
+// Report lands discrete testimony as HELD, on the input's one Topic. A
+// subject unknown on that topic creates a new holding; a known one is
+// overwritten. Holdings on other topics are never read or written. Dedupes first, last wins,
 // survivor at last occurrence's position. Validates in order: nil → observer
 // → channel → subjects. All validation before any mutation (R5).
 func (i *Intel) Report(in *ReportInput) (*ReportOutput, error) {
@@ -370,7 +417,7 @@ func (i *Intel) Report(in *ReportInput) (*ReportOutput, error) {
 
 	// Ensure observer map exists (only after confirming work to do)
 	if _, exists := i.holdings[in.Observer]; !exists {
-		i.holdings[in.Observer] = make(map[Subject]*holding)
+		i.holdings[in.Observer] = make(map[Subject]map[Topic]*holding)
 	}
 
 	// Process each deduplicated report
@@ -379,19 +426,20 @@ func (i *Intel) Report(in *ReportInput) (*ReportOutput, error) {
 		storageCopy := make([]byte, len(report.Payload))
 		copy(storageCopy, report.Payload)
 
-		if _, exists := i.holdings[in.Observer][report.Subject]; !exists {
+		h, exists := i.holdings[in.Observer][report.Subject][in.Topic]
+		if !exists {
 			// New subject: create holding and add to FirstContact with
 			// independent copy. First contact: observed and confirmed both
 			// start here.
 			firstContactCopy := make([]byte, len(report.Payload))
 			copy(firstContactCopy, report.Payload)
-			i.holdings[in.Observer][report.Subject] = &holding{
+			i.put(in.Observer, report.Subject, in.Topic, &holding{
 				payload:    storageCopy,
 				channel:    in.Channel,
 				observed:   in.At,
 				confirmed:  in.At,
 				currentVia: make(map[Channel]struct{}),
-			}
+			})
 			out.FirstContact = append(out.FirstContact, Report{Subject: report.Subject, Payload: firstContactCopy})
 		} else {
 			// Known subject: same payload confirms without disturbing
@@ -400,7 +448,6 @@ func (i *Intel) Report(in *ReportInput) (*ReportOutput, error) {
 			// overwritten. Channel and currentVia behave exactly as before:
 			// channel always tracks the latest landing, currentVia is
 			// untouched (a rumor is not a sighting).
-			h := i.holdings[in.Observer][report.Subject]
 			if !bytes.Equal(h.payload, report.Payload) {
 				h.payload = storageCopy
 				h.observed = in.At
@@ -415,14 +462,25 @@ func (i *Intel) Report(in *ReportInput) (*ReportOutput, error) {
 	return out, nil
 }
 
+// put stores a holding at (observer, subject, topic), creating the
+// subject's topic map on demand. The observer map must already exist.
+func (i *Intel) put(observer core.EntityID, subject Subject, topic Topic, h *holding) {
+	topics := i.holdings[observer][subject]
+	if topics == nil {
+		topics = make(map[Topic]*holding)
+		i.holdings[observer][subject] = topics
+	}
+	topics[topic] = h
+}
+
 // HeldByInput is the input to the HeldBy query.
 type HeldByInput struct {
 	Observer core.EntityID
 }
 
-// HeldBy returns all holdings for an observer, sorted by Subject,
-// with statuses derived and payloads deep-copied. Unknown observer
-// returns empty slice, nil error.
+// HeldBy returns all holdings for an observer across every topic, sorted by
+// Subject and then by Topic, with statuses derived and payloads deep-copied.
+// Unknown observer returns empty slice, nil error.
 func (i *Intel) HeldBy(in *HeldByInput) ([]Holding, error) {
 	if in == nil {
 		return nil, fmt.Errorf("held by: %w", ErrNilInput)
@@ -432,38 +490,93 @@ func (i *Intel) HeldBy(in *HeldByInput) ([]Holding, error) {
 		return nil, fmt.Errorf("held by: %w", ErrNoObserver)
 	}
 
-	observerHoldings, exists := i.holdings[in.Observer]
-	if !exists {
-		return []Holding{}, nil
+	results := []Holding{}
+	for subject, topics := range i.holdings[in.Observer] {
+		for topic, h := range topics {
+			results = append(results, h.toHolding(subject, topic))
+		}
 	}
 
-	// Collect and convert holdings to exported type
-	results := make([]Holding, 0, len(observerHoldings))
-	for subject, h := range observerHoldings {
-		results = append(results, h.toHolding(subject))
-	}
-
-	// Sort by Subject (deterministic order)
-	slices.SortFunc(results, func(a, b Holding) int {
-		if a.Subject < b.Subject {
-			return -1
-		}
-		if a.Subject > b.Subject {
-			return 1
-		}
-		return 0
-	})
+	slices.SortFunc(results, compareSubjectThenTopic)
 
 	return results, nil
 }
 
-// OnInput is the input to the On query.
-type OnInput struct {
+// AboutInput is the input to the About query.
+type AboutInput struct {
 	Observer core.EntityID
 	Subject  Subject
 }
 
-// On returns a single holding for an observer and subject.
+// About returns everything an observer holds about one subject, one holding
+// per topic, sorted by Topic, with statuses derived and payloads
+// deep-copied. An observer holding nothing about the subject answers an
+// empty slice, nil error. Validates in order: nil → observer → subject.
+func (i *Intel) About(in *AboutInput) ([]Holding, error) {
+	if in == nil {
+		return nil, fmt.Errorf("about: %w", ErrNilInput)
+	}
+
+	if in.Observer == "" {
+		return nil, fmt.Errorf("about: %w", ErrNoObserver)
+	}
+
+	if in.Subject == "" {
+		return nil, fmt.Errorf("about: %w", ErrNoSubject)
+	}
+
+	topics := i.holdings[in.Observer][in.Subject]
+	results := make([]Holding, 0, len(topics))
+	for topic, h := range topics {
+		results = append(results, h.toHolding(in.Subject, topic))
+	}
+
+	slices.SortFunc(results, compareSubjectThenTopic)
+
+	return results, nil
+}
+
+// OnTopicInput is the input to the OnTopic query. The empty Topic is the
+// default topic and is a legal question.
+type OnTopicInput struct {
+	Observer core.EntityID
+	Topic    Topic
+}
+
+// OnTopic returns everything an observer holds on one topic, one holding per
+// subject, sorted by Subject, with statuses derived and payloads
+// deep-copied. An observer holding nothing on the topic answers an empty
+// slice, nil error. Validates in order: nil → observer.
+func (i *Intel) OnTopic(in *OnTopicInput) ([]Holding, error) {
+	if in == nil {
+		return nil, fmt.Errorf("on topic: %w", ErrNilInput)
+	}
+
+	if in.Observer == "" {
+		return nil, fmt.Errorf("on topic: %w", ErrNoObserver)
+	}
+
+	results := []Holding{}
+	for subject, topics := range i.holdings[in.Observer] {
+		if h, held := topics[in.Topic]; held {
+			results = append(results, h.toHolding(subject, in.Topic))
+		}
+	}
+
+	slices.SortFunc(results, compareSubjectThenTopic)
+
+	return results, nil
+}
+
+// OnInput is the input to the On query. The empty Topic is the default
+// topic.
+type OnInput struct {
+	Observer core.EntityID
+	Subject  Subject
+	Topic    Topic
+}
+
+// On returns the single holding for an observer, subject and topic.
 // Returns ErrNotHeld if not held. Payload is deep-copied.
 func (i *Intel) On(in *OnInput) (Holding, error) {
 	if in == nil {
@@ -478,17 +591,21 @@ func (i *Intel) On(in *OnInput) (Holding, error) {
 		return Holding{}, fmt.Errorf("on: %w", ErrNoSubject)
 	}
 
-	observerHoldings, exists := i.holdings[in.Observer]
+	h, exists := i.holdings[in.Observer][in.Subject][in.Topic]
 	if !exists {
 		return Holding{}, fmt.Errorf("on: %w", ErrNotHeld)
 	}
 
-	h, exists := observerHoldings[in.Subject]
-	if !exists {
-		return Holding{}, fmt.Errorf("on: %w", ErrNotHeld)
-	}
+	return h.toHolding(in.Subject, in.Topic), nil
+}
 
-	return h.toHolding(in.Subject), nil
+// compareSubjectThenTopic is the module's one read order: by Subject, then
+// by Topic within a subject.
+func compareSubjectThenTopic(a, b Holding) int {
+	if c := strings.Compare(string(a.Subject), string(b.Subject)); c != 0 {
+		return c
+	}
+	return strings.Compare(string(a.Topic), string(b.Topic))
 }
 
 // dedupeReports deduplicates reports, last wins, survivor at last
@@ -515,7 +632,7 @@ func dedupeReports(reports []Report) []Report {
 
 // toHolding converts an internal holding to an exported Holding,
 // deep-copying the payload and sorting CurrentVia.
-func (h *holding) toHolding(subject Subject) Holding {
+func (h *holding) toHolding(subject Subject, topic Topic) Holding {
 	// Deep-copy payload (nil payloads remain nil; empty payloads are copied)
 	var payloadCopy []byte
 	if h.payload != nil {
@@ -549,6 +666,7 @@ func (h *holding) toHolding(subject Subject) Holding {
 
 	return Holding{
 		Subject:    subject,
+		Topic:      topic,
 		Payload:    payloadCopy,
 		Channel:    h.channel,
 		Observed:   h.observed,

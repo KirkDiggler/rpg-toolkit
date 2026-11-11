@@ -145,11 +145,17 @@ func smallKeepPlan() *keepgen.Plan {
 // route rarely fits a room 3 deep, so one walks.
 func smallKeep(tb testing.TB, garrison bool) dungeonspec.Compiled {
 	tb.Helper()
+	name, read := smallKeepDocument(garrison)
+	return compiledOnce(tb, name, read)
+}
+
+// smallKeepDocument is [smallKeep]'s document, by its compile-once name.
+func smallKeepDocument(garrison bool) (string, func() ([]byte, error)) {
 	key := "small-keep"
 	if garrison {
 		key += "-garrison"
 	}
-	return compiledOnce(tb, key, func() ([]byte, error) {
+	return key, func() ([]byte, error) {
 		opts := keepgen.DefaultOptions()
 		opts.Hexes, opts.Seed, opts.Key = smallKeepHexes, 1, "small-keep"
 		plan := smallKeepPlan()
@@ -166,7 +172,7 @@ func smallKeep(tb testing.TB, garrison bool) dungeonspec.Compiled {
 			err = fmt.Errorf("the small keep is %d hexes, not %d", report.Hexes, smallKeepHexes)
 		}
 		return raw, err
-	})
+	}
 }
 
 // keepPlayers is the party's member ids, best seat first.

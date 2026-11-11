@@ -108,6 +108,14 @@ func (e *Encounter) noticeDown(
 	// a fall a later verb notices is not theirs to explain ([DeedFell]).
 	e.struckBy = nil
 
+	// A HELD LINE SAID TO THE FALLEN IS RELEASED (rpg-project#924,
+	// interaction_hold.go): a down creature answers nothing, so the waiting
+	// roll's verdict could never land. After the fall's beat, which is its
+	// cause.
+	if err := e.sweepHolds(); err != nil {
+		return nil, nil, fmt.Errorf("participation holds: %w", err)
+	}
+
 	// Party defeat is the rulebook's policy answer, not a threshold this
 	// composition derives. It closes only after all causal down beats.
 	if e.outcome == nil && participation.assessment.PartyDefeated {

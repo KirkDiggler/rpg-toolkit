@@ -80,7 +80,10 @@ independent.
 sole attachment is unambiguous; multiple roles with state-bound permissions must
 name the source explicitly. `blockingStates` names its source states, and `posts`
 maps those names to the existing post data (`door`, optional `at`, `against`,
-`pass`). Door IDs are site-local and cells use `{q,r}`. These fields may accompany
+`pass`). A `pass` is a bare fact (a password the mover knows) or the
+requirement grammar a line's `requires` uses, read with the mover as "me" and
+the post's holder as "the other party": `pass: { recognized: admitted }` lets
+through whom the holder recognises (rpg-project#928). Door IDs are site-local and cells use `{q,r}`. These fields may accompany
 faction or placement bindings. Replacing the behavior list does not inherit a
 body binding onto unrelated replacement roles.
 

@@ -23,7 +23,15 @@
 // it was told — which sustains nothing and retires nothing. A subject known
 // only from a Report is current on no channel at all.
 //
-// Design contract: docs/ideas/mind/perception/design.md (R1–R11). Composition
+// A holding is keyed by observer, subject and topic. Percepts live on the
+// default (empty) topic: Observe writes only it, and Held and On — the
+// sight readers — read only it, so a holding on a named topic is never
+// mistaken for a sighting. A named topic is discrete testimony about a
+// subject, written by Report with ReportInput.Topic and read by OnTopic
+// (everything on a topic), About (every topic about a subject) and AboutOn
+// (one subject on one topic); each returned Holding names its Topic.
+//
+// Design contract: docs/ideas/mind/perception/design.md (R1–R12). Composition
 // module, not a leaf: depends on core and play/intel (play/README.md's leaf
 // promise is "depends only on core", which this deliberately is not — it is
 // one layer above a play primitive, not another one).

@@ -112,30 +112,152 @@ func (c *countingFenced) SaveFenced(_ context.Context, in *SaveFencedInput) (*Sa
 	return &SaveFencedOutput{Version: in.Expected + 1}, nil
 }
 
-// TestALandedFencedSaveRefusesTheScopesLaterWrites drives the arming itself:
-// once a scope's fenced save lands, a sheet write and a seat write on that
-// scope each fail with a SaveError wrapping ErrBadRepository, and neither is
-// held for a save that will never come (rpg-toolkit#2332).
-func (s *PendingWritesSuite) TestALandedFencedSaveRefusesTheScopesLaterWrites() {
+// TestAFencedSaveDoesNotArmTheRefusalByItself: persistFenced lands a save
+// and leaves the scope's later writes open; arming the refusal is the final
+// commit's (rpg-project#879 S13), since a verb that commits at each pace
+// boundary writes sheets between its saves. The arming itself is pinned by
+// PaceCommitInternalSuite.
+func (s *PendingWritesSuite) TestAFencedSaveDoesNotArmTheRefusalByItself() {
 	repo := &countingFenced{}
 	m := &Manager{fenced: repo, pending: newPendingWrites()}
 	scope := &writeScope{session: "sess", encounter: "sess", fence: checkpointFence{held: true}}
-	_, err := m.persistFenced(context.Background(), scope, &encounter.EncounterData{}, SaveReport{})
+	_, err := m.persistFenced(context.Background(), scope, fencedWorld{whole: &encounter.EncounterData{}}, SaveReport{})
 	s.Require().NoError(err)
+	s.False(scope.fence.saved)
+	s.NoError(m.sheetsFor(scope).save(context.Background(), &character.Data{ID: "alice"}))
+	sheets, _ := m.pending.take("sess")
+	s.Len(sheets, 1, "the sheet is held for the next save")
+}
 
-	err = m.sheetsFor(scope).save(context.Background(), &character.Data{ID: "alice"})
-	s.ErrorIs(err, ErrBadRepository)
-	var saveErr *SaveError
-	s.Require().ErrorAs(err, &saveErr)
-	s.Equal([]string{"character:alice"}, saveErr.Report.Failed)
+// appendingRepo is an appending repository whose saves land or are refused
+// on demand, recording what each carried.
+type appendingRepo struct {
+	countingFenced
+	stale  bool
+	sinces []uint64
+	floors []uint64
+}
 
-	err = m.writeSeat(context.Background(), scope, "alice", "")
-	s.ErrorIs(err, ErrBadRepository)
-	s.Require().ErrorAs(err, &saveErr)
-	s.Equal([]string{"seat:alice"}, saveErr.Report.Failed)
+func (a *appendingRepo) SaveAppended(_ context.Context, in *SaveAppendedInput) (*SaveFencedOutput, error) {
+	a.sinces = append(a.sinces, in.Since)
+	a.floors = append(a.floors, in.Floor)
+	if a.stale {
+		return nil, ErrStaleCheckpoint
+	}
+	return &SaveFencedOutput{Version: in.Expected + 1}, nil
+}
 
-	sheets, seats := m.pending.take("sess")
-	s.Empty(sheets, "the late sheet was not held")
-	s.Empty(seats, "the late seat was not held")
-	s.Equal(1, repo.saves, "nothing reached the store after the one save")
+// TestRecordNextMovesOnlyWithALandedSave drives the baseline itself: a
+// refused appending save leaves recordNext where it was (the store still
+// holds what it did), and a landed one moves it to the saved rest's NextSeq,
+// beside the version.
+func (s *PendingWritesSuite) TestRecordNextMovesOnlyWithALandedSave() {
+	repo := &appendingRepo{stale: true}
+	m := &Manager{fenced: repo, appending: repo, pending: newPendingWrites()}
+	scope := &writeScope{session: "sess", encounter: "sess",
+		fence: checkpointFence{held: true, version: 3, recordNext: 7}}
+	split := &encounter.ToCheckpointOutput{Rest: encounter.EncounterData{}}
+	split.Rest.Log.NextSeq = 9
+
+	_, err := m.persistFenced(context.Background(), scope, fencedWorld{split: split}, SaveReport{})
+	s.Require().ErrorIs(err, ErrStaleCheckpoint)
+	s.Equal(uint64(7), scope.fence.recordNext, "a refused save leaves the baseline")
+	s.Equal(uint64(3), scope.fence.version)
+	s.False(scope.fence.saved)
+
+	repo.stale = false
+	_, err = m.persistFenced(context.Background(), scope, fencedWorld{split: split}, SaveReport{})
+	s.Require().NoError(err)
+	s.Equal([]uint64{7, 7}, repo.sinces, "both saves sent from the baseline the verb loaded")
+	s.Equal(uint64(9), scope.fence.recordNext, "a landed save moves it to the rest's NextSeq")
+	s.Equal(uint64(4), scope.fence.version)
+	s.Zero(repo.saves, "an appending host is never handed SaveFenced")
+}
+
+// TestTheRetentionFloorRidesTheAppendedSave: a bounded record's floor, which
+// the encounter reports beside its segment, reaches the store's save as is,
+// so the store may drop the segments wholly below it.
+func (s *PendingWritesSuite) TestTheRetentionFloorRidesTheAppendedSave() {
+	repo := &appendingRepo{}
+	m := &Manager{fenced: repo, appending: repo, pending: newPendingWrites()}
+	scope := &writeScope{session: "sess", encounter: "sess",
+		fence: checkpointFence{held: true, version: 1, recordNext: 12}}
+	split := &encounter.ToCheckpointOutput{Floor: 8}
+	split.Rest.Log.NextSeq = 15
+
+	_, err := m.persistFenced(context.Background(), scope, fencedWorld{split: split}, SaveReport{})
+	s.Require().NoError(err)
+	s.Equal([]uint64{8}, repo.floors)
+	s.Equal([]uint64{12}, repo.sinces)
+}
+
+// piecesRepo is a pieces repository whose saves land or are refused on
+// demand, recording what each carried.
+type piecesRepo struct {
+	appendingRepo
+	saves []*SavePiecesInput
+}
+
+func (p *piecesRepo) SavePieces(_ context.Context, in *SavePiecesInput) (*SaveFencedOutput, error) {
+	p.saves = append(p.saves, in)
+	if p.stale {
+		return nil, ErrStaleCheckpoint
+	}
+	return &SaveFencedOutput{Version: in.Expected + 1}, nil
+}
+
+// TestMarksMoveOnlyWithALandedSave drives the marks beside the record
+// baseline: a refused pieces save leaves both where they were (the store
+// still holds what it did), and a landed one replaces the marks with the
+// save's new ones and moves recordNext, beside the version. The second save
+// splits against the marks the verb loaded, so it sends what the first would
+// have.
+func (s *PendingWritesSuite) TestMarksMoveOnlyWithALandedSave() {
+	repo := &piecesRepo{appendingRepo: appendingRepo{stale: true}}
+	m := &Manager{fenced: repo, appending: repo, pieces: repo, pending: newPendingWrites()}
+	rest := encounter.EncounterData{SiteHash: "site", Members: []encounter.MemberData{{ID: "alice"}}}
+	rest.Log.NextSeq = 9
+	held, err := encounter.SplitPieces(&encounter.SplitPiecesInput{Data: &rest})
+	s.Require().NoError(err)
+	loaded := held.Marks
+	rest.Members = append(rest.Members, encounter.MemberData{ID: "bob"})
+	scope := &writeScope{session: "sess", encounter: "sess",
+		fence: checkpointFence{held: true, version: 3, recordNext: 7, marks: loaded}}
+	split := &encounter.ToCheckpointOutput{Rest: rest}
+
+	world, err := m.piecesOf(split, scope.fence.marks)
+	s.Require().NoError(err)
+	_, err = m.persistFenced(context.Background(), scope, world, SaveReport{})
+	s.Require().ErrorIs(err, ErrStaleCheckpoint)
+	s.Equal(loaded, scope.fence.marks, "a refused save leaves the marks")
+	s.Equal(uint64(7), scope.fence.recordNext, "and the baseline")
+	s.Equal(uint64(3), scope.fence.version)
+
+	repo.stale = false
+	world, err = m.piecesOf(split, scope.fence.marks)
+	s.Require().NoError(err)
+	_, err = m.persistFenced(context.Background(), scope, world, SaveReport{})
+	s.Require().NoError(err)
+	s.Require().Len(repo.saves, 2)
+	for _, in := range repo.saves {
+		s.Equal(uint64(7), in.Since, "both saves sent from the baseline the verb loaded")
+		s.Nil(in.Data, "the pieces replace the rest")
+		s.ElementsMatch([]encounter.PieceKey{encounter.PieceHead, encounter.MemberPiece("bob")},
+			keysOfPieces(in.Pieces), "only the head and the new member, against the loaded marks")
+	}
+	s.Equal(repo.saves[1].Marks, scope.fence.marks, "a landed save holds its new marks")
+	s.NotEqual(loaded, scope.fence.marks)
+	s.Equal(uint64(9), scope.fence.recordNext)
+	s.Equal(uint64(4), scope.fence.version)
+	s.Empty(repo.sinces, "a pieces host is never handed SaveAppended")
+	s.Zero(repo.countingFenced.saves, "nor SaveFenced")
+}
+
+// keysOfPieces is a pieces map's keys.
+func keysOfPieces(pieces map[encounter.PieceKey]encounter.Piece) []encounter.PieceKey {
+	out := make([]encounter.PieceKey, 0, len(pieces))
+	for key := range pieces {
+		out = append(out, key)
+	}
+	return out
 }

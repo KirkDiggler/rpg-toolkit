@@ -342,6 +342,9 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 	// they are part of the world the composition runs, so a copy kept only on
 	// Compiled would be lost the moment the dungeon was saved.
 	field.Exits = exits
+	// AND THE RUN'S INTERACTIONS (rpg-project#922): carried on the field so
+	// a host that launches it passes them with no code of its own.
+	field.Interactions = interactionsOf(spec)
 	return Compiled{
 		Key: spec.Key, Name: read.Name, Field: field, PartyStart: party, Monsters: monsters,
 		// The same lists the field carries, surfaced for a host that wants to

@@ -130,7 +130,7 @@ func (m *Manager) Interact(ctx context.Context, in *InteractInput) (*InteractOut
 		return nil, fmt.Errorf("interact: %w", ErrNoMemberID)
 	}
 
-	scope, err := m.openForChange(ctx, "interact", in.Session)
+	scope, err := m.openForChangeBy(ctx, "interact", in.Session, in.Actor)
 	if err != nil {
 		return nil, fmt.Errorf("interact: %w", err)
 	}

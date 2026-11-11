@@ -36,3 +36,4 @@ github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session/TestCastleWalkUpThenS
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session/TestEveryVerbOfTheGatehouseFightLoadsOnce  # over budget, to be sized: rpg-toolkit#2343 (10.14s local, - CI)
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session/TestHoldOutSessionSuite  # near budget; runner variance, not a heavy fixture (5.41s local, - CI)
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session/TestOpenDoorLoadsOnce  # over budget, to be sized: rpg-toolkit#2343 (10.33s local, - CI)
+github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session/TestPiecesKeepSuite  # the small keep garrison is the pieces oracle's fixture: compile 2.7s + Launch ~6s under race, the hall suite pins the rest fast (13.2s local, - CI)

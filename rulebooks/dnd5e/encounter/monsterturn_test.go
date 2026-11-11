@@ -146,13 +146,14 @@ func newDrivenArrivalEncounter(
 			// perception's charter is what makes the persisted map readable
 			// here at all.
 			var seeded bool
-			for key, holding := range holdings {
+			for key, topics := range holdings {
 				if string(key) != string(perception.Qualify("member", subject)) {
 					continue
 				}
+				holding := topics[""]
 				holding.Payload = known
 				holding.CurrentVia = nil
-				holdings[key] = holding
+				topics[""] = holding
 				seeded = true
 			}
 			require.True(t, seeded, "fixture must start with a sight holding")
@@ -767,13 +768,14 @@ func editGoblinHolding(
 ) {
 	t.Helper()
 	holdings := data.Perception.Intel.Holdings[perception.Qualify("member", goblin)]
-	for key, holding := range holdings {
+	for key, topics := range holdings {
 		if string(key) != string(perception.Qualify("member", subject)) {
 			continue
 		}
+		holding := topics[""]
 		holding.Payload = payload
 		holding.CurrentVia = nil
-		holdings[key] = holding
+		topics[""] = holding
 		return
 	}
 	require.Failf(t, "holding not found", "the goblin holds nothing on %q", subject)
