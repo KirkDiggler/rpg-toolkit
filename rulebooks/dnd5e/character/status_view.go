@@ -249,11 +249,11 @@ func (c *Character) projectConditions() ([]ConditionView, error) {
 		if ref == nil {
 			return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "condition reported a nil ref")
 		}
-		display, ok := conditions.DisplayFor(*ref)
-		if !ok {
-			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
-				"condition ref %s is not registered", ref.String())
+		description, err := conditions.DescribeCondition(&conditions.DescribeConditionInput{Condition: cond})
+		if err != nil {
+			return nil, rpgerr.Wrap(err, "condition status description")
 		}
+		display := description.Display
 		views = append(views, ConditionView{
 			Ref:          *ref,
 			Name:         display.Name,

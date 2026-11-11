@@ -171,6 +171,18 @@ func (s *ConcentrationKeeperSuite) TestASelfEndingConditionIsStillDroppedCleanly
 	s.Empty(s.attack("bard-1", "goblin-1").AdvantageSources)
 }
 
+func (s *ConcentrationKeeperSuite) TestStatusViewUsesProviderMaintenanceDescription() {
+	hold, err := currentHoldFixture(holdFixtureInput{Member: "bard-1", Source: refs.Spells.TrueStrike(), Name: conditions.TrueStrikeName, Turns: 2})
+	s.Require().NoError(err)
+	loaded, err := Load(s.ctx, s.bardData(hold))
+	s.Require().NoError(err)
+	view, err := loaded.StatusView(&StatusViewInput{})
+	s.Require().NoError(err)
+	s.Require().Len(view.View.Conditions, 1)
+	s.Equal("Concentrating on True Strike", view.View.Conditions[0].Name)
+	s.Contains(view.View.Conditions[0].Detail, "2 maintainer turn ends remaining")
+}
+
 func (s *ConcentrationKeeperSuite) TestACharacterHoldingNothingSaysSo() {
 	loaded, err := Load(s.ctx, s.bardData())
 	s.Require().NoError(err)

@@ -26,10 +26,11 @@ func namedFixture(in namedFixtureInput) (*conditions.LinkedCondition, error) {
 		return nil, fmt.Errorf("fixture requires refs")
 	}
 	owner := dndevents.ConditionAddress{MemberID: in.SourceID, ConditionRef: refs.Conditions.LinkedEffects().String(), SourceID: "application:" + in.SourceID}
-	name := "Bless"
-	if in.Ref.String() == refs.Conditions.Baned().String() {
-		name = "Bane"
+	display, known := conditions.DisplayFor(*in.Ref)
+	if !known {
+		return nil, fmt.Errorf("fixture requires a registered ref")
 	}
+	name := display.Name
 	raw, err := json.Marshal(conditions.LinkedConditionConfig{ApplicationID: owner.SourceID, AddressSourceID: in.SourceID, Role: conditions.LinkedRecipient,
 		Bindings: &conditions.LinkedBindings{Name: name, Owner: &owner, MemberKey: in.MemberID}})
 	if err != nil {
