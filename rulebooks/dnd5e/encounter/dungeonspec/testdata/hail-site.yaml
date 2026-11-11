@@ -1,0 +1,129 @@
+# THE HAIL SITE (rpg-project#923, Gate S3 of #769): the cone site's one open
+# room, cut down to the gate's mechanic. Hand-written from the cone site's
+# studio export; the gate's interaction and the porter's lines are hand edits.
+#
+#   room    offset cols -8..7, rows -4..6, no wall: the party start at its
+#           south, col 0 row 6.
+#   porter  a guard at col 3 row 0, civil to the party, carrying the gate's
+#           one claim: a visitor he sees come within two cells is hailed.
+#
+# hail_site_test.go plays it.
+version: 5
+key: hail-site
+play:
+  void: transparent
+  lighting: bright
+  standing: centre-covered
+factions:
+  - id: watch
+dispositions:
+  - between:
+      - watch
+      - party
+    stance: neutral
+room:
+  version: 3
+  id: room-1
+  name: Hail Site
+  coordinateFrame:
+    horizontalPlane: world-xz
+    verticalAxis: world-y-up
+    distanceUnit: world-scene-unit
+    hexRadius: 1
+    footprintFrame: owner-local-xz
+  scene:
+    version: 3
+    id: scene-1
+    name: Hail Site
+    items: []
+    groups: []
+    mapLabels: []
+  room:
+    implicitRegionId: room-1-region
+    regions:
+      - id: room-1-region
+        name: Hail Site
+        lighting: { intensity: 1 }
+        cells: []
+      - id: region-hall
+        name: Hall
+        lighting: { intensity: 1 }
+        cells:
+          - r: -4
+            q: [[-6, 9]]
+          - r: -3
+            q: [[-6, 9]]
+          - r: -2
+            q: [[-7, 8]]
+          - r: -1
+            q: [[-7, 8]]
+          - r: 0
+            q: [[-8, 7]]
+          - r: 1
+            q: [[-8, 7]]
+          - r: 2
+            q: [[-9, 6]]
+          - r: 3
+            q: [[-9, 6]]
+          - r: 4
+            q: [[-10, 5]]
+          - r: 5
+            q: [[-10, 5]]
+          - r: 6
+            q: [[-11, 4]]
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    monsterDeclarations:
+      - id: porter
+        ref: dnd5e:monsters:guard
+        startingCell:
+          location:
+            q: 3
+            r: 0
+          facing: s
+    partyStart:
+      q: 0
+      r: 6
+    monsterBindings:
+      porter:
+        faction: watch
+        options:
+          - id: guest
+            say: We're expected.
+            requires:
+              - interaction:
+                  id: gate
+                  in: [fresh]
+            advance:
+              interaction: gate
+              success: admitted
+            success:
+              - say: In you go.
+        behaviors:
+          - id: policy
+            use: porter-policy
+interactions:
+  gate:
+    approach: { within: 2 }
+    recipe:
+      ref: site:interactions:gate
+      initial: fresh
+      states:
+        fresh:
+          transitions:
+            - { on: admitted, to: admitted, reason: let through }
+        admitted: { terminal: true }
+behaviorDefinitions:
+  porter-policy:
+    recipe:
+      ref: site:behaviors:porter-policy
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: approached
+              do:
+                - pick: approached
+    table:
+      approached:
+        - say: Halt there. What's your business?

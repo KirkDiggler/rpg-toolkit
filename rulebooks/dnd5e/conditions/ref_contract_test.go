@@ -21,7 +21,7 @@ import (
 // route. Kept honest by TestRefContractCoversEveryLoadedCondition.
 func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 	roller := dice.NewRoller()
-	baned, err := NewBanedCondition(NewBanedConditionInput{
+	baned, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Baned(),
 		MemberID: "m1", SourceID: "bard-1", SourceRef: refs.Spells.Bane(),
 	})
 	if err != nil {
@@ -31,7 +31,7 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 	if err != nil {
 		panic(err)
 	}
-	blessed, err := NewBlessedCondition(NewBlessedConditionInput{
+	blessed, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Blessed(),
 		MemberID: "m1", SourceID: "cleric-1", SourceRef: refs.Spells.Bless(),
 	})
 	if err != nil {
@@ -85,47 +85,47 @@ func refContractTable() map[string]dnd5eEvents.ConditionBehavior {
 		panic(err)
 	}
 	return map[string]dnd5eEvents.ConditionBehavior{
-		"shillelagh":        &ShillelaghCondition{MemberID: "m1", Weapon: HeldWeapon{Slot: "main_hand", ItemID: "club"}, Ability: "wis", TurnEndsLeft: 10},
-		"faerie_fire":       faerieFire,
-		"shield_of_faith":   shieldOfFaith,
-		"divine_favor":      divineFavor,
-		"guiding_bolt":      guidingBolt,
-		"raging":            composedRageForTest("m1"),
-		"brutal_critical":   NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "m1", Roller: roller}),
-		"unarmored_defense": NewUnarmoredDefenseCondition(UnarmoredDefenseInput{MemberID: "m1", Type: UnarmoredDefenseBarbarian}),
-		"fs_archery":        NewFightingStyleArcheryCondition("m1"),
-		"fs_defense":        NewFightingStyleDefenseCondition("m1"),
-		"fs_dueling":        NewFightingStyleDuelingCondition("m1"),
-		"fs_gwf":            NewFightingStyleGreatWeaponFightingCondition("m1", roller),
-		"fs_protection":     NewFightingStyleProtectionCondition("m1"),
-		"fs_twf":            NewFightingStyleTwoWeaponFightingCondition("m1"),
-		"improved_critical": NewImprovedCriticalCondition(ImprovedCriticalInput{MemberID: "m1"}),
-		"reckless_attack":   NewRecklessAttackCondition("m1"),
-		"martial_arts":      NewMartialArtsCondition(MartialArtsInput{MemberID: "m1"}),
-		"sneak_attack":      NewSneakAttackCondition(SneakAttackInput{MemberID: "m1", Roller: roller}),
-		"disengaging":       NewDisengagingCondition("m1"),
-		"dodging":           NewDodgingCondition("m1"),
-		"prone":             NewProneCondition("m1"),
-		"hidden":            NewHiddenCondition("m1"),
-		"helped":            NewHelpedCondition("m1", "helper-1"),
-		"inspired":          NewInspiredCondition("m1", "bard-1", InspiredDie),
-		"blade_ward":        NewBladeWardCondition("m1", "", 2),
-		"commanded":         commanded,
-		"true_strike":       NewTrueStrikeCondition("m1", "goblin-1", ""),
-		"concentrating":     NewConcentratingCondition("m1", refs.Spells.TrueStrike().String(), TrueStrikeName, 2),
-		"baned":             baned,
-		"blessed":           blessed,
-		"guided":            guided,
-		"resistance":        resistance,
-		"sanctuary":         sanctuary,
-		"sanctuary_immune":  sanctuaryImmune,
-		"vicious_mockery":   NewViciousMockeryCondition("m1", "bard-1", ""),
-		"opportunity":       NewOpportunityAttackCondition("m1"),
-		"immunity":          Immunity("m1", damage.Poison),
-		"vulnerability":     Vulnerability("m1", damage.Bludgeoning),
-		"pack_tactics":      PackTactics("m1"),
-		"undead_fortitude":  UndeadFortitude("m1", 3, roller),
-		"nimble_escape":     NimbleEscape("m1"),
+		refs.Conditions.LinkedEffects().String(): linkedForTest("m1"),
+		"shillelagh":                             &ShillelaghCondition{MemberID: "m1", Weapon: HeldWeapon{Slot: "main_hand", ItemID: "club"}, Ability: "wis", TurnEndsLeft: 10},
+		"faerie_fire":                            faerieFire,
+		"shield_of_faith":                        shieldOfFaith,
+		"divine_favor":                           divineFavor,
+		"guiding_bolt":                           guidingBolt,
+		"raging":                                 composedRageForTest("m1"),
+		"brutal_critical":                        NewBrutalCriticalCondition(BrutalCriticalInput{MemberID: "m1", Roller: roller}),
+		"unarmored_defense":                      NewUnarmoredDefenseCondition(UnarmoredDefenseInput{MemberID: "m1", Type: UnarmoredDefenseBarbarian}),
+		"fs_archery":                             NewFightingStyleArcheryCondition("m1"),
+		"fs_defense":                             NewFightingStyleDefenseCondition("m1"),
+		"fs_dueling":                             NewFightingStyleDuelingCondition("m1"),
+		"fs_gwf":                                 NewFightingStyleGreatWeaponFightingCondition("m1", roller),
+		"fs_protection":                          NewFightingStyleProtectionCondition("m1"),
+		"fs_twf":                                 NewFightingStyleTwoWeaponFightingCondition("m1"),
+		"improved_critical":                      NewImprovedCriticalCondition(ImprovedCriticalInput{MemberID: "m1"}),
+		"reckless_attack":                        NewRecklessAttackCondition("m1"),
+		"martial_arts":                           NewMartialArtsCondition(MartialArtsInput{MemberID: "m1"}),
+		"sneak_attack":                           NewSneakAttackCondition(SneakAttackInput{MemberID: "m1", Roller: roller}),
+		"disengaging":                            NewDisengagingCondition("m1"),
+		"dodging":                                NewDodgingCondition("m1"),
+		"prone":                                  NewProneCondition("m1"),
+		"hidden":                                 NewHiddenCondition("m1"),
+		"helped":                                 NewHelpedCondition("m1", "helper-1"),
+		"inspired":                               NewInspiredCondition("m1", "bard-1", InspiredDie),
+		"blade_ward":                             NewBladeWardCondition("m1", "", 2),
+		"commanded":                              commanded,
+		"true_strike":                            NewTrueStrikeCondition("m1", "goblin-1", ""),
+		"baned":                                  baned,
+		"blessed":                                blessed,
+		"guided":                                 guided,
+		"resistance":                             resistance,
+		"sanctuary":                              sanctuary,
+		"sanctuary_immune":                       sanctuaryImmune,
+		"vicious_mockery":                        NewViciousMockeryCondition("m1", "bard-1", ""),
+		"opportunity":                            NewOpportunityAttackCondition("m1"),
+		"immunity":                               Immunity("m1", damage.Poison),
+		"vulnerability":                          Vulnerability("m1", damage.Bludgeoning),
+		"pack_tactics":                           PackTactics("m1"),
+		"undead_fortitude":                       UndeadFortitude("m1", 3, roller),
+		"nimble_escape":                          NimbleEscape("m1"),
 	}
 }
 

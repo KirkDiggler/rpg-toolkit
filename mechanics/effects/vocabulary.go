@@ -36,15 +36,27 @@ type OutputVocabulary struct {
 //   - Assess answers the output's information row for a frame; the same
 //     guard answers execution and information.
 type KindSpec struct {
-	Check  func(output Output) error
-	Attach func(ctx context.Context, bus events.EventBus, o *Bound) (Detach, error)
-	Assess func(frame any, o *Bound) (Row, error)
+	// Execution declares whether this kind subscribes or contributes by query.
+	Execution KindExecution
+	Check     func(output Output) error
+	Attach    func(ctx context.Context, bus events.EventBus, o *Bound) (Detach, error)
+	Assess    func(frame any, o *Bound) (Row, error)
 }
 
-// AmountFn computes an amount from a frame; a is the output's Amount, whose
-// one set field is the function's parameters. It returns an error when the
-// frame cannot answer.
-type AmountFn func(frame any, a Amount) (int, error)
+// KindExecution declares the delivery mechanism of an output kind.
+type KindExecution string
+
+const (
+	// KindSubscribed is the default and requires an Attach implementation.
+	KindSubscribed KindExecution = ""
+	// KindQuery describes a contribution on demand and forbids Attach.
+	KindQuery KindExecution = "query"
+)
+
+// AmountFn describes an amount from a frame. Scalars are settled; dice remain
+// unresolved until the consuming roll path evaluates them. The function must not
+// roll or substitute zero for a frame it cannot answer.
+type AmountFn func(frame any, a Amount) (AmountResult, error)
 
 // Detach undoes one Attach.
 type Detach func(ctx context.Context) error

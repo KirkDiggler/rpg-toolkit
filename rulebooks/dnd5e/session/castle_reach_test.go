@@ -45,7 +45,7 @@ func TestCastleWalkUpThenSpeak(t *testing.T) {
 
 	require.Greater(t, distanceToCaptain(), float64(session.InteractionReach), "the party starts beyond the captain's reach")
 	assert.False(t, speakTargets()["captain"], "so his lines are not on the menu")
-	_, err := g.mgr.Speak(ctx, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "stand-aside"})
+	_, err := speakAsOffered(ctx, g.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "stand-aside"})
 	// THE ORIGINAL REASON HOLDS: from outside the gatehouse he cannot see
 	// her, and reach is asked only after the witness test, so the refusal
 	// names the missing audience rather than the distance.
@@ -54,6 +54,6 @@ func TestCastleWalkUpThenSpeak(t *testing.T) {
 	require.NoError(t, g.walkIn(), "alice walks up into the gatehouse")
 	require.LessOrEqual(t, distanceToCaptain(), float64(session.InteractionReach), "now she stands within his reach")
 	assert.True(t, speakTargets()["captain"], "and his lines appear on arrival")
-	_, err = g.mgr.Speak(ctx, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "stand-aside"})
+	_, err = speakAsOffered(ctx, g.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "stand-aside"})
 	require.NoError(t, err, "the line is heard")
 }

@@ -98,7 +98,8 @@ func TestEveryVerbOfTheGatehouseFightLoadsOnce(t *testing.T) {
 	})
 }
 
-// The troupe's door: OpenDoor, whose opening brings the far room's guards in.
+// The troupe's door: OpenDoor on the gate the captain left open and alice
+// shut again.
 func TestOpenDoorLoadsOnce(t *testing.T) {
 	g := openTheGatehouse(12, 12, 15)
 	ctx := context.Background()
@@ -116,14 +117,19 @@ func TestOpenDoorLoadsOnce(t *testing.T) {
 		require.NoError(t, err)
 	}
 	walkOnto(func(enc *encounter.Encounter) spatial.Position { return standingAt(enc, "pedlar") }, false)
-	_, err := g.mgr.Speak(ctx, &session.SpeakInput{Session: "sess", Member: "alice", Target: "pedlar", OptionID: "tonight"})
+	_, err := speakAsOffered(ctx, g.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "pedlar", OptionID: "tonight"})
 	require.NoError(t, err)
 	walkOnto(func(enc *encounter.Encounter) spatial.Position { return standingAt(enc, "captain") }, false)
-	_, err = g.mgr.Speak(ctx, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "troupe"})
+	_, err = speakAsOffered(ctx, g.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "troupe"})
 	require.NoError(t, err)
 	// gate-1 stays posted beneath the gate (rpg-project#857): the troupe opens
 	// it from the opening's other cell.
 	walkOnto(func(*encounter.Encounter) spatial.Position { return besideTheCastleGate }, true)
+	// The captain went in once he admitted the troupe (rpg-project#929) and
+	// left the gate open behind him; alice shuts it, so the verb measured is
+	// a real opening.
+	_, err = g.mgr.CloseDoor(ctx, &session.CloseDoorInput{Session: "sess", Member: "alice", Door: castleGate})
+	require.NoError(t, err)
 
 	loads := session.CountEncounterLoadsForTest(t)
 	loadsOnce(t, loads, "OpenDoor", func() error {

@@ -39,7 +39,7 @@ func TestHealingSpellsUseLoadedClassAbilityAndLifeDomain(t *testing.T) {
 			}
 			require.Equal(t, tc.amounts, amounts)
 			require.Nil(t, definition.Cast.Save)
-			require.Nil(t, definition.Cast.Concentration)
+			require.Empty(t, definition.Cast.Maintenance)
 			clone := definition.Clone()
 			clone.Cast.Healing.Modifiers[0].Source.Ref.ID = "changed"
 			clone.Cast.HealingExcludes[0] = "changed"

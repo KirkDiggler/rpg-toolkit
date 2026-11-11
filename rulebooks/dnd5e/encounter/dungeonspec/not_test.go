@@ -41,9 +41,9 @@ func TestNotCompilesToTheEnginesNegation(t *testing.T) {
             check: [{ ability: persuasion, dc: 10 }]
 `))
 		goblin := monsterNamed(t, compiled, "goblin-1")
-		require.Equal(t, encounter.TriggerNot{Inner: encounter.TriggerFact{Fact: "caught-in-kitchen"}},
+		require.Equal(t, []encounter.Trigger{encounter.TriggerNot{Inner: encounter.TriggerFact{Fact: "caught-in-kitchen"}}},
 			optionNamed(t, goblin.Options, "chat").Requires)
-		require.Equal(t, encounter.TriggerNot{Inner: encounter.TriggerHolds{Prop: "table"}},
+		require.Equal(t, []encounter.Trigger{encounter.TriggerNot{Inner: encounter.TriggerHolds{Prop: "table"}}},
 			optionNamed(t, goblin.Options, "beg").Requires)
 	})
 

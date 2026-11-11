@@ -230,7 +230,7 @@ type actorLoadCheckingDice struct {
 	next       int
 }
 
-func (d *actorLoadCheckingDice) Roll(_ context.Context, _ int) (int, error) {
+func (d *actorLoadCheckingDice) Roll(_ context.Context, size int) (int, error) {
 	if d.next == 0 {
 		require.Equal(d.t, 1, d.characters.compiled["alice"],
 			"downed verdict and compiled offer must share one strict actor load before execution")
@@ -240,7 +240,7 @@ func (d *actorLoadCheckingDice) Roll(_ context.Context, _ int) (int, error) {
 	require.Less(d.t, d.next, len(d.rolls), "execution requested an unexpected die roll")
 	roll := d.rolls[d.next]
 	d.next++
-	return roll, nil
+	return onTheDie(roll, size), nil
 }
 
 // compileLoadCounting counts the store reads the verb's own compile and cast

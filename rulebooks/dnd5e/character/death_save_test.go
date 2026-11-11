@@ -14,7 +14,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -97,7 +96,7 @@ func TestMakeDeathSaveReportsAuthoritativeOutcomes(t *testing.T) {
 
 func TestMakeDeathSaveUsesRecipientSelectedBaneCalculation(t *testing.T) {
 	char := dyingCharacterForTurn(t, &saves.DeathSaveState{})
-	baned, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
+	baned, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Baned(),
 		MemberID: char.GetID(), SourceID: "bard-a", SourceRef: refs.Spells.Bane(),
 	})
 	require.NoError(t, err)

@@ -334,7 +334,7 @@ func requiredPrice(item TradeItem) (currency.Money, error) {
 // Interact, and confirms the target is a placed vendor — the shared first
 // half of both buy and sell.
 func (m *Manager) openVendorTrade(ctx context.Context, in *TradeInput) (*writeScope, string, *npc.Data, error) {
-	scope, err := m.openForChange(ctx, "trade", in.Session)
+	scope, err := m.openForChangeBy(ctx, "trade", in.Session, in.Actor)
 	if err != nil {
 		return nil, "", nil, err
 	}

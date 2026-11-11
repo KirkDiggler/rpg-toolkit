@@ -4,6 +4,7 @@
 package encounter
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -89,6 +90,14 @@ type EncounterData struct {
 	// exactly what those encounters meant.
 	Doors      []DoorData      `json:"doors,omitempty"`
 	SightAreas []SightAreaData `json:"sight_areas,omitempty"`
+	// Interactions are the run's interaction instances (interaction.go,
+	// rpg-project#922): each definition, canonical, with its digest, and its
+	// progress, in id order. Top level beside Doors for the doors' reason:
+	// the definition is authored, the state is the run's. PRESENT EXACTLY
+	// WHEN THE CONTENT DECLARES ONE — a run without interactions writes no
+	// key, the exact bytes every earlier blob has. Load compiles each again
+	// and refuses a digest that does not match or a state the recipe lacks.
+	Interactions []InteractionData `json:"interactions,omitempty"`
 	// Journal is the run's ONE record of what happened: every knowledge fact
 	// (who has found which concealment, rpg-toolkit#1371, rpg-project#490;
 	// who has come to know which fact, rpg-project#375; which pair publicly
@@ -614,7 +623,8 @@ type UntilStepData struct {
 // TriggerData is the persistent representation of one [Trigger] — the
 // predicate grammar on the wire (rpg-project#375). Kind is one of
 // reached_position, external, member_down, exited_holding, round, fact,
-// stance, holds, left and not (its inner in Not), and the other fields are populated per kind exactly as
+// stance, holds, left, not (its inner in Not), interaction (its id and
+// states, rpg-project#922) and recognized (its topic, rpg-project#928), and the other fields are populated per kind exactly as
 // [EndingData]'s own are; a disposition's until persists as one of these,
 // an ending is one of these plus its key, and an option's requirement is a
 // fact or a holds (rpg-project#569) — `holds` naming its prop in Item.
@@ -632,6 +642,16 @@ type TriggerData struct {
 	// Not is a `not` trigger's one inner predicate (rpg-project#719), kind
 	// "not"; written only for that kind.
 	Not *TriggerData `json:"not,omitempty"`
+
+	// Interaction and States are an `interaction` trigger's interaction and
+	// the states any one of which meets it (rpg-project#922); written only
+	// for that kind.
+	Interaction InteractionID `json:"interaction,omitempty"`
+	States      []string      `json:"states,omitempty"`
+
+	// Topic is a `recognized` trigger's topic (rpg-project#928); written
+	// only for that kind.
+	Topic TopicID `json:"topic,omitempty"`
 }
 
 // triggerDataFrom renders a trigger for the blob — ONE switch for endings and
@@ -661,6 +681,10 @@ func triggerDataFrom(t Trigger) TriggerData {
 	case TriggerNot:
 		inner := triggerDataFrom(t.Inner)
 		return TriggerData{Kind: "not", Not: &inner}
+	case TriggerInteraction:
+		return TriggerData{Kind: "interaction", Interaction: t.Interaction, States: slices.Clone(t.In)}
+	case TriggerRecognized:
+		return TriggerData{Kind: "recognized", Topic: t.Topic}
 	}
 	return TriggerData{}
 }
@@ -697,6 +721,10 @@ func triggerFromData(td TriggerData) (Trigger, error) {
 		return TriggerHolds{Prop: td.Item}, nil
 	case "left":
 		return TriggerLeft{Exit: td.Exit}, nil
+	case "interaction":
+		return TriggerInteraction{Interaction: td.Interaction, In: slices.Clone(td.States)}, nil
+	case "recognized":
+		return TriggerRecognized{Topic: td.Topic}, nil
 	case "not":
 		if td.Not == nil {
 			return nil, fmt.Errorf("not names nothing to negate: %w", ErrNoEnding)
@@ -1375,17 +1403,54 @@ func approachesDataFrom(approaches []CheckApproach) []CheckApproachData {
 }
 
 // OptionData is the persistent representation of one [Option]: the line,
-// its check, its requirement as a persisted trigger, and both verdicts' rows
-// (rpg-project#569). Requires and the rows omit when unset, and so does the
-// check: a plain line (rpg-project#785 R5) rolls none. Id and say are always
-// written, because an option without them is refused.
+// its check, its requirements as a LIST of persisted triggers
+// (rpg-project#922), and both verdicts' rows (rpg-project#569). Requires and
+// the rows omit when unset, and so does the check: a plain line
+// (rpg-project#785 R5) rolls none. Id and say are always written, because an
+// option without them is refused.
 type OptionData struct {
 	ID       string              `json:"id"`
 	Say      string              `json:"say"`
 	Check    []CheckApproachData `json:"check,omitempty"`
-	Requires *TriggerData        `json:"requires,omitempty"`
+	Requires []TriggerData       `json:"requires,omitempty"`
+	Advance  *AdvanceData        `json:"advance,omitempty"`
 	Success  []AnswerData        `json:"success,omitempty"`
 	Failure  []AnswerData        `json:"failure,omitempty"`
+
+	// Grants is [Option.Grants] (rpg-project#929). Absent for none.
+	Grants []RowGrant `json:"grants,omitempty"`
+}
+
+// AdvanceData is the persistent representation of an [Advance]: the
+// interaction and the beat each verdict steps it on (rpg-project#922).
+type AdvanceData struct {
+	Interaction InteractionID `json:"interaction"`
+	Success     string        `json:"success,omitempty"`
+	Failure     string        `json:"failure,omitempty"`
+}
+
+// UnmarshalJSON reads one persisted option, REFUSING the single-object
+// `requires` every blob before rpg-project#922 wrote: [ErrInvalidData], by
+// name. Pre-release, a run saved before the list is started again, never
+// migrated — and never read as no requirement, which would offer a gated
+// line to everybody.
+func (od *OptionData) UnmarshalJSON(raw []byte) error {
+	var probe struct {
+		Requires json.RawMessage `json:"requires"`
+	}
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return err
+	}
+	if trimmed := bytes.TrimSpace(probe.Requires); len(trimmed) > 0 && trimmed[0] == '{' {
+		var named struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(raw, &named)
+		return fmt.Errorf("option %q requires is one object, the shape before rpg-project#922; "+
+			"requires is a list now, start the run again: %w", named.ID, ErrInvalidData)
+	}
+	type plain OptionData
+	return json.Unmarshal(raw, (*plain)(od))
 }
 
 // optionsDataFrom renders a list of options for the blob, nil staying nil so
@@ -1399,10 +1464,13 @@ func optionsDataFrom(options []Option) []OptionData {
 		od := OptionData{
 			ID: o.ID, Say: o.Say, Check: approachesDataFrom(o.Check),
 			Success: rowsDataFrom(o.Success), Failure: rowsDataFrom(o.Failure),
+			Grants: cloneGrants(o.Grants),
 		}
-		if o.Requires != nil {
-			td := triggerDataFrom(o.Requires)
-			od.Requires = &td
+		for _, t := range o.Requires {
+			od.Requires = append(od.Requires, triggerDataFrom(t))
+		}
+		if a := o.Advance; a != nil {
+			od.Advance = &AdvanceData{Interaction: a.Interaction, Success: string(a.Success), Failure: string(a.Failure)}
 		}
 		out = append(out, od)
 	}
@@ -1436,13 +1504,19 @@ func optionsFromData(data []OptionData) ([]Option, error) {
 		o := Option{
 			ID: od.ID, Say: od.Say, Check: approachesFromData(od.Check),
 			Success: rowsFromData(od.Success), Failure: rowsFromData(od.Failure),
+			Grants: cloneGrants(od.Grants),
 		}
-		if od.Requires != nil {
-			t, err := triggerFromData(*od.Requires)
+		for n, td := range od.Requires {
+			t, err := triggerFromData(td)
 			if err != nil {
-				return nil, fmt.Errorf("option %q requires: %w", od.ID, err)
+				return nil, fmt.Errorf("option %q requires[%d]: %w", od.ID, n, err)
 			}
-			o.Requires = t
+			o.Requires = append(o.Requires, t)
+		}
+		if a := od.Advance; a != nil {
+			o.Advance = &Advance{
+				Interaction: a.Interaction, Success: machine.Beat(a.Success), Failure: machine.Beat(a.Failure),
+			}
 		}
 		out = append(out, o)
 	}
@@ -2498,6 +2572,7 @@ func (e *Encounter) snapshot(log record.LogData) EncounterData {
 		Members:            membersData,
 		Doors:              doorData,
 		SightAreas:         sightAreasData,
+		Interactions:       interactionsDataFrom(e.interactions),
 		Journal:            journalData,
 		Reserve:            reserveData,
 		Endings:            endingsData,
@@ -3365,6 +3440,40 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		return nil, fmt.Errorf("load encounter log: %w: %w", ErrInvalidData, err)
 	}
 
+	// THE RUN'S INTERACTIONS (interaction.go, rpg-project#922): each
+	// definition compiled again, its digest and its state checked, and every
+	// line naming one — a member's, a reserved member's, a prop's — asked
+	// whether the run has it, the SAME refusals Setup makes.
+	interactions, err := interactionsFromData(data.Interactions)
+	if err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+	savedLines := make([][]Option, 0, len(memberOptions)+len(reserveOptions))
+	for _, id := range slices.Sorted(maps.Keys(memberOptions)) {
+		savedLines = append(savedLines, memberOptions[id])
+	}
+	savedLines = append(savedLines, reserveOptions...)
+	granted := grantedTopics(interactions, savedLines...)
+	for _, id := range slices.Sorted(maps.Keys(memberOptions)) {
+		if err := validateOptionInteractions(interactions, granted, memberOptions[id]); err != nil {
+			return nil, fmt.Errorf("load encounter: member %s: %w: %w", id, ErrInvalidData, err)
+		}
+	}
+	for i, options := range reserveOptions {
+		if err := validateOptionInteractions(interactions, granted, options); err != nil {
+			return nil, fmt.Errorf("load encounter: reserve %d: %w: %w", i, ErrInvalidData, err)
+		}
+	}
+	if err := validatePropInteractions(interactions, granted, f); err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+	if err := validateInteractionAddresses(interactions, memberOptions); err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+	if err := validateInteractionReservations(interactions, memberOptions, f); err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+
 	// All validated; now reconstruct via the same path Setup uses. THE ONE
 	// WORLD's journal is built with the struct, not later: the percept
 	// rebuild below reaches Atlas, which folds it, so a nil here would be a
@@ -3401,6 +3510,8 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		site:          site,
 		world:         world,
 		holdings:      newHoldings(world.log),
+		interactions:  interactions,
+		granted:       granted,
 	}
 
 	// Compile the field into the canvas — the SAME compileCanvas
@@ -3741,7 +3852,15 @@ func refuseRoomLocalSightings(data perception.Data) error {
 		subjects := slices.Sorted(maps.Keys(data.Intel.Holdings[observer]))
 
 		for _, subject := range subjects {
-			holding := data.Intel.Holdings[observer][subject]
+			// Sightings live on the default topic only (mind/perception rule
+			// 12). A named topic's payload is testimony of another kind — a
+			// recognition, never a prop or door observation — so decoding it
+			// here would refuse a valid blob. A subject held only on named
+			// topics has no sighting to check.
+			holding, sighted := data.Intel.Holdings[observer][subject][""]
+			if !sighted {
+				continue
+			}
 			if perception.Channel(holding.Channel) != perception.Sight {
 				continue
 			}

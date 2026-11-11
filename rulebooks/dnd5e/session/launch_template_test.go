@@ -39,7 +39,7 @@ const castleKitchenFixture = "testdata/world-builder-v4-castle-kitchen.yaml"
 // miss.
 type faceDice struct{ face int }
 
-func (d *faceDice) Roll(_ context.Context, _ int) (int, error) { return d.face, nil }
+func (d *faceDice) Roll(_ context.Context, size int) (int, error) { return onTheDie(d.face, size), nil }
 
 // LaunchTemplateSuite launches the castle kitchen.
 type LaunchTemplateSuite struct {

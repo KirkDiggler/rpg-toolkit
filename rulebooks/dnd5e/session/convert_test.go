@@ -234,6 +234,12 @@ var omitted = map[string]string{
 	// sightingStatus had to RECONSTRUCT the channel list from it; now the
 	// list is copied, which is why the seam can no longer emit a channel
 	// that is not actually sustaining anything.
+	// A holding's topic (mind/perception v0.4.0, rpg-project#928). Every
+	// holding a projection is built from comes from a sight read, and sight
+	// reads only the default topic, so the field is always empty here: a
+	// recognition (a named topic) never reaches a sighting or a holding row.
+	"perception.Holding.Topic": "always the default topic: sight reads only the default topic, so a named " +
+		"topic such as a recognition never reaches this projection",
 	"perception.Holding.CurrentVia": "fans out into Status and CurrentVia (sightingStatus, convert.go), not a same-shaped passthrough",
 }
 

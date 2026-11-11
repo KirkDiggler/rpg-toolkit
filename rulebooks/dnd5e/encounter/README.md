@@ -343,6 +343,32 @@ CHANGE who is standing, so the killing blow notices its own kill: the strike, th
 body, and the `ByDefeat` ending all land in that one call, in that order. Every
 other caller of the consult is a verb looking at a world something else changed.
 
+### A kept copy is rebound, not reloaded
+
+A host that keeps one loaded encounter in memory between verbs, as a cache of
+its stored checkpoint (rpg-project#879 S6, R6), hands the next verb its
+capabilities with `Rebind` instead of loading it again:
+
+```go
+err := enc.Rebind(&encounter.RebindInput{Capabilities: caps})
+```
+
+`Rebind` replaces exactly what `LoadEncounter` binds, by its rules: every
+required capability is refused by the same sentinel, the concealment pair is
+required on a concealed field, and the witness is held only there. It refuses
+`ErrVerbInFlight` while an act is open or a driven turn or world round runs.
+Everything else the instance holds is the run's state, which the copy already
+has. A capability holds nothing of the verb it was built for past that verb:
+the encounter asks through its own fields only, so after a rebind the last
+verb's capabilities are unreachable. The id source and the site are not
+capabilities; a kept copy keeps both.
+
+The gate is `rebind_test.go`: a seeded sequence of walks, strikes, falls, turn
+ends and a clang beside a listening post, played on one rebound copy and on a
+fresh load of the stored checkpoint before every verb, must answer and write
+the same bytes after every verb, on the small keep, its garrison and the
+castle.
+
 ## Contents
 
 | File | Holds |
@@ -361,7 +387,9 @@ other caller of the consult is a verb looking at a world something else changed.
 | `field.go` | regions, props, walls, segments, and the per-verb output shapes |
 | `projection.go` | the field as ONE member knows it: the masquerade, the threshold an unfound wall-bound door masks as footing (a presented wall adds no cell, fog-of-war R9), and the height a mask wears |
 | `data.go` | `EncounterData` and the `ToData` / `LoadFromData` round trip |
+| `rebind.go` | `Rebind`: a kept copy bound to the next verb's capabilities in place of a reload (rpg-project#879 S6) |
 | `checkpoint.go` | `ToCheckpoint`: the rest whole, the story appended as one segment from the store's `Since`, and the retention floor (rpg-project#897) |
+| `pieces.go` | `SplitPieces` / `JoinPieces`: the rest as pieces by shape (the head every save, a member each, an observer each, the journal, the roster's and knowledge's shared parts), each with a 64-bit mark, so a store writes only the pieces whose mark moved (rpg-project#897 leg b) |
 
 ## Reading it
 

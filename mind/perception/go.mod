@@ -4,7 +4,7 @@ go 1.27.0
 
 require (
 	github.com/KirkDiggler/rpg-toolkit/core v0.11.0
-	github.com/KirkDiggler/rpg-toolkit/play/intel v0.4.0
+	github.com/KirkDiggler/rpg-toolkit/play/intel v0.5.0
 	github.com/stretchr/testify v1.11.1
 )
 

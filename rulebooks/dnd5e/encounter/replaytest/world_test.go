@@ -90,9 +90,35 @@ func (w *world) step(member encounter.MemberID, to spatial.Position) error {
 // speak is one Speak, the answer picked on the run's die.
 func (w *world) speak(in encounter.SpeakInput) error {
 	in.Range, in.Roller = speakReach, w.die
+	in.Revision = w.offeredRevision(in)
 	_, err := w.enc.Speak(context.Background(), &in)
 
 	return err
+}
+
+// offeredRevision is the revision the line is offered to its speaker at
+// now, read off the offer as a host's reply carries it back
+// (rpg-project#924); zero when it is not offered.
+func (w *world) offeredRevision(in encounter.SpeakInput) uint64 {
+	var (
+		offered []encounter.OfferedOption
+		err     error
+	)
+	if in.Prop != "" {
+		offered, err = w.enc.PropOptionsFor(in.Actor, in.Prop)
+	} else {
+		offered, err = w.enc.OptionsFor(in.Actor, in.Target)
+	}
+	if err != nil {
+		return 0
+	}
+	for _, o := range offered {
+		if o.ID == in.OptionID {
+			return o.Revision
+		}
+	}
+
+	return 0
 }
 
 // sneak is one SetSneaking.

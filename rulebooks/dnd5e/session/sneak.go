@@ -85,7 +85,7 @@ func (m *Manager) SetSneaking(ctx context.Context, in *SetSneakingInput) (*SetSn
 	if in.Member == "" {
 		return nil, fmt.Errorf("%s: %w", verb, ErrNoMemberID)
 	}
-	scope, err := m.openForChange(ctx, "set_sneaking", in.Session)
+	scope, err := m.openForChangeBy(ctx, "set_sneaking", in.Session, in.Member)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", verb, err)
 	}

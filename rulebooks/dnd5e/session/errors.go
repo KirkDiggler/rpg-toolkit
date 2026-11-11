@@ -357,6 +357,30 @@ var (
 	// ErrUnwitnessed, which is a creature that is there and did not see you.
 	ErrNoOption = errors.New("no such option for this speaker")
 
+	// ErrStaleOption is [Manager.Speak]'s refusal for a reply sent at an
+	// older revision of the conversation than the one the line reads now
+	// (rpg-project#924, operator 2026-11-11: "yeah we can refuse that"). The
+	// host-seam twin of encounter.ErrStaleOption. The conversation moved
+	// since the menu was read — an advance, or a reservation placed, settled
+	// or released — and the reply is NEVER re-read against the state as it
+	// is now, because the same line can carry different stakes from
+	// different states.
+	//
+	// Returned BEFORE anything is charged, rolled or recorded. A client
+	// refreshes the panel and says the conversation moved on; it is not an
+	// error the player made.
+	ErrStaleOption = errors.New("the conversation moved on since this line was offered")
+
+	// ErrLineReserved is [Manager.Speak]'s refusal for a line that is
+	// PENDING: it reads or advances a conversation somebody's checked line
+	// is holding while they decide on their roll (rpg-project#924, operator
+	// 2026-11-11: "yeah A makes sense to me"). The host-seam twin of
+	// encounter.ErrReserved. Afford lists the line with
+	// [SpeakOptionRow.Pending] and [ShortfallLineReserved]; this is what
+	// sending it anyway earns, before anything is charged, rolled or
+	// recorded. Lines that read no conversation are never pending.
+	ErrLineReserved = errors.New("the line waits on somebody's roll")
+
 	// ErrNotDown is Loot's refusal for a body that is still standing — the
 	// host-seam twin of encounter.ErrNotDown (rpg-project#368 §4.2).
 	//
