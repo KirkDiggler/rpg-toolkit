@@ -484,7 +484,7 @@ func (s *PerceptionSuite) TestLoadRejectsInvalidData() {
 
 	bad := perception.Data{
 		Intel: intel.Data{
-			Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
+			Holdings: map[core.EntityID]map[intel.Subject]map[intel.Topic]intel.HoldingData{
 				"alice": nil,
 			},
 		},
