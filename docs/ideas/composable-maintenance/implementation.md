@@ -2,7 +2,7 @@
 
 This is the case file, not a release claim. [Design](design.md), [plan](plan.md), [QA](qa.md), [story #706](https://github.com/KirkDiggler/rpg-project/issues/706).
 
-## Current source checkpoints
+## Reviewed and walked source checkpoints
 
 | Release unit | PR | Checked head | Evidence / remaining boundary |
 |---|---|---|---|
@@ -14,7 +14,23 @@ This is the case file, not a release claim. [Design](design.md), [plan](plan.md)
 | API | [#1225](https://github.com/KirkDiggler/rpg-api/pull/1225) | `14a3edec` | Normally created cleric, actual Bless acquisition/cast/payment/reload, both private APIs and exact end cleanup; make test/ci-check pass. |
 | Web | [#1410](https://github.com/KirkDiggler/rpg-dnd5e-web/pull/1410) | `87f50a35` | Current reader refusal, provider facts and mounted HUD/rail proof; full ci-check passes: 794 files, 10274 tests, existing skips unchanged. |
 
-Operator early look, the bounded joined review/focused finding closure and bounded native QA are recorded. Release is not authorized. Provider #2327 has no remaining implementation/review/QA blocker; consumers still need real release re-pins. A fresh GitHub check also reports session/API base conflicts (read-only merge-tree identifies only dependency-file conflicts), queued root/web CI and no current-head API run. Catch-up must preserve parallel work and rerun affected gates before release; these receipts do not cover future material deltas.
+## Authorized release progress
+
+The operator authorized merge-out on [#706](https://github.com/KirkDiggler/rpg-project/issues/706#issuecomment-6808119565). Base catch-up preserved parallel recognition/captain/vouch work; dependency conflicts were resolved without source conflict resolutions. Local gates and fresh current-head CI passed before the toolkit merges below. Each had a final-head MERGE-READY comment review, and each tagged release was checked against its merge commit.
+
+| Unit | Merge | Release |
+|---|---|---|
+| Effects #2327 | `3ed9583cd1116f42c104061008f49c9282f10dff` | v0.5.0 |
+| Root #2329 | `558e499f647083affb2ad297a9c40518e058771f` | v0.215.0 |
+| Resolution #2344 | `07094d313c88eb3db42d8dd9549839811a42f6e4` | v0.75.1 |
+| Item examples #2379 | `43df1a5f45a5bb430db9ba3d54a5d65064c216c3` | intentionally untagged |
+| Session #2377 | `270660ae135dd2adcbb01f5a9bd36d4effd77e9c` | v0.185.0 |
+
+**Stopped at API adoption:** the final tag graph selects encounter v0.198.0, whose captain/vouch castle differs from API dev's shipped copy. `make test` fails `TestCastleCopiesAgree`; open [API #1227](https://github.com/KirkDiggler/rpg-api/pull/1227) owns that copy. No failing adoption was committed, no guard weakened and no parallel content taken over. The pin-only probe patch/log are retained, and its two files were restored to pushed API `2592ddeb`. Web remains `861b8c54`; both catch-up heads passed CI, but neither is merged. [Stop/handoff receipt](https://github.com/KirkDiggler/rpg-project/issues/706#issuecomment-6809478590).
+
+Resume after the parallel content lands under its own gates: merge dev on top, re-pin, run API gates/current-head CI, then merge API/web and finish this documentation PR. Existing merge authority remains valid. No production release or cleanup occurred; the operator's run and journal #863 are preserved.
+
+The resolution wait initially guessed a minor version, but its unchanged PR title produced v0.75.1. The tagger succeeded in 14 seconds; matching the merged commit against all module tag refs corrected the wait without a retitle, hand tag or tagger rerun.
 
 ## Consumer findings that changed the implementation
 

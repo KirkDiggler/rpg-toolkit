@@ -61,8 +61,8 @@ Approach requests were allowed to stop at real obstructions; final placement, no
 ## Release boundary
 
 - [x] Operator early view; joined review and focused disposition; bounded two-client/native/castle QA at the recorded served cut.
-- [ ] Latest-base merge-on-top catch-up: GitHub reports session #2377/API #1225 conflicting; read-only merge-tree identifies their `go.mod`/`go.sum` conflicts. Preserve parallel changes and gate any resulting material delta.
-- [ ] Current-head remote CI: provider/resolution/session/items receipts pass; root run `43097342080` and web CI `43098308976` are queued at this check. API has no current-head run. Local same-head full gates are not substituted for those missing remote results.
-- [ ] Explicit merge-out authority, CI-produced provider tags, consumer re-pins and affected gates. Nothing in this wave has merged. Journal #863 remains open.
+- [x] Operator authorized merge-out; dependency-file base conflicts were resolved on top, preserving parallel recognition/captain/vouch work. Fresh source-head CI passed; no stalled or missing result was treated as green.
+- [x] Effects v0.5.0, root v0.215.0, resolution v0.75.1 and session v0.185.0 merged with verified CI-produced tags; item examples merged on those providers. [Exact release table](implementation.md#authorized-release-progress).
+- [ ] API final tag graph fails `TestCastleCopiesAgree`: encounter v0.198.0 includes the captain/vouch castle still owned by open [API #1227](https://github.com/KirkDiggler/rpg-api/pull/1227). The probe was not pushed; no guard weakened or parallel content copied. API/web and docs closeout wait for that content handoff, then affected gates/current-head verdicts. [Stop receipt](https://github.com/KirkDiggler/rpg-project/issues/706#issuecomment-6809478590). Existing merge authority remains valid; journal #863 stays open and operator run data is untouched.
 
 Machine-local raw receipts/drivers remain in `rpg-toolkit/.worktrees/maintenance-effects/.planning/qa-*`; `qa-verified-summary.json` carries exact act facts. The screenshots above are rendered game output, not licensed source assets or converted models.

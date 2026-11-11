@@ -246,8 +246,8 @@ Historical source checkpoint below; whole-application sealing is superseded by R
 - [x] Isolated stack boots on web :3042 / API :8142; source-fix refresh serves API `14a3edec`, web `87f50a35`, root `87602d8f`. Binary providers and unchanged content hashes verified; operator early look preceded joined review.
 - [x] One bounded joined review and focused source-identity closure; the single Important finding is Addressed. [Implementation receipts](implementation.md) state exact coverage, reused gates and limits.
 - [x] Bounded two-client native QA: normal acquisition, payment, source inspector, signed dice, reload, replacement, short rest, departure, castle fight and end cleanup. [QA](qa.md) separates browser/transport observations from named-test-backed dice and persistence branches.
-- [x] Report exact heads and remaining blockers: session/API dependency-file base conflicts, queued root/web CI, absent current-head API CI, real release re-pins and explicit merge authority. No automatic merge.
-- [ ] On explicit merge-out authorization, merge/tag/repin inside-out, rerun consumer gates/head CI, close only delivered slices and clean only this wave's stack/worktrees.
+- [x] Report exact heads and remaining blockers. Operator authorized merge-out; base conflicts and preflight CI resolved. Five toolkit PRs merged with final-head gates and real tag verification; [release table](implementation.md#authorized-release-progress).
+- [ ] Finish authorized inside-out adoption: API's final tag graph fails castle-copy parity until parallel API #1227 lands or its owner coordinates the content handoff. Then merge dev on top, re-pin and rerun gates; merge API/web/docs, close only delivered scopes and preserve operator data during cleanup. No failed adoption, provider downgrade or content takeover.
 - [x] Keep journal #863 open; preserve investigation, failures and proof limits. This is not journal closeout.
 
 ## Requirement coverage
