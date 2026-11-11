@@ -15,6 +15,7 @@ package session_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -187,16 +188,14 @@ func TestCastleAWaitingClaimSurvivesAReloadAndSettlesOnce(t *testing.T) {
 	c, _ := atTheGateWithAWaitingClaim(t)
 
 	c.mgr = c.manager(t)
-	panel := c.bar(t, "alice")
-	react := reactOn(panel)
+	react := reactRow(c, t, "alice")
 	require.NotEmpty(t, react.ID, "the question survives the reload")
-	mine := lineOn(t, panel, "guest")
-	require.True(t, mine.Pending, "so does the hold, on her own claim too")
+	require.True(t, lineFor(t, c, "cleric", "guest").Pending, "so does the hold")
 
-	_, err := c.mgr.Speak(context.Background(), &session.SpeakInput{
-		Session: "sess", Member: "alice", Target: "captain", OptionID: "guest", Revision: mine.Revision,
+	_, err := speakAsOffered(context.Background(), c.mgr, &session.SpeakInput{
+		Session: "sess", Member: "alice", Target: "captain", OptionID: "guest",
 	})
-	require.ErrorIs(t, err, session.ErrLineReserved, "a second attempt at the waiting claim is refused")
+	require.ErrorIs(t, err, session.ErrWindowOpen, "a second attempt while her roll waits is refused")
 
 	_, err = c.mgr.React(context.Background(), &session.ReactInput{
 		Session: "sess", Member: "alice", DeclarationID: react.ID, Answer: session.Take(""),
@@ -264,4 +263,152 @@ func TestCastleAnAnswerChecksTheHoldBeforeItSpends(t *testing.T) {
 		Session: "sess", Member: "alice", DeclarationID: react.ID, Answer: session.Take(""),
 	})
 	require.ErrorIs(t, err, session.ErrNoWindow, "the question was closed")
+}
+
+// TestCastleWhileHerRollWaitsSheMayOnlyWalk: while alice's claim waits on
+// her die, she has one question and nothing else to declare. Every other
+// verb of hers — a second claim, a plain greeting — is refused
+// [session.ErrWindowOpen] before anything is charged or rolled, so no
+// second question can stack on the first. She may walk, and a step that
+// keeps her within reach keeps the hold.
+func TestCastleWhileHerRollWaitsSheMayOnlyWalk(t *testing.T) {
+	c, _ := atTheGateWithAWaitingClaim(t)
+
+	panel := c.bar(t, "alice")
+	speak := speakRow(t, panel)
+	require.False(t, speak.Available, "her Speak row is blocked while her roll waits")
+	require.NotNil(t, speak.Why)
+	require.Equal(t, session.ShortfallWindowOpen, speak.Why.Reason)
+	require.NotEmpty(t, reactOn(panel).ID, "her question is on her panel")
+
+	checks := c.dice.checks
+	for _, line := range []string{"stand-aside", "greet"} {
+		_, err := speakAsOffered(context.Background(), c.mgr, &session.SpeakInput{
+			Session: "sess", Member: "alice", Target: "captain", OptionID: line,
+		})
+		require.ErrorIs(t, err, session.ErrWindowOpen, "%s: refused while her roll waits", line)
+	}
+	require.Equal(t, checks, c.dice.checks, "no die was thrown")
+
+	c.move(t, backDownTheRoad[:1])
+	require.Equal(t, backDownTheRoad[0], c.where(t, "alice"), "she may walk")
+	require.True(t, lineFor(t, c, "cleric", "guest").Pending, "a step within reach keeps the hold")
+	require.Equal(t, reactOn(panel).ID, reactRow(c, t, "alice").ID, "and the one question stands")
+}
+
+// TestCastleAFightFormingUnderAWaitingClaimFreezesThenSettles: the
+// cleric's threat fails while alice's claim waits, and the garrison falls on
+// the party. The clock changes under the question: alice is on the turn
+// clock now, so her waiting claim freezes the table as every question in a
+// fight does — the cleric's next line is refused [session.ErrWindowOpen] —
+// and her answer settles the claim, spending her die. No question is left
+// open.
+func TestCastleAFightFormingUnderAWaitingClaimFreezesThenSettles(t *testing.T) {
+	c, _ := atTheGateWithAWaitingClaim(t)
+	react := reactRow(c, t, "alice")
+	require.NotEmpty(t, react.ID, "precondition: she is asked")
+
+	c.dice.mu.Lock()
+	c.dice.d20s = []int{2} // the cleric's threat fails; the fight's own dice follow
+	c.dice.mu.Unlock()
+	_, err := speakAsOffered(context.Background(), c.mgr, &session.SpeakInput{
+		Session: "sess", Member: "cleric", Target: "captain", OptionID: "stand-aside",
+	})
+	require.NoError(t, err)
+	turn, err := c.mgr.Turn(context.Background(), &session.TurnInput{Session: "sess", Member: "alice"})
+	require.NoError(t, err)
+	require.Equal(t, session.ClockTurn, turn.Clock, "precondition: the threat brought the fight")
+
+	_, err = speakAsOffered(context.Background(), c.mgr, &session.SpeakInput{
+		Session: "sess", Member: "cleric", Target: "captain", OptionID: "greet",
+	})
+	require.ErrorIs(t, err, session.ErrWindowOpen, "in a fight her question holds the table")
+
+	_, err = c.mgr.React(context.Background(), &session.ReactInput{
+		Session: "sess", Member: "alice", DeclarationID: react.ID, Answer: session.Take(""),
+	})
+	require.NoError(t, err, "her answer settles the claim")
+	require.False(t, c.holdsGuidance(t, "alice"), "and spends the die")
+	require.Empty(t, reactRow(c, t, "alice").ID, "no question is left open")
+}
+
+// castleWithASecondConversation is the castle with a second interaction,
+// `side-talk`, and a checked line on the captain that reads it: two
+// conversations at one creature, so two speakers can each hold one.
+func castleWithASecondConversation(t *testing.T) []byte {
+	t.Helper()
+	raw := string(castleSource(t))
+	const greet = "          - id: greet\n            say: Good evening, captain.\n"
+	require.Equal(t, 1, strings.Count(raw, greet), "the castle authors the captain's greeting once")
+	raw = strings.Replace(raw, greet, `          - id: rumour
+            say: Heard anything odd tonight?
+            check:
+              - ability: persuasion
+                dc: 11
+            requires:
+              - interaction:
+                  id: side-talk
+                  in: [idle]
+            advance:
+              interaction: side-talk
+              success: told
+              failure: refused
+            success:
+              - say: Only the usual.
+            failure:
+              - say: Move along.
+`+greet, 1)
+	const interactions = "interactions:\n"
+	require.Equal(t, 1, strings.Count(raw, interactions), "the castle has one interactions block")
+	return []byte(strings.Replace(raw, interactions, `interactions:
+  side-talk:
+    recipe:
+      ref: site:interactions:side-talk
+      initial: idle
+      states:
+        idle:
+          transitions:
+            - { on: told, to: told, reason: the rumour was told }
+            - { on: refused, to: told, reason: the rumour was refused }
+        told: { terminal: true }
+`, 1))
+}
+
+// TestCastleTwoConversationsHeldAtOnceBothSettle: alice's guest claim holds
+// the front gate while the cleric's rumour holds the side talk, two
+// waiting rolls on two conversations at once. Neither is pending on the
+// other, and each answer settles its own line.
+func TestCastleTwoConversationsHeldAtOnceBothSettle(t *testing.T) {
+	c := openTheCastleFrom(t, castleWithASecondConversation(t), []*character.Data{armedFighter("alice"), healingCleric()}, 8)
+	withGuidance(c.characters.byID["alice"])
+	withGuidance(c.characters.byID["cleric"])
+	c.placeInTheRecord(t, "cleric", besideAlice)
+	_, out, _ := c.walkUpToTheGate(t)
+	require.NotNil(t, out.Addressed, "precondition: the captain hailed her")
+
+	claim, err := speakAsOffered(context.Background(), c.mgr, &session.SpeakInput{
+		Session: "sess", Member: "alice", Target: "captain", OptionID: "guest",
+	})
+	require.NoError(t, err)
+	require.True(t, claim.Paused, "precondition: alice's claim waits")
+
+	rumour := lineFor(t, c, "cleric", "rumour")
+	require.False(t, rumour.Pending, "the side talk is not the gate's to hold")
+	require.Equal(t, "side-talk", rumour.Interaction)
+	asked, err := c.mgr.Speak(context.Background(), &session.SpeakInput{
+		Session: "sess", Member: "cleric", Target: "captain", OptionID: "rumour", Revision: rumour.Revision,
+	})
+	require.NoError(t, err)
+	require.True(t, asked.Paused, "precondition: the cleric's rumour waits too")
+
+	for _, member := range []string{"alice", "cleric"} {
+		react := reactRow(c, t, member)
+		require.NotEmpty(t, react.ID, "%s is asked", member)
+		_, err := c.mgr.React(context.Background(), &session.ReactInput{
+			Session: "sess", Member: member, DeclarationID: react.ID, Answer: session.Take(""),
+		})
+		require.NoError(t, err, "%s's answer settles", member)
+		require.False(t, c.holdsGuidance(t, member), "%s spent the die", member)
+	}
+	require.NotContains(t, frontGateProgress(t, c.world(t)), "fresh", "the gate moved")
 }

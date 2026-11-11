@@ -976,6 +976,60 @@ func (m *Manager) openForChange(
 	return scope, nil
 }
 
+// anyWaitingRoll is the actor [Manager.openForChangeBy] is handed by a verb
+// that moves the whole table's time rather than one member's — a rest — so
+// it waits on every waiting roll, not on one member's.
+const anyWaitingRoll = ""
+
+// openForChangeBy is [Manager.openForChange] for a verb one member acts in,
+// refused while THAT MEMBER'S OWN ROLL WAITS (rpg-project#924).
+//
+// A waiting Speak check in free roam does not freeze the table
+// ([holdsTheTable]), so the freeze no longer stops its speaker from acting
+// on. While their roll waits a speaker may WALK — [Manager.Move] opens
+// through openForChange, and a walk out of reach lets the line go
+// ([closeAbandonedLines]) — answer it ([Manager.React]), and leave
+// ([Manager.Exit], which drops the hold). Every other verb of theirs is
+// refused [ErrWindowOpen], naming their waiting window: a second checked
+// line, an Unlock, a swing or a cast could each pose a second question to a
+// member already being asked one, and an action taken between the roll and
+// its verdict is an action taken inside somebody's decision. A verb that
+// moves the table's time (a rest) passes [anyWaitingRoll] and waits on every
+// waiting roll.
+func (m *Manager) openForChangeBy(ctx context.Context, verb, sessionID, actor string) (*writeScope, error) {
+	scope, err := m.openForChange(ctx, verb, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if err := scope.rollWaitsOn(actor); err != nil {
+		return nil, err
+	}
+	return scope, nil
+}
+
+// rollWaitsOn reports the open windows asking actor — every open window for
+// [anyWaitingRoll] — as a [WindowOpenError], or nil when none is. Called
+// after [writeScope.frozen] passed, so every window it can find is a waiting
+// line that holds no table.
+func (s *writeScope) rollWaitsOn(actor string) error {
+	open, err := s.ledger.Open()
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidSession, err)
+	}
+	detail := &WindowOpenError{}
+	for _, w := range open {
+		if actor != anyWaitingRoll && string(w.Audience) != actor {
+			continue
+		}
+		detail.Windows = append(detail.Windows, windowIDString(w.ID))
+		detail.Audiences = append(detail.Audiences, string(w.Audience))
+	}
+	if len(detail.Windows) == 0 {
+		return nil
+	}
+	return detail
+}
+
 // openAct opens this verb's act on the scope's encounter: verb minted when
 // act is empty, act (`<verb>:<id>`) reopened otherwise. A scope holds at
 // most one act of its own, which commit closes.

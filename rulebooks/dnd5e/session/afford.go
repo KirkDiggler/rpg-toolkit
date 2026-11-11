@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
@@ -627,9 +628,14 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 	// panel is the window alone.
 	//
 	// A WAITING LINE IN FREE ROAM DOES NOT FREEZE (rpg-project#924,
-	// [holdsTheTable]): its speaker gets their REACT row beside the whole
-	// panel, and everybody else the panel with the held lines pending.
-	if len(tableHolders(enc, open)) > 0 {
+	// [holdsTheTable]): everybody else gets the whole panel with the held
+	// lines pending. Its SPEAKER gets the frozen panel — their REACT row and
+	// every other row blocked — because every verb of theirs but a walk is
+	// refused while their roll waits ([Manager.openForChangeBy]), and a walk
+	// in free roam is the floor click, never a row.
+	if len(tableHolders(enc, open)) > 0 || slices.ContainsFunc(open, func(w interrupt.Window) bool {
+		return string(w.Audience) == in.Member
+	}) {
 		return affordWhileFrozen(in.Session, in.Member, open, ClockKind(clock.Kind))
 	}
 
@@ -731,17 +737,6 @@ func (m *Manager) Afford(ctx context.Context, in *AffordInput) (*AffordOutput, e
 		}
 		declarations = append(declarations, speak...)
 		kind = ClockWorld
-	}
-	// The member's own waiting lines, beside the panel they do not freeze.
-	for _, window := range open {
-		if string(window.Audience) != in.Member {
-			continue
-		}
-		row, err := reactDeclaration(in.Session, in.Member, window)
-		if err != nil {
-			return nil, fmt.Errorf("afford: %w", err)
-		}
-		declarations = append(declarations, row)
 	}
 	sortDeclarations(declarations)
 	preview, err := previewCastAim(enc, in.Member, in.CastAim, offers)
