@@ -37,6 +37,7 @@ const (
 	nodeAny
 	nodeNot
 	nodeFact
+	nodeBag
 	nodeFlag
 	nodeRounds
 )
@@ -52,7 +53,8 @@ type CompiledGuard struct {
 	op    Op
 	value any
 
-	flag string
+	flag   string
+	bagKey string
 
 	rounds RoundsLeaf
 	round  func(any) (int, bool)
@@ -93,6 +95,8 @@ func (g *CompiledGuard) Answer(frame any, bag Bag, ev any) (Verdict, string) {
 			return Depends, g.reason
 		}
 		return compare(g.op, got, g.value), g.reason
+	case nodeBag:
+		return compare(g.op, bag[g.bagKey], g.value), g.reason
 	case nodeFlag:
 		set, ok := bag[g.flag].(bool)
 		if !ok {
@@ -175,7 +179,7 @@ func (c *checker) guard(g *Guard, spec *BeatSpec, where string, on Beat) *Compil
 	n := 0
 	for _, set := range []bool{
 		len(g.All) > 0, len(g.Any) > 0, g.Not != nil,
-		g.Fact != nil, g.Flag != "", g.Rounds != nil, g.ClassLevel != nil,
+		g.Fact != nil, g.Bag != nil, g.Flag != "", g.Rounds != nil, g.ClassLevel != nil,
 	} {
 		if set {
 			n++
@@ -194,6 +198,8 @@ func (c *checker) guard(g *Guard, spec *BeatSpec, where string, on Beat) *Compil
 		return &CompiledGuard{kind: nodeNot, kids: []*CompiledGuard{c.guard(g.Not, spec, where, on)}}
 	case g.Fact != nil:
 		return c.fact(g.Fact.Name, g.Fact.Op, g.Fact.Value, where, "fact "+string(g.Fact.Name))
+	case g.Bag != nil:
+		return c.bagLeaf(*g.Bag, where)
 	case g.Flag != "":
 		c.key(where, "flag", g.Flag, KindBool)
 		return &CompiledGuard{kind: nodeFlag, flag: g.Flag, reason: "flag " + g.Flag}
@@ -231,6 +237,21 @@ func (c *checker) fact(name FactName, op Op, value any, where, reason string) *C
 	}
 	c.op(where, op, fs.Kind)
 	return &CompiledGuard{kind: nodeFact, read: fs.Read, op: op, value: value, reason: reason}
+}
+
+func (c *checker) bagLeaf(leaf BagLeaf, where string) *CompiledGuard {
+	zero, declared := c.r.Bag[leaf.Key]
+	kind, valid := kindOf(zero)
+	if !declared || !valid {
+		c.failf("%s: bag key %q is not a declared scalar", where, leaf.Key)
+		return nil
+	}
+	c.key(where, "bag key", leaf.Key, kind)
+	if got, ok := kindOf(leaf.Value); !ok || got != kind {
+		c.failf("%s: bag key %q wants a %s value, got %T", where, leaf.Key, kind, leaf.Value)
+	}
+	c.op(where, leaf.Op, kind)
+	return &CompiledGuard{kind: nodeBag, bagKey: leaf.Key, op: leaf.Op, value: leaf.Value, reason: "bag " + leaf.Key}
 }
 
 // op refuses an op the kind does not support.
