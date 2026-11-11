@@ -59,7 +59,12 @@ func (s *CastSuite) TestBlessKnownDyingAndStabilizedRecipientsPersistWithConcent
 				s.Require().NoError(err)
 				s.Contains(string(raw), "blessed")
 				if member == "cleric" {
-					s.Contains(string(raw), "concentrating")
+					loaded, err := character.Load(context.Background(), s.characters.byID[member])
+					s.Require().NoError(err)
+					view, err := loaded.Concentration()
+					s.Require().NoError(err)
+					s.True(view.Held)
+					s.Equal(refs.Spells.Bless().String(), view.SourceRef)
 				}
 			}
 			s.Equal(0, s.characters.byID["patient"].HitPoints)

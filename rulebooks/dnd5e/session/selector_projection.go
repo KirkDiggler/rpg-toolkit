@@ -8,6 +8,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/effects"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/healing"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
@@ -48,24 +49,24 @@ type selectorDefinition struct {
 // identical tag. Its only departure is Options, whose elements drop the
 // option's description.
 type selectorCastProfile struct {
-	Attack             *combatActions.AttackProfile     `json:"attack,omitempty"`
-	RecipientBlockedBy []core.Ref                       `json:"recipient_blocked_by,omitempty"`
-	Casting            *combat.SpellCasting             `json:"casting,omitempty"`
-	Healing            *healing.Declaration             `json:"healing,omitempty"`
-	HealingExcludes    []string                         `json:"healing_excludes,omitempty"`
-	Stabilize          bool                             `json:"stabilize,omitempty"`
-	RangeFeet          int                              `json:"range_feet"`
-	Target             combatActions.CastTargetRule     `json:"target"`
-	MinTargets         int                              `json:"min_targets"`
-	MaxTargets         int                              `json:"max_targets"`
-	Save               *saves.SaveGate                  `json:"save,omitempty"`
-	Damage             []damage.Damage                  `json:"damage,omitempty"`
-	DamageIfInjured    []damage.Damage                  `json:"damage_if_injured,omitempty"`
-	Effects            []combatActions.CastEffect       `json:"effects,omitempty"`
-	Area               *combatActions.CastArea          `json:"area,omitempty"`
-	Move               *combatActions.CastMove          `json:"move,omitempty"`
-	Concentration      *combatActions.CastConcentration `json:"concentration,omitempty"`
-	Options            []selectorCastOption             `json:"options,omitempty"`
+	Attack             *combatActions.AttackProfile `json:"attack,omitempty"`
+	RecipientBlockedBy []core.Ref                   `json:"recipient_blocked_by,omitempty"`
+	Casting            *combat.SpellCasting         `json:"casting,omitempty"`
+	Healing            *healing.Declaration         `json:"healing,omitempty"`
+	HealingExcludes    []string                     `json:"healing_excludes,omitempty"`
+	Stabilize          bool                         `json:"stabilize,omitempty"`
+	RangeFeet          int                          `json:"range_feet"`
+	Target             combatActions.CastTargetRule `json:"target"`
+	MinTargets         int                          `json:"min_targets"`
+	MaxTargets         int                          `json:"max_targets"`
+	Save               *saves.SaveGate              `json:"save,omitempty"`
+	Damage             []damage.Damage              `json:"damage,omitempty"`
+	DamageIfInjured    []damage.Damage              `json:"damage_if_injured,omitempty"`
+	Effects            []combatActions.CastEffect   `json:"effects,omitempty"`
+	Area               *combatActions.CastArea      `json:"area,omitempty"`
+	Move               *combatActions.CastMove      `json:"move,omitempty"`
+	Maintenance        []effects.PartDeclaration    `json:"maintenance,omitempty"`
+	Options            []selectorCastOption         `json:"options,omitempty"`
 }
 
 // selectorCastOption is a cast option's identity: the id execution reads and
@@ -122,7 +123,7 @@ func selectorCastProfileOf(profile *combatActions.CastProfile) *selectorCastProf
 		Effects:            profile.Effects,
 		Area:               profile.Area,
 		Move:               profile.Move,
-		Concentration:      profile.Concentration,
+		Maintenance:        profile.Maintenance,
 		Options:            options,
 	}
 }
