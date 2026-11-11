@@ -142,6 +142,74 @@ func TestAGuardDoesNotRecogniseWhomHeDoesNotSee(t *testing.T) {
 	requireStopped(t, out, err, "and is barred")
 }
 
+// hideFrom stands a party member sneaking past the posted guard, the verdict
+// beaten, and runs a sight pass so his stored testimony agrees.
+func hideFrom(t *testing.T, enc *Encounter, who MemberID) {
+	t.Helper()
+	enc.members[who].Sneaking = true
+	enc.setSneakVerdict(who, postedGuard, SneakVerdictData{Beaten: true, InZone: true})
+	_, _, err := enc.refreshSight(enc.rosterIDs())
+	require.NoError(t, err)
+}
+
+func TestRecognitionIsJudgedOnLiveSight(t *testing.T) {
+	bob := MemberInput{ID: "bob", Kind: KindPlayer, Position: spatial.Position{X: 7, Y: 3}}
+
+	t.Run("a sneaking speaker who wins the claim is recognised", func(t *testing.T) {
+		enc := recognisingHall(t, false, recognisingGuard(t, postedGuard, holdNorthWest, true), bob)
+		hideFrom(t, enc, "alice")
+		stored, err := enc.currentlySees(postedGuard, "alice")
+		require.NoError(t, err)
+		require.False(t, stored, "precondition: his last sight pass holds her hidden")
+		admit(t, enc, postedGuard)
+		require.True(t, enc.recognizes(postedGuard, "alice", admittedTopic), "speaking showed her, and he recognises her")
+		steps(t, enc, holdNorthEast, "and lets her through")
+	})
+
+	t.Run("a member who went hidden after the last sight pass is not", func(t *testing.T) {
+		enc := recognisingHall(t, false, recognisingGuard(t, postedGuard, holdNorthWest, true), bob)
+		stored, err := enc.currentlySees(postedGuard, "bob")
+		require.NoError(t, err)
+		require.True(t, stored, "precondition: his last sight pass holds bob seen")
+		enc.members["bob"].Sneaking = true
+		enc.setSneakVerdict("bob", postedGuard, SneakVerdictData{Beaten: true, InZone: true})
+		admit(t, enc, postedGuard)
+		require.True(t, enc.recognizes(postedGuard, "alice", admittedTopic))
+		require.False(t, enc.recognizes(postedGuard, "bob", admittedTopic), "hidden now, bob is not recognised")
+	})
+}
+
+func TestARecognitionIsToldOnlyWhatEachReaderPerceives(t *testing.T) {
+	// Carol, the guard's fellow, sees two cells: alice speaking near her,
+	// not bob across the yard. The guard sees both.
+	bob := MemberInput{ID: "bob", Kind: KindPlayer, Position: spatial.Position{X: 8, Y: 4}}
+	carol := MemberInput{ID: "carol", Kind: KindMonster, Faction: postedGarrison, Behaviors: ordinaryBehavior(holds()), Position: spatial.Position{X: 3, Y: 2}}
+	in := recognisingSetup(t, false, recognisingGuard(t, postedGuard, holdNorthWest, true), bob, carol)
+	in.Sight = shortSighted{member: "carol", cells: 2}
+	enc, err := NewEncounter(in)
+	require.NoError(t, err)
+	admit(t, enc, postedGuard)
+	require.True(t, enc.recognizes(postedGuard, "bob", admittedTopic), "precondition: the guard recognised bob")
+
+	told := func(reader MemberID) [][]any {
+		t.Helper()
+		entries, err := enc.Story(&StoryInput{Audience: reader})
+		require.NoError(t, err)
+		var out [][]any
+		for _, e := range entries {
+			if e.Tags["tag"] != BeatRecognized {
+				continue
+			}
+			var b map[string]any
+			require.NoError(t, json.Unmarshal(e.Payload, &b))
+			out = append(out, b["subjects"].([]any))
+		}
+		return out
+	}
+	require.Equal(t, [][]any{{"alice", "bob"}}, told(postedGuard), "the holder is told everyone he recognised")
+	require.Equal(t, [][]any{{"alice"}}, told("carol"), "carol is told only alice, whom she sees")
+}
+
 func TestEveryHolderOfTheDoorMustRecogniseTheWalker(t *testing.T) {
 	second := MemberID("gate-2")
 	secondAt := spatial.Position{X: 2, Y: 0}
@@ -213,7 +281,9 @@ func TestARecognitionLeavesSightAlone(t *testing.T) {
 	}
 	beforeIntel, beforeHeld, beforeHeadings, beforeSees := read()
 
-	require.NoError(t, enc.holdTopic(postedGuard, []MemberID{"alice"}, admittedTopic, ChannelJudgement, recognitionLine{
+	reach, err := enc.placedSightReach()
+	require.NoError(t, err)
+	require.NoError(t, enc.holdTopic(reach, postedGuard, []MemberID{"alice"}, admittedTopic, ChannelJudgement, recognitionLine{
 		interaction: hailGate, state: "admitted", speaker: "alice", spokenTo: postedGuard,
 	}))
 	require.True(t, enc.recognizes(postedGuard, "alice", admittedTopic), "precondition: the record is there")

@@ -99,8 +99,11 @@ func TestMadKingTheGuardRecognisesWhomHeAdmitted(t *testing.T) {
 		players: []encounter.MemberInput{
 			{ID: bard, Kind: encounter.KindPlayer, Position: spatial.Position{X: start.X + 2, Y: start.Y}},
 		},
-		// The captain sees two cells: the hero who speaks to him, and not
-		// the listener three cells off who watches it said.
+		// The captain sees ten feet, which is two cells (sightOf is in
+		// feet): enough for the hero who speaks beside him, and not the
+		// listener seated more than two cells off, who sees the claim said
+		// with the host's sixty feet. So the listener witnesses the answer
+		// without the captain ever seeing him, and is not recognised.
 		sightOf: map[encounter.MemberID]int{kingCaptain: 10},
 	})
 	s.walkTo(s.at(kingCaptain))

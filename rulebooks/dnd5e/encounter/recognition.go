@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
@@ -273,23 +274,33 @@ func (e *Encounter) applyOutcome(r *interactionRecord, line recognitionLine) err
 // the topic about every member of the speaker's party he sees now, judged;
 // and, when authored, every other carrier who witnessed the line and is up
 // holds the same, heard. A line said to a prop has no holder and grants
-// nothing; a holder who sees nobody of the party grants nothing. Each
-// holder's record is written under his sight identity ([sightMember]), the
-// observer key the store's sightings use and the load check demands, and
-// appends one [BeatRecognized] beat.
+// nothing; a holder who sees nobody of the party grants nothing.
+//
+// "SEES NOW" IS THE LIVE ANSWER the line itself was judged by: one
+// [Encounter.placedSightReach], read after Speak ended the speaker's
+// sneaking, with every sneak verdict in force — the same reach
+// [Encounter.audienceOf] asked to decide who witnessed the line. Never the
+// stored testimony of the last sight pass, which can still hold a speaker
+// hidden who has just shown themselves, or a member seen who has since
+// hidden. Only current sight qualifies; a memory never does.
+//
+// Each holder's record is written under his sight identity
+// ([sightMember]), the observer key the store's sightings use and the load
+// check demands, and is told as [BeatRecognized] beats ([Encounter.tellRecognition]).
 func (e *Encounter) grantRecognition(r Recognition, line recognitionLine) error {
 	holder := line.spokenTo
 	if holder == "" {
 		return nil
 	}
-	subjects, err := e.partyInSight(holder, line.speaker)
+	reach, err := e.placedSightReach()
 	if err != nil {
 		return err
 	}
+	subjects := e.partyInSight(reach, holder, line.speaker)
 	if len(subjects) == 0 {
 		return nil
 	}
-	if err := e.holdTopic(holder, subjects, r.Topic, ChannelJudgement, line); err != nil {
+	if err := e.holdTopic(reach, holder, subjects, r.Topic, ChannelJudgement, line); err != nil {
 		return err
 	}
 	if r.HeardBy != RecognitionCarriersWhoWitnessed {
@@ -307,7 +318,7 @@ func (e *Encounter) grantRecognition(r Recognition, line recognitionLine) error 
 		if !ok || !carries(m.Options, line.interaction) {
 			continue
 		}
-		if err := e.holdTopic(carrier, subjects, r.Topic, ChannelHeard, line); err != nil {
+		if err := e.holdTopic(reach, carrier, subjects, r.Topic, ChannelHeard, line); err != nil {
 			return err
 		}
 	}
@@ -315,12 +326,12 @@ func (e *Encounter) grantRecognition(r Recognition, line recognitionLine) error 
 }
 
 // partyInSight is the members of the speaker's faction — the speaker
-// included — whom holder sees on sight now, from his own testimony, in id
-// order. A speaker in no faction is a party of one.
-func (e *Encounter) partyInSight(holder, speaker MemberID) ([]MemberID, error) {
+// included — whom holder sees on the live reach given, in id order. A
+// speaker in no faction is a party of one.
+func (e *Encounter) partyInSight(reach sightReach, holder, speaker MemberID) []MemberID {
 	s, ok := e.members[speaker]
 	if !ok {
-		return nil, nil
+		return nil
 	}
 	side := factionOf(s)
 	var out []MemberID
@@ -331,15 +342,11 @@ func (e *Encounter) partyInSight(holder, speaker MemberID) ([]MemberID, error) {
 		if id != speaker && (side == "" || factionOf(e.members[id]) != side) {
 			continue
 		}
-		sees, err := e.currentlySees(holder, id)
-		if err != nil {
-			return nil, err
-		}
-		if sees {
+		if reach.Reaches(perception.Sight, holder, id) {
 			out = append(out, id)
 		}
 	}
-	return out, nil
+	return out
 }
 
 // recognitionTestimony is the payload a recognition holds: where it came
@@ -351,8 +358,10 @@ type recognitionTestimony struct {
 }
 
 // holdTopic lands one holder's record on topic about every subject, through
-// channel, and appends the [BeatRecognized] beat for it.
-func (e *Encounter) holdTopic(holder MemberID, subjects []MemberID, topic TopicID, channel string, line recognitionLine) error {
+// channel, and tells it ([Encounter.tellRecognition]).
+func (e *Encounter) holdTopic(
+	reach sightReach, holder MemberID, subjects []MemberID, topic TopicID, channel string, line recognitionLine,
+) error {
 	payload, err := json.Marshal(recognitionTestimony{Interaction: line.interaction, State: line.state})
 	if err != nil {
 		return fmt.Errorf("recognition payload: %w", err)
@@ -367,25 +376,67 @@ func (e *Encounter) holdTopic(holder MemberID, subjects []MemberID, topic TopicI
 	}); err != nil {
 		return fmt.Errorf("%s holds %q: %w", holder, topic, err)
 	}
-	names := make([]string, 0, len(subjects))
-	for _, s := range subjects {
-		names = append(names, string(s))
+	return e.tellRecognition(reach, holder, subjects, topic, channel, line)
+}
+
+// tellRecognition appends the [BeatRecognized] beats for one holder's
+// record. The line's witnesses hear of it, each told ONLY the subjects they
+// perceive themselves on the same live reach — a member is always aware of
+// themselves — so a beat never names a member its reader cannot see; the
+// holder is told every subject he recognised. A witness who perceives none of
+// them is told nothing. Readers told the same subjects share one beat, in
+// the order they were first met; each beat goes to exactly its readers, the
+// per-audience shape the sighted beat already has ([Encounter.appendSightedBeats]).
+func (e *Encounter) tellRecognition(
+	reach sightReach, holder MemberID, subjects []MemberID, topic TopicID, channel string, line recognitionLine,
+) error {
+	type telling struct {
+		subjects []string
+		audience []MemberID
 	}
-	beat, err := json.Marshal(map[string]interface{}{
-		"beat":        BeatRecognized,
-		"holder":      string(holder),
-		"subjects":    names,
-		"topic":       string(topic),
-		"channel":     channel,
-		"interaction": string(line.interaction),
-	})
-	if err != nil {
-		return fmt.Errorf("recognized beat: %w", err)
+	var tellings []*telling
+	byKey := map[string]*telling{}
+	readers := append([]MemberID{holder}, line.witnesses...)
+	for _, reader := range readers {
+		if _, dup := byKey["reader:"+string(reader)]; dup {
+			continue
+		}
+		byKey["reader:"+string(reader)] = nil
+		var told []string
+		for _, s := range subjects {
+			if reader == holder || reader == s || reach.Reaches(perception.Sight, reader, s) {
+				told = append(told, string(s))
+			}
+		}
+		if len(told) == 0 {
+			continue
+		}
+		key := "subjects:" + strings.Join(told, "\x00")
+		t, ok := byKey[key]
+		if !ok {
+			t = &telling{subjects: told}
+			byKey[key] = t
+			tellings = append(tellings, t)
+		}
+		t.audience = append(t.audience, reader)
 	}
-	if _, err := e.appendBeat(&record.AppendInput{
-		At: line.at, Audience: line.witnesses, Tags: map[string]string{"tag": BeatRecognized}, Payload: beat,
-	}); err != nil {
-		return fmt.Errorf("recognized beat: %w", err)
+	for _, t := range tellings {
+		beat, err := json.Marshal(map[string]interface{}{
+			"beat":        BeatRecognized,
+			"holder":      string(holder),
+			"subjects":    t.subjects,
+			"topic":       string(topic),
+			"channel":     channel,
+			"interaction": string(line.interaction),
+		})
+		if err != nil {
+			return fmt.Errorf("recognized beat: %w", err)
+		}
+		if _, err := e.appendBeat(&record.AppendInput{
+			At: line.at, Audience: t.audience, Tags: map[string]string{"tag": BeatRecognized}, Payload: beat,
+		}); err != nil {
+			return fmt.Errorf("recognized beat: %w", err)
+		}
 	}
 	return nil
 }
