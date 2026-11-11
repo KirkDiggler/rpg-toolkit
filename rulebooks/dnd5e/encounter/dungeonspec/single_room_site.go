@@ -288,6 +288,7 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 		Doors:        roomDoorIDs(gp),
 		Bundled:      true,
 		Interactions: interactionShapes(s, add),
+		LineTopics:   lineGrantedTopics(s),
 	})
 	g.factions()
 	behaviorSourceValues(s, add)

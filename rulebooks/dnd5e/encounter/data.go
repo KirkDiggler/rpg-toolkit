@@ -1416,6 +1416,9 @@ type OptionData struct {
 	Advance  *AdvanceData        `json:"advance,omitempty"`
 	Success  []AnswerData        `json:"success,omitempty"`
 	Failure  []AnswerData        `json:"failure,omitempty"`
+
+	// Grants is [Option.Grants] (rpg-project#929). Absent for none.
+	Grants []RowGrant `json:"grants,omitempty"`
 }
 
 // AdvanceData is the persistent representation of an [Advance]: the
@@ -1461,6 +1464,7 @@ func optionsDataFrom(options []Option) []OptionData {
 		od := OptionData{
 			ID: o.ID, Say: o.Say, Check: approachesDataFrom(o.Check),
 			Success: rowsDataFrom(o.Success), Failure: rowsDataFrom(o.Failure),
+			Grants: cloneGrants(o.Grants),
 		}
 		for _, t := range o.Requires {
 			od.Requires = append(od.Requires, triggerDataFrom(t))
@@ -1500,6 +1504,7 @@ func optionsFromData(data []OptionData) ([]Option, error) {
 		o := Option{
 			ID: od.ID, Say: od.Say, Check: approachesFromData(od.Check),
 			Success: rowsFromData(od.Success), Failure: rowsFromData(od.Failure),
+			Grants: cloneGrants(od.Grants),
 		}
 		for n, td := range od.Requires {
 			t, err := triggerFromData(td)
@@ -3443,17 +3448,23 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
+	savedLines := make([][]Option, 0, len(memberOptions)+len(reserveOptions))
 	for _, id := range slices.Sorted(maps.Keys(memberOptions)) {
-		if err := validateOptionInteractions(interactions, memberOptions[id]); err != nil {
+		savedLines = append(savedLines, memberOptions[id])
+	}
+	savedLines = append(savedLines, reserveOptions...)
+	granted := grantedTopics(interactions, savedLines...)
+	for _, id := range slices.Sorted(maps.Keys(memberOptions)) {
+		if err := validateOptionInteractions(interactions, granted, memberOptions[id]); err != nil {
 			return nil, fmt.Errorf("load encounter: member %s: %w: %w", id, ErrInvalidData, err)
 		}
 	}
 	for i, options := range reserveOptions {
-		if err := validateOptionInteractions(interactions, options); err != nil {
+		if err := validateOptionInteractions(interactions, granted, options); err != nil {
 			return nil, fmt.Errorf("load encounter: reserve %d: %w: %w", i, ErrInvalidData, err)
 		}
 	}
-	if err := validatePropInteractions(interactions, f); err != nil {
+	if err := validatePropInteractions(interactions, granted, f); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 	if err := validateInteractionAddresses(interactions, memberOptions); err != nil {
@@ -3500,6 +3511,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		world:         world,
 		holdings:      newHoldings(world.log),
 		interactions:  interactions,
+		granted:       granted,
 	}
 
 	// Compile the field into the canvas — the SAME compileCanvas

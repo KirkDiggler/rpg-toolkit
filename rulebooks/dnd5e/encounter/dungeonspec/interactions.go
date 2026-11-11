@@ -125,40 +125,77 @@ func outcomesOf(
 		}
 		for i, c := range specs[state] {
 			itemAt := fmt.Sprintf("%s[%d]", at, i)
-			r := c.Recognize
-			if r == nil {
+			if c.Recognize == nil {
 				fail(itemAt, "a consequence is `recognize: { topic, holder, about }`, the one kind there is")
 				continue
 			}
-			if r.Topic == "" {
-				fail(itemAt+".recognize.topic", "a recognition names the topic held")
-			}
-			if r.Holder != string(encounter.RecognitionSpokenTo) {
-				fail(itemAt+".recognize.holder", fmt.Sprintf("the holder is `%s`, the creature the line was said to",
-					encounter.RecognitionSpokenTo))
-			}
-			if r.About != string(encounter.RecognitionPartyInSight) {
-				fail(itemAt+".recognize.about", fmt.Sprintf("the subjects are `%s`, the speaker's party the holder sees",
-					encounter.RecognitionPartyInSight))
-			}
-			if r.HeardBy != "" && r.HeardBy != string(encounter.RecognitionCarriersWhoWitnessed) {
-				fail(itemAt+".recognize.heard_by", fmt.Sprintf("the hearers are `%s`, or omit it for nobody",
-					encounter.RecognitionCarriersWhoWitnessed))
-			}
-			out[state] = append(out[state], encounter.Consequence{Recognize: &encounter.Recognition{
-				Topic: encounter.TopicID(r.Topic), Holder: encounter.RecognitionHolder(r.Holder),
-				About: encounter.RecognitionSubjects(r.About), HeardBy: encounter.RecognitionHearers(r.HeardBy),
-			}})
+			rec := recognitionOf(itemAt+".recognize", c.Recognize, true, fail)
+			out[state] = append(out[state], encounter.Consequence{Recognize: &rec})
 		}
 	}
 	return out, ok
 }
 
-// grantedTopicsOf is every topic a root interaction's `outcomes` grants, read
-// straight off the document: the topics a post's `pass` may recognize on.
-func grantedTopicsOf(interactions map[string]InteractionSpec) map[string]bool {
+// recognitionOf judges one authored `recognize:` at its path, wherever it
+// hangs (an interaction's outcome, a line's success row; rpg-project#928,
+// #929), and lowers it. carriers says whether the place names an
+// interaction whose other carriers could hear it: where none is, `heard_by`
+// is refused, since nobody would hear.
+func recognitionOf(at string, r *RecognizeSpec, carriers bool, fail func(at, message string)) encounter.Recognition {
+	if r.Topic == "" {
+		fail(at+".topic", "a recognition names the topic held")
+	}
+	if r.Holder != string(encounter.RecognitionSpokenTo) {
+		fail(at+".holder", fmt.Sprintf("the holder is `%s`, the creature the line was said to",
+			encounter.RecognitionSpokenTo))
+	}
+	if r.About != string(encounter.RecognitionPartyInSight) && r.About != string(encounter.RecognitionSpeaker) {
+		fail(at+".about", fmt.Sprintf("the subjects are `%s`, the speaker's party the holder sees, or `%s`, the speaker alone",
+			encounter.RecognitionPartyInSight, encounter.RecognitionSpeaker))
+	}
+	switch {
+	case r.HeardBy != "" && r.HeardBy != string(encounter.RecognitionCarriersWhoWitnessed):
+		fail(at+".heard_by", fmt.Sprintf("the hearers are `%s`, or omit it for nobody",
+			encounter.RecognitionCarriersWhoWitnessed))
+	case r.HeardBy != "" && !carriers:
+		fail(at+".heard_by", "this line names no interaction, so it has no other carriers to hear it: "+
+			"omit heard_by, or give the line an interaction it requires or advances")
+	}
+	return encounter.Recognition{
+		Topic: encounter.TopicID(r.Topic), Holder: encounter.RecognitionHolder(r.Holder),
+		About: encounter.RecognitionSubjects(r.About), HeardBy: encounter.RecognitionHearers(r.HeardBy),
+	}
+}
+
+// lineGrantedTopics is every topic a line's success row grants
+// (rpg-project#929), read straight off the document: a creature's own lines
+// and its faction's.
+func lineGrantedTopics(s *SingleRoomSpec) map[string]bool {
 	out := map[string]bool{}
-	for _, spec := range interactions {
+	add := func(options []OptionSpec) {
+		for _, o := range options {
+			for _, row := range o.Success {
+				if row.Recognize != nil && row.Recognize.Topic != "" {
+					out[row.Recognize.Topic] = true
+				}
+			}
+		}
+	}
+	for _, b := range s.Room.Gameplay.MonsterBindings {
+		add(b.Options)
+	}
+	for _, f := range s.Factions {
+		add(f.Options)
+	}
+	return out
+}
+
+// grantedTopicsOf is every topic the document grants — a root interaction's
+// `outcomes` and a line's success rows — read straight off it: the topics a
+// post's `pass` may recognize on.
+func grantedTopicsOf(s *SingleRoomSpec) map[string]bool {
+	out := lineGrantedTopics(s)
+	for _, spec := range s.Interactions {
 		for _, cs := range spec.Outcomes {
 			for _, c := range cs {
 				if c.Recognize != nil && c.Recognize.Topic != "" {

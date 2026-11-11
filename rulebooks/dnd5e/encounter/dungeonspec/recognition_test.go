@@ -80,7 +80,7 @@ func TestDungeonspec_RecognitionIsRefusedAtTheAuthorsPath(t *testing.T) {
 		},
 		{
 			name: "subjects that are not the party in sight", old: "about: party_in_sight", replacement: "about: the_town",
-			path: outcome + ".admitted[0].recognize.about", message: "the subjects are `party_in_sight`, the speaker's party the holder sees",
+			path: outcome + ".admitted[0].recognize.about", message: "the subjects are `party_in_sight`, the speaker's party the holder sees, or `speaker`, the speaker alone",
 		},
 		{
 			name: "hearers that are not the witnessing carriers", old: "heard_by: carriers_who_witnessed", replacement: "heard_by: the_town",
