@@ -107,6 +107,17 @@ type PredicateSpec struct {
 	// arrival and an ending's `when`. Must name a root `interactions:` entry,
 	// and every state one its recipe declares.
 	Interaction *InteractionPredicateSpec
+
+	// Recognized is the `{ recognized: <topic> }` form (rpg-project#928):
+	// holds when THE OTHER PARTY holds that topic about "me" — on an
+	// option's `requires`, the creature spoken to holds it about the
+	// speaker; on a post's `pass`, the post's holder holds it about the
+	// walker ([encounter.TriggerRecognized]). LEGAL ONLY ON A CREATURE'S
+	// OPTION'S `requires` AND A POST'S `pass` (and a `not` of it there): a
+	// prop holds nothing about anybody, and an until, an arrival or an
+	// ending never waits on it. Must name a topic some root interaction's
+	// `outcomes` grants.
+	Recognized string
 }
 
 // InteractionPredicateSpec is the interaction form's own object: which
@@ -179,6 +190,7 @@ const (
 	predicateNot    = "not"
 
 	predicateInteraction = "interaction"
+	predicateRecognized  = "recognized"
 )
 
 // predicateForms is the one sentence every predicate refusal points at.
@@ -211,6 +223,8 @@ func (p *PredicateSpec) Form() string {
 		return predicateNot
 	case p.Interaction != nil:
 		return predicateInteraction
+	case p.Recognized != "":
+		return predicateRecognized
 	default:
 		return ""
 	}
@@ -229,7 +243,7 @@ func (p *PredicateSpec) UnmarshalYAML(value *yaml.Node) error {
 	for i := 0; i < len(value.Content); i += 2 {
 		switch key := value.Content[i].Value; key {
 		case predicateRound, predicateDown, predicateFact, predicateStance, predicateHolds, predicateLeft, predicateNot,
-			predicateInteraction:
+			predicateInteraction, predicateRecognized:
 			forms = append(forms, key)
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.PredicateSpec",
@@ -254,13 +268,14 @@ func (p *PredicateSpec) UnmarshalYAML(value *yaml.Node) error {
 		Not    *PredicateSpec       `yaml:"not"`
 
 		Interaction *InteractionPredicateSpec `yaml:"interaction"`
+		Recognized  string                    `yaml:"recognized"`
 	}
 	if err := value.Decode(&obj); err != nil {
 		return err
 	}
 	*p = PredicateSpec{
 		Round: obj.Round, Down: obj.Down, Fact: obj.Fact, Stance: obj.Stance, Holds: obj.Holds, Left: obj.Left,
-		Not: obj.Not, Interaction: obj.Interaction,
+		Not: obj.Not, Interaction: obj.Interaction, Recognized: obj.Recognized,
 	}
 
 	// A form that decoded to its own zero value said the key and nothing
@@ -333,6 +348,8 @@ func (p *PredicateSpec) String() string {
 		return fmt.Sprintf("{ not: %s }", p.Not.String())
 	case predicateInteraction:
 		return fmt.Sprintf("{ interaction: { id: %s, in: [%s] } }", p.Interaction.ID, strings.Join(p.Interaction.In, ", "))
+	case predicateRecognized:
+		return fmt.Sprintf("{ recognized: %s }", p.Recognized)
 	default:
 		return "{ }"
 	}

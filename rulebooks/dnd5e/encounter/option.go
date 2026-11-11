@@ -261,7 +261,7 @@ func (e *Encounter) OptionsFor(actor, target MemberID) ([]OfferedOption, error) 
 		return []OfferedOption{}, nil
 	}
 
-	offered, err := e.offered(actor, record.Options)
+	offered, err := e.offered(actor, target, record.Options)
 	if err != nil {
 		return nil, fmt.Errorf("options for: %w", err)
 	}
@@ -290,7 +290,7 @@ func (e *Encounter) PropOptionsFor(actor MemberID, prop PropID) ([]OfferedOption
 		return nil, fmt.Errorf("prop options for: %w", err)
 	}
 
-	offered, err := e.offered(actor, options)
+	offered, err := e.offered(actor, "", options)
 	if err != nil {
 		return nil, fmt.Errorf("prop options for: %w", err)
 	}
@@ -319,14 +319,14 @@ func (e *Encounter) PropOptionsFor(actor MemberID, prop PropID) ([]OfferedOption
 // validator already refuses; one that reaches here is returned wrapping
 // [selection.ErrInvalidCandidate], never swallowed.
 func (e *Encounter) evaluateOptions(
-	actor MemberID, options []Option, settle *InteractionReservation,
+	actor, other MemberID, options []Option, settle *InteractionReservation,
 ) (*selection.Evaluation, error) {
 	candidates := make([]selection.Candidate, 0, len(options))
 	for _, o := range options {
 		var requirements []selection.Requirement
 		for n, requires := range o.Requires {
 			verdict := selection.Unmet
-			if e.requirementHolds(actor, requires) {
+			if e.requirementHolds(actor, other, requires) {
 				verdict = selection.Met
 			}
 			kind := requirementKind(requires)
@@ -362,6 +362,8 @@ func requirementKind(requires Trigger) string {
 		return "holds"
 	case TriggerInteraction:
 		return "interaction"
+	case TriggerRecognized:
+		return "recognized"
 	default:
 		return "unsupported"
 	}
@@ -373,8 +375,8 @@ func requirementKind(requires Trigger) string {
 // waits on a reserved roll — in authored order, deep-copied so a caller's
 // edit cannot reach the field. A gated line is absent, never greyed (the
 // probe law); a pending line names who it waits on.
-func (e *Encounter) offered(actor MemberID, options []Option) ([]OfferedOption, error) {
-	evaluation, err := e.evaluateOptions(actor, options, nil)
+func (e *Encounter) offered(actor, other MemberID, options []Option) ([]OfferedOption, error) {
+	evaluation, err := e.evaluateOptions(actor, other, options, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -395,12 +397,16 @@ func (e *Encounter) offered(actor MemberID, options []Option) ([]OfferedOption, 
 	return out, nil
 }
 
-// requirementHolds answers one option's `requires` for one speaker, against
-// THAT SPEAKER's own holdings (R9): the facts they know, the props they carry.
-// Nil holds always. A trigger of any other kind holds never — the door
-// refuses one at construction, so this arm is the fail-closed answer for a
-// value that could only arrive by hand.
-func (e *Encounter) requirementHolds(actor MemberID, requires Trigger) bool {
+// requirementHolds answers one requirement for "me" (actor) facing "the
+// other party" (other): against MY own holdings (R9) — the facts I know, the
+// props I carry — or, for [TriggerRecognized], against what the OTHER party
+// holds about me (rpg-project#928). On a line, I am the speaker and the
+// other party the creature spoken to ("" for a prop); on a post's pass, I am
+// the walker and the other party the post's holder. Nil holds always. A
+// trigger of any other kind holds never — the door refuses one at
+// construction, so this arm is the fail-closed answer for a value that could
+// only arrive by hand.
+func (e *Encounter) requirementHolds(actor, other MemberID, requires Trigger) bool {
 	switch t := requires.(type) {
 	case nil:
 		return true
@@ -412,7 +418,7 @@ func (e *Encounter) requirementHolds(actor MemberID, requires Trigger) bool {
 		if t.Inner == nil {
 			return false
 		}
-		return !e.requirementHolds(actor, t.Inner)
+		return !e.requirementHolds(actor, other, t.Inner)
 	case TriggerFact:
 		return e.world.knowsFact(actor, t.Fact)
 	case TriggerHolds:
@@ -420,6 +426,10 @@ func (e *Encounter) requirementHolds(actor MemberID, requires Trigger) bool {
 	case TriggerInteraction:
 		// THE RUN'S, NOT THE SPEAKER'S (#916 R2): actor is not read.
 		return e.interactionIn(t.Interaction, t.In)
+	case TriggerRecognized:
+		// THE OTHER PARTY'S HOLDING ABOUT ME (rpg-project#928): a line said
+		// to a prop has no other party, and never holds.
+		return e.recognizes(other, actor, t.Topic)
 	default:
 		return false
 	}
@@ -700,7 +710,9 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	// answer has landed and before anything else, stepped synchronously so
 	// the very next offer reads the new state — a landed beat would wait for
 	// the next raise and leave that offer stale.
-	if err := e.advanceInteraction(option, beaten, witnesses, at); err != nil {
+	if err := e.advanceInteraction(option, beaten, recognitionLine{
+		speaker: in.Actor, spokenTo: in.Target, witnesses: witnesses, at: at,
+	}); err != nil {
 		return nil, fmt.Errorf("speak: %w", err)
 	}
 	// THE SETTLE CLEARS AFTER THE ADVANCE, so the verdict it waited for
@@ -748,7 +760,8 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 // steps it. Its own errors are construction defects the door already
 // refuses (an interaction the run lacks, a state its recipe lacks), surfaced
 // rather than swallowed.
-func (e *Encounter) advanceInteraction(option Option, beaten bool, witnesses []MemberID, at uint64) error {
+func (e *Encounter) advanceInteraction(option Option, beaten bool, line recognitionLine) error {
+	witnesses, at := line.witnesses, line.at
 	a := option.Advance
 	if a == nil {
 		return nil
@@ -793,6 +806,17 @@ func (e *Encounter) advanceInteraction(option Option, beaten bool, witnesses []M
 		At: at, Audience: witnesses, Tags: map[string]string{"tag": BeatInteraction}, Payload: payload,
 	}); err != nil {
 		return fmt.Errorf("interaction %q: %w", a.Interaction, err)
+	}
+
+	// WHAT FOLLOWS ENTERING THE STATE (recognition.go, rpg-project#928):
+	// after the interaction beat, so the story tells the move before its
+	// consequence; only when the state is newly entered, so a terminal
+	// state's consequence happens once.
+	if stepped.To != stepped.From {
+		line.interaction, line.state = a.Interaction, stepped.To
+		if err := e.applyOutcome(inst, line); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -1001,8 +1025,13 @@ func validateOptionRequirement(what string, requires Trigger) error {
 		if len(t.In) == 0 {
 			return fmt.Errorf("%s is interaction %q in no state, which nothing can meet", what, t.Interaction)
 		}
+	case TriggerRecognized:
+		if t.Topic == "" {
+			return fmt.Errorf("%s is recognition and names no topic", what)
+		}
 	default:
-		return fmt.Errorf("%s is a %T: an option requires a fact, a holding or an interaction's state, or not one", what, requires)
+		return fmt.Errorf("%s is a %T: an option requires a fact, a holding, an interaction's state or recognition, "+
+			"or not one", what, requires)
 	}
 
 	return nil
@@ -1023,6 +1052,13 @@ func validatePropOptions(id PropID, ref string, options []Option) error {
 		return fmt.Errorf("prop %q: %w: %w", id, err, ErrNoField)
 	}
 	for _, o := range options {
+		for _, requires := range o.Requires {
+			if inner, _ := unwrapNot(requires); inner != nil {
+				if _, ok := inner.(TriggerRecognized); ok {
+					return fmt.Errorf("prop %q option %q: %w: %w", id, o.ID, errRecognizedOnProp, ErrNoField)
+				}
+			}
+		}
 		for _, row := range append(append([]Answer(nil), o.Success...), o.Failure...) {
 			if row.Flee {
 				return fmt.Errorf("prop %q option %q: a prop cannot run: %w", id, o.ID, ErrNoField)

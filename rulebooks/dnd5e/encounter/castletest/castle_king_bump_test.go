@@ -87,7 +87,7 @@ func TestMadKingTheGuardAnswersTheBump(t *testing.T) {
 
 	t.Run("across the open gate's other cell, the holder asks", func(t *testing.T) {
 		t.Parallel()
-		s := openTheHeldGate(t, castleHost{at: besideTheCrossingSeat})
+		s := openTheHeldGate(t, castleHost{at: besideTheCrossingSeat, soleGateHolder: true})
 		require.Equal(t, beneathTheGate, s.at(kingGate1), "precondition: gate-1 is on his post")
 
 		s.bumps(pastTheGate)
@@ -96,7 +96,7 @@ func TestMadKingTheGuardAnswersTheBump(t *testing.T) {
 
 	t.Run("a hand on the gate door he holds is a bump", func(t *testing.T) {
 		t.Parallel()
-		s := openTheCastleAs(t, castleHost{at: besideTheCrossingSeat})
+		s := openTheCastleAs(t, castleHost{at: besideTheCrossingSeat, soleGateHolder: true})
 		out, err := s.enc.OpenDoor(&encounter.OpenDoorInput{Door: kingGateDoor, Actor: hero})
 		require.NoError(t, err)
 		require.NotNil(t, out.Refused, "the held gate door refuses the hero")

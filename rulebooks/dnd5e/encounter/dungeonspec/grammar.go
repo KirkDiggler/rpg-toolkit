@@ -351,6 +351,33 @@ type grammarInput struct {
 type interactionShape struct {
 	states map[string]bool
 	beats  map[string]bool
+
+	// topics is every topic the interaction's outcomes grant
+	// (rpg-project#928): what a `recognized` requirement may name.
+	topics map[string]bool
+}
+
+// topics is every topic a root interaction's outcomes grant.
+func (g *grammar) topics() map[string]bool {
+	out := map[string]bool{}
+	for _, shape := range g.interactions {
+		if shape != nil {
+			for topic := range shape.topics {
+				out[topic] = true
+			}
+		}
+	}
+	return out
+}
+
+// grants reports whether any root interaction's outcomes grant topic.
+func (g *grammar) grants(topic string) bool {
+	for _, shape := range g.interactions {
+		if shape != nil && shape.topics[topic] {
+			return true
+		}
+	}
+	return false
 }
 
 // grammar judges one document's gameplay vocabulary, reporting every defect
@@ -546,7 +573,7 @@ func (g *grammar) options(path string, options []OptionSpec, props map[string]bo
 		} else if o.Failure != nil {
 			g.fail(p+"."+string(encounter.AnswerFailure), "%s", errOptionPlainFails)
 		}
-		g.optionRequirements(p+".requires", o.Requires, props)
+		g.optionRequirements(p+".requires", o.Requires, props, isProp)
 		g.optionAdvance(p+".advance", o.Advance, o.Check != nil)
 		for _, verdict := range []struct {
 			key  string
@@ -575,13 +602,13 @@ func (g *grammar) options(path string, options []OptionSpec, props map[string]bo
 // (rpg-project#922), each at its own path: `requires` for a list of one —
 // which is what a single mapping reads as — and `requires[i]` for a longer
 // list.
-func (g *grammar) optionRequirements(path string, requires RequiresSpec, props map[string]bool) {
+func (g *grammar) optionRequirements(path string, requires RequiresSpec, props map[string]bool, isProp bool) {
 	for i := range requires {
 		at := path
 		if len(requires) > 1 {
 			at = fmt.Sprintf("%s[%d]", path, i)
 		}
-		g.optionRequires(at, &requires[i], props)
+		g.optionRequires(at, &requires[i], props, isProp)
 	}
 }
 
@@ -590,7 +617,7 @@ func (g *grammar) optionRequirements(path string, requires RequiresSpec, props m
 // — or the RUN's interaction state, judged per run and not per speaker
 // (rpg-project#922, #916 R2), or a `not` of one; nothing else. Every item
 // of the list must hold ([grammar.optionRequirements]).
-func (g *grammar) optionRequires(path string, p *PredicateSpec, props map[string]bool) {
+func (g *grammar) optionRequires(path string, p *PredicateSpec, props map[string]bool, isProp bool) {
 	if p.Form() == predicateNot {
 		// THE SPEAKER'S READ, NEGATED (rpg-project#719, D3): withheld from
 		// whoever knows the fact or carries the prop, offered to whoever
@@ -601,7 +628,7 @@ func (g *grammar) optionRequires(path string, p *PredicateSpec, props map[string
 		case "":
 			g.fail(path+".not", "this predicate says nothing — %s", optionRequiresForms)
 		default:
-			g.optionRequires(path+".not", inner, props)
+			g.optionRequires(path+".not", inner, props, isProp)
 		}
 		return
 	}
@@ -609,6 +636,14 @@ func (g *grammar) optionRequires(path string, p *PredicateSpec, props map[string
 	case "", predicateFact:
 	case predicateInteraction:
 		g.interactionRequirement(path+".interaction", p.Interaction)
+	case predicateRecognized:
+		switch {
+		case isProp:
+			g.fail(path+".recognized", "a prop holds nothing about anybody, so a line said to one cannot require recognition")
+		case !g.grants(p.Recognized):
+			g.fail(path+".recognized", "%q is a topic no interaction's `outcomes` grants, so nobody could ever be recognized on it",
+				p.Recognized)
+		}
 	case predicateHolds:
 		holdable, placed := props[p.Holds]
 		switch {
@@ -678,7 +713,7 @@ func (g *grammar) optionAdvance(path string, a *AdvanceSpec, checked bool) {
 
 // optionRequiresForms is the sentence naming what an option may require.
 const optionRequiresForms = "an option requires one or a list of { fact: <id> }, { holds: <prop id> }, " +
-	"{ interaction: { id, in: [<state>] } }, or { not: } one of them"
+	"{ interaction: { id, in: [<state>] } }, { recognized: <topic> }, or { not: } one of them"
 
 // answerEntry validates one row of one trigger's table.
 func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {

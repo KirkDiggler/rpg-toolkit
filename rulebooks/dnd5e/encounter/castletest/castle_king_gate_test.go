@@ -66,9 +66,9 @@ func TestMadKingEveryRoomHasOneWayIn(t *testing.T) {
 		onlyTheGatehouse("from inside the doorway")
 		s.walkTo(castleCell(0, 6))
 		onlyTheGatehouse("from the gate")
-		// The gate door is held while gate-1 is posted (rpg-project#835
-		// R7): the record stands him cowed, and the hero opens it.
-		s.storedIn(kingGate1, "cowed")
+		// The gate door is held while a gate guard holds it (rpg-project#835
+		// R7, #928): the record stands them aside, and the hero opens it.
+		s.gateStandsAside()
 		s.open(kingGateDoor)
 		require.NotZero(t, s.seenRooms()[courtyard], "the open gate shows the courtyard")
 	})

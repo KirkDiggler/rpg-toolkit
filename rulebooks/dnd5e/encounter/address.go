@@ -240,7 +240,7 @@ func (e *Encounter) offersReply(id InteractionID, member, guard MemberID) (bool,
 	}
 	// A PENDING LINE STILL REPLIES (rpg-project#924): the conversation is
 	// waiting on a roll, not over, so the address stands.
-	offered, err := e.offered(member, g.Options)
+	offered, err := e.offered(member, guard, g.Options)
 	if err != nil {
 		return false, err
 	}

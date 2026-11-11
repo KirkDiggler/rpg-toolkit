@@ -33,7 +33,7 @@ func (s *OptionEvaluationSuite) TestOnePoolOneRowPerOption() {
 		{ID: "pair", Requires: []Trigger{TriggerNot{Inner: TriggerNot{}}, TriggerNot{}}},
 	}
 
-	evaluation, err := e.evaluateOptions("alice", options, nil)
+	evaluation, err := e.evaluateOptions("alice", "", options, nil)
 	s.Require().NoError(err)
 	inspection, err := evaluation.Inspect()
 	s.Require().NoError(err)
@@ -64,10 +64,10 @@ func (s *OptionEvaluationSuite) TestOnePoolOneRowPerOption() {
 // rather than swallowed.
 func (s *OptionEvaluationSuite) TestADuplicateIDIsAnErrorNeverASilentOffer() {
 	e := &Encounter{}
-	_, err := e.evaluateOptions("alice", []Option{{ID: "same"}, {ID: "same"}}, nil)
+	_, err := e.evaluateOptions("alice", "", []Option{{ID: "same"}, {ID: "same"}}, nil)
 	s.ErrorIs(err, selection.ErrInvalidCandidate)
 
-	_, err = e.offered("alice", []Option{{ID: "same"}, {ID: "same"}})
+	_, err = e.offered("alice", "", []Option{{ID: "same"}, {ID: "same"}})
 	s.ErrorIs(err, selection.ErrInvalidCandidate)
 }
 

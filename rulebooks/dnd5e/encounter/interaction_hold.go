@@ -230,9 +230,9 @@ func hasUnmet(row selection.Row) bool {
 // client refreshes; a reply at the current revision to a line it was shown
 // pending is the one refused [ErrReserved].
 func (e *Encounter) lineDoor(
-	actor MemberID, options []Option, id string, revision uint64, settle *InteractionReservation,
+	actor, other MemberID, options []Option, id string, revision uint64, settle *InteractionReservation,
 ) (Option, error) {
-	evaluation, err := e.evaluateOptions(actor, options, settle)
+	evaluation, err := e.evaluateOptions(actor, other, options, settle)
 	if err != nil {
 		return Option{}, err
 	}
@@ -389,7 +389,7 @@ func (e *Encounter) replyDoor(verb string, in lineReply, settling bool) (replied
 	if settling {
 		settle = e.settleFor(in, options)
 	}
-	option, err := e.lineDoor(in.actor, options, in.optionID, in.revision, settle)
+	option, err := e.lineDoor(in.actor, in.target, options, in.optionID, in.revision, settle)
 	if err != nil {
 		return replied{}, fmt.Errorf("%s: %w", verb, err)
 	}
