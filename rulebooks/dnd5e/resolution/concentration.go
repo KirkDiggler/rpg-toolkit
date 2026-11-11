@@ -102,12 +102,16 @@ func (c *concentrationCollector) checksFrom(
 func (c *concentrationCollector) spellHeldBy(
 	cast *Participants, casterID string,
 ) (encounter.SpellIdentity, error) {
-	if held, holding := concentrationHeldBy(cast, casterID); holding {
-		return encounter.SpellIdentity{Ref: held.SpellRef, Name: held.SpellName}, nil
+	held, err := concentrationHeldBy(cast, casterID)
+	if err != nil {
+		return encounter.SpellIdentity{}, err
+	}
+	if held.Held {
+		return nativeMaintenanceSpell(held.Info.SourceRef, held.Info.SourceName)
 	}
 	for _, fact := range c.facts {
-		if fact.CasterID == casterID {
-			return encounter.SpellIdentity{Ref: fact.SpellRef, Name: fact.SpellName}, nil
+		if fact.MaintainerID == casterID {
+			return nativeMaintenanceSpell(fact.SourceRef, fact.SourceName)
 		}
 	}
 
@@ -235,13 +239,17 @@ func breaksFrom(
 
 	breaks := make([]encounter.ConcentrationBreak, 0, len(facts))
 	for _, fact := range facts {
+		spell, err := nativeMaintenanceSpell(fact.SourceRef, fact.SourceName)
+		if err != nil {
+			return nil, err
+		}
 		removed, err := removedResults(fact)
 		if err != nil {
 			return nil, err
 		}
 		breaks = append(breaks, encounter.ConcentrationBreak{
-			Caster:  encounter.MemberID(fact.CasterID),
-			Spell:   encounter.SpellIdentity{Ref: fact.SpellRef, Name: fact.SpellName},
+			Caster:  encounter.MemberID(fact.MaintainerID),
+			Spell:   spell,
 			Reason:  fact.Reason,
 			Save:    checkFor(checks, fact),
 			Removed: removed,
@@ -264,12 +272,12 @@ func removedResults(fact dnd5eEvents.ConcentrationEndedEvent) ([]encounter.Activ
 		parsed, err := core.ParseString(address.ConditionRef)
 		if err != nil {
 			return nil, fmt.Errorf("resolution: %s ended and removed an unusable ref %q: %w",
-				fact.SpellName, address.ConditionRef, err)
+				fact.SourceName, address.ConditionRef, err)
 		}
 		ref, name, err := activationConditionIdentity(parsed)
 		if err != nil {
 			return nil, fmt.Errorf("resolution: %s ended and removed %s from %q: %w",
-				fact.SpellName, address.ConditionRef, address.MemberID, err)
+				fact.SourceName, address.ConditionRef, address.MemberID, err)
 		}
 		results = append(results, encounter.ActivationResult{
 			Kind: encounter.ResultConditionRemoved,
@@ -292,7 +300,7 @@ func checkFor(
 		return nil
 	}
 	for _, check := range checks {
-		if check.SaverID != fact.CasterID || check.Save.Result == nil {
+		if check.SaverID != fact.MaintainerID || check.Save.Result == nil {
 			continue
 		}
 		save := castSave(check)

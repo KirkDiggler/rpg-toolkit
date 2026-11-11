@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
@@ -302,9 +303,10 @@ type Output struct {
 // A machine reads rules off these. It is what "step machines over data" means
 // in practice — the machine gets the entities, never the bus.
 type Participants struct {
-	characters map[string]*character.Character
-	monsters   map[string]*monster.Monster
-	order      []string
+	applications *conditions.ApplicationBinding
+	characters   map[string]*character.Character
+	monsters     map[string]*monster.Monster
+	order        []string
 }
 
 // Character returns the loaded character with this ID.
@@ -583,12 +585,10 @@ func world(in *Input) (LiveWorld, func() encounter.EncounterData, error) {
 	return enc, enc.ToData, nil
 }
 
-// attachAll reconstitutes every participant onto the surface, in sorted ID
-// order (R4), carrying one runtime roller to Character conditions and Monster
-// traits without interpreting either. Two resolutions over identical data must
-// grant identical registrations in an identical order, or a suspension cannot
-// be resumed into the world it left.
-func attachAll(ctx context.Context, surf *surface, in *attachAllInput) (*Participants, error) {
+// attachAllLocal supports read-only/local projections, including the existing
+// lenient character inspection policy. Mutable entries use attachAll's complete
+// pure-load, graph-binding, then behavior-attachment sequence instead.
+func attachAllLocal(ctx context.Context, surf *surface, in *attachAllInput) (*Participants, error) {
 	ordered := make([]Participant, len(in.Participants))
 	copy(ordered, in.Participants)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].ID() < ordered[j].ID() })
@@ -770,6 +770,9 @@ func dirtyMonsters(cast *Participants) []*monster.Data {
 // character's conditions can be silently discarded is a bare true at the end of
 // a line.
 type attachAllInput struct {
+	// LocalProjection attaches only local behavior for a read-only projection.
+	// It must never be selected by a mutating entry to evade complete link validation.
+	LocalProjection bool
 	// Participants are the sheets to reconstitute, in any order — the attach
 	// sorts them, because two attaches over identical data must grant identical
 	// registrations in an identical order.

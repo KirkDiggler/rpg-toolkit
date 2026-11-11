@@ -10,6 +10,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
@@ -38,8 +39,9 @@ type Registration struct {
 
 // ledger is the shared record every view of the surface writes into.
 type ledger struct {
-	mu      sync.Mutex
-	entries []Registration
+	applications *conditions.ApplicationBinding
+	mu           sync.Mutex
+	entries      []Registration
 }
 
 func (l *ledger) record(r Registration) {
@@ -142,6 +144,17 @@ func (s *surface) teardown(ctx context.Context) error {
 	entries := s.ledger.all()
 
 	var errs []error
+	if binding := s.ledger.applications; binding != nil {
+		s.ledger.applications = nil
+		// Every successful return, including a pause, must remain saveable. Failures
+		// still revoke transport and all subscriptions; errors never turn into cleanup.
+		if err := binding.CheckComplete(); err != nil {
+			errs = append(errs, err)
+		}
+		if err := binding.Close(ctx); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	for i := len(entries) - 1; i >= 0; i-- {
 		if err := s.inner.Unsubscribe(ctx, entries[i].ID); err != nil {
 			errs = append(errs, err)

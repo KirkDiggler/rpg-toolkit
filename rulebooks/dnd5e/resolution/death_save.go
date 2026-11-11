@@ -11,11 +11,15 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 )
 
 // DeathSaveInput is the persisted character and authoritative d20 for one
 // explicit tabletop death saving throw.
 type DeathSaveInput struct {
+	// Others supplies the remaining affected holders for linked effects. Empty
+	// is valid only when the character's current application graph is local.
+	Others []Participant
 	// Character is a record, never a live sheet. DeathSave clones it before
 	// strict loading so neither the rule nor its snapshot can alias the caller.
 	Character *character.Data
@@ -28,6 +32,9 @@ type DeathSaveInput struct {
 // DeathSaveOutput contains the changed record and the root rulebook's complete
 // typed result.
 type DeathSaveOutput struct {
+	// DirtyCharacters excludes Character; DirtyMonsters carries changed peer sheets.
+	DirtyCharacters []*character.Data
+	DirtyMonsters   []*monster.Data
 	// Character is an independently owned persistence snapshot taken after the
 	// accepted save and before registration teardown.
 	Character *character.Data
@@ -38,9 +45,9 @@ type DeathSaveOutput struct {
 }
 
 // DeathSave strictly clones, loads, attaches, executes, snapshots, and tears
-// down one character making an explicit death saving throw. It installs no
-// encounter world: this operation needs only the character and the supplied
-// d20, and a future effect that needs a world must add that fact to the input
+// down the character and every affected linked holder. It installs no encounter
+// world: the caller supplies the affected sheets and d20, and a future effect
+// that needs a world must add that fact to the input
 // rather than receiving an invented empty room.
 func DeathSave(ctx context.Context, in *DeathSaveInput) (*DeathSaveOutput, error) {
 	return deathSaveOn(ctx, in, newSurface(events.NewEventBus()))
@@ -80,8 +87,12 @@ func deathSaveOn(
 		return nil, err
 	}
 
+	participants, err := castWithOthers(one, in.Others)
+	if err != nil {
+		return nil, err
+	}
 	cast, err := attachAll(ctx, surf, &attachAllInput{
-		Participants: []Participant{one},
+		Participants: participants,
 		Roller:       refusingRoller{},
 		// The zero value is deliberately strict. This operation writes the
 		// sheet back, so dropping an unreadable effect would persist deletion.
@@ -112,5 +123,15 @@ func deathSaveOn(
 		return nil, fmt.Errorf("resolution: death save for %q: %w", one.ID(), err)
 	}
 
-	return &DeathSaveOutput{Character: changed, Result: *result}, nil
+	out = &DeathSaveOutput{Character: changed, Result: *result, DirtyMonsters: dirtyMonsters(cast)}
+	dirty, err := dirtyCharacters(cast)
+	if err != nil {
+		return nil, err
+	}
+	for _, sheet := range dirty {
+		if sheet.ID != one.ID() {
+			out.DirtyCharacters = append(out.DirtyCharacters, sheet)
+		}
+	}
+	return out, nil
 }
