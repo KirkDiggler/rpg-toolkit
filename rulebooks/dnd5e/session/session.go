@@ -51,6 +51,22 @@ type Config struct {
 	// never the process default.
 	Sites encounter.SiteProvider
 
+	// Residency keeps each session's write-verb encounter in memory between
+	// verbs, as a cache of its stored checkpoint (rpg-project#879 S6,
+	// residency.go): the next write verb reads the store's checkpoint
+	// version, and on a match runs on the kept copy instead of loading.
+	// Optional: nil is [NewResidency] with its defaults, in process. Used
+	// only when Encounters carries both [FencedEncounterRepository] and
+	// [CheckpointVersionReader]; any other host loads every verb, as before.
+	// A host bounds it with its own [NewResidency], or supplies its own.
+	Residency Residency
+
+	// ResidencyObserver is told whether each fenced write verb on a stored
+	// world ran on the kept copy, and if not, which gate sent it to the
+	// store ([MissReason]). Optional: nil observes nothing. Never called for
+	// a host without [CheckpointVersionReader].
+	ResidencyObserver ResidencyObserver
+
 	// CharacterConfig is the host's character configuration, read at every
 	// write verb for each player's discovery-sharing choice (rpg-project#753
 	// R2). Required: automatic discovery needs each finder's audience, so a
@@ -188,6 +204,14 @@ type Manager struct {
 	// fenced is Encounters' optional fenced capability, or nil when the host's
 	// repository is plain (checkpoint.go).
 	fenced FencedEncounterRepository
+	// appending is Encounters' optional appending capability, or nil when the
+	// host's fenced repository rewrites the whole record on every save
+	// (checkpoint.go). Never set without fenced: it embeds it.
+	appending AppendingEncounterRepository
+	// pieces is Encounters' optional pieces capability, or nil when the
+	// host's appending repository stores the rest whole (checkpoint.go).
+	// Never set without appending: it embeds it.
+	pieces PiecesEncounterRepository
 	// pending is the fenced verbs' unsaved sheets and seats; nil when the
 	// repository is plain (checkpoint.go).
 	pending *pendingWrites
@@ -195,7 +219,18 @@ type Manager struct {
 	sites encounter.SiteProvider
 	// siteStore is Encounters' optional site capability, or nil when the
 	// host keeps its sites in process (sites.go).
-	siteStore       SiteRepository
+	siteStore SiteRepository
+	// versions is Encounters' optional version reader, set only beside the
+	// fence; nil keeps no resident copy (residency.go).
+	versions CheckpointVersionReader
+	// residency is Config.Residency, or the in-process default; read only
+	// when versions is set.
+	residency Residency
+	// observer is Config.ResidencyObserver, or nil.
+	observer ResidencyObserver
+	// staged is each session's copy its final commit staged, kept at the
+	// guard's release (residency.go).
+	staged          *stagedResidents
 	characters      CharacterRepository
 	seats           SeatRepository
 	record          RecordStream
@@ -289,6 +324,12 @@ func NewManager(cfg *Config) (*Manager, error) {
 	// The fence is a capability found on the repository the host already
 	// wired, never a Config field (the Config rule above Characters).
 	fenced, _ := cfg.Encounters.(FencedEncounterRepository)
+	// Appending is a refinement of the fence, found the same way: a host
+	// that has it saves the record as segments rather than whole.
+	appending, _ := cfg.Encounters.(AppendingEncounterRepository)
+	// Pieces refines appending the same way: a host that has it stores the
+	// rest as pieces and is sent only the ones that moved.
+	pieces, _ := cfg.Encounters.(PiecesEncounterRepository)
 	var pending *pendingWrites
 	if fenced != nil {
 		pending = newPendingWrites()
@@ -300,6 +341,16 @@ func NewManager(cfg *Config) (*Manager, error) {
 	if cfg.Sites != nil {
 		sites = cfg.Sites
 	}
+	// The resident copy needs the fence (the version it is checked against)
+	// and the version reader, both found on the repository the host wired.
+	var versions CheckpointVersionReader
+	if fenced != nil {
+		versions, _ = cfg.Encounters.(CheckpointVersionReader)
+	}
+	residency := cfg.Residency
+	if residency == nil {
+		residency = NewResidency(nil)
+	}
 
 	return &Manager{
 		staleTargetPolicy: cfg.StaleTargetPolicy,
@@ -309,9 +360,15 @@ func NewManager(cfg *Config) (*Manager, error) {
 		characterConfig:   cfg.CharacterConfig,
 		encounters:        cfg.Encounters,
 		fenced:            fenced,
+		appending:         appending,
+		pieces:            pieces,
 		pending:           pending,
 		sites:             sites,
 		siteStore:         siteStore,
+		versions:          versions,
+		residency:         residency,
+		observer:          cfg.ResidencyObserver,
+		staged:            &stagedResidents{},
 		characters:        cfg.Characters,
 		seats:             cfg.Seats,
 		record:            cfg.Record,

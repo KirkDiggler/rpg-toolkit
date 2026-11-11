@@ -307,6 +307,12 @@ func validateLaunch(in *LaunchInput) error {
 	if len(in.Party) == 0 {
 		return fmt.Errorf("no party: %w", ErrNoMemberID)
 	}
+	// AN APPROACH STAYS INSIDE SPEAK REACH (rpg-project#923, ruled
+	// 2026-11-11: "the reach inside the current speak distance"), so a hailed
+	// character can always answer from where the hail stopped them.
+	if err := encounter.ValidateApproachReach(in.Dungeon.Field.Interactions, InteractionReach); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidWorld, err)
+	}
 	if len(in.Party) > len(in.Dungeon.PartyStart) {
 		return fmt.Errorf("a party of %d and a dungeon that seats %d: %w",
 			len(in.Party), len(in.Dungeon.PartyStart), ErrInvalidWorld)

@@ -10,10 +10,12 @@ import (
 	"math"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/deed"
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/selection"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/sound"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -115,7 +117,9 @@ var (
 	// ErrBadTable reports a table this module could not roll: every eligible
 	// entry loaded to nothing, which is a temperament whose every factor is
 	// zero. A caller validates the authored shape at its own door; this is
-	// the evaluator refusing to roll a die of size zero.
+	// the evaluator refusing to roll a die of size zero. Malformed selection
+	// inputs, overflowing shares and out-of-range die faces also wrap this
+	// error together with the selection package's specific refusal.
 	ErrBadTable = errors.New("behavior: table cannot be rolled")
 
 	// ErrNoDie reports a pick or a deal with nothing to roll it on.
@@ -126,7 +130,8 @@ var (
 
 	// ErrBadMix reports a temperament mix that cannot be dealt: a share below
 	// 1, which can never come up, or a word in the mix that no profile says
-	// the meaning of.
+	// the meaning of. An empty mix, invalid identity, overflowing shares or
+	// out-of-range face is also refused, with its selection cause preserved.
 	ErrBadMix = errors.New("behavior: temperament mix cannot be dealt")
 
 	// ErrSilent reports a key with nothing eligible on any trigger but
@@ -1631,8 +1636,9 @@ type PickInput struct {
 	Die Die
 }
 
-// Pick is THE ONE EVALUATOR: eligibility, the loaded die, the roll, and the
-// entry that fired.
+// Pick is the domain evaluator: eligibility, the loaded die, the roll, and
+// the entry that fired. Shared selection supplies checked weight arithmetic
+// and one weighted draw per visited level; this function owns the vocabulary.
 //
 // ONE FUNCTION FOR EVERY TRIGGER (design §2). An event's answer and a
 // creature's turn differ in WHEN they are rolled and in what the caller does
@@ -1657,7 +1663,10 @@ func Pick(ctx context.Context, in *PickInput) (*PickOutput, error) {
 	}
 	key, table, temper, facts, roller := in.Key, in.Table, in.Temper, in.Facts, in.Die
 	entries := table[key]
-	top := judge(entries, temper, facts, 0)
+	top, err := judge(entries, temper, facts, 0)
+	if err != nil {
+		return nil, fmt.Errorf("pick %q: %w: %w", key, ErrBadTable, err)
+	}
 
 	if len(top.candidates) == 0 {
 		if key == KeyTime {
@@ -1690,16 +1699,19 @@ func Pick(ctx context.Context, in *PickInput) (*PickOutput, error) {
 	out := &PickOutput{Key: key, Candidates: top.candidates, Rows: top.rows, Of: top.of, Temper: temper.Word}
 	level, rows, verdict := top, entries, (*RowVerdict)(nil)
 	for {
-		roll, err := roller.Roll(ctx, level.of)
+		drawn, err := selection.Draw(ctx, &selection.DrawInput{Evaluation: level.pool, Die: roller})
 		if err != nil {
+			if errors.Is(err, selection.ErrBadRoll) {
+				return nil, fmt.Errorf("pick %q at %v: %w: %w", key, out.Path, ErrBadTable, err)
+			}
 			return nil, fmt.Errorf("pick: %q at %v: %w", key, out.Path, err)
 		}
 		if verdict == nil {
-			out.Roll = roll
+			out.Roll = drawn.Roll
 		} else {
-			verdict.Roll, verdict.Of = roll, level.of
+			verdict.Roll, verdict.Of = drawn.Roll, drawn.Total
 		}
-		chosen := land(level.candidates, roll)
+		chosen := drawn.Choice.Index
 		out.Path = append(out.Path, chosen)
 		inner, group := level.inner[chosen]
 		if !group {
@@ -1719,14 +1731,15 @@ func Pick(ctx context.Context, in *PickInput) (*PickOutput, error) {
 // verdict for every row, and the judged level inside every group that is a
 // candidate, by entry.
 type level struct {
+	pool       *selection.Evaluation
 	candidates []Candidate
 	rows       []RowVerdict
 	of         int
 	inner      map[int]*level
 }
 
-// judge is eligibility and load for one level, the same test at every depth.
-// nest is how many groups enclose it.
+// judge evaluates the domain requirements once per row and delegates shares
+// to selection, at every depth. nest is how many groups enclose it.
 //
 // A WORD ROW is a candidate when its `when` all hold and the creature can pay
 // for its word. A GROUP is a candidate when its own `when` hold AND something
@@ -1735,11 +1748,12 @@ type level struct {
 // ABSENT rather than weighted zero, so the candidate list stays the honest
 // account of what could have happened, and the verdict records both answers
 // for every row.
-func judge(entries []Answer, temper Temper, facts Facts, nest int) *level {
+func judge(entries []Answer, temper Temper, facts Facts, nest int) (*level, error) {
 	lv := &level{
 		candidates: make([]Candidate, 0, len(entries)),
 		rows:       make([]RowVerdict, 0, len(entries)),
 	}
+	choices := make([]selection.Candidate, 0, len(entries))
 	for i := range entries {
 		entry := &entries[i]
 		judged := facts.forRow(*entry)
@@ -1747,10 +1761,14 @@ func judge(entries []Answer, temper Temper, facts Facts, nest int) *level {
 		var inner *level
 		var affordable bool
 		if entry.isGroup() {
-			// PAST THE GUARD A GROUP IS ABSENT: [Pick] never validates, and
-			// a table built in Go can hold itself.
+			// The domain's nesting bound and child eligibility remain here;
+			// selection sees one group row, never flattened children.
 			if nest+1 <= MaxGroupDepth {
-				inner = judge(entry.Rows, temper, facts, nest+1)
+				var err error
+				inner, err = judge(entry.Rows, temper, facts, nest+1)
+				if err != nil {
+					return nil, err
+				}
 				affordable = inner.of >= 1
 			}
 		} else {
@@ -1760,41 +1778,53 @@ func judge(entries []Answer, temper Temper, facts Facts, nest int) *level {
 		if inner != nil {
 			verdict.Rows = inner.rows
 		}
-		if !held || !affordable {
-			lv.rows = append(lv.rows, verdict)
+		if held && affordable {
+			verdict.Weight, verdict.Percent = entry.Weight, temper.factor(*entry)
+			if inner != nil {
+				if lv.inner == nil {
+					lv.inner = map[int]*level{}
+				}
+				lv.inner[i] = inner
+			}
+		}
+		lv.rows = append(lv.rows, verdict)
+		choices = append(choices, selection.Candidate{
+			ID: strconv.Itoa(i), Weight: entry.Weight,
+			Requirements: []selection.Requirement{
+				{ID: "condition", Verdict: selectionVerdict(held)},
+				{ID: "affordability", Verdict: selectionVerdict(affordable)},
+			},
+			Factors: []selection.Factor{{ID: "temperament", Multiplier: verdict.Percent}},
+		})
+	}
+	pool, err := selection.Evaluate(&selection.EvaluateInput{Candidates: choices})
+	if err != nil {
+		return nil, err
+	}
+	inspected, err := pool.Inspect()
+	if err != nil {
+		return nil, err
+	}
+	lv.pool, lv.of = pool, inspected.Total
+	for i, row := range inspected.Rows {
+		if !row.Eligible {
 			continue
 		}
-		percent := temper.factor(*entry)
-		loaded := entry.Weight * percent
-		verdict.Weight, verdict.Percent, verdict.Loaded = entry.Weight, percent, loaded
+		lv.rows[i].Loaded = row.Weight
 		lv.candidates = append(lv.candidates, Candidate{
-			Entry: i, Weight: entry.Weight, Percent: percent, Loaded: loaded,
+			Entry: i, Weight: lv.rows[i].Weight, Percent: lv.rows[i].Percent, Loaded: row.Weight,
 		})
-		lv.rows = append(lv.rows, verdict)
-		lv.of += loaded
-		if inner != nil {
-			if lv.inner == nil {
-				lv.inner = map[int]*level{}
-			}
-			lv.inner[i] = inner
-		}
 	}
-
-	return lv
+	return lv, nil
 }
 
-// land is the entry whose running total of loads first reaches the face:
-// authored order maps faces to rows, and never decides priority (R0).
-func land(candidates []Candidate, roll int) int {
-	acc := 0
-	for _, c := range candidates {
-		acc += c.Loaded
-		if roll <= acc {
-			return c.Entry
-		}
+// selectionVerdict adapts the existing boolean domain answers; it does not
+// invent Unknown where the behavior vocabulary already supplied true or false.
+func selectionVerdict(held bool) selection.Verdict {
+	if held {
+		return selection.Met
 	}
-
-	return candidates[len(candidates)-1].Entry
+	return selection.Unmet
 }
 
 // DealInput is a faction's authored spread, and the die to pick one out of it.
@@ -1845,7 +1875,6 @@ func Deal(ctx context.Context, in *DealInput) (*DealOutput, error) {
 // caller's own die.
 func dealTemper(ctx context.Context, temper Temper, roller Die) (*DealOutput, error) {
 	words := make([]string, 0, len(temper.Mix))
-	of := 0
 	for word, share := range temper.Mix {
 		if share < 1 {
 			return nil, fmt.Errorf(
@@ -1856,34 +1885,35 @@ func dealTemper(ctx context.Context, temper Temper, roller Die) (*DealOutput, er
 				"temper %q is in the mix and nothing says what it means: %w", word, ErrBadMix)
 		}
 		words = append(words, word)
-		of += share
 	}
 	// C8: the same seeded roller must deal the same word every run, so the
 	// mix is walked in sorted order rather than the map's own.
 	sort.Strings(words)
-
+	if len(words) == 0 {
+		return nil, fmt.Errorf("temper: %w: %w", ErrBadMix, selection.ErrNoCandidates)
+	}
+	choices := make([]selection.Candidate, 0, len(words))
+	for _, word := range words {
+		choices = append(choices, selection.Candidate{ID: word, Weight: temper.Mix[word]})
+	}
+	pool, err := selection.Evaluate(&selection.EvaluateInput{Candidates: choices})
+	if err != nil {
+		return nil, fmt.Errorf("temper: %w: %w", ErrBadMix, err)
+	}
 	if roller == nil {
 		return nil, fmt.Errorf("temper: %w", ErrNoDie)
 	}
-	roll, err := roller.Roll(ctx, of)
+	drawn, err := selection.Draw(ctx, &selection.DrawInput{Evaluation: pool, Die: roller})
 	if err != nil {
+		if errors.Is(err, selection.ErrBadRoll) {
+			return nil, fmt.Errorf("temper: %w: %w", ErrBadMix, err)
+		}
 		return nil, fmt.Errorf("temper: %w", err)
 	}
-
-	dealt := words[len(words)-1]
-	acc := 0
-	for _, word := range words {
-		acc += temper.Mix[word]
-		if roll <= acc {
-			dealt = word
-			break
-		}
-	}
-
+	dealt := drawn.Choice.Row.ID
 	return &DealOutput{
 		Temper: Temper{Word: dealt, Profile: temper.Profiles[dealt]},
-		Roll:   roll,
-		Of:     of,
+		Roll:   drawn.Roll, Of: drawn.Total,
 	}, nil
 }
 

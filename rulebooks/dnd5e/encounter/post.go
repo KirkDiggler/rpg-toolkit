@@ -6,6 +6,7 @@ package encounter
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"sort"
 
@@ -62,12 +63,22 @@ import (
 // decided by the cell a crossing starts on, so the undirected crossing memo
 // never holds it.
 //
-// # A pass fact walks through
+// # A pass walks through
 //
-// A post's setting may name a fact ([Post.Pass]). A mover who knows it
-// crosses the held opening and works its door as an ally does. The fact is
-// the mover's own, read from the journal ([encounterWorld.knowsFact]), once
-// per mover and fact in a read ([cellQuery.knowsPass]).
+// A post's setting may name a pass ([Post.Pass]): requirements in the same
+// grammar an option's `requires` uses, judged with the WALKER as "me" and
+// the post's HOLDER as "the other party" (rpg-project#928). A walker the
+// pass holds for crosses the held opening and works its door as an ally
+// does. Two forms carry the gate:
+//
+//   - `{ fact: <id> }` — the walker knows a fact, read from the journal: a
+//     password;
+//   - `{ recognized: <topic> }` — the holder holds the topic about the walker
+//     ([TriggerRecognized], recognition.go): the guard recognises them.
+//
+// The pass is per pair, so with several holders on one door the door is
+// held while ANY holder it does not hold for holds it. Answered once per
+// walker and holder in a read ([passReads]).
 
 // Post is what a state holds: the door whose opening it bars, and the
 // dungeon-absolute cells a holder stands on to bar it (the frame
@@ -85,9 +96,15 @@ type Post struct {
 	// post's side, [PostLeaving] one that ends there.
 	Against PostDirection
 
-	// Pass is the fact a mover who knows it walks through on, as an ally
-	// does. Empty: none.
-	Pass FactID
+	// Pass is what lets a mover through, as an ally walks (rpg-project#928):
+	// requirements in [Option.Requires]' grammar, EVERY ONE of them Met, with
+	// the mover as "me" and this post's holder as "the other party". Each is
+	// a [TriggerFact] (the mover knows it), a [TriggerHolds] (the mover
+	// carries it), a [TriggerRecognized] (the holder holds the topic about
+	// the mover), or a `not` of one. An interaction's state is refused here:
+	// it is the run's, not the pair's, and a pass on it would open the door
+	// to everyone (#916 R6). Nil: no pass, nobody but allies walks through.
+	Pass []Trigger
 }
 
 // PostDirection is which way a post bars its opening (rpg-project#857, R6).
@@ -126,8 +143,9 @@ type PostData struct {
 	// which loads as both ways.
 	Against PostDirection `json:"against,omitempty"`
 
-	// Pass is [Post.Pass]. Absent: no pass.
-	Pass FactID `json:"pass,omitempty"`
+	// Pass is [Post.Pass], each requirement in the trigger grammar's
+	// persisted form. Absent: no pass.
+	Pass []TriggerData `json:"pass,omitempty"`
 }
 
 // postsDataFrom is a member's posts as the record stores them, nil for none.
@@ -137,7 +155,11 @@ func postsDataFrom(posts map[string]Post) map[string]PostData {
 	}
 	out := make(map[string]PostData, len(posts))
 	for state, p := range posts {
-		out[state] = PostData{Door: p.Door, Cells: slices.Clone(p.Cells), Against: p.Against, Pass: p.Pass}
+		data := PostData{Door: p.Door, Cells: slices.Clone(p.Cells), Against: p.Against}
+		for _, t := range p.Pass {
+			data.Pass = append(data.Pass, triggerDataFrom(t))
+		}
+		out[state] = data
 	}
 
 	return out
@@ -156,7 +178,15 @@ func postsFromData(posts map[string]PostData) (map[string]Post, error) {
 		if len(p.Cells) == 0 {
 			return nil, fmt.Errorf("post %q names no cell: a stored post carries its cells", state)
 		}
-		out[state] = Post{Door: p.Door, Cells: slices.Clone(p.Cells), Against: p.Against, Pass: p.Pass}
+		post := Post{Door: p.Door, Cells: slices.Clone(p.Cells), Against: p.Against}
+		for i, td := range p.Pass {
+			t, err := triggerFromData(td)
+			if err != nil {
+				return nil, fmt.Errorf("post %q pass[%d]: %w", state, i, err)
+			}
+			post.Pass = append(post.Pass, t)
+		}
+		out[state] = post
 	}
 
 	return out, nil
@@ -212,7 +242,10 @@ func (e *Encounter) usePosts(m *memberRecord, posts map[string]Post, at spatial.
 				return fmt.Errorf("member %s: post %q stands on %v, which is not floor: %w", m.ID, state, cell, ErrBadMember)
 			}
 		}
-		post := Post{Door: p.Door, Cells: cells, Against: p.Against, Pass: p.Pass}
+		post := Post{Door: p.Door, Cells: cells, Against: p.Against, Pass: cloneRequirements(p.Pass)}
+		if err := e.validatePass(post.Pass); err != nil {
+			return fmt.Errorf("member %s: post %q: %w: %w", m.ID, state, err, ErrBadMember)
+		}
 		if !post.Against.known() {
 			return fmt.Errorf("member %s: post %q holds against %q: a post holds both, entering or leaving: %w",
 				m.ID, state, post.Against, ErrBadMember)
@@ -258,7 +291,7 @@ func (m *memberRecord) postIn(state string) (Post, bool) {
 // samePost reports whether two states name the same post.
 func samePost(a Post, okA bool, b Post, okB bool) bool {
 	return okA == okB && a.Door == b.Door && slices.Equal(a.Cells, b.Cells) &&
-		a.direction() == b.direction() && a.Pass == b.Pass
+		a.direction() == b.direction() && reflect.DeepEqual(a.Pass, b.Pass)
 }
 
 // direction is the post's direction, an empty one read as both ways.
@@ -419,41 +452,89 @@ type postHolder struct {
 	post   Post
 }
 
-// passReads is one read's answers to "does this mover know this pass
-// fact": the journal scanned once per mover and fact, under the promise
-// every read memo rests on, that nothing moves inside a read.
+// passReads is one read's answers to "does this holder's pass hold for this
+// mover": judged once per mover and holder, under the promise every read
+// memo rests on, that nothing moves inside a read — a holder's post, the
+// mover's facts and the holder's holdings all stay put.
 type passReads map[passKey]bool
 
-// passKey is one mover and one pass fact.
+// passKey is one mover and one holder.
 type passKey struct {
-	mover MemberID
-	fact  FactID
+	mover  MemberID
+	holder MemberID
 }
 
-// knows is whether the mover knows the fact, read from the journal the
+// lets is whether the holder's post lets the mover through, judged the
 // first time this read asks it.
-func (r passReads) knows(e *Encounter, mover MemberID, fact FactID) bool {
-	key := passKey{mover: mover, fact: fact}
-	if known, ok := r[key]; ok {
-		return known
+func (r passReads) lets(e *Encounter, mover, holder MemberID, p Post) bool {
+	key := passKey{mover: mover, holder: holder}
+	if lets, ok := r[key]; ok {
+		return lets
 	}
-	known := e.world.knowsFact(mover, fact)
-	r[key] = known
+	lets := e.passLets(mover, holder, p)
+	r[key] = lets
 
-	return known
+	return lets
+}
+
+// passLets is the one judgment of a post's pass (rpg-project#928): a pass
+// is named and every requirement of it holds with the mover as "me" and the
+// holder as "the other party" ([Encounter.requirementHolds]). No pass lets
+// nobody through.
+func (e *Encounter) passLets(mover, holder MemberID, p Post) bool {
+	if len(p.Pass) == 0 {
+		return false
+	}
+	for _, t := range p.Pass {
+		if !e.requirementHolds(mover, holder, t) {
+			return false
+		}
+	}
+
+	return true
+}
+
+// validatePass refuses a pass this composition cannot judge (rpg-project#928):
+// an item [validateOptionRequirement] refuses, an interaction's state (the
+// run's, never the pair's: #916 R6 refused the door opened for everyone), a
+// holding of a prop nobody can pick up, and a recognition on a topic no
+// interaction of the run grants — each a pass nobody could ever meet.
+func (e *Encounter) validatePass(pass []Trigger) error {
+	granted := grantedTopics(e.interactions)
+	for i, t := range pass {
+		what := fmt.Sprintf("pass[%d]", i)
+		if err := validateOptionRequirement(what, t); err != nil {
+			return err
+		}
+		switch inner, _ := unwrapNot(t); r := inner.(type) {
+		case TriggerInteraction:
+			return fmt.Errorf("%s reads interaction %q: an interaction's state is the run's, and a pass is the holder's "+
+				"and the walker's", what, r.Interaction)
+		case TriggerHolds:
+			if !e.field.holdable[r.Prop] {
+				return fmt.Errorf("%s requires holding %q, which nobody can pick up", what, r.Prop)
+			}
+		case TriggerRecognized:
+			if !granted[r.Topic] {
+				return fmt.Errorf("%s requires recognition on topic %q, and no interaction's outcome grants it", what, r.Topic)
+			}
+		}
+	}
+
+	return nil
 }
 
 // bars reports whether a post bars a mover crossing from `from`, the post's
 // holder and its allies already set aside: its direction bars a crossing
-// starting there ([Encounter.barsFrom]), and the mover does not know its
-// pass. The direction is asked first, so a crossing it lets through reads
-// no journal.
-func (e *Encounter) bars(p Post, mover MemberID, from spatial.Position, passes passReads) bool {
+// starting there ([Encounter.barsFrom]), and its pass does not let the mover
+// through. The direction is asked first, so a crossing it lets through
+// judges no pass.
+func (e *Encounter) bars(p Post, holder, mover MemberID, from spatial.Position, passes passReads) bool {
 	if !e.barsFrom(p, from) {
 		return false
 	}
 
-	return p.Pass == "" || !passes.knows(e, mover, p.Pass)
+	return !passes.lets(e, mover, holder, p)
 }
 
 // heldAgainst is the members holding the crossing from one adjacent cell to
@@ -478,7 +559,7 @@ func (e *Encounter) heldAgainst(
 		if allied, _ := e.IsAllied(mover, h.holder); allied {
 			continue
 		}
-		if !e.bars(h.post, mover, from, passes) {
+		if !e.bars(h.post, h.holder, mover, from, passes) {
 			continue
 		}
 		out = append(out, h.holder)
@@ -576,7 +657,7 @@ type HeldDoor struct {
 // viewer saw. A hold is told to a viewer in any region, whatever way it
 // faces, because a direction bars the viewer some way (rpg-project#857); a
 // body the viewer believes allied is omitted, as is a door hidden to the
-// viewer and a post whose pass fact the viewer knows. Memories and unknown
+// viewer and a post whose pass lets the viewer through. Memories and unknown
 // locations are absent.
 //
 // Errors: [ErrNilInput]; a sight testimony that does not decode; the
@@ -605,7 +686,7 @@ func (e *Encounter) ObservedHolds(in *ViewInput) (map[MemberID]HeldDoor, error) 
 			continue
 		}
 		post := e.livePost(MemberID(holding.Subject), seen.HoldsDoor)
-		if post.Pass != "" && e.world.knowsFact(in.Member, post.Pass) {
+		if e.passLets(in.Member, MemberID(holding.Subject), post) {
 			continue
 		}
 		stance, err := e.BelievedStance(in.Member, holding.Subject)
@@ -763,7 +844,7 @@ func (e *Encounter) refuseHeldDoor(d *doorRecord, actor MemberID) error {
 		if allied, _ := e.IsAllied(actor, id); allied {
 			continue
 		}
-		if !e.bars(post, actor, from, passes) {
+		if !e.bars(post, id, actor, from, passes) {
 			continue
 		}
 		holders = append(holders, id)

@@ -285,6 +285,7 @@ func (s *SpeakWorldSuite) TestFoldTimePick() {
 		s.Equal(answer.Roll.Dice[0], answer.Roll.Total)
 		s.LessOrEqual(answer.Roll.Total, answer.Roll.Of)
 		s.Equal("hold", answer.Word)
+		s.Equal(session.Party{}, answer.To, "a time pick speaks to nobody (rpg-project#923)")
 	}
 }
 
@@ -366,7 +367,7 @@ func TestEveryBeatHasAFamily(t *testing.T) {
 	}
 
 	for _, kind := range []string{
-		encounter.BeatTable, encounter.BeatTransferred, encounter.BeatInteracted,
+		encounter.BeatTable, encounter.BeatTransferred, encounter.BeatInteracted, encounter.BeatInteraction,
 		string(encounter.OutcomeBought), string(encounter.OutcomeSold),
 	} {
 		_, _, recordOnly := session.FamilyOfBeatForTest(kind)

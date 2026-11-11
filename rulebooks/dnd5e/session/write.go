@@ -764,7 +764,7 @@ func (m *Manager) End(ctx context.Context, in *EndInput) (*EndOutput, error) {
 	}
 	defer release()
 
-	scope, err := m.openForChange(ctx, "end", in.Session)
+	scope, err := m.openForChangeBy(ctx, "end", in.Session, anyWaitingRoll)
 	if err != nil {
 		return nil, fmt.Errorf("end: %w", err)
 	}
@@ -880,12 +880,28 @@ func (m *Manager) openScope(
 		ledger:    ledger,
 		driver:    driver,
 	}
+	// THE RESIDENT COPY (residency.go): taken out of the residency on every
+	// fenced open, Launch's included, so a copy in use is in no map; used
+	// only for a stored world whose version still matches it, and dropped
+	// otherwise. A copy that cannot be rebound is dropped and the world
+	// loads.
+	if m.residentOn() {
+		if world != nil {
+			m.residency.Take(sessionID)
+		} else if m.residentScope(ctx, data, scope) {
+			return m.openedScope(ctx, scope, extraMembers...)
+		}
+	}
+
 	switch {
 	case world != nil:
 		// Launch's fresh board. Fenced, no checkpoint exists yet, so its
 		// first save lands only on a store that holds none (a racing Launch
 		// fails closed); plain, the fence stays unheld.
-		scope.fence = checkpointFence{held: m.fenced != nil}
+		// The store holds no record either, so an appending save sends the
+		// whole of it: since seq 1. Nor does it hold a piece, so the marks
+		// stay nil and a pieces save sends every piece.
+		scope.fence = checkpointFence{held: m.fenced != nil, recordNext: 1}
 	case m.fenced != nil:
 		if world, scope.fence, err = m.fetchFencedWorld(ctx, data.Encounter); err != nil {
 			return nil, err
@@ -908,7 +924,13 @@ func (m *Manager) openScope(
 	scope.enc = enc
 	scope.baseline = baseline
 	scope.standing = standing
-	status, err := enc.Status()
+	return m.openedScope(ctx, scope, extraMembers...)
+}
+
+// openedScope finishes a scope whose world is bound, loaded or kept: what
+// the world's status was at the open, and the exploration the verb prepares.
+func (m *Manager) openedScope(ctx context.Context, scope *writeScope, extraMembers ...string) (*writeScope, error) {
+	status, err := scope.enc.Status()
 	if err != nil {
 		return nil, translate(err)
 	}
@@ -954,6 +976,62 @@ func (m *Manager) openForChange(
 	return scope, nil
 }
 
+// anyWaitingRoll is the actor [Manager.openForChangeBy] is handed by a verb
+// that acts on the whole table rather than one member — a rest, which
+// passes everyone's time, and End and Dissolve, which close the run or a
+// member's part in it under a question nobody could then answer — so it
+// waits on every waiting roll, not on one member's.
+const anyWaitingRoll = ""
+
+// openForChangeBy is [Manager.openForChange] for a verb one member acts in,
+// refused while THAT MEMBER'S OWN ROLL WAITS (rpg-project#924).
+//
+// A waiting Speak check in free roam does not freeze the table
+// ([holdsTheTable]), so the freeze no longer stops its speaker from acting
+// on. While their roll waits a speaker may WALK — [Manager.Move] opens
+// through openForChange, and a walk out of reach lets the line go
+// ([closeAbandonedLines]) — answer it ([Manager.React]), and leave
+// ([Manager.Exit], which drops the hold). Every other verb of theirs is
+// refused [ErrWindowOpen], naming their waiting window: a second checked
+// line, an Unlock, a swing or a cast could each pose a second question to a
+// member already being asked one, and an action taken between the roll and
+// its verdict is an action taken inside somebody's decision. A verb that
+// moves the table's time (a rest) passes [anyWaitingRoll] and waits on every
+// waiting roll, as do End and Dissolve.
+func (m *Manager) openForChangeBy(ctx context.Context, verb, sessionID, actor string) (*writeScope, error) {
+	scope, err := m.openForChange(ctx, verb, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	if err := scope.rollWaitsOn(actor); err != nil {
+		return nil, err
+	}
+	return scope, nil
+}
+
+// rollWaitsOn reports the open windows asking actor — every open window for
+// [anyWaitingRoll] — as a [WindowOpenError], or nil when none is. Called
+// after [writeScope.frozen] passed, so every window it can find is a waiting
+// line that holds no table.
+func (s *writeScope) rollWaitsOn(actor string) error {
+	open, err := s.ledger.Open()
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidSession, err)
+	}
+	detail := &WindowOpenError{}
+	for _, w := range open {
+		if actor != anyWaitingRoll && string(w.Audience) != actor {
+			continue
+		}
+		detail.Windows = append(detail.Windows, windowIDString(w.ID))
+		detail.Audiences = append(detail.Audiences, string(w.Audience))
+	}
+	if len(detail.Windows) == 0 {
+		return nil
+	}
+	return detail
+}
+
 // openAct opens this verb's act on the scope's encounter: verb minted when
 // act is empty, act (`<verb>:<id>`) reopened otherwise. A scope holds at
 // most one act of its own, which commit closes.
@@ -981,6 +1059,9 @@ func (s *writeScope) frozen() error {
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidSession, err)
 	}
+	// A WAITING LINE IN FREE ROAM HOLDS ITS CONVERSATION, NOT THE TABLE
+	// (rpg-project#924, [holdsTheTable]).
+	open = tableHolders(s.enc, open)
 	if len(open) == 0 {
 		return nil
 	}
@@ -1013,10 +1094,25 @@ type writeScope struct {
 	enc       *encounter.Encounter
 	baseline  uint64
 
+	// committed is the commit cursor: the first record seq the verb's last
+	// landed commit did not hold, or 0 before any commit landed. A verb that
+	// commits more than once (a continued walk's pace commits,
+	// rpg-project#879 R7) settles, saves and delivers each commit's delta
+	// from here, never again from the baseline; see [writeScope.deltaFrom].
+	// The baseline keeps its meaning, the act's start.
+	committed uint64
+
+	// savedThrough is the newest record id the verb's landed commits hold,
+	// "" before one lands: where a continuation that failed after a commit
+	// tells its host the store stops ([ContinuationReport.SavedThrough]).
+	savedThrough string
+
 	// fence is the checkpoint version this verb loaded when the host's
 	// repository is fenced, and persist saves against it (checkpoint.go).
 	// The baseline above is NOT the fence: a beatless verb does not advance
-	// it. Unheld when the repository is plain.
+	// it. Unheld when the repository is plain. The fence also carries what
+	// record the store holds (recordNext), which is NOT the baseline either:
+	// the baseline is this act's delta boundary and stays put.
 	fence checkpointFence
 
 	// seatClears is the players whose seats a fenced verb clears in its
@@ -1286,10 +1382,11 @@ func (m *Manager) adopt(scope *writeScope) error {
 // loaded: both land or neither does, and a stale fence lands nothing and
 // unwraps to [ErrStaleCheckpoint]. commit delivers only after persist reports
 // success, so a stale verb also tells nobody anything.
-func (m *Manager) persist(
-	ctx context.Context, scope *writeScope, data encounter.EncounterData,
-) (SaveReport, error) {
-
+//
+// THE WORLD IS TAKEN HERE, at the storage boundary: ToData for a plain or a
+// whole-record fenced host, ToCheckpoint for an appending one, which never
+// copies the record's older entries (rpg-project#897 leg c).
+func (m *Manager) persist(ctx context.Context, scope *writeScope) (SaveReport, error) {
 	// The report opens with what the verb already made durable rather than
 	// starting from nothing, which is the whole of rpg-toolkit#1056: a swing
 	// writes the damaged sheet before it gets here, so a world save that fails
@@ -1302,8 +1399,15 @@ func (m *Manager) persist(
 	// A fenced host takes both aggregates in one transaction fenced on the
 	// version this verb loaded; a stale save writes nothing (checkpoint.go).
 	if scope.fence.held {
-		return m.persistFenced(ctx, scope, &data, report)
+		world, err := m.fencedWorldOf(scope)
+		if err != nil {
+			report.Failed = append(report.Failed, "encounter:"+scope.encounter)
+			return report, &SaveError{Report: report, Err: fmt.Errorf("saving world: %w", translate(err))}
+		}
+		return m.persistFenced(ctx, scope, world, report)
 	}
+
+	data := scope.enc.ToData()
 
 	if err := m.encounters.SaveEncounter(ctx, scope.encounter, &data); err != nil {
 		report.Failed = []string{"encounter:" + scope.encounter}
@@ -1347,10 +1451,44 @@ func (m *Manager) persist(
 // own delta, because what they settle is noticed by the composition at
 // whatever sight refresh caught it rather than declared by a verb — and they
 // read it from ONE encounter read, [encounter.Encounter.Settlement] bounded by
-// the scope's baseline, so the economy reset and the experience grant can
-// never disagree about what this act settled.
+// the commit cursor ([writeScope.deltaFrom]: the act's baseline, unless a
+// pace commit of this verb already landed), so the economy reset and the
+// experience grant can never disagree about what this commit settled.
 func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, DeliveryReport, error) {
-	settled, err := scope.enc.Settlement(&encounter.SettlementInput{FromSeq: scope.baseline})
+	return m.commitAt(ctx, scope, true)
+}
+
+// commitPace is a commit at a pace boundary inside a verb that goes on
+// (rpg-project#879 R7): a continued walk commits after each step that paid a
+// world round, so the raise's beats are saved and delivered at once instead
+// of after the walk's remaining steps. It is [Manager.commit] with the act
+// left open and the fence's saved flag left down: the steps after it still
+// write the walker's sheet and append to the same act, and the next commit,
+// pace or final, takes them.
+func (m *Manager) commitPace(ctx context.Context, scope *writeScope) (SaveReport, DeliveryReport, error) {
+	return m.commitAt(ctx, scope, false)
+}
+
+// commitAt is one commit of a verb's delta: everything recorded from the
+// scope's commit cursor ([writeScope.deltaFrom]), which is the act's baseline
+// until a pace commit lands and the record's next seq after it. Settlement,
+// the record batch and the act batch all read from that one cursor, so a verb
+// that commits twice settles, saves and delivers each beat exactly once. The
+// cursor advances only once the save lands: a refused save leaves it where it
+// was, and nothing after it is delivered.
+//
+// final closes the act and, under the fence, marks the verb's save as landed
+// (checkpointFence.saved); a pace commit does neither.
+func (m *Manager) commitAt(ctx context.Context, scope *writeScope, final bool) (SaveReport, DeliveryReport, error) {
+	// A WINDOW NEVER OUTLIVES THE LINE IT ASKS ABOUT (rpg-project#924): the
+	// verb whose step, strike or exit made the encounter release a waiting
+	// line's hold closes that line's window in the same save.
+	if err := closeAbandonedLines(scope); err != nil {
+		report := SaveReport{Written: append([]string(nil), scope.written...)}
+		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", err)
+	}
+	from := scope.deltaFrom()
+	settled, err := scope.enc.Settlement(&encounter.SettlementInput{FromSeq: from})
 	if err != nil {
 		report := SaveReport{Written: append([]string(nil), scope.written...)}
 		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", fmt.Errorf("settlement: %w", translate(err)))
@@ -1390,8 +1528,10 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 	// after it. Delivery still WAITS for the save (S9): built here, handed
 	// to the streams only after persist reports the world durable.
 	// THE ACT CLOSES HERE (rpg-project#627): every beat this verb and its
-	// settlements appended is in, and nothing after this line appends.
-	if scope.act != "" {
+	// settlements appended is in, and nothing after this line appends. A
+	// pace commit leaves it open: the walk's remaining steps are the same
+	// act, and the final commit closes it.
+	if final && scope.act != "" {
 		if err := scope.enc.CloseAct(); err != nil {
 			report := SaveReport{Written: append([]string(nil), scope.written...)}
 			return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", translate(err))
@@ -1400,13 +1540,8 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 	}
 
 	view := scope.enc.WorldView()
-	recorded := commitRecord(scope)
-	acts := commitActs(ctx, scope, m.acts, view.EverMembers)
-
-	// THE final storage boundary: this ToData runs after the verb's complete
-	// delta has been numbered and projected. Everything before this line read
-	// that whole delta; everything after reads only what storage keeps.
-	world := scope.enc.ToData()
+	recorded, next, newest := commitRecord(scope, from)
+	acts := commitActs(ctx, scope, m.acts, view.EverMembers, from)
 
 	// FENCED, THE SEATS CLEAR INSIDE THE SAVE (rpg-toolkit#2332). The plain
 	// order below, clears after the run is durable, would leave a fenced
@@ -1425,9 +1560,25 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 		}
 	}
 
-	report, err := m.persist(ctx, scope, world)
+	// THE final storage boundary is persist's ToData (or, appending, its
+	// ToCheckpoint): it runs after the verb's complete delta has been
+	// numbered and projected. Everything before it read that whole delta;
+	// everything after reads only what storage keeps.
+	report, err := m.persist(ctx, scope)
 	if err != nil {
 		return report, DeliveryReport{}, err
+	}
+	// LANDED: the cursor moves past what this save holds, so the next commit
+	// settles and delivers only what came after it. Only the final commit
+	// marks the fenced save as the verb's last: after a pace commit the
+	// walk's next steps still write the walker's sheet, and those writes
+	// ride the next save rather than being refused.
+	scope.committed = next
+	if newest != "" {
+		scope.savedThrough = newest
+	}
+	if final && scope.fence.held {
+		scope.fence.saved = true
 	}
 
 	// THE RUN THIS VERB CLOSED RELEASES ITS SEATS, after the run that no
@@ -1446,6 +1597,12 @@ func (m *Manager) commit(ctx context.Context, scope *writeScope) (SaveReport, De
 	}
 	if err := m.deliverActs(ctx, acts); err != nil {
 		delivery.Failed = append(delivery.Failed, DeliveryActs)
+	}
+	// THE VERB'S WORLD, STAGED TO STAY RESIDENT (residency.go), once its
+	// final save landed and its batches went to the streams: the guard's
+	// release keeps it. A pace commit stages nothing; the walk goes on.
+	if final {
+		m.stageResident(scope)
 	}
 	return report, delivery, nil
 }
@@ -1541,7 +1698,8 @@ func (m *Manager) closedRunPlayers(scope *writeScope) ([]string, error) {
 // NOTICES defeat, never something a caller declares").
 //
 // Read off the encounter's own settlement facts ([encounter.Encounter.Settlement])
-// bounded by the scope's baseline: every fight that ended in this act, with
+// bounded by the commit cursor ([writeScope.deltaFrom]): every fight that
+// ended in this commit's delta, with
 // the members it held when it ended. The composition writes that fact in one
 // place, shared by an explicit [Manager.Dissolve] and the composition noticing
 // defeat on its own, so this one read covers both without knowing which
@@ -1647,11 +1805,18 @@ func (m *Manager) exitCombatIfPlayer(ctx context.Context, scope *writeScope, id 
 // never a second write cycle a failure between the two could leave half-done.
 //
 // WHAT IT READS is the act's own falls, from the settlement facts
-// [Manager.commit] reads once for the act ([encounter.Encounter.Settlement]
-// from the scope's baseline): each fall names the member, the kind the roster
-// held at the fall, and its sequence. That bound is also the idempotence: the
-// composition tells a fall once and the baseline moves past it with the act,
-// so a fall settles once and the next verb sees nothing to settle.
+// [Manager.commit] reads once per commit ([encounter.Encounter.Settlement]
+// from the commit cursor, [writeScope.deltaFrom]): each fall names the
+// member, the kind the roster held at the fall, and its sequence. That bound
+// is also the idempotence: the composition tells a fall once and the cursor
+// moves past it with the landed save, so a fall settles once and the next
+// commit, of this verb or the next, sees nothing to settle.
+//
+// A PACE COMMIT SETTLES ITS OWN FALLS (rpg-project#879 R7): a fall a world
+// round's raise caused is paid in the save that persists it, never deferred
+// to the walk's final commit. A fall saved without its grant would be past
+// every later cursor, so a crash between the two commits would lose the grant
+// for good.
 //
 // WHO IS A MONSTER comes from the ENCOUNTER, never from whether an ID
 // happens to load out of a store — exitDissolvedCombatants' doc has the ID
@@ -1908,4 +2073,13 @@ func (m *Manager) Recheck(ctx context.Context, in *RecheckInput) (*RecheckOutput
 		Saved:      report,
 		Delivery:   delivery,
 	}, nil
+}
+
+// deltaFrom is where the next commit's delta starts: the commit cursor once a
+// commit has landed in this verb, the act's baseline before.
+func (s *writeScope) deltaFrom() uint64 {
+	if s.committed > s.baseline {
+		return s.committed
+	}
+	return s.baseline
 }

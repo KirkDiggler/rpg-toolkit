@@ -79,6 +79,8 @@ func TestCapabilitiesValidateNamesTheMissingMember(t *testing.T) {
 			require.NoError(t, err)
 			_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: built.ToData(), Capabilities: caps})
 			require.ErrorIs(t, err, tc.want, "Load refuses with the same sentinel")
+			require.ErrorIs(t, built.Rebind(&encounter.RebindInput{Capabilities: caps}), tc.want,
+				"Rebind refuses with the same sentinel")
 		})
 	}
 }
@@ -112,6 +114,15 @@ func TestAConcealedFieldRefusesAMissingCheckResolverOrWitness(t *testing.T) {
 	require.ErrorIs(t, load(func(c *encounter.Capabilities) { c.Witness = nil }), encounter.ErrNoWitness)
 	require.ErrorIs(t, load(func(c *encounter.Capabilities) { c.CheckResolver, c.Witness = nil, nil }), encounter.ErrNoCheckResolver)
 
+	rebind := func(enc *encounter.Encounter, mutate func(*encounter.Capabilities)) error {
+		caps := encounter.RefusingCapabilities()
+		mutate(&caps)
+		return enc.Rebind(&encounter.RebindInput{Capabilities: caps})
+	}
+	require.ErrorIs(t, rebind(built, func(c *encounter.Capabilities) { c.CheckResolver = nil }), encounter.ErrNoCheckResolver)
+	require.ErrorIs(t, rebind(built, func(c *encounter.Capabilities) { c.Witness = nil }), encounter.ErrNoWitness)
+	require.ErrorIs(t, rebind(built, func(c *encounter.Capabilities) { c.CheckResolver, c.Witness = nil, nil }), encounter.ErrNoCheckResolver)
+
 	plain := emptyWorld()
 	plain.CheckResolver, plain.Witness = nil, nil
 	plainBuilt, err := encounter.NewEncounter(plain)
@@ -120,6 +131,8 @@ func TestAConcealedFieldRefusesAMissingCheckResolverOrWitness(t *testing.T) {
 	caps.CheckResolver, caps.Witness = nil, nil
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: plainBuilt.ToData(), Capabilities: caps})
 	require.NoError(t, err, "a plain field loads without either")
+	require.NoError(t, rebind(plainBuilt, func(c *encounter.Capabilities) { c.CheckResolver, c.Witness = nil, nil }),
+		"a plain field rebinds without either")
 }
 
 // TestRefusingCapabilitiesRoundTripAndRefuseByName: a world built with the

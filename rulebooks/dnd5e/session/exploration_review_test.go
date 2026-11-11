@@ -14,9 +14,9 @@ import (
 
 type discoveryReviewDice struct{ calls int }
 
-func (d *discoveryReviewDice) Roll(_ context.Context, _ int) (int, error) {
+func (d *discoveryReviewDice) Roll(_ context.Context, size int) (int, error) {
 	d.calls++
-	return 10, nil
+	return onTheDie(10, size), nil
 }
 
 func (s *AutomaticDiscoverySDKSuite) TestJoinDiscoveryUsesTheRestedRecordRatherThanTheStagedRage() {

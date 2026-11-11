@@ -176,21 +176,31 @@ func recordEvents(session string, entries []record.Entry) []RecordEvent {
 }
 
 // commitRecord is the record batch of one commit: every beat appended at or
-// after the scope's baseline, read from the LIVE record before the save-point
-// ToData trims it (see [Manager.commit]).
-func commitRecord(scope *writeScope) []RecordEvent {
+// after from (the scope's commit cursor, [writeScope.deltaFrom]), read from
+// the LIVE record before the save-point ToData trims it (see
+// [Manager.commit]). next is the first seq the batch does not hold: where the
+// cursor moves once this commit's save lands; with nothing read, it is from.
+// newest is the newest record id the save will hold, "" for an empty record.
+func commitRecord(scope *writeScope, from uint64) (events []RecordEvent, next uint64, newest string) {
 	read, err := scope.enc.ReadRecord(&encounter.ReadRecordInput{})
 	if err != nil {
-		return nil // best effort: the record is still the truth, and readable
+		return nil, from, "" // best effort: the record is still the truth, and readable
+	}
+	next = from
+	if n := len(read.Entries); n > 0 {
+		newest = read.Entries[n-1].ID
+		if read.Entries[n-1].Seq+1 > next {
+			next = read.Entries[n-1].Seq + 1
+		}
 	}
 	cut := len(read.Entries)
 	for i, e := range read.Entries {
-		if e.Seq >= scope.baseline {
+		if e.Seq >= from {
 			cut = i
 			break
 		}
 	}
-	return recordEvents(scope.session, read.Entries[cut:])
+	return recordEvents(scope.session, read.Entries[cut:]), next, newest
 }
 
 // deliverRecord hands one commit's record batch to the record stream, after

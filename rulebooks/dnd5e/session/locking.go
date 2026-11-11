@@ -24,7 +24,13 @@ var ErrBadSessionLock = errors.New("session locker returned no release")
 // world, the session record, the seats and the sheets of the characters it
 // holds) then rides one fenced save naming the checkpoint version the
 // operation loaded, so a writer whose lease ran out writes nothing and fails
-// closed with [ErrStaleCheckpoint] instead of saving over its successor. A
+// closed with [ErrStaleCheckpoint] instead of saving over its successor. The
+// record's baseline lives beside that version: under
+// [AppendingEncounterRepository] the save appends the record from the first
+// seq the store does not hold, which the verb read with the version; under
+// [PiecesEncounterRepository] the marks of the pieces the store holds sit
+// beside it, read with the version and replaced only by a landed save. A
+// refused save leaves all of them where they were. A
 // character's own guard (an unseated character's sheet) is not fenced and
 // must not expire while the operation can still write.
 //
@@ -39,6 +45,12 @@ var ErrBadSessionLock = errors.New("session locker returned no release")
 // one order — a session first, then characters in id order — and never holds
 // a character's guard while waiting for a session's, so a host implementing
 // both with ordinary mutexes cannot deadlock through the SDK.
+//
+// THE RESIDENT COPY RIDES THE SAME GUARD (residency.go): a write verb takes
+// its session's kept encounter when it opens and only the guard's release
+// keeps one back, so a copy is never used by two verbs at once. A host whose
+// lease can expire is still safe: the copy is checked against the store's
+// checkpoint version before use, and the fence refuses a late writer's save.
 //
 // The locker guards the INSTANCE tier, one game's world, and nothing else:
 // the SITE tier (Config.Sites, sites.go) is shared across games and read-only,
@@ -87,6 +99,17 @@ func (m *Manager) acquireSession(ctx context.Context, id string) (func(), error)
 		}
 	}
 	return func() {
+		// THE RESIDENT COPY IS KEPT HERE, OR NOWHERE (residency.go): the copy
+		// the verb's final commit staged once its save landed and its
+		// batches went out. Every other exit staged nothing, and the copy
+		// the verb took on open is dropped with it: a stale save, a refused
+		// verb, a commit error, a canceled context, a continuation that
+		// failed after a pace commit, a panic in a host collaborator before
+		// the stage, a run that closed. Kept before the guard is given back,
+		// so the next verb on the session finds it.
+		if id != "" {
+			m.keepStaged(id)
+		}
 		// What a fenced verb wrote and did not save dies with its guard
 		// (pendingWrites), before another verb can take the guard.
 		if m.pending != nil && id != "" {

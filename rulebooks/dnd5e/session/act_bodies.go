@@ -424,6 +424,11 @@ type TableAnswer struct {
 	// Who answered (answered `creature` as a member or `prop`; tempered
 	// `member`).
 	Who Party
+	// To is who the line is spoken to (answered `to`, rpg-project#923): the
+	// mover, for the line a bump (`barred`) or a hail (`approached`) draws
+	// from its reactor. The zero Party when the answer names nobody, as a
+	// time pick's line does.
+	To Party
 	// Option is the option answered (answered `option`).
 	Option string
 	// Key is the table key (answered `key`).

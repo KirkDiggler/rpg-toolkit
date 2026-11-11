@@ -413,9 +413,10 @@ func (e *Encounter) react(id MemberID, b wakeBeat, scope *machine.ScopeLeaf) err
 		return nil
 	}
 	now := uint64(e.clock.ToData().HighWater)
-	if b.Beat == beatBarred {
-		// A bump is the existing explicitly authorized targeted reaction.
-		// No other observation is upgraded to an action opportunity.
+	if b.Beat == beatBarred || b.Beat == beatApproached {
+		// A bump, and a hail (address.go), are the explicitly authorized
+		// targeted reactions. No other observation is upgraded to an action
+		// opportunity.
 		on, err := e.onWorldClock(id)
 		if err != nil || !on {
 			return err
@@ -424,7 +425,7 @@ func (e *Encounter) react(id MemberID, b wakeBeat, scope *machine.ScopeLeaf) err
 		if err != nil || down[id] {
 			return err
 		}
-		if err := e.runBehaviorOpportunity(id, m, behaviorOpportunity{on: b.Beat, event: ev, now: now}); err != nil {
+		if err := e.runBehaviorOpportunity(id, m, behaviorOpportunity{on: b.Beat, event: ev, now: now, subject: b.Subject}); err != nil {
 			return err
 		}
 	} else {

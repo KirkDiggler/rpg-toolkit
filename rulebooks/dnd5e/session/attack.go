@@ -204,7 +204,7 @@ func (m *Manager) Attack(ctx context.Context, in *AttackInput) (*AttackOutput, e
 		return nil, fmt.Errorf("attack: %w", ErrNoMemberID)
 	}
 
-	scope, err := m.openForChange(ctx, string(VerbAttack), in.Session)
+	scope, err := m.openForChangeBy(ctx, string(VerbAttack), in.Session, in.Attacker)
 	if err != nil {
 		return nil, fmt.Errorf("attack: %w", err)
 	}
