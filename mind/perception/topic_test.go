@@ -15,7 +15,7 @@ import (
 
 // TopicSuite pins perception's topic contract: percepts live on the default
 // topic and the sight readers (Held, On) read only it; a named topic is
-// discrete testimony written by Report and read by HeldOn, About, OnTopic.
+// discrete testimony written by Report and read by OnTopic, About, AboutOn.
 type TopicSuite struct {
 	suite.Suite
 	p *perception.Perception
@@ -55,10 +55,10 @@ func (s *TopicSuite) tell(topic perception.Topic, at uint64, reports ...percepti
 
 // sightReaders captures every default-topic reader's answer for the clerk.
 type sightReaders struct {
-	held   []perception.Holding
-	on7    perception.Holding
-	on9    perception.Holding
-	heldOn []perception.Holding
+	held    []perception.Holding
+	on7     perception.Holding
+	on9     perception.Holding
+	onTopic []perception.Holding
 }
 
 func (s *TopicSuite) readSight() sightReaders {
@@ -70,7 +70,7 @@ func (s *TopicSuite) readSight() sightReaders {
 	s.Require().NoError(err)
 	r.on9, err = s.p.On(clerk, acct9)
 	s.Require().NoError(err)
-	r.heldOn, err = s.p.HeldOn(clerk, "")
+	r.onTopic, err = s.p.OnTopic(clerk, "")
 	s.Require().NoError(err)
 	return r
 }
@@ -92,7 +92,7 @@ func (s *TopicSuite) TestNamedTopicsAreInvisibleToSightReaders() {
 	for _, h := range after.held {
 		s.Equal(perception.Topic(""), h.Topic)
 	}
-	s.Equal(after.held, after.heldOn, "Held is HeldOn the default topic")
+	s.Equal(after.held, after.onTopic, "Held is OnTopic the default topic")
 }
 
 // A named topic written once is answered by each of the three questions,
@@ -108,7 +108,7 @@ func (s *TopicSuite) TestNamedTopicIsReadByEachQuestion() {
 	s.Empty(first.Updated)
 
 	// One (observer, subject, topic).
-	h, err := s.p.OnTopic(clerk, acct7, audited)
+	h, err := s.p.AboutOn(clerk, acct7, audited)
 	s.Require().NoError(err)
 	s.Equal(acct7, h.Subject)
 	s.Equal(audited, h.Topic)
@@ -117,13 +117,13 @@ func (s *TopicSuite) TestNamedTopicIsReadByEachQuestion() {
 	s.Equal(uint64(2), h.Observed)
 	s.Empty(h.CurrentVia, "a report sustains nothing")
 
-	_, err = s.p.OnTopic(clerk, acct7, disputed)
+	_, err = s.p.AboutOn(clerk, acct7, disputed)
 	s.ErrorIs(err, perception.ErrNotHeld)
-	def, err := s.p.OnTopic(clerk, acct7, "")
+	def, err := s.p.AboutOn(clerk, acct7, "")
 	s.Require().NoError(err)
 	on, err := s.p.On(clerk, acct7)
 	s.Require().NoError(err)
-	s.Equal(on, def, "OnTopic on the default topic is On")
+	s.Equal(on, def, "AboutOn on the default topic is On")
 
 	// Everything about one subject: every topic, the default first.
 	about, err := s.p.About(clerk, acct7)
@@ -136,17 +136,17 @@ func (s *TopicSuite) TestNamedTopicIsReadByEachQuestion() {
 	s.Equal([]perception.Topic{"", audited}, topics)
 
 	// Everything on one topic: every subject, sorted.
-	heldOn, err := s.p.HeldOn(clerk, audited)
+	onTopic, err := s.p.OnTopic(clerk, audited)
 	s.Require().NoError(err)
-	subjects := make([]core.EntityID, 0, len(heldOn))
-	for _, h := range heldOn {
+	subjects := make([]core.EntityID, 0, len(onTopic))
+	for _, h := range onTopic {
 		s.Equal(audited, h.Topic)
 		subjects = append(subjects, h.Subject)
 	}
 	s.Equal([]core.EntityID{acct7, acct9}, subjects)
 
 	// Nothing held is an empty answer, not an error.
-	none, err := s.p.HeldOn(clerk, disputed)
+	none, err := s.p.OnTopic(clerk, disputed)
 	s.Require().NoError(err)
 	s.NotNil(none)
 	s.Empty(none)
@@ -161,7 +161,7 @@ func (s *TopicSuite) TestNamedTopicIsReadByEachQuestion() {
 func (s *TopicSuite) TestPassesAndNamedTopicsNeverTouch() {
 	s.see(1, perception.Presence{ID: acct7, Payload: []byte("shelf 3")})
 	s.tell(audited, 2, perception.Presence{ID: acct7, Payload: []byte("signed")})
-	signedBefore, err := s.p.OnTopic(clerk, acct7, audited)
+	signedBefore, err := s.p.AboutOn(clerk, acct7, audited)
 	s.Require().NoError(err)
 
 	refresh := s.see(3, perception.Presence{ID: acct7, Payload: []byte("shelf 3")})
@@ -170,7 +170,7 @@ func (s *TopicSuite) TestPassesAndNamedTopicsNeverTouch() {
 
 	fade := s.see(4) // the clerk sees nothing
 	s.Equal([]core.EntityID{acct7}, fade.Faded)
-	signedAfter, err := s.p.OnTopic(clerk, acct7, audited)
+	signedAfter, err := s.p.AboutOn(clerk, acct7, audited)
 	s.Require().NoError(err)
 	s.Equal(signedBefore, signedAfter, "no pass refreshed, faded or re-stamped the named topic")
 
@@ -224,15 +224,15 @@ func (s *TopicSuite) TestRoundTripKeepsBothTopics() {
 
 // The new reads validate their IDs in On's order: observer, then subject.
 func (s *TopicSuite) TestNewReadsValidate() {
-	_, err := s.p.HeldOn("", audited)
+	_, err := s.p.OnTopic("", audited)
 	s.ErrorIs(err, perception.ErrNoObserver)
 	_, err = s.p.About("", "")
 	s.ErrorIs(err, perception.ErrNoObserver)
 	_, err = s.p.About(clerk, "")
 	s.ErrorIs(err, perception.ErrNoSubject)
-	_, err = s.p.OnTopic("", "", audited)
+	_, err = s.p.AboutOn("", "", audited)
 	s.ErrorIs(err, perception.ErrNoObserver)
-	_, err = s.p.OnTopic(clerk, "", audited)
+	_, err = s.p.AboutOn(clerk, "", audited)
 	s.ErrorIs(err, perception.ErrNoSubject)
 }
 

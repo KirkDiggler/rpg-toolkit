@@ -143,7 +143,7 @@ arrives with the use case that pays for it, not before.
   existed even when named topics about the same subjects sit in the store.
   A named topic is discrete testimony — written by `Report` with
   `ReportInput.Topic`, sustaining nothing, so nothing fades — and read by
-  `HeldOn`, `About` and `OnTopic`. Every `Holding` names its `Topic`, so a
+  `OnTopic`, `About` and `AboutOn`. Every `Holding` names its `Topic`, so a
   caller reading across topics can never take one for a sighting. Not
   taken: a topic on `Pass` — no percept use case asks for one, and a
   sustained named topic would need its own complete-percept owner.
@@ -206,10 +206,18 @@ strictness with nothing behind it.
 | Query | Signature | Returns | Semantics |
 |-------|-----------|---------|-----------|
 | `Held` | `Held(observer core.EntityID)` | `([]Holding, error)` | Everything the observer holds on the default topic, sorted by subject (wraps `intel.OnTopic` with the empty topic; R12). `ErrNoObserver` on an empty ID. An observer with no holdings answers an empty slice, nil error. |
-| `HeldOn` | `HeldOn(observer core.EntityID, topic Topic)` | `([]Holding, error)` | Everything the observer holds on one topic, sorted by subject. The empty topic answers what `Held` answers. `ErrNoObserver` on an empty ID; nothing held answers an empty slice, nil error. |
+| `OnTopic` | `OnTopic(observer core.EntityID, topic Topic)` | `([]Holding, error)` | Everything the observer holds on one topic, sorted by subject. The empty topic answers what `Held` answers. `ErrNoObserver` on an empty ID; nothing held answers an empty slice, nil error. |
 | `About` | `About(observer, subject core.EntityID)` | `([]Holding, error)` | Everything the observer holds about one subject, one holding per topic, sorted by topic (the default first). `ErrNoObserver` / `ErrNoSubject`; nothing held answers an empty slice, nil error. |
-| `OnTopic` | `OnTopic(observer, subject core.EntityID, topic Topic)` | `(Holding, error)` | One observer's holding on one subject and topic. The empty topic answers what `On` answers. Same errors and `ErrNotHeld` translation as `On`. |
+| `AboutOn` | `AboutOn(observer, subject core.EntityID, topic Topic)` | `(Holding, error)` | One observer's holding on one subject and topic. The empty topic answers what `On` answers. Same errors and `ErrNotHeld` translation as `On`. |
 | `On` | `On(observer, subject core.EntityID)` | `(Holding, error)` | One observer's holding on one subject, on the default topic (wraps `intel.On`; R12). `ErrNoObserver` / `ErrNoSubject` on an empty ID; `ErrNotHeld` when nothing is held — intel's own not-held error is translated to this package's sentinel rather than passed through, so a caller never has to import `play/intel` to ask the single most common question this package answers. |
+
+The five reads side by side, named as `play/intel` names them so a caller
+moving between the layers reaches for the same word: `Held(observer)` →
+every holding on the default topic; `On(observer, subject)` → one holding
+on the default topic; `OnTopic(observer, topic)` → every holding on one
+topic; `About(observer, subject)` → every topic's holding about one
+subject; `AboutOn(observer, subject, topic)` → one holding about a subject
+on one topic.
 
 No query takes an `*XxxInput` struct: all are fixed-arity reads with
 no plausible parameter growth, unlike intel's testimony verbs, which take
@@ -224,11 +232,11 @@ All errors wrap one sentinel; `errors.Is` dispatch; messages user-facing.
 |----------|---------|-------------|
 | `ErrNoReach` | nil `Pass.Reach` | `Observe` |
 | `ErrNoChannel` | empty `Pass.Channel` or `ReportInput.Channel` | `Observe`, `Report` |
-| `ErrNoSubject` | empty `Presence.ID`, or an empty subject passed to a query | `Observe`, `Report`, `About`, `On`, `OnTopic` |
-| `ErrNoObserver` | empty observer ID, in a `Pass`, a `ReportInput`, or passed directly | `Observe`, `Report`, `Held`, `HeldOn`, `About`, `On`, `OnTopic` |
+| `ErrNoSubject` | empty `Presence.ID`, or an empty subject passed to a query | `Observe`, `Report`, `About`, `On`, `AboutOn` |
+| `ErrNoObserver` | empty observer ID, in a `Pass`, a `ReportInput`, or passed directly | `Observe`, `Report`, `Held`, `OnTopic`, `About`, `On`, `AboutOn` |
 | `ErrDuplicateSubject` | two `Presence`s in one `Pass` sharing an ID | `Observe` |
 | `ErrDuplicateObserver` | the same observer named twice in one `Pass`'s `Observers` | `Observe` |
-| `ErrNotHeld` | the observer holds nothing on that subject and topic (translated from `intel.ErrNotHeld`) | `On`, `OnTopic` |
+| `ErrNotHeld` | the observer holds nothing on that subject and topic (translated from `intel.ErrNotHeld`) | `On`, `AboutOn` |
 
 ## Persistence
 

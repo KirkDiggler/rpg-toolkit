@@ -30,7 +30,7 @@ const Sight Channel = "sight"
 // The empty topic is the default, and it is where every percept lives:
 // Observe writes only the default topic, and Held and On read only it. A
 // holding on a named topic is discrete testimony written with Report and
-// read with HeldOn, About or OnTopic; no sight reader ever sees one.
+// read with OnTopic, About or AboutOn; no sight reader ever sees one.
 //
 // Example: a ledger clerk sees account "acct-7"'s papers on a shelf (the
 // default topic, by Observe) and is told it was signed off (topic
@@ -373,31 +373,31 @@ const defaultTopic = intel.Topic("")
 // Held returns everything an observer holds on the default topic — every
 // percept, and every report landed there — sorted by subject. Holdings on a
 // named topic are never returned here: Held is how sight is read, and a
-// named topic's payload is not a sighting. HeldOn and About read the rest.
+// named topic's payload is not a sighting. OnTopic and About read the rest.
 func (p *Perception) Held(observer core.EntityID) ([]Holding, error) {
 	if observer == "" {
 		return nil, fmt.Errorf("held: %w", ErrNoObserver)
 	}
 
-	result, err := p.heldOn(observer, defaultTopic)
+	result, err := p.onTopic(observer, defaultTopic)
 	if err != nil {
 		return nil, fmt.Errorf("held: %w", err)
 	}
 	return result, nil
 }
 
-// HeldOn returns everything an observer holds on one topic, one holding per
+// OnTopic returns everything an observer holds on one topic, one holding per
 // subject, sorted by subject. The empty topic is the default and answers
 // what Held answers. An observer holding nothing on the topic answers an
 // empty slice, nil error. ErrNoObserver on an empty observer.
-func (p *Perception) HeldOn(observer core.EntityID, topic Topic) ([]Holding, error) {
+func (p *Perception) OnTopic(observer core.EntityID, topic Topic) ([]Holding, error) {
 	if observer == "" {
-		return nil, fmt.Errorf("held on: %w", ErrNoObserver)
+		return nil, fmt.Errorf("on topic: %w", ErrNoObserver)
 	}
 
-	result, err := p.heldOn(observer, intel.Topic(topic))
+	result, err := p.onTopic(observer, intel.Topic(topic))
 	if err != nil {
-		return nil, fmt.Errorf("held on: %w", err)
+		return nil, fmt.Errorf("on topic: %w", err)
 	}
 	return result, nil
 }
@@ -426,30 +426,30 @@ func (p *Perception) About(observer, subject core.EntityID) ([]Holding, error) {
 // observer holds nothing on it — intel's own not-held error is translated to
 // this package's sentinel, never passed through, so a caller never has to
 // import play/intel to ask the single most common question this package
-// answers. A holding on a named topic is never returned here; OnTopic asks
+// answers. A holding on a named topic is never returned here; AboutOn asks
 // for one.
 func (p *Perception) On(observer, subject core.EntityID) (Holding, error) {
-	h, err := p.onTopic(observer, subject, defaultTopic)
+	h, err := p.aboutOn(observer, subject, defaultTopic)
 	if err != nil {
 		return Holding{}, fmt.Errorf("on: %w", err)
 	}
 	return h, nil
 }
 
-// OnTopic returns what one observer holds about one subject on one topic.
+// AboutOn returns what one observer holds about one subject on one topic.
 // The empty topic is the default and answers what On answers. Returns
 // ErrNotHeld when nothing is held there, translated exactly as On
 // translates it. ErrNoObserver, then ErrNoSubject, on an empty ID.
-func (p *Perception) OnTopic(observer, subject core.EntityID, topic Topic) (Holding, error) {
-	h, err := p.onTopic(observer, subject, intel.Topic(topic))
+func (p *Perception) AboutOn(observer, subject core.EntityID, topic Topic) (Holding, error) {
+	h, err := p.aboutOn(observer, subject, intel.Topic(topic))
 	if err != nil {
-		return Holding{}, fmt.Errorf("on topic: %w", err)
+		return Holding{}, fmt.Errorf("about on: %w", err)
 	}
 	return h, nil
 }
 
-// heldOn is Held's and HeldOn's one read, after their own validation.
-func (p *Perception) heldOn(observer core.EntityID, topic intel.Topic) ([]Holding, error) {
+// onTopic is Held's and OnTopic's one read, after their own validation.
+func (p *Perception) onTopic(observer core.EntityID, topic intel.Topic) ([]Holding, error) {
 	holdings, err := p.intel.OnTopic(&intel.OnTopicInput{Observer: observer, Topic: topic})
 	if err != nil {
 		return nil, err
@@ -457,9 +457,9 @@ func (p *Perception) heldOn(observer core.EntityID, topic intel.Topic) ([]Holdin
 	return fromIntelHoldings(holdings), nil
 }
 
-// onTopic is On's and OnTopic's one read: validation, the query, and the
+// aboutOn is On's and AboutOn's one read: validation, the query, and the
 // not-held translation.
-func (p *Perception) onTopic(observer, subject core.EntityID, topic intel.Topic) (Holding, error) {
+func (p *Perception) aboutOn(observer, subject core.EntityID, topic intel.Topic) (Holding, error) {
 	if observer == "" {
 		return Holding{}, ErrNoObserver
 	}

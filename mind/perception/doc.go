@@ -27,8 +27,8 @@
 // default (empty) topic: Observe writes only it, and Held and On — the
 // sight readers — read only it, so a holding on a named topic is never
 // mistaken for a sighting. A named topic is discrete testimony about a
-// subject, written by Report with ReportInput.Topic and read by HeldOn
-// (everything on a topic), About (every topic about a subject) and OnTopic
+// subject, written by Report with ReportInput.Topic and read by OnTopic
+// (everything on a topic), About (every topic about a subject) and AboutOn
 // (one subject on one topic); each returned Holding names its Topic.
 //
 // Design contract: docs/ideas/mind/perception/design.md (R1–R12). Composition
