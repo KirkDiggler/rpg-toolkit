@@ -141,10 +141,20 @@ func (s *OptionTestSuite) sceneWith(options []encounter.Option) *encounter.Encou
 }
 
 // ids is the option ids a read offered, in order.
-func ids(options []encounter.Option) []string {
+func ids(options []encounter.OfferedOption) []string {
 	out := make([]string, 0, len(options))
 	for _, o := range options {
 		out = append(out, o.ID)
+	}
+
+	return out
+}
+
+// lines is the options a read offered, without their offer.
+func lines(offered []encounter.OfferedOption) []encounter.Option {
+	out := make([]encounter.Option, 0, len(offered))
+	for _, o := range offered {
+		out = append(out, o.Option)
 	}
 
 	return out
@@ -436,7 +446,7 @@ func (s *OptionTestSuite) TestAPlainLineSurvivesAReload() {
 	s.Require().NoError(err)
 	offered, err := reloaded.OptionsFor(alice, goblin)
 	s.Require().NoError(err)
-	s.Equal([]encounter.Option{plainLine()}, offered)
+	s.Equal([]encounter.Option{plainLine()}, lines(offered))
 }
 
 // The beat comes before its consequences and the answer after: Spoke, then
@@ -604,7 +614,7 @@ func (s *OptionTestSuite) TestOptionsSurviveAReload() {
 
 	altar, err := reloaded.PropOptionsFor(alice, theAltar)
 	s.Require().NoError(err)
-	s.Equal(altarOptions(), altar)
+	s.Equal(altarOptions(), lines(altar))
 }
 
 // An option this composition could not run is refused at the door it came in

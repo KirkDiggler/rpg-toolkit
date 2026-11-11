@@ -12,6 +12,7 @@ github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/castletest/TestAlly
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/TestApproaches_CastleHoldsTheOracle  # over budget, to be sized: rpg-toolkit#2342 (7.86s local, - CI)
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/castletest/TestMadKingTheGateRemembersTheFailedClaim  # the whole castle gate twice with a reload and a crossing: sized by the castle, the standing QA script, not the case (rpg-project#922) (5.17s local, 14.4s CI)
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/castletest/TestMadKingTwoFailedClaimsArrestTheEntrance  # near budget; the castle gate with a reload (rpg-project#922) (3.32s local, 8.11s CI)
+github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/castletest/TestMadKingTheGateWaitsOnTheHerosRoll  # near budget; the castle walk to the captain with the bard, its sibling's fixture (rpg-project#924) (3.89s local, - CI)
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec/TestBehaviorSourceSuite  # over budget, to be sized: rpg-toolkit#2342 (7.61s local, - CI)
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec/TestBigSite_GeometryUnder100KB  # the 30k-cell site is the ceiling it proves; a smaller site proves nothing (3.16s local, 8.88s CI)
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/castletest/TestCastleSurvivorsSuite  # near budget; runner variance, not a heavy fixture (3.03s local, 6.15s CI)

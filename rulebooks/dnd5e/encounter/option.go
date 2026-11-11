@@ -6,7 +6,6 @@ package encounter
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -230,8 +229,11 @@ func (e *Encounter) Witnesses(of MemberID) ([]MemberID, error) {
 
 // OptionsFor is the options a target creature offers one speaker: every
 // option on the target whose [Option.Requires] holds for the SPEAKER (R9), in
-// authored order, deep-copied. A target that is DOWN offers none
-// (rpg-project#718): [Encounter.Speak] refuses a line said to it.
+// authored order, deep-copied, each with the interaction it touches and that
+// interaction's revision now, and PENDING ([OfferedOption.PendingOn]) when
+// the interaction waits on a reserved roll (interaction_hold.go, rpg-project#924). A
+// target that is DOWN offers none (rpg-project#718): [Encounter.Speak]
+// refuses a line said to it.
 //
 // A CREATURE WITH NO OPTIONS OFFERS NONE, and that is an empty list and a nil
 // error — what the absence means (the shortfall a client is shown) is the
@@ -241,7 +243,7 @@ func (e *Encounter) Witnesses(of MemberID) ([]MemberID, error) {
 //
 // Errors: ErrNotMember (no such speaker or target), and the participation
 // capability's own error when who is down cannot be asked.
-func (e *Encounter) OptionsFor(actor, target MemberID) ([]Option, error) {
+func (e *Encounter) OptionsFor(actor, target MemberID) ([]OfferedOption, error) {
 	if _, ok := e.members[actor]; !ok {
 		return nil, fmt.Errorf("options for: actor %q: %w", actor, ErrNotMember)
 	}
@@ -256,7 +258,7 @@ func (e *Encounter) OptionsFor(actor, target MemberID) ([]Option, error) {
 		return nil, fmt.Errorf("options for: %w", err)
 	}
 	if down {
-		return []Option{}, nil
+		return []OfferedOption{}, nil
 	}
 
 	offered, err := e.offered(actor, record.Options)
@@ -269,7 +271,7 @@ func (e *Encounter) OptionsFor(actor, target MemberID) ([]Option, error) {
 
 // PropOptionsFor is the options a prop offers one speaker: every option on
 // the prop whose [Option.Requires] holds for the speaker, in authored order,
-// deep-copied.
+// deep-copied, offered as [Encounter.OptionsFor] offers a creature's.
 //
 // THE PROBE LAW FIRST. A prop the speaker cannot be shown — one that names
 // nothing, is hidden from them, waits in reserve, or is in somebody else's
@@ -279,7 +281,7 @@ func (e *Encounter) OptionsFor(actor, target MemberID) ([]Option, error) {
 //
 // Errors: ErrNotMember (no such speaker), ErrNoProp (no prop this speaker can
 // be shown).
-func (e *Encounter) PropOptionsFor(actor MemberID, prop PropID) ([]Option, error) {
+func (e *Encounter) PropOptionsFor(actor MemberID, prop PropID) ([]OfferedOption, error) {
 	if _, ok := e.members[actor]; !ok {
 		return nil, fmt.Errorf("prop options for: actor %q: %w", actor, ErrNotMember)
 	}
@@ -298,7 +300,7 @@ func (e *Encounter) PropOptionsFor(actor MemberID, prop PropID) ([]Option, error
 
 // evaluateOptions judges every option for one speaker as ONE POOL
 // (rpg-project#921), the judgment the offer ([Encounter.offered]) and the
-// door ([Encounter.optionOffered]) both read, so the two cannot disagree.
+// door ([Encounter.lineDoor]) both read, so the two cannot disagree.
 // One candidate per option, in authored order: its id is the option's id,
 // its weight is zero — a line is chosen, never drawn (#917 R5) — and it
 // carries ONE NAMED REQUIREMENT PER `requires` ITEM (rpg-project#922, #917
@@ -306,12 +308,19 @@ func (e *Encounter) PropOptionsFor(actor MemberID, prop PropID) ([]Option, error
 // answers for THIS speaker (R9), with a reason naming only the
 // requirement's kind. A line with no requirement carries none and is
 // eligible; a line with several is eligible only when every one is Met.
-// Never Unknown in this slice.
+//
+// PENDING IS UNKNOWN (rpg-project#924): a line touching an interaction that
+// holds a reservation carries one more requirement, `held:<interaction>`,
+// Unknown — for every speaker, the holder included — so it is never
+// eligible while the roll waits. The one exception is settle, the
+// reservation a Speak settles: its own reserved line is judged as it is.
 //
 // Errors: a blank or duplicate option id is a construction defect the field
 // validator already refuses; one that reaches here is returned wrapping
 // [selection.ErrInvalidCandidate], never swallowed.
-func (e *Encounter) evaluateOptions(actor MemberID, options []Option) (*selection.Evaluation, error) {
+func (e *Encounter) evaluateOptions(
+	actor MemberID, options []Option, settle *InteractionReservation,
+) (*selection.Evaluation, error) {
 	candidates := make([]selection.Candidate, 0, len(options))
 	for _, o := range options {
 		var requirements []selection.Requirement
@@ -324,6 +333,10 @@ func (e *Encounter) evaluateOptions(actor MemberID, options []Option) (*selectio
 			requirements = append(requirements, selection.Requirement{
 				ID: fmt.Sprintf("requires:%d:%s", n, kind), Verdict: verdict, Reason: kind,
 			})
+		}
+		if hold := e.holdOf(o); hold != nil && (hold != settle || o.ID != settle.Option) {
+			id, _ := optionInteraction(o)
+			requirements = append(requirements, heldRequirement(id))
 		}
 		candidates = append(candidates, selection.Candidate{ID: o.ID, Requirements: requirements})
 	}
@@ -354,12 +367,14 @@ func requirementKind(requires Trigger) string {
 	}
 }
 
-// offered is the eligible rows of [Encounter.evaluateOptions]' pool — the
-// options whose requirement holds for the speaker — in authored order,
-// deep-copied so a caller's edit cannot reach the field. A gated line is
-// absent, never greyed (the probe law).
-func (e *Encounter) offered(actor MemberID, options []Option) ([]Option, error) {
-	evaluation, err := e.evaluateOptions(actor, options)
+// offered is the eligible and the pending rows of
+// [Encounter.evaluateOptions]' pool — the options whose requirements hold
+// for the speaker, and those whose requirements hold but whose interaction
+// waits on a reserved roll — in authored order, deep-copied so a caller's
+// edit cannot reach the field. A gated line is absent, never greyed (the
+// probe law); a pending line names who it waits on.
+func (e *Encounter) offered(actor MemberID, options []Option) ([]OfferedOption, error) {
+	evaluation, err := e.evaluateOptions(actor, options, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -367,10 +382,13 @@ func (e *Encounter) offered(actor MemberID, options []Option) ([]Option, error) 
 	if err != nil {
 		return nil, fmt.Errorf("inspect options: %w", err)
 	}
-	out := make([]Option, 0, inspection.Eligible)
+	out := make([]OfferedOption, 0, inspection.Eligible)
 	for i, row := range inspection.Rows {
-		if row.Eligible {
-			out = append(out, cloneOption(options[i]))
+		switch {
+		case row.Eligible:
+			out = append(out, e.offerOf(options[i], ""))
+		case !hasUnmet(row):
+			out = append(out, e.offerOf(options[i], e.holdOf(options[i]).Holder))
 		}
 	}
 
@@ -499,6 +517,14 @@ type SpeakInput struct {
 	// the offer and the door agree.
 	OptionID string
 
+	// Revision is the [OfferedOption.Revision] the line was offered at
+	// (rpg-project#924). A line that reads or advances an interaction is
+	// refused [ErrStaleOption] unless it names that interaction's revision
+	// now — or, for the settle of a reserved line, the revision it was
+	// reserved at. Zero is never current, so it is always refused for such a
+	// line. Not read for a line that touches no interaction.
+	Revision uint64
+
 	// Skill is the approach the check was made with — one of the option's
 	// [CheckApproach.Ability] words ([ErrNoOption] otherwise). It is what the
 	// deed is decided by ([deedForSkill], R3) and what the beat reports.
@@ -567,7 +593,9 @@ type SpeakOutput struct {
 // roller → closed → actor is a member → target is a member and not the actor
 // → a creature target is not down → the actor is placed → the option is on
 // the target (a prop: the actor is shown it) and its requirement holds for
-// the actor → the roll fits the line (a checked line's skill is one of its
+// the actor → its revision is current, before anything is written
+// ([ErrStaleOption], rpg-project#924) → it is not pending on a reserved
+// roll ([ErrReserved]) → the roll fits the line (a checked line's skill is one of its
 // approaches; a plain line reports no roll) → a creature target can see
 // the actor → the beat → the deed → the answer → the interaction the line
 // advances (rpg-project#922) → the world's price for an action, paid only
@@ -579,8 +607,13 @@ type SpeakOutput struct {
 // ANSWERED beat comes after both, because it is the result (answer.go).
 //
 // Errors: ErrNilInput, ErrNoMember, ErrNoOption, ErrNoRoller, ErrClosed,
-// ErrNotMember, ErrMemberDown, ErrBadPlacement, ErrNoProp, ErrUnwitnessed,
-// ErrOutOfRange, and a refused Calculation.
+// ErrNotMember, ErrMemberDown, ErrBadPlacement, ErrNoProp, ErrStaleOption,
+// ErrReserved, ErrUnwitnessed, ErrOutOfRange, and a refused Calculation.
+//
+// THE SETTLE (interaction_hold.go): a Speak of a reserved line, by its holder, to the
+// same creature or prop, at the reserved revision, is the verdict that line
+// waited for. It advances the interaction exactly once, then the reservation
+// clears and the revision moves.
 func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("speak: %w", ErrNilInput)
@@ -655,7 +688,8 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 			return refuse(fmt.Errorf("speak: %w", err))
 		}
 	}
-	option, err := e.optionOffered(in.Actor, options, in.OptionID)
+	settle := e.settleFor(in, options)
+	option, err := e.lineDoor(in.Actor, options, in.OptionID, in.Revision, settle)
 	if err != nil {
 		return refuse(fmt.Errorf("speak: %w", err))
 	}
@@ -713,6 +747,9 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	if err := e.advanceInteraction(option, beaten, witnesses, at); err != nil {
 		return nil, fmt.Errorf("speak: %w", err)
 	}
+	// THE SETTLE CLEARS AFTER THE ADVANCE, so the verdict it waited for
+	// moved the progress exactly once (interaction_hold.go).
+	e.settle(settle, option)
 
 	// A BEATEN LINE SPOKEN TO A PROP IS THAT PROP'S DEED (rpg-project#766 S4):
 	// `clock: bell:<prop>` for whoever listens for it — the bell rung.
@@ -778,6 +815,9 @@ func (e *Encounter) advanceInteraction(option Option, beaten bool, witnesses []M
 		return fmt.Errorf("interaction %q: %w", a.Interaction, err)
 	}
 	inst.blob = blob
+	if stepped.Fired {
+		inst.revision++ // THE PROGRESS MOVED, so the conversation did (interaction_hold.go)
+	}
 	if !stepped.Fired || stepped.To == "" {
 		return nil
 	}
@@ -852,30 +892,6 @@ func (e *Encounter) refusePropOutOfReach(
 	}
 
 	return fmt.Errorf("%s: %s: %w", verb, prop, ErrOutOfRange)
-}
-
-// optionOffered is Speak's option door: [selection.Choose] on the same pool
-// [Encounter.offered] reads ([Encounter.evaluateOptions]), so the door admits
-// exactly the lines the offer shows. A line the target does not have and a
-// line whose requirement does not hold for this speaker are one refusal,
-// [ErrNoOption], so the door cannot confirm a gated line exists.
-//
-// Errors: ErrNoOption; a pool that could not be built (see
-// [Encounter.evaluateOptions]).
-func (e *Encounter) optionOffered(actor MemberID, options []Option, id string) (Option, error) {
-	evaluation, err := e.evaluateOptions(actor, options)
-	if err != nil {
-		return Option{}, err
-	}
-	choice, err := selection.Choose(&selection.ChooseInput{Evaluation: evaluation, ID: id})
-	if errors.Is(err, selection.ErrUnknownID) || errors.Is(err, selection.ErrIneligible) {
-		return Option{}, fmt.Errorf("%q is not a line this speaker is offered: %w", id, ErrNoOption)
-	}
-	if err != nil {
-		return Option{}, fmt.Errorf("choose option %q: %w", id, err)
-	}
-
-	return options[choice.Index], nil
 }
 
 // appendSpokeBeat writes what the table saw: who said what to whom, the skill,
@@ -979,6 +995,11 @@ func validateOptions(options []Option) error {
 			if err := validateOptionRequirement(fmt.Sprintf("option %q requires[%d]", o.ID, n), requires); err != nil {
 				return err
 			}
+		}
+		// ONE CONVERSATION PER LINE (rpg-project#924, interaction_hold.go): a line is
+		// offered with one interaction's revision, so it may touch one.
+		if touched := optionInteractions(o); len(touched) > 1 {
+			return fmt.Errorf("option %q reads or advances %d interactions %q; a line touches at most one", o.ID, len(touched), touched)
 		}
 		if a := o.Advance; a != nil {
 			if a.Interaction == "" {

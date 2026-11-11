@@ -375,7 +375,26 @@ func (s *kingScene) speakWithin(
 		Range: reach,
 		Actor: hero, Target: target, OptionID: option, Skill: skill,
 		Beaten: beaten, DC: 15, Total: map[bool]int{true: 20, false: 3}[beaten], Roller: rollsOne{},
+		Revision: s.revisionOf(hero, target, option),
 	})
+}
+
+// revisionOf is the revision a creature offers a member one line at now —
+// what a host's reply carries back (rpg-project#924) — or zero when the line
+// is not offered.
+func (s *kingScene) revisionOf(member, target encounter.MemberID, option string) uint64 {
+	s.t.Helper()
+	offered, err := s.enc.OptionsFor(member, target)
+	if err != nil {
+		return 0
+	}
+	for _, o := range offered {
+		if o.ID == option {
+			return o.Revision
+		}
+	}
+
+	return 0
 }
 
 // said is speak that must be accepted.

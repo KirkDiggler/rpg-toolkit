@@ -2999,6 +2999,9 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	// active player leaving a fight with a striking monster next). The
 	// roster changing is the graph's declaration changing too (world.go).
 	delete(e.members, in.Member)
+	// A LINE WAITING ON THE LEAVER'S ROLL IS RELEASED (rpg-project#924,
+	// interaction_hold.go): nobody is left to decide on it. The exit beat tells it.
+	e.dropHoldsOf(in.Member)
 	if err = e.buildWorld(); err != nil {
 		return nil, fmt.Errorf("exit: %w", err)
 	}

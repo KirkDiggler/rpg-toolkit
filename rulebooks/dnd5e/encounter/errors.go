@@ -732,6 +732,29 @@ var (
 	// be spoken to.
 	ErrNoOption = errors.New("encounter: no such option for this speaker")
 
+	// ErrStaleOption is returned when a line that reads or advances one of
+	// the run's interactions is sent back with a revision that is not the
+	// interaction's revision now (rpg-project#924, design #916 R5: validated
+	// and reserved before dice). The conversation moved since the menu was
+	// offered, so the reply is refused with nothing spent, rolled or
+	// reserved, and NEVER re-read against the state as it is now: the same
+	// line can carry different stakes from different states. A zero revision
+	// on such a line is refused as stale too: every interaction is offered at
+	// revision one or later, so zero is a reply that names no menu at all.
+	// The caller refreshes the offer.
+	ErrStaleOption = errors.New("encounter: the conversation moved on since the line was offered")
+
+	// ErrReserved is returned when a line reads or advances an interaction
+	// whose progress is waiting on another checked line's roll decision
+	// (rpg-project#924): the line is PENDING ([OfferedOption.PendingOn]), and
+	// it is refused rather than spoken over the waiting roll. It is also what
+	// [Encounter.Reserve] answers when the interaction is already reserved.
+	ErrReserved = errors.New("encounter: the interaction is waiting on another speaker's roll")
+
+	// ErrNoReservation is returned by [Encounter.ReleaseReservation] when
+	// the member holds no reservation on any of the run's interactions.
+	ErrNoReservation = errors.New("encounter: the member holds no reservation")
+
 	// ErrNoRoller is returned when a verb that has to roll was handed no
 	// die. Supplied, never defaulted — resolution.CheckInput.Roller's
 	// standing reason, applied to the world's own answer roll: a silent
