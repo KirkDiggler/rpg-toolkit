@@ -68,6 +68,7 @@ type Guard struct {
 	Not *Guard  `json:"not,omitzero"`
 
 	Fact       *FactLeaf       `json:"fact,omitzero"`
+	Bag        *BagLeaf        `json:"bag,omitzero"`
 	Flag       string          `json:"flag,omitzero"`
 	Rounds     *RoundsLeaf     `json:"rounds,omitzero"`
 	ClassLevel *ClassLevelLeaf `json:"class_level,omitzero"`
@@ -79,6 +80,14 @@ type FactLeaf struct {
 	Name  FactName `json:"name"`
 	Op    Op       `json:"op"`
 	Value any      `json:"value"`
+}
+
+// BagLeaf compares a declared scalar bag key using the same typed operations as
+// a fact. Missing or wrong-typed runtime values answer Depends, not false.
+type BagLeaf struct {
+	Key   string `json:"key"`
+	Op    Op     `json:"op"`
+	Value any    `json:"value"`
 }
 
 // RoundsLeaf compares the beat's round against the bag's anchor
@@ -113,11 +122,20 @@ type ClassLevelLeaf struct {
 //     bag is anchored and the beat's round is at or after the anchor.
 //   - ClearFlags sets each named bool key false.
 //   - Set writes one declared key.
+//   - Add changes a declared integer by a checked delta.
 type Act struct {
 	AnchorRound       bool     `json:"anchor_round,omitzero"`
 	DeriveTurnsActive bool     `json:"derive_turns_active,omitzero"`
 	ClearFlags        []string `json:"clear_flags,omitzero"`
 	Set               *SetAct  `json:"set,omitzero"`
+	Add               *AddAct  `json:"add,omitzero"`
+}
+
+// AddAct changes a declared integer key by Delta. Overflow refuses the entire
+// transition's acts before any of their writes become visible.
+type AddAct struct {
+	Key   string `json:"key"`
+	Delta int    `json:"delta"`
 }
 
 // SetAct writes Value to the declared bag key Key.
@@ -198,6 +216,12 @@ func (r *Recipe) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 func (f *FactLeaf) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
 	type plain FactLeaf
 	return json.UnmarshalDecode(dec, (*plain)(f), wholeNumbers)
+}
+
+// UnmarshalJSONFrom decodes a bag comparison with whole numbers as integers.
+func (b *BagLeaf) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	type plain BagLeaf
+	return json.UnmarshalDecode(dec, (*plain)(b), wholeNumbers)
 }
 
 // UnmarshalJSONFrom decodes a set act, landing a whole JSON number Value as

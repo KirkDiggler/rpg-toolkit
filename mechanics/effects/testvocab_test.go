@@ -267,7 +267,7 @@ func row(frame any, o *effects.Bound) (effects.Row, error) {
 		if err != nil {
 			return r, err
 		}
-		r.Amount = n
+		r.Amount = &n
 	}
 	return r, nil
 }
@@ -292,7 +292,11 @@ var damageBonusKind = effects.KindSpec{
 			if err != nil || !ok {
 				return c, err
 			}
-			n, err := o.Amount(e.Frame)
+			amount, err := o.Amount(e.Frame)
+			if err != nil {
+				return c, err
+			}
+			n, err := amount.ScalarValue()
 			if err != nil {
 				return c, err
 			}
@@ -373,11 +377,11 @@ var advantageKind = effects.KindSpec{
 
 // byClassLevel answers the highest step at or below the frame's level in
 // the class.
-func byClassLevel(frame any, a effects.Amount) (int, error) {
+func byClassLevel(frame any, a effects.Amount) (effects.AmountResult, error) {
 	f, _ := frame.(rageFrame)
 	level := f.Levels[a.ByClassLevel.Class]
 	if level == 0 {
-		return 0, fmt.Errorf("%w: no %s levels on the frame", errCannotAnswer, a.ByClassLevel.Class)
+		return effects.AmountResult{}, fmt.Errorf("%w: no %s levels on the frame", errCannotAnswer, a.ByClassLevel.Class)
 	}
 	best, at := 0, 0
 	for step, n := range a.ByClassLevel.Steps {
@@ -385,7 +389,7 @@ func byClassLevel(frame any, a effects.Amount) (int, error) {
 			best, at = n, step
 		}
 	}
-	return best, nil
+	return effects.AmountResult{Scalar: &best}, nil
 }
 
 // removedTopic is the test removal topic the End hook publishes on.

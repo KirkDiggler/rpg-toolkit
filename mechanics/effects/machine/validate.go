@@ -171,6 +171,9 @@ func GuardKeys(g *Guard) []string {
 		if g.Flag != "" {
 			seen[g.Flag] = true
 		}
+		if g.Bag != nil {
+			seen[g.Bag.Key] = true
+		}
 		if g.Rounds != nil {
 			seen[KeyRoundActivated] = true
 		}
@@ -338,6 +341,10 @@ func (c *checker) act(where string, a Act) {
 			c.failf("%s: set key %q wants a %s value, got %T", where, a.Set.Key, want, a.Set.Value)
 		}
 		c.read[a.Set.Key] = true
+	}
+	if a.Add != nil {
+		n++
+		c.key(where, "add key", a.Add.Key, KindInt)
 	}
 	if n != 1 {
 		c.failf("%s: act sets %d fields, want exactly 1", where, n)
