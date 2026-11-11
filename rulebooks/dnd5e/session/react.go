@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
@@ -484,10 +485,11 @@ func (m *Manager) declineHeldUnlock(
 }
 
 // reservationStands reports whether the reservation a paused Speak check
-// placed still holds its line (rpg-project#924), asked of the composition's
-// own offer to the holder: the line is still offered to them, pending, on
-// the interaction the story names, at the revision the reservation moved it
-// to ([windowStory.Held]). Every place, settle, release and advance moves
+// placed still holds its line AND its settle would still land
+// (rpg-project#924). Asked of the composition's own offer to the holder:
+// the line is still offered to them, pending, on the interaction the story
+// names, at the revision the reservation moved it to ([windowStory.Held]);
+// then the settle's witness and reach doors, as Speak asks them. Every place, settle, release and advance moves
 // that revision, so an equal revision is THIS reservation untouched, and
 // anything else is a hold that is gone.
 //
@@ -515,22 +517,67 @@ func reservationStands(enc *encounter.Encounter, holder string, story windowStor
 	if err != nil {
 		return false, translate(err)
 	}
+	held := false
 	for _, line := range lines {
 		if line.ID == story.Option {
-			return line.Pending && string(line.Interaction) == story.Interaction && line.Revision == story.Held, nil
+			held = line.Pending && string(line.Interaction) == story.Interaction && line.Revision == story.Held
+			break
 		}
 	}
-	return false, nil
+	if !held {
+		return false, nil
+	}
+	// THE SETTLE'S OWN DOORS, asked as Speak asks them: the encounter
+	// releases a hold whose target stopped seeing the holder or who left the
+	// reach only at its next participation pass, and a verb that runs none —
+	// a door closed between them — leaves the hold standing with a settle
+	// that would be refused.
+	if story.Target != "" {
+		witnesses, err := enc.Witnesses(encounter.MemberID(holder))
+		if err != nil {
+			return false, translate(err)
+		}
+		if !slices.Contains(witnesses, encounter.MemberID(story.Target)) {
+			return false, nil
+		}
+	}
+	if err := refuseSpeakOutOfReach(enc, holder, story.Target, story.Prop); err != nil {
+		if errors.Is(err, ErrOutOfRange) || errors.Is(err, ErrStaleDeclaration) || errors.Is(err, ErrBadPosition) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
-// declineAbandonedLine closes a paused Speak check's window declined and
-// commits it, then answers [ErrStaleOption]: the line's hold is gone, so the
-// attempt ends with no verdict, no beat of its own, and the held offer
-// unspent ([Manager.declineHeldUnlock]'s shape). The action, spent before
-// the question, stays spent. Nothing is released: a hold that is gone is
-// not this window's to release, and a newer one may stand in its place.
-func (m *Manager) declineAbandonedLine(ctx context.Context, scope *writeScope, window interrupt.Window) error {
+// endWaitingLine closes a waiting line's window declined and, in the same
+// commit, ends the encounter's hold for its speaker if it still stands
+// ([encounter.Encounter.ReleaseReservation], with its `held: false` beat),
+// so a question and its hold always end together: no hold outlives its
+// question, holding lines pending for everyone with nobody to answer
+// (rpg-project#924). A hold the encounter already let go is not released
+// twice ([encounter.ErrNoReservation]), and a holder who left the run holds
+// nothing ([encounter.ErrNotMember]). The speaker's own verbs are refused
+// while their roll waits ([Manager.openForChangeBy]), so the only hold they
+// can hold is this window's.
+func endWaitingLine(scope *writeScope, window interrupt.Window) error {
 	if err := closeWindow(scope, window, ledgerDecline); err != nil {
+		return err
+	}
+	_, err := scope.enc.ReleaseReservation(&encounter.ReleaseReservationInput{Member: window.Audience})
+	if err != nil && !errors.Is(err, encounter.ErrNoReservation) && !errors.Is(err, encounter.ErrNotMember) {
+		return translate(err)
+	}
+	return nil
+}
+
+// declineAbandonedLine ends a paused Speak check whose settle could no
+// longer land ([endWaitingLine]) and commits it, then answers
+// [ErrStaleOption]: the attempt ends with no verdict and the held offer
+// unspent ([Manager.declineHeldUnlock]'s shape). The action, spent before
+// the question, stays spent.
+func (m *Manager) declineAbandonedLine(ctx context.Context, scope *writeScope, window interrupt.Window) error {
+	if err := endWaitingLine(scope, window); err != nil {
 		return err
 	}
 	if _, _, err := m.commit(ctx, scope); err != nil {

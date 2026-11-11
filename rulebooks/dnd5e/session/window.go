@@ -401,8 +401,9 @@ func tableHolders(enc *encounter.Encounter, open []interrupt.Window) []interrupt
 // conversation otherwise moved (rpg-project#924). Asked at every commit, so
 // the verb that released the hold is the verb that closes the window: no
 // window outlives the line it was asking about, and nothing it offered is
-// spent. It writes no beat — the encounter's `interaction-held` beat with
-// `held: false` already tells the table.
+// spent. A hold the encounter still keeps is released with the window
+// ([endWaitingLine]); the session writes no beat of its own — the
+// encounter's `interaction-held` beat with `held: false` tells the table.
 func closeAbandonedLines(scope *writeScope) error {
 	open, err := scope.ledger.Open()
 	if err != nil {
@@ -419,7 +420,7 @@ func closeAbandonedLines(scope *writeScope) error {
 			return err
 		}
 		if !stands {
-			if err := closeWindow(scope, window, ledgerDecline); err != nil {
+			if err := endWaitingLine(scope, window); err != nil {
 				return err
 			}
 		}

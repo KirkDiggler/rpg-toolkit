@@ -764,7 +764,7 @@ func (m *Manager) End(ctx context.Context, in *EndInput) (*EndOutput, error) {
 	}
 	defer release()
 
-	scope, err := m.openForChange(ctx, "end", in.Session)
+	scope, err := m.openForChangeBy(ctx, "end", in.Session, anyWaitingRoll)
 	if err != nil {
 		return nil, fmt.Errorf("end: %w", err)
 	}
@@ -977,8 +977,10 @@ func (m *Manager) openForChange(
 }
 
 // anyWaitingRoll is the actor [Manager.openForChangeBy] is handed by a verb
-// that moves the whole table's time rather than one member's — a rest — so
-// it waits on every waiting roll, not on one member's.
+// that acts on the whole table rather than one member — a rest, which
+// passes everyone's time, and End and Dissolve, which close the run or a
+// member's part in it under a question nobody could then answer — so it
+// waits on every waiting roll, not on one member's.
 const anyWaitingRoll = ""
 
 // openForChangeBy is [Manager.openForChange] for a verb one member acts in,
@@ -995,7 +997,7 @@ const anyWaitingRoll = ""
 // member already being asked one, and an action taken between the roll and
 // its verdict is an action taken inside somebody's decision. A verb that
 // moves the table's time (a rest) passes [anyWaitingRoll] and waits on every
-// waiting roll.
+// waiting roll, as do End and Dissolve.
 func (m *Manager) openForChangeBy(ctx context.Context, verb, sessionID, actor string) (*writeScope, error) {
 	scope, err := m.openForChange(ctx, verb, sessionID)
 	if err != nil {

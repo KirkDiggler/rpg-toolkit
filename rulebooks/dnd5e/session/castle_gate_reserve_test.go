@@ -15,6 +15,14 @@ package session_test
 
 import (
 	"context"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -24,6 +32,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -37,7 +46,7 @@ var besideAlice = spatial.Position{X: -7, Y: 10}
 // makes poses instead of settling.
 func withGuidance(sheet *character.Data) *character.Data {
 	condition, err := conditions.NewGuidedCondition(conditions.NewGuidedConditionInput{
-		MemberID: sheet.ID, SourceID: "cleric-1", SourceRef: refs.Spells.Guidance(),
+		MemberID: sheet.ID, SourceID: "cleric", SourceRef: refs.Spells.Guidance(),
 	})
 	if err != nil {
 		panic(err)
@@ -62,12 +71,13 @@ func (c *freeRoamCastle) holdsGuidance(t *testing.T, member string) bool {
 }
 
 // waitingClaim is the stored state of [atTheGateWithAWaitingClaim]'s
-// scene, built ONCE per test binary and restored into fresh stores for
-// every test that starts from it: the castle's launch is the expensive part
-// of every castle test, and these tests all start from the same moment.
+// scene, built ONCE per test binary — in [TestMain], so no test's clock
+// pays for it — and restored into fresh stores for every test that starts
+// from it: the castle's launch is the expensive part of every castle test,
+// and these tests all start from the same moment.
 var waitingClaim struct {
 	once       sync.Once
-	built      bool
+	err        error
 	sessions   map[string]*session.SessionData
 	encounters map[string]*encounter.EncounterData
 	characters map[string]*character.Data
@@ -75,17 +85,58 @@ var waitingClaim struct {
 	before     session.SpeakOptionRow
 }
 
+// waitingClaimTests are the tests that start from the waiting claim, so
+// [TestMain] builds it only for a run that will use it.
+var waitingClaimTests = []string{
+	"TestCastleAReplyFromAnOlderMenuIsRefused",
+	"TestCastleAWaitingClaimHoldsTheGateNotTheTable",
+	"TestCastleAWaitingClaimSurvivesAReloadAndSettlesOnce",
+	"TestCastleAWaitingClaimWalkedAwayFromIsClosedWithNothingSpent",
+	"TestCastleAnAnswerChecksTheHoldBeforeItSpends",
+	"TestCastleASettleThatCouldNotLandEndsQuestionAndHoldTogether",
+	"TestCastleWhileHerRollWaitsSheMayOnlyWalk",
+	"TestCastleNoVerbClosesTheRunUnderAWaitingRoll",
+	"TestCastleAFightFormingUnderAWaitingClaimFreezesThenSettles",
+	"TestCastleTwoConversationsHeldAtOnceBothSettle",
+}
+
+// TestMain builds the waiting claim's scene before any test runs, when the
+// run's -run pattern selects one of [waitingClaimTests]: the CI test budget
+// is judged per top-level test, and a build inside the first test to need
+// it would put the castle's launch on that one test's clock. A pattern this
+// cannot read builds anyway; a run that skips the build and needs it after
+// all builds it lazily ([atTheGateWithAWaitingClaim]).
+func TestMain(m *testing.M) {
+	flag.Parse()
+	if wanted(flag.Lookup("test.run").Value.String()) {
+		waitingClaim.once.Do(func() { waitingClaim.err = buildTheWaitingClaim() })
+	}
+	os.Exit(m.Run())
+}
+
+// wanted reports whether a -run pattern can select a waiting-claim test.
+func wanted(pattern string) bool {
+	if pattern == "" {
+		return true
+	}
+	top := strings.SplitN(pattern, "/", 2)[0]
+	re, err := regexp.Compile(top)
+	if err != nil {
+		return true
+	}
+	return slices.ContainsFunc(waitingClaimTests, re.MatchString)
+}
+
 // atTheGateWithAWaitingClaim is the castle (with a second conversation,
-// [castleWithASecondConversation]) for a guided alice and the cleric:
-// alice where the captain's hail stops her, the cleric beside her, and
-// alice's claim to be a guest paused on her Guidance die. It returns the
-// cleric's guest row as read BEFORE the claim, so a test can reply from
-// that older menu. Every call gets its own copy of the stores, and dice
-// that throw 8 on every d20.
+// [withASecondConversation]) for a guided alice and the cleric: alice where
+// the captain's hail stops her, the cleric beside her, and alice's claim to
+// be a guest paused on her Guidance die. It returns the cleric's guest row
+// as read BEFORE the claim, so a test can reply from that older menu. Every
+// call gets its own copy of the stores, and dice that throw 8 on every d20.
 func atTheGateWithAWaitingClaim(t *testing.T) (*freeRoamCastle, session.SpeakOptionRow) {
 	t.Helper()
-	waitingClaim.once.Do(func() { buildTheWaitingClaim(t) })
-	require.True(t, waitingClaim.built, "the waiting claim's scene failed to build in an earlier test")
+	waitingClaim.once.Do(func() { waitingClaim.err = buildTheWaitingClaim() })
+	require.NoError(t, waitingClaim.err, "the waiting claim's scene")
 
 	c := &freeRoamCastle{
 		live: &actCapture{}, dice: &castleDice{d20s: []int{8}},
@@ -115,36 +166,92 @@ func atTheGateWithAWaitingClaim(t *testing.T) (*freeRoamCastle, session.SpeakOpt
 }
 
 // buildTheWaitingClaim plays the waiting claim's scene once and keeps its
-// stores ([waitingClaim]).
-func buildTheWaitingClaim(t *testing.T) {
-	t.Helper()
-	c := openTheCastleFrom(t, castleWithASecondConversation(t), []*character.Data{armedFighter("alice"), healingCleric()}, 8)
+// stores ([waitingClaim]). It takes no *testing.T because [TestMain] runs it
+// before any test exists; every precondition it checks is an error.
+func buildTheWaitingClaim() error {
+	ctx := context.Background()
+	dir, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", encounterModule).Output()
+	if err != nil {
+		return fmt.Errorf("find the encounter module: %w", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(strings.TrimSpace(string(dir)), castleFixture))
+	if err != nil {
+		return err
+	}
+	raw, err = withASecondConversation(raw)
+	if err != nil {
+		return err
+	}
+	compiled, err := dungeonspec.Load(raw)
+	if err != nil {
+		return err
+	}
+
+	c := &freeRoamCastle{
+		live: &actCapture{}, dice: &castleDice{d20s: []int{8}},
+		characters: newFakeCharacters(armedFighter("alice"), healingCleric()),
+		encounters: newFakeEncounters(), sessions: newFakeSessions(), seats: newFakeSeats(),
+	}
+	c.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: c.live, Seats: c.seats, CharacterConfig: newFakeCharacterConfig(),
+		PresentationIDs: testPresentationIDs{}, Dice: c.dice, TurnDriver: session.Driver(),
+		Sessions: c.sessions, Encounters: c.encounters, Characters: c.characters,
+	})
+	if err != nil {
+		return err
+	}
+	if _, err := c.mgr.Launch(ctx, &session.LaunchInput{Session: "sess", Dungeon: &compiled, Party: []string{"alice", "cleric"}}); err != nil {
+		return fmt.Errorf("launch: %w", err)
+	}
 	// THE DIE IS GIVEN AFTER THE LAUNCH, whose long rest would clear it.
 	withGuidance(c.characters.byID["alice"])
 	// ONE STEP ONTO THE CELL WHERE THE CAPTAIN'S HAIL STOPS HER, rather than
 	// the whole road: the walk is the hail tests' subject, and the slowest
 	// part of the scene. The step is what has the room see the two of them.
-	c.placeInTheRecord(t, "alice", backDownTheRoad[0])
-	c.placeInTheRecord(t, "cleric", besideAlice)
-	c.move(t, []spatial.Position{theHailCell})
+	world := c.encounters.byID["sess"]
+	for i := range world.Members {
+		switch world.Members[i].ID {
+		case "alice":
+			world.Members[i].Cell = &encounter.PositionData{X: backDownTheRoad[0].X, Y: backDownTheRoad[0].Y}
+		case "cleric":
+			world.Members[i].Cell = &encounter.PositionData{X: besideAlice.X, Y: besideAlice.Y}
+		}
+	}
+	if _, err := walkOn(ctx, c.mgr, &session.MoveInput{Session: "sess", Member: "alice", Path: []spatial.Position{theHailCell}}); err != nil {
+		return fmt.Errorf("the step to the hail cell: %w", err)
+	}
 
-	before := lineFor(t, c, "cleric", "guest")
-	require.True(t, before.Available, "precondition: the cleric may claim to be a guest")
-	require.NotZero(t, before.Revision, "precondition: the claim reads the front gate")
-	require.Equal(t, "front-gate", before.Interaction)
+	panel, err := c.mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "cleric"})
+	if err != nil {
+		return err
+	}
+	var before session.SpeakOptionRow
+	for _, d := range panel.Declarations {
+		for _, row := range d.SpeakOptions {
+			if row.Target == "captain" && row.OptionID == "guest" {
+				before = row
+			}
+		}
+	}
+	if !before.Available || before.Revision == 0 || before.Interaction != "front-gate" {
+		return fmt.Errorf("precondition: the cleric may claim to be a guest, on the front gate: %+v", before)
+	}
 
-	claim, err := speakAsOffered(context.Background(), c.mgr, &session.SpeakInput{
+	claim, err := speakAsOffered(ctx, c.mgr, &session.SpeakInput{
 		Session: "sess", Member: "alice", Target: "captain", OptionID: "guest",
 	})
-	require.NoError(t, err)
-	require.True(t, claim.Paused, "precondition: her Guidance die stops the check to ask")
+	if err != nil {
+		return fmt.Errorf("alice's claim: %w", err)
+	}
+	if !claim.Paused {
+		return fmt.Errorf("precondition: her Guidance die stops the check to ask: %+v", claim)
+	}
 
 	waitingClaim.sessions = c.sessions.byID
 	waitingClaim.encounters = c.encounters.byID
 	waitingClaim.characters = c.characters.byID
 	waitingClaim.seats = c.seats.byID
 	waitingClaim.before = before
-	waitingClaim.built = true
+	return nil
 }
 
 // lineFor is one line on the member's Speak row, said to the captain.
@@ -392,14 +499,16 @@ func TestCastleAFightFormingUnderAWaitingClaimFreezesThenSettles(t *testing.T) {
 	require.Empty(t, reactRow(c, t, "alice").ID, "no question is left open")
 }
 
-// castleWithASecondConversation is the castle with a second interaction,
+// withASecondConversation is the castle with a second interaction,
 // `side-talk`, and a checked line on the captain that reads it: two
 // conversations at one creature, so two speakers can each hold one.
-func castleWithASecondConversation(t *testing.T) []byte {
-	t.Helper()
-	raw := string(castleSource(t))
+func withASecondConversation(castle []byte) ([]byte, error) {
+	raw := string(castle)
 	const greet = "          - id: greet\n            say: Good evening, captain.\n"
-	require.Equal(t, 1, strings.Count(raw, greet), "the castle authors the captain's greeting once")
+	const interactions = "interactions:\n"
+	if strings.Count(raw, greet) != 1 || strings.Count(raw, interactions) != 1 {
+		return nil, fmt.Errorf("the castle no longer authors one captain's greeting and one interactions block")
+	}
 	raw = strings.Replace(raw, greet, `          - id: rumour
             say: Heard anything odd tonight?
             check:
@@ -418,8 +527,6 @@ func castleWithASecondConversation(t *testing.T) []byte {
             failure:
               - say: Move along.
 `+greet, 1)
-	const interactions = "interactions:\n"
-	require.Equal(t, 1, strings.Count(raw, interactions), "the castle has one interactions block")
 	return []byte(strings.Replace(raw, interactions, `interactions:
   side-talk:
     recipe:
@@ -431,7 +538,7 @@ func castleWithASecondConversation(t *testing.T) []byte {
             - { on: told, to: told, reason: the rumour was told }
             - { on: refused, to: told, reason: the rumour was refused }
         told: { terminal: true }
-`, 1))
+`, 1)), nil
 }
 
 // TestCastleTwoConversationsHeldAtOnceBothSettle: alice's guest claim holds
@@ -461,4 +568,66 @@ func TestCastleTwoConversationsHeldAtOnceBothSettle(t *testing.T) {
 		require.False(t, c.holdsGuidance(t, member), "%s spent the die", member)
 	}
 	require.NotContains(t, frontGateProgress(t, c.world(t)), "fresh", "the gate moved")
+}
+
+// TestCastleNoVerbClosesTheRunUnderAWaitingRoll: End and Dissolve act on
+// the whole table, so while alice's claim waits they wait on her too
+// ([session.ErrWindowOpen]) — an ended run would hold a question nobody
+// could answer. Her answer is still hers to give after.
+func TestCastleNoVerbClosesTheRunUnderAWaitingRoll(t *testing.T) {
+	c, _ := atTheGateWithAWaitingClaim(t)
+	ctx := context.Background()
+
+	_, err := c.mgr.End(ctx, &session.EndInput{Session: "sess", Ending: "withdrawn"})
+	require.ErrorIs(t, err, session.ErrWindowOpen, "End waits on her roll")
+	_, err = c.mgr.Dissolve(ctx, &session.DissolveInput{Session: "sess", Member: "cleric", Cause: session.ByDecision()})
+	require.ErrorIs(t, err, session.ErrWindowOpen, "Dissolve waits on her roll")
+
+	react := reactRow(c, t, "alice")
+	require.NotEmpty(t, react.ID, "her question stands")
+	_, err = c.mgr.React(ctx, &session.ReactInput{Session: "sess", Member: "alice", DeclarationID: react.ID, Answer: session.Take("")})
+	require.NoError(t, err, "and her answer settles it")
+}
+
+// TestCastleASettleThatCouldNotLandEndsQuestionAndHoldTogether: the
+// captain is moved beyond Speak reach in the stored world, with no verb of
+// the session's and no participation pass to notice, so the encounter's
+// hold still stands while its settle would be refused. Alice's answer asks
+// the settle's own doors first: it is refused [session.ErrStaleOption],
+// her die is not spent, and her question and the gate's hold end together
+// — one `held: false` beat, and the cleric's claims open again.
+func TestCastleASettleThatCouldNotLandEndsQuestionAndHoldTogether(t *testing.T) {
+	c, _ := atTheGateWithAWaitingClaim(t)
+	react := reactRow(c, t, "alice")
+	require.NotEmpty(t, react.ID, "precondition: she is asked")
+	c.placeInTheRecord(t, "captain", spatial.Position{X: -4, Y: 2})
+	heldBefore := heldReleases(t, c)
+
+	_, err := c.mgr.React(context.Background(), &session.ReactInput{
+		Session: "sess", Member: "alice", DeclarationID: react.ID, Answer: session.Take(""),
+	})
+	require.ErrorIs(t, err, session.ErrStaleOption, "the settle could not land")
+	require.True(t, c.holdsGuidance(t, "alice"), "her die was not spent")
+	require.Empty(t, reactRow(c, t, "alice").ID, "her question is gone")
+	require.Equal(t, heldBefore+1, heldReleases(t, c), "the hold ended with it, told once")
+	require.Contains(t, frontGateProgress(t, c.world(t)), "fresh", "nothing was settled")
+}
+
+// heldReleases counts the `interaction-held` beats with `held: false` alice
+// has witnessed.
+func heldReleases(t *testing.T, c *freeRoamCastle) int {
+	t.Helper()
+	entries, err := c.world(t).Story(&encounter.StoryInput{Audience: "alice"})
+	require.NoError(t, err)
+	n := 0
+	for _, e := range entries {
+		var body struct {
+			Beat string `json:"beat"`
+			Held bool   `json:"held"`
+		}
+		if json.Unmarshal(e.Payload, &body) == nil && body.Beat == encounter.BeatInteractionHeld && !body.Held {
+			n++
+		}
+	}
+	return n
 }
