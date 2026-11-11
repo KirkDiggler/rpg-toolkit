@@ -410,7 +410,8 @@ func TestMadKingGateDoorCarriesASound(t *testing.T) {
 // heardKind reports whether a member holds a sound of this kind.
 func (s *kingScene) heardKind(member encounter.MemberID, kind string) bool {
 	s.t.Helper()
-	for _, h := range s.enc.ToData().Perception.Intel.Holdings[core.EntityID("member|"+string(member))] {
+	for _, topics := range s.enc.ToData().Perception.Intel.Holdings[core.EntityID("member|"+string(member))] {
+		h := topics[""]
 		if string(h.Channel) != "sounds" {
 			continue
 		}

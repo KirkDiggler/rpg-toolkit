@@ -3832,7 +3832,15 @@ func refuseRoomLocalSightings(data perception.Data) error {
 		subjects := slices.Sorted(maps.Keys(data.Intel.Holdings[observer]))
 
 		for _, subject := range subjects {
-			holding := data.Intel.Holdings[observer][subject]
+			// Sightings live on the default topic only (mind/perception rule
+			// 12). A named topic's payload is testimony of another kind — a
+			// recognition, never a prop or door observation — so decoding it
+			// here would refuse a valid blob. A subject held only on named
+			// topics has no sighting to check.
+			holding, sighted := data.Intel.Holdings[observer][subject][""]
+			if !sighted {
+				continue
+			}
 			if perception.Channel(holding.Channel) != perception.Sight {
 				continue
 			}
