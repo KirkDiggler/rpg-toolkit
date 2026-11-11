@@ -108,14 +108,23 @@ var waitingClaimTests = []string{
 // all builds it lazily ([atTheGateWithAWaitingClaim]).
 func TestMain(m *testing.M) {
 	flag.Parse()
-	if wanted(flag.Lookup("test.run").Value.String()) {
+	pattern := flag.Lookup("test.run").Value.String()
+	if wanted(pattern) {
 		waitingClaim.once.Do(func() { waitingClaim.err = buildTheWaitingClaim() })
+	}
+	if wantedBy(pattern, admittedGateTests) {
+		admittedGate.once.Do(func() { admittedGate.err = buildTheAdmittedGate() })
 	}
 	os.Exit(m.Run())
 }
 
 // wanted reports whether a -run pattern can select a waiting-claim test.
 func wanted(pattern string) bool {
+	return wantedBy(pattern, waitingClaimTests)
+}
+
+// wantedBy reports whether a -run pattern can select one of tests.
+func wantedBy(pattern string, tests []string) bool {
 	if pattern == "" {
 		return true
 	}
@@ -124,7 +133,7 @@ func wanted(pattern string) bool {
 	if err != nil {
 		return true
 	}
-	return slices.ContainsFunc(waitingClaimTests, re.MatchString)
+	return slices.ContainsFunc(tests, re.MatchString)
 }
 
 // atTheGateWithAWaitingClaim is the castle (with a second conversation,

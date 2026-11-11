@@ -87,7 +87,7 @@ const (
 // encounter finds the actual cells under its own fold and walks them. A spell
 // holding a path search of its own is the thing this shape exists to prevent.
 //
-// A POINTER ON [CastProfile] for [CastConcentration]'s reason: a policy and a
+// A POINTER ON [CastProfile] distinguishes absence: a policy and a
 // budget sitting beside a cast that does not move anybody are zero values that
 // lie. Nil is "this cast moves nobody"; non-nil is the whole answer.
 type CastMove struct {

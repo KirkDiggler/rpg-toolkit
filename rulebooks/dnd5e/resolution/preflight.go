@@ -124,9 +124,10 @@ func preflightOn(ctx context.Context, in *PreflightInput, surf *surface) (*Prefl
 	// exists to predict an interaction rather than to approximate one.
 	refusals := make([]ParticipantRefusal, 0)
 	if _, err := attachAll(ctx, surf, &attachAllInput{
-		Participants: in.Participants,
-		Roller:       in.Roller,
-		Refusals:     &refusals,
+		LocalProjection: true,
+		Participants:    in.Participants,
+		Roller:          in.Roller,
+		Refusals:        &refusals,
 	}); err != nil {
 		// Unreachable while Refusals is set — the attach reports per
 		// participant and returns no error of its own — so this refuses rather

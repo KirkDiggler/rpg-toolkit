@@ -191,9 +191,13 @@ func TestBlessAndBaneAreCreatedFromARef(t *testing.T) {
 		"bane":  {refs.Conditions.Baned(), refs.Spells.Bane()},
 	} {
 		t.Run(name, func(t *testing.T) {
+			owner := dnd5eEvents.ConditionAddress{MemberID: "cleric", ConditionRef: refs.Conditions.LinkedEffects().String(), SourceID: "application:cleric"}
+			config, err := json.Marshal(LinkedConditionConfig{ApplicationID: owner.SourceID, AddressSourceID: "cleric", Role: LinkedRecipient,
+				Bindings: &LinkedBindings{Name: name, Owner: &owner, MemberKey: "gob"}})
+			require.NoError(t, err)
 			out, err := CreateFromRef(&CreateFromRefInput{
-				Ref: tc.condition.String(), MemberID: "gob",
-				Config: json.RawMessage(`{"source_id":"cleric"}`), SourceRef: tc.spell.String(),
+				Ref: tc.condition.String(), MemberID: "gob", Config: config,
+				Origin: &dnd5eEvents.ConditionOrigin{Ref: *tc.spell, EntityID: "cleric"},
 			})
 			require.NoError(t, err)
 			require.Equal(t, tc.condition.String(), out.Condition.Ref().String())
@@ -203,7 +207,7 @@ func TestBlessAndBaneAreCreatedFromARef(t *testing.T) {
 		})
 	}
 
-	t.Run("a wrong source spell is refused", func(t *testing.T) {
+	t.Run("historical creation shape is refused", func(t *testing.T) {
 		_, err := CreateFromRef(&CreateFromRefInput{
 			Ref: refs.Conditions.Blessed().String(), MemberID: "gob",
 			Config: json.RawMessage(`{"source_id":"cleric"}`), SourceRef: refs.Spells.Bane().String(),

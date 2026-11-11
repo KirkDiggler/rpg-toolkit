@@ -494,7 +494,11 @@ func TestReplay_CastleGateScript(t *testing.T) {
 			if w.at(hero) != besideTheGate {
 				require.NoError(t, w.step(hero, besideTheGate))
 			}
-			require.NoError(t, w.openDoor(kingGateDoor, hero))
+			// The captain went in once he admitted the troupe (rpg-project#929),
+			// through the gate, and left it open behind him.
+			if err := w.openDoor(kingGateDoor, hero); err != nil {
+				require.ErrorIs(t, err, encounter.ErrBadDoor, "only an open gate refuses the hand")
+			}
 			w.pace(hero, besideTheGate, castleCell(0, 6), 3)
 			require.False(t, w.fighting(hero), "the troupe was let through: nobody fights")
 		})

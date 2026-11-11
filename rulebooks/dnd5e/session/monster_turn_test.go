@@ -81,10 +81,10 @@ func task6ArrivalFixture(t *testing.T) (*session.Manager, *fakeSessions, *fakeEn
 	})
 	require.NoError(t, err)
 	holdings := data.Perception.Intel.Holdings[core.EntityID("member|skel-1")]
-	holding, ok := holdings[intel.Subject("member|fighter")]
+	holding, ok := holdings[intel.Subject("member|fighter")][""]
 	require.True(t, ok, "fight-time skeleton must hold sight testimony for fighter")
 	holding.Payload, holding.CurrentVia = payload, nil
-	holdings[intel.Subject("member|fighter")] = holding
+	holdings[intel.Subject("member|fighter")][""] = holding
 	for i := range data.Members {
 		if data.Members[i].ID == encounter.MemberID("fighter") {
 			data.Members[i].Cell = &encounter.PositionData{X: 30, Y: 5}
@@ -99,7 +99,7 @@ func task6StoredLocation(t *testing.T, encounters *fakeEncounters) encounter.Sig
 	t.Helper()
 	data, err := encounters.GetEncounter(context.Background(), "sess")
 	require.NoError(t, err)
-	holding := data.Perception.Intel.Holdings[core.EntityID("member|skel-1")][intel.Subject("member|fighter")]
+	holding := data.Perception.Intel.Holdings[core.EntityID("member|skel-1")][intel.Subject("member|fighter")][""]
 	location, ok := encounter.DecodeSightTestimony(holding.Payload)
 	require.True(t, ok, "stored sight testimony must be canonical")
 	return location
@@ -154,7 +154,7 @@ func TestSessionMonsterArrivalPersistsCorrection(t *testing.T) {
 	require.Equal(t, spatial.Position{X: 0, Y: 0}, location.Position)
 	data, err := encounters.GetEncounter(context.Background(), "sess")
 	require.NoError(t, err)
-	holding := data.Perception.Intel.Holdings[core.EntityID("member|skel-1")][intel.Subject("member|fighter")]
+	holding := data.Perception.Intel.Holdings[core.EntityID("member|skel-1")][intel.Subject("member|fighter")][""]
 	require.Empty(t, holding.CurrentVia, "persisted stale sight holding must remain Held")
 }
 
@@ -165,9 +165,9 @@ func TestMalformedSightTestimonyFailsSessionLoadBeforeProjection(t *testing.T) {
 	_, sessions, encounters, _ := task6ArrivalFixture(t)
 	data, err := encounters.GetEncounter(context.Background(), "sess")
 	require.NoError(t, err)
-	holding := data.Perception.Intel.Holdings[core.EntityID("member|skel-1")][intel.Subject("member|fighter")]
+	holding := data.Perception.Intel.Holdings[core.EntityID("member|skel-1")][intel.Subject("member|fighter")][""]
 	holding.Payload = nil
-	data.Perception.Intel.Holdings[core.EntityID("member|skel-1")][intel.Subject("member|fighter")] = holding
+	data.Perception.Intel.Holdings[core.EntityID("member|skel-1")][intel.Subject("member|fighter")][""] = holding
 	require.NoError(t, encounters.SaveEncounter(context.Background(), "sess", data))
 
 	// Use a fresh manager to make this a load-path assertion, not an in-memory
@@ -856,7 +856,7 @@ func requireHeldKnownStoredLocation(
 	t.Helper()
 	data, err := repo.GetEncounter(context.Background(), "sess")
 	require.NoError(t, err)
-	holding, ok := data.Perception.Intel.Holdings[core.EntityID("member|"+observer)][intel.Subject("member|"+subject)]
+	holding, ok := data.Perception.Intel.Holdings[core.EntityID("member|"+observer)][intel.Subject("member|"+subject)][""]
 	require.True(t, ok, "persisted %s testimony for %s must exist", observer, subject)
 	require.Empty(t, holding.CurrentVia, "broken sight must leave held testimony")
 	location, ok := encounter.DecodeSightTestimony(holding.Payload)
@@ -869,7 +869,7 @@ func persistedKnownLocation(t *testing.T, repo *fakeEncounters, observer, subjec
 	t.Helper()
 	data, err := repo.GetEncounter(context.Background(), "sess")
 	require.NoError(t, err)
-	holding, ok := data.Perception.Intel.Holdings[core.EntityID("member|"+observer)][intel.Subject("member|"+subject)]
+	holding, ok := data.Perception.Intel.Holdings[core.EntityID("member|"+observer)][intel.Subject("member|"+subject)][""]
 	require.True(t, ok, "persisted %s testimony for %s must exist", observer, subject)
 	require.NotEmpty(t, holding.CurrentVia, "initial testimony must be current")
 	location, ok := encounter.DecodeSightTestimony(holding.Payload)

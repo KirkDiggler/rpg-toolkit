@@ -48,11 +48,12 @@ func Bind(in *BindInput) (*BindOutput, error) {
 	binding := *in
 	kinds := make(map[generic.KindName]generic.KindSpec, len(kindTable))
 	for name, definition := range kindTable {
-		kinds[name] = generic.KindSpec{
-			Check: definition.check,
-			Attach: func(ctx context.Context, bus events.EventBus, out *generic.Bound) (generic.Detach, error) {
-				return definition.attach(ctx, bus, out, binding)
-			},
+		if definition.meaning == nil {
+			continue // lifecycle-only parts produce recipes, not an output kind
+		}
+		spec := generic.KindSpec{
+			Check:     definition.check,
+			Execution: definition.execution,
 			Assess: func(frame any, out *generic.Bound) (generic.Row, error) {
 				q, err := queryFrom(frame)
 				if err != nil {
@@ -62,7 +63,7 @@ func Bind(in *BindInput) (*BindOutput, error) {
 				if err != nil {
 					return generic.Row{}, err
 				}
-				row := generic.Row{Kind: out.Kind(), Reason: answer.effect.Reason, Amount: answer.amount}
+				row := generic.Row{Kind: out.Kind(), Reason: answer.effect.Reason, Amount: answer.value}
 				switch answer.effect.State {
 				case contributions.StateApplies:
 					row.Verdict = machine.Applies
@@ -74,9 +75,15 @@ func Bind(in *BindInput) (*BindOutput, error) {
 				return row, nil
 			},
 		}
+		if definition.execution != generic.KindQuery {
+			spec.Attach = func(ctx context.Context, bus events.EventBus, out *generic.Bound) (generic.Detach, error) {
+				return definition.attach(ctx, bus, out, binding)
+			}
+		}
+		kinds[name] = spec
 	}
 	return &BindOutput{Machine: machineVocabulary(), Outputs: generic.OutputVocabulary{Kinds: kinds, Amounts: map[generic.AmountName]generic.AmountFn{
-		generic.AmountFixed: fixedAmount, generic.AmountByClassLevel: classAmount,
+		generic.AmountFixed: fixedAmount, generic.AmountByClassLevel: classAmount, generic.AmountDice: diceAmount,
 	}}}, nil
 }
 
@@ -115,8 +122,13 @@ func actionBool(frame any, weapon bool) (any, bool) {
 
 func machineVocabulary() machine.Vocabulary {
 	return machine.Vocabulary{Facts: map[machine.FactName]machine.FactSpec{
-		FactMelee:      {Kind: machine.KindBool, Read: func(frame any) (any, bool) { return actionBool(frame, false) }},
-		FactWeaponPool: {Kind: machine.KindBool, Read: func(frame any) (any, bool) { return actionBool(frame, true) }},
+		factApplication:   membershipFact(machine.KindString, func(e dndevents.ApplicationMembersChangedEvent) any { return e.ApplicationID }),
+		factOwnerRef:      membershipFact(machine.KindString, func(e dndevents.ApplicationMembersChangedEvent) any { return e.Owner.ConditionRef }),
+		factOwnerSource:   membershipFact(machine.KindString, func(e dndevents.ApplicationMembersChangedEvent) any { return e.Owner.SourceID }),
+		factMembersBefore: membershipFact(machine.KindInt, func(e dndevents.ApplicationMembersChangedEvent) any { return e.Before }),
+		factMembersAfter:  membershipFact(machine.KindInt, func(e dndevents.ApplicationMembersChangedEvent) any { return e.After }),
+		FactMelee:         {Kind: machine.KindBool, Read: func(frame any) (any, bool) { return actionBool(frame, false) }},
+		FactWeaponPool:    {Kind: machine.KindBool, Read: func(frame any) (any, bool) { return actionBool(frame, true) }},
 		FactAbility: {Kind: machine.KindString, Read: func(frame any) (any, bool) {
 			q, err := queryFrom(frame)
 			if err != nil {
@@ -126,6 +138,9 @@ func machineVocabulary() machine.Vocabulary {
 			return string(ability), known
 		}},
 	}, Beats: map[machine.Beat]machine.BeatSpec{
+		beatMembersChanged: typedBeat(dndevents.ApplicationMembersChangedTopic, func(e dndevents.ApplicationMembersChangedEvent) (string, bool) {
+			return e.Owner.MemberID, e.Owner.MemberID != ""
+		}, nil),
 		BeatTurnEnd: typedBeat(dndevents.TurnEndTopic, func(e dndevents.TurnEndEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, func(e dndevents.TurnEndEvent) (int, bool) { return e.Round, e.Round > 0 }),
 		BeatDamageReceived: typedBeat(dndevents.DamageTakenTopic, func(e *dndevents.DamageTakenEvent) (string, bool) {
 			if e == nil || e.Amount <= 0 {

@@ -33,7 +33,7 @@ var (
 	sanctuaryHeld   = contributions.HeldCondition{Ref: refs.Conditions.Sanctuary().String(), SourceID: "cleric"}
 	bladeWardHeld   = contributions.HeldCondition{Ref: refs.Conditions.BladeWard().String()}
 	recklessHeld    = contributions.HeldCondition{Ref: refs.Conditions.RecklessAttack().String()}
-	concentrateHeld = contributions.HeldCondition{Ref: refs.Conditions.Concentrating().String()}
+	concentrateHeld = contributions.HeldCondition{Ref: refs.Conditions.LinkedEffects().String()}
 )
 
 // gobFrame is the base frame: the rogue attacks the goblin, which holds the

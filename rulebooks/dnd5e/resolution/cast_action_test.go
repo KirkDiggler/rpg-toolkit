@@ -85,10 +85,11 @@ func (s *CastActionTestSuite) cast(id spells.Spell, casterID string, roll int) M
 	definition.Cost = oneAction()
 
 	machine, err := NewAction(&ActionInput{
-		Definition: *definition,
-		AttackerID: casterID,
-		TargetIDs:  []string{heroID},
-		Roller:     facedRoller{d20: roll, other: psychicFace},
+		ApplicationID: testApplicationID(s.T()),
+		Definition:    *definition,
+		AttackerID:    casterID,
+		TargetIDs:     []string{heroID},
+		Roller:        facedRoller{d20: roll, other: psychicFace},
 	})
 	s.Require().NoError(err)
 
@@ -170,7 +171,8 @@ func (s *CastActionTestSuite) TestBanePaysOnceAndResolvesTargetsInCallerOrder() 
 			fixtures := s.fixtures()
 			roller := &countingCastRoller{facedRoller: facedRoller{d20: 1, other: 4}}
 			machine, err := NewAction(&ActionInput{
-				Definition: *baneDefinition(), AttackerID: bardID,
+				ApplicationID: testApplicationID(s.T()),
+				Definition:    *baneDefinition(), AttackerID: bardID,
 				TargetIDs: targets, Roller: roller,
 			})
 			s.Require().NoError(err)
@@ -227,7 +229,8 @@ func (s *CastActionTestSuite) TestBaneRejectsAnInvalidLaterTargetBeforeRNGOrMuta
 	fixtures := s.fixtures()
 	roller := &countingCastRoller{facedRoller: facedRoller{d20: 1, other: 4}}
 	machine, err := NewAction(&ActionInput{
-		Definition: *baneDefinition(), AttackerID: bardID,
+		ApplicationID: testApplicationID(s.T()),
+		Definition:    *baneDefinition(), AttackerID: bardID,
 		TargetIDs: []string{heroID, wolfID, "absent"}, Roller: roller,
 	})
 	s.Require().NoError(err)
@@ -288,7 +291,8 @@ func (s *CastActionTestSuite) TestBaneRefusesStaleAndOutOfRangeTargetsBeforeDrop
 		s.Run(tc.name, func() {
 			roller := &countingCastRoller{facedRoller: facedRoller{d20: 1, other: 4}}
 			machine, err := NewAction(&ActionInput{
-				Definition: *baneDefinition(), AttackerID: bardID,
+				ApplicationID: testApplicationID(s.T()),
+				Definition:    *baneDefinition(), AttackerID: bardID,
 				TargetIDs: []string{heroID}, Roller: roller,
 			})
 			s.Require().NoError(err)
@@ -488,8 +492,9 @@ func (s *CastActionTestSuite) TestTheProfileArmPicksTheMachine() {
 		"a gate is a save, and a save is a contest")
 
 	gateless, err := NewAction(&ActionInput{
-		Definition: *spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.TrueStrike, SpellSaveDC: spellSaveDC}),
-		AttackerID: bardID, TargetIDs: []string{heroID},
+		ApplicationID: testApplicationID(s.T()),
+		Definition:    *spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.TrueStrike, SpellSaveDC: spellSaveDC}),
+		AttackerID:    bardID, TargetIDs: []string{heroID},
 	})
 	s.Require().NoError(err)
 	s.Require().IsType(&castMachine{}, gateless)
@@ -639,7 +644,7 @@ func (s *CastActionTestSuite) TestASelfTargetedCastNamesTheCaster() {
 	definition.Cast.Effects[0].Parameters = json.RawMessage(`{"target_id":"` + heroID + `"}`)
 	definition.Cost = oneAction()
 
-	machine, err := NewAction(&ActionInput{Definition: definition, AttackerID: bardID})
+	machine, err := NewAction(&ActionInput{ApplicationID: testApplicationID(s.T()), Definition: definition, AttackerID: bardID})
 	s.Require().NoError(err)
 
 	fixtures := s.fixtures()
@@ -913,7 +918,8 @@ func (s *CastActionTestSuite) TestACastIsRefusedForAChoiceItsProfileDoesNotOffer
 		s.Run(tc.name, func() {
 			roller := &countingCastRoller{facedRoller: facedRoller{d20: 1, other: psychicFace}}
 			machine, err := NewAction(&ActionInput{
-				Definition: *tc.definition, AttackerID: bardID,
+				ApplicationID: testApplicationID(s.T()),
+				Definition:    *tc.definition, AttackerID: bardID,
 				TargetIDs: []string{heroID}, Option: tc.option, Roller: roller,
 			})
 			s.Require().ErrorIs(err, ErrBadAction)
@@ -1144,7 +1150,8 @@ func (s *CastActionTestSuite) TestTwoCastersBanesBothStandAndBothConcentrationsH
 	s.Require().NoError(err)
 
 	machine, err := NewAction(&ActionInput{
-		Definition: *baneDefinition(), AttackerID: bardID,
+		ApplicationID: testApplicationID(s.T()),
+		Definition:    *baneDefinition(), AttackerID: bardID,
 		TargetIDs: []string{heroID}, Roller: facedRoller{d20: 1, other: 4},
 	})
 	s.Require().NoError(err)
@@ -1195,7 +1202,8 @@ func (s *CastActionTestSuite) TestADifferentRefIsLeftWhereItIs() {
 	s.Require().NoError(err)
 
 	machine, err := NewAction(&ActionInput{
-		Definition: *baneDefinition(), AttackerID: bardID,
+		ApplicationID: testApplicationID(s.T()),
+		Definition:    *baneDefinition(), AttackerID: bardID,
 		TargetIDs: []string{heroID}, Roller: facedRoller{d20: 1, other: 4},
 	})
 	s.Require().NoError(err)

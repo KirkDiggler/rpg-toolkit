@@ -120,6 +120,12 @@ type Encounter struct {
 	// a run whose content declares none, which writes no key.
 	interactions map[InteractionID]*interactionRecord
 
+	// granted is every topic the run can grant (recognition.go,
+	// rpg-project#928, #929): its interactions' outcomes and its members'
+	// lines' grants. A `recognized` requirement or pass on any other is one
+	// nobody could ever meet, and refused. Kept so a joiner's grants add to it.
+	granted map[TopicID]bool
+
 	// doors are every door in the field, sorted by ID (C8). A door's edges are
 	// construction truth; its STATE is the one thing here a verb changes
 	// mid-scene, and it is held once for however many edges the door has
@@ -891,15 +897,20 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 	// A line requiring a holding must name a prop this field lets somebody
 	// pick up (option.go) — asked against the compiled field, so after it —
 	// and a line naming an interaction must name one this run has.
+	memberLines := make([][]Option, 0, len(in.Members))
+	for _, m := range in.Members {
+		memberLines = append(memberLines, m.Options)
+	}
+	granted := grantedTopics(interactions, memberLines...)
 	for _, m := range in.Members {
 		if err := f.validateOptionHolds(m.Options); err != nil {
 			return nil, fmt.Errorf("newencounter: member %s: %w: %w", m.ID, err, ErrBadMember)
 		}
-		if err := validateOptionInteractions(interactions, m.Options); err != nil {
+		if err := validateOptionInteractions(interactions, granted, m.Options); err != nil {
 			return nil, fmt.Errorf("newencounter: member %s: %w: %w", m.ID, err, ErrBadMember)
 		}
 	}
-	if err := validatePropInteractions(interactions, f); err != nil {
+	if err := validatePropInteractions(interactions, granted, f); err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 
@@ -1015,6 +1026,7 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 		endings:             nil,
 		retention:           normalizeRetention(in.Retention),
 		interactions:        interactions,
+		granted:             granted,
 	}
 	e.doors, e.doorsByID = doorRecordsFrom(in.Field.Doors)
 
@@ -2720,7 +2732,11 @@ func (e *Encounter) validateJoin(in *JoinInput) error {
 	if err := e.field.validateOptionHolds(in.Options); err != nil {
 		return fmt.Errorf("join: member %s: %w: %w", in.Member, err, ErrBadMember)
 	}
-	if err := validateOptionInteractions(e.interactions, in.Options); err != nil {
+	joinGranted := grantedTopics(nil, in.Options)
+	for topic := range e.granted {
+		joinGranted[topic] = true
+	}
+	if err := validateOptionInteractions(e.interactions, joinGranted, in.Options); err != nil {
 		return fmt.Errorf("join: member %s: %w: %w", in.Member, err, ErrBadMember)
 	}
 
@@ -2812,7 +2828,15 @@ func (e *Encounter) admitMember(in *JoinInput) (*memberRecord, *JoinOutput, erro
 	if err := e.useBehaviors(member, in.Behaviors, nil, in.BlockingStates); err != nil {
 		return nil, nil, fmt.Errorf("join: %w", err)
 	}
+	// A JOINER'S GRANTS JOIN THE RUN'S (rpg-project#929), before its own
+	// posts are judged against them; a refused post puts them back.
+	wasGranted := e.granted
+	e.granted = grantedTopics(nil, in.Options)
+	for topic := range wasGranted {
+		e.granted[topic] = true
+	}
 	if err := e.usePosts(member, in.Posts, in.Cell); err != nil {
+		e.granted = wasGranted
 		return nil, nil, fmt.Errorf("join: %w", err)
 	}
 

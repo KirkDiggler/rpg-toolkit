@@ -1532,26 +1532,47 @@ room:
           # claims at the gate, one front-gate interaction between them: a
           # first failure is a warning and closes that claim, a second
           # failure arrests, and either success admits the party.
-          - id: guest
-            say: We’re invited guests of His Majesty, here for the feast.
-            check:
-              - ability: persuasion
-                dc: 11
+          # Hand edit (rpg-project#929): the guest claim is the captain's
+          # alone. Once the gate has admitted the party, a guard offers two
+          # lines of his own. A member he recognises may come back and vouch
+          # for whoever stands in his sight; a straggler he does not recognise
+          # may make their own case. Neither moves the gate's conversation.
+          - id: vouch
+            say: They’re with us. The captain let us in.
             requires:
               - interaction:
                   id: front-gate
-                  in: [fresh, warned-troupe]
-            advance:
-              interaction: front-gate
-              success: admitted
-              failure: guest-failed
+                  in: [admitted]
+              - recognized: admitted
             success:
-              # Hand edit (rpg-project#928): admission is recognition. The
-              # interaction's `admitted` outcome is what lets the party by; a
-              # fact in the walker's head no longer does.
-              - say: Guests, is it? In you go. Mind your manners in the hall.
+              - say: Right you are. Go on through, the lot of you.
+                recognize:
+                  topic: admitted
+                  holder: spoken_to
+                  about: party_in_sight
+                  heard_by: carriers_who_witnessed
+          - id: straggler
+            say: I’m with the troupe. I fell behind on the road.
+            check:
+              - ability: persuasion
+                dc: 13
+              - ability: deception
+                dc: 15
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [admitted]
+              - not:
+                  recognized: admitted
+            success:
+              - say: Fell behind, did you? Go on, catch them up.
+                recognize:
+                  topic: admitted
+                  holder: spoken_to
+                  about: speaker
+                  heard_by: carriers_who_witnessed
             failure:
-              - say: Guests? What’s going on here? Nobody told me of guests.
+              - say: Never seen you before. Back the way you came.
           - id: troupe
             say: We’re the troupe for tonight’s feast.
             check:
@@ -1622,26 +1643,47 @@ room:
           # claims at the gate, one front-gate interaction between them: a
           # first failure is a warning and closes that claim, a second
           # failure arrests, and either success admits the party.
-          - id: guest
-            say: We’re invited guests of His Majesty, here for the feast.
-            check:
-              - ability: persuasion
-                dc: 11
+          # Hand edit (rpg-project#929): the guest claim is the captain's
+          # alone. Once the gate has admitted the party, a guard offers two
+          # lines of his own. A member he recognises may come back and vouch
+          # for whoever stands in his sight; a straggler he does not recognise
+          # may make their own case. Neither moves the gate's conversation.
+          - id: vouch
+            say: They’re with us. The captain let us in.
             requires:
               - interaction:
                   id: front-gate
-                  in: [fresh, warned-troupe]
-            advance:
-              interaction: front-gate
-              success: admitted
-              failure: guest-failed
+                  in: [admitted]
+              - recognized: admitted
             success:
-              # Hand edit (rpg-project#928): admission is recognition. The
-              # interaction's `admitted` outcome is what lets the party by; a
-              # fact in the walker's head no longer does.
-              - say: Guests, is it? In you go. Mind your manners in the hall.
+              - say: Right you are. Go on through, the lot of you.
+                recognize:
+                  topic: admitted
+                  holder: spoken_to
+                  about: party_in_sight
+                  heard_by: carriers_who_witnessed
+          - id: straggler
+            say: I’m with the troupe. I fell behind on the road.
+            check:
+              - ability: persuasion
+                dc: 13
+              - ability: deception
+                dc: 15
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [admitted]
+              - not:
+                  recognized: admitted
+            success:
+              - say: Fell behind, did you? Go on, catch them up.
+                recognize:
+                  topic: admitted
+                  holder: spoken_to
+                  about: speaker
+                  heard_by: carriers_who_witnessed
             failure:
-              - say: Guests? What’s going on here? Nobody told me of guests.
+              - say: Never seen you before. Back the way you came.
           - id: troupe
             say: We’re the troupe for tonight’s feast.
             check:
@@ -1795,11 +1837,13 @@ room:
           # Hand edit (rpg-project#928): a line the captain answers only for
           # someone he recognises as admitted. Plain, so it costs nothing.
           - id: the-way-in
-            say: Which way to the hall, captain?
+            # Hand edit (rpg-project#929): he goes in once he has admitted
+            # anyone, so the line reads the same at the gate or in the hall.
+            say: Where will the feast be, captain?
             requires:
               recognized: admitted
             success:
-              - say: Straight through and up the steps. You’re expected.
+              - say: In the great hall. You’re expected.
         behaviors:
           - id: policy
             use: captain-policy
@@ -2458,6 +2502,17 @@ behaviorDefinitions:
                   value: true
               to: cowed
               reason: stood aside
+            # Hand edit (rpg-project#929): once he recognises anyone as
+            # admitted — his own judgement or heard from a gate guard — the
+            # captain goes in to the hall, once. The gate guards stay.
+            - on: topic
+              when:
+                fact:
+                  name: topic:admitted
+                  op: eq
+                  value: true
+              to: in-hall
+              reason: admitted the party; goes in
             # Hand edit (rpg-project#923): the gate's hail.
             - on: approached
               do:
@@ -2489,6 +2544,25 @@ behaviorDefinitions:
             - on: turn
               do:
                 - pick: time
+        # Hand edit (rpg-project#929): in the great hall he holds no post and
+        # blocks nobody; he walks once to his place inside the hall door and
+        # stays there.
+        in-hall:
+          transitions:
+            - on: fact
+              when:
+                fact:
+                  name: fact:guards-turned
+                  op: eq
+                  value: true
+              to: turned
+              reason: the garrison turned
+            - on: time
+              do:
+                - pick: in-hall
+            - on: turn
+              do:
+                - pick: time
         turned:
           transitions:
             - on: time
@@ -2502,6 +2576,11 @@ behaviorDefinitions:
         - say: You there. Nobody passes this gate without my say. Speak.
       barred:
         - say: Not one step further without my say.
+      # Hand edit (rpg-project#929): his place in the great hall, two rows in
+      # and west of the hall door's line, clear of the doorway.
+      in-hall:
+        - when: {enemy: none}
+          toward: {at: {q: 3, r: -9}}
       time:
         # Hand edit (smarter monsters S2, rpg-project#669): the captain goes for
         # whoever hit him, past a nearer enemy, as one line. Otherwise the rows

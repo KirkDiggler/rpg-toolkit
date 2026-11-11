@@ -16,6 +16,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/effects"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/healing"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
@@ -45,7 +46,7 @@ func (s *CastProfileSuite) TestStabilizationIsAnInstantaneousTouchDelivery() {
 	}{
 		{"no consequence", func(p *actions.CastProfile) { p.Stabilize = false }},
 		{"ranged", func(p *actions.CastProfile) { p.Target = actions.CastTargetOneCreature }},
-		{"concentration", func(p *actions.CastProfile) { p.Concentration = &actions.CastConcentration{TurnEnds: 10} }},
+		{"maintenance", func(p *actions.CastProfile) { p.Maintenance = maintenanceFixture() }},
 		{"save", func(p *actions.CastProfile) { p.Save = &saves.SaveGate{} }},
 		{"healing", func(p *actions.CastProfile) { p.Healing = &healing.Declaration{} }},
 		{"condition", func(p *actions.CastProfile) { p.Effects = []actions.CastEffect{{}} }},
@@ -215,46 +216,50 @@ func (s *CastProfileSuite) TestCloningACastProfileCopiesItsDamageIfInjured() {
 	s.Empty(profile.DamageIfInjured[0].Properties)
 }
 
-// A pointer rather than a bool beside a duration: nil is "no concentration",
-// and there is no state where a declared duration means nothing.
 func (s *CastProfileSuite) TestAConcentrationCastValidates() {
 	profile := gatelessProfile()
-	profile.Concentration = &actions.CastConcentration{TurnEnds: 2}
-
+	profile.Maintenance = maintenanceFixture()
 	s.Require().NoError(profile.Validate())
-	s.Nil(gatelessProfile().Concentration, "and a profile that declares none carries nothing")
+	s.Empty(gatelessProfile().Maintenance)
 }
 
-func (s *CastProfileSuite) TestItRefusesAConcentrationThatEndsBeforeItBegins() {
+func (s *CastProfileSuite) TestItRefusesADurationThatEndsBeforeItBegins() {
 	profile := gatelessProfile()
-	profile.Concentration = &actions.CastConcentration{}
-
-	s.Require().ErrorContains(profile.Validate(), "at least one turn end")
+	profile.Maintenance = maintenanceFixture()
+	profile.Maintenance[1].Params = json.RawMessage(`{"turn_ends":0}`)
+	s.Require().ErrorContains(profile.Validate(), "positive turn_ends")
 }
 
-func (s *CastProfileSuite) TestCloningACastProfileCopiesItsConcentration() {
+func (s *CastProfileSuite) TestCloningACastProfileCopiesItsMaintenance() {
 	profile := gatelessProfile()
-	profile.Concentration = &actions.CastConcentration{TurnEnds: 10, SkipFirstTurnEnd: true}
-
+	profile.Maintenance = maintenanceFixture()
 	clone := profile.Clone()
-	clone.Concentration.TurnEnds = 99
-	clone.Concentration.SkipFirstTurnEnd = false
-
-	s.Require().NotNil(profile.Concentration)
-	s.Equal(10, profile.Concentration.TurnEnds, "a clone that aliased the duration would rewrite the original")
-	s.True(profile.Concentration.SkipFirstTurnEnd)
+	clone.Maintenance[1].Params[0] = '!'
+	clone.Maintenance[0].Key = "changed"
+	s.Require().NoError(profile.Validate())
+	out, err := effects.DescribeMaintenance(&effects.DescribeMaintenanceInput{Parts: profile.Maintenance})
+	s.Require().NoError(err)
+	s.True(out.Concentration)
+	s.Require().NotNil(out.Duration)
+	s.Equal(10, out.Duration.TurnEnds)
+	s.True(out.Duration.SkipFirstTurnEnd)
+	s.Equal("hold", profile.Maintenance[0].Key)
 }
 
 func (s *CastProfileSuite) TestConcentrationSkipFirstTurnEndRoundTrips() {
 	profile := gatelessProfile()
-	profile.Concentration = &actions.CastConcentration{TurnEnds: 10, SkipFirstTurnEnd: true}
-
+	profile.Maintenance = maintenanceFixture()
 	raw, err := json.Marshal(profile)
 	s.Require().NoError(err)
 	var back actions.CastProfile
 	s.Require().NoError(json.Unmarshal(raw, &back))
-	s.Require().NotNil(back.Concentration)
-	s.True(back.Concentration.SkipFirstTurnEnd)
+	s.Require().NoError(back.Validate())
+	out, err := effects.DescribeMaintenance(&effects.DescribeMaintenanceInput{Parts: back.Maintenance})
+	s.Require().NoError(err)
+	s.True(out.Concentration)
+	s.Require().NotNil(out.Duration)
+	s.True(out.Duration.SkipFirstTurnEnd)
+	s.Equal(10, out.Duration.TurnEnds)
 }
 
 // TestHalfIsPermittedForADamageOnlyGate — half arrived with Dissonant

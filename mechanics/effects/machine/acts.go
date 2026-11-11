@@ -3,13 +3,28 @@
 
 package machine
 
-// run performs acts on the bag in order and reports whether any changed it.
-// The acts were validated at Compile, so every key they name is declared.
-func (m *Machine) run(acts []Act, spec BeatSpec, ev any) bool {
+import (
+	"errors"
+	"fmt"
+	"maps"
+	"math"
+)
+
+// ErrInvalidAct marks a runtime act that cannot complete without invalid state,
+// such as integer overflow. No writes in that transition are committed.
+var ErrInvalidAct = errors.New("invalid machine act")
+
+// run stages acts in order and commits only after every act succeeds. The
+// existing bag retains its identity; readers never observe a partly applied list.
+func (m *Machine) run(acts []Act, spec BeatSpec, ev any) (bool, error) {
+	if len(acts) == 0 {
+		return false, nil
+	}
+	next := m.bag.Clone()
 	changed := false
 	set := func(key string, v any) {
-		if m.bag[key] != v {
-			m.bag[key] = v
+		if next[key] != v {
+			next[key] = v
 			changed = true
 		}
 	}
@@ -18,22 +33,35 @@ func (m *Machine) run(acts []Act, spec BeatSpec, ev any) bool {
 		switch {
 		case a.AnchorRound:
 			set(KeySawTurnEnd, true)
-			if anchor, _ := m.bag[KeyRoundActivated].(int); hasRound && anchor == 0 {
-				set(KeyRoundActivated, round) // anchor late, never re-anchor
+			if anchor, _ := next[KeyRoundActivated].(int); hasRound && anchor == 0 {
+				set(KeyRoundActivated, round)
 			}
 		case a.DeriveTurnsActive:
-			if anchor, _ := m.bag[KeyRoundActivated].(int); hasRound && anchor > 0 && round >= anchor {
+			if anchor, _ := next[KeyRoundActivated].(int); hasRound && anchor > 0 && round >= anchor {
 				set(KeyTurnsActive, round-anchor+1)
 			}
 		case len(a.ClearFlags) > 0:
-			for _, f := range a.ClearFlags {
-				set(f, false)
+			for _, flag := range a.ClearFlags {
+				set(flag, false)
 			}
 		case a.Set != nil:
 			set(a.Set.Key, a.Set.Value)
+		case a.Add != nil:
+			value, ok := next[a.Add.Key].(int)
+			if !ok {
+				return false, fmt.Errorf("%w: add key %q has no integer value", ErrInvalidAct, a.Add.Key)
+			}
+			delta := a.Add.Delta
+			if (delta > 0 && value > math.MaxInt-delta) || (delta < 0 && value < math.MinInt-delta) {
+				return false, fmt.Errorf("%w: integer overflow adding %d to %q", ErrInvalidAct, delta, a.Add.Key)
+			}
+			set(a.Add.Key, value+delta)
 		}
 	}
-	return changed
+	if changed {
+		maps.Copy(m.bag, next)
+	}
+	return changed, nil
 }
 
 // roundOf returns the beat's round when it carries one above zero.

@@ -674,14 +674,10 @@ func (s *FrameTestSuite) TestStrikeSanctuaryWardsComeFromTheHeldRule() {
 	s.Nil(out.Outcome.(StrikeOutcome).Warded, "an attacker's own ward asks no save")
 }
 
-// TestStrikeWardCheckReadsTheExecutionFrame: the ward check asks the held rule
-// over the strike's execution frame, so the frame exists before any ward save
-// is rolled. A warded target whose holdings cannot be framed — its record
-// lists the same Prone twice, which no frame may carry — fails the strike
-// with no save asked. A ward check that read the sheet on its own would roll
-// the attacker's save, lose the attack and report a ward that no frame ever
-// agreed to.
-func (s *FrameTestSuite) TestStrikeWardCheckReadsTheExecutionFrame() {
+// Duplicate held addresses are now refused by complete interaction binding,
+// before the ward's execution frame or saving throw can be reached. Preserve
+// the refusal/no-output assertion at that earlier integrity boundary.
+func (s *FrameTestSuite) TestDuplicateHeldAddressesAreRefusedBeforeWardSave() {
 	prone, err := conditions.NewProneCondition(heroID).ToJSON()
 	s.Require().NoError(err)
 	warded := actionHero()
@@ -690,7 +686,7 @@ func (s *FrameTestSuite) TestStrikeWardCheckReadsTheExecutionFrame() {
 	out, err := resolveHeroStrikeAs(s, wolfID, heroID, warded, facedRoller{d20: 1, other: 1})
 
 	s.Require().Error(err, "the frame the ward rule reads cannot be built: %+v", out)
-	s.Contains(err.Error(), "attack frame")
+	s.Contains(err.Error(), "duplicate condition address")
 	s.Nil(out, "no ward outcome, no world to save")
 }
 

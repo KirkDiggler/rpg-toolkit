@@ -48,6 +48,12 @@ var recordOnly = map[string]bool{
 	// (rpg-project#924). The panel reads the hold off the offer
 	// ([SpeakOptionRow.Pending]); the beat is the record's.
 	encounter.BeatInteractionHeld: true,
+	// A holder coming to hold a topic about people (rpg-project#928): the
+	// guard recognising whom he admitted. The panel reads what it changes
+	// off the offer (a recognised-only line) and the walk (a post that lets
+	// the recognised by); the beat is the record's, told to each witness
+	// only about whom they perceive.
+	encounter.BeatRecognized: true,
 }
 
 // familyOf is a beat name's family, and false for a beat with none — a

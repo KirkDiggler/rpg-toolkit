@@ -41,25 +41,26 @@ func checkAmount(amount *generic.Amount) error {
 	}
 }
 
-func fixedAmount(_ any, amount generic.Amount) (int, error) {
+func fixedAmount(_ any, amount generic.Amount) (generic.AmountResult, error) {
 	if amount.Fixed == nil {
-		return 0, fmt.Errorf("fixed amount is missing")
+		return generic.AmountResult{}, fmt.Errorf("fixed amount is missing")
 	}
-	return *amount.Fixed, nil
+	value := *amount.Fixed
+	return generic.AmountResult{Scalar: &value}, nil
 }
 
-func classAmount(frame any, amount generic.Amount) (int, error) {
+func classAmount(frame any, amount generic.Amount) (generic.AmountResult, error) {
 	q, err := queryFrom(frame)
 	if err != nil {
-		return 0, err
+		return generic.AmountResult{}, err
 	}
 	if q.Action == nil || amount.ByClassLevel == nil {
-		return 0, fmt.Errorf("%w: class amount requires an action frame", contributions.ErrRuleCannotAnswer)
+		return generic.AmountResult{}, fmt.Errorf("%w: class amount requires an action frame", contributions.ErrRuleCannotAnswer)
 	}
 	steps := amount.ByClassLevel
 	level, known := q.Action.ActorClassLevels.Of(classes.Class(steps.Class))
 	if !known || level < 1 {
-		return 0, fmt.Errorf("%w: no %s levels", contributions.ErrRuleCannotAnswer, steps.Class)
+		return generic.AmountResult{}, fmt.Errorf("%w: no %s levels", contributions.ErrRuleCannotAnswer, steps.Class)
 	}
 	best, value := 0, 0
 	for threshold, n := range steps.Steps {
@@ -68,7 +69,7 @@ func classAmount(frame any, amount generic.Amount) (int, error) {
 		}
 	}
 	if best == 0 {
-		return 0, fmt.Errorf("%w: no class step for level %d", contributions.ErrRuleCannotAnswer, level)
+		return generic.AmountResult{}, fmt.Errorf("%w: no class step for level %d", contributions.ErrRuleCannotAnswer, level)
 	}
-	return value, nil
+	return generic.AmountResult{Scalar: &value}, nil
 }
