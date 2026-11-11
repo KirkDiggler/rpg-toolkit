@@ -14,7 +14,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resources"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -265,8 +264,7 @@ func (s *MonsterTurnTestSuite) holdSpellAfterJoin(chars *fakeCharacters, id stri
 	seated, err := chars.GetCharacter(context.Background(), id)
 	s.Require().NoError(err)
 
-	hold := conditions.NewConcentratingCondition(
-		id, refs.Spells.TrueStrike().String(), "True Strike", spells.TrueStrikeTurnEnds)
+	hold := fixtureHold(s.T(), holdFixtureInput{Member: id, Source: refs.Spells.TrueStrike().String(), Name: "True Strike", Turns: spells.TrueStrikeTurnEnds})
 	blob, err := hold.ToJSON()
 	s.Require().NoError(err)
 
@@ -532,7 +530,7 @@ func (s *MonsterTurnTestSuite) TestATurnBoundaryTellsConcentrationItEnded() {
 
 	seated, err := chars.GetCharacter(ctx, "fighter")
 	s.Require().NoError(err)
-	hold := conditions.NewConcentratingCondition("fighter", refs.Spells.TrueStrike().String(), "True Strike", 1)
+	hold := fixtureHold(s.T(), holdFixtureInput{Member: "fighter", Source: refs.Spells.TrueStrike().String(), Name: "True Strike", Turns: 1})
 	blob, err := hold.ToJSON()
 	s.Require().NoError(err)
 	seated.Conditions = append(seated.Conditions, json.RawMessage(blob))

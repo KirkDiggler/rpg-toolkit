@@ -22,6 +22,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	dndevents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/proficiencies"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
@@ -75,7 +76,9 @@ func (s *EffectRowsSuite) cave(actor *character.Data) {
 	s.T().Helper()
 	s.actor = actor.ID
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
-	s.characters = newFakeCharacters(actor, armedFighter(erAlly))
+	initial := *actor
+	initial.Conditions = nil
+	s.characters = newFakeCharacters(&initial, armedFighter(erAlly))
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: s.sessions, Encounters: s.encounters, Characters: s.characters,
@@ -174,6 +177,19 @@ func (s *EffectRowsSuite) row(declaration session.Declaration, id string) sessio
 	return session.EffectRow{}
 }
 
+// sourceRow finds the one named-source contribution without parsing opaque IDs.
+func (s *EffectRowsSuite) sourceRow(declaration session.Declaration, ref, source string) session.EffectRow {
+	var found []session.EffectRow
+	for _, row := range declaration.Effects {
+		if row.Ref == ref && row.SourceID == source {
+			found = append(found, row)
+		}
+	}
+	s.Require().Len(found, 1)
+	s.NotEmpty(found[0].ID)
+	return found[0]
+}
+
 // candidate finds one candidate on a declaration.
 func (s *EffectRowsSuite) candidate(declaration session.Declaration, member string) session.TargetCandidate {
 	s.T().Helper()
@@ -198,10 +214,7 @@ func (s *EffectRowsSuite) raw(c interface {
 // blessedBy is a Bless on member cast by source.
 func (s *EffectRowsSuite) blessedBy(member, source string) json.RawMessage {
 	s.T().Helper()
-	bless, err := conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{
-		MemberID: member, SourceID: source, SourceRef: refs.Spells.Bless(),
-	})
-	s.Require().NoError(err)
+	bless := fixtureNamed(s.T(), namedFixtureInput{Ref: refs.Conditions.Blessed(), Member: member, Source: source, Origin: refs.Spells.Bless()})
 	return s.raw(bless)
 }
 
@@ -270,7 +283,8 @@ func (s *EffectRowsSuite) blessedCleric() *character.Data {
 	cleric := healingCleric()
 	cleric.AbilityScores[abilities.DEX] = 16
 	cleric.KnownSpells = append(cleric.KnownSpells, refs.Spells.GuidingBolt().String())
-	cleric.Conditions = []json.RawMessage{s.blessedBy(cleric.ID, cleric.ID)}
+	owner := fixtureHold(s.T(), holdFixtureInput{Member: cleric.ID, Source: refs.Spells.Bless().String(), Name: "Bless", Turns: 10, Children: []dndevents.ConditionAddress{{MemberID: cleric.ID, ConditionRef: refs.Conditions.Blessed().String(), SourceID: cleric.ID}}})
+	cleric.Conditions = []json.RawMessage{s.raw(owner), s.blessedBy(cleric.ID, cleric.ID)}
 	return cleric
 }
 
@@ -361,7 +375,7 @@ func (s *EffectRowsSuite) TestBlessAndInspirationRows() {
 
 	attack := s.mainAttack(s.afford("alice"))
 
-	bless := s.row(attack, refs.Conditions.Blessed().String()+"@"+erAlly)
+	bless := s.sourceRow(attack, refs.Conditions.Blessed().String(), erAlly)
 	s.Equal(session.EffectApplies, bless.State)
 	s.Equal("+1d4 to the attack roll", bless.Benefit)
 	s.Equal(session.ContributesNow, bless.Participation)
@@ -445,7 +459,7 @@ func (s *EffectRowsSuite) TestSpellAttackCastCarriesBlessRow() {
 	s.cave(s.blessedCleric())
 
 	guidingBolt := s.castOf(s.afford("cleric"), spells.GuidingBolt)
-	bless := s.row(guidingBolt, refs.Conditions.Blessed().String()+"@cleric")
+	bless := s.sourceRow(guidingBolt, refs.Conditions.Blessed().String(), "cleric")
 	s.Equal(session.EffectApplies, bless.State)
 	s.Equal("+1d4 to the attack roll", bless.Benefit)
 }
@@ -592,11 +606,11 @@ func (s *EffectRowsSuite) TestAttachRunsOnlyInAfford() {
 	s.Equal(map[string]int{"Afford": 1}, callers)
 }
 
-// TestNoRowsOnTheWorldClock closes the third early return: a blessed fighter
-// in free roam is offered the social verbs and nothing on them carries a row,
-// because the world clock compiles no attack.
-func (s *EffectRowsSuite) TestNoRowsOnTheWorldClock() {
-	s.characters = newFakeCharacters(s.fighter(s.blessedBy("alice", "bob")), armedFighter("bob"))
+// World-priced attacks carry their current effects; unrelated declarations do
+// not acquire attack rows merely because the actor is blessed.
+func (s *EffectRowsSuite) TestWorldClockAttackKeepsRowsAndOtherDeclarationsDoNot() {
+	held := s.blessedBy("alice", "bob")
+	s.characters = newFakeCharacters(s.fighter(), armedFighter("bob"))
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{}, Dice: testDice{}, TurnDriver: session.Pass{},
 		Sessions: newFakeSessions(), Encounters: newFakeEncounters(), Characters: s.characters,
@@ -605,17 +619,25 @@ func (s *EffectRowsSuite) TestNoRowsOnTheWorldClock() {
 	sc := freeRoamDuelWorld()
 	sc.Session = erSession
 	launchScene(s.T(), mgr, sc)
+	s.restoreConditions("alice", []json.RawMessage{held})
 
 	out, err := mgr.Afford(s.ctx, &session.AffordInput{Session: erSession, Member: "alice"})
 	s.Require().NoError(err)
 	s.Require().Equal(session.ClockWorld, out.Clock, "precondition: free roam")
-	s.Require().NotEmpty(out.Declarations, "precondition: the social verbs are offered")
+	s.Require().NotEmpty(out.Declarations, "precondition: world-clock verbs are offered")
+	sawAttack := false
 	for _, declaration := range out.Declarations {
+		if declaration.Verb == session.VerbAttack {
+			sawAttack = true
+			s.sourceRow(declaration, refs.Conditions.Blessed().String(), "bob")
+			continue
+		}
 		s.Empty(declaration.Effects, "world clock: %s", declaration.Verb)
 		for _, candidate := range declaration.Candidates {
 			s.Empty(candidate.Effects, "world clock: %s -> %s", declaration.Verb, candidate.Member)
 		}
 	}
+	s.True(sawAttack, "the existing world-priced attack remains offered")
 }
 
 // TestAffordFailsClosedWhenRowsCannotBeRead pins the fail-closed contract on a

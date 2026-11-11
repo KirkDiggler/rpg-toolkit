@@ -222,7 +222,7 @@ func (s *RestSuite) TestAStrangerCannotRest() {
 // told.
 func (s *RestSuite) TestARestEndsConcentrationAndClosesItsArea() {
 	bob := withHitDice(armedFighter("bob"), 1)
-	holding := conditions.NewConcentratingCondition("bob", refs.Spells.FogCloud().String(), "Fog Cloud", 10)
+	holding := fixtureHold(s.T(), holdFixtureInput{Member: "bob", Source: refs.Spells.FogCloud().String(), Name: "Fog Cloud", Turns: 10})
 	blob, err := holding.ToJSON()
 	s.Require().NoError(err)
 	bob.Conditions = []json.RawMessage{blob}
@@ -261,7 +261,7 @@ func (s *RestSuite) TestTheRestBeatTellsWhatItRefilledAndWhatItEnded() {
 	raw, err := json.Marshal(feature)
 	s.Require().NoError(err)
 	bob.Features[0] = raw
-	holding := conditions.NewConcentratingCondition("bob", refs.Spells.FogCloud().String(), "Fog Cloud", 10)
+	holding := fixtureHold(s.T(), holdFixtureInput{Member: "bob", Source: refs.Spells.FogCloud().String(), Name: "Fog Cloud", Turns: 10})
 	held, err := holding.ToJSON()
 	s.Require().NoError(err)
 	dodging, err := (&conditions.DodgingCondition{MemberID: "bob"}).ToJSON()
@@ -314,15 +314,11 @@ func (s *RestSuite) TestARefusedSecondResterLeavesTheFirstUnwritten() {
 
 // blessing stands bob concentrating on Bless with its effect on alice.
 func (s *RestSuite) blessing(bob, alice *character.Data) {
-	holding := conditions.NewConcentratingCondition("bob", refs.Spells.Bless().String(), "Bless", 10)
-	holding.Children = []dnd5eEvents.ConditionAddress{{MemberID: "alice", ConditionRef: refs.Conditions.Blessed().String(), SourceID: "bob"}}
+	holding := fixtureHold(s.T(), holdFixtureInput{Member: "bob", Source: refs.Spells.Bless().String(), Name: "Bless", Turns: 10, Children: []dnd5eEvents.ConditionAddress{{MemberID: "alice", ConditionRef: refs.Conditions.Blessed().String(), SourceID: "bob"}}})
 	held, err := holding.ToJSON()
 	s.Require().NoError(err)
 	bob.Conditions = []json.RawMessage{held}
-	bless, err := conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{
-		MemberID: "alice", SourceID: "bob", SourceRef: refs.Spells.Bless(),
-	})
-	s.Require().NoError(err)
+	bless := fixtureNamed(s.T(), namedFixtureInput{Ref: refs.Conditions.Blessed(), Member: "alice", Source: "bob", Origin: refs.Spells.Bless()})
 	blessed, err := bless.ToJSON()
 	s.Require().NoError(err)
 	alice.Conditions = append(alice.Conditions, blessed)
@@ -377,7 +373,7 @@ func (s *RestSuite) holds(member, ref string) bool {
 // his own act, so the order is asserted where both beats arrive.
 func (s *RestSuite) TestAnAreaClosesAfterTheRestIsTold() {
 	bob := withHitDice(armedFighter("bob"), 1)
-	holding := conditions.NewConcentratingCondition("bob", refs.Spells.FogCloud().String(), "Fog Cloud", 10)
+	holding := fixtureHold(s.T(), holdFixtureInput{Member: "bob", Source: refs.Spells.FogCloud().String(), Name: "Fog Cloud", Turns: 10})
 	held, err := holding.ToJSON()
 	s.Require().NoError(err)
 	bob.Conditions = []json.RawMessage{held}

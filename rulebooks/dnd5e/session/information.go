@@ -211,7 +211,7 @@ func renderFacts(facts combatActions.BaseFacts) ([]ActionInformationDetail, erro
 		}
 		add("Area", area)
 	}
-	if cast.Concentration != nil {
+	if cast.Maintenance.Concentration {
 		add("Concentration", "Required")
 	}
 	return rows, nil
