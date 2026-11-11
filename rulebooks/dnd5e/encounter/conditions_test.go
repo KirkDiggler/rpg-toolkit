@@ -270,7 +270,7 @@ func (s *sightingConditionsSuite) TestUnsightedMemberExposesNothing() {
 
 	// What alice keeps, as stored, is a memory of what she saw, never the new
 	// truth.
-	h := s.enc.ToData().Perception.Intel.Holdings["member|alice"]["member|goblin"]
+	h := s.enc.ToData().Perception.Intel.Holdings["member|alice"]["member|goblin"][""]
 	s.Empty(h.CurrentVia, "a memory, not a current sighting")
 	memory, valid := encounter.DecodeSightTestimony(h.Payload)
 	s.Require().True(valid)
@@ -291,14 +291,14 @@ func (s *sightingConditionsSuite) TestUnsightedMemberExposesNothing() {
 
 func (s *sightingConditionsSuite) TestLegacyTestimonyLoadsAsNotObserved() {
 	data := s.enc.ToData()
-	holding := data.Perception.Intel.Holdings["member|alice"]["member|goblin"]
+	holding := data.Perception.Intel.Holdings["member|alice"]["member|goblin"][""]
 	payload, err := encounter.EncodeSightTestimony(encounter.SightTestimony{
 		State: encounter.LocationKnown, Position: cellAt(2, 0),
 	})
 	s.Require().NoError(err)
 	s.NotContains(string(payload), "conditions")
 	holding.Payload = payload
-	data.Perception.Intel.Holdings["member|alice"]["member|goblin"] = holding
+	data.Perception.Intel.Holdings["member|alice"]["member|goblin"][""] = holding
 
 	loaded, err := encounter.LoadEncounter(s.loadInput(data, s.table))
 	s.Require().NoError(err)
@@ -418,7 +418,7 @@ func TestDecodeRefusesMalformedConditions(t *testing.T) {
 // storedSightOf decodes the testimony observer holds about subject as it is
 // STORED — the persisted form, conditions included.
 func (s *sightingConditionsSuite) storedSightOf(enc *encounter.Encounter, observer, subject encounter.MemberID) encounter.SightTestimony {
-	h, ok := enc.ToData().Perception.Intel.Holdings[core.EntityID("member|"+observer)][intel.Subject("member|"+subject)]
+	h, ok := enc.ToData().Perception.Intel.Holdings[core.EntityID("member|"+observer)][intel.Subject("member|"+subject)][""]
 	s.Require().True(ok, "%s holds no stored sighting of %s", observer, subject)
 	got, valid := encounter.DecodeSightTestimony(h.Payload)
 	s.Require().True(valid)

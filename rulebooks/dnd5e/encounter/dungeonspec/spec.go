@@ -1274,6 +1274,47 @@ type InteractionSpec struct {
 	// them (rpg-project#923): `approach: { within: N }`, N at least 1.
 	// Optional; absent, nobody is hailed.
 	Approach *InteractionApproachSpec `yaml:"approach,omitempty" json:"approach,omitempty"`
+
+	// Outcomes is what follows the interaction ENTERING a state, keyed by
+	// that state (rpg-project#928): authored once here, so every line that
+	// leads to the state, on any carrier, writes the same thing. Optional.
+	//
+	//	outcomes:
+	//	  admitted:
+	//	    - recognize:
+	//	        topic: admitted
+	//	        holder: spoken_to
+	//	        about: party_in_sight
+	//	        heard_by: carriers_who_witnessed
+	Outcomes map[string][]OutcomeSpec `yaml:"outcomes,omitempty" json:"outcomes,omitempty"`
+}
+
+// OutcomeSpec is one consequence of an interaction entering a state
+// ([encounter.Consequence]). Exactly one kind; `recognize` is the only one.
+type OutcomeSpec struct {
+	// Recognize is: a holder comes to hold a topic about subjects.
+	Recognize *RecognizeSpec `yaml:"recognize,omitempty" json:"recognize,omitempty"`
+}
+
+// RecognizeSpec is `recognize:` ([encounter.Recognition]): the topic, who
+// holds it, about whom, and who else holds it having heard. The words are
+// fixed — exactly what the gate uses — and any other is refused.
+type RecognizeSpec struct {
+	// Topic is the topic held, authored content. REQUIRED.
+	Topic string `yaml:"topic" json:"topic"`
+
+	// Holder is who holds it: `spoken_to`, the creature the line that moved
+	// the interaction was said to. REQUIRED.
+	Holder string `yaml:"holder" json:"holder"`
+
+	// About is whom it is held about: `party_in_sight`, the speaker's party
+	// the holder sees at that moment. REQUIRED.
+	About string `yaml:"about" json:"about"`
+
+	// HeardBy is who else holds it, heard: `carriers_who_witnessed`, the
+	// interaction's other carriers who witnessed the line. Optional; absent,
+	// nobody else.
+	HeardBy string `yaml:"heard_by,omitempty" json:"heard_by,omitempty"`
 }
 
 // InteractionApproachSpec is an interaction's `approach` (rpg-project#923): the

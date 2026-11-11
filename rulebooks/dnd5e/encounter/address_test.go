@@ -49,7 +49,7 @@ func hailRecipe() machine.Recipe {
 // warnTheGate advances the gate to warned, out of its initial state.
 func warnTheGate(t *testing.T, enc *Encounter) {
 	t.Helper()
-	require.NoError(t, enc.advanceInteraction(Option{ID: "warn", Advance: &Advance{Interaction: hailGate, Success: "warned"}}, true, nil, 0))
+	require.NoError(t, enc.advanceInteraction(Option{ID: "warn", Advance: &Advance{Interaction: hailGate, Success: "warned"}}, true, recognitionLine{}))
 	require.Equal(t, "warned", enc.interactions[hailGate].blob.State, "precondition: the gate moved on")
 }
 
@@ -299,7 +299,7 @@ func TestABumpWhileAddressedIsTheBumpLine(t *testing.T) {
 func TestNoReplyEndsTheAddress(t *testing.T) {
 	enc := hailHall(t)
 	walk(t, enc, "alice", spatial.Position{X: 2, Y: 1}, spatial.Position{X: 3, Y: 1}, spatial.Position{X: 4, Y: 1})
-	require.NoError(t, enc.advanceInteraction(hailClaim()[0], true, nil, 0))
+	require.NoError(t, enc.advanceInteraction(hailClaim()[0], true, recognitionLine{}))
 	require.Equal(t, "admitted", enc.interactions[hailGate].blob.State, "precondition: the gate admitted")
 
 	require.Nil(t, addressOf(t, enc, "alice"), "the read asks the predicate: nothing is offered")

@@ -238,11 +238,12 @@ func (s *MonsterTurnTestSuite) TestALostMemoryIsNeverCurrent() {
 	s.Require().NoError(err)
 	holdings := data.Perception.Intel.Holdings[perception.Qualify("member", goblin)]
 	edited := false
-	for key, holding := range holdings {
+	for key, topics := range holdings {
 		if string(key) == string(perception.Qualify("member", alice)) {
+			holding := topics[""]
 			s.Require().NotEmpty(holding.CurrentVia, "precondition: the goblin sees alice now")
 			holding.Payload = payload
-			holdings[key] = holding
+			topics[""] = holding
 			edited = true
 		}
 	}

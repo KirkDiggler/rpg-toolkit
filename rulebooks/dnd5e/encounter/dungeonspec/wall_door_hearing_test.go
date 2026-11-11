@@ -161,7 +161,8 @@ func (s *SingleRoomWallDoorSuite) greet(enc *encounter.Encounter) {
 // what a reload would hand its table.
 func (s *SingleRoomWallDoorSuite) voicesHeardBy(enc *encounter.Encounter, member encounter.MemberID) int {
 	n := 0
-	for _, h := range enc.ToData().Perception.Intel.Holdings[core.EntityID("member|"+string(member))] {
+	for _, topics := range enc.ToData().Perception.Intel.Holdings[core.EntityID("member|"+string(member))] {
+		h := topics[""]
 		if string(h.Channel) != "sounds" {
 			continue
 		}

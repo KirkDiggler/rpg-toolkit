@@ -8,9 +8,10 @@ package castletest
 // interaction is one run-wide record every gate speaker reads and steps: a
 // first failed claim is the captain's warning and closes that claim at the
 // whole gate, for every hero, across a reload; the other claim's failure
-// then arrests; either claim's success admits, and its `troupe-admitted`
-// fact stays the gate post's pass until Gate S5 gives `admitted` its own
-// consequences. What `arrested` does to posts and bodies is Gate S5's too, so
+// then arrests; either claim's success admits, and `admitted`'s outcome makes
+// the gate guards recognise the party they see (rpg-project#928), which is
+// what the gate posts let through. What `arrested` does to posts and bodies
+// is a later piece of Gate S5, so
 // these routes assert only the record and the menu, and that a failed claim
 // no longer teaches `party-recognized`: the garrison stays civil.
 
@@ -116,8 +117,8 @@ func toTheCaptainWithTheBard(t *testing.T) *kingScene {
 // rpg-project#922 on the castle: the guest claim fails, the captain warns,
 // and the claim is gone at the whole gate — from the captain and from gate-1,
 // for the hero and for the bard — while the troupe claim remains; a reload
-// keeps it so; and the troupe claim beaten admits the party, its fact the
-// post's pass the troupe crosses the gate on.
+// keeps it so; and the troupe claim beaten admits the party: the captain
+// recognises the party he sees, and the troupe crosses the gate on it.
 func TestMadKingTheGateRemembersTheFailedClaim(t *testing.T) {
 	t.Parallel()
 	s := toTheCaptainWithTheBard(t)
@@ -141,11 +142,12 @@ func TestMadKingTheGateRemembersTheFailedClaim(t *testing.T) {
 
 	s.said(kingCaptain, "troupe", "performance", true)
 	require.Equal(t, "admitted", s.entrance(), "the troupe claim admits the party")
-	require.True(t, s.learners("troupe-admitted")[hero], "the hero holds the post's pass")
+	require.True(t, s.recognizes(kingCaptain, hero), "the captain recognises the hero")
+	require.False(t, s.recognizes(kingCaptain, bard), "the bard, left on the road out of his sight, is not recognised")
 	require.Equal(t, everyGateSpeaker(false), s.gateOffers(hero, "troupe"), "an admitted entrance offers neither claim")
 
-	// The pass still crosses the post: gate-1 stays posted beneath the gate
-	// (rpg-project#857) and lets the troupe by on its fact.
+	// The recognition crosses the posts: gate-1 stays posted beneath the
+	// gate (rpg-project#857) and lets by whom he recognises, having heard.
 	s.stepTo(besideTheCrossing)
 	s.open(kingGateDoor)
 	s.walkTo(castleCell(0, -6))

@@ -362,6 +362,12 @@ func (f *field) validatePredicate(what string, t Trigger, sentinel error) error 
 		// fire an ending, an arrival or an until on it.
 		return fmt.Errorf("%s waits on interaction %q, and an interaction's state is only something an option requires: %w",
 			what, p.Interaction, sentinel)
+	case TriggerRecognized:
+		// READ BY A LINE OR A PASS, NEVER WAITED FOR ([TriggerRecognized]),
+		// for holds' reason: nothing notices a holding land in order to fire
+		// an ending, an arrival or an until on it.
+		return fmt.Errorf("%s waits on recognition on topic %q, and recognition is only something a line or a pass "+
+			"requires: %w", what, p.Topic, sentinel)
 	case TriggerRound:
 		if p.Round < 1 {
 			return fmt.Errorf("%s waits for round %d, and a round is counted from 1: %w", what, p.Round, sentinel)

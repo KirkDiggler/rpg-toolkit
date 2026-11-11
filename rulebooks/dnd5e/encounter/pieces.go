@@ -181,8 +181,8 @@ type knowledgePiece struct {
 // observerPiece is an [ObserverPiece]'s shape: the observer's holdings and,
 // for a member, its sight sweep key. One of the two is always present.
 type observerPiece struct {
-	Holdings map[intel.Subject]intel.HoldingData `json:"holdings,omitempty"`
-	Sweep    string                              `json:"sweep,omitempty"`
+	Holdings map[intel.Subject]map[intel.Topic]intel.HoldingData `json:"holdings,omitempty"`
+	Sweep    string                                              `json:"sweep,omitempty"`
 }
 
 // SplitPieces groups a checkpoint's rest into pieces, marks each, and returns
@@ -346,7 +346,7 @@ func JoinPieces(in *JoinPiecesInput) (*EncounterData, error) {
 			}
 			if len(o.Holdings) > 0 {
 				if out.Perception.Intel.Holdings == nil {
-					out.Perception.Intel.Holdings = map[core.EntityID]map[intel.Subject]intel.HoldingData{}
+					out.Perception.Intel.Holdings = map[core.EntityID]map[intel.Subject]map[intel.Topic]intel.HoldingData{}
 				}
 				out.Perception.Intel.Holdings[observer] = o.Holdings
 			}

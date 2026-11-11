@@ -272,14 +272,14 @@ func (s *observedContextSuite) TestSnapshotFactsWinOverLiveState() {
 
 func (s *observedContextSuite) TestObservedPositionCanDisagreeWithLivePlacement() {
 	data := s.enc.ToData()
-	holding := data.Perception.Intel.Holdings["member|alice"]["member|goblin"]
+	holding := data.Perception.Intel.Holdings["member|alice"]["member|goblin"][""]
 	seen, ok := encounter.DecodeSightTestimony(holding.Payload)
 	s.Require().True(ok)
 	seen.Position = cellAt(3, 0)
 	payload, err := encounter.EncodeSightTestimony(seen)
 	s.Require().NoError(err)
 	holding.Payload = payload
-	data.Perception.Intel.Holdings["member|alice"]["member|goblin"] = holding
+	data.Perception.Intel.Holdings["member|alice"]["member|goblin"][""] = holding
 	out := s.read(s.load(data))
 	s.Equal(cellAt(3, 0), s.member(out, goblin).Position)
 	s.Equal(float64(3), s.pair(out, alice, goblin).DistanceCells)
@@ -290,7 +290,7 @@ func (s *observedContextSuite) TestMemoryAndOtherChannelsAreExcluded() {
 	for _, mode := range []string{"remembered", "unknown-memory", "other-channel"} {
 		s.Run(mode, func() {
 			data := s.enc.ToData()
-			holding := data.Perception.Intel.Holdings["member|alice"]["member|goblin"]
+			holding := data.Perception.Intel.Holdings["member|alice"]["member|goblin"][""]
 			holding.CurrentVia = nil
 			if mode == "unknown-memory" {
 				payload, err := encounter.EncodeSightTestimony(encounter.SightTestimony{State: encounter.LocationUnknown})
@@ -302,7 +302,7 @@ func (s *observedContextSuite) TestMemoryAndOtherChannelsAreExcluded() {
 				holding.CurrentVia = append(holding.CurrentVia, "hearsay")
 				holding.Payload = []byte("opaque non-sight testimony")
 			}
-			data.Perception.Intel.Holdings["member|alice"]["member|goblin"] = holding
+			data.Perception.Intel.Holdings["member|alice"]["member|goblin"][""] = holding
 			before := s.read(s.load(data))
 			s.Require().Len(before.Members, 2)
 			s.Require().Len(before.Pairs, 6)
@@ -326,13 +326,13 @@ func (s *observedContextSuite) TestMemoryAndOtherChannelsAreExcluded() {
 
 func (s *observedContextSuite) TestUnknownObservedFieldsStayUnknown() {
 	data := s.enc.ToData()
-	holding := data.Perception.Intel.Holdings["member|alice"]["member|goblin"]
+	holding := data.Perception.Intel.Holdings["member|alice"]["member|goblin"][""]
 	payload, err := encounter.EncodeSightTestimony(encounter.SightTestimony{
 		State: encounter.LocationKnown, Position: cellAt(2, 0),
 	})
 	s.Require().NoError(err)
 	holding.Payload = payload
-	data.Perception.Intel.Holdings["member|alice"]["member|goblin"] = holding
+	data.Perception.Intel.Holdings["member|alice"]["member|goblin"][""] = holding
 	member := s.member(s.read(s.load(data)), goblin)
 	s.Nil(member.Down)
 	s.Nil(member.Equipment)
@@ -363,9 +363,10 @@ func (s *observedContextSuite) TestDetachedAndReadOnly() {
 
 func (s *observedContextSuite) TestEmptyObservationUniverse() {
 	data := s.enc.ToData()
-	for subject, holding := range data.Perception.Intel.Holdings["member|alice"] {
+	for subject, topics := range data.Perception.Intel.Holdings["member|alice"] {
+		holding := topics[""]
 		holding.CurrentVia = nil
-		data.Perception.Intel.Holdings["member|alice"][subject] = holding
+		data.Perception.Intel.Holdings["member|alice"][subject][""] = holding
 	}
 	out := s.read(s.load(data))
 	s.Equal(alice, out.Observer)
@@ -376,14 +377,14 @@ func (s *observedContextSuite) TestEmptyObservationUniverse() {
 
 func (s *observedContextSuite) TestObservedEmptyHandsRemainPresent() {
 	data := s.enc.ToData()
-	holding := data.Perception.Intel.Holdings["member|alice"]["member|goblin"]
+	holding := data.Perception.Intel.Holdings["member|alice"]["member|goblin"][""]
 	seen, ok := encounter.DecodeSightTestimony(holding.Payload)
 	s.Require().True(ok)
 	seen.Equipment = &encounter.HeldEquipment{}
 	payload, err := encounter.EncodeSightTestimony(seen)
 	s.Require().NoError(err)
 	holding.Payload = payload
-	data.Perception.Intel.Holdings["member|alice"]["member|goblin"] = holding
+	data.Perception.Intel.Holdings["member|alice"]["member|goblin"][""] = holding
 	member := s.member(s.read(s.load(data)), goblin)
 	s.Require().NotNil(member.Equipment)
 	s.Empty(member.Equipment.MainHand)
@@ -393,14 +394,14 @@ func (s *observedContextSuite) TestObservedEmptyHandsRemainPresent() {
 func (s *observedContextSuite) TestOtherObserversTestimonyDoesNotChangeThisAnswer() {
 	before := s.read(s.enc)
 	data := s.enc.ToData()
-	holding := data.Perception.Intel.Holdings["member|bob"]["member|goblin"]
+	holding := data.Perception.Intel.Holdings["member|bob"]["member|goblin"][""]
 	seen, ok := encounter.DecodeSightTestimony(holding.Payload)
 	s.Require().True(ok)
 	seen.Position = cellAt(5, 0)
 	payload, err := encounter.EncodeSightTestimony(seen)
 	s.Require().NoError(err)
 	holding.Payload = payload
-	data.Perception.Intel.Holdings["member|bob"]["member|goblin"] = holding
+	data.Perception.Intel.Holdings["member|bob"]["member|goblin"][""] = holding
 	loaded := s.load(data)
 	s.Equal(before, s.read(loaded))
 	forBob, err := loaded.ObservedContext(&encounter.ViewInput{Member: bob})

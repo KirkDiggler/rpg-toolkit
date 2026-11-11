@@ -743,7 +743,7 @@ func validateEndingTriggers(f *field, endings []EndingInput) error {
 			if err := f.validatePredicate(fmt.Sprintf("ending %q", ei.Key), ei.Trigger, ErrNoEnding); err != nil {
 				return err
 			}
-		case TriggerRound, TriggerFact, TriggerStance, TriggerHolds, TriggerInteraction:
+		case TriggerRound, TriggerFact, TriggerStance, TriggerHolds, TriggerInteraction, TriggerRecognized:
 			if err := f.validatePredicate(fmt.Sprintf("ending %q", ei.Key), ei.Trigger, ErrNoEnding); err != nil {
 				return err
 			}

@@ -71,6 +71,14 @@ type InteractionInput struct {
 	// them (address.go, rpg-project#923). Nil: nobody is ever hailed, and
 	// the definition's digest is what it was before the field existed.
 	Approach *InteractionApproach `json:",omitzero"`
+
+	// Outcomes is what follows the interaction ENTERING a state, keyed by
+	// that state (recognition.go, rpg-project#928): authored once here, so
+	// every line that leads to the state, on any carrier, writes the same
+	// thing. Each key is a state of the recipe and names at least one
+	// [Consequence]. Nil: nothing follows, and the definition's digest is
+	// what it was before the field existed.
+	Outcomes map[string][]Consequence `json:",omitzero"`
 }
 
 // InteractionData is the persistent representation of one interaction
@@ -92,6 +100,10 @@ type InteractionData struct {
 	// Approach is [InteractionInput.Approach]; part of the definition the
 	// digest covers. Absent for none.
 	Approach *InteractionApproach `json:"approach,omitzero"`
+
+	// Outcomes is [InteractionInput.Outcomes]; part of the definition the
+	// digest covers. Absent for none.
+	Outcomes map[string][]Consequence `json:"outcomes,omitzero"`
 
 	// Address is who the interaction addresses now (address.go), absent for
 	// nobody. Load refuses one naming a member or guard the run lacks.
@@ -174,7 +186,7 @@ func newInteractionRecord(in InteractionInput) (*interactionRecord, error) {
 	if err != nil {
 		return nil, fmt.Errorf("interaction %q: %w", in.ID, err)
 	}
-	owned := InteractionInput{ID: in.ID, Approach: cloneApproach(in.Approach)}
+	owned := InteractionInput{ID: in.ID, Approach: cloneApproach(in.Approach), Outcomes: cloneOutcomes(in.Outcomes)}
 	if err := json.Unmarshal(raw, &owned.Recipe); err != nil {
 		return nil, fmt.Errorf("interaction %q: %w", in.ID, err)
 	}
@@ -198,6 +210,13 @@ func newInteractionRecord(in InteractionInput) (*interactionRecord, error) {
 				}
 			}
 		}
+	}
+	states := make(map[string]bool, len(owned.Recipe.States))
+	for name := range owned.Recipe.States {
+		states[name] = true
+	}
+	if err := validateOutcomes(in.ID, states, owned.Outcomes); err != nil {
+		return nil, err
 	}
 	program, err := owned.Recipe.Compile(interactionVocabulary(&owned.Recipe))
 	if err != nil {
@@ -231,15 +250,19 @@ func CheckInteraction(in *InteractionInput) (*CheckInteractionOutput, error) {
 	}
 	out := &CheckInteractionOutput{States: slices.Sorted(maps.Keys(record.input.Recipe.States))}
 	out.Beats = slices.Sorted(maps.Keys(interactionVocabulary(&record.input.Recipe).Beats))
+	topics := grantedTopics(map[InteractionID]*interactionRecord{record.input.ID: record})
+	out.Topics = slices.Sorted(maps.Keys(topics))
 	return out, nil
 }
 
 // CheckInteractionOutput is what an authoring dialect may judge an option
-// against: every state the interaction's recipe declares and every beat it
-// listens for, each sorted.
+// against: every state the interaction's recipe declares, every beat it
+// listens for, and every topic its outcomes grant (rpg-project#928) — what
+// a `recognized` requirement may name — each sorted.
 type CheckInteractionOutput struct {
 	States []string
 	Beats  []machine.Beat
+	Topics []TopicID
 }
 
 // interactionDigest is the hex SHA-256 of the canonical definition.
@@ -315,6 +338,7 @@ func interactionsDataFrom(interactions map[InteractionID]*interactionRecord) []I
 		}
 		data := InteractionData{
 			ID: id, Definition: r.definition, Recipe: raw, Blob: blob, Approach: cloneApproach(r.input.Approach),
+			Outcomes: cloneOutcomes(r.input.Outcomes),
 			Revision: r.revision, Reservation: cloneReservation(r.reservation),
 		}
 		if r.address != nil {
@@ -336,7 +360,7 @@ func interactionsFromData(data []InteractionData) (map[InteractionID]*interactio
 		if _, dup := out[d.ID]; dup {
 			return nil, fmt.Errorf("interaction %q is saved twice", d.ID)
 		}
-		in := InteractionInput{ID: d.ID, Approach: d.Approach}
+		in := InteractionInput{ID: d.ID, Approach: d.Approach, Outcomes: d.Outcomes}
 		if err := json.Unmarshal(d.Recipe, &in.Recipe); err != nil {
 			return nil, fmt.Errorf("interaction %q recipe: %w", d.ID, err)
 		}
@@ -375,12 +399,17 @@ func interactionsFromData(data []InteractionData) (map[InteractionID]*interactio
 }
 
 // validateOptionInteractions refuses a line that names an interaction this
-// run does not have, a state its recipe does not declare, or an advance on a
+// run does not have, a state its recipe does not declare, a recognition on a
+// topic no interaction's outcome grants (rpg-project#928), or an advance on a
 // beat no state of its recipe listens for — each a requirement nobody can
 // ever meet or a verdict that can never land, refused at the door it came
 // in through. The caller adds the sentinel.
 func validateOptionInteractions(interactions map[InteractionID]*interactionRecord, options []Option) error {
+	granted := grantedTopics(interactions)
 	for _, o := range options {
+		if err := validateRecognizedTopics(granted, fmt.Sprintf("option %q", o.ID), o.Requires); err != nil {
+			return err
+		}
 		for _, requires := range o.Requires {
 			inner, _ := unwrapNot(requires)
 			t, ok := inner.(TriggerInteraction)

@@ -623,8 +623,8 @@ type UntilStepData struct {
 // TriggerData is the persistent representation of one [Trigger] — the
 // predicate grammar on the wire (rpg-project#375). Kind is one of
 // reached_position, external, member_down, exited_holding, round, fact,
-// stance, holds, left, not (its inner in Not) and interaction (its id and
-// states, rpg-project#922), and the other fields are populated per kind exactly as
+// stance, holds, left, not (its inner in Not), interaction (its id and
+// states, rpg-project#922) and recognized (its topic, rpg-project#928), and the other fields are populated per kind exactly as
 // [EndingData]'s own are; a disposition's until persists as one of these,
 // an ending is one of these plus its key, and an option's requirement is a
 // fact or a holds (rpg-project#569) — `holds` naming its prop in Item.
@@ -648,6 +648,10 @@ type TriggerData struct {
 	// for that kind.
 	Interaction InteractionID `json:"interaction,omitempty"`
 	States      []string      `json:"states,omitempty"`
+
+	// Topic is a `recognized` trigger's topic (rpg-project#928); written
+	// only for that kind.
+	Topic TopicID `json:"topic,omitempty"`
 }
 
 // triggerDataFrom renders a trigger for the blob — ONE switch for endings and
@@ -679,6 +683,8 @@ func triggerDataFrom(t Trigger) TriggerData {
 		return TriggerData{Kind: "not", Not: &inner}
 	case TriggerInteraction:
 		return TriggerData{Kind: "interaction", Interaction: t.Interaction, States: slices.Clone(t.In)}
+	case TriggerRecognized:
+		return TriggerData{Kind: "recognized", Topic: t.Topic}
 	}
 	return TriggerData{}
 }
@@ -717,6 +723,8 @@ func triggerFromData(td TriggerData) (Trigger, error) {
 		return TriggerLeft{Exit: td.Exit}, nil
 	case "interaction":
 		return TriggerInteraction{Interaction: td.Interaction, In: slices.Clone(td.States)}, nil
+	case "recognized":
+		return TriggerRecognized{Topic: td.Topic}, nil
 	case "not":
 		if td.Not == nil {
 			return nil, fmt.Errorf("not names nothing to negate: %w", ErrNoEnding)
@@ -3832,7 +3840,15 @@ func refuseRoomLocalSightings(data perception.Data) error {
 		subjects := slices.Sorted(maps.Keys(data.Intel.Holdings[observer]))
 
 		for _, subject := range subjects {
-			holding := data.Intel.Holdings[observer][subject]
+			// Sightings live on the default topic only (mind/perception rule
+			// 12). A named topic's payload is testimony of another kind — a
+			// recognition, never a prop or door observation — so decoding it
+			// here would refuse a valid blob. A subject held only on named
+			// topics has no sighting to check.
+			holding, sighted := data.Intel.Holdings[observer][subject][""]
+			if !sighted {
+				continue
+			}
 			if perception.Channel(holding.Channel) != perception.Sight {
 				continue
 			}
