@@ -41,11 +41,27 @@ import (
 // resuming after a segment's id starts exactly at the next entry the
 // recipient holds.
 //
-// A RUN NEVER SPANS A COMMIT. That holds because every act that outlives one
-// call is paused by a window, and the window's own beat, under the same act,
-// closes the run before the call ends. TestCatchUpEqualsLive is the guard: a
-// verb that continued an act across calls without a beat would fold
-// differently live than on catch-up, and that test would fail.
+// A RUN NEVER SPANS A COMMIT. That holds for two reasons, one per way an act
+// outlives a commit:
+//
+//   - Across calls: every act that outlives one call is paused by a window,
+//     and the window's own beat, under the same act, closes the run before
+//     the call ends.
+//   - Within a continued walk (rpg-project#879 R7): the walk commits after
+//     each step that paid a world round, and that step's raise records the
+//     round's tick under the walk's act, audienced to every roster member.
+//     A tick is a clock entry, which folds into no walk, so it closes every
+//     recipient's walk run before the pace commit; the next commit's steps
+//     open a new segment of the same act. A creature the raise wakes walks
+//     AFTER the tick, so its run is still open at the pace commit. That is
+//     safe because creatures walk only inside raises: the walker's next
+//     beat, or failing that the next raise's own tick, closes it before it
+//     could continue in a later commit. A creature that walked outside a
+//     raise would break this.
+//
+// TestCatchUpEqualsLive and TestCatchUpEqualsLiveAcrossAPaceCommit are the
+// guards: a verb that continued an act across commits without a beat would
+// fold differently live than on catch-up, and they would fail.
 
 // Family is which kind of thing an act entry is (R16). The beat decides it,
 // never the verb (act_family.go holds the table).

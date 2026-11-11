@@ -4,6 +4,7 @@
 package encounter
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -72,8 +73,14 @@ type EncounterData struct {
 	// refuses any value other than the one this build writes.
 	PerceptionSubjects uint32         `json:"perception_subjects,omitempty"`
 	Log                record.LogData `json:"log"`
-	Field              FieldData      `json:"field"`
-	Members            []MemberData   `json:"members"`
+	// SiteHash names the compiled site this encounter runs on (site.go,
+	// rpg-project#879 S5): THE SITE IS CONTENT THE RECORD REFERENCES, so the
+	// field is never written here. REQUIRED at load, and resolved through the
+	// load's [SiteProvider]; a hash the provider cannot resolve fails closed
+	// with [ErrUnknownSite]. A blob from before the site tier carried a
+	// `field` key and no hash, and is refused by name.
+	SiteHash SiteHash     `json:"site_hash"`
+	Members  []MemberData `json:"members"`
 	// Doors are the field's doors and the state each is in RIGHT NOW
 	// (rpg-toolkit#1123). Top level rather than inside Field, beside Members
 	// and for the same reason: a door's edges are construction truth but its
@@ -83,6 +90,14 @@ type EncounterData struct {
 	// exactly what those encounters meant.
 	Doors      []DoorData      `json:"doors,omitempty"`
 	SightAreas []SightAreaData `json:"sight_areas,omitempty"`
+	// Interactions are the run's interaction instances (interaction.go,
+	// rpg-project#922): each definition, canonical, with its digest, and its
+	// progress, in id order. Top level beside Doors for the doors' reason:
+	// the definition is authored, the state is the run's. PRESENT EXACTLY
+	// WHEN THE CONTENT DECLARES ONE — a run without interactions writes no
+	// key, the exact bytes every earlier blob has. Load compiles each again
+	// and refuses a digest that does not match or a state the recipe lacks.
+	Interactions []InteractionData `json:"interactions,omitempty"`
 	// Journal is the run's ONE record of what happened: every knowledge fact
 	// (who has found which concealment, rpg-toolkit#1371, rpg-project#490;
 	// who has come to know which fact, rpg-project#375; which pair publicly
@@ -327,11 +342,12 @@ type CanvasData struct {
 // at load, refused by name when absent, never defaulted — a region whose
 // light nobody stated is a fact this module may not invent (rpg-toolkit#1033).
 type RegionData struct {
-	ID        string         `json:"id"`
-	Name      string         `json:"name,omitempty"`
-	Cells     []PositionData `json:"cells"`
-	Archetype string         `json:"archetype"`
-	Lighting  *LightingData  `json:"lighting"`
+	ID        string            `json:"id"`
+	Name      string            `json:"name,omitempty"`
+	Cells     []PositionData    `json:"cells"`
+	Archetype string            `json:"archetype"`
+	Lighting  *LightingData     `json:"lighting"`
+	Ground    *RegionGroundData `json:"ground,omitempty"`
 
 	// Concealed is a TOMBSTONE: the key a region wrote while a region was
 	// the thing that could be hidden (rpg-toolkit#1371 through
@@ -607,7 +623,8 @@ type UntilStepData struct {
 // TriggerData is the persistent representation of one [Trigger] — the
 // predicate grammar on the wire (rpg-project#375). Kind is one of
 // reached_position, external, member_down, exited_holding, round, fact,
-// stance, holds, left and not (its inner in Not), and the other fields are populated per kind exactly as
+// stance, holds, left, not (its inner in Not), interaction (its id and
+// states, rpg-project#922) and recognized (its topic, rpg-project#928), and the other fields are populated per kind exactly as
 // [EndingData]'s own are; a disposition's until persists as one of these,
 // an ending is one of these plus its key, and an option's requirement is a
 // fact or a holds (rpg-project#569) — `holds` naming its prop in Item.
@@ -625,6 +642,16 @@ type TriggerData struct {
 	// Not is a `not` trigger's one inner predicate (rpg-project#719), kind
 	// "not"; written only for that kind.
 	Not *TriggerData `json:"not,omitempty"`
+
+	// Interaction and States are an `interaction` trigger's interaction and
+	// the states any one of which meets it (rpg-project#922); written only
+	// for that kind.
+	Interaction InteractionID `json:"interaction,omitempty"`
+	States      []string      `json:"states,omitempty"`
+
+	// Topic is a `recognized` trigger's topic (rpg-project#928); written
+	// only for that kind.
+	Topic TopicID `json:"topic,omitempty"`
 }
 
 // triggerDataFrom renders a trigger for the blob — ONE switch for endings and
@@ -654,6 +681,10 @@ func triggerDataFrom(t Trigger) TriggerData {
 	case TriggerNot:
 		inner := triggerDataFrom(t.Inner)
 		return TriggerData{Kind: "not", Not: &inner}
+	case TriggerInteraction:
+		return TriggerData{Kind: "interaction", Interaction: t.Interaction, States: slices.Clone(t.In)}
+	case TriggerRecognized:
+		return TriggerData{Kind: "recognized", Topic: t.Topic}
 	}
 	return TriggerData{}
 }
@@ -690,6 +721,10 @@ func triggerFromData(td TriggerData) (Trigger, error) {
 		return TriggerHolds{Prop: td.Item}, nil
 	case "left":
 		return TriggerLeft{Exit: td.Exit}, nil
+	case "interaction":
+		return TriggerInteraction{Interaction: td.Interaction, In: slices.Clone(td.States)}, nil
+	case "recognized":
+		return TriggerRecognized{Topic: td.Topic}, nil
 	case "not":
 		if td.Not == nil {
 			return nil, fmt.Errorf("not names nothing to negate: %w", ErrNoEnding)
@@ -785,14 +820,15 @@ type AxialPointData struct {
 // with no elevation), so absence and zero have to be told apart by the shape.
 // Openings omit when there are none, which is the same fact as an absent list.
 type StructuralWallData struct {
-	ID        string                  `json:"id"`
-	Ref       string                  `json:"ref"`
-	From      PositionData            `json:"from"`
-	To        PositionData            `json:"to"`
-	Height    float64                 `json:"height"`
-	Thickness float64                 `json:"thickness"`
-	Elevation float64                 `json:"elevation"`
-	Openings  []StructuralOpeningData `json:"openings,omitempty"`
+	ID                string                  `json:"id"`
+	Ref               string                  `json:"ref"`
+	From              PositionData            `json:"from"`
+	To                PositionData            `json:"to"`
+	Height            float64                 `json:"height"`
+	Thickness         float64                 `json:"thickness"`
+	Elevation         float64                 `json:"elevation"`
+	Openings          []StructuralOpeningData `json:"openings,omitempty"`
+	MaterialOverrides []MaterialOverrideData  `json:"material_overrides,omitempty"`
 }
 
 // StructuralOpeningData is the persistent representation of a
@@ -1193,21 +1229,22 @@ type FactData struct {
 // the same way: a blob claiming an allied pair turned hostile is claiming
 // something this field has no machinery for.
 func validateWorldFacts(
-	entries []journalEntry, concealments []ConcealmentInput, regions []RegionInput, floor *field, facts []FactID,
+	entries []journalEntry, floor *field, facts []FactID,
 	turnable []factionPair, everMembers []MemberID,
 ) error {
 	// kind -> the subject that kind's writer always records; "" for a fact
 	// kind, whose subject is its own actor.
 	minted := make(map[string]string)
-	for _, c := range concealments {
-		minted[string(concealmentKnownKind(c.ID))] = string(concealmentEntityID(c.ID))
+	for i := range floor.concealments {
+		id := floor.concealments[i].id
+		minted[string(concealmentKnownKind(id))] = string(concealmentEntityID(id))
 	}
 	for _, id := range facts {
 		minted[string(factKnownKind(id))] = ""
 	}
 	// The retired whole-room kind still loads, and teaches nothing
 	// ([legacyRoomKnownPrefix]); its shape is judged as it always was.
-	for _, region := range regions {
+	for _, region := range floor.regions {
 		minted[string(legacyRoomKnownKind(region.ID))] = ""
 	}
 	minted[string(cellsKnownKind)] = ""
@@ -1366,17 +1403,54 @@ func approachesDataFrom(approaches []CheckApproach) []CheckApproachData {
 }
 
 // OptionData is the persistent representation of one [Option]: the line,
-// its check, its requirement as a persisted trigger, and both verdicts' rows
-// (rpg-project#569). Requires and the rows omit when unset, and so does the
-// check: a plain line (rpg-project#785 R5) rolls none. Id and say are always
-// written, because an option without them is refused.
+// its check, its requirements as a LIST of persisted triggers
+// (rpg-project#922), and both verdicts' rows (rpg-project#569). Requires and
+// the rows omit when unset, and so does the check: a plain line
+// (rpg-project#785 R5) rolls none. Id and say are always written, because an
+// option without them is refused.
 type OptionData struct {
 	ID       string              `json:"id"`
 	Say      string              `json:"say"`
 	Check    []CheckApproachData `json:"check,omitempty"`
-	Requires *TriggerData        `json:"requires,omitempty"`
+	Requires []TriggerData       `json:"requires,omitempty"`
+	Advance  *AdvanceData        `json:"advance,omitempty"`
 	Success  []AnswerData        `json:"success,omitempty"`
 	Failure  []AnswerData        `json:"failure,omitempty"`
+
+	// Grants is [Option.Grants] (rpg-project#929). Absent for none.
+	Grants []RowGrant `json:"grants,omitempty"`
+}
+
+// AdvanceData is the persistent representation of an [Advance]: the
+// interaction and the beat each verdict steps it on (rpg-project#922).
+type AdvanceData struct {
+	Interaction InteractionID `json:"interaction"`
+	Success     string        `json:"success,omitempty"`
+	Failure     string        `json:"failure,omitempty"`
+}
+
+// UnmarshalJSON reads one persisted option, REFUSING the single-object
+// `requires` every blob before rpg-project#922 wrote: [ErrInvalidData], by
+// name. Pre-release, a run saved before the list is started again, never
+// migrated — and never read as no requirement, which would offer a gated
+// line to everybody.
+func (od *OptionData) UnmarshalJSON(raw []byte) error {
+	var probe struct {
+		Requires json.RawMessage `json:"requires"`
+	}
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return err
+	}
+	if trimmed := bytes.TrimSpace(probe.Requires); len(trimmed) > 0 && trimmed[0] == '{' {
+		var named struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(raw, &named)
+		return fmt.Errorf("option %q requires is one object, the shape before rpg-project#922; "+
+			"requires is a list now, start the run again: %w", named.ID, ErrInvalidData)
+	}
+	type plain OptionData
+	return json.Unmarshal(raw, (*plain)(od))
 }
 
 // optionsDataFrom renders a list of options for the blob, nil staying nil so
@@ -1390,10 +1464,13 @@ func optionsDataFrom(options []Option) []OptionData {
 		od := OptionData{
 			ID: o.ID, Say: o.Say, Check: approachesDataFrom(o.Check),
 			Success: rowsDataFrom(o.Success), Failure: rowsDataFrom(o.Failure),
+			Grants: cloneGrants(o.Grants),
 		}
-		if o.Requires != nil {
-			td := triggerDataFrom(o.Requires)
-			od.Requires = &td
+		for _, t := range o.Requires {
+			od.Requires = append(od.Requires, triggerDataFrom(t))
+		}
+		if a := o.Advance; a != nil {
+			od.Advance = &AdvanceData{Interaction: a.Interaction, Success: string(a.Success), Failure: string(a.Failure)}
 		}
 		out = append(out, od)
 	}
@@ -1427,13 +1504,19 @@ func optionsFromData(data []OptionData) ([]Option, error) {
 		o := Option{
 			ID: od.ID, Say: od.Say, Check: approachesFromData(od.Check),
 			Success: rowsFromData(od.Success), Failure: rowsFromData(od.Failure),
+			Grants: cloneGrants(od.Grants),
 		}
-		if od.Requires != nil {
-			t, err := triggerFromData(*od.Requires)
+		for n, td := range od.Requires {
+			t, err := triggerFromData(td)
 			if err != nil {
-				return nil, fmt.Errorf("option %q requires: %w", od.ID, err)
+				return nil, fmt.Errorf("option %q requires[%d]: %w", od.ID, n, err)
 			}
-			o.Requires = t
+			o.Requires = append(o.Requires, t)
+		}
+		if a := od.Advance; a != nil {
+			o.Advance = &Advance{
+				Interaction: a.Interaction, Success: machine.Beat(a.Success), Failure: machine.Beat(a.Failure),
+			}
 		}
 		out = append(out, o)
 	}
@@ -2316,7 +2399,7 @@ func (e *Encounter) ToData() EncounterData {
 		panic(fmt.Errorf("encounter: retention at storage boundary: %w", err))
 	}
 
-	return e.snapshot()
+	return e.snapshot(e.story.ToData())
 }
 
 // WorldView returns a read-only snapshot of this Encounter for mid-verb
@@ -2333,14 +2416,15 @@ func (e *Encounter) ToData() EncounterData {
 // EncounterData wholesale, so the save-vs-view distinction lives here, in
 // the name and this contract, not in the shape.
 func (e *Encounter) WorldView() EncounterData {
-	return e.snapshot()
+	return e.snapshot(e.story.ToData())
 }
 
 // snapshot renders the encounter's current state as EncounterData: the ONE
 // snapshot body behind both entries, so the storage boundary (ToData, which
 // trims first) and the pure read (WorldView, which never trims) cannot
-// drift.
-func (e *Encounter) snapshot() EncounterData {
+// drift. log is the record as the caller emits it: the whole retained log
+// for ToData and WorldView, the head alone for ToCheckpoint.
+func (e *Encounter) snapshot(log record.LogData) EncounterData {
 	// Members in sorted-ID order: an unchanged encounter must produce
 	// byte-identical snapshots (T6 review M1 — map iteration here made
 	// ToData nondeterministic and the round-trip suite ~16% flaky).
@@ -2403,8 +2487,6 @@ func (e *Encounter) snapshot() EncounterData {
 		return 0
 	})
 
-	// Deep-copy field from the compiled field's authored inputs
-	fieldData := fieldDataFrom(e.field)
 	sightAreasData := sightAreasDataFrom(e.sightAreas)
 
 	// Doors, in the records' own stable ID order (C8) — the state each is in
@@ -2485,11 +2567,12 @@ func (e *Encounter) snapshot() EncounterData {
 		Landed:             wakeBeatsData(e.landed),
 		Perception:         e.intelLog.ToData(),
 		PerceptionSubjects: perceptionSubjectVersion,
-		Log:                e.story.ToData(),
-		Field:              fieldData,
+		Log:                log,
+		SiteHash:           e.siteHash(),
 		Members:            membersData,
 		Doors:              doorData,
 		SightAreas:         sightAreasData,
+		Interactions:       interactionsDataFrom(e.interactions),
 		Journal:            journalData,
 		Reserve:            reserveData,
 		Endings:            endingsData,
@@ -2521,6 +2604,7 @@ func fieldDataFrom(f *field) FieldData {
 		out.Regions[i] = RegionData{
 			ID: r.ID, Name: r.Name, Cells: cells, Archetype: r.Archetype,
 			Lighting: &LightingData{Intensity: &intensity},
+			Ground:   regionGroundData(r.Ground),
 		}
 	}
 
@@ -2675,13 +2759,14 @@ func fieldDataFrom(f *field) FieldData {
 		for i := range f.structuralWalls {
 			w := &f.structuralWalls[i]
 			swd := StructuralWallData{
-				ID:        w.id,
-				Ref:       w.ref,
-				From:      PositionData{X: w.from.X, Y: w.from.Y},
-				To:        PositionData{X: w.to.X, Y: w.to.Y},
-				Height:    w.height,
-				Thickness: w.thickness,
-				Elevation: w.elevation,
+				ID:                w.id,
+				Ref:               w.ref,
+				From:              PositionData{X: w.from.X, Y: w.from.Y},
+				To:                PositionData{X: w.to.X, Y: w.to.Y},
+				Height:            w.height,
+				Thickness:         w.thickness,
+				Elevation:         w.elevation,
+				MaterialOverrides: materialOverridesData(w.materialOverrides),
 			}
 			for j := range w.openings {
 				o := &w.openings[j]
@@ -2747,6 +2832,16 @@ type LoadEncounterInput struct {
 	// IDs is the id source, exactly as on [SetupInput]: optional, nil is
 	// the wall clock and crypto/rand.
 	IDs record.IDSource
+
+	// Sites resolves [EncounterData.SiteHash] (site.go): optional, nil is
+	// [DefaultSites].
+	Sites SiteProvider
+
+	// Site is the site's authored source, for a host that holds the site
+	// piece apart from the checkpoint and a provider that may not hold the
+	// hash yet: compiled on a miss and refused unless it hashes to
+	// [EncounterData.SiteHash]. Optional; nil asks the provider by hash alone.
+	Site *SiteData
 }
 
 // Validate reports whether the input is usable. It checks only the input's own
@@ -2775,12 +2870,14 @@ func (in *LoadEncounterInput) Validate() error {
 //
 // Validation order (R5 — validate all before constructing): no endings,
 // empty/reserved ending keys, duplicate ending keys, kind/reached_position
-// checks, undeclared outcome ending; THEN the field: the wire-only checks
-// (the room-chain tombstones, a void or orientation word that is absent or
-// unknown, a region or prop or lighting block whose REQUIRED pointer is
-// absent — concerns that exist only because the wire uses strings and
-// pointers where the construction form uses typed values), then the field
-// converted back into a [FieldInput] and handed to the SAME compileField and
+// checks, undeclared outcome ending; THEN THE SITE (site.go, rpg-project#879
+// S5): a checkpoint with no site hash is refused by name, the hash is
+// resolved through the provider (a miss with no piece fails closed with
+// [ErrUnknownSite]; a piece is compiled by the SAME [CompileSite] Setup's
+// field goes through, with the wire-only checks — the room-chain
+// tombstones, an absent or unknown void or orientation word, an absent
+// REQUIRED pointer — and every compileField rule), the checkpoint's doors
+// must stand where the site's do, and their states go through the SAME
 // validateDoorInputs Setup uses; THEN the concealment gate (the two
 // capabilities required exactly when the field carries concealed structure,
 // and the persisted world agreeing with the field — rpg-toolkit#1371); THEN
@@ -2799,7 +2896,7 @@ func (in *LoadEncounterInput) Validate() error {
 // is a real ordering asymmetry against the up-front list above; a future cleanup could
 // hoist it into the member validation loop instead.
 //
-// The field validation is deliberately the SAME Setup runs, not a parallel
+// The field validation, run when the site compiles, is deliberately the SAME Setup runs, not a parallel
 // reimplementation — Setup and Load diverging on the W-laws was flagged
 // explicitly in #929 T1 review as a drift risk. Every error the shared
 // validator returns is wrapped once more with ErrInvalidData (multi-%w, this
@@ -2923,56 +3020,45 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 	}
 
-	// Convert the wire representation back into a FieldInput — the ONLY
-	// load-specific pre-validation left (the tombstones, word resolution,
-	// and pointer presence: concerns that exist only because the wire form
-	// uses strings and pointers where the construction form uses typed
-	// values) — then hand off to the SAME compileField and validateDoorInputs
-	// Setup uses (see this function's doc comment).
-	fieldInput, err := fieldInputFrom(data.Field)
+	// THE SITE, BY HASH (site.go, rpg-project#879 S5): the field is content
+	// the record references, compiled once per process and shared. A blob
+	// with no hash is the pre-site dialect, which carried its field inline;
+	// a hash the provider cannot resolve fails closed by name. Everything a
+	// field can get wrong was refused when the site compiled ([CompileSite]),
+	// for both seams.
+	if data.SiteHash == "" {
+		return nil, fmt.Errorf(
+			"load encounter: the checkpoint names no site (site_hash) — a blob from before rpg-project#879 S5 carried its field inline, recreate the save: %w: %w",
+			ErrInvalidData, ErrUnknownSite)
+	}
+	site, err := resolveSite(input.Sites, &SiteInput{Hash: data.SiteHash, Data: input.Site})
 	if err != nil {
+		if errors.Is(err, ErrUnknownSite) {
+			return nil, fmt.Errorf("load encounter: %w", err)
+		}
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 
-	// Doors, through the SAME validator Setup runs (rpg-toolkit#1123). The
+	// Doors: the state is the checkpoint's, the geometry the site's. The
 	// load-only part is resolving the persisted word and lock back into a
-	// state; everything else a door can get wrong is checked once, in one
-	// place, for both seams.
+	// state; the geometry must be the site's own, and the state goes
+	// through the SAME validator Setup runs (rpg-toolkit#1123).
 	doorInputs, err := convertDoorDataToDoorInput(data.Doors)
 	if err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
-	// THE DOOR LIST RIDES THE FIELD INPUT, restored from its own wire half:
-	// the persisted doors live on EncounterData rather than on FieldData, so
-	// the two are put back together here, before the ONE shared compile, and
-	// a bound structural door's DoorID resolves at Load exactly as it does at
-	// Setup (rpg-project#169).
-	fieldInput.Doors = doorInputs
-	f, err := compileField(fieldInput)
-	if err != nil {
-		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	if err = site.checkDoors(doorInputs); err != nil {
+		return nil, fmt.Errorf("load encounter: %w", err)
 	}
+	f := site.instanceField()
 	if err = validateDoorInputs(f, doorInputs); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
-	// THE WALL PARTITIONS, derived again from what the data persisted — the
-	// regions, walls, props and doors — exactly as Setup derived them, but
-	// WHEN ASKED: a verb that reads no partition never pays the pass
-	// (rpg-project#762 T13). The data carries none of them (rpg-project#725
-	// R8, partitions.go).
-	f.deferPartitions(doorInputs)
 
 	// Concealment (rpg-toolkit#1371): the two capabilities are required
 	// exactly when the field declares a concealment — SetupInput's own
-	// rule, applied at the load door — and the persisted world must agree
-	// with the field it rides beside: a world for a field that hides nothing
-	// is a blob whose two halves disagree, and its facts must all be ones
-	// this field's concealments mint.
-	if err = validateConcealmentDoors(f, doorInputs); err != nil {
-		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
-	}
-
-	fieldConcealed := fieldHasConcealment(fieldInput.Concealments)
+	// rule, applied at the load door.
+	fieldConcealed := len(f.concealments) > 0
 	if fieldConcealed {
 		if err = input.validateConcealed(); err != nil {
 			return nil, fmt.Errorf("load encounter: %w", err)
@@ -3186,7 +3272,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 		mintable := mintedFactIDs(f, triggersOf(endingInputsForValidation), taught)
 		if err = validateWorldFacts(
-			worldFacts, fieldInput.Concealments, fieldInput.Regions, f, mintable, turnablePairsOf(f), data.EverMembers,
+			worldFacts, f, mintable, turnablePairsOf(f), data.EverMembers,
 		); err != nil {
 			return nil, fmt.Errorf("load encounter: %w", err)
 		}
@@ -3354,15 +3440,50 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		return nil, fmt.Errorf("load encounter log: %w: %w", ErrInvalidData, err)
 	}
 
+	// THE RUN'S INTERACTIONS (interaction.go, rpg-project#922): each
+	// definition compiled again, its digest and its state checked, and every
+	// line naming one — a member's, a reserved member's, a prop's — asked
+	// whether the run has it, the SAME refusals Setup makes.
+	interactions, err := interactionsFromData(data.Interactions)
+	if err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+	savedLines := make([][]Option, 0, len(memberOptions)+len(reserveOptions))
+	for _, id := range slices.Sorted(maps.Keys(memberOptions)) {
+		savedLines = append(savedLines, memberOptions[id])
+	}
+	savedLines = append(savedLines, reserveOptions...)
+	granted := grantedTopics(interactions, savedLines...)
+	for _, id := range slices.Sorted(maps.Keys(memberOptions)) {
+		if err := validateOptionInteractions(interactions, granted, memberOptions[id]); err != nil {
+			return nil, fmt.Errorf("load encounter: member %s: %w: %w", id, ErrInvalidData, err)
+		}
+	}
+	for i, options := range reserveOptions {
+		if err := validateOptionInteractions(interactions, granted, options); err != nil {
+			return nil, fmt.Errorf("load encounter: reserve %d: %w: %w", i, ErrInvalidData, err)
+		}
+	}
+	if err := validatePropInteractions(interactions, granted, f); err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+	if err := validateInteractionAddresses(interactions, memberOptions); err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+	if err := validateInteractionReservations(interactions, memberOptions, f); err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+
 	// All validated; now reconstruct via the same path Setup uses. THE ONE
 	// WORLD's journal is built with the struct, not later: the percept
 	// rebuild below reaches Atlas, which folds it, so a nil here would be a
 	// panic on the load path rather than an empty answer.
 	world := newEncounterWorld()
 	e := &Encounter{
-		discovery:     copyDiscoveryStates(data.Discovery),
-		sneakVerdicts: copySneakVerdicts(data.SneakVerdicts),
-		sightSweeps:   copySightSweeps(data.SightSweeps),
+		visibleCacheEntries: visibleCacheBound,
+		discovery:           copyDiscoveryStates(data.Discovery),
+		sneakVerdicts:       copySneakVerdicts(data.SneakVerdicts),
+		sightSweeps:         copySightSweeps(data.SightSweeps),
 		// THE LAST LOOK IS THE SAVED HIGH-WATER (rpg-project#762): a verb
 		// ends with a look, so the reading a blob was saved at is the one
 		// every current sighting in it is known true at. Derived, not stored.
@@ -3386,8 +3507,11 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		retention:     normalizeRetention(data.Retention),
 		logFloor:      logFloorOf(data.Log),
 		field:         f,
+		site:          site,
 		world:         world,
 		holdings:      newHoldings(world.log),
+		interactions:  interactions,
+		granted:       granted,
 	}
 
 	// Compile the field into the canvas — the SAME compileCanvas
@@ -3411,14 +3535,6 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	// into the one journal further down. Load-act-save, no migration: an
 	// absent journal on a concealed field is a run where nothing has happened
 	// yet.
-
-	// A record's target must name a concealment this field declares — the
-	// SAME check NewEncounter makes, against the same compiled field, so a
-	// blob and a fresh setup refuse identically rather than one loading what
-	// the other would not build.
-	if err = validateIntelTargets(f); err != nil {
-		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
-	}
 
 	// The journal replayed — see EncounterData.Journal. Every fact goes back
 	// in the ONE stored order, knowledge and holdings interleaved as they
@@ -3736,7 +3852,15 @@ func refuseRoomLocalSightings(data perception.Data) error {
 		subjects := slices.Sorted(maps.Keys(data.Intel.Holdings[observer]))
 
 		for _, subject := range subjects {
-			holding := data.Intel.Holdings[observer][subject]
+			// Sightings live on the default topic only (mind/perception rule
+			// 12). A named topic's payload is testimony of another kind — a
+			// recognition, never a prop or door observation — so decoding it
+			// here would refuse a valid blob. A subject held only on named
+			// topics has no sighting to check.
+			holding, sighted := data.Intel.Holdings[observer][subject][""]
+			if !sighted {
+				continue
+			}
 			if perception.Channel(holding.Channel) != perception.Sight {
 				continue
 			}
@@ -3869,6 +3993,7 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 		in.Regions[i] = RegionInput{
 			ID: rd.ID, Name: rd.Name, Cells: cells, Archetype: rd.Archetype,
 			Lighting: &Lighting{Intensity: *rd.Lighting.Intensity},
+			Ground:   regionGroundFromData(rd.Ground),
 		}
 	}
 
@@ -3916,13 +4041,14 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 
 	for _, swd := range fd.StructuralWalls {
 		w := StructuralWallInput{
-			ID:        swd.ID,
-			Ref:       swd.Ref,
-			From:      spatial.Point{X: swd.From.X, Y: swd.From.Y},
-			To:        spatial.Point{X: swd.To.X, Y: swd.To.Y},
-			Height:    swd.Height,
-			Thickness: swd.Thickness,
-			Elevation: swd.Elevation,
+			ID:                swd.ID,
+			Ref:               swd.Ref,
+			From:              spatial.Point{X: swd.From.X, Y: swd.From.Y},
+			To:                spatial.Point{X: swd.To.X, Y: swd.To.Y},
+			Height:            swd.Height,
+			Thickness:         swd.Thickness,
+			Elevation:         swd.Elevation,
+			MaterialOverrides: materialOverridesFromData(swd.MaterialOverrides),
 		}
 		for _, sod := range swd.Openings {
 			o := StructuralOpeningInput{ID: sod.ID, Position: sod.Position, Width: sod.Width}

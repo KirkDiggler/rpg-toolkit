@@ -72,6 +72,10 @@ const (
 	beatBarred machine.Beat = "barred"
 	// beatFact is a fact the listener learned.
 	beatFact machine.Beat = "fact"
+	// beatTopic is a topic the listener came to hold about somebody
+	// (rpg-project#929): through his own judgement or heard, landed when the
+	// record is first held. A guard reads which topic with `topic:<id>`.
+	beatTopic machine.Beat = "topic"
 	// beatClock prefixes a clock's round: `clock:world`, `clock:fight`,
 	// `clock:bell:<prop>`, or an area clock's name.
 	beatClock = "clock:"
@@ -84,6 +88,9 @@ const (
 	bellPrefix = "bell:"
 	// factPrefix prefixes a fact a guard reads: `fact:<id>`.
 	factPrefix = "fact:"
+	// topicPrefix prefixes a topic a guard reads: `topic:<id>`, true while
+	// the member holds that topic about anybody (rpg-project#929).
+	topicPrefix = "topic:"
 	// factEnemy is the fact a guard reads the enemy band from.
 	factEnemy machine.FactName = "enemy"
 )
@@ -217,6 +224,17 @@ func (e *Encounter) landDeedBeat(verb string, actor MemberID, where spatial.Posi
 		cell := where
 		e.land(wakeBeat{Beat: b, Cell: &cell, Subject: actor, At: at})
 	}
+}
+
+// landTopicBeat lands a topic on the member who came to hold it, when it
+// listens (rpg-project#929), as a learned fact lands ([Encounter.landFactBeat]):
+// a state that is not listening does not hear it, and a later state that
+// listens reads it through its `topic:<id>` guard on the next topic beat.
+func (e *Encounter) landTopicBeat(member MemberID, at uint64) {
+	if _, ok := e.listensFor(member, beatTopic); !ok {
+		return
+	}
+	e.land(wakeBeat{Beat: beatTopic, Member: member, At: at})
 }
 
 // landFactBeat lands a fact on the member who learned it, when it listens.
@@ -413,9 +431,10 @@ func (e *Encounter) react(id MemberID, b wakeBeat, scope *machine.ScopeLeaf) err
 		return nil
 	}
 	now := uint64(e.clock.ToData().HighWater)
-	if b.Beat == beatBarred {
-		// A bump is the existing explicitly authorized targeted reaction.
-		// No other observation is upgraded to an action opportunity.
+	if b.Beat == beatBarred || b.Beat == beatApproached {
+		// A bump, and a hail (address.go), are the explicitly authorized
+		// targeted reactions. No other observation is upgraded to an action
+		// opportunity.
 		on, err := e.onWorldClock(id)
 		if err != nil || !on {
 			return err
@@ -424,13 +443,13 @@ func (e *Encounter) react(id MemberID, b wakeBeat, scope *machine.ScopeLeaf) err
 		if err != nil || down[id] {
 			return err
 		}
-		if err := e.runBehaviorOpportunity(id, m, behaviorOpportunity{on: b.Beat, event: ev, now: now}); err != nil {
+		if err := e.runBehaviorOpportunity(id, m, behaviorOpportunity{on: b.Beat, event: ev, now: now, subject: b.Subject}); err != nil {
 			return err
 		}
 	} else {
 		env := e.envFor(id)
 		env.event = ev
-		observed, err := m.behaviors.composer.Observe(&behavior.ObserveInput{On: b.Beat, Event: ev, Env: env, Now: now})
+		observed, err := m.behaviors.composer.Observe(&behavior.ObserveInput{On: b.Beat, Event: ev, Env: env, Now: now, Trace: true})
 		if err != nil {
 			return err
 		} // ErrSelectionRequired never retries with Decide
@@ -439,6 +458,12 @@ func (e *Encounter) react(id MemberID, b wakeBeat, scope *machine.ScopeLeaf) err
 		}
 		if err := e.behaviorStepped(m, observed.Steps); err != nil {
 			return err
+		}
+		if len(observed.Outcomes) > 0 {
+			if _, err := e.appendBehaviorDecision(&behaviorDecisionRecordInput{member: m,
+				trace: &behaviorDecisionTrace{on: b.Beat, now: now, operation: behaviorTraceObserve, outcomes: observed.Outcomes}}); err != nil {
+				return err
+			}
 		}
 	}
 	return e.rearmObservedBehavior(m, now)

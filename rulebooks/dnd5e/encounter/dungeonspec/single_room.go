@@ -154,6 +154,14 @@ type SingleRoomSpec struct {
 	// only another source of the same `On`.
 	Tables map[string]TableSpec `yaml:"tables,omitempty" json:"tables,omitempty"`
 
+	// Interactions are the run's authored interaction instances, keyed by id
+	// (rpg-project#922, #916 R3): the entrance that remembers. Each is one
+	// native `machine.Recipe` whose `on:` names are the beats an option's
+	// `advance` may step it on; its states are what an option's
+	// `{ interaction: { id, in } }` requirement may name. Optional; absent
+	// means none, and a run with none is unchanged. See [InteractionSpec].
+	Interactions map[string]InteractionSpec `yaml:"interactions,omitempty" json:"interactions,omitempty"`
+
 	// Templates are the stat blocks this site authored, keyed by id
 	// (rpg-project#555). Optional; absent means none, and every document
 	// authored before this key existed decodes, compiles and marshals
@@ -893,10 +901,11 @@ type RoomWallDoor struct {
 // in a catalog is the codec that owns that catalog (the web's) — not this
 // engine's.
 type RoomWallAppearance struct {
-	AssetRef  string  `yaml:"assetRef" json:"assetRef"`
-	Height    float64 `yaml:"height" json:"height"`
-	Thickness float64 `yaml:"thickness" json:"thickness"`
-	Elevation float64 `yaml:"elevation" json:"elevation"`
+	MaterialOverrides []RoomMaterialOverride `yaml:"materialOverrides,omitempty" json:"materialOverrides,omitempty"`
+	AssetRef          string                 `yaml:"assetRef" json:"assetRef"`
+	Height            float64                `yaml:"height" json:"height"`
+	Thickness         float64                `yaml:"thickness" json:"thickness"`
+	Elevation         float64                `yaml:"elevation" json:"elevation"`
 }
 
 // RoomRegion is one authored place on the site's floor (rpg-project#725): an
@@ -919,6 +928,7 @@ type RoomRegion struct {
 	Name     string        `yaml:"name" json:"name"`
 	Lighting RoomLighting  `yaml:"lighting" json:"lighting"`
 	Cells    []RoomCellRow `yaml:"cells" json:"cells"`
+	Ground   *RoomGround   `yaml:"ground,omitempty" json:"ground,omitempty"`
 }
 
 // RoomLighting is a region's light level, the encounter's own word: an

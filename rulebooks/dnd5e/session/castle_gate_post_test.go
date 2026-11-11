@@ -78,9 +78,10 @@ func (c *freeRoamCastle) walkInto(t *testing.T, cell spatial.Position) []spatial
 	return path
 }
 
+// move is alice's walk along path, walked on through a hail ([walkOn]).
 func (c *freeRoamCastle) move(t *testing.T, path []spatial.Position) *session.MoveOutput {
 	t.Helper()
-	out, err := c.mgr.Move(context.Background(), &session.MoveInput{Session: "sess", Member: "alice", Path: path})
+	out, err := walkOn(context.Background(), c.mgr, &session.MoveInput{Session: "sess", Member: "alice", Path: path})
 	require.NoError(t, err)
 	return out
 }
@@ -123,7 +124,7 @@ func TestCastleTheGuardHoldsTheGate(t *testing.T) {
 	if toCaptain := c.walkInto(t, memberOf(t, c.world(t), "captain").Position); len(toCaptain) > 1 {
 		c.move(t, toCaptain[:len(toCaptain)-1])
 	}
-	_, err := c.mgr.Speak(context.Background(), &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "stand-aside"})
+	_, err := speakAsOffered(context.Background(), c.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "stand-aside"})
 	require.NoError(t, err)
 	require.Equal(t, "cowed", stateOf(t, c.world(t), "gate-1"), "he stood aside in the round he learned it")
 

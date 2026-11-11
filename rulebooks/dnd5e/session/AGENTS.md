@@ -61,6 +61,76 @@ creature's own authored table, rolled through this session's dice
 (rpg-project#465) — which holds nothing between turns and so belongs in the
 first. `TurnDrivers` remains for a host with a stateful driver of its own.
 
+**The save can be fenced** ([`checkpoint.go`](./checkpoint.go)). An encounter
+repository that also implements `FencedEncounterRepository` is found by type
+assertion, never a Config field: a write verb loads the store's checkpoint
+version with the world, and saves everything it wrote under the session's
+guard (the world, the session record, seats, sheets) in one transaction that
+lands only if that version still holds. Under the fence a sheet or seat write
+is held in the Manager's pending overlay, read back by the same verb, and
+dropped when the guard is released. The fenced read's version is also what
+a resident copy is checked against (below). A stale save writes nothing and delivers
+nothing (`ErrStaleCheckpoint`). The record's `NextSeq` is not the fence: a
+beatless verb does not advance it. A plain repository keeps today's writes.
+
+**The record can be appended** ([`checkpoint.go`](./checkpoint.go),
+rpg-project#897 leg c). A fenced repository that also implements
+`AppendingEncounterRepository` (type assertion again) is handed each save
+split: the REST (the world with its story log reduced to the head, NextSeq
+and LastID) plus the segment of record entries the store does not hold yet,
+`Since` the first seq it lacks, and a retention `Floor`. The session keeps
+that baseline beside the checkpoint version (`checkpointFence.recordNext`):
+from the loaded log on a fenced read, 1 at Launch (the whole record), and
+advanced only after a save lands. It is not the act's `baseline`, which stays
+fixed for the verb. Reads stay whole: the host joins rest and segments with
+`record.JoinData` in `GetFencedEncounter` and `GetEncounter`. A fenced host
+without it still gets the whole world through `SaveFenced`, and nothing is
+added to `SaveFencedInput`, so a host cannot half-adopt it and drop the record.
+
+**The rest can be stored as pieces** ([`checkpoint.go`](./checkpoint.go),
+rpg-project#897 leg b). An appending repository that also implements
+`PiecesEncounterRepository` (type assertion again) is handed the rest split by
+`encounter.SplitPieces` into rpg-project#770's shapes: the head (every save),
+the roster one piece per member, knowledge one piece per observer, and the
+journal. Each piece carries a mark, a digest of its bytes; only the pieces
+whose mark moved are sent, removals are named, and `Data` is nil. The session
+holds the marks beside the record baseline (`checkpointFence.marks`): the
+fenced read's `Marks`, nil at Launch (every piece), replaced by the save's
+new marks only after it lands. Reads stay whole: the host joins its pieces
+with `encounter.JoinPieces` and then its segments. A host without it falls
+back to `SaveAppended`, then `SaveFenced`, then the plain writes, unchanged.
+
+**The encounter can stay resident** ([`residency.go`](./residency.go),
+rpg-project#879 S6). A fenced repository that also implements
+`CheckpointVersionReader` (type assertion again) lets a write verb's encounter
+stay in memory after its final save, as a cache of the store keyed by the
+checkpoint version that save left. The next write verb on the session reads
+the store's version (one GET); on a match it rebinds the kept copy to its own
+capabilities (`encounter.Encounter.Rebind`) and runs on it with the fence's
+version, record baseline and marks the copy carries, skipping the fenced read
+and the load; on a miss it drops the copy and loads. The copy is taken out of
+`Config.Residency` when a verb opens (nil is `NewResidency`, in process,
+bounded by count and estimated bytes) and kept again only by the guard's
+release, and only when the verb's final commit staged it after its save
+landed and its batches went out: a stale save, a refused verb, a commit
+error, a canceled context, a continuation that failed after a pace commit, a
+panic in a host collaborator and a closed run keep nothing, by structure.
+Reads do not use the copy. A host without the reader loads every verb.
+`Config.ResidencyObserver` (optional) is told each fenced write verb's `Hit`,
+or its `Miss` and the gate it failed (`MissNoCopy`, `MissVersionMoved`,
+`MissReaderError`, `MissRebindRefused`), for a host's hit-rate log.
+
+**The site is shared by hash** ([`sites.go`](./sites.go), rpg-project#879 S5).
+A stored world names its compiled site by `SiteHash` and never carries the
+field. `Config.Sites` resolves it on every load (nil is
+`encounter.DefaultSites`, the in-process default), Launch included, and rides
+on every resolution input. An encounter repository that also implements
+`SiteRepository` (found by type assertion, like the fence) stores the site
+piece by hash: Launch puts it before the checkpoint that names it, and a cold
+process whose provider misses reads it back and compiles it once. A hash
+neither holds fails the verb closed with `ErrUnknownSite`. The site tier is
+shared across games and read-only; the locker guards the instance tier only.
+
 **The one driver is RECOGNISED, not wrapped** ([`driver.go`](./driver.go)).
 Every other driver crosses the boundary by projection — the composition's
 `MonsterView` flattens onto this package's twin on the way in, its `TurnIntent`

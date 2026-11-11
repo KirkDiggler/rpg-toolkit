@@ -31,3 +31,17 @@ func (s *ActFoldSuite) TestSayActivityMalformedPresentRecordsAreNotSilentlyDropp
 	_, err := answeredPiece("time:one", []byte(`{"creature":"goblin","activity":{"ref":"x","cycles":2}}`))
 	s.Require().Error(err, "a cue must accompany the spoken line")
 }
+
+// TestTableAnswerCarriesWhoItIsSpokenTo: the answered beat's `to`
+// (rpg-project#923) is the act's To, a member when set and the zero Party
+// when empty or absent.
+func (s *ActFoldSuite) TestTableAnswerCarriesWhoItIsSpokenTo() {
+	pieces, err := answeredPiece("move:one", []byte(`{"creature":"captain","to":"alice","say":"You there."}`))
+	s.Require().NoError(err)
+	s.Equal(Party{Kind: PartyMember, ID: "alice"}, pieces[0].body.(TableAnswer).To)
+	for _, payload := range []string{`{"creature":"goblin","to":"","say":"Hmm."}`, `{"creature":"goblin","say":"Hmm."}`} {
+		pieces, err := answeredPiece("time:one", []byte(payload))
+		s.Require().NoError(err)
+		s.Equal(Party{}, pieces[0].body.(TableAnswer).To, payload)
+	}
+}

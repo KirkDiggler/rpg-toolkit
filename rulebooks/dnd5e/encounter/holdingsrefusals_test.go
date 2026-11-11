@@ -904,16 +904,15 @@ func (s *HoldingsSuite) TestConstructionRefusesABadIntelTable() {
 // boundary, because a blob's field is bytes somebody could have edited.
 func (s *HoldingsSuite) TestLoadRefusesABadIntelTable() {
 	enc := s.open(true)
-	data := enc.ToData()
-	s.Require().Len(data.Field.Intel, 3, "the field's records persist as structure")
-	s.Require().Equal(vaultMap, data.Field.Intel[0].ID)
-	s.Require().Equal(vaultSecret, data.Field.Intel[0].Concealment)
+	site := enc.Site().Data()
+	s.Require().Len(site.Field.Intel, 3, "the field's records persist as structure")
+	s.Require().Equal(vaultMap, site.Field.Intel[0].ID)
+	s.Require().Equal(vaultSecret, site.Field.Intel[0].Concealment)
 
-	load := func(mutate func(*encounter.EncounterData)) error {
-		blob := enc.ToData()
-		mutate(&blob)
-		_, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Data: blob,
+	load := func(mutate func(*encounter.SiteData)) error {
+		piece := enc.Site().Data()
+		mutate(&piece)
+		_, err := loadOverSite(enc.ToData(), piece, encounter.LoadEncounterInput{
 			Capabilities: encounter.Capabilities{
 				Sight:         everyoneSeesTheWholeMap{},
 				Equipment:     encounter.UnobservedEquipment{},
@@ -934,22 +933,22 @@ func (s *HoldingsSuite) TestLoadRefusesABadIntelTable() {
 		return err
 	}
 
-	s.Require().NoError(load(func(*encounter.EncounterData) {}))
+	s.Require().NoError(load(func(*encounter.SiteData) {}))
 
 	s.Run("a record pointing at a concealment the field does not declare", func() {
-		err := load(func(d *encounter.EncounterData) { d.Field.Intel[0].Concealment = "cellar-hatch" })
+		err := load(func(d *encounter.SiteData) { d.Field.Intel[0].Concealment = "cellar-hatch" })
 		s.Require().ErrorIs(err, encounter.ErrNoConcealment)
 	})
 
 	s.Run("a record that reveals nothing", func() {
-		err := load(func(d *encounter.EncounterData) { d.Field.Intel[0].Concealment = "" })
+		err := load(func(d *encounter.SiteData) { d.Field.Intel[0].Concealment = "" })
 		s.Require().ErrorIs(err, encounter.ErrNoIntel)
 	})
 
 	s.Run("a holding naming a record the field no longer declares", func() {
 		// Drop only the captain's record; the scroll still needs its own or
 		// the field itself refuses first, which would be a different test.
-		err := load(func(d *encounter.EncounterData) { d.Field.Intel = d.Field.Intel[1:] })
+		err := load(func(d *encounter.SiteData) { d.Field.Intel = d.Field.Intel[1:] })
 		s.Require().ErrorIs(err, encounter.ErrInvalidData)
 		s.Require().Contains(err.Error(), vaultMap)
 	})

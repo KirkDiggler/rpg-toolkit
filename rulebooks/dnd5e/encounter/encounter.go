@@ -109,6 +109,23 @@ type Encounter struct {
 	// built from it and holds the same pointer — see [canvasRoom].
 	field *field
 
+	// site is the compiled site the field is a shallow copy of (site.go,
+	// rpg-project#879 S5): shared, read-only, the hash ToData writes in place
+	// of the field, and the home of the raw visible-from answers. Nil only on
+	// an Encounter built by hand in a test.
+	site *Site
+
+	// interactions are the run's authored interaction instances by id
+	// (interaction.go, rpg-project#922): the entrance that remembers. Nil for
+	// a run whose content declares none, which writes no key.
+	interactions map[InteractionID]*interactionRecord
+
+	// granted is every topic the run can grant (recognition.go,
+	// rpg-project#928, #929): its interactions' outcomes and its members'
+	// lines' grants. A `recognized` requirement or pass on any other is one
+	// nobody could ever meet, and refused. Kept so a joiner's grants add to it.
+	granted map[TopicID]bool
+
 	// doors are every door in the field, sorted by ID (C8). A door's edges are
 	// construction truth; its STATE is the one thing here a verb changes
 	// mid-scene, and it is held once for however many edges the door has
@@ -362,12 +379,35 @@ type Encounter struct {
 	// across passes. THE KEY IS THE SOUNDNESS: it fingerprints the observer's
 	// cell, range and concealment view and the field's opacity (doors, placed
 	// footprints, opaque entities, obscuring areas), every input seesCell can
-	// see change; members never block sight. An entry is instance state, since
-	// the opacity names this run's door states and prop positions; the site
-	// tier (rpg-project#770) could hold only the authored site's answer, which
-	// an entry equals while nothing has moved. Bounded by visibleCacheEntries,
-	// never saved, rebuilt by use after a load.
+	// see change; members never block sight. Since rpg-project#879 S5 it
+	// holds only the CONCEALMENT LAYER: keys whose observer has a door or prop
+	// hidden from it. A key with no hidden face is the site's raw answer and
+	// lives on the site ([siteSight]), shared by every game on the content and
+	// kept across loads. Bounded by visibleCacheEntries, never saved, rebuilt
+	// by use after a load.
 	visibleCache map[sightSweepKey]visibleBits
+	// visibleCacheEntries is visibleCache's bound, [visibleCacheBound] from
+	// every constructor. The encounter's own, so a test that shrinks it
+	// shares it with no other encounter (rpg-toolkit#2317). An encounter
+	// comes from [NewEncounter] or [LoadEncounter]: a zero-value Encounter
+	// has a bound of 0 and drops its cache on every sweep.
+	visibleCacheEntries int
+
+	// sightEncoder replaces [EncodeSightTestimony] in [Encounter.encodeSighting]
+	// so a test can count the calls (#1691). The whole point of moving the
+	// loop into mind/perception is that the count is N for N members rather
+	// than N² — identical bytes, encoded once, handed to every observer who
+	// perceives them — and a cost nothing asserts is a cost that comes back
+	// the next time somebody reaches for a nested loop. Nil outside a test.
+	// A field, not a package variable, so a test's encoder is never read by
+	// another encounter running beside it (rpg-toolkit#2317).
+	sightEncoder func(SightTestimony) ([]byte, error)
+	// rebuildProbe is told every observer list [Encounter.rebuildPercepts] is
+	// asked to rebuild (rpg-project#762), so a test can say a member beyond
+	// the sight bound of what changed was never looked for, for the same
+	// reason as sightEncoder. Nil outside a test; the encounter's own for the
+	// same reason (rpg-toolkit#2317).
+	rebuildProbe func(observers []MemberID)
 	// visibleEpoch is the opacity the cached entries were swept under; a
 	// pass with a new opacity frees them, since their keys can no longer match.
 	visibleEpoch string
@@ -709,7 +749,7 @@ func validateEndingTriggers(f *field, endings []EndingInput) error {
 			if err := f.validatePredicate(fmt.Sprintf("ending %q", ei.Key), ei.Trigger, ErrNoEnding); err != nil {
 				return err
 			}
-		case TriggerRound, TriggerFact, TriggerStance, TriggerHolds:
+		case TriggerRound, TriggerFact, TriggerStance, TriggerHolds, TriggerInteraction, TriggerRecognized:
 			if err := f.validatePredicate(fmt.Sprintf("ending %q", ei.Key), ei.Trigger, ErrNoEnding); err != nil {
 				return err
 			}
@@ -766,6 +806,13 @@ func validateIntelTargets(f *field) error {
 // member seats (integral, on floor), ending trigger validity, spatial
 // placement errors.
 func NewEncounter(in *SetupInput) (*Encounter, error) {
+	return newEncounter(in, visibleCacheBound)
+}
+
+// newEncounter is [NewEncounter] with the visible cache's bound named, so a
+// test builds its encounter with a small bound before any pass reads it
+// (rpg-toolkit#2317). Every other caller passes [visibleCacheBound].
+func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 	// Validation order: nil, no rooms, no endings, reserved ending, empty ID, duplicates
 	if in == nil {
 		return nil, fmt.Errorf("newencounter: %w", ErrNilInput)
@@ -828,30 +875,42 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		}
 	}
 
-	// Compile the field: the canvas's two declarations, the regions that make
-	// the floor, the props and walls on it — every rule about what a field
-	// may be, stated once and shared with Load (compileField).
-	f, err := compileField(in.Field)
+	// THE SITE (site.go, rpg-project#879 S5): the field compiled once per
+	// content and shared — the canvas's two declarations, the regions, the
+	// props and walls, the doors' geometry, the partitions, the doors a
+	// concealment names and the records' targets, every rule about what a
+	// field may be stated once in [CompileSite] and shared with Load. The
+	// encounter runs on its own shallow copy of the site's field.
+	site, err := resolveSite(in.Sites, &SiteInput{Field: &in.Field})
 	if err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
+	f := site.instanceField()
+
+	// THE RUN'S INTERACTIONS (interaction.go, rpg-project#922): authored on
+	// the field input, owned by the run, never site data.
+	interactions, err := compileInteractions(in.Field.Interactions)
+	if err != nil {
+		return nil, fmt.Errorf("newencounter: %w: %w", err, ErrNoField)
+	}
 
 	// A line requiring a holding must name a prop this field lets somebody
-	// pick up (option.go) — asked against the compiled field, so after it.
+	// pick up (option.go) — asked against the compiled field, so after it —
+	// and a line naming an interaction must name one this run has.
+	memberLines := make([][]Option, 0, len(in.Members))
+	for _, m := range in.Members {
+		memberLines = append(memberLines, m.Options)
+	}
+	granted := grantedTopics(interactions, memberLines...)
 	for _, m := range in.Members {
 		if err := f.validateOptionHolds(m.Options); err != nil {
 			return nil, fmt.Errorf("newencounter: member %s: %w: %w", m.ID, err, ErrBadMember)
 		}
+		if err := validateOptionInteractions(interactions, granted, m.Options); err != nil {
+			return nil, fmt.Errorf("newencounter: member %s: %w: %w", m.ID, err, ErrBadMember)
+		}
 	}
-
-	// Check doors: names, states, and edges that are real crossings on real
-	// floor and belong to exactly one door (rpg-toolkit#1123).
-	if err = validateDoorInputs(f, in.Field.Doors); err != nil {
-		return nil, fmt.Errorf("newencounter: %w", err)
-	}
-	// THE SECOND DIVISION, derived here and at Load from the same authored
-	// geometry and never stored (partitions.go, rpg-project#725 R8).
-	if err = f.derivePartitions(in.Field.Doors); err != nil {
+	if err := validatePropInteractions(interactions, granted, f); err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 
@@ -863,12 +922,6 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 	// find. AFTER the field and door validation on purpose: a malformed
 	// door is the author's earlier mistake, and refusing it as a missing
 	// capability would send them to the wrong seam.
-	// And the doors a concealment names, checked here for [field.intel]'s
-	// reason: the door list reaches this module beside the field.
-	if err = validateConcealmentDoors(f, in.Field.Doors); err != nil {
-		return nil, fmt.Errorf("newencounter: %w", err)
-	}
-
 	if fieldHasConcealment(in.Field.Concealments) {
 		if err := in.validateConcealed(); err != nil {
 			return nil, fmt.Errorf("newencounter: %w", err)
@@ -896,15 +949,10 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 		}
 	}
 
-	// A record's target must name a door this field declares, and a holder
-	// must name a record it declares (design §2). Refused here, before
-	// anything is built (R5): either one dangling is knowledge the author
-	// thinks they placed and did not. Whether the door is CONCEALED is
-	// deliberately not asked — revealing an ordinary door is inert, not an
-	// error ([RevealTargets.Door]).
-	if err = validateIntelTargets(f); err != nil {
-		return nil, fmt.Errorf("newencounter: %w", err)
-	}
+	// A holder must name a record the field declares (design §2); a
+	// record's own target was checked when the site compiled. Refused here,
+	// before anything is built (R5): a dangling one is knowledge the author
+	// thinks they placed and did not.
 	for _, mi := range in.Members {
 		for _, id := range mi.Holds {
 			if _, declared := f.intelByID[id]; !declared {
@@ -958,23 +1006,27 @@ func NewEncounter(in *SetupInput) (*Encounter, error) {
 
 	// After validation passes, construct (R5: no observable state until success)
 	e := &Encounter{
-		members:       make(map[MemberID]*memberRecord),
-		everMembers:   make(map[MemberID]bool),
-		field:         f,
-		initiative:    in.Initiative,
-		participation: in.Participation,
-		sight:         in.Sight,
-		equipment:     in.Equipment,
-		conditions:    in.Conditions,
-		sheets:        in.Sheets,
-		driver:        in.Driver,
-		roller:        in.Roller,
-		striker:       in.Striker,
-		disengager:    in.Disengager,
-		mover:         in.Mover,
-		announcer:     in.Announcer,
-		endings:       nil,
-		retention:     normalizeRetention(in.Retention),
+		visibleCacheEntries: visibleCacheEntries,
+		members:             make(map[MemberID]*memberRecord),
+		everMembers:         make(map[MemberID]bool),
+		field:               f,
+		site:                site,
+		initiative:          in.Initiative,
+		participation:       in.Participation,
+		sight:               in.Sight,
+		equipment:           in.Equipment,
+		conditions:          in.Conditions,
+		sheets:              in.Sheets,
+		driver:              in.Driver,
+		roller:              in.Roller,
+		striker:             in.Striker,
+		disengager:          in.Disengager,
+		mover:               in.Mover,
+		announcer:           in.Announcer,
+		endings:             nil,
+		retention:           normalizeRetention(in.Retention),
+		interactions:        interactions,
+		granted:             granted,
 	}
 	e.doors, e.doorsByID = doorRecordsFrom(in.Field.Doors)
 
@@ -2141,22 +2193,15 @@ func (e *Encounter) refreshSightDeclaring(
 	return deltas, formed, nil
 }
 
-// encodeSighting is the encoder one pass runs, once per placed member.
-//
-// INDIRECTED THROUGH A VARIABLE so a test can count the calls (#1691). The
-// whole point of moving the loop into mind/perception is that the count is N
-// for N members rather than N² — identical bytes, encoded once, handed to
-// every observer who perceives them — and a cost nothing asserts is a cost
-// that comes back the next time somebody reaches for a nested loop. Nothing
-// but a test ever assigns this.
-var encodeSighting = EncodeSightTestimony
-
-// rebuildProbe is told every observer list [Encounter.rebuildPercepts] is
-// asked to rebuild (rpg-project#762), so a test can say a member beyond the
-// sight bound of what changed was never looked for — the same indirection
-// as [encodeSighting], for the same reason: a cost nothing asserts comes
-// back. Nil outside a test, and nothing but a test assigns it.
-var rebuildProbe func(observers []MemberID)
+// encodeSighting is the encoder one pass runs, once per placed member:
+// [EncodeSightTestimony], unless a test handed this encounter a counting
+// encoder in [Encounter.sightEncoder].
+func (e *Encounter) encodeSighting(testimony SightTestimony) ([]byte, error) {
+	if e.sightEncoder != nil {
+		return e.sightEncoder(testimony)
+	}
+	return EncodeSightTestimony(testimony)
+}
 
 // rebuildPercepts rebuilds the complete percept for all given observers and
 // returns a map of member IDs to encounter-owned intel deltas. The current
@@ -2224,8 +2269,8 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 		observers = all
 	}
 	e.pendingCells = e.pendingCells[:0]
-	if rebuildProbe != nil {
-		rebuildProbe(observers)
+	if e.rebuildProbe != nil {
+		e.rebuildProbe(observers)
 	}
 
 	// Asked fresh for this refresh too, for the same C8 reason, and beside
@@ -2335,7 +2380,7 @@ func (e *Encounter) rebuildPercepts(observers []MemberID) (map[MemberID]*IntelDe
 			// memory keeps the facing it last saw.
 			Facing: &facing,
 		}
-		payload, perr := encodeSighting(testimony)
+		payload, perr := e.encodeSighting(testimony)
 		if perr != nil {
 			return nil, fmt.Errorf("encode sight testimony: %w", perr)
 		}
@@ -2687,6 +2732,13 @@ func (e *Encounter) validateJoin(in *JoinInput) error {
 	if err := e.field.validateOptionHolds(in.Options); err != nil {
 		return fmt.Errorf("join: member %s: %w: %w", in.Member, err, ErrBadMember)
 	}
+	joinGranted := grantedTopics(nil, in.Options)
+	for topic := range e.granted {
+		joinGranted[topic] = true
+	}
+	if err := validateOptionInteractions(e.interactions, joinGranted, in.Options); err != nil {
+		return fmt.Errorf("join: member %s: %w: %w", in.Member, err, ErrBadMember)
+	}
 
 	// A holder must name a record this field declares — the SAME refusal
 	// NewEncounter makes, and asked here for the reason the line above is:
@@ -2776,7 +2828,15 @@ func (e *Encounter) admitMember(in *JoinInput) (*memberRecord, *JoinOutput, erro
 	if err := e.useBehaviors(member, in.Behaviors, nil, in.BlockingStates); err != nil {
 		return nil, nil, fmt.Errorf("join: %w", err)
 	}
+	// A JOINER'S GRANTS JOIN THE RUN'S (rpg-project#929), before its own
+	// posts are judged against them; a refused post puts them back.
+	wasGranted := e.granted
+	e.granted = grantedTopics(nil, in.Options)
+	for topic := range wasGranted {
+		e.granted[topic] = true
+	}
 	if err := e.usePosts(member, in.Posts, in.Cell); err != nil {
+		e.granted = wasGranted
 		return nil, nil, fmt.Errorf("join: %w", err)
 	}
 
@@ -2963,6 +3023,10 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	// active player leaving a fight with a striking monster next). The
 	// roster changing is the graph's declaration changing too (world.go).
 	delete(e.members, in.Member)
+	// A LINE WAITING ON THE LEAVER'S ROLL IS DROPPED (rpg-project#924,
+	// interaction_hold.go): nobody is left to decide on it, and the exit beat
+	// tells it. A line said TO the leaver is released by the sweep below.
+	e.dropHoldsOf(in.Member)
 	if err = e.buildWorld(); err != nil {
 		return nil, fmt.Errorf("exit: %w", err)
 	}
@@ -3080,6 +3144,13 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 			return nil, fmt.Errorf("exit refresh sight: %w", err)
 		}
 		intelDeltas = mergeIntelDeltas(intelDeltas, refreshDeltas)
+	}
+
+	// A HELD LINE SAID TO THE LEAVER IS RELEASED (rpg-project#924): its
+	// settle could never be admitted, and a saved reservation naming a
+	// creature the run lacks would not load.
+	if err := e.sweepHolds(); err != nil {
+		return nil, fmt.Errorf("exit: %w", err)
 	}
 
 	// Check if we need to auto-close (last member exited and no ending has fired)

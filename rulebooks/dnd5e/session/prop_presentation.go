@@ -15,15 +15,16 @@ import (
 // the mechanical/observation namespace, but none of these fields decides rules.
 // Distances are feet, facing canonical degrees, and HeightScale dimensionless.
 type PropPresentation struct {
-	ID            string          `json:"id"`
-	Ref           string          `json:"ref"`
-	Origin        FootprintPoint  `json:"origin"`
-	Elevation     float64         `json:"elevation"`
-	FacingDegrees float64         `json:"facing_degrees"`
-	HeightScale   float64         `json:"height_scale"`
-	PointLight    *PropPointLight `json:"point_light,omitempty"`
-	DoorID        string          `json:"door_id,omitempty"`
-	Label         string          `json:"label"`
+	ID                string             `json:"id"`
+	Ref               string             `json:"ref"`
+	Origin            FootprintPoint     `json:"origin"`
+	Elevation         float64            `json:"elevation"`
+	FacingDegrees     float64            `json:"facing_degrees"`
+	HeightScale       float64            `json:"height_scale"`
+	PointLight        *PropPointLight    `json:"point_light,omitempty"`
+	DoorID            string             `json:"door_id,omitempty"`
+	Label             string             `json:"label"`
+	MaterialOverrides []MaterialOverride `json:"material_overrides,omitempty"`
 }
 
 // PropPointLight is optional visual emission, not mechanical illumination.
@@ -37,7 +38,7 @@ type PropPointLight struct {
 }
 
 func projectPropPresentation(p encounter.PropPresentation) PropPresentation {
-	out := PropPresentation{ID: p.ID, Ref: p.Ref, Origin: FootprintPoint{X: p.Origin.X, Y: p.Origin.Y}, Elevation: p.Elevation, FacingDegrees: p.FacingDegrees, HeightScale: p.HeightScale, DoorID: p.DoorID, Label: p.Label}
+	out := PropPresentation{ID: p.ID, Ref: p.Ref, Origin: FootprintPoint{X: p.Origin.X, Y: p.Origin.Y}, Elevation: p.Elevation, FacingDegrees: p.FacingDegrees, HeightScale: p.HeightScale, DoorID: p.DoorID, Label: p.Label, MaterialOverrides: projectMaterialOverrides(p.MaterialOverrides)}
 	if l := p.PointLight; l != nil {
 		out.PointLight = &PropPointLight{Enabled: l.Enabled, Offset: FootprintPoint{X: l.Offset.X, Y: l.Offset.Y}, OffsetElevation: l.OffsetElevation, Color: l.Color, Intensity: l.Intensity, Range: l.Range}
 	}
@@ -47,7 +48,7 @@ func projectPropPresentation(p encounter.PropPresentation) PropPresentation {
 var presentationColor = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
 func validPropPresentation(p PropPresentation) bool {
-	if p.ID == "" || p.Ref == "" || p.HeightScale <= 0 {
+	if p.ID == "" || p.Ref == "" || p.HeightScale <= 0 || !validMaterialOverrides(p.MaterialOverrides) {
 		return false
 	}
 	numbers := []float64{p.Origin.X, p.Origin.Y, p.Elevation, p.FacingDegrees, p.HeightScale}

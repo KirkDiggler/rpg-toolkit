@@ -241,7 +241,9 @@ groups: []
 	_, vaseHasCollider := placedByID(compiled.Field, "vase")
 	s.False(vaseHasCollider, "decorative scenery must not acquire a fabricated blocker")
 	enc := s.play(compiled)
-	raw, err := json.Marshal(enc.ToData())
+	// The field is the site piece (rpg-project#879 S5), saved beside the
+	// checkpoint under the hash the checkpoint names.
+	raw, err := json.Marshal(enc.Site().Data())
 	s.Require().NoError(err)
 	var saved struct {
 		Field struct {

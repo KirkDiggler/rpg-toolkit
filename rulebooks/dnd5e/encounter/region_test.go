@@ -69,9 +69,9 @@ func (s *RegionSetupSuite) loadWith(edit func(*encounter.RegionData)) error {
 	enc, err := s.setupWith(threeRegions())
 	s.Require().NoError(err)
 	data := enc.ToData()
-	edit(&data.Field.Regions[1])
-	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data,
+	site := enc.Site().Data()
+	edit(&site.Field.Regions[1])
+	_, err = loadOverSite(data, site, encounter.LoadEncounterInput{
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
 			Equipment:     encounter.UnobservedEquipment{},
@@ -203,9 +203,9 @@ func (s *RegionSetupSuite) TestSetup_RefusesMissingLighting() {
 		regions[1].Lighting = &encounter.Lighting{Intensity: 0}
 		enc, err := s.setupWith(regions)
 		s.Require().NoError(err)
-		data := enc.ToData()
-		s.Require().NotNil(data.Field.Regions[1].Lighting.Intensity)
-		s.Equal(0.0, *data.Field.Regions[1].Lighting.Intensity, "persisted as an explicit 0")
+		site := enc.Site().Data()
+		s.Require().NotNil(site.Field.Regions[1].Lighting.Intensity)
+		s.Equal(0.0, *site.Field.Regions[1].Lighting.Intensity, "persisted as an explicit 0")
 	})
 }
 
@@ -322,8 +322,9 @@ func (s *RegionSetupSuite) TestAFieldSaysWhichWayItsHexesPoint() {
 	s.Require().NoError(err)
 	for _, word := range []string{"", "sideways"} {
 		data := enc.ToData()
-		data.Field.Canvas.Orientation = word
-		_, lerr := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+		site := enc.Site().Data()
+		site.Field.Canvas.Orientation = word
+		_, lerr := loadOverSite(data, site, encounter.LoadEncounterInput{
 			Data: data,
 			Capabilities: encounter.Capabilities{
 				Sight:         everyoneSeesTheWholeMap{},
@@ -371,7 +372,9 @@ func (s *RegionSetupSuite) TestTheOrientationSurvivesASave() {
 	s.Require().NoError(err)
 
 	data := enc.ToData()
-	s.Equal("flat", data.Field.Canvas.Orientation)
+
+	site := enc.Site().Data()
+	s.Equal("flat", site.Field.Canvas.Orientation)
 
 	back, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,

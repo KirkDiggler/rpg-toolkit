@@ -79,7 +79,7 @@ func (s *HoldOutSuite) camp() *encounter.Encounter {
 			Factions: []encounter.FactionInput{{ID: holdOutCamp, Mind: holdOutChief}},
 			Dispositions: []encounter.DispositionInput{{
 				Between: [2]encounter.FactionID{holdOutCamp, encounter.FactionParty},
-				Stance:  encounter.StanceHostile, Until: encounter.TriggerFact{Fact: holdOutFact},
+				Stance:  encounter.StanceHostile, Until: []encounter.UntilStep{{When: encounter.TriggerFact{Fact: holdOutFact}}},
 			}},
 		},
 		Members: []encounter.MemberInput{

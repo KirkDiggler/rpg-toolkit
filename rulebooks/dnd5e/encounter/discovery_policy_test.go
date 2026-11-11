@@ -80,8 +80,18 @@ func (s *DiscoveryPolicySuite) world(policy *encounter.DiscoveryPolicyInput) *en
 	return enc
 }
 
+// loadOver is load over an edited site piece (rpg-project#879 S5).
+func (s *DiscoveryPolicySuite) loadOver(data encounter.EncounterData, site encounter.SiteData) (*encounter.Encounter, error) {
+	in := s.loadInput(data)
+	return loadOverSite(data, site, *in)
+}
+
 func (s *DiscoveryPolicySuite) load(data encounter.EncounterData) (*encounter.Encounter, error) {
-	return encounter.LoadEncounter(&encounter.LoadEncounterInput{
+	return encounter.LoadEncounter(s.loadInput(data))
+}
+
+func (s *DiscoveryPolicySuite) loadInput(data encounter.EncounterData) *encounter.LoadEncounterInput {
+	return &encounter.LoadEncounterInput{
 		Data: data,
 		Capabilities: encounter.Capabilities{
 			Sight:         everyoneSeesTheWholeMap{},
@@ -99,7 +109,7 @@ func (s *DiscoveryPolicySuite) load(data encounter.EncounterData) (*encounter.En
 				Announcer: quietAnnouncer{},
 			},
 		},
-	})
+	}
 }
 
 func (s *DiscoveryPolicySuite) TestEffectivePolicyIsFrozenAndRoundTrips() {
@@ -107,8 +117,9 @@ func (s *DiscoveryPolicySuite) TestEffectivePolicyIsFrozenAndRoundTrips() {
 	enc := s.world(input)
 	*input.MaxAttempts = 100
 	data := enc.ToData()
-	s.Require().Len(data.Field.Concealments, 1)
-	policy := data.Field.Concealments[0].Attempts
+	site := enc.Site().Data()
+	s.Require().Len(site.Field.Concealments, 1)
+	policy := site.Field.Concealments[0].Attempts
 	s.Require().NotNil(policy)
 	s.Equal(2, policy.MaxAttempts)
 	s.Equal(3, policy.ResetHexes)
@@ -121,22 +132,23 @@ func (s *DiscoveryPolicySuite) TestEffectivePolicyIsFrozenAndRoundTrips() {
 	s.Require().NoError(err)
 	s.Equal(data, loaded.ToData())
 	policy.MaxAttempts = 50
-	s.Equal(2, enc.ToData().Field.Concealments[0].Attempts.MaxAttempts, "snapshot must not alias live state")
-	s.Equal(2, loaded.ToData().Field.Concealments[0].Attempts.MaxAttempts)
+	s.Equal(2, enc.Site().Data().Field.Concealments[0].Attempts.MaxAttempts, "snapshot must not alias live state")
+	s.Equal(2, loaded.Site().Data().Field.Concealments[0].Attempts.MaxAttempts)
 }
 
 func (s *DiscoveryPolicySuite) TestOmittedPolicyDefaultsButMalformedSavedPolicyRefuses() {
 	data := s.world(nil).ToData()
-	data.Field.Concealments[0].Attempts = nil
-	loaded, err := s.load(data)
+	site := s.world(nil).Site().Data()
+	site.Field.Concealments[0].Attempts = nil
+	loaded, err := s.loadOver(data, site)
 	s.Require().NoError(err)
-	s.Equal(1, loaded.ToData().Field.Concealments[0].Attempts.MaxAttempts)
+	s.Equal(1, loaded.Site().Data().Field.Concealments[0].Attempts.MaxAttempts)
 	for _, invalid := range []encounter.DiscoveryPolicy{
 		{MaxAttempts: 0, ResetHexes: 3},
 		{MaxAttempts: 1, ResetHexes: 1},
 	} {
-		data.Field.Concealments[0].Attempts = &invalid
-		_, err = s.load(data)
+		site.Field.Concealments[0].Attempts = &invalid
+		_, err = s.loadOver(data, site)
 		s.Require().Error(err, "an explicit malformed snapshot is not an omitted policy")
 	}
 }

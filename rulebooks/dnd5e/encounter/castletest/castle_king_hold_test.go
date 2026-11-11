@@ -75,12 +75,12 @@ func TestMadKingThePostHoldsTheGatesPassage(t *testing.T) {
 
 	t.Run("posted, neither cell of the open gate passes, and the stop names him", func(t *testing.T) {
 		t.Parallel()
-		s := openTheHeldGate(t, castleHost{at: besideTheCrossingSeat})
+		s := openTheHeldGate(t, castleHost{at: besideTheCrossingSeat, soleGateHolder: true})
 		require.Equal(t, beneathTheGate, s.at(kingGate1), "precondition: gate-1 is on his post beneath the gate")
 		require.Equal(t, held, s.barred(pastTheGate), "beside him, through the opening's other cell")
 
 		other := openTheHeldGate(t, castleHost{
-			at: beneathTheGateSeat, starts: map[encounter.MemberID]spatial.Position{kingGate1: besideTheCrossingSeat},
+			at: beneathTheGateSeat, soleGateHolder: true, starts: map[encounter.MemberID]spatial.Position{kingGate1: besideTheCrossingSeat},
 		})
 		require.Equal(t, besideTheCrossing, other.at(kingGate1), "precondition: gate-1 stands on his other post cell")
 		require.Equal(t, held, other.barred(pastTheGate), "and from his other post cell, through the first")
@@ -88,7 +88,7 @@ func TestMadKingThePostHoldsTheGatesPassage(t *testing.T) {
 
 	t.Run("alert on his post, still held", func(t *testing.T) {
 		t.Parallel()
-		s := openTheHeldGate(t, castleHost{at: besideTheCrossingSeat})
+		s := openTheHeldGate(t, castleHost{at: besideTheCrossingSeat, soleGateHolder: true})
 		s.storedIn(kingGate1, "alert")
 		require.Equal(t, beneathTheGate, s.at(kingGate1), "precondition: alert on his post")
 		require.Equal(t, held, s.barred(pastTheGate), "alert on his post, he holds the gate")
@@ -96,7 +96,7 @@ func TestMadKingThePostHoldsTheGatesPassage(t *testing.T) {
 
 	t.Run("drawn off by a voice, it opens", func(t *testing.T) {
 		t.Parallel()
-		s := openTheHeldGate(t, castleHost{at: besideTheCrossingSeat})
+		s := openTheHeldGate(t, castleHost{at: besideTheCrossingSeat, soleGateHolder: true})
 		require.Equal(t, held, s.barred(pastTheGate), "precondition: held")
 		s.voiceOutside()
 		// He answers the voice on the world's next round and walks back to
@@ -124,7 +124,7 @@ func TestMadKingThePostHoldsTheGatesPassage(t *testing.T) {
 		t.Parallel()
 		// The state alone, stored: still neutral to the party, so what
 		// opens the gate is that `turned` holds nothing, not the stance.
-		s := openTheHeldGate(t, castleHost{at: besideTheCrossingSeat})
+		s := openTheHeldGate(t, castleHost{at: besideTheCrossingSeat, soleGateHolder: true})
 		s.storedIn(kingGate1, "turned")
 		require.Equal(t, beneathTheGate, s.at(kingGate1), "precondition: still standing beneath the gate")
 		require.False(t, s.hostile(hero, kingGate1), "precondition: and still neutral")
@@ -133,7 +133,7 @@ func TestMadKingThePostHoldsTheGatesPassage(t *testing.T) {
 
 	t.Run("downed, the opening passes", func(t *testing.T) {
 		t.Parallel()
-		s := openTheHeldGate(t, castleHost{at: besideTheCrossingSeat})
+		s := openTheHeldGate(t, castleHost{at: besideTheCrossingSeat, soleGateHolder: true})
 		require.Equal(t, held, s.barred(pastTheGate), "precondition: held")
 		s.standing.down[kingGate1] = true
 		s.crosses(pastTheGate, "downed, he holds nothing")
@@ -148,6 +148,9 @@ func TestMadKingThePostHoldsTheGatesPassage(t *testing.T) {
 			postedLike:  []encounter.MemberID{kingGate2},
 			starts:      map[encounter.MemberID]spatial.Position{kingGate2: besideTheCrossingSeat},
 			gateAgainst: encounter.PostBothWays,
+			// gate-2 seated like gate-1, the captain's post set aside: the
+			// group rule on two holders of one kind.
+			soleGateHolder: true,
 		})
 		require.Equal(t, besideTheCrossing, s.at(kingGate2), "precondition: gate-2 stands on the post's other cell")
 
@@ -195,7 +198,7 @@ func (s *kingScene) storedIn(id encounter.MemberID, state string) {
 // told who bars it; cowed, he opens it.
 func TestMadKingTheHeldGateDoorRefusesTheParty(t *testing.T) {
 	t.Parallel()
-	s := openTheCastleAs(t, castleHost{at: besideTheCrossingSeat})
+	s := openTheCastleAs(t, castleHost{at: besideTheCrossingSeat, soleGateHolder: true})
 	require.Equal(t, beneathTheGate, s.at(kingGate1), "precondition: gate-1 is on his post")
 
 	out, err := s.enc.OpenDoor(&encounter.OpenDoorInput{Door: kingGateDoor, Actor: hero})
@@ -210,17 +213,18 @@ func TestMadKingTheHeldGateDoorRefusesTheParty(t *testing.T) {
 
 // TestMadKingTheTroupePassesThePostedGuard (rpg-project#857, R6): the
 // troupe line won, the hero crosses the gate inward while gate-1 stays
-// posted on his cell. The captain's word is the hero's pass; it does not
-// move the guard.
+// posted on his cell. The captain's word makes the gate guards recognise the
+// hero (rpg-project#928); it does not move the guard.
 func TestMadKingTheTroupePassesThePostedGuard(t *testing.T) {
 	t.Parallel()
 	s := openTheCastle(t, partyStart(t))
 	s.heardTheStranger(true)
 	s.walkTo(s.at(kingCaptain))
 	s.said(kingCaptain, "troupe", "performance", true)
-	require.True(t, s.learners("troupe-admitted")[hero], "precondition: the hero knows the troupe was let through")
+	require.True(t, s.recognizes(kingGate1, hero), "precondition: gate-1 heard the troupe let through, and recognises the hero")
 
 	s.stepTo(besideTheCrossing)
+	s.backOnHisPost()
 	require.Equal(t, beneathTheGate, s.at(kingGate1), "precondition: gate-1 stands on his post beneath the gate")
 	s.onHisPost(kingGate1, "precondition: and is posted")
 	held, _, err := s.enc.DoorHeldFor(hero, kingGateDoor)
@@ -233,7 +237,7 @@ func TestMadKingTheTroupePassesThePostedGuard(t *testing.T) {
 	require.Equal(t, beneathTheGate, s.at(kingGate1), "on his cell")
 	seen, err := s.enc.ObservedHolds(&encounter.ViewInput{Member: hero})
 	require.NoError(t, err)
-	require.NotContains(t, seen, kingGate1, "the hero, with the pass, is told no hold")
+	require.NotContains(t, seen, kingGate1, "the hero, recognised, is told no hold")
 }
 
 // TestMadKingTheGateLetsThePartyOut (rpg-project#857, R6): from inside, the
@@ -245,7 +249,7 @@ func TestMadKingTheGateLetsThePartyOut(t *testing.T) {
 
 	t.Run("against entering, as the file sets it, the party walks out", func(t *testing.T) {
 		t.Parallel()
-		s := openTheHeldGate(t, castleHost{at: pastTheGateSeat})
+		s := openTheHeldGate(t, castleHost{at: pastTheGateSeat, soleGateHolder: true})
 		require.Equal(t, beneathTheGate, s.at(kingGate1), "precondition: gate-1 is on his post")
 		s.crosses(besideTheCrossing, "out of the courtyard, past the posted guard")
 		s.onHisPost(kingGate1, "still posted")
@@ -254,17 +258,17 @@ func TestMadKingTheGateLetsThePartyOut(t *testing.T) {
 
 	t.Run("a test post set both ways bars the same party on the way out", func(t *testing.T) {
 		t.Parallel()
-		s := openTheHeldGate(t, castleHost{at: pastTheGateSeat, gateAgainst: encounter.PostBothWays})
+		s := openTheHeldGate(t, castleHost{at: pastTheGateSeat, soleGateHolder: true, gateAgainst: encounter.PostBothWays})
 		require.Equal(t, string(kingGate1)+" bars the way", s.barred(besideTheCrossing))
 	})
 
 	t.Run("the arrivals stay barred at the shut gate door", func(t *testing.T) {
 		t.Parallel()
-		s := openTheCastleAs(t, castleHost{at: besideTheCrossingSeat})
+		s := openTheCastleAs(t, castleHost{at: besideTheCrossingSeat, soleGateHolder: true})
 		out, err := s.enc.OpenDoor(&encounter.OpenDoorInput{Door: kingGateDoor, Actor: hero})
 		require.NoError(t, err)
 		require.NotNil(t, out.Refused, "from the gatehouse, the door is held against the hero")
-		inside := openTheCastleAs(t, castleHost{at: pastTheGateSeat})
+		inside := openTheCastleAs(t, castleHost{at: pastTheGateSeat, soleGateHolder: true})
 		inside.open(kingGateDoor)
 	})
 }
@@ -277,4 +281,15 @@ func (s *kingScene) onHisPost(id encounter.MemberID, msg string) {
 	s.t.Helper()
 	state := machineState(s.t, s.enc, id)
 	require.Contains(s.t, []string{"posted", "alert"}, state, msg)
+}
+
+// gateStandsAside stands every gate guard cowed in the record — gate-1, gate-2
+// and the captain, each of whom holds the gate (rpg-project#928) — so a route
+// that is about what lies past the gate opens it without the stand-aside's
+// dice.
+func (s *kingScene) gateStandsAside() {
+	s.t.Helper()
+	for _, id := range []encounter.MemberID{kingGate1, kingGate2, kingCaptain} {
+		s.storedIn(id, "cowed")
+	}
 }

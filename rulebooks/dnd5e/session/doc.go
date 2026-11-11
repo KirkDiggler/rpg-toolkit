@@ -386,7 +386,11 @@
 //   - the verb classification for the freeze — [Manager.openForChange] refuses
 //     every change verb with [ErrWindowOpen] while a window is open,
 //     [Manager.React] uses openForWrite because a frozen session is exactly
-//     the state it exists to operate on, and reads are exempt;
+//     the state it exists to operate on, and reads are exempt. One window
+//     does not freeze (rpg-project#924): a Speak check waiting on its
+//     speaker's roll in free roam holds its conversation through the
+//     encounter's reservation instead, and is closed by whichever verb's
+//     save finds the hold gone ([holdsTheTable], [closeAbandonedLines]);
 //   - restart survival: SessionData.Windows holds the questions, the
 //     encounter's own blob holds the interrupted turn, and the two are written
 //     encounter-then-session as every verb writes them;

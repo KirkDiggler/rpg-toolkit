@@ -43,7 +43,11 @@ func TestADoorChangeDropsTheVisibleCache(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, misses+len(sweepMembers), enc.visibleMisses, "every observer sweeps again against the open door")
-	require.Len(t, enc.visibleCache, len(sweepMembers), "the shut door's entries are freed, not kept beside the open door's")
+	// RAW ENTRIES ARE THE SITE'S (rpg-project#879 S5): nobody here has a face
+	// hidden, so every sweep is the site's answer for its key, and the shut
+	// door's answers stay for any other game on the site whose door is shut.
+	require.Empty(t, enc.visibleCache, "the instance holds no raw answer")
+	require.Equal(t, 2*len(sweepMembers), enc.site.sight.len(), "the site keeps both door states' answers")
 	require.True(t, enc.world.knownCells(sweepWatchA)[farEast], "and sees down the neck")
 	hits := enc.visibleHits
 	walkAround(t, enc, 2)
@@ -55,14 +59,16 @@ func TestADoorChangeDropsTheVisibleCache(t *testing.T) {
 // by use, costing one sweep per key again and no correctness. Mutant: a cache
 // that grows without bound (entries exceed the bound).
 func TestTheVisibleCacheIsBounded(t *testing.T) {
-	prev := visibleCacheEntries
-	visibleCacheEntries = 3
-	defer func() { visibleCacheEntries = prev }()
-	enc := sweepScene(t)
+	const bound = 3
+	in := sweepSetup()
+	in.Sites = NewMemorySites(&MemorySitesConfig{SightEntries: bound})
+	enc, err := newEncounter(in, bound)
+	require.NoError(t, err)
 	for _, to := range []spatial.Position{{X: 1, Y: 2}, {X: 2, Y: 2}, {X: 3, Y: 2}, {X: 2, Y: 2}} {
-		_, err := enc.Step(&StepInput{Member: sweepWalker, To: enc.field.cellAt(to), EndWalk: true})
+		_, err = enc.Step(&StepInput{Member: sweepWalker, To: enc.field.cellAt(to), EndWalk: true})
 		require.NoError(t, err)
-		require.LessOrEqual(t, len(enc.visibleCache), visibleCacheEntries, "the cache never exceeds its bound")
+		require.LessOrEqual(t, len(enc.visibleCache), bound, "the cache never exceeds its bound")
+		require.LessOrEqual(t, enc.site.sight.len(), bound, "nor does the site's")
 	}
 	requireNothingUnlearned(t, enc, "after the bounded walk")
 }

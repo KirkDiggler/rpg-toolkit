@@ -26,6 +26,13 @@
 // [CheckParameters] validates producer-supplied scalar values from mechanical
 // metadata. It does not bind templates, sample values or define a quality profile.
 //
+// Observe and Decide can also return [InstanceOutcome] values when Trace is
+// requested. These pair the machine's actual one-pass guard observations with
+// the composer's selected/committed/skipped dispositions. The proposed machine
+// state is not necessarily the committed state: a deferred role and a
+// no-candidate hold keep their progress. Tracing never evaluates a deferred
+// role's table or rolls a second choice. Existing untraced results stay unchanged.
+//
 // # Derived inspection and wake admission
 //
 // [Composer.Inspect] describes every instance's own state, listeners, timed
@@ -36,6 +43,21 @@
 // wake; non-timed observations remain deliverable. [Composer.DelayWakes] applies
 // a caller-chosen span to existing wakes, with overflow checked before any
 // mutation, and never shifts anchors or owns a clock.
+//
+// # Shared selection
+//
+// The selection subpackage captures ordered candidate values, named requirement
+// verdicts and integer factors. It returns detached evidence and supports both
+// a supplied-die draw and an explicit eligible ID without re-evaluating facts.
+// It knows no behavior, world, profile meaning or execution policy.
+//
+// Pick uses that primitive at each table level, preserving nested paths and
+// all row verdicts; Deal uses it over the sorted temperament mix. Behavior still
+// owns the domain's When/affordability tests, raw percentage loading and
+// hold-versus-silence meanings. Invalid faces and overflowing weights are
+// refused instead of falling through to a plausible row. The selection API's
+// explicit mode is also usable by a caller-owned dialogue menu; that is not
+// automatic adoption by a game UI or authorization to execute a stale offer.
 //
 // # Bind-time finite sequences
 //

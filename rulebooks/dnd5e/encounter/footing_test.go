@@ -453,9 +453,11 @@ func (s *FootingSuite) TestSegmentsAndSealedRideThePersistence() {
 	s.Require().NoError(err)
 
 	data := enc.ToData()
-	s.Require().Len(data.Field.Segments, 1, "the wall's line is written out")
-	s.Equal([]encounter.DoorID{"panel"}, data.Field.Segments[0].DoorIDs)
-	s.Require().Len(data.Field.Sealed, 1, "and so is what it sealed")
+
+	site := enc.Site().Data()
+	s.Require().Len(site.Field.Segments, 1, "the wall's line is written out")
+	s.Equal([]encounter.DoorID{"panel"}, site.Field.Segments[0].DoorIDs)
+	s.Require().Len(site.Field.Sealed, 1, "and so is what it sealed")
 
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: data,

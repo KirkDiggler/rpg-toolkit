@@ -53,6 +53,15 @@ type SpeakInput struct {
 	// an unknown id, and an option whose `requires` the member does not
 	// meet, are one refusal.
 	OptionID string
+
+	// Revision is the line's [SpeakOptionRow.Revision], verbatim from the
+	// menu it was picked off (rpg-project#924). A line that reads or
+	// advances an interaction is refused [ErrStaleOption] at any other
+	// revision — the conversation moved since the menu was read — and
+	// [ErrLineReserved] while somebody's checked line holds it. Both are
+	// refused before anything is charged, rolled or recorded. Not read for
+	// a line that touches no interaction.
+	Revision uint64
 }
 
 // SpeakOutput is the attempt, in the open: the roll is public down to the
@@ -167,7 +176,17 @@ type SpeakOutput struct {
 // ErrNotYourTurn, ErrDowned, ErrNoMember, ErrNoProp, ErrNoOption,
 // ErrCannotAfford, ErrUnwitnessed, ErrOutOfRange (a creature beyond
 // [InteractionReach]: walk up first), ErrStaleDeclaration (a prop no longer
-// on the menu: refresh Afford).
+// on the menu: refresh Afford), ErrStaleOption (the conversation moved since
+// the line was offered: refresh Afford), ErrLineReserved (the line waits on
+// somebody's roll).
+//
+// # A checked line that waits holds its conversation
+//
+// When the check pauses on a held benefit, the line's interaction is
+// RESERVED for the speaker ([encounter.Encounter.Reserve], rpg-project#924):
+// every line reading or advancing it is pending for everyone until the
+// window is answered, and the answer settles the line at the revision it
+// was reserved at. A line that reads no interaction reserves nothing.
 func (m *Manager) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("speak: %w", ErrNilInput)

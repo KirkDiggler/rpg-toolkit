@@ -147,13 +147,14 @@ func newArrivalMemoryEncounter(
 	// charter is what makes the persisted map readable here at all.
 	seeded := data.Perception.Intel.Holdings[sightMember(propagationGoblin)]
 	var present bool
-	for subject, holding := range seeded {
+	for subject, topics := range seeded {
 		if string(subject) != string(sightMember(propagationSubject)) {
 			continue
 		}
+		holding := topics[""]
 		holding.Payload = known
 		holding.CurrentVia = nil
-		seeded[subject] = holding
+		topics[""] = holding
 		present = true
 	}
 	require.True(t, present, "seed must give the driven goblin sight testimony")

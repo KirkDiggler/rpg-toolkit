@@ -59,7 +59,7 @@ func (s *CastActionTestSuite) TestStabilizationDeliveryAndRefusal() {
 				}
 			}
 			if tc.wall {
-				world.Field.Walls = append(world.Field.Walls, encounter.BoundaryData{From: encounter.PositionData{X: 2, Y: 1}, To: encounter.PositionData{X: 3, Y: 1}, BlocksMovement: true})
+				withWall(s.T(), &world, encounter.BoundaryData{From: encounter.PositionData{X: 2, Y: 1}, To: encounter.PositionData{X: 3, Y: 1}, BlocksMovement: true})
 			}
 			participants := []Participant{{Character: caster}, {Monster: f.wolfData()}}
 			if !tc.missing {

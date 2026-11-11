@@ -28,7 +28,7 @@ func cookOptions() []encounter.Option {
 		},
 		{
 			ID: "chat", Say: "Smells good in here.",
-			Requires: encounter.TriggerNot{Inner: encounter.TriggerFact{Fact: caughtInKitchen}},
+			Requires: []encounter.Trigger{encounter.TriggerNot{Inner: encounter.TriggerFact{Fact: caughtInKitchen}}},
 			Check:    []encounter.CheckApproach{{Ability: "persuasion", DC: 10}},
 			Success:  []encounter.Answer{{Weight: 1, Say: "Stew for the guard."}},
 		},
@@ -73,7 +73,7 @@ func (s *OptionTestSuite) TestANotFactOptionIsWithheldFromTheSpeakerWhoWasCaught
 // A not of a holding is offered while the speaker's hands are empty of it.
 func (s *OptionTestSuite) TestANotHoldsOptionIsOfferedOnlyWhileTheSpeakerLacksTheProp() {
 	options := cookOptions()
-	options[1].Requires = encounter.TriggerNot{Inner: encounter.TriggerHolds{Prop: thePurse}}
+	options[1].Requires = []encounter.Trigger{encounter.TriggerNot{Inner: encounter.TriggerHolds{Prop: thePurse}}}
 	enc := s.sceneWith(options)
 
 	before, err := enc.OptionsFor(alice, goblin)
@@ -99,7 +99,7 @@ func (s *OptionTestSuite) TestANotRequirementThatCannotBeReadIsRefusedAtConstruc
 	} {
 		s.Run(name, func() {
 			options := cookOptions()
-			options[1].Requires = requires
+			options[1].Requires = []encounter.Trigger{requires}
 			_, err := encounter.NewEncounter(&encounter.SetupInput{
 				Field: encounter.FieldInput{
 					Canvas:  openAir(),

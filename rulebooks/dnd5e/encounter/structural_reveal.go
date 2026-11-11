@@ -138,7 +138,7 @@ func structuralWallRow(w AtlasStructuralWall) map[string]interface{} {
 	if footprint == nil {
 		footprint = []spatial.Position{}
 	}
-	return map[string]interface{}{
+	row := map[string]interface{}{
 		"id":              w.ID,
 		"ref":             w.Ref,
 		"from":            w.From,
@@ -149,6 +149,10 @@ func structuralWallRow(w AtlasStructuralWall) map[string]interface{} {
 		"footprint_cells": footprint,
 		"openings":        structuralOpeningRows(w.Openings),
 	}
+	if len(w.MaterialOverrides) > 0 {
+		row["material_overrides"] = materialOverridesData(w.MaterialOverrides)
+	}
+	return row
 }
 
 // structuralOpeningRows encodes only permitted cut facts. Even an empty list

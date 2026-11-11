@@ -823,6 +823,7 @@ func compileSpeakRow(
 		Verb: VerbSpeak, Slot: slot, ID: id,
 		TargetKind: TargetMember, Candidates: projectCandidates(menu.targets),
 		SpeakOptions: menu.projectRows(),
+		Address:      menu.address,
 	}
 	var priced *character.Character
 	if profile != nil {
@@ -886,19 +887,25 @@ type speakMenu struct {
 
 	// lines is the menu, in target order and then authored order.
 	lines []speakLine
+
+	// address is the interaction addressing the speaker now, nil for none
+	// ([Declaration.Address]). Every part of the menu carries it.
+	address *Address
 }
 
 // speakLine is one (target, option) pair on the menu.
 type speakLine struct {
 	target string
 	prop   string
-	option encounter.Option
+	option encounter.OfferedOption
 }
 
 // projectRows is the menu as the seam's exported rows. Non-nil, so a row
 // with nothing on it says so with an empty list.
 //
-// EVERY LISTED LINE IS AVAILABLE. A line whose `requires` the speaker does
+// EVERY LISTED LINE IS AVAILABLE BUT A PENDING ONE (rpg-project#924), which
+// the composition says, verbatim with its interaction and revision, and this
+// seam never recomputes. A line whose `requires` the speaker does
 // not meet is not listed at all — listing it unavailable would confirm a line
 // the author hid behind a fact (R9) — and a creature that cannot see the
 // speaker is not a target. Whether the speaker can pay is the declaration's
@@ -906,11 +913,19 @@ type speakLine struct {
 func (m speakMenu) projectRows() []SpeakOptionRow {
 	out := make([]SpeakOptionRow, 0, len(m.lines))
 	for _, l := range m.lines {
-		out = append(out, SpeakOptionRow{
+		row := SpeakOptionRow{
 			Target: l.target, Prop: l.prop,
 			OptionID: l.option.ID, Line: l.option.Say,
-			Available: true,
-		})
+			Available:   !l.option.Pending,
+			Interaction: string(l.option.Interaction),
+			Revision:    l.option.Revision,
+			Pending:     l.option.Pending,
+			PendingOn:   string(l.option.PendingOn),
+		}
+		if l.option.Pending {
+			row.Why = &Shortfall{Reason: ShortfallLineReserved, Text: "this line waits on somebody's roll"}
+		}
+		out = append(out, row)
 	}
 	return out
 }
@@ -922,6 +937,7 @@ func (m speakMenu) projectRows() []SpeakOptionRow {
 // the menu's own order.
 func (m speakMenu) byPrice() (plain, checked speakMenu) {
 	plain.witnesses, checked.witnesses = m.witnesses, m.witnesses
+	plain.address, checked.address = m.address, m.address
 	plainBy := map[string]bool{}
 	checkedBy := map[string]bool{}
 	for _, l := range m.lines {
@@ -1026,6 +1042,19 @@ func readSpeakMenu(enc *encounter.Encounter, member string) (speakMenu, error) {
 		for _, o := range lines {
 			menu.lines = append(menu.lines, speakLine{prop: string(prop), option: o})
 		}
+	}
+
+	// THE ADDRESS RIDES THE MENU (rpg-project#923): the composition's one
+	// predicate answers whether it stands, measured at the reach this menu
+	// was read within, so the row that names the guard always lists him.
+	addressed, err := enc.AddressFor(&encounter.AddressForInput{
+		Member: encounter.MemberID(member), Reach: InteractionReach,
+	})
+	if err != nil {
+		return speakMenu{}, badCostUnlessSheet(translate(err))
+	}
+	if addressed.Address != nil {
+		menu.address = projectAddress(*addressed.Address)
 	}
 
 	return menu, nil

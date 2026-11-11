@@ -43,6 +43,12 @@ type Listen struct {
 // It returns ErrNilBlob for a nil b, ErrUnknownState when b names a state
 // the recipe lacks and ErrUnknownBeat when on is not in the vocabulary.
 func (p *Program) Step(b *Blob, on Beat, ev any, env any, now uint64) (Stepped, error) {
+	return p.step(b, on, ev, env, now, nil)
+}
+
+// step is shared by ordinary and traced evaluation. No trace values are
+// allocated on the ordinary path, and neither path evaluates a guard twice.
+func (p *Program) step(b *Blob, on Beat, ev any, env any, now uint64, trace *StepTrace) (Stepped, error) {
 	if b == nil {
 		return Stepped{}, ErrNilBlob
 	}
@@ -61,6 +67,14 @@ func (p *Program) Step(b *Blob, on Beat, ev any, env any, now uint64) (Stepped, 
 		b.WakeAt = nil
 	}
 
+	if trace != nil {
+		trace.Before, trace.On, trace.Now = b.State, on, now
+		trace.Transitions = make([]TransitionTrace, len(st.transitions))
+		for i, t := range st.transitions {
+			trace.Transitions[i] = TransitionTrace{Index: i, On: t.on}
+		}
+	}
+
 	reason := fmt.Sprintf("state %s does not listen for %s", b.State, on)
 	undecided := false
 	a := &asked{env: env, ev: ev, blob: b, zero: p.zero}
@@ -69,13 +83,21 @@ func (p *Program) Step(b *Blob, on Beat, ev any, env any, now uint64) (Stepped, 
 		if t.on != on {
 			continue
 		}
-		v, why := t.when.answer(a)
+		var guardTrace *GuardTrace
+		if trace != nil {
+			trace.Transitions[i].Evaluated = true
+			guardTrace = &trace.Transitions[i].Guard
+		}
+		v, why := t.when.answer(a, guardTrace)
 		if v != Applies {
 			if !undecided {
 				reason = fmt.Sprintf("%s: %s", why, v)
 				undecided = true
 			}
 			continue
+		}
+		if trace != nil {
+			trace.Transitions[i].Selected = true
 		}
 		p.apply(b, t.do, now)
 		out := Stepped{Fired: true, Acts: cloneActs(t.do), Reason: t.reason}

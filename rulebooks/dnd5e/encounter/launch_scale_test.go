@@ -12,6 +12,7 @@ package encounter_test
 //	go test . -run '^$' -bench 'Launch_Keep|RefreshSightWarm|LoadEncounter_Keep10k' -benchtime 3x
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
@@ -96,7 +97,14 @@ func BenchmarkRefreshSightWarm_Keep10k(b *testing.B) {
 // launched 10k keep back (rpg-project#753, S4): unmarshal the saved run and
 // load it. The saved bytes are reported as a metric beside the time.
 func BenchmarkLoadEncounter_Keep10k(b *testing.B) {
-	raw, err := json.Marshal(launchedKeep10k(b).ToData())
+	keep := launchedKeep10k(b)
+	raw, err := json.Marshal(keep.ToData())
+	require.NoError(b, err)
+	// THE SITE IS RESIDENT (rpg-project#879 S5): what every verb on a warm
+	// process pays. The cold compile is BenchmarkLoadEncounter_Keep10kCold.
+	sites := encounter.NewMemorySites(nil)
+	piece := keep.Site().Data()
+	_, err = sites.Site(context.Background(), &encounter.SiteInput{Data: &piece})
 	require.NoError(b, err)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -105,10 +113,40 @@ func BenchmarkLoadEncounter_Keep10k(b *testing.B) {
 			b.Fatal(err)
 		}
 		if _, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-			Data: data, Capabilities: knowledgeCapabilities(&sightList{fallback: 24}),
+			Data: data, Sites: sites, Capabilities: knowledgeCapabilities(&sightList{fallback: 24}),
 		}); err != nil {
 			b.Fatal(err)
 		}
 	}
 	b.ReportMetric(float64(len(raw)), "blob-bytes")
+}
+
+// BenchmarkLoadEncounter_Keep10kCold is the same load on a process that does
+// not hold the site: every op compiles it from the stored piece first, the
+// whole of what a load cost before the site tier (rpg-project#879 S5, F21).
+func BenchmarkLoadEncounter_Keep10kCold(b *testing.B) {
+	keep := launchedKeep10k(b)
+	raw, err := json.Marshal(keep.ToData())
+	require.NoError(b, err)
+	pieceRaw, err := json.Marshal(keep.Site().Data())
+	require.NoError(b, err)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var data encounter.EncounterData
+		var piece encounter.SiteData
+		if err := json.Unmarshal(raw, &data); err != nil {
+			b.Fatal(err)
+		}
+		if err := json.Unmarshal(pieceRaw, &piece); err != nil {
+			b.Fatal(err)
+		}
+		if _, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
+			Data: data, Site: &piece, Sites: encounter.NewMemorySites(nil),
+			Capabilities: knowledgeCapabilities(&sightList{fallback: 24}),
+		}); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ReportMetric(float64(len(raw)), "blob-bytes")
+	b.ReportMetric(float64(len(pieceRaw)), "site-bytes")
 }

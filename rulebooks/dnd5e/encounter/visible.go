@@ -7,10 +7,13 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
-// visibleCacheEntries bounds [Encounter.visibleCache]: at the bound the whole
+// visibleCacheBound bounds [Encounter.visibleCache]: at the bound the whole
 // cache is dropped and refilled by use, which costs one sweep per visited key
-// again and nothing else. A var so a test can shrink it.
-var visibleCacheEntries = 4096
+// again and nothing else. Every constructor copies it into
+// [Encounter.visibleCacheEntries]; a test shrinks its own encounter's bound
+// through [newEncounter], never a value another encounter reads
+// (rpg-toolkit#2317).
+const visibleCacheBound = 4096
 
 // visibleBits is one sweep's answer as a bitset over the sweep disk in
 // [field.sweepCells] order: bit i set means disk[i] is visible from the key's
@@ -34,18 +37,31 @@ func (b visibleBits) has(i int) bool { return b[i/64]&(1<<(uint(i)%64)) != 0 }
 // learned and so never skipped. What a cell sees does not change when a
 // member moves (members never block sight), so the second visit reads the
 // first visit's answer.
-func (e *Encounter) visibleFrom(key sightSweepKey, disk []spatial.Position, sees func(spatial.Position) bool) visibleBits {
-	if bits, hit := e.visibleCache[key]; hit && len(bits) == (len(disk)+63)/64 {
+//
+// TWO LAYERS, EACH WHERE ITS INPUTS LIVE (rpg-project#879 S5, R4): a key
+// whose observer has no face hidden from it is RAW — its answer depends on
+// the site and the key alone — and is read from and written to the site's
+// memo ([siteSight]), shared by every game on that content and kept across
+// loads; a key carrying a concealment view is the instance's, here. Both
+// are sound by the key; the split decides only who may reuse an entry.
+func (e *Encounter) visibleFrom(key sightSweepKey, disk []spatial.Position, raw bool, sees func(spatial.Position) bool) visibleBits {
+	words := (len(disk) + 63) / 64
+	if raw && e.site != nil {
+		if bits, hit := e.site.sight.get(key, words); hit {
+			e.visibleHits++
+			return bits
+		}
+		bits := sweepDisk(disk, sees)
+		e.site.sight.put(key, bits)
+		e.visibleMisses++
+		return bits
+	}
+	if bits, hit := e.visibleCache[key]; hit && len(bits) == words {
 		e.visibleHits++
 		return bits
 	}
-	bits := make(visibleBits, (len(disk)+63)/64)
-	for i, cell := range disk {
-		if sees(cell) {
-			bits.set(i)
-		}
-	}
-	if len(e.visibleCache) >= visibleCacheEntries {
+	bits := sweepDisk(disk, sees)
+	if len(e.visibleCache) >= e.visibleCacheEntries {
 		e.visibleCache = nil
 	}
 	if e.visibleCache == nil {
@@ -54,5 +70,16 @@ func (e *Encounter) visibleFrom(key sightSweepKey, disk []spatial.Position, sees
 	e.visibleCache[key] = bits
 	e.visibleMisses++
 
+	return bits
+}
+
+// sweepDisk is one sweep: bit i set when sees answers true for disk[i].
+func sweepDisk(disk []spatial.Position, sees func(spatial.Position) bool) visibleBits {
+	bits := make(visibleBits, (len(disk)+63)/64)
+	for i, cell := range disk {
+		if sees(cell) {
+			bits.set(i)
+		}
+	}
 	return bits
 }

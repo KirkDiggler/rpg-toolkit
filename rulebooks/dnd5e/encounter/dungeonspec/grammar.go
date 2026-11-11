@@ -337,6 +337,58 @@ type grammarInput struct {
 	// it could not. A dialect with no `bundles:` leaves it false, and a
 	// `use:` row there is refused here.
 	Bundled bool
+
+	// Interactions is every root `interactions:` entry by id, with the
+	// states and beats its recipe declares (rpg-project#922): what an
+	// option's `{ interaction }` requirement and `advance` may name. A nil
+	// entry is one declared and refused at its own path, so a line naming
+	// it is not refused a second time. A dialect with none leaves it nil.
+	Interactions map[string]*interactionShape
+
+	// LineTopics is every topic a line's success row grants
+	// (rpg-project#929): with the interactions' outcomes, what a
+	// `recognized` requirement may name.
+	LineTopics map[string]bool
+}
+
+// interactionShape is what an option may name of one root interaction: the
+// states its recipe declares and the beats it listens for.
+type interactionShape struct {
+	states map[string]bool
+	beats  map[string]bool
+
+	// topics is every topic the interaction's outcomes grant
+	// (rpg-project#928): what a `recognized` requirement may name.
+	topics map[string]bool
+}
+
+// topics is every topic a root interaction's outcomes grant.
+func (g *grammar) topics() map[string]bool {
+	out := map[string]bool{}
+	for topic := range g.lineTopics {
+		out[topic] = true
+	}
+	for _, shape := range g.interactions {
+		if shape != nil {
+			for topic := range shape.topics {
+				out[topic] = true
+			}
+		}
+	}
+	return out
+}
+
+// grants reports whether any root interaction's outcomes grant topic.
+func (g *grammar) grants(topic string) bool {
+	if g.lineTopics[topic] {
+		return true
+	}
+	for _, shape := range g.interactions {
+		if shape != nil && shape.topics[topic] {
+			return true
+		}
+	}
+	return false
 }
 
 // grammar judges one document's gameplay vocabulary, reporting every defect
@@ -375,6 +427,12 @@ type grammar struct {
 
 	// doors is [grammarInput.Doors].
 	doors map[string]bool
+
+	// interactions is [grammarInput.Interactions].
+	interactions map[string]*interactionShape
+
+	// lineTopics is [grammarInput.LineTopics].
+	lineTopics map[string]bool
 }
 
 // newGrammar builds the grammar one dialect's document is judged by.
@@ -390,6 +448,8 @@ func newGrammar(in grammarInput) *grammar {
 		bundled:              in.Bundled,
 		picked:               in.Picked,
 		doors:                in.Doors,
+		interactions:         in.Interactions,
+		lineTopics:           in.LineTopics,
 	}
 }
 
@@ -528,7 +588,8 @@ func (g *grammar) options(path string, options []OptionSpec, props map[string]bo
 		} else if o.Failure != nil {
 			g.fail(p+"."+string(encounter.AnswerFailure), "%s", errOptionPlainFails)
 		}
-		g.optionRequires(p+".requires", o.Requires, props)
+		g.optionRequirements(p+".requires", o.Requires, props, isProp)
+		g.optionAdvance(p+".advance", o.Advance, o.Check != nil)
 		for _, verdict := range []struct {
 			key  string
 			rows []AnswerSpec
@@ -547,15 +608,32 @@ func (g *grammar) options(path string, options []OptionSpec, props map[string]bo
 				if isProp && row.Flee != nil {
 					g.fail(rowAt+".flee", "%s", errOptionPropFlees)
 				}
+				g.rowRecognize(rowAt+".recognize", verdict.key, o, row, isProp)
 			}
 		}
 	}
 }
 
-// optionRequires judges one option's `requires`: absent, a fact, or a holding
-// of a placed prop somebody can pick up — and nothing else, because an option
-// is offered or not by what the SPEAKER knows and carries (R9).
-func (g *grammar) optionRequires(path string, p *PredicateSpec, props map[string]bool) {
+// optionRequirements judges every predicate of one option's `requires`
+// (rpg-project#922), each at its own path: `requires` for a list of one —
+// which is what a single mapping reads as — and `requires[i]` for a longer
+// list.
+func (g *grammar) optionRequirements(path string, requires RequiresSpec, props map[string]bool, isProp bool) {
+	for i := range requires {
+		at := path
+		if len(requires) > 1 {
+			at = fmt.Sprintf("%s[%d]", path, i)
+		}
+		g.optionRequires(at, &requires[i], props, isProp)
+	}
+}
+
+// optionRequires judges one item of an option's `requires`: the SPEAKER's
+// own read — a fact, or a holding of a placed prop somebody can pick up (R9)
+// — or the RUN's interaction state, judged per run and not per speaker
+// (rpg-project#922, #916 R2), or a `not` of one; nothing else. Every item
+// of the list must hold ([grammar.optionRequirements]).
+func (g *grammar) optionRequires(path string, p *PredicateSpec, props map[string]bool, isProp bool) {
 	if p.Form() == predicateNot {
 		// THE SPEAKER'S READ, NEGATED (rpg-project#719, D3): withheld from
 		// whoever knows the fact or carries the prop, offered to whoever
@@ -566,12 +644,22 @@ func (g *grammar) optionRequires(path string, p *PredicateSpec, props map[string
 		case "":
 			g.fail(path+".not", "this predicate says nothing — %s", optionRequiresForms)
 		default:
-			g.optionRequires(path+".not", inner, props)
+			g.optionRequires(path+".not", inner, props, isProp)
 		}
 		return
 	}
 	switch form := p.Form(); form {
 	case "", predicateFact:
+	case predicateInteraction:
+		g.interactionRequirement(path+".interaction", p.Interaction)
+	case predicateRecognized:
+		switch {
+		case isProp:
+			g.fail(path+".recognized", "a prop holds nothing about anybody, so a line said to one cannot require recognition")
+		case !g.grants(p.Recognized):
+			g.fail(path+".recognized", "%q is a topic no interaction's `outcomes` grants, so nobody could ever be recognized on it",
+				p.Recognized)
+		}
 	case predicateHolds:
 		holdable, placed := props[p.Holds]
 		switch {
@@ -585,11 +673,100 @@ func (g *grammar) optionRequires(path string, p *PredicateSpec, props map[string
 	}
 }
 
+// interactionRequirement judges an option's `{ interaction: { id, in } }`:
+// a root interaction this document declares, and every state one its recipe
+// declares — a requirement nobody can ever meet is a line nobody can ever be
+// offered.
+func (g *grammar) interactionRequirement(path string, p *InteractionPredicateSpec) {
+	shape, declared := g.interactions[p.ID]
+	if !declared {
+		g.fail(path+".id", "%q is not an interaction in this dungeon: declare it under root `interactions:`", p.ID)
+		return
+	}
+	if shape == nil {
+		return
+	}
+	for i, state := range p.In {
+		if !shape.states[state] {
+			g.fail(fmt.Sprintf("%s.in[%d]", path, i), "%q is not a state of interaction %q", state, p.ID)
+		}
+	}
+}
+
+// optionAdvance judges an option's `advance`: a root interaction this
+// document declares, at least one beat, no failure beat on a plain line
+// (it cannot be missed), and every beat one some state of the recipe
+// listens for — a verdict that could never land is refused.
+func (g *grammar) optionAdvance(path string, a *AdvanceSpec, checked bool) {
+	if a == nil {
+		return
+	}
+	shape, declared := g.interactions[a.Interaction]
+	switch {
+	case a.Interaction == "":
+		g.fail(path+".interaction", "an advance names the interaction it steps")
+		return
+	case !declared:
+		g.fail(path+".interaction", "%q is not an interaction in this dungeon: declare it under root `interactions:`",
+			a.Interaction)
+		return
+	}
+	if a.Success == "" && a.Failure == "" {
+		g.fail(path, "an advance steps its interaction on `success`, `failure` or both, and this names neither")
+	}
+	if !checked && a.Failure != "" {
+		g.fail(path+".failure", "%s", errOptionPlainFails)
+	}
+	if shape == nil {
+		return
+	}
+	for _, beat := range []struct{ key, beat string }{{"success", a.Success}, {"failure", a.Failure}} {
+		if beat.beat != "" && !shape.beats[beat.beat] {
+			g.fail(path+"."+beat.key, "no state of interaction %q listens for %q", a.Interaction, beat.beat)
+		}
+	}
+}
+
 // optionRequiresForms is the sentence naming what an option may require.
-const optionRequiresForms = "an option requires { fact: <id> }, { holds: <prop id> }, or { not: } one of them"
+const optionRequiresForms = "an option requires one or a list of { fact: <id> }, { holds: <prop id> }, " +
+	"{ interaction: { id, in: [<state>] } }, { recognized: <topic> }, or { not: } one of them"
+
+// rowRecognize judges a line's row's `recognize:` (rpg-project#929): legal on
+// a creature's success row only — a missed line grants nothing, and a prop
+// holds nothing about anybody — in the words an outcome uses, `heard_by`
+// only on a line that names an interaction.
+func (g *grammar) rowRecognize(at, key string, o OptionSpec, row AnswerSpec, isProp bool) {
+	if row.Recognize == nil {
+		return
+	}
+	switch {
+	case key != string(encounter.AnswerSuccess):
+		g.fail(at, "a missed line grants nothing: recognize belongs on a success row")
+		return
+	case isProp:
+		g.fail(at, "a prop holds nothing about anybody, so a line said to one cannot grant recognition")
+		return
+	}
+	named := o.Advance != nil
+	for i := range o.Requires {
+		p := &o.Requires[i]
+		if p.Form() == predicateNot {
+			p = p.Not
+		}
+		if p.Form() == predicateInteraction {
+			named = true
+		}
+	}
+	recognitionOf(at, row.Recognize, named, func(path, message string) { g.fail(path, "%s", message) })
+}
 
 // answerEntry validates one row of one trigger's table.
 func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {
+	// A TABLE ROW GRANTS NOTHING (rpg-project#929): `recognize` is a line's,
+	// judged by [grammar.rowRecognize] on an option's verdicts.
+	if entry.Recognize != nil && key != string(encounter.AnswerSuccess) && key != string(encounter.AnswerFailure) {
+		g.fail(at+".recognize", "recognize is only on a line's success row: a table row grants nothing")
+	}
 	if entry.Weight != nil && *entry.Weight < 1 {
 		g.fail(at+".weight", "a weight of %d can never be rolled: omit it for 1, or give it a share",
 			*entry.Weight)

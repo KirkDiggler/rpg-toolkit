@@ -109,7 +109,7 @@ func (m *Manager) Hold(ctx context.Context, in *HoldInput) (*HoldOutput, error) 
 		return nil, fmt.Errorf("hold: %w", ErrNoProp)
 	}
 
-	scope, err := m.openForChange(ctx, "hold", in.Session)
+	scope, err := m.openForChangeBy(ctx, "hold", in.Session, in.Member)
 	if err != nil {
 		return nil, fmt.Errorf("hold: %w", err)
 	}

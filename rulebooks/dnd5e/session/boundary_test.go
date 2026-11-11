@@ -165,6 +165,15 @@ var contractTypes = map[string]string{
 	"encounter.Table":  "contract type: the author's own compiled policy, carried from dungeonspec to Launch",
 	"encounter.Temper": "contract type: the temperament the same compiler read, carried beside the table",
 
+	// Config.Sites (rpg-project#879 S5, sites.go). A host INJECTS a site
+	// provider (rpg-api backs one with its authored content) or passes the
+	// encounter's own in-process one, so it implements or names this
+	// interface: a contract, announced when it changes. Admitting the
+	// encounter's interface rather than a session twin is the point: the
+	// same provider serves the composition directly, and a twin would be
+	// an adapter around a value nobody on either side reshapes.
+	"encounter.SiteProvider": "contract type: the host-injected site provider beside the locker (rpg-project#879 S5)",
+
 	// Reachable from TradeOffer.Currency (trade.go, rpg-toolkit#1534, Wave
 	// 4). A caller CONSTRUCTS this value (it is the payment offered on
 	// Give, checked against a server-computed price) rather than only
@@ -235,6 +244,39 @@ var persistenceShapes = map[string]string{
 	// What is NOT admitted: monster.Monster, the runtime object. The loaded
 	// monster never crosses.
 	"monster.Data": "persistence shape: an NPC sheet the host stores but never builds",
+
+	// The site piece and the hash it is stored under (rpg-project#879 S5,
+	// sites.go), on [session.SiteRepository]. THE SITE IS CONTENT THE RECORD
+	// REFERENCES: the checkpoint names it by hash instead of carrying the
+	// field, and the host stores the piece apart, keyed by that hash. Would
+	// the host build one field by field? No: Launch mints both from the
+	// compiled dungeon, the host stores the bytes under the key and hands
+	// them back on a cold load. The hash is the same value
+	// EncounterData.SiteHash already carries across this seam.
+	"encounter.SiteData": "persistence shape: the site piece the host stores by hash but never builds",
+	"encounter.SiteHash": "persistence shape: the opaque key EncounterData already names its site piece by",
+
+	// The story record's segment, on [session.SaveAppendedInput]
+	// (rpg-project#897 leg c, checkpoint.go). It is the same bytes
+	// EncounterData.Log already carried across this seam, now handed over in
+	// pieces: the host appends each segment as it comes and joins what it
+	// holds with record.JoinData on a read. Would the host build one field by
+	// field? No: the encounter mints every segment, and the host only reads
+	// the seqs it needs to order and drop them.
+	"record.LogData": "persistence shape: the record segment the host appends and joins but never builds",
+
+	// The rest's pieces and their marks (rpg-project#897 leg b,
+	// checkpoint.go), on [session.SavePiecesInput] and
+	// [session.GetFencedEncounterOutput]. They are the same bytes the rest
+	// (EncounterData) already carried across this seam, now handed over by
+	// shape: the host writes each piece under its key with its mark, and
+	// joins what it holds with encounter.JoinPieces on a read. Would the
+	// host build one field by field? No: encounter.SplitPieces mints every
+	// piece and mark; the host routes a key by its Shape and stores the
+	// opaque bytes and the opaque mark beside them.
+	"encounter.Piece":    "persistence shape: one piece of the rest the host stores by key but never builds",
+	"encounter.PieceKey": "persistence shape: the opaque key a piece is stored under, routed by its Shape",
+	"encounter.Mark":     "persistence shape: the opaque digest the host keeps beside a piece and hands back",
 }
 
 // allowed is the union the detector checks against.
