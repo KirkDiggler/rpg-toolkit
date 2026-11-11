@@ -94,7 +94,9 @@ arrives with the use case that pays for it, not before.
   exception: `Load`'s errors wrap `intel.ErrInvalidData`, and `Data.Intel`
   is `intel.Data` verbatim — persistence is intel's shape, stated rather
   than hidden.
-- **R10** — One payload per `(observer, subject)`. The store has exactly one
+- **R10** — One payload per `(observer, subject)` on a topic (since
+  play/intel v0.5.0 the store's key is `(observer, subject, topic)`; the
+  topic does not separate channels — R11 still does). The store has exactly one
   slot, so a subject landed on a second channel **overwrites** the first
   channel's payload and the loss is silent. `CurrentVia` can hold two
   channels at once; the payload cannot. This is deliberately not refused:
@@ -133,10 +135,25 @@ arrives with the use case that pays for it, not before.
   tell a deed from a sighting. It arrives when a caller must answer "what
   entity is this subject about" without already knowing.
 
+- **R12** — Percepts live on the default topic (amended 2026-11-11,
+  rpg-project#928: an intel record is holder, subject, topic). `Observe`
+  surveils only the empty topic, so a pass can never fade, refresh or
+  first-contact a holding on a named topic; `Held` and `On` read only the
+  empty topic, so their answers are exactly what they were before topics
+  existed even when named topics about the same subjects sit in the store.
+  A named topic is discrete testimony — written by `Report` with
+  `ReportInput.Topic`, sustaining nothing, so nothing fades — and read by
+  `OnTopic`, `About` and `AboutOn`. Every `Holding` names its `Topic`, so a
+  caller reading across topics can never take one for a sighting. Not
+  taken: a topic on `Pass` — no percept use case asks for one, and a
+  sustained named topic would need its own complete-percept owner.
+
 ## Types
 
 - `Channel` — open string vocabulary, mirroring `intel.Channel`. `Sight` is
   predeclared.
+- `Topic` — open string vocabulary, mirroring `intel.Topic`. The empty
+  topic is the default, where percepts live (R12).
 - `Presence` — `{ID core.EntityID, Payload []byte}`. One thing perceivable
   this pass; the payload is opaque (R1).
 - `Reach` — `interface { Reaches(channel Channel, observer, subject
@@ -145,7 +162,7 @@ arrives with the use case that pays for it, not before.
 - `Pass` — `{At uint64, Channel Channel, Presences []Presence, Observers
   []core.EntityID, Reach Reach}`. One complete perception cycle on one
   channel.
-- `Holding` — `{Subject core.EntityID, Payload []byte, Channel Channel,
+- `Holding` — `{Subject core.EntityID, Topic Topic, Payload []byte, Channel Channel,
   Observed uint64, Confirmed uint64, CurrentVia []Channel}`, plus the
   `CurrentOn(channel)` method. What one observer holds about one subject
   (R9). This entry said `Current bool` until #1722 — v0.2.0 removed the
@@ -170,7 +187,7 @@ arrives with the use case that pays for it, not before.
 | Verb | Input | Output | Semantics |
 |------|-------|--------|-----------|
 | `Observe` | `Pass` | `(map[core.EntityID]*Delta, error)` | R2–R8. One `intel.Surveil` call per observer in `Pass.Observers`, on a percept built from `Pass.Presences` filtered by `Pass.Reach` and sorted by ID (R6). Returns one `Delta` per observer, keyed by observer ID. |
-| `Report` | `ReportInput` | `(*ReportOutput, error)` | Discrete testimony to exactly one observer (wraps `intel.Report`). Lands **held and sustaining nothing**: a reported subject is current on no channel, including the one that reported it. Retires nothing either — a report makes no claim about what the observer was *not* told, so it cannot fade a holding the way a complete percept does. Validates in `Observe`'s order: `ErrNoChannel`, `ErrNoSubject`, `ErrNoObserver`. Repeated subjects are **not** rejected (see below). |
+| `Report` | `ReportInput` | `(*ReportOutput, error)` | Discrete testimony to exactly one observer (wraps `intel.Report`). Lands **held and sustaining nothing**: a reported subject is current on no channel, including the one that reported it. Retires nothing either — a report makes no claim about what the observer was *not* told, so it cannot fade a holding the way a complete percept does. Validates in `Observe`'s order: `ErrNoChannel`, `ErrNoSubject`, `ErrNoObserver`. Repeated subjects are **not** rejected (see below). `ReportInput.Topic` names the one topic every report in the call lands on (empty = the default topic, beside percepts); holdings on any other topic are never touched (R12). |
 
 The two verbs differ in what they *claim*. A `Pass` is a complete statement
 about one channel at one moment — everything delivered, and by omission
@@ -188,10 +205,21 @@ strictness with nothing behind it.
 
 | Query | Signature | Returns | Semantics |
 |-------|-----------|---------|-----------|
-| `Held` | `Held(observer core.EntityID)` | `([]Holding, error)` | Everything the observer holds, sorted by subject (wraps `intel.HeldBy`). `ErrNoObserver` on an empty ID. An observer with no holdings answers an empty slice, nil error. |
-| `On` | `On(observer, subject core.EntityID)` | `(Holding, error)` | One observer's holding on one subject (wraps `intel.On`). `ErrNoObserver` / `ErrNoSubject` on an empty ID; `ErrNotHeld` when nothing is held — intel's own not-held error is translated to this package's sentinel rather than passed through, so a caller never has to import `play/intel` to ask the single most common question this package answers. |
+| `Held` | `Held(observer core.EntityID)` | `([]Holding, error)` | Everything the observer holds on the default topic, sorted by subject (wraps `intel.OnTopic` with the empty topic; R12). `ErrNoObserver` on an empty ID. An observer with no holdings answers an empty slice, nil error. |
+| `OnTopic` | `OnTopic(observer core.EntityID, topic Topic)` | `([]Holding, error)` | Everything the observer holds on one topic, sorted by subject. The empty topic answers what `Held` answers. `ErrNoObserver` on an empty ID; nothing held answers an empty slice, nil error. |
+| `About` | `About(observer, subject core.EntityID)` | `([]Holding, error)` | Everything the observer holds about one subject, one holding per topic, sorted by topic (the default first). `ErrNoObserver` / `ErrNoSubject`; nothing held answers an empty slice, nil error. |
+| `AboutOn` | `AboutOn(observer, subject core.EntityID, topic Topic)` | `(Holding, error)` | One observer's holding on one subject and topic. The empty topic answers what `On` answers. Same errors and `ErrNotHeld` translation as `On`. |
+| `On` | `On(observer, subject core.EntityID)` | `(Holding, error)` | One observer's holding on one subject, on the default topic (wraps `intel.On`; R12). `ErrNoObserver` / `ErrNoSubject` on an empty ID; `ErrNotHeld` when nothing is held — intel's own not-held error is translated to this package's sentinel rather than passed through, so a caller never has to import `play/intel` to ask the single most common question this package answers. |
 
-Neither query takes an `*XxxInput` struct: both are fixed-arity reads with
+The five reads side by side, named as `play/intel` names them so a caller
+moving between the layers reaches for the same word: `Held(observer)` →
+every holding on the default topic; `On(observer, subject)` → one holding
+on the default topic; `OnTopic(observer, topic)` → every holding on one
+topic; `About(observer, subject)` → every topic's holding about one
+subject; `AboutOn(observer, subject, topic)` → one holding about a subject
+on one topic.
+
+No query takes an `*XxxInput` struct: all are fixed-arity reads with
 no plausible parameter growth, unlike intel's testimony verbs, which take
 variable-length report lists. Considered and declined during PR #1686
 review; recorded here so it reads as a decision, not an oversight.
@@ -204,17 +232,20 @@ All errors wrap one sentinel; `errors.Is` dispatch; messages user-facing.
 |----------|---------|-------------|
 | `ErrNoReach` | nil `Pass.Reach` | `Observe` |
 | `ErrNoChannel` | empty `Pass.Channel` or `ReportInput.Channel` | `Observe`, `Report` |
-| `ErrNoSubject` | empty `Presence.ID`, or an empty subject passed to `On` | `Observe`, `Report`, `On` |
-| `ErrNoObserver` | empty observer ID, in a `Pass`, a `ReportInput`, or passed directly | `Observe`, `Report`, `Held`, `On` |
+| `ErrNoSubject` | empty `Presence.ID`, or an empty subject passed to a query | `Observe`, `Report`, `About`, `On`, `AboutOn` |
+| `ErrNoObserver` | empty observer ID, in a `Pass`, a `ReportInput`, or passed directly | `Observe`, `Report`, `Held`, `OnTopic`, `About`, `On`, `AboutOn` |
 | `ErrDuplicateSubject` | two `Presence`s in one `Pass` sharing an ID | `Observe` |
 | `ErrDuplicateObserver` | the same observer named twice in one `Pass`'s `Observers` | `Observe` |
-| `ErrNotHeld` | the observer holds nothing on that subject (translated from `intel.ErrNotHeld`) | `On` |
+| `ErrNotHeld` | the observer holds nothing on that subject and topic (translated from `intel.ErrNotHeld`) | `On`, `AboutOn` |
 
 ## Persistence
 
 `Data` wraps intel's own `Data` verbatim (`{Intel intel.Data}`, no
 `omitempty` — a struct field never omits) — perception adds no state of its
-own, so the JSON shape is free. `Load` rejects whatever `intel.LoadIntel`
+own, so the JSON shape is free. Since play/intel v0.5.0 that shape is
+observer → subject → topic → holding, the default topic under the key
+`""`; a record saved under the earlier shape fails to decode rather than
+loading misread. `Load` rejects whatever `intel.LoadIntel`
 rejects, wrapped, not translated: unlike `On`'s `ErrNotHeld`, an invalid
 persisted shape is not routine control flow a caller dispatches on, so
 there is nothing here worth hiding intel behind.

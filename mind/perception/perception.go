@@ -21,6 +21,23 @@ type Channel string
 // Sight is the predeclared visual channel.
 const Sight Channel = "sight"
 
+// Topic names what a holding is about its subject: the third part of the
+// record after observer and subject. An observer holds one holding per
+// subject per topic, so two different things held about one subject never
+// overwrite each other. The vocabulary is open and opaque, and this package
+// never interprets it.
+//
+// The empty topic is the default, and it is where every percept lives:
+// Observe writes only the default topic, and Held and On read only it. A
+// holding on a named topic is discrete testimony written with Report and
+// read with OnTopic, About or AboutOn; no sight reader ever sees one.
+//
+// Example: a ledger clerk sees account "acct-7"'s papers on a shelf (the
+// default topic, by Observe) and is told it was signed off (topic
+// "audited", by Report); the next pass that cannot see the papers fades
+// the sighting and leaves the sign-off as it was.
+type Topic string
+
 // Presence is one subject and what it says about itself. The payload is
 // opaque: this package never decodes it, only carries it — encoded once by
 // the caller and identical for every observer who receives it (rule 1).
@@ -112,8 +129,12 @@ type Pass struct {
 // empty is a ghost — still held, no longer delivered. Ask it through
 // CurrentOn rather than testing its length: "is anything at all delivering
 // this" is almost never the question a caller means (rule 9).
+//
+// Topic is the holding's topic; the empty topic is the default, where every
+// percept lives.
 type Holding struct {
 	Subject    core.EntityID
+	Topic      Topic
 	Payload    []byte
 	Channel    Channel
 	Observed   uint64
@@ -134,7 +155,8 @@ func (h Holding) CurrentOn(channel Channel) bool {
 	return slices.Contains(h.CurrentVia, channel)
 }
 
-// Delta is what one pass did to one observer's knowledge. The lists answer
+// Delta is what one pass did to one observer's knowledge on the default
+// topic, the only topic a pass touches. The lists answer
 // different questions and are not a partition of the percept: Refreshed
 // fires on every pass for everything perceived, and Changed and Reacquired
 // each refine it rather than carve it up (matching intel.SurveilOutput,
@@ -210,9 +232,14 @@ func (p *Perception) Observe(pass Pass) (map[core.EntityID]*Delta, error) {
 
 	deltas := make(map[core.EntityID]*Delta, len(pass.Observers))
 	for _, observer := range pass.Observers {
+		// A pass is a percept, and percepts live on the default topic:
+		// intel scopes the complete-percept contract per topic, so naming
+		// the default here is what keeps a pass from fading or refreshing
+		// anything held on a named topic.
 		out, err := p.intel.Surveil(&intel.SurveilInput{
 			Observer: observer,
 			Channel:  intel.Channel(pass.Channel),
+			Topic:    defaultTopic,
 			Percept:  percept(sorted, observer, pass.Channel, pass.Reach),
 			At:       pass.At,
 		})
@@ -234,15 +261,22 @@ func (p *Perception) Observe(pass Pass) (map[core.EntityID]*Delta, error) {
 // Unlike a Pass this addresses one observer, so there is no Reach and no
 // reachability question: being told is the delivery. Nothing else is
 // touched — an observer not named here holds exactly what it held.
+//
+// Topic names the one topic every report in the call is about. The empty
+// topic is the default, where percepts live — a report there lands beside
+// sightings exactly as Report always has. A named topic is a holding no
+// percept reads or writes: what the observer holds ABOUT the subject rather
+// than where or what it is.
 type ReportInput struct {
 	Observer core.EntityID
 	Channel  Channel
+	Topic    Topic
 	Reports  []Presence
 	At       uint64
 }
 
-// ReportOutput is what one Report did to that observer's knowledge. Like
-// Delta, the lists refine rather than partition: Changed is the subset of
+// ReportOutput is what one Report did to that observer's knowledge on the
+// report's one topic. Like Delta, the lists refine rather than partition: Changed is the subset of
 // Updated whose content is actually new.
 type ReportOutput struct {
 	// FirstContact is every subject this observer had no holding for at
@@ -265,8 +299,11 @@ type ReportOutput struct {
 // either: Report makes no claim about what the observer is not being told,
 // so it cannot retire a holding the way a complete percept does (rule 10).
 //
-// A subject this observer already holds on a DIFFERENT channel is overwritten
-// rather than merged — one payload per (observer, subject) is the store's
+// A report touches only its own topic: a holding on any other topic about the
+// same subject — a sighting on the default topic included — is never read or
+// written. Within the topic, a subject this observer already holds on a
+// DIFFERENT channel is overwritten rather than merged — one payload per
+// (observer, subject, topic) is the store's
 // shape, and the last landing wins. That is not a hazard to remember so much
 // as the reason rule 11 exists: qualify a subject id by channel and the case
 // cannot arise. It is deliberately not refused. The shape of multi-channel
@@ -304,6 +341,7 @@ func (p *Perception) Report(in ReportInput) (*ReportOutput, error) {
 	out, err := p.intel.Report(&intel.ReportInput{
 		Observer: in.Observer,
 		Channel:  intel.Channel(in.Channel),
+		Topic:    intel.Topic(in.Topic),
 		Reports:  reports,
 		At:       in.At,
 	})
@@ -328,45 +366,125 @@ func (p *Perception) Report(in ReportInput) (*ReportOutput, error) {
 	return result, nil
 }
 
-// Held returns everything an observer holds, sorted by subject.
+// defaultTopic is the topic every percept lives on, and the only topic Held
+// and On read. Named once so the verbs that mean it say so.
+const defaultTopic = intel.Topic("")
+
+// Held returns everything an observer holds on the default topic — every
+// percept, and every report landed there — sorted by subject. Holdings on a
+// named topic are never returned here: Held is how sight is read, and a
+// named topic's payload is not a sighting. OnTopic and About read the rest.
 func (p *Perception) Held(observer core.EntityID) ([]Holding, error) {
 	if observer == "" {
 		return nil, fmt.Errorf("held: %w", ErrNoObserver)
 	}
 
-	holdings, err := p.intel.HeldBy(&intel.HeldByInput{Observer: observer})
+	result, err := p.onTopic(observer, defaultTopic)
 	if err != nil {
 		return nil, fmt.Errorf("held: %w", err)
-	}
-
-	result := make([]Holding, 0, len(holdings))
-	for _, h := range holdings {
-		result = append(result, fromIntelHolding(h))
 	}
 	return result, nil
 }
 
-// On returns what one observer holds about one subject. Returns ErrNotHeld
-// if the observer holds nothing on it — intel's own not-held error is
-// translated to this package's sentinel, never passed through, so a caller
-// never has to import play/intel to ask the single most common question
-// this package answers.
-func (p *Perception) On(observer, subject core.EntityID) (Holding, error) {
+// OnTopic returns everything an observer holds on one topic, one holding per
+// subject, sorted by subject. The empty topic is the default and answers
+// what Held answers. An observer holding nothing on the topic answers an
+// empty slice, nil error. ErrNoObserver on an empty observer.
+func (p *Perception) OnTopic(observer core.EntityID, topic Topic) ([]Holding, error) {
 	if observer == "" {
-		return Holding{}, fmt.Errorf("on: %w", ErrNoObserver)
-	}
-	if subject == "" {
-		return Holding{}, fmt.Errorf("on: %w", ErrNoSubject)
+		return nil, fmt.Errorf("on topic: %w", ErrNoObserver)
 	}
 
-	h, err := p.intel.On(&intel.OnInput{Observer: observer, Subject: intel.Subject(subject)})
+	result, err := p.onTopic(observer, intel.Topic(topic))
 	if err != nil {
-		if errors.Is(err, intel.ErrNotHeld) {
-			return Holding{}, fmt.Errorf("on: %w", ErrNotHeld)
-		}
+		return nil, fmt.Errorf("on topic: %w", err)
+	}
+	return result, nil
+}
+
+// About returns everything an observer holds about one subject, one holding
+// per topic, sorted by topic — the default topic, when held, first. An
+// observer holding nothing about the subject answers an empty slice, nil
+// error. ErrNoObserver, then ErrNoSubject, on an empty ID.
+func (p *Perception) About(observer, subject core.EntityID) ([]Holding, error) {
+	if observer == "" {
+		return nil, fmt.Errorf("about: %w", ErrNoObserver)
+	}
+	if subject == "" {
+		return nil, fmt.Errorf("about: %w", ErrNoSubject)
+	}
+
+	holdings, err := p.intel.About(&intel.AboutInput{Observer: observer, Subject: intel.Subject(subject)})
+	if err != nil {
+		return nil, fmt.Errorf("about: %w", err)
+	}
+	return fromIntelHoldings(holdings), nil
+}
+
+// On returns what one observer holds about one subject on the default
+// topic — what it perceived, or was told there. Returns ErrNotHeld if the
+// observer holds nothing on it — intel's own not-held error is translated to
+// this package's sentinel, never passed through, so a caller never has to
+// import play/intel to ask the single most common question this package
+// answers. A holding on a named topic is never returned here; AboutOn asks
+// for one.
+func (p *Perception) On(observer, subject core.EntityID) (Holding, error) {
+	h, err := p.aboutOn(observer, subject, defaultTopic)
+	if err != nil {
 		return Holding{}, fmt.Errorf("on: %w", err)
 	}
+	return h, nil
+}
+
+// AboutOn returns what one observer holds about one subject on one topic.
+// The empty topic is the default and answers what On answers. Returns
+// ErrNotHeld when nothing is held there, translated exactly as On
+// translates it. ErrNoObserver, then ErrNoSubject, on an empty ID.
+func (p *Perception) AboutOn(observer, subject core.EntityID, topic Topic) (Holding, error) {
+	h, err := p.aboutOn(observer, subject, intel.Topic(topic))
+	if err != nil {
+		return Holding{}, fmt.Errorf("about on: %w", err)
+	}
+	return h, nil
+}
+
+// onTopic is Held's and OnTopic's one read, after their own validation.
+func (p *Perception) onTopic(observer core.EntityID, topic intel.Topic) ([]Holding, error) {
+	holdings, err := p.intel.OnTopic(&intel.OnTopicInput{Observer: observer, Topic: topic})
+	if err != nil {
+		return nil, err
+	}
+	return fromIntelHoldings(holdings), nil
+}
+
+// aboutOn is On's and AboutOn's one read: validation, the query, and the
+// not-held translation.
+func (p *Perception) aboutOn(observer, subject core.EntityID, topic intel.Topic) (Holding, error) {
+	if observer == "" {
+		return Holding{}, ErrNoObserver
+	}
+	if subject == "" {
+		return Holding{}, ErrNoSubject
+	}
+
+	h, err := p.intel.On(&intel.OnInput{Observer: observer, Subject: intel.Subject(subject), Topic: topic})
+	if err != nil {
+		if errors.Is(err, intel.ErrNotHeld) {
+			return Holding{}, ErrNotHeld
+		}
+		return Holding{}, err
+	}
 	return fromIntelHolding(h), nil
+}
+
+// fromIntelHoldings converts a slice of intel holdings in order. Never nil:
+// an observer holding nothing answers an empty slice.
+func fromIntelHoldings(holdings []intel.Holding) []Holding {
+	result := make([]Holding, 0, len(holdings))
+	for _, h := range holdings {
+		result = append(result, fromIntelHolding(h))
+	}
+	return result
 }
 
 // validatePass checks a Pass before any mutation, in the order rule 8
@@ -470,6 +588,8 @@ func deltaFrom(out *intel.SurveilOutput) *Delta {
 }
 
 // fromIntelHolding converts an intel.Holding into this package's Holding.
+// The topic survives the wrap: a caller reading a named-topic holding must
+// be able to tell it from a sighting.
 // Observed and Confirmed pass through unchanged; CurrentVia is intel's own
 // per-channel list, which intel sorts, retyped one channel at a time (rule
 // 9). intel.Status is not carried over: it is derived from CurrentVia being
@@ -489,6 +609,7 @@ func fromIntelHolding(h intel.Holding) Holding {
 
 	return Holding{
 		Subject:    core.EntityID(h.Subject),
+		Topic:      Topic(h.Topic),
 		Payload:    h.Payload,
 		Channel:    Channel(h.Channel),
 		Observed:   h.Observed,
