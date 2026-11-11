@@ -12,6 +12,7 @@ import (
 	coreCombat "github.com/KirkDiggler/rpg-toolkit/core/combat"
 	"github.com/KirkDiggler/rpg-toolkit/play/interrupt"
 	combatActions "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/actions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/resolution"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -118,6 +119,17 @@ type windowStory struct {
 	Prop   string `json:"prop,omitempty"`
 	Option string `json:"option,omitempty"`
 
+	// Interaction, Revision and Held are a Speak check's reservation
+	// (rpg-project#924): the interaction its line holds, the revision the
+	// line was offered and reserved at (what the settle carries), and the
+	// revision the reservation moved it to. Every place, settle, release and
+	// advance moves an interaction's revision, so the hold is still THIS one
+	// exactly while the interaction stands at Held ([reservationStands]).
+	// All three are empty for a line that reads no interaction.
+	Interaction string `json:"interaction,omitempty"`
+	Revision    uint64 `json:"revision,omitempty"`
+	Held        uint64 `json:"held,omitempty"`
+
 	// Caster, Spell and Caught are a cast story's: who cast what, and the
 	// footprint fixed before any save was rolled.
 	Caster string         `json:"caster,omitempty"`
@@ -167,6 +179,10 @@ func (s windowStory) validate() error {
 		if s.Door == "" && (s.Verb != VerbSpeak || s.Option == "") {
 			return fmt.Errorf("%w: a check window names target %q prop %q under verb %q with line %q, which is not a line spoken",
 				ErrInvalidSession, s.Target, s.Prop, s.Verb, s.Option)
+		}
+		if (s.Interaction == "") != (s.Held == 0) || (s.Interaction != "" && (s.Door != "" || s.Held <= s.Revision)) {
+			return fmt.Errorf("%w: a check window's reservation names interaction %q at revision %d held at %d",
+				ErrInvalidSession, s.Interaction, s.Revision, s.Held)
 		}
 		if s.Door != "" && (s.Verb != "" || s.Option != "") {
 			return fmt.Errorf("%w: a check window names a door and the verb %q", ErrInvalidSession, s.Verb)
@@ -332,4 +348,81 @@ func reactDeclaration(session, member string, window interrupt.Window) (Declarat
 		row.Candidates = []TargetCandidate{{Member: w.Story.Target, Available: true}}
 	}
 	return row, nil
+}
+
+// holdsTheTable reports whether one open window freezes the table — refuses
+// every change verb with [ErrWindowOpen] and empties every panel but its
+// own question — which every window does but one kind (rpg-project#924).
+//
+// # A waiting line in free roam holds its conversation, not the table
+//
+// A Speak check paused on its speaker's roll decision, on a line that holds
+// an interaction, while that speaker is on the WORLD clock, leaves the table
+// running. Its reservation is the hold instead: every line reading or
+// advancing the conversation is pending for everyone, and every other line,
+// step and verb stays open (operator, 2026-11-11: lines that do not read the
+// interaction stay open). Nothing else in the world waits on that roll —
+// the line has not reached anybody yet — so freezing a keep's free roam on
+// one player's decision would be the freeze answering a question nobody
+// asked it.
+//
+// Every other window freezes as it always has: a reaction, a cast's save,
+// an Unlock's check, a Speak check on a line that holds no conversation, and
+// a Speak check whose speaker is in a fight now. A window this build cannot
+// read, or whose speaker the composition cannot place on a clock, freezes:
+// the freeze is the fail-closed answer.
+func holdsTheTable(enc *encounter.Encounter, window interrupt.Window) bool {
+	w, err := thawWindow(window.Payload, string(window.Audience))
+	if err != nil || w.Story.Kind != storyCheck || w.Story.Verb != VerbSpeak || w.Story.Interaction == "" {
+		return true
+	}
+	clock, err := enc.ClockOf(&encounter.ClockOfInput{Member: encounter.MemberID(w.Audience)})
+	if err != nil {
+		return true
+	}
+	return ClockKind(clock.Kind) == ClockTurn
+}
+
+// tableHolders is the open windows that freeze the table ([holdsTheTable]).
+func tableHolders(enc *encounter.Encounter, open []interrupt.Window) []interrupt.Window {
+	var out []interrupt.Window
+	for _, window := range open {
+		if holdsTheTable(enc, window) {
+			out = append(out, window)
+		}
+	}
+	return out
+}
+
+// closeAbandonedLines closes, declined, every open Speak check window whose
+// conversation hold is gone ([reservationStands]): released by the encounter
+// because its settle could no longer be admitted (the speaker walked out of
+// reach or sight, the target fell or left, the speaker exited), or the
+// conversation otherwise moved (rpg-project#924). Asked at every commit, so
+// the verb that released the hold is the verb that closes the window: no
+// window outlives the line it was asking about, and nothing it offered is
+// spent. It writes no beat — the encounter's `interaction-held` beat with
+// `held: false` already tells the table.
+func closeAbandonedLines(scope *writeScope) error {
+	open, err := scope.ledger.Open()
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidSession, err)
+	}
+	for _, window := range open {
+		w, err := thawWindow(window.Payload, string(window.Audience))
+		if err != nil || w.Story.Kind != storyCheck || w.Story.Interaction == "" {
+			// A window this build cannot read is the answer's to refuse.
+			continue
+		}
+		stands, err := reservationStands(scope.enc, w.Audience, w.Story)
+		if err != nil {
+			return err
+		}
+		if !stands {
+			if err := closeWindow(scope, window, ledgerDecline); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

@@ -1003,6 +1003,9 @@ func (s *writeScope) frozen() error {
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidSession, err)
 	}
+	// A WAITING LINE IN FREE ROAM HOLDS ITS CONVERSATION, NOT THE TABLE
+	// (rpg-project#924, [holdsTheTable]).
+	open = tableHolders(s.enc, open)
 	if len(open) == 0 {
 		return nil
 	}
@@ -1421,6 +1424,13 @@ func (m *Manager) commitPace(ctx context.Context, scope *writeScope) (SaveReport
 // final closes the act and, under the fence, marks the verb's save as landed
 // (checkpointFence.saved); a pace commit does neither.
 func (m *Manager) commitAt(ctx context.Context, scope *writeScope, final bool) (SaveReport, DeliveryReport, error) {
+	// A WINDOW NEVER OUTLIVES THE LINE IT ASKS ABOUT (rpg-project#924): the
+	// verb whose step, strike or exit made the encounter release a waiting
+	// line's hold closes that line's window in the same save.
+	if err := closeAbandonedLines(scope); err != nil {
+		report := SaveReport{Written: append([]string(nil), scope.written...)}
+		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", err)
+	}
 	from := scope.deltaFrom()
 	settled, err := scope.enc.Settlement(&encounter.SettlementInput{FromSeq: from})
 	if err != nil {

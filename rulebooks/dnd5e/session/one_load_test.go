@@ -116,10 +116,10 @@ func TestOpenDoorLoadsOnce(t *testing.T) {
 		require.NoError(t, err)
 	}
 	walkOnto(func(enc *encounter.Encounter) spatial.Position { return standingAt(enc, "pedlar") }, false)
-	_, err := g.mgr.Speak(ctx, &session.SpeakInput{Session: "sess", Member: "alice", Target: "pedlar", OptionID: "tonight"})
+	_, err := speakAsOffered(ctx, g.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "pedlar", OptionID: "tonight"})
 	require.NoError(t, err)
 	walkOnto(func(enc *encounter.Encounter) spatial.Position { return standingAt(enc, "captain") }, false)
-	_, err = g.mgr.Speak(ctx, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "troupe"})
+	_, err = speakAsOffered(ctx, g.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "troupe"})
 	require.NoError(t, err)
 	// gate-1 stays posted beneath the gate (rpg-project#857): the troupe opens
 	// it from the opening's other cell.
