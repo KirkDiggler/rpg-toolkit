@@ -49,7 +49,7 @@ type TrueStrikeConditionData struct {
 // # It does not hold its own clock
 //
 // True Strike is a concentration cantrip, so the duration belongs to the
-// caster's [ConcentratingCondition] and this condition ends when that one does.
+// caster's linked maintenance owner, and this condition ends when that owner does.
 // One spell, one duration, one answer: a count here beside the owner's would be
 // two clocks answering the same question.
 //

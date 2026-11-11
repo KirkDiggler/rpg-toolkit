@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/dice"
@@ -30,6 +31,9 @@ import (
 // change across every call site and it should ride a third profile arm rather
 // than this one.
 type ActionInput struct {
+	// ApplicationID is the caller-owned stable invocation key for maintained
+	// casts. Native callers supply act identity plus an application ordinal.
+	ApplicationID string
 	// AreaCenter is the encounter-validated selected point of a persistent area.
 	AreaCenter *spatial.Position
 
@@ -251,9 +255,15 @@ func newCast(in *ActionInput, normalizedTargetIDs []string) (Machine, error) {
 		case profile.Attack != nil:
 			inner = newAttackCast(definition, casterID, targetID, in.Roller)
 		case profile.Save != nil:
-			inner, err = newGatedCast(definition, casterID, targetID, in.Option, cause, in.Roller)
+			inner, err = newGatedCast(definition, casterID, targetID, in.Option, cause, in.Roller, nil)
 		default:
-			inner, err = newGatelessCast(definition, casterID, targetID, in.Option, in.Roller)
+			// The compiler still validates shape now; maintained condition instances
+			// are prepared against the complete participant universe at Start.
+			var bound []preparedDelivery
+			if len(profile.Maintenance) > 0 {
+				bound = []preparedDelivery{}
+			}
+			inner, err = newGatelessCast(definition, casterID, targetID, in.Option, in.Roller, bound)
 		}
 		if err != nil {
 			return nil, err
@@ -261,9 +271,16 @@ func newCast(in *ActionInput, normalizedTargetIDs []string) (Machine, error) {
 		entries = append(entries, castTargetMachine{targetID: targetID, inner: inner})
 	}
 
+	if len(profile.Maintenance) > 0 && strings.TrimSpace(in.ApplicationID) == "" {
+		return nil, fmt.Errorf("%w: maintained cast requires application identity", ErrBadAction)
+	}
+	applicationID := ""
+	if len(profile.Maintenance) > 0 {
+		applicationID = in.ApplicationID
+	}
 	return &castMachine{
 		spell: definition.Ref, spellName: definition.Name, casterID: casterID, option: in.Option,
-		profile: profile.Clone(), concentration: profile.Concentration, targets: entries,
+		profile: profile.Clone(), applicationID: applicationID, targets: entries,
 		areaCenter:     in.AreaCenter,
 		derivedTargets: derived, staleTargetPolicy: in.StaleTargetPolicy, roller: in.Roller,
 	}, nil
@@ -333,12 +350,11 @@ func (CastOutcome) isOutcome() {}
 // delivered, must be refused while [Resolve] is still in pure preflight — after
 // the door, the bard has paid for a cast that cannot run.
 //
-// # A cast cannot pose, and is refused rather than dropped
+// # A cast can pause inside one target
 //
-// A requested machine that suspends strands its requester, which [drive]
-// refuses by name. No cast poses today — there is no attack roll to interrupt —
-// and the day one does, this is the line that has to change rather than a
-// silently discarded question.
+// The existing cast continuation freezes the target cursor, declaration and
+// application identity. Earlier deliveries stay on their own sheets; unresolved
+// recipients remain pending on the coordinator, not in a second membership list.
 type castTargetMachine struct {
 	targetID string
 	missed   bool
@@ -349,15 +365,17 @@ type castTargetMachine struct {
 type castMachine struct {
 	areaCenter *spatial.Position
 
-	spell         core.Ref
-	spellName     string
-	casterID      string
-	option        string
-	profile       combatActions.CastProfile
-	targets       []castTargetMachine
-	concentration *combatActions.CastConcentration
-	cast          *Participants
-	outcome       CastOutcome
+	spell           core.Ref
+	spellName       string
+	casterID        string
+	option          string
+	profile         combatActions.CastProfile
+	targets         []castTargetMachine
+	applicationID   string
+	applicationSpec *conditions.ApplicationSpec
+	application     *conditions.PreparedApplication
+	cast            *Participants
+	outcome         CastOutcome
 
 	// roller rolls the Sanctuary ward save a hostile target's own condition
 	// may force. The cast's own damage/save machinery keeps its roller inside
@@ -374,6 +392,14 @@ type castMachine struct {
 
 func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, error) {
 	m.cast = cast
+	if len(m.profile.Maintenance) > 0 {
+		if _, err := cast.entity(m.casterID); err != nil {
+			return nil, fmt.Errorf("%w: maintainer %q is absent: %w", ErrBadActivation, m.casterID, err)
+		}
+	}
+	if err := m.bindApplication(cast, false); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrBadAction, err)
+	}
 	m.outcome = CastOutcome{Spell: m.spell, CasterID: m.casterID}
 	if m.profile.Area != nil && m.profile.Area.ObscuresSight {
 		// The membership label is content's: the spell declares it and the
@@ -397,6 +423,13 @@ func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, erro
 	// intentionally construction-only: no rolls, publishes, spends, or removals.
 	for i := range m.targets {
 		target := &m.targets[i]
+		if m.application != nil {
+			inner, err := m.maintainedTarget(i)
+			if err != nil {
+				return nil, err
+			}
+			target.inner = inner
+		}
 		if err := validateRecipientCooldown(&m.profile, cast, target.targetID); err != nil {
 			return nil, err
 		}
@@ -426,20 +459,14 @@ func (m *castMachine) Start(ctx context.Context, cast *Participants) (Step, erro
 	}
 
 	resolve := m.resolveTarget(0)
-	if m.concentration == nil {
-		return resolve, nil
-	}
-	if held, holding := concentrationHeldBy(cast, m.casterID); holding {
-		return m.drop(held, resolve), nil
+	if m.application != nil {
+		return m.beginApplication(resolve)
 	}
 	return resolve, nil
 }
 
 func (m *castMachine) resolveTarget(index int) Step {
 	if index >= len(m.targets) {
-		if m.concentration != nil {
-			return m.hold(m.outcome)
-		}
 		return Done{Outcome: m.outcome}
 	}
 	target := m.targets[index]
@@ -447,7 +474,7 @@ func (m *castMachine) resolveTarget(index int) Step {
 		// Defer recording until the door has paid, just like a delivery.
 		return Gather{name: "miss known target", run: func(context.Context, events.EventBus) (Step, error) {
 			m.outcome.Targets = append(m.outcome.Targets, CastTargetOutcome{TargetID: target.targetID, Missed: true})
-			return m.resolveTarget(index + 1), nil
+			return m.finishTarget(index, m.resolveTarget(index+1)), nil
 		}}
 	}
 	if m.profile.Attack != nil {
@@ -481,7 +508,7 @@ func (m *castMachine) castRequest(target castTargetMachine, index int) Step {
 			if shaped.Save != nil {
 				m.outcome.FollowUps = append(m.outcome.FollowUps, shaped.Save.FollowUps...)
 			}
-			return m.resolveTarget(index + 1), nil
+			return m.finishTarget(index, m.resolveTarget(index+1)), nil
 		},
 	}
 	// A gateless target's inner machine never poses (there is no save to
@@ -586,104 +613,16 @@ func (m *castMachine) wardCastStep(
 					TargetID: target.targetID,
 					Warded:   &WardOutcome{SourceID: ward.SourceID, Ability: abilities.WIS, Save: out.Result},
 				})
-				return m.resolveTarget(index + 1), nil
+				return m.finishTarget(index, m.resolveTarget(index+1)), nil
 			}
 			return m.wardCastStep(pending, wardIndex+1, target, index, next)
 		}), nil
 }
 
-// drop ends the concentration the caster is already holding, in favour of the
-// one about to be cast.
-//
-// It publishes exactly what a failed check publishes — the owner's removal, and
-// only that — through the same helper, so "recast" and "failed the check" end a
-// hold the same way and the hold strips its own board either way.
-func (m *castMachine) drop(held *conditions.ConcentratingCondition, next Step) Gather {
-	removal := &ConditionRemoval{
-		Owner:  held.ConditionAddress(),
-		Reason: conditions.ConcentrationEndedRecast,
-	}
-	dropped := publishRemoval(removal, func(ImposedEffect) (Step, error) { return next, nil })
-
-	return Gather{
-		name: "drop concentration on " + held.SpellName,
-		run:  dropped.run,
-	}
-}
-
-// hold puts the concentrating condition on the caster and tells it what this
-// cast left on the board.
-//
-// The children are registered BEFORE the condition is applied, so the address
-// list is complete in the blob the sheet persists rather than arriving as a
-// state change the sheet has to notice.
-//
-// It is the last step rather than part of the delivery because a cast has two
-// halves and only one of them can deliver to its caster: a gated cast's
-// contest refuses a caster recipient by name. One step here covers both.
-func (m *castMachine) hold(outcome CastOutcome) Gather {
-	return Gather{
-		name: fmt.Sprintf("concentrate on %s for %s", m.spell.String(), m.casterID),
-		run: func(ctx context.Context, bus events.EventBus) (Step, error) {
-			holding := conditions.NewConcentratingConditionWithInput(conditions.NewConcentratingConditionInput{
-				MemberID: m.casterID, SourceID: m.casterID, SpellRef: m.spell.String(),
-				SpellName: m.spellName, TurnEnds: m.concentration.TurnEnds,
-				SkipFirstTurnEnd: m.concentration.SkipFirstTurnEnd,
-			})
-			for _, target := range outcome.Targets {
-				for _, applied := range target.Applied {
-					if applied.Kind != ImposedCondition || applied.Ref == nil || m.independentEffect(applied.Ref) {
-						continue
-					}
-					address := applied.Address
-					if address.MemberID == "" {
-						address = dnd5eEvents.ConditionAddress{
-							MemberID: applied.RecipientID, ConditionRef: applied.Ref.String(),
-						}
-					}
-					if err := holding.AddChild(ctx, address); err != nil {
-						return nil, fmt.Errorf("concentrate on %s: %w", m.spell.String(), err)
-					}
-				}
-			}
-
-			caster, err := m.cast.entity(m.casterID)
-			if err != nil {
-				return nil, err
-			}
-			if err := dnd5eEvents.ConditionAppliedTopic.On(bus).Publish(
-				ctx, dnd5eEvents.ConditionAppliedEvent{
-					Target:    caster,
-					Source:    dnd5eEvents.ConditionSourceSpell,
-					Condition: holding,
-				}); err != nil {
-				return nil, fmt.Errorf("concentrate on %s for %q: %w",
-					m.spell.String(), m.casterID, err)
-			}
-
-			return Done{Outcome: outcome}, nil
-		},
-	}
-}
-
-// concentrationHeldBy finds the concentrating condition a member is already
-// carrying.
-//
-// It reads the CONDITION rather than Character.Concentration's view, and the
-// difference is the addresses: the view answers which spell and how many
-// effects, which is what a badge and a door check need, while a drop has to
-// publish one removal per child and only the condition holds those. The day the
-// view carries its children, this reads the view.
-func concentrationHeldBy(
-	cast *Participants, memberID string,
-) (*conditions.ConcentratingCondition, bool) {
-	for _, condition := range heldConditions(cast, memberID) {
-		if holding, ok := condition.(*conditions.ConcentratingCondition); ok {
-			return holding, true
-		}
-	}
-
-	return nil, false
+// concentrationHeldBy asks the rulebook maintenance capability. Invalid or
+// competing claims are errors, never an arbitrary first concrete condition.
+func concentrationHeldBy(cast *Participants, memberID string) (*conditions.ConcentrationQueryOutput, error) {
+	return conditions.ConcentrationHeld(&conditions.ConcentrationQueryInput{Conditions: heldConditions(cast, memberID)})
 }
 
 // startedMachine hands back a step somebody else already preflighted.
@@ -933,7 +872,7 @@ func checkCastOption(profile *combatActions.CastProfile, ref core.Ref, option st
 // contest rather than being smuggled through this branch.
 func newGatedCast(
 	definition combatActions.Definition, casterID, targetID, option string,
-	cause dnd5eEvents.SaveCause, roller dice.Roller,
+	cause dnd5eEvents.SaveCause, roller dice.Roller, prebuilt *preparedCondition,
 ) (Machine, error) {
 	profile := definition.Cast
 
@@ -969,6 +908,7 @@ func newGatedCast(
 		Gate:            profile.Save,
 		SaverID:         targetID,
 		Application:     application,
+		prepared:        prebuilt,
 		Damage:          profile.Damage,
 		DamageIfInjured: profile.DamageIfInjured,
 		Move:            directiveFor(profile.Move, casterID),
@@ -1017,45 +957,48 @@ func directiveFor(declared *combatActions.CastMove, casterID string) *MoveDirect
 // either contested or a condition, and a branch that silently dropped a
 // declared damage pool would be the affordance-with-nothing-behind-it this
 // stack keeps finding.
-func newGatelessCast(definition combatActions.Definition, casterID, targetID, option string, roller dice.Roller) (Machine, error) {
+func newGatelessCast(definition combatActions.Definition, casterID, targetID, option string, roller dice.Roller, bound []preparedDelivery) (Machine, error) {
 	profile := definition.Cast
 	if len(profile.Damage) > 0 {
 		return nil, fmt.Errorf("%w: %s deals damage with no save, which this module cannot yet deliver",
 			ErrBadAction, definition.Ref.String())
 	}
 
-	deliveries := make([]preparedDelivery, 0, len(profile.Effects))
-	for _, effect := range profile.Effects {
-		recipientID, counterpartID := casterID, targetID
-		if effect.Recipient == combatActions.CastRecipientTarget {
-			recipientID, counterpartID = targetID, casterID
+	deliveries := bound
+	if bound == nil {
+		deliveries = make([]preparedDelivery, 0, len(profile.Effects))
+		for _, effect := range profile.Effects {
+			recipientID, counterpartID := casterID, targetID
+			if effect.Recipient == combatActions.CastRecipientTarget {
+				recipientID, counterpartID = targetID, casterID
+			}
+			parameters, err := bindCast(effect, counterpartID, option)
+			if err != nil {
+				return nil, fmt.Errorf("%w: %s: %w", ErrBadAction, definition.Ref.String(), err)
+			}
+			if effect.SaveDCKey != "" {
+				// The caster's DC is on a sheet this constructor cannot see; the
+				// condition is built when the cast starts ([pendingDelivery]).
+				deliveries = append(deliveries, preparedDelivery{
+					recipientID: recipientID,
+					pending: &pendingDelivery{
+						ref: effect.Ref, parameters: parameters, saveDCKey: effect.SaveDCKey,
+						casterID: casterID, sourceRef: definition.Ref.String(),
+					},
+				})
+				continue
+			}
+			prepared, err := prepareCondition(
+				combatActions.ConditionApplication{Ref: effect.Ref, Parameters: parameters},
+				recipientID, definition.Ref.String(),
+			)
+			if err != nil {
+				return nil, err
+			}
+			deliveries = append(deliveries, preparedDelivery{condition: prepared, recipientID: recipientID})
 		}
-		parameters, err := bindCast(effect, counterpartID, option)
-		if err != nil {
-			return nil, fmt.Errorf("%w: %s: %w", ErrBadAction, definition.Ref.String(), err)
-		}
-		if effect.SaveDCKey != "" {
-			// The caster's DC is on a sheet this constructor cannot see; the
-			// condition is built when the cast starts ([pendingDelivery]).
-			deliveries = append(deliveries, preparedDelivery{
-				recipientID: recipientID,
-				pending: &pendingDelivery{
-					ref: effect.Ref, parameters: parameters, saveDCKey: effect.SaveDCKey,
-					casterID: casterID, sourceRef: definition.Ref.String(),
-				},
-			})
-			continue
-		}
-		prepared, err := prepareCondition(
-			combatActions.ConditionApplication{Ref: effect.Ref, Parameters: parameters},
-			recipientID, definition.Ref.String(),
-		)
-		if err != nil {
-			return nil, err
-		}
-		deliveries = append(deliveries, preparedDelivery{condition: prepared, recipientID: recipientID})
-	}
 
+	}
 	prepared := &preparedCast{source: definition.Ref, conditions: deliveries}
 	if profile.Stabilize {
 		prepared.stabilization = &preparedStabilization{targetID: targetID, source: definition.Ref, name: definition.Name}
@@ -1164,16 +1107,6 @@ func writeParameter(ref core.Ref, parameters json.RawMessage, key string, value 
 	}
 
 	return bound, nil
-}
-
-// independentEffect identifies content whose duration is not concentration-owned.
-func (m *castMachine) independentEffect(ref *core.Ref) bool {
-	for _, effect := range m.profile.Effects {
-		if effect.IndependentDuration && effect.Ref.String() == ref.String() {
-			return true
-		}
-	}
-	return false
 }
 
 // newAttackCast delegates a cast's attack delivery to the ordinary strike path.

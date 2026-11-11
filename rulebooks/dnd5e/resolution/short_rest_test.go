@@ -182,10 +182,7 @@ func (s *ShortRestTestSuite) TestRefusalsSpendNothingAndReturnNoRecord() {
 // turnEnds left, blessing itself and the ally.
 func (s *ShortRestTestSuite) blessHold(turnEnds int) (rester, ally *character.Data) {
 	blessed := func(memberID string) (dnd5eEvents.ConditionAddress, json.RawMessage) {
-		condition, err := conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{
-			MemberID: memberID, SourceID: shortResterID, SourceRef: refs.Spells.Bless(),
-		})
-		s.Require().NoError(err)
+		condition := fixtureNamed(s.T(), namedFixtureInput{Ref: refs.Conditions.Blessed(), Member: memberID, Source: shortResterID, Origin: refs.Spells.Bless()})
 		raw, err := condition.ToJSON()
 		s.Require().NoError(err)
 		return dnd5eEvents.ConditionAddress{
@@ -195,12 +192,7 @@ func (s *ShortRestTestSuite) blessHold(turnEnds int) (rester, ally *character.Da
 	selfAddress, selfBlessed := blessed(shortResterID)
 	allyAddress, allyBlessed := blessed(restAllyID)
 
-	hold := conditions.NewConcentratingConditionWithInput(conditions.NewConcentratingConditionInput{
-		MemberID: shortResterID, SourceID: shortResterID, SpellRef: refs.Spells.Bless().String(),
-		SpellName: "Bless", TurnEnds: turnEnds,
-	})
-	s.Require().NoError(hold.AddChild(s.ctx, selfAddress))
-	s.Require().NoError(hold.AddChild(s.ctx, allyAddress))
+	hold := fixtureHold(s.T(), holdFixtureInput{Member: shortResterID, Source: refs.Spells.Bless(), Name: "Bless", Turns: turnEnds, Children: []dnd5eEvents.ConditionAddress{selfAddress, allyAddress}})
 	holdJSON, err := hold.ToJSON()
 	s.Require().NoError(err)
 
@@ -250,7 +242,7 @@ func (s *ShortRestTestSuite) TestAOneMinuteHoldEndsAndIsNamed() {
 	}
 	s.ElementsMatch([]encounter.MemberID{shortResterID, restAllyID}, removedFrom)
 
-	s.NotContains(restConditionRefs(s.T(), out.Character), refs.Conditions.Concentrating().String())
+	s.NotContains(restConditionRefs(s.T(), out.Character), refs.Conditions.LinkedEffects().String())
 	s.NotContains(restConditionRefs(s.T(), out.Character), refs.Conditions.Blessed().String())
 	s.Empty(out.Ended, "the hold and its effects are the break's to report")
 
@@ -320,7 +312,7 @@ func (s *ShortRestTestSuite) TestAHoldLongerThanAnHourEndsToo() {
 	})
 	s.Require().NoError(err)
 	s.Require().Len(out.ConcentrationBreaks, 1)
-	s.NotContains(restConditionRefs(s.T(), out.Character), refs.Conditions.Concentrating().String())
+	s.NotContains(restConditionRefs(s.T(), out.Character), refs.Conditions.LinkedEffects().String())
 	s.Require().Len(out.DirtyCharacters, 1)
 }
 

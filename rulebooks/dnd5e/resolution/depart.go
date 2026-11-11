@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/effects"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
@@ -138,7 +139,7 @@ func departOn(
 	if err != nil {
 		return nil, errors.Join(err, ends.stop(ctx))
 	}
-	releaseErr := release(ctx, surf.inner, one.ID(), held)
+	releaseErr := release(ctx, surf.inner, one.ID(), held, cast.applications)
 	if stopErr := errors.Join(ends.stop(ctx), removals.stop(ctx)); stopErr != nil {
 		return nil, errors.Join(releaseErr, stopErr)
 	}
@@ -150,7 +151,11 @@ func departOn(
 	if err != nil {
 		return nil, fmt.Errorf("resolution: depart %q: %w", one.ID(), err)
 	}
-	ended, err := removals.endedOutside(ends.facts)
+	var ownerAddresses []dnd5eEvents.ConditionAddress
+	for _, found := range held {
+		ownerAddresses = append(ownerAddresses, found.owner)
+	}
+	ended, err := removals.endedOutside(ends.facts, ownerAddresses)
 	if err != nil {
 		return nil, err
 	}
@@ -217,50 +222,58 @@ func cloneMonsterData(in *monster.Data) (*monster.Data, error) {
 	return out, nil
 }
 
-// heldEffects is one hold and the effects of it that sit on the leaver.
+// heldEffects is a detached protocol view of one application's affected entries.
 type heldEffects struct {
-	hold    *conditions.ConcentratingCondition
-	onLeave []dnd5eEvents.ConditionAddress
+	owner       dnd5eEvents.ConditionAddress
+	application string
+	name        string
+	live        []dnd5eEvents.ConditionAddress
+	onLeave     []dnd5eEvents.ConditionAddress
+	pending     []string
+	own         bool
 }
 
-// heldOn finds every hold in the cast that names an effect on the leaver, and
-// refuses an effect of a concentration spell whose caster was not passed in.
+// heldOn reads exact current membership, never a condition class or ref-as-role.
+// The interaction binding already validated every live/pending holder.
 func heldOn(leaver *character.Data, cast *Participants) ([]heldEffects, error) {
 	var held []heldEffects
 	named := map[dnd5eEvents.ConditionAddress]bool{}
 	for _, id := range cast.order {
-		if id == leaver.ID {
-			owned, err := ownHolds(leaver.ID, cast)
-			if err != nil {
-				return nil, err
-			}
-			held = append(held, owned...)
-			continue
-		}
 		for _, condition := range conditionsOf(cast, id) {
-			hold, ok := condition.(*conditions.ConcentratingCondition)
+			provider, ok := condition.(interface {
+				LinkedApplicationInfo() conditions.LinkedApplicationInfo
+			})
 			if !ok {
 				continue
 			}
-			found := heldEffects{hold: hold}
-			for _, child := range hold.Children {
-				if child.MemberID == leaver.ID {
-					found.onLeave = append(found.onLeave, child)
-					named[child] = true
+			info := provider.LinkedApplicationInfo()
+			if info.Role != conditions.LinkedCoordinator {
+				continue
+			}
+			display, err := conditions.DescribeCondition(&conditions.DescribeConditionInput{Condition: condition})
+			if err != nil {
+				return nil, err
+			}
+			found := heldEffects{owner: info.Owner, application: info.ID, name: display.Display.Name, own: id == leaver.ID}
+			for _, member := range info.Members {
+				if slices.Contains(info.LiveMembers, member.Key) {
+					found.live = append(found.live, member.Address)
+					if member.Address.MemberID == leaver.ID {
+						found.onLeave = append(found.onLeave, member.Address)
+						named[member.Address] = true
+					}
+				}
+				if member.Address.MemberID == leaver.ID && slices.Contains(info.PendingMembers, member.Key) {
+					found.pending = append(found.pending, member.Key)
 				}
 			}
-			if len(found.onLeave) > 0 {
+			if found.own || len(found.onLeave) > 0 || len(found.pending) > 0 {
 				held = append(held, found)
 			}
 		}
 	}
-
-	// An effect whose caster is not here cannot be told apart from an effect
-	// nobody holds by looking for the hold. The spell it came from can, and
-	// the answer is a fact content declares — the spell's cast profile
-	// carries a concentration — rather than a match on any ref here: an
-	// effect of a concentration spell is held by its caster, and leaving
-	// without telling the caster would leave a hold naming a member gone.
+	// Current adopted payloads have no backlink. Preserve their explicit source
+	// check; linked payload integrity was checked by the root binding already.
 	for _, effect := range peekEffects(leaver) {
 		if named[effect.address] || effect.address.SourceID == "" || effect.address.SourceID == leaver.ID {
 			continue
@@ -271,61 +284,39 @@ func heldOn(leaver *character.Data, cast *Participants) ([]heldEffects, error) {
 		if _, ok := cast.Monster(effect.address.SourceID); ok {
 			continue
 		}
-		if concentrationSpell(effect.sourceRef) {
-			return nil, fmt.Errorf("%w: %s on %q is held by %q, who was not passed in",
-				ErrBadParticipant, effect.address.ConditionRef, leaver.ID, effect.address.SourceID)
+		concentration, err := concentrationSpell(effect.sourceRef)
+		if err != nil {
+			return nil, err
+		}
+		if concentration {
+			return nil, fmt.Errorf("%w: %s on %q is held by %q, who was not passed in", ErrBadParticipant, effect.address.ConditionRef, leaver.ID, effect.address.SourceID)
 		}
 	}
-
 	return held, nil
 }
 
-// ownHolds is every hold the leaver holds, each to end with all its effects:
-// the run settles what it put on its members, so a departing caster's
-// concentration does not outlive the departure. A hold whose effect sits on a
-// member not passed in refuses, as a short rest's does, before anything ends.
-func ownHolds(leaverID string, cast *Participants) ([]heldEffects, error) {
-	var owned []heldEffects
-	for _, condition := range conditionsOf(cast, leaverID) {
-		hold, ok := condition.(*conditions.ConcentratingCondition)
-		if !ok {
-			continue
-		}
-		for _, child := range hold.Children {
-			_, isCharacter := cast.Character(child.MemberID)
-			_, isMonster := cast.Monster(child.MemberID)
-			if !isCharacter && !isMonster {
-				return nil, fmt.Errorf("%w: %s held by %q reaches %q, who was not passed in",
-					ErrBadParticipant, hold.SpellName, leaverID, child.MemberID)
-			}
-		}
-		owned = append(owned, heldEffects{hold: hold, onLeave: slices.Clone(hold.Children)})
-	}
-	return owned, nil
-}
-
-// release takes each held effect off the leaver, through the hold: a hold
-// with nothing left but the leaver's effects ends — every hold the leaver
-// holds among them — and any other drops the leaver's effects and continues.
-func release(ctx context.Context, bus events.EventBus, leaverID string, held []heldEffects) error {
+// release ends a departing maintainer or releases only the departing recipient.
+// Pending entries resolve without an effect rather than remaining dangling links.
+func release(ctx context.Context, bus events.EventBus, leaverID string, held []heldEffects, binding *conditions.ApplicationBinding) error {
 	removals := dnd5eEvents.ConditionRemovedTopic.On(bus)
 	for _, found := range held {
-		targets := found.hold.Children
-		if len(found.onLeave) == len(targets) {
-			owner := found.hold.ConditionAddress()
-			if err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-				MemberID: owner.MemberID, ConditionRef: owner.ConditionRef, SourceID: owner.SourceID,
-				Reason: DepartedReason,
-			}); err != nil {
-				return fmt.Errorf("resolution: depart %q: end %s: %w", leaverID, found.hold.SpellName, err)
+		if found.own || (len(found.onLeave) > 0 && len(found.onLeave) == len(found.live)) {
+			owner := found.owner
+			if err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{MemberID: owner.MemberID, ConditionRef: owner.ConditionRef, SourceID: owner.SourceID, ApplicationID: found.application, Reason: DepartedReason}); err != nil {
+				return fmt.Errorf("resolution: depart %q: end %s: %w", leaverID, found.name, err)
 			}
 			continue
 		}
-		for _, child := range slices.Clone(found.onLeave) {
-			if err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{
-				MemberID: child.MemberID, ConditionRef: child.ConditionRef, SourceID: child.SourceID,
-				Reason: DepartedReason,
-			}); err != nil {
+		for _, key := range found.pending {
+			if binding == nil {
+				return fmt.Errorf("%w: departure requires application binding", ErrBadParticipant)
+			}
+			if _, err := binding.FinalizeRecipient(ctx, &conditions.FinalizeRecipientInput{ApplicationID: found.application, Key: key}); err != nil {
+				return err
+			}
+		}
+		for _, child := range found.onLeave {
+			if err := removals.Publish(ctx, dnd5eEvents.ConditionRemovedEvent{MemberID: child.MemberID, ConditionRef: child.ConditionRef, SourceID: child.SourceID, ApplicationID: found.application, Reason: DepartedReason}); err != nil {
 				return fmt.Errorf("resolution: depart %q: release %s: %w", leaverID, child.ConditionRef, err)
 			}
 		}
@@ -376,10 +367,17 @@ func peekEffects(data *character.Data) []peekedEffect {
 
 // concentrationSpell reports whether ref names a spell this build casts as a
 // concentration spell. Content declares it; nothing here names a spell.
-func concentrationSpell(ref *core.Ref) bool {
+func concentrationSpell(ref *core.Ref) (bool, error) {
 	if ref == nil || ref.Module != refs.Module || ref.Type != refs.TypeSpells {
-		return false
+		return false, nil
 	}
 	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: ref.ID})
-	return definition != nil && definition.Cast != nil && definition.Cast.Concentration != nil
+	if definition == nil || definition.Cast == nil {
+		return false, nil
+	}
+	described, err := effects.DescribeMaintenance(&effects.DescribeMaintenanceInput{Parts: definition.Cast.Maintenance})
+	if err != nil {
+		return false, err
+	}
+	return described.Concentration, nil
 }

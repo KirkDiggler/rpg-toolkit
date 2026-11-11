@@ -349,9 +349,13 @@ func TestLongRestReturnsAtLeastOneHitDie(t *testing.T) {
 func TestShortRestEndsAFightsConditions(t *testing.T) {
 	ctx := context.Background()
 	data := restFighterData(t)
+	blessed, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Blessed(), MemberID: data.ID, SourceID: "cleric-1", SourceRef: refs.Spells.Bless()})
+	require.NoError(t, err)
+	blessedData, err := blessed.ToJSON()
+	require.NoError(t, err)
 	data.Conditions = []json.RawMessage{
 		json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"prone"},"member_id":"short-rest-fighter"}`),
-		json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"blessed"},"member_id":"short-rest-fighter","source_id":"cleric-1","source_ref":{"module":"dnd5e","type":"spells","id":"bless"}}`),
+		blessedData,
 	}
 	char := attachRestFighter(t, data)
 	heldNow := func() []string {
@@ -365,7 +369,7 @@ func TestShortRestEndsAFightsConditions(t *testing.T) {
 		refs.Conditions.Prone().String(), refs.Conditions.Blessed().String(),
 	}, "both are on the sheet before the rest")
 
-	_, err := char.ShortRest(ctx, &ShortRestInput{})
+	_, err = char.ShortRest(ctx, &ShortRestInput{})
 	require.NoError(t, err)
 
 	held := heldNow()

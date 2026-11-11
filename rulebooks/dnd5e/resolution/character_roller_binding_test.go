@@ -176,9 +176,10 @@ func TestLenientCharacterAttachBindsTheRollerAndStillDropsUnreadable(t *testing.
 	surf := newSurface(events.NewEventBus())
 
 	cast, err := attachAll(context.Background(), surf, &attachAllInput{
-		Participants:   []Participant{{Character: data}},
-		Roller:         roller,
-		DropUnreadable: true,
+		Participants:    []Participant{{Character: data}},
+		Roller:          roller,
+		DropUnreadable:  true,
+		LocalProjection: true,
 	})
 	require.NoError(t, err)
 	defer func() { require.NoError(t, surf.teardown(context.Background())) }()

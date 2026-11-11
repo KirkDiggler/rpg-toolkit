@@ -22,7 +22,7 @@ func (s *CastActionTestSuite) TestSanctuaryRecipientCooldownSurvivesWardAndExpir
 	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.Sanctuary})
 	roller := &countingCastRoller{}
 	cast := func(actor string, sheets []Participant, turn string) (*Output, error) {
-		machine, err := NewAction(&ActionInput{Definition: *definition, AttackerID: actor, TargetIDs: []string{bardID}, Roller: roller})
+		machine, err := NewAction(&ActionInput{ApplicationID: testApplicationID(s.T()), Definition: *definition, AttackerID: actor, TargetIDs: []string{bardID}, Roller: roller})
 		if err != nil {
 			return nil, err
 		}
@@ -51,9 +51,7 @@ func (s *CastActionTestSuite) TestSanctuaryRecipientCooldownSurvivesWardAndExpir
 	s.True(hasConditionRef(s.T(), caster.Conditions, refs.Conditions.SanctuaryImmune().String()))
 	s.Equal(1, caster.Resources[resources.SpellSlotLevel1].Current)
 	for _, blob := range caster.Conditions {
-		c, err := conditions.LoadJSON(blob)
-		s.Require().NoError(err)
-		if hold, ok := c.(*conditions.ConcentratingCondition); ok {
+		if hold := fixtureHoldView(s.T(), blob); hold != nil {
 			s.Require().Len(hold.Children, 1)
 			s.Equal(refs.Conditions.Sanctuary().String(), hold.Children[0].ConditionRef)
 		}

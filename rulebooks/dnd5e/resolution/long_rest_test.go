@@ -281,7 +281,7 @@ func (s *LongRestTestSuite) TestHeldSurfaceTeardownErrorRefusesAnOtherwiseSucces
 func (s *LongRestTestSuite) TestHeldSurfaceAttachErrorLeavesNoRegistrations() {
 	attachErr := errors.New("subscription refused")
 	bus := newLongRestFaultBus()
-	bus.failSubscribeAt = 3
+	bus.failSubscribeAt = 5 // two transport subscriptions, then a partial keeper
 	bus.subscribeErr = attachErr
 	surf := newSurface(bus)
 

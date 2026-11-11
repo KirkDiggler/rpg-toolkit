@@ -85,9 +85,10 @@ func participationOn(
 	}
 
 	cast, err := attachAll(ctx, surf, &attachAllInput{
-		Participants:   in.Participants,
-		Roller:         refusingRoller{},
-		DropUnreadable: true,
+		LocalProjection: true,
+		Participants:    in.Participants,
+		Roller:          refusingRoller{},
+		DropUnreadable:  true,
 	})
 	if err != nil {
 		return nil, err

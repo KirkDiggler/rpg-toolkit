@@ -91,8 +91,9 @@ func LoadMonsterConditions(
 }
 
 // LoadMonster is the whole pure load of a monster: the sheet, its shared action
-// definitions, and the trait blobs it was persisted with. No event bus is
-// involved and nothing is applied — [AttachMonster] puts the result on a bus.
+// definitions, and every condition reconstituted but not applied. No event bus
+// is involved. Unknown/malformed conditions fail here, before cross-holder
+// binding; AttachMonster later applies these same prepared behaviors.
 //
 // The monster package now loads inert action definitions directly. This wrapper
 // remains the composition entry point paired with [AttachMonster].
@@ -106,6 +107,9 @@ func LoadMonster(ctx context.Context, d *monster.Data) (*monster.Monster, error)
 		return nil, err
 	}
 
+	if err := prepareMonsterConditions(m); err != nil {
+		return nil, err
+	}
 	return m, nil
 }
 
@@ -113,26 +117,20 @@ func LoadMonster(ctx context.Context, d *monster.Data) (*monster.Monster, error)
 // then every trait it is carrying, each through the bus scoped to that trait's
 // own ref.
 //
-// The traits it applies are the blobs the monster came back from [LoadMonster]
-// holding — taken off it, so a second attach cannot apply them twice and
-// ToData cannot write them twice. That is the difference from
-// [LoadMonsterConditions], which is handed its blobs by a caller who read them
-// out of the data itself.
+// It applies the behaviors already prepared by LoadMonster, so an application
+// binding installed between load and attach points at the very same instances.
+// A factory-created monster still carrying raw traits uses the same preparation
+// before any subscription; no raw and loaded copies are retained together.
 //
 // Ordering is fixed rather than incidental: the monster's own hooks are
 // attached before any trait's, so two attaches over identical data grant
 // identical registrations in identical order (ADR-0038 R4).
 //
-// **A failed attach is a no-op**, and here that is the whole point rather than
-// tidiness. The blobs come off the monster before anything is known to work, so
-// an error partway through — an unroutable ref, a bus that will not take a
-// subscription — would otherwise leave every unprocessed blob nowhere at all,
-// and the next ToData would write the monster back without conditions nobody
-// removed. That is the silent loss rpg-toolkit#948 named and this PR exists to
-// close, so: nothing is added to the monster until every trait has loaded and
-// applied, and any failure puts the blobs back, takes off whatever went on, and
-// removes the keeper. ToData after a failed attach writes what it wrote before
-// it, and the attach can be retried.
+// A failed attach revokes every subscription it granted and removes the keeper.
+// Prepared behaviors remain on the sheet, detached, so ToData retains their
+// state exactly once and attachment can be retried. Preparation itself validates
+// every carried blob before recording any behavior; a failure restores the raw
+// input, without publishing or leaving a partially loaded condition set.
 func AttachMonster(
 	ctx context.Context,
 	m *monster.Monster,
@@ -146,41 +144,18 @@ func AttachMonster(
 		return rpgerr.New(rpgerr.CodeInvalidArgument, "event bus is required")
 	}
 
+	// Factory-created monsters may still carry raw traits. Both entry paths use
+	// the same pure preparation; an already prepared monster is unchanged.
+	if err := prepareMonsterConditions(m); err != nil {
+		return err
+	}
 	if err := m.SheetKeeper().Apply(ctx, bus); err != nil {
 		return rpgerr.Wrap(err, "failed to attach monster sheet keeper")
 	}
-
-	// Every unattachMonster below is handed exactly what this attach took off
-	// the monster, so a rollback puts back what it found and nothing else.
-	carried := m.TakeUnappliedConditions()
-	attached := make([]attachedTrait, 0, len(carried))
-
-	for i, blob := range carried {
-		condition, err := conditions.LoadJSON(blob)
-		if err != nil {
-			unattachMonster(ctx, m, bus, attached, carried)
-
-			return rpgerr.Wrapf(err, "failed to load monster condition %d: %s", i, blob)
-		}
+	loaded := m.GetConditions()
+	attached := make([]attachedTrait, 0, len(loaded))
+	for i, condition := range loaded {
 		bindRoller(condition, roller)
-
-		// REFUSED BEFORE ANYTHING HAPPENS TO IT, so that the recording loop
-		// below cannot fail. Monster.AddLoadedCondition rejects a condition that
-		// cannot name itself, and that rejection arriving DURING the recording
-		// loop would be a partial write this package cannot undo: a monster has
-		// no verb for taking a condition back off, so unattachMonster restores
-		// blobs on the assumption that nothing was recorded. Checking here keeps
-		// that assumption true — the attach fails before Apply, before the sheet
-		// keeper, and before any record, which is the no-op its doc promises.
-		//
-		// Prevention rather than compensation, deliberately: the alternative is
-		// an undo path that only ever runs in a case this check makes
-		// unreachable, which is a rollback nothing exercises.
-		if err := requireNameableTrait(condition); err != nil {
-			unattachMonster(ctx, m, bus, attached, carried)
-
-			return rpgerr.Wrapf(err, "failed to load monster condition %d: %s", i, blob)
-		}
 
 		// Asked of the condition rather than peeked back out of the blob — see
 		// LoadMonsterConditions for why, and refOf for what happens when a
@@ -190,30 +165,12 @@ func AttachMonster(
 		if err := condition.Apply(ctx, traitBus); err != nil {
 			// Clean up any partial subscriptions from the failed Apply.
 			_ = condition.Remove(ctx, traitBus)
-			unattachMonster(ctx, m, bus, attached, carried)
+			unattachMonster(ctx, m, bus, attached)
 
-			return rpgerr.Wrapf(err, "failed to apply monster condition %d: %s", i, blob)
+			return rpgerr.Wrapf(err, "failed to apply monster condition %d (%s)", i, condition.Ref().String())
 		}
 
 		attached = append(attached, attachedTrait{condition: condition, bus: traitBus})
-	}
-
-	// Only now, when every one of them worked. A trait added to the monster
-	// mid-loop would have to be taken back out again on the next failure, and
-	// the monster has no verb for that — which is exactly the kind of missing
-	// undo that makes partial writes permanent.
-	//
-	// This loop CANNOT fail: AddLoadedCondition's one refusal is a nameless
-	// condition, and every one of these was checked above before it was applied.
-	// The error is still returned rather than dropped, because a future refusal
-	// added to that door would land here — and whoever adds one has to solve the
-	// undo this comment describes before this loop can honestly continue.
-	for _, trait := range attached {
-		if err := m.AddLoadedCondition(trait.condition); err != nil {
-			unattachMonster(ctx, m, bus, attached, carried)
-
-			return rpgerr.Wrap(err, "failed to record monster trait")
-		}
 	}
 
 	return nil
@@ -229,14 +186,13 @@ type attachedTrait struct {
 }
 
 // unattachMonster returns the monster to the state [AttachMonster] found it in:
-// every trait that went on comes back off newest first, the keeper is removed,
-// and the blobs go back where they were taken from, in order.
+// every trait that went on comes back off newest first and the keeper is removed.
+// Prepared behaviors remain detached on the sheet, with no duplicate raw copy.
 func unattachMonster(
 	ctx context.Context,
 	m *monster.Monster,
 	bus events.EventBus,
 	attached []attachedTrait,
-	blobs []json.RawMessage,
 ) {
 	// Newest first, the order resolution tears down in (ADR-0038 R5).
 	for i := len(attached) - 1; i >= 0; i-- {
@@ -245,12 +201,8 @@ func unattachMonster(
 
 	_ = m.SheetKeeper().Remove(ctx, bus)
 
-	// All of them, including the one that failed and every one never reached.
-	// Nothing was added to the monster, so putting the blobs back is the whole
-	// of the undo, and ToData writes exactly what it wrote before the attach.
-	for _, blob := range blobs {
-		m.AddTraitData(blob)
-	}
+	// Prepared behaviors stay on the sheet, detached, for an exact retry. No
+	// second raw copy is restored alongside them.
 }
 
 // requireNameableTrait refuses a condition that cannot name itself, at the

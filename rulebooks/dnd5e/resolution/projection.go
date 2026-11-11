@@ -163,8 +163,9 @@ func projectCharacterOn(
 	}
 
 	cast, err := attachAll(ctx, surf, &attachAllInput{
-		Participants: []Participant{one},
-		Roller:       refusingRoller{},
+		LocalProjection: true,
+		Participants:    []Participant{one},
+		Roller:          refusingRoller{},
 		// DropUnreadable stays at its zero value: this entry's answer is
 		// written back by its callers, so it refuses what it cannot attach.
 	})

@@ -14,11 +14,15 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/customization"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 )
 
 // LongRestInput is the persisted character to recover through the root D&D
 // long-rest rules.
 type LongRestInput struct {
+	// Others supplies every other holder affected by current linked applications.
+	Others []Participant
 	// Character is a record, not a live sheet. The entry strictly loads and
 	// attaches it on its own transient interaction surface.
 	Character *character.Data
@@ -26,6 +30,11 @@ type LongRestInput struct {
 
 // LongRestOutput is the recovered character record ready for persistence.
 type LongRestOutput struct {
+	// DirtyCharacters excludes Character; peers must be saved with the rest.
+	DirtyCharacters []*character.Data
+	DirtyMonsters   []*monster.Data
+	// ConcentrationBreaks carries exact ended-source and recipient facts.
+	ConcentrationBreaks []encounter.ConcentrationBreak
 	// Character is an independently owned snapshot of the attached sheet after
 	// its long rest completed.
 	Character *character.Data
@@ -35,8 +44,8 @@ type LongRestOutput struct {
 	Result character.LongRestOutput
 }
 
-// LongRest strictly loads and attaches one character, invokes the root D&D
-// long-rest behavior, snapshots the result, and tears down every registration.
+// LongRest strictly loads and attaches the resting character and affected holders,
+// invokes root D&D rules, snapshots every dirty sheet and tears down registrations.
 // No runtime character or event bus crosses this data boundary.
 func LongRest(ctx context.Context, in *LongRestInput) (*LongRestOutput, error) {
 	return longRestOn(ctx, in, newSurface(events.NewEventBus()))
@@ -78,8 +87,12 @@ func longRestOn(
 		return nil, err
 	}
 
+	participants, err := castWithOthers(one, in.Others)
+	if err != nil {
+		return nil, err
+	}
 	cast, err := attachAll(ctx, surf, &attachAllInput{
-		Participants:   []Participant{one},
+		Participants:   participants,
 		Roller:         refusingRoller{},
 		DropUnreadable: false,
 	})
@@ -88,7 +101,7 @@ func longRestOn(
 	}
 
 	// The same truth door as every other resolution entry, with the honest
-	// answer for this record-only operation: a cast of one and no world.
+	// answer for this record-only operation: all affected holders, no world.
 	ctx = installTruth(ctx, nil, cast, nil)
 
 	ch, ok := cast.Character(one.ID())
@@ -96,6 +109,10 @@ func longRestOn(
 		return nil, fmt.Errorf("%w: %q attached but is not in the cast", ErrBadParticipant, one.ID())
 	}
 
+	ends, err := collectConcentrationEnds(ctx, surf)
+	if err != nil {
+		return nil, err
+	}
 	result, err := ch.LongRest(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("resolution: long rest %q: %w", one.ID(), err)
@@ -109,7 +126,21 @@ func longRestOn(
 		return nil, fmt.Errorf("resolution: long rest %q: %w", one.ID(), err)
 	}
 
-	return &LongRestOutput{Character: rested, Result: *result}, nil
+	breaks, err := breaksFrom(ends.facts, nil)
+	if err != nil {
+		return nil, err
+	}
+	out = &LongRestOutput{Character: rested, Result: *result, DirtyMonsters: dirtyMonsters(cast), ConcentrationBreaks: breaks}
+	dirty, err := dirtyCharacters(cast)
+	if err != nil {
+		return nil, err
+	}
+	for _, sheet := range dirty {
+		if sheet.ID != one.ID() {
+			out.DirtyCharacters = append(out.DirtyCharacters, sheet)
+		}
+	}
+	return out, nil
 }
 
 // cloneCharacterData returns a deep-enough record copy for every mutable field

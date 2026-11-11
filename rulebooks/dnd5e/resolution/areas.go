@@ -23,13 +23,13 @@ func interactionAreas(
 	standing []encounter.SightAreaData, ended []dnd5eEvents.ConcentrationEndedEvent, outcome Outcome,
 ) (opened []encounter.SightAreaInput, closed []string) {
 	for _, fact := range ended {
-		if slices.Contains(closed, fact.CasterID) {
+		if slices.Contains(closed, fact.MaintainerID) {
 			continue
 		}
 		if slices.ContainsFunc(standing, func(area encounter.SightAreaData) bool {
-			return area.SourceID == fact.CasterID
+			return area.SourceID == fact.MaintainerID
 		}) {
-			closed = append(closed, fact.CasterID)
+			closed = append(closed, fact.MaintainerID)
 		}
 	}
 	if cast, ok := outcome.(CastOutcome); ok && cast.openedArea != nil {

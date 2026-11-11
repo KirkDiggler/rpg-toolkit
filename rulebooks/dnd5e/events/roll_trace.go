@@ -64,10 +64,17 @@ type RollContributionMetadataOutput struct {
 // condition that can describe a dice contribution. The condition owns both its
 // applicability/stacking rule and the resulting description.
 type RollContributionProvider interface {
-	RollContributionMetadata(input *DescribeRollContributionsInput) RollContributionMetadataOutput
+	RollContributionMetadata(input *DescribeRollContributionsInput) (RollContributionMetadataOutput, error)
 	DescribeRollContributions(
 		input *DescribeRollContributionsInput,
 	) (*DescribeRollContributionsOutput, error)
+}
+
+// RollContributionSet exposes independently selectable providers from a held
+// condition. The recipient's one selector walks these in condition/part order.
+// It is not an alternative selector or a legacy saved-state path.
+type RollContributionSet interface {
+	RollContributors() []RollContributionProvider
 }
 
 // DiceReroll records one ordered replacement of a die face and its source.
