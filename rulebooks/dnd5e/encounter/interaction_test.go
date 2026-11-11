@@ -105,8 +105,24 @@ func (s *InteractionSuite) claim(enc *encounter.Encounter, who core.EntityID, op
 	_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
 		Range: speakReach, Actor: who, Target: goblin, OptionID: option, Skill: "persuasion",
 		Beaten: beaten, DC: 11, Total: 8, Roller: rollsLowest{},
+		Revision: offeredRevision(enc, who, goblin, option),
 	})
 	return err
+}
+
+// offeredRevision is the revision a line is offered to a speaker at now —
+// what a host's reply carries back — or zero when it is not offered.
+func offeredRevision(enc *encounter.Encounter, who, target core.EntityID, option string) uint64 {
+	offered, err := enc.OptionsFor(who, target)
+	if err != nil {
+		return 0
+	}
+	for _, o := range offered {
+		if o.ID == option {
+			return o.Revision
+		}
+	}
+	return 0
 }
 
 // offered is the claims the captain offers one speaker.
@@ -211,7 +227,7 @@ func (s *InteractionSuite) TestARefusedSpeakNeverStepsTheInteraction() {
 	enc := s.openGate()
 	_, err := enc.Speak(s.ctx, &encounter.SpeakInput{
 		Range: speakReach, Actor: alice, Target: goblin, OptionID: "guest", Skill: "deception",
-		DC: 11, Total: 3, Roller: rollsLowest{},
+		DC: 11, Total: 3, Roller: rollsLowest{}, Revision: offeredRevision(enc, alice, goblin, "guest"),
 	})
 	s.Require().ErrorIs(err, encounter.ErrNoOption)
 	s.Equal("fresh", s.saved(enc).Blob.State)

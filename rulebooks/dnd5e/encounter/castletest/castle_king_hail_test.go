@@ -28,6 +28,7 @@ func TestMadKingTheGateHailsTheApproach(t *testing.T) {
 	t.Parallel()
 	s := openTheScript(t, partyStart(t), nil)
 	gateState := s.enc.ToData().Interactions[0].Blob
+	gateRevision := s.enc.ToData().Interactions[0].Revision
 
 	route, err := s.enc.Route(encounter.RouteInput{Mover: hero, Policy: encounter.MoveToward, Anchor: besideTheCrossing, Budget: 200})
 	require.NoError(t, err)
@@ -63,5 +64,6 @@ func TestMadKingTheGateHailsTheApproach(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, hailed.Guard, standing.Address.Guard, "the address stands for the session to project")
 	require.Equal(t, gateState, s.enc.ToData().Interactions[0].Blob, "a hail is not progress")
+	require.Equal(t, gateRevision, s.enc.ToData().Interactions[0].Revision, "nor does it move the conversation's revision (rpg-project#924)")
 	require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "a hail is not a fight")
 }

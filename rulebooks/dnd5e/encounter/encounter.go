@@ -2999,6 +2999,10 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	// active player leaving a fight with a striking monster next). The
 	// roster changing is the graph's declaration changing too (world.go).
 	delete(e.members, in.Member)
+	// A LINE WAITING ON THE LEAVER'S ROLL IS DROPPED (rpg-project#924,
+	// interaction_hold.go): nobody is left to decide on it, and the exit beat
+	// tells it. A line said TO the leaver is released by the sweep below.
+	e.dropHoldsOf(in.Member)
 	if err = e.buildWorld(); err != nil {
 		return nil, fmt.Errorf("exit: %w", err)
 	}
@@ -3116,6 +3120,13 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 			return nil, fmt.Errorf("exit refresh sight: %w", err)
 		}
 		intelDeltas = mergeIntelDeltas(intelDeltas, refreshDeltas)
+	}
+
+	// A HELD LINE SAID TO THE LEAVER IS RELEASED (rpg-project#924): its
+	// settle could never be admitted, and a saved reservation naming a
+	// creature the run lacks would not load.
+	if err := e.sweepHolds(); err != nil {
+		return nil, fmt.Errorf("exit: %w", err)
 	}
 
 	// Check if we need to auto-close (last member exited and no ending has fired)

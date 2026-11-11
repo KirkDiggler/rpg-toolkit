@@ -96,6 +96,18 @@ type InteractionData struct {
 	// Address is who the interaction addresses now (address.go), absent for
 	// nobody. Load refuses one naming a member or guard the run lacks.
 	Address *InteractionAddress `json:"address,omitzero"`
+
+	// Revision is the conversation's revision (interaction_hold.go, rpg-project#924):
+	// one or more, bumped whenever the progress moves and whenever a
+	// reservation is placed, settled or released, and never by an address.
+	// A record saved before the field existed carries none and loads at one,
+	// the revision every instance starts at.
+	Revision uint64 `json:"revision,omitzero"`
+
+	// Reservation is the checked line waiting on its speaker's roll decision
+	// (interaction_hold.go), absent for none. At most one per interaction. Load refuses
+	// one naming a member the run lacks, or a revision not below [Revision].
+	Reservation *InteractionReservation `json:"reservation,omitzero"`
 }
 
 // MarshalJSON writes the record through encoding/json v2, so the recipe and
@@ -124,6 +136,12 @@ type interactionRecord struct {
 
 	// address is who the interaction addresses now; nil for nobody.
 	address *InteractionAddress
+
+	// revision is the conversation's revision, one or more (interaction_hold.go).
+	revision uint64
+
+	// reservation is the checked line waiting on its roll; nil for none.
+	reservation *InteractionReservation
 }
 
 // hasState reports whether the interaction's recipe declares state.
@@ -190,7 +208,7 @@ func newInteractionRecord(in InteractionInput) (*interactionRecord, error) {
 		return nil, fmt.Errorf("interaction %q: %w", in.ID, err)
 	}
 
-	return &interactionRecord{input: owned, definition: digest, program: program, blob: program.NewBlob()}, nil
+	return &interactionRecord{input: owned, definition: digest, program: program, blob: program.NewBlob(), revision: 1}, nil
 }
 
 // CheckInteraction validates one authored interaction exactly as Setup
@@ -295,7 +313,10 @@ func interactionsDataFrom(interactions map[InteractionID]*interactionRecord) []I
 			at := *r.blob.Anchor
 			blob.Anchor = &at
 		}
-		data := InteractionData{ID: id, Definition: r.definition, Recipe: raw, Blob: blob, Approach: cloneApproach(r.input.Approach)}
+		data := InteractionData{
+			ID: id, Definition: r.definition, Recipe: raw, Blob: blob, Approach: cloneApproach(r.input.Approach),
+			Revision: r.revision, Reservation: cloneReservation(r.reservation),
+		}
 		if r.address != nil {
 			address := *r.address
 			data.Address = &address
@@ -336,6 +357,17 @@ func interactionsFromData(data []InteractionData) (map[InteractionID]*interactio
 		}
 		if record.blob.State == "" {
 			record.blob.State = record.input.Recipe.Initial
+		}
+		// A RECORD FROM BEFORE THE REVISION loads at one, where every
+		// instance starts: zero is never an offered revision (interaction_hold.go).
+		if d.Revision > 0 {
+			record.revision = d.Revision
+		}
+		if d.Reservation != nil {
+			if err := validateReservationShape(d.ID, *d.Reservation, record.revision); err != nil {
+				return nil, err
+			}
+			record.reservation = cloneReservation(d.Reservation)
 		}
 		out[d.ID] = record
 	}

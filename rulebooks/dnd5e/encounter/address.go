@@ -238,11 +238,17 @@ func (e *Encounter) offersReply(id InteractionID, member, guard MemberID) (bool,
 	if !ok {
 		return false, nil
 	}
+	// A PENDING LINE STILL REPLIES (rpg-project#924): the conversation is
+	// waiting on a roll, not over, so the address stands.
 	offered, err := e.offered(member, g.Options)
 	if err != nil {
 		return false, err
 	}
-	return carries(offered, id), nil
+	lines := make([]Option, 0, len(offered))
+	for _, o := range offered {
+		lines = append(lines, o.Option)
+	}
+	return carries(lines, id), nil
 }
 
 // approachReach is the distance an address is measured at: the host's

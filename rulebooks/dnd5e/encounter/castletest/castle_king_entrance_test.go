@@ -73,6 +73,19 @@ func (s *kingScene) gateOffers(member encounter.MemberID, option string) map[enc
 	return out
 }
 
+// captainOffers is the captain's offer to a member, by line id.
+func (s *kingScene) captainOffers(member encounter.MemberID) map[string]encounter.OfferedOption {
+	s.t.Helper()
+	offered, err := s.enc.OptionsFor(member, kingCaptain)
+	require.NoError(s.t, err)
+	out := map[string]encounter.OfferedOption{}
+	for _, o := range offered {
+		out[o.ID] = o
+	}
+
+	return out
+}
+
 // everyGateSpeaker is the answer [kingScene.gateOffers] gives when all three
 // gate speakers agree.
 func everyGateSpeaker(offered bool) map[encounter.MemberID]bool {
@@ -152,6 +165,28 @@ func TestMadKingTheGateRemembersTheFailedClaim(t *testing.T) {
 func TestMadKingTwoFailedClaimsArrestTheEntrance(t *testing.T) {
 	t.Parallel()
 	s := toTheCaptainWithTheBard(t)
+
+	// RESERVE BEFORE DICE (rpg-project#924): while the hero's guest claim
+	// waits on the hero's roll, both claims are pending at the gate, and the
+	// captain's lines that read no interaction — the greeting and the threat
+	// — stay open and are spoken. Released without a verdict, the gate is as
+	// it was.
+	_, err := s.enc.Reserve(&encounter.ReserveInput{
+		Actor: hero, Target: kingCaptain, OptionID: "guest", Revision: s.revisionOf(hero, kingCaptain, "guest"), Range: speakReach,
+	})
+	require.NoError(t, err)
+	held := s.captainOffers(hero)
+	require.True(t, held["guest"].Pending, "the held claim waits")
+	require.True(t, held["troupe"].Pending, "and so does the other claim on the gate")
+	require.False(t, held["greet"].Pending, "the greeting reads no interaction")
+	require.False(t, held["stand-aside"].Pending, "nor does the threat")
+	_, err = s.enc.Speak(t.Context(), &encounter.SpeakInput{
+		Range: speakReach, Actor: hero, Target: kingCaptain, OptionID: "greet", Roller: rollsOne{},
+	})
+	require.NoError(t, err, "the greeting is spoken while the claim waits")
+	_, err = s.enc.ReleaseReservation(&encounter.ReleaseReservationInput{Member: hero})
+	require.NoError(t, err)
+	require.Equal(t, "fresh", s.entrance(), "a released claim moved nothing")
 
 	require.Equal(t, guestWarning, s.claimed("guest", "persuasion", false))
 	require.Equal(t, "warned-guest", s.entrance())
