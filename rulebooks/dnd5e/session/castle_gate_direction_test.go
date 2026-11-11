@@ -31,6 +31,23 @@ var theCourtyard = spatial.Position{X: -3, Y: -6}
 // requireOnHisPost requires gate-1 on his cell beneath the gate in a state
 // whose post holds it: posted (the recipe's initial state, which the record
 // writes as empty) or alert.
+// backOnHisPost lets the world turn until gate-1 stands beneath the gate:
+// once he admits the party the captain goes in through the gate
+// (rpg-project#929), and gate-1, hearing it, is drawn a cell off his post
+// for a round before he walks back. A round is six cells walked: alice paces
+// out a cell and back beside the gate.
+func (c *freeRoamCastle) backOnHisPost(t *testing.T) {
+	t.Helper()
+	behind := spatial.Position{X: -5, Y: 8}
+	for range 4 {
+		if memberOf(t, c.world(t), "gate-1").Position == beneathTheCastleGate {
+			return
+		}
+		c.move(t, []spatial.Position{behind, besideTheCastleGate, behind, besideTheCastleGate, behind, besideTheCastleGate})
+	}
+	require.Equal(t, beneathTheCastleGate, memberOf(t, c.world(t), "gate-1").Position, "gate-1 walks back to his post")
+}
+
 func requireOnHisPost(t *testing.T, c *freeRoamCastle, msg string) {
 	t.Helper()
 	require.Equal(t, beneathTheCastleGate, memberOf(t, c.world(t), "gate-1").Position, msg)
@@ -143,6 +160,7 @@ func TestCastleTheTroupeIsToldNoHold(t *testing.T) {
 
 	walked := c.move(t, c.walkInto(t, besideTheCastleGate))
 	require.Equal(t, session.MovementCompleted, walked.Status, "precondition: alice beside the gate: %s", walked.StopReason)
+	c.backOnHisPost(t)
 	requireOnHisPost(t, c, "precondition: the troupe's word leaves gate-1 on his post")
 	seen := c.sightingOf(t, "alice", "gate-1")
 	require.Equal(t, []string{"sight"}, seen.CurrentVia, "precondition: she sees him")
@@ -150,7 +168,8 @@ func TestCastleTheTroupeIsToldNoHold(t *testing.T) {
 	require.Empty(t, seen.HoldsAgainst, "and no direction is told")
 	require.Empty(t, seen.HoldsSide, "and no side")
 
-	c.openTheGate(t)
+	// The captain left the gate open behind him on his way in.
+	require.Equal(t, "open", worldGateState(t, c), "the captain left the gate open")
 	cross := c.move(t, []spatial.Position{pastTheCastleGate})
 	require.Equal(t, session.MovementCompleted, cross.Status, "the troupe crosses: %s", cross.StopReason)
 	require.Equal(t, pastTheCastleGate, c.where(t, "alice"), "into the courtyard")
