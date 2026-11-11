@@ -59,7 +59,8 @@ import (
 // refused as an ending, an arrival or an until. [TriggerInteraction] is the
 // one requirement that reads the RUN rather than the speaker (rpg-project#922,
 // #916 R2: the entrance remembers for the run), and is refused in the same
-// three places.
+// three places. [TriggerRecognized] reads the CREATURE SPOKEN TO — what he
+// holds about the speaker (rpg-project#928) — and is refused there too.
 
 // Option is one line a character can say to a creature or a prop: what is
 // said, the check it rolls, what it waits on, and what is answered on each
@@ -93,7 +94,9 @@ type Option struct {
 	// requirements, each a [TriggerFact] (the speaker knows the fact), a
 	// [TriggerHolds] (the speaker carries the prop), a [TriggerInteraction]
 	// (the run's interaction is in one of the named states — judged per run,
-	// not per speaker, #916 R2), or a `not` of one. Each
+	// not per speaker, #916 R2), a [TriggerRecognized] (the creature spoken
+	// to holds the topic about the speaker, rpg-project#928; refused on a
+	// prop's line), or a `not` of one. Each
 	// is one named requirement in the pool [Encounter.evaluateOptions]
 	// builds, and the line is offered only when all of them are Met. No
 	// other trigger is a requirement, and a nil item names nothing; the door

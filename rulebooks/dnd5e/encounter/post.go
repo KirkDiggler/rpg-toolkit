@@ -657,7 +657,7 @@ type HeldDoor struct {
 // viewer saw. A hold is told to a viewer in any region, whatever way it
 // faces, because a direction bars the viewer some way (rpg-project#857); a
 // body the viewer believes allied is omitted, as is a door hidden to the
-// viewer and a post whose pass fact the viewer knows. Memories and unknown
+// viewer and a post whose pass lets the viewer through. Memories and unknown
 // locations are absent.
 //
 // Errors: [ErrNilInput]; a sight testimony that does not decode; the

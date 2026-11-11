@@ -1671,8 +1671,9 @@ room:
           - id: policy
             use: gate-2-policy
         # Hand edit (rpg-project#928): every gate guard holds the gate, so
-        # killing one leaves it held. Her post is her beat before the gate,
-        # and it lets through whom she recognises.
+        # killing one leaves it held. Her post is where she starts and her
+        # beat's three stops before the gate, and it lets through whom she
+        # recognises.
         behaviorState: policy
         posts:
           ready:
@@ -1680,6 +1681,8 @@ room:
             against: entering
             pass: { recognized: admitted }
             at:
+              - q: -3
+                r: 10
               - q: -2
                 r: 8
               - q: -4

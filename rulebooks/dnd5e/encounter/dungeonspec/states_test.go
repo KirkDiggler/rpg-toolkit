@@ -117,7 +117,7 @@ func TestDungeonspec_HoldsCompilesToPosts(t *testing.T) {
 	// Every gate guard holds the gate (rpg-project#928), each from his own
 	// cells, each letting through whom he recognises.
 	recognized := []encounter.Trigger{encounter.TriggerRecognized{Topic: "admitted"}}
-	require.Equal(t, map[string]encounter.Post{"ready": {Door: gate.Door, Cells: []spatial.Position{{X: -2, Y: 8}, {X: -4, Y: 10}, {X: -2, Y: 10}}, Against: encounter.PostEntering, Pass: recognized}}, monsterNamed(t, c, "gate-2").Posts)
+	require.Equal(t, map[string]encounter.Post{"ready": {Door: gate.Door, Cells: []spatial.Position{{X: -3, Y: 10}, {X: -2, Y: 8}, {X: -4, Y: 10}, {X: -2, Y: 10}}, Against: encounter.PostEntering, Pass: recognized}}, monsterNamed(t, c, "gate-2").Posts)
 	require.Equal(t, map[string]encounter.Post{"ready": {Door: gate.Door, Cells: []spatial.Position{{X: -4, Y: 8}}, Against: encounter.PostEntering, Pass: recognized}}, monsterNamed(t, c, "captain").Posts)
 	require.True(t, slices.ContainsFunc(c.Field.Doors, func(d encounter.DoorInput) bool { return d.ID == gate.Door }))
 }
