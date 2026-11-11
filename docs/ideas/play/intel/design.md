@@ -7,7 +7,11 @@
 ## Scope
 
 Per-observer intel: channel-sourced, possibly false, possibly stale
-holdings about opaque subjects. Two testimony verbs (`Surveil` sustained,
+holdings about opaque subjects, each on a topic. A holding is a record of
+three parts — holder (observer), subject, topic: the holder and subject at
+the outside edges, the topic carrying the relationship between them
+(amended 2026-11-11, rpg-project#928: the operator's ruling that an intel
+record carries a topic). Two testimony verbs (`Surveil` sustained,
 `Report` discrete), read queries, persistence. The module never sees the
 world and MUST NOT be able to verify anything.
 
@@ -55,8 +59,9 @@ restated here as binding:
 - **R4** — Deltas are returned in the verb's Output, never published,
   never delivered.
 - **R5** — Verbs are atomic: on a non-nil error, no state changed.
-- **R6** — One current holding per (observer, subject). Latest accepted
-  testimony wins unconditionally; the module MUST NOT prefer channels,
+- **R6** — One current holding per (observer, subject, topic). Latest
+  accepted testimony on that topic wins unconditionally; testimony on one
+  topic never reads or writes a holding on another; the module MUST NOT prefer channels,
   verbs, or payloads when overwriting.
 - **R7** — No randomness.
 - **R8** — Dynamic state round-trips via `ToData`/`LoadIntel` (plain
@@ -66,9 +71,11 @@ restated here as binding:
   `ErrInvalidData`: empty observer keys, empty subject keys, duplicate
   entries in a holding's `CurrentVia`, empty channel identifiers (in a
   holding's `Channel` or any `CurrentVia` entry — unreachable since
-  `ErrNoChannel`), nil or empty inner subject maps
-  (holdings are never removed in v1, so an observer entry with zero
-  holdings is unreachable — the reachable-states-only rationale). Channel *names* are an open
+  `ErrNoChannel`), nil or empty inner subject maps, nil or empty topic
+  maps under a subject
+  (holdings are never removed in v1, so an observer or subject entry with
+  zero holdings is unreachable — the reachable-states-only rationale). The
+  empty topic key is legal: it is the default topic. Channel *names* are an open
   vocabulary and are never validated beyond non-emptiness.
 - **R10** — Not safe for concurrent use (family convention).
 
@@ -85,6 +92,17 @@ restated here as binding:
   subjects is part of the testimony and MUST NOT leak truth the observer
   lacks (design guidance to compositions, unenforceable here by
   construction).
+- `Topic` — string newtype, the record's third part: what the holding is
+  about the subject. Open, opaque, caller-chosen vocabulary like `Channel`
+  and `Subject`; never interpreted. The empty topic is the default and is
+  legal everywhere — a caller that never names a topic gets exactly the
+  one-holding-per-subject behaviour of the module before topics. Example:
+  a ledger clerk holds, about account `acct-7`, where its papers are filed
+  (default topic) and that it was signed off (topic `audited`); refiling
+  the papers never touches the sign-off. Not taken (rpg-project#925): the
+  topic folded into the subject's name (the record no longer says whom it
+  is about); one holding carrying a list (two sources overwrite each other,
+  and current/held would apply to the bundle).
 - `Report` — one piece of testimony: `{Subject Subject, Payload []byte}`.
   Payload is opaque; intel never interprets it. Empty payloads are legal
   ("something is there"); nil and empty are the same legal empty payload,
@@ -92,7 +110,7 @@ restated here as binding:
   `ErrNoPayload` makes them unreachable there). Compositions control the dominant size term of
   persisted intel through payload discipline — keep payloads small
   (refs, compact snapshots).
-- `Holding` — the read-side value: `{Subject, Payload, Channel, At,
+- `Holding` — the read-side value: `{Subject, Topic, Payload, Channel, At,
   CurrentVia []Channel, Status}`. `Channel`/`At` are provenance of the
   latest accepted testimony. `Status` is DERIVED, never stored:
   `Current` if `CurrentVia` is non-empty, `Held` otherwise (the old
@@ -105,8 +123,8 @@ restated here as binding:
 
 | Verb | Input | Output | Semantics |
 |------|-------|--------|-----------|
-| `Surveil` | `{Observer core.EntityID, Channel Channel, Percept []Report, At uint64}` | `{FirstContact []Report, Refreshed []Subject, Faded []Subject}` | Sustained collection. `Percept` is the COMPLETE current percept for this observer+channel — the contract that makes fading derivable. For each report: subject unknown to observer → holding created with `CurrentVia = [Channel]`, in `FirstContact`; known → payload/provenance overwritten (R6) and `Channel` added to its `CurrentVia` (set semantics), in `Refreshed`; every subject previously current *via this channel* but absent from `Percept` → this channel removed from its `CurrentVia`, and if that empties it, the subject is in `Faded` (still held — the ghost goblin). Channels other than the surveilling one are untouched. Losing one of several sustaining channels shrinks `CurrentVia` silently — deliberately unreported; `Faded` fires only when the set empties. An empty `Percept` is legal (seeing nothing: fades everything this channel sustained). MUST error: `ErrNilInput`, `ErrNoObserver` (empty observer), `ErrNoChannel` (empty channel — the vocabulary is open but the identifier is required), `ErrNoSubject` (any report with an empty subject) — validation in that listed order, first failure wins (the record-side convention, applied family-wide), all before any mutation (R5). Duplicate subjects within one `Percept`: dedupe first, last entry wins, the survivor occupying its last occurrence's position — each subject classified once (the slice is transport for a set). Delta ordering: `FirstContact`/`Refreshed` in post-dedupe percept order; `Faded` sorted by Subject (deterministic transcripts — the AC1/record contract). |
-| `Report` | `{Observer core.EntityID, Channel Channel, Reports []Report, At uint64}` | `{FirstContact []Report, Updated []Subject}` | Discrete testimony (the crash of pots, the informant's tip, the charm's plant). Lands directly as HELD — `CurrentVia` is not touched for existing holdings and is empty for new ones; there is nothing to fade. Same dedupe-first rule as `Surveil` (each subject classified once): unknown → `FirstContact`; known → overwritten (R6), in `Updated` — a `Report` overwriting a currently-surveilled holding changes payload and provenance only; `CurrentVia` and thus `Status` are unchanged. Delta ordering: post-dedupe input order. Same errors as `Surveil`. |
+| `Surveil` | `{Observer core.EntityID, Channel Channel, Topic Topic, Percept []Report, At uint64}` | `{FirstContact []Report, Refreshed []Subject, Faded []Subject}` | Sustained collection. `Percept` is the COMPLETE current percept for this observer+channel+topic — the contract that makes fading derivable. The topic scopes it: everything below reads and writes only holdings on `Topic`, so a percept about one topic can never fade a holding on another (the empty `Topic` is the default topic). Every subject in the output is a holding on that one topic. For each report: subject unknown to observer → holding created with `CurrentVia = [Channel]`, in `FirstContact`; known → payload/provenance overwritten (R6) and `Channel` added to its `CurrentVia` (set semantics), in `Refreshed`; every subject previously current *via this channel* but absent from `Percept` → this channel removed from its `CurrentVia`, and if that empties it, the subject is in `Faded` (still held — the ghost goblin). Channels other than the surveilling one are untouched. Losing one of several sustaining channels shrinks `CurrentVia` silently — deliberately unreported; `Faded` fires only when the set empties. An empty `Percept` is legal (seeing nothing: fades everything this channel sustained). MUST error: `ErrNilInput`, `ErrNoObserver` (empty observer), `ErrNoChannel` (empty channel — the vocabulary is open but the identifier is required), `ErrNoSubject` (any report with an empty subject) — validation in that listed order, first failure wins (the record-side convention, applied family-wide), all before any mutation (R5). Duplicate subjects within one `Percept`: dedupe first, last entry wins, the survivor occupying its last occurrence's position — each subject classified once (the slice is transport for a set). Delta ordering: `FirstContact`/`Refreshed` in post-dedupe percept order; `Faded` sorted by Subject (deterministic transcripts — the AC1/record contract). |
+| `Report` | `{Observer core.EntityID, Channel Channel, Topic Topic, Reports []Report, At uint64}` | `{FirstContact []Report, Updated []Subject}` | Discrete testimony, on the input's one `Topic` (every report in the call is about it, as every report is on the one `Channel`; a caller with several topics makes several calls). (the crash of pots, the informant's tip, the charm's plant). Lands directly as HELD — `CurrentVia` is not touched for existing holdings and is empty for new ones; there is nothing to fade. Same dedupe-first rule as `Surveil` (each subject classified once): unknown → `FirstContact`; known → overwritten (R6), in `Updated` — a `Report` overwriting a currently-surveilled holding changes payload and provenance only; `CurrentVia` and thus `Status` are unchanged. Delta ordering: post-dedupe input order. Same errors as `Surveil`. |
 
 Falsehood is orthogonal to the verb (design invariant): `Surveil`
 carries sustained falsehoods (illusions, disguises), `Report` carries
@@ -116,8 +134,10 @@ discrete ones. No verb verifies; none can.
 
 | Query | Input | Returns | Semantics |
 |-------|-------|---------|-----------|
-| `HeldBy` | `{Observer core.EntityID}` | `([]Holding, error)` | Everything the observer holds, statuses derived, stable order (sorted by Subject). An observer with no holdings answers an empty slice, nil error. Copy-out: returned holdings (including payload bytes) MUST NOT alias internal state. |
-| `On` | `{Observer core.EntityID, Subject Subject}` | `(Holding, error)` | The observer's holding on one subject. `ErrNotHeld` when they hold nothing — never a guessable zero value. Copy-out as above. |
+| `HeldBy` | `{Observer core.EntityID}` | `([]Holding, error)` | Everything the observer holds across every topic, statuses derived, stable order (sorted by Subject, then Topic). An observer with no holdings answers an empty slice, nil error. Copy-out: returned holdings (including payload bytes) MUST NOT alias internal state. |
+| `About` | `{Observer core.EntityID, Subject Subject}` | `([]Holding, error)` | Everything the observer holds about one subject, one holding per topic, sorted by Topic. Nothing held answers an empty slice, nil error. Errors `ErrNilInput`, `ErrNoObserver`, `ErrNoSubject` in that order. Copy-out as above. |
+| `OnTopic` | `{Observer core.EntityID, Topic Topic}` | `([]Holding, error)` | Everything the observer holds on one topic, one holding per subject, sorted by Subject. The empty topic is a legal question (the default topic). Nothing held answers an empty slice, nil error. Errors `ErrNilInput`, `ErrNoObserver`. Copy-out as above. |
+| `On` | `{Observer core.EntityID, Subject Subject, Topic Topic}` | `(Holding, error)` | The observer's holding on one subject and topic (empty = default topic). `ErrNotHeld` when they hold nothing there — never a guessable zero value. Copy-out as above. |
 
 The decider contract (normative for compositions, stated here because it
 is the module's purpose): an NPC decider consults `HeldBy(itself)` and
@@ -130,15 +150,20 @@ All errors wrap one sentinel; `errors.Is` dispatch; messages user-facing.
 | Sentinel | Meaning | Returned by |
 |----------|---------|-------------|
 | `ErrNilInput` | nil `*XxxInput` | every Input-taking function |
-| `ErrNoObserver` | empty observer ID | `Surveil`, `Report`, `HeldBy`, `On` |
+| `ErrNoObserver` | empty observer ID | `Surveil`, `Report`, `HeldBy`, `About`, `OnTopic`, `On` |
 | `ErrNoChannel` | empty channel identifier (names are open vocabulary, but required) | `Surveil`, `Report` |
-| `ErrNoSubject` | a report with an empty subject, or an empty query subject | `Surveil`, `Report`, `On` |
+| `ErrNoSubject` | a report with an empty subject, or an empty query subject | `Surveil`, `Report`, `About`, `On` |
 | `ErrNotHeld` | the observer holds nothing on that subject | `On` |
 | `ErrInvalidData` | any R9 rejection | `LoadIntel` |
 
 ## Persistence
 
-`Data` = `struct{ Holdings map[core.EntityID]map[Subject]HoldingData }`
+`Data` = `struct{ Holdings map[core.EntityID]map[Subject]map[Topic]HoldingData }`
+(observer → subject → topic, the record's three parts in order; the
+default topic is the JSON key `""`. One representation for every topic —
+the default is not stored apart. A record saved before topics existed,
+with the holding directly under the subject, fails to decode rather than
+loading misread: pre-release, no migration is carried)
 (named per the namesake-collision clause in R3 — `intel.Data`, not
 `intel.IntelData`)
 (field tag `holdings,omitempty` — a struct wrapper, not a bare map, so the

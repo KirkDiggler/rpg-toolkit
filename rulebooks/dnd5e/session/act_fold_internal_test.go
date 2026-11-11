@@ -842,6 +842,34 @@ func (s *ActFoldSuite) TestFoldATableBeatIsNoAct() {
 	}
 }
 
+// TestFoldAnInteractionBeatIsNoAct is Gate S2's record-only interaction
+// (rpg-project#922): the entrance's transition, written beside the Speak
+// verdict that advanced it, folds into no act and leaves no undecoded piece —
+// in particular no "has no family" entry. The next slice may project it.
+func (s *ActFoldSuite) TestFoldAnInteractionBeatIsNoAct() {
+	const pick = "time:01HZZZZZZZZZZZZZZZZZZZPICK"
+	interaction := s.beat(pick, map[string]any{
+		"beat": encounter.BeatInteraction, "interaction": "front-gate", "from": "fresh",
+		"to": "warned-guest", "reason": "guest-failed", "option": "guest", "beaten": false,
+	})
+	answered := s.beat(pick, map[string]any{
+		"beat": encounter.BeatAnswered, "creature": "gate-1", "key": "time", "roll": 1, "of": 1, "entry": 0,
+		"word": "attack", "selector": "enemy", "candidates": []any{}, "rows": []any{},
+	})
+
+	s.Empty(foldActs("sess", "fighter", []record.Entry{interaction}), "the interaction alone is no act")
+
+	withInteraction := foldActs("sess", "fighter", []record.Entry{interaction, answered})
+	without := foldActs("sess", "fighter", []record.Entry{answered})
+
+	s.Require().NotEmpty(withInteraction, "precondition: the pick folds")
+	s.Equal(len(without), len(withInteraction), "the interaction adds no act")
+	for _, act := range withInteraction {
+		s.NotEqual(interaction.ID, act.ID, "no act is named by the interaction beat")
+		s.Empty(act.Undecoded, "and nothing about it is undecoded")
+	}
+}
+
 // Diagnostic evidence stays record-only even if an entry is accidentally
 // audienced. It cannot become an undecoded clock act or a public state change.
 func (s *ActFoldSuite) TestBehaviorDiagnosticsAreRecordOnly() {

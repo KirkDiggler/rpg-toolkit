@@ -44,6 +44,21 @@
 // a caller-chosen span to existing wakes, with overflow checked before any
 // mutation, and never shifts anchors or owns a clock.
 //
+// # Shared selection
+//
+// The selection subpackage captures ordered candidate values, named requirement
+// verdicts and integer factors. It returns detached evidence and supports both
+// a supplied-die draw and an explicit eligible ID without re-evaluating facts.
+// It knows no behavior, world, profile meaning or execution policy.
+//
+// Pick uses that primitive at each table level, preserving nested paths and
+// all row verdicts; Deal uses it over the sorted temperament mix. Behavior still
+// owns the domain's When/affordability tests, raw percentage loading and
+// hold-versus-silence meanings. Invalid faces and overflowing weights are
+// refused instead of falling through to a plausible row. The selection API's
+// explicit mode is also usable by a caller-owned dialogue menu; that is not
+// automatic adoption by a game UI or authorization to execute a stale offer.
+//
 // # Bind-time finite sequences
 //
 // [ExpandSequence] is a producer utility, separate from runtime execution. It

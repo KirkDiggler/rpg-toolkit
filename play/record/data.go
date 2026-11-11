@@ -65,43 +65,10 @@ type EntryData struct {
 // (nextSeq == 1, no entries) returns the zero LogData (NextSeq 0, Entries nil).
 // A trimmed-empty log (nextSeq >= 2, no entries) stores the real NextSeq.
 // A populated log stores NextSeq and deep-copied entries.
+//
+// ToData is DataFrom at Since 0: every retained entry is at or after seq 0.
 func (l *Log) ToData() LogData {
-	// The last id issued is written whenever no retained entry carries it.
-	var lastID string
-	if !l.last.isZero() && (len(l.entries) == 0 || l.last.String() > l.entries[len(l.entries)-1].id) {
-		lastID = l.last.String()
-	}
-
-	// Fresh log: nextSeq == 1 && no entries → zero LogData (but for an id
-	// minted before any append, which must survive the load)
-	if l.nextSeq == 1 && len(l.entries) == 0 {
-		return LogData{LastID: lastID}
-	}
-
-	// Populated or trimmed-empty: store the real NextSeq and deep-copied entries
-	data := LogData{
-		NextSeq: l.nextSeq,
-		LastID:  lastID,
-	}
-
-	if len(l.entries) > 0 {
-		var table audienceTable
-		data.Entries = make([]EntryData, len(l.entries))
-		for i, e := range l.entries {
-			data.Entries[i] = EntryData{
-				Seq:         e.seq,
-				ID:          e.id,
-				At:          e.at,
-				Correlation: e.correlation,
-				AudienceRef: table.ref(e.audience),
-				Tags:        copyTags(e.tags),
-				Payload:     copyPayload(e.payload),
-			}
-		}
-		data.Audiences = table.rows
-	}
-
-	return data
+	return l.dataFrom(0)
 }
 
 // LoadLog reconstructs a Log from persisted LogData.

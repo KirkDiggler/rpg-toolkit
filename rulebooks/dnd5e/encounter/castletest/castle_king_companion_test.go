@@ -9,8 +9,9 @@ package castletest
 // outranks recognition whichever came first — the castle's `until` list,
 // `guards-turned` before `party-recognized`.
 //
-// Recognition alone is [TestMadKingTroupeBlown] and
-// [TestMadKingTheOrdersTurnTheGarrison]; the turn alone, the follow and the
+// Recognition alone is [TestMadKingTheOrdersTurnTheGarrison] (a failed
+// troupe claim is only a warning since rpg-project#922,
+// [TestMadKingTroupeWarned]); the turn alone, the follow and the
 // fight are [TestMadKingTurnTheGarrison]. This file is the two orders the
 // list exists for, and the castle authored without the captain's follow row.
 

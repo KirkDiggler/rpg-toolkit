@@ -152,7 +152,7 @@ func (m *Manager) Rest(ctx context.Context, in *RestInput) (*RestOutput, error) 
 		return nil, fmt.Errorf("rest: %w", err)
 	}
 
-	scope, err := m.openForChange(ctx, "rest", in.Session)
+	scope, err := m.openForChangeBy(ctx, "rest", in.Session, anyWaitingRoll)
 	if err != nil {
 		return nil, fmt.Errorf("rest: %w", err)
 	}

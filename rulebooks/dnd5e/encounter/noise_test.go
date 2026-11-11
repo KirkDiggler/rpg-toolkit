@@ -153,7 +153,8 @@ type heldSound struct {
 func soundsHeldBy(t *testing.T, enc *encounter.Encounter, member encounter.MemberID) map[string]heldSound {
 	t.Helper()
 	out := map[string]heldSound{}
-	for _, h := range enc.ToData().Perception.Intel.Holdings[core.EntityID("member|"+string(member))] {
+	for _, topics := range enc.ToData().Perception.Intel.Holdings[core.EntityID("member|"+string(member))] {
+		h := topics[""]
 		if string(h.Channel) != "sounds" {
 			continue
 		}

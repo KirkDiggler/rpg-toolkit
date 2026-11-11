@@ -121,15 +121,17 @@ func (s *TableSuite) TestSearchHeadingsReadTheTestimony() {
 	s.Equal(180.0, nothing[HeadingFaced])
 }
 
-// facedDie answers every roll with one chosen face.
+// facedDie answers every roll with one chosen face, never above the die's
+// size: a die that showed a face it does not have would be refused by the
+// behavior picker (mind/behavior v0.23.0) rather than landing the last row.
 type facedDie struct{ face int }
 
-func (f facedDie) Roll(_ context.Context, _ int) (int, error) { return f.face, nil }
+func (f facedDie) Roll(_ context.Context, size int) (int, error) { return min(f.face, size), nil }
 
-func (f facedDie) RollN(_ context.Context, count, _ int) ([]int, error) {
+func (f facedDie) RollN(_ context.Context, count, size int) ([]int, error) {
 	out := make([]int, count)
 	for i := range out {
-		out[i] = f.face
+		out[i] = min(f.face, size)
 	}
 
 	return out, nil

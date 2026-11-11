@@ -60,6 +60,10 @@ func TestReserves_NotificationsPrepareAPricedMarch(t *testing.T) {
 	// The gate door is held while gate-1 stands his post (rpg-project#835
 	// R7): he falls first, and the fight goes on.
 	s.standing.down[kingGate1] = true
+	// The captain and gate-2 hold the gate too (rpg-project#928): the record
+	// stands them aside, so gate-1's fall is what opens it.
+	s.storedIn(kingCaptain, "cowed")
+	s.storedIn(kingGate2, "cowed")
 	s.open(kingGateDoor)
 	reserves := []encounter.MemberID{kingReserve, kingReserve2}
 	for _, id := range reserves {

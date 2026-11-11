@@ -317,6 +317,33 @@ var (
 	// between a first load and a reconnect (#937).
 	ErrTrimmed = errors.New("encounter: story range trimmed")
 
+	// ErrBadSince reports a [ToCheckpointInput.Since] past the story's
+	// NextSeq: a store cannot hold beats the encounter never wrote.
+	ErrBadSince = errors.New("encounter: checkpoint since past the story")
+
+	// ErrMissingPiece reports a [JoinPieces] input without one of the
+	// pieces every rest has: the head, the roster, knowledge or the
+	// journal. The error names which. A store that lost a piece must
+	// refuse the checkpoint rather than load a world missing a shape.
+	ErrMissingPiece = errors.New("encounter: checkpoint piece missing")
+
+	// ErrBadPiece reports a [JoinPieces] piece that does not decode, a key
+	// that names no piece, a member piece holding another member, or an
+	// observer piece holding nothing. The error names the piece.
+	ErrBadPiece = errors.New("encounter: bad checkpoint piece")
+
+	// ErrRestCarriesRecord reports a rest handed to [SplitPieces], or a head
+	// handed to [JoinPieces], whose log carries entries or audiences. The
+	// record lives in the store's segments ([ToCheckpointOutput.Appended]);
+	// a piece carrying it would rewrite the record on every save.
+	ErrRestCarriesRecord = errors.New("encounter: checkpoint rest carries the record")
+
+	// ErrVerbInFlight reports a [Encounter.Rebind] asked while a verb is
+	// still running on the encounter: an act is open, or a driven turn or a
+	// world round is in progress. Capabilities are swapped only between
+	// verbs, where nothing holds the old ones.
+	ErrVerbInFlight = errors.New("encounter: a verb is in flight")
+
 	// ErrNoInitiative indicates Setup was given no InitiativeRoller. Trigger
 	// detection runs from first light, so every encounter needs one — refused
 	// at construction rather than at the moment a fight would have started.
@@ -704,6 +731,29 @@ var (
 	// no options at all answers — a creature nobody wrote a line for cannot
 	// be spoken to.
 	ErrNoOption = errors.New("encounter: no such option for this speaker")
+
+	// ErrStaleOption is returned when a line that reads or advances one of
+	// the run's interactions is sent back with a revision that is not the
+	// interaction's revision now (rpg-project#924, design #916 R5: validated
+	// and reserved before dice). The conversation moved since the menu was
+	// offered, so the reply is refused with nothing spent, rolled or
+	// reserved, and NEVER re-read against the state as it is now: the same
+	// line can carry different stakes from different states. A zero revision
+	// on such a line is refused as stale too: every interaction is offered at
+	// revision one or later, so zero is a reply that names no menu at all.
+	// The caller refreshes the offer.
+	ErrStaleOption = errors.New("encounter: the conversation moved on since the line was offered")
+
+	// ErrReserved is returned when a line reads or advances an interaction
+	// whose progress is waiting on another checked line's roll decision
+	// (rpg-project#924): the line is PENDING ([OfferedOption.Pending]), and
+	// it is refused rather than spoken over the waiting roll. It is also what
+	// [Encounter.Reserve] answers when the interaction is already reserved.
+	ErrReserved = errors.New("encounter: the interaction is waiting on another speaker's roll")
+
+	// ErrNoReservation is returned by [Encounter.ReleaseReservation] when
+	// the member holds no reservation on any of the run's interactions.
+	ErrNoReservation = errors.New("encounter: the member holds no reservation")
 
 	// ErrNoRoller is returned when a verb that has to roll was handed no
 	// die. Supplied, never defaulted — resolution.CheckInput.Roller's

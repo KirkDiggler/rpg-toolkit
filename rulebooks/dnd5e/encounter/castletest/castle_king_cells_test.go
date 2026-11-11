@@ -37,9 +37,9 @@ const kingOrders = encounter.PropID("orders")
 var kingCellPick = encounter.CheckApproach{Ability: "dex", Tool: "dnd5e:item:thieves-tools", DC: 13}
 
 // TestMadKingPickingTheCellLockEndsTheRunFreed is the cells' route in the
-// castle: the hero comes in at the party start past gate-1, cowed (the
-// record stands him so: R5 holds the gate against the party while he is
-// posted, rpg-project#852), opens the gate, crosses the yard into the barracks, past the sergeant and the turnkey who keep the
+// castle: the hero comes in at the party start past the gate guards, cowed
+// (the record stands them so: R5 holds the gate against the party while any
+// of them is posted, rpg-project#852, #928), opens the gate, crosses the yard into the barracks, past the sergeant and the turnkey who keep the
 // cell door from the barracks side, and walks toward the cells, which leaves
 // the hero beside the shut door. The guards are the garrison, civil to the
 // party, so the pick happens under their eyes and no fight forms. A pick of
@@ -49,7 +49,7 @@ var kingCellPick = encounter.CheckApproach{Ability: "dex", Tool: "dnd5e:item:thi
 func TestMadKingPickingTheCellLockEndsTheRunFreed(t *testing.T) {
 	t.Parallel()
 	s := openTheCastle(t, partyStart(t))
-	s.storedIn(kingGate1, "cowed")
+	s.gateStandsAside()
 	cells, ok := s.enc.RegionAt(castleCell(-20, 10))
 	require.True(t, ok, "the cell block's floor")
 

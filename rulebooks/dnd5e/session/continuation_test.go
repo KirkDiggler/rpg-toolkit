@@ -288,8 +288,11 @@ func (s *ContinuationSuite) TestAContinuedWalkDeliversWhatAWholeWalkDelivers() {
 	s.Equal(wholeOut.Steps, append(append([]session.Step(nil), answer.Steps...), report.Move.Steps...),
 		"the answer's steps and the rest's are the whole walk's")
 
-	s.Equal(canonicalActs(whole.stream.published), canonicalActs(continued.stream.published),
-		"a continued walk delivers exactly the acts a whole walk does, in order")
+	// PER LISTENER: the rest commits at the pace boundary (S13), so the
+	// acts reach the stream in two batches, each grouped by recipient. What
+	// one listener receives is the whole walk's, in order.
+	s.Equal(perRecipient(whole.stream.published), perRecipient(continued.stream.published),
+		"a continued walk delivers exactly the acts a whole walk does, in order, to each listener")
 	s.Equal(canonicalRecord(s.record(whole)), canonicalRecord(s.record(continued)),
 		"and records exactly the same story")
 	// THE SPLIT'S PLACE IN THE CELL. The record cannot see it here: a
@@ -299,8 +302,9 @@ func (s *ContinuationSuite) TestAContinuedWalkDeliversWhatAWholeWalkDelivers() {
 	// it would read it once in the answer and again in the rest. The only
 	// other difference is the asks themselves: PaceDue reads the walker's
 	// sheet (the pace is the speed of the moment), once per answered step and
-	// once for the due one.
-	asks := len(answer.Steps) + 1
+	// once for the due one, and the rest asks again before each of its steps
+	// to find its pace boundaries (S13).
+	asks := len(answer.Steps) + 1 + len(report.Move.Steps)
 	s.Equal(len(whole.reads)+asks, len(continued.reads),
 		"the answer and the rest together did exactly the work a whole walk does, and asked")
 

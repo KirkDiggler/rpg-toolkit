@@ -1525,6 +1525,58 @@ room:
     monsterBindings:
       gate-1:
         faction: garrison
+        # Hand edit (rpg-project#922): a creature's own options replace its
+        # faction's, so each gate speaker carries both claims and nothing else.
+        options:
+          # Hand edit (rpg-project#922, Gate S2): the entrance remembers. Two
+          # claims at the gate, one front-gate interaction between them: a
+          # first failure is a warning and closes that claim, a second
+          # failure arrests, and either success admits the party.
+          - id: guest
+            say: We’re invited guests of His Majesty, here for the feast.
+            check:
+              - ability: persuasion
+                dc: 11
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [fresh, warned-troupe]
+            advance:
+              interaction: front-gate
+              success: admitted
+              failure: guest-failed
+            success:
+              # Hand edit (rpg-project#928): admission is recognition. The
+              # interaction's `admitted` outcome is what lets the party by; a
+              # fact in the walker's head no longer does.
+              - say: Guests, is it? In you go. Mind your manners in the hall.
+            failure:
+              - say: Guests? What’s going on here? Nobody told me of guests.
+          - id: troupe
+            say: We’re the troupe for tonight’s feast.
+            check:
+              - ability: performance
+                dc: 13
+              - ability: deception
+                dc: 15
+            requires:
+              - fact: feast-tonight
+              - interaction:
+                  id: front-gate
+                  in: [fresh, warned-guest]
+            advance:
+              interaction: front-gate
+              success: admitted
+              failure: troupe-failed
+            success:
+              # Hand edit (rpg-project#836, #857, #928): the troupe is let
+              # through. The interaction's `admitted` outcome makes the gate
+              # guards recognise them, and the posts let the recognised by.
+              - say: Through to the hall, then. Don’t dawdle.
+            failure:
+              # Hand edit (rpg-project#922): a first failure is a warning,
+              # not recognition; the second claim's failure arrests.
+              - say: Troupe? There’s no troupe on my list. What’s going on here?
         behaviors:
           - id: policy
             use: gate-1-policy
@@ -1537,7 +1589,7 @@ room:
           alert:
             door: gate-wall-door
             against: entering
-            pass: troupe-admitted
+            pass: { recognized: admitted }
             at:
               - q: -3
                 r: 7
@@ -1546,7 +1598,7 @@ room:
           challenged:
             door: gate-wall-door
             against: entering
-            pass: troupe-admitted
+            pass: { recognized: admitted }
             at:
               - q: -3
                 r: 7
@@ -1555,7 +1607,7 @@ room:
           posted:
             door: gate-wall-door
             against: entering
-            pass: troupe-admitted
+            pass: { recognized: admitted }
             at:
               - q: -3
                 r: 7
@@ -1563,17 +1615,33 @@ room:
                 r: 7
       gate-2:
         faction: garrison
-        behaviors:
-          - id: policy
-            use: gate-2-policy
-      hall-1:
-        faction: garrison
-        behaviors:
-          - id: policy
-            use: hall-1-policy
-      captain:
-        faction: garrison
+        # Hand edit (rpg-project#922): a creature's own options replace its
+        # faction's, so each gate speaker carries both claims and nothing else.
         options:
+          # Hand edit (rpg-project#922, Gate S2): the entrance remembers. Two
+          # claims at the gate, one front-gate interaction between them: a
+          # first failure is a warning and closes that claim, a second
+          # failure arrests, and either success admits the party.
+          - id: guest
+            say: We’re invited guests of His Majesty, here for the feast.
+            check:
+              - ability: persuasion
+                dc: 11
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [fresh, warned-troupe]
+            advance:
+              interaction: front-gate
+              success: admitted
+              failure: guest-failed
+            success:
+              # Hand edit (rpg-project#928): admission is recognition. The
+              # interaction's `admitted` outcome is what lets the party by; a
+              # fact in the walker's head no longer does.
+              - say: Guests, is it? In you go. Mind your manners in the hall.
+            failure:
+              - say: Guests? What’s going on here? Nobody told me of guests.
           - id: troupe
             say: We’re the troupe for tonight’s feast.
             check:
@@ -1582,16 +1650,102 @@ room:
               - ability: deception
                 dc: 15
             requires:
-              fact: feast-tonight
+              - fact: feast-tonight
+              - interaction:
+                  id: front-gate
+                  in: [fresh, warned-guest]
+            advance:
+              interaction: front-gate
+              success: admitted
+              failure: troupe-failed
             success:
-              # Hand edit (rpg-project#836, #857): the troupe is let through.
-              # The fact is the troupe's pass at the gate post, who stays
-              # posted and lets them by.
+              # Hand edit (rpg-project#836, #857, #928): the troupe is let
+              # through. The interaction's `admitted` outcome makes the gate
+              # guards recognise them, and the posts let the recognised by.
               - say: Through to the hall, then. Don’t dawdle.
-                fact: troupe-admitted
             failure:
-              - say: Troupe? There’s no— GUARDS!
-                fact: party-recognized
+              # Hand edit (rpg-project#922): a first failure is a warning,
+              # not recognition; the second claim's failure arrests.
+              - say: Troupe? There’s no troupe on my list. What’s going on here?
+        behaviors:
+          - id: policy
+            use: gate-2-policy
+        # Hand edit (rpg-project#928): every gate guard holds the gate, so
+        # killing one leaves it held. Her post is where she starts and her
+        # beat's three stops before the gate, and it lets through whom she
+        # recognises.
+        behaviorState: policy
+        posts:
+          ready:
+            door: gate-wall-door
+            against: entering
+            pass: { recognized: admitted }
+            at:
+              - q: -3
+                r: 10
+              - q: -2
+                r: 8
+              - q: -4
+                r: 10
+              - q: -2
+                r: 10
+      hall-1:
+        faction: garrison
+        behaviors:
+          - id: policy
+            use: hall-1-policy
+      captain:
+        faction: garrison
+        options:
+          # Hand edit (rpg-project#922, Gate S2): the entrance remembers. Two
+          # claims at the gate, one front-gate interaction between them: a
+          # first failure is a warning and closes that claim, a second
+          # failure arrests, and either success admits the party.
+          - id: guest
+            say: We’re invited guests of His Majesty, here for the feast.
+            check:
+              - ability: persuasion
+                dc: 11
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [fresh, warned-troupe]
+            advance:
+              interaction: front-gate
+              success: admitted
+              failure: guest-failed
+            success:
+              # Hand edit (rpg-project#928): admission is recognition. The
+              # interaction's `admitted` outcome is what lets the party by; a
+              # fact in the walker's head no longer does.
+              - say: Guests, is it? In you go. Mind your manners in the hall.
+            failure:
+              - say: Guests? What’s going on here? Nobody told me of guests.
+          - id: troupe
+            say: We’re the troupe for tonight’s feast.
+            check:
+              - ability: performance
+                dc: 13
+              - ability: deception
+                dc: 15
+            requires:
+              - fact: feast-tonight
+              - interaction:
+                  id: front-gate
+                  in: [fresh, warned-guest]
+            advance:
+              interaction: front-gate
+              success: admitted
+              failure: troupe-failed
+            success:
+              # Hand edit (rpg-project#836, #857, #928): the troupe is let
+              # through. The interaction's `admitted` outcome makes the gate
+              # guards recognise them, and the posts let the recognised by.
+              - say: Through to the hall, then. Don’t dawdle.
+            failure:
+              # Hand edit (rpg-project#922): a first failure is a warning,
+              # not recognition; the second claim's failure arrests.
+              - say: Troupe? There’s no troupe on my list. What’s going on here?
           - id: stand-aside
             say: Stand aside or bleed.
             check:
@@ -1638,9 +1792,28 @@ room:
             say: Good evening, captain.
             success:
               - say: Evening. Keep to the road and mind the guards.
+          # Hand edit (rpg-project#928): a line the captain answers only for
+          # someone he recognises as admitted. Plain, so it costs nothing.
+          - id: the-way-in
+            say: Which way to the hall, captain?
+            requires:
+              recognized: admitted
+            success:
+              - say: Straight through and up the steps. You’re expected.
         behaviors:
           - id: policy
             use: captain-policy
+        # Hand edit (rpg-project#928): the captain holds the gate too, from
+        # where he stands, and lets through whom he recognises.
+        behaviorState: policy
+        posts:
+          ready:
+            door: gate-wall-door
+            against: entering
+            pass: { recognized: admitted }
+            at:
+              - q: -4
+                r: 8
       # A FAILED THEFT CLOSES THE KITCHEN, NOT THE KEEP (rpg-project#719):
       # the pilfer's failure teaches `caught-in-kitchen` to whoever saw it,
       # and the cook's theft and gossip are withheld from a speaker who knows
@@ -1914,6 +2087,46 @@ room:
                 fact: king-is-cultist
             failure:
               - say: Old stone, old candles.
+# Hand edit (rpg-project#922, Gate S2 of #769): the entrance remembers. The
+# front gate is one run-wide interaction every gate speaker reads and steps:
+# a failed claim warns and closes that claim, the other claim's failure then
+# arrests, and either claim's success admits.
+interactions:
+  front-gate:
+    # Hand edit (rpg-project#923, Gate S3): the guard opens the conversation.
+    # A gate speaker who sees a character come within two cells hails them.
+    approach: { within: 2 }
+    # Hand edit (rpg-project#928): admission is recognition. Entering
+    # `admitted`, the guard the winning line was said to recognises every
+    # member of the party he sees; the other gate guards who witnessed it
+    # recognise them too, having heard. A member out of his sight, or one
+    # who was not there, is not recognised.
+    outcomes:
+      admitted:
+        - recognize:
+            topic: admitted
+            holder: spoken_to
+            about: party_in_sight
+            heard_by: carriers_who_witnessed
+    recipe:
+      ref: site:interactions:front-gate
+      initial: fresh
+      states:
+        fresh:
+          transitions:
+            - { on: guest-failed, to: warned-guest, reason: the guest claim failed }
+            - { on: troupe-failed, to: warned-troupe, reason: the troupe claim failed }
+            - { on: admitted, to: admitted, reason: let through }
+        warned-guest:
+          transitions:
+            - { on: troupe-failed, to: arrested, reason: the second claim failed }
+            - { on: admitted, to: admitted, reason: let through }
+        warned-troupe:
+          transitions:
+            - { on: guest-failed, to: arrested, reason: the second claim failed }
+            - { on: admitted, to: admitted, reason: let through }
+        admitted: { terminal: true }
+        arrested: { terminal: true }
 behaviorDefinitions:
   gate-1-policy:
     recipe:
@@ -1938,6 +2151,9 @@ behaviorDefinitions:
                   value: true
               to: cowed
               reason: stood aside
+            - on: approached
+              do:
+                - pick: approached
             - on: barred
               to: challenged
               do:
@@ -1977,6 +2193,9 @@ behaviorDefinitions:
                   value: true
               to: cowed
               reason: stood aside
+            - on: approached
+              do:
+                - pick: approached
             - on: barred
               do:
                 - pick: challenged
@@ -2029,6 +2248,9 @@ behaviorDefinitions:
                   value: true
               to: cowed
               reason: stood aside
+            - on: approached
+              do:
+                - pick: approached
             - on: barred
               to: challenged
               do:
@@ -2112,6 +2334,10 @@ behaviorDefinitions:
       cowed:
         - when: {enemy: none}
           toward: {at: {q: -5, r: 8}}
+      # Hand edit (rpg-project#923): his hail when a character comes within
+      # the gate's approach; the bump keeps its own lines.
+      approached:
+        - say: Easy there, friend. What brings you to the gate?
       barred:
         - say: Whoa there, buddy. Can I help you?
       challenged:
@@ -2121,7 +2347,59 @@ behaviorDefinitions:
       ref: site:behaviors:gate-2-policy
       initial: ready
       states:
+        # Hand edit (rpg-project#928): gate-2 holds the gate in `ready` only.
+        # Cowed or turned, she holds nothing, as gate-1 does: the
+        # stand-aside and the turn open the gate for everyone who stood by.
         ready:
+          transitions:
+            - on: fact
+              when:
+                fact:
+                  name: fact:guards-turned
+                  op: eq
+                  value: true
+              to: turned
+              reason: the garrison turned
+            - on: fact
+              when:
+                fact:
+                  name: fact:gate-cowed
+                  op: eq
+                  value: true
+              to: cowed
+              reason: stood aside
+            # Hand edit (rpg-project#923): the gate's hail.
+            - on: approached
+              do:
+                - pick: approached
+            # Hand edit (rpg-project#928): walked into at the gate she
+            # holds, she answers the bump.
+            - on: barred
+              do:
+                - pick: barred
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+        cowed:
+          transitions:
+            - on: fact
+              when:
+                fact:
+                  name: fact:guards-turned
+                  op: eq
+                  value: true
+              to: turned
+              reason: the garrison turned
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+        turned:
           transitions:
             - on: time
               do:
@@ -2130,6 +2408,10 @@ behaviorDefinitions:
               do:
                 - pick: time
     table:
+      approached:
+        - say: Hold up. State your business at the gate.
+      barred:
+        - say: Not so fast. Nobody through until the captain says so.
       time:
         # Hand edit: a gate guard who witnessed the turn marches with the
         # captain, on storm-the-keep's own row.
@@ -2155,7 +2437,59 @@ behaviorDefinitions:
       ref: site:behaviors:captain-policy
       initial: ready
       states:
+        # Hand edit (rpg-project#928): the captain holds the gate in `ready` only.
+        # Cowed or turned, he holds nothing, as gate-1 does: the
+        # stand-aside and the turn open the gate for everyone who stood by.
         ready:
+          transitions:
+            - on: fact
+              when:
+                fact:
+                  name: fact:guards-turned
+                  op: eq
+                  value: true
+              to: turned
+              reason: the garrison turned
+            - on: fact
+              when:
+                fact:
+                  name: fact:gate-cowed
+                  op: eq
+                  value: true
+              to: cowed
+              reason: stood aside
+            # Hand edit (rpg-project#923): the gate's hail.
+            - on: approached
+              do:
+                - pick: approached
+            # Hand edit (rpg-project#928): walked into at the gate he
+            # holds, he answers the bump.
+            - on: barred
+              do:
+                - pick: barred
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+        cowed:
+          transitions:
+            - on: fact
+              when:
+                fact:
+                  name: fact:guards-turned
+                  op: eq
+                  value: true
+              to: turned
+              reason: the garrison turned
+            - on: time
+              do:
+                - pick: time
+            - on: turn
+              do:
+                - pick: time
+        turned:
           transitions:
             - on: time
               do:
@@ -2164,6 +2498,10 @@ behaviorDefinitions:
               do:
                 - pick: time
     table:
+      approached:
+        - say: You there. Nobody passes this gate without my say. Speak.
+      barred:
+        - say: Not one step further without my say.
       time:
         # Hand edit (smarter monsters S2, rpg-project#669): the captain goes for
         # whoever hit him, past a nearer enemy, as one line. Otherwise the rows

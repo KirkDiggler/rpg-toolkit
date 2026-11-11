@@ -85,7 +85,7 @@ func (g *gatehouse) approachAndSwing(t *testing.T, target string, rangeFeet int)
 	require.NotNil(t, c.Approach, "a walk this turn reaches %s", target)
 
 	path := g.walkTo(t, target, rangeFeet, *c.Approach)
-	moved, err := g.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", DeclarationID: moveID, Path: path})
+	moved, err := walkOn(ctx, g.mgr, &session.MoveInput{Session: "sess", Member: "alice", DeclarationID: moveID, Path: path})
 	require.NoError(t, err, "the Move to the offered cell is not refused")
 	require.Equal(t, session.MovementCompleted, moved.Status)
 	require.Equal(t, *c.Approach, moved.Steps[len(moved.Steps)-1].Position)
@@ -127,7 +127,7 @@ func inAFightAway(t *testing.T, away int) *gatehouse {
 	require.NoError(t, err)
 	require.Len(t, route.Path, away)
 	_, moveID := g.affordAttack(t)
-	moved, err := g.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", DeclarationID: moveID, Path: route.Path})
+	moved, err := walkOn(ctx, g.mgr, &session.MoveInput{Session: "sess", Member: "alice", DeclarationID: moveID, Path: route.Path})
 	require.NoError(t, err)
 	require.Equal(t, session.MovementCompleted, moved.Status)
 	return g

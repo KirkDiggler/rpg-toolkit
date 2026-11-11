@@ -45,10 +45,14 @@ type BehaviorData struct {
 }
 
 // MarshalJSON preserves the canonical recipe encoding when EncounterData is
-// written through encoding/json v1 by a host.
+// written through encoding/json v1 by a host. The encoding is deterministic:
+// a recipe's `states` and `table` maps come out in sorted key order, so an
+// unchanged member writes the same bytes on every save, the promise the
+// snapshot makes and every byte or digest comparison at the storage boundary
+// stands on (rpg-project#897).
 func (d BehaviorData) MarshalJSON() ([]byte, error) {
 	type plain BehaviorData
-	return json.Marshal(plain(d))
+	return json.Marshal(plain(d), json.Deterministic(true))
 }
 
 // UnmarshalJSON restores canonical scalar types in recipes before the loader
@@ -110,12 +114,12 @@ func newBehaviorRuntime(in *BehaviorInput, progress *behavior.ComposerData) (*be
 		// pick, even conditionally; barred is the explicit targeted exception.
 		for _, name := range slices.Sorted(maps.Keys(spec.Recipe.States)) {
 			for index, transition := range spec.Recipe.States[name].Transitions {
-				if transition.On == beatTime || transition.On == beatTurn || transition.On == beatBarred {
+				if transition.On == beatTime || transition.On == beatTurn || transition.On == beatBarred || transition.On == beatApproached {
 					continue
 				}
 				for _, act := range transition.Do {
 					if act.Pick != "" {
-						return nil, fmt.Errorf("behaviors %q state %q transition %d: selection is only authorized on time, turn or barred, not %q", spec.ID, name, index, transition.On)
+						return nil, fmt.Errorf("behaviors %q state %q transition %d: selection is only authorized on time, turn, barred or approached, not %q", spec.ID, name, index, transition.On)
 					}
 				}
 			}
@@ -237,6 +241,12 @@ type behaviorOpportunity struct {
 	on    machine.Beat
 	event any
 	now   uint64
+
+	// subject is the member a targeted reaction answers (rpg-project#923):
+	// the mover who bumped ([beatBarred]) or was hailed ([beatApproached]).
+	// A line picked on it is spoken TO them ([answeredBy.to]). Empty for
+	// time, turn and every other opportunity.
+	subject MemberID
 }
 
 type selectedBehavior struct {
