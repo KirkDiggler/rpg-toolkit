@@ -4,6 +4,7 @@
 package events
 
 import (
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 )
@@ -145,15 +146,15 @@ type DamageTakenEvent struct {
 // No return channel and nothing to append. A reader records it; it decides
 // nothing.
 type ConcentrationEndedEvent struct {
-	// CasterID is whose hold ended.
-	CasterID string
+	// MaintainerID is whose concentration ended, not necessarily the recipient.
+	MaintainerID string
 
-	// SpellRef is what they were holding, as a ref string.
-	SpellRef string
+	// SourceRef identifies the content held: spell, item or feature. Native
+	// spell-only projections must refuse other source types rather than mislabel them.
+	SourceRef core.Ref
 
-	// SpellName is what to call it, so a record never has to turn a ref back
-	// into English.
-	SpellName string
+	// SourceName is the authored display name; no consumer derives prose from refs.
+	SourceName string
 
 	// Reason is why, from the rulebook's vocabulary of end reasons.
 	Reason string

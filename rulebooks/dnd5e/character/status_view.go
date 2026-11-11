@@ -249,11 +249,11 @@ func (c *Character) projectConditions() ([]ConditionView, error) {
 		if ref == nil {
 			return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "condition reported a nil ref")
 		}
-		display, ok := conditions.DisplayFor(*ref)
-		if !ok {
-			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument,
-				"condition ref %s is not registered", ref.String())
+		description, err := conditions.DescribeCondition(&conditions.DescribeConditionInput{Condition: cond})
+		if err != nil {
+			return nil, rpgerr.Wrap(err, "condition status description")
 		}
+		display := description.Display
 		views = append(views, ConditionView{
 			Ref:          *ref,
 			Name:         display.Name,
@@ -496,6 +496,19 @@ func featureID(f features.Feature) string {
 // conditions. Unqualified conditions have no source. Hosts must apply their
 // observability policy before exposing member identities to players.
 func conditionSourceMember(condition dnd5eEvents.ConditionBehavior) *string {
+	// Linked addresses carry invocation/replacement identity, not provenance.
+	// Ask the linked metadata protocol for its immutable source instead. Other
+	// current payloads retain their existing declared member-source convention.
+	if linked, ok := condition.(interface {
+		dnd5eEvents.ConditionOriginProvider
+		LinkedApplicationInfo() conditions.LinkedApplicationInfo
+	}); ok {
+		source := linked.ConditionOrigin().EntityID
+		if source != "" {
+			return &source
+		}
+		return nil
+	}
 	if addressed, ok := condition.(dnd5eEvents.ConditionAddressProvider); ok {
 		if source := addressed.ConditionAddress().SourceID; source != "" {
 			return &source

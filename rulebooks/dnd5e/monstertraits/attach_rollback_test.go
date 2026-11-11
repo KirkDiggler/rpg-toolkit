@@ -127,7 +127,7 @@ func (s *AttachMonsterRollbackTestSuite) TestAnUnroutableTraitLosesNothing() {
 	data.Conditions = append(data.Conditions,
 		json.RawMessage(`{"ref":{"module":"dnd5e","type":"monster_traits","id":"nope"}}`))
 
-	m, err := LoadMonster(s.ctx, data)
+	m, err := monster.Load(s.ctx, data)
 	s.Require().NoError(err)
 	before := s.marshal(m.ToData())
 
@@ -161,7 +161,10 @@ func (s *AttachMonsterRollbackTestSuite) TestARefusedTraitRollsTheAttachBack() {
 	s.Require().Error(err)
 	s.Require().ErrorIs(err, errRefused)
 	s.Require().Equal(before, s.marshal(m.ToData()))
-	s.Require().Empty(m.GetConditions())
+	s.Require().Len(m.GetConditions(), len(data.Conditions))
+	for _, condition := range m.GetConditions() {
+		s.False(condition.IsApplied())
+	}
 	s.assertNothingListening(m, bus)
 
 	good := events.NewEventBus()
@@ -207,9 +210,12 @@ func (s *AttachMonsterRollbackTestSuite) TestASecondTraitFailingRemovesTheFirst(
 
 	s.Require().Error(err)
 	s.Require().Equal(before, s.marshal(m.ToData()))
-	s.Require().Empty(m.GetConditions())
+	s.Require().Len(m.GetConditions(), len(data.Conditions))
+	for _, condition := range m.GetConditions() {
+		s.False(condition.IsApplied())
+	}
 	s.assertNothingListening(m, bus)
-	s.Require().Equal(data.Conditions, m.TakeUnappliedConditions(), "both blobs are back")
+	s.Empty(m.TakeUnappliedConditions(), "loaded behavior is retained once, not duplicated as raw blobs")
 }
 
 func TestAttachMonsterRollbackSuite(t *testing.T) {

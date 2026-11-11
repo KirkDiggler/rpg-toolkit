@@ -5,6 +5,7 @@ package actions
 
 import (
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -12,6 +13,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/effects"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/healing"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 )
@@ -152,7 +154,7 @@ type CastProfile struct {
 	// Area is the shape this cast covers, or nil for a cast that names its
 	// recipients instead. Non-nil exactly when Target is [CastTargetArea].
 	//
-	// A pointer for [CastConcentration]'s reason: a shape beside a target rule
+	// A pointer because a shape beside a target rule
 	// that means nothing unless the rule says "area" is a zero value that
 	// lies. Nil is "this cast names its targets"; non-nil is the whole answer.
 	Area *CastArea `json:"area,omitempty"`
@@ -162,17 +164,14 @@ type CastProfile struct {
 	// what a failure costs, and a cast with no gate has no failure to hang it
 	// on.
 	//
-	// A pointer for [CastConcentration]'s reason, and a declaration rather
-	// than a route: see [CastMove].
+	// A pointer distinguishes absence from a move declaration; it is not a
+	// route: see [CastMove].
 	Move *CastMove `json:"move,omitempty"`
 
-	// Concentration is how long the caster must hold this cast together, or
-	// nil for a cast that needs no concentration at all.
-	//
-	// A POINTER RATHER THAN A BOOL, because a bool beside a duration that
-	// means nothing when the bool is false is a zero value that lies. Nil is
-	// "no concentration"; non-nil is the whole answer.
-	Concentration *CastConcentration `json:"concentration,omitempty"`
+	// Maintenance declares independent coordinator parts. Concentration, clocks
+	// and end policies are composed here, not inferred by the resolver from a
+	// spell ref. Empty means no shared maintenance.
+	Maintenance []effects.PartDeclaration `json:"maintenance,omitempty"`
 
 	// Options is the menu a cast offers when the spell has one: Command's
 	// words. The choice is a cast-time input, the way an aimed cell is: the
@@ -221,22 +220,16 @@ func (p CastProfile) HasOption(id string) bool {
 	return false
 }
 
-// CastConcentration is what a concentration cast declares: how long the caster
-// holds it, if nothing takes it away first.
-//
-// ONE CLOCK, ON THE OWNER. The effects a concentration spell leaves behind do
-// not each count their own turn ends — the concentrating condition counts, and
-// they end when it does. Two clocks would be two answers to one question.
-type CastConcentration struct {
-	// TurnEnds is how many of the caster's turn ends the spell survives.
-	// Turn ends rather than minutes because turn end is the only duration
-	// boundary this stack has.
-	TurnEnds int `json:"turn_ends"`
-
-	// SkipFirstTurnEnd gives a newly created owner one persisted grace boundary.
-	// It is used when the cast resolves during the caster's current turn so that
-	// turn does not consume one of the declared subsequent turn ends.
-	SkipFirstTurnEnd bool `json:"skip_first_turn_end,omitempty"`
+// UnmarshalJSON accepts only current cast declarations. Unknown fields are
+// errors, so a retired combined concentration field cannot silently lose upkeep.
+func (p *CastProfile) UnmarshalJSON(raw []byte) error {
+	type current CastProfile
+	var decoded current
+	if err := jsonv2.Unmarshal(raw, &decoded, jsonv2.RejectUnknownMembers(true)); err != nil {
+		return err
+	}
+	*p = CastProfile(decoded)
+	return nil
 }
 
 // CastEffect declares one condition a cast delivers, and who receives it.
@@ -289,6 +282,10 @@ type CastEffect struct {
 // no-op: it would mint a row at the door that delivered nothing, which is the
 // affordance-with-nothing-behind-it this stack keeps finding.
 func (p CastProfile) Validate() error {
+	maintenance, err := effects.DescribeMaintenance(&effects.DescribeMaintenanceInput{Parts: p.Maintenance})
+	if err != nil {
+		return fmt.Errorf("cast maintenance: %w", err)
+	}
 	if p.Casting != nil {
 		if err := p.Casting.Validate(); err != nil {
 			return fmt.Errorf("cast classification: %w", err)
@@ -342,7 +339,7 @@ func (p CastProfile) Validate() error {
 
 	if p.Area != nil && p.Area.ObscuresSight {
 		if p.Area.Footprint.Origin != AreaOriginPoint || p.Area.Footprint.Shape != AreaRadius ||
-			p.Concentration == nil || p.Save != nil || p.Attack != nil || p.Healing != nil ||
+			!maintenance.Concentration || p.Save != nil || p.Attack != nil || p.Healing != nil ||
 			p.Stabilize || len(p.Damage) > 0 || len(p.DamageIfInjured) > 0 || len(p.Effects) > 0 ||
 			p.Move != nil || len(p.Options) > 0 || p.Area.Catches != AreaCatchesEveryone {
 			return fmt.Errorf("sight-obscuring area requires only a point-centred radius and concentration")
@@ -350,7 +347,7 @@ func (p CastProfile) Validate() error {
 	}
 
 	if p.Attack != nil {
-		if p.Attack.Category != AttackCategorySpell || p.Save != nil || p.Healing != nil || p.Stabilize || len(p.Damage) > 0 || len(p.DamageIfInjured) > 0 || len(p.Effects) > 0 || p.Concentration != nil || p.Area != nil || len(p.HealingExcludes) > 0 {
+		if p.Attack.Category != AttackCategorySpell || p.Save != nil || p.Healing != nil || p.Stabilize || len(p.Damage) > 0 || len(p.DamageIfInjured) > 0 || len(p.Effects) > 0 || len(p.Maintenance) > 0 || p.Area != nil || len(p.HealingExcludes) > 0 {
 			return fmt.Errorf("spell attack cast must carry only its attack and optional on-hit movement")
 		}
 		if p.MinTargets != 1 || p.MaxTargets != 1 || (p.Target != CastTargetOneCreature && p.Target != CastTargetTouch) {
@@ -413,7 +410,7 @@ func (p CastProfile) Validate() error {
 	}
 	if p.Stabilize {
 		if p.Target != CastTargetTouch || p.Save != nil || p.Healing != nil ||
-			len(p.Damage) > 0 || len(p.Effects) > 0 || p.Concentration != nil || p.Move != nil {
+			len(p.Damage) > 0 || len(p.Effects) > 0 || len(p.Maintenance) > 0 || p.Move != nil {
 			return fmt.Errorf("stabilization requires an unopposed touch cast without other effects or concentration")
 		}
 	}
@@ -450,14 +447,6 @@ func (p CastProfile) Validate() error {
 
 	if err := p.validateOptions(); err != nil {
 		return err
-	}
-
-	if p.Concentration != nil && p.Concentration.TurnEnds <= 0 {
-		// A declared concentration that expires before it begins is an
-		// affordance with nothing behind it: the caster would hold a spell
-		// the clock had already ended. Nil says "no concentration"; this
-		// field is only reached by a profile that said there is some.
-		return fmt.Errorf("cast concentration must last at least one turn end")
 	}
 
 	return nil
@@ -514,9 +503,12 @@ func (p CastProfile) Clone() CastProfile {
 		move := p.Move.Clone()
 		clone.Move = &move
 	}
-	if p.Concentration != nil {
-		concentration := *p.Concentration
-		clone.Concentration = &concentration
+	if p.Maintenance != nil {
+		clone.Maintenance = make([]effects.PartDeclaration, len(p.Maintenance))
+		for i, part := range p.Maintenance {
+			clone.Maintenance[i] = part
+			clone.Maintenance[i].Params = append(json.RawMessage(nil), part.Params...)
+		}
 	}
 	if p.Options != nil {
 		clone.Options = append([]CastOption(nil), p.Options...)

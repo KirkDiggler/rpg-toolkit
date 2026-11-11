@@ -91,6 +91,15 @@ func (s *MonsterCompositionTestSuite) TestRoundTripsByteIdenticalWithNoBus() {
 	s.Require().Equal(s.marshal(data), s.marshal(m.ToData()))
 }
 
+func (s *MonsterCompositionTestSuite) TestPureLoadExposesConditionsForPreAttachBinding() {
+	m, err := LoadMonster(s.ctx, s.goblin())
+	s.Require().NoError(err)
+	s.Require().Len(m.GetConditions(), 1, "cross-holder binding needs the actual loaded behaviors before any Apply")
+	s.False(m.GetConditions()[0].IsApplied())
+	s.Equal(refs.MonsterTraits.Immunity().String(), m.GetConditions()[0].Ref().String())
+	s.False(m.IsDirty())
+}
+
 // The composition entry point preserves definitions loaded directly by monster.Load.
 func (s *MonsterCompositionTestSuite) TestLoadMonsterLoadsTheActions() {
 	m, err := LoadMonster(s.ctx, s.goblin())
@@ -157,17 +166,18 @@ func (s *MonsterCompositionTestSuite) TestAttachPutsTheMonsterOnTheBus() {
 	s.Require().True(m.IsDirty())
 }
 
-// A trait ref this build cannot route fails the attach rather than being
-// dropped — the strictness LoadMonsterConditions already had, kept.
-func (s *MonsterCompositionTestSuite) TestAttachRefusesAnUnknownTrait() {
+// A trait ref this build cannot route fails pure preparation before a binding
+// or any subscription can see an incomplete monster.
+func (s *MonsterCompositionTestSuite) TestPureLoadRefusesAnUnknownTrait() {
 	data := s.goblin()
 	data.Conditions = append(data.Conditions,
 		json.RawMessage(`{"ref":{"module":"dnd5e","type":"monster_traits","id":"nope"}}`))
 
+	before := s.marshal(data)
 	m, err := LoadMonster(s.ctx, data)
-	s.Require().NoError(err)
-
-	s.Require().Error(AttachMonster(s.ctx, m, events.NewEventBus(), nil))
+	s.Require().Error(err)
+	s.Nil(m)
+	s.Equal(before, s.marshal(data), "pure load never changes input while refusing it")
 }
 
 func (s *MonsterCompositionTestSuite) TestAttachRejectsMissingArguments() {
