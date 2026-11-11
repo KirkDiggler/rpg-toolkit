@@ -93,6 +93,12 @@ func everyGateSpeaker(offered bool) map[encounter.MemberID]bool {
 	return map[encounter.MemberID]bool{kingCaptain: offered, kingGate1: offered, kingGate2: offered}
 }
 
+// theCaptainAlone is the offer of a line only the captain carries: the guest
+// claim is his alone (rpg-project#929), so no gate guard ever offers it.
+func theCaptainAlone(offered bool) map[encounter.MemberID]bool {
+	return map[encounter.MemberID]bool{kingCaptain: offered, kingGate1: false, kingGate2: false}
+}
+
 // toTheCaptainWithTheBard is the stranger's-word route with the bard beside
 // the hero at the start: the hero hears of the feast and walks to the
 // captain, and nobody has claimed anything at the gate yet.
@@ -107,7 +113,7 @@ func toTheCaptainWithTheBard(t *testing.T) *kingScene {
 	require.True(t, s.learners("feast-tonight")[hero], "the stranger told the hero")
 	s.walkTo(s.at(kingCaptain))
 	require.Equal(t, "fresh", s.entrance(), "precondition: nobody has claimed anything at the gate")
-	require.Equal(t, everyGateSpeaker(true), s.gateOffers(hero, "guest"), "precondition: every gate speaker offers the guest claim")
+	require.Equal(t, theCaptainAlone(true), s.gateOffers(hero, "guest"), "precondition: the captain offers the guest claim, his alone")
 	require.Equal(t, everyGateSpeaker(true), s.gateOffers(hero, "troupe"), "precondition: and, to a hero who knows the feast, the troupe claim")
 
 	return s

@@ -292,6 +292,7 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 	})
 	g.factions()
 	behaviorSourceValues(s, add)
+	topicGuards(s, add)
 	g.factionOrders()
 	for _, id := range sortedKeys(s.BehaviorDefinitions) {
 		for _, key := range sortedKeys(s.BehaviorDefinitions[id].table) {

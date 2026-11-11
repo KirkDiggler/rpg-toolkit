@@ -13,7 +13,6 @@ package castletest
 // from beyond his sight. The captain has a line for whom he recognises.
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 
@@ -126,7 +125,9 @@ func TestMadKingTheGuardRecognisesWhomHeAdmitted(t *testing.T) {
 
 	t.Run("the gate is held against whom no guard recognises, and open to whom all do", func(t *testing.T) {
 		require.Empty(t, s.heldAgainst(hero), "every gate guard lets the hero through")
-		require.Contains(t, s.heldAgainst(listener), kingCaptain, "the captain holds the gate against the listener")
+		require.NotEmpty(t, s.heldAgainst(listener), "the gate guards hold the gate against the listener")
+		require.NotContains(t, s.heldAgainst(listener), kingCaptain,
+			"the captain, gone in once he admitted the party (rpg-project#929), holds nothing")
 	})
 
 	t.Run("the captain's line for whom he recognises", func(t *testing.T) {
@@ -140,11 +141,6 @@ func TestMadKingTheGuardRecognisesWhomHeAdmitted(t *testing.T) {
 		s.roundTrip()
 		require.True(t, s.recognizes(kingCaptain, hero), "the captain still recognises the hero")
 		require.Equal(t, granted, s.recognitionBeats(), "and no recognition was written again")
-		_, err := s.enc.Speak(context.Background(), &encounter.SpeakInput{
-			Range: speakReach, Actor: hero, Target: kingCaptain, OptionID: theWayIn, Roller: rollsOne{},
-		})
-		require.NoError(t, err, "the captain answers the line")
-		require.Equal(t, granted, s.recognitionBeats(), "nor by speaking on")
 	})
 
 	t.Run("the hero walks in past the posted gate guard", func(t *testing.T) {

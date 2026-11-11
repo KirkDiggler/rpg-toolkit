@@ -59,6 +59,28 @@ import (
 //     not witness it holds nothing: sharing beyond that is a means not yet
 //     built (rpg-project#928, "needs seen").
 //
+// # One write, a second place to hang it (rpg-project#929)
+//
+// The same [Consequence] may hang on a reply line's SUCCESS row
+// ([Option.Grants], [RowGrant]): a recognised member coming back to vouch,
+// a straggler making their own case. It is written by the same path, by the
+// same live sight, inside the same Speak, and EVERY TIME the row lands —
+// a record already held is confirmed, never written new, so when the holder
+// first recognised someone survives. A missed line grants nothing. A second
+// subject word, [RecognitionSpeaker], recognises the speaker alone. On a
+// line, `heard_by` means the other carriers of the interaction the line
+// reads or advances; a line that names none has nobody to hear it, and
+// `heard_by` is refused there.
+//
+// # A routine wakes on a topic (rpg-project#929)
+//
+// A holder who comes to hold a topic for the first time hears the `topic`
+// beat ([beatTopic]), landed as a learned fact's `fact` beat is and answered
+// at the next raise; a guard reads which topic as `topic:<id>`
+// ([MachineTopic]), true while the member holds it about anybody, from his
+// OWN holdings. A state not listening does not hear it; a later state that
+// listens reads the guard on the next topic beat, as `fact` works.
+//
 // # One question, asked the same way everywhere
 //
 // [TriggerRecognized] asks "does the OTHER PARTY hold this topic about me".

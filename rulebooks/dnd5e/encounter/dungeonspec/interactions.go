@@ -4,7 +4,9 @@
 package dungeonspec
 
 import (
+	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -203,6 +205,57 @@ func grantedTopicsOf(s *SingleRoomSpec) map[string]bool {
 				}
 			}
 		}
+	}
+	return out
+}
+
+// topicGuards refuses a routine waiting on a topic nothing in the document
+// grants (rpg-project#929): a `topic:<id>` guard in a behavior definition's
+// recipe whose topic no outcome and no line's success row grants could never
+// hold, so the transition could never fire. Refused at the definition's
+// recipe; the transition itself is the compiler's to name beyond that.
+func topicGuards(s *SingleRoomSpec, add errSink) {
+	granted := grantedTopicsOf(s)
+	for _, id := range sortedKeys(s.BehaviorDefinitions) {
+		def := s.BehaviorDefinitions[id]
+		if def.Recipe == nil {
+			continue
+		}
+		var recipe machine.Recipe
+		if err := json.Unmarshal(def.Recipe.raw, &recipe); err != nil {
+			continue
+		}
+		for _, state := range sortedKeys(recipe.States) {
+			for i, t := range recipe.States[state].Transitions {
+				for _, topic := range guardTopics(t.When) {
+					if !granted[topic] {
+						add(fmt.Sprintf("behaviorDefinitions.%s.recipe.states.%s.transitions[%d].when", id, state, i),
+							fmt.Sprintf("%q is a topic no interaction's `outcomes` and no line's success row grants, "+
+								"so nobody could ever come to hold it", topic))
+					}
+				}
+			}
+		}
+	}
+}
+
+// guardTopics is every topic a guard reads as `topic:<id>`, nested included.
+func guardTopics(g *machine.Guard) []string {
+	if g == nil {
+		return nil
+	}
+	var out []string
+	if g.Fact != nil {
+		if topic, ok := strings.CutPrefix(string(g.Fact.Name), "topic:"); ok && topic != "" {
+			out = append(out, topic)
+		}
+	}
+	out = append(out, guardTopics(g.Not)...)
+	for i := range g.All {
+		out = append(out, guardTopics(&g.All[i])...)
+	}
+	for i := range g.Any {
+		out = append(out, guardTopics(&g.Any[i])...)
 	}
 	return out
 }
