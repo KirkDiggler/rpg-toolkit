@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
@@ -40,7 +41,7 @@ func (s *InteractionSuite) heldGate() *encounter.Encounter {
 // offered at now.
 func (s *InteractionSuite) reserve(enc *encounter.Encounter, who core.EntityID, option string) *encounter.ReserveOutput {
 	out, err := enc.Reserve(&encounter.ReserveInput{
-		Actor: who, Target: goblin, OptionID: option, Revision: offeredRevision(enc, who, goblin, option),
+		Actor: who, Target: goblin, OptionID: option, Revision: offeredRevision(enc, who, goblin, option), Range: speakReach,
 	})
 	s.Require().NoError(err)
 	return out
@@ -102,10 +103,10 @@ func (s *InteractionSuite) TestAReservedGateHoldsItsLinesForEveryone() {
 		offer := s.offer(enc, who)
 		for _, claim := range []string{"guest", "troupe"} {
 			s.Equal(alice, offer[claim].PendingOn, "%s sees %s pending on alice", who, claim)
-			s.True(offer[claim].Pending())
+			s.True(offer[claim].Pending)
 		}
-		s.False(offer["greet"].Pending(), "%s may still greet", who)
-		s.False(offer["stand-aside"].Pending(), "%s may still threaten", who)
+		s.False(offer["greet"].Pending, "%s may still greet", who)
+		s.False(offer["stand-aside"].Pending, "%s may still threaten", who)
 	}
 
 	revision := s.offer(enc, billy)["troupe"].Revision
@@ -131,7 +132,7 @@ func (s *InteractionSuite) TestAPendingLineIsOneThatWasOffered() {
 
 	s.reserve(enc, alice, "guest")
 	offer := s.offer(enc, billy)
-	s.True(offer["guest"].Pending())
+	s.True(offer["guest"].Pending)
 	s.NotContains(offer, "troupe", "the held gate shows billy no claim he was not offered")
 }
 
@@ -152,7 +153,7 @@ func (s *InteractionSuite) TestAStaleReplyIsRefusedWithNothingSpent() {
 		"the troupe claim offered from `fresh` is not re-read against `warned-guest`")
 	s.ErrorIs(s.speakAt(enc, alice, "troupe", "persuasion", false, 0), encounter.ErrStaleOption,
 		"a reply naming no revision is refused")
-	_, err = enc.Reserve(&encounter.ReserveInput{Actor: alice, Target: goblin, OptionID: "troupe", Revision: offered})
+	_, err = enc.Reserve(&encounter.ReserveInput{Actor: alice, Target: goblin, OptionID: "troupe", Revision: offered, Range: speakReach})
 	s.ErrorIs(err, encounter.ErrStaleOption, "nor is a stale line reserved")
 
 	after, err := enc.NextStorySeq()
@@ -164,11 +165,16 @@ func (s *InteractionSuite) TestAStaleReplyIsRefusedWithNothingSpent() {
 
 // TestAReservationSurvivesAReloadAndSettlesOnce: a reservation is saved and
 // loaded; the holder's Speak at the reserved revision is the settle — the
-// verdict advances the gate once and the reservation clears; a second settle
-// is refused; and the revision moved at the reserve, the advance and the
-// settle.
+// verdict advances the gate once and the reservation clears; the revision
+// moved at the reserve, the advance and the settle; and a second settle of a
+// line still offered at the new state is refused stale.
 func (s *InteractionSuite) TestAReservationSurvivesAReloadAndSettlesOnce() {
-	enc := s.heldGate()
+	lines := heldGateLines()
+	lines[0].Requires = []encounter.Trigger{encounter.TriggerInteraction{
+		Interaction: theFrontGate, In: []string{"fresh", "warned-guest", "warned-troupe"},
+	}} // the guest claim stays offered once warned, so a second settle meets it
+	enc, err := s.gate(lines, encounter.InteractionInput{ID: theFrontGate, Recipe: frontGateRecipe()})
+	s.Require().NoError(err)
 	at := s.offer(enc, alice)["guest"].Revision
 	reserved := s.reserve(enc, alice, "guest")
 	s.Equal(at+1, reserved.Revision, "placing the reservation moves the revision")
@@ -179,7 +185,7 @@ func (s *InteractionSuite) TestAReservationSurvivesAReloadAndSettlesOnce() {
 	s.Require().NoError(json.Unmarshal(raw, &decoded))
 	reloaded, err := s.reloaded(decoded)
 	s.Require().NoError(err)
-	s.Equal(&encounter.InteractionReservation{Holder: alice, Target: goblin, Option: "guest", Revision: at},
+	s.Equal(&encounter.InteractionReservation{Holder: alice, Target: goblin, Option: "guest", Revision: at, Reach: speakReach},
 		s.saved(reloaded).Reservation, "the reservation comes back as placed")
 
 	s.ErrorIs(s.speakAt(reloaded, alice, "guest", "persuasion", false, reserved.Revision), encounter.ErrStaleOption,
@@ -190,12 +196,11 @@ func (s *InteractionSuite) TestAReservationSurvivesAReloadAndSettlesOnce() {
 	s.Equal(at+3, s.saved(reloaded).Revision, "reserve, advance and settle each moved the revision")
 
 	settled := s.saved(reloaded)
-	s.Error(s.speakAt(reloaded, alice, "guest", "persuasion", false, at), "a second settle is refused")
+	s.Require().Contains(s.offer(reloaded, alice), "guest", "precondition: the guest claim is still offered when warned")
+	s.ErrorIs(s.speakAt(reloaded, alice, "guest", "persuasion", false, at), encounter.ErrStaleOption,
+		"a second settle at the reserved revision is a reply from an old menu")
 	s.Equal(settled, s.saved(reloaded), "and advances nothing")
-	offer := s.offer(reloaded, billy)
-	s.NotContains(offer, "guest", "the gate's lines return, read at its new state")
-	s.Contains(offer, "troupe")
-	s.False(offer["troupe"].Pending())
+	s.False(s.offer(reloaded, billy)["guest"].Pending, "the gate's lines return")
 }
 
 // TestReleaseReturnsTheLines: releasing the holder's reservation advances
@@ -213,7 +218,7 @@ func (s *InteractionSuite) TestReleaseReturnsTheLines() {
 
 	for _, who := range []core.EntityID{alice, billy} {
 		offer := s.offer(enc, who)
-		s.False(offer["guest"].Pending(), "%s is offered the guest claim again", who)
+		s.False(offer["guest"].Pending, "%s is offered the guest claim again", who)
 		s.Equal(reserved.Revision+1, offer["guest"].Revision)
 	}
 	reader := &OptionTestSuite{}
@@ -237,12 +242,12 @@ func (s *InteractionSuite) TestOneReservationPerInteraction() {
 	s.reserve(enc, alice, "guest")
 	for _, who := range []core.EntityID{billy, alice} {
 		_, err := enc.Reserve(&encounter.ReserveInput{
-			Actor: who, Target: goblin, OptionID: "troupe", Revision: offeredRevision(enc, who, goblin, "troupe"),
+			Actor: who, Target: goblin, OptionID: "troupe", Revision: offeredRevision(enc, who, goblin, "troupe"), Range: speakReach,
 		})
 		s.ErrorIs(err, encounter.ErrReserved, "%s cannot reserve a held gate", who)
 	}
 
-	_, err := enc.Reserve(&encounter.ReserveInput{Actor: billy, Target: goblin, OptionID: "greet"})
+	_, err := enc.Reserve(&encounter.ReserveInput{Actor: billy, Target: goblin, OptionID: "greet", Range: speakReach})
 	s.ErrorIs(err, encounter.ErrNoOption, "a plain line never waits")
 	out := s.reserve(enc, billy, "stand-aside")
 	s.Empty(out.Interaction, "a line touching no interaction holds nothing")
@@ -285,4 +290,169 @@ func (s *InteractionSuite) TestASavedReservationNobodyCouldPlaceIsRefused() {
 			s.ErrorIs(err, encounter.ErrInvalidData)
 		})
 	}
+}
+
+// TestATargetsExitReleasesTheHold: the captain leaves while alice's claim
+// waits; the hold is released with its held beat, the revision moves, and
+// the saved record loads.
+func (s *InteractionSuite) TestATargetsExitReleasesTheHold() {
+	enc := s.heldGate()
+	reserved := s.reserve(enc, alice, "guest")
+	_, err := enc.Exit(&encounter.ExitInput{Member: goblin})
+	s.Require().NoError(err, "the captain leaves")
+	s.Nil(s.saved(enc).Reservation, "a line said to somebody gone waits on nothing")
+	s.Greater(s.saved(enc).Revision, reserved.Revision, "and the conversation moved")
+	s.Equal(false, s.lastHeld(enc, alice)["held"], "alice is told the line stopped waiting")
+
+	raw, err := json.Marshal(enc.ToData())
+	s.Require().NoError(err)
+	var decoded encounter.EncounterData
+	s.Require().NoError(json.Unmarshal(raw, &decoded))
+	_, err = s.reloaded(decoded)
+	s.NoError(err, "a run whose captain left with a held line still loads")
+}
+
+// TestAHoldersExitDropsTheHold: the holder leaves; nobody is left to roll,
+// so the gate's lines return to billy.
+func (s *InteractionSuite) TestAHoldersExitDropsTheHold() {
+	enc := s.heldGate()
+	s.reserve(enc, alice, "guest")
+	_, err := enc.Exit(&encounter.ExitInput{Member: alice})
+	s.Require().NoError(err)
+	s.Nil(s.saved(enc).Reservation)
+	s.False(s.offer(enc, billy)["guest"].Pending)
+}
+
+// lastHeld is the last interaction-held beat a member was told.
+func (s *InteractionSuite) lastHeld(enc *encounter.Encounter, who core.EntityID) map[string]any {
+	reader := &OptionTestSuite{}
+	reader.SetT(s.T())
+	held := reader.beatsOfKind(enc, who, encounter.BeatInteractionHeld)
+	s.Require().NotEmpty(held, "%s was told of the hold", who)
+	return held[len(held)-1]
+}
+
+// farGate is the yard with the captain far across it from alice: in sight,
+// beyond any speaking reach.
+func (s *InteractionSuite) farGate() *encounter.Encounter {
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Canvas:       openAir(),
+			Regions:      []encounter.RegionInput{rectRegion("yard", 0, 0, 20, 20)},
+			Interactions: []encounter.InteractionInput{{ID: theFrontGate, Recipe: frontGateRecipe()}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 1, Y: 1}},
+			{ID: billy, Kind: encounter.KindPlayer, Position: spatial.Position{X: 4, Y: 2}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 15, Y: 15}, Options: heldGateLines()},
+		},
+		Endings:      []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: (&OptionTestSuite{}).capabilities(),
+	})
+	s.Require().NoError(err)
+	return enc
+}
+
+// TestTheDoorsAgreeOnReach: Speak, ChooseOption and Reserve all refuse a
+// speaker out of reach, so no reservation is placed whose settle is refused.
+func (s *InteractionSuite) TestTheDoorsAgreeOnReach() {
+	enc := s.farGate()
+	rev := offeredRevision(enc, alice, goblin, "guest")
+	reply := &encounter.ChooseOptionInput{Actor: alice, Target: goblin, OptionID: "guest", Revision: rev, Range: speakReach}
+
+	s.ErrorIs(s.speakAt(enc, alice, "guest", "persuasion", false, rev), encounter.ErrOutOfRange)
+	_, err := enc.ChooseOption(reply)
+	s.ErrorIs(err, encounter.ErrOutOfRange)
+	_, err = enc.Reserve(reply)
+	s.ErrorIs(err, encounter.ErrOutOfRange)
+	s.Nil(s.saved(enc).Reservation)
+}
+
+// wallGate is the option suite's walled room with the front gate: alice and
+// the captain in sight of each other, billy behind a wall row who sees
+// neither.
+func (s *InteractionSuite) wallGate(participation encounter.Participation) *encounter.Encounter {
+	caps := (&OptionTestSuite{}).capabilities()
+	if participation != nil {
+		caps.Participation = participation
+	}
+	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Field: encounter.FieldInput{
+			Canvas:       encounter.CanvasInput{Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()},
+			Regions:      []encounter.RegionInput{rectRegion("yard", 0, 0, 12, 12)},
+			Props:        wallRow(6, 4, 8),
+			Interactions: []encounter.InteractionInput{{ID: theFrontGate, Recipe: frontGateRecipe()}},
+		},
+		Members: []encounter.MemberInput{
+			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 2}},
+			{ID: goblin, Kind: encounter.KindMonster, Position: spatial.Position{X: 6, Y: 4}, Options: heldGateLines()},
+			{ID: billy, Kind: encounter.KindPlayer, Position: spatial.Position{X: 6, Y: 10}},
+		},
+		Endings:      []encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}},
+		Capabilities: caps,
+	})
+	s.Require().NoError(err)
+	return enc
+}
+
+// TestTheDoorsAgreeOnWitnessing: billy behind the wall is refused by every
+// door as unwitnessed — and is told a held line is pending without being
+// told whose roll it waits on, since he cannot perceive alice; alice sees
+// her own name.
+func (s *InteractionSuite) TestTheDoorsAgreeOnWitnessing() {
+	enc := s.wallGate(nil)
+	rev := offeredRevision(enc, billy, goblin, "guest")
+	reply := &encounter.ChooseOptionInput{Actor: billy, Target: goblin, OptionID: "guest", Revision: rev, Range: 20}
+	_, err := enc.ChooseOption(reply)
+	s.ErrorIs(err, encounter.ErrUnwitnessed)
+	_, err = enc.Reserve(reply)
+	s.ErrorIs(err, encounter.ErrUnwitnessed)
+
+	s.reserve(enc, alice, "guest")
+	billys := s.offer(enc, billy)["guest"]
+	s.True(billys.Pending, "billy's guest claim waits")
+	s.Empty(billys.PendingOn, "on somebody billy cannot perceive, who is not named to him")
+	s.Equal(alice, s.offer(enc, alice)["guest"].PendingOn, "alice is told it waits on her own roll")
+}
+
+// TestAHoldIsReleasedWhenItsTargetFalls: the captain goes down while alice's
+// claim waits; the next participation pass releases it with its beat.
+func (s *InteractionSuite) TestAHoldIsReleasedWhenItsTargetFalls() {
+	down := &downList{}
+	enc := s.wallGate(down)
+	reserved := s.reserve(enc, alice, "guest")
+	down.down = []encounter.MemberID{goblin}
+	_, err := enc.Step(&encounter.StepInput{Member: billy, To: spatial.Position{X: 6, Y: 11}, EndWalk: true, Reach: speakReach})
+	s.Require().NoError(err)
+	s.Nil(s.saved(enc).Reservation, "a down captain answers nothing, so nothing waits on him")
+	s.Greater(s.saved(enc).Revision, reserved.Revision)
+	s.Equal(false, s.lastHeld(enc, alice)["held"])
+}
+
+// TestAHoldIsReleasedWhenTheHolderWalksOutOfReach: alice steps away from
+// the captain beyond the reach she reserved within; the step's sweep
+// releases the hold.
+func (s *InteractionSuite) TestAHoldIsReleasedWhenTheHolderWalksOutOfReach() {
+	enc := s.wallGate(nil)
+	_, err := enc.Reserve(&encounter.ReserveInput{
+		Actor: alice, Target: goblin, OptionID: "guest", Revision: offeredRevision(enc, alice, goblin, "guest"), Range: 2,
+	})
+	s.Require().NoError(err)
+	for _, x := range []float64{5, 4, 3, 2} {
+		_, err := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: x, Y: 2}, EndWalk: x == 2, Reach: speakReach})
+		s.Require().NoError(err)
+	}
+	s.Nil(s.saved(enc).Reservation, "out of the reach it was reserved within, the settle could not land")
+	s.False(s.offer(enc, alice)["guest"].Pending)
+}
+
+// TestASavedReservationOnALineThatDoesNotTouchItIsRefused: a saved
+// reservation naming a line that reads no interaction is refused.
+func (s *InteractionSuite) TestASavedReservationOnALineThatDoesNotTouchItIsRefused() {
+	enc := s.heldGate()
+	s.reserve(enc, alice, "guest")
+	data := enc.ToData()
+	data.Interactions[0].Reservation.Option = "stand-aside"
+	_, err := s.reloaded(data)
+	s.ErrorIs(err, encounter.ErrInvalidData)
 }

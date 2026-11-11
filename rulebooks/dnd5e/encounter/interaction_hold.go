@@ -12,6 +12,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/selection"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // interaction_hold.go is RESERVE BEFORE DICE (rpg-project#924, Gate S4 of #769; design
@@ -65,9 +66,22 @@ import (
 // absent, never pending — so a reservation cannot reveal a line the speaker
 // was not offered (the probe law).
 //
-// A reservation ends without a verdict through [Encounter.ReleaseReservation]
-// (the host decides when: the speaker left Speak reach, the window was
-// abandoned), and when its holder exits the run.
+// A pending line names who it waits on ONLY to a speaker who perceives them
+// (the holder's witnesses, the held beat's audience) or to the holder.
+//
+// # The doors agree, and the encounter releases what they would refuse
+//
+// Speak, [Encounter.ChooseOption] and [Encounter.Reserve] ask ONE door
+// ([Encounter.replyDoor]): placement, the line, the revision, pending,
+// witnessing and reach — so a reservation is never placed whose settle the
+// door would refuse. And the encounter does not wait for the host to
+// remember: at every participation pass and every exit
+// ([Encounter.sweepHolds]) a reservation whose settle that door would refuse
+// now — its target gone or down, the holder out of the reach it reserved
+// within or out of the target's sight — is released without a verdict. A
+// fight alone releases nothing: Speak does not refuse a line said to a
+// creature in a fight. The host still releases an abandoned window
+// ([Encounter.ReleaseReservation]); a holder who exits drops their holds.
 
 // BeatInteractionHeld is the "beat" value of the story beat appended when a
 // reservation is placed (`held: true`) or released without a verdict (`held:
@@ -96,6 +110,11 @@ type InteractionReservation struct {
 	// reserved at — the revision its settle must carry. Always below the
 	// instance's revision, since placing the reservation moved it.
 	Revision uint64 `json:"revision"`
+
+	// Reach is the host's reach the line was reserved within, measured as
+	// [SpeakInput.Range] is (zero means adjacent): the reach the settle is
+	// asked at, and the reach [Encounter.sweepHolds] keeps it to.
+	Reach int `json:"reach,omitzero"`
 }
 
 // OfferedOption is one line offered to one speaker: the option, the
@@ -112,16 +131,18 @@ type OfferedOption struct {
 	// to this line sends back. Zero for a line that touches no interaction.
 	Revision uint64
 
-	// PendingOn is the member whose waiting check holds this line: a pending
-	// line is shown and cannot be spoken ([ErrReserved]) until the check
-	// settles or is released. Empty for a line that can be spoken now. It
-	// may name the speaker themself, whose own line waits on their roll.
+	// Pending is whether the line waits on somebody's roll: shown, and
+	// refused if sent ([ErrReserved]) until the check settles or is
+	// released.
+	Pending bool
+
+	// PendingOn is who the pending line waits on, ONLY when the asking
+	// speaker perceives them — the rule a [BeatInteractionHeld] beat's
+	// audience is chosen by (the holder's witnesses) — or is the holder
+	// themself. Empty otherwise, and for a line that is not pending: a
+	// speaker is never told the name of somebody they cannot perceive.
 	PendingOn MemberID
 }
-
-// Pending reports whether the line waits on somebody's roll and cannot be
-// spoken now.
-func (o OfferedOption) Pending() bool { return o.PendingOn != "" }
 
 // optionInteractions is every distinct interaction a line reads (a
 // `requires`, a `not` of one included) or advances, in first-named order.
@@ -178,13 +199,13 @@ func (e *Encounter) holdOf(o Option) *InteractionReservation {
 // interaction the named line touches, held by this speaker for this very
 // line said to this very creature or prop. Nil when the Speak is not a
 // settle.
-func (e *Encounter) settleFor(in *SpeakInput, options []Option) *InteractionReservation {
-	i := slices.IndexFunc(options, func(o Option) bool { return o.ID == in.OptionID })
+func (e *Encounter) settleFor(in lineReply, options []Option) *InteractionReservation {
+	i := slices.IndexFunc(options, func(o Option) bool { return o.ID == in.optionID })
 	if i < 0 {
 		return nil
 	}
 	hold := e.holdOf(options[i])
-	if hold == nil || hold.Holder != in.Actor || hold.Target != in.Target || hold.Prop != in.Prop || hold.Option != in.OptionID {
+	if hold == nil || hold.Holder != in.actor || hold.Target != in.target || hold.Prop != in.prop || hold.Option != in.optionID {
 		return nil
 	}
 	return hold
@@ -269,46 +290,144 @@ func (e *Encounter) settle(hold *InteractionReservation, option Option) {
 // with the doors every verb asks before a line: exactly one of target and
 // prop, the encounter open, the actor a member, a creature target a member
 // who is not the actor and not down, and a prop the actor is shown (the
-// probe law).
-func (e *Encounter) lineSite(verb string, actor, target MemberID, prop PropID) ([]Option, error) {
+// probe law), with the cells it stands on (nil for one the actor carries).
+func (e *Encounter) lineSite(verb string, actor, target MemberID, prop PropID) ([]Option, []spatial.Position, error) {
 	if actor == "" {
-		return nil, fmt.Errorf("%s: no actor: %w", verb, ErrNoMember)
+		return nil, nil, fmt.Errorf("%s: no actor: %w", verb, ErrNoMember)
 	}
 	if (target == "") == (prop == "") {
-		return nil, fmt.Errorf("%s: a line is said to exactly one creature or prop: %w", verb, ErrNoMember)
+		return nil, nil, fmt.Errorf("%s: a line is said to exactly one creature or prop: %w", verb, ErrNoMember)
 	}
 	if e.outcome != nil {
-		return nil, fmt.Errorf("%s: %w", verb, ErrClosed)
+		return nil, nil, fmt.Errorf("%s: %w", verb, ErrClosed)
 	}
 	if _, ok := e.members[actor]; !ok {
-		return nil, fmt.Errorf("%s: actor %q: %w", verb, actor, ErrNotMember)
+		return nil, nil, fmt.Errorf("%s: actor %q: %w", verb, actor, ErrNotMember)
 	}
 	if prop != "" {
-		options, _, err := e.speakableProp(actor, prop)
+		options, cells, err := e.speakableProp(actor, prop)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", verb, err)
+			return nil, nil, fmt.Errorf("%s: %w", verb, err)
 		}
-		return options, nil
+		return options, cells, nil
 	}
 	t, ok := e.members[target]
 	if !ok {
-		return nil, fmt.Errorf("%s: target %q: %w", verb, target, ErrNotMember)
+		return nil, nil, fmt.Errorf("%s: target %q: %w", verb, target, ErrNotMember)
 	}
+	// Talking to yourself is not a shenanigan, it is a caller defect — and it
+	// would land a deed naming its own holder, which no mind can read as
+	// anything.
 	if actor == target {
-		return nil, fmt.Errorf("%s: actor %q cannot address itself: %w", verb, actor, ErrNotMember)
+		return nil, nil, fmt.Errorf("%s: actor %q cannot address itself: %w", verb, actor, ErrNotMember)
 	}
+	// A DOWN CREATURE ANSWERS NOTHING (rpg-project#718). It still carries its
+	// lines — a fallen leader's faction lines are on it like every member's —
+	// so without this door the body would "yield", learn the fact, and hold
+	// the deed. Refused before anything is written.
 	down, err := e.isDown(target)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", verb, err)
+		return nil, nil, fmt.Errorf("%s: %w", verb, err)
 	}
 	if down {
-		return nil, fmt.Errorf("%s: %q is down and cannot answer: %w", verb, target, ErrMemberDown)
+		return nil, nil, fmt.Errorf("%s: %q is down and cannot answer: %w", verb, target, ErrMemberDown)
 	}
-	return t.Options, nil
+	return t.Options, nil, nil
+}
+
+// lineReply is one reply to an offered line, as every door reads it.
+type lineReply struct {
+	actor    MemberID
+	target   MemberID
+	prop     PropID
+	optionID string
+	revision uint64
+	reach    int
+}
+
+// replied is what [Encounter.replyDoor] admitted: the line, the reservation
+// it settles (nil unless it is the settle), and where the actor stands with
+// who witnesses them there.
+type replied struct {
+	option    Option
+	settle    *InteractionReservation
+	where     spatial.Position
+	witnesses []MemberID
+}
+
+// replyDoor is THE ONE DOOR a reply to a line comes through — [Encounter.Speak],
+// [Encounter.ChooseOption], [Encounter.Reserve], and [Encounter.sweepHolds]
+// asking whether a settle would still be admitted — so none of them can
+// disagree. In order: the site ([Encounter.lineSite]) → a line named
+// ([ErrNoOption]) → the actor placed ([ErrBadPlacement]) → the line door
+// ([Encounter.lineDoor]: offered, current revision, not pending) → a creature
+// target witnesses the actor ([ErrUnwitnessed]) → reach, LAST of the doors
+// (rpg-project#753, R4), in [Encounter.Hold]'s order: only a target this
+// speaker is shown and that witnesses them is measured, so a hidden thing far
+// off still answers "no such thing" and never "out of range"
+// ([ErrOutOfRange]).
+//
+// settling admits the settle of a reservation the actor holds for this very
+// line at this very site ([Encounter.settleFor]); only Speak and the sweep
+// pass it.
+//
+// THE CALLER HAS ALREADY SHOWN THE ACTOR (sneaking R7): the witnesses are
+// asked as Speak asks them, with the speaker's sneaking ended.
+func (e *Encounter) replyDoor(verb string, in lineReply, settling bool) (replied, error) {
+	options, propCells, err := e.lineSite(verb, in.actor, in.target, in.prop)
+	if err != nil {
+		return replied{}, err
+	}
+	if in.optionID == "" {
+		return replied{}, fmt.Errorf("%s: no line named: %w", verb, ErrNoOption)
+	}
+	where, witnesses, err := e.audienceOf(in.actor)
+	if err != nil {
+		return replied{}, fmt.Errorf("%s: %w", verb, err)
+	}
+	var settle *InteractionReservation
+	if settling {
+		settle = e.settleFor(in, options)
+	}
+	option, err := e.lineDoor(in.actor, options, in.optionID, in.revision, settle)
+	if err != nil {
+		return replied{}, fmt.Errorf("%s: %w", verb, err)
+	}
+	if in.target != "" && !slices.Contains(witnesses, in.target) {
+		return replied{}, fmt.Errorf("%s: target %q cannot see the actor: %w", verb, in.target, ErrUnwitnessed)
+	}
+	if in.target != "" {
+		err = e.refuseOutOfReach(verb, in.actor, in.target, in.reach)
+	} else {
+		err = e.refusePropOutOfReach(verb, where, in.prop, propCells, in.reach)
+	}
+	if err != nil {
+		return replied{}, err
+	}
+
+	return replied{option: option, settle: settle, where: where, witnesses: witnesses}, nil
+}
+
+// asShown runs a read as though the actor had spoken — sneaking ended, as
+// [Encounter.Speak] ends it before it asks the audience (sneaking R7) — and
+// puts the mode back afterwards whatever happened: a door asked ahead of the
+// line, or about a line waiting on its roll, has not shown anybody.
+func (e *Encounter) asShown(actor MemberID, read func() error) error {
+	m, ok := e.members[actor]
+	if !ok || !m.Sneaking {
+		return read()
+	}
+	verdicts := copySneakVerdicts(e.sneakVerdicts)
+	e.endSneaking(actor)
+	err := read()
+	m.Sneaking = true
+	e.sneakVerdicts = verdicts
+	return err
 }
 
 // ChooseOptionInput names a reply to an offered line: who, to which creature
-// or prop, which line, and the revision it was offered at.
+// or prop, which line, the revision it was offered at, and the reach the
+// host measures speech within.
 type ChooseOptionInput struct {
 	// Actor is the speaker. REQUIRED, a member.
 	Actor MemberID
@@ -326,6 +445,10 @@ type ChooseOptionInput struct {
 	// Revision is the [OfferedOption.Revision] the line was offered at; not
 	// read for a line that touches no interaction.
 	Revision uint64
+
+	// Range is the host's reach, exactly [SpeakInput.Range]: zero means
+	// adjacent. The door measures it as Speak does, so the two agree.
+	Range int
 }
 
 // ChooseOptionOutput is the line the reply chose, as offered now.
@@ -336,52 +459,50 @@ type ChooseOptionOutput struct {
 }
 
 // ChooseOption is the line door asked BEFORE anything is charged or rolled
-// (rpg-project#924): whether this reply names a line offered to this
-// speaker now, from the conversation as it is now. A read: it writes
-// nothing. [Encounter.Speak] asks the same door again for itself.
+// (rpg-project#924): whether [Encounter.Speak] would admit this reply now,
+// asked through the door Speak itself asks ([Encounter.replyDoor]), with the
+// speaker shown as Speak shows them. A read: it writes nothing.
 //
 // Validation order: nil input → no actor, or not exactly one of target and
 // prop → closed → actor is a member → a creature target is a member, not the
 // actor and not down; a prop is shown to the actor → no option id → the
-// line is offered ([ErrNoOption]) → its revision is the interaction's now
-// ([ErrStaleOption]) → it is not pending ([ErrReserved]).
+// actor is placed → the line is offered ([ErrNoOption]) → its revision is the
+// interaction's now ([ErrStaleOption]) → it is not pending ([ErrReserved])
+// → a creature target witnesses the actor → reach.
 //
 // Errors: ErrNilInput, ErrNoMember, ErrNoOption, ErrClosed, ErrNotMember,
-// ErrMemberDown, ErrNoProp, ErrStaleOption, ErrReserved.
+// ErrMemberDown, ErrNoProp, ErrBadPlacement, ErrStaleOption, ErrReserved,
+// ErrUnwitnessed, ErrOutOfRange.
 func (e *Encounter) ChooseOption(in *ChooseOptionInput) (*ChooseOptionOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("choose option: %w", ErrNilInput)
 	}
-	option, err := e.chooseLine("choose option", in)
+	var admitted replied
+	err := e.asShown(in.Actor, func() error {
+		var err error
+		admitted, err = e.replyDoor("choose option", in.reply(), false)
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	return &ChooseOptionOutput{Option: e.offerOf(option, "")}, nil
+	return &ChooseOptionOutput{Option: e.offerOf(admitted.option, false, "")}, nil
 }
 
-// chooseLine is [Encounter.ChooseOption]'s door, shared with
-// [Encounter.Reserve]: the site, then the line door with no settle.
-func (e *Encounter) chooseLine(verb string, in *ChooseOptionInput) (Option, error) {
-	options, err := e.lineSite(verb, in.Actor, in.Target, in.Prop)
-	if err != nil {
-		return Option{}, err
+// reply is the input as a [lineReply].
+func (in *ChooseOptionInput) reply() lineReply {
+	return lineReply{
+		actor: in.Actor, target: in.Target, prop: in.Prop,
+		optionID: in.OptionID, revision: in.Revision, reach: in.Range,
 	}
-	if in.OptionID == "" {
-		return Option{}, fmt.Errorf("%s: no line named: %w", verb, ErrNoOption)
-	}
-	option, err := e.lineDoor(in.Actor, options, in.OptionID, in.Revision, nil)
-	if err != nil {
-		return Option{}, fmt.Errorf("%s: %w", verb, err)
-	}
-
-	return option, nil
 }
 
 // offerOf is one line as offered: deep-copied, with the interaction it
-// touches and that interaction's revision now, and who it is pending on.
-func (e *Encounter) offerOf(o Option, pendingOn MemberID) OfferedOption {
-	out := OfferedOption{Option: cloneOption(o), PendingOn: pendingOn}
+// touches and that interaction's revision now, whether it is pending, and
+// who it waits on as the asker may be told it.
+func (e *Encounter) offerOf(o Option, pending bool, pendingOn MemberID) OfferedOption {
+	out := OfferedOption{Option: cloneOption(o), Pending: pending, PendingOn: pendingOn}
 	if id, ok := optionInteraction(o); ok {
 		out.Interaction = id
 		if r, ok := e.interactions[id]; ok {
@@ -391,8 +512,22 @@ func (e *Encounter) offerOf(o Option, pendingOn MemberID) OfferedOption {
 	return out
 }
 
+// pendingOnFor is who a held line waits on, as one asker may be told it: the
+// holder when the asker is the holder or one of the holder's witnesses —
+// the audience a [BeatInteractionHeld] beat goes to — else nobody.
+func (e *Encounter) pendingOnFor(asker, holder MemberID) MemberID {
+	if asker == holder {
+		return holder
+	}
+	if _, witnesses, err := e.audienceOf(holder); err == nil && slices.Contains(witnesses, asker) {
+		return holder
+	}
+	return ""
+}
+
 // ReserveInput names the checked line that paused on its speaker's roll:
-// the same reply [ChooseOptionInput] names, at the revision it was offered.
+// the same reply [ChooseOptionInput] names, at the revision it was offered,
+// within the host's reach.
 type ReserveInput = ChooseOptionInput
 
 // ReserveOutput reports the reservation placed.
@@ -415,26 +550,33 @@ type ReserveOutput struct {
 // decides on their roll (rpg-project#924): the host calls it when the line's
 // check pauses on a held benefit, after it has asked every door and charged
 // the action. The reservation records the holder, the line, the creature or
-// prop it is said to, and the revision it was offered at; the revision
-// moves; and a [BeatInteractionHeld] beat goes to the holder's witnesses.
-// From then on every line touching that interaction is pending, for every
-// speaker, until the holder's [Encounter.Speak] settles it or
-// [Encounter.ReleaseReservation] ends it.
+// prop it is said to, the revision it was offered at and the reach; the
+// revision moves; and a [BeatInteractionHeld] beat goes to the holder's
+// witnesses. From then on every line touching that interaction is pending,
+// for every speaker, until the holder's [Encounter.Speak] settles it,
+// [Encounter.ReleaseReservation] ends it, or the encounter ends it itself
+// because the settle could no longer be admitted ([Encounter.sweepHolds]).
 //
-// Validation order: [Encounter.ChooseOption]'s, whole — so a stale reply is
-// refused [ErrStaleOption] and a line on an already-held interaction
-// [ErrReserved] — then the line must roll a check ([ErrNoOption]: a plain
-// line never waits on a roll).
+// Validation order: [Encounter.ChooseOption]'s, whole — the door the settle
+// will ask, so a reservation is never placed that its settle would refuse
+// as it stands — then the line must roll a check ([ErrNoOption]: a plain line
+// never waits on a roll).
 //
 // Errors: ErrNilInput and every error [Encounter.ChooseOption] returns.
 func (e *Encounter) Reserve(in *ReserveInput) (*ReserveOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("reserve: %w", ErrNilInput)
 	}
-	option, err := e.chooseLine("reserve", in)
+	var admitted replied
+	err := e.asShown(in.Actor, func() error {
+		var err error
+		admitted, err = e.replyDoor("reserve", in.reply(), false)
+		return err
+	})
 	if err != nil {
 		return nil, err
 	}
+	option := admitted.option
 	if !option.Checked() {
 		return nil, fmt.Errorf("reserve: line %q rolls no check and never waits on one: %w", in.OptionID, ErrNoOption)
 	}
@@ -444,7 +586,7 @@ func (e *Encounter) Reserve(in *ReserveInput) (*ReserveOutput, error) {
 	}
 	r := e.interactions[id]
 	r.reservation = &InteractionReservation{
-		Holder: in.Actor, Target: in.Target, Prop: in.Prop, Option: in.OptionID, Revision: in.Revision,
+		Holder: in.Actor, Target: in.Target, Prop: in.Prop, Option: in.OptionID, Revision: in.Revision, Reach: in.Range,
 	}
 	r.revision++
 	seq, err := e.appendHeldBeat(id, in.Actor, true)
@@ -478,8 +620,8 @@ type ReleaseReservationOutput struct {
 // holds (rpg-project#924): nothing is advanced, each revision moves, the
 // lines return to every speaker, and a [BeatInteractionHeld] beat with
 // `held: false` goes to the holder's witnesses per interaction. The host
-// decides when: a waiting check whose speaker left Speak reach, or a window
-// abandoned, so an unanswered roll cannot hold the conversation forever.
+// calls it when the window is abandoned; the encounter releases on its own
+// what its door would no longer admit ([Encounter.sweepHolds]).
 //
 // Errors: ErrNilInput, ErrNoMember (no member named), ErrNotMember,
 // ErrNoReservation (the member holds none).
@@ -493,24 +635,43 @@ func (e *Encounter) ReleaseReservation(in *ReleaseReservationInput) (*ReleaseRes
 	if _, ok := e.members[in.Member]; !ok {
 		return nil, fmt.Errorf("release reservation: member %q: %w", in.Member, ErrNotMember)
 	}
-	released := e.dropHoldsOf(in.Member)
-	if len(released) == 0 {
-		return nil, fmt.Errorf("release reservation: member %q: %w", in.Member, ErrNoReservation)
-	}
-	for _, r := range released {
-		if _, err := e.appendHeldBeat(r.Interaction, in.Member, false); err != nil {
+	var released []InteractionRevision
+	for _, id := range slices.Sorted(maps.Keys(e.interactions)) {
+		hold := e.interactions[id].reservation
+		if hold == nil || hold.Holder != in.Member {
+			continue
+		}
+		revision, err := e.release(id)
+		if err != nil {
 			return nil, fmt.Errorf("release reservation: %w", err)
 		}
+		released = append(released, InteractionRevision{Interaction: id, Revision: revision})
+	}
+	if len(released) == 0 {
+		return nil, fmt.Errorf("release reservation: member %q: %w", in.Member, ErrNoReservation)
 	}
 
 	return &ReleaseReservationOutput{Released: released}, nil
 }
 
-// dropHoldsOf clears every reservation a member holds and moves each
-// revision, writing nothing: [Encounter.ReleaseReservation] tells the table,
-// and an exit's own beat already does.
-func (e *Encounter) dropHoldsOf(member MemberID) []InteractionRevision {
-	var out []InteractionRevision
+// release ends one interaction's reservation without a verdict: cleared,
+// the revision moved, and a `held: false` [BeatInteractionHeld] beat to the
+// holder's witnesses. It returns the revision now.
+func (e *Encounter) release(id InteractionID) (uint64, error) {
+	r := e.interactions[id]
+	holder := r.reservation.Holder
+	r.reservation = nil
+	r.revision++
+	if _, err := e.appendHeldBeat(id, holder, false); err != nil {
+		return 0, err
+	}
+	return r.revision, nil
+}
+
+// dropHoldsOf clears every reservation a leaving member holds and moves each
+// revision, writing nothing: the exit's own beat tells it, and a beat cannot
+// be audienced to somebody no longer in the run.
+func (e *Encounter) dropHoldsOf(member MemberID) {
 	for _, id := range slices.Sorted(maps.Keys(e.interactions)) {
 		r := e.interactions[id]
 		if r.reservation == nil || r.reservation.Holder != member {
@@ -518,9 +679,57 @@ func (e *Encounter) dropHoldsOf(member MemberID) []InteractionRevision {
 		}
 		r.reservation = nil
 		r.revision++
-		out = append(out, InteractionRevision{Interaction: id, Revision: r.revision})
 	}
-	return out
+}
+
+// holdRefusals are the refusals of [Encounter.replyDoor] that mean the
+// settle could no longer be admitted as the world stands: the target or the
+// holder gone, down or unplaced, the prop no longer shown, the target no
+// longer seeing the holder, out of reach. Any other error is a capability's
+// or a defect's, surfaced rather than read as a release.
+var holdRefusals = []error{
+	ErrNotMember, ErrMemberDown, ErrBadPlacement, ErrNoProp, ErrUnwitnessed, ErrOutOfRange, ErrNoOption,
+}
+
+// sweepHolds releases every reservation whose settle [Encounter.replyDoor]
+// would refuse now, each with its `held: false` beat, in interaction id
+// order (rpg-project#924): THE ENCOUNTER DOES NOT LEAVE A ROLL HOLDING A
+// CONVERSATION ITS VERDICT COULD NEVER LAND IN. Asked at every
+// participation pass ([Encounter.noticeDown] — every step, strike, cast and
+// clock pass runs one, so a fall, a walk out of reach and a lost line of
+// sight are each noticed there) and after an exit. The holder is asked
+// as Speak would ask them — shown — at the reach the line was reserved
+// within. A closed encounter is not swept: nothing will be said in it again.
+//
+// Errors: a capability's or a beat's.
+func (e *Encounter) sweepHolds() error {
+	if e.outcome != nil {
+		return nil
+	}
+	for _, id := range slices.Sorted(maps.Keys(e.interactions)) {
+		hold := e.interactions[id].reservation
+		if hold == nil {
+			continue
+		}
+		in := lineReply{
+			actor: hold.Holder, target: hold.Target, prop: hold.Prop,
+			optionID: hold.Option, revision: hold.Revision, reach: hold.Reach,
+		}
+		err := e.asShown(hold.Holder, func() error {
+			_, err := e.replyDoor("hold", in, true)
+			return err
+		})
+		if err == nil {
+			continue
+		}
+		if !slices.ContainsFunc(holdRefusals, func(refusal error) bool { return errors.Is(err, refusal) }) {
+			return fmt.Errorf("interaction %q hold: %w", id, err)
+		}
+		if _, err := e.release(id); err != nil {
+			return fmt.Errorf("interaction %q hold: %w", id, err)
+		}
+	}
+	return nil
 }
 
 // appendHeldBeat writes a [BeatInteractionHeld] beat for one interaction to
@@ -572,16 +781,20 @@ func validateReservationShape(id InteractionID, r InteractionReservation, revisi
 		return fmt.Errorf("interaction %q is saved reserved for a line said to %q and %q; exactly one", id, r.Target, r.Prop)
 	case r.Revision == 0 || r.Revision >= revision:
 		return fmt.Errorf("interaction %q is saved at revision %d reserved at %d", id, revision, r.Revision)
+	case r.Reach < 0:
+		return fmt.Errorf("interaction %q is saved reserved within a negative reach %d", id, r.Reach)
 	}
 	return nil
 }
 
 // validateInteractionReservations refuses a saved reservation naming a
-// holder or a creature the run does not have, or a line that creature does
-// not carry. options is every saved member's lines, by id. A line said to a
-// prop is held to its shape alone ([validateReservationShape]): the prop's
-// own door is the probe law, asked again by the settle.
-func validateInteractionReservations(interactions map[InteractionID]*interactionRecord, options map[MemberID][]Option) error {
+// holder or a creature the run does not have, a prop the field does not
+// have, or a line its creature or prop does not carry or that does not touch
+// the interaction it is saved on. options is every saved member's lines, by
+// id.
+func validateInteractionReservations(
+	interactions map[InteractionID]*interactionRecord, options map[MemberID][]Option, f *field,
+) error {
 	for _, id := range slices.Sorted(maps.Keys(interactions)) {
 		r := interactions[id].reservation
 		if r == nil {
@@ -590,16 +803,37 @@ func validateInteractionReservations(interactions map[InteractionID]*interaction
 		if _, ok := options[r.Holder]; !ok {
 			return fmt.Errorf("interaction %q is saved reserved by %q, who is not in the run", id, r.Holder)
 		}
-		if r.Target == "" {
-			continue
+		lines, where := options[r.Target], string(r.Target)
+		if r.Target != "" {
+			if _, ok := options[r.Target]; !ok {
+				return fmt.Errorf("interaction %q is saved reserved for a line said to %q, who is not in the run", id, r.Target)
+			}
+		} else {
+			var ok bool
+			if lines, ok = f.propOptions(r.Prop); !ok {
+				return fmt.Errorf("interaction %q is saved reserved for a line said to prop %q, which the field lacks", id, r.Prop)
+			}
+			where = string(r.Prop)
 		}
-		lines, ok := options[r.Target]
-		if !ok {
-			return fmt.Errorf("interaction %q is saved reserved for a line said to %q, who is not in the run", id, r.Target)
+		i := slices.IndexFunc(lines, func(o Option) bool { return o.ID == r.Option })
+		if i < 0 {
+			return fmt.Errorf("interaction %q is saved reserved for line %q, which %q does not carry", id, r.Option, where)
 		}
-		if !slices.ContainsFunc(lines, func(o Option) bool { return o.ID == r.Option }) {
-			return fmt.Errorf("interaction %q is saved reserved for line %q, which %q does not carry", id, r.Option, r.Target)
+		if touched, ok := optionInteraction(lines[i]); !ok || touched != id {
+			return fmt.Errorf("interaction %q is saved reserved for line %q, which does not touch it", id, r.Option)
 		}
 	}
 	return nil
+}
+
+// propOptions is the lines a prop of the field carries, and whether the
+// field has the prop at all.
+func (f *field) propOptions(prop PropID) ([]Option, bool) {
+	if i := f.propIndexOf(prop); i >= 0 {
+		return f.props[i].Options, true
+	}
+	if i := f.placedIndexOf(prop); i >= 0 {
+		return f.placed[i].options, true
+	}
+	return nil, false
 }

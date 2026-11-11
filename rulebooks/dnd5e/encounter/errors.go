@@ -746,7 +746,7 @@ var (
 
 	// ErrReserved is returned when a line reads or advances an interaction
 	// whose progress is waiting on another checked line's roll decision
-	// (rpg-project#924): the line is PENDING ([OfferedOption.PendingOn]), and
+	// (rpg-project#924): the line is PENDING ([OfferedOption.Pending]), and
 	// it is refused rather than spoken over the waiting roll. It is also what
 	// [Encounter.Reserve] answers when the interaction is already reserved.
 	ErrReserved = errors.New("encounter: the interaction is waiting on another speaker's roll")

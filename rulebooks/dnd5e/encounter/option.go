@@ -230,7 +230,7 @@ func (e *Encounter) Witnesses(of MemberID) ([]MemberID, error) {
 // OptionsFor is the options a target creature offers one speaker: every
 // option on the target whose [Option.Requires] holds for the SPEAKER (R9), in
 // authored order, deep-copied, each with the interaction it touches and that
-// interaction's revision now, and PENDING ([OfferedOption.PendingOn]) when
+// interaction's revision now, and PENDING ([OfferedOption.Pending]) when
 // the interaction waits on a reserved roll (interaction_hold.go, rpg-project#924). A
 // target that is DOWN offers none (rpg-project#718): [Encounter.Speak]
 // refuses a line said to it.
@@ -386,9 +386,9 @@ func (e *Encounter) offered(actor MemberID, options []Option) ([]OfferedOption, 
 	for i, row := range inspection.Rows {
 		switch {
 		case row.Eligible:
-			out = append(out, e.offerOf(options[i], ""))
+			out = append(out, e.offerOf(options[i], false, ""))
 		case !hasUnmet(row):
-			out = append(out, e.offerOf(options[i], e.holdOf(options[i]).Holder))
+			out = append(out, e.offerOf(options[i], true, e.pendingOnFor(actor, e.holdOf(options[i]).Holder)))
 		}
 	}
 
@@ -590,16 +590,17 @@ type SpeakOutput struct {
 //
 // Validation order (R5 atomicity — every refusal before the first write): nil
 // input → no actor, or not exactly one of target and prop → no option id → no
-// roller → closed → actor is a member → target is a member and not the actor
-// → a creature target is not down → the actor is placed → the option is on
-// the target (a prop: the actor is shown it) and its requirement holds for
-// the actor → its revision is current, before anything is written
-// ([ErrStaleOption], rpg-project#924) → it is not pending on a reserved
-// roll ([ErrReserved]) → the roll fits the line (a checked line's skill is one of its
-// approaches; a plain line reports no roll) → a creature target can see
-// the actor → the beat → the deed → the answer → the interaction the line
-// advances (rpg-project#922) → the world's price for an action, paid only
-// for a checked line (rpg-project#785 R5).
+// roller → closed → THE ONE DOOR ([Encounter.replyDoor], the door
+// [Encounter.ChooseOption] and [Encounter.Reserve] ask too): actor is a
+// member → target is a member, not the actor and not down; a prop is shown
+// to the actor → the actor is placed → the option is on the target and its
+// requirement holds for the actor → its revision is current
+// ([ErrStaleOption], rpg-project#924) → it is not pending on a reserved roll
+// ([ErrReserved]) → a creature target can see the actor → reach; then the
+// roll fits the line (a checked line's skill is one of its approaches; a
+// plain line reports no roll) → the beat → the deed → the answer → the
+// interaction the line advances (rpg-project#922) → the world's price for an
+// action, paid only for a checked line (rpg-project#785 R5).
 //
 // THE BEAT IS APPENDED BEFORE ITS CONSEQUENCES, the law
 // [Encounter.refreshSight] states: the line is the cause, and a stance beat
@@ -633,35 +634,6 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	if e.outcome != nil {
 		return nil, fmt.Errorf("speak: %w", ErrClosed)
 	}
-	if _, ok := e.members[in.Actor]; !ok {
-		return nil, fmt.Errorf("speak: actor %q: %w", in.Actor, ErrNotMember)
-	}
-	var options []Option
-	if in.Target != "" {
-		target, ok := e.members[in.Target]
-		if !ok {
-			return nil, fmt.Errorf("speak: target %q: %w", in.Target, ErrNotMember)
-		}
-		// Talking to yourself is not a shenanigan, it is a caller defect —
-		// and it would land a deed naming its own holder, which no mind can
-		// read as anything.
-		if in.Actor == in.Target {
-			return nil, fmt.Errorf("speak: actor %q cannot address itself: %w", in.Actor, ErrNotMember)
-		}
-		// A DOWN CREATURE ANSWERS NOTHING (rpg-project#718). It still carries
-		// its lines — a fallen leader's faction lines are on it like every
-		// member's — so without this door the body would "yield", learn the
-		// fact, and hold the deed. Refused before anything is written.
-		down, err := e.isDown(in.Target)
-		if err != nil {
-			return nil, fmt.Errorf("speak: %w", err)
-		}
-		if down {
-			return nil, fmt.Errorf("speak: %q is down and cannot answer: %w", in.Target, ErrMemberDown)
-		}
-		options = target.Options
-	}
-
 	// SPEAKING SHOWS YOU (sneaking R7, lead ruling on rpg-toolkit#2078): the
 	// mode ends BEFORE the audience is asked, so a line said to a watcher the
 	// speaker beat is heard and witnessed rather than refused unwitnessed. A
@@ -676,34 +648,18 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 		return nil, err
 	}
 
-	where, witnesses, err := e.audienceOf(in.Actor)
+	// THE ONE DOOR ([Encounter.replyDoor]), the same one ChooseOption and
+	// Reserve ask, so the door the host asked before charging and this one
+	// cannot disagree.
+	admitted, err := e.replyDoor(verbSpeak, lineReply{
+		actor: in.Actor, target: in.Target, prop: in.Prop,
+		optionID: in.OptionID, revision: in.Revision, reach: in.Range,
+	}, true)
 	if err != nil {
-		return refuse(fmt.Errorf("speak: %w", err))
-	}
-
-	var propCells []spatial.Position
-	if in.Prop != "" {
-		options, propCells, err = e.speakableProp(in.Actor, in.Prop)
-		if err != nil {
-			return refuse(fmt.Errorf("speak: %w", err))
-		}
-	}
-	settle := e.settleFor(in, options)
-	option, err := e.lineDoor(in.Actor, options, in.OptionID, in.Revision, settle)
-	if err != nil {
-		return refuse(fmt.Errorf("speak: %w", err))
-	}
-	if err := refuseRollMismatch(in, option); err != nil {
 		return refuse(err)
 	}
-	if in.Target != "" && !slices.Contains(witnesses, in.Target) {
-		return refuse(fmt.Errorf("speak: target %q cannot see the actor: %w", in.Target, ErrUnwitnessed))
-	}
-	// REACH LAST OF THE DOORS (rpg-project#753, R4), in [Encounter.Hold]'s
-	// order: only a target this speaker is shown and that witnesses them is
-	// measured, so a hidden thing far off still answers "no such thing" and
-	// never "out of range". The measure is the one every reach uses.
-	if err := e.refuseSpeakOutOfReach(in, where, propCells); err != nil {
+	option, settle, where, witnesses := admitted.option, admitted.settle, admitted.where, admitted.witnesses
+	if err := refuseRollMismatch(in, option); err != nil {
 		return refuse(err)
 	}
 
@@ -860,18 +816,6 @@ func refuseRollMismatch(in *SpeakInput, option Option) error {
 	}
 
 	return nil
-}
-
-// refuseSpeakOutOfReach is Speak's reach door: a creature is measured by
-// [Encounter.refuseOutOfReach]; a prop by [Encounter.refuseOutOfReachCell]
-// against every cell it stands on, any one within reach admitting it, as
-// [Encounter.Hold] measures a footprint. A prop the speaker carries has no
-// cells and is always within reach.
-func (e *Encounter) refuseSpeakOutOfReach(in *SpeakInput, from spatial.Position, propCells []spatial.Position) error {
-	if in.Target != "" {
-		return e.refuseOutOfReach(verbSpeak, in.Actor, in.Target, in.Range)
-	}
-	return e.refusePropOutOfReach(verbSpeak, from, in.Prop, propCells, in.Range)
 }
 
 // refusePropOutOfReach is THE PROP REACH MEASURE, one for Speak's door and
