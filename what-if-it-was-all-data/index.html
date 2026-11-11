@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>What If It Was All Data?</title>
+<link rel="canonical" href="https://kirkdiggler.github.io/rpg-toolkit/what-if-it-was-all-data/">
+<meta property="og:site_name" content="rpg-toolkit">
+<meta property="og:type" content="article">
+<meta property="og:title" content="What If It Was All Data?">
+<meta property="og:description" content="Breaking up the encounter exposed the seams in the old combat machinery. Resolution gave the bus a clear home—and different interactions a common driver.">
+<meta property="og:url" content="https://kirkdiggler.github.io/rpg-toolkit/what-if-it-was-all-data/">
+<meta property="og:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/what-if-it-was-all-data.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="What If It Was All Data? The bus wasn’t disappearing. It was getting a clear home. Participant data flows through resolution to outcomes.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="What If It Was All Data?">
+<meta name="twitter:description" content="Breaking up the encounter exposed the seams in the old combat machinery. Resolution gave the bus a clear home—and different interactions a common driver.">
+<meta name="twitter:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/what-if-it-was-all-data.png">
+<meta name="twitter:image:alt" content="What If It Was All Data? The bus wasn’t disappearing. It was getting a clear home. Participant data flows through resolution to outcomes.">
+<meta name="description" content="Breaking up the encounter exposed the seams in the old combat machinery. Resolution gave the bus a clear home—and different interactions a common driver.">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath fill='%2311141a' d='M0 0h64v64H0z'/%3E%3Cpath fill='%231b2236' stroke='%237189d7' stroke-width='3' stroke-linejoin='round' d='M32 4 59 20 54 48 32 61 10 48 5 20Z M32 4 17 25 47 25 32 4 M5 20 17 25 10 48 32 38 54 48 47 25 59 20 M17 25 32 38 47 25 M32 38v23'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&amp;display=swap">
+<style>
+:root{--ground:#11141a;--surface:#181c23;--primary:#f1f3f5;--muted:#c2c8d0;--faint:#9da7b4;--rule:#343b46;--rule-strong:#4c5665;--accent:#7189d7;--bright:#9baded;--accent-soft:#1b2236;--pressure:#c96d62;--pressure-text:#e49b91}
+*{box-sizing:border-box}html{background:var(--ground);color-scheme:dark}body{margin:0;background:var(--ground);color:var(--primary);font-family:"Source Serif 4",Georgia,serif;font-size:17px;line-height:1.64;-webkit-font-smoothing:antialiased}
+:focus-visible{outline:2px solid var(--bright);outline-offset:4px}a{color:var(--bright);text-underline-offset:3px}.page{max-width:1180px;margin:0 auto;padding:22px 24px 100px}
+.draft-banner{padding:.62rem .9rem;border-block:1px solid var(--pressure);color:var(--pressure-text);font:500 .7rem/1.6 "IBM Plex Mono",monospace;letter-spacing:.06em;text-align:center}.draft-banner strong{font-weight:600;text-transform:uppercase;letter-spacing:.11em}
+header{padding:78px 72px 66px;border-bottom:1px solid var(--rule)}.eyebrow,.question-label,.date-label{font-family:"IBM Plex Mono",ui-monospace,monospace}.eyebrow{color:var(--bright);font-size:.76rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+h1,h2,.end-question{font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-weight:600;line-height:1.03;text-wrap:balance}h1{max-width:950px;margin:.3em 0 .3em;font-size:clamp(3.7rem,8vw,6.2rem);letter-spacing:-.035em}.dek{max-width:790px;margin:0;color:var(--muted);font-size:clamp(1.1rem,2vw,1.3rem);line-height:1.55}
+.origin-links{display:flex;flex-wrap:wrap;gap:1.7rem;max-width:900px;margin-top:1.7rem}.origin-link{display:flex;align-items:baseline;gap:.8rem;padding:.65rem 0;border-block:1px solid var(--rule);color:inherit;text-decoration:none}.origin-link span{color:var(--bright);font:600 .68rem/1.4 "IBM Plex Mono",monospace;letter-spacing:.1em;text-transform:uppercase}.origin-link strong{font:600 1rem/1.3 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}.origin-link:hover strong{color:var(--bright)}
+.opening-proof{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));margin-top:36px;border-block:1px solid var(--rule)}.opening-proof div{padding:14px 18px 14px 0}.opening-proof div+div{padding-left:18px;border-left:1px solid var(--rule)}.opening-proof b{display:block;font:600 1.04rem/1.5 "IBM Plex Sans Condensed","Arial Narrow",sans-serif}.opening-proof span{color:var(--muted);font-size:.86rem}
+.timeline{position:relative}.timeline::before{content:"";position:absolute;inset-block:0;left:55px;width:1px;background:var(--rule-strong)}.timeline-panel{position:relative;display:grid;grid-template-columns:112px minmax(0,1fr);gap:24px}.rail{position:relative;padding-top:47px;text-align:right}.node{position:absolute;top:50px;right:-8px;z-index:2;width:18px;height:18px;border:4px solid var(--ground);border-radius:50%;background:var(--accent);box-shadow:0 0 0 1px var(--accent)}.rail-number{display:block;padding-right:22px;color:var(--bright);font:600 1.25rem/1 "IBM Plex Mono",monospace}.date-label{display:block;max-width:92px;margin:12px 16px 0 auto;color:var(--faint);font-size:.68rem;letter-spacing:.07em;line-height:1.5;text-transform:uppercase}
+.pressure-panel .node{background:var(--pressure);box-shadow:0 0 0 1px var(--pressure)}.pressure-panel .rail-number,.pressure-panel .question-label{color:var(--pressure-text)}.panel-body{min-width:0;padding:48px 40px 58px;border-bottom:1px solid var(--rule)}.question-label{margin-bottom:7px;color:var(--bright);font-size:.73rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase}h2{max-width:870px;margin:0 0 .65em;font-size:clamp(2.1rem,4.4vw,3.2rem);letter-spacing:-.02em}p{max-width:74ch;margin:.76em 0}.lead,.reflection{color:var(--muted);font-size:1.07rem}.lead strong{color:var(--primary)}code{font:500 .88em "IBM Plex Mono",monospace}
+figure{margin:28px 0 16px;padding:18px 0 13px;border-block:1px solid var(--rule-strong)}figcaption{max-width:78ch;margin-top:14px;color:var(--faint);font:400 .81rem/1.6 "IBM Plex Mono",monospace}.diagram-scroll{overflow-x:auto;overscroll-behavior-inline:contain;scrollbar-color:var(--rule-strong) var(--ground)}.diagram-scroll svg{display:block;width:100%;min-width:760px;height:auto}.scroll-hint{display:none}
+svg text{fill:var(--primary);font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;font-size:20px}svg .label{fill:var(--bright);font:500 13px "IBM Plex Mono",monospace;letter-spacing:.7px}svg .small{fill:var(--muted);font-size:17px}svg .box{fill:var(--surface);stroke:var(--rule-strong);stroke-width:1.3}svg .soft{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.4}svg .wire{fill:none;stroke:var(--bright);stroke-width:1.5}
+.end-question{max-width:860px;margin:32px 0 0;padding-top:26px;border-top:1px solid var(--rule);font-size:clamp(1.9rem,3.6vw,2.7rem)}footer{max-width:920px;margin:64px 0 0 136px;padding-top:28px;border-top:1px solid var(--rule);color:var(--muted)}footer h2{margin-bottom:.7rem;font-size:1.4rem}footer p{margin:.7rem 0;font-size:.86rem}footer .scope{color:var(--faint);font:400 .75rem/1.65 "IBM Plex Mono",monospace}
+@media(max-width:760px){.page{padding:14px 14px 70px}.draft-banner{text-align:left;font-size:.65rem}header{padding:50px 14px 48px 42px}.origin-links{display:block}.origin-link{align-items:flex-start;flex-direction:column;gap:.25rem}.opening-proof{grid-template-columns:1fr}.opening-proof div{padding:11px 0}.opening-proof div+div{padding-left:0;border-top:1px solid var(--rule);border-left:0}.timeline::before{left:16px}.timeline-panel{grid-template-columns:34px minmax(0,1fr);gap:8px}.rail{padding-top:39px}.node{top:42px;right:9px;width:14px;height:14px;border-width:3px}.rail-number{font-size:0;padding:0}.date-label{position:absolute;top:62px;left:-5px;width:max-content;max-width:none;margin:0;transform:rotate(-90deg) translateX(-100%);transform-origin:top left;font-size:.62rem;white-space:nowrap}.panel-body{padding:40px 13px 46px}figure{padding:14px 0 10px}footer{margin:48px 0 0 42px}.scroll-hint{display:block;margin:0 0 12px;color:var(--bright);font:500 .68rem/1.5 "IBM Plex Mono",monospace}}
+@media(max-width:420px){body{font-size:16px}header{padding-left:38px}h1{font-size:3.35rem}}@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<main class="page">
+<header>
+<div class="eyebrow">Architectural field notes · Finding the seams</div>
+<h1>What If It Was All Data?</h1>
+<p class="dek">The table and holdable plushie were pieces of <a href="https://kirkdiggler.github.io/rpg-toolkit/living-world/">the Living World</a> I wanted to build. Underneath that visible progress was an earlier discovery: breaking up the encounter application changed what we needed from the machinery running it.</p>
+<nav class="origin-links" aria-label="Field-note navigation"><a class="origin-link" href="https://kirkdiggler.github.io/rpg-toolkit/a-world-worth-exploring/"><span>Previous field note</span><strong>A World Worth Exploring →</strong></a></nav>
+<div class="opening-proof" aria-label="Story coordinates"><div><b>The pressure</b><span>pieces with different contracts</span></div><div><b>The question</b><span>what if we passed in data?</span></div><div><b>The discovery</b><span>the bus needed a home</span></div></div>
+</header>
+<div class="timeline" aria-label="Five panels: composition, mixed responsibilities, resolution, understanding the change, and interrupted rolls">
+<section class="timeline-panel" id="panel-1" data-panel="1" aria-labelledby="panel-1-title">
+<div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">01</span><span class="date-label">The pieces</span></div>
+<div class="panel-body"><div class="question-label">Before the table</div><h2 id="panel-1-title">The breakup changed the question</h2>
+<p class="lead">We had started breaking the encounter application into tools. The new <code>play/*</code> packages gave clocks, knowledge, records and interruptions their own contracts. We could compose an encounter from those pieces rather than make one large application responsible for everything.</p>
+<p class="reflection">That made the old combat machinery’s shape harder to ignore. It still had a little of everything in it. We were starting to find the seams.</p></div>
+</section>
+<section class="timeline-panel pressure-panel" id="panel-2" data-panel="2" aria-labelledby="panel-2-title">
+<div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">02</span><span class="date-label">The pressure</span></div>
+<div class="panel-body"><div class="question-label">The old shape did not fit</div><h2 id="panel-2-title">Who was running the interaction?</h2>
+<p class="lead">The new encounter composition returned values and needed no event bus. Combat still required one. It published turn events even though the clock already supplied that information.</p>
+<p class="reflection">Attaching behavior was scattered too. Loading a character included its effects; a monster needed several calls. Forgetting one could leave its traits out of the fight without an error. These weren’t just awkward connections. The responsibilities needed clearer homes.</p></div>
+</section>
+<section class="timeline-panel" id="panel-3" data-panel="3" aria-labelledby="panel-3-title">
+<div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">03</span><span class="date-label">The question</span></div>
+<div class="panel-body"><div class="question-label">What if we passed it all in?</div><h2 id="panel-3-title">The bus wasn’t disappearing</h2>
+<p class="lead">What if characters and monsters were data we passed into resolution? It could assemble their behavior, drive the interaction, and return the result and changed data.</p>
+<p class="reflection">Removing the bus from those pieces didn’t mean removing the bus. Resolution gave it a clear home. Effects could still contribute their behavior; the owners of state still applied their changes.</p>
+<figure><div class="scroll-hint">Swipe diagram →</div><div class="diagram-scroll" tabindex="0" role="region" aria-label="Scrollable diagram of resolution’s boundary">
+<svg viewBox="0 0 800 300" role="img" aria-labelledby="boundary-title boundary-desc">
+<title id="boundary-title">Data at the boundary, behavior inside</title><desc id="boundary-desc">Participant data and an action definition enter resolution. Resolution drives an interaction machine, owns the temporary bus and attaches state-owner handlers. Outcomes and changed data return to the caller for saving.</desc>
+<defs><marker id="boundary-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--bright)"/></marker></defs>
+<rect x="10" y="85" width="210" height="128" rx="3" class="box"/><text x="28" y="115" class="label">INPUT DATA</text><text x="28" y="151">Participants + state</text><text x="28" y="183" class="small">Action definition</text>
+<path d="M220 150H257" class="wire" marker-end="url(#boundary-arrow)"/>
+<rect x="265" y="15" width="280" height="270" rx="3" class="soft"/><text x="285" y="48" class="label">RESOLUTION DRIVES</text><text x="285" y="83">The interaction’s machine</text><text x="285" y="111" class="small">Strike / save / delivery</text>
+<rect x="281" y="137" width="248" height="126" rx="3" class="box"/><text x="298" y="168">One interaction bus</text><text x="298" y="198" class="small">Attached behavior contributes.</text><text x="298" y="227" class="small">State owners apply changes.</text><text x="298" y="249" class="small">The bus ends with the call.</text>
+<path d="M545 150H582" class="wire" marker-end="url(#boundary-arrow)"/>
+<rect x="590" y="85" width="200" height="128" rx="3" class="box"/><text x="608" y="115" class="label">RETURN VALUES</text><text x="608" y="143">Outcome</text><text x="608" y="169">+ changed data</text><text x="608" y="197" class="small">Caller saves changes.</text>
+</svg></div><figcaption>The pieces no longer needed to own the infrastructure that ran them.</figcaption></figure>
+</div></section>
+<section class="timeline-panel" id="panel-4" data-panel="4" aria-labelledby="panel-4-title">
+<div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">04</span><span class="date-label">The learning</span></div>
+<div class="panel-body"><div class="question-label">My understanding had to catch up</div><h2 id="panel-4-title">A place for the next step</h2>
+<p class="lead">Strike was a machine: a sequence of steps, with rules for what came next. It needed an attack roll. A spell might need a saving throw instead, or no roll at all. We could assemble the steps that interaction needed rather than force it through an attack.</p>
+<p class="reflection">That was what excited me. However complicated a spell sounded, I could begin to see where its checks, interruptions and consequences belonged. A contribution could describe follow-up work; the returned result could determine the next step. Resolution would drive it. We hadn’t solved every spell, but we had a place to put the work.</p>
+<p class="reflection">It took me a few updates to understand how those pieces worked together. I remember being on a run, reading my phone in the light rain and trying to get my head around it. I was still thinking about carrying frozen rolls across a boundary in terms of the old approach. We had changed the architecture. I was still learning how to think with it.</p></div>
+</section>
+<section class="timeline-panel" id="panel-5" data-panel="5" aria-labelledby="panel-5-title">
+<div class="rail"><span class="node" aria-hidden="true"></span><span class="rail-number" aria-hidden="true">05</span><span class="date-label">The payoff</span></div>
+<div class="panel-body"><div class="question-label">The interaction could wait</div><h2 id="panel-5-title">Spells became more approachable</h2>
+<p class="lead">Interrupts had been a major blocker. Shield was always on my mind: an attack underway, with a reaction that could change whether it landed. Other spells needed saves rather than attacks. They couldn’t all follow one fixed sequence.</p>
+<p class="reflection">The later Bardic Inspiration tests gave us a concrete pause: preserve the attack roll, ask whether to spend the die, then continue without rerolling or repeating completed work.</p>
+<figure><div class="scroll-hint">Swipe diagram →</div><div class="diagram-scroll" tabindex="0" role="region" aria-label="Scrollable frozen-roll example">
+<svg viewBox="0 0 800 210" role="img" aria-labelledby="roll-title roll-desc">
+<title id="roll-title">The original roll survives the question</title><desc id="roll-desc">In the historical Bardic Inspiration test, a d20 roll of eight plus four totals twelve. The machine freezes that work and asks whether to spend or keep the die. Spending a rolled four gives sixteen; keeping leaves twelve. Both paths preserve the original d20.</desc>
+<defs><marker id="roll-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10Z" fill="var(--bright)"/></marker></defs>
+<rect x="10" y="35" width="205" height="140" rx="3" class="box"/><text x="28" y="65" class="label">ALREADY ROLLED</text><text x="28" y="104">d20: 8 + bonus: 4</text><text x="28" y="140" class="small">Total so far: 12</text>
+<path d="M215 105H252" class="wire" marker-end="url(#roll-arrow)"/>
+<rect x="260" y="20" width="270" height="170" rx="3" class="soft"/><text x="280" y="52" class="label">PAUSE AND ASK</text><text x="280" y="90">Spend the die, or keep it?</text><text x="280" y="128" class="small">Freeze the roll and finished work.</text><text x="280" y="158" class="small">The answer resumes this strike.</text>
+<path d="M530 105H567" class="wire" marker-end="url(#roll-arrow)"/>
+<rect x="575" y="35" width="215" height="140" rx="3" class="box"/><text x="593" y="65" class="label">CONTINUE</text><text x="593" y="101">Spend: +4 → total 16</text><text x="593" y="131">Keep: total 12</text><text x="593" y="158" class="small">The original d20 stays 8.</text>
+</svg></div><figcaption>Two answers in the historical test; neither starts the attack over.</figcaption></figure>
+<p class="reflection">The definitions and their contributions were easier to test. Spells I had been avoiding became things I could reason about building.</p>
+<p class="end-question">The bus hadn’t disappeared.<br>We had found the seam that let more things use it.</p>
+</div></section>
+</div>
+<footer>
+<h2>Evidence trail</h2>
+<p>The gradual realization, reading my phone on a run in light rain, and Shield as a recurring motivation are my recollections. The exact exchange about frozen rolls has not been recovered. This note looks back from the previous article’s September authoring and holdable-object examples to the August breakup and resolution work; it does not make those later objects the cause of the earlier architecture.</p>
+<p>The contemporary <a href="https://github.com/KirkDiggler/rpg-toolkit/blob/3ed428ffa3b5554952ff7bd1216bf2d70e077ef9/docs/journey/053-resolution-seam-attach-responsibility.md">resolution discussion</a> records the mismatch between bus-free composition and bus-dependent combat, inconsistent attachment paths, and my proposal to pass participant data into resolution. The <a href="https://github.com/KirkDiggler/rpg-toolkit/blob/8a23a5730d85016a4c398c1b5e065a800deaa55c/docs/adr/0038-resolution-owns-the-bus.md">accepted boundary</a> gives resolution bus custody while machines trade in steps. State-owner handlers still apply changes; this was not the elimination of executable effects or a claim that every feature had become pure data.</p>
+<p>The <a href="https://github.com/KirkDiggler/rpg-toolkit/blob/aa2e87cb9207d3ff66046a4dd322224bec57c5e9/rulebooks/dnd5e/resolution/action.go">August action dispatcher</a> initially accepts only attack profiles. The <a href="https://github.com/KirkDiggler/rpg-toolkit/blob/4b5ff1e7de035b92b0465d41ac7cd18af3b3f0fb/rulebooks/dnd5e/resolution/action.go">September cast branch</a> interprets save-versus-direct-delivery data and reuses existing machines. A new spell does not necessarily need a new machine.</p>
+<p>The <a href="https://github.com/KirkDiggler/rpg-toolkit/blob/0d522a5104998d106a9e8c35d6fbac2cf7221613/rulebooks/dnd5e/resolution/strike_pose_test.go">Bardic Inspiration test assertions</a> preserve the d20 across spend/keep answers and check that the post-roll chain runs exactly once. That snapshot also refuses suspension inside a requested child machine. It is not proof that every nested reaction or Shield interaction was delivered.</p>
+<p class="scope">Retrospective field note. Historical source and test assertions inspected, not rerun. Diagrams explain the inspected contracts and test case; they are not recordings of a live play session. Development overlapped and the capabilities arrived incrementally.</p>
+</footer>
+</main>
+</body>
+</html>
