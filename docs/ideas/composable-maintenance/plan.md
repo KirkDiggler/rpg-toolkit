@@ -243,11 +243,12 @@ Historical source checkpoint below; whole-application sealing is superseded by R
 **Delivers:** S3's integrated finish line. **Owner:** cross-team verification; no new gameplay owner. **Prerequisites:** T1–T12 green on pushed real pins.
 **Files/artifacts:** untracked API `content/composable-maintenance-walk.yaml`, local manifest `envs/local/composable-maintenance.env`, checked mounted content, `docs/ideas/composable-maintenance/{implementation,qa}.md`, issue checklist and PR receipts. Design worktree owns docs; source worktrees own code. Ports chosen only after checking availability.
 **Native scenario:** normally create eligible casters and recipient; verify acquisition/private sheet; cast multi-recipient Bless/Bane; inspect source-aware rows; reload; exercise replacement/removal/rest/departure. Repeat relevant castle fight path. Positive damage/concentration outcomes may be named real-path test-backed where dice miss in the bounded walk; never force live evidence. Resistance example remains toolkit proof.
-- [x] Isolated stack boots on web :3042 / API :8142 at API `a8463915`, web `970625f9`; browser landing and dungeon catalog render without page errors, served binary dependencies/content hashes verified. Operator early-look handoff is the next human step; independent review/full walk have not started.
-- [ ] One independent runtime review round, disposition findings, complete bounded native QA with measured evidence.
-- [ ] Report exact heads and remaining merge authority; do not auto-merge.
+- [x] Isolated stack boots on web :3042 / API :8142; source-fix refresh serves API `14a3edec`, web `87f50a35`, root `87602d8f`. Binary providers and unchanged content hashes verified; operator early look preceded joined review.
+- [x] One bounded joined review and focused source-identity closure; the single Important finding is Addressed. [Implementation receipts](implementation.md) state exact coverage, reused gates and limits.
+- [x] Bounded two-client native QA: normal acquisition, payment, source inspector, signed dice, reload, replacement, short rest, departure, castle fight and end cleanup. [QA](qa.md) separates browser/transport observations from named-test-backed dice and persistence branches.
+- [x] Report exact heads and remaining blockers: session/API dependency-file base conflicts, queued root/web CI, absent current-head API CI, real release re-pins and explicit merge authority. No automatic merge.
 - [ ] On explicit merge-out authorization, merge/tag/repin inside-out, rerun consumer gates/head CI, close only delivered slices and clean only this wave's stack/worktrees.
-- [ ] Keep journal #863 open; preserve investigation, failures and proof limits.
+- [x] Keep journal #863 open; preserve investigation, failures and proof limits. This is not journal closeout.
 
 ## Requirement coverage
 
