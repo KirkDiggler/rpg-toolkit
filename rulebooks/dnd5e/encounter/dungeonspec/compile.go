@@ -1212,6 +1212,16 @@ func optionsOf(specs []OptionSpec, o encounter.Orientation) []encounter.Option {
 				Success:     machine.Beat(a.Success), Failure: machine.Beat(a.Failure),
 			}
 		}
+		// A SUCCESS ROW'S GRANT (rpg-project#929), keyed by the row it hangs on.
+		for i, row := range opt.Success {
+			if row.Recognize == nil {
+				continue
+			}
+			rec := recognitionOf("", row.Recognize, true, func(string, string) {})
+			option.Grants = append(option.Grants, encounter.RowGrant{
+				Row: i, Consequence: encounter.Consequence{Recognize: &rec},
+			})
+		}
 		out = append(out, option)
 	}
 

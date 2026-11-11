@@ -1505,6 +1505,16 @@ type AnswerSpec struct {
 	// every file that has one.
 	Flee *FleeSpec `yaml:"flee,omitempty"`
 
+	// Recognize is what this row grants when it is a line's SUCCESS row and
+	// is the row answered (rpg-project#929): the `recognize:` an
+	// interaction's outcome uses, the same words. Legal only on an option's
+	// success rows; a missed line grants nothing, and a table row is refused.
+	//
+	//	success:
+	//	  - say: Fair enough. In you go.
+	//	    recognize: { topic: admitted, holder: spoken_to, about: speaker }
+	Recognize *RecognizeSpec `yaml:"recognize,omitempty"`
+
 	// When is the condition this entry is on the table under
 	// (rpg-project#465, design §2). `time` ONLY: a social key IS the
 	// condition — `intimidated` already means "the threat landed" — and a
@@ -2638,7 +2648,7 @@ func (r *AnswerSpec) UnmarshalYAML(value *yaml.Node) error {
 		}
 		switch key {
 		case "weight", "say", "activity", "when", "fact", "flee", "hold", "attack", "toward", "dash", "away", "search",
-			"use", "with", "as":
+			"use", "with", "as", "recognize":
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.AnswerSpec",
 				value.Content[i].Line, key)

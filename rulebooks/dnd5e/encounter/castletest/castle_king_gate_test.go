@@ -579,7 +579,7 @@ func TestMadKingTroupeWarned(t *testing.T) {
 			t.Run("the entrance remembers the failed claim", func(t *testing.T) {
 				require.Equal(t, "warned-troupe", s.entrance())
 				require.Equal(t, everyGateSpeaker(false), s.gateOffers(hero, "troupe"), "the troupe claim is gone at the whole gate")
-				require.Equal(t, everyGateSpeaker(true), s.gateOffers(hero, "guest"), "the guest claim remains")
+				require.Equal(t, theCaptainAlone(true), s.gateOffers(hero, "guest"), "the guest claim remains, the captain's alone")
 			})
 
 			t.Run("nobody was recognized, and nobody is fighting", func(t *testing.T) {

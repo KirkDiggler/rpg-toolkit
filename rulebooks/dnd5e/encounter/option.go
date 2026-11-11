@@ -114,6 +114,12 @@ type Option struct {
 	// Failure is the rows answered when the check was missed, rolled under
 	// [AnswerFailure]. Nil answers nothing.
 	Failure []Answer `json:"Failure,omitempty"`
+
+	// Grants is what a SUCCESS row lands when it is the row answered
+	// (recognition.go, rpg-project#929): the consequence an interaction's
+	// outcome uses, on a reply. A plain line always lands; a checked one only
+	// when beaten. Nil grants nothing.
+	Grants []RowGrant `json:"Grants,omitempty"`
 }
 
 // Checked reports whether the line rolls a check — whether it carries any
@@ -709,6 +715,18 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 		return nil, fmt.Errorf("speak: %w", err)
 	}
 
+	// THE ROW'S GRANTS (rpg-project#929): a landed line's success row may
+	// grant a record, as an outcome does — after the answer that says it,
+	// before the interaction moves, every time the row lands.
+	if beaten && answered.pick != nil && len(option.Grants) > 0 {
+		iid, _ := optionInteraction(option)
+		if err := e.applyGrants(option, answered.pick.Entry, recognitionLine{
+			interaction: iid, option: option.ID, speaker: in.Actor, spokenTo: in.Target, witnesses: witnesses, at: at,
+		}); err != nil {
+			return nil, fmt.Errorf("speak: %w", err)
+		}
+	}
+
 	// THE VERDICT ADVANCES THE ENTRANCE (rpg-project#922, #916 R3): after the
 	// answer has landed and before anything else, stepped synchronously so
 	// the very next offer reads the new state — a landed beat would wait for
@@ -967,6 +985,9 @@ func validateOptions(options []Option) error {
 				return err
 			}
 		}
+		if err := validateGrants(o); err != nil {
+			return err
+		}
 		// ONE CONVERSATION PER LINE (rpg-project#924, interaction_hold.go): a line is
 		// offered with one interaction's revision, so it may touch one.
 		if touched := optionInteractions(o); len(touched) > 1 {
@@ -1055,6 +1076,12 @@ func validatePropOptions(id PropID, ref string, options []Option) error {
 		return fmt.Errorf("prop %q: %w: %w", id, err, ErrNoField)
 	}
 	for _, o := range options {
+		// A PROP RECOGNISES NOBODY (rpg-project#929): the holder of a grant is
+		// the one spoken to, and a prop holds nothing.
+		if len(o.Grants) > 0 {
+			return fmt.Errorf("prop %q option %q grants a record, and a prop holds nothing about anybody: %w",
+				id, o.ID, ErrNoField)
+		}
 		for _, requires := range o.Requires {
 			if inner, _ := unwrapNot(requires); inner != nil {
 				if _, ok := inner.(TriggerRecognized); ok {
@@ -1123,6 +1150,7 @@ func cloneOption(o Option) Option {
 	}
 	out.Success = cloneRows(o.Success)
 	out.Failure = cloneRows(o.Failure)
+	out.Grants = cloneGrants(o.Grants)
 
 	return out
 }

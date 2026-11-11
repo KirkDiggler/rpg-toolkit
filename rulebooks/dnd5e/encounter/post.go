@@ -500,7 +500,7 @@ func (e *Encounter) passLets(mover, holder MemberID, p Post) bool {
 // holding of a prop nobody can pick up, and a recognition on a topic no
 // interaction of the run grants — each a pass nobody could ever meet.
 func (e *Encounter) validatePass(pass []Trigger) error {
-	granted := grantedTopics(e.interactions)
+	granted := e.granted
 	for i, t := range pass {
 		what := fmt.Sprintf("pass[%d]", i)
 		if err := validateOptionRequirement(what, t); err != nil {

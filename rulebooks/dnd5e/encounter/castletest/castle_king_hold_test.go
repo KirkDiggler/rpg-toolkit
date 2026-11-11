@@ -224,6 +224,7 @@ func TestMadKingTheTroupePassesThePostedGuard(t *testing.T) {
 	require.True(t, s.recognizes(kingGate1, hero), "precondition: gate-1 heard the troupe let through, and recognises the hero")
 
 	s.stepTo(besideTheCrossing)
+	s.backOnHisPost()
 	require.Equal(t, beneathTheGate, s.at(kingGate1), "precondition: gate-1 stands on his post beneath the gate")
 	s.onHisPost(kingGate1, "precondition: and is posted")
 	held, _, err := s.enc.DoorHeldFor(hero, kingGateDoor)
