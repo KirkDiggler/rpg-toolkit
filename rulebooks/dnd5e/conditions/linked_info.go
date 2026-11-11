@@ -6,6 +6,7 @@ package conditions
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	generic "github.com/KirkDiggler/rpg-toolkit/mechanics/effects"
@@ -122,6 +123,22 @@ func DescribeCondition(in *DescribeConditionInput) (*DescribeConditionOutput, er
 		}
 		out.Display.Name = linked.bindings.Name
 		out.Duration = info.Duration
+		if info.Concentration != nil {
+			out.Display.Name = "Concentrating on " + info.Concentration.SourceName
+			out.Display.Detail = "Requires concentration."
+		}
+		details := []string{out.Display.Detail}
+		for _, clock := range info.Durations {
+			text := fmt.Sprintf("%d maintainer turn ends remaining.", clock.Progress.Remaining)
+			if len(info.Durations) > 1 {
+				text = clock.PartKey + ": " + text
+			}
+			if clock.Progress.SkipNext {
+				text += " The next turn end is a grace boundary."
+			}
+			details = append(details, text)
+		}
+		out.Display.Detail = strings.Join(details, " ")
 	}
 	return out, nil
 }
