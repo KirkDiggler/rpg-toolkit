@@ -254,11 +254,31 @@ func (s *AnswerTestSuite) TestAFactEntryTeachesEveryWitnessAndTurnsTheCamp() {
 	beats := s.answeredBeats(enc, alice)
 	s.Require().Len(beats, 1)
 	s.Equal("fact", beats[0]["word"])
-	s.Equal(string(campFact), beats[0]["fact"])
 	s.Equal(string(goblin), beats[0]["creature"])
-	s.Equal("speak", beats[0]["verb"])
-	s.Equal("threat", beats[0]["option"], "the line it answered")
-	s.Equal(true, beats[0]["beaten"])
+	for _, key := range []string{"fact", "verb", "option", "beaten"} {
+		s.NotContains(beats[0], key, "the pick teaches, names and judges nothing (rpg-project#933)")
+	}
+	line := s.lineVersion(enc, alice, alice)
+	s.Require().NotNil(line, "the line she said, as she perceived it")
+	s.Equal("threat", line["option"], "the line it answered travels with its words")
+	s.Equal(true, line["check"].(map[string]any)["beaten"])
+}
+
+// lineVersion is who's speech version of the option line speaker said — the
+// one beat that names the line and carries its check — nil when they caught
+// none (rpg-project#933).
+func (s *AnswerTestSuite) lineVersion(enc *encounter.Encounter, who, speaker core.EntityID) map[string]any {
+	story, err := enc.Story(&encounter.StoryInput{Audience: who})
+	s.Require().NoError(err)
+	for _, entry := range story {
+		var beat map[string]any
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		if beat["beat"] == encounter.BeatSpeech && beat["speaker"] == string(speaker) && beat["option"] != nil {
+			return beat
+		}
+	}
+
+	return nil
 }
 
 // neutralFront is THE FRONT ROOM AS THE DESIGN DESCRIBES IT: a declared
@@ -443,7 +463,8 @@ func (s *AnswerTestSuite) TestAFailedCheckReadsItsOwnTable() {
 	beats := s.answeredBeats(enc, alice)
 	s.Require().Len(beats, 1)
 	s.Contains(s.wordsCaught(enc, alice), "Big talk.", "the failure row's line, caught")
-	s.Equal(false, beats[0]["beaten"])
+	s.NotContains(beats[0], "beaten", "the verdict travels with the words, not the pick")
+	s.Equal(false, s.lineVersion(enc, alice, alice)["check"].(map[string]any)["beaten"])
 	s.Empty(beats[0]["word"], "an entry that only speaks carries no word")
 }
 

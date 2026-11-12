@@ -232,7 +232,7 @@ func (e *Encounter) answer(ctx context.Context, in answerInput) (answerOutput, e
 	learners := in.witnesses
 	if in.creature != "" && (chosen.Answer.Say != "" || chosen.Answer.Fact != "") {
 		heard, err := e.utter(utterance{
-			speaker: in.creature, to: in.actor, words: chosen.Answer.Say,
+			speaker: in.creature, to: in.actor, words: chosen.Answer.Say, fact: chosen.Answer.Fact,
 			loudness: loudnessWord(chosen.Answer.Loudness), at: in.at, silent: chosen.Answer.Say == "",
 		})
 		if err != nil {
@@ -270,7 +270,7 @@ func (e *Encounter) answerTime(member MemberID, chosen Answer, to MemberID) erro
 	}
 	at := uint64(e.clock.ToData().HighWater)
 	heard, err := e.utter(utterance{
-		speaker: member, to: to, words: chosen.Say, loudness: loudnessWord(chosen.Loudness), at: at,
+		speaker: member, to: to, words: chosen.Say, fact: chosen.Fact, loudness: loudnessWord(chosen.Loudness), at: at,
 		silent: chosen.Say == "",
 	})
 	if err != nil {
@@ -369,11 +369,22 @@ func (e *Encounter) appendAnsweredBeat(in answerInput, chosen *Pick) error {
 	return nil
 }
 
-// blankSpeech writes an answered beat's words and addressee empty
-// (rpg-project#933, R9): the beat keeps its shape, and a reader of it learns
-// neither; both travel only in the speech versions.
+// blankSpeech takes off an answered beat what only a member who caught the
+// words may know (rpg-project#933, R9): the words and the addressee are
+// written empty, and the line's id and verb, its verdict (`beaten`, and the
+// `success`/`failure` key a spoken answer is filed under), the fact the row
+// teaches are left out. Each reaches a member
+// only through their own [BeatSpeech] version and what it teaches them; the
+// pick's arithmetic — die, candidates, entry, temperament — stays, for those
+// who see the creature.
 func blankSpeech(body map[string]interface{}) {
 	body["say"], body["to"] = "", ""
+	for _, key := range []string{"option", "verb", "beaten", "fact"} {
+		delete(body, key)
+	}
+	if k, _ := body["key"].(string); k == string(AnswerSuccess) || k == string(AnswerFailure) {
+		delete(body, "key")
+	}
 }
 
 // answeredBy is who answered and to what: the creature (or the prop) whose

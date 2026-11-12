@@ -832,6 +832,10 @@ func (e *Encounter) appendPickBeat(member MemberID, chosen *Pick, named pickedFo
 	blankSpeech(body)
 	audience := e.audienceFor(subjectBeat, member)
 	if chosen.Answer.Say != "" {
+		// A pick that says something names nobody it acts on here either: the
+		// one it is said to is named only in the speech versions of those
+		// who see them.
+		delete(body, "target")
 		_, seers, err := e.audienceOf(member)
 		if err != nil {
 			return "", fmt.Errorf("pick beat: %w", err)

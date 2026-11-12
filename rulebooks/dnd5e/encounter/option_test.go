@@ -313,8 +313,14 @@ func (s *OptionTestSuite) TestAMissedCheckPicksFromFailure() {
 
 	answered := s.beatsOfKind(enc, goblin, encounter.BeatAnswered)
 	s.Require().Len(answered, 1)
-	s.Equal("threaten", answered[0]["option"], "the answer names the option it answered")
-	s.Equal(string(encounter.AnswerFailure), answered[0]["key"])
+	s.NotContains(answered[0], "option", "the pick names no line (rpg-project#933)")
+	s.NotContains(answered[0], "key", "nor which table, which would say how it went")
+	for _, v := range s.beatsOfKind(enc, goblin, encounter.BeatSpeech) {
+		if v["speaker"] == string(alice) {
+			s.Equal("threaten", v["option"], "the words name the option they answered")
+			s.Equal(false, v["check"].(map[string]any)["beaten"])
+		}
+	}
 	s.Empty(answered[0]["say"], "the pick carries no words (rpg-project#933)")
 	var said []any
 	for _, v := range s.beatsOfKind(enc, alice, encounter.BeatSpeech) {

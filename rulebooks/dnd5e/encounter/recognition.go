@@ -598,6 +598,7 @@ func (e *Encounter) tellRecognition(
 ) error {
 	type telling struct {
 		subjects []string
+		heard    bool
 		audience []MemberID
 	}
 	var tellings []*telling
@@ -617,10 +618,14 @@ func (e *Encounter) tellRecognition(
 		if len(told) == 0 {
 			continue
 		}
-		key := "subjects:" + strings.Join(told, "\x00")
+		// THE LINE IS NAMED ONLY TO WHOEVER CAUGHT IT (rpg-project#933): a
+		// reader who saw the grant and not the words is told the recognition
+		// and not which line granted it.
+		heard := line.hearers == nil || slices.Contains(line.hearers, reader)
+		key := fmt.Sprintf("heard:%t;subjects:%s", heard, strings.Join(told, "\x00"))
 		t, ok := byKey[key]
 		if !ok {
-			t = &telling{subjects: told}
+			t = &telling{subjects: told, heard: heard}
 			byKey[key] = t
 			tellings = append(tellings, t)
 		}
@@ -639,7 +644,7 @@ func (e *Encounter) tellRecognition(
 		if line.interaction != "" {
 			payload["interaction"] = string(line.interaction)
 		}
-		if line.option != "" {
+		if line.option != "" && t.heard {
 			payload["option"] = line.option
 		}
 		beat, err := json.Marshal(payload)

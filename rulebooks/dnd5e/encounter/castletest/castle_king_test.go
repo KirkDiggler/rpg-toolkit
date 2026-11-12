@@ -537,13 +537,15 @@ func (s *kingScene) answeredWith(fact string, audience encounter.MemberID) []enc
 	var out []encounter.MemberID
 	for _, beat := range story {
 		var body struct {
-			Beat     string `json:"beat"`
-			Creature string `json:"creature"`
-			Fact     string `json:"fact"`
+			Beat    string `json:"beat"`
+			Speaker string `json:"speaker"`
+			Fact    string `json:"fact"`
 		}
 		require.NoError(s.t, json.Unmarshal(beat.Payload, &body))
-		if body.Beat == encounter.BeatAnswered && body.Fact == fact {
-			out = append(out, encounter.MemberID(body.Creature))
+		// The fact travels with the words (rpg-project#933): only a speech
+		// version that caught them names it, and its speaker only when seen.
+		if body.Beat == encounter.BeatSpeech && body.Fact == fact {
+			out = append(out, encounter.MemberID(body.Speaker))
 		}
 	}
 

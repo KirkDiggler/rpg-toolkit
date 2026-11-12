@@ -340,7 +340,8 @@ func TestTheHailIsSpokenToTheMover(t *testing.T) {
 	require.NotNil(t, hail)
 	require.Equal(t, "alice", hail["to"], "his hail is said to the member he addressed")
 	answers := answersBy(t, enc, hailGuard)
-	require.Equal(t, "", answers[len(answers)-1]["target"], "the intent's target is not who he speaks to")
+	require.NotContains(t, answers[len(answers)-1], "target",
+		"the intent's target is not who he speaks to, and a pick that says something names nobody")
 }
 
 func TestTheBumpLineIsSpokenToTheMover(t *testing.T) {

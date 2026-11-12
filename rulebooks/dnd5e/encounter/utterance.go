@@ -62,6 +62,10 @@ type utterance struct {
 	roll     *spokenRoll
 	at       uint64
 
+	// fact is what the line teaches (R9): whoever catches the words learns
+	// it, and their version names it — nobody else's does.
+	fact FactID
+
 	// scene is the scene a kept roll's line was spoken in ([ReservedScene]):
 	// a kept settle is perceived as it was said, not as the world stands.
 	// Nil for every live utterance.
@@ -388,6 +392,9 @@ func (e *Encounter) appendSpeechBeats(u utterance, where spatial.Position, all [
 			}
 			if u.prop != "" {
 				body["prop"] = string(u.prop)
+			}
+			if u.fact != "" {
+				body["fact"] = string(u.fact)
 			}
 			if u.roll != nil {
 				roll := map[string]interface{}{

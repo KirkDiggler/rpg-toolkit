@@ -262,7 +262,7 @@ func TestVaultChase(t *testing.T) {
 		// her, a cell and a beat at a time, through the gate. Its first
 		// answer is preceded by the table it indexes (`table`,
 		// rpg-project#674), once.
-		"tick", "table", "answered",
+		"tick", "answered",
 		"moved", "moved", "moved", "moved", "moved",
 		"moved", "moved", "moved", "moved", "moved",
 		// beat 5: she reaches sanctuary. Her own step pays no round — she is

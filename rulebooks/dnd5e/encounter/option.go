@@ -868,8 +868,16 @@ func (e *Encounter) advanceInteraction(option Option, beaten bool, line recognit
 	if err != nil {
 		return fmt.Errorf("interaction %q: marshal beat: %w", a.Interaction, err)
 	}
+	// THE CONVERSATION MOVED BY A LINE IS TOLD TO WHOEVER CAUGHT IT
+	// (rpg-project#933, R9): the beat names the line and its verdict, so a
+	// member who only saw it said learns neither here; they see where the
+	// conversation stands in the next menu they are offered.
+	audience := witnesses
+	if line.hearers != nil {
+		audience = line.hearers
+	}
 	if _, err := e.appendBeat(&record.AppendInput{
-		At: at, Audience: witnesses, Tags: map[string]string{"tag": BeatInteraction}, Payload: payload,
+		At: at, Audience: audience, Tags: map[string]string{"tag": BeatInteraction}, Payload: payload,
 	}); err != nil {
 		return fmt.Errorf("interaction %q: %w", a.Interaction, err)
 	}
