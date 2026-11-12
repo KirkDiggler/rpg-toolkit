@@ -431,3 +431,38 @@ func (s *composerSuite) TestNilUnknownAndEmptyHaveExplicitOutcomes() {
 	s.Nil(out.Pick)
 	s.Empty(out.Steps)
 }
+
+// TestALineCarriesItsLoudnessUnread: a row's loudness comes back on the pick
+// exactly as authored, through the composer's owned copy, and is never read.
+func (s *composerSuite) TestALineCarriesItsLoudnessUnread() {
+	spec := compositionSpec("crier", "To arms!", 1)
+	spec.Table["work"][0].Loudness = "shout"
+	config := compositionConfig(spec)
+	composer, err := behavior.NewComposer(&config)
+	s.Require().NoError(err)
+	die := &exactDie{steps: []rollStep{{sides: 100, face: 1}}}
+	out, err := composer.Decide(context.Background(), &behavior.DecideInput{On: composeTick, Die: die})
+	s.Require().NoError(err)
+	s.Require().NotNil(out.Pick)
+	s.Equal("To arms!", out.Pick.Answer.Say)
+	s.Equal("shout", out.Pick.Answer.Loudness, "carried as authored")
+}
+
+// TestATableWithoutLoudnessKeepsItsDigest: a definition authored before the
+// field existed digests exactly as it did (the value pinned from main), and a
+// loudness, once authored, is part of the definition.
+func (s *composerSuite) TestATableWithoutLoudnessKeepsItsDigest() {
+	config := compositionConfig(compositionSpec("worker", "work", 1))
+	composer, err := behavior.NewComposer(&config)
+	s.Require().NoError(err)
+	s.Equal("38ebab5ccf0b366cdf68a03f9efeb796c86eded4c45d485e06f10820526b2784",
+		composer.ToData().Instances[0].Definition, "an existing table is unchanged byte for byte")
+
+	loud := compositionSpec("worker", "work", 1)
+	loud.Table["work"][0].Loudness = "shout"
+	loudConfig := compositionConfig(loud)
+	louder, err := behavior.NewComposer(&loudConfig)
+	s.Require().NoError(err)
+	s.NotEqual(composer.ToData().Instances[0].Definition, louder.ToData().Instances[0].Definition,
+		"an authored loudness is part of the definition")
+}
