@@ -28,7 +28,11 @@
 // BindPart selects reusable local recipes from that same kind table. Concentration
 // requests a CON follow-up from positive applied damage and has no duration counter;
 // duration owns its counter/grace separately. End-on and until-empty policies are
-// independent lifecycle parts. Resistance reuses its existing incoming fold.
+// independent lifecycle parts. Combat-activity upkeep owns attack/applied-damage
+// flags and optional first-end grace, not a clock or concentration. End-on selects
+// rest, combat-end, next received turn-start or dropped-to-zero for its holder.
+// Actual last-member loss reports the source-neutral members_empty cause.
+// Resistance reuses its existing incoming fold.
 // Roll modifiers are query-only, describe signed dice with selection metadata, and
 // never subscribe a second roll handler. DescribeRoll and Assess share the kind's
 // applicability; RollQuery names an actual recipient roll, not a caster's outgoing

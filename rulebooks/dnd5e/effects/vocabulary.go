@@ -23,6 +23,8 @@ const (
 	FactAbility machine.FactName = "action.ability"
 	// Holder selects the entity the occurrence is about.
 	Holder machine.Selector = "holder"
+	// BeatTurnStart names the holder's next received turn-start occurrence.
+	BeatTurnStart machine.Beat = "turn_start"
 	// BeatTurnEnd names an entity's turn end and current round.
 	BeatTurnEnd machine.Beat = "turn_end"
 	// BeatDamageReceived observes positive, already-applied DamageTaken facts.
@@ -141,7 +143,8 @@ func machineVocabulary() machine.Vocabulary {
 		beatMembersChanged: typedBeat(dndevents.ApplicationMembersChangedTopic, func(e dndevents.ApplicationMembersChangedEvent) (string, bool) {
 			return e.Owner.MemberID, e.Owner.MemberID != ""
 		}, nil),
-		BeatTurnEnd: typedBeat(dndevents.TurnEndTopic, func(e dndevents.TurnEndEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, func(e dndevents.TurnEndEvent) (int, bool) { return e.Round, e.Round > 0 }),
+		BeatTurnStart: typedBeat(dndevents.TurnStartTopic, func(e dndevents.TurnStartEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, nil),
+		BeatTurnEnd:   typedBeat(dndevents.TurnEndTopic, func(e dndevents.TurnEndEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, func(e dndevents.TurnEndEvent) (int, bool) { return e.Round, e.Round > 0 }),
 		BeatDamageReceived: typedBeat(dndevents.DamageTakenTopic, func(e *dndevents.DamageTakenEvent) (string, bool) {
 			if e == nil || e.Amount <= 0 {
 				return "", false

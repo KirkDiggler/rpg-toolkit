@@ -6,6 +6,7 @@ package effects
 import (
 	"encoding/json/jsontext"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
@@ -17,7 +18,7 @@ import (
 const (
 	// KindUntilEmpty ends after the last linked member actually leaves.
 	KindUntilEmpty generic.KindName = "until_empty"
-	// KindEndOn supplies explicit rest/combat-end policy independently of concentration.
+	// KindEndOn supplies explicit holder-event endings independently of concentration.
 	KindEndOn generic.KindName = "end_on"
 
 	beatMembersChanged machine.Beat     = "members_changed"
@@ -49,8 +50,8 @@ func parseEndOn(declaration PartDeclaration) (endOnParams, error) {
 	if err != nil {
 		return endOnParams{}, err
 	}
-	if (params.Beat != BeatRest && params.Beat != BeatCombatEnd) || strings.TrimSpace(params.Reason) == "" {
-		return endOnParams{}, fmt.Errorf("end policy requires rest/combat_end and an explicit reason")
+	if !slices.Contains([]machine.Beat{BeatRest, BeatCombatEnd, BeatTurnStart, BeatDroppedToZero}, params.Beat) || strings.TrimSpace(params.Reason) == "" {
+		return endOnParams{}, fmt.Errorf("end policy requires a supported holder beat and an explicit reason")
 	}
 	return params, nil
 }
@@ -76,7 +77,7 @@ func bindUntilEmptyPart(in *BindPartInput) (boundPart, error) {
 		return boundPart{}, fmt.Errorf("until_empty owner ref: %w", err)
 	}
 	return boundPart{recipe: endPartRecipe(in.Ref, machine.Transition{
-		On: beatMembersChanged, About: Holder, To: partStateEnded, Reason: "spell_ended",
+		On: beatMembersChanged, About: Holder, To: partStateEnded, Reason: "members_empty",
 		When: &machine.Guard{All: []machine.Guard{
 			{Fact: &machine.FactLeaf{Name: factApplication, Op: machine.OpEq, Value: in.ApplicationID}},
 			{Fact: &machine.FactLeaf{Name: factOwnerRef, Op: machine.OpEq, Value: in.Owner.ConditionRef}},

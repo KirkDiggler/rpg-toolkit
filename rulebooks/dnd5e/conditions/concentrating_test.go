@@ -49,7 +49,7 @@ func (s *applicationBindingSuite) TestConcentrationDamageRequestsAndDCFloor() {
 }
 
 func (s *applicationBindingSuite) TestEveryOwnedEndPathPublishesOneFact() {
-	for _, reason := range []string{"damage", "recast", "duration", "combat_end", "rest", "caster_down", "spell_ended"} {
+	for _, reason := range []string{"damage", "recast", "duration", "combat_end", "rest", "caster_down", "members_empty"} {
 		s.Run(reason, func() {
 			sheets := s.sheets()
 			ctx, bus := context.Background(), events.NewEventBus()
@@ -71,7 +71,7 @@ func (s *applicationBindingSuite) TestEveryOwnedEndPathPublishesOneFact() {
 				err = dndevents.RestTopic.On(bus).Publish(ctx, dndevents.RestEvent{CharacterID: "caster", RestType: coreResources.ResetLongRest})
 			case "caster_down":
 				err = dndevents.DamageTakenTopic.On(bus).Publish(ctx, &dndevents.DamageTakenEvent{MemberID: "caster", Amount: 5, DroppedToZero: true})
-			case "spell_ended":
+			case "members_empty":
 				for _, id := range []string{"one", "two"} {
 					s.Require().NoError(dndevents.ConditionRemovedTopic.On(bus).Publish(ctx, dndevents.ConditionRemovedEvent{MemberID: id, ConditionRef: refs.Conditions.LinkedEffects().String(), SourceID: "caster", ApplicationID: "app", Reason: "consumed"}))
 				}
