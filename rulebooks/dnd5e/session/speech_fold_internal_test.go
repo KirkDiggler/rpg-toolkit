@@ -328,3 +328,25 @@ func (s *ActFoldSuite) TestAFactRidesOnlyWithTheWords() {
 		})
 	}
 }
+
+// TestASpeechVersionMissingWhatItOwesIsRefusedLoudly: a version that did not
+// see its speaker and names no hops, and one naming a prop spoken to with no
+// words, are refused when read (the entry stands undecoded, with its
+// reason) rather than read as "in your room" or as a prop guessed at.
+func (s *ActFoldSuite) TestASpeechVersionMissingWhatItOwesIsRefusedLoudly() {
+	for _, tc := range []struct {
+		name    string
+		version map[string]any
+		says    string
+	}{
+		{"unseen, no hops", map[string]any{"words": "Evening."}, "names no hops"},
+		{"a prop, no words", map[string]any{"speaker": "alice", "prop": "altar"}, "without the words"},
+	} {
+		s.Run(tc.name, func() {
+			acts := foldActs("sess", "bob", []record.Entry{s.beat("speak:one", speechVersion(tc.version))})
+			s.Require().Len(acts, 1, "the entry stands in the stream")
+			s.Nil(acts[0].Body, "with no body")
+			s.Contains(acts[0].Undecoded, tc.says)
+		})
+	}
+}

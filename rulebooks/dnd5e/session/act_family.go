@@ -889,6 +889,16 @@ func speechActPiece(payload []byte) (piece, error) {
 	if err := json.Unmarshal(payload, &p); err != nil {
 		return piece{}, err
 	}
+	// FAIL CLOSED, NOT SILENT: a version that did not see its speaker says
+	// how many rooms off the voice was, and a prop is named as spoken to only
+	// beside the words that were said to it. Read any other way, a missing
+	// distance would become "in your room" and a prop a guess.
+	if p.Speaker == "" && p.Hops == nil {
+		return piece{}, fmt.Errorf("speech %q: the speaker was not seen and the version names no hops", p.Utterance)
+	}
+	if p.Prop != "" && p.Words == nil {
+		return piece{}, fmt.Errorf("speech %q: a prop is named as spoken to without the words", p.Utterance)
+	}
 	act := SpeechAct{Utterance: p.Utterance, Speaker: member(p.Speaker), Place: p.Place, Loudness: p.Loudness}
 	switch {
 	case p.Prop != "":
@@ -897,10 +907,7 @@ func speechActPiece(payload []byte) (piece, error) {
 		act.SpokenTo = member(p.To)
 	}
 	if p.Speaker == "" {
-		hops := 0
-		if p.Hops != nil {
-			hops = *p.Hops
-		}
+		hops := *p.Hops
 		act.Hops = &hops
 	}
 	var senses []Sense
