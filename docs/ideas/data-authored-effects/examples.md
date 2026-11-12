@@ -1,6 +1,6 @@
 # Authored examples
 
-These are **proposed input examples**, not fixtures a released loader can execute.
+These are **agreed input examples**, not yet fixtures a released loader can execute.
 They make [R4/R5](design.md#rulings) concrete. The item adapter supplies user,
 recipient, origin and invocation separately; none are saved into the reusable
 library. Test-world setup and assertions also stay outside this content.
@@ -120,7 +120,7 @@ library. Test-world setup and assertions also stay outside this content.
 ```
 
 The `action.opportunity` fact, combat-activity part, attack-side configuration,
-additional end-on beats and payload When/Amount fields are proposed additions.
+additional end-on beats and payload When/Amount fields are planned additions.
 The other words reuse current meanings. The detailed implementation must verify
 literal spellings against canonical types; the schema must not introduce aliases
 for existing facts or ability identifiers.
@@ -139,14 +139,14 @@ its definition key changes:
 }
 ```
 
-The proposed illustrative item pool has maximum 1 and no recovery occurrences.
+The agreed illustrative item pool has maximum 1 and no recovery occurrences.
 Ring/scroll/sausage economics are not being balanced here. After a successful use,
 remaining availability is zero; the inventory object is not deleted. A spent or
 detached item is not itself an ending rule for the delivered grant.
 
 ## Observable fixture policies
 
-| Fixture | Proposed observable behavior |
+| Fixture | Agreed observable behavior |
 |---|---|
 | Ring | User A grants B the four benefits with fixed +2 eligible damage. B can remain idle without losing them. There is no duration cap in this definition. A's concentration loss/replacement, zero HP through concentration, or A's rest ends the application. |
 | Scroll | User A grants B the same benefits. B owns upkeep; A need not concentrate or remain a lifetime participant. B's first turn end skips only the activity check. Duration still counts that end: at most ten B turn ends total. A later idle B turn end, B's rest/combat end/zero HP, or actual last-member loss ends it. |

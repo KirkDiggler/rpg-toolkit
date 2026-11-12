@@ -3,8 +3,9 @@
 For [composable conditions #703](https://github.com/KirkDiggler/rpg-project/issues/703),
 this composition uses the existing rulebook vocabulary and linked applications to
 turn authored definitions into independently maintained benefits. The
-[design](design.md) separates settled direction from proposed detailed contracts;
-[examples.md](examples.md) supplies concrete input to judge. There is no second
+[design](design.md) fixes the agreed contracts;
+[examples.md](examples.md) supplies the agreed fixture inputs. The
+[implementation plan](plan.md) maps those contracts to tasks and proof. There is no second
 state engine and no effect implementation named after an item. R1/R4.
 
 ## Component shape
@@ -31,7 +32,7 @@ flowchart LR
     Q --> View["Test assertions now; native renderer later"]
 ```
 
-The new public types below are proposed contracts, not a claim that the names
+The new public types below are implementation contracts, not a claim that the names
 already exist. Existing types retain their names explicitly. R4.
 
 ## Ownership and contracts
@@ -44,7 +45,7 @@ already exist. Existing types retain their names explicitly. R4.
 | Existing `conditions.PrepareApplication` | Actual participant/candidate validation and replacement description | Bound spec, origin, invocation and `[]ParticipantConditions` → `PreparedApplication` |
 | Experimental item adapter | Generic definition-grant lookup, source attribution and payment sequencing | Existing `items.Grant`/`items.Offer` plus explicit use context → prepared result via existing `items.Use` |
 | Existing application binding | Generation-scoped custody, per-entry finalization and exact removal | Paid owner/recipient delivery → existing linked condition instances |
-| `effects.ValidatePartTemplate` | Identity-free template validation and kind-owned benefit/maintenance classification | `ValidatePartTemplateInput{Template PartTemplate}` → `ValidatePartTemplateOutput{Class PartClass}` |
+| `effects.ValidatePartTemplate` | Identity-free template validation and kind-owned benefit/maintenance classification | `ValidatePartTemplateInput{Template PartTemplate}` → `ValidatePartTemplateOutput{Class PartClass, Capabilities PartCapabilities}` |
 | `effects.BindPart` and kind table | Mechanical meaning, guard, amount, local recipe and immutable output projection | Extended `PartDeclaration` → existing `generic.PartInput` and provider-owned descriptive values |
 | `conditions.ProjectHeldEffects` | Value-only projection of configured target effects | `ProjectHeldEffectsInput{HolderID, Conditions}` → `ProjectHeldEffectsOutput{Details []contributions.HeldEffectDetail}` |
 | `contributions.Frame` | The facts available for this particular question | Existing held identities plus copied configured details → assessment context |
@@ -118,7 +119,7 @@ An effect that helps the eater's attacks and one that helps attacks **against**
 the eater are different bearings. Swapping actor and target in an existing frame
 would also swap ability, weapon and observer facts, so it is not a valid shortcut.
 
-The proposed frame detail is a value of this shape:
+The configured frame detail is a value of this shape:
 
 ```text
 HeldEffectDetail
@@ -188,8 +189,8 @@ not variants of one convenient ID or one blob.
 R3 bounds this work to toolkit definitions, primitives, fixture consumers and
 teaching docs. Ordinary native Raging/Reckless behavior, studio UI, item inventory,
 network contracts, observation disclosure policy and the full against-holder
-migration are not silently included. R4/R5 carry the detailed-contract and
-example-policy questions; [examples.md](examples.md) names the exact proposed
+migration are not silently included. R4/R5 fix the detailed contracts and
+example policies; [examples.md](examples.md) names the exact proposed
 benefits, drawbacks, clocks and prices rather than calling them standard rules.
 
 ## Where a change lands

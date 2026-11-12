@@ -1,6 +1,6 @@
 # Run — 2026-11-12 — Data-authored effect compositions
 
-Design preparation for [rpg-project#703](https://github.com/KirkDiggler/rpg-project/issues/703), with item consumer [#850](https://github.com/KirkDiggler/rpg-project/issues/850). Base: toolkit main at [d7069af9](https://github.com/KirkDiggler/rpg-toolkit/commit/d7069af9). Implementation slices are not selected yet.
+Design preparation for [rpg-project#703](https://github.com/KirkDiggler/rpg-project/issues/703), with item consumer [#850](https://github.com/KirkDiggler/rpg-project/issues/850). Base: toolkit main at [d7069af9](https://github.com/KirkDiggler/rpg-toolkit/commit/d7069af9). Implementation slices: provider [#946](https://github.com/KirkDiggler/rpg-project/issues/946), item cookbook [#947](https://github.com/KirkDiggler/rpg-project/issues/947).
 
 ## Shipped
 
@@ -10,7 +10,9 @@ Design preparation for [rpg-project#703](https://github.com/KirkDiggler/rpg-proj
 
 - KirkDiggler selected independently configurable benefits and maintenance: a ring maintains another recipient's Rage benefits through the user's concentration instead of recipient activity, while a scroll can use recipient attack/take-damage upkeep; the future studio authors the same data as the tests — [direction](https://github.com/KirkDiggler/rpg-project/issues/703#issuecomment-6831644739).
 
-- KirkDiggler approved the component shape; concrete authoring/frame contracts and explicit example policies remain separate open R4/R5 proposals, not silently attributed to that approval — [shape approval](https://github.com/KirkDiggler/rpg-toolkit/pull/2399#issuecomment-6832622204).
+- At the shape checkpoint, KirkDiggler approved the component boundary; concrete authoring/frame contracts and explicit example policies remained open R4/R5 proposals, not silently attributed to that approval — [shape approval](https://github.com/KirkDiggler/rpg-toolkit/pull/2399#issuecomment-6832622204).
+
+- KirkDiggler accepted the examples and requested the implementation plan; R4/R5 are settled and the current turn is planning-only, not runtime or release authorization — [planning direction](https://github.com/KirkDiggler/rpg-toolkit/pull/2399#issuecomment-6833714502).
 
 ## Found
 
@@ -19,6 +21,8 @@ Design preparation for [rpg-project#703](https://github.com/KirkDiggler/rpg-proj
 - Existing root effects/conditions and item-example tests pass at the measured base; those baselines do not establish the proposed fixture capability — [evidence](https://github.com/KirkDiggler/rpg-project/issues/703#issuecomment-6831644739).
 
 - CurrentOutputs retains pre-terminal observations while Snapshot already reports terminal state; configured-effect projection must follow the former rather than infer absence from the latter — [projection contract](../../docs/ideas/data-authored-effects/design.md#information-and-execution).
+
+- The checked plan assigns nine tasks to two module-scoped delivery slices, including typed capability/projection contracts and explicit native exclusions — [coverage and seam checks](../../docs/ideas/data-authored-effects/plan.md#visible-plan-checks).
 
 ## Mistaken
 

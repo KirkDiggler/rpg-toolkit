@@ -20,7 +20,7 @@ flowchart TD
 ```
 
 The component shape is settled under R1. Concrete types and contracts below are
-proposed under R4; example policies are proposed under R5. The [walkthrough](README.md)
+settled under R4; example policies are settled under R5. The [walkthrough](README.md)
 explains the boundaries and the [examples](examples.md) show the authored surface.
 
 ## Law
@@ -161,17 +161,15 @@ explains the boundaries and the [examples](examples.md) show the authored surfac
 | R1 | settled | Mechanical code plus authored composition; role binding into existing application/part machinery, no new runtime | KirkDiggler | 2026-11-12 |
 | R2 | settled | Ring concentration replaces recipient activity upkeep; scroll can select recipient attack/take-damage upkeep; benefits remain individually reusable | KirkDiggler | 2026-11-12 |
 | R3 | settled | Fixture-first teaching/authoring path and effects README; studio UI/native inventory and unrelated migrations are outside the first cut | KirkDiggler | 2026-11-12 |
-| R4 | open | Concrete library, binding, part and frame-detail contracts in Law | — | — |
-| R5 | open | Explicit illustrative fixture policies in examples.md, including one-use availability rather than inventory destruction | — | — |
+| R4 | settled | Concrete library, binding, part and frame-detail contracts in Law | KirkDiggler | 2026-11-12 |
+| R5 | settled | Explicit illustrative fixture policies in examples.md, including one-use availability rather than inventory destruction | KirkDiggler | 2026-11-12 |
 
 ## Open
 
-- **R4 — detailed contracts:** the authored roles, bounded benefit-set reuse,
-  provider-owned target details and frozen-definition reload contract need
-  agreement as a whole. They are proposed additions, not pre-existing API.
-- **R5 — fixture behavior:** the examples propose concrete amounts, eligibility,
-  clocks and price policies so tests have observable outcomes. Those choices are
-  not inferred canonical keep-item rules.
-- Full studio authoring, native targeting/inventory/consumption, native frame
-  producer adoption and the rest of the against-holder family remain outside
-  this cut. A consumer brings their integration requirements later.
+No required design decision remains open for this fixture cut. Concrete types
+are implementation contracts, not a claim that the API is already available.
+The example policies are illustrative fixtures, not canonical keep-item balance.
+
+Full studio authoring, native targeting/inventory/consumption, native frame
+producer adoption and the rest of the against-holder family remain outside
+this cut. A consumer brings their integration requirements later.

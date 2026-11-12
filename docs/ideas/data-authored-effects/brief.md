@@ -4,8 +4,8 @@ Working brief and proposed component shape for [composable conditions #703](http
 
 The component boundary is agreed. The [walkthrough](README.md),
 [detailed design](design.md) and [authored examples](examples.md) carry the
-concrete proposal. R4/R5 identify the remaining detailed-contract and fixture
-policy decisions; this brief is not an implementation plan.
+accepted contracts and fixture policies, R1–R5. The [implementation plan](plan.md)
+names the delivery slices, task interfaces and proofs.
 
 ## Outcome
 
@@ -139,7 +139,7 @@ scripting engine or historical-data reader. The existing operator walk stack and
 run data are not changed. This fixture cut supplies reusable contracts for those
 later consumers; it does not claim they are delivered.
 
-## Decisions for the detailed design
+## Contracts covered by the detailed design
 
 - The exact authored definition/bundle representation and separation from bound
   application data and runtime snapshots.
@@ -153,6 +153,6 @@ later consumers; it does not claim they are delivered.
   sausage is reckless-style, not automatically a promise to implement every
   activation rule of the Barbarian feature.
 
-Detailed design must settle these contracts before an implementation plan is
-claimed complete. The against-holder portion coordinates with [#707](https://github.com/KirkDiggler/rpg-project/issues/707);
+The detailed design settles these contracts; the plan assigns each an owner and
+proof. The against-holder portion coordinates with [#707](https://github.com/KirkDiggler/rpg-project/issues/707);
 it does not silently expand this cut to every condition named there.
