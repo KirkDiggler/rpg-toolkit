@@ -139,6 +139,20 @@ func (s *TableSuite) TestATableThisBuildCannotRollIsRefusedAtTheDoor() {
 			says: "`heard: { kind: growl }` is not a sound this build makes: they are boom, crash, clang, voice",
 		},
 		{
+			// A RAISED VOICE IS SEALED HERE TOO (rpg-project#933): a loudness
+			// this rulebook names, and only on a voice.
+			name: "a `heard` loudness this rulebook does not name",
+			table: Table{AnswerTime: {{Weight: 1, Hold: true,
+				When: []When{{Heard: &HeardWhen{Kind: behavior.Name{Literal: SoundVoice}, Within: 2, Loudness: "yell"}}}}}},
+			says: "`heard` loudness \"yell\" is not one of whisper, speak, shout or scream",
+		},
+		{
+			name: "a `heard` loudness on a clang",
+			table: Table{AnswerTime: {{Weight: 1, Hold: true,
+				When: []When{{Heard: &HeardWhen{Kind: behavior.Name{Literal: SoundClang}, Within: 2, Loudness: "shout"}}}}}},
+			says: "only a voice is said at a loudness",
+		},
+		{
 			name: "an unknown enemy word inside a `not`",
 			table: Table{AnswerTime: {{Weight: 1, Hold: true,
 				When: []When{{Not: &When{Enemy: "nearby"}}}}}},

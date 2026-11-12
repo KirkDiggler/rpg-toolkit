@@ -4,6 +4,7 @@
 package castletest
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -120,7 +121,7 @@ func TestMadKingNoBeatTellsAReaderMoreThanTheirVersion(t *testing.T) {
 		// who sees it said and catches none of it: the route a line's grant
 		// told to its witnesses would fail (rpg-project#933, L4).
 		"the claim whispered": func(t *testing.T) *kingScene {
-			s := openTheCastleAs(t, castleHost{at: gatehouseSeat, whispered: map[string]bool{"guest": true}})
+			s := openTheCastleAs(t, castleHost{at: gatehouseSeat, loudness: map[string]string{"guest": "whisper"}})
 			s.walkTo(s.at(kingCaptain))
 			s.joinListener()
 			s.said(kingCaptain, "guest", "persuasion", true)
@@ -131,6 +132,14 @@ func TestMadKingNoBeatTellsAReaderMoreThanTheirVersion(t *testing.T) {
 				saw = saw || (b.Speaker == string(hero) && b.Words == "")
 			}
 			require.True(t, saw, "precondition: but saw the hero say it")
+			return s
+		},
+		// A SHOUTED PLAYER LINE (rpg-project#933): the companion hails the
+		// stranger outside the gate at the top of his voice, which reaches
+		// the next room.
+		"the shout at the gate": func(t *testing.T) *kingScene {
+			s := openTheHeldGate(t, castleHost{at: besideTheCrossingSeat, soleGateHolder: true})
+			s.shoutOutside()
 			return s
 		},
 		"the thief": func(t *testing.T) *kingScene {
@@ -344,5 +353,35 @@ func requireNoBeatTellsMoreThanItsVersion(t *testing.T, enc *encounter.Encounter
 			}
 			require.True(t, caught, "%s holds that %s did %s without seeing them say a line that worked", m.ID, d.Actor, d.Verb)
 		}
+	}
+}
+
+// TestMadKingGateGuardsAnswerShoutsNotTalk is the operator's ruling on
+// rpg-project#930 at the gate (rpg-project#933): the hero greets the captain
+// in gate-1's earshot and gate-1 stays posted — talk is not a disturbance;
+// the same line shouted turns him alert, as any clang would.
+func TestMadKingGateGuardsAnswerShoutsNotTalk(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		loudness string
+		state    string
+	}{{"", "posted"}, {"shout", "alert"}} {
+		t.Run("greeted at "+tc.loudness, func(t *testing.T) {
+			t.Parallel()
+			s := openTheCastleAs(t, castleHost{at: gatehouseSeat, loudness: map[string]string{"greet": tc.loudness}})
+			s.walkTo(s.at(kingCaptain))
+			require.Equal(t, "posted", machineState(t, s.enc, kingGate1), "precondition: gate-1 on his post")
+			_, err := s.enc.Speak(context.Background(), &encounter.SpeakInput{
+				Range: speakReach, Actor: hero, Target: kingCaptain, OptionID: "greet", Roller: rollsOne{},
+			})
+			require.NoError(t, err, "a plain line")
+			s.aRoundPasses() // what he heard is answered on the world's round
+			heard := false
+			for _, b := range s.beatsOf(kingGate1, encounter.BeatSpeech) {
+				heard = heard || b.Speaker == string(hero) || b.Words != ""
+			}
+			require.True(t, heard, "precondition: gate-1 perceived the hero's line")
+			require.Equal(t, tc.state, machineState(t, s.enc, kingGate1))
+		})
 	}
 }

@@ -1291,7 +1291,7 @@ func oneWhenOf(when *WhenSpec) encounter.When {
 		Threat: behavior.ThreatWord(when.Threat),
 	}
 	if when.Heard != nil {
-		out.Heard = &encounter.HeardWhen{Kind: nameOf(when.Heard.Kind), Within: when.Heard.Within}
+		out.Heard = &encounter.HeardWhen{Kind: nameOf(when.Heard.Kind), Within: when.Heard.Within, Loudness: when.Heard.Loudness}
 	}
 	if when.Not != nil {
 		inner := oneWhenOf(when.Not)

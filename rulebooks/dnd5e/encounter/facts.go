@@ -80,6 +80,9 @@ func projectFacts(in factsInput) Facts {
 		CanMove:   in.canMove,
 		Sounds:    in.sounds,
 		Known:     in.known,
+		// THE ORDER A `heard` LOUDNESS IS JUDGED BY (rpg-project#933): this
+		// rulebook's words, quietest first; mind/behavior knows none of them.
+		Loudness: LoudnessOrder(),
 	}
 	for _, s := range in.sightings {
 		if !s.opposed {

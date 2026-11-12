@@ -538,8 +538,11 @@ func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 		require.Equal(t, beneathTheGate, s.at(kingGate1), "and he still holds the crossing")
 	})
 
-	t.Run("drawn off by a voice, the sneaker crosses on gate-2's blind beat", func(t *testing.T) {
+	t.Run("drawn off by a shout, the sneaker crosses on gate-2's blind beat", func(t *testing.T) {
 		t.Parallel()
+		// GUARDS ANSWER SHOUTS (rpg-project#933): the companion hails the
+		// stranger at the top of his voice; talk would leave gate-1 on the
+		// crossing.
 		s, stealth := openTheSneak(t)
 		s.declareBehindTheCorner()
 		s.stepTo(besideTheCorner)
@@ -553,10 +556,10 @@ func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 		require.True(t, s.pace(besideTheCorner, beside, 60, justArrived), "gate-2 comes to her beat post")
 		require.Equal(t, beneathTheGate, s.at(kingGate1), "precondition: gate-1 holds the crossing")
 
-		// The noise: the companion outside asks the stranger about the
-		// bustle, and the stranger's answer is a voice the post hears. He
-		// answers it on the world's next round, and the sneaker goes then.
-		s.voiceOutside()
+		// The noise: the companion outside hails the stranger at the top of
+		// his voice, a raised voice the post hears. He answers it on the
+		// world's next round, and the sneaker goes then.
+		s.shoutOutside()
 		start := s.enc.ToData().Clock.HighWater
 		require.True(t, s.pace(besideTheCorner, beside, 12, func() bool { return s.enc.ToData().Clock.HighWater > start }),
 			"a round passes")
@@ -622,9 +625,11 @@ var (
 	besideTheStranger = spatial.Position{X: 6, Y: 14}
 )
 
-// voiceOutside has the companion ask the stranger about the bustle: the
-// stranger answers aloud, a voice the gate post hears, and the world round
-// the asking takes is the round the post answers it in.
+// voiceOutside has the companion ask the stranger about the bustle: spoken
+// words, which the gate post hears and does not answer (guards answer
+// shouts, not talk, rpg-project#933).
+// The world round the asking takes is a round the post could have answered
+// in.
 func (s *kingScene) voiceOutside() {
 	s.t.Helper()
 	_, err := s.enc.Speak(context.Background(), &encounter.SpeakInput{
@@ -632,6 +637,17 @@ func (s *kingScene) voiceOutside() {
 		Beaten: true, DC: 15, Total: 20, Roller: rollsOne{},
 	})
 	require.NoError(s.t, err, "the stranger answers the companion")
+}
+
+// shoutOutside has the companion beside the stranger outside hail him at the
+// top of his voice ("hail-the-pedlar", a plain line authored as a shout,
+// rpg-project#933): the noise the gate's post answers.
+func (s *kingScene) shoutOutside() {
+	s.t.Helper()
+	_, err := s.enc.Speak(context.Background(), &encounter.SpeakInput{
+		Range: speakReach, Actor: sneakCompanion, Target: kingPedlar, OptionID: "hail-the-pedlar", Roller: rollsOne{},
+	})
+	require.NoError(s.t, err, "the companion shouts to the stranger")
 }
 
 // TestMadKingScriptSneakingInPlainSightIsRefused is piece 5: declared in

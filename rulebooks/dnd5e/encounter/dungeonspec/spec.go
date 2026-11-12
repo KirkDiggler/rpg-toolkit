@@ -1851,13 +1851,19 @@ type HeardSpec struct {
 	// Within is how many rounds ago the sound may have been made and still
 	// count. AT LEAST 1, the deed condition's rule.
 	Within int
+
+	// Loudness is the quietest a heard voice may have been and still count
+	// (rpg-project#933): `shout` hears a shout or a scream. Empty is any
+	// loudness. One of [encounter.Loudnesses], and only on `kind: voice`.
+	Loudness string
 }
 
 // heardBody is what a `heard` condition's mapping decodes into, pointers so
 // an omitted key can be told from a zero.
 type heardBody struct {
-	Kind   *string `yaml:"kind"`
-	Within *int    `yaml:"within"`
+	Kind     *string `yaml:"kind"`
+	Within   *int    `yaml:"within"`
+	Loudness *string `yaml:"loudness"`
 }
 
 // The keys a `when` entry may name besides a deed word, sealed so the
@@ -2023,11 +2029,11 @@ func (w *WhenSpec) UnmarshalYAML(value *yaml.Node) error {
 // form in its words ([grammar.entryShape]), not restated here.
 func decodeHeard(body *yaml.Node) (*HeardSpec, error) {
 	if body.Kind != yaml.MappingNode {
-		return nil, fmt.Errorf("line %d: `heard` takes { kind, within: N }", body.Line)
+		return nil, fmt.Errorf("line %d: `heard` takes { kind, within: N, loudness }", body.Line)
 	}
 	for i := 0; i < len(body.Content); i += 2 {
 		switch k := body.Content[i].Value; k {
-		case "kind", "within":
+		case "kind", "within", "loudness":
 		default:
 			return nil, fmt.Errorf("line %d: field %s not found in type dungeonspec.heardBody",
 				body.Content[i].Line, k)
@@ -2035,7 +2041,7 @@ func decodeHeard(body *yaml.Node) (*HeardSpec, error) {
 	}
 	var heard heardBody
 	if err := body.Decode(&heard); err != nil {
-		return nil, fmt.Errorf("line %d: `heard` takes { kind, within: N }: %w", body.Line, err)
+		return nil, fmt.Errorf("line %d: `heard` takes { kind, within: N, loudness }: %w", body.Line, err)
 	}
 	out := &HeardSpec{}
 	if heard.Kind != nil {
@@ -2043,6 +2049,19 @@ func decodeHeard(body *yaml.Node) (*HeardSpec, error) {
 	}
 	if heard.Within != nil {
 		out.Within = *heard.Within
+	}
+	// A RAISED VOICE (rpg-project#933): a loudness this rulebook names, on a
+	// voice — the one sound said at a loudness. Absent hears any.
+	if heard.Loudness != nil {
+		out.Loudness = *heard.Loudness
+		if !slices.Contains(encounter.Loudnesses, encounter.Loudness(out.Loudness)) {
+			return nil, fmt.Errorf("line %d: `heard` loudness %q is not a loudness: write %s, or omit it for any",
+				body.Line, out.Loudness, loudnessList())
+		}
+		if out.Kind != encounter.SoundVoice {
+			return nil, fmt.Errorf("line %d: `heard: { kind: %s, loudness: %s }`: only a voice is said at a loudness, "+
+				"so write `kind: voice` or omit the loudness", body.Line, out.Kind, out.Loudness)
+		}
 	}
 	// A PATTERN IS JUDGED AGAINST THE SOUNDS THIS FILE CAN HEAR
 	// (rpg-project#684 L3): a pattern that matches none of them is a

@@ -112,7 +112,7 @@ func (b *builder) shortWhen(w behavior.When) string {
 	case w.Enemy != "":
 		return shortEnemy(w.Enemy)
 	case w.Heard != nil:
-		return fmt.Sprintf("it heard a %s within %d rounds", quote(w.Heard.Kind.String()), w.Heard.Within)
+		return fmt.Sprintf("it heard a %s%s within %d rounds", quote(w.Heard.Kind.String()), raisedWords(w.Heard.Loudness), w.Heard.Within)
 	case !w.Fact.IsZero():
 		return "it knows " + quote(w.Fact.String())
 	}

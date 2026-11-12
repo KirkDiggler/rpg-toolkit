@@ -3,7 +3,11 @@
 
 package encounter
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+	"strings"
+)
 
 // speech.go is PERCEIVED SPEECH (rpg-project#930; slice one is
 // rpg-project#933): every spoken thing is one utterance with a loudness, and
@@ -47,6 +51,33 @@ const (
 // Loudnesses is every loudness word, in the order a refusal lists them.
 var Loudnesses = []Loudness{LoudnessWhisper, LoudnessSpeak, LoudnessShout, LoudnessScream}
 
+// LoudnessOrder is THE ONE ORDER a table's `heard` loudness and a held voice
+// are compared by ([behavior.Facts.Loudness]): [Loudnesses] as words,
+// quietest first. Every Facts this encounter builds carries it
+// ([projectFacts]), so no two picks can judge a loudness by different
+// orders. A fresh slice each call, so no caller can change it for another.
+func LoudnessOrder() []string {
+	out := make([]string, len(Loudnesses))
+	for i, l := range Loudnesses {
+		out[i] = string(l)
+	}
+	return out
+}
+
+// loudnessList is [LoudnessOrder] as a refusal says it: "whisper, speak,
+// shout or scream".
+func loudnessList() string {
+	words := LoudnessOrder()
+	return strings.Join(words[:len(words)-1], ", ") + " or " + words[len(words)-1]
+}
+
+// atOrAbove reports whether a loudness is at or above another, by
+// [Loudnesses]; false when either is not a loudness this rulebook names.
+func atOrAbove(l, least Loudness) bool {
+	have, want := slices.Index(Loudnesses, l), slices.Index(Loudnesses, least)
+	return have >= 0 && want >= 0 && have >= want
+}
+
 // loudnessOf is the loudness a stored word means: empty is speak. ok is
 // false for a word this build does not know.
 func loudnessOf(word string) (Loudness, bool) {
@@ -64,7 +95,7 @@ func loudnessOf(word string) (Loudness, bool) {
 // validateLoudness refuses a loudness word this build does not know, at what.
 func validateLoudness(what, word string) error {
 	if _, ok := loudnessOf(word); !ok {
-		return fmt.Errorf("%s: loudness %q is not one of whisper, speak, shout or scream", what, word)
+		return fmt.Errorf("%s: loudness %q is not one of %s", what, word, loudnessList())
 	}
 	return nil
 }

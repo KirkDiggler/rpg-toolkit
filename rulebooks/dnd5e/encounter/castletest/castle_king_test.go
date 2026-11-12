@@ -215,10 +215,11 @@ type castleHost struct {
 	// gate (rpg-project#852's group rule).
 	postedLike []encounter.MemberID
 
-	// whispered is a TEST LOUDNESS: the option ids every creature's line of
-	// that id is whispered for, so a route can stand a witness who sees a
-	// line said and catches none of it (rpg-project#933).
-	whispered map[string]bool
+	// loudness is a TEST LOUDNESS: for each option id, the loudness every
+	// creature's line of that id is said at (rpg-project#933), so a route can
+	// stand a witness who sees a whispered line said and catches none of it,
+	// or raise a line to the shout a post answers.
+	loudness map[string]string
 
 	// soleGateHolder is a TEST FIXTURE for a route about one post's
 	// mechanics: only gate-1 (and whoever [castleHost.postedLike] seats like
@@ -253,11 +254,11 @@ func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 		if moved, ok := host.starts[encounter.MemberID(m.MemberID)]; ok {
 			at = moved
 		}
-		if len(host.whispered) > 0 {
+		if len(host.loudness) > 0 {
 			options := slices.Clone(m.Options)
 			for i := range options {
-				if host.whispered[options[i].ID] {
-					options[i].Loudness = "whisper"
+				if l, ok := host.loudness[options[i].ID]; ok {
+					options[i].Loudness = l
 				}
 			}
 			m.Options = options

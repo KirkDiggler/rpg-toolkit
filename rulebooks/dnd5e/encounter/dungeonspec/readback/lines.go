@@ -32,7 +32,7 @@ func (b *builder) lineStatements(opts []encounter.Option, base string, t lineTar
 		saidTo := Connection{Kind: t.about.Kind, ID: t.about.ID, Role: "said-to"}
 		heading := fmt.Sprintf("%s (%s)", said(o.Say), quote(o.ID))
 		head := fmt.Sprintf("The speaker can say %s to %s. %s %s", line, t.name, loudnessSentence(o.Loudness), perceivedSentence)
-		short := "said to {self}; "
+		short := "said to {self}; " + foldedLoudness(o.Loudness)
 		if o.Checked() {
 			head += " It is a checked line: it costs an action, one round of the world out of a fight."
 			short += "checked, an action (a round of the world out of a fight)"

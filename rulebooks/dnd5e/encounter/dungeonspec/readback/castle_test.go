@@ -507,3 +507,43 @@ func (s *CastleSuite) TestTheEngineRulesSayWhenTheWaitEnds() {
 	s.Contains(all, "before `front-gate` last changed (a state change, or a roll beginning or ending its wait on it) "+
 		"is refused with nothing spent")
 }
+
+// TestTheGuardsAnswerShoutsNotTalk: the read-back says the raised voice a
+// post and a knight answer (rpg-project#933), as the engine judges it.
+func (s *CastleSuite) TestTheGuardsAnswerShoutsNotTalk() {
+	wake := s.statement(readback.KindRoutineWake, "behaviorDefinitions.gate-1-policy.recipe.states.posted.transitions[5]")
+	s.Contains(wake.Sentence, "when Guard (gate-1) hears a sound, if it happened within 6 cells of Guard (gate-1) and "+
+		"(NOT (what Guard (gate-1) heard was a `voice`), or what Guard (gate-1) heard was a voice at `shout` or louder "+
+		"(a clang, a crash or a boom is at no loudness)), Guard (gate-1) moves to the state `alert`")
+	row := s.statement(readback.KindRoutineRow, "behaviorDefinitions.keep-1-policy.table.time[5]")
+	s.Contains(row.Sentence, "heard a `voice` sound at `shout` or louder within the last 3 rounds")
+}
+
+// TestTheShoutAtTheGateSaysItsReach: the stranger's shouted line
+// (rpg-project#933) says it is shouted and reaches the next room — the
+// gatehouse, whose guards catch it unseen.
+func (s *CastleSuite) TestTheShoutAtTheGateSaysItsReach() {
+	st := s.statement(readback.KindLine, "room.room.monsterBindings.pedlar.options[1]")
+	s.Contains(st.Sentence, "“Oi! Pedlar! What have you got to sell?” (`hail-the-pedlar`)")
+	s.Contains(st.Sentence, "It is said at `shout` (authored): its words reach everyone in the speaker's room and the next room over")
+	s.Contains(st.Sentence, "It is a plain line")
+}
+
+// TestTheFoldedShoutSaysItIsShouted: the folded form the operator reads says
+// a line authored louder than speech is (rpg-project#933), and a spoken line
+// says nothing of its loudness.
+func (s *CastleSuite) TestTheFoldedShoutSaysItIsShouted() {
+	var shouted, spoken string
+	for _, line := range strings.Split(strings.Join(strings.Fields(s.rb.FoldedText()), " "), " - ") {
+		switch {
+		case strings.Contains(line, "(`hail-the-pedlar`), said to"):
+			shouted = line
+		case strings.Contains(line, "(`tonight`), said to"):
+			spoken = line
+		}
+	}
+	s.Contains(shouted, "said to the commoner; shouted: its words reach the next room over; plain: rolls nothing")
+	s.NotEmpty(spoken, "precondition: the stranger's spoken line is folded too")
+	s.NotContains(spoken, "shouted", "a spoken line says nothing of its loudness")
+	s.NotContains(spoken, "its words reach")
+}
