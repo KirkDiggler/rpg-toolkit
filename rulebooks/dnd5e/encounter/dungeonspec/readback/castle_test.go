@@ -547,3 +547,19 @@ func (s *CastleSuite) TestTheFoldedShoutSaysItIsShouted() {
 	s.NotContains(spoken, "shouted", "a spoken line says nothing of its loudness")
 	s.NotContains(spoken, "its words reach")
 }
+
+// TestAWatcherOfTheCaptainsAnswerIsToldOnlyThatHeAnswered: the read-back
+// says what the engine does (rpg-project#948, castletest's
+// TestMadKingTheStandAsidesPickTellsAWatcherNothing): one who sees the
+// captain answer the stand-aside and caught none of it is told only that he
+// answered.
+func (s *CastleSuite) TestAWatcherOfTheCaptainsAnswerIsToldOnlyThatHeAnswered() {
+	found := false
+	for _, st := range s.rb.Statements() {
+		if st.Kind == readback.KindLineRow && strings.Contains(st.Sentence, "Stand aside or bleed.") {
+			found = true
+			s.Contains(st.Sentence, "whoever sees Guard Captain (captain) answer and caught none of the line is told only that Guard Captain (captain) answered")
+		}
+	}
+	s.True(found, "the stand-aside's answer rows are said")
+}

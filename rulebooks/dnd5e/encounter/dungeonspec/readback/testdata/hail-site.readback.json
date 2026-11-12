@@ -189,7 +189,7 @@
                 "kind": "creature",
                 "id": "porter"
               },
-              "sentence": "When the line “We're expected.” (`guest`) is said, Guard (porter) answers “In you go.”, at `speak`: its words reach everyone in Guard (porter)'s room (the wall partition Guard (porter) stands in), and whoever it is said to, wherever they stand.",
+              "sentence": "When the line “We're expected.” (`guest`) is said, Guard (porter) answers “In you go.”, at `speak`: its words reach everyone in Guard (porter)'s room (the wall partition Guard (porter) stands in), and whoever it is said to, wherever they stand and whoever sees Guard (porter) answer and caught none of the line is told only that Guard (porter) answered.",
               "path": "room.room.monsterBindings.porter.options[0].success[0]"
             }
           ]
