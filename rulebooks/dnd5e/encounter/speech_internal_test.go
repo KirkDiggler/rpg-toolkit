@@ -225,3 +225,63 @@ func TestOneWhoOnlySawALineThatGrantsLearnsNothingOfIt(t *testing.T) {
 		})
 	}
 }
+
+// TestALiveLineGrantNamesTheHolderOnlyToWhoSeesThem is the live path of the
+// holder rule (rpg-project#933): carol, in the hall and seeing only a cell
+// round her, catches alice's vouch and sees bob beside her, not the guard it
+// was said to. She is told that bob came to be admitted by someone, never
+// who; alice, who sees the guard, is told it is him.
+func TestALiveLineGrantNamesTheHolderOnlyToWhoSeesThem(t *testing.T) {
+	in := recognisingSetup(t, true,
+		gateGuard(t, postedGuard, holdNorthWest),
+		MemberInput{ID: "bob", Kind: KindPlayer, Position: spatial.Position{X: 8, Y: 4}},
+		MemberInput{ID: "carol", Kind: KindPlayer, Position: spatial.Position{X: 9, Y: 4}},
+	)
+	in.Sight = fewSighted{"carol": 1}
+	enc, err := NewEncounter(in)
+	require.NoError(t, err)
+	admit(t, enc, postedGuard)
+	placeAt(t, enc, "alice", holdNorthEast)
+	placeAt(t, enc, "bob", spatial.Position{X: 7, Y: 3})
+	placeAt(t, enc, "carol", spatial.Position{X: 8, Y: 3})
+	reach, err := enc.placedSightReach()
+	require.NoError(t, err)
+	require.False(t, reach.Reaches(perception.Sight, "carol", postedGuard), "precondition: carol cannot see the guard")
+	require.True(t, reach.Reaches(perception.Sight, "carol", "bob"), "precondition: she sees bob")
+
+	before := len(enc.ToData().Log.Entries)
+	_, err = say(t, enc, "alice", postedGuard, "vouch", true)
+	require.NoError(t, err)
+	require.True(t, enc.recognizes(postedGuard, "bob", admittedTopic), "precondition: the vouch admitted bob")
+
+	told := map[MemberID][]map[string]any{}
+	data := enc.ToData()
+	for _, entry := range data.Log.Entries[before:] {
+		if entry.Tags["tag"] != BeatRecognized || entry.AudienceRef == 0 {
+			continue
+		}
+		var b map[string]any
+		require.NoError(t, json.Unmarshal(entry.Payload, &b))
+		for _, id := range data.Log.Audiences[entry.AudienceRef-1] {
+			told[MemberID(id)] = append(told[MemberID(id)], b)
+		}
+	}
+	caught := false
+	story, err := enc.Story(&StoryInput{Audience: "carol"})
+	require.NoError(t, err)
+	for _, e := range story {
+		var v map[string]any
+		require.NoError(t, json.Unmarshal(e.Payload, &v))
+		caught = caught || (v["beat"] == BeatSpeech && v["option"] == "vouch" && v["words"] != nil)
+	}
+	require.True(t, caught, "precondition: carol caught the vouch's words")
+	require.NotEmpty(t, told["carol"], "carol is told the recognition she heard granted")
+	for _, b := range told["carol"] {
+		require.NotContains(t, b, "holder", "she is told someone holds it, never who: %v", b)
+	}
+	named := false
+	for _, b := range told["alice"] {
+		named = named || b["holder"] == string(postedGuard)
+	}
+	require.True(t, named, "alice, who sees the guard, is told it is him")
+}

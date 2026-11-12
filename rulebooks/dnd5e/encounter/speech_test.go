@@ -211,10 +211,35 @@ func (s *SpeechSuite) TestADeedGoesToWhoCatchesTheWordsNotWhoSees() {
 		}
 		return false
 	}
-	s.True(held(goblin), "the one it was said to")
-	s.True(held(speechDana), "a hearer who saw nothing")
+	s.True(held(goblin), "the one it was said to, who saw her say it")
+	s.False(held(speechDana), "a hearer who saw nothing: a deed would name the speaker she did not see")
 	s.False(held(speechBea), "a watcher out of earshot does not know it worked")
 	s.False(held(speechCole), "nor one who only noticed a voice")
+}
+
+// TestAnUnseenSpeakerIsNamedByNoDeed is the review's probe made a test
+// (rpg-project#933): dana, in the room and seeing nobody, catches alice's
+// persuasion and holds nothing on the deeds channel that names alice — no
+// subject, no actor, no place she stood. The verdict she has is the check
+// in her version of the words.
+func (s *SpeechSuite) TestAnUnseenSpeakerIsNamedByNoDeed() {
+	enc := s.hall(encounter.DoorIsOpen(), "", "")
+	s.Require().NoError(s.say(enc, true))
+
+	holdings, err := enc.View(&encounter.ViewInput{Member: speechDana})
+	s.Require().NoError(err)
+	for _, h := range holdings {
+		if h.Channel != deed.Channel {
+			continue
+		}
+		d, err := deed.Decode(h.Payload)
+		s.Require().NoError(err)
+		s.NotEqual(alice, d.Actor, "dana holds a deed naming the speaker she did not see: %s", h.Subject)
+	}
+	vs := s.versions(enc, speechDana)
+	s.Require().NotEmpty(vs)
+	s.NotContains(vs[0], "speaker", "precondition: she did not see who spoke")
+	s.Contains(vs[0], "check", "and has the verdict with the words")
 }
 
 // TestAClosedDoorCostsARoom: a shout reaches the next room through an open

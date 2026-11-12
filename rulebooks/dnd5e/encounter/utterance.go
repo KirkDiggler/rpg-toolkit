@@ -94,6 +94,18 @@ type spoken struct {
 	all      []facet
 }
 
+// namedCatchers is who caught the words and saw who said them, in member
+// order: who may hold what the line did, which names its doer.
+func (s spoken) namedCatchers() []MemberID {
+	var out []MemberID
+	for _, p := range s.all {
+		if p.words && p.sees {
+			out = append(out, p.member)
+		}
+	}
+	return out
+}
+
 // utter carries out one utterance (R8): who sees the speaker, who catches the
 // words, who only notices a voice and who sees the person spoken to; one
 // [BeatSpeech] per group of members who perceived the same parts; and the

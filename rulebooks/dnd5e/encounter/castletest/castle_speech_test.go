@@ -316,8 +316,8 @@ func requireNoBeatTellsMoreThanItsVersion(t *testing.T, enc *encounter.Encounter
 		}
 	}
 
-	// THE LINE'S DEEDS: who holds that a doer intimidated or persuaded caught
-	// a beaten check of that doer's.
+	// THE LINE'S DEEDS: who holds that a doer intimidated or persuaded saw
+	// them say a line that worked, and caught its beaten check.
 	members, err := enc.Members()
 	require.NoError(t, err)
 	for _, m := range members {
@@ -334,14 +334,15 @@ func requireNoBeatTellsMoreThanItsVersion(t *testing.T, enc *encounter.Encounter
 			caught := false
 			for _, u := range lines {
 				v := u.versions[m.ID]
-				if u.speaker != string(d.Actor) || v == nil || v["words"] == nil {
+				// The deed names its doer: only a reader who saw them say it.
+				if u.speaker != string(d.Actor) || v == nil || v["words"] == nil || str(v, "speaker") != string(d.Actor) {
 					continue
 				}
 				if check, ok := v["check"].(map[string]any); ok && check["beaten"] == true {
 					caught = true
 				}
 			}
-			require.True(t, caught, "%s holds that %s did %s without catching a line of theirs that worked", m.ID, d.Actor, d.Verb)
+			require.True(t, caught, "%s holds that %s did %s without seeing them say a line that worked", m.ID, d.Actor, d.Verb)
 		}
 	}
 }
