@@ -15,6 +15,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -429,4 +430,47 @@ func TestCastleAKeptRollThatFailsAfterSpeakingSavesNothing(t *testing.T) {
 	require.JSONEq(t, string(sessionBefore), string(sessionAfter), "the session is as it was")
 	require.JSONEq(t, string(worldBefore), string(worldAfter), "the world is as it was")
 	require.JSONEq(t, string(sheetBefore), string(sheetAfter), "her sheet is as it was")
+}
+
+// TestCastleAKeptRollIsTheSpeakersSpeechActUnderTheWalk (rpg-project#934,
+// #938): the cleric walks away from her waiting case and the roll stands.
+// With the retired SpeakAct gone, she is sent her own Speech act of the
+// line — words, option, skill and the kept roll — under the walk's own act,
+// and the gate's answer and its words ride the same act; alice, who sees
+// and hears it, is sent her version of each.
+func TestCastleAKeptRollIsTheSpeakersSpeechActUnderTheWalk(t *testing.T) {
+	c := theClericsWaitingCase(t, 2)
+	played := c.play(t, "the cleric walks away from her case", func() error {
+		c.walkAway(t)
+		return nil
+	})
+
+	walks := where[session.WalkAct](played.to("cleric"), func(w session.WalkAct) bool { return w.Mover.ID == "cleric" })
+	require.NotEmpty(t, walks)
+	walk := walks[0].act.Act
+	require.True(t, strings.HasPrefix(walk, "move:"), "precondition: her walk is a move act, %q", walk)
+
+	own := where[session.SpeechAct](played.to("cleric"), func(s session.SpeechAct) bool {
+		return s.Speaker.ID == "cleric" && s.Option == stragglerLine
+	})
+	require.Len(t, own, 1, "her own line, kept")
+	line := own[0]
+	require.Equal(t, walk, line.act.Act, "under the walk's own act")
+	require.Equal(t, session.FamilyAct, line.act.Family)
+	require.NotNil(t, line.body.Words)
+	require.Equal(t, "persuasion", line.body.Skill)
+	require.NotNil(t, line.body.Roll, "the kept roll rides her line")
+	require.NotNil(t, line.body.Roll.Beaten)
+	require.False(t, *line.body.Roll.Beaten, "the low face stood")
+	require.Equal(t, "gate-1", line.body.SpokenTo.ID)
+	require.Empty(t, where[session.TableAnswer](played.to("cleric"), func(a session.TableAnswer) bool { return a.Who.ID == "gate-1" && a.Option != "" }),
+		"the pick names no line")
+
+	answered := where[session.SpeechAct](played.to("cleric"), func(s session.SpeechAct) bool { return s.Speaker.ID == "gate-1" && s.Words != nil })
+	require.Len(t, answered, 1, "the gate's answer, in words")
+	require.Equal(t, walk, answered[0].act.Act, "under the same act")
+
+	seen := where[session.SpeechAct](played.to("alice"), func(s session.SpeechAct) bool { return s.Speaker.ID == "cleric" && s.Option == stragglerLine })
+	require.Len(t, seen, 1, "alice is sent her version of the kept line")
+	require.Equal(t, walk, seen[0].act.Act)
 }
