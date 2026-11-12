@@ -100,6 +100,19 @@ func noticeDC(l Loudness) (dc int, ok bool) {
 
 // loudnessWord is the loudness a stored word means, empty and unknown both
 // speak: every door already refused an unknown word, so this never guesses.
+// SaidWithin is the farthest, in hexes, this line may be said from to whom
+// it is said, when the host measures speech within reach: a whisper only
+// from beside them (R10), any other line within reach. Reach zero is
+// adjacent, as every reach door reads it, so the answer is never below one.
+// THE ONE RULE the reply door and a host's offer both ask, so a line is
+// never offered from where it would be refused.
+func (o Option) SaidWithin(reach int) int {
+	if loudnessWord(o.Loudness) == LoudnessWhisper || reach < 1 {
+		return 1
+	}
+	return reach
+}
+
 func loudnessWord(word string) Loudness {
 	l, _ := loudnessOf(word)
 	if l == "" {

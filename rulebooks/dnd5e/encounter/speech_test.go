@@ -364,3 +364,14 @@ func (s *SpeechSuite) TestAWatcherReadsNothingOfTheLineFromAnyBeat() {
 		}
 	}
 }
+
+// TestSaidWithinIsTheReachALineIsSaidFrom: a whisper is said only from
+// beside (one hex) whatever the host's reach; any other line within the
+// reach, zero read as adjacent.
+func (s *SpeechSuite) TestSaidWithinIsTheReachALineIsSaidFrom() {
+	for _, l := range []string{"", "speak", "shout", "scream"} {
+		s.Equal(3, encounter.Option{Loudness: l}.SaidWithin(3), "%q is said within the host's reach", l)
+		s.Equal(1, encounter.Option{Loudness: l}.SaidWithin(0), "%q at reach zero is adjacent", l)
+	}
+	s.Equal(1, encounter.Option{Loudness: "whisper"}.SaidWithin(3), "a whisper only from beside")
+}

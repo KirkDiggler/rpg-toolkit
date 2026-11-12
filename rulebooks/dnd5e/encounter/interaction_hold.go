@@ -507,10 +507,7 @@ func (e *Encounter) replyDoor(verb string, in lineReply, settling bool) (replied
 	// A WHISPER IS SAID FROM BESIDE (rpg-project#933, R10): a whispered line
 	// is admitted only from a cell adjacent to the creature it is said to,
 	// whatever reach the host measures speech within (zero is adjacent).
-	reach := in.reach
-	if loudnessWord(option.Loudness) == LoudnessWhisper {
-		reach = 0
-	}
+	reach := option.SaidWithin(in.reach)
 	if in.target != "" {
 		err = e.refuseOutOfReach(verb, in.actor, in.target, reach)
 	} else {
