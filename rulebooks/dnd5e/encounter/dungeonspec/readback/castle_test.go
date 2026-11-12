@@ -559,7 +559,7 @@ func (s *CastleSuite) TestAWatcherOfTheCaptainsAnswerIsToldOnlyThatHeAnswered() 
 		if st.Kind == readback.KindLineRow && strings.Contains(st.Sentence, "Stand aside or bleed.") {
 			found = true
 			s.Contains(st.Sentence, "whoever sees Guard Captain (captain) answer and caught none of the line is told only that "+
-				"Guard Captain (captain) answered and what Guard Captain (captain) is seen doing, and sees the line said without its words")
+				"Guard Captain (captain) answered and what Guard Captain (captain) is seen doing, and, if they see the speaker, sees the line said without its words")
 		}
 	}
 	s.True(found, "the stand-aside's answer rows are said")

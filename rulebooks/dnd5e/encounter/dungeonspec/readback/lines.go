@@ -148,7 +148,7 @@ func (b *builder) rowStatements(o encounter.Option, line, heading, p string, t l
 			// line's own perception sentence.
 			if !t.prop {
 				does = append(does, fmt.Sprintf("whoever sees %s answer and caught none of the line is told only that %s answered "+
-					"and what %s is seen doing, and sees the line said without its words", t.name, t.name, t.name))
+					"and what %s is seen doing, and, if they see the speaker, sees the line said without its words", t.name, t.name, t.name))
 			}
 			fdoes, _ := rowDoes(row, t, "{self}")
 			s := lead + ", " + joinAnd(does)
