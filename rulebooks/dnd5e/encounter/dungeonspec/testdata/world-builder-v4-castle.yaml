@@ -1570,6 +1570,10 @@ room:
                   in: [admitted]
               - not:
                   recognized: admitted
+              # "Gone" is judged against the guard spoken to: it holds here
+              # because each gate guard witnesses the other's refusals; a gate
+              # whose posted guards cannot see each other would need another
+              # means.
               - not:
                   recognized: turned-away
             success:
@@ -1704,6 +1708,10 @@ room:
                   in: [admitted]
               - not:
                   recognized: admitted
+              # "Gone" is judged against the guard spoken to: it holds here
+              # because each gate guard witnesses the other's refusals; a gate
+              # whose posted guards cannot see each other would need another
+              # means.
               - not:
                   recognized: turned-away
             success:

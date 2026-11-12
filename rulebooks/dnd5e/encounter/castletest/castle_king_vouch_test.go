@@ -274,9 +274,11 @@ func TestMadKingAStragglerHasOneTry(t *testing.T) {
 	// Asking after their friends is still offered, and changes nothing.
 	require.True(t, s.offersTo(straggler, kingGate1, friendsLine), "the straggler may ask after their friends")
 	require.False(t, s.offersTo(hero, kingGate1, friendsLine), "not whom he recognises")
-	before := s.recognitionBeats()
 	require.NoError(t, s.speakAs(straggler, kingGate1, friendsLine, true))
-	require.Equal(t, before, s.recognitionBeats(), "the answer grants nothing")
+	for _, guard := range []encounter.MemberID{kingGate1, kingGate2} {
+		require.False(t, s.recognizesOn(guard, straggler, admittedTopic), "the answer admits nobody: %s", guard)
+		require.True(t, s.recognizesOn(guard, straggler, turnedAwayTopic), "and leaves the refusal as it was: %s", guard)
+	}
 	require.Equal(t, "admitted", s.entrance(), "and moves nothing")
 
 	// The captain, in the hall, does not stir for a turned-away straggler.
