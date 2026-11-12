@@ -1,0 +1,363 @@
+// Copyright (C) 2026 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package readback_test
+
+import (
+	"fmt"
+	"os"
+	"regexp"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/suite"
+	"gopkg.in/yaml.v3"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec/readback"
+)
+
+const castlePath = "../testdata/world-builder-v4-castle.yaml"
+
+// CastleSuite reads the castle back once and holds it to the file: every
+// authored thing said or listed, every path real, and the gate said as ruled.
+type CastleSuite struct {
+	suite.Suite
+	raw []byte
+	doc *yaml.Node
+	rb  *readback.ReadBack
+}
+
+func TestCastleSuite(t *testing.T) { suite.Run(t, new(CastleSuite)) }
+
+func (s *CastleSuite) SetupSuite() {
+	raw, err := os.ReadFile(castlePath)
+	s.Require().NoError(err)
+	s.raw = raw
+	var n yaml.Node
+	s.Require().NoError(yaml.Unmarshal(raw, &n))
+	s.doc = n.Content[0]
+	s.rb, err = readback.Of(raw)
+	s.Require().NoError(err)
+}
+
+// child is a mapping's value at key, or nil.
+func child(n *yaml.Node, key string) *yaml.Node {
+	if n == nil || n.Kind != yaml.MappingNode {
+		return nil
+	}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		if n.Content[i].Value == key {
+			return n.Content[i+1]
+		}
+	}
+	return nil
+}
+
+// entries walks a mapping (by key) or a sequence (by index) under path.
+func entries(n *yaml.Node, path string, fn func(*yaml.Node, string)) {
+	if n == nil {
+		return
+	}
+	switch n.Kind {
+	case yaml.MappingNode:
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			fn(n.Content[i+1], path+"."+n.Content[i].Value)
+		}
+	case yaml.SequenceNode:
+		for i, c := range n.Content {
+			fn(c, fmt.Sprintf("%s[%d]", path, i))
+		}
+	}
+}
+
+// authored is every path the read-back must account for, walked straight off
+// the YAML with no help from the package under test: interactions, their
+// approach, states, transitions and outcomes; every line, its check, each
+// requirement, its advance, each answer row and each grant; every post and
+// pass; every routine, state, wake and table row; every creature and what it
+// holds, runs and waits on; every door, prop, exit, ending, record, side,
+// stat block and bundle.
+func (s *CastleSuite) authored() []string {
+	var out []string
+	add := func(p string) { out = append(out, p) }
+	lines := func(n *yaml.Node, path string) {
+		entries(n, path, func(o *yaml.Node, op string) {
+			add(op)
+			if child(o, "check") != nil {
+				add(op + ".check")
+			}
+			if child(o, "advance") != nil {
+				add(op + ".advance")
+			}
+			if r := child(o, "requires"); r != nil {
+				if r.Kind == yaml.SequenceNode {
+					entries(r, op+".requires", func(_ *yaml.Node, p string) { add(p) })
+				} else {
+					add(op + ".requires")
+				}
+			}
+			for _, verdict := range []string{"success", "failure"} {
+				entries(child(o, verdict), op+"."+verdict, func(row *yaml.Node, rp string) {
+					add(rp)
+					if child(row, "recognize") != nil {
+						add(rp + ".recognize")
+					}
+				})
+			}
+		})
+	}
+	entries(child(s.doc, "interactions"), "interactions", func(in *yaml.Node, p string) {
+		add(p)
+		if child(in, "approach") != nil {
+			add(p + ".approach")
+		}
+		entries(child(in, "outcomes"), p+".outcomes", func(list *yaml.Node, op string) {
+			entries(list, op, func(c *yaml.Node, ip string) {
+				if child(c, "recognize") != nil {
+					ip += ".recognize"
+				}
+				add(ip)
+			})
+		})
+		entries(child(child(in, "recipe"), "states"), p+".recipe.states", func(st *yaml.Node, sp string) {
+			add(sp)
+			entries(child(st, "transitions"), sp+".transitions", func(_ *yaml.Node, tp string) { add(tp) })
+		})
+	})
+	entries(child(s.doc, "behaviorDefinitions"), "behaviorDefinitions", func(def *yaml.Node, p string) {
+		add(p)
+		entries(child(child(def, "recipe"), "states"), p+".recipe.states", func(st *yaml.Node, sp string) {
+			add(sp)
+			entries(child(st, "transitions"), sp+".transitions", func(_ *yaml.Node, tp string) { add(tp) })
+		})
+		entries(child(def, "table"), p+".table", func(rows *yaml.Node, kp string) {
+			entries(rows, kp, func(_ *yaml.Node, rp string) { add(rp) })
+		})
+	})
+	gp := child(child(s.doc, "room"), "room")
+	entries(child(gp, "monsterDeclarations"), "room.room.monsterDeclarations", func(_ *yaml.Node, p string) { add(p) })
+	entries(child(gp, "monsterBindings"), "room.room.monsterBindings", func(b *yaml.Node, p string) {
+		for _, k := range []string{"holds", "arrives", "blockingStates"} {
+			if child(b, k) != nil {
+				add(p + "." + k)
+			}
+		}
+		entries(child(b, "behaviors"), p+".behaviors", func(_ *yaml.Node, bp string) { add(bp) })
+		entries(child(b, "posts"), p+".posts", func(post *yaml.Node, pp string) {
+			add(pp)
+			if child(post, "pass") != nil {
+				add(pp + ".pass")
+			}
+		})
+		lines(child(b, "options"), p+".options")
+	})
+	entries(child(gp, "doorBindings"), "room.room.doorBindings", func(_ *yaml.Node, p string) { add(p) })
+	entries(child(gp, "propBindings"), "room.room.propBindings", func(b *yaml.Node, p string) {
+		add(p)
+		lines(child(b, "options"), p+".options")
+	})
+	entries(child(s.doc, "factions"), "factions", func(f *yaml.Node, p string) {
+		add(p)
+		lines(child(f, "options"), p+".options")
+	})
+	for _, list := range []string{"exits", "endings", "intel", "dispositions", "templates", "bundles"} {
+		entries(child(s.doc, list), list, func(_ *yaml.Node, p string) { add(p) })
+	}
+	return out
+}
+
+// TestNothingSkippedSilently holds every authored thing to the read-back: it
+// is the path of a statement or it is in the not-yet-said list.
+func (s *CastleSuite) TestNothingSkippedSilently() {
+	said := map[string]bool{}
+	for _, st := range s.rb.Statements() {
+		said[st.Path] = true
+	}
+	for _, u := range s.rb.NotYetSaid {
+		said[u.Path] = true
+	}
+	authored := s.authored()
+	s.Require().Greater(len(authored), 400, "the walk found the castle's authored things")
+	for _, p := range authored {
+		s.True(said[p], "authored %s is neither said nor listed as not yet said", p)
+	}
+}
+
+// TestEveryPathIsWhereItIsSet holds every statement's path to the file: it
+// names a node the author wrote.
+func (s *CastleSuite) TestEveryPathIsWhereItIsSet() {
+	for _, st := range s.rb.Statements() {
+		s.NotNil(resolve(s.doc, st.Path), "statement %q names %s, which the file does not have", st.Sentence, st.Path)
+	}
+}
+
+// resolve walks a refusal-form path through the authored tree.
+func resolve(n *yaml.Node, path string) *yaml.Node {
+	for _, part := range strings.Split(path, ".") {
+		key, rest, _ := strings.Cut(part, "[")
+		if key != "" {
+			n = child(n, key)
+		}
+		for rest != "" {
+			var idx int
+			if _, err := fmt.Sscanf(rest, "%d]", &idx); err != nil || n == nil || n.Kind != yaml.SequenceNode || idx >= len(n.Content) {
+				return nil
+			}
+			n = n.Content[idx]
+			_, rest, _ = strings.Cut(rest, "[")
+		}
+		if n == nil {
+			return nil
+		}
+	}
+	return n
+}
+
+// statement finds the one statement at path of kind, failing when absent.
+func (s *CastleSuite) statement(kind readback.Kind, path string) readback.Statement {
+	for _, st := range s.rb.Statements() {
+		if st.Kind == kind && st.Path == path {
+			return st
+		}
+	}
+	s.Require().Failf("no statement", "no %s statement at %s", kind, path)
+	return readback.Statement{}
+}
+
+// TestThreeGuardsHoldTheGate: every gate guard holds the gate door and lets
+// through whom it recognises as admitted.
+func (s *CastleSuite) TestThreeGuardsHoldTheGate() {
+	for _, post := range []struct{ who, state, name string }{
+		{"gate-1", "posted", "Guard (gate-1)"},
+		{"gate-2", "ready", "Guard (gate-2)"},
+		{"captain", "ready", "Guard Captain (captain)"},
+	} {
+		at := fmt.Sprintf("room.room.monsterBindings.%s.posts.%s", post.who, post.state)
+		hold := s.statement(readback.KindPost, at)
+		s.Contains(hold.Sentence, post.name+" holds the door `gate-wall-door`")
+		s.Contains(hold.Sentence, "every creature not allied with "+post.name+" is barred")
+		pass := s.statement(readback.KindPass, at+".pass")
+		s.Contains(pass.Sentence, post.name+" lets a walker through that post, as an ally walks, when "+
+			post.name+" recognises the walker as `admitted` ("+post.name+" holds `admitted` about the walker)")
+	}
+}
+
+// TestTheCaptainsGuestClaim: the claim, its roll, and what winning grants to
+// whom about whom — and who else hears it.
+func (s *CastleSuite) TestTheCaptainsGuestClaim() {
+	at := "room.room.monsterBindings.captain.options[0]"
+	s.Contains(s.statement(readback.KindLine, at).Sentence,
+		"The speaker can say the line “We’re invited guests of His Majesty, here for the feast.” (`guest`) to Guard Captain (captain).")
+	s.Contains(s.statement(readback.KindLineCheck, at+".check").Sentence, "the speaker rolls Persuasion against DC 11")
+	adv := s.statement(readback.KindLineAdvance, at+".advance").Sentence
+	s.Contains(adv, "winning it steps the conversation `front-gate` with the beat `admitted`, which moves it from `fresh` to `admitted`")
+	s.Contains(adv, "missing it steps the conversation `front-gate` with the beat `guest-failed`, which moves it from `fresh` to `warned-guest` or from `warned-troupe` to `arrested`")
+	// Winning grants nothing on the line itself: the conversation's outcome
+	// is what admits, and it names the captain among its holders.
+	out := s.statement(readback.KindOutcome, "interactions.front-gate.outcomes.admitted[0].recognize").Sentence
+	s.Contains(out, "When the conversation `front-gate` enters `admitted`, the creature the deciding line was said to "+
+		"(whichever of Guard (gate-1), Guard (gate-2) and Guard Captain (captain) that was) comes to hold `admitted` about "+
+		"the speaker and each member of the speaker's party that the creature sees at that moment")
+	s.Contains(out, "Every other creature that carries the conversation `front-gate`")
+	s.Contains(out, "comes to hold `admitted` about the same people too, having heard it")
+}
+
+// TestTheCaptainGoesIn: the captain's routine wakes on the topic and walks
+// to the hall.
+func (s *CastleSuite) TestTheCaptainGoesIn() {
+	wake := s.statement(readback.KindRoutineWake, "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[2]")
+	s.Contains(wake.Sentence, "In the state `ready`, when Guard Captain (captain) comes to hold a topic about someone")
+	s.Contains(wake.Sentence, "if Guard Captain (captain) holds the topic `admitted` about anyone")
+	s.Contains(wake.Sentence, "Guard Captain (captain) moves to the state `in-hall`")
+	walk := s.statement(readback.KindRoutineRow, "behaviorDefinitions.captain-policy.table.in-hall[0]")
+	s.Contains(walk.Sentence, "Guard Captain (captain) walks toward the cell q 3, r -9")
+	tick := s.statement(readback.KindRoutineWake, "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1]")
+	s.Contains(tick.Sentence, "acts from its own `in-hall` rows")
+}
+
+// TestTheGuardsVouchAndStraggler: both guards' vouch and straggler lines,
+// their requirements in words, and the failure row's grant.
+func (s *CastleSuite) TestTheGuardsVouchAndStraggler() {
+	for _, g := range []struct{ id, name string }{{"gate-1", "Guard (gate-1)"}, {"gate-2", "Guard (gate-2)"}} {
+		base := "room.room.monsterBindings." + g.id + ".options"
+		s.Contains(s.statement(readback.KindLineRequire, base+"[0].requires[1]").Sentence,
+			"only while "+g.name+" recognises the speaker as `admitted`")
+		vouch := s.statement(readback.KindLineGrant, base+"[0].success[0].recognize").Sentence
+		s.Contains(vouch, g.name+" — the creature the line is said to — comes to hold `admitted` about the speaker and each member of the speaker's party that "+g.name+" sees")
+		s.Contains(s.statement(readback.KindLineRequire, base+"[1].requires[1]").Sentence,
+			"only while "+g.name+" does NOT recognise the speaker as `admitted`")
+		s.Contains(s.statement(readback.KindLineRequire, base+"[1].requires[2]").Sentence,
+			"only while "+g.name+" does NOT recognise the speaker as `turned-away`")
+		s.Contains(s.statement(readback.KindLineCheck, base+"[1].check").Sentence,
+			"Persuasion against DC 13, or Deception against DC 15")
+		away := s.statement(readback.KindLineGrant, base+"[1].failure[0].recognize").Sentence
+		s.Contains(away, "On a miss of the line")
+		s.Contains(away, g.name+" — the creature the line is said to — comes to hold `turned-away` about the speaker alone")
+		s.Contains(away, "Every other creature that carries the conversation `front-gate`")
+	}
+}
+
+// topicSites walks the authored tree for every place a topic is granted (a
+// `recognize`) and every place it is asked for or woken on (a `recognized`
+// requirement or pass, a `topic:` guard), at the path the read-back should
+// name.
+func topicSites(n *yaml.Node, path string, grants, asks map[string]map[string]bool) {
+	note := func(m map[string]map[string]bool, topic, at string) {
+		if m[topic] == nil {
+			m[topic] = map[string]bool{}
+		}
+		m[topic][at] = true
+	}
+	switch n.Kind {
+	case yaml.MappingNode:
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			key, v := n.Content[i].Value, n.Content[i+1]
+			at := key
+			if path != "" {
+				at = path + "." + key
+			}
+			switch {
+			case key == "recognize":
+				note(grants, child(v, "topic").Value, at)
+			case key == "recognized" && v.Kind == yaml.ScalarNode:
+				note(asks, v.Value, askingPlace.FindString(at))
+			case key == "name" && strings.HasPrefix(v.Value, "topic:"):
+				note(asks, strings.TrimPrefix(v.Value, "topic:"), wakingPlace.FindString(at))
+			}
+			topicSites(v, at, grants, asks)
+		}
+	case yaml.SequenceNode:
+		for i, c := range n.Content {
+			topicSites(c, fmt.Sprintf("%s[%d]", path, i), grants, asks)
+		}
+	}
+}
+
+var (
+	askingPlace = regexp.MustCompile(`^.*\.(requires(\[\d+\])?|pass)`)
+	wakingPlace = regexp.MustCompile(`^.*\.transitions\[\d+\]`)
+)
+
+// TestTopicHubs: each gate topic's hub lists exactly every place the file
+// grants it and every place the file asks for it or wakes on it.
+func (s *CastleSuite) TestTopicHubs() {
+	grants, asks := map[string]map[string]bool{}, map[string]map[string]bool{}
+	topicSites(s.doc, "", grants, asks)
+	for _, topic := range []string{"admitted", "turned-away"} {
+		g, ok := s.rb.Group("Topics", readback.Subject{Kind: "topic", ID: topic})
+		s.Require().True(ok, "topic %s has a hub", topic)
+		gotGrants, gotAsks := map[string]bool{}, map[string]bool{}
+		for _, st := range g.Statements {
+			switch st.Kind {
+			case readback.KindTopicGrant:
+				gotGrants[st.Path] = true
+			case readback.KindTopicAsk:
+				gotAsks[st.Path] = true
+			}
+		}
+		s.Require().NotEmpty(grants[topic], "the walk found %s's grants", topic)
+		s.Require().NotEmpty(asks[topic], "the walk found %s's asks", topic)
+		s.Equal(grants[topic], gotGrants, "%s: every grant site and nothing else", topic)
+		s.Equal(asks[topic], gotAsks, "%s: every asking site and nothing else", topic)
+	}
+}

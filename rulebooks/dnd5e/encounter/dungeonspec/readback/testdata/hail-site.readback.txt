@@ -1,0 +1,70 @@
+READ-BACK: Hail Site (hail-site)
+
+THE PLACE
+
+  Hail Site (hail-site)
+    - The site `hail-site` is “Hail Site”, a version 5 site document; its void is transparent, its lighting bright and its standing rule centre-covered.
+        at key
+    - The floor is 1 region with cells: Hall (region-hall). Summarised: their cells, lighting and ground are not said one by one.
+        at room.room.regions
+    - Summarised: the coordinate frame, 0 wall lines with 0 doors in their openings, 0 scene items, 0 prop footprints and 0 arrangements. Their positions and shapes are not said one by one.
+        at room.room.walls
+    - The party starts at q 0, r 6, in Hall (region-hall).
+        at room.room.partyStart
+
+SIDES
+
+  Faction `watch`
+    - The faction `watch` is Guard (porter); its mind (whose knowledge decides how the side stands) is Guard (porter).
+        at factions[0]
+
+  How the sides stand
+    - The factions `watch` and `party` start neutral.
+        at dispositions[0]
+
+CREATURES
+
+  Guard (porter)
+    - Guard (porter) is a dnd5e:monsters:guard of the faction `watch`, standing at q 3, r 0 in Hall (region-hall), facing s.
+        at room.room.monsterDeclarations[0]
+    - Guard (porter) runs the routine `porter-policy` (as `policy`).
+        at room.room.monsterBindings.porter.behaviors[0]
+    - The speaker can say the line “We're expected.” (`guest`) to Guard (porter). It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.
+        at room.room.monsterBindings.porter.options[0]
+    - The line “We're expected.” (`guest`) is offered to a speaker only while the conversation `gate` is in the state `fresh` (one state for the whole run, not per speaker).
+        at room.room.monsterBindings.porter.options[0].requires[0]
+    - Said to Guard (porter), the line “We're expected.” (`guest`): winning it steps the conversation `gate` with the beat `admitted`, which moves it from `fresh` to `admitted`.
+        at room.room.monsterBindings.porter.options[0].advance
+    - When the line “We're expected.” (`guest`) is said, Guard (porter) answers “In you go.”
+        at room.room.monsterBindings.porter.options[0].success[0]
+
+CONVERSATIONS
+
+  Conversation `gate`
+    - The conversation `gate` has one state for the whole run, shared by every speaker and every carrier; it starts in `fresh`. Its carriers, the creatures whose lines read or step it, are Guard (porter).
+        at interactions.gate
+    - Each carrier (Guard (porter)) hails a character who comes within 2 cells of it in its sight: that carrier hears the beat `approached` and answers from its routine.
+        at interactions.gate.approach
+    - In the state `fresh`, the conversation `gate` listens for 1 beat.
+        at interactions.gate.recipe.states.fresh
+    - In the state `fresh`, the beat `admitted` moves the conversation to `admitted` (“let through”). The beat is sent by winning `guest` said to Guard (porter).
+        at interactions.gate.recipe.states.fresh.transitions[0]
+    - The state `admitted` of `gate` is final: once entered, nothing moves the conversation again.
+        at interactions.gate.recipe.states.admitted
+    - The line `guest` said to Guard (porter) is offered only while `gate` is in `fresh`.
+        at room.room.monsterBindings.porter.options[0].requires[0]
+
+ROUTINES
+
+  Routine `porter-policy`
+    - The routine `porter-policy` is run by Guard (porter); it starts in the state `ready`. When it acts from a set of rows, one row whose conditions hold is picked by weight.
+        at behaviorDefinitions.porter-policy
+    - In the state `ready`, Guard (porter) listens for 1 beat.
+        at behaviorDefinitions.porter-policy.recipe.states.ready
+    - In the state `ready`, when a character comes within a conversation's approach distance in Guard (porter)'s sight, Guard (porter) acts from its own `approached` rows.
+        at behaviorDefinitions.porter-policy.recipe.states.ready.transitions[0]
+    - `approached` row 1 of `porter-policy`: Guard (porter) says “Halt there. What's your business?”
+        at behaviorDefinitions.porter-policy.table.approached[0]
+
+NOT YET SAID
+  Nothing: every authored thing above is said or summarised.
