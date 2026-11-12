@@ -2,8 +2,9 @@
 
 The [accepted design](design.md) and [checked plan](plan.md) belong to
 [project #946](https://github.com/KirkDiggler/rpg-project/issues/946).
-This is **source implementation evidence, not a release**. Operator fixture view,
-one bounded independent review and authorized release/tag adoption remain open.
+This is **source implementation evidence, not a release**. The bounded independent
+review is complete with one deferred Minor and no blocking findings. Operator
+fixture-view acknowledgment/waiver and authorized release/tag adoption remain open.
 
 ## Source checkpoints
 
@@ -117,6 +118,29 @@ remained green after each task; final root race/vet/lint passed.
    relative source links open the actual implemented code. The design PR retains
    law, plan and evidence; there is no concurrent README writer.
 
+## Independent review and disposition
+
+The joined independent round is published on [root #2401](https://github.com/KirkDiggler/rpg-toolkit/pull/2401#pullrequestreview-5883376897)
+at `6a7256b5` and [provider #2402](https://github.com/KirkDiggler/rpg-toolkit/pull/2402#pullrequestreview-5883377068)
+at `a1a45e42`. The reviewer independently ran root race/vet/lint and the cookbook,
+provider race/vet, and killed mutations on the new seams; the published reviews
+separate those runs from reused exact-head CI. No Critical or Important finding.
+
+The sole [Minor](https://github.com/KirkDiggler/rpg-toolkit/pull/2401#discussion_r4557487975)
+notes that concentration counting is per selection list, not per definition.
+Only the current maintenance-class concentration kind reports that capability,
+so a cross-list duplicate cannot be authored today. Disposition: **Deferred** to
+[toolkit #2404](https://github.com/KirkDiggler/rpg-toolkit/issues/2404), owned by the
+next kind author before introducing a benefit-class concentration claim. No code
+change or repeated review round is warranted; the reviewed runtime heads remain
+unchanged.
+
+The review ran at the operator's direct request before the fixture-view checkbox
+was ticked. That ordering is recorded, not retroactively claimed satisfied. The
+view still needs acknowledgment or an explicit waiver before merge authority is
+requested. A later go.mod/go.sum-only released-tag re-pin needs a focused new-head
+verdict, not another whole-diff campaign.
+
 ## Gate limits and remaining work
 
 - The workspace `make pre-commit` target fails in unchanged Core/Events coverage
@@ -125,11 +149,16 @@ remained green after each task; final root race/vet/lint passed.
   This target was not bypassed or claimed green; owning root and provider gates
   passed separately, as the repository test guide requires.
 - Genre checking remains advisory: 44 findings across 89 scanned files, exit1.
-- **Pending:** operator view of the executable examples and public API, then the
-  bounded independent joined review of #2401/#2402 and focused closure if needed.
+- **Pending:** operator acknowledgment or waiver of the executable fixture view.
+  The independently requested joined review is already complete; do not restart it.
 - **Pending, separate authority:** merge/tag neutral provider, adopt the actual
   tag and rerun root gates/CI, then root/doc merge. No tags are predicted or made
-  manually; neither implementation PR is merge-ready now.
+  manually. The published review verdicts are MERGE-READY at their reviewed heads,
+  with root explicitly pending re-pin; they are not merge authorization.
+- **Native adoption handoff:** the single current end-reason string changes from
+  spell_ended to members_empty. When API/web adopt this root release, their review
+  must check the records/events/logs/toasts carrying that value; current fixture
+  evidence does not certify those surfaces.
 - No native inventory/studio/API/proto integration, observer disclosure adoption,
   browser QA or production release is claimed. The existing operator walk stack,
   run data and open journal #863 are untouched.

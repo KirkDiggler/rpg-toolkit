@@ -6,7 +6,8 @@ The component boundary is agreed. The [walkthrough](README.md),
 [detailed design](design.md) and [authored examples](examples.md) carry the
 accepted contracts, fixture policies and rulebook-first placement, R1–R6. The [implementation plan](plan.md)
 names the delivery slices, task interfaces and proofs. [Implementation evidence](implementation.md)
-records T1–T8 source completion and the remaining operator-view/review/release gates.
+records T1–T8 source completion, the completed independent review with one deferred
+Minor, and remaining operator-view/release gates.
 
 ## Outcome
 
