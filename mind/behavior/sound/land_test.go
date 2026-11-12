@@ -124,3 +124,41 @@ func TestARepeatedSoundAtOneCellIsStampedAtTheLatest(t *testing.T) {
 	require.Equal(t, []sound.Sound{{Kind: "clang", Where: spatial.Position{X: 4, Y: 7}, At: 6}},
 		heardBy(t, store, "guard"), "stamped at the latest clang, not the first")
 }
+
+// A SOUND WITH NO LOUDNESS IS STORED EXACTLY AS IT ALWAYS WAS (rpg-project#933):
+// the same subject and the same payload bytes, so a saved holding reads the
+// same and a sound landed today is not a new record.
+func TestASoundWithNoLoudnessIsUnchangedByteForByte(t *testing.T) {
+	store, err := perception.New()
+	require.NoError(t, err)
+	require.NoError(t, sound.Land(&sound.LandInput{
+		Store: store, Sound: sound.Sound{Kind: "clang", Where: spatial.Position{X: 1, Y: 2}, At: 3}, Hearers: []core.EntityID{"guard"},
+	}))
+	held, err := store.Held("guard")
+	require.NoError(t, err)
+	require.Len(t, held, 1)
+	require.Equal(t, sound.Subject("clang"), held[0].Subject, "filed under its kind, as before")
+	require.Equal(t, sound.Subject("clang"), sound.SubjectOf(sound.Sound{Kind: "clang"}))
+	require.JSONEq(t, `{"type":"sound","kind":"clang","where":{"x":1,"y":2}}`, string(held[0].Payload))
+	require.NotContains(t, string(held[0].Payload), "loudness", "no key for a loudness nobody stated")
+}
+
+// A LOUDNESS RIDES THE SOUND AND IS READ BACK, and each loudness of a kind is
+// held apart: a spoken word after a shout does not replace the shout, so a
+// condition that asks for a shout still finds it.
+func TestALoudnessIsHeldAndEachLevelIsKeptApart(t *testing.T) {
+	store, err := perception.New()
+	require.NoError(t, err)
+	for _, s := range []sound.Sound{
+		{Kind: "voice", Where: spatial.Position{X: 1, Y: 1}, At: 2, Loudness: "shout"},
+		{Kind: "voice", Where: spatial.Position{X: 3, Y: 3}, At: 3, Loudness: "speak"},
+		{Kind: "voice", Where: spatial.Position{X: 5, Y: 5}, At: 4, Loudness: "speak"},
+	} {
+		require.NoError(t, sound.Land(&sound.LandInput{Store: store, Sound: s, Hearers: []core.EntityID{"guard"}}))
+	}
+	require.ElementsMatch(t, []sound.Sound{
+		{Kind: "voice", Where: spatial.Position{X: 1, Y: 1}, At: 2, Loudness: "shout"},
+		{Kind: "voice", Where: spatial.Position{X: 5, Y: 5}, At: 4, Loudness: "speak"},
+	}, heardBy(t, store, "guard"), "the shout, and the latest spoken word")
+	require.NotEqual(t, sound.Subject("voice"), sound.SubjectOf(sound.Sound{Kind: "voice", Loudness: "shout"}))
+}

@@ -962,6 +962,60 @@ func (s *TableSuite) TestHeardHoldsInsideItsWindowAndForItsKind() {
 	}
 }
 
+// TestHeardAtALoudnessHoldsAtOrAboveIt is `heard: { kind, within,
+// loudness }` (rpg-project#933): judged by the order the caller hands the
+// pick, quietest first, a sound at or above the named loudness counts; a
+// quieter one, one that states no loudness, or one the order cannot rank
+// does not; a condition naming a loudness the order lacks holds for nothing;
+// and a condition naming none hears every loudness, as it always did.
+func (s *TableSuite) TestHeardAtALoudnessHoldsAtOrAboveIt() {
+	table := func(loudness string) behavior.Table {
+		return behavior.Table{behavior.KeyTime: {
+			{Weight: 1, When: []behavior.When{{Heard: &behavior.HeardWhen{Kind: lit("voice"), Within: 2, Loudness: loudness}}},
+				Toward: &behavior.Selector{At: &someCell}},
+			{Weight: 1, Hold: true},
+		}}
+	}
+	order := []string{"whisper", "speak", "shout", "scream"}
+	for _, tc := range []struct {
+		name      string
+		condition string
+		heard     string
+		order     []string
+		entry     int
+	}{
+		{name: "a shout, asked for a shout", condition: "shout", heard: "shout", order: order, entry: 0},
+		{name: "a scream is louder than a shout", condition: "shout", heard: "scream", order: order, entry: 0},
+		{name: "spoken is quieter than a shout", condition: "shout", heard: "speak", order: order, entry: 1},
+		{name: "a sound that states no loudness was never said to be loud", condition: "shout", heard: "", order: order, entry: 1},
+		{name: "a loudness the order lacks cannot be ranked", condition: "shout", heard: "bellow", order: order, entry: 1},
+		{name: "a condition the order cannot rank holds for nothing", condition: "bellow", heard: "scream", order: order, entry: 1},
+		{name: "no order, nothing to judge by", condition: "shout", heard: "shout", order: nil, entry: 1},
+		{name: "no loudness asked: a spoken word", condition: "", heard: "speak", order: order, entry: 0},
+		{name: "no loudness asked: a sound that states none", condition: "", heard: "", order: nil, entry: 0},
+	} {
+		s.Run(tc.name, func() {
+			facts := behavior.Facts{Now: 10, CanMove: true, Loudness: tc.order,
+				Sounds: []sound.Sound{{Kind: "voice", At: 10, Loudness: tc.heard}}}
+			s.Equal(tc.entry, s.pickTime(table(tc.condition), facts))
+		})
+	}
+}
+
+// TestAHeardConditionWithNoLoudnessMarshalsAsBefore: an existing table's
+// `heard` writes the same bytes; one that names a loudness writes it.
+func (s *TableSuite) TestAHeardConditionWithNoLoudnessMarshalsAsBefore() {
+	plain, err := json.Marshal(behavior.HeardWhen{Kind: lit("clang"), Within: 2})
+	s.Require().NoError(err)
+	s.NotContains(string(plain), "Loudness", "no key for a loudness nobody asked for")
+	loud, err := json.Marshal(behavior.HeardWhen{Kind: lit("voice"), Within: 2, Loudness: "shout"})
+	s.Require().NoError(err)
+	s.Contains(string(loud), `"Loudness":"shout"`)
+	var back behavior.HeardWhen
+	s.Require().NoError(json.Unmarshal(loud, &back))
+	s.Equal("shout", back.Loudness, "and reads it back")
+}
+
 // TestFactHoldsWhenTheCreatureKnowsIt is `when: { fact: <id> }`: the id is
 // among the facts this creature holds, and nothing else answers it.
 func (s *TableSuite) TestFactHoldsWhenTheCreatureKnowsIt() {

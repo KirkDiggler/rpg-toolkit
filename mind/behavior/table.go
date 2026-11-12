@@ -503,8 +503,9 @@ type When struct {
 	// author's sight.
 	Within int
 
-	// Heard is `heard: { kind, within }`: a sound of that kind this creature
-	// holds, no older than the span. Nil when this condition names something
+	// Heard is `heard: { kind, within, loudness }`: a sound of that kind
+	// this creature holds, no older than the span, and at or above the
+	// loudness when one is named. Nil when this condition names something
 	// else. See [HeardWhen].
 	//
 	// OMITTED WHEN EMPTY, as Scope is and for Scope's reason: a document
@@ -552,6 +553,19 @@ type HeardWhen struct {
 	// deed condition's rule: AT LEAST 1, so `within: 2` heard at 10 holds at
 	// 10, 11 and 12.
 	Within int
+
+	// Loudness, when set, is the quietest a sound may have been and still
+	// count: AT OR ABOVE it, by the order the caller hands the pick
+	// ([Facts.Loudness]). A word in the caller's vocabulary this module never
+	// interprets; only its place in that order is read.
+	//
+	// ABSENT IS TODAY'S CONDITION: any loudness, and a sound that states
+	// none. SET, it holds only for a sound that states a loudness at or above
+	// it, both words found in the order: a sound with no loudness was never
+	// said to be loud, and a word the order lacks cannot be ranked, so
+	// neither is guessed at and neither counts (fail closed). Omitted from
+	// JSON when empty, so an existing table marshals exactly as before.
+	Loudness string `json:",omitempty"`
 }
 
 // conditions names every condition this When sets, in the order a refusal
@@ -1105,6 +1119,13 @@ type Facts struct {
 	// sounds channel ([sound.Held]); empty is "I heard nothing".
 	Sounds []sound.Sound
 
+	// Loudness is the caller's loudness words, quietest first: the ORDER a
+	// `heard` condition's Loudness is judged by ([HeardWhen.Loudness]). The
+	// caller owns the vocabulary and hands its order with the facts, so this
+	// module compares places in a list and never knows a word; a table that
+	// asks for no loudness never reads it.
+	Loudness []string
+
 	// SeenFoes is every opposed member this creature holds in its own sight
 	// right now, standing; RememberedFoes is every opposed member it holds
 	// placed from an earlier sighting and does not see now (rpg-project#669).
@@ -1463,11 +1484,20 @@ func (h *HeardWhen) holds(f Facts) bool {
 	if h.Within < 1 {
 		return false
 	}
+	least := -1
+	if h.Loudness != "" {
+		if least = slices.Index(f.Loudness, h.Loudness); least < 0 {
+			return false // a loudness the order cannot rank holds for nothing
+		}
+	}
 	for _, s := range f.Sounds {
 		// A sound stamped ahead of now is wrong, not fresh: the deed
 		// condition's rule, and for the same reason.
 		if !h.Kind.Matches(s.Kind) || s.At > f.Now {
 			continue
+		}
+		if least >= 0 && slices.Index(f.Loudness, s.Loudness) < least {
+			continue // quieter than asked, unstated, or unrankable
 		}
 		if f.Now-s.At <= uint64(h.Within) {
 			return true
