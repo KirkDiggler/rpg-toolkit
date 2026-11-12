@@ -101,9 +101,10 @@ type spoken struct {
 // ([sound.Land]). It returns who caught the words, for the facts and
 // recognitions the line teaches (R9).
 //
-// THE SPEAKER ALWAYS PERCEIVES THEIR OWN LINE; THE MEMBER SPOKEN TO ALWAYS
-// CATCHES IT (R8, the lead's call: a line is only said within Speak reach). A
-// member who is down perceives nothing.
+// THE SPEAKER ALWAYS PERCEIVES THEIR OWN LINE; THE MEMBER SPOKEN TO CATCHES
+// IT (R8, the lead's call: a line is only said within Speak reach) — but a
+// whisper only from beside them (R10), which a whispered answer row said to
+// a member across the room is not. A member who is down perceives nothing.
 func (e *Encounter) utter(u utterance) (spoken, error) {
 	all, err := e.perceive(u)
 	if err != nil {
@@ -197,6 +198,7 @@ func (e *Encounter) perceive(u utterance) ([]facet, error) {
 	}
 	rooms, reaches := wordRooms(u.loudness)
 	dc, noticeable := noticeDC(u.loudness)
+	toCatches := e.addresseeCatches(u, where)
 
 	ids := e.rosterIDs()
 	out := make([]facet, 0, len(ids))
@@ -214,14 +216,16 @@ func (e *Encounter) perceive(u utterance) ([]facet, error) {
 			if m, ok := e.members[id]; ok {
 				if pos, err := e.cellOf(m); err == nil {
 					if part, ok := parts.of[pos]; ok {
-						h, reached = hops[part]
+						if h, reached, err = e.heardFrom(part, hops); err != nil {
+							return nil, err
+						}
 					}
 				}
 			}
 			if reached {
 				p.hops = h
 			}
-			p.words = id == u.to || (reaches && reached && h <= rooms)
+			p.words = (id == u.to && toCatches) || (reaches && reached && h <= rooms)
 			if !p.words && noticeable && reached {
 				passive := sheets[id].PassivePerception
 				p.noticed = passive > 0 && passive >= dc+dcPerHop*h
@@ -230,6 +234,27 @@ func (e *Encounter) perceive(u utterance) ([]facet, error) {
 		out = append(out, p)
 	}
 	return out, nil
+}
+
+// addresseeCatches is whether the one an utterance is said to catches it:
+// always, but a whisper only from beside (R10) — a whispered answer row said
+// to a member who spoke from across the room does not reach them.
+func (e *Encounter) addresseeCatches(u utterance, where spatial.Position) bool {
+	if u.to == "" {
+		return false
+	}
+	if loudnessWord(string(u.loudness)) != LoudnessWhisper {
+		return true
+	}
+	m, ok := e.members[u.to]
+	if !ok {
+		return false
+	}
+	at, err := e.cellOf(m)
+	if err != nil {
+		return false
+	}
+	return e.Distance(where, at) <= 1
 }
 
 // perceivedAsSpoken is a kept roll's line perceived as the scene it was
@@ -277,6 +302,10 @@ func (e *Encounter) voiceReach(where spatial.Position, l Loudness) (map[Partitio
 	if !ok {
 		return map[PartitionID]int{}, nil
 	}
+	seeds, err := e.standsIn(origin)
+	if err != nil {
+		return nil, err
+	}
 	bound, _ := wordRooms(l)
 	if dc, ok := noticeDC(l); ok {
 		sheets, err := e.sheetsNow()
@@ -291,18 +320,106 @@ func (e *Encounter) voiceReach(where spatial.Position, l Loudness) (map[Partitio
 			bound = max(bound, (best-dc)/dcPerHop)
 		}
 	}
-	return e.hopsWithin(origin, bound)
+	return e.hopsWithin(seeds, bound)
 }
 
-// hopsWithin is [Encounter.hopsFrom] stopped at bound: every partition no
-// more than bound rooms from origin, a closed door on a crossing costing one
-// room more. A partition farther is absent.
-func (e *Encounter) hopsWithin(origin PartitionID, bound int) (map[PartitionID]int, error) {
+// doorways is every partition that is a footprint door's own cells, and the
+// ways that door joins it to the rooms either side. The partition pass shuts
+// every door, so the cells a door's leaf stands on are split off as their
+// own partition; standing there with the door open is standing between the
+// rooms it joins. Derived once with the links, from the same construction
+// truth: an edge door stands on room cells and makes no doorway.
+func (e *Encounter) doorways() (map[PartitionID][]partitionLink, error) {
+	if e.partitionDoorways != nil {
+		return e.partitionDoorways, nil
+	}
 	links, err := e.links()
 	if err != nil {
 		return nil, err
 	}
-	dist := map[PartitionID]int{origin: 0}
+	parts, err := e.field.partitionsNow()
+	if err != nil {
+		return nil, err
+	}
+	out := map[PartitionID][]partitionLink{}
+	cellsOf := map[*doorRecord]map[spatial.Position]bool{}
+	for p, ways := range links {
+		for _, l := range ways {
+			if l.door.placement == nil {
+				continue
+			}
+			on, ok := cellsOf[l.door]
+			if !ok {
+				on = map[spatial.Position]bool{}
+				for _, c := range e.doorCells(l.door) {
+					on[c] = true
+				}
+				cellsOf[l.door] = on
+			}
+			inside := true
+			for _, c := range parts.cells[p] {
+				if !on[c] {
+					inside = false
+					break
+				}
+			}
+			if inside {
+				out[p] = append(out[p], l)
+			}
+		}
+	}
+	e.partitionDoorways = out
+	return out, nil
+}
+
+// standsIn is the partitions a member in partition p stands in, for what
+// they say and what they hear: p itself, and — when p is an open doorway
+// ([Encounter.doorways]) — each room its door joins, at no room's distance.
+// A doorway is an endpoint, never a way through: a voice in one room
+// crosses the doorway to the next at the price of the door.
+func (e *Encounter) standsIn(p PartitionID) ([]PartitionID, error) {
+	ways, err := e.doorways()
+	if err != nil {
+		return nil, err
+	}
+	out := []PartitionID{p}
+	for _, l := range ways[p] {
+		if !l.door.blocks() {
+			out = append(out, l.to)
+		}
+	}
+	return out, nil
+}
+
+// heardFrom is how many rooms from a voice a member in partition p is: the
+// nearest of the partitions they stand in ([Encounter.standsIn]), or false
+// when the voice reaches none of them.
+func (e *Encounter) heardFrom(p PartitionID, hops map[PartitionID]int) (int, bool, error) {
+	in, err := e.standsIn(p)
+	if err != nil {
+		return 0, false, err
+	}
+	best, reached := 0, false
+	for _, q := range in {
+		if h, ok := hops[q]; ok && (!reached || h < best) {
+			best, reached = h, true
+		}
+	}
+	return best, reached, nil
+}
+
+// hopsWithin is [Encounter.hopsFrom] stopped at bound: every partition no
+// more than bound rooms from the origins (each at zero), a closed door on a
+// crossing costing one room more. A partition farther is absent.
+func (e *Encounter) hopsWithin(origins []PartitionID, bound int) (map[PartitionID]int, error) {
+	links, err := e.links()
+	if err != nil {
+		return nil, err
+	}
+	dist := make(map[PartitionID]int, len(origins))
+	for _, o := range origins {
+		dist[o] = 0
+	}
 	done := map[PartitionID]bool{}
 	for {
 		var at PartitionID

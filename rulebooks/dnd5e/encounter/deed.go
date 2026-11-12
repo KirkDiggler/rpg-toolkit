@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/deed"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/stage"
+	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -264,6 +265,42 @@ func (e *Encounter) landDeed(
 	verb string, actor, target MemberID, where spatial.Position, witnesses []core.EntityID,
 ) error {
 	return e.landDeedAt(verb, actor, target, where, witnesses, uint64(e.clock.ToData().HighWater))
+}
+
+// landSpokenDeed lands a deed a line did — intimidated, persuaded, deceived
+// — on whoever caught its words, and wakes only those of them who listen for
+// it (rpg-project#933): the deed says the line worked, which is the verdict,
+// and a verdict travels with the words. One who only saw the line said, or
+// only heard a voice, holds nothing of it and is not woken by it.
+func (e *Encounter) landSpokenDeed(
+	verb string, actor, target MemberID, where spatial.Position, catchers []MemberID, at uint64,
+) error {
+	if err := stage.Land(&stage.LandInput{
+		Store:     memberReportStore{e},
+		Deed:      deed.Deed{Verb: verb, Actor: actor, Target: target, Where: where.String()},
+		Witnesses: catchers,
+		At:        at,
+	}); err != nil {
+		return fmt.Errorf("deed: %w", err)
+	}
+	named := machine.Beat(deedPrefix + deedWord(verb))
+	for _, b := range []machine.Beat{named, beatDeed} {
+		if b == deedPrefix || !e.listened(b) {
+			continue
+		}
+		for _, id := range catchers {
+			if id == actor {
+				continue // the doer is not woken by its own deed
+			}
+			if _, ok := e.listensFor(id, b); !ok {
+				continue
+			}
+			cell := where
+			e.land(wakeBeat{Beat: b, Cell: &cell, Subject: actor, Member: id, At: at})
+		}
+	}
+
+	return nil
 }
 
 // landDeedAt is [Encounter.landDeed] with the stamp named rather than read.

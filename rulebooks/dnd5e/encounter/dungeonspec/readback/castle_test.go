@@ -291,7 +291,10 @@ func (s *CastleSuite) TestTheAlarmIsShoutedAndTeachesWhomItReaches() {
 func (s *CastleSuite) TestALineSaysItsLoudnessAndWhoPerceivesWhat() {
 	st := s.statement(readback.KindLine, "room.room.monsterBindings.captain.options[0]")
 	s.Contains(st.Sentence, "It is said at `speak` (the default): its words reach everyone in the speaker's room")
-	s.Contains(st.Sentence, "whoever the words reach and does not see the speaker hears the words, and the roll with them, from someone unnamed")
+	s.Contains(st.Sentence, "and whoever it is said to, wherever they stand")
+	s.Contains(st.Sentence, "whoever the words reach and does not see the speaker hears the words — and which line it was, "+
+		"the roll, whether it worked and what it taught — from someone unnamed")
+	s.Contains(st.Sentence, "whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught")
 }
 
 // TestTheCaptainGoesIn: the captain's routine wakes on the topic and walks

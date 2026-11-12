@@ -87,3 +87,28 @@ func TestAKeptRollIsPerceivedAsItWasSaid(t *testing.T) {
 	require.Equal(t, "bob", version["speaker"], "named, as he saw bob say it")
 	require.Contains(t, version, "check", "and the roll with the words")
 }
+
+// TestAKeptRollSavedBeforeHearingsReachesOnlyItsTwo pins a scene kept before
+// speech was perceived (no [ReservedScene.Heard], no SawTarget): its settle
+// is caught by the speaker and the one spoken to alone. Those it names as
+// witnesses see the speaker say it and catch nothing — the scene never
+// recorded who heard, and a guess would invent a hearer.
+func TestAKeptRollSavedBeforeHearingsReachesOnlyItsTwo(t *testing.T) {
+	enc := vouchHall(t, "", 2)
+	u := utterance{
+		speaker: "bob", to: postedGuard, words: "He's with me.",
+		scene: &ReservedScene{Where: spatial.Position{X: 3, Y: 1}, Witnesses: []MemberID{postedGuard, "gate-2", "alice"}},
+	}
+	facets := map[MemberID]facet{}
+	for _, f := range enc.perceivedAsSpoken(u) {
+		facets[f.member] = f
+	}
+	require.True(t, facets["bob"].words, "the speaker")
+	require.True(t, facets[postedGuard].words, "and the one spoken to")
+	for _, id := range []MemberID{"gate-2", "alice"} {
+		require.True(t, facets[id].sees, "%s saw it said", id)
+		require.False(t, facets[id].words, "%s caught no words the scene never said reached them", id)
+		require.False(t, facets[id].noticed, "%s noticed no voice either", id)
+		require.False(t, facets[id].seesTo, "nor whom it was said to: SawTarget was never kept")
+	}
+}

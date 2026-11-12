@@ -5,10 +5,12 @@ package encounter_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/deed"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
@@ -191,6 +193,30 @@ func (s *SpeechSuite) TestAFactGoesToWhoCatchesTheWordsNotWhoSees() {
 	s.False(knows(s.T(), enc, speechCole, "met-the-goblin"), "one who only noticed a voice")
 }
 
+// TestADeedGoesToWhoCatchesTheWordsNotWhoSees is the deed's half of R9: a
+// persuasion that worked lands `persuade` on whoever caught its words — the
+// verdict travels with them — and not on bea, who watched it said through
+// the doorway, nor cole, who only noticed a voice.
+func (s *SpeechSuite) TestADeedGoesToWhoCatchesTheWordsNotWhoSees() {
+	enc := s.hall(encounter.DoorIsOpen(), "", "")
+	s.Require().NoError(s.say(enc, true))
+
+	held := func(who encounter.MemberID) bool {
+		holdings, err := enc.View(&encounter.ViewInput{Member: who})
+		s.Require().NoError(err)
+		for _, h := range holdings {
+			if h.Channel == deed.Channel && h.Subject == deed.Subject(alice, encounter.DeedPersuade) {
+				return true
+			}
+		}
+		return false
+	}
+	s.True(held(goblin), "the one it was said to")
+	s.True(held(speechDana), "a hearer who saw nothing")
+	s.False(held(speechBea), "a watcher out of earshot does not know it worked")
+	s.False(held(speechCole), "nor one who only noticed a voice")
+}
+
 // TestAClosedDoorCostsARoom: a shout reaches the next room through an open
 // door and stops at a closed one; at speak, the closed door also stops cole
 // noticing the voice (DC 5, plus 10 for two rooms, against passive 10).
@@ -226,6 +252,23 @@ func (s *SpeechSuite) TestAWhisperReachesOnlyTheOneAddressed() {
 
 	far := s.hallWithAliceAt(4, encounter.DoorIsOpen(), "whisper", "")
 	s.ErrorIs(s.say(far, true), encounter.ErrOutOfRange, "a whisper is said only from beside the one it is said to")
+}
+
+// TestAWhisperedAnswerReachesOnlyFromBeside (R10): a whispered answer row
+// said to a member who spoke from across the room reaches nobody — not even
+// the one it is said to — and teaches nothing; she sees him say something.
+func (s *SpeechSuite) TestAWhisperedAnswerReachesOnlyFromBeside() {
+	enc := s.hallWithAliceAt(4, encounter.DoorIsOpen(), "", "whisper")
+	s.Require().NoError(s.say(enc, true))
+	vs := s.versions(enc, alice)
+	s.Require().Len(vs, 2, "her line and his answer")
+	s.Equal(string(goblin), vs[1]["speaker"], "she sees him answer")
+	s.NotContains(vs[1], "words", "but a whisper from two cells off does not reach her")
+	s.False(knows(s.T(), enc, alice, "met-the-goblin"), "and teaches her nothing")
+
+	near := s.hallWithAliceAt(5, encounter.DoorIsOpen(), "", "whisper")
+	s.Require().NoError(s.say(near, true))
+	s.Equal("Evening yourself.", s.versions(near, alice)[1]["words"], "from beside, it does")
 }
 
 // TestNoBeatCarriesALineBeyondItsHearers: the record's other beats carry no
@@ -281,5 +324,43 @@ func (s *SpeechSuite) TestAReloadReplaysTheSameVersions() {
 	s.Require().NoError(err)
 	for _, who := range []encounter.MemberID{alice, goblin, speechBea, speechCole, speechDana, speechEd} {
 		s.Equal(s.versions(enc, who), s.versions(loaded, who), "%s's versions", who)
+	}
+}
+
+// TestAWatcherReadsNothingOfTheLineFromAnyBeat is the review's probe made a
+// test (rpg-project#933): after alice's line and the goblin's answer, bea —
+// who watched through the doorway — and cole — who noticed a voice — are
+// told nothing of which line it was, how it went, what it taught or what
+// was said, on any beat at all; dana, who caught the words unseen, learns
+// them only through her version.
+func (s *SpeechSuite) TestAWatcherReadsNothingOfTheLineFromAnyBeat() {
+	enc := s.hall(encounter.DoorIsOpen(), "", "")
+	watchers := []encounter.MemberID{speechBea, speechCole, speechDana}
+	before := map[encounter.MemberID]int{}
+	for _, who := range watchers {
+		entries, err := enc.Story(&encounter.StoryInput{Audience: who})
+		s.Require().NoError(err)
+		before[who] = len(entries)
+	}
+	s.Require().NoError(s.say(enc, true))
+
+	for _, who := range watchers {
+		entries, err := enc.Story(&encounter.StoryInput{Audience: who})
+		s.Require().NoError(err)
+		for _, entry := range entries[before[who]:] {
+			var b map[string]any
+			s.Require().NoError(json.Unmarshal(entry.Payload, &b))
+			if b["beat"] == encounter.BeatSpeech {
+				continue // their version, which the facet tables hold
+			}
+			s.NotEqual(encounter.BeatTable, b["beat"], "%s: a table is told to nobody", who)
+			for _, key := range []string{"option", "beaten", "fact", "verb", "check", "words"} {
+				s.NotContains(b, key, "%s: a %s beat says the line's %s", who, b["beat"], key)
+			}
+			s.Empty(b["say"], "%s: a %s beat says the words", who, b["beat"])
+			k, _ := b["key"].(string)
+			s.NotContains([]string{string(encounter.AnswerSuccess), string(encounter.AnswerFailure)}, k,
+				"%s: a %s beat says how the line went by its table", who, b["beat"])
+		}
 	}
 }

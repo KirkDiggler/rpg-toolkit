@@ -599,12 +599,16 @@ type SpeakOutput struct {
 	// the answer rather than off the fact that it called.
 	Beaten bool
 
-	// Witnesses is every member who saw it — who holds the deed on a
-	// success, who learns a fact the answer teaches, and who was told
-	// regardless. Sorted, the audience's own order.
+	// Witnesses is every member who saw it said. Sorted, the audience's own
+	// order. Seeing it said teaches nothing of how it went (rpg-project#933).
 	Witnesses []MemberID
 
-	// Deed is the deed verb that landed on the witnesses — [DeedIntimidate]
+	// Hearers is every member who caught the words — who holds the deed on a
+	// success and was written the line and its roll (rpg-project#933). In
+	// member order.
+	Hearers []MemberID
+
+	// Deed is the deed verb that landed on the hearers — [DeedIntimidate]
 	// or [DeedPersuade] — or empty when none did: a miss, a skill that lands
 	// none, or a prop.
 	Deed string
@@ -734,10 +738,12 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	}
 
 	// THE DEED IS THE SKILL'S (R3), and only a creature can hold one about
-	// being spoken to: a prop is persuaded of nothing.
+	// being spoken to: a prop is persuaded of nothing. IT IS KNOWN BY WHOEVER
+	// CAUGHT THE WORDS (rpg-project#933): an intimidation that worked says it
+	// worked, so one who only saw the line said holds no deed of it.
 	landed := ""
 	if verb, lands := deedForSkill(in.Skill); lands && beaten && in.Target != "" {
-		if err := e.landDeed(verb, in.Actor, in.Target, where, witnesses); err != nil {
+		if err := e.landSpokenDeed(verb, in.Actor, in.Target, where, heardLine.catchers, at); err != nil {
 			return nil, fmt.Errorf("speak: %w", err)
 		}
 		landed = verb
@@ -809,7 +815,7 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	}
 
 	return &SpeakOutput{
-		Beaten: beaten, Witnesses: witnesses, Deed: landed, Seq: seq, Answered: answered.pick,
+		Beaten: beaten, Witnesses: witnesses, Hearers: heardLine.catchers, Deed: landed, Seq: seq, Answered: answered.pick,
 	}, nil
 }
 
