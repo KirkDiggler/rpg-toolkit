@@ -436,7 +436,7 @@ func (s *composerSuite) TestNilUnknownAndEmptyHaveExplicitOutcomes() {
 // exactly as authored, through the composer's owned copy, and is never read.
 func (s *composerSuite) TestALineCarriesItsLoudnessUnread() {
 	spec := compositionSpec("crier", "To arms!", 1)
-	spec.Table["work"][0].Loudness = "shout"
+	spec.Table["work"][0].Loudness = "loud"
 	config := compositionConfig(spec)
 	composer, err := behavior.NewComposer(&config)
 	s.Require().NoError(err)
@@ -445,7 +445,7 @@ func (s *composerSuite) TestALineCarriesItsLoudnessUnread() {
 	s.Require().NoError(err)
 	s.Require().NotNil(out.Pick)
 	s.Equal("To arms!", out.Pick.Answer.Say)
-	s.Equal("shout", out.Pick.Answer.Loudness, "carried as authored")
+	s.Equal("loud", out.Pick.Answer.Loudness, "carried as authored")
 }
 
 // TestATableWithoutLoudnessKeepsItsDigest: a definition authored before the
@@ -459,7 +459,7 @@ func (s *composerSuite) TestATableWithoutLoudnessKeepsItsDigest() {
 		composer.ToData().Instances[0].Definition, "an existing table is unchanged byte for byte")
 
 	loud := compositionSpec("worker", "work", 1)
-	loud.Table["work"][0].Loudness = "shout"
+	loud.Table["work"][0].Loudness = "loud"
 	loudConfig := compositionConfig(loud)
 	louder, err := behavior.NewComposer(&loudConfig)
 	s.Require().NoError(err)
