@@ -967,7 +967,8 @@ func (s *TableSuite) TestHeardHoldsInsideItsWindowAndForItsKind() {
 // pick, quietest first, a sound at or above the named loudness counts; a
 // quieter one, one that states no loudness, or one the order cannot rank
 // does not; a condition naming a loudness the order lacks holds for nothing;
-// and a condition naming none hears every loudness, as it always did.
+// and a condition naming none hears every loudness, as it always did. The
+// words are this test's own: the module knows none.
 func (s *TableSuite) TestHeardAtALoudnessHoldsAtOrAboveIt() {
 	table := func(loudness string) behavior.Table {
 		return behavior.Table{behavior.KeyTime: {
@@ -976,7 +977,7 @@ func (s *TableSuite) TestHeardAtALoudnessHoldsAtOrAboveIt() {
 			{Weight: 1, Hold: true},
 		}}
 	}
-	order := []string{"whisper", "speak", "shout", "scream"}
+	order := []string{"faint", "soft", "loud", "louder"}
 	for _, tc := range []struct {
 		name      string
 		condition string
@@ -984,15 +985,20 @@ func (s *TableSuite) TestHeardAtALoudnessHoldsAtOrAboveIt() {
 		order     []string
 		entry     int
 	}{
-		{name: "a shout, asked for a shout", condition: "shout", heard: "shout", order: order, entry: 0},
-		{name: "a scream is louder than a shout", condition: "shout", heard: "scream", order: order, entry: 0},
-		{name: "spoken is quieter than a shout", condition: "shout", heard: "speak", order: order, entry: 1},
-		{name: "a sound that states no loudness was never said to be loud", condition: "shout", heard: "", order: order, entry: 1},
-		{name: "a loudness the order lacks cannot be ranked", condition: "shout", heard: "bellow", order: order, entry: 1},
-		{name: "a condition the order cannot rank holds for nothing", condition: "bellow", heard: "scream", order: order, entry: 1},
-		{name: "no order, nothing to judge by", condition: "shout", heard: "shout", order: nil, entry: 1},
-		{name: "no loudness asked: a spoken word", condition: "", heard: "speak", order: order, entry: 0},
+		{name: "loud, asked for loud", condition: "loud", heard: "loud", order: order, entry: 0},
+		{name: "louder is above loud", condition: "loud", heard: "louder", order: order, entry: 0},
+		{name: "soft is below loud", condition: "loud", heard: "soft", order: order, entry: 1},
+		{name: "a sound that states no loudness was never said to be loud", condition: "loud", heard: "", order: order, entry: 1},
+		{name: "a loudness the order lacks cannot be ranked", condition: "loud", heard: "booming", order: order, entry: 1},
+		{name: "a condition the order cannot rank holds for nothing", condition: "booming", heard: "louder", order: order, entry: 1},
+		{name: "no order, nothing to judge by", condition: "loud", heard: "loud", order: nil, entry: 1},
+		{name: "no loudness asked: a soft sound", condition: "", heard: "soft", order: order, entry: 0},
 		{name: "no loudness asked: a sound that states none", condition: "", heard: "", order: nil, entry: 0},
+		// A WORD LISTED TWICE IS RANKED AT ITS FIRST PLACE ([Facts.Loudness]):
+		// "soft" here sits below "loud" by its first place, not above it by
+		// its second.
+		{name: "a repeated word ranks at its first place", condition: "loud", heard: "soft",
+			order: []string{"soft", "loud", "soft"}, entry: 1},
 	} {
 		s.Run(tc.name, func() {
 			facts := behavior.Facts{Now: 10, CanMove: true, Loudness: tc.order,
@@ -1008,12 +1014,12 @@ func (s *TableSuite) TestAHeardConditionWithNoLoudnessMarshalsAsBefore() {
 	plain, err := json.Marshal(behavior.HeardWhen{Kind: lit("clang"), Within: 2})
 	s.Require().NoError(err)
 	s.NotContains(string(plain), "Loudness", "no key for a loudness nobody asked for")
-	loud, err := json.Marshal(behavior.HeardWhen{Kind: lit("voice"), Within: 2, Loudness: "shout"})
+	loud, err := json.Marshal(behavior.HeardWhen{Kind: lit("voice"), Within: 2, Loudness: "loud"})
 	s.Require().NoError(err)
-	s.Contains(string(loud), `"Loudness":"shout"`)
+	s.Contains(string(loud), `"Loudness":"loud"`)
 	var back behavior.HeardWhen
 	s.Require().NoError(json.Unmarshal(loud, &back))
-	s.Equal("shout", back.Loudness, "and reads it back")
+	s.Equal("loud", back.Loudness, "and reads it back")
 }
 
 // TestFactHoldsWhenTheCreatureKnowsIt is `when: { fact: <id> }`: the id is

@@ -144,21 +144,21 @@ func TestASoundWithNoLoudnessIsUnchangedByteForByte(t *testing.T) {
 }
 
 // A LOUDNESS RIDES THE SOUND AND IS READ BACK, and each loudness of a kind is
-// held apart: a spoken word after a shout does not replace the shout, so a
-// condition that asks for a shout still finds it.
+// held apart: a soft sound after a loud one does not replace the loud one,
+// so a condition that asks for loud still finds it.
 func TestALoudnessIsHeldAndEachLevelIsKeptApart(t *testing.T) {
 	store, err := perception.New()
 	require.NoError(t, err)
 	for _, s := range []sound.Sound{
-		{Kind: "voice", Where: spatial.Position{X: 1, Y: 1}, At: 2, Loudness: "shout"},
-		{Kind: "voice", Where: spatial.Position{X: 3, Y: 3}, At: 3, Loudness: "speak"},
-		{Kind: "voice", Where: spatial.Position{X: 5, Y: 5}, At: 4, Loudness: "speak"},
+		{Kind: "voice", Where: spatial.Position{X: 1, Y: 1}, At: 2, Loudness: "loud"},
+		{Kind: "voice", Where: spatial.Position{X: 3, Y: 3}, At: 3, Loudness: "soft"},
+		{Kind: "voice", Where: spatial.Position{X: 5, Y: 5}, At: 4, Loudness: "soft"},
 	} {
 		require.NoError(t, sound.Land(&sound.LandInput{Store: store, Sound: s, Hearers: []core.EntityID{"guard"}}))
 	}
 	require.ElementsMatch(t, []sound.Sound{
-		{Kind: "voice", Where: spatial.Position{X: 1, Y: 1}, At: 2, Loudness: "shout"},
-		{Kind: "voice", Where: spatial.Position{X: 5, Y: 5}, At: 4, Loudness: "speak"},
-	}, heardBy(t, store, "guard"), "the shout, and the latest spoken word")
-	require.NotEqual(t, sound.Subject("voice"), sound.SubjectOf(sound.Sound{Kind: "voice", Loudness: "shout"}))
+		{Kind: "voice", Where: spatial.Position{X: 1, Y: 1}, At: 2, Loudness: "loud"},
+		{Kind: "voice", Where: spatial.Position{X: 5, Y: 5}, At: 4, Loudness: "soft"},
+	}, heardBy(t, store, "guard"), "the loud one, and the latest soft one")
+	require.NotEqual(t, sound.Subject("voice"), sound.SubjectOf(sound.Sound{Kind: "voice", Loudness: "loud"}))
 }

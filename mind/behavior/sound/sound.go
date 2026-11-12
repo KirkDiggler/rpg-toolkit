@@ -68,7 +68,8 @@ type Sound struct {
 	At uint64
 
 	// Loudness is how loud it was, in the caller's own sealed vocabulary
-	// (a voice's "speak" or "shout"), or empty when the caller states none.
+	// (a "soft" or a "loud" voice, in whatever words the caller seals), or
+	// empty when the caller states none.
 	// This package never interprets it: a `heard` condition compares it by
 	// the order the caller hands the table ([behavior.Facts.Loudness]).
 	Loudness string
@@ -89,8 +90,8 @@ func Subject(kind string) core.EntityID {
 // SubjectOf is the subject one sound is held under: its kind's
 // ([Subject]) when it states no loudness, and its kind at that loudness when
 // it does, so a hearer holds the latest sound of each kind AT EACH
-// LOUDNESS, and a spoken word after a shout does not replace the shout a
-// `heard` condition that asks for a shout reads. A sound with no loudness is
+// LOUDNESS, and a soft sound after a loud one does not replace the loud one
+// a `heard` condition that asks for loud reads. A sound with no loudness is
 // filed exactly where it always was.
 func SubjectOf(s Sound) core.EntityID {
 	if s.Loudness == "" {

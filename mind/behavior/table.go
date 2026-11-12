@@ -1123,7 +1123,8 @@ type Facts struct {
 	// `heard` condition's Loudness is judged by ([HeardWhen.Loudness]). The
 	// caller owns the vocabulary and hands its order with the facts, so this
 	// module compares places in a list and never knows a word; a table that
-	// asks for no loudness never reads it.
+	// asks for no loudness never reads it. A word listed twice is ranked at
+	// its first place.
 	Loudness []string
 
 	// SeenFoes is every opposed member this creature holds in its own sight
