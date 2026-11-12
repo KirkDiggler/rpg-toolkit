@@ -16,9 +16,11 @@ Design preparation for [rpg-project#703](https://github.com/KirkDiggler/rpg-proj
 
 - KirkDiggler selected the rulebook as the primary reusable and teaching surface: R6 moves the canonical data and public-API examples beside the production rulebook code, with only a small test source; examples/items adoption is no longer a prerequisite — [correction](https://github.com/KirkDiggler/rpg-toolkit/pull/2399#issuecomment-6835450799).
 
+- The completed package README moves to the root implementation PR so its source links and executable API share the same revision; the design PR retains law/plan/evidence, with no concurrent README writer — [implementation record](../../docs/ideas/data-authored-effects/implementation.md).
+
 ## Found
 
-- Damage, resistance and save/check advantage already have reusable output meanings, but only resistance has a payload part binding; Rage activity maintenance remains in its named recipe — [package guide](../../rulebooks/dnd5e/effects/README.md#the-vocabulary).
+- Damage, resistance and save/check advantage already have reusable output meanings, but only resistance has a payload part binding; Rage activity maintenance remains in its named recipe — [package guide](https://github.com/KirkDiggler/rpg-toolkit/blob/feat/authored-effect-rulebook/rulebooks/dnd5e/effects/README.md#the-vocabulary).
 - ApplicationSpec contains concrete participants, the existing item example uses a named Go resolver, and target-held facts carry only ref/source identity; reusable authoring and configured target-side information require explicit contracts — [measured brief](https://github.com/KirkDiggler/rpg-project/issues/703#issuecomment-6831644739).
 - Existing root effects/conditions and item-example tests pass at the measured base; those baselines do not establish the proposed fixture capability — [evidence](https://github.com/KirkDiggler/rpg-project/issues/703#issuecomment-6831644739).
 

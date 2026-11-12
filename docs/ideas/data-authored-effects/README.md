@@ -34,8 +34,8 @@ flowchart LR
     Q --> View["Test assertions now; native renderer later"]
 ```
 
-The new public types below are implementation contracts, not a claim that the names
-already exist. Existing types retain their names explicitly. R4.
+The public types below implement the contracts in R4; [source and verification
+records](implementation.md) identify the implementation cut and release limits.
 
 ## Ownership and contracts
 
@@ -212,13 +212,13 @@ benefits, drawbacks, clocks and prices rather than calling them standard rules.
 
 | Concern | Existing source / proposed home |
 |---|---|
-| Current vocabulary | [`effects`](../../../rulebooks/dnd5e/effects/README.md) |
+| Current vocabulary | [`effects`](https://github.com/KirkDiggler/rpg-toolkit/blob/feat/authored-effect-rulebook/rulebooks/dnd5e/effects/README.md) |
 | Part binding/validation | `rulebooks/dnd5e/effects/{parts,part_validation,kinds}.go` |
-| Definition compilation/binding | Proposed `rulebooks/dnd5e/conditions/definition*.go` |
+| Definition compilation/binding | `rulebooks/dnd5e/conditions/definition*.go` |
 | Linked application and immutable bindings | `rulebooks/dnd5e/conditions/{application,linked_data,linked_condition}.go` |
 | Current target-held assessment | `rulebooks/dnd5e/conditions/target_held.go` |
 | Frame facts/clone | `rulebooks/dnd5e/contributions/frame.go` |
-| Pure projection seam | Proposed `rulebooks/dnd5e/conditions/held_effect_details.go` |
+| Pure projection seam | `rulebooks/dnd5e/conditions/held_effect_details.go` |
 | Source budget primitive, test-only use | `mechanics/resources.Resource`; existing rulebook dependency |
-| Small source and host in external tests | Planned `rulebooks/dnd5e/conditions/definition_source_test.go` and `definition_world_test.go` |
-| Canonical content and executable cookbook | Planned `rulebooks/dnd5e/conditions/testdata/effects/library.json`, `authored_cookbook_test.go`, `authored_example_test.go` |
+| Small source and host in external tests | `rulebooks/dnd5e/conditions/definition_source_test.go` and `definition_world_test.go` |
+| Canonical content and executable cookbook | `rulebooks/dnd5e/conditions/testdata/effects/library.json`, `authored_cookbook_test.go`, `authored_example_test.go` |

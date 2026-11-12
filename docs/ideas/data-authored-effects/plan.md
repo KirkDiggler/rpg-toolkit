@@ -4,9 +4,11 @@
 
 **Goal:** establish reusable, data-authored effect composition in the rulebook and teach its public API through rulebook-local fixtures and executable examples.
 
+**Execution state:** T1–T8 are source-complete at root `97cad4a4` (#2401). T5 required the separate neutral observation support in #950/#2402 (`a1a45e42`), consumed through a real pseudo-version. T9 documentation/gates are in progress; operator executable view, independent review and authorized release remain pending. [Actual evidence and implementation rulings](implementation.md).
+
 **Architecture:** a validated immutable library binds user/recipient roles into existing linked applications. The rulebook kind table owns meanings and projection; configured target facts are values in the action frame. Generic effects, source payment and existing delivery/lifetime machinery keep their current responsibilities; a small test source demonstrates payment without implementing an item engine.
 
-**Tech stack:** Go 1.27 modules, existing JSON codecs and testify suites; generic effects v0.5.0 remains the provider unless an actual missing neutral primitive is demonstrated.
+**Tech stack:** Go 1.27 modules, existing JSON codecs and testify suites. T5 demonstrated a missing complete-output observation; root now pins mechanics/effects `v0.5.1-0.20261112214314-a1a45e426f41` from the separate provider PR.
 
 **Spec:** [design](design.md), [walkthrough](README.md), [exact example data/policies](examples.md), [brief](brief.md). R1–R6 accepted; [planning authority](https://github.com/KirkDiggler/rpg-toolkit/pull/2399#issuecomment-6833714502) and [rulebook-first correction](https://github.com/KirkDiggler/rpg-toolkit/pull/2399#issuecomment-6835450799).
 
@@ -14,7 +16,7 @@
 
 ## Scope, finish line and authority
 
-This revision corrects the plan before runtime implementation. The finish line is reusable production rulebook APIs, a canonical rulebook-local fixture library, public-API examples with a small test source, named positive/refusal/lifecycle proofs, a deterministic executable cookbook, documentation and one source-verified root-module implementation PR with required independent review. No item-module dependency, production inventory engine, native browser acceptance or shipping is inferred.
+The finish line is reusable production rulebook APIs, a canonical rulebook-local fixture library, public-API examples with a small test source, named positive/refusal/lifecycle proofs, a deterministic executable cookbook, documentation and one source-verified root-module implementation PR with required independent review. No item-module dependency, production inventory engine, native browser acceptance or shipping is inferred.
 
 The earlier plan made examples/items the primary cookbook. Kirk's correction—“I was thinking of getting the rulebook package in order”—moves the teaching and integration proof into the rulebook under R6; downstream item adoption is separate.
 
@@ -32,7 +34,7 @@ Native studio, inventory deletion, target offers/range validation, API/protos, o
 - Ring/ward/damage gift: user-owned concentration, no duration cap, no implicit target-unconsciousness ending. Scroll: recipient activity, activity-only first-end grace, ten recipient turn ends including that first end. Sausage: Strength melee weapon non-opportunity advantage and all attacks against the eater advantaged, ending at next received eater turn start/rest/zero HP.
 - Fixture damage is fixed +2; test-source pools have maximum 1, price 1, no recovery. Exhaustion is not inventory deletion. Native Barbarian Raging and Reckless acquisition/activation remain unchanged.
 - Native consumers do not acquire configured target-side support merely by a provider test passing; their frame producers must adopt the new contract before native use.
-- Production and external-test consumers share the same root module; no development re-pin is needed for this cut. No examples/items dependency, replace/go.work or source copying. Separately authorized downstream adoption uses real published pins; do not predict release tags.
+- Production and external-test consumers share the same root module; no re-pin separates those tests from the rulebook. The neutral observation prerequisite uses a real pushed provider pin. No examples/items dependency, replace/go.work or source copying. Separately authorized downstream adoption uses real published pins; do not predict release tags.
 
 ## Inspected baseline and dependency order
 
@@ -42,12 +44,15 @@ Inspected: effects `parts.go`, `part_validation.go`, `kinds.go`, `query.go`, `at
 
 | Scope | Working branch/worktree at implementation | PR ownership |
 |---|---|---|
-| Root | `feat/authored-effect-rulebook`, `rpg-toolkit/.worktrees/authored-effect-rulebook` from current main | `rulebooks/dnd5e` only, #946 |
-| Docs | existing `design/data-authored-effects`, `.worktrees/effect-building-blocks` | #2399 owns the package README and idea documents |
+| Neutral observations | `feat/authored-effect-observations`, `rpg-toolkit/.worktrees/authored-effect-observations` | `mechanics/effects` only, #950 / PR2402 |
+| Root | `feat/authored-effect-rulebook`, `rpg-toolkit/.worktrees/authored-effect-rulebook` from current main | `rulebooks/dnd5e` only, #946 / PR2401 |
+| Docs | existing `design/data-authored-effects`, `.worktrees/effect-building-blocks` | #2399 owns idea documents; completed package README handed to root #2401 |
 
 Development is driven by the approved public-use examples. Start T7's canonical fixture data, then T1 → T2 → T3 → T4 → T5 → T6 → finish T7 → T8 → T9 in one root worktree. T4 supplies compiler/binder RED tests as those interfaces are introduced; do not add prematurely uncompilable cookbook tests that block unrelated package checks, temporary test-exclusion tags, or a fake provider. T7/T8 external-package tests exercise the same module's public API and feed required fixes directly back into it.
 
-Authorized release order, **not authority granted here**: root implementation with its fixture tests merges → discover/verify its actual CI tag → documentation closeout. Deferred #947 may adopt that API in a separately selected item-module change; it is not a release gate for #946. No generic-module change is currently required. If one becomes necessary, name the missing neutral capability and add its own release unit rather than mixing modules into the root PR.
+Authorized release order, **not authority granted here**: neutral observation provider #2402 merges → discover/verify its actual tag → re-pin root #2401 with go get/tidy and repeat full root gates/current-head CI → merge root including its fixture tests and verify its actual tag → documentation closeout. Deferred #947 may adopt that API separately; it is not a gate for #946.
+
+The originally conditional generic-provider gap was demonstrated in T5: Bound.Params lacked authored When/Amount for exact execution checks. [S17/#950](https://github.com/KirkDiggler/rpg-project/issues/950) holds the bounded prerequisite contract. Output.Clone and Bound.Definition return detached authored data without state/permission changes; three named observation tests were RED→GREEN, full provider race/vet/lint pass, and root now delegates its clone helper. This is a separate release unit, not a widened item scope.
 
 ## Review focus
 
@@ -91,11 +96,11 @@ Paths below are repository-relative. Commands run from the indicated owning modu
 **Interfaces:** T1 ledger. HeldCondition stays comparable; details are a separate collection. Clone deep-copies Params, guard trees/values and amount pointers/class-step maps.
 **Behavior:** absent detail is unknown; present empty Outputs is known-none; present nil Outputs is malformed. Detail needs a valid matching member/held identity, generation, display/origin and unique output IDs. Frame.Validate checks structural data only; it cannot import the effects kind table. Semantic kind/guard validation belongs to T5. A malformed unused detail still fails validation.
 **Tests:** `TestConfiguredEffectFactsSuite/TestUnknownVersusKnownEmpty`; `TestRejectsMissingHoldingDuplicateDetailAndOutputIDs`; `TestCloneOwnsNestedOutputData` (mutate cloned params, guard child and class-step map; original unchanged); `TestLegacyHeldIdentityRemainsComparable`; retain TestFrameSuite/TestHeldSuite.
-- [ ] Add the named suite and frame regression assertions.
-- [ ] Run focused tests; record missing-field/clone-isolation RED.
-- [ ] Implement value validation and copying without importing events/effects rulebook packages.
-- [ ] Run focused tests and existing frame tests.
-- [ ] Record evidence and commit this bounded root change.
+- [x] Add the named suite and frame regression assertions.
+- [x] Run focused tests; record missing-field/clone-isolation RED.
+- [x] Implement value validation and copying without importing events/effects rulebook packages.
+- [x] Run focused tests and existing frame tests.
+- [x] Record evidence and commit this bounded root change.
 **Verification:** root cwd: `go test -count=1 ./contributions -run 'Test(ConfiguredEffectFactsSuite|FrameSuite|HeldSuite)$'`.
 **Completion evidence:** all named tests execute/pass; no changes to named condition meanings or native frame producers.
 
@@ -108,11 +113,11 @@ Paths below are repository-relative. Commands run from the indicated owning modu
 **Interfaces:** T2 ledger. Template/PartDeclaration clones use the T1 value-copy capability. Assign kind-owned class/capabilities in the existing kind table. Payload hooks call direct builders/checkers rather than recursively redispatching through the table initializer.
 **Behavior:** damage_bonus supports the existing fixed/class-scaled scalar meanings and frame-fact When; save/check advantage supports ability guards. Resistance retains types-only part configuration. Other kinds reject unsupported When/Amount rather than ignoring them; roll_modifier retains Params.dice as its sole amount source. Authoring guards allow Fact/All/Any/Not, not bags/flags/rounds/class-level guard nodes. Validate literal types and canonical ability values; amount-by-class remains available independently of guard forms. Maintenance has no benefit-set class.
 **Tests:** `TestPartTemplateSuite/TestClassifiesThroughKindEntry`; `TestRejectsUnknownFieldsKindsFactsAndStateGuards`; `TestRejectsUnsupportedAmountOrWhen`; `TestPayloadPartsSuite/TestFixedDamageAndClassScalingUseExistingMeaning` (+2 on Strength melee weapon damage, no bonus for Dex/ranged/nonweapon; class thresholds remain 1→2,9→3,16→4); `TestStrengthSaveAndCheckParts`; `TestResistanceUsesOneExistingFold` (9 physical→4, two resistance sources still 4); `TestDeclarationClonesOwnGuardsAndAmounts` across both condition clone paths. Existing save-shaped damage and roll-modifier tests remain green.
-- [ ] Add template/part and copy-isolation tests.
-- [ ] Run focused tests; confirm missing part support/ignored-field or clone RED.
-- [ ] Add kind-owned pure validation/building and copy support.
-- [ ] Run new suites plus existing vocabulary, parts and roll suites.
-- [ ] Update effects godoc; record evidence and commit.
+- [x] Add template/part and copy-isolation tests.
+- [x] Run focused tests; confirm missing part support/ignored-field or clone RED.
+- [x] Add kind-owned pure validation/building and copy support.
+- [x] Run new suites plus existing vocabulary, parts and roll suites.
+- [x] Update effects godoc; record evidence and commit.
 **Verification:** root cwd: `go test -count=1 ./effects ./conditions -run 'Test(PartTemplateSuite|PayloadPartsSuite|RulebookEffectVocabulary|PartsSuite|ApplicationBindingSuite)$'`; then `go test -count=1 ./effects` to include existing roll/maintenance tests.
 **Completion evidence:** a part composes each existing payload meaning without a named Rage constructor or new generic-module API.
 
@@ -124,12 +129,12 @@ Paths below are repository-relative. Commands run from the indicated owning modu
 **Files:** create `rulebooks/dnd5e/effects/activity_part.go`, `activity_part_test.go`; modify `effects/{kinds,vocabulary,end_parts,end_parts_test,parts_validation_test,doc}.go`, `conditions/end_reasons.go`, `conditions/concentrating_test.go`.
 **Interfaces:** T3 ledger; register activity and the additional end-on beats in the same vocabulary. InspectPart/DescribeMaintenance must accept the new maintenance without exposing bag interpretation to callers.
 **Behavior:** holder attack attempts, including misses, or positive DamageTaken mark activity; each checked holder end clears both flags. Explicit skip_first bypasses only that first activity check. Duration continues to count independently. Zero/nonholder/legacy instruction damage cannot sustain it. end_on fires once for the selected holder/beat. Use `members_empty` for actual last-member loss; preserve the existing exported Go symbol `conditions.ConcentrationEndedSpellEnded` with its single new value so separately pinned callers still compile when adopting the provider—no old wire value/reader or second runtime. Do not rename unrelated caster-down vocabulary.
-**Tests:** `TestCombatActivitySuite/TestFirstEndGraceDoesNotSkipDuration` (combined ten-end fixture: first end leaves nine, activity check skipped); `TestMissAndPositiveAppliedDamageSustain`; `TestZeroForeignAndLegacyDamageDoNotSustain`; `TestFlagsClearAndSurviveReload`; `TestActivityDoesNotRequestConcentrationOrApplyDamage`; `TestEndOnHolderTurnStartAndZeroHP`; `TestNoMembersMeansActualLossNotPendingCreation`; assert reason members_empty once. Retain native Rage/Reckless tests without rewriting their expected gameplay.
-- [ ] Add activity/end-policy tests and update only the intentional last-member reason expectations.
-- [ ] Run focused tests; observe missing activity/beat support RED.
-- [ ] Implement independent recipes using the existing machine, not a monolithic Rage clone.
-- [ ] Run focused suites and root condition regressions.
-- [ ] Update owning docs; record reason-contract change and commit.
+**Tests:** `TestCombatActivitySuite/TestFirstEndGraceDoesNotSkipDuration` (combined ten-end fixture: first end leaves nine, activity check skipped); `TestMissAndPositiveAppliedDamageSustain`; `TestZeroForeignAndLegacyDamageDoNotSustain`; `TestFlagsClearAndSurviveReload`; `TestActivityDoesNotRequestConcentrationOrApplyDamage`; `TestEndOnHolderTurnStartAndZeroHP`; existing `TestPartsSuite/TestUntilEmptyRequiresActualLastMemberLoss`; assert reason members_empty once (reuse the existing proof rather than a duplicate wrapper). Retain native Rage/Reckless tests without rewriting their expected gameplay.
+- [x] Add activity/end-policy tests and update only the intentional last-member reason expectations.
+- [x] Run focused tests; observe missing activity/beat support RED.
+- [x] Implement independent recipes using the existing machine, not a monolithic Rage clone.
+- [x] Run focused suites and root condition regressions.
+- [x] Update owning docs; record reason-contract change and commit.
 **Verification:** root cwd: `go test -count=1 ./effects ./conditions -run 'Test(CombatActivitySuite|PartsSuite|ApplicationBindingSuite|RecklessAttackSuite)$'`; `go test -count=1 ./effects ./conditions`.
 **Completion evidence:** ring maintenance can omit activity; scroll activity is a separately testable part. Nested resolution/encounter consumers are inspected, not edited in this PR; their adoption remains separate.
 
@@ -138,15 +143,15 @@ Paths below are repository-relative. Commands run from the indicated owning modu
 **Delivers:** C4/R1/R4, one pure authoring path into existing ApplicationSpec.
 **Owner:** root conditions.
 **Prerequisites:** T2/T3. Attack templates become accepted when T5 provides their meaning; tests here use available damage/resistance/save-check templates, not a fake attack provider.
-**Files:** create `rulebooks/dnd5e/conditions/definition.go`, `definition_compile.go`, `definition_bind.go`, `definition_test.go`, `definition_bind_test.go`.
+**Files:** create `rulebooks/dnd5e/conditions/definition.go`, `definition_compile.go`, `definition_bind.go`, `definition_test.go` (the compiler/binding suite shares one test file).
 **Interfaces:** T4 ledger, including identity-free ValidateDefinitionReference for item configuration. JSON names match examples.md exactly: parts/benefit_sets/definitions, key/part/set, name/coordinator/maintenance/benefits. CompileDefinitions owns decoded data and all maps/slices; no mutable catalogue map is returned.
 **Behavior:** validate every entry, even unused; reject duplicate/unknown JSON members, missing names/roles/lists, unknown refs, nested sets, lifecycle leaves in benefits, benefits in maintenance, multiple concentration claims and repeated expanded leaves/keys. IDs/keys are nonblank and exclude `/`; set expansion is selection-key/part-ID and preserves order. Binding assigns EndApplication to coordinator maintenance and EndPart to recipient benefits, uses the existing linked-effects ref and LifetimeShared, and keeps item origin separate. Derive recipient AddressSourceID deterministically from the whole invocation (for example a tagged JSON tuple), never from origin; it must differ from the owner address for self-use. All returned values are owned copies. Bind validates source/ref/IDs but does not attach, inspect world state or spend.
 **Tests:** `TestDefinitionCompilerSuite/TestExpandsOneSetIntoRingAndScroll`; `TestStrictWholeLibraryValidation` (all refusal cases above, including bad unused entry); `TestUnparameterizedMaintenanceCannotClaimAnAmount`; `TestValidateReferenceNeedsNoFakeActors`; `TestBindingRolesAndSelfUse` (A→B, A→A, user-owned versus recipient-owned coordinator); `TestBindingDoesNotSpendAttachOrAlias`; `TestReturnedSpecMutationCannotChangeLibrary`. Errors name the offending definition/part and field rather than only saying invalid.
-- [ ] Add minimal authored JSON and named compile/binding tests.
-- [ ] Run them; confirm missing compiler/binder RED.
-- [ ] Implement the pure interfaces using T2 validation and existing application types.
-- [ ] Run compiler/binding tests and existing linked-data tests.
-- [ ] Document interfaces; record evidence and commit.
+- [x] Add minimal authored JSON and named compile/binding tests.
+- [x] Run them; confirm missing compiler/binder RED.
+- [x] Implement the pure interfaces using T2 validation and existing application types.
+- [x] Run compiler/binding tests and existing linked-data tests.
+- [x] Document interfaces; record evidence and commit.
 **Verification:** root cwd: `go test -count=1 ./conditions -run 'Test(DefinitionCompilerSuite|LinkedDataSuite|ApplicationBindingSuite)$'`.
 **Completion evidence:** several definitions share one set, but binding copies the actual selected configuration; invalid content is rejected without runtime construction/payment.
 
@@ -161,11 +166,11 @@ Paths below are repository-relative. Commands run from the indicated owning modu
 
 Projection uses Assembly.CurrentOutputs plus the same validated payload builder, not terminal Snapshot state, private bags or copied effect logic. Emit a known-empty detail for a configured linked attachment with no target-bearing outputs. Frame validation remains structural; effects validates semantic kinds/guards. AssessTargetHeldEffects handles plural configured rows with stable target-prefixed output IDs and keeps fixed named-condition paths. Missing detail produces one truthful Depends row; empty detail produces no configured target contribution. Execution requires exact member/ref/source/application/configuration agreement with the live applying output and fails on absent or contradictory authoritative detail for the applying output. Use semantic/canonical data equality, not raw JSON whitespace or map iteration order. Retained observed values never follow a live mutation.
 **Tests:** `TestAttackAdvantageSuite/TestByHolderAndAgainstHolderDoNotSwapActors`; `TestMissingSideAndUnsupportedSaveSideRefused` (attack side absent/empty/null; save/check side present even when empty/null); `TestOpportunityAndAbilityFacts`; `TestAttackSupportPreservesSaveShapedDamage`; `TestConfiguredHeldEffectsSuite/TestObservedUnknownEmptyAndKnown`; `TestSnapshotDoesNotReadLiveTarget`; `TestLiveGenerationOrConfigurationMismatchRefusesExecution`; `TestCanonicalRoundTripIsNotAForeignConfiguration`; `TestEndReportRetainsOutputsThenDropsThem`; `TestSelfAttackNamesTwoIndependentSources`; `TestFixedNamedConditionsKeepTheirExistingPath`. Agree on both info rows and actual AttackChain advantage-source lists, not just strings.
-- [ ] Add the named actor/target, unknown and round-trip assertions.
-- [ ] Run focused tests; confirm unsupported attack meaning/projection RED.
-- [ ] Implement one shared evaluator, provider projection and configured target-row routing.
-- [ ] Run new suites plus existing action/target/vocabulary/clone regressions.
-- [ ] Update doc.go contracts and record the deferred native-producer adoption boundary; commit.
+- [x] Add the named actor/target, unknown and round-trip assertions.
+- [x] Run focused tests; confirm unsupported attack meaning/projection RED.
+- [x] Implement one shared evaluator, provider projection and configured target-row routing.
+- [x] Run new suites plus existing action/target/vocabulary/clone regressions.
+- [x] Update doc.go contracts and record the deferred native-producer adoption boundary; commit.
 **Verification:** root cwd: `go test -count=1 ./effects ./conditions ./contributions -run 'Test(AttackAdvantageSuite|ConfiguredHeldEffectsSuite|DefinitionCompilerSuite|RulebookEffectVocabulary|ConfiguredEffectFactsSuite)$'`; then `go test -count=1 ./effects ./conditions ./contributions`.
 **Completion evidence:** authoritative sausage attacks and copied observer information agree through actual chain subscriptions; no callback in Frame and no item-name dispatch.
 
@@ -174,15 +179,15 @@ Projection uses Assembly.CurrentOutputs plus the same validated payload builder,
 **Delivers:** C6/R4, the new declarations safely use the existing protocol.
 **Owner:** root conditions/character fixtures.
 **Prerequisites:** T4/T5 and all selected parts from T2/T3.
-**Files:** modify `rulebooks/dnd5e/conditions/application.go` (including ResumeApplication), `linked_data.go` only where needed; create `conditions/authored_application_test.go`; extend `application_test.go`, `application_pending_test.go`, `application_ownership_test.go`, `linked_data_test.go`. Keep the actual delivery/finalization implementation unless a named test demonstrates required wiring.
+**Files:** modify `rulebooks/dnd5e/conditions/application.go` (including ResumeApplication), `linked_data.go` only where needed; create `conditions/application_admission.go`, `authored_application_test.go`; introduce the shared `definition_world_test.go` host here for custody proof; extend `application_test.go`, `application_pending_test.go`, `application_ownership_test.go`, `linked_data_test.go`. Keep the actual delivery/finalization implementation unless a named test demonstrates required wiring.
 **Interfaces:** existing PrepareApplication/ResumeApplication, BindApplications, CreateApplication/CreateRecipient, FinalizeRecipient and CheckComplete. Complete participant data is supplied by the host. Binding-produced local address is never the coordinator address.
 **Behavior:** before payment, reject candidate/owner address collisions with existing live attachments or another live owner's fixed pending bindings, except exact addresses owned by the explicitly described concentration replacement; an unrelated same-origin effect is not replacement authority. Copy When/Amount through preparation, serialization and resume. Restore uses saved declarations and part states, not CompileDefinitions or latest catalogue. Retain per-entry pending/live state and terminal refusal; no state repair, default refill or second membership list.
 **Tests:** `TestAuthoredApplicationSuite/TestSelfUseHasTwoDistinctLocalAddresses`; `TestCrossApplicationCollisionRefusedBeforePayment` (crafted invocation/address values, unrelated same-origin condition, another owner's pending intended address); `TestReplacementAllowsOnlyTheDescribedOwner`; `TestRestoredDeclarationDoesNotReadChangedLibrary`; `TestPendingAuthoredDeliveryResumesWithoutNewOwner`; `TestEarlyAppliedUnfinalizedRecipientRefused`; `TestOldGenerationCannotRemoveNewBenefit`; `TestFrozenGuardsAmountsAndConfigAreOwned`; `TestEndingCannotResurrectAfterReload`. Retain the existing R11 and independent-Raging ward assertions.
-- [ ] Add these cases against real keepers and the existing application binding.
-- [ ] Run them; identify the actual admission/copy RED rather than rewriting satisfied paths.
-- [ ] Implement minimal collision/copy/codec wiring without replacing lifecycle machinery.
-- [ ] Run new and existing R11/maintenance regressions, then the full root gate.
-- [ ] Record root run evidence, commit and push the implementation checkpoint; continue T7 in the same module.
+- [x] Add these cases against real keepers and the existing application binding.
+- [x] Run them; identify the actual admission/copy RED rather than rewriting satisfied paths.
+- [x] Implement minimal collision/copy/codec wiring without replacing lifecycle machinery.
+- [x] Run new and existing R11/maintenance regressions, then the full root gate.
+- [x] Record root run evidence, commit and push the implementation checkpoint; continue T7 in the same module.
 **Verification:** root cwd: `go test -count=1 ./conditions -run 'Test(AuthoredApplicationSuite|ApplicationBindingSuite|LinkedDataSuite)$'`; then `go test -race ./...`, `go vet ./...`, `golangci-lint run ./...`.
 **Completion evidence:** clean root gates and a pushed SHA. These checks are module proof, not native session/API adoption.
 
@@ -195,11 +200,11 @@ Projection uses Assembly.CurrentOutputs plus the same validated payload builder,
 **Interfaces:** T7 ledger. Test setup supplies Source.ID/Ref/UserID/DefinitionID and a one-use Resource. It calls the public ValidateDefinitionReference, BindDefinition and PrepareApplication APIs; only after valid preflight does Budget.Use(1) settle payment. The returned prepared result is not applied. The host performs paid replacement/delivery/finalization and CheckComplete. Source availability, origin and test-world participants are scaffolding, not authored effect rules.
 **Behavior:** load the five primary effect definitions plus a fire-ward data variant from one canonical library. Other unit suites use minimal local contract examples, not a second cookbook. There are no item-name branches, offer registries, refund callbacks or substitute effect handlers. A single small source helper drives all definitions. The host uses real keepers, bus, staged chains and combat settlement; each interaction reloads, binds applications before Apply, then closes binding/local handles. Save source remaining availability explicitly; validate it is within 0..1 before Resource.SetCurrent so clamping cannot repair corrupt saved data. Restoring active conditions does not require their old source catalogue to remain available.
 **Tests:** `TestAuthoredEffectsCookbookSuite/TestFiveDefinitionsUsePublicAPI`; `TestInvalidSourceOrPreflightCostsNothing` (bad definition, missing recipient, collision, exhausted/unavailable source); `TestPaymentIsSettledBeforeDeliveryAndOnlyOnce`; `TestPreparationDoesNotDeliver`; `TestFixedBonusNeedsNoBarbarianLevel`; `TestSourceStateRefusesInvalidRemainingBeforeRestore`; `TestNoExamplesDependency` checks the real production+test dependency graph.
-- [ ] Add the canonical effect fixture data, without constructing a second item format.
-- [ ] After T6, add external-package source/host assertions and run them to observe missing test plumbing or real API integration RED.
-- [ ] Implement only the small source/world scaffolding; repair effect defects in production rulebook code.
-- [ ] Run public-API and dependency-boundary checks.
-- [ ] Record evidence and commit in the root implementation PR, not a new item PR.
+- [x] Add the canonical effect fixture data, without constructing a second item format.
+- [x] After T6, add external-package source/host assertions and run them to observe missing test plumbing or real API integration RED.
+- [x] Implement only the small source/world scaffolding; repair effect defects in production rulebook code.
+- [x] Run public-API and dependency-boundary checks.
+- [x] Record evidence and commit in the root implementation PR, not a new item PR.
 **Verification:** root cwd: `go test -count=1 ./conditions -run 'TestAuthoredEffectsCookbookSuite|TestNoExamplesDependency'`; the seam test inspects `go list -deps -test ./conditions ./effects ./contributions` and rejects examples/items or other examples-module dependencies.
 **Completion evidence:** all definitions load and execute through the root module's production APIs. No real item detach, offer, inventory or consumption claim is made.
 
@@ -222,28 +227,28 @@ Projection uses Assembly.CurrentOutputs plus the same validated payload builder,
 - `TestEndingObservationAndIndependentSources`: information/chain observations remain available at the provider's End-before-detach observation point, then disappear; nonmatching generations/sources remain intact. Do not assume every downstream removal subscriber runs before a keeper detaches its payload.
 
 `Example_dataAuthoredEffects` prints a deterministic summary for all five examples using the same loaded fixture host: selected benefits, maintainer, remaining uses and final ending outcome. Assertions elsewhere pin detailed refusal cases; the Example must actually run the changed path, not print expected labels independently.
-- [ ] Add the named joined assertions and deterministic Example expectations.
-- [ ] Run them and capture RED for any incorrect joining/host protocol.
-- [ ] Implement only host/test plumbing; fix actual rules in their owning provider, not in the fixture driver.
-- [ ] Run every cookbook assertion, existing root/Raging/Reckless/maintenance regressions and full root gates.
-- [ ] Save the executable transcript and exact root commit; commit in the same implementation PR.
+- [x] Add the named joined assertions and deterministic Example expectations.
+- [x] Run them and capture RED for any incorrect joining/host protocol.
+- [x] Implement only host/test plumbing; fix actual rules in their owning provider, not in the fixture driver.
+- [x] Run every cookbook assertion, existing root/Raging/Reckless/maintenance regressions and full root gates.
+- [x] Save the executable transcript and exact root commit; commit in the same implementation PR.
 **Verification:** root cwd: `go test -count=1 -v ./conditions -run 'TestAuthoredEffectsCookbookSuite|Example_dataAuthoredEffects'`; then `go test -race ./...`, `go vet ./...`, `golangci-lint run ./...`.
 **Completion evidence:** five executed fixtures and named lifecycle/refusal proofs; evidence states test-host versus native boundaries explicitly.
 
 ### T9 — Documentation, joined review and release handoff
 
 **Delivers:** C9/R3, a reader can use the pieces and find honest completion evidence.
-**Owner:** root implementation and its run record; package README and idea docs only in #2399's documentation worktree.
+**Owner:** root implementation, package README and run record in #2401; idea docs in #2399's documentation worktree.
 **Prerequisites:** T6/T8 integrated source gates. No automatic release authorization.
-**Files:** update `rulebooks/dnd5e/effects/README.md` in the docs worktree to the implemented capability matrix and root cookbook command; update `docs/ideas/data-authored-effects/{README,brief,design,examples,plan}.md`; create `docs/ideas/data-authored-effects/implementation.md`; add `rulebooks/dnd5e/knowledge/runs/2026-11-12-authored-effect-definitions.md` to the root implementation PR. No examples/items documentation change is required.
+**Files:** update `rulebooks/dnd5e/effects/README.md` in the root implementation worktree to the implemented capability matrix and root cookbook command; update `docs/ideas/data-authored-effects/{README,brief,design,examples,plan}.md`; create `docs/ideas/data-authored-effects/implementation.md`; add `rulebooks/dnd5e/knowledge/runs/2026-11-12-authored-effect-definitions.md` to the root implementation PR. No examples/items documentation change is required.
 **Interfaces:** documentation points at the real canonical library and exact verified commits. Replace or mechanically verify the illustrative JSON against the fixture rather than maintaining a second hand-edited definition source. Until runtime merges, use working commit links rather than pretending files exist on main.
 **Behavior:** preserve the accepted contracts; record any corrected implementation detail in the PR/plan. One bounded independent review covers the root production API and external-test cookbook after author/operator fixture view; focus closure on findings, not a fresh campaign. Source-verification readiness and actual released adoption remain distinct.
 **Checks:** all task/requirement proofs linked; owning full gates and exact-head CI green; record review findings/dispositions; package examples and relative links resolve; doc genre advisories reported without weakening. Pre-commit target's documented Core/Events scope does not replace root gates; never bypass hooks. No browser QA requirement is fabricated for the fixture-only cut.
-- [ ] Update current package documentation, cookbook instructions and owning run records.
-- [ ] Run documentation checks and publish the exact executable transcript for operator review.
+- [x] Update current package documentation, cookbook instructions and owning run records.
+- [x] Run documentation checks and publish the exact executable transcript for operator review.
 - [ ] Run the required bounded independent joined review and close important findings on the same record.
 - [ ] Publish exact-head CI/local gates, limits and the source-ready release handoff on #946; keep deferred #947 separate.
-- [ ] Only after separate authority: merge root including the cookbook, verify the actual tag target, then close docs and delivered #946. Do not close #947 as delivered.
+- [ ] Only after separate authority: merge/tag neutral observations, adopt the real tag in root and rerun gates, merge root including the cookbook, verify its tag, then close docs and delivered #946/#950. Do not close deferred #947 as delivered.
 **Verification:** owning root commands above; run `make pre-commit` from the root implementation worktree's repository root and report its documented limited scope or exact coverage-extraction failure without committing incidental Core/Events edits; `git -C /home/kirk/game-dev/rpg-toolkit/.worktrees/authored-effect-rulebook diff --check`; repository-relative link check; run `scripts/check-doc-genres.sh` from the game-dev root checkout. At authorized release, discover the root tag from CI and verify its target against the merge SHA; downstream re-pinning belongs to separately selected #947.
 **Completion evidence:** implementation/review/CI/graph receipts and explicit remaining release authority. No branch/worktree/runtime cleanup that destroys the operator's preserved walk or its older provider references.
 
@@ -269,7 +274,7 @@ Deferrals are exactly the Scope section: no hidden native inventory/studio/obser
 
 | Provider | Consumer | Produced vs consumed contract | Availability / order | Proof |
 |---|---|---|---|---|
-| Existing generic effects v0.5.0 | T2/T3/T5/T6 | PartInput, Assembly.CurrentOutputs, Snapshot, Lifetime | Already inspected; no new generic API planned | Existing suites + end-report and independent-part tests |
+| Generic effects + #950/#2402 observation support | T1/T2/T3/T5/T6 | Existing PartInput/CurrentOutputs/Snapshot/Lifetime plus owned Output.Clone and Bound.Definition | Source implemented and root adopts pushed pseudo-version; actual tag pending authorized release | Observation isolation/end-window tests plus configured-fact equality/cookbook |
 | T1 contributions | T2/T5 | ConfiguredOutput.Clone and Frame.HeldEffects with exact absence semantics | T1 first; contributions never imports rulebook effects/events | Mutation-isolation and structural-refusal tests |
 | T2/T3 kind table | T4 compiler | ValidatePartTemplate class/capabilities, field support and payload/maintenance declarations | Available before each compiler fixture is admitted | Strict whole-library/dual-concentration and field-refusal cases |
 | T4 compiler/binder | T6 application | Copied ApplicationSpec + CoordinatorID, immutable Origin/ApplicationID supplied explicitly | Same root worktree, ordered tasks | Self-use/collision, mutation, pending/resume tests |
@@ -280,7 +285,7 @@ Deferrals are exactly the Scope section: no hidden native inventory/studio/obser
 | T7 canonical library | T8 tests/T9 docs | Same loaded bytes and single adapter | Library maintained once; docs link or derive | Five fixture executions + deterministic Go Example |
 | Future native producers | New authored target effects in native play | Must populate observed/authoritative configured details | Explicitly **not provided** by this cut | No native acceptance claim; follow-on integration owns it |
 
-Shared-file ordering: T2 establishes parts/kind hooks and clones; T3 extends their lifecycle entries; T5 extends advantage/query/attachment and projection; T6 strengthens application boundaries. T7/T8 consume those public interfaces inside the same module. One root writer owns production and test changes; no cross-module pinning or parallel edits are required.
+Shared-file ordering: T2 establishes parts/kind hooks and clones; T3 extends their lifecycle entries; T5 extends advantage/query/attachment and projection; T6 strengthens application boundaries. T7/T8 consume those public interfaces inside the same module. One root writer owns production and test changes. The demonstrated neutral observation prerequisite is isolated in its own worktree/PR and consumed through a real pin; no examples-module integration is required.
 
 ### Findings and dispositions from the plan check
 
@@ -298,7 +303,7 @@ Shared-file ordering: T2 establishes parts/kind hooks and clones; T3 extends the
 | Moving the demo out of the item package must not introduce another item engine or make payment an effect rule. | T7 uses the already-pinned Resource only in a small external-test source, after pure preflight; T8 keeps delivery failures spent/explicit. |
 | A failed delivery may leave valid pending-without-attachment state; treating all pending as a boundary failure would reintroduce global sealing. | T8 distinguishes the returned delivery error from CheckComplete's orphan check and retains R11 resume semantics. |
 | The rulebook test source is not proof of production item detachment, consumption or native save/window resolution. | T8 models exhausted/unavailable source state and a host-selected follow-up outcome; real item adoption stays in deferred #947. |
-| A package README in both runtime and design branches would create avoidable parallel ownership. | #2399 alone edits that README; the root implementation carries godoc and external examples, T9 joins the docs. |
+| A package README in both runtime and design branches would create avoidable parallel ownership. | T9 hands the completed README from #2399 to #2401 so its relative links match the implemented source; the design PR removes its copy. One writer remains. |
 | The previous cut made examples/items the primary teaching/integration surface rather than the rulebook. | R6 moves T7/T8 and their canonical data into the root module, expands #946 to the complete deliverable, and leaves #947 as separate deferred adoption. |
 
-Plan check result: all C1–C9 requirements have an owner and named proof; every consumed new capability has a producing task; no required architectural decision remains open. Inputs/constants and module boundaries were checked against the inspected code. New test names above are requirements, not reported executions. Implementation has not started.
+Plan check result: all C1–C9 requirements have an owner and named proof; every consumed capability has a producing task or the explicit #950 prerequisite. T1–T8 now have committed source and observed verification; exact heads, test boundaries and deviations are in implementation.md. T9 remains open for operator view, bounded independent review and separately authorized release. Source completion is not shipment.

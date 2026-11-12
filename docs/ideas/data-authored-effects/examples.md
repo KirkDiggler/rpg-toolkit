@@ -1,7 +1,10 @@
 # Authored examples
 
-These are **agreed input examples**, not yet fixtures a released loader can execute.
-They make [R4/R5/R6](design.md#rulings) concrete. The rulebook test source supplies user,
+These are the **agreed primary input examples**, now executed by the rulebook-local
+cookbook. The [canonical fixture library](https://github.com/KirkDiggler/rpg-toolkit/blob/97cad4a464faa18254ae2a58365ba60c89b2fa13/rulebooks/dnd5e/conditions/testdata/effects/library.json)
+is the content authority; this excerpt is mechanically checked against its primary
+parts/definitions. [Source evidence and release limits](implementation.md) distinguish
+implemented examples from published/native adoption. They make [R4/R5/R6](design.md#rulings) concrete. The rulebook test source supplies user,
 recipient, origin and invocation separately; none are saved into the reusable
 library. Test-world setup and assertions also stay outside this content.
 
@@ -120,7 +123,8 @@ library. Test-world setup and assertions also stay outside this content.
 ```
 
 The `action.opportunity` fact, combat-activity part, attack-side configuration,
-additional end-on beats and payload When/Amount fields are planned additions.
+additional end-on beats and payload When/Amount fields are implemented in the
+source checkpoint linked above.
 The other words reuse current meanings. The detailed implementation must verify
 literal spellings against canonical types; the schema must not introduce aliases
 for existing facts or ability identifiers.
