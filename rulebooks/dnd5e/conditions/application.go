@@ -114,10 +114,12 @@ type ResumeApplicationInput struct {
 }
 
 func cloneDeclarations(in []dndfx.PartDeclaration) []dndfx.PartDeclaration {
+	if in == nil {
+		return nil
+	}
 	out := make([]dndfx.PartDeclaration, len(in))
-	copy(out, in)
 	for i := range out {
-		out[i].Params = slices.Clone(in[i].Params)
+		out[i] = in[i].Clone()
 	}
 	return out
 }

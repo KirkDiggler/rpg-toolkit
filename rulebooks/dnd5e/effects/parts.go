@@ -27,6 +27,8 @@ type PartDeclaration struct {
 	Key        string           `json:"key"`
 	Kind       generic.KindName `json:"kind"`
 	Params     json.RawMessage  `json:"params,omitempty"`
+	When       *machine.Guard   `json:"when,omitempty"`
+	Amount     *generic.Amount  `json:"amount,omitempty"`
 	OnTerminal generic.EndScope `json:"on_terminal"`
 }
 
@@ -123,6 +125,9 @@ func BindPart(in *BindPartInput) (*BindPartOutput, error) {
 func InspectPart(in *InspectPartInput) (*PartInfo, error) {
 	if in == nil {
 		return nil, fmt.Errorf("part inspection is required")
+	}
+	if err := ValidatePart(&ValidatePartInput{Declaration: in.Declaration}); err != nil {
+		return nil, err
 	}
 	definition, ok := kindTable[in.Declaration.Kind]
 	if !ok || definition.inspectPart == nil {

@@ -20,6 +20,8 @@ import (
 )
 
 type kindDefinition struct {
+	class        PartClass
+	payload      func(PartDeclaration) (generic.Output, error)
 	execution    generic.KindExecution
 	assess       func(*AssessInput, meaning) (assessment, error)
 	validatePart func(PartDeclaration) error
@@ -54,15 +56,15 @@ type assessment struct {
 // kindTable is the only kind registration: generic validation/attachment/rows
 // and richer rulebook assessment all resolve through these same entries.
 var kindTable = map[generic.KindName]kindDefinition{
-	KindDamageBonus: {check: checkDamage, meaning: damageMeaning, attach: attachDamage},
-	KindResistance:  {validatePart: validateResistancePart, part: bindResistancePart, inspectPart: inspectResistancePart, check: checkResistance, meaning: resistanceMeaning, attach: attachResistance},
-	KindAdvantage:   {check: checkAdvantage, meaning: advantageMeaning, attach: attachAdvantage},
-	KindConcentration: {describePart: describeConcentrationPart, validatePart: checkUnparameterizedMaintenance, part: bindConcentrationPart, inspectPart: inspectConcentrationPart,
+	KindDamageBonus: {class: PartClassBenefit, payload: damagePartOutput, validatePart: validateDamagePart, part: bindDamagePart, inspectPart: inspectDamagePart, check: checkDamage, meaning: damageMeaning, attach: attachDamage},
+	KindResistance:  {class: PartClassBenefit, payload: resistancePartOutput, validatePart: validateResistancePart, part: bindResistancePart, inspectPart: inspectResistancePart, check: checkResistance, meaning: resistanceMeaning, attach: attachResistance},
+	KindAdvantage:   {class: PartClassBenefit, payload: advantagePartOutput, validatePart: validateAdvantagePart, part: bindAdvantagePart, inspectPart: inspectAdvantagePart, check: checkAdvantage, meaning: advantageMeaning, attach: attachAdvantage},
+	KindConcentration: {class: PartClassMaintenance, describePart: describeConcentrationPart, validatePart: checkUnparameterizedMaintenance, part: bindConcentrationPart, inspectPart: inspectConcentrationPart,
 		check: checkConcentrationOutput, meaning: concentrationMeaning, attach: attachConcentration},
-	KindDuration:   {describePart: describeDurationPart, validatePart: validateDurationPart, part: bindDurationPart, inspectPart: inspectDurationPart},
-	KindUntilEmpty: {validatePart: checkUnparameterizedMaintenance, part: bindUntilEmptyPart, inspectPart: inspectUntilEmptyPart},
-	KindEndOn:      {validatePart: validateEndOnPart, part: bindEndOnPart, inspectPart: inspectEndOnPart},
-	KindRollModifier: {validatePart: validateRollPart, part: bindRollModifierPart, inspectPart: inspectRollModifierPart, execution: generic.KindQuery,
+	KindDuration:   {class: PartClassMaintenance, describePart: describeDurationPart, validatePart: validateDurationPart, part: bindDurationPart, inspectPart: inspectDurationPart},
+	KindUntilEmpty: {class: PartClassMaintenance, validatePart: checkUnparameterizedMaintenance, part: bindUntilEmptyPart, inspectPart: inspectUntilEmptyPart},
+	KindEndOn:      {class: PartClassMaintenance, validatePart: validateEndOnPart, part: bindEndOnPart, inspectPart: inspectEndOnPart},
+	KindRollModifier: {class: PartClassBenefit, validatePart: validateRollPart, part: bindRollModifierPart, inspectPart: inspectRollModifierPart, execution: generic.KindQuery,
 		check: checkRollModifier, meaning: rollMeaning, assess: assessRollModifier},
 }
 

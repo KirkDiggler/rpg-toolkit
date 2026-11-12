@@ -18,6 +18,13 @@
 // in the vocabulary. Save/check advantage, resistance and fixed/class damage
 // bonuses are the closed meanings used by the first consumer.
 //
+// PartTemplate describes unbound authored meaning; ValidatePartTemplate reports
+// its kind-owned benefit/maintenance class and capabilities without runtime IDs.
+// Damage and save/check advantage are independent payload parts alongside
+// resistance. Authored guards use supported frame facts, never private state;
+// unsupported fields are refused. Templates/declarations own detached copies
+// through Clone when crossing binding or snapshot boundaries.
+//
 // BindPart selects reusable local recipes from that same kind table. Concentration
 // requests a CON follow-up from positive applied damage and has no duration counter;
 // duration owns its counter/grace separately. End-on and until-empty policies are
