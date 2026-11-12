@@ -218,7 +218,7 @@ func TestStructuralLayoutCrossesTheSeamWhole(t *testing.T) {
 	// no state, no private placed id and no parent association may ride it,
 	// because a client that could read those would be reading world truth this
 	// seam is forbidden to send.
-	require.Equal(t, []string{"ID", "Ref", "From", "To", "Height", "Thickness", "Elevation", "MaterialOverrides", "FootprintCells", "Openings"},
+	require.Equal(t, []string{"ID", "Ref", "From", "To", "Height", "Thickness", "Elevation", "MaterialOverrides", "FaceFinishes", "FootprintCells", "Openings"},
 		fieldNamesOf(AtlasStructuralWall{}), "a wall names its captured appearance, line, footprint and cuts, and nothing mutable")
 	require.Equal(t, []string{"ID", "Position", "Width"},
 		fieldNamesOf(AtlasStructuralOpening{}), "an opening carries no door id and no state")
