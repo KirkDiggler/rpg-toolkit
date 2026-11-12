@@ -12,11 +12,9 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
 
 // ShortRestInput is the persisted character to rest through the root D&D
@@ -193,28 +191,16 @@ func restAnHour(
 	ctx context.Context, cast *Participants, ch *character.Character, in *ShortRestInput,
 	ends *concentrationCollector, removals *removalCollector,
 ) (*ShortRestOutput, error) {
-	// The holds are read once, before the rest ends any: ending one removes
-	// it from the sheet's condition list as it goes.
-	var holds []*conditions.ConcentratingCondition
-	for _, condition := range ch.GetConditions() {
-		if hold, ok := condition.(*conditions.ConcentratingCondition); ok {
-			holds = append(holds, hold)
-		}
+	// Mutable attachment already validated the complete linked graph before any
+	// behavior ran. Preserve the exact local owner address for result attribution,
+	// without treating the neutral linked-effects ref as a concentration flag.
+	held, err := concentrationHeldBy(cast, ch.GetID())
+	if err != nil {
+		return nil, err
 	}
-
-	// A hold strips its effects from every sheet that carries one, and only a
-	// sheet in the cast hears it. An effect on a member who was not passed in
-	// would be reported as removed and never written, so the rest refuses
-	// before anything ends.
-	for _, hold := range holds {
-		for _, child := range hold.Children {
-			_, isCharacter := cast.Character(child.MemberID)
-			_, isMonster := cast.Monster(child.MemberID)
-			if !isCharacter && !isMonster {
-				return nil, fmt.Errorf("%w: %s held by %q reaches %q, who was not passed in",
-					ErrBadParticipant, hold.SpellName, ch.GetID(), child.MemberID)
-			}
-		}
+	var ownerAddresses []dnd5eEvents.ConditionAddress
+	if held.Held {
+		ownerAddresses = append(ownerAddresses, held.Info.Owner)
 	}
 
 	result, err := ch.ShortRest(ctx, &character.ShortRestInput{HitDice: in.HitDice, Roller: in.Roller})
@@ -233,7 +219,7 @@ func restAnHour(
 	if err != nil {
 		return nil, err
 	}
-	ended, err := removals.endedOutside(ends.facts)
+	ended, err := removals.endedOutside(ends.facts, ownerAddresses)
 	if err != nil {
 		return nil, err
 	}
@@ -276,10 +262,15 @@ func collectRemovals(ctx context.Context, bus events.EventBus, memberID string) 
 // hold itself and the effects it stripped are the breaks' to report — as the
 // activation-result beat every removal in the stack uses.
 func (c *removalCollector) endedOutside(
-	holds []dnd5eEvents.ConcentrationEndedEvent,
+	holds []dnd5eEvents.ConcentrationEndedEvent, owners []dnd5eEvents.ConditionAddress,
 ) ([]encounter.ActivationResult, error) {
 	owned := map[dnd5eEvents.ConditionAddress]bool{}
 	for _, hold := range holds {
+		for _, owner := range owners {
+			if owner.MemberID == hold.MaintainerID {
+				owned[owner] = true
+			}
+		}
 		for _, child := range hold.Removed {
 			owned[child] = true
 		}
@@ -288,7 +279,7 @@ func (c *removalCollector) endedOutside(
 	var results []encounter.ActivationResult
 	for _, fact := range c.facts {
 		address := fact.Address()
-		if owned[address] || address.ConditionRef == refs.Conditions.Concentrating().String() {
+		if owned[address] {
 			continue
 		}
 		parsed, err := core.ParseString(address.ConditionRef)

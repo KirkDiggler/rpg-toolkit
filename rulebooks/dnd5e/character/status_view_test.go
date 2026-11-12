@@ -205,7 +205,7 @@ func (s *canonicalEffectDetailsSuite) TestReadPreservesCharacterAndEffectIdentit
 	// Active effects are explicit projection fixtures after normal creation;
 	// this does not claim the cast/activation path was exercised.
 	const sourceID = "cleric-ally"
-	blessed, err := conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{
+	blessed, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Blessed(),
 		MemberID: char.GetID(), SourceID: sourceID, SourceRef: refs.Spells.Bless(),
 	})
 	s.Require().NoError(err)

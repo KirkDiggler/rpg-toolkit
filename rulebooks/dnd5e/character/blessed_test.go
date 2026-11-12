@@ -21,7 +21,7 @@ func TestBlessedCharacterSuite(t *testing.T) { suite.Run(t, new(BlessedCharacter
 
 func (s *BlessedCharacterSuite) TestBlessChangesADeathSaveAfterJSONReload() {
 	char := dyingCharacterForTurn(s.T(), &saves.DeathSaveState{})
-	blessed, err := conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{
+	blessed, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Blessed(),
 		MemberID: char.GetID(), SourceID: "cleric", SourceRef: refs.Spells.Bless(),
 	})
 	s.Require().NoError(err)
@@ -47,16 +47,14 @@ func (s *ConcentrationKeeperSuite) TestBlessOwnersCleanUpOnlyTheirOwnRecipientsA
 	var owners []*Character
 	var children []dnd5eEvents.ConditionBehavior
 	for _, caster := range []string{"cleric-a", "cleric-b"} {
-		child, err := conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{
+		child, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Blessed(),
 			MemberID: "target", SourceID: caster, SourceRef: refs.Spells.Bless(),
 		})
 		s.Require().NoError(err)
 		children = append(children, child)
-		hold := conditions.NewConcentratingConditionWithInput(conditions.NewConcentratingConditionInput{
-			MemberID: caster, SourceID: caster, SpellRef: refs.Spells.Bless().String(), SpellName: "Bless",
-			TurnEnds: 10, SkipFirstTurnEnd: true,
-		})
-		s.Require().NoError(hold.AddChild(s.ctx, child.ConditionAddress()))
+		hold, err := currentHoldFixture(holdFixtureInput{Member: caster, Source: refs.Spells.Bless(), Name: "Bless", Turns: 10, Skip: true,
+			Members: []conditions.LinkedMemberBinding{{Key: "target", Address: child.ConditionAddress(), Mode: conditions.LinkComposed}}})
+		s.Require().NoError(err)
 		data := s.bardData(hold)
 		data.ID = caster
 		owner, err := Load(s.ctx, data)
@@ -69,11 +67,9 @@ func (s *ConcentrationKeeperSuite) TestBlessOwnersCleanUpOnlyTheirOwnRecipientsA
 	s.Require().NoError(err)
 	target, err = Load(s.ctx, mustToData(s.T(), target))
 	s.Require().NoError(err)
-	for _, member := range append(owners, target) {
-		s.Require().NoError(Attach(s.ctx, member, s.bus))
-	}
+	s.bind(append(owners, target)...)
 	s.Require().NoError(dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx, dnd5eEvents.ConditionRemovedEvent{
-		MemberID: "cleric-a", ConditionRef: refs.Conditions.Concentrating().String(), SourceID: "cleric-a",
+		MemberID: "cleric-a", ConditionRef: refs.Conditions.LinkedEffects().String(), SourceID: "application:cleric-a",
 		Reason: conditions.ConcentrationEndedRecast,
 	}))
 	s.Empty(authored(owners[0]))

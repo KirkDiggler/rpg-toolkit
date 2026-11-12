@@ -252,9 +252,13 @@ type scriptBeat struct {
 	Option   string `json:"option"`
 	Say      string `json:"say"`
 	Fact     string `json:"fact"`
-	Watcher  string `json:"watcher"`
-	DC       int    `json:"dc"`
-	ID       string `json:"id"`
+	// Speaker and Words are a speech version's (rpg-project#933): who spoke,
+	// when the reader saw them, and the words, when they reached the reader.
+	Speaker string `json:"speaker"`
+	Words   string `json:"words"`
+	Watcher string `json:"watcher"`
+	DC      int    `json:"dc"`
+	ID      string `json:"id"`
 }
 
 // beats is a member's story, decoded, from a sequence on.
@@ -283,6 +287,34 @@ func (s *kingScene) beatsOf(audience encounter.MemberID, kind string) []scriptBe
 	}
 
 	return out
+}
+
+// saidBy is every line a creature said that reached audience, seen said,
+// in record order: the words of each speech version naming it as speaker
+// (rpg-project#933: the words travel only in the speech versions).
+func (s *kingScene) saidBy(audience, creature encounter.MemberID) []string {
+	s.t.Helper()
+	var out []string
+	for _, b := range s.beatsOf(audience, encounter.BeatSpeech) {
+		if b.Speaker == string(creature) && b.Words != "" {
+			out = append(out, b.Words)
+		}
+	}
+	return out
+}
+
+// linesSaid is how many times audience perceived the hero saying the option
+// line: the speech versions naming the hero as speaker and the option, which
+// only those who caught the words are written (rpg-project#933).
+func (s *kingScene) linesSaid(audience encounter.MemberID, option string) int {
+	s.t.Helper()
+	n := 0
+	for _, b := range s.beatsOf(audience, encounter.BeatSpeech) {
+		if b.Speaker == string(hero) && b.Option == option {
+			n++
+		}
+	}
+	return n
 }
 
 // offers is whether a creature offers the hero a line now.
@@ -386,15 +418,19 @@ func TestMadKingScriptTheStrangerGivesTheFeast(t *testing.T) {
 
 			s.heardTheStranger(tc.beaten)
 
-			var answered []scriptBeat
-			for _, b := range s.beatsOf(hero, encounter.BeatAnswered) {
-				if b.Creature == string(kingPedlar) && b.Option == "tonight" {
-					answered = append(answered, b)
+			require.Equal(t, 1, s.linesSaid(hero, "tonight"), "the hero asked once")
+			var replies []scriptBeat
+			for _, b := range s.beatsOf(hero, encounter.BeatSpeech) {
+				if b.Speaker == string(kingPedlar) && b.Words == tc.line {
+					replies = append(replies, b)
 				}
 			}
-			require.Len(t, answered, 1, "the stranger answered once")
-			require.Equal(t, tc.line, answered[0].Say)
-			require.Equal(t, "feast-tonight", answered[0].Fact)
+			require.Len(t, replies, 1, "the stranger answered once, and the hero caught his line")
+			require.Equal(t, "feast-tonight", replies[0].Fact, "the fact travels with the words")
+			for _, b := range s.beatsOf(hero, encounter.BeatAnswered) {
+				require.Empty(t, b.Say, "the pick carries no words (rpg-project#933)")
+				require.Empty(t, b.Fact, "nor what it taught")
+			}
 			require.True(t, s.learners("feast-tonight")[hero], "the hero knows")
 			require.False(t, s.learners("feast-tonight")[kingCaptain], "the captain did not witness the line")
 		})
@@ -418,13 +454,8 @@ func TestMadKingScriptTheTroupeNeedsTheFeast(t *testing.T) {
 
 	s.walkTo(s.at(kingCaptain))
 	s.said(kingCaptain, "troupe", "performance", true)
-	var lines []string
-	for _, b := range s.beatsOf(hero, encounter.BeatAnswered) {
-		if b.Creature == string(kingCaptain) && b.Option == "troupe" {
-			lines = append(lines, b.Say)
-		}
-	}
-	require.Equal(t, []string{"Through to the hall, then. Don’t dawdle."}, lines)
+	require.Equal(t, 1, s.linesSaid(hero, "troupe"), "the hero said the troupe's line once")
+	require.Contains(t, s.saidBy(hero, kingCaptain), "Through to the hall, then. Don’t dawdle.", "and the hero caught it")
 	require.Empty(t, s.learners("party-recognized"), "a troupe that passes writes nothing")
 	require.Equal(t, encounter.StanceNeutral, s.stance(garrison, encounter.FactionParty))
 	require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "nobody fights")
@@ -435,6 +466,7 @@ func TestMadKingScriptTheTroupeNeedsTheFeast(t *testing.T) {
 	// room comes civil (piece 7's other half; its test is the fight's).
 	s.onHisPost(kingGate1, "the troupe does not cow him")
 	s.stepTo(besideTheCrossing)
+	s.backOnHisPost()
 	s.open(kingGateDoor)
 	require.Equal(t, beneathTheGate, s.at(kingGate1), "he stands his post while the troupe opens the gate")
 	s.crosses(pastTheGate, "the troupe crosses by its pass")
@@ -506,8 +538,11 @@ func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 		require.Equal(t, beneathTheGate, s.at(kingGate1), "and he still holds the crossing")
 	})
 
-	t.Run("drawn off by a voice, the sneaker crosses on gate-2's blind beat", func(t *testing.T) {
+	t.Run("drawn off by a shout, the sneaker crosses on gate-2's blind beat", func(t *testing.T) {
 		t.Parallel()
+		// GUARDS ANSWER SHOUTS (rpg-project#933): the companion hails the
+		// stranger at the top of his voice; talk would leave gate-1 on the
+		// crossing.
 		s, stealth := openTheSneak(t)
 		s.declareBehindTheCorner()
 		s.stepTo(besideTheCorner)
@@ -521,10 +556,10 @@ func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 		require.True(t, s.pace(besideTheCorner, beside, 60, justArrived), "gate-2 comes to her beat post")
 		require.Equal(t, beneathTheGate, s.at(kingGate1), "precondition: gate-1 holds the crossing")
 
-		// The noise: the companion outside asks the stranger about the
-		// bustle, and the stranger's answer is a voice the post hears. He
-		// answers it on the world's next round, and the sneaker goes then.
-		s.voiceOutside()
+		// The noise: the companion outside hails the stranger at the top of
+		// his voice, a raised voice the post hears. He answers it on the
+		// world's next round, and the sneaker goes then.
+		s.shoutOutside()
 		start := s.enc.ToData().Clock.HighWater
 		require.True(t, s.pace(besideTheCorner, beside, 12, func() bool { return s.enc.ToData().Clock.HighWater > start }),
 			"a round passes")
@@ -590,9 +625,11 @@ var (
 	besideTheStranger = spatial.Position{X: 6, Y: 14}
 )
 
-// voiceOutside has the companion ask the stranger about the bustle: the
-// stranger answers aloud, a voice the gate post hears, and the world round
-// the asking takes is the round the post answers it in.
+// voiceOutside has the companion ask the stranger about the bustle: spoken
+// words, which the gate post hears and does not answer (guards answer
+// shouts, not talk, rpg-project#933).
+// The world round the asking takes is a round the post could have answered
+// in.
 func (s *kingScene) voiceOutside() {
 	s.t.Helper()
 	_, err := s.enc.Speak(context.Background(), &encounter.SpeakInput{
@@ -600,6 +637,17 @@ func (s *kingScene) voiceOutside() {
 		Beaten: true, DC: 15, Total: 20, Roller: rollsOne{},
 	})
 	require.NoError(s.t, err, "the stranger answers the companion")
+}
+
+// shoutOutside has the companion beside the stranger outside hail him at the
+// top of his voice ("hail-the-pedlar", a plain line authored as a shout,
+// rpg-project#933): the noise the gate's post answers.
+func (s *kingScene) shoutOutside() {
+	s.t.Helper()
+	_, err := s.enc.Speak(context.Background(), &encounter.SpeakInput{
+		Range: speakReach, Actor: sneakCompanion, Target: kingPedlar, OptionID: "hail-the-pedlar", Roller: rollsOne{},
+	})
+	require.NoError(s.t, err, "the companion shouts to the stranger")
 }
 
 // TestMadKingScriptSneakingInPlainSightIsRefused is piece 5: declared in

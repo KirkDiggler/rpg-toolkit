@@ -10,6 +10,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat/weaponattack"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
+	dndfx "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/effects"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
@@ -68,6 +69,13 @@ type descriptor struct {
 	// composition is the binding/recipe contract for a composed condition.
 	// Nil keeps the existing handwritten constructor/format contract.
 	composition *compositionDefinition
+
+	// acceptsOrigin declares the current explicit-provenance creation contract.
+	acceptsOrigin bool
+	// linked declares the current application-aware construction/codec contract.
+	linked bool
+	// linkedParts is a named definition's fixed payload, not another ref catalog.
+	linkedParts []dndfx.PartDeclaration
 
 	// load restores a stored blob. Required.
 	load func(json.RawMessage) (dnd5eEvents.ConditionBehavior, error)

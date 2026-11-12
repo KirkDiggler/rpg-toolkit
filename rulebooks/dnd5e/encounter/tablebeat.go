@@ -64,9 +64,11 @@ func tableScope(option string, key AnswerKey) string {
 // described, and remembers the new one. A table already described is
 // silence.
 //
-// THE CREATURE'S OWN SUBJECT AUDIENCE, the audience its `time` pick is
-// written to: the table is a fact about the creature, whoever witnessed the
-// answer that made it worth describing.
+// NO AUDIENCE, the behaviour records' (rpg-project#933): the table is the
+// creature's own debug symbols — the line it answers, the verdict key and
+// every row's fact — which no member perceives by looking at it. Replay and
+// the record's readers of the whole log still have it; no member's story
+// does, and the session folds no act from it.
 func (e *Encounter) describeTable(
 	creature MemberID, option string, key AnswerKey, rows []Answer, temper Temper, at uint64,
 ) error {
@@ -88,7 +90,7 @@ func (e *Encounter) describeTable(
 
 	if _, err := e.appendBeat(&record.AppendInput{
 		At:       at,
-		Audience: e.audienceFor(subjectBeat, creature),
+		Audience: nil,
 		Tags:     map[string]string{"tag": BeatTable},
 		Payload:  payload,
 	}); err != nil {
@@ -149,7 +151,14 @@ func tableRows(rows []Answer) []map[string]interface{} {
 			"word":     answerWord(row),
 			"selector": selectorWord(row),
 			"weight":   row.Weight,
-			"say":      row.Say,
+			// A ROW SAYS THAT IT SPEAKS, AND HOW LOUDLY, NEVER WHAT
+			// (rpg-project#933, R1): this beat reaches every member, and a
+			// row's words read beside an `answered` entry would tell a
+			// reader what a creature said whether or not it reached them.
+			// The words travel only in the [BeatSpeech] versions.
+			"say":      "",
+			"speaks":   row.Say != "",
+			"loudness": string(loudnessWord(row.Loudness)),
 			"fact":     string(row.Fact),
 			"search":   search,
 		}

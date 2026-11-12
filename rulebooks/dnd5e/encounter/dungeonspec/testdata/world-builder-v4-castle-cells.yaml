@@ -475,11 +475,17 @@ behaviorDefinitions:
               kind: clang
               within: 2
           say: Steel in the cells! Sound the alarm!
+          # Hand edit (rpg-project#933): the alarm is shouted, so its words, and the
+          # fact they teach, reach the next room (R9).
+          loudness: shout
           fact: alarm-raised
           weight: 3
         - when:
             enemy: seen
           say: Intruders in the cells! Sound the alarm!
+          # Hand edit (rpg-project#933): the alarm is shouted, so its words, and the
+          # fact they teach, reach the next room (R9).
+          loudness: shout
           fact: alarm-raised
           weight: 3
         - hold: {}
@@ -515,11 +521,17 @@ behaviorDefinitions:
               kind: clang
               within: 2
           say: Steel in the cells! Sound the alarm!
+          # Hand edit (rpg-project#933): the alarm is shouted, so its words, and the
+          # fact they teach, reach the next room (R9).
+          loudness: shout
           fact: alarm-raised
           weight: 3
         - when:
             enemy: seen
           say: Intruders in the cells! Sound the alarm!
+          # Hand edit (rpg-project#933): the alarm is shouted, so its words, and the
+          # fact they teach, reach the next room (R9).
+          loudness: shout
           fact: alarm-raised
           weight: 3
         - hold: {}

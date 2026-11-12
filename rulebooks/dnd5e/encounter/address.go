@@ -231,8 +231,15 @@ func carries(options []Option, id InteractionID) bool {
 }
 
 // offersReply reports whether the interaction offers the member at least
-// one of the guard's lines that names it: the offer [Encounter.OptionsFor]
-// makes, narrowed to the interaction's own lines.
+// one of the guard's lines that ADVANCES it: the offer [Encounter.OptionsFor]
+// makes, narrowed to the lines that move the conversation.
+//
+// A LINE THAT ONLY READS THE INTERACTION IS NOT THE CONVERSATION
+// (rpg-project#929). After admission the gate guards carry lines that read
+// the gate's state without moving it (a vouch, a straggler's own case); a
+// hail opened for those would stop every admitted member who walks past the
+// gate, and an address kept for them would never end. Only a line that can
+// step the interaction opens one or keeps one standing.
 func (e *Encounter) offersReply(id InteractionID, member, guard MemberID) (bool, error) {
 	g, ok := e.members[guard]
 	if !ok {
@@ -244,11 +251,12 @@ func (e *Encounter) offersReply(id InteractionID, member, guard MemberID) (bool,
 	if err != nil {
 		return false, err
 	}
-	lines := make([]Option, 0, len(offered))
 	for _, o := range offered {
-		lines = append(lines, o.Option)
+		if o.Advance != nil && o.Advance.Interaction == id {
+			return true, nil
+		}
 	}
-	return carries(lines, id), nil
+	return false, nil
 }
 
 // approachReach is the distance an address is measured at: the host's
@@ -598,4 +606,28 @@ func cloneApproach(a *InteractionApproach) *InteractionApproach {
 	}
 	c := *a
 	return &c
+}
+
+// endAddressesOf ends every address that names a member who has left the
+// run, as the addressee or as the guard, each with its [BeatAddressEnded]
+// and the reason [AddressGone], in interaction id order (rpg-project#942).
+// Exit calls it once the member is off the roster: the end-of-step sweep
+// would notice the same at the next step, but the run is saved before any
+// next step, and a saved address naming a member the run lacks is refused
+// on load. The interaction's progress is untouched, as at every sweep.
+//
+// Errors: a beat's append.
+func (e *Encounter) endAddressesOf(member MemberID) error {
+	for _, id := range slices.Sorted(maps.Keys(e.interactions)) {
+		r := e.interactions[id]
+		if r.address == nil || (r.address.Member != member && r.address.Guard != member) {
+			continue
+		}
+		ended := *r.address
+		r.address = nil
+		if err := e.appendAddressBeat(BeatAddressEnded, id, ended, AddressGone); err != nil {
+			return err
+		}
+	}
+	return nil
 }

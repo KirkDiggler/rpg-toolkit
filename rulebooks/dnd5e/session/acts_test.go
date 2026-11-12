@@ -368,7 +368,7 @@ func TestEveryBeatHasAFamily(t *testing.T) {
 
 	for _, kind := range []string{
 		encounter.BeatTable, encounter.BeatTransferred, encounter.BeatInteracted, encounter.BeatInteraction,
-		string(encounter.OutcomeBought), string(encounter.OutcomeSold),
+		encounter.BeatRecognized, string(encounter.OutcomeBought), string(encounter.OutcomeSold),
 	} {
 		_, _, recordOnly := session.FamilyOfBeatForTest(kind)
 		require.True(t, recordOnly, "%s is record-only (R9)", kind)

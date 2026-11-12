@@ -155,6 +155,10 @@ func (m *Manager) DeathSave(ctx context.Context, in *DeathSaveInput) (*DeathSave
 		return nil, fmt.Errorf("death save: %w", ErrStaleDeclaration)
 	}
 
+	others, err := m.othersOf(ctx, scope, m.sheetsFor(scope), &pendingSheets{}, in.Member, false)
+	if err != nil {
+		return nil, fmt.Errorf("death save: %w", err)
+	}
 	presentationID := m.presentationIDs.Generate()
 	if err := validatePresentationID(presentationID); err != nil {
 		return nil, fmt.Errorf("death save: generated presentation id: %w", err)
@@ -165,6 +169,7 @@ func (m *Manager) DeathSave(ctx context.Context, in *DeathSaveInput) (*DeathSave
 		return nil, fmt.Errorf("death save: member %q: %w: %v", in.Member, ErrBadCharacter, err)
 	}
 	resolved, err := resolution.DeathSave(ctx, &resolution.DeathSaveInput{
+		Others:    others,
 		Character: record,
 		Roller:    &diceSeam{roller: m.dice},
 	})
@@ -176,35 +181,31 @@ func (m *Manager) DeathSave(ctx context.Context, in *DeathSaveInput) (*DeathSave
 	}
 	result := projectDeathSaveResult(resolved.Result, presentationID)
 
-	// Save first: Record immediately re-assesses participation through the
-	// repository and must see this result, not the pre-roll character.
-	if err := m.sheetsFor(scope).save(ctx, resolved.Character); err != nil {
-		return nil, fmt.Errorf("death save: %w", err)
-	}
-
-	pendingGlobalSeq, err := scope.enc.NextStorySeq()
-	if err != nil {
-		return nil, fmt.Errorf("death save: %w", reportUnrecorded(scope, translate(err)))
-	}
-	recorded, err := scope.enc.RecordTrain(&encounter.RecordTrainInput{
-		Units: []encounter.TrainUnit{{Outcome: deathSaveRecord(in.Member, result)}},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("death save: %w", reportUnrecorded(scope, translate(err)))
-	}
-	if err := validateDeathSaveRecordSequence(recorded.Units[0].Seq, pendingGlobalSeq); err != nil {
-		return nil, fmt.Errorf("death save: %w", reportUnrecorded(scope, err))
-	}
-	if err := assertDeathSaveContinuation(scope.enc, in.Member, result.Continuation); err != nil {
-		return nil, fmt.Errorf("death save: %w", reportUnrecorded(scope, err))
-	}
-
-	report, delivery, err := m.commit(ctx, scope)
+	// The one landing saves the actor and every dirty peer before the record
+	// re-assesses participation. No second sheet-save or commit pipeline lives here.
+	landed, err := m.land(ctx, scope, &resolution.Output{
+		DirtyCharacters: append([]*character.Data{resolved.Character}, resolved.DirtyCharacters...), DirtyMonsters: resolved.DirtyMonsters,
+	}, &landing{Record: func(enc *encounter.Encounter, told concentration) error {
+		if !told.empty() {
+			return fmt.Errorf("%w: unexpected death-save concentration report", ErrInvalidWorld)
+		}
+		pendingGlobalSeq, err := enc.NextStorySeq()
+		if err != nil {
+			return err
+		}
+		recorded, err := enc.RecordTrain(&encounter.RecordTrainInput{Units: []encounter.TrainUnit{{Outcome: deathSaveRecord(in.Member, result)}}})
+		if err != nil {
+			return err
+		}
+		if err := validateDeathSaveRecordSequence(recorded.Units[0].Seq, pendingGlobalSeq); err != nil {
+			return err
+		}
+		return assertDeathSaveContinuation(enc, in.Member, result.Continuation)
+	}})
 	if err != nil {
 		return nil, fmt.Errorf("death save: %w", err)
 	}
-
-	return result.output(report, delivery), nil
+	return result.output(landed.Saved, landed.Delivery), nil
 }
 
 // validateDeathSaveRecordSequence keeps the append-order assertion internal.

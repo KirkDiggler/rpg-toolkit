@@ -27,9 +27,10 @@ import (
 // buys — so it is carried rather than re-derived, on the same "store what
 // content already decided" footing as [frozenPostRoll.Definition].
 type frozenContest struct {
-	SaverID string            `json:"saver_id"`
-	Ability abilities.Ability `json:"ability"`
-	DC      int               `json:"dc"`
+	Prepared *frozenPreparedCondition `json:"prepared_application,omitempty"`
+	SaverID  string                   `json:"saver_id"`
+	Ability  abilities.Ability        `json:"ability"`
+	DC       int                      `json:"dc"`
 
 	OnSuccess    saves.SaveEffect                   `json:"on_success"`
 	Application  combatActions.ConditionApplication `json:"application"`
@@ -51,8 +52,16 @@ type frozenContest struct {
 // [contestMachine.resolve] needs to finish once the save is answered. Kind and
 // price are the save's.
 func poseContest(m *contestMachine, ability abilities.Ability, dc int, save Pause) (Step, error) {
+	var prepared *frozenPreparedCondition
+	if m.prepared.applicationID != "" {
+		var err error
+		prepared, err = freezePreparedCondition(m.prepared)
+		if err != nil {
+			return nil, err
+		}
+	}
 	frozen, err := writeFrozen(machineContest, save.Kind, frozenContest{
-		SaverID: m.in.SaverID, Ability: ability, DC: dc,
+		SaverID: m.in.SaverID, Ability: ability, DC: dc, Prepared: prepared,
 		OnSuccess: m.in.Gate.OnSuccess, Application: m.in.Application, HasCondition: m.hasCondition,
 		Damage: m.in.Damage, SourceName: m.in.SourceName, Removal: m.in.Removal, Move: m.in.Move,
 		Cause: m.in.Cause, DamageTaken: m.in.DamageTaken,
@@ -98,7 +107,13 @@ func resumeContest(h frozenHeader, in *ResumeInput) (Machine, error) {
 		hasCondition: frozen.HasCondition,
 	}
 	if frozen.HasCondition {
-		prepared, err := prepareCondition(frozen.Application, frozen.SaverID, source)
+		var prepared preparedCondition
+		var err error
+		if frozen.Prepared != nil {
+			prepared, err = restorePreparedCondition(frozen.Prepared, frozen.Application)
+		} else {
+			prepared, err = prepareCondition(frozen.Application, frozen.SaverID, source)
+		}
 		if err != nil {
 			return nil, err
 		}

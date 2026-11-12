@@ -1412,11 +1412,15 @@ func approachesDataFrom(approaches []CheckApproach) []CheckApproachData {
 type OptionData struct {
 	ID       string              `json:"id"`
 	Say      string              `json:"say"`
+	Loudness string              `json:"loudness,omitempty"`
 	Check    []CheckApproachData `json:"check,omitempty"`
 	Requires []TriggerData       `json:"requires,omitempty"`
 	Advance  *AdvanceData        `json:"advance,omitempty"`
 	Success  []AnswerData        `json:"success,omitempty"`
 	Failure  []AnswerData        `json:"failure,omitempty"`
+
+	// Grants is [Option.Grants] (rpg-project#929). Absent for none.
+	Grants []RowGrant `json:"grants,omitempty"`
 }
 
 // AdvanceData is the persistent representation of an [Advance]: the
@@ -1460,8 +1464,9 @@ func optionsDataFrom(options []Option) []OptionData {
 	out := make([]OptionData, 0, len(options))
 	for _, o := range options {
 		od := OptionData{
-			ID: o.ID, Say: o.Say, Check: approachesDataFrom(o.Check),
+			ID: o.ID, Say: o.Say, Loudness: o.Loudness, Check: approachesDataFrom(o.Check),
 			Success: rowsDataFrom(o.Success), Failure: rowsDataFrom(o.Failure),
+			Grants: cloneGrants(o.Grants),
 		}
 		for _, t := range o.Requires {
 			od.Requires = append(od.Requires, triggerDataFrom(t))
@@ -1499,8 +1504,9 @@ func optionsFromData(data []OptionData) ([]Option, error) {
 	out := make([]Option, 0, len(data))
 	for _, od := range data {
 		o := Option{
-			ID: od.ID, Say: od.Say, Check: approachesFromData(od.Check),
+			ID: od.ID, Say: od.Say, Loudness: od.Loudness, Check: approachesFromData(od.Check),
 			Success: rowsFromData(od.Success), Failure: rowsFromData(od.Failure),
+			Grants: cloneGrants(od.Grants),
 		}
 		for n, td := range od.Requires {
 			t, err := triggerFromData(td)
@@ -1583,6 +1589,7 @@ type AnswerData struct {
 	Activity *ActivityCueData `json:"activity,omitempty"`
 	Weight   int              `json:"weight"`
 	Say      string           `json:"say,omitempty"`
+	Loudness string           `json:"loudness,omitempty"`
 	When     []WhenData       `json:"when,omitempty"`
 	Fact     FactID           `json:"fact,omitempty"`
 	Flee     bool             `json:"flee,omitempty"`
@@ -1679,6 +1686,10 @@ type WhenData struct {
 type HeardData struct {
 	Kind   behavior.Name `json:"kind"`
 	Within int           `json:"within"`
+	// Loudness is the quietest a heard voice may be ([HeardWhen.Loudness]),
+	// omitted when the condition names none, so a blob from before it
+	// existed stores what it always did.
+	Loudness string `json:"loudness,omitempty"`
 }
 
 // SelectorData is the persistent representation of a [Selector]: the word,
@@ -1777,6 +1788,7 @@ func answerDataFrom(entry Answer) AnswerData {
 		Activity: activityDataFrom(entry.Activity),
 		Weight:   entry.Weight,
 		Say:      entry.Say,
+		Loudness: entry.Loudness,
 		Fact:     entry.Fact,
 		Flee:     entry.Flee,
 		Hold:     entry.Hold,
@@ -1815,7 +1827,7 @@ func whenDataFrom(w When) WhenData {
 		Scope: string(w.Scope), Who: string(w.Who), Fact: w.Fact, Threat: string(w.Threat),
 	}
 	if w.Heard != nil {
-		out.Heard = &HeardData{Kind: w.Heard.Kind, Within: w.Heard.Within}
+		out.Heard = &HeardData{Kind: w.Heard.Kind, Within: w.Heard.Within, Loudness: w.Heard.Loudness}
 	}
 	if w.Not != nil {
 		inner := whenDataFrom(*w.Not)
@@ -1889,6 +1901,7 @@ func answerFromData(row AnswerData) Answer {
 		Activity: activityFromData(row.Activity),
 		Weight:   row.Weight,
 		Say:      row.Say,
+		Loudness: row.Loudness,
 		Fact:     row.Fact,
 		Flee:     row.Flee,
 		Hold:     row.Hold,
@@ -1928,7 +1941,7 @@ func whenFromData(w WhenData) When {
 		Scope: DeedScope(w.Scope), Who: core.EntityID(w.Who), Fact: w.Fact, Threat: behavior.ThreatWord(w.Threat),
 	}
 	if w.Heard != nil {
-		out.Heard = &HeardWhen{Kind: w.Heard.Kind, Within: w.Heard.Within}
+		out.Heard = &HeardWhen{Kind: w.Heard.Kind, Within: w.Heard.Within, Loudness: w.Heard.Loudness}
 	}
 	if w.Not != nil {
 		inner := whenFromData(*w.Not)
@@ -3445,17 +3458,23 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
+	savedLines := make([][]Option, 0, len(memberOptions)+len(reserveOptions))
 	for _, id := range slices.Sorted(maps.Keys(memberOptions)) {
-		if err := validateOptionInteractions(interactions, memberOptions[id]); err != nil {
+		savedLines = append(savedLines, memberOptions[id])
+	}
+	savedLines = append(savedLines, reserveOptions...)
+	granted := grantedTopics(interactions, savedLines...)
+	for _, id := range slices.Sorted(maps.Keys(memberOptions)) {
+		if err := validateOptionInteractions(interactions, granted, memberOptions[id]); err != nil {
 			return nil, fmt.Errorf("load encounter: member %s: %w: %w", id, ErrInvalidData, err)
 		}
 	}
 	for i, options := range reserveOptions {
-		if err := validateOptionInteractions(interactions, options); err != nil {
+		if err := validateOptionInteractions(interactions, granted, options); err != nil {
 			return nil, fmt.Errorf("load encounter: reserve %d: %w: %w", i, ErrInvalidData, err)
 		}
 	}
-	if err := validatePropInteractions(interactions, f); err != nil {
+	if err := validatePropInteractions(interactions, granted, f); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 	if err := validateInteractionAddresses(interactions, memberOptions); err != nil {
@@ -3502,6 +3521,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		world:         world,
 		holdings:      newHoldings(world.log),
 		interactions:  interactions,
+		granted:       granted,
 	}
 
 	// Compile the field into the canvas — the SAME compileCanvas

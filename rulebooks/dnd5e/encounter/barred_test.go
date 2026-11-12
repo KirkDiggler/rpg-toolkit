@@ -136,6 +136,21 @@ func bumped(t *testing.T, enc *Encounter, to spatial.Position, barrier MemberID)
 }
 
 // answersBy is every answered beat of one creature, in record order.
+// lastSaid is the words of the last line a creature said, from alice's
+// speech versions (rpg-project#933), empty when she caught none.
+func lastSaid(t *testing.T, enc *Encounter, creature MemberID) string {
+	t.Helper()
+	said := ""
+	for _, b := range storyOf(t, enc) {
+		if b["beat"] == BeatSpeech && b["speaker"] == string(creature) {
+			if w, ok := b["words"].(string); ok {
+				said = w
+			}
+		}
+	}
+	return said
+}
+
 func answersBy(t *testing.T, enc *Encounter, creature MemberID) []map[string]any {
 	t.Helper()
 	var out []map[string]any
@@ -187,7 +202,7 @@ func TestABumpWritesBarredThenTheAnswer(t *testing.T) {
 	require.NotNil(t, state, "he heard it at once: his state turned in this step")
 	require.Equal(t, "challenged", state["to"])
 	require.NotNil(t, answered, "and his table answered")
-	require.Equal(t, bumpLine, answered["say"], "in his own words")
+	require.NotNil(t, answeredSaying(t, enc, postedGuard, bumpLine), "in his own words, in alice's speech version")
 	require.Less(t, barred["seq"].(float64), state["seq"].(float64), "the bump first")
 	require.Less(t, state["seq"].(float64), answered["seq"].(float64), "then the turn, then the answer")
 }
@@ -344,7 +359,7 @@ func TestASecondBumpGetsTheChallengedRow(t *testing.T) {
 	require.NotEmpty(t, answers)
 	last := answers[len(answers)-1]
 	require.Equal(t, "behavior/6:policy/challenged", last["key"], "a bump while challenging picks the shorter row")
-	require.Equal(t, bumpAgainLine, last["say"])
+	require.NotNil(t, answeredSaying(t, enc, postedGuard, bumpAgainLine))
 	require.Equal(t, "challenged", stateOf(enc, postedGuard))
 
 	for range 3 {
@@ -353,8 +368,7 @@ func TestASecondBumpGetsTheChallengedRow(t *testing.T) {
 	require.Equal(t, "posted", stateOf(enc, postedGuard), "three rounds on, he is posted again")
 
 	bumped(t, enc, postedPost, postedGuard)
-	answers = answersBy(t, enc, postedGuard)
-	require.Equal(t, bumpLine, answers[len(answers)-1]["say"], "and asks the question afresh")
+	require.Equal(t, bumpLine, lastSaid(t, enc, postedGuard), "and asks the question afresh")
 }
 
 func TestABumpWithNoListenerWritesOnlyBarred(t *testing.T) {
@@ -467,7 +481,7 @@ func TestARefusedDoorVerbIsABump(t *testing.T) {
 			require.Equal(t, "challenged", stateOf(enc, postedGuard), "he heard it")
 			answers := answersBy(t, enc, postedGuard)
 			require.NotEmpty(t, answers)
-			require.Equal(t, bumpLine, answers[len(answers)-1]["say"], "and answered")
+			require.NotNil(t, answeredSaying(t, enc, postedGuard, bumpLine), "and answered")
 
 			story := storyOf(t, enc)
 			for _, beat := range story {
@@ -540,7 +554,9 @@ func TestADoorBumpIsMeasuredFromTheDoorBesideTheActor(t *testing.T) {
 }
 
 // bumpActs is the correlation of every beat from the bump on, by beat kind,
-// requiring the bump, his turn, his answer and his voice are among them.
+// requiring the bump, his turn, his answer and alice's version of his line
+// (rpg-project#933: a player is written a speech version, not a voice
+// `heard`) are among them.
 func bumpActs(t *testing.T, enc *Encounter) map[string]string {
 	t.Helper()
 	story, err := enc.Story(&StoryInput{Audience: "alice"})
@@ -556,7 +572,7 @@ func bumpActs(t *testing.T, enc *Encounter) map[string]string {
 			out[kind] = entry.Correlation
 		}
 	}
-	for _, kind := range []string{BeatBarred, BeatState, BeatAnswered, "heard"} {
+	for _, kind := range []string{BeatBarred, BeatState, BeatAnswered, BeatSpeech} {
 		require.Contains(t, out, kind, "the bump wrote %s", kind)
 	}
 

@@ -533,16 +533,21 @@ func (d TableDriver) pathTo(view MonsterView, target MemberID) []spatial.Positio
 // is held — so the false answer is a struct built in Go past every door, and
 // it goes out as a plain Pass, the rule for any selector that names nothing.
 func soundFor(sounds []Sound, when []When) (spatial.Position, bool) {
-	var kinds []behavior.Name
+	var heard []*HeardWhen
 	for _, w := range when {
 		if w.Heard != nil {
-			kinds = append(kinds, w.Heard.Kind)
+			heard = append(heard, w.Heard)
 		}
 	}
 	var best Sound
 	found := false
 	for _, s := range sounds {
-		if !slices.ContainsFunc(kinds, func(k behavior.Name) bool { return k.Matches(s.Kind) }) {
+		// THE SOUND THE CONDITION HEARD (rpg-project#933): its kind, and its
+		// loudness when the condition names one, so a guard answering a
+		// shout walks to the shout and not to a word spoken since.
+		if !slices.ContainsFunc(heard, func(h *HeardWhen) bool {
+			return h.Kind.Matches(s.Kind) && (h.Loudness == "" || atOrAbove(Loudness(s.Loudness), Loudness(h.Loudness)))
+		}) {
 			continue
 		}
 		if !found || s.At > best.At || (s.At == best.At && s.Kind < best.Kind) {

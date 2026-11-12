@@ -22,16 +22,27 @@ type Query struct {
 	Incoming *dndevents.IncomingDamageEvent
 	Save     *dndevents.SavingThrowChainEvent
 	Check    *dndevents.AbilityCheckChainEvent
+	// Roll describes the recipient's own roll for pull-based contribution selection.
+	Roll *RollQuery
+}
+
+// RollQuery identifies whose roll is described, independently of an outgoing
+// action whose target may be the creature making a saving throw.
+type RollQuery struct {
+	MemberID string
+	Kind     contributions.RollKind
 }
 
 type domain string
 
 const (
-	domainNone     domain = ""
-	domainDamage   domain = "outgoing_damage"
-	domainIncoming domain = "incoming_damage"
-	domainSave     domain = "saving_throw"
-	domainCheck    domain = "ability_check"
+	domainNone        domain = ""
+	domainMaintenance domain = "maintenance"
+	domainRoll        domain = "roll"
+	domainDamage      domain = "outgoing_damage"
+	domainIncoming    domain = "incoming_damage"
+	domainSave        domain = "saving_throw"
+	domainCheck       domain = "ability_check"
 )
 
 // Validate refuses ambiguous contexts and malformed known identities/facts.
@@ -50,11 +61,17 @@ func (q Query) Validate() error {
 	if q.Check != nil {
 		count++
 	}
+	if q.Roll != nil {
+		count++
+	}
 	if count > 1 {
 		return fmt.Errorf("effect query must name at most one context")
 	}
 	if q.Action != nil {
 		return q.Action.Validate()
+	}
+	if q.Roll != nil && (q.Roll.MemberID == "" || q.Roll.Kind == "") {
+		return fmt.Errorf("roll query requires a recipient and roll kind")
 	}
 	if q.Incoming != nil {
 		if q.Incoming.TargetID() == "" {
@@ -83,6 +100,8 @@ func (q Query) Validate() error {
 
 func (q Query) domain() domain {
 	switch {
+	case q.Roll != nil:
+		return domainRoll
 	case q.Action != nil:
 		// The frame can describe a caster's save-shaped outgoing action. Its
 		// roll kind does not make the actor the saver; Save names that context.
@@ -100,6 +119,8 @@ func (q Query) domain() domain {
 
 func (q Query) subject() string {
 	switch {
+	case q.Roll != nil:
+		return q.Roll.MemberID
 	case q.Action != nil:
 		return q.Action.Actor
 	case q.Incoming != nil:

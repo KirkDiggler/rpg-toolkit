@@ -482,7 +482,7 @@ func (s *ActTestSuite) TestSpeakAnswerCarriesSpeakAct() {
 
 	var answered []told
 	for _, e := range ofKind(entries, encounter.BeatAnswered, "") {
-		if e.beat["verb"] == "speak" {
+		if e.beat["creature"] == string(goblin) {
 			answered = append(answered, e)
 		}
 	}

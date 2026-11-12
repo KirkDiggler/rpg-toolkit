@@ -290,8 +290,11 @@ func (m *Manager) concentrating(
 		return false, fmt.Errorf("turn: character %q: %w: %v", member, ErrBadCharacter, err)
 	}
 
-	_, holding := loaded.Concentration()
-	return holding, nil
+	view, err := loaded.Concentration()
+	if err != nil {
+		return false, fmt.Errorf("turn: character %q: %w: %v", member, ErrBadCharacter, err)
+	}
+	return view.Held, nil
 }
 
 // EndTurnInput ends one member's turn in the fight they are in.

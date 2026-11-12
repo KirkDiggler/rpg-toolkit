@@ -201,6 +201,16 @@ func TestTheHearingWordsAreRefusedAtDecode(t *testing.T) {
 			says: "`heard: { kind: growl }` is not a sound this build makes: they are boom, crash, clang, voice",
 		},
 		{
+			name: "a `heard` loudness misspelt",
+			on:   `on: { time: [ { when: { heard: { kind: voice, within: 2, loudness: yell } }, hold: {} } ] }`,
+			says: "`heard` loudness \"yell\" is not a loudness: write whisper, speak, shout or scream, or omit it for any",
+		},
+		{
+			name: "a `heard` loudness on a sound that is not a voice",
+			on:   `on: { time: [ { when: { heard: { kind: clang, within: 2, loudness: shout } }, hold: {} } ] }`,
+			says: "`heard: { kind: clang, loudness: shout }`: only a voice is said at a loudness",
+		},
+		{
 			name: "`fact` in a `when` naming nothing",
 			on:   `on: { time: [ { when: { fact: "" }, hold: {} } ] }`,
 			says: "`fact` in a `when` names the fact the creature must hold, and this names none",
@@ -227,5 +237,30 @@ func TestTheHearingWordsAreRefusedAtDecode(t *testing.T) {
 			require.Error(t, err)
 			require.Contains(t, err.Error(), tc.says)
 		})
+	}
+}
+
+// TestAHeardLoudnessCompilesToTheCondition: `heard: { kind: voice, loudness:
+// shout }` compiles to a condition naming the loudness, and one that names
+// none to a condition that names none (rpg-project#933).
+func TestAHeardLoudnessCompilesToTheCondition(t *testing.T) {
+	for _, tc := range []struct{ yaml, want string }{
+		{`{ kind: voice, within: 2, loudness: shout }`, "shout"},
+		{`{ kind: voice, within: 2 }`, ""},
+	} {
+		compiled, err := dungeonspec.Load([]byte(captainWith(t, `on: { time: [ { when: { heard: `+tc.yaml+` }, toward: sound } ] }`)))
+		require.NoError(t, err)
+		found := false
+		for _, m := range compiled.Monsters {
+			for _, row := range m.Table[encounter.AnswerTime] {
+				for _, w := range row.When {
+					if w.Heard != nil {
+						found = true
+						require.Equal(t, tc.want, w.Heard.Loudness, tc.yaml)
+					}
+				}
+			}
+		}
+		require.True(t, found, "the row compiled")
 	}
 }

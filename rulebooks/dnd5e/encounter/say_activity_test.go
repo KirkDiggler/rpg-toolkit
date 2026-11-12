@@ -26,7 +26,8 @@ func (s *AnswerTestSuite) TestSayActivitySelectedRecordSurvivesReloadAndKeepsAud
 			for _, viewer := range []core.EntityID{alice, goblin} {
 				beats := s.answeredBeats(enc, viewer)
 				s.Require().Len(beats, 1)
-				s.Equal("Let me think.", beats[0]["say"])
+				s.Empty(beats[0]["say"], "the pick carries no words (rpg-project#933)")
+				s.Contains(s.wordsCaught(enc, viewer), "Let me think.", "the line is in each viewer's speech version")
 				s.Equal(map[string]any{"ref": "dnd5e:activities:thoughtful", "cycles": float64(2)}, beats[0]["activity"])
 			}
 			for _, entry := range recordEntries(s.T(), enc, 1) {
@@ -88,6 +89,6 @@ func (s *AnswerTestSuite) TestSayActivityDoesNotBorrowFromAnUnselectedResponse()
 	s.Require().NoError(err)
 	beats := s.answeredBeats(enc, alice)
 	s.Require().Len(beats, 1)
-	s.Equal("No.", beats[0]["say"])
+	s.Contains(s.wordsCaught(enc, alice), "No.")
 	s.NotContains(beats[0], "activity")
 }

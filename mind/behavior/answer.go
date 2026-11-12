@@ -51,6 +51,14 @@ type Answer struct {
 	// disposition.
 	Say string
 
+	// Loudness is how loudly [Answer.Say] is spoken (rpg-project#933),
+	// carried for the caller and OPAQUE TO THIS MODULE, as Say is: behavior
+	// knows no loudness vocabulary, validates none and never reads it. The
+	// rulebook that owns the words judges them. Empty is the rulebook's
+	// default, and is omitted when marshalled, so a table written before the
+	// field existed marshals, and digests, exactly as it did.
+	Loudness string `json:",omitempty"`
+
 	// When is the list of conditions this entry is on the table under, and
 	// EVERY ONE MUST HOLD (R8 of rpg-project#569); empty is a standing order.
 	// See [When] — an entry whose conditions do not all hold is not a

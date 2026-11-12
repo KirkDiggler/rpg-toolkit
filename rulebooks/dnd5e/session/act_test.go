@@ -223,7 +223,15 @@ func (s *SpeakWorldSuite) TestSpeakAnswerSharesSpeakAct() {
 
 	events := storyOf(s.T(), mgr, "alice")
 	spoke := eventsOf(s.T(), events, encounter.BeatSpoke, "", "")
-	spoken := eventsOf(s.T(), events, encounter.BeatAnswered, "verb", "speak")
+	// The line's answer is the goblin's pick that names no time table: a
+	// spoken answer's beat carries neither its line nor its verb any more
+	// (rpg-project#933), only the creature and its die.
+	var spoken []witnessed
+	for _, e := range eventsOf(s.T(), events, encounter.BeatAnswered, "creature", "goblin") {
+		if e.Fields["key"] != "behavior/6:policy/time" {
+			spoken = append(spoken, e)
+		}
+	}
 	s.Require().Len(spoke, 1)
 	s.Require().Len(spoken, 1)
 	speak := requireOneAct(s.T(), append(spoke, spoken...), "speak")

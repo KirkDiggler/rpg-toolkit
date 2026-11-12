@@ -404,8 +404,9 @@ func interactionsFromData(data []InteractionData) (map[InteractionID]*interactio
 // beat no state of its recipe listens for — each a requirement nobody can
 // ever meet or a verdict that can never land, refused at the door it came
 // in through. The caller adds the sentinel.
-func validateOptionInteractions(interactions map[InteractionID]*interactionRecord, options []Option) error {
-	granted := grantedTopics(interactions)
+func validateOptionInteractions(
+	interactions map[InteractionID]*interactionRecord, granted map[TopicID]bool, options []Option,
+) error {
 	for _, o := range options {
 		if err := validateRecognizedTopics(granted, fmt.Sprintf("option %q", o.ID), o.Requires); err != nil {
 			return err
@@ -448,14 +449,14 @@ func validateOptionInteractions(interactions map[InteractionID]*interactionRecor
 // prop's lines on the field, refused with [ErrNoField], the door a prop
 // comes in through. Asked once the run's interactions are built, at Setup
 // and at Load: a prop's lines are site data, and the site knows no run.
-func validatePropInteractions(interactions map[InteractionID]*interactionRecord, f *field) error {
+func validatePropInteractions(interactions map[InteractionID]*interactionRecord, granted map[TopicID]bool, f *field) error {
 	for _, p := range f.props {
-		if err := validateOptionInteractions(interactions, p.Options); err != nil {
+		if err := validateOptionInteractions(interactions, granted, p.Options); err != nil {
 			return fmt.Errorf("prop %q: %w: %w", p.ID, err, ErrNoField)
 		}
 	}
 	for i := range f.placed {
-		if err := validateOptionInteractions(interactions, f.placed[i].options); err != nil {
+		if err := validateOptionInteractions(interactions, granted, f.placed[i].options); err != nil {
 			return fmt.Errorf("prop %q: %w: %w", f.placed[i].id, err, ErrNoField)
 		}
 	}

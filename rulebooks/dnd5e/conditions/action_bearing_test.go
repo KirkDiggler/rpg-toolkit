@@ -22,9 +22,10 @@ func TestActionBearingSuite(t *testing.T) { suite.Run(t, new(actionBearingSuite)
 
 func (s *actionBearingSuite) TestAnsweringLoadersImplementAnInformationCapability() {
 	fixtures := map[string]dnd5eEvents.ConditionBehavior{
-		refs.Conditions.Raging().String():      composedRageForTest("barb"),
-		refs.Conditions.SneakAttack().String(): NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue"}),
-		refs.Conditions.Inspired().String():    NewInspiredCondition("rogue", "bard", ""),
+		refs.Conditions.LinkedEffects().String(): linkedForTest("rogue"),
+		refs.Conditions.Raging().String():        composedRageForTest("barb"),
+		refs.Conditions.SneakAttack().String():   NewSneakAttackCondition(SneakAttackInput{MemberID: "rogue"}),
+		refs.Conditions.Inspired().String():      NewInspiredCondition("rogue", "bard", ""),
 
 		refs.Conditions.Prone().String():                            NewProneCondition("rogue"),
 		refs.Conditions.Hidden().String():                           NewHiddenCondition("rogue"),
@@ -40,12 +41,12 @@ func (s *actionBearingSuite) TestAnsweringLoadersImplementAnInformationCapabilit
 		refs.Conditions.FightingStyleTwoWeaponFighting().String():   NewFightingStyleTwoWeaponFightingCondition("rogue"),
 		refs.Conditions.RecklessAttack().String():                   NewRecklessAttackCondition("rogue"),
 	}
-	blessed, err := NewBlessedCondition(NewBlessedConditionInput{
+	blessed, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Blessed(),
 		MemberID: "rogue", SourceID: "cleric", SourceRef: refs.Spells.Bless(),
 	})
 	s.Require().NoError(err)
 	fixtures[refs.Conditions.Blessed().String()] = blessed
-	baned, err := NewBanedCondition(NewBanedConditionInput{
+	baned, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Baned(),
 		MemberID: "rogue", SourceID: "cultist", SourceRef: refs.Spells.Bane(),
 	})
 	s.Require().NoError(err)
@@ -133,9 +134,9 @@ func (s *actionBearingSuite) TestNotBearingYieldsNoRow() {
 
 func (s *actionBearingSuite) TestEffectIDsUniqueAndDeterministic() {
 	held := func() []dnd5eEvents.ConditionBehavior {
-		a, err := NewBlessedCondition(NewBlessedConditionInput{MemberID: "rogue", SourceID: "a", SourceRef: refs.Spells.Bless()})
+		a, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Blessed(), MemberID: "rogue", SourceID: "a", SourceRef: refs.Spells.Bless()})
 		s.Require().NoError(err)
-		b, err := NewBlessedCondition(NewBlessedConditionInput{MemberID: "rogue", SourceID: "b", SourceRef: refs.Spells.Bless()})
+		b, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Blessed(), MemberID: "rogue", SourceID: "b", SourceRef: refs.Spells.Bless()})
 		s.Require().NoError(err)
 		return []dnd5eEvents.ConditionBehavior{
 			a, b,
@@ -154,11 +155,10 @@ func (s *actionBearingSuite) TestEffectIDsUniqueAndDeterministic() {
 	}
 
 	first := ids()
-	s.Equal([]string{
-		"dnd5e:conditions:blessed@a",
-		"dnd5e:conditions:blessed@b",
-		refs.Conditions.SneakAttack().String(),
-		refs.Conditions.FightingStyleArchery().String(),
-	}, first)
+	s.Require().Len(first, 4)
+	s.NotEmpty(first[0])
+	s.NotEmpty(first[1])
+	s.NotEqual(first[0], first[1], "independent Bless instances cannot collide")
+	s.Equal([]string{refs.Conditions.SneakAttack().String(), refs.Conditions.FightingStyleArchery().String()}, first[2:])
 	s.Equal(first, ids(), "the same conditions give the same ids in the same order")
 }

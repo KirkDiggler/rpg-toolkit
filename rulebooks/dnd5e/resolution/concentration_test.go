@@ -84,7 +84,8 @@ func trueStrikeAddress(casterID string) dnd5eEvents.ConditionAddress {
 func concentratingAddress(casterID string) dnd5eEvents.ConditionAddress {
 	return dnd5eEvents.ConditionAddress{
 		MemberID:     casterID,
-		ConditionRef: refs.Conditions.Concentrating().String(),
+		ConditionRef: refs.Conditions.LinkedEffects().String(),
+		SourceID:     fixtureApplicationID(casterID),
 	}
 }
 
@@ -99,9 +100,7 @@ func (s *ConcentrationTestSuite) holding(casterID, targetID string) []json.RawMe
 func (s *ConcentrationTestSuite) holdingFor(
 	casterID, targetID string, turnEnds int,
 ) []json.RawMessage {
-	hold := conditions.NewConcentratingCondition(
-		casterID, refs.Spells.TrueStrike().String(), "True Strike", turnEnds)
-	s.Require().NoError(hold.AddChild(s.ctx, trueStrikeAddress(casterID)))
+	hold := fixtureHold(s.T(), holdFixtureInput{Member: casterID, Source: refs.Spells.TrueStrike(), Name: "True Strike", Turns: turnEnds, Children: []dnd5eEvents.ConditionAddress{trueStrikeAddress(casterID)}})
 
 	holdJSON, err := hold.ToJSON()
 	s.Require().NoError(err)
@@ -168,7 +167,7 @@ func (s *ConcentrationTestSuite) struck(out *Output) StrikeOutcome {
 
 // concentrating and trueStrike are the hold and its child, by stored ref.
 var (
-	concentrating = refs.Conditions.Concentrating().String()
+	concentrating = refs.Conditions.LinkedEffects().String()
 	trueStrike    = refs.Conditions.TrueStrike().String()
 )
 
@@ -253,6 +252,7 @@ func (s *ConcentrationTestSuite) TestBaneAppliesToConcentrationSaveAndRecordCalc
 		s.fixtures().saver(40, conditionsJSON...), claw("1d6"),
 		&sequenceRoller{singles: []int{straightRoll, 12}, pair: []int{6, 4}},
 		events.NewEventBus(),
+		fixtureOwnerParticipant(s.T(), "other-caster", refs.Spells.Bane(), dnd5eEvents.ConditionAddress{MemberID: heroID, ConditionRef: refs.Conditions.Baned().String(), SourceID: "other-caster"}),
 	)
 	s.Require().NoError(err)
 	followUp := s.struck(out).FollowUps[0]
@@ -536,7 +536,7 @@ func (s *ConcentrationTestSuite) trueStrike() Machine {
 	definition.Cost = oneAction()
 
 	machine, err := NewAction(&ActionInput{
-		Definition: *definition, AttackerID: bardID, TargetIDs: []string{wolfID},
+		ApplicationID: testApplicationID(s.T()), Definition: *definition, AttackerID: bardID, TargetIDs: []string{wolfID},
 	})
 	s.Require().NoError(err)
 
@@ -544,22 +544,18 @@ func (s *ConcentrationTestSuite) trueStrike() Machine {
 }
 
 // held reads the hold off a sheet, which is where the address list lives.
-func (s *ConcentrationTestSuite) held(out *Output, id string) conditions.ConcentratingConditionData {
-	var found []conditions.ConcentratingConditionData
+func (s *ConcentrationTestSuite) held(out *Output, id string) holdView {
+	var found []holdView
 	for _, data := range out.DirtyCharacters {
-		if data.ID != id {
-			continue
-		}
-		for _, raw := range data.Conditions {
-			var blob conditions.ConcentratingConditionData
-			s.Require().NoError(json.Unmarshal(raw, &blob))
-			if blob.Ref != nil && blob.Ref.ID == refs.Conditions.Concentrating().ID {
-				found = append(found, blob)
+		if data.ID == id {
+			for _, raw := range data.Conditions {
+				if view := fixtureHoldView(s.T(), raw); view != nil {
+					found = append(found, *view)
+				}
 			}
 		}
 	}
 	s.Require().Len(found, 1, "exactly one hold at a time")
-
 	return found[0]
 }
 
@@ -587,10 +583,7 @@ func (r recastRoller) RollN(_ context.Context, count, sides int) ([]int, error) 
 
 func baneConditionJSON(t *testing.T, memberID, sourceID string) json.RawMessage {
 	t.Helper()
-	condition, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
-		MemberID: memberID, SourceID: sourceID, SourceRef: refs.Spells.Bane(),
-	})
-	require.NoError(t, err)
+	condition := fixtureNamed(t, namedFixtureInput{Ref: refs.Conditions.Baned(), Member: memberID, Source: sourceID, Origin: refs.Spells.Bane()})
 	stored, err := condition.ToJSON()
 	require.NoError(t, err)
 	return stored
@@ -598,13 +591,7 @@ func baneConditionJSON(t *testing.T, memberID, sourceID string) json.RawMessage 
 
 func baneOwnerJSON(t *testing.T, casterID string, turns int, children ...dnd5eEvents.ConditionAddress) json.RawMessage {
 	t.Helper()
-	owner := conditions.NewConcentratingConditionWithInput(conditions.NewConcentratingConditionInput{
-		MemberID: casterID, SourceID: casterID, SpellRef: refs.Spells.Bane().String(),
-		SpellName: "Bane", TurnEnds: turns, SkipFirstTurnEnd: true,
-	})
-	for _, child := range children {
-		require.NoError(t, owner.AddChild(context.Background(), child))
-	}
+	owner := fixtureHold(t, holdFixtureInput{Member: casterID, Source: refs.Spells.Bane(), Name: "Bane", Turns: turns, Skip: true, Children: children})
 	stored, err := owner.ToJSON()
 	require.NoError(t, err)
 	return stored
@@ -637,7 +624,7 @@ func (s *ConcentrationTestSuite) TestBaneAllSaveRecastReplacesOnlyItsQualifiedOw
 	s.Require().NoError(err)
 	_, err = dnd5eEvents.ConditionAppliedTopic.On(bus).Subscribe(s.ctx,
 		func(_ context.Context, event dnd5eEvents.ConditionAppliedEvent) error {
-			if event.Condition.Ref().ID == refs.Conditions.Concentrating().ID {
+			if event.Condition.Ref().ID == refs.Conditions.LinkedEffects().ID {
 				order = append(order, "apply-owner:"+event.Target.GetID())
 			}
 			return nil
@@ -645,7 +632,7 @@ func (s *ConcentrationTestSuite) TestBaneAllSaveRecastReplacesOnlyItsQualifiedOw
 	s.Require().NoError(err)
 	roller := recastRoller{order: &order}
 	machine, err := NewAction(&ActionInput{
-		Definition: *baneDefinition(), AttackerID: bardID,
+		ApplicationID: testApplicationID(s.T()), Definition: *baneDefinition(), AttackerID: bardID,
 		TargetIDs: []string{heroID}, Roller: roller,
 	})
 	s.Require().NoError(err)
@@ -669,9 +656,9 @@ func (s *ConcentrationTestSuite) TestBaneAllSaveRecastReplacesOnlyItsQualifiedOw
 	}, newSurface(bus))
 	s.Require().NoError(err)
 	s.Equal([]string{
-		"remove:" + bardID + ":" + bardID,
+		"remove:" + bardID + ":" + fixtureApplicationID(bardID),
 		"remove:" + heroID + ":" + bardID,
-		"roll:d20", "roll:1d4", "apply-owner:" + bardID,
+		"apply-owner:" + bardID, "roll:d20", "roll:1d4",
 	}, order)
 
 	s.Require().Len(out.ConcentrationBreaks, 1)
@@ -689,17 +676,18 @@ func (s *ConcentrationTestSuite) TestBaneAllSaveRecastReplacesOnlyItsQualifiedOw
 		"the removed old source is not cached into the recast save")
 
 	hold := s.held(out, bardID)
-	s.Equal(bardID, hold.SourceID)
+	s.Equal(bardID, hold.SourceEntityID)
 	s.Empty(hold.Children, "an all-save cast still installs one zero-child owner")
-	s.Equal(spells.BaneTurnEnds, hold.TurnEndsLeft)
-	s.True(hold.SkipNextTurnEnd)
+	s.Equal(spells.BaneTurnEnds, hold.Remaining)
+	s.True(hold.Grace)
 
 	updatedTarget := fixtures.sheet(out, heroID)
 	s.Require().ElementsMatch([]string{refs.Conditions.Baned().String()},
 		storedRefs(s.T(), updatedTarget.Conditions))
-	var remaining conditions.BanedConditionData
+	var remaining conditions.LinkedConditionData
 	s.Require().NoError(json.Unmarshal(conditionWithRefOrNil(updatedTarget.Conditions, refs.Conditions.Baned()), &remaining))
-	s.Equal(wolfID, remaining.SourceID)
+	s.Equal(wolfID, remaining.AddressSourceID)
+	s.Equal(wolfID, remaining.Origin.EntityID)
 	for _, dirty := range out.DirtyMonsters {
 		s.NotEqual(wolfID, dirty.ID, "the unrelated owner and its seven-turn clock stay untouched")
 	}
@@ -712,8 +700,8 @@ func (s *ConcentrationTestSuite) TestTheCastRegistersItsDeliveredChildOnTheOwner
 	s.Empty(out.ConcentrationBreaks, "a caster holding nothing displaces nothing")
 
 	hold := s.held(out, bardID)
-	s.Equal(refs.Spells.TrueStrike().String(), hold.SpellRef)
-	s.Equal(spells.TrueStrikeTurnEnds, hold.TurnEndsLeft)
+	s.Equal(refs.Spells.TrueStrike().String(), hold.SourceRef.String())
+	s.Equal(spells.TrueStrikeTurnEnds, hold.Remaining)
 	s.Equal([]dnd5eEvents.ConditionAddress{trueStrikeAddress(bardID)}, hold.Children)
 }
 
@@ -745,8 +733,8 @@ func (s *ConcentrationTestSuite) TestASecondConcentrationCastDropsTheFirst() {
 	s.Equal([]string{
 		"removed:" + concentratingAddress(bardID).ConditionRef + ":" + conditions.ConcentrationEndedRecast,
 		"removed:" + trueStrikeAddress(bardID).ConditionRef + ":" + conditions.ConcentrationEndedRecast,
+		"applied:" + refs.Conditions.LinkedEffects().ID,
 		"applied:" + refs.Conditions.TrueStrike().ID,
-		"applied:" + refs.Conditions.Concentrating().ID,
 	}, order)
 
 	hold := s.held(out, bardID)

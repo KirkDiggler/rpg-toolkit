@@ -17,10 +17,13 @@ package session_test
 
 import (
 	"context"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -113,26 +116,38 @@ func (c *freeRoamCastle) openTheGate(t *testing.T) {
 // party steps through beside him (the S1 walk, rpg-project#841).
 func TestCastleTheLaunchSeatsTheGatePost(t *testing.T) {
 	c := openTheCastleForTwo(t, 18)
-	// With its settings (rpg-project#857, R6): it checks arrivals, and the
-	// troupe's fact is its pass. The dungeonspec compiles them into the post
-	// itself, so the launch carries them by carrying the post.
+	// With its settings (rpg-project#857, R6; #928): it checks arrivals, and
+	// its pass is recognition — he lets through whom he recognises as
+	// admitted. The dungeonspec compiles them into the post itself, so the
+	// launch carries them by carrying the post.
+	recognized := []encounter.TriggerData{{Kind: "recognized", Topic: "admitted"}}
 	post := encounter.PostData{
 		Door: castleGateDoor, Cells: []spatial.Position{beneathTheCastleGate, besideTheCastleGate},
-		Against: encounter.PostEntering, Pass: "troupe-admitted",
+		Against: encounter.PostEntering, Pass: recognized,
 	}
+	posted := map[encounter.MemberID]bool{}
 	for _, m := range c.world(t).ToData().Members {
-		if m.ID == "gate-1" {
+		switch m.ID {
+		case "gate-1":
 			require.Equal(t, map[string]encounter.PostData{"posted": post, "alert": post, "challenged": post}, m.Posts,
 				"gate-1 is seated with the post the author wrote")
+		case "gate-2", "captain":
+			// Every gate guard holds the gate (rpg-project#928), in `ready`.
+			require.Contains(t, m.Posts, "ready", "%s is seated with a post", m.ID)
+			require.Equal(t, castleGateDoor, string(m.Posts["ready"].Door))
+			require.Equal(t, recognized, m.Posts["ready"].Pass)
+		default:
+			continue
 		}
-		if m.ID == "gate-2" {
-			require.Nil(t, m.Posts, "gate-2 holds no post")
-		}
+		posted[m.ID] = true
+	}
+	for _, id := range []encounter.MemberID{"gate-1", "gate-2", "captain"} {
+		require.True(t, posted[id], "%s is seated", id)
 	}
 }
 
 func TestCastleThePostHoldsTheGatesOpening(t *testing.T) {
-	c := openTheCastleForTwo(t, 18)
+	c := openTheGateWithGateOneAlone(t, 18)
 	gate1 := memberOf(t, c.world(t), "gate-1")
 	require.Equal(t, beneathTheCastleGate, gate1.Position, "precondition: gate-1 stands on his post beneath the gate")
 
@@ -197,12 +212,12 @@ func TestCastleThePostHoldsTheGatesOpening(t *testing.T) {
 // holder says nothing about what he holds now. The hold is a state at a
 // place, read while she sees him, never carried into a memory.
 func TestCastleAMemoryOfTheGateGuardHoldsNoDoor(t *testing.T) {
-	c := openTheCastleForTwo(t, 18)
+	c := openTheGateWithGateOneAlone(t, 18)
 	start := c.where(t, "alice")
 	c.move(t, c.walkInto(t, besideTheCastleGate))
 	require.Equal(t, castleGateDoor, c.sightingOf(t, "alice", "gate-1").HoldsDoor, "precondition: seen on his post, he holds the gate")
-	// The captain's hail on the road is a voice gate-1 hears, so he may be
-	// alert rather than posted by now (rpg-project#923).
+	// Whatever state gate-1 is in by now: the captain's spoken hail no
+	// longer alerts him, guards answer shouts (rpg-project#933).
 	before := stateOrPosted(stateOf(t, c.world(t), "gate-1"))
 
 	away := c.move(t, c.walkInto(t, start))
@@ -227,7 +242,7 @@ func stateOrPosted(state string) string {
 // refusal says who bars it as she sees him, in the encounter's words. Once
 // he is cowed, she opens it.
 func TestCastleAHeldDoorRefusesItsDoorVerbs(t *testing.T) {
-	c := openTheCastleForTwo(t, 18)
+	c := openTheGateWithGateOneAlone(t, 18)
 	gate1 := memberOf(t, c.world(t), "gate-1")
 	walked := c.move(t, c.walkInto(t, besideTheCastleGate))
 	require.Equal(t, session.MovementCompleted, walked.Status, "precondition: alice beside the gate: %s", walked.StopReason)
@@ -267,7 +282,7 @@ func TestCastleAHeldDoorRefusesItsDoorVerbs(t *testing.T) {
 // the verb is called, the encounter writes `barred` naming the door and the
 // verb, and gate-1 answers with his line.
 func TestCastleAHeldLockedDoorIsAnsweredByTheGuard(t *testing.T) {
-	c := openTheCastleForTwo(t, 18)
+	c := openTheGateWithGateOneAlone(t, 18)
 	gate1 := memberOf(t, c.world(t), "gate-1")
 	// LOCKED BEFORE SHE ARRIVES: Unlock reads the lock through what she
 	// knows of the door, so she sees it locked on her way in.
@@ -337,7 +352,7 @@ func worldGateState(t *testing.T, c *freeRoamCastle) string {
 // from cells away: her Unlock is out of reach, not barred, and no die is
 // thrown.
 func TestCastleAHeldDoorOutOfReachIsOutOfReach(t *testing.T) {
-	c := openTheCastleForTwo(t, 18)
+	c := openTheGateWithGateOneAlone(t, 18)
 	lock := &encounter.LockData{Approaches: []encounter.CheckApproachData{{Ability: "dex", DC: 15}}}
 	c.setTheGateInTheRecord(t, "locked", lock)
 	path := c.walkInto(t, besideTheCastleGate)
@@ -353,4 +368,23 @@ func TestCastleAHeldDoorOutOfReachIsOutOfReach(t *testing.T) {
 	require.ErrorIs(t, err, session.ErrOutOfRange, "a lock across the gatehouse is out of reach first")
 	require.NotErrorIs(t, err, session.ErrDoorHeld, "and not barred, which she would only learn at the door")
 	require.Equal(t, before, c.dice.rolls, "no die is thrown")
+}
+
+// gateOneAlonePosts is the castle's `ready` posts on gate-2 and the captain
+// (rpg-project#928), which [openTheGateWithGateOneAlone] strikes.
+var gateOneAlonePosts = regexp.MustCompile(`\n        posts:\n          ready:\n(?:            .*\n)+`)
+
+// openTheGateWithGateOneAlone is [openTheCastleForTwo] with gate-1 the gate's
+// only holder: a TEST FIXTURE for the routes about one post's mechanics. In
+// the file every gate guard holds the gate (rpg-project#928), and the
+// captain, standing nearest, would name every stop these routes read as
+// gate-1's; the three holders together are castle_gate_recognition_test.go's.
+func openTheGateWithGateOneAlone(t *testing.T, d20s ...int) *freeRoamCastle {
+	t.Helper()
+	source := castleSource(t)
+	stripped := gateOneAlonePosts.ReplaceAll(source, []byte("\n"))
+	require.Equal(t, 2, len(gateOneAlonePosts.FindAll(source, -1)), "precondition: gate-2 and the captain each carry a ready post")
+	alice := armedFighter("alice")
+	alice.AbilityScores[abilities.CHA] = 16
+	return openTheCastleFrom(t, stripped, []*character.Data{alice, healingCleric()}, d20s...)
 }

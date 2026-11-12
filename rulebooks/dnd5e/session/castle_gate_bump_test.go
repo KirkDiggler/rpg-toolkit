@@ -89,7 +89,7 @@ func (c *freeRoamCastle) besideTheGate(t *testing.T) {
 // BarredAct, his turn to challenged, and his question. A second bump while
 // he is challenged gets the shorter line.
 func TestCastleTheBumpSpeaks(t *testing.T) {
-	c := openTheCastleForTwo(t, 18)
+	c := openTheGateWithGateOneAlone(t, 18)
 	gate1 := memberOf(t, c.world(t), "gate-1")
 	c.besideTheGate(t)
 
@@ -130,7 +130,7 @@ func TestCastleTheBumpSpeaks(t *testing.T) {
 // A step across it is the bump too, and the cell is the one she was
 // refused into, past the gate, never his own.
 func TestCastleTheHeldCrossingIsABump(t *testing.T) {
-	c := openTheCastleForTwo(t, 18)
+	c := openTheGateWithGateOneAlone(t, 18)
 	gate1 := memberOf(t, c.world(t), "gate-1")
 	c.besideTheGate(t)
 	c.openTheGateInTheRecord(t)
@@ -148,11 +148,11 @@ func TestCastleTheHeldCrossingIsABump(t *testing.T) {
 // words, and no one hears it. No Barred, no BarredAct, and gate-1, a cell
 // away, says nothing and stays posted.
 func TestCastleAWallBumpWritesNothing(t *testing.T) {
-	c := openTheCastleForTwo(t, 18)
+	c := openTheGateWithGateOneAlone(t, 18)
 	c.besideTheGate(t)
-	// The captain's hail on the road is a voice gate-1 hears, so he may be
-	// alert rather than posted by now (rpg-project#923); the wall changes
-	// neither.
+	// Whatever state gate-1 is in by now — the captain's spoken hail no
+	// longer alerts him, guards answer shouts (rpg-project#933) — the wall
+	// changes nothing.
 	before := stateOrPosted(stateOf(t, c.world(t), "gate-1"))
 
 	out, played := c.bump(t, throughTheGateWall, spatial.Position{X: -4, Y: 5})
@@ -168,7 +168,7 @@ func TestCastleAWallBumpWritesNothing(t *testing.T) {
 // answered with Refused, the door shut, and the act stream carries the
 // bump naming the door and the verb, and his question.
 func TestCastleOpeningTheHeldDoorIsABump(t *testing.T) {
-	c := openTheCastleForTwo(t, 18)
+	c := openTheGateWithGateOneAlone(t, 18)
 	gate1 := memberOf(t, c.world(t), "gate-1")
 	c.besideTheGate(t)
 
@@ -192,7 +192,7 @@ func TestCastleOpeningTheHeldDoorIsABump(t *testing.T) {
 // is answered with Refused, the door still open, and the act stream carries
 // the bump naming the door and the close, and his question.
 func TestCastleClosingTheHeldDoorIsABump(t *testing.T) {
-	c := openTheCastleForTwo(t, 18)
+	c := openTheGateWithGateOneAlone(t, 18)
 	gate1 := memberOf(t, c.world(t), "gate-1")
 	c.besideTheGate(t)
 	c.openTheGateInTheRecord(t)
@@ -221,7 +221,7 @@ func TestCastleClosingTheHeldDoorIsABump(t *testing.T) {
 // line are one act under her Move.
 func TestCastleAClickOnTheGuardIsABump(t *testing.T) {
 	t.Run("from beside him", func(t *testing.T) {
-		c := openTheCastleForTwo(t, 18)
+		c := openTheGateWithGateOneAlone(t, 18)
 		gate1 := memberOf(t, c.world(t), "gate-1")
 		c.besideTheGate(t)
 
@@ -236,7 +236,7 @@ func TestCastleAClickOnTheGuardIsABump(t *testing.T) {
 		answeredUnder(t, played.to("alice"), bumped)
 	})
 	t.Run("from the party start", func(t *testing.T) {
-		c := openTheCastleForTwo(t, 18)
+		c := openTheGateWithGateOneAlone(t, 18)
 		path := c.walkInto(t, beneathTheCastleGate)
 		require.GreaterOrEqual(t, len(path), 2, "precondition: the walk has a cell before his")
 		before := path[len(path)-2]
@@ -260,7 +260,7 @@ func TestCastleAClickOnTheGuardIsABump(t *testing.T) {
 func TestCastleAClickOnAPassableBodyIsRefused(t *testing.T) {
 	for _, who := range []string{"cleric", "pedlar"} {
 		t.Run(who, func(t *testing.T) {
-			c := openTheCastleForTwo(t, 18)
+			c := openTheGateWithGateOneAlone(t, 18)
 			start := c.where(t, "alice")
 			path := c.walkInto(t, memberOf(t, c.world(t), encounter.MemberID(who)).Position)
 			c.live.mu.Lock()

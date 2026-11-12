@@ -407,9 +407,13 @@ func (s *SpeakSuite) TestABeatenLineIsRecorded() {
 	s.Equal(20, die.DieSize)
 	s.Equal(11, body.Calculation.Total)
 
-	// The goblin heard it too — the audience is the witnesses.
-	s.NotEmpty(beatsNamed(s.events(mgr, "goblin"), encounter.BeatSpoke),
-		"the goblin was spoken to and its own story says so")
+	// The goblin heard it too, in its own version of the line
+	// (rpg-project#933); `spoke` is alice's own record.
+	s.Empty(beatsNamed(s.events(mgr, "goblin"), encounter.BeatSpoke), "spoke is the speaker's alone")
+	heard := beatsNamed(s.events(mgr, "goblin"), encounter.BeatSpeech)
+	s.Require().NotEmpty(heard, "the goblin was spoken to and its own story says so")
+	s.Equal("alice", heard[0].Fields["speaker"])
+	s.Equal("Drop the bow or I drop you.", heard[0].Fields["words"])
 }
 
 // The missed line is the case that matters most: with no failure rows nothing

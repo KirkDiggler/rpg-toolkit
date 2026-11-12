@@ -226,14 +226,8 @@ func TestAttackRequiresItsRollerDuringPurePreflight(t *testing.T) {
 }
 
 func TestBaneAttackUsesOneSelectedContributionAndRecordsCalculation(t *testing.T) {
-	baneA, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
-		MemberID: wolfID, SourceID: "caster-a", SourceRef: refs.Spells.Bane(),
-	})
-	require.NoError(t, err)
-	baneB, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
-		MemberID: wolfID, SourceID: "caster-b", SourceRef: refs.Spells.Bane(),
-	})
-	require.NoError(t, err)
+	baneA := fixtureNamed(t, namedFixtureInput{Ref: refs.Conditions.Baned(), Member: wolfID, Source: "caster-a", Origin: refs.Spells.Bane()})
+	baneB := fixtureNamed(t, namedFixtureInput{Ref: refs.Conditions.Baned(), Member: wolfID, Source: "caster-b", Origin: refs.Spells.Bane()})
 	baneAJSON, err := baneA.ToJSON()
 	require.NoError(t, err)
 	baneBJSON, err := baneB.ToJSON()
@@ -246,9 +240,11 @@ func TestBaneAttackUsesOneSelectedContributionAndRecordsCalculation(t *testing.T
 	})
 	require.NoError(t, err)
 	out, err := Resolve(context.Background(), &Input{
-		World:        actionWorld(t, 2),
-		Participants: []Participant{{Monster: attacker}, {Character: actionHero()}},
-		Machine:      machine,
+		World: actionWorld(t, 2),
+		Participants: []Participant{{Monster: attacker}, {Character: actionHero()},
+			fixtureOwnerParticipant(t, "caster-a", refs.Spells.Bane(), baneA.ConditionAddress()),
+			fixtureOwnerParticipant(t, "caster-b", refs.Spells.Bane(), baneB.ConditionAddress())},
+		Machine: machine,
 		Capabilities: encounter.Capabilities{
 			Initiative:    orderAsGiven{},
 			Participation: everyoneParticipates{},
@@ -274,10 +270,7 @@ func TestBaneAttackUsesOneSelectedContributionAndRecordsCalculation(t *testing.T
 }
 
 func TestBaneWithAdvantageRollsTwoD20FacesAndOneD4(t *testing.T) {
-	bane, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
-		MemberID: wolfID, SourceID: "caster-a", SourceRef: refs.Spells.Bane(),
-	})
-	require.NoError(t, err)
+	bane := fixtureNamed(t, namedFixtureInput{Ref: refs.Conditions.Baned(), Member: wolfID, Source: "caster-a", Origin: refs.Spells.Bane()})
 	baneJSON, err := bane.ToJSON()
 	require.NoError(t, err)
 	trueStrikeJSON, err := conditions.NewTrueStrikeCondition(wolfID, heroID, "").ToJSON()
@@ -291,7 +284,7 @@ func TestBaneWithAdvantageRollsTwoD20FacesAndOneD4(t *testing.T) {
 	require.NoError(t, err)
 	out, err := Resolve(context.Background(), &Input{
 		World:        actionWorld(t, 2),
-		Participants: []Participant{{Monster: attacker}, {Character: actionHero()}},
+		Participants: []Participant{{Monster: attacker}, {Character: actionHero()}, fixtureOwnerParticipant(t, "caster-a", refs.Spells.Bane(), bane.ConditionAddress())},
 		Machine:      machine,
 		Capabilities: encounter.Capabilities{
 			Initiative:    orderAsGiven{},

@@ -20,9 +20,15 @@ import (
 )
 
 type kindDefinition struct {
-	check   func(generic.Output) error
-	meaning func(jsontext.Value) (meaning, error)
-	attach  func(context.Context, events.EventBus, *generic.Bound, BindInput) (generic.Detach, error)
+	execution    generic.KindExecution
+	assess       func(*AssessInput, meaning) (assessment, error)
+	validatePart func(PartDeclaration) error
+	part         func(*BindPartInput) (boundPart, error)
+	inspectPart  func(*InspectPartInput) (*PartInfo, error)
+	describePart func(PartDeclaration) (partDescription, error)
+	check        func(generic.Output) error
+	meaning      func(jsontext.Value) (meaning, error)
+	attach       func(context.Context, events.EventBus, *generic.Bound, BindInput) (generic.Detach, error)
 }
 
 type meaning struct {
@@ -40,6 +46,8 @@ type advantageParams struct {
 type assessment struct {
 	effect contributions.Effect
 	amount int
+	value  *generic.AmountResult
+	roll   []contributions.DiceContribution
 	types  []damage.Type
 }
 
@@ -47,8 +55,15 @@ type assessment struct {
 // and richer rulebook assessment all resolve through these same entries.
 var kindTable = map[generic.KindName]kindDefinition{
 	KindDamageBonus: {check: checkDamage, meaning: damageMeaning, attach: attachDamage},
-	KindResistance:  {check: checkResistance, meaning: resistanceMeaning, attach: attachResistance},
+	KindResistance:  {validatePart: validateResistancePart, part: bindResistancePart, inspectPart: inspectResistancePart, check: checkResistance, meaning: resistanceMeaning, attach: attachResistance},
 	KindAdvantage:   {check: checkAdvantage, meaning: advantageMeaning, attach: attachAdvantage},
+	KindConcentration: {describePart: describeConcentrationPart, validatePart: checkUnparameterizedMaintenance, part: bindConcentrationPart, inspectPart: inspectConcentrationPart,
+		check: checkConcentrationOutput, meaning: concentrationMeaning, attach: attachConcentration},
+	KindDuration:   {describePart: describeDurationPart, validatePart: validateDurationPart, part: bindDurationPart, inspectPart: inspectDurationPart},
+	KindUntilEmpty: {validatePart: checkUnparameterizedMaintenance, part: bindUntilEmptyPart, inspectPart: inspectUntilEmptyPart},
+	KindEndOn:      {validatePart: validateEndOnPart, part: bindEndOnPart, inspectPart: inspectEndOnPart},
+	KindRollModifier: {validatePart: validateRollPart, part: bindRollModifierPart, inspectPart: inspectRollModifierPart, execution: generic.KindQuery,
+		check: checkRollModifier, meaning: rollMeaning, assess: assessRollModifier},
 }
 
 func decodeParams[T any](raw jsontext.Value) (T, error) {
@@ -145,12 +160,15 @@ func assess(in *AssessInput) (assessment, error) {
 		return result, fmt.Errorf("effect assessment requires a bound output")
 	}
 	def, ok := kindTable[in.Output.Kind()]
-	if !ok {
-		return result, fmt.Errorf("unknown rulebook effect kind %q", in.Output.Kind())
+	if !ok || def.meaning == nil {
+		return result, fmt.Errorf("unknown rulebook output kind %q", in.Output.Kind())
 	}
 	m, err := def.meaning(in.Output.Params())
 	if err != nil {
 		return result, err
+	}
+	if def.assess != nil {
+		return def.assess(in, m)
 	}
 	return assessMeaning(in, m)
 }
@@ -211,7 +229,14 @@ func assessMeaning(in *AssessInput, m meaning) (assessment, error) {
 		return result, fmt.Errorf("unknown applicability verdict %q", verdict)
 	}
 	if in.Output.HasAmount() {
-		result.amount, err = in.Output.Amount(in.Query)
+		var described generic.AmountResult
+		described, err = in.Output.Amount(in.Query)
+		if err == nil {
+			result.amount, err = described.ScalarValue()
+			if err == nil {
+				result.value = &described
+			}
+		}
 		if err != nil {
 			if errors.Is(err, contributions.ErrRuleCannotAnswer) {
 				result.effect.State = contributions.StateDepends

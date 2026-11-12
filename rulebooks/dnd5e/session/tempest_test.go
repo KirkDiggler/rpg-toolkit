@@ -10,6 +10,7 @@ import (
 
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/features"
@@ -216,11 +217,13 @@ func (s *CastSuite) TestFogCloudExpiresAndRestoresSightAfterReload() {
 	sheet := s.characters.byID["cleric"]
 	found := false
 	for i, raw := range sheet.Conditions {
-		var data map[string]any
+		var data conditions.LinkedConditionData
 		s.Require().NoError(json.Unmarshal(raw, &data))
-		if data["ref"] == refs.Conditions.Concentrating().String() {
-			data["turn_ends_left"] = 1
-			data["skip_next_turn_end"] = false
+		if data.Role == conditions.LinkedCoordinator {
+			snapshot := data.Runtime.Parts.Parts["duration"]
+			snapshot.State = "active"
+			snapshot.Bag["remaining"] = 1
+			data.Runtime.Parts.Parts["duration"] = snapshot
 			sheet.Conditions[i], err = json.Marshal(data)
 			s.Require().NoError(err)
 			found = true
@@ -246,7 +249,7 @@ func (s *CastSuite) TestFogCloudExpiresAndRestoresSightAfterReload() {
 	s.reloadHealingScene()
 	s.Equal(results, s.beats(encounter.BeatActivationResult), "expiration narration survives reload")
 	for _, raw := range s.characters.byID["cleric"].Conditions {
-		s.NotContains(string(raw), refs.Conditions.Concentrating().String())
+		s.NotContains(string(raw), refs.Conditions.LinkedEffects().String())
 		s.NotContains(string(raw), refs.Conditions.InFog().String(), "expiry removes membership")
 	}
 }
