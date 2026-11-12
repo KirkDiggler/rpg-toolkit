@@ -85,11 +85,6 @@ const (
 	// FamilyClock is the table's own bookkeeping: ticks, turns, fights,
 	// arrivals and departures, windows.
 	FamilyClock Family = "clock"
-	// FamilySpeech is one perceiver's version of one spoken thing
-	// (rpg-project#934, R6): a [SpeechAct], with the [Perceived] part on the
-	// act. It stands beside the act a line, an answer or a voice folds into,
-	// and never joins one.
-	FamilySpeech Family = "speech"
 )
 
 // Act is one segment of one act, as one recipient receives it.
@@ -129,8 +124,9 @@ type Act struct {
 	At uint64
 
 	// Segment numbers this recipient's FamilyAct segments of one act, from
-	// 1: a walk interrupted by a reaction is segments 1 and 2. Every other
-	// family is 0 — a reaction, a state, a table answer or a perception is
+	// 1: a walk interrupted by a reaction is segments 1 and 2. A [SpeechAct]
+	// is FamilyAct and 0: it stands beside the act's own body, not in it.
+	// Every other family is 0 — a reaction, a state, a table answer or a perception is
 	// one entry, not a part of the act's own body.
 	Segment int
 
@@ -149,7 +145,7 @@ type Act struct {
 	Undecoded string
 
 	// Perceived is how this act reached its recipient (rpg-project#934, R6):
-	// which senses delivered it, and whose. Set on a [FamilySpeech] act; nil
+	// which senses delivered it, and whose. Set on a [SpeechAct]; nil
 	// on every other family until a use calls for it there.
 	Perceived *Perceived
 }
@@ -370,7 +366,7 @@ type piece struct {
 	absorbAny bool
 
 	// aside is a piece that stands beside the act stream's folding rather
-	// than in it: a [FamilySpeech] act. It never absorbs, is never absorbed
+	// than in it: a [SpeechAct]. It never absorbs, is never absorbed
 	// into, and leaves whatever act was open still open.
 	aside bool
 

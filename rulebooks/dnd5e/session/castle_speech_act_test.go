@@ -71,22 +71,24 @@ func TestCastleAShoutFromOutsideIsWordsFromSomeoneInTheGatehouse(t *testing.T) {
 	heard := where[session.SpeechAct](played.to("alice"), func(s session.SpeechAct) bool { return s.Loudness == "shout" })
 	require.Len(t, heard, 1, "one Speech act for the shout")
 	s := heard[0].body
-	require.Equal(t, "Oi! Pedlar! What have you got to sell?", s.Words, "the words reached her")
+	require.NotNil(t, s.Words, "the words reached her")
+	require.Equal(t, "Oi! Pedlar! What have you got to sell?", *s.Words)
 	require.Equal(t, "hail-the-pedlar", s.Option, "and which line it was")
 	require.Equal(t, session.Party{}, s.Speaker, "from someone she did not see")
 	require.Equal(t, session.Party{}, s.SpokenTo, "said to nobody she saw")
-	require.NotNil(t, s.Place, "from a place")
-	require.Equal(t, 1, s.Hops, "one room off")
+	require.Equal(t, c.where(t, "cleric"), s.Place, "from where the cleric stood")
+	require.NotNil(t, s.Hops, "a voice she did not see")
+	require.Equal(t, 1, *s.Hops, "one room off")
 	require.Nil(t, s.Roll, "a plain line rolls nothing")
-	require.Equal(t, &session.Perceived{Senses: []session.Sense{session.SenseHearing},
-		Via: []session.Party{{Kind: session.PartyMember, ID: "alice"}}}, heard[0].act.Perceived)
-	require.Equal(t, session.FamilySpeech, heard[0].act.Family)
+	require.Equal(t, &session.Perceived{Senses: []session.Sense{session.SenseHearing}}, heard[0].act.Perceived,
+		"heard; via is empty until the party-shared view")
+	require.Equal(t, session.FamilyAct, heard[0].act.Family)
 
 	own := where[session.SpeechAct](played.to("cleric"), func(s session.SpeechAct) bool { return s.Speaker == clericParty() })
 	require.Len(t, own, 1, "the speaker is sent her own line")
 	require.Equal(t, strangerParty(), own[0].body.SpokenTo)
-	require.Equal(t, "Oi! Pedlar! What have you got to sell?", own[0].body.Words)
-	require.Nil(t, own[0].body.Place, "she saw herself say it: no place")
+	require.Equal(t, "Oi! Pedlar! What have you got to sell?", *own[0].body.Words)
+	require.Nil(t, own[0].body.Hops, "she saw herself say it: no distance")
 	require.Equal(t, []session.Sense{session.SenseSight, session.SenseHearing}, own[0].act.Perceived.Senses)
 }
 
@@ -104,10 +106,10 @@ func TestCastleALineSeenAndHeardCarriesItsRoll(t *testing.T) {
 	s := lines[0].body
 	require.Equal(t, clericParty(), s.Speaker)
 	require.Equal(t, strangerParty(), s.SpokenTo)
-	require.Equal(t, "What’s all the bustle?", s.Words)
+	require.Equal(t, "What’s all the bustle?", *s.Words)
 	require.Equal(t, "persuasion", s.Skill)
 	require.NotNil(t, s.Roll, "the roll travels with the words, the cleric's")
-	require.Nil(t, s.Place)
+	require.Nil(t, s.Hops, "she saw the cleric: no distance")
 	require.Equal(t, []session.Sense{session.SenseSight, session.SenseHearing}, lines[0].act.Perceived.Senses)
 }
 
@@ -123,10 +125,10 @@ func TestCastleALineHeardUnseenIsSomeonesRoll(t *testing.T) {
 	s := lines[0].body
 	require.Equal(t, session.Party{}, s.Speaker, "someone")
 	require.Equal(t, session.Party{}, s.SpokenTo)
-	require.Equal(t, "What’s all the bustle?", s.Words)
+	require.Equal(t, "What’s all the bustle?", *s.Words)
 	require.NotNil(t, s.Roll, "someone rolled")
-	require.NotNil(t, s.Place)
-	require.Equal(t, 0, s.Hops, "in her own room")
+	require.NotNil(t, s.Hops)
+	require.Equal(t, 0, *s.Hops, "in her own room")
 	require.Equal(t, []session.Sense{session.SenseHearing}, lines[0].act.Perceived.Senses)
 }
 
@@ -155,7 +157,7 @@ func TestCastleAWhisperWatchedIsNoWordsAndNoRoll(t *testing.T) {
 	require.Len(t, lines, 1, "she watched it said")
 	s := lines[0].body
 	require.Equal(t, "whisper", s.Loudness)
-	require.Empty(t, s.Words, "no words")
+	require.Nil(t, s.Words, "no words")
 	require.Empty(t, s.Option, "nor which line")
 	require.Nil(t, s.Roll, "nor its roll")
 	require.Equal(t, []session.Sense{session.SenseSight}, lines[0].act.Perceived.Senses)

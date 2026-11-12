@@ -856,7 +856,7 @@ func speechPieces(recipient string, payload []byte) ([]piece, error) {
 	if err != nil {
 		return nil, err
 	}
-	speech, err := speechActPiece(recipient, payload)
+	speech, err := speechActPiece(payload)
 	if err != nil {
 		return nil, err
 	}
@@ -866,7 +866,7 @@ func speechPieces(recipient string, payload []byte) ([]piece, error) {
 // speechActPiece is the [SpeechAct] one perceiver is shown of one spoken
 // thing (rpg-project#934, R6): every part their version holds, and nothing it
 // does not, beside the act the line or the answer folds into.
-func speechActPiece(recipient string, payload []byte) (piece, error) {
+func speechActPiece(payload []byte) (piece, error) {
 	var p struct {
 		Utterance string           `json:"utterance"`
 		Speaker   string           `json:"speaker"`
@@ -875,8 +875,9 @@ func speechActPiece(recipient string, payload []byte) (piece, error) {
 		Words     *string          `json:"words"`
 		Option    string           `json:"option"`
 		Place     spatial.Position `json:"place"`
-		Hops      int              `json:"hops"`
+		Hops      *int             `json:"hops"`
 		Loudness  string           `json:"loudness"`
+		Fact      string           `json:"fact"`
 		Check     *struct {
 			Skill       string          `json:"skill"`
 			DC          int             `json:"dc"`
@@ -888,7 +889,7 @@ func speechActPiece(recipient string, payload []byte) (piece, error) {
 	if err := json.Unmarshal(payload, &p); err != nil {
 		return piece{}, err
 	}
-	act := SpeechAct{Utterance: p.Utterance, Speaker: member(p.Speaker), Loudness: p.Loudness}
+	act := SpeechAct{Utterance: p.Utterance, Speaker: member(p.Speaker), Place: p.Place, Loudness: p.Loudness}
 	switch {
 	case p.Prop != "":
 		act.SpokenTo = prop(p.Prop)
@@ -896,15 +897,19 @@ func speechActPiece(recipient string, payload []byte) (piece, error) {
 		act.SpokenTo = member(p.To)
 	}
 	if p.Speaker == "" {
-		place := p.Place
-		act.Place, act.Hops = &place, p.Hops
+		hops := 0
+		if p.Hops != nil {
+			hops = *p.Hops
+		}
+		act.Hops = &hops
 	}
 	var senses []Sense
 	if p.Speaker != "" {
 		senses = append(senses, SenseSight)
 	}
 	if p.Words != nil {
-		act.Words, act.Option = *p.Words, p.Option
+		words := *p.Words
+		act.Words, act.Option, act.Fact = &words, p.Option, p.Fact
 		if c := p.Check; c != nil {
 			roll, err := rollOf(c.Calculation, nil, c.Total, intp(c.DC), boolp(c.Beaten))
 			if err != nil {
@@ -917,8 +922,8 @@ func speechActPiece(recipient string, payload []byte) (piece, error) {
 		senses = append(senses, SenseHearing)
 	}
 	return piece{
-		family: FamilySpeech, body: act, aside: true,
-		perceived: &Perceived{Senses: senses, Via: []Party{member(recipient)}},
+		family: FamilyAct, body: act, aside: true,
+		perceived: &Perceived{Senses: senses},
 	}, nil
 }
 

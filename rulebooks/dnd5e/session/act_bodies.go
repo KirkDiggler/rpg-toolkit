@@ -598,19 +598,19 @@ type SpeechAct struct {
 	// a member, or the prop a line was said to (speech `to`, `prop`). The
 	// zero Party otherwise.
 	SpokenTo Party
-	// Words are what was said, when this perceiver caught them; empty
+	// Words are what was said, when this perceiver caught them; nil
 	// otherwise (speech `words`).
-	Words string
+	Words *string
 	// Option is the line's option id, when the words were caught and they
 	// were a character's line (speech `option`).
 	Option string
-	// Place is where the voice came from, when this perceiver did not see
-	// the speaker; nil when they did (speech `place`).
-	Place *spatial.Position
+	// Place is where the voice was (speech `place`): always, the speaker's
+	// cell whether or not they were seen.
+	Place spatial.Position
 	// Hops is how many rooms away it was said, when this perceiver did not
-	// see the speaker: 0 is their own room (speech `hops`). Read only beside
-	// a Place.
-	Hops int
+	// see the speaker: 0 is their own room. Nil when they saw the speaker
+	// (speech `hops`).
+	Hops *int
 	// Loudness is how loudly it was said: whisper, speak, shout or scream
 	// (speech `loudness`).
 	Loudness string
@@ -619,6 +619,9 @@ type SpeechAct struct {
 	// Speaker's when there is one, and "someone's" when there is not.
 	Skill string
 	Roll  *Roll
+	// Fact is the fact the line taught THIS perceiver, when it taught one;
+	// only ever with the words (speech `fact`).
+	Fact string
 }
 
 // Perceived is how an act reached its recipient (rpg-project#934, R6): which
@@ -628,9 +631,9 @@ type Perceived struct {
 	// Senses are the senses that delivered it, in this order when present:
 	// sight (the speaker seen), hearing (the words, or a voice).
 	Senses []Sense
-	// Via are the members whose senses those were. Today always the
-	// recipient themself; a party sharing what it perceives (R5) adds
-	// friends here.
+	// Via are the friends whose senses those were, when a party shares what
+	// it perceives (R5, rpg-project#935). Empty until then: the recipient's
+	// own senses are not listed.
 	Via []Party
 }
 

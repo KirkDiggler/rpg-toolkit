@@ -4,6 +4,7 @@
 package session
 
 import (
+	"fmt"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
@@ -170,7 +171,7 @@ func (s *ActFoldSuite) TestAnEntitledReaderIsToldWhatThePickNoLongerCarries() {
 func retiredActs(acts []Act) []Act {
 	var out []Act
 	for _, a := range acts {
-		if a.Family != FamilySpeech {
+		if _, speech := a.Body.(SpeechAct); !speech {
 			out = append(out, a)
 		}
 	}
@@ -181,7 +182,7 @@ func retiredActs(acts []Act) []Act {
 func speechActsOf(recipient string, entries ...record.Entry) []Act {
 	var out []Act
 	for _, a := range foldActs("sess", recipient, entries) {
-		if a.Family == FamilySpeech {
+		if _, speech := a.Body.(SpeechAct); speech {
 			out = append(out, a)
 		}
 	}
@@ -190,13 +191,15 @@ func speechActsOf(recipient string, entries ...record.Entry) []Act {
 
 // TestEveryVersionIsOneSpeechAct is the facet table as the act carries it
 // (rpg-project#934, R1–R4, R6): each version of one spoken thing is one
-// Speech act with exactly the parts it holds, and its Perceived part names
-// the senses that delivered them.
+// Speech act, family act, with exactly the parts it holds, and its
+// Perceived part names the senses that delivered them.
 func (s *ActFoldSuite) TestEveryVersionIsOneSpeechAct() {
 	check := map[string]any{"skill": "persuasion", "dc": 10, "total": 15, "beaten": true}
 	beaten := true
 	roll := &Roll{Total: 15, Against: intp(10), Beaten: &beaten}
 	place := cell(4, 2)
+	words := func(w string) *string { return &w }
+	hops := func(h int) *int { return &h }
 	sight, hearing := []Sense{SenseSight}, []Sense{SenseHearing}
 	both := []Sense{SenseSight, SenseHearing}
 	for _, tc := range []struct {
@@ -209,58 +212,70 @@ func (s *ActFoldSuite) TestEveryVersionIsOneSpeechAct() {
 		{
 			name: "sees and hears", recipient: "bob",
 			version: map[string]any{"speaker": "alice", "to": "goblin", "words": "Evening.", "option": "hello", "check": check},
-			want: SpeechAct{Utterance: "u1", Speaker: member("alice"), SpokenTo: member("goblin"), Words: "Evening.",
-				Option: "hello", Loudness: "speak", Skill: "persuasion", Roll: roll},
+			want: SpeechAct{Utterance: "u1", Speaker: member("alice"), SpokenTo: member("goblin"), Words: words("Evening."),
+				Option: "hello", Place: place, Loudness: "speak", Skill: "persuasion", Roll: roll},
 			senses: both,
 		},
 		{
 			name: "the speaker themself", recipient: "alice",
 			version: map[string]any{"speaker": "alice", "to": "goblin", "words": "Evening.", "option": "hello", "check": check},
-			want: SpeechAct{Utterance: "u1", Speaker: member("alice"), SpokenTo: member("goblin"), Words: "Evening.",
-				Option: "hello", Loudness: "speak", Skill: "persuasion", Roll: roll},
+			want: SpeechAct{Utterance: "u1", Speaker: member("alice"), SpokenTo: member("goblin"), Words: words("Evening."),
+				Option: "hello", Place: place, Loudness: "speak", Skill: "persuasion", Roll: roll},
 			senses: both,
 		},
 		{
 			name: "hears, does not see: words and someone's roll from a place", recipient: "dana",
 			version: map[string]any{"hops": 0, "words": "Evening.", "option": "hello", "check": check},
-			want: SpeechAct{Utterance: "u1", Words: "Evening.", Option: "hello", Place: &place, Loudness: "speak",
-				Skill: "persuasion", Roll: roll},
+			want: SpeechAct{Utterance: "u1", Words: words("Evening."), Option: "hello", Place: place, Hops: hops(0),
+				Loudness: "speak", Skill: "persuasion", Roll: roll},
 			senses: hearing,
 		},
 		{
-			name: "one room further at a shout", recipient: "cole",
-			version: map[string]any{"hops": 1, "words": "To arms!", "loudness": "shout"},
-			want:    SpeechAct{Utterance: "u1", Words: "To arms!", Place: &place, Hops: 1, Loudness: "shout"},
-			senses:  hearing,
+			name: "one room further at a shout, teaching a fact", recipient: "cole",
+			version: map[string]any{"hops": 1, "words": "To arms!", "loudness": "shout", "fact": "alarm-raised"},
+			want: SpeechAct{Utterance: "u1", Words: words("To arms!"), Place: place, Hops: hops(1), Loudness: "shout",
+				Fact: "alarm-raised"},
+			senses: hearing,
 		},
 		{
 			name: "beyond the words' reach: a voice", recipient: "ed",
 			version: map[string]any{"hops": 2, "loudness": "shout"},
-			want:    SpeechAct{Utterance: "u1", Place: &place, Hops: 2, Loudness: "shout"},
+			want:    SpeechAct{Utterance: "u1", Place: place, Hops: hops(2), Loudness: "shout"},
 			senses:  hearing,
 		},
 		{
 			name: "a whisper watched, not heard", recipient: "bea",
 			version: map[string]any{"speaker": "alice", "to": "goblin", "loudness": "whisper"},
-			want:    SpeechAct{Utterance: "u1", Speaker: member("alice"), SpokenTo: member("goblin"), Loudness: "whisper"},
+			want:    SpeechAct{Utterance: "u1", Speaker: member("alice"), SpokenTo: member("goblin"), Place: place, Loudness: "whisper"},
 			senses:  sight,
 		},
 		{
 			name: "seen, the one spoken to unseen", recipient: "bea",
 			version: map[string]any{"speaker": "alice", "words": "Evening."},
-			want:    SpeechAct{Utterance: "u1", Speaker: member("alice"), Words: "Evening.", Loudness: "speak"},
+			want:    SpeechAct{Utterance: "u1", Speaker: member("alice"), Words: words("Evening."), Place: place, Loudness: "speak"},
 			senses:  both,
+		},
+		{
+			name: "a line to a prop rides spoken-to as a prop", recipient: "alice",
+			version: map[string]any{"speaker": "alice", "prop": "altar", "words": "I kneel.", "option": "kneel"},
+			want: SpeechAct{Utterance: "u1", Speaker: member("alice"), SpokenTo: prop("altar"), Words: words("I kneel."),
+				Option: "kneel", Place: place, Loudness: "speak"},
+			senses: both,
 		},
 	} {
 		s.Run(tc.name, func() {
 			fields := speechVersion(tc.version)
-			if l, ok := tc.version["loudness"]; ok {
-				fields["loudness"] = l
+			for _, k := range []string{"loudness", "fact"} {
+				if v, ok := tc.version[k]; ok {
+					fields[k] = v
+				}
 			}
 			acts := speechActsOf(tc.recipient, s.beat("speak:one", fields))
 			s.Require().Len(acts, 1, "one Speech act per version")
+			s.Equal(FamilyAct, acts[0].Family, "a Speech act is an act, whoever spoke")
+			s.Zero(acts[0].Segment, "beside the act's own body, not a segment of it")
 			s.Equal(tc.want, acts[0].Body)
-			s.Equal(&Perceived{Senses: tc.senses, Via: []Party{member(tc.recipient)}}, acts[0].Perceived)
+			s.Equal(&Perceived{Senses: tc.senses}, acts[0].Perceived, "via is empty until the party-shared view")
 		})
 	}
 }
@@ -275,11 +290,12 @@ func (s *ActFoldSuite) TestASpeechActStandsBesideTheLineWithoutPartingIt() {
 	reply := s.beat("speak:one", speechVersion(map[string]any{"speaker": "goblin", "to": "alice", "words": "Evening yourself."}))
 	acts := foldActs("sess", "alice", []record.Entry{spoke, line, answered, reply})
 
-	var families []Family
+	var kinds []string
 	for _, a := range acts {
-		families = append(families, a.Family)
+		kinds = append(kinds, fmt.Sprintf("%T", a.Body))
 	}
-	s.Equal([]Family{FamilySpeech, FamilyAct, FamilySpeech}, families, "her line's speech act, the speak act, his answer's")
+	s.Equal([]string{"session.SpeechAct", "session.SpeakAct", "session.SpeechAct"}, kinds,
+		"her line's speech act, the speak act, his answer's")
 	speak := acts[1].Body.(SpeakAct)
 	s.Require().NotNil(speak.Answer, "the answer still folds into the line")
 	s.Equal("Evening yourself.", speak.Answer.Say)
