@@ -110,7 +110,7 @@ func (s *AtlasMapSuite) TestNothingOnTheMapNamesARoom() {
 			"scenario off the geometry (rpg-project#368 §5)",
 	)
 	s.Equal(
-		[]string{"ID", "Name", "Cells", "Archetype", "Lighting"},
+		[]string{"ID", "Name", "Cells", "Archetype", "Lighting", "Ground"},
 		fieldsOf(session.AtlasRegion{}),
 		"a region is a named set of cells and the facts true of that area — never a frame of its own",
 	)
@@ -153,10 +153,10 @@ func (s *AtlasMapSuite) TestNothingOnTheMapNamesARoom() {
 			"frame, which carries different numbers for the same spot",
 	)
 	s.Equal(
-		[]string{"ID", "Ref", "From", "To", "Height", "Thickness", "Elevation", "FootprintCells", "Openings"},
+		[]string{"ID", "Ref", "From", "To", "Height", "Thickness", "Elevation", "MaterialOverrides", "FootprintCells", "Openings"},
 		fieldsOf(session.AtlasStructuralWall{}),
 		"a structural wall is its stable presence id, an opaque ref, its line in feet, its "+
-			"assembled dimensions, the hexes its footprint overlaps (fog-of-war R9), and its "+
+			"assembled dimensions, captured material selections, the hexes its footprint overlaps (fog-of-war R9), and its "+
 			"permitted cuts — and NO mutable state, private "+
 			"placed id or parent association (rpg-project#169)",
 	)

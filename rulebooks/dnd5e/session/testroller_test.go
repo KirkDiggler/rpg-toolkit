@@ -64,6 +64,18 @@ func (d testDice) Roll(_ context.Context, size int) (int, error) {
 	return size, nil
 }
 
+// onTheDie clamps a scripted face to the die it is rolled on. Behavior
+// v0.23.0 refuses a face above the die size where the old picker landed the
+// last row, so a fixture that hands one face to every die (a 10 to a d1
+// temper table) must hand the die's top face instead: that is the row the old
+// picker landed, so every expectation stays.
+func onTheDie(face, size int) int {
+	if size >= 1 {
+		return min(face, size)
+	}
+	return face
+}
+
 // sequenceDice hands out a scripted series of rolls, in order.
 //
 // It is what makes the seam's determinism assertable. Members are asked in
@@ -75,13 +87,13 @@ type sequenceDice struct {
 	next  int
 }
 
-func (d *sequenceDice) Roll(_ context.Context, _ int) (int, error) {
+func (d *sequenceDice) Roll(_ context.Context, size int) (int, error) {
 	if d.next >= len(d.rolls) {
 		return 0, fmt.Errorf("sequenceDice: asked for roll %d of %d", d.next+1, len(d.rolls))
 	}
 	roll := d.rolls[d.next]
 	d.next++
-	return roll, nil
+	return onTheDie(roll, size), nil
 }
 
 // brokenDice is a host whose randomness is unavailable.

@@ -110,6 +110,10 @@ type behaviorSourceInput struct {
 	Cells       singleRoomCells
 	Doors       map[string]bool
 	Vocabulary  machine.Vocabulary
+
+	// Topics is every topic a root interaction's outcomes grant
+	// (rpg-project#928): what a post's `pass` may recognize on.
+	Topics map[string]bool
 }
 
 func behaviorSourceError(path, message string) error {
@@ -291,7 +295,10 @@ func bindBehaviorSource(in behaviorSourceInput) (behaviorLowering, error) {
 		if !in.Doors[post.Door] {
 			return behaviorLowering{}, behaviorSourceError(path+".door", "must name a door in this site")
 		}
-		lowered := encounter.Post{Door: encounter.DoorID(in.Key + "/" + post.Door), Against: encounter.PostDirection(post.Against), Pass: encounter.FactID(post.Pass)}
+		if at, refusal := passRefusal(path+".pass", post.Pass, in.Topics); refusal != "" {
+			return behaviorLowering{}, behaviorSourceError(at, refusal)
+		}
+		lowered := encounter.Post{Door: encounter.DoorID(in.Key + "/" + post.Door), Against: encounter.PostDirection(post.Against), Pass: passOf(post.Pass)}
 		if post.Against != "" && post.Against != "both" && post.Against != "entering" && post.Against != "leaving" {
 			return behaviorLowering{}, behaviorSourceError(path+".against", "must be both, entering or leaving")
 		}
@@ -364,7 +371,8 @@ func roomBehaviorInput(s *SingleRoomSpec, id string) (behaviorLowering, error) {
 	}
 	return bindBehaviorSource(behaviorSourceInput{Definitions: s.BehaviorDefinitions, Bindings: uses, Body: body,
 		Blocking: blocks, Posts: posts, Path: "room.room.monsterBindings." + id, Key: s.Key,
-		Cells: roomCells(&s.Room.Gameplay), Doors: roomDoorIDs(&s.Room.Gameplay), Vocabulary: vocab})
+		Cells: roomCells(&s.Room.Gameplay), Doors: roomDoorIDs(&s.Room.Gameplay), Vocabulary: vocab,
+		Topics: grantedTopicsOf(s)})
 }
 
 func roomBehaviorVocabulary(s *SingleRoomSpec) (machine.Vocabulary, error) {
@@ -390,7 +398,13 @@ func roomBehaviorVocabulary(s *SingleRoomSpec) (machine.Vocabulary, error) {
 			clocks = append(clocks, behaviorClockNames(node)...)
 		}
 	}
-	vocab, err := encounter.BehaviorVocabulary(&encounter.BehaviorVocabularyInput{Facts: facts, Clocks: clocks})
+	// A GUARD MAY READ A TOPIC HELD (rpg-project#929), `topic:<id>`, for any
+	// topic the document grants.
+	var topics []encounter.TopicID
+	for _, topic := range sortedKeys(grantedTopicsOf(s)) {
+		topics = append(topics, encounter.TopicID(topic))
+	}
+	vocab, err := encounter.BehaviorVocabulary(&encounter.BehaviorVocabularyInput{Facts: facts, Clocks: clocks, Topics: topics})
 	if err != nil {
 		return machine.Vocabulary{}, err
 	}
@@ -431,7 +445,8 @@ func behaviorSourceValues(s *SingleRoomSpec, add errSink) {
 		}
 		_, err := bindBehaviorSource(behaviorSourceInput{Definitions: s.BehaviorDefinitions, Bindings: faction.Behaviors,
 			Body: faction.BehaviorState, Blocking: faction.BlockingStates, Posts: faction.Posts,
-			Path: path, Key: s.Key, Cells: roomCells(&s.Room.Gameplay), Doors: roomDoorIDs(&s.Room.Gameplay), Vocabulary: vocab})
+			Path: path, Key: s.Key, Cells: roomCells(&s.Room.Gameplay), Doors: roomDoorIDs(&s.Room.Gameplay), Vocabulary: vocab,
+			Topics: grantedTopicsOf(s)})
 		report(err)
 	}
 	for _, actor := range s.Room.Gameplay.MonsterDeclarations {

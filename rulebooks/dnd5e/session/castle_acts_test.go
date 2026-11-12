@@ -132,7 +132,7 @@ func (g *gatehouse) walkIn() error {
 	if len(path) == 0 || path[len(path)-1] != inTheGatehouse {
 		path = append(path, inTheGatehouse)
 	}
-	_, err = g.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: path})
+	_, err = walkOn(ctx, g.mgr, &session.MoveInput{Session: "sess", Member: "alice", Path: path})
 	return err
 }
 
@@ -179,7 +179,7 @@ func playTheGatehouse() []beat {
 		beats = append(beats, beat{label: label, acts: append([]session.Act(nil), g.live.acts...)})
 	}
 	standAside := func() error {
-		_, err := g.mgr.Speak(ctx, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "stand-aside"})
+		_, err := speakAsOffered(ctx, g.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "stand-aside"})
 		return err
 	}
 	walkToward := func(anchor func(*encounter.Encounter) spatial.Position, budget int) func() error {
@@ -192,7 +192,7 @@ func playTheGatehouse() []beat {
 			if err != nil {
 				return err
 			}
-			_, err = g.mgr.Move(ctx, &session.MoveInput{
+			_, err = walkOn(ctx, g.mgr, &session.MoveInput{
 				Session: "sess", Member: "alice", Path: route.Path,
 				DeclarationID: currentMoveID(panics{}, g.mgr, "sess", "alice"),
 			})
@@ -255,7 +255,7 @@ func playTheTroupe() []beat {
 	// walk walks alice along a path of cells, each adjacent to the last, on
 	// the world clock, where a move carries no declaration.
 	walk := func(path []spatial.Position) error {
-		_, err := g.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: path})
+		_, err := walkOn(ctx, g.mgr, &session.MoveInput{Session: "sess", Member: "alice", Path: path})
 		return err
 	}
 	// toward walks alice by the pathfinder's way toward a cell, onto it when
@@ -281,7 +281,7 @@ func playTheTroupe() []beat {
 	}
 	speak := func(target, option string) func() error {
 		return func() error {
-			_, err := g.mgr.Speak(ctx, &session.SpeakInput{Session: "sess", Member: "alice", Target: target, OptionID: option})
+			_, err := speakAsOffered(ctx, g.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: target, OptionID: option})
 			return err
 		}
 	}
@@ -299,8 +299,20 @@ func playTheTroupe() []beat {
 	// from the opening's other cell beside him.
 	beside := besideTheCastleGate
 	play("alice walks to the gate", func() error { return toward(at(beside), true) })
+	// The captain went in once he admitted the troupe (rpg-project#929),
+	// through the gate, and left it open behind him: alice opens it only if
+	// it stands shut.
 	play("alice opens the gate", func() error {
-		_, err := g.mgr.OpenDoor(ctx, &session.OpenDoorInput{Session: "sess", Member: "alice", Door: castleGate})
+		enc, err := g.mgr.LoadWorldForTest(ctx, "sess")
+		if err != nil {
+			return err
+		}
+		for _, d := range enc.ToData().Doors {
+			if d.ID == castleGate && d.State == "open" {
+				return nil
+			}
+		}
+		_, err = g.mgr.OpenDoor(ctx, &session.OpenDoorInput{Session: "sess", Member: "alice", Door: castleGate})
 		return err
 	})
 	// A round on the world clock is six cells walked: out a cell and back,
@@ -471,8 +483,8 @@ func TestCastleActsTranscript(t *testing.T) {
 
 // TestCastleTroupeActsTranscript is the QA castle's troupe (rpg-project#639,
 // steps 2, 3 and 7): the stranger beside the start gives the
-// feast, the captain lets the troupe through, and opening the gate brings the
-// far room, civil. It asserts what each act claims and never how many there are.
+// feast, the captain lets the troupe through and goes in, opening the gate
+// on his way (rpg-project#929), which brings the far room, civil. It asserts what each act claims and never how many there are.
 func TestCastleTroupeActsTranscript(t *testing.T) {
 	beats := theTroupe()
 	corner, stranger, troupe, gate, wait := beats[0], beats[1], beats[3], beats[5], beats[6]
@@ -511,14 +523,18 @@ func TestCastleTroupeActsTranscript(t *testing.T) {
 	assert.Equal(t, "Through to the hall, then. Don’t dawdle.", passed.body.Answer.Say)
 	assert.Empty(t, where[session.StateChange](troupe.to("alice"), func(c session.StateChange) bool { return c.Change == session.StateStance }))
 
-	// THE GATE: alice opens it, and the far room arrives under the door's
-	// own act.
-	door := only[session.DoorAct](t, gate.to("alice"))
-	assert.Equal(t, "alice", door.body.By.ID)
+	// THE GATE: the captain, gone in once he admitted the troupe
+	// (rpg-project#929), opens it on his way to the hall in the claim's own
+	// round, and the far room arrives under the door's act. Alice finds it
+	// open and has nothing to open.
+	door := only[session.DoorAct](t, troupe.to("alice"))
+	assert.Equal(t, "captain", door.body.By.ID)
 	assert.Equal(t, castleGate, door.body.Door)
 	assert.Equal(t, "open", door.body.State)
+	assert.Empty(t, where[session.DoorAct](gate.to("alice"), func(session.DoorAct) bool { return true }),
+		"the gate already stood open")
 	arrived := map[string]bool{}
-	for _, a := range where[session.ClockEntry](gate.to("alice"), func(c session.ClockEntry) bool { return c.Mark == session.ClockArrived }) {
+	for _, a := range where[session.ClockEntry](troupe.to("alice"), func(c session.ClockEntry) bool { return c.Mark == session.ClockArrived }) {
 		arrived[a.body.Arrival.ID] = true
 		assert.Equal(t, door.act.Act, a.act.Act, "%s arrives under the door's act", a.body.Arrival.ID)
 	}
@@ -762,7 +778,9 @@ func Example_theGatehouseActs() {
 	// speak        act 1        alice to captain, "stand-aside" (intimidation): rolled 1d20+3 = 17, beat 14; captain answers "…go on, then. I saw nothing."
 	// speak        perception   alice hears voice
 	// speak        clock        tick 2
+	// speak        state        captain: ready -> cowed (stood aside)
 	// speak        state        gate-1: posted -> cowed (stood aside)
+	// speak        state        gate-2: ready -> cowed (stood aside)
 	// time         table_answer captain answers behavior/6:policy/time with "hold", no roll
 	// time         table_answer gate-1 answers behavior/6:policy/cowed with "toward", rolled 1 of 50
 	// move         act 1        gate-1 walks (-4,7) (-5,8)
@@ -919,11 +937,15 @@ func Example_theTroupeActs() {
 	// move         perception   alice learns 1 region(s)
 	// move         act 7        alice walks (-6,12) (-6,11)
 	// move         perception   alice sees [], loses [pedlar], sees [] change
-	// move         act 8        alice walks (-6,11) (-6,10) (-5,9)
+	// move         act 8        alice walks (-6,11) (-6,10)
+	// move         table_answer captain answers behavior/6:policy/approached with "", rolled 1 of 100
+	// move         perception   alice hears voice
+	// move         act 1        alice walks (-5,9)
 	// move         clock        tick 3
+	// move         state        gate-1: posted -> alert (heard something)
 	// time         table_answer captain answers behavior/6:policy/time with "hold", no roll
 	// time         table_answer gate-1 answers behavior/6:policy/post with "toward", rolled 1 of 50
-	// pass         act 1        gate-1 stays: already there
+	// move         act 1        gate-1 stays:
 	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-3,9) (-4,10)
 	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
@@ -952,10 +974,19 @@ func Example_theTroupeActs() {
 	// speak        act 1        alice to captain, "troupe" (performance): rolled 1d20+3 = 15, beat 13; captain answers "Through to the hall, then. Don’t dawdle."
 	// speak        perception   alice hears voice
 	// speak        clock        tick 4
-	// speak        state        gate-1: posted -> alert (heard something)
-	// time         table_answer captain answers behavior/6:policy/time with "hold", no roll
+	// speak        state        captain: ready -> in-hall (admitted the party; goes in)
+	// time         table_answer captain answers behavior/6:policy/in-hall with "toward", rolled 1 of 50
+	// move         act 1        captain walks (-4,7)
+	// move         act 2        captain's door the-mad-king/gate-wall-door is open
+	// move         clock        reserve-1 arrives (monster)
+	// move         table_answer reserve-1 is dealt "coward", rolled 1 of 3
+	// move         clock        reserve-2 arrives (monster)
+	// move         table_answer reserve-2 is dealt "coward", rolled 1 of 3
+	// move         perception   alice learns 1 region(s)
+	// move         perception   alice sees [], loses [], sees [] change
+	// move         act 3        captain walks (-3,6) (-3,5) (-3,4) (-3,3) (-3,2)
 	// time         table_answer gate-1 answers behavior/6:policy/post with "toward", rolled 1 of 50
-	// move         act 1        gate-1 stays:
+	// move         act 1        gate-1 walks (-4,8)
 	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
 	// pass         act 1        gate-2 stays: standing at its waypoint
 	// time         table_answer hall-1 answers behavior/6:policy/time with "toward", rolled 1 of 50
@@ -981,21 +1012,26 @@ func Example_theTroupeActs() {
 	// time         table_answer sergeant answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// time         table_answer turnkey answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// -- alice walks to the gate --
-	// move         act 1        alice walks (-5,8) (-4,7)
+	// move         act 1        alice walks (-5,8)
+	// move         perception   alice learns 2 region(s)
+	// move         perception   alice sees [], loses [captain], sees [] change
+	// move         act 2        alice walks (-5,8) (-4,7)
+	// move         perception   alice learns 2 region(s)
+	// move         perception   alice sees [captain], loses [], sees [] change
 	// -- alice opens the gate --
-	// open_door    act 1        alice's door the-mad-king/gate-wall-door is open
-	// open_door    clock        reserve-1 arrives (monster)
-	// open_door    table_answer reserve-1 is dealt "coward", rolled 1 of 3
-	// open_door    clock        reserve-2 arrives (monster)
-	// open_door    table_answer reserve-2 is dealt "coward", rolled 1 of 3
-	// open_door    perception   alice learns 2 region(s)
-	// open_door    perception   alice sees [], loses [], sees [] change
 	// -- alice waits at the gate --
-	// move         act 1        alice walks (-5,8) (-4,7) (-5,8) (-4,7)
+	// move         act 1        alice walks (-5,8)
+	// move         perception   alice sees [], loses [captain], sees [] change
+	// move         act 2        alice walks (-5,8) (-4,7)
+	// move         perception   alice sees [captain], loses [], sees [] change
+	// move         act 3        alice walks (-4,7) (-5,8)
+	// move         perception   alice sees [], loses [captain], sees [] change
+	// move         act 4        alice walks (-5,8) (-4,7)
 	// move         clock        tick 5
-	// time         table_answer captain answers behavior/6:policy/time with "hold", no roll
+	// time         table_answer captain answers behavior/6:policy/in-hall with "toward", rolled 1 of 50
+	// move         act 1        captain walks (-3,1) (-3,0) (-2,-1) (-1,-2) (0,-3) (1,-4)
 	// time         table_answer gate-1 answers behavior/6:policy/post with "toward", rolled 1 of 50
-	// pass         act 1        gate-1 stays: already there
+	// move         act 1        gate-1 walks (-3,7)
 	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-3,10) (-2,10)
 	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
@@ -1022,5 +1058,6 @@ func Example_theTroupeActs() {
 	// move         act 1        reserve-2 walks (-19,4) (-18,4) (-17,4) (-16,4) (-15,4) (-14,4)
 	// time         table_answer sergeant answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// time         table_answer turnkey answers behavior/6:policy/time with "hold", rolled 1 of 100
-	// move         act 2        alice walks (-4,7) (-5,8) (-4,7)
+	// move         perception   alice sees [captain], loses [], sees [] change
+	// move         act 5        alice walks (-4,7) (-5,8) (-4,7)
 }

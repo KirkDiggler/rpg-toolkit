@@ -262,7 +262,7 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		return nil, fmt.Errorf("cast: %w", err)
 	}
 
-	scope, err := m.openForChange(ctx, string(VerbCast), in.Session)
+	scope, err := m.openForChangeBy(ctx, string(VerbCast), in.Session, in.Member)
 	if err != nil {
 		return nil, fmt.Errorf("cast: %w", err)
 	}
@@ -369,11 +369,18 @@ func (m *Manager) Cast(ctx context.Context, in *CastInput) (*CastOutput, error) 
 		}
 	}
 
+	actID := scope.enc.CurrentAct()
+	if actID == "" {
+		return nil, fmt.Errorf("cast: %w: no current act for application identity", ErrInvalidSession)
+	}
 	machine, err := resolution.NewAction(&resolution.ActionInput{
-		AreaCenter: in.Cell,
-		Definition: definition.Clone(),
-		AttackerID: in.Member,
-		TargetIDs:  targets,
+		// One application per selected cast. The resolver freezes this identity;
+		// answering a window never generates another invocation key.
+		ApplicationID: actID + "/application/0",
+		AreaCenter:    in.Cell,
+		Definition:    definition.Clone(),
+		AttackerID:    in.Member,
+		TargetIDs:     targets,
 		// The chosen word, on its way to the parameters of whichever effect the
 		// content bound it to. Empty for every spell with no menu, and already
 		// refused above if it disagrees with the one this definition declares.

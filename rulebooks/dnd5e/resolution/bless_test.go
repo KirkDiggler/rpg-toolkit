@@ -21,7 +21,7 @@ import (
 
 func (s *CastActionTestSuite) blessAttempt(world encounter.EncounterData, caster, target *character.Data, targets []string, policy StaleTargetPolicy, roll *countingCastRoller) (*Output, error) {
 	d := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.Bless})
-	machine, err := NewAction(&ActionInput{Definition: *d, AttackerID: bardID, TargetIDs: targets, StaleTargetPolicy: policy, Roller: roll})
+	machine, err := NewAction(&ActionInput{ApplicationID: testApplicationID(s.T()), Definition: *d, AttackerID: bardID, TargetIDs: targets, StaleTargetPolicy: policy, Roller: roll})
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +77,7 @@ func (s *CastActionTestSuite) TestBlessTwoLiveCastersReloadRollsAndQualifiedReca
 	var target character.Data
 	s.Require().NoError(json.Unmarshal(raw, &target))
 	caster := f.sheet(first, bardID)
-	machine, err := NewAction(&ActionInput{Definition: *d, AttackerID: wolfID, TargetIDs: []string{heroID}, StaleTargetPolicy: StaleTargetRefuse})
+	machine, err := NewAction(&ActionInput{ApplicationID: testApplicationID(s.T()), Definition: *d, AttackerID: wolfID, TargetIDs: []string{heroID}, StaleTargetPolicy: StaleTargetRefuse})
 	s.Require().NoError(err)
 	second := s.blessRun(f.world(), []Participant{{Character: caster}, {Character: &target}, {Monster: f.wolfData()}}, machine, nil)
 	target = *f.sheet(second, heroID)
@@ -99,13 +99,14 @@ func (s *CastActionTestSuite) TestBlessTwoLiveCastersReloadRollsAndQualifiedReca
 	s.Require().Len(strike.Calculation.Components, 3)
 	s.Equal(bardID, strike.Calculation.Components[2].Source.SourceID)
 	withBane := target
-	withBane.Conditions = append(append([]json.RawMessage(nil), target.Conditions...), baneConditionJSON(s.T(), heroID, wolfID))
-	opposed := s.blessRun(f.world(), []Participant{{Character: caster}, {Character: &withBane}, {Monster: wolf}}, NewSave(saveInput), nil).Outcome.(SaveOutcome)
+	withBane.Conditions = append(append([]json.RawMessage(nil), target.Conditions...), baneConditionJSON(s.T(), heroID, "bane-source"))
+	baneOwner := fixtureOwnerParticipant(s.T(), "bane-source", refs.Spells.Bane(), dnd5eEvents.ConditionAddress{MemberID: heroID, ConditionRef: refs.Conditions.Baned().String(), SourceID: "bane-source"})
+	opposed := s.blessRun(f.world(), []Participant{{Character: caster}, {Character: &withBane}, {Monster: wolf}, baneOwner}, NewSave(saveInput), nil).Outcome.(SaveOutcome)
 	s.Equal(9, opposed.Result.Calculation.Total, "one Bless +4 and Bane -4 both apply")
 	s.Len(opposed.Result.Calculation.Components, 4)
 	// Recasting to self strips only the bard's old child on the hero.
 	caster.ActionEconomy.ActionsRemaining = 1
-	machine, err = NewAction(&ActionInput{Definition: *d, AttackerID: bardID, TargetIDs: []string{bardID}, StaleTargetPolicy: StaleTargetRefuse})
+	machine, err = NewAction(&ActionInput{ApplicationID: testApplicationID(s.T()), Definition: *d, AttackerID: bardID, TargetIDs: []string{bardID}, StaleTargetPolicy: StaleTargetRefuse})
 	s.Require().NoError(err)
 	recast := s.blessRun(f.world(), participants, machine, &Cost{PayerID: bardID, Profile: d.Cost, SpellTurn: "scene/round-2/bard"})
 	s.Require().Len(recast.ConcentrationBreaks, 1)
@@ -150,11 +151,10 @@ func (s *CastActionTestSuite) TestBlessAllMissPaysAndDropsPreviousConcentration(
 	paid := f.sheet(out, bardID)
 	s.Zero(paid.Resources[resources.SpellSlotLevel1].Current)
 	for _, raw := range paid.Conditions {
-		var hold conditions.ConcentratingConditionData
-		s.Require().NoError(json.Unmarshal(raw, &hold))
-		if hold.SpellRef == refs.Spells.Bless().String() {
+		hold := fixtureHoldView(s.T(), raw)
+		if hold != nil && hold.SourceRef.String() == refs.Spells.Bless().String() {
 			s.Empty(hold.Children)
-			s.Equal(10, hold.TurnEndsLeft)
+			s.Equal(10, hold.Remaining)
 			return
 		}
 	}
@@ -188,19 +188,23 @@ func (s *CastActionTestSuite) TestBlessLifeStatesAndSameAddressReplacement() {
 		s.Run(state, func() {
 			f := s.fixtures()
 			target := f.saver(0)
+			caster := baneCaster(1)
 			switch state {
 			case "stabilized":
 				target.DeathSaveState = &saves.DeathSaveState{Stabilized: true}
 			case "dead":
 				target.DeathSaveState = &saves.DeathSaveState{Dead: true}
 			case "same address":
-				blessed, err := conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{MemberID: heroID, SourceID: bardID, SourceRef: refs.Spells.Bless()})
-				s.Require().NoError(err)
+				blessed := fixtureNamed(s.T(), namedFixtureInput{Ref: refs.Conditions.Blessed(), Member: heroID, Source: bardID, Origin: refs.Spells.Bless()})
 				raw, err := blessed.ToJSON()
 				s.Require().NoError(err)
 				target.Conditions = []json.RawMessage{raw}
+				hold := fixtureHold(s.T(), holdFixtureInput{Member: bardID, Source: refs.Spells.Bless(), Name: "Bless", Turns: 10, Children: []dnd5eEvents.ConditionAddress{blessed.ConditionAddress()}})
+				held, err := hold.ToJSON()
+				s.Require().NoError(err)
+				caster.Conditions = []json.RawMessage{held}
 			}
-			out, err := s.blessAttempt(f.world(), baneCaster(1), target, []string{heroID}, StaleTargetRefuse, &countingCastRoller{})
+			out, err := s.blessAttempt(f.world(), caster, target, []string{heroID}, StaleTargetRefuse, &countingCastRoller{})
 			if state == "dead" {
 				s.ErrorIs(err, ErrBadAction)
 				s.Nil(out)
@@ -209,9 +213,10 @@ func (s *CastActionTestSuite) TestBlessLifeStatesAndSameAddressReplacement() {
 			s.Require().NoError(err)
 			if state == "same address" {
 				effects := s.castOutcome(out).Targets[0].Applied
-				removed, err := removalEffect(dnd5eEvents.ConditionAddress{MemberID: heroID, ConditionRef: refs.Conditions.Blessed().String(), SourceID: bardID}, ConditionReplacedReason)
-				s.Require().NoError(err)
-				s.Require().Contains(effects, removed, "the old instance's removal is delivered")
+				s.Require().Len(out.ConcentrationBreaks, 1)
+				s.Require().Len(out.ConcentrationBreaks[0].Removed, 1)
+				s.Equal(bardID, out.ConcentrationBreaks[0].Removed[0].Address.SourceID)
+				s.Equal(encounter.MemberID(heroID), out.ConcentrationBreaks[0].Removed[0].Address.MemberID)
 				s.Require().Contains(kinds(effects), ImposedCondition, "and the new instance lands")
 			}
 			s.Equal(1, s.countingRef(f.sheet(out, heroID).Conditions, refs.Conditions.Blessed()))
@@ -253,7 +258,7 @@ func (s *CastActionTestSuite) TestBlessKnownSelfDyingAndMonsterPayOnce() {
 	paid := f.sheet(out, bardID)
 	s.Zero(paid.ActionEconomy.ActionsRemaining)
 	s.Equal(1, paid.Resources[resources.SpellSlotLevel1].Current)
-	s.Contains(f.conditionRefs(paid), refs.Conditions.Concentrating().String())
+	s.Contains(f.conditionRefs(paid), refs.Conditions.LinkedEffects().String())
 	s.Equal(0, f.sheet(out, heroID).HitPoints, "Bless does not heal or stabilize")
 }
 
@@ -307,7 +312,7 @@ func (s *CastActionTestSuite) TestBlessRefusesUnknownBlockedOutOfRangeAndBadPoli
 			case "range":
 				s.rememberedHero(&world, encounter.LocationKnown, spatial.Position{X: 9, Y: 9})
 			case "wall":
-				world.Field.Walls = append(world.Field.Walls, encounter.BoundaryData{From: encounter.PositionData{X: 2, Y: 1}, To: encounter.PositionData{X: 3, Y: 1}, BlocksMovement: true, BlocksLineOfSight: true})
+				withWall(s.T(), &world, encounter.BoundaryData{From: encounter.PositionData{X: 2, Y: 1}, To: encounter.PositionData{X: 3, Y: 1}, BlocksMovement: true, BlocksLineOfSight: true})
 			case "no policy":
 				policy = ""
 			case "bad policy":

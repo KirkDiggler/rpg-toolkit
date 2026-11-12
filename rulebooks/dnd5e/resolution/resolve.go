@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monster"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/monstertraits"
@@ -93,6 +94,23 @@ type Input struct {
 	// host built it with; the ones on this input are not rebound onto it.
 	Live LiveWorld
 
+	// Sites resolves [Input.World]'s site hash (rpg-project#879 S5: THE SITE
+	// IS CONTENT THE RECORD REFERENCES). The host's site provider, handed to
+	// the load exactly as supplied, so a host that injected one never has
+	// its world resolved against a process default behind its back. Optional:
+	// nil is [encounter.DefaultSites], the in-process default. A lent world
+	// is not loaded here and never asks it.
+	Sites encounter.SiteProvider
+
+	// Site is the site piece [Input.World] names by hash, for a host that
+	// stores it apart from the checkpoint and a provider that may not hold
+	// the hash yet: handed to the load, compiled on a provider miss and
+	// refused unless it hashes to the world's site. Optional; nil resolves
+	// by hash alone, and a hash the provider cannot resolve fails closed with
+	// [encounter.ErrUnknownSite]. Refused beside a lent world, which loads
+	// nothing.
+	Site *encounter.SiteData
+
 	// Participants are the sheets of everyone in the interaction. Pass everyone
 	// (R3) — applicability is the effect's predicate, not the caller's guess.
 	Participants []Participant
@@ -151,6 +169,12 @@ func (in *Input) Validate() error {
 	// would hide. (None is refused where the world is taken: see world.)
 	if !isNil(in.Live) && !reflect.ValueOf(in.World).IsZero() {
 		return fmt.Errorf("%w: both a lent world and world data", ErrBadWorld)
+	}
+	// A site piece is the source of a world this package LOADS; beside a lent
+	// world it describes nothing, and carrying it would hide which site the
+	// host thinks is in play.
+	if !isNil(in.Live) && in.Site != nil {
+		return fmt.Errorf("%w: a lent world and a site piece to load it with", ErrBadWorld)
 	}
 
 	// A DRIVEN ACTIVATION CHARGES NOTHING, and this is where that is a law
@@ -279,9 +303,10 @@ type Output struct {
 // A machine reads rules off these. It is what "step machines over data" means
 // in practice — the machine gets the entities, never the bus.
 type Participants struct {
-	characters map[string]*character.Character
-	monsters   map[string]*monster.Monster
-	order      []string
+	applications *conditions.ApplicationBinding
+	characters   map[string]*character.Character
+	monsters     map[string]*monster.Monster
+	order        []string
 }
 
 // Character returns the loaded character with this ID.
@@ -551,6 +576,8 @@ func world(in *Input) (LiveWorld, func() encounter.EncounterData, error) {
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data:         in.World,
 		Capabilities: in.Capabilities,
+		Sites:        in.Sites,
+		Site:         in.Site,
 	})
 	if err != nil {
 		return nil, nil, fmt.Errorf("resolution: load world: %w", err)
@@ -558,12 +585,10 @@ func world(in *Input) (LiveWorld, func() encounter.EncounterData, error) {
 	return enc, enc.ToData, nil
 }
 
-// attachAll reconstitutes every participant onto the surface, in sorted ID
-// order (R4), carrying one runtime roller to Character conditions and Monster
-// traits without interpreting either. Two resolutions over identical data must
-// grant identical registrations in an identical order, or a suspension cannot
-// be resumed into the world it left.
-func attachAll(ctx context.Context, surf *surface, in *attachAllInput) (*Participants, error) {
+// attachAllLocal supports read-only/local projections, including the existing
+// lenient character inspection policy. Mutable entries use attachAll's complete
+// pure-load, graph-binding, then behavior-attachment sequence instead.
+func attachAllLocal(ctx context.Context, surf *surface, in *attachAllInput) (*Participants, error) {
 	ordered := make([]Participant, len(in.Participants))
 	copy(ordered, in.Participants)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].ID() < ordered[j].ID() })
@@ -745,6 +770,9 @@ func dirtyMonsters(cast *Participants) []*monster.Data {
 // character's conditions can be silently discarded is a bare true at the end of
 // a line.
 type attachAllInput struct {
+	// LocalProjection attaches only local behavior for a read-only projection.
+	// It must never be selected by a mutating entry to evade complete link validation.
+	LocalProjection bool
 	// Participants are the sheets to reconstitute, in any order — the attach
 	// sorts them, because two attaches over identical data must grant identical
 	// registrations in an identical order.

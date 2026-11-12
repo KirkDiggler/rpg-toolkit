@@ -305,13 +305,13 @@ func (s *CastSuite) TestHealingWordRevalidatesSightAndTargetsBeforePayment() {
 				// underneath. perception.Holding collapsed CurrentVia into a
 				// bool for READERS; the persistence shape kept the list.
 				for _, world := range s.encounters.byID {
-					holding := world.Perception.Intel.Holdings["member|cleric"]["member|skeleton"]
+					holding := world.Perception.Intel.Holdings["member|cleric"]["member|skeleton"][""]
 					holding.CurrentVia = nil
-					world.Perception.Intel.Holdings["member|cleric"]["member|skeleton"] = holding
+					world.Perception.Intel.Holdings["member|cleric"]["member|skeleton"][""] = holding
 				}
 			case "wall":
 				for _, world := range s.encounters.byID {
-					world.Field.Walls = append(world.Field.Walls, encounter.BoundaryData{
+					session.WithSiteWalls(s.T(), world, encounter.BoundaryData{
 						From: encounter.PositionData{X: 2, Y: 1}, To: encounter.PositionData{X: 3, Y: 1}, BlocksMovement: true, BlocksLineOfSight: true,
 					})
 				}

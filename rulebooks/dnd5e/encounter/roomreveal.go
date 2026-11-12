@@ -71,6 +71,7 @@ func (e *Encounter) appendCellsRevealedBeat(member MemberID, before Atlas) error
 		}
 		entry := region
 		entry.Cells = fresh
+		entry.Ground = groundForCells(region.Ground, fresh)
 		regions = append(regions, entry)
 	}
 	scenery := make([]spatial.Position, 0)

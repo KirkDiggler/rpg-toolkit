@@ -101,6 +101,22 @@ type verbBody struct {
 	On       *bool              `json:"on"`
 }
 
+// verbHeader reads only routing identity before a record is known to be a
+// player's command. Other kinds own their fields: a diagnostic's string "on"
+// is not the boolean mode of a sneaking command. All records still participate
+// in requireSameLog; this only controls which inputs the replay re-issues.
+func verbHeader(t *testing.T, entry record.EntryData) verbBody {
+	t.Helper()
+	var header struct {
+		Beat   string `json:"beat"`
+		Member string `json:"member"`
+		Actor  string `json:"actor"`
+		Mover  string `json:"mover"`
+	}
+	require.NoError(t, json.Unmarshal(entry.Payload, &header), "beat seq %d", entry.Seq)
+	return verbBody{Beat: header.Beat, Member: header.Member, Actor: header.Actor, Mover: header.Mover}
+}
+
 // attackOnTheRecord is an outcome beat's attack identity.
 type attackOnTheRecord struct {
 	Ref        string `json:"ref"`
@@ -132,7 +148,10 @@ func verbsOf(t *testing.T, entries []record.EntryData, players map[encounter.Mem
 		if _, driven := entry.Tags["act"]; driven {
 			continue
 		}
-		var b verbBody
+		b := verbHeader(t, entry)
+		if !isVerbBeat(b, players) {
+			continue
+		}
 		require.NoError(t, json.Unmarshal(entry.Payload, &b), "beat seq %d", entry.Seq)
 		member, actor := encounter.MemberID(b.Member), encounter.MemberID(b.Actor)
 		switch {
@@ -225,8 +244,7 @@ func fallsAfter(t *testing.T, rest []record.EntryData, players map[encounter.Mem
 		if _, driven := entry.Tags["act"]; driven {
 			continue
 		}
-		var b verbBody
-		require.NoError(t, json.Unmarshal(entry.Payload, &b))
+		b := verbHeader(t, entry)
 		if b.Beat == string(encounter.OutcomeDown) {
 			out = append(out, encounter.MemberID(b.Member))
 			continue
@@ -268,7 +286,7 @@ func playersOf(t testing.TB, open opener) map[encounter.MemberID]bool {
 
 // replayed is what a replay landed: the log, and the roller it read.
 type replayed struct {
-	log    []record.EntryData
+	log    record.LogData
 	roller *replaytest.RecordRoller
 	host   host
 }
@@ -287,7 +305,7 @@ func replay(t *testing.T, open opener, original []record.EntryData) replayed {
 		require.NoError(t, v.issue(w), "the replay re-issues %s (beat seq %d)", v.name, v.seq)
 	}
 
-	return replayed{log: w.enc.ToData().Log.Entries, roller: roller, host: h}
+	return replayed{log: w.enc.ToData().Log, roller: roller, host: h}
 }
 
 // requireEveryRollOnTheRecord holds the faces the run's die threw against
@@ -310,9 +328,9 @@ func requireEveryRollOnTheRecord(t *testing.T, die *countingDie, log []record.En
 
 // requireSameLog holds the replay's log to the run's, entry for entry, ids
 // held to a bijection: claim 3.
-func requireSameLog(t *testing.T, want, got []record.EntryData) {
+func requireSameLog(t *testing.T, want, got record.LogData) {
 	t.Helper()
-	wantLines, gotLines := canonical(want), canonical(got)
+	wantLines, gotLines := canonical(t, want), canonical(t, got)
 	for i := range min(len(wantLines), len(gotLines)) {
 		if wantLines[i] != gotLines[i] {
 			require.Failf(t, "the replay left the record",
@@ -327,8 +345,15 @@ var ulid = regexp.MustCompile(`[0-9A-HJKMNP-TV-Z]{26}`)
 
 // canonical is each entry as one line — seq, round, correlation, audience,
 // tags, payload — with every minted id replaced by the order it first
-// appeared in, across the whole log.
-func canonical(entries []record.EntryData) []string {
+// appeared in, across the whole log. The log is loaded first, so the line
+// holds each entry's materialised audience, never its reference into the
+// persisted audience table (play/record v0.3.0).
+func canonical(t *testing.T, data record.LogData) []string {
+	t.Helper()
+	loaded, err := record.LoadLog(data)
+	require.NoError(t, err, "the log loads")
+	entries, err := loaded.All(&record.AllInput{FromSeq: 1})
+	require.NoError(t, err)
 	ids := map[string]string{}
 	name := func(s string) string {
 		return ulid.ReplaceAllStringFunc(s, func(id string) string {
@@ -370,11 +395,13 @@ func replayRunUntil(
 	t.Helper()
 	var die *countingDie
 	var original []record.EntryData
+	var originalLog record.LogData
 	for try := 0; try < tries; try++ {
 		die = newCountingDie()
 		run := openWorld(t, open, rollingHost(die))
 		play(run)
-		original = run.enc.ToData().Log.Entries
+		originalLog = run.enc.ToData().Log
+		original = originalLog.Entries
 		if carries == nil || carries(original) {
 			break
 		}
@@ -383,7 +410,7 @@ func replayRunUntil(
 
 	requireEveryRollOnTheRecord(t, die, original)
 	got := replay(t, open, original)
-	requireSameLog(t, original, got.log)
+	requireSameLog(t, originalLog, got.log)
 	require.Zero(t, got.roller.Remaining(), "the replay reads back every roll the record holds")
 	swings, fights, sneaks := got.host.remaining()
 	require.Zero(t, swings, "the replay lands every driven swing the record holds")
@@ -467,7 +494,11 @@ func TestReplay_CastleGateScript(t *testing.T) {
 			if w.at(hero) != besideTheGate {
 				require.NoError(t, w.step(hero, besideTheGate))
 			}
-			require.NoError(t, w.openDoor(kingGateDoor, hero))
+			// The captain went in once he admitted the troupe (rpg-project#929),
+			// through the gate, and left it open behind him.
+			if err := w.openDoor(kingGateDoor, hero); err != nil {
+				require.ErrorIs(t, err, encounter.ErrBadDoor, "only an open gate refuses the hand")
+			}
 			w.pace(hero, besideTheGate, castleCell(0, 6), 3)
 			require.False(t, w.fighting(hero), "the troupe was let through: nobody fights")
 		})

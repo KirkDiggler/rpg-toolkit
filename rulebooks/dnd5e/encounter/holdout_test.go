@@ -495,14 +495,16 @@ func (s *HoldOutSuite) TestTheStanceIsDerivedNotStored() {
 	s.Require().Equal(encounter.StanceNeutral, s.stance(enc))
 
 	data := enc.ToData()
+
+	site := enc.Site().Data()
 	s.Run("the declaration is untouched and no stance is written", func() {
-		s.Require().Len(data.Field.Dispositions, 1)
-		s.Equal(string(encounter.StanceHostile), data.Field.Dispositions[0].Stance)
+		s.Require().Len(site.Field.Dispositions, 1)
+		s.Equal(string(encounter.StanceHostile), site.Field.Dispositions[0].Stance)
 		structure, err := json.Marshal(struct {
 			Field   encounter.FieldData
 			Members []encounter.MemberData
 			Journal *encounter.JournalData
-		}{data.Field, data.Members, data.Journal})
+		}{site.Field, data.Members, data.Journal})
 		s.Require().NoError(err)
 		s.NotContains(string(structure), `"neutral"`, "the only place neutral appears is the story's own beat")
 	})

@@ -64,10 +64,7 @@ func (s *DepartTestSuite) sheet(id string) *character.Data {
 }
 
 func (s *DepartTestSuite) blessed(memberID string) (dnd5eEvents.ConditionAddress, json.RawMessage) {
-	condition, err := conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{
-		MemberID: memberID, SourceID: departBob, SourceRef: refs.Spells.Bless(),
-	})
-	s.Require().NoError(err)
+	condition := fixtureNamed(s.T(), namedFixtureInput{Ref: refs.Conditions.Blessed(), Member: memberID, Source: departBob, Origin: refs.Spells.Bless()})
 	raw, err := condition.ToJSON()
 	s.Require().NoError(err)
 	return dnd5eEvents.ConditionAddress{
@@ -81,15 +78,13 @@ func (s *DepartTestSuite) scene(targets ...string) map[string]*character.Data {
 	sheets := map[string]*character.Data{
 		departAlice: s.sheet(departAlice), departBob: s.sheet(departBob), departCarol: s.sheet(departCarol),
 	}
-	hold := conditions.NewConcentratingConditionWithInput(conditions.NewConcentratingConditionInput{
-		MemberID: departBob, SourceID: departBob, SpellRef: refs.Spells.Bless().String(),
-		SpellName: "Bless", TurnEnds: 10,
-	})
+	var children []dnd5eEvents.ConditionAddress
 	for _, target := range targets {
 		address, raw := s.blessed(target)
-		s.Require().NoError(hold.AddChild(s.ctx, address))
+		children = append(children, address)
 		sheets[target].Conditions = append(sheets[target].Conditions, raw)
 	}
+	hold := fixtureHold(s.T(), holdFixtureInput{Member: departBob, Source: refs.Spells.Bless(), Name: "Bless", Turns: 10, Children: children})
 	holdJSON, err := hold.ToJSON()
 	s.Require().NoError(err)
 	sheets[departBob].Conditions = append(sheets[departBob].Conditions, holdJSON)
@@ -109,12 +104,10 @@ func departRefs(s *DepartTestSuite, data *character.Data) []string {
 	return out
 }
 
-func (s *DepartTestSuite) holdOf(data *character.Data) *conditions.ConcentratingConditionData {
+func (s *DepartTestSuite) holdOf(data *character.Data) *holdView {
 	for _, raw := range data.Conditions {
-		var hold conditions.ConcentratingConditionData
-		s.Require().NoError(json.Unmarshal(raw, &hold))
-		if hold.Ref != nil && hold.Ref.String() == refs.Conditions.Concentrating().String() {
-			return &hold
+		if view := fixtureHoldView(s.T(), raw); view != nil {
+			return view
 		}
 	}
 	return nil
@@ -174,7 +167,7 @@ func (s *DepartTestSuite) TestDepart() {
 		}, newSurface(bus))
 		s.Require().NoError(err)
 		s.Require().Len(ended, 1, "bob's hold ended once")
-		s.Equal(departBob, ended[0].CasterID)
+		s.Equal(departBob, ended[0].MaintainerID)
 		s.Equal(DepartedReason, ended[0].Reason, "concentration ended, departed")
 
 		s.NotContains(departRefs(s, out.Character), blessedRef)

@@ -55,12 +55,16 @@ type sheetStore struct {
 	// (a read verb, a seam built for a compile-only load); saving through
 	// such a store is refused rather than left unreported.
 	scope *writeScope
+
+	// pending is the fenced verbs' unsaved sheets, read before the
+	// repository; nil for a plain repository (checkpoint.go).
+	pending *pendingWrites
 }
 
 // sheetsFor builds the store a verb reads and writes character records
 // through. scope is the verb's report; nil builds a read-only store.
 func (m *Manager) sheetsFor(scope *writeScope) sheetStore {
-	return sheetStore{repo: m.characters, scope: scope}
+	return sheetStore{repo: m.characters, scope: scope, pending: m.pending}
 }
 
 // load reads one stored sheet and checks that the repository kept its side of
@@ -78,6 +82,15 @@ func (m *Manager) sheetsFor(scope *writeScope) sheetStore {
 // would never have been in the interaction at all — which is why the id is
 // checked here rather than trusted.
 func (s sheetStore) load(ctx context.Context, role, id string) (*character.Data, error) {
+	if s.pending != nil {
+		held, ok, err := s.pending.sheet(id)
+		if err != nil {
+			return nil, fmt.Errorf("%s %q: %w", role, id, err)
+		}
+		if ok {
+			return held, nil
+		}
+	}
 	data, err := s.repo.GetCharacter(ctx, id)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
@@ -110,6 +123,18 @@ func (s sheetStore) save(ctx context.Context, data *character.Data) error {
 	}
 	if s.scope == nil {
 		return fmt.Errorf("saving character %q through a read-only sheet store: %w", data.ID, ErrInvalidSession)
+	}
+	if s.scope.fence.held {
+		// Fenced: the sheet rides the verb's one fenced save (checkpoint.go),
+		// and is named on the report when that save lands.
+		if s.scope.fence.saved {
+			return errWrittenAfterTheSave(s.scope, "character:"+data.ID)
+		}
+		if err := s.pending.putSheet(s.scope.session, data); err != nil {
+			return saveErrorAfterWrites(s.scope, "character:"+data.ID, err)
+		}
+		s.scope.noteSheetTouched(data.ID)
+		return nil
 	}
 	if err := s.repo.SaveCharacter(ctx, data); err != nil {
 		return &SaveError{

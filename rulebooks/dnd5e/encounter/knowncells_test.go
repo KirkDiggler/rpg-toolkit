@@ -273,8 +273,12 @@ func TestBlobSize_Keep10k(t *testing.T) {
 
 	members := data.EverMembers
 	require.Greater(t, len(members), len(keepPlayers), "precondition: the garrison boarded")
+	// The site piece rides beside the checkpoint, as a host that stores it
+	// apart hands it back: the launch ran beside the serial tests, whose own
+	// sites may have pushed the keep's out of the default provider.
+	piece := enc.Site().Data()
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
-		Data: data, Capabilities: knowledgeCapabilities(&sightList{fallback: 24}),
+		Data: data, Site: &piece, Capabilities: knowledgeCapabilities(&sightList{fallback: 24}),
 	})
 	require.NoError(t, err)
 	want := knowledgeOf(enc, members)

@@ -329,6 +329,7 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		}
 		entry := r
 		entry.Cells = cells
+		entry.Ground = groundForCells(r.Ground, cells)
 		out.Regions = append(out.Regions, entry)
 	}
 	for _, p := range full.Props {
@@ -363,7 +364,8 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 		if wallPresent {
 			wall = AtlasStructuralWall{
 				ID: w.id, Ref: w.ref, From: w.from, To: w.to,
-				Height: w.height, Thickness: w.thickness, Elevation: w.elevation,
+				MaterialOverrides: cloneMaterialOverrides(w.materialOverrides),
+				Height:            w.height, Thickness: w.thickness, Elevation: w.elevation,
 				FootprintCells: footprints[w.id],
 				Openings:       make([]AtlasStructuralOpening, 0, len(w.openings)),
 			}
@@ -524,6 +526,23 @@ type hiddenView struct {
 	// populated only by undiscoveredFrom. Keep it separate from concealed
 	// cells: floor secrecy must not imply placement concealment membership.
 	unexploredCells map[spatial.Position]bool
+}
+
+// facesNone reports whether no door and no prop is hidden from this view:
+// the sight test then reads no concealment ([sightReach.seesCell]), so a
+// sweep under it is the site's raw answer ([Encounter.visibleFrom]).
+func (h hiddenView) facesNone() bool {
+	for _, hid := range h.doors {
+		if hid {
+			return false
+		}
+	}
+	for _, hid := range h.props {
+		if hid {
+			return false
+		}
+	}
+	return true
 }
 
 // hiddenFrom folds the member's own knowledge into what their atlas

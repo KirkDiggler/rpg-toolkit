@@ -226,11 +226,11 @@ type pane struct {
 	floor                         map[[2]int]bool
 }
 
-// paneOf reads a region's cells off the persisted field. Nil if the field
+// paneOf reads a region's cells off the site's field. Nil if the field
 // has no such region (a defect the caller should treat as "nothing to
 // render").
-func paneOf(data encounter.EncounterData, region string) *pane {
-	for _, r := range data.Field.Regions {
+func paneOf(field encounter.FieldData, region string) *pane {
+	for _, r := range field.Regions {
 		if r.ID != region || len(r.Cells) == 0 {
 			continue
 		}
@@ -271,8 +271,8 @@ func (p *pane) mark(grid []string, cell spatial.Position, ch byte) {
 }
 
 // props draws the field's props that fall on this pane.
-func (p *pane) props(grid []string, data encounter.EncounterData) {
-	for _, o := range data.Field.Props {
+func (p *pane) props(grid []string, field encounter.FieldData) {
+	for _, o := range field.Props {
 		set(grid, o.At.X-float64(p.colMin), o.At.Y-float64(p.rowMin), '#')
 	}
 }
@@ -281,13 +281,13 @@ func (p *pane) props(grid []string, data encounter.EncounterData) {
 // exactly what a game server holds. The panes stay region-scoped because a
 // terminal is small, not because sight is: since rpg-toolkit#1106 a belief
 // grid may hold sightings in the region next door, which this pane drops.
-func worldGrid(data encounter.EncounterData, members []encounter.Member, region string) []string {
-	p := paneOf(data, region)
+func worldGrid(field encounter.FieldData, members []encounter.Member, region string) []string {
+	p := paneOf(field, region)
 	if p == nil {
 		return nil
 	}
 	grid := p.blank()
-	p.props(grid, data)
+	p.props(grid, field)
 	for _, m := range members {
 		if m.Region != region {
 			continue
@@ -306,19 +306,19 @@ func worldGrid(data encounter.EncounterData, members []encounter.Member, region 
 // left renders nowhere — this grid only shows their present region). Their
 // own position comes from world truth (you always know where you stand).
 func beliefGrid(
-	enc *encounter.Encounter, data encounter.EncounterData, members []encounter.Member,
+	enc *encounter.Encounter, field encounter.FieldData, members []encounter.Member,
 	who core.EntityID, region string,
 ) ([]string, error) {
 	view, err := enc.View(&encounter.ViewInput{Member: who})
 	if err != nil {
 		return nil, err
 	}
-	p := paneOf(data, region)
+	p := paneOf(field, region)
 	if p == nil {
 		return nil, nil
 	}
 	grid := p.blank()
-	p.props(grid, data)
+	p.props(grid, field)
 	for _, h := range view {
 		testimony, ok := encounter.DecodeSightTestimony(h.Payload)
 		if !ok || testimony.State != encounter.LocationKnown {
@@ -612,10 +612,9 @@ func main() {
 }
 
 func showView(enc *encounter.Encounter, who core.EntityID) {
-	// A display read, not a save: WorldView never trims the live log or
-	// advances the floor, so rendering after every command costs nothing
-	// (#1385). The save command above is the one ToData call left.
-	data := enc.WorldView()
+	// The site's field: content the checkpoint references by hash, read
+	// off the compiled site rather than any save (rpg-project#879 S5).
+	field := enc.Site().Data().Field
 	members, err := enc.Members()
 	if err != nil {
 		fmt.Println(" ", err)
@@ -631,13 +630,13 @@ func showView(enc *encounter.Encounter, who core.EntityID) {
 		fmt.Println(" ", who, "is not a member")
 		return
 	}
-	belief, err := beliefGrid(enc, data, members, who, room)
+	belief, err := beliefGrid(enc, field, members, who, room)
 	if err != nil {
 		fmt.Println(" ", err)
 		return
 	}
 	title := fmt.Sprintf("WORLD TRUTH (%s)", room)
-	printSideBySide(worldGrid(data, members, room), belief, title, fmt.Sprintf("%s BELIEVES", strings.ToUpper(string(who))))
+	printSideBySide(worldGrid(field, members, room), belief, title, fmt.Sprintf("%s BELIEVES", strings.ToUpper(string(who))))
 }
 
 func num(s string) float64 {

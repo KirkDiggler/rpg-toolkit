@@ -263,9 +263,9 @@ func (s *StructuralWallSuite) TestNeitherTheInputNorTheOutputAliasesTheEncounter
 	s.Equal(original.StructuralDoors, again.StructuralDoors)
 
 	// Mutating a ToData result must not reach the field either.
-	data := enc.ToData()
-	data.Field.StructuralWalls[0].Openings[0].Position = 999
-	data.Field.StructuralWalls[0].Openings[0].Door.DoorID = "tampered"
+	site := enc.Site().Data()
+	site.Field.StructuralWalls[0].Openings[0].Position = 999
+	site.Field.StructuralWalls[0].Openings[0].Door.DoorID = "tampered"
 	roundTripped, err := enc.Atlas()
 	s.Require().NoError(err)
 	s.Equal(original.StructuralWalls, roundTripped.StructuralWalls)

@@ -1271,8 +1271,8 @@ func (s *PersistenceSuite) TestGoldenJSON() {
 	s.Require().NoError(err)
 
 	// Pin exact string for Held shape (payload is base64("treasure") = "dHJlYXN1cmU=")
-	goldenHeld := `{"holdings":{"alice":{"behind-door-3":{"payload":"dHJlYXN1cmU=",` +
-		`"channel":"hearing","observed":5,"confirmed":5}}}}`
+	goldenHeld := `{"holdings":{"alice":{"behind-door-3":{"":{"payload":"dHJlYXN1cmU=",` +
+		`"channel":"hearing","observed":5,"confirmed":5}}}}}`
 	s.Equal(goldenHeld, string(b), "Held shape must match exact JSON (payload base64, no current_via)")
 
 	// Test 2: Current shape (via Surveil, with CurrentVia)
@@ -1297,8 +1297,8 @@ func (s *PersistenceSuite) TestGoldenJSON() {
 
 	// Pin exact string for Current shape
 	// (payload is base64("near") = "bmVhcg==", current_via has "sight")
-	golden := `{"holdings":{"alice":{"goblin":{"payload":"bmVhcg==","channel":"sight",` +
-		`"observed":5,"confirmed":5,"current_via":["sight"]}}}}`
+	golden := `{"holdings":{"alice":{"goblin":{"":{"payload":"bmVhcg==","channel":"sight",` +
+		`"observed":5,"confirmed":5,"current_via":["sight"]}}}}}`
 	s.Equal(golden, string(b2), "Current shape must match exact JSON wire format")
 }
 
@@ -1357,8 +1357,8 @@ func (s *PersistenceSuite) TestMixedProvenanceChannelNotInCurrentVia() {
 
 	// Step 4: Verify ToData deep-equals pre-reload
 	data2 := loaded.ToData()
-	holdings1 := data.Holdings[obs][subject]
-	holdings2 := data2.Holdings[obs][subject]
+	holdings1 := data.Holdings[obs][subject][""]
+	holdings2 := data2.Holdings[obs][subject][""]
 	s.Equal(holdings1.Payload, holdings2.Payload)
 	s.Equal(holdings1.Channel, holdings2.Channel)
 	s.Equal(holdings1.Confirmed, holdings2.Confirmed)
@@ -1385,7 +1385,7 @@ func (s *PersistenceSuite) TestSnapshotImmutability() {
 
 	// SNAPSHOT MUTATION: mutate the snapshot data's payload in-place
 	// This tests that the backing arrays are NOT aliased
-	h := data.Holdings[obs]["s"]
+	h := data.Holdings[obs]["s"][""]
 	if len(h.Payload) > 0 {
 		h.Payload[0] = 'X'
 	}
@@ -1431,8 +1431,10 @@ func (s *PersistenceSuite) TestLoadSnapshotMutationImmunity() {
 	// Mutate the data's maps AFTER LoadIntel (in-place index write, not append)
 	observerHoldings := data.Holdings[obs]
 	// Modify an existing holding's payload
-	for _, h := range observerHoldings {
-		h.Payload[0] = 'X'
+	for _, topics := range observerHoldings {
+		for _, h := range topics {
+			h.Payload[0] = 'X'
+		}
 	}
 
 	// Verify loaded Intel is immune to snapshot mutations
@@ -1444,7 +1446,7 @@ func (s *PersistenceSuite) TestLoadSnapshotMutationImmunity() {
 // TestR9EmptyObserverKey tests that empty observer key is rejected.
 func (s *PersistenceSuite) TestR9EmptyObserverKey() {
 	data := intel.Data{
-		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
+		Holdings: map[core.EntityID]map[intel.Subject]map[intel.Topic]intel.HoldingData{
 			"": {}, // Empty observer key
 		},
 	}
@@ -1456,8 +1458,8 @@ func (s *PersistenceSuite) TestR9EmptyObserverKey() {
 func (s *PersistenceSuite) TestR9EmptySubjectKey() {
 	const alice = core.EntityID("alice")
 	data := intel.Data{
-		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
-			alice: {"": {}}, // Empty subject key
+		Holdings: map[core.EntityID]map[intel.Subject]map[intel.Topic]intel.HoldingData{
+			alice: {"": {"": {Channel: "sight"}}}, // Empty subject key
 		},
 	}
 	_, err := intel.LoadIntel(data)
@@ -1472,14 +1474,14 @@ func (s *PersistenceSuite) TestR9DuplicateCurrentVia() {
 		sight  = intel.Channel("sight")
 	)
 	data := intel.Data{
-		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
+		Holdings: map[core.EntityID]map[intel.Subject]map[intel.Topic]intel.HoldingData{
 			alice: {
-				target: {
+				target: {"": {
 					Payload:    []byte("data"),
 					Channel:    sight,
 					Confirmed:  1,
 					CurrentVia: []intel.Channel{sight, sight}, // Duplicate
-				},
+				}},
 			},
 		},
 	}
@@ -1494,13 +1496,13 @@ func (s *PersistenceSuite) TestR9EmptyHoldingChannel() {
 		target = intel.Subject("target")
 	)
 	data := intel.Data{
-		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
+		Holdings: map[core.EntityID]map[intel.Subject]map[intel.Topic]intel.HoldingData{
 			alice: {
-				target: {
+				target: {"": {
 					Payload:   []byte("data"),
 					Channel:   "", // Empty channel
 					Confirmed: 1,
-				},
+				}},
 			},
 		},
 	}
@@ -1516,14 +1518,14 @@ func (s *PersistenceSuite) TestR9EmptyChannelInCurrentVia() {
 		sight  = intel.Channel("sight")
 	)
 	data := intel.Data{
-		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
+		Holdings: map[core.EntityID]map[intel.Subject]map[intel.Topic]intel.HoldingData{
 			alice: {
-				target: {
+				target: {"": {
 					Payload:    []byte("data"),
 					Channel:    sight,
 					Confirmed:  1,
 					CurrentVia: []intel.Channel{""}, // Empty channel
-				},
+				}},
 			},
 		},
 	}
@@ -1535,7 +1537,7 @@ func (s *PersistenceSuite) TestR9EmptyChannelInCurrentVia() {
 func (s *PersistenceSuite) TestR9NilInnerMap() {
 	const alice = core.EntityID("alice")
 	data := intel.Data{
-		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
+		Holdings: map[core.EntityID]map[intel.Subject]map[intel.Topic]intel.HoldingData{
 			alice: nil, // Nil inner map
 		},
 	}
@@ -1547,7 +1549,7 @@ func (s *PersistenceSuite) TestR9NilInnerMap() {
 func (s *PersistenceSuite) TestR9EmptyInnerMap() {
 	const alice = core.EntityID("alice")
 	data := intel.Data{
-		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
+		Holdings: map[core.EntityID]map[intel.Subject]map[intel.Topic]intel.HoldingData{
 			alice: {}, // Empty non-nil map
 		},
 	}
@@ -1562,13 +1564,13 @@ func (s *PersistenceSuite) TestNilPayloadLegal() {
 		target = intel.Subject("target")
 	)
 	data := intel.Data{
-		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
+		Holdings: map[core.EntityID]map[intel.Subject]map[intel.Topic]intel.HoldingData{
 			alice: {
-				target: {
+				target: {"": {
 					Payload:   nil, // Nil payload is legal
 					Channel:   "sight",
 					Confirmed: 1,
-				},
+				}},
 			},
 		},
 	}
@@ -1588,13 +1590,13 @@ func (s *PersistenceSuite) TestNilPayloadRoundTrip() {
 		target = intel.Subject("target")
 	)
 	data := intel.Data{
-		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
+		Holdings: map[core.EntityID]map[intel.Subject]map[intel.Topic]intel.HoldingData{
 			alice: {
-				target: {
+				target: {"": {
 					Payload:   nil, // Nil payload
 					Channel:   "sight",
 					Confirmed: 1,
-				},
+				}},
 			},
 		},
 	}
@@ -1609,8 +1611,8 @@ func (s *PersistenceSuite) TestNilPayloadRoundTrip() {
 	data3 := loaded2.ToData()
 
 	// Verify both Data instances have nil payload
-	s.Nil(data2.Holdings[alice][target].Payload)
-	s.Nil(data3.Holdings[alice][target].Payload)
+	s.Nil(data2.Holdings[alice][target][""].Payload)
+	s.Nil(data3.Holdings[alice][target][""].Payload)
 }
 
 // TestObservedAndConfirmedSurviveRoundTrip tests that both stamps survive
@@ -1633,8 +1635,8 @@ func (s *PersistenceSuite) TestObservedAndConfirmedSurviveRoundTrip() {
 	s.Require().NoError(err)
 
 	data := s.intel.ToData()
-	s.Equal(uint64(10), data.Holdings[obs][subject].Observed)
-	s.Equal(uint64(30), data.Holdings[obs][subject].Confirmed)
+	s.Equal(uint64(10), data.Holdings[obs][subject][""].Observed)
+	s.Equal(uint64(30), data.Holdings[obs][subject][""].Confirmed)
 
 	loaded, err := intel.LoadIntel(data)
 	s.Require().NoError(err)
@@ -1655,14 +1657,14 @@ func (s *PersistenceSuite) TestLoadRejectsConfirmedBeforeObserved() {
 		sight  = intel.Channel("sight")
 	)
 	data := intel.Data{
-		Holdings: map[core.EntityID]map[intel.Subject]intel.HoldingData{
+		Holdings: map[core.EntityID]map[intel.Subject]map[intel.Topic]intel.HoldingData{
 			alice: {
-				target: {
+				target: {"": {
 					Payload:   []byte("data"),
 					Channel:   sight,
 					Observed:  10,
 					Confirmed: 5, // before Observed: impossible, must be rejected
-				},
+				}},
 			},
 		},
 	}

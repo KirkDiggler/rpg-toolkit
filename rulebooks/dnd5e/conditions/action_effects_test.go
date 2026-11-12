@@ -25,16 +25,16 @@ type actionEffectsSuite struct{ suite.Suite }
 
 func TestActionEffectsSuite(t *testing.T) { suite.Run(t, new(actionEffectsSuite)) }
 
-func (s *actionEffectsSuite) blessed(member, source string) *BlessedCondition {
-	condition, err := NewBlessedCondition(NewBlessedConditionInput{
+func (s *actionEffectsSuite) blessed(member, source string) *LinkedCondition {
+	condition, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Blessed(),
 		MemberID: member, SourceID: source, SourceRef: refs.Spells.Bless(),
 	})
 	s.Require().NoError(err)
 	return condition
 }
 
-func (s *actionEffectsSuite) baned(member, source string) *BanedCondition {
-	condition, err := NewBanedCondition(NewBanedConditionInput{
+func (s *actionEffectsSuite) baned(member, source string) *LinkedCondition {
+	condition, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Baned(),
 		MemberID: member, SourceID: source, SourceRef: refs.Spells.Bane(),
 	})
 	s.Require().NoError(err)
@@ -92,12 +92,14 @@ func (s *actionEffectsSuite) TestSecondBlessDoesNotApplyWithReason() {
 	effects := s.assess(rogueFrame(false), first, second)
 
 	s.Require().Len(effects, 2)
-	s.Equal(refs.Conditions.Blessed().String()+"@cleric-a", effects[0].ID)
+	s.NotEmpty(effects[0].ID)
+	s.Equal(refs.Conditions.Blessed().String(), effects[0].Source.Ref.String())
 	s.Equal(contributions.StateApplies, effects[0].State)
 	s.Equal("+1d4 to the attack roll", effects[0].Benefit)
 	s.Equal("cleric-a", effects[0].Source.SourceID)
 
-	s.Equal(refs.Conditions.Blessed().String()+"@cleric-b", effects[1].ID)
+	s.NotEqual(effects[0].ID, effects[1].ID)
+	s.Equal("cleric-b", effects[1].Source.SourceID)
 	s.Equal(contributions.StateDoesNotApply, effects[1].State)
 	s.Equal("Another Bless already adds to this roll", effects[1].Reason)
 	s.Empty(effects[1].Benefit)
@@ -129,29 +131,20 @@ func (s *actionEffectsSuite) TestSelectedRollContributionsMatchAssessedApplies()
 	s.Require().NoError(err)
 
 	effects := s.assess(frame, held...)
-	var assessed []contributions.DiceContribution
-	for _, condition := range held {
-		provider, ok := condition.(dnd5eEvents.RollContributionProvider)
-		if !ok {
-			continue
-		}
-		s.Require().Implements((*contributions.ActionAssessor)(nil), provider)
-		source := ""
-		if addressed, ok := condition.(dnd5eEvents.ConditionAddressProvider); ok {
-			source = addressed.ConditionAddress().SourceID
-		}
-		for _, effect := range effects {
-			if effect.State != contributions.StateApplies || effect.Source.Ref.String() != condition.Ref().String() || effect.Source.SourceID != source {
-				continue
-			}
-			out, err := condition.(contributions.ActionAssessor).AssessAction(&contributions.AssessActionInput{Frame: frame})
-			s.Require().NoError(err)
-			assessed = append(assessed, out.Answer.Roll...)
+	var assessedSources, executedSources []string
+	for _, effect := range effects {
+		if effect.RollGroup != "" && effect.State == contributions.StateApplies {
+			assessedSources = append(assessedSources, effect.Source.SourceID)
 		}
 	}
-
+	for _, contribution := range selected.Contributions {
+		executedSources = append(executedSources, contribution.Source.SourceID)
+	}
+	s.Equal([]string{"cleric-a", "cultist-a"}, assessedSources)
+	s.Equal([]string{"cleric-a", "cultist-a"}, executedSources)
 	s.Require().Len(selected.Contributions, 2)
-	s.Equal(selected.Contributions, assessed)
+	s.False(selected.Contributions[0].Subtract)
+	s.True(selected.Contributions[1].Subtract)
 }
 
 func (s *actionEffectsSuite) TestInspiredAnswersLaterChoiceOnHoldersAttack() {
@@ -178,7 +171,8 @@ func (s *actionEffectsSuite) TestParticipationIsTheDescriptors() {
 	s.Require().Len(effects, 2)
 	s.Equal(refs.Conditions.Inspired().String(), effects[0].ID)
 	s.Equal(contributions.LaterChoice, effects[0].Participation, "Inspired is offered later")
-	s.Equal(refs.Conditions.Blessed().String()+"@cleric", effects[1].ID)
+	s.NotEmpty(effects[1].ID)
+	s.Equal("cleric", effects[1].Source.SourceID)
 	s.Equal(contributions.ContributesNow, effects[1].Participation, "Blessed joins the roll now")
 }
 
@@ -229,16 +223,16 @@ func (s *actionEffectsSuite) TestInspiredOfferHandlerFailsOnUnrecognisedRollKind
 func (s *actionEffectsSuite) TestBlessAndBaneDoNotApplyToAnotherMembersAttack() {
 	frame := rogueFrame(false)
 	frame.Actor = "fighter"
-	for name, condition := range map[string]contributions.ActionAssessor{
+	for name, condition := range map[string]contributions.ActionEffectsAssessor{
 		"Bless": s.blessed("rogue", "cleric"),
 		"Bane":  s.baned("rogue", "cultist"),
 	} {
-		out, err := condition.AssessAction(&contributions.AssessActionInput{Frame: frame})
+		out, err := condition.AssessActionEffects(&contributions.AssessActionInput{Frame: frame})
 		s.Require().NoError(err, name)
-		s.Equal(contributions.DoesNotApply, out.Answer.Decision.Applicability, name)
-		s.Equal(name+" affects only its recipient's rolls", out.Answer.Decision.Reason)
-		s.Empty(out.Answer.Benefit, name)
-		s.Empty(out.Answer.Roll, name)
+		s.Require().Len(out.Effects, 1)
+		s.Equal(contributions.StateDoesNotApply, out.Effects[0].State, name)
+		s.Contains(out.Effects[0].Reason, "recipient")
+		s.Empty(out.Effects[0].Benefit, name)
 	}
 
 	effects := s.assess(frame, s.blessed("rogue", "cleric"))

@@ -95,10 +95,10 @@ func (s *OneConditionPerIdentitySuite) TestASecondHelpReplacesTheFirst() {
 }
 
 func (s *OneConditionPerIdentitySuite) TestDifferentSourcesAreDifferentIdentities() {
-	a, err := conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{
+	a, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Blessed(),
 		MemberID: s.char.GetID(), SourceID: "cleric-a", SourceRef: refs.Spells.Bless()})
 	s.Require().NoError(err)
-	b, err := conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{
+	b, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Blessed(),
 		MemberID: s.char.GetID(), SourceID: "cleric-b", SourceRef: refs.Spells.Bless()})
 	s.Require().NoError(err)
 

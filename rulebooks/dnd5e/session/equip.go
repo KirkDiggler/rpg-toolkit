@@ -202,7 +202,7 @@ func (m *Manager) equipUnseated(
 func (m *Manager) equipSeated(
 	ctx context.Context, session, id string, slot character.InventorySlot, item string,
 ) (*EquipOutput, error) {
-	scope, err := m.openForChange(ctx, "equip", session)
+	scope, err := m.openForChangeBy(ctx, "equip", session, id)
 	if err != nil {
 		return nil, err
 	}

@@ -97,6 +97,9 @@ const (
 // Benefit is empty unless the state is StateApplies. Rows never grant or
 // refuse an action and are never folded into a total.
 type Effect struct {
+	// RollGroup is provider-owned selection metadata for a roll-modifier row.
+	// The root selector applies it; clients never reconstruct this policy.
+	RollGroup     string
 	ID            string
 	Source        Source
 	Description   string

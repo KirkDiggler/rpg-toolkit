@@ -281,7 +281,7 @@ func (s *SurvivorsSuite) heldPersuade(enc *encounter.Encounter, observer core.En
 }
 
 // ids is the ids of a list of lines, in order.
-func (s *SurvivorsSuite) ids(options []encounter.Option) []string {
+func (s *SurvivorsSuite) ids(options []encounter.OfferedOption) []string {
 	out := make([]string, 0, len(options))
 	for _, o := range options {
 		out = append(out, o.ID)

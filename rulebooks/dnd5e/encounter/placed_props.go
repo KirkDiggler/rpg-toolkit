@@ -632,11 +632,18 @@ func (f *field) attachDoorFootprints(doors []*doorRecord) {
 	// New door content, new openings, built here and never written after
 	// ([field.doorOpenings]): a fresh map, so a shallow copy attaching its
 	// own doors never touches the map the field it was copied from holds.
-	openings := make(map[DoorID][]DoorEdge, len(doors))
 	for _, d := range doors {
 		if d.placement != nil {
 			f.doorFootprints = append(f.doorFootprints, d)
 		}
+	}
+	// A SITE'S OPENINGS ARE KEPT (rpg-project#879 S5): measured once from
+	// the site's door geometry, which these records were checked to equal.
+	if f.openingsAreSite {
+		return
+	}
+	openings := make(map[DoorID][]DoorEdge, len(doors))
+	for _, d := range doors {
 		openings[d.id] = f.measureDoorOpening(d)
 	}
 	f.doorOpenings = openings

@@ -239,7 +239,7 @@ func (s *CastActionTestSuite) TestHealingWordRejectsUnseenOrOutOfRangeBeforePaym
 			case "out of range":
 				definition.Cast.RangeFeet = 5
 			case "wall":
-				world.Field.Walls = append(world.Field.Walls, encounter.BoundaryData{From: encounter.PositionData{X: 2, Y: 1}, To: encounter.PositionData{X: 3, Y: 1}, BlocksMovement: true, BlocksLineOfSight: true})
+				withWall(s.T(), &world, encounter.BoundaryData{From: encounter.PositionData{X: 2, Y: 1}, To: encounter.PositionData{X: 3, Y: 1}, BlocksMovement: true, BlocksLineOfSight: true})
 			case "fog-hidden target":
 				world.SightAreas = []encounter.SightAreaData{{
 					ID: "fog-1", SourceID: "fog-1", Name: "Fog Cloud",

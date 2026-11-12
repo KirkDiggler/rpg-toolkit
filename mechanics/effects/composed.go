@@ -29,18 +29,19 @@ type Row struct {
 	Kind    KindName        // the output's kind
 	Verdict machine.Verdict // Applies, DoesNotApply, or Depends when the frame cannot answer
 	Reason  string          // the guard leaf that decided ("always" for no guard)
-	Amount  int             // the output's amount when it applies; zero otherwise
+	Amount  *AmountResult   // an answered amount; nil when absent or not applicable
 }
 
 // Bound is one output bound to its condition: what a kind's Attach and
 // Assess are handed.
 type Bound struct {
-	id     string
-	out    Output
-	host   Host
-	when   *machine.CompiledGuard
-	amount AmountFn
-	m      *machine.Machine
+	id       string
+	out      Output
+	host     Host
+	when     *machine.CompiledGuard
+	amount   AmountFn
+	m        *machine.Machine
+	reactive func() bool
 }
 
 // ID returns an id unique to this output within its condition (ref, state
@@ -65,16 +66,28 @@ func (b *Bound) Host() Host {
 // guard over an unknown fact answers machine.Depends.
 func (b *Bound) Answer(frame any) (machine.Verdict, string) { return b.m.Answer(b.when, frame) }
 
+// CanReact reports whether this currently attached output may request new work.
+// It is false for stale-state handles and during application end reporting, even
+// while Answer/Amount still describe contributions for the event being resolved.
+func (b *Bound) CanReact() bool { return b.reactive != nil && b.reactive() }
+
 // HasAmount reports whether the output carries an amount.
 func (b *Bound) HasAmount() bool { return b.out.Amount != nil }
 
-// Amount computes the output's amount from frame. It returns ErrNoAmount for
-// an output without one, or the amount function's error.
-func (b *Bound) Amount(frame any) (int, error) {
+// Amount returns an owned, validated scalar or unresolved dice description. It
+// returns ErrNoAmount for an output without one and propagates evaluator errors.
+func (b *Bound) Amount(frame any) (AmountResult, error) {
 	if b.out.Amount == nil {
-		return 0, ErrNoAmount
+		return AmountResult{}, ErrNoAmount
 	}
-	return b.amount(frame, *b.out.Amount)
+	result, err := b.amount(frame, *b.out.Amount)
+	if err != nil {
+		return AmountResult{}, err
+	}
+	if err := result.Validate(); err != nil {
+		return AmountResult{}, err
+	}
+	return result.owned(), nil
 }
 
 // Composed is the condition built from a recipe: a machine plus the current
@@ -89,6 +102,10 @@ type Composed struct {
 	outputs  map[string][]*Bound
 	attached []Detach
 	bus      events.EventBus
+	// endState is an observation cursor during End-before-detach, not saved state.
+	endState *string
+	// reactionsAllowed is optional assembly-owned dispatch permission, not state.
+	reactionsAllowed func() bool
 }
 
 type decoded struct {
@@ -101,6 +118,9 @@ type decoded struct {
 // ComposeInput names the recipe, consumer vocabulary and instance data used to
 // construct a composed condition. It contains no bus: Apply owns attachment.
 type ComposeInput struct {
+	// InstanceKey namespaces output IDs for linked/local assemblies. Empty keeps
+	// the standalone ref/state/index identity; it is not source provenance.
+	InstanceKey string
 	// Recipe declares the states, outputs, transitions and bag defaults.
 	Recipe machine.Recipe
 	// MachineVocabulary supplies the facts and beats used by the recipe.
@@ -121,7 +141,7 @@ type ComposeInput struct {
 // Compose validates the recipe and its outputs against the supplied vocabularies,
 // fills the instance bag from Parameters, and returns a condition not yet applied.
 // It refuses, wrapping ErrInvalidOutput or the machine's errors: an output that
-// does not decode; an unknown kind or one missing Attach or Assess; parameters
+// does not decode; an unknown kind, missing Assess or invalid execution/Attach mode; parameters
 // the kind's Check refuses; an invalid or unknown amount; a guard over an unknown
 // fact or undeclared flag; any machine.Validate refusal; a parameter naming no
 // bag key; and a state the recipe does not declare.
@@ -153,10 +173,18 @@ func Compose(input ComposeInput) (*Composed, error) {
 		if err != nil {
 			return nil, fmt.Errorf("state %q output %d: %w", d.state, d.index, err)
 		}
+		id := fmt.Sprintf("%s#%s.%d", input.Recipe.Ref.String(), d.state, d.index)
+		if input.InstanceKey != "" {
+			id = fmt.Sprintf("%d:%s/%s", len(input.InstanceKey), input.InstanceKey, id)
+		}
 		c.outputs[d.state] = append(c.outputs[d.state], &Bound{
-			id:   fmt.Sprintf("%s#%s.%d", input.Recipe.Ref.String(), d.state, d.index),
+			id:   id,
 			out:  d.out,
 			host: c.host, when: when, amount: d.fn, m: m,
+			reactive: func() bool {
+				return m.IsApplied() && m.State() == d.state &&
+					(c.reactionsAllowed == nil || c.reactionsAllowed())
+			},
 		})
 	}
 	m.OnTransition(c.onTransition)
@@ -180,8 +208,20 @@ func decodeOutputs(r machine.Recipe, ov OutputVocabulary) ([]decoded, []string, 
 				return nil, nil, refuse(state, i, "%v", err)
 			}
 			spec, ok := ov.Kinds[o.Kind]
-			if !ok || spec.Attach == nil || spec.Assess == nil {
+			if !ok || spec.Assess == nil {
 				return nil, nil, refuse(state, i, "kind %q is not in the output vocabulary", o.Kind)
+			}
+			switch spec.Execution {
+			case KindSubscribed:
+				if spec.Attach == nil {
+					return nil, nil, refuse(state, i, "subscribed kind %q requires Attach", o.Kind)
+				}
+			case KindQuery:
+				if spec.Attach != nil {
+					return nil, nil, refuse(state, i, "query kind %q forbids Attach", o.Kind)
+				}
+			default:
+				return nil, nil, refuse(state, i, "kind %q has unknown execution %q", o.Kind, spec.Execution)
 			}
 			if spec.Check != nil {
 				if err := spec.Check(o); err != nil {
@@ -233,6 +273,7 @@ func (c *Composed) Apply(ctx context.Context, bus events.EventBus) error {
 // the joined detach errors and is a no-op when not applied.
 func (c *Composed) Remove(ctx context.Context, bus events.EventBus) error {
 	err := c.detach(ctx)
+	c.endState = nil
 	c.bus = nil
 	return errors.Join(err, c.m.Remove(ctx, bus))
 }
@@ -248,7 +289,7 @@ func (c *Composed) ToJSON() (jsonv1.RawMessage, error) {
 // frame, one per output in recipe order. A guard that depends is a row with
 // machine.Depends, not an error; a kind's Assess error is returned.
 func (c *Composed) Rows(frame any) ([]Row, error) {
-	outs := c.outputs[c.m.State()]
+	outs := c.CurrentOutputs()
 	rows := make([]Row, 0, len(outs))
 	for _, o := range outs {
 		row, err := c.ov.Kinds[o.Kind()].Assess(frame, o)
@@ -262,7 +303,11 @@ func (c *Composed) Rows(frame any) ([]Row, error) {
 
 func (c *Composed) attach(ctx context.Context, state string) error {
 	for _, o := range c.outputs[state] {
-		d, err := c.ov.Kinds[o.Kind()].Attach(ctx, c.bus, o)
+		spec := c.ov.Kinds[o.Kind()]
+		if spec.Execution == KindQuery {
+			continue
+		}
+		d, err := spec.Attach(ctx, c.bus, o)
 		if err != nil {
 			return fmt.Errorf("attach %s: %w", o.ID(), err)
 		}
@@ -286,6 +331,8 @@ func (c *Composed) detach(ctx context.Context) error {
 // the successful nonterminal state change.
 func (c *Composed) onTransition(ctx context.Context, t machine.Transitioned) error {
 	if c.m.Program().IsTerminal(t.To) {
+		c.endState = &t.From
+		defer func() { c.endState = nil }()
 		var err error
 		if c.ov.End != nil {
 			err = c.ov.End(ctx, c.bus, c.host, t.Reason)

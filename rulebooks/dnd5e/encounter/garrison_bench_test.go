@@ -5,6 +5,7 @@ package encounter_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -91,6 +92,24 @@ func benchGarrisonMove(b *testing.B, listen bool) {
 		}
 	}
 	b.StopTimer()
+	// Read before blobBytes enforces the32-entry save window. These payload
+	// counts expose the capture cost, including first-use symbols amortized
+	// over this run; saved-blob growth alone would hide most diagnostic volume.
+	recorded, err := enc.ReadRecord(&encounter.ReadRecordInput{})
+	if err != nil {
+		b.Fatal(err)
+	}
+	var diagnosticCount, diagnosticBytes, payloadBytes int
+	for _, entry := range recorded.Entries {
+		payloadBytes += len(entry.Payload)
+		if strings.HasPrefix(entry.Tags["tag"], "behavior_") {
+			diagnosticCount++
+			diagnosticBytes += len(entry.Payload)
+		}
+	}
+	b.ReportMetric(float64(diagnosticCount)/float64(b.N), "diagnostic-records/op")
+	b.ReportMetric(float64(diagnosticBytes)/float64(b.N), "diagnostic-payload-bytes/op")
+	b.ReportMetric(float64(payloadBytes)/float64(b.N), "record-payload-bytes/op")
 	b.ReportMetric(float64(opening), "blob-bytes")
 	b.ReportMetric(float64(blobBytes(b, enc)-opening)/float64(b.N), "blob-growth-bytes/op")
 	b.ReportMetric(float64(raiseSteps)/float64(b.N), "raises/op")
@@ -105,6 +124,13 @@ func benchGarrisonMove(b *testing.B, listen bool) {
 // openGarrisonKeep opens the garrison keep [BenchmarkGarrisonMove] paces:
 // with listen, the posts-asleep keep.
 func openGarrisonKeep(tb testing.TB, listen bool) *encounter.Encounter {
+	tb.Helper()
+	return openGarrisonKeepOn(tb, listen, nil)
+}
+
+// openGarrisonKeepOn is [openGarrisonKeep] with its site resolved by sites
+// (nil is the default provider).
+func openGarrisonKeepOn(tb testing.TB, listen bool, sites encounter.SiteProvider) *encounter.Encounter {
 	tb.Helper()
 	key := "keep-garrison-10000"
 	if listen {
@@ -130,32 +156,38 @@ func openGarrisonKeep(tb testing.TB, listen bool) *encounter.Encounter {
 		}
 	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
-		Field:   compiled.Field,
-		Members: members,
-		Endings: append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, compiled.Endings...),
-		Capabilities: encounter.Capabilities{
-			Sight:         &sightList{fallback: 24},
-			Equipment:     encounter.UnobservedEquipment{},
-			Conditions:    encounter.UnobservedEquipment{},
-			Sheets:        walksThirty{},
-			Participation: everyoneStanding{},
-			Initiative:    orderAsGiven{},
-			Driver:        encounter.BehaviorDriver{},
-			Roller:        rollsLowest{},
-			CheckResolver: findsNothing{},
-			Witness:       nobodyPerceives{},
-			Actors: encounter.Actors{
-				Striker:   passStriker{},
-				Mover:     quietMover{},
-				Announcer: quietAnnouncer{},
-			},
-		},
+		Field:        compiled.Field,
+		Sites:        sites,
+		Members:      members,
+		Endings:      append([]encounter.EndingInput{{Key: "withdrawn", Trigger: encounter.TriggerExternal{}}}, compiled.Endings...),
+		Capabilities: garrisonCapabilities(),
 	})
 	if err != nil {
 		tb.Fatalf("open the garrison keep: %v", err)
 	}
 
 	return enc
+}
+
+// garrisonCapabilities is what the garrison keep is built and loaded with.
+func garrisonCapabilities() encounter.Capabilities {
+	return encounter.Capabilities{
+		Sight:         &sightList{fallback: 24},
+		Equipment:     encounter.UnobservedEquipment{},
+		Conditions:    encounter.UnobservedEquipment{},
+		Sheets:        walksThirty{},
+		Participation: everyoneStanding{},
+		Initiative:    orderAsGiven{},
+		Driver:        encounter.BehaviorDriver{},
+		Roller:        rollsLowest{},
+		CheckResolver: findsNothing{},
+		Witness:       nobodyPerceives{},
+		Actors: encounter.Actors{
+			Striker:   passStriker{},
+			Mover:     quietMover{},
+			Announcer: quietAnnouncer{},
+		},
+	}
 }
 
 // worldRound is the world clock's high-water mark: the round the keep has

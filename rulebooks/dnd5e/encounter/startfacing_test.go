@@ -76,9 +76,9 @@ func (s *HoldingsSuite) TestTheStartSurvivesASaveAndLoad() {
 	field.Start = &encounter.FieldStart{At: raiderCell, Facing: "nw"}
 	enc := s.openWithField(field)
 
-	data := enc.ToData()
-	s.Require().NotNil(data.Field.Start, "and it is written into the blob")
-	s.Equal("nw", data.Field.Start.Facing)
+	site := enc.Site().Data()
+	s.Require().NotNil(site.Field.Start, "and it is written into the blob")
+	s.Equal("nw", site.Field.Start.Facing)
 
 	reloaded := s.reload(enc)
 	atlas, err := reloaded.Atlas()
@@ -93,8 +93,8 @@ func (s *HoldingsSuite) TestTheStartSurvivesASaveAndLoad() {
 // load as a field that declares none rather than as one that declares [0,0].
 func (s *HoldingsSuite) TestABlobWithNoStartLoadsWithNone() {
 	enc := s.openWithField(heirloomField())
-	data := enc.ToData()
-	s.Require().Nil(data.Field.Start, "no key at all — the bytes a pre-start blob has")
+	site := enc.Site().Data()
+	s.Require().Nil(site.Field.Start, "no key at all — the bytes a pre-start blob has")
 
 	reloaded := s.reload(enc)
 	atlas, err := reloaded.Atlas()

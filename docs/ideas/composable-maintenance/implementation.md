@@ -16,7 +16,7 @@ This is the case file, not a release claim. [Design](design.md), [plan](plan.md)
 
 ## Authorized release progress
 
-The operator authorized merge-out on [#706](https://github.com/KirkDiggler/rpg-project/issues/706#issuecomment-6808119565). Base catch-up preserved parallel recognition/captain/vouch work; dependency conflicts were resolved without source conflict resolutions. Local gates and fresh current-head CI passed before the toolkit merges below. Each had a final-head MERGE-READY comment review, and each tagged release was checked against its merge commit.
+The operator authorized merge-out on [#706](https://github.com/KirkDiggler/rpg-project/issues/706#issuecomment-6808119565). Base catch-up preserved parallel recognition/captain/vouch work; dependency conflicts were resolved without source conflict resolutions. Local gates and fresh current-head CI passed before each runtime merge below. Each had a final-head MERGE-READY comment review, and each tagged release was checked against its merge commit.
 
 | Unit | Merge | Release |
 |---|---|---|
@@ -25,10 +25,16 @@ The operator authorized merge-out on [#706](https://github.com/KirkDiggler/rpg-p
 | Resolution #2344 | `07094d313c88eb3db42d8dd9549839811a42f6e4` | v0.75.1 |
 | Item examples #2379 | `43df1a5f45a5bb430db9ba3d54a5d65064c216c3` | intentionally untagged |
 | Session #2377 | `270660ae135dd2adcbb01f5a9bd36d4effd77e9c` | v0.185.0 |
+| API #1225 | `c6183e148b1b840037dc93b1453b794887f55cf3` | dev |
+| Web #1410 | `e00205d863b0f98706003d092a19465f66ca622a` | dev |
 
-**Stopped at API adoption:** the final tag graph selects encounter v0.198.0, whose captain/vouch castle differs from API dev's shipped copy. `make test` fails `TestCastleCopiesAgree`; open [API #1227](https://github.com/KirkDiggler/rpg-api/pull/1227) owns that copy. No failing adoption was committed, no guard weakened and no parallel content taken over. The pin-only probe patch/log are retained, and its two files were restored to pushed API `2592ddeb`. Web remains `861b8c54`; both catch-up heads passed CI, but neither is merged. [Stop/handoff receipt](https://github.com/KirkDiggler/rpg-project/issues/706#issuecomment-6809478590).
+**Resolved adoption stop:** the first final tag probe failed `TestCastleCopiesAgree`: encounter v0.198.0 had the captain/vouch castle that API dev did not yet carry. The probe was saved/restored and the content owner notified, without weakening a guard, downgrading or taking over parallel content ([stop receipt](https://github.com/KirkDiggler/rpg-project/issues/706#issuecomment-6809478590)). [API #1227](https://github.com/KirkDiggler/rpg-api/pull/1227) then merged at `eba2475a`; merging dev on top retained its canonical castle. Full `make test`/`make ci-check`, including parity, and final-head CI43130612323/43130612329 passed at `be5daab1` before API #1225 merged.
 
-Resume after the parallel content lands under its own gates: merge dev on top, re-pin, run API gates/current-head CI, then merge API/web and finish this documentation PR. Existing merge authority remains valid. No production release or cleanup occurred; the operator's run and journal #863 are preserved.
+Web also merged dev's separately shipped studio line-grant/topic-wake work (#1412) on top. Full local ci-check passed **799 files / 10325 tests** (six existing skips); CI43131575295 and preview43131575317 passed at `1eb0491c` before its dev merge. No new effect-reader seam or whole-review restart was introduced.
+
+The API's committed graph uses effects v0.5.0, root v0.215.0, resolution v0.75.1 and session v0.185.0, retaining encounter v0.198.0 and generated SDK `876f5202eb86`. No development toolkit pins remain. This is adoption into API/web **dev**, not a production dev→main release.
+
+Journal #863 remains open. The operator's :3042/:8142 stack/run stays on its walked cut, so its served worktrees and supporting branch references are retained; cleanup must not destroy that live consumer. Machine-local receipts are preserved under `/tmp/rpg-maintenance-release-2026-11-12.Rpfwdq`. Finished unserved worktrees can be removed after the ship receipt.
 
 The resolution wait initially guessed a minor version, but its unchanged PR title produced v0.75.1. The tagger succeeded in 14 seconds; matching the merged commit against all module tag refs corrected the wait without a retitle, hand tag or tagger rerun.
 

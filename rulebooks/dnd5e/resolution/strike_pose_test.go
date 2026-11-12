@@ -33,10 +33,7 @@ func inspiredHero(t *testing.T) *character.Data {
 func banedInspiredHero(t *testing.T) *character.Data {
 	t.Helper()
 	hero := inspiredHero(t)
-	bane, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
-		MemberID: heroID, SourceID: "bane-caster", SourceRef: refs.Spells.Bane(),
-	})
-	require.NoError(t, err)
+	bane := fixtureNamed(t, namedFixtureInput{Ref: refs.Conditions.Baned(), Member: heroID, Source: "bane-caster", Origin: refs.Spells.Bane()})
 	stored, err := bane.ToJSON()
 	require.NoError(t, err)
 	hero.Conditions = append([]json.RawMessage{stored}, hero.Conditions...)
@@ -45,30 +42,30 @@ func banedInspiredHero(t *testing.T) *character.Data {
 
 // heroSwings resolves one attack by the hero on the wolf, with the hero's
 // sheet supplied by the caller so a test can choose whether a die is offered.
-func heroSwings(t *testing.T, hero *character.Data, roller dice.Roller) (*Output, error) {
+func heroSwings(t *testing.T, hero *character.Data, roller dice.Roller, others ...Participant) (*Output, error) {
 	t.Helper()
 	machine, err := NewAction(&ActionInput{
 		Definition: validMeleeDefinition(), AttackerID: heroID, TargetID: wolfID, Roller: roller,
 	})
 	require.NoError(t, err)
-	return resolveHeroStrike(t, hero, machine)
+	return resolveHeroStrike(t, hero, machine, others...)
 }
 
-func resolveHeroStrike(t *testing.T, hero *character.Data, machine Machine) (*Output, error) {
+func resolveHeroStrike(t *testing.T, hero *character.Data, machine Machine, others ...Participant) (*Output, error) {
 	t.Helper()
-	return resolveHeroStrikeOn(t, hero, machine, newSurface(events.NewEventBus()))
+	return resolveHeroStrikeOn(t, hero, machine, newSurface(events.NewEventBus()), others...)
 }
 
 func resolveHeroStrikeOn(
-	t *testing.T, hero *character.Data, machine Machine, surf *surface,
+	t *testing.T, hero *character.Data, machine Machine, surf *surface, others ...Participant,
 ) (*Output, error) {
 	t.Helper()
 	return resolveOn(context.Background(), &Input{
 		World: actionWorld(t, 2),
-		Participants: []Participant{
+		Participants: append([]Participant{
 			{Monster: monsters.NewWolf(wolfID).ToData()},
 			{Character: hero},
-		},
+		}, others...),
 		Machine: machine,
 		Capabilities: encounter.Capabilities{
 			Initiative:    orderAsGiven{},
@@ -169,7 +166,8 @@ func TestBaneCalculationIsFrozenAcrossInspirationAnswers(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			posing := &actionRoller{singles: []int{8}, damage: [][]int{{3}}}
-			posed, err := heroSwings(t, banedInspiredHero(t), posing)
+			owner := fixtureOwnerParticipant(t, "bane-caster", refs.Spells.Bane(), dnd5eEvents.ConditionAddress{MemberID: heroID, ConditionRef: refs.Conditions.Baned().String(), SourceID: "bane-caster"})
+			posed, err := heroSwings(t, banedInspiredHero(t), posing, owner)
 			require.NoError(t, err)
 			require.NotNil(t, posed.Posed)
 			require.Equal(t, 2, posing.calls, "one d20 and one Bane d4 before the pose")
@@ -178,7 +176,7 @@ func TestBaneCalculationIsFrozenAcrossInspirationAnswers(t *testing.T) {
 				Pause: *posed.Posed, Answer: tc.answer, Roller: tc.resume,
 			})
 			require.NoError(t, err)
-			out, err := resolveHeroStrike(t, banedInspiredHero(t), machine)
+			out, err := resolveHeroStrike(t, banedInspiredHero(t), machine, owner)
 			require.NoError(t, err)
 			calculation := out.Outcome.(StrikeOutcome).Calculation
 			require.NotNil(t, calculation)

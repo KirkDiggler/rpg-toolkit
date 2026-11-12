@@ -69,7 +69,7 @@ func strictJSON(data json.RawMessage, out any) error {
 }
 
 func composedDescriptor(def compositionDefinition) descriptor {
-	return descriptor{ref: &def.ref, display: def.display, ownAction: answersNow, againstHolder: notBearing, composition: &def,
+	return descriptor{ref: &def.ref, display: def.display, ownAction: answersNow, againstHolder: notBearing, composition: &def, acceptsOrigin: true,
 		create: func(in *CreateFromRefInput) (dndevents.ConditionBehavior, error) {
 			if in.SourceRef != "" {
 				return nil, fmt.Errorf("composed condition requires Origin, not legacy SourceRef")

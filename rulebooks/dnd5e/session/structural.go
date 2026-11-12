@@ -37,15 +37,16 @@ func projectStructuralWall(w encounter.AtlasStructuralWall) AtlasStructuralWall 
 	}
 
 	return AtlasStructuralWall{
-		ID:             string(w.ID),
-		Ref:            w.Ref,
-		From:           FootprintPoint{X: w.From.X, Y: w.From.Y},
-		To:             FootprintPoint{X: w.To.X, Y: w.To.Y},
-		Height:         w.Height,
-		Thickness:      w.Thickness,
-		Elevation:      w.Elevation,
-		FootprintCells: footprint,
-		Openings:       openings,
+		ID:                string(w.ID),
+		Ref:               w.Ref,
+		From:              FootprintPoint{X: w.From.X, Y: w.From.Y},
+		To:                FootprintPoint{X: w.To.X, Y: w.To.Y},
+		Height:            w.Height,
+		Thickness:         w.Thickness,
+		Elevation:         w.Elevation,
+		FootprintCells:    footprint,
+		Openings:          openings,
+		MaterialOverrides: projectMaterialOverrides(w.MaterialOverrides),
 	}
 }
 
@@ -107,7 +108,7 @@ func validStructuralRows(rows structuralRows) bool {
 		return true
 	}
 	for _, w := range rows.Walls {
-		if w.ID == "" || walls[w.ID] || !validOpenings(w.Openings) {
+		if w.ID == "" || walls[w.ID] || !validOpenings(w.Openings) || !validMaterialOverrides(w.MaterialOverrides) {
 			return false
 		}
 		walls[w.ID] = true

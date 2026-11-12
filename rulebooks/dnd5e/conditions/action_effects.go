@@ -46,8 +46,7 @@ func AssessActionEffects(in *AssessActionEffectsInput) (*AssessActionEffectsOutp
 	if err := in.Frame.Validate(); err != nil {
 		return nil, rpgerr.Wrap(err, "assess action effects requires a valid frame")
 	}
-	roll, _ := in.Frame.Action.Roll.Get()
-	groups := newRollGroupSelection(&dnd5eEvents.DescribeRollContributionsInput{Kind: roll})
+	groups := newRollGroupSelection()
 
 	effects := make([]contributions.Effect, 0, len(in.Conditions))
 	ids := make(map[string]struct{}, len(in.Conditions))
@@ -93,6 +92,17 @@ func AssessActionEffects(in *AssessActionEffectsInput) (*AssessActionEffectsOutp
 					return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "duplicate effect row id %q", row.ID)
 				}
 				ids[row.ID] = struct{}{}
+				if row.RollGroup != "" && row.State == contributions.StateApplies {
+					claim, err := groups.claim(&rollClaimInput{Metadata: dnd5eEvents.RollContributionMetadataOutput{Applicable: true, Group: row.RollGroup}, Applies: true, Name: row.Source.Name})
+					if err != nil {
+						return nil, err
+					}
+					if claim.Shadowed {
+						row.State = contributions.StateDoesNotApply
+						row.Reason = "Another " + claim.HeldBy + " already adds to this roll"
+						row.Benefit = ""
+					}
+				}
 				row.Participation = own.participation
 				effects = append(effects, row)
 			}
@@ -122,7 +132,7 @@ func AssessActionEffects(in *AssessActionEffectsInput) (*AssessActionEffectsOutp
 			effect.Reason = unavailableReason
 		case bearingAnswers:
 			if err := answerEffect(&answerEffectInput{
-				Condition: condition, Frame: in.Frame, Groups: groups, Effect: &effect,
+				Condition: condition, Frame: in.Frame, Effect: &effect,
 			}); err != nil {
 				return nil, err
 			}
@@ -138,12 +148,12 @@ func AssessActionEffects(in *AssessActionEffectsInput) (*AssessActionEffectsOutp
 type answerEffectInput struct {
 	Condition dnd5eEvents.ConditionBehavior
 	Frame     contributions.Frame
-	Groups    *rollGroupSelection
 	Effect    *contributions.Effect
 }
 
 // answerEffect asks one answering condition and maps its answer onto the row,
-// applying roll-contribution stacking in persisted order.
+// with participation owned by its descriptor. Composed roll-part selection is
+// handled by the shared group claimant in the plural-row path.
 func answerEffect(in *answerEffectInput) error {
 	ref := in.Condition.Ref().String()
 	assessor, ok := in.Condition.(contributions.ActionAssessor)
@@ -166,28 +176,6 @@ func answerEffect(in *answerEffectInput) error {
 	in.Effect.Reason = answer.Decision.Reason
 	in.Effect.Benefit = answer.Benefit
 
-	provider, contributesToRolls := in.Condition.(dnd5eEvents.RollContributionProvider)
-	if !contributesToRolls {
-		return nil
-	}
-	if answer.Decision.Applicability != contributions.Applies {
-		return nil
-	}
-	if len(answer.Roll) == 0 {
-		return rpgerr.Newf(rpgerr.CodeInternal, "roll contribution %s applies but describes no dice", ref)
-	}
-	claim, err := in.Groups.claim(&rollClaimInput{Provider: provider, Applies: true, Name: answer.Roll[0].Source.Name})
-	if err != nil {
-		return fmt.Errorf("assess %s: %w", ref, err)
-	}
-	if !claim.Applicable {
-		return rpgerr.Newf(rpgerr.CodeInternal, "condition %s applies but its roll contribution metadata does not", ref)
-	}
-	if claim.Shadowed {
-		in.Effect.State = contributions.StateDoesNotApply
-		in.Effect.Reason = "Another " + claim.HeldBy + " already adds to this roll"
-		in.Effect.Benefit = ""
-	}
 	return nil
 }
 

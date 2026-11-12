@@ -113,6 +113,7 @@ func (e *Encounter) Region(id RegionID) (AtlasRegion, error) {
 			Cells:     append([]spatial.Position(nil), e.field.regionCells[r.ID]...),
 			Archetype: r.Archetype,
 			Lighting:  *r.Lighting,
+			Ground:    copyRegionGround(e.field.regionGround[r.ID], nil),
 		}, nil
 	}
 

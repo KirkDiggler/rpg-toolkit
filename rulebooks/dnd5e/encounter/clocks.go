@@ -668,14 +668,41 @@ func (e *Encounter) runIntents(
 		if e.reactAct != "" && kind == ClockWorld {
 			pickVerb, intentAct = "", e.reactAct
 		}
-		if decision.Pick != nil && (j == startJ || len(decision.Pick.Candidates) > 0) {
+		writePick := decision.Pick != nil && (j == startJ || len(decision.Pick.Candidates) > 0)
+		if writePick || selected.trace != nil {
 			if perr := e.inAct(pickVerb, intentAct, func() error {
-				if berr := e.appendPickBeat(activeID, decision.Pick, intentTarget(decision.Intent), selected.instance); berr != nil {
-					return berr
+				if selected.trace != nil {
+					if err := e.describeBehavior(m); err != nil {
+						return err
+					}
 				}
-				// WHAT THE PICK SAID, AFTER THE PICK (rpg-project#569 R6): the
-				// beat is the cause, the voice and the alarm are its effects.
-				return e.answerTime(activeID, decision.Pick.Answer)
+				pickRecord := ""
+				if writePick {
+					var err error
+					// A LINE SAID TO SOMEBODY (rpg-project#923): a reaction's
+					// line answers the member its wake names; nothing else
+					// is said to anyone.
+					var to MemberID
+					if decision.Pick.Answer.Say != "" {
+						to = opportunity.subject
+					}
+					pickRecord, err = e.appendPickBeat(activeID, decision.Pick, pickedFor{target: intentTarget(decision.Intent), to: to}, selected.instance)
+					if err != nil {
+						return err
+					}
+				}
+				traced, err := e.appendBehaviorDecision(&behaviorDecisionRecordInput{member: m, trace: selected.trace, pick: decision.Pick, pickRecord: pickRecord})
+				if err != nil {
+					return err
+				}
+				if selected.work != nil {
+					selected.work.DecisionRecord = traced.ID
+				}
+				// The voice/alarm still follows the actual pick, never a diagnostic.
+				if writePick {
+					return e.answerTime(activeID, decision.Pick.Answer)
+				}
+				return nil
 			}); perr != nil {
 				return turnDeltas, perr
 			}
@@ -686,12 +713,20 @@ func (e *Encounter) runIntents(
 		var (
 			done         bool
 			intentDeltas map[MemberID]*IntelDelta
+			executionAct string
 		)
 		dexecerr := e.inAct(intentVerb(decision.Intent), intentAct, func() error {
+			executionAct = e.CurrentAct()
+			if err := e.appendBehaviorWork(&behaviorWorkRecordInput{member: m, work: selected.work, status: behaviorWorkSelected}); err != nil {
+				return err
+			}
 			var xerr error
 			done, intentDeltas, xerr = e.executeTurnIntent(
 				activeID, m, view, decision.Intent, budget,
 				turnCoords{Round: round, Intent: j, Bound: bound, Clock: kind})
+			if xerr == nil && e.turnPaused() {
+				xerr = e.appendBehaviorWork(&behaviorWorkRecordInput{member: m, work: selected.work, status: behaviorWorkPaused})
+			}
 			return xerr
 		})
 		if dexecerr != nil {
@@ -706,7 +741,7 @@ func (e *Encounter) runIntents(
 			e.pause.turn.behavior = workFromData(workDataFrom(selected.work))
 			return turnDeltas, nil
 		}
-		if err := e.completeBehaviorWork(m, selected.work); err != nil {
+		if err := e.completeBehaviorWork(m, selected.work, executionAct); err != nil {
 			return turnDeltas, err
 		}
 
@@ -744,6 +779,13 @@ func (e *Encounter) runIntents(
 	return turnDeltas, nil
 }
 
+// pickedFor is whom a pick's beat names: the intent's target, and the member
+// its line is spoken to.
+type pickedFor struct {
+	target MemberID
+	to     MemberID
+}
+
 // appendPickBeat writes the roll a [Driver] made on this member's own table —
 // the same [BeatAnswered] a social verdict's answer writes, under the `time`
 // key, so a reader has one beat to learn rather than two.
@@ -754,7 +796,11 @@ func (e *Encounter) runIntents(
 //
 // TARGET IS WHOM THE PICK'S INTENT ACTS ON ([intentTarget]), written on the
 // beat so a reader sees whom `attacker` or `enemy` named (rpg-project#669).
-func (e *Encounter) appendPickBeat(member MemberID, chosen *Pick, target MemberID, instance string) error {
+//
+// TO IS WHOM ITS LINE IS SPOKEN TO (rpg-project#923): the mover a `barred`
+// or `approached` reaction answers, written only when the row says
+// something; empty for a `time` pick and every other opportunity.
+func (e *Encounter) appendPickBeat(member MemberID, chosen *Pick, named pickedFor, instance string) (string, error) {
 	at := uint64(e.clock.ToData().HighWater)
 	// THE SYMBOLS FIRST (rpg-project#674): the member's own table for this
 	// key, described before the first pick that indexes it — the table the
@@ -769,24 +815,24 @@ func (e *Encounter) appendPickBeat(member MemberID, chosen *Pick, target MemberI
 			chosen = &qualified
 		}
 		if err := e.describeTable(member, "", chosen.Key, rows, m.Temper, at); err != nil {
-			return fmt.Errorf("pick beat: %w", err)
+			return "", fmt.Errorf("pick beat: %w", err)
 		}
 	}
 
-	payload, err := json.Marshal(answeredBeatBody(answeredBy{creature: member, target: target}, chosen))
+	payload, err := json.Marshal(answeredBeatBody(answeredBy{creature: member, target: named.target, to: named.to}, chosen))
 	if err != nil {
-		return fmt.Errorf("pick beat: %w", err)
+		return "", fmt.Errorf("pick beat: %w", err)
 	}
-	if _, err := e.appendBeat(&record.AppendInput{
+	out, err := e.appendBeat(&record.AppendInput{
 		At:       at,
 		Audience: e.audienceFor(subjectBeat, member),
 		Tags:     map[string]string{"tag": BeatAnswered},
 		Payload:  payload,
-	}); err != nil {
-		return fmt.Errorf("pick beat: %w", err)
+	})
+	if err != nil {
+		return "", fmt.Errorf("pick beat: %w", err)
 	}
-
-	return nil
+	return out.ID, nil
 }
 
 // endDrivenTurn closes one driven member's turn: the clock end, the

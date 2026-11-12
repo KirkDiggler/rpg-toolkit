@@ -64,7 +64,7 @@ func (s *ConcentrationBreakSuite) scene(children []dnd5eEvents.ConditionAddress,
 	bob.Conditions = []json.RawMessage{s.holdingBlob("bob", children)}
 
 	s.sessions, s.encounters = newFakeSessions(), newFakeEncounters()
-	s.characters = newFakeCharacters(armedFighter("alice"), bob)
+	s.characters = newFakeCharacters(armedFighter("alice"), armedFighter("bob"))
 
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: session.DiscardActs{}, Seats: newFakeSeats(), CharacterConfig: newFakeCharacterConfig(),
 		PresentationIDs: testPresentationIDs{},
@@ -80,7 +80,16 @@ func (s *ConcentrationBreakSuite) scene(children []dnd5eEvents.ConditionAddress,
 	// Launch long-rests the party, which ends bob's concentration: the
 	// concentrating sheet is written back after it, as the host's would be
 	// once he cast. The launch's opening beats predate the scene.
-	rewound(s.characters, armedFighter("alice"), bob)
+	alice := armedFighter("alice")
+	for _, address := range children {
+		created, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{Ref: address.ConditionRef, MemberID: address.MemberID, SourceRef: heldSpellRef.String(), Config: json.RawMessage(`{"turn_ends":2}`)})
+		s.Require().NoError(err)
+		raw, err := created.Condition.ToJSON()
+		s.Require().NoError(err)
+		s.Require().Equal("alice", address.MemberID, "this scene's recipient is alice")
+		alice.Conditions = append(alice.Conditions, raw)
+	}
+	rewound(s.characters, alice, bob)
 	// The launch observed bob rested; the table re-looks at him holding the
 	// spell, so the testimony matches the sheet before the swing.
 	_, err = mgr.Recheck(context.Background(), &session.RecheckInput{Session: "sess", Members: []string{"bob"}})
@@ -95,9 +104,7 @@ func (s *ConcentrationBreakSuite) holdingBlob(
 ) json.RawMessage {
 	s.T().Helper()
 
-	holding := conditions.NewConcentratingCondition(
-		member, heldSpellRef.String(), heldSpellName, 10)
-	holding.Children = children
+	holding := fixtureHold(s.T(), holdFixtureInput{Member: member, Source: heldSpellRef.String(), Name: heldSpellName, Turns: 10, Children: children})
 
 	blob, err := holding.ToJSON()
 	s.Require().NoError(err)
@@ -158,7 +165,7 @@ func (s *ConcentrationBreakSuite) saves() []savedBeat {
 // reaches 5 and loses the spell.
 func (s *ConcentrationBreakSuite) TestOneBlowIsOneTrain() {
 	held := []dnd5eEvents.ConditionAddress{{
-		MemberID: "alice", ConditionRef: refs.Conditions.Concentrating().String(),
+		MemberID: "alice", ConditionRef: refs.Conditions.BladeWard().String(),
 	}}
 	s.scene(held, 18, 5, 3)
 
@@ -261,7 +268,7 @@ func (s *ConcentrationBreakSuite) TestTheCheckIsTheRulebooksArithmeticAndNotThis
 // a player watching an effect come off their sheet is owed the effect's name,
 // and the spell that held it is already on the break beat one line above.
 func (s *ConcentrationBreakSuite) TestTheStrippedEffectIsNamedByTheRulebook() {
-	childRef := refs.Conditions.Concentrating().String()
+	childRef := refs.Conditions.BladeWard().String()
 	s.scene([]dnd5eEvents.ConditionAddress{{MemberID: "alice", ConditionRef: childRef}}, 18, 5, 3)
 
 	_, err := s.swing()

@@ -295,23 +295,23 @@ func (m *Manager) Atlas(ctx context.Context, in *AtlasInput) (*Atlas, error) {
 //
 // Returns ErrNilInput for a nil input, ErrInvalidWorld for a nil dungeon or one
 // whose world will not build or load (two bosses, an unknown scenario).
-func (m *Manager) AtlasOf(_ context.Context, in *AtlasOfInput) (*Atlas, error) {
+func (m *Manager) AtlasOf(ctx context.Context, in *AtlasOfInput) (*Atlas, error) {
 	if in == nil {
 		return nil, fmt.Errorf("atlasof: %w", ErrNilInput)
 	}
 	if in.Dungeon == nil {
 		return nil, fmt.Errorf("atlasof: no dungeon: %w", ErrInvalidWorld)
 	}
-	world, err := launchWorld(in.Dungeon)
+	world, _, err := launchWorld(in.Dungeon, m.sites)
 	if err != nil {
 		return nil, fmt.Errorf("atlasof: %w", err)
 	}
-	enc, err := loadEncounter(&encounter.LoadEncounterInput{
+	enc, err := m.loadOnSite(ctx, &encounter.LoadEncounterInput{
 		Data:         *world,
 		Capabilities: encounter.RefusingCapabilities(),
 	})
 	if err != nil {
-		return nil, fmt.Errorf("atlasof: %w: %v", ErrInvalidWorld, err)
+		return nil, fmt.Errorf("atlasof: %w", err)
 	}
 	atlas, err := enc.Atlas()
 	if err != nil {
@@ -676,18 +676,13 @@ func (m *Manager) loadGivenWorld(
 	} else {
 		capabilities = m.readCapabilities(standing, driver)
 	}
-	enc, err := loadEncounter(&encounter.LoadEncounterInput{
+	// THE SITE, BY HASH, and the error already ours ([Manager.loadOnSite]).
+	enc, err := m.loadOnSite(ctx, &encounter.LoadEncounterInput{
 		Data:         *world,
 		Capabilities: capabilities,
 	})
 	if err != nil {
-		// The reason is kept as TEXT, not as a chain. A blob this seam cannot
-		// reconstitute fails several modules deep — the composition's own
-		// validation, or a leaf's (clock, intel, record) underneath it — and
-		// every one of those is a module we intend to keep replaceable. %v
-		// hands whoever debugs it the whole account and hands a host nothing to
-		// match on but ours (S2).
-		return nil, 0, standingSeam{}, fmt.Errorf("%q: %w: %v", encID, ErrInvalidWorld, err)
+		return nil, 0, standingSeam{}, fmt.Errorf("%q: %w", encID, err)
 	}
 	standing.live.enc = enc
 	return enc, world.Log.NextSeq, standing, nil
@@ -778,6 +773,13 @@ func translate(err error) error {
 		return fmt.Errorf("%w", ErrBadPosition)
 	case errors.Is(err, encounter.ErrOutOfRange):
 		return fmt.Errorf("%w", ErrOutOfRange)
+	case errors.Is(err, encounter.ErrBadSince):
+		// An appending save asked the encounter for its record from a seq
+		// past the story's end (rpg-project#897 leg c). The session reads
+		// that seq from the stored record, so the store handed back a record
+		// the encounter never wrote: the repository's fault, never the
+		// caller's.
+		return fmt.Errorf("%w: %v", ErrBadRepository, err)
 	case errors.Is(err, encounter.ErrNotDown):
 		// Loot's ordinary refusal: the body is up. Nothing to hide, so this
 		// says what it means (rpg-project#368 §4.2).
@@ -829,6 +831,12 @@ func translate(err error) error {
 		// the composition's — a resumed line whose fact was unlearned — and
 		// answered with the same word the seam's own read gives.
 		return fmt.Errorf("%w", ErrNoOption)
+	case errors.Is(err, encounter.ErrStaleOption):
+		// A reply from an older revision of the conversation (rpg-project#924).
+		return fmt.Errorf("%w", ErrStaleOption)
+	case errors.Is(err, encounter.ErrReserved):
+		// A line pending on somebody's waiting roll (rpg-project#924).
+		return fmt.Errorf("%w", ErrLineReserved)
 	case errors.Is(err, encounter.ErrTurnPaused):
 		// The composition refusing a verb because a driven turn is stopped
 		// mid-walk waiting on an answer. This seam's own word for that is

@@ -40,13 +40,19 @@ type BehaviorData struct {
 	Instances    []BoundBehavior       `json:"instances"`
 	BodyInstance string                `json:"body_instance,omitempty"`
 	Progress     behavior.ComposerData `json:"progress"`
+	// SymbolsRecorded is diagnostic bookkeeping for this immutable definition.
+	SymbolsRecorded bool `json:"symbols_recorded,omitempty"`
 }
 
 // MarshalJSON preserves the canonical recipe encoding when EncounterData is
-// written through encoding/json v1 by a host.
+// written through encoding/json v1 by a host. The encoding is deterministic:
+// a recipe's `states` and `table` maps come out in sorted key order, so an
+// unchanged member writes the same bytes on every save, the promise the
+// snapshot makes and every byte or digest comparison at the storage boundary
+// stands on (rpg-project#897).
 func (d BehaviorData) MarshalJSON() ([]byte, error) {
 	type plain BehaviorData
-	return json.Marshal(plain(d))
+	return json.Marshal(plain(d), json.Deterministic(true))
 }
 
 // UnmarshalJSON restores canonical scalar types in recipes before the loader
@@ -72,10 +78,11 @@ func (BehaviorDriver) Act(MonsterView) (Decision, error) {
 }
 
 type behaviorRuntime struct {
-	definition string
-	input      BehaviorInput
-	composer   *behavior.Composer
-	byID       map[string]int
+	definition      string
+	input           BehaviorInput
+	composer        *behavior.Composer
+	byID            map[string]int
+	symbolsRecorded bool
 }
 
 func newBehaviorRuntime(in *BehaviorInput, progress *behavior.ComposerData) (*behaviorRuntime, error) {
@@ -107,12 +114,12 @@ func newBehaviorRuntime(in *BehaviorInput, progress *behavior.ComposerData) (*be
 		// pick, even conditionally; barred is the explicit targeted exception.
 		for _, name := range slices.Sorted(maps.Keys(spec.Recipe.States)) {
 			for index, transition := range spec.Recipe.States[name].Transitions {
-				if transition.On == beatTime || transition.On == beatTurn || transition.On == beatBarred {
+				if transition.On == beatTime || transition.On == beatTurn || transition.On == beatBarred || transition.On == beatApproached {
 					continue
 				}
 				for _, act := range transition.Do {
 					if act.Pick != "" {
-						return nil, fmt.Errorf("behaviors %q state %q transition %d: selection is only authorized on time, turn or barred, not %q", spec.ID, name, index, transition.On)
+						return nil, fmt.Errorf("behaviors %q state %q transition %d: selection is only authorized on time, turn, barred or approached, not %q", spec.ID, name, index, transition.On)
 					}
 				}
 			}
@@ -203,7 +210,7 @@ func (b *behaviorRuntime) toData() *BehaviorData {
 	if err := json.Unmarshal(raw, &detached); err != nil {
 		panic(err)
 	}
-	return &BehaviorData{Definition: b.definition, Instances: detached.Instances, BodyInstance: detached.BodyInstance, Progress: b.composer.ToData()}
+	return &BehaviorData{Definition: b.definition, Instances: detached.Instances, BodyInstance: detached.BodyInstance, Progress: b.composer.ToData(), SymbolsRecorded: b.symbolsRecorded}
 }
 
 func (e *Encounter) useBehaviors(m *memberRecord, in *BehaviorInput, data *BehaviorData, blocking []string) error {
@@ -222,6 +229,9 @@ func (e *Encounter) useBehaviors(m *memberRecord, in *BehaviorInput, data *Behav
 	if err := validateBlockingStates(b.bodyRecipe(), blocking); err != nil {
 		return fmt.Errorf("member %q: %w: %w", m.ID, ErrBadMember, err)
 	}
+	if data != nil {
+		b.symbolsRecorded = data.SymbolsRecorded
+	}
 	m.behaviors = b
 	m.BlockingStates = slices.Clone(blocking)
 	return nil
@@ -231,12 +241,19 @@ type behaviorOpportunity struct {
 	on    machine.Beat
 	event any
 	now   uint64
+
+	// subject is the member a targeted reaction answers (rpg-project#923):
+	// the mover who bumped ([beatBarred]) or was hailed ([beatApproached]).
+	// A line picked on it is spoken TO them ([answeredBy.to]). Empty for
+	// time, turn and every other opportunity.
+	subject MemberID
 }
 
 type selectedBehavior struct {
 	decision Decision
 	instance string
 	work     *BehaviorWork
+	trace    *behaviorDecisionTrace
 }
 
 func (e *Encounter) selectDecision(m *memberRecord, view MonsterView, opportunity behaviorOpportunity) (selectedBehavior, error) {
@@ -244,8 +261,13 @@ func (e *Encounter) selectDecision(m *memberRecord, view MonsterView, opportunit
 	if err != nil {
 		return selectedBehavior{}, err
 	}
+	tracing := m.behaviors != nil && len(m.behaviors.input.Instances) > 0
 	if _, delegated := d.Intent.(Delegated); !delegated {
-		return selectedBehavior{decision: d}, nil
+		out := selectedBehavior{decision: d}
+		if tracing {
+			out.trace = &behaviorDecisionTrace{on: opportunity.on, now: opportunity.now, operation: behaviorTraceDriver}
+		}
+		return out, nil
 	}
 	if d.Pick != nil {
 		return selectedBehavior{}, fmt.Errorf("delegation with an already-selected pick: %w", ErrBadIntent)
@@ -254,7 +276,7 @@ func (e *Encounter) selectDecision(m *memberRecord, view MonsterView, opportunit
 	env.event = opportunity.event
 	chosen, err := m.behaviors.composer.Decide(context.Background(), &behavior.DecideInput{
 		On: opportunity.on, Event: opportunity.event, Env: env, Now: opportunity.now,
-		Facts: factsFromView(view), Temper: view.Temper, Die: e.roller,
+		Facts: factsFromView(view), Temper: view.Temper, Die: e.roller, Trace: tracing,
 	})
 	if err != nil {
 		if errors.Is(err, behavior.ErrNoDie) {
@@ -268,8 +290,12 @@ func (e *Encounter) selectDecision(m *memberRecord, view MonsterView, opportunit
 	if err := e.behaviorStepped(m, chosen.Steps); err != nil {
 		return selectedBehavior{}, err
 	}
+	var trace *behaviorDecisionTrace
+	if tracing {
+		trace = &behaviorDecisionTrace{on: opportunity.on, now: opportunity.now, operation: behaviorTraceDecide, outcomes: chosen.Outcomes}
+	}
 	if chosen.Pick == nil {
-		return selectedBehavior{decision: Decision{Intent: Pass{}}}, nil
+		return selectedBehavior{decision: Decision{Intent: Pass{}}, trace: trace}, nil
 	}
 	translated, err := IntentForAnswer(&IntentForAnswerInput{View: view, Answer: chosen.Pick.Answer})
 	if err != nil {
@@ -279,7 +305,7 @@ func (e *Encounter) selectDecision(m *memberRecord, view MonsterView, opportunit
 	if err != nil {
 		return selectedBehavior{}, err
 	}
-	return selectedBehavior{decision: Decision{Intent: translated.Intent, Pick: chosen.Pick}, instance: chosen.Instance, work: work.Work}, nil
+	return selectedBehavior{decision: Decision{Intent: translated.Intent, Pick: chosen.Pick}, instance: chosen.Instance, work: work.Work, trace: trace}, nil
 }
 
 func (e *Encounter) behaviorStepped(m *memberRecord, steps []behavior.InstanceStep) error {

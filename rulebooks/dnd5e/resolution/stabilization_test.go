@@ -59,7 +59,7 @@ func (s *CastActionTestSuite) TestStabilizationDeliveryAndRefusal() {
 				}
 			}
 			if tc.wall {
-				world.Field.Walls = append(world.Field.Walls, encounter.BoundaryData{From: encounter.PositionData{X: 2, Y: 1}, To: encounter.PositionData{X: 3, Y: 1}, BlocksMovement: true})
+				withWall(s.T(), &world, encounter.BoundaryData{From: encounter.PositionData{X: 2, Y: 1}, To: encounter.PositionData{X: 3, Y: 1}, BlocksMovement: true})
 			}
 			participants := []Participant{{Character: caster}, {Monster: f.wolfData()}}
 			if !tc.missing {
@@ -109,7 +109,7 @@ func (s *CastActionTestSuite) TestStabilizationDeliveryAndRefusal() {
 			s.Zero(paid.ActionEconomy.ActionsRemaining)
 			s.Equal(2, paid.Resources[resources.SpellSlotLevel1].Current)
 			s.Require().ElementsMatch([]string{concentrating}, storedRefs(s.T(), paid.Conditions))
-			s.JSONEq(string(caster.Conditions[0]), string(conditionWithRefOrNil(paid.Conditions, refs.Conditions.Concentrating())))
+			s.JSONEq(string(caster.Conditions[0]), string(conditionWithRefOrNil(paid.Conditions, refs.Conditions.LinkedEffects())))
 			encoded, err := json.Marshal(f.sheet(out, heroID))
 			s.Require().NoError(err)
 			var stored character.Data

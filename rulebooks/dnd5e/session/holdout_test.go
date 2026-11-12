@@ -707,13 +707,14 @@ func (s *HoldOutSessionSuite) TestTheStanceSurvivesSaveAndLoadAsAFoldNotAField()
 	s.Run("the declaration is untouched and no stance is written", func() {
 		stored, ok := s.encounters.byID[campWorldID]
 		s.Require().True(ok)
-		s.Require().Len(stored.Field.Dispositions, 1)
-		s.Equal(string(encounter.StanceHostile), stored.Field.Dispositions[0].Stance)
+		field := session.SiteFieldForTest(s.T(), *stored)
+		s.Require().Len(field.Dispositions, 1)
+		s.Equal(string(encounter.StanceHostile), field.Dispositions[0].Stance)
 		structure, err := json.Marshal(struct {
 			Field   encounter.FieldData
 			Members []encounter.MemberData
 			Journal *encounter.JournalData
-		}{stored.Field, stored.Members, stored.Journal})
+		}{field, stored.Members, stored.Journal})
 		s.Require().NoError(err)
 		// SCOPED TO A FLIP A MIND CAUSED, since rpg-project#493. The stance
 		// is still derived and still never a field — that has not moved, and

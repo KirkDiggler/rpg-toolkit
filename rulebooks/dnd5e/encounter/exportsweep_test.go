@@ -5,6 +5,7 @@ package encounter
 
 import (
 	"fmt"
+	"math"
 	"math/rand/v2"
 
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -144,10 +145,34 @@ func (e *Encounter) ExportedPlacedReachAgrees(lanes, span int, seed int64) (int,
 		}
 		return nil
 	}
+	// A lane's far end is drawn uniformly from the hex disk of radius span
+	// around its start — the cells [Encounter.cellsWithin] lists, floor or
+	// not — by rejection from the square of side 4·span+1 that holds it.
+	// Listing the disk per lane walked its rings, which was nearly all this
+	// check cost (rpg-project#909). The square holding the disk is checked
+	// here, once, so the draw is the list's.
+	if len(f.cells) > 0 {
+		from := f.cells[0]
+		for _, cell := range e.cellsWithin(from, span) {
+			if math.Abs(cell.X-from.X) > float64(2*span) || math.Abs(cell.Y-from.Y) > float64(2*span) {
+				return 0, fmt.Errorf("the disk around %v reaches %v, outside the square lanes are drawn from", from, cell)
+			}
+		}
+	}
+	laneEnd := func(from spatial.Position) spatial.Position {
+		for {
+			to := spatial.Position{
+				X: from.X + float64(rng.IntN(4*span+1)-2*span),
+				Y: from.Y + float64(rng.IntN(4*span+1)-2*span),
+			}
+			if e.Distance(from, to) <= float64(span) {
+				return to
+			}
+		}
+	}
 	for i := 0; i < lanes; i++ {
 		from := f.cells[rng.IntN(len(f.cells))]
-		disk := e.cellsWithin(from, span)
-		to := disk[rng.IntN(len(disk))]
+		to := laneEnd(from)
 		a, b := f.plane.CellCentre(from), f.plane.CellCentre(to)
 		if err := check(a, b); err != nil {
 			return touched, err

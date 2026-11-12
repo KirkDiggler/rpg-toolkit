@@ -274,8 +274,10 @@ type ContestOutcome struct {
 func (ContestOutcome) isOutcome() {}
 
 type preparedCondition struct {
-	declaration combatActions.ConditionApplication
-	behavior    dnd5eEvents.ConditionBehavior
+	applicationID string
+	memberKey     string
+	declaration   combatActions.ConditionApplication
+	behavior      dnd5eEvents.ConditionBehavior
 	// name is how the condition reads in a step log and in a record, read once
 	// from the registry when the condition is prepared.
 	name string
@@ -566,14 +568,23 @@ func publishCondition(
 	// fails and the host reloads persisted data; re-applying the old instance
 	// here would compound the subscribers' partially updated state.
 	err = dnd5eEvents.ConditionAppliedTopic.On(bus).Publish(ctx, dnd5eEvents.ConditionAppliedEvent{
-		Target:    target,
-		Source:    source,
-		Condition: prepared.behavior,
+		Target:        target,
+		Source:        source,
+		Condition:     prepared.behavior,
+		ApplicationID: prepared.applicationID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("apply %s to %q: %w", prepared.declaration.Ref.ID, target.GetID(), err)
 	}
 
+	if prepared.applicationID != "" {
+		if cast.applications == nil {
+			return nil, fmt.Errorf("%w: shared delivery has no application binding", ErrBadStep)
+		}
+		if _, err := cast.applications.FinalizeRecipient(ctx, &conditions.FinalizeRecipientInput{ApplicationID: prepared.applicationID, Key: prepared.memberKey, Delivered: true}); err != nil {
+			return nil, err
+		}
+	}
 	return replaced, nil
 }
 

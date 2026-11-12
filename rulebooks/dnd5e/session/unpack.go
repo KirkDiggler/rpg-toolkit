@@ -98,7 +98,7 @@ func (m *Manager) Unpack(ctx context.Context, in *UnpackInput) (*UnpackOutput, e
 		return nil, fmt.Errorf("unpack: item %q: %w", in.ItemID, ErrNotAPack)
 	}
 
-	scope, err := m.openForChange(ctx, "unpack", in.Session)
+	scope, err := m.openForChangeBy(ctx, "unpack", in.Session, in.Actor)
 	if err != nil {
 		return nil, fmt.Errorf("unpack: %w", err)
 	}

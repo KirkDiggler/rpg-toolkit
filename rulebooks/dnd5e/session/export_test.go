@@ -177,3 +177,19 @@ func CountParticipationAttachesForTest(t testing.TB) func() (assessments, monste
 	t.Cleanup(func() { participationOf = previous })
 	return func() (int, int) { return int(nAssessments.Load()), int(nSheets.Load()) }
 }
+
+// WithSiteWalls, EditSiteForTest and SiteFieldForTest reach a stored world's
+// site, which the checkpoint names by hash (rpg-project#879 S5): see
+// sitehelp_internal_test.go.
+var (
+	WithSiteWalls    = withSiteWalls
+	EditSiteForTest  = editSite
+	SiteFieldForTest = siteField
+)
+
+// OpenActForTest opens an act on a kept copy, so a test can hand the session
+// a copy its Rebind refuses (ErrVerbInFlight).
+func (r *Resident) OpenActForTest(verb string) error {
+	_, err := r.enc.OpenAct(&encounter.OpenActInput{Verb: verb})
+	return err
+}

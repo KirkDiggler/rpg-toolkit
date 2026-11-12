@@ -757,7 +757,7 @@ func (m *Monster) onConditionRemoved(
 	filtered := make([]dnd5eEvents.ConditionBehavior, 0, len(m.conditions))
 	var detachErrs []error
 	for _, condition := range m.conditions {
-		if conditions.ConditionAddressOf(m.id, condition) != event.Address() {
+		if !conditions.ConditionRemovalMatches(conditions.ConditionRemovalMatchesInput{MemberID: m.id, Condition: condition, Event: event}) {
 			filtered = append(filtered, condition)
 			continue
 		}

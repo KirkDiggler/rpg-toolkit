@@ -56,7 +56,9 @@
 // An Amount sets exactly one field: fixed, dice, by_class_level or
 // ability_modifier. The field's name is the AmountName that the vocabulary
 // must hold, and the field's value is that function's parameters. Rage uses
-// by_class_level.
+// by_class_level. Evaluation returns an AmountResult: either a present scalar
+// or unresolved dice, never an implicit roll. ScalarValue refuses a dice result;
+// a row with no answered amount uses nil rather than an invented zero.
 //
 // # OutputVocabulary
 //
@@ -64,8 +66,10 @@
 // parts:
 //
 //   - Kinds maps a KindName to a KindSpec. Check validates the complete Output
-//     at construction, including amount/parameter requirements. Attach subscribes the output to its chain and returns a Detach.
-//     Assess answers the output's information row.
+//     at construction, including amount/parameter requirements. A subscribed kind
+//     requires Attach and returns a Detach. A query-only kind forbids Attach;
+//     the consumer selects its contribution through description instead.
+//     Both kinds require Assess for their information row.
 //   - Amounts maps an AmountName to the function that computes it from a
 //     frame.
 //   - End is called when the machine enters its terminal state.
@@ -81,12 +85,14 @@
 // A Bound is one output bound to its condition. It is what Attach and Assess
 // receive.
 //
-//   - ID is unique per ref, state and index, which makes it fit for a chain
-//     modifier.
+//   - ID names ref, state and index, prefixed by InstanceKey when supplied.
+//     Assemblies can therefore separate equal recipes from different instances.
 //   - Host returns the holder, ref and source with detached ref values.
 //   - Params returns an owned copy of the kind's fields.
 //   - Answer evaluates the output's guard over a frame and the live bag.
-//   - Amount computes the output's amount from a frame.
+//   - Amount returns an owned, validated scalar or unresolved dice description.
+//   - CanReact distinguishes permission to request new work from a contribution
+//     that still answers during End; it is false while unattached or ending.
 //
 // A kind never sees the machine, the recipe or another output.
 //
@@ -120,6 +126,43 @@
 // Verdict is Depends, not an error. So Rage answers four rows (damage,
 // resistance and two advantages) where the hand-written condition answers
 // one.
+//
+// # Local assemblies
+//
+// Assemble binds ordered, independently reacting Composed parts to one holder.
+// Each part has a stable key and explicit EndPart, EndAttachment or EndApplication
+// scope: complete one part, end this recipient attachment, or end the shared
+// application. It
+// supplies no nested lifecycle hooks or instance namespace: the assembly owns
+// both. The same beat can update multiple parts without flattening their rules
+// into one first-match transition list. Application end is reported once while
+// subscribed and query contributions still answer, including pre-terminal
+// outputs. During that report, the assembly gates beat/ tracker dispatch before
+// sibling reactions can mutate state or detach outputs. Then all local parts
+// detach. BeginEnd exposes that local gate to an external lifetime owner without
+// firing another callback. Remove only detaches.
+//
+// AssemblySnapshot stores every part, including locally completed ones.
+// RestoreAssembly refuses missing state and terminal required maintenance, and
+// never reattaches completed local parts. Lifecycle.Changed reports local
+// completion as well as nonterminal changes, so a save cannot revive a part.
+// CurrentOutputs carries part keys and instance-qualified output identities.
+//
+// # Shared lifetime values
+//
+// Lifetime is the neutral value an application coordinator owns. NewLifetime
+// binds a fixed intended list, initially pending, and authorized ender keys.
+// FinalizeMember resolves each entry independently: delivered or no attachment.
+// Pending entries survive snapshots without becoming live members. Finalized
+// entries cannot reopen, including after removal. MemberRemoved reports actual
+// before/after membership, so empty creation is not confused
+// with losing the last member. RequestEnd freezes membership and yields one
+// ordered plan; repeated requests retain the original reason and yield no plan.
+// CompleteEnd follows successful delivery. Nothing here publishes or interprets
+// a key: the rulebook delivers the plan through its own exact-address protocol.
+// Snapshot and returned plans own their slices. RestoreLifetime requires an
+// explicit disjoint pending/live subsets and never revives members from defaults.
+// There is no whole-application delivery seal or extra lifecycle interpreter.
 //
 // # What effects does not know
 //

@@ -4,6 +4,7 @@ Slice [rpg-project#706](https://github.com/KirkDiggler/rpg-project/issues/706) o
 
 ## Shipped
 
+- 2026-11-12 closeout: the checked plan, review/focused-closure receipts, bounded native QA and actual runtime release table are recorded together. Effects/root/resolution/session and item adoption shipped; API/web adopted real tags into dev after the parallel castle-copy blocker was resolved through its owning PR. Journal #863 and the operator's live walk stack remain preserved — [release receipts](../../docs/ideas/composable-maintenance/implementation.md#authorized-release-progress).
 - No runtime delivery claimed: a walkthrough, four-section design and acceptance brief propose the detailed contracts after shape approval — [walkthrough](../../docs/ideas/composable-maintenance/README.md).
 
 ## Decided

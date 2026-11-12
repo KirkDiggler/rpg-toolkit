@@ -334,6 +334,20 @@ type AtlasExit struct {
 	At spatial.Position `json:"at"`
 }
 
+// RegionGround is captured appearance, never a movement or elevation rule.
+// Empty BaseRef retains the existing default; unavailable explicit refs are errors.
+type RegionGround struct {
+	BaseRef string        `json:"baseRef,omitempty"`
+	Paint   []GroundPaint `json:"paint,omitempty"`
+}
+
+// GroundPaint explicitly names an appearance for supplied absolute region cells.
+// Partial discovery carries only the cells permitted by the encounter.
+type GroundPaint struct {
+	Ref   string             `json:"ref"`
+	Cells []spatial.Position `json:"cells"`
+}
+
 // AtlasRegion is one named set of cells with the world facts it carries.
 type AtlasRegion struct {
 	// ID is the region's identifier.
@@ -352,6 +366,9 @@ type AtlasRegion struct {
 
 	// Lighting is the region's light level.
 	Lighting Lighting `json:"lighting"`
+
+	// Ground is absent when no appearance was authored. Paint is limited to Cells.
+	Ground *RegionGround `json:"ground,omitempty"`
 }
 
 // Lighting is an area's light level: the dimmer on top of the archetype.
@@ -718,6 +735,9 @@ type AtlasStructuralWall struct {
 	Height    float64 `json:"height"`
 	Thickness float64 `json:"thickness"`
 	Elevation float64 `json:"elevation"`
+
+	// MaterialOverrides are the same captured choices as the permitted wall.
+	MaterialOverrides []MaterialOverride `json:"material_overrides,omitempty"`
 
 	// FootprintCells is every floor cell the wall's presence footprint
 	// overlaps by positive area, in order along the wall from From to To,
@@ -1794,10 +1814,34 @@ type SpeakOptionRow struct {
 
 	// Available is whether this speaker may pick this line right now,
 	// independent of the declaration's turn and economy gate. PLAIN bool:
-	// false is an answer. Every row listed today is available — a line whose
-	// `requires` the speaker does not meet is not listed at all (R9, the
-	// probe law), and a creature that cannot see the speaker is not a target.
+	// false is an answer. A line whose `requires` the speaker does not meet
+	// is not listed at all (R9, the probe law), and a creature that cannot
+	// see the speaker is not a target, so the one listed line that is not
+	// available is a PENDING one ([SpeakOptionRow.Pending]).
 	Available bool `json:"available"`
+
+	// Interaction is the one interaction this line reads or advances,
+	// verbatim from the composition; empty for a line that touches none
+	// (rpg-project#924).
+	Interaction string `json:"interaction,omitempty"`
+
+	// Revision is [SpeakOptionRow.Interaction]'s revision as the menu was
+	// read. The request brings it back in [SpeakInput.Revision]; a reply at
+	// any other revision is [ErrStaleOption]. Zero, and never read, for a
+	// line that touches no interaction.
+	Revision uint64 `json:"revision,omitempty"`
+
+	// Pending is true while somebody's checked line holds this line's
+	// interaction waiting on their roll (rpg-project#924). A pending line
+	// is listed but not available ([ShortfallLineReserved]); sending it is
+	// [ErrLineReserved]. It is listed only if it would be offered anyway, so
+	// a reservation never reveals a hidden line.
+	Pending bool `json:"pending,omitempty"`
+
+	// PendingOn is who the pending line waits on, named ONLY when this
+	// speaker may be told — they hold it, or they witness the holder.
+	// Empty otherwise, and always empty when Pending is false.
+	PendingOn string `json:"pending_on,omitempty"`
 
 	// Why is present if and only if Available is false — the line's own
 	// reason, never the declaration's.
@@ -1971,6 +2015,14 @@ const (
 	// audience is the first thing missing, and naming the second would answer
 	// a question the player has not reached.
 	ShortfallNoOption ShortfallReason = "no_option"
+
+	// ShortfallLineReserved is one Speak LINE waiting on somebody's roll
+	// (rpg-project#924): it reads or advances a conversation a checked line
+	// is holding while its speaker decides whether to spend a held benefit.
+	// A LINE-level reason, carried on [SpeakOptionRow.Why] beside
+	// [SpeakOptionRow.Pending], never on a declaration. The verb refuses it
+	// as [ErrLineReserved].
+	ShortfallLineReserved ShortfallReason = "line_reserved"
 )
 
 // Currency names which of a turn's budgets a NO_BUDGET shortfall ran out

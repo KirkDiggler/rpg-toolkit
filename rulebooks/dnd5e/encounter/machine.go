@@ -14,6 +14,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/play/clock"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 )
@@ -32,8 +33,8 @@ func machineVocabulary() machine.Vocabulary {
 	return machine.Vocabulary{
 		Beats: map[machine.Beat]machine.BeatSpec{
 			beatTime: {Timed: true, Round: wakeRound}, beatTurn: {Timed: true, Round: wakeRound},
-			beatHeard: scoped, beatDeed: scoped, beatSeen: scoped, beatBarred: scoped,
-			beatFact: unscoped, clockBeat(worldClockName): unscoped, clockBeat(clockFight): unscoped,
+			beatHeard: scoped, beatDeed: scoped, beatSeen: scoped, beatBarred: scoped, beatApproached: scoped,
+			beatFact: unscoped, beatTopic: unscoped, clockBeat(worldClockName): unscoped, clockBeat(clockFight): unscoped,
 		},
 		Facts: map[machine.FactName]machine.FactSpec{
 			factEnemy:    {Kind: machine.KindString, Read: readEnemy},
@@ -73,6 +74,22 @@ func addGuardFacts(facts map[machine.FactName]machine.FactSpec, g *machine.Guard
 				return nil, false
 			}
 			return me.e.world.knowsFact(me.id, id), true
+		}}
+	}
+	// A TOPIC HELD (rpg-project#929): true while the member holds the topic
+	// about anybody, read from his OWN holdings — never the truth.
+	if g.Fact != nil && strings.HasPrefix(string(g.Fact.Name), topicPrefix) && len(g.Fact.Name) > len(topicPrefix) {
+		topic := perception.Topic(strings.TrimPrefix(string(g.Fact.Name), topicPrefix))
+		facts[g.Fact.Name] = machine.FactSpec{Kind: machine.KindBool, Read: func(env any) (any, bool) {
+			me, ok := env.(*machineEnv)
+			if !ok {
+				return nil, false
+			}
+			held, err := me.e.intelLog.OnTopic(sightMember(me.id), topic)
+			if err != nil {
+				return nil, false
+			}
+			return len(held) > 0, true
 		}}
 	}
 	addGuardFacts(facts, g.Not)
@@ -393,7 +410,7 @@ func keyOr(key AnswerKey) AnswerKey {
 }
 
 // MachineBeats names the composition's public occurrence/opportunity vocabulary.
-var MachineBeats = []string{string(beatTime), string(beatTurn), string(beatHeard), string(beatDeed), string(beatSeen), string(beatFact), beatClock + worldClockName, beatClock + clockFight, string(beatBarred)}
+var MachineBeats = []string{string(beatTime), string(beatTurn), string(beatHeard), string(beatDeed), string(beatSeen), string(beatFact), string(beatTopic), beatClock + worldClockName, beatClock + clockFight, string(beatBarred), string(beatApproached)}
 
 // ValidMachineBeat admits a declared beat, named deed or named clock notification.
 func ValidMachineBeat(on string) bool {
@@ -410,11 +427,16 @@ func ValidMachineBeat(on string) bool {
 
 // MachineBeatScoped identifies inputs whose occurrence carries a place.
 func MachineBeatScoped(on string) bool {
-	return on == string(beatHeard) || on == string(beatDeed) || on == string(beatSeen) || on == string(beatBarred) || strings.HasPrefix(on, deedPrefix) && ValidMachineBeat(on)
+	return on == string(beatHeard) || on == string(beatDeed) || on == string(beatSeen) || on == string(beatBarred) || on == string(beatApproached) || strings.HasPrefix(on, deedPrefix) && ValidMachineBeat(on)
 }
 
 // MachineFact names an observer-local learned fact.
 func MachineFact(id string) machine.FactName { return machine.FactName(factPrefix + id) }
+
+// MachineTopic names a topic for a recipe guard (rpg-project#929): `topic:<id>`,
+// true while the member holds that topic about anybody, read from its own
+// holdings.
+func MachineTopic(id string) machine.FactName { return machine.FactName(topicPrefix + id) }
 
 // MachineEnemyFact reads the actor's own enemy band, never authoritative intel.
 const MachineEnemyFact = factEnemy

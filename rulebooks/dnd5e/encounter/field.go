@@ -266,6 +266,10 @@ type RegionInput struct {
 	// default.
 	Lighting *Lighting
 
+	// Ground is optional appearance; paint cells are owned authored offsets.
+	// It is captured, never interpreted as a movement or visibility rule.
+	Ground *RegionGround
+
 	// A REGION NO LONGER SAYS WHETHER IT IS HIDDEN (rpg-project#490). It
 	// carried `Concealed bool` until the concealment primitive landed, and
 	// what replaced it is [FieldInput.Concealments] — a concealment listing
@@ -746,6 +750,14 @@ type FieldInput struct {
 	// `party` is hostile to it; declared factions are neutral to each other
 	// and to `monsters`. See [DispositionInput].
 	Dispositions []DispositionInput
+
+	// Interactions are the run's authored interaction instances
+	// (interaction.go, rpg-project#922): the entrance that remembers.
+	// Optional; omitted means none, and a run with none writes no
+	// interaction key. CARRIED HERE so a host passes them with the field it
+	// already passes, and NOT SITE DATA: they are never in the site's hash —
+	// the definition and its progress are the run's ([EncounterData.Interactions]).
+	Interactions []InteractionInput
 }
 
 // IntelID is the author's name for one intel record — [IntelRecord.ID].
@@ -1477,6 +1489,12 @@ type SetupInput struct {
 	// holds no randomness of its own (C8); a caller that pins exact bytes
 	// supplies a fixed source.
 	IDs record.IDSource
+
+	// Sites resolves the compiled site the field compiles to, keyed by its
+	// content hash (site.go, rpg-project#879 S5). Optional: nil is
+	// [DefaultSites], the process-wide in-process provider. The same content
+	// set up twice is one site.
+	Sites SiteProvider
 }
 
 // ViewInput is used to query a member's current percepts.
@@ -1773,6 +1791,13 @@ type StepInput struct {
 	// EndWalk requires a standable destination for a voluntary walk endpoint.
 	EndWalk bool
 
+	// Reach is the cells the host measures Speak with ([SpeakInput.Range]):
+	// the distance a standing address is measured at when the step's sweep
+	// asks whether it still stands (address.go, rpg-project#923). Below an
+	// interaction's approach distance, zero included, that distance is
+	// measured instead.
+	Reach int
+
 	// Member is the ID of the member stepping.
 	Member MemberID
 
@@ -1872,6 +1897,14 @@ type StepOutput struct {
 	// to the bump produced. Nil for a step that moved. Walls, doors, fields
 	// and masked refusals still return a [StepObstructedError].
 	Stopped *StepStop
+
+	// Addressed is every address this step wrote (address.go,
+	// rpg-project#923): a carrier who saw the mover come inside an
+	// interaction's approach distance hails them. The step itself was taken;
+	// the HOST DROPS THE WALK'S REMAINING LEGS, so a walk reports only the
+	// steps it took. The hailing carrier's answer is in IntelDeltas, Formed
+	// and Outcome with the step's own. Empty when nobody hailed.
+	Addressed []Addressed
 }
 
 // JoinInput names who is arriving and the cell on the map they arrive at.

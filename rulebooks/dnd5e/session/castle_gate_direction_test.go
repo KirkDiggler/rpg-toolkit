@@ -31,6 +31,23 @@ var theCourtyard = spatial.Position{X: -3, Y: -6}
 // requireOnHisPost requires gate-1 on his cell beneath the gate in a state
 // whose post holds it: posted (the recipe's initial state, which the record
 // writes as empty) or alert.
+// backOnHisPost lets the world turn until gate-1 stands beneath the gate:
+// once he admits the party the captain goes in through the gate
+// (rpg-project#929), and gate-1, hearing it, is drawn a cell off his post
+// for a round before he walks back. A round is six cells walked: alice paces
+// out a cell and back beside the gate.
+func (c *freeRoamCastle) backOnHisPost(t *testing.T) {
+	t.Helper()
+	behind := spatial.Position{X: -5, Y: 8}
+	for range 4 {
+		if memberOf(t, c.world(t), "gate-1").Position == beneathTheCastleGate {
+			return
+		}
+		c.move(t, []spatial.Position{behind, besideTheCastleGate, behind, besideTheCastleGate, behind, besideTheCastleGate})
+	}
+	require.Equal(t, beneathTheCastleGate, memberOf(t, c.world(t), "gate-1").Position, "gate-1 walks back to his post")
+}
+
 func requireOnHisPost(t *testing.T, c *freeRoamCastle, msg string) {
 	t.Helper()
 	require.Equal(t, beneathTheCastleGate, memberOf(t, c.world(t), "gate-1").Position, msg)
@@ -77,7 +94,7 @@ func (c *freeRoamCastle) setTheGatePostInTheRecord(t *testing.T, against encount
 // back, so what she knows of the gate is what she sees from inside.
 func insideTheGate(t *testing.T, gateState string, lock *encounter.LockData) *freeRoamCastle {
 	t.Helper()
-	c := openTheCastleForTwo(t, 18)
+	c := openTheGateWithGateOneAlone(t, 18)
 	c.setTheGateInTheRecord(t, gateState, lock)
 	c.placeInTheRecord(t, "alice", pastTheCastleGate)
 	require.Equal(t, pastTheCastleGate, c.where(t, "alice"), "precondition: alice stands in the courtyard past the gate")
@@ -94,7 +111,7 @@ func insideTheGate(t *testing.T, gateState string, lock *encounter.LockData) *fr
 // copied as the composition answers it. His ally sees no hold and so none of
 // its settings.
 func TestCastleTheGateGuardIsSeenToCheckArrivals(t *testing.T) {
-	c := openTheCastleForTwo(t, 18)
+	c := openTheGateWithGateOneAlone(t, 18)
 	walked := c.move(t, c.walkInto(t, besideTheCastleGate))
 	require.Equal(t, session.MovementCompleted, walked.Status, "precondition: alice beside the gate: %s", walked.StopReason)
 	requireOnHisPost(t, c, "precondition: gate-1 is on his post")
@@ -127,7 +144,7 @@ func TestCastleTheGateGuardIsSeenToCheckArrivals(t *testing.T) {
 // her into the courtyard past him.
 func TestCastleTheTroupeIsToldNoHold(t *testing.T) {
 	// 12 + 3 beats the stranger's 5 and the captain's 13.
-	c := openTheCastleForTwo(t, 12, 12, 18)
+	c := openTheGateWithGateOneAlone(t, 12, 12, 18)
 	ctx := context.Background()
 	walkBeside := func(subject encounter.MemberID) {
 		if path := c.walkInto(t, memberOf(t, c.world(t), subject).Position); len(path) > 1 {
@@ -135,14 +152,15 @@ func TestCastleTheTroupeIsToldNoHold(t *testing.T) {
 		}
 	}
 	walkBeside("pedlar")
-	_, err := c.mgr.Speak(ctx, &session.SpeakInput{Session: "sess", Member: "alice", Target: "pedlar", OptionID: "tonight"})
+	_, err := speakAsOffered(ctx, c.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "pedlar", OptionID: "tonight"})
 	require.NoError(t, err)
 	walkBeside("captain")
-	_, err = c.mgr.Speak(ctx, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "troupe"})
+	_, err = speakAsOffered(ctx, c.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "troupe"})
 	require.NoError(t, err, "the captain lets the troupe through")
 
 	walked := c.move(t, c.walkInto(t, besideTheCastleGate))
 	require.Equal(t, session.MovementCompleted, walked.Status, "precondition: alice beside the gate: %s", walked.StopReason)
+	c.backOnHisPost(t)
 	requireOnHisPost(t, c, "precondition: the troupe's word leaves gate-1 on his post")
 	seen := c.sightingOf(t, "alice", "gate-1")
 	require.Equal(t, []string{"sight"}, seen.CurrentVia, "precondition: she sees him")
@@ -150,7 +168,8 @@ func TestCastleTheTroupeIsToldNoHold(t *testing.T) {
 	require.Empty(t, seen.HoldsAgainst, "and no direction is told")
 	require.Empty(t, seen.HoldsSide, "and no side")
 
-	c.openTheGate(t)
+	// The captain left the gate open behind him on his way in.
+	require.Equal(t, "open", worldGateState(t, c), "the captain left the gate open")
 	cross := c.move(t, []spatial.Position{pastTheCastleGate})
 	require.Equal(t, session.MovementCompleted, cross.Status, "the troupe crosses: %s", cross.StopReason)
 	require.Equal(t, pastTheCastleGate, c.where(t, "alice"), "into the courtyard")

@@ -112,7 +112,7 @@ func (s *CastActionTestSuite) TestCureWoundsMonsterTypesAndConcentration() {
 			paid := f.sheet(out, bardID)
 			s.Equal(1, paid.Resources[resources.SpellSlotLevel1].Current)
 			s.Require().ElementsMatch([]string{concentrating}, storedRefs(s.T(), paid.Conditions))
-			s.JSONEq(string(caster.Conditions[0]), string(conditionWithRefOrNil(paid.Conditions, refs.Conditions.Concentrating())), "healing preserves concentration")
+			s.JSONEq(string(caster.Conditions[0]), string(conditionWithRefOrNil(paid.Conditions, refs.Conditions.LinkedEffects())), "healing preserves concentration")
 		})
 	}
 }
@@ -127,7 +127,7 @@ func (s *CastActionTestSuite) TestCureWoundsPhysicalBarrierRefusesBeforePayment(
 	machine, err := NewAction(&ActionInput{Definition: *definition, AttackerID: bardID, TargetIDs: []string{wolfID}, Roller: roll})
 	s.Require().NoError(err)
 	world := f.world()
-	world.Field.Walls = append(world.Field.Walls, encounter.BoundaryData{From: encounter.PositionData{X: 2, Y: 1}, To: encounter.PositionData{X: 3, Y: 1}, BlocksMovement: true, BlocksLineOfSight: true})
+	withWall(s.T(), &world, encounter.BoundaryData{From: encounter.PositionData{X: 2, Y: 1}, To: encounter.PositionData{X: 3, Y: 1}, BlocksMovement: true, BlocksLineOfSight: true})
 	out, err := Resolve(s.ctx, &Input{
 		World:        world,
 		Participants: []Participant{{Character: caster}, {Character: f.saver(14)}, {Monster: f.wolfData()}},

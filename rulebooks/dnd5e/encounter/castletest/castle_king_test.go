@@ -34,6 +34,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	"github.com/KirkDiggler/rpg-toolkit/play/intel"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -147,6 +148,10 @@ func openTheCastleWithEars(
 // post of the gate door set to [castleHost.gateAgainst] when the host names
 // a direction.
 func postsOf(host castleHost, m dungeonspec.MonsterPlacement) map[string]encounter.Post {
+	id := encounter.MemberID(m.MemberID)
+	if host.soleGateHolder && id != kingGate1 && !slices.Contains(host.postedLike, id) {
+		return nil
+	}
 	if host.gateAgainst == "" || len(m.Posts) == 0 {
 		return m.Posts
 	}
@@ -209,6 +214,13 @@ type castleHost struct {
 	// blocking states and posts, so a route can stand a second holder on the
 	// gate (rpg-project#852's group rule).
 	postedLike []encounter.MemberID
+
+	// soleGateHolder is a TEST FIXTURE for a route about one post's
+	// mechanics: only gate-1 (and whoever [castleHost.postedLike] seats like
+	// him) keeps its posts, so the captain and gate-2, who hold the gate too
+	// in the file (rpg-project#928), neither name the stop nor keep a gate
+	// open that the route opens by moving gate-1 alone.
+	soleGateHolder bool
 }
 
 // openTheCastleAs compiles the file and opens it the way the host says.
@@ -375,7 +387,26 @@ func (s *kingScene) speakWithin(
 		Range: reach,
 		Actor: hero, Target: target, OptionID: option, Skill: skill,
 		Beaten: beaten, DC: 15, Total: map[bool]int{true: 20, false: 3}[beaten], Roller: rollsOne{},
+		Revision: s.revisionOf(hero, target, option),
 	})
+}
+
+// revisionOf is the revision a creature offers a member one line at now —
+// what a host's reply carries back (rpg-project#924) — or zero when the line
+// is not offered.
+func (s *kingScene) revisionOf(member, target encounter.MemberID, option string) uint64 {
+	s.t.Helper()
+	offered, err := s.enc.OptionsFor(member, target)
+	if err != nil {
+		return 0
+	}
+	for _, o := range offered {
+		if o.ID == option {
+			return o.Revision
+		}
+	}
+
+	return 0
 }
 
 // said is speak that must be accepted.
@@ -403,9 +434,16 @@ func (s *kingScene) walkTo(to spatial.Position) {
 	}
 }
 
-// open opens a door the hero is standing within reach of.
+// open opens a door the hero is standing within reach of, or finds it open:
+// after an admission the captain walks in through the gate and the hall door
+// (rpg-project#929), and leaves them standing open.
 func (s *kingScene) open(door encounter.DoorID) {
 	s.t.Helper()
+	for _, d := range s.enc.ToData().Doors {
+		if d.ID == door && d.State == "open" {
+			return
+		}
+	}
 	_, err := s.enc.OpenDoor(&encounter.OpenDoorInput{Door: door, Actor: hero})
 	require.NoError(s.t, err, "the hero reaches %s", door)
 }
@@ -707,3 +745,16 @@ func TestSessionSightFeetIsTheRulebooks(t *testing.T) {
 // speakReach is the reach every line here is said within: the session's
 // interaction reach, three hexes (rpg-project#753, R4).
 const speakReach = 3
+
+// recognizes reports whether holder holds the castle's `admitted` topic about
+// subject (rpg-project#928), read off the saved record: the holding the
+// front gate's outcome writes, under the holder's sight identity.
+func (s *kingScene) recognizes(holder, subject encounter.MemberID) bool {
+	s.t.Helper()
+	_, ok := s.enc.ToData().Perception.Intel.Holdings[core.EntityID("member|"+string(holder))][intel.Subject("member|"+string(subject))][admittedTopic]
+
+	return ok
+}
+
+// admittedTopic is the topic the castle's front gate grants on `admitted`.
+const admittedTopic = "admitted"

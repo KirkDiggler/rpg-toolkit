@@ -34,7 +34,9 @@ func heroStepsPastWolf(
 	listen ...func(context.Context, events.EventBus),
 ) (*Output, error) {
 	t.Helper()
-	wolf.Conditions = append(wolf.Conditions, freeReactions(t, wolf.ID)...)
+	if conditionWithRefOrNil(wolf.Conditions, refs.Conditions.OpportunityAttack()) == nil {
+		wolf.Conditions = append(wolf.Conditions, freeReactions(t, wolf.ID)...)
+	}
 	bus := events.NewEventBus()
 	for _, l := range listen {
 		l(context.Background(), bus)
@@ -191,7 +193,7 @@ func postHitOnce(t *testing.T, bus events.EventBus) {
 // concentrating caster holding Fog Cloud, who fails the check, and then poses
 // a post-hit reaction.
 func (s *ConcentrationTestSuite) pausedMultiattack() *Output {
-	hold := conditions.NewConcentratingCondition(heroID, refs.Spells.FogCloud().String(), "Fog Cloud", 600)
+	hold := fixtureHold(s.T(), holdFixtureInput{Member: heroID, Source: refs.Spells.FogCloud(), Name: "Fog Cloud", Turns: 600})
 	holdJSON, err := hold.ToJSON()
 	s.Require().NoError(err)
 
@@ -405,7 +407,7 @@ func (s *ResistancePoseTestSuite) TestASaveOfferInsideACastResumesTheCast() {
 	saver := fixtures.saver(14, s.resistanceJSON())
 	roller := &countingCastRoller{facedRoller: facedRoller{d20: 10, other: 4}}
 	machine, err := NewAction(&ActionInput{
-		Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{heroID, wolfID}, Roller: roller,
+		ApplicationID: testApplicationID(s.T()), Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{heroID, wolfID}, Roller: roller,
 	})
 	s.Require().NoError(err)
 
@@ -420,7 +422,7 @@ func (s *ResistancePoseTestSuite) TestASaveOfferInsideACastResumesTheCast() {
 
 	resumed, err := Resume(&ResumeInput{Pause: *out.Posed, Answer: Take(""), Roller: roller})
 	s.Require().NoError(err)
-	resumedOut, err := fixtures.resolve(saver, resumed, nil, baneCaster(1))
+	resumedOut, err := fixtures.resolve(saver, resumed, nil, fixtures.sheet(out, bardID))
 	s.Require().NoError(err)
 	s.Require().Nil(resumedOut.Posed)
 	outcome := resumedOut.Outcome.(CastOutcome)
@@ -529,7 +531,7 @@ func TestEveryPauseWritesOneHeader(t *testing.T) {
 		suite.SetT(t)
 		fixtures := suite.fixtures()
 		machine, err := NewAction(&ActionInput{
-			Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{heroID},
+			ApplicationID: testApplicationID(t), Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{heroID},
 			Roller: &countingCastRoller{facedRoller: facedRoller{d20: 10, other: 4}},
 		})
 		require.NoError(t, err)
