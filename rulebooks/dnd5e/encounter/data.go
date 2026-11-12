@@ -829,6 +829,7 @@ type StructuralWallData struct {
 	Elevation         float64                 `json:"elevation"`
 	Openings          []StructuralOpeningData `json:"openings,omitempty"`
 	MaterialOverrides []MaterialOverrideData  `json:"material_overrides,omitempty"`
+	FaceFinishes      []WallFaceFinishData    `json:"face_finishes,omitempty"`
 }
 
 // StructuralOpeningData is the persistent representation of a
@@ -2775,6 +2776,7 @@ func fieldDataFrom(f *field) FieldData {
 				Thickness:         w.thickness,
 				Elevation:         w.elevation,
 				MaterialOverrides: materialOverridesData(w.materialOverrides),
+				FaceFinishes:      wallFaceFinishesData(w.faceFinishes),
 			}
 			for j := range w.openings {
 				o := &w.openings[j]
@@ -4057,6 +4059,7 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 			Thickness:         swd.Thickness,
 			Elevation:         swd.Elevation,
 			MaterialOverrides: materialOverridesFromData(swd.MaterialOverrides),
+			FaceFinishes:      wallFaceFinishesFromData(swd.FaceFinishes),
 		}
 		for _, sod := range swd.Openings {
 			o := StructuralOpeningInput{ID: sod.ID, Position: sod.Position, Width: sod.Width}

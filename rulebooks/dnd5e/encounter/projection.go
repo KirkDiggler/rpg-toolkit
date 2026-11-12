@@ -365,6 +365,7 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 			wall = AtlasStructuralWall{
 				ID: w.id, Ref: w.ref, From: w.from, To: w.to,
 				MaterialOverrides: cloneMaterialOverrides(w.materialOverrides),
+				FaceFinishes:      cloneWallFaceFinishes(w.faceFinishes),
 				Height:            w.height, Thickness: w.thickness, Elevation: w.elevation,
 				FootprintCells: footprints[w.id],
 				Openings:       make([]AtlasStructuralOpening, 0, len(w.openings)),

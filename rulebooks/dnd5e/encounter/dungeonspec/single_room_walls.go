@@ -884,7 +884,7 @@ func wallCollision(existing []encounter.PlacedPropInput, lowerings []wallLowerin
 // Only reachable for a validated document: every wall's line is finite and
 // positive and every opening fits it. It still returns an error rather than
 // panicking on a spec assembled in Go, because [RoomSource] is exported.
-func canonicalStructuralWalls(key string, walls []RoomWall) ([]encounter.StructuralWallInput, error) {
+func canonicalStructuralWalls(key string, walls []RoomWall, finishes map[string][]encounter.WallFaceFinish) ([]encounter.StructuralWallInput, error) {
 	if len(walls) == 0 {
 		return nil, nil
 	}
@@ -909,6 +909,7 @@ func canonicalStructuralWalls(key string, walls []RoomWall) ([]encounter.Structu
 			Thickness:         wall.Appearance.Thickness * k,
 			Elevation:         wall.Appearance.Elevation * k,
 			MaterialOverrides: materialOverridesOf(wall.Appearance.MaterialOverrides),
+			FaceFinishes:      append([]encounter.WallFaceFinish(nil), finishes[wall.ID]...),
 		}
 		for j := range wall.Openings {
 			opening := wall.Openings[j]
