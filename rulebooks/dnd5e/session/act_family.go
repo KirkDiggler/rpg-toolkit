@@ -847,9 +847,96 @@ func answeredPiece(tag string, payload []byte) ([]piece, error) {
 	return one(pc)
 }
 
-// speechPieces is one member's version of something said (rpg-project#933),
-// read into the parts today's messages already carry and never more than
-// the version holds:
+// speechPieces is one member's version of something said: the [SpeechAct]
+// that carries every part of it they perceived (rpg-project#934, R6), after
+// the retired messages it still folds into ([retiredSpeechPieces]) until the
+// client has moved.
+func speechPieces(recipient string, payload []byte) ([]piece, error) {
+	retired, err := retiredSpeechPieces(recipient, payload)
+	if err != nil {
+		return nil, err
+	}
+	speech, err := speechActPiece(payload)
+	if err != nil {
+		return nil, err
+	}
+	return append(retired, speech), nil
+}
+
+// speechActPiece is the [SpeechAct] one perceiver is shown of one spoken
+// thing (rpg-project#934, R6): every part their version holds, and nothing it
+// does not, beside the act the line or the answer folds into.
+func speechActPiece(payload []byte) (piece, error) {
+	var p struct {
+		Utterance string           `json:"utterance"`
+		Speaker   string           `json:"speaker"`
+		To        string           `json:"to"`
+		Prop      string           `json:"prop"`
+		Words     *string          `json:"words"`
+		Option    string           `json:"option"`
+		Place     spatial.Position `json:"place"`
+		Hops      *int             `json:"hops"`
+		Loudness  string           `json:"loudness"`
+		Fact      string           `json:"fact"`
+		Check     *struct {
+			Skill       string          `json:"skill"`
+			DC          int             `json:"dc"`
+			Total       int             `json:"total"`
+			Beaten      bool            `json:"beaten"`
+			Calculation json.RawMessage `json:"calculation"`
+		} `json:"check"`
+	}
+	if err := json.Unmarshal(payload, &p); err != nil {
+		return piece{}, err
+	}
+	// FAIL CLOSED, NOT SILENT: a version that did not see its speaker says
+	// how many rooms off the voice was, and a prop is named as spoken to only
+	// beside the words that were said to it. Read any other way, a missing
+	// distance would become "in your room" and a prop a guess.
+	if p.Speaker == "" && p.Hops == nil {
+		return piece{}, fmt.Errorf("speech %q: the speaker was not seen and the version names no hops", p.Utterance)
+	}
+	if p.Prop != "" && p.Words == nil {
+		return piece{}, fmt.Errorf("speech %q: a prop is named as spoken to without the words", p.Utterance)
+	}
+	act := SpeechAct{Utterance: p.Utterance, Speaker: member(p.Speaker), Place: p.Place, Loudness: p.Loudness}
+	switch {
+	case p.Prop != "":
+		act.SpokenTo = prop(p.Prop)
+	case p.To != "":
+		act.SpokenTo = member(p.To)
+	}
+	if p.Speaker == "" {
+		hops := *p.Hops
+		act.Hops = &hops
+	}
+	var senses []Sense
+	if p.Speaker != "" {
+		senses = append(senses, SenseSight)
+	}
+	if p.Words != nil {
+		words := *p.Words
+		act.Words, act.Option, act.Fact = &words, p.Option, p.Fact
+		if c := p.Check; c != nil {
+			roll, err := rollOf(c.Calculation, nil, c.Total, intp(c.DC), boolp(c.Beaten))
+			if err != nil {
+				return piece{}, err
+			}
+			act.Skill, act.Roll = c.Skill, roll
+		}
+	}
+	if p.Words != nil || p.Speaker == "" {
+		senses = append(senses, SenseHearing)
+	}
+	return piece{
+		family: FamilyAct, body: act, aside: true,
+		perceived: &Perceived{Senses: senses},
+	}, nil
+}
+
+// retiredSpeechPieces is one version folded into the RETIRED messages
+// (rpg-project#934, R6), still sent beside the [SpeechAct] until the client
+// has moved, never more than the version holds:
 //
 //   - the speaker seen and the words caught, on a character's line (it names
 //     its option or the prop it is said to): that line, as a [SpeakAct], with
@@ -862,10 +949,9 @@ func answeredPiece(tag string, payload []byte) ([]piece, error) {
 //   - the speaker seen and no words: nothing — they were seen to say
 //     something, and the reader learns no line;
 //   - no speaker seen: a voice [Sound] at the place it was said and how many
-//     rooms off. The words such a reader caught are not carried until the
-//     speech message (rpg-project#934): today's messages have no line
-//     without a speaker.
-func speechPieces(recipient string, payload []byte) ([]piece, error) {
+//     rooms off. The retired messages have no line without a speaker; the
+//     [SpeechAct] carries the words.
+func retiredSpeechPieces(recipient string, payload []byte) ([]piece, error) {
 	var p struct {
 		Speaker string           `json:"speaker"`
 		To      string           `json:"to"`
