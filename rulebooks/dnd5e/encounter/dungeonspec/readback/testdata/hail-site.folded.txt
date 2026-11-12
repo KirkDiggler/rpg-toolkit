@@ -1,0 +1,66 @@
+READ-BACK: Hail Site (hail-site)
+
+THE PLACE
+
+  Hail Site (hail-site)
+    - The site `hail-site` is “Hail Site”, a version 5 site document; its void is transparent, its lighting
+        bright and its standing rule centre-covered. [key]
+    - The floor is 1 region with cells: Hall (region-hall). Summarised: their cells, lighting and ground are
+        not said one by one. [room.room.regions]
+    - Summarised: the coordinate frame, 0 wall lines with 0 doors in their openings, 0 scene items, 0 prop
+        footprints and 0 arrangements. Their positions and shapes are not said one by one. [room.room.walls]
+    - The party starts at q 0, r 6, in Hall (region-hall). [room.room.partyStart]
+
+SIDES
+
+  Faction `watch`
+    - The faction `watch` is Guard (porter); its mind (whose knowledge decides how the side stands) is Guard
+        (porter). [factions[0]]
+
+  How the sides stand
+    - The factions `watch` and `party` start neutral. [dispositions[0]]
+
+CREATURES
+
+  Guard (porter): a dnd5e:monsters:guard of `watch` at q 3, r 0 in Hall, facing s
+      [room.room.monsterDeclarations[0]]
+    - Runs the routine `porter-policy` (as `policy`). [.behaviors[0]]
+    - “We're expected.” (`guest`), said to the guard; plain: rolls nothing, cannot be missed, free
+        [.options[0]]
+      - Offered while: `gate` is in `fresh`. [.requires[0]]
+      - When said: the guard answers “In you go.”; and the line steps `gate` with `admitted`: to `admitted`
+          from `fresh` [.success[0], .advance]
+
+CONVERSATIONS
+
+  Conversation `gate` — one state for the whole run, shared by every speaker; starts in `fresh`; recipe
+      `site:interactions:gate`. Carried by Guard (porter) (the creatures whose lines read or step it).
+      [interactions.gate]
+    - When a character's own step ends within 2 cells of a carrier who sees them and whom they see, both up
+        and out of a fight, and that carrier offers them a line that steps `gate`, the nearest such carrier
+        (then by id) hails them and hears the beat `approached`, unless `gate` is already addressing someone.
+        A line that only reads `gate` does not hail. It is opened within 2 cells, and stands while the other
+        conditions hold and the character is within Speak reach of that carrier (never less than 2 cells); it
+        ends when any fails. [.approach]
+    - Who can hail for `gate`, by its state: in `fresh`, Guard (porter) (by `guest`); in `admitted`, nobody.
+        [.approach]
+    - From `fresh`: `admitted` moves it to `admitted` (“let through”); sent by saying `guest` (porter).
+        [.recipe.states.fresh.transitions[0]]
+    - `admitted` is final: once entered, nothing moves it again. [.recipe.states.admitted]
+    - Lines offered only in a state of it: `guest` (porter) in `fresh`. [at each line's requires, above]
+    - Engine rule, not authored: a reply sent from a menu offered before `gate` last changed (a state change,
+        or a roll beginning or ending its wait on it) is refused with nothing spent; the speaker must be
+        offered the menu again. [(engine rule)]
+
+ROUTINES
+
+  Routine `porter-policy` — run by Guard (porter); starts in `ready`; recipe `site:behaviors:porter-policy`.
+      [behaviorDefinitions.porter-policy]
+    - States (it is the runner):
+      - In `ready`, when it is the carrier that hails a character (only under the conversation's hail rule) →
+          acts from its `approached` rows. [ready.transitions[0]]
+    - Rows (one whose conditions hold is picked by weight):
+      - `approached`: says “Halt there. What's your business?” [approached[0]]
+
+NOT YET SAID
+  Nothing: every authored thing above is said or summarised.
