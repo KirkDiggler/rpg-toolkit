@@ -603,12 +603,12 @@ type SpeakOutput struct {
 	// order. Seeing it said teaches nothing of how it went (rpg-project#933).
 	Witnesses []MemberID
 
-	// Hearers is every member who caught the words — who holds the deed on a
-	// success and was written the line and its roll (rpg-project#933). In
-	// member order.
+	// Hearers is every member who caught the words — who was written the
+	// line and its roll (rpg-project#933). In member order. Of them, those
+	// who also saw the speaker hold the deed on a success.
 	Hearers []MemberID
 
-	// Deed is the deed verb that landed on the hearers — [DeedIntimidate]
+	// Deed is the deed verb that landed on the hearers who saw the speaker — [DeedIntimidate]
 	// or [DeedPersuade] — or empty when none did: a miss, a skill that lands
 	// none, or a prop.
 	Deed string
@@ -739,11 +739,14 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 
 	// THE DEED IS THE SKILL'S (R3), and only a creature can hold one about
 	// being spoken to: a prop is persuaded of nothing. IT IS KNOWN BY WHOEVER
-	// CAUGHT THE WORDS (rpg-project#933): an intimidation that worked says it
-	// worked, so one who only saw the line said holds no deed of it.
+	// CAUGHT THE WORDS AND SAW WHO SAID THEM (rpg-project#933): an
+	// intimidation that worked says it worked, so one who only saw the line
+	// said holds no deed of it; and a deed names its doer, so one who caught
+	// the words unseeing — who has the verdict already, in the check their
+	// version carries — holds none either, the speaker staying unnamed.
 	landed := ""
 	if verb, lands := deedForSkill(in.Skill); lands && beaten && in.Target != "" {
-		if err := e.landSpokenDeed(verb, in.Actor, in.Target, where, heardLine.catchers, at); err != nil {
+		if err := e.landSpokenDeed(verb, in.Actor, in.Target, where, heardLine.namedCatchers(), at); err != nil {
 			return nil, fmt.Errorf("speak: %w", err)
 		}
 		landed = verb

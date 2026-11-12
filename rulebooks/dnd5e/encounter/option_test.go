@@ -264,8 +264,10 @@ func (s *OptionTestSuite) TestACreatureWithNoOptionsOffersNone() {
 }
 
 // R3: a beaten Intimidation check lands `intimidate` on whoever caught the
-// words (rpg-project#933) — billy too, behind the wall in the same room.
-func (s *OptionTestSuite) TestABeatenIntimidationLandsTheDeedOnWhoeverCaughtTheWords() {
+// words and saw who said them (rpg-project#933) — not billy, behind the wall
+// in the same room, who caught the words and the verdict with them but not
+// who spoke, which a deed would name.
+func (s *OptionTestSuite) TestABeatenIntimidationLandsTheDeedOnWhoeverSawItSaidAndCaughtIt() {
 	enc := s.scene()
 
 	out, err := s.speak(enc, "threaten", "intimidation", true)
@@ -276,8 +278,8 @@ func (s *OptionTestSuite) TestABeatenIntimidationLandsTheDeedOnWhoeverCaughtTheW
 
 	s.True(s.heldDeed(enc, goblin, alice, encounter.DeedIntimidate), "the goblin saw the threat")
 	s.True(s.heldDeed(enc, alice, alice, encounter.DeedIntimidate), "and so did alice, who said it")
-	s.True(s.heldDeed(enc, billy, alice, encounter.DeedIntimidate),
-		"billy saw nothing behind the wall, but the words — and how they went — reached him in the room")
+	s.False(s.heldDeed(enc, billy, alice, encounter.DeedIntimidate),
+		"billy saw nothing behind the wall: the words reached him, and no deed naming who spoke")
 }
 
 // R3: Persuasion lands `persuade`.
