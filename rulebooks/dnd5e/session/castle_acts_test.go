@@ -785,9 +785,8 @@ func Example_theGatehouseActs() {
 	// -- alice tells the captain to stand aside --
 	// speak        act 1        alice to captain, "stand-aside" (intimidation): rolled 1d20+3 = 17, beat 14; captain answers "…go on, then. I saw nothing."
 	// speak        clock        tick 2
-	// speak        state        gate-1: posted -> alert (heard something)
 	// speak        state        captain: ready -> cowed (stood aside)
-	// speak        state        gate-1: alert -> cowed (stood aside)
+	// speak        state        gate-1: posted -> cowed (stood aside)
 	// speak        state        gate-2: ready -> cowed (stood aside)
 	// time         table_answer captain answers behavior/6:policy/time with "hold", no roll
 	// time         table_answer gate-1 answers behavior/6:policy/cowed with "toward", rolled 1 of 50
@@ -877,7 +876,7 @@ func Example_theTroupeActs() {
 	// speak        clock        tick 1
 	// time         table_answer captain answers behavior/6:policy/time with "hold", no roll
 	// time         table_answer gate-1 answers behavior/6:policy/post with "toward", rolled 1 of 50
-	// move         act 1        gate-1 walks (-3,8) (-3,9) (-3,10) (-3,11) (-3,12) (-2,12)
+	// pass         act 1        gate-1 stays: already there
 	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-2,10)
 	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
@@ -911,7 +910,7 @@ func Example_theTroupeActs() {
 	// move         clock        tick 2
 	// time         table_answer captain answers behavior/6:policy/time with "hold", no roll
 	// time         table_answer gate-1 answers behavior/6:policy/post with "toward", rolled 1 of 50
-	// move         act 1        gate-1 walks (-3,12) (-3,11) (-3,10) (-3,9) (-3,8) (-3,7)
+	// pass         act 1        gate-1 stays: already there
 	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
 	// pass         act 1        gate-2 stays: standing at its waypoint
 	// time         table_answer hall-1 answers behavior/6:policy/time with "toward", rolled 1 of 50
@@ -945,10 +944,9 @@ func Example_theTroupeActs() {
 	// move         table_answer captain answers behavior/6:policy/approached with "", rolled 1 of 100
 	// move         act 1        alice walks (-5,9)
 	// move         clock        tick 3
-	// move         state        gate-1: posted -> alert (heard something)
 	// time         table_answer captain answers behavior/6:policy/time with "hold", no roll
 	// time         table_answer gate-1 answers behavior/6:policy/post with "toward", rolled 1 of 50
-	// move         act 1        gate-1 stays:
+	// pass         act 1        gate-1 stays: already there
 	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-3,9) (-4,10)
 	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
@@ -988,7 +986,7 @@ func Example_theTroupeActs() {
 	// move         perception   alice sees [], loses [], sees [] change
 	// move         act 3        captain walks (-3,6) (-3,5) (-3,4) (-3,3) (-3,2)
 	// time         table_answer gate-1 answers behavior/6:policy/post with "toward", rolled 1 of 50
-	// move         act 1        gate-1 walks (-4,8)
+	// pass         act 1        gate-1 stays: already there
 	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
 	// pass         act 1        gate-2 stays: standing at its waypoint
 	// time         table_answer hall-1 answers behavior/6:policy/time with "toward", rolled 1 of 50
@@ -1033,7 +1031,7 @@ func Example_theTroupeActs() {
 	// time         table_answer captain answers behavior/6:policy/in-hall with "toward", rolled 1 of 50
 	// move         act 1        captain walks (-3,1) (-3,0) (-2,-1) (-1,-2) (0,-3) (1,-4)
 	// time         table_answer gate-1 answers behavior/6:policy/post with "toward", rolled 1 of 50
-	// move         act 1        gate-1 walks (-3,7)
+	// pass         act 1        gate-1 stays: already there
 	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
 	// move         act 1        gate-2 walks (-3,10) (-2,10)
 	// time         table_answer gate-2 answers behavior/6:policy/time with "toward", rolled 1 of 100
