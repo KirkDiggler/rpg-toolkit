@@ -68,6 +68,11 @@ func guardWords(g *machine.Guard, who string) (string, []Connection) {
 		case strings.HasPrefix(name, "fact:") && g.Fact.Op == "eq" && val == "true":
 			id := strings.TrimPrefix(name, "fact:")
 			add(fmt.Sprintf("%s knows the fact %s", who, quote(id)), []Connection{{Kind: "fact", ID: id, Role: "wakes-on"}})
+		case name == "heard.kind" && g.Fact.Op == "eq":
+			add(fmt.Sprintf("what %s heard was a %s", who, quote(val)), nil)
+		case strings.HasPrefix(name, "heard.loudness:") && g.Fact.Op == "eq" && val == "true":
+			add(fmt.Sprintf("what %s heard was a voice%s (a clang, a crash or a boom is at no loudness)",
+				who, raisedWords(strings.TrimPrefix(name, "heard.loudness:"))), nil)
 		case strings.HasPrefix(name, "topic:") && g.Fact.Op == "eq" && val == "true":
 			id := strings.TrimPrefix(name, "topic:")
 			add(fmt.Sprintf("%s holds the topic %s about anyone (%s recognises someone as %s)", who, quote(id), who, quote(id)),
@@ -182,7 +187,8 @@ func (b *builder) whenWords(w behavior.When, who string) (string, []Connection) 
 	case w.Enemy != "":
 		return enemyWords(w.Enemy, who), nil
 	case w.Heard != nil:
-		return fmt.Sprintf("%s heard a %s sound within the last %d rounds", who, quote(w.Heard.Kind.String()), w.Heard.Within), nil
+		return fmt.Sprintf("%s heard a %s sound%s within the last %d rounds", who, quote(w.Heard.Kind.String()),
+			raisedWords(w.Heard.Loudness), w.Heard.Within), nil
 	case !w.Fact.IsZero():
 		id := w.Fact.String()
 		return fmt.Sprintf("%s knows the fact %s", who, quote(id)), []Connection{{Kind: "fact", ID: id, Role: "asks"}}

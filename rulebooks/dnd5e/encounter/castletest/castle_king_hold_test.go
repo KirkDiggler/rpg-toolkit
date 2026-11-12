@@ -94,9 +94,27 @@ func TestMadKingThePostHoldsTheGatesPassage(t *testing.T) {
 		require.Equal(t, held, s.barred(pastTheGate), "alert on his post, he holds the gate")
 	})
 
-	t.Run("drawn off by a voice, it opens", func(t *testing.T) {
+	t.Run("talk outside does not draw him off his post", func(t *testing.T) {
 		t.Parallel()
+		// GUARDS ANSWER SHOUTS, NOT TALK (rpg-project#933, the operator's
+		// ruling on #930): the companion's spoken word with the stranger is
+		// a voice the post hears and does not answer.
 		s := openTheHeldGate(t, castleHost{at: besideTheCrossingSeat, soleGateHolder: true})
+		require.Equal(t, held, s.barred(pastTheGate), "precondition: held")
+		s.voiceOutside()
+		// The same pacing the shout below draws him off within: talk never
+		// does.
+		offPost := func() bool {
+			at := s.at(kingGate1)
+			return at != beneathTheGate && at != besideTheCrossing
+		}
+		require.False(t, s.pace(besideTheCrossing, westDoorPost, 24, offPost), "talk does not draw him off his post")
+		s.onHisPost(kingGate1, "he stands his post")
+	})
+
+	t.Run("drawn off by a shout, it opens", func(t *testing.T) {
+		t.Parallel()
+		s := openTheHeldGate(t, castleHost{at: besideTheCrossingSeat, soleGateHolder: true, loudness: map[string]string{"tonight": "shout"}})
 		require.Equal(t, held, s.barred(pastTheGate), "precondition: held")
 		s.voiceOutside()
 		// He answers the voice on the world's next round and walks back to

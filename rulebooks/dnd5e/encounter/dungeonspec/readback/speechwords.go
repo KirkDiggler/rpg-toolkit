@@ -57,6 +57,19 @@ func loudnessSentence(word string) string {
 	return s
 }
 
+// raisedWords is a `heard` loudness as a clause after the sound it narrows
+// (rpg-project#933): at or above the word, by whisper, speak, shout,
+// scream; nothing when the condition names none, which hears any loudness.
+func raisedWords(word string) string {
+	switch word {
+	case "":
+		return ""
+	case "scream":
+		return " raised to a scream"
+	}
+	return fmt.Sprintf(" at %s or louder", quote(word))
+}
+
 // loudnessSource says whether a loudness was authored or is the default.
 func loudnessSource(word string) string {
 	if word == "" {

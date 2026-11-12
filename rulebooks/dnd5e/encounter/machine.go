@@ -92,6 +92,13 @@ func addGuardFacts(facts map[machine.FactName]machine.FactSpec, g *machine.Guard
 			return len(held) > 0, true
 		}}
 	}
+	// A RAISED VOICE (rpg-project#933): only a loudness this rulebook names
+	// is registered, so a misspelt word is a fact the vocabulary refuses.
+	if g.Fact != nil && strings.HasPrefix(string(g.Fact.Name), heardLoudnessPrefix) {
+		if l, ok := loudnessOf(strings.TrimPrefix(string(g.Fact.Name), heardLoudnessPrefix)); ok && l != "" {
+			facts[g.Fact.Name] = machine.FactSpec{Kind: machine.KindBool, Read: readHeardLoudness(l)}
+		}
+	}
 	addGuardFacts(facts, g.Not)
 	for i := range g.All {
 		addGuardFacts(facts, &g.All[i])
@@ -121,6 +128,27 @@ func readHeardKind(env any) (any, bool) {
 		return nil, false
 	}
 	return ev.Kind, true
+}
+
+// heardLoudnessPrefix names a guard fact that is true while the heard
+// occurrence that woke the creature was at or above a loudness
+// (rpg-project#933): `heard.loudness:shout` is a shout or a scream. A sound
+// that states no loudness is at or above nothing.
+const heardLoudnessPrefix = "heard.loudness:"
+
+// readHeardLoudness is a `heard.loudness:<word>` fact's reader.
+func readHeardLoudness(least Loudness) func(env any) (any, bool) {
+	return func(env any) (any, bool) {
+		me, ok := env.(*machineEnv)
+		if !ok {
+			return nil, false
+		}
+		ev, ok := me.event.(wakeEv)
+		if !ok {
+			return nil, false
+		}
+		return atOrAbove(ev.Loudness, least), true
+	}
 }
 
 func readEnemy(env any) (any, bool) {

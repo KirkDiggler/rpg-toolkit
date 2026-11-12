@@ -507,3 +507,14 @@ func (s *CastleSuite) TestTheEngineRulesSayWhenTheWaitEnds() {
 	s.Contains(all, "before `front-gate` last changed (a state change, or a roll beginning or ending its wait on it) "+
 		"is refused with nothing spent")
 }
+
+// TestTheGuardsAnswerShoutsNotTalk: the read-back says the raised voice a
+// post and a knight answer (rpg-project#933), as the engine judges it.
+func (s *CastleSuite) TestTheGuardsAnswerShoutsNotTalk() {
+	wake := s.statement(readback.KindRoutineWake, "behaviorDefinitions.gate-1-policy.recipe.states.posted.transitions[5]")
+	s.Contains(wake.Sentence, "when Guard (gate-1) hears a sound, if it happened within 6 cells of Guard (gate-1) and "+
+		"(NOT (what Guard (gate-1) heard was a `voice`), or what Guard (gate-1) heard was a voice at `shout` or louder "+
+		"(a clang, a crash or a boom is at no loudness)), Guard (gate-1) moves to the state `alert`")
+	row := s.statement(readback.KindRoutineRow, "behaviorDefinitions.keep-1-policy.table.time[5]")
+	s.Contains(row.Sentence, "heard a `voice` sound at `shout` or louder within the last 3 rounds")
+}

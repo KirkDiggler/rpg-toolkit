@@ -2358,10 +2358,25 @@ behaviorDefinitions:
             - on: time
               do:
                 - pick: post
+            # Hand edit (rpg-project#933, the operator's ruling on #930):
+            # guards react to shouts, not talk. Any sound but a voice still
+            # alerts him (a clang, a crash, a boom); a voice only when it is
+            # raised to a shout or louder.
             - on: heard
               when:
-                scope:
-                  within: 6
+                all:
+                  - scope:
+                      within: 6
+                  - any:
+                      - not:
+                          fact:
+                            name: heard.kind
+                            op: eq
+                            value: voice
+                      - fact:
+                          name: heard.loudness:shout
+                          op: eq
+                          value: true
               to: alert
               do:
                 - anchor: true
@@ -2426,14 +2441,16 @@ behaviorDefinitions:
         - use: pursuer
           when: {enemy: lost}
         - use: alarm-reactor
+        # Hand edit (rpg-project#933): he walks toward a voice raised to a
+        # shout, not toward talk.
         - when:
             - enemy: none
-            - heard: {kind: voice, within: 1}
+            - heard: {kind: voice, within: 1, loudness: shout}
           toward: sound
         - when:
             - enemy: none
             - not:
-                heard: {kind: voice, within: 1}
+                heard: {kind: voice, within: 1, loudness: shout}
           toward: {at: {q: -3, r: 7}}
       cowed:
         - when: {enemy: none}
@@ -2842,10 +2859,13 @@ behaviorDefinitions:
         # Hand edit: on the alarm, fall back beside the king, in his corner.
         - when: {fact: alarm-raised}
           toward: {at: {q: 4, r: -18}}
+        # Hand edit (rpg-project#933): a knight walks toward a shout, not toward
+        # talk.
         - when:
             heard:
               kind: voice
               within: 3
+              loudness: shout
           toward: sound
         # Hand edit: this knight paces the throne room's west side, a loop that
         # stays clear of the throne door's line from the hall.
@@ -2892,10 +2912,13 @@ behaviorDefinitions:
         # Hand edit: on the alarm, fall back beside the king, in his corner.
         - when: {fact: alarm-raised}
           toward: {at: {q: 4, r: -18}}
+        # Hand edit (rpg-project#933): a knight walks toward a shout, not toward
+        # talk.
         - when:
             heard:
               kind: voice
               within: 3
+              loudness: shout
           toward: sound
         # Hand edit: this knight paces the throne room's east side, a loop that
         # stays clear of the throne door's line from the hall.

@@ -719,6 +719,25 @@ func validateGroupEntry(key AnswerKey, i int, entry Answer) error {
 	return nil
 }
 
+// validateHeardLoudness refuses a `heard` loudness this rulebook does not
+// name, and one on any kind but a voice: only a voice is said at a loudness
+// (rpg-project#933), so a loudness on a clang would be a condition that can
+// never hold. Absent is any loudness, as it always was.
+func validateHeardLoudness(h *HeardWhen) error {
+	if h.Loudness == "" {
+		return nil
+	}
+	if l, ok := loudnessOf(h.Loudness); !ok || l == "" {
+		return fmt.Errorf("`heard` loudness %q is not one of whisper, speak, shout or scream: %w", h.Loudness, ErrBadAnswer)
+	}
+	if h.Kind.Pattern != "" || h.Kind.Literal != SoundVoice {
+		return fmt.Errorf("`heard: { kind: %s, loudness: %s }`: only a voice is said at a loudness: %w",
+			h.Kind, h.Loudness, ErrBadAnswer)
+	}
+
+	return nil
+}
+
 // validateWhenWords refuses the words inside one condition that this build
 // does not read: an enemy band, a deed, a scope or a deed span it has no
 // meaning for, or a sound kind nothing here makes ([SoundKinds]). A `not`
@@ -742,7 +761,7 @@ func validateWhenWords(when *When) error {
 				when.Heard.Kind, strings.Join(SoundKinds, ", "), ErrBadAnswer)
 		}
 
-		return nil
+		return validateHeardLoudness(when.Heard)
 	case !when.Fact.IsZero():
 		return nil
 	case when.Threat != "":

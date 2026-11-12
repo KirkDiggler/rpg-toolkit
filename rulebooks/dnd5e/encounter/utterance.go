@@ -153,12 +153,12 @@ func (e *Encounter) utter(u utterance) (spoken, error) {
 		}
 		if err := sound.Land(&sound.LandInput{
 			Store:   memberReportStore{e},
-			Sound:   sound.Sound{Kind: SoundVoice, Where: where, At: u.at},
+			Sound:   sound.Sound{Kind: SoundVoice, Where: where, At: u.at, Loudness: string(loudnessWord(string(u.loudness)))},
 			Hearers: hearers,
 		}); err != nil {
 			return spoken{}, fmt.Errorf("utterance: voice: %w", err)
 		}
-		e.landHeard(heard, SoundVoice, where, u.speaker, u.at)
+		e.landHeard(heard, SoundVoice, loudnessWord(string(u.loudness)), where, u.speaker, u.at)
 	}
 	return out, nil
 }

@@ -1685,6 +1685,10 @@ type WhenData struct {
 type HeardData struct {
 	Kind   behavior.Name `json:"kind"`
 	Within int           `json:"within"`
+	// Loudness is the quietest a heard voice may be ([HeardWhen.Loudness]),
+	// omitted when the condition names none, so a blob from before it
+	// existed stores what it always did.
+	Loudness string `json:"loudness,omitempty"`
 }
 
 // SelectorData is the persistent representation of a [Selector]: the word,
@@ -1822,7 +1826,7 @@ func whenDataFrom(w When) WhenData {
 		Scope: string(w.Scope), Who: string(w.Who), Fact: w.Fact, Threat: string(w.Threat),
 	}
 	if w.Heard != nil {
-		out.Heard = &HeardData{Kind: w.Heard.Kind, Within: w.Heard.Within}
+		out.Heard = &HeardData{Kind: w.Heard.Kind, Within: w.Heard.Within, Loudness: w.Heard.Loudness}
 	}
 	if w.Not != nil {
 		inner := whenDataFrom(*w.Not)
@@ -1936,7 +1940,7 @@ func whenFromData(w WhenData) When {
 		Scope: DeedScope(w.Scope), Who: core.EntityID(w.Who), Fact: w.Fact, Threat: behavior.ThreatWord(w.Threat),
 	}
 	if w.Heard != nil {
-		out.Heard = &HeardWhen{Kind: w.Heard.Kind, Within: w.Heard.Within}
+		out.Heard = &HeardWhen{Kind: w.Heard.Kind, Within: w.Heard.Within, Loudness: w.Heard.Loudness}
 	}
 	if w.Not != nil {
 		inner := whenFromData(*w.Not)

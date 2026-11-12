@@ -538,9 +538,11 @@ func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 		require.Equal(t, beneathTheGate, s.at(kingGate1), "and he still holds the crossing")
 	})
 
-	t.Run("drawn off by a voice, the sneaker crosses on gate-2's blind beat", func(t *testing.T) {
+	t.Run("drawn off by a shout, the sneaker crosses on gate-2's blind beat", func(t *testing.T) {
 		t.Parallel()
-		s, stealth := openTheSneak(t)
+		// GUARDS ANSWER SHOUTS (rpg-project#933): the companion raises the
+		// line to a shout; talk would leave gate-1 on the crossing.
+		s, stealth := openTheSneakSaying(t, map[string]string{"tonight": "shout"})
 		s.declareBehindTheCorner()
 		s.stepTo(besideTheCorner)
 		// gate-2 has just come to her beat post: she stands there this round
@@ -553,9 +555,9 @@ func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 		require.True(t, s.pace(besideTheCorner, beside, 60, justArrived), "gate-2 comes to her beat post")
 		require.Equal(t, beneathTheGate, s.at(kingGate1), "precondition: gate-1 holds the crossing")
 
-		// The noise: the companion outside asks the stranger about the
-		// bustle, and the stranger's answer is a voice the post hears. He
-		// answers it on the world's next round, and the sneaker goes then.
+		// The noise: the companion outside shouts to the stranger about the
+		// bustle, a raised voice the post hears. He answers it on the world's
+		// next round, and the sneaker goes then.
 		s.voiceOutside()
 		start := s.enc.ToData().Clock.HighWater
 		require.True(t, s.pace(besideTheCorner, beside, 12, func() bool { return s.enc.ToData().Clock.HighWater > start }),
@@ -600,6 +602,13 @@ func TestMadKingScriptASneakWindowAtTheDoor(t *testing.T) {
 // returns the stealth resolver every sneak roll is asked of.
 func openTheSneak(t *testing.T) (*kingScene, *partyStealth) {
 	t.Helper()
+	return openTheSneakSaying(t, nil)
+}
+
+// openTheSneakSaying is [openTheSneak] with lines said at a test loudness
+// ([castleHost.loudness]).
+func openTheSneakSaying(t *testing.T, loudness map[string]string) (*kingScene, *partyStealth) {
+	t.Helper()
 	arcs := map[encounter.MemberID]int{}
 	for _, m := range loadContent(t, kingFixture).Monsters {
 		arcs[encounter.MemberID(m.MemberID)] = 120
@@ -607,7 +616,7 @@ func openTheSneak(t *testing.T) (*kingScene, *partyStealth) {
 
 	stealth := scriptStealth()
 	s := openTheCastleAs(t, castleHost{
-		at: gatehouseSeat, arcs: arcs, resolver: stealth,
+		at: gatehouseSeat, arcs: arcs, resolver: stealth, loudness: loudness,
 		passive: map[encounter.MemberID]int{kingGate1: gate1Passive, kingGate2: gate2Passive, kingCaptain: captainPassive},
 		players: []encounter.MemberInput{{ID: sneakCompanion, Kind: encounter.KindPlayer, Position: besideTheStranger}},
 	})

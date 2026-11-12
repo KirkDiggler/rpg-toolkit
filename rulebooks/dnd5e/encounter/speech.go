@@ -3,7 +3,10 @@
 
 package encounter
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+)
 
 // speech.go is PERCEIVED SPEECH (rpg-project#930; slice one is
 // rpg-project#933): every spoken thing is one utterance with a loudness, and
@@ -46,6 +49,23 @@ const (
 
 // Loudnesses is every loudness word, in the order a refusal lists them.
 var Loudnesses = []Loudness{LoudnessWhisper, LoudnessSpeak, LoudnessShout, LoudnessScream}
+
+// loudnessOrder is [Loudnesses] as the words a table's `heard` loudness and
+// a held voice are compared by ([behavior.Facts.Loudness]).
+var loudnessOrder = func() []string {
+	out := make([]string, len(Loudnesses))
+	for i, l := range Loudnesses {
+		out[i] = string(l)
+	}
+	return out
+}()
+
+// atOrAbove reports whether a loudness is at or above another, by
+// [Loudnesses]; false when either is not a loudness this rulebook names.
+func atOrAbove(l, least Loudness) bool {
+	have, want := slices.Index(Loudnesses, l), slices.Index(Loudnesses, least)
+	return have >= 0 && want >= 0 && have >= want
+}
 
 // loudnessOf is the loudness a stored word means: empty is speak. ok is
 // false for a word this build does not know.
