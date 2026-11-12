@@ -13,12 +13,16 @@ package session_test
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/play/intel"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -53,20 +57,131 @@ func (c *freeRoamCastle) reservations(t *testing.T) int {
 	return n
 }
 
-// theClericsWaitingCase is the admitted gate with the cleric, holding a
-// Guidance die, beside the gate making her own case, her check paused on
-// the die; every d20 shows face.
-func theClericsWaitingCase(t *testing.T, face int) *freeRoamCastle {
-	t.Helper()
-	c := atTheAdmittedGate(t)
-	c.dice.d20s = []int{face}
+// waitingCaseTests are the tests that start from the cleric's waiting case,
+// built ONCE per face in [TestMain] for a run that will use them.
+var waitingCaseTests = []string{
+	"TestCastleAStragglerWhoWalksAwayFromABadRollIsTurnedAway",
+	"TestCastleAStragglerWhoWalksAwayFromAGoodRollIsAdmitted",
+	"TestCastleASpendAfterWalkingAwayIsSettledDeclined",
+	"TestCastleAKeptRollSettlesOnceAfterALoad",
+	"TestCastleAWaitingCaseWhoseGuardFallsIsReleased",
+	"TestCastleAWaitingCaseWhoseSpeakerExitsIsDropped",
+	"TestCastleAKeptRollThatCannotSettleDoesNotWedgeTheTable",
+}
+
+// castleStores is one stored moment of a castle scene.
+type castleStores struct {
+	sessions   map[string]*session.SessionData
+	encounters map[string]*encounter.EncounterData
+	characters map[string]*character.Data
+	seats      map[string]session.SeatData
+}
+
+// waitingCases is the cleric's waiting case per d20 face: the admitted gate
+// with the cleric, holding a Guidance die, beside the gate making her own
+// case, her check paused on the die.
+var waitingCases = map[int]*struct {
+	once   sync.Once
+	err    error
+	stores castleStores
+}{2: {}, 18: {}}
+
+// buildTheWaitingCases builds every face's waiting case.
+func buildTheWaitingCases() {
+	for face, wc := range waitingCases {
+		wc.once.Do(func() { wc.stores, wc.err = buildTheWaitingCase(face) })
+	}
+}
+
+// buildTheWaitingCase plays the waiting case once from the admitted gate's
+// stores. It takes no *testing.T because [TestMain] runs it; every
+// precondition it checks is an error.
+func buildTheWaitingCase(face int) (castleStores, error) {
+	admittedGate.once.Do(func() { admittedGate.err = buildTheAdmittedGate() })
+	if admittedGate.err != nil {
+		return castleStores{}, admittedGate.err
+	}
+	c := &freeRoamCastle{
+		live: &actCapture{}, dice: &castleDice{d20s: []int{face}},
+		sessions: newFakeSessions(), encounters: newFakeEncounters(),
+		characters: newFakeCharacters(), seats: newFakeSeats(),
+	}
+	if err := restoreInto(c, castleStores{
+		sessions: admittedGate.sessions, encounters: admittedGate.encounters,
+		characters: admittedGate.characters, seats: admittedGate.seats,
+	}); err != nil {
+		return castleStores{}, err
+	}
+	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: c.live, Seats: c.seats, CharacterConfig: newFakeCharacterConfig(),
+		PresentationIDs: testPresentationIDs{}, Dice: c.dice, TurnDriver: session.Driver(),
+		Sessions: c.sessions, Encounters: c.encounters, Characters: c.characters,
+	})
+	if err != nil {
+		return castleStores{}, err
+	}
 	withGuidance(c.characters.byID["cleric"])
-	c.standInTheRecord(t, "cleric", besideTheCastleGate)
-	claim, err := speakAsOffered(context.Background(), c.mgr, &session.SpeakInput{
+	world := c.encounters.byID["sess"]
+	for i := range world.Members {
+		if world.Members[i].ID == "cleric" {
+			world.Members[i].Cell = &encounter.PositionData{X: besideTheCastleGate.X, Y: besideTheCastleGate.Y}
+		}
+	}
+	claim, err := speakAsOffered(context.Background(), mgr, &session.SpeakInput{
 		Session: "sess", Member: "cleric", Target: "gate-1", OptionID: stragglerLine,
 	})
-	require.NoError(t, err)
-	require.True(t, claim.Paused, "precondition: her Guidance die stops the check to ask")
+	if err != nil {
+		return castleStores{}, fmt.Errorf("the cleric's case: %w", err)
+	}
+	if !claim.Paused {
+		return castleStores{}, fmt.Errorf("precondition: her Guidance die stops the check to ask: %+v", claim)
+	}
+	return castleStores{sessions: c.sessions.byID, encounters: c.encounters.byID, characters: c.characters.byID, seats: c.seats.byID}, nil
+}
+
+// restoreInto copies stored stores into a castle's fresh fakes.
+func restoreInto(c *freeRoamCastle, from castleStores) error {
+	for id, data := range from.sessions {
+		copied, err := copyOf(data)
+		if err != nil {
+			return err
+		}
+		c.sessions.byID[id] = copied
+	}
+	for id, data := range from.encounters {
+		copied, err := copyOf(data)
+		if err != nil {
+			return err
+		}
+		c.encounters.byID[id] = copied
+	}
+	for id, data := range from.characters {
+		copied, err := copyOf(data)
+		if err != nil {
+			return err
+		}
+		c.characters.byID[id] = copied
+	}
+	for id, data := range from.seats {
+		c.seats.byID[id] = data
+	}
+	return nil
+}
+
+// theClericsWaitingCase restores the cleric's waiting case for one d20 face
+// into fresh stores; every d20 after it shows face too.
+func theClericsWaitingCase(t *testing.T, face int) *freeRoamCastle {
+	t.Helper()
+	wc := waitingCases[face]
+	require.NotNil(t, wc, "a waiting case is built for face %d", face)
+	wc.once.Do(func() { wc.stores, wc.err = buildTheWaitingCase(face) })
+	require.NoError(t, wc.err, "the waiting case's scene")
+	c := &freeRoamCastle{
+		live: &actCapture{}, dice: &castleDice{d20s: []int{face}},
+		sessions: newFakeSessions(), encounters: newFakeEncounters(),
+		characters: newFakeCharacters(), seats: newFakeSeats(),
+	}
+	require.NoError(t, restoreInto(c, wc.stores))
+	c.mgr = c.manager(t)
 	require.NotEmpty(t, reactRow(c, t, "cleric").ID, "precondition: she is asked")
 	require.Equal(t, 1, c.reservations(t), "precondition: her case holds the gate")
 	return c
@@ -92,19 +207,27 @@ func TestCastleAStragglerWhoWalksAwayFromABadRollIsTurnedAway(t *testing.T) {
 	c := theClericsWaitingCase(t, 2)
 
 	c.walkAway(t)
-	require.Empty(t, reactRow(c, t, "cleric").ID, "no question remains")
-	require.Zero(t, c.reservations(t), "and no hold")
+	require.Zero(t, c.reservations(t), "no hold remains")
+	require.Empty(t, c.sessions.byID["sess"].Windows.Windows, "and no question")
 	require.True(t, c.holds(t, "gate-1", "cleric", turnedAwayTopic), "the miss lands: gate-1 turned her away")
 	require.True(t, c.holds(t, "gate-2", "cleric", turnedAwayTopic), "and gate-2 heard it")
 	require.False(t, c.holds(t, "gate-1", "cleric", admittedOn))
 	require.True(t, c.holdsGuidance(t, "cleric"), "her Guidance die is still hers")
 
 	c.standInTheRecord(t, "cleric", besideTheCastleGate)
-	require.True(t, c.offersGuard(t, "cleric", "gate-1", friendsLine), "precondition: the guard's lines are read for her")
-	_, listed := c.guardLine(t, "cleric", "gate-1", stragglerLine)
-	require.False(t, listed, "one try: the case is gone on gate-1")
-	_, listed = c.guardLine(t, "cleric", "gate-2", stragglerLine)
-	require.False(t, listed, "and on gate-2")
+	view, err := c.mgr.View(context.Background(), &session.ViewInput{Session: "sess", Member: "cleric"})
+	require.NoError(t, err)
+	sighted := map[string]bool{}
+	for _, s := range view.Sightings {
+		sighted[s.Subject] = true
+	}
+	panel := c.bar(t, "cleric")
+	for _, guard := range []string{"gate-1", "gate-2"} {
+		require.True(t, sighted[guard], "precondition: she sights %s, so an absent line is the line's", guard)
+		require.True(t, availableOn(panel, guard, friendsLine), "precondition: %s's lines are read for her", guard)
+		_, listed := lineOnPanel(panel, guard, stragglerLine)
+		require.False(t, listed, "one try: the case is gone on %s", guard)
+	}
 }
 
 // TestCastleAStragglerWhoWalksAwayFromAGoodRollIsAdmitted: the same with a
@@ -222,6 +345,7 @@ func TestCastleAStragglerHasOneTry(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, c.holds(t, "gate-1", "cleric", turnedAwayTopic), "the miss turns her away")
 	for _, guard := range []string{"gate-1", "gate-2"} {
+		c.sightingOf(t, "cleric", guard) // precondition: she sights the guard
 		_, listed := c.guardLine(t, "cleric", guard, stragglerLine)
 		require.False(t, listed, "the case is gone on %s", guard)
 	}
@@ -234,4 +358,37 @@ func TestCastleAStragglerHasOneTry(t *testing.T) {
 	require.NoError(t, err, "alice vouches for her")
 	cross := c.walk(t, "cleric", []spatial.Position{pastTheCastleGate})
 	require.Equal(t, session.MovementCompleted, cross.Status, "vouched for, she walks through: %s", cross.StopReason)
+}
+
+// TestCastleAKeptRollThatCannotSettleDoesNotWedgeTheTable: the cleric's
+// hold is abandoned in the stored world and her stored pause is corrupt, so
+// the kept settle fails in resolution — a reason no refusal covers. Every
+// member's commit runs the kept-roll pass, so that one window must not
+// wedge the table: alice's next walk succeeds, the hold and the question
+// are ended with no verdict, the die is unspent, and the fault is recorded
+// on her walk's report.
+func TestCastleAKeptRollThatCannotSettleDoesNotWedgeTheTable(t *testing.T) {
+	c := theClericsWaitingCase(t, 2)
+	enc := c.world(t)
+	_, err := enc.AbandonReservation(&encounter.AbandonReservationInput{Member: "cleric"})
+	require.NoError(t, err)
+	abandoned := enc.ToData()
+	c.encounters.byID["sess"] = &abandoned
+	windows := c.sessions.byID["sess"].Windows.Windows
+	require.Len(t, windows, 1, "precondition: her question is the one open")
+	var payload map[string]any
+	require.NoError(t, json.Unmarshal(windows[0].Payload, &payload))
+	payload["pause"].(map[string]any)["frozen"] = []byte("not a paused check")
+	windows[0].Payload, err = json.Marshal(payload)
+	require.NoError(t, err)
+
+	c.standInTheRecord(t, "alice", backDownTheRoad[0])
+	out := c.walk(t, "alice", []spatial.Position{backDownTheRoad[1]})
+	require.Len(t, out.Saved.Faults, 1, "the failed settle is recorded")
+	require.Contains(t, out.Saved.Faults[0], "cleric's kept roll", "naming whose")
+	require.Empty(t, reactRow(c, t, "cleric").ID, "her question is closed")
+	require.Zero(t, c.reservations(t), "the hold is released")
+	require.False(t, c.holds(t, "gate-1", "cleric", turnedAwayTopic), "with no verdict")
+	require.True(t, c.holdsGuidance(t, "cleric"), "and her die unspent")
+	c.walk(t, "alice", []spatial.Position{backDownTheRoad[0]}) // and the table moves on
 }

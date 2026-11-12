@@ -426,8 +426,14 @@ func (m *Manager) closeAbandonedLines(ctx context.Context, scope *writeScope) er
 		}
 		switch state {
 		case holdAbandoned, holdLeft:
+			// A KEPT ROLL THAT CANNOT SETTLE NEVER WEDGES THE TABLE: every
+			// member's commit runs this pass, so a settle failing for any
+			// reason — a sheet, a pause, a capability — is ended with no
+			// verdict and recorded ([SaveReport.Faults]), never returned.
 			if err := m.settleKeptRoll(ctx, scope, window, w, state); err != nil {
-				return err
+				if err := endFailedKeptRoll(scope, window, w, err); err != nil {
+					return err
+				}
 			}
 		case holdGone:
 			if err := endWaitingLine(scope, window); err != nil {

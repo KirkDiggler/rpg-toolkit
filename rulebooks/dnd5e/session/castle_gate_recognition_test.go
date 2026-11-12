@@ -76,12 +76,6 @@ var admittedGateTests = []string{
 	"TestCastleTheUnrecognisedIsBarredAtTheGate",
 	"TestCastleAStragglerIsVouchedFor",
 	"TestCastleAStragglersWaitingRollHoldsTheVouch",
-	"TestCastleAStragglerWhoWalksAwayFromABadRollIsTurnedAway",
-	"TestCastleAStragglerWhoWalksAwayFromAGoodRollIsAdmitted",
-	"TestCastleASpendAfterWalkingAwayIsSettledDeclined",
-	"TestCastleAKeptRollSettlesOnceAfterALoad",
-	"TestCastleAWaitingCaseWhoseGuardFallsIsReleased",
-	"TestCastleAWaitingCaseWhoseSpeakerExitsIsDropped",
 	"TestCastleAStragglerHasOneTry",
 }
 

@@ -115,6 +115,9 @@ func TestMain(m *testing.M) {
 	if wantedBy(pattern, admittedGateTests) {
 		admittedGate.once.Do(func() { admittedGate.err = buildTheAdmittedGate() })
 	}
+	if wantedBy(pattern, waitingCaseTests) {
+		buildTheWaitingCases()
+	}
 	os.Exit(m.Run())
 }
 

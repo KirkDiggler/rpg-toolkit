@@ -674,14 +674,47 @@ func (m *Manager) keepAbandonedRoll(
 	if err := scope.openAct(string(VerbReact), w.Story.ActID); err != nil {
 		return nil, err
 	}
-	if err := m.settleKeptRoll(ctx, scope, window, w, state); err != nil {
-		return nil, err
+	if settleErr := m.settleKeptRoll(ctx, scope, window, w, state); settleErr != nil {
+		// Ended with no verdict, committed, and the one caller told why.
+		if err := endFailedKeptRoll(scope, window, w, settleErr); err != nil {
+			return nil, err
+		}
+		if _, _, err := m.commit(ctx, scope); err != nil {
+			return nil, err
+		}
+		return nil, settleErr
 	}
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
 		return nil, err
 	}
 	return &ReactOutput{Saved: report, Delivery: delivery, RollKept: true}, nil
+}
+
+// endFailedKeptRoll ends a kept roll whose settle failed for a reason
+// [settleRefusals] does not cover — a sheet that would not load, a pause
+// resolution refused, a capability's error — as the nobody-can-answer path
+// does: the window is closed declined if [Manager.settleKeptRoll] had not
+// closed it yet, the hold is released with no verdict, and the held offer
+// stays unspent (the declined resume spends nothing). What happened is
+// recorded on the scope ([SaveReport.Faults]) so it is never silent.
+func endFailedKeptRoll(scope *writeScope, window interrupt.Window, w pendingWindow, cause error) error {
+	open, err := scope.ledger.Open()
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidSession, err)
+	}
+	if slices.ContainsFunc(open, func(o interrupt.Window) bool { return o.ID == window.ID }) {
+		if err := closeWindow(scope, window, ledgerDecline); err != nil {
+			return err
+		}
+	}
+	_, err = scope.enc.ReleaseReservation(&encounter.ReleaseReservationInput{Member: encounter.MemberID(w.Audience)})
+	if err != nil && !errors.Is(err, encounter.ErrNoReservation) && !errors.Is(err, encounter.ErrNotMember) {
+		return translate(err)
+	}
+	scope.faults = append(scope.faults, fmt.Sprintf(
+		"%s's kept roll on line %q could not settle and was released with no verdict: %v", w.Audience, w.Story.Option, cause))
+	return nil
 }
 
 // endWaitingLine closes a waiting line's window declined and, in the same
