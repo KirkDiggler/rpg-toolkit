@@ -88,6 +88,8 @@
 //   - ID names ref, state and index, prefixed by InstanceKey when supplied.
 //     Assemblies can therefore separate equal recipes from different instances.
 //   - Host returns the holder, ref and source with detached ref values.
+//   - Definition returns a detached complete Output (kind, guard, amount and
+//     params), without live bag state. Output.Clone provides the same value copy.
 //   - Params returns an owned copy of the kind's fields.
 //   - Answer evaluates the output's guard over a frame and the live bag.
 //   - Amount returns an owned, validated scalar or unresolved dice description.
