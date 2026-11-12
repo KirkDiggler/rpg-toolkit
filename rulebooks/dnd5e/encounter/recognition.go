@@ -390,10 +390,34 @@ type recognitionLine struct {
 	// sees is seen, not the live reach.
 	spoken bool
 	seen   []MemberID
+	// hearers is who caught the words of the line that granted, when a line
+	// granted (rpg-project#933, R9): the carriers who hear a recognition are
+	// the word-catchers, not those who only saw it said. Nil for an outcome
+	// no line moved, whose carriers are the witnesses.
+	hearers []MemberID
 	// perceived is, for a line judged as spoken, which members of the
 	// speaker's party each witness saw when the words were said
 	// ([ReservedScene.Perceived]): what each reader of its beats may be told.
 	perceived map[MemberID][]MemberID
+	// sawTarget is, for a line judged as spoken, who saw the creature it was
+	// said to when the words were said ([ReservedScene.SawTarget]): who may
+	// be told that creature is the one who came to hold a recognition.
+	sawTarget []MemberID
+}
+
+// knowsHolder is whether reader may be named the holder of a recognition
+// this line granted (rpg-project#933): the holder themselves, or a reader
+// who perceives them — on the live reach, or, for a line judged as spoken,
+// the creature spoken to as the reader saw them then. A hearer who saw
+// nobody hears that someone came to hold it, never who.
+func (line recognitionLine) knowsHolder(reach sightReach, reader, holder MemberID) bool {
+	if reader == holder {
+		return true
+	}
+	if line.spoken {
+		return holder == line.spokenTo && slices.Contains(line.sawTarget, reader)
+	}
+	return reach.Reaches(perception.Sight, reader, holder)
 }
 
 // perceives is whether reader perceives subject for this line's beats: on
@@ -478,7 +502,14 @@ func (e *Encounter) grantRecognition(r Recognition, line recognitionLine) error 
 	if err != nil {
 		return err
 	}
-	for _, carrier := range line.witnesses {
+	// A LINE TEACHES WHOEVER CATCHES ITS WORDS (rpg-project#933, R9): the
+	// carriers who hear it are those the line's words reached, not those who
+	// only saw it said.
+	carriers := line.witnesses
+	if line.hearers != nil {
+		carriers = line.hearers
+	}
+	for _, carrier := range carriers {
 		if carrier == holder || carrier == line.speaker || down[carrier] {
 			continue
 		}
@@ -586,11 +617,22 @@ func (e *Encounter) tellRecognition(
 ) error {
 	type telling struct {
 		subjects []string
+		heard    bool
+		named    bool
 		audience []MemberID
 	}
 	var tellings []*telling
 	byKey := map[string]*telling{}
-	readers := append([]MemberID{holder}, line.witnesses...)
+	// A LINE'S GRANT IS TOLD TO WHOEVER CAUGHT ITS WORDS (rpg-project#933):
+	// its topic says how the line went — admitted, turned away — so one who
+	// only saw it said is told nothing, and reads the consequence off the
+	// world (the walker let through or stopped). An outcome no line moved
+	// is told to its witnesses.
+	audience := line.witnesses
+	if line.hearers != nil {
+		audience = line.hearers
+	}
+	readers := append([]MemberID{holder}, audience...)
 	for _, reader := range readers {
 		if _, dup := byKey["reader:"+string(reader)]; dup {
 			continue
@@ -605,10 +647,15 @@ func (e *Encounter) tellRecognition(
 		if len(told) == 0 {
 			continue
 		}
-		key := "subjects:" + strings.Join(told, "\x00")
+		// THE LINE IS NAMED ONLY TO WHOEVER CAUGHT IT (rpg-project#933): a
+		// reader who saw the grant and not the words is told the recognition
+		// and not which line granted it.
+		heard := line.hearers == nil || slices.Contains(line.hearers, reader)
+		named := line.hearers == nil || line.knowsHolder(reach, reader, holder)
+		key := fmt.Sprintf("heard:%t;named:%t;subjects:%s", heard, named, strings.Join(told, "\x00"))
 		t, ok := byKey[key]
 		if !ok {
-			t = &telling{subjects: told}
+			t = &telling{subjects: told, heard: heard, named: named}
 			byKey[key] = t
 			tellings = append(tellings, t)
 		}
@@ -617,7 +664,6 @@ func (e *Encounter) tellRecognition(
 	for _, t := range tellings {
 		payload := map[string]interface{}{
 			"beat":     BeatRecognized,
-			"holder":   string(holder),
 			"subjects": t.subjects,
 			"topic":    string(topic),
 			"channel":  channel,
@@ -627,7 +673,10 @@ func (e *Encounter) tellRecognition(
 		if line.interaction != "" {
 			payload["interaction"] = string(line.interaction)
 		}
-		if line.option != "" {
+		if t.named {
+			payload["holder"] = string(holder)
+		}
+		if line.option != "" && t.heard {
 			payload["option"] = line.option
 		}
 		beat, err := json.Marshal(payload)
@@ -662,4 +711,13 @@ func validateRecognizedTopics(granted map[TopicID]bool, what string, requires []
 		}
 	}
 	return nil
+}
+
+// sawTargetOf is who saw the creature a kept roll's line was said to, when
+// the line is judged as spoken; nil for a live line.
+func sawTargetOf(line utterance) []MemberID {
+	if line.scene == nil {
+		return nil
+	}
+	return slices.Clone(line.scene.SawTarget)
 }

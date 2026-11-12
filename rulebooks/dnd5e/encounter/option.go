@@ -71,9 +71,16 @@ type Option struct {
 	// [SpeakInput.OptionID] names it back.
 	ID string
 
-	// Say is the character's line, carried VERBATIM onto the [BeatSpoke]
-	// beat. REQUIRED non-empty: an option is something said.
+	// Say is the character's line, carried VERBATIM onto the [BeatSpeech]
+	// versions of whoever catches its words. REQUIRED non-empty: an option is
+	// something said.
 	Say string
+
+	// Loudness is how loudly the line is said (rpg-project#933, R10): one of
+	// [Loudnesses], empty for [LoudnessSpeak]. A whispered line is admitted
+	// only from beside the member it is said to. Omitted when empty, so a
+	// world compiled before the field pictures exactly as it did.
+	Loudness string `json:"Loudness,omitempty"`
 
 	// Check is the approaches through the line's check — the same list a
 	// lock carries, priced per route, each with a DC of at least 1. CARRIED,
@@ -203,9 +210,10 @@ const BeatInteraction = "interaction"
 // against it in the same wave, so a rename fails to compile there instead of
 // quietly producing a beat nobody renders.
 //
-// IT IS THE ONLY ACCOUNT OF THE ROLL. A missed line writes no deed and, when
-// the author wrote no failure rows, nothing else at all — a client that cannot
-// decode this beat cannot tell the table what happened.
+// IT IS THE SPEAKER'S OWN RECORD OF THE VERB (rpg-project#933, R9): the line,
+// the check and the deed, written to the speaker alone. Every other member is
+// told the line, and its roll, only by their own [BeatSpeech] version — a
+// member who sees the speaker but is not reached by the words learns neither.
 const BeatSpoke = "spoke"
 
 // verbSpeak is the bare verb name the answered beat carries for a spoken
@@ -591,12 +599,16 @@ type SpeakOutput struct {
 	// the answer rather than off the fact that it called.
 	Beaten bool
 
-	// Witnesses is every member who saw it — who holds the deed on a
-	// success, who learns a fact the answer teaches, and who was told
-	// regardless. Sorted, the audience's own order.
+	// Witnesses is every member who saw it said. Sorted, the audience's own
+	// order. Seeing it said teaches nothing of how it went (rpg-project#933).
 	Witnesses []MemberID
 
-	// Deed is the deed verb that landed on the witnesses — [DeedIntimidate]
+	// Hearers is every member who caught the words — who holds the deed on a
+	// success and was written the line and its roll (rpg-project#933). In
+	// member order.
+	Hearers []MemberID
+
+	// Deed is the deed verb that landed on the hearers — [DeedIntimidate]
 	// or [DeedPersuade] — or empty when none did: a miss, a skill that lands
 	// none, or a prop.
 	Deed string
@@ -700,16 +712,38 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	beaten := in.Beaten || !option.Checked()
 
 	at := uint64(e.clock.ToData().HighWater)
-	seq, err := e.appendSpokeBeat(in, option, beaten, witnesses, at)
+	seq, err := e.appendSpokeBeat(in, option, beaten, at)
 	if err != nil {
 		return nil, err
 	}
 
+	// THE LINE IS PERCEIVED (rpg-project#933, R1–R4, R8): each member is
+	// written the parts their senses delivered — who said it to those who
+	// see the speaker, the words and the roll to those they reach — and the
+	// voice lands on whoever heard it. A kept roll's line is perceived as it
+	// was said ([ReservedScene]).
+	line := utterance{
+		speaker: in.Actor, to: in.Target, prop: in.Prop, words: option.Say, option: option.ID,
+		loudness: loudnessWord(option.Loudness), at: at,
+	}
+	if option.Checked() {
+		line.roll = &spokenRoll{skill: in.Skill, dc: in.DC, total: in.Total, beaten: beaten, calculation: in.Calculation}
+	}
+	if spoken {
+		line.scene = settle.Scene
+	}
+	heardLine, err := e.utter(line)
+	if err != nil {
+		return nil, fmt.Errorf("speak: %w", err)
+	}
+
 	// THE DEED IS THE SKILL'S (R3), and only a creature can hold one about
-	// being spoken to: a prop is persuaded of nothing.
+	// being spoken to: a prop is persuaded of nothing. IT IS KNOWN BY WHOEVER
+	// CAUGHT THE WORDS (rpg-project#933): an intimidation that worked says it
+	// worked, so one who only saw the line said holds no deed of it.
 	landed := ""
 	if verb, lands := deedForSkill(in.Skill); lands && beaten && in.Target != "" {
-		if err := e.landDeed(verb, in.Actor, in.Target, where, witnesses); err != nil {
+		if err := e.landSpokenDeed(verb, in.Actor, in.Target, where, heardLine.catchers, at); err != nil {
 			return nil, fmt.Errorf("speak: %w", err)
 		}
 		landed = verb
@@ -737,7 +771,8 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 		iid, _ := optionInteraction(option)
 		if err := e.applyGrants(option, beaten, answered.pick.Entry, recognitionLine{
 			interaction: iid, option: option.ID, speaker: in.Actor, spokenTo: in.Target, witnesses: witnesses, at: at,
-			spoken: spoken, seen: admitted.seen, perceived: admitted.perceived,
+			spoken: spoken, seen: admitted.seen, perceived: admitted.perceived, hearers: heardLine.catchers,
+			sawTarget: sawTargetOf(line),
 		}); err != nil {
 			return nil, fmt.Errorf("speak: %w", err)
 		}
@@ -749,7 +784,8 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	// the next raise and leave that offer stale.
 	if err := e.advanceInteraction(option, beaten, recognitionLine{
 		speaker: in.Actor, spokenTo: in.Target, witnesses: witnesses, at: at,
-		spoken: spoken, seen: admitted.seen, perceived: admitted.perceived,
+		spoken: spoken, seen: admitted.seen, perceived: admitted.perceived, hearers: heardLine.catchers,
+		sawTarget: sawTargetOf(line),
 	}); err != nil {
 		return nil, fmt.Errorf("speak: %w", err)
 	}
@@ -781,7 +817,7 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	}
 
 	return &SpeakOutput{
-		Beaten: beaten, Witnesses: witnesses, Deed: landed, Seq: seq, Answered: answered.pick,
+		Beaten: beaten, Witnesses: witnesses, Hearers: heardLine.catchers, Deed: landed, Seq: seq, Answered: answered.pick,
 	}, nil
 }
 
@@ -840,8 +876,16 @@ func (e *Encounter) advanceInteraction(option Option, beaten bool, line recognit
 	if err != nil {
 		return fmt.Errorf("interaction %q: marshal beat: %w", a.Interaction, err)
 	}
+	// THE CONVERSATION MOVED BY A LINE IS TOLD TO WHOEVER CAUGHT IT
+	// (rpg-project#933, R9): the beat names the line and its verdict, so a
+	// member who only saw it said learns neither here; they see where the
+	// conversation stands in the next menu they are offered.
+	audience := witnesses
+	if line.hearers != nil {
+		audience = line.hearers
+	}
 	if _, err := e.appendBeat(&record.AppendInput{
-		At: at, Audience: witnesses, Tags: map[string]string{"tag": BeatInteraction}, Payload: payload,
+		At: at, Audience: audience, Tags: map[string]string{"tag": BeatInteraction}, Payload: payload,
 	}); err != nil {
 		return fmt.Errorf("interaction %q: %w", a.Interaction, err)
 	}
@@ -910,7 +954,7 @@ func (e *Encounter) refusePropOutOfReach(
 // one not spoken to empty, for the reason a struck beat writes `critical:
 // false`: absent must not become a third state for a reader downstream.
 func (e *Encounter) appendSpokeBeat(
-	in *SpeakInput, option Option, beaten bool, witnesses []MemberID, at uint64,
+	in *SpeakInput, option Option, beaten bool, at uint64,
 ) (uint64, error) {
 	body := map[string]interface{}{
 		"beat":   BeatSpoke,
@@ -940,9 +984,14 @@ func (e *Encounter) appendSpokeBeat(
 		return 0, fmt.Errorf("speak: marshal beat: %w", err)
 	}
 
+	// THE VERB'S OWN RECORD, TO ITS SPEAKER ALONE (rpg-project#933, R9: the
+	// lead's call that `spoke` keeps the check and the deed). Everyone else
+	// is told the line, and its roll, only by their own [BeatSpeech]
+	// version, so a member who sees the speaker but did not catch the words
+	// learns neither from this beat.
 	out, err := e.appendBeat(&record.AppendInput{
 		At:       at,
-		Audience: witnesses,
+		Audience: []MemberID{in.Actor},
 		Tags:     map[string]string{"tag": verbSpeak},
 		Payload:  payload,
 	})
@@ -981,6 +1030,9 @@ func validateOptions(options []Option) error {
 		seen[o.ID] = true
 		if o.Say == "" {
 			return fmt.Errorf("option %q does not say what the character says", o.ID)
+		}
+		if err := validateLoudness(fmt.Sprintf("option %q", o.ID), o.Loudness); err != nil {
+			return err
 		}
 		// NO APPROACH IS A PLAIN LINE (rpg-project#785 R5), which cannot be
 		// missed. The authoring dialect refuses a `check: []` written empty;

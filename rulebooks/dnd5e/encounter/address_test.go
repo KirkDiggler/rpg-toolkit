@@ -180,12 +180,7 @@ func TestAnApproachInsideTheDistanceIsHailed(t *testing.T) {
 	require.Equal(t, string(hailGuard), addressed[0]["guard"])
 	require.Equal(t, float64(hailed.Addressed[0].Seq), addressed[0]["seq"], "the output names the beat")
 
-	var hail map[string]any
-	for _, b := range storyOf(t, enc) {
-		if b["beat"] == BeatAnswered && b["creature"] == string(hailGuard) && b["say"] == hailLine {
-			hail = b
-		}
-	}
+	hail := answeredSaying(t, enc, hailGuard, hailLine)
 	require.NotNil(t, hail, "the approached wake picks his line")
 	require.Less(t, addressed[0]["seq"].(float64), hail["seq"].(float64), "the address, then his hail")
 	require.Equal(t, blob, enc.interactions[hailGate].blob.State, "an address is not progress")
@@ -290,8 +285,7 @@ func TestABumpWhileAddressedIsTheBumpLine(t *testing.T) {
 
 	out := bumped(t, enc, spatial.Position{X: 6, Y: 1}, hailGuard)
 	require.Empty(t, out.Addressed, "a bump writes no address")
-	answers := answersBy(t, enc, hailGuard)
-	require.Equal(t, bumpLine, answers[len(answers)-1]["say"], "his bump line, as today")
+	require.NotNil(t, answeredSaying(t, enc, hailGuard, bumpLine), "his bump line, as today")
 	require.Len(t, beatsNamed(t, enc, BeatAddressed), 1, "still one address")
 	require.Equal(t, &Addressed{Interaction: hailGate, Guard: hailGuard}, addressOf(t, enc, "alice"))
 }
@@ -325,12 +319,13 @@ func TestApproachReachIsTheHostsBound(t *testing.T) {
 	}
 }
 
-// answeredSaying is the answered beat of one creature saying line, decoded,
-// nil when there is none.
+// answeredSaying is alice's speech version of one creature saying line —
+// where the words and whom they were said to travel (rpg-project#933) —
+// decoded, nil when there is none.
 func answeredSaying(t *testing.T, enc *Encounter, creature MemberID, line string) map[string]any {
 	t.Helper()
 	for _, b := range storyOf(t, enc) {
-		if b["beat"] == BeatAnswered && b["creature"] == string(creature) && b["say"] == line {
+		if b["beat"] == BeatSpeech && b["speaker"] == string(creature) && b["words"] == line {
 			return b
 		}
 	}
@@ -344,7 +339,9 @@ func TestTheHailIsSpokenToTheMover(t *testing.T) {
 	hail := answeredSaying(t, enc, hailGuard, hailLine)
 	require.NotNil(t, hail)
 	require.Equal(t, "alice", hail["to"], "his hail is said to the member he addressed")
-	require.Equal(t, "", hail["target"], "the intent's target is not who he speaks to")
+	answers := answersBy(t, enc, hailGuard)
+	require.NotContains(t, answers[len(answers)-1], "target",
+		"the intent's target is not who he speaks to, and a pick that says something names nobody")
 }
 
 func TestTheBumpLineIsSpokenToTheMover(t *testing.T) {
@@ -367,7 +364,7 @@ func TestATimeLineIsSpokenToNobody(t *testing.T) {
 	require.NoError(t, enc.spendWorldAction("alice"))
 	line := answeredSaying(t, enc, "crier", muttered)
 	require.NotNil(t, line, "precondition: his time pick said something")
-	require.Equal(t, "", line["to"], "a line nobody prompted is said to nobody")
+	require.NotContains(t, line, "to", "a line nobody prompted is said to nobody")
 }
 
 func TestASilentHailIsSpokenToNobody(t *testing.T) {

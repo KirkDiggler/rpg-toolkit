@@ -142,6 +142,11 @@ type Encounter struct {
 	// derives the same graph.
 	partitionLinks map[PartitionID][]partitionLink
 
+	// partitionDoorways is, for each partition that is a footprint door's
+	// own cells, the ways its door joins it to the rooms either side
+	// ([Encounter.doorways]): derived with the links, never persisted.
+	partitionDoorways map[PartitionID][]partitionLink
+
 	clock *clock.Tick
 	// bubbles are the localized initiative bubbles currently running. Zero or
 	// more: a bubble exists only while a fight does, and an encounter with no

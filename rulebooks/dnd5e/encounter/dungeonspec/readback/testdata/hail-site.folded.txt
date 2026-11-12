@@ -28,8 +28,9 @@ CREATURES
     - “We're expected.” (`guest`), said to the guard; plain: rolls nothing, cannot be missed, free
         [.options[0]]
       - Offered while: `gate` is in `fresh`. [.requires[0]]
-      - When said: the guard answers “In you go.”; and the line steps `gate` with `admitted`: to `admitted`
-          from `fresh` [.success[0], .advance]
+      - When said: the guard answers “In you go.”, at `speak`: its words reach everyone in the guard's room
+          (the wall partition the guard stands in), and whoever it is said to, wherever they stand; and the
+          line steps `gate` with `admitted`: to `admitted` from `fresh` [.success[0], .advance]
 
 CONVERSATIONS
 

@@ -85,7 +85,7 @@ func (b *builder) routines() []Group {
 		sort.Strings(keys)
 		for _, key := range keys {
 			for i, row := range inst.Table[behavior.AnswerKey(key)] {
-				words, conns := b.rowWords(row, who, "everyone who sees "+who+" or hears the voice")
+				words, conns := b.rowWords(row, who)
 				short := b.shortRow(row)
 				add(b.fstmt(KindRoutineRow, about, fmt.Sprintf("%s.table.%s[%d]", base, key, i), fmt.Sprintf(
 					"%s row %d of %s: %s", capitalize(quote(key)), i+1, quote(def), period(words)),

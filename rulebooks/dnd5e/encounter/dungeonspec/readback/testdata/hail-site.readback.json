@@ -141,7 +141,7 @@
                 "kind": "creature",
                 "id": "porter"
               },
-              "sentence": "The speaker can say the line “We're expected.” (`guest`) to Guard (porter). It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.",
+              "sentence": "The speaker can say the line “We're expected.” (`guest`) to Guard (porter). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.",
               "path": "room.room.monsterBindings.porter.options[0]",
               "connects": [
                 {
@@ -189,7 +189,7 @@
                 "kind": "creature",
                 "id": "porter"
               },
-              "sentence": "When the line “We're expected.” (`guest`) is said, Guard (porter) answers “In you go.”",
+              "sentence": "When the line “We're expected.” (`guest`) is said, Guard (porter) answers “In you go.”, at `speak`: its words reach everyone in Guard (porter)'s room (the wall partition Guard (porter) stands in), and whoever it is said to, wherever they stand.",
               "path": "room.room.monsterBindings.porter.options[0].success[0]"
             }
           ]
@@ -353,7 +353,7 @@
                 "kind": "routine",
                 "id": "porter-policy"
               },
-              "sentence": "`approached` row 1 of `porter-policy`: Guard (porter) says “Halt there. What's your business?”",
+              "sentence": "`approached` row 1 of `porter-policy`: Guard (porter) says “Halt there. What's your business?” (at `speak`: its words reach everyone in Guard (porter)'s room (the wall partition Guard (porter) stands in), and whoever it is said to, wherever they stand).",
               "path": "behaviorDefinitions.porter-policy.table.approached[0]"
             }
           ]

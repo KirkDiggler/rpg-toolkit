@@ -217,9 +217,14 @@ func (s *OptionTestSuite) TestAFactOptionShowsOnlyOnceTheSpeakerKnowsIt() {
 	s.Require().NoError(err)
 	s.Equal([]string{"gossip", "ashford", "threaten", "sermon"}, ids(after), "alice heard about the feast")
 
+	// A LINE TEACHES WHOEVER CATCHES ITS WORDS (rpg-project#933, R9): billy
+	// is behind a row of rubble in the same open yard — one room — so the
+	// goblin's answer, spoken, reached him though he saw none of it, and he
+	// learned of the feast too. Each speaker's offer still reads only that
+	// speaker's own knowledge.
 	billys, err := enc.OptionsFor(billy, goblin)
 	s.Require().NoError(err)
-	s.NotContains(ids(billys), "ashford", "billy was behind the wall and knows nothing about a feast")
+	s.Contains(ids(billys), "ashford", "billy caught the words in the same room, unseen, and knows of the feast")
 }
 
 // `holds` is read, never fired: the bribe is offered while the speaker
@@ -258,19 +263,21 @@ func (s *OptionTestSuite) TestACreatureWithNoOptionsOffersNone() {
 	s.ErrorIs(err, encounter.ErrNotMember)
 }
 
-// R3: a beaten Intimidation check lands `intimidate` on every witness and on
-// nobody who did not see it.
-func (s *OptionTestSuite) TestABeatenIntimidationLandsTheDeedOnWitnesses() {
+// R3: a beaten Intimidation check lands `intimidate` on whoever caught the
+// words (rpg-project#933) — billy too, behind the wall in the same room.
+func (s *OptionTestSuite) TestABeatenIntimidationLandsTheDeedOnWhoeverCaughtTheWords() {
 	enc := s.scene()
 
 	out, err := s.speak(enc, "threaten", "intimidation", true)
 	s.Require().NoError(err)
 	s.Equal([]encounter.MemberID{alice, goblin}, out.Witnesses)
 	s.Equal(encounter.DeedIntimidate, out.Deed)
+	s.ElementsMatch([]encounter.MemberID{alice, goblin, billy}, out.Hearers, "billy caught the words behind the wall")
 
 	s.True(s.heldDeed(enc, goblin, alice, encounter.DeedIntimidate), "the goblin saw the threat")
-	s.True(s.heldDeed(enc, alice, alice, encounter.DeedIntimidate), "and so did alice, who can see herself")
-	s.False(s.heldDeed(enc, billy, alice, encounter.DeedIntimidate), "billy is behind the wall")
+	s.True(s.heldDeed(enc, alice, alice, encounter.DeedIntimidate), "and so did alice, who said it")
+	s.True(s.heldDeed(enc, billy, alice, encounter.DeedIntimidate),
+		"billy saw nothing behind the wall, but the words — and how they went — reached him in the room")
 }
 
 // R3: Persuasion lands `persuade`.
@@ -308,9 +315,20 @@ func (s *OptionTestSuite) TestAMissedCheckPicksFromFailure() {
 
 	answered := s.beatsOfKind(enc, goblin, encounter.BeatAnswered)
 	s.Require().Len(answered, 1)
-	s.Equal("threaten", answered[0]["option"], "the answer names the option it answered")
-	s.Equal(string(encounter.AnswerFailure), answered[0]["key"])
-	s.Equal("You'll bleed first.", answered[0]["say"])
+	s.NotContains(answered[0], "option", "the pick names no line (rpg-project#933)")
+	s.NotContains(answered[0], "key", "nor which table, which would say how it went")
+	for _, v := range s.beatsOfKind(enc, goblin, encounter.BeatSpeech) {
+		if v["speaker"] == string(alice) {
+			s.Equal("threaten", v["option"], "the words name the option they answered")
+			s.Equal(false, v["check"].(map[string]any)["beaten"])
+		}
+	}
+	s.Empty(answered[0]["say"], "the pick carries no words (rpg-project#933)")
+	var said []any
+	for _, v := range s.beatsOfKind(enc, alice, encounter.BeatSpeech) {
+		said = append(said, v["words"])
+	}
+	s.Contains(said, "You'll bleed first.", "the line, in alice's speech version")
 }
 
 // A beaten check answers from the SUCCESS rows, and a `flee` row lands the
@@ -338,14 +356,18 @@ func (s *OptionTestSuite) TestAnUnwrittenVerdictAnswersNothing() {
 }
 
 // The Spoke beat is the whole account of the roll: actor, target, option, the
-// line, the skill, the numbers — to every witness, whether it landed or not.
+// line, the skill, the numbers — to the SPEAKER ALONE, whether it landed or
+// not (rpg-project#933, R9: the verb's own record). Every other member is told
+// the line and its roll only by their own speech version: the goblin, who
+// sees alice, with her name; billy, unseen behind the rubble in the same
+// room, without it.
 func (s *OptionTestSuite) TestTheSpokeBeatCarriesTheLineAndTheRoll() {
 	for _, beaten := range []bool{true, false} {
 		enc := s.scene()
 		_, err := s.speak(enc, "gossip", "persuasion", beaten)
 		s.Require().NoError(err)
 
-		beats := s.beatsOfKind(enc, goblin, encounter.BeatSpoke)
+		beats := s.beatsOfKind(enc, alice, encounter.BeatSpoke)
 		s.Require().Len(beats, 1)
 		s.Equal(string(alice), beats[0]["actor"])
 		s.Equal(string(goblin), beats[0]["target"])
@@ -357,7 +379,20 @@ func (s *OptionTestSuite) TestTheSpokeBeatCarriesTheLineAndTheRoll() {
 		s.EqualValues(15, beats[0]["total"])
 		s.Equal(beaten, beats[0]["beaten"], "false beside a miss, never absent")
 
-		s.Empty(s.beatsOfKind(enc, billy, encounter.BeatSpoke), "billy saw nothing to narrate")
+		s.Empty(s.beatsOfKind(enc, goblin, encounter.BeatSpoke), "the goblin is not written alice's record")
+		s.Empty(s.beatsOfKind(enc, billy, encounter.BeatSpoke), "nor is billy")
+
+		goblins := s.beatsOfKind(enc, goblin, encounter.BeatSpeech)
+		s.Require().NotEmpty(goblins)
+		s.Equal(string(alice), goblins[0]["speaker"], "the goblin sees who spoke")
+		s.Equal("Busy night?", goblins[0]["words"])
+		s.Equal(beaten, goblins[0]["check"].(map[string]any)["beaten"], "and the roll travels with the words")
+
+		billys := s.beatsOfKind(enc, billy, encounter.BeatSpeech)
+		s.Require().NotEmpty(billys)
+		s.NotContains(billys[0], "speaker", "billy did not see who spoke")
+		s.Equal("Busy night?", billys[0]["words"], "but the words reached him in the same room")
+		s.Contains(billys[0], "check", "and the roll with them, belonging to someone")
 	}
 }
 
@@ -389,7 +424,7 @@ func (s *OptionTestSuite) TestAPlainLineRollsNothingAndLands() {
 	s.Equal(encounter.AnswerSuccess, out.Answered.Key)
 	s.Equal("Evening yourself.", out.Answered.Answer.Say)
 
-	beats := s.beatsOfKind(enc, goblin, encounter.BeatSpoke)
+	beats := s.beatsOfKind(enc, alice, encounter.BeatSpoke)
 	s.Require().Len(beats, 1)
 	s.Equal("", beats[0]["skill"], "nothing was rolled")
 	s.EqualValues(0, beats[0]["dc"])
@@ -456,7 +491,7 @@ func (s *OptionTestSuite) TestSpokeComesBeforeAnswered() {
 	_, err := s.speak(enc, "gossip", "persuasion", true)
 	s.Require().NoError(err)
 
-	story, err := enc.Story(&encounter.StoryInput{Audience: goblin})
+	story, err := enc.Story(&encounter.StoryInput{Audience: alice})
 	s.Require().NoError(err)
 	var order []string
 	for _, entry := range story {
@@ -788,7 +823,7 @@ func (s *OptionTestSuite) TestTheBeatCarriesTheWholeRoll() {
 	})
 	s.Require().NoError(err)
 
-	beats := s.beatsOfKind(enc, goblin, encounter.BeatSpoke)
+	beats := s.beatsOfKind(enc, alice, encounter.BeatSpoke)
 	s.Require().Len(beats, 1)
 
 	raw, err := json.Marshal(beats[0]["calculation"])
@@ -822,7 +857,7 @@ func (s *OptionTestSuite) TestABeatWithoutArithmeticSaysSo() {
 	})
 	s.Require().NoError(err)
 
-	beats := s.beatsOfKind(enc, goblin, encounter.BeatSpoke)
+	beats := s.beatsOfKind(enc, alice, encounter.BeatSpoke)
 	s.Require().Len(beats, 1)
 	_, present := beats[0]["calculation"]
 	s.False(present)

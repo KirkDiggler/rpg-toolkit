@@ -113,7 +113,7 @@ func TestMadKingTheGuardRecognisesWhomHeAdmitted(t *testing.T) {
 
 	s.said(kingCaptain, "guest", "persuasion", true)
 	require.Equal(t, "admitted", s.entrance(), "precondition: the guest claim admitted")
-	require.NotEmpty(t, s.beatsOf(listener, encounter.BeatSpoke), "precondition: the listener witnessed the claim")
+	require.NotEmpty(t, s.saidBy(listener, hero), "precondition: the listener saw the claim said and caught it (rpg-project#933)")
 
 	t.Run("the captain recognises whom he sees, and gate-1 and gate-2 heard it", func(t *testing.T) {
 		for _, id := range gateGuards {

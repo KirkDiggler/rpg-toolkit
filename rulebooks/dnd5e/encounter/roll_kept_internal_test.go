@@ -259,6 +259,7 @@ func TestAnAbandonedSettleTellsWhatEachWitnessSawThen(t *testing.T) {
 	require.Contains(t, scene.Seen, MemberID("carol"), "precondition: the guard saw carol")
 	require.Contains(t, scene.Perceived["alice"], MemberID("bob"), "precondition: alice saw bob")
 	require.NotContains(t, scene.Perceived["alice"], MemberID("carol"), "precondition: and not carol")
+	require.NotContains(t, scene.SawTarget, MemberID("alice"), "precondition: nor the guard, a cell beyond her sight")
 
 	placeAt(t, enc, "bob", farDownTheYard)
 	require.NoError(t, enc.sweepHolds())
@@ -277,8 +278,11 @@ func TestAnAbandonedSettleTellsWhatEachWitnessSawThen(t *testing.T) {
 		}
 		var b map[string]any
 		require.NoError(t, json.Unmarshal(e.Payload, &b))
-		if b["holder"] == string(postedGuard) && b["option"] == "straggler" {
+		if b["option"] == "straggler" {
 			told = append(told, b["subjects"].([]any))
+			// She caught the words but did not see the guard they were said
+			// to (rpg-project#933): she hears someone came to hold it, not who.
+			require.NotContains(t, b, "holder", "alice did not see the guard then")
 		}
 	}
 	require.Equal(t, [][]any{{"alice", "bob"}}, told,

@@ -140,7 +140,7 @@ func (b *builder) shortRow(a behavior.Answer) string {
 	}
 	var does []string
 	if a.Say != "" {
-		does = append(does, "says "+said(a.Say))
+		does = append(does, speechVerb(a.Loudness)+" "+said(a.Say))
 	}
 	if a.Activity != nil {
 		does = append(does, fmt.Sprintf("plays %s %d times", quote(a.Activity.Ref), a.Activity.Cycles))
@@ -204,7 +204,7 @@ func (b *builder) shortRow(a behavior.Answer) string {
 	}
 	out := joinAnd(does)
 	if a.Fact != "" {
-		out += ", and everyone who sees or hears it learns " + quote(a.Fact)
+		out += ", and everyone its words reach learns " + quote(a.Fact)
 	}
 	if a.As != "" {
 		out += " (counted as " + quote(a.As) + ")"

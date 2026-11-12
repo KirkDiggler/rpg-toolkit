@@ -177,6 +177,24 @@ type ReservedScene struct {
 	// what each reader of a recognition's beats may be told: nothing the
 	// reader did not perceive when the words were said.
 	Perceived map[MemberID][]MemberID `json:"perceived,omitempty"`
+
+	// Heard is who caught the line's words or only noticed the voice when it
+	// was said, and from how many rooms (rpg-project#933): a kept settle's
+	// speech versions are these, not the world as it stands at the settle.
+	// The speaker is not listed; they always perceive their own line.
+	Heard []ReservedHearing `json:"heard,omitempty"`
+
+	// SawTarget is who saw the creature the line was said to, then
+	// (rpg-project#933, R4): whom a kept settle's versions name it to.
+	SawTarget []MemberID `json:"sawTarget,omitempty"`
+}
+
+// ReservedHearing is one member who heard a waiting line when it was said
+// (rpg-project#933): the words, or only a voice, from how many rooms.
+type ReservedHearing struct {
+	Member MemberID `json:"member"`
+	Words  bool     `json:"words,omitempty"`
+	Hops   int      `json:"hops,omitempty"`
 }
 
 // OfferedOption is one line offered to one speaker: the option, the
@@ -486,10 +504,14 @@ func (e *Encounter) replyDoor(verb string, in lineReply, settling bool) (replied
 	if in.target != "" && !slices.Contains(witnesses, in.target) {
 		return replied{}, fmt.Errorf("%s: target %q cannot see the actor: %w", verb, in.target, ErrUnwitnessed)
 	}
+	// A WHISPER IS SAID FROM BESIDE (rpg-project#933, R10): a whispered line
+	// is admitted only from a cell adjacent to the creature it is said to,
+	// whatever reach the host measures speech within (zero is adjacent).
+	reach := option.SaidWithin(in.reach)
 	if in.target != "" {
-		err = e.refuseOutOfReach(verb, in.actor, in.target, in.reach)
+		err = e.refuseOutOfReach(verb, in.actor, in.target, reach)
 	} else {
-		err = e.refusePropOutOfReach(verb, where, in.prop, propCells, in.reach)
+		err = e.refusePropOutOfReach(verb, where, in.prop, propCells, reach)
 	}
 	if err != nil {
 		return replied{}, err
@@ -664,6 +686,7 @@ func (e *Encounter) Reserve(in *ReserveInput) (*ReserveOutput, error) {
 	var admitted replied
 	var seen []MemberID
 	var perceived map[MemberID][]MemberID
+	var facets []facet
 	err := e.asShown(in.Actor, func() error {
 		var err error
 		if admitted, err = e.replyDoor("reserve", in.reply(), false); err != nil {
@@ -675,7 +698,15 @@ func (e *Encounter) Reserve(in *ReserveInput) (*ReserveOutput, error) {
 		if seen, err = e.membersSeenBy(in.Target); err != nil {
 			return err
 		}
-		perceived, err = e.partyPerceivedBy(in.Actor, admitted.witnesses)
+		if perceived, err = e.partyPerceivedBy(in.Actor, admitted.witnesses); err != nil {
+			return err
+		}
+		// HOW THE LINE WAS HEARD (rpg-project#933), by the same step every
+		// utterance takes, so a kept settle tells each member what they
+		// perceived when the words were said.
+		facets, err = e.perceive(utterance{
+			speaker: in.Actor, to: in.Target, prop: in.Prop, loudness: loudnessWord(admitted.option.Loudness),
+		})
 		return err
 	})
 	if err != nil {
@@ -692,9 +723,7 @@ func (e *Encounter) Reserve(in *ReserveInput) (*ReserveOutput, error) {
 	r := e.interactions[id]
 	r.reservation = &InteractionReservation{
 		Holder: in.Actor, Target: in.Target, Prop: in.Prop, Option: in.OptionID, Revision: in.Revision, Reach: in.Range,
-		Scene: &ReservedScene{
-			Where: admitted.where, Witnesses: slices.Clone(admitted.witnesses), Seen: seen, Perceived: perceived,
-		},
+		Scene: sceneOf(admitted, seen, perceived, facets, in.Actor),
 	}
 	r.revision++
 	seq, err := e.appendHeldBeat(id, in.Actor, true)
@@ -886,6 +915,27 @@ func (e *Encounter) membersSeenBy(target MemberID) ([]MemberID, error) {
 	return out, nil
 }
 
+// sceneOf is the scene a waiting line was spoken in: where, who witnessed
+// it, whom the creature spoken to saw, what each witness saw of the party,
+// and how the line was heard ([ReservedScene]).
+func sceneOf(admitted replied, seen []MemberID, perceived map[MemberID][]MemberID, facets []facet, speaker MemberID) *ReservedScene {
+	scene := &ReservedScene{
+		Where: admitted.where, Witnesses: slices.Clone(admitted.witnesses), Seen: seen, Perceived: perceived,
+	}
+	for _, p := range facets {
+		if p.member == speaker {
+			continue
+		}
+		if p.words || p.noticed {
+			scene.Heard = append(scene.Heard, ReservedHearing{Member: p.member, Words: p.words, Hops: p.hops})
+		}
+		if p.seesTo {
+			scene.SawTarget = append(scene.SawTarget, p.member)
+		}
+	}
+	return scene
+}
+
 // partyPerceivedBy is, for each witness, the members of the speaker's party
 // that witness sees on the live reach now, in id order; a witness who sees
 // none is left out, and the map is nil when no witness sees any.
@@ -1041,6 +1091,7 @@ func cloneReservation(r *InteractionReservation) *InteractionReservation {
 		scene := *r.Scene
 		scene.Witnesses, scene.Seen = slices.Clone(r.Scene.Witnesses), slices.Clone(r.Scene.Seen)
 		scene.Perceived = clonePerceived(r.Scene.Perceived)
+		scene.Heard, scene.SawTarget = slices.Clone(r.Scene.Heard), slices.Clone(r.Scene.SawTarget)
 		c.Scene = &scene
 	}
 	return &c

@@ -39,8 +39,11 @@ func TestMadKingGateGuardsCarryTheirTablesInTheRecord(t *testing.T) {
 		s.endTurn()
 	}
 
-	story, err := s.enc.Story(&encounter.StoryInput{Audience: hero})
+	// The table is told to nobody (rpg-project#933): the record holds it, as
+	// the Debug panel reads it.
+	all, err := s.enc.ReadRecord(&encounter.ReadRecordInput{})
 	require.NoError(t, err)
+	story := all.Entries
 
 	type scope struct{ creature, option, key string }
 	tables := map[scope]int{}

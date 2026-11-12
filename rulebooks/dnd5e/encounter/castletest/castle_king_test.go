@@ -215,6 +215,11 @@ type castleHost struct {
 	// gate (rpg-project#852's group rule).
 	postedLike []encounter.MemberID
 
+	// whispered is a TEST LOUDNESS: the option ids every creature's line of
+	// that id is whispered for, so a route can stand a witness who sees a
+	// line said and catches none of it (rpg-project#933).
+	whispered map[string]bool
+
 	// soleGateHolder is a TEST FIXTURE for a route about one post's
 	// mechanics: only gate-1 (and whoever [castleHost.postedLike] seats like
 	// him) keeps its posts, so the captain and gate-2, who hold the gate too
@@ -247,6 +252,15 @@ func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 		at := m.At
 		if moved, ok := host.starts[encounter.MemberID(m.MemberID)]; ok {
 			at = moved
+		}
+		if len(host.whispered) > 0 {
+			options := slices.Clone(m.Options)
+			for i := range options {
+				if host.whispered[options[i].ID] {
+					options[i].Loudness = "whisper"
+				}
+			}
+			m.Options = options
 		}
 		if slices.Contains(host.postedLike, encounter.MemberID(m.MemberID)) {
 			for _, g := range compiled.Monsters {
@@ -537,13 +551,15 @@ func (s *kingScene) answeredWith(fact string, audience encounter.MemberID) []enc
 	var out []encounter.MemberID
 	for _, beat := range story {
 		var body struct {
-			Beat     string `json:"beat"`
-			Creature string `json:"creature"`
-			Fact     string `json:"fact"`
+			Beat    string `json:"beat"`
+			Speaker string `json:"speaker"`
+			Fact    string `json:"fact"`
 		}
 		require.NoError(s.t, json.Unmarshal(beat.Payload, &body))
-		if body.Beat == encounter.BeatAnswered && body.Fact == fact {
-			out = append(out, encounter.MemberID(body.Creature))
+		// The fact travels with the words (rpg-project#933): only a speech
+		// version that caught them names it, and its speaker only when seen.
+		if body.Beat == encounter.BeatSpeech && body.Fact == fact {
+			out = append(out, encounter.MemberID(body.Speaker))
 		}
 	}
 

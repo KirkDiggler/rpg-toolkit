@@ -262,8 +262,39 @@ func (s *CastleSuite) TestTheCaptainsGuestClaim() {
 		"(whichever of Guard (gate-1), Guard (gate-2) and Guard Captain (captain) that was) comes to hold `admitted` about "+
 		"the speaker and each member of the speaker's party that the creature sees at that moment")
 	s.Contains(out, "Every other creature that carries the conversation `front-gate`")
-	s.Contains(out, "and saw the speaker say the line, and is up, comes to hold `admitted` about the same members too, "+
-		"having heard it, whether or not it sees them itself")
+	s.Contains(out, "was among those the line's words reached when it was said, and is up, comes to hold `admitted` "+
+		"about the same members too, having heard it, whether or not it sees them itself; one the words did not reach "+
+		"holds nothing, even if it saw the line said",
+		"the heard channel follows the line's words, not sight (rpg-project#933, R9)")
+}
+
+// TestTheAlarmIsShoutedAndTeachesWhomItReaches: the castle's alarm rows are
+// authored `shout` (rpg-project#933), and the read-back says so, and says the
+// fact goes to whoever the words reach, seen or not.
+func (s *CastleSuite) TestTheAlarmIsShoutedAndTeachesWhomItReaches() {
+	found := false
+	for _, st := range s.rb.Statements() {
+		if st.Kind != readback.KindRoutineRow || !strings.Contains(st.Sentence, "learns the fact `alarm-raised`") {
+			continue
+		}
+		found = true
+		s.Contains(st.Sentence, "shouts “", "an alarm row is shouted: %s", st.Sentence)
+		s.Contains(st.Sentence, "'s room and the next room over")
+		s.Contains(st.Sentence, "whether or not they see")
+		s.NotContains(st.Sentence, "or hears the voice", "the old sight-or-voice audience is gone")
+	}
+	s.True(found, "the castle's alarm rows are said")
+}
+
+// TestALineSaysItsLoudnessAndWhoPerceivesWhat: every line says how loudly it
+// is said and the rule every member's version follows (rpg-project#933).
+func (s *CastleSuite) TestALineSaysItsLoudnessAndWhoPerceivesWhat() {
+	st := s.statement(readback.KindLine, "room.room.monsterBindings.captain.options[0]")
+	s.Contains(st.Sentence, "It is said at `speak` (the default): its words reach everyone in the speaker's room")
+	s.Contains(st.Sentence, "and whoever it is said to, wherever they stand")
+	s.Contains(st.Sentence, "whoever the words reach and does not see the speaker hears the words — and which line it was, "+
+		"the roll, whether it worked and what it taught — from someone unnamed")
+	s.Contains(st.Sentence, "whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught")
 }
 
 // TestTheCaptainGoesIn: the captain's routine wakes on the topic and walks
