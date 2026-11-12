@@ -325,46 +325,55 @@ func TestMadKingFrontDoor(t *testing.T) {
 	})
 
 	// THE ALARM DOES NOT REACH THE KEEP, AND THE FILE'S NUMBERS SAY WHY. The
-	// wall doors now join their regions for hearing (rpg-toolkit#2066), so
-	// the shout's way to the throne room is gatehouse → yard → hall → throne
-	// room: three regions crossed, each through a shut door, six hops. A
-	// voice is DC 5, so the keep's knights would need passive Perception 35
-	// (the hall's knight, four hops in, 25); everybody here has 10. The use
-	// case's "loyalists in the keep walk to the throne room on the fact" is
-	// not this content's outcome; it is a content question, not an engine one.
+	// wall doors join their regions for hearing (rpg-toolkit#2066), so the
+	// shout's way to the throne room is gatehouse → yard → hall → throne
+	// room: three regions crossed, each through a shut door, six hops. The
+	// alarm is shouted (rpg-project#933), and a shout's words reach one room
+	// beyond the crier's: the hall and the keep are far past that, so their
+	// knights learn nothing whatever their ears; a keen one would only notice
+	// a voice (DC 0 plus 5 a hop: the hall's knight at 20, the throne room's
+	// at 30). The use case's "loyalists in the keep walk to the throne room on
+	// the fact" is not this content's outcome; it is a content question, not
+	// an engine one.
 	t.Run("the shout at the gate is six hops from the keep, and the keep does not hear it", func(t *testing.T) {
 		learned := s.learners("alarm-raised")
 		for _, who := range []encounter.MemberID{kingHall1, kingKeep1, kingKeep2, theKing} {
-			require.False(t, learned[who], "%s is behind shut doors: the hall is DC 25 and the throne room DC 35, against passive 10", who)
+			require.False(t, learned[who], "%s is far beyond a shout's one room, behind shut doors", who)
 		}
 	})
 }
 
 // TestMadKingTheAlarmCarriesToTheKeenEar is the positive half of the front
-// door's "six hops from the keep": the same spear at the gate, with one
-// listener's ears raised. The shout is a voice, DC 5, plus 5 a hop. The hall
-// is 4 hops away behind two shut doors, DC 25; the throne room 6 hops behind
-// three, DC 35. Each is heard at its DC and missed one below it, which pins
-// the hop count as well as the link.
+// door's "six hops from the keep", under perceived speech (rpg-project#933):
+// the same spear at the gate, with one listener's ears raised. The alarm row
+// is shouted, so its WORDS — and the fact they teach — reach the gatehouse
+// and the room beyond it and no farther (R2, R9); a keen ear farther in
+// NOTICES the voice, a shout being DC 0 plus 5 a hop, and learns nothing.
+// The hall is 4 hops away behind two shut doors, DC 20; the throne room 6
+// hops behind three, DC 30. Each notices at its DC and misses one below it,
+// which pins the hop count as well as the link. Before this story the keen
+// ear LEARNED the alarm at a voice's DC 5 plus 5 a hop (the #925 shout
+// ruling, amended by R2: words reach by level, not by Perception).
 func TestMadKingTheAlarmCarriesToTheKeenEar(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name    string
 		who     encounter.MemberID
 		passive int
-		learns  bool
+		notices bool
 	}{
-		{name: "the hall at 25", who: kingHall1, passive: 25, learns: true},
-		{name: "the hall at 24", who: kingHall1, passive: 24, learns: false},
-		{name: "the throne room at 35", who: kingKeep1, passive: 35, learns: true},
-		{name: "the throne room at 34", who: kingKeep1, passive: 34, learns: false},
+		{name: "the hall at 20", who: kingHall1, passive: 20, notices: true},
+		{name: "the hall at 19", who: kingHall1, passive: 19, notices: false},
+		{name: "the throne room at 30", who: kingKeep1, passive: 30, notices: true},
+		{name: "the throne room at 29", who: kingKeep1, passive: 29, notices: false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			s := openTheCastleWithEars(t, gatehouseSeat, nil, map[encounter.MemberID]int{tc.who: tc.passive})
 			s.struck(kingGate1, false)
 			require.True(t, s.learners("alarm-raised")[hero], "precondition: the gate raised the alarm")
-			require.Equal(t, tc.learns, s.learners("alarm-raised")[tc.who])
+			require.Equal(t, tc.notices, s.heardKind(tc.who, encounter.SoundVoice), "noticed a voice")
+			require.False(t, s.learners("alarm-raised")[tc.who], "but the words do not carry that far: nothing learned")
 		})
 	}
 }

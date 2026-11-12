@@ -247,7 +247,7 @@ func selectorWords(s *behavior.Selector, who string) string {
 
 // rowWords says one table row about who, recursing into a group's rows,
 // with the facts it teaches and asks. teach says who learns a row's fact.
-func (b *builder) rowWords(a behavior.Answer, who, teach string) (string, []Connection) {
+func (b *builder) rowWords(a behavior.Answer, who string) (string, []Connection) {
 	var conds []string
 	var conns []Connection
 	for _, w := range a.When {
@@ -257,7 +257,8 @@ func (b *builder) rowWords(a behavior.Answer, who, teach string) (string, []Conn
 	}
 	var does []string
 	if a.Say != "" {
-		does = append(does, "says "+said(a.Say))
+		does = append(does, fmt.Sprintf("%s %s (at %s: its words reach %s)", speechVerb(a.Loudness), said(a.Say),
+			quote(loudnessOf(a.Loudness)), reachWords(a.Loudness, who)))
 	}
 	if a.Activity != nil {
 		does = append(does, fmt.Sprintf("plays the activity %s %d times", quote(a.Activity.Ref), a.Activity.Cycles))
@@ -286,7 +287,7 @@ func (b *builder) rowWords(a behavior.Answer, who, teach string) (string, []Conn
 	if len(a.Rows) > 0 {
 		var inner []string
 		for _, r := range a.Rows {
-			s, c := b.rowWords(r, who, teach)
+			s, c := b.rowWords(r, who)
 			inner = append(inner, s)
 			conns = append(conns, c...)
 		}
@@ -314,7 +315,7 @@ func (b *builder) rowWords(a behavior.Answer, who, teach string) (string, []Conn
 	}
 	out := who + " " + joinAnd(does)
 	if a.Fact != "" {
-		out += fmt.Sprintf(", and %s learns the fact %s", teach, quote(a.Fact))
+		out += fmt.Sprintf(", and %s learns the fact %s", learnersWords(a.Loudness, who), quote(a.Fact))
 		conns = append(conns, Connection{Kind: "fact", ID: a.Fact, Role: "teaches"})
 	}
 	if a.As != "" {

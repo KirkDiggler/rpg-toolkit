@@ -1152,6 +1152,7 @@ func answerOf(entry AnswerSpec, o encounter.Orientation) encounter.Answer {
 		Activity: activity,
 		Weight:   weight,
 		Say:      entry.Say,
+		Loudness: entry.Loudness,
 		When:     whenOf(entry.When),
 		Fact:     encounter.FactID(fact),
 		Flee:     entry.Flee != nil,
@@ -1202,7 +1203,7 @@ func optionsOf(specs []OptionSpec, o encounter.Orientation) []encounter.Option {
 	out := make([]encounter.Option, 0, len(specs))
 	for _, opt := range specs {
 		option := encounter.Option{
-			ID: opt.ID, Say: opt.Say, Check: approachesOf(opt.Check),
+			ID: opt.ID, Say: opt.Say, Loudness: opt.Loudness, Check: approachesOf(opt.Check),
 			Requires: requirementsOf(opt.Requires),
 			Success:  rowsOf(opt.Success, o), Failure: rowsOf(opt.Failure, o),
 		}

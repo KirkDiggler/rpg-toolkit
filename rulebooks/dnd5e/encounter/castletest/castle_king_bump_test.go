@@ -27,14 +27,7 @@ const (
 // gateLines is everything gate-1 has said, in record order.
 func (s *kingScene) gateLines() []string {
 	s.t.Helper()
-	var out []string
-	for _, b := range s.beatsOf(hero, encounter.BeatAnswered) {
-		if b.Creature == string(kingGate1) && b.Say != "" {
-			out = append(out, b.Say)
-		}
-	}
-
-	return out
+	return s.saidBy(hero, kingGate1)
 }
 
 // bumps steps the hero into a body and requires the stop, naming gate-1,

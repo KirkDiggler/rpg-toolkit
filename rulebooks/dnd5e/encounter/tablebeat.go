@@ -149,7 +149,14 @@ func tableRows(rows []Answer) []map[string]interface{} {
 			"word":     answerWord(row),
 			"selector": selectorWord(row),
 			"weight":   row.Weight,
-			"say":      row.Say,
+			// A ROW SAYS THAT IT SPEAKS, AND HOW LOUDLY, NEVER WHAT
+			// (rpg-project#933, R1): this beat reaches every member, and a
+			// row's words read beside an `answered` entry would tell a
+			// reader what a creature said whether or not it reached them.
+			// The words travel only in the [BeatSpeech] versions.
+			"say":      "",
+			"speaks":   row.Say != "",
+			"loudness": string(loudnessWord(row.Loudness)),
 			"fact":     string(row.Fact),
 			"search":   search,
 		}

@@ -252,9 +252,13 @@ type scriptBeat struct {
 	Option   string `json:"option"`
 	Say      string `json:"say"`
 	Fact     string `json:"fact"`
-	Watcher  string `json:"watcher"`
-	DC       int    `json:"dc"`
-	ID       string `json:"id"`
+	// Speaker and Words are a speech version's (rpg-project#933): who spoke,
+	// when the reader saw them, and the words, when they reached the reader.
+	Speaker string `json:"speaker"`
+	Words   string `json:"words"`
+	Watcher string `json:"watcher"`
+	DC      int    `json:"dc"`
+	ID      string `json:"id"`
 }
 
 // beats is a member's story, decoded, from a sequence on.
@@ -282,6 +286,20 @@ func (s *kingScene) beatsOf(audience encounter.MemberID, kind string) []scriptBe
 		}
 	}
 
+	return out
+}
+
+// saidBy is every line a creature said that reached audience, seen said,
+// in record order: the words of each speech version naming it as speaker
+// (rpg-project#933: the words travel only in the speech versions).
+func (s *kingScene) saidBy(audience, creature encounter.MemberID) []string {
+	s.t.Helper()
+	var out []string
+	for _, b := range s.beatsOf(audience, encounter.BeatSpeech) {
+		if b.Speaker == string(creature) && b.Words != "" {
+			out = append(out, b.Words)
+		}
+	}
 	return out
 }
 
@@ -393,7 +411,8 @@ func TestMadKingScriptTheStrangerGivesTheFeast(t *testing.T) {
 				}
 			}
 			require.Len(t, answered, 1, "the stranger answered once")
-			require.Equal(t, tc.line, answered[0].Say)
+			require.Empty(t, answered[0].Say, "the pick carries no words (rpg-project#933)")
+			require.Contains(t, s.saidBy(hero, kingPedlar), tc.line, "the hero caught his line")
 			require.Equal(t, "feast-tonight", answered[0].Fact)
 			require.True(t, s.learners("feast-tonight")[hero], "the hero knows")
 			require.False(t, s.learners("feast-tonight")[kingCaptain], "the captain did not witness the line")
@@ -418,13 +437,14 @@ func TestMadKingScriptTheTroupeNeedsTheFeast(t *testing.T) {
 
 	s.walkTo(s.at(kingCaptain))
 	s.said(kingCaptain, "troupe", "performance", true)
-	var lines []string
+	var answered int
 	for _, b := range s.beatsOf(hero, encounter.BeatAnswered) {
 		if b.Creature == string(kingCaptain) && b.Option == "troupe" {
-			lines = append(lines, b.Say)
+			answered++
 		}
 	}
-	require.Equal(t, []string{"Through to the hall, then. Don’t dawdle."}, lines)
+	require.Equal(t, 1, answered, "the captain answered the troupe once")
+	require.Contains(t, s.saidBy(hero, kingCaptain), "Through to the hall, then. Don’t dawdle.", "and the hero caught it")
 	require.Empty(t, s.learners("party-recognized"), "a troupe that passes writes nothing")
 	require.Equal(t, encounter.StanceNeutral, s.stance(garrison, encounter.FactionParty))
 	require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "nobody fights")

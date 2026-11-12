@@ -2384,6 +2384,9 @@ behaviorDefinitions:
         - when: [{fact: guards-turned}, {enemy: none}]
           toward: {at: {q: 10, r: -19}}
         - say: To arms! Intruders at the gate!
+          # Hand edit (rpg-project#933): the alarm is shouted, so its words, and the
+          # fact they teach, reach the next room (R9).
+          loudness: shout
           when:
             - enemy: seen
             - not:
@@ -2411,6 +2414,9 @@ behaviorDefinitions:
           with: {path: [{q: -5, r: 8, wait: 1, facing: ne}, {q: -5, r: 10, wait: 1, facing: se}, {q: -7, r: 10}]}
       post:
         - say: To arms! Intruders at the gate!
+          # Hand edit (rpg-project#933): the alarm is shouted, so its words, and the
+          # fact they teach, reach the next room (R9).
+          loudness: shout
           when:
             - enemy: seen
             - not:
@@ -2516,6 +2522,9 @@ behaviorDefinitions:
         - when: [{fact: guards-turned}, {enemy: none}]
           toward: {at: {q: 10, r: -19}}
         - say: To arms! Intruders at the gate!
+          # Hand edit (rpg-project#933): the alarm is shouted, so its words, and the
+          # fact they teach, reach the next room (R9).
+          loudness: shout
           when:
             - enemy: seen
             - not:
@@ -2816,6 +2825,9 @@ behaviorDefinitions:
           away: enemy
           weight: 3
         - say: Protect the king!
+          # Hand edit (rpg-project#933): the alarm is shouted, so its words, and the
+          # fact they teach, reach the next room (R9).
+          loudness: shout
           when:
             - enemy: seen
             - not:
@@ -2863,6 +2875,9 @@ behaviorDefinitions:
           away: enemy
           weight: 3
         - say: Protect the king!
+          # Hand edit (rpg-project#933): the alarm is shouted, so its words, and the
+          # fact they teach, reach the next room (R9).
+          loudness: shout
           when:
             - enemy: seen
             - not:
@@ -2914,6 +2929,9 @@ behaviorDefinitions:
           toward: enemy
         - weight: 3
           say: Steel in the cells! Sound the alarm!
+          # Hand edit (rpg-project#933): the alarm is shouted, so its words, and the
+          # fact they teach, reach the next room (R9).
+          loudness: shout
           when:
             heard:
               kind: clang
@@ -2921,6 +2939,9 @@ behaviorDefinitions:
           fact: alarm-raised
         - weight: 3
           say: Intruders in the cells! Sound the alarm!
+          # Hand edit (rpg-project#933): the alarm is shouted, so its words, and the
+          # fact they teach, reach the next room (R9).
+          loudness: shout
           when:
             enemy: seen
           fact: alarm-raised
@@ -2954,6 +2975,9 @@ behaviorDefinitions:
           toward: enemy
         - weight: 3
           say: Steel in the cells! Sound the alarm!
+          # Hand edit (rpg-project#933): the alarm is shouted, so its words, and the
+          # fact they teach, reach the next room (R9).
+          loudness: shout
           when:
             heard:
               kind: clang
@@ -2961,6 +2985,9 @@ behaviorDefinitions:
           fact: alarm-raised
         - weight: 3
           say: Intruders in the cells! Sound the alarm!
+          # Hand edit (rpg-project#933): the alarm is shouted, so its words, and the
+          # fact they teach, reach the next room (R9).
+          loudness: shout
           when:
             enemy: seen
           fact: alarm-raised

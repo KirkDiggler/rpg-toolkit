@@ -41,11 +41,13 @@ func TestCastlePrisonerAnswersWithCountedThoughtfulWithoutChangingTheLine(t *tes
 				}
 				found = true
 				require.Equal(t, map[string]any{"ref": "dnd5e:activities:thoughtful", "cycles": float64(2)}, beat["activity"])
+				said := scene.saidBy(hero, "prisoner-1")
+				require.NotEmpty(t, said, "the hero caught the prisoner's line")
 				if beaten {
-					require.Contains(t, beat["say"], "Through the great hall")
+					require.Contains(t, said[len(said)-1], "Through the great hall")
 					require.Equal(t, "king-in-throne-room", beat["fact"])
 				} else {
-					require.Equal(t, "Why should I tell you? Get me out first.", beat["say"])
+					require.Equal(t, "Why should I tell you? Get me out first.", said[len(said)-1])
 				}
 			}
 			require.True(t, found)

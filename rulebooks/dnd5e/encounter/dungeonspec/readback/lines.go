@@ -31,7 +31,7 @@ func (b *builder) lineStatements(opts []encounter.Option, base string, t lineTar
 		line := fmt.Sprintf("the line %s (%s)", said(o.Say), quote(o.ID))
 		saidTo := Connection{Kind: t.about.Kind, ID: t.about.ID, Role: "said-to"}
 		heading := fmt.Sprintf("%s (%s)", said(o.Say), quote(o.ID))
-		head := fmt.Sprintf("The speaker can say %s to %s.", line, t.name)
+		head := fmt.Sprintf("The speaker can say %s to %s. %s %s", line, t.name, loudnessSentence(o.Loudness), perceivedSentence)
 		short := "said to {self}; "
 		if o.Checked() {
 			head += " It is a checked line: it costs an action, one round of the world out of a fight."
@@ -169,14 +169,21 @@ func rowDoes(row encounter.Answer, t lineTarget, name string) ([]string, []Conne
 		if t.prop {
 			does = append(does, "the speaker is told "+said(row.Say))
 		} else {
-			does = append(does, name+" answers "+said(row.Say))
+			does = append(does, fmt.Sprintf("%s answers %s, at %s: its words reach %s", name, said(row.Say),
+				quote(loudnessOf(row.Loudness)), reachWords(row.Loudness, name)))
 		}
 	}
 	if row.Activity != nil {
 		does = append(does, fmt.Sprintf("%s plays the activity %s %d times", name, quote(row.Activity.Ref), row.Activity.Cycles))
 	}
 	if row.Fact != "" {
-		does = append(does, fmt.Sprintf("everyone who can see the speaker, the speaker included, learns the fact %s", quote(row.Fact)))
+		if t.prop {
+			// A PROP'S ANSWER IS NARRATION, not a voice (rpg-project#933): its
+			// fact goes to those who saw the line said.
+			does = append(does, fmt.Sprintf("everyone who can see the speaker, the speaker included, learns the fact %s", quote(row.Fact)))
+		} else {
+			does = append(does, fmt.Sprintf("%s learns the fact %s", learnersWords(row.Loudness, name), quote(row.Fact)))
+		}
 		conns = append(conns, Connection{Kind: "fact", ID: row.Fact, Role: "teaches"})
 	}
 	if len(does) == 0 {
@@ -226,9 +233,10 @@ func (b *builder) heardWords(r encounter.Recognition, conv string, except []stri
 	case len(others) > 0:
 		who = b.creatures(others)
 	}
-	return fmt.Sprintf("Every other creature that carries the conversation %s (%s) and saw the speaker say the line, and is up, "+
-		"comes to hold %s about the same members too, having heard it, whether or not it sees them itself; one that did not "+
-		"see the speaker holds nothing. When the holder recognises nobody, nobody else comes to hold anything either.",
+	return fmt.Sprintf("Every other creature that carries the conversation %s (%s), was among those the line's words reached "+
+		"when it was said, and is up, comes to hold %s about the same members too, having heard it, whether or not it sees "+
+		"them itself; one the words did not reach holds nothing, even if it saw the line said. When the holder recognises "+
+		"nobody, nobody else comes to hold anything either.",
 		quote(conv), who, topic)
 }
 
@@ -249,7 +257,7 @@ func shortHeard(r encounter.Recognition, conv string) string {
 	if r.HeardBy != encounter.RecognitionCarriersWhoWitnessed {
 		return "; nobody else holds it"
 	}
-	return fmt.Sprintf("; so does each other carrier of %s who saw the speaker say it and is up, about the same members, "+
+	return fmt.Sprintf("; so does each other carrier of %s the line's words reached and who is up, about the same members, "+
 		"whether or not that carrier sees them (heard); if {self} recognises nobody, nobody else holds anything", quote(conv))
 }
 

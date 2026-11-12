@@ -52,13 +52,7 @@ func TestMadKingTheGateHailsTheApproach(t *testing.T) {
 	require.True(t, carrier, "the hailer is a gate speaker, not %s", hailed.Guard)
 	require.LessOrEqual(t, s.enc.Distance(s.at(hero), s.at(hailed.Guard)), 2.0, "inside the approach")
 
-	var said []string
-	for _, b := range s.beatsOf(hero, encounter.BeatAnswered) {
-		if b.Creature == string(hailed.Guard) && b.Say != "" {
-			said = append(said, b.Say)
-		}
-	}
-	require.Contains(t, said, line, "he says his hail")
+	require.Contains(t, s.saidBy(hero, hailed.Guard), line, "he says his hail")
 
 	standing, err := s.enc.AddressFor(&encounter.AddressForInput{Member: hero, Reach: speakReach})
 	require.NoError(t, err)

@@ -1411,6 +1411,7 @@ func approachesDataFrom(approaches []CheckApproach) []CheckApproachData {
 type OptionData struct {
 	ID       string              `json:"id"`
 	Say      string              `json:"say"`
+	Loudness string              `json:"loudness,omitempty"`
 	Check    []CheckApproachData `json:"check,omitempty"`
 	Requires []TriggerData       `json:"requires,omitempty"`
 	Advance  *AdvanceData        `json:"advance,omitempty"`
@@ -1462,7 +1463,7 @@ func optionsDataFrom(options []Option) []OptionData {
 	out := make([]OptionData, 0, len(options))
 	for _, o := range options {
 		od := OptionData{
-			ID: o.ID, Say: o.Say, Check: approachesDataFrom(o.Check),
+			ID: o.ID, Say: o.Say, Loudness: o.Loudness, Check: approachesDataFrom(o.Check),
 			Success: rowsDataFrom(o.Success), Failure: rowsDataFrom(o.Failure),
 			Grants: cloneGrants(o.Grants),
 		}
@@ -1502,7 +1503,7 @@ func optionsFromData(data []OptionData) ([]Option, error) {
 	out := make([]Option, 0, len(data))
 	for _, od := range data {
 		o := Option{
-			ID: od.ID, Say: od.Say, Check: approachesFromData(od.Check),
+			ID: od.ID, Say: od.Say, Loudness: od.Loudness, Check: approachesFromData(od.Check),
 			Success: rowsFromData(od.Success), Failure: rowsFromData(od.Failure),
 			Grants: cloneGrants(od.Grants),
 		}
@@ -1587,6 +1588,7 @@ type AnswerData struct {
 	Activity *ActivityCueData `json:"activity,omitempty"`
 	Weight   int              `json:"weight"`
 	Say      string           `json:"say,omitempty"`
+	Loudness string           `json:"loudness,omitempty"`
 	When     []WhenData       `json:"when,omitempty"`
 	Fact     FactID           `json:"fact,omitempty"`
 	Flee     bool             `json:"flee,omitempty"`
@@ -1781,6 +1783,7 @@ func answerDataFrom(entry Answer) AnswerData {
 		Activity: activityDataFrom(entry.Activity),
 		Weight:   entry.Weight,
 		Say:      entry.Say,
+		Loudness: entry.Loudness,
 		Fact:     entry.Fact,
 		Flee:     entry.Flee,
 		Hold:     entry.Hold,
@@ -1893,6 +1896,7 @@ func answerFromData(row AnswerData) Answer {
 		Activity: activityFromData(row.Activity),
 		Weight:   row.Weight,
 		Say:      row.Say,
+		Loudness: row.Loudness,
 		Fact:     row.Fact,
 		Flee:     row.Flee,
 		Hold:     row.Hold,

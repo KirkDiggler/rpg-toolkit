@@ -390,6 +390,11 @@ type recognitionLine struct {
 	// sees is seen, not the live reach.
 	spoken bool
 	seen   []MemberID
+	// hearers is who caught the words of the line that granted, when a line
+	// granted (rpg-project#933, R9): the carriers who hear a recognition are
+	// the word-catchers, not those who only saw it said. Nil for an outcome
+	// no line moved, whose carriers are the witnesses.
+	hearers []MemberID
 	// perceived is, for a line judged as spoken, which members of the
 	// speaker's party each witness saw when the words were said
 	// ([ReservedScene.Perceived]): what each reader of its beats may be told.
@@ -478,7 +483,14 @@ func (e *Encounter) grantRecognition(r Recognition, line recognitionLine) error 
 	if err != nil {
 		return err
 	}
-	for _, carrier := range line.witnesses {
+	// A LINE TEACHES WHOEVER CATCHES ITS WORDS (rpg-project#933, R9): the
+	// carriers who hear it are those the line's words reached, not those who
+	// only saw it said.
+	carriers := line.witnesses
+	if line.hearers != nil {
+		carriers = line.hearers
+	}
+	for _, carrier := range carriers {
 		if carrier == holder || carrier == line.speaker || down[carrier] {
 			continue
 		}

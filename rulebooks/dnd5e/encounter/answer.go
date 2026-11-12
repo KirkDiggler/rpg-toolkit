@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
@@ -74,8 +73,12 @@ import (
 // rename fails to compile there instead of quietly producing a beat nobody
 // renders.
 //
-// IT IS THE ONLY ACCOUNT OF THE PICK, and the author's line reaches the table
-// through it and nowhere else.
+// IT IS THE ONLY ACCOUNT OF THE PICK — its die, candidates, entry and
+// temperament — written to whoever sees the creature. A creature's line does
+// NOT travel on it (rpg-project#933, R9): its `say` and `to` keys are written
+// empty, and the words, and whom they were said to, reach each member only in
+// their own [BeatSpeech] version. A prop's answer is the exception: it is the
+// author narrating what the speaker found, not a voice, and keeps its words.
 const BeatAnswered = "answered"
 
 // BeatStayed is the "beat" value appended when a driven creature's word did
@@ -207,14 +210,6 @@ func (e *Encounter) answer(ctx context.Context, in answerInput) (answerOutput, e
 		return answerOutput{}, fmt.Errorf("answer: %w", err)
 	}
 
-	if chosen.Answer.Fact != "" {
-		for _, id := range in.witnesses {
-			if err := e.learnFact(id, chosen.Answer.Fact, BeatAnswered, in.at); err != nil {
-				return answerOutput{}, fmt.Errorf("answer: %w", err)
-			}
-		}
-	}
-
 	// A prop's option cannot carry `flee` — refused at its door
 	// ([validatePropOptions]) — so this is a creature's row whenever it runs.
 	if chosen.Answer.Flee && in.creature != "" {
@@ -227,69 +222,64 @@ func (e *Encounter) answer(ctx context.Context, in answerInput) (answerOutput, e
 		return answerOutput{}, err
 	}
 
-	// THE LINE IS A VOICE (rpg-project#569 R5): every `say` on any answer row
-	// is heard beyond the room by whoever's ears beat it — after the beat
-	// that carries the line, which is its cause. A prop has no voice: its
-	// line is the author narrating what the speaker found, not a sound.
-	if chosen.Answer.Say != "" && in.creature != "" {
-		if err := e.makeSound(noiseSay, in.creature, in.at); err != nil {
+	// THE CREATURE'S ANSWER IS AN UTTERANCE (rpg-project#933, R8, R9): said to
+	// the speaker, perceived by each member as their senses deliver it, its
+	// voice on whoever heard it; a fact it teaches goes to whoever caught
+	// its words. A row that teaches a fact and says nothing still reaches by
+	// its loudness, with no speech beat. A PROP HAS NO VOICE: its line is the
+	// author narrating what the speaker found, told with its fact to those
+	// who saw the line said — the known exception to "hearing tells what".
+	learners := in.witnesses
+	if in.creature != "" && (chosen.Answer.Say != "" || chosen.Answer.Fact != "") {
+		heard, err := e.utter(utterance{
+			speaker: in.creature, to: in.actor, words: chosen.Answer.Say,
+			loudness: loudnessWord(chosen.Answer.Loudness), at: in.at, silent: chosen.Answer.Say == "",
+		})
+		if err != nil {
 			return answerOutput{}, fmt.Errorf("answer: %w", err)
+		}
+		learners = heard.catchers
+	}
+	if chosen.Answer.Fact != "" {
+		for _, id := range learners {
+			if err := e.learnFact(id, chosen.Answer.Fact, BeatAnswered, in.at); err != nil {
+				return answerOutput{}, fmt.Errorf("answer: %w", err)
+			}
 		}
 	}
 
 	return answerOutput{pick: chosen}, nil
 }
 
-// answerTime carries out what a creature's `time` pick SAID: its line is a
-// voice, and its fact is an alarm (rpg-project#569 R6).
+// answerTime carries out what a creature's pick SAID — on its own time, or a
+// reaction's line (a hail, a bump's answer): one utterance from the creature
+// to the member its reaction answers, if any (rpg-project#933, R8), and its
+// fact, an alarm, to whoever caught its words (R9: a line teaches whoever
+// catches its words). An alarm spreads to the next room only when it is
+// shouted; one that is only seen to be raised teaches nobody who did not
+// hear it.
 //
-// THE ALARM'S AUDIENCE IS WHOEVER SEES THE CRIER AND WHOEVER HEARS IT. A fact
-// on a verdict teaches the witnesses of the line it answers; a creature
-// raising the alarm on its own time is heard through the doors, so the
-// hearers of a voice at its cell ([Encounter.hearersOf] at [SoundVoice]'s DC)
-// learn it beside everyone who can see it ([Encounter.witnessesOf]). No task
-// widens who learns beyond that (the plan's audience law).
-//
-// A FACT IS SAID ALOUD, so a row that teaches one makes a voice even when the
-// author wrote no line for it: the hearers who learn it heard something, and
-// a `heard: { kind: voice }` that did not hold for them would be the two
-// readings of one shout disagreeing.
+// A FACT IS SAID ALOUD, so a row that teaches one is an utterance even when
+// the author wrote no line for it: it reaches by its loudness and its voice
+// lands on whoever heard it, with no speech beat, there being no words.
 //
 // Stamped with the clock's reading now, the one the pick's own beat carries.
-func (e *Encounter) answerTime(member MemberID, chosen Answer) error {
+func (e *Encounter) answerTime(member MemberID, chosen Answer, to MemberID) error {
 	if chosen.Say == "" && chosen.Fact == "" {
 		return nil
 	}
 	at := uint64(e.clock.ToData().HighWater)
-	if err := e.makeSound(noiseSay, member, at); err != nil {
+	heard, err := e.utter(utterance{
+		speaker: member, to: to, words: chosen.Say, loudness: loudnessWord(chosen.Loudness), at: at,
+		silent: chosen.Say == "",
+	})
+	if err != nil {
 		return fmt.Errorf("time answer: %w", err)
 	}
 	if chosen.Fact == "" {
 		return nil
 	}
-
-	where, witnesses, err := e.audienceOf(member)
-	if err != nil {
-		return fmt.Errorf("time answer: %w", err)
-	}
-	_, voiceDC, _ := soundOf(noiseSay)
-	heard, err := e.hearersOf(where, voiceDC, member)
-	if err != nil {
-		return fmt.Errorf("time answer: %w", err)
-	}
-	audience := map[MemberID]bool{}
-	for _, id := range witnesses {
-		audience[id] = true
-	}
-	for _, h := range heard {
-		audience[h.member] = true
-	}
-	learners := make([]MemberID, 0, len(audience))
-	for id := range audience {
-		learners = append(learners, id)
-	}
-	sort.Slice(learners, func(i, j int) bool { return learners[i] < learners[j] })
-	for _, id := range learners {
+	for _, id := range heard.catchers {
 		if err := e.learnFact(id, chosen.Fact, BeatAnswered, at); err != nil {
 			return fmt.Errorf("time answer: %w", err)
 		}
@@ -346,16 +336,30 @@ func (e *Encounter) appendAnsweredBeat(in answerInput, chosen *Pick) error {
 		}
 	}
 
-	payload, err := json.Marshal(answeredBeatBody(answeredBy{
+	body := answeredBeatBody(answeredBy{
 		creature: in.creature, prop: in.prop, verb: in.verb, option: in.option, beaten: in.beaten,
-	}, chosen))
+	}, chosen)
+	// A CREATURE'S ANSWER TELLS ITS PICK TO THOSE WHO SEE IT, AND ITS WORDS
+	// TO NOBODY HERE (rpg-project#933, R9): the words, and whom they were
+	// said to, travel only in each member's [BeatSpeech] version. A prop's
+	// narration stays on the line's witnesses, words and all.
+	audience := in.witnesses
+	if in.creature != "" {
+		blankSpeech(body)
+		_, seers, err := e.audienceOf(in.creature)
+		if err != nil {
+			return fmt.Errorf("answer: %w", err)
+		}
+		audience = seers
+	}
+	payload, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("answer: marshal beat: %w", err)
 	}
 
 	if _, err := e.appendBeat(&record.AppendInput{
 		At:       in.at,
-		Audience: in.witnesses,
+		Audience: audience,
 		Tags:     map[string]string{"tag": BeatAnswered},
 		Payload:  payload,
 	}); err != nil {
@@ -363,6 +367,13 @@ func (e *Encounter) appendAnsweredBeat(in answerInput, chosen *Pick) error {
 	}
 
 	return nil
+}
+
+// blankSpeech writes an answered beat's words and addressee empty
+// (rpg-project#933, R9): the beat keeps its shape, and a reader of it learns
+// neither; both travel only in the speech versions.
+func blankSpeech(body map[string]interface{}) {
+	body["say"], body["to"] = "", ""
 }
 
 // answeredBy is who answered and to what: the creature (or the prop) whose
@@ -613,6 +624,9 @@ func validateOrders(table Table, recipe *machine.Recipe) error {
 func validateEntry(key AnswerKey, i int, entry Answer) error {
 	if entry.Weight < 1 {
 		return fmt.Errorf("answer %q entry %d weighs %d: %w", key, i, entry.Weight, ErrBadAnswer)
+	}
+	if err := validateLoudness(fmt.Sprintf("answer %q entry %d", key, i), entry.Loudness); err != nil {
+		return fmt.Errorf("%w: %w", err, ErrBadAnswer)
 	}
 	if len(entry.Rows) > 0 || entry.As != "" || entry.From != "" || entry.Params != nil {
 		return validateGroupEntry(key, i, entry)

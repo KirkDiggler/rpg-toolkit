@@ -31,9 +31,10 @@ func TestMadKingACaughtThiefLosesTheCooksLinesAndNotThePedlars(t *testing.T) {
 
 	var caught bool
 	for _, b := range s.beatsOf(hero, encounter.BeatAnswered) {
-		caught = caught || (b.Creature == string(kingCook) && b.Fact == "caught-in-kitchen" && b.Say == "Thief!")
+		caught = caught || (b.Creature == string(kingCook) && b.Fact == "caught-in-kitchen")
 	}
 	require.True(t, caught, "the hero is told the cook caught them, and learns it")
+	require.Contains(t, s.saidBy(hero, kingCook), "Thief!", "in the cook's words, which reached the hero")
 	require.False(t, s.offers(kingCook, "pilfer"), "no second try at the sill")
 	require.False(t, s.offers(kingCook, "gossip"), "the cook's gossip is closed to the thief")
 

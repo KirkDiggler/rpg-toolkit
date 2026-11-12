@@ -700,7 +700,11 @@ func (e *Encounter) runIntents(
 				}
 				// The voice/alarm still follows the actual pick, never a diagnostic.
 				if writePick {
-					return e.answerTime(activeID, decision.Pick.Answer)
+					var to MemberID
+					if decision.Pick.Answer.Say != "" {
+						to = opportunity.subject
+					}
+					return e.answerTime(activeID, decision.Pick.Answer, to)
 				}
 				return nil
 			}); perr != nil {
@@ -819,13 +823,28 @@ func (e *Encounter) appendPickBeat(member MemberID, chosen *Pick, named pickedFo
 		}
 	}
 
-	payload, err := json.Marshal(answeredBeatBody(answeredBy{creature: member, target: named.target, to: named.to}, chosen))
+	body := answeredBeatBody(answeredBy{creature: member, target: named.target, to: named.to}, chosen)
+	// A PICK THAT SAYS SOMETHING TELLS ITSELF TO THOSE WHO SEE THE CREATURE,
+	// AND ITS WORDS TO NOBODY HERE (rpg-project#933, R9): the line and whom it
+	// was said to travel only in each member's [BeatSpeech] version
+	// ([Encounter.answerTime]). A pick that says nothing keeps the shelf
+	// every subject beat has.
+	blankSpeech(body)
+	audience := e.audienceFor(subjectBeat, member)
+	if chosen.Answer.Say != "" {
+		_, seers, err := e.audienceOf(member)
+		if err != nil {
+			return "", fmt.Errorf("pick beat: %w", err)
+		}
+		audience = seers
+	}
+	payload, err := json.Marshal(body)
 	if err != nil {
 		return "", fmt.Errorf("pick beat: %w", err)
 	}
 	out, err := e.appendBeat(&record.AppendInput{
 		At:       at,
-		Audience: e.audienceFor(subjectBeat, member),
+		Audience: audience,
 		Tags:     map[string]string{"tag": BeatAnswered},
 		Payload:  payload,
 	})

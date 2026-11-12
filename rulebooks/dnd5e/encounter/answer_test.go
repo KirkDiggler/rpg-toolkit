@@ -156,6 +156,22 @@ func (s *AnswerTestSuite) answeredBeats(enc *encounter.Encounter, who core.Entit
 	return out
 }
 
+// wordsCaught is every line a member caught, in order: the `words` of each
+// [encounter.BeatSpeech] version they were written (rpg-project#933).
+func (s *AnswerTestSuite) wordsCaught(enc *encounter.Encounter, who core.EntityID) []string {
+	story, err := enc.Story(&encounter.StoryInput{Audience: who})
+	s.Require().NoError(err)
+	var out []string
+	for _, entry := range story {
+		var beat map[string]any
+		s.Require().NoError(json.Unmarshal(entry.Payload, &beat))
+		if w, ok := beat["words"].(string); ok && beat["beat"] == encounter.BeatSpeech {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
 func (s *AnswerTestSuite) cellOf(enc *encounter.Encounter, who encounter.MemberID) spatial.Position {
 	members, err := enc.Members()
 	s.Require().NoError(err)
@@ -207,7 +223,8 @@ func (s *AnswerTestSuite) TestTheDieIsTheSumOfTheWeightsAndPicksByFace() {
 			beats := s.answeredBeats(enc, goblin)
 			s.Require().Len(beats, 1)
 			s.EqualValues(tc.entry, beats[0]["entry"])
-			s.Equal(tc.say, beats[0]["say"], "the author's line, verbatim")
+			s.Empty(beats[0]["say"], "the pick carries no words (rpg-project#933)")
+			s.Contains(s.wordsCaught(enc, alice), tc.say, "the author's line, verbatim, in alice's speech version")
 			s.EqualValues(tc.face, beats[0]["roll"])
 			s.EqualValues(10000, beats[0]["of"], "R1: the roll is in the log with what it was rolled against")
 		})
@@ -425,7 +442,7 @@ func (s *AnswerTestSuite) TestAFailedCheckReadsItsOwnTable() {
 
 	beats := s.answeredBeats(enc, alice)
 	s.Require().Len(beats, 1)
-	s.Equal("Big talk.", beats[0]["say"])
+	s.Contains(s.wordsCaught(enc, alice), "Big talk.", "the failure row's line, caught")
 	s.Equal(false, beats[0]["beaten"])
 	s.Empty(beats[0]["word"], "an entry that only speaks carries no word")
 }
@@ -871,7 +888,25 @@ func tabled(id encounter.MemberID, col, row int, table encounter.Table) encounte
 
 // cries is the crier's standing order: shout the alarm with every round it has.
 func cries() encounter.Table {
-	return encounter.Table{encounter.AnswerTime: {{Weight: 1, Say: "To arms!", Fact: hAlarm}}}
+	return criesAt("shout")
+}
+
+// criesAt is [cries] at a loudness: the alarm row said at that level
+// (rpg-project#933).
+func criesAt(loudness string) encounter.Table {
+	return encounter.Table{encounter.AnswerTime: {{Weight: 1, Say: "To arms!", Loudness: loudness, Fact: hAlarm}}}
+}
+
+// speechHeardBy is every [encounter.BeatSpeech] version a member was written.
+func speechHeardBy(t *testing.T, enc *encounter.Encounter, member encounter.MemberID) []map[string]any {
+	t.Helper()
+	var out []map[string]any
+	for _, beat := range storyBeats(t, enc, member) {
+		if beat["beat"] == encounter.BeatSpeech {
+			out = append(out, beat)
+		}
+	}
+	return out
 }
 
 // knows reports whether a member's own journal fold holds a fact — read off
@@ -891,10 +926,12 @@ func knows(t *testing.T, enc *encounter.Encounter, member encounter.MemberID, id
 	return false
 }
 
-// TestATimeRowsFactTeachesItsHearersAndNotTheFarRoom is R6: `fact` on a
-// `time` row is an alarm. Its audience is whoever SEES the crier (alice,
-// across room a) and whoever HEARS it (the guard one room over), and nobody
-// two rooms away with the same ears.
+// TestATimeRowsFactTeachesItsHearersAndNotTheFarRoom is R6 under
+// rpg-project#933 R9: `fact` on a `time` row is an alarm, and it teaches
+// whoever CATCHES ITS WORDS. Shouted, the words reach the crier's room (alice)
+// and the next one (the guard one room over) and no farther; the guard two
+// rooms away, with the same ears, notices a voice (a shout's DC 0, plus 5 a
+// room) but does not learn the alarm.
 func TestATimeRowsFactTeachesItsHearersAndNotTheFarRoom(t *testing.T) {
 	enc := tableHall(t,
 		sheetFacts{
@@ -911,15 +948,41 @@ func TestATimeRowsFactTeachesItsHearersAndNotTheFarRoom(t *testing.T) {
 	_, err := aRound(enc)
 	require.NoError(t, err)
 
-	require.True(t, knows(t, enc, noiseAlice, hAlarm), "alice saw it shouted — a witness, as every fact has")
-	require.True(t, knows(t, enc, noiseKeen, hAlarm), "the guard next door heard it: 10 beats 5 + 5")
-	require.False(t, knows(t, enc, noiseFar, hAlarm), "two rooms is 15, and 10 does not carry that far")
+	require.True(t, knows(t, enc, noiseAlice, hAlarm), "alice, in the crier's room, caught the words")
+	require.True(t, knows(t, enc, noiseKeen, hAlarm), "a shout's words reach the next room")
+	require.False(t, knows(t, enc, noiseFar, hAlarm), "and no farther: two rooms is beyond a shout")
 	require.Contains(t, soundsHeldBy(t, enc, noiseKeen), encounter.SoundVoice, "and what it heard was a voice")
-	require.Empty(t, soundsHeldBy(t, enc, noiseFar))
+	require.Contains(t, soundsHeldBy(t, enc, noiseFar), encounter.SoundVoice,
+		"the far guard noticed a voice: a shout is DC 0, and two rooms adds 10, which passive 10 meets")
+}
+
+// TestASpokenAlarmDoesNotSpreadNextDoor: the same alarm row, only spoken, is
+// caught in the crier's room and nowhere else (rpg-project#933 R9: an alarm
+// spreads to the next room only when it is shouted). The guard next door
+// notices a voice (DC 5 plus 5 for the room, passive 10) and learns nothing.
+func TestASpokenAlarmDoesNotSpreadNextDoor(t *testing.T) {
+	enc := tableHall(t,
+		sheetFacts{
+			noiseAlice: {SpeedFeet: 30}, hCrier: {SpeedFeet: 30},
+			noiseKeen: {SpeedFeet: 30, PassivePerception: 10},
+		},
+		at(noiseAlice, encounter.KindPlayer, 2, 8),
+		tabled(hCrier, 1, 1, criesAt("")),
+		at(noiseKeen, encounter.KindMonster, 18, 1),
+	)
+	_, err := aRound(enc)
+	require.NoError(t, err)
+
+	require.True(t, knows(t, enc, noiseAlice, hAlarm), "alice, in the crier's room, caught the words")
+	require.False(t, knows(t, enc, noiseKeen, hAlarm), "spoken, the alarm does not reach the next room")
+	require.Contains(t, soundsHeldBy(t, enc, noiseKeen), encounter.SoundVoice, "though the guard noticed a voice")
 }
 
 // TestAWhenFactRowIsEligibleOnlyForAHolder is R6's other half: the same row
-// on two guards side by side, and only the one who heard the alarm acts on it.
+// on two guards, and only the one who heard the alarm acts on it. The shout
+// reaches the next room and not the one beyond (rpg-project#933 R2: words are
+// caught by level, not by Perception, so the second guard is out of earshot
+// rather than deaf).
 func TestAWhenFactRowIsEligibleOnlyForAHolder(t *testing.T) {
 	post := cellAt(12, 4)
 	onAlarm := encounter.Table{encounter.AnswerTime: {
@@ -934,7 +997,7 @@ func TestAWhenFactRowIsEligibleOnlyForAHolder(t *testing.T) {
 		at(noiseAlice, encounter.KindPlayer, 2, 8),
 		tabled(hCrier, 1, 1, cries()),
 		tabled(noiseKeen, 18, 1, onAlarm),
-		tabled(hDeaf, 18, 0, onAlarm),
+		tabled(hDeaf, 28, 0, onAlarm),
 	)
 	keenStart, deafStart := whereIs(t, enc, noiseKeen), whereIs(t, enc, hDeaf)
 
@@ -943,7 +1006,7 @@ func TestAWhenFactRowIsEligibleOnlyForAHolder(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	require.False(t, knows(t, enc, hDeaf, hAlarm), "precondition: the deaf guard neither heard nor saw it")
+	require.False(t, knows(t, enc, hDeaf, hAlarm), "precondition: the far guard, two rooms off, neither caught nor saw it")
 	require.NotEqual(t, keenStart, whereIs(t, enc, noiseKeen), "the guard who holds the fact went to its post")
 	require.Equal(t, deafStart, whereIs(t, enc, hDeaf), "the one who does not hold it had only `hold`")
 }
@@ -1287,7 +1350,9 @@ func TestARouteThatRetracesItselfIsRefusedAtTheDoor(t *testing.T) {
 }
 
 // TestAFactOnlyTimeRowIsAVoice: an alarm with no line written for it is still
-// said aloud — the hearers who learn it heard something, so they hold a voice.
+// said aloud — shouted, it reaches the next room, and the hearers who learn
+// it heard something, so they hold a voice (rpg-project#933: a fact-only row
+// teaches by its loudness's reach, with no speech beat).
 func TestAFactOnlyTimeRowIsAVoice(t *testing.T) {
 	enc := tableHall(t,
 		sheetFacts{
@@ -1295,7 +1360,7 @@ func TestAFactOnlyTimeRowIsAVoice(t *testing.T) {
 			noiseKeen: {SpeedFeet: 30, PassivePerception: 15},
 		},
 		at(noiseAlice, encounter.KindPlayer, 2, 8),
-		tabled(hCrier, 1, 1, encounter.Table{encounter.AnswerTime: {{Weight: 1, Fact: hAlarm}}}),
+		tabled(hCrier, 1, 1, encounter.Table{encounter.AnswerTime: {{Weight: 1, Fact: hAlarm, Loudness: "shout"}}}),
 		at(noiseKeen, encounter.KindMonster, 18, 1),
 	)
 
@@ -1362,5 +1427,10 @@ func TestACrossbowOnTheWorldClockRaisesTheAlarmRatherThanFreezing(t *testing.T) 
 	}
 	require.Equal(t, map[float64]bool{1: true}, entries,
 		"`enemy: seen` is the one eligible row: not reach (no attack on the world clock), not none (the ganger is seen)")
-	require.Equal(t, "To arms!", picks[0]["say"])
+	require.Empty(t, picks[0]["say"], "the pick carries no words (rpg-project#933)")
+	var words []any
+	for _, v := range speechHeardBy(t, enc, noiseAlice) {
+		words = append(words, v["words"])
+	}
+	require.Contains(t, words, "To arms!", "alice, in earshot, caught the line in her speech version")
 }

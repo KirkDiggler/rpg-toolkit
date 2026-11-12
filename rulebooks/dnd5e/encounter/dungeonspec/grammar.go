@@ -583,6 +583,7 @@ func (g *grammar) options(path string, options []OptionSpec, props map[string]bo
 		// ABSENT `check` IS A PLAIN LINE (rpg-project#785 R5): free on both
 		// clocks, never missed. Written empty is refused — the zero value
 		// must not lie about which of the two the author meant.
+		g.loudness(p, o.Loudness)
 		if o.Check != nil {
 			g.approaches(p+".check", errOptionNoCheck, o.Check)
 		} else if o.Failure != nil {
@@ -758,6 +759,20 @@ func (g *grammar) rowRecognize(at, key string, o OptionSpec, row AnswerSpec, isP
 	recognitionOf(at, row.Recognize, named, func(path, message string) { g.fail(path, "%s", message) })
 }
 
+// loudness refuses a `loudness` word the engine does not know, at its path
+// (rpg-project#933, R10). Omitted is speak, and is not written for the author.
+func (g *grammar) loudness(at, word string) {
+	if word == "" {
+		return
+	}
+	for _, l := range encounter.Loudnesses {
+		if string(l) == word {
+			return
+		}
+	}
+	g.fail(at+".loudness", "%q is not a loudness: write whisper, speak, shout or scream, or omit it for speak", word)
+}
+
 // answerEntry validates one row of one trigger's table.
 func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {
 	// A TABLE ROW GRANTS NOTHING (rpg-project#929): `recognize` is a line's,
@@ -765,6 +780,7 @@ func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {
 	if entry.Recognize != nil && key != string(encounter.AnswerSuccess) && key != string(encounter.AnswerFailure) {
 		g.fail(at+".recognize", "recognize is only on a line's success or failure row: a table row grants nothing")
 	}
+	g.loudness(at, entry.Loudness)
 	if entry.Weight != nil && *entry.Weight < 1 {
 		g.fail(at+".weight", "a weight of %d can never be rolled: omit it for 1, or give it a share",
 			*entry.Weight)

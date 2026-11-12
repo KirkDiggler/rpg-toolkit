@@ -29,13 +29,13 @@ CREATURES
         at room.room.monsterDeclarations[0]
     - Guard (porter) runs the routine `porter-policy` (as `policy`).
         at room.room.monsterBindings.porter.behaviors[0]
-    - The speaker can say the line “We're expected.” (`guest`) to Guard (porter). It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.
+    - The speaker can say the line “We're expected.” (`guest`) to Guard (porter). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in). Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words, and the roll with them, from someone unnamed; whoever only sees it said learns no words; whoever the words do not reach may still notice a voice by passive Perception; the one it is said to is named only to those who see them. It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.
         at room.room.monsterBindings.porter.options[0]
     - The line “We're expected.” (`guest`) is offered to a speaker only while the conversation `gate` is in the state `fresh` (one state for the whole run, not per speaker).
         at room.room.monsterBindings.porter.options[0].requires[0]
     - Said to Guard (porter), the line “We're expected.” (`guest`): winning it steps the conversation `gate` with the beat `admitted`, which moves it from `fresh` to `admitted` (the line is offered only in `fresh`).
         at room.room.monsterBindings.porter.options[0].advance
-    - When the line “We're expected.” (`guest`) is said, Guard (porter) answers “In you go.”
+    - When the line “We're expected.” (`guest`) is said, Guard (porter) answers “In you go.”, at `speak`: its words reach everyone in Guard (porter)'s room (the wall partition Guard (porter) stands in).
         at room.room.monsterBindings.porter.options[0].success[0]
 
 CONVERSATIONS
@@ -67,7 +67,7 @@ ROUTINES
         at behaviorDefinitions.porter-policy.recipe.states.ready
     - In the state `ready`, when Guard (porter) hails a character, which happens only under the conversation's hail rule: the character's own step ended within the approach distance, Guard (porter) sees them and they see Guard (porter), Guard (porter) offers them a line that steps the conversation, no nearer carrier qualifies, and the conversation is addressing no one, Guard (porter) acts from its own `approached` rows.
         at behaviorDefinitions.porter-policy.recipe.states.ready.transitions[0]
-    - `approached` row 1 of `porter-policy`: Guard (porter) says “Halt there. What's your business?”
+    - `approached` row 1 of `porter-policy`: Guard (porter) says “Halt there. What's your business?” (at `speak`: its words reach everyone in Guard (porter)'s room (the wall partition Guard (porter) stands in)).
         at behaviorDefinitions.porter-policy.table.approached[0]
 
 NOT YET SAID

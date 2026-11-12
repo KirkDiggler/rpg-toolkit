@@ -1159,6 +1159,12 @@ type OptionSpec struct {
 	// Say is the character's line, carried VERBATIM. REQUIRED non-empty.
 	Say string `yaml:"say" json:"say"`
 
+	// Loudness is how loudly the line is said (rpg-project#933, R10):
+	// `whisper`, `speak`, `shout` or `scream`. Omitted is speak; any other
+	// word is refused. A whispered line is admitted only from beside the
+	// creature it is said to.
+	Loudness string `yaml:"loudness,omitempty" json:"loudness,omitempty"`
+
 	// Check is the approaches through the line's check — [CheckSpec], the
 	// list a lock carries. ABSENT IS A PLAIN LINE (rpg-project#785 R5): it
 	// rolls nothing, costs nothing on either clock, is always answered from
@@ -1235,7 +1241,8 @@ func (r *RequiresSpec) UnmarshalYAML(value *yaml.Node) error {
 // optionKeys is every key an [OptionSpec] reads, for its hand-written
 // unknown-key refusal.
 var optionKeys = map[string]bool{
-	"id": true, "say": true, "check": true, "requires": true, "advance": true, "success": true, "failure": true,
+	"id": true, "say": true, "loudness": true, "check": true, "requires": true, "advance": true, "success": true,
+	"failure": true,
 }
 
 // UnmarshalYAML reads an advance, refusing an unknown key by name — it is
@@ -1461,6 +1468,12 @@ type AnswerSpec struct {
 	// "This is also a place where the dungeon author can put text the goblin
 	// would say for each outcome" (Kirk).
 	Say string `yaml:"say,omitempty"`
+
+	// Loudness is how loudly this row's line is said, and so how far its
+	// words — and the fact it teaches — reach (rpg-project#933, R2, R9):
+	// `whisper`, `speak`, `shout` or `scream`. Omitted is speak; any other
+	// word is refused.
+	Loudness string `yaml:"loudness,omitempty"`
 
 	// Activity accompanies the selected spoken line; omission means no cue.
 	Activity *ActivityCueSpec `yaml:"activity,omitempty"`
@@ -2651,8 +2664,8 @@ func (r *AnswerSpec) UnmarshalYAML(value *yaml.Node) error {
 			return fmt.Errorf("line %d: activity must not be null", value.Content[i+1].Line)
 		}
 		switch key {
-		case "weight", "say", "activity", "when", "fact", "flee", "hold", "attack", "toward", "dash", "away", "search",
-			"use", "with", "as", "recognize":
+		case "weight", "say", "loudness", "activity", "when", "fact", "flee", "hold", "attack", "toward", "dash", "away",
+			"search", "use", "with", "as", "recognize":
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.AnswerSpec",
 				value.Content[i].Line, key)
