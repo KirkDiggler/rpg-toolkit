@@ -1,0 +1,300 @@
+# Composable maintenance implementation plan
+
+> Execute directly with the executing-plans and build-slice skills. No delegation or extra plan-approval gate is implied. Read this plan with the approved design; preserve its native/toolkit evidence boundaries.
+
+**Goal:** compose concentration, duration and payload behavior through neutral tools, migrate native Bless/Bane and shared concentration upkeep, and prove concentration-held resistance without a second implementation.
+
+**Architecture:** one coordinator owns a generic lifetime; entity-local assemblies run independent parts using the existing effects machine. Rulebook adapters own identity, transport and meaning. Native roll selection, save execution and host load-act-save stay at their current seams.
+
+**Tech stack:** Go 1.27 multi-module toolkit, Go API, TypeScript/React web, existing generated protobuf SDKs. **Spec:** [design](design.md), [walkthrough](README.md), [acceptance](acceptance.md). **Authority:** [Kirk's detailed approval and fresh-character clarification](https://github.com/KirkDiggler/rpg-toolkit/pull/2323#issuecomment-6726787390).
+
+## Finish line and constraints
+
+Finish the wave through runnable integration, operator early look, bounded native QA, one independent review round and gate-ready PRs. Explicit merge authorization is still required; then publish/tag/repin inside-out. A partial provider is not completion of S3.
+
+- Fresh characters; no historical-save reader, dual writer, normalization, automatic reset or parallel old concentration engine. Unmigrated payload types are current behavior, not compatibility branches.
+- Raging remains a current independent consumer with its existing saved representation; removing it or migrating the whole catalog is outside this cut.
+- One nearest-go.mod module per toolkit PR, isolated worktrees, absolute `git -C`, no rebase/force push/`--no-verify`/manual tags/replace/go.work.
+- Native scope is Bless/Bane plus regression of all shared concentration upkeep. Non-spell resistance is toolkit proof, not native item inventory or a new spell.
+- No new RPC or protobuf field is required by the inspected native spell path. If a real consumer needs another fact, stop that seam and solve it at its owner; do not fabricate it in API/web.
+- Existing local stacks are retired. Only boot a new isolated maintenance stack at the integration task, not during provider construction. No dev/bench promotion or reset.
+
+## Inspected baseline and sequence
+
+| Repo/module | Baseline used |
+|---|---|
+| Toolkit | `49e9918b`, then `origin/main d4033752`; the latter only changes play/record, not the inspected effects/root/resolution paths |
+| Design worktree | `design/bless-bane-composition`, merged main on top at `855e8f86` |
+| API | `origin/dev 3abf710`, worktree `.worktrees/composable-maintenance` |
+| Web | `origin/dev e2247b1e`, worktree `.worktrees/composable-maintenance` |
+| Protos | Existing published v0.1.260 consumer baseline; no local generation planned |
+
+Development dependency: T1–T4 generic → T5–T8 root → T9 resolution → T10 session → T11 API/web. T12 item-example adoption follows the root provider. T13 joins the real stack. Development consumes pushed provider commits; no provider merge is a development prerequisite. Release order is generic → root → resolution/item example → session → API/web, then record closeout.
+
+Release-unit deliverables under story #703: [S13 #903](https://github.com/KirkDiggler/rpg-project/issues/903) neutral provider (T1–T4); [S14 #904](https://github.com/KirkDiggler/rpg-project/issues/904) shared rulebook parts/application (T5–T8); [S15 #905](https://github.com/KirkDiggler/rpg-project/issues/905) existing item-example adoption (T12); S3 #706 owns native resolution/session/API/web and the integrated proof (T9–T11/T13). Their issues link back here; each Go module still has its own PR.
+
+## Review focus
+
+1. Duplicate/re-entrant end requests and a late notice targeting a replacement: T1/T7 must retain the first reason and refuse foreign application ownership.
+2. Teardown/reload mistaken for a gameplay end or fresh initialization: T4/T6/T9 must preserve exact state without new checks, clock steps or effects.
+3. Same-beat independent parts and arithmetic overflow: T3/T4 must not suppress a sibling or partially commit a failed update.
+4. Self-Bless during concentration damage: T9 must roll with current contributions before failure cleanup; no die is rolled by information.
+5. Concrete-class dependencies outside Bless/Bane: T8–T10 and the caller inventory must cover rest, departure, independent children, area-only and zero-delivery holds.
+
+## Shared contracts (new names are implementation contracts)
+
+### Generic provider contracts
+
+- `AmountResult{Scalar *int, Dice string}` is exactly one alternative; a scalar zero is present, not absent. `Validate() error` refuses both/neither. `ScalarValue() (int,error)` refuses a dice description. `AmountFn` returns `(AmountResult,error)`; `Bound.Amount` follows it. `Row.Amount` is `*AmountResult`, nil when there is no answered amount. Dice grammar remains vocabulary-owned.
+- `KindSpec.Execution` is `KindSubscribed` (zero/default, requires Attach) or `KindQuery` (requires assessment, no Attach). Unknown modes and a query kind carrying Attach are refused. Existing subscribed consumers adopt the typed amount API; no legacy evaluator remains.
+- `Assembly.BeginEnd() error` lets an external lifetime owner close the existing local reaction gate before ordered cross-holder removal; it emits nothing and retains contributions until Remove. Provider `4baf38c5` adds this required transport seam, with RED/GREEN and full module gates.
+- `Bound.CanReact()` reports current attachment/state/assembly permission to request new work. It is false during End even while contributions remain selectable. The concentration subscriber consumes it rather than caching another ending flag.
+- `ComposeInput.InstanceKey` namespaces `Bound.ID`; a standalone empty key preserves the existing single-condition identity, while assemblies require a nonempty instance key.
+- `LifetimeInput{ID string, Members []string, Enders []string}` owns copied, unique, nonempty keys in declared order. `NewLifetime(LifetimeInput)(*Lifetime,error)` creates every intended key pending and no delivered member. `RestoreLifetime(RestoreLifetimeInput{Definition LifetimeInput, Snapshot *LifetimeSnapshot})(*Lifetime,error)` requires a live complete snapshot and a unique subset of declared member keys.
+- `LifetimeSnapshot{Phase LifetimePhase, PendingMembers,LiveMembers []string}` is defensive. Both lists are explicit, unique subsets of the fixed definition and must be disjoint; omitted lists are missing state, not defaults. A key in neither list is finalized without a live attachment. `FinalizeMember(FinalizeMemberInput{Key string, Delivered bool})(FinalizeMemberOutput,error)` resolves a pending key once and reports `{Before,After int}` live counts. Unknown/already-finalized keys and changes after end acceptance are refused; no new global lifecycle phase. `RequestEnd(EndRequest{Requestor,Reason string})(EndPlan,error)` validates authority/reason and returns `EndPlan{Accepted bool, Reason string, Members []string}`. First acceptance enters Ending; repeat valid requests return Accepted=false and preserve the first reason. `CompleteEnd() error` transitions Ending→Ended; repeated completion is idempotent, completion from Live is refused.
+- `MemberRemoved(MemberRemovedInput{Key string})(MemberRemovedOutput,error)` returns `{Removed bool, Before,After int}`. Known already-absent keys are idempotent; unknown keys are errors. Membership cannot change after ending starts.
+- `AssemblyInput{Key string, Parts []PartInput, Lifecycle AssemblyLifecycle}`; `PartInput{Key string, Compose ComposeInput, OnTerminal EndScope}`. `EndScope` is `EndPart`, `EndAttachment` or `EndApplication`: one part, all parts on this recipient attachment, or the shared application. Recipient rest uses the middle scope, preserving the already-agreed distinction between recipient loss and whole-application loss. `Assemble(AssemblyInput)(*Assembly,error)` constructs without attaching; parts may not supply their own End/Changed hooks because assembly owns those hooks.
+- `AssemblyLifecycle{End func(context.Context,events.EventBus,AssemblyEnd) error, Changed func(context.Context,events.EventBus,AssemblyChange) error}`. End carries assembly key, part key, scope and reason; Changed carries assembly/part keys. Application-ending parts require End. `Assembly` supplies Apply/Remove/IsApplied, `Snapshot() AssemblySnapshot`, and `CurrentOutputs() []PartOutput`, where `PartOutput{PartKey string, Output *Bound}` follows declared part/output order. `AssemblySnapshot{Parts map[string]Snapshot}` stores every declared part. `RestoreAssembly(RestoreAssemblyInput{Definition AssemblyInput, Snapshot *AssemblySnapshot})(*Assembly,error)` requires exact part coverage and refuses terminal attachment/application-ending parts; terminal local parts stay completed and are not attached.
+- Machine additions: `Guard.Bag *BagLeaf{Key string, Op Op, Value any}` reads a declared scalar with the same eq/gte type rules as facts; `Act.Add *AddAct{Key string, Delta int}` modifies a declared integer. Overflow refuses the transition without committing any act in that transition or publishing Changed. Neither addition embeds D&D timing.
+
+### Rulebook/application contracts
+
+Use the existing `dnd5e/effects` package for part declarations/binders: inspected imports do not depend on combat/actions, so actions may consume its declaration types without a cycle. Confirm the seam with `go list` after edits; separate data-only declarations if later imports require it, without introducing another catalog.
+
+- `effects.PartDeclaration{Key string, Kind generic.KindName, Params json.RawMessage, OnTerminal generic.EndScope}` is authored data. `effects.BindPart(BindPartInput)(*BindPartOutput,error)` consumes `{Declaration PartDeclaration, Ref core.Ref, HolderID,ApplicationID,DisplayName string, Origin events.ConditionOrigin, Owner events.ConditionAddress}` and produces `{Part generic.PartInput, Capabilities PartCapabilities}`. `PartCapabilities{Concentration,Duration bool}` declares static capabilities; `InspectPart(InspectPartInput{Declaration PartDeclaration, Snapshot generic.Snapshot})(*PartInfo,error)` interprets owned runtime state and returns optional concentration/duration information without callers reading bag keys. The same kind table owns validation and meaning; named descriptors select it.
+- `conditions.ApplicationSpec{Name string, CoordinatorParts []effects.PartDeclaration, Recipients []RecipientSpec}`; `RecipientSpec{MemberID,Ref,Name,AddressSourceID string, Parts []effects.PartDeclaration, Config json.RawMessage, Lifetime RecipientLifetime}` names a canonical attachment ref and exactly one construction source. `LifetimeShared` and `LifetimeIndependent` are explicit; independent linked applications require their own coordinator and are not silently added to this one. `PrepareApplicationInput{ID,CoordinatorID string, Origin ConditionOrigin, Spec ApplicationSpec, Existing []ParticipantConditions}` produces immutable `PreparedApplication`, including an optional exact `Replacement` concentration-owner address. It attaches/spends/rolls/removes nothing. R11 binds each recipient spec to its actual intended member before payment, validates candidate construction, and fixes its key/address/link mode; this is a finite intent list rather than a template admitting any future holder.
+- `events.RollContributionSet.RollContributors()` enumerates per-part `RollContributionProvider` values. Their metadata returns `(RollContributionMetadataOutput,error)` rather than hiding invalid descriptions; one existing selector claims each group. `contributions.Effect.RollGroup` carries that same internal selection fact for plural information rows. It is not a client-side rule or another selection engine.
+- `ParticipantConditions{MemberID string, Conditions []events.ConditionBehavior}` names the supplied universe. `BindApplicationsInput{Participants []ParticipantConditions, Bus events.EventBus}` produces an interaction-local `ApplicationBinding`; it validates existing linked graphs and binds runtime transport. It is neither a condition catalog nor a persistent/global index.
+- `CreateRecipientInput{Prepared *PreparedApplication, SpecIndex int}` produces `CreateRecipientOutput{Condition ConditionBehavior, Candidate RecipientCandidate}` through the existing registry. `RecipientCandidate{Key string, Address ConditionAddress, LinkMode LinkMode, SpecIndex int, Shared bool}` identifies a fixed intended delivery, not evidence that it happened. `LinkComposed` and `LinkAdopted` distinguish backlink-bearing composed nodes and explicitly adopted current payloads. The recipient holder cannot be substituted after preparation.
+- Replace `SealApplication` with pure `CreateApplication(CreateApplicationInput{Prepared *PreparedApplication})(*CreateApplicationOutput,error)`, returning `{Condition ConditionBehavior}` with fixed shared-member bindings and all entries pending. The source publishes this coordinator after payment/replacement and before recipient delivery. Zero intended condition members remains valid for an area-only application.
+- `ResumeApplication(ResumeApplicationInput{ID string, Spec ApplicationSpec, Existing []ParticipantConditions})` reconstructs candidate creation against an existing exact live owner; it refuses changed intended bindings/maintenance and cannot create an owner or refill membership. The source's frozen declaration owns pending payload configuration; the coordinator owns membership. This is the R11 resume adapter, not another persisted runtime.
+- `ConditionAppliedEvent.ApplicationID` tags adopted shared delivery that has no saved backlink. The binding requires that generation at a pending adopted slot and verifies it before duplicate handling; a matching address alone is not evidence that this application delivered the attachment.
+- `ApplicationBinding.FinalizeRecipient(ctx, *FinalizeRecipientInput{ApplicationID,Key string, Delivered bool})(*FinalizeRecipientOutput,error)` reports `{Before,After int}` live counts. Delivered=true requires the actual candidate attachment, exact address/generation and successful Apply before joining membership. Delivered=false requires no attachment from this application at that slot and adds no live member. Either outcome removes pending status and marks coordinator data dirty. Independent-duration deliveries are outside shared membership. Unknown, repeated or ended/replaced application finalizations fail without mutation.
+- Linked removal facts carry `ConditionRemovedEvent.ApplicationID` separately from the reusable three-field replacement address. The binding refuses stale/foreign invocation facts before mutation; both keepers use `ConditionRemovalMatches` to prevent a stale tagged fact from deleting a replacement. Untagged current address facts remain exact-address operations, not historical saved-data compatibility.
+- `ApplicationBinding.CheckComplete()` is required at every successful mutable boundary, including a pause. It permits correctly bound pending entries without their own attachment, but refuses orphaned or unfinalized actual recipients, failed attachment and incomplete end state. Bind precedes behavior attachment, tracks actual application/removal facts, and requires exact old-address removal before a replacement is delivered.
+- `ApplicationBinding` registers new prepared/recipient/coordinator attachments, accepts scoped end requests, applies member-removal notices and tears down without gameplay endings. Root keepers/transport verify both application identity and exact addresses before acting; a stale member may not remove a new occupant. The binding captures the interaction bus for in-flight dispatch cleanup.
+- `LinkedConditionData`: ref/member/address qualifier/application ID/role, immutable origin and bindings, plus `{Parts AssemblySnapshot, Lifetime *LifetimeSnapshot}` runtime. Lifetime exists only on coordinator; live member keys refer to immutable address bindings. Register `refs.Conditions.LinkedEffects()` for the neutral coordinator. Blessed/Baned keep their canonical recipient refs and caster-qualified replacement addresses; origin is never parsed from a qualifier.
+- `LinkedApplicationInfo` exposes identity, role, owner/member links as detached values. `MaintenanceInfo` exposes optional concentration `{Owner ConditionAddress, SourceRef core.Ref, SourceName string, ChildCount int}` and duration `{Remaining int, SkipNext bool}`. More than one concentration claim per maintainer is invalid. `DescribeCondition` supplies display/origin/known duration to native views without API parsing rules.
+- Parts: concentration describes one positive-damage CON follow-up (DC max(10,damage/2)), with only the exact coordinator as failure owner; zero HP ends without rolling. Duration owns remaining caster-end count/grace. End-on-combat/rest and until-empty are separate parts. The latter reacts to actual nonempty→empty loss, not empty construction. Roll modifier describes signed unresolved `1d4` for attack/save domains; resistance reuses the existing meaning.
+- `effects.DescribeRoll(DescribeRollInput{Output *generic.Bound, Request *events.DescribeRollContributionsInput, Origin events.ConditionOrigin, DisplayName string})(*DescribeRollOutput,error)` returns `{Applicable bool, Group string, Contributions []events.DiceContribution}` through the same kind assessment as information. `Query.Roll *RollQuery{MemberID string, Kind contributions.RollKind}` names the actual recipient, unlike an outgoing save-shaped action. `PartInfo{Concentration bool, Duration *DurationInfo}` interprets part snapshots; payload inspection validates state without inventing maintenance.
+- `CastProfile.Maintenance` carries declarations instead of `CastConcentration`; source content supplies data and the root compiler reports the concentration claim. Resolution consumes the prepared contract, not kind/spell names. Toolkit maintenance end information uses generic content identity; native spell projection remains spell-only for this cut, with a named refusal for an unsupported non-spell native presentation.
+
+## Task contracts
+
+Execution checkpoint: generic T1–T4 are source-complete in [toolkit #2327](https://github.com/KirkDiggler/rpg-toolkit/pull/2327), through `cc0c8dee`, with missing-API RED, targeted behavioral/mutation RED and full module race/vet/lint GREEN. Their consumer integration, independent wave review and release remain pending. The requested independent provider/adoption review closed its two Important and one Minor findings at provider `5d95849c` / root `08b2d161` ([closure](https://github.com/KirkDiggler/rpg-toolkit/pull/2327#pullrequestreview-5819875758)). T5 then completed its source vocabulary at root `0b2f830f` in [#2329](https://github.com/KirkDiggler/rpg-toolkit/pull/2329), consuming provider `eb5ffb63`'s new CanReact query. Full owning gates pass. That later vocabulary/API addition is not claimed covered by the earlier review. T6 linked codec/registry/selection foundation is at `35bba70f`; T7 preparation/sealing/transport is at `1eb2a028`, with full root race/vet/lint green and real-keeper/mutation evidence. Final replacement of the old Blessed/Baned/concentration implementations is coupled to T8, not claimed complete by the new neutral entry. T8 subsequently completed at root `8d37e5fd` after runtime retirement `94aac8d9`: full root gates and current declarations/neutral reports/linked-resistance proof pass. T9–T13, later review and native acceptance remain pending. T9 characterization `01841a3e` in [#2344](https://github.com/KirkDiggler/rpg-toolkit/pull/2344) exposed the persisted partially delivered cast: [R11](https://github.com/KirkDiggler/rpg-toolkit/pull/2323#issuecomment-6755782119) is now settled: fixed intended list, per-entry finalization and valid persisted pending entries. The amendment tasks below replace the whole-application seal without restarting completed work.
+
+Each behavioral task follows these steps: add named assertions → observe the expected RED → implement only its contract → run focused checks → run its owning release-unit gates before pushing → update run record and commit. Tests below are required assertions, not completed receipts.
+
+### T1 — Neutral lifetime value
+
+**Delivers:** R3/R4/R7's scoped member ownership and exactly-once end plans. **Owner:** mechanics/effects. **Prerequisites:** inspected generic module only.
+**Files:** create `mechanics/effects/lifetime.go`, `lifetime_test.go`; update module `doc.go` and add its dated run record.
+**Interfaces:** generic Lifetime contracts above; no bus, rulebook imports or hidden IDs.
+**Behavior/tests:** `TestLifetimeSuite/TestEndIsAuthorizedOrderedAndIdempotent`: members a,b; remove a; end by authorized duration with reason expired yields only b; repeat damage end preserves expired and yields no second plan. `TestSnapshotDoesNotAliasCallerOrRuntime`: mutate constructor slices, snapshot slices and plan slices without changing internal state. `TestRestoreRejectsMissingDuplicateForeignOrNonLiveState`: absent snapshot/phase, repeated a, unknown x, Ending/Ended all refused. `TestMembershipAndCompletionRefusals`: unknown removal, removal after end, unauthorized/empty reason and completion before request fail; known duplicate removal is a no-op.
+- [x] Add tests and observe missing Lifetime API failure.
+- [x] Implement defensive values and state transitions.
+- [x] Run `go test ./... -run TestLifetimeSuite -count=1` in mechanics/effects; mutation that accepts a second end fails the first test.
+- [x] Run module gates, record and commit checkpoint `646c3117`.
+**Evidence:** exact test output and commit, not an application/runtime delivery claim.
+
+### T1a — R11 fixed intended membership and per-entry finalization
+
+**Owner:** mechanics/effects, existing #2327/worktree. **Files:** `lifetime.go`, `lifetime_test.go`, new `lifetime_delivery_test.go`, owning run record. **Interfaces:** amended Lifetime contracts above; no bus, rulebook import or global delivery phase.
+**Tests:** `TestLifetimeSuite/TestPendingRecipientsRoundTripAndFinalizeIndependently` starts a,b,c pending, delivers a, snapshots/restores, finalizes b without delivery, delivers c, then ends only a,c in declared order. `TestFinalizationCannotReopenOrRecruit` refuses foreign/repeated keys, including after live-member removal; failed operations leave snapshots equal. `TestEndFreezesPendingRecipients` ends with a live/b pending, returns only a and refuses b's late finalization. `TestPendingSnapshotRejectsMissingOverlappingAndForeignKeys` verifies strict explicit disjoint sets. Existing end/order/alias/restore tests retain their assertions with explicit successful finalizations in fixtures.
+- [x] Observe RED for missing per-entry API and fresh pending semantics.
+- [x] Implement pending/live sets and exactly-once finalization; preserve existing end acceptance.
+- [x] Pending-as-live and reopen-finalized mutants fail; restored full module race/vet/lint pass, pushed `de822f5e`. Root adoption and material-delta review remain separate claims.
+
+### T6a/T7a — R11 fixed recipient binding, early owner and saved pending entries
+
+**Owner:** rulebook root, existing #2329/worktree. **Prerequisite:** pushed T1a. **Files:** `conditions/{application,application_delivery,application_binding,linked_data,linked_condition,linked_info}.go` and their tests; replace seal-specific tests/helpers, not behavior assertions. **Interfaces:** amended RecipientSpec.MemberID, RecipientCandidate, CreateApplication and FinalizeRecipient above. No historical linked decoder and no parallel old seal API.
+**Tests:** `TestApplicationBindingSuite/TestPendingDeliveryIsSaveableAndResumesByExactKey` uses real loaded keepers: owner with a,b pending → deliver/finalize a → CheckComplete → save/reload all → a still contributes, b still pending → finalize b → CheckComplete. `TestNoEffectFinalizationDoesNotInventMemberLoss` finalizes all pending outcomes absent and keeps the zero-delivery hold. `TestUnfinalizedActualDeliveryIsNotSaveable` refuses a published attachment not yet finalized. `TestForeignOrFinalizedRecipientCannotJoin` refuses wrong holder/address/generation, duplicate finalization and an already-removed entry without disturbing newer occupants. `TestEndingWithPendingDeliveriesCannotBeResurrected` removes only actual live recipients and refuses late completion of the same invocation. Existing rest/last-member-loss semantics stay unchanged; pending alone is never an active attachment or fabricated loss.
+- [x] Pin pushed provider `de822f5e`; missing per-entry API RED and real-keeper tests GREEN.
+- [x] Concrete preflight candidates, fixed pending owner, actual/no-effect finalization and dirty-state persistence implemented.
+- [x] Existing ownership/replacement/end/query tests and full root race/vet/lint pass at `5b03b53b`; dirty-state and changed-intent mutants fail. Native T9 remains separate.
+
+### T2 — Descriptive amounts and query-only kinds
+
+**Delivers:** R5 and distinct output instance identity. **Owner:** mechanics/effects. **Prerequisites:** none beyond T1 sharing one writer/PR.
+**Files:** create `amount_result.go`, `amount_result_test.go`; modify `output.go`, `vocabulary.go`, `composed.go`, `composed_test.go`, `testvocab_test.go`, `observations_test.go`, `doc.go`.
+**Interfaces:** AmountResult, AmountFn, KindSpec.Execution, InstanceKey contracts above.
+**Tests:** `TestAmountResultSuite/TestDiceIsNeverEvaluatedByInspection` uses a dice description and a roller spy with zero calls; `TestScalarZeroIsPresentAndDiceRefusesScalarRead`; `TestInvalidUnionIsRefused`; `TestQueryKindHasNoSubscriptionAndStillRequiresAssessment`; `TestSubscribedKindStillRequiresAttach`; `TestInstanceKeysSeparateEqualRecipeOutputs`. Update existing numeric fixtures to explicit scalar results; no legacy integer adapter.
+- [x] Write failing assertions and run the named suites.
+- [x] Change the single amount contract and kind validation; update all module consumers.
+- [x] Verify `go test ./... -count=1`; instance-prefix mutant fails the identity assertion.
+- [x] Update docs/run record and commit `5cdd2cb3` after module gates.
+
+### T3 — Neutral countdown operations
+
+**Delivers:** R3 independent duration state without a game-specific generic clock. **Owner:** mechanics/effects/machine within the same module. **Prerequisites:** existing compiler/guard/act contracts.
+**Files:** modify `machine/{recipe,guard,acts,validate,machine}.go`; create `machine/bag_arithmetic_test.go`; update `machine/doc.go` and validation/JSON tests.
+**Interfaces:** BagLeaf/AddAct above; internal `run` returns `(changed bool, err error)` and applies a transition's acts only after all writes validate.
+**Tests:** `TestBagArithmeticSuite/TestCounterGuardAndDeltaRoundTrip` starts remaining=2, fires two declared beats, gets 1 then terminal with unchanged input recipe; `TestRefusesUnknownWrongTypedAndMultipleActForms`; `TestOverflowDoesNotPartiallyWriteOrNotify` puts MaxInt at n and an earlier flag write in the same transition, then adds 1 and expects neither write nor Changed; `TestBagUnknownIsNotFalse` preserves three-valued semantics.
+- [x] RED with new guard/act shapes.
+- [x] Implement validation, owned staged bag changes and overflow refusal.
+- [x] Run `go test ./machine -count=1`; retain all existing Rage machine semantics and seam tests.
+- [x] Record overflow-guard mutation and commit `b0b6ce6a` after module gates.
+
+### T4 — Local assembly of existing runtimes
+
+**Delivers:** R3/R4 independent parts, snapshots and teardown. **Owner:** mechanics/effects. **Prerequisites:** T1–T3.
+**Files:** create `assembly.go`, `assembly_test.go`; modify `composed.go` only for InstanceKey integration; update `doc.go`, `README.md`, seam/run records.
+**Interfaces:** Assembly contracts above. No part may supply End/Changed hooks; assembly owns the lifecycle routing.
+**Tests:** `TestAssemblySuite/TestTwoPartsReactToOneBeat` updates two differently keyed bags once; `TestPartCompletionDoesNotEndSibling`; `TestApplicationEndRoutesOnceBeforeDetach`; `TestRestoredCompletedPartDoesNotRevive`; `TestMissingOrTerminalMaintenanceSnapshotIsRefused`; `TestLaterAttachFailureUnwindsEarlierParts`; `TestRemoveOnlyDetachesAndSnapshotsAreOwned`; `TestDuplicateKeysOrNestedLifecycleHooksAreRefused`.
+- [x] RED suites.
+- [x] Compose each part, namespace output IDs and route callbacks without flattening transitions.
+- [x] Run `go test -race ./...`, `go vet ./...`, `golangci-lint run ./...` in mechanics/effects; seam tests retain existing allowed imports.
+- [x] Push provider draft #2327 at `cc0c8dee`, with T1–T4 evidence and no merge/tag claim.
+
+### T5 — Rulebook part meanings and typed contribution adoption
+
+**Delivers:** R1/R3/R5 vocabulary, reusing resistance and recipient selection. **Owner:** rulebooks/dnd5e root module. **Prerequisites:** pushed T4 provider pin, not a local replacement.
+**Files:** modify `effects/{types,kinds,amounts,attach,query,vocabulary}.go`; create `effects/{parts,concentration_part,duration_part,roll_modifier,parts_test}.go`; update `conditions/composed.go` numeric consumers and current Raging tests.
+**Interfaces:** PartDeclaration/BindPart and capability outputs above. The root kind table supplies recipe, output and typed assessment meaning once. No second concentration class or dice subscriber.
+**Tests:** `TestPartsSuite/TestConcentrationAndDurationAreIndependent`; `TestConcentrationDescribesOneSaveAndZeroHPDoesNotRoll`; `TestDurationGraceAndRemainingSurviveRestore`; `TestUntilEmptyRequiresActualLastMemberLoss`; `TestRollModifierDescribesDomainsWithoutRolling`; `TestResistanceMeaningIsSharedWithRaging`; existing `TestSharedComposedRaging` for unchanged scalar behavior/current saved shape (reuse, not a duplicate fixture).
+- [x] Pin provider with real `go get`/tidy; current provider `eb5ffb63`.
+- [x] Observe missing-API/behavioral RED; implement meanings and scalar API adoption.
+- [x] Run focused and full root race/vet/lint, including existing Raging creation/information fixtures; reaction/owner-scope/subtraction mutants fail before restoration.
+- [x] Commit source checkpoint `0b2f830f`; root stays draft because T6–T8 and consumers are incomplete.
+
+### T6 — Linked codec and current recipient definitions
+
+**Delivers:** R4/R8 one current linked format and source-qualified Bless/Bane. **Owner:** rulebook root. **Prerequisites:** T5.
+**Files:** create `conditions/{linked_data,linked_condition,linked_info,linked_data_test}.go`; modify `conditions/{descriptor,registry,factory,loader,blessed,baned}.go`, `refs/conditions.go`; preserve `composed_data.go` for current Raging.
+**Interfaces:** LinkedConditionData, LinkedApplicationInfo, MaintenanceInfo/DescribeCondition above; existing CreateFromRef/LoadJSON remain routing boundaries.
+**Tests:** `TestLinkedDataSuite/TestOwnerAndRecipientRoundTripWithoutDuplicatedState`; `TestMissingForeignDuplicateAndWrongRoleStateIsRefused`; `TestObsoleteBlessBaneAndConcentrationAreRefusedNotNormalized`; `TestOriginAddressAndApplicationStayDistinct`; `TestCoexistingBlessSourcesUseExistingSelection`; `TestRecipientOnlyInformationDoesNotInventDuration`.
+- [ ] Tests start with current creator-produced bytes, not a hand-authored invented snapshot.
+- [ ] Implement current codec and registry entries; remove superseded Bless/Bane runtime implementations rather than retain alternate paths.
+- [ ] Run `go test ./conditions ./character ./monstertraits -count=1`; fix fixture callers listed in caller inventory without deleting gameplay assertions.
+- [ ] Record progress and exact bytes/negative assertions.
+
+### T7 — Preparation, sealing and interaction-local transport
+
+Historical source checkpoint below; whole-application sealing is superseded by R11/T6a/T7a. Retain its purity, actual-delivery and exact-removal assertions, not its old finalization granularity.
+
+**Delivers:** R2/R4/R6/R7 scoped linked lifecycle. **Owner:** rulebook root. **Prerequisites:** T5/T6.
+**Files:** create `conditions/{application,application_binding,application_test,application_binding_test}.go`; update root event/address and keeper helpers only where the inspected protocol requires them.
+**Interfaces:** Prepare/CreateRecipient/Seal/BindApplications contracts above; explicit current participant list, typed receipts and end transport. Identity comes from the caller; no hidden UUID/clock.
+**Tests:** `TestApplicationSuite/TestPreparationDoesNotAttachSpendRollOrDisplace`; `TestOnlyDeliveredSharedRecipientsJoin`; `TestZeroDeliveryDoesNotInventLastChildLoss`; `TestSourceQualifiedReplacementForgetsOldMemberBeforeNewJoin`; `TestApplicationBindingSuite/TestMissingForeignAndCompetingLinksFailBeforeMutation`; `TestDuplicateRemovalIsIdempotentAndStaleRemovalCannotHitReplacement`; `TestChildRemovalAndSelfRecipientDoNotStripSiblings`; `TestEndOrderingAndExternalOwnerFactAreExactlyOnce`; `TestBindingTeardownDoesNotEndSavedApplications`.
+- [x] RED against missing APIs and a stale application fact deleting a replacement.
+- [x] Implement graph validation, owned binding state and actual removal transport; no observer merely logs an unfulfilled end request.
+- [x] Run real-keeper `TestApplicationBindingSuite`, missing/foreign/competing owner, self/independent payload and duplicate/stale tests, then full root race/vet/lint; generation-check mutants fail before restoration.
+- [x] Commit joined preparation/sealing/removal checkpoint `1eb2a028`; native resolver/host adoption is still T9 onward.
+
+### T8 — Shared upkeep, views and current spell declarations
+
+**Delivers:** R6/R8/R9 one current concentration path. **Owner:** rulebook root. **Prerequisites:** T7.
+**Files:** modify `combat/actions/cast.go`, `spells/cast.go`, `character/{character,status_view}.go`, monster condition/view counterparts in caller inventory, `conditions/{registry,factory,concentrating}.go`, current root tests in inventory; remove superseded concentration implementation/data constructors.
+**Interfaces:** CastProfile.Maintenance and protocol queries above. Keep all current spell maximum durations/grace/independent-child declarations; no one-off Bless/Bane branch.
+**Tests:** `TestMaintenanceDeclarationsSuite/TestEveryCurrentConcentrationProfileUsesParts`; `TestOneConcentrationClaimIsReportedAndMultipleClaimsAreRefused`; `TestGenericSourceDoesNotPretendToBeASpell`; `TestConcentratedResistanceWithAndWithoutMaintenance`; `TestIndependentRagingSurvivesWardEnd`; existing root concentration/rest/keeper tests rewritten through current constructors with the same behavior assertions.
+- [x] Pin data/behavior boundaries with import/seam check and RED tests; the action/effect import seam remains acyclic.
+- [x] Migrate declarations/views and delete old runtime/codec paths: `94aac8d9` plus `8d37e5fd`; no old concentration class, codec, ref accessor or combined cast declaration remains in the root module.
+- [x] Full root `go test -race ./...`, `go vet ./...`, `golangci-lint run ./...` pass at `8d37e5fd` (0 lint issues).
+- [x] Push root draft #2329 with current-format refusal and actual linked ward/Raging/generic-source proof; nested module callers remain T9/T10, not covered by root gates.
+
+### T9 — Real native delivery, damage, rest and departure
+
+**R11 amendment prerequisite:** finish T1a/T6a/T7a above. Native characterization #2344 pins earlier delivery before a later target answers. Preserve that order: create the paid coordinator before delivery, finalize each actual outcome, and freeze/resume the same application while other entries remain pending. No validation bypass, postponed earlier effect or global open/sealed state is needed.
+
+**Delivers:** R6/R7/R9 native concentration behavior. **Owner:** resolution module. **Prerequisites:** pushed root T8.
+**Files:** modify `resolution/{action,resolve,concentration,damagetaken,depart,long_rest,short_rest,projection,check}.go` as applicable to the truth-bearing entry inventory; create `resolution/linked_application_test.go`; update inspected concentration/Bless/cast/area/departure fixtures in caller inventory.
+**Interfaces:** root prepared application/binding APIs; existing cast outcome/FollowUp/removal fact protocols. Pass a stable application identity into cast creation and freeze/resume it; native callers supply current act identity plus an application ordinal, never silently regenerate on resume.
+**Tests:** `TestLinkedApplicationSuite/TestCastSealReloadAndExactRemoval`, `TestSelfBlessConcentrationUsesDieBeforeCleanup` (also asserts one follow-up for two recipients), `TestLongRestPersistsEveryAffectedHolder`, `TestUnsupportedNonSpellNativePresentationIsRefusedByName`, `TestUnfinalizedActualDeliveryCannotLeaveASuccessfulInteraction`. Reuse rather than duplicate the existing `TestConcentrationSuite/TestACastRefusedAtTheDoorDropsNothing`, `TestBaneAllSaveRecastReplacesOnlyItsQualifiedOwnerAndUsesCurrentSources`, area tests, `TestDepartSuite`, Sanctuary cooldown/independent-child tests and native Bless/Cast suites. Their fixture updates preserve behavioral assertions under current typed data.
+- [x] Root adoption observed removed-interface RED; real linked cast/pause/save/resume and source refusals now pass.
+- [x] Complete mutable pre-bind graph, protocol readers, fixed identity, per-entry delivery and frozen continuation implemented. Local read-only projections stay explicit.
+- [x] Full resolution race/vet/lint pass; Self-Bless observes its die before cleanup, two recipients yield one check, HP applies once. LongRest/DeathSave carry every affected holder. Boundary and identity mutants fail.
+- [x] Pushed #2344 at `823286a1`, then catch-up `6618456d` preserves main's Sites seam with fresh full gates. No browser claim.
+
+### T10 — Session continuation, information and persistence
+
+**Delivers:** R4/R7/R9 current canonical data across host verbs. **Owner:** session module. **Prerequisites:** pushed T9 and root.
+**Files:** modify `session/{cast,write,turn,rest,depart,information,effects}.go` only where actual protocol/pin changes require; create `session/linked_application_test.go`; update `concentration_break_test.go`, `turn_concentration_test.go`, `bless_test.go`, `bless_internal_test.go` and inventoried callers.
+**Interfaces:** stable native application identity from `scope.enc.CurrentAct()` with deterministic local ordinal; frozen continuation carries it; host receives data and information, no runtime objects.
+**R11 acceptance:** a paused multi-target Bane cast saves its paid coordinator and earlier delivered effect, exposes the earlier effect through a fresh interaction, then resumes the same invocation without repeated payment, repeated delivery or a copied membership authority. A no-effect answer finalizes only its own entry; an ended/replaced invocation cannot be revived.
+**Tests:** `TestCastSuite/TestLinkedApplicationPersistsEarlierDeliveryAcrossWindowReload` combines fresh-manager JSON persistence, unchanged invocation identity/payment, exact verdicts and recipient-only unknown countdown. Existing Cast/Resistance-window, Rest/Depart, TurnConcentration, Fog Cloud reload and source-aware effect-row suites remain live instead of duplicating those scenes; opaque row IDs are matched independently from ref/source facts.
+- [x] Current declaration/reader adoption RED, then real Manager Cast/React over JSON-round-tripped stores and a fresh Manager preserves earlier delivery and pending entries.
+- [x] Host-owned current-act/application ordinal, provider metadata and affected-holder custody; DeathSave uses the one landing, not a second persistence path.
+- [x] Full session race/vet/lint and no-bus/no-check/landing/exported-boundary structural gates pass; identity and dirty-persistence mutants fail.
+- [x] Pushed #2377 at `976ad1b1`, catch-up `ccb082c9` preserves checkpoint pieces, resident world, offer revisions and hail changes; full gates repeated.
+
+### T11 — API/web current-data adoption
+
+**Delivers:** R8–R10 real reader boundary. **Owners:** API and web, separate PRs. **Prerequisites:** pushed T10; existing generated SDK.
+**Files (API):** modify `internal/handlers/dnd5e/v1alpha1/character/converters.go`, add `linked_conditions_test.go`; extend `internal/integration/session/bless_acceptance_test.go`, add `linked_maintenance_acceptance_test.go`; pin go.mod/go.sum. Existing session/act converters only change if actual provider types require it.
+**Files (web):** `src/types/conditionData.ts`, `conditionData.test.ts`, `src/components/features/ConditionBadge.tsx` and tests; existing `combat-experience/EffectRows.test.tsx`, `actionTooltip.test.ts`, `ActionDockEffects.test.tsx` for native mounted projection proof.
+**Interfaces:** root-owned metadata and unchanged native spell SDK facts. API preserves raw bytes and maps metadata; web validates current shape, keeps bindings opaque and renders server facts. No new method permission or proto generation because no RPC/wire addition is planned.
+**Tests:** API `TestConvertLinkedConditionPreservesBytesSourceAndDescription`, `TestLinkedMaintenanceAcceptanceSuite/TestNativeCreationCastReloadAndConcentrationEnd` using actual handlers/miniredis; web `rejects obsolete linked condition data`, `renders server maintenance without calculating remaining turns`, `preserves selected dice and separate source identities`, plus mounted HUD regression. Explicitly distinguish a component-only badge from the native HUD.
+- [x] API object-ref disappearance and native-v2 generic-label failures observed; root `be7c872a`/`678e9d74` own the description and private status projection. Web reader suite observed 11 RED cases against the old generic fallback.
+- [x] Opaque bytes and provider metadata pass through; obsolete/malformed linked records refuse; no bag interpretation or countdown arithmetic in API/web.
+- [x] API make test/ci-check pass. Web full ci-check: 794 files / 10274 tests pass, existing 1-file/6-test skips unchanged; mounted private rail, action dock and effect-row regressions pass.
+- [x] API #1225 `a8463915`, web #1410 `970625f9` pushed. Real API creation/cast/payment/reload/both private reads/end cleanup pass; browser gameplay acceptance remains T13.
+
+### T12 — Existing item consumers still consume the provider
+
+**Delivers:** current Second Wind/Rage item examples remain valid after generic/root API changes. **Owner:** examples/items module. **Prerequisites:** root T8/provider T4.
+**Files:** `examples/items/go.mod`, `go.sum`, affected existing test consumers only, module run record. No native inventory implementation.
+**Tests:** retain fixed non-Barbarian Rage bonus, independent item/class pools, source identity, spent loot, transfer, reload and grace assertions. No compatibility shims for the old amount contract.
+- [x] Pushed effects `de822f5e` and root `678e9d74` adopted; full examples race/vet/lint pass.
+- [x] No source rewrite was required; all resource/provenance/Rage/loot/transfer/reload/grace assertions remain unchanged.
+- [x] #2379 `1f3848c7` pushed, real-tag re-pin still required before authorized merge.
+
+### T13 — Native acceptance, review and authorized release
+
+**Delivers:** S3's integrated finish line. **Owner:** cross-team verification; no new gameplay owner. **Prerequisites:** T1–T12 green on pushed real pins.
+**Files/artifacts:** untracked API `content/composable-maintenance-walk.yaml`, local manifest `envs/local/composable-maintenance.env`, checked mounted content, `docs/ideas/composable-maintenance/{implementation,qa}.md`, issue checklist and PR receipts. Design worktree owns docs; source worktrees own code. Ports chosen only after checking availability.
+**Native scenario:** normally create eligible casters and recipient; verify acquisition/private sheet; cast multi-recipient Bless/Bane; inspect source-aware rows; reload; exercise replacement/removal/rest/departure. Repeat relevant castle fight path. Positive damage/concentration outcomes may be named real-path test-backed where dice miss in the bounded walk; never force live evidence. Resistance example remains toolkit proof.
+- [x] Isolated stack boots on web :3042 / API :8142; source-fix refresh serves API `14a3edec`, web `87f50a35`, root `87602d8f`. Binary providers and unchanged content hashes verified; operator early look preceded joined review.
+- [x] One bounded joined review and focused source-identity closure; the single Important finding is Addressed. [Implementation receipts](implementation.md) state exact coverage, reused gates and limits.
+- [x] Bounded two-client native QA: normal acquisition, payment, source inspector, signed dice, reload, replacement, short rest, departure, castle fight and end cleanup. [QA](qa.md) separates browser/transport observations from named-test-backed dice and persistence branches.
+- [x] Report exact heads and release gates. Operator authorized merge-out; all runtime PRs merged with final-head gates and real provider tag adoption; [release table](implementation.md#authorized-release-progress).
+- [x] Finish API/web adoption after API #1227's canonical castle landed: merge dev on top, retain parallel work, re-pin, pass full gates/current-head CI, publish head verdicts, merge API then web into dev. The failed earlier probe remains recorded; no downgrade, test weakening or content takeover.
+- [x] Prepare final documentation/ship receipts and preserve operator data during cleanup. Journal #863 and the live :3042/:8142 stack remain; only finished unserved worktrees are eligible for removal. #706 owns the final closeout record; no production release.
+- [x] Keep journal #863 open; preserve investigation, failures and proof limits. This is not journal closeout.
+
+## Requirement coverage
+
+| Requirement / acceptance | Tasks | Concrete proof |
+|---|---|---|
+| R1 reusable concentration/duration/resistance | T5/T8 | same resistance meaning, with/without maintenance, independent Raging remains |
+| R2 local custody/shared lifetime | T1/T6/T7/T10 | owner-only lifetime, recipient links, joined reload and dirty persistence |
+| R3 independent part reactions | T3/T4 | TwoPartsReactToOneBeat, overflow no partial update, no interpreter import expansion |
+| R4 identities/state once | T1/T2/T6/T7/T10 | no alias, instance ID separation, foreign/stale replacement refusal, resume keeps ID |
+| R5 dice/selection | T2/T5/T9/T11 | zero-roll information, scalar/dice refusal, two Bless + Bane, self-Bless save |
+| R6 pure prepare and paid delivery | T7/T8/T9 | no side effects before door, only actual receipts, zero-delivery/recast |
+| R7 end/refusal/teardown | T1/T4/T7/T9/T10 | exactly once order, external fact not doubled, no orphan leave, teardown not expiry |
+| R8 one fresh-character path | T6/T8/T11 | old linked formats fail, old concentration symbols retired, no automatic reset |
+| R9 shared upkeep/current consumers | T8/T9/T10/T12 | inventory closure, area/independent/rest/departure regressions and item adoption |
+| R10 native/toolkit evidence boundaries | T11/T13 | real acquisition/API persistence/HUD walk; explicit resistance and dice proof limits |
+
+## Provider/consumer seams
+
+| Provider | Consumer | Produced vs consumed contract | Availability | Joined proof |
+|---|---|---|---|---|
+| T1/T4 generic | T5–T7 root | Lifetime/Assembly inputs, owned snapshots, EndPlan and callbacks as declared above | pushed provider pin | root concentration-held resistance and end transport |
+| T2 generic | T5 root/T12 items | AmountResult and query-kind validation; scalar consumers use ScalarValue | pushed provider pin | no-roll description + old numeric behavior |
+| T3 machine | T5 duration part | BagLeaf/AddAct, checked all-or-nothing transition | same provider module | grace/countdown reload |
+| T5–T8 plus T6a/T7a root | T9 resolution | fixed intended candidates, pending coordinator, per-entry finalization, current profile/metadata | pushed root pin | native cast/pause/resume/damage/departure with real sheets |
+| T9 resolution | T10 session | canonical data, stable application ID, outcomes/dirty holders | pushed resolution + root pins | fresh-interaction persistence and resumed identity |
+| T10 session/root | T11 API | current bytes and provider metadata, no inferred rules | pushed session pin | actual handler/miniredis cast/reload/end |
+| Existing SDK/API facts | T11 web | native spell identities, effect rows/source IDs and server descriptions | existing generated release; no bindings generated locally | native HUD + component tests |
+| T11 API/web | T13 walk | verified images/source refs and served YAML | built only at integration | two-client native journey and relevant castle repeat |
+
+## Visible check findings and dispositions
+
+- **Recipient-rest integration:** the old rest regressions required ending a local attachment, not merely its timer part and not the whole application. EndAttachment makes that agreed boundary explicit in the existing terminal routing; named Bless/Bane bind the ordinary rest-policy part. Provider 3893625c/root 3322fdd6 prove real-keeper recipient rest while the other recipient/hold stays live.
+- **T6/T8 ordering:** neutral linked creation/load/information and real transport are tested first. Old named Blessed/Baned/concentration runtime retirement and their fixture rewrite remain T8 work; no compatibility aliases or second supported path are introduced by this staged, unmerged branch.
+- **One condition / multiple groups:** the single-provider condition assumption was too narrow for the approved composition. The holder now enumerates per-part contributors and shares the existing group claimant with plural rows; mixed Bless/Bane plus a later Bless is tested through execution and information.
+- **Removal generation:** a real replacement test showed the three-field address alone could delete a newer invocation. An explicit application ID on linked facts fixes the missing identity at its source, with binder and keeper mutants proving the guarded path.
+- **First-match trap:** resolved by T4's independent runtimes; no task concatenates part transitions.
+- **Scalar-only evaluator:** resolved by the single typed API in T2 and all producer/consumer updates; no adapter rolls a die to satisfy an int.
+- **Hidden concrete concentration callers:** 51 toolkit Go files are inventoried in [callers.md](callers.md); T6/T8–T10 own their fixture/protocol migration. Preserve assertions rather than deleting evidence.
+- **Fresh-data ruling:** resolved by removal/refusal tests. Current Raging and unmigrated payloads are not obsolete compatibility paths.
+- **Authored data dependency:** inspected imports permit action maintenance declarations to consume root effect declarations; verify no cycle at T8, keeping pure declaration data separate if needed.
+- **Part binding metadata:** root Bind already requires authored display/origin, and current outputs carry their attachment ref. BindPartInput therefore explicitly receives Ref and DisplayName; neither is inferred from a part kind or opaque instance ID. This fills the agreed binding contract rather than adding a new metadata authority.
+- **Scoped generation safety:** application ID is distinct from recipient replacement address; T7 validates current ownership, and T9/T10 retain ID across a frozen continuation.
+- **Missing native consumer fact:** none required for the scoped spell path today. A newly exposed fact is an architectural gap at that boundary, not an excuse for a client calculation.
+- **Path check:** the initial task sketch said session/leave.go; inspection identifies session/depart.go. The task now names the real path; no worker is left to guess it.
+- **Shared-file order:** T1–T4 are one module writer/PR; T5–T8 one root writer/PR. Nested modules use separate worktrees/pins. API and web worktrees are isolated and currently inspection-only.
+- **Verification state:** commands/tests in this plan are expected checks. Existing baseline receipts are on #706; new-task checkboxes remain unchecked until their evidence exists.
+
+No required architectural decision remains intentionally hidden in a task. If fresh consumer inspection contradicts a contract, record the exact mismatch and apply the approved architectural-gap rule before changing its owner or scope.
