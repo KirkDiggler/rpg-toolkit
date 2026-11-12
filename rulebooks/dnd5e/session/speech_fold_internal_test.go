@@ -304,3 +304,27 @@ func (s *ActFoldSuite) TestASpeechActStandsBesideTheLineWithoutPartingIt() {
 	}
 	s.Equal(acts[1].ID, acts[2].ID, "the speak act and the answer's speech act share the reply's id, side by side")
 }
+
+// TestAFactRidesOnlyWithTheWords: the fact a line taught is told to a
+// perceiver who caught its words, and to nobody who only saw the speaker or
+// only noticed a voice — even were a version to name it without words
+// (rpg-project#934).
+func (s *ActFoldSuite) TestAFactRidesOnlyWithTheWords() {
+	for _, tc := range []struct {
+		name    string
+		version map[string]any
+		fact    string
+	}{
+		{"caught the words", map[string]any{"speaker": "goblin", "words": "To arms!", "fact": "alarm-raised"}, "alarm-raised"},
+		{"only saw the speaker", map[string]any{"speaker": "goblin", "fact": "alarm-raised"}, ""},
+		{"only noticed a voice", map[string]any{"hops": 2, "fact": "alarm-raised"}, ""},
+	} {
+		s.Run(tc.name, func() {
+			fields := speechVersion(tc.version)
+			fields["fact"] = tc.version["fact"]
+			acts := speechActsOf("bob", s.beat("time:one", fields))
+			s.Require().Len(acts, 1)
+			s.Equal(tc.fact, acts[0].Body.(SpeechAct).Fact)
+		})
+	}
+}

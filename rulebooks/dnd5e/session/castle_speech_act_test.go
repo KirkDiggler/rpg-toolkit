@@ -162,3 +162,30 @@ func TestCastleAWhisperWatchedIsNoWordsAndNoRoll(t *testing.T) {
 	require.Nil(t, s.Roll, "nor its roll")
 	require.Equal(t, []session.Sense{session.SenseSight}, lines[0].act.Perceived.Senses)
 }
+
+// TestCastleTheStrangersFactRidesWithHisWords: the stranger's answer teaches
+// `feast-tonight`. Alice beside him catches his words and is told the fact;
+// in the gatehouse, where his spoken answer is only a voice, she is told
+// none.
+func TestCastleTheStrangersFactRidesWithHisWords(t *testing.T) {
+	answer := func(played beat) session.SpeechAct {
+		t.Helper()
+		got := where[session.SpeechAct](played.to("alice"), func(s session.SpeechAct) bool {
+			return s.Speaker == strangerParty() || (s.Speaker == session.Party{} && s.Option == "")
+		})
+		require.NotEmpty(t, got, "she perceived his answer")
+		return got[len(got)-1].body
+	}
+
+	beside := besideTheStranger(t, spatial.Position{})
+	stranger := beside.where(t, "pedlar")
+	beside.placeInTheRecord(t, "alice", spatial.Position{X: stranger.X - 1, Y: stranger.Y})
+	caught := answer(beside.clericSays(t, "tonight"))
+	require.NotNil(t, caught.Words, "beside him she caught his answer")
+	require.Equal(t, "feast-tonight", caught.Fact, "and is told what it taught")
+
+	far := besideTheStranger(t, inTheGatehouseFloor)
+	voice := answer(far.clericSays(t, "tonight"))
+	require.Nil(t, voice.Words, "in the gatehouse his spoken answer is a voice")
+	require.Empty(t, voice.Fact, "which teaches her nothing")
+}
