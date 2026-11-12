@@ -6,11 +6,15 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 	dndevents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
@@ -155,4 +159,44 @@ func (w *definitionWorld) apply(prepared *conditions.PreparedApplication) error 
 		return err
 	}
 	return w.binding.CheckComplete()
+}
+
+// Authoritative fixture facts are captured as values, not retained live target
+// objects. An observer test keeps a Clone of this frame and does not refresh it.
+func (w *definitionWorld) frame(actor, target string) (contributions.Frame, error) {
+	f := contributions.Frame{Actor: actor, Target: contributions.Known(target), ActorClassLevels: contributions.KnownClassLevels(contributions.ClassLevel{Class: classes.Fighter, Levels: 1}), Action: contributions.ActionFacts{Roll: contributions.Known(contributions.RollKindAttack), Ability: contributions.Known(abilities.STR), Melee: contributions.Known(true), WeaponPool: contributions.Known(true), Opportunity: contributions.Known(false)}}
+	for _, holder := range w.sheets {
+		held := contributions.MemberHeld{Member: holder.GetID(), Conditions: []contributions.HeldCondition{}}
+		for _, condition := range holder.GetConditions() {
+			address := conditions.ConditionAddressOf(holder.GetID(), condition)
+			held.Conditions = append(held.Conditions, contributions.HeldCondition{Ref: address.ConditionRef, SourceID: address.SourceID})
+		}
+		f.Held = append(f.Held, held)
+		projected, err := conditions.ProjectHeldEffects(&conditions.ProjectHeldEffectsInput{HolderID: holder.GetID(), Conditions: holder.GetConditions()})
+		if err != nil {
+			return contributions.Frame{}, err
+		}
+		f.HeldEffects = append(f.HeldEffects, projected.Details...)
+	}
+	return f, nil
+}
+func fixtureDamage(amount int, kind damage.Type) []dndevents.DamageComponent {
+	ref := core.Ref{Module: "example", Type: "actions", ID: "hit"}
+	return []dndevents.DamageComponent{{Source: dndevents.DamageSourceWeapon, DamageType: kind, Roll: dndevents.RollComponent{Source: dndevents.RollSource{Ref: &ref, Name: "Fixture hit"}, Modifier: &amount}}}
+}
+func (w *definitionWorld) damageBonus(actor, target string, ability abilities.Ability, melee, weapon bool) (*dndevents.DamageChainEvent, error) {
+	frame, err := w.frame(actor, target)
+	if err != nil {
+		return nil, err
+	}
+	frame.Action.Ability = contributions.Known(ability)
+	frame.Action.Melee = contributions.Known(melee)
+	frame.Action.WeaponPool = contributions.Known(weapon)
+	in := dndevents.DamageChainInput{AttackerID: actor, TargetID: target, Frame: frame, WeaponDamageType: damage.Slashing, Components: fixtureDamage(10, damage.Slashing)}
+	ctx := context.Background()
+	c, err := dndevents.DamageChain.On(w.bus).PublishWithChain(ctx, dndevents.NewDamageChainEvent(in), events.NewStagedChain[*dndevents.DamageChainEvent](combat.ModifierStages))
+	if err != nil {
+		return nil, err
+	}
+	return c.Execute(ctx, dndevents.NewDamageChainEvent(in))
 }
