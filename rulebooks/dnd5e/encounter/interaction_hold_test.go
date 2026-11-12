@@ -467,7 +467,8 @@ func (s *InteractionSuite) TestAHolderWhoWalksOutOfReachAbandonsTheHold() {
 	s.Equal("warned-guest", s.saved(enc).Blob.State, "the miss lands")
 	s.Nil(s.saved(enc).Reservation, "and the reservation clears")
 	settled := s.saved(enc)
-	s.Error(s.speakAt(enc, alice, "guest", "persuasion", false, at), "a second settle is refused")
+	s.ErrorIs(s.speakAt(enc, alice, "guest", "persuasion", false, at), encounter.ErrNoOption,
+		"a second settle is refused: warned, alice is no longer offered the guest claim")
 	s.Equal(settled, s.saved(enc), "and moves nothing: the verdict landed once")
 }
 

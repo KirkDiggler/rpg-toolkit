@@ -390,6 +390,20 @@ type recognitionLine struct {
 	// sees is seen, not the live reach.
 	spoken bool
 	seen   []MemberID
+	// perceived is, for a line judged as spoken, which members of the
+	// speaker's party each witness saw when the words were said
+	// ([ReservedScene.Perceived]): what each reader of its beats may be told.
+	perceived map[MemberID][]MemberID
+}
+
+// perceives is whether reader perceives subject for this line's beats: on
+// the live reach, or, for a line judged as spoken, as they did when the
+// words were said ([ReservedScene.Perceived]).
+func (line recognitionLine) perceives(reach sightReach, reader, subject MemberID) bool {
+	if line.spoken {
+		return slices.Contains(line.perceived[reader], subject)
+	}
+	return reach.Reaches(perception.Sight, reader, subject)
 }
 
 // sees is whether holder sees subject for this line: on the live reach, or,
@@ -484,7 +498,19 @@ func (e *Encounter) grantRecognition(r Recognition, line recognitionLine) error 
 // spoken ([recognitionLine.sees]), in id order. A speaker in no faction is a
 // party of one.
 func (e *Encounter) partyInSight(reach sightReach, holder MemberID, line recognitionLine) []MemberID {
-	speaker := line.speaker
+	var out []MemberID
+	for _, id := range e.partyOf(line.speaker) {
+		if id != holder && line.sees(reach, holder, id) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// partyOf is the members of the speaker's faction, the speaker included, in
+// id order: a speaker in no faction is a party of one, and a speaker not in
+// the run has none.
+func (e *Encounter) partyOf(speaker MemberID) []MemberID {
 	s, ok := e.members[speaker]
 	if !ok {
 		return nil
@@ -492,13 +518,7 @@ func (e *Encounter) partyInSight(reach sightReach, holder MemberID, line recogni
 	side := factionOf(s)
 	var out []MemberID
 	for _, id := range slices.Sorted(maps.Keys(e.members)) {
-		if id == holder {
-			continue
-		}
-		if id != speaker && (side == "" || factionOf(e.members[id]) != side) {
-			continue
-		}
-		if line.sees(reach, holder, id) {
+		if id == speaker || (side != "" && factionOf(e.members[id]) == side) {
 			out = append(out, id)
 		}
 	}
@@ -553,8 +573,10 @@ func (e *Encounter) holdTopic(
 
 // tellRecognition appends the [BeatRecognized] beats for one holder's
 // record. The line's witnesses hear of it, each told ONLY the subjects they
-// perceive themselves on the same live reach — a member is always aware of
-// themselves — so a beat never names a member its reader cannot see; the
+// perceive themselves on the same live reach — or, for a line judged as
+// spoken (rpg-project#938), as they perceived them when the words were said
+// ([recognitionLine.perceives]) — a member is always aware of themselves —
+// so a beat never names a member its reader cannot see; the
 // holder is told every subject he recognised. A witness who perceives none of
 // them is told nothing. Readers told the same subjects share one beat, in
 // the order they were first met; each beat goes to exactly its readers, the
@@ -576,7 +598,7 @@ func (e *Encounter) tellRecognition(
 		byKey["reader:"+string(reader)] = nil
 		var told []string
 		for _, s := range subjects {
-			if reader == holder || reader == s || reach.Reaches(perception.Sight, reader, s) {
+			if reader == holder || reader == s || line.perceives(reach, reader, s) {
 				told = append(told, string(s))
 			}
 		}

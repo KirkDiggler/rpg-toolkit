@@ -357,6 +357,7 @@ func TestMadKingAStragglerWhoWalksAwayKeepsTheRoll(t *testing.T) {
 	require.False(t, s.recognizes(kingGate1, straggler))
 	require.Nil(t, reservation(), "the hold clears")
 	require.False(t, s.offersTo(straggler, kingGate1, stragglerLine), "one try: the case is gone")
-	require.Error(t, settle(true), "a second settle is refused")
+	require.ErrorIs(t, settle(true), encounter.ErrNoOption,
+		"a second settle is refused: turned away, the straggler is no longer offered the case")
 	require.False(t, s.recognizes(kingGate1, straggler), "and admits nobody")
 }

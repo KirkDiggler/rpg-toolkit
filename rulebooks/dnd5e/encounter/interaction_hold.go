@@ -171,6 +171,12 @@ type ReservedScene struct {
 	// among them: whom a grant's holder may recognise. Empty for a line said
 	// to a prop.
 	Seen []MemberID `json:"seen,omitempty"`
+
+	// Perceived is, for each witness, the members of the speaker's party that
+	// witness saw then, in id order; a witness who saw none is absent. It is
+	// what each reader of a recognition's beats may be told: nothing the
+	// reader did not perceive when the words were said.
+	Perceived map[MemberID][]MemberID `json:"perceived,omitempty"`
 }
 
 // OfferedOption is one line offered to one speaker: the option, the
@@ -418,6 +424,9 @@ type replied struct {
 	// was spoken ([ReservedScene.Seen]); nil for every other reply, which is
 	// judged on live sight.
 	seen []MemberID
+	// perceived is that scene's [ReservedScene.Perceived], for the same
+	// settle; nil otherwise.
+	perceived map[MemberID][]MemberID
 }
 
 // replyDoor is THE ONE DOOR a reply to a line comes through — [Encounter.Speak],
@@ -458,9 +467,12 @@ func (e *Encounter) replyDoor(verb string, in lineReply, settling bool) (replied
 			return replied{}, fmt.Errorf("%s: %w", verb, err)
 		}
 		scene := settle.Scene
+		// The audience is the scene's witnesses as they were: one who has since
+		// left the run is still named in the settle's beats.
 		return replied{
 			option: option, settle: settle, where: scene.Where,
 			witnesses: slices.Clone(scene.Witnesses), seen: slices.Clone(scene.Seen),
+			perceived: clonePerceived(scene.Perceived),
 		}, nil
 	}
 	where, witnesses, err := e.audienceOf(in.actor)
@@ -651,14 +663,19 @@ func (e *Encounter) Reserve(in *ReserveInput) (*ReserveOutput, error) {
 	}
 	var admitted replied
 	var seen []MemberID
+	var perceived map[MemberID][]MemberID
 	err := e.asShown(in.Actor, func() error {
 		var err error
 		if admitted, err = e.replyDoor("reserve", in.reply(), false); err != nil {
 			return err
 		}
 		// THE SCENE IS KEPT AS SHOWN (rpg-project#938): whom the creature
-		// spoken to sees, read on the same live reach the door just asked.
-		seen, err = e.membersSeenBy(in.Target)
+		// spoken to sees, and which of the speaker's party each witness sees,
+		// read on the same live reach the door just asked.
+		if seen, err = e.membersSeenBy(in.Target); err != nil {
+			return err
+		}
+		perceived, err = e.partyPerceivedBy(in.Actor, admitted.witnesses)
 		return err
 	})
 	if err != nil {
@@ -675,7 +692,9 @@ func (e *Encounter) Reserve(in *ReserveInput) (*ReserveOutput, error) {
 	r := e.interactions[id]
 	r.reservation = &InteractionReservation{
 		Holder: in.Actor, Target: in.Target, Prop: in.Prop, Option: in.OptionID, Revision: in.Revision, Reach: in.Range,
-		Scene: &ReservedScene{Where: admitted.where, Witnesses: slices.Clone(admitted.witnesses), Seen: seen},
+		Scene: &ReservedScene{
+			Where: admitted.where, Witnesses: slices.Clone(admitted.witnesses), Seen: seen, Perceived: perceived,
+		},
 	}
 	r.revision++
 	seq, err := e.appendHeldBeat(id, in.Actor, true)
@@ -867,6 +886,47 @@ func (e *Encounter) membersSeenBy(target MemberID) ([]MemberID, error) {
 	return out, nil
 }
 
+// partyPerceivedBy is, for each witness, the members of the speaker's party
+// that witness sees on the live reach now, in id order; a witness who sees
+// none is left out, and the map is nil when no witness sees any.
+func (e *Encounter) partyPerceivedBy(speaker MemberID, witnesses []MemberID) (map[MemberID][]MemberID, error) {
+	reach, err := e.placedSightReach()
+	if err != nil {
+		return nil, err
+	}
+	party := e.partyOf(speaker)
+	var out map[MemberID][]MemberID
+	for _, w := range witnesses {
+		var saw []MemberID
+		for _, id := range party {
+			if id == w || reach.Reaches(perception.Sight, w, id) {
+				saw = append(saw, id)
+			}
+		}
+		if len(saw) == 0 {
+			continue
+		}
+		if out == nil {
+			out = map[MemberID][]MemberID{}
+		}
+		out[w] = saw
+	}
+	return out, nil
+}
+
+// clonePerceived copies a scene's per-witness sight so no caller's value is
+// aliased.
+func clonePerceived(perceived map[MemberID][]MemberID) map[MemberID][]MemberID {
+	if perceived == nil {
+		return nil
+	}
+	out := make(map[MemberID][]MemberID, len(perceived))
+	for w, saw := range perceived {
+		out[w] = slices.Clone(saw)
+	}
+	return out
+}
+
 // AbandonReservationInput names whose waiting line the host judges
 // abandoned.
 type AbandonReservationInput struct {
@@ -980,6 +1040,7 @@ func cloneReservation(r *InteractionReservation) *InteractionReservation {
 	if r.Scene != nil {
 		scene := *r.Scene
 		scene.Witnesses, scene.Seen = slices.Clone(r.Scene.Witnesses), slices.Clone(r.Scene.Seen)
+		scene.Perceived = clonePerceived(r.Scene.Perceived)
 		c.Scene = &scene
 	}
 	return &c

@@ -737,7 +737,7 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 		iid, _ := optionInteraction(option)
 		if err := e.applyGrants(option, beaten, answered.pick.Entry, recognitionLine{
 			interaction: iid, option: option.ID, speaker: in.Actor, spokenTo: in.Target, witnesses: witnesses, at: at,
-			spoken: spoken, seen: admitted.seen,
+			spoken: spoken, seen: admitted.seen, perceived: admitted.perceived,
 		}); err != nil {
 			return nil, fmt.Errorf("speak: %w", err)
 		}
@@ -749,7 +749,7 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	// the next raise and leave that offer stale.
 	if err := e.advanceInteraction(option, beaten, recognitionLine{
 		speaker: in.Actor, spokenTo: in.Target, witnesses: witnesses, at: at,
-		spoken: spoken, seen: admitted.seen,
+		spoken: spoken, seen: admitted.seen, perceived: admitted.perceived,
 	}); err != nil {
 		return nil, fmt.Errorf("speak: %w", err)
 	}

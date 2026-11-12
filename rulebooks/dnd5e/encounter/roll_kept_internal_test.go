@@ -12,9 +12,12 @@ package encounter
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // farDownTheYard is out of the posted guard's two cells of sight and of
@@ -74,7 +77,8 @@ func TestAnAbandonedMissTurnsTheStragglerAway(t *testing.T) {
 	require.Nil(t, enc.interactions[hailGate].reservation, "the reservation clears")
 	require.False(t, offers(t, enc, "bob", postedGuard, "straggler"), "one try: the case is gone")
 
-	require.Error(t, settleTheCase(t, enc, at, true), "a second settle is refused")
+	require.ErrorIs(t, settleTheCase(t, enc, at, true), ErrNoOption,
+		"a second settle is refused: turned away, bob is no longer offered the case")
 	require.False(t, enc.recognizes(postedGuard, "bob", admittedTopic), "and admits nobody")
 }
 
@@ -84,7 +88,8 @@ func TestAnAbandonedHitAdmitsTheStraggler(t *testing.T) {
 	require.True(t, enc.recognizes(postedGuard, "bob", admittedTopic), "judged as spoken, the hit admits bob")
 	require.True(t, enc.recognizes("gate-2", "bob", admittedTopic))
 	require.False(t, enc.recognizes(postedGuard, "bob", turnedAwayTopic))
-	require.Error(t, settleTheCase(t, enc, at, false), "once")
+	require.ErrorIs(t, settleTheCase(t, enc, at, false), ErrNoOption,
+		"once: admitted, bob is no longer offered the case")
 	require.False(t, enc.recognizes(postedGuard, "bob", turnedAwayTopic), "a second settle turns nobody away")
 }
 
@@ -101,7 +106,7 @@ func TestAnAbandonedHoldSurvivesTheRecord(t *testing.T) {
 	settled := reload(t, loaded, capabilities)
 	require.Nil(t, settled.interactions[hailGate].reservation)
 	require.True(t, settled.recognizes(postedGuard, "bob", turnedAwayTopic), "the verdict is in the record")
-	require.Error(t, settleTheCase(t, settled, at, false), "and a settle after a load is refused")
+	require.ErrorIs(t, settleTheCase(t, settled, at, false), ErrNoOption, "and a settle after a load is refused")
 }
 
 func TestANormalSettleStillAsksTheDoors(t *testing.T) {
@@ -173,4 +178,110 @@ func TestAnAbandonedHoldWithNoSceneIsRefusedOnLoad(t *testing.T) {
 	}
 	_, err := LoadEncounter(&LoadEncounterInput{Data: data, Capabilities: postedSetup(shortSighted{member: postedGuard, cells: 2}).Capabilities})
 	require.ErrorIs(t, err, ErrInvalidData)
+}
+
+// openCase is the straggler's case with no requirement but the admitted
+// gate: still offered to bob once it has landed, so a second settle meets
+// the moved revision.
+func openCase() Option {
+	o := oneTryLine()
+	o.Requires = []Trigger{atTheAdmittedGate}
+	return o
+}
+
+func TestASecondSettleOfAKeptHitIsStale(t *testing.T) {
+	g := oneTryGuard(t, postedGuard, holdNorthWest)
+	for i, o := range g.Options {
+		if o.ID == "straggler" {
+			g.Options[i] = openCase()
+		}
+	}
+	in := recognisingSetup(t, true, g, MemberInput{ID: "bob", Kind: KindPlayer, Position: farDownTheYard})
+	in.Sight = shortSighted{member: postedGuard, cells: 2}
+	enc, err := NewEncounter(in)
+	require.NoError(t, err)
+	admit(t, enc, postedGuard)
+	placeAt(t, enc, "alice", farDownTheYard)
+	placeAt(t, enc, "bob", holdSouthEast)
+	at := reserveTheCase(t, enc)
+	placeAt(t, enc, "bob", farDownTheYard)
+	require.NoError(t, enc.sweepHolds())
+	require.True(t, enc.interactions[hailGate].reservation.Abandoned, "precondition: abandoned")
+
+	require.NoError(t, settleTheCase(t, enc, at, true))
+	require.True(t, enc.recognizes(postedGuard, "bob", admittedTopic))
+	require.True(t, offers(t, enc, "bob", postedGuard, "straggler"), "precondition: the line is still offered")
+	require.ErrorIs(t, settleTheCase(t, enc, at, true), ErrStaleOption,
+		"a second settle at the reserved revision is a reply from an old menu")
+}
+
+// fewSighted gives each named member that many cells of sight, and the
+// whole map to the rest.
+type fewSighted map[MemberID]int
+
+// Sight answers each named member's few cells.
+func (f fewSighted) Sight(members []MemberID) (map[MemberID]int, error) {
+	out, _ := everyoneSeesTheWholeMap{}.Sight(members)
+	for id, cells := range f {
+		if _, ok := out[id]; ok {
+			out[id] = cells
+		}
+	}
+	return out, nil
+}
+
+// TestAnAbandonedSettleTellsWhatEachWitnessSawThen: alice witnessed bob's
+// case and could not see carol; by the settle, bob is out of alice's sight
+// and carol beside her. The recognition of bob's party is told to alice as
+// she saw it when the words were said: bob, and not carol.
+func TestAnAbandonedSettleTellsWhatEachWitnessSawThen(t *testing.T) {
+	g := oneTryGuard(t, postedGuard, holdNorthWest)
+	for i, o := range g.Options {
+		if o.ID == "straggler" {
+			party := oneTryLine()
+			party.Grants[0].Consequence.Recognize.About = RecognitionPartyInSight
+			g.Options[i] = party
+		}
+	}
+	in := recognisingSetup(t, true, g,
+		MemberInput{ID: "bob", Kind: KindPlayer, Position: farDownTheYard},
+		MemberInput{ID: "carol", Kind: KindPlayer, Position: spatial.Position{X: 9, Y: 4}},
+	)
+	in.Sight = fewSighted{postedGuard: 2, "alice": 1}
+	enc, err := NewEncounter(in)
+	require.NoError(t, err)
+	admit(t, enc, postedGuard)
+	placeAt(t, enc, "alice", holdBeside)
+	placeAt(t, enc, "bob", holdSouthEast)
+	placeAt(t, enc, "carol", holdSouthWest)
+	at := reserveTheCase(t, enc)
+	scene := enc.interactions[hailGate].reservation.Scene
+	require.Contains(t, scene.Seen, MemberID("carol"), "precondition: the guard saw carol")
+	require.Contains(t, scene.Perceived["alice"], MemberID("bob"), "precondition: alice saw bob")
+	require.NotContains(t, scene.Perceived["alice"], MemberID("carol"), "precondition: and not carol")
+
+	placeAt(t, enc, "bob", farDownTheYard)
+	require.NoError(t, enc.sweepHolds())
+	require.True(t, enc.interactions[hailGate].reservation.Abandoned, "precondition: abandoned")
+	placeAt(t, enc, "carol", spatial.Position{X: 6, Y: 1})
+
+	before := len(recognizedBeats(t, enc))
+	require.NoError(t, settleTheCase(t, enc, at, true))
+	require.True(t, enc.recognizes(postedGuard, "carol", admittedTopic), "the guard recognises the party he saw then")
+	entries, err := enc.Story(&StoryInput{Audience: "alice"})
+	require.NoError(t, err)
+	var told [][]any
+	for _, e := range entries {
+		if e.Tags["tag"] != BeatRecognized {
+			continue
+		}
+		var b map[string]any
+		require.NoError(t, json.Unmarshal(e.Payload, &b))
+		if b["holder"] == string(postedGuard) && b["option"] == "straggler" {
+			told = append(told, b["subjects"].([]any))
+		}
+	}
+	require.Equal(t, [][]any{{"alice", "bob"}}, told,
+		"alice is told herself and bob, whom she saw then, and not carol, whom she sees only now")
+	require.Greater(t, len(recognizedBeats(t, enc)), before)
 }
