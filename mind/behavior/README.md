@@ -165,6 +165,7 @@ refused, because the list is already the `and`.
 | `<deed>: { within: N, on/as }` — `attacked`, `intimidated`, `persuaded`, `fled` | that deed was done to me (or my side, or by me) within N units | `Facts.Deeds/AllyDeeds/OwnDeeds` |
 | `fell: { within: N, who: <id>, on/as }` | a fall, read like the deeds above: its actor is who caused it, its target who fell. `who` narrows it to one target, read off the testimony (a fall the witness could not put a name to matches no `who`); only `fell` takes `who` (rpg-project#716) | `Facts.Deeds/AllyDeeds/OwnDeeds`, `HeldDeed.Target` |
 | `heard: { kind, within: N }` | a sound of that kind (or one a `/…/` pattern matches) was heard within N units | `Facts.Sounds` |
+| `heard: { kind, within: N, loudness: L }` | as above, and the sound was at loudness L or louder, by the caller's order; a sound that states no loudness does not count | `Facts.Sounds`, `Facts.Loudness` |
 | `fact: <id>` | the creature holds that world fact (or one a `/…/` pattern matches) | `Facts.Known` |
 | `not: { <one condition> }` | the condition inside does not hold | whatever it wraps |
 

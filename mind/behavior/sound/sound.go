@@ -5,7 +5,7 @@
 //
 // A sound is testimony the way a deed is: it lands on its own channel through
 // perception's Report door, it is in the past the moment it exists, and a
-// table's `when: { heard: { kind, within } }` reads it. What a sound is
+// table's `when: { heard: { kind, within, loudness } }` reads it. What a sound is
 // (`clang`, `crash`, `voice`) and who is near enough to hear it are the
 // caller's: the rulebook names the kinds and runs the physics, and this
 // package lands the report on whoever it was told heard.
@@ -66,6 +66,13 @@ type Sound struct {
 	// unit — the same unit the table's Facts.Now counts, which is what a
 	// `heard` condition subtracts it from. The report is stamped with it.
 	At uint64
+
+	// Loudness is how loud it was, in the caller's own sealed vocabulary
+	// (a "soft" or a "loud" voice, in whatever words the caller seals), or
+	// empty when the caller states none.
+	// This package never interprets it: a `heard` condition compares it by
+	// the order the caller hands the table ([behavior.Facts.Loudness]).
+	Loudness string
 }
 
 // Subject is the subject a sound of one kind is held under, qualified by
@@ -79,6 +86,22 @@ type Sound struct {
 func Subject(kind string) core.EntityID {
 	return perception.Qualify(Channel, core.EntityID(kind))
 }
+
+// SubjectOf is the subject one sound is held under: its kind's
+// ([Subject]) when it states no loudness, and its kind at that loudness when
+// it does, so a hearer holds the latest sound of each kind AT EACH
+// LOUDNESS, and a soft sound after a loud one does not replace the loud one
+// a `heard` condition that asks for loud reads. A sound with no loudness is
+// filed exactly where it always was.
+func SubjectOf(s Sound) core.EntityID {
+	if s.Loudness == "" {
+		return Subject(s.Kind)
+	}
+	return perception.Qualify(Channel, core.EntityID(s.Kind+loudnessSeparator+s.Loudness))
+}
+
+// loudnessSeparator joins a kind and its loudness in a subject.
+const loudnessSeparator = "@"
 
 // Store is what Land needs of a perception: its Report door, which
 // [perception.Perception] has, so the caller hands its own store and nothing
@@ -113,7 +136,7 @@ func Land(in *LandInput) error {
 		_, err := in.Store.Report(perception.ReportInput{
 			Observer: hearer,
 			Channel:  Channel,
-			Reports:  []perception.Presence{{ID: Subject(in.Sound.Kind), Payload: payload}},
+			Reports:  []perception.Presence{{ID: SubjectOf(in.Sound), Payload: payload}},
 			At:       in.Sound.At,
 		})
 		if err != nil {
@@ -145,22 +168,24 @@ func Held(held []perception.Holding) ([]Sound, error) {
 		if w.Type != wireType {
 			return nil, fmt.Errorf("sound %s: %w", h.Subject, ErrNotASound)
 		}
-		out = append(out, Sound{Kind: w.Kind, Where: w.Where, At: h.Confirmed})
+		out = append(out, Sound{Kind: w.Kind, Where: w.Where, At: h.Confirmed, Loudness: w.Loudness})
 	}
 
 	return out, nil
 }
 
-// wire is the payload: what it is, the kind, and where. The time is the
-// report's own stamp, so it is not repeated here.
+// wire is the payload: what it is, the kind, where, and how loud when the
+// caller said. The time is the report's own stamp, so it is not repeated
+// here. A sound with no loudness writes the same bytes it always did.
 type wire struct {
-	Type  string           `json:"type"`
-	Kind  string           `json:"kind"`
-	Where spatial.Position `json:"where"`
+	Type     string           `json:"type"`
+	Kind     string           `json:"kind"`
+	Where    spatial.Position `json:"where"`
+	Loudness string           `json:"loudness,omitempty"`
 }
 
 func encode(s Sound) []byte {
-	out, err := json.Marshal(wire{Type: wireType, Kind: s.Kind, Where: s.Where})
+	out, err := json.Marshal(wire{Type: wireType, Kind: s.Kind, Where: s.Where, Loudness: s.Loudness})
 	if err != nil {
 		// The struct is closed and every field marshals; a failure here
 		// would be a defect in this package, not a runtime condition.
