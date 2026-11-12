@@ -216,8 +216,8 @@ func TestCastleAMemoryOfTheGateGuardHoldsNoDoor(t *testing.T) {
 	start := c.where(t, "alice")
 	c.move(t, c.walkInto(t, besideTheCastleGate))
 	require.Equal(t, castleGateDoor, c.sightingOf(t, "alice", "gate-1").HoldsDoor, "precondition: seen on his post, he holds the gate")
-	// The captain's hail on the road is a voice gate-1 hears, so he may be
-	// alert rather than posted by now (rpg-project#923).
+	// Whatever state gate-1 is in by now: the captain's spoken hail no
+	// longer alerts him, guards answer shouts (rpg-project#933).
 	before := stateOrPosted(stateOf(t, c.world(t), "gate-1"))
 
 	away := c.move(t, c.walkInto(t, start))
