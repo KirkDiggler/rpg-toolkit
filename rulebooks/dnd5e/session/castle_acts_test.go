@@ -386,16 +386,16 @@ func TestCastleActsTranscript(t *testing.T) {
 		assert.True(t, gained[id], "walking in, alice sights %s", id)
 	}
 
-	// THE LINE THAT LANDS: one speak act, its check and its answer inside.
-	line := only[session.SpeakAct](t, cowed.to("alice"))
+	// THE LINE THAT LANDS: her own Speech act with its check, and the
+	// captain's answer his own, under the same speak act (rpg-project#934).
+	line := ownLine(t, cowed.to("alice"), "alice")
 	require.True(t, strings.HasPrefix(line.act.Act, "speak:"), line.act.Act)
 	require.NotNil(t, line.body.Roll)
 	assert.Equal(t, 17, line.body.Roll.Total)
 	assert.Equal(t, 14, *line.body.Roll.Against)
 	assert.True(t, *line.body.Roll.Beaten)
 	assert.Equal(t, "1d20+3", line.body.Roll.Expression)
-	require.NotNil(t, line.body.Answer, "the answer folds into the line")
-	assert.Equal(t, "…go on, then. I saw nothing.", line.body.Answer.Say)
+	assert.Equal(t, []string{"…go on, then. I saw nothing."}, wordsBy(cowed.to("alice"), "captain", line.act.Act))
 
 	// THE WORLD'S ROUND: each pick a table answer under a time act, and
 	// gate-1's walk off the crossing a walk.
@@ -418,7 +418,7 @@ func TestCastleActsTranscript(t *testing.T) {
 
 	// THE LINE THAT FAILS: the garrison turns and a fight forms, under the
 	// line's own act.
-	failed := only[session.SpeakAct](t, recognized.to("alice"))
+	failed := ownLine(t, recognized.to("alice"), "alice")
 	assert.False(t, *failed.body.Roll.Beaten)
 	turned := where[session.StateChange](recognized.to("alice"), func(c session.StateChange) bool { return c.Change == session.StateStance })
 	require.NotEmpty(t, turned)
@@ -454,8 +454,8 @@ func TestCastleActsTranscript(t *testing.T) {
 	// THE FIGHT BRINGS NOBODY (the QA castle's step 6, rpg-project#639): the
 	// gate shouts the alarm and alice, who sees him, reads his words in his
 	// answer (rpg-project#933), and nobody arrives.
-	heard := where[session.TableAnswer](ended.to("alice"), func(a session.TableAnswer) bool {
-		return a.Who.ID == "gate-2" && a.Say == "To arms! Intruders at the gate!"
+	heard := where[session.SpeechAct](ended.to("alice"), func(a session.SpeechAct) bool {
+		return a.Speaker.ID == "gate-2" && a.Words != nil && *a.Words == "To arms! Intruders at the gate!"
 	})
 	assert.NotEmpty(t, heard, "alice hears the gate shout")
 	for _, b := range beats {
@@ -513,22 +513,22 @@ func TestCastleTroupeActsTranscript(t *testing.T) {
 		assert.False(t, sees[id], "beside the stranger alice does not see %s", id)
 	}
 
-	// THE STRANGER'S LINE: one speak act, its check and the feast inside.
-	asked := only[session.SpeakAct](t, stranger.to("alice"))
-	assert.Equal(t, "pedlar", asked.body.To.ID)
+	// THE STRANGER'S LINE: her own Speech act with its check, and the feast
+	// in his answer.
+	asked := ownLine(t, stranger.to("alice"), "alice")
+	assert.Equal(t, "pedlar", asked.body.SpokenTo.ID)
 	assert.Equal(t, "tonight", asked.body.Option)
 	require.NotNil(t, asked.body.Roll)
 	assert.Equal(t, 5, *asked.body.Roll.Against)
 	assert.True(t, *asked.body.Roll.Beaten)
-	require.NotNil(t, asked.body.Answer)
-	assert.Equal(t, "Feast for the whole court tonight — they’ll want players.", asked.body.Answer.Say)
+	assert.Equal(t, []string{"Feast for the whole court tonight — they’ll want players."},
+		wordsBy(stranger.to("alice"), "pedlar", asked.act.Act))
 
 	// THE TROUPE: the captain's line passes and nothing turns.
-	passed := only[session.SpeakAct](t, troupe.to("alice"))
+	passed := ownLine(t, troupe.to("alice"), "alice")
 	assert.Equal(t, "troupe", passed.body.Option)
 	assert.True(t, *passed.body.Roll.Beaten)
-	require.NotNil(t, passed.body.Answer)
-	assert.Equal(t, "Through to the hall, then. Don’t dawdle.", passed.body.Answer.Say)
+	assert.Equal(t, []string{"Through to the hall, then. Don’t dawdle."}, wordsBy(troupe.to("alice"), "captain", passed.act.Act))
 	assert.Empty(t, where[session.StateChange](troupe.to("alice"), func(c session.StateChange) bool { return c.Change == session.StateStance }))
 
 	// THE GATE: the captain, gone in once he admitted the troupe
@@ -578,6 +578,26 @@ func where[B session.ActBody](acts []session.Act, keep func(B) bool) []found[B] 
 	for _, act := range acts {
 		if body, ok := act.Body.(B); ok && keep(body) {
 			out = append(out, found[B]{act: act, body: body})
+		}
+	}
+	return out
+}
+
+// ownLine is the one Speech act of a line a member said themself: the one
+// naming them as speaker with an option (rpg-project#934).
+func ownLine(t *testing.T, acts []session.Act, who string) found[session.SpeechAct] {
+	t.Helper()
+	lines := where[session.SpeechAct](acts, func(s session.SpeechAct) bool { return s.Speaker.ID == who && s.Option != "" })
+	require.Len(t, lines, 1, "exactly one line said by %s", who)
+	return lines[0]
+}
+
+// wordsBy is every word a speaker was heard and seen to say under one act.
+func wordsBy(acts []session.Act, who, act string) []string {
+	var out []string
+	for _, f := range where[session.SpeechAct](acts, func(s session.SpeechAct) bool { return s.Speaker.ID == who && s.Words != nil }) {
+		if f.act.Act == act {
+			out = append(out, *f.body.Words)
 		}
 	}
 	return out
@@ -645,12 +665,6 @@ func describe(body session.ActBody) string {
 		}
 		if b.Reaction != nil {
 			s += " (" + b.Reaction.Name + ")"
-		}
-		return s
-	case session.SpeakAct:
-		s := fmt.Sprintf("%s to %s, %q (%s): %s", b.By.ID, b.To.ID, b.Option, b.Skill, roll(b.Roll))
-		if b.Answer != nil {
-			s += fmt.Sprintf("; %s answers %q", b.Answer.Who.ID, b.Answer.Say)
 		}
 		return s
 	case session.SpeechAct:
@@ -801,7 +815,7 @@ func Example_theGatehouseActs() {
 	// move         perception   alice sees [], loses [pedlar], sees [] change
 	// -- alice tells the captain to stand aside --
 	// speak        act          alice at speak to captain: "Stand aside or bleed." (intimidation) rolled 1d20+3 = 17, beat 14
-	// speak        act 1        alice to captain, "stand-aside" (intimidation): rolled 1d20+3 = 17, beat 14; captain answers "…go on, then. I saw nothing."
+	// speak        table_answer captain answers  with "", rolled 1 of 400
 	// speak        act          captain at speak to alice: "…go on, then. I saw nothing."
 	// speak        clock        tick 2
 	// speak        state        captain: ready -> cowed (stood aside)
@@ -830,7 +844,7 @@ func Example_theGatehouseActs() {
 	// time         table_answer turnkey answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// -- alice tells him again --
 	// speak        act          alice at speak to captain: "Stand aside or bleed." (intimidation) rolled 1d20+3 = 8, missed 14
-	// speak        act 1        alice to captain, "stand-aside" (intimidation): rolled 1d20+3 = 8, missed 14; captain answers "You’ll bleed first."
+	// speak        table_answer captain answers  with "", rolled 1 of 100
 	// speak        act          captain at speak to alice: "You’ll bleed first."
 	// speak        state        garrison and party turn hostile
 	// speak        clock        a fight forms: alice, captain, gate-1, gate-2
@@ -849,7 +863,7 @@ func Example_theGatehouseActs() {
 	// time         table_answer captain answers behavior/6:policy/time with "toward", rolled 1 of 50
 	// pass         act 1        captain stays: already in reach
 	// end_turn     clock        captain's turn ends, gate-2's begins
-	// time         table_answer gate-2 answers behavior/6:policy/time with "fact", rolled 1 of 200
+	// time         table_answer gate-2 answers behavior/6:policy/time with "", rolled 1 of 200
 	// time         act          gate-2 at shout: "To arms! Intruders at the gate!"
 	// end_turn     clock        gate-2's turn ends, alice's begins
 	// end_turn     clock        tick 3
@@ -895,7 +909,7 @@ func Example_theTroupeActs() {
 	// move         act 1        alice walks (-1,15)
 	// -- alice asks the stranger what the bustle is --
 	// speak        act          alice at speak to pedlar: "What’s all the bustle?" (persuasion) rolled 1d20+3 = 15, beat 5
-	// speak        act 1        alice to pedlar, "tonight" (persuasion): rolled 1d20+3 = 15, beat 5; pedlar answers "Feast for the whole court tonight — they’ll want players."
+	// speak        table_answer pedlar answers  with "", rolled 1 of 100
 	// speak        act          pedlar at speak to alice: "Feast for the whole court tonight — they’ll want players."
 	// speak        clock        tick 1
 	// time         table_answer captain answers behavior/6:policy/time with "hold", no roll
@@ -998,7 +1012,7 @@ func Example_theTroupeActs() {
 	// time         table_answer turnkey answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// -- alice tells the captain they are the troupe --
 	// speak        act          alice at speak to captain: "We’re the troupe for tonight’s feast." (performance) rolled 1d20+3 = 15, beat 13
-	// speak        act 1        alice to captain, "troupe" (performance): rolled 1d20+3 = 15, beat 13; captain answers "Through to the hall, then. Don’t dawdle."
+	// speak        table_answer captain answers  with "", rolled 1 of 100
 	// speak        act          captain at speak to alice: "Through to the hall, then. Don’t dawdle."
 	// speak        clock        tick 4
 	// speak        state        captain: ready -> in-hall (admitted the party; goes in)

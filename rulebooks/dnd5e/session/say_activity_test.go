@@ -30,17 +30,24 @@ func (s *SpeakWorldSuite) TestSayActivityReachesTheActFromCapturedRecordOnly() {
 			}
 		}
 	}
-	found := false
+	// THE CUE RIDES THE PICK (rpg-project#934): the goblin's table answer
+	// under the line's speak act, beside his words in his own Speech act.
+	found, said := false, false
 	for _, act := range actsOf(s.T(), mgr, "alice", "").Acts {
-		if line, ok := act.Body.(session.SpeakAct); ok {
-			found = true
-			s.Require().NotNil(line.Answer)
-			s.Equal("Let me think.", line.Answer.Say)
-			s.Equal("goblin", line.Answer.Who.ID)
-			s.Require().NotNil(line.Answer.Activity)
-			s.Equal("dnd5e:activities:thoughtful", line.Answer.Activity.Ref)
-			s.Equal(uint32(2), line.Answer.Activity.Cycles)
+		switch b := act.Body.(type) {
+		case session.TableAnswer:
+			if b.Who.ID == "goblin" && b.Activity != nil {
+				found = true
+				s.Equal("dnd5e:activities:thoughtful", b.Activity.Ref)
+				s.Equal(uint32(2), b.Activity.Cycles)
+			}
+		case session.SpeechAct:
+			if b.Speaker.ID == "goblin" && b.Words != nil {
+				said = true
+				s.Equal("Let me think.", *b.Words)
+			}
 		}
 	}
 	s.True(found, "the real Speak result must reach the act read")
+	s.True(said, "and his words their Speech act")
 }
