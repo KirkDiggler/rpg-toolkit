@@ -11,6 +11,7 @@ import (
 	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/selection"
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -78,15 +79,41 @@ import (
 // remember: at every participation pass and every exit
 // ([Encounter.sweepHolds]) a reservation whose settle that door would refuse
 // now — its target gone or down, the holder out of the reach it reserved
-// within or out of the target's sight — is released without a verdict. A
-// fight alone releases nothing: Speak does not refuse a line said to a
-// creature in a fight. The host still releases an abandoned window
-// ([Encounter.ReleaseReservation]); a holder who exits drops their holds.
+// within or out of the target's sight — is ended. A fight alone ends
+// nothing: Speak does not refuse a line said to a creature in a fight. The
+// host still releases a window it closes ([Encounter.ReleaseReservation]); a
+// holder who exits drops their holds.
+//
+// # A roll is kept (rpg-project#938)
+//
+// HOW the reservation ends depends on why its settle stopped being
+// admitted. When the holder and the target lose reach or sight of each
+// other — the line's two LIVE doors, [ErrOutOfRange] and [ErrUnwitnessed] —
+// the roll was already made and shown, so it is not undone: the reservation
+// is ABANDONED ([InteractionReservation.Abandoned]), not released. The lines
+// stay pending, the revision does not move, and the settle is still the one
+// line admitted: the host resumes the roll DECLINED (walking away is
+// declining the held benefit, never spending it) and says the line
+// ([Encounter.Speak]) at the reserved revision as for any settle. An
+// abandoned settle does not ask the reach or witness doors again — the
+// words were spoken when the roll was made — and is judged in the scene of
+// that moment ([ReservedScene]): who witnessed it, where the speaker stood,
+// and whom the creature spoken to saw. The verdict, its answer, its advance
+// and its row's grants land exactly once; the reservation clears and the
+// revision moves, so a second settle is refused stale.
+//
+// Every other reason — the target gone, down or no longer shown, the line no
+// longer offered, the holder unplaced — still RELEASES with no verdict:
+// there is nobody to answer. A holder who exits drops their holds. An
+// abandoned reservation is swept on the site and line doors alone, so a
+// target who falls before the settle still releases it. A reservation saved
+// before scenes were kept has none, and is released rather than abandoned.
 
 // BeatInteractionHeld is the "beat" value of the story beat appended when a
-// reservation is placed (`held: true`) or released without a verdict (`held:
-// false`): the interaction, the holder and the revision now. The line itself
-// is NOT named — nothing has been said yet. A settle writes no held beat: the
+// reservation is placed (`held: true`), abandoned by its holder (`held:
+// true, abandoned: true`; rpg-project#938) or released without a verdict
+// (`held: false`): the interaction, the holder and the revision now. The
+// line itself is NOT named — nothing has been said yet. A settle writes no held beat: the
 // `spoke` beat and, when the progress moved, the [BeatInteraction] beat
 // already tell that story. EXPORTED BECAUSE A DECODER READS IT.
 const BeatInteractionHeld = "interaction-held"
@@ -115,6 +142,41 @@ type InteractionReservation struct {
 	// [SpeakInput.Range] is (zero means adjacent): the reach the settle is
 	// asked at, and the reach [Encounter.sweepHolds] keeps it to.
 	Reach int `json:"reach,omitzero"`
+
+	// Abandoned is whether the holder and the target lost reach or sight of
+	// each other while the roll waited (rpg-project#938): the roll is kept,
+	// and its settle is admitted without the reach and witness doors, judged
+	// in [InteractionReservation.Scene].
+	Abandoned bool `json:"abandoned,omitzero"`
+
+	// Scene is the scene the line was spoken in, kept when it was reserved
+	// (rpg-project#938). Nil only on a reservation saved before scenes were
+	// kept, which is released rather than abandoned.
+	Scene *ReservedScene `json:"scene,omitempty"`
+}
+
+// ReservedScene is the scene a waiting line was spoken in (rpg-project#938),
+// kept so an abandoned settle is judged as of the words, not as of where the
+// holder walked to.
+type ReservedScene struct {
+	// Where is the cell the speaker stood on.
+	Where spatial.Position `json:"where"`
+
+	// Witnesses is who witnessed the speaker there, as Speak asks it
+	// ([Encounter.audienceOf]): the line's audience, and the carriers who
+	// may hear its grants.
+	Witnesses []MemberID `json:"witnesses,omitempty"`
+
+	// Seen is every member the creature spoken to saw then, the speaker
+	// among them: whom a grant's holder may recognise. Empty for a line said
+	// to a prop.
+	Seen []MemberID `json:"seen,omitempty"`
+
+	// Perceived is, for each witness, the members of the speaker's party that
+	// witness saw then, in id order; a witness who saw none is absent. It is
+	// what each reader of a recognition's beats may be told: nothing the
+	// reader did not perceive when the words were said.
+	Perceived map[MemberID][]MemberID `json:"perceived,omitempty"`
 }
 
 // OfferedOption is one line offered to one speaker: the option, the
@@ -142,6 +204,11 @@ type OfferedOption struct {
 	// themself. Empty otherwise, and for a line that is not pending: a
 	// speaker is never told the name of somebody they cannot perceive.
 	PendingOn MemberID
+
+	// Abandoned is whether the reservation the line waits on was abandoned
+	// (rpg-project#938), told ONLY to its holder, on the reserved line
+	// itself: the host resumes that roll declined and settles it.
+	Abandoned bool
 }
 
 // optionInteractions is every distinct interaction a line reads (a
@@ -353,6 +420,13 @@ type replied struct {
 	settle    *InteractionReservation
 	where     spatial.Position
 	witnesses []MemberID
+	// seen is who the creature spoken to saw when an ABANDONED settle's line
+	// was spoken ([ReservedScene.Seen]); nil for every other reply, which is
+	// judged on live sight.
+	seen []MemberID
+	// perceived is that scene's [ReservedScene.Perceived], for the same
+	// settle; nil otherwise.
+	perceived map[MemberID][]MemberID
 }
 
 // replyDoor is THE ONE DOOR a reply to a line comes through — [Encounter.Speak],
@@ -369,7 +443,9 @@ type replied struct {
 //
 // settling admits the settle of a reservation the actor holds for this very
 // line at this very site ([Encounter.settleFor]); only Speak and the sweep
-// pass it.
+// pass it. The settle of an ABANDONED reservation (rpg-project#938) skips the
+// witness and reach doors and answers with the scene it was spoken in
+// ([ReservedScene]): the words were said when the roll was made.
 //
 // THE CALLER HAS ALREADY SHOWN THE ACTOR (sneaking R7): the witnesses are
 // asked as Speak asks them, with the speaker's sneaking ended.
@@ -381,13 +457,27 @@ func (e *Encounter) replyDoor(verb string, in lineReply, settling bool) (replied
 	if in.optionID == "" {
 		return replied{}, fmt.Errorf("%s: no line named: %w", verb, ErrNoOption)
 	}
-	where, witnesses, err := e.audienceOf(in.actor)
-	if err != nil {
-		return replied{}, fmt.Errorf("%s: %w", verb, err)
-	}
 	var settle *InteractionReservation
 	if settling {
 		settle = e.settleFor(in, options)
+	}
+	if settle != nil && settle.Abandoned && settle.Scene != nil {
+		option, err := e.lineDoor(in.actor, in.target, options, in.optionID, in.revision, settle)
+		if err != nil {
+			return replied{}, fmt.Errorf("%s: %w", verb, err)
+		}
+		scene := settle.Scene
+		// The audience is the scene's witnesses as they were: one who has since
+		// left the run is still named in the settle's beats.
+		return replied{
+			option: option, settle: settle, where: scene.Where,
+			witnesses: slices.Clone(scene.Witnesses), seen: slices.Clone(scene.Seen),
+			perceived: clonePerceived(scene.Perceived),
+		}, nil
+	}
+	where, witnesses, err := e.audienceOf(in.actor)
+	if err != nil {
+		return replied{}, fmt.Errorf("%s: %w", verb, err)
 	}
 	option, err := e.lineDoor(in.actor, in.target, options, in.optionID, in.revision, settle)
 	if err != nil {
@@ -503,6 +593,7 @@ func (in *ChooseOptionInput) reply() lineReply {
 // who it waits on as the asker may be told it.
 func (e *Encounter) offerOf(o Option, pending bool, pendingOn MemberID) OfferedOption {
 	out := OfferedOption{Option: cloneOption(o), Pending: pending, PendingOn: pendingOn}
+
 	if id, ok := optionInteraction(o); ok {
 		out.Interaction = id
 		if r, ok := e.interactions[id]; ok {
@@ -555,7 +646,10 @@ type ReserveOutput struct {
 // witnesses. From then on every line touching that interaction is pending,
 // for every speaker, until the holder's [Encounter.Speak] settles it,
 // [Encounter.ReleaseReservation] ends it, or the encounter ends it itself
-// because the settle could no longer be admitted ([Encounter.sweepHolds]).
+// because the settle could no longer be admitted ([Encounter.sweepHolds]) —
+// or, when the holder and the target lost reach or sight of each other,
+// marks it abandoned for the host to settle as rolled (rpg-project#938). The
+// scene the line was spoken in is kept with it ([ReservedScene]).
 //
 // Validation order: [Encounter.ChooseOption]'s, whole — the door the settle
 // will ask, so a reservation is never placed that its settle would refuse
@@ -568,9 +662,20 @@ func (e *Encounter) Reserve(in *ReserveInput) (*ReserveOutput, error) {
 		return nil, fmt.Errorf("reserve: %w", ErrNilInput)
 	}
 	var admitted replied
+	var seen []MemberID
+	var perceived map[MemberID][]MemberID
 	err := e.asShown(in.Actor, func() error {
 		var err error
-		admitted, err = e.replyDoor("reserve", in.reply(), false)
+		if admitted, err = e.replyDoor("reserve", in.reply(), false); err != nil {
+			return err
+		}
+		// THE SCENE IS KEPT AS SHOWN (rpg-project#938): whom the creature
+		// spoken to sees, and which of the speaker's party each witness sees,
+		// read on the same live reach the door just asked.
+		if seen, err = e.membersSeenBy(in.Target); err != nil {
+			return err
+		}
+		perceived, err = e.partyPerceivedBy(in.Actor, admitted.witnesses)
 		return err
 	})
 	if err != nil {
@@ -587,6 +692,9 @@ func (e *Encounter) Reserve(in *ReserveInput) (*ReserveOutput, error) {
 	r := e.interactions[id]
 	r.reservation = &InteractionReservation{
 		Holder: in.Actor, Target: in.Target, Prop: in.Prop, Option: in.OptionID, Revision: in.Revision, Reach: in.Range,
+		Scene: &ReservedScene{
+			Where: admitted.where, Witnesses: slices.Clone(admitted.witnesses), Seen: seen, Perceived: perceived,
+		},
 	}
 	r.revision++
 	seq, err := e.appendHeldBeat(id, in.Actor, true)
@@ -620,8 +728,10 @@ type ReleaseReservationOutput struct {
 // holds (rpg-project#924): nothing is advanced, each revision moves, the
 // lines return to every speaker, and a [BeatInteractionHeld] beat with
 // `held: false` goes to the holder's witnesses per interaction. The host
-// calls it when the window is abandoned; the encounter releases on its own
-// what its door would no longer admit ([Encounter.sweepHolds]).
+// calls it when it closes the window with no verdict — an abandoned
+// reservation included, when the host can no longer settle it; the
+// encounter releases on its own what its door would no longer admit for any
+// reason but the holder's leaving ([Encounter.sweepHolds]).
 //
 // Errors: ErrNilInput, ErrNoMember (no member named), ErrNotMember,
 // ErrNoReservation (the member holds none).
@@ -691,10 +801,15 @@ var holdRefusals = []error{
 	ErrNotMember, ErrMemberDown, ErrBadPlacement, ErrNoProp, ErrUnwitnessed, ErrOutOfRange, ErrNoOption,
 }
 
-// sweepHolds releases every reservation whose settle [Encounter.replyDoor]
-// would refuse now, each with its `held: false` beat, in interaction id
-// order (rpg-project#924): THE ENCOUNTER DOES NOT LEAVE A ROLL HOLDING A
-// CONVERSATION ITS VERDICT COULD NEVER LAND IN. Asked at every
+// sweepHolds ends every reservation whose settle [Encounter.replyDoor] would
+// refuse now, in interaction id order (rpg-project#924): THE ENCOUNTER DOES
+// NOT LEAVE A ROLL HOLDING A CONVERSATION ITS VERDICT COULD NEVER LAND IN.
+// Refused for reach or sight ([ErrOutOfRange], [ErrUnwitnessed]), a
+// reservation with a scene is ABANDONED, its `held: true, abandoned: true`
+// beat told (rpg-project#938: a roll is kept); refused for anything else, or
+// with no scene, it is released with its `held: false` beat. An abandoned
+// reservation is asked the site and line doors only, so it is released if
+// its target falls or leaves before the host settles it. Asked at every
 // participation pass ([Encounter.noticeDown] — every step, strike, cast and
 // clock pass runs one, so a fall, a walk out of reach and a lost line of
 // sight are each noticed there) and after an exit. The holder is asked
@@ -725,6 +840,14 @@ func (e *Encounter) sweepHolds() error {
 		if !slices.ContainsFunc(holdRefusals, func(refusal error) bool { return errors.Is(err, refusal) }) {
 			return fmt.Errorf("interaction %q hold: %w", id, err)
 		}
+		// A ROLL IS KEPT (rpg-project#938): out of reach or out of sight, the
+		// roll was made and stands; anything else has nobody to answer it.
+		if (errors.Is(err, ErrOutOfRange) || errors.Is(err, ErrUnwitnessed)) && hold.Scene != nil {
+			if err := e.abandon(id); err != nil {
+				return fmt.Errorf("interaction %q hold: %w", id, err)
+			}
+			continue
+		}
 		if _, err := e.release(id); err != nil {
 			return fmt.Errorf("interaction %q hold: %w", id, err)
 		}
@@ -732,20 +855,169 @@ func (e *Encounter) sweepHolds() error {
 	return nil
 }
 
+// abandon marks one interaction's reservation abandoned (rpg-project#938)
+// and tells it in a `held: true, abandoned: true` [BeatInteractionHeld] beat
+// to the holder's witnesses. The revision does not move and the lines stay
+// pending: the settle that clears it is still the one reply admitted.
+func (e *Encounter) abandon(id InteractionID) error {
+	hold := e.interactions[id].reservation
+	hold.Abandoned = true
+	_, err := e.appendHeldBeatOf(id, hold.Holder, true, true)
+	return err
+}
+
+// membersSeenBy is every member target sees on the live reach now, in id order,
+// with the speaker's sneaking as the caller left it; nil for no target (a
+// line said to a prop).
+func (e *Encounter) membersSeenBy(target MemberID) ([]MemberID, error) {
+	if target == "" {
+		return nil, nil
+	}
+	reach, err := e.placedSightReach()
+	if err != nil {
+		return nil, err
+	}
+	var out []MemberID
+	for _, id := range slices.Sorted(maps.Keys(e.members)) {
+		if id != target && reach.Reaches(perception.Sight, target, id) {
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
+
+// partyPerceivedBy is, for each witness, the members of the speaker's party
+// that witness sees on the live reach now, in id order; a witness who sees
+// none is left out, and the map is nil when no witness sees any.
+func (e *Encounter) partyPerceivedBy(speaker MemberID, witnesses []MemberID) (map[MemberID][]MemberID, error) {
+	reach, err := e.placedSightReach()
+	if err != nil {
+		return nil, err
+	}
+	party := e.partyOf(speaker)
+	var out map[MemberID][]MemberID
+	for _, w := range witnesses {
+		var saw []MemberID
+		for _, id := range party {
+			if id == w || reach.Reaches(perception.Sight, w, id) {
+				saw = append(saw, id)
+			}
+		}
+		if len(saw) == 0 {
+			continue
+		}
+		if out == nil {
+			out = map[MemberID][]MemberID{}
+		}
+		out[w] = saw
+	}
+	return out, nil
+}
+
+// clonePerceived copies a scene's per-witness sight so no caller's value is
+// aliased.
+func clonePerceived(perceived map[MemberID][]MemberID) map[MemberID][]MemberID {
+	if perceived == nil {
+		return nil
+	}
+	out := make(map[MemberID][]MemberID, len(perceived))
+	for w, saw := range perceived {
+		out[w] = slices.Clone(saw)
+	}
+	return out
+}
+
+// AbandonReservationInput names whose waiting line the host judges
+// abandoned.
+type AbandonReservationInput struct {
+	// Member is the holder. REQUIRED, a member.
+	Member MemberID
+}
+
+// AbandonReservationOutput reports every reservation the member held, each
+// abandoned or, saved before scenes were kept, released.
+type AbandonReservationOutput struct {
+	// Abandoned is each interaction now abandoned, with its revision
+	// (unmoved), in id order.
+	Abandoned []InteractionRevision
+
+	// Released is each interaction released instead, with its revision now:
+	// a reservation with no [ReservedScene] cannot be judged as spoken.
+	Released []InteractionRevision
+}
+
+// AbandonReservation marks every reservation a member holds ABANDONED
+// (rpg-project#938), as [Encounter.sweepHolds] does when the holder and the
+// target lose reach or sight of each other: the host calls it when its own
+// check before a resume finds the same thing and no participation pass has
+// run since. It does not ask why. An abandoned reservation is left as it
+// is; one saved without a scene is released.
+//
+// Errors: ErrNilInput, ErrNoMember (no member named), ErrNotMember,
+// ErrNoReservation (the member holds none).
+func (e *Encounter) AbandonReservation(in *AbandonReservationInput) (*AbandonReservationOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("abandon reservation: %w", ErrNilInput)
+	}
+	if in.Member == "" {
+		return nil, fmt.Errorf("abandon reservation: %w", ErrNoMember)
+	}
+	if _, ok := e.members[in.Member]; !ok {
+		return nil, fmt.Errorf("abandon reservation: member %q: %w", in.Member, ErrNotMember)
+	}
+	out := &AbandonReservationOutput{}
+	for _, id := range slices.Sorted(maps.Keys(e.interactions)) {
+		r := e.interactions[id]
+		hold := r.reservation
+		if hold == nil || hold.Holder != in.Member {
+			continue
+		}
+		switch {
+		case hold.Scene == nil:
+			revision, err := e.release(id)
+			if err != nil {
+				return nil, fmt.Errorf("abandon reservation: %w", err)
+			}
+			out.Released = append(out.Released, InteractionRevision{Interaction: id, Revision: revision})
+			continue
+		case !hold.Abandoned:
+			if err := e.abandon(id); err != nil {
+				return nil, fmt.Errorf("abandon reservation: %w", err)
+			}
+		}
+		out.Abandoned = append(out.Abandoned, InteractionRevision{Interaction: id, Revision: r.revision})
+	}
+	if len(out.Abandoned)+len(out.Released) == 0 {
+		return nil, fmt.Errorf("abandon reservation: member %q: %w", in.Member, ErrNoReservation)
+	}
+
+	return out, nil
+}
+
 // appendHeldBeat writes a [BeatInteractionHeld] beat for one interaction to
 // the holder's witnesses — the holder alone when they stand nowhere.
 func (e *Encounter) appendHeldBeat(id InteractionID, holder MemberID, held bool) (uint64, error) {
+	return e.appendHeldBeatOf(id, holder, held, false)
+}
+
+// appendHeldBeatOf is [Encounter.appendHeldBeat], with `abandoned: true` on
+// the beat when the holder walked away from a kept roll (rpg-project#938).
+func (e *Encounter) appendHeldBeatOf(id InteractionID, holder MemberID, held, abandoned bool) (uint64, error) {
 	audience := []MemberID{holder}
 	if _, witnesses, err := e.audienceOf(holder); err == nil {
 		audience = witnesses
 	}
-	payload, err := json.Marshal(map[string]interface{}{
+	fields := map[string]interface{}{
 		"beat":        BeatInteractionHeld,
 		"interaction": string(id),
 		"holder":      string(holder),
 		"held":        held,
 		"revision":    e.interactions[id].revision,
-	})
+	}
+	if abandoned {
+		fields["abandoned"] = true
+	}
+	payload, err := json.Marshal(fields)
 	if err != nil {
 		return 0, fmt.Errorf("interaction %q: marshal held beat: %w", id, err)
 	}
@@ -765,6 +1037,12 @@ func cloneReservation(r *InteractionReservation) *InteractionReservation {
 		return nil
 	}
 	c := *r
+	if r.Scene != nil {
+		scene := *r.Scene
+		scene.Witnesses, scene.Seen = slices.Clone(r.Scene.Witnesses), slices.Clone(r.Scene.Seen)
+		scene.Perceived = clonePerceived(r.Scene.Perceived)
+		c.Scene = &scene
+	}
 	return &c
 }
 
@@ -783,6 +1061,8 @@ func validateReservationShape(id InteractionID, r InteractionReservation, revisi
 		return fmt.Errorf("interaction %q is saved at revision %d reserved at %d", id, revision, r.Revision)
 	case r.Reach < 0:
 		return fmt.Errorf("interaction %q is saved reserved within a negative reach %d", id, r.Reach)
+	case r.Abandoned && r.Scene == nil:
+		return fmt.Errorf("interaction %q is saved abandoned with no scene to judge it in", id)
 	}
 	return nil
 }

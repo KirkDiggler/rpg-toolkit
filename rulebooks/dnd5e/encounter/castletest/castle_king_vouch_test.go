@@ -73,6 +73,7 @@ var admittedScene struct {
 var admittedSceneTests = []string{
 	"TestMadKingTheCaptainGoesIn", "TestMadKingAStragglerIsVouchedFor", "TestMadKingAStragglerMakesTheirOwnCase",
 	"TestMadKingTheCaptainsLineGrantsNothingAgain", "TestMadKingAStragglerHasOneTry",
+	"TestMadKingAStragglerWhoWalksAwayKeepsTheRoll",
 }
 
 // TestMain builds the admitted gate's scene before any test runs, when the
@@ -310,4 +311,53 @@ func TestMadKingTheCaptainsLineGrantsNothingAgain(t *testing.T) {
 	require.NoError(t, s.speakAs(hero, kingCaptain, theWayIn, true), "the captain answers the line in the hall")
 	require.Equal(t, granted, s.recognitionBeats(), "speaking on grants no recognition and writes no beat")
 	require.True(t, s.recognizes(kingCaptain, hero), "and he still recognises the hero")
+}
+
+// TestMadKingAStragglerWhoWalksAwayKeepsTheRoll: a roll is kept
+// (rpg-project#938, ruled 2026-11-12: "a roll is a roll that is kept"). The
+// straggler makes their case at gate-1 holding a benefit, so the line waits
+// on their roll (the host reserves it), and walks back down the road without
+// answering. The walk abandons the hold rather than releasing it; after a
+// reload the host settles it as rolled — the benefit declined — and the miss
+// lands: both guards turn the straggler away and the case is gone, once.
+func TestMadKingAStragglerWhoWalksAwayKeepsTheRoll(t *testing.T) {
+	t.Parallel()
+	s := admittedWithAStraggler(t)
+	road := s.at(straggler)
+	s.walkMember(straggler, s.at(hero), false)
+	at := s.revisionOf(straggler, kingGate1, stragglerLine)
+	_, err := s.enc.Reserve(&encounter.ReserveInput{
+		Actor: straggler, Target: kingGate1, OptionID: stragglerLine, Revision: at, Range: speakReach,
+	})
+	require.NoError(t, err, "the case waits on the straggler's roll")
+
+	s.walkMember(straggler, road, false)
+	reservation := func() *encounter.InteractionReservation {
+		for _, data := range s.enc.ToData().Interactions {
+			if data.Reservation != nil {
+				return data.Reservation
+			}
+		}
+		return nil
+	}
+	require.NotNil(t, reservation(), "walking away keeps the roll")
+	require.True(t, reservation().Abandoned, "the hold is abandoned, not released")
+
+	s.roundTrip()
+	settle := func(beaten bool) error {
+		_, err := s.enc.Speak(context.Background(), &encounter.SpeakInput{
+			Range: speakReach, Actor: straggler, Target: kingGate1, OptionID: stragglerLine, Roller: rollsOne{},
+			Revision: at, Skill: "persuasion", Beaten: beaten, DC: 13, Total: map[bool]int{true: 18, false: 3}[beaten],
+		})
+		return err
+	}
+	require.NoError(t, settle(false), "the host settles the roll as rolled from down the road")
+	require.True(t, s.recognizesOn(kingGate1, straggler, turnedAwayTopic), "the miss lands: gate-1 turned the straggler away")
+	require.True(t, s.recognizesOn(kingGate2, straggler, turnedAwayTopic), "and gate-2 heard it")
+	require.False(t, s.recognizes(kingGate1, straggler))
+	require.Nil(t, reservation(), "the hold clears")
+	require.False(t, s.offersTo(straggler, kingGate1, stragglerLine), "one try: the case is gone")
+	require.ErrorIs(t, settle(true), encounter.ErrNoOption,
+		"a second settle is refused: turned away, the straggler is no longer offered the case")
+	require.False(t, s.recognizes(kingGate1, straggler), "and admits nobody")
 }
