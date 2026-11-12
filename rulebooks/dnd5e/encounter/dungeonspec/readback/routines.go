@@ -117,5 +117,16 @@ func wakeWords(tr machine.Transition, who string) (string, []Connection) {
 	if tr.Reason != "" {
 		s += fmt.Sprintf(" (%s)", said(tr.Reason))
 	}
+	// A STATE CHANGE IS TOLD TO THE WHOLE RUN (rpg-project#948): the change,
+	// its state names and its reason reach every member, wherever they are,
+	// whether or not they saw or heard what caused it — the state beat's
+	// audience today.
+	if tr.To != "" {
+		what := "the change"
+		if tr.Reason != "" {
+			what = "the change and its reason"
+		}
+		s += fmt.Sprintf("; %s reach every member of the run, wherever they are, whether or not they saw or heard what caused it", what)
+	}
 	return s, conns
 }

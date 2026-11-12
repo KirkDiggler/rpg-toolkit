@@ -142,6 +142,12 @@ type answerInput struct {
 	// witnesses is who saw it — who learns a fact, and the beat's audience.
 	witnesses []MemberID
 
+	// lineCatchers is who caught the words of the line this answers
+	// (rpg-project#948): the creature's pick, its arithmetic, is told only
+	// to a seer among them, the speaker always one. Every other seer is told
+	// only that the creature answered ([strippedPick]).
+	lineCatchers []MemberID
+
 	// at is the clock's high-water mark, shared with the verb's own beat so
 	// the answer is stamped with the moment that caused it.
 	at uint64
@@ -344,21 +350,43 @@ func (e *Encounter) appendAnsweredBeat(in answerInput, chosen *Pick) error {
 	// said to, travel only in each member's [BeatSpeech] version. A prop's
 	// narration stays on the line's witnesses, words and all.
 	audience := in.witnesses
+	var stripped []MemberID
 	if in.creature != "" {
 		blankSpeech(body)
 		_, seers, err := e.audienceOf(in.creature)
 		if err != nil {
 			return fmt.Errorf("answer: %w", err)
 		}
-		audience = seers
+		// THE PICK'S SHAPE IS THE VERDICT'S (rpg-project#948): a success
+		// table and a failure table differ in their rows, so the die, its
+		// size and every candidate tell how the line went. Its arithmetic is
+		// for whoever caught the line; a seer who caught nothing is told only
+		// that the creature answered, and what it is seen doing. The full
+		// pick is written every time, record-only when no seer caught the
+		// line, so the record keeps the true die.
+		audience, stripped = seers, nil
+		if in.lineCatchers != nil {
+			audience, stripped = splitByCatching(seers, in.lineCatchers, in.actor)
+		}
 	}
+	if err := e.appendAnsweredPayload(body, audience, in.at); err != nil {
+		return err
+	}
+	if len(stripped) > 0 {
+		return e.appendAnsweredPayload(strippedPick(body), stripped, in.at)
+	}
+
+	return nil
+}
+
+// appendAnsweredPayload writes one `answered` body to one audience.
+func (e *Encounter) appendAnsweredPayload(body map[string]interface{}, audience []MemberID, at uint64) error {
 	payload, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("answer: marshal beat: %w", err)
 	}
-
 	if _, err := e.appendBeat(&record.AppendInput{
-		At:       in.at,
+		At:       at,
 		Audience: audience,
 		Tags:     map[string]string{"tag": BeatAnswered},
 		Payload:  payload,
@@ -367,6 +395,33 @@ func (e *Encounter) appendAnsweredBeat(in answerInput, chosen *Pick) error {
 	}
 
 	return nil
+}
+
+// splitByCatching is the seers of a creature's answer to a line, split into
+// those who caught the line's words — the speaker always — and those who did
+// not, each in the seers' order.
+func splitByCatching(seers, catchers []MemberID, speaker MemberID) (caught, rest []MemberID) {
+	for _, id := range seers {
+		if id == speaker || slices.Contains(catchers, id) {
+			caught = append(caught, id)
+			continue
+		}
+		rest = append(rest, id)
+	}
+	return caught, rest
+}
+
+// strippedPick is a creature's answer as a seer who caught none of the line
+// is told it (rpg-project#948): who answered, and the cue it is seen
+// performing — nothing of the die, its rows, the word or the temperament,
+// which differ between a success and a failure table. Built by naming what
+// stays, so a field the full pick gains later is never sent here by default.
+func strippedPick(full map[string]interface{}) map[string]interface{} {
+	out := map[string]interface{}{"beat": BeatAnswered, "creature": full["creature"]}
+	if cue, ok := full["activity"]; ok {
+		out["activity"] = cue
+	}
+	return out
 }
 
 // blankSpeech takes off an answered beat what only a member who caught the

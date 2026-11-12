@@ -298,6 +298,16 @@ func requireNoBeatTellsMoreThanItsVersion(t *testing.T, enc *encounter.Encounter
 			}
 			caught := v != nil && v["words"] != nil
 			where := fmt.Sprintf("seq %d %s to %s", b.seq, kind, who)
+			// THE PICK'S SHAPE IS THE VERDICT'S (rpg-project#948): the line's
+			// answer, by the one it was said to and stamped with its reading,
+			// tells a reader who caught none of the line only who answered.
+			if kind == encounter.BeatAnswered && line != nil && b.at == line.at && line.to != "" &&
+				str(b.body, "creature") == line.to && !caught && string(who) != line.speaker {
+				for key := range b.body {
+					require.Contains(t, []string{"beat", "creature", "activity"}, key,
+						"%s: told the pick's %s without catching the line", where, key)
+				}
+			}
 			if o := str(b.body, "option"); o != "" {
 				require.True(t, caught && str(v, "option") == o, "%s: told the line %q without catching it", where, o)
 			}
