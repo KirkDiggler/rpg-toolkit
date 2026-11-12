@@ -47,6 +47,7 @@ func projectStructuralWall(w encounter.AtlasStructuralWall) AtlasStructuralWall 
 		FootprintCells:    footprint,
 		Openings:          openings,
 		MaterialOverrides: projectMaterialOverrides(w.MaterialOverrides),
+		FaceFinishes:      projectWallFaceFinishes(w.FaceFinishes),
 	}
 }
 
@@ -108,7 +109,7 @@ func validStructuralRows(rows structuralRows) bool {
 		return true
 	}
 	for _, w := range rows.Walls {
-		if w.ID == "" || walls[w.ID] || !validOpenings(w.Openings) || !validMaterialOverrides(w.MaterialOverrides) {
+		if w.ID == "" || walls[w.ID] || !validOpenings(w.Openings) || !validMaterialOverrides(w.MaterialOverrides) || !validWallFaceFinishes(w.FaceFinishes) {
 			return false
 		}
 		walls[w.ID] = true

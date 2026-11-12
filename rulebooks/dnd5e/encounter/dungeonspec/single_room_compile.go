@@ -113,7 +113,7 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 	// beside the placed spans rather than replacing them — the spans are what
 	// blocks, this is what the layout IS — and a room with no walls carries
 	// none, so its bytes are untouched.
-	structuralWalls, err := canonicalStructuralWalls(spec.Key, spec.Room.Gameplay.Walls)
+	structuralWalls, err := canonicalStructuralWalls(spec.Key, spec.Room.Gameplay.Walls, read.WallFinishes)
 	if err != nil {
 		return Compiled{}, singleRoomCompileError("room.room.walls", err.Error())
 	}

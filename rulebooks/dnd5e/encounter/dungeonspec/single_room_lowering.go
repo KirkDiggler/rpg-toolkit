@@ -87,6 +87,9 @@ type roomRead struct {
 	// Presentations capture appearance for every renderable source item,
 	// including decoration without a mechanical declaration.
 	Presentations []encounter.PropPresentation
+
+	// WallFinishes captures known face choices by raw authored wall identity.
+	WallFinishes map[string][]encounter.WallFaceFinish
 }
 
 // errNotANumber is the defect for a presentation scalar play must read as a
@@ -123,6 +126,7 @@ func readRoom(r *RoomSource) (roomRead, []FieldError) {
 		out.Name = n.Value
 	}
 	readSceneItems(scene, r.Gameplay.PropDeclarations, &out, add)
+	out.WallFinishes = readWallFaceFinishes(scene, r.Gameplay.Walls, add)
 
 	return out, errs
 }

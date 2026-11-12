@@ -225,6 +225,8 @@ type AtlasStructuralWall struct {
 
 	// MaterialOverrides are detached captured choices for this permitted wall.
 	MaterialOverrides []MaterialOverride
+	// FaceFinishes are detached explicit choices on this permitted wall's faces.
+	FaceFinishes []WallFaceFinish
 
 	// FootprintCells is every floor cell the wall's presence footprint
 	// overlaps by positive area — the same support that decides whether the
@@ -695,6 +697,7 @@ func (e *Encounter) Atlas() (Atlas, error) {
 			Height: w.height, Thickness: w.thickness, Elevation: w.elevation,
 			FootprintCells: footprint,
 			Openings:       make([]AtlasStructuralOpening, 0, len(w.openings)),
+			FaceFinishes:   cloneWallFaceFinishes(w.faceFinishes),
 		}
 		for j := range w.openings {
 			o := &w.openings[j]
