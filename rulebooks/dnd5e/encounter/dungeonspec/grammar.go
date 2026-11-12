@@ -770,7 +770,14 @@ func (g *grammar) loudness(at, word string) {
 			return
 		}
 	}
-	g.fail(at+".loudness", "%q is not a loudness: write whisper, speak, shout or scream, or omit it for speak", word)
+	g.fail(at+".loudness", "%q is not a loudness: write %s, or omit it for speak", word, loudnessList())
+}
+
+// loudnessList is the encounter's one loudness order ([encounter.LoudnessOrder])
+// as a refusal says it: "whisper, speak, shout or scream".
+func loudnessList() string {
+	words := encounter.LoudnessOrder()
+	return strings.Join(words[:len(words)-1], ", ") + " or " + words[len(words)-1]
 }
 
 // answerEntry validates one row of one trigger's table.

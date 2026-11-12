@@ -528,3 +528,22 @@ func (s *CastleSuite) TestTheShoutAtTheGateSaysItsReach() {
 	s.Contains(st.Sentence, "It is said at `shout` (authored): its words reach everyone in the speaker's room and the next room over")
 	s.Contains(st.Sentence, "It is a plain line")
 }
+
+// TestTheFoldedShoutSaysItIsShouted: the folded form the operator reads says
+// a line authored louder than speech is (rpg-project#933), and a spoken line
+// says nothing of its loudness.
+func (s *CastleSuite) TestTheFoldedShoutSaysItIsShouted() {
+	var shouted, spoken string
+	for _, line := range strings.Split(strings.Join(strings.Fields(s.rb.FoldedText()), " "), " - ") {
+		switch {
+		case strings.Contains(line, "(`hail-the-pedlar`), said to"):
+			shouted = line
+		case strings.Contains(line, "(`tonight`), said to"):
+			spoken = line
+		}
+	}
+	s.Contains(shouted, "said to the commoner; shouted: its words reach the next room over; plain: rolls nothing")
+	s.NotEmpty(spoken, "precondition: the stranger's spoken line is folded too")
+	s.NotContains(spoken, "shouted", "a spoken line says nothing of its loudness")
+	s.NotContains(spoken, "its words reach")
+}

@@ -6,6 +6,7 @@ package encounter
 import (
 	"fmt"
 	"slices"
+	"strings"
 )
 
 // speech.go is PERCEIVED SPEECH (rpg-project#930; slice one is
@@ -63,6 +64,13 @@ func LoudnessOrder() []string {
 	return out
 }
 
+// loudnessList is [LoudnessOrder] as a refusal says it: "whisper, speak,
+// shout or scream".
+func loudnessList() string {
+	words := LoudnessOrder()
+	return strings.Join(words[:len(words)-1], ", ") + " or " + words[len(words)-1]
+}
+
 // atOrAbove reports whether a loudness is at or above another, by
 // [Loudnesses]; false when either is not a loudness this rulebook names.
 func atOrAbove(l, least Loudness) bool {
@@ -87,7 +95,7 @@ func loudnessOf(word string) (Loudness, bool) {
 // validateLoudness refuses a loudness word this build does not know, at what.
 func validateLoudness(what, word string) error {
 	if _, ok := loudnessOf(word); !ok {
-		return fmt.Errorf("%s: loudness %q is not one of whisper, speak, shout or scream", what, word)
+		return fmt.Errorf("%s: loudness %q is not one of %s", what, word, loudnessList())
 	}
 	return nil
 }

@@ -2055,8 +2055,8 @@ func decodeHeard(body *yaml.Node) (*HeardSpec, error) {
 	if heard.Loudness != nil {
 		out.Loudness = *heard.Loudness
 		if !slices.Contains(encounter.Loudnesses, encounter.Loudness(out.Loudness)) {
-			return nil, fmt.Errorf("line %d: `heard` loudness %q is not a loudness: write whisper, speak, shout or scream, "+
-				"or omit it for any", body.Line, out.Loudness)
+			return nil, fmt.Errorf("line %d: `heard` loudness %q is not a loudness: write %s, or omit it for any",
+				body.Line, out.Loudness, loudnessList())
 		}
 		if out.Kind != encounter.SoundVoice {
 			return nil, fmt.Errorf("line %d: `heard: { kind: %s, loudness: %s }`: only a voice is said at a loudness, "+

@@ -70,6 +70,21 @@ func raisedWords(word string) string {
 	return fmt.Sprintf(" at %s or louder", quote(word))
 }
 
+// foldedLoudness is a line's loudness in the folded form, when it is authored
+// as anything but the default `speak`: "shouted: its words reach the next
+// room over; ". A spoken line says nothing here, as it always did.
+func foldedLoudness(word string) string {
+	switch loudnessOf(word) {
+	case "whisper":
+		return "whispered: only the one it is said to hears it, from beside them; "
+	case "shout":
+		return "shouted: its words reach the next room over; "
+	case "scream":
+		return "screamed: its words reach two rooms over; "
+	}
+	return ""
+}
+
 // loudnessSource says whether a loudness was authored or is the default.
 func loudnessSource(word string) string {
 	if word == "" {

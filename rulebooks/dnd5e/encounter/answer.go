@@ -728,7 +728,7 @@ func validateHeardLoudness(h *HeardWhen) error {
 		return nil
 	}
 	if l, ok := loudnessOf(h.Loudness); !ok || l == "" {
-		return fmt.Errorf("`heard` loudness %q is not one of whisper, speak, shout or scream: %w", h.Loudness, ErrBadAnswer)
+		return fmt.Errorf("`heard` loudness %q is not one of %s: %w", h.Loudness, loudnessList(), ErrBadAnswer)
 	}
 	if h.Kind.Pattern != "" || h.Kind.Literal != SoundVoice {
 		return fmt.Errorf("`heard: { kind: %s, loudness: %s }`: only a voice is said at a loudness: %w",
