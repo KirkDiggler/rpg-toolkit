@@ -178,6 +178,10 @@ func (s *InteractionSuite) TestAReservationSurvivesAReloadAndSettlesOnce() {
 	at := s.offer(enc, alice)["guest"].Revision
 	reserved := s.reserve(enc, alice, "guest")
 	s.Equal(at+1, reserved.Revision, "placing the reservation moves the revision")
+	placed := s.saved(enc).Reservation
+	s.Require().NotNil(placed.Scene, "the scene the line was spoken in is kept (rpg-project#938)")
+	s.Contains(placed.Scene.Witnesses, goblin, "the captain witnessed alice")
+	s.Contains(placed.Scene.Seen, alice, "and saw her")
 
 	raw, err := json.Marshal(enc.ToData())
 	s.Require().NoError(err)
@@ -185,8 +189,9 @@ func (s *InteractionSuite) TestAReservationSurvivesAReloadAndSettlesOnce() {
 	s.Require().NoError(json.Unmarshal(raw, &decoded))
 	reloaded, err := s.reloaded(decoded)
 	s.Require().NoError(err)
-	s.Equal(&encounter.InteractionReservation{Holder: alice, Target: goblin, Option: "guest", Revision: at, Reach: speakReach},
-		s.saved(reloaded).Reservation, "the reservation comes back as placed")
+	s.Equal(&encounter.InteractionReservation{
+		Holder: alice, Target: goblin, Option: "guest", Revision: at, Reach: speakReach, Scene: placed.Scene,
+	}, s.saved(reloaded).Reservation, "the reservation comes back as placed")
 
 	s.ErrorIs(s.speakAt(reloaded, alice, "guest", "persuasion", false, reserved.Revision), encounter.ErrStaleOption,
 		"the settle carries the reserved revision, not the one after it")
@@ -429,21 +434,41 @@ func (s *InteractionSuite) TestAHoldIsReleasedWhenItsTargetFalls() {
 	s.Equal(false, s.lastHeld(enc, alice)["held"])
 }
 
-// TestAHoldIsReleasedWhenTheHolderWalksOutOfReach: alice steps away from
-// the captain beyond the reach she reserved within; the step's sweep
-// releases the hold.
-func (s *InteractionSuite) TestAHoldIsReleasedWhenTheHolderWalksOutOfReach() {
+// TestAHolderWhoWalksOutOfReachAbandonsTheHold: alice steps away from the
+// captain beyond the reach she reserved within. A roll is kept
+// (rpg-project#938): the step's sweep abandons the hold rather than
+// releasing it — the lines stay pending at the same revision, alice is told
+// the line is hers to settle, the witnesses are told it was abandoned — and
+// her settle from out of reach is admitted, judged as rolled, once.
+func (s *InteractionSuite) TestAHolderWhoWalksOutOfReachAbandonsTheHold() {
 	enc := s.wallGate(nil)
-	_, err := enc.Reserve(&encounter.ReserveInput{
-		Actor: alice, Target: goblin, OptionID: "guest", Revision: offeredRevision(enc, alice, goblin, "guest"), Range: 2,
+	at := offeredRevision(enc, alice, goblin, "guest")
+	reserved, err := enc.Reserve(&encounter.ReserveInput{
+		Actor: alice, Target: goblin, OptionID: "guest", Revision: at, Range: 2,
 	})
 	s.Require().NoError(err)
 	for _, x := range []float64{5, 4, 3, 2} {
 		_, err := enc.Step(&encounter.StepInput{Member: alice, To: spatial.Position{X: x, Y: 2}, EndWalk: x == 2, Reach: speakReach})
 		s.Require().NoError(err)
 	}
-	s.Nil(s.saved(enc).Reservation, "out of the reach it was reserved within, the settle could not land")
-	s.False(s.offer(enc, alice)["guest"].Pending)
+	hold := s.saved(enc).Reservation
+	s.Require().NotNil(hold, "out of reach, the roll is kept, not released")
+	s.True(hold.Abandoned)
+	s.Equal(reserved.Revision, s.saved(enc).Revision, "abandoning moves no revision")
+	mine := s.offer(enc, alice)["guest"]
+	s.True(mine.Pending, "the line still waits")
+	s.True(mine.Abandoned, "and alice is told it is hers to settle")
+	s.True(s.offer(enc, billy)["guest"].Pending)
+	s.False(s.offer(enc, billy)["guest"].Abandoned, "nobody else is told")
+	s.Equal(true, s.lastHeld(enc, alice)["abandoned"], "the beat says it was abandoned")
+
+	s.Require().NoError(s.speakAt(enc, alice, "guest", "persuasion", false, at),
+		"the settle from out of reach is admitted: the words were spoken")
+	s.Equal("warned-guest", s.saved(enc).Blob.State, "the miss lands")
+	s.Nil(s.saved(enc).Reservation, "and the reservation clears")
+	settled := s.saved(enc)
+	s.Error(s.speakAt(enc, alice, "guest", "persuasion", false, at), "a second settle is refused")
+	s.Equal(settled, s.saved(enc), "and moves nothing: the verdict landed once")
 }
 
 // TestASavedReservationOnALineThatDoesNotTouchItIsRefused: a saved

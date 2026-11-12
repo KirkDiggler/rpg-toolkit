@@ -400,7 +400,12 @@ func (e *Encounter) offered(actor, other MemberID, options []Option) ([]OfferedO
 		case row.Eligible:
 			out = append(out, e.offerOf(options[i], false, ""))
 		case !hasUnmet(row):
-			out = append(out, e.offerOf(options[i], true, e.pendingOnFor(actor, e.holdOf(options[i]).Holder)))
+			hold := e.holdOf(options[i])
+			offered := e.offerOf(options[i], true, e.pendingOnFor(actor, hold.Holder))
+			// AN ABANDONED ROLL IS TOLD TO ITS HOLDER ALONE, on the reserved
+			// line (rpg-project#938): theirs to resume declined and settle.
+			offered.Abandoned = hold.Abandoned && hold.Holder == actor && hold.Option == options[i].ID
+			out = append(out, offered)
 		}
 	}
 
@@ -622,6 +627,11 @@ type SpeakOutput struct {
 // interaction the line advances (rpg-project#922) → the world's price for an
 // action, paid only for a checked line (rpg-project#785 R5).
 //
+// THE SETTLE OF AN ABANDONED RESERVATION (rpg-project#938) asks neither the
+// witness door nor reach: the words were spoken when the roll was made. Its
+// beat, deed, answer, grants and advance are told and judged in the scene
+// kept with the reservation ([ReservedScene]).
+//
 // THE BEAT IS APPENDED BEFORE ITS CONSEQUENCES, the law
 // [Encounter.refreshSight] states: the line is the cause, and a stance beat
 // ahead of the line that explains it would be a story told backwards. The
@@ -679,6 +689,9 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 		return refuse(err)
 	}
 	option, settle, where, witnesses := admitted.option, admitted.settle, admitted.where, admitted.witnesses
+	// AN ABANDONED SETTLE IS JUDGED AS SPOKEN (rpg-project#938): its grants
+	// read whom the creature spoken to saw then.
+	spoken := settle != nil && settle.Abandoned && settle.Scene != nil
 	if err := refuseRollMismatch(in, option); err != nil {
 		return refuse(err)
 	}
@@ -724,6 +737,7 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 		iid, _ := optionInteraction(option)
 		if err := e.applyGrants(option, beaten, answered.pick.Entry, recognitionLine{
 			interaction: iid, option: option.ID, speaker: in.Actor, spokenTo: in.Target, witnesses: witnesses, at: at,
+			spoken: spoken, seen: admitted.seen,
 		}); err != nil {
 			return nil, fmt.Errorf("speak: %w", err)
 		}
@@ -735,6 +749,7 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	// the next raise and leave that offer stale.
 	if err := e.advanceInteraction(option, beaten, recognitionLine{
 		speaker: in.Actor, spokenTo: in.Target, witnesses: witnesses, at: at,
+		spoken: spoken, seen: admitted.seen,
 	}); err != nil {
 		return nil, fmt.Errorf("speak: %w", err)
 	}

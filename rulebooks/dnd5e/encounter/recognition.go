@@ -385,6 +385,21 @@ type recognitionLine struct {
 	spokenTo  MemberID
 	witnesses []MemberID
 	at        uint64
+	// spoken is true for an abandoned settle (rpg-project#938): the line is
+	// judged in the scene it was spoken in, so whom the creature spoken to
+	// sees is seen, not the live reach.
+	spoken bool
+	seen   []MemberID
+}
+
+// sees is whether holder sees subject for this line: on the live reach, or,
+// for a line judged as spoken ([recognitionLine.spoken]), as the creature
+// spoken to saw when the words were said.
+func (line recognitionLine) sees(reach sightReach, holder, subject MemberID) bool {
+	if line.spoken {
+		return holder == line.spokenTo && slices.Contains(line.seen, subject)
+	}
+	return reach.Reaches(perception.Sight, holder, subject)
 }
 
 // applyOutcome runs every consequence authored for the state the line's
@@ -429,10 +444,10 @@ func (e *Encounter) grantRecognition(r Recognition, line recognitionLine) error 
 	if err != nil {
 		return err
 	}
-	subjects := e.partyInSight(reach, holder, line.speaker)
+	subjects := e.partyInSight(reach, holder, line)
 	if r.About == RecognitionSpeaker {
 		subjects = nil
-		if line.speaker != holder && reach.Reaches(perception.Sight, holder, line.speaker) {
+		if line.speaker != holder && line.sees(reach, holder, line.speaker) {
 			subjects = []MemberID{line.speaker}
 		}
 	}
@@ -465,9 +480,11 @@ func (e *Encounter) grantRecognition(r Recognition, line recognitionLine) error 
 }
 
 // partyInSight is the members of the speaker's faction — the speaker
-// included — whom holder sees on the live reach given, in id order. A
-// speaker in no faction is a party of one.
-func (e *Encounter) partyInSight(reach sightReach, holder, speaker MemberID) []MemberID {
+// included — whom holder sees on the live reach given, or as the line was
+// spoken ([recognitionLine.sees]), in id order. A speaker in no faction is a
+// party of one.
+func (e *Encounter) partyInSight(reach sightReach, holder MemberID, line recognitionLine) []MemberID {
+	speaker := line.speaker
 	s, ok := e.members[speaker]
 	if !ok {
 		return nil
@@ -481,7 +498,7 @@ func (e *Encounter) partyInSight(reach sightReach, holder, speaker MemberID) []M
 		if id != speaker && (side == "" || factionOf(e.members[id]) != side) {
 			continue
 		}
-		if reach.Reaches(perception.Sight, holder, id) {
+		if line.sees(reach, holder, id) {
 			out = append(out, id)
 		}
 	}
