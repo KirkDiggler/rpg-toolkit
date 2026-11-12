@@ -85,6 +85,11 @@ const (
 	// FamilyClock is the table's own bookkeeping: ticks, turns, fights,
 	// arrivals and departures, windows.
 	FamilyClock Family = "clock"
+	// FamilySpeech is one perceiver's version of one spoken thing
+	// (rpg-project#934, R6): a [SpeechAct], with the [Perceived] part on the
+	// act. It stands beside the act a line, an answer or a voice folds into,
+	// and never joins one.
+	FamilySpeech Family = "speech"
 )
 
 // Act is one segment of one act, as one recipient receives it.
@@ -142,6 +147,11 @@ type Act struct {
 	// its family, with this reason and a nil Body (R22's spirit — one bad
 	// beat fails that entry, not the fold).
 	Undecoded string
+
+	// Perceived is how this act reached its recipient (rpg-project#934, R6):
+	// which senses delivered it, and whose. Set on a [FamilySpeech] act; nil
+	// on every other family until a use calls for it there.
+	Perceived *Perceived
 }
 
 // ActBody is one of the act stream's typed bodies.
@@ -250,7 +260,7 @@ func actsAfter(session, recipient string, entries []record.Entry, afterID string
 // segments. Every entry yields its pieces (act_family.go); a piece either
 // extends the segment the previous piece left open or starts its own.
 func foldActs(session, recipient string, entries []record.Entry) []Act {
-	f := &fold{session: session, recipient: recipient, segments: map[string]int{}, last: map[string]ActBody{}}
+	f := &fold{session: session, recipient: recipient, segments: map[string]int{}, last: map[string]ActBody{}, main: -1}
 	for _, e := range entries {
 		tag := e.Tags[encounter.ActTag]
 		for _, p := range piecesOf(recipient, tag, e.Payload) {
@@ -265,8 +275,12 @@ type fold struct {
 	session   string
 	recipient string
 	out       []Act
-	// open is true while the last Act in out can still absorb a piece.
+	// open is true while the last main Act in out can still absorb a piece.
 	open bool
+	// main is the index in out of the last act a piece may fold into: an
+	// aside ([piece.aside]) is never one, so a speech act standing between a
+	// line and its answer does not part them. -1 before any.
+	main int
 	// segments counts each act tag's FamilyAct segments.
 	segments map[string]int
 	// last is each act tag's most recent FamilyAct body, which a new segment
@@ -276,8 +290,8 @@ type fold struct {
 
 // add places one piece of entry e.
 func (f *fold) add(e record.Entry, tag string, p piece) {
-	if f.open && tag != "" && len(f.out) > 0 {
-		prev := &f.out[len(f.out)-1]
+	if f.open && tag != "" && f.main >= 0 {
+		prev := &f.out[f.main]
 		into := p.family
 		if p.into != "" {
 			into = p.into
@@ -287,6 +301,15 @@ func (f *fold) add(e record.Entry, tag string, p piece) {
 				prev.Body = body
 				prev.ID, prev.At = e.ID, e.At
 				f.last[tag] = body
+				// THE ABSORBING ACT MOVES PAST THE ASIDES before it, so the
+				// stream stays in record order and acts sharing an id stay
+				// adjacent (R28).
+				if f.main != len(f.out)-1 {
+					moved := f.out[f.main]
+					f.out = append(f.out[:f.main], f.out[f.main+1:]...)
+					f.out = append(f.out, moved)
+					f.main = len(f.out) - 1
+				}
 				return
 			}
 		}
@@ -298,7 +321,12 @@ func (f *fold) add(e record.Entry, tag string, p piece) {
 	}
 	a := Act{
 		Session: f.session, ID: e.ID, Act: tag, Verb: verb, Recipient: f.recipient,
-		At: e.At, Family: p.family, Body: p.body, Undecoded: p.undecoded,
+		At: e.At, Family: p.family, Body: p.body, Undecoded: p.undecoded, Perceived: p.perceived,
+	}
+	if p.aside {
+		// An aside stands alone and leaves the open act open.
+		f.out = append(f.out, a)
+		return
 	}
 	if p.family == FamilyAct && p.body != nil {
 		if prior, ok := f.last[tag]; ok && tag != "" && p.continues != nil {
@@ -316,6 +344,7 @@ func (f *fold) add(e record.Entry, tag string, p piece) {
 		}
 	}
 	f.out = append(f.out, a)
+	f.main = len(f.out) - 1
 	f.open = p.absorb != nil || p.opens
 }
 
@@ -339,6 +368,14 @@ type piece struct {
 	// family: the words a creature said fold into its pick whether that pick
 	// stands as a table answer or answers a line inside a speak act.
 	absorbAny bool
+
+	// aside is a piece that stands beside the act stream's folding rather
+	// than in it: a [FamilySpeech] act. It never absorbs, is never absorbed
+	// into, and leaves whatever act was open still open.
+	aside bool
+
+	// perceived is the act's [Perceived] part, for an aside that carries one.
+	perceived *Perceived
 
 	// opens is true when a later piece may fold into this one even though
 	// this one never folds into another (a cast, a line, an activation).

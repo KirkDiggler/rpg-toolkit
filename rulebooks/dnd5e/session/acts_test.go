@@ -336,7 +336,7 @@ func TestActCarriesNoSeq(t *testing.T) {
 	for i := 0; i < typ.NumField(); i++ {
 		names = append(names, typ.Field(i).Name)
 	}
-	require.Equal(t, []string{"Session", "ID", "Act", "Verb", "Recipient", "At", "Segment", "Family", "Body", "Undecoded"}, names)
+	require.Equal(t, []string{"Session", "ID", "Act", "Verb", "Recipient", "At", "Segment", "Family", "Body", "Undecoded", "Perceived"}, names)
 }
 
 // TestEveryBeatHasAFamily is R16 failing closed: every beat name the

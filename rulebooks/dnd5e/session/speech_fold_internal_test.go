@@ -24,10 +24,10 @@ func speechVersion(fields map[string]any) map[string]any {
 // TestAnotherCharactersLineCaughtAndSeenIsTheirSpeakAct: bob, who saw alice
 // and caught her words, reads her line, whom it was said to, and its roll.
 func (s *ActFoldSuite) TestAnotherCharactersLineCaughtAndSeenIsTheirSpeakAct() {
-	acts := foldActs("sess", "bob", []record.Entry{s.beat("speak:one", speechVersion(map[string]any{
+	acts := retiredActs(foldActs("sess", "bob", []record.Entry{s.beat("speak:one", speechVersion(map[string]any{
 		"speaker": "alice", "to": "goblin", "words": "Evening.", "option": "hello",
 		"check": map[string]any{"skill": "persuasion", "dc": 10, "total": 15, "beaten": true},
-	}))})
+	}))}))
 	s.Require().Len(acts, 1)
 	act, ok := acts[0].Body.(SpeakAct)
 	s.Require().True(ok, "a %T", acts[0].Body)
@@ -43,9 +43,9 @@ func (s *ActFoldSuite) TestAnotherCharactersLineCaughtAndSeenIsTheirSpeakAct() {
 // TestALineWithoutWhomItWasSaidToNamesNobody: a version that does not
 // see the addressee names nobody spoken to.
 func (s *ActFoldSuite) TestALineWithoutWhomItWasSaidToNamesNobody() {
-	acts := foldActs("sess", "bob", []record.Entry{s.beat("speak:one", speechVersion(map[string]any{
+	acts := retiredActs(foldActs("sess", "bob", []record.Entry{s.beat("speak:one", speechVersion(map[string]any{
 		"speaker": "alice", "words": "Evening.", "option": "hello",
-	}))})
+	}))}))
 	s.Require().Len(acts, 1)
 	act := acts[0].Body.(SpeakAct)
 	s.Equal(Party{}, act.To)
@@ -57,8 +57,8 @@ func (s *ActFoldSuite) TestALineWithoutWhomItWasSaidToNamesNobody() {
 func (s *ActFoldSuite) TestAVersionWithNoWordsGivesNoLine() {
 	own := s.beat("speak:one", speechVersion(map[string]any{"speaker": "alice", "words": "Evening.", "option": "hello"}))
 	seen := s.beat("speak:one", speechVersion(map[string]any{"speaker": "alice", "to": "goblin"}))
-	s.Empty(foldActs("sess", "alice", []record.Entry{own}), "her own line is her spoke record's")
-	s.Empty(foldActs("sess", "bob", []record.Entry{seen}), "bob saw her speak and learns no line")
+	s.Empty(retiredActs(foldActs("sess", "alice", []record.Entry{own})), "her own line is her spoke record's")
+	s.Empty(retiredActs(foldActs("sess", "bob", []record.Entry{seen})), "bob saw her speak and learns no line")
 }
 
 // TestWordsFromNobodySeenAreAVoice: words caught from a speaker not seen, and
@@ -70,7 +70,7 @@ func (s *ActFoldSuite) TestWordsFromNobodySeenAreAVoice() {
 		"noticed":      {"hops": 1},
 	} {
 		s.Run(name, func() {
-			acts := foldActs("sess", "dana", []record.Entry{s.beat("speak:one", speechVersion(fields))})
+			acts := retiredActs(foldActs("sess", "dana", []record.Entry{s.beat("speak:one", speechVersion(fields))}))
 			s.Require().Len(acts, 1)
 			p, ok := acts[0].Body.(Perception)
 			s.Require().True(ok, "a %T", acts[0].Body)
@@ -86,7 +86,7 @@ func (s *ActFoldSuite) TestWordsFromNobodySeenAreAVoice() {
 func (s *ActFoldSuite) TestACreaturesWordsFoldIntoItsPick() {
 	pick := s.beat("time:one", map[string]any{"beat": encounter.BeatAnswered, "creature": "guard", "key": "behavior/6:policy/time", "say": "", "to": ""})
 	said := s.beat("time:one", speechVersion(map[string]any{"speaker": "guard", "to": "alice", "words": "To arms!"}))
-	acts := foldActs("sess", "alice", []record.Entry{pick, said})
+	acts := retiredActs(foldActs("sess", "alice", []record.Entry{pick, said}))
 	s.Require().Len(acts, 1, "one table answer, its words folded in")
 	answer := acts[0].Body.(TableAnswer)
 	s.Equal("To arms!", answer.Say)
@@ -95,7 +95,7 @@ func (s *ActFoldSuite) TestACreaturesWordsFoldIntoItsPick() {
 	spoke := s.beat("speak:two", map[string]any{"beat": encounter.BeatSpoke, "actor": "alice", "target": "goblin", "option": "hello", "line": "Evening."})
 	answered := s.beat("speak:two", map[string]any{"beat": encounter.BeatAnswered, "creature": "goblin", "say": "", "to": ""})
 	reply := s.beat("speak:two", speechVersion(map[string]any{"speaker": "goblin", "to": "alice", "words": "Evening yourself."}))
-	acts = foldActs("sess", "alice", []record.Entry{spoke, answered, reply})
+	acts = retiredActs(foldActs("sess", "alice", []record.Entry{spoke, answered, reply}))
 	s.Require().Len(acts, 1, "one speak act, the answer and its words folded in")
 	line := acts[0].Body.(SpeakAct)
 	s.Require().NotNil(line.Answer)
@@ -106,7 +106,7 @@ func (s *ActFoldSuite) TestACreaturesWordsFoldIntoItsPick() {
 // TestACreaturesWordsWithNoPickOpenStandAlone: words from a creature whose
 // pick the reader was not shown stand as its answer, with nothing more.
 func (s *ActFoldSuite) TestACreaturesWordsWithNoPickOpenStandAlone() {
-	acts := foldActs("sess", "alice", []record.Entry{s.beat("time:one", speechVersion(map[string]any{"speaker": "guard", "words": "Halt."}))})
+	acts := retiredActs(foldActs("sess", "alice", []record.Entry{s.beat("time:one", speechVersion(map[string]any{"speaker": "guard", "words": "Halt."}))}))
 	s.Require().Len(acts, 1)
 	s.Equal(TableAnswer{Who: member("guard"), Say: "Halt."}, acts[0].Body)
 }
@@ -125,7 +125,7 @@ func (s *ActFoldSuite) TestAnEntitledReaderIsToldWhatThePickNoLongerCarries() {
 	reply := s.beat("speak:one", speechVersion(map[string]any{"speaker": "goblin", "to": "alice", "words": "Thief!", "fact": "caught"}))
 
 	s.Run("the line held and the words caught", func() {
-		acts := foldActs("sess", "alice", []record.Entry{spoke, answered, reply})
+		acts := retiredActs(foldActs("sess", "alice", []record.Entry{spoke, answered, reply}))
 		s.Require().Len(acts, 1)
 		answer := acts[0].Body.(SpeakAct).Answer
 		s.Require().NotNil(answer)
@@ -135,7 +135,7 @@ func (s *ActFoldSuite) TestAnEntitledReaderIsToldWhatThePickNoLongerCarries() {
 		s.Equal("Thief!", answer.Say)
 	})
 	s.Run("the words caught, not the line", func() {
-		acts := foldActs("sess", "bob", []record.Entry{answered, reply})
+		acts := retiredActs(foldActs("sess", "bob", []record.Entry{answered, reply}))
 		s.Require().Len(acts, 1)
 		answer := acts[0].Body.(TableAnswer)
 		s.Equal("Thief!", answer.Say)
@@ -145,7 +145,7 @@ func (s *ActFoldSuite) TestAnEntitledReaderIsToldWhatThePickNoLongerCarries() {
 	})
 	s.Run("no words caught", func() {
 		seen := s.beat("speak:one", speechVersion(map[string]any{"speaker": "goblin"}))
-		acts := foldActs("sess", "cole", []record.Entry{answered, seen})
+		acts := retiredActs(foldActs("sess", "cole", []record.Entry{answered, seen}))
 		s.Require().Len(acts, 1)
 		answer := acts[0].Body.(TableAnswer)
 		s.Empty(answer.Say)
@@ -157,10 +157,134 @@ func (s *ActFoldSuite) TestAnEntitledReaderIsToldWhatThePickNoLongerCarries() {
 		plain := s.beat("speak:two", map[string]any{"beat": encounter.BeatSpoke, "actor": "alice", "target": "goblin", "option": "greet", "line": "Evening."})
 		picked := s.beat("speak:two", map[string]any{"beat": encounter.BeatAnswered, "creature": "goblin", "say": "", "to": ""})
 		words := s.beat("speak:two", speechVersion(map[string]any{"speaker": "goblin", "to": "alice", "words": "Evening."}))
-		acts := foldActs("sess", "alice", []record.Entry{plain, picked, words})
+		acts := retiredActs(foldActs("sess", "alice", []record.Entry{plain, picked, words}))
 		answer := acts[0].Body.(SpeakAct).Answer
 		s.Equal(string(encounter.AnswerSuccess), answer.Key)
 		s.Equal("greet", answer.Option)
 		s.Empty(answer.Word, "it taught nothing")
 	})
+}
+
+// retiredActs is every act but the [SpeechAct]s: what the retired messages
+// fold into, still sent beside the speech act (rpg-project#934).
+func retiredActs(acts []Act) []Act {
+	var out []Act
+	for _, a := range acts {
+		if a.Family != FamilySpeech {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// speechActsOf is the Speech acts a recipient is sent of the entries.
+func speechActsOf(recipient string, entries ...record.Entry) []Act {
+	var out []Act
+	for _, a := range foldActs("sess", recipient, entries) {
+		if a.Family == FamilySpeech {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// TestEveryVersionIsOneSpeechAct is the facet table as the act carries it
+// (rpg-project#934, R1–R4, R6): each version of one spoken thing is one
+// Speech act with exactly the parts it holds, and its Perceived part names
+// the senses that delivered them.
+func (s *ActFoldSuite) TestEveryVersionIsOneSpeechAct() {
+	check := map[string]any{"skill": "persuasion", "dc": 10, "total": 15, "beaten": true}
+	beaten := true
+	roll := &Roll{Total: 15, Against: intp(10), Beaten: &beaten}
+	place := cell(4, 2)
+	sight, hearing := []Sense{SenseSight}, []Sense{SenseHearing}
+	both := []Sense{SenseSight, SenseHearing}
+	for _, tc := range []struct {
+		name      string
+		recipient string
+		version   map[string]any
+		want      SpeechAct
+		senses    []Sense
+	}{
+		{
+			name: "sees and hears", recipient: "bob",
+			version: map[string]any{"speaker": "alice", "to": "goblin", "words": "Evening.", "option": "hello", "check": check},
+			want: SpeechAct{Utterance: "u1", Speaker: member("alice"), SpokenTo: member("goblin"), Words: "Evening.",
+				Option: "hello", Loudness: "speak", Skill: "persuasion", Roll: roll},
+			senses: both,
+		},
+		{
+			name: "the speaker themself", recipient: "alice",
+			version: map[string]any{"speaker": "alice", "to": "goblin", "words": "Evening.", "option": "hello", "check": check},
+			want: SpeechAct{Utterance: "u1", Speaker: member("alice"), SpokenTo: member("goblin"), Words: "Evening.",
+				Option: "hello", Loudness: "speak", Skill: "persuasion", Roll: roll},
+			senses: both,
+		},
+		{
+			name: "hears, does not see: words and someone's roll from a place", recipient: "dana",
+			version: map[string]any{"hops": 0, "words": "Evening.", "option": "hello", "check": check},
+			want: SpeechAct{Utterance: "u1", Words: "Evening.", Option: "hello", Place: &place, Loudness: "speak",
+				Skill: "persuasion", Roll: roll},
+			senses: hearing,
+		},
+		{
+			name: "one room further at a shout", recipient: "cole",
+			version: map[string]any{"hops": 1, "words": "To arms!", "loudness": "shout"},
+			want:    SpeechAct{Utterance: "u1", Words: "To arms!", Place: &place, Hops: 1, Loudness: "shout"},
+			senses:  hearing,
+		},
+		{
+			name: "beyond the words' reach: a voice", recipient: "ed",
+			version: map[string]any{"hops": 2, "loudness": "shout"},
+			want:    SpeechAct{Utterance: "u1", Place: &place, Hops: 2, Loudness: "shout"},
+			senses:  hearing,
+		},
+		{
+			name: "a whisper watched, not heard", recipient: "bea",
+			version: map[string]any{"speaker": "alice", "to": "goblin", "loudness": "whisper"},
+			want:    SpeechAct{Utterance: "u1", Speaker: member("alice"), SpokenTo: member("goblin"), Loudness: "whisper"},
+			senses:  sight,
+		},
+		{
+			name: "seen, the one spoken to unseen", recipient: "bea",
+			version: map[string]any{"speaker": "alice", "words": "Evening."},
+			want:    SpeechAct{Utterance: "u1", Speaker: member("alice"), Words: "Evening.", Loudness: "speak"},
+			senses:  both,
+		},
+	} {
+		s.Run(tc.name, func() {
+			fields := speechVersion(tc.version)
+			if l, ok := tc.version["loudness"]; ok {
+				fields["loudness"] = l
+			}
+			acts := speechActsOf(tc.recipient, s.beat("speak:one", fields))
+			s.Require().Len(acts, 1, "one Speech act per version")
+			s.Equal(tc.want, acts[0].Body)
+			s.Equal(&Perceived{Senses: tc.senses, Via: []Party{member(tc.recipient)}}, acts[0].Perceived)
+		})
+	}
+}
+
+// TestASpeechActStandsBesideTheLineWithoutPartingIt: the Speech acts of a
+// line and its answer stand beside the speak act the answer still folds
+// into, in record order, and acts sharing an id stay adjacent (R28).
+func (s *ActFoldSuite) TestASpeechActStandsBesideTheLineWithoutPartingIt() {
+	spoke := s.beat("speak:one", map[string]any{"beat": encounter.BeatSpoke, "actor": "alice", "target": "goblin", "option": "hello", "line": "Evening."})
+	line := s.beat("speak:one", speechVersion(map[string]any{"speaker": "alice", "to": "goblin", "words": "Evening.", "option": "hello"}))
+	answered := s.beat("speak:one", map[string]any{"beat": encounter.BeatAnswered, "creature": "goblin", "say": "", "to": ""})
+	reply := s.beat("speak:one", speechVersion(map[string]any{"speaker": "goblin", "to": "alice", "words": "Evening yourself."}))
+	acts := foldActs("sess", "alice", []record.Entry{spoke, line, answered, reply})
+
+	var families []Family
+	for _, a := range acts {
+		families = append(families, a.Family)
+	}
+	s.Equal([]Family{FamilySpeech, FamilyAct, FamilySpeech}, families, "her line's speech act, the speak act, his answer's")
+	speak := acts[1].Body.(SpeakAct)
+	s.Require().NotNil(speak.Answer, "the answer still folds into the line")
+	s.Equal("Evening yourself.", speak.Answer.Say)
+	for i := 1; i < len(acts); i++ {
+		s.LessOrEqual(acts[i-1].ID, acts[i].ID, "record order")
+	}
+	s.Equal(acts[1].ID, acts[2].ID, "the speak act and the answer's speech act share the reply's id, side by side")
 }

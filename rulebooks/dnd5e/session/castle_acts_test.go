@@ -653,6 +653,23 @@ func describe(body session.ActBody) string {
 			s += fmt.Sprintf("; %s answers %q", b.Answer.Who.ID, b.Answer.Say)
 		}
 		return s
+	case session.SpeechAct:
+		who := b.Speaker.ID
+		if b.Place != nil {
+			who = fmt.Sprintf("someone at (%v,%v), %d room(s) off,", b.Place.X, b.Place.Y, b.Hops)
+		}
+		s := fmt.Sprintf("%s at %s", who, b.Loudness)
+		if b.SpokenTo.ID != "" {
+			s += " to " + b.SpokenTo.ID
+		}
+		if b.Words == "" {
+			return s + ", no words"
+		}
+		s += fmt.Sprintf(": %q", b.Words)
+		if b.Roll != nil {
+			s += fmt.Sprintf(" (%s) %s", b.Skill, roll(b.Roll))
+		}
+		return s
 	case session.DoorAct:
 		s := fmt.Sprintf("%s's door %s is %s", b.By.ID, b.Door, b.State)
 		if b.Roll != nil {
@@ -783,7 +800,9 @@ func Example_theGatehouseActs() {
 	// move         act 8        alice walks (-6,12) (-5,11)
 	// move         perception   alice sees [], loses [pedlar], sees [] change
 	// -- alice tells the captain to stand aside --
+	// speak        speech       alice at speak to captain: "Stand aside or bleed." (intimidation) rolled 1d20+3 = 17, beat 14
 	// speak        act 1        alice to captain, "stand-aside" (intimidation): rolled 1d20+3 = 17, beat 14; captain answers "…go on, then. I saw nothing."
+	// speak        speech       captain at speak to alice: "…go on, then. I saw nothing."
 	// speak        clock        tick 2
 	// speak        state        captain: ready -> cowed (stood aside)
 	// speak        state        gate-1: posted -> cowed (stood aside)
@@ -810,7 +829,9 @@ func Example_theGatehouseActs() {
 	// time         table_answer sergeant answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// time         table_answer turnkey answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// -- alice tells him again --
+	// speak        speech       alice at speak to captain: "Stand aside or bleed." (intimidation) rolled 1d20+3 = 8, missed 14
 	// speak        act 1        alice to captain, "stand-aside" (intimidation): rolled 1d20+3 = 8, missed 14; captain answers "You’ll bleed first."
+	// speak        speech       captain at speak to alice: "You’ll bleed first."
 	// speak        state        garrison and party turn hostile
 	// speak        clock        a fight forms: alice, captain, gate-1, gate-2
 	// -- alice closes on gate-1 --
@@ -829,6 +850,7 @@ func Example_theGatehouseActs() {
 	// pass         act 1        captain stays: already in reach
 	// end_turn     clock        captain's turn ends, gate-2's begins
 	// time         table_answer gate-2 answers behavior/6:policy/time with "fact", rolled 1 of 200
+	// time         speech       gate-2 at shout: "To arms! Intruders at the gate!"
 	// end_turn     clock        gate-2's turn ends, alice's begins
 	// end_turn     clock        tick 3
 	// time         table_answer hall-1 answers behavior/6:policy/time with "toward", rolled 1 of 50
@@ -872,7 +894,9 @@ func Example_theTroupeActs() {
 	// -- alice steps over to the stranger --
 	// move         act 1        alice walks (-1,15)
 	// -- alice asks the stranger what the bustle is --
+	// speak        speech       alice at speak to pedlar: "What’s all the bustle?" (persuasion) rolled 1d20+3 = 15, beat 5
 	// speak        act 1        alice to pedlar, "tonight" (persuasion): rolled 1d20+3 = 15, beat 5; pedlar answers "Feast for the whole court tonight — they’ll want players."
+	// speak        speech       pedlar at speak to alice: "Feast for the whole court tonight — they’ll want players."
 	// speak        clock        tick 1
 	// time         table_answer captain answers behavior/6:policy/time with "hold", no roll
 	// time         table_answer gate-1 answers behavior/6:policy/post with "toward", rolled 1 of 50
@@ -942,6 +966,7 @@ func Example_theTroupeActs() {
 	// move         perception   alice sees [], loses [pedlar], sees [] change
 	// move         act 8        alice walks (-6,11) (-6,10)
 	// move         table_answer captain answers behavior/6:policy/approached with "", rolled 1 of 100
+	// move         speech       captain at speak to alice: "You there. Nobody passes this gate without my say. Speak."
 	// move         act 1        alice walks (-5,9)
 	// move         clock        tick 3
 	// time         table_answer captain answers behavior/6:policy/time with "hold", no roll
@@ -972,7 +997,9 @@ func Example_theTroupeActs() {
 	// time         table_answer sergeant answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// time         table_answer turnkey answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// -- alice tells the captain they are the troupe --
+	// speak        speech       alice at speak to captain: "We’re the troupe for tonight’s feast." (performance) rolled 1d20+3 = 15, beat 13
 	// speak        act 1        alice to captain, "troupe" (performance): rolled 1d20+3 = 15, beat 13; captain answers "Through to the hall, then. Don’t dawdle."
+	// speak        speech       captain at speak to alice: "Through to the hall, then. Don’t dawdle."
 	// speak        clock        tick 4
 	// speak        state        captain: ready -> in-hall (admitted the party; goes in)
 	// time         table_answer captain answers behavior/6:policy/in-hall with "toward", rolled 1 of 50

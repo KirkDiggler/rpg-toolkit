@@ -228,6 +228,10 @@ type ActivateAct struct {
 }
 
 // SpeakAct is a line spoken, and its answer.
+//
+// RETIRED (rpg-project#934, R6): every spoken thing now rides a
+// [SpeechAct], one per perceiver. SpeakAct is still sent beside it until the
+// client has moved, then it stops; nothing new reads it.
 type SpeakAct struct {
 	// By is the speaker (spoke `actor`).
 	By Party
@@ -428,6 +432,9 @@ type TableAnswer struct {
 	// mover, for the line a bump (`barred`) or a hail (`approached`) draws
 	// from its reactor. The zero Party when the answer names nobody, as a
 	// time pick's line does.
+	//
+	// RETIRED with Say (rpg-project#934, R6): the words and whom they were
+	// said to ride the [SpeechAct]; TableAnswer stays for the pick.
 	To Party
 	// Option is the option answered (answered `option`).
 	Option string
@@ -437,7 +444,8 @@ type TableAnswer struct {
 	Word string
 	// Selector is the outcome's selector word (answered `selector`).
 	Selector string
-	// Say is what was said (answered `say`).
+	// Say is what was said (answered `say`). RETIRED (rpg-project#934, R6):
+	// the [SpeechAct] carries the words.
 	Say string
 	// Activity is the captured cue, or nil when the answer authored none.
 	Activity *ActivityCue
@@ -572,9 +580,65 @@ type SightChange struct {
 	KnowledgeChanged bool
 }
 
+// SpeechAct is one perceiver's version of one spoken thing (rpg-project#934,
+// R6), folded from the encounter's `speech` beat: a player's line, a
+// creature's answer, a hail, a shout, an overheard word.
+//
+// AN ABSENT PART WAS NOT PERCEIVED, and nothing is ever filled in by
+// inference: no speaker unless seen (R1), no words unless caught (R2), the
+// roll only with the words (R3), whom it was said to only if seen (R4).
+type SpeechAct struct {
+	// Utterance is the utterance id every perceiver's version of the same
+	// spoken thing shares (speech `utterance`).
+	Utterance string
+	// Speaker is who spoke, when this perceiver saw them; the zero Party
+	// otherwise (speech `speaker`).
+	Speaker Party
+	// SpokenTo is who or what it was said to, when this perceiver saw them:
+	// a member, or the prop a line was said to (speech `to`, `prop`). The
+	// zero Party otherwise.
+	SpokenTo Party
+	// Words are what was said, when this perceiver caught them; empty
+	// otherwise (speech `words`).
+	Words string
+	// Option is the line's option id, when the words were caught and they
+	// were a character's line (speech `option`).
+	Option string
+	// Place is where the voice came from, when this perceiver did not see
+	// the speaker; nil when they did (speech `place`).
+	Place *spatial.Position
+	// Hops is how many rooms away it was said, when this perceiver did not
+	// see the speaker: 0 is their own room (speech `hops`). Read only beside
+	// a Place.
+	Hops int
+	// Loudness is how loudly it was said: whisper, speak, shout or scream
+	// (speech `loudness`).
+	Loudness string
+	// Skill is the line's skill, and Roll its check, when the words were
+	// caught and the line was checked (speech `check`, R3). The roll is the
+	// Speaker's when there is one, and "someone's" when there is not.
+	Skill string
+	Roll  *Roll
+}
+
+// Perceived is how an act reached its recipient (rpg-project#934, R6): which
+// senses delivered it, and whose. Its own part so other families can carry
+// it later, one at a time, when a use calls for it.
+type Perceived struct {
+	// Senses are the senses that delivered it, in this order when present:
+	// sight (the speaker seen), hearing (the words, or a voice).
+	Senses []Sense
+	// Via are the members whose senses those were. Today always the
+	// recipient themself; a party sharing what it perceives (R5) adds
+	// friends here.
+	Via []Party
+}
+
 // Sound is a sound heard (heard).
 type Sound struct {
-	// Kind is the sound (heard `kind`).
+	// Kind is the sound (heard `kind`). The `voice` kind is RETIRED for
+	// players (rpg-project#934, R6): a voice rides a [SpeechAct] with no
+	// speaker and no words; clangs, crashes and booms stay here.
 	Kind string
 	// Cell is where it came from (heard `position`).
 	Cell spatial.Position
@@ -820,6 +884,7 @@ func (AttackAct) isActBody()    {}
 func (CastAct) isActBody()      {}
 func (ActivateAct) isActBody()  {}
 func (SpeakAct) isActBody()     {}
+func (SpeechAct) isActBody()    {}
 func (DeathSaveAct) isActBody() {}
 func (LootAct) isActBody()      {}
 func (HoldAct) isActBody()      {}
