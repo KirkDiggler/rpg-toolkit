@@ -50,15 +50,18 @@ const (
 // Loudnesses is every loudness word, in the order a refusal lists them.
 var Loudnesses = []Loudness{LoudnessWhisper, LoudnessSpeak, LoudnessShout, LoudnessScream}
 
-// loudnessOrder is [Loudnesses] as the words a table's `heard` loudness and
-// a held voice are compared by ([behavior.Facts.Loudness]).
-var loudnessOrder = func() []string {
+// LoudnessOrder is THE ONE ORDER a table's `heard` loudness and a held voice
+// are compared by ([behavior.Facts.Loudness]): [Loudnesses] as words,
+// quietest first. Every Facts this encounter builds carries it
+// ([projectFacts]), so no two picks can judge a loudness by different
+// orders. A fresh slice each call, so no caller can change it for another.
+func LoudnessOrder() []string {
 	out := make([]string, len(Loudnesses))
 	for i, l := range Loudnesses {
 		out[i] = string(l)
 	}
 	return out
-}()
+}
 
 // atOrAbove reports whether a loudness is at or above another, by
 // [Loudnesses]; false when either is not a loudness this rulebook names.

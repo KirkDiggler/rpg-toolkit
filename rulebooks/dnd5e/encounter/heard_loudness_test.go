@@ -130,3 +130,51 @@ func loudnessesOf(sounds []sound.Sound) []string {
 	}
 	return out
 }
+
+// TestASoundRowWalksToTheShoutItCounted: `toward: sound` walks to the sound
+// its own condition counted (rpg-project#933). Alice shouts once; a crier
+// across the room goes on talking every round after it; the shout-only
+// guard walks to where the shout was made, not to the fresher talk.
+func TestASoundRowWalksToTheShoutItCounted(t *testing.T) {
+	goblinIn := at(goblin, encounter.KindMonster, 4, 9)
+	goblinIn.Options = speechOptions("shout", "whisper")
+	enc := tableHall(t,
+		sheetFacts{
+			alice: {SpeedFeet: 30}, goblin: {SpeedFeet: 30}, hCrier: {SpeedFeet: 30},
+			noiseKeen: {SpeedFeet: 30, PassivePerception: 10},
+		},
+		at(alice, encounter.KindPlayer, 3, 9), goblinIn,
+		tabled(hCrier, 8, 0, encounter.Table{encounter.AnswerTime: {{Weight: 1, Say: "Who's there?"}}}),
+		tabled(noiseKeen, 2, 2, encounter.Table{encounter.AnswerTime: {
+			{Weight: 1, When: []encounter.When{{Heard: &encounter.HeardWhen{
+				Kind: behavior.Name{Literal: encounter.SoundVoice}, Within: 3, Loudness: string(encounter.LoudnessShout),
+			}}}, Toward: &encounter.Selector{Word: encounter.SelectorSound}},
+			{Weight: 1, Hold: true},
+		}}),
+	)
+	shoutAt, talkAt := cellAt(3, 9), cellAt(8, 0)
+	start := whereIs(t, enc, noiseKeen)
+	_, err := enc.Speak(t.Context(), &encounter.SpeakInput{
+		Range: speakReach, Actor: alice, Target: goblin, OptionID: "hello", Skill: "persuasion",
+		Beaten: true, DC: 10, Total: 15, Roller: rollsLowest{},
+	})
+	require.NoError(t, err)
+	_, err = aRound(enc)
+	require.NoError(t, err)
+
+	heard := soundsHeldBy(t, enc, noiseKeen)
+	require.Contains(t, heard, encounter.SoundVoice, "precondition: he holds voices")
+	end := whereIs(t, enc, noiseKeen)
+	require.NotEqual(t, start, end, "the shout drew him")
+	require.Less(t, enc.Distance(end, shoutAt)-enc.Distance(start, shoutAt), 0.0, "toward the shout")
+	require.GreaterOrEqual(t, enc.Distance(end, talkAt)-enc.Distance(start, talkAt), 0.0, "not toward the talk")
+}
+
+// TestEveryPickJudgesLoudnessByTheOneOrder: the order is the rulebook's
+// loudness words, quietest first, and a caller cannot change it for another.
+func TestEveryPickJudgesLoudnessByTheOneOrder(t *testing.T) {
+	order := encounter.LoudnessOrder()
+	require.Equal(t, []string{"whisper", "speak", "shout", "scream"}, order)
+	order[0] = "changed"
+	require.Equal(t, "whisper", encounter.LoudnessOrder()[0], "each call hands a fresh slice")
+}
