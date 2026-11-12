@@ -1505,14 +1505,18 @@ type AnswerSpec struct {
 	// every file that has one.
 	Flee *FleeSpec `yaml:"flee,omitempty"`
 
-	// Recognize is what this row grants when it is a line's SUCCESS row and
-	// is the row answered (rpg-project#929): the `recognize:` an
-	// interaction's outcome uses, the same words. Legal only on an option's
-	// success rows; a missed line grants nothing, and a table row is refused.
+	// Recognize is what this row grants when it is a line's row and is the
+	// row answered (rpg-project#929): the `recognize:` an interaction's
+	// outcome uses, the same words. Legal on an option's success rows, and
+	// on its failure rows (rpg-project#932), granted when the checked line
+	// is missed; a table row is refused.
 	//
 	//	success:
 	//	  - say: Fair enough. In you go.
 	//	    recognize: { topic: admitted, holder: spoken_to, about: speaker }
+	//	failure:
+	//	  - say: Never seen you before.
+	//	    recognize: { topic: turned-away, holder: spoken_to, about: speaker }
 	Recognize *RecognizeSpec `yaml:"recognize,omitempty"`
 
 	// When is the condition this entry is on the table under

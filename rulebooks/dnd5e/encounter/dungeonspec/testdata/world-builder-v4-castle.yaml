@@ -1537,6 +1537,12 @@ room:
           # lines of his own. A member he recognises may come back and vouch
           # for whoever stands in his sight; a straggler he does not recognise
           # may make their own case. Neither moves the gate's conversation.
+          # Hand edit (rpg-project#932): one try at that case. Turned away,
+          # the straggler is remembered as turned away by this guard and by
+          # the other who saw it, and neither offers the case to them again;
+          # a friend's vouch still lets them in. An unrecognised speaker may
+          # also ask after their friends, and is told a friend can speak for
+          # them.
           - id: vouch
             say: They’re with us. The captain let us in.
             requires:
@@ -1564,6 +1570,12 @@ room:
                   in: [admitted]
               - not:
                   recognized: admitted
+              # "Gone" is judged against the guard spoken to: it holds here
+              # because each gate guard witnesses the other's refusals; a gate
+              # whose posted guards cannot see each other would need another
+              # means.
+              - not:
+                  recognized: turned-away
             success:
               - say: Fell behind, did you? Go on, catch them up.
                 recognize:
@@ -1572,7 +1584,22 @@ room:
                   about: speaker
                   heard_by: carriers_who_witnessed
             failure:
-              - say: Never seen you before. Back the way you came.
+              - say: Never seen you before. Unless one of that lot will speak for you.
+                recognize:
+                  topic: turned-away
+                  holder: spoken_to
+                  about: speaker
+                  heard_by: carriers_who_witnessed
+          - id: friends-inside
+            say: Our friends must have just gone in. Did you see a funny man and let them in?
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [admitted]
+              - not:
+                  recognized: admitted
+            success:
+              - say: The troupe? Aye, they’re inside. If one of them comes back and speaks for you, in you go.
           - id: troupe
             say: We’re the troupe for tonight’s feast.
             check:
@@ -1648,6 +1675,12 @@ room:
           # lines of his own. A member he recognises may come back and vouch
           # for whoever stands in his sight; a straggler he does not recognise
           # may make their own case. Neither moves the gate's conversation.
+          # Hand edit (rpg-project#932): one try at that case. Turned away,
+          # the straggler is remembered as turned away by this guard and by
+          # the other who saw it, and neither offers the case to them again;
+          # a friend's vouch still lets them in. An unrecognised speaker may
+          # also ask after their friends, and is told a friend can speak for
+          # them.
           - id: vouch
             say: They’re with us. The captain let us in.
             requires:
@@ -1675,6 +1708,12 @@ room:
                   in: [admitted]
               - not:
                   recognized: admitted
+              # "Gone" is judged against the guard spoken to: it holds here
+              # because each gate guard witnesses the other's refusals; a gate
+              # whose posted guards cannot see each other would need another
+              # means.
+              - not:
+                  recognized: turned-away
             success:
               - say: Fell behind, did you? Go on, catch them up.
                 recognize:
@@ -1683,7 +1722,22 @@ room:
                   about: speaker
                   heard_by: carriers_who_witnessed
             failure:
-              - say: Never seen you before. Back the way you came.
+              - say: Never seen you before. Unless one of that lot will speak for you.
+                recognize:
+                  topic: turned-away
+                  holder: spoken_to
+                  about: speaker
+                  heard_by: carriers_who_witnessed
+          - id: friends-inside
+            say: Our friends must have just gone in. Did you see a funny man and let them in?
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [admitted]
+              - not:
+                  recognized: admitted
+            success:
+              - say: The troupe? Aye, they’re inside. If one of them comes back and speaks for you, in you go.
           - id: troupe
             say: We’re the troupe for tonight’s feast.
             check:

@@ -751,7 +751,13 @@ const speakReach = 3
 // front gate's outcome writes, under the holder's sight identity.
 func (s *kingScene) recognizes(holder, subject encounter.MemberID) bool {
 	s.t.Helper()
-	_, ok := s.enc.ToData().Perception.Intel.Holdings[core.EntityID("member|"+string(holder))][intel.Subject("member|"+string(subject))][admittedTopic]
+	return s.recognizesOn(holder, subject, admittedTopic)
+}
+
+// recognizesOn reports whether holder holds topic about subject.
+func (s *kingScene) recognizesOn(holder, subject encounter.MemberID, topic intel.Topic) bool {
+	s.t.Helper()
+	_, ok := s.enc.ToData().Perception.Intel.Holdings[core.EntityID("member|"+string(holder))][intel.Subject("member|"+string(subject))][topic]
 
 	return ok
 }

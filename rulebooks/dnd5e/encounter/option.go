@@ -115,10 +115,11 @@ type Option struct {
 	// [AnswerFailure]. Nil answers nothing.
 	Failure []Answer `json:"Failure,omitempty"`
 
-	// Grants is what a SUCCESS row lands when it is the row answered
-	// (recognition.go, rpg-project#929): the consequence an interaction's
-	// outcome uses, on a reply. A plain line always lands; a checked one only
-	// when beaten. Nil grants nothing.
+	// Grants is what a row lands when it is the row answered (recognition.go,
+	// rpg-project#929): the consequence an interaction's outcome uses, on a
+	// reply. A success row's grant lands when the line lands — a plain line
+	// always, a checked one when beaten; a failure row's (rpg-project#932)
+	// when a checked line is missed. Nil grants nothing.
 	Grants []RowGrant `json:"Grants,omitempty"`
 }
 
@@ -715,12 +716,13 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 		return nil, fmt.Errorf("speak: %w", err)
 	}
 
-	// THE ROW'S GRANTS (rpg-project#929): a landed line's success row may
-	// grant a record, as an outcome does — after the answer that says it,
-	// before the interaction moves, every time the row lands.
-	if beaten && answered.pick != nil && len(option.Grants) > 0 {
+	// THE ROW'S GRANTS (rpg-project#929, #932): the row answered may grant a
+	// record, as an outcome does — a success row when the line lands, a
+	// failure row when it is missed — after the answer that says it, before
+	// the interaction moves, every time the row lands.
+	if answered.pick != nil && len(option.Grants) > 0 {
 		iid, _ := optionInteraction(option)
-		if err := e.applyGrants(option, answered.pick.Entry, recognitionLine{
+		if err := e.applyGrants(option, beaten, answered.pick.Entry, recognitionLine{
 			interaction: iid, option: option.ID, speaker: in.Actor, spokenTo: in.Target, witnesses: witnesses, at: at,
 		}); err != nil {
 			return nil, fmt.Errorf("speak: %w", err)

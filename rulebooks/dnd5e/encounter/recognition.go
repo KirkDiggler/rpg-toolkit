@@ -66,7 +66,9 @@ import (
 // a straggler making their own case. It is written by the same path, by the
 // same live sight, inside the same Speak, and EVERY TIME the row lands —
 // a record already held is confirmed, never written new, so when the holder
-// first recognised someone survives. A missed line grants nothing. A second
+// first recognised someone survives. A checked line's FAILURE row may carry
+// one too (rpg-project#932), landing only when the line is missed: a guard
+// who turns a straggler away holds that he did. A second
 // subject word, [RecognitionSpeaker], recognises the speaker alone. On a
 // line, `heard_by` means the other carriers of the interaction the line
 // reads or advances; a line that names none has nobody to hear it, and
@@ -282,15 +284,25 @@ func grantedTopics(interactions map[InteractionID]*interactionRecord, lines ...[
 	return out
 }
 
-// RowGrant is one consequence a line's SUCCESS row lands when that row is
-// the one answered (rpg-project#929): the same [Consequence] an
-// interaction's outcome uses, hung on a reply instead of a state. Every time
-// the row lands it grants again, for whoever is in sight then; a record that
-// is already held is confirmed, never written new. A missed check grants
-// nothing: there is no failure row grant.
+// RowGrant is one consequence a line's row lands when that row is the one
+// answered (rpg-project#929): the same [Consequence] an interaction's
+// outcome uses, hung on a reply instead of a state. Every time the row lands
+// it grants again, for whoever is in sight then; a record that is already
+// held is confirmed, never written new.
+//
+// A FAILURE ROW MAY GRANT TOO (rpg-project#932): a guard who turns a
+// straggler away comes to hold that he did, so the claim is not offered to
+// the same speaker twice. It lands only when a checked line is missed — a
+// plain line has no failure rows to hang one on.
 type RowGrant struct {
-	// Row is the index of the row in [Option.Success] whose landing grants.
+	// Row is the index of the row whose landing grants: in [Option.Success],
+	// or in [Option.Failure] when Failure is set.
 	Row int `json:"row"`
+
+	// Failure is true when Row indexes the failure rows (rpg-project#932):
+	// the grant lands when the line is missed. False, the zero value, is a
+	// success row's, as every grant before this field was.
+	Failure bool `json:"failure,omitempty"`
 
 	// Consequence is what it grants.
 	Consequence Consequence `json:"consequence"`
@@ -303,8 +315,12 @@ func validateGrants(o Option) error {
 	_, named := optionInteraction(o)
 	for i, g := range o.Grants {
 		what := fmt.Sprintf("option %q grant %d", o.ID, i)
-		if g.Row < 0 || g.Row >= len(o.Success) {
-			return fmt.Errorf("%s names success row %d, and the line has %d", what, g.Row, len(o.Success))
+		verdict, rows := AnswerSuccess, o.Success
+		if g.Failure {
+			verdict, rows = AnswerFailure, o.Failure
+		}
+		if g.Row < 0 || g.Row >= len(rows) {
+			return fmt.Errorf("%s names %s row %d, and the line has %d", what, verdict, g.Row, len(rows))
 		}
 		if err := validateConsequence(what, g.Consequence, named); err != nil {
 			return err
@@ -329,12 +345,13 @@ func cloneGrants(grants []RowGrant) []RowGrant {
 	return out
 }
 
-// applyGrants runs every grant of the success row that answered a landed
-// line (rpg-project#929): the same write an outcome makes, by the same live
+// applyGrants runs every grant of the row that answered the line — a
+// success row when it landed, a failure row when it was missed
+// (rpg-project#929, #932): the same write an outcome makes, by the same live
 // sight, inside the same Speak.
-func (e *Encounter) applyGrants(o Option, row int, line recognitionLine) error {
+func (e *Encounter) applyGrants(o Option, beaten bool, row int, line recognitionLine) error {
 	for _, g := range o.Grants {
-		if g.Row != row || g.Consequence.Recognize == nil {
+		if g.Failure == beaten || g.Row != row || g.Consequence.Recognize == nil {
 			continue
 		}
 		if err := e.grantRecognition(*g.Consequence.Recognize, line); err != nil {
