@@ -874,6 +874,7 @@ func speechPieces(recipient string, payload []byte) ([]piece, error) {
 		Option  string           `json:"option"`
 		Place   spatial.Position `json:"place"`
 		Hops    int              `json:"hops"`
+		Fact    string           `json:"fact"`
 		Check   *struct {
 			Skill       string          `json:"skill"`
 			DC          int             `json:"dc"`
@@ -913,14 +914,25 @@ func speechPieces(recipient string, payload []byte) ([]piece, error) {
 		return one(piece{family: FamilyAct, body: act, opens: true})
 	}
 	said := TableAnswer{Who: member(p.Speaker), To: to, Say: *p.Words}
+	if p.Fact != "" {
+		said.Word = factWord
+	}
 	return one(piece{family: FamilyTableAnswer, body: said, absorbAny: true, absorb: func(open ActBody) (ActBody, bool) {
 		switch b := open.(type) {
 		case SpeakAct:
 			if b.Answer == nil || b.Answer.Who != said.Who || b.Answer.Say != "" {
 				return nil, false
 			}
+			// A READER WHO CAUGHT THE WORDS AND HOLDS THE LINE is told what
+			// the pick no longer carries for everyone: the line it answered
+			// and how that went — both theirs already, in the line's act —
+			// and that it taught a fact, which their version names.
 			answer := *b.Answer
 			answer.Say, answer.To = said.Say, said.To
+			answer.Option, answer.Key = b.Option, lineKey(b)
+			if answer.Word == "" {
+				answer.Word = said.Word
+			}
 			b.Answer = &answer
 			return b, true
 		case TableAnswer:
@@ -928,10 +940,26 @@ func speechPieces(recipient string, payload []byte) ([]piece, error) {
 				return nil, false
 			}
 			b.Say, b.To = said.Say, said.To
+			if b.Word == "" {
+				b.Word = said.Word
+			}
 			return b, true
 		}
 		return nil, false
 	}})
+}
+
+// factWord is the outcome word of a row that teaches a fact: what the pick
+// said before its readers were told it by their version (rpg-project#933).
+const factWord = "fact"
+
+// lineKey is which of a line's tables answered it: success when it landed —
+// a plain line always lands — failure when its check missed.
+func lineKey(line SpeakAct) string {
+	if line.Roll != nil && line.Roll.Beaten != nil && !*line.Roll.Beaten {
+		return string(encounter.AnswerFailure)
+	}
+	return string(encounter.AnswerSuccess)
 }
 
 // temperedPiece is a temperament deal: a table roll of its own, dealt when
