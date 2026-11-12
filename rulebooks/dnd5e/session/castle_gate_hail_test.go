@@ -135,11 +135,11 @@ func TestCastleTheHailStopsTheWalk(t *testing.T) {
 	}
 	require.Equal(t, theHailCell, c.where(t, "alice"), "she stands where the hail stopped her")
 
-	hails := where[session.TableAnswer](played.to("alice"), func(a session.TableAnswer) bool { return a.Who == captainParty && a.Say != "" })
+	hails := saidBy(played.to("alice"), captainParty)
 	require.Len(t, hails, 1, "the captain says one line")
-	require.Equal(t, theCaptainsHail, hails[0].body.Say, "and it is his hail")
+	require.Equal(t, theCaptainsHail, *hails[0].body.Words, "and it is his hail")
 	require.Equal(t, "move", hails[0].act.Verb, "under her Move")
-	require.Equal(t, aliceParty, hails[0].body.To, "and spoken to her")
+	require.Equal(t, aliceParty, hails[0].body.SpokenTo, "and spoken to her")
 
 	// NOTHING RESUMES: the dropped cells are not walked by a later read.
 	c.bar(t, "alice")
@@ -244,18 +244,22 @@ func TestCastleABystanderListensIn(t *testing.T) {
 		return a.Who == captainParty && a.Key == "behavior/6:policy/approached"
 	})
 	require.Len(t, seen, 1, "the cleric sees the captain answer alice's approach")
-	require.Empty(t, seen[0].body.Say, "out of earshot, she reads none of his words")
-	require.Equal(t, session.Party{}, seen[0].body.To, "nor whom they were said to")
-	heard := where[session.TableAnswer](hail.to("alice"), func(a session.TableAnswer) bool { return a.Who == captainParty && a.Say != "" })
+	require.Empty(t, saidBy(hail.to("cleric"), captainParty), "out of earshot, she reads none of his words")
+	// She sees whom he hails, so his Speech act names alice (R4); it carries
+	// no words.
+	seenSaid := where[session.SpeechAct](hail.to("cleric"), func(s session.SpeechAct) bool { return s.Speaker == captainParty })
+	require.Len(t, seenSaid, 1, "she saw him say something")
+	require.Nil(t, seenSaid[0].body.Words)
+	heard := saidBy(hail.to("alice"), captainParty)
 	require.Len(t, heard, 1, "alice, whom he hails, reads his words")
-	require.Equal(t, theCaptainsHail, heard[0].body.Say)
-	require.Equal(t, aliceParty, heard[0].body.To)
+	require.Equal(t, theCaptainsHail, *heard[0].body.Words)
+	require.Equal(t, aliceParty, heard[0].body.SpokenTo)
 
 	greeted := c.play(t, "alice greets the captain", func() error {
 		_, err := speakAsOffered(context.Background(), c.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "greet"})
 		return err
 	})
-	require.Empty(t, where[session.SpeakAct](greeted.to("cleric"), func(session.SpeakAct) bool { return true }),
+	require.Empty(t, saidBy(greeted.to("cleric"), aliceParty),
 		"the cleric reads no line of alice's: she was seen to speak, out of earshot")
 	var versions []witnessed
 	for _, b := range beatsNamed(storyBeats(t, c.mgr, "sess", "cleric"), encounter.BeatSpeech) {
@@ -268,11 +272,11 @@ func TestCastleABystanderListensIn(t *testing.T) {
 	// ACROSS HER WHOLE STORY, not only that version: no beat of any kind
 	// tells her the words said at the gate, which line alice said, its
 	// check, how it went or what it taught.
-	lines := where[session.SpeakAct](greeted.to("alice"), func(s session.SpeakAct) bool { return s.By == aliceParty })
+	lines := saidBy(greeted.to("alice"), aliceParty)
 	require.Len(t, lines, 1, "precondition: alice's own act of her line")
-	said := []string{theCaptainsHail, lines[0].body.Line}
-	if lines[0].body.Answer != nil && lines[0].body.Answer.Say != "" {
-		said = append(said, lines[0].body.Answer.Say)
+	said := []string{theCaptainsHail, *lines[0].body.Words}
+	for _, answer := range saidBy(greeted.to("alice"), captainParty) {
+		said = append(said, *answer.body.Words)
 	}
 	for _, b := range storyBeats(t, c.mgr, "sess", "cleric") {
 		for _, key := range []string{"words", "say", "line"} {
@@ -290,8 +294,8 @@ func TestCastleABystanderListensIn(t *testing.T) {
 				"seq %d %s: she is told how the line went", b.Seq, b.Beat)
 		}
 	}
+	require.Empty(t, saidBy(greeted.to("cleric"), captainParty), "her acts carry none of his words")
 	for _, a := range where[session.TableAnswer](greeted.to("cleric"), func(a session.TableAnswer) bool { return a.Who == captainParty }) {
-		require.Empty(t, a.body.Say, "her acts carry none of his words")
 		require.Empty(t, a.body.Option, "nor the line he answered")
 		require.NotContains(t, []string{string(encounter.AnswerSuccess), string(encounter.AnswerFailure)}, a.body.Key, "nor how it went")
 	}
@@ -310,17 +314,18 @@ func TestCastleACompanionBesideHerHearsEveryWord(t *testing.T) {
 		return err
 	})
 	for _, who := range []string{"alice", "cleric"} {
-		lines := where[session.SpeakAct](greeted.to(who), func(s session.SpeakAct) bool { return s.By == aliceParty })
+		lines := saidBy(greeted.to(who), aliceParty)
 		require.Len(t, lines, 1, "%s reads alice's line", who)
 		line := lines[0].body
-		require.Equal(t, captainParty, line.To, "%s sees whom it was said to", who)
-		require.Equal(t, "greet", line.Option)
-		require.NotEmpty(t, line.Line)
-		require.NotNil(t, line.Answer, "%s reads the captain's answer", who)
-		require.NotEmpty(t, line.Answer.Say, "%s caught his words", who)
-		require.Equal(t, aliceParty, line.Answer.To, "said to alice")
-		require.Equal(t, "greet", line.Answer.Option, "%s is told the line he answered", who)
-		require.Equal(t, string(encounter.AnswerSuccess), line.Answer.Key, "%s is told how it went: a plain line lands", who)
+		require.Equal(t, captainParty, line.SpokenTo, "%s sees whom it was said to", who)
+		require.Equal(t, "greet", line.Option, "%s is told which line it was", who)
+		require.NotEmpty(t, *line.Words)
+		require.Nil(t, line.Roll, "a plain line rolls nothing")
+		answers := saidBy(greeted.to(who), captainParty)
+		require.Len(t, answers, 1, "%s reads the captain's answer", who)
+		require.NotEmpty(t, *answers[0].body.Words, "%s caught his words", who)
+		require.Equal(t, aliceParty, answers[0].body.SpokenTo, "said to alice")
+		require.Equal(t, lines[0].act.Act, answers[0].act.Act, "under her line's act")
 	}
 }
 
