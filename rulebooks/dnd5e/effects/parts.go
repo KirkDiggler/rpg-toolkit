@@ -42,6 +42,8 @@ type BindPartInput struct {
 	DisplayName   string
 	Origin        dndevents.ConditionOrigin
 	Owner         dndevents.ConditionAddress
+	// Address is the exact local attachment, distinct from the coordinator Owner.
+	Address dndevents.ConditionAddress
 }
 
 // PartCapabilities describes meaning the application compiler may query without
@@ -105,7 +107,23 @@ func BindPart(in *BindPartInput) (*BindPartOutput, error) {
 	if err != nil {
 		return nil, err
 	}
-	vocabulary, err := Bind(&BindInput{Origin: in.Origin, DisplayName: in.DisplayName})
+	input := BindInput{Origin: in.Origin, DisplayName: in.DisplayName}
+	if in.Address != (dndevents.ConditionAddress{}) {
+		if in.Address.MemberID != in.HolderID || in.Address.ConditionRef != in.Ref.String() {
+			return nil, fmt.Errorf("local attachment disagrees with part holder/ref")
+		}
+		input.Attachment = &AttachmentIdentity{Address: in.Address, ApplicationID: in.ApplicationID}
+	}
+	if definition.checkBinding != nil && definition.payload != nil {
+		output, err := definition.payload(in.Declaration)
+		if err != nil {
+			return nil, err
+		}
+		if err := definition.checkBinding(output, input); err != nil {
+			return nil, err
+		}
+	}
+	vocabulary, err := Bind(&input)
 	if err != nil {
 		return nil, err
 	}

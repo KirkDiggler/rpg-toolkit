@@ -19,12 +19,20 @@ const (
 	KindAdvantage   generic.KindName = "advantage"
 )
 
+// AttachmentIdentity identifies the exact local attachment and its generation.
+// It is not the coordinator address or source provenance.
+type AttachmentIdentity struct {
+	Address       dndevents.ConditionAddress
+	ApplicationID string
+}
+
 // BindInput supplies immutable instance attribution for the rulebook vocabulary.
 // Origin is not a condition's stacking qualifier; DisplayName is authored by its
 // descriptor rather than inferred from a ref or a particular source type.
 type BindInput struct {
 	Origin      dndevents.ConditionOrigin
 	DisplayName string
+	Attachment  *AttachmentIdentity
 }
 
 // BindOutput supplies the two generic vocabularies. The condition owner supplies
@@ -37,6 +45,7 @@ type BindOutput struct {
 // AssessInput asks one bound output about one typed rulebook context. No context
 // requests its description without an applied benefit. No operation mutates it.
 type AssessInput struct {
+	Attachment  *AttachmentIdentity
 	Query       Query
 	Output      *generic.Bound
 	Origin      dndevents.ConditionOrigin

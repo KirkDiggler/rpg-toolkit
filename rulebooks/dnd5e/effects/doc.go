@@ -16,7 +16,11 @@
 // its bindings and runtime snapshot. No item package or condition registry is
 // imported here, and no Raging implementation or per-source behavior is hidden
 // in the vocabulary. Save/check advantage, resistance and fixed/class damage
-// bonuses are the closed meanings used by the first consumer.
+// bonuses are the closed meanings used by the first consumer. Attack advantage
+// additionally declares by_holder or against_holder bearing. Target-side execution
+// requires exact local identity and captured configuration in authoritative facts;
+// it does not relabel the target as the actor. ProjectPartOutput and
+// AssessConfiguredOutput carry owned definitions through that same meaning.
 //
 // PartTemplate describes unbound authored meaning; ValidatePartTemplate reports
 // its kind-owned benefit/maintenance class and capabilities without runtime IDs.

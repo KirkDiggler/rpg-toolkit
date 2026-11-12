@@ -72,7 +72,7 @@ func buildLinked(data LinkedConditionData, restored bool) (*LinkedCondition, err
 	for _, declaration := range c.bindings.Parts {
 		bound, err := dndfx.BindPart(&dndfx.BindPartInput{
 			Declaration: declaration, Ref: c.ref, HolderID: c.member,
-			ApplicationID: c.application, DisplayName: c.bindings.Name, Origin: c.origin, Owner: owner,
+			ApplicationID: c.application, DisplayName: c.bindings.Name, Origin: c.origin, Owner: owner, Address: c.ConditionAddress(),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("linked part %q: %w", declaration.Key, err)
@@ -211,7 +211,14 @@ func (c *LinkedCondition) AssessActionEffects(in *contributions.AssessActionInpu
 	frame := in.Frame.Clone()
 	out := &contributions.AssessEffectsOutput{}
 	for _, part := range c.assembly.CurrentOutputs() {
-		answer, err := dndfx.Assess(&dndfx.AssessInput{Output: part.Output, Query: dndfx.Query{Action: &frame}, Origin: c.origin, DisplayName: c.bindings.Name})
+		projection, err := c.projectOutput(part)
+		if err != nil {
+			return nil, err
+		}
+		if projection.AgainstHolder {
+			continue
+		}
+		answer, err := dndfx.Assess(&dndfx.AssessInput{Output: part.Output, Query: dndfx.Query{Action: &frame}, Origin: c.origin, DisplayName: c.bindings.Name, Attachment: &dndfx.AttachmentIdentity{Address: c.ConditionAddress(), ApplicationID: c.application}})
 		if err != nil {
 			return nil, err
 		}

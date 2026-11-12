@@ -33,7 +33,11 @@ func advantagePartOutput(decl PartDeclaration) (generic.Output, error) {
 	if err := checkAdvantage(out); err != nil {
 		return generic.Output{}, err
 	}
-	if err := validateFrameGuard(decl.When, []machine.FactName{FactAbility}); err != nil {
+	m, err := advantageMeaning(out.Params)
+	if err != nil {
+		return generic.Output{}, err
+	}
+	if err := validateFrameGuard(decl.When, advantageFacts(m)); err != nil {
 		return generic.Output{}, err
 	}
 	return out, nil
