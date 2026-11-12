@@ -32,23 +32,30 @@ func TestCastlePrisonerAnswersWithCountedThoughtfulWithoutChangingTheLine(t *tes
 			scene.said("prisoner-1", "where-is-the-king", "persuasion", beaten)
 			story, err := scene.enc.Story(&encounter.StoryInput{Audience: hero})
 			require.NoError(t, err)
-			found := false
+			require.Equal(t, 1, scene.linesSaid(hero, "where-is-the-king"), "the hero asked once")
+			var answer map[string]any
+			var fact any
 			for _, record := range story {
 				var beat map[string]any
 				require.NoError(t, json.Unmarshal(record.Payload, &beat))
-				if beat["beat"] != encounter.BeatAnswered || beat["option"] != "where-is-the-king" {
-					continue
-				}
-				found = true
-				require.Equal(t, map[string]any{"ref": "dnd5e:activities:thoughtful", "cycles": float64(2)}, beat["activity"])
-				if beaten {
-					require.Contains(t, beat["say"], "Through the great hall")
-					require.Equal(t, "king-in-throne-room", beat["fact"])
-				} else {
-					require.Equal(t, "Why should I tell you? Get me out first.", beat["say"])
+				switch {
+				case beat["beat"] == encounter.BeatAnswered && beat["creature"] == "prisoner-1":
+					answer = beat
+				case beat["beat"] == encounter.BeatSpeech && beat["speaker"] == "prisoner-1":
+					fact = beat["fact"]
 				}
 			}
-			require.True(t, found)
+			require.NotNil(t, answer, "the prisoner answered")
+			require.Equal(t, map[string]any{"ref": "dnd5e:activities:thoughtful", "cycles": float64(2)}, answer["activity"])
+			said := scene.saidBy(hero, "prisoner-1")
+			require.NotEmpty(t, said, "the hero caught the prisoner's line")
+			if beaten {
+				require.Contains(t, said[len(said)-1], "Through the great hall")
+				require.Equal(t, "king-in-throne-room", fact, "the fact travels with the words")
+			} else {
+				require.Equal(t, "Why should I tell you? Get me out first.", said[len(said)-1])
+				require.Nil(t, fact)
+			}
 		})
 	}
 }

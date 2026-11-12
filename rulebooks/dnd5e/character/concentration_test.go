@@ -8,423 +8,230 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/stretchr/testify/suite"
-
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
-	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	dndevents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/stretchr/testify/suite"
 )
 
-// ConcentrationKeeperSuite is rpg-project#407's hop 2: what a keeper owes a
-// removal fact it did not publish, and what the caster answers about the spell
-// it is holding.
 type ConcentrationKeeperSuite struct {
 	suite.Suite
 	ctx context.Context
 	bus events.EventBus
 }
 
-func TestConcentrationKeeperSuite(t *testing.T) {
-	suite.Run(t, new(ConcentrationKeeperSuite))
-}
-
+func TestConcentrationKeeperSuite(t *testing.T) { suite.Run(t, new(ConcentrationKeeperSuite)) }
 func (s *ConcentrationKeeperSuite) SetupTest() {
 	s.ctx = context.Background()
 	s.bus = events.NewEventBus()
 }
 
-// bardData is a level-1 bard carrying the two conditions a True Strike cast
-// leaves behind: the hold, and the advantage it owns.
-func (s *ConcentrationKeeperSuite) bardData(carry ...dnd5eEvents.ConditionBehavior) *Data {
-	blobs := make([]json.RawMessage, 0, len(carry))
+func (s *ConcentrationKeeperSuite) bardData(carry ...dndevents.ConditionBehavior) *Data {
+	var blobs []json.RawMessage
 	for _, condition := range carry {
 		raw, err := condition.ToJSON()
 		s.Require().NoError(err)
 		blobs = append(blobs, raw)
 	}
-
-	return &Data{
-		ID:               "bard-1",
-		PlayerID:         "player-1",
-		Name:             "Hop Two",
-		Level:            1,
-		ProficiencyBonus: 2,
-		RaceID:           races.Human,
-		ClassID:          classes.Bard,
-		AbilityScores: shared.AbilityScores{
-			abilities.STR: 10,
-			abilities.DEX: 14,
-			abilities.CON: 12,
-			abilities.INT: 10,
-			abilities.WIS: 10,
-			abilities.CHA: 16,
-		},
-		HitPoints:      9,
-		MaxHitPoints:   9,
-		EquipmentSlots: EquipmentSlots{},
-		Conditions:     blobs,
-	}
+	return &Data{ID: "bard-1", PlayerID: "player-1", Name: "Keeper", Level: 1, ProficiencyBonus: 2, RaceID: races.Human, ClassID: classes.Bard,
+		AbilityScores: shared.AbilityScores{abilities.STR: 10, abilities.DEX: 14, abilities.CON: 12, abilities.INT: 10, abilities.WIS: 10, abilities.CHA: 16},
+		HitPoints:     9, MaxHitPoints: 9, EquipmentSlots: EquipmentSlots{}, Conditions: blobs}
 }
 
-// THE HOP-2 REGRESSION, and it fails on the code this test shipped with.
-//
-// Until now every removal on the bus was published by a condition ending
-// ITSELF, which calls its own Remove immediately after — so the keeper dropping
-// the behavior from its slice without unsubscribing it was invisible.
-// Concentration is the first thing a removal arrives for from OUTSIDE (the
-// recast drop, R3), and a hold dropped from the list but left on the bus keeps
-// answering damage with a check for a spell nobody is holding any more.
-//
-// The condition here is deliberately one that does NOT consume itself: a
-// self-consuming condition would have ended before the fact arrived, and the
-// assertion would pass against the very defect it is written to catch.
+func (s *ConcentrationKeeperSuite) bind(members ...*Character) *conditions.ApplicationBinding {
+	var participants []conditions.ParticipantConditions
+	for _, member := range members {
+		participants = append(participants, conditions.ParticipantConditions{MemberID: member.GetID(), Conditions: member.GetConditions()})
+	}
+	binding, err := conditions.BindApplications(&conditions.BindApplicationsInput{Participants: participants, Bus: s.bus})
+	s.Require().NoError(err)
+	for _, member := range members {
+		s.Require().NoError(Attach(s.ctx, member, s.bus))
+	}
+	s.T().Cleanup(func() { s.NoError(binding.Close(s.ctx)) })
+	return binding
+}
+
+func (s *ConcentrationKeeperSuite) damage(member string, amount int) *dndevents.DamageTakenEvent {
+	event := &dndevents.DamageTakenEvent{MemberID: member, Amount: amount}
+	s.Require().NoError(dndevents.DamageTakenTopic.On(s.bus).Publish(s.ctx, event))
+	return event
+}
+
+func (s *ConcentrationKeeperSuite) attack(actor, target string) dndevents.AttackChainEvent {
+	event := dndevents.AttackChainEvent{AttackerID: actor, TargetID: target, Frame: contributions.Frame{Actor: actor, Target: contributions.Known(target), Action: contributions.ActionFacts{Roll: contributions.Known(contributions.RollKindAttack)}}}
+	chain, err := dndevents.AttackChain.On(s.bus).PublishWithChain(s.ctx, event, events.NewStagedChain[dndevents.AttackChainEvent](combat.ModifierStages))
+	s.Require().NoError(err)
+	out, err := chain.Execute(s.ctx, event)
+	s.Require().NoError(err)
+	return out
+}
+
 func (s *ConcentrationKeeperSuite) TestAPrunedConditionIsUnsubscribed() {
-	hold := conditions.NewConcentratingCondition(
-		"bard-1", refs.Spells.TrueStrike().String(), conditions.TrueStrikeName, 2)
+	hold, err := currentHoldFixture(holdFixtureInput{Member: "bard-1", Source: refs.Spells.TrueStrike(), Name: conditions.TrueStrikeName, Turns: 2})
+	s.Require().NoError(err)
 	loaded, err := Load(s.ctx, s.bardData(hold))
 	s.Require().NoError(err)
-	s.Require().NoError(Attach(s.ctx, loaded, s.bus))
+	s.bind(loaded)
+	s.Require().NotEmpty(s.damage("bard-1", 12).FollowUps)
+	address := hold.ConditionAddress()
+	s.Require().NoError(dndevents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx, dndevents.ConditionRemovedEvent{MemberID: address.MemberID, ConditionRef: address.ConditionRef, SourceID: address.SourceID, Reason: conditions.ConcentrationEndedRecast}))
+	s.Empty(authored(loaded))
+	s.Empty(s.damage("bard-1", 12).FollowUps, "removal detaches the actual save-request subscriber")
+}
 
-	s.Require().NotEmpty(s.damage("bard-1", 12).FollowUps,
-		"the fixture has to answer damage before removal, or this proves nothing")
+func (s *ConcentrationKeeperSuite) twoBaneOwners() (*Character, *Character, *Character) {
+	a, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Baned(), MemberID: "target-1", SourceID: "bard-a", SourceRef: refs.Spells.Bane()})
+	s.Require().NoError(err)
+	b, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Baned(), MemberID: "target-1", SourceID: "bard-b", SourceRef: refs.Spells.Bane()})
+	s.Require().NoError(err)
+	var owners []*Character
+	for _, item := range []struct {
+		id    string
+		child *conditions.LinkedCondition
+	}{{"bard-a", a}, {"bard-b", b}} {
+		hold, err := currentHoldFixture(holdFixtureInput{Member: item.id, Source: refs.Spells.Bane(), Name: "Bane", Turns: 10, Skip: true,
+			Members: []conditions.LinkedMemberBinding{{Key: "target-1", Address: item.child.ConditionAddress(), Mode: conditions.LinkComposed}}})
+		s.Require().NoError(err)
+		data := s.bardData(hold)
+		data.ID = item.id
+		loaded, err := Load(s.ctx, data)
+		s.Require().NoError(err)
+		owners = append(owners, loaded)
+	}
+	data := s.bardData(a, b)
+	data.ID = "target-1"
+	target, err := Load(s.ctx, data)
+	s.Require().NoError(err)
+	target, err = Load(s.ctx, mustToData(s.T(), target))
+	s.Require().NoError(err)
+	s.bind(owners[0], owners[1], target)
+	return owners[0], owners[1], target
+}
 
-	// Somebody ELSE publishes the fact. The hold did not end itself, so nothing
-	// has called its Remove.
-	s.Require().NoError(dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx,
-		dnd5eEvents.ConditionRemovedEvent{
-			MemberID:     "bard-1",
-			ConditionRef: refs.Conditions.Concentrating().String(),
-			Reason:       conditions.ConcentrationEndedRecast,
-		}))
-
-	s.Empty(authored(loaded), "dropped from the sheet")
-	s.Empty(s.damage("bard-1", 12).FollowUps,
-		"AND off the bus — a condition that keeps answering events was never really removed")
+func (s *ConcentrationKeeperSuite) assertOtherOwnerPreserved(a, b, target *Character) {
+	s.Empty(authored(a))
+	s.Require().Len(authored(b), 1)
+	out, err := target.DescribeRollContributions(&dndevents.DescribeRollContributionsInput{Kind: dndevents.RollKindSavingThrow})
+	s.Require().NoError(err)
+	s.Require().Len(out.Contributions, 1)
+	s.Equal("bard-b", out.Contributions[0].Source.SourceID)
+	owner := authored(b)[0].(*conditions.LinkedCondition)
+	info, err := owner.MaintenanceInfo()
+	s.Require().NoError(err)
+	s.Equal(10, info.Duration.Remaining, "the other owner's clock is neither reset nor consumed")
+	s.Equal([]string{"target-1"}, owner.LinkedApplicationInfo().LiveMembers)
 }
 
 func (s *ConcentrationKeeperSuite) TestTwoRealBaneOwnersRemoveOnlyTheirQualifiedChildren() {
-	baneA, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
-		MemberID: "target-1", SourceID: "bard-a", SourceRef: refs.Spells.Bane(),
-	})
+	a, b, target := s.twoBaneOwners()
+	before, err := target.DescribeRollContributions(&dndevents.DescribeRollContributionsInput{Kind: dndevents.RollKindAttack})
 	s.Require().NoError(err)
-	baneB, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
-		MemberID: "target-1", SourceID: "bard-b", SourceRef: refs.Spells.Bane(),
-	})
-	s.Require().NoError(err)
-	holdA := conditions.NewConcentratingConditionWithInput(conditions.NewConcentratingConditionInput{
-		MemberID: "bard-a", SourceID: "bard-a", SpellRef: refs.Spells.Bane().String(),
-		SpellName: "Bane", TurnEnds: 10, SkipFirstTurnEnd: true,
-	})
-	holdB := conditions.NewConcentratingConditionWithInput(conditions.NewConcentratingConditionInput{
-		MemberID: "bard-b", SourceID: "bard-b", SpellRef: refs.Spells.Bane().String(),
-		SpellName: "Bane", TurnEnds: 10, SkipFirstTurnEnd: true,
-	})
-	s.Require().NoError(holdA.AddChild(s.ctx, baneA.ConditionAddress()))
-	s.Require().NoError(holdB.AddChild(s.ctx, baneB.ConditionAddress()))
-
-	targetData := s.bardData(baneA, baneB)
-	targetData.ID = "target-1"
-	target, err := Load(s.ctx, targetData)
-	s.Require().NoError(err)
-	target, err = Load(s.ctx, mustToData(s.T(), target))
-	s.Require().NoError(err, "persisted condition order survives a sheet round trip")
-	bardAData := s.bardData(holdA)
-	bardAData.ID = "bard-a"
-	bardA, err := Load(s.ctx, bardAData)
-	s.Require().NoError(err)
-	bardBData := s.bardData(holdB)
-	bardBData.ID = "bard-b"
-	bardB, err := Load(s.ctx, bardBData)
-	s.Require().NoError(err)
-	for _, member := range []*Character{target, bardA, bardB} {
-		s.Require().NoError(Attach(s.ctx, member, s.bus))
-	}
-
-	before, err := target.DescribeRollContributions(&dnd5eEvents.DescribeRollContributionsInput{
-		Kind: dnd5eEvents.RollKindAttack,
-	})
-	s.Require().NoError(err)
-	s.Require().NotEmpty(before.Contributions)
-	s.Equal("bard-a", before.Contributions[0].Source.SourceID, "persisted order chooses the oldest")
-
-	address := holdA.ConditionAddress()
-	s.Require().NoError(dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx,
-		dnd5eEvents.ConditionRemovedEvent{
-			MemberID: address.MemberID, ConditionRef: address.ConditionRef, SourceID: address.SourceID,
-			Reason: conditions.ConcentrationEndedRecast,
-		}))
-
-	s.Require().NotEmpty(authored(target))
-	after, err := target.DescribeRollContributions(&dnd5eEvents.DescribeRollContributionsInput{
-		Kind: dnd5eEvents.RollKindSavingThrow,
-	})
-	s.Require().NoError(err)
-	s.Require().NotEmpty(after.Contributions)
-	s.Equal("bard-b", after.Contributions[0].Source.SourceID)
-	s.Empty(authored(bardA))
-	s.Require().NotEmpty(authored(bardB))
-	liveB := authored(bardB)[0].(*conditions.ConcentratingCondition)
-	s.Equal(10, liveB.TurnEndsLeft, "handoff does not reset or consume the other owner's clock")
-	s.Equal([]dnd5eEvents.ConditionAddress{baneB.ConditionAddress()}, liveB.Children,
-		"A's source-qualified child removal does not alter B's bookkeeping")
+	s.Require().Len(before.Contributions, 1)
+	s.Equal("bard-a", before.Contributions[0].Source.SourceID)
+	owner := authored(a)[0].(*conditions.LinkedCondition).ConditionAddress()
+	s.Require().NoError(dndevents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx, dndevents.ConditionRemovedEvent{MemberID: owner.MemberID, ConditionRef: owner.ConditionRef, SourceID: owner.SourceID, Reason: conditions.ConcentrationEndedRecast}))
+	s.assertOtherOwnerPreserved(a, b, target)
 }
 
 func (s *ConcentrationKeeperSuite) TestLongRestRemovesOnlyTheQualifiedBaneOwnerAndChildren() {
-	baneA, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
-		MemberID: "target-1", SourceID: "bard-a", SourceRef: refs.Spells.Bane(),
-	})
-	s.Require().NoError(err)
-	baneB, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
-		MemberID: "target-1", SourceID: "bard-b", SourceRef: refs.Spells.Bane(),
-	})
-	s.Require().NoError(err)
-	holdA := conditions.NewConcentratingConditionWithInput(conditions.NewConcentratingConditionInput{
-		MemberID: "bard-a", SourceID: "bard-a", SpellRef: refs.Spells.Bane().String(),
-		SpellName: "Bane", TurnEnds: 10, SkipFirstTurnEnd: true,
-	})
-	holdB := conditions.NewConcentratingConditionWithInput(conditions.NewConcentratingConditionInput{
-		MemberID: "bard-b", SourceID: "bard-b", SpellRef: refs.Spells.Bane().String(),
-		SpellName: "Bane", TurnEnds: 10, SkipFirstTurnEnd: true,
-	})
-	s.Require().NoError(holdA.AddChild(s.ctx, baneA.ConditionAddress()))
-	s.Require().NoError(holdB.AddChild(s.ctx, baneB.ConditionAddress()))
-
-	targetData := s.bardData(baneA, baneB)
-	targetData.ID = "target-1"
-	target, err := Load(s.ctx, targetData)
-	s.Require().NoError(err)
-	bardAData := s.bardData(holdA)
-	bardAData.ID = "bard-a"
-	bardA, err := Load(s.ctx, bardAData)
-	s.Require().NoError(err)
-	bardBData := s.bardData(holdB)
-	bardBData.ID = "bard-b"
-	bardB, err := Load(s.ctx, bardBData)
-	s.Require().NoError(err)
-	for _, member := range []*Character{target, bardA, bardB} {
-		s.Require().NoError(Attach(s.ctx, member, s.bus))
-		s.False(member.IsDirty())
-	}
-
-	var removals []dnd5eEvents.ConditionRemovedEvent
-	_, err = dnd5eEvents.ConditionRemovedTopic.On(s.bus).Subscribe(s.ctx,
-		func(_ context.Context, event dnd5eEvents.ConditionRemovedEvent) error {
-			removals = append(removals, event)
-			return nil
-		})
-	s.Require().NoError(err)
-
-	s.Require().NoError(restErr(bardA.LongRest(s.ctx)))
-
-	s.Empty(authored(bardA), "the qualified owner leaves its caster sheet")
-	s.True(bardA.IsDirty())
-	s.Require().NotEmpty(authored(target), "only A's qualified child leaves the recipient")
-	s.True(target.IsDirty(), "the recipient persists its changed condition list")
-	s.Require().NotEmpty(authored(bardB), "B's qualified owner is preserved")
-	s.False(bardB.IsDirty(), "B's untouched sheet remains clean")
-	liveB := bardB.GetConditions()[0].(*conditions.ConcentratingCondition)
-	s.Equal(10, liveB.TurnEndsLeft)
-	s.True(liveB.SkipNextTurnEnd)
-	s.Equal([]dnd5eEvents.ConditionAddress{baneB.ConditionAddress()}, liveB.Children)
-
-	remaining, err := target.DescribeRollContributions(&dnd5eEvents.DescribeRollContributionsInput{
-		Kind: dnd5eEvents.RollKindAttack,
-	})
-	s.Require().NoError(err)
-	s.Require().NotEmpty(remaining.Contributions)
-	s.Equal("bard-b", remaining.Contributions[0].Source.SourceID)
-
-	addresses := make([]dnd5eEvents.ConditionAddress, 0, len(removals))
-	for _, removal := range removals {
-		addresses = append(addresses, removal.Address())
-		s.Equal("rest", removal.Reason)
-	}
-	s.ElementsMatch([]dnd5eEvents.ConditionAddress{
-		baneA.ConditionAddress(), holdA.ConditionAddress(),
-	}, addresses, "both removal facts preserve A's source identity")
+	a, b, target := s.twoBaneOwners()
+	s.Require().NoError(restErr(a.LongRest(s.ctx)))
+	s.assertOtherOwnerPreserved(a, b, target)
 }
 
 func (s *ConcentrationKeeperSuite) TestWrongBaneSourceDoesNotRemoveOrDirtyCharacter() {
-	bane, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
-		MemberID: "bard-1", SourceID: "bard-a", SourceRef: refs.Spells.Bane(),
-	})
+	bane, err := namedFixture(namedFixtureInput{Ref: refs.Conditions.Baned(), MemberID: "bard-1", SourceID: "bard-a", SourceRef: refs.Spells.Bane()})
 	s.Require().NoError(err)
 	loaded, err := Load(s.ctx, s.bardData(bane))
 	s.Require().NoError(err)
 	s.Require().NoError(Attach(s.ctx, loaded, s.bus))
 	s.False(loaded.IsDirty())
-
-	s.Require().NoError(dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx,
-		dnd5eEvents.ConditionRemovedEvent{
-			MemberID: "bard-1", ConditionRef: refs.Conditions.Baned().String(), SourceID: "bard-b",
-		}))
-	s.Require().NotEmpty(authored(loaded))
-	s.False(loaded.IsDirty(), "a mismatched source is an exact no-op")
-
-	s.Require().NoError(dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx,
-		dnd5eEvents.ConditionRemovedEvent{
-			MemberID: "bard-1", ConditionRef: refs.Conditions.Baned().String(),
-		}))
-	s.Require().NotEmpty(authored(loaded), "an empty source is an exact identity, not a wildcard")
-	s.False(loaded.IsDirty())
+	for _, source := range []string{"bard-b", ""} {
+		s.Require().NoError(dndevents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx, dndevents.ConditionRemovedEvent{MemberID: "bard-1", ConditionRef: refs.Conditions.Baned().String(), SourceID: source}))
+		s.Require().NotEmpty(authored(loaded))
+		s.False(loaded.IsDirty(), "exact identity is never a wildcard")
+	}
 }
 
-// The self-ending path is unchanged: a condition that already detached reports
-// IsApplied false, so the keeper's Remove is a no-op rather than a second one.
 func (s *ConcentrationKeeperSuite) TestASelfEndingConditionIsStillDroppedCleanly() {
-	trueStrike := conditions.NewTrueStrikeCondition("bard-1", "goblin-1", "")
-	loaded, err := Load(s.ctx, s.bardData(trueStrike))
+	child := conditions.NewTrueStrikeCondition("bard-1", "goblin-1", "")
+	loaded, err := Load(s.ctx, s.bardData(child))
 	s.Require().NoError(err)
 	s.Require().NoError(Attach(s.ctx, loaded, s.bus))
-
-	// The attack consumes it, which is the condition publishing its own removal
-	// and calling its own Remove before the keeper hears anything.
 	s.Require().NotEmpty(s.attack("bard-1", "goblin-1").AdvantageSources)
-
 	s.Empty(authored(loaded))
 	s.Empty(s.attack("bard-1", "goblin-1").AdvantageSources)
+}
+
+func (s *ConcentrationKeeperSuite) TestStatusViewUsesProviderMaintenanceDescription() {
+	hold, err := currentHoldFixture(holdFixtureInput{Member: "bard-1", Source: refs.Spells.TrueStrike(), Name: conditions.TrueStrikeName, Turns: 2})
+	s.Require().NoError(err)
+	loaded, err := Load(s.ctx, s.bardData(hold))
+	s.Require().NoError(err)
+	view, err := loaded.StatusView(&StatusViewInput{})
+	s.Require().NoError(err)
+	s.Require().Len(view.View.Conditions, 1)
+	s.Equal("Concentrating on True Strike", view.View.Conditions[0].Name)
+	s.Contains(view.View.Conditions[0].Detail, "2 maintainer turn ends remaining")
 }
 
 func (s *ConcentrationKeeperSuite) TestACharacterHoldingNothingSaysSo() {
 	loaded, err := Load(s.ctx, s.bardData())
 	s.Require().NoError(err)
-
-	_, holding := loaded.Concentration()
-
-	s.False(holding)
+	view, err := loaded.Concentration()
+	s.Require().NoError(err)
+	s.False(view.Held)
 }
 
 func (s *ConcentrationKeeperSuite) TestACasterAnswersWhichSpellItIsHolding() {
-	hold := conditions.NewConcentratingCondition(
-		"bard-1", refs.Spells.TrueStrike().String(), conditions.TrueStrikeName, 2)
-	s.Require().NoError(hold.AddChild(s.ctx, dnd5eEvents.ConditionAddress{
-		MemberID:     "bard-1",
-		ConditionRef: refs.Conditions.TrueStrike().String(),
-	}))
+	child := dndevents.ConditionAddress{MemberID: "bard-1", ConditionRef: refs.Conditions.TrueStrike().String()}
+	hold, err := currentHoldFixture(holdFixtureInput{Member: "bard-1", Source: refs.Spells.TrueStrike(), Name: conditions.TrueStrikeName, Turns: 2,
+		Members: []conditions.LinkedMemberBinding{{Key: "strike", Address: child, Mode: conditions.LinkAdopted}}})
+	s.Require().NoError(err)
 	loaded, err := Load(s.ctx, s.bardData(hold))
 	s.Require().NoError(err)
-
-	view, holding := loaded.Concentration()
-
-	s.Require().True(holding)
-	s.Equal(refs.Spells.TrueStrike().String(), view.SpellRef)
-	s.Equal(conditions.TrueStrikeName, view.SpellName)
+	view, err := loaded.Concentration()
+	s.Require().NoError(err)
+	s.True(view.Held)
+	s.Equal(refs.Spells.TrueStrike().String(), view.SourceRef)
+	s.Equal(conditions.TrueStrikeName, view.SourceName)
 	s.Equal(1, view.ChildCount)
 }
 
-// attack publishes one attack down the chain and returns the folded event.
-func (s *ConcentrationKeeperSuite) attack(attackerID, targetID string) dnd5eEvents.AttackChainEvent {
-	event := dnd5eEvents.AttackChainEvent{AttackerID: attackerID, TargetID: targetID, Frame: contributions.Frame{
-		Actor:  attackerID,
-		Target: contributions.Known(targetID),
-		Action: contributions.ActionFacts{Roll: contributions.Known(contributions.RollKindAttack)},
-	}}
-	staged := events.NewStagedChain[dnd5eEvents.AttackChainEvent](combat.ModifierStages)
-
-	modified, err := dnd5eEvents.AttackChain.On(s.bus).PublishWithChain(s.ctx, event, staged)
-	s.Require().NoError(err)
-
-	folded, err := modified.Execute(s.ctx, event)
-	s.Require().NoError(err)
-	return folded
-}
-
-// damage publishes one damage-taken fact and hands back what subscribers wrote.
-func (s *ConcentrationKeeperSuite) damage(memberID string, amount int) *dnd5eEvents.DamageTakenEvent {
-	event := &dnd5eEvents.DamageTakenEvent{MemberID: memberID, Amount: amount}
-	s.Require().NoError(dnd5eEvents.DamageTakenTopic.On(s.bus).Publish(s.ctx, event))
-	return event
-}
-
-// THE REAL KEEPER, and the invariant it kept breaking: a condition hears a
-// fact addressed to it and acts on it BEFORE its keeper detaches it.
-//
-// Measured inside a real Resolve before it was fixed. Two order defects, both
-// invisible on a bare bus with the condition alone, which is why the
-// conditions-package tests passed:
-//
-//  1. The keeper subscribes to removals when the sheet attaches, and every
-//     condition subscribes later — at attach for a persisted one, and at
-//     ConditionAppliedTopic for one delivered mid-fight. So the keeper's
-//     handler always runs first and detached the hold before the hold could
-//     answer.
-//  2. Detaching publishes. That re-enters this same keeper handler, and a
-//     handler that assigned its pruned list AFTER detaching would overwrite
-//     the nested assignment and put the child back on the sheet.
-//
-// Neither is about concentration. Concentration is just the first thing that
-// answers a removal addressed to itself.
 func (s *ConcentrationKeeperSuite) TestAHoldEndedByAFactStripsItsChildren() {
-	for _, reason := range []string{
-		conditions.ConcentrationEndedRecast,
-		conditions.ConcentrationEndedDamage,
-	} {
+	for _, reason := range []string{conditions.ConcentrationEndedRecast, conditions.ConcentrationEndedDamage} {
 		s.Run(reason, func() {
 			s.SetupTest()
-
-			var ended []dnd5eEvents.ConcentrationEndedEvent
-			_, err := dnd5eEvents.ConcentrationEndedTopic.On(s.bus).Subscribe(s.ctx,
-				func(_ context.Context, event dnd5eEvents.ConcentrationEndedEvent) error {
-					ended = append(ended, event)
-					return nil
-				})
+			child := conditions.NewTrueStrikeCondition("bard-1", "goblin-1", "")
+			address := conditions.ConditionAddressOf("bard-1", child)
+			hold, err := currentHoldFixture(holdFixtureInput{Member: "bard-1", Source: refs.Spells.TrueStrike(), Name: conditions.TrueStrikeName, Turns: 2,
+				Members: []conditions.LinkedMemberBinding{{Key: "strike", Address: address, Mode: conditions.LinkAdopted}}})
 			s.Require().NoError(err)
-
-			child := dnd5eEvents.ConditionAddress{
-				MemberID:     "bard-1",
-				ConditionRef: refs.Conditions.TrueStrike().String(),
-			}
-			hold := conditions.NewConcentratingCondition(
-				"bard-1", refs.Spells.TrueStrike().String(), conditions.TrueStrikeName, 2)
-			trueStrike := conditions.NewTrueStrikeCondition("bard-1", "goblin-1", "")
-			loaded, loadErr := Load(s.ctx, s.bardData(hold, trueStrike))
-			s.Require().NoError(loadErr)
-			s.Require().NoError(Attach(s.ctx, loaded, s.bus))
-
-			var live *conditions.ConcentratingCondition
-			for _, cond := range loaded.GetConditions() {
-				if hold, isHold := cond.(*conditions.ConcentratingCondition); isHold {
-					live = hold
-				}
-			}
-			s.Require().NotNil(live)
-			s.Require().NoError(live.AddChild(s.ctx, child))
-			// Both are on the sheet and both are live. NOT asserted with an
-			// attack: True Strike consumes itself on one, which would end the
-			// hold as "last child left" and test the wrong path entirely.
-			// TestASelfEndingConditionIsStillDroppedCleanly is where the
-			// advantage itself is pinned.
-			s.Require().Contains(heldRefs(authored(loaded)), refs.Conditions.Concentrating().String())
-			s.Require().Greater(len(authored(loaded)), 1, "the hold and its child are both on the sheet")
-			s.Require().True(live.IsApplied())
-
-			// Exactly what resolution publishes: ONE removal, for the owner.
-			s.Require().NoError(dnd5eEvents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx,
-				dnd5eEvents.ConditionRemovedEvent{
-					MemberID:     "bard-1",
-					ConditionRef: refs.Conditions.Concentrating().String(),
-					Reason:       reason,
-				}))
-
-			var endedReasons []string
-			for _, fact := range ended {
-				endedReasons = append(endedReasons, fact.Reason)
-			}
-			s.Require().Equal([]string{reason}, endedReasons, "exactly one ended fact, carrying the reason")
-			s.Equal([]dnd5eEvents.ConditionAddress{child}, ended[0].Removed)
-
-			s.Empty(authored(loaded),
-				"the hold AND its child are off the sheet — a nested publish must not resurrect the child")
-			s.Empty(s.attack("bard-1", "goblin-1").AdvantageSources,
-				"and the child is off the bus too")
-			s.False(live.IsApplied(), "the hold itself is unsubscribed")
+			loaded, err := Load(s.ctx, s.bardData(hold, child))
+			s.Require().NoError(err)
+			var ended []dndevents.ConcentrationEndedEvent
+			_, err = dndevents.ConcentrationEndedTopic.On(s.bus).Subscribe(s.ctx, func(_ context.Context, e dndevents.ConcentrationEndedEvent) error {
+				ended = append(ended, e)
+				return nil
+			})
+			s.Require().NoError(err)
+			s.bind(loaded)
+			owner := hold.ConditionAddress()
+			s.Require().NoError(dndevents.ConditionRemovedTopic.On(s.bus).Publish(s.ctx, dndevents.ConditionRemovedEvent{MemberID: owner.MemberID, ConditionRef: owner.ConditionRef, SourceID: owner.SourceID, Reason: reason}))
+			s.Require().Len(ended, 1)
+			s.Equal(reason, ended[0].Reason)
+			s.Equal([]dndevents.ConditionAddress{address}, ended[0].Removed)
+			s.Empty(authored(loaded), "nested removal must not restore the child")
+			s.Empty(s.attack("bard-1", "goblin-1").AdvantageSources)
+			s.Empty(s.damage("bard-1", 12).FollowUps)
 		})
 	}
 }

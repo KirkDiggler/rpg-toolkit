@@ -14,7 +14,6 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
@@ -91,16 +90,13 @@ func TestDeathSaveUsesCurrentBaneAndPreservesNaturalTwentyPolicy(t *testing.T) {
 		{name: "natural twenty recovers", d20: 20, outcome: character.DeathSaveOutcomeRecovered, total: 17},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			bane, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
-				MemberID: deathSaveCharacterID, SourceID: "bane-caster", SourceRef: refs.Spells.Bane(),
-			})
-			require.NoError(t, err)
+			bane := fixtureNamed(t, namedFixtureInput{Ref: refs.Conditions.Baned(), Member: deathSaveCharacterID, Source: "bane-caster", Origin: refs.Spells.Bane()})
 			stored, err := bane.ToJSON()
 			require.NoError(t, err)
 			characterData := deathSaveCharacter(0, &saves.DeathSaveState{})
 			characterData.Conditions = []json.RawMessage{stored}
 			roller := &baneDeathSaveRoller{d20: tc.d20, d4: 3}
-			out, err := DeathSave(context.Background(), &DeathSaveInput{Character: characterData, Roller: roller})
+			out, err := DeathSave(context.Background(), &DeathSaveInput{Character: characterData, Roller: roller, Others: []Participant{fixtureOwnerParticipant(t, "bane-caster", refs.Spells.Bane(), bane.ConditionAddress())}})
 			require.NoError(t, err)
 			require.Equal(t, tc.outcome, out.Result.Outcome)
 			require.Equal(t, tc.total, out.Result.Calculation.Total)
@@ -319,7 +315,7 @@ func TestDeathSaveTeardownFailureRefusesAnOtherwiseSuccessfulResult(t *testing.T
 func TestDeathSaveAttachFailureRollsBackAndTearsDown(t *testing.T) {
 	attachErr := errors.New("death save subscription refused")
 	bus := newLongRestFaultBus()
-	bus.failSubscribeAt = 3
+	bus.failSubscribeAt = 5 // two transport subscriptions, then a partial keeper
 	bus.subscribeErr = attachErr
 	surf := newSurface(bus)
 	roller := &deathSaveRoller{value: 10}

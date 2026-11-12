@@ -30,9 +30,18 @@ func (c *Composed) Snapshot() Snapshot {
 // handles, in recipe order. The handles expose no mutation operation; Params and
 // Host return copies. Their guards read the live bag, so fetch current outputs
 // again after a state transition and use Snapshot to retain lifecycle state.
-// A terminal state has no outputs. Reading does not attach or publish.
+// During End-before-detach, the previous state's outputs still answer, just as
+// subscribed contributions do. After end reporting, terminal state has no outputs.
+// Reading does not attach or publish; Snapshot always reports actual machine state.
 func (c *Composed) CurrentOutputs() []*Bound {
-	return slices.Clone(c.outputs[c.m.State()])
+	state := c.m.State()
+	if c.endState != nil {
+		state = *c.endState
+	}
+	if c.m.Program().IsTerminal(state) {
+		return nil
+	}
+	return slices.Clone(c.outputs[state])
 }
 
 func cloneRef(ref *core.Ref) *core.Ref {

@@ -297,6 +297,11 @@
 // All input, data and projection lists are detached; an absent list retains
 // original authored appearance. Structural walls carry the same opaque choices
 // only when their existing permitted-identity projection supplies the wall.
+// FaceFinishes separately capture explicit positive-z/negative-z wall-face
+// material refs. Known sides are unique, refs are nonblank, and every boundary
+// is detached. They persist in the site's FieldData and follow that wall's
+// existing projection; opening-only replacements never change them. This
+// module neither resolves material resources nor infers regional wall charts.
 //
 // # Structural walls and their permitted cuts (rpg-project#169)
 //

@@ -72,6 +72,10 @@ const (
 	beatBarred machine.Beat = "barred"
 	// beatFact is a fact the listener learned.
 	beatFact machine.Beat = "fact"
+	// beatTopic is a topic the listener came to hold about somebody
+	// (rpg-project#929): through his own judgement or heard, landed when the
+	// record is first held. A guard reads which topic with `topic:<id>`.
+	beatTopic machine.Beat = "topic"
 	// beatClock prefixes a clock's round: `clock:world`, `clock:fight`,
 	// `clock:bell:<prop>`, or an area clock's name.
 	beatClock = "clock:"
@@ -84,6 +88,9 @@ const (
 	bellPrefix = "bell:"
 	// factPrefix prefixes a fact a guard reads: `fact:<id>`.
 	factPrefix = "fact:"
+	// topicPrefix prefixes a topic a guard reads: `topic:<id>`, true while
+	// the member holds that topic about anybody (rpg-project#929).
+	topicPrefix = "topic:"
 	// factEnemy is the fact a guard reads the enemy band from.
 	factEnemy machine.FactName = "enemy"
 )
@@ -102,14 +109,17 @@ func clockBeat(name string) machine.Beat { return machine.Beat(beatClock + name)
 // round it happened in, and — for a targeted beat — the one member it landed
 // on, with the regions it crossed to reach them.
 type wakeBeat struct {
-	Beat    machine.Beat
-	Kind    string // the heard occurrence's kind; empty means unknown, never a later holding
-	Cell    *spatial.Position
-	Subject MemberID
-	Member  MemberID
-	Faction FactionID
-	Hops    int
-	At      uint64
+	Beat machine.Beat
+	Kind string // the heard occurrence's kind; empty means unknown, never a later holding
+	// Loudness is a heard voice's loudness; empty for a sound that states
+	// none (rpg-project#933).
+	Loudness Loudness
+	Cell     *spatial.Position
+	Subject  MemberID
+	Member   MemberID
+	Faction  FactionID
+	Hops     int
+	At       uint64
 }
 
 // wakeEv is a beat as one listener is asked it: the round, and how far it
@@ -117,6 +127,7 @@ type wakeBeat struct {
 // place, which no scope admits).
 type wakeEv struct {
 	Kind     string
+	Loudness Loudness
 	At       uint64
 	Distance int
 	Hops     int
@@ -181,7 +192,9 @@ func (e *Encounter) land(b wakeBeat) {
 }
 
 // landHeard lands a sound on each hearer that listens for `heard`.
-func (e *Encounter) landHeard(heard []hearing, kind string, where spatial.Position, maker MemberID, at uint64) {
+// A voice carries its loudness (rpg-project#933); a clang, a crash or a
+// boom states none.
+func (e *Encounter) landHeard(heard []hearing, kind string, loudness Loudness, where spatial.Position, maker MemberID, at uint64) {
 	if !e.listened(beatHeard) {
 		return
 	}
@@ -190,7 +203,9 @@ func (e *Encounter) landHeard(heard []hearing, kind string, where spatial.Positi
 			continue
 		}
 		cell := where
-		e.land(wakeBeat{Beat: beatHeard, Kind: kind, Cell: &cell, Subject: maker, Member: h.member, Hops: h.hops, At: at})
+		e.land(wakeBeat{
+			Beat: beatHeard, Kind: kind, Loudness: loudness, Cell: &cell, Subject: maker, Member: h.member, Hops: h.hops, At: at,
+		})
 	}
 }
 
@@ -217,6 +232,17 @@ func (e *Encounter) landDeedBeat(verb string, actor MemberID, where spatial.Posi
 		cell := where
 		e.land(wakeBeat{Beat: b, Cell: &cell, Subject: actor, At: at})
 	}
+}
+
+// landTopicBeat lands a topic on the member who came to hold it, when it
+// listens (rpg-project#929), as a learned fact lands ([Encounter.landFactBeat]):
+// a state that is not listening does not hear it, and a later state that
+// listens reads it through its `topic:<id>` guard on the next topic beat.
+func (e *Encounter) landTopicBeat(member MemberID, at uint64) {
+	if _, ok := e.listensFor(member, beatTopic); !ok {
+		return
+	}
+	e.land(wakeBeat{Beat: beatTopic, Member: member, At: at})
 }
 
 // landFactBeat lands a fact on the member who learned it, when it listens.
@@ -362,7 +388,7 @@ func (e *Encounter) matchOne(b wakeBeat) error {
 // evFor is a landed beat as one listener is asked it. An error only when the
 // field's partitions cannot be derived ([field.partitionsNow]).
 func (e *Encounter) evFor(id MemberID, m *memberRecord, b wakeBeat) (wakeEv, error) {
-	ev := wakeEv{Kind: b.Kind, At: b.At, Distance: -1, Hops: -1}
+	ev := wakeEv{Kind: b.Kind, Loudness: b.Loudness, At: b.At, Distance: -1, Hops: -1}
 	if b.Cell == nil {
 		return ev, nil
 	}
@@ -535,14 +561,17 @@ func (e *Encounter) landFightRound(fighters []MemberID, at uint64) {
 type WakeBeatData struct {
 	// Kind is this heard occurrence's sound kind, not a lookup of current
 	// holdings. Empty remains unknown and no maker is added to wakeEv.
-	Kind    string        `json:"kind,omitempty"`
-	Beat    string        `json:"beat"`
-	Cell    *PositionData `json:"cell,omitempty"`
-	Subject MemberID      `json:"subject,omitempty"`
-	Member  MemberID      `json:"member,omitempty"`
-	Faction FactionID     `json:"faction,omitempty"`
-	Hops    int           `json:"hops,omitempty"`
-	At      uint64        `json:"at"`
+	Kind string `json:"kind,omitempty"`
+	// Loudness is a heard voice's loudness, omitted for a sound that states
+	// none, so a beat saved before it existed loads unchanged.
+	Loudness string        `json:"loudness,omitempty"`
+	Beat     string        `json:"beat"`
+	Cell     *PositionData `json:"cell,omitempty"`
+	Subject  MemberID      `json:"subject,omitempty"`
+	Member   MemberID      `json:"member,omitempty"`
+	Faction  FactionID     `json:"faction,omitempty"`
+	Hops     int           `json:"hops,omitempty"`
+	At       uint64        `json:"at"`
 }
 
 // wakeBeatsData renders the landed beats, nil when none waits.
@@ -553,7 +582,7 @@ func wakeBeatsData(in []wakeBeat) []WakeBeatData {
 	out := make([]WakeBeatData, len(in))
 	for i, b := range in {
 		d := WakeBeatData{
-			Beat: string(b.Beat), Kind: b.Kind, Subject: b.Subject, Member: b.Member,
+			Beat: string(b.Beat), Kind: b.Kind, Loudness: string(b.Loudness), Subject: b.Subject, Member: b.Member,
 			Faction: b.Faction, Hops: b.Hops, At: b.At,
 		}
 		if b.Cell != nil {
@@ -575,7 +604,7 @@ func wakeBeatsFrom(in []WakeBeatData) []wakeBeat {
 	out := make([]wakeBeat, len(in))
 	for i, d := range in {
 		b := wakeBeat{
-			Beat: machine.Beat(d.Beat), Kind: d.Kind, Subject: d.Subject, Member: d.Member,
+			Beat: machine.Beat(d.Beat), Kind: d.Kind, Loudness: Loudness(d.Loudness), Subject: d.Subject, Member: d.Member,
 			Faction: d.Faction, Hops: d.Hops, At: d.At,
 		}
 		if d.Cell != nil {

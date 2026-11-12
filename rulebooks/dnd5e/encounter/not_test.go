@@ -57,9 +57,13 @@ func (s *OptionTestSuite) TestANotFactOptionIsWithheldFromTheSpeakerWhoWasCaught
 	s.Require().NoError(err)
 	s.Equal([]string{"pilfer"}, ids(after), "alice was caught, and the cook's other line is gone for her")
 
+	// billy, behind the rubble in the same open yard, caught the cook's words
+	// (rpg-project#933, R9: a line teaches whoever catches its words), so he
+	// knows what was caught as well: what is read is still each speaker's own
+	// knowledge, and his now holds the fact.
 	billys, err := enc.OptionsFor(billy, goblin)
 	s.Require().NoError(err)
-	s.Equal([]string{"pilfer", "chat"}, ids(billys), "billy saw nothing and the speaker's knowledge is what is read")
+	s.Equal([]string{"pilfer"}, ids(billys), "billy caught the words in the same room, unseen, and the fact reads for him too")
 
 	reloaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
 		Data: enc.ToData(), Capabilities: s.capabilities(),

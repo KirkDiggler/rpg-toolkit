@@ -1152,6 +1152,7 @@ func answerOf(entry AnswerSpec, o encounter.Orientation) encounter.Answer {
 		Activity: activity,
 		Weight:   weight,
 		Say:      entry.Say,
+		Loudness: entry.Loudness,
 		When:     whenOf(entry.When),
 		Fact:     encounter.FactID(fact),
 		Flee:     entry.Flee != nil,
@@ -1202,7 +1203,7 @@ func optionsOf(specs []OptionSpec, o encounter.Orientation) []encounter.Option {
 	out := make([]encounter.Option, 0, len(specs))
 	for _, opt := range specs {
 		option := encounter.Option{
-			ID: opt.ID, Say: opt.Say, Check: approachesOf(opt.Check),
+			ID: opt.ID, Say: opt.Say, Loudness: opt.Loudness, Check: approachesOf(opt.Check),
 			Requires: requirementsOf(opt.Requires),
 			Success:  rowsOf(opt.Success, o), Failure: rowsOf(opt.Failure, o),
 		}
@@ -1210,6 +1211,22 @@ func optionsOf(specs []OptionSpec, o encounter.Orientation) []encounter.Option {
 			option.Advance = &encounter.Advance{
 				Interaction: encounter.InteractionID(a.Interaction),
 				Success:     machine.Beat(a.Success), Failure: machine.Beat(a.Failure),
+			}
+		}
+		// A ROW'S GRANT (rpg-project#929), keyed by the row it hangs on: a
+		// success row's, then a failure row's (rpg-project#932).
+		for _, verdict := range []struct {
+			rows    []AnswerSpec
+			failure bool
+		}{{opt.Success, false}, {opt.Failure, true}} {
+			for i, row := range verdict.rows {
+				if row.Recognize == nil {
+					continue
+				}
+				rec := recognitionOf("", row.Recognize, true, func(string, string) {})
+				option.Grants = append(option.Grants, encounter.RowGrant{
+					Row: i, Failure: verdict.failure, Consequence: encounter.Consequence{Recognize: &rec},
+				})
 			}
 		}
 		out = append(out, option)
@@ -1274,7 +1291,7 @@ func oneWhenOf(when *WhenSpec) encounter.When {
 		Threat: behavior.ThreatWord(when.Threat),
 	}
 	if when.Heard != nil {
-		out.Heard = &encounter.HeardWhen{Kind: nameOf(when.Heard.Kind), Within: when.Heard.Within}
+		out.Heard = &encounter.HeardWhen{Kind: nameOf(when.Heard.Kind), Within: when.Heard.Within, Loudness: when.Heard.Loudness}
 	}
 	if when.Not != nil {
 		inner := oneWhenOf(when.Not)

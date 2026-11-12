@@ -120,7 +120,7 @@ func (s *OptionSelectionSuite) TestOfferAndDoorShareOneJudgment() {
 	s.True(out.Beaten)
 	reader := &OptionTestSuite{}
 	reader.SetT(s.T())
-	spoke := reader.beatsOfKind(enc, goblin, encounter.BeatSpoke)
+	spoke := reader.beatsOfKind(enc, alice, encounter.BeatSpoke)
 	s.Require().NotEmpty(spoke)
 	s.Equal("secret", spoke[len(spoke)-1]["option"], "the spoke beat names the line")
 }

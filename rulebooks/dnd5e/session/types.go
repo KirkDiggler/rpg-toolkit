@@ -1447,6 +1447,13 @@ type SaveReport struct {
 
 	// Failed names the aggregates that could not be persisted.
 	Failed []string `json:"failed,omitempty"`
+
+	// Faults are the non-fatal faults this verb's commits absorbed so the
+	// table stays usable (rpg-project#938): each says what was ended and why.
+	// Today one kind: a speaker's kept roll whose settle failed, its hold
+	// released and its question closed with no verdict and the held offer
+	// unspent. A host logs them; nothing was refused because of them.
+	Faults []string `json:"faults,omitempty"`
 }
 
 // Partial reports whether this save landed some aggregates but not all — the

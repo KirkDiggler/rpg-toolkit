@@ -28,13 +28,15 @@ const (
 )
 
 type longRestCase struct {
-	data             json.RawMessage
-	ownerID          string
-	expectedRef      *core.Ref
-	expectedSourceID string
-	outcome          longRestOutcome
-	removalReason    string
-	endedState       string // explicit current-format state after removal, when represented
+	data                  json.RawMessage
+	ownerID               string
+	expectedRef           *core.Ref
+	expectedSourceID      string
+	expectedApplicationID string
+	endedPart             string
+	outcome               longRestOutcome
+	removalReason         string
+	endedState            string // explicit current-format state after removal, when represented
 }
 
 // longRestCases is deliberately authored independently of the registry.
@@ -42,6 +44,12 @@ type longRestCase struct {
 // name its long-rest rule without deriving either the fixture or expectation
 // from production dispatch.
 var longRestCases = map[string]longRestCase{
+	// This configured payload has no local rest rule; shared owner end policies
+	// belong to linked-application transport verification, not inference by ref.
+	refs.Conditions.LinkedEffects().String(): {
+		data:    json.RawMessage(`{"ref":"dnd5e:conditions:linked-effects","member_id":"member-1","address_source_id":"caster","application_id":"application","role":"recipient","origin":{"ref":"dnd5e:spells:bless","entity_id":"caster"},"bindings":{"name":"Ward","owner":{"member_id":"caster","condition_ref":"dnd5e:conditions:linked-effects","source_id":"application"},"member_key":"payload","parts":[{"key":"resistance","kind":"resistance","params":{"types":["slashing"]},"on_terminal":"part"}]},"runtime":{"parts":{"parts":{"resistance":{"state":"active","bag":{}}}}}}`),
+		ownerID: "member-1", expectedRef: refs.Conditions.LinkedEffects(), expectedSourceID: "caster", outcome: longRestRetain,
+	},
 	refs.Conditions.Shillelagh().String(): {
 		data:    json.RawMessage(`{"ref":{"module":"dnd5e","type":"conditions","id":"shillelagh"},"member_id":"member-1","weapon":{"slot":"main_hand","item_id":"club"},"ability":"wis","turn_ends_left":10,"skip_first_turn_end":true}`),
 		ownerID: "member-1", expectedRef: refs.Conditions.Shillelagh(), expectedSourceID: "member-1", outcome: longRestRemove, removalReason: "rest",
@@ -260,23 +268,9 @@ var longRestCases = map[string]longRestCase{
 		outcome:          longRestRemove,
 		removalReason:    "rest",
 	},
-	refs.Conditions.Concentrating().String(): {
-		data: json.RawMessage(`{
-			"ref":{"module":"dnd5e","type":"conditions","id":"concentrating"},
-			"member_id":"member-1","spell_ref":"dnd5e:spells:true-strike",
-			"spell_name":"True Strike","turn_ends_left":2
-		}`),
-		ownerID:       "member-1",
-		expectedRef:   refs.Conditions.Concentrating(),
-		outcome:       longRestRemove,
-		removalReason: "rest",
-	},
 	refs.Conditions.Blessed().String(): {
-		data: json.RawMessage(`{
-			"ref":{"module":"dnd5e","type":"conditions","id":"blessed"},
-			"member_id":"member-1","source_id":"cleric-1",
-			"source_ref":{"module":"dnd5e","type":"spells","id":"bless"}
-		}`),
+		data:                  namedBlobForTest(namedFixtureInput{Ref: refs.Conditions.Blessed(), MemberID: "member-1", SourceID: "cleric-1", SourceRef: refs.Spells.Bless()}),
+		expectedApplicationID: "application:cleric-1", endedPart: "rest",
 		ownerID:          "member-1",
 		expectedRef:      refs.Conditions.Blessed(),
 		expectedSourceID: "cleric-1",
@@ -384,11 +378,8 @@ var longRestCases = map[string]longRestCase{
 		removalReason: "rest",
 	},
 	refs.Conditions.Baned().String(): {
-		data: json.RawMessage(`{
-			"ref":{"module":"dnd5e","type":"conditions","id":"baned"},
-			"member_id":"member-1","source_id":"bard-1",
-			"source_ref":{"module":"dnd5e","type":"spells","id":"bane"}
-		}`),
+		data:                  namedBlobForTest(namedFixtureInput{Ref: refs.Conditions.Baned(), MemberID: "member-1", SourceID: "bard-1", SourceRef: refs.Spells.Bane()}),
+		expectedApplicationID: "application:bard-1", endedPart: "rest",
 		ownerID:          "member-1",
 		expectedRef:      refs.Conditions.Baned(),
 		expectedSourceID: "bard-1",
@@ -552,12 +543,22 @@ func TestLongRestRegistryBehavior(t *testing.T) {
 					expected, err = json.Marshal(data)
 					require.NoError(t, err)
 				}
+				if testCase.endedPart != "" {
+					var data LinkedConditionData
+					require.NoError(t, json.Unmarshal(before, &data))
+					part := data.Runtime.Parts.Parts[testCase.endedPart]
+					part.State = "ended"
+					data.Runtime.Parts.Parts[testCase.endedPart] = part
+					expected, err = json.Marshal(data)
+					require.NoError(t, err)
+				}
 				require.JSONEq(t, string(expected), string(after))
 				require.Equal(t, []dnd5eEvents.ConditionRemovedEvent{{
-					MemberID:     testCase.ownerID,
-					ConditionRef: testCase.expectedRef.String(),
-					SourceID:     testCase.expectedSourceID,
-					Reason:       testCase.removalReason,
+					MemberID:      testCase.ownerID,
+					ConditionRef:  testCase.expectedRef.String(),
+					SourceID:      testCase.expectedSourceID,
+					ApplicationID: testCase.expectedApplicationID,
+					Reason:        testCase.removalReason,
 				}}, removed)
 				require.Empty(t, changed)
 
@@ -599,10 +600,11 @@ func TestShortRestRegistryBehavior(t *testing.T) {
 			if testCase.outcome == longRestRemove && testCase.removalReason == "rest" {
 				require.False(t, condition.IsApplied(), "a short rest ends it")
 				require.Equal(t, []dnd5eEvents.ConditionRemovedEvent{{
-					MemberID:     testCase.ownerID,
-					ConditionRef: testCase.expectedRef.String(),
-					SourceID:     testCase.expectedSourceID,
-					Reason:       "rest",
+					MemberID:      testCase.ownerID,
+					ConditionRef:  testCase.expectedRef.String(),
+					SourceID:      testCase.expectedSourceID,
+					ApplicationID: testCase.expectedApplicationID,
+					Reason:        "rest",
 				}}, removed)
 				return
 			}

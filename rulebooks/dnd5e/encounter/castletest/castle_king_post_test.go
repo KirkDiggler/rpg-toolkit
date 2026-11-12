@@ -18,6 +18,9 @@ package castletest
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -117,15 +120,27 @@ func TestMadKingTheGuardHoldsTheGate(t *testing.T) {
 		require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, hero), "nobody fights")
 	})
 
-	t.Run("a guard who did not see the captain cowed holds the gate", func(t *testing.T) {
+	// A GUARD WHO NEVER LEARNS THE FACT: since a line teaches whoever catches
+	// its words (rpg-project#933, R9), gate-1 in the same room would learn the
+	// captain's spoken answer whether or not he saw it. So this route
+	// whispers that one answer — to the hero, the member addressed — and
+	// blinds gate-1, so he neither catches nor sees it.
+	t.Run("a guard who did not catch the captain cowed holds the gate", func(t *testing.T) {
 		t.Parallel()
+		raw, err := os.ReadFile(kingFixture)
+		require.NoError(t, err)
+		const said = "                say: …go on, then. I saw nothing.\n"
+		require.Equal(t, 1, strings.Count(string(raw), said), "the castle says the captain's answer once")
+		whispered := filepath.Join(t.TempDir(), "castle-whispered.yaml")
+		require.NoError(t, os.WriteFile(whispered,
+			[]byte(strings.Replace(string(raw), said, said+"                loudness: whisper\n", 1)), 0o600))
 		s := openTheCastleAs(t, castleHost{
-			at: gatehouseSeat, sightOf: map[encounter.MemberID]int{kingGate1: 0},
+			at: gatehouseSeat, sightOf: map[encounter.MemberID]int{kingGate1: 0}, fixture: whispered,
 		})
 		s.walkTo(s.at(kingCaptain))
 		s.said(kingCaptain, "stand-aside", "intimidation", true)
-		require.True(t, s.learners("gate-cowed")[hero], "precondition: the captain was cowed")
-		require.False(t, s.learners("gate-cowed")[kingGate1], "precondition: gate-1, who sees nothing, did not see it")
+		require.True(t, s.learners("gate-cowed")[hero], "precondition: the captain was cowed, and told the hero")
+		require.False(t, s.learners("gate-cowed")[kingGate1], "precondition: gate-1 neither saw it nor caught the whisper")
 
 		for i := 0; i < 3; i++ {
 			s.aRoundPasses()
@@ -182,4 +197,19 @@ func TestMadKingThePostSaysWhyItStays(t *testing.T) {
 	for _, why := range whys {
 		require.Equal(t, "already there", why, "and each says why he stayed")
 	}
+}
+
+// backOnHisPost lets rounds pass until gate-1 stands beneath the gate again.
+// The captain going in after an admission opens the gate and the hall door
+// (rpg-project#929); gate-1 hears the gate and is drawn a cell off his post
+// for a round before he walks back.
+func (s *kingScene) backOnHisPost() {
+	s.t.Helper()
+	for range 4 {
+		if s.at(kingGate1) == beneathTheGate {
+			return
+		}
+		s.aRoundPasses()
+	}
+	require.Equal(s.t, beneathTheGate, s.at(kingGate1), "gate-1 walks back to his post")
 }

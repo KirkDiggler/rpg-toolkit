@@ -6,6 +6,7 @@ package session_test
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -50,20 +51,16 @@ func partyOfThree() scene {
 func (s *DepartSuite) SetupTest() {
 	alice, carol := armedFighter("alice"), armedFighter("carol")
 	bob := withHitDice(armedFighter("bob"), 1)
-	holding := conditions.NewConcentratingCondition("bob", refs.Spells.Bless().String(), "Bless", 10)
+	var children []dnd5eEvents.ConditionAddress
 	for _, target := range []string{"alice", "carol"} {
-		holding.Children = append(holding.Children, dnd5eEvents.ConditionAddress{
-			MemberID: target, ConditionRef: refs.Conditions.Blessed().String(), SourceID: "bob",
-		})
+		children = append(children, dnd5eEvents.ConditionAddress{MemberID: target, ConditionRef: refs.Conditions.Blessed().String(), SourceID: "bob"})
 	}
+	holding := fixtureHold(s.T(), holdFixtureInput{Member: "bob", Source: refs.Spells.Bless().String(), Name: "Bless", Turns: 10, Children: children})
 	held, err := holding.ToJSON()
 	s.Require().NoError(err)
 	bob.Conditions = []json.RawMessage{held}
 	for _, target := range []*character.Data{alice, carol} {
-		bless, err := conditions.NewBlessedCondition(conditions.NewBlessedConditionInput{
-			MemberID: target.ID, SourceID: "bob", SourceRef: refs.Spells.Bless(),
-		})
-		s.Require().NoError(err)
+		bless := fixtureNamed(s.T(), namedFixtureInput{Ref: refs.Conditions.Blessed(), Member: target.ID, Source: "bob", Origin: refs.Spells.Bless()})
 		blessed, err := bless.ToJSON()
 		s.Require().NoError(err)
 		target.Conditions = append(target.Conditions, blessed)
@@ -105,16 +102,21 @@ func (s *DepartSuite) holdTargets() []string {
 	data, err := s.characters.GetCharacter(context.Background(), "bob")
 	s.Require().NoError(err)
 	for _, raw := range data.Conditions {
-		var hold struct {
-			Ref      *core.Ref                      `json:"ref"`
-			Children []dnd5eEvents.ConditionAddress `json:"children"`
+		condition, err := conditions.LoadJSON(raw)
+		s.Require().NoError(err)
+		linked, ok := condition.(*conditions.LinkedCondition)
+		if !ok {
+			continue
 		}
-		if json.Unmarshal(raw, &hold) != nil || hold.Ref == nil || hold.Ref.String() != refs.Conditions.Concentrating().String() {
+		info := linked.LinkedApplicationInfo()
+		if info.Role != conditions.LinkedCoordinator {
 			continue
 		}
 		var out []string
-		for _, child := range hold.Children {
-			out = append(out, child.MemberID)
+		for _, child := range info.Members {
+			if slices.Contains(info.LiveMembers, child.Key) {
+				out = append(out, child.Address.MemberID)
+			}
 		}
 		return out
 	}

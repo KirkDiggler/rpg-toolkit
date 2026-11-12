@@ -64,7 +64,8 @@ func (s *ResistancePoseTestSuite) TestASaveNobodyOffersAnythingOnIsUnchanged() {
 	fixtures := s.fixtures()
 	roller := &countingCastRoller{facedRoller: facedRoller{d20: 10, other: 4}}
 	machine, err := NewAction(&ActionInput{
-		Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{heroID}, Roller: roller,
+		ApplicationID: testApplicationID(s.T()),
+		Definition:    *baneDefinition(), AttackerID: bardID, TargetIDs: []string{heroID}, Roller: roller,
 	})
 	s.Require().NoError(err)
 
@@ -82,7 +83,8 @@ func (s *ResistancePoseTestSuite) TestASingleTargetSavePosesAndResumes() {
 	saver := fixtures.saver(14, s.resistanceJSON())
 	roller := &countingCastRoller{facedRoller: facedRoller{d20: 10, other: 4}}
 	machine, err := NewAction(&ActionInput{
-		Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{heroID}, Roller: roller,
+		ApplicationID: testApplicationID(s.T()),
+		Definition:    *baneDefinition(), AttackerID: bardID, TargetIDs: []string{heroID}, Roller: roller,
 	})
 	s.Require().NoError(err)
 
@@ -104,7 +106,7 @@ func (s *ResistancePoseTestSuite) TestASingleTargetSavePosesAndResumes() {
 		})
 		s.Require().NoError(err)
 
-		resumedOut, err := fixtures.resolve(saver, resumed, nil, baneCaster(1))
+		resumedOut, err := fixtures.resolve(saver, resumed, nil, fixtures.sheet(out, bardID))
 		s.Require().NoError(err)
 		s.Require().Nil(resumedOut.Posed, "a resumed save finishes")
 		outcome := resumedOut.Outcome.(CastOutcome)
@@ -118,7 +120,7 @@ func (s *ResistancePoseTestSuite) TestASingleTargetSavePosesAndResumes() {
 		})
 		s.Require().NoError(err)
 
-		resumedOut, err := fixtures.resolve(saver, resumed, nil, baneCaster(1))
+		resumedOut, err := fixtures.resolve(saver, resumed, nil, fixtures.sheet(out, bardID))
 		s.Require().NoError(err)
 		s.Require().Nil(resumedOut.Posed)
 		outcome := resumedOut.Outcome.(CastOutcome)
@@ -135,7 +137,7 @@ func (s *ResistancePoseTestSuite) TestAPosedTargetLeavesLaterTargetsToRun() {
 	saver := fixtures.saver(14, s.resistanceJSON())
 	roller := &countingCastRoller{facedRoller: facedRoller{d20: 10, other: 4}}
 	machine, err := NewAction(&ActionInput{
-		Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{heroID, wolfID}, Roller: roller,
+		ApplicationID: testApplicationID(s.T()), Definition: *baneDefinition(), AttackerID: bardID, TargetIDs: []string{heroID, wolfID}, Roller: roller,
 	})
 	s.Require().NoError(err)
 
@@ -148,7 +150,7 @@ func (s *ResistancePoseTestSuite) TestAPosedTargetLeavesLaterTargetsToRun() {
 	})
 	s.Require().NoError(err)
 
-	resumedOut, err := fixtures.resolve(saver, resumed, nil, baneCaster(1))
+	resumedOut, err := fixtures.resolve(saver, resumed, nil, fixtures.sheet(out, bardID))
 	s.Require().NoError(err)
 	s.Require().Nil(resumedOut.Posed)
 	outcome := resumedOut.Outcome.(CastOutcome)

@@ -10,6 +10,7 @@ package encounter_test
 // record holds, and a changed table is described exactly once more.
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -81,11 +82,34 @@ func goblinTurn(t *testing.T, enc *encounter.Encounter) {
 	require.NoError(t, err)
 }
 
-// goblinBeatsOf is every goblin beat of this kind, in story order.
+// goblinRecordBeats is every goblin beat in the whole record, in seq order.
+// A `table` beat is told to nobody (rpg-project#933: its rows name the
+// options and the facts they teach), so the record is the only reader that
+// holds one, as a replay or the studio reads it.
+func goblinRecordBeats(t *testing.T, enc *encounter.Encounter) []map[string]any {
+	t.Helper()
+	all, err := enc.ReadRecord(&encounter.ReadRecordInput{})
+	require.NoError(t, err)
+	var out []map[string]any
+	for _, entry := range all.Entries {
+		var b map[string]any
+		require.NoError(t, json.Unmarshal(entry.Payload, &b))
+		if b["beat"] == encounter.BeatBehaviorConfig {
+			continue // the private configuration record, not a story beat
+		}
+		if b["creature"] == string(goblin) || b["member"] == string(goblin) || b["actor"] == string(goblin) {
+			out = append(out, b)
+		}
+	}
+
+	return out
+}
+
+// goblinBeatsOf is every goblin beat of this kind, in record order.
 func goblinBeatsOf(t *testing.T, enc *encounter.Encounter, kind string) []map[string]any {
 	t.Helper()
 	var out []map[string]any
-	for _, b := range goblinBeats(t, enc) {
+	for _, b := range goblinRecordBeats(t, enc) {
 		if b["beat"] == kind {
 			out = append(out, b)
 		}
@@ -112,7 +136,7 @@ func TestTheTableIsDescribedBeforeItsFirstAnswer(t *testing.T) {
 	enc, _ := symbolsScene(t)
 	goblinTurn(t, enc)
 
-	beats := goblinBeats(t, enc)
+	beats := goblinRecordBeats(t, enc)
 	require.Equal(t, encounter.BeatTable, beats[0]["beat"], "the table comes first")
 	require.Equal(t, encounter.BeatAnswered, beats[1]["beat"], "immediately before the first answer")
 
@@ -129,8 +153,13 @@ func TestTheTableIsDescribedBeforeItsFirstAnswer(t *testing.T) {
 	require.Len(t, rows, len(silenceTable()[encounter.AnswerTime]), "every row of the key, as authored")
 	require.Equal(t, map[string]any{
 		"entry": 1.0, "when": []any{"attacked within 3"}, "word": "toward", "selector": "attacker",
-		"weight": 2.0, "say": "", "fact": "", "search": nil,
+		"weight": 2.0, "say": "", "speaks": false, "loudness": "speak", "fact": "", "search": nil,
 	}, rows[1])
+	// A ROW SAYS THAT IT SPEAKS, AND HOW LOUDLY, NEVER WHAT (rpg-project#933):
+	// this beat reaches every member, so no row carries its words.
+	for _, r := range rows {
+		require.Equal(t, "", r.(map[string]any)["say"], "no row's words are on the table")
+	}
 	var whens []any
 	for _, r := range rows {
 		whens = append(whens, r.(map[string]any)["when"].([]any)...)

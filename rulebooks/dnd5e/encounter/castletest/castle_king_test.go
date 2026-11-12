@@ -215,6 +215,12 @@ type castleHost struct {
 	// gate (rpg-project#852's group rule).
 	postedLike []encounter.MemberID
 
+	// loudness is a TEST LOUDNESS: for each option id, the loudness every
+	// creature's line of that id is said at (rpg-project#933), so a route can
+	// stand a witness who sees a whispered line said and catches none of it,
+	// or raise a line to the shout a post answers.
+	loudness map[string]string
+
 	// soleGateHolder is a TEST FIXTURE for a route about one post's
 	// mechanics: only gate-1 (and whoever [castleHost.postedLike] seats like
 	// him) keeps its posts, so the captain and gate-2, who hold the gate too
@@ -247,6 +253,15 @@ func openTheCastleAs(t testing.TB, host castleHost) *kingScene {
 		at := m.At
 		if moved, ok := host.starts[encounter.MemberID(m.MemberID)]; ok {
 			at = moved
+		}
+		if len(host.loudness) > 0 {
+			options := slices.Clone(m.Options)
+			for i := range options {
+				if l, ok := host.loudness[options[i].ID]; ok {
+					options[i].Loudness = l
+				}
+			}
+			m.Options = options
 		}
 		if slices.Contains(host.postedLike, encounter.MemberID(m.MemberID)) {
 			for _, g := range compiled.Monsters {
@@ -434,9 +449,16 @@ func (s *kingScene) walkTo(to spatial.Position) {
 	}
 }
 
-// open opens a door the hero is standing within reach of.
+// open opens a door the hero is standing within reach of, or finds it open:
+// after an admission the captain walks in through the gate and the hall door
+// (rpg-project#929), and leaves them standing open.
 func (s *kingScene) open(door encounter.DoorID) {
 	s.t.Helper()
+	for _, d := range s.enc.ToData().Doors {
+		if d.ID == door && d.State == "open" {
+			return
+		}
+	}
 	_, err := s.enc.OpenDoor(&encounter.OpenDoorInput{Door: door, Actor: hero})
 	require.NoError(s.t, err, "the hero reaches %s", door)
 }
@@ -530,13 +552,15 @@ func (s *kingScene) answeredWith(fact string, audience encounter.MemberID) []enc
 	var out []encounter.MemberID
 	for _, beat := range story {
 		var body struct {
-			Beat     string `json:"beat"`
-			Creature string `json:"creature"`
-			Fact     string `json:"fact"`
+			Beat    string `json:"beat"`
+			Speaker string `json:"speaker"`
+			Fact    string `json:"fact"`
 		}
 		require.NoError(s.t, json.Unmarshal(beat.Payload, &body))
-		if body.Beat == encounter.BeatAnswered && body.Fact == fact {
-			out = append(out, encounter.MemberID(body.Creature))
+		// The fact travels with the words (rpg-project#933): only a speech
+		// version that caught them names it, and its speaker only when seen.
+		if body.Beat == encounter.BeatSpeech && body.Fact == fact {
+			out = append(out, encounter.MemberID(body.Speaker))
 		}
 	}
 
@@ -744,7 +768,13 @@ const speakReach = 3
 // front gate's outcome writes, under the holder's sight identity.
 func (s *kingScene) recognizes(holder, subject encounter.MemberID) bool {
 	s.t.Helper()
-	_, ok := s.enc.ToData().Perception.Intel.Holdings[core.EntityID("member|"+string(holder))][intel.Subject("member|"+string(subject))][admittedTopic]
+	return s.recognizesOn(holder, subject, admittedTopic)
+}
+
+// recognizesOn reports whether holder holds topic about subject.
+func (s *kingScene) recognizesOn(holder, subject encounter.MemberID, topic intel.Topic) bool {
+	s.t.Helper()
+	_, ok := s.enc.ToData().Perception.Intel.Holdings[core.EntityID("member|"+string(holder))][intel.Subject("member|"+string(subject))][topic]
 
 	return ok
 }

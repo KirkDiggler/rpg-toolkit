@@ -130,18 +130,20 @@ func TestReplay_CastleSneakPieces(t *testing.T) {
 		})
 		require.Equal(t, 2, countBeats(t, log, encounter.BeatSneaking), "precondition: on and off are on the record")
 	})
-	t.Run("piece 4: drawn off by a voice, the dash in gate-2's window", func(t *testing.T) {
+	t.Run("piece 4: drawn off by a shout, the dash in gate-2's window", func(t *testing.T) {
 		t.Parallel()
+		// GUARDS ANSWER SHOUTS, NOT TALK (rpg-project#933): the companion
+		// hails the stranger at the top of his voice.
 		log := replayRun(t, castleOpenerWith(gatehouseSeat, encounter.MemberInput{
 			ID: sneakCompanion, Kind: encounter.KindPlayer, Position: besideTheStranger,
 		}), func(w *world) {
 			toTheDash(w)
 			require.NoError(t, w.speak(encounter.SpeakInput{
-				Actor: sneakCompanion, Target: kingPedlar, OptionID: "tonight", Skill: "persuasion", Beaten: true, DC: 15, Total: 20,
-			}), "the stranger answers the companion aloud")
+				Actor: sneakCompanion, Target: kingPedlar, OptionID: "hail-the-pedlar",
+			}), "the companion shouts to the stranger")
 			start := w.round()
 			w.paceUntil(hero, besideTheCorner, besideThat, 12, func() bool { return w.round() > start })
-			require.NotEqual(t, beneathTheGate, w.at(kingGate1), "the voice drew gate-1 off the crossing")
+			require.NotEqual(t, beneathTheGate, w.at(kingGate1), "the shout drew gate-1 off the crossing")
 			require.Equal(t, eastBeatPost, w.at(kingGate2), "precondition: gate-2 still stands her blind beat")
 			for _, cell := range theDash {
 				if w.at(hero) != cell {

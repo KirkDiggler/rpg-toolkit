@@ -4,7 +4,9 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -124,7 +126,7 @@ type windowStory struct {
 	// line was offered and reserved at (what the settle carries), and the
 	// revision the reservation moved it to. Every place, settle, release and
 	// advance moves an interaction's revision, so the hold is still THIS one
-	// exactly while the interaction stands at Held ([reservationStands]).
+	// exactly while the interaction stands at Held ([waitingHold]).
 	// All three are empty for a line that reads no interaction.
 	Interaction string `json:"interaction,omitempty"`
 	Revision    uint64 `json:"revision,omitempty"`
@@ -394,17 +396,21 @@ func tableHolders(enc *encounter.Encounter, open []interrupt.Window) []interrupt
 	return out
 }
 
-// closeAbandonedLines closes, declined, every open Speak check window whose
-// conversation hold is gone ([reservationStands]): released by the encounter
-// because its settle could no longer be admitted (the speaker walked out of
-// reach or sight, the target fell or left, the speaker exited), or the
-// conversation otherwise moved (rpg-project#924). Asked at every commit, so
-// the verb that released the hold is the verb that closes the window: no
-// window outlives the line it was asking about, and nothing it offered is
-// spent. A hold the encounter still keeps is released with the window
-// ([endWaitingLine]); the session writes no beat of its own — the
-// encounter's `interaction-held` beat with `held: false` tells the table.
-func closeAbandonedLines(scope *writeScope) error {
+// closeAbandonedLines ends every open Speak check window whose conversation
+// hold no longer stands ([waitingHold]), asked at every commit, so the verb
+// that ended the hold is the verb that closes the window: no window outlives
+// the line it was asking about, and no hold outlives its question.
+//
+//   - The speaker and the target lost reach or sight of each other
+//     (rpg-project#938): the roll is KEPT, settled declined in this same
+//     commit ([Manager.settleKeptRoll]) — the verdict lands, the held offer
+//     is not spent.
+//   - The target fell or left, the speaker exited or is unplaced, or the
+//     conversation otherwise moved (rpg-project#924): closed declined with
+//     no verdict; a hold the encounter still keeps is released with it
+//     ([endWaitingLine]), and its `interaction-held` beat with `held: false`
+//     tells the table.
+func (m *Manager) closeAbandonedLines(ctx context.Context, scope *writeScope) error {
 	open, err := scope.ledger.Open()
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidSession, err)
@@ -415,11 +421,29 @@ func closeAbandonedLines(scope *writeScope) error {
 			// A window this build cannot read is the answer's to refuse.
 			continue
 		}
-		stands, err := reservationStands(scope.enc, w.Audience, w.Story)
+		state, err := waitingHold(scope.enc, w.Audience, w.Story)
 		if err != nil {
 			return err
 		}
-		if !stands {
+		switch state {
+		case holdAbandoned, holdLeft:
+			// A KEPT ROLL THAT CANNOT SETTLE NEVER WEDGES THE TABLE: every
+			// member's commit runs this pass, so a settle that failed before
+			// the encounter wrote anything ([unsettledKeptRoll]) — a sheet, a
+			// pause, a refusal — is ended with no verdict and recorded
+			// ([SaveReport.Faults]), not returned. One that failed after
+			// Speak had written fails the commit, so nothing half-applied is
+			// ever saved.
+			if err := m.settleKeptRoll(ctx, scope, window, w, state); err != nil {
+				var unsettled *unsettledKeptRoll
+				if !errors.As(err, &unsettled) {
+					return err
+				}
+				if err := endFailedKeptRoll(scope, window, w, err); err != nil {
+					return err
+				}
+			}
+		case holdGone:
 			if err := endWaitingLine(scope, window); err != nil {
 				return err
 			}

@@ -12,7 +12,6 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	"github.com/KirkDiggler/rpg-toolkit/events"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/spells"
@@ -52,7 +51,7 @@ func (s *ConcentrationTestSuite) TestAFogCloudReportsOneOpenedAreaAndWritesNoShe
 	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.FogCloud, SpellSaveDC: spellSaveDC})
 	s.Require().NotNil(definition)
 	center := spatial.Position{X: 1, Y: 1}
-	machine, err := NewAction(&ActionInput{
+	machine, err := NewAction(&ActionInput{ApplicationID: testApplicationID(s.T()),
 		Definition: *definition, AttackerID: bardID, AreaCenter: &center,
 		Roller: facedRoller{d20: straightRoll, other: psychicFace},
 	})
@@ -95,7 +94,7 @@ func (s *ConcentrationTestSuite) TestAFogCloudReportsOneOpenedAreaAndWritesNoShe
 // and a break by a caster who opened no area reports nothing. Nothing reads
 // the spell's ref to decide it: the area set says who opened what.
 func (s *ConcentrationTestSuite) TestBreakingConcentrationReportsTheAreaClosed() {
-	hold := conditions.NewConcentratingCondition(heroID, refs.Spells.FogCloud().String(), "Fog Cloud", 600)
+	hold := fixtureHold(s.T(), holdFixtureInput{Member: heroID, Source: refs.Spells.FogCloud(), Name: "Fog Cloud", Turns: 600})
 	holdJSON, err := hold.ToJSON()
 	s.Require().NoError(err)
 
@@ -144,7 +143,7 @@ func (s *ConcentrationTestSuite) TestBreakingConcentrationReportsTheAreaClosed()
 // opens the new one: the old caster is reported closed, one area opened, one
 // hold broken.
 func (s *ConcentrationTestSuite) TestARecastClosesTheOldAreaAndOpensTheNew() {
-	hold := conditions.NewConcentratingCondition(bardID, refs.Spells.FogCloud().String(), "Fog Cloud", 600)
+	hold := fixtureHold(s.T(), holdFixtureInput{Member: bardID, Source: refs.Spells.FogCloud(), Name: "Fog Cloud", Turns: 600})
 	holdJSON, err := hold.ToJSON()
 	s.Require().NoError(err)
 	bard := baneCaster(1)
@@ -153,7 +152,7 @@ func (s *ConcentrationTestSuite) TestARecastClosesTheOldAreaAndOpensTheNew() {
 	definition := spells.CastDefinition(spells.CastDefinitionInput{Spell: spells.FogCloud, SpellSaveDC: spellSaveDC})
 	s.Require().NotNil(definition)
 	center := spatial.Position{X: 2, Y: 1}
-	machine, err := NewAction(&ActionInput{
+	machine, err := NewAction(&ActionInput{ApplicationID: testApplicationID(s.T()),
 		Definition: *definition, AttackerID: bardID, AreaCenter: &center,
 		Roller: facedRoller{d20: straightRoll, other: psychicFace},
 	})

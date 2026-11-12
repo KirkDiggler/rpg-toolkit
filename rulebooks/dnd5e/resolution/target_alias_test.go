@@ -180,7 +180,7 @@ func TestNewActionCopiesCanonicalTargets(t *testing.T) {
 		require.NotNil(t, definition)
 
 		machine, err := NewAction(&ActionInput{
-			Definition: *definition, AttackerID: bardID, TargetIDs: targets,
+			ApplicationID: testApplicationID(t), Definition: *definition, AttackerID: bardID, TargetIDs: targets,
 		})
 		require.NoError(t, err)
 		targets[0] = wolfID

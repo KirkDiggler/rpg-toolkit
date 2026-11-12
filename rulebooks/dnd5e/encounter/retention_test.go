@@ -434,7 +434,7 @@ func (s *RetentionTestSuite) TestVerbBeatsSurviveTheVerb() {
 
 	entries, err := enc.Story(&encounter.StoryInput{Audience: "watcher", AfterSeq: 0})
 	s.Require().NoError(err)
-	s.Len(entries, 5, "scene-opened, tick, table, pick, movement: player-visible beats are unchanged")
+	s.Len(entries, 4, "scene-opened, tick, pick, movement: the table is told to nobody (rpg-project#933)")
 	all, err := enc.ReadRecord(&encounter.ReadRecordInput{})
 	s.Require().NoError(err)
 	s.Require().Len(all.Entries, 7, "the two private configuration/decision records survive too; audience gaps are not trimming")

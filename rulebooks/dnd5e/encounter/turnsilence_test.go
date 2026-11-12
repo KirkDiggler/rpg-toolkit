@@ -182,9 +182,9 @@ func TestAnAttackRowWithItsAttackerOutOfReachIsNotOnTheTable(t *testing.T) {
 	require.Equal(t, cellAt(8, 3), whereIs(t, enc, goblin), "`attack` does not walk")
 
 	beats := goblinBeats(t, enc)
-	require.Equal(t, []string{encounter.BeatTable, "answered:hold", "turn-ended"},
-		beatWords(beats), "the table, then the empty hold: the attacker row was not on it")
-	rows := beats[1]["rows"].([]any)
+	require.Equal(t, []string{"answered:hold", "turn-ended"},
+		beatWords(beats), "the empty hold: the attacker row was not on it (the table is told to nobody)")
+	rows := beats[0]["rows"].([]any)
 	verdict := rows[0].(map[string]any)
 	require.Equal(t, true, verdict["held"], "the goblin was attacked within 3")
 	require.Equal(t, false, verdict["affordable"], "but its attacker is out of reach")
@@ -290,8 +290,8 @@ func TestTowardATargetAlreadyInReachStaysAndSaysSo(t *testing.T) {
 
 	beats := goblinBeats(t, enc)
 	require.Equal(t, []string{
-		encounter.BeatTable, "answered:attack", "missed", "answered:toward", encounter.BeatStayed, "turn-ended",
-	}, beatWords(beats), "one table before the first answer; the second finds it described")
+		"answered:attack", "missed", "answered:toward", encounter.BeatStayed, "turn-ended",
+	}, beatWords(beats), "the answers in order; the table is told to nobody (rpg-project#933)")
 	stayed := stayedBeats(beats)[0]
 	require.Equal(t, "encounter:table:toward", stayed["cause"])
 	require.Equal(t, "already in reach", stayed["why"])

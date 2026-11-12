@@ -59,6 +59,30 @@ import (
 //     not witness it holds nothing: sharing beyond that is a means not yet
 //     built (rpg-project#928, "needs seen").
 //
+// # One write, a second place to hang it (rpg-project#929)
+//
+// The same [Consequence] may hang on a reply line's SUCCESS row
+// ([Option.Grants], [RowGrant]): a recognised member coming back to vouch,
+// a straggler making their own case. It is written by the same path, by the
+// same live sight, inside the same Speak, and EVERY TIME the row lands —
+// a record already held is confirmed, never written new, so when the holder
+// first recognised someone survives. A checked line's FAILURE row may carry
+// one too (rpg-project#932), landing only when the line is missed: a guard
+// who turns a straggler away holds that he did. A second
+// subject word, [RecognitionSpeaker], recognises the speaker alone. On a
+// line, `heard_by` means the other carriers of the interaction the line
+// reads or advances; a line that names none has nobody to hear it, and
+// `heard_by` is refused there.
+//
+// # A routine wakes on a topic (rpg-project#929)
+//
+// A holder who comes to hold a topic for the first time hears the `topic`
+// beat ([beatTopic]), landed as a learned fact's `fact` beat is and answered
+// at the next raise; a guard reads which topic as `topic:<id>`
+// ([MachineTopic]), true while the member holds it about anybody, from his
+// OWN holdings. A state not listening does not hear it; a later state that
+// listens reads the guard on the next topic beat, as `fact` works.
+//
 // # One question, asked the same way everywhere
 //
 // [TriggerRecognized] asks "does the OTHER PARTY hold this topic about me".
@@ -120,6 +144,11 @@ const (
 	// sight now, from his own testimony.
 	RecognitionPartyInSight RecognitionSubjects = "party_in_sight"
 
+	// RecognitionSpeaker is the speaker alone, when the holder sees them
+	// (rpg-project#929): a straggler making their own case is recognised
+	// themselves, never whoever stands beside them.
+	RecognitionSpeaker RecognitionSubjects = "speaker"
+
 	// RecognitionCarriersWhoWitnessed is every OTHER carrier of the
 	// interaction (a member whose lines name it) who witnessed the line and
 	// is up: each holds the same topic about the same subjects, heard.
@@ -175,20 +204,35 @@ func validateOutcomes(id InteractionID, states map[string]bool, outcomes map[str
 		}
 		for i, c := range outcomes[state] {
 			what := fmt.Sprintf("interaction %q outcome %q consequence %d", id, state, i)
-			r := c.Recognize
-			switch {
-			case r == nil:
-				return fmt.Errorf("%s is of no kind: the one kind is recognize", what)
-			case r.Topic == "":
-				return fmt.Errorf("%s recognizes on no topic", what)
-			case r.Holder != RecognitionSpokenTo:
-				return fmt.Errorf("%s holder %q: the holder is %q", what, r.Holder, RecognitionSpokenTo)
-			case r.About != RecognitionPartyInSight:
-				return fmt.Errorf("%s about %q: the subjects are %q", what, r.About, RecognitionPartyInSight)
-			case r.HeardBy != "" && r.HeardBy != RecognitionCarriersWhoWitnessed:
-				return fmt.Errorf("%s heard_by %q: the hearers are %q, or none", what, r.HeardBy, RecognitionCarriersWhoWitnessed)
+			if err := validateConsequence(what, c, true); err != nil {
+				return err
 			}
 		}
+	}
+	return nil
+}
+
+// validateConsequence refuses one consequence nobody could author on
+// purpose: no kind, no topic, and any word that is not one of its constants.
+// carriers says whether the place it hangs names an interaction whose other
+// carriers could hear it; where none is named, `heard_by` is refused, since
+// there would be nobody to hear.
+func validateConsequence(what string, c Consequence, carriers bool) error {
+	r := c.Recognize
+	switch {
+	case r == nil:
+		return fmt.Errorf("%s is of no kind: the one kind is recognize", what)
+	case r.Topic == "":
+		return fmt.Errorf("%s recognizes on no topic", what)
+	case r.Holder != RecognitionSpokenTo:
+		return fmt.Errorf("%s holder %q: the holder is %q", what, r.Holder, RecognitionSpokenTo)
+	case r.About != RecognitionPartyInSight && r.About != RecognitionSpeaker:
+		return fmt.Errorf("%s about %q: the subjects are %q or %q", what, r.About, RecognitionPartyInSight, RecognitionSpeaker)
+	case r.HeardBy != "" && r.HeardBy != RecognitionCarriersWhoWitnessed:
+		return fmt.Errorf("%s heard_by %q: the hearers are %q, or none", what, r.HeardBy, RecognitionCarriersWhoWitnessed)
+	case r.HeardBy != "" && !carriers:
+		return fmt.Errorf("%s heard_by %q: the line names no interaction, so it has no other carriers to hear it",
+			what, r.HeardBy)
 	}
 	return nil
 }
@@ -214,9 +258,10 @@ func cloneOutcomes(outcomes map[string][]Consequence) map[string][]Consequence {
 	return out
 }
 
-// grantedTopics is every topic some interaction's outcome grants: the topics
-// a [TriggerRecognized] may name.
-func grantedTopics(interactions map[InteractionID]*interactionRecord) map[TopicID]bool {
+// grantedTopics is every topic some interaction's outcome grants, or some
+// line's answer among the lists given grants (rpg-project#929): the topics a
+// [TriggerRecognized] may name.
+func grantedTopics(interactions map[InteractionID]*interactionRecord, lines ...[]Option) map[TopicID]bool {
 	out := map[TopicID]bool{}
 	for _, r := range interactions {
 		for _, cs := range r.input.Outcomes {
@@ -227,7 +272,93 @@ func grantedTopics(interactions map[InteractionID]*interactionRecord) map[TopicI
 			}
 		}
 	}
+	for _, options := range lines {
+		for _, o := range options {
+			for _, g := range o.Grants {
+				if g.Consequence.Recognize != nil {
+					out[g.Consequence.Recognize.Topic] = true
+				}
+			}
+		}
+	}
 	return out
+}
+
+// RowGrant is one consequence a line's row lands when that row is the one
+// answered (rpg-project#929): the same [Consequence] an interaction's
+// outcome uses, hung on a reply instead of a state. Every time the row lands
+// it grants again, for whoever is in sight then; a record that is already
+// held is confirmed, never written new.
+//
+// A FAILURE ROW MAY GRANT TOO (rpg-project#932): a guard who turns a
+// straggler away comes to hold that he did, so the claim is not offered to
+// the same speaker twice. It lands only when a checked line is missed — a
+// plain line has no failure rows to hang one on.
+type RowGrant struct {
+	// Row is the index of the row whose landing grants: in [Option.Success],
+	// or in [Option.Failure] when Failure is set.
+	Row int `json:"row"`
+
+	// Failure is true when Row indexes the failure rows (rpg-project#932):
+	// the grant lands when the line is missed. False, the zero value, is a
+	// success row's, as every grant before this field was.
+	Failure bool `json:"failure,omitempty"`
+
+	// Consequence is what it grants.
+	Consequence Consequence `json:"consequence"`
+}
+
+// validateGrants refuses a line's grants nobody could author on purpose: a
+// row the line does not have, and a consequence [validateConsequence]
+// refuses. `heard_by` needs the line to name an interaction ([optionInteraction]).
+func validateGrants(o Option) error {
+	_, named := optionInteraction(o)
+	for i, g := range o.Grants {
+		what := fmt.Sprintf("option %q grant %d", o.ID, i)
+		verdict, rows := AnswerSuccess, o.Success
+		if g.Failure {
+			verdict, rows = AnswerFailure, o.Failure
+		}
+		if g.Row < 0 || g.Row >= len(rows) {
+			return fmt.Errorf("%s names %s row %d, and the line has %d", what, verdict, g.Row, len(rows))
+		}
+		if err := validateConsequence(what, g.Consequence, named); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// cloneGrants copies a line's grants so no caller's value is aliased.
+func cloneGrants(grants []RowGrant) []RowGrant {
+	if grants == nil {
+		return nil
+	}
+	out := make([]RowGrant, 0, len(grants))
+	for _, g := range grants {
+		if g.Consequence.Recognize != nil {
+			r := *g.Consequence.Recognize
+			g.Consequence.Recognize = &r
+		}
+		out = append(out, g)
+	}
+	return out
+}
+
+// applyGrants runs every grant of the row that answered the line — a
+// success row when it landed, a failure row when it was missed
+// (rpg-project#929, #932): the same write an outcome makes, by the same live
+// sight, inside the same Speak.
+func (e *Encounter) applyGrants(o Option, beaten bool, row int, line recognitionLine) error {
+	for _, g := range o.Grants {
+		if g.Failure == beaten || g.Row != row || g.Consequence.Recognize == nil {
+			continue
+		}
+		if err := e.grantRecognition(*g.Consequence.Recognize, line); err != nil {
+			return fmt.Errorf("option %q grant: %w", o.ID, err)
+		}
+	}
+	return nil
 }
 
 // recognizes reports whether holder holds topic about subject: the one
@@ -248,10 +379,65 @@ func (e *Encounter) recognizes(holder, subject MemberID, topic TopicID) bool {
 type recognitionLine struct {
 	interaction InteractionID
 	state       string
-	speaker     MemberID
-	spokenTo    MemberID
-	witnesses   []MemberID
-	at          uint64
+	// option is the line whose answer granted, empty for an outcome.
+	option    string
+	speaker   MemberID
+	spokenTo  MemberID
+	witnesses []MemberID
+	at        uint64
+	// spoken is true for an abandoned settle (rpg-project#938): the line is
+	// judged in the scene it was spoken in, so whom the creature spoken to
+	// sees is seen, not the live reach.
+	spoken bool
+	seen   []MemberID
+	// hearers is who caught the words of the line that granted, when a line
+	// granted (rpg-project#933, R9): the carriers who hear a recognition are
+	// the word-catchers, not those who only saw it said. Nil for an outcome
+	// no line moved, whose carriers are the witnesses.
+	hearers []MemberID
+	// perceived is, for a line judged as spoken, which members of the
+	// speaker's party each witness saw when the words were said
+	// ([ReservedScene.Perceived]): what each reader of its beats may be told.
+	perceived map[MemberID][]MemberID
+	// sawTarget is, for a line judged as spoken, who saw the creature it was
+	// said to when the words were said ([ReservedScene.SawTarget]): who may
+	// be told that creature is the one who came to hold a recognition.
+	sawTarget []MemberID
+}
+
+// knowsHolder is whether reader may be named the holder of a recognition
+// this line granted (rpg-project#933): the holder themselves, or a reader
+// who perceives them — on the live reach, or, for a line judged as spoken,
+// the creature spoken to as the reader saw them then. A hearer who saw
+// nobody hears that someone came to hold it, never who.
+func (line recognitionLine) knowsHolder(reach sightReach, reader, holder MemberID) bool {
+	if reader == holder {
+		return true
+	}
+	if line.spoken {
+		return holder == line.spokenTo && slices.Contains(line.sawTarget, reader)
+	}
+	return reach.Reaches(perception.Sight, reader, holder)
+}
+
+// perceives is whether reader perceives subject for this line's beats: on
+// the live reach, or, for a line judged as spoken, as they did when the
+// words were said ([ReservedScene.Perceived]).
+func (line recognitionLine) perceives(reach sightReach, reader, subject MemberID) bool {
+	if line.spoken {
+		return slices.Contains(line.perceived[reader], subject)
+	}
+	return reach.Reaches(perception.Sight, reader, subject)
+}
+
+// sees is whether holder sees subject for this line: on the live reach, or,
+// for a line judged as spoken ([recognitionLine.spoken]), as the creature
+// spoken to saw when the words were said.
+func (line recognitionLine) sees(reach sightReach, holder, subject MemberID) bool {
+	if line.spoken {
+		return holder == line.spokenTo && slices.Contains(line.seen, subject)
+	}
+	return reach.Reaches(perception.Sight, holder, subject)
 }
 
 // applyOutcome runs every consequence authored for the state the line's
@@ -296,7 +482,13 @@ func (e *Encounter) grantRecognition(r Recognition, line recognitionLine) error 
 	if err != nil {
 		return err
 	}
-	subjects := e.partyInSight(reach, holder, line.speaker)
+	subjects := e.partyInSight(reach, holder, line)
+	if r.About == RecognitionSpeaker {
+		subjects = nil
+		if line.speaker != holder && line.sees(reach, holder, line.speaker) {
+			subjects = []MemberID{line.speaker}
+		}
+	}
 	if len(subjects) == 0 {
 		return nil
 	}
@@ -310,7 +502,14 @@ func (e *Encounter) grantRecognition(r Recognition, line recognitionLine) error 
 	if err != nil {
 		return err
 	}
-	for _, carrier := range line.witnesses {
+	// A LINE TEACHES WHOEVER CATCHES ITS WORDS (rpg-project#933, R9): the
+	// carriers who hear it are those the line's words reached, not those who
+	// only saw it said.
+	carriers := line.witnesses
+	if line.hearers != nil {
+		carriers = line.hearers
+	}
+	for _, carrier := range carriers {
 		if carrier == holder || carrier == line.speaker || down[carrier] {
 			continue
 		}
@@ -326,9 +525,23 @@ func (e *Encounter) grantRecognition(r Recognition, line recognitionLine) error 
 }
 
 // partyInSight is the members of the speaker's faction — the speaker
-// included — whom holder sees on the live reach given, in id order. A
-// speaker in no faction is a party of one.
-func (e *Encounter) partyInSight(reach sightReach, holder, speaker MemberID) []MemberID {
+// included — whom holder sees on the live reach given, or as the line was
+// spoken ([recognitionLine.sees]), in id order. A speaker in no faction is a
+// party of one.
+func (e *Encounter) partyInSight(reach sightReach, holder MemberID, line recognitionLine) []MemberID {
+	var out []MemberID
+	for _, id := range e.partyOf(line.speaker) {
+		if id != holder && line.sees(reach, holder, id) {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// partyOf is the members of the speaker's faction, the speaker included, in
+// id order: a speaker in no faction is a party of one, and a speaker not in
+// the run has none.
+func (e *Encounter) partyOf(speaker MemberID) []MemberID {
 	s, ok := e.members[speaker]
 	if !ok {
 		return nil
@@ -336,13 +549,7 @@ func (e *Encounter) partyInSight(reach sightReach, holder, speaker MemberID) []M
 	side := factionOf(s)
 	var out []MemberID
 	for _, id := range slices.Sorted(maps.Keys(e.members)) {
-		if id == holder {
-			continue
-		}
-		if id != speaker && (side == "" || factionOf(e.members[id]) != side) {
-			continue
-		}
-		if reach.Reaches(perception.Sight, holder, id) {
+		if id == speaker || (side != "" && factionOf(e.members[id]) == side) {
 			out = append(out, id)
 		}
 	}
@@ -353,8 +560,9 @@ func (e *Encounter) partyInSight(reach sightReach, holder, speaker MemberID) []M
 // from. Nothing reads it to decide anything — the holding's presence is the
 // answer — but a record of why is kept with it.
 type recognitionTestimony struct {
-	Interaction InteractionID `json:"interaction"`
-	State       string        `json:"state"`
+	Interaction InteractionID `json:"interaction,omitempty"`
+	State       string        `json:"state,omitempty"`
+	Option      string        `json:"option,omitempty"`
 }
 
 // holdTopic lands one holder's record on topic about every subject, through
@@ -362,27 +570,44 @@ type recognitionTestimony struct {
 func (e *Encounter) holdTopic(
 	reach sightReach, holder MemberID, subjects []MemberID, topic TopicID, channel string, line recognitionLine,
 ) error {
-	payload, err := json.Marshal(recognitionTestimony{Interaction: line.interaction, State: line.state})
+	payload, err := json.Marshal(recognitionTestimony{Interaction: line.interaction, State: line.state, Option: line.option})
 	if err != nil {
 		return fmt.Errorf("recognition payload: %w", err)
 	}
+	// A RECORD ALREADY HELD IS KEPT (rpg-project#929): whatever source grants
+	// it again — the admission, then a vouch — the holder keeps the record he
+	// has, its first payload with it, so only a confirmation lands and when
+	// he first recognised the subject survives. The beat still says which
+	// line or outcome granted this time.
 	reports := make([]perception.Presence, 0, len(subjects))
 	for _, s := range subjects {
-		reports = append(reports, perception.Presence{ID: sightMember(s), Payload: payload})
+		report := perception.Presence{ID: sightMember(s), Payload: payload}
+		if held, err := e.intelLog.AboutOn(sightMember(holder), sightMember(s), perception.Topic(topic)); err == nil {
+			report.Payload = held.Payload
+		}
+		reports = append(reports, report)
 	}
-	if _, err := e.intelLog.Report(perception.ReportInput{
+	reported, err := e.intelLog.Report(perception.ReportInput{
 		Observer: sightMember(holder), Channel: perception.Channel(channel), Topic: perception.Topic(topic),
 		Reports: reports, At: line.at,
-	}); err != nil {
+	})
+	if err != nil {
 		return fmt.Errorf("%s holds %q: %w", holder, topic, err)
+	}
+	// A HOLDER WHO COMES TO HOLD A TOPIC MAY WAKE ON IT (rpg-project#929):
+	// only a first holding is news; a record confirmed again is not.
+	if len(reported.FirstContact) > 0 {
+		e.landTopicBeat(holder, line.at)
 	}
 	return e.tellRecognition(reach, holder, subjects, topic, channel, line)
 }
 
 // tellRecognition appends the [BeatRecognized] beats for one holder's
 // record. The line's witnesses hear of it, each told ONLY the subjects they
-// perceive themselves on the same live reach — a member is always aware of
-// themselves — so a beat never names a member its reader cannot see; the
+// perceive themselves on the same live reach — or, for a line judged as
+// spoken (rpg-project#938), as they perceived them when the words were said
+// ([recognitionLine.perceives]) — a member is always aware of themselves —
+// so a beat never names a member its reader cannot see; the
 // holder is told every subject he recognised. A witness who perceives none of
 // them is told nothing. Readers told the same subjects share one beat, in
 // the order they were first met; each beat goes to exactly its readers, the
@@ -392,11 +617,22 @@ func (e *Encounter) tellRecognition(
 ) error {
 	type telling struct {
 		subjects []string
+		heard    bool
+		named    bool
 		audience []MemberID
 	}
 	var tellings []*telling
 	byKey := map[string]*telling{}
-	readers := append([]MemberID{holder}, line.witnesses...)
+	// A LINE'S GRANT IS TOLD TO WHOEVER CAUGHT ITS WORDS (rpg-project#933):
+	// its topic says how the line went — admitted, turned away — so one who
+	// only saw it said is told nothing, and reads the consequence off the
+	// world (the walker let through or stopped). An outcome no line moved
+	// is told to its witnesses.
+	audience := line.witnesses
+	if line.hearers != nil {
+		audience = line.hearers
+	}
+	readers := append([]MemberID{holder}, audience...)
 	for _, reader := range readers {
 		if _, dup := byKey["reader:"+string(reader)]; dup {
 			continue
@@ -404,31 +640,46 @@ func (e *Encounter) tellRecognition(
 		byKey["reader:"+string(reader)] = nil
 		var told []string
 		for _, s := range subjects {
-			if reader == holder || reader == s || reach.Reaches(perception.Sight, reader, s) {
+			if reader == holder || reader == s || line.perceives(reach, reader, s) {
 				told = append(told, string(s))
 			}
 		}
 		if len(told) == 0 {
 			continue
 		}
-		key := "subjects:" + strings.Join(told, "\x00")
+		// THE LINE IS NAMED ONLY TO WHOEVER CAUGHT IT (rpg-project#933): a
+		// reader who saw the grant and not the words is told the recognition
+		// and not which line granted it.
+		heard := line.hearers == nil || slices.Contains(line.hearers, reader)
+		named := line.hearers == nil || line.knowsHolder(reach, reader, holder)
+		key := fmt.Sprintf("heard:%t;named:%t;subjects:%s", heard, named, strings.Join(told, "\x00"))
 		t, ok := byKey[key]
 		if !ok {
-			t = &telling{subjects: told}
+			t = &telling{subjects: told, heard: heard, named: named}
 			byKey[key] = t
 			tellings = append(tellings, t)
 		}
 		t.audience = append(t.audience, reader)
 	}
 	for _, t := range tellings {
-		beat, err := json.Marshal(map[string]interface{}{
-			"beat":        BeatRecognized,
-			"holder":      string(holder),
-			"subjects":    t.subjects,
-			"topic":       string(topic),
-			"channel":     channel,
-			"interaction": string(line.interaction),
-		})
+		payload := map[string]interface{}{
+			"beat":     BeatRecognized,
+			"subjects": t.subjects,
+			"topic":    string(topic),
+			"channel":  channel,
+		}
+		// What granted it: an interaction's outcome names the interaction; a
+		// line's answer names the line, and its interaction when it has one.
+		if line.interaction != "" {
+			payload["interaction"] = string(line.interaction)
+		}
+		if t.named {
+			payload["holder"] = string(holder)
+		}
+		if line.option != "" && t.heard {
+			payload["option"] = line.option
+		}
+		beat, err := json.Marshal(payload)
 		if err != nil {
 			return fmt.Errorf("recognized beat: %w", err)
 		}
@@ -460,4 +711,13 @@ func validateRecognizedTopics(granted map[TopicID]bool, what string, requires []
 		}
 	}
 	return nil
+}
+
+// sawTargetOf is who saw the creature a kept roll's line was said to, when
+// the line is judged as spoken; nil for a live line.
+func sawTargetOf(line utterance) []MemberID {
+	if line.scene == nil {
+		return nil
+	}
+	return slices.Clone(line.scene.SawTarget)
 }

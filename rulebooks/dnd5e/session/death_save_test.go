@@ -13,9 +13,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
+	dndevents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/saves"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -398,13 +398,14 @@ func TestDeathSaveOutcomesAndContinuations(t *testing.T) {
 func TestDeathSaveProjectsSourceQualifiedBaneCalculation(t *testing.T) {
 	f := newDeathSaveFixture(t, 4)
 	f.makeDying(0, 0)
-	baned, err := conditions.NewBanedCondition(conditions.NewBanedConditionInput{
-		MemberID: "alice", SourceID: "bob", SourceRef: refs.Spells.Bane(),
-	})
-	require.NoError(t, err)
+	baned := fixtureNamed(t, namedFixtureInput{Ref: refs.Conditions.Baned(), Member: "alice", Source: "bob", Origin: refs.Spells.Bane()})
 	raw, err := baned.ToJSON()
 	require.NoError(t, err)
 	f.characters.byID["alice"].Conditions = append(f.characters.byID["alice"].Conditions, raw)
+	owner := fixtureHold(t, holdFixtureInput{Member: "bob", Source: refs.Spells.Bane().String(), Name: "Bane", Turns: 10, Children: []dndevents.ConditionAddress{baned.ConditionAddress()}})
+	held, err := owner.ToJSON()
+	require.NoError(t, err)
+	f.characters.byID["bob"].Conditions = append(f.characters.byID["bob"].Conditions, held)
 
 	out, err := f.execute(f.declaration().ID)
 	require.NoError(t, err)

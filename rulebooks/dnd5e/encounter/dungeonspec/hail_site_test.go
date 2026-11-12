@@ -148,12 +148,14 @@ func compiledPartyStart(t *testing.T) spatial.Position {
 }
 
 // answeredWith reports whether a beat is the porter's answer saying line.
+// answeredWith reports whether a beat is the visitor's version of the porter
+// saying line: the words travel in the speech versions (rpg-project#933).
 func answeredWith(payload []byte, line string) bool {
 	var b struct {
-		Beat     string `json:"beat"`
-		Creature string `json:"creature"`
-		Say      string `json:"say"`
+		Beat    string `json:"beat"`
+		Speaker string `json:"speaker"`
+		Words   string `json:"words"`
 	}
-	return json.Unmarshal(payload, &b) == nil && b.Beat == encounter.BeatAnswered &&
-		b.Creature == string(hailSitePorter) && b.Say == line
+	return json.Unmarshal(payload, &b) == nil && b.Beat == encounter.BeatSpeech &&
+		b.Speaker == string(hailSitePorter) && b.Words == line
 }

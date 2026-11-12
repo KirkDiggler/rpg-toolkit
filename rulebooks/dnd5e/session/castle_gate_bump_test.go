@@ -150,9 +150,9 @@ func TestCastleTheHeldCrossingIsABump(t *testing.T) {
 func TestCastleAWallBumpWritesNothing(t *testing.T) {
 	c := openTheGateWithGateOneAlone(t, 18)
 	c.besideTheGate(t)
-	// The captain's hail on the road is a voice gate-1 hears, so he may be
-	// alert rather than posted by now (rpg-project#923); the wall changes
-	// neither.
+	// Whatever state gate-1 is in by now — the captain's spoken hail no
+	// longer alerts him, guards answer shouts (rpg-project#933) — the wall
+	// changes nothing.
 	before := stateOrPosted(stateOf(t, c.world(t), "gate-1"))
 
 	out, played := c.bump(t, throughTheGateWall, spatial.Position{X: -4, Y: 5})

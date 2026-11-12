@@ -179,8 +179,9 @@ func (s *rowsSuite) TestRageAnswersFourRows() {
 	rg := newRig(&s.Suite, rageRecipe(), outputVocabulary())
 	rows, err := rg.c.Rows(strMelee(9))
 	s.Require().NoError(err)
+	three := 3
 	s.Equal([]effects.Row{
-		{Kind: kindDamageBonus, Verdict: machine.Applies, Reason: "fact action.melee", Amount: 3},
+		{Kind: kindDamageBonus, Verdict: machine.Applies, Reason: "fact action.melee", Amount: &effects.AmountResult{Scalar: &three}},
 		{Kind: kindResist, Verdict: machine.Applies, Reason: "always"},
 		{Kind: kindAdvantage, Verdict: machine.Applies, Reason: "fact action.ability"},
 		{Kind: kindAdvantage, Verdict: machine.Applies, Reason: "fact action.ability"},
@@ -195,8 +196,11 @@ func (s *rowsSuite) TestTwoOutputsGiveTwoRows() {
 	rg := newRig(&s.Suite, r, outputVocabulary())
 	rows, err := rg.c.Rows(strMelee(1))
 	s.Require().NoError(err)
-	s.Len(rows, 2)
-	s.Equal(2, rows[0].Amount, "level 1: +2")
+	s.Require().Len(rows, 2)
+	s.Require().NotNil(rows[0].Amount)
+	amount, err := rows[0].Amount.ScalarValue()
+	s.Require().NoError(err)
+	s.Equal(2, amount, "level 1: +2")
 }
 
 func (s *rowsSuite) TestADependsGuardIsADependsRowNotAnError() {
@@ -207,7 +211,7 @@ func (s *rowsSuite) TestADependsGuardIsADependsRowNotAnError() {
 	s.Require().NoError(err)
 	s.Equal(machine.Depends, rows[0].Verdict)
 	s.Equal("fact action.ability", rows[0].Reason)
-	s.Zero(rows[0].Amount)
+	s.Nil(rows[0].Amount)
 }
 
 func (s *rowsSuite) TestAnEndedConditionAnswersNoRows() {

@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 )
@@ -66,7 +65,7 @@ func (s *TurnConcentrationSuite) fight() {
 func (s *TurnConcentrationSuite) concentrateOn(member, spellRef, spellName string) {
 	s.T().Helper()
 
-	holding := conditions.NewConcentratingCondition(member, spellRef, spellName, 10)
+	holding := fixtureHold(s.T(), holdFixtureInput{Member: member, Source: spellRef, Name: spellName, Turns: 10})
 	blob, err := holding.ToJSON()
 	s.Require().NoError(err)
 
