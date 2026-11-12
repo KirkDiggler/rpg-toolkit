@@ -196,6 +196,18 @@ func TestCastleAWaitingCaseWhoseGuardFallsIsReleased(t *testing.T) {
 	require.True(t, c.holdsGuidance(t, "cleric"))
 }
 
+// TestCastleAWaitingCaseWhoseSpeakerExitsIsDropped: the cleric leaves the
+// run while her roll waits. Nobody is left to roll: her question and the
+// hold end with her, with no verdict.
+func TestCastleAWaitingCaseWhoseSpeakerExitsIsDropped(t *testing.T) {
+	c := theClericsWaitingCase(t, 2)
+	_, err := c.mgr.Exit(context.Background(), &session.ExitInput{Session: "sess", Member: "cleric"})
+	require.NoError(t, err)
+	require.Zero(t, c.reservations(t), "the hold is dropped")
+	require.False(t, c.holds(t, "gate-1", "cleric", turnedAwayTopic), "with no verdict")
+	require.Empty(t, c.sessions.byID["sess"].Windows.Windows, "and no question is left open")
+}
+
 // TestCastleAStragglerHasOneTry: one try at the straggler's claim
 // (rpg-project#932) through the session. With no die to hold, her case is
 // missed at once: it is gone from her row on both guards, the line asking

@@ -81,6 +81,7 @@ var admittedGateTests = []string{
 	"TestCastleASpendAfterWalkingAwayIsSettledDeclined",
 	"TestCastleAKeptRollSettlesOnceAfterALoad",
 	"TestCastleAWaitingCaseWhoseGuardFallsIsReleased",
+	"TestCastleAWaitingCaseWhoseSpeakerExitsIsDropped",
 	"TestCastleAStragglerHasOneTry",
 }
 
