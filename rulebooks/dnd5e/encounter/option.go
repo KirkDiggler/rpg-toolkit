@@ -772,6 +772,7 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 		if err := e.applyGrants(option, beaten, answered.pick.Entry, recognitionLine{
 			interaction: iid, option: option.ID, speaker: in.Actor, spokenTo: in.Target, witnesses: witnesses, at: at,
 			spoken: spoken, seen: admitted.seen, perceived: admitted.perceived, hearers: heardLine.catchers,
+			sawTarget: sawTargetOf(line),
 		}); err != nil {
 			return nil, fmt.Errorf("speak: %w", err)
 		}
@@ -784,6 +785,7 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	if err := e.advanceInteraction(option, beaten, recognitionLine{
 		speaker: in.Actor, spokenTo: in.Target, witnesses: witnesses, at: at,
 		spoken: spoken, seen: admitted.seen, perceived: admitted.perceived, hearers: heardLine.catchers,
+		sawTarget: sawTargetOf(line),
 	}); err != nil {
 		return nil, fmt.Errorf("speak: %w", err)
 	}

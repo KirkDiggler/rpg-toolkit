@@ -21,11 +21,29 @@ import (
 // and bob come up into the posted guard's sight.
 func vouchHall(t *testing.T, loudness string, secondSees int) *Encounter {
 	t.Helper()
+	return vouchHallWith(t, func(id string) string {
+		if id == "vouch" {
+			return loudness
+		}
+		return ""
+	}, secondSees)
+}
+
+// whisperedHall is [vouchHall] with every line the gate guards offer
+// whispered and gate-2 seeing the whole hall.
+func whisperedHall(t *testing.T) *Encounter {
+	t.Helper()
+	return vouchHallWith(t, func(string) string { return "whisper" }, 100)
+}
+
+// vouchHallWith is [vouchHall] with each option's loudness named by id.
+func vouchHallWith(t *testing.T, loudnessOf func(id string) string, secondSees int) *Encounter {
+	t.Helper()
 	guard := func(id MemberID, at spatial.Position) MemberInput {
 		g := gateGuard(t, id, at)
 		for i := range g.Options {
-			if g.Options[i].ID == "vouch" {
-				g.Options[i].Loudness = loudness
+			if l := loudnessOf(g.Options[i].ID); l != "" {
+				g.Options[i].Loudness = l
 			}
 		}
 		return g
@@ -110,5 +128,100 @@ func TestAKeptRollSavedBeforeHearingsReachesOnlyItsTwo(t *testing.T) {
 		require.False(t, facets[id].words, "%s caught no words the scene never said reached them", id)
 		require.False(t, facets[id].noticed, "%s noticed no voice either", id)
 		require.False(t, facets[id].seesTo, "nor whom it was said to: SawTarget was never kept")
+	}
+}
+
+// TestOneWhoOnlySawALineThatGrantsLearnsNothingOfIt holds the read-back's
+// sentence — "whoever only sees it said learns neither the words, which line
+// it was, whether it worked, nor what it taught" — to the engine, on lines
+// whose answer grants a recognition (rpg-project#933). The lines are
+// whispered, so the watchers see them said and catch none of it: neither is
+// written a recognition, a verdict, a line, a fact, a topic or a deed of it,
+// and neither comes to hold its topic; the guard it was said to does. (The
+// guard's spoken reply is its own utterance, and its versions are its own.)
+func TestOneWhoOnlySawALineThatGrantsLearnsNothingOfIt(t *testing.T) {
+	whispered := func(g MemberInput) MemberInput {
+		for i := range g.Options {
+			g.Options[i].Loudness = "whisper"
+		}
+		return g
+	}
+	for _, tc := range []struct {
+		name     string
+		open     func(t *testing.T) *Encounter
+		speaker  MemberID
+		option   string
+		topic    TopicID
+		beaten   bool
+		watchers []MemberID
+	}{
+		{
+			name: "a vouch admits",
+			open: func(t *testing.T) *Encounter {
+				enc := whisperedHall(t)
+				placeAt(t, enc, "alice", holdNorthEast)
+				return enc
+			},
+			speaker: "alice", option: "vouch", topic: admittedTopic, beaten: true,
+			watchers: []MemberID{"gate-2", "bob"},
+		},
+		{
+			name: "a missed straggler's case turns him away",
+			open: func(t *testing.T) *Encounter {
+				in := recognisingSetup(t, true,
+					whispered(oneTryGuard(t, postedGuard, holdNorthWest)),
+					whispered(oneTryGuard(t, "gate-2", spatial.Position{X: 2, Y: 0})),
+					MemberInput{ID: "bob", Kind: KindPlayer, Position: spatial.Position{X: 8, Y: 4}},
+					MemberInput{ID: "carol", Kind: KindPlayer, Position: spatial.Position{X: 9, Y: 4}},
+				)
+				in.Sight = shortSighted{member: postedGuard, cells: 2}
+				enc, err := NewEncounter(in)
+				require.NoError(t, err)
+				admit(t, enc, postedGuard)
+				placeAt(t, enc, "alice", spatial.Position{X: 8, Y: 3})
+				placeAt(t, enc, "bob", holdSouthEast)
+				placeAt(t, enc, "carol", spatial.Position{X: 3, Y: 1})
+				return enc
+			},
+			speaker: "bob", option: "straggler", topic: turnedAwayTopic, beaten: false,
+			watchers: []MemberID{"gate-2", "carol"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			enc := tc.open(t)
+			before := map[MemberID]int{}
+			for _, w := range tc.watchers {
+				entries, err := enc.Story(&StoryInput{Audience: w})
+				require.NoError(t, err)
+				before[w] = len(entries)
+			}
+			_, err := say(t, enc, tc.speaker, postedGuard, tc.option, tc.beaten)
+			require.NoError(t, err)
+			require.True(t, enc.recognizes(postedGuard, "bob", tc.topic), "precondition: the guard it was said to holds it")
+
+			for _, w := range tc.watchers {
+				require.False(t, enc.recognizes(w, "bob", tc.topic), "%s holds nothing of it", w)
+				entries, err := enc.Story(&StoryInput{Audience: w})
+				require.NoError(t, err)
+				saw := false
+				for _, e := range entries[before[w]:] {
+					var b map[string]any
+					require.NoError(t, json.Unmarshal(e.Payload, &b))
+					require.NotEqual(t, BeatRecognized, b["beat"], "%s is told no recognition the line granted: %v", w, b)
+					if b["beat"] == BeatSpeech {
+						if b["speaker"] == string(tc.speaker) {
+							saw = true
+							require.NotContains(t, b, "words", "%s caught no words of the line", w)
+						}
+						continue
+					}
+					for _, key := range []string{"option", "beaten", "fact", "topic", "check", "words"} {
+						require.NotContains(t, b, key, "%s: a %s beat tells the line's %s", w, b["beat"], key)
+					}
+					require.NotEqual(t, "fact", b["word"], "%s: a %s beat says the line taught a fact", w, b["beat"])
+				}
+				require.True(t, saw, "precondition: %s saw it said", w)
+			}
+		})
 	}
 }

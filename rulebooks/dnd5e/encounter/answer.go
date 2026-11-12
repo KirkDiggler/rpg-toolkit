@@ -385,6 +385,11 @@ func blankSpeech(body map[string]interface{}) {
 	if k, _ := body["key"].(string); k == string(AnswerSuccess) || k == string(AnswerFailure) {
 		delete(body, "key")
 	}
+	// That the row taught a fact is what it taught, in part: the word goes
+	// with the fact, to the speech versions of those who caught the words.
+	if body["word"] == "fact" {
+		body["word"] = ""
+	}
 }
 
 // answeredBy is who answered and to what: the creature (or the prop) whose

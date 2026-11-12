@@ -253,7 +253,7 @@ func (s *AnswerTestSuite) TestAFactEntryTeachesEveryWitnessAndTurnsTheCamp() {
 
 	beats := s.answeredBeats(enc, alice)
 	s.Require().Len(beats, 1)
-	s.Equal("fact", beats[0]["word"])
+	s.Empty(beats[0]["word"], "that it taught a fact is said with the fact, in the words")
 	s.Equal(string(goblin), beats[0]["creature"])
 	for _, key := range []string{"fact", "verb", "option", "beaten"} {
 		s.NotContains(beats[0], key, "the pick teaches, names and judges nothing (rpg-project#933)")
