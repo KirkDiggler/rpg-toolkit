@@ -1483,7 +1483,7 @@ func (m *Manager) commitAt(ctx context.Context, scope *writeScope, final bool) (
 	// A WINDOW NEVER OUTLIVES THE LINE IT ASKS ABOUT (rpg-project#924): the
 	// verb whose step, strike or exit made the encounter release a waiting
 	// line's hold closes that line's window in the same save.
-	if err := closeAbandonedLines(scope); err != nil {
+	if err := m.closeAbandonedLines(ctx, scope); err != nil {
 		report := SaveReport{Written: append([]string(nil), scope.written...)}
 		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", err)
 	}

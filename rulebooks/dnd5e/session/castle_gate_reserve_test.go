@@ -91,9 +91,9 @@ var waitingClaimTests = []string{
 	"TestCastleAReplyFromAnOlderMenuIsRefused",
 	"TestCastleAWaitingClaimHoldsTheGateNotTheTable",
 	"TestCastleAWaitingClaimSurvivesAReloadAndSettlesOnce",
-	"TestCastleAWaitingClaimWalkedAwayFromIsClosedWithNothingSpent",
+	"TestCastleAWaitingClaimWalkedAwayFromIsKept",
 	"TestCastleAnAnswerChecksTheHoldBeforeItSpends",
-	"TestCastleASettleThatCouldNotLandEndsQuestionAndHoldTogether",
+	"TestCastleAnAnswerAfterTheCaptainLeftReachKeepsTheRoll",
 	"TestCastleWhileHerRollWaitsSheMayOnlyWalk",
 	"TestCastleNoVerbClosesTheRunUnderAWaitingRoll",
 	"TestCastleAFightFormingUnderAWaitingClaimFreezesThenSettles",
@@ -387,23 +387,23 @@ func TestCastleAWaitingClaimSurvivesAReloadAndSettlesOnce(t *testing.T) {
 	require.ErrorIs(t, err, session.ErrNoWindow, "the question was answered once")
 }
 
-// TestCastleAWaitingClaimWalkedAwayFromIsClosedWithNothingSpent: alice walks
-// back down the road out of the captain's reach with her claim waiting. The
-// encounter lets the gate go, and the walk that let it go closes her
-// question: the cleric's claims are open again, alice's late answer is
-// refused, and her Guidance die is still hers.
-func TestCastleAWaitingClaimWalkedAwayFromIsClosedWithNothingSpent(t *testing.T) {
+// TestCastleAWaitingClaimWalkedAwayFromIsKept: alice walks back down the
+// road out of the captain's reach with her claim waiting. A roll is kept
+// (rpg-project#938) — this test pinned "nothing spent and no verdict" before,
+// and now pins the ruling: the walk that took her out of reach settles her
+// claim as rolled, declined, in the same commit. Her eight misses, the gate
+// is warned, her question and the hold are gone, alice's late answer finds
+// no question, and her Guidance die is still hers.
+func TestCastleAWaitingClaimWalkedAwayFromIsKept(t *testing.T) {
 	c, _ := atTheGateWithAWaitingClaim(t)
 	react := reactRow(c, t, "alice")
 	require.NotEmpty(t, react.ID, "precondition: she is asked")
 
 	c.move(t, backDownTheRoad)
 
-	require.Empty(t, reactRow(c, t, "alice").ID, "the question is gone with the hold")
-	guest := lineFor(t, c, "cleric", "guest")
-	require.False(t, guest.Pending, "the gate is free again")
-	require.True(t, guest.Available)
-	require.Contains(t, frontGateProgress(t, c.world(t)), "fresh", "nothing was settled")
+	require.Empty(t, reactRow(c, t, "alice").ID, "the question is settled with the hold")
+	require.Zero(t, c.reservations(t), "the gate is held no longer")
+	require.Contains(t, frontGateProgress(t, c.world(t)), "warned-guest", "the claim landed as rolled: a miss")
 
 	_, err := c.mgr.React(context.Background(), &session.ReactInput{
 		Session: "sess", Member: "alice", DeclarationID: react.ID, Answer: session.Take(""),
@@ -598,28 +598,31 @@ func TestCastleNoVerbClosesTheRunUnderAWaitingRoll(t *testing.T) {
 	require.NoError(t, err, "and her answer settles it")
 }
 
-// TestCastleASettleThatCouldNotLandEndsQuestionAndHoldTogether: the
-// captain is moved beyond Speak reach in the stored world, with no verb of
-// the session's and no participation pass to notice, so the encounter's
-// hold still stands while its settle would be refused. Alice's answer asks
-// the settle's own doors first: it is refused [session.ErrStaleOption],
-// her die is not spent, and her question and the gate's hold end together
-// — one `held: false` beat, and the cleric's claims open again.
-func TestCastleASettleThatCouldNotLandEndsQuestionAndHoldTogether(t *testing.T) {
+// TestCastleAnAnswerAfterTheCaptainLeftReachKeepsTheRoll: the captain is
+// moved beyond Speak reach in the stored world, with no verb of the
+// session's and no participation pass to notice, so the encounter's hold
+// still stands, unabandoned, while its settle would be refused. Alice's
+// answer asks the settle's own doors first and finds them out of reach: a
+// roll is kept (rpg-project#938) — this test pinned a release before — so
+// the session abandons the hold and settles it declined whatever she
+// answered. She is told [session.ReactOutput.RollKept], her die is not
+// spent, the claim lands as rolled, and no hold is released.
+func TestCastleAnAnswerAfterTheCaptainLeftReachKeepsTheRoll(t *testing.T) {
 	c, _ := atTheGateWithAWaitingClaim(t)
 	react := reactRow(c, t, "alice")
 	require.NotEmpty(t, react.ID, "precondition: she is asked")
 	c.placeInTheRecord(t, "captain", spatial.Position{X: -4, Y: 2})
 	heldBefore := heldReleases(t, c)
 
-	_, err := c.mgr.React(context.Background(), &session.ReactInput{
+	out, err := c.mgr.React(context.Background(), &session.ReactInput{
 		Session: "sess", Member: "alice", DeclarationID: react.ID, Answer: session.Take(""),
 	})
-	require.ErrorIs(t, err, session.ErrStaleOption, "the settle could not land")
+	require.NoError(t, err)
+	require.True(t, out.RollKept, "she is told her roll was kept")
 	require.True(t, c.holdsGuidance(t, "alice"), "her die was not spent")
 	require.Empty(t, reactRow(c, t, "alice").ID, "her question is gone")
-	require.Equal(t, heldBefore+1, heldReleases(t, c), "the hold ended with it, told once")
-	require.Contains(t, frontGateProgress(t, c.world(t)), "fresh", "nothing was settled")
+	require.Equal(t, heldBefore, heldReleases(t, c), "nothing was released")
+	require.Contains(t, frontGateProgress(t, c.world(t)), "warned-guest", "the claim landed as rolled")
 }
 
 // heldReleases counts the `interaction-held` beats with `held: false` alice
