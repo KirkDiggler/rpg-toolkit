@@ -147,8 +147,8 @@ func (b *builder) rowStatements(o encounter.Option, line, heading, p string, t l
 			// nothing more. Said in full; the folded form leaves it to the
 			// line's own perception sentence.
 			if !t.prop {
-				does = append(does, fmt.Sprintf("whoever sees %s answer and caught none of the line is told only that %s answered",
-					t.name, t.name))
+				does = append(does, fmt.Sprintf("whoever sees %s answer and caught none of the line is told only that %s answered "+
+					"and what %s is seen doing, and sees the line said without its words", t.name, t.name, t.name))
 			}
 			fdoes, _ := rowDoes(row, t, "{self}")
 			s := lead + ", " + joinAnd(does)

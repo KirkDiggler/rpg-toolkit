@@ -5,13 +5,13 @@ package castletest
 
 import (
 	"encoding/json"
-	"slices"
 	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // castle_pick_shape_test.go is rpg-project#948: the captain's stand-aside has
@@ -19,29 +19,43 @@ import (
 // sees the captain but caught none of the line must not read which it was
 // off his pick.
 
+// inTheGreatHall is where a member stands who sees nothing at the gate.
+var inTheGreatHall = spatial.Position{X: -6, Y: -16}
+
+// faraway is a member in the great hall.
+const faraway = encounter.MemberID("faraway")
+
 // standAsideSeenNotHeard plays the hero's stand-aside, WHISPERED for this
 // route so the listener seated off the captain sees it said and catches
 // nothing of it, and returns every beat the listener is written by the line
 // itself (the beats outside any later act), in order.
 func standAsideSeenNotHeard(t *testing.T, beaten bool) []map[string]any {
 	t.Helper()
-	s := openTheCastleAs(t, castleHost{at: gatehouseSeat, loudness: map[string]string{"stand-aside": "whisper"}})
+	return standAsideWrites(t, beaten)[listener]
+}
+
+// standAsideWrites is [standAsideSeenNotHeard] for every member: each one's
+// beats from the line itself, a member in the great hall who sees nothing
+// of it among them.
+func standAsideWrites(t *testing.T, beaten bool) map[encounter.MemberID][]map[string]any {
+	t.Helper()
+	s := openTheCastleAs(t, castleHost{at: gatehouseSeat, loudness: map[string]string{"stand-aside": "whisper"},
+		players: []encounter.MemberInput{{ID: faraway, Kind: encounter.KindPlayer, Position: inTheGreatHall}}})
 	s.walkTo(s.at(kingCaptain))
 	s.joinListener()
 	before := len(s.enc.ToData().Log.Entries)
 	s.said(kingCaptain, "stand-aside", "intimidation", beaten)
 	data := s.enc.ToData()
-	var out []map[string]any
+	out := map[encounter.MemberID][]map[string]any{}
 	for _, e := range data.Log.Entries[before:] {
 		if e.AudienceRef == 0 || e.Tags[encounter.ActTag] != "" {
 			continue
 		}
-		if !slices.Contains(data.Log.Audiences[e.AudienceRef-1], listener) {
-			continue
-		}
 		var b map[string]any
 		require.NoError(t, json.Unmarshal(e.Payload, &b))
-		out = append(out, b)
+		for _, who := range data.Log.Audiences[e.AudienceRef-1] {
+			out[encounter.MemberID(who)] = append(out[encounter.MemberID(who)], b)
+		}
 	}
 	return out
 }
@@ -109,18 +123,27 @@ func TestMadKingTheStandAsidesPickTellsAWatcherNothing(t *testing.T) {
 	}
 }
 
-// TestMadKingAWatchersStateBeatIsAsToday pins what the state beat tells a
-// member who saw the stand-aside land and caught none of it, for the
-// operator's call on rpg-project#948: the posture change, its state names
-// and the authored reason.
-func TestMadKingAWatchersStateBeatIsAsToday(t *testing.T) {
+// TestMadKingAStateChangeReachesTheWholeRun pins the state beat's audience
+// today (rpg-project#948): the captain's `ready -> cowed`, with its reason,
+// reaches the listener who watched the stand-aside and caught none of it,
+// AND a member in the great hall who saw and heard nothing of it — every
+// member of the run. Whether it should reach only those who see him is the
+// operator's to rule; this is what such a ruling would change.
+func TestMadKingAStateChangeReachesTheWholeRun(t *testing.T) {
 	t.Parallel()
-	var states []map[string]any
-	for _, b := range standAsideSeenNotHeard(t, true) {
-		if b["beat"] == encounter.BeatState && b["member"] == string(kingCaptain) {
-			states = append(states, b)
+	writes := standAsideWrites(t, true)
+	cowed := map[string]any{"beat": "state", "member": "captain", "from": "ready", "to": "cowed", "reason": "stood aside"}
+	for _, who := range []encounter.MemberID{listener, faraway} {
+		var states []map[string]any
+		for _, b := range writes[who] {
+			if b["beat"] == encounter.BeatState && b["member"] == string(kingCaptain) {
+				states = append(states, b)
+			}
 		}
+		require.Equal(t, []map[string]any{cowed}, states, "%s is told the change and its reason", who)
 	}
-	require.Equal(t, []map[string]any{{"beat": "state", "member": "captain", "from": "ready", "to": "cowed", "reason": "stood aside"}},
-		states, "today: the names and the reason reach a watcher who heard nothing")
+	for _, b := range writes[faraway] {
+		require.NotEqual(t, encounter.BeatSpeech, b["beat"], "precondition: the great hall perceives none of the line")
+		require.NotEqual(t, encounter.BeatAnswered, b["beat"], "nor sees the captain answer")
+	}
 }

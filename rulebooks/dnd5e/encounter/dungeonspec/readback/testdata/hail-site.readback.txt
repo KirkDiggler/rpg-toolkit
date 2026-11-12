@@ -35,7 +35,7 @@ CREATURES
         at room.room.monsterBindings.porter.options[0].requires[0]
     - Said to Guard (porter), the line “We're expected.” (`guest`): winning it steps the conversation `gate` with the beat `admitted`, which moves it from `fresh` to `admitted` (the line is offered only in `fresh`).
         at room.room.monsterBindings.porter.options[0].advance
-    - When the line “We're expected.” (`guest`) is said, Guard (porter) answers “In you go.”, at `speak`: its words reach everyone in Guard (porter)'s room (the wall partition Guard (porter) stands in), and whoever it is said to, wherever they stand and whoever sees Guard (porter) answer and caught none of the line is told only that Guard (porter) answered.
+    - When the line “We're expected.” (`guest`) is said, Guard (porter) answers “In you go.”, at `speak`: its words reach everyone in Guard (porter)'s room (the wall partition Guard (porter) stands in), and whoever it is said to, wherever they stand and whoever sees Guard (porter) answer and caught none of the line is told only that Guard (porter) answered and what Guard (porter) is seen doing, and sees the line said without its words.
         at room.room.monsterBindings.porter.options[0].success[0]
 
 CONVERSATIONS
