@@ -33,7 +33,7 @@ CREATURES
         at room.room.monsterBindings.porter.options[0]
     - The line “We're expected.” (`guest`) is offered to a speaker only while the conversation `gate` is in the state `fresh` (one state for the whole run, not per speaker).
         at room.room.monsterBindings.porter.options[0].requires[0]
-    - Said to Guard (porter), the line “We're expected.” (`guest`): winning it steps the conversation `gate` with the beat `admitted`, which moves it from `fresh` to `admitted`.
+    - Said to Guard (porter), the line “We're expected.” (`guest`): winning it steps the conversation `gate` with the beat `admitted`, which moves it from `fresh` to `admitted` (the line is offered only in `fresh`).
         at room.room.monsterBindings.porter.options[0].advance
     - When the line “We're expected.” (`guest`) is said, Guard (porter) answers “In you go.”
         at room.room.monsterBindings.porter.options[0].success[0]
@@ -41,27 +41,31 @@ CREATURES
 CONVERSATIONS
 
   Conversation `gate`
-    - The conversation `gate` has one state for the whole run, shared by every speaker and every carrier; it starts in `fresh`. Its carriers, the creatures whose lines read or step it, are Guard (porter).
+    - The conversation `gate` has one state for the whole run, shared by every speaker and every carrier; it starts in `fresh`. Its carriers, the creatures whose lines read or step it, are Guard (porter). Its recipe is `site:interactions:gate`.
         at interactions.gate
-    - Each carrier (Guard (porter)) hails a character who comes within 2 cells of it in its sight: that carrier hears the beat `approached` and answers from its routine.
+    - When a character's own step ends within 2 cells of a carrier who sees them and whom they see, both up and out of a fight, and that carrier offers them a line that steps `gate`, the nearest such carrier (then by id) hails them and hears the beat `approached`, unless `gate` is already addressing someone. A line that only reads `gate` does not hail. The address stands while all of that holds and ends when any of it fails.
+        at interactions.gate.approach
+    - Who can hail for `gate`, by its state: in `fresh`, Guard (porter) (by `guest`); in `admitted`, nobody.
         at interactions.gate.approach
     - In the state `fresh`, the conversation `gate` listens for 1 beat.
         at interactions.gate.recipe.states.fresh
-    - In the state `fresh`, the beat `admitted` moves the conversation to `admitted` (“let through”). The beat is sent by winning `guest` said to Guard (porter).
+    - In the state `fresh`, the beat `admitted` moves the conversation to `admitted` (“let through”). The beat is sent by saying `guest` to Guard (porter).
         at interactions.gate.recipe.states.fresh.transitions[0]
     - The state `admitted` of `gate` is final: once entered, nothing moves the conversation again.
         at interactions.gate.recipe.states.admitted
     - The line `guest` said to Guard (porter) is offered only while `gate` is in `fresh`.
         at room.room.monsterBindings.porter.options[0].requires[0]
+    - Engine rule, not authored: a reply sent from a menu offered before `gate` last moved is refused with nothing spent; the speaker must be offered the menu again.
+        at (engine rule)
 
 ROUTINES
 
   Routine `porter-policy`
-    - The routine `porter-policy` is run by Guard (porter); it starts in the state `ready`. When it acts from a set of rows, one row whose conditions hold is picked by weight.
+    - The routine `porter-policy` is run by Guard (porter); it starts in the state `ready`; its recipe is `site:behaviors:porter-policy`. When it acts from a set of rows, one row whose conditions hold is picked by weight.
         at behaviorDefinitions.porter-policy
     - In the state `ready`, Guard (porter) listens for 1 beat.
         at behaviorDefinitions.porter-policy.recipe.states.ready
-    - In the state `ready`, when a character comes within a conversation's approach distance in Guard (porter)'s sight, Guard (porter) acts from its own `approached` rows.
+    - In the state `ready`, when Guard (porter) hails a character, which happens only under the conversation's hail rule: the character's own step ended within the approach distance, Guard (porter) sees them and they see Guard (porter), Guard (porter) offers them a line that steps the conversation, no nearer carrier qualifies, and the conversation is addressing no one, Guard (porter) acts from its own `approached` rows.
         at behaviorDefinitions.porter-policy.recipe.states.ready.transitions[0]
     - `approached` row 1 of `porter-policy`: Guard (porter) says “Halt there. What's your business?”
         at behaviorDefinitions.porter-policy.table.approached[0]

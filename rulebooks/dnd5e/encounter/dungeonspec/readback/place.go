@@ -90,6 +90,25 @@ func (b *builder) place() []Group {
 	for _, id := range sortedKeys(gp.DoorBindings) {
 		add(b.doorStatement(id))
 	}
+	for _, id := range sortedKeys(b.doorHolders) {
+		holders := b.doorHolders[id]
+		if len(holders) < 2 {
+			continue
+		}
+		path := "room.room.doorBindings." + id
+		if _, bound := gp.DoorBindings[id]; !bound {
+			path = "room.room.monsterBindings." + holders[0] + ".posts"
+		}
+		var conns []Connection
+		for _, h := range holders {
+			conns = append(conns, Connection{Kind: "creature", ID: h, Role: "holds"})
+		}
+		s := fmt.Sprintf("The door %s is held by the posts of %s. Each holds it only while posted: in a state its post "+
+			"names, up, and standing on one of that post's cells. The door stays barred to a walker while any one posted "+
+			"holder not allied with the walker does not let that walker through; one holder letting them through is not "+
+			"enough while another posted holder bars them.", quote(id), b.creatures(holders))
+		add(b.fstmt(KindDoorHold, Subject{Kind: "door", ID: id}, path, s, foldInfo{text: s}, conns...))
+	}
 	for _, id := range sortedKeys(gp.PropBindings) {
 		g.Statements = append(g.Statements, b.propStatements(id)...)
 	}

@@ -187,6 +187,9 @@ func (s *CastleSuite) TestNothingSkippedSilently() {
 // names a node the author wrote.
 func (s *CastleSuite) TestEveryPathIsWhereItIsSet() {
 	for _, st := range s.rb.Statements() {
+		if st.Path == readback.EngineRule {
+			continue
+		}
 		s.NotNil(resolve(s.doc, st.Path), "statement %q names %s, which the file does not have", st.Sentence, st.Path)
 	}
 }
@@ -259,7 +262,8 @@ func (s *CastleSuite) TestTheCaptainsGuestClaim() {
 		"(whichever of Guard (gate-1), Guard (gate-2) and Guard Captain (captain) that was) comes to hold `admitted` about "+
 		"the speaker and each member of the speaker's party that the creature sees at that moment")
 	s.Contains(out, "Every other creature that carries the conversation `front-gate`")
-	s.Contains(out, "comes to hold `admitted` about the same people too, having heard it")
+	s.Contains(out, "and saw the speaker say the line, and is up, comes to hold `admitted` about the same members too, "+
+		"having heard it, whether or not it sees them itself")
 }
 
 // TestTheCaptainGoesIn: the captain's routine wakes on the topic and walks
@@ -414,4 +418,42 @@ func (s *CastleSuite) TestOneWordPreventsTheFold() {
 	s.Contains(text, "Guard (gate-2) has the same 3 lines as Guard (gate-1): `straggler`, `friends-inside` and `troupe`.")
 	s.Equal(2, strings.Count(text, "“They’re with us. The captain let us in.” (`vouch`)"))
 	s.Contains(text, "the guard answers “Right you are. Go on through, the pair of you.”")
+}
+
+// TestTheHailIsTheEngines: the hail says the engine's rule (the mover's own
+// step, one hailer, the nearest offering a line that steps the conversation,
+// none while it is addressing someone), and who can hail in each state.
+func (s *CastleSuite) TestTheHailIsTheEngines() {
+	hail := s.statement(readback.KindApproach, "interactions.front-gate.approach").Sentence
+	s.Contains(hail, "When a character's own step ends within 2 cells of a carrier who sees them")
+	s.Contains(hail, "that carrier offers them a line that steps `front-gate`, the nearest such carrier")
+	s.Contains(hail, "unless `front-gate` is already addressing someone")
+	who := s.statement(readback.KindHailers, "interactions.front-gate.approach").Sentence
+	s.Contains(who, "in `warned-troupe`, Guard Captain (captain) (by `guest`)")
+	s.Contains(who, "in `admitted` and `arrested`, nobody")
+	wake := s.statement(readback.KindRoutineWake, "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[3]").Sentence
+	s.Contains(wake, "when Guard Captain (captain) hails a character, which happens only under the conversation's hail rule")
+}
+
+// TestTheDoorSaysAllItsHolders: a door with several posts says that one
+// holder's pass is not enough while another posted holder bars the walker.
+func (s *CastleSuite) TestTheDoorSaysAllItsHolders() {
+	door := s.statement(readback.KindDoorHold, "room.room.doorBindings.gate-wall-door").Sentence
+	s.Contains(door, "held by the posts of Guard (gate-1), Guard (gate-2) and Guard Captain (captain)")
+	s.Contains(door, "stays barred to a walker while any one posted holder not allied with the walker does not let that walker through")
+	s.Contains(s.rb.FoldedText(), "but the door has other holders, and stays barred")
+}
+
+// TestALineSendsOnlyWhereItIsOffered: a transition names only the lines
+// offered in the state it leaves, and a line's advance only the states it
+// is offered in.
+func (s *CastleSuite) TestALineSendsOnlyWhereItIsOffered() {
+	fromTroupe := s.statement(readback.KindConvStep, "interactions.front-gate.recipe.states.warned-troupe.transitions[1]").Sentence
+	s.Contains(fromTroupe, "The beat is sent by winning `guest` said to Guard Captain (captain).")
+	s.NotContains(fromTroupe, "`troupe`")
+	fromGuest := s.statement(readback.KindConvStep, "interactions.front-gate.recipe.states.warned-guest.transitions[1]").Sentence
+	s.NotContains(fromGuest, "`guest`")
+	guest := s.statement(readback.KindLineAdvance, "room.room.monsterBindings.captain.options[0].advance").Sentence
+	s.Contains(guest, "which moves it from `fresh` to `admitted` or from `warned-troupe` to `admitted`;")
+	s.NotContains(guest, "from `warned-guest` to `admitted`")
 }

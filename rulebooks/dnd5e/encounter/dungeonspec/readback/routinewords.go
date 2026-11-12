@@ -30,7 +30,9 @@ func beatWords(on machine.Beat, who string) string {
 	case "topic":
 		return fmt.Sprintf("when %s comes to hold a topic about someone, by its own judgement or by hearing it", who)
 	case "approached":
-		return fmt.Sprintf("when a character comes within a conversation's approach distance in %s sight", whose(who))
+		return fmt.Sprintf("when %s hails a character, which happens only under the conversation's hail rule: the "+
+			"character's own step ended within the approach distance, %s sees them and they see %s, %s offers them a line "+
+			"that steps the conversation, no nearer carrier qualifies, and the conversation is addressing no one", who, who, who, who)
 	case "barred":
 		return fmt.Sprintf("when someone walks into %s and its body stops them", who)
 	case "heard":

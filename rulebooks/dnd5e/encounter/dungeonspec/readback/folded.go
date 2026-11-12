@@ -480,6 +480,7 @@ func shortOf(display string) string {
 // what entering a state grants, and the lines that read it.
 func foldConversation(g Group) Item {
 	head := Item{Text: g.Title, Base: "interactions." + g.About.ID}
+	var rules []Item
 	var steps []Item
 	stepAt := map[string]int{}
 	var finals Item
@@ -499,8 +500,10 @@ func foldConversation(g Group) Item {
 		case KindConversation:
 			head.Text += " — " + st.fold.text
 			head.Paths = []string{st.Path}
-		case KindApproach, KindOutcome:
+		case KindApproach, KindHailers, KindOutcome:
 			head.Items = append(head.Items, Item{Text: st.fold.text, Paths: []string{st.Path}})
+		case KindEngineRule:
+			rules = append(rules, Item{Text: st.fold.text, Paths: []string{st.Path}})
 		case KindConvState:
 			if st.fold.text == "final" {
 				finals.Paths = append(finals.Paths, st.Path)
@@ -587,6 +590,7 @@ func foldConversation(g Group) Item {
 		read.terse = true
 		head.Items = append(head.Items, read)
 	}
+	head.Items = append(head.Items, rules...)
 	return head
 }
 
@@ -606,9 +610,8 @@ func foldRoutines(groups []Group) []Item {
 				break
 			}
 		}
-		runner := strings.SplitN(strings.TrimPrefix(raw.Text, g.Title+" — "), ";", 2)[0]
 		if match != "" {
-			out = append(out, Item{Text: fmt.Sprintf("%s is the same as %s, %s.", g.Title, match, runner),
+			out = append(out, Item{Text: fmt.Sprintf("%s Its states and rows are word for word those of %s.", raw.Text, match),
 				Paths: allPaths(raw)})
 			continue
 		}

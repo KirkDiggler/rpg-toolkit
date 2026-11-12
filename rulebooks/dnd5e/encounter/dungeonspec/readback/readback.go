@@ -54,6 +54,9 @@ const (
 
 	KindConversation Kind = "conversation"
 	KindApproach     Kind = "conversation.approach"
+	KindHailers      Kind = "conversation.hailers"
+	KindEngineRule   Kind = "conversation.engine-rule"
+	KindDoorHold     Kind = "place.door.holders"
 	KindConvState    Kind = "conversation.state"
 	KindConvStep     Kind = "conversation.transition"
 	KindOutcome      Kind = "conversation.outcome"
@@ -71,6 +74,11 @@ const (
 	KindRoutineWake  Kind = "routine.wake"
 	KindRoutineRow   Kind = "routine.row"
 )
+
+// EngineRule is the path of a statement that says how the engine runs what
+// the file authors, rather than something the file sets: it has no place in
+// the file.
+const EngineRule = "(engine rule)"
 
 // Subject is what a statement or a group is about: a kind of thing and its
 // id in the file ("creature" "gate-1", "topic" "admitted").

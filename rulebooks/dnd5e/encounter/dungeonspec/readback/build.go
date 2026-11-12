@@ -41,6 +41,10 @@ type builder struct {
 	// being said.
 	bundleSaid map[string]string
 	routineNow string
+
+	// doorHolders is, by door, every creature with a post on it, in the
+	// order the file places them.
+	doorHolders map[string][]string
 }
 
 func newBuilder(spec *dungeonspec.SingleRoomSpec, c *dungeonspec.Compiled, raw []byte) *builder {
@@ -48,7 +52,7 @@ func newBuilder(spec *dungeonspec.SingleRoomSpec, c *dungeonspec.Compiled, raw [
 		spec: spec, c: c, doc: newDocument(raw),
 		names: map[string]string{}, monsters: map[string]*dungeonspec.MonsterPlacement{},
 		declIndex: map[string]int{}, factions: map[string]int{}, carriers: map[string][]string{},
-		bundleSaid: map[string]string{},
+		bundleSaid: map[string]string{}, doorHolders: map[string][]string{},
 	}
 	for i, f := range spec.Factions {
 		b.factions[f.ID] = i
@@ -68,6 +72,12 @@ func newBuilder(spec *dungeonspec.SingleRoomSpec, c *dungeonspec.Compiled, raw [
 		m := b.monsters[d.ID]
 		if m == nil {
 			continue
+		}
+		for _, state := range sortedKeys(m.Posts) {
+			door := b.unqualify(string(m.Posts[state].Door))
+			if !contains(b.doorHolders[door], d.ID) {
+				b.doorHolders[door] = append(b.doorHolders[door], d.ID)
+			}
 		}
 		seen := map[string]bool{}
 		for _, o := range b.linesOf(m) {

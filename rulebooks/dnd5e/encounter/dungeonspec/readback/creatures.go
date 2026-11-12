@@ -172,9 +172,15 @@ func (b *builder) postStatements(id, state string, p encounter.Post, path string
 			freqs = append(freqs, fw)
 			conns = append(conns, c...)
 		}
+		other := ""
+		if len(b.doorHolders[door]) > 1 {
+			other = fmt.Sprintf(" The door has other holders, and stays barred to a walker while any posted holder does not "+
+				"let them through (see the door %s).", quote(door))
+		}
 		out = append(out, b.fstmt(KindPass, about, path+".pass", fmt.Sprintf(
-			"%s lets a walker through that post, as an ally walks, when %s.", name, strings.Join(reqs, " and ")),
-			foldInfo{text: "it lets a walker through, as an ally, when " + strings.Join(freqs, " and "),
+			"%s lets a walker through that post, as an ally walks, when %s.", name, strings.Join(reqs, " and "))+other,
+			foldInfo{text: "it lets a walker through, as an ally, when " + strings.Join(freqs, " and ") +
+				strings.TrimSuffix(strings.Replace(other, " The door has", "; but the door has", 1), "."),
 				state: state, site: "the posts", who: id}, conns...))
 	}
 	return out

@@ -173,7 +173,7 @@
                 "kind": "creature",
                 "id": "porter"
               },
-              "sentence": "Said to Guard (porter), the line “We're expected.” (`guest`): winning it steps the conversation `gate` with the beat `admitted`, which moves it from `fresh` to `admitted`.",
+              "sentence": "Said to Guard (porter), the line “We're expected.” (`guest`): winning it steps the conversation `gate` with the beat `admitted`, which moves it from `fresh` to `admitted` (the line is offered only in `fresh`).",
               "path": "room.room.monsterBindings.porter.options[0].advance",
               "connects": [
                 {
@@ -212,7 +212,7 @@
                 "kind": "conversation",
                 "id": "gate"
               },
-              "sentence": "The conversation `gate` has one state for the whole run, shared by every speaker and every carrier; it starts in `fresh`. Its carriers, the creatures whose lines read or step it, are Guard (porter).",
+              "sentence": "The conversation `gate` has one state for the whole run, shared by every speaker and every carrier; it starts in `fresh`. Its carriers, the creatures whose lines read or step it, are Guard (porter). Its recipe is `site:interactions:gate`.",
               "path": "interactions.gate",
               "connects": [
                 {
@@ -228,8 +228,24 @@
                 "kind": "conversation",
                 "id": "gate"
               },
-              "sentence": "Each carrier (Guard (porter)) hails a character who comes within 2 cells of it in its sight: that carrier hears the beat `approached` and answers from its routine.",
+              "sentence": "When a character's own step ends within 2 cells of a carrier who sees them and whom they see, both up and out of a fight, and that carrier offers them a line that steps `gate`, the nearest such carrier (then by id) hails them and hears the beat `approached`, unless `gate` is already addressing someone. A line that only reads `gate` does not hail. The address stands while all of that holds and ends when any of it fails.",
               "path": "interactions.gate.approach"
+            },
+            {
+              "kind": "conversation.hailers",
+              "about": {
+                "kind": "conversation",
+                "id": "gate"
+              },
+              "sentence": "Who can hail for `gate`, by its state: in `fresh`, Guard (porter) (by `guest`); in `admitted`, nobody.",
+              "path": "interactions.gate.approach",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "porter",
+                  "role": "carries"
+                }
+              ]
             },
             {
               "kind": "conversation.state",
@@ -246,7 +262,7 @@
                 "kind": "conversation",
                 "id": "gate"
               },
-              "sentence": "In the state `fresh`, the beat `admitted` moves the conversation to `admitted` (“let through”). The beat is sent by winning `guest` said to Guard (porter).",
+              "sentence": "In the state `fresh`, the beat `admitted` moves the conversation to `admitted` (“let through”). The beat is sent by saying `guest` to Guard (porter).",
               "path": "interactions.gate.recipe.states.fresh.transitions[0]"
             },
             {
@@ -273,6 +289,15 @@
                   "role": "carries"
                 }
               ]
+            },
+            {
+              "kind": "conversation.engine-rule",
+              "about": {
+                "kind": "conversation",
+                "id": "gate"
+              },
+              "sentence": "Engine rule, not authored: a reply sent from a menu offered before `gate` last moved is refused with nothing spent; the speaker must be offered the menu again.",
+              "path": "(engine rule)"
             }
           ]
         }
@@ -294,7 +319,7 @@
                 "kind": "routine",
                 "id": "porter-policy"
               },
-              "sentence": "The routine `porter-policy` is run by Guard (porter); it starts in the state `ready`. When it acts from a set of rows, one row whose conditions hold is picked by weight.",
+              "sentence": "The routine `porter-policy` is run by Guard (porter); it starts in the state `ready`; its recipe is `site:behaviors:porter-policy`. When it acts from a set of rows, one row whose conditions hold is picked by weight.",
               "path": "behaviorDefinitions.porter-policy",
               "connects": [
                 {
@@ -319,7 +344,7 @@
                 "kind": "routine",
                 "id": "porter-policy"
               },
-              "sentence": "In the state `ready`, when a character comes within a conversation's approach distance in Guard (porter)'s sight, Guard (porter) acts from its own `approached` rows.",
+              "sentence": "In the state `ready`, when Guard (porter) hails a character, which happens only under the conversation's hail rule: the character's own step ended within the approach distance, Guard (porter) sees them and they see Guard (porter), Guard (porter) offers them a line that steps the conversation, no nearer carrier qualifies, and the conversation is addressing no one, Guard (porter) acts from its own `approached` rows.",
               "path": "behaviorDefinitions.porter-policy.recipe.states.ready.transitions[0]"
             },
             {

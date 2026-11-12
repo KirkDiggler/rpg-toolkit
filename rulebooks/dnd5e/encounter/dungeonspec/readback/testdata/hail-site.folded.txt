@@ -33,21 +33,30 @@ CREATURES
 
 CONVERSATIONS
 
-  Conversation `gate` — one state for the whole run, shared by every speaker; starts in `fresh`. Carried by
-      Guard (porter) (the creatures whose lines read or step it). [interactions.gate]
-    - Each carrier hails a character who comes within 2 cells in its sight (it hears `approached` and answers
-        from its routine). [.approach]
+  Conversation `gate` — one state for the whole run, shared by every speaker; starts in `fresh`; recipe
+      `site:interactions:gate`. Carried by Guard (porter) (the creatures whose lines read or step it).
+      [interactions.gate]
+    - When a character's own step ends within 2 cells of a carrier who sees them and whom they see, both up
+        and out of a fight, and that carrier offers them a line that steps `gate`, the nearest such carrier
+        (then by id) hails them and hears the beat `approached`, unless `gate` is already addressing someone.
+        A line that only reads `gate` does not hail. The address stands while all of that holds and ends when
+        any of it fails. [.approach]
+    - Who can hail for `gate`, by its state: in `fresh`, Guard (porter) (by `guest`); in `admitted`, nobody.
+        [.approach]
     - From `fresh`: `admitted` moves it to `admitted` (“let through”); sent by saying `guest` (porter).
         [.recipe.states.fresh.transitions[0]]
     - `admitted` is final: once entered, nothing moves it again. [.recipe.states.admitted]
     - Lines offered only in a state of it: `guest` (porter) in `fresh`. [at each line's requires, above]
+    - Engine rule, not authored: a reply sent from a menu offered before `gate` last moved is refused with
+        nothing spent; the speaker must be offered the menu again. [(engine rule)]
 
 ROUTINES
 
-  Routine `porter-policy` — run by Guard (porter); starts in `ready`. [behaviorDefinitions.porter-policy]
+  Routine `porter-policy` — run by Guard (porter); starts in `ready`; recipe `site:behaviors:porter-policy`.
+      [behaviorDefinitions.porter-policy]
     - States (it is the runner):
-      - In `ready`, when a character comes within a conversation's approach in its sight → acts from its
-          `approached` rows. [ready.transitions[0]]
+      - In `ready`, when it is the carrier that hails a character (only under the conversation's hail rule) →
+          acts from its `approached` rows. [ready.transitions[0]]
     - Rows (one whose conditions hold is picked by weight):
       - `approached`: says “Halt there. What's your business?” [approached[0]]
 

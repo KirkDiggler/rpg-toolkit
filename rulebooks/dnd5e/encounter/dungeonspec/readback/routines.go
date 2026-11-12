@@ -55,9 +55,10 @@ func (b *builder) routines() []Group {
 			rc = append(rc, Connection{Kind: "creature", ID: r, Role: "runs"})
 		}
 		add(b.fstmt(KindRoutine, about, base, fmt.Sprintf(
-			"The routine %s is run by %s; it starts in the state %s. When it acts from a set of rows, one row whose conditions hold is picked by weight.",
-			quote(def), b.creatures(runners), quote(inst.Recipe.Initial)),
-			foldInfo{text: fmt.Sprintf("run by %s; starts in %s.", b.creatures(runners), quote(inst.Recipe.Initial))}, rc...))
+			"The routine %s is run by %s; it starts in the state %s; its recipe is %s. When it acts from a set of rows, one row whose conditions hold is picked by weight.",
+			quote(def), b.creatures(runners), quote(inst.Recipe.Initial), quote(inst.Recipe.Ref.String())),
+			foldInfo{text: fmt.Sprintf("run by %s; starts in %s; recipe %s.", b.creatures(runners), quote(inst.Recipe.Initial),
+				quote(inst.Recipe.Ref.String()))}, rc...))
 
 		for _, state := range statesInOrder(inst.Recipe) {
 			st := inst.Recipe.States[state]

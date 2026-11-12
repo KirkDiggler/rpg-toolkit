@@ -66,7 +66,7 @@ func shortBeat(on machine.Beat) string {
 	case "topic":
 		return "on coming to hold a topic about someone (judged or heard)"
 	case "approached":
-		return "when a character comes within a conversation's approach in its sight"
+		return "when it is the carrier that hails a character (only under the conversation's hail rule)"
 	case "barred":
 		return "when someone walks into it and its body stops them"
 	case "heard":

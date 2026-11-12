@@ -72,19 +72,19 @@ func (b *builder) advanceStatement(o encounter.Option, line, heading, p string, 
 	f := foldInfo{line: heading}
 	if o.Advance.Success != "" {
 		parts = append(parts, fmt.Sprintf("winning it steps the conversation %s with the beat %s, %s",
-			quote(conv), quote(string(o.Advance.Success)), b.moveWords(conv, o.Advance.Success)))
-		f.text = fmt.Sprintf("steps %s with %s: %s", quote(conv), quote(string(o.Advance.Success)), b.foldMoveWords(conv, o.Advance.Success))
+			quote(conv), quote(string(o.Advance.Success)), b.moveWords(conv, o.Advance.Success, b.offeredIn(o, conv))))
+		f.text = fmt.Sprintf("steps %s with %s: %s", quote(conv), quote(string(o.Advance.Success)), b.foldMoveWords(conv, o.Advance.Success, b.offeredIn(o, conv)))
 	}
 	if o.Advance.Failure != "" {
 		parts = append(parts, fmt.Sprintf("missing it steps the conversation %s with the beat %s, %s",
-			quote(conv), quote(string(o.Advance.Failure)), b.moveWords(conv, o.Advance.Failure)))
-		f.miss = fmt.Sprintf("steps %s with %s: %s", quote(conv), quote(string(o.Advance.Failure)), b.foldMoveWords(conv, o.Advance.Failure))
+			quote(conv), quote(string(o.Advance.Failure)), b.moveWords(conv, o.Advance.Failure, b.offeredIn(o, conv))))
+		f.miss = fmt.Sprintf("steps %s with %s: %s", quote(conv), quote(string(o.Advance.Failure)), b.foldMoveWords(conv, o.Advance.Failure, b.offeredIn(o, conv)))
 	}
 	if len(parts) == 0 {
 		parts = append(parts, fmt.Sprintf("it names the conversation %s and steps it with no beat", quote(conv)))
 	}
 	return b.fstmt(KindLineAdvance, t.about, p+".advance",
-		fmt.Sprintf("Said to %s, %s: %s.", t.name, line, strings.Join(parts, "; ")), f,
+		fmt.Sprintf("Said to %s, %s: %s%s.", t.name, line, strings.Join(parts, "; "), b.offeredWords(o, conv)), f,
 		Connection{Kind: "conversation", ID: conv, Role: "advances"})
 }
 
@@ -100,7 +100,7 @@ func (b *builder) interaction(id string) *encounter.InteractionInput {
 
 // moveWords says where a beat moves a conversation, from each state that
 // listens for it.
-func (b *builder) moveWords(conv string, beat machine.Beat) string {
+func (b *builder) moveWords(conv string, beat machine.Beat, offered map[string]bool) string {
 	in := b.interaction(conv)
 	if in == nil {
 		return "a conversation this file does not compile"
@@ -108,13 +108,13 @@ func (b *builder) moveWords(conv string, beat machine.Beat) string {
 	var moves []string
 	for _, s := range statesInOrder(in.Recipe) {
 		for _, tr := range in.Recipe.States[s].Transitions {
-			if tr.On == beat && tr.To != "" {
+			if tr.On == beat && tr.To != "" && offered[s] {
 				moves = append(moves, fmt.Sprintf("from %s to %s", quote(s), quote(tr.To)))
 			}
 		}
 	}
 	if len(moves) == 0 {
-		return "which no state of it listens for, so it moves nothing"
+		return "which no state the line is offered in listens for, so it moves nothing"
 	}
 	return "which moves it " + joinOr(moves)
 }
@@ -226,8 +226,9 @@ func (b *builder) heardWords(r encounter.Recognition, conv string, except []stri
 	case len(others) > 0:
 		who = b.creatures(others)
 	}
-	return fmt.Sprintf("Every other creature that carries the conversation %s (%s) and saw the line said, and is up, "+
-		"comes to hold %s about the same people too, having heard it; one that did not see it holds nothing.",
+	return fmt.Sprintf("Every other creature that carries the conversation %s (%s) and saw the speaker say the line, and is up, "+
+		"comes to hold %s about the same members too, having heard it, whether or not it sees them itself; one that did not "+
+		"see the speaker holds nothing. When the holder recognises nobody, nobody else comes to hold anything either.",
 		quote(conv), who, topic)
 }
 
@@ -248,7 +249,8 @@ func shortHeard(r encounter.Recognition, conv string) string {
 	if r.HeardBy != encounter.RecognitionCarriersWhoWitnessed {
 		return "; nobody else holds it"
 	}
-	return fmt.Sprintf("; so does each other carrier of %s who saw it and is up (heard)", quote(conv))
+	return fmt.Sprintf("; so does each other carrier of %s who saw the speaker say it and is up, about the same members, "+
+		"whether or not that carrier sees them (heard); if {self} recognises nobody, nobody else holds anything", quote(conv))
 }
 
 // shortClause drops a requirement's restatement for the folded form: the
@@ -267,7 +269,7 @@ func shortClause(w string) string {
 
 // foldMoveWords is moveWords grouped by where the beat leads: "moving it to
 // `admitted` from `fresh`, `warned-guest` or `warned-troupe`".
-func (b *builder) foldMoveWords(conv string, beat machine.Beat) string {
+func (b *builder) foldMoveWords(conv string, beat machine.Beat, offered map[string]bool) string {
 	in := b.interaction(conv)
 	if in == nil {
 		return "a conversation this file does not compile"
@@ -276,7 +278,7 @@ func (b *builder) foldMoveWords(conv string, beat machine.Beat) string {
 	from := map[string][]string{}
 	for _, s := range statesInOrder(in.Recipe) {
 		for _, tr := range in.Recipe.States[s].Transitions {
-			if tr.On == beat && tr.To != "" {
+			if tr.On == beat && tr.To != "" && offered[s] {
 				if _, ok := from[tr.To]; !ok {
 					order = append(order, tr.To)
 				}
@@ -292,4 +294,61 @@ func (b *builder) foldMoveWords(conv string, beat machine.Beat) string {
 		parts = append(parts, fmt.Sprintf("to %s from %s", quote(to), joinOr(from[to])))
 	}
 	return strings.Join(parts, ", ")
+}
+
+// offeredIn is the states of a conversation a line is offered in: every
+// state its requirements on that conversation admit (a `not` admits the
+// rest), in the recipe's order. A line with no requirement on it is offered
+// in every state.
+func (b *builder) offeredIn(o encounter.Option, conv string) map[string]bool {
+	in := b.interaction(conv)
+	out := map[string]bool{}
+	if in == nil {
+		return out
+	}
+	for s := range in.Recipe.States {
+		out[s] = true
+	}
+	for _, t := range o.Requires {
+		negated := false
+		if n, ok := t.(encounter.TriggerNot); ok {
+			t, negated = n.Inner, true
+		}
+		ti, ok := t.(encounter.TriggerInteraction)
+		if !ok || string(ti.Interaction) != conv {
+			continue
+		}
+		named := map[string]bool{}
+		for _, s := range ti.In {
+			named[s] = true
+		}
+		for s := range out {
+			if named[s] == negated {
+				delete(out, s)
+			}
+		}
+	}
+	return out
+}
+
+// offeredWords says the states a line is offered in, when not all of them.
+func (b *builder) offeredWords(o encounter.Option, conv string) string {
+	in := b.interaction(conv)
+	if in == nil {
+		return ""
+	}
+	offered := b.offeredIn(o, conv)
+	if len(offered) == len(in.Recipe.States) {
+		return ""
+	}
+	var states []string
+	for _, s := range statesInOrder(in.Recipe) {
+		if offered[s] {
+			states = append(states, quote(s))
+		}
+	}
+	if len(states) == 0 {
+		return " (the line is offered in no state of it)"
+	}
+	return " (the line is offered only in " + joinOr(states) + ")"
 }
