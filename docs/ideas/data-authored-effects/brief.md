@@ -2,8 +2,10 @@
 
 Working brief and proposed component shape for [composable conditions #703](https://github.com/KirkDiggler/rpg-project/issues/703), driven by [item consumers #850](https://github.com/KirkDiggler/rpg-project/issues/850). [Agreed direction and measured starting point](https://github.com/KirkDiggler/rpg-project/issues/703#issuecomment-6831644739).
 
-This is a shape proposal, not a finalized schema or an implementation plan.
-The detailed walkthrough and law follow agreement on the component boundary.
+The component boundary is agreed. The [walkthrough](README.md),
+[detailed design](design.md) and [authored examples](examples.md) carry the
+concrete proposal. R4/R5 identify the remaining detailed-contract and fixture
+policy decisions; this brief is not an implementation plan.
 
 ## Outcome
 
