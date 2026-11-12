@@ -1214,6 +1214,10 @@ type writeScope struct {
 	// their behalf.
 	written []string
 
+	// faults are the non-fatal faults this verb's commits absorbed
+	// ([SaveReport.Faults]), in the order met.
+	faults []string
+
 	// heldCharacters are the character guards this verb holds beside its
 	// session's (Launch's party, a seat a closing commit clears), so a guard
 	// is never asked for twice within one verb. See
@@ -1483,7 +1487,7 @@ func (m *Manager) commitAt(ctx context.Context, scope *writeScope, final bool) (
 	// A WINDOW NEVER OUTLIVES THE LINE IT ASKS ABOUT (rpg-project#924): the
 	// verb whose step, strike or exit made the encounter release a waiting
 	// line's hold closes that line's window in the same save.
-	if err := closeAbandonedLines(scope); err != nil {
+	if err := m.closeAbandonedLines(ctx, scope); err != nil {
 		report := SaveReport{Written: append([]string(nil), scope.written...)}
 		return report, DeliveryReport{}, saveErrorAfterWrites(scope, "", err)
 	}
@@ -1591,6 +1595,7 @@ func (m *Manager) commitAt(ctx context.Context, scope *writeScope, final bool) (
 		}
 	}
 	report.Written = mergeReportIdentities(report.Written, scope.written)
+	report.Faults = append([]string(nil), scope.faults...)
 	var delivery DeliveryReport
 	if err := m.deliverRecord(ctx, recorded); err != nil {
 		delivery.Failed = append(delivery.Failed, DeliveryRecord)

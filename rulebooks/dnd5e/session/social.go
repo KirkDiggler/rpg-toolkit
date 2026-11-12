@@ -426,7 +426,7 @@ func (m *Manager) poseSocialWindow(
 	// window is answered. The story keeps the revision the line was offered
 	// at — what the settle must carry — and the revision the reservation
 	// moved it to, which is how the answer knows the hold is still THIS one
-	// ([reservationStands]). A line that reads no interaction reserves
+	// ([waitingHold]). A line that reads no interaction reserves
 	// nothing, and the story carries neither.
 	reserved, err := scope.enc.Reserve(&encounter.ReserveInput{
 		Actor: encounter.MemberID(member), Target: encounter.MemberID(in.Target), Prop: encounter.PropID(in.Prop),
