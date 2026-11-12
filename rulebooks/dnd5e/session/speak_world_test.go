@@ -191,6 +191,15 @@ type answeredBeat struct {
 	Candidates []answerCandidate `json:"candidates"`
 }
 
+// speechBeat is the parts of a speech version these tests read
+// (rpg-project#933).
+type speechBeat struct {
+	Speaker string `json:"speaker"`
+	To      string `json:"to"`
+	Words   string `json:"words"`
+	Fact    string `json:"fact"`
+}
+
 // spokeBeat is a spoke beat's payload.
 type spokeBeat struct {
 	Actor       string                   `json:"actor"`
@@ -371,18 +380,22 @@ func (s *SpeakWorldSuite) TestTheAnswerReachesTheStreamAsATypedBeat() {
 	s.Require().NoError(err)
 	s.Require().True(out.Beaten)
 
+	// THE PICK names its creature and its die; the line it answered, the
+	// verdict and the words travel in alice's own speech versions
+	// (rpg-project#933).
 	var found answeredBeat
 	s.Require().True(s.lastBeat(mgr, encounter.BeatAnswered, &found), "the answer reached alice's story as its own beat")
 	s.Equal(answeredBeat{
-		Creature: "goblin", Verb: "speak", Option: "appeal", Beaten: true,
-		Roll: 2, Of: 400, Entry: 0, Word: "",
-		Say: "Bandits took the cellar. Go left at the rope.", Fact: "",
-		Key: string(encounter.AnswerSuccess),
+		Creature: "goblin", Roll: 2, Of: 400, Entry: 0,
 		Candidates: []answerCandidate{
 			{Entry: 0, Weight: 3, Percent: 100, Loaded: 300},
 			{Entry: 1, Weight: 1, Percent: 100, Loaded: 100},
 		},
-	}, found, "the die, every eligible entry's arithmetic, and the author's line verbatim")
+	}, found, "the die and every eligible entry's arithmetic")
+	var said speechBeat
+	s.Require().True(s.lastBeat(mgr, encounter.BeatSpeech, &said), "and his words reached her in her version")
+	s.Equal(speechBeat{Speaker: "goblin", To: "alice", Words: "Bandits took the cellar. Go left at the rope."}, said,
+		"the author's line verbatim")
 }
 
 // A verdict the author wrote no rows for produces NO answer beat at all.
@@ -537,12 +550,12 @@ func (s *SpeakWorldSuite) TestAResumedAppealFinishesAsAnAppealAndRollsItsAnswer(
 	var answered answeredBeat
 	s.Require().True(s.lastBeat(mgr, encounter.BeatAnswered, &answered), "and so did what the goblin did about it")
 	s.Equal(answeredBeat{
-		Creature: "goblin", Verb: "speak", Option: "appeal", Beaten: true,
-		Roll: 1, Of: 100, Entry: 0, Word: "fact",
-		Say: "Go left at the rope.", Fact: "bandits-in-cellar",
-		Key:        string(encounter.AnswerSuccess),
+		Creature: "goblin", Roll: 1, Of: 100, Entry: 0,
 		Candidates: []answerCandidate{{Entry: 0, Weight: 1, Percent: 100, Loaded: 100}},
-	}, answered)
+	}, answered, "the pick: its die, with the line, the verdict and what it taught left to the words")
+	var said speechBeat
+	s.Require().True(s.lastBeat(mgr, encounter.BeatSpeech, &said), "his answer reached her in her version")
+	s.Equal(speechBeat{Speaker: "goblin", To: "alice", Words: "Go left at the rope.", Fact: "bandits-in-cellar"}, said)
 }
 
 // THE RING IS PER VIEWER, and the sighting is what carries it
@@ -736,4 +749,36 @@ func (s *SpeakWorldSuite) TestAnAuthoredTemperamentIsNotDealtFor() {
 	mgr := s.front(nil)
 
 	s.Empty(beatsNamed(s.beats(mgr, "alice"), encounter.BeatTempered), "nothing was dealt, so there is no roll to show")
+}
+
+// TestAWhisperedLineIsOfferedOnlyFromBeside (rpg-project#933, R10): the
+// goblin three cells off offers his spoken threat and not his whispered
+// appeal; standing beside him, both.
+func (s *SpeakWorldSuite) TestAWhisperedLineIsOfferedOnlyFromBeside() {
+	lines := func(mgr *session.Manager) []string {
+		var out []string
+		for _, row := range s.rowFor(mgr, session.VerbSpeak).SpeakOptions {
+			out = append(out, row.OptionID)
+		}
+		return out
+	}
+	whispered := func(in *dungeonspec.MonsterPlacement) {
+		appeal := appealLine()
+		appeal.Loudness = "whisper"
+		in.Options = []encounter.Option{threatLine(), appeal}
+	}
+
+	s.authored = whispered
+	far := s.front([]int{10, 1})
+	s.Equal([]string{"threaten"}, lines(far), "three cells off, only the spoken line")
+	_, err := s.appeal(far)
+	s.Require().ErrorIs(err, session.ErrOutOfRange, "and the whisper is refused from there")
+
+	s.SetupTest()
+	s.authored = func(in *dungeonspec.MonsterPlacement) {
+		whispered(in)
+		in.At = spatial.Position{X: 3, Y: 1}
+	}
+	near := s.front([]int{10, 1})
+	s.Equal([]string{"threaten", "appeal"}, lines(near), "beside him, both")
 }

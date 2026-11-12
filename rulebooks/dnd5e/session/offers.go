@@ -1011,6 +1011,14 @@ func readSpeakMenu(enc *encounter.Encounter, member string) (speakMenu, error) {
 		witnesses: make([]string, 0, len(near)),
 		targets:   make([]targetPreflight, 0, len(near)),
 	}
+	positions := map[string]spatial.Position{}
+	if len(near) > 0 {
+		roster, err := enc.Members()
+		if err != nil {
+			return speakMenu{}, badCostUnlessSheet(translate(err))
+		}
+		positions = rosterPositions(roster)
+	}
 	for _, id := range near {
 		// WithinReach never lists the member themselves (talking yourself
 		// round is not a shenanigan), so only the witness test remains.
@@ -1018,9 +1026,21 @@ func readSpeakMenu(enc *encounter.Encounter, member string) (speakMenu, error) {
 			continue
 		}
 		menu.witnesses = append(menu.witnesses, string(id))
-		lines, err := linesOffered(enc, member, string(id), "")
+		offered, err := linesOffered(enc, member, string(id), "")
 		if err != nil {
 			return speakMenu{}, badCostUnlessSheet(err)
+		}
+		// A LINE IS OFFERED ONLY FROM WHERE IT MAY BE SAID (rpg-project#933,
+		// R10): a whisper only from beside whom it is said to. The reach is
+		// the composition's one rule ([encounter.Option.SaidWithin]), the
+		// distance its one measure, so the menu never offers a line its door
+		// would refuse.
+		distance := enc.Distance(positions[member], positions[string(id)])
+		lines := offered[:0:0]
+		for _, o := range offered {
+			if distance <= float64(o.SaidWithin(InteractionReach)) {
+				lines = append(lines, o)
+			}
 		}
 		if len(lines) == 0 {
 			continue

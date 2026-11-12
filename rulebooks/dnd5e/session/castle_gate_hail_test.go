@@ -42,6 +42,9 @@ var (
 	// watchingTheRoad is where the cleric stands to watch: in sight of the
 	// road and the captain, beyond the gate's approach distance.
 	watchingTheRoad = spatial.Position{X: -7, Y: 13}
+	// besideTheHailCell is a cell beside where the hail stops alice, in the
+	// room she stands in.
+	besideTheHailCell = spatial.Position{X: -7, Y: 11}
 )
 
 // captainParty is the captain as an act names him.
@@ -226,25 +229,69 @@ func TestCastleSteppingOutOfReachEndsTheAddress(t *testing.T) {
 	require.Equal(t, theFrontGateAddress, speakRow(t, c.bar(t, "alice")).Address)
 }
 
-// TestCastleABystanderListensIn: the cleric watches the road. She is not
-// addressed, but she reads the captain's hail, and then alice's line to
-// him, in her own acts.
+// TestCastleABystanderListensIn: the cleric watches the road from down
+// below the gate. She is not addressed, and she stands a room beyond the
+// gate where the captain hails alice and alice answers him, so she sees each
+// of them speak and reads none of their words (rpg-project#933: a spoken line
+// reaches the speaker's room and whom it is said to). Alice, hailed, reads
+// his hail whole.
 func TestCastleABystanderListensIn(t *testing.T) {
 	c := openTheHailingCastle(t)
 	_, out, hail := c.walkUpToTheGate(t)
 	require.NotNil(t, out.Addressed, "precondition: she was hailed")
 
-	heard := where[session.TableAnswer](hail.to("cleric"), func(a session.TableAnswer) bool { return a.Who == captainParty && a.Say != "" })
-	require.Len(t, heard, 1, "the cleric reads the captain's hail")
+	seen := where[session.TableAnswer](hail.to("cleric"), func(a session.TableAnswer) bool {
+		return a.Who == captainParty && a.Key == "behavior/6:policy/approached"
+	})
+	require.Len(t, seen, 1, "the cleric sees the captain answer alice's approach")
+	require.Empty(t, seen[0].body.Say, "out of earshot, she reads none of his words")
+	require.Equal(t, session.Party{}, seen[0].body.To, "nor whom they were said to")
+	heard := where[session.TableAnswer](hail.to("alice"), func(a session.TableAnswer) bool { return a.Who == captainParty && a.Say != "" })
+	require.Len(t, heard, 1, "alice, whom he hails, reads his words")
 	require.Equal(t, theCaptainsHail, heard[0].body.Say)
+	require.Equal(t, aliceParty, heard[0].body.To)
 
 	greeted := c.play(t, "alice greets the captain", func() error {
 		_, err := speakAsOffered(context.Background(), c.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "greet"})
 		return err
 	})
-	spoken := where[session.SpeakAct](greeted.to("cleric"), func(s session.SpeakAct) bool { return s.By == aliceParty && s.To == captainParty })
-	require.Len(t, spoken, 1, "the cleric reads alice's line to the captain")
-	require.Equal(t, "greet", spoken[0].body.Option)
+	require.Empty(t, where[session.SpeakAct](greeted.to("cleric"), func(session.SpeakAct) bool { return true }),
+		"the cleric reads no line of alice's: she was seen to speak, out of earshot")
+	var versions []witnessed
+	for _, b := range beatsNamed(storyBeats(t, c.mgr, "sess", "cleric"), encounter.BeatSpeech) {
+		if b.Fields["speaker"] == "alice" {
+			versions = append(versions, b)
+		}
+	}
+	require.Len(t, versions, 1, "her story holds her version of alice's line")
+	require.NotContains(t, versions[0].Fields, "words", "which carries no words")
+	require.NotContains(t, versions[0].Fields, "option", "nor which line it was")
+	require.NotContains(t, versions[0].Fields, "check", "nor how it went")
+}
+
+// TestCastleACompanionBesideHerHearsEveryWord (rpg-project#933): the cleric
+// stands beside alice when she greets the captain, in the same room, so she
+// reads alice's line whole — whom it was said to included — and the
+// captain's answer to it with its words, as alice does.
+func TestCastleACompanionBesideHerHearsEveryWord(t *testing.T) {
+	c := openTheCastleFor(t, []*character.Data{armedFighter("alice"), healingCleric()}, 18)
+	c.placeInTheRecord(t, "cleric", besideTheHailCell)
+	c.walkUpToTheGate(t)
+	greeted := c.play(t, "alice greets the captain", func() error {
+		_, err := speakAsOffered(context.Background(), c.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "greet"})
+		return err
+	})
+	for _, who := range []string{"alice", "cleric"} {
+		lines := where[session.SpeakAct](greeted.to(who), func(s session.SpeakAct) bool { return s.By == aliceParty })
+		require.Len(t, lines, 1, "%s reads alice's line", who)
+		line := lines[0].body
+		require.Equal(t, captainParty, line.To, "%s sees whom it was said to", who)
+		require.Equal(t, "greet", line.Option)
+		require.NotEmpty(t, line.Line)
+		require.NotNil(t, line.Answer, "%s reads the captain's answer", who)
+		require.NotEmpty(t, line.Answer.Say, "%s caught his words", who)
+		require.Equal(t, aliceParty, line.Answer.To, "said to alice")
+	}
 }
 
 // TestLaunchRefusesAnApproachBeyondSpeakReach: an interaction whose approach
