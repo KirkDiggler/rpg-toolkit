@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
+	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
@@ -18,14 +19,17 @@ import (
 	dndevents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/races"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/shared"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/skills"
 )
 
 // definitionWorld supplies custody and transport only. All configured behavior
 // comes from public rulebook APIs, not a simulated item or effect engine.
 type definitionWorld struct {
-	sheets  []*character.Character
-	bus     events.EventBus
-	binding *conditions.ApplicationBinding
+	// Optional test observer registered before keepers, not a runtime/data callback.
+	beforeAttach func(events.EventBus) error
+	sheets       []*character.Character
+	bus          events.EventBus
+	binding      *conditions.ApplicationBinding
 }
 
 func newDefinitionWorld() (*definitionWorld, error) {
@@ -49,6 +53,11 @@ func (w *definitionWorld) bind() error {
 		return err
 	}
 	w.binding = b
+	if w.beforeAttach != nil {
+		if err := w.beforeAttach(w.bus); err != nil {
+			return err
+		}
+	}
 	for _, c := range w.sheets {
 		if err := character.Attach(context.Background(), c, w.bus); err != nil {
 			return err
@@ -81,12 +90,17 @@ func (w *definitionWorld) close() error {
 	w.binding = nil
 	return nil
 }
-func (w *definitionWorld) reload() error {
+func (w *definitionWorld) reload() error { return w.reloadWithout("") }
+
+func (w *definitionWorld) reloadWithout(omit string) error {
 	if err := w.binding.CheckComplete(); err != nil {
 		return err
 	}
 	data := make([]*character.Data, 0, len(w.sheets))
 	for _, c := range w.sheets {
+		if c.GetID() == omit {
+			continue
+		}
 		d, err := c.ToData()
 		if err != nil {
 			return err
@@ -199,4 +213,118 @@ func (w *definitionWorld) damageBonus(actor, target string, ability abilities.Ab
 		return nil, err
 	}
 	return c.Execute(ctx, dndevents.NewDamageChainEvent(in))
+}
+
+func (w *definitionWorld) incoming(target string, kind damage.Type, amount int) (*combat.SettleDamageOutput, error) {
+	frame, err := w.frame("C", target)
+	if err != nil {
+		return nil, err
+	}
+	event, err := dndevents.NewIncomingDamageEvent(dndevents.IncomingDamageInput{TargetID: target, SourceID: "C", Frame: frame, Dealt: fixtureDamage(amount, kind)})
+	if err != nil {
+		return nil, err
+	}
+	ctx := context.Background()
+	c, err := dndevents.IncomingDamageChain.On(w.bus).PublishWithChain(ctx, event.Clone(), events.NewStagedChain[*dndevents.IncomingDamageEvent](combat.ModifierStages))
+	if err != nil {
+		return nil, err
+	}
+	folded, err := c.Execute(ctx, event.Clone())
+	if err != nil {
+		return nil, err
+	}
+	if err := folded.CheckUnaltered(event); err != nil {
+		return nil, err
+	}
+	return combat.SettleDamage(&combat.SettleDamageInput{Dealt: event.Dealt(), Reductions: folded.Reductions, Multipliers: folded.Multipliers})
+}
+func (w *definitionWorld) hit(target string, kind damage.Type, amount int) (*dndevents.DamageTakenEvent, error) {
+	settled, err := w.incoming(target, kind, amount)
+	if err != nil {
+		return nil, err
+	}
+	instances := []combat.DamageInstance{}
+	for _, part := range settled.Types {
+		instances = append(instances, combat.DamageInstance{Amount: part.Taken, Type: string(part.Type)})
+	}
+	holder := w.holder(target)
+	if holder == nil {
+		return nil, fmt.Errorf("missing damage holder")
+	}
+	applied := holder.ApplyDamage(context.Background(), &combat.ApplyDamageInput{Instances: instances})
+	fact := &dndevents.DamageTakenEvent{MemberID: target, Amount: applied.TotalDamage, DamageType: kind, DroppedToZero: applied.DroppedToZero}
+	return fact, dndevents.DamageTakenTopic.On(w.bus).Publish(context.Background(), fact)
+}
+func (w *definitionWorld) turnEnd(who string) error {
+	return dndevents.TurnEndTopic.On(w.bus).Publish(context.Background(), dndevents.TurnEndEvent{SubjectID: who})
+}
+func (w *definitionWorld) turnStart(who string) error {
+	return dndevents.TurnStartTopic.On(w.bus).Publish(context.Background(), dndevents.TurnStartEvent{SubjectID: who})
+}
+func (w *definitionWorld) rest(who string) error {
+	return dndevents.RestTopic.On(w.bus).Publish(context.Background(), dndevents.RestEvent{CharacterID: who, RestType: coreResources.ResetLongRest})
+}
+func (w *definitionWorld) miss(who string) error {
+	_, err := dndevents.PostAttackRollChain.On(w.bus).PublishWithChain(context.Background(), &dndevents.PostAttackRollEvent{AttackerID: who}, events.NewStagedChain[*dndevents.PostAttackRollEvent](combat.ModifierStages))
+	return err
+}
+func (w *definitionWorld) attack(frame contributions.Frame) (dndevents.AttackChainEvent, error) {
+	target, _ := frame.Target.Get()
+	e := dndevents.AttackChainEvent{AttackerID: frame.Actor, TargetID: target, Frame: frame}
+	ctx := context.Background()
+	c, err := dndevents.AttackChain.On(w.bus).PublishWithChain(ctx, e, events.NewStagedChain[dndevents.AttackChainEvent](combat.ModifierStages))
+	if err != nil {
+		return e, err
+	}
+	return c.Execute(ctx, e)
+}
+func (w *definitionWorld) coordinator(application string) (string, error) {
+	for _, holder := range w.sheets {
+		for _, condition := range holder.GetConditions() {
+			if linked, ok := condition.(*conditions.LinkedCondition); ok {
+				info := linked.LinkedApplicationInfo()
+				if info.ID == application && info.Role == conditions.LinkedCoordinator {
+					return holder.GetID(), nil
+				}
+			}
+		}
+	}
+	return "", fmt.Errorf("application has no current coordinator")
+}
+func (w *definitionWorld) maintenance(holder, application string) (*conditions.MaintenanceInfo, error) {
+	for _, condition := range w.holder(holder).GetConditions() {
+		if linked, ok := condition.(*conditions.LinkedCondition); ok {
+			info := linked.LinkedApplicationInfo()
+			if info.ID == application && info.Role == conditions.LinkedCoordinator {
+				return linked.MaintenanceInfo()
+			}
+		}
+	}
+	return nil, fmt.Errorf("application has no current maintenance")
+}
+func (w *definitionWorld) saveAdvantage(holder string, ability abilities.Ability) (int, error) {
+	e := &dndevents.SavingThrowChainEvent{SaverID: holder, Ability: ability, DC: 10}
+	ctx := context.Background()
+	c, err := dndevents.SavingThrowChain.On(w.bus).PublishWithChain(ctx, e, events.NewStagedChain[*dndevents.SavingThrowChainEvent](combat.ModifierStages))
+	if err != nil {
+		return 0, err
+	}
+	out, err := c.Execute(ctx, e)
+	if err != nil {
+		return 0, err
+	}
+	return len(out.AdvantageSources), nil
+}
+func (w *definitionWorld) checkAdvantage(holder string, skill skills.Skill) (int, error) {
+	e := &dndevents.AbilityCheckChainEvent{CheckerID: holder, Skill: skill, DC: 10}
+	ctx := context.Background()
+	c, err := dndevents.AbilityCheckChain.On(w.bus).PublishWithChain(ctx, e, events.NewStagedChain[*dndevents.AbilityCheckChainEvent](combat.ModifierStages))
+	if err != nil {
+		return 0, err
+	}
+	out, err := c.Execute(ctx, e)
+	if err != nil {
+		return 0, err
+	}
+	return len(out.AdvantageSources), nil
 }
