@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
+	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
 )
 
 // routines says every behaviour definition, as compiled for the first
@@ -17,6 +18,7 @@ func (b *builder) routines() []Group {
 	var groups []Group
 	for _, def := range sortedKeys(b.spec.BehaviorDefinitions) {
 		about := Subject{Kind: "routine", ID: def}
+		b.routineNow = def
 		base := "behaviorDefinitions." + def
 		g := Group{Title: "Routine " + quote(def), About: about}
 		add := func(s Statement) { g.Statements = append(g.Statements, s) }
@@ -52,39 +54,27 @@ func (b *builder) routines() []Group {
 		for _, r := range runners {
 			rc = append(rc, Connection{Kind: "creature", ID: r, Role: "runs"})
 		}
-		add(b.stmt(KindRoutine, about, base, fmt.Sprintf(
+		add(b.fstmt(KindRoutine, about, base, fmt.Sprintf(
 			"The routine %s is run by %s; it starts in the state %s. When it acts from a set of rows, one row whose conditions hold is picked by weight.",
-			quote(def), b.creatures(runners), quote(inst.Recipe.Initial)), rc...))
+			quote(def), b.creatures(runners), quote(inst.Recipe.Initial)),
+			foldInfo{text: fmt.Sprintf("run by %s; starts in %s.", b.creatures(runners), quote(inst.Recipe.Initial))}, rc...))
 
 		for _, state := range statesInOrder(inst.Recipe) {
 			st := inst.Recipe.States[state]
 			spath := base + ".recipe.states." + state
 			if st.Terminal {
-				add(b.stmt(KindRoutineState, about, spath, fmt.Sprintf("The state %s is final.", quote(state))))
+				add(b.fstmt(KindRoutineState, about, spath, fmt.Sprintf("The state %s is final.", quote(state)),
+					foldInfo{state: state, text: "final"}))
 			} else {
-				add(b.stmt(KindRoutineState, about, spath, fmt.Sprintf(
-					"In the state %s, %s listens for %s.", quote(state), who, count(len(st.Transitions), "beat", "beats"))))
+				add(b.fstmt(KindRoutineState, about, spath, fmt.Sprintf(
+					"In the state %s, %s listens for %s.", quote(state), who, count(len(st.Transitions), "beat", "beats")),
+					foldInfo{state: state}))
 			}
 			for k, tr := range st.Transitions {
-				s := fmt.Sprintf("In the state %s, %s", quote(state), beatWords(tr.On, who))
-				cond, conns := guardWords(tr.When, who)
-				if cond != "" {
-					s += ", if " + cond
-				}
-				s += ", " + who
-				var does []string
-				if tr.To != "" {
-					does = append(does, "moves to the state "+quote(tr.To))
-				}
-				does = append(does, actWords(tr.Do, who)...)
-				if len(does) == 0 {
-					does = append(does, "hears it and does nothing")
-				}
-				s += " " + joinAnd(does)
-				if tr.Reason != "" {
-					s += fmt.Sprintf(" (%s)", said(tr.Reason))
-				}
-				add(b.stmt(KindRoutineWake, about, fmt.Sprintf("%s.transitions[%d]", spath, k), s+".", conns...))
+				s, conns := wakeWords(tr, who)
+				add(b.fstmt(KindRoutineWake, about, fmt.Sprintf("%s.transitions[%d]", spath, k),
+					fmt.Sprintf("In the state %s, %s.", quote(state), s),
+					foldInfo{state: state, text: shortWake(tr) + ".", site: "the routine " + quote(def)}, conns...))
 			}
 		}
 		keys := make([]string, 0, len(inst.Table))
@@ -95,11 +85,36 @@ func (b *builder) routines() []Group {
 		for _, key := range keys {
 			for i, row := range inst.Table[behavior.AnswerKey(key)] {
 				words, conns := b.rowWords(row, who, "everyone who sees "+who+" or hears the voice")
-				add(b.stmt(KindRoutineRow, about, fmt.Sprintf("%s.table.%s[%d]", base, key, i), fmt.Sprintf(
-					"%s row %d of %s: %s", capitalize(quote(key)), i+1, quote(def), period(words)), conns...))
+				short := b.shortRow(row)
+				add(b.fstmt(KindRoutineRow, about, fmt.Sprintf("%s.table.%s[%d]", base, key, i), fmt.Sprintf(
+					"%s row %d of %s: %s", capitalize(quote(key)), i+1, quote(def), period(words)),
+					foldInfo{state: key, text: period(short), site: "the routine " + quote(def)}, conns...))
 			}
 		}
 		groups = append(groups, g)
 	}
 	return groups
+}
+
+// wakeWords says one routine transition about who, without its state.
+func wakeWords(tr machine.Transition, who string) (string, []Connection) {
+	s := beatWords(tr.On, who)
+	cond, conns := guardWords(tr.When, who)
+	if cond != "" {
+		s += ", if " + cond
+	}
+	s += ", " + who
+	var does []string
+	if tr.To != "" {
+		does = append(does, "moves to the state "+quote(tr.To))
+	}
+	does = append(does, actWords(tr.Do, who)...)
+	if len(does) == 0 {
+		does = append(does, "hears it and does nothing")
+	}
+	s += " " + joinAnd(does)
+	if tr.Reason != "" {
+		s += fmt.Sprintf(" (%s)", said(tr.Reason))
+	}
+	return s, conns
 }

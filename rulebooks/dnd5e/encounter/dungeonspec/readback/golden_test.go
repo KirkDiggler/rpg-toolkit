@@ -44,6 +44,14 @@ func (s *GoldenSuite) TestHailSiteText() {
 	s.golden("hail-site.readback.txt", rb.Text())
 }
 
+func (s *GoldenSuite) TestHailSiteFolded() {
+	raw, err := os.ReadFile(hailPath)
+	s.Require().NoError(err)
+	rb, err := readback.Of(raw)
+	s.Require().NoError(err)
+	s.golden("hail-site.folded.txt", rb.FoldedText())
+}
+
 func (s *GoldenSuite) TestHailSiteJSON() {
 	raw, err := os.ReadFile(hailPath)
 	s.Require().NoError(err)

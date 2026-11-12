@@ -7,9 +7,13 @@
 // Run from the module directory:
 //
 //	go run ./cmd/readback dungeonspec/testdata/world-builder-v4-castle.yaml
+//	go run ./cmd/readback --full dungeonspec/testdata/world-builder-v4-castle.yaml
 //	go run ./cmd/readback --json dungeonspec/testdata/hail-site.yaml
 //
-// --json prints the structured statements instead of the text. A file the
+// By default it prints the folded text: each line said once, things that
+// differ only by state or by creature said once, topics and facts as tables
+// of places. --full prints one sentence per statement, each followed by its
+// path. --json prints the structured statements. A file the
 // compiler refuses prints "REFUSED:" and the compiler's sentences and exits
 // 1; a bad flag, a missing argument or an unreadable file exits 2.
 package main
@@ -33,6 +37,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("readback", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print the structured statements as JSON")
+	full := fs.Bool("full", false, "print one sentence per statement instead of the folded text")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -59,6 +64,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stdout, "%s\n", out)
 		return 0
 	}
-	_, _ = io.WriteString(stdout, rb.Text())
+	if *full {
+		_, _ = io.WriteString(stdout, rb.Text())
+		return 0
+	}
+	_, _ = io.WriteString(stdout, rb.FoldedText())
 	return 0
 }

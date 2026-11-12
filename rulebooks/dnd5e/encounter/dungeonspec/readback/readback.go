@@ -96,6 +96,8 @@ type Statement struct {
 	Sentence string       `json:"sentence"`
 	Path     string       `json:"path"`
 	Connects []Connection `json:"connects,omitempty"`
+
+	fold foldInfo
 }
 
 // Group is the statements about one thing, in reading order.

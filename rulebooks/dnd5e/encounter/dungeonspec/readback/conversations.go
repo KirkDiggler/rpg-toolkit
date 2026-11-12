@@ -5,6 +5,7 @@ package readback
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -61,27 +62,34 @@ func (b *builder) conversations() []Group {
 		if len(carriers) > 0 {
 			who = b.creatures(carriers)
 		}
-		add(b.stmt(KindConversation, about, base, fmt.Sprintf(
+		add(b.fstmt(KindConversation, about, base, fmt.Sprintf(
 			"The conversation %s has one state for the whole run, shared by every speaker and every carrier; it starts in %s. "+
-				"Its carriers, the creatures whose lines read or step it, are %s.", quote(id), quote(in.Recipe.Initial), who), cc...))
+				"Its carriers, the creatures whose lines read or step it, are %s.", quote(id), quote(in.Recipe.Initial), who),
+			foldInfo{text: fmt.Sprintf("one state for the whole run, shared by every speaker; starts in %s. "+
+				"Carried by %s (the creatures whose lines read or step it).", quote(in.Recipe.Initial), who)}, cc...))
 		if in.Approach != nil {
-			add(b.stmt(KindApproach, about, base+".approach", fmt.Sprintf(
+			add(b.fstmt(KindApproach, about, base+".approach", fmt.Sprintf(
 				"Each carrier (%s) hails a character who comes within %d cells of it in its sight: that carrier hears the beat %s "+
-					"and answers from its routine.", who, in.Approach.Within, quote("approached"))))
+					"and answers from its routine.", who, in.Approach.Within, quote("approached")),
+				foldInfo{text: fmt.Sprintf("Each carrier hails a character who comes within %d cells in its sight "+
+					"(it hears %s and answers from its routine).", in.Approach.Within, quote("approached"))}))
 		}
 		for _, state := range statesInOrder(in.Recipe) {
 			st := in.Recipe.States[state]
 			spath := base + ".recipe.states." + state
 			switch {
 			case st.Terminal:
-				add(b.stmt(KindConvState, about, spath, fmt.Sprintf(
-					"The state %s of %s is final: once entered, nothing moves the conversation again.", quote(state), quote(id))))
+				add(b.fstmt(KindConvState, about, spath, fmt.Sprintf(
+					"The state %s of %s is final: once entered, nothing moves the conversation again.", quote(state), quote(id)),
+					foldInfo{state: state, text: "final"}))
 			default:
-				add(b.stmt(KindConvState, about, spath, fmt.Sprintf(
-					"In the state %s, the conversation %s listens for %s.", quote(state), quote(id), count(len(st.Transitions), "beat", "beats"))))
+				add(b.fstmt(KindConvState, about, spath, fmt.Sprintf(
+					"In the state %s, the conversation %s listens for %s.", quote(state), quote(id), count(len(st.Transitions), "beat", "beats")),
+					foldInfo{state: state}))
 			}
 			for k, tr := range st.Transitions {
-				add(b.stmt(KindConvStep, about, fmt.Sprintf("%s.transitions[%d]", spath, k), b.convStepWords(id, state, tr)))
+				add(b.fstmt(KindConvStep, about, fmt.Sprintf("%s.transitions[%d]", spath, k), b.convStepWords(id, state, tr),
+					foldInfo{state: state, text: b.convStepShort(id, tr)}))
 			}
 		}
 		for _, state := range sortedKeys(in.Outcomes) {
@@ -98,9 +106,10 @@ func (b *builder) conversations() []Group {
 				if !ok || string(ti.Interaction) != id {
 					continue
 				}
-				add(b.stmt(KindConvAsked, about, b.doc.item(site.path+".requires", j), fmt.Sprintf(
+				add(b.fstmt(KindConvAsked, about, b.doc.item(site.path+".requires", j), fmt.Sprintf(
 					"The line %s said to %s is offered only while %s is in %s.",
 					quote(site.option.ID), b.creature(site.member), quote(id), joinOr(quoteAll(ti.In))),
+					foldInfo{text: quote(site.option.ID), state: joinOr(quoteAll(ti.In)), who: site.member},
 					Connection{Kind: "creature", ID: site.member, Role: "carries"}))
 			}
 		}
@@ -162,7 +171,10 @@ func (b *builder) outcomeStatement(id, state string, r encounter.Recognition, pa
 	s := fmt.Sprintf("When the conversation %s enters %s, %s (whichever of %s that was) comes to hold %s about %s: that creature recognises them as %s.",
 		quote(id), quote(state), holder, b.creatures(holders), topic, subjectsWords(r.About, "the creature"), topic)
 	s += " " + b.heardWords(r, id, nil, &conns)
-	return b.stmt(KindOutcome, Subject{Kind: "conversation", ID: id}, path, s, conns...)
+	f := foldInfo{state: state, site: fmt.Sprintf("the conversation %s on entering %s", quote(id), quote(state))}
+	f.text = fmt.Sprintf("On entering %s: the creature the deciding line was said to comes to hold %s about %s",
+		quote(state), topic, strings.ReplaceAll(shortSubjects(r.About), "{self}", "it")) + shortHeard(r, id) + "."
+	return b.fstmt(KindOutcome, Subject{Kind: "conversation", ID: id}, path, s, f, conns...)
 }
 
 // contains reports whether ids holds id.
@@ -173,4 +185,46 @@ func contains(ids []string, id string) bool {
 		}
 	}
 	return false
+}
+
+// convStepShort is a transition in the folded form, with the lines that send
+// its beat grouped by verdict and line: "`admitted` moves it to `admitted`
+// (“let through”); sent by a win of `troupe` (gate-1, gate-2, captain)".
+func (b *builder) convStepShort(id string, tr machine.Transition) string {
+	s := quote(string(tr.On)) + " moves it to " + quote(tr.To)
+	if tr.To == "" {
+		s = quote(string(tr.On)) + " moves nothing"
+	}
+	if tr.Reason != "" {
+		s += fmt.Sprintf(" (%s)", said(tr.Reason))
+	}
+	var order []string
+	who := map[string][]string{}
+	for _, site := range b.lineSites() {
+		a := site.option.Advance
+		if a == nil || string(a.Interaction) != id {
+			continue
+		}
+		for _, v := range []struct {
+			beat machine.Beat
+			word string
+		}{{a.Success, map[bool]string{true: "a win of ", false: "saying "}[site.option.Checked()]}, {a.Failure, "a miss of "}} {
+			if v.beat != tr.On {
+				continue
+			}
+			key := v.word + quote(site.option.ID)
+			if _, ok := who[key]; !ok {
+				order = append(order, key)
+			}
+			who[key] = append(who[key], site.member)
+		}
+	}
+	if len(order) == 0 {
+		return s + "; no line sends it"
+	}
+	var parts []string
+	for _, k := range order {
+		parts = append(parts, k+" ("+strings.Join(who[k], ", ")+")")
+	}
+	return s + "; sent by " + joinOr(parts)
 }

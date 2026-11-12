@@ -22,12 +22,19 @@ type ReadBackSuite struct{ suite.Suite }
 
 func TestReadBackSuite(t *testing.T) { suite.Run(t, new(ReadBackSuite)) }
 
-func (s *ReadBackSuite) TestText() {
+func (s *ReadBackSuite) TestFoldedByDefault() {
 	var out, errOut bytes.Buffer
 	s.Equal(0, run([]string{hail}, &out, &errOut))
 	s.Contains(out.String(), "READ-BACK: Hail Site (hail-site)")
-	s.Contains(out.String(), "        at room.room.monsterBindings.porter.options[0].advance\n")
+	s.Contains(out.String(), "“We're expected.” (`guest`), said to the guard")
+	s.NotContains(out.String(), "        at room.room")
 	s.Contains(out.String(), "NOT YET SAID")
+}
+
+func (s *ReadBackSuite) TestFull() {
+	var out, errOut bytes.Buffer
+	s.Equal(0, run([]string{"--full", hail}, &out, &errOut))
+	s.Contains(out.String(), "        at room.room.monsterBindings.porter.options[0].advance\n")
 }
 
 func (s *ReadBackSuite) TestJSON() {

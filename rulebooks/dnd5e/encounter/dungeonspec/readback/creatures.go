@@ -29,6 +29,7 @@ func (b *builder) creatureGroups() []Group {
 
 		loc := d.StartingCell.Location
 		s := fmt.Sprintf("%s is a %s", name, d.Ref)
+		lead := len(s)
 		var conns []Connection
 		if m.Faction != "" {
 			s += " of the faction " + quote(m.Faction)
@@ -52,7 +53,13 @@ func (b *builder) creatureGroups() []Group {
 		if m.Boss {
 			s += "; its death ends the run"
 		}
-		add(b.stmt(KindCreature, about, fmt.Sprintf("room.room.monsterDeclarations[%d]", i), s+".", conns...))
+		short := "a " + d.Ref + s[lead:]
+		short = strings.Replace(short, " of the faction ", " of ", 1)
+		short = strings.Replace(short, ", standing at ", " at ", 1)
+		short = strings.Replace(short, " in "+b.regionWords(m.Region), " in "+b.regionName(m.Region), 1)
+		short = strings.Replace(short, "; it looks like ", "; looks like ", 1)
+		add(b.fstmt(KindCreature, about, fmt.Sprintf("room.room.monsterDeclarations[%d]", i), s+".",
+			foldInfo{text: short}, conns...))
 
 		if len(m.Holds) > 0 {
 			var recs []string
@@ -62,28 +69,33 @@ func (b *builder) creatureGroups() []Group {
 				recs = append(recs, quote(id))
 				hc = append(hc, Connection{Kind: "record", ID: id, Role: "holds"})
 			}
-			add(b.stmt(KindHolds, about, bindPath+".holds", fmt.Sprintf(
-				"%s holds the records %s from the start.", name, joinAnd(recs)), hc...))
+			add(b.fstmt(KindHolds, about, bindPath+".holds", fmt.Sprintf(
+				"%s holds the records %s from the start.", name, joinAnd(recs)),
+				foldInfo{text: "{Self} holds the records " + joinAnd(recs) + " from the start."}, hc...))
 		}
 		if m.Arrives != nil {
 			w, ac := b.triggerWords(m.Arrives, lineContext{})
-			add(b.stmt(KindArrives, about, bindPath+".arrives", fmt.Sprintf(
-				"%s is not there at first: it arrives when %s.", name, w), ac...))
+			add(b.fstmt(KindArrives, about, bindPath+".arrives", fmt.Sprintf(
+				"%s is not there at first: it arrives when %s.", name, w),
+				foldInfo{text: "{Self} is not there at first: it arrives when " + w + ".", site: "the arrival of", who: d.ID}, ac...))
 		}
 		if bind.Behaviors != nil {
 			for k, use := range *bind.Behaviors {
 				s := fmt.Sprintf("%s runs the routine %s (as %s)", name, quote(use.Use), quote(use.ID))
+				short := fmt.Sprintf("Runs the routine %s (as %s)", quote(use.Use), quote(use.ID))
 				if bind.BehaviorState == use.ID {
 					s += "; this routine's state decides its posts and when its body blocks"
+					short += ", whose state decides its posts and blocking"
 				}
-				add(b.stmt(KindRoutineUse, about, fmt.Sprintf("%s.behaviors[%d]", bindPath, k), s+".",
+				add(b.fstmt(KindRoutineUse, about, fmt.Sprintf("%s.behaviors[%d]", bindPath, k), s+".", foldInfo{text: short + "."},
 					Connection{Kind: "routine", ID: use.Use, Role: "uses"}))
 			}
 		}
 		if len(m.BlockingStates) > 0 {
-			add(b.stmt(KindBlocking, about, bindPath+".blockingStates", fmt.Sprintf(
+			add(b.fstmt(KindBlocking, about, bindPath+".blockingStates", fmt.Sprintf(
 				"While its routine is in the state %s, %s's body blocks the cell it stands on.",
-				joinOr(quoteAll(m.BlockingStates)), name)))
+				joinOr(quoteAll(m.BlockingStates)), name), foldInfo{text: fmt.Sprintf(
+				"While its routine is in %s, {self}'s body blocks the cell it stands on.", joinOr(quoteAll(m.BlockingStates)))}))
 		}
 		for _, state := range sortedKeys(m.Posts) {
 			g.Statements = append(g.Statements, b.postStatements(d.ID, state, m.Posts[state], bindPath+".posts."+state)...)
@@ -91,16 +103,17 @@ func (b *builder) creatureGroups() []Group {
 		switch {
 		case len(bind.Options) > 0:
 			g.Statements = append(g.Statements, b.lineStatements(m.Options, bindPath+".options",
-				lineTarget{name: name, about: about, id: d.ID})...)
+				lineTarget{name: name, short: b.shortName(d.ID), about: about, id: d.ID})...)
 		case len(m.Options) > 0:
 			fi, ok := b.factions[m.Faction]
 			path := bindPath
 			if ok {
 				path = fmt.Sprintf("factions[%d].options", fi)
 			}
-			add(b.stmt(KindBorrowLines, about, path, fmt.Sprintf(
+			add(b.fstmt(KindBorrowLines, about, path, fmt.Sprintf(
 				"%s has no lines of its own; the speaker can say to it the faction %s's lines (said under that faction).",
-				name, quote(m.Faction)), Connection{Kind: "faction", ID: m.Faction, Role: "speaks-lines-of"}))
+				name, quote(m.Faction)), foldInfo{text: fmt.Sprintf(
+				"No lines of its own: the speaker can say to {self} the faction %s's lines (said under that faction).", quote(m.Faction))}, Connection{Kind: "faction", ID: m.Faction, Role: "speaks-lines-of"}))
 		}
 		groups = append(groups, g)
 	}
@@ -117,9 +130,13 @@ func (b *builder) postStatements(id, state string, p encounter.Post, path string
 	for _, c := range p.Cells {
 		cells = append(cells, posWords(c))
 	}
-	side := "no authored region"
+	side, sideName := "no authored region", "no authored region"
 	if len(p.Cells) > 0 {
 		side = b.regionAt(int(p.Cells[0].X), int(p.Cells[0].Y))
+		sideName = side
+		if i := strings.LastIndex(side, " ("); i > 0 {
+			sideName = side[:i]
+		}
 	}
 	against := "both ways: every crossing of it"
 	switch p.Against {
@@ -133,17 +150,32 @@ func (b *builder) postStatements(id, state string, p encounter.Post, path string
 	s := fmt.Sprintf("While its routine is in the state %s and it stands, up, on %s, %s holds the door %s: "+
 		"every creature not allied with %s is barred from crossing it, %s. Several holders hold one door: it is held while any of them holds it.",
 		quote(state), joinOr(cells), name, quote(door), name, against)
-	out := []Statement{b.stmt(KindPost, about, path, s, Connection{Kind: "door", ID: door, Role: "holds"})}
+	fagainst := "both ways"
+	switch p.Against {
+	case encounter.PostEntering:
+		fagainst = fmt.Sprintf("one way: from its side (%s) to the far side", sideName)
+	case encounter.PostLeaving:
+		fagainst = fmt.Sprintf("one way: from the far side to its side (%s)", sideName)
+	}
+	short := fmt.Sprintf("and {self} stands, up, on %s, it holds the door %s against anyone not allied with it, %s",
+		joinOr(cells), quote(door), fagainst)
+	out := []Statement{b.fstmt(KindPost, about, path, s, foldInfo{text: short, state: state},
+		Connection{Kind: "door", ID: door, Role: "holds"})}
 	if len(p.Pass) > 0 {
-		var reqs []string
+		var reqs, freqs []string
 		var conns []Connection
 		for _, t := range p.Pass {
 			w, c := b.triggerWords(t, lineContext{me: "the walker", other: name})
+			fw, _ := b.triggerWords(t, lineContext{me: "the walker", other: "{self}"})
+			fw = shortClause(fw)
 			reqs = append(reqs, w)
+			freqs = append(freqs, fw)
 			conns = append(conns, c...)
 		}
-		out = append(out, b.stmt(KindPass, about, path+".pass", fmt.Sprintf(
-			"%s lets a walker through that post, as an ally walks, when %s.", name, strings.Join(reqs, " and ")), conns...))
+		out = append(out, b.fstmt(KindPass, about, path+".pass", fmt.Sprintf(
+			"%s lets a walker through that post, as an ally walks, when %s.", name, strings.Join(reqs, " and ")),
+			foldInfo{text: "it lets a walker through, as an ally, when " + strings.Join(freqs, " and "),
+				state: state, site: "the posts", who: id}, conns...))
 	}
 	return out
 }

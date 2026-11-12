@@ -361,3 +361,57 @@ func (s *CastleSuite) TestTopicHubs() {
 		s.Equal(asks[topic], gotAsks, "%s: every asking site and nothing else", topic)
 	}
 }
+
+// TestTheFoldedFormDropsNothing: every statement is stood for by a folded
+// entry that carries its path.
+func (s *CastleSuite) TestTheFoldedFormDropsNothing() {
+	carried := map[string]bool{}
+	var walk func(it readback.Item)
+	walk = func(it readback.Item) {
+		for _, p := range it.Paths {
+			carried[p] = true
+		}
+		for _, c := range it.Items {
+			walk(c)
+		}
+	}
+	for _, sec := range s.rb.Folded() {
+		for _, it := range sec.Items {
+			walk(it)
+		}
+	}
+	for _, st := range s.rb.Statements() {
+		s.True(carried[st.Path], "statement at %s (%s) has no folded entry", st.Path, st.Kind)
+	}
+}
+
+// TestTheFoldedFormIsNarrow: no folded line is wider than 160 columns.
+func (s *CastleSuite) TestTheFoldedFormIsNarrow() {
+	for _, line := range strings.Split(s.rb.FoldedText(), "\n") {
+		s.LessOrEqual(len([]rune(line)), 160, line)
+	}
+}
+
+// TestSameLinesFold: the second gate guard's lines are the first's and are
+// named, not said again.
+func (s *CastleSuite) TestSameLinesFold() {
+	text := s.rb.FoldedText()
+	s.Contains(text, "Guard (gate-2) has the same 4 lines as Guard (gate-1): `vouch`, `straggler`, `friends-inside` and\n"+
+		"        `troupe`.")
+	s.Equal(1, strings.Count(text, "“They’re with us. The captain let us in.” (`vouch`)"))
+}
+
+// TestOneWordPreventsTheFold: the second guard's vouch answer differing by
+// one word is said in full, and only it; her other three lines still fold.
+func (s *CastleSuite) TestOneWordPreventsTheFold() {
+	gate2 := strings.Index(string(s.raw), "      gate-2:\n        faction: garrison")
+	s.Require().Positive(gate2)
+	edited := string(s.raw[:gate2]) + strings.Replace(string(s.raw[gate2:]),
+		"Right you are. Go on through, the lot of you.", "Right you are. Go on through, the pair of you.", 1)
+	rb, err := readback.Of([]byte(edited))
+	s.Require().NoError(err)
+	text := rb.FoldedText()
+	s.Contains(text, "Guard (gate-2) has the same 3 lines as Guard (gate-1): `straggler`, `friends-inside` and `troupe`.")
+	s.Equal(2, strings.Count(text, "“They’re with us. The captain let us in.” (`vouch`)"))
+	s.Contains(text, "the guard answers “Right you are. Go on through, the pair of you.”")
+}

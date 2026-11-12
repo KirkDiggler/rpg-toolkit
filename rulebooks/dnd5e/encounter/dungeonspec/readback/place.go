@@ -78,7 +78,14 @@ func (b *builder) place() []Group {
 		} else {
 			s += "."
 		}
-		add(b.stmt(KindEnding, Subject{Kind: "ending", ID: e.Key}, fmt.Sprintf("endings[%d]", i), s, conns...))
+		f := foldInfo{site: "the ending " + quote(e.Key), state: when, text: fmt.Sprintf("%s (a %s)", quote(e.Key), e.Result)}
+		if e.If != nil {
+			cond, _ := b.triggerWords(e.If, lineContext{})
+			f.text += " if " + cond
+		} else {
+			f.text += " otherwise"
+		}
+		add(b.fstmt(KindEnding, Subject{Kind: "ending", ID: e.Key}, fmt.Sprintf("endings[%d]", i), s, f, conns...))
 	}
 	for _, id := range sortedKeys(gp.DoorBindings) {
 		add(b.doorStatement(id))
@@ -99,7 +106,8 @@ func (b *builder) place() []Group {
 		default:
 			s += "nothing this build can say."
 		}
-		add(b.stmt(KindIntel, Subject{Kind: "record", ID: id}, fmt.Sprintf("intel[%d]", i), s, conns...))
+		add(b.fstmt(KindIntel, Subject{Kind: "record", ID: id}, fmt.Sprintf("intel[%d]", i), s,
+			foldInfo{site: "holding the record " + quote(id)}, conns...))
 	}
 	for _, id := range sortedKeys(b.spec.Templates) {
 		t := b.spec.Templates[id]
@@ -160,7 +168,7 @@ func (b *builder) doorStatement(id string) Statement {
 			quote(string(door.Opened)))
 		conns = append(conns, Connection{Kind: "fact", ID: string(door.Opened), Role: "teaches"})
 	}
-	return b.stmt(KindDoor, about, path, s+".", conns...)
+	return b.fstmt(KindDoor, about, path, s+".", foldInfo{site: "opening the door " + quote(id)}, conns...)
 }
 
 // propName is a scene item's label with its id.
@@ -229,9 +237,9 @@ func (b *builder) propStatements(id string) []Statement {
 		s += "; it is not there at first and arrives when " + w
 		conns = append(conns, more...)
 	}
-	out := []Statement{b.stmt(KindProp, about, path, s+".", conns...)}
+	out := []Statement{b.fstmt(KindProp, about, path, s+".", foldInfo{site: "the prop " + quote(id) + " arriving"}, conns...)}
 	if prop != nil && len(prop.Options) > 0 {
-		out = append(out, b.lineStatements(prop.Options, path+".options", lineTarget{name: "the prop " + name, about: about, prop: true})...)
+		out = append(out, b.lineStatements(prop.Options, path+".options", lineTarget{name: "the prop " + name, short: "the prop", about: about, prop: true})...)
 	}
 	return out
 }
@@ -281,7 +289,8 @@ func (b *builder) sides() []Group {
 					Why: "no creature of the faction speaks them, so they are not in the compiled encounter to be said"})
 			}
 			g.Statements = append(g.Statements, b.lineStatements(opts, fmt.Sprintf("factions[%d].options", i),
-				lineTarget{name: fmt.Sprintf("any creature of the faction %s that has no lines of its own", quote(f.ID)), about: about})...)
+				lineTarget{name: fmt.Sprintf("any creature of the faction %s that has no lines of its own", quote(f.ID)),
+					short: "the creature spoken to", about: about})...)
 		}
 		groups = append(groups, g)
 	}
@@ -322,7 +331,8 @@ func (b *builder) sides() []Group {
 			if len(d.Until) > 1 {
 				s += " (the first step that holds wins)"
 			}
-			g.Statements = append(g.Statements, b.stmt(KindDisposition, about, fmt.Sprintf("dispositions[%d]", i), s+".", conns...))
+			g.Statements = append(g.Statements, b.fstmt(KindDisposition, about, fmt.Sprintf("dispositions[%d]", i), s+".",
+				foldInfo{site: fmt.Sprintf("how %s and %s stand", quote(string(d.Between[0])), quote(string(d.Between[1])))}, conns...))
 		}
 		groups = append(groups, g)
 	}

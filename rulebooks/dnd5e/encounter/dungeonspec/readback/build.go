@@ -35,6 +35,12 @@ type builder struct {
 
 	// unsaid is what a section found it could not say.
 	unsaid []Unsaid
+
+	// bundleSaid is, for the folded form, where each bundle's rows (with
+	// their parameters) were first said in full; routineNow is the routine
+	// being said.
+	bundleSaid map[string]string
+	routineNow string
 }
 
 func newBuilder(spec *dungeonspec.SingleRoomSpec, c *dungeonspec.Compiled, raw []byte) *builder {
@@ -42,6 +48,7 @@ func newBuilder(spec *dungeonspec.SingleRoomSpec, c *dungeonspec.Compiled, raw [
 		spec: spec, c: c, doc: newDocument(raw),
 		names: map[string]string{}, monsters: map[string]*dungeonspec.MonsterPlacement{},
 		declIndex: map[string]int{}, factions: map[string]int{}, carriers: map[string][]string{},
+		bundleSaid: map[string]string{},
 	}
 	for i, f := range spec.Factions {
 		b.factions[f.ID] = i
@@ -97,6 +104,20 @@ func (b *builder) creature(id string) string {
 	return quote(id)
 }
 
+// shortName is the folded form's name for a member: its kind in lower case
+// with "the" ("the guard", "the guard captain").
+func (b *builder) shortName(id string) string {
+	n, ok := b.names[id]
+	if !ok {
+		return quote(id)
+	}
+	if i := strings.LastIndex(n, " ("); i > 0 {
+		n = n[:i]
+	}
+	n = strings.TrimPrefix(n, "The ")
+	return "the " + strings.ToLower(n)
+}
+
 // creatures names several members.
 func (b *builder) creatures(ids []string) string {
 	out := make([]string, len(ids))
@@ -146,6 +167,16 @@ func (b *builder) regionAt(q, r int) string {
 	return "no authored region"
 }
 
+// regionName is a region's name alone, for the folded form.
+func (b *builder) regionName(id string) string {
+	for _, reg := range b.spec.Room.Gameplay.Regions {
+		if reg.ID == id {
+			return reg.Name
+		}
+	}
+	return quote(id)
+}
+
 // regionWords is a region's name with its id.
 func (b *builder) regionWords(id string) string {
 	for _, reg := range b.spec.Room.Gameplay.Regions {
@@ -159,14 +190,7 @@ func (b *builder) regionWords(id string) string {
 // stmt makes a statement and, when it touches a topic or a fact, keeps it
 // for that hub.
 func (b *builder) stmt(kind Kind, about Subject, path, sentence string, conns ...Connection) Statement {
-	s := Statement{Kind: kind, About: about, Sentence: sentence, Path: path, Connects: dedupe(conns)}
-	for _, c := range s.Connects {
-		if c.Kind == "topic" || c.Kind == "fact" {
-			b.hubs = append(b.hubs, s)
-			break
-		}
-	}
-	return s
+	return b.fstmt(kind, about, path, sentence, foldInfo{}, conns...)
 }
 
 // dedupe drops repeated connections, keeping the first.

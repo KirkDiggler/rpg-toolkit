@@ -76,7 +76,7 @@ func (b *builder) hubGroups(kind string) []Group {
 // hubStatement repeats a statement under its hub, keeping its sentence,
 // path and connections.
 func (b *builder) hubStatement(kind Kind, about Subject, s Statement) Statement {
-	return Statement{Kind: kind, About: about, Sentence: s.Sentence, Path: s.Path, Connects: s.Connects}
+	return Statement{Kind: kind, About: about, Sentence: s.Sentence, Path: s.Path, Connects: s.Connects, fold: s.fold}
 }
 
 // places counts places in words: "1 place", "3 places".
