@@ -1,5 +1,7 @@
 # Run — 2026-11-11 — Gate conversation S3 the hail on the Speak row (session leg)
 
+processed: 2026-11-12T165555Z
+
 Slice [rpg-project#923](https://github.com/KirkDiggler/rpg-project/issues/923) of story [rpg-project#769](https://github.com/KirkDiggler/rpg-project/issues/769). Base: `rpg-toolkit` `main` at [`ab61a7e5`](https://github.com/KirkDiggler/rpg-toolkit/commit/ab61a7e5). Provider: encounter `v0.195.0` (developed on pseudo-versions `e7ca9e60`, then `3a5428e8`).
 
 ## Shipped

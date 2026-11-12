@@ -1,5 +1,7 @@
 # Run — 2026-11-08 — seat clears ride the fenced save
 
+processed: 2026-11-12T165555Z
+
 Fixes [rpg-toolkit#2332](https://github.com/KirkDiggler/rpg-toolkit/issues/2332), found by the rpg-api S12a integration ([rpg-project#897](https://github.com/KirkDiggler/rpg-project/issues/897)) against session v0.172.0 ([#2322](https://github.com/KirkDiggler/rpg-toolkit/pull/2322)).
 
 ## Shipped

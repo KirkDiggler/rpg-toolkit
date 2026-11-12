@@ -1,5 +1,7 @@
 # 2026-11-07 — native session adoption of composed Raging
 
+processed: 2026-11-12T165555Z
+
 Work: [Composable conditions S12 #884](https://github.com/KirkDiggler/rpg-project/issues/884), approved [design/plan #2295](https://github.com/KirkDiggler/rpg-toolkit/pull/2295).
 
 ## Shipped

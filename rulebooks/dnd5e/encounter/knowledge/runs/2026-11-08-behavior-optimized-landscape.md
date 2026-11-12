@@ -1,5 +1,7 @@
 # Run — 2026-11-08 — canonical behavior in the optimized landscape
 
+processed: 2026-11-12T165555Z
+
 Part of [live adoption #866](https://github.com/KirkDiggler/rpg-project/issues/866), integrating [runtime-efficiency #879](https://github.com/KirkDiggler/rpg-project/issues/879).
 
 ## Shipped

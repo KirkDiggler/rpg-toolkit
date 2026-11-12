@@ -1,5 +1,7 @@
 # 2026-11-07 — item consumer of shared Raging creation
 
+processed: 2026-11-12T165555Z
+
 Work: [Composable conditions S11 #883](https://github.com/KirkDiggler/rpg-project/issues/883), approved [design/plan #2295](https://github.com/KirkDiggler/rpg-toolkit/pull/2295).
 
 ## Shipped

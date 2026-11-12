@@ -1,5 +1,7 @@
 # 2026-11-02 · When things fire S1 · The session reads and folds by kind
 
+processed: 2026-11-12T165555Z
+
 Story [rpg-project#825](https://github.com/KirkDiggler/rpg-project/issues/825), slice [rpg-project#828](https://github.com/KirkDiggler/rpg-project/issues/828), design R1 B. Session PR [rpg-toolkit#2246](https://github.com/KirkDiggler/rpg-toolkit/pull/2246), on encounter [rpg-toolkit#2245](https://github.com/KirkDiggler/rpg-toolkit/pull/2245).
 
 ## Shipped

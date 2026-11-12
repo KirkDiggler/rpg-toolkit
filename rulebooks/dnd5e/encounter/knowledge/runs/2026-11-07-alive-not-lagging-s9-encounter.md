@@ -1,5 +1,7 @@
 # Run — 2026-11-07 — alive, not lagging S9 encounter: door crossings are site data; sight testimony decoded once
 
+processed: 2026-11-12T165555Z
+
 Slice [rpg-project#893](https://github.com/KirkDiggler/rpg-project/issues/893) of story [rpg-project#879](https://github.com/KirkDiggler/rpg-project/issues/879). Base: `rpg-toolkit` `main` at [`38e27241`](https://github.com/KirkDiggler/rpg-toolkit/commit/38e27241), with main merged in at [`ec4aecbf`](https://github.com/KirkDiggler/rpg-toolkit/commit/ec4aecbf) before review closed.
 
 ## Shipped

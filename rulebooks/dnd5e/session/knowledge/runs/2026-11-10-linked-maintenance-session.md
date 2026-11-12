@@ -1,5 +1,7 @@
 # Linked maintenance through session persistence
 
+processed: 2026-11-12T165555Z
+
 ## Shipped
 
 - Supply a stable current-act/application ordinal to native casts, carry maintenance facts into selectors/information/turn reads, and route death-save actor/dirty peers through the one landing after loading affected holders — [S14](https://github.com/KirkDiggler/rpg-project/issues/904).

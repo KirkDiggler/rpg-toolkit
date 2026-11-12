@@ -1,5 +1,7 @@
 # Run — 2026-11-09 — the rest as pieces, written when their mark moves
 
+processed: 2026-11-12T165555Z
+
 Leg (b) of [rpg-project#897](https://github.com/KirkDiggler/rpg-project/issues/897), PR 2 of 4, for story [rpg-project#879](https://github.com/KirkDiggler/rpg-project/issues/879). Base: `rpg-toolkit` `main` after [rpg-toolkit#2361](https://github.com/KirkDiggler/rpg-toolkit/pull/2361), which made an unchanged member encode to the same bytes.
 
 ## Shipped

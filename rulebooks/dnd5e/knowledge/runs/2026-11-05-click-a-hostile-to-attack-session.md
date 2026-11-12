@@ -1,5 +1,7 @@
 # 2026-11-05 · Click a hostile to attack, D4 · Session
 
+processed: 2026-11-12T165555Z
+
 Story [rpg-project#872](https://github.com/KirkDiggler/rpg-project/issues/872), decision D4. Built on session main 6d8a753a, pinning encounter at [56dffeaa](https://github.com/KirkDiggler/rpg-toolkit/commit/56dffeaabbc934e8dc6ea1dff466ca30a8cb505b) (`v0.178.1-0.20261106010014-56dffeaabbc9`), the head of #2285 after its review fix, in commit [4e8394f2](https://github.com/KirkDiggler/rpg-toolkit/commit/4e8394f2480d72d6681d2ab3c641675848777af0). Wire field: [rpg-api-protos#420](https://github.com/KirkDiggler/rpg-api-protos/pull/420), `TargetCandidate.approach`.
 
 ## Shipped

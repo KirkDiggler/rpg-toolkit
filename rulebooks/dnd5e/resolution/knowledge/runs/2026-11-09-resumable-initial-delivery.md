@@ -1,5 +1,7 @@
 # Resumable initial delivery
 
+processed: 2026-11-12T165555Z
+
 ## Shipped
 
 - Add a native resolver characterization: Bane's first recipient is persisted before a later recipient answers a saving-throw offer; this is a checkpoint on released root v0.214.0, not linked-runtime adoption — [S14](https://github.com/KirkDiggler/rpg-project/issues/904).

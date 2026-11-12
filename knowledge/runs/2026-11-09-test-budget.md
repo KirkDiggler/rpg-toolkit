@@ -1,5 +1,7 @@
 # Run — 2026-11-09 — a test budget CI enforces
 
+processed: 2026-11-12T165555Z
+
 Base: `rpg-toolkit` `main` at f61e4379, after [#2336](https://github.com/KirkDiggler/rpg-toolkit/pull/2336) and [#2338](https://github.com/KirkDiggler/rpg-toolkit/pull/2338). Story: [rpg-project#907](https://github.com/KirkDiggler/rpg-project/issues/907), slice [rpg-project#910](https://github.com/KirkDiggler/rpg-project/issues/910). PR: [#2341](https://github.com/KirkDiggler/rpg-toolkit/pull/2341).
 
 ## Shipped

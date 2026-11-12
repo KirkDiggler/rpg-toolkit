@@ -1,5 +1,7 @@
 # Run — 2026-11-10 — Gate S1: options are an evaluated menu
 
+processed: 2026-11-12T165555Z
+
 Slice [rpg-project#921](https://github.com/KirkDiggler/rpg-project/issues/921) of story [rpg-project#769](https://github.com/KirkDiggler/rpg-project/issues/769). Base: `rpg-toolkit` `main` at [`7dd61222`](https://github.com/KirkDiggler/rpg-toolkit/commit/7dd61222). Head: the [rpg-toolkit#2355](https://github.com/KirkDiggler/rpg-toolkit/pull/2355) branch `feat/769-gate-s1-options-evaluated`.
 
 ## Shipped

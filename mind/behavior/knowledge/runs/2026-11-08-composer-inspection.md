@@ -1,5 +1,7 @@
 # Run — 2026-11-08 — composer proposal and commit explanations
 
+processed: 2026-11-12T165555Z
+
 ## Shipped
 
 - Added opt-in instance outcomes to Observe/Decide, consuming the pushed machine trace provider; this is provider work, not completed live inspection — [Machine inspection S1](https://github.com/KirkDiggler/rpg-project/issues/899).

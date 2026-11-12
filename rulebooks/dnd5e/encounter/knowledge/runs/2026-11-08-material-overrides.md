@@ -1,5 +1,7 @@
 # Run — 2026-11-08 — Captured wall and prop materials
 
+processed: 2026-11-12T165555Z
+
 ## Shipped
 
 - Encounter checkpoint captures opaque material overrides at the existing wall/prop owners, including native lowering, host persistence, recipient layout/reveal and mutable prop observations. SDK/API/Web integration remains outstanding — [Courtyard S3](https://github.com/KirkDiggler/rpg-project/issues/895).

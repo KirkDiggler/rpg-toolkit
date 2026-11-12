@@ -1,5 +1,7 @@
 # Run — 2026-11-09 — the site is shared by hash through Config.Sites
 
+processed: 2026-11-12T165555Z
+
 Leg 2b of S5, [#914](https://github.com/KirkDiggler/rpg-project/issues/914), story [#879](https://github.com/KirkDiggler/rpg-project/issues/879). Leg 1 is the encounter's `Site` (rpg-toolkit#2345); leg 2a is resolution's provider input.
 
 ## Shipped

@@ -1,5 +1,7 @@
 # Run — 2026-11-09 — the test budget fails only over twice the target
 
+processed: 2026-11-12T165555Z
+
 Base: `rpg-toolkit` `main` at e4ac31f8, after [#2341](https://github.com/KirkDiggler/rpg-toolkit/pull/2341). Story: [rpg-project#907](https://github.com/KirkDiggler/rpg-project/issues/907), follow-up to slice [rpg-project#910](https://github.com/KirkDiggler/rpg-project/issues/910).
 
 ## Why

@@ -1,5 +1,7 @@
 # 2026-11-07 — effects release and item-consumer adoption
 
+processed: 2026-11-12T165555Z
+
 Work: [extraction #705](https://github.com/KirkDiggler/rpg-project/issues/705), [Rage/loot #2287](https://github.com/KirkDiggler/rpg-toolkit/pull/2287).
 
 ## Shipped

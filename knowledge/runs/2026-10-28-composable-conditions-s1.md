@@ -1,5 +1,7 @@
 # Run — 2026-10-28 — Composable conditions S1: `examples/effects`
 
+processed: 2026-11-12T165555Z
+
 Slice [rpg-project#704](https://github.com/KirkDiggler/rpg-project/issues/704) of story [rpg-project#703](https://github.com/KirkDiggler/rpg-project/issues/703). Base: rpg-toolkit main at [`dd2ccc8b`](https://github.com/KirkDiggler/rpg-toolkit/commit/dd2ccc8b9a0fc0666194c544a2a6c89671dca12f). Head: [`e715a8a1`](https://github.com/KirkDiggler/rpg-toolkit/commit/e715a8a1922f118515cf4eb69c6b778ec0873488). Design: [composable-conditions/design.md](https://github.com/KirkDiggler/rpg-toolkit/blob/docs/idea-composable-conditions/docs/ideas/composable-conditions/design.md), plan tasks 1–5.
 
 ## Shipped
