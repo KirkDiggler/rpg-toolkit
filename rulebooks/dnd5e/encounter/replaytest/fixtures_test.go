@@ -8,7 +8,6 @@ package replaytest_test
 // and the garrison keep (keepgen's `-garrison`, rpg-project#766 S1).
 
 import (
-	"slices"
 	"testing"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -63,29 +62,9 @@ func castleOpener(at spatial.Position) opener {
 // castleOpenerWith is [castleOpener] with more of the party placed beside the
 // hero, each where it is given.
 func castleOpenerWith(at spatial.Position, party ...encounter.MemberInput) opener {
-	return castleOpenerSaying(at, nil, party...)
-}
-
-// castleOpenerSaying is [castleOpenerWith] with, for each option id named,
-// every creature's line of that id said at the loudness given — a TEST
-// LOUDNESS (rpg-project#933), so a piece can raise a line to the shout a
-// post answers.
-func castleOpenerSaying(at spatial.Position, loudness map[string]string, party ...encounter.MemberInput) opener {
 	return func(t testing.TB, h host, down *standing) *encounter.SetupInput {
 		t.Helper()
 		compiled := loadFile(t, kingFixture)
-		// The file is loaded once per binary and shared: a copy of its
-		// creatures is what this opener changes.
-		compiled.Monsters = slices.Clone(compiled.Monsters)
-		for i := range compiled.Monsters {
-			options := slices.Clone(compiled.Monsters[i].Options)
-			for j := range options {
-				if l, ok := loudness[options[j].ID]; ok {
-					options[j].Loudness = l
-				}
-			}
-			compiled.Monsters[i].Options = options
-		}
 		arcs := map[encounter.MemberID]int{}
 		members := append([]encounter.MemberInput{{ID: hero, Kind: encounter.KindPlayer, Position: at}}, party...)
 		for _, m := range compiled.Monsters {

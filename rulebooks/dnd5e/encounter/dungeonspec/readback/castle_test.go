@@ -518,3 +518,13 @@ func (s *CastleSuite) TestTheGuardsAnswerShoutsNotTalk() {
 	row := s.statement(readback.KindRoutineRow, "behaviorDefinitions.keep-1-policy.table.time[5]")
 	s.Contains(row.Sentence, "heard a `voice` sound at `shout` or louder within the last 3 rounds")
 }
+
+// TestTheShoutAtTheGateSaysItsReach: the stranger's shouted line
+// (rpg-project#933) says it is shouted and reaches the next room — the
+// gatehouse, whose guards catch it unseen.
+func (s *CastleSuite) TestTheShoutAtTheGateSaysItsReach() {
+	st := s.statement(readback.KindLine, "room.room.monsterBindings.pedlar.options[1]")
+	s.Contains(st.Sentence, "“Oi! Pedlar! What have you got to sell?” (`hail-the-pedlar`)")
+	s.Contains(st.Sentence, "It is said at `shout` (authored): its words reach everyone in the speaker's room and the next room over")
+	s.Contains(st.Sentence, "It is a plain line")
+}

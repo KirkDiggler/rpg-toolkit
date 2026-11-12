@@ -132,14 +132,14 @@ func TestReplay_CastleSneakPieces(t *testing.T) {
 	})
 	t.Run("piece 4: drawn off by a shout, the dash in gate-2's window", func(t *testing.T) {
 		t.Parallel()
-		// GUARDS ANSWER SHOUTS, NOT TALK (rpg-project#933): the companion's
-		// line is raised to a shout.
-		log := replayRun(t, castleOpenerSaying(gatehouseSeat, map[string]string{"tonight": "shout"}, encounter.MemberInput{
+		// GUARDS ANSWER SHOUTS, NOT TALK (rpg-project#933): the companion
+		// hails the stranger at the top of his voice.
+		log := replayRun(t, castleOpenerWith(gatehouseSeat, encounter.MemberInput{
 			ID: sneakCompanion, Kind: encounter.KindPlayer, Position: besideTheStranger,
 		}), func(w *world) {
 			toTheDash(w)
 			require.NoError(t, w.speak(encounter.SpeakInput{
-				Actor: sneakCompanion, Target: kingPedlar, OptionID: "tonight", Skill: "persuasion", Beaten: true, DC: 15, Total: 20,
+				Actor: sneakCompanion, Target: kingPedlar, OptionID: "hail-the-pedlar",
 			}), "the companion shouts to the stranger")
 			start := w.round()
 			w.paceUntil(hero, besideTheCorner, besideThat, 12, func() bool { return w.round() > start })

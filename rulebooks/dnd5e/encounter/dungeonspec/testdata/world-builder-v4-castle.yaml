@@ -2131,6 +2131,15 @@ room:
             failure:
               - say: Feast, tonight. Now leave me be.
                 fact: feast-tonight
+          # Hand edit (rpg-project#933): a plain line SHOUTED at the stranger
+          # outside the gate. Guards answer shouts, not talk, so this is the
+          # noise that draws the gate's post off the crossing (the sneak
+          # window); his answer is spoken, and teaches nothing.
+          - id: hail-the-pedlar
+            say: Oi! Pedlar! What have you got to sell?
+            loudness: shout
+            success:
+              - say: Nothing for the likes of you at this hour. Off with you.
     doorBindings:
       gate-wall-door:
         closed: true

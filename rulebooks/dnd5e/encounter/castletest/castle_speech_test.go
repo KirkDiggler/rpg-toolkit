@@ -134,6 +134,14 @@ func TestMadKingNoBeatTellsAReaderMoreThanTheirVersion(t *testing.T) {
 			require.True(t, saw, "precondition: but saw the hero say it")
 			return s
 		},
+		// A SHOUTED PLAYER LINE (rpg-project#933): the companion hails the
+		// stranger outside the gate at the top of his voice, which reaches
+		// the next room.
+		"the shout at the gate": func(t *testing.T) *kingScene {
+			s := openTheHeldGate(t, castleHost{at: besideTheCrossingSeat, soleGateHolder: true})
+			s.shoutOutside()
+			return s
+		},
 		"the thief": func(t *testing.T) *kingScene {
 			s := openTheCastle(t, besideTheCook)
 			s.said(kingCook, "pilfer", "sleight-of-hand", false)

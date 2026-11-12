@@ -114,9 +114,9 @@ func TestMadKingThePostHoldsTheGatesPassage(t *testing.T) {
 
 	t.Run("drawn off by a shout, it opens", func(t *testing.T) {
 		t.Parallel()
-		s := openTheHeldGate(t, castleHost{at: besideTheCrossingSeat, soleGateHolder: true, loudness: map[string]string{"tonight": "shout"}})
+		s := openTheHeldGate(t, castleHost{at: besideTheCrossingSeat, soleGateHolder: true})
 		require.Equal(t, held, s.barred(pastTheGate), "precondition: held")
-		s.voiceOutside()
+		s.shoutOutside()
 		// He answers the voice on the world's next round and walks back to
 		// his post after it, so the hero paces until he is off both post
 		// cells and the hero stands beside the crossing again.
