@@ -22,6 +22,8 @@ flowchart TD
 The component shape is settled under R1. Concrete types and contracts below are
 settled under R4; example policies are settled under R5. The [walkthrough](README.md)
 explains the boundaries and the [examples](examples.md) show the authored surface.
+R6 places the reusable API, canonical fixtures and executable examples in the
+rulebook; downstream item-package adoption is separate.
 
 ## Law
 
@@ -64,13 +66,14 @@ explains the boundaries and the [examples](examples.md) show the authored surfac
 9. The caller supplies the complete participant universe to PrepareApplication.
    Intended participants and candidate shapes are validated before payment.
    Binding is not native range, visibility or target-offer validation. R4.
-10. The source selects its own grant and price. After successful pure preflight,
-    the existing item Use boundary settles the price; its pure resolver returns
-    the prepared result. Delivery, owner creation and recipient finalization occur
-    afterward. No world mutation is hidden inside an item refund callback. R4.
-11. All item fixtures use one definition-grant adapter, not a resolver per item.
-    A grant names a definition in the validated library; runtime participants
-    never arrive inside authored grant parameters. R4.
+10. The source selects its definition and price. After successful pure preflight,
+    the source settles its price; owner creation, delivery and recipient
+    finalization occur afterward. Preparation does not deliver, and a delivery
+    failure is not a refundable pure preparation failure. R4/R6.
+11. Rulebook-local external tests consume the production definition/binding API.
+    A small test source supplies identity, participants and one-use payment through
+    the existing resource primitive; it implements no effect rules or item engine.
+    Runtime participants are not authored definition data. R4/R6.
 12. Payment, origin, user, recipient, coordinator, invocation and replacement
     address are distinct. The binding adapter derives an invocation-scoped
     attachment address explicitly; it differs from the coordinator address even
@@ -145,14 +148,16 @@ explains the boundaries and the [examples](examples.md) show the authored surfac
     finalization, generation checks, exact end propagation and failed-boundary
     refusal use the existing application protocol. No second seal or shared bag
     is introduced. R1/R4.
-28. An item can be exhausted or detached while an already-delivered grant remains
-    active under its own maintenance. First-cut consumables model exhausted
-    availability, not inventory deletion; no automatic refund follows effect end.
-    Native item possession/consumption policy is outside this fixture contract. R3/R5.
+28. A source can be exhausted or unavailable while an already-delivered grant
+    remains active under its own maintenance. The test source models one-use
+    availability, not real item detachment or inventory deletion; no automatic
+    refund follows effect end. Item-package adoption is separate. R3/R5/R6.
 29. Ordinary root regressions remain green, and fixtures assert data-driven
     execution, information, provenance, payment and reload/end behavior. The
     fixtures and assertions are separate artifacts; a passing baseline is not
-    proof of a new authored example. R3.
+    proof of a new authored example. All primary fixture data and executable
+    examples live under rulebooks/dnd5e; no examples/items dependency is required
+    by production code or tests. R3/R6.
 
 ## Rulings
 
@@ -163,6 +168,7 @@ explains the boundaries and the [examples](examples.md) show the authored surfac
 | R3 | settled | Fixture-first teaching/authoring path and effects README; studio UI/native inventory and unrelated migrations are outside the first cut | KirkDiggler | 2026-11-12 |
 | R4 | settled | Concrete library, binding, part and frame-detail contracts in Law | KirkDiggler | 2026-11-12 |
 | R5 | settled | Explicit illustrative fixture policies in examples.md, including one-use availability rather than inventory destruction | KirkDiggler | 2026-11-12 |
+| R6 | settled | Rulebook-owned reusable API, fixture data and executable examples; a small test source, not an item engine; examples/items adoption is separate | KirkDiggler | 2026-11-12 |
 
 ## Open
 
@@ -170,6 +176,7 @@ No required design decision remains open for this fixture cut. Concrete types
 are implementation contracts, not a claim that the API is already available.
 The example policies are illustrative fixtures, not canonical keep-item balance.
 
-Full studio authoring, native targeting/inventory/consumption, native frame
-producer adoption and the rest of the against-holder family remain outside
+Downstream examples/items adoption, full studio authoring, native
+targeting/inventory/consumption, native frame producer adoption and the rest
+of the against-holder family remain outside
 this cut. A consumer brings their integration requirements later.

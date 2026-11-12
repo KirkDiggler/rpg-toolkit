@@ -1,7 +1,7 @@
 # Authored examples
 
 These are **agreed input examples**, not yet fixtures a released loader can execute.
-They make [R4/R5](design.md#rulings) concrete. The item adapter supplies user,
+They make [R4/R5/R6](design.md#rulings) concrete. The rulebook test source supplies user,
 recipient, origin and invocation separately; none are saved into the reusable
 library. Test-world setup and assertions also stay outside this content.
 
@@ -125,24 +125,27 @@ The other words reuse current meanings. The detailed implementation must verify
 literal spellings against canonical types; the schema must not introduce aliases
 for existing facts or ability identifiers.
 
-## Item grant
+## Calling from an item-like test source
 
-Each example uses the same experimental consumer ref and binding contract. Only
-its definition key changes:
+The canonical library belongs in
+`rulebooks/dnd5e/conditions/testdata/effects/library.json`. An external-package
+rulebook test selects a definition through the production API:
 
 ```json
-{
-  "ref": {"module": "example", "type": "abilities", "id": "apply_effect_definition"},
-  "parameters": {"definition": "rage-ring"},
-  "pool": "uses",
-  "uses": 1
-}
+{"definition": "rage-ring"}
 ```
 
-The agreed illustrative item pool has maximum 1 and no recovery occurrences.
-Ring/scroll/sausage economics are not being balanced here. After a successful use,
-remaining availability is zero; the inventory object is not deleted. A spent or
-detached item is not itself an ending rule for the delivered grant.
+This selection is not a new production item format. The small test source supplies
+its item-like origin and actual participants separately. It calls the public
+compiler/binder and PrepareApplication, then spends one use through the existing
+mechanics/resources primitive before the test host delivers the result. It contains
+no per-item effect handler, inventory system, offer registry or refund protocol.
+
+The agreed illustrative source pool has maximum 1 and no recovery. After a
+successful use, remaining availability is zero. Making the test source unavailable
+does not itself end the delivered grant. These tests prove the rulebook's source
+boundary, not real item detachment or inventory deletion; examples/items can
+separately adopt the same API later.
 
 ## Observable fixture policies
 
@@ -178,8 +181,8 @@ accidental default.
 - The sausage's target-side information and actual attack roll agree, including
   ranged attacks against the eater. An observer with unknown configured details
   gets Depends, not a fabricated drawback or a live-state lookup.
-- Saving and reloading preserves spent item availability, concrete provenance,
+- Saving and reloading preserves the test source's spent availability, concrete provenance,
   grace, counters and pending/live membership. Changing the source library does
   not rewrite an already active effect.
 - Invalid data fails before payment; a delivery failure after successful payment
-  does not pretend the pure item resolver can roll back arbitrary world effects.
+  does not pretend a source budget can roll back arbitrary world effects.

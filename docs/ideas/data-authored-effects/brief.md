@@ -4,21 +4,26 @@ Working brief and proposed component shape for [composable conditions #703](http
 
 The component boundary is agreed. The [walkthrough](README.md),
 [detailed design](design.md) and [authored examples](examples.md) carry the
-accepted contracts and fixture policies, R1–R5. The [implementation plan](plan.md)
+accepted contracts, fixture policies and rulebook-first placement, R1–R6. The [implementation plan](plan.md)
 names the delivery slices, task interfaces and proofs.
 
 ## Outcome
 
 An author combines established D&D mechanical pieces through data. The same
 benefit set can be sustained by the user's concentration, the recipient's combat
-activity, or another explicitly selected policy. Item tests load that data through
+activity, or another explicitly selected policy. Rulebook-local tests load data through
 the rulebook's ordinary validation/binding path. A future encounter studio authors
 the same definition rather than introducing its own execution interpretation.
 
 The teaching surface is the [rulebook effects README](../../../rulebooks/dnd5e/effects/README.md)
 and a set of executable fixture examples. Raw fixture data is content; test code
 sets up the world, performs interactions and asserts what happens. Assertions and
-scripted test steps are not part of the authored item format.
+scripted test steps are not part of the authored effect format.
+
+The earlier cut put the cookbook in examples/items. Kirk corrected the focus:
+“I was thinking of getting the rulebook package in order.” The rulebook now owns
+both the reusable production API and its executable teaching examples; a separate
+item package can adopt it later, but is not a prerequisite ([R6](design.md#rulings)).
 
 ## Shape
 
@@ -50,8 +55,8 @@ runtime is introduced.
 `conditions.ApplicationSpec`, `PrepareApplication`, `CreateApplication`,
 `CreateRecipient` and `ApplicationBinding` remain the starting application seam.
 `effects.PartDeclaration`/`BindPart` and the generic assembly remain the execution
-building blocks. Concrete public types for the new authoring surface are still to
-be designed; these labels do not claim an existing loader can read the fixtures.
+building blocks. Public interfaces are specified in the design and plan; these
+contracts do not claim an already-implemented loader can read the fixtures.
 
 ## Compositions that drive the work
 
@@ -82,7 +87,7 @@ required by these examples.
 | `dnd5e/effects` | D&D kind meanings, applicability, execution and matching information | Know the ring, scroll or sausage by name; choose targets or own inventory |
 | `conditions` application | Local attachments, exact identity, linked custody and lifetime coordination | Infer item payment or replace independent runtimes with a shared mutable bag |
 | Existing generic effects | Composition, independent part state and neutral lifetime mechanics | Interpret D&D or item names |
-| Item source/consumer | Grant availability, authored price, source attribution and paid activation boundary | Reimplement damage, resistance, upkeep or advantage |
+| Small rulebook test source | Source identity, one-use availability and paid activation boundary | Reimplement damage, resistance, upkeep, advantage or a production item engine |
 | Test host | Participant setup, delivery, storage simulation, events and assertions | Supply a different effect implementation for each fixture |
 | Future studio | Author valid definitions and explain validation errors | Reimplement the runtime or maintain a second schema with different meaning |
 
@@ -106,9 +111,9 @@ Alternatives considered:
   but would expose engine plumbing and create another evaluator to validate,
   explain and persist. These examples do not require that cost.
 
-The chosen direction is data composition. The detailed schema, reusable-bundle
-resolution and against-holder information contract are not yet settled by that
-choice.
+The chosen direction is data composition in the rulebook. The detailed design
+settles its schema, benefit-set reuse and against-holder information contracts;
+R6 keeps the primary demonstration beside that implementation.
 
 ## Evidence and finish line
 
@@ -127,9 +132,11 @@ one-use pool demonstrates spent availability; it is not proof that a production
 inventory object was consumed or destroyed.
 
 Delivery includes the package README, fixture definitions and tests, the reusable
-provider work those examples require, and checked module-scoped PRs with owning
-gates and required independent review. Provider and item modules remain separate
-release units. No merge/release authority is inherited from the preceding wave.
+rulebook work those examples require, and a checked root-module implementation
+PR with owning gates and required independent review. The canonical library lives
+in rulebooks/dnd5e/conditions/testdata/effects and external-package tests use only
+public rulebook APIs. Downstream examples/items adoption is separate and deferred.
+No merge/release authority is inherited from the preceding wave.
 
 ## Non-goals
 
