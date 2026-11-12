@@ -1,5 +1,7 @@
 # 2026-11-07 — shared rulebook effects design
 
+processed: 2026-11-12T165555Z
+
 Work: [story #703](https://github.com/KirkDiggler/rpg-project/issues/703).
 
 ## Shipped

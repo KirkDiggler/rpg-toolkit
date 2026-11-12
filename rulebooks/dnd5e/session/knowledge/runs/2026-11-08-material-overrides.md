@@ -1,5 +1,7 @@
 # Run — 2026-11-08 — Material override SDK transcription
 
+processed: 2026-11-12T165555Z
+
 ## Shipped
 
 - SDK checkpoint carries captured material choices through wall/prop snapshots and existing reveal decoders; API/Web integration remains outstanding — [Courtyard S3](https://github.com/KirkDiggler/rpg-project/issues/895).

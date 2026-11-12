@@ -1,5 +1,7 @@
 # 2026-11-06 — Rage and loot consume the extracted runtime
 
+processed: 2026-11-12T165555Z
+
 Work: [Rage/loot #2287](https://github.com/KirkDiggler/rpg-toolkit/pull/2287), [provider #2291](https://github.com/KirkDiggler/rpg-toolkit/pull/2291), [extraction #705](https://github.com/KirkDiggler/rpg-project/issues/705).
 
 ## Shipped

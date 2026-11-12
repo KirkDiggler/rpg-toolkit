@@ -1,5 +1,7 @@
 # 2026-11-03 · The guard holds the gate S1 · A body blocks by its state
 
+processed: 2026-11-12T165555Z
+
 Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), slice [rpg-project#841](https://github.com/KirkDiggler/rpg-project/issues/841), lane [rpg-project#835](https://github.com/KirkDiggler/rpg-project/issues/835) (R1 A, R3 C, R4 A). Plan Task 1 in `ideas/the-guard-holds-the-gate/plan.md`.
 
 ## Shipped

@@ -1,5 +1,7 @@
 # Run — 2026-11-08 — canonical behavior inspection records
 
+processed: 2026-11-12T165555Z
+
 ## Shipped
 
 - Implemented GM-only configuration, decision and work records through the real canonical runtime; API/session/web adoption remains outstanding — [Machine inspection S2](https://github.com/KirkDiggler/rpg-project/issues/900).

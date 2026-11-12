@@ -1,5 +1,7 @@
 # Run — 2026-11-08 — Composable conditions S13 neutral provider
 
+processed: 2026-11-12T165555Z
+
 Slice [rpg-project#903](https://github.com/KirkDiggler/rpg-project/issues/903), story [rpg-project#703](https://github.com/KirkDiggler/rpg-project/issues/703). Base [d4033752](https://github.com/KirkDiggler/rpg-toolkit/commit/d4033752); approved [plan](https://github.com/KirkDiggler/rpg-toolkit/blob/design/bless-bane-composition/docs/ideas/composable-maintenance/plan.md).
 
 ## Shipped

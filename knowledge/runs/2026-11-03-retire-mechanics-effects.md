@@ -1,5 +1,7 @@
 # Run — 2026-11-03 — Composable conditions S8: retire legacy effects
 
+processed: 2026-11-12T165555Z
+
 Slice [rpg-project#853](https://github.com/KirkDiggler/rpg-project/issues/853) of [rpg-project#703](https://github.com/KirkDiggler/rpg-project/issues/703). Stacked on [proficiency retirement #2262](https://github.com/KirkDiggler/rpg-toolkit/pull/2262), after [features retirement #2261](https://github.com/KirkDiggler/rpg-toolkit/pull/2261).
 
 ## Shipped

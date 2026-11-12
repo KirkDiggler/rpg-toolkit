@@ -1,5 +1,7 @@
 # Run — 2026-11-05 — NPC behavior S2 authored finite sequences
 
+processed: 2026-11-12T165555Z
+
 Slice [rpg-project#871](https://github.com/KirkDiggler/rpg-project/issues/871), story [#859](https://github.com/KirkDiggler/rpg-project/issues/859). Base: toolkit main at [`d05c2fcd317e5bf979b62f4419a2b4595dd9697c`](https://github.com/KirkDiggler/rpg-toolkit/commit/d05c2fcd317e5bf979b62f4419a2b4595dd9697c).
 
 ## Shipped

@@ -1,5 +1,7 @@
 # Run — 2026-11-07 — behavior review boundaries
 
+processed: 2026-11-12T165555Z
+
 Follow-up within [toolkit #2293](https://github.com/KirkDiggler/rpg-toolkit/pull/2293), part of [live adoption #866](https://github.com/KirkDiggler/rpg-project/issues/866).
 
 ## Shipped

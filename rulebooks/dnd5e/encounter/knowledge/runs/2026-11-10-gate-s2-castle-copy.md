@@ -1,5 +1,7 @@
 # Run — 2026-11-10 — Gate S2 castle copy: the castle's gate remembers
 
+processed: 2026-11-12T165555Z
+
 Slice [rpg-project#922](https://github.com/KirkDiggler/rpg-project/issues/922) of story [rpg-project#769](https://github.com/KirkDiggler/rpg-project/issues/769). Base: `rpg-toolkit` `main` at [`3cc83edf`](https://github.com/KirkDiggler/rpg-toolkit/commit/3cc83edf). Head: branch `feat/769-gate-s2-castle-copy`.
 
 ## Shipped

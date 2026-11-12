@@ -1,5 +1,7 @@
 # 2026-11-07 — effects extraction close-out record
 
+processed: 2026-11-12T165555Z
+
 Work: [extraction #705](https://github.com/KirkDiggler/rpg-project/issues/705).
 
 ## Shipped

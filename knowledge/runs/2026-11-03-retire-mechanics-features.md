@@ -1,5 +1,7 @@
 # Run — 2026-11-03 — Composable conditions S8: retire legacy features
 
+processed: 2026-11-12T165555Z
+
 Slice [rpg-project#853](https://github.com/KirkDiggler/rpg-project/issues/853) of [rpg-project#703](https://github.com/KirkDiggler/rpg-project/issues/703). Base: [ef4d22b0](https://github.com/KirkDiggler/rpg-toolkit/commit/ef4d22b0b376f25096d466ef1867551b67ccef56).
 
 ## Shipped

@@ -1,5 +1,7 @@
 # Run — 2026-11-03 — nilnil #2220 — ForOption zero-distance sentinel
 
+processed: 2026-11-12T165555Z
+
 Part of [rpg-toolkit#2220](https://github.com/KirkDiggler/rpg-toolkit/issues/2220). Base: `rpg-toolkit` `main` at 8622a295. Ruling on the fix shape: [the issue's plan comment](https://github.com/KirkDiggler/rpg-toolkit/issues/2220#issuecomment-6612643483).
 
 ## Shipped

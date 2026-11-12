@@ -1,5 +1,7 @@
 # Run — 2026-11-08 — the save is fenced on a checkpoint version
 
+processed: 2026-11-12T165555Z
+
 Leg (a) of S12, [#897](https://github.com/KirkDiggler/rpg-project/issues/897), story [#879](https://github.com/KirkDiggler/rpg-project/issues/879).
 
 ## Shipped

@@ -1,5 +1,7 @@
 # Run — 2026-11-08 — one-pass machine explanations
 
+processed: 2026-11-12T165555Z
+
 ## Shipped
 
 - Implemented optional TraceStep values beside the existing Step API; no host logging, scheduler or configuration store enters the machine module — [Machine inspection S1](https://github.com/KirkDiggler/rpg-project/issues/899).
