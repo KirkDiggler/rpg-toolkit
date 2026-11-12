@@ -607,3 +607,27 @@ func cloneApproach(a *InteractionApproach) *InteractionApproach {
 	c := *a
 	return &c
 }
+
+// endAddressesOf ends every address that names a member who has left the
+// run, as the addressee or as the guard, each with its [BeatAddressEnded]
+// and the reason [AddressGone], in interaction id order (rpg-project#942).
+// Exit calls it once the member is off the roster: the end-of-step sweep
+// would notice the same at the next step, but the run is saved before any
+// next step, and a saved address naming a member the run lacks is refused
+// on load. The interaction's progress is untouched, as at every sweep.
+//
+// Errors: a beat's append.
+func (e *Encounter) endAddressesOf(member MemberID) error {
+	for _, id := range slices.Sorted(maps.Keys(e.interactions)) {
+		r := e.interactions[id]
+		if r.address == nil || (r.address.Member != member && r.address.Guard != member) {
+			continue
+		}
+		ended := *r.address
+		r.address = nil
+		if err := e.appendAddressBeat(BeatAddressEnded, id, ended, AddressGone); err != nil {
+			return err
+		}
+	}
+	return nil
+}

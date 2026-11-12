@@ -3116,6 +3116,14 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 		return nil, fmt.Errorf("exit append beat: %w", err)
 	}
 
+	// LEAVING ENDS EVERY ADDRESS THAT NAMES THE LEAVER (rpg-project#942),
+	// as the addressee or as the guard, after the departure that caused it
+	// and before anything is saved: a run saved addressing a member it no
+	// longer has does not load.
+	if err := e.endAddressesOf(in.Member); err != nil {
+		return nil, fmt.Errorf("exit: %w", err)
+	}
+
 	seqNum := appendOut.Seq
 
 	// R9 — THEY DROP IT. A departure that did not end the run leaves
