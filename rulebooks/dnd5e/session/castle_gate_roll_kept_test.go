@@ -67,6 +67,7 @@ var waitingCaseTests = []string{
 	"TestCastleAWaitingCaseWhoseGuardFallsIsReleased",
 	"TestCastleAWaitingCaseWhoseSpeakerExitsIsDropped",
 	"TestCastleAKeptRollThatCannotSettleDoesNotWedgeTheTable",
+	"TestCastleAKeptRollThatFailsAfterSpeakingSavesNothing",
 }
 
 // castleStores is one stored moment of a castle scene.
@@ -391,4 +392,40 @@ func TestCastleAKeptRollThatCannotSettleDoesNotWedgeTheTable(t *testing.T) {
 	require.False(t, c.holds(t, "gate-1", "cleric", turnedAwayTopic), "with no verdict")
 	require.True(t, c.holdsGuidance(t, "cleric"), "and her die unspent")
 	c.walk(t, "alice", []spatial.Position{backDownTheRoad[0]}) // and the table moves on
+}
+
+// TestCastleAKeptRollThatFailsAfterSpeakingSavesNothing: the kept settle's
+// Speak fails AFTER it began writing — its answer's roll on the host's dice
+// fails, after the `spoke` beat. That is not absorbed: the React fails, and
+// the stored session and world are exactly as they were before it, so
+// nothing half-applied is saved.
+func TestCastleAKeptRollThatFailsAfterSpeakingSavesNothing(t *testing.T) {
+	c := theClericsWaitingCase(t, 2)
+	react := reactRow(c, t, "cleric")
+	enc := c.world(t)
+	_, err := enc.AbandonReservation(&encounter.AbandonReservationInput{Member: "cleric"})
+	require.NoError(t, err)
+	abandoned := enc.ToData()
+	c.encounters.byID["sess"] = &abandoned
+	sessionBefore, err := json.Marshal(c.sessions.byID["sess"])
+	require.NoError(t, err)
+	worldBefore, err := json.Marshal(c.encounters.byID["sess"])
+	require.NoError(t, err)
+	sheetBefore, err := json.Marshal(c.characters.byID["cleric"])
+	require.NoError(t, err)
+
+	c.dice.failOthers = fmt.Errorf("the dice fell off the table")
+	_, err = c.mgr.React(context.Background(), &session.ReactInput{
+		Session: "sess", Member: "cleric", DeclarationID: react.ID, Answer: session.Take(""),
+	})
+	require.ErrorContains(t, err, "the dice fell off the table", "the failure after the first write is returned")
+	sessionAfter, err := json.Marshal(c.sessions.byID["sess"])
+	require.NoError(t, err)
+	worldAfter, err := json.Marshal(c.encounters.byID["sess"])
+	require.NoError(t, err)
+	sheetAfter, err := json.Marshal(c.characters.byID["cleric"])
+	require.NoError(t, err)
+	require.JSONEq(t, string(sessionBefore), string(sessionAfter), "the session is as it was")
+	require.JSONEq(t, string(worldBefore), string(worldAfter), "the world is as it was")
+	require.JSONEq(t, string(sheetBefore), string(sheetAfter), "her sheet is as it was")
 }

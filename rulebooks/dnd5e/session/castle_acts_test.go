@@ -49,6 +49,10 @@ type castleDice struct {
 	// checks counts the d20s thrown, for a test that must show no check was
 	// rolled while a table die was (a guard's answer to a bump).
 	checks int
+	// failOthers, when set, is what every die but a d20 throws instead of a
+	// face: a test's way to fail a step that rolls on the host's dice after
+	// a check (a reply's answer).
+	failOthers error
 }
 
 func (d *castleDice) Roll(_ context.Context, size int) (int, error) {
@@ -56,6 +60,9 @@ func (d *castleDice) Roll(_ context.Context, size int) (int, error) {
 	defer d.mu.Unlock()
 	d.rolls++
 	if size != 20 {
+		if d.failOthers != nil {
+			return 0, d.failOthers
+		}
 		return 1, nil
 	}
 	d.checks++

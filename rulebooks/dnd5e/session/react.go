@@ -604,6 +604,19 @@ var settleRefusals = []error{
 	encounter.ErrNoOption, encounter.ErrStaleOption, encounter.ErrReserved,
 }
 
+// unsettledKeptRoll is a kept roll's settle that failed BEFORE the encounter
+// wrote anything ([Manager.settleKeptRoll]): the sheet, the declined resume,
+// the calculation, or a Speak that appended nothing. Ending it with no
+// verdict ([endFailedKeptRoll]) leaves nothing half-applied. Any other
+// settle error is returned bare and fails the commit, as it always did.
+type unsettledKeptRoll struct{ err error }
+
+// Error is the cause's.
+func (u *unsettledKeptRoll) Error() string { return u.err.Error() }
+
+// Unwrap is the cause.
+func (u *unsettledKeptRoll) Unwrap() error { return u.err }
+
 // settleKeptRoll ends a waiting line whose holder and target lost reach or
 // sight of each other (rpg-project#938, "a roll is a roll that is kept"):
 // the window is closed declined; the stored pause is resumed DECLINED,
@@ -615,6 +628,16 @@ var settleRefusals = []error{
 // because nobody is left to answer ([settleRefusals]) releases the hold
 // with no verdict, as [endWaitingLine] does, so nothing strands. The
 // caller's act must be open: the settle's beats are its.
+//
+// WHICH FAILURES MAY BE ABSORBED is told by the record, not by the error:
+// every write Speak makes comes after its first, the `spoke` beat, and a
+// refusal before it restores what it touched. So a Speak whose error left
+// the story's next sequence ([encounter.Encounter.NextStorySeq]) unmoved
+// wrote nothing, and its failure is returned as [unsettledKeptRoll], as is
+// every failure before Speak. A Speak that moved it and then failed —
+// the answer, a grant, the advance, the world's price — is returned bare,
+// so the commit fails and nothing half-applied is saved. An error's kind
+// cannot misclassify this: only whether anything was written decides.
 func (m *Manager) settleKeptRoll(
 	ctx context.Context, scope *writeScope, window interrupt.Window, w pendingWindow, state holdState,
 ) error {
@@ -630,32 +653,45 @@ func (m *Manager) settleKeptRoll(
 	}
 	data, err := m.sheetsFor(nil).load(ctx, "member", w.Audience)
 	if err != nil {
-		return err
+		return &unsettledKeptRoll{err: err}
 	}
 	out, err := resolution.ResumeCheck(ctx, &resolution.CheckResumeInput{
 		Pause: w.Pause, Answer: resolution.Decline(), Character: data, Roller: &diceSeam{roller: m.dice},
 	})
 	if err != nil {
-		return translateResolution(err)
+		return &unsettledKeptRoll{err: translateResolution(err)}
 	}
 	if out.Posed != nil {
-		return fmt.Errorf("%w: a declined check asked again", ErrInvalidWorld)
+		return &unsettledKeptRoll{err: fmt.Errorf("%w: a declined check asked again", ErrInvalidWorld)}
 	}
 	if out.DirtyCharacter != nil {
+		// A declined resume spends nothing, so this is never met; were it,
+		// the sheet is written and the settle no longer pre-write.
 		if err := m.sheetsFor(scope).save(ctx, out.DirtyCharacter); err != nil {
 			return err
 		}
 	}
 	if err := requireCalculation("react", w.Audience, rollCalculationFor(out.Calculation)); err != nil {
-		return err
+		return &unsettledKeptRoll{err: err}
+	}
+	before, err := scope.enc.NextStorySeq()
+	if err != nil {
+		return &unsettledKeptRoll{err: translate(err)}
 	}
 	err = m.landResumedSocial(ctx, scope, w.Story, w.Audience, out)
+	if err == nil {
+		return nil
+	}
+	after, seqErr := scope.enc.NextStorySeq()
+	if seqErr != nil || after != before {
+		return err // written, then failed: the commit must fail
+	}
 	var refused bool
 	for _, refusal := range settleRefusals {
 		refused = refused || errors.Is(err, refusal)
 	}
 	if !refused {
-		return err
+		return &unsettledKeptRoll{err: err}
 	}
 	_, err = scope.enc.ReleaseReservation(&encounter.ReleaseReservationInput{Member: encounter.MemberID(w.Audience)})
 	if err != nil && !errors.Is(err, encounter.ErrNoReservation) && !errors.Is(err, encounter.ErrNotMember) {
@@ -675,6 +711,10 @@ func (m *Manager) keepAbandonedRoll(
 		return nil, err
 	}
 	if settleErr := m.settleKeptRoll(ctx, scope, window, w, state); settleErr != nil {
+		var unsettled *unsettledKeptRoll
+		if !errors.As(settleErr, &unsettled) {
+			return nil, settleErr // written, then failed: nothing is saved
+		}
 		// Ended with no verdict, committed, and the one caller told why.
 		if err := endFailedKeptRoll(scope, window, w, settleErr); err != nil {
 			return nil, err

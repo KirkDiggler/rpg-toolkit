@@ -6,6 +6,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -427,10 +428,17 @@ func (m *Manager) closeAbandonedLines(ctx context.Context, scope *writeScope) er
 		switch state {
 		case holdAbandoned, holdLeft:
 			// A KEPT ROLL THAT CANNOT SETTLE NEVER WEDGES THE TABLE: every
-			// member's commit runs this pass, so a settle failing for any
-			// reason — a sheet, a pause, a capability — is ended with no
-			// verdict and recorded ([SaveReport.Faults]), never returned.
+			// member's commit runs this pass, so a settle that failed before
+			// the encounter wrote anything ([unsettledKeptRoll]) — a sheet, a
+			// pause, a refusal — is ended with no verdict and recorded
+			// ([SaveReport.Faults]), not returned. One that failed after
+			// Speak had written fails the commit, so nothing half-applied is
+			// ever saved.
 			if err := m.settleKeptRoll(ctx, scope, window, w, state); err != nil {
+				var unsettled *unsettledKeptRoll
+				if !errors.As(err, &unsettled) {
+					return err
+				}
 				if err := endFailedKeptRoll(scope, window, w, err); err != nil {
 					return err
 				}
