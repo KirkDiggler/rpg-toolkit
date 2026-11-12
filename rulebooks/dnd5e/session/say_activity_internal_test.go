@@ -28,8 +28,11 @@ func (s *ActFoldSuite) TestSayActivityMalformedPresentRecordsAreNotSilentlyDropp
 			s.Require().Error(err)
 		})
 	}
-	_, err := answeredPiece("time:one", []byte(`{"creature":"goblin","activity":{"ref":"x","cycles":2}}`))
-	s.Require().Error(err, "a cue must accompany the spoken line")
+	// The words no longer ride the pick (rpg-project#933): the cue is what
+	// the creature is seen doing, and decodes without them.
+	pieces, err := answeredPiece("time:one", []byte(`{"creature":"goblin","activity":{"ref":"x","cycles":2}}`))
+	s.Require().NoError(err, "a cue stands on a pick whose words travel in the speech versions")
+	s.Require().NotNil(pieces[0].body.(TableAnswer).Activity)
 }
 
 // TestTableAnswerCarriesWhoItIsSpokenTo: the answered beat's `to`

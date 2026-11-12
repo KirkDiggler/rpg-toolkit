@@ -452,9 +452,10 @@ func TestCastleActsTranscript(t *testing.T) {
 	assert.NotEmpty(t, ticks)
 
 	// THE FIGHT BRINGS NOBODY (the QA castle's step 6, rpg-project#639): the
-	// gate shouts the alarm and alice hears it, and nobody arrives.
-	heard := where[session.Perception](ended.to("alice"), func(p session.Perception) bool {
-		return p.Sense == session.SenseHearing && p.Heard.Kind == "voice"
+	// gate shouts the alarm and alice, who sees him, reads his words in his
+	// answer (rpg-project#933), and nobody arrives.
+	heard := where[session.TableAnswer](ended.to("alice"), func(a session.TableAnswer) bool {
+		return a.Who.ID == "gate-2" && a.Say == "To arms! Intruders at the gate!"
 	})
 	assert.NotEmpty(t, heard, "alice hears the gate shout")
 	for _, b := range beats {
@@ -783,10 +784,10 @@ func Example_theGatehouseActs() {
 	// move         perception   alice sees [], loses [pedlar], sees [] change
 	// -- alice tells the captain to stand aside --
 	// speak        act 1        alice to captain, "stand-aside" (intimidation): rolled 1d20+3 = 17, beat 14; captain answers "…go on, then. I saw nothing."
-	// speak        perception   alice hears voice
 	// speak        clock        tick 2
+	// speak        state        gate-1: posted -> alert (heard something)
 	// speak        state        captain: ready -> cowed (stood aside)
-	// speak        state        gate-1: posted -> cowed (stood aside)
+	// speak        state        gate-1: alert -> cowed (stood aside)
 	// speak        state        gate-2: ready -> cowed (stood aside)
 	// time         table_answer captain answers behavior/6:policy/time with "hold", no roll
 	// time         table_answer gate-1 answers behavior/6:policy/cowed with "toward", rolled 1 of 50
@@ -810,11 +811,9 @@ func Example_theGatehouseActs() {
 	// time         table_answer sergeant answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// time         table_answer turnkey answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// -- alice tells him again --
-	// speak        act 1        alice to captain, "stand-aside" (intimidation): rolled 1d20+3 = 8, missed 14
+	// speak        act 1        alice to captain, "stand-aside" (intimidation): rolled 1d20+3 = 8, missed 14; captain answers "You’ll bleed first."
 	// speak        state        garrison and party turn hostile
 	// speak        clock        a fight forms: alice, captain, gate-1, gate-2
-	// speak        table_answer captain answers failure with "fact", rolled 1 of 100
-	// speak        perception   alice hears voice
 	// -- alice closes on gate-1 --
 	// move         act 1        alice walks (-5,10) (-5,9)
 	// -- alice cuts gate-1 down --
@@ -830,8 +829,7 @@ func Example_theGatehouseActs() {
 	// time         table_answer captain answers behavior/6:policy/time with "toward", rolled 1 of 50
 	// pass         act 1        captain stays: already in reach
 	// end_turn     clock        captain's turn ends, gate-2's begins
-	// time         table_answer gate-2 answers behavior/6:policy/time with "fact", rolled 1 of 200
-	// time         perception   alice hears voice
+	// time         table_answer gate-2 answers behavior/6:policy/time with "", rolled 1 of 200
 	// end_turn     clock        gate-2's turn ends, alice's begins
 	// end_turn     clock        tick 3
 	// time         table_answer hall-1 answers behavior/6:policy/time with "toward", rolled 1 of 50
@@ -876,7 +874,6 @@ func Example_theTroupeActs() {
 	// move         act 1        alice walks (-1,15)
 	// -- alice asks the stranger what the bustle is --
 	// speak        act 1        alice to pedlar, "tonight" (persuasion): rolled 1d20+3 = 15, beat 5; pedlar answers "Feast for the whole court tonight — they’ll want players."
-	// speak        perception   alice hears voice
 	// speak        clock        tick 1
 	// time         table_answer captain answers behavior/6:policy/time with "hold", no roll
 	// time         table_answer gate-1 answers behavior/6:policy/post with "toward", rolled 1 of 50
@@ -946,7 +943,6 @@ func Example_theTroupeActs() {
 	// move         perception   alice sees [], loses [pedlar], sees [] change
 	// move         act 8        alice walks (-6,11) (-6,10)
 	// move         table_answer captain answers behavior/6:policy/approached with "", rolled 1 of 100
-	// move         perception   alice hears voice
 	// move         act 1        alice walks (-5,9)
 	// move         clock        tick 3
 	// move         state        gate-1: posted -> alert (heard something)
@@ -979,7 +975,6 @@ func Example_theTroupeActs() {
 	// time         table_answer turnkey answers behavior/6:policy/time with "hold", rolled 1 of 100
 	// -- alice tells the captain they are the troupe --
 	// speak        act 1        alice to captain, "troupe" (performance): rolled 1d20+3 = 15, beat 13; captain answers "Through to the hall, then. Don’t dawdle."
-	// speak        perception   alice hears voice
 	// speak        clock        tick 4
 	// speak        state        captain: ready -> in-hall (admitted the party; goes in)
 	// time         table_answer captain answers behavior/6:policy/in-hall with "toward", rolled 1 of 50
