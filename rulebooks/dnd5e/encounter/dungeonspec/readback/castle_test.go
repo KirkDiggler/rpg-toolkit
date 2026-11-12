@@ -563,3 +563,22 @@ func (s *CastleSuite) TestAWatcherOfTheCaptainsAnswerIsToldOnlyThatHeAnswered() 
 	}
 	s.True(found, "the stand-aside's answer rows are said")
 }
+
+// TestAStateChangeIsSeen: a routine's state change says that the change and
+// its reason reach everyone who sees the creature, heard or not — the
+// operator's ruling on rpg-project#948, true against the engine
+// (castletest's TestMadKingAWatchersStateBeatIsAsToday: a watcher who caught
+// none of the stand-aside is told the captain's `ready -> cowed`, "stood
+// aside").
+func (s *CastleSuite) TestAStateChangeIsSeen() {
+	found := false
+	for _, st := range s.rb.Statements() {
+		if st.Kind == readback.KindRoutineWake && strings.Contains(st.Sentence, "Guard Captain (captain) moves to the state `cowed`") &&
+			strings.Contains(st.Sentence, "“stood aside”") {
+			found = true
+			s.Contains(st.Sentence, "the change and its reason reach everyone who sees Guard Captain (captain), "+
+				"whether or not they heard what caused it")
+		}
+	}
+	s.True(found, "the captain's stand-aside transition is said")
+}
