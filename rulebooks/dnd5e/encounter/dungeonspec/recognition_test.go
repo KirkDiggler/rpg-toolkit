@@ -132,13 +132,15 @@ const theStragglersSuccess = `              - say: Fell behind, did you? Go on, 
 func TestDungeonspec_ALinesAnswerGrantsARecord(t *testing.T) {
 	c := loadSource(t, castleSource(t))
 	for _, id := range []string{"gate-1", "gate-2"} {
-		var vouch, straggler *encounter.Option
+		var vouch, straggler, friends *encounter.Option
 		for _, o := range monsterNamed(t, c, id).Options {
 			switch o.ID {
 			case "vouch":
 				vouch = &o
 			case "straggler":
 				straggler = &o
+			case "friends-inside":
+				friends = &o
 			}
 			require.NotEqual(t, "guest", o.ID, "the guest claim is the captain's alone")
 		}
@@ -151,18 +153,38 @@ func TestDungeonspec_ALinesAnswerGrantsARecord(t *testing.T) {
 		require.Equal(t, encounter.RecognitionSpeaker, straggler.Grants[0].Consequence.Recognize.About)
 		require.True(t, straggler.Checked(), "the straggler's case is checked")
 		require.False(t, vouch.Checked(), "the vouch is plain")
+
+		// ONE TRY (rpg-project#932): a miss grants `turned-away` about the
+		// speaker, heard, and the case asks that the guard not hold it.
+		require.Equal(t, encounter.RowGrant{Row: 0, Failure: true, Consequence: encounter.Consequence{Recognize: &encounter.Recognition{
+			Topic: "turned-away", Holder: encounter.RecognitionSpokenTo, About: encounter.RecognitionSpeaker,
+			HeardBy: encounter.RecognitionCarriersWhoWitnessed,
+		}}}, straggler.Grants[1])
+		require.Contains(t, straggler.Requires, encounter.Trigger(encounter.TriggerNot{Inner: encounter.TriggerRecognized{Topic: "turned-away"}}))
+		require.NotNil(t, friends, "%s answers a stranger asking after their friends", id)
+		require.Empty(t, friends.Grants, "and grants nothing")
+		require.Nil(t, friends.Advance, "and advances nothing")
+		require.False(t, friends.Checked(), "it is plain speech")
 	}
 }
 
 func TestDungeonspec_ALinesGrantIsRefusedAtTheAuthorsPath(t *testing.T) {
 	gate1 := "room.room.monsterBindings.gate-1.options[1]"
 
-	t.Run("on a failure row", func(t *testing.T) {
-		errs := refusals(t, strings.Replace(castleSource(t), "              - say: Never seen you before. Back the way you came.\n",
-			"              - say: Never seen you before. Back the way you came.\n                recognize: { topic: admitted, holder: spoken_to, about: speaker }\n", 1))
-		require.NotEmpty(t, errs)
-		require.Equal(t, "a missed line grants nothing: recognize belongs on a success row", errs[0].Message)
-		require.True(t, strings.HasSuffix(errs[0].Path, ".failure[0].recognize"), errs[0].Path)
+	t.Run("on a failure row it compiles as the miss's grant", func(t *testing.T) {
+		c := loadSource(t, castleSource(t))
+		for _, o := range monsterNamed(t, c, "gate-1").Options {
+			if o.ID == "straggler" {
+				require.True(t, o.Grants[1].Failure, "the failure row's grant lands on a miss")
+			}
+		}
+	})
+
+	t.Run("on a plain line's failure row", func(t *testing.T) {
+		errs := refusals(t, strings.Replace(castleSource(t), "              - say: The troupe? Aye, they’re inside. If one of them comes back and speaks for you, in you go.\n",
+			"              - say: The troupe? Aye, they’re inside. If one of them comes back and speaks for you, in you go.\n            failure:\n              - say: No.\n                recognize: { topic: turned-away, holder: spoken_to, about: speaker }\n", 1))
+		require.NotEmpty(t, errs, "a plain line cannot be missed, so it has no failure row to grant on")
+		require.True(t, strings.HasSuffix(errs[0].Path, ".failure"), errs[0].Path)
 	})
 
 	t.Run("heard_by on a line that names no interaction", func(t *testing.T) {
@@ -184,7 +206,7 @@ func TestDungeonspec_ALinesGrantIsRefusedAtTheAuthorsPath(t *testing.T) {
 		errs := refusals(t, castleWith(t, "        - say: Not one step further without my say.\n",
 			"        - say: Not one step further without my say.\n          recognize: { topic: admitted, holder: spoken_to, about: speaker }\n"))
 		require.NotEmpty(t, errs)
-		require.Equal(t, "recognize is only on a line's success row: a table row grants nothing", errs[0].Message)
+		require.Equal(t, "recognize is only on a line's success or failure row: a table row grants nothing", errs[0].Message)
 	})
 
 	t.Run("a guard reading a topic nothing grants", func(t *testing.T) {

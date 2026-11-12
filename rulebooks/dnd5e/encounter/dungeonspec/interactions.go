@@ -6,6 +6,7 @@ package dungeonspec
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
@@ -139,8 +140,8 @@ func outcomesOf(
 }
 
 // recognitionOf judges one authored `recognize:` at its path, wherever it
-// hangs (an interaction's outcome, a line's success row; rpg-project#928,
-// #929), and lowers it. carriers says whether the place names an
+// hangs (an interaction's outcome, a line's success or failure row;
+// rpg-project#928, #929, #932), and lowers it. carriers says whether the place names an
 // interaction whose other carriers could hear it: where none is, `heard_by`
 // is refused, since nobody would hear.
 func recognitionOf(at string, r *RecognizeSpec, carriers bool, fail func(at, message string)) encounter.Recognition {
@@ -169,14 +170,14 @@ func recognitionOf(at string, r *RecognizeSpec, carriers bool, fail func(at, mes
 	}
 }
 
-// lineGrantedTopics is every topic a line's success row grants
-// (rpg-project#929), read straight off the document: a creature's own lines
+// lineGrantedTopics is every topic a line's success or failure row grants
+// (rpg-project#929, #932), read straight off the document: a creature's own lines
 // and its faction's.
 func lineGrantedTopics(s *SingleRoomSpec) map[string]bool {
 	out := map[string]bool{}
 	add := func(options []OptionSpec) {
 		for _, o := range options {
-			for _, row := range o.Success {
+			for _, row := range slices.Concat(o.Success, o.Failure) {
 				if row.Recognize != nil && row.Recognize.Topic != "" {
 					out[row.Recognize.Topic] = true
 				}
@@ -193,7 +194,7 @@ func lineGrantedTopics(s *SingleRoomSpec) map[string]bool {
 }
 
 // grantedTopicsOf is every topic the document grants — a root interaction's
-// `outcomes` and a line's success rows — read straight off it: the topics a
+// `outcomes` and a line's success and failure rows — read straight off it: the topics a
 // post's `pass` may recognize on.
 func grantedTopicsOf(s *SingleRoomSpec) map[string]bool {
 	out := lineGrantedTopics(s)
@@ -211,7 +212,7 @@ func grantedTopicsOf(s *SingleRoomSpec) map[string]bool {
 
 // topicGuards refuses a routine waiting on a topic nothing in the document
 // grants (rpg-project#929): a `topic:<id>` guard in a behavior definition's
-// recipe whose topic no outcome and no line's success row grants could never
+// recipe whose topic no outcome and no line's row grants could never
 // hold, so the transition could never fire. Refused at the definition's
 // recipe; the transition itself is the compiler's to name beyond that.
 func topicGuards(s *SingleRoomSpec, add errSink) {
@@ -230,7 +231,7 @@ func topicGuards(s *SingleRoomSpec, add errSink) {
 				for _, topic := range guardTopics(t.When) {
 					if !granted[topic] {
 						add(fmt.Sprintf("behaviorDefinitions.%s.recipe.states.%s.transitions[%d].when", id, state, i),
-							fmt.Sprintf("%q is a topic no interaction's `outcomes` and no line's success row grants, "+
+							fmt.Sprintf("%q is a topic no interaction's `outcomes` and no line's success or failure row grants, "+
 								"so nobody could ever come to hold it", topic))
 					}
 				}

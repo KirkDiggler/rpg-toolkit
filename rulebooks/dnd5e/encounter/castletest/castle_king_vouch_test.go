@@ -34,14 +34,25 @@ import (
 // The captain's place in the great hall, as the file writes it.
 var captainsPlaceInTheHall = spatial.Position{X: 3, Y: -9}
 
-// The gate guards' two new lines.
+// The gate guards' lines for whoever comes after the admission.
 const (
 	vouchLine     = "vouch"
 	stragglerLine = "straggler"
+	// friendsLine is a stranger asking after their friends (rpg-project#932).
+	friendsLine = "friends-inside"
 )
 
 // straggler is the party member who falls behind on the road.
 const straggler = encounter.MemberID("straggler")
+
+// latecomer is a second party member left on the road (rpg-project#932):
+// another stranger to the gate guards, for whom one straggler's failed case
+// changes nothing.
+const latecomer = encounter.MemberID("latecomer")
+
+// turnedAwayTopic is what a gate guard holds about a straggler whose own
+// case he refused (rpg-project#932).
+const turnedAwayTopic = "turned-away"
 
 // admittedScene is the admitted gate's stored scene, built ONCE per test
 // binary in [TestMain] — the castle's launch, the claim and the captain's
@@ -61,7 +72,7 @@ var admittedScene struct {
 // admittedSceneTests are the tests that start from the admitted gate.
 var admittedSceneTests = []string{
 	"TestMadKingTheCaptainGoesIn", "TestMadKingAStragglerIsVouchedFor", "TestMadKingAStragglerMakesTheirOwnCase",
-	"TestMadKingTheCaptainsLineGrantsNothingAgain",
+	"TestMadKingTheCaptainsLineGrantsNothingAgain", "TestMadKingAStragglerHasOneTry",
 }
 
 // TestMain builds the admitted gate's scene before any test runs, when the
@@ -114,12 +125,14 @@ func buildTheAdmittedScene() {
 		at: gatehouseSeat,
 		players: []encounter.MemberInput{
 			{ID: straggler, Kind: encounter.KindPlayer, Position: spatial.Position{X: start.X + 2, Y: start.Y}},
+			{ID: latecomer, Kind: encounter.KindPlayer, Position: spatial.Position{X: start.X + 1, Y: start.Y}},
 		},
 	})
 	s.walkTo(s.at(kingCaptain))
 	s.said(kingCaptain, "guest", "persuasion", true)
 	require.Equal(tb, "admitted", s.entrance(), "precondition: the guest claim admitted")
 	require.False(tb, s.recognizes(kingGate1, straggler), "precondition: the straggler was out of sight")
+	require.False(tb, s.recognizes(kingGate1, latecomer), "precondition: so was the latecomer")
 	for range 6 {
 		if s.at(kingCaptain) == captainsPlaceInTheHall {
 			break
@@ -226,13 +239,58 @@ func TestMadKingAStragglerMakesTheirOwnCase(t *testing.T) {
 	require.True(t, s.offersTo(straggler, kingGate1, stragglerLine), "offered to whom he does not recognise")
 	require.False(t, s.offersTo(hero, kingGate1, stragglerLine), "and not to whom he does")
 
-	require.NoError(t, s.speakAs(straggler, kingGate1, stragglerLine, false))
-	require.False(t, s.recognizes(kingGate1, straggler), "a missed case is a refusal")
-	require.Equal(t, "admitted", s.entrance(), "and moves nothing toward arrest")
-
 	require.NoError(t, s.speakAs(straggler, kingGate1, stragglerLine, true))
 	require.True(t, s.recognizes(kingGate1, straggler), "a won case admits the straggler")
 	require.True(t, s.recognizes(kingGate2, straggler), "and gate-2 heard it")
+	require.False(t, s.recognizesOn(kingGate1, straggler, turnedAwayTopic), "a won case turns nobody away")
+	require.Empty(t, s.heldAgainst(straggler), "the gate lets the straggler through")
+}
+
+// TestMadKingAStragglerHasOneTry: one try at the straggler's own case
+// (rpg-project#932, ruled 2026-11-12: "1 try and the option should be
+// gone"). A missed case is remembered by both gate guards as turned away, so
+// neither offers it to that straggler again; another stranger still has it.
+// The straggler may still ask after their friends, and a friend's vouch
+// still lets them in. The captain, in the hall, wakes on `admitted` only.
+func TestMadKingAStragglerHasOneTry(t *testing.T) {
+	t.Parallel()
+	s := admittedWithAStraggler(t)
+	s.walkMember(straggler, s.at(hero), false)
+	// The latecomer stays on the road: what is offered him is the guards'
+	// judgement of him, wherever he stands.
+	require.True(t, s.offersTo(latecomer, kingGate1, stragglerLine), "precondition: the latecomer is a stranger too")
+
+	require.NoError(t, s.speakAs(straggler, kingGate1, stragglerLine, false))
+	require.False(t, s.recognizes(kingGate1, straggler), "a missed case is a refusal")
+	require.Equal(t, "admitted", s.entrance(), "and moves nothing toward arrest")
+	require.True(t, s.recognizesOn(kingGate1, straggler, turnedAwayTopic), "gate-1 turned the straggler away")
+	require.True(t, s.recognizesOn(kingGate2, straggler, turnedAwayTopic), "and gate-2 saw it")
+	require.False(t, s.offersTo(straggler, kingGate1, stragglerLine), "one try: the case is gone")
+	require.False(t, s.offersTo(straggler, kingGate2, stragglerLine), "on both guards")
+	require.True(t, s.offersTo(latecomer, kingGate1, stragglerLine), "another stranger still has it")
+	require.True(t, s.offersTo(latecomer, kingGate2, stragglerLine), "with either guard")
+	require.False(t, s.recognizesOn(kingGate1, latecomer, turnedAwayTopic), "the refusal was about the speaker alone")
+
+	// Asking after their friends is still offered, and changes nothing.
+	require.True(t, s.offersTo(straggler, kingGate1, friendsLine), "the straggler may ask after their friends")
+	require.False(t, s.offersTo(hero, kingGate1, friendsLine), "not whom he recognises")
+	before := s.recognitionBeats()
+	require.NoError(t, s.speakAs(straggler, kingGate1, friendsLine, true))
+	require.Equal(t, before, s.recognitionBeats(), "the answer grants nothing")
+	require.Equal(t, "admitted", s.entrance(), "and moves nothing")
+
+	// The captain, in the hall, does not stir for a turned-away straggler.
+	require.Equal(t, "in-hall", machineState(t, s.enc, kingCaptain))
+
+	// A reload keeps the refusal.
+	s.roundTrip()
+	require.True(t, s.recognizesOn(kingGate1, straggler, turnedAwayTopic), "after a load gate-1 still remembers")
+	require.False(t, s.offersTo(straggler, kingGate1, stragglerLine), "and the case is still gone")
+
+	// A friend's vouch still lets the straggler in.
+	require.NoError(t, s.speakAs(hero, kingGate1, vouchLine, true))
+	require.True(t, s.recognizes(kingGate1, straggler), "the vouch admits the turned-away straggler")
+	require.Empty(t, s.heldAgainst(straggler), "the gate lets them through")
 }
 
 // TestMadKingTheCaptainsLineGrantsNothingAgain: the captain's line for whom
