@@ -118,6 +118,9 @@ func TestMain(m *testing.M) {
 	if wantedBy(pattern, waitingCaseTests) {
 		buildTheWaitingCases()
 	}
+	if wantedBy(pattern, warnedGateTests) {
+		warnedGate.once.Do(func() { warnedGate.stores, warnedGate.err = buildTheWarnedGate() })
+	}
 	os.Exit(m.Run())
 }
 

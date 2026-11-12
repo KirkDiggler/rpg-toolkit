@@ -68,6 +68,7 @@ var waitingCaseTests = []string{
 	"TestCastleAWaitingCaseWhoseSpeakerExitsIsDropped",
 	"TestCastleAKeptRollThatCannotSettleDoesNotWedgeTheTable",
 	"TestCastleAKeptRollThatFailsAfterSpeakingSavesNothing",
+	"TestCastleTheHolderOfAWaitingRollMayLeaveAndTheTablePlaysOn",
 }
 
 // castleStores is one stored moment of a castle scene.
