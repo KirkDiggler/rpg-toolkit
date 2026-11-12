@@ -110,3 +110,57 @@ func (s *ActFoldSuite) TestACreaturesWordsWithNoPickOpenStandAlone() {
 	s.Require().Len(acts, 1)
 	s.Equal(TableAnswer{Who: member("guard"), Say: "Halt."}, acts[0].Body)
 }
+
+// TestAnEntitledReaderIsToldWhatThePickNoLongerCarries (rpg-project#933): a
+// reader who holds the line and catches the creature's words is told the
+// pick's option, its table (how the line went) and that it taught a fact;
+// one who caught the answer's words but not the line is told the fact and
+// not the line; one who caught no words is told none of the three.
+func (s *ActFoldSuite) TestAnEntitledReaderIsToldWhatThePickNoLongerCarries() {
+	spoke := s.beat("speak:one", map[string]any{
+		"beat": encounter.BeatSpoke, "actor": "alice", "target": "goblin", "option": "threaten", "line": "Drop it.",
+		"skill": "intimidation", "dc": 12, "total": 4, "beaten": false,
+	})
+	answered := s.beat("speak:one", map[string]any{"beat": encounter.BeatAnswered, "creature": "goblin", "say": "", "to": "", "word": ""})
+	reply := s.beat("speak:one", speechVersion(map[string]any{"speaker": "goblin", "to": "alice", "words": "Thief!", "fact": "caught"}))
+
+	s.Run("the line held and the words caught", func() {
+		acts := foldActs("sess", "alice", []record.Entry{spoke, answered, reply})
+		s.Require().Len(acts, 1)
+		answer := acts[0].Body.(SpeakAct).Answer
+		s.Require().NotNil(answer)
+		s.Equal("threaten", answer.Option, "the line it answered")
+		s.Equal(string(encounter.AnswerFailure), answer.Key, "the missed line's table")
+		s.Equal("fact", answer.Word, "and that it taught a fact")
+		s.Equal("Thief!", answer.Say)
+	})
+	s.Run("the words caught, not the line", func() {
+		acts := foldActs("sess", "bob", []record.Entry{answered, reply})
+		s.Require().Len(acts, 1)
+		answer := acts[0].Body.(TableAnswer)
+		s.Equal("Thief!", answer.Say)
+		s.Equal("fact", answer.Word, "the fact is in the words he caught")
+		s.Empty(answer.Option, "but not which line it answered")
+		s.Empty(answer.Key, "nor how that went")
+	})
+	s.Run("no words caught", func() {
+		seen := s.beat("speak:one", speechVersion(map[string]any{"speaker": "goblin"}))
+		acts := foldActs("sess", "cole", []record.Entry{answered, seen})
+		s.Require().Len(acts, 1)
+		answer := acts[0].Body.(TableAnswer)
+		s.Empty(answer.Say)
+		s.Empty(answer.Option)
+		s.Empty(answer.Key)
+		s.Empty(answer.Word)
+	})
+	s.Run("a plain line's answer is its success table", func() {
+		plain := s.beat("speak:two", map[string]any{"beat": encounter.BeatSpoke, "actor": "alice", "target": "goblin", "option": "greet", "line": "Evening."})
+		picked := s.beat("speak:two", map[string]any{"beat": encounter.BeatAnswered, "creature": "goblin", "say": "", "to": ""})
+		words := s.beat("speak:two", speechVersion(map[string]any{"speaker": "goblin", "to": "alice", "words": "Evening."}))
+		acts := foldActs("sess", "alice", []record.Entry{plain, picked, words})
+		answer := acts[0].Body.(SpeakAct).Answer
+		s.Equal(string(encounter.AnswerSuccess), answer.Key)
+		s.Equal("greet", answer.Option)
+		s.Empty(answer.Word, "it taught nothing")
+	})
+}

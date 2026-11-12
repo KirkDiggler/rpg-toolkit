@@ -829,7 +829,7 @@ func Example_theGatehouseActs() {
 	// time         table_answer captain answers behavior/6:policy/time with "toward", rolled 1 of 50
 	// pass         act 1        captain stays: already in reach
 	// end_turn     clock        captain's turn ends, gate-2's begins
-	// time         table_answer gate-2 answers behavior/6:policy/time with "", rolled 1 of 200
+	// time         table_answer gate-2 answers behavior/6:policy/time with "fact", rolled 1 of 200
 	// end_turn     clock        gate-2's turn ends, alice's begins
 	// end_turn     clock        tick 3
 	// time         table_answer hall-1 answers behavior/6:policy/time with "toward", rolled 1 of 50

@@ -264,9 +264,37 @@ func TestCastleABystanderListensIn(t *testing.T) {
 		}
 	}
 	require.Len(t, versions, 1, "her story holds her version of alice's line")
-	require.NotContains(t, versions[0].Fields, "words", "which carries no words")
-	require.NotContains(t, versions[0].Fields, "option", "nor which line it was")
-	require.NotContains(t, versions[0].Fields, "check", "nor how it went")
+
+	// ACROSS HER WHOLE STORY, not only that version: no beat of any kind
+	// tells her the words said at the gate, which line alice said, its
+	// check, how it went or what it taught.
+	lines := where[session.SpeakAct](greeted.to("alice"), func(s session.SpeakAct) bool { return s.By == aliceParty })
+	require.Len(t, lines, 1, "precondition: alice's own act of her line")
+	said := []string{theCaptainsHail, lines[0].body.Line}
+	if lines[0].body.Answer != nil && lines[0].body.Answer.Say != "" {
+		said = append(said, lines[0].body.Answer.Say)
+	}
+	for _, b := range storyBeats(t, c.mgr, "sess", "cleric") {
+		for _, key := range []string{"words", "say", "line"} {
+			if w, ok := b.Fields[key].(string); ok {
+				require.NotContains(t, said, w, "seq %d %s: she is told words said at the gate", b.Seq, b.Beat)
+			}
+		}
+		require.NotEqual(t, "greet", b.Fields["option"], "seq %d %s: she is told which line it was", b.Seq, b.Beat)
+		if b.Fields["speaker"] == "alice" || b.Fields["actor"] == "alice" || b.Beat == encounter.BeatAnswered {
+			for _, key := range []string{"check", "beaten", "fact"} {
+				require.NotContains(t, b.Fields, key, "seq %d %s: she is told the line's %s", b.Seq, b.Beat, key)
+			}
+			key, _ := b.Fields["key"].(string)
+			require.NotContains(t, []string{string(encounter.AnswerSuccess), string(encounter.AnswerFailure)}, key,
+				"seq %d %s: she is told how the line went", b.Seq, b.Beat)
+		}
+	}
+	for _, a := range where[session.TableAnswer](greeted.to("cleric"), func(a session.TableAnswer) bool { return a.Who == captainParty }) {
+		require.Empty(t, a.body.Say, "her acts carry none of his words")
+		require.Empty(t, a.body.Option, "nor the line he answered")
+		require.NotContains(t, []string{string(encounter.AnswerSuccess), string(encounter.AnswerFailure)}, a.body.Key, "nor how it went")
+	}
 }
 
 // TestCastleACompanionBesideHerHearsEveryWord (rpg-project#933): the cleric
@@ -291,6 +319,8 @@ func TestCastleACompanionBesideHerHearsEveryWord(t *testing.T) {
 		require.NotNil(t, line.Answer, "%s reads the captain's answer", who)
 		require.NotEmpty(t, line.Answer.Say, "%s caught his words", who)
 		require.Equal(t, aliceParty, line.Answer.To, "said to alice")
+		require.Equal(t, "greet", line.Answer.Option, "%s is told the line he answered", who)
+		require.Equal(t, string(encounter.AnswerSuccess), line.Answer.Key, "%s is told how it went: a plain line lands", who)
 	}
 }
 
