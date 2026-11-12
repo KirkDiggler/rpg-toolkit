@@ -428,6 +428,8 @@ func (s *CastleSuite) TestTheHailIsTheEngines() {
 	s.Contains(hail, "When a character's own step ends within 2 cells of a carrier who sees them")
 	s.Contains(hail, "that carrier offers them a line that steps `front-gate`, the nearest such carrier")
 	s.Contains(hail, "unless `front-gate` is already addressing someone")
+	s.Contains(hail, "It is opened within 2 cells, and stands while the other conditions hold and the character is "+
+		"within Speak reach of that carrier (never less than 2 cells); it ends when any fails.")
 	who := s.statement(readback.KindHailers, "interactions.front-gate.approach").Sentence
 	s.Contains(who, "in `warned-troupe`, Guard Captain (captain) (by `guest`)")
 	s.Contains(who, "in `admitted` and `arrested`, nobody")
@@ -456,4 +458,21 @@ func (s *CastleSuite) TestALineSendsOnlyWhereItIsOffered() {
 	guest := s.statement(readback.KindLineAdvance, "room.room.monsterBindings.captain.options[0].advance").Sentence
 	s.Contains(guest, "which moves it from `fresh` to `admitted` or from `warned-troupe` to `admitted`;")
 	s.NotContains(guest, "from `warned-guest` to `admitted`")
+}
+
+// TestTheEngineRulesSayWhenTheWaitEnds: the pending wait ends on a settle or
+// a release, and a menu is stale after any change of the conversation's
+// revision, a roll's wait included.
+func (s *CastleSuite) TestTheEngineRulesSayWhenTheWaitEnds() {
+	var rules []string
+	for _, st := range s.rb.Statements() {
+		if st.Kind == readback.KindEngineRule && st.About.ID == "front-gate" {
+			s.Equal(readback.EngineRule, st.Path)
+			rules = append(rules, st.Sentence)
+		}
+	}
+	all := strings.Join(rules, "\n")
+	s.Contains(all, "is pending for every speaker until that roll is settled or released.")
+	s.Contains(all, "before `front-gate` last changed (a state change, or a roll beginning or ending its wait on it) "+
+		"is refused with nothing spent")
 }

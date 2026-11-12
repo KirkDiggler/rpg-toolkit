@@ -72,8 +72,9 @@ func (b *builder) conversations() []Group {
 			hail := fmt.Sprintf("When a character's own step ends within %d cells of a carrier who sees them and whom they see, "+
 				"both up and out of a fight, and that carrier offers them a line that steps %s, the nearest such carrier "+
 				"(then by id) hails them and hears the beat %s, unless %s is already addressing someone. "+
-				"A line that only reads %s does not hail. The address stands while all of that holds and ends when any of it fails.",
-				in.Approach.Within, quote(id), quote("approached"), quote(id), quote(id))
+				"A line that only reads %s does not hail. It is opened within %d cells, and stands while the other conditions "+
+				"hold and the character is within Speak reach of that carrier (never less than %d cells); it ends when any fails.",
+				in.Approach.Within, quote(id), quote("approached"), quote(id), quote(id), in.Approach.Within, in.Approach.Within)
 			add(b.fstmt(KindApproach, about, base+".approach", hail, foldInfo{text: hail}))
 			hailers, short := b.hailersWords(id, &in)
 			add(b.fstmt(KindHailers, about, base+".approach", hailers, foldInfo{text: short}, cc...))
@@ -125,11 +126,11 @@ func (b *builder) conversations() []Group {
 		}
 		rules := []string{
 			fmt.Sprintf("while a checked line that reads or steps %s waits on its speaker's decision about a held benefit, "+
-				"every line that reads or steps %s is pending for every speaker until that speaker answers.", quote(id), quote(id)),
+				"every line that reads or steps %s is pending for every speaker until that roll is settled or released.", quote(id), quote(id)),
 			"if the speaker and the creature spoken to lose reach or sight of each other while that roll waits, the " +
 				"speaker keeps the roll they made: it is settled as rolled, judged where the words were spoken.",
-			fmt.Sprintf("a reply sent from a menu offered before %s last moved is refused with nothing spent; the speaker "+
-				"must be offered the menu again.", quote(id)),
+			fmt.Sprintf("a reply sent from a menu offered before %s last changed (a state change, or a roll beginning or "+
+				"ending its wait on it) is refused with nothing spent; the speaker must be offered the menu again.", quote(id)),
 		}
 		if !checked {
 			// No checked line touches it: nothing can wait on a roll.

@@ -228,7 +228,7 @@
                 "kind": "conversation",
                 "id": "gate"
               },
-              "sentence": "When a character's own step ends within 2 cells of a carrier who sees them and whom they see, both up and out of a fight, and that carrier offers them a line that steps `gate`, the nearest such carrier (then by id) hails them and hears the beat `approached`, unless `gate` is already addressing someone. A line that only reads `gate` does not hail. The address stands while all of that holds and ends when any of it fails.",
+              "sentence": "When a character's own step ends within 2 cells of a carrier who sees them and whom they see, both up and out of a fight, and that carrier offers them a line that steps `gate`, the nearest such carrier (then by id) hails them and hears the beat `approached`, unless `gate` is already addressing someone. A line that only reads `gate` does not hail. It is opened within 2 cells, and stands while the other conditions hold and the character is within Speak reach of that carrier (never less than 2 cells); it ends when any fails.",
               "path": "interactions.gate.approach"
             },
             {
@@ -296,7 +296,7 @@
                 "kind": "conversation",
                 "id": "gate"
               },
-              "sentence": "Engine rule, not authored: a reply sent from a menu offered before `gate` last moved is refused with nothing spent; the speaker must be offered the menu again.",
+              "sentence": "Engine rule, not authored: a reply sent from a menu offered before `gate` last changed (a state change, or a roll beginning or ending its wait on it) is refused with nothing spent; the speaker must be offered the menu again.",
               "path": "(engine rule)"
             }
           ]
