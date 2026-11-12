@@ -224,6 +224,10 @@ func prepareApplication(in *PrepareApplicationInput, resuming bool) (*PreparedAp
 			p.members = append(p.members, LinkedMemberBinding{Key: receipt.Key, Address: receipt.Address, Mode: receipt.LinkMode})
 		}
 	}
+	addresses[owner.ConditionAddress()] = true
+	if err := p.checkAdmission(in.Existing, addresses, resuming); err != nil {
+		return nil, err
+	}
 	return p, nil
 }
 
