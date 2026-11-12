@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // TestCastleGateOneAnswersAShoutNotTalk is the operator's ruling on
@@ -21,14 +22,14 @@ import (
 func TestCastleGateOneAnswersAShoutNotTalk(t *testing.T) {
 	c := openTheCastleForTwo(t, 18, 18, 18, 18)
 	ctx := context.Background()
-	require.NotEmpty(t, c.walkMemberTo(t, "cleric", "pedlar").Steps, "the cleric walks to the stranger")
+	stranger := c.where(t, "pedlar")
+	c.placeInTheRecord(t, "cleric", spatial.Position{X: stranger.X + 1, Y: stranger.Y})
 	say := func(option, why string) {
 		t.Helper()
 		_, err := speakAsOffered(ctx, c.mgr, &session.SpeakInput{Session: "sess", Member: "cleric", Target: "pedlar", OptionID: option})
 		require.NoError(t, err, why)
 	}
 	posted := c.where(t, "gate-1")
-	stranger := c.where(t, "pedlar")
 
 	say("tonight", "a spoken line, which pays the world a round")
 	require.Equal(t, posted, c.where(t, "gate-1"), "talk outside leaves him on his post")
