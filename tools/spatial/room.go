@@ -193,6 +193,72 @@ func (r *BasicRoom) MoveEntity(entityID string, newPos Position) error {
 	return nil
 }
 
+// MovementRelocated is the [EntityMovedEvent.MovementType] of a
+// [BasicRoom.RelocateEntity]: an entity set down somewhere else without
+// travelling between. [BasicRoom.MoveEntity] writes "normal".
+const MovementRelocated = "relocated"
+
+// RelocateEntity sets an entity already in the room down at another position,
+// WITHOUT TRAVELLING THE WAY BETWEEN: no boundary ray is asked, so a wall, a
+// door or any distance between the two cells is no refusal. It is the
+// primitive under an authored move to a place (rpg-project#925): an arrest's
+// cut to the cells, a secret passage. A walk is [BasicRoom.MoveEntity], which
+// keeps refusing a move whose straight ray crosses a movement-blocking
+// boundary; the two are told apart by [EntityMovedEvent.MovementType]
+// ([MovementRelocated] here, "normal" there).
+//
+// ATOMIC, under the room's one lock: the entity is placed at newPos and its
+// old cell given up in one step, or nothing changes — a refusal leaves it
+// exactly where it was.
+//
+// Validated as a placement is: the position must be valid for the grid, and
+// no other entity there may block movement. A relocation to the cell the
+// entity already stands on is a no-op: nothing changes and no event is
+// published.
+//
+// Errors: the entity is not in the room, has no position, the position is
+// not valid, or the position is taken by an entity that blocks movement.
+func (r *BasicRoom) RelocateEntity(entityID string, newPos Position) error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
+	entity, exists := r.entities[entityID]
+	if !exists {
+		return fmt.Errorf("entity %s not found in room", entityID)
+	}
+	oldPos, exists := r.positions[entityID]
+	if !exists {
+		return fmt.Errorf("entity %s has no position in room", entityID)
+	}
+	if !r.grid.IsValidPosition(newPos) {
+		return fmt.Errorf("position %v is not valid for this room", newPos)
+	}
+	if !r.canPlaceEntityUnsafe(entity, newPos) {
+		return fmt.Errorf("entity %s cannot be relocated to position %v", entityID, newPos)
+	}
+	if oldPos == newPos {
+		return nil
+	}
+
+	r.removeFromOccupancyUnsafe(entityID, oldPos)
+	r.positions[entityID] = newPos
+	r.addToOccupancyUnsafe(entityID, newPos)
+
+	if r.entityMovements != nil {
+		_ = r.entityMovements.Publish(context.Background(), EntityMovedEvent{
+			EntityID:         entity.GetID(),
+			FromPosition:     oldPos,
+			ToPosition:       newPos,
+			FromCubePosition: r.getCubePosition(oldPos),
+			ToCubePosition:   r.getCubePosition(newPos),
+			RoomID:           r.id,
+			MovementType:     MovementRelocated,
+		})
+	}
+
+	return nil
+}
+
 // RemoveEntity removes an entity from the room
 func (r *BasicRoom) RemoveEntity(entityID string) error {
 	r.mutex.Lock()
