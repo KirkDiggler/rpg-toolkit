@@ -22,9 +22,10 @@ import (
 //
 // # Who is taken, and who is wanted
 //
-// The speaker's party — the members of the speaker's faction, the speaker
-// included ([Encounter.partyOf]) — is split three ways the moment the
-// interaction enters the state:
+// The speaker's party — the PLAYER characters of the speaker's faction, the
+// speaker included ([Encounter.arrestParty]) — is split three ways the moment
+// the interaction enters the state (or, for a kept roll settled after its
+// speaker walked away, as its words were said):
 //
 //   - TAKEN: a member standing in the authored ARREST AREA ([ArrestArea]: an
 //     explicit list of regions and cells, never an implicit distance), or
@@ -54,11 +55,30 @@ import (
 // same, heard ([ChannelHeard]) — exactly the write and the telling a
 // `recognize` outcome makes ([Encounter.holdTopic]).
 //
+// # The taken are HELD (custody)
+//
+// From the arrest the taken are in custody ([ArrestRecord.Custody] is
+// [CustodyHeld]): they cannot walk away. [Encounter.Step] — a dash
+// included, which is a Step on more movement — [Encounter.SetSneaking]
+// turning the mode on, and a cast whose landing moves its own caster refuse
+// a member in custody with [ErrInCustody]; a taken member's sneak ends at
+// the arrest. Speaking, looking, looting in reach, attacking and casting
+// stay open: a fight is the one other way out (rpg-project#925, ruled
+// 2026-11-13: "either held and walked off or they can fight"). [Encounter.Direct]
+// is not gated: the march will move them by it. [Encounter.Exit] still
+// lets a taken member leave the run, and the record keeps them taken.
+//
+// Custody ends — [CustodyBroken], for every taken member at once — when a
+// fight forms or is joined with a taken member or an arresting guard in it
+// ([Encounter.breakCustody]). The record's taken and wanted, and the topics
+// the guards hold, stay.
+//
 // # What it does NOT do yet
 //
-// Nobody is moved. The taken are recorded and the guards remember; walking
-// them to the cell is the next slice (rpg-project#925's forced march).
-// The gate is not released for anyone, taken or wanted.
+// Nobody is moved. The taken are recorded, held, and the guards remember;
+// walking them to the cell is the next slice (rpg-project#925's forced
+// march), which [CustodyMarching] and [CustodyJailed] are named for. The
+// gate is not released for anyone, taken or wanted.
 
 // TopicArrested is the topic the arresting guards hold about each member
 // they arrested (rpg-project#925): "guards who arrested the party remember
@@ -83,6 +103,37 @@ const AddressArrested AddressEndReason = "arrested"
 // ErrBadArrest is returned when an interaction's arrest names a cell or an
 // area the field does not have.
 var ErrBadArrest = errors.New("encounter: bad arrest")
+
+// ErrInCustody is returned when a member the guards hold tries to walk away
+// ([Encounter.Step], [Encounter.SetSneaking], a cast that moves its caster).
+// Its text is the sentence the player is shown.
+var ErrInCustody = errors.New("The guards hold you; you cannot walk away.") //nolint:staticcheck // the player's sentence
+
+// CustodyPhase is where an arrest's custody of the taken stands.
+type CustodyPhase string
+
+// The custody phases. Only held and broken are entered today; marching and
+// jailed are named for the forced march so the stored shape does not change.
+const (
+	// CustodyHeld: the taken are held where they were taken.
+	CustodyHeld CustodyPhase = "held"
+	// CustodyMarching: the taken are being walked to the cell (not yet entered).
+	CustodyMarching CustodyPhase = "marching"
+	// CustodyJailed: the taken are in the cell (not yet entered).
+	CustodyJailed CustodyPhase = "jailed"
+	// CustodyBroken: a fight ended custody; the taken walk freely.
+	CustodyBroken CustodyPhase = "broken"
+)
+
+// known reports whether a phase is one of the four.
+func (c CustodyPhase) known() bool {
+	return c == CustodyHeld || c == CustodyMarching || c == CustodyJailed || c == CustodyBroken
+}
+
+// holds reports whether the phase holds the taken: held, marching or jailed.
+func (c CustodyPhase) holds() bool {
+	return c == CustodyHeld || c == CustodyMarching || c == CustodyJailed
+}
 
 // Arrest is the consequence "the party is arrested, to be held in a cell"
 // (rpg-project#925). It hangs only on an interaction's outcome, never on a
@@ -126,6 +177,10 @@ type ArrestRecord struct {
 
 	// Wanted are the members remembered and not taken, in id order.
 	Wanted []WantedMember `json:"wanted,omitempty"`
+
+	// Custody is where custody of the taken stands: [CustodyHeld] from the
+	// arrest, [CustodyBroken] once a fight ends it.
+	Custody CustodyPhase `json:"custody"`
 }
 
 // ArrestedMember is one taken member and why.
@@ -322,7 +377,7 @@ func (e *Encounter) applyArrest(r *interactionRecord, a Arrest, line recognition
 		}
 		return slices.Contains(line.perceived[g], id)
 	}
-	made := ArrestRecord{State: line.state, Cell: a.Cell, At: line.at}
+	made := ArrestRecord{State: line.state, Cell: a.Cell, At: line.at, Custody: CustodyHeld}
 	for _, id := range e.arrestParty(line.speaker) {
 		if slices.Contains(guards, id) {
 			continue
@@ -352,6 +407,10 @@ func (e *Encounter) applyArrest(r *interactionRecord, a Arrest, line recognition
 		}
 	}
 	r.arrest = &made
+	// TAKEN, A SNEAK IS OVER: the guards have their hands on them.
+	for _, t := range made.Taken {
+		e.endSneaking(t.ID)
+	}
 
 	// THE CONVERSATION IS OVER (rpg-project#942's rule for a leaver): the
 	// interaction addresses nobody once it has arrested.
@@ -508,4 +567,49 @@ func (e *Encounter) tellArrest(reach sightReach, made ArrestRecord, guards []Mem
 		}
 	}
 	return nil
+}
+
+// inCustody reports whether a member is held by any arrest: taken by one
+// whose custody still holds.
+func (e *Encounter) inCustody(id MemberID) bool {
+	for _, r := range e.interactions {
+		if r.arrest == nil || !r.arrest.Custody.holds() {
+			continue
+		}
+		if slices.ContainsFunc(r.arrest.Taken, func(t ArrestedMember) bool { return t.ID == id }) {
+			return true
+		}
+	}
+	return false
+}
+
+// refuseInCustody is the custody door every walking-away verb asks first.
+func (e *Encounter) refuseInCustody(verb string, id MemberID) error {
+	if e.inCustody(id) {
+		return fmt.Errorf("%s %q: %w", verb, id, ErrInCustody)
+	}
+	return nil
+}
+
+// breakCustody ends custody, for every taken member at once, of each arrest
+// with a taken member or one of its arresting guards among fighters: a
+// fight formed or joined is the way out the ruling leaves (rpg-project#925).
+// The record's taken and wanted, and what the guards hold, stay.
+func (e *Encounter) breakCustody(fighters []MemberID) {
+	for id, r := range e.interactions {
+		if r.arrest == nil || !r.arrest.Custody.holds() {
+			continue
+		}
+		for _, f := range fighters {
+			taken := slices.ContainsFunc(r.arrest.Taken, func(t ArrestedMember) bool { return t.ID == f })
+			guard := false
+			if m, ok := e.members[f]; ok {
+				guard = carries(m.Options, id)
+			}
+			if taken || guard {
+				r.arrest.Custody = CustodyBroken
+				break
+			}
+		}
+	}
 }

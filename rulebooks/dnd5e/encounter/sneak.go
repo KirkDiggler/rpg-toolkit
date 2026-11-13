@@ -171,6 +171,10 @@ func (e *Encounter) SetSneaking(in *SetSneakingInput) (*SetSneakingOutput, error
 	}
 
 	if in.Sneaking {
+		// HELD BY THE GUARDS (rpg-project#925): sneaking off is walking away.
+		if err := e.refuseInCustody("set sneaking", member.ID); err != nil {
+			return nil, err
+		}
 		seen, err := e.seenBy(member.ID)
 		if err != nil {
 			return nil, fmt.Errorf("set sneaking %q: %w", in.Member, err)
