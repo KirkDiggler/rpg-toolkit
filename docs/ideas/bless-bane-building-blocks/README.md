@@ -1,6 +1,6 @@
 # Bless and Bane as consumers of effect tools
 
-This is the working construction surface for [composable conditions #703](https://github.com/KirkDiggler/rpg-project/issues/703), governed by [the design](design.md). **The Go names below describe the implementation target, not APIs already available.** R4 permits the spelling to evolve through the consumer; R5 makes a concentration-maintained raging ring the composition test. The existing composer, assemblies, application custody and roll resolver remain the runtime. This cut gives authors typed effect values and makes contribution selection an explicit, reusable value operation. The [implementation plan](plan.md) follows these contracts through the neutral provider, root consumer and API adoption.
+This is the working construction surface for [composable conditions #703](https://github.com/KirkDiggler/rpg-project/issues/703), governed by [the design](design.md). The Go snippets show the typed authoring surface. R4 permits spelling to evolve through the consumer; R5 makes a concentration-maintained raging ring the composition test. [The implementation receipt](implementation.md) names exact source and verification, separately from release status. The existing composer, assemblies, application custody and roll resolver remain the runtime. This cut gives authors typed effect values and makes contribution selection an explicit, reusable value operation. The [implementation plan](plan.md) follows these contracts through the neutral provider, root consumer and API adoption.
 
 ## Component shape
 
