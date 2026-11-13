@@ -5,6 +5,7 @@ package castletest
 
 import (
 	"encoding/json"
+	"fmt"
 	"sync"
 	"testing"
 
@@ -56,7 +57,20 @@ var hintScene struct {
 	inTheHall []byte
 	compiled  dungeonspec.Compiled
 	host      castleHost
+	// moments are the scene's stored moments each test starts from, every
+	// placement made and everyone's sight looked again once, here, rather
+	// than on each test's clock.
+	moments map[string][]byte
 }
+
+// The moments [hintScene] keeps, by name.
+const (
+	momentEastOfTheGate = "east of the gate"
+	momentWestOfTheGate = "west of the gate"
+	momentInTheEastYard = "in the east yard"
+	momentHallShut      = "the hall shut"
+	momentHallOpen      = "the hall open"
+)
 
 // hintSceneTests are the tests that start from [hintScene].
 var hintSceneTests = []string{
@@ -68,6 +82,44 @@ var hintSceneTests = []string{
 // buildTheHintScene plays [hintScene].
 func buildTheHintScene() {
 	hintScene.blob, hintScene.inTheHall, hintScene.compiled, hintScene.host, hintScene.err = playTheAdmittedScene(sessionSightFeet)
+	if hintScene.err != nil {
+		return
+	}
+	tb := &fixtureTB{}
+	defer func() {
+		if r := recover(); r != nil {
+			if _, ok := r.(fixtureFailed); !ok {
+				panic(r)
+			}
+			hintScene.err = fmt.Errorf("the hint scene's moments: %s", tb.failed)
+		}
+	}()
+	keep := func(name string, blob []byte, heroAt *spatial.Position, hallDoor encounter.DoorStateKind) {
+		at := map[encounter.MemberID]spatial.Position{straggler: besideGate1}
+		if heroAt != nil {
+			at[hero] = *heroAt
+		}
+		s := placedIn(tb, blob, at, hallDoor)
+		raw, err := json.Marshal(s.enc.ToData())
+		require.NoError(tb, err)
+		hintScene.moments[name] = raw
+	}
+	hintScene.moments = map[string][]byte{}
+	keep(momentEastOfTheGate, hintScene.blob, &eastOfTheGate, "")
+	keep(momentWestOfTheGate, hintScene.blob, &westOfTheGate, "")
+	keep(momentInTheEastYard, hintScene.blob, &theEastYard, "")
+	keep(momentHallShut, hintScene.inTheHall, nil, encounter.DoorClosed)
+	keep(momentHallOpen, hintScene.inTheHall, nil, encounter.DoorOpen)
+}
+
+// atTheMoment loads one of [hintScene]'s moments.
+func atTheMoment(t *testing.T, name string) *kingScene {
+	t.Helper()
+	hintScene.once.Do(buildTheHintScene)
+	require.NoError(t, hintScene.err, "the admitted scene at the session's sight")
+	blob, ok := hintScene.moments[name]
+	require.True(t, ok, "a moment named %q", name)
+	return loadTheSceneOn(t, blob, hintScene.compiled, hintScene.host)
 }
 
 // hintVersion is one member's version of the hint, as their story holds it.
@@ -106,7 +158,7 @@ func (s *kingScene) hintIn(member encounter.MemberID, from uint64) []hintVersion
 // given in the record — a placement, for those whose walk is not what a test
 // is about (the hero is walked, [kingScene.walkedTo]) — and everyone's sight
 // looked again. The hall's door is set as given when state is not empty.
-func placedIn(t *testing.T, blob []byte, at map[encounter.MemberID]spatial.Position, hallDoor encounter.DoorStateKind) *kingScene {
+func placedIn(t testing.TB, blob []byte, at map[encounter.MemberID]spatial.Position, hallDoor encounter.DoorStateKind) *kingScene {
 	t.Helper()
 	var data encounter.EncounterData
 	require.NoError(t, json.Unmarshal(blob, &data))
@@ -165,19 +217,6 @@ var (
 	westOfTheGate = spatial.Position{X: -9, Y: 6}
 )
 
-// openTheHintScene loads [hintScene] with the straggler stood beside gate-1
-// and anyone else where given.
-func openTheHintScene(t *testing.T, blob func() []byte, hallDoor encounter.DoorStateKind, more map[encounter.MemberID]spatial.Position) *kingScene {
-	t.Helper()
-	hintScene.once.Do(buildTheHintScene)
-	require.NoError(t, hintScene.err, "the admitted scene at the session's sight")
-	at := map[encounter.MemberID]spatial.Position{straggler: besideGate1}
-	for id, cell := range more {
-		at[id] = cell
-	}
-	return placedIn(t, blob(), at, hallDoor)
-}
-
 // walkedTo walks the hero, as a player walks, one step at a time along the
 // engine's own route to cell, and asserts at EVERY step that the sighting
 // the run keeps for her of each gate guard is what a fresh look from her
@@ -207,15 +246,15 @@ func (s *kingScene) walkedTo(cell spatial.Position) bool {
 	return s.seesLive(hero, kingGate1)
 }
 
-// theHintWalkedTo is the hint scene with the hero, admitted, stood in the
-// yard at from in gate-1's sight, WALKED to cell, and the straggler, beside
+// theHintWalkedTo is the hint scene at moment, the hero, admitted, stood in
+// the yard in gate-1's sight, WALKED to cell, and the straggler, beside
 // gate-1, asking after their friends: the hint shouted. It returns the scene,
 // whether the hero sees gate-1 there, and the record's sequence before the
 // question.
-func theHintWalkedTo(t *testing.T, from, cell spatial.Position) (*kingScene, bool, uint64) {
+func theHintWalkedTo(t *testing.T, moment string, cell spatial.Position) (*kingScene, bool, uint64) {
 	t.Helper()
-	s := openTheHintScene(t, func() []byte { return hintScene.blob }, "", map[encounter.MemberID]spatial.Position{hero: from})
-	require.True(t, s.seesLive(hero, kingGate1), "precondition: at %v she sees gate-1", from)
+	s := atTheMoment(t, moment)
+	require.True(t, s.seesLive(hero, kingGate1), "precondition: at %v she sees gate-1", s.at(hero))
 	sees := s.walkedTo(cell)
 	require.Equal(t, encounter.RegionID("region-courtyard"), s.regionOf(s.at(hero)), "precondition: the hero is in the yard")
 	return s, sees, s.askAfterFriends()
@@ -226,7 +265,7 @@ func theHintWalkedTo(t *testing.T, from, cell spatial.Position) (*kingScene, boo
 // hint asked, for a test about what follows rather than about her sight.
 func theHintInTheEastYard(t *testing.T) (*kingScene, uint64) {
 	t.Helper()
-	s := openTheHintScene(t, func() []byte { return hintScene.blob }, "", map[encounter.MemberID]spatial.Position{hero: theEastYard})
+	s := atTheMoment(t, momentInTheEastYard)
 	require.False(t, s.seesLive(hero, kingGate1), "precondition: out of gate-1's sight")
 	return s, s.askAfterFriends()
 }
@@ -239,7 +278,7 @@ func theHintInTheEastYard(t *testing.T) (*kingScene, uint64) {
 // speaker and no one spoken to, from one room off.
 func TestMadKingTheHintReachesTheEastYardWithoutAName(t *testing.T) {
 	t.Parallel()
-	s, sees, from := theHintWalkedTo(t, eastOfTheGate, theEastYard)
+	s, sees, from := theHintWalkedTo(t, momentEastOfTheGate, theEastYard)
 	require.False(t, sees, "precondition: out of gate-1's sight")
 	require.False(t, s.seesLive(hero, kingGate2), "precondition: and gate-2's")
 
@@ -258,7 +297,7 @@ func TestMadKingTheHintReachesTheEastYardWithoutAName(t *testing.T) {
 // session's sight, and the same shout reaches her with his name.
 func TestMadKingTheHintInLineWithTheGateNamesHim(t *testing.T) {
 	t.Parallel()
-	s, sees, from := theHintWalkedTo(t, westOfTheGate, inLineWithTheGate)
+	s, sees, from := theHintWalkedTo(t, momentWestOfTheGate, inLineWithTheGate)
 	require.True(t, sees, "precondition: gate-1 in her sight through the open gate")
 	got := s.hintIn(hero, from)
 	require.Len(t, got, 1)
@@ -312,7 +351,7 @@ func TestMadKingTheHeroComesBackToVouch(t *testing.T) {
 // and the hall's door as given.
 func theHallWithItsDoor(t *testing.T, state encounter.DoorStateKind) *kingScene {
 	t.Helper()
-	s := openTheHintScene(t, func() []byte { return hintScene.inTheHall }, state, nil)
+	s := atTheMoment(t, map[encounter.DoorStateKind]string{encounter.DoorClosed: momentHallShut, encounter.DoorOpen: momentHallOpen}[state])
 	require.Equal(t, encounter.RegionID("region-great-hall"), s.regionOf(s.at(hero)), "precondition: the hero is in the great hall")
 	return s
 }

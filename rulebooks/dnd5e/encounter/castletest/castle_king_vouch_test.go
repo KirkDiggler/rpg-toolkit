@@ -176,7 +176,7 @@ func loadTheScene(t *testing.T, blob []byte) *kingScene {
 }
 
 // loadTheSceneOn loads one stored moment of a scene played on host.
-func loadTheSceneOn(t *testing.T, blob []byte, compiled dungeonspec.Compiled, host castleHost) *kingScene {
+func loadTheSceneOn(t testing.TB, blob []byte, compiled dungeonspec.Compiled, host castleHost) *kingScene {
 	t.Helper()
 	var data encounter.EncounterData
 	require.NoError(t, json.Unmarshal(blob, &data))
