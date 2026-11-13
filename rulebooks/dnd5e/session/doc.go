@@ -306,6 +306,12 @@
 // decoding refuses unknown/duplicate sides and blank refs as one whole body.
 // Missing legacy lists stay absent. Opening-only replacements never change them.
 //
+// Optional frame spans and door FramePresentation copy the composition's
+// independent captured appearance into seam-owned types. Spans, face lists and
+// phase pointers are detached. Wrapped phase zero is explicit; absent phase,
+// invalid spans and malformed face facts refuse the entire reveal, including
+// otherwise-valid siblings. Legacy absence is never filled from a parent wall.
+//
 // NOTHING IS DECIDED HERE. projectAtlas is a field-for-field copy; the reveal
 // decode is a shared helper that refuses a malformed or identity-less row whole
 // rather than handing a client a half-applied patch. A fixed row carries no

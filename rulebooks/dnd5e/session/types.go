@@ -763,6 +763,9 @@ type AtlasStructuralWall struct {
 // deliberately carries no door id, no state and no hidden association — the
 // door, when permitted, is its own [AtlasStructuralDoor].
 type AtlasStructuralOpening struct {
+	// FrameSpan follows this opening's permission and replaces only visual art.
+	FrameSpan *WallFrameSpan `json:"frame_span,omitempty"`
+
 	// ID names this opening.
 	ID string `json:"id"`
 
@@ -797,6 +800,9 @@ type StructuralWallOpeningsReplacement struct {
 // one collection holds every permitted attached door. No state is carried: an
 // unknown door state is an unknown door state, never a vanished doorway.
 type AtlasStructuralDoor struct {
+	// FramePresentation follows this door's permission without a parent lookup.
+	FramePresentation *DoorFramePresentation `json:"frame_presentation,omitempty"`
+
 	// ID is the actual canonical gameplay door id the observation and verb
 	// paths use, carried verbatim.
 	ID string `json:"id"`

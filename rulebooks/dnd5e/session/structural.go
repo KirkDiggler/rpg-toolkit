@@ -5,6 +5,7 @@ package session
 
 import (
 	"encoding/json"
+	"math"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -33,7 +34,7 @@ func projectStructuralWall(w encounter.AtlasStructuralWall) AtlasStructuralWall 
 
 	openings := make([]AtlasStructuralOpening, 0, len(w.Openings))
 	for _, o := range w.Openings {
-		openings = append(openings, AtlasStructuralOpening{ID: o.ID, Position: o.Position, Width: o.Width})
+		openings = append(openings, AtlasStructuralOpening{ID: o.ID, Position: o.Position, Width: o.Width, FrameSpan: projectWallFrameSpan(o.FrameSpan)})
 	}
 
 	return AtlasStructuralWall{
@@ -56,13 +57,14 @@ func projectStructuralWall(w encounter.AtlasStructuralWall) AtlasStructuralWall 
 // be invented here.
 func projectStructuralDoor(d encounter.AtlasStructuralDoor) AtlasStructuralDoor {
 	return AtlasStructuralDoor{
-		ID:        string(d.ID),
-		Ref:       d.Ref,
-		From:      FootprintPoint{X: d.From.X, Y: d.From.Y},
-		To:        FootprintPoint{X: d.To.X, Y: d.To.Y},
-		Height:    d.Height,
-		Thickness: d.Thickness,
-		Elevation: d.Elevation,
+		FramePresentation: projectDoorFramePresentation(d.FramePresentation),
+		ID:                string(d.ID),
+		Ref:               d.Ref,
+		From:              FootprintPoint{X: d.From.X, Y: d.From.Y},
+		To:                FootprintPoint{X: d.To.X, Y: d.To.Y},
+		Height:            d.Height,
+		Thickness:         d.Thickness,
+		Elevation:         d.Elevation,
 	}
 }
 
@@ -101,7 +103,7 @@ func validStructuralRows(rows structuralRows) bool {
 	openings := make(map[string]bool)
 	validOpenings := func(list []AtlasStructuralOpening) bool {
 		for _, o := range list {
-			if o.ID == "" || openings[o.ID] {
+			if o.ID == "" || openings[o.ID] || !validWallFrameSpan(o.FrameSpan, o.Width) {
 				return false
 			}
 			openings[o.ID] = true
@@ -121,7 +123,7 @@ func validStructuralRows(rows structuralRows) bool {
 		walls[replacement.WallID] = true
 	}
 	for _, d := range rows.Doors {
-		if d.ID == "" {
+		if d.ID == "" || !validDoorFramePresentation(d.FramePresentation, math.Hypot(d.To.X-d.From.X, d.To.Y-d.From.Y)) {
 			return false
 		}
 	}

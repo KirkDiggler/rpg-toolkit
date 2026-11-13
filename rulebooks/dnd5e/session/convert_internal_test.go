@@ -220,9 +220,9 @@ func TestStructuralLayoutCrossesTheSeamWhole(t *testing.T) {
 	// seam is forbidden to send.
 	require.Equal(t, []string{"ID", "Ref", "From", "To", "Height", "Thickness", "Elevation", "MaterialOverrides", "FaceFinishes", "FootprintCells", "Openings"},
 		fieldNamesOf(AtlasStructuralWall{}), "a wall names its captured appearance, line, footprint and cuts, and nothing mutable")
-	require.Equal(t, []string{"ID", "Position", "Width"},
+	require.Equal(t, []string{"FrameSpan", "ID", "Position", "Width"},
 		fieldNamesOf(AtlasStructuralOpening{}), "an opening carries no door id and no state")
-	require.Equal(t, []string{"ID", "Ref", "From", "To", "Height", "Thickness", "Elevation"},
+	require.Equal(t, []string{"FramePresentation", "ID", "Ref", "From", "To", "Height", "Thickness", "Elevation"},
 		fieldNamesOf(AtlasStructuralDoor{}), "a door stands on its own identity with no parent id")
 }
 
