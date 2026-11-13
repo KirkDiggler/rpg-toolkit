@@ -75,8 +75,6 @@ var admittedSceneTests = []string{
 	"TestMadKingTheCaptainsLineGrantsNothingAgain", "TestMadKingAStragglerHasOneTry",
 	"TestMadKingAStragglerWhoWalksAwayKeepsTheRoll",
 	"TestMadKingEveryExitFromAnAbandonedRollLoads", "TestMadKingEveryExitFromTheAdmittedGateLoads",
-	"TestMadKingTheHintIsShoutedToTheYard", "TestMadKingTheHintDoesNotReachTheGreatHall",
-	"TestMadKingNothingThatCatchesTheHintActsOnIt", "TestMadKingTheHeroComesBackToVouch",
 }
 
 // TestMain builds the admitted gate's scene before any test runs, when the
@@ -87,6 +85,9 @@ func TestMain(m *testing.M) {
 	re, err := regexp.Compile(strings.SplitN(pattern, "/", 2)[0])
 	if pattern == "" || err != nil || slices.ContainsFunc(admittedSceneTests, re.MatchString) {
 		admittedScene.once.Do(buildTheAdmittedScene)
+	}
+	if pattern == "" || err != nil || slices.ContainsFunc(hintSceneTests, re.MatchString) {
+		hintScene.once.Do(buildTheHintScene)
 	}
 	os.Exit(m.Run())
 }
@@ -115,18 +116,25 @@ func (f *fixtureTB) Fatalf(format string, a ...any) {
 // and rounds passed until the captain stands in the hall and gate-1 is back
 // on his post.
 func buildTheAdmittedScene() {
+	admittedScene.blob, admittedScene.inTheHall, admittedScene.compiled, admittedScene.host, admittedScene.err = playTheAdmittedScene(0)
+}
+
+// playTheAdmittedScene plays the admitted scene with everybody seeing
+// sightFt feet (zero is the host's torchlit default) and returns its two
+// stored moments, the compiled castle and the host it ran on.
+func playTheAdmittedScene(sightFt int) (blob, inTheHall []byte, compiled dungeonspec.Compiled, host castleHost, err error) {
 	tb := &fixtureTB{}
 	defer func() {
 		if r := recover(); r != nil {
 			if _, ok := r.(fixtureFailed); !ok {
 				panic(r)
 			}
-			admittedScene.err = fmt.Errorf("the admitted scene: %s", tb.failed)
+			err = fmt.Errorf("the admitted scene: %s", tb.failed)
 		}
 	}()
 	start := partyStart(tb)
 	s := openTheCastleAs(tb, castleHost{
-		at: gatehouseSeat,
+		at: gatehouseSeat, sightFt: sightFt,
 		players: []encounter.MemberInput{
 			{ID: straggler, Kind: encounter.KindPlayer, Position: spatial.Position{X: start.X + 2, Y: start.Y}},
 			{ID: latecomer, Kind: encounter.KindPlayer, Position: spatial.Position{X: start.X + 1, Y: start.Y}},
@@ -145,12 +153,12 @@ func buildTheAdmittedScene() {
 	}
 	require.Equal(tb, captainsPlaceInTheHall, s.at(kingCaptain), "precondition: the captain stands in the hall")
 	s.backOnHisPost()
-	blob, err := json.Marshal(s.enc.ToData())
+	blob, err = json.Marshal(s.enc.ToData())
 	require.NoError(tb, err)
 	s.walkTo(s.at(kingCaptain))
-	inTheHall, err := json.Marshal(s.enc.ToData())
+	inTheHall, err = json.Marshal(s.enc.ToData())
 	require.NoError(tb, err)
-	admittedScene.blob, admittedScene.inTheHall, admittedScene.compiled, admittedScene.host = blob, inTheHall, s.compiled, s.host
+	return blob, inTheHall, s.compiled, s.host, nil
 }
 
 // admittedWithAStraggler loads the admitted scene into a fresh run.
@@ -164,10 +172,16 @@ func admittedWithAStraggler(t *testing.T) *kingScene {
 // loadTheScene loads one stored moment of the admitted scene.
 func loadTheScene(t *testing.T, blob []byte) *kingScene {
 	t.Helper()
+	return loadTheSceneOn(t, blob, admittedScene.compiled, admittedScene.host)
+}
+
+// loadTheSceneOn loads one stored moment of a scene played on host.
+func loadTheSceneOn(t *testing.T, blob []byte, compiled dungeonspec.Compiled, host castleHost) *kingScene {
+	t.Helper()
 	var data encounter.EncounterData
 	require.NoError(t, json.Unmarshal(blob, &data))
 	s := &kingScene{
-		t: t, compiled: admittedScene.compiled, host: admittedScene.host,
+		t: t, compiled: compiled, host: host,
 		strikes: &[]cellsStrike{}, standing: &castleStanding{down: map[encounter.MemberID]bool{}},
 	}
 	enc, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{
