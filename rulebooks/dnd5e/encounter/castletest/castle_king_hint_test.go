@@ -67,7 +67,6 @@ var hintScene struct {
 const (
 	momentEastOfTheGate = "east of the gate"
 	momentWestOfTheGate = "west of the gate"
-	momentInTheEastYard = "in the east yard"
 	momentHallShut      = "the hall shut"
 	momentHallOpen      = "the hall open"
 )
@@ -75,7 +74,6 @@ const (
 // hintSceneTests are the tests that start from [hintScene].
 var hintSceneTests = []string{
 	"TestMadKingTheHintReachesTheEastYardWithoutAName", "TestMadKingTheHintInLineWithTheGateNamesHim",
-	"TestMadKingNothingThatCatchesTheHintActsOnIt", "TestMadKingTheHeroComesBackToVouch",
 	"TestMadKingTheHintDoesNotReachTheGreatHall",
 }
 
@@ -99,7 +97,7 @@ func buildTheHintScene() {
 		if heroAt != nil {
 			at[hero] = *heroAt
 		}
-		s := placedIn(tb, blob, at, hallDoor)
+		s := placedIn(tb, blob, at, hallDoor, hintScene.compiled, hintScene.host)
 		raw, err := json.Marshal(s.enc.ToData())
 		require.NoError(tb, err)
 		hintScene.moments[name] = raw
@@ -107,7 +105,6 @@ func buildTheHintScene() {
 	hintScene.moments = map[string][]byte{}
 	keep(momentEastOfTheGate, hintScene.blob, &eastOfTheGate, "")
 	keep(momentWestOfTheGate, hintScene.blob, &westOfTheGate, "")
-	keep(momentInTheEastYard, hintScene.blob, &theEastYard, "")
 	keep(momentHallShut, hintScene.inTheHall, nil, encounter.DoorClosed)
 	keep(momentHallOpen, hintScene.inTheHall, nil, encounter.DoorOpen)
 }
@@ -158,7 +155,8 @@ func (s *kingScene) hintIn(member encounter.MemberID, from uint64) []hintVersion
 // given in the record — a placement, for those whose walk is not what a test
 // is about (the hero is walked, [kingScene.walkedTo]) — and everyone's sight
 // looked again. The hall's door is set as given when state is not empty.
-func placedIn(t testing.TB, blob []byte, at map[encounter.MemberID]spatial.Position, hallDoor encounter.DoorStateKind) *kingScene {
+func placedIn(t testing.TB, blob []byte, at map[encounter.MemberID]spatial.Position, hallDoor encounter.DoorStateKind,
+	compiled dungeonspec.Compiled, host castleHost) *kingScene {
 	t.Helper()
 	var data encounter.EncounterData
 	require.NoError(t, json.Unmarshal(blob, &data))
@@ -178,7 +176,7 @@ func placedIn(t testing.TB, blob []byte, at map[encounter.MemberID]spatial.Posit
 	}
 	raw, err := json.Marshal(data)
 	require.NoError(t, err)
-	s := loadTheSceneOn(t, raw, hintScene.compiled, hintScene.host)
+	s := loadTheSceneOn(t, raw, compiled, host)
 	// Everyone looks again from where they now stand.
 	moved := make([]encounter.MemberID, 0, len(at))
 	for id := range at {
@@ -260,12 +258,19 @@ func theHintWalkedTo(t *testing.T, moment string, cell spatial.Position) (*kingS
 	return s, sees, s.askAfterFriends()
 }
 
-// theHintInTheEastYard is the hint scene with the hero stood in the east
-// yard — out of both gate guards' sight, as the walked test proves — and the
-// hint asked, for a test about what follows rather than about her sight.
+// theHintInTheEastYard is the shared admitted scene, at the castle tests'
+// torchlit sight, with the hero stood in the east yard and the straggler
+// beside gate-1, and the hint asked: for the tests about what FOLLOWS the
+// hint — the creatures that catch it, the vouch — rather than about her
+// sight. The east yard is out of both gate guards' sight at either sight
+// (the gatehouse's wall stands between, [TestMadKingTheHintReachesTheEastYardWithoutAName]
+// walks it at the session's), and this scene is the cheaper to run.
 func theHintInTheEastYard(t *testing.T) (*kingScene, uint64) {
 	t.Helper()
-	s := atTheMoment(t, momentInTheEastYard)
+	admittedScene.once.Do(buildTheAdmittedScene)
+	require.NoError(t, admittedScene.err)
+	s := placedIn(t, admittedScene.blob, map[encounter.MemberID]spatial.Position{straggler: besideGate1, hero: theEastYard}, "",
+		admittedScene.compiled, admittedScene.host)
 	require.False(t, s.seesLive(hero, kingGate1), "precondition: out of gate-1's sight")
 	return s, s.askAfterFriends()
 }
