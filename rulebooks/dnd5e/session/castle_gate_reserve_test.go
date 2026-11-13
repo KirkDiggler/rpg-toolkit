@@ -121,6 +121,15 @@ func TestMain(m *testing.M) {
 	if wantedBy(pattern, warnedGateTests) {
 		warnedGate.once.Do(func() { warnedGate.stores, warnedGate.err = buildTheWarnedGate() })
 	}
+	if wantedBy(pattern, relocationTests) {
+		relocations.once.Do(buildTheRelocations)
+	}
+	if wantedBy(pattern, arrestPlaysTests) {
+		arrestPlays.once.Do(buildTheArrestPlays)
+	}
+	if wantedBy(pattern, jailCastleTests) {
+		jailCastle.once.Do(buildTheJailCastle)
+	}
 	if wantedBy(pattern, roadCastleTests) {
 		roadCastles.once.Do(buildTheRoadCastles)
 	}

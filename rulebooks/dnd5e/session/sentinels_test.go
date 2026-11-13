@@ -263,6 +263,8 @@ var sessionSentinels = map[string]error{
 	"ErrNoOption":             session.ErrNoOption,
 	"ErrStaleOption":          session.ErrStaleOption,
 	"ErrLineReserved":         session.ErrLineReserved,
+	"ErrInCustody":            session.ErrInCustody,
+	"ErrJailRefused":          session.ErrJailRefused,
 	"ErrNotDown":              session.ErrNotDown,
 	"ErrNoProp":               session.ErrNoProp,
 	"ErrNotHoldable":          session.ErrNotHoldable,

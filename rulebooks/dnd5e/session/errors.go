@@ -381,6 +381,25 @@ var (
 	// recorded. Lines that read no conversation are never pending.
 	ErrLineReserved = errors.New("the line waits on somebody's roll")
 
+	// ErrInCustody is a member the guards hold trying to walk away
+	// (rpg-project#925): a walk or a dash, starting to sneak, a cast whose
+	// push would carry its own caster. The session's twin of
+	// encounter.ErrInCustody, and its text is the sentence the player is
+	// shown, in the second person: the refusal only ever reaches the held
+	// member's own verb. A move imposed on a held member by somebody else is
+	// the typed [CustodyMoveError], which is this to errors.Is.
+	//
+	// Speaking, looking, attacking and casting stay open: a fight with the
+	// guards is the one other way out.
+	ErrInCustody = errors.New("The guards hold you; you cannot walk away.") //nolint:staticcheck // the player's sentence
+
+	// ErrJailRefused is a line refused whole because the cell its verdict
+	// would march the speaker's party into cannot take them now
+	// (rpg-project#925): every member taken has left the run, or the cells
+	// have too few free places. Nothing is said, stepped or moved. Its text
+	// is the sentence the player is shown.
+	ErrJailRefused = errors.New("The guards cannot take you to the cells now.") //nolint:staticcheck // the player's sentence
+
 	// ErrNotDown is Loot's refusal for a body that is still standing — the
 	// host-seam twin of encounter.ErrNotDown (rpg-project#368 §4.2).
 	//
@@ -1014,6 +1033,35 @@ func (e *DoorHeldError) Error() string {
 
 // Unwrap makes errors.Is(err, ErrDoorHeld) true for this detail type.
 func (e *DoorHeldError) Unwrap() error { return ErrDoorHeld }
+
+// CustodyMoveError is a move imposed on a member the guards hold — a
+// shove, a flee, any directed move — refused (rpg-project#925): the session's
+// twin of encounter.CustodyMoveError. It is [ErrInCustody] to errors.Is.
+//
+// TWO SENTENCES, ONE FOR WHOEVER IS SHOWN IT. [CustodyMoveError.Sentence]
+// speaks to the viewer: in the second person when the held member is the
+// viewer's own character, else naming them. Error is the third-person form.
+type CustodyMoveError struct {
+	// Member is the held member the move was imposed on.
+	Member string
+}
+
+// Error is the refusal naming the held member.
+func (e *CustodyMoveError) Error() string {
+	return fmt.Sprintf("The guards hold %s; they cannot be moved.", e.Member)
+}
+
+// Sentence is the refusal as viewer is shown it: "The guards hold you; you
+// cannot be moved." when viewer is the held member, else [CustodyMoveError.Error].
+func (e *CustodyMoveError) Sentence(viewer string) string {
+	if viewer == e.Member {
+		return "The guards hold you; you cannot be moved."
+	}
+	return e.Error()
+}
+
+// Unwrap makes errors.Is(err, ErrInCustody) true for this detail type.
+func (e *CustodyMoveError) Unwrap() error { return ErrInCustody }
 
 // WindowOpenError is [ErrWindowOpen]'s detail: which windows are open and who
 // each of them is waiting on.

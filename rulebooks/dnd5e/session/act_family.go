@@ -59,12 +59,6 @@ var recordOnly = map[string]bool{
 	// version — words, option, skill and the roll with its arithmetic — and
 	// nobody else is ever told it; the beat is the record's.
 	encounter.BeatSpoke: true,
-	// The party arrested at the gate (rpg-project#925, arrest slice one):
-	// RECORD-ONLY UNTIL ARREST HAS ITS OWN SESSION SLICE. The beat names
-	// whom its reader perceives taken; nobody is moved yet, and the
-	// player-facing act for being taken is that slice's to design. Until then
-	// it is the record's, so no player is sent an undecoded act for it.
-	encounter.BeatArrested: true,
 }
 
 // familyOf is a beat name's family, and false for a beat with none — a
@@ -75,14 +69,15 @@ func familyOf(beat string) (Family, bool) {
 		encounter.BeatSaved, encounter.BeatActivated, encounter.BeatActivationResult,
 		string(encounter.OutcomeDeathSave), encounter.BeatLooted,
 		encounter.BeatHeld, encounter.BeatDropped, encounter.BeatDoor, encounter.BeatEquipmentChanged,
-		encounter.BeatStayed, encounter.BeatSnuck, encounter.BeatRested, encounter.BeatBarred:
+		encounter.BeatStayed, encounter.BeatSnuck, encounter.BeatRested, encounter.BeatBarred,
+		encounter.BeatRelocated:
 		return FamilyAct, true
 	case string(encounter.OutcomeStruck), string(encounter.OutcomeMissed), string(encounter.OutcomeWarded):
 		return FamilyAct, true // FamilyReaction when the beat carries a reaction ref
 	case encounter.BeatAnswered, encounter.BeatTempered:
 		return FamilyTableAnswer, true // a line's answer stands as its own table answer
 	case string(encounter.OutcomeDown), encounter.BeatStance, encounter.BeatConcentrationEnded,
-		string(encounter.OutcomeExperienceGained), encounter.BeatState:
+		string(encounter.OutcomeExperienceGained), encounter.BeatState, encounter.BeatArrested:
 		return FamilyState, true
 	case encounter.BeatSpeech:
 		// One member's version of something said (rpg-project#933): a line,
@@ -185,6 +180,14 @@ func decodePieces(recipient, tag, beat string, payload []byte) ([]piece, error) 
 		return doorPiece(payload)
 	case encounter.BeatBarred:
 		return barredPiece(payload)
+	case encounter.BeatRelocated:
+		p, err := relocatePiece(payload)
+		if err != nil {
+			return nil, err
+		}
+		return one(p)
+	case encounter.BeatArrested:
+		return arrestPiece(payload)
 	case encounter.BeatEquipmentChanged:
 		var p struct {
 			Member string `json:"member"`
@@ -1389,4 +1392,79 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// relocatePiece is one recipient's version of a member set down at a place
+// (relocated, rpg-project#925): the mover, the ends this version carries, the
+// cause, the words when the version is the mover's, and which end.
+//
+// FAIL CLOSED: a version naming no mover, no cause, an end this build does
+// not know, or an end its cells contradict (a "left" with a destination, a
+// "both" missing either) is unreadable, never a guessed half.
+func relocatePiece(payload []byte) (piece, error) {
+	var p struct {
+		Member string            `json:"member"`
+		From   *spatial.Position `json:"from"`
+		To     *spatial.Position `json:"to"`
+		Cause  string            `json:"cause"`
+		Words  string            `json:"words"`
+		End    string            `json:"end"`
+	}
+	if err := json.Unmarshal(payload, &p); err != nil {
+		return piece{}, err
+	}
+	if p.Member == "" || p.Cause == "" {
+		return piece{}, fmt.Errorf("relocated: a version names no mover or no cause")
+	}
+	end := RelocateEnd(p.End)
+	if want := relocateEndOf(p.From != nil, p.To != nil); want == "" || want != end {
+		return piece{}, fmt.Errorf("relocated %q: end %q with from %t and to %t", p.Member, p.End, p.From != nil, p.To != nil)
+	}
+	return piece{
+		family: FamilyAct,
+		body: RelocateAct{
+			Mover: member(p.Member), From: p.From, To: p.To, Cause: p.Cause, Words: p.Words, End: end,
+		},
+	}, nil
+}
+
+// relocateEndOf is the end a version with these cells tells: both, left,
+// arrived, or "" for a version with neither, which no reader is sent.
+func relocateEndOf(from, to bool) RelocateEnd {
+	switch {
+	case from && to:
+		return RelocateBoth
+	case from:
+		return RelocateLeft
+	case to:
+		return RelocateArrived
+	default:
+		return ""
+	}
+}
+
+// arrestPiece is one recipient's version of an arrest (arrested,
+// rpg-project#925): the conversation, the members taken they perceive, and
+// the cell region. The beat's `wanted` names the guards' memory and is told
+// to the arresting guards alone; it is never read here, so no act carries it
+// whoever its reader is.
+func arrestPiece(payload []byte) ([]piece, error) {
+	var p struct {
+		Interaction string   `json:"interaction"`
+		Cell        string   `json:"cell"`
+		Taken       []string `json:"taken"`
+	}
+	if err := json.Unmarshal(payload, &p); err != nil {
+		return nil, err
+	}
+	if len(p.Taken) == 0 {
+		// The guards' own version may name only the wanted; a reader told
+		// nobody taken is shown nothing.
+		return nil, nil
+	}
+	taken := make([]Party, 0, len(p.Taken))
+	for _, id := range p.Taken {
+		taken = append(taken, member(id))
+	}
+	return one(piece{family: FamilyState, body: ArrestAct{Interaction: p.Interaction, Taken: taken, Cell: p.Cell}})
 }

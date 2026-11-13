@@ -273,7 +273,10 @@ type storyEntry struct {
 // and — for a perception every perceiver is told in an entry of their own —
 // the one fact it is about.
 type entryHead struct {
-	beat      string
+	beat string
+	// utterance is what every version of one thing several perceivers were
+	// each told in a version of their own shares: a speech's utterance id,
+	// or a relocation's mover, cause, act and moment ([relocationKey]).
 	utterance string
 	creature  string
 	stripped  bool
@@ -293,6 +296,8 @@ func headOf(e record.Entry) entryHead {
 		Concealment string           `json:"concealment"`
 		Kind        string           `json:"kind"`
 		Position    *json.RawMessage `json:"position"`
+		Member      string           `json:"member"`
+		Cause       string           `json:"cause"`
 	}
 	if json.Unmarshal(e.Payload, &p) != nil {
 		return entryHead{}
@@ -301,6 +306,8 @@ func headOf(e record.Entry) entryHead {
 	switch p.Beat {
 	case encounter.BeatSpeech:
 		h.utterance = p.Utterance
+	case encounter.BeatRelocated:
+		h.utterance = relocationKey(p.Member, p.Cause, e)
 	case encounter.BeatAnswered:
 		h.creature, h.stripped = p.Creature, strippedPickOf(e.Payload)
 	case encounter.BeatConcealmentRevealed:
@@ -313,6 +320,13 @@ func headOf(e record.Entry) entryHead {
 		h.fact = fmt.Sprintf("heard\x00%s\x00%s\x00%s\x00%d", p.Kind, where, e.Tags[encounter.ActTag], e.At)
 	}
 	return h
+}
+
+// relocationKey is what every version of one member's relocation shares
+// (rpg-project#925): the encounter writes them together, for one member, one
+// cause, under one act at one moment.
+func relocationKey(mover, cause string, e record.Entry) string {
+	return fmt.Sprintf("relocated\x00%s\x00%s\x00%s\x00%d", mover, cause, e.Tags[encounter.ActTag], e.At)
 }
 
 // utteranceVersion is one perceiver's version of an utterance, and whose it is.
@@ -612,6 +626,75 @@ func mergedSpeech(versions []utteranceVersion) (piece, error) {
 	return piece{family: FamilyAct, body: merged, aside: true, perceived: perceived}, nil
 }
 
+// mergedRelocation is the one [RelocateAct] a recipient is shown of a member
+// set down at a place that several party members perceived (rpg-project#925,
+// R11): the recipient's own version, each end and the words it lacks taken
+// from a friend's version in record order — the operator's ruling, what
+// comes through a friend is shown like your own, so a friend of the mover is
+// shown the destination and the words through them — its end recomputed
+// from the cells it now holds, and [Perceived.Via] naming exactly the
+// friends whose versions held a part the recipient's own lacked.
+func mergedRelocation(versions []utteranceVersion) (piece, error) {
+	var own *RelocateAct
+	type friendVersion struct {
+		act RelocateAct
+		via []encounter.MemberID
+	}
+	var friends []friendVersion
+	for _, v := range versions {
+		p, err := relocatePiece(v.payload)
+		if err != nil {
+			return piece{}, err
+		}
+		act := p.body.(RelocateAct)
+		if v.via == nil {
+			own = &act
+			continue
+		}
+		friends = append(friends, friendVersion{act: act, via: v.via})
+	}
+	var merged RelocateAct
+	if own != nil {
+		merged = *own
+	}
+	var via []encounter.MemberID
+	for i, f := range friends {
+		if own == nil && i == 0 {
+			merged = RelocateAct{Mover: f.act.Mover, Cause: f.act.Cause}
+		}
+		added := false
+		if merged.From == nil && f.act.From != nil {
+			from := *f.act.From
+			merged.From, added = &from, true
+		}
+		if merged.To == nil && f.act.To != nil {
+			to := *f.act.To
+			merged.To, added = &to, true
+		}
+		if merged.Words == "" && f.act.Words != "" {
+			merged.Words, added = f.act.Words, true
+		}
+		if !added {
+			continue
+		}
+		for _, id := range f.via {
+			if !slices.Contains(via, id) {
+				via = append(via, id)
+			}
+		}
+	}
+	merged.End = relocateEndOf(merged.From != nil, merged.To != nil)
+	out := piece{family: FamilyAct, body: merged}
+	if len(via) > 0 {
+		slices.Sort(via)
+		out.perceived = &Perceived{}
+		for _, id := range via {
+			out.perceived.Via = append(out.perceived.Via, member(string(id)))
+		}
+	}
+	return out, nil
+}
+
 // lacksAPart reports whether a friend's version holds a part the
 // recipient's own does not.
 func lacksAPart(own, friend SpeechAct) bool {
@@ -691,6 +774,17 @@ func marked(e storyEntry, pieces []piece) []piece {
 // entryPieces is what one story entry contributes: the merged speech for an
 // utterance several members perceived, else [piecesOf], marked.
 func entryPieces(recipient, tag string, e storyEntry) []piece {
+	if e.head.beat == encounter.BeatRelocated && (len(e.versions) > 0 || e.via != nil) {
+		versions := e.versions
+		if len(versions) == 0 {
+			versions = []utteranceVersion{{payload: e.Payload, via: e.via}}
+		}
+		p, err := mergedRelocation(versions)
+		if err != nil {
+			return []piece{{family: FamilyAct, undecoded: fmt.Sprintf("%s: %v", encounter.BeatRelocated, err)}}
+		}
+		return []piece{p}
+	}
 	if len(e.versions) > 0 {
 		p, err := mergedSpeech(e.versions)
 		if err != nil {
