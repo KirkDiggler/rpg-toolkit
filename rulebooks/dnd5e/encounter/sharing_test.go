@@ -5,6 +5,7 @@ package encounter_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -16,8 +17,9 @@ import (
 
 // SharingSuite is the party's sharing dial as a setting (rpg-project#935):
 // carried on the field input, persisted as the run's, read back by the host,
-// and refused at launch and at load when it is shared knowledge
-// (rpg-project#937) or a word the dial does not have. Nothing here asks an
+// refused when built or loaded only for a word the dial does not have, and
+// refused for a launch by [encounter.LaunchableSharing] when it is shared
+// knowledge (rpg-project#937). Nothing here asks an
 // audience: the dial decides none.
 type SharingSuite struct {
 	suite.Suite
@@ -118,33 +120,55 @@ func (s *SharingSuite) TestARecordFromBeforeTheDialLoadsAsSharedView() {
 	s.Equal(encounter.SharingView, reloaded.Sharing())
 }
 
-// TestSharedKnowledgeIsRefusedAtLaunch: shared knowledge is designed and not
-// built (rpg-project#937). An encounter carrying it is refused at launch,
-// loudly, with a sentence that says so — never run as shared view.
-func (s *SharingSuite) TestSharedKnowledgeIsRefusedAtLaunch() {
-	_, err := s.launch(encounter.SharingKnowledge)
+// TestSharedKnowledgeIsBuiltAndLoadedForAPreview: building and loading an
+// encounter is also how a site is previewed, projected and saved, so a site
+// authored with shared knowledge builds, projects its atlas, saves and loads
+// like any other, and reads its setting back as authored.
+func (s *SharingSuite) TestSharedKnowledgeIsBuiltAndLoadedForAPreview() {
+	enc, err := s.launch(encounter.SharingKnowledge)
+	s.Require().NoError(err, "built, as a preview builds it")
+	s.Equal(encounter.SharingKnowledge, enc.Sharing())
+	atlas, err := enc.AtlasFor(alice)
+	s.Require().NoError(err, "its atlas projects")
+	s.NotEmpty(atlas.Cells)
+
+	data, keys := s.saved(enc)
+	s.Equal(`"knowledge"`, string(keys["sharing"]))
+	reloaded, err := s.load(data)
+	s.Require().NoError(err, "and it loads")
+	s.Equal(encounter.SharingKnowledge, reloaded.Sharing())
+}
+
+// TestOnlyALaunchRefusesSharedKnowledge: the launch rule, the one a host
+// asks before it starts a run for players — shared knowledge refused, loudly,
+// with the sentence that says it is not built; the built stops and the
+// unmarked default pass; a word the dial does not have is refused too.
+func (s *SharingSuite) TestOnlyALaunchRefusesSharedKnowledge() {
+	err := encounter.LaunchableSharing(encounter.SharingKnowledge)
 	s.Require().ErrorIs(err, encounter.ErrSharedKnowledgeNotBuilt)
-	s.Contains(err.Error(), "the party's sharing is set to shared knowledge, and shared knowledge is not built yet (rpg-project#937)")
+	s.Equal("the party's sharing is set to shared knowledge, and shared knowledge is not built yet (rpg-project#937): "+
+		"encounter: shared knowledge is not built yet", err.Error())
+	for _, ok := range []encounter.Sharing{"", encounter.SharingOwn, encounter.SharingView} {
+		s.NoError(encounter.LaunchableSharing(ok), "%q launches", ok)
+	}
+	s.ErrorIs(encounter.LaunchableSharing("everything"), encounter.ErrUnknownSharing)
 }
 
 // TestAnUnknownWordIsRefusedNamingTheWords: a word the dial does not have is
-// refused at launch, naming the words it does, from the one list.
+// refused when the encounter is built, naming the words it does, from the
+// one list.
 func (s *SharingSuite) TestAnUnknownWordIsRefusedNamingTheWords() {
 	_, err := s.launch("everything")
 	s.Require().ErrorIs(err, encounter.ErrUnknownSharing)
 	s.Contains(err.Error(), `the party's sharing is "everything", and sharing is own, view or knowledge`)
 }
 
-// TestLoadAsksTheSameRule: a saved run carrying shared knowledge, or a word
-// the dial does not have, is refused at load as at launch.
+// TestLoadAsksTheSameRule: a saved run carrying a word the dial does not
+// have is refused at load as when built; every word of the dial loads.
 func (s *SharingSuite) TestLoadAsksTheSameRule() {
 	enc, err := s.launch(encounter.SharingOwn)
 	s.Require().NoError(err)
 	data, _ := s.saved(enc)
-
-	data.Sharing = encounter.SharingKnowledge
-	_, err = s.load(data)
-	s.ErrorIs(err, encounter.ErrSharedKnowledgeNotBuilt)
 
 	data.Sharing = "everything"
 	_, err = s.load(data)
@@ -161,4 +185,91 @@ func (s *SharingSuite) TestTheWordsAreTheDialInOrder() {
 	}
 	s.False(encounter.IsSharing(""), "unmarked is not a word; it is the default")
 	s.False(encounter.IsSharing("everything"))
+}
+
+// membershipOf is every joined and exited entry in the record, with its
+// audience, decoded.
+func (s *SharingSuite) membershipOf(enc *encounter.Encounter) []struct {
+	fields   map[string]any
+	audience []string
+} {
+	read, err := enc.ReadRecord(&encounter.ReadRecordInput{})
+	s.Require().NoError(err)
+	var out []struct {
+		fields   map[string]any
+		audience []string
+	}
+	for _, e := range read.Entries {
+		var fields map[string]any
+		s.Require().NoError(json.Unmarshal(e.Payload, &fields))
+		if fields["beat"] != encounter.BeatJoined && fields["beat"] != encounter.BeatExited {
+			continue
+		}
+		var audience []string
+		for _, a := range e.Audience {
+			audience = append(audience, string(a))
+		}
+		out = append(out, struct {
+			fields   map[string]any
+			audience []string
+		}{fields, audience})
+	}
+	return out
+}
+
+// TestMembershipEntriesNameTheKind (rpg-project#935): who was a player in
+// the run at an entry's time is read off the record, so the joined and the
+// exited entries each say the member's kind as the roster holds it — and a
+// member who has left is on no roster to ask. Both go to the whole roster
+// at that moment, the joiner and the leaver included, who already see each
+// other's kinds on the roster.
+func (s *SharingSuite) TestMembershipEntriesNameTheKind() {
+	enc, err := s.launch("")
+	s.Require().NoError(err)
+	_, err = enc.Join(&encounter.JoinInput{Member: "carol", Kind: encounter.KindPlayer, Cell: spatial.Position{X: 1, Y: 1}})
+	s.Require().NoError(err)
+	_, err = enc.Join(&encounter.JoinInput{Member: "orc", Kind: encounter.KindMonster, Cell: spatial.Position{X: 5, Y: 2}})
+	s.Require().NoError(err)
+	_, err = enc.Exit(&encounter.ExitInput{Member: "carol"})
+	s.Require().NoError(err)
+	_, err = enc.Exit(&encounter.ExitInput{Member: "orc"})
+	s.Require().NoError(err)
+
+	got := map[string]string{}
+	for _, m := range s.membershipOf(enc) {
+		key := fmt.Sprintf("%v %v", m.fields["beat"], m.fields["member"])
+		got[key] = fmt.Sprint(m.fields["kind"])
+		s.Contains(m.audience, fmt.Sprint(m.fields["member"]), "%s: the member is told", key)
+		s.Contains(m.audience, string(alice), "%s: and the roster", key)
+	}
+	s.Equal(map[string]string{
+		"joined carol": "player", "joined orc": "monster",
+		"exited carol": "player", "exited orc": "monster",
+	}, got)
+}
+
+// TestARecordWithoutTheKindStillLoads: a run saved before the kind was
+// written has membership entries without it, and loads unchanged; a reader
+// meets the absent kind as unknown.
+func (s *SharingSuite) TestARecordWithoutTheKindStillLoads() {
+	enc, err := s.launch("")
+	s.Require().NoError(err)
+	_, err = enc.Join(&encounter.JoinInput{Member: "carol", Kind: encounter.KindPlayer, Cell: spatial.Position{X: 1, Y: 1}})
+	s.Require().NoError(err)
+	data, _ := s.saved(enc)
+	stripped := 0
+	for i, e := range data.Log.Entries {
+		var fields map[string]any
+		s.Require().NoError(json.Unmarshal(e.Payload, &fields))
+		if fields["beat"] == encounter.BeatJoined {
+			delete(fields, "kind")
+			raw, err := json.Marshal(fields)
+			s.Require().NoError(err)
+			data.Log.Entries[i].Payload = raw
+			stripped++
+		}
+	}
+	s.Require().Positive(stripped, "precondition: the joins, as an older record wrote them")
+	_, err = s.load(data)
+	s.Require().NoError(err)
 }

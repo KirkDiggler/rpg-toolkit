@@ -906,8 +906,9 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 	}
 
 	// THE PARTY'S SHARING DIAL (sharing.go, rpg-project#935): the run's,
-	// never site data. Shared knowledge is refused here, at launch, until it
-	// is built (rpg-project#937).
+	// never site data. Any word of the dial is carried — shared knowledge
+	// too, since building is also a preview's and a projection's; launching
+	// a run with it is refused by the host, by [LaunchableSharing].
 	if err := validateSharing(in.Field.Sharing); err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
@@ -2926,9 +2927,13 @@ func (e *Encounter) admitMember(in *JoinInput) (*memberRecord, *JoinOutput, erro
 	// Audience = all members including the joiner.
 	clockReadingInt := e.clock.ToData().HighWater
 	clockReadingForBeat := uint64(clockReadingInt)
+	// THE KIND RIDES THE MEMBERSHIP ENTRIES (rpg-project#935): who was a
+	// player in the run at an entry's time is read off the record, and a
+	// member who has left is no longer on any roster to ask.
 	beatPayload := map[string]interface{}{
 		"beat":   BeatJoined,
 		"member": string(in.Member),
+		"kind":   string(member.Kind),
 	}
 	beatBytes, _ := json.Marshal(beatPayload)
 
@@ -3041,6 +3046,7 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	// (Kirk's walk on the raider camp, 2026-09-05; pre-existing for any
 	// active player leaving a fight with a striking monster next). The
 	// roster changing is the graph's declaration changing too (world.go).
+	leaverKind := e.members[in.Member].Kind
 	delete(e.members, in.Member)
 	// A LINE WAITING ON THE LEAVER'S ROLL IS DROPPED (rpg-project#924,
 	// interaction_hold.go): nobody is left to decide on it, and the exit beat
@@ -3113,6 +3119,10 @@ func (e *Encounter) Exit(in *ExitInput) (*ExitOutput, error) {
 	beatPayload := map[string]interface{}{
 		"beat":   BeatExited,
 		"member": string(in.Member),
+		// The kind they left as: once gone they are on no roster, and a
+		// reader asking whether they were a player then asks this entry
+		// (rpg-project#935).
+		"kind": string(leaverKind),
 		// holding is what LEFT THE RUN with them, and exit is the authored
 		// way they left by — empty when they left from anywhere else, which
 		// is what a departure through the lobby looks like. Both always

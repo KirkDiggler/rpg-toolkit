@@ -764,9 +764,9 @@ type FieldInput struct {
 	// empty is unmarked, which runs as [DefaultSharing], shared view.
 	// CARRIED HERE for the interactions' reason and NOT SITE DATA: never in
 	// the site's hash, persisted as the run's ([EncounterData.Sharing]).
-	// [SharingKnowledge] is refused at launch ([ErrSharedKnowledgeNotBuilt]),
-	// any word outside [Sharings] with [ErrUnknownSharing]. Inert: no
-	// audience is decided by it.
+	// Any word outside [Sharings] is refused with [ErrUnknownSharing];
+	// [SharingKnowledge] is carried, and a host refuses to launch a run with
+	// it ([LaunchableSharing]). Inert: no audience is decided by it.
 	Sharing Sharing
 }
 
