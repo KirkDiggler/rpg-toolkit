@@ -20,9 +20,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -31,7 +28,6 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -157,46 +153,24 @@ func buildTheJailCastle() { jailCastle.err = playTheJailCastle() }
 //nolint:gocyclo // one scene, played in order
 func playTheJailCastle() error {
 	ctx := context.Background()
-	dir, err := exec.Command("go", "list", "-m", "-f", "{{.Dir}}", encounterModule).Output()
-	if err != nil {
-		return fmt.Errorf("find the encounter module: %w", err)
+	// FROM THE WARNED GATE (rpg-project#942's walk, built once for the
+	// whole binary): alice hailed, her troupe claim missed. Her guest claim
+	// misses too, and the gate arrests.
+	warnedGate.once.Do(func() { warnedGate.stores, warnedGate.err = buildTheWarnedGate() })
+	if warnedGate.err != nil {
+		return warnedGate.err
 	}
-	raw, err := os.ReadFile(filepath.Join(strings.TrimSpace(string(dir)), castleFixture))
-	if err != nil {
-		return err
+	stores := warnedGate.stores
+	stores.characters = map[string]*character.Data{"bob": withFreeReactions(armedFighter("bob"))}
+	for id, d := range warnedGate.stores.characters {
+		stores.characters[id] = d
 	}
-	compiled, err := dungeonspec.Load(raw)
-	if err != nil {
-		return err
-	}
-	// 12 + 3 beats the stranger's 5; every claim after misses.
-	c := &freeRoamCastle{
-		live: &actCapture{}, dice: &castleDice{d20s: []int{12, 1}},
-		characters: newFakeCharacters(armedFighter("alice"), healingCleric(), armedFighter("bob")),
-		encounters: newFakeEncounters(), sessions: newFakeSessions(), seats: newFakeSeats(),
-	}
-	c.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: c.live, Seats: c.seats, CharacterConfig: newFakeCharacterConfig(),
-		PresentationIDs: testPresentationIDs{}, Dice: c.dice, TurnDriver: session.Driver(),
-		Sessions: c.sessions, Encounters: c.encounters, Characters: c.characters,
-	})
+	c, err := newJailHost(stores, "", 1)
 	if err != nil {
 		return err
 	}
-	if _, err := c.mgr.Launch(ctx, &session.LaunchInput{Session: "sess", Dungeon: &compiled, Party: []string{"alice", "cleric"}}); err != nil {
-		return fmt.Errorf("launch: %w", err)
-	}
-	if _, err := speakAsOffered(ctx, c.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "pedlar", OptionID: "tonight"}); err != nil {
-		return fmt.Errorf("the stranger tells alice of the feast: %w", err)
-	}
-	standIn(c, "alice", backDownTheRoad[0])
-	standIn(c, "cleric", watchingTheRoad)
-	if _, err := c.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: []spatial.Position{theHailCell}}); err != nil {
-		return fmt.Errorf("the step to the hail cell: %w", err)
-	}
-	for _, claim := range []string{"troupe", "guest"} {
-		if _, err := speakAsOffered(ctx, c.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: claim}); err != nil {
-			return fmt.Errorf("alice's %s claim: %w", claim, err)
-		}
+	if _, err := speakAsOffered(ctx, c.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "guest"}); err != nil {
+		return fmt.Errorf("alice's guest claim: %w", err)
 	}
 	// BOB COMES UP AFTER: beside alice on the road, not taken, watching.
 	if _, err := c.mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "bob", Position: besideAlice}); err != nil {
@@ -211,36 +185,45 @@ func playTheJailCastle() error {
 	}
 	jailCastle.arrested = storesOf(c)
 
-	// "WE'LL COME QUIETLY", at each stop of the dial.
+	// "WE'LL COME QUIETLY", played ONCE at shared view; each their own is
+	// the same record folded at that stop, read as a host catches up.
 	jailCastle.quietly = map[encounter.Sharing]quietly{}
-	var jailed castleStores
-	for _, sharing := range []encounter.Sharing{encounter.SharingOwn, encounter.SharingView} {
-		h, err := newJailHost(jailCastle.arrested, sharing, 1)
-		if err != nil {
-			return err
-		}
-		var q quietly
-		_, q.walkErr = h.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: []spatial.Position{backDownTheRoad[0]}})
-		q.from = placedAt(h, "alice")
-		if q.played, err = capture(h, "alice comes quietly", func() error {
-			_, err := speakAsOffered(ctx, h.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: comeQuietly})
-			return err
-		}); err != nil {
-			return fmt.Errorf("alice comes quietly at %s: %w", sharing, err)
-		}
-		q.to, q.gate = placedAt(h, "alice"), gateState(h)
-		after, err := h.mgr.LoadWorldForTest(ctx, "sess")
-		if err != nil {
-			return err
-		}
-		q.toRegion, _ = after.RegionAt(q.to)
-		jailCastle.quietly[sharing] = q
-		jailed = storesOf(h)
+	h, err := newJailHost(jailCastle.arrested, encounter.SharingView, 1)
+	if err != nil {
+		return err
 	}
+	var q quietly
+	_, q.walkErr = h.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: []spatial.Position{backDownTheRoad[0]}})
+	q.from = placedAt(h, "alice")
+	if q.played, err = capture(h, "alice comes quietly", func() error {
+		_, err := speakAsOffered(ctx, h.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: comeQuietly})
+		return err
+	}); err != nil {
+		return fmt.Errorf("alice comes quietly: %w", err)
+	}
+	q.to, q.gate = placedAt(h, "alice"), gateState(h)
+	if enc, err = h.mgr.LoadWorldForTest(ctx, "sess"); err != nil {
+		return err
+	}
+	q.toRegion, _ = enc.RegionAt(q.to)
+	jailCastle.quietly[encounter.SharingView] = q
+	jailed := storesOf(h)
+	own, err := newJailHost(jailed, encounter.SharingOwn, 1)
+	if err != nil {
+		return err
+	}
+	q.played = beat{label: "alice comes quietly, caught up"}
+	for _, member := range []string{"alice", "cleric", "bob"} {
+		read, err := own.mgr.Acts(ctx, &session.ActsInput{Session: "sess", Member: member})
+		if err != nil {
+			return err
+		}
+		q.played.acts = append(q.played.acts, read.Acts...)
+	}
+	jailCastle.quietly[encounter.SharingOwn] = q
 
 	// BOB SAYS THE LINE HE IS NOT OFFERED.
-	h, err := newJailHost(jailCastle.arrested, encounter.SharingOwn, 1)
-	if err != nil {
+	if h, err = newJailHost(jailCastle.arrested, encounter.SharingOwn, 1); err != nil {
 		return err
 	}
 	_, jailCastle.notHis = h.mgr.Speak(ctx, &session.SpeakInput{Session: "sess", Member: "bob", Target: "captain", OptionID: comeQuietly})

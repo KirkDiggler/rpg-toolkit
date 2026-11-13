@@ -63,62 +63,72 @@ func buildTheArrestPlays() {
 		return
 	}
 	arrestPlays.plays = map[encounter.Sharing]arrestPlay{}
-	for _, sharing := range []encounter.Sharing{encounter.SharingOwn, encounter.SharingView} {
-		p, err := playTheArrest(sharing)
-		if err != nil {
-			arrestPlays.err = err
-			return
-		}
-		arrestPlays.plays[sharing] = p
+	view, own, err := playTheArrest()
+	if err != nil {
+		arrestPlays.err = err
+		return
 	}
+	arrestPlays.plays[encounter.SharingView], arrestPlays.plays[encounter.SharingOwn] = view, own
 }
 
 // playTheArrest is the warned gate (alice's troupe claim missed,
-// rpg-project#942's walk) at the sharing stop given, the cleric — seen on
-// the road — gone off out of every guard's sight, bob joined on the road
-// where no guard sees him, and alice's guest claim failed: the gate arrests.
-func playTheArrest(sharing encounter.Sharing) (arrestPlay, error) {
+// rpg-project#942's walk), the cleric — seen on the road — gone off out of
+// every guard's sight, bob joined on the road where no guard sees him, and
+// alice's guest claim failed: the gate arrests. PLAYED ONCE, at shared view;
+// each their own is the same record folded at that stop, read as a host
+// catches up (its "played" is that read).
+func playTheArrest() (view, own arrestPlay, err error) {
 	ctx := context.Background()
 	stores := warnedGate.stores
-	stores.characters = map[string]*character.Data{}
+	stores.characters = map[string]*character.Data{"bob": withFreeReactions(armedFighter("bob"))}
 	for id, d := range warnedGate.stores.characters {
 		stores.characters[id] = d
 	}
-	stores.characters["bob"] = withFreeReactions(armedFighter("bob"))
-	c, err := newJailHost(stores, sharing, 1)
+	c, err := newJailHost(stores, encounter.SharingView, 1)
 	if err != nil {
-		return arrestPlay{}, err
+		return view, own, err
 	}
 	if _, err := c.mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "bob", Position: onTheRoadUnseen}); err != nil {
-		return arrestPlay{}, fmt.Errorf("bob joins: %w", err)
+		return view, own, fmt.Errorf("bob joins: %w", err)
 	}
 	// Gone off down the road, out of every guard's sight; they remember her
 	// from where she watched.
 	standIn(c, "cleric", downTheRoad)
-	var p arrestPlay
-	if p.played, err = capture(c, "alice's guest claim fails", func() error {
+	if view.played, err = capture(c, "alice's guest claim fails", func() error {
 		_, err := speakAsOffered(ctx, c.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "guest"})
 		return err
 	}); err != nil {
-		return arrestPlay{}, fmt.Errorf("alice's guest claim: %w", err)
+		return view, own, fmt.Errorf("alice's guest claim: %w", err)
 	}
 	enc, err := c.mgr.LoadWorldForTest(ctx, "sess")
 	if err != nil {
-		return arrestPlay{}, err
+		return view, own, err
 	}
 	made := enc.Arrests()["front-gate"]
-	p.taken, p.wanted = takenOf(made), wantedOf(made)
-	p.caught = map[string][]session.Act{}
+	view.taken, view.wanted = takenOf(made), wantedOf(made)
+	own.taken, own.wanted = view.taken, view.wanted
+	o, err := newJailHost(storesOf(c), encounter.SharingOwn, 1)
+	if err != nil {
+		return view, own, err
+	}
+	view.caught, own.caught = map[string][]session.Act{}, map[string][]session.Act{}
+	own.played = beat{label: "alice's guest claim fails, caught up"}
 	for _, member := range []string{"alice", "cleric", "bob"} {
 		read, err := c.mgr.Acts(ctx, &session.ActsInput{Session: "sess", Member: member})
 		if err != nil {
-			return arrestPlay{}, err
+			return view, own, err
 		}
-		p.caught[member] = read.Acts
+		view.caught[member] = read.Acts
+		if read, err = o.mgr.Acts(ctx, &session.ActsInput{Session: "sess", Member: member}); err != nil {
+			return view, own, err
+		}
+		own.caught[member] = read.Acts
+		own.played.acts = append(own.played.acts, read.Acts...)
 	}
-	_, p.walkErr = c.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: []spatial.Position{backDownTheRoad[0]}})
-	_, p.sneakErr = c.mgr.SetSneaking(ctx, &session.SetSneakingInput{Session: "sess", Member: "alice", Sneaking: true})
-	return p, nil
+	_, own.walkErr = c.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: []spatial.Position{backDownTheRoad[0]}})
+	_, own.sneakErr = c.mgr.SetSneaking(ctx, &session.SetSneakingInput{Session: "sess", Member: "alice", Sneaking: true})
+	view.walkErr, view.sneakErr = own.walkErr, own.sneakErr
+	return view, own, nil
 }
 
 // theArrest is the arrest played at one stop, its preconditions checked.
