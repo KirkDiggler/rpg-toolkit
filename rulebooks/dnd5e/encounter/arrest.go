@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -68,10 +69,16 @@ import (
 // is not gated: the march will move them by it. [Encounter.Exit] still
 // lets a taken member leave the run, and the record keeps them taken.
 //
+// While custody holds, nothing but the march moves a taken member: any
+// [Encounter.Direct] on one — a friend's shove, a flee — whose cause is not
+// [CustodyMarchCause] is refused with a [CustodyMoveError], and a cast whose
+// pushes would move one is refused before anything of it lands.
+//
 // Custody ends — [CustodyBroken], for every taken member at once — when a
-// fight forms or is joined with a taken member or an arresting guard in it
-// ([Encounter.breakCustody]). The record's taken and wanted, and the topics
-// the guards hold, stay.
+// fight forms or is joined with an arresting guard in it
+// ([Encounter.breakCustody]). A fight without them (a taken member and a
+// stranger) frees nobody, and the taken stay held inside it. The record's
+// taken and wanted, and the topics the guards hold, stay.
 //
 // # What it does NOT do yet
 //
@@ -109,11 +116,35 @@ var ErrBadArrest = errors.New("encounter: bad arrest")
 // Its text is the sentence the player is shown.
 var ErrInCustody = errors.New("The guards hold you; you cannot walk away.") //nolint:staticcheck // the player's sentence
 
+// CustodyMoveError is the refusal of a move imposed on a member the guards
+// hold — a shove, a flee, any [Encounter.Direct] — whose cause is not the
+// custody march ([CustodyMarchCause]). It is [ErrInCustody] to errors.Is,
+// and its text is the sentence the actor is shown.
+type CustodyMoveError struct {
+	// Mover is the held member the move was imposed on.
+	Mover MemberID
+}
+
+// Error is the actor's sentence.
+func (e *CustodyMoveError) Error() string {
+	return fmt.Sprintf("The guards hold %s; they cannot be moved.", e.Mover)
+}
+
+// Is makes a CustodyMoveError an [ErrInCustody].
+func (e *CustodyMoveError) Is(target error) bool { return target == ErrInCustody }
+
+// CustodyMarchCause is the cause the custody march moves the taken by: while
+// custody holds, it is the only imposed move a taken member takes
+// ([Encounter.Direct]).
+var CustodyMarchCause = core.Ref{Module: "dnd5e", Type: "consequences", ID: "arrest"}
+
 // CustodyPhase is where an arrest's custody of the taken stands.
 type CustodyPhase string
 
 // The custody phases. Only held and broken are entered today; marching and
 // jailed are named for the forced march so the stored shape does not change.
+// A record saved before custody existed has no phase, and reads as held: the
+// taken were never released.
 const (
 	// CustodyHeld: the taken are held where they were taken.
 	CustodyHeld CustodyPhase = "held"
@@ -592,21 +623,19 @@ func (e *Encounter) refuseInCustody(verb string, id MemberID) error {
 }
 
 // breakCustody ends custody, for every taken member at once, of each arrest
-// with a taken member or one of its arresting guards among fighters: a
-// fight formed or joined is the way out the ruling leaves (rpg-project#925).
-// The record's taken and wanted, and what the guards hold, stay.
+// with one of its ARRESTING GUARDS among fighters: a fight with the guards
+// who hold them is the way out the ruling leaves (rpg-project#925). A fight
+// with nobody else — a taken member and a stranger — frees nobody: the
+// guards who hold them are not in it, so the hold stands, and a held member
+// still cannot walk on their turn ([Encounter.Step] asks custody before the
+// turn). The record's taken and wanted, and what the guards hold, stay.
 func (e *Encounter) breakCustody(fighters []MemberID) {
 	for id, r := range e.interactions {
 		if r.arrest == nil || !r.arrest.Custody.holds() {
 			continue
 		}
 		for _, f := range fighters {
-			taken := slices.ContainsFunc(r.arrest.Taken, func(t ArrestedMember) bool { return t.ID == f })
-			guard := false
-			if m, ok := e.members[f]; ok {
-				guard = carries(m.Options, id)
-			}
-			if taken || guard {
+			if m, ok := e.members[f]; ok && carries(m.Options, id) {
 				r.arrest.Custody = CustodyBroken
 				break
 			}

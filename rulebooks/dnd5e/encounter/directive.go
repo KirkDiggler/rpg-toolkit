@@ -667,6 +667,11 @@ func (e *Encounter) Direct(ctx context.Context, in DirectInput) (DirectOutput, e
 	if in.Kind != MoveCompelled && in.Kind != MoveDisplaced {
 		return DirectOutput{}, fmt.Errorf("direct %q: kind %q: %w", in.Mover, in.Kind, ErrBadMoveKind)
 	}
+	// HELD BY THE GUARDS (rpg-project#925): nothing but the march moves a
+	// taken member while custody holds.
+	if in.Cause != CustodyMarchCause && e.inCustody(in.Mover) {
+		return DirectOutput{}, fmt.Errorf("direct: %w", &CustodyMoveError{Mover: in.Mover})
+	}
 	// A HELD TABLE TAKES NO SECOND DIRECTIVE — see this verb's own doc. It
 	// covers the paused member themself, who could never be pushed, and
 	// everybody else, whose push would need a second hold this composition

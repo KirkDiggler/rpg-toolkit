@@ -408,14 +408,18 @@ func (e *Encounter) RecordCast(in *RecordCastInput) (*RecordCastOutput, error) {
 	if err != nil {
 		return nil, err
 	}
-	// HELD BY THE GUARDS (rpg-project#925): a cast whose landing moves its own
-	// caster is walking away; a cast that moves only others stays open.
+	// HELD BY THE GUARDS (rpg-project#925), asked before anything of the cast
+	// lands: a cast whose landing moves its own held caster is walking away;
+	// one that would move another held member is a move nothing but the march
+	// may impose.
 	for _, p := range in.Pushes {
-		if p.Mover == in.Actor && len(p.Route) > 0 {
-			if err := e.refuseInCustody("record cast", in.Actor); err != nil {
-				return nil, err
-			}
+		if len(p.Route) == 0 || !e.inCustody(p.Mover) {
+			continue
 		}
+		if p.Mover == in.Actor {
+			return nil, fmt.Errorf("record cast %q: %w", in.Actor, ErrInCustody)
+		}
+		return nil, fmt.Errorf("record cast: %w", &CustodyMoveError{Mover: p.Mover})
 	}
 	// WHO PAYS IS ASKED WHERE THE CASTER STOOD WHEN IT CAST (rpg-project#785
 	// R1): off every fight, the cast is a deed done on the world clock and

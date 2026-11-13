@@ -4,12 +4,14 @@
 package castletest
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
@@ -33,6 +35,8 @@ var custodyTests = []string{
 	"TestMadKingTheTakenAreHeld", "TestMadKingTheFreeWalkWhileTheTakenAreHeld",
 	"TestMadKingATakenMembersBlowEndsCustody", "TestMadKingAFriendsBlowEndsCustody",
 	"TestMadKingATakenMemberWhoLeavesStaysTaken", "TestMadKingCustodyIsKeptOnReload",
+	"TestMadKingAFightWithoutTheGuardsFreesNobody", "TestMadKingNothingButTheMarchMovesTheHeld",
+	"TestMadKingAnArrestSavedBeforeCustodyLoadsHeld",
 }
 
 // custody is the castle's one arrest's custody phase.
@@ -205,4 +209,109 @@ func TestMadKingCustodyIsKeptOnReload(t *testing.T) {
 	require.NoError(t, json.Unmarshal(blob, &bad))
 	_, err = encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: bad, Capabilities: s.host.capabilities(s.strikes, s.standing)})
 	require.ErrorContains(t, err, `custody "pardoned"`)
+}
+
+// TestMadKingAFightWithoutTheGuardsFreesNobody: a fight with no arresting
+// guard in it — the friend held on the road strikes the stranger there, or
+// the stranger strikes them — frees nobody: custody stays held, the captain
+// and gate-2 stay on the world clock, and the held still cannot step, not
+// even on a turn, since the guards who hold them are not in that fight. When
+// a guard joins it, custody breaks for all the taken.
+func TestMadKingAFightWithoutTheGuardsFreesNobody(t *testing.T) {
+	t.Parallel()
+	for name, blow := range map[string][2]encounter.MemberID{
+		"a held member strikes the stranger": {seenOutside, kingPedlar},
+		"the stranger strikes a held member": {kingPedlar, seenOutside},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s, _ := theArrest(t)
+			s.swingAs(blow[0], blow[1])
+			require.Equal(t, encounter.ClockTurn, clockKind(t, s.enc, seenOutside), "the blow forms a fight")
+			require.Equal(t, encounter.CustodyHeld, s.custody(), "a fight without the guards frees nobody")
+			for _, g := range []encounter.MemberID{kingCaptain, kingGate2} {
+				require.Equal(t, encounter.ClockWorld, clockKind(t, s.enc, g), "%s is not in that fight", g)
+			}
+			for _, m := range takenMembers {
+				require.True(t, s.heldNow(m), "%s is still held, fight or not", m)
+			}
+
+			_, err := s.enc.Transfer(&encounter.TransferInput{Member: kingCaptain, To: encounter.ClockTurn, Pos: 0})
+			require.NoError(t, err, "the captain joins the fight")
+			require.Equal(t, encounter.CustodyBroken, s.custody(), "a guard in the fight breaks custody for all")
+			for _, m := range takenMembers {
+				require.False(t, s.heldNow(m), "%s is held no more", m)
+			}
+		})
+	}
+}
+
+// TestMadKingNothingButTheMarchMovesTheHeld: while custody holds, a flee
+// imposed on a taken member, a shove, and a cast whose push moves one are
+// each refused with the actor's sentence and move nobody; the march's own
+// cause moves them. Once custody is broken a flee moves them as usual.
+func TestMadKingNothingButTheMarchMovesTheHeld(t *testing.T) {
+	t.Parallel()
+	s, _ := theArrest(t)
+	flee := core.Ref{Module: "dnd5e", Type: "spells", ID: "command"}
+	shove := core.Ref{Module: "dnd5e", Type: "actions", ID: "shove"}
+	route, err := s.enc.Route(encounter.RouteInput{Mover: inTheArea, Policy: encounter.MoveAway, Anchor: s.at(kingCaptain), Budget: 2})
+	require.NoError(t, err)
+	require.NotEmpty(t, route.Path, "precondition: somewhere to be moved")
+	at := s.at(inTheArea)
+	for kind, cause := range map[encounter.MoveKind]core.Ref{encounter.MoveCompelled: flee, encounter.MoveDisplaced: shove} {
+		_, err := s.enc.Direct(context.Background(), encounter.DirectInput{Mover: inTheArea, Cause: cause, Route: route.Path, Kind: kind})
+		require.ErrorIs(t, err, encounter.ErrInCustody, "a %s move on a held member is refused", kind)
+		require.Contains(t, err.Error(), "The guards hold in-the-area; they cannot be moved.")
+		require.Equal(t, at, s.at(inTheArea), "and moves nobody")
+	}
+
+	before := len(s.beats(leftTheGate))
+	_, err = s.enc.RecordCast(&encounter.RecordCastInput{
+		Actor: leftTheGate, Spell: encounter.SpellIdentity{Ref: "dnd5e:spells:thunderwave", Name: "Thunderwave"},
+		Targets: []encounter.CastTargetResult{{Target: inTheArea}},
+		Pushes:  []encounter.CastPush{{Mover: inTheArea, Route: route.Path}},
+	})
+	require.ErrorIs(t, err, encounter.ErrInCustody, "a friend's cast that would shove a held member is refused")
+	require.Contains(t, err.Error(), "The guards hold in-the-area; they cannot be moved.")
+	require.Len(t, s.beats(leftTheGate), before, "and nothing of it landed")
+
+	out, err := s.enc.Direct(context.Background(), encounter.DirectInput{
+		Mover: inTheArea, Cause: encounter.CustodyMarchCause, Route: route.Path[:1], Kind: encounter.MoveCompelled,
+	})
+	require.NoError(t, err, "the march's own cause moves a held member")
+	require.Equal(t, 1, out.Moved)
+
+	s.swingAs(hero, kingCaptain)
+	require.Equal(t, encounter.CustodyBroken, s.custody())
+	away, err := s.enc.Route(encounter.RouteInput{Mover: seenOutside, Policy: encounter.MoveAway, Anchor: s.at(kingCaptain), Budget: 1})
+	require.NoError(t, err)
+	require.NotEmpty(t, away.Path)
+	moved, err := s.enc.Direct(context.Background(), encounter.DirectInput{Mover: seenOutside, Cause: flee, Route: away.Path, Kind: encounter.MoveCompelled})
+	require.NoError(t, err, "once custody is broken a flee moves them as usual")
+	require.Equal(t, 1, moved.Moved)
+}
+
+// TestMadKingAnArrestSavedBeforeCustodyLoadsHeld: a run saved arrested on
+// encounter v0.207.x carries no custody phase; it loads, and the taken are
+// held — they were never released.
+func TestMadKingAnArrestSavedBeforeCustodyLoadsHeld(t *testing.T) {
+	t.Parallel()
+	s, _ := theArrest(t)
+	blob, err := json.Marshal(s.enc.ToData())
+	require.NoError(t, err)
+	var raw map[string]any
+	require.NoError(t, json.Unmarshal(blob, &raw))
+	stripped := false
+	for _, it := range raw["interactions"].([]any) {
+		if arrest, ok := it.(map[string]any)["arrest"].(map[string]any); ok {
+			delete(arrest, "custody")
+			stripped = true
+		}
+	}
+	require.True(t, stripped, "precondition: the saved run carries an arrest")
+	blob, err = json.Marshal(raw)
+	require.NoError(t, err)
+	old := loadTheSceneOn(t, blob, arrestScene.compiled, arrestScene.host)
+	require.Equal(t, encounter.CustodyHeld, old.custody(), "an arrest saved without a phase is held")
+	require.ErrorIs(t, old.stepOff(hero), encounter.ErrInCustody)
 }

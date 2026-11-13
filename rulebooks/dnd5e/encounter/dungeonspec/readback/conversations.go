@@ -376,13 +376,14 @@ func (b *builder) arrestStatement(id, state, path string) Statement {
 		"wanted, and the conversation's other carriers who catch the deciding line hold the same, heard. Who is wanted "+
 		"is told to those carriers alone, never to a player. The conversation's address ends. Who is taken and who is "+
 		"wanted is decided once and kept. The taken are held from that moment: they cannot walk, dash, sneak or cast "+
-		"themselves away, while speaking, looking, looting and fighting stay open; a fight that forms with a taken "+
-		"player or one of those carriers in it ends the hold for all of them, and the record stays. A taken player "+
-		"who leaves the run stays taken. Nobody is moved yet: the taken are not walked to %s.",
+		"themselves away, and nothing moves them but the march (a shove or a flee on them is refused), while "+
+		"speaking, looking, looting and fighting stay open. A fight with one of those carriers in it ends the hold for "+
+		"all of them, and the record stays; a fight without them frees nobody, and the held stay held inside it. A "+
+		"taken player who leaves the run stays taken. Nobody is moved yet: the taken are not walked to %s.",
 		quote(id), quote(state), b.regionWords(a.Cell), joinAnd(area), b.creatures(carriers),
 		quote(string(encounter.TopicArrested)), quote(string(encounter.TopicWanted)), b.regionName(a.Cell))
 	f := foldInfo{state: state, site: fmt.Sprintf("the conversation %s on entering %s", quote(id), quote(state))}
-	f.text = fmt.Sprintf("On entering %s: arrests the players in %s or seen by its carriers, to %s; the rest they have seen become wanted, known to the carriers alone. The taken are held until a fight forms with them or the carriers in it. Nobody is moved yet.",
+	f.text = fmt.Sprintf("On entering %s: arrests the players in %s or seen by its carriers, to %s; the rest they have seen become wanted, known to the carriers alone. The taken are held until a fight with the carriers in it. Nobody is moved yet.",
 		quote(state), joinAnd(area), b.regionName(a.Cell))
 	return b.fstmt(KindOutcome, Subject{Kind: "conversation", ID: id}, path, s, f, conns...)
 }
