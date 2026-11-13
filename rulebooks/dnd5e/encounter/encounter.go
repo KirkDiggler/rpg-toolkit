@@ -906,8 +906,9 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 	}
 
 	// THE PARTY'S SHARING DIAL (sharing.go, rpg-project#935): the run's,
-	// never site data. Shared knowledge is refused here, at launch, until it
-	// is built (rpg-project#937).
+	// never site data. Any word of the dial is carried — shared knowledge
+	// too, since building is also a preview's and a projection's; launching
+	// a run with it is refused by the host, by [LaunchableSharing].
 	if err := validateSharing(in.Field.Sharing); err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}

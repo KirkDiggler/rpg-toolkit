@@ -20,8 +20,10 @@ import (
 //     hears, as it happens. THE DEFAULT: an encounter that says nothing is
 //     shared view.
 //   - [SharingKnowledge]: the friends' knowledge is shared too. Designed, not
-//     built (rpg-project#937): it compiles, and an encounter carrying it is
-//     refused at launch with [ErrSharedKnowledgeNotBuilt].
+//     built (rpg-project#937): it compiles, an encounter carrying it is built
+//     and loaded like any other — a preview, an atlas, a save of the site —
+//     and a host refuses to LAUNCH a run for players with it, by asking
+//     [LaunchableSharing] ([ErrSharedKnowledgeNotBuilt]).
 //
 // INERT HERE: the encounter carries the setting, persists it and hands it to
 // its host ([Encounter.Sharing]), and decides no audience by it. Every beat
@@ -49,10 +51,10 @@ var Sharings = []Sharing{SharingOwn, SharingView, SharingKnowledge}
 // DefaultSharing is the stop an encounter that says nothing is set to.
 const DefaultSharing = SharingView
 
-// ErrSharedKnowledgeNotBuilt is returned when an encounter carrying
-// [SharingKnowledge] is launched or loaded: the stop is designed and not yet
-// built (rpg-project#937), and a run that silently played it as shared view
-// would tell its players they share what they do not.
+// ErrSharedKnowledgeNotBuilt is returned by [LaunchableSharing] for
+// [SharingKnowledge]: the stop is designed and not yet built
+// (rpg-project#937), and a run that silently played it as shared view would
+// tell its players they share what they do not.
 var ErrSharedKnowledgeNotBuilt = errors.New("encounter: shared knowledge is not built yet")
 
 // ErrUnknownSharing is returned when an encounter carries a sharing word the
@@ -86,25 +88,40 @@ func IsSharing(s Sharing) bool {
 	return false
 }
 
-// validateSharing is the ONE launch rule for the dial, asked by Setup and by
-// Load alike: unmarked and the two built stops run; [SharingKnowledge] is
-// refused as not built; any other word is refused naming the words there are.
+// validateSharing is the dial's rule for an encounter being built or loaded,
+// asked by Setup and by Load alike: unmarked and every word of [Sharings] is
+// a setting the encounter carries — shared knowledge too, because building
+// is also how a site is previewed, projected and saved; any other word is
+// refused naming the words there are. Whether a run may be LAUNCHED for
+// players with it is [LaunchableSharing]'s.
 func validateSharing(s Sharing) error {
-	switch s {
-	case "", SharingOwn, SharingView:
+	if s == "" || IsSharing(s) {
 		return nil
-	case SharingKnowledge:
+	}
+	return fmt.Errorf("the party's sharing is %q, and sharing is %s: %w", s, SharingList(), ErrUnknownSharing)
+}
+
+// LaunchableSharing is THE LAUNCH RULE for the dial, owned here so its words
+// are said in one place: the check a host makes before it starts a run for
+// players. Unmarked, each their own and shared view launch; shared knowledge
+// is refused, wrapping [ErrSharedKnowledgeNotBuilt], with the sentence "the
+// party's sharing is set to shared knowledge, and shared knowledge is not
+// built yet (rpg-project#937)"; a word the dial does not have is refused
+// with [ErrUnknownSharing]. It is not asked when an encounter is merely
+// built or loaded — a preview, an atlas, a restore of a run that launched.
+func LaunchableSharing(s Sharing) error {
+	if s == SharingKnowledge {
 		return fmt.Errorf("the party's sharing is set to shared knowledge, and shared knowledge is not built yet "+
 			"(rpg-project#937): %w", ErrSharedKnowledgeNotBuilt)
-	default:
-		return fmt.Errorf("the party's sharing is %q, and sharing is %s: %w", s, SharingList(), ErrUnknownSharing)
 	}
+	return validateSharing(s)
 }
 
 // Sharing is the party's sharing dial this encounter runs with
 // ([FieldInput.Sharing]): the authored stop, or [DefaultSharing] when the
-// content said nothing. Never [SharingKnowledge] — such an encounter is
-// refused at launch. The host reads it to decide what a player is shown of
+// content said nothing. [SharingKnowledge] on an encounter built for a
+// preview or projection; never on a launched run, which a host refuses by
+// [LaunchableSharing]. The host reads it to decide what a player is shown of
 // a friend's perception; the encounter decides nothing by it.
 func (e *Encounter) Sharing() Sharing {
 	if e.sharing == "" {

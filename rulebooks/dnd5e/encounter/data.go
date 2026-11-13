@@ -3466,7 +3466,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 
-	// THE PARTY'S SHARING DIAL (sharing.go): the same launch rule Setup asks.
+	// THE PARTY'S SHARING DIAL (sharing.go): the same rule Setup asks.
 	if err := validateSharing(data.Sharing); err != nil {
 		return nil, fmt.Errorf("load encounter: %w", err)
 	}
