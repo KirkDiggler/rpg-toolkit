@@ -39,12 +39,19 @@ var (
 // a step there is refused by the wall, never a body.
 var throughTheGateWall = spatial.Position{X: -4, Y: 6}
 
-// guardSays is gate-1's one line in acts: the say of his one table answer.
+// guardSays is gate-1's one line in acts: the words of his one Speech act
+// (rpg-project#934).
 func guardSays(t *testing.T, acts []session.Act) string {
 	t.Helper()
-	answers := where[session.TableAnswer](acts, func(a session.TableAnswer) bool { return a.Who == gate1Party && a.Say != "" })
-	require.Len(t, answers, 1, "gate-1 says one line")
-	return answers[0].body.Say
+	lines := saidBy(acts, gate1Party)
+	require.Len(t, lines, 1, "gate-1 says one line")
+	return *lines[0].body.Words
+}
+
+// saidBy is every Speech act in acts that names who as its speaker and
+// carries their words.
+func saidBy(acts []session.Act, who session.Party) []found[session.SpeechAct] {
+	return where[session.SpeechAct](acts, func(s session.SpeechAct) bool { return s.Speaker == who && s.Words != nil })
 }
 
 // answeredUnder requires gate-1's answer to bumped to share its act
@@ -54,7 +61,7 @@ func guardSays(t *testing.T, acts []session.Act) string {
 func answeredUnder(t *testing.T, acts []session.Act, bumped found[session.BarredAct]) {
 	t.Helper()
 	require.NotEmpty(t, bumped.act.Act, "the bump carries an act correlation")
-	answers := where[session.TableAnswer](acts, func(a session.TableAnswer) bool { return a.Who == gate1Party && a.Say != "" })
+	answers := saidBy(acts, gate1Party)
 	require.Len(t, answers, 1, "gate-1 says one line")
 	require.Equal(t, bumped.act.Act, answers[0].act.Act, "his line shares the bump's act")
 	require.Equal(t, bumped.act.Verb, answers[0].act.Verb, "under the same verb")
@@ -112,8 +119,8 @@ func TestCastleTheBumpSpeaks(t *testing.T) {
 	require.Len(t, turned, 1, "his machine turns once")
 	require.Equal(t, "challenged", turned[0].body.Machine.To, "he is challenged")
 	require.Equal(t, theGuardsQuestion, guardSays(t, alice), "and asks what she wants")
-	spokenTo := where[session.TableAnswer](alice, func(a session.TableAnswer) bool { return a.Who == gate1Party && a.Say != "" })
-	require.Equal(t, aliceParty, spokenTo[0].body.To, "his line is spoken to the bumper (rpg-project#923)")
+	spokenTo := saidBy(alice, gate1Party)
+	require.Equal(t, aliceParty, spokenTo[0].body.SpokenTo, "his line is spoken to the bumper (rpg-project#923)")
 	answeredUnder(t, alice, bumped)
 	require.Equal(t, "challenged", stateOf(t, c.world(t), "gate-1"), "the record holds him challenged")
 

@@ -227,30 +227,6 @@ type ActivateAct struct {
 	Saves []SaveResult
 }
 
-// SpeakAct is a line spoken, and its answer.
-//
-// RETIRED (rpg-project#934, R6): every spoken thing now rides a
-// [SpeechAct], one per perceiver. SpeakAct is still sent beside it until the
-// client has moved, then it stops; nothing new reads it.
-type SpeakAct struct {
-	// By is the speaker (spoke `actor`).
-	By Party
-	// To is who or what was spoken to (spoke `target`, or `prop`).
-	To Party
-	// Option is the line's option id (spoke `option`).
-	Option string
-	// Line is the line's text (spoke `line`).
-	Line string
-	// Skill is the line's skill (spoke `skill`).
-	Skill string
-	// Roll is the line's check (spoke `total`, `dc`, `beaten`,
-	// `calculation`). Nil for a plain line, which rolls nothing
-	// (rpg-project#785 R5) and whose beat names no skill.
-	Roll *Roll
-	// Answer is the target's answer (the answered beat under this act).
-	Answer *TableAnswer
-}
-
 // DeathSaveAct is one death save (death_save `death_save`).
 type DeathSaveAct struct {
 	// By is who rolled (death_save `actor`).
@@ -428,14 +404,6 @@ type TableAnswer struct {
 	// Who answered (answered `creature` as a member or `prop`; tempered
 	// `member`).
 	Who Party
-	// To is who the line is spoken to (answered `to`, rpg-project#923): the
-	// mover, for the line a bump (`barred`) or a hail (`approached`) draws
-	// from its reactor. The zero Party when the answer names nobody, as a
-	// time pick's line does.
-	//
-	// RETIRED with Say (rpg-project#934, R6): the words and whom they were
-	// said to ride the [SpeechAct]; TableAnswer stays for the pick.
-	To Party
 	// Option is the option answered (answered `option`).
 	Option string
 	// Key is the table key (answered `key`).
@@ -444,9 +412,6 @@ type TableAnswer struct {
 	Word string
 	// Selector is the outcome's selector word (answered `selector`).
 	Selector string
-	// Say is what was said (answered `say`). RETIRED (rpg-project#934, R6):
-	// the [SpeechAct] carries the words.
-	Say string
 	// Activity is the captured cue, or nil when the answer authored none.
 	Activity *ActivityCue
 	// Temperament is the temperament column the pick read (answered
@@ -639,9 +604,8 @@ type Perceived struct {
 
 // Sound is a sound heard (heard).
 type Sound struct {
-	// Kind is the sound (heard `kind`). The `voice` kind is RETIRED for
-	// players (rpg-project#934, R6): a voice rides a [SpeechAct] with no
-	// speaker and no words; clangs, crashes and booms stay here.
+	// Kind is the sound (heard `kind`): a clang, a crash, a boom. Never a
+	// voice — a voice rides a [SpeechAct] (rpg-project#934, R6).
 	Kind string
 	// Cell is where it came from (heard `position`).
 	Cell spatial.Position
@@ -886,7 +850,6 @@ func (WalkAct) isActBody()      {}
 func (AttackAct) isActBody()    {}
 func (CastAct) isActBody()      {}
 func (ActivateAct) isActBody()  {}
-func (SpeakAct) isActBody()     {}
 func (SpeechAct) isActBody()    {}
 func (DeathSaveAct) isActBody() {}
 func (LootAct) isActBody()      {}

@@ -60,6 +60,10 @@ type SingleRoomSpec struct {
 	// order. Optional; the shape and every refusal are [DispositionSpec]'s.
 	Dispositions []DispositionSpec `yaml:"dispositions,omitempty" json:"dispositions,omitempty"`
 
+	// Party is the party's settings for this encounter (rpg-project#935).
+	// Optional; omitted is every setting unmarked. See [PartySpec].
+	Party *PartySpec `yaml:"party,omitempty" json:"party,omitempty"`
+
 	// Intel is the knowledge this site declared, in authored order — the v2
 	// root's own key ([Spec.Intel], rpg-project#488 R1 rule 3) reaching this
 	// dialect unchanged: the same [IntelSpec] shape, the same required and

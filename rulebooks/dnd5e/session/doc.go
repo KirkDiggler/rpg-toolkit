@@ -260,7 +260,8 @@
 // missing observations; the seam never supplies a newer live default instead.
 // Activity catalogs, supported clips and playback timing remain consumer-owned.
 // A TableAnswer may independently carry an ActivityCue captured on its selected
-// spoken record, including when folded into SpeakAct.Answer. The seam preserves
+// spoken record: the cue a creature is seen performing as it answers, on the
+// pick's own TableAnswer (its words ride the SpeechAct). The seam preserves
 // its reference and positive sustain count; it never joins current authored rows
 // to an old act. Absent legacy cues stay absent, malformed present cues retain
 // the fold's undecoded-data refusal, and playback remains a live-consumer concern.

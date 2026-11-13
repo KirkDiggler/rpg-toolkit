@@ -96,3 +96,37 @@ func (s *GoldenSuite) TestAnOldDialectIsNotASite() {
 	_, err := readback.Of([]byte("version: 2\n"))
 	s.ErrorIs(err, readback.ErrNotASite)
 }
+
+// TestThePartysSharingIsSaidOnce (rpg-project#935): the dial is one
+// statement, saying the stop and whether the author set it or it is the
+// default; shared knowledge adds that it is not built yet. Nothing about
+// what sharing shows a player is said.
+func (s *GoldenSuite) TestThePartysSharingIsSaidOnce() {
+	raw, err := os.ReadFile(hailPath)
+	s.Require().NoError(err)
+	for _, tc := range []struct {
+		block, path, sentence string
+	}{
+		{"", readback.EngineRule, "The party's sharing is not set, so it is shared view, the default."},
+		{"party: { sharing: own }\n", "party.sharing", "The party's sharing is set to each their own."},
+		{"party: { sharing: view }\n", "party.sharing", "The party's sharing is set to shared view."},
+		{"party: { sharing: knowledge }\n", "party.sharing", "The party's sharing is set to shared knowledge. " +
+			"Shared knowledge is not built yet (rpg-project#937), so a run of this site is refused at launch."},
+	} {
+		s.Run(tc.sentence, func() {
+			edited := strings.Replace(string(raw), "key: hail-site\n", "key: hail-site\n"+tc.block, 1)
+			rb, err := readback.Of([]byte(edited))
+			s.Require().NoError(err)
+			var said []readback.Statement
+			for _, st := range rb.Statements() {
+				if st.Kind == readback.KindSharing {
+					said = append(said, st)
+				}
+			}
+			s.Require().Len(said, 1, "the dial is one statement")
+			s.Equal(tc.sentence, said[0].Sentence)
+			s.Equal(tc.path, said[0].Path)
+			s.Empty(rb.NotYetSaid, "the party block is said, not listed as unsaid")
+		})
+	}
+}

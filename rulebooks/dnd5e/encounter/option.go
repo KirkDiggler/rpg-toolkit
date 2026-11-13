@@ -760,7 +760,7 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 		creature: in.Target, prop: in.Prop, actor: in.Actor,
 		option: option.ID, key: key, rows: rows,
 		verb: verbSpeak, beaten: beaten,
-		witnesses: witnesses, at: at, roller: in.Roller,
+		witnesses: witnesses, lineCatchers: caughtOrNone(heardLine.catchers), at: at, roller: in.Roller,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("speak: %w", err)
@@ -1279,4 +1279,14 @@ func optionFacts(options []Option) []FactID {
 	}
 
 	return out
+}
+
+// caughtOrNone is a line's catchers as [answerInput.lineCatchers] takes
+// them: never nil, so an answer to a line always splits its pick by who
+// caught the line, even when only the speaker did.
+func caughtOrNone(catchers []MemberID) []MemberID {
+	if catchers == nil {
+		return []MemberID{}
+	}
+	return catchers
 }

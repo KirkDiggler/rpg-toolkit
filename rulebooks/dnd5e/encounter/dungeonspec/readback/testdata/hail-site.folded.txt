@@ -10,6 +10,7 @@ THE PLACE
     - Summarised: the coordinate frame, 0 wall lines with 0 doors in their openings, 0 scene items, 0 prop
         footprints and 0 arrangements. Their positions and shapes are not said one by one. [room.room.walls]
     - The party starts at q 0, r 6, in Hall (region-hall). [room.room.partyStart]
+    - The party's sharing is not set, so it is shared view, the default. [(engine rule)]
 
 SIDES
 

@@ -98,6 +98,12 @@ type EncounterData struct {
 	// key, the exact bytes every earlier blob has. Load compiles each again
 	// and refuses a digest that does not match or a state the recipe lacks.
 	Interactions []InteractionData `json:"interactions,omitempty"`
+	// Sharing is the party's sharing dial as authored ([FieldInput.Sharing],
+	// rpg-project#935). Empty is unmarked and reads as [DefaultSharing], so
+	// a blob written before the dial existed loads as shared view and an
+	// unmarked run writes no key, the exact bytes every earlier blob has.
+	// Load asks the same launch rule Setup does.
+	Sharing Sharing `json:"sharing,omitempty"`
 	// Journal is the run's ONE record of what happened: every knowledge fact
 	// (who has found which concealment, rpg-toolkit#1371, rpg-project#490;
 	// who has come to know which fact, rpg-project#375; which pair publicly
@@ -2582,6 +2588,7 @@ func (e *Encounter) snapshot(log record.LogData) EncounterData {
 		Doors:              doorData,
 		SightAreas:         sightAreasData,
 		Interactions:       interactionsDataFrom(e.interactions),
+		Sharing:            e.sharing,
 		Journal:            journalData,
 		Reserve:            reserveData,
 		Endings:            endingsData,
@@ -3458,6 +3465,11 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
+
+	// THE PARTY'S SHARING DIAL (sharing.go): the same launch rule Setup asks.
+	if err := validateSharing(data.Sharing); err != nil {
+		return nil, fmt.Errorf("load encounter: %w", err)
+	}
 	savedLines := make([][]Option, 0, len(memberOptions)+len(reserveOptions))
 	for _, id := range slices.Sorted(maps.Keys(memberOptions)) {
 		savedLines = append(savedLines, memberOptions[id])
@@ -3522,6 +3534,7 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		holdings:      newHoldings(world.log),
 		interactions:  interactions,
 		granted:       granted,
+		sharing:       data.Sharing,
 	}
 
 	// Compile the field into the canvas — the SAME compileCanvas

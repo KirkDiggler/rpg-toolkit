@@ -61,6 +61,7 @@ func (b *builder) place() []Group {
 		}
 		add(b.stmt(KindStart, about, "room.room.partyStart", at+"."))
 	}
+	add(b.sharingStatement(about))
 	for i, e := range b.spec.Exits {
 		add(b.stmt(KindExit, Subject{Kind: "exit", ID: e.ID}, fmt.Sprintf("exits[%d]", i), fmt.Sprintf(
 			"The exit %s is the cell %s, in %s.", quote(e.ID), cellWords(e.Cell.Q, e.Cell.R), b.regionAt(e.Cell.Q, e.Cell.R))))
@@ -370,4 +371,35 @@ func (b *builder) factionLines(faction string) []encounter.Option {
 		}
 	}
 	return nil
+}
+
+// sharingNames are the dial's stops as the read-back says them
+// (rpg-project#930 R5): what the studio's dial shows, not the content word.
+var sharingNames = map[encounter.Sharing]string{
+	encounter.SharingOwn:       "each their own",
+	encounter.SharingView:      "shared view",
+	encounter.SharingKnowledge: "shared knowledge",
+}
+
+// sharingStatement says the party's sharing dial in ONE statement
+// (rpg-project#935): the stop, and whether the author set it or it is the
+// default. It says nothing of what sharing shows a player — that is the
+// session's merge, not this document's. Shared knowledge adds the one fact an
+// author must hear: it is not built yet, and the site is refused at launch.
+func (b *builder) sharingStatement(about Subject) Statement {
+	authored := encounter.Sharing("")
+	if b.spec.Party != nil {
+		authored = encounter.Sharing(b.spec.Party.Sharing)
+	}
+	if authored == "" {
+		// Nothing in the file sets it, so it names no place in the file: the
+		// default is how the engine runs a site that says nothing.
+		return b.stmt(KindSharing, about, EngineRule, fmt.Sprintf(
+			"The party's sharing is not set, so it is %s, the default.", sharingNames[encounter.DefaultSharing]))
+	}
+	s := fmt.Sprintf("The party's sharing is set to %s.", sharingNames[authored])
+	if authored == encounter.SharingKnowledge {
+		s += " Shared knowledge is not built yet (rpg-project#937), so a run of this site is refused at launch."
+	}
+	return b.stmt(KindSharing, about, "party.sharing", s)
 }

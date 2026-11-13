@@ -292,7 +292,7 @@ func (f *fold) add(e record.Entry, tag string, p piece) {
 		if p.into != "" {
 			into = p.into
 		}
-		if prev.Act == tag && (prev.Family == into || p.absorbAny) && p.absorb != nil && prev.Body != nil {
+		if prev.Act == tag && prev.Family == into && p.absorb != nil && prev.Body != nil {
 			if body, ok := p.absorb(prev.Body); ok {
 				prev.Body = body
 				prev.ID, prev.At = e.ID, e.At
@@ -359,11 +359,6 @@ type piece struct {
 	// the piece's own: a speak's answer is a table answer that folds into
 	// the line's act.
 	into Family
-
-	// absorbAny, with absorb, asks absorb whatever the open segment's
-	// family: the words a creature said fold into its pick whether that pick
-	// stands as a table answer or answers a line inside a speak act.
-	absorbAny bool
 
 	// aside is a piece that stands beside the act stream's folding rather
 	// than in it: a [SpeechAct]. It never absorbs, is never absorbed
