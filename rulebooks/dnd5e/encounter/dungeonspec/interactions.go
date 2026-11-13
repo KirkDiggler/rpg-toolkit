@@ -11,6 +11,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // interactions.go is the root `interactions:` key (rpg-project#922, Gate S2
@@ -29,7 +30,7 @@ func interactionShapes(s *SingleRoomSpec, add errSink) map[string]*interactionSh
 	for _, id := range sortedKeys(s.Interactions) {
 		out[id] = nil
 		path := "interactions." + id
-		in, ok := interactionInputOf(id, s.Interactions[id], path, add)
+		in, ok := interactionInputOf(id, s.Interactions[id], path, regionIDsOf(s), add)
 		if !ok {
 			continue
 		}
@@ -55,7 +56,7 @@ func interactionShapes(s *SingleRoomSpec, add errSink) map[string]*interactionSh
 
 // interactionInputOf decodes one interaction's recipe with unknown members
 // refused and its ref required, reporting a defect at path when it cannot.
-func interactionInputOf(id string, spec InteractionSpec, path string, add errSink) (encounter.InteractionInput, bool) {
+func interactionInputOf(id string, spec InteractionSpec, path string, regions map[string]bool, add errSink) (encounter.InteractionInput, bool) {
 	if spec.Recipe == nil {
 		add(path+".recipe", "an interaction is its recipe, and this names none")
 		return encounter.InteractionInput{}, false
@@ -70,7 +71,7 @@ func interactionInputOf(id string, spec InteractionSpec, path string, add errSin
 		return encounter.InteractionInput{}, false
 	}
 	in := encounter.InteractionInput{ID: encounter.InteractionID(id), Recipe: recipe}
-	outcomes, ok := outcomesOf(spec.Outcomes, &recipe, path+".outcomes", add)
+	outcomes, ok := outcomesOf(spec.Outcomes, &recipe, path+".outcomes", regions, add)
 	if !ok {
 		return encounter.InteractionInput{}, false
 	}
@@ -94,7 +95,7 @@ func interactionsOf(s *SingleRoomSpec) []encounter.InteractionInput {
 	}
 	out := make([]encounter.InteractionInput, 0, len(s.Interactions))
 	for _, id := range sortedKeys(s.Interactions) {
-		in, ok := interactionInputOf(id, s.Interactions[id], "", func(string, string) {})
+		in, ok := interactionInputOf(id, s.Interactions[id], "", regionIDsOf(s), func(string, string) {})
 		if ok {
 			out = append(out, in)
 		}
@@ -108,7 +109,7 @@ func interactionsOf(s *SingleRoomSpec) []encounter.InteractionInput {
 // word of it one of the fixed ones. The engine judges the same again
 // ([encounter.CheckInteraction]). Nil for none.
 func outcomesOf(
-	specs map[string][]OutcomeSpec, recipe *machine.Recipe, path string, add errSink,
+	specs map[string][]OutcomeSpec, recipe *machine.Recipe, path string, regions map[string]bool, add errSink,
 ) (map[string][]encounter.Consequence, bool) {
 	if len(specs) == 0 {
 		return nil, true
@@ -123,13 +124,22 @@ func outcomesOf(
 			continue
 		}
 		if len(specs[state]) == 0 {
-			fail(at, "an outcome lists what follows entering the state: write at least one `recognize`")
+			fail(at, "an outcome lists what follows entering the state: write at least one `recognize` or `arrest`")
 			continue
 		}
 		for i, c := range specs[state] {
 			itemAt := fmt.Sprintf("%s[%d]", at, i)
-			if c.Recognize == nil {
-				fail(itemAt, "a consequence is `recognize: { topic, holder, about }`, the one kind there is")
+			switch {
+			case c.Recognize != nil && c.Arrest != nil:
+				fail(itemAt, "a consequence is one kind: `recognize` or `arrest`, not both")
+				continue
+			case c.Arrest != nil:
+				if arrest, ok := arrestOf(itemAt+".arrest", c.Arrest, regions, fail); ok {
+					out[state] = append(out[state], encounter.Consequence{Arrest: &arrest})
+				}
+				continue
+			case c.Recognize == nil:
+				fail(itemAt, "a consequence is `recognize: { topic, holder, about }` or `arrest: { cell, area }`")
 				continue
 			}
 			rec := recognitionOf(itemAt+".recognize", c.Recognize, true, fail)
@@ -259,4 +269,46 @@ func guardTopics(g *machine.Guard) []string {
 		out = append(out, guardTopics(&g.Any[i])...)
 	}
 	return out
+}
+
+// regionIDsOf is every region id the document declares.
+func regionIDsOf(s *SingleRoomSpec) map[string]bool {
+	out := map[string]bool{}
+	for _, r := range s.Room.Gameplay.Regions {
+		out[r.ID] = true
+	}
+	return out
+}
+
+// arrestOf judges one authored `arrest:` at its path (rpg-project#925) and
+// lowers it: the cell a declared region, the area naming at least one region
+// or cell, every region declared, the cells in canonical row runs. The area's
+// cells reach the engine in the authored frame a region's cells do, and the
+// engine refuses one that is not floor ([encounter.ErrBadArrest]).
+func arrestOf(at string, a *ArrestSpec, regions map[string]bool, fail func(at, message string)) (encounter.Arrest, bool) {
+	ok := true
+	bad := func(where, message string) { ok = false; fail(where, message) }
+	switch {
+	case a.Cell == "":
+		bad(at+".cell", "an arrest names the region the arrested are held in")
+	case !regions[a.Cell]:
+		bad(at+".cell", fmt.Sprintf("%q is not a region of this site", a.Cell))
+	}
+	if len(a.Area.Regions) == 0 && len(a.Area.Cells) == 0 {
+		bad(at+".area", "an arrest's area names its regions or its cells: no area is chosen for you")
+	}
+	out := encounter.Arrest{Cell: encounter.RegionID(a.Cell)}
+	for i, r := range a.Area.Regions {
+		if !regions[r] {
+			bad(fmt.Sprintf("%s.area.regions[%d]", at, i), fmt.Sprintf("%q is not a region of this site", r))
+			continue
+		}
+		out.Area.Regions = append(out.Area.Regions, encounter.RegionID(r))
+	}
+	if len(a.Area.Cells) > 0 {
+		for _, c := range expandRows(a.Area.Cells, at+".area.cells", func(where, message string) { bad(where, message) }) {
+			out.Area.Cells = append(out.Area.Cells, axialOffset(c, spatial.HexOrientationPointyTop))
+		}
+	}
+	return out, ok
 }

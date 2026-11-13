@@ -39,10 +39,20 @@ const theOutcome = `        - recognize:
 func TestDungeonspec_AnOutcomeCompilesOntoItsInteraction(t *testing.T) {
 	c := loadSource(t, castleSource(t))
 	require.Len(t, c.Field.Interactions, 1, "the castle has its one front gate")
-	require.Equal(t, map[string][]encounter.Consequence{"admitted": {{Recognize: &encounter.Recognition{
+	outcomes := c.Field.Interactions[0].Outcomes
+	require.Equal(t, []encounter.Consequence{{Recognize: &encounter.Recognition{
 		Topic: "admitted", Holder: encounter.RecognitionSpokenTo, About: encounter.RecognitionPartyInSight,
 		HeardBy: encounter.RecognitionCarriersWhoWitnessed,
-	}}}}, c.Field.Interactions[0].Outcomes)
+	}}}, outcomes["admitted"])
+	// AND THE SECOND FAILED CLAIM ARRESTS (rpg-project#925): to the cells,
+	// from the gatehouse and the seven road cells outside its south doorway.
+	require.Len(t, outcomes, 2)
+	require.Len(t, outcomes["arrested"], 1)
+	arrest := outcomes["arrested"][0].Arrest
+	require.NotNil(t, arrest)
+	require.Equal(t, encounter.RegionID("region-cells"), arrest.Cell)
+	require.Equal(t, []encounter.RegionID{"region-gatehouse"}, arrest.Area.Regions)
+	require.Len(t, arrest.Area.Cells, 7)
 
 	var line *encounter.Option
 	for _, o := range monsterNamed(t, c, "captain").Options {
