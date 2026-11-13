@@ -91,9 +91,11 @@ rulebook; downstream item-package adoption is separate.
     authoring surface; raw PartDeclaration and application APIs retain their
     existing capabilities. R4.
 15. Damage bonus, resistance and save/check advantage reuse their existing kind
-    meanings. PartDeclaration gains optional When/Amount fields for kinds that
-    explicitly support them; unsupported fields are refused, not ignored. Existing
-    roll-modifier dice parameters remain their sole amount source. R4.
+    meanings. PartDeclaration carries optional When/Amount fields for kinds that
+    explicitly support them; unsupported fields are refused, not ignored. Additive
+    roll effects use Amount.Dice with separate polarity and selection parameters
+    under the [roll-effect construction contract](../bless-bane-building-blocks/design.md).
+    R4; roll-effect R4 supersedes the former roll-modifier Params.dice exception.
 16. Attack advantage is configured as `on: attack` with an explicit `side` of
     `by_holder` or `against_holder`. The first reads the actor bearing; the second
     reads the target bearing and exact held-effect facts. Save/check advantage
