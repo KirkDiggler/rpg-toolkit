@@ -308,6 +308,13 @@ func (s *ActFoldSuite) TestMembershipIsAFactOfTheEntrysTime() {
 		s.Equal([]string{here.ID}, sightsVia(party.storyFor("alice", story("alice"), story)),
 			"bob is a sharer by his exit, and his sighting before it is hers")
 	})
+	s.Run("a member whose exit names no kind (an older record) is no sharer", func() {
+		here := sight("bob")
+		left := s.membershipEntry(encounter.BeatExited, "bob", "", "alice", "bob")
+		party := dataParty(encounter.SharingView, []encounter.MemberData{{ID: "alice", Kind: encounter.KindPlayer}})
+		story := storiesOf(here, left)
+		s.Empty(sightsVia(party.storyFor("alice", story("alice"), story)), "kind unknown is not a player: nothing is guessed")
+	})
 	s.Run("a creature that left is never a sharer", func() {
 		here := sight("captain")
 		left := s.membershipEntry(encounter.BeatExited, "captain", encounter.KindMonster, "alice", "captain")

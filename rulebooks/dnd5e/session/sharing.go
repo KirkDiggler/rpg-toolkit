@@ -127,6 +127,9 @@ type membership struct {
 	kind   encounter.MemberKind
 }
 
+// kindUnknown is the kind an older record's membership entry states: none.
+const kindUnknown encounter.MemberKind = ""
+
 // membershipsIn is every `joined` and `exited` entry in a story, in record
 // order. Only entries tagged as membership are decoded.
 func membershipsIn(entries []record.Entry) []membership {
@@ -195,7 +198,14 @@ func (p *sharingParty) storyFor(recipient encounter.MemberID, own []record.Entry
 		}
 	}
 	for _, m := range moves {
-		if m.joined || !partyMember(m.kind) {
+		if m.joined {
+			continue
+		}
+		// KIND UNKNOWN IS NOT A PLAYER. An exit written before the record
+		// named the kind (encounter v0.205.1) says nothing of what left; the
+		// member is not on the roster to ask, and the merge does not guess,
+		// so they are no sharer — acceptable before release.
+		if m.kind == kindUnknown || !partyMember(m.kind) {
 			continue
 		}
 		if m.member == recipient {
