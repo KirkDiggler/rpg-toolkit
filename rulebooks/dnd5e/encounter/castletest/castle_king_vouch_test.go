@@ -75,6 +75,7 @@ var admittedSceneTests = []string{
 	"TestMadKingTheCaptainsLineGrantsNothingAgain", "TestMadKingAStragglerHasOneTry",
 	"TestMadKingAStragglerWhoWalksAwayKeepsTheRoll",
 	"TestMadKingEveryExitFromAnAbandonedRollLoads", "TestMadKingEveryExitFromTheAdmittedGateLoads",
+	"TestMadKingTheHintIsShoutedToTheYard", "TestMadKingTheHintDoesNotReachTheGreatHall",
 }
 
 // TestMain builds the admitted gate's scene before any test runs, when the
