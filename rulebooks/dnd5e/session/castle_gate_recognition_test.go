@@ -79,6 +79,7 @@ var admittedGateTests = []string{
 	"TestCastleAStragglerHasOneTry",
 	"TestCastleTheHintIsShoutedToTheYard", "TestCastleTheHintDoesNotReachTheShutHall",
 	"TestCastleTheHintReachesTheShutHallThroughAFriend",
+	"TestCastleAWalkedHeroAtTheEastEndHearsNoName", "TestCastleAWalkedHeroInLineWithTheGateHearsHisName",
 }
 
 // captainsPlaceInTheHall is where the captain walks once he admits anyone
