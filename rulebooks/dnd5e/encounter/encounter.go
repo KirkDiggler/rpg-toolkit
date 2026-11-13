@@ -2207,6 +2207,11 @@ func (e *Encounter) refreshSightDeclaring(
 	if err := e.sweepConcealment(); err != nil {
 		return nil, nil, err
 	}
+	// An arresting guard who sees a jailed member out of the cell raises
+	// the escape (jail.go), before the trigger asks who now fights.
+	if err := e.sweepEscapes(); err != nil {
+		return nil, nil, err
+	}
 
 	formed, deltas, err := e.applyTrigger(deltas)
 	if err != nil {

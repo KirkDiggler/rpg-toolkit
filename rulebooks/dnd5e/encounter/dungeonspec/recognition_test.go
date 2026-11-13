@@ -46,13 +46,18 @@ func TestDungeonspec_AnOutcomeCompilesOntoItsInteraction(t *testing.T) {
 	}}}, outcomes["admitted"])
 	// AND THE SECOND FAILED CLAIM ARRESTS (rpg-project#925): to the cells,
 	// from the gatehouse and the seven road cells outside its south doorway.
-	require.Len(t, outcomes, 2)
+	require.Len(t, outcomes, 3)
 	require.Len(t, outcomes["arrested"], 1)
 	arrest := outcomes["arrested"][0].Arrest
 	require.NotNil(t, arrest)
 	require.Equal(t, encounter.RegionID("region-cells"), arrest.Cell)
 	require.Equal(t, []encounter.RegionID{"region-gatehouse"}, arrest.Area.Regions)
 	require.Len(t, arrest.Area.Cells, 7)
+	// AND GOING QUIETLY JAILS THEM (rpg-project#925): an off-screen walk of
+	// five rounds, and an escape that turns the garrison.
+	require.Equal(t, []encounter.Consequence{{Jail: &encounter.Jail{
+		Words: "The guards march you to the cells.", Rounds: 5, Escaped: "prisoners-escaped",
+	}}}, outcomes["jailed"])
 
 	var line *encounter.Option
 	for _, o := range monsterNamed(t, c, "captain").Options {

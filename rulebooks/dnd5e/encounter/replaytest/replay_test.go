@@ -507,6 +507,33 @@ func TestReplay_CastleGateScript(t *testing.T) {
 		require.Positive(t, countBeats(t, log, encounter.BeatTempered), "precondition: tempers dealt")
 	})
 
+	// The arrest and the cut to the cells (rpg-project#925): the hero fails
+	// both claims at the captain, is arrested, says "We'll come quietly." and
+	// is set down in the cells over five rounds of the world. The replay sets
+	// the hero down on the same cell, from the record's verbs alone.
+	t.Run("the arrested go quietly to the cells", func(t *testing.T) {
+		t.Parallel()
+		start := loadFile(t, kingFixture).PartyStart[0].At
+		log := replayRun(t, castleOpener(start), func(w *world) {
+			w.walkTo(hero, w.at(kingPedlar))
+			require.NoError(t, w.speak(encounter.SpeakInput{
+				Actor: hero, Target: kingPedlar, OptionID: "tonight", Skill: "persuasion", Beaten: false, DC: 15, Total: 3,
+			}))
+			w.walkTo(hero, w.at(kingCaptain))
+			require.NoError(t, w.speak(encounter.SpeakInput{
+				Actor: hero, Target: kingCaptain, OptionID: "guest", Skill: "persuasion", Beaten: false, DC: 15, Total: 3,
+			}))
+			require.NoError(t, w.speak(encounter.SpeakInput{
+				Actor: hero, Target: kingCaptain, OptionID: "troupe", Skill: "performance", Beaten: false, DC: 15, Total: 3,
+			}))
+			require.NoError(t, w.speak(encounter.SpeakInput{Actor: hero, Target: kingCaptain, OptionID: "come-quietly"}))
+			region, _ := w.enc.RegionAt(w.at(hero))
+			require.Equal(t, encounter.RegionID("region-cells"), region, "the hero is in the cells")
+		})
+		require.Positive(t, countBeats(t, log, encounter.BeatRelocated), "precondition: the hero was set down")
+		require.Equal(t, 4, countBeats(t, log, encounter.BeatSpoke), "precondition: four lines said")
+	})
+
 	// The fight, pieces 6 and 7's hostile half: the hero spears a gate
 	// guard, the gate shouts the alarm, three rounds of driven turns pass,
 	// the hero drops the gate's three, opens the gate on a far room that

@@ -83,16 +83,19 @@ import (
 // stranger) frees nobody, and the taken stay held inside it. The record's
 // taken and wanted, and the topics the guards hold, stay.
 //
-// # What it does NOT do yet
+// # The cell
 //
-// Nobody is moved. The taken are recorded, held, and the guards remember;
-// walking them to the cell is the next slice (rpg-project#925's forced
-// march), which [CustodyMarching] and [CustodyJailed] are named for. The
-// gate is not released for anyone, taken or wanted.
+// The arrest moves nobody. A [Jail] outcome on the same interaction moves
+// the taken into the arrest's cell and sets custody to [CustodyJailed]
+// (jail.go). The gate is not released for anyone, taken or wanted.
 
 // TopicArrested is the topic the arresting guards hold about each member
 // they arrested (rpg-project#925): "guards who arrested the party remember
 // that fact".
+//
+// A `recognized: arrested` requirement holds only while the member is still
+// held under the arrest ([CustodyHeld]): the guard's record stays, but once a
+// fight has broken the hold, or the member is jailed, it no longer holds.
 const TopicArrested TopicID = "arrested"
 
 // TopicWanted is the topic the arresting guards hold about each member of
@@ -139,16 +142,18 @@ func (e *CustodyMoveError) Is(target error) bool { return target == ErrInCustody
 // CustodyPhase is where an arrest's custody of the taken stands.
 type CustodyPhase string
 
-// The custody phases. Only held and broken are entered today; marching and
-// jailed are named for the forced march so the stored shape does not change.
+// The custody phases. Held, jailed and broken are entered; marching is named
+// for a march that was dropped, so the stored shape did not change.
 // A record saved before custody existed has no phase, and reads as held: the
 // taken were never released.
 const (
 	// CustodyHeld: the taken are held where they were taken.
 	CustodyHeld CustodyPhase = "held"
-	// CustodyMarching: the taken are being walked to the cell (not yet entered).
+	// CustodyMarching: named for a walk to the cell that was dropped; never
+	// entered.
 	CustodyMarching CustodyPhase = "marching"
-	// CustodyJailed: the taken are in the cell (not yet entered).
+	// CustodyJailed: the taken were moved into the cell ([Jail]); holds
+	// nothing by itself.
 	CustodyJailed CustodyPhase = "jailed"
 	// CustodyBroken: a fight ended custody; the taken walk freely.
 	CustodyBroken CustodyPhase = "broken"
@@ -159,9 +164,13 @@ func (c CustodyPhase) known() bool {
 	return c == CustodyHeld || c == CustodyMarching || c == CustodyJailed || c == CustodyBroken
 }
 
-// holds reports whether the phase holds the taken: held, marching or jailed.
+// holds reports whether the phase holds the taken in place: held only. A
+// jailed member is not held by any status — the cell's walls and its locked
+// door do the holding, so picking the lock works as for anyone (jail.go).
+// Marching is named for a march that was dropped (rpg-project#925) and
+// reached by nothing.
 func (c CustodyPhase) holds() bool {
-	return c == CustodyHeld || c == CustodyMarching || c == CustodyJailed
+	return c == CustodyHeld
 }
 
 // Arrest is the consequence "the party is arrested, to be held in a cell"
@@ -208,8 +217,16 @@ type ArrestRecord struct {
 	Wanted []WantedMember `json:"wanted,omitempty"`
 
 	// Custody is where custody of the taken stands: [CustodyHeld] from the
-	// arrest, [CustodyBroken] once a fight ends it.
+	// arrest, [CustodyJailed] once moved into the cell, [CustodyBroken] once
+	// a fight ends it.
 	Custody CustodyPhase `json:"custody"`
+
+	// Jailed are the taken a [Jail] moved into the cell, in its order.
+	Jailed []MemberID `json:"jailed,omitempty"`
+
+	// Escape is the fact the jail names for an escape ([Jail.Escaped]);
+	// empty when it names none or nobody is jailed.
+	Escape FactID `json:"escape,omitempty"`
 }
 
 // ArrestedMember is one taken member and why.
@@ -260,6 +277,7 @@ func cloneArrestRecord(r ArrestRecord) ArrestRecord {
 	for i := range r.Taken {
 		r.Taken[i].SeenBy = slices.Clone(r.Taken[i].SeenBy)
 	}
+	r.Jailed = slices.Clone(r.Jailed)
 	r.Wanted = slices.Clone(r.Wanted)
 	for i := range r.Wanted {
 		r.Wanted[i].RememberedBy = slices.Clone(r.Wanted[i].RememberedBy)

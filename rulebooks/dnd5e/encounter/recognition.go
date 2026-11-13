@@ -119,7 +119,8 @@ func (t TriggerRecognized) isTrigger() {}
 
 // Consequence is one thing that follows an interaction entering a state
 // ([InteractionInput.Outcomes]). Exactly one kind is set: [Recognition], or
-// — on an interaction's outcome only — [Arrest] (arrest.go, rpg-project#925).
+// — on an interaction's outcome only — [Arrest] or [Jail] (arrest.go,
+// jail.go, rpg-project#925).
 type Consequence struct {
 	// Recognize is: holders come to hold a topic about subjects.
 	Recognize *Recognition `json:"recognize,omitzero"`
@@ -127,6 +128,11 @@ type Consequence struct {
 	// Arrest is: the speaker's party is arrested, to be held in a cell.
 	// Only on an interaction's outcome.
 	Arrest *Arrest `json:"arrest,omitzero"`
+
+	// Jail is: the taken of this interaction's arrest are moved into its
+	// cell. Only on an interaction's outcome, and only on an interaction that
+	// arrests.
+	Jail *Jail `json:"jail,omitzero"`
 }
 
 // RecognitionHolder names who comes to hold the topic.
@@ -208,6 +214,18 @@ func validateOutcomes(id InteractionID, states map[string]bool, outcomes map[str
 		}
 		for i, c := range outcomes[state] {
 			what := fmt.Sprintf("interaction %q outcome %q consequence %d", id, state, i)
+			if c.Jail != nil {
+				if c.Recognize != nil || c.Arrest != nil {
+					return fmt.Errorf("%s is of two kinds: one consequence is one kind", what)
+				}
+				if err := validateJailShape(what, *c.Jail); err != nil {
+					return err
+				}
+				if !arrests(outcomes) {
+					return fmt.Errorf("%s jails, and the interaction arrests nobody: a jail takes the taken of the interaction's own arrest", what)
+				}
+				continue
+			}
 			if c.Arrest != nil {
 				if c.Recognize != nil {
 					return fmt.Errorf("%s is of two kinds: one consequence is one kind", what)
@@ -235,6 +253,8 @@ func validateConsequence(what string, c Consequence, carriers bool) error {
 	switch {
 	case c.Arrest != nil:
 		return fmt.Errorf("%s arrests: an arrest follows an interaction entering a state, never a line's row", what)
+	case c.Jail != nil:
+		return fmt.Errorf("%s jails: a jail follows an interaction entering a state, never a line's row", what)
 	case r == nil:
 		return fmt.Errorf("%s is of no kind: the one kind is recognize", what)
 	case r.Topic == "":
@@ -270,6 +290,10 @@ func cloneOutcomes(outcomes map[string][]Consequence) map[string][]Consequence {
 				a := cloneArrest(*c.Arrest)
 				c.Arrest = &a
 			}
+			if c.Jail != nil {
+				j := *c.Jail
+				c.Jail = &j
+			}
 			copied = append(copied, c)
 		}
 		out[state] = copied
@@ -291,6 +315,10 @@ func grantedTopics(interactions map[InteractionID]*interactionRecord, lines ...[
 				// An arrest grants both its topics (arrest.go).
 				if c.Arrest != nil {
 					out[TopicArrested], out[TopicWanted] = true, true
+				}
+				// A jail grants its own (jail.go).
+				if c.Jail != nil {
+					out[TopicJailed] = true
 				}
 			}
 		}
@@ -412,7 +440,10 @@ type recognitionLine struct {
 	// judged in the scene it was spoken in, so whom the creature spoken to
 	// sees is seen, not the live reach.
 	spoken bool
-	seen   []MemberID
+	// reach is the host's interaction reach the line was said within: what a
+	// consequence that moves members sweeps addresses at (jail.go).
+	reach int
+	seen  []MemberID
 	// hearers is who caught the words of the line that granted, when a line
 	// granted (rpg-project#933, R9): the carriers who hear a recognition are
 	// the word-catchers, not those who only saw it said. Nil for an outcome
@@ -481,6 +512,8 @@ func (e *Encounter) applyOutcome(r *interactionRecord, line recognitionLine) err
 		switch {
 		case c.Arrest != nil:
 			err = e.applyArrest(r, *c.Arrest, line)
+		case c.Jail != nil:
+			err = e.applyJail(r, *c.Jail, line)
 		case c.Recognize != nil:
 			err = e.grantRecognition(*c.Recognize, line)
 		}

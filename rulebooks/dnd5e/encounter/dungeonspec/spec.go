@@ -1297,7 +1297,8 @@ type InteractionSpec struct {
 }
 
 // OutcomeSpec is one consequence of an interaction entering a state
-// ([encounter.Consequence]). Exactly one kind; `recognize` is the only one.
+// ([encounter.Consequence]). Exactly one kind: `recognize`, `arrest` or
+// `jail`.
 type OutcomeSpec struct {
 	// Recognize is: a holder comes to hold a topic about subjects.
 	Recognize *RecognizeSpec `yaml:"recognize,omitempty" json:"recognize,omitempty"`
@@ -1305,6 +1306,29 @@ type OutcomeSpec struct {
 	// Arrest is: the speaker's party is arrested, to be held in a cell
 	// (rpg-project#925, [encounter.Arrest]).
 	Arrest *ArrestSpec `yaml:"arrest,omitempty" json:"arrest,omitempty"`
+
+	// Jail is: the taken of the interaction's own arrest are moved into its
+	// cell (rpg-project#925, [encounter.Jail]).
+	Jail *JailSpec `yaml:"jail,omitempty" json:"jail,omitempty"`
+}
+
+// JailSpec is `jail:` ([encounter.Jail]): what each member moved is told, how
+// many world rounds the move takes, and the fact the guards' mind learns
+// when a guard sees a jailed member outside the cell.
+//
+//	jail:
+//	  words: The guards march you to the cells.
+//	  rounds: 5
+//	  escaped: prisoners-escaped
+type JailSpec struct {
+	// Words is what each member moved is told. REQUIRED.
+	Words string `yaml:"words" json:"words"`
+
+	// Rounds is how many world rounds pass with the move; zero or more.
+	Rounds int `yaml:"rounds,omitempty" json:"rounds,omitempty"`
+
+	// Escaped is the fact taught on an escape; empty for none.
+	Escaped string `yaml:"escaped,omitempty" json:"escaped,omitempty"`
 }
 
 // ArrestSpec is `arrest:` ([encounter.Arrest]): the region the arrested are

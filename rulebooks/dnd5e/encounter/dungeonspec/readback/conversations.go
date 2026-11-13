@@ -104,6 +104,10 @@ func (b *builder) conversations() []Group {
 					add(b.arrestStatement(id, state, fmt.Sprintf("%s.outcomes.%s[%d].arrest", base, state, k)))
 					continue
 				}
+				if c.Jail != nil {
+					add(b.jailStatement(id, state, *c.Jail, fmt.Sprintf("%s.outcomes.%s[%d].jail", base, state, k)))
+					continue
+				}
 				if c.Recognize == nil {
 					continue
 				}
@@ -376,15 +380,52 @@ func (b *builder) arrestStatement(id, state, path string) Statement {
 		"wanted, and the conversation's other carriers who catch the deciding line hold the same, heard. Who is wanted "+
 		"is told to those carriers alone, never to a player. The conversation's address ends. Who is taken and who is "+
 		"wanted is decided once and kept. The taken are held from that moment: they cannot walk, dash, sneak or cast "+
-		"themselves away, and nothing moves them but the march: a shove or a flee aimed at them is refused, and "+
+		"themselves away, and nothing moves them but the conversation's own jail: a shove or a flee aimed at them is refused, and "+
 		"a spell that lands on them still lands but does not move them; "+
 		"speaking, looking, looting and fighting stay open. A fight with one of those carriers in it ends the hold for "+
 		"all of them, and the record stays; a fight without them frees nobody, and the held stay held inside it. A "+
-		"taken player who leaves the run stays taken. Nobody is moved yet: the taken are not walked to %s.",
+		"taken player who leaves the run stays taken. The arrest itself moves nobody: only a jail outcome of the "+
+		"conversation sets the taken down in %s, and the hold ends there.",
 		quote(id), quote(state), b.regionWords(a.Cell), joinAnd(area), b.creatures(carriers),
 		quote(string(encounter.TopicArrested)), quote(string(encounter.TopicWanted)), b.regionName(a.Cell))
 	f := foldInfo{state: state, site: fmt.Sprintf("the conversation %s on entering %s", quote(id), quote(state))}
-	f.text = fmt.Sprintf("On entering %s: arrests the players in %s or seen by its carriers, to %s; the rest they have seen become wanted, known to the carriers alone. The taken are held until a fight with the carriers in it. Nobody is moved yet.",
+	f.text = fmt.Sprintf("On entering %s: arrests the players in %s or seen by its carriers, to %s; the rest they have seen become wanted, known to the carriers alone. The taken are held until a fight with the carriers in it, or until a jail sets them down in the cell; the arrest moves nobody.",
 		quote(state), joinAnd(area), b.regionName(a.Cell))
+	return b.fstmt(KindOutcome, Subject{Kind: "conversation", ID: id}, path, s, f, conns...)
+}
+
+// jailStatement says what a jail does on entering a conversation's state
+// (rpg-project#925): who is moved where, what they are told, how long it
+// takes, what holds them after, and what an escape does.
+func (b *builder) jailStatement(id, state string, j encounter.Jail, path string) Statement {
+	cell := ""
+	for _, cs := range b.spec.Interactions[id].Outcomes {
+		for _, c := range cs {
+			if c.Arrest != nil {
+				cell = c.Arrest.Cell
+			}
+		}
+	}
+	conns := []Connection{{Kind: "topic", ID: string(encounter.TopicJailed), Role: "grants"}}
+	escape := "Nothing raises an escape."
+	if j.Escaped != "" {
+		conns = append(conns, Connection{Kind: "fact", ID: string(j.Escaped), Role: "teaches"})
+		escape = fmt.Sprintf("When one of the conversation's carriers who holds %s about a jailed member sees them outside %s, "+
+			"the carrier's faction's mind learns %s.", quote(string(encounter.TopicArrested)), b.regionWords(cell), quote(string(j.Escaped)))
+	}
+	rounds := "No world time passes with it."
+	if j.Rounds > 0 {
+		rounds = fmt.Sprintf("%s pass on the world clock with it, and creatures due in them act.", count(j.Rounds, "round", "rounds"))
+	}
+	s := fmt.Sprintf("When the conversation %s enters %s, every member its arrest took who is still in the run and still held "+
+		"is set down on a free cell of %s, without walking the way between, and is told %s. %s Whoever saw a member leave "+
+		"is told they were taken away, never where; whoever sees them arrive is told they arrived, never from where. "+
+		"The carriers who are up come to hold %s about each of them. A taken member who has left the run is not moved and "+
+		"becomes wanted. Nobody is held by the jail itself: the cell's walls and door hold them, and a member may pick the "+
+		"door and walk out. %s If there are not enough free cells, or nobody to take, the line that leads here is refused.",
+		quote(id), quote(state), b.regionWords(cell), quote(j.Words), rounds, quote(string(encounter.TopicJailed)), escape)
+	f := foldInfo{state: state, site: fmt.Sprintf("the conversation %s on entering %s", quote(id), quote(state))}
+	f.text = fmt.Sprintf("On entering %s: the taken are set down in %s (%s). Nobody is held but by the cell.",
+		quote(state), b.regionName(cell), quote(j.Words))
 	return b.fstmt(KindOutcome, Subject{Kind: "conversation", ID: id}, path, s, f, conns...)
 }

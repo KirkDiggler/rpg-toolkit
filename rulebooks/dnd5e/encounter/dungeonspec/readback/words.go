@@ -137,8 +137,13 @@ func (b *builder) triggerWords(t encounter.Trigger, ctx lineContext) (string, []
 		return fmt.Sprintf("%s carries the prop %s", me, quote(b.unqualify(string(v.Prop)))),
 			[]Connection{{Kind: "prop", ID: b.unqualify(string(v.Prop)), Role: "asks"}}
 	case encounter.TriggerRecognized:
-		return fmt.Sprintf("%s recognises %s as %s (%s holds %s about %s)",
-				ctx.other, ctx.me, quote(string(v.Topic)), ctx.other, quote(string(v.Topic)), ctx.me),
+		held := ""
+		if v.Topic == encounter.TopicArrested {
+			held = fmt.Sprintf(", and only while %s is still held under the arrest: not once a fight has broken the hold, "+
+				"nor once jailed", ctx.me)
+		}
+		return fmt.Sprintf("%s recognises %s as %s (%s holds %s about %s)%s",
+				ctx.other, ctx.me, quote(string(v.Topic)), ctx.other, quote(string(v.Topic)), ctx.me, held),
 			[]Connection{{Kind: "topic", ID: string(v.Topic), Role: "asks"}}
 	case encounter.TriggerInteraction:
 		in := quoteAll(v.In)
