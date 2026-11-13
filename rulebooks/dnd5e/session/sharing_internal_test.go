@@ -38,6 +38,9 @@ func storiesOf(entries ...record.Entry) func(encounter.MemberID) []record.Entry 
 	}
 }
 
+// always is a recipient in the run for every entry.
+func always(uint64) bool { return true }
+
 // sharedActs folds recipient's acts from the entries merged with friends'.
 func sharedActs(recipient string, friends []string, entries ...record.Entry) []Act {
 	story := storiesOf(entries...)
@@ -45,7 +48,7 @@ func sharedActs(recipient string, friends []string, entries ...record.Entry) []A
 	for i, f := range friends {
 		ids[i] = encounter.MemberID(f)
 	}
-	return foldActs("sess", recipient, sharedStory(story(encounter.MemberID(recipient)), ids, story))
+	return foldActs("sess", recipient, sharedStory(story(encounter.MemberID(recipient)), ids, story, always))
 }
 
 // viaOf is an act's Via, nil when it has no Perceived.
@@ -67,7 +70,7 @@ func (s *ActFoldSuite) TestNoFriendsIsTheOwnFold() {
 		to(s.step(walk, "alice", cell(2, 0)), "alice", "bob"),
 	}
 	own := storiesOf(entries...)("alice")
-	s.Equal(ownStory(own), sharedStory(own, nil, storiesOf(entries...)))
+	s.Equal(ownStory(own), sharedStory(own, nil, storiesOf(entries...), always))
 	s.Equal(foldActs("sess", "alice", ownStory(own)), sharedActs("alice", nil, entries...))
 }
 
@@ -230,7 +233,7 @@ func (s *ActFoldSuite) TestTheMergeNeverRepeatsOrReordersAnEntry() {
 		entries = append(entries, to(s.beat("", map[string]any{"beat": encounter.BeatTick}), audiences[i%len(audiences)]...))
 	}
 	story := storiesOf(entries...)
-	merged := sharedStory(story("alice"), []encounter.MemberID{"bob", "carol"}, story)
+	merged := sharedStory(story("alice"), []encounter.MemberID{"bob", "carol"}, story, always)
 	s.Len(merged, len(entries), "every entry somebody in the party holds, once")
 	for i := 1; i < len(merged); i++ {
 		s.Less(merged[i-1].Seq, merged[i].Seq)
@@ -238,20 +241,99 @@ func (s *ActFoldSuite) TestTheMergeNeverRepeatsOrReordersAnEntry() {
 }
 
 // TestThePartyIsThePlayersAtSharedViewOnly: the one membership read —
-// players of the current roster, sorted; nobody at each their own, or for a
-// recipient outside the party.
+// the current roster's players; nobody at each their own; a recipient who
+// is not a player is shown only their own story.
 func (s *ActFoldSuite) TestThePartyIsThePlayersAtSharedViewOnly() {
 	roster := []encounter.MemberData{
 		{ID: "carol", Kind: encounter.KindPlayer}, {ID: "captain", Kind: encounter.KindMonster},
 		{ID: "alice", Kind: encounter.KindPlayer}, {ID: "companion", Kind: encounter.KindMonster},
 	}
 	party := dataParty(encounter.SharingView, roster)
-	s.Equal([]encounter.MemberID{"alice", "carol"}, party.members)
-	s.Equal([]encounter.MemberID{"carol"}, party.friendsOf("alice"))
-	s.Empty(party.friendsOf("companion"), "a creature, allied or not, shares nothing")
-	s.Empty(party.friendsOf("dave"), "nor does anyone not in the roster — a player who has left")
+	s.Equal([]encounter.MemberID{"alice", "carol"}, party.players)
 	s.Nil(dataParty(encounter.SharingOwn, roster), "each their own: no party")
 	s.Nil(dataParty(encounter.SharingKnowledge, roster), "shared knowledge never launches; were it here, nothing would be merged")
+
+	sighted := to(s.beat("", map[string]any{"beat": encounter.BeatSighted, "gained": []string{"goblin"}}), "carol")
+	story := storiesOf(sighted)
+	s.Len(party.storyFor("alice", nil, story), 1, "alice is shown carol's sighting")
+	s.Empty(party.storyFor("companion", nil, story), "a creature, allied or not, is shown nothing of the party's")
+	s.Empty(party.storyFor("dave", nil, story), "nor is anyone not of the party")
+}
+
+// membershipEntry is a `joined` or `exited` entry for member, told to the
+// audience given.
+func (s *ActFoldSuite) membershipEntry(beat, member string, kind encounter.MemberKind, audience ...string) record.Entry {
+	fields := map[string]any{"beat": beat, "member": member}
+	if kind != "" {
+		fields["kind"] = kind
+	}
+	e := to(s.beat("", fields), audience...)
+	e.Tags = map[string]string{"tag": "membership"}
+	return e
+}
+
+// TestMembershipIsAFactOfTheEntrysTime: whom an entry is shared from and to
+// is who was a player in the run when it was written, read off the record's
+// own joined and exited entries — a late joiner is shown nothing friends
+// perceived before she came, a friend's entries from before he left stay in
+// her story after he has gone, and nothing reaches anyone after they leave.
+func (s *ActFoldSuite) TestMembershipIsAFactOfTheEntrysTime() {
+	sight := func(who string) record.Entry {
+		return to(s.beat("", map[string]any{"beat": encounter.BeatSighted, "gained": []string{"goblin"}}), who)
+	}
+	sightsVia := func(entries []storyEntry) []string {
+		var out []string
+		for _, e := range entries {
+			if e.via != nil {
+				out = append(out, e.ID)
+			}
+		}
+		return out
+	}
+
+	s.Run("a late joiner is not shown what a friend perceived before she came", func() {
+		before := sight("bob")
+		joined := s.membershipEntry(encounter.BeatJoined, "alice", "", "alice", "bob")
+		after := sight("bob")
+		party := dataParty(encounter.SharingView, []encounter.MemberData{
+			{ID: "alice", Kind: encounter.KindPlayer}, {ID: "bob", Kind: encounter.KindPlayer}})
+		story := storiesOf(before, joined, after)
+		s.Equal([]string{after.ID}, sightsVia(party.storyFor("alice", story("alice"), story)))
+	})
+	s.Run("a friend who left: what he perceived while here stays; nothing after", func() {
+		here := sight("bob")
+		left := s.membershipEntry(encounter.BeatExited, "bob", encounter.KindPlayer, "alice", "bob")
+		party := dataParty(encounter.SharingView, []encounter.MemberData{{ID: "alice", Kind: encounter.KindPlayer}})
+		story := storiesOf(here, left)
+		s.Equal([]string{here.ID}, sightsVia(party.storyFor("alice", story("alice"), story)),
+			"bob is a sharer by his exit, and his sighting before it is hers")
+	})
+	s.Run("a creature that left is never a sharer", func() {
+		here := sight("captain")
+		left := s.membershipEntry(encounter.BeatExited, "captain", encounter.KindMonster, "alice", "captain")
+		party := dataParty(encounter.SharingView, []encounter.MemberData{{ID: "alice", Kind: encounter.KindPlayer}})
+		story := storiesOf(here, left)
+		s.Empty(sightsVia(party.storyFor("alice", story("alice"), story)))
+	})
+	s.Run("one who left is shown nothing after; what came before stays", func() {
+		before := sight("bob")
+		left := s.membershipEntry(encounter.BeatExited, "alice", encounter.KindPlayer, "alice", "bob")
+		after := sight("bob")
+		party := dataParty(encounter.SharingView, []encounter.MemberData{{ID: "bob", Kind: encounter.KindPlayer}})
+		story := storiesOf(before, left, after)
+		s.Equal([]string{before.ID}, sightsVia(party.storyFor("alice", story("alice"), story)))
+	})
+	s.Run("a friend who leaves and rejoins shares both stays, not the gap", func() {
+		first := sight("bob")
+		left := s.membershipEntry(encounter.BeatExited, "bob", encounter.KindPlayer, "alice", "bob")
+		gap := sight("carol") // carol is no friend of alice's here; the gap holds nothing of bob's
+		back := s.membershipEntry(encounter.BeatJoined, "bob", "", "alice", "bob")
+		second := sight("bob")
+		party := dataParty(encounter.SharingView, []encounter.MemberData{
+			{ID: "alice", Kind: encounter.KindPlayer}, {ID: "bob", Kind: encounter.KindPlayer}})
+		story := storiesOf(first, left, gap, back, second)
+		s.Equal([]string{first.ID, second.ID}, sightsVia(party.storyFor("alice", story("alice"), story)))
+	})
 }
 
 // TestOneEntryPerPerceivedFact: a fact every perceiver is told in an entry

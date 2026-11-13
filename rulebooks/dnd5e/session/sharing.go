@@ -53,40 +53,54 @@ import (
 // the stream is exactly the recipient's own story, folded as before.
 
 // sharingParty is who shares at the encounter's dial: THE ONE MEMBERSHIP
-// READ (rpg-project#935, Q1). Nil when the dial is not shared view.
+// READ (rpg-project#935, Q1), taken once per read from the run's current
+// roster. Nil when the dial is not shared view.
+//
+// MEMBERSHIP IS A FACT OF THE ENTRY'S TIME. Whom an entry is shared from and
+// to is decided by who was a player in the run when it was written, read
+// from the record's own `joined` and `exited` entries — never from a clock,
+// and never from today's roster alone — so a reload, a catch-up after a
+// friend leaves, and the live publish all read the same answer:
+//
+//   - FROM a friend: an entry is in a friend's story only if it was written
+//     while they were in the run, so their story is already exactly what
+//     they perceived as a member. Their sharers are the current roster's
+//     players and every member the recipient's own story shows leaving as a
+//     player ([storyFor]).
+//   - TO a recipient: a friend's entry reaches them only if it was written
+//     while they were in the run, by their own `joined` and `exited`
+//     entries ([presence]). A late joiner is not shown what friends
+//     perceived before they arrived; one who left is shown nothing after.
 type sharingParty struct {
-	// members are the sharers, by id.
-	members []encounter.MemberID
+	// players are the current roster's player characters, by id.
+	players []encounter.MemberID
+	// inRoster is every current roster member, any kind.
+	inRoster map[encounter.MemberID]bool
 }
 
 // partyMember is the one rule for who is of the party that shares (Q1, to
-// start): a player character in the run's current roster. Not a creature,
-// not a creature allied to the players by stance, not a member of the
-// `party` faction by authoring — the rule names the kind, so widening it to
-// "the party faction" or "allied to the party" is this one function.
-//
-// A PLAYER WHO HAS LEFT THE RUN is not in the current roster (an exit or a
-// departure removes them; [encounter.EncounterData.EverMembers] keeps only
-// their id), so they share nothing and are shared nothing: their own
-// catch-up is their own story, and what they perceived while they were here
-// is no longer merged into a friend's catch-up.
+// start): a player character. Not a creature, not a creature allied to the
+// players by stance, not a member of the `party` faction by authoring — the
+// rule names the kind, so widening it to "the party faction" or "allied to
+// the party" is this one function.
 func partyMember(kind encounter.MemberKind) bool { return kind == encounter.KindPlayer }
 
-// newSharingParty reads the party from one roster read: every member
-// [partyMember] admits, sorted by id. Nil unless the dial is shared view;
-// shared knowledge never reaches here, because the encounter refuses to
-// launch or load it ([encounter.ErrSharedKnowledgeNotBuilt]).
+// newSharingParty reads the party from one roster read. Nil unless the dial
+// is shared view; shared knowledge is refused at launch
+// ([encounter.LaunchableSharing]), so no run reads it.
 func newSharingParty[M any](sharing encounter.Sharing, roster []M, of func(M) (encounter.MemberID, encounter.MemberKind)) *sharingParty {
 	if sharing != encounter.SharingView {
 		return nil
 	}
-	p := &sharingParty{}
+	p := &sharingParty{inRoster: make(map[encounter.MemberID]bool, len(roster))}
 	for _, m := range roster {
-		if id, kind := of(m); partyMember(kind) {
-			p.members = append(p.members, id)
+		id, kind := of(m)
+		p.inRoster[id] = true
+		if partyMember(kind) {
+			p.players = append(p.players, id)
 		}
 	}
-	slices.Sort(p.members)
+	slices.Sort(p.players)
 	return p
 }
 
@@ -104,20 +118,97 @@ func dataParty(sharing encounter.Sharing, roster []encounter.MemberData) *sharin
 	})
 }
 
-// friendsOf is who shares with recipient: every other party member, or none
-// when the recipient is not of the party (a creature, a player who has
-// left) or nobody shares.
-func (p *sharingParty) friendsOf(recipient encounter.MemberID) []encounter.MemberID {
-	if p == nil || !slices.Contains(p.members, recipient) {
-		return nil
-	}
-	out := make([]encounter.MemberID, 0, len(p.members)-1)
-	for _, id := range p.members {
-		if id != recipient {
-			out = append(out, id)
+// membership is one `joined` or `exited` entry: who, and whether they came
+// or went, and — on an exit — the kind they left as.
+type membership struct {
+	seq    uint64
+	member encounter.MemberID
+	joined bool
+	kind   encounter.MemberKind
+}
+
+// membershipsIn is every `joined` and `exited` entry in a story, in record
+// order. Only entries tagged as membership are decoded.
+func membershipsIn(entries []record.Entry) []membership {
+	var out []membership
+	for _, e := range entries {
+		if e.Tags["tag"] != "membership" {
+			continue
 		}
+		var p struct {
+			Beat   string               `json:"beat"`
+			Member encounter.MemberID   `json:"member"`
+			Kind   encounter.MemberKind `json:"kind"`
+		}
+		if json.Unmarshal(e.Payload, &p) != nil || (p.Beat != encounter.BeatJoined && p.Beat != encounter.BeatExited) {
+			continue
+		}
+		out = append(out, membership{seq: e.Seq, member: p.Member, joined: p.Beat == encounter.BeatJoined, kind: p.Kind})
 	}
 	return out
+}
+
+// presence answers whether member was in the run when the entry at a seq
+// was written, from member's own membership entries in their story slice:
+// in from each `joined`, out from each `exited`. Before the slice's first
+// such entry the answer is the opposite of it; a slice holding none — a
+// commit's delta mid-run, or a story trimmed past them — answers as the
+// current roster does.
+func presence(member encounter.MemberID, own []membership, inRosterNow bool) func(seq uint64) bool {
+	var mine []membership
+	for _, m := range own {
+		if m.member == member {
+			mine = append(mine, m)
+		}
+	}
+	return func(seq uint64) bool {
+		if len(mine) == 0 {
+			return inRosterNow
+		}
+		in := !mine[0].joined
+		for _, m := range mine {
+			if m.seq > seq {
+				break
+			}
+			in = m.joined
+		}
+		return in
+	}
+}
+
+// storyFor is recipient's story as the dial shows it: their own, merged
+// with each friend's over the same window at shared view
+// ([sharedStory]). Their friends are the current roster's players and the
+// players their own story shows leaving, never themself; a recipient who is
+// not a player — a creature, an ally by stance — is shown only their own.
+func (p *sharingParty) storyFor(recipient encounter.MemberID, own []record.Entry,
+	storyOf func(encounter.MemberID) []record.Entry) []storyEntry {
+	if p == nil {
+		return ownStory(own)
+	}
+	moves := membershipsIn(own)
+	isPlayer := slices.Contains(p.players, recipient)
+	friends := make([]encounter.MemberID, 0, len(p.players))
+	for _, id := range p.players {
+		if id != recipient {
+			friends = append(friends, id)
+		}
+	}
+	for _, m := range moves {
+		if m.joined || !partyMember(m.kind) {
+			continue
+		}
+		if m.member == recipient {
+			isPlayer = true
+		} else if !slices.Contains(friends, m.member) {
+			friends = append(friends, m.member)
+		}
+	}
+	if !isPlayer {
+		return ownStory(own)
+	}
+	slices.Sort(friends)
+	return sharedStory(own, friends, storyOf, presence(recipient, moves, p.inRoster[recipient]))
 }
 
 // storyEntry is one entry a recipient's acts are folded from: the record
@@ -201,10 +292,12 @@ func ownStory(entries []record.Entry) []storyEntry {
 }
 
 // sharedStory is recipient's story merged with each friend's (the friends in
-// party order, each story the same window of the record): every entry once,
-// in record order, then one entry per utterance and one pick per answer.
-// With no friends it is [ownStory].
-func sharedStory(own []record.Entry, friends []encounter.MemberID, storyOf func(encounter.MemberID) []record.Entry) []storyEntry {
+// id order, each story the same window of the record): every entry once, in
+// record order — a friend's only when present says the recipient was in the
+// run when it was written — then one entry per utterance, one per perceived
+// fact and one pick per answer. With no friends it is [ownStory].
+func sharedStory(own []record.Entry, friends []encounter.MemberID, storyOf func(encounter.MemberID) []record.Entry,
+	present func(seq uint64) bool) []storyEntry {
 	if len(friends) == 0 {
 		return ownStory(own)
 	}
@@ -216,6 +309,9 @@ func sharedStory(own []record.Entry, friends []encounter.MemberID, storyOf func(
 	for _, friend := range friends {
 		for _, e := range storyOf(friend) {
 			i, held := bySeq[e.Seq]
+			if !held && !present(e.Seq) {
+				continue // written while the recipient was not in the run
+			}
 			if !held {
 				bySeq[e.Seq] = len(out)
 				out = append(out, storyEntry{Entry: e, via: []encounter.MemberID{friend}})

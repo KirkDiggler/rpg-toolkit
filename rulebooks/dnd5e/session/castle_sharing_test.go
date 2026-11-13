@@ -39,7 +39,7 @@ func shoutedTonight(raw []byte) ([]byte, error) {
 // roadCastleTests are the tests that open [roadCastles].
 var roadCastleTests = []string{
 	"TestCastleAFriendsShoutReachesTheGreatHallViaHer", "TestCastleEachTheirOwnTheGreatHallHearsNothing",
-	"TestCastleAFriendsSightingIsSharedViaHer", "TestCastleAPlayerWhoLeftSharesNothing",
+	"TestCastleAFriendsSightingIsSharedViaHer", "TestCastleAFriendWhoLeftKeepsWhatHeShared",
 }
 
 // roadCastles is the castle with the stranger's line shouted, launched once
@@ -225,15 +225,28 @@ func TestCastleAFriendsSightingIsSharedViaHer(t *testing.T) {
 	require.ElementsMatch(t, own, gained, "what the cleric is told is what alice saw")
 }
 
-// TestCastleAPlayerWhoLeftSharesNothing: the cleric leaves the run. Alice's
-// line afterwards reaches the cleric through nobody — her catch-up after
-// leaving holds no act through a friend — and nothing alice is sent comes
-// through the cleric.
-func TestCastleAPlayerWhoLeftSharesNothing(t *testing.T) {
+// TestCastleAFriendWhoLeftKeepsWhatHeShared: membership is a fact of the
+// entry's time. The cleric shouts while alice is in the great hall, and
+// alice is sent it via the cleric; then the cleric leaves the run. Alice's
+// catch-up still holds what came through the cleric before the exit, exactly
+// as it was sent live; alice's line afterwards comes through nobody; and the
+// cleric, gone, is shown nothing after her exit.
+func TestCastleAFriendWhoLeftKeepsWhatHeShared(t *testing.T) {
 	c := theRoadAndTheHall(t, false)
-	held := c.lastActID(t, "cleric")
+	held := c.lastActID(t, "alice")
+	shout := c.clericSays(t, "tonight")
+	require.NotEmpty(t, where[session.SpeechAct](shout.to("alice"), func(s session.SpeechAct) bool { return s.Option == "tonight" }),
+		"precondition: alice was sent the shout through the cleric")
+
+	clericHeld := c.lastActID(t, "cleric")
 	_, err := c.mgr.Exit(context.Background(), &session.ExitInput{Session: "sess", Member: "cleric"})
 	require.NoError(t, err)
+
+	caught, err := c.mgr.Acts(context.Background(), &session.ActsInput{Session: "sess", Member: "alice", AfterID: held})
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(caught.Acts), len(shout.to("alice")))
+	require.Equal(t, shout.to("alice"), caught.Acts[:len(shout.to("alice"))],
+		"after the cleric left, alice's catch-up still holds what he shared, as sent live")
 
 	stranger := c.where(t, "pedlar")
 	c.placeInTheRecord(t, "alice", spatial.Position{X: stranger.X - 1, Y: stranger.Y})
@@ -251,28 +264,41 @@ func TestCastleAPlayerWhoLeftSharesNothing(t *testing.T) {
 		}
 	}
 
-	after, err := c.mgr.Acts(context.Background(), &session.ActsInput{Session: "sess", Member: "cleric", AfterID: held})
+	after, err := c.mgr.Acts(context.Background(), &session.ActsInput{Session: "sess", Member: "cleric", AfterID: clericHeld})
 	require.NoError(t, err)
+	require.Empty(t, where[session.SpeechAct](after.Acts, func(session.SpeechAct) bool { return true }),
+		"the cleric, gone, is shown nothing of alice's line")
 	for _, a := range after.Acts {
 		if a.Perceived != nil {
 			require.Empty(t, a.Perceived.Via, "a player who left is shared nothing: %T", a.Body)
 		}
 	}
-	require.Empty(t, where[session.SpeechAct](after.Acts, func(session.SpeechAct) bool { return true }),
-		"not alice's line, which she did not perceive")
 }
 
-// TestCastleSharedKnowledgeNeverLaunches: the third stop is refused at the
-// session's launch, so no act is ever folded at it.
-func TestCastleSharedKnowledgeNeverLaunches(t *testing.T) {
+// TestCastleSharedKnowledgeIsPreviewedButNeverLaunched: a castle authored
+// with the third stop is a valid dungeon — AtlasOf, which the host asks on
+// every validate and save, projects it — and only Launch, which starts a run
+// for players, refuses it: with the encounter's sentence, as a precondition
+// (ErrSharingNotBuilt), never as a broken world. No run exists, so no act is
+// ever folded at it.
+func TestCastleSharedKnowledgeIsPreviewedButNeverLaunched(t *testing.T) {
 	source := castleSource(t)
 	key := []byte("\nkey: the-mad-king\n")
 	knowledge := bytes.Replace(source, key, append(append([]byte(nil), key...), []byte("party: { sharing: knowledge }\n")...), 1)
+	compiled, err := dungeonspec.Load(knowledge)
+	require.NoError(t, err, "the compiler takes the word")
 	c := &freeRoamCastle{live: &actCapture{}, characters: newFakeCharacters(armedFighter("alice")), encounters: newFakeEncounters(),
 		dice: &castleDice{d20s: []int{18}}, sessions: newFakeSessions(), seats: newFakeSeats()}
 	c.mgr = c.manager(t)
-	compiled, err := dungeonspec.Load(knowledge)
-	require.NoError(t, err, "the compiler takes the word")
+
+	atlas, err := c.mgr.AtlasOf(context.Background(), &session.AtlasOfInput{Dungeon: &compiled, DungeonKey: "the-mad-king"})
+	require.NoError(t, err, "previewed and saved like any dungeon")
+	require.NotEmpty(t, atlas.Cells)
+
 	_, err = c.mgr.Launch(context.Background(), &session.LaunchInput{Session: "sess", Dungeon: &compiled, Party: []string{"alice"}})
-	require.ErrorContains(t, err, "shared knowledge is not built yet")
+	require.ErrorIs(t, err, session.ErrSharingNotBuilt)
+	require.NotErrorIs(t, err, session.ErrInvalidWorld, "a precondition, not a broken world")
+	require.NotErrorIs(t, err, encounter.ErrSharedKnowledgeNotBuilt, "no inner sentinel crosses the boundary")
+	require.ErrorContains(t, err, "the party's sharing is set to shared knowledge, and shared knowledge is not built yet (rpg-project#937)")
+	require.Empty(t, c.sessions.byID, "no run was written")
 }

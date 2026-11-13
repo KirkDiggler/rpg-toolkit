@@ -95,14 +95,18 @@ func (m *Manager) Acts(ctx context.Context, in *ActsInput) (*ActsOutput, error) 
 		}
 		party = rosterParty(enc.Sharing(), roster)
 	}
-	friends := party.friendsOf(recipient)
-	stories := make(map[encounter.MemberID][]record.Entry, len(friends))
-	for _, friend := range friends {
-		if stories[friend], err = enc.Story(&encounter.StoryInput{Audience: friend}); err != nil {
-			return nil, fmt.Errorf("acts: %w", translate(err))
+	var readErr error
+	storyOf := func(id encounter.MemberID) []record.Entry {
+		entries, serr := enc.Story(&encounter.StoryInput{Audience: id})
+		if serr != nil && readErr == nil {
+			readErr = serr
 		}
+		return entries
 	}
-	entries := sharedStory(own, friends, func(id encounter.MemberID) []record.Entry { return stories[id] })
+	entries := party.storyFor(recipient, own, storyOf)
+	if readErr != nil {
+		return nil, fmt.Errorf("acts: %w", translate(readErr))
+	}
 	after := in.AfterID
 	if read.Restarted {
 		after = ""
@@ -190,7 +194,7 @@ func commitActs(ctx context.Context, scope *writeScope, stream ActStream, member
 		if failed[member] {
 			continue // best effort: one unreadable recipient must not silence the rest
 		}
-		entries := sharedStory(own, party.friendsOf(member), storyOf)
+		entries := party.storyFor(member, own, storyOf)
 		held := ""
 		for _, e := range entries {
 			if e.Seq >= from {

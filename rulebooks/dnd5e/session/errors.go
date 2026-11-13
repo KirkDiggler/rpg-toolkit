@@ -489,6 +489,15 @@ var (
 	// is unusable, and the repair is upstream of anything a caller can retry.
 	ErrInvalidWorld = errors.New("invalid encounter data")
 
+	// ErrSharingNotBuilt is returned by Launch for a dungeon whose party's
+	// sharing dial is set to a stop the engine has not built — shared
+	// knowledge (rpg-project#937). The dungeon is valid: it compiles, it is
+	// previewed and saved (AtlasOf builds it), and the error's sentence says
+	// which stop and why. It is a PRECONDITION the author can change, not a
+	// broken world, so a host maps it apart from [ErrInvalidWorld]. The rule
+	// and its words are the encounter's ([encounter.LaunchableSharing]).
+	ErrSharingNotBuilt = errors.New("the party's sharing is not built yet")
+
 	// ErrNoCalculation is returned when a verb that rolled a check reached the
 	// beat with no sourced arithmetic behind its total.
 	//

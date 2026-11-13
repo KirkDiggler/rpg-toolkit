@@ -1123,8 +1123,8 @@ func (s *ConcealSuite) TestAJoinIntoHiddenSpaceStaysHidden() {
 		heard := s.since(name, marks[name])
 		s.Equal([]string{encounter.BeatJoined, encounter.BeatDiscoveryChecked},
 			beatNames(heard), "%s hears the membership beat and his find check, nothing else", name)
-		s.Equal(map[string]any{"beat": encounter.BeatJoined, "member": "david"}, heard[0].Fields,
-			"who joined, never where — the joined beat carries no cell")
+		s.Equal(map[string]any{"beat": encounter.BeatJoined, "member": "david", "kind": string(encounter.KindPlayer)}, heard[0].Fields,
+			"who joined and as what, never where — the joined beat carries no cell")
 	}
 
 	// PRESENCE PIERCES THE SECRET, DOOR AND ALL. It used to pierce the room
