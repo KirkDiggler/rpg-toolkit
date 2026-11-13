@@ -74,4 +74,3 @@ func TestDungeonspec_AnArrestAreaOffTheFloorIsRefusedAtLaunch(t *testing.T) {
 	require.ErrorIs(t, err, encounter.ErrBadArrest)
 	require.ErrorContains(t, err, "which is not floor")
 }
-
