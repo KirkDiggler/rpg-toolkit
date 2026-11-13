@@ -67,11 +67,11 @@ func TestCastleGreetingTheCaptainIsFreeAndAThreatPaysTheRound(t *testing.T) {
 		_, err := speakAsOffered(ctx, c.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "greet"})
 		return err
 	})
-	line := only[session.SpeakAct](t, greet.to("alice"))
+	line := ownLine(t, greet.to("alice"), "alice")
 	assert.Equal(t, "greet", line.body.Option)
 	assert.Empty(t, line.body.Skill, "a plain line names no skill")
 	assert.Nil(t, line.body.Roll, "and rolled nothing, so the act carries no roll")
-	require.NotNil(t, line.body.Answer, "the captain answers a greeting")
+	assert.NotEmpty(t, wordsBy(greet.to("alice"), "captain", line.act.Act), "the captain answers a greeting")
 	assert.Zero(t, ticksIn(greet), "a plain line pays the world no round")
 	assert.Nil(t, storedData(t, c.characters, "alice").ActionEconomy, "nothing was lent her sheet")
 
@@ -79,7 +79,7 @@ func TestCastleGreetingTheCaptainIsFreeAndAThreatPaysTheRound(t *testing.T) {
 		_, err := speakAsOffered(ctx, c.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "stand-aside"})
 		return err
 	})
-	told := only[session.SpeakAct](t, threat.to("alice"))
+	told := ownLine(t, threat.to("alice"), "alice")
 	assert.Equal(t, "intimidation", told.body.Skill)
 	assert.NotNil(t, told.body.Roll, "the threat rolled its check")
 	assert.Equal(t, 1, ticksIn(threat), "a checked line is the action, and the world is paid its round")

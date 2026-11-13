@@ -24,7 +24,7 @@ func rollSource(out *generic.Bound, in BindInput) dndevents.RollSource {
 	return dndevents.RollSource{Ref: out.Host().Ref, Name: in.DisplayName, SourceID: in.Origin.EntityID}
 }
 func assessmentInput(out *generic.Bound, in BindInput, q Query) *AssessInput {
-	return &AssessInput{Output: out, Query: q, Origin: in.Origin, DisplayName: in.DisplayName}
+	return &AssessInput{Output: out, Query: q, Origin: in.Origin, DisplayName: in.DisplayName, Attachment: in.Attachment}
 }
 
 func attachDamage(ctx context.Context, bus events.EventBus, out *generic.Bound, in BindInput) (generic.Detach, error) {
@@ -91,6 +91,9 @@ func attachAdvantage(ctx context.Context, bus events.EventBus, out *generic.Boun
 	m, err := advantageMeaning(out.Params())
 	if err != nil {
 		return nil, err
+	}
+	if m.domain == domainAttack {
+		return attachAttackAdvantage(ctx, bus, out, in, m)
 	}
 	if m.domain == domainSave {
 		return attachSaveAdvantage(ctx, bus, out, in)

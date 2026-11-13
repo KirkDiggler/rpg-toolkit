@@ -47,6 +47,15 @@
               },
               "sentence": "The party starts at q 0, r 6, in Hall (region-hall).",
               "path": "room.room.partyStart"
+            },
+            {
+              "kind": "place.sharing",
+              "about": {
+                "kind": "site",
+                "id": "hail-site"
+              },
+              "sentence": "The party's sharing is not set, so it is shared view, the default.",
+              "path": "(engine rule)"
             }
           ]
         }
@@ -189,7 +198,7 @@
                 "kind": "creature",
                 "id": "porter"
               },
-              "sentence": "When the line “We're expected.” (`guest`) is said, Guard (porter) answers “In you go.”, at `speak`: its words reach everyone in Guard (porter)'s room (the wall partition Guard (porter) stands in), and whoever it is said to, wherever they stand.",
+              "sentence": "When the line “We're expected.” (`guest`) is said, Guard (porter) answers “In you go.”, at `speak`: its words reach everyone in Guard (porter)'s room (the wall partition Guard (porter) stands in), and whoever it is said to, wherever they stand and whoever sees Guard (porter) answer and caught none of the line is told only that Guard (porter) answered and what Guard (porter) is seen doing, and, if they see the speaker, sees the line said without its words.",
               "path": "room.room.monsterBindings.porter.options[0].success[0]"
             }
           ]

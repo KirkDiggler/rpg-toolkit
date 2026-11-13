@@ -1,5 +1,7 @@
 # 2026-11-03 · When things fire S2 · Facing follows the legs
 
+processed: 2026-11-12T165555Z
+
 Story [rpg-project#825](https://github.com/KirkDiggler/rpg-project/issues/825), slice [rpg-project#829](https://github.com/KirkDiggler/rpg-project/issues/829), design R2. Encounter PR [rpg-toolkit#2252](https://github.com/KirkDiggler/rpg-toolkit/pull/2252).
 
 ## Shipped

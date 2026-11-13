@@ -1,5 +1,7 @@
 # Run — 2026-11-04 — #2254 — resolution's lint drain
 
+processed: 2026-11-12T165555Z
+
 Part of [rpg-toolkit#2254](https://github.com/KirkDiggler/rpg-toolkit/issues/2254). Base: `rpg-toolkit` `main` at 6d8a753a. The debt: 88 findings under the live root config (#2153's limits), the first of the four dam-drain modules.
 
 ## Shipped

@@ -1,5 +1,7 @@
 # Run — 2026-11-09 — alive, not lagging S5 encounter: the compiled site is shared by content hash
 
+processed: 2026-11-12T165555Z
+
 Slice [rpg-project#914](https://github.com/KirkDiggler/rpg-project/issues/914) of story [rpg-project#879](https://github.com/KirkDiggler/rpg-project/issues/879), leg 1 of 3 (encounter). Base: `rpg-toolkit` `main` at `e4ac31f8`. Head: the [rpg-toolkit#2345](https://github.com/KirkDiggler/rpg-toolkit/pull/2345) branch `feat/encounter-shared-site`. Keep: keepgen 10k hexes, seed 1, 99 garrison, 20 patrols (`bench-keep-garrison`). Machine: 32 threads, load average 2.6 to 3.6.
 
 ## Shipped

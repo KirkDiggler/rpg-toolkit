@@ -1,5 +1,7 @@
 # Run — 2026-11-09 — the record appended a segment at a time
 
+processed: 2026-11-12T165555Z
+
 Base: `rpg-toolkit` `main` at ba6d40f2 (record v0.3.0). Story: [rpg-project#879](https://github.com/KirkDiggler/rpg-project/issues/879), slice [rpg-project#897](https://github.com/KirkDiggler/rpg-project/issues/897) leg (c), PR 1 of 4. PR: [#2352](https://github.com/KirkDiggler/rpg-toolkit/pull/2352). Consumer: [#2353](https://github.com/KirkDiggler/rpg-toolkit/pull/2353), encounter `ToCheckpoint`.
 
 ## Shipped

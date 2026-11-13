@@ -1,5 +1,7 @@
 # Run — 2026-11-06 — Item/effect architecture walkthrough
 
+processed: 2026-11-12T165555Z
+
 Documentation work [rpg-project#876](https://github.com/KirkDiggler/rpg-project/issues/876), serving the [effects extraction scope](https://github.com/KirkDiggler/rpg-project/issues/705) and [item consumers](https://github.com/KirkDiggler/rpg-project/issues/850).
 
 ## Shipped

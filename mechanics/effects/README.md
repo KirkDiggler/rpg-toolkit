@@ -71,7 +71,10 @@ instance codec; it does not include rulebook origin/bindings or replace the
 generic `ToJSON` format. `CurrentOutputs()` returns a defensive slice of current
 observational handles. `Bound.Params()` and `Host()` detach their returned data.
 Guards on a retained handle still read live state; use Snapshot for saved state
-and fetch current handles after transitions.
+and fetch current handles after transitions. `Bound.Definition()` returns the
+complete authored output as owned data, including its guard and amount strategy;
+`Output.Clone()` provides the same detached copy. Neither evaluates or captures a
+live bag. Availability still comes from CurrentOutputs, not a retained definition.
 
 `Changed` reports bag mutations and successful nonterminal state transitions,
 after new outputs attach. Its error reaches the beat publisher; this is not

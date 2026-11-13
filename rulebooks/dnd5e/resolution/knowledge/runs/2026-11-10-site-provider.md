@@ -1,5 +1,7 @@
 # Run — 2026-11-10 — resolution's load takes the site provider
 
+processed: 2026-11-12T165555Z
+
 Leg 2a of S5, [rpg-project#914](https://github.com/KirkDiggler/rpg-project/issues/914), story [rpg-project#879](https://github.com/KirkDiggler/rpg-project/issues/879). Base: `rpg-toolkit` `main` at 008db1d6 (the encounter leg, [rpg-toolkit#2345](https://github.com/KirkDiggler/rpg-toolkit/pull/2345), merged). PR: [rpg-toolkit#2348](https://github.com/KirkDiggler/rpg-toolkit/pull/2348); reviewed at c6ef1daa.
 
 ## Shipped

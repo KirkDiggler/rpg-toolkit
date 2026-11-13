@@ -1,5 +1,7 @@
 # Run — 2026-11-09 — tests under control S2: the three oracle tests prove their equality on a small keep
 
+processed: 2026-11-12T165555Z
+
 Slice [rpg-project#909](https://github.com/KirkDiggler/rpg-project/issues/909) of story [rpg-project#907](https://github.com/KirkDiggler/rpg-project/issues/907). Base: `rpg-toolkit` `main` at [`b7ac2a42`](https://github.com/KirkDiggler/rpg-toolkit/commit/b7ac2a42). Test code only; no production file changed.
 
 ## Shipped

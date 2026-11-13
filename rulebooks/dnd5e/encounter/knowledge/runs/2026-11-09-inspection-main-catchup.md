@@ -1,5 +1,7 @@
 # Run — 2026-11-09 — inspection catches up to the new test gates
 
+processed: 2026-11-12T165555Z
+
 ## Shipped
 
 - Joined published main through f61e4379 into the unmerged inspection candidate: reviewed small-keep oracles, CI shards/budget, per-encounter cache hooks and play/record v0.3.0. Machinev0.2.0/behaviorv0.22.0 pins stay intact; this is branch catch-up, not an inspection release — [inspection PR](https://github.com/KirkDiggler/rpg-toolkit/pull/2326).

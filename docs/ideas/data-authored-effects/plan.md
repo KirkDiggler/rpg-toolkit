@@ -4,11 +4,11 @@
 
 **Goal:** establish reusable, data-authored effect composition in the rulebook and teach its public API through rulebook-local fixtures and executable examples.
 
-**Execution state:** T1–T8 are source-complete at root `97cad4a4` (#2401). T5 required the separate neutral observation support in #950/#2402 (`a1a45e42`), consumed through a real pseudo-version. The bounded joined independent review is complete with one deferred Minor (#2404) and no blockers. T9 still requires operator view acknowledgment/waiver and separately authorized release/re-pin closure. [Actual evidence and implementation rulings](implementation.md).
+**Execution state:** T1–T9 implementation, proof and authorized runtime release are complete. #2402 merged `a3afad9a` → mechanics/effects v0.6.0; #2401 merged `7c0d3457` → rulebooks/dnd5e v0.216.0 after a real-tag re-pin, fresh full gates/CI and focused head verdict. The operator's [merge-out go](https://github.com/KirkDiggler/rpg-project/issues/946#issuecomment-6840404069) accepts the reviewed fixture evidence, not a claimed manual walk. This PR carries the final documentation closeout; the owning issues carry its actual merge receipt. Minor #2404 and deferred #947 remain open. [Release evidence](implementation.md).
 
 **Architecture:** a validated immutable library binds user/recipient roles into existing linked applications. The rulebook kind table owns meanings and projection; configured target facts are values in the action frame. Generic effects, source payment and existing delivery/lifetime machinery keep their current responsibilities; a small test source demonstrates payment without implementing an item engine.
 
-**Tech stack:** Go 1.27 modules, existing JSON codecs and testify suites. T5 demonstrated a missing complete-output observation; root now pins mechanics/effects `v0.5.1-0.20261112214314-a1a45e426f41` from the separate provider PR.
+**Tech stack:** Go 1.27 modules, existing JSON codecs and testify suites. T5 demonstrated a missing complete-output observation; root developed against the separate provider's pushed pseudo-version and now pins released mechanics/effects v0.6.0.
 
 **Spec:** [design](design.md), [walkthrough](README.md), [exact example data/policies](examples.md), [brief](brief.md). R1–R6 accepted; [planning authority](https://github.com/KirkDiggler/rpg-toolkit/pull/2399#issuecomment-6833714502) and [rulebook-first correction](https://github.com/KirkDiggler/rpg-toolkit/pull/2399#issuecomment-6835450799).
 
@@ -247,8 +247,8 @@ Projection uses Assembly.CurrentOutputs plus the same validated payload builder,
 - [x] Update current package documentation, cookbook instructions and owning run records.
 - [x] Run documentation checks and publish the exact executable transcript for operator review.
 - [x] Run the required bounded independent joined review and close important findings on the same record (reviews5883376897/5883377068; no blocking findings; Minor deferred to #2404).
-- [ ] Publish exact-head CI/local gates, limits and the source-ready release handoff on #946; keep deferred #947 separate.
-- [ ] Only after separate authority: merge/tag neutral observations, adopt the real tag in root and rerun gates, merge root including the cookbook, verify its tag, then close docs and delivered #946/#950. Do not close deferred #947 as delivered.
+- [x] Publish exact-head CI/local gates, limits and release receipts on #946; keep deferred #947 separate.
+- [x] Under operator authority, merge/tag neutral observations, adopt the actual tag and rerun root gates, merge/tag root, and publish this documentation closeout. The owning issues record the final documentation merge/ship receipt; #947 is not delivered.
 **Verification:** owning root commands above; run `make pre-commit` from the root implementation worktree's repository root and report its documented limited scope or exact coverage-extraction failure without committing incidental Core/Events edits; `git -C /home/kirk/game-dev/rpg-toolkit/.worktrees/authored-effect-rulebook diff --check`; repository-relative link check; run `scripts/check-doc-genres.sh` from the game-dev root checkout. At authorized release, discover the root tag from CI and verify its target against the merge SHA; downstream re-pinning belongs to separately selected #947.
 **Completion evidence:** implementation/review/CI/graph receipts and explicit remaining release authority. No branch/worktree/runtime cleanup that destroys the operator's preserved walk or its older provider references.
 
@@ -274,7 +274,7 @@ Deferrals are exactly the Scope section: no hidden native inventory/studio/obser
 
 | Provider | Consumer | Produced vs consumed contract | Availability / order | Proof |
 |---|---|---|---|---|
-| Generic effects + #950/#2402 observation support | T1/T2/T3/T5/T6 | Existing PartInput/CurrentOutputs/Snapshot/Lifetime plus owned Output.Clone and Bound.Definition | Source implemented and root adopts pushed pseudo-version; actual tag pending authorized release | Observation isolation/end-window tests plus configured-fact equality/cookbook |
+| Generic effects + #950/#2402 observation support | T1/T2/T3/T5/T6 | Existing PartInput/CurrentOutputs/Snapshot/Lifetime plus owned Output.Clone and Bound.Definition | Provider released v0.6.0 and root re-pinned/verified before its v0.216.0 release | Observation isolation/end-window tests plus configured-fact equality/cookbook |
 | T1 contributions | T2/T5 | ConfiguredOutput.Clone and Frame.HeldEffects with exact absence semantics | T1 first; contributions never imports rulebook effects/events | Mutation-isolation and structural-refusal tests |
 | T2/T3 kind table | T4 compiler | ValidatePartTemplate class/capabilities, field support and payload/maintenance declarations | Available before each compiler fixture is admitted | Strict whole-library/dual-concentration and field-refusal cases |
 | T4 compiler/binder | T6 application | Copied ApplicationSpec + CoordinatorID, immutable Origin/ApplicationID supplied explicitly | Same root worktree, ordered tasks | Self-use/collision, mutation, pending/resume tests |
@@ -306,4 +306,4 @@ Shared-file ordering: T2 establishes parts/kind hooks and clones; T3 extends the
 | A package README in both runtime and design branches would create avoidable parallel ownership. | T9 hands the completed README from #2399 to #2401 so its relative links match the implemented source; the design PR removes its copy. One writer remains. |
 | The previous cut made examples/items the primary teaching/integration surface rather than the rulebook. | R6 moves T7/T8 and their canonical data into the root module, expands #946 to the complete deliverable, and leaves #947 as separate deferred adoption. |
 
-Plan check result: all C1–C9 requirements have an owner and named proof; every consumed capability has a producing task or the explicit #950 prerequisite. T1–T8 now have committed source and observed verification; exact heads, test boundaries and deviations are in implementation.md. T9 remains open for operator-view acknowledgment/waiver and separately authorized release/re-pin closure. The joined review is complete and is not repeated. Source completion is not shipment.
+Plan check result: all C1–C9 requirements have an owner and named proof; every consumed capability has a producing task or the explicit #950 prerequisite. T1–T8 now have committed source and observed verification; exact heads, test boundaries and deviations are in implementation.md. Operator go, independent review and focused real-tag release closure are recorded in implementation.md. Both runtime PRs are merged/tagged; this documentation PR carries closeout, whose actual merge is recorded on the owning issues. The joined review was not repeated.

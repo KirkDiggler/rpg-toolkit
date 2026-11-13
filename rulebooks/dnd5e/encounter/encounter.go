@@ -120,6 +120,12 @@ type Encounter struct {
 	// a run whose content declares none, which writes no key.
 	interactions map[InteractionID]*interactionRecord
 
+	// sharing is the party's sharing dial as authored (sharing.go,
+	// rpg-project#935): empty when the content said nothing, read through
+	// [Encounter.Sharing] as [DefaultSharing]. Persisted as written, so an
+	// unmarked run writes no key. Inert: no audience is decided by it.
+	sharing Sharing
+
 	// granted is every topic the run can grant (recognition.go,
 	// rpg-project#928, #929): its interactions' outcomes and its members'
 	// lines' grants. A `recognized` requirement or pass on any other is one
@@ -899,6 +905,13 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter: %w: %w", err, ErrNoField)
 	}
 
+	// THE PARTY'S SHARING DIAL (sharing.go, rpg-project#935): the run's,
+	// never site data. Shared knowledge is refused here, at launch, until it
+	// is built (rpg-project#937).
+	if err := validateSharing(in.Field.Sharing); err != nil {
+		return nil, fmt.Errorf("newencounter: %w", err)
+	}
+
 	// A line requiring a holding must name a prop this field lets somebody
 	// pick up (option.go) — asked against the compiled field, so after it —
 	// and a line naming an interaction must name one this run has.
@@ -1032,6 +1045,7 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 		retention:           normalizeRetention(in.Retention),
 		interactions:        interactions,
 		granted:             granted,
+		sharing:             in.Field.Sharing,
 	}
 	e.doors, e.doorsByID = doorRecordsFrom(in.Field.Doors)
 

@@ -1,5 +1,7 @@
 # 2026-11-07 — shared rulebook composition consumer
 
+processed: 2026-11-12T165555Z
+
 Work: [Composable conditions S10 #882](https://github.com/KirkDiggler/rpg-project/issues/882), [approved design/plan #2295](https://github.com/KirkDiggler/rpg-toolkit/pull/2295).
 
 ## Shipped

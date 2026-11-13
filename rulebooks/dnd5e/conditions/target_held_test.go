@@ -212,12 +212,20 @@ func (s *targetHeldSuite) TestValidateAnswerRefusesModeWhenNotApplying() {
 
 func (s *targetHeldSuite) TestAssessTargetHeldEffectsListsBearingHeldEffects() {
 	ff := contributions.HeldCondition{Ref: ffHeld.Ref, SourceID: "c1"}
-	out, err := AssessTargetHeldEffects(&AssessTargetHeldEffectsInput{
-		Frame: gobFrame(ff, concentrateHeld, recklessHeld, proneHeld),
-	})
+	concentration := concentrateHeld
+	concentration.SourceID = "concentration-app"
+	frame := gobFrame(ff, concentration, recklessHeld, proneHeld)
+	// The linked ref alone no longer identifies its configured meaning. This
+	// observed owner explicitly has no target-side outputs; absence is unknown.
+	frame.HeldEffects = []contributions.HeldEffectDetail{{
+		MemberID: "gob", Held: concentration, ApplicationID: "concentration-app",
+		DisplayName: "Concentrating", OriginRef: *refs.Spells.Bless(), OriginID: "gob",
+		Outputs: []contributions.ConfiguredOutput{},
+	}}
+	out, err := AssessTargetHeldEffects(&AssessTargetHeldEffectsInput{Frame: frame})
 	s.Require().NoError(err)
 
-	_, found := effectByID(out.Effects, heldEffectID(concentrateHeld))
+	_, found := effectByID(out.Effects, heldEffectID(concentration))
 	s.False(found, "Concentrating does not bear on an attack against its holder")
 
 	ids := make([]string, 0, len(out.Effects))

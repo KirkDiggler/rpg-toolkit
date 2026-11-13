@@ -212,7 +212,7 @@ benefits, drawbacks, clocks and prices rather than calling them standard rules.
 
 | Concern | Existing source / proposed home |
 |---|---|
-| Current vocabulary | [`effects`](https://github.com/KirkDiggler/rpg-toolkit/blob/feat/authored-effect-rulebook/rulebooks/dnd5e/effects/README.md) |
+| Current vocabulary | [`effects`](../../../rulebooks/dnd5e/effects/README.md) |
 | Part binding/validation | `rulebooks/dnd5e/effects/{parts,part_validation,kinds}.go` |
 | Definition compilation/binding | `rulebooks/dnd5e/conditions/definition*.go` |
 | Linked application and immutable bindings | `rulebooks/dnd5e/conditions/{application,linked_data,linked_condition}.go` |

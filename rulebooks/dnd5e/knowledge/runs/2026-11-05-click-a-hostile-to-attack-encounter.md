@@ -1,5 +1,7 @@
 # 2026-11-05 · Click a hostile to attack, D4 · Encounter
 
+processed: 2026-11-12T165555Z
+
 Story [rpg-project#872](https://github.com/KirkDiggler/rpg-project/issues/872), decision D4 (the server answers "can I reach him this turn, and where do I stop"). Built on encounter v0.178.0 (main 6d8a753a), in commits [264cfd77](https://github.com/KirkDiggler/rpg-toolkit/commit/264cfd770e5676e3c0ec3ac85c84be7e54bf95f9), [59b274fb](https://github.com/KirkDiggler/rpg-toolkit/commit/59b274fb2c05e99d62d4e2258e739c1801458ce6) and the review fix on [#2285](https://github.com/KirkDiggler/rpg-toolkit/pull/2285).
 
 ## Shipped

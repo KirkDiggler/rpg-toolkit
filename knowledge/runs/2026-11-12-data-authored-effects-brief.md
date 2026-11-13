@@ -4,6 +4,7 @@ Design preparation for [rpg-project#703](https://github.com/KirkDiggler/rpg-proj
 
 ## Shipped
 
+- 2026-11-13: authorized inside-out release completes effects v0.6.0 and rulebook v0.216.0 with verified tag targets, real consumer pin, fresh gates/CI and focused head verdict; final docs carry canonical links and receipts while native adoption stays separate — [release table](../../docs/ideas/data-authored-effects/implementation.md#released-modules).
 - Documentation proposal only: a current rulebook-effects package guide, fixture-driven brief, detailed walkthrough/design and illustrative input library; no runtime or fixture implementation claimed — [walkthrough](../../docs/ideas/data-authored-effects/README.md).
 
 ## Decided
@@ -20,7 +21,7 @@ Design preparation for [rpg-project#703](https://github.com/KirkDiggler/rpg-proj
 
 ## Found
 
-- Damage, resistance and save/check advantage already have reusable output meanings, but only resistance has a payload part binding; Rage activity maintenance remains in its named recipe — [package guide](https://github.com/KirkDiggler/rpg-toolkit/blob/feat/authored-effect-rulebook/rulebooks/dnd5e/effects/README.md#the-vocabulary).
+- Damage, resistance and save/check advantage already have reusable output meanings, but only resistance has a payload part binding; Rage activity maintenance remains in its named recipe — [package guide](../../rulebooks/dnd5e/effects/README.md#the-vocabulary).
 - ApplicationSpec contains concrete participants, the existing item example uses a named Go resolver, and target-held facts carry only ref/source identity; reusable authoring and configured target-side information require explicit contracts — [measured brief](https://github.com/KirkDiggler/rpg-project/issues/703#issuecomment-6831644739).
 - Existing root effects/conditions and item-example tests pass at the measured base; those baselines do not establish the proposed fixture capability — [evidence](https://github.com/KirkDiggler/rpg-project/issues/703#issuecomment-6831644739).
 

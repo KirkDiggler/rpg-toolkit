@@ -12,6 +12,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/deed"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/replaytest"
 )
 
 // speech_test.go is perceived speech (rpg-project#933) on the noise hall's
@@ -23,11 +24,13 @@ import (
 type SpeechSuite struct {
 	suite.Suite
 	ctx context.Context
+	// options, when set, are the goblin's lines in place of [speechOptions].
+	options []encounter.Option
 }
 
 func TestSpeechSuite(t *testing.T) { suite.Run(t, new(SpeechSuite)) }
 
-func (s *SpeechSuite) SetupTest() { s.ctx = context.Background() }
+func (s *SpeechSuite) SetupTest() { s.ctx, s.options = context.Background(), nil }
 
 const (
 	speechBea  encounter.MemberID = "bea"
@@ -65,6 +68,9 @@ func (s *SpeechSuite) hallWith(
 ) *encounter.Encounter {
 	goblinIn := at(goblin, encounter.KindMonster, 6, 5)
 	goblinIn.Options = speechOptions(line, answer)
+	if s.options != nil {
+		goblinIn.Options = s.options
+	}
 	setup := noiseHallSetup(ab, encounter.DoorIsOpen(),
 		sheetFacts{
 			alice: {SpeedFeet: 30}, goblin: {SpeedFeet: 30},
@@ -399,4 +405,92 @@ func (s *SpeechSuite) TestSaidWithinIsTheReachALineIsSaidFrom() {
 		s.Equal(1, encounter.Option{Loudness: l}.SaidWithin(0), "%q at reach zero is adjacent", l)
 	}
 	s.Equal(1, encounter.Option{Loudness: "whisper"}.SaidWithin(3), "a whisper only from beside")
+}
+
+// lopsided is the goblin's line with a success table of one row and a failure
+// table of three, differently weighted: the shapes a pick's die and
+// candidates would tell apart (rpg-project#948).
+func lopsided() []encounter.Option {
+	return []encounter.Option{{
+		ID: "hello", Say: "Evening.",
+		Check:   []encounter.CheckApproach{{Ability: "persuasion", DC: 10}},
+		Success: []encounter.Answer{{Weight: 1, Say: "Evening yourself."}},
+		Failure: []encounter.Answer{
+			{Weight: 1, Say: "Move along."}, {Weight: 2, Say: "Not tonight."}, {Weight: 5, Say: "Off with you."},
+		},
+	}}
+}
+
+// picksFor is every answered beat a member was written, raw.
+func (s *SpeechSuite) picksFor(enc *encounter.Encounter, who encounter.MemberID) []string {
+	story, err := enc.Story(&encounter.StoryInput{Audience: who})
+	s.Require().NoError(err)
+	var out []string
+	for _, e := range story {
+		var b map[string]any
+		s.Require().NoError(json.Unmarshal(e.Payload, &b))
+		if b["beat"] == encounter.BeatAnswered {
+			out = append(out, string(e.Payload))
+		}
+	}
+	return out
+}
+
+// TestAPickTellsAWatcherNothingOfTheVerdict (rpg-project#948): bea watches
+// alice's line through the doorway and catches none of it; the goblin's pick
+// she is written is the same body, byte for byte, landed or missed, though
+// the two tables differ in shape. Alice, who said it, is written the pick
+// with its die and candidates.
+func (s *SpeechSuite) TestAPickTellsAWatcherNothingOfTheVerdict() {
+	var watched [2][]string
+	for i, beaten := range []bool{true, false} {
+		s.options = lopsided()
+		enc := s.hall(encounter.DoorIsOpen(), "", "")
+		s.Require().NoError(s.say(enc, beaten))
+		watched[i] = s.picksFor(enc, speechBea)
+		s.Require().Len(watched[i], 1, "bea sees the goblin answer")
+
+		full := s.picksFor(enc, alice)
+		s.Require().Len(full, 1)
+		var pick map[string]any
+		s.Require().NoError(json.Unmarshal([]byte(full[0]), &pick))
+		s.Positive(pick["of"], "alice, who said it, is told the die")
+		s.NotEmpty(pick["candidates"], "and every candidate")
+	}
+	s.Equal(watched[0], watched[1], "the same pick for bea, landed or missed")
+	s.JSONEq(`{"beat":"answered","creature":"goblin"}`, watched[0][0])
+}
+
+// TestAPickIsOneDieInTheRecord: the full pick and the watcher's stripped one
+// are two beats of one roll, and the record holds the die once
+// (rpg-project#948): the stripped beat has no path, so a replay reads no die
+// from it.
+func (s *SpeechSuite) TestAPickIsOneDieInTheRecord() {
+	s.options = lopsided()
+	enc := s.hall(encounter.DoorIsOpen(), "", "")
+	s.Require().NoError(s.say(enc, false))
+	data := enc.ToData()
+	picks, dice := 0, 0
+	for _, e := range data.Log.Entries {
+		var b map[string]any
+		s.Require().NoError(json.Unmarshal(e.Payload, &b))
+		if b["beat"] != encounter.BeatAnswered || b["creature"] != string(goblin) {
+			continue
+		}
+		picks++
+		if path, _ := b["path"].([]any); len(path) > 0 {
+			dice++
+		}
+	}
+	s.Equal(2, picks, "the full pick and the watcher's")
+	s.Equal(1, dice, "one die")
+	rolls, err := replaytest.RollsOf(data.Log.Entries)
+	s.Require().NoError(err)
+	goblinRolls := 0
+	for _, r := range rolls {
+		if r.Who == string(goblin) {
+			goblinRolls++
+		}
+	}
+	s.Equal(1, goblinRolls, "a replay counts the goblin's die once")
 }

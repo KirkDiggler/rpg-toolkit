@@ -1,5 +1,7 @@
 # 2026-11-07 — resolution consumes composed Raging
 
+processed: 2026-11-12T165555Z
+
 Work: [Composable conditions S12 #884](https://github.com/KirkDiggler/rpg-project/issues/884), approved [plan #2295](https://github.com/KirkDiggler/rpg-toolkit/pull/2295).
 
 ## Shipped

@@ -1,5 +1,7 @@
 # Run — 2026-11-07 — canonical behavior and upstream integration
 
+processed: 2026-11-12T165555Z
+
 Part of [live adoption #866](https://github.com/KirkDiggler/rpg-project/issues/866), on [toolkit #2293](https://github.com/KirkDiggler/rpg-toolkit/pull/2293).
 
 ## Shipped

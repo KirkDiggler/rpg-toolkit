@@ -1,5 +1,7 @@
 # Run — 2026-11-08 — behavior inspection through session delivery
 
+processed: 2026-11-12T165555Z
+
 ## Shipped
 
 - Adopted the pushed encounter inspection provider and classified its three diagnostic kinds as record-only; API/web adoption and the live inspection feature remain incomplete — [Machine inspection S2](https://github.com/KirkDiggler/rpg-project/issues/900).

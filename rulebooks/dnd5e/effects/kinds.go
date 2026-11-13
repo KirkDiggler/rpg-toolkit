@@ -20,6 +20,9 @@ import (
 )
 
 type kindDefinition struct {
+	checkBinding func(generic.Output, BindInput) error
+	class        PartClass
+	payload      func(PartDeclaration) (generic.Output, error)
 	execution    generic.KindExecution
 	assess       func(*AssessInput, meaning) (assessment, error)
 	validatePart func(PartDeclaration) error
@@ -32,6 +35,7 @@ type kindDefinition struct {
 }
 
 type meaning struct {
+	side        string
 	domain      domain
 	description string
 	types       []damage.Type
@@ -54,15 +58,16 @@ type assessment struct {
 // kindTable is the only kind registration: generic validation/attachment/rows
 // and richer rulebook assessment all resolve through these same entries.
 var kindTable = map[generic.KindName]kindDefinition{
-	KindDamageBonus: {check: checkDamage, meaning: damageMeaning, attach: attachDamage},
-	KindResistance:  {validatePart: validateResistancePart, part: bindResistancePart, inspectPart: inspectResistancePart, check: checkResistance, meaning: resistanceMeaning, attach: attachResistance},
-	KindAdvantage:   {check: checkAdvantage, meaning: advantageMeaning, attach: attachAdvantage},
-	KindConcentration: {describePart: describeConcentrationPart, validatePart: checkUnparameterizedMaintenance, part: bindConcentrationPart, inspectPart: inspectConcentrationPart,
+	KindCombatActivity: {class: PartClassMaintenance, validatePart: validateActivityPart, part: bindActivityPart, inspectPart: inspectActivityPart},
+	KindDamageBonus:    {class: PartClassBenefit, payload: damagePartOutput, validatePart: validateDamagePart, part: bindDamagePart, inspectPart: inspectDamagePart, check: checkDamage, meaning: damageMeaning, attach: attachDamage},
+	KindResistance:     {class: PartClassBenefit, payload: resistancePartOutput, validatePart: validateResistancePart, part: bindResistancePart, inspectPart: inspectResistancePart, check: checkResistance, meaning: resistanceMeaning, attach: attachResistance},
+	KindAdvantage:      {class: PartClassBenefit, payload: advantagePartOutput, validatePart: validateAdvantagePart, part: bindAdvantagePart, inspectPart: inspectAdvantagePart, check: checkAdvantage, checkBinding: checkAdvantageBinding, meaning: advantageMeaning, attach: attachAdvantage},
+	KindConcentration: {class: PartClassMaintenance, describePart: describeConcentrationPart, validatePart: checkUnparameterizedMaintenance, part: bindConcentrationPart, inspectPart: inspectConcentrationPart,
 		check: checkConcentrationOutput, meaning: concentrationMeaning, attach: attachConcentration},
-	KindDuration:   {describePart: describeDurationPart, validatePart: validateDurationPart, part: bindDurationPart, inspectPart: inspectDurationPart},
-	KindUntilEmpty: {validatePart: checkUnparameterizedMaintenance, part: bindUntilEmptyPart, inspectPart: inspectUntilEmptyPart},
-	KindEndOn:      {validatePart: validateEndOnPart, part: bindEndOnPart, inspectPart: inspectEndOnPart},
-	KindRollModifier: {validatePart: validateRollPart, part: bindRollModifierPart, inspectPart: inspectRollModifierPart, execution: generic.KindQuery,
+	KindDuration:   {class: PartClassMaintenance, describePart: describeDurationPart, validatePart: validateDurationPart, part: bindDurationPart, inspectPart: inspectDurationPart},
+	KindUntilEmpty: {class: PartClassMaintenance, validatePart: checkUnparameterizedMaintenance, part: bindUntilEmptyPart, inspectPart: inspectUntilEmptyPart},
+	KindEndOn:      {class: PartClassMaintenance, validatePart: validateEndOnPart, part: bindEndOnPart, inspectPart: inspectEndOnPart},
+	KindRollModifier: {class: PartClassBenefit, validatePart: validateRollPart, part: bindRollModifierPart, inspectPart: inspectRollModifierPart, execution: generic.KindQuery,
 		check: checkRollModifier, meaning: rollMeaning, assess: assessRollModifier},
 }
 
@@ -108,6 +113,20 @@ func resistanceMeaning(raw jsontext.Value) (meaning, error) {
 	return meaning{domain: domainIncoming, description: "Resistance to " + strings.Join(names, ", ") + " damage.", types: p.Types}, nil
 }
 func advantageMeaning(raw jsontext.Value) (meaning, error) {
+	route, err := decodeParams[advantageRoute](raw)
+	if err != nil {
+		return meaning{}, err
+	}
+	if route.On == domainAttack {
+		p, err := decodeParams[attackAdvantageParams](raw)
+		if err != nil {
+			return meaning{}, err
+		}
+		if p.Side != sideByHolder && p.Side != sideAgainstHolder {
+			return meaning{}, fmt.Errorf("attack advantage requires by_holder or against_holder side")
+		}
+		return meaning{domain: domainAttack, side: p.Side, description: "Advantage on matching attacks " + p.Side + "."}, nil
+	}
 	p, err := decodeParams[advantageParams](raw)
 	if err != nil {
 		return meaning{}, err
@@ -138,8 +157,14 @@ func checkAdvantage(out generic.Output) error {
 	if out.Amount != nil {
 		return fmt.Errorf("advantage does not take an amount")
 	}
-	_, err := advantageMeaning(out.Params)
-	return err
+	m, err := advantageMeaning(out.Params)
+	if err != nil {
+		return err
+	}
+	if m.domain == domainAttack {
+		return validateFrameGuard(out.When, advantageFacts(m))
+	}
+	return nil
 }
 
 // Assess returns one effect's explanation from the same domain, guard and amount
@@ -177,6 +202,9 @@ func assess(in *AssessInput) (assessment, error) {
 // the registry. Execution and information share it, avoiding an initialization
 // cycle between registry entries and their attachment functions.
 func assessMeaning(in *AssessInput, m meaning) (assessment, error) {
+	if m.domain == domainAttack {
+		return assessAttack(in, m)
+	}
 	var result assessment
 	if err := validateBinding(&BindInput{Origin: in.Origin, DisplayName: in.DisplayName}); err != nil {
 		return result, err

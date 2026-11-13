@@ -83,10 +83,7 @@ type LinkedConditionData struct {
 
 func cloneLinkedBindings(in LinkedBindings) LinkedBindings {
 	out := in
-	out.Parts = slices.Clone(in.Parts)
-	for i := range out.Parts {
-		out.Parts[i].Params = slices.Clone(in.Parts[i].Params)
-	}
+	out.Parts = cloneDeclarations(in.Parts)
 	out.Members = slices.Clone(in.Members)
 	if in.Owner != nil {
 		owner := *in.Owner

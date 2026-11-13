@@ -2,21 +2,41 @@
 
 The [accepted design](design.md) and [checked plan](plan.md) belong to
 [project #946](https://github.com/KirkDiggler/rpg-project/issues/946).
-This is **source implementation evidence, not a release**. The bounded independent
-review is complete with one deferred Minor and no blocking findings. Operator
-fixture-view acknowledgment/waiver and authorized release/tag adoption remain open.
+The toolkit wave is **released**, following the [operator's merge-out go](https://github.com/KirkDiggler/rpg-project/issues/946#issuecomment-6840404069)
+against the reviewed executable fixture evidence. The bounded independent review
+has no blocking findings; one Minor remains deferred. This is not native API/web
+adoption or a production deployment.
 
-## Source checkpoints
+## Released modules
+
+| Unit | Merge commit | CI release |
+|---|---|---|
+| Neutral output observations #2402 | `a3afad9aecf194321ae39200831b7aeb80f1924f` | mechanics/effects **v0.6.0** |
+| Rulebook API and cookbook #2401 | `7c0d345721872419ce815e5bfdc44576c9e71947` | rulebooks/dnd5e **v0.216.0** |
+
+Both tag targets match their actual merge commits. Root pins effects v0.6.0 through
+normal go get/tidy; no development provider pin remains. Its final head
+`27e0cfd7d321e5860cd67935ad196cc1d9b87690` passed full race/count1, vet, lint,
+cookbook and CI43340654526 before the [focused head verdict](https://github.com/KirkDiggler/rpg-toolkit/pull/2401#pullrequestreview-5884461084)
+and merge. Main catch-up preserved separately shipped encounter/session work;
+only go.mod/go.sum changed within the owning root module after independent review.
+The provider module tree at its tag matches the reviewed source.
+
+Documentation #2399 carries this final closeout; the slice ship receipt records
+its actual merge. Receipts are archived at
+`/tmp/rpg-authored-effects-release-2026-11-13.QjGcXs` before scoped cleanup.
+
+## Reviewed source checkpoints
 
 | Unit | PR | Verified source |
 |---|---|---|
 | Neutral output observations, supporting #950 | [toolkit #2402](https://github.com/KirkDiggler/rpg-toolkit/pull/2402) | `a1a45e426f416c1be1ec38d70dde93ab3fd0d5e5`; full module race/vet/lint and CI43313094673 pass |
-| Rulebook API and executable cookbook, #946 | [toolkit #2401](https://github.com/KirkDiggler/rpg-toolkit/pull/2401) | Current head `6a7256b52623088c5a047c5fea2e5008d10656ff` adds only the package README to runtime head `97cad4a4`; runtime full race/vet/lint, focused cookbook and CI43320346757 pass. Current-head CI is reported on the PR |
+| Rulebook API and executable cookbook, #946 | [toolkit #2401](https://github.com/KirkDiggler/rpg-toolkit/pull/2401) | Reviewed head `6a7256b52623088c5a047c5fea2e5008d10656ff` adds only the package README to runtime head `97cad4a4`; runtime gates and current-head CI43322367839 pass. Final release head/gates are recorded above |
 | Design, plan and evidence | [toolkit #2399](https://github.com/KirkDiggler/rpg-toolkit/pull/2399) | Documentation, not runtime delivery |
 
-Root consumes the real pushed neutral-provider version
-`v0.5.1-0.20261112214314-a1a45e426f41`. It has no replace/go.work/source-copy graph.
-An actual release tag must replace that pin during separately authorized merge-out.
+Development used the real pushed neutral-provider version
+`v0.5.1-0.20261112214314-a1a45e426f41`, replaced by v0.6.0 at release.
+No replace/go.work/source-copy graph was used.
 `examples/items` is not imported by the root production or test graph; #947 remains
 a separate deferred consumer, not an unfinished prerequisite.
 
@@ -132,14 +152,14 @@ Only the current maintenance-class concentration kind reports that capability,
 so a cross-list duplicate cannot be authored today. Disposition: **Deferred** to
 [toolkit #2404](https://github.com/KirkDiggler/rpg-toolkit/issues/2404), owned by the
 next kind author before introducing a benefit-class concentration claim. No code
-change or repeated review round is warranted; the reviewed runtime heads remain
-unchanged.
+change or repeated review round was needed; the release delta was a provider
+re-pin, not a runtime fix for this future-only finding.
 
 The review ran at the operator's direct request before the fixture-view checkbox
-was ticked. That ordering is recorded, not retroactively claimed satisfied. The
-view still needs acknowledgment or an explicit waiver before merge authority is
-requested. A later go.mod/go.sum-only released-tag re-pin needs a focused new-head
-verdict, not another whole-diff campaign.
+was ticked. That ordering remains recorded. The operator subsequently gave the
+merge-out go against the reviewed fixture evidence, replacing the further-view
+wait without a claimed manual/native walk. The released-tag re-pin received a
+focused current-head verdict, not another whole-diff campaign.
 
 ## Gate limits and remaining work
 
@@ -149,12 +169,9 @@ verdict, not another whole-diff campaign.
   This target was not bypassed or claimed green; owning root and provider gates
   passed separately, as the repository test guide requires.
 - Genre checking remains advisory: 44 findings across 89 scanned files, exit1.
-- **Pending:** operator acknowledgment or waiver of the executable fixture view.
-  The independently requested joined review is already complete; do not restart it.
-- **Pending, separate authority:** merge/tag neutral provider, adopt the actual
-  tag and rerun root gates/CI, then root/doc merge. No tags are predicted or made
-  manually. The published review verdicts are MERGE-READY at their reviewed heads,
-  with root explicitly pending re-pin; they are not merge authorization.
+- Operator go, independent review, real tag adoption and focused release closure
+  are recorded above. No tags were predicted or made manually, and no whole-review
+  campaign was restarted. #947 remains deferred; #2404 remains a future-kind check.
 - **Native adoption handoff:** the single current end-reason string changes from
   spell_ended to members_empty. When API/web adopt this root release, their review
   must check the records/events/logs/toasts carrying that value; current fixture

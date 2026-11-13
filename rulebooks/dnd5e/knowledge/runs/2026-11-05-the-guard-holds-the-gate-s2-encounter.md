@@ -1,5 +1,7 @@
 # 2026-11-05 · The guard holds the gate, S2 · Encounter
 
+processed: 2026-11-12T165555Z
+
 Story [rpg-project#836](https://github.com/KirkDiggler/rpg-project/issues/836), slice [rpg-project#842](https://github.com/KirkDiggler/rpg-project/issues/842), Task 6 of `ideas/the-guard-holds-the-gate/plan.md` (design R2, R7). Built on encounter v0.177.0 (main d161e7bd), in commit [0dc1196d](https://github.com/KirkDiggler/rpg-toolkit/commit/0dc1196d).
 
 ## Shipped

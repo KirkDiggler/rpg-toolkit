@@ -21,8 +21,12 @@ const (
 	FactWeaponPool machine.FactName = "action.weapon_pool"
 	// FactAbility reads the action/save/check's actual governing ability.
 	FactAbility machine.FactName = "action.ability"
+	// FactOpportunity reads the action's explicit opportunity-attack fact.
+	FactOpportunity machine.FactName = "action.opportunity"
 	// Holder selects the entity the occurrence is about.
 	Holder machine.Selector = "holder"
+	// BeatTurnStart names the holder's next received turn-start occurrence.
+	BeatTurnStart machine.Beat = "turn_start"
 	// BeatTurnEnd names an entity's turn end and current round.
 	BeatTurnEnd machine.Beat = "turn_end"
 	// BeatDamageReceived observes positive, already-applied DamageTaken facts.
@@ -46,13 +50,25 @@ func Bind(in *BindInput) (*BindOutput, error) {
 		return nil, err
 	}
 	binding := *in
+	if in.Attachment != nil {
+		identity := *in.Attachment
+		binding.Attachment = &identity
+	}
 	kinds := make(map[generic.KindName]generic.KindSpec, len(kindTable))
 	for name, definition := range kindTable {
 		if definition.meaning == nil {
 			continue // lifecycle-only parts produce recipes, not an output kind
 		}
 		spec := generic.KindSpec{
-			Check:     definition.check,
+			Check: func(out generic.Output) error {
+				if err := definition.check(out); err != nil {
+					return err
+				}
+				if definition.checkBinding != nil {
+					return definition.checkBinding(out, binding)
+				}
+				return nil
+			},
 			Execution: definition.execution,
 			Assess: func(frame any, out *generic.Bound) (generic.Row, error) {
 				q, err := queryFrom(frame)
@@ -127,8 +143,15 @@ func machineVocabulary() machine.Vocabulary {
 		factOwnerSource:   membershipFact(machine.KindString, func(e dndevents.ApplicationMembersChangedEvent) any { return e.Owner.SourceID }),
 		factMembersBefore: membershipFact(machine.KindInt, func(e dndevents.ApplicationMembersChangedEvent) any { return e.Before }),
 		factMembersAfter:  membershipFact(machine.KindInt, func(e dndevents.ApplicationMembersChangedEvent) any { return e.After }),
-		FactMelee:         {Kind: machine.KindBool, Read: func(frame any) (any, bool) { return actionBool(frame, false) }},
-		FactWeaponPool:    {Kind: machine.KindBool, Read: func(frame any) (any, bool) { return actionBool(frame, true) }},
+		FactOpportunity: {Kind: machine.KindBool, Read: func(frame any) (any, bool) {
+			q, err := queryFrom(frame)
+			if err != nil || q.Action == nil {
+				return nil, false
+			}
+			return q.Action.Action.Opportunity.Get()
+		}},
+		FactMelee:      {Kind: machine.KindBool, Read: func(frame any) (any, bool) { return actionBool(frame, false) }},
+		FactWeaponPool: {Kind: machine.KindBool, Read: func(frame any) (any, bool) { return actionBool(frame, true) }},
 		FactAbility: {Kind: machine.KindString, Read: func(frame any) (any, bool) {
 			q, err := queryFrom(frame)
 			if err != nil {
@@ -141,7 +164,8 @@ func machineVocabulary() machine.Vocabulary {
 		beatMembersChanged: typedBeat(dndevents.ApplicationMembersChangedTopic, func(e dndevents.ApplicationMembersChangedEvent) (string, bool) {
 			return e.Owner.MemberID, e.Owner.MemberID != ""
 		}, nil),
-		BeatTurnEnd: typedBeat(dndevents.TurnEndTopic, func(e dndevents.TurnEndEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, func(e dndevents.TurnEndEvent) (int, bool) { return e.Round, e.Round > 0 }),
+		BeatTurnStart: typedBeat(dndevents.TurnStartTopic, func(e dndevents.TurnStartEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, nil),
+		BeatTurnEnd:   typedBeat(dndevents.TurnEndTopic, func(e dndevents.TurnEndEvent) (string, bool) { return e.SubjectID, e.SubjectID != "" }, func(e dndevents.TurnEndEvent) (int, bool) { return e.Round, e.Round > 0 }),
 		BeatDamageReceived: typedBeat(dndevents.DamageTakenTopic, func(e *dndevents.DamageTakenEvent) (string, bool) {
 			if e == nil || e.Amount <= 0 {
 				return "", false

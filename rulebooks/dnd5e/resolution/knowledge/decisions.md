@@ -11,7 +11,8 @@ Friction names both entries and never settles them.
 
 ## Findings
 
-- none yet
+- 2026-11-12 · A frozen cast retains execution position and pending delivery against the existing linked application, not a second lifetime. A native pause after some recipients land must survive save/reload without redelivering the earlier recipients or delaying their effects until every recipient finishes. · https://github.com/KirkDiggler/rpg-toolkit/blob/1f66f3c7dc1a1d293d19cda89a7a4f1b9397613d/rulebooks/dnd5e/resolution/knowledge/runs/2026-11-09-resumable-initial-delivery.md
+- 2026-11-12 · deliverMove’s always-nil immediate error is constrained by the continuation shape: its returned Gather can fail later. The local unparam exception documents that deferred error rather than fabricating an immediate failure path. · https://github.com/KirkDiggler/rpg-toolkit/blob/1f66f3c7dc1a1d293d19cda89a7a4f1b9397613d/rulebooks/dnd5e/resolution/knowledge/runs/2026-11-04-2254-resolution-drain.md
 
 ## Friction
 

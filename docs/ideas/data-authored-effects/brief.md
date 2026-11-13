@@ -6,8 +6,8 @@ The component boundary is agreed. The [walkthrough](README.md),
 [detailed design](design.md) and [authored examples](examples.md) carry the
 accepted contracts, fixture policies and rulebook-first placement, R1–R6. The [implementation plan](plan.md)
 names the delivery slices, task interfaces and proofs. [Implementation evidence](implementation.md)
-records T1–T8 source completion, the completed independent review with one deferred
-Minor, and remaining operator-view/release gates.
+records the completed implementation, independent review, operator go and verified
+effects v0.6.0 / rulebook v0.216.0 releases; Minor #2404 remains deferred.
 
 ## Outcome
 
@@ -17,7 +17,7 @@ activity, or another explicitly selected policy. Rulebook-local tests load data 
 the rulebook's ordinary validation/binding path. A future encounter studio authors
 the same definition rather than introducing its own execution interpretation.
 
-The teaching surface is the [rulebook effects README](https://github.com/KirkDiggler/rpg-toolkit/blob/feat/authored-effect-rulebook/rulebooks/dnd5e/effects/README.md)
+The teaching surface is the [rulebook effects README](../../../rulebooks/dnd5e/effects/README.md)
 and a set of executable fixture examples. Raw fixture data is content; test code
 sets up the world, performs interactions and asserts what happens. Assertions and
 scripted test steps are not part of the authored effect format.

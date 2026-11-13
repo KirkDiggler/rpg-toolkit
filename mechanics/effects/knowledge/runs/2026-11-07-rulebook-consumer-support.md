@@ -1,5 +1,7 @@
 # 2026-11-07 — neutral support for the rulebook composition consumer
 
+processed: 2026-11-12T165555Z
+
 Work: [Composable conditions S9 #881](https://github.com/KirkDiggler/rpg-project/issues/881), under [#703](https://github.com/KirkDiggler/rpg-project/issues/703); approved [design/plan #2295](https://github.com/KirkDiggler/rpg-toolkit/pull/2295).
 
 ## Shipped

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -55,6 +54,11 @@ var recordOnly = map[string]bool{
 	// lets the recognised by); the beat is the record's, told to each witness
 	// only about whom they perceive.
 	encounter.BeatRecognized: true,
+	// A line's own record (rpg-project#934): what the speaker said, with
+	// its check and its deed. The speaker is told it in their own `speech`
+	// version — words, option, skill and the roll with its arithmetic — and
+	// nobody else is ever told it; the beat is the record's.
+	encounter.BeatSpoke: true,
 }
 
 // familyOf is a beat name's family, and false for a beat with none — a
@@ -63,14 +67,14 @@ func familyOf(beat string) (Family, bool) {
 	switch beat {
 	case encounter.BeatMoved, encounter.BeatCast, encounter.BeatCastMissed, encounter.BeatCastWarded,
 		encounter.BeatSaved, encounter.BeatActivated, encounter.BeatActivationResult,
-		encounter.BeatSpoke, string(encounter.OutcomeDeathSave), encounter.BeatLooted,
+		string(encounter.OutcomeDeathSave), encounter.BeatLooted,
 		encounter.BeatHeld, encounter.BeatDropped, encounter.BeatDoor, encounter.BeatEquipmentChanged,
 		encounter.BeatStayed, encounter.BeatSnuck, encounter.BeatRested, encounter.BeatBarred:
 		return FamilyAct, true
 	case string(encounter.OutcomeStruck), string(encounter.OutcomeMissed), string(encounter.OutcomeWarded):
 		return FamilyAct, true // FamilyReaction when the beat carries a reaction ref
 	case encounter.BeatAnswered, encounter.BeatTempered:
-		return FamilyTableAnswer, true // a speak's answer folds into the SpeakAct
+		return FamilyTableAnswer, true // a line's answer stands as its own table answer
 	case string(encounter.OutcomeDown), encounter.BeatStance, encounter.BeatConcentrationEnded,
 		string(encounter.OutcomeExperienceGained), encounter.BeatState:
 		return FamilyState, true
@@ -135,12 +139,10 @@ func decodePieces(recipient, tag, beat string, payload []byte) ([]piece, error) 
 		return activatedPiece(payload)
 	case encounter.BeatActivationResult:
 		return activationResultPiece(payload)
-	case encounter.BeatSpoke:
-		return spokePiece(payload)
 	case encounter.BeatSpeech:
-		return speechPieces(recipient, payload)
+		return speechPieces(payload)
 	case encounter.BeatAnswered:
-		return answeredPiece(tag, payload)
+		return answeredPiece(payload)
 	case encounter.BeatTempered:
 		return temperedPiece(payload)
 	case string(encounter.OutcomeDeathSave):
@@ -740,52 +742,19 @@ func activationResultPiece(payload []byte) ([]piece, error) {
 	})
 }
 
-// spokePiece opens a line its answer folds into.
-func spokePiece(payload []byte) ([]piece, error) {
-	var p struct {
-		Actor       string          `json:"actor"`
-		Target      string          `json:"target"`
-		Prop        string          `json:"prop"`
-		Option      string          `json:"option"`
-		Line        string          `json:"line"`
-		Skill       string          `json:"skill"`
-		DC          int             `json:"dc"`
-		Total       int             `json:"total"`
-		Beaten      bool            `json:"beaten"`
-		Calculation json.RawMessage `json:"calculation"`
-	}
-	if err := json.Unmarshal(payload, &p); err != nil {
-		return nil, err
-	}
-	to := member(p.Target)
-	if p.Prop != "" {
-		to = prop(p.Prop)
-	}
-	// A PLAIN LINE ROLLED NOTHING (rpg-project#785 R5), and its beat names no
-	// skill: it has no roll, rather than a zero rolled against a zero.
-	var roll *Roll
-	if p.Skill != "" {
-		var err error
-		if roll, err = rollOf(p.Calculation, nil, p.Total, intp(p.DC), boolp(p.Beaten)); err != nil {
-			return nil, err
-		}
-	}
-	act := SpeakAct{By: member(p.Actor), To: to, Option: p.Option, Line: p.Line, Skill: p.Skill, Roll: roll}
-	return one(piece{family: FamilyAct, body: act, opens: true})
-}
-
-// answeredPiece is a table's answer: folded into the line it answers when it
-// sits under a speak act with the line open, a table answer otherwise.
-func answeredPiece(tag string, payload []byte) ([]piece, error) {
+// answeredPiece is a table's answer: the pick, its die and every candidate's
+// arithmetic, and the cue the creature is seen performing. Under a line's
+// `speak:` tag it is that line's answer and stands as its own table answer:
+// the words it said, and whom to, ride each reader's [SpeechAct]
+// (rpg-project#934).
+func answeredPiece(payload []byte) ([]piece, error) {
 	var p struct {
 		Creature   string          `json:"creature"`
 		Prop       string          `json:"prop"`
-		To         string          `json:"to"`
 		Option     string          `json:"option"`
 		Key        string          `json:"key"`
 		Word       string          `json:"word"`
 		Selector   string          `json:"selector"`
-		Say        string          `json:"say"`
 		Activity   json.RawMessage `json:"activity"`
 		Temper     string          `json:"temper"`
 		Roll       int             `json:"roll"`
@@ -805,13 +774,9 @@ func answeredPiece(tag string, payload []byte) ([]piece, error) {
 	if p.Prop != "" {
 		who = prop(p.Prop)
 	}
-	var to Party
-	if p.To != "" {
-		to = member(p.To)
-	}
 	answer := TableAnswer{
-		Who: who, To: to, Option: p.Option, Key: p.Key, Word: p.Word, Selector: p.Selector,
-		Say: p.Say, Temperament: p.Temper, Entry: p.Entry,
+		Who: who, Option: p.Option, Key: p.Key, Word: p.Word, Selector: p.Selector,
+		Temperament: p.Temper, Entry: p.Entry,
 	}
 	if len(p.Activity) != 0 {
 		cue, valid := decodeActivityCue(p.Activity)
@@ -830,52 +795,37 @@ func answeredPiece(tag string, payload []byte) ([]piece, error) {
 			Entry: c.Entry, Weight: c.Weight, Percent: c.Percent, Loaded: c.Loaded,
 		})
 	}
-	// A PICK STAYS OPEN for the words it said, which follow it in the
-	// reader's own speech version ([speechPieces]).
-	pc := piece{family: FamilyTableAnswer, body: answer, opens: true}
-	if strings.HasPrefix(tag, string(VerbSpeak)+":") {
-		pc.into = FamilyAct
-		pc.absorb = func(open ActBody) (ActBody, bool) {
-			s, ok := open.(SpeakAct)
-			if !ok || s.Answer != nil {
-				return nil, false
-			}
-			s.Answer = &answer
-			return s, true
-		}
-	}
-	return one(pc)
+	return one(piece{family: FamilyTableAnswer, body: answer})
 }
 
-// speechPieces is one member's version of something said (rpg-project#933),
-// read into the parts today's messages already carry and never more than
-// the version holds:
-//
-//   - the speaker seen and the words caught, on a character's line (it names
-//     its option or the prop it is said to): that line, as a [SpeakAct], with
-//     its check as the roll when the words carry one. The speaker's own
-//     version adds nothing to their own `spoke` record and is skipped;
-//   - the speaker seen and the words caught, on anything else a creature
-//     says: the words folded into the [TableAnswer] of the pick that said
-//     them, and whom they were said to when the reader sees them; standing
-//     alone when no pick of the speaker's is open to fold into;
-//   - the speaker seen and no words: nothing — they were seen to say
-//     something, and the reader learns no line;
-//   - no speaker seen: a voice [Sound] at the place it was said and how many
-//     rooms off. The words such a reader caught are not carried until the
-//     speech message (rpg-project#934): today's messages have no line
-//     without a speaker.
-func speechPieces(recipient string, payload []byte) ([]piece, error) {
+// speechPieces is one member's version of something said: the [SpeechAct]
+// that carries every part of it they perceived (rpg-project#934, R6), and
+// nothing else — the retired SpeakAct, a table answer's words and the voice
+// sound are no longer sent.
+func speechPieces(payload []byte) ([]piece, error) {
+	speech, err := speechActPiece(payload)
+	if err != nil {
+		return nil, err
+	}
+	return one(speech)
+}
+
+// speechActPiece is the [SpeechAct] one perceiver is shown of one spoken
+// thing (rpg-project#934, R6): every part their version holds, and nothing it
+// does not, beside the act the line or the answer folds into.
+func speechActPiece(payload []byte) (piece, error) {
 	var p struct {
-		Speaker string           `json:"speaker"`
-		To      string           `json:"to"`
-		Prop    string           `json:"prop"`
-		Words   *string          `json:"words"`
-		Option  string           `json:"option"`
-		Place   spatial.Position `json:"place"`
-		Hops    int              `json:"hops"`
-		Fact    string           `json:"fact"`
-		Check   *struct {
+		Utterance string           `json:"utterance"`
+		Speaker   string           `json:"speaker"`
+		To        string           `json:"to"`
+		Prop      string           `json:"prop"`
+		Words     *string          `json:"words"`
+		Option    string           `json:"option"`
+		Place     spatial.Position `json:"place"`
+		Hops      *int             `json:"hops"`
+		Loudness  string           `json:"loudness"`
+		Fact      string           `json:"fact"`
+		Check     *struct {
 			Skill       string          `json:"skill"`
 			DC          int             `json:"dc"`
 			Total       int             `json:"total"`
@@ -884,82 +834,51 @@ func speechPieces(recipient string, payload []byte) ([]piece, error) {
 		} `json:"check"`
 	}
 	if err := json.Unmarshal(payload, &p); err != nil {
-		return nil, err
+		return piece{}, err
 	}
-	if p.Speaker == "" {
-		return one(piece{family: FamilyPerception, body: Perception{
-			Observer: member(recipient), Sense: SenseHearing,
-			Heard: &Sound{Kind: encounter.SoundVoice, Cell: p.Place, Hops: p.Hops},
-		}})
+	// FAIL CLOSED, NOT SILENT: a version that did not see its speaker says
+	// how many rooms off the voice was, and a prop is named as spoken to only
+	// beside the words that were said to it. Read any other way, a missing
+	// distance would become "in your room" and a prop a guess.
+	if p.Speaker == "" && p.Hops == nil {
+		return piece{}, fmt.Errorf("speech %q: the speaker was not seen and the version names no hops", p.Utterance)
 	}
-	if p.Words == nil || p.Speaker == recipient {
-		return nil, nil
+	if p.Prop != "" && p.Words == nil {
+		return piece{}, fmt.Errorf("speech %q: a prop is named as spoken to without the words", p.Utterance)
 	}
-	var to Party
+	act := SpeechAct{Utterance: p.Utterance, Speaker: member(p.Speaker), Place: p.Place, Loudness: p.Loudness}
 	switch {
 	case p.Prop != "":
-		to = prop(p.Prop)
+		act.SpokenTo = prop(p.Prop)
 	case p.To != "":
-		to = member(p.To)
+		act.SpokenTo = member(p.To)
 	}
-	if p.Option != "" || p.Prop != "" {
-		act := SpeakAct{By: member(p.Speaker), To: to, Option: p.Option, Line: *p.Words}
+	if p.Speaker == "" {
+		hops := *p.Hops
+		act.Hops = &hops
+	}
+	var senses []Sense
+	if p.Speaker != "" {
+		senses = append(senses, SenseSight)
+	}
+	if p.Words != nil {
+		words := *p.Words
+		act.Words, act.Option, act.Fact = &words, p.Option, p.Fact
 		if c := p.Check; c != nil {
 			roll, err := rollOf(c.Calculation, nil, c.Total, intp(c.DC), boolp(c.Beaten))
 			if err != nil {
-				return nil, err
+				return piece{}, err
 			}
 			act.Skill, act.Roll = c.Skill, roll
 		}
-		return one(piece{family: FamilyAct, body: act, opens: true})
 	}
-	said := TableAnswer{Who: member(p.Speaker), To: to, Say: *p.Words}
-	if p.Fact != "" {
-		said.Word = factWord
+	if p.Words != nil || p.Speaker == "" {
+		senses = append(senses, SenseHearing)
 	}
-	return one(piece{family: FamilyTableAnswer, body: said, absorbAny: true, absorb: func(open ActBody) (ActBody, bool) {
-		switch b := open.(type) {
-		case SpeakAct:
-			if b.Answer == nil || b.Answer.Who != said.Who || b.Answer.Say != "" {
-				return nil, false
-			}
-			// A READER WHO CAUGHT THE WORDS AND HOLDS THE LINE is told what
-			// the pick no longer carries for everyone: the line it answered
-			// and how that went — both theirs already, in the line's act —
-			// and that it taught a fact, which their version names.
-			answer := *b.Answer
-			answer.Say, answer.To = said.Say, said.To
-			answer.Option, answer.Key = b.Option, lineKey(b)
-			if answer.Word == "" {
-				answer.Word = said.Word
-			}
-			b.Answer = &answer
-			return b, true
-		case TableAnswer:
-			if b.Who != said.Who || b.Say != "" || b.Dealt != nil {
-				return nil, false
-			}
-			b.Say, b.To = said.Say, said.To
-			if b.Word == "" {
-				b.Word = said.Word
-			}
-			return b, true
-		}
-		return nil, false
-	}})
-}
-
-// factWord is the outcome word of a row that teaches a fact: what the pick
-// said before its readers were told it by their version (rpg-project#933).
-const factWord = "fact"
-
-// lineKey is which of a line's tables answered it: success when it landed —
-// a plain line always lands — failure when its check missed.
-func lineKey(line SpeakAct) string {
-	if line.Roll != nil && line.Roll.Beaten != nil && !*line.Roll.Beaten {
-		return string(encounter.AnswerFailure)
-	}
-	return string(encounter.AnswerSuccess)
+	return piece{
+		family: FamilyAct, body: act, aside: true,
+		perceived: &Perceived{Senses: senses},
+	}, nil
 }
 
 // temperedPiece is a temperament deal: a table roll of its own, dealt when

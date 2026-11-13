@@ -234,31 +234,48 @@ func (s *SpeakWorldSuite) speakingGoblin() *session.Manager {
 	return mgr
 }
 
-// TestFoldSpeakFoldsAnswer is Law 6 for a line: the line and its answer are
-// one speak act, the check inside it.
-func (s *SpeakWorldSuite) TestFoldSpeakFoldsAnswer() {
+// TestFoldSpeakIsSpeechActsAndAPick is Law 6 for a line (rpg-project#934):
+// the line is the speaker's own Speech act, its check inside it, and the
+// answer is the goblin's pick under the same speak act, his words his own
+// Speech act.
+func (s *SpeakWorldSuite) TestFoldSpeakIsSpeechActsAndAPick() {
 	mgr := s.speakingGoblin()
 
-	var lines []session.Act
+	alice := session.Party{Kind: session.PartyMember, ID: "alice"}
+	goblinParty := session.Party{Kind: session.PartyMember, ID: "goblin"}
+	var line, reply *session.SpeechAct
+	var tag string
+	var pick *session.TableAnswer
 	for _, act := range actsOf(s.T(), mgr, "alice", "").Acts {
-		if _, ok := act.Body.(session.SpeakAct); ok {
-			lines = append(lines, act)
+		switch b := act.Body.(type) {
+		case session.SpeechAct:
+			switch b.Speaker {
+			case alice:
+				line, tag = &b, act.Act
+			case goblinParty:
+				reply = &b
+			}
+		case session.TableAnswer:
+			if act.Act != "" && act.Act == tag {
+				pick = &b
+			}
 		}
 	}
-	s.Require().Len(lines, 1)
-	s.True(strings.HasPrefix(lines[0].Act, "speak:"), "got %q", lines[0].Act)
-	line := lines[0].Body.(session.SpeakAct)
-	s.Equal(session.Party{Kind: session.PartyMember, ID: "alice"}, line.By)
-	s.Equal(session.Party{Kind: session.PartyMember, ID: "goblin"}, line.To)
+	s.Require().NotNil(line, "her own line")
+	s.True(strings.HasPrefix(tag, "speak:"), "got %q", tag)
+	s.Equal(goblinParty, line.SpokenTo)
 	s.Equal("appeal", line.Option)
 	s.Require().NotNil(line.Roll)
 	s.Require().NotNil(line.Roll.Against)
 	s.Require().NotNil(line.Roll.Beaten)
 	s.True(*line.Roll.Beaten)
 	s.GreaterOrEqual(line.Roll.Total, *line.Roll.Against)
-	s.Require().NotNil(line.Answer, "the answer folds into the line")
-	s.Equal("Fine.", line.Answer.Say)
-	s.Equal(session.Party{Kind: session.PartyMember, ID: "goblin"}, line.Answer.Who)
+	s.Require().NotNil(pick, "the goblin's pick, under the line's speak act")
+	s.Equal(goblinParty, pick.Who)
+	s.Require().NotNil(reply, "and his words, his own Speech act")
+	s.Require().NotNil(reply.Words)
+	s.Equal("Fine.", *reply.Words)
+	s.Equal(alice, reply.SpokenTo)
 }
 
 // TestFoldTimePick: the round the line cost the world asks the goblin its
@@ -285,7 +302,6 @@ func (s *SpeakWorldSuite) TestFoldTimePick() {
 		s.Equal(answer.Roll.Dice[0], answer.Roll.Total)
 		s.LessOrEqual(answer.Roll.Total, answer.Roll.Of)
 		s.Equal("hold", answer.Word)
-		s.Equal(session.Party{}, answer.To, "a time pick speaks to nobody (rpg-project#923)")
 	}
 }
 
@@ -336,7 +352,7 @@ func TestActCarriesNoSeq(t *testing.T) {
 	for i := 0; i < typ.NumField(); i++ {
 		names = append(names, typ.Field(i).Name)
 	}
-	require.Equal(t, []string{"Session", "ID", "Act", "Verb", "Recipient", "At", "Segment", "Family", "Body", "Undecoded"}, names)
+	require.Equal(t, []string{"Session", "ID", "Act", "Verb", "Recipient", "At", "Segment", "Family", "Body", "Undecoded", "Perceived"}, names)
 }
 
 // TestEveryBeatHasAFamily is R16 failing closed: every beat name the

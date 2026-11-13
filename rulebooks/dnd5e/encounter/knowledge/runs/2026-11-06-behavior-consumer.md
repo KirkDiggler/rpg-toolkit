@@ -1,5 +1,7 @@
 # Run — 2026-11-06–07 — canonical behavior consumer
 
+processed: 2026-11-12T165555Z
+
 Part of [NPC behavior S1 #866](https://github.com/KirkDiggler/rpg-project/issues/866), under [story #859](https://github.com/KirkDiggler/rpg-project/issues/859). One release unit: `rulebooks/dnd5e/encounter`, including dungeonspec. Consumer integration remains draft.
 
 ## Shipped
