@@ -203,53 +203,28 @@ func TestMadKingTheJailedAreHeldByNothing(t *testing.T) {
 	require.NotEqual(t, at, s.at(hero))
 }
 
-// TestMadKingAnEscapeTurnsTheGarrison: the hero walks to the cell door, picks
-// it from inside, walks out into the barracks, crosses the yard to the gate
-// and opens it; the
-// gate's guards, who arrested the hero, see them out of the cells, the
-// captain learns they escaped, the garrison turns, and the fight forms. Until
-// the gate opens nobody who arrested them sees them, and nothing turns.
+// TestMadKingAnEscapeTurnsTheGarrison is the escape row's WIRING on the
+// castle: a jailed hero set down back in the gatehouse, in the gate guards'
+// sight and out of the cells, teaches the captain `prisoners-escaped`, the
+// garrison turns, and the fight forms. Each row of the rule itself — the
+// lock picked from inside and the walk out, seen through the opening, held
+// not jailed, already turned, no mind — is proved on a small site
+// (escape_internal_test.go); picking the castle's cell lock is
+// [TestMadKingPickingTheCellLockEndsTheRunFreed]'s.
 func TestMadKingAnEscapeTurnsTheGarrison(t *testing.T) {
 	t.Parallel()
 	s := theJail(t)
-	s.stepAlong(hero, castleCell(-20, 7))
-	_, err := s.enc.Unlock(&encounter.UnlockInput{Door: kingCellsDoor, Actor: hero, Beaten: true, Total: 15, Applied: kingCellPick})
-	require.NoError(t, err, "the lock is picked from inside")
-	// Out through the picked door into the barracks, on foot.
-	s.stepAlong(hero, castleCell(-20, 5))
-	require.Equal(t, encounter.RegionID("region-barracks"), s.regionOf(s.at(hero)), "precondition: out of the cells")
-	// THE YARD'S WALK IS NOT WHAT THIS TEST IS ABOUT, and on foot it costs
-	// five rounds of the whole castle waking (over the test budget under
-	// -race): the hero is set down beneath the gate instead — jailed holds
-	// nothing, so the exported verb may — and the gate is still shut, so
-	// nobody who arrested them sees them yet.
-	_, err = s.enc.Relocate(&encounter.RelocateInput{
-		Moves: []encounter.Relocation{{Member: hero, To: castleCell(0, 6)}},
-		Cause: encounter.RelocationCause{Ref: core.Ref{Module: "test", Type: "shortcuts", ID: "across-the-yard"}, Words: "You cross the yard."},
+	require.Empty(t, s.learners("prisoners-escaped"), "precondition: nobody has escaped")
+	back := spatial.Position{X: -5, Y: 9}
+	_, err := s.enc.Relocate(&encounter.RelocateInput{
+		Moves: []encounter.Relocation{{Member: hero, To: back}},
+		Cause: encounter.RelocationCause{Ref: core.Ref{Module: "test", Type: "shortcuts", ID: "back-at-the-gate"}, Words: "You are back at the gate."},
 	})
-	require.NoError(t, err)
-	require.Equal(t, encounter.RegionID("region-courtyard"), s.regionOf(s.at(hero)), "precondition: out in the yard")
-	require.Empty(t, s.learners("prisoners-escaped"), "precondition: no arresting guard has seen the hero out")
-	require.Equal(t, encounter.StanceNeutral, s.stance(garrison, encounter.FactionParty))
-
-	_, err = s.enc.OpenDoor(&encounter.OpenDoorInput{Door: kingGateDoor, Actor: hero})
-	require.NoError(t, err)
+	require.NoError(t, err, "jailed holds nothing, so the exported verb may set the hero down")
+	require.Equal(t, encounter.RegionID("region-gatehouse"), s.regionOf(s.at(hero)), "precondition: out of the cells")
 	require.True(t, s.learners("prisoners-escaped")[kingCaptain], "the captain learns of the escape")
 	require.Equal(t, encounter.StanceHostile, s.stance(garrison, encounter.FactionParty), "the garrison turns")
 	require.Equal(t, encounter.ClockTurn, clockKind(t, s.enc, hero), "and the fight forms")
-}
-
-// stepAlong walks member one Step at a time along the pathfinder's route
-// toward a cell, without the walk helper's per-round reloads.
-func (s *kingScene) stepAlong(member encounter.MemberID, to spatial.Position) {
-	s.t.Helper()
-	r, err := s.enc.Route(encounter.RouteInput{Mover: member, Policy: encounter.MoveToward, Anchor: to, Budget: 200})
-	require.NoError(s.t, err)
-	require.NotEmpty(s.t, r.Path, "%s has a way toward %v", member, to)
-	for i, c := range r.Path {
-		_, err := s.enc.Step(&encounter.StepInput{Member: member, To: c, EndWalk: i == len(r.Path)-1})
-		require.NoError(s.t, err)
-	}
 }
 
 // TestMadKingTheJailIsKeptOnReload: saved and loaded at jailed, nobody moves,
