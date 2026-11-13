@@ -7,9 +7,9 @@ meanings such as damage bonus, resistance, advantage and concentration. It does
 not own named conditions, targeting, item charges, inventory or storage.
 
 Start with [the package contract](doc.go), then follow Rage below. The
-[rulebook-local cookbook](https://github.com/KirkDiggler/rpg-toolkit/blob/feat/authored-effect-rulebook/rulebooks/dnd5e/conditions/authored_example_test.go)
+[rulebook-local cookbook](../conditions/authored_example_test.go)
 shows the public API in use; implementation/release evidence lives in
-[the composition record](https://github.com/KirkDiggler/rpg-toolkit/blob/design/data-authored-effects/docs/ideas/data-authored-effects/implementation.md).
+[the composition record](../../../docs/ideas/data-authored-effects/implementation.md).
 
 ## Three things that are easy to confuse
 
@@ -116,7 +116,7 @@ Raging. This is toolkit composition proof, not a native item-acquisition API.
 
 `effects.PartTemplate` is unbound meaning: kind, params, and supported When/Amount
 values. `ValidatePartTemplate` reports the kind-owned class and capabilities
-without fake participant IDs. The [canonical library](https://github.com/KirkDiggler/rpg-toolkit/blob/feat/authored-effect-rulebook/rulebooks/dnd5e/conditions/testdata/effects/library.json)
+without fake participant IDs. The [canonical library](../conditions/testdata/effects/library.json)
 reuses leaves in ordered benefit sets; the ring and scroll select the same four
 benefits but different maintenance.
 
