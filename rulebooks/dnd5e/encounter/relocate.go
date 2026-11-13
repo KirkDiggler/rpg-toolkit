@@ -69,9 +69,13 @@ import (
 // A member in a fight (the lead's call: no relocating in a fight), a member
 // the guards hold — unless the engine's own custody consequence asks, which
 // no request can name ([Encounter.relocate]) — a held walk, the member's own
-// cell, a cell nobody can stand on, a cell somebody stands on (a chain of
-// moves through each other's cells is not supported: every destination must
-// be free now), two members onto one cell, and one member twice.
+// cell, a cell nobody can stand on (not floor, or under a blocking
+// footprint), a cell somebody stands on unless they leave it in the same
+// call (a chain: the leaver goes first; a ring of members into each other's
+// cells has no first and is refused), two members onto one cell, and one
+// member twice. ALL OF IT IS ASKED BEFORE THE ROOM IS: spatial's
+// [spatial.BasicRoom.RelocateEntity] knows nothing of void, unfloored cells
+// or footprints, so this module never calls it bare.
 
 // BeatRelocated is the "beat" value of a member moved to a place: one per
 // member per audience version ([Encounter.Relocate]). EXPORTED BECAUSE A
@@ -183,7 +187,8 @@ type RelocateOutput struct {
 // Errors: ErrNilInput; ErrClosed; ErrNoMember (no moves); ErrInvalidData (an
 // invalid cause ref, no words, negative rounds, a member twice, a negative
 // reach); ErrNotMember; ErrBadPlacement (unplaced, its own cell, not
-// standable, occupied, a cell taken twice); ErrInBubble (in a fight);
+// standable, occupied by someone staying, a cell taken twice, a ring);
+// ErrInBubble (in a fight);
 // ErrTurnPaused (a walk is held); a [CustodyMoveError] (held by the guards).
 func (e *Encounter) Relocate(in *RelocateInput) (*RelocateOutput, error) {
 	return e.relocate(in, false)
@@ -194,7 +199,7 @@ func (e *Encounter) Relocate(in *RelocateInput) (*RelocateOutput, error) {
 // exported verb passes false, and no field of any input can set it, so no
 // host request — whatever cause it names — moves the held.
 func (e *Encounter) relocate(in *RelocateInput, custody bool) (*RelocateOutput, error) {
-	moves, err := e.validateRelocation(in, custody)
+	moves, order, err := e.validateRelocation(in, custody)
 	if err != nil {
 		return nil, err
 	}
@@ -213,8 +218,13 @@ func (e *Encounter) relocate(in *RelocateInput, custody bool) (*RelocateOutput, 
 		sawLeave[i] = e.relocationWitnesses(before, down, m.Member)
 	}
 
-	out := &RelocateOutput{}
-	for _, m := range moves {
+	// THE CANVAS IS ASKED ONLY AFTER THIS MODULE'S OWN LAW: validation has
+	// checked floor, footprints and bodies, which spatial's room knows nothing
+	// of. Moves apply in an order that frees each destination first
+	// (validateRelocation's chain order).
+	out := &RelocateOutput{Moved: make([]Relocated, len(moves))}
+	for _, i := range order {
+		m := moves[i]
 		// A MOVE SHOWS YOU, as casting does (sneaking R7).
 		e.endSneaking(m.Member)
 		if err := e.canvas.RelocateEntity(string(m.Member), m.To); err != nil {
@@ -228,7 +238,7 @@ func (e *Encounter) relocate(in *RelocateInput, custody bool) (*RelocateOutput, 
 		}); err != nil {
 			return nil, fmt.Errorf("relocate %q: %w", m.Member, err)
 		}
-		out.Moved = append(out.Moved, Relocated{Member: m.Member, From: m.from, To: m.To})
+		out.Moved[i] = Relocated{Member: m.Member, From: m.from, To: m.To}
 	}
 
 	after, err := e.placedSightReach()
@@ -282,67 +292,120 @@ type relocationMove struct {
 }
 
 // validateRelocation refuses a relocation before anything changes
-// ([Encounter.Relocate]'s errors) and answers each move with its origin.
-func (e *Encounter) validateRelocation(in *RelocateInput, custody bool) ([]relocationMove, error) {
+// ([Encounter.Relocate]'s errors) and answers each move with its origin, in
+// the input's order, and the order to apply them in.
+//
+// THE STANDABLE-CELL LAW IS THIS MODULE'S, asked here and never left to the
+// room: floor that is not covered by a blocking footprint
+// ([Encounter.arrivalStandable], reserve arrival's law), and no body on it —
+// unless every body there is a member who leaves it in this same call. Such a
+// CHAIN applies its leaver first; a RING (members into each other's cells all
+// round) has no first and is refused.
+func (e *Encounter) validateRelocation(in *RelocateInput, custody bool) ([]relocationMove, []int, error) {
 	switch {
 	case in == nil:
-		return nil, fmt.Errorf("relocate: %w", ErrNilInput)
+		return nil, nil, fmt.Errorf("relocate: %w", ErrNilInput)
 	case e.outcome != nil:
-		return nil, fmt.Errorf("relocate: %w", ErrClosed)
+		return nil, nil, fmt.Errorf("relocate: %w", ErrClosed)
 	case len(in.Moves) == 0:
-		return nil, fmt.Errorf("relocate: no member moves: %w", ErrNoMember)
+		return nil, nil, fmt.Errorf("relocate: no member moves: %w", ErrNoMember)
 	case in.Cause.Words == "":
-		return nil, fmt.Errorf("relocate: the cause tells the member nothing: %w", ErrInvalidData)
+		return nil, nil, fmt.Errorf("relocate: the cause tells the member nothing: %w", ErrInvalidData)
 	case in.Cause.Rounds < 0:
-		return nil, fmt.Errorf("relocate: %d rounds: %w", in.Cause.Rounds, ErrInvalidData)
+		return nil, nil, fmt.Errorf("relocate: %d rounds: %w", in.Cause.Rounds, ErrInvalidData)
 	case in.Reach < 0:
-		return nil, fmt.Errorf("relocate: reach %d: %w", in.Reach, ErrInvalidData)
+		return nil, nil, fmt.Errorf("relocate: reach %d: %w", in.Reach, ErrInvalidData)
 	case e.Paused():
-		return nil, fmt.Errorf("relocate: %q is already waiting on an answer: %w", e.PausedMember(), ErrTurnPaused)
+		return nil, nil, fmt.Errorf("relocate: %q is already waiting on an answer: %w", e.PausedMember(), ErrTurnPaused)
 	}
 	if err := in.Cause.Ref.IsValid(); err != nil {
-		return nil, fmt.Errorf("relocate: cause: %w: %w", ErrInvalidData, err)
+		return nil, nil, fmt.Errorf("relocate: cause: %w: %w", ErrInvalidData, err)
 	}
 	moves := make([]relocationMove, 0, len(in.Moves))
 	members := map[MemberID]bool{}
 	cells := map[spatial.Position]MemberID{}
 	for _, m := range in.Moves {
 		if _, ok := e.members[m.Member]; !ok {
-			return nil, fmt.Errorf("relocate %q: %w", m.Member, ErrNotMember)
+			return nil, nil, fmt.Errorf("relocate %q: %w", m.Member, ErrNotMember)
 		}
 		if members[m.Member] {
-			return nil, fmt.Errorf("relocate %q: moved twice: %w", m.Member, ErrInvalidData)
+			return nil, nil, fmt.Errorf("relocate %q: moved twice: %w", m.Member, ErrInvalidData)
 		}
 		members[m.Member] = true
 		from, placed := e.canvas.GetEntityPosition(string(m.Member))
 		if !placed {
-			return nil, fmt.Errorf("relocate %q: %w", m.Member, ErrBadPlacement)
+			return nil, nil, fmt.Errorf("relocate %q: %w", m.Member, ErrBadPlacement)
 		}
 		bubble, err := e.bubbleFor(m.Member)
 		if err != nil && !errors.Is(err, errNotInBubble) {
-			return nil, fmt.Errorf("relocate %q: %w", m.Member, err)
+			return nil, nil, fmt.Errorf("relocate %q: %w", m.Member, err)
 		}
 		if bubble != nil {
-			return nil, fmt.Errorf("relocate %q: in a fight: %w", m.Member, ErrInBubble)
+			return nil, nil, fmt.Errorf("relocate %q: in a fight: %w", m.Member, ErrInBubble)
 		}
 		if !custody && e.inCustody(m.Member) {
-			return nil, fmt.Errorf("relocate: %w", &CustodyMoveError{Mover: m.Member})
+			return nil, nil, fmt.Errorf("relocate: %w", &CustodyMoveError{Mover: m.Member})
 		}
 		switch {
 		case m.To == from:
-			return nil, fmt.Errorf("relocate %q: already at %v: %w", m.Member, m.To, ErrBadPlacement)
+			return nil, nil, fmt.Errorf("relocate %q: already at %v: %w", m.Member, m.To, ErrBadPlacement)
 		case !e.arrivalStandable(m.To):
-			return nil, fmt.Errorf("relocate %q: nobody can stand at %v: %w", m.Member, m.To, ErrBadPlacement)
-		case e.canvas.IsPositionOccupied(m.To):
-			return nil, fmt.Errorf("relocate %q: somebody stands at %v: %w", m.Member, m.To, ErrBadPlacement)
+			return nil, nil, fmt.Errorf("relocate %q: nobody can stand at %v: %w", m.Member, m.To, ErrBadPlacement)
 		}
 		if other, taken := cells[m.To]; taken {
-			return nil, fmt.Errorf("relocate %q: %v is %q's too: %w", m.Member, m.To, other, ErrBadPlacement)
+			return nil, nil, fmt.Errorf("relocate %q: %v is %q's too: %w", m.Member, m.To, other, ErrBadPlacement)
 		}
 		cells[m.To] = m.Member
 		moves = append(moves, relocationMove{Relocation: m, from: from})
 	}
-	return moves, nil
+	// BODIES: a destination somebody stands on is free only when everybody
+	// there leaves it in this call.
+	for _, m := range moves {
+		for _, there := range e.canvas.GetEntitiesAt(m.To) {
+			if !members[MemberID(there.GetID())] {
+				return nil, nil, fmt.Errorf("relocate %q: %q stands at %v: %w", m.Member, there.GetID(), m.To, ErrBadPlacement)
+			}
+		}
+	}
+	order, err := relocationOrder(moves)
+	if err != nil {
+		return nil, nil, err
+	}
+	return moves, order, nil
+}
+
+// relocationOrder is the order to apply moves in so each destination is left
+// before it is taken: a move whose destination no unapplied mover still
+// stands on goes next, input order breaking ties. A ring has none and is
+// refused with ErrBadPlacement.
+func relocationOrder(moves []relocationMove) ([]int, error) {
+	done := make([]bool, len(moves))
+	order := make([]int, 0, len(moves))
+	for len(order) < len(moves) {
+		next := -1
+		for i, m := range moves {
+			if done[i] {
+				continue
+			}
+			blocked := false
+			for j, o := range moves {
+				if !done[j] && j != i && o.from == m.To {
+					blocked = true
+					break
+				}
+			}
+			if !blocked {
+				next = i
+				break
+			}
+		}
+		if next < 0 {
+			return nil, fmt.Errorf("relocate: members move into each other's cells all round, and none can go first: %w", ErrBadPlacement)
+		}
+		done[next] = true
+		order = append(order, next)
+	}
+	return order, nil
 }
 
 // relocationWitnesses is every member up who sees member on the reach given,

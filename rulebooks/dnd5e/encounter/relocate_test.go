@@ -282,7 +282,8 @@ func (s *RelocateSuite) TestItRefuses() {
 		"negative rounds":  {&encounter.RelocateInput{Moves: move(relAlice, cellAt(26, 5)), Cause: encounter.RelocationCause{Ref: relCause.Ref, Words: "x", Rounds: -1}}, encounter.ErrInvalidData},
 		"not a member":     {&encounter.RelocateInput{Moves: move("ghost", cellAt(26, 5)), Cause: relCause}, encounter.ErrNotMember},
 		"own cell":         {&encounter.RelocateInput{Moves: move(relAlice, cellAt(2, 5)), Cause: relCause}, encounter.ErrBadPlacement},
-		"off the floor":    {&encounter.RelocateInput{Moves: move(relAlice, cellAt(60, 60)), Cause: relCause}, encounter.ErrBadPlacement},
+		"onto void":        {&encounter.RelocateInput{Moves: move(relAlice, cellAt(-3, 2)), Cause: relCause}, encounter.ErrBadPlacement},
+		"off the grid":     {&encounter.RelocateInput{Moves: move(relAlice, cellAt(60, 60)), Cause: relCause}, encounter.ErrBadPlacement},
 		"occupied":         {&encounter.RelocateInput{Moves: move(relAlice, cellAt(25, 5)), Cause: relCause}, encounter.ErrBadPlacement},
 		"one cell twice":   {&encounter.RelocateInput{Moves: append(move(relAlice, cellAt(26, 5)), move(relBob, cellAt(26, 5))...), Cause: relCause}, encounter.ErrBadPlacement},
 		"one member twice": {&encounter.RelocateInput{Moves: append(move(relAlice, cellAt(26, 5)), move(relAlice, cellAt(27, 5))...), Cause: relCause}, encounter.ErrInvalidData},
@@ -319,4 +320,53 @@ func (s *RelocateSuite) TestTheReadOnlyCanvasRefusesARelocation() {
 	s.Require().NoError(err)
 	s.ErrorIs(canvas.RelocateEntity(string(relAlice), cellAt(26, 5)), encounter.ErrReadOnly)
 	s.Equal(cellAt(2, 5), s.where(enc, relAlice))
+}
+
+// TestUnderABlockingFootprintIsRefused: a table's footprint covers a floor
+// cell that no canvas entity stands on; spatial's room would accept it, the
+// encounter's own standable law refuses it, and nothing moves or is told.
+func (s *RelocateSuite) TestUnderABlockingFootprintIsRefused() {
+	setup := noiseHallSetup(encounter.DoorIsClosed(), encounter.DoorIsClosed(),
+		sheetFacts{relAlice: {SpeedFeet: 30}}, passDriver{}, at(relAlice, encounter.KindPlayer, 2, 5))
+	setup.Field.Placed = []encounter.PlacedPropInput{placed("table", coveredBox(6, centreOf(cellAt(26, 7))), true, false)}
+	enc, err := encounter.NewEncounter(setup)
+	s.Require().NoError(err)
+	canvas, err := enc.Canvas()
+	s.Require().NoError(err)
+	s.Require().False(canvas.IsPositionOccupied(cellAt(26, 7)), "precondition: no entity stands there")
+
+	_, err = enc.Relocate(&encounter.RelocateInput{Moves: []encounter.Relocation{{Member: relAlice, To: cellAt(26, 7)}}, Cause: relCause})
+	s.ErrorIs(err, encounter.ErrBadPlacement)
+	s.Equal(cellAt(2, 5), s.where(enc, relAlice), "nothing moved")
+	s.Empty(s.relocated(enc, relAlice), "nothing told")
+	cells, err := enc.FreeCellsIn("room-c", 200)
+	if err == nil {
+		s.NotContains(cells, cellAt(26, 7), "nor is the covered cell ever offered as free")
+	}
+}
+
+// TestAChainLeavesBeforeItTakes: Bob is set down on Carol's cell while Carol
+// is set down elsewhere in the same call: Carol leaves first, Bob takes it.
+// A ring — Alice onto Bob's cell, Bob onto Alice's — has no first and is
+// refused, moving nobody.
+func (s *RelocateSuite) TestAChainLeavesBeforeItTakes() {
+	enc := s.party()
+	carolWas := cellAt(25, 5)
+	out, err := enc.Relocate(&encounter.RelocateInput{Moves: []encounter.Relocation{
+		{Member: relBob, To: carolWas}, {Member: relCarol, To: cellAt(27, 8)},
+	}, Cause: relCause})
+	s.Require().NoError(err)
+	s.Equal(carolWas, s.where(enc, relBob))
+	s.Equal(cellAt(27, 8), s.where(enc, relCarol))
+	s.Equal(relBob, out.Moved[0].Member, "reported in the input's order")
+
+	alice, bob := s.where(enc, relAlice), s.where(enc, relBob)
+	told := len(s.relocated(enc, relAlice))
+	_, err = enc.Relocate(&encounter.RelocateInput{Moves: []encounter.Relocation{
+		{Member: relAlice, To: bob}, {Member: relBob, To: alice},
+	}, Cause: relCause})
+	s.ErrorIs(err, encounter.ErrBadPlacement, "a ring is refused")
+	s.Equal(alice, s.where(enc, relAlice))
+	s.Equal(bob, s.where(enc, relBob))
+	s.Len(s.relocated(enc, relAlice), told, "and nobody is told")
 }
