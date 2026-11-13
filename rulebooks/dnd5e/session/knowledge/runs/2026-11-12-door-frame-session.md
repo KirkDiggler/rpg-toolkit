@@ -15,6 +15,7 @@ Slice [Project #906](https://github.com/KirkDiggler/rpg-project/issues/906), sto
 ## Found
 
 - Snapshot and reveal copies preserve explicit zero, visual-only extents and legacy absence; mutating either side cannot reach the other — [provider](https://github.com/KirkDiggler/rpg-toolkit/pull/2412).
+- Adopted encounter `17ffaea59d76` through its actual pushed-commit pseudo-version so the host uses the cold-SiteData missing/null-phase refusal; this changes no seam DTO or valid captured bytes and still requires a released tag before merge — [review fix](https://github.com/KirkDiggler/rpg-toolkit/pull/2412#discussion_r4562032802).
 - Final full module race tests pass, including the host-shape guards; lint reports zero issues. API/Web integration and real captured play are not established by these checks — [slice](https://github.com/KirkDiggler/rpg-project/issues/906).
 
 ## Mistaken
