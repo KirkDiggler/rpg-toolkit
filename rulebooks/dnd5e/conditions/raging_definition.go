@@ -10,7 +10,6 @@ import (
 
 	generic "github.com/KirkDiggler/rpg-toolkit/mechanics/effects"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/effects/machine"
-	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	ruleeffects "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/effects"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -50,17 +49,9 @@ func bindRaging(raw json.RawMessage) (boundComposition, error) {
 	if err := strictJSON(raw, &bindings); err != nil {
 		return boundComposition{}, fmt.Errorf("raging bindings: %w", err)
 	}
-	fixed := bindings.DamageBonus.Fixed
-	byClass := bindings.DamageBonus.BarbarianLevel
-	if (fixed != nil) == byClass {
-		return boundComposition{}, fmt.Errorf("raging damage_bonus requires exactly one fixed or barbarian_level strategy")
-	}
-	if fixed != nil && *fixed <= 0 {
-		return boundComposition{}, fmt.Errorf("raging fixed damage bonus must be positive")
-	}
-	amount := generic.Amount{Fixed: fixed}
-	if byClass {
-		amount = generic.Amount{ByClassLevel: &generic.ClassSteps{Class: "barbarian", Steps: map[int]int{1: 2, 9: 3, 16: 4}}}
+	amount, err := ragingDamageAmount(bindings.DamageBonus)
+	if err != nil {
+		return boundComposition{}, err
 	}
 	canonical, err := json.Marshal(bindings)
 	if err != nil {
@@ -74,18 +65,16 @@ func bindRaging(raw json.RawMessage) (boundComposition, error) {
 }
 
 func ragingRecipe(amount generic.Amount) (machine.Recipe, error) {
-	fact := func(name machine.FactName, value any) machine.Guard {
-		return machine.Guard{Fact: &machine.FactLeaf{Name: name, Op: machine.OpEq, Value: value}}
+	parts, err := ruleeffects.CompileParts(&ruleeffects.CompilePartsInput{Parts: ragingBenefitParts(amount)})
+	if err != nil {
+		return machine.Recipe{}, err
 	}
-	strength := fact(ruleeffects.FactAbility, string(abilities.STR))
-	outputs := []generic.Output{
-		{Kind: ruleeffects.KindDamageBonus, When: &machine.Guard{All: []machine.Guard{fact(ruleeffects.FactMelee, true), fact(ruleeffects.FactWeaponPool, true), strength}}, Amount: &amount},
-		{Kind: ruleeffects.KindResistance, Params: jsontext.Value(`{"types":["bludgeoning","piercing","slashing"]}`)},
-		{Kind: ruleeffects.KindAdvantage, When: &strength, Params: jsontext.Value(`{"on":"saving_throw"}`)},
-		{Kind: ruleeffects.KindAdvantage, When: &strength, Params: jsontext.Value(`{"on":"ability_check"}`)},
+	outputs, err := ruleeffects.CompileOutputs(&ruleeffects.CompileOutputsInput{Parts: parts.Parts})
+	if err != nil {
+		return machine.Recipe{}, err
 	}
-	encoded := make([]jsontext.Value, 0, len(outputs))
-	for _, out := range outputs {
+	encoded := make([]jsontext.Value, 0, len(outputs.Outputs))
+	for _, out := range outputs.Outputs {
 		data, err := json.Marshal(out)
 		if err != nil {
 			return machine.Recipe{}, err

@@ -59,12 +59,6 @@ func CompileDefinitions(in *CompileDefinitionsInput) (*CompileDefinitionsOutput,
 	compiled := &CompiledDefinitions{definitions: make(map[string]compiledDefinition, len(library.Definitions))}
 	for _, id := range slices.Sorted(maps.Keys(library.Definitions)) {
 		def := library.Definitions[id]
-		if !validDefinitionKey(id) || strings.TrimSpace(def.Name) == "" {
-			return nil, fmt.Errorf("definitions[%q] requires a valid id and name", id)
-		}
-		if def.Coordinator != DefinitionUser && def.Coordinator != DefinitionRecipient {
-			return nil, fmt.Errorf("definitions[%q].coordinator is not user or recipient", id)
-		}
 		maintenance, err := expandDefinitionParts(library, info, def.Maintenance, dndfx.PartClassMaintenance)
 		if err != nil {
 			return nil, fmt.Errorf("definitions[%q].maintenance: %w", id, err)
@@ -73,7 +67,11 @@ func CompileDefinitions(in *CompileDefinitionsInput) (*CompileDefinitionsOutput,
 		if err != nil {
 			return nil, fmt.Errorf("definitions[%q].benefits: %w", id, err)
 		}
-		compiled.definitions[id] = compiledDefinition{name: def.Name, coordinator: def.Coordinator, maintenance: maintenance, benefits: benefits}
+		definition, err := compileExpandedDefinition(expandedDefinitionInput{ID: id, Name: def.Name, Coordinator: def.Coordinator, Maintenance: maintenance, Benefits: benefits})
+		if err != nil {
+			return nil, err
+		}
+		compiled.definitions[id] = definition
 	}
 	return &CompileDefinitionsOutput{Definitions: compiled}, nil
 }
@@ -88,7 +86,6 @@ func expandDefinitionParts(library DefinitionLibrary, info map[string]dndfx.Vali
 	}
 	result := []dndfx.PartDeclaration{}
 	keys, leaves := map[string]bool{}, map[string]bool{}
-	concentration := 0
 	for _, selection := range selections {
 		if !validDefinitionKey(selection.Key) || (selection.Part == "") == (selection.Set == "") {
 			return nil, fmt.Errorf("selection %q requires a local key and exactly one part/set", selection.Key)
@@ -114,12 +111,6 @@ func expandDefinitionParts(library DefinitionLibrary, info map[string]dndfx.Vali
 				return nil, fmt.Errorf("selection %q repeats a key or leaf %q", selection.Key, leaf)
 			}
 			keys[key], leaves[leaf] = true, true
-			if entry.Capabilities.Concentration {
-				concentration++
-				if concentration > 1 {
-					return nil, fmt.Errorf("multiple concentration claims")
-				}
-			}
 			part := library.Parts[leaf].Clone()
 			result = append(result, dndfx.PartDeclaration{Key: key, Kind: part.Kind, Params: part.Params, When: part.When, Amount: part.Amount, OnTerminal: scope})
 		}

@@ -25,8 +25,9 @@ counting must not compete with concentration for the first matching transition.
 
 ## Rage is a consumer, not a primitive
 
-[`conditions/raging_definition.go`](../conditions/raging_definition.go) constructs
-four outputs:
+[`conditions.RagingBenefits`](../conditions/raging_benefits.go) declares four typed
+benefit parts. Native [`Raging`](../conditions/raging_definition.go) compiles that
+same declaration source into its existing recipe's outputs:
 
 | Output | Configuration |
 |---|---|
@@ -35,8 +36,10 @@ four outputs:
 | Advantage | Strength saving throws |
 | Advantage | Strength ability checks |
 
-The named recipe also supplies its activity trackers, activation grace, duration
-and endings. Those rules are not hidden inside the damage or resistance handlers.
+The named recipe separately supplies its activity trackers, activation grace,
+duration and endings. Those rules are not hidden inside the benefit bundle or its
+handlers. Another composition can reuse the four benefit parts—or author one of
+them alone—while selecting concentration instead of native Rage upkeep.
 
 For the damage output:
 
@@ -154,6 +157,14 @@ without fake participant IDs. The [canonical library](../conditions/testdata/eff
 reuses leaves in ordered benefit sets; the ring and scroll select the same four
 benefits but different maintenance.
 
+A Go-authored application uses `conditions.CompileComposition` with a
+`CompositionSpec{Name, Coordinator, Benefits, Maintenance}`. Benefits and maintenance
+are independent typed `PartSpec` lists. It returns the existing immutable catalogue
+containing that one definition ID; role binding and delivery use the same path as
+the JSON library. Both compilers converge on the same expanded-definition validator,
+not parallel runtimes. Changing maintenance or mutating the input cannot rewrite a
+compiled or active grant.
+
 The public `conditions` path is:
 
 1. `CompileDefinitions` validates the entire library, including unused entries.
@@ -225,7 +236,8 @@ are not interchangeable identities.
 | Payload part example | [resistance_part.go](resistance_part.go) |
 | Maintenance parts | [concentration_part.go](concentration_part.go), [duration_part.go](duration_part.go), [end_parts.go](end_parts.go) |
 | Query-only roll contribution | [add_to_roll.go](add_to_roll.go) |
-| Named Rage composition | [raging_definition.go](../conditions/raging_definition.go) |
+| Shared Rage benefits / native lifecycle | [raging_benefits.go](../conditions/raging_benefits.go), [raging_definition.go](../conditions/raging_definition.go) |
+| Code-authored application composition | [composition.go](../conditions/composition.go) |
 | Linked ownership and delivery | [application.go](../conditions/application.go), [application_binding.go](../conditions/application_binding.go) |
 
 Run from the owning module:
