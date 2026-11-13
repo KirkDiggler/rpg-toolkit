@@ -111,6 +111,9 @@ type Frame struct {
 	Pairs            []PairFacts
 	Complete         bool
 	Held             []MemberHeld
+	// HeldEffects contains captured configured details, keyed to Held identities.
+	// No detail means unknown configuration, not an empty set of effects.
+	HeldEffects []HeldEffectDetail
 }
 
 // Validate refuses a frame no rule can read: no actor, a roll kind that is
@@ -187,7 +190,7 @@ func (f Frame) Validate() error {
 			listed[condition] = true
 		}
 	}
-	return nil
+	return f.validateHeldEffects()
 }
 
 // HeldBy returns what member holds and whether that is known. A member the
@@ -212,10 +215,11 @@ func (f Frame) Pair(from, to string) PairFacts {
 	return PairFacts{From: from, To: to}
 }
 
-// Clone detaches the frame's pairs and held lists; every fact is already a
-// scalar value, and actor class levels are immutable once made.
+// Clone detaches pairs, held lists and configured output data. Scalar facts
+// are values, and actor class levels are immutable once made.
 func (f Frame) Clone() Frame {
 	f.Pairs = slices.Clone(f.Pairs)
+	f.HeldEffects = cloneHeldEffects(f.HeldEffects)
 	if f.Held != nil {
 		held := make([]MemberHeld, len(f.Held))
 		for i, member := range f.Held {

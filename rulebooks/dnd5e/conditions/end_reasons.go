@@ -14,8 +14,9 @@ const (
 	ConcentrationEndedDuration = "duration"
 	// ConcentrationEndedCombatEnd names the configured combat-end policy.
 	ConcentrationEndedCombatEnd = "combat_end"
-	// ConcentrationEndedSpellEnded names actual last-member loss.
-	ConcentrationEndedSpellEnded = "spell_ended"
+	// ConcentrationEndedSpellEnded names actual last-member loss. The retained
+	// Go symbol denotes the single source-neutral reason, including item grants.
+	ConcentrationEndedSpellEnded = "members_empty"
 	// ConcentrationEndedCasterDown names the maintainer dropping to zero HP.
 	ConcentrationEndedCasterDown = "caster_down"
 	// ConcentrationDCFloor is the minimum DC described by concentration upkeep.

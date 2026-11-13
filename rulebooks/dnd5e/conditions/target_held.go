@@ -219,6 +219,20 @@ func AssessTargetHeldEffects(in *AssessTargetHeldEffectsInput) (*AssessTargetHel
 		if err != nil {
 			return nil, rpgerr.Wrapf(err, "held condition %s", condition.Ref)
 		}
+		if entry.linked && entry.linkedParts == nil {
+			rows, err := assessConfiguredHolding(in.Frame, target, condition)
+			if err != nil {
+				return nil, err
+			}
+			for _, row := range rows {
+				if _, exists := ids[row.ID]; exists {
+					return nil, fmt.Errorf("duplicate configured effect row %q", row.ID)
+				}
+				ids[row.ID] = struct{}{}
+				effects = append(effects, row)
+			}
+			continue
+		}
 		against := entry.againstHolder
 		if against.kind == bearingNone {
 			continue

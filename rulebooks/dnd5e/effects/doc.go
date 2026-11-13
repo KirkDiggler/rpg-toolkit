@@ -16,12 +16,27 @@
 // its bindings and runtime snapshot. No item package or condition registry is
 // imported here, and no Raging implementation or per-source behavior is hidden
 // in the vocabulary. Save/check advantage, resistance and fixed/class damage
-// bonuses are the closed meanings used by the first consumer.
+// bonuses are the closed meanings used by the first consumer. Attack advantage
+// additionally declares by_holder or against_holder bearing. Target-side execution
+// requires exact local identity and captured configuration in authoritative facts;
+// it does not relabel the target as the actor. ProjectPartOutput and
+// AssessConfiguredOutput carry owned definitions through that same meaning.
+//
+// PartTemplate describes unbound authored meaning; ValidatePartTemplate reports
+// its kind-owned benefit/maintenance class and capabilities without runtime IDs.
+// Damage and save/check advantage are independent payload parts alongside
+// resistance. Authored guards use supported frame facts, never private state;
+// unsupported fields are refused. Templates/declarations own detached copies
+// through Clone when crossing binding or snapshot boundaries.
 //
 // BindPart selects reusable local recipes from that same kind table. Concentration
 // requests a CON follow-up from positive applied damage and has no duration counter;
 // duration owns its counter/grace separately. End-on and until-empty policies are
-// independent lifecycle parts. Resistance reuses its existing incoming fold.
+// independent lifecycle parts. Combat-activity upkeep owns attack/applied-damage
+// flags and optional first-end grace, not a clock or concentration. End-on selects
+// rest, combat-end, next received turn-start or dropped-to-zero for its holder.
+// Actual last-member loss reports the source-neutral members_empty cause.
+// Resistance reuses its existing incoming fold.
 // Roll modifiers are query-only, describe signed dice with selection metadata, and
 // never subscribe a second roll handler. DescribeRoll and Assess share the kind's
 // applicability; RollQuery names an actual recipient roll, not a caster's outgoing

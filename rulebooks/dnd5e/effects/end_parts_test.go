@@ -35,7 +35,7 @@ func (s *partsSuite) TestUntilEmptyRequiresActualLastMemberLoss() {
 	}
 	s.Require().NoError(dndevents.ApplicationMembersChangedTopic.On(bus).Publish(ctx,
 		dndevents.ApplicationMembersChangedEvent{ApplicationID: "application-1", Owner: partOwner(), Before: 1, After: 0}))
-	s.Equal([]string{"spell_ended"}, reasons)
+	s.Equal([]string{"members_empty"}, reasons)
 	s.False(assembly.IsApplied())
 }
 

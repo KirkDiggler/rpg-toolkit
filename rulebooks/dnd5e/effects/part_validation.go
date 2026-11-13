@@ -4,11 +4,8 @@
 package effects
 
 import (
-	"encoding/json/jsontext"
 	"fmt"
 	"strings"
-
-	generic "github.com/KirkDiggler/rpg-toolkit/mechanics/effects"
 )
 
 // ValidatePartInput supplies authored parameters without inventing a holder or
@@ -25,7 +22,7 @@ func ValidatePart(in *ValidatePartInput) error {
 	if !ok || definition.validatePart == nil {
 		return fmt.Errorf("unsupported effect part %q", in.Declaration.Kind)
 	}
-	return definition.validatePart(in.Declaration)
+	return validatePartDefinition(in.Declaration, definition)
 }
 
 func validateDurationPart(declaration PartDeclaration) error {
@@ -44,8 +41,6 @@ func validateRollPart(declaration PartDeclaration) error {
 }
 
 func validateResistancePart(declaration PartDeclaration) error {
-	if declaration.OnTerminal != generic.EndPart {
-		return fmt.Errorf("resistance payload requires local part scope")
-	}
-	return checkResistance(generic.Output{Kind: KindResistance, Params: jsontext.Value(declaration.Params)})
+	_, err := resistancePartOutput(declaration)
+	return err
 }

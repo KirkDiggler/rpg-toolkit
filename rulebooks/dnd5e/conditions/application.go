@@ -114,10 +114,12 @@ type ResumeApplicationInput struct {
 }
 
 func cloneDeclarations(in []dndfx.PartDeclaration) []dndfx.PartDeclaration {
+	if in == nil {
+		return nil
+	}
 	out := make([]dndfx.PartDeclaration, len(in))
-	copy(out, in)
 	for i := range out {
-		out[i].Params = slices.Clone(in[i].Params)
+		out[i] = in[i].Clone()
 	}
 	return out
 }
@@ -221,6 +223,10 @@ func prepareApplication(in *PrepareApplicationInput, resuming bool) (*PreparedAp
 		if receipt.Shared {
 			p.members = append(p.members, LinkedMemberBinding{Key: receipt.Key, Address: receipt.Address, Mode: receipt.LinkMode})
 		}
+	}
+	addresses[owner.ConditionAddress()] = true
+	if err := p.checkAdmission(in.Existing, addresses, resuming); err != nil {
+		return nil, err
 	}
 	return p, nil
 }
