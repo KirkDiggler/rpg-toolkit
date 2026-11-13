@@ -227,7 +227,7 @@ func (h *holdings) holdsRecord(member MemberID, id IntelID) bool {
 func isHoldingsKind(kind string) bool {
 	return strings.HasPrefix(kind, holdsIntelPrefix) || strings.HasPrefix(kind, holdsPropPrefix) ||
 		strings.HasPrefix(kind, heldPrefix) || strings.HasPrefix(kind, droppedPrefix) ||
-		strings.HasPrefix(kind, arrivedPrefix)
+		strings.HasPrefix(kind, arrivedPrefix) || strings.HasPrefix(kind, relocatedPrefix)
 }
 
 // markHeld records that the prop has left the floor.

@@ -18,8 +18,8 @@ github.com/KirkDiggler/rpg-toolkit/play/intel v0.5.0 h1:yUg3WzBjif9YoqkZ1Fti7knl
 github.com/KirkDiggler/rpg-toolkit/play/intel v0.5.0/go.mod h1:wxDX02oFfpfgtPDRrfskHvRqw/2Bqv986w9NKUkP/MU=
 github.com/KirkDiggler/rpg-toolkit/play/record v0.4.0 h1:9k2WEG8YQc6bKZbuLjZHeIZNeMZWOid9xtxnH0KFmis=
 github.com/KirkDiggler/rpg-toolkit/play/record v0.4.0/go.mod h1:nWzjz8HSBKwlVcY11lI6OqeijbBw5YgkpF10ZsA5I/8=
-github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.16.1 h1:bN6QuGWZTOzk6bLDFgJ0vKol6NpY/MZ1y+ERJ7CF3lY=
-github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.16.1/go.mod h1:3SZFDKtQWXwplGyRfUDSsdrGH25Etkm62BdZig0Q3rY=
+github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.17.0 h1:x2A5kVsEZUTzP5CZYs+Wh2WOYaZQqLGbPA5zJYVaymo=
+github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.17.0/go.mod h1:wUfswqKns4MiPSyxl08OSkzHt+zVQWpiiWrtOpbxenU=
 github.com/KirkDiggler/rpg-toolkit/world v0.4.0 h1:/Ag3BfgOH5wXODtnw8jDqX1dtURZWYdQeYtnm85veko=
 github.com/KirkDiggler/rpg-toolkit/world v0.4.0/go.mod h1:HguA/PKp3dW1zKbdiU/4qwtrxZ1Uj6eBoVcLaBKzhsw=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=

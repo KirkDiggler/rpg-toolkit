@@ -11,7 +11,6 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -69,9 +68,11 @@ import (
 // is not gated: the march will move them by it. [Encounter.Exit] still
 // lets a taken member leave the run, and the record keeps them taken.
 //
-// While custody holds, nothing but the march moves a taken member: any
-// [Encounter.Direct] on one — a friend's shove, a flee — whose cause is not
-// [CustodyMarchCause] is refused with a [CustodyMoveError]. A cast lands on
+// While custody holds, nothing a host can ask for moves a taken member: any
+// [Encounter.Direct] on one — a friend's shove, a flee — and any
+// [Encounter.Relocate] of one is refused with a [CustodyMoveError]. Only the
+// engine's own custody consequence, which no request can name, relocates
+// the held ([Encounter.relocate] with custody set). A cast lands on
 // a held member as on anyone — the save, the damage, a condition — but its
 // push does not move them, and its moved result says so ([HeldInPlace]);
 // only a push that would carry the held caster themself refuses the cast.
@@ -119,8 +120,8 @@ var ErrBadArrest = errors.New("encounter: bad arrest")
 var ErrInCustody = errors.New("The guards hold you; you cannot walk away.") //nolint:staticcheck // the player's sentence
 
 // CustodyMoveError is the refusal of a move imposed on a member the guards
-// hold — a shove, a flee, any [Encounter.Direct] — whose cause is not the
-// custody march ([CustodyMarchCause]). It is [ErrInCustody] to errors.Is,
+// hold — a shove, a flee, any [Encounter.Direct] or [Encounter.Relocate]. It
+// is [ErrInCustody] to errors.Is,
 // and its text is the sentence the actor is shown.
 type CustodyMoveError struct {
 	// Mover is the held member the move was imposed on.
@@ -134,11 +135,6 @@ func (e *CustodyMoveError) Error() string {
 
 // Is makes a CustodyMoveError an [ErrInCustody].
 func (e *CustodyMoveError) Is(target error) bool { return target == ErrInCustody }
-
-// CustodyMarchCause is the cause the custody march moves the taken by: while
-// custody holds, it is the only imposed move a taken member takes
-// ([Encounter.Direct]).
-var CustodyMarchCause = core.Ref{Module: "dnd5e", Type: "consequences", ID: "arrest"}
 
 // CustodyPhase is where an arrest's custody of the taken stands.
 type CustodyPhase string
