@@ -5,6 +5,7 @@ package encounter_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -184,4 +185,91 @@ func (s *SharingSuite) TestTheWordsAreTheDialInOrder() {
 	}
 	s.False(encounter.IsSharing(""), "unmarked is not a word; it is the default")
 	s.False(encounter.IsSharing("everything"))
+}
+
+// membershipOf is every joined and exited entry in the record, with its
+// audience, decoded.
+func (s *SharingSuite) membershipOf(enc *encounter.Encounter) []struct {
+	fields   map[string]any
+	audience []string
+} {
+	read, err := enc.ReadRecord(&encounter.ReadRecordInput{})
+	s.Require().NoError(err)
+	var out []struct {
+		fields   map[string]any
+		audience []string
+	}
+	for _, e := range read.Entries {
+		var fields map[string]any
+		s.Require().NoError(json.Unmarshal(e.Payload, &fields))
+		if fields["beat"] != encounter.BeatJoined && fields["beat"] != encounter.BeatExited {
+			continue
+		}
+		var audience []string
+		for _, a := range e.Audience {
+			audience = append(audience, string(a))
+		}
+		out = append(out, struct {
+			fields   map[string]any
+			audience []string
+		}{fields, audience})
+	}
+	return out
+}
+
+// TestMembershipEntriesNameTheKind (rpg-project#935): who was a player in
+// the run at an entry's time is read off the record, so the joined and the
+// exited entries each say the member's kind as the roster holds it — and a
+// member who has left is on no roster to ask. Both go to the whole roster
+// at that moment, the joiner and the leaver included, who already see each
+// other's kinds on the roster.
+func (s *SharingSuite) TestMembershipEntriesNameTheKind() {
+	enc, err := s.launch("")
+	s.Require().NoError(err)
+	_, err = enc.Join(&encounter.JoinInput{Member: "carol", Kind: encounter.KindPlayer, Cell: spatial.Position{X: 1, Y: 1}})
+	s.Require().NoError(err)
+	_, err = enc.Join(&encounter.JoinInput{Member: "orc", Kind: encounter.KindMonster, Cell: spatial.Position{X: 5, Y: 2}})
+	s.Require().NoError(err)
+	_, err = enc.Exit(&encounter.ExitInput{Member: "carol"})
+	s.Require().NoError(err)
+	_, err = enc.Exit(&encounter.ExitInput{Member: "orc"})
+	s.Require().NoError(err)
+
+	got := map[string]string{}
+	for _, m := range s.membershipOf(enc) {
+		key := fmt.Sprintf("%v %v", m.fields["beat"], m.fields["member"])
+		got[key] = fmt.Sprint(m.fields["kind"])
+		s.Contains(m.audience, fmt.Sprint(m.fields["member"]), "%s: the member is told", key)
+		s.Contains(m.audience, string(alice), "%s: and the roster", key)
+	}
+	s.Equal(map[string]string{
+		"joined carol": "player", "joined orc": "monster",
+		"exited carol": "player", "exited orc": "monster",
+	}, got)
+}
+
+// TestARecordWithoutTheKindStillLoads: a run saved before the kind was
+// written has membership entries without it, and loads unchanged; a reader
+// meets the absent kind as unknown.
+func (s *SharingSuite) TestARecordWithoutTheKindStillLoads() {
+	enc, err := s.launch("")
+	s.Require().NoError(err)
+	_, err = enc.Join(&encounter.JoinInput{Member: "carol", Kind: encounter.KindPlayer, Cell: spatial.Position{X: 1, Y: 1}})
+	s.Require().NoError(err)
+	data, _ := s.saved(enc)
+	stripped := 0
+	for i, e := range data.Log.Entries {
+		var fields map[string]any
+		s.Require().NoError(json.Unmarshal(e.Payload, &fields))
+		if fields["beat"] == encounter.BeatJoined {
+			delete(fields, "kind")
+			raw, err := json.Marshal(fields)
+			s.Require().NoError(err)
+			data.Log.Entries[i].Payload = raw
+			stripped++
+		}
+	}
+	s.Require().Positive(stripped, "precondition: the joins, as an older record wrote them")
+	_, err = s.load(data)
+	s.Require().NoError(err)
 }

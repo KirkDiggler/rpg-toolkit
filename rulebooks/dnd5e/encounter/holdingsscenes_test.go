@@ -920,8 +920,8 @@ func (s *HoldingsSuite) TestASpawnedMonsterCarriesTheIntelItWasAuthoredWith() {
 		joined := s.beatsOfKind(enc, partner, "joined")
 		s.Require().Len(joined, 1)
 		s.Require().Equal(map[string]any{
-			"beat": "joined", "member": string(captain),
-		}, joined[0])
+			"beat": "joined", "member": string(captain), "kind": string(encounter.KindMonster),
+		}, joined[0], "who and what kind, as the roster already shows, and nothing of what he carries")
 		s.Require().Empty(s.beatsOfKind(enc, partner, encounter.BeatConcealmentRevealed))
 		s.Require().Equal(before, s.atlasBytes(enc, partner),
 			"a monster arriving with the run's only secret moves nobody's map")
