@@ -36,7 +36,8 @@ var custodyTests = []string{
 	"TestMadKingATakenMembersBlowEndsCustody", "TestMadKingAFriendsBlowEndsCustody",
 	"TestMadKingATakenMemberWhoLeavesStaysTaken", "TestMadKingCustodyIsKeptOnReload",
 	"TestMadKingAFightWithoutTheGuardsFreesNobody", "TestMadKingNothingButTheMarchMovesTheHeld",
-	"TestMadKingAnArrestSavedBeforeCustodyLoadsHeld",
+	"TestMadKingAnArrestSavedBeforeCustodyLoadsHeld", "TestMadKingAnAreaCastLandsAndLeavesTheHeldInPlace",
+	"TestMadKingAHeldCastersOwnAreaCastLands",
 }
 
 // custody is the castle's one arrest's custody phase.
@@ -246,9 +247,8 @@ func TestMadKingAFightWithoutTheGuardsFreesNobody(t *testing.T) {
 }
 
 // TestMadKingNothingButTheMarchMovesTheHeld: while custody holds, a flee
-// imposed on a taken member, a shove, and a cast whose push moves one are
-// each refused with the actor's sentence and move nobody; the march's own
-// cause moves them. Once custody is broken a flee moves them as usual.
+// imposed on a taken member and a shove are each refused with the actor's
+// sentence and move nobody; the march's own cause moves them. Once custody is broken a flee moves them as usual.
 func TestMadKingNothingButTheMarchMovesTheHeld(t *testing.T) {
 	t.Parallel()
 	s, _ := theArrest(t)
@@ -264,16 +264,6 @@ func TestMadKingNothingButTheMarchMovesTheHeld(t *testing.T) {
 		require.Contains(t, err.Error(), "The guards hold in-the-area; they cannot be moved.")
 		require.Equal(t, at, s.at(inTheArea), "and moves nobody")
 	}
-
-	before := len(s.beats(leftTheGate))
-	_, err = s.enc.RecordCast(&encounter.RecordCastInput{
-		Actor: leftTheGate, Spell: encounter.SpellIdentity{Ref: "dnd5e:spells:thunderwave", Name: "Thunderwave"},
-		Targets: []encounter.CastTargetResult{{Target: inTheArea}},
-		Pushes:  []encounter.CastPush{{Mover: inTheArea, Route: route.Path}},
-	})
-	require.ErrorIs(t, err, encounter.ErrInCustody, "a friend's cast that would shove a held member is refused")
-	require.Contains(t, err.Error(), "The guards hold in-the-area; they cannot be moved.")
-	require.Len(t, s.beats(leftTheGate), before, "and nothing of it landed")
 
 	out, err := s.enc.Direct(context.Background(), encounter.DirectInput{
 		Mover: inTheArea, Cause: encounter.CustodyMarchCause, Route: route.Path[:1], Kind: encounter.MoveCompelled,
@@ -314,4 +304,123 @@ func TestMadKingAnArrestSavedBeforeCustodyLoadsHeld(t *testing.T) {
 	old := loadTheSceneOn(t, blob, arrestScene.compiled, arrestScene.host)
 	require.Equal(t, encounter.CustodyHeld, old.custody(), "an arrest saved without a phase is held")
 	require.ErrorIs(t, old.stepOff(hero), encounter.ErrInCustody)
+}
+
+var thunderwave = encounter.SpellIdentity{Ref: "dnd5e:spells:thunderwave", Name: "Thunderwave"}
+
+// thunderwaveOn is a failed Constitution save, 2 thunder damage and a shove
+// two cells away from the caster for one creature, routed the way the
+// session routes it.
+func (s *kingScene) thunderwaveOn(caster, target encounter.MemberID) (encounter.CastTargetResult, encounter.CastPush) {
+	s.t.Helper()
+	route, err := s.enc.Route(encounter.RouteInput{Mover: target, Policy: encounter.MoveAway, Anchor: s.at(caster), Budget: 2})
+	require.NoError(s.t, err)
+	require.NotEmpty(s.t, route.Path, "%s has somewhere to be thrown", target)
+	modifier := 2
+	return encounter.CastTargetResult{
+		Target: target,
+		Save: &encounter.CastSave{
+			Saver: target, Ability: "constitution", Roll: 1, Total: 3, DC: 13,
+			Calculation: &encounter.RollCalculation{
+				Components: []encounter.RollComponent{
+					{Source: encounter.RollSource{Ref: thunderwave.Ref, Name: thunderwave.Name, SourceID: string(caster)},
+						Dice: &encounter.DiceTrace{Notation: "1d20", DieSize: 20, OriginalRolls: []int{1}, FinalRolls: []int{1}, Subtotal: 1}},
+					{Source: encounter.RollSource{Ref: "dnd5e:abilities:constitution", Name: "constitution"}, Modifier: &modifier},
+				},
+				Total: 3,
+			},
+		},
+		Results: []encounter.ActivationResult{
+			{
+				Kind: encounter.ResultDamageApplied, Target: target, Ref: thunderwave.Ref, Name: thunderwave.Name,
+				Amount: 2, Requested: 2, Before: 11, After: 9, DamageType: "thunder",
+				Calculation: &encounter.RollCalculation{
+					Components: []encounter.RollComponent{{
+						Source: encounter.RollSource{Ref: thunderwave.Ref, Name: thunderwave.Name, SourceID: string(caster)},
+						Dice:   &encounter.DiceTrace{Notation: "1d8", DieSize: 8, OriginalRolls: []int{2}, FinalRolls: []int{2}, Subtotal: 2},
+					}},
+					Total: 2,
+				},
+			},
+			{
+				Kind: encounter.ResultMoved, Target: target, Ref: thunderwave.Ref, Name: thunderwave.Name,
+				Moved: len(route.Path), StoppedBy: route.StoppedBy,
+			},
+		},
+	}, encounter.CastPush{
+		Mover: target, Route: route.Path,
+	}
+}
+
+// castResultsFor is the activation results in reader's story that name
+// target.
+func (s *kingScene) castResultsFor(reader, target encounter.MemberID) []map[string]any {
+	s.t.Helper()
+	var out []map[string]any
+	for _, b := range s.payloadsOf(reader, encounter.BeatActivationResult) {
+		if r, ok := b["result"].(map[string]any); ok && r["target"] == string(target) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// TestMadKingAnAreaCastLandsAndLeavesTheHeldInPlace: the one who left —
+// wanted, free — casts Thunderwave on gate-2 with a held friend in the cube.
+// The cast lands on both: gate-2 is thrown, the held friend takes the save
+// and the damage and is not moved, and the cast says so (moved nothing,
+// stopped by the guards' hold). The hold is judged as the push applies,
+// before the deed's fight forms; the fight that forms with gate-2 in it then
+// breaks custody, by the rule a fight with an arresting guard always does.
+func TestMadKingAnAreaCastLandsAndLeavesTheHeldInPlace(t *testing.T) {
+	t.Parallel()
+	s, _ := theArrest(t)
+	guard, guardPush := s.thunderwaveOn(leftTheGate, kingGate2)
+	friend, friendPush := s.thunderwaveOn(leftTheGate, inTheArea)
+	guardAt, friendAt := s.at(kingGate2), s.at(inTheArea)
+
+	_, err := s.enc.RecordCast(&encounter.RecordCastInput{
+		Actor: leftTheGate, Spell: thunderwave,
+		Targets: []encounter.CastTargetResult{guard, friend},
+		Pushes:  []encounter.CastPush{guardPush, friendPush},
+	})
+	require.NoError(t, err, "the cast lands though a held member is in it")
+	require.NotEqual(t, guardAt, s.at(kingGate2), "gate-2 is thrown")
+	require.Equal(t, friendAt, s.at(inTheArea), "the held friend is not moved")
+
+	var damaged, held bool
+	for _, r := range s.castResultsFor(leftTheGate, inTheArea) {
+		switch r["kind"] {
+		case string(encounter.ResultDamageApplied):
+			damaged = true
+		case string(encounter.ResultMoved):
+			require.EqualValues(t, 0, r["moved"], "the cast says they moved nothing")
+			require.Equal(t, encounter.HeldInPlace, r["stopped_by"], "stopped by the guards' hold")
+			held = true
+		}
+	}
+	require.True(t, damaged, "the held friend takes the damage")
+	require.True(t, held, "and the cast tells the caster they were held in place")
+	require.Equal(t, encounter.ClockTurn, clockKind(t, s.enc, kingGate2), "the blast forms the fight with gate-2 in it")
+	require.Equal(t, encounter.CustodyBroken, s.custody(), "and a fight with an arresting guard breaks custody")
+}
+
+// TestMadKingAHeldCastersOwnAreaCastLands: a held member's own Thunderwave
+// on gate-2 lands — the guard is thrown — and moves nobody held; the fight
+// it forms with gate-2 breaks custody. A cast whose push would carry the
+// held caster themself away is still refused ([TestMadKingTheTakenAreHeld]).
+func TestMadKingAHeldCastersOwnAreaCastLands(t *testing.T) {
+	t.Parallel()
+	s, _ := theArrest(t)
+	guard, guardPush := s.thunderwaveOn(hero, kingGate2)
+	at, guardAt := s.at(hero), s.at(kingGate2)
+	_, err := s.enc.RecordCast(&encounter.RecordCastInput{
+		Actor: hero, Spell: thunderwave,
+		Targets: []encounter.CastTargetResult{guard},
+		Pushes:  []encounter.CastPush{guardPush},
+	})
+	require.NoError(t, err, "a held caster's own area cast lands")
+	require.NotEqual(t, guardAt, s.at(kingGate2), "gate-2 is thrown")
+	require.Equal(t, at, s.at(hero), "the caster stands where they were taken")
+	require.Equal(t, encounter.CustodyBroken, s.custody(), "the fight with gate-2 breaks custody")
 }

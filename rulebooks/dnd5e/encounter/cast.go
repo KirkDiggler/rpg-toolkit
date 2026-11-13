@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
@@ -400,6 +401,10 @@ type concentrationEndedPayload struct {
 // deed, on every clock: the thunder, the slide, then the stance, the fight
 // and the world's round a hostile cast from free roam sets off.
 func (e *Encounter) RecordCast(in *RecordCastInput) (*RecordCastOutput, error) {
+	in, err := e.holdTheHeldInPlace(in)
+	if err != nil {
+		return nil, err
+	}
 	prepared, err := e.prepareCast(in)
 	if err != nil {
 		return nil, err
@@ -407,19 +412,6 @@ func (e *Encounter) RecordCast(in *RecordCastInput) (*RecordCastOutput, error) {
 	cause, err := e.preparePushes(in)
 	if err != nil {
 		return nil, err
-	}
-	// HELD BY THE GUARDS (rpg-project#925), asked before anything of the cast
-	// lands: a cast whose landing moves its own held caster is walking away;
-	// one that would move another held member is a move nothing but the march
-	// may impose.
-	for _, p := range in.Pushes {
-		if len(p.Route) == 0 || !e.inCustody(p.Mover) {
-			continue
-		}
-		if p.Mover == in.Actor {
-			return nil, fmt.Errorf("record cast %q: %w", in.Actor, ErrInCustody)
-		}
-		return nil, fmt.Errorf("record cast: %w", &CustodyMoveError{Mover: p.Mover})
 	}
 	// WHO PAYS IS ASKED WHERE THE CASTER STOOD WHEN IT CAST (rpg-project#785
 	// R1): off every fight, the cast is a deed done on the world clock and
@@ -498,6 +490,60 @@ func (e *Encounter) RecordCast(in *RecordCastInput) (*RecordCastOutput, error) {
 	}
 
 	return &RecordCastOutput{Seqs: seqs, IntelDeltas: intelDeltas}, nil
+}
+
+// HeldInPlace is the StoppedBy a cast's [ResultMoved] carries for a member
+// the guards held where they stood (rpg-project#925): the cast landed on
+// them, and its push did not move them.
+const HeldInPlace = "held by the guards"
+
+// holdTheHeldInPlace is a cast as custody lets it land (rpg-project#925),
+// asked before anything of it lands. A push that would move the held caster
+// themself is walking away, and refuses the cast with [ErrInCustody]. A push
+// on any other held member is not applied: the cast still lands on them —
+// the save, the damage, a condition — and its [ResultMoved] for them reports
+// a move of nothing, stopped by [HeldInPlace], so caster and member can tell.
+// The hold is judged as the push would apply, before the deed's fight forms:
+// a cast that strikes an arresting guard frees the held by the fight it
+// starts, after its own pushes, so they stay put for this cast. A nil input
+// passes through for [Encounter.prepareCast] to refuse.
+func (e *Encounter) holdTheHeldInPlace(in *RecordCastInput) (*RecordCastInput, error) {
+	if in == nil {
+		return in, nil
+	}
+	held := map[MemberID]bool{}
+	for _, p := range in.Pushes {
+		if len(p.Route) == 0 || !e.inCustody(p.Mover) {
+			continue
+		}
+		if p.Mover == in.Actor {
+			return nil, fmt.Errorf("record cast %q: %w", in.Actor, ErrInCustody)
+		}
+		held[p.Mover] = true
+	}
+	if len(held) == 0 {
+		return in, nil
+	}
+	out := *in
+	out.Pushes = nil
+	for _, p := range in.Pushes {
+		if !held[p.Mover] {
+			out.Pushes = append(out.Pushes, p)
+		}
+	}
+	out.Targets = slices.Clone(in.Targets)
+	for i, t := range out.Targets {
+		if !held[t.Target] {
+			continue
+		}
+		out.Targets[i].Results = slices.Clone(t.Results)
+		for j, r := range out.Targets[i].Results {
+			if r.Kind == ResultMoved {
+				out.Targets[i].Results[j].Moved, out.Targets[i].Results[j].StoppedBy = 0, HeldInPlace
+			}
+		}
+	}
+	return &out, nil
 }
 
 // preparePushes validates a cast's pushes before the first append, so a push

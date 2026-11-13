@@ -71,8 +71,10 @@ import (
 //
 // While custody holds, nothing but the march moves a taken member: any
 // [Encounter.Direct] on one — a friend's shove, a flee — whose cause is not
-// [CustodyMarchCause] is refused with a [CustodyMoveError], and a cast whose
-// pushes would move one is refused before anything of it lands.
+// [CustodyMarchCause] is refused with a [CustodyMoveError]. A cast lands on
+// a held member as on anyone — the save, the damage, a condition — but its
+// push does not move them, and its moved result says so ([HeldInPlace]);
+// only a push that would carry the held caster themself refuses the cast.
 //
 // Custody ends — [CustodyBroken], for every taken member at once — when a
 // fight forms or is joined with an arresting guard in it

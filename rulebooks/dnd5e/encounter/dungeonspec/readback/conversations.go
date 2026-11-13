@@ -376,7 +376,8 @@ func (b *builder) arrestStatement(id, state, path string) Statement {
 		"wanted, and the conversation's other carriers who catch the deciding line hold the same, heard. Who is wanted "+
 		"is told to those carriers alone, never to a player. The conversation's address ends. Who is taken and who is "+
 		"wanted is decided once and kept. The taken are held from that moment: they cannot walk, dash, sneak or cast "+
-		"themselves away, and nothing moves them but the march (a shove or a flee on them is refused), while "+
+		"themselves away, and nothing moves them but the march: a shove or a flee aimed at them is refused, and "+
+		"a spell that lands on them still lands but does not move them; "+
 		"speaking, looking, looting and fighting stay open. A fight with one of those carriers in it ends the hold for "+
 		"all of them, and the record stays; a fight without them frees nobody, and the held stay held inside it. A "+
 		"taken player who leaves the run stays taken. Nobody is moved yet: the taken are not walked to %s.",
