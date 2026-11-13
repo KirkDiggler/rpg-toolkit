@@ -444,3 +444,71 @@ func (s *ActFoldSuite) TestHerOwnTwoOfAKindAreNeverMerged() {
 		s.Equal([]Party{member("bob"), member("carol")}, viaOf(acts[0]))
 	})
 }
+
+// TestACollapsedFactNamesTheObserverOfTheKeptCopy (closure probe): carol,
+// three rooms off, and bob, one room off, each hear one clang. Alice is sent
+// one clang through both — and its Observer is the friend whose copy was
+// kept (the earliest in record order), so the hops and the name always come
+// from the same entry, in either write order.
+func (s *ActFoldSuite) TestACollapsedFactNamesTheObserverOfTheKeptCopy() {
+	heard := func(hops int) map[string]any {
+		return map[string]any{"beat": encounter.BeatHeard, "kind": "clang", "position": cell(3, 3), "hops": hops}
+	}
+	for _, tc := range []struct {
+		name     string
+		first    string
+		hops     [2]int
+		observer string
+		keptHops int
+	}{
+		{name: "carol written first", first: "carol", hops: [2]int{3, 1}, observer: "carol", keptHops: 3},
+		{name: "bob written first", first: "bob", hops: [2]int{1, 3}, observer: "bob", keptHops: 1},
+	} {
+		s.Run(tc.name, func() {
+			second := map[string]string{"carol": "bob", "bob": "carol"}[tc.first]
+			a, b := to(s.beat("", heard(tc.hops[0])), tc.first), to(s.beat("", heard(tc.hops[1])), second)
+			b.At = a.At // one noise
+			acts := sharedActs("alice", []string{"bob", "carol"}, a, b)
+			s.Require().Len(acts, 1)
+			p := acts[0].Body.(Perception)
+			s.Equal(member(tc.observer), p.Observer, "the kept copy's perceiver")
+			s.Equal(tc.keptHops, p.Heard.Hops, "and the kept copy's hops")
+			s.Equal([]Party{member("bob"), member("carol")}, viaOf(acts[0]), "every friend who heard it")
+		})
+	}
+}
+
+// TestAFriendsDistanceFromAVoiceIsNeverHers: with no version of her own,
+// friends who heard a line unseen at different distances give her the words
+// and no speaker — and no Hops, which would be a friend's distance shown as
+// hers. Place is absolute and stays.
+func (s *ActFoldSuite) TestAFriendsDistanceFromAVoiceIsNeverHers() {
+	words := "Evening."
+	s.Run("two friends, two distances", func() {
+		acts := sharedActs("alice", []string{"bob", "carol"},
+			to(s.beat("", speechVersion(map[string]any{"words": words, "hops": 1})), "bob"),
+			to(s.beat("", speechVersion(map[string]any{"words": words, "hops": 2})), "carol"))
+		s.Require().Len(acts, 1)
+		got := acts[0].Body.(SpeechAct)
+		s.Equal(&words, got.Words)
+		s.Equal(Party{}, got.Speaker)
+		s.Nil(got.Hops)
+		s.Equal(cell(4, 2), got.Place, "where the voice was, absolutely")
+		s.Equal([]Party{member("bob"), member("carol")}, viaOf(acts[0]))
+	})
+	s.Run("one friend alone", func() {
+		acts := sharedActs("alice", []string{"bob"},
+			to(s.beat("", speechVersion(map[string]any{"words": words, "hops": 1})), "bob"))
+		s.Require().Len(acts, 1)
+		s.Nil(acts[0].Body.(SpeechAct).Hops)
+		s.Equal([]Party{member("bob")}, viaOf(acts[0]))
+	})
+	s.Run("her own unseen version keeps her hops", func() {
+		acts := sharedActs("alice", []string{"bob"},
+			to(s.beat("", speechVersion(map[string]any{"words": words, "hops": 2})), "alice"),
+			to(s.beat("", speechVersion(map[string]any{"words": words, "hops": 1})), "bob"))
+		s.Require().Len(acts, 1)
+		s.Require().NotNil(acts[0].Body.(SpeechAct).Hops)
+		s.Equal(2, *acts[0].Body.(SpeechAct).Hops)
+	})
+}

@@ -252,8 +252,14 @@ func (p *sharingParty) storyFor(recipient encounter.MemberID, own []record.Entry
 type storyEntry struct {
 	record.Entry
 	// via are the friends whose stories hold it, in party order; nil when it
-	// is in the recipient's own story.
+	// is in the recipient's own story. After [onePerFact] collapses friends'
+	// copies of one fact, every friend who was told it.
 	via []encounter.MemberID
+	// observer is whose perception this very entry is, when it came through
+	// a friend: the first friend, by id, whose story holds it. Set when the
+	// entry is merged in and never changed, so the payload and the observer
+	// named for it always come from the same entry.
+	observer encounter.MemberID
 	// versions are, for the one `speech` entry that stands for an
 	// utterance, every version of that utterance the merge holds, in record
 	// order, its own among them. Nil for every other entry.
@@ -350,7 +356,7 @@ func sharedStory(own []record.Entry, friends []encounter.MemberID, storyOf func(
 			}
 			if !held {
 				bySeq[e.Seq] = len(out)
-				out = append(out, storyEntry{Entry: e, via: []encounter.MemberID{friend}})
+				out = append(out, storyEntry{Entry: e, via: []encounter.MemberID{friend}, observer: friend})
 				continue
 			}
 			if out[i].via != nil {
@@ -550,7 +556,9 @@ type spoken struct {
 // several party members perceived (R11): the recipient's own version, each
 // part they lack taken from a friend's version in record order, and
 // [Perceived] naming the senses of the versions merged and exactly the
-// friends whose versions held a part the recipient's own lacked. Every
+// friends whose versions held a part the recipient's own lacked. Its Hops
+// are the recipient's own or none: a friend's distance from the voice is
+// never shown as hers. Every
 // version is decoded by [speechActPiece], so each fails closed as the
 // recipient's own would; one that does not read fails the entry.
 func mergedSpeech(versions []utteranceVersion) (piece, error) {
@@ -579,7 +587,7 @@ func mergedSpeech(versions []utteranceVersion) (piece, error) {
 			continue
 		}
 		if own == nil && i == 0 {
-			merged = SpeechAct{Utterance: f.act.Utterance, Place: f.act.Place, Hops: f.act.Hops}
+			merged = SpeechAct{Utterance: f.act.Utterance, Place: f.act.Place}
 		}
 		fillSpeech(&merged, f.act)
 		senses = append(senses, f.senses...)
@@ -589,7 +597,11 @@ func mergedSpeech(versions []utteranceVersion) (piece, error) {
 			}
 		}
 	}
-	if merged.Speaker != (Party{}) {
+	// HOPS ARE THE RECIPIENT'S OWN OR NONE: how far the voice was from the
+	// one who heard it, so a friend's distance is never shown as hers. With
+	// no version of her own it is absent; Place is absolute and stays, so a
+	// client still puts the voice where it was.
+	if merged.Speaker != (Party{}) || own == nil {
 		merged.Hops = nil
 	}
 	slices.Sort(via)
@@ -686,15 +698,24 @@ func entryPieces(recipient, tag string, e storyEntry) []piece {
 		}
 		return []piece{p}
 	}
+	// A SPEECH THROUGH A FRIEND is merged even alone ([mergedSpeech]), so
+	// it never carries the friend's distance from the voice.
+	if e.via != nil && e.head.utterance != "" {
+		p, err := mergedSpeech([]utteranceVersion{{payload: e.Payload, via: e.via}})
+		if err != nil {
+			return []piece{{family: FamilyPerception, undecoded: fmt.Sprintf("%s: %v", encounter.BeatSpeech, err)}}
+		}
+		return []piece{p}
+	}
 	// WHOSE PERCEPTION IT IS: the recipient's own, or — through a friend —
-	// that friend's. A perception names its Observer, and an entry a
-	// friend's story carried is the friend's perception, never the reader's
-	// (the reader is the act's Recipient; Via says through whom). Where one
-	// entry reached several friends, the first by id is named, and Via
-	// lists them all.
+	// the friend whose entry this is ([storyEntry.observer]): the payload
+	// and the Observer always come from the same entry, so every field
+	// relative to the observer (a sound's hops, a sighting's gained) is
+	// honestly labelled. The reader is the act's Recipient; Via lists every
+	// friend who was told it.
 	observer := recipient
 	if e.via != nil {
-		observer = string(e.via[0])
+		observer = string(e.observer)
 	}
 	return marked(e, piecesOf(observer, tag, e.Payload))
 }
