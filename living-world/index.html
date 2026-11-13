@@ -3,444 +3,80 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
 <title>The Living World</title>
-<link rel="icon" type="image/svg+xml" href="/rpg-toolkit/favicon.svg">
-<link rel="apple-touch-icon" href="/rpg-toolkit/apple-touch-icon.png">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Public+Sans:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="canonical" href="https://kirkdiggler.github.io/rpg-toolkit/living-world/">
+<meta property="og:site_name" content="rpg-toolkit">
+<meta property="og:type" content="website">
+<meta property="og:title" content="The Living World">
+<meta property="og:description" content="Time, knowledge and behavior working together. Explore the engine’s building blocks, source packages, tests and the situations they make possible.">
+<meta property="og:url" content="https://kirkdiggler.github.io/rpg-toolkit/living-world/">
+<meta property="og:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/living-world.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="The Living World. Time, knowledge and behavior, working together. Clock, intel, perception, machines, behavior and resolution.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="The Living World">
+<meta name="twitter:description" content="Time, knowledge and behavior working together. Explore the engine’s building blocks, source packages, tests and the situations they make possible.">
+<meta name="twitter:image" content="https://kirkdiggler.github.io/rpg-toolkit/social/living-world.png">
+<meta name="twitter:image:alt" content="The Living World. Time, knowledge and behavior, working together. Clock, intel, perception, machines, behavior and resolution.">
+<meta name="description" content="Time, knowledge and behavior working together. Explore the engine's building blocks and the situations they make possible.">
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&amp;family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&amp;family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&amp;display=swap">
 <style>
-  :root{
-    --ground:#F2F4F1; --panel:#FFFFFF; --ink:#212827; --muted:#5F6B67;
-    --line:#C9D2CD; --accent:#2E7D5B; --accent-soft:#DDEBE3;
-    --hostile:#B4543A; --gold:#A8842C; --gold-soft:#F0E8D2;
-  }
-  :root:not([data-theme="light"]){}
-  @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]){
-      --ground:#161B19; --panel:#1E2422; --ink:#DCE3DF; --muted:#93A09B;
-      --line:#39443F; --accent:#5CB68F; --accent-soft:#24352D;
-      --hostile:#D98166; --gold:#CBA84E; --gold-soft:#3A3321;
-    }
-  }
-  :root[data-theme="dark"]{
-    --ground:#161B19; --panel:#1E2422; --ink:#DCE3DF; --muted:#93A09B;
-    --line:#39443F; --accent:#5CB68F; --accent-soft:#24352D;
-    --hostile:#D98166; --gold:#CBA84E; --gold-soft:#3A3321;
-  }
-  *{box-sizing:border-box}
-  body{
-    margin:0; background:var(--ground); color:var(--ink);
-    font-family:"Public Sans",system-ui,sans-serif; font-size:16px; line-height:1.6;
-  }
-  .wrap{max-width:980px; margin:0 auto; padding:48px 24px 96px}
-  .prose{max-width:700px}
-  h1,h2{font-family:"Bricolage Grotesque","Public Sans",sans-serif; text-wrap:balance; line-height:1.12}
-  h1{font-size:clamp(2.4rem,6vw,3.6rem); font-weight:800; margin:.3em 0 .35em}
-  h2{font-size:1.55rem; font-weight:700; margin:2.6em 0 .5em}
-  p{margin:.75em 0}
-  .eyebrow{
-    font-family:"JetBrains Mono",monospace; font-size:.72rem; letter-spacing:.14em;
-    text-transform:uppercase; color:var(--accent); font-weight:600;
-  }
-  .dek{font-size:1.12rem; color:var(--muted); max-width:640px}
-  code,.m{font-family:"JetBrains Mono",monospace; font-size:.86em}
-  code{background:var(--accent-soft); color:var(--ink); padding:.1em .35em; border-radius:4px}
-  figure{margin:1.6em 0; background:var(--panel); border:1px solid var(--line);
-    border-radius:10px; padding:20px 20px 12px; overflow-x:auto}
-  figure svg{display:block; max-width:100%; height:auto; min-width:640px; margin:0 auto}
-  figcaption{font-size:.85rem; color:var(--muted); margin-top:10px; max-width:66ch}
-  .law{
-    border-left:3px solid var(--accent); padding:.5em 1em; margin:1.4em 0;
-    background:var(--panel); border-radius:0 8px 8px 0; max-width:640px;
-  }
-  .law b{font-family:"Bricolage Grotesque",sans-serif}
-  ul{padding-left:1.2em} li{margin:.35em 0}
-  svg text{font-family:"Public Sans",sans-serif; font-size:12px; fill:currentColor}
-  svg .mono{font-family:"JetBrains Mono",monospace; font-size:11px}
-  svg .small{font-size:10.5px; fill:var(--muted)}
-  svg .box{fill:var(--panel); stroke:currentColor; stroke-width:1.2}
-  svg .soft{fill:var(--accent-soft); stroke:var(--accent); stroke-width:1.2}
-  svg .goldbox{fill:var(--gold-soft); stroke:var(--gold); stroke-width:1.2}
-  svg .wire{stroke:currentColor; stroke-width:1.3; fill:none}
-  svg .good{stroke:var(--accent); stroke-width:1.8; fill:none}
-  svg .bad{stroke:var(--hostile); stroke-width:1.8; fill:none}
-  svg .goldw{stroke:var(--gold); stroke-width:1.8; fill:none}
-  svg .dash{stroke-dasharray:5 4}
+:root{--ground:#11141a;--surface:#181c23;--ink:#f1f3f5;--muted:#c2c8d0;--faint:#9da7b4;--rule:#343b46;--accent:#7189d7;--bright:#9baded;--soft:#1b2236;--warm:#e49b91;--pressure:#c96d62}*{box-sizing:border-box}html{background:var(--ground);color-scheme:dark;scroll-padding-top:24px}body{margin:0;color:var(--ink);font:18px/1.65 "Source Serif 4",Georgia,serif;-webkit-font-smoothing:antialiased}a{color:var(--bright);text-underline-offset:4px}:focus-visible{outline:2px solid var(--bright);outline-offset:5px}.page{max-width:1220px;margin:0 auto;padding:22px 32px 84px}.draft-banner{padding:12px 16px;border-block:1px solid var(--pressure);color:var(--warm);font:500 12px/1.6 "IBM Plex Mono",monospace}.draft-banner strong{font-weight:600;letter-spacing:.06em}.topbar{display:flex;justify-content:space-between;gap:24px;align-items:center;padding:25px 0;border-bottom:1px solid var(--rule)}.brand,.eyebrow,.tag,.source,.mini-title{font-family:"IBM Plex Mono",monospace}.brand{color:var(--faint);font-size:12px;letter-spacing:.1em}.topbar nav{display:flex;flex-wrap:wrap;gap:22px;font:500 12px/1.6 "IBM Plex Mono",monospace}.topbar a{text-decoration:none}.topbar a:hover{text-decoration:underline}h1,h2,h3,.large-link{font-family:"IBM Plex Sans Condensed","Arial Narrow",sans-serif;line-height:1.08;font-weight:600;text-wrap:balance}h1{margin:16px 0 24px;max-width:1000px;font-size:clamp(3.6rem,8.5vw,6.7rem);letter-spacing:-.035em}h2{font-size:clamp(2.1rem,4.4vw,3.2rem);letter-spacing:-.02em;margin:12px 0 22px}h3{font-size:1.9rem;margin:14px 0}.eyebrow{color:var(--bright);font-size:12px;font-weight:600;letter-spacing:.13em;text-transform:uppercase}header{padding:66px 42px 52px}.dek{max-width:830px;font-size:clamp(1.15rem,2.4vw,1.5rem);line-height:1.55;color:var(--muted)}p{max-width:74ch;margin:.8em 0}.hero-note{max-width:780px;margin-top:25px;color:var(--faint);font-size:16px}.hero-links{display:flex;flex-wrap:wrap;gap:15px 28px;margin-top:29px}.hero-links a{font:500 13px/1.6 "IBM Plex Mono",monospace}.button{display:inline-block;text-decoration:none;background:var(--soft);border:1px solid var(--accent);padding:11px 17px}.button:hover{background:#24304b}.quiet-link{align-self:center}.chapter{padding:50px 42px;border-top:1px solid var(--rule)}.section-intro{color:var(--muted);max-width:790px;margin-bottom:27px}.tag{display:inline-block;font-size:10px;line-height:1.6;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--warm);padding:5px 9px;border:1px solid #80524e}.tag.neutral{color:var(--faint);border-color:var(--rule)}.feature-case{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr);gap:36px;padding:30px;border:1px solid var(--accent);background:linear-gradient(125deg,var(--soft),var(--surface) 75%)}.feature-case h3{font-size:2.35rem}.feature-case p{color:var(--muted);font-size:17px}.large-link{display:inline-block;margin:12px 0 0;font-size:1.35rem;text-decoration:none}.large-link:hover{text-decoration:underline}.case-shape{display:flex;flex-direction:column;justify-content:center;gap:12px}.shape-step{padding:13px 18px;background:var(--ground);border-left:2px solid var(--accent);font:500 19px/1.35 "IBM Plex Sans Condensed",sans-serif}.shape-step small{display:block;color:var(--faint);font:400 12px/1.5 "IBM Plex Mono",monospace;margin-top:5px}.shape-step.highlight{border-color:var(--pressure)}.shape-step:last-child{margin-left:25px}.case-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:22px}.future-case{border:1px solid var(--rule);padding:24px;background:var(--surface)}.future-case h3{font-size:1.6rem}.future-case p{font-size:16px;color:var(--muted)}.case-footnote{font-size:14px;color:var(--faint);margin-top:22px}.concept-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:28px}.concept{background:var(--surface);padding:26px;border:1px solid var(--rule);min-width:0;scroll-margin-top:25px}.concept h3{font-size:1.85rem}.concept p{font-size:17px;color:var(--muted)}.concept .mini-title{color:var(--bright);font-size:11px;letter-spacing:.08em;text-transform:uppercase}.concept .key-line{color:var(--ink);border-top:1px solid var(--rule);padding-top:15px;margin-top:20px;font-size:16px}.source{display:inline-block;font-size:11px;line-height:1.6;margin-top:10px}.card-links{display:grid;gap:10px;margin-top:22px;padding-top:18px;border-top:1px solid var(--rule);font:400 12px/1.6 "IBM Plex Mono",monospace}.card-links a{width:fit-content;max-width:100%;overflow-wrap:anywhere;text-decoration:none}.card-links a:hover{text-decoration:underline}.reading-depth{color:var(--faint);font-size:16px;max-width:80ch}.system-flow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:32px 0 16px}.system-flow div{padding:18px 15px;border-top:2px solid var(--accent);background:var(--surface);font:500 19px/1.4 "IBM Plex Sans Condensed",sans-serif}.system-flow span{display:block;color:var(--bright);font:500 11px/1.5 "IBM Plex Mono",monospace;margin-bottom:8px}.boundary-note{max-width:80ch;font-size:15px;color:var(--faint)}.keep{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,.7fr);gap:35px;align-items:start}.keep ul{padding-left:21px;color:var(--muted)}.keep li{margin:12px 0}.keep-note{border-left:2px solid var(--pressure);padding:2px 0 2px 22px;margin-top:12px}.keep-note p{font-size:16px;color:var(--muted)}.reading-grid{display:grid;grid-template-columns:1fr 1fr;gap:26px}.reading{border-top:1px solid var(--accent);padding-top:22px}.reading h3{font-size:1.8rem}.reading p{font-size:16px;color:var(--muted)}.reading .tag{color:var(--bright);border-color:var(--accent)}footer{border-top:1px solid var(--rule);margin-top:20px;padding:30px 42px 0;color:var(--faint);font-size:14px}footer .scope{font:400 11px/1.8 "IBM Plex Mono",monospace;max-width:100ch}code{font:500 .8em "IBM Plex Mono",monospace;color:var(--bright);overflow-wrap:anywhere}@media(max-width:800px){.page{padding:14px 18px 60px}.topbar{align-items:flex-start;flex-direction:column;gap:15px}.topbar nav{gap:12px 19px}header{padding:42px 8px}.chapter{padding:37px 8px}.feature-case{grid-template-columns:1fr;padding:23px;gap:25px}.case-grid,.concept-grid,.reading-grid,.keep{grid-template-columns:1fr}.system-flow{grid-template-columns:1fr 1fr}.feature-case h3{font-size:2rem}.concept{padding:23px}.concept p{font-size:16px}.keep{gap:15px}footer{padding:25px 8px 0}.hero-links{gap:18px}.draft-banner{font-size:11px;padding:10px}.shape-step:last-child{margin-left:18px}}@media(max-width:420px){body{font-size:17px}.topbar nav{font-size:11px}h1{font-size:3.5rem}.feature-case{padding:20px}.system-flow{grid-template-columns:1fr}.concept{padding:20px}.tag{font-size:9px}}
 </style>
 </head>
 <body>
-
-<div class="wrap">
-  <div class="eyebrow">rpg-toolkit · a world shaped by its community</div>
-  <h1>The Living World</h1>
-  <p class="dek">How the game becomes more than a dungeon clearer: every action becomes a
-  <b>fact</b>, facts fold into each witness's <b>present</b>, predicates watch the folds,
-  and the world moves — for one rogue, for one camp, for a whole Discord server at once.
-  The camp, hostage and shared-goal examples exercise the machinery behind this vision.
-  A complete streamer experience and an AI in the DM seat remain ambitions, not claims
-  of a finished service.</p>
-
-  <h2>1 · The life of one act</h2>
-  <div class="prose">
-  <p>Rook tries to slip past the bandit camp. No prerequisite is checked — anyone may
-  attempt anything; the sheet only tilts the dice. The act enters through the composer's
-  one write door, the rulebook judges it, and what comes out is not "success" — it is a
-  <b>fact with an audience</b>.</p>
-  </div>
-
-  <figure>
-    <svg viewBox="0 0 940 250" role="img" aria-label="An act flows through the composer to the dnd5e resolver and is written to the journal as an audience-scoped fact">
-      <defs>
-        <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
-        </marker>
-        <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
-        </marker>
-      </defs>
-      <rect class="box" x="20" y="70" width="130" height="64" rx="8"/>
-      <text x="85" y="97" text-anchor="middle" font-weight="600">Rook</text>
-      <text x="85" y="115" text-anchor="middle" class="small">player, on Discord</text>
-
-      <line class="wire" x1="150" y1="102" x2="230" y2="102" marker-end="url(#a1)"/>
-      <text x="190" y="92" text-anchor="middle" class="mono">Act{sneak}</text>
-
-      <rect class="box" x="232" y="60" width="150" height="84" rx="8"/>
-      <text x="307" y="90" text-anchor="middle" font-weight="600">the composer</text>
-      <text x="307" y="108" text-anchor="middle" class="mono">world.Act()</text>
-      <text x="307" y="126" text-anchor="middle" class="small">the one write door</text>
-
-      <line class="wire" x1="382" y1="102" x2="462" y2="102" marker-end="url(#a1)"/>
-      <text x="422" y="92" text-anchor="middle" class="small">judges</text>
-
-      <rect class="box" x="464" y="52" width="168" height="100" rx="8"/>
-      <text x="548" y="78" text-anchor="middle" font-weight="600">the rulebook</text>
-      <text x="548" y="96" text-anchor="middle" class="mono">dnd5eresolver</text>
-      <text x="548" y="114" text-anchor="middle" class="small">real sheet · d20 · Stealth +6</text>
-      <text x="548" y="132" text-anchor="middle" class="small">expertise tilts, never gates</text>
-
-      <line class="good" x1="632" y1="102" x2="712" y2="102" marker-end="url(#a2)"/>
-      <text x="672" y="92" text-anchor="middle" class="small">margin +4</text>
-
-      <rect class="soft" x="714" y="46" width="206" height="112" rx="8"/>
-      <text x="817" y="72" text-anchor="middle" font-weight="600">the fact</text>
-      <text x="817" y="92" text-anchor="middle" class="mono">kind: sneak</text>
-      <text x="817" y="110" text-anchor="middle" class="mono">actor: Rook</text>
-      <text x="817" y="128" text-anchor="middle" class="mono" fill="var(--accent)" font-weight="600">audience: {Rook}</text>
-      <text x="817" y="146" text-anchor="middle" class="small">the camp saw nothing</text>
-
-      <line class="good" x1="817" y1="158" x2="817" y2="196" marker-end="url(#a2)"/>
-      <rect class="box" x="672" y="198" width="290" height="40" rx="8" transform="translate(-70 0)"/>
-      <text x="747" y="223" text-anchor="middle" class="mono">journal — append-only, attributed, forever</text>
-    </svg>
-    <figcaption>A landed sneak and a botched one write the <i>same kind of fact</i> —
-    all that differs is who witnessed it. Stealth is not a mechanic bolted on; it is
-    authorship of your own audience.</figcaption>
-  </figure>
-
-  <h2>2 · Knowledge is the audience of facts</h2>
-  <div class="prose">
-  <p>Nothing stores "what the camp believes." There is no belief database anywhere.
-  Every observer — a player, a camp, one suspicious lieutenant — derives its present by
-  folding <i>only the facts it witnessed</i>. The changeling play works because the
-  kill fact never reached the camp; the blown disguise works because the reveal reached
-  exactly one pair of eyes.</p>
-  </div>
-
-  <figure>
-    <svg viewBox="0 0 900 320" role="img" aria-label="One journal folded by two observers produces two different presents: the camp still believes the impostor leads, the lieutenant sees a hostile stranger">
-      <defs>
-        <marker id="b1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
-        </marker>
-      </defs>
-      <rect class="box" x="30" y="60" width="300" height="200" rx="8"/>
-      <text x="180" y="88" text-anchor="middle" font-weight="600">one journal</text>
-      <text x="50" y="122" class="mono">1 kill(leader)</text>
-      <text x="50" y="140" class="small">   audience: nobody — the quiet blade</text>
-      <text x="50" y="170" class="mono">2 claim(leads)</text>
-      <text x="50" y="188" class="small">   audience: camp — “I am your leader”</text>
-      <text x="50" y="218" class="mono" fill="var(--hostile)" font-weight="600">3 reveal(impostor)</text>
-      <text x="50" y="236" class="small">   audience: lieutenant — one witness</text>
-
-      <line class="wire" x1="330" y1="120" x2="470" y2="105" marker-end="url(#b1)"/>
-      <text x="400" y="98" text-anchor="middle" class="mono">StateFor(camp)</text>
-      <line class="wire" x1="330" y1="220" x2="470" y2="230" marker-end="url(#b1)"/>
-      <text x="400" y="248" text-anchor="middle" class="mono">StateFor(lieutenant)</text>
-
-      <rect class="soft" x="472" y="52" width="390" height="98" rx="8"/>
-      <text x="492" y="80" font-weight="600">the camp’s present</text>
-      <text x="492" y="102" class="mono">folds facts 2 · leads: Whisper (impostor)</text>
-      <text x="492" y="122" class="mono" fill="var(--accent)" font-weight="600">allegiance follows the slot → allied</text>
-      <text x="492" y="140" class="small">the kill never reached them; they cannot know</text>
-
-      <rect x="472" y="182" width="390" height="98" rx="8" fill="var(--panel)" stroke="var(--hostile)" stroke-width="1.2"/>
-      <text x="492" y="210" font-weight="600">the lieutenant’s present</text>
-      <text x="492" y="232" class="mono">folds facts 2 + 3 · the claim collapses</text>
-      <text x="492" y="252" class="mono" fill="var(--hostile)" font-weight="600">slot vacant → hostile, alone in the camp</text>
-      <text x="492" y="270" class="small">same objective: met in one view, unmet in the other</text>
-    </svg>
-    <figcaption>The blown-disguise test asserts both presents from the same log —
-    and it cost <b>zero lines of special-case code</b>. Per-witness belief is not a
-    feature of the system; it is the system.</figcaption>
-  </figure>
-
-  <div class="law"><b>The ruling that started it:</b> “our events are player-detected.”
-  Generalize <i>player</i> to <i>entity</i> and stealth, disguise, false belief, and
-  dramatic irony all fall out of one mechanism. The streamer's camera sees everything;
-  each character sees only their own feed.</div>
-
-  <h2>3 · Every way in is a check, and no way is gated</h2>
-  <div class="prose">
-  <p>Content is the goal, not the path. The camp offers many ways in; none has a
-  prerequisite. The barbarian in a goblin costume is a legitimate play — expertise
-  moves the odds, the dice decide, and each route differs in <i>what the camp
-  witnesses</i> and therefore what fight, if any, you get.</p>
-  </div>
-
-  <figure>
-    <svg viewBox="0 0 900 330" role="img" aria-label="Five approaches to one camp: front door alerts it, the back way surprises it, the changeling replaces its leader, diplomacy befriends it, a blown disguise alerts one lieutenant only">
-      <defs>
-        <marker id="c1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="var(--hostile)"/>
-        </marker>
-        <marker id="c2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
-        </marker>
-        <marker id="c3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="var(--gold)"/>
-        </marker>
-      </defs>
-      <rect class="box" x="330" y="90" width="240" height="150" rx="10"/>
-      <text x="450" y="120" text-anchor="middle" font-weight="600">the bandit camp</text>
-      <text x="450" y="140" text-anchor="middle" class="small">leader · lieutenant · crew</text>
-      <text x="450" y="162" text-anchor="middle" class="mono">hostile-to: guild</text>
-      <text x="450" y="182" text-anchor="middle" class="small">allegiance follows the leads slot</text>
-      <text x="450" y="202" text-anchor="middle" class="small">attitude folds what it witnessed</text>
-
-      <line class="bad" x1="60" y1="115" x2="328" y2="115" marker-end="url(#c1)"/>
-      <text x="62" y="100" font-weight="600" fill="var(--hostile)">front door — attack</text>
-      <text x="62" y="135" class="small">witnessed by all → alerted, formed up</text>
-
-      <line class="good dash" x1="60" y1="215" x2="328" y2="215" marker-end="url(#c2)"/>
-      <text x="62" y="200" font-weight="600" fill="var(--accent)">back way — sneak</text>
-      <text x="62" y="235" class="small">audience ∅ → unsuspecting, surprised</text>
-
-      <line class="goldw dash" x1="450" y1="308" x2="450" y2="242" marker-end="url(#c3)"/>
-      <text x="450" y="326" text-anchor="middle" font-weight="600" fill="var(--gold)">changeling — quiet kill + claim the slot: no fight at all</text>
-
-      <line class="good" x1="838" y1="115" x2="572" y2="115" marker-end="url(#c2)"/>
-      <text x="838" y="100" text-anchor="end" font-weight="600" fill="var(--accent)">diplomacy — persuade</text>
-      <text x="838" y="135" text-anchor="end" class="small">attitude crosses threshold → allied-with</text>
-
-      <line class="bad dash" x1="838" y1="215" x2="572" y2="215" marker-end="url(#c1)"/>
-      <text x="838" y="200" text-anchor="end" font-weight="600" fill="var(--hostile)">blown disguise</text>
-      <text x="838" y="235" text-anchor="end" class="small">reveal reaches one lieutenant; camp unchanged</text>
-    </svg>
-    <figcaption>Five paths, five tests, one declared camp — and zero path-specific
-    code. A route's real output is the encounter's starting state: alerted, surprised,
-    friendly, or no encounter at all. Deeper routes open <i>verbs</i>: in disguise
-    you may work on the leaders' minds.</figcaption>
-  </figure>
-
-  <h2>4 · Populations, not quest trees</h2>
-  <div class="prose">
-  <p>Quests come off the board: a claim mints an instance, and <b>your party's hostage
-  is your hostage</b> — three companies can fail and succeed in parallel without ever
-  colliding. The world changes by folding the whole population, and when the fold
-  crosses a declared shape, the next chapter opens itself. Nobody authors a tree;
-  the community's aggregate performance walks the world through states no one scripted.</p>
-  </div>
-
-  <figure>
-    <svg viewBox="0 0 900 300" role="img" aria-label="Hostage instances move from captive to rescued or turned; rescued hostages roll dispositions; when all are turned the successor quest opens and can redeem them">
-      <defs>
-        <marker id="d1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
-        </marker>
-        <marker id="d2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="var(--gold)"/>
-        </marker>
-      </defs>
-      <rect class="box" x="30" y="110" width="150" height="70" rx="8"/>
-      <text x="105" y="138" text-anchor="middle" font-weight="600">captive</text>
-      <text x="105" y="158" text-anchor="middle" class="small">minted per claim, named</text>
-
-      <line class="wire" x1="180" y1="128" x2="310" y2="82" marker-end="url(#d1)"/>
-      <text x="240" y="88" text-anchor="middle" class="small">rescue lands</text>
-      <rect class="soft" x="312" y="50" width="130" height="56" rx="8"/>
-      <text x="377" y="74" text-anchor="middle" font-weight="600">rescued</text>
-      <text x="377" y="92" text-anchor="middle" class="small">walks to town</text>
-
-      <line class="wire" x1="442" y1="78" x2="560" y2="78" marker-end="url(#d1)"/>
-      <text x="501" y="68" text-anchor="middle" class="small">the dice decide</text>
-      <rect class="box" x="562" y="34" width="300" height="88" rx="8"/>
-      <text x="582" y="60" class="mono">guard — joins the watch</text>
-      <text x="582" y="80" class="mono">repay — owes the company</text>
-      <text x="582" y="100" class="mono">quest-hook — knows something</text>
-
-      <line class="wire" x1="180" y1="162" x2="310" y2="208" marker-end="url(#d1)"/>
-      <text x="240" y="206" text-anchor="middle" class="small">rescue fails</text>
-      <rect x="312" y="180" width="130" height="56" rx="8" fill="var(--panel)" stroke="var(--hostile)" stroke-width="1.2"/>
-      <text x="377" y="204" text-anchor="middle" font-weight="600" fill="var(--hostile)">turned</text>
-      <text x="377" y="222" text-anchor="middle" class="small">joins the bandits</text>
-
-      <rect class="goldbox" x="510" y="170" width="352" height="76" rx="8"/>
-      <text x="686" y="196" text-anchor="middle" font-weight="600">distribution predicate</text>
-      <text x="686" y="216" text-anchor="middle" class="mono">captive = 0  ∧  turned = all</text>
-      <text x="686" y="234" text-anchor="middle" class="small">→ “turn them back — or put them down” opens</text>
-
-      <path class="goldw" d="M660 246 C 600 290, 460 290, 400 240" fill="none" marker-end="url(#d2)"/>
-      <text x="530" y="292" text-anchor="middle" class="small" fill="var(--gold)">the successor redeems (or ends) the turned — the flip repeats</text>
-    </svg>
-    <figcaption>Failure at scale manufactures act two: the turned hostages are its
-    antagonist roster, generated by the players' own history. Successes seed content
-    too — the rescued fill the town with rolled fates. No outcome is invalid.</figcaption>
-  </figure>
-
-  <h2>5 · One needle for the whole server</h2>
-  <div class="prose">
-  <p>The Discord server is the world — one journal, every party writing into it.
-  A <b>world goal</b> is a fold over all of it with a deadline: the streamer declares
-  “pacify the region before the weekend,” and three companies push one needle by
-  entirely different methods, because folds don't ask how.</p>
-  </div>
-
-  <figure>
-    <svg viewBox="0 0 900 270" role="img" aria-label="Three parties acting by different methods write into one guild journal; a fold moves one needle against a deadline and GoalMet fires exactly once">
-      <defs>
-        <marker id="e1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
-        </marker>
-        <marker id="e2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="var(--gold)"/>
-        </marker>
-      </defs>
-      <rect class="box" x="30" y="30" width="180" height="52" rx="8"/>
-      <text x="120" y="52" text-anchor="middle" font-weight="600">Ember Company</text>
-      <text x="120" y="70" text-anchor="middle" class="small">talks the camp round</text>
-      <rect class="box" x="30" y="106" width="180" height="52" rx="8"/>
-      <text x="120" y="128" text-anchor="middle" font-weight="600">Quill Company</text>
-      <text x="120" y="146" text-anchor="middle" class="small">frees two hostages</text>
-      <rect class="box" x="30" y="182" width="180" height="52" rx="8"/>
-      <text x="120" y="204" text-anchor="middle" font-weight="600">Thorn Company</text>
-      <text x="120" y="222" text-anchor="middle" class="small">loses one, puts them down</text>
-
-      <line class="wire" x1="210" y1="56" x2="330" y2="118" marker-end="url(#e1)"/>
-      <line class="wire" x1="210" y1="132" x2="330" y2="132" marker-end="url(#e1)"/>
-      <line class="wire" x1="210" y1="208" x2="330" y2="146" marker-end="url(#e1)"/>
-
-      <rect class="box" x="332" y="102" width="180" height="60" rx="8"/>
-      <text x="422" y="127" text-anchor="middle" font-weight="600">guild journal</text>
-      <text x="422" y="147" text-anchor="middle" class="small">every party, one history</text>
-
-      <line class="good" x1="512" y1="132" x2="600" y2="132" marker-end="url(#e1)"/>
-      <text x="556" y="122" text-anchor="middle" class="small">folds</text>
-
-      <rect class="goldbox" x="602" y="76" width="268" height="112" rx="8"/>
-      <text x="736" y="102" text-anchor="middle" font-weight="600">the weekend goal</text>
-      <text x="736" y="124" text-anchor="middle" class="mono">camp not hostile ∧ all resolved</text>
-      <text x="736" y="144" text-anchor="middle" class="mono">before deadline · injected clock</text>
-      <text x="736" y="166" text-anchor="middle" class="small">met once, never retro-unlocked</text>
-
-      <line class="goldw" x1="736" y1="188" x2="736" y2="226" marker-end="url(#e2)"/>
-      <text x="736" y="248" text-anchor="middle" class="mono" fill="var(--gold)" font-weight="600">GoalMet → the seat grants the bonus stream</text>
-    </svg>
-    <figcaption>Swap which company does what and the result is identical — the tests
-    prove it. What the unlock <i>means</i> belongs to the seat, exactly as what a
-    reward means belongs to the rulebook.</figcaption>
-  </figure>
-
-  <h2>6 · The DM seat and its three tenants</h2>
-  <div class="prose">
-  <p>The seat is a client, never the core. It speaks the same verbs as everyone else,
-  so it can only do what the verbs allow — which bounds a hallucinating model and a
-  chaos-minded streamer with the same law. Three tenants, ascending intelligence,
-  one protocol:</p>
-  <ul>
-    <li><b>Dice tables</b> — ship with v1. When the world needs a small decision nobody
-    authored (a rescued hostage's fate), roll on a table.</li>
-    <li><b>The streamer</b> — the paying human. Declares world goals, sets deadlines and
-    population dials; our tools advise the numbers, the seat decides them.</li>
-    <li><b>The local model</b> — arrives last, onto a road-tested seat: naming hostages
-    first, parsing “I search the desk” later, improvising over authored content in time.</li>
-  </ul>
-  </div>
-
-  <h2>7 · The machine's parts</h2>
-  <div class="prose">
-  <p>The examples build on four small packages: <code>journal</code>, <code>graph</code>,
-  <code>quest</code> and <code>goal</code>. A composer brings them together with declared
-  content and an injected rulebook. The reusable machinery lives in <code>world</code>;
-  the scenarios in <code>examples/world</code> consume it. The kernel does not need to
-  know what a d20 is. The rulebook supplies that meaning.</p>
-  </div>
-
-  <figure>
-    <svg viewBox="0 0 920 430" role="img" aria-label="Composition overview: journal, graph, quest and goal support the world composer; example scenarios supply declarations, and rules and time are injected">
-      <defs>
-        <marker id="f1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
-        </marker>
-        <marker id="f2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
-        </marker>
-      </defs>
-      <rect x="20" y="20" width="700" height="390" rx="12" fill="none" stroke="var(--line)" stroke-width="1.5" stroke-dasharray="7 5"/>
-      <text x="36" y="44" class="mono" fill="var(--muted)">world — reusable machinery, independent of the rulebook</text>
-
-      <rect class="box" x="60" y="330" width="620" height="52" rx="8"/>
-      <text x="370" y="352" text-anchor="middle" font-weight="600">journal</text>
-      <text x="370" y="370" text-anchor="middle" class="small">append-only, attributed, audience-scoped facts · depends on nothing</text>
-
-      <rect class="box" x="60" y="252" width="620" height="52" rx="8"/>
-      <text x="370" y="274" text-anchor="middle" font-weight="600">graph</text>
-      <text x="370" y="292" text-anchor="middle" class="small">entities · edges · slots · declared folds — never stores what it can derive</text>
-
-      <rect class="box" x="60" y="174" width="300" height="52" rx="8"/>
-      <text x="210" y="196" text-anchor="middle" font-weight="600">quest</text>
-      <text x="210" y="214" text-anchor="middle" class="small">templates · claims · populations</text>
-
-      <rect class="box" x="380" y="174" width="300" height="52" rx="8"/>
-      <text x="530" y="196" text-anchor="middle" font-weight="600">goal</text>
-      <text x="530" y="214" text-anchor="middle" class="small">guild needles · deadlines · GoalMet</text>
-
-      <rect class="soft" x="60" y="66" width="620" height="82" rx="8"/>
-      <text x="370" y="94" text-anchor="middle" font-weight="600">world — the composer (small on purpose)</text>
-      <text x="370" y="114" text-anchor="middle" class="mono">Config{ Scenario · Resolver · Goals · Clock }</text>
-      <text x="370" y="134" text-anchor="middle" class="small">Act() the one write door · View(observer) the read door</text>
-
-      <line class="wire" x1="210" y1="252" x2="210" y2="228" marker-end="url(#f1)"/>
-      <line class="wire" x1="530" y1="252" x2="530" y2="228" marker-end="url(#f1)"/>
-      <line class="wire" x1="370" y1="330" x2="370" y2="306" marker-end="url(#f1)"/>
-      <line class="wire" x1="210" y1="174" x2="300" y2="150" marker-end="url(#f1)"/>
-      <line class="wire" x1="530" y1="174" x2="440" y2="150" marker-end="url(#f1)"/>
-
-      <rect class="box" x="740" y="66" width="160" height="96" rx="8"/>
-      <text x="820" y="90" text-anchor="middle" font-weight="600">scenarios</text>
-      <text x="820" y="110" text-anchor="middle" class="mono">banditcamp</text>
-      <text x="820" y="128" text-anchor="middle" class="mono">hostagecamp</text>
-      <text x="820" y="148" text-anchor="middle" class="small">+ region (ties only)</text>
-      <line class="good" x1="740" y1="106" x2="686" y2="106" marker-end="url(#f2)"/>
-      <text x="713" y="96" text-anchor="middle" class="small">declares</text>
-
-      <rect class="box" x="740" y="196" width="160" height="76" rx="8"/>
-      <text x="820" y="220" text-anchor="middle" font-weight="600">injected</text>
-      <text x="820" y="240" text-anchor="middle" class="mono">dnd5eresolver</text>
-      <text x="820" y="258" text-anchor="middle" class="mono">clock · scripted</text>
-      <line class="good dash" x1="740" y1="226" x2="686" y2="140" marker-end="url(#f2)"/>
-      <text x="734" y="180" text-anchor="middle" class="small">injects</text>
-
-    </svg>
-    <figcaption>A composition overview, read from the journal upward, not a complete
-    import graph. Content declares the situation; the rulebook judges attempts;
-    the shared machinery records consequences and derives each observer’s present.</figcaption>
-  </figure>
-
-  <div class="law"><b>The same starting world. Different communities. Different histories.</b>
-  One town fills with people its players rescued. Another faces enemies those rescues
-  might have prevented. The ambition is a world a streamer’s community can make its own,
-  shaped by what its players do together.</div>
+<main class="page">
+<div class="topbar"><div class="brand">RPG TOOLKIT / THE LIVING WORLD</div><nav aria-label="Living World navigation"><a href="#building-blocks">Understand the world</a><a href="#the-keep">The keep</a><a href="#use-cases">Use cases</a><a href="original-vision/">Original Vision ↗</a></nav></div>
+<header>
+<div class="eyebrow">The engine today</div>
+<h1>The Living World</h1>
+<p class="dek">A world is more than the fight the party is in. Patrols have somewhere to go. A sound can give someone a reason to leave. What one person learns need not become knowledge for everyone.</p>
+<p class="hero-note">The ambition is still a world shaped by its players. The toolkit now gives us working pieces for time, perception, knowledge, behavior and interactions—and the game is where we keep testing how they fit.</p>
+<div class="hero-links"><a class="button" href="#building-blocks">Understand the world ↓</a><a class="quiet-link" href="#use-cases">Explore the use cases ↓</a></div>
+</header>
+<section class="chapter" id="building-blocks" aria-labelledby="building-blocks-title">
+<div class="eyebrow">A shared vocabulary</div><h2 id="building-blocks-title">What makes the world work?</h2>
+<p class="section-intro">These are separate responsibilities, not different names for one large game loop. A use case connects the pieces it needs; each piece keeps a boundary the others can rely on.</p>
+<p class="reading-depth">Start with the plain-language explanation. Follow a field note or architecture guide for more context, then open the package or a specific test to see the details. You can stop at the level that answers your question.</p>
+<div class="concept-grid">
+<article class="concept" id="clock"><div class="mini-title">Clock / opportunity</div><h3>When can something act?</h3><p>In free roam, player activity advances world time. A fight uses turn-based scheduling. The clock gives each mode an explicit place instead of making combat the only way the game can move.</p><p>NPCs can be due for work or respond to relevant inputs. An inactive creature need not repeatedly choose to do nothing.</p><p class="key-line">Player-driven world time—not a promise of an unattended, wall-clock simulation.</p><nav class="card-links" aria-label="Clock references"><a href="https://kirkdiggler.github.io/rpg-toolkit/a-game-i-could-build-with/">Field note · A Game I Could Build With ↗</a><a href="https://github.com/KirkDiggler/rpg-toolkit/tree/0b74da5c5287b562841ad65485f2844c685b5767/play/clock">Package · play/clock ↗</a><a href="https://github.com/KirkDiggler/rpg-toolkit/blob/0b74da5c5287b562841ad65485f2844c685b5767/play/clock/dos2_test.go#L22-L132">Test · split-party clocks ↗</a></nav></article>
+<article class="concept" id="intel"><div class="mini-title">Intel / holdings</div><h3>Who knows what?</h3><p>Intel stores what an observer holds about a subject. That information can be current, remembered, or wrong; the store does not consult world truth to correct it.</p><p>A topic distinguishes different kinds of knowledge about the same subject, so one holding need not overwrite another.</p><p class="key-line">Observer + subject + topic. Knowledge belongs to a perspective.</p><nav class="card-links" aria-label="Intel references"><a href="https://github.com/KirkDiggler/rpg-toolkit/blob/0b74da5c5287b562841ad65485f2844c685b5767/docs/ideas/play/intel/design.md">Design · what a holding means ↗</a><a href="https://github.com/KirkDiggler/rpg-toolkit/tree/0b74da5c5287b562841ad65485f2844c685b5767/play/intel">Package · play/intel ↗</a><a href="https://github.com/KirkDiggler/rpg-toolkit/blob/0b74da5c5287b562841ad65485f2844c685b5767/play/intel/topic_test.go#L65-L90">Test · two topics, neither overwritten ↗</a></nav></article>
+<article class="concept" id="perception"><div class="mini-title">Perception / evidence</div><h3>What reached this observer?</h3><p>Sight, hearing and reports supply different information. Seeing a speaker is not the same as catching their words. Hearing an unseen voice need not reveal who made it.</p><p>The encounter supplies what the senses delivered. The perception layer manages that testimony over intel, without taking over the world’s geometry or deciding what to do next.</p><p class="key-line">The engine knows the scene. A creature acts from its own information.</p><nav class="card-links" aria-label="Perception references"><a href="https://kirkdiggler.github.io/rpg-toolkit/one-world-different-views/">Field note · One World, Different Views ↗</a><a href="https://github.com/KirkDiggler/rpg-toolkit/tree/0b74da5c5287b562841ad65485f2844c685b5767/mind/perception">Package · mind/perception ↗</a><a href="https://github.com/KirkDiggler/rpg-toolkit/blob/0b74da5c5287b562841ad65485f2844c685b5767/mind/perception/perception_test.go#L248-L268">Test · observers don’t share knowledge ↗</a></nav></article>
+<article class="concept" id="machines"><div class="mini-title">Mind machine / state</div><h3>What is it listening for?</h3><p>A behavior has a current state. That state describes the inputs it listens for, the conditions it checks, and how it changes when something relevant arrives.</p><p>A posted guard, an active investigation and a sleeping inhabitant can respond to different inputs. The machine keeps progress; it does not own a map, a clock or the rules of movement.</p><p class="key-line">State changes what matters. The surrounding game supplies the facts.</p><nav class="card-links" aria-label="Machine references"><a href="https://github.com/KirkDiggler/rpg-toolkit/blob/0b74da5c5287b562841ad65485f2844c685b5767/docs/architecture/components/mind.md#zoom-1-one-machine">Architecture · inside one machine ↗</a><a href="https://github.com/KirkDiggler/rpg-toolkit/tree/0b74da5c5287b562841ad65485f2844c685b5767/mind/machine">Package · mind/machine ↗</a><a href="https://github.com/KirkDiggler/rpg-toolkit/blob/0b74da5c5287b562841ad65485f2844c685b5767/mind/machine/example_test.go#L14-L54">Test · who wakes, and who stays asleep? ↗</a></nav></article>
+<article class="concept" id="behavior"><div class="mini-title">Behavior / composition</div><h3>Which job gets this opportunity?</h3><p>An NPC can carry several behaviors with separate progress. The composer applies authored precedence, then selects from the chosen behavior’s available actions.</p><p>Investigation can take priority without advancing or resetting a pending patrol. Two guards can reuse a definition without sharing their mutable state.</p><p class="key-line">Choosing work is not performing it. Completion comes back from the encounter.</p><nav class="card-links" aria-label="Behavior references"><a href="https://github.com/KirkDiggler/rpg-toolkit/blob/0b74da5c5287b562841ad65485f2844c685b5767/docs/architecture/components/mind.md#walk-the-guard-through-both">Architecture · machine and composer together ↗</a><a href="https://github.com/KirkDiggler/rpg-toolkit/tree/0b74da5c5287b562841ad65485f2844c685b5767/mind/behavior">Package · mind/behavior ↗</a><a href="https://github.com/KirkDiggler/rpg-toolkit/blob/0b74da5c5287b562841ad65485f2844c685b5767/mind/behavior/patrol_composition_test.go#L106-L177">Test · investigation retains the patrol ↗</a></nav></article>
+<article class="concept" id="resolution"><div class="mini-title">Resolution / interaction</div><h3>How does the work happen?</h3><p>An attack, a saving throw and a player decision need different steps. Resolution drives interaction machines, assembles participant behavior on its bus, and returns results and changed data.</p><p>A supported player-choice boundary can preserve completed work while waiting for an answer. State owners still apply their changes; the host saves the returned data.</p><p class="key-line">These interaction-step machines are distinct from mind’s listening state machines.</p><nav class="card-links" aria-label="Resolution references"><a href="https://kirkdiggler.github.io/rpg-toolkit/what-if-it-was-all-data/">Field note · What If It Was All Data? ↗</a><a href="https://github.com/KirkDiggler/rpg-toolkit/tree/0b74da5c5287b562841ad65485f2844c685b5767/rulebooks/dnd5e/resolution">Package · dnd5e/resolution ↗</a><a href="https://github.com/KirkDiggler/rpg-toolkit/blob/0b74da5c5287b562841ad65485f2844c685b5767/rulebooks/dnd5e/resolution/strike_pose_test.go#L200-L209">Test · a roll survives the pause ↗</a></nav></article>
+<article class="concept" id="encounter"><div class="mini-title">Encounter / composition</div><h3>Who connects the pieces?</h3><p>The encounter brings the board, clocks, perception, behavior and record together. It supplies the context an interaction needs, executes selected movement, and tells the owning behavior when that work actually finishes.</p><p>Its rules come from supplied rulebook capabilities rather than being hidden inside the reusable leaves. A patrol’s continuation can therefore be tested through real movement, not just a proposed action.</p><p class="key-line">The composition owns the wiring. The pieces do not need to know one another.</p><nav class="card-links" aria-label="Encounter references"><a href="https://github.com/KirkDiggler/rpg-toolkit/blob/0b74da5c5287b562841ad65485f2844c685b5767/rulebooks/dnd5e/encounter/doc.go">Contract · the encounter’s responsibilities ↗</a><a href="https://github.com/KirkDiggler/rpg-toolkit/tree/0b74da5c5287b562841ad65485f2844c685b5767/rulebooks/dnd5e/encounter">Package · dnd5e/encounter ↗</a><a href="https://github.com/KirkDiggler/rpg-toolkit/blob/0b74da5c5287b562841ad65485f2844c685b5767/rulebooks/dnd5e/encounter/behavior_test.go#L179-L256">Test · real movement, interruption and return ↗</a></nav></article>
+<article class="concept" id="record"><div class="mini-title">Record / retained events</div><h3>What happened—and who gets to see it?</h3><p>The record retains an ordered account of events with their declared audiences. Two viewers can receive different parts of the same sequence without the log inventing a second version of what happened.</p><p>The composition supplies the event and its audience; the record stores and queries them. Streaming to clients and durable storage belong to the host.</p><p class="key-line">Intel is what an observer holds. The record is the retained account of events.</p><nav class="card-links" aria-label="Record references"><a href="https://github.com/KirkDiggler/rpg-toolkit/blob/0b74da5c5287b562841ad65485f2844c685b5767/play/record/doc.go">Contract · the retained story ↗</a><a href="https://github.com/KirkDiggler/rpg-toolkit/tree/0b74da5c5287b562841ad65485f2844c685b5767/play/record">Package · play/record ↗</a><a href="https://github.com/KirkDiggler/rpg-toolkit/blob/0b74da5c5287b562841ad65485f2844c685b5767/play/record/story_test.go#L19-L218">Test · two viewers, one recorded story ↗</a></nav></article>
 </div>
-
+<p class="boundary-note">The test links name specific guarantees, not entire adventures. Some exercise a primitive with supplied inputs; others join the pieces through actual encounter movement. They are source evidence, not a claim that every linked test was rerun for this page.</p>
+</section>
+<section class="chapter" id="together" aria-labelledby="together-title"><div class="eyebrow">From pieces to play</div><h2 id="together-title">A response has consequences</h2><p class="section-intro">The encounter connects these boundaries. It supplies lawful inputs, offers opportunities to act, executes the chosen work, and records what happened. New observations can then change what someone knows or does next.</p>
+<div class="system-flow" role="img" aria-label="Conceptual cycle: something happens, an observer learns, behavior responds, and an action changes the situation."><div><span>SITUATION</span>Something happens.</div><div><span>PERSPECTIVE</span>Someone learns about it.</div><div><span>RESPONSE</span>A behavior has work to propose.</div><div><span>CONSEQUENCE</span>An action changes the situation.</div></div>
+<p class="boundary-note">This is a conceptual cycle, not an extra action granted by every event. Learning something and being allowed to act are separate. Moving toward a destination and actually arriving are separate too.</p></section>
+<section class="chapter keep" id="the-keep" aria-labelledby="keep-title"><div><div class="eyebrow">Our current north star</div><h2 id="keep-title">The full keep, not just a test room</h2><p>A friend’s keep idea has grown into the complete adventure design guiding this work: an open mission, several approaches, inhabitants with their own duties, and choices whose consequences survive the next room.</p><p>This is what we want the pieces to support together. The use cases below examine parts of that larger experience; they are not a substitute for the destination.</p><a class="large-link" href="https://github.com/KirkDiggler/rpg-project/blob/main/ideas/keep-dungeon/design.md">Read the full keep design →</a><ul><li>Can a guard respond to what it heard without knowing what it never saw?</li><li>Can an interruption leave unfinished work intact?</li><li>Can information or an object open an opportunity without solving the whole encounter?</li></ul></div><aside class="keep-note"><span class="tag neutral">Intended experience · implementation ongoing</span><p>The design describes the whole intended dungeon. It explicitly does not describe current implementation coverage.</p><p>Our walkthroughs will show bounded situations with their actual results. The underlying tools, their integration, and the complete adventure are different levels of completion.</p></aside></section>
+<section class="chapter" id="use-cases" aria-labelledby="use-cases-title">
+<div class="eyebrow">See the pieces work together</div><h2 id="use-cases-title">Situations, not a feature list</h2>
+<p class="section-intro">Each walkthrough starts with something a player wants to do. Follow the situation, see the result, then look underneath at the contracts that make it possible.</p>
+<article class="feature-case" aria-labelledby="patrol-case-title">
+<div><span class="tag">Coming soon</span><h3 id="patrol-case-title">Drawing the Patrol Away</h3><p>One player watches the patrol. Another shouts from the adjoining room. Can the distraction create an opening—and can the guard investigate without forgetting its unfinished route?</p><p>Explore hearing, separate perspectives, behavior priority and retained progress.</p><p>The reference scene and its authoring workflow are still being worked through. The walkthrough will be linked here when it is ready.</p></div>
+<div class="case-shape" role="img" aria-label="The proposed walkthrough follows a patrol, an investigation taking priority, and a return to unfinished patrol work."><div class="shape-step">On patrol<small>A destination is still ahead.</small></div><div class="shape-step highlight">Something to investigate<small>Another behavior takes priority.</small></div><div class="shape-step">Back to the unfinished job<small>Progress was retained, not reset.</small></div></div>
+</article>
+<div class="case-grid">
+<article class="future-case"><span class="tag neutral">Current work · walkthrough to come</span><h3>Who knows you’ve been admitted?</h3><p>The front gate brings conversations, a player’s buff opportunity and witness-specific admission together. We’re choosing a bounded path to demonstrate before presenting the whole entrance sequence.</p></article>
+<article class="future-case"><span class="tag neutral">Developing the composition</span><h3>An effect you can assemble</h3><p>Effects are being separated into reusable pieces. A later walkthrough will follow a concrete condition or equipment example, rather than treat the whole migration as finished.</p></article>
+</div>
+<p class="case-footnote">These walkthroughs are in preparation. The component references above are available now; the use-case cards will link to demonstrations as they are ready.</p>
+</section>
+<section class="chapter" id="further-reading" aria-labelledby="reading-title"><div class="eyebrow">The ambition and the journey</div><h2 id="reading-title">Two other ways into the work</h2><div class="reading-grid">
+<article class="reading"><span class="tag">Original Vision</span><h3>A world shaped by its community</h3><p>The early camp, hostage and shared-goal examples explored how witnessed facts and different choices could give communities different histories. Their generic <code>world</code> composition is a parallel proof, not a claim that every current encounter runs through that kernel.</p><p>The original page is preserved in its original visual style as a record of that thinking.</p><a class="large-link" href="original-vision/">Read the Original Vision →</a></article>
+<article class="reading"><span class="tag">Architectural field notes</span><h3>How the pieces took shape</h3><p>The longer story follows the questions, wrong turns and discoveries behind the toolkit. It is a different path through the work—not prerequisite reading for a use case.</p><p><a href="https://kirkdiggler.github.io/rpg-toolkit/a-world-worth-exploring/">A World Worth Exploring</a> follows the tools for making a place. <a href="https://kirkdiggler.github.io/rpg-toolkit/what-if-it-was-all-data/">What If It Was All Data?</a> follows the discovery of resolution’s boundary.</p></article>
+</div></section>
+<footer><p>This overview describes working toolkit contracts and a game still growing around them. The use-case library is being assembled; a prose draft is not a completed play demonstration.</p><p class="scope">Evidence basis: inspected toolkit source, existing engine tests and qualified development-stack receipts. Speech previews used candidate consumer revisions. Neither the full keep experience nor an autonomous streamer/AI service is claimed complete. Source links identify the inspected contracts, not a universal deployment version.</p></footer>
+</main>
 </body>
 </html>
