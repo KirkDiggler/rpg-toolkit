@@ -116,6 +116,9 @@ func (s *CastleSuite) authored() []string {
 				if child(c, "recognize") != nil {
 					ip += ".recognize"
 				}
+				if child(c, "arrest") != nil {
+					ip += ".arrest"
+				}
 				add(ip)
 			})
 		})

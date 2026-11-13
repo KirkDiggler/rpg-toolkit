@@ -37,7 +37,9 @@ var saidKeys = map[string][]string{
 	"behaviorDefinition": {"recipe", "table"},
 	"interaction":        {"recipe", "approach", "outcomes"},
 	"approach":           {"within"},
-	"outcome":            {"recognize"},
+	"outcome":            {"recognize", "arrest"},
+	"arrest":             {"cell", "area"},
+	"arrestArea":         {"regions", "cells"},
 	"recognize":          {"topic", "holder", "about", "heard_by"},
 	"option":             {"id", "say", "loudness", "check", "requires", "advance", "success", "failure"},
 	"checkApproach":      {"ability", "tool", "dc"},
@@ -180,6 +182,8 @@ func (b *builder) notYetSaid() []Unsaid {
 			each(list, op, func(c *yaml.Node, cp string) {
 				check(c, cp, "outcome")
 				recognize(c, cp)
+				check(at(c, "arrest"), cp+".arrest", "arrest")
+				check(at(at(c, "arrest"), "area"), cp+".arrest.area", "arrestArea")
 			})
 		})
 	})

@@ -120,6 +120,11 @@ type InteractionData struct {
 	// (interaction_hold.go), absent for none. At most one per interaction. Load refuses
 	// one naming a member the run lacks, or a revision not below [Revision].
 	Reservation *InteractionReservation `json:"reservation,omitzero"`
+
+	// Arrest is what the interaction's arrest decided (arrest.go,
+	// rpg-project#925), absent until it arrested. Load keeps it as saved and
+	// never decides it again (#916 R7).
+	Arrest *ArrestRecord `json:"arrest,omitzero"`
 }
 
 // MarshalJSON writes the record through encoding/json v2, so the recipe and
@@ -154,6 +159,10 @@ type interactionRecord struct {
 
 	// reservation is the checked line waiting on its roll; nil for none.
 	reservation *InteractionReservation
+
+	// arrest is what the interaction's arrest decided (arrest.go), made once
+	// when it arrested; nil until then.
+	arrest *ArrestRecord
 }
 
 // hasState reports whether the interaction's recipe declares state.
@@ -345,6 +354,10 @@ func interactionsDataFrom(interactions map[InteractionID]*interactionRecord) []I
 			address := *r.address
 			data.Address = &address
 		}
+		if r.arrest != nil {
+			made := cloneArrestRecord(*r.arrest)
+			data.Arrest = &made
+		}
 		out = append(out, data)
 	}
 	return out
@@ -392,6 +405,13 @@ func interactionsFromData(data []InteractionData) (map[InteractionID]*interactio
 				return nil, err
 			}
 			record.reservation = cloneReservation(d.Reservation)
+		}
+		if d.Arrest != nil {
+			if !record.hasState(d.Arrest.State) {
+				return nil, fmt.Errorf("interaction %q is saved arrested in state %q, which its recipe does not declare", d.ID, d.Arrest.State)
+			}
+			made := cloneArrestRecord(*d.Arrest)
+			record.arrest = &made
 		}
 		out[d.ID] = record
 	}

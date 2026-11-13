@@ -2223,6 +2223,21 @@ interactions:
             holder: spoken_to
             about: party_in_sight
             heard_by: carriers_who_witnessed
+      # Hand edit (rpg-project#925, ruled 2026-11-13): the second failed
+      # claim arrests. Taken: the speaker's party standing in the arrest area
+      # or seen by any gate speaker at that moment; wanted: one the gate
+      # speakers saw before and who is not there. The area is the gatehouse,
+      # and the road just outside its south doorway — the cells within two
+      # (the hail's approach) of the doorway's inside cell, where a claimant
+      # who backed out of the door still stands at the gate.
+      arrested:
+        - arrest:
+            cell: region-cells
+            area:
+              regions: [region-gatehouse]
+              cells:
+                - {r: 13, q: [[-8, -5]]}
+                - {r: 14, q: [[-8, -6]]}
     recipe:
       ref: site:interactions:front-gate
       initial: fresh

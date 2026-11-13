@@ -1301,6 +1301,37 @@ type InteractionSpec struct {
 type OutcomeSpec struct {
 	// Recognize is: a holder comes to hold a topic about subjects.
 	Recognize *RecognizeSpec `yaml:"recognize,omitempty" json:"recognize,omitempty"`
+
+	// Arrest is: the speaker's party is arrested, to be held in a cell
+	// (rpg-project#925, [encounter.Arrest]).
+	Arrest *ArrestSpec `yaml:"arrest,omitempty" json:"arrest,omitempty"`
+}
+
+// ArrestSpec is `arrest:` ([encounter.Arrest]): the region the arrested are
+// to be held in, and the area a member standing in is taken from whatever
+// the guards see.
+//
+//	arrest:
+//	  cell: region-cells
+//	  area:
+//	    regions: [region-gatehouse]
+//	    cells: [{r: 13, q: [[-8, -5]]}]
+type ArrestSpec struct {
+	// Cell is a region id. REQUIRED.
+	Cell string `yaml:"cell" json:"cell"`
+
+	// Area is the arrest's explicit area. REQUIRED non-empty.
+	Area ArrestAreaSpec `yaml:"area" json:"area"`
+}
+
+// ArrestAreaSpec is an arrest's area: whole regions, and cells besides in
+// the row runs a region's cells are written in.
+type ArrestAreaSpec struct {
+	// Regions are region ids, each wholly in the area.
+	Regions []string `yaml:"regions,omitempty" json:"regions,omitempty"`
+
+	// Cells are floor cells, as row runs.
+	Cells []RoomCellRow `yaml:"cells,omitempty" json:"cells,omitempty"`
 }
 
 // RecognizeSpec is `recognize:` ([encounter.Recognition]): the topic, who

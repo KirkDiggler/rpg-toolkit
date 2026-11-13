@@ -40,6 +40,8 @@ var specOf = map[string]reflect.Type{
 	"interaction":        reflect.TypeOf(dungeonspec.InteractionSpec{}),
 	"approach":           reflect.TypeOf(dungeonspec.InteractionApproachSpec{}),
 	"outcome":            reflect.TypeOf(dungeonspec.OutcomeSpec{}),
+	"arrest":             reflect.TypeOf(dungeonspec.ArrestSpec{}),
+	"arrestArea":         reflect.TypeOf(dungeonspec.ArrestAreaSpec{}),
 	"recognize":          reflect.TypeOf(dungeonspec.RecognizeSpec{}),
 	"option":             reflect.TypeOf(dungeonspec.OptionSpec{}),
 	"checkApproach":      reflect.TypeOf(dungeonspec.ApproachSpec{}),
