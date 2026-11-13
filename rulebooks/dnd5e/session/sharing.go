@@ -83,7 +83,17 @@ type sharingParty struct {
 // players by stance, not a member of the `party` faction by authoring — the
 // rule names the kind, so widening it to "the party faction" or "allied to
 // the party" is this one function.
-func partyMember(kind encounter.MemberKind) bool { return kind == encounter.KindPlayer }
+//
+// KIND UNKNOWN IS NOT A PLAYER. An `exited` entry written before the record
+// named the kind (encounter v0.205.1) says nothing of what left, and the
+// member is on no roster to ask; the merge does not guess, so such a member
+// is no sharer — acceptable before release.
+func partyMember(kind encounter.MemberKind) bool {
+	if kind == kindUnknown {
+		return false
+	}
+	return kind == encounter.KindPlayer
+}
 
 // newSharingParty reads the party from one roster read. Nil unless the dial
 // is shared view; shared knowledge is refused at launch
@@ -201,11 +211,7 @@ func (p *sharingParty) storyFor(recipient encounter.MemberID, own []record.Entry
 		if m.joined {
 			continue
 		}
-		// KIND UNKNOWN IS NOT A PLAYER. An exit written before the record
-		// named the kind (encounter v0.205.1) says nothing of what left; the
-		// member is not on the roster to ask, and the merge does not guess,
-		// so they are no sharer — acceptable before release.
-		if m.kind == kindUnknown || !partyMember(m.kind) {
+		if !partyMember(m.kind) { // a creature, or kind unknown
 			continue
 		}
 		if m.member == recipient {

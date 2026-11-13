@@ -250,6 +250,9 @@ func (s *ActFoldSuite) TestThePartyIsThePlayersAtSharedViewOnly() {
 	}
 	party := dataParty(encounter.SharingView, roster)
 	s.Equal([]encounter.MemberID{"alice", "carol"}, party.players)
+	s.True(partyMember(encounter.KindPlayer))
+	s.False(partyMember(encounter.KindMonster), "a creature")
+	s.False(partyMember(kindUnknown), "kind unknown — an older record's exit — is no player")
 	s.Nil(dataParty(encounter.SharingOwn, roster), "each their own: no party")
 	s.Nil(dataParty(encounter.SharingKnowledge, roster), "shared knowledge never launches; were it here, nothing would be merged")
 
