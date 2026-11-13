@@ -37,6 +37,18 @@ import (
 //     the stripped pick and the line's catchers the full one — two entries of
 //     ONE answer — and the merged story keeps the full one ([pairedPicks]).
 //
+//   - one entry per perceived fact several perceivers were each told
+//     (a secret revealed, a sound heard): hers if she has one ([onePerFact]).
+//
+// SHOWN IS NOT LEARNED. Two settings act at two levels. A character's own
+// setting for discoveries decides whether a find becomes the other players'
+// KNOWLEDGE: shared, the engine writes it to every placed player, each gets
+// their own reveal, and their maps hold it. The dial at shared view decides
+// what a player is SHOWN: a friend's find whatever that setting, an entry in
+// her story marked via the friend, which gives her character nothing. A
+// stop where a deliberately private find outranks the dial is not built:
+// the entries carry no mark that tells a chosen "private" from the default.
+//
 // At each their own, and for anyone outside the party, nothing is merged:
 // the stream is exactly the recipient's own story, folded as before.
 
@@ -124,23 +136,32 @@ type storyEntry struct {
 }
 
 // entryHead is what the merge reads of an entry's payload: its beat, a
-// speech's utterance, an answer's creature, and whether it is a stripped
-// pick.
+// speech's utterance, an answer's creature, whether it is a stripped pick,
+// and — for a perception every perceiver is told in an entry of their own —
+// the one fact it is about.
 type entryHead struct {
 	beat      string
 	utterance string
 	creature  string
 	stripped  bool
+	// fact names what a per-perceiver entry is about, so each perceiver's
+	// copy of one fact is recognised as one: a secret revealed (its
+	// concealment), a sound heard (its kind and where it was made, under
+	// one act at one moment). "" for every other entry.
+	fact string
 }
 
 // headOf decodes payload's [entryHead] — one decode per entry merged.
-func headOf(payload []byte) entryHead {
+func headOf(e record.Entry) entryHead {
 	var p struct {
-		Beat      string `json:"beat"`
-		Utterance string `json:"utterance"`
-		Creature  string `json:"creature"`
+		Beat        string           `json:"beat"`
+		Utterance   string           `json:"utterance"`
+		Creature    string           `json:"creature"`
+		Concealment string           `json:"concealment"`
+		Kind        string           `json:"kind"`
+		Position    *json.RawMessage `json:"position"`
 	}
-	if json.Unmarshal(payload, &p) != nil {
+	if json.Unmarshal(e.Payload, &p) != nil {
 		return entryHead{}
 	}
 	h := entryHead{beat: p.Beat}
@@ -148,7 +169,15 @@ func headOf(payload []byte) entryHead {
 	case encounter.BeatSpeech:
 		h.utterance = p.Utterance
 	case encounter.BeatAnswered:
-		h.creature, h.stripped = p.Creature, strippedPickOf(payload)
+		h.creature, h.stripped = p.Creature, strippedPickOf(e.Payload)
+	case encounter.BeatConcealmentRevealed:
+		h.fact = "revealed\x00" + p.Concealment
+	case encounter.BeatHeard:
+		where := ""
+		if p.Position != nil {
+			where = string(*p.Position)
+		}
+		h.fact = fmt.Sprintf("heard\x00%s\x00%s\x00%s\x00%d", p.Kind, where, e.Tags[encounter.ActTag], e.At)
 	}
 	return h
 }
@@ -199,9 +228,9 @@ func sharedStory(own []record.Entry, friends []encounter.MemberID, storyOf func(
 	}
 	sort.SliceStable(out, func(a, b int) bool { return out[a].Seq < out[b].Seq })
 	for i := range out {
-		out[i].head = headOf(out[i].Payload)
+		out[i].head = headOf(out[i].Entry)
 	}
-	return pairedPicks(oneSpeechPerUtterance(out))
+	return pairedPicks(onePerFact(oneSpeechPerUtterance(out)))
 }
 
 // oneSpeechPerUtterance keeps one `speech` entry per utterance — the
@@ -240,6 +269,57 @@ func oneSpeechPerUtterance(entries []storyEntry) []storyEntry {
 		}
 		if len(versions[u]) > 1 {
 			e.versions = versions[u]
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+// onePerFact keeps one entry per fact several perceivers were each told in
+// an entry of their own (entryHead.fact): the recipient's own where they
+// have one, unmarked — a friend who perceived it too adds nothing she lacks
+// — else the first in record order, its Via every friend who was told it.
+// The setting that decides whether a find becomes the party's KNOWLEDGE is
+// the character's: when a finder shares discoveries the engine writes each
+// player their own reveal, and so nobody's comes through a friend.
+func onePerFact(entries []storyEntry) []storyEntry {
+	stand := map[string]int{}
+	for i, e := range entries {
+		f := e.head.fact
+		if f == "" {
+			continue
+		}
+		at, seen := stand[f]
+		if !seen || (entries[at].via != nil && e.via == nil) {
+			stand[f] = i
+		}
+	}
+	if len(stand) == 0 {
+		return entries
+	}
+	via := map[string][]encounter.MemberID{}
+	for _, e := range entries {
+		f := e.head.fact
+		if f == "" || entries[stand[f]].via == nil {
+			continue
+		}
+		for _, id := range e.via {
+			if !slices.Contains(via[f], id) {
+				via[f] = append(via[f], id)
+			}
+		}
+	}
+	out := entries[:0:0]
+	for i, e := range entries {
+		f := e.head.fact
+		if f != "" {
+			if stand[f] != i {
+				continue
+			}
+			if e.via != nil {
+				e.via = via[f]
+				slices.Sort(e.via)
+			}
 		}
 		out = append(out, e)
 	}

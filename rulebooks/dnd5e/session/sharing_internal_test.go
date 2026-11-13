@@ -253,3 +253,51 @@ func (s *ActFoldSuite) TestThePartyIsThePlayersAtSharedViewOnly() {
 	s.Nil(dataParty(encounter.SharingOwn, roster), "each their own: no party")
 	s.Nil(dataParty(encounter.SharingKnowledge, roster), "shared knowledge never launches; were it here, nothing would be merged")
 }
+
+// TestOneEntryPerPerceivedFact: a fact every perceiver is told in an entry
+// of their own — a secret revealed, a sound heard — reaches the recipient
+// once: her own entry when she has one, unmarked; else one entry naming
+// every friend who was told it.
+func (s *ActFoldSuite) TestOneEntryPerPerceivedFact() {
+	reveal := func(concealment string) map[string]any {
+		return map[string]any{"beat": encounter.BeatConcealmentRevealed, "concealment": concealment}
+	}
+	clang := map[string]any{"beat": encounter.BeatHeard, "kind": "clang", "position": cell(3, 3), "hops": 1}
+	revealed := func(acts []Act) map[string][]Party {
+		out := map[string][]Party{}
+		for _, a := range acts {
+			if p, ok := a.Body.(Perception); ok && p.Revealed != nil {
+				s.Require().NotContains(out, p.Revealed.Concealment, "one act per secret")
+				out[p.Revealed.Concealment] = viaOf(a)
+			}
+		}
+		return out
+	}
+
+	s.Run("her own reveal stands; the friends' copies of it add nothing", func() {
+		acts := sharedActs("alice", []string{"bob", "carol"},
+			to(s.beat("", reveal("vault")), "bob"), to(s.beat("", reveal("vault")), "alice"), to(s.beat("", reveal("vault")), "carol"))
+		s.Equal(map[string][]Party{"vault": nil}, revealed(acts))
+	})
+	s.Run("two friends told one secret: one reveal, through both", func() {
+		acts := sharedActs("alice", []string{"bob", "carol"},
+			to(s.beat("", reveal("vault")), "carol"), to(s.beat("", reveal("vault")), "bob"))
+		s.Equal(map[string][]Party{"vault": {member("bob"), member("carol")}}, revealed(acts))
+	})
+	s.Run("two secrets are two reveals", func() {
+		acts := sharedActs("alice", []string{"bob"},
+			to(s.beat("", reveal("vault")), "bob"), to(s.beat("", reveal("crypt")), "bob"))
+		s.Equal(map[string][]Party{"vault": {member("bob")}, "crypt": {member("bob")}}, revealed(acts))
+	})
+	s.Run("a clang she and a friend each heard is one, hers", func() {
+		bobs, hers := to(s.beat("", clang), "bob"), to(s.beat("", clang), "alice")
+		hers.At = bobs.At // one noise: the same moment
+		acts := sharedActs("alice", []string{"bob"}, bobs, hers)
+		s.Require().Len(acts, 1)
+		s.Nil(viaOf(acts[0]))
+		s.Equal(hers.ID, acts[0].ID, "hers")
+
+		later := to(s.beat("", clang), "bob")
+		s.Len(sharedActs("alice", []string{"bob"}, bobs, hers, later), 2, "a second clang at another moment is its own")
+	})
+}
