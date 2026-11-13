@@ -852,11 +852,12 @@ type StructuralOpeningData struct {
 // [StructuralDoorBindingInput]: the two existing world identities it ties
 // together and the resolved visual opening endpoints, in canonical feet.
 type StructuralDoorBindingData struct {
-	PlacedID string       `json:"placed_id"`
-	DoorID   string       `json:"door_id"`
-	Ref      string       `json:"ref"`
-	From     PositionData `json:"from"`
-	To       PositionData `json:"to"`
+	FramePresentation *DoorFramePresentationData `json:"frame_presentation,omitempty"`
+	PlacedID          string                     `json:"placed_id"`
+	DoorID            string                     `json:"door_id"`
+	Ref               string                     `json:"ref"`
+	From              PositionData               `json:"from"`
+	To                PositionData               `json:"to"`
 }
 
 // DoorData is the persistent representation of a door: what it is called,
@@ -2807,11 +2808,12 @@ func fieldDataFrom(f *field) FieldData {
 				od := StructuralOpeningData{ID: o.id, Position: o.position, Width: o.width}
 				if o.door != nil {
 					od.Door = &StructuralDoorBindingData{
-						PlacedID: o.door.placedID,
-						DoorID:   o.door.doorID,
-						Ref:      o.door.ref,
-						From:     PositionData{X: o.door.from.X, Y: o.door.from.Y},
-						To:       PositionData{X: o.door.to.X, Y: o.door.to.Y},
+						FramePresentation: doorFramePresentationData(o.door.framePresentation),
+						PlacedID:          o.door.placedID,
+						DoorID:            o.door.doorID,
+						Ref:               o.door.ref,
+						From:              PositionData{X: o.door.from.X, Y: o.door.from.Y},
+						To:                PositionData{X: o.door.to.X, Y: o.door.to.Y},
 					}
 				}
 				swd.Openings = append(swd.Openings, od)
@@ -4097,12 +4099,21 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 		for _, sod := range swd.Openings {
 			o := StructuralOpeningInput{ID: sod.ID, Position: sod.Position, Width: sod.Width}
 			if sod.Door != nil {
+				var presentation *DoorFramePresentation
+				if sod.Door.FramePresentation != nil {
+					decoded, err := doorFramePresentationFromData(*sod.Door.FramePresentation)
+					if err != nil {
+						return FieldInput{}, fmt.Errorf("structural wall %q opening %q: %w", swd.ID, sod.ID, err)
+					}
+					presentation = &decoded
+				}
 				o.Door = &StructuralDoorBindingInput{
-					PlacedID: sod.Door.PlacedID,
-					DoorID:   sod.Door.DoorID,
-					Ref:      sod.Door.Ref,
-					From:     spatial.Point{X: sod.Door.From.X, Y: sod.Door.From.Y},
-					To:       spatial.Point{X: sod.Door.To.X, Y: sod.Door.To.Y},
+					FramePresentation: presentation,
+					PlacedID:          sod.Door.PlacedID,
+					DoorID:            sod.Door.DoorID,
+					Ref:               sod.Door.Ref,
+					From:              spatial.Point{X: sod.Door.From.X, Y: sod.Door.From.Y},
+					To:                spatial.Point{X: sod.Door.To.X, Y: sod.Door.To.Y},
 				}
 			}
 			w.Openings = append(w.Openings, o)

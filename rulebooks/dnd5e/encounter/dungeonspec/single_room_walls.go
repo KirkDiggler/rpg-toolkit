@@ -179,7 +179,7 @@ func wallsShape(gp *yaml.Node, add errSink) {
 				requireNumber(o, "position", op, add)
 				requireNumber(o, "width", op, add)
 				// AND THE OPTIONAL ATTACHED DOOR (rpg-project#169). Its shape is
-				// the web's `{id, assetRef}` and nothing else; an authored null
+				// identity/appearance and optional fixed-frame facts; an authored null
 				// is the author having deleted the door, not an absent one. An
 				// unknown key inside it (a `transform`, say) is refused by
 				// [yaml.v3]'s KnownFields and named at this path by unknown_key.go.
@@ -191,6 +191,7 @@ func wallsShape(gp *yaml.Node, add errSink) {
 					}
 					requireString(door, "id", doorPath, add)
 					requireString(door, "assetRef", doorPath, add)
+					wallDoorFrameShape(door, doorPath, add)
 				}
 			}
 		}
@@ -276,6 +277,7 @@ func wallValues(gp *RoomGameplaySource, rootVersion int, read roomRead, add errS
 // catalog is the web codec's refusal, not this engine's.
 func wallAttachedDoorValues(door *RoomWallDoor, doorPath string, gp *RoomGameplaySource, claimed map[string]bool, add errSink) {
 	claimWallID(door.ID, doorPath+".id", claimed, add)
+	wallDoorFrameValues(door.FramePresentation, doorPath, add)
 	if door.AssetRef == "" {
 		add(doorPath+".assetRef", errRequired)
 	}
@@ -418,6 +420,21 @@ func wallOpeningValues(openings []RoomWallOpening, length float64, wallPath stri
 		}
 		if b > length {
 			b = length
+		}
+		if o.Door != nil && o.Door.FramePresentation != nil && o.Door.FramePresentation.Span != nil {
+			span := o.Door.FramePresentation.Span
+			path := fmt.Sprintf("%s.openings[%d].door.framePresentation.span", wallPath, j)
+			if wallFinite(span.Before) && wallFinite(span.After) && span.Before > 0 && span.After > 0 {
+				if span.Before < o.Width/2 || span.After < o.Width/2 {
+					add(path, "must enclose the clear opening")
+					continue
+				}
+				a, b = o.Position-span.Before, o.Position+span.After
+				if a < -roundoff || b > length+roundoff {
+					add(path, wallOpeningOutsideLine)
+					continue
+				}
+			}
 		}
 		cuts = append(cuts, cut{start: a, end: b, index: j})
 	}
@@ -926,11 +943,12 @@ func canonicalStructuralWalls(key string, walls []RoomWall, finishes map[string]
 				near := opening.Position - opening.Width/2
 				far := opening.Position + opening.Width/2
 				loweredOpening.Door = &encounter.StructuralDoorBindingInput{
-					PlacedID: encounter.PropID(opening.Door.ID),
-					DoorID:   encounter.DoorID(key + "/" + opening.Door.ID),
-					Ref:      opening.Door.AssetRef,
-					From:     spatial.Point{X: (start.X + dirX*near) * k, Y: (start.Z + dirZ*near) * k},
-					To:       spatial.Point{X: (start.X + dirX*far) * k, Y: (start.Z + dirZ*far) * k},
+					FramePresentation: canonicalDoorFrame(opening.Door.FramePresentation),
+					PlacedID:          encounter.PropID(opening.Door.ID),
+					DoorID:            encounter.DoorID(key + "/" + opening.Door.ID),
+					Ref:               opening.Door.AssetRef,
+					From:              spatial.Point{X: (start.X + dirX*near) * k, Y: (start.Z + dirZ*near) * k},
+					To:                spatial.Point{X: (start.X + dirX*far) * k, Y: (start.Z + dirZ*far) * k},
 				}
 			}
 			lowered.Openings = append(lowered.Openings, loweredOpening)

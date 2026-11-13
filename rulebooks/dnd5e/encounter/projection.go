@@ -381,12 +381,13 @@ func (e *Encounter) AtlasFor(member MemberID) (Atlas, error) {
 				permitted = survivingPlaced[o.door.placedID] && !unknownDoors[o.door.doorID]
 			}
 			if wallPresent && permitted {
-				wall.Openings = append(wall.Openings, AtlasStructuralOpening{ID: o.id, Position: o.position, Width: o.width})
+				wall.Openings = append(wall.Openings, AtlasStructuralOpening{ID: o.id, Position: o.position, Width: o.width, FrameSpan: openingFrameSpan(*o)})
 			}
 			if o.door != nil && permitted {
 				out.StructuralDoors = append(out.StructuralDoors, AtlasStructuralDoor{
 					ID: o.door.doorID, Ref: o.door.ref, From: o.door.from, To: o.door.to,
-					Height: w.height, Thickness: w.thickness, Elevation: w.elevation,
+					FramePresentation: cloneDoorFramePresentation(o.door.framePresentation),
+					Height:            w.height, Thickness: w.thickness, Elevation: w.elevation,
 				})
 			}
 		}

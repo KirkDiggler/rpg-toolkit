@@ -253,6 +253,10 @@ type AtlasStructuralWall struct {
 // deliberately carries no door id, no state and no hidden association — the
 // door, when permitted, is its own record.
 type AtlasStructuralOpening struct {
+	// FrameSpan replaces only visible wall art under this opening's existing
+	// permission. It contains no door or parent association.
+	FrameSpan *WallFrameSpan `json:",omitempty"`
+
 	// ID names this opening ([StructuralOpeningInput.ID]).
 	ID string
 
@@ -273,6 +277,9 @@ type AtlasStructuralOpening struct {
 // association, so a client places it without a withheld parent's identity and
 // one collection holds every permitted attached door.
 type AtlasStructuralDoor struct {
+	// FramePresentation is detached and follows this door's own permission.
+	FramePresentation *DoorFramePresentation `json:",omitempty"`
+
 	// ID is the actual canonical gameplay door id the observation and verb
 	// paths use ([StructuralDoorBindingInput.DoorID]).
 	ID DoorID
@@ -701,11 +708,12 @@ func (e *Encounter) Atlas() (Atlas, error) {
 		}
 		for j := range w.openings {
 			o := &w.openings[j]
-			wall.Openings = append(wall.Openings, AtlasStructuralOpening{ID: o.id, Position: o.position, Width: o.width})
+			wall.Openings = append(wall.Openings, AtlasStructuralOpening{ID: o.id, Position: o.position, Width: o.width, FrameSpan: openingFrameSpan(*o)})
 			if o.door != nil {
 				out.StructuralDoors = append(out.StructuralDoors, AtlasStructuralDoor{
 					ID: o.door.doorID, Ref: o.door.ref, From: o.door.from, To: o.door.to,
-					Height: w.height, Thickness: w.thickness, Elevation: w.elevation,
+					FramePresentation: cloneDoorFramePresentation(o.door.framePresentation),
+					Height:            w.height, Thickness: w.thickness, Elevation: w.elevation,
 				})
 			}
 		}

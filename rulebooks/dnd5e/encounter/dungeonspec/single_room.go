@@ -865,7 +865,7 @@ type RoomWallOpening struct {
 	Width    float64 `yaml:"width" json:"width"`
 
 	// Door is the optional door ATTACHED to this opening — its identity and
-	// its catalog appearance, and nothing else. Optional; absent means a bare
+	// its catalog appearance and optional fixed-frame presentation. Absent means a bare
 	// gap that blocks nothing and carries no state.
 	//
 	// THE OPENING OWNS THE DOOR'S POSE (rpg-dnd5e-web structuralWalls.ts,
@@ -887,6 +887,9 @@ type RoomWallOpening struct {
 // the one placement. The type exists so the strict decoder can refuse a
 // `transform` or any other unread key here by name.
 type RoomWallDoor struct {
+	// FramePresentation supplies captured fixed-frame facts without a second pose.
+	FramePresentation *RoomDoorFramePresentation `yaml:"framePresentation,omitempty" json:"framePresentation,omitempty"`
+
 	// ID names this door within the document and is the key its state lives
 	// under in `room.doorBindings`. REQUIRED, nonempty and unique against
 	// every wall id, opening id, scene item id and other attached door id.
