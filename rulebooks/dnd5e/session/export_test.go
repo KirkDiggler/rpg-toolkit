@@ -141,7 +141,7 @@ func WatchActFoldForTest(t testing.TB, sessionID string) *ActFoldWatch {
 		}
 		w.mu.Lock()
 		defer w.mu.Unlock()
-		w.unbounded = append(w.unbounded, actsAfter(sessionID, string(member), whole, held)...)
+		w.unbounded = append(w.unbounded, actsAfter(sessionID, string(member), ownStory(whole), held)...)
 		w.folds = append(w.folds, ActFoldRead{Member: string(member), Read: len(out), Whole: len(whole), Delta: len(whole) - first, Needed: len(whole) - start})
 		return out, err
 	}

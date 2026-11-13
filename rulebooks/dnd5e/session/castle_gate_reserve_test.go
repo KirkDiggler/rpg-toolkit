@@ -121,6 +121,9 @@ func TestMain(m *testing.M) {
 	if wantedBy(pattern, warnedGateTests) {
 		warnedGate.once.Do(func() { warnedGate.stores, warnedGate.err = buildTheWarnedGate() })
 	}
+	if wantedBy(pattern, roadCastleTests) {
+		roadCastles.once.Do(buildTheRoadCastles)
+	}
 	os.Exit(m.Run())
 }
 

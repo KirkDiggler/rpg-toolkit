@@ -73,6 +73,9 @@ func (s *SneakSuite) launch(hostile bool, table encounter.Table) {
 	facingTheDoor := 270.0
 	goblin.FacingDegrees = &facingTheDoor
 	field := encounter.FieldInput{
+		// Each their own (rpg-project#935): this suite pins whose stream a
+		// sneak roll reaches by the sneaker's own record.
+		Sharing: encounter.SharingOwn,
 		Canvas:  pointyCanvas(),
 		Regions: []encounter.RegionInput{rectRegion("hall", 0, 0, 6, 5), rectRegion("barracks", 6, 0, 6, 5)},
 		Walls:   hexSeamWallsFrom(6, 0, 5, 1),

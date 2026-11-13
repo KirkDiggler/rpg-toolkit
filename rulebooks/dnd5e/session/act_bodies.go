@@ -593,12 +593,18 @@ type SpeechAct struct {
 // senses delivered it, and whose. Its own part so other families can carry
 // it later, one at a time, when a use calls for it.
 type Perceived struct {
-	// Senses are the senses that delivered it, in this order when present:
-	// sight (the speaker seen), hearing (the words, or a voice).
+	// Senses are the senses that delivered it. A speech's are, in this order
+	// when present, sight (the speaker seen) and hearing (the words, or a
+	// voice) — at shared view the union over the versions merged. A
+	// perception's is its one sense. Empty on another family's act that came
+	// through a friend.
 	Senses []Sense
-	// Via are the friends whose senses those were, when a party shares what
-	// it perceives (R5, rpg-project#935). Empty until then: the recipient's
-	// own senses are not listed.
+	// Via are the party friends whose senses delivered what the recipient's
+	// own did not, at shared view (R5, R11, rpg-project#935), by id. Empty
+	// when the recipient perceived all of it themself — and always at each
+	// their own. A via act is the friend's perception, never the
+	// recipient's: a client must not, for instance, patch the recipient's
+	// map from it.
 	Via []Party
 }
 
@@ -672,7 +678,10 @@ type CellsLearned struct {
 // Perception is what one observer newly perceived. It is folded from the
 // observer's own entries, so it never reaches anybody else.
 type Perception struct {
-	// Observer is the recipient.
+	// Observer is whose perception this is: the recipient's own, or — at
+	// shared view, through a friend ([Perceived.Via]) — that friend's. Every
+	// field below is relative to the Observer (what they saw gained, how far
+	// they heard it, what their map learned). The reader is [Act.Recipient].
 	Observer Party
 	// Sense is how it was perceived; exactly the matching part is set.
 	Sense     Sense

@@ -236,7 +236,9 @@ func TestCastleSteppingOutOfReachEndsTheAddress(t *testing.T) {
 // reaches the speaker's room and whom it is said to). Alice, hailed, reads
 // his hail whole.
 func TestCastleABystanderListensIn(t *testing.T) {
-	c := openTheHailingCastle(t)
+	// Each their own (rpg-project#935): what the cleric's own senses carry.
+	c := openTheCastleFrom(t, eachTheirOwn(t, castleSource(t)), []*character.Data{armedFighter("alice"), healingCleric()}, 18)
+	c.placeInTheRecord(t, "cleric", watchingTheRoad)
 	_, out, hail := c.walkUpToTheGate(t)
 	require.NotNil(t, out.Addressed, "precondition: she was hailed")
 

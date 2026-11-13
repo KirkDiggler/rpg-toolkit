@@ -147,7 +147,11 @@ func (s *VisibleCellsSuite) TestASeatThatSeesNothingCarriesItsOwnCell() {
 // the prior atlas lands on the fresh one. bob, who learned nothing, hears no
 // reveal; and the whole-room beat is never written.
 func (s *VisibleCellsSuite) TestAStepThatRevealsCellsReachesOnlyTheStepper() {
-	s.startWith(twoSeatWorld())
+	// Each their own (rpg-project#935): the learner's own reveal; a friend's
+	// at shared view is sharing_test.go's.
+	world := twoSeatWorld()
+	world.Field.Sharing = encounter.SharingOwn
+	s.startWith(world)
 	before := s.atlas("alice")
 
 	marks := map[string]uint64{}

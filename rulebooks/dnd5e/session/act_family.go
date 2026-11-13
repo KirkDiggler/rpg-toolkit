@@ -1164,7 +1164,10 @@ func perceptionPiece(recipient, beat string, payload []byte) ([]piece, error) {
 		}
 		out.Sense, out.Cells = SenseCells, cells
 	}
-	return one(piece{family: FamilyPerception, body: out})
+	// HOW IT REACHED THEM (rpg-project#935): the sense, on every perception,
+	// so an entry a friend's story carried ([marked]) and one the recipient
+	// perceived themself read the same way, Via empty for their own.
+	return one(piece{family: FamilyPerception, body: out, perceived: &Perceived{Senses: []Sense{out.Sense}}})
 }
 
 // secretRevealed reads a concealment's contents.

@@ -145,8 +145,11 @@ type Act struct {
 	Undecoded string
 
 	// Perceived is how this act reached its recipient (rpg-project#934, R6):
-	// which senses delivered it, and whose. Set on a [SpeechAct]; nil
-	// on every other family until a use calls for it there.
+	// which senses delivered it, and whose. Set on a [SpeechAct] and on
+	// every [Perception] (its one sense), and on any act that reached the
+	// recipient only through a party friend at shared view (rpg-project#935),
+	// which names the friends in Via. Nil on an act the recipient's own story
+	// carried that is neither.
 	Perceived *Perceived
 }
 
@@ -219,7 +222,10 @@ func (DiscardActs) PublishActs(_ context.Context, _ []Act) error { return nil }
 // read what came before them in the same act exactly as a fold from the
 // start would — and so live (afterID = the last entry held before the verb)
 // and catch-up (afterID = the caller's) fold the same entries the same way.
-func actsAfter(session, recipient string, entries []record.Entry, afterID string) []Act {
+//
+// entries is the recipient's story as [sharedStory] merged it, or as
+// [ownStory] left it: at each their own, exactly their own entries.
+func actsAfter(session, recipient string, entries []storyEntry, afterID string) []Act {
 	first := len(entries)
 	for i, e := range entries {
 		if e.ID > afterID {
@@ -255,12 +261,12 @@ func actsAfter(session, recipient string, entries []record.Entry, afterID string
 // foldActs folds one recipient's entries, in record order, into act
 // segments. Every entry yields its pieces (act_family.go); a piece either
 // extends the segment the previous piece left open or starts its own.
-func foldActs(session, recipient string, entries []record.Entry) []Act {
+func foldActs(session, recipient string, entries []storyEntry) []Act {
 	f := &fold{session: session, recipient: recipient, segments: map[string]int{}, last: map[string]ActBody{}, main: -1}
 	for _, e := range entries {
 		tag := e.Tags[encounter.ActTag]
-		for _, p := range piecesOf(recipient, tag, e.Payload) {
-			f.add(e, tag, p)
+		for _, p := range entryPieces(recipient, tag, e) {
+			f.add(e.Entry, tag, p)
 		}
 	}
 	return f.out
@@ -292,7 +298,7 @@ func (f *fold) add(e record.Entry, tag string, p piece) {
 		if p.into != "" {
 			into = p.into
 		}
-		if prev.Act == tag && prev.Family == into && p.absorb != nil && prev.Body != nil {
+		if prev.Act == tag && prev.Family == into && p.absorb != nil && prev.Body != nil && sameVia(prev.Perceived, p.perceived) {
 			if body, ok := p.absorb(prev.Body); ok {
 				prev.Body = body
 				prev.ID, prev.At = e.ID, e.At

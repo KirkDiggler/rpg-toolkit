@@ -1123,8 +1123,8 @@ func (s *ConcealSuite) TestAJoinIntoHiddenSpaceStaysHidden() {
 		heard := s.since(name, marks[name])
 		s.Equal([]string{encounter.BeatJoined, encounter.BeatDiscoveryChecked},
 			beatNames(heard), "%s hears the membership beat and his find check, nothing else", name)
-		s.Equal(map[string]any{"beat": encounter.BeatJoined, "member": "david"}, heard[0].Fields,
-			"who joined, never where — the joined beat carries no cell")
+		s.Equal(map[string]any{"beat": encounter.BeatJoined, "member": "david", "kind": string(encounter.KindPlayer)}, heard[0].Fields,
+			"who joined and as what, never where — the joined beat carries no cell")
 	}
 
 	// PRESENCE PIERCES THE SECRET, DOOR AND ALL. It used to pierce the room
@@ -1531,4 +1531,107 @@ func (s *ConcealSuite) TestAGuidanceDieHeldDuringADiscoveryIsKept() {
 	for _, row := range offered.Declarations {
 		s.NotEqual(session.VerbReact, row.Verb, "nobody is being asked")
 	}
+}
+
+// revealsOfTheVault is, per recipient, how the vault's reveal reached them
+// in what was published.
+func (s *ConcealSuite) revealsOfTheVault() map[string]*session.Perceived {
+	s.T().Helper()
+	got := map[string]*session.Perceived{}
+	for _, act := range s.stream.published {
+		p, ok := act.Body.(session.Perception)
+		if !ok || p.Revealed == nil || p.Revealed.Concealment != vaultSecret {
+			continue
+		}
+		s.Require().NotContains(got, act.Recipient, "one reveal each")
+		got[act.Recipient] = act.Perceived
+	}
+	return got
+}
+
+// knownBy is what a member's character holds of the world: their map, their
+// door list and their bar.
+type knownBy struct {
+	atlas *session.Atlas
+	doors *session.DoorsOutput
+	bar   *session.AffordOutput
+}
+
+func (s *ConcealSuite) knownBy(member string) knownBy {
+	s.T().Helper()
+	ctx := context.Background()
+	atlas, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: member})
+	s.Require().NoError(err)
+	doors, err := s.mgr.Doors(ctx, &session.DoorsInput{Session: "sess", Member: member})
+	s.Require().NoError(err)
+	bar, err := s.mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: member})
+	s.Require().NoError(err)
+	return knownBy{atlas: atlas, doors: doors, bar: bar}
+}
+
+// alicesFind is alice's walk that finds the vault, the dial at sharing and
+// her own setting for discoveries as given (unchosen when nil).
+func (s *ConcealSuite) alicesFind(sharing encounter.Sharing, sharesDiscoveries *bool) {
+	s.T().Helper()
+	world := concealedWorld(encounter.DoorIsClosed())
+	world.Field.Sharing = sharing
+	s.startWith(world, sharpEyed("alice"))
+	if sharesDiscoveries != nil {
+		s.characterConfig.mu.Lock()
+		s.characterConfig.sharing["alice"] = *sharesDiscoveries
+		s.characterConfig.mu.Unlock()
+	}
+	s.stream.published = nil
+	_, err := s.find(context.Background(), "alice")
+	s.Require().NoError(err)
+}
+
+// TestAFriendsUnchosenFindIsShownNotLearned (rpg-project#935): two settings
+// at two levels. Alice never chose to share discoveries, so her find is
+// hers alone to KNOW; at shared view bob and carol are SHOWN it, marked via
+// alice — and their characters gain nothing: bob's map, door list and bar are
+// exactly what they are when the same find is made at each their own, where
+// he is shown nothing at all.
+func (s *ConcealSuite) TestAFriendsUnchosenFindIsShownNotLearned() {
+	alice := session.Party{Kind: session.PartyMember, ID: "alice"}
+
+	s.alicesFind(encounter.SharingOwn, nil)
+	s.Equal(map[string]*session.Perceived{"alice": {Senses: []session.Sense{session.SenseReveal}}}, s.revealsOfTheVault(),
+		"each their own: the finder alone")
+	own := s.knownBy("bob")
+
+	s.alicesFind(encounter.SharingView, nil)
+	s.Equal(map[string]*session.Perceived{
+		"alice": {Senses: []session.Sense{session.SenseReveal}},
+		"bob":   {Senses: []session.Sense{session.SenseReveal}, Via: []session.Party{alice}},
+		"carol": {Senses: []session.Sense{session.SenseReveal}, Via: []session.Party{alice}},
+	}, s.revealsOfTheVault(), "shared view: shown to her friends, through her")
+	s.Empty(s.beatsOf("bob", encounter.BeatConcealmentRevealed), "the record told alice alone")
+	for _, act := range s.stream.published {
+		if p, ok := act.Body.(session.Perception); ok && p.Revealed != nil && act.Recipient == "bob" {
+			s.Equal(alice, p.Observer, "bob reads alice's find: she is its observer")
+		}
+	}
+
+	view := s.knownBy("bob")
+	s.ElementsMatch(hallFloor(), view.atlas.Cells, "bob's map is the hall and nothing else")
+	s.Empty(view.doors.Doors, "for bob the veil is still nowhere")
+	s.Equal(own.atlas, view.atlas, "shown is not learned: his map")
+	s.Equal(own.doors, view.doors, "his doors")
+	s.Equal(own.bar, view.bar, "and what he can do")
+}
+
+// TestAFriendWhoSharesDiscoveriesGivesEachTheirOwnReveal: with alice's own
+// setting on, the engine writes the find to every placed player and each
+// gets their own reveal — so at shared view nobody's comes through a friend,
+// and bob's map holds the vault.
+func (s *ConcealSuite) TestAFriendWhoSharesDiscoveriesGivesEachTheirOwnReveal() {
+	shares := true
+	s.alicesFind(encounter.SharingView, &shares)
+	s.Equal(map[string]*session.Perceived{
+		"alice": {Senses: []session.Sense{session.SenseReveal}},
+		"bob":   {Senses: []session.Sense{session.SenseReveal}},
+		"carol": {Senses: []session.Sense{session.SenseReveal}},
+	}, s.revealsOfTheVault(), "each their own reveal, no via")
+	s.ElementsMatch(append(hallFloor(), vaultFloor()...), s.knownBy("bob").atlas.Cells, "bob learned the vault")
 }

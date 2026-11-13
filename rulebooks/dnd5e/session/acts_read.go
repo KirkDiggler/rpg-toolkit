@@ -66,7 +66,17 @@ func (m *Manager) Acts(ctx context.Context, in *ActsInput) (*ActsOutput, error) 
 	if err != nil {
 		return nil, fmt.Errorf("acts: %w", err)
 	}
-	enc, err := m.loadWorld(ctx, data)
+	// The stored world is kept beside the loaded one: its roster and its
+	// ever-members are what the sharing dial reads, at no further cost.
+	driver, err := m.resolveTurnDriver(ctx, data.ID)
+	if err != nil {
+		return nil, fmt.Errorf("acts: %w", err)
+	}
+	world, err := m.fetchWorld(ctx, data.Encounter)
+	if err != nil {
+		return nil, fmt.Errorf("acts: %w", err)
+	}
+	enc, _, _, err := m.loadGivenWorld(ctx, data, world, nil, driver)
 	if err != nil {
 		return nil, fmt.Errorf("acts: %w", err)
 	}
@@ -79,9 +89,36 @@ func (m *Manager) Acts(ctx context.Context, in *ActsInput) (*ActsOutput, error) 
 	if err != nil {
 		return nil, fmt.Errorf("acts: %w", translate(err))
 	}
-	entries, err := enc.Story(&encounter.StoryInput{Audience: encounter.MemberID(in.Member)})
+	recipient := encounter.MemberID(in.Member)
+	own, err := enc.Story(&encounter.StoryInput{Audience: recipient})
 	if err != nil {
 		return nil, fmt.Errorf("acts: %w", translate(err))
+	}
+	// THE PARTY'S SHARING DIAL (sharing.go): at shared view, the friends'
+	// whole stories too, merged exactly as the commit merges its delta.
+	var readErr error
+	stories := map[encounter.MemberID][]record.Entry{}
+	storyOf := func(id encounter.MemberID) []record.Entry {
+		if entries, ok := stories[id]; ok {
+			return entries
+		}
+		entries, serr := enc.Story(&encounter.StoryInput{Audience: id})
+		if serr != nil && readErr == nil {
+			readErr = serr
+		}
+		stories[id] = entries
+		return entries
+	}
+	party := dataParty(enc.Sharing(), world.Members)
+	// EVERY MEMBER WHO WAS EVER A PLAYER HERE, not only those her own story
+	// saw leave: a friend who left while she was away shared with her before
+	// that, and a catch-up must hold what was sent live. Catch-up only — one
+	// story read per member who has left the run, its kind from their own
+	// membership entries; the live commit reads none.
+	party.departedFrom(world.EverMembers, storyOf)
+	entries := party.storyFor(recipient, own, storyOf)
+	if readErr != nil {
+		return nil, fmt.Errorf("acts: %w", translate(readErr))
 	}
 	after := in.AfterID
 	if read.Restarted {
@@ -142,13 +179,35 @@ var actStory = func(enc *encounter.Encounter, baseline uint64, member encounter.
 // is the last entry of that slice before the baseline; when the slice holds
 // none, no act it folds can be at or before what the recipient held, and
 // actsAfter's cut is "".
-func commitActs(ctx context.Context, scope *writeScope, stream ActStream, members []encounter.MemberID, from uint64) []Act {
+//
+// AT SHARED VIEW each recipient's delta is merged with their party friends'
+// over the same window ([sharedStory]); each member's story is read once per
+// commit however many recipients it is merged into. A friend whose story
+// cannot be read is merged as holding nothing for this commit — best effort,
+// as an unreadable recipient is.
+func commitActs(ctx context.Context, scope *writeScope, stream ActStream, members []encounter.MemberID,
+	party *sharingParty, from uint64) []Act {
+	read := map[encounter.MemberID][]record.Entry{}
+	failed := map[encounter.MemberID]bool{}
+	storyOf := func(id encounter.MemberID) []record.Entry {
+		if entries, ok := read[id]; ok || failed[id] {
+			return entries
+		}
+		entries, err := actStory(scope.enc, from, id)
+		if err != nil {
+			failed[id] = true
+			return nil
+		}
+		read[id] = entries
+		return entries
+	}
 	var out []Act
 	for _, member := range actRecipients(ctx, scope.session, stream, members) {
-		entries, err := actStory(scope.enc, from, member)
-		if err != nil {
+		own := storyOf(member)
+		if failed[member] {
 			continue // best effort: one unreadable recipient must not silence the rest
 		}
+		entries := party.storyFor(member, own, storyOf)
 		held := ""
 		for _, e := range entries {
 			if e.Seq >= from {

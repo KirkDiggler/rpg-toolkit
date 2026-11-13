@@ -238,6 +238,7 @@ var sessionSentinels = map[string]error{
 	"ErrDuplicateMember":      session.ErrDuplicateMember,
 	"ErrConflictingOffers":    session.ErrConflictingOffers,
 	"ErrInvalidWorld":         session.ErrInvalidWorld,
+	"ErrSharingNotBuilt":      session.ErrSharingNotBuilt,
 	"ErrNoCalculation":        session.ErrNoCalculation,
 	"ErrInBubble":             session.ErrInBubble,
 	"ErrSeen":                 session.ErrSeen,

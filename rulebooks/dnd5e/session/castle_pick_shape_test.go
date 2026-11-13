@@ -29,7 +29,7 @@ func standAsideWatched(t *testing.T, d20 int) (alice, cleric []session.TableAnsw
 	line := []byte("          - id: stand-aside\n            say: Stand aside or bleed.\n")
 	require.Equal(t, 1, bytes.Count(source, line), "precondition: the captain's stand-aside, once")
 	whispered := bytes.Replace(source, line, append(append([]byte(nil), line...), []byte("            loudness: whisper\n")...), 1)
-	c := openTheCastleFrom(t, whispered, []*character.Data{armedFighter("alice"), healingCleric()}, d20, d20, d20, d20)
+	c := openTheCastleFrom(t, eachTheirOwn(t, whispered), []*character.Data{armedFighter("alice"), healingCleric()}, d20, d20, d20, d20)
 	require.NotEmpty(t, c.walkMemberTo(t, "alice", "captain").Steps, "alice walks up to the captain")
 	c.placeInTheRecord(t, "cleric", besideTheHailCell)
 	played := c.play(t, "alice tells the captain to stand aside", func() error {

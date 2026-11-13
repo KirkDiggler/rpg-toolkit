@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -311,6 +312,16 @@ func validateLaunch(in *LaunchInput) error {
 	// 2026-11-11: "the reach inside the current speak distance"), so a hailed
 	// character can always answer from where the hail stopped them.
 	if err := encounter.ValidateApproachReach(in.Dungeon.Field.Interactions, InteractionReach); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidWorld, err)
+	}
+	// THE PARTY'S SHARING DIAL (rpg-project#935): a stop the engine has not
+	// built is refused HERE, where a run is started for players, and nowhere
+	// else — AtlasOf builds the same dungeon to preview it, and a run that
+	// exists was launched past this line.
+	if err := encounter.LaunchableSharing(in.Dungeon.Field.Sharing); err != nil {
+		if errors.Is(err, encounter.ErrSharedKnowledgeNotBuilt) {
+			return fmt.Errorf("%s: %w", strings.TrimSuffix(err.Error(), ": "+encounter.ErrSharedKnowledgeNotBuilt.Error()), ErrSharingNotBuilt)
+		}
 		return fmt.Errorf("%w: %v", ErrInvalidWorld, err)
 	}
 	if len(in.Party) > len(in.Dungeon.PartyStart) {
