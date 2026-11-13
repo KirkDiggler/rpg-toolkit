@@ -112,6 +112,40 @@ See [`maintenance_composition_test.go`](../conditions/maintenance_composition_te
 for resistance with and without concentration and preservation of independent
 Raging. This is toolkit composition proof, not a native item-acquisition API.
 
+## Typed construction before runtime binding
+
+A Go author supplies values, then explicitly compiles them. No participant IDs,
+handwritten JSON, subscriptions or panic-based initializer are needed:
+
+```go
+parts, err := effects.CompileParts(&effects.CompilePartsInput{
+    Parts: []effects.PartSpec{
+        {
+            Key: "roll",
+            Effect: effects.AddToRoll{
+                Amount: effects.SignedDice{Notation: "1d4", Polarity: effects.Positive},
+                Rolls: []contributions.RollKind{contributions.RollKindAttack, contributions.RollKindSavingThrow},
+                Selection: generic.SelectionRule{Mode: generic.OldestApplicable, Group: "bless"},
+            },
+            OnTerminal: generic.EndPart,
+        },
+        {Key: "rest", Effect: effects.EndOn{Beat: effects.BeatRest, Reason: "rest"}, OnTerminal: generic.EndAttachment},
+    },
+})
+```
+
+Handle `err` at construction. `parts.Parts` contains owned canonical declarations,
+validated through the same kind table as data authoring. Omitting EndOn omits rest
+expiry: AddToRoll has no hidden lifetime. Native [Bless](../conditions/blessed.go)
+and [Bane](../conditions/baned.go) use this path; Bane chooses Negative polarity and
+its independent group. Their descriptor factories return errors through preparation,
+creation and loading rather than compiling fallible content at package initialization.
+
+Typed DamageBonus, Resistance, Advantage, Concentration and UntilEmpty values
+select the existing meanings as well. `CompileOutputs` projects only payload
+parts through those same builders for a consumer that already owns a recipe. It
+refuses maintenance rather than dropping it, and requires no fake holder identity.
+
 ## Authoring and binding are rulebook APIs
 
 `effects.PartTemplate` is unbound meaning: kind, params, and supported When/Amount
@@ -186,6 +220,7 @@ are not interchangeable identities.
 | Kind registration and shared evaluation | [kinds.go](kinds.go) |
 | Typed event-chain attachment | [attach.go](attach.go) |
 | Fact/beat binding and amounts | [vocabulary.go](vocabulary.go), [amounts.go](amounts.go) |
+| Typed definition values and pure compilation | [definitions.go](definitions.go), [compile_parts.go](compile_parts.go), [compile_outputs.go](compile_outputs.go) |
 | Independent declarations and binding | [parts.go](parts.go), [part_validation.go](part_validation.go) |
 | Payload part example | [resistance_part.go](resistance_part.go) |
 | Maintenance parts | [concentration_part.go](concentration_part.go), [duration_part.go](duration_part.go), [end_parts.go](end_parts.go) |

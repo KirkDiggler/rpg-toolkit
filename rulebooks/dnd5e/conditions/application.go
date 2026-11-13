@@ -183,9 +183,16 @@ func prepareApplication(in *PrepareApplicationInput, resuming bool) (*PreparedAp
 		if spec.Lifetime != LifetimeShared && spec.Lifetime != LifetimeIndependent {
 			return nil, fmt.Errorf("recipient %d needs an explicit lifetime policy", i)
 		}
+		var fixed []dndfx.PartDeclaration
+		if entry.linkedParts != nil {
+			fixed, err = entry.linkedParts()
+			if err != nil {
+				return nil, fmt.Errorf("recipient %d definition: %w", i, err)
+			}
+		}
 		authored := in.Spec.Recipients[i].Parts
 		if authored == nil && entry.linkedParts != nil {
-			authored = entry.linkedParts
+			authored = fixed
 		}
 		spec.Parts = cloneDeclarations(authored)
 		spec.Config = slices.Clone(in.Spec.Recipients[i].Config)
@@ -194,7 +201,7 @@ func prepareApplication(in *PrepareApplicationInput, resuming bool) (*PreparedAp
 				return nil, fmt.Errorf("linked recipient %d requires shared parts and explicit address identity", i)
 			}
 			if entry.linkedParts != nil {
-				if err := sameLinkedParts(spec.Parts, entry.linkedParts); err != nil {
+				if err := sameLinkedParts(spec.Parts, fixed); err != nil {
 					return nil, err
 				}
 			}

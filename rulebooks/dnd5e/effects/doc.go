@@ -22,6 +22,13 @@
 // it does not relabel the target as the actor. ProjectPartOutput and
 // AssessConfiguredOutput carry owned definitions through that same meaning.
 //
+// Typed Definition values (AddToRoll, EndOn, DamageBonus, Resistance, Advantage,
+// Concentration and UntilEmpty) compile through CompileParts into owned canonical
+// declarations. Construction requires no runtime identities, JSON at call sites
+// or panic convenience. CompileOutputs projects validated payload parts through
+// their existing kind builders for consumers that already own a machine recipe;
+// it refuses maintenance rather than silently discarding its lifecycle.
+//
 // PartTemplate describes unbound authored meaning; ValidatePartTemplate reports
 // its kind-owned benefit/maintenance class and capabilities without runtime IDs.
 // Damage and save/check advantage are independent payload parts alongside

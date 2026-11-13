@@ -4,7 +4,7 @@ Slice [rpg-project#956](https://github.com/KirkDiggler/rpg-project/issues/956), 
 
 ## Shipped
 
-- T2 source checkpoint adopts the pushed neutral selector, introduces current add_to_roll declarations with a single amount source and explicit polarity/selection, and joins actual-roll/information decisions; typed construction and the raging-ring proof remain pending — [slice](https://github.com/KirkDiggler/rpg-project/issues/956).
+- T2/T3 source checkpoints adopt the neutral selector, current add_to_roll declarations and shared actual-roll/information decisions, then add typed construction and native Bless/Bane factories without namedRollParts or its panic; the shared Rage/ring proof remains pending — [slice](https://github.com/KirkDiggler/rpg-project/issues/956).
 
 ## Decided
 
@@ -17,7 +17,10 @@ Slice [rpg-project#956](https://github.com/KirkDiggler/rpg-project/issues/956), 
 - General dice.ParseNotation accepts mixed/modified pools, while the existing native contribution fold accepts unsigned homogeneous dice only; the shared parser closes that construction/execution mismatch — [parser tests](../../rolls/contribution_notation_test.go).
 - The new AddToRoll, condition-selection and parser suites observed RED before their changes, then GREEN; full root race/vet/lint also pass at this checkpoint, including unchanged native Raging behavior — [selection proof](../../conditions/contribution_selection_test.go).
 
+- Typed construction tests prove Go/data canonical equivalence, owned amount/guard/type values, nil/typed-nil refusal, payload-only output projection and the absence of implicit rest expiry; a failing named factory reaches preparation/create/load without initialization work — [typed tests](../../effects/typed_definitions_test.go).
+
 ## Mistaken
 
 - The first immediate provider request resolved the repository root rather than its nested module; GitHub content and a direct module query established the correct subdir/hash, then the same pushed-hash request succeeded without a fabricated version or local override — [provider](https://github.com/KirkDiggler/rpg-toolkit/pull/2426).
 - The first focused build exposed two mechanical fixture migration misses (a test import alias and synthetic-provider Group field); both were corrected while retaining their behavioral assertions — [migration proof](../../conditions/baned_test.go).
+- An existing named-immutability test still altered the retired params shape; it now changes the valid canonical Amount.Dice so refusal proves frozen named behavior rather than just schema rejection — [named round trip](../../conditions/named_linked_test.go).

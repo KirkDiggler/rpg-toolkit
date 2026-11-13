@@ -10,28 +10,14 @@ import (
 	"fmt"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	generic "github.com/KirkDiggler/rpg-toolkit/mechanics/effects"
 	dndfx "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/effects"
 	dndevents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
-func namedRollParts(group string, subtract bool) []dndfx.PartDeclaration {
-	polarity := dndfx.Positive
-	if subtract {
-		polarity = dndfx.Negative
-	}
-	params, err := json.Marshal(struct {
-		Polarity  dndfx.Polarity        `json:"polarity"`
-		Rolls     []string              `json:"rolls"`
-		Selection generic.SelectionRule `json:"selection"`
-	}{Polarity: polarity, Rolls: []string{"attack", "saving_throw"}, Selection: generic.SelectionRule{Mode: generic.OldestApplicable, Group: group}})
-	if err != nil {
-		panic(err) // static, typed rulebook declaration; no runtime input
-	}
-	return []dndfx.PartDeclaration{
-		{Key: "roll", Kind: dndfx.KindAddToRoll, Amount: &generic.Amount{Dice: "1d4"}, Params: params, OnTerminal: generic.EndPart},
-		{Key: "rest", Kind: dndfx.KindEndOn, Params: json.RawMessage(`{"beat":"rest","reason":"rest"}`), OnTerminal: generic.EndAttachment},
-	}
+type namedLinkedDescriptorInput struct {
+	Ref     *core.Ref
+	Display Display
+	Parts   func() ([]dndfx.PartDeclaration, error)
 }
 
 func sameLinkedParts(got, want []dndfx.PartDeclaration) error {
@@ -56,11 +42,29 @@ func sameLinkedParts(got, want []dndfx.PartDeclaration) error {
 	return nil
 }
 
-func namedLinkedDescriptor(ref *core.Ref, display Display, parts []dndfx.PartDeclaration) descriptor {
-	fixed := cloneDeclarations(parts)
-	return descriptor{ref: ref, display: display, acceptsOrigin: true, linked: true, linkedParts: fixed,
+func namedLinkedDescriptor(definition namedLinkedDescriptorInput) descriptor {
+	// Registration is inert. Definition errors reach prepare/create/load rather
+	// than becoming package-initialization panics or absent registered content.
+	parts := func() ([]dndfx.PartDeclaration, error) {
+		if definition.Parts == nil {
+			return nil, fmt.Errorf("named linked definition requires a parts factory")
+		}
+		built, err := definition.Parts()
+		if err != nil {
+			return nil, err
+		}
+		if len(built) == 0 {
+			return nil, fmt.Errorf("named linked definition requires nonempty parts")
+		}
+		return cloneDeclarations(built), nil
+	}
+	return descriptor{ref: definition.Ref, display: definition.Display, acceptsOrigin: true, linked: true, linkedParts: parts,
 		ownAction: answersNow, againstHolder: notBearing,
 		create: func(in *CreateFromRefInput) (dndevents.ConditionBehavior, error) {
+			fixed, err := parts()
+			if err != nil {
+				return nil, err
+			}
 			var config LinkedConditionConfig
 			if err := strictJSON(in.Config, &config); err != nil {
 				return nil, err
@@ -85,11 +89,15 @@ func namedLinkedDescriptor(ref *core.Ref, display Display, parts []dndfx.PartDec
 			return createLinked(&input)
 		},
 		load: func(raw json.RawMessage) (dndevents.ConditionBehavior, error) {
+			fixed, err := parts()
+			if err != nil {
+				return nil, err
+			}
 			var data LinkedConditionData
 			if err := strictJSON(raw, &data); err != nil {
 				return nil, err
 			}
-			if data.Ref != *ref || data.Role != LinkedRecipient || data.Bindings == nil {
+			if data.Ref != *definition.Ref || data.Role != LinkedRecipient || data.Bindings == nil {
 				return nil, fmt.Errorf("named linked data has wrong ref, role or bindings")
 			}
 			if err := sameLinkedParts(data.Bindings.Parts, fixed); err != nil {

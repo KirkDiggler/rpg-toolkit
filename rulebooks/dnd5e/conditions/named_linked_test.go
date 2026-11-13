@@ -34,7 +34,7 @@ func (s *linkedDataSuite) TestNamedBlessAndBaneCreateOnlyCurrentLinkedData() {
 		s.Equal(linked.ConditionAddress(), ConditionAddressOf("recipient", loaded))
 		var changed LinkedConditionData
 		s.Require().NoError(json.Unmarshal(stored, &changed))
-		changed.Bindings.Parts[0].Params = json.RawMessage(`{"dice":"2d4","group":"bless","rolls":["attack","saving_throw"],"subtract":false}`)
+		changed.Bindings.Parts[0].Amount.Dice = "2d4"
 		bad, err := json.Marshal(changed)
 		s.Require().NoError(err)
 		_, err = LoadJSON(bad)

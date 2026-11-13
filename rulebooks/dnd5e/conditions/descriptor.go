@@ -74,8 +74,9 @@ type descriptor struct {
 	acceptsOrigin bool
 	// linked declares the current application-aware construction/codec contract.
 	linked bool
-	// linkedParts is a named definition's fixed payload, not another ref catalog.
-	linkedParts []dndfx.PartDeclaration
+	// linkedParts compiles a named definition's fixed payload at an error-returning
+	// boundary. Registration performs no fallible construction or hidden panic.
+	linkedParts func() ([]dndfx.PartDeclaration, error)
 
 	// load restores a stored blob. Required.
 	load func(json.RawMessage) (dnd5eEvents.ConditionBehavior, error)
