@@ -4079,8 +4079,16 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 		for _, sod := range swd.Openings {
 			o := StructuralOpeningInput{ID: sod.ID, Position: sod.Position, Width: sod.Width}
 			if sod.Door != nil {
+				var presentation *DoorFramePresentation
+				if sod.Door.FramePresentation != nil {
+					decoded, err := doorFramePresentationFromData(*sod.Door.FramePresentation)
+					if err != nil {
+						return FieldInput{}, fmt.Errorf("structural wall %q opening %q: %w", swd.ID, sod.ID, err)
+					}
+					presentation = &decoded
+				}
 				o.Door = &StructuralDoorBindingInput{
-					FramePresentation: doorFramePresentationFromData(sod.Door.FramePresentation),
+					FramePresentation: presentation,
 					PlacedID:          sod.Door.PlacedID,
 					DoorID:            sod.Door.DoorID,
 					Ref:               sod.Door.Ref,

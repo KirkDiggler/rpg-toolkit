@@ -41,10 +41,11 @@ type WallFrameSpanData struct {
 }
 
 // DoorFrameFaceFinishData persists an opaque fixed-face choice and wrapped phase.
+// Phase presence is required: missing/null data is not an authored zero.
 type DoorFrameFaceFinishData struct {
 	Side        WallFaceSide `json:"side"`
 	MaterialRef string       `json:"material_ref"`
-	PhaseU      float64      `json:"phase_u"`
+	PhaseU      *float64     `json:"phase_u"`
 }
 
 // DoorFramePresentationData is the detached immutable site representation.
@@ -63,24 +64,25 @@ func doorFramePresentationData(frame *DoorFramePresentation) *DoorFramePresentat
 		out.Span = &span
 	}
 	for _, face := range frame.FaceFinishes {
-		out.FaceFinishes = append(out.FaceFinishes, DoorFrameFaceFinishData(face))
+		phase := face.PhaseU
+		out.FaceFinishes = append(out.FaceFinishes, DoorFrameFaceFinishData{Side: face.Side, MaterialRef: face.MaterialRef, PhaseU: &phase})
 	}
 	return out
 }
 
-func doorFramePresentationFromData(frame *DoorFramePresentationData) *DoorFramePresentation {
-	if frame == nil {
-		return nil
-	}
-	out := &DoorFramePresentation{}
+func doorFramePresentationFromData(frame DoorFramePresentationData) (DoorFramePresentation, error) {
+	out := DoorFramePresentation{}
 	if frame.Span != nil {
 		span := WallFrameSpan(*frame.Span)
 		out.Span = &span
 	}
-	for _, face := range frame.FaceFinishes {
-		out.FaceFinishes = append(out.FaceFinishes, DoorFrameFaceFinish(face))
+	for i, face := range frame.FaceFinishes {
+		if face.PhaseU == nil {
+			return DoorFramePresentation{}, fmt.Errorf("frame face %d phase is required: %w", i, ErrNoField)
+		}
+		out.FaceFinishes = append(out.FaceFinishes, DoorFrameFaceFinish{Side: face.Side, MaterialRef: face.MaterialRef, PhaseU: *face.PhaseU})
 	}
-	return out
+	return out, nil
 }
 
 func validateDoorFramePresentation(frame *DoorFramePresentation, width float64) error {

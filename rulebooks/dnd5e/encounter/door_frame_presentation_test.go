@@ -4,6 +4,9 @@
 package encounter_test
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"math"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
@@ -17,6 +20,56 @@ func framePresentation() *encounter.DoorFramePresentation {
 			{Side: encounter.WallFaceNegativeZ, MaterialRef: "material:gray", PhaseU: 0.875},
 		},
 	}
+}
+
+func (s *StructuralWallSuite) TestFrameSiteDataRequiresExplicitPhase() {
+	field := structuralField()
+	frame := framePresentation()
+	for i := range frame.FaceFinishes {
+		frame.FaceFinishes[i].PhaseU = 0
+	}
+	field.StructuralWalls[0].Openings[0].Door.FramePresentation = frame
+	original := s.play(field).Site()
+	raw, err := json.Marshal(original.Data())
+	s.Require().NoError(err)
+	s.Require().Contains(string(raw), `"phase_u":0`)
+	cases := []struct {
+		name    string
+		payload []byte
+	}{
+		{"explicit", raw},
+		{"missing", bytes.ReplaceAll(raw, []byte(`,"phase_u":0`), nil)},
+		{"null", bytes.ReplaceAll(raw, []byte(`"phase_u":0`), []byte(`"phase_u":null`))},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			var data encounter.SiteData
+			s.Require().NoError(json.Unmarshal(tc.payload, &data))
+			out, err := encounter.NewMemorySites(nil).Site(context.Background(), &encounter.SiteInput{Hash: original.Hash(), Data: &data})
+			if tc.name != "explicit" {
+				s.Require().ErrorIs(err, encounter.ErrNoField, "refuse presence before canonical hashing can turn it into zero")
+				s.Contains(err.Error(), "phase")
+				s.Nil(out)
+				return
+			}
+			s.Require().NoError(err)
+			s.Equal(original.Hash(), out.Site.Hash())
+			encoded, err := json.Marshal(out.Site.Data())
+			s.Require().NoError(err)
+			s.Equal(raw, encoded, "valid stored bytes and their identity remain unchanged")
+			s.T().Logf("valid zero-phase site hash: %s", original.Hash())
+			*data.Field.StructuralWalls[0].Openings[0].Door.FramePresentation.FaceFinishes[0].PhaseU = 0.25
+			returned := out.Site.Data()
+			s.Equal(float64(0), *returned.Field.StructuralWalls[0].Openings[0].Door.FramePresentation.FaceFinishes[0].PhaseU)
+			*returned.Field.StructuralWalls[0].Openings[0].Door.FramePresentation.FaceFinishes[0].PhaseU = 0.5
+			s.Equal(float64(0), *out.Site.Data().Field.StructuralWalls[0].Openings[0].Door.FramePresentation.FaceFinishes[0].PhaseU)
+		})
+	}
+	legacy := s.play(structuralField()).Site()
+	data := legacy.Data()
+	loaded, err := encounter.NewMemorySites(nil).Site(context.Background(), &encounter.SiteInput{Hash: legacy.Hash(), Data: &data})
+	s.Require().NoError(err)
+	s.Nil(loaded.Site.Data().Field.StructuralWalls[0].Openings[0].Door.FramePresentation)
 }
 
 func (s *StructuralWallSuite) TestFrameCaptureIsDetachedAcrossBothReadersAndReload() {

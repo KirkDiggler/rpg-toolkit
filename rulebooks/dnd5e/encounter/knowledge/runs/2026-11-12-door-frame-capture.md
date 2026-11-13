@@ -19,4 +19,6 @@ Slice [Project #906](https://github.com/KirkDiggler/rpg-project/issues/906), sto
 
 ## Mistaken
 
+- Review found that a persisted scalar phase normalized missing/null to zero even under the original valid site's hash; presence is now retained in the Data type and refused before canonical construction. The cold-site regression preserves explicit zero, absent legacy frames and valid bytes/hash, and its presence-guard mutant fails — [review finding](https://github.com/KirkDiggler/rpg-toolkit/pull/2412#discussion_r4561915936).
+
 - Existing structural equality relied on comparable records; adding detached frame pointers made equal copies appear changed, so a red parent-later reveal test required semantic frame/span comparison before this checkpoint — [contract constraint](https://github.com/KirkDiggler/rpg-api-protos/pull/436).
