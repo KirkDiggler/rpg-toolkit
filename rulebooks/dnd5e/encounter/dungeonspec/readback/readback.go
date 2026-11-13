@@ -26,6 +26,7 @@ const (
 	KindRegions     Kind = "place.regions"
 	KindGeometry    Kind = "place.geometry"
 	KindStart       Kind = "place.start"
+	KindSharing     Kind = "place.sharing"
 	KindExit        Kind = "place.exit"
 	KindEnding      Kind = "place.ending"
 	KindDoor        Kind = "place.door"

@@ -345,6 +345,9 @@ func CompileSingleRoom(in CompileSingleRoomInput) (Compiled, error) {
 	// AND THE RUN'S INTERACTIONS (rpg-project#922): carried on the field so
 	// a host that launches it passes them with no code of its own.
 	field.Interactions = interactionsOf(spec)
+	// AND THE PARTY'S SHARING DIAL (rpg-project#935), for the interactions'
+	// reason: the run's setting, carried so the host passes it unread.
+	field.Sharing = sharingOf(spec)
 	return Compiled{
 		Key: spec.Key, Name: read.Name, Field: field, PartyStart: party, Monsters: monsters,
 		// The same lists the field carries, surfaced for a host that wants to

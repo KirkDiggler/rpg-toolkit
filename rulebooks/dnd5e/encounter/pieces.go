@@ -167,6 +167,7 @@ type rosterPiece struct {
 	Doors        []DoorData        `json:"doors,omitempty"`
 	SightAreas   []SightAreaData   `json:"sight_areas,omitempty"`
 	Interactions []InteractionData `json:"interactions,omitempty"`
+	Sharing      Sharing           `json:"sharing,omitempty"`
 	Reserve      []ReserveData     `json:"reserve,omitempty"`
 	EverMembers  []MemberID        `json:"ever_members"`
 	Pause        *PauseData        `json:"pause,omitempty"`
@@ -227,7 +228,7 @@ func SplitPieces(in *SplitPiecesInput) (*SplitPiecesOutput, error) {
 	}
 	if err := add(PieceRoster, rosterPiece{
 		Outcome: d.Outcome, Doors: d.Doors, SightAreas: d.SightAreas, Interactions: d.Interactions,
-		Reserve: d.Reserve, EverMembers: d.EverMembers, Pause: d.Pause,
+		Sharing: d.Sharing, Reserve: d.Reserve, EverMembers: d.EverMembers, Pause: d.Pause,
 	}); err != nil {
 		return nil, err
 	}
@@ -318,7 +319,7 @@ func JoinPieces(in *JoinPiecesInput) (*EncounterData, error) {
 		Clock: head.Clock, Bubbles: head.Bubbles, Landed: head.Landed, PerceptionSubjects: head.PerceptionSubjects,
 		Log: head.Log, SiteHash: head.SiteHash, Endings: head.Endings, Retention: head.Retention,
 		Outcome: roster.Outcome, Doors: roster.Doors, SightAreas: roster.SightAreas, Interactions: roster.Interactions,
-		Reserve: roster.Reserve, EverMembers: roster.EverMembers, Pause: roster.Pause,
+		Sharing: roster.Sharing, Reserve: roster.Reserve, EverMembers: roster.EverMembers, Pause: roster.Pause,
 		Discovery: know.Discovery, SneakVerdicts: know.SneakVerdicts,
 		Journal: journal,
 		Members: []MemberData{},
