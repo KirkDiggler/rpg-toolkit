@@ -3,7 +3,11 @@
 
 package contributions
 
-import "errors"
+import (
+	"errors"
+
+	generic "github.com/KirkDiggler/rpg-toolkit/mechanics/effects"
+)
 
 // ErrRuleCannotAnswer is wrapped by execution when a rule is handed a frame it
 // cannot read or answers Depends. The action fails; it is never treated as the
@@ -97,9 +101,10 @@ const (
 // Benefit is empty unless the state is StateApplies. Rows never grant or
 // refuse an action and are never folded into a total.
 type Effect struct {
-	// RollGroup is provider-owned selection metadata for a roll-modifier row.
-	// The root selector applies it; clients never reconstruct this policy.
-	RollGroup     string
+	// Selection is an owned policy for this contribution, separate from the
+	// kind's applicability. Nil means this row does not join contribution
+	// selection; clients never reconstruct the policy.
+	Selection     *generic.SelectionRule
 	ID            string
 	Source        Source
 	Description   string

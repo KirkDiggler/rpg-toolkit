@@ -22,6 +22,13 @@
 // it does not relabel the target as the actor. ProjectPartOutput and
 // AssessConfiguredOutput carry owned definitions through that same meaning.
 //
+// Typed Definition values (AddToRoll, EndOn, DamageBonus, Resistance, Advantage,
+// Concentration, Duration and UntilEmpty) compile through CompileParts into owned canonical
+// declarations. Construction requires no runtime identities, JSON at call sites
+// or panic convenience. CompileOutputs projects validated payload parts through
+// their existing kind builders for consumers that already own a machine recipe;
+// it refuses maintenance rather than silently discarding its lifecycle.
+//
 // PartTemplate describes unbound authored meaning; ValidatePartTemplate reports
 // its kind-owned benefit/maintenance class and capabilities without runtime IDs.
 // Damage and save/check advantage are independent payload parts alongside
@@ -37,8 +44,10 @@
 // rest, combat-end, next received turn-start or dropped-to-zero for its holder.
 // Actual last-member loss reports the source-neutral members_empty cause.
 // Resistance reuses its existing incoming fold.
-// Roll modifiers are query-only, describe signed dice with selection metadata, and
-// never subscribe a second roll handler. DescribeRoll and Assess share the kind's
+// AddToRoll is query-only and describes signed dice plus explicit selection
+// policy; it never subscribes a second roll handler. Dice lives only in Amount,
+// with polarity/domains/selection in params. Unbound validation uses the same
+// homogeneous-dice grammar as the native resolver. DescribeRoll and Assess share the kind's
 // applicability; RollQuery names an actual recipient roll, not a caster's outgoing
 // save-shaped action. InspectPart returns maintenance facts without exposing bag
 // interpretation to callers. Registry/transport integration is owned above this

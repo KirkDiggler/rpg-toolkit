@@ -5,33 +5,36 @@ package effects
 
 import (
 	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"fmt"
 	"slices"
-	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
 	generic "github.com/KirkDiggler/rpg-toolkit/mechanics/effects"
 	"github.com/KirkDiggler/rpg-toolkit/mechanics/effects/machine"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 	dndevents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/rolls"
 )
 
-// KindRollModifier describes signed dice for selected roll domains. Selection
-// and rolling remain the recipient/native roll path's job, not a subscription.
-const KindRollModifier generic.KindName = "roll_modifier"
+// KindAddToRoll supplies signed additive dice to selected roll domains.
+// The recipient selects contributions before the owning operation rolls them.
+const KindAddToRoll generic.KindName = "add_to_roll"
 
-type rollModifierParams struct {
-	Group    string                   `json:"group"`
-	Rolls    []contributions.RollKind `json:"rolls"`
-	Subtract bool                     `json:"subtract,omitempty"`
-}
+// Polarity is the sign of an additive amount, separate from physical dice faces.
+// The zero value is invalid; definition authors must select its direction.
+type Polarity string
 
-type rollPartParams struct {
-	Dice     string                   `json:"dice"`
-	Group    string                   `json:"group"`
-	Rolls    []contributions.RollKind `json:"rolls"`
-	Subtract bool                     `json:"subtract,omitempty"`
+const (
+	// Positive adds the resolved amount to the roll.
+	Positive Polarity = "positive"
+	// Negative subtracts the resolved amount without negating die faces.
+	Negative Polarity = "negative"
+)
+
+type addToRollParams struct {
+	Polarity  Polarity                 `json:"polarity"`
+	Rolls     []contributions.RollKind `json:"rolls"`
+	Selection generic.SelectionRule    `json:"selection"`
 }
 
 // DescribeRollInput requests one bound contribution through the same meaning
@@ -43,21 +46,27 @@ type DescribeRollInput struct {
 	DisplayName string
 }
 
-// DescribeRollOutput carries selection metadata and unresolved contributions.
+// DescribeRollOutput carries an explicit selection rule and unresolved terms.
 // It contains no die face and causes no roll, attachment or state mutation.
 type DescribeRollOutput struct {
 	Applicable    bool
-	Group         string
+	Selection     generic.SelectionRule
 	Contributions []dndevents.DiceContribution
 }
 
-func rollMeaning(raw jsontext.Value) (meaning, error) {
-	params, err := decodeParams[rollModifierParams](raw)
+func addToRollMeaning(raw jsontext.Value) (meaning, error) {
+	params, err := decodeParams[addToRollParams](raw)
 	if err != nil {
 		return meaning{}, err
 	}
-	if strings.TrimSpace(params.Group) == "" || len(params.Rolls) == 0 {
-		return meaning{}, fmt.Errorf("roll modifier requires a group and roll domains")
+	if params.Polarity != Positive && params.Polarity != Negative {
+		return meaning{}, fmt.Errorf("add-to-roll requires positive or negative polarity")
+	}
+	if err := generic.ValidateSelectionRule(&generic.ValidateSelectionRuleInput{Rule: params.Selection}); err != nil {
+		return meaning{}, err
+	}
+	if len(params.Rolls) == 0 {
+		return meaning{}, fmt.Errorf("add-to-roll requires roll domains")
 	}
 	seen := map[contributions.RollKind]bool{}
 	for _, roll := range params.Rolls {
@@ -66,67 +75,54 @@ func rollMeaning(raw jsontext.Value) (meaning, error) {
 		}
 		seen[roll] = true
 	}
-	return meaning{domain: domainRoll, description: "Modifies the recipient's selected attack rolls or saving throws with unresolved dice."}, nil
+	return meaning{domain: domainRoll, description: "Adds a signed unresolved amount to the recipient's selected attack rolls or saving throws."}, nil
 }
 
-func checkRollModifier(out generic.Output) error {
-	if _, err := rollMeaning(out.Params); err != nil {
+func checkAddToRoll(out generic.Output) error {
+	if _, err := addToRollMeaning(out.Params); err != nil {
 		return err
 	}
+	if out.When != nil {
+		return fmt.Errorf("add-to-roll does not yet accept an authored guard")
+	}
 	if out.Amount == nil {
-		return fmt.Errorf("roll modifier requires dice")
+		return fmt.Errorf("add-to-roll requires a dice amount")
 	}
 	name, err := out.Amount.Name()
 	if err != nil {
 		return err
 	}
 	if name != generic.AmountDice {
-		return fmt.Errorf("roll modifier requires a dice amount")
+		return fmt.Errorf("add-to-roll requires a dice amount")
 	}
-	_, err = dice.ParseNotation(out.Amount.Dice)
+	_, err = rolls.ParseContributionDice(&rolls.ParseContributionDiceInput{Notation: out.Amount.Dice})
 	return err
 }
 
-func rollPartOutput(declaration PartDeclaration) (generic.Output, error) {
-	if declaration.OnTerminal != generic.EndPart {
-		return generic.Output{}, fmt.Errorf("roll modifier payload requires local part scope")
+func addToRollPartOutput(decl PartDeclaration) (generic.Output, error) {
+	if decl.OnTerminal != generic.EndPart {
+		return generic.Output{}, fmt.Errorf("add-to-roll payload requires local part scope")
 	}
-	params, err := decodeParams[rollPartParams](jsontext.Value(declaration.Params))
-	if err != nil {
-		return generic.Output{}, err
-	}
-	rawParams, err := json.Marshal(rollModifierParams{Group: params.Group, Rolls: params.Rolls, Subtract: params.Subtract})
-	if err != nil {
-		return generic.Output{}, err
-	}
-	out := generic.Output{Kind: KindRollModifier, Params: rawParams, Amount: &generic.Amount{Dice: params.Dice}}
-	if err := checkRollModifier(out); err != nil {
+	out := generic.Output{Kind: KindAddToRoll, Params: jsontext.Value(decl.Params), When: decl.When, Amount: decl.Amount}
+	if err := checkAddToRoll(out); err != nil {
 		return generic.Output{}, err
 	}
 	return out, nil
 }
 
-func bindRollModifierPart(in *BindPartInput) (boundPart, error) {
-	out, err := rollPartOutput(in.Declaration)
+func bindAddToRollPart(in *BindPartInput) (boundPart, error) {
+	out, err := addToRollPartOutput(in.Declaration)
 	if err != nil {
 		return boundPart{}, err
 	}
-	raw, err := json.Marshal(out)
-	if err != nil {
-		return boundPart{}, err
-	}
-	return boundPart{recipe: machine.Recipe{Ref: in.Ref, Initial: partStateActive, Bag: machine.Bag{},
-		States: map[string]machine.State{partStateActive: {Outputs: []jsontext.Value{raw}}}}}, nil
+	return payloadRecipe(in, out)
 }
 
-func inspectRollModifierPart(in *InspectPartInput) (*PartInfo, error) {
-	if _, err := rollPartOutput(in.Declaration); err != nil {
+func inspectAddToRollPart(in *InspectPartInput) (*PartInfo, error) {
+	if _, err := addToRollPartOutput(in.Declaration); err != nil {
 		return nil, err
 	}
-	if in.Snapshot.State != partStateActive || in.Snapshot.Bag == nil || len(in.Snapshot.Bag) != 0 {
-		return nil, fmt.Errorf("roll modifier requires active state and an explicit empty bag")
-	}
-	return &PartInfo{}, nil
+	return inspectPayloadState(in.Snapshot)
 }
 
 func diceAmount(_ any, amount generic.Amount) (generic.AmountResult, error) {
@@ -159,7 +155,7 @@ func rollContext(q Query) (string, contributions.RollKind, bool) {
 	}
 }
 
-func assessRollModifier(in *AssessInput, m meaning) (assessment, error) {
+func assessAddToRoll(in *AssessInput, m meaning) (assessment, error) {
 	var result assessment
 	if err := validateBinding(&BindInput{Origin: in.Origin, DisplayName: in.DisplayName}); err != nil {
 		return result, err
@@ -167,12 +163,13 @@ func assessRollModifier(in *AssessInput, m meaning) (assessment, error) {
 	if err := in.Query.Validate(); err != nil {
 		return result, err
 	}
-	params, err := decodeParams[rollModifierParams](in.Output.Params())
+	params, err := decodeParams[addToRollParams](in.Output.Params())
 	if err != nil {
 		return result, err
 	}
 	sourceRef := in.Origin.Ref
-	result.effect = contributions.Effect{ID: in.Output.ID(), RollGroup: params.Group, Source: contributions.Source{Ref: in.Output.Host().Ref, Name: in.DisplayName, SourceID: in.Origin.EntityID}, Description: m.description, Participation: contributions.ContributesNow}
+	rule := params.Selection
+	result.effect = contributions.Effect{ID: in.Output.ID(), Selection: &rule, Source: contributions.Source{Ref: in.Output.Host().Ref, Name: in.DisplayName, SourceID: in.Origin.EntityID}, Description: m.description, Participation: contributions.ContributesNow}
 	subject, kind, known := rollContext(in.Query)
 	if !known {
 		result.effect.State = contributions.StateDepends
@@ -198,12 +195,12 @@ func assessRollModifier(in *AssessInput, m meaning) (assessment, error) {
 		return result, err
 	}
 	if value.Dice == "" {
-		return result, fmt.Errorf("roll modifier did not describe dice")
+		return result, fmt.Errorf("add-to-roll did not describe dice")
 	}
 	result.value = &value
 	result.effect.State = contributions.StateApplies
 	sign := "+"
-	if params.Subtract {
+	if params.Polarity == Negative {
 		sign = "−"
 	}
 	noun := "attack roll"
@@ -211,33 +208,32 @@ func assessRollModifier(in *AssessInput, m meaning) (assessment, error) {
 		noun = "saving throw"
 	}
 	result.effect.Benefit = sign + value.Dice + " to the " + noun
-	result.roll = []dndevents.DiceContribution{{Dice: value.Dice, Subtract: params.Subtract,
-		Source: dndevents.RollSource{Ref: &sourceRef, Name: in.DisplayName, SourceID: in.Origin.EntityID}}}
+	result.roll = []dndevents.DiceContribution{{Dice: value.Dice, Subtract: params.Polarity == Negative, Source: dndevents.RollSource{Ref: &sourceRef, Name: in.DisplayName, SourceID: in.Origin.EntityID}}}
 	return result, nil
 }
 
-// DescribeRoll returns unresolved signed dice with the same applicability used
-// by Assess. It refuses malformed output/source/request data and never rolls.
+// DescribeRoll returns unresolved signed dice and explicit selection metadata
+// through the same applicability as Assess. It refuses malformed output/source
+// data and never rolls. A known nonmatching roll produces no contributions.
 func DescribeRoll(in *DescribeRollInput) (*DescribeRollOutput, error) {
-	if in == nil || in.Output == nil || in.Output.Kind() != KindRollModifier {
-		return nil, fmt.Errorf("roll description requires a roll-modifier output")
+	if in == nil || in.Output == nil || in.Output.Kind() != KindAddToRoll {
+		return nil, fmt.Errorf("roll description requires an add-to-roll output")
 	}
 	if err := validateBinding(&BindInput{Origin: in.Origin, DisplayName: in.DisplayName}); err != nil {
 		return nil, err
 	}
-	if _, err := rollMeaning(in.Output.Params()); err != nil {
+	if _, err := addToRollMeaning(in.Output.Params()); err != nil {
 		return nil, err
 	}
-	params, err := decodeParams[rollModifierParams](in.Output.Params())
+	params, err := decodeParams[addToRollParams](in.Output.Params())
 	if err != nil {
 		return nil, err
 	}
-	result := &DescribeRollOutput{Group: params.Group}
+	result := &DescribeRollOutput{Selection: params.Selection}
 	if in.Request == nil {
 		return result, nil
 	}
-	answer, err := assess(&AssessInput{Output: in.Output, Origin: in.Origin, DisplayName: in.DisplayName,
-		Query: Query{Roll: &RollQuery{MemberID: in.Output.Host().Holder, Kind: in.Request.Kind}}})
+	answer, err := assess(&AssessInput{Output: in.Output, Origin: in.Origin, DisplayName: in.DisplayName, Query: Query{Roll: &RollQuery{MemberID: in.Output.Host().Holder, Kind: in.Request.Kind}}})
 	if err != nil {
 		return nil, err
 	}

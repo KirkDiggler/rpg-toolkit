@@ -70,7 +70,7 @@ func (s *AppliedTwiceSuite) fixtures() map[string]func() dnd5eEvents.ConditionBe
 			// Local payload replacement remains a keeper contract; application admission is tested separately.
 			out, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{Ref: refs.Conditions.LinkedEffects().String(), MemberID: id,
 				Origin: &dnd5eEvents.ConditionOrigin{Ref: *refs.Spells.Bless(), EntityID: "caster"},
-				Config: json.RawMessage(`{"application_id":"application","role":"recipient","address_source_id":"caster","bindings":{"name":"Blessed","member_key":"payload","owner":{"member_id":"caster","condition_ref":"dnd5e:conditions:linked-effects","source_id":"application"},"parts":[{"key":"dice","kind":"roll_modifier","params":{"dice":"1d4","group":"bless","rolls":["attack","saving_throw"]},"on_terminal":"part"}]}}`)})
+				Config: json.RawMessage(`{"application_id":"application","role":"recipient","address_source_id":"caster","bindings":{"name":"Blessed","member_key":"payload","owner":{"member_id":"caster","condition_ref":"dnd5e:conditions:linked-effects","source_id":"application"},"parts":[{"key":"dice","kind":"add_to_roll","amount":{"dice":"1d4"},"params":{"polarity":"positive","rolls":["attack","saving_throw"],"selection":{"mode":"oldest_applicable","group":"bless"}},"on_terminal":"part"}]}}`)})
 			s.Require().NoError(err)
 			return out.Condition
 		},

@@ -25,8 +25,9 @@ counting must not compete with concentration for the first matching transition.
 
 ## Rage is a consumer, not a primitive
 
-[`conditions/raging_definition.go`](../conditions/raging_definition.go) constructs
-four outputs:
+[`conditions.RagingBenefits`](../conditions/raging_benefits.go) declares four typed
+benefit parts. Native [`Raging`](../conditions/raging_definition.go) compiles that
+same declaration source into its existing recipe's outputs:
 
 | Output | Configuration |
 |---|---|
@@ -35,8 +36,10 @@ four outputs:
 | Advantage | Strength saving throws |
 | Advantage | Strength ability checks |
 
-The named recipe also supplies its activity trackers, activation grace, duration
-and endings. Those rules are not hidden inside the damage or resistance handlers.
+The named recipe separately supplies its activity trackers, activation grace,
+duration and endings. Those rules are not hidden inside the benefit bundle or its
+handlers. Another composition can reuse the four benefit parts—or author one of
+them alone—while selecting concentration instead of native Rage upkeep.
 
 For the damage output:
 
@@ -67,7 +70,7 @@ also a standalone part:
 | `damage_bonus` | Subscribed | Yes | Fixed/class-scaled scalar amount; optional frame-fact guard |
 | `resistance` | Subscribed | Yes | Nonempty, valid, unique damage types |
 | `advantage` | Subscribed | Yes | Saves/checks, or attacks explicitly by/against the holder; optional supported frame-fact guard |
-| `roll_modifier` | Query-only | Yes | Unresolved dice, roll domains, selection group and sign |
+| `add_to_roll` | Query-only | Yes | One dice amount, roll domains, explicit polarity and contribution-selection policy |
 | `concentration` | Subscribed | Yes | Positive applied damage requests a CON follow-up; zero HP ends maintenance |
 | `duration` | No separate output | Yes | Positive holder-turn-end count and explicit activation-grace choice |
 | `combat_activity` | No separate output | Yes | Holder attack/positive-applied-damage activity; independent first-end grace |
@@ -112,6 +115,40 @@ See [`maintenance_composition_test.go`](../conditions/maintenance_composition_te
 for resistance with and without concentration and preservation of independent
 Raging. This is toolkit composition proof, not a native item-acquisition API.
 
+## Typed construction before runtime binding
+
+A Go author supplies values, then explicitly compiles them. No participant IDs,
+handwritten JSON, subscriptions or panic-based initializer are needed:
+
+```go
+parts, err := effects.CompileParts(&effects.CompilePartsInput{
+    Parts: []effects.PartSpec{
+        {
+            Key: "roll",
+            Effect: effects.AddToRoll{
+                Amount: effects.SignedDice{Notation: "1d4", Polarity: effects.Positive},
+                Rolls: []contributions.RollKind{contributions.RollKindAttack, contributions.RollKindSavingThrow},
+                Selection: generic.SelectionRule{Mode: generic.OldestApplicable, Group: "bless"},
+            },
+            OnTerminal: generic.EndPart,
+        },
+        {Key: "rest", Effect: effects.EndOn{Beat: effects.BeatRest, Reason: "rest"}, OnTerminal: generic.EndAttachment},
+    },
+})
+```
+
+Handle `err` at construction. `parts.Parts` contains owned canonical declarations,
+validated through the same kind table as data authoring. Omitting EndOn omits rest
+expiry: AddToRoll has no hidden lifetime. Native [Bless](../conditions/blessed.go)
+and [Bane](../conditions/baned.go) use this path; Bane chooses Negative polarity and
+its independent group. Their descriptor factories return errors through preparation,
+creation and loading rather than compiling fallible content at package initialization.
+
+Typed DamageBonus, Resistance, Advantage, Concentration, Duration and UntilEmpty values
+select the existing meanings as well. `CompileOutputs` projects only payload
+parts through those same builders for a consumer that already owns a recipe. It
+refuses maintenance rather than dropping it, and requires no fake holder identity.
+
 ## Authoring and binding are rulebook APIs
 
 `effects.PartTemplate` is unbound meaning: kind, params, and supported When/Amount
@@ -119,6 +156,17 @@ values. `ValidatePartTemplate` reports the kind-owned class and capabilities
 without fake participant IDs. The [canonical library](../conditions/testdata/effects/library.json)
 reuses leaves in ordered benefit sets; the ring and scroll select the same four
 benefits but different maintenance.
+
+A Go-authored application uses `conditions.CompileComposition` with a
+`CompositionSpec{Name, Coordinator, Benefits, Maintenance}`. Benefits and maintenance
+are independent typed `PartSpec` lists. It returns the existing immutable catalogue
+containing that one definition ID; role binding and delivery use the same path as
+the JSON library. Both compilers converge on the same expanded-definition validator,
+not parallel runtimes. Changing maintenance or mutating the input cannot rewrite a
+compiled or active grant. [The typed raging-ring example](../conditions/typed_composition_example_test.go)
+shows the whole definition, then uses the existing source/host fixture to exercise
+payment, idle turns, reload and concentration cleanup. It is an executable rulebook
+consumer, not native inventory acquisition or a live save-window roll.
 
 The public `conditions` path is:
 
@@ -143,9 +191,15 @@ A known mismatch is not applicable. Missing required facts are `Depends` for
 information and an explicit refusal when execution cannot answer. An absent query
 can describe an effect without claiming its benefit applies.
 
-`DescribeRoll` returns unresolved signed dice and selection facts. It does not
-roll them or subscribe another roll handler. The recipient's roll path selects
-contributions and evaluates them once.
+`DescribeRoll` returns unresolved signed dice and explicit selection policy. It does
+not roll them or subscribe another roll handler. `AddToRoll` stores dice only in
+Amount; params carry polarity, supported attack/save domains and SelectionRule.
+The neutral selector chooses already-applicable contributions in persisted order:
+AllApplicable requires no group, and OldestApplicable chooses one per group. An
+excluded contribution remains held under its own lifetime. The recipient's roll
+path evaluates only selected dice once; information uses the same decisions.
+Definition validation shares the native contribution-dice parser, so mixed pools
+or fixed modifiers cannot pass construction only to fail at resolution.
 
 `ProjectHeldEffects` captures configured target facts as detached values.
 `AssessTargetHeldEffects` reads those values, not live target behavior; absent
@@ -180,11 +234,13 @@ are not interchangeable identities.
 | Kind registration and shared evaluation | [kinds.go](kinds.go) |
 | Typed event-chain attachment | [attach.go](attach.go) |
 | Fact/beat binding and amounts | [vocabulary.go](vocabulary.go), [amounts.go](amounts.go) |
+| Typed definition values and pure compilation | [definitions.go](definitions.go), [compile_parts.go](compile_parts.go), [compile_outputs.go](compile_outputs.go) |
 | Independent declarations and binding | [parts.go](parts.go), [part_validation.go](part_validation.go) |
 | Payload part example | [resistance_part.go](resistance_part.go) |
 | Maintenance parts | [concentration_part.go](concentration_part.go), [duration_part.go](duration_part.go), [end_parts.go](end_parts.go) |
-| Query-only roll contribution | [roll_modifier.go](roll_modifier.go) |
-| Named Rage composition | [raging_definition.go](../conditions/raging_definition.go) |
+| Query-only roll contribution | [add_to_roll.go](add_to_roll.go) |
+| Shared Rage benefits / native lifecycle | [raging_benefits.go](../conditions/raging_benefits.go), [raging_definition.go](../conditions/raging_definition.go) |
+| Code-authored application composition | [composition.go](../conditions/composition.go) |
 | Linked ownership and delivery | [application.go](../conditions/application.go), [application_binding.go](../conditions/application_binding.go) |
 
 Run from the owning module:
