@@ -8,7 +8,8 @@ Design work for [rpg-project#703](https://github.com/KirkDiggler/rpg-project/iss
 
 ## Decided
 
-- KirkDiggler selected Bless/Bane as the first foundation cleanup and agreed that instance coexistence, applicability, oldest-per-group selection and signed additive combination are distinct; exact exported API and module placement remain proposed — [direction](https://github.com/KirkDiggler/rpg-project/issues/703#issuecomment-6863768422).
+- KirkDiggler selected Bless/Bane as the first foundation cleanup and agreed that instance coexistence, applicability, oldest-per-group selection and signed additive combination are distinct — [direction](https://github.com/KirkDiggler/rpg-project/issues/703#issuecomment-6863768422).
+- KirkDiggler approved the design direction with R4's concrete API allowed to evolve, and made ease of composing a concentration-maintained raging ring a success measure; the lead's plan shares native Rage benefit declarations without moving its lifecycle, and treats a generic overrides system as exploratory rather than required — [approval and scope](https://github.com/KirkDiggler/rpg-toolkit/pull/2425#issuecomment-6865141821).
 
 ## Found
 

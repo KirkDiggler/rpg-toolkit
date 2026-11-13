@@ -1,6 +1,6 @@
 # Bless and Bane as consumers of effect tools
 
-This is the proposed construction surface for [composable conditions #703](https://github.com/KirkDiggler/rpg-project/issues/703), governed by [the design](design.md). **The Go names below are proposals, not implemented APIs.** The existing composer, assemblies, application custody and roll resolver remain the runtime. This cut gives authors typed effect values and makes contribution selection an explicit, reusable value operation.
+This is the working construction surface for [composable conditions #703](https://github.com/KirkDiggler/rpg-project/issues/703), governed by [the design](design.md). **The Go names below describe the implementation target, not APIs already available.** R4 permits the spelling to evolve through the consumer; R5 makes a concentration-maintained raging ring the composition test. The existing composer, assemblies, application custody and roll resolver remain the runtime. This cut gives authors typed effect values and makes contribution selection an explicit, reusable value operation. The [implementation plan](plan.md) follows these contracts through the neutral provider, root consumer and API adoption.
 
 ## Component shape
 
@@ -93,12 +93,47 @@ The proposed canonical leaf has one amount location:
 
 The typed `SignedDice` is lowered to the existing `Amount.Dice` plus explicit polarity. No second dice value remains in params. Authored data and Go values receive the same validation. Unsupported kinds, fields, domains, selection modes, empty groups, invalid dice and invalid scopes are errors, including on a nonselected candidate. R4 is proposed.
 
+## The composition test: a raging ring
+
+**Reuse the benefits; choose the maintenance.** A named benefit bundle is useful only if its contents are the same small typed effects an author can assemble individually. `conditions.RagingBenefits` supplies the four Rage benefits without importing native Rage's activity trackers, duration, rest policy or condition identity. Its damage input preserves the existing fixed-versus-live-Barbarian-level choice.
+
+The intended ring definition is ordinary construction, not an item-specific handler:
+
+```go
+benefits, err := conditions.RagingBenefits(&conditions.RagingBenefitsInput{
+    DamageBonus: conditions.RagingDamageBonus{Fixed: &bonus},
+})
+if err != nil {
+    return nil, err
+}
+return conditions.CompileComposition(&conditions.CompileCompositionInput{
+    ID: "raging-ring",
+    Spec: conditions.CompositionSpec{
+        Name: "Maintained rage", Coordinator: conditions.DefinitionUser,
+        Benefits: benefits.Parts,
+        Maintenance: []effects.PartSpec{
+            {Key: "concentration", Effect: effects.Concentration{}, OnTerminal: generic.EndApplication},
+            {Key: "empty", Effect: effects.UntilEmpty{}, OnTerminal: generic.EndApplication},
+            {Key: "rest", Effect: effects.EndOn{Beat: effects.BeatRest, Reason: "rest"}, OnTerminal: generic.EndApplication},
+        },
+    },
+})
+```
+
+`CompileComposition` is the code-authoring adapter for one named composition. It returns the existing `CompileDefinitionsOutput` containing a one-definition catalogue, so the source still uses `BindDefinition`, `PrepareApplication` and the existing delivery protocol. It compiles the typed parts into the same expanded definition representation as the JSON library compiler; it introduces neither a second runtime nor a second binder. The source/host wiring is outside this definition.
+
+Native Raging reuses the same benefit declarations while retaining its native lifecycle and saved binding contract. The ring selects concentration instead of activity/duration upkeep. Its recipient may remain idle without losing the grant; a failed maintainer concentration consequence ends that exact application. No native item acquisition is implied.
+
+An override convenience is not the foundation. Explicitly choosing a different maintenance list already expresses the change. A future convenience may replace that named group on a copied definition; it must not deep-patch a live Raging machine or switch off hidden trackers. R5.
+
 ## Ownership and contracts
 
 | Component | Owns | Input → output |
 |---|---|---|
 | `effects.AddToRoll`, `EndOn`, `CompileParts` | Typed definition construction and canonical lowering | `CompilePartsInput{Parts []PartSpec}` → `CompilePartsOutput{Parts []PartDeclaration}`, error |
 | Rulebook kind entry | Roll applicability, signed-dice meaning, parameter validation and description | Canonical declaration and actual roll query → unresolved contribution and selection rule |
+| `conditions.RagingBenefits` | Named reusable benefit composition, not its lifetime | Existing damage-bonus choice → owned typed benefit parts |
+| `conditions.CompileComposition` / library compiler | One validated expanded composition representation | Code-authored `CompositionSpec` or authored library → existing immutable `CompiledDefinitions` |
 | Condition holder | Instance identity and durable insertion order | Ordered live/saved conditions → ordered candidate outputs |
 | `mechanics/effects.SelectContributions` (proposed) | Pure selection among already-applicable candidates | `SelectContributionsInput{Candidates []SelectionCandidate}` → decisions in candidate order, error |
 | Conditions' roll/information adapters | Gathering candidates and attributing selection decisions | Kind answers plus neutral decisions → existing roll contribution values / explanatory rows |
@@ -152,7 +187,7 @@ Selecting at condition granularity would incorrectly suppress unrelated effects.
 
 This first cut supports signed dice on attacks and saving throws, including the existing death-save path. `SignedDice` makes that boundary visible. Fixed roll adjustments, ability checks, optional offers/consumption (Guidance), advantage/disadvantage and non-roll selection consumers are not claimed implemented. A future quantity should reuse the existing amount machinery and extend the actual roll consumer; it must not fake a scalar as a die.
 
-The JSON kind/parameter change is a proposed current-format change, not an implicit migration commitment. No historical reader, normalization or automatic operator-data reset is introduced. The independent application protocol, native Raging/Reckless behavior and deferred item adoption remain unchanged. No repo-wide removal of unrelated registry/trait panics is claimed by removing the Bless/Bane construction panic.
+The JSON kind/parameter change follows current-format discipline, not an implicit migration commitment. No historical reader, normalization or automatic operator-data reset is introduced. The independent application protocol, native Raging/Reckless behavior and deferred item adoption remain unchanged; extracting native Raging's benefit source changes composition code, not its eligibility, lifetime or saved binding behavior. No repo-wide removal of unrelated registry/trait panics is claimed by removing the Bless/Bane construction panic.
 
 ## Where a change lands
 
@@ -169,6 +204,8 @@ The JSON kind/parameter change is a proposed current-format change, not an impli
 | Typed effect construction | `rulebooks/dnd5e/effects` (proposed `AddToRoll`, `EndOn`, `CompileParts`) |
 | Canonical declaration/validation | `effects/parts.go`, `part_templates.go`, `kinds.go` |
 | Current roll implementation | `effects/roll_modifier.go` |
+| Shared Rage benefit source | `conditions/raging_definition.go`; proposed `conditions/raging_benefits.go` |
+| Code/data composition compilation | `conditions/definition_compile.go`; proposed `conditions/composition.go` |
 | Named consumers | `conditions/blessed.go`, `baned.go`, `named_linked.go` |
 | Current selection and information | `conditions/roll_selection.go`, `action_effects.go`, `linked_info.go` |
 | Durable order | `character/character.go`, `character/load.go`, `monster/monster.go`, `monstertraits/prepare.go` |

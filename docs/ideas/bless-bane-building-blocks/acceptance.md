@@ -1,6 +1,6 @@
 # Observable proof for the first cut
 
-These are proposed acceptance scenarios for the [design](design.md), not executed results or an implementation task list. The linked PR carries baseline observations and later evidence.
+These are acceptance scenarios for the [design](design.md), not executed results or an implementation task list. R5 makes the ease of constructing a concentration-maintained raging ring part of the finish line, not a deferred demonstration. The linked PR carries baseline observations and later evidence.
 
 | Scenario | What must be observable |
 |---|---|
@@ -19,6 +19,10 @@ These are proposed acceptance scenarios for the [design](design.md), not execute
 | Reject malformed input | Invalid dice, polarity, domains, keys/scopes and selection policies return errors, including malformed unselected definitions/candidates. The first cut does not pretend to implement fixed amounts or check offers. |
 | Omit EndOn | The roll effect alone does not end on rest. Adding explicit recipient EndOn or coordinator maintenance supplies that behavior without changing roll mechanics. |
 | Retain native application behavior | Normal Bless/Bane cast/payment, independent concentration cleanup, pending Bane saves, source identity and reload remain intact. Existing native Raging and other unchanged payloads still work. |
+| Write a raging ring in Go | A short definition selects reusable Rage benefits and concentration maintenance using public typed values. It contains no hand-authored JSON, new handler or copy of native Rage's machine. The source/host wiring remains separate. |
+| Share Rage benefits honestly | Native Raging and the ring use the same benefit declaration source, including fixed/live-level damage choice. An author can also select a single typed resistance/damage/advantage effect without granting opaque Raging. |
+| Replace upkeep, not behavior | The ring's recipient may remain idle across turn ends without losing the benefit grant. A maintainer concentration failure removes only that grant. Native Raging retains its original activity/grace/duration behavior. |
+| Preserve value ownership | Compiling a second composition with different maintenance or mutating its input cannot change the shared benefit source, another compiled definition or an active saved instance. No generic override engine is needed to pass this test. |
 
 ## Evidence boundaries
 
