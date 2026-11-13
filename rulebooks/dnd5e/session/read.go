@@ -322,8 +322,8 @@ func (m *Manager) AtlasOf(ctx context.Context, in *AtlasOfInput) (*Atlas, error)
 	return &projected, nil
 }
 
-// Status reports whether the session's encounter is open, and how it ended if
-// not.
+// Status reports whether the session's encounter is open, how it ended if
+// not, and the party's sharing dial it plays at ([Status.Sharing]).
 //
 // Returns ErrNilInput, ErrNoSessionID, ErrNoSession, or ErrNoEncounter.
 func (m *Manager) Status(ctx context.Context, in *StatusInput) (*Status, error) {
@@ -345,7 +345,11 @@ func (m *Manager) Status(ctx context.Context, in *StatusInput) (*Status, error) 
 		return nil, fmt.Errorf("status: %w", translate(err))
 	}
 
-	return projectStatus(status), nil
+	out := projectStatus(status)
+	if out != nil {
+		out.Sharing = PartySharing(enc.Sharing())
+	}
+	return out, nil
 }
 
 // Where returns the cell a member stands on, in dungeon-absolute space.
