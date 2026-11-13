@@ -150,7 +150,7 @@
                 "kind": "creature",
                 "id": "porter"
               },
-              "sentence": "The speaker can say the line “We're expected.” (`guest`) to Guard (porter). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.",
+              "sentence": "The speaker can say the line “We're expected.” (`guest`) to Guard (porter). It is said at `speak` (the default): its words reach everyone in the speaker's room (the wall partition the speaker stands in), and anyone in the next room within 30 feet of the speaker by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand. Whoever sees the speaker is told who said it; whoever the words reach and does not see the speaker hears the words — and which line it was, the roll, whether it worked and what it taught — from someone unnamed; whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught; whoever the words do not reach may still notice a voice by passive Perception, never a whisper; the one it is said to is named only to those who see them. It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock.",
               "path": "room.room.monsterBindings.porter.options[0]",
               "connects": [
                 {
@@ -198,7 +198,7 @@
                 "kind": "creature",
                 "id": "porter"
               },
-              "sentence": "When the line “We're expected.” (`guest`) is said, Guard (porter) answers “In you go.”, at `speak`: its words reach everyone in Guard (porter)'s room (the wall partition Guard (porter) stands in), and whoever it is said to, wherever they stand and whoever sees Guard (porter) answer and caught none of the line is told only that Guard (porter) answered and what Guard (porter) is seen doing, and, if they see the speaker, sees the line said without its words.",
+              "sentence": "When the line “We're expected.” (`guest`) is said, Guard (porter) answers “In you go.”, at `speak`: its words reach everyone in Guard (porter)'s room (the wall partition Guard (porter) stands in), and anyone in the next room within 30 feet of Guard (porter) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand and whoever sees Guard (porter) answer and caught none of the line is told only that Guard (porter) answered and what Guard (porter) is seen doing, and, if they see the speaker, sees the line said without its words.",
               "path": "room.room.monsterBindings.porter.options[0].success[0]"
             }
           ]
@@ -362,7 +362,7 @@
                 "kind": "routine",
                 "id": "porter-policy"
               },
-              "sentence": "`approached` row 1 of `porter-policy`: Guard (porter) says “Halt there. What's your business?” (at `speak`: its words reach everyone in Guard (porter)'s room (the wall partition Guard (porter) stands in), and whoever it is said to, wherever they stand).",
+              "sentence": "`approached` row 1 of `porter-policy`: Guard (porter) says “Halt there. What's your business?” (at `speak`: its words reach everyone in Guard (porter)'s room (the wall partition Guard (porter) stands in), and anyone in the next room within 30 feet of Guard (porter) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand).",
               "path": "behaviorDefinitions.porter-policy.table.approached[0]"
             }
           ]

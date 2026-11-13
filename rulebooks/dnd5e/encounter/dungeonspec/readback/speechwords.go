@@ -3,7 +3,11 @@
 
 package readback
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+)
 
 // speechwords.go says how loudly a line is spoken and what follows from it
 // (rpg-project#933, perceived speech): whose words reach whom, who is told
@@ -43,7 +47,8 @@ func reachWords(word, who string) string {
 	case "scream":
 		return "everyone up to two rooms beyond " + who + "'s (a closed door on the way counts as a room)" + addressed
 	}
-	return "everyone in " + who + "'s room (the wall partition " + who + " stands in)" + addressed
+	return fmt.Sprintf("everyone in %s's room (the wall partition %s stands in), and anyone in the next room within %d feet"+
+		" of %s by the way through an open doorway (a closed door stops them)", who, who, encounter.SpeechCarryFeet, who) + addressed
 }
 
 // loudnessSentence is a line's loudness and what it means, as one sentence.

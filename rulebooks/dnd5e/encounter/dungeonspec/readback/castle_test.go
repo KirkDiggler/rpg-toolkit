@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/suite"
 	"gopkg.in/yaml.v3"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec/readback"
 )
 
@@ -291,6 +292,8 @@ func (s *CastleSuite) TestTheAlarmIsShoutedAndTeachesWhomItReaches() {
 func (s *CastleSuite) TestALineSaysItsLoudnessAndWhoPerceivesWhat() {
 	st := s.statement(readback.KindLine, "room.room.monsterBindings.captain.options[0]")
 	s.Contains(st.Sentence, "It is said at `speak` (the default): its words reach everyone in the speaker's room")
+	s.Contains(st.Sentence, fmt.Sprintf("and anyone in the next room within %d feet of the speaker by the way through an open doorway",
+		encounter.SpeechCarryFeet), "the spoken reach through a doorway, from the engine's own constant (rpg-project#953)")
 	s.Contains(st.Sentence, "and whoever it is said to, wherever they stand")
 	s.Contains(st.Sentence, "whoever the words reach and does not see the speaker hears the words — and which line it was, "+
 		"the roll, whether it worked and what it taught — from someone unnamed")
