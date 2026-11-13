@@ -79,10 +79,30 @@ func (m *Manager) Acts(ctx context.Context, in *ActsInput) (*ActsOutput, error) 
 	if err != nil {
 		return nil, fmt.Errorf("acts: %w", translate(err))
 	}
-	entries, err := enc.Story(&encounter.StoryInput{Audience: encounter.MemberID(in.Member)})
+	recipient := encounter.MemberID(in.Member)
+	own, err := enc.Story(&encounter.StoryInput{Audience: recipient})
 	if err != nil {
 		return nil, fmt.Errorf("acts: %w", translate(err))
 	}
+	// THE PARTY'S SHARING DIAL (sharing.go): at shared view, the friends'
+	// whole stories too, merged exactly as the commit merges its delta. The
+	// roster is read only then.
+	var party *sharingParty
+	if enc.Sharing() == encounter.SharingView {
+		roster, rerr := enc.Members()
+		if rerr != nil {
+			return nil, fmt.Errorf("acts: %w", translate(rerr))
+		}
+		party = rosterParty(enc.Sharing(), roster)
+	}
+	friends := party.friendsOf(recipient)
+	stories := make(map[encounter.MemberID][]record.Entry, len(friends))
+	for _, friend := range friends {
+		if stories[friend], err = enc.Story(&encounter.StoryInput{Audience: friend}); err != nil {
+			return nil, fmt.Errorf("acts: %w", translate(err))
+		}
+	}
+	entries := sharedStory(own, friends, func(id encounter.MemberID) []record.Entry { return stories[id] })
 	after := in.AfterID
 	if read.Restarted {
 		after = ""
@@ -142,13 +162,35 @@ var actStory = func(enc *encounter.Encounter, baseline uint64, member encounter.
 // is the last entry of that slice before the baseline; when the slice holds
 // none, no act it folds can be at or before what the recipient held, and
 // actsAfter's cut is "".
-func commitActs(ctx context.Context, scope *writeScope, stream ActStream, members []encounter.MemberID, from uint64) []Act {
+//
+// AT SHARED VIEW each recipient's delta is merged with their party friends'
+// over the same window ([sharedStory]); each member's story is read once per
+// commit however many recipients it is merged into. A friend whose story
+// cannot be read is merged as holding nothing for this commit — best effort,
+// as an unreadable recipient is.
+func commitActs(ctx context.Context, scope *writeScope, stream ActStream, members []encounter.MemberID,
+	party *sharingParty, from uint64) []Act {
+	read := map[encounter.MemberID][]record.Entry{}
+	failed := map[encounter.MemberID]bool{}
+	storyOf := func(id encounter.MemberID) []record.Entry {
+		if entries, ok := read[id]; ok || failed[id] {
+			return entries
+		}
+		entries, err := actStory(scope.enc, from, id)
+		if err != nil {
+			failed[id] = true
+			return nil
+		}
+		read[id] = entries
+		return entries
+	}
 	var out []Act
 	for _, member := range actRecipients(ctx, scope.session, stream, members) {
-		entries, err := actStory(scope.enc, from, member)
-		if err != nil {
+		own := storyOf(member)
+		if failed[member] {
 			continue // best effort: one unreadable recipient must not silence the rest
 		}
+		entries := sharedStory(own, party.friendsOf(member), storyOf)
 		held := ""
 		for _, e := range entries {
 			if e.Seq >= from {

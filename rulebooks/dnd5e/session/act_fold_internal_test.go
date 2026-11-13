@@ -109,11 +109,11 @@ func (s *ActFoldSuite) TestALegacyBeatDerivesItsKind() {
 func (s *ActFoldSuite) TestAWalkSegmentBreaksWhenTheKindChanges() {
 	const move = "move:01HZZZZZZZZZZZZZZZZZZZWALK"
 	cause := "dnd5e:spells:thunderwave"
-	acts := foldActs("sess", "fighter", []record.Entry{
+	acts := foldActs("sess", "fighter", ownStory([]record.Entry{
 		s.beat(move, map[string]any{"beat": encounter.BeatMoved, "member": "goblin", "position": cell(7, 2), "cause": cause, "kind": "compelled"}),
 		s.beat(move, map[string]any{"beat": encounter.BeatMoved, "member": "goblin", "position": cell(8, 2), "cause": cause, "kind": "compelled"}),
 		s.beat(move, map[string]any{"beat": encounter.BeatMoved, "member": "goblin", "position": cell(9, 2), "cause": cause, "kind": "displaced", "forced": true}),
-	})
+	}))
 	s.Require().Len(acts, 2, "the kind changed, so the walk broke")
 	first := acts[0].Body.(WalkAct)
 	second := acts[1].Body.(WalkAct)
@@ -168,12 +168,12 @@ func (s *ActFoldSuite) TestWalkActsDistinguishWalkRoutAndPush() {
 		commandAct = "move:01HZZZZZZZZZZZZZZZZZZCMND"
 		pushAct    = "move:01HZZZZZZZZZZZZZZZZZZZPUSH"
 	)
-	acts := foldActs("sess", "fighter", []record.Entry{
+	acts := foldActs("sess", "fighter", ownStory([]record.Entry{
 		s.beat(walkAct, map[string]any{"beat": encounter.BeatMoved, "member": "goblin", "position": cell(7, 2)}),
 		s.beat(routAct, map[string]any{"beat": encounter.BeatMoved, "member": "goblin", "position": cell(8, 2), "cause": "dnd5e:spells:dissonant-whispers", "kind": "compelled"}),
 		s.beat(commandAct, map[string]any{"beat": encounter.BeatMoved, "member": "goblin", "position": cell(9, 2), "cause": "dnd5e:conditions:commanded", "kind": "compelled"}),
 		s.beat(pushAct, map[string]any{"beat": encounter.BeatMoved, "member": "goblin", "position": cell(10, 2), "cause": "dnd5e:spells:thunderwave", "kind": "displaced", "forced": true}),
-	})
+	}))
 	s.Require().Len(acts, 4)
 
 	walk := acts[0].Body.(WalkAct)
@@ -199,10 +199,10 @@ func (s *ActFoldSuite) TestWalkActsDistinguishWalkRoutAndPush() {
 func (s *ActFoldSuite) TestTheWalkFoldRefusesToMergeDifferentMovementSemantics() {
 	const move = "move:01HZZZZZZZZZZZZZZZZZZZWALK"
 	cause := "dnd5e:spells:thunderwave"
-	acts := foldActs("sess", "fighter", []record.Entry{
+	acts := foldActs("sess", "fighter", ownStory([]record.Entry{
 		s.beat(move, map[string]any{"beat": encounter.BeatMoved, "member": "goblin", "position": cell(7, 2), "cause": cause}),
 		s.beat(move, map[string]any{"beat": encounter.BeatMoved, "member": "goblin", "position": cell(8, 2), "cause": cause, "forced": true}),
-	})
+	}))
 	s.Require().Len(acts, 2, "a push may not be absorbed into a same-cause walk")
 
 	first := acts[0].Body.(WalkAct)
@@ -233,7 +233,7 @@ func (s *ActFoldSuite) TestFoldWalkWithMidWalkReaction() {
 		s.step(walk, "gate-1", e),
 	}
 
-	acts := foldActs("sess", "fighter", entries)
+	acts := foldActs("sess", "fighter", ownStory(entries))
 
 	s.Require().Len(acts, 3)
 	first, reaction, second := acts[0], acts[1], acts[2]
@@ -279,9 +279,9 @@ func (s *ActFoldSuite) TestResumeAfterASegmentFoldsTheSameSuffix() {
 		s.step(walk, "gate-1", cell(2, 0)),
 		s.beat("", map[string]any{"beat": encounter.BeatTick, "tick": 3}),
 	}
-	whole := actsAfter("sess", "fighter", entries, "")
+	whole := actsAfter("sess", "fighter", ownStory(entries), "")
 	for i, act := range whole {
-		s.Equal(orEmpty(whole[i+1:]), orEmpty(actsAfter("sess", "fighter", entries, act.ID)), "after %s", act.ID)
+		s.Equal(orEmpty(whole[i+1:]), orEmpty(actsAfter("sess", "fighter", ownStory(entries), act.ID)), "after %s", act.ID)
 	}
 }
 
@@ -301,8 +301,8 @@ func (s *ActFoldSuite) TestPerceptionStaysPerObserver() {
 	sighted := s.beat(walk, map[string]any{"beat": encounter.BeatSighted, "gained": []string{"gate-1"}})
 	second := s.step(walk, "alice", cell(2, 0))
 
-	alice := foldActs("sess", "alice", []record.Entry{first, sighted, second})
-	bob := foldActs("sess", "bob", []record.Entry{first, second})
+	alice := foldActs("sess", "alice", ownStory([]record.Entry{first, sighted, second}))
+	bob := foldActs("sess", "bob", ownStory([]record.Entry{first, second}))
 
 	s.Require().Len(alice, 3)
 	s.Equal(FamilyPerception, alice[1].Family)
@@ -335,7 +335,7 @@ func (s *ActFoldSuite) TestFoldMissAndWarded() {
 		}),
 	}
 
-	acts := foldActs("sess", "alice", entries)
+	acts := foldActs("sess", "alice", ownStory(entries))
 
 	s.Require().Len(acts, 2)
 	missed := acts[0].Body.(AttackAct)
@@ -361,12 +361,12 @@ func (s *ActFoldSuite) TestFoldMissAndWarded() {
 // TestFoldDoorNamesActor is Law 7 for the door: the door beat's actor
 // is the act's By, and an unattributed change names nobody.
 func (s *ActFoldSuite) TestFoldDoorNamesActor() {
-	acts := foldActs("sess", "alice", []record.Entry{
+	acts := foldActs("sess", "alice", ownStory([]record.Entry{
 		s.beat("open_door:01HZZZZZZZZZZZZZZZZZZZDOOR", map[string]any{
 			"beat": encounter.BeatDoor, "door": "gatehouse-door", "state": "open", "actor": "alice",
 		}),
 		s.beat("", map[string]any{"beat": encounter.BeatDoor, "door": "portcullis", "state": "closed"}),
-	})
+	}))
 
 	s.Require().Len(acts, 2)
 	s.Equal(DoorAct{By: Party{Kind: PartyMember, ID: "alice"}, Door: "gatehouse-door", State: "open"}, acts[0].Body)
@@ -429,7 +429,7 @@ func (s *ActFoldSuite) TestActsSharingAnIDAreOneDeliveryUnit() {
 	tick := s.beat("", map[string]any{"beat": encounter.BeatTick, "tick": 4})
 	entries := []record.Entry{rested, tick}
 
-	acts := foldActs("sess", "cleric", entries)
+	acts := foldActs("sess", "cleric", ownStory(entries))
 
 	s.Require().Len(acts, 3)
 	s.IsType(RestAct{}, acts[0].Body)
@@ -438,7 +438,7 @@ func (s *ActFoldSuite) TestActsSharingAnIDAreOneDeliveryUnit() {
 	s.Equal(rested.ID, acts[0].ID)
 	s.Equal(rested.ID, acts[1].ID, "one entry, one id: the two are one delivery unit")
 
-	after := actsAfter("sess", "cleric", entries, rested.ID)
+	after := actsAfter("sess", "cleric", ownStory(entries), rested.ID)
 	s.Require().Len(after, 1, "resuming after the id skips the whole unit")
 	s.Equal(tick.ID, after[0].ID)
 }
@@ -446,12 +446,12 @@ func (s *ActFoldSuite) TestActsSharingAnIDAreOneDeliveryUnit() {
 // TestAnUnreadableBeatFailsOnlyItsEntry is R22's spirit: one bad payload is
 // one marked entry, and the fold goes on.
 func (s *ActFoldSuite) TestAnUnreadableBeatFailsOnlyItsEntry() {
-	acts := foldActs("sess", "alice", []record.Entry{
+	acts := foldActs("sess", "alice", ownStory([]record.Entry{
 		s.beat("attack:01HZZZZZZZZZZZZZZZZZZZZBAD", map[string]any{
 			"beat": string(encounter.OutcomeStruck), "actor": "alice", "targets": "not a list",
 		}),
 		s.beat("", map[string]any{"beat": encounter.BeatTick, "tick": 1}),
-	})
+	}))
 
 	s.Require().Len(acts, 2)
 	s.NotEmpty(acts[0].Undecoded)
@@ -473,7 +473,7 @@ func (s *ActFoldSuite) TestRollCarriesAdvantageSources() {
 		"advantage_sources":    []map[string]string{{"source_ref": "dnd5e:conditions:hidden", "source_id": "fighter"}},
 		"disadvantage_sources": []map[string]string{{"source_ref": "dnd5e:conditions:frightened"}},
 	})
-	acts := foldActs("sess", "fighter", []record.Entry{swing})
+	acts := foldActs("sess", "fighter", ownStory([]record.Entry{swing}))
 	s.Require().Len(acts, 1)
 	attack, ok := acts[0].Body.(AttackAct)
 	s.Require().True(ok)
@@ -543,7 +543,7 @@ func (s *ActFoldSuite) TestTheKeepWinsOverRetiredSourceKeys() {
 		"advantage_sources":    []map[string]string{{"source_ref": "dnd5e:conditions:hidden", "source_id": "alice"}},
 		"disadvantage_sources": []map[string]string{{"source_ref": "dnd5e:conditions:frightened"}},
 	})
-	acts := foldActs("sess", "alice", []record.Entry{swing})
+	acts := foldActs("sess", "alice", ownStory([]record.Entry{swing}))
 	s.Require().Len(acts, 1)
 	s.Require().Empty(acts[0].Undecoded)
 	attack, ok := acts[0].Body.(AttackAct)
@@ -676,7 +676,7 @@ func (s *ActFoldSuite) TestRevealedDoorwaysNameTheirDoor() {
 			"beat": encounter.BeatConcealmentRevealed, "concealment": "concealed-vault",
 			"doors": []map[string]any{{"door": "concealed-vault/vault-door", "state": "closed", "doorways": []map[string]any{doorway}}},
 		})
-		acts := foldActs("sess", "fighter", []record.Entry{e})
+		acts := foldActs("sess", "fighter", ownStory([]record.Entry{e}))
 		s.Require().Len(acts, 1)
 		p, ok := acts[0].Body.(Perception)
 		s.Require().True(ok, "%T", acts[0].Body)
@@ -699,7 +699,7 @@ func (s *ActFoldSuite) TestRevealedDoorwaysNameTheirDoor() {
 func (s *ActFoldSuite) TestRevealedCrossingsKeepTheirMark() {
 	from, to := cell(4, 2), cell(5, 2)
 	perceived := func(payload map[string]any) Perception {
-		acts := foldActs("sess", "fighter", []record.Entry{s.beat("search:01HZZZZZZZZZZZZZZZZZZZVALT", payload)})
+		acts := foldActs("sess", "fighter", ownStory([]record.Entry{s.beat("search:01HZZZZZZZZZZZZZZZZZZZVALT", payload)}))
 		s.Require().Len(acts, 1)
 		p, ok := acts[0].Body.(Perception)
 		s.Require().True(ok, "%T", acts[0].Body)
@@ -753,7 +753,7 @@ func (s *ActFoldSuite) TestCastActivationCarriesItsSpell() {
 		}),
 	}
 
-	acts := foldActs("sess", "fighter", entries)
+	acts := foldActs("sess", "fighter", ownStory(entries))
 
 	// The result CONTINUES the cast in a later segment; it never absorbs
 	// into the open CastAct, which would replace the cast's body and drop
@@ -800,7 +800,7 @@ func (s *ActFoldSuite) TestStateEntriesNameTheirSource() {
 		}),
 	}
 
-	acts := foldActs("sess", "fighter", entries)
+	acts := foldActs("sess", "fighter", ownStory(entries))
 
 	s.Require().Len(acts, 2)
 	ended, ok := acts[0].Body.(StateChange)
@@ -831,8 +831,8 @@ func (s *ActFoldSuite) TestFoldATableBeatIsNoAct() {
 		"word": "attack", "selector": "enemy", "candidates": []any{}, "rows": []any{},
 	})
 
-	withTable := foldActs("sess", "fighter", []record.Entry{table, answered})
-	without := foldActs("sess", "fighter", []record.Entry{answered})
+	withTable := foldActs("sess", "fighter", ownStory([]record.Entry{table, answered}))
+	without := foldActs("sess", "fighter", ownStory([]record.Entry{answered}))
 
 	s.Require().NotEmpty(withTable, "precondition: the pick folds")
 	s.Equal(len(without), len(withTable), "the table adds no act")
@@ -857,10 +857,10 @@ func (s *ActFoldSuite) TestFoldAnInteractionBeatIsNoAct() {
 		"word": "attack", "selector": "enemy", "candidates": []any{}, "rows": []any{},
 	})
 
-	s.Empty(foldActs("sess", "fighter", []record.Entry{interaction}), "the interaction alone is no act")
+	s.Empty(foldActs("sess", "fighter", ownStory([]record.Entry{interaction})), "the interaction alone is no act")
 
-	withInteraction := foldActs("sess", "fighter", []record.Entry{interaction, answered})
-	without := foldActs("sess", "fighter", []record.Entry{answered})
+	withInteraction := foldActs("sess", "fighter", ownStory([]record.Entry{interaction, answered}))
+	without := foldActs("sess", "fighter", ownStory([]record.Entry{answered}))
 
 	s.Require().NotEmpty(withInteraction, "precondition: the pick folds")
 	s.Equal(len(without), len(withInteraction), "the interaction adds no act")
@@ -879,7 +879,7 @@ func (s *ActFoldSuite) TestBehaviorDiagnosticsAreRecordOnly() {
 				"beat": kind, "schema": 1, "member": "guard", "config": "original",
 				"on": "heard", "operation": "observe", "status": "partial",
 			})
-			s.Empty(foldActs("sess", "fighter", []record.Entry{entry}), "diagnostics must not enter player narrative")
+			s.Empty(foldActs("sess", "fighter", ownStory([]record.Entry{entry})), "diagnostics must not enter player narrative")
 		})
 	}
 }
@@ -895,7 +895,7 @@ func (s *ActFoldSuite) TestFold_StateBeat() {
 	})
 
 	for _, seat := range []string{"alice", "bob", "fighter"} {
-		acts := foldActs("sess", seat, []record.Entry{state})
+		acts := foldActs("sess", seat, ownStory([]record.Entry{state}))
 
 		s.Require().Len(acts, 1, seat)
 		s.Equal(FamilyState, acts[0].Family, seat)
@@ -919,7 +919,7 @@ func (s *ActFoldSuite) TestFold_StateBeatNamingNoStateIsUndecoded() {
 		"no from":   {"beat": encounter.BeatState, "member": "reserve-1", "to": "marching"},
 		"no to":     {"beat": encounter.BeatState, "member": "reserve-1", "from": "waiting"},
 	} {
-		acts := foldActs("sess", "alice", []record.Entry{s.beat("", fields)})
+		acts := foldActs("sess", "alice", ownStory([]record.Entry{s.beat("", fields)}))
 
 		s.Require().Len(acts, 1, name)
 		s.Equal(FamilyState, acts[0].Family, name)
@@ -946,7 +946,7 @@ func (s *ActFoldSuite) TestFold_Barred() {
 			want:   BarredAct{Mover: member("alice"), Barrier: member("gate-1"), Door: "keep/gate", Verb: "unlock"},
 		},
 	} {
-		acts := foldActs("sess", "alice", []record.Entry{s.beat("", tc.fields)})
+		acts := foldActs("sess", "alice", ownStory([]record.Entry{s.beat("", tc.fields)}))
 
 		s.Require().Len(acts, 1, name)
 		s.Equal(FamilyAct, acts[0].Family, name)
@@ -963,7 +963,7 @@ func (s *ActFoldSuite) TestFold_BarredNamingNoPartyOrPlaceIsUndecoded() {
 		"no barrier": {"beat": encounter.BeatBarred, "mover": "alice", "door": "keep/gate"},
 		"no place":   {"beat": encounter.BeatBarred, "mover": "alice", "barrier": "gate-1"},
 	} {
-		acts := foldActs("sess", "alice", []record.Entry{s.beat("", fields)})
+		acts := foldActs("sess", "alice", ownStory([]record.Entry{s.beat("", fields)}))
 
 		s.Require().Len(acts, 1, name)
 		s.Equal(FamilyAct, acts[0].Family, name)
@@ -977,7 +977,7 @@ func (s *ActFoldSuite) TestFold_BarredNamingNoPartyOrPlaceIsUndecoded() {
 func (s *ActFoldSuite) TestFold_WakeCut() {
 	cut := s.beat("", map[string]any{"beat": encounter.BeatWakeCut, "matched": 4096, "dropped": 17})
 
-	acts := foldActs("sess", "alice", []record.Entry{cut})
+	acts := foldActs("sess", "alice", ownStory([]record.Entry{cut}))
 
 	s.Require().Len(acts, 1)
 	s.Equal(FamilyClock, acts[0].Family)
@@ -996,7 +996,7 @@ func (s *ActFoldSuite) TestFold_WakeCutWithNoCountIsUndecoded() {
 		"none dropped": {"beat": encounter.BeatWakeCut, "matched": 4096, "dropped": 0},
 		"no matched":   {"beat": encounter.BeatWakeCut, "dropped": 17},
 	} {
-		acts := foldActs("sess", "alice", []record.Entry{s.beat("", fields)})
+		acts := foldActs("sess", "alice", ownStory([]record.Entry{s.beat("", fields)}))
 
 		s.Require().Len(acts, 1, name)
 		s.Equal(FamilyClock, acts[0].Family, name)

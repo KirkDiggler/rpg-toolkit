@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -34,11 +35,15 @@ var (
 func besideTheStranger(t *testing.T, alice spatial.Position, raw ...[]byte) *freeRoamCastle {
 	t.Helper()
 	var c *freeRoamCastle
+	// EACH THEIR OWN (rpg-project#935): these tests pin what one member's
+	// own senses deliver; shared view's merge is castle_sharing_test.go's.
+	source := castleSource(t)
 	if len(raw) > 0 {
-		c = openTheCastleFrom(t, raw[0], []*character.Data{armedFighter("alice"), healingCleric()}, 18, 18, 18, 18)
-	} else {
-		c = openTheCastleForTwo(t, 18, 18, 18, 18)
+		source = raw[0]
 	}
+	alicesSheet := armedFighter("alice")
+	alicesSheet.AbilityScores[abilities.CHA] = 16
+	c = openTheCastleFrom(t, eachTheirOwn(t, source), []*character.Data{alicesSheet, healingCleric()}, 18, 18, 18, 18)
 	stranger := c.where(t, "pedlar")
 	c.placeInTheRecord(t, "cleric", spatial.Position{X: stranger.X + 1, Y: stranger.Y})
 	c.placeInTheRecord(t, "alice", alice)

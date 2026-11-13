@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 )
@@ -44,7 +45,11 @@ func (s *RecheckSuite) SetupTest() {
 	s.Require().NoError(err)
 	s.mgr = mgr
 
-	launchScene(s.T(), mgr, withCaptain(heirloomWorld(true)))
+	// Each their own (rpg-project#935): this suite pins whose sight a
+	// recheck tells; a friend's sighting at shared view is sharing_test.go's.
+	sc := withCaptain(heirloomWorld(true))
+	sc.Field.Sharing = encounter.SharingOwn
+	launchScene(s.T(), mgr, sc)
 	s.stream.published = nil
 }
 

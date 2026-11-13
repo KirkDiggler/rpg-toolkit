@@ -25,7 +25,7 @@ func speechVersion(fields map[string]any) map[string]any {
 // speechActsOf is the Speech acts a recipient is sent of the entries.
 func speechActsOf(recipient string, entries ...record.Entry) []Act {
 	var out []Act
-	for _, a := range foldActs("sess", recipient, entries) {
+	for _, a := range foldActs("sess", recipient, ownStory(entries)) {
 		if _, speech := a.Body.(SpeechAct); speech {
 			out = append(out, a)
 		}
@@ -136,7 +136,7 @@ func (s *ActFoldSuite) TestALineAndItsAnswerAreSpeechActsAndAPick() {
 	answered := s.beat("speak:one", map[string]any{"beat": encounter.BeatAnswered, "creature": "goblin", "word": "",
 		"roll": 3, "of": 100, "entry": 0, "candidates": []any{map[string]any{"entry": 0, "weight": 1, "percent": 100, "loaded": 100}}})
 	reply := s.beat("speak:one", speechVersion(map[string]any{"speaker": "goblin", "to": "alice", "words": "Evening yourself."}))
-	acts := foldActs("sess", "alice", []record.Entry{spoke, line, answered, reply})
+	acts := foldActs("sess", "alice", ownStory([]record.Entry{spoke, line, answered, reply}))
 
 	var kinds []string
 	for _, a := range acts {
@@ -167,7 +167,7 @@ func (s *ActFoldSuite) TestAPickTellsNoReaderMoreThanTheFoldedFormDid() {
 	answered := s.beat("speak:one", map[string]any{"beat": encounter.BeatAnswered, "creature": "goblin", "word": "",
 		"roll": 3, "of": 100, "entry": 0})
 	seen := s.beat("speak:one", speechVersion(map[string]any{"speaker": "goblin"}))
-	acts := foldActs("sess", "bea", []record.Entry{answered, seen})
+	acts := foldActs("sess", "bea", ownStory([]record.Entry{answered, seen}))
 	s.Require().Len(acts, 2)
 	pick := acts[0].Body.(TableAnswer)
 	s.Empty(pick.Option, "no line")
@@ -188,7 +188,7 @@ func (s *ActFoldSuite) TestARecordFromBeforeStillFolds() {
 	line := s.beat("speak:one", speechVersion(map[string]any{"speaker": "alice", "to": "goblin", "words": "Evening.", "option": "hello"}))
 	old := s.beat("speak:one", map[string]any{"beat": encounter.BeatAnswered, "creature": "goblin", "say": "Evening yourself.",
 		"to": "alice", "option": "hello", "key": "success", "word": ""})
-	acts := foldActs("sess", "alice", []record.Entry{spoke, line, old})
+	acts := foldActs("sess", "alice", ownStory([]record.Entry{spoke, line, old}))
 	s.Require().Len(acts, 2)
 	for _, a := range acts {
 		s.Empty(a.Undecoded, "every entry decodes")
@@ -202,9 +202,9 @@ func (s *ActFoldSuite) TestARecordFromBeforeStillFolds() {
 // TestAClangIsStillASound: a heard clang reaches a player as a sound, as
 // every sound but a voice always has.
 func (s *ActFoldSuite) TestAClangIsStillASound() {
-	acts := foldActs("sess", "alice", []record.Entry{s.beat("", map[string]any{
+	acts := foldActs("sess", "alice", ownStory([]record.Entry{s.beat("", map[string]any{
 		"beat": encounter.BeatHeard, "kind": encounter.SoundClang, "position": map[string]any{"x": 3, "y": 4}, "hops": 1,
-	})})
+	})}))
 	s.Require().Len(acts, 1)
 	p, ok := acts[0].Body.(Perception)
 	s.Require().True(ok, "a %T", acts[0].Body)
@@ -250,7 +250,7 @@ func (s *ActFoldSuite) TestASpeechVersionMissingWhatItOwesIsRefusedLoudly() {
 		{"a prop, no words", map[string]any{"speaker": "alice", "prop": "altar"}, "without the words"},
 	} {
 		s.Run(tc.name, func() {
-			acts := foldActs("sess", "bob", []record.Entry{s.beat("speak:one", speechVersion(tc.version))})
+			acts := foldActs("sess", "bob", ownStory([]record.Entry{s.beat("speak:one", speechVersion(tc.version))}))
 			s.Require().Len(acts, 1, "the entry stands in the stream")
 			s.Nil(acts[0].Body, "with no body")
 			s.Contains(acts[0].Undecoded, tc.says)

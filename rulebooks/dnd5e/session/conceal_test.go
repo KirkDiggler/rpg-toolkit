@@ -1532,3 +1532,39 @@ func (s *ConcealSuite) TestAGuidanceDieHeldDuringADiscoveryIsKept() {
 		s.NotEqual(session.VerbReact, row.Verb, "nobody is being asked")
 	}
 }
+
+// TestAFriendsFoundSecretIsSharedViaTheFinder is the same find at shared
+// view, the scene's default (rpg-project#935): bob and carol are each sent
+// alice's reveal marked via alice — and nothing else changes for them. The
+// record tells alice alone, and their own maps and door lists still hold
+// nothing of the vault: a friend's find is told, never learned.
+func (s *ConcealSuite) TestAFriendsFoundSecretIsSharedViaTheFinder() {
+	ctx := context.Background()
+	s.startWith(concealedWorld(encounter.DoorIsClosed()), sharpEyed("alice"))
+	_, err := s.find(ctx, "alice")
+	s.Require().NoError(err)
+
+	alice := session.Party{Kind: session.PartyMember, ID: "alice"}
+	got := map[string]*session.Perceived{}
+	for _, act := range s.stream.published {
+		p, ok := act.Body.(session.Perception)
+		if !ok || p.Revealed == nil || p.Revealed.Concealment != vaultSecret {
+			continue
+		}
+		s.Require().NotContains(got, act.Recipient, "one reveal each")
+		got[act.Recipient] = act.Perceived
+	}
+	s.Equal(map[string]*session.Perceived{
+		"alice": {Senses: []session.Sense{session.SenseReveal}},
+		"bob":   {Senses: []session.Sense{session.SenseReveal}, Via: []session.Party{alice}},
+		"carol": {Senses: []session.Sense{session.SenseReveal}, Via: []session.Party{alice}},
+	}, got)
+
+	s.Empty(s.beatsOf("bob", encounter.BeatConcealmentRevealed), "the record told alice alone")
+	blind, err := s.mgr.Atlas(ctx, &session.AtlasInput{Session: "sess", Member: "bob"})
+	s.Require().NoError(err)
+	s.ElementsMatch(hallFloor(), blind.Cells, "bob's map is the hall and nothing else")
+	doors, err := s.mgr.Doors(ctx, &session.DoorsInput{Session: "sess", Member: "bob"})
+	s.Require().NoError(err)
+	s.Empty(doors.Doors, "for bob the veil is still nowhere")
+}

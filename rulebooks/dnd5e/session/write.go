@@ -1545,7 +1545,7 @@ func (m *Manager) commitAt(ctx context.Context, scope *writeScope, final bool) (
 
 	view := scope.enc.WorldView()
 	recorded, next, newest := commitRecord(scope, from)
-	acts := commitActs(ctx, scope, m.acts, view.EverMembers, from)
+	acts := commitActs(ctx, scope, m.acts, view.EverMembers, dataParty(scope.enc.Sharing(), view.Members), from)
 
 	// FENCED, THE SEATS CLEAR INSIDE THE SAVE (rpg-toolkit#2332). The plain
 	// order below, clears after the run is durable, would leave a fenced

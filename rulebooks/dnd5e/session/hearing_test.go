@@ -18,6 +18,8 @@ package session_test
 
 import (
 	"context"
+	"encoding/json"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -76,7 +78,12 @@ func guardOrders() encounter.Table {
 	}}}
 }
 
-func (s *HearingSuite) SetupTest() {
+// SetupTest opens the scene at each their own (rpg-project#935): this
+// suite pins who hears, by their own ears.
+func (s *HearingSuite) SetupTest() { s.open(encounter.SharingOwn) }
+
+// open launches the scene afresh, the party's sharing dial at sharing.
+func (s *HearingSuite) open(sharing encounter.Sharing) {
 	s.stream = &fakeStream{}
 	s.encounters = newFakeEncounters()
 	mgr, err := session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: s.stream,
@@ -107,6 +114,7 @@ func (s *HearingSuite) SetupTest() {
 				ID: "door", Edges: []encounter.DoorEdge{{From: hexCell(5, 1), To: hexCell(6, 1)}}, State: encounter.DoorIsOpen(),
 			}},
 			Factions: []encounter.FactionInput{{ID: hearingCastle}, {ID: hearingThugs}},
+			Sharing:  sharing,
 			Dispositions: []encounter.DispositionInput{
 				{Between: [2]encounter.FactionID{hearingCastle, encounter.FactionParty}, Stance: encounter.StanceNeutral},
 				{Between: [2]encounter.FactionID{hearingThugs, encounter.FactionParty}, Stance: encounter.StanceNeutral},
@@ -279,4 +287,74 @@ func (s *HearingSuite) TestOnlyTheListenerWhoHeardIsTold() {
 		}
 	}
 	s.Equal([]string{"bob"}, recipients, "delivered live to the listener alone")
+}
+
+// TestAFriendsClangIsSharedViaTheListener is the same swing at shared view
+// (rpg-project#935): bob alone heard it, and alice, who made it, and carol,
+// who could not hear it through the door, are each sent bob's clang marked
+// via bob. Who HEARD is unchanged — the record tells bob alone.
+func (s *HearingSuite) TestAFriendsClangIsSharedViaTheListener() {
+	s.open(encounter.SharingView)
+	clang := s.positionOf("alice")
+	s.swing()
+
+	s.Equal([]heard{{Listener: "bob", Kind: encounter.SoundClang, Position: clang, Hops: 1}}, s.heardBy("bob"))
+	s.Empty(s.heardBy("carol"), "the record still tells bob alone")
+	s.Empty(s.heardBy("alice"))
+
+	got := map[string]*session.Perceived{}
+	for _, act := range s.stream.published {
+		if body, ok := act.Body.(session.Perception); ok && body.Sense == session.SenseHearing {
+			s.Require().NotContains(got, act.Recipient, "one clang each")
+			s.Equal(clang, body.Heard.Cell)
+			got[act.Recipient] = act.Perceived
+		}
+	}
+	bob := session.Party{Kind: session.PartyMember, ID: "bob"}
+	s.Equal(map[string]*session.Perceived{
+		"bob":   {Senses: []session.Sense{session.SenseHearing}},
+		"alice": {Senses: []session.Sense{session.SenseHearing}, Via: []session.Party{bob}},
+		"carol": {Senses: []session.Sense{session.SenseHearing}, Via: []session.Party{bob}},
+	}, got)
+}
+
+// TestSharingChangesNothingTheRulesDecided is the hard wall (rpg-project#935):
+// the same swing at each their own and at shared view writes the same
+// record, entry for entry and audience for audience, and leaves every player
+// the same bar to act from. The merge lives only in the act read path — no
+// offer, check, verb or rule reads what it builds.
+func (s *HearingSuite) TestSharingChangesNothingTheRulesDecided() {
+	type run struct {
+		record []string
+		bars   map[string]*session.AffordOutput
+	}
+	play := func(sharing encounter.Sharing) run {
+		s.open(sharing)
+		s.swing()
+		enc, err := s.mgr.LoadWorldForTest(context.Background(), "sess")
+		s.Require().NoError(err)
+		read, err := enc.ReadRecord(&encounter.ReadRecordInput{})
+		s.Require().NoError(err)
+		ulid := regexp.MustCompile(`[0-9A-HJKMNP-TV-Z]{26}`)
+		out := run{bars: map[string]*session.AffordOutput{}}
+		for _, e := range read.Entries {
+			raw, err := json.Marshal(struct {
+				Audience any
+				Tags     map[string]string
+				Payload  json.RawMessage
+			}{e.Audience, e.Tags, e.Payload})
+			s.Require().NoError(err)
+			out.record = append(out.record, ulid.ReplaceAllString(string(raw), "<id>"))
+		}
+		for _, m := range []string{"alice", "bob", "carol"} {
+			bar, err := s.mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: m})
+			s.Require().NoError(err)
+			out.bars[m] = bar
+		}
+		return out
+	}
+	own, view := play(encounter.SharingOwn), play(encounter.SharingView)
+	s.Require().NotEmpty(own.record)
+	s.Equal(own.record, view.record, "the same record, audience for audience")
+	s.Equal(own.bars, view.bars, "every bar is the rules', not the dial's")
 }

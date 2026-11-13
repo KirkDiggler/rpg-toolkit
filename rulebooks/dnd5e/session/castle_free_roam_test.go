@@ -11,6 +11,7 @@ package session_test
 // posts in it (R3).
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math"
@@ -80,6 +81,16 @@ func castleSource(t *testing.T) []byte {
 	raw, err := os.ReadFile(filepath.Join(strings.TrimSpace(string(out)), castleFixture))
 	require.NoError(t, err)
 	return raw
+}
+
+// eachTheirOwn is a castle source with the party's sharing set to each
+// their own (rpg-project#935): what a test of one member's own perception
+// opens, since the castle says nothing and so runs at shared view.
+func eachTheirOwn(t *testing.T, raw []byte) []byte {
+	t.Helper()
+	key := []byte("\nkey: the-mad-king\n")
+	require.Equal(t, 1, bytes.Count(raw, key), "precondition: the castle's key, once")
+	return bytes.Replace(raw, key, append(append([]byte(nil), key...), []byte("party: { sharing: own }\n")...), 1)
 }
 
 // openTheCastleFrom is [openTheCastleFor] over a given castle source.
