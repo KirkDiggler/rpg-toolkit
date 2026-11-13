@@ -11,7 +11,7 @@ require (
 	github.com/KirkDiggler/rpg-toolkit/play/clock v0.1.0
 	github.com/KirkDiggler/rpg-toolkit/play/intel v0.5.0
 	github.com/KirkDiggler/rpg-toolkit/play/record v0.4.0
-	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.16.1
+	github.com/KirkDiggler/rpg-toolkit/tools/spatial v0.16.5-0.20261113182406-0f9623b003ae
 	github.com/KirkDiggler/rpg-toolkit/world v0.4.0
 	github.com/stretchr/testify v1.11.1
 	gopkg.in/yaml.v3 v3.0.1

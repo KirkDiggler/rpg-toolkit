@@ -1152,6 +1152,23 @@ func validateHoldingsFacts(facts []journalEntry, f *field, everMembers []MemberI
 				return fmt.Errorf("holdings fact %d picks up prop %q, which this field does not place: %w",
 					i, id, ErrInvalidData)
 			}
+		case strings.HasPrefix(kind, relocatedPrefix):
+			// A MEMBER SET DOWN ELSEWHERE (relocate.go): the actor is the
+			// member, the subject says so, and the cell is one a member can
+			// stand on.
+			id, at, ok := parseRelocated(kind)
+			if !ok {
+				return fmt.Errorf("holdings fact %d names kind %q, which is not a relocation this build writes: %w",
+					i, kind, ErrInvalidData)
+			}
+			if fd.Actor != string(id) || journal.EntityID(fd.Subject) != memberSubject(id) {
+				return fmt.Errorf("holdings fact %d relocates %q and names actor %q, subject %q: %w",
+					i, id, fd.Actor, fd.Subject, ErrInvalidData)
+			}
+			if !f.isStandable(at) {
+				return fmt.Errorf("holdings fact %d sets member %q down at [%g,%g], where nobody can stand: %w",
+					i, id, at.X, at.Y, ErrInvalidData)
+			}
 		case strings.HasPrefix(kind, droppedPrefix):
 			id, at, ok := parseDropped(kind)
 			if !ok {

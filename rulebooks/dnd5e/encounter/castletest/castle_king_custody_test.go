@@ -35,9 +35,9 @@ var custodyTests = []string{
 	"TestMadKingTheTakenAreHeld", "TestMadKingTheFreeWalkWhileTheTakenAreHeld",
 	"TestMadKingATakenMembersBlowEndsCustody", "TestMadKingAFriendsBlowEndsCustody",
 	"TestMadKingATakenMemberWhoLeavesStaysTaken", "TestMadKingCustodyIsKeptOnReload",
-	"TestMadKingAFightWithoutTheGuardsFreesNobody", "TestMadKingNothingButTheMarchMovesTheHeld",
+	"TestMadKingAFightWithoutTheGuardsFreesNobody", "TestMadKingNoDirectiveMovesTheHeld",
 	"TestMadKingAnArrestSavedBeforeCustodyLoadsHeld", "TestMadKingAnAreaCastLandsAndLeavesTheHeldInPlace",
-	"TestMadKingAHeldCastersOwnAreaCastLands",
+	"TestMadKingAHeldCastersOwnAreaCastLands", "TestMadKingNoRequestRelocatesTheHeld",
 }
 
 // custody is the castle's one arrest's custody phase.
@@ -246,10 +246,11 @@ func TestMadKingAFightWithoutTheGuardsFreesNobody(t *testing.T) {
 	}
 }
 
-// TestMadKingNothingButTheMarchMovesTheHeld: while custody holds, a flee
-// imposed on a taken member and a shove are each refused with the actor's
-// sentence and move nobody; the march's own cause moves them. Once custody is broken a flee moves them as usual.
-func TestMadKingNothingButTheMarchMovesTheHeld(t *testing.T) {
+// TestMadKingNoDirectiveMovesTheHeld: while custody holds, a flee imposed on
+// a taken member and a shove are each refused with the actor's sentence and
+// move nobody, whatever cause the host names, the arrest's own included.
+// Once custody is broken a flee moves them as usual.
+func TestMadKingNoDirectiveMovesTheHeld(t *testing.T) {
 	t.Parallel()
 	s, _ := theArrest(t)
 	flee := core.Ref{Module: "dnd5e", Type: "spells", ID: "command"}
@@ -265,11 +266,10 @@ func TestMadKingNothingButTheMarchMovesTheHeld(t *testing.T) {
 		require.Equal(t, at, s.at(inTheArea), "and moves nobody")
 	}
 
-	out, err := s.enc.Direct(context.Background(), encounter.DirectInput{
-		Mover: inTheArea, Cause: encounter.CustodyMarchCause, Route: route.Path[:1], Kind: encounter.MoveCompelled,
+	_, err = s.enc.Direct(context.Background(), encounter.DirectInput{
+		Mover: inTheArea, Cause: core.Ref{Module: "dnd5e", Type: "consequences", ID: "arrest"}, Route: route.Path[:1], Kind: encounter.MoveCompelled,
 	})
-	require.NoError(t, err, "the march's own cause moves a held member")
-	require.Equal(t, 1, out.Moved)
+	require.ErrorIs(t, err, encounter.ErrInCustody, "no cause a host can name moves a held member, the arrest's own included")
 
 	s.swingAs(hero, kingCaptain)
 	require.Equal(t, encounter.CustodyBroken, s.custody())
@@ -423,4 +423,24 @@ func TestMadKingAHeldCastersOwnAreaCastLands(t *testing.T) {
 	require.NotEqual(t, guardAt, s.at(kingGate2), "gate-2 is thrown")
 	require.Equal(t, at, s.at(hero), "the caster stands where they were taken")
 	require.Equal(t, encounter.CustodyBroken, s.custody(), "the fight with gate-2 breaks custody")
+}
+
+// TestMadKingNoRequestRelocatesTheHeld: while custody holds, the relocation
+// verb refuses a held member whatever cause the request names — the
+// arrest's own included — and moves nobody; a free member in the same call
+// keeps the call refused whole.
+func TestMadKingNoRequestRelocatesTheHeld(t *testing.T) {
+	t.Parallel()
+	s, _ := theArrest(t)
+	cells, err := s.enc.FreeCellsIn("region-cells", 2)
+	require.NoError(t, err)
+	at, free := s.at(inTheArea), s.at(neverNear)
+	_, err = s.enc.Relocate(&encounter.RelocateInput{
+		Moves: []encounter.Relocation{{Member: neverNear, To: cells[0]}, {Member: inTheArea, To: cells[1]}},
+		Cause: encounter.RelocationCause{Ref: core.Ref{Module: "dnd5e", Type: "consequences", ID: "arrest"}, Words: "The guards march you to the cells."},
+	})
+	require.ErrorIs(t, err, encounter.ErrInCustody, "no request relocates a held member")
+	require.Contains(t, err.Error(), "The guards hold in-the-area; they cannot be moved.")
+	require.Equal(t, at, s.at(inTheArea), "nobody moved")
+	require.Equal(t, free, s.at(neverNear), "not even the free member in the same call")
 }
