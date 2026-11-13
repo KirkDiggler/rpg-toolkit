@@ -678,7 +678,10 @@ type CellsLearned struct {
 // Perception is what one observer newly perceived. It is folded from the
 // observer's own entries, so it never reaches anybody else.
 type Perception struct {
-	// Observer is the recipient.
+	// Observer is whose perception this is: the recipient's own, or — at
+	// shared view, through a friend ([Perceived.Via]) — that friend's. Every
+	// field below is relative to the Observer (what they saw gained, how far
+	// they heard it, what their map learned). The reader is [Act.Recipient].
 	Observer Party
 	// Sense is how it was perceived; exactly the matching part is set.
 	Sense     Sense

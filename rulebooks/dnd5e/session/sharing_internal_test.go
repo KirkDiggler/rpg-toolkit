@@ -90,7 +90,9 @@ func (s *ActFoldSuite) TestAFriendsEntryArrivesOnceMarkedVia() {
 
 	heard := acts[1].Body.(Perception)
 	s.Equal("clang", heard.Heard.Kind)
-	s.Equal(member("alice"), heard.Observer, "the recipient, as every perception names")
+	s.Equal(member("bob"), heard.Observer, "whose perception it is: bob's, the first friend by id; alice only reads it")
+	s.Equal("alice", acts[1].Recipient)
+	s.Equal(member("alice"), acts[2].Body.(Perception).Observer, "her own is hers")
 	s.Equal(&Perceived{Senses: []Sense{SenseHearing}, Via: []Party{member("bob"), member("carol")}}, acts[1].Perceived,
 		"heard, through both friends who heard it")
 	s.Equal(&Perceived{Senses: []Sense{SenseHearing}}, acts[2].Perceived, "her own: the sense, and no via")
@@ -391,5 +393,54 @@ func (s *ActFoldSuite) TestOneEntryPerPerceivedFact() {
 
 		later := to(s.beat("", clang), "bob")
 		s.Len(sharedActs("alice", []string{"bob"}, bobs, hers, later), 2, "a second clang at another moment is its own")
+	})
+}
+
+// TestHerOwnTwoOfAKindAreNeverMerged: the merge may drop a friend's copy of
+// a fact she holds, and collapse friends' copies of one fact into one; it
+// never drops or merges two of her own entries.
+func (s *ActFoldSuite) TestHerOwnTwoOfAKindAreNeverMerged() {
+	clang := map[string]any{"beat": encounter.BeatHeard, "kind": "clang", "position": cell(3, 3), "hops": 1}
+	same := func(es ...record.Entry) []record.Entry {
+		for i := range es {
+			es[i].At = es[0].At
+		}
+		return es
+	}
+	ownCount := func(acts []Act) (own, via int) {
+		for _, a := range acts {
+			if len(viaOf(a)) == 0 {
+				own++
+			} else {
+				via++
+			}
+		}
+		return own, via
+	}
+
+	s.Run("two of her own, alike in every way, are two", func() {
+		es := same(to(s.beat("", clang), "alice"), to(s.beat("", clang), "alice"))
+		own := foldActs("sess", "alice", ownStory(es))
+		view := sharedActs("alice", []string{"bob"}, es...)
+		s.Len(own, 2)
+		s.Equal(own, view, "at shared view as at her own")
+	})
+	s.Run("two of hers and one of a friend's: her two, his dropped", func() {
+		es := same(to(s.beat("", clang), "alice"), to(s.beat("", clang), "bob"), to(s.beat("", clang), "alice"))
+		o, v := ownCount(sharedActs("alice", []string{"bob"}, es...))
+		s.Equal(2, o)
+		s.Zero(v)
+	})
+	s.Run("one of hers and two of a friend's: hers, and his second through him", func() {
+		es := same(to(s.beat("", clang), "bob"), to(s.beat("", clang), "alice"), to(s.beat("", clang), "bob"))
+		o, v := ownCount(sharedActs("alice", []string{"bob"}, es...))
+		s.Equal(1, o)
+		s.Equal(1, v)
+	})
+	s.Run("two friends' one clang is one, through both", func() {
+		es := same(to(s.beat("", clang), "bob"), to(s.beat("", clang), "carol"))
+		acts := sharedActs("alice", []string{"bob", "carol"}, es...)
+		s.Require().Len(acts, 1)
+		s.Equal([]Party{member("bob"), member("carol")}, viaOf(acts[0]))
 	})
 }

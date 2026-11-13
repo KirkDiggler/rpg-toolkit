@@ -76,6 +76,37 @@ type sharingParty struct {
 	players []encounter.MemberID
 	// inRoster is every current roster member, any kind.
 	inRoster map[encounter.MemberID]bool
+	// departed are the members who have left the run and were players when
+	// they did, read by a catch-up ([sharingParty.departedFrom]); nil on the
+	// live path, where a member who left before this commit perceived
+	// nothing in it, and one who left in it is in the recipient's own delta.
+	departed []encounter.MemberID
+}
+
+// departedFrom adds every member who has left the run as a player: each of
+// everMembers not in the current roster, its kind read off its own story's
+// membership entries — the latest that names a kind. A member whose entries
+// name none (a record older than encounter v0.205.1) is kind unknown, and no
+// sharer ([partyMember]).
+func (p *sharingParty) departedFrom(everMembers []encounter.MemberID,
+	storyOf func(encounter.MemberID) []record.Entry) {
+	if p == nil {
+		return
+	}
+	for _, id := range everMembers {
+		if p.inRoster[id] {
+			continue
+		}
+		kind := kindUnknown
+		for _, m := range membershipsIn(storyOf(id)) {
+			if m.member == id && m.kind != kindUnknown {
+				kind = m.kind
+			}
+		}
+		if partyMember(kind) {
+			p.departed = append(p.departed, id)
+		}
+	}
 }
 
 // partyMember is the one rule for who is of the party that shares (Q1, to
@@ -95,37 +126,23 @@ func partyMember(kind encounter.MemberKind) bool {
 	return kind == encounter.KindPlayer
 }
 
-// newSharingParty reads the party from one roster read. Nil unless the dial
+// dataParty reads the party from one roster read — the world view a commit
+// already built, or the stored world a catch-up loaded. Nil unless the dial
 // is shared view; shared knowledge is refused at launch
 // ([encounter.LaunchableSharing]), so no run reads it.
-func newSharingParty[M any](sharing encounter.Sharing, roster []M, of func(M) (encounter.MemberID, encounter.MemberKind)) *sharingParty {
+func dataParty(sharing encounter.Sharing, roster []encounter.MemberData) *sharingParty {
 	if sharing != encounter.SharingView {
 		return nil
 	}
 	p := &sharingParty{inRoster: make(map[encounter.MemberID]bool, len(roster))}
 	for _, m := range roster {
-		id, kind := of(m)
-		p.inRoster[id] = true
-		if partyMember(kind) {
-			p.players = append(p.players, id)
+		p.inRoster[m.ID] = true
+		if partyMember(m.Kind) {
+			p.players = append(p.players, m.ID)
 		}
 	}
 	slices.Sort(p.players)
 	return p
-}
-
-// rosterParty is the party read from a live roster ([encounter.Encounter.Members]).
-func rosterParty(sharing encounter.Sharing, roster []encounter.Member) *sharingParty {
-	return newSharingParty(sharing, roster, func(m encounter.Member) (encounter.MemberID, encounter.MemberKind) {
-		return m.ID, m.Kind
-	})
-}
-
-// dataParty is the party read from a world view's roster.
-func dataParty(sharing encounter.Sharing, roster []encounter.MemberData) *sharingParty {
-	return newSharingParty(sharing, roster, func(m encounter.MemberData) (encounter.MemberID, encounter.MemberKind) {
-		return m.ID, m.Kind
-	})
 }
 
 // membership is one `joined` or `exited` entry: who, and whether they came
@@ -202,9 +219,12 @@ func (p *sharingParty) storyFor(recipient encounter.MemberID, own []record.Entry
 	moves := membershipsIn(own)
 	isPlayer := slices.Contains(p.players, recipient)
 	friends := make([]encounter.MemberID, 0, len(p.players))
-	for _, id := range p.players {
+	for _, id := range append(slices.Clone(p.players), p.departed...) {
 		if id != recipient {
 			friends = append(friends, id)
+		}
+		if id == recipient {
+			isPlayer = true
 		}
 	}
 	for _, m := range moves {
@@ -387,51 +407,86 @@ func oneSpeechPerUtterance(entries []storyEntry) []storyEntry {
 	return out
 }
 
-// onePerFact keeps one entry per fact several perceivers were each told in
-// an entry of their own (entryHead.fact): the recipient's own where they
-// have one, unmarked — a friend who perceived it too adds nothing she lacks
-// — else the first in record order, its Via every friend who was told it.
+// onePerFact keeps the recipient's own entries of a fact several perceivers
+// were each told in an entry of their own (entryHead.fact), and collapses
+// friends' copies of it.
+//
+// THE MERGE NEVER DROPS OR MERGES TWO OF THE RECIPIENT'S OWN ENTRIES: two
+// clangs she heard are two clangs, however alike. A fact's copies are
+// counted per perceiver, in record order: her k-th copy stands for every
+// friend's k-th copy, which are dropped; beyond her own count, the friends'
+// k-th copies collapse into ONE entry — the earliest — naming every friend
+// whose k-th copy it was. So a friend who heard two clangs she did not is
+// two entries through him, and two friends who heard the one clang are one.
+//
 // The setting that decides whether a find becomes the party's KNOWLEDGE is
 // the character's: when a finder shares discoveries the engine writes each
 // player their own reveal, and so nobody's comes through a friend.
 func onePerFact(entries []storyEntry) []storyEntry {
-	stand := map[string]int{}
+	type copies struct {
+		own     []int
+		friends map[encounter.MemberID][]int
+	}
+	facts := map[string]*copies{}
 	for i, e := range entries {
 		f := e.head.fact
 		if f == "" {
 			continue
 		}
-		at, seen := stand[f]
-		if !seen || (entries[at].via != nil && e.via == nil) {
-			stand[f] = i
+		c := facts[f]
+		if c == nil {
+			c = &copies{friends: map[encounter.MemberID][]int{}}
+			facts[f] = c
 		}
-	}
-	if len(stand) == 0 {
-		return entries
-	}
-	via := map[string][]encounter.MemberID{}
-	for _, e := range entries {
-		f := e.head.fact
-		if f == "" || entries[stand[f]].via == nil {
+		if e.via == nil {
+			c.own = append(c.own, i)
 			continue
 		}
 		for _, id := range e.via {
-			if !slices.Contains(via[f], id) {
-				via[f] = append(via[f], id)
+			c.friends[id] = append(c.friends[id], i)
+		}
+	}
+	if len(facts) == 0 {
+		return entries
+	}
+	drop := map[int]bool{}
+	via := map[int][]encounter.MemberID{}
+	for _, c := range facts {
+		depth := 0
+		for _, list := range c.friends {
+			depth = max(depth, len(list))
+		}
+		for k := 0; k < depth; k++ {
+			stand := -1
+			if k < len(c.own) {
+				stand = c.own[k]
+			}
+			for _, list := range c.friends {
+				if k < len(list) && (stand < 0 || (k >= len(c.own) && list[k] < stand)) {
+					stand = list[k]
+				}
+			}
+			for id, list := range c.friends {
+				if k >= len(list) {
+					continue
+				}
+				if list[k] != stand {
+					drop[list[k]] = true
+				}
+				if k >= len(c.own) && !slices.Contains(via[stand], id) {
+					via[stand] = append(via[stand], id)
+				}
 			}
 		}
 	}
 	out := entries[:0:0]
 	for i, e := range entries {
-		f := e.head.fact
-		if f != "" {
-			if stand[f] != i {
-				continue
-			}
-			if e.via != nil {
-				e.via = via[f]
-				slices.Sort(e.via)
-			}
+		if drop[i] {
+			continue
+		}
+		if names, ok := via[i]; ok {
+			slices.Sort(names)
+			e.via = names
 		}
 		out = append(out, e)
 	}
@@ -631,7 +686,17 @@ func entryPieces(recipient, tag string, e storyEntry) []piece {
 		}
 		return []piece{p}
 	}
-	return marked(e, piecesOf(recipient, tag, e.Payload))
+	// WHOSE PERCEPTION IT IS: the recipient's own, or — through a friend —
+	// that friend's. A perception names its Observer, and an entry a
+	// friend's story carried is the friend's perception, never the reader's
+	// (the reader is the act's Recipient; Via says through whom). Where one
+	// entry reached several friends, the first by id is named, and Via
+	// lists them all.
+	observer := recipient
+	if e.via != nil {
+		observer = string(e.via[0])
+	}
+	return marked(e, piecesOf(observer, tag, e.Payload))
 }
 
 // sameVia reports whether two acts reached their recipient through the same

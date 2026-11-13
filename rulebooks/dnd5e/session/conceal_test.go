@@ -1607,6 +1607,11 @@ func (s *ConcealSuite) TestAFriendsUnchosenFindIsShownNotLearned() {
 		"carol": {Senses: []session.Sense{session.SenseReveal}, Via: []session.Party{alice}},
 	}, s.revealsOfTheVault(), "shared view: shown to her friends, through her")
 	s.Empty(s.beatsOf("bob", encounter.BeatConcealmentRevealed), "the record told alice alone")
+	for _, act := range s.stream.published {
+		if p, ok := act.Body.(session.Perception); ok && p.Revealed != nil && act.Recipient == "bob" {
+			s.Equal(alice, p.Observer, "bob reads alice's find: she is its observer")
+		}
+	}
 
 	view := s.knownBy("bob")
 	s.ElementsMatch(hallFloor(), view.atlas.Cells, "bob's map is the hall and nothing else")

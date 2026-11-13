@@ -287,6 +287,15 @@ func (s *HearingSuite) TestOnlyTheListenerWhoHeardIsTold() {
 		}
 	}
 	s.Equal([]string{"bob"}, recipients, "delivered live to the listener alone")
+
+	// HOW HE PERCEIVED IT, at each their own too (rpg-project#935): every
+	// perception act carries its one sense, Via empty — the one change the
+	// dial's PR makes at `own`.
+	for _, act := range s.stream.published {
+		if body, ok := act.Body.(session.Perception); ok && body.Sense == session.SenseHearing {
+			s.Equal(&session.Perceived{Senses: []session.Sense{session.SenseHearing}}, act.Perceived)
+		}
+	}
 }
 
 // TestAFriendsClangIsSharedViaTheListener is the same swing at shared view

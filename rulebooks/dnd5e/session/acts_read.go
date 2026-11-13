@@ -66,7 +66,17 @@ func (m *Manager) Acts(ctx context.Context, in *ActsInput) (*ActsOutput, error) 
 	if err != nil {
 		return nil, fmt.Errorf("acts: %w", err)
 	}
-	enc, err := m.loadWorld(ctx, data)
+	// The stored world is kept beside the loaded one: its roster and its
+	// ever-members are what the sharing dial reads, at no further cost.
+	driver, err := m.resolveTurnDriver(ctx, data.ID)
+	if err != nil {
+		return nil, fmt.Errorf("acts: %w", err)
+	}
+	world, err := m.fetchWorld(ctx, data.Encounter)
+	if err != nil {
+		return nil, fmt.Errorf("acts: %w", err)
+	}
+	enc, _, _, err := m.loadGivenWorld(ctx, data, world, nil, driver)
 	if err != nil {
 		return nil, fmt.Errorf("acts: %w", err)
 	}
@@ -85,24 +95,27 @@ func (m *Manager) Acts(ctx context.Context, in *ActsInput) (*ActsOutput, error) 
 		return nil, fmt.Errorf("acts: %w", translate(err))
 	}
 	// THE PARTY'S SHARING DIAL (sharing.go): at shared view, the friends'
-	// whole stories too, merged exactly as the commit merges its delta. The
-	// roster is read only then.
-	var party *sharingParty
-	if enc.Sharing() == encounter.SharingView {
-		roster, rerr := enc.Members()
-		if rerr != nil {
-			return nil, fmt.Errorf("acts: %w", translate(rerr))
-		}
-		party = rosterParty(enc.Sharing(), roster)
-	}
+	// whole stories too, merged exactly as the commit merges its delta.
 	var readErr error
+	stories := map[encounter.MemberID][]record.Entry{}
 	storyOf := func(id encounter.MemberID) []record.Entry {
+		if entries, ok := stories[id]; ok {
+			return entries
+		}
 		entries, serr := enc.Story(&encounter.StoryInput{Audience: id})
 		if serr != nil && readErr == nil {
 			readErr = serr
 		}
+		stories[id] = entries
 		return entries
 	}
+	party := dataParty(enc.Sharing(), world.Members)
+	// EVERY MEMBER WHO WAS EVER A PLAYER HERE, not only those her own story
+	// saw leave: a friend who left while she was away shared with her before
+	// that, and a catch-up must hold what was sent live. Catch-up only — one
+	// story read per member who has left the run, its kind from their own
+	// membership entries; the live commit reads none.
+	party.departedFrom(world.EverMembers, storyOf)
 	entries := party.storyFor(recipient, own, storyOf)
 	if readErr != nil {
 		return nil, fmt.Errorf("acts: %w", translate(readErr))

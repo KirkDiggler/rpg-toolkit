@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
@@ -40,15 +41,17 @@ func shoutedTonight(raw []byte) ([]byte, error) {
 var roadCastleTests = []string{
 	"TestCastleAFriendsShoutReachesTheGreatHallViaHer", "TestCastleEachTheirOwnTheGreatHallHearsNothing",
 	"TestCastleAFriendsSightingIsSharedViaHer", "TestCastleAFriendWhoLeftKeepsWhatHeShared",
+	"TestCastleCatchUpHoldsAFriendWhoLeftWhileSheWasAway", "TestCastleCatchUpHoldsAFriendWhoLeftFirst",
+	"TestCastleCatchUpHoldsWhatWasSharedWithTwoAway",
 }
 
 // roadCastles is the castle with the stranger's line shouted, launched once
 // for alice and the cleric at each stop of the dial and kept as stores, so
 // each test restores a launched run rather than paying the launch.
 var roadCastles struct {
-	once      sync.Once
-	err       error
-	view, own castleStores
+	once             sync.Once
+	err              error
+	view, own, three castleStores
 }
 
 // buildTheRoadCastles launches both. It takes no *testing.T because
@@ -75,11 +78,16 @@ func buildTheRoadCastles() {
 		roadCastles.err = err
 		return
 	}
+	if roadCastles.three, err = launchTheRoad(shouted, armedFighter("bob")); err != nil {
+		roadCastles.err = err
+		return
+	}
 	roadCastles.own, roadCastles.err = launchTheRoad(own)
 }
 
-// launchTheRoad launches source for alice and the cleric and keeps its stores.
-func launchTheRoad(source []byte) (castleStores, error) {
+// launchTheRoad launches source for alice, the cleric and anyone more, and
+// keeps its stores.
+func launchTheRoad(source []byte, more ...*character.Data) (castleStores, error) {
 	compiled, err := dungeonspec.Load(source)
 	if err != nil {
 		return castleStores{}, err
@@ -87,7 +95,7 @@ func launchTheRoad(source []byte) (castleStores, error) {
 	alice := armedFighter("alice")
 	alice.AbilityScores[abilities.CHA] = 16
 	c := &freeRoamCastle{
-		live: &actCapture{}, dice: &castleDice{d20s: []int{18}}, characters: newFakeCharacters(alice, healingCleric()),
+		live: &actCapture{}, dice: &castleDice{d20s: []int{18}}, characters: newFakeCharacters(append([]*character.Data{alice, healingCleric()}, more...)...),
 		encounters: newFakeEncounters(), sessions: newFakeSessions(), seats: newFakeSeats(),
 	}
 	c.mgr, err = session.NewManager(&session.Config{Record: session.DiscardRecord{}, Acts: c.live, Seats: c.seats, CharacterConfig: newFakeCharacterConfig(),
@@ -97,7 +105,11 @@ func launchTheRoad(source []byte) (castleStores, error) {
 	if err != nil {
 		return castleStores{}, err
 	}
-	if _, err := c.mgr.Launch(context.Background(), &session.LaunchInput{Session: "sess", Dungeon: &compiled, Party: []string{"alice", "cleric"}}); err != nil {
+	party := []string{"alice", "cleric"}
+	for _, sheet := range more {
+		party = append(party, sheet.ID)
+	}
+	if _, err := c.mgr.Launch(context.Background(), &session.LaunchInput{Session: "sess", Dungeon: &compiled, Party: party}); err != nil {
 		return castleStores{}, fmt.Errorf("launch: %w", err)
 	}
 	return castleStores{sessions: c.sessions.byID, encounters: c.encounters.byID, characters: c.characters.byID, seats: c.seats.byID}, nil
@@ -115,6 +127,13 @@ func theRoadAndTheHall(t *testing.T, eachOwn bool) *freeRoamCastle {
 	if eachOwn {
 		stores = roadCastles.own
 	}
+	return restoreTheRoad(t, stores)
+}
+
+// restoreTheRoad restores stores with the cleric beside the stranger and
+// alice in the great hall.
+func restoreTheRoad(t *testing.T, stores castleStores) *freeRoamCastle {
+	t.Helper()
 	c := &freeRoamCastle{
 		live: &actCapture{}, dice: &castleDice{d20s: []int{18, 18, 18, 18}},
 		sessions: newFakeSessions(), encounters: newFakeEncounters(),
@@ -212,6 +231,8 @@ func TestCastleAFriendsSightingIsSharedViaHer(t *testing.T) {
 			continue // the cleric's own sight, on the road
 		}
 		require.Equal(t, alice, p.act.Perceived.Via, "a sighting through a friend is alice's")
+		require.Equal(t, alice[0], p.body.Observer, "and names her as the one who saw — the cleric only reads it")
+		require.Equal(t, "cleric", p.act.Recipient)
 		gained = append(gained, p.body.Sighted.Gained...)
 	}
 	require.NotEmpty(t, gained, "alice saw the great hall's people, and the cleric is told")
@@ -301,4 +322,77 @@ func TestCastleSharedKnowledgeIsPreviewedButNeverLaunched(t *testing.T) {
 	require.NotErrorIs(t, err, encounter.ErrSharedKnowledgeNotBuilt, "no inner sentinel crosses the boundary")
 	require.ErrorContains(t, err, "the party's sharing is set to shared knowledge, and shared knowledge is not built yet (rpg-project#937)")
 	require.Empty(t, c.sessions.byID, "no run was written")
+}
+
+// leaving is the castle's exits and returns, for the catch-up tests below.
+type leaving struct{ c *freeRoamCastle }
+
+func (l leaving) exit(t *testing.T, who string) {
+	t.Helper()
+	_, err := l.c.mgr.Exit(context.Background(), &session.ExitInput{Session: "sess", Member: who})
+	require.NoError(t, err, "%s leaves", who)
+}
+
+func (l leaving) rejoin(t *testing.T, who string) {
+	t.Helper()
+	_, err := l.c.mgr.Join(context.Background(), &session.JoinInput{Session: "sess", Member: who, Position: inTheGreatHall})
+	require.NoError(t, err, "%s comes back", who)
+}
+
+// holds asserts who's catch-up after held opens with exactly what they were
+// sent live, the cleric's shout among it.
+func (l leaving) holds(t *testing.T, who, held string, live []session.Act) {
+	t.Helper()
+	require.NotEmpty(t, where[session.SpeechAct](live, func(s session.SpeechAct) bool { return s.Option == "tonight" }),
+		"precondition: %s was sent the shout through the cleric", who)
+	caught, err := l.c.mgr.Acts(context.Background(), &session.ActsInput{Session: "sess", Member: who, AfterID: held})
+	require.NoError(t, err)
+	require.GreaterOrEqual(t, len(caught.Acts), len(live), "%s's catch-up", who)
+	require.Equal(t, live, caught.Acts[:len(live)], "%s's catch-up opens with what was sent live", who)
+}
+
+// sharedThenLeft plays the cleric's shout to alice in the great hall, then
+// the two leave in the order given and alice comes back, and asserts alice's
+// catch-up still opens with what the cleric shared.
+func sharedThenLeft(t *testing.T, first, second string) {
+	c := theRoadAndTheHall(t, false)
+	l := leaving{c}
+	held := c.lastActID(t, "alice")
+	live := c.clericSays(t, "tonight").to("alice")
+	l.exit(t, first)
+	l.exit(t, second)
+	l.rejoin(t, "alice")
+	l.holds(t, "alice", held, live)
+}
+
+// TestCastleCatchUpHoldsAFriendWhoLeftWhileSheWasAway is the reviewer's
+// probe: alice leaves, the cleric leaves while she is away — so her own story
+// never holds his exit — and alice comes back. Her catch-up still holds what
+// the cleric shared with her before either left.
+func TestCastleCatchUpHoldsAFriendWhoLeftWhileSheWasAway(t *testing.T) {
+	sharedThenLeft(t, "alice", "cleric")
+}
+
+// TestCastleCatchUpHoldsAFriendWhoLeftFirst: the other order — the cleric
+// leaves, then alice, then alice comes back.
+func TestCastleCatchUpHoldsAFriendWhoLeftFirst(t *testing.T) {
+	sharedThenLeft(t, "cleric", "alice")
+}
+
+// TestCastleCatchUpHoldsWhatWasSharedWithTwoAway: three players; the cleric
+// shouts to alice and bob in the great hall; alice and the cleric leave while
+// bob stays, and alice comes back. Both catch-ups hold what the cleric shared.
+func TestCastleCatchUpHoldsWhatWasSharedWithTwoAway(t *testing.T) {
+	roadCastles.once.Do(buildTheRoadCastles)
+	require.NoError(t, roadCastles.err)
+	c := restoreTheRoad(t, roadCastles.three)
+	l := leaving{c}
+	c.placeInTheRecord(t, "bob", inTheGreatHall)
+	heldAlice, heldBob := c.lastActID(t, "alice"), c.lastActID(t, "bob")
+	shout := c.clericSays(t, "tonight")
+	l.exit(t, "alice")
+	l.exit(t, "cleric")
+	l.holds(t, "bob", heldBob, shout.to("bob"))
+	l.rejoin(t, "alice")
+	l.holds(t, "alice", heldAlice, shout.to("alice"))
 }
