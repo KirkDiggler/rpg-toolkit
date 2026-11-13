@@ -255,10 +255,52 @@ func (e *Encounter) arrestingGuards(id InteractionID) ([]MemberID, error) {
 	return out, nil
 }
 
+// arrestParty is whom an arrest can take or want: the PLAYER characters of
+// the speaker's faction, the speaker among them when they are one, in id
+// order. A creature authored into the party's faction is never taken and
+// never wanted: the party is players only, to start, as the sharing dial
+// rules it (rpg-project#935); the faction stays the pathway, so widening it
+// is this one function.
+func (e *Encounter) arrestParty(speaker MemberID) []MemberID {
+	var out []MemberID
+	for _, id := range e.partyOf(speaker) {
+		if e.members[id].Kind == KindPlayer {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// arrestPartyCells is where each player of the speaker's party stands now
+// ([Encounter.arrestParty]), nil when none is placed: what a kept line's
+// scene keeps ([ReservedScene.PartyAt]) so an arrest settled later is
+// decided where they stood when the words were said.
+func (e *Encounter) arrestPartyCells(speaker MemberID) map[MemberID]spatial.Position {
+	var out map[MemberID]spatial.Position
+	for _, id := range e.arrestParty(speaker) {
+		if at, placed := e.canvas.GetEntityPosition(string(id)); placed {
+			if out == nil {
+				out = map[MemberID]spatial.Position{}
+			}
+			out[id] = at
+		}
+	}
+	return out
+}
+
 // applyArrest makes one interaction's arrest: decides the taken and the
-// wanted on the live reach, stores the record, ends the interaction's
-// address, writes the guards' records and tells the arrest. A record already
-// made is never made again.
+// wanted, stores the record, ends the interaction's address, writes the
+// guards' records and tells the arrest. A record already made is never made
+// again.
+//
+// THE MOMENT IS THE LINE'S (rpg-project#938's rule): a line judged as spoken
+// — an abandoned settle of a kept roll — is decided in the scene of its
+// words: where each player stood then ([ReservedScene.PartyAt]), whom the
+// creature spoken to saw ([ReservedScene.Seen]) and whom each other guard
+// who witnessed it saw ([ReservedScene.Perceived]). Walking away before the
+// settle dodges nothing, and walking into view before it takes nobody. Any
+// other line is decided on the live reach as it is said. Who is wanted is
+// read from the guards' memory as it stands when the record is made.
 func (e *Encounter) applyArrest(r *interactionRecord, a Arrest, line recognitionLine) error {
 	if r.arrest != nil {
 		return nil
@@ -271,18 +313,31 @@ func (e *Encounter) applyArrest(r *interactionRecord, a Arrest, line recognition
 	if err != nil {
 		return err
 	}
+	seenBy := func(g, id MemberID) bool {
+		if !line.spoken {
+			return reach.Reaches(perception.Sight, g, id)
+		}
+		if g == line.spokenTo {
+			return slices.Contains(line.seen, id)
+		}
+		return slices.Contains(line.perceived[g], id)
+	}
 	made := ArrestRecord{State: line.state, Cell: a.Cell, At: line.at}
-	for _, id := range e.partyOf(line.speaker) {
+	for _, id := range e.arrestParty(line.speaker) {
 		if slices.Contains(guards, id) {
 			continue
 		}
 		taken := ArrestedMember{ID: id}
-		if at, placed := e.canvas.GetEntityPosition(string(id)); placed {
+		at, placed := e.canvas.GetEntityPosition(string(id))
+		if line.spoken {
+			at, placed = line.partyAt[id]
+		}
+		if placed {
 			taken.InArea = e.inArrestArea(a, at)
 		}
 		var remembered []MemberID
 		for _, g := range guards {
-			if reach.Reaches(perception.Sight, g, id) {
+			if seenBy(g, id) {
 				taken.SeenBy = append(taken.SeenBy, g)
 			}
 			if _, held := e.intelLog.On(sightMember(g), sightMember(id)); held == nil {
@@ -314,10 +369,13 @@ func (e *Encounter) applyArrest(r *interactionRecord, a Arrest, line recognition
 	if err := e.grantTopic(reach, TopicArrested, takenIDs(made), line); err != nil {
 		return err
 	}
-	// THE WANTED ARE NOT TOLD THEY ARE WANTED, through the guards' record any
-	// more than through the arrest's beat.
+	// WANTED IS THE GUARDS' OWN MEMORY: no player is told of it, through the
+	// guards' record any more than through the arrest's beat — not the one
+	// wanted, and not a friend who watched them on the road, since watching
+	// somebody tells you nothing of what a guard remembers. Each holder is
+	// told his own holding, and nobody else.
 	wantedLine := line
-	wantedLine.unaware = true
+	wantedLine.holdersOnly = true
 	if err := e.grantTopic(reach, TopicWanted, wantedIDs(made), wantedLine); err != nil {
 		return err
 	}
@@ -377,13 +435,15 @@ func wantedIDs(r ArrestRecord) []MemberID {
 
 // tellArrest appends the [BeatArrested] beats. Its readers are the
 // arresting guards, every taken member and the line's witnesses; each is
-// told only the members they perceive on the live reach — a taken member is
-// always aware of being taken, a guard of whom he arrested — so a beat never
-// names a member its reader cannot see. A wanted member is never told they
-// are wanted: they perceive nothing of the guards deciding it, though a
-// wanted witness is told the taken they see. A reader who perceives none is
-// told nothing. Readers told the same share one beat, in the order first met
-// ([Encounter.tellRecognition]'s shape).
+// told only the taken they perceive — on the live reach, or as they
+// perceived them when the words were said for a line judged as spoken — and
+// a taken member is always aware of being taken, so a beat never names a
+// member its reader cannot see. The wanted are named to the arresting guards
+// alone: who is wanted is the guards' memory, which no player perceives, so a
+// player's beat — the wanted member's, or a friend's who watched them — never
+// carries it. A reader told nobody is told nothing. Readers told the same
+// share one beat, in the order first met ([Encounter.tellRecognition]'s
+// shape).
 func (e *Encounter) tellArrest(reach sightReach, made ArrestRecord, guards []MemberID, line recognitionLine) error {
 	type telling struct {
 		taken, wanted []string
@@ -402,19 +462,17 @@ func (e *Encounter) tellArrest(reach sightReach, made ArrestRecord, guards []Mem
 			continue
 		}
 		guard := slices.Contains(guards, reader)
-		// self says whether a reader is told about themselves: a taken member
-		// knows they are taken; a wanted member, not taken, perceives nothing
-		// of the guards deciding it, and is never told they are wanted.
-		tell := func(ids []MemberID, self bool) []string {
-			var out []string
-			for _, id := range ids {
-				if guard || (self && reader == id) || (reader != id && reach.Reaches(perception.Sight, reader, id)) {
-					out = append(out, string(id))
-				}
+		var taken, wanted []string
+		for _, id := range takenIDs(made) {
+			if guard || reader == id || line.perceives(reach, reader, id) {
+				taken = append(taken, string(id))
 			}
-			return out
 		}
-		taken, wanted := tell(takenIDs(made), true), tell(wantedIDs(made), false)
+		if guard {
+			for _, id := range wantedIDs(made) {
+				wanted = append(wanted, string(id))
+			}
+		}
 		if len(taken) == 0 && len(wanted) == 0 {
 			continue
 		}

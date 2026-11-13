@@ -13,6 +13,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/play/record"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // recognition.go is ADMISSION IS RECOGNITION (rpg-project#928, the gate's
@@ -425,10 +426,14 @@ type recognitionLine struct {
 	// said to when the words were said ([ReservedScene.SawTarget]): who may
 	// be told that creature is the one who came to hold a recognition.
 	sawTarget []MemberID
-	// unaware is true when a subject is not told of a record about
-	// themselves (arrest.go): a wanted member perceives nothing of the guards
-	// deciding it.
-	unaware bool
+	// partyAt is, for a line judged as spoken, where each player of the
+	// speaker's party stood when the words were said ([ReservedScene.PartyAt]):
+	// the cells an arrest is decided on (arrest.go).
+	partyAt map[MemberID]spatial.Position
+	// holdersOnly is true when a record is told to its holder alone, and to no
+	// witness or hearer of the line (arrest.go): who is wanted is the guards'
+	// own memory.
+	holdersOnly bool
 }
 
 // knowsHolder is whether reader may be named the holder of a recognition
@@ -663,6 +668,9 @@ func (e *Encounter) tellRecognition(
 		audience = line.hearers
 	}
 	readers := append([]MemberID{holder}, audience...)
+	if line.holdersOnly {
+		readers = []MemberID{holder}
+	}
 	for _, reader := range readers {
 		if _, dup := byKey["reader:"+string(reader)]; dup {
 			continue
@@ -670,7 +678,7 @@ func (e *Encounter) tellRecognition(
 		byKey["reader:"+string(reader)] = nil
 		var told []string
 		for _, s := range subjects {
-			if reader == holder || (reader == s && !line.unaware) || (reader != s && line.perceives(reach, reader, s)) {
+			if reader == holder || reader == s || (reader != s && line.perceives(reach, reader, s)) {
 				told = append(told, string(s))
 			}
 		}

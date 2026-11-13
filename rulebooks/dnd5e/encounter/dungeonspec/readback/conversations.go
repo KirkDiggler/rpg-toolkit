@@ -368,16 +368,18 @@ func (b *builder) arrestStatement(id, state, path string) Statement {
 		conns = append(conns, Connection{Kind: "creature", ID: c, Role: "holds"})
 	}
 	s := fmt.Sprintf("When the conversation %s enters %s, it arrests the speaker's party, to be held in %s. "+
-		"Taken: every member of the speaker's party standing in the arrest area (%s), or seen at that moment by any of "+
-		"its carriers who is up (%s). Wanted: a member of the party who is not taken and whom one of those carriers "+
-		"has seen before. The creature the deciding line was said to comes to hold %s about the taken and %s about "+
-		"the wanted, and the conversation's other carriers who catch the deciding line hold the same, heard; a wanted "+
-		"member is never told so. The conversation's address ends. Who is taken and who is wanted is decided once, at "+
-		"that moment, and kept. Nobody is moved yet: the taken are not walked to %s.",
+		"Taken: every player of the speaker's party standing in the arrest area (%s), or seen by any of its carriers "+
+		"who is up (%s), as the deciding line is said; a roll kept and settled after its speaker walked away is "+
+		"decided where everyone stood and whom the carriers saw when its words were said. Wanted: a player of the "+
+		"party who is not taken and whom one of those carriers has seen before. A creature of the party's faction is "+
+		"neither. The creature the deciding line was said to comes to hold %s about the taken and %s about the "+
+		"wanted, and the conversation's other carriers who catch the deciding line hold the same, heard. Who is wanted "+
+		"is told to those carriers alone, never to a player. The conversation's address ends. Who is taken and who is "+
+		"wanted is decided once and kept. Nobody is moved yet: the taken are not walked to %s.",
 		quote(id), quote(state), b.regionWords(a.Cell), joinAnd(area), b.creatures(carriers),
 		quote(string(encounter.TopicArrested)), quote(string(encounter.TopicWanted)), b.regionName(a.Cell))
 	f := foldInfo{state: state, site: fmt.Sprintf("the conversation %s on entering %s", quote(id), quote(state))}
-	f.text = fmt.Sprintf("On entering %s: arrests the party in %s or seen by its carriers, to %s; the rest they have seen become wanted. Nobody is moved yet.",
+	f.text = fmt.Sprintf("On entering %s: arrests the players in %s or seen by its carriers, to %s; the rest they have seen become wanted, known to the carriers alone. Nobody is moved yet.",
 		quote(state), joinAnd(area), b.regionName(a.Cell))
 	return b.fstmt(KindOutcome, Subject{Kind: "conversation", ID: id}, path, s, f, conns...)
 }

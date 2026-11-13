@@ -37,6 +37,10 @@ const (
 	// neverNear stays at the party start, where no gate speaker ever sees
 	// them: neither.
 	neverNear = encounter.MemberID("never-near")
+	// hireling is a creature authored into the party's faction, standing in
+	// the gatehouse: the party is its players, so it is neither taken nor
+	// wanted.
+	hireling = encounter.MemberID("hireling")
 )
 
 var (
@@ -45,24 +49,30 @@ var (
 	onTheRoadInSight = spatial.Position{X: -8, Y: 15}
 	// onTheRoadOutOfSight is road outside the area that no gate speaker sees.
 	onTheRoadOutOfSight = spatial.Position{X: -6, Y: 16}
+	// furtherDownTheRoad is road outside the area that no gate speaker sees,
+	// where the speaker walks to from a kept roll.
+	furtherDownTheRoad = spatial.Position{X: -6, Y: 17}
 )
 
 // arrestScene is the castle played to the arrest, ONCE per test binary in
 // [TestMain] — the stranger, the walks and both claims would otherwise be on
 // each test's clock — and loaded back for each test.
 var arrestScene struct {
-	once     sync.Once
-	err      error
-	blob     []byte
-	before   map[encounter.MemberID]spatial.Position
-	compiled dungeonspec.Compiled
-	host     castleHost
+	once sync.Once
+	err  error
+	blob []byte
+	// beforeClaim is the run just before the second claim is said.
+	beforeClaim []byte
+	before      map[encounter.MemberID]spatial.Position
+	compiled    dungeonspec.Compiled
+	host        castleHost
 }
 
 // arrestSceneTests are the tests that start from [arrestScene].
 var arrestSceneTests = []string{
 	"TestMadKingTheSecondFailedClaimArrests", "TestMadKingTheArrestEndsTheAddressAndMovesNobody",
 	"TestMadKingTheArrestIsToldOnlyWhatItsReaderSees", "TestMadKingTheArrestIsKeptOnReload",
+	"TestMadKingAKeptRollArrestsAsTheWordsWereSaid",
 }
 
 // buildTheArrestScene plays the castle to the arrest: the hero learns of the
@@ -86,6 +96,7 @@ func buildTheArrestScene() {
 	}
 	s := openTheCastleAs(tb, castleHost{at: start, sightFt: sessionSightFeet, players: []encounter.MemberInput{
 		ally(inTheArea, 1), ally(seenOutside, 2), ally(leftTheGate, -1), ally(neverNear, -2),
+		{ID: hireling, Kind: encounter.KindMonster, Faction: encounter.FactionParty, Position: gatehouseSeat},
 	}})
 	for _, g := range []encounter.MemberID{kingCaptain, kingGate1, kingGate2} {
 		require.False(tb, s.seesLive(g, neverNear), "precondition: %s does not see the party start", g)
@@ -111,6 +122,9 @@ func buildTheArrestScene() {
 	for _, m := range []encounter.MemberID{hero, inTheArea, seenOutside, leftTheGate, neverNear} {
 		before[m] = s.at(m)
 	}
+	beforeClaim, err := json.Marshal(s.enc.ToData())
+	require.NoError(tb, err)
+	arrestScene.beforeClaim = beforeClaim
 	s.said(kingCaptain, "troupe", "performance", false)
 	require.Equal(tb, "arrested", s.entrance(), "the second claim arrests")
 	blob, err := json.Marshal(s.enc.ToData())
@@ -180,6 +194,9 @@ func TestMadKingTheSecondFailedClaimArrests(t *testing.T) {
 	_, isTaken := taken[neverNear]
 	_, isWanted := wanted[neverNear]
 	require.False(t, isTaken || isWanted, "the ally who never came near is neither")
+	_, isTaken = taken[hireling]
+	_, isWanted = wanted[hireling]
+	require.False(t, isTaken || isWanted, "a creature of the party's faction, in the gatehouse, is neither: the party is its players")
 
 	for _, m := range []encounter.MemberID{hero, inTheArea, seenOutside} {
 		require.True(t, s.recognizesOn(kingCaptain, m, intel.Topic(encounter.TopicArrested)), "the captain arrested %s", m)
@@ -204,55 +221,117 @@ func TestMadKingTheArrestEndsTheAddressAndMovesNobody(t *testing.T) {
 	}
 }
 
+// payloadsOf is every payload of one beat in member's story.
+func (s *kingScene) payloadsOf(member encounter.MemberID, beat string) []map[string]any {
+	s.t.Helper()
+	story, err := s.enc.Story(&encounter.StoryInput{Audience: member})
+	require.NoError(s.t, err)
+	var out []map[string]any
+	for _, e := range story {
+		var b map[string]any
+		require.NoError(s.t, json.Unmarshal(e.Payload, &b))
+		if b["beat"] == beat {
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
 // TestMadKingTheArrestIsToldOnlyWhatItsReaderSees: the arrested beat names
-// to each reader only the members they perceive — the speaker in the
-// gatehouse is told who stands beside him, and the one who left only if he
-// sees them himself; the one who left is told the arrests they watch, and
-// never that they are wanted.
+// to each player only the taken they perceive, and themselves when taken;
+// who is wanted is the guards' memory, so no player is told it — not the
+// taken speaker, not a taken ally who sees the one who left, not the one who
+// left — on the arrest's beat or through the guards' records. The arresting
+// guards are told whom they want.
 func TestMadKingTheArrestIsToldOnlyWhatItsReaderSees(t *testing.T) {
 	t.Parallel()
 	s, _ := theArrest(t)
-	story, err := s.enc.Story(&encounter.StoryInput{Audience: hero})
-	require.NoError(t, err)
-	var told []map[string]any
-	for _, e := range story {
-		var b map[string]any
-		require.NoError(t, json.Unmarshal(e.Payload, &b))
-		if b["beat"] == encounter.BeatArrested {
-			told = append(told, b)
-		}
-	}
+
+	told := s.payloadsOf(hero, encounter.BeatArrested)
 	require.Len(t, told, 1, "the speaker is told the arrest once")
 	require.Contains(t, told[0]["taken"], string(hero), "he is told he is taken")
 	require.Contains(t, told[0]["taken"], string(inTheArea), "and the ally beside him")
-	if s.seesLive(hero, leftTheGate) {
-		require.Contains(t, told[0]["wanted"], string(leftTheGate), "he sees the one who left, so he is told they are wanted")
-	} else {
-		require.Nil(t, told[0]["wanted"], "never the one who left, whom he does not see")
-	}
-	for _, seen := range told[0]["taken"].([]any) {
-		id := encounter.MemberID(seen.(string))
-		require.True(t, id == hero || s.seesLive(hero, id), "he is told only whom he sees: %s", id)
-	}
 	require.Equal(t, "region-cells", told[0]["cell"])
 
-	away, err := s.enc.Story(&encounter.StoryInput{Audience: leftTheGate})
-	require.NoError(t, err)
-	for _, e := range away {
-		var b map[string]any
-		require.NoError(t, json.Unmarshal(e.Payload, &b))
-		if b["beat"] == encounter.BeatRecognized && b["topic"] == string(encounter.TopicWanted) {
-			require.NotContains(t, b["subjects"], string(leftTheGate), "nor told, through the guards' record, that they are wanted")
+	for _, player := range []encounter.MemberID{hero, inTheArea, seenOutside, leftTheGate, neverNear} {
+		for _, b := range s.payloadsOf(player, encounter.BeatArrested) {
+			require.Nil(t, b["wanted"], "%s is told nobody is wanted", player)
+			for _, seen := range b["taken"].([]any) {
+				id := encounter.MemberID(seen.(string))
+				require.True(t, id == player || s.seesLive(player, id), "%s is told only the taken they see: %s", player, id)
+			}
 		}
-		if b["beat"] != encounter.BeatArrested {
-			continue
-		}
-		require.Nil(t, b["wanted"], "the one who left is never told they are wanted")
-		for _, seen := range b["taken"].([]any) {
-			require.True(t, s.seesLive(leftTheGate, encounter.MemberID(seen.(string))),
-				"watching from the road, they are told only the arrests they see: %s", seen)
+		for _, b := range s.payloadsOf(player, encounter.BeatRecognized) {
+			require.NotEqual(t, string(encounter.TopicWanted), b["topic"], "%s reads no guard's record of the wanted", player)
 		}
 	}
+	require.True(t, s.seesLive(hero, leftTheGate) || s.seesLive(inTheArea, leftTheGate) || s.seesLive(seenOutside, leftTheGate),
+		"precondition: a taken friend watches the one who left, and is still not told")
+
+	captain := s.payloadsOf(kingCaptain, encounter.BeatArrested)
+	require.Len(t, captain, 1)
+	require.Equal(t, []any{string(leftTheGate)}, captain[0]["wanted"], "the captain is told whom he wants")
+	for _, g := range []encounter.MemberID{kingCaptain, kingGate1, kingGate2} {
+		var wanted bool
+		for _, b := range s.payloadsOf(g, encounter.BeatRecognized) {
+			if b["topic"] == string(encounter.TopicWanted) {
+				require.Equal(t, []any{string(leftTheGate)}, b["subjects"], "%s is told his own holding", g)
+				require.Equal(t, string(g), b["holder"], "and only his own")
+				wanted = true
+			}
+		}
+		require.True(t, wanted, "%s holds the wanted and is told so", g)
+	}
+}
+
+// TestMadKingAKeptRollArrestsAsTheWordsWereSaid: the second claim waits on
+// the speaker's roll, and the speaker walks down the road out of every
+// guard's sight before the host settles it, while the one who left walks
+// back into the captain's sight. The arrest is decided as the words were
+// said (rpg-project#938's rule): the speaker is taken, standing in the
+// gatehouse then; the one who left is not taken for walking into view, and
+// stays wanted.
+func TestMadKingAKeptRollArrestsAsTheWordsWereSaid(t *testing.T) {
+	t.Parallel()
+	arrestScene.once.Do(buildTheArrestScene)
+	require.NoError(t, arrestScene.err)
+	s := loadTheSceneOn(t, arrestScene.beforeClaim, arrestScene.compiled, arrestScene.host)
+	require.Equal(t, "warned-guest", s.entrance(), "precondition: one claim failed")
+
+	at := s.revisionOf(hero, kingCaptain, "troupe")
+	_, err := s.enc.Reserve(&encounter.ReserveInput{
+		Actor: hero, Target: kingCaptain, OptionID: "troupe", Revision: at, Range: speakReach,
+	})
+	require.NoError(t, err, "the claim waits on the speaker's roll")
+
+	s.walkMember(leftTheGate, onTheRoadInSight, false)
+	require.True(t, s.seesLive(kingCaptain, leftTheGate), "precondition: the one who left is back in the captain's sight")
+	s.walkMember(hero, furtherDownTheRoad, false)
+	for _, g := range []encounter.MemberID{kingCaptain, kingGate1, kingGate2} {
+		require.False(t, s.seesLive(g, hero), "precondition: %s no longer sees the speaker", g)
+	}
+	var abandoned bool
+	for _, d := range s.enc.ToData().Interactions {
+		if d.Reservation != nil {
+			abandoned = d.Reservation.Abandoned
+		}
+	}
+	require.True(t, abandoned, "precondition: walking away abandons the hold")
+
+	s.roundTrip()
+	_, err = s.enc.Speak(t.Context(), &encounter.SpeakInput{
+		Range: speakReach, Actor: hero, Target: kingCaptain, OptionID: "troupe", Roller: rollsOne{},
+		Revision: at, Skill: "performance", Beaten: false, DC: 15, Total: 3,
+	})
+	require.NoError(t, err, "the host settles the roll as rolled")
+	require.Equal(t, "arrested", s.entrance())
+
+	made := s.arrested()
+	taken, wanted := takenOf(made), wantedOf(made)
+	require.Contains(t, taken, hero, "the speaker is taken where the words were said")
+	require.True(t, taken[hero].InArea, "in the gatehouse, then")
+	require.NotContains(t, taken, leftTheGate, "walking into view before the settle takes nobody")
+	require.Contains(t, wanted, leftTheGate, "the one who left stays wanted")
 }
 
 // TestMadKingTheArrestIsKeptOnReload: the record survives a save and a load,
