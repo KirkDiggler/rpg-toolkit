@@ -102,7 +102,9 @@ func (s *TurnTestSuite) TestTheMemberIsRequired() {
 // someone who has one fight and cannot see why it would ever be ambiguous.
 // Status is that verb, so its shape is pinned rather than merely documented.
 func (s *TurnTestSuite) TestStatusNeverLearnsWhoseTurnItIs() {
-	s.Equal([]string{"Open", "Outcome"}, structFields(session.Status{}),
+	// Sharing is the run's sharing dial (rpg-project#935): a fact of the
+	// run, the same for every member, and nothing about whose turn it is.
+	s.Equal([]string{"Open", "Outcome", "Sharing"}, structFields(session.Status{}),
 		"a turn-shaped field on Status would create the privileged clock that "+
 			"charter clause 6 exists to prevent — put it on Turn, which is asked "+
 			"of a member")

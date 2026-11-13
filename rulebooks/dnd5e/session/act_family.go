@@ -59,6 +59,12 @@ var recordOnly = map[string]bool{
 	// version — words, option, skill and the roll with its arithmetic — and
 	// nobody else is ever told it; the beat is the record's.
 	encounter.BeatSpoke: true,
+	// The party arrested at the gate (rpg-project#925, arrest slice one):
+	// RECORD-ONLY UNTIL ARREST HAS ITS OWN SESSION SLICE. The beat names
+	// whom its reader perceives taken; nobody is moved yet, and the
+	// player-facing act for being taken is that slice's to design. Until then
+	// it is the record's, so no player is sent an undecoded act for it.
+	encounter.BeatArrested: true,
 }
 
 // familyOf is a beat name's family, and false for a beat with none — a
