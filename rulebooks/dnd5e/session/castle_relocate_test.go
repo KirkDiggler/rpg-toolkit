@@ -12,6 +12,7 @@ package session_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -28,50 +29,122 @@ const theMarchWords = "The guards march you to the cells."
 // theMarchCause is the cause the relocation names.
 const theMarchCause = "dnd5e:consequences:march-to-the-cells"
 
-// alicesRelocation is the warned gate at the sharing stop given, the cleric
-// stood at clericAt, and alice set down in the cells: the stored world
-// relocated and saved, as a verb's commit would leave it. It returns the
-// run, where alice was and where she was set down.
-func alicesRelocation(t *testing.T, sharing encounter.Sharing, clericAt spatial.Position) (*freeRoamCastle, spatial.Position, spatial.Position) {
-	t.Helper()
-	warnedGate.once.Do(func() { warnedGate.stores, warnedGate.err = buildTheWarnedGate() })
-	require.NoError(t, warnedGate.err)
-	c := &freeRoamCastle{
-		live: &actCapture{}, dice: &castleDice{d20s: []int{1}},
-		sessions: newFakeSessions(), encounters: newFakeEncounters(),
-		characters: newFakeCharacters(), seats: newFakeSeats(),
-	}
-	require.NoError(t, restoreInto(c, warnedGate.stores))
-	c.encounters.byID["sess"].Sharing = sharing
-	c.standInTheRecord(t, "cleric", clericAt)
-	c.mgr = c.manager(t)
-
-	enc := c.world(t)
-	from := memberOf(t, enc, "alice").Position
-	cells, err := enc.FreeCellsIn("region-cells", 1)
-	require.NoError(t, err)
-	cause, err := core.ParseString(theMarchCause)
-	require.NoError(t, err)
-	_, err = enc.Relocate(&encounter.RelocateInput{
-		Moves: []encounter.Relocation{{Member: "alice", To: cells[0]}},
-		Cause: encounter.RelocationCause{Ref: *cause, Words: theMarchWords},
-		Reach: session.InteractionReach,
-	})
-	require.NoError(t, err)
-	moved := enc.ToData()
-	c.encounters.byID["sess"] = &moved
-	return c, from, cells[0]
+// relocationRead is one relocation's read-back: where alice was and was
+// set down, and each player's catch-up acts.
+type relocationRead struct {
+	from, to spatial.Position
+	acts     map[string][]session.Act
+	// reloaded is alice's acts read again by a fresh manager.
+	reloaded []session.Act
 }
 
-// relocationsFor is every RelocateAct member reads back, and the read.
-func relocationsFor(t *testing.T, c *freeRoamCastle, member string) ([]found[session.RelocateAct], []session.Act) {
+// relocationKey names one played relocation: the dial's stop and where the
+// cleric stood.
+type relocationKey struct {
+	sharing  encounter.Sharing
+	clericAt spatial.Position
+}
+
+// relocations are alice's relocation at each stop with the cleric watching
+// the road or off down it, played ONCE in [TestMain].
+var relocations struct {
+	once  sync.Once
+	err   error
+	reads map[relocationKey]relocationRead
+}
+
+// relocationTests are the tests that read [relocations].
+var relocationTests = []string{"TestCastleARelocationAtEachTheirOwn", "TestCastleARelocationAtSharedView"}
+
+// buildTheRelocations plays all four. It takes no *testing.T because
+// [TestMain] runs it.
+func buildTheRelocations() {
+	warnedGate.once.Do(func() { warnedGate.stores, warnedGate.err = buildTheWarnedGate() })
+	if warnedGate.err != nil {
+		relocations.err = warnedGate.err
+		return
+	}
+	relocations.reads = map[relocationKey]relocationRead{}
+	for _, sharing := range []encounter.Sharing{encounter.SharingOwn, encounter.SharingView} {
+		for _, at := range []spatial.Position{watchingTheRoad, downTheRoad} {
+			r, err := alicesRelocation(sharing, at)
+			if err != nil {
+				relocations.err = err
+				return
+			}
+			relocations.reads[relocationKey{sharing, at}] = r
+		}
+	}
+}
+
+// alicesRelocation is the warned gate at the sharing stop given, the cleric
+// stood at clericAt, and alice set down in the cells: the stored world
+// relocated and saved, as a verb's commit would leave it, then read back.
+func alicesRelocation(sharing encounter.Sharing, clericAt spatial.Position) (relocationRead, error) {
+	ctx := context.Background()
+	c, err := newJailHost(warnedGate.stores, sharing, 1)
+	if err != nil {
+		return relocationRead{}, err
+	}
+	standIn(c, "cleric", clericAt)
+	enc, err := c.mgr.LoadWorldForTest(ctx, "sess")
+	if err != nil {
+		return relocationRead{}, err
+	}
+	r := relocationRead{from: placedAt(c, "alice"), acts: map[string][]session.Act{}}
+	cells, err := enc.FreeCellsIn(theCellsRegion, 1)
+	if err != nil {
+		return relocationRead{}, err
+	}
+	r.to = cells[0]
+	cause, err := core.ParseString(theMarchCause)
+	if err != nil {
+		return relocationRead{}, err
+	}
+	if _, err := enc.Relocate(&encounter.RelocateInput{
+		Moves: []encounter.Relocation{{Member: "alice", To: r.to}},
+		Cause: encounter.RelocationCause{Ref: *cause, Words: theMarchWords},
+		Reach: session.InteractionReach,
+	}); err != nil {
+		return relocationRead{}, err
+	}
+	moved := enc.ToData()
+	c.encounters.byID["sess"] = &moved
+	for _, member := range []string{"alice", "cleric"} {
+		read, err := c.mgr.Acts(ctx, &session.ActsInput{Session: "sess", Member: member})
+		if err != nil {
+			return relocationRead{}, err
+		}
+		r.acts[member] = read.Acts
+	}
+	// A RELOAD READS THE SAME ACTS: a fresh manager over the same stores.
+	fresh, err := newJailHost(storesOf(c), "", 1)
+	if err != nil {
+		return relocationRead{}, err
+	}
+	read, err := fresh.mgr.Acts(ctx, &session.ActsInput{Session: "sess", Member: "alice"})
+	if err != nil {
+		return relocationRead{}, err
+	}
+	r.reloaded = read.Acts
+	return r, nil
+}
+
+// theRelocation is one played relocation.
+func theRelocation(t *testing.T, sharing encounter.Sharing, clericAt spatial.Position) relocationRead {
 	t.Helper()
-	read, err := c.mgr.Acts(context.Background(), &session.ActsInput{Session: "sess", Member: member})
-	require.NoError(t, err)
-	for _, a := range read.Acts {
+	relocations.once.Do(buildTheRelocations)
+	require.NoError(t, relocations.err, "the relocations")
+	return relocations.reads[relocationKey{sharing, clericAt}]
+}
+
+// relocationsFor is every RelocateAct in member's read.
+func relocationsFor(t *testing.T, r relocationRead, member string) []found[session.RelocateAct] {
+	t.Helper()
+	for _, a := range r.acts[member] {
 		require.Empty(t, a.Undecoded, "%s: no undecoded act", member)
 	}
-	return where[session.RelocateAct](read.Acts, func(session.RelocateAct) bool { return true }), read.Acts
+	return where[session.RelocateAct](r.acts[member], func(session.RelocateAct) bool { return true })
 }
 
 // TestCastleARelocationAtEachTheirOwn: alice is shown both ends and her
@@ -79,29 +152,26 @@ func relocationsFor(t *testing.T, c *freeRoamCastle, member string) ([]found[ses
 // only — where from, never where to, no words; a cleric off down the road,
 // who saw neither end, is shown nothing. A reload reads the same acts.
 func TestCastleARelocationAtEachTheirOwn(t *testing.T) {
-	c, from, to := alicesRelocation(t, encounter.SharingOwn, watchingTheRoad)
+	r := theRelocation(t, encounter.SharingOwn, watchingTheRoad)
+	from, to := r.from, r.to
 
-	mine, aliceActs := relocationsFor(t, c, "alice")
+	mine := relocationsFor(t, r, "alice")
 	require.Len(t, mine, 1, "alice is shown her move")
 	require.Equal(t, session.RelocateAct{
 		Mover: aliceParty, From: &from, To: &to, Cause: theMarchCause, Words: theMarchWords, End: session.RelocateBoth,
 	}, mine[0].body)
 	require.Nil(t, mine[0].act.Perceived, "her own")
 
-	watched, _ := relocationsFor(t, c, "cleric")
+	watched := relocationsFor(t, r, "cleric")
 	require.Len(t, watched, 1, "the cleric saw her leave")
 	require.Equal(t, session.RelocateAct{
 		Mover: aliceParty, From: &from, Cause: theMarchCause, End: session.RelocateLeft,
 	}, watched[0].body, "where from, never where to, and no words")
 
-	// A RELOAD READS THE SAME ACTS: a fresh manager over the same stores.
-	c.mgr = c.manager(t)
-	_, again := relocationsFor(t, c, "alice")
-	require.Equal(t, aliceActs, again, "the record replays to the same acts")
+	require.Equal(t, r.acts["alice"], r.reloaded, "the record replays to the same acts")
 
-	away, _, _ := alicesRelocation(t, encounter.SharingOwn, downTheRoad)
-	none, _ := relocationsFor(t, away, "cleric")
-	require.Empty(t, none, "who saw neither end is shown nothing")
+	away := theRelocation(t, encounter.SharingOwn, downTheRoad)
+	require.Empty(t, relocationsFor(t, away, "cleric"), "who saw neither end is shown nothing")
 }
 
 // TestCastleARelocationAtSharedView: what came through a friend is shown
@@ -110,8 +180,9 @@ func TestCastleARelocationAtEachTheirOwn(t *testing.T) {
 // her words. The cleric watching the road, who saw her leave, is shown one
 // act: her own leaving, with the destination and the words through alice.
 func TestCastleARelocationAtSharedView(t *testing.T) {
-	c, from, to := alicesRelocation(t, encounter.SharingView, downTheRoad)
-	through, _ := relocationsFor(t, c, "cleric")
+	r := theRelocation(t, encounter.SharingView, downTheRoad)
+	from, to := r.from, r.to
+	through := relocationsFor(t, r, "cleric")
 	require.Len(t, through, 1, "the cleric is shown alice's move")
 	require.Equal(t, session.RelocateAct{
 		Mover: aliceParty, From: &from, To: &to, Cause: theMarchCause, Words: theMarchWords, End: session.RelocateBoth,
@@ -119,15 +190,16 @@ func TestCastleARelocationAtSharedView(t *testing.T) {
 	require.NotNil(t, through[0].act.Perceived)
 	require.Equal(t, []session.Party{aliceParty}, through[0].act.Perceived.Via, "through alice")
 
-	c, from, to = alicesRelocation(t, encounter.SharingView, watchingTheRoad)
-	merged, _ := relocationsFor(t, c, "cleric")
+	r = theRelocation(t, encounter.SharingView, watchingTheRoad)
+	from, to = r.from, r.to
+	merged := relocationsFor(t, r, "cleric")
 	require.Len(t, merged, 1, "one act for one move")
 	require.Equal(t, session.RelocateAct{
 		Mover: aliceParty, From: &from, To: &to, Cause: theMarchCause, Words: theMarchWords, End: session.RelocateBoth,
 	}, merged[0].body)
 	require.Equal(t, []session.Party{aliceParty}, merged[0].act.Perceived.Via, "the parts she lacked came through alice")
 
-	mine, _ := relocationsFor(t, c, "alice")
+	mine := relocationsFor(t, r, "alice")
 	require.Len(t, mine, 1)
 	require.Nil(t, mine[0].act.Perceived, "alice's own is hers")
 }

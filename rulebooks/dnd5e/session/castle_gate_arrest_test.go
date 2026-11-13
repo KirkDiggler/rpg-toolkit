@@ -14,11 +14,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/session"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -29,56 +32,118 @@ import (
 // wanted.
 var onTheRoadUnseen = spatial.Position{X: -2, Y: 16}
 
-// arrestAtTheGate is the warned gate (alice's troupe claim missed,
+// arrestPlay is the arrest played at one stop of the dial: what alice's
+// failed claim published, each player's catch-up read after, the record
+// it made, and alice's attempts to walk away after.
+type arrestPlay struct {
+	played            beat
+	caught            map[string][]session.Act
+	taken, wanted     []encounter.MemberID
+	walkErr, sneakErr error
+}
+
+// arrestPlays is the arrest at each their own and at shared view, played
+// ONCE in [TestMain] (the castle's verbs are heavy, and the CI budget is
+// judged per test).
+var arrestPlays struct {
+	once  sync.Once
+	err   error
+	plays map[encounter.Sharing]arrestPlay
+}
+
+// arrestPlaysTests are the tests that read [arrestPlays].
+var arrestPlaysTests = []string{"TestCastleTheArrestAtEachTheirOwn", "TestCastleTheArrestAtSharedView", "TestCastleTheTakenCannotWalkAway"}
+
+// buildTheArrestPlays plays the arrest at both stops. It takes no
+// *testing.T because [TestMain] runs it.
+func buildTheArrestPlays() {
+	warnedGate.once.Do(func() { warnedGate.stores, warnedGate.err = buildTheWarnedGate() })
+	if warnedGate.err != nil {
+		arrestPlays.err = warnedGate.err
+		return
+	}
+	arrestPlays.plays = map[encounter.Sharing]arrestPlay{}
+	for _, sharing := range []encounter.Sharing{encounter.SharingOwn, encounter.SharingView} {
+		p, err := playTheArrest(sharing)
+		if err != nil {
+			arrestPlays.err = err
+			return
+		}
+		arrestPlays.plays[sharing] = p
+	}
+}
+
+// playTheArrest is the warned gate (alice's troupe claim missed,
 // rpg-project#942's walk) at the sharing stop given, the cleric — seen on
 // the road — gone off out of every guard's sight, bob joined on the road
 // where no guard sees him, and alice's guest claim failed: the gate arrests.
-// It returns the run and what the claim sent each player.
-func arrestAtTheGate(t *testing.T, sharing encounter.Sharing) (*freeRoamCastle, beat) {
-	t.Helper()
-	warnedGate.once.Do(func() { warnedGate.stores, warnedGate.err = buildTheWarnedGate() })
-	require.NoError(t, warnedGate.err)
-	c := &freeRoamCastle{
-		live: &actCapture{}, dice: &castleDice{d20s: []int{1}},
-		sessions: newFakeSessions(), encounters: newFakeEncounters(),
-		characters: newFakeCharacters(), seats: newFakeSeats(),
-	}
-	require.NoError(t, restoreInto(c, warnedGate.stores))
-	c.encounters.byID["sess"].Sharing = sharing
-	c.characters.byID["bob"] = withFreeReactions(armedFighter("bob"))
-	c.mgr = c.manager(t)
+func playTheArrest(sharing encounter.Sharing) (arrestPlay, error) {
 	ctx := context.Background()
-	_, err := c.mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "bob", Position: onTheRoadUnseen})
-	require.NoError(t, err)
+	stores := warnedGate.stores
+	stores.characters = map[string]*character.Data{}
+	for id, d := range warnedGate.stores.characters {
+		stores.characters[id] = d
+	}
+	stores.characters["bob"] = withFreeReactions(armedFighter("bob"))
+	c, err := newJailHost(stores, sharing, 1)
+	if err != nil {
+		return arrestPlay{}, err
+	}
+	if _, err := c.mgr.Join(ctx, &session.JoinInput{Session: "sess", Member: "bob", Position: onTheRoadUnseen}); err != nil {
+		return arrestPlay{}, fmt.Errorf("bob joins: %w", err)
+	}
 	// Gone off down the road, out of every guard's sight; they remember her
 	// from where she watched.
-	c.standInTheRecord(t, "cleric", downTheRoad)
-
-	played := c.play(t, "alice's guest claim fails", func() error {
+	standIn(c, "cleric", downTheRoad)
+	var p arrestPlay
+	if p.played, err = capture(c, "alice's guest claim fails", func() error {
 		_, err := speakAsOffered(ctx, c.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "captain", OptionID: "guest"})
 		return err
-	})
-	arrest, ok := c.world(t).Arrests()["front-gate"]
-	require.True(t, ok, "precondition: the gate arrested")
-	require.Equal(t, []encounter.MemberID{"alice"}, takenOf(arrest), "precondition: alice is taken")
-	require.Equal(t, []encounter.MemberID{"cleric"}, wantedOf(arrest), "precondition: the cleric is wanted")
-	return c, played
+	}); err != nil {
+		return arrestPlay{}, fmt.Errorf("alice's guest claim: %w", err)
+	}
+	enc, err := c.mgr.LoadWorldForTest(ctx, "sess")
+	if err != nil {
+		return arrestPlay{}, err
+	}
+	made := enc.Arrests()["front-gate"]
+	p.taken, p.wanted = takenOf(made), wantedOf(made)
+	p.caught = map[string][]session.Act{}
+	for _, member := range []string{"alice", "cleric", "bob"} {
+		read, err := c.mgr.Acts(ctx, &session.ActsInput{Session: "sess", Member: member})
+		if err != nil {
+			return arrestPlay{}, err
+		}
+		p.caught[member] = read.Acts
+	}
+	_, p.walkErr = c.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: []spatial.Position{backDownTheRoad[0]}})
+	_, p.sneakErr = c.mgr.SetSneaking(ctx, &session.SetSneakingInput{Session: "sess", Member: "alice", Sneaking: true})
+	return p, nil
+}
+
+// theArrest is the arrest played at one stop, its preconditions checked.
+func theArrest(t *testing.T, sharing encounter.Sharing) arrestPlay {
+	t.Helper()
+	arrestPlays.once.Do(buildTheArrestPlays)
+	require.NoError(t, arrestPlays.err, "the arrest plays")
+	p := arrestPlays.plays[sharing]
+	require.Equal(t, []encounter.MemberID{"alice"}, p.taken, "precondition: alice is taken")
+	require.Equal(t, []encounter.MemberID{"cleric"}, p.wanted, "precondition: the cleric is wanted")
+	return p
 }
 
 // arrestActs is every ArrestAct member is sent, live and on catch-up, and
 // the member's whole act stream as JSON, for the leak check.
-func arrestActs(t *testing.T, c *freeRoamCastle, played beat, member string) (live, caught []found[session.ArrestAct], stream string) {
+func arrestActs(t *testing.T, played beat, caught []session.Act, member string) (live, read []found[session.ArrestAct], stream string) {
 	t.Helper()
-	live = where[session.ArrestAct](played.to(member), func(session.ArrestAct) bool { return true })
-	read, err := c.mgr.Acts(context.Background(), &session.ActsInput{Session: "sess", Member: member})
-	require.NoError(t, err)
-	caught = where[session.ArrestAct](read.Acts, func(session.ArrestAct) bool { return true })
-	for _, a := range append(append([]session.Act(nil), played.to(member)...), read.Acts...) {
+	all := append(append([]session.Act(nil), played.to(member)...), caught...)
+	for _, a := range all {
 		require.Empty(t, a.Undecoded, "%s: no undecoded act", member)
 	}
-	raw, err := json.Marshal(append(append([]session.Act(nil), played.to(member)...), read.Acts...))
+	raw, err := json.Marshal(all)
 	require.NoError(t, err)
-	return live, caught, string(raw)
+	return where[session.ArrestAct](played.to(member), func(session.ArrestAct) bool { return true }),
+		where[session.ArrestAct](caught, func(session.ArrestAct) bool { return true }), string(raw)
 }
 
 // requireNoWanted fails when a player's stream carries the guards' wanted
@@ -97,15 +162,15 @@ func requireNoWanted(t *testing.T, member string, acts []found[session.ArrestAct
 // naming herself; the cleric, wanted, and bob, who saw none of it, are shown
 // nothing of it. Nobody's stream carries who is wanted.
 func TestCastleTheArrestAtEachTheirOwn(t *testing.T) {
-	c, played := arrestAtTheGate(t, encounter.SharingOwn)
-	live, caught, stream := arrestActs(t, c, played, "alice")
+	p := theArrest(t, encounter.SharingOwn)
+	live, caught, stream := arrestActs(t, p.played, p.caught["alice"], "alice")
 	require.Len(t, live, 1, "alice is shown her arrest")
 	require.Equal(t, session.ArrestAct{Interaction: "front-gate", Taken: []session.Party{aliceParty}, Cell: "region-cells"}, live[0].body)
 	require.Equal(t, live[0].body, only[session.ArrestAct](t, caught2acts(caught)).body, "and reads it back on catch-up")
 	require.Nil(t, live[0].act.Perceived, "her own")
 	requireNoWanted(t, "alice", live, stream)
 	for _, member := range []string{"cleric", "bob"} {
-		live, caught, stream := arrestActs(t, c, played, member)
+		live, caught, stream := arrestActs(t, p.played, p.caught[member], member)
 		require.Empty(t, live, "%s is shown no arrest at each their own", member)
 		require.Empty(t, caught, "%s, on catch-up", member)
 		requireNoWanted(t, member, live, stream)
@@ -116,9 +181,9 @@ func TestCastleTheArrestAtEachTheirOwn(t *testing.T) {
 // arrest through her, as she was shown it; still nobody's stream carries
 // who is wanted.
 func TestCastleTheArrestAtSharedView(t *testing.T) {
-	c, played := arrestAtTheGate(t, encounter.SharingView)
+	p := theArrest(t, encounter.SharingView)
 	for _, member := range []string{"cleric", "bob"} {
-		live, caught, stream := arrestActs(t, c, played, member)
+		live, caught, stream := arrestActs(t, p.played, p.caught[member], member)
 		require.Len(t, live, 1, "%s is shown alice's arrest", member)
 		require.Equal(t, []session.Party{aliceParty}, live[0].body.Taken, member)
 		require.NotNil(t, live[0].act.Perceived, member)
@@ -141,12 +206,9 @@ func caught2acts(in []found[session.ArrestAct]) []session.Act {
 // walk and to start sneaking. Each is refused with the session's own
 // custody sentence; the composition's error does not cross the seam.
 func TestCastleTheTakenCannotWalkAway(t *testing.T) {
-	c, _ := arrestAtTheGate(t, encounter.SharingOwn)
-	ctx := context.Background()
-	_, err := c.mgr.Move(ctx, &session.MoveInput{Session: "sess", Member: "alice", Path: []spatial.Position{backDownTheRoad[0]}})
-	requireHeldYou(t, err, "a walk")
-	_, err = c.mgr.SetSneaking(ctx, &session.SetSneakingInput{Session: "sess", Member: "alice", Sneaking: true})
-	requireHeldYou(t, err, "a sneak")
+	p := theArrest(t, encounter.SharingOwn)
+	requireHeldYou(t, p.walkErr, "a walk")
+	requireHeldYou(t, p.sneakErr, "a sneak")
 }
 
 // requireHeldYou is the walking-away refusal: the session's ErrInCustody,

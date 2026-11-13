@@ -393,6 +393,13 @@ var (
 	// guards is the one other way out.
 	ErrInCustody = errors.New("The guards hold you; you cannot walk away.") //nolint:staticcheck // the player's sentence
 
+	// ErrJailRefused is a line refused whole because the cell its verdict
+	// would march the speaker's party into cannot take them now
+	// (rpg-project#925): every member taken has left the run, or the cells
+	// have too few free places. Nothing is said, stepped or moved. Its text
+	// is the sentence the player is shown.
+	ErrJailRefused = errors.New("The guards cannot take you to the cells now.") //nolint:staticcheck // the player's sentence
+
 	// ErrNotDown is Loot's refusal for a body that is still standing — the
 	// host-seam twin of encounter.ErrNotDown (rpg-project#368 §4.2).
 	//

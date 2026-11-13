@@ -396,3 +396,19 @@ func TestTranslateNamesWhomTheGuardsHold(t *testing.T) {
 	require.Equal(t, "The guards hold you; you cannot be moved.", held.Sentence("alice"))
 	require.Equal(t, "The guards hold alice; they cannot be moved.", held.Sentence("cleric"))
 }
+
+// TestASpokenJailRefusalIsNotABadCoordinate: a line refused because the
+// cells cannot take the party arrives as [ErrJailRefused], with no
+// composition error, where translate alone would have said ErrBadPosition.
+// Any other landing refusal is left for translate.
+func TestASpokenJailRefusalIsNotABadCoordinate(t *testing.T) {
+	refused := fmt.Errorf("speak: jail: every taken member has left the run: %w", encounter.ErrBadPlacement)
+	require.ErrorIs(t, translate(refused), ErrBadPosition, "what it read as before")
+	got := spokenRefusal(refused)
+	require.ErrorIs(t, got, ErrJailRefused)
+	require.False(t, errors.Is(got, encounter.ErrBadPlacement), "no composition error crosses")
+	require.Equal(t, "The guards cannot take you to the cells now.", ErrJailRefused.Error())
+	other := fmt.Errorf("speak: %w", encounter.ErrNoOption)
+	require.ErrorIs(t, translate(spokenRefusal(other)), ErrNoOption)
+	require.NoError(t, spokenRefusal(nil))
+}

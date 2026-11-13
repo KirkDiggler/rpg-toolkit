@@ -30,6 +30,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -79,7 +80,7 @@ type speakLanding struct {
 // which appends the `spoke` beat, lands the skill's deed, and rolls the
 // option's answer rows with this session's dice.
 func (m *Manager) landSpoken(ctx context.Context, enc *encounter.Encounter, in *speakLanding) (*encounter.SpeakOutput, error) {
-	return enc.Speak(ctx, &encounter.SpeakInput{
+	out, err := enc.Speak(ctx, &encounter.SpeakInput{
 		Actor: in.Actor, Target: in.Target, Prop: in.Prop,
 		OptionID: in.OptionID, Revision: in.Revision, Skill: in.Skill,
 		// THE INTERACTION REACH, on every line: the composition's zero
@@ -88,6 +89,23 @@ func (m *Manager) landSpoken(ctx context.Context, enc *encounter.Encounter, in *
 		Beaten: in.Beaten, DC: in.DC, Total: in.Total, Calculation: in.Calculation,
 		Roller: &diceSeam{roller: m.dice},
 	})
+	return out, spokenRefusal(err)
+}
+
+// spokenRefusal is the composition's Speak refusal in this seam's words where
+// it means something only a landing can mean (rpg-project#925): a line whose
+// verdict would jail the speaker's party when the cells cannot take them —
+// every taken member gone, or too few free cells — is refused whole as
+// [ErrJailRefused]. The composition names that refusal ErrBadPlacement,
+// which translate would read as a bad coordinate; it cannot be one here,
+// because the reply door ([encounter.Encounter.ChooseOption]) already
+// placed the speaker before anything was charged. Every other refusal is
+// returned as it came, for the caller's translate.
+func spokenRefusal(err error) error {
+	if err != nil && errors.Is(err, encounter.ErrBadPlacement) {
+		return fmt.Errorf("%w", ErrJailRefused)
+	}
+	return err
 }
 
 // speak runs the one social verb end to end.
