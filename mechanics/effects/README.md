@@ -129,6 +129,27 @@ countdowns. A transition stages all its acts; overflow refuses it without partia
 writes, a state transition or Changed notification. These operations know no D&D
 clock or concentration rule.
 
+## Selecting contributions without changing lifetimes
+
+`SelectContributions` consumes already-applicable `SelectionCandidate` values in
+caller-owned oldest-first order. Each has an opaque contribution ID and an explicit
+`SelectionRule`: `AllApplicable` has no group; `OldestApplicable` selects the first
+candidate in each nonempty group. The zero/unknown policy, malformed groups and
+blank/duplicate IDs are errors. The entire input is validated before any decisions
+are returned.
+
+The result owns one `SelectionDecision` per candidate, in input order. A winner has
+`Selected: true`; an excluded value names its winner in `SelectedInstead`.
+`ValidateSelectionRule` checks an unbound authored rule without inventing candidate
+IDs. Definition compilation and selection use the same policy validation.
+
+**Nonselection is not removal or suspension.** The caller still owns applicability,
+identity, durable order and independent lifetimes. The selector knows no quantities,
+rolls, clocks, subscriptions or conditions; it neither sorts nor retains a winner.
+If an older candidate leaves, the next call selects from the remaining input.
+Information and execution can consume these same decisions while the operation
+that owns the quantity still decides how selected contributions combine.
+
 ## Rage, line by line
 
 This is the recipe the tests carry, which is the design's `raging`. It is
