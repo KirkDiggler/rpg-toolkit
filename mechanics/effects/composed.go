@@ -51,6 +51,11 @@ func (b *Bound) ID() string { return b.id }
 // Kind returns the output's kind.
 func (b *Bound) Kind() KindName { return b.out.Kind }
 
+// Definition returns an owned copy of this output's complete authored data.
+// It contains no live bag or reaction permission. CurrentOutputs determines
+// current availability; a retained handle can still describe its old definition.
+func (b *Bound) Definition() Output { return b.out.Clone() }
+
 // Params returns an owned copy of the output's params for the kind to decode.
 func (b *Bound) Params() jsontext.Value { return slices.Clone(b.out.Params) }
 
