@@ -410,6 +410,9 @@ func interactionsFromData(data []InteractionData) (map[InteractionID]*interactio
 			if !record.hasState(d.Arrest.State) {
 				return nil, fmt.Errorf("interaction %q is saved arrested in state %q, which its recipe does not declare", d.ID, d.Arrest.State)
 			}
+			if !d.Arrest.Custody.known() {
+				return nil, fmt.Errorf("interaction %q is saved arrested with custody %q, not one of held, marching, jailed, broken", d.ID, d.Arrest.Custody)
+			}
 			made := cloneArrestRecord(*d.Arrest)
 			record.arrest = &made
 		}

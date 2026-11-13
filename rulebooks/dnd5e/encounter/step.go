@@ -120,6 +120,12 @@ func (e *Encounter) Step(in *StepInput) (*StepOutput, error) {
 		return nil, fmt.Errorf("step %q: %w", in.Member, ErrTurnPaused)
 	}
 
+	// HELD BY THE GUARDS (rpg-project#925): a member in custody does not walk
+	// away — a dash is a Step on more movement, so it is refused here too.
+	if err := e.refuseInCustody("step", in.Member); err != nil {
+		return nil, err
+	}
+
 	// The turn gate (rpg-toolkit#1169, ADR-0044). A member on the world
 	// clock has no bubble and reaches the step below unconditionally, same
 	// as always. A member IN a bubble moves through their OWN turn now
