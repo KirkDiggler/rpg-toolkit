@@ -1599,7 +1599,11 @@ room:
               - not:
                   recognized: admitted
             success:
+              # Hand edit (rpg-project#936): the hint is shouted, so a friend
+              # inside, out of sight in the next room, catches the words
+              # without the name (R2, R7, R14).
               - say: The troupe? Aye, they’re inside. If one of them comes back and speaks for you, in you go.
+                loudness: shout
           - id: troupe
             say: We’re the troupe for tonight’s feast.
             check:
@@ -1737,7 +1741,11 @@ room:
               - not:
                   recognized: admitted
             success:
+              # Hand edit (rpg-project#936): the hint is shouted, so a friend
+              # inside, out of sight in the next room, catches the words
+              # without the name (R2, R7, R14).
               - say: The troupe? Aye, they’re inside. If one of them comes back and speaks for you, in you go.
+                loudness: shout
           - id: troupe
             say: We’re the troupe for tonight’s feast.
             check:
