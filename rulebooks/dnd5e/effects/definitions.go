@@ -112,6 +112,18 @@ func (Concentration) effectTemplate() (PartTemplate, error) {
 	return PartTemplate{Kind: KindConcentration}, nil
 }
 
+// Duration counts positive holder turn ends independently of payloads or
+// contribution selection. SkipFirst explicitly selects activation grace.
+// The existing duration meaning owns counting and application termination.
+type Duration struct {
+	TurnEnds  int
+	SkipFirst bool
+}
+
+func (d Duration) effectTemplate() (PartTemplate, error) {
+	return definitionTemplate(definitionTemplateInput{Kind: KindDuration, Params: durationParams(d)})
+}
+
 // UntilEmpty ends an application on actual last-member loss, not empty creation.
 type UntilEmpty struct{}
 

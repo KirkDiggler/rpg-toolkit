@@ -4,7 +4,7 @@ Slice [rpg-project#956](https://github.com/KirkDiggler/rpg-project/issues/956), 
 
 ## Shipped
 
-- T2–T4 source checkpoints deliver explicit roll selection, typed construction/native Bless/Bane factories without namedRollParts or its panic, a shared native Rage benefit source and code/data composition compilation; the end-to-end public ring/order proof remains pending — [slice](https://github.com/KirkDiggler/rpg-project/issues/956).
+- T2–T5 source checkpoints deliver explicit roll selection, typed construction/native Bless/Bane factories without namedRollParts or its panic, shared native Rage benefits, one code/data composition path and executable Go ring/order proof; consumer adoption, operator ergonomics acknowledgment and joined review/release remain separate gates — [slice](https://github.com/KirkDiggler/rpg-project/issues/956).
 
 ## Decided
 
@@ -20,6 +20,10 @@ Slice [rpg-project#956](https://github.com/KirkDiggler/rpg-project/issues/956), 
 - Typed construction tests prove Go/data canonical equivalence, owned amount/guard/type values, nil/typed-nil refusal, payload-only output projection and the absence of implicit rest expiry; a failing named factory reaches preparation/create/load without initialization work — [typed tests](../../effects/typed_definitions_test.go).
 
 - RagingBenefits supplies the same ordered mechanical outputs as the native recipe, preserves fixed/live-level amounts and owns each leaf's data; CompileComposition and the JSON library converge on one expanded validator and the existing binder. New producer/compiler suites and unchanged native regressions pass — [bundle proof](../../conditions/raging_benefits_test.go).
+
+- The public Go ring example preserves an idle recipient across ten turn ends and reload, returns damage12/physical4, and removes the grant after a test-selected failure of its actual concentration follow-up; source budget stays spent — [executable example](../../conditions/typed_composition_example_test.go).
+- Character and monster tests retain source order despite reversed runtime registration, then hand selection to the next instance without resetting its remaining duration; nonselected expiry and independent sibling resistance are also exercised — [character host proof](../../conditions/contribution_order_test.go).
+- The countdown proof brought a typed Duration adapter to the existing kind, with missing-API RED then grace/countdown GREEN; character integration reuses the existing complete host instead of duplicating a simulation in another package — [duration test](../../effects/typed_duration_test.go).
 
 ## Mistaken
 

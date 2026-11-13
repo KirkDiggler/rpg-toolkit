@@ -144,7 +144,7 @@ and [Bane](../conditions/baned.go) use this path; Bane chooses Negative polarity
 its independent group. Their descriptor factories return errors through preparation,
 creation and loading rather than compiling fallible content at package initialization.
 
-Typed DamageBonus, Resistance, Advantage, Concentration and UntilEmpty values
+Typed DamageBonus, Resistance, Advantage, Concentration, Duration and UntilEmpty values
 select the existing meanings as well. `CompileOutputs` projects only payload
 parts through those same builders for a consumer that already owns a recipe. It
 refuses maintenance rather than dropping it, and requires no fake holder identity.
@@ -163,7 +163,10 @@ are independent typed `PartSpec` lists. It returns the existing immutable catalo
 containing that one definition ID; role binding and delivery use the same path as
 the JSON library. Both compilers converge on the same expanded-definition validator,
 not parallel runtimes. Changing maintenance or mutating the input cannot rewrite a
-compiled or active grant.
+compiled or active grant. [The typed raging-ring example](../conditions/typed_composition_example_test.go)
+shows the whole definition, then uses the existing source/host fixture to exercise
+payment, idle turns, reload and concentration cleanup. It is an executable rulebook
+consumer, not native inventory acquisition or a live save-window roll.
 
 The public `conditions` path is:
 

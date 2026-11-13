@@ -23,7 +23,7 @@
 // AssessConfiguredOutput carry owned definitions through that same meaning.
 //
 // Typed Definition values (AddToRoll, EndOn, DamageBonus, Resistance, Advantage,
-// Concentration and UntilEmpty) compile through CompileParts into owned canonical
+// Concentration, Duration and UntilEmpty) compile through CompileParts into owned canonical
 // declarations. Construction requires no runtime identities, JSON at call sites
 // or panic convenience. CompileOutputs projects validated payload parts through
 // their existing kind builders for consumers that already own a machine recipe;
