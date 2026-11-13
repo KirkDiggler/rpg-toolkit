@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 )
 
 // arrest_test.go is the arrest outcome's grammar (rpg-project#925): `arrest:
@@ -56,9 +57,17 @@ func TestDungeonspec_TheArrestIsRefusedAtTheAuthorsPath(t *testing.T) {
 	}
 
 	t.Run("both kinds in one consequence", func(t *testing.T) {
-		requireExactDefect(t, refusals(t, castleWith(t, "        - arrest:\n"+theArrest,
-			"        - recognize: {topic: arrested, holder: spoken_to, about: party_in_sight}\n          arrest:\n"+theArrest)),
-			at, "a consequence is one kind: `recognize` or `arrest`, not both")
+		// The refused consequence grants nothing, so the lines that ask for
+		// `arrested` are refused too; the consequence's own refusal is the
+		// one at its path.
+		var here []dungeonspec.FieldError
+		for _, e := range refusals(t, castleWith(t, "        - arrest:\n"+theArrest,
+			"        - recognize: {topic: arrested, holder: spoken_to, about: party_in_sight}\n          arrest:\n"+theArrest)) {
+			if e.Path == at {
+				here = append(here, e)
+			}
+		}
+		requireExactDefect(t, here, at, "a consequence is one kind: `recognize`, `arrest` or `jail`, not two")
 	})
 }
 

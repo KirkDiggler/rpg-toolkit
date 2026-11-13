@@ -37,7 +37,8 @@ var saidKeys = map[string][]string{
 	"behaviorDefinition": {"recipe", "table"},
 	"interaction":        {"recipe", "approach", "outcomes"},
 	"approach":           {"within"},
-	"outcome":            {"recognize", "arrest"},
+	"outcome":            {"recognize", "arrest", "jail"},
+	"jail":               {"words", "rounds", "escaped"},
 	"arrest":             {"cell", "area"},
 	"arrestArea":         {"regions", "cells"},
 	"recognize":          {"topic", "holder", "about", "heard_by"},
@@ -184,6 +185,7 @@ func (b *builder) notYetSaid() []Unsaid {
 				recognize(c, cp)
 				check(at(c, "arrest"), cp+".arrest", "arrest")
 				check(at(at(c, "arrest"), "area"), cp+".arrest.area", "arrestArea")
+				check(at(c, "jail"), cp+".jail", "jail")
 			})
 		})
 	})

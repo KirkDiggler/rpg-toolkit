@@ -124,14 +124,26 @@ func outcomesOf(
 			continue
 		}
 		if len(specs[state]) == 0 {
-			fail(at, "an outcome lists what follows entering the state: write at least one `recognize` or `arrest`")
+			fail(at, "an outcome lists what follows entering the state: write at least one `recognize`, `arrest` or `jail`")
 			continue
 		}
 		for i, c := range specs[state] {
 			itemAt := fmt.Sprintf("%s[%d]", at, i)
 			switch {
-			case c.Recognize != nil && c.Arrest != nil:
-				fail(itemAt, "a consequence is one kind: `recognize` or `arrest`, not both")
+			case kinds(c) > 1:
+				fail(itemAt, "a consequence is one kind: `recognize`, `arrest` or `jail`, not two")
+				continue
+			case c.Jail != nil:
+				switch {
+				case c.Jail.Words == "":
+					fail(itemAt+".jail.words", "a jail tells the jailed what happens to them: write its words")
+				case c.Jail.Rounds < 0:
+					fail(itemAt+".jail.rounds", "a jail's rounds are zero or more")
+				default:
+					out[state] = append(out[state], encounter.Consequence{Jail: &encounter.Jail{
+						Words: c.Jail.Words, Rounds: c.Jail.Rounds, Escaped: encounter.FactID(c.Jail.Escaped),
+					}})
+				}
 				continue
 			case c.Arrest != nil:
 				if arrest, ok := arrestOf(itemAt+".arrest", c.Arrest, regions, fail); ok {
@@ -139,7 +151,7 @@ func outcomesOf(
 				}
 				continue
 			case c.Recognize == nil:
-				fail(itemAt, "a consequence is `recognize: { topic, holder, about }` or `arrest: { cell, area }`")
+				fail(itemAt, "a consequence is `recognize: { topic, holder, about }`, `arrest: { cell, area }` or `jail: { words }`")
 				continue
 			}
 			rec := recognitionOf(itemAt+".recognize", c.Recognize, true, fail)
@@ -311,4 +323,15 @@ func arrestOf(at string, a *ArrestSpec, regions map[string]bool, fail func(at, m
 		}
 	}
 	return out, ok
+}
+
+// kinds is how many consequence kinds one outcome item names.
+func kinds(c OutcomeSpec) int {
+	n := 0
+	for _, set := range []bool{c.Recognize != nil, c.Arrest != nil, c.Jail != nil} {
+		if set {
+			n++
+		}
+	}
+	return n
 }

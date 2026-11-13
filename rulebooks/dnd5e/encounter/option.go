@@ -786,7 +786,7 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	// the very next offer reads the new state — a landed beat would wait for
 	// the next raise and leave that offer stale.
 	if err := e.advanceInteraction(option, beaten, recognitionLine{
-		speaker: in.Actor, spokenTo: in.Target, witnesses: witnesses, at: at,
+		speaker: in.Actor, spokenTo: in.Target, witnesses: witnesses, at: at, reach: in.Range,
 		spoken: spoken, seen: admitted.seen, perceived: admitted.perceived, partyAt: admitted.partyAt, hearers: heardLine.catchers,
 		sawTarget: sawTargetOf(line),
 	}); err != nil {

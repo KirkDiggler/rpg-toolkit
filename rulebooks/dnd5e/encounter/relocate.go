@@ -116,6 +116,10 @@ func parseRelocated(kind string) (MemberID, spatial.Position, bool) {
 // words the moved member is told, and how many world rounds the move takes.
 type RelocationCause struct {
 	// Ref names the authored thing that moves them. REQUIRED, a valid ref.
+	// IT IS TOLD TO EVERY OBSERVER OF EITHER END, so an author never spells
+	// the destination into it: one who only saw the member leave is told the
+	// ref and never the place (`dnd5e:consequences:arrest`, never
+	// `…:to-the-crypt`).
 	Ref core.Ref
 
 	// Words is what the moved member is told ("The guards march you to the
@@ -124,6 +128,10 @@ type RelocationCause struct {
 
 	// Rounds is how many world rounds pass with the move, paid after the
 	// members are set down and before the sight refresh. Zero or more.
+	// A FLOOR, NOT A GUARANTEE: each round is driven by the movers, and a
+	// mover behind the world's front runner pays a round that passes for
+	// nobody else (the clock takes the furthest driver). Fine for the
+	// arrest, whose movers have just walked to the gate.
 	Rounds int
 }
 

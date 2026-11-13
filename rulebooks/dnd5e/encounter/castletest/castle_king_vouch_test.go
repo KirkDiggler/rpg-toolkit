@@ -91,6 +91,9 @@ func TestMain(m *testing.M) {
 		slices.ContainsFunc(custodyTests, re.MatchString) {
 		arrestScene.once.Do(buildTheArrestScene)
 	}
+	if pattern == "" || err != nil || slices.ContainsFunc(jailedSceneTests, re.MatchString) {
+		jailedScene.once.Do(buildTheJailedScene)
+	}
 	if pattern == "" || err != nil || slices.ContainsFunc(hintSceneTests, re.MatchString) {
 		hintScene.once.Do(buildTheHintScene)
 	}
