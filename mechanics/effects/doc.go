@@ -166,6 +166,21 @@
 // explicit disjoint pending/live subsets and never revives members from defaults.
 // There is no whole-application delivery seal or extra lifecycle interpreter.
 //
+// # Contribution selection
+//
+// SelectContributions is a pure value operation over already-applicable candidates
+// in caller-supplied oldest-first order. AllApplicable selects each independently
+// without a group; OldestApplicable selects the first in each nonempty group.
+// ValidateSelectionRule validates that policy without needing an instance ID.
+// Selection refuses a malformed rule, blank/duplicate ID or absent input before
+// returning any decisions. Empty candidates are valid.
+//
+// Each ordered decision identifies its candidate and either selects it or names
+// the earlier winner in SelectedInstead. Decisions own their slice; calls retain
+// no winner or input state. The selector never sorts, rolls, removes, suspends or
+// mutates an instance. Applicability, durable ordering, lifetimes and combination
+// of selected quantities remain the consumer's separate responsibilities.
+//
 // # What effects does not know
 //
 // The composer knows no rulebook. It has no chain types, stages, removal
