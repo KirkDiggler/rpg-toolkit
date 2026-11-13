@@ -5,29 +5,119 @@ package castletest
 
 import (
 	"encoding/json"
+	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // castle_king_hint_test.go is rpg-project#936: the gate guard's answer to a
 // stranger asking after their friends — the hint that a friend can speak for
 // them — is SHOUTED. It reaches the next room through the gate's open
-// doorway, so a friend inside, out of sight in the yard, catches the words
-// without the name; two rooms off, in the great hall, nobody catches
-// anything. These read each member's own story, which is what a player is
-// shown at `party: { sharing: own }` (the session's merge is the only thing
-// the dial changes).
+// doorway, so a friend inside catches the words: without the name when the
+// gatehouse's wall is between them, with it when they stand in line with the
+// open gate; two rooms off, in the great hall, nobody catches the words.
+// These read each member's own story, which is what a player is shown at
+// `party: { sharing: own }` (the session's merge is the only thing the dial
+// changes).
+//
+// THE SESSION'S SIGHT. Every scene here is played with everybody seeing
+// [sessionSightFeet], the session's own default, through its own build
+// ([hintScene]) — not the castle tests' torchlit sixty feet — and the hero
+// WALKS where a player walks, the sighting the run keeps checked against a
+// fresh look at every step ([kingScene.walkedTo]). So what these tests say
+// is what a player gets (rpg-project#936: a placed hero at sixty feet had
+// called a cell in plain view of the gate unseen).
 
 // theHint is gate-1's shouted answer to `friends-inside`.
 const theHint = "The troupe? Aye, they’re inside. If one of them comes back and speaks for you, in you go."
 
-// inTheYard is courtyard floor out of both gate guards' sight, one room in
-// from the gatehouse through the gate's open doorway.
-var inTheYard = spatial.Position{X: -12, Y: 2}
+var (
+	// theEastYard is courtyard floor at the east end of the yard, where the
+	// gatehouse's wall stands between the hero and both gate guards, one
+	// room in from the gatehouse through the gate's open doorway.
+	theEastYard = spatial.Position{X: 6, Y: 2}
+	// inLineWithTheGate is courtyard floor across the yard in line with the
+	// open gate: at the session's sight, in plain view of gate-1.
+	inLineWithTheGate = spatial.Position{X: -12, Y: 2}
+)
+
+// hintScene is the admitted scene played at the session's sight, built ONCE
+// per test binary in [TestMain] for the tests in [hintSceneTests]. The
+// shared admitted scene, at the castle tests' sight, is left as it is.
+var hintScene struct {
+	once      sync.Once
+	err       error
+	blob      []byte
+	inTheHall []byte
+	compiled  dungeonspec.Compiled
+	host      castleHost
+	// moments are the scene's stored moments each test starts from, every
+	// placement made and everyone's sight looked again once, here, rather
+	// than on each test's clock.
+	moments map[string][]byte
+}
+
+// The moments [hintScene] keeps, by name.
+const (
+	momentEastOfTheGate = "east of the gate"
+	momentWestOfTheGate = "west of the gate"
+	momentHallShut      = "the hall shut"
+	momentHallOpen      = "the hall open"
+)
+
+// hintSceneTests are the tests that start from [hintScene].
+var hintSceneTests = []string{
+	"TestMadKingTheHintReachesTheEastYardWithoutAName", "TestMadKingTheHintInLineWithTheGateNamesHim",
+	"TestMadKingTheHintDoesNotReachTheGreatHall",
+}
+
+// buildTheHintScene plays [hintScene].
+func buildTheHintScene() {
+	hintScene.blob, hintScene.inTheHall, hintScene.compiled, hintScene.host, hintScene.err = playTheAdmittedScene(sessionSightFeet)
+	if hintScene.err != nil {
+		return
+	}
+	tb := &fixtureTB{}
+	defer func() {
+		if r := recover(); r != nil {
+			if _, ok := r.(fixtureFailed); !ok {
+				panic(r)
+			}
+			hintScene.err = fmt.Errorf("the hint scene's moments: %s", tb.failed)
+		}
+	}()
+	keep := func(name string, blob []byte, heroAt *spatial.Position, hallDoor encounter.DoorStateKind) {
+		at := map[encounter.MemberID]spatial.Position{straggler: besideGate1}
+		if heroAt != nil {
+			at[hero] = *heroAt
+		}
+		s := placedIn(tb, blob, at, hallDoor, hintScene.compiled, hintScene.host)
+		raw, err := json.Marshal(s.enc.ToData())
+		require.NoError(tb, err)
+		hintScene.moments[name] = raw
+	}
+	hintScene.moments = map[string][]byte{}
+	keep(momentEastOfTheGate, hintScene.blob, &eastOfTheGate, "")
+	keep(momentWestOfTheGate, hintScene.blob, &westOfTheGate, "")
+	keep(momentHallShut, hintScene.inTheHall, nil, encounter.DoorClosed)
+	keep(momentHallOpen, hintScene.inTheHall, nil, encounter.DoorOpen)
+}
+
+// atTheMoment loads one of [hintScene]'s moments.
+func atTheMoment(t *testing.T, name string) *kingScene {
+	t.Helper()
+	hintScene.once.Do(buildTheHintScene)
+	require.NoError(t, hintScene.err, "the admitted scene at the session's sight")
+	blob, ok := hintScene.moments[name]
+	require.True(t, ok, "a moment named %q", name)
+	return loadTheSceneOn(t, blob, hintScene.compiled, hintScene.host)
+}
 
 // hintVersion is one member's version of the hint, as their story holds it.
 type hintVersion struct {
@@ -61,14 +151,13 @@ func (s *kingScene) hintIn(member encounter.MemberID, from uint64) []hintVersion
 	return out
 }
 
-// placedIn is the admitted scene loaded with members stood where given in
-// the record — a placement, not a walk: where they stand is the scene, the
-// walk there is not what these tests are about. The hall's door is set as
-// given when state is not empty.
-func placedIn(t *testing.T, blob []byte, at map[encounter.MemberID]spatial.Position, hallDoor encounter.DoorStateKind) *kingScene {
+// placedIn is a stored moment of [hintScene] loaded with members stood where
+// given in the record — a placement, for those whose walk is not what a test
+// is about (the hero is walked, [kingScene.walkedTo]) — and everyone's sight
+// looked again. The hall's door is set as given when state is not empty.
+func placedIn(t testing.TB, blob []byte, at map[encounter.MemberID]spatial.Position, hallDoor encounter.DoorStateKind,
+	compiled dungeonspec.Compiled, host castleHost) *kingScene {
 	t.Helper()
-	admittedScene.once.Do(buildTheAdmittedScene)
-	require.NoError(t, admittedScene.err)
 	var data encounter.EncounterData
 	require.NoError(t, json.Unmarshal(blob, &data))
 	for i := range data.Members {
@@ -87,7 +176,7 @@ func placedIn(t *testing.T, blob []byte, at map[encounter.MemberID]spatial.Posit
 	}
 	raw, err := json.Marshal(data)
 	require.NoError(t, err)
-	s := loadTheScene(t, raw)
+	s := loadTheSceneOn(t, raw, compiled, host)
 	// Everyone looks again from where they now stand.
 	moved := make([]encounter.MemberID, 0, len(at))
 	for id := range at {
@@ -116,29 +205,87 @@ func (s *kingScene) askAfterFriends() uint64 {
 	return from
 }
 
-// theHintInTheYard is the admitted scene with the hero in the yard, out of
-// both gate guards' sight, and the straggler beside gate-1, after the
-// straggler has asked: the hint shouted. It returns the scene and the
-// record's sequence before the question.
-func theHintInTheYard(t *testing.T) (*kingScene, uint64) {
+var (
+	// eastOfTheGate is courtyard floor east of the gate, still in gate-1's
+	// sight through it: where the walk to the east yard starts, short of
+	// where the gatehouse's wall comes between them.
+	eastOfTheGate = spatial.Position{X: 0, Y: 3}
+	// westOfTheGate is courtyard floor west of the gate in gate-1's sight:
+	// where the walk to [inLineWithTheGate] starts.
+	westOfTheGate = spatial.Position{X: -9, Y: 6}
+)
+
+// walkedTo walks the hero, as a player walks, one step at a time along the
+// engine's own route to cell, and asserts at EVERY step that the sighting
+// the run keeps for her of each gate guard is what a fresh look from her
+// cell gives (SeesWithin), both ways round — so a sighting kept past where it
+// should end fails here. It returns whether she sees gate-1 at the end.
+func (s *kingScene) walkedTo(cell spatial.Position) bool {
+	s.t.Helper()
+	route, err := s.enc.Route(encounter.RouteInput{Mover: hero, Policy: encounter.MoveToward, Anchor: cell, Budget: 200})
+	require.NoError(s.t, err)
+	path := route.Path
+	if len(path) == 0 || path[len(path)-1] != cell {
+		path = append(path, cell)
+	}
+	for i, step := range path {
+		_, err := s.enc.Step(&encounter.StepInput{Member: hero, To: step, EndWalk: i == len(path)-1})
+		require.NoError(s.t, err, "the step to %v", step)
+		for _, guard := range []encounter.MemberID{kingGate1, kingGate2} {
+			for _, pair := range [][2]encounter.MemberID{{hero, guard}, {guard, hero}} {
+				fresh, known := s.enc.SeesWithin(pair[0], pair[1], 1_000_000)
+				require.True(s.t, known)
+				require.Equal(s.t, fresh, s.seesLive(pair[0], pair[1]),
+					"at %v: the sighting %s keeps of %s is what a fresh look gives", step, pair[0], pair[1])
+			}
+		}
+	}
+	require.Equal(s.t, cell, s.at(hero), "the hero stands where she walked")
+	return s.seesLive(hero, kingGate1)
+}
+
+// theHintWalkedTo is the hint scene at moment, the hero, admitted, stood in
+// the yard in gate-1's sight, WALKED to cell, and the straggler, beside
+// gate-1, asking after their friends: the hint shouted. It returns the scene,
+// whether the hero sees gate-1 there, and the record's sequence before the
+// question.
+func theHintWalkedTo(t *testing.T, moment string, cell spatial.Position) (*kingScene, bool, uint64) {
+	t.Helper()
+	s := atTheMoment(t, moment)
+	require.True(t, s.seesLive(hero, kingGate1), "precondition: at %v she sees gate-1", s.at(hero))
+	sees := s.walkedTo(cell)
+	require.Equal(t, encounter.RegionID("region-courtyard"), s.regionOf(s.at(hero)), "precondition: the hero is in the yard")
+	return s, sees, s.askAfterFriends()
+}
+
+// theHintInTheEastYard is the shared admitted scene, at the castle tests'
+// torchlit sight, with the hero stood in the east yard and the straggler
+// beside gate-1, and the hint asked: for the tests about what FOLLOWS the
+// hint — the creatures that catch it, the vouch — rather than about her
+// sight. The east yard is out of both gate guards' sight at either sight
+// (the gatehouse's wall stands between, [TestMadKingTheHintReachesTheEastYardWithoutAName]
+// walks it at the session's), and this scene is the cheaper to run.
+func theHintInTheEastYard(t *testing.T) (*kingScene, uint64) {
 	t.Helper()
 	admittedScene.once.Do(buildTheAdmittedScene)
 	require.NoError(t, admittedScene.err)
-	s := placedIn(t, admittedScene.blob, map[encounter.MemberID]spatial.Position{hero: inTheYard, straggler: besideGate1}, "")
-	require.Equal(t, encounter.RegionID("region-courtyard"), s.regionOf(s.at(hero)), "precondition: the hero is in the yard")
+	s := placedIn(t, admittedScene.blob, map[encounter.MemberID]spatial.Position{straggler: besideGate1, hero: theEastYard}, "",
+		admittedScene.compiled, admittedScene.host)
+	require.False(t, s.seesLive(hero, kingGate1), "precondition: out of gate-1's sight")
 	return s, s.askAfterFriends()
 }
 
-// TestMadKingTheHintIsShoutedToTheYard: the hero, admitted, stands in the
-// yard out of both gate guards' sight. The straggler asks after their
-// friends and gate-1 shouts the hint: the hero catches its words with no
+// TestMadKingTheHintReachesTheEastYardWithoutAName: the hero, admitted,
+// walks from east of the gate, in gate-1's sight, to the east end of the
+// yard, where the gatehouse's
+// wall comes between her and both gate guards. The straggler asks after
+// their friends and gate-1 shouts the hint: she catches its words with no
 // speaker and no one spoken to, from one room off.
-func TestMadKingTheHintIsShoutedToTheYard(t *testing.T) {
+func TestMadKingTheHintReachesTheEastYardWithoutAName(t *testing.T) {
 	t.Parallel()
-	s, from := theHintInTheYard(t)
-	require.False(t, s.seesLive(kingGate1, hero), "precondition: the hero is out of gate-1's sight")
-	require.False(t, s.seesLive(kingGate2, hero), "precondition: and gate-2's")
-	require.False(t, s.seesLive(hero, kingGate1), "precondition: and cannot see him")
+	s, sees, from := theHintWalkedTo(t, momentEastOfTheGate, theEastYard)
+	require.False(t, sees, "precondition: out of gate-1's sight")
+	require.False(t, s.seesLive(hero, kingGate2), "precondition: and gate-2's")
 
 	got := s.hintIn(hero, from)
 	require.Len(t, got, 1, "the hero catches the shouted hint")
@@ -148,6 +295,19 @@ func TestMadKingTheHintIsShoutedToTheYard(t *testing.T) {
 	require.NotNil(t, got[0].Hops)
 	require.Equal(t, 1, *got[0].Hops, "one room off")
 	require.Len(t, s.hintIn(straggler, from), 1, "the straggler, spoken to, catches it too")
+}
+
+// TestMadKingTheHintInLineWithTheGateNamesHim: walked across the yard to
+// its west, in line with the open gate, the hero still sees gate-1 at the
+// session's sight, and the same shout reaches her with his name.
+func TestMadKingTheHintInLineWithTheGateNamesHim(t *testing.T) {
+	t.Parallel()
+	s, sees, from := theHintWalkedTo(t, momentWestOfTheGate, inLineWithTheGate)
+	require.True(t, sees, "precondition: gate-1 in her sight through the open gate")
+	got := s.hintIn(hero, from)
+	require.Len(t, got, 1)
+	require.Equal(t, string(kingGate1), got[0].Speaker, "his name")
+	require.Nil(t, got[0].Hops, "no distance beside a name")
 }
 
 // TestMadKingNothingThatCatchesTheHintActsOnIt: the shout's voice reaches
@@ -160,7 +320,7 @@ func TestMadKingTheHintIsShoutedToTheYard(t *testing.T) {
 // hall's guard now holds.)
 func TestMadKingNothingThatCatchesTheHintActsOnIt(t *testing.T) {
 	t.Parallel()
-	s, _ := theHintInTheYard(t)
+	s, _ := theHintInTheEastYard(t)
 	for _, id := range []encounter.MemberID{"hall-1", "sergeant", "turnkey", "reserve-1", "reserve-2"} {
 		require.True(t, s.heardKind(id, encounter.SoundVoice), "%s holds the voice", id)
 	}
@@ -177,12 +337,12 @@ func TestMadKingNothingThatCatchesTheHintActsOnIt(t *testing.T) {
 	}
 }
 
-// TestMadKingTheHeroComesBackToVouch: having caught the hint in the yard,
-// the hero comes back to the gate and vouches with the straggler in gate-1's
-// sight, and the straggler is let through.
+// TestMadKingTheHeroComesBackToVouch: having caught the hint in the east
+// yard, the hero comes back to the gate and vouches with the straggler in
+// gate-1's sight, and the straggler is let through.
 func TestMadKingTheHeroComesBackToVouch(t *testing.T) {
 	t.Parallel()
-	s, from := theHintInTheYard(t)
+	s, from := theHintInTheEastYard(t)
 	require.Len(t, s.hintIn(hero, from), 1, "precondition: the hero caught the hint")
 	s.walkMember(hero, whereTheHeroWasAdmitted, false)
 	require.True(t, s.offersTo(hero, kingGate1, vouchLine), "precondition: back at the gate, the vouch is offered")
@@ -191,14 +351,12 @@ func TestMadKingTheHeroComesBackToVouch(t *testing.T) {
 	require.Empty(t, s.heldAgainst(straggler), "and the gate lets them through")
 }
 
-// theHallWithItsDoor is the admitted scene with the hero beside the captain
-// in the great hall — two rooms in from the gatehouse — the straggler beside
-// gate-1, and the hall's door as given.
+// theHallWithItsDoor is [hintScene] with the hero beside the captain in the
+// great hall — two rooms in from the gatehouse — the straggler beside gate-1,
+// and the hall's door as given.
 func theHallWithItsDoor(t *testing.T, state encounter.DoorStateKind) *kingScene {
 	t.Helper()
-	admittedScene.once.Do(buildTheAdmittedScene)
-	require.NoError(t, admittedScene.err)
-	s := placedIn(t, admittedScene.inTheHall, map[encounter.MemberID]spatial.Position{straggler: besideGate1}, state)
+	s := atTheMoment(t, map[encounter.DoorStateKind]string{encounter.DoorClosed: momentHallShut, encounter.DoorOpen: momentHallOpen}[state])
 	require.Equal(t, encounter.RegionID("region-great-hall"), s.regionOf(s.at(hero)), "precondition: the hero is in the great hall")
 	return s
 }
@@ -224,9 +382,10 @@ func (s *kingScene) speechSince(member encounter.MemberID, from uint64) []string
 // TestMadKingTheHintDoesNotReachTheGreatHall: the hero in the great hall,
 // two rooms in from the gatehouse. Behind its CLOSED door she is shown
 // nothing of the shout at all. With the door standing open (as the captain
-// leaves it) the words still do not reach her — a shout carries one room —
-// and she may notice only a voice two rooms off, by passive Perception,
-// with neither words nor a name.
+// leaves it) the words still do not reach her — a shout carries one room.
+// At the session's sight she may SEE the straggler speak, through the open
+// doors and across the yard, and so be shown who spoke and to whom; never
+// the words, and never the hint at all.
 func TestMadKingTheHintDoesNotReachTheGreatHall(t *testing.T) {
 	t.Parallel()
 	t.Run("behind the closed door, nothing", func(t *testing.T) {
@@ -235,16 +394,15 @@ func TestMadKingTheHintDoesNotReachTheGreatHall(t *testing.T) {
 		from := s.askAfterFriends()
 		require.Empty(t, s.speechSince(hero, from), "no version of anything said at the gate")
 	})
-	t.Run("through the open door, a voice and no words", func(t *testing.T) {
+	t.Run("through the open door, no words", func(t *testing.T) {
 		t.Parallel()
 		s := theHallWithItsDoor(t, encounter.DoorOpen)
 		from := s.askAfterFriends()
-		require.Empty(t, s.hintIn(hero, from), "two rooms off, no words")
+		require.Empty(t, s.hintIn(hero, from), "two rooms off, no words of the hint")
 		for _, v := range s.speechSince(hero, from) {
 			var b hintVersion
 			require.NoError(t, json.Unmarshal([]byte(v), &b))
-			require.Empty(t, b.Words, "no words: %s", v)
-			require.Empty(t, b.Speaker, "no name: %s", v)
+			require.Empty(t, b.Words, "no words of anything said at the gate: %s", v)
 		}
 	})
 }
