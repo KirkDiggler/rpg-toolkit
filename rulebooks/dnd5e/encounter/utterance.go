@@ -209,6 +209,7 @@ func (e *Encounter) perceive(u utterance) ([]facet, error) {
 		return nil, err
 	}
 	rooms, reaches := wordRooms(u.loudness)
+	carries := loudnessWord(string(u.loudness)) == LoudnessSpeak
 	dc, noticeable := noticeDC(u.loudness)
 	toCatches := e.addresseeCatches(u, where)
 
@@ -225,8 +226,10 @@ func (e *Encounter) perceive(u utterance) ([]facet, error) {
 			p.sees = slices.Contains(seers, id)
 			p.seesTo = id == u.to || slices.Contains(seeTo, id)
 			h, reached := -1, false
+			var pos spatial.Position
 			if m, ok := e.members[id]; ok {
-				if pos, err := e.cellOf(m); err == nil {
+				var err error
+				if pos, err = e.cellOf(m); err == nil {
 					if part, ok := parts.of[pos]; ok {
 						if h, reached, err = e.heardFrom(part, hops); err != nil {
 							return nil, err
@@ -238,6 +241,14 @@ func (e *Encounter) perceive(u utterance) ([]facet, error) {
 				p.hops = h
 			}
 			p.words = (id == u.to && toCatches) || (reaches && reached && h <= rooms)
+			// SPEECH CARRIES A SHORT WAY THROUGH AN OPEN DOORWAY
+			// (rpg-project#953): one room on, within [SpeechCarryFeet] by a
+			// way through the doorway.
+			if !p.words && carries && reached && h == 1 {
+				if p.words, err = e.speechCarries(where, pos); err != nil {
+					return nil, err
+				}
+			}
 			if !p.words && noticeable && reached {
 				passive := sheets[id].PassivePerception
 				p.noticed = passive > 0 && passive >= dc+dcPerHop*h
@@ -319,6 +330,9 @@ func (e *Encounter) voiceReach(where spatial.Position, l Loudness) (map[Partitio
 		return nil, err
 	}
 	bound, _ := wordRooms(l)
+	if loudnessWord(string(l)) == LoudnessSpeak {
+		bound = max(bound, 1) // the next room, for the words a doorway carries
+	}
 	if dc, ok := noticeDC(l); ok {
 		sheets, err := e.sheetsNow()
 		if err != nil {
@@ -401,6 +415,59 @@ func (e *Encounter) standsIn(p PartitionID) ([]PartitionID, error) {
 		}
 	}
 	return out, nil
+}
+
+// speechCarries is whether a line spoken at where carries its words to a
+// member at listener in the next room ([SpeechCarryFeet]): some cell of an
+// OPEN door joining a partition the speaker stands in to one the listener
+// stands in ([Encounter.standsIn], a doorway counting as the rooms it joins)
+// lies on a way from the speaker to the listener no longer than the carry,
+// measured as the speaker's distance to that cell plus that cell's distance
+// to the listener, by [Encounter.Distance]. The caller has already found the
+// listener one room on.
+func (e *Encounter) speechCarries(where, listener spatial.Position) (bool, error) {
+	parts, err := e.field.partitionsNow()
+	if err != nil {
+		return false, err
+	}
+	from, okFrom := parts.of[where]
+	to, okTo := parts.of[listener]
+	if !okFrom || !okTo {
+		return false, nil
+	}
+	speakerIn, err := e.standsIn(from)
+	if err != nil {
+		return false, err
+	}
+	listenerIn, err := e.standsIn(to)
+	if err != nil {
+		return false, err
+	}
+	links, err := e.links()
+	if err != nil {
+		return false, err
+	}
+	carry := float64(CellsFromFeet(SpeechCarryFeet))
+	for _, s := range speakerIn {
+		for _, l := range links[s] {
+			if l.door.blocks() {
+				continue
+			}
+			beyond, err := e.standsIn(l.to)
+			if err != nil {
+				return false, err
+			}
+			if !slices.ContainsFunc(beyond, func(p PartitionID) bool { return slices.Contains(listenerIn, p) }) {
+				continue
+			}
+			for _, c := range e.doorCells(l.door) {
+				if e.Distance(where, c)+e.Distance(c, listener) <= carry {
+					return true, nil
+				}
+			}
+		}
+	}
+	return false, nil
 }
 
 // heardFrom is how many rooms from a voice a member in partition p is: the

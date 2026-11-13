@@ -75,6 +75,7 @@ const (
 var hintSceneTests = []string{
 	"TestMadKingTheHintReachesTheEastYardWithoutAName", "TestMadKingTheHintInLineWithTheGateNamesHim",
 	"TestMadKingTheHintDoesNotReachTheGreatHall",
+	"TestMadKingAVouchFromInsideTheGateCarries", "TestMadKingSpeechThroughTheGateHasARange",
 }
 
 // buildTheHintScene plays [hintScene].
