@@ -52,7 +52,7 @@ func (c *freeRoamCastle) walkMemberTo(t *testing.T, member string, cell encounte
 }
 
 // warnedGateTests start from the warned gate, built ONCE in [TestMain].
-var warnedGateTests = []string{"TestCastleLeavingWhileAddressedLeavesARunThatLoads", "TestCastleTheArrestSendsNoPlayerAnActAtOwn", "TestCastleTheArrestSendsNoPlayerAnActAtView"}
+var warnedGateTests = []string{"TestCastleLeavingWhileAddressedLeavesARunThatLoads", "TestCastleTheArrestAtEachTheirOwn", "TestCastleTheArrestAtSharedView", "TestCastleTheTakenCannotWalkAway", "TestCastleARelocationAtEachTheirOwn", "TestCastleARelocationAtSharedView"}
 
 // warnedGate is the operator's walk stored at the moment before alice
 // leaves: told of the feast by the stranger, hailed by the captain, her

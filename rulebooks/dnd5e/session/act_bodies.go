@@ -322,6 +322,70 @@ type BarredAct struct {
 	Verb string
 }
 
+// RelocateEnd is which end of a relocation one recipient perceived
+// (relocated `end`, rpg-project#925). A closed set a client branches on.
+type RelocateEnd string
+
+const (
+	// RelocateBoth: the recipient perceived the leaving and the arriving. The
+	// mover's own version is always both; a client tells it by Mover being
+	// the viewer, never by Words.
+	RelocateBoth RelocateEnd = "both"
+	// RelocateLeft: the recipient saw the member leave and not where they
+	// were set down.
+	RelocateLeft RelocateEnd = "left"
+	// RelocateArrived: the recipient saw the member arrive and not where they
+	// came from.
+	RelocateArrived RelocateEnd = "arrived"
+)
+
+// RelocateAct is a member set down at a place without walking (relocated,
+// rpg-project#925): taken away under arrest, say. There is no path; the
+// member leaves one cell and is at another. Each recipient is sent only the
+// end they perceived, and a recipient who perceived neither is sent nothing.
+//
+// AN ABSENT END WAS NOT PERCEIVED: From is nil unless the recipient saw the
+// leaving, To nil unless they saw the arriving, and neither is ever read as
+// the cell (0,0).
+type RelocateAct struct {
+	// Mover is the member set down (relocated `member`).
+	Mover Party
+	// From is where they were taken from (relocated `from`), when the
+	// recipient saw the leaving.
+	From *spatial.Position
+	// To is where they were set down (relocated `to`), when the recipient saw
+	// the arriving.
+	To *spatial.Position
+	// Cause is the full ref of what moved them (relocated `cause`), verbatim:
+	// a client words it for an observer and never branches a rule on it.
+	Cause string
+	// Words are the authored words the mover is told (relocated `words`):
+	// set in the mover's own version, and at shared view in a version that
+	// came through the mover; empty otherwise.
+	Words string
+	// End is which end this recipient perceived (relocated `end`).
+	End RelocateEnd
+}
+
+// ArrestAct is a party arrested (arrested, rpg-project#925): the members
+// taken, as THIS recipient perceived them taken, and the cell region they are
+// to be held in.
+//
+// WHO IS WANTED IS NEVER HERE. The guards' memory of a member they mean to
+// arrest on sight is theirs alone; the encounter tells it to no player, and
+// this act has no field that could carry it.
+type ArrestAct struct {
+	// Interaction is the conversation that arrested (arrested
+	// `interaction`): the front gate.
+	Interaction string
+	// Taken are the members taken that this recipient perceives (arrested
+	// `taken`), in the beat's order. Never empty: a recipient told nobody is
+	// told nothing.
+	Taken []Party
+	// Cell is the region they are to be held in (arrested `cell`).
+	Cell string
+}
+
 // EquipAct is an item drawn or stowed (equipment-changed).
 type EquipAct struct {
 	// By is whose equipment changed (equipment-changed `member`).
@@ -866,6 +930,8 @@ func (HoldAct) isActBody()      {}
 func (DropAct) isActBody()      {}
 func (DoorAct) isActBody()      {}
 func (BarredAct) isActBody()    {}
+func (RelocateAct) isActBody()  {}
+func (ArrestAct) isActBody()    {}
 func (EquipAct) isActBody()     {}
 func (StayAct) isActBody()      {}
 func (SneakAct) isActBody()     {}

@@ -38,6 +38,8 @@ func TestTranslateLetsNoCompositionSentinelThrough(t *testing.T) {
 		// One meaning per refusal (toolkit#1965): each composition member
 		// sentinel arrives as its own, so a host can switch on them.
 		{"empty member id", encounter.ErrNoMember, ErrNoMemberID},
+		// Held by the guards (rpg-project#925): the walking-away refusal.
+		{"in custody", encounter.ErrInCustody, ErrInCustody},
 		{"not a member", encounter.ErrNotMember, ErrNoMember},
 		{"member already present", encounter.ErrDuplicateMember, ErrDuplicateMember},
 		{"member cannot be seated", encounter.ErrBadMember, ErrInvalidWorld},
@@ -377,4 +379,20 @@ func TestTranslateNeverMakesAHeldDoor(t *testing.T) {
 		require.ErrorIs(t, translate(door), ErrNoConnection, "%v is still no connection", door)
 		require.NotErrorIs(t, translate(door), ErrDoorHeld, "%v is never a held door", door)
 	}
+}
+
+// TestTranslateNamesWhomTheGuardsHold: a move imposed on a held member — a
+// shove, a flee, a directed move — arrives as the session's typed
+// [CustodyMoveError] naming whom, is [ErrInCustody] to errors.Is, carries no
+// composition error, and speaks to its viewer: in the second person to the
+// held member's own player, naming them to anyone else.
+func TestTranslateNamesWhomTheGuardsHold(t *testing.T) {
+	got := translate(fmt.Errorf("direct: %w", &encounter.CustodyMoveError{Mover: "alice"}))
+	var held *CustodyMoveError
+	require.ErrorAs(t, got, &held)
+	require.Equal(t, "alice", held.Member)
+	require.ErrorIs(t, got, ErrInCustody)
+	require.False(t, errors.Is(got, encounter.ErrInCustody), "no composition error crosses")
+	require.Equal(t, "The guards hold you; you cannot be moved.", held.Sentence("alice"))
+	require.Equal(t, "The guards hold alice; they cannot be moved.", held.Sentence("cleric"))
 }

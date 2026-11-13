@@ -724,7 +724,15 @@ func translate(err error) error {
 	// error never leaves the composition. The one held refusal this package
 	// returns, a paused Unlock answered through React, is built from
 	// DoorHeldFor's answer in refuseHeldDoor and never passes through here.
+	// HELD BY THE GUARDS (rpg-project#925), the typed refusal first: a move
+	// imposed on a held member names whom, and is also ErrInCustody.
+	var held *encounter.CustodyMoveError
+	if errors.As(err, &held) {
+		return &CustodyMoveError{Member: string(held.Mover)}
+	}
 	switch {
+	case errors.Is(err, encounter.ErrInCustody):
+		return fmt.Errorf("%w", ErrInCustody)
 	case errors.Is(err, encounter.ErrTrimmed):
 		return fmt.Errorf("%w", ErrStoryTrimmed)
 	case errors.Is(err, encounter.ErrNoMember):
