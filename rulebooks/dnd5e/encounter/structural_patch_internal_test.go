@@ -59,6 +59,37 @@ func (s *StructuralPatchSuite) TestPresentEmptyReplacementClearsButAbsentIsNoOp(
 	s.Empty(payload, "unchanged layout does not emit even an empty patch collection")
 }
 
+func (s *StructuralPatchSuite) TestFrameRowsAreDetachedAndEqualCopiesDoNotRepeatOnReveal() {
+	frame := &DoorFramePresentation{Span: &WallFrameSpan{Before: 3, After: 3}, FaceFinishes: []DoorFrameFaceFinish{{Side: WallFacePositiveZ, MaterialRef: "material:gray", PhaseU: 0}}}
+	door := AtlasStructuralDoor{ID: "site/door", FramePresentation: frame}
+	before := Atlas{StructuralDoors: []AtlasStructuralDoor{door}}
+	copied := door
+	copied.FramePresentation = cloneDoorFramePresentation(frame)
+	after := Atlas{StructuralDoors: []AtlasStructuralDoor{copied}, StructuralWalls: []AtlasStructuralWall{{ID: "new-parent", Openings: []AtlasStructuralOpening{{ID: "gap", Position: 5, Width: 2, FrameSpan: cloneWallFrameSpan(frame.Span)}}}}}
+	_, doors, _ := structuralRevealPayload(before, after)
+	s.Empty(doors, "parent-later reveal must not repeat an equal independently known door")
+	walls, doors, _ := structuralRevealPayload(Atlas{}, after)
+	s.Require().Len(doors, 1)
+	s.NotContains(doors[0], "parent")
+	captured := doors[0]["frame_presentation"].(map[string]interface{})
+	s.Equal(float64(0), captured["face_finishes"].([]map[string]interface{})[0]["phase_u"], "zero phase is explicit")
+	cuts := walls[0]["openings"].([]map[string]interface{})
+	s.NotContains(cuts[0], "door_id")
+	s.Equal(map[string]interface{}{"before": float64(3), "after": float64(3)}, cuts[0]["frame_span"])
+	after.StructuralDoors[0].FramePresentation.FaceFinishes[0].PhaseU = 0.9
+	after.StructuralWalls[0].Openings[0].FrameSpan.Before = 4
+	s.Equal(float64(0), captured["face_finishes"].([]map[string]interface{})[0]["phase_u"])
+	s.Equal(float64(3), cuts[0]["frame_span"].(map[string]interface{})["before"])
+	first := Atlas{StructuralWalls: []AtlasStructuralWall{{ID: "wall", Openings: []AtlasStructuralOpening{{ID: "gap", Position: 5, Width: 2, FrameSpan: &WallFrameSpan{Before: 3, After: 3}}}}}}
+	second := Atlas{StructuralWalls: []AtlasStructuralWall{{ID: "wall", Openings: []AtlasStructuralOpening{{ID: "gap", Position: 5, Width: 2, FrameSpan: &WallFrameSpan{Before: 3, After: 3}}}}}}
+	_, _, patches := structuralRevealPayload(first, second)
+	s.Empty(patches, "equal span values do not depend on pointer identity")
+	second.StructuralWalls[0].Openings[0].FrameSpan.After = 3.5
+	_, _, patches = structuralRevealPayload(first, second)
+	s.Require().Len(patches, 1)
+	s.Equal(float64(3.5), patches[0]["openings"].([]map[string]interface{})[0]["frame_span"].(map[string]interface{})["after"])
+}
+
 func (s *StructuralPatchSuite) TestIndependentDoorDoesNotNameAWithheldWall() {
 	_, doors, patches := structuralRevealPayload(Atlas{}, Atlas{
 		StructuralDoors: []AtlasStructuralDoor{{ID: "site/door"}},
