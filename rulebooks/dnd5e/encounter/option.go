@@ -452,6 +452,15 @@ func (e *Encounter) requirementHolds(actor, other MemberID, requires Trigger) bo
 	case TriggerRecognized:
 		// THE OTHER PARTY'S HOLDING ABOUT ME (rpg-project#928): a line said
 		// to a prop has no other party, and never holds.
+		//
+		// RECOGNISED AS ARRESTED IS UNDER ARREST NOW (rpg-project#925,
+		// arrest.go): the guard's record stays for good, but the requirement
+		// holds only while the member is still held — not once a fight broke
+		// the hold, nor once jailed — so a line that takes the arrested
+		// (`come-quietly`) is never offered to someone it cannot take.
+		if t.Topic == TopicArrested && !e.inCustody(actor) {
+			return false
+		}
 		return e.recognizes(other, actor, t.Topic)
 	default:
 		return false
@@ -710,6 +719,13 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 
 	// A PLAIN LINE LANDS: it rolls nothing, so there is nothing to miss.
 	beaten := in.Beaten || !option.Checked()
+
+	// A JAIL THE VERDICT WOULD FIRE IS ASKED NOW, before anything is written
+	// (jail.go): a jail that would refuse refuses the line whole, so the
+	// conversation never steps and nothing is told.
+	if err := e.refuseJailAhead(option, beaten); err != nil {
+		return refuse(fmt.Errorf("speak: %w", err))
+	}
 
 	at := uint64(e.clock.ToData().HighWater)
 	seq, err := e.appendSpokeBeat(in, option, beaten, at)

@@ -10,6 +10,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
+	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
 )
 
 // jail.go is THE CUT TO THE CELLS (rpg-project#925, ruled 2026-11-14: "I do
@@ -102,17 +103,16 @@ func arrests(outcomes map[string][]Consequence) bool {
 	return false
 }
 
-// applyJail moves the interaction's taken into its arrest's cell (this
-// file's doc).
-func (e *Encounter) applyJail(r *interactionRecord, j Jail, line recognitionLine) error {
-	made := r.arrest
+// jailPlan is who a jail would take and where, or its loud refusal (this
+// file's doc): asked whole before anything changes, by the line that would
+// fire it ([Encounter.refuseJailAhead]) and by the jail itself.
+func (e *Encounter) jailPlan(made *ArrestRecord) (present, gone []MemberID, cells []spatial.Position, err error) {
 	switch {
 	case made == nil:
-		return fmt.Errorf("jail: the interaction has arrested nobody: %w", ErrBadPlacement)
+		return nil, nil, nil, fmt.Errorf("jail: the interaction has arrested nobody: %w", ErrBadPlacement)
 	case made.Custody != CustodyHeld:
-		return fmt.Errorf("jail: custody is %q, so nobody is held to take: %w", made.Custody, ErrBadPlacement)
+		return nil, nil, nil, fmt.Errorf("jail: custody is %q, so nobody is held to take: %w", made.Custody, ErrBadPlacement)
 	}
-	var present, gone []MemberID
 	for _, t := range made.Taken {
 		if _, ok := e.members[t.ID]; ok {
 			present = append(present, t.ID)
@@ -121,11 +121,56 @@ func (e *Encounter) applyJail(r *interactionRecord, j Jail, line recognitionLine
 		}
 	}
 	if len(present) == 0 {
-		return fmt.Errorf("jail: every taken member has left the run: %w", ErrBadPlacement)
+		return nil, nil, nil, fmt.Errorf("jail: every taken member has left the run: %w", ErrBadPlacement)
 	}
-	cells, err := e.FreeCellsIn(made.Cell, len(present))
+	cells, err = e.FreeCellsIn(made.Cell, len(present))
 	if err != nil {
-		return fmt.Errorf("jail: %w", err)
+		return nil, nil, nil, fmt.Errorf("jail: %w", err)
+	}
+	return present, gone, cells, nil
+}
+
+// refuseJailAhead asks, before a line writes anything, whether the state its
+// verdict would step its interaction into jails, and if so whether that jail
+// would refuse: the line is then refused whole. The step is tried on a copy
+// of the interaction's progress, so nothing moves.
+func (e *Encounter) refuseJailAhead(option Option, beaten bool) error {
+	a := option.Advance
+	if a == nil {
+		return nil
+	}
+	beat := a.Failure
+	if beaten {
+		beat = a.Success
+	}
+	inst, ok := e.interactions[a.Interaction]
+	if beat == "" || !ok {
+		return nil
+	}
+	blob := inst.blob
+	blob.Bag = inst.blob.Bag.Clone()
+	at := uint64(e.clock.ToData().HighWater)
+	stepped, err := inst.program.Step(&blob, beat, at, nil, at)
+	if err != nil || !stepped.Fired || stepped.To == "" {
+		return nil
+	}
+	for _, c := range inst.input.Outcomes[stepped.To] {
+		if c.Jail != nil {
+			if _, _, _, err := e.jailPlan(inst.arrest); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// applyJail moves the interaction's taken into its arrest's cell (this
+// file's doc).
+func (e *Encounter) applyJail(r *interactionRecord, j Jail, line recognitionLine) error {
+	made := r.arrest
+	present, gone, cells, err := e.jailPlan(made)
+	if err != nil {
+		return err
 	}
 	moves := make([]Relocation, len(present))
 	for i, id := range present {

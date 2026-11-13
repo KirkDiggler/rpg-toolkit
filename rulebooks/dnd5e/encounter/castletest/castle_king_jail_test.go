@@ -280,3 +280,72 @@ func lastIndex(kinds []string, kind string) int {
 	}
 	return -1
 }
+
+// TestMadKingTheLineIsOfferedOnlyToTheHeld: "We'll come quietly." is offered
+// to a taken member still held; never to a party member at the gate who was
+// not taken; and to nobody once a blow on a guard has broken the hold —
+// saying it then is refused at the door, the conversation stays arrested,
+// nothing is told, and the run saves and loads.
+func TestMadKingTheLineIsOfferedOnlyToTheHeld(t *testing.T) {
+	t.Parallel()
+	s, _ := theArrest(t)
+	require.True(t, s.offersTo(hero, kingCaptain, comeQuietly), "a held taken member is offered the line")
+
+	gate, err := s.enc.FreeCellsIn("region-gatehouse", 1)
+	require.NoError(t, err)
+	_, err = s.enc.Relocate(&encounter.RelocateInput{
+		Moves: []encounter.Relocation{{Member: leftTheGate, To: gate[0]}},
+		Cause: encounter.RelocationCause{Ref: core.Ref{Module: "test", Type: "shortcuts", ID: "to-the-gate"}, Words: "You are at the gate."},
+	})
+	require.NoError(t, err)
+	require.False(t, s.offersTo(leftTheGate, kingCaptain, comeQuietly), "a party member who was not taken is never offered it")
+
+	s.swingAs(seenOutside, kingGate2)
+	require.Equal(t, encounter.CustodyBroken, s.custody(), "precondition: the blow broke the hold")
+	require.Equal(t, "arrested", s.entrance(), "precondition: the conversation is still arrested")
+	for _, m := range takenMembers {
+		require.False(t, s.offersTo(m, kingCaptain, comeQuietly), "%s is no longer offered it", m)
+	}
+	before := len(s.payloadsOf(hero, encounter.BeatInteraction))
+	require.ErrorIs(t, s.goQuietly(hero), encounter.ErrNoOption, "saying it is refused at the door")
+	require.Equal(t, "arrested", s.entrance(), "and the conversation stays arrested")
+	require.Len(t, s.payloadsOf(hero, encounter.BeatInteraction), before, "nothing is told")
+	s.roundTrip()
+	require.Equal(t, "arrested", s.entrance())
+}
+
+// TestMadKingARefusedJailChangesNothing: a jail that would refuse — here its
+// arrest's cell names no region, edited into the saved run — refuses the line
+// whole, before anything is written: the conversation stays arrested, the
+// record is as long as it was, custody stays held, and the run saves and
+// loads.
+func TestMadKingARefusedJailChangesNothing(t *testing.T) {
+	t.Parallel()
+	arrestScene.once.Do(buildTheArrestScene)
+	require.NoError(t, arrestScene.err)
+	var raw map[string]any
+	require.NoError(t, json.Unmarshal(arrestScene.blob, &raw))
+	for _, it := range raw["interactions"].([]any) {
+		if arrest, ok := it.(map[string]any)["arrest"].(map[string]any); ok {
+			arrest["cell"] = "region-nowhere"
+		}
+	}
+	blob, err := json.Marshal(raw)
+	require.NoError(t, err)
+	s := loadTheSceneOn(t, blob, arrestScene.compiled, arrestScene.host)
+	require.True(t, s.offersTo(hero, kingCaptain, comeQuietly), "precondition: the held hero is offered the line")
+	next, err := s.enc.NextStorySeq()
+	require.NoError(t, err)
+
+	require.ErrorIs(t, s.goQuietly(hero), encounter.ErrBadPlacement, "the jail would refuse, so the line is refused")
+	require.Equal(t, "arrested", s.entrance(), "the conversation never stepped")
+	after, err := s.enc.NextStorySeq()
+	require.NoError(t, err)
+	require.Equal(t, next, after, "nothing was written")
+	require.Equal(t, encounter.CustodyHeld, s.custody())
+	for _, m := range takenMembers {
+		require.NotEqual(t, encounter.RegionID("region-cells"), s.regionOf(s.at(m)), "%s was not moved", m)
+	}
+	s.roundTrip()
+	require.Equal(t, "arrested", s.entrance(), "and the run saves and loads")
+}

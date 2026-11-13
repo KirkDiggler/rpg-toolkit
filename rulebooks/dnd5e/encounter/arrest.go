@@ -92,6 +92,10 @@ import (
 // TopicArrested is the topic the arresting guards hold about each member
 // they arrested (rpg-project#925): "guards who arrested the party remember
 // that fact".
+//
+// A `recognized: arrested` requirement holds only while the member is still
+// held under the arrest ([CustodyHeld]): the guard's record stays, but once a
+// fight has broken the hold, or the member is jailed, it no longer holds.
 const TopicArrested TopicID = "arrested"
 
 // TopicWanted is the topic the arresting guards hold about each member of
