@@ -87,7 +87,8 @@ func TestMain(m *testing.M) {
 	if pattern == "" || err != nil || slices.ContainsFunc(admittedSceneTests, re.MatchString) {
 		admittedScene.once.Do(buildTheAdmittedScene)
 	}
-	if pattern == "" || err != nil || slices.ContainsFunc(arrestSceneTests, re.MatchString) {
+	if pattern == "" || err != nil || slices.ContainsFunc(arrestSceneTests, re.MatchString) ||
+		slices.ContainsFunc(custodyTests, re.MatchString) {
 		arrestScene.once.Do(buildTheArrestScene)
 	}
 	if pattern == "" || err != nil || slices.ContainsFunc(hintSceneTests, re.MatchString) {

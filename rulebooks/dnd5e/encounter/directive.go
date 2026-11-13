@@ -173,6 +173,13 @@ type RouteOutput struct {
 // cells and a [RouteOutput.StoppedBy] saying which — not an error. That
 // distinction is the whole reason an unknown policy is an error instead.
 //
+// A SHORT PATH SAYS NOTHING EITHER. Toward an anchor the mover cannot reach
+// (a shut door, a post that holds against them, a wall with no way round),
+// the answer is the path to the nearest cell it can reach, with StoppedBy
+// empty; StoppedBy speaks only when no step gains at all. A caller that
+// needs to arrive checks the path's last cell (rpg-project#925: the arrested
+// party's way "to the cells" ended on the road outside the held gate).
+//
 // Refusals: [ErrNilInput] is not reachable (the input is a value), but
 // [ErrNoMember], [ErrClosed], [ErrNotMember], [ErrBadReach] for a negative
 // budget or a [MoveLine] anchor standing on the mover, and
@@ -659,6 +666,11 @@ func (e *Encounter) Direct(ctx context.Context, in DirectInput) (DirectOutput, e
 	// own is not one (DirectInput.Kind's doc).
 	if in.Kind != MoveCompelled && in.Kind != MoveDisplaced {
 		return DirectOutput{}, fmt.Errorf("direct %q: kind %q: %w", in.Mover, in.Kind, ErrBadMoveKind)
+	}
+	// HELD BY THE GUARDS (rpg-project#925): nothing but the march moves a
+	// taken member while custody holds.
+	if in.Cause != CustodyMarchCause && e.inCustody(in.Mover) {
+		return DirectOutput{}, fmt.Errorf("direct: %w", &CustodyMoveError{Mover: in.Mover})
 	}
 	// A HELD TABLE TAKES NO SECOND DIRECTIVE — see this verb's own doc. It
 	// covers the paused member themself, who could never be pushed, and

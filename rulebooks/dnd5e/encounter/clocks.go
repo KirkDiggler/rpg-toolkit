@@ -3045,6 +3045,8 @@ func (e *Encounter) formWithParticipation(
 	if err != nil {
 		return nil, fmt.Errorf("form append beat: %w", err)
 	}
+	// A FIGHT IS THE WAY OUT OF CUSTODY (rpg-project#925, arrest.go).
+	e.breakCustody(in.Order)
 
 	// The first turn of the fight starts here, and until this line nothing
 	// ever said so: SetOrder has always returned TurnStarted for whoever won
@@ -3196,6 +3198,8 @@ func (e *Encounter) transfer(in *TransferInput, driveAfterRemove bool) (*Transfe
 		e.disarm(in.Member)
 		// A straggler joining a fight is engaged by it too (sneaking R7).
 		e.endSneaking(in.Member)
+		// A FIGHT IS THE WAY OUT OF CUSTODY (rpg-project#925, arrest.go).
+		e.breakCustody([]MemberID{in.Member})
 	case ClockWorld:
 		if bubble == nil {
 			return nil, fmt.Errorf("transfer %q: %w", in.Member, ErrNoBubble)
