@@ -35,8 +35,8 @@ func validateEndOnPart(declaration PartDeclaration) error {
 	return err
 }
 
-func validateRollPart(declaration PartDeclaration) error {
-	_, err := rollPartOutput(declaration)
+func validateAddToRollPart(declaration PartDeclaration) error {
+	_, err := addToRollPartOutput(declaration)
 	return err
 }
 

@@ -67,8 +67,8 @@ var kindTable = map[generic.KindName]kindDefinition{
 	KindDuration:   {class: PartClassMaintenance, describePart: describeDurationPart, validatePart: validateDurationPart, part: bindDurationPart, inspectPart: inspectDurationPart},
 	KindUntilEmpty: {class: PartClassMaintenance, validatePart: checkUnparameterizedMaintenance, part: bindUntilEmptyPart, inspectPart: inspectUntilEmptyPart},
 	KindEndOn:      {class: PartClassMaintenance, validatePart: validateEndOnPart, part: bindEndOnPart, inspectPart: inspectEndOnPart},
-	KindRollModifier: {class: PartClassBenefit, validatePart: validateRollPart, part: bindRollModifierPart, inspectPart: inspectRollModifierPart, execution: generic.KindQuery,
-		check: checkRollModifier, meaning: rollMeaning, assess: assessRollModifier},
+	KindAddToRoll: {class: PartClassBenefit, payload: addToRollPartOutput, validatePart: validateAddToRollPart, part: bindAddToRollPart, inspectPart: inspectAddToRollPart, execution: generic.KindQuery,
+		check: checkAddToRoll, meaning: addToRollMeaning, assess: assessAddToRoll},
 }
 
 func decodeParams[T any](raw jsontext.Value) (T, error) {

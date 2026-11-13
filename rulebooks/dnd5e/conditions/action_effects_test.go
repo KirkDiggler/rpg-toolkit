@@ -101,7 +101,8 @@ func (s *actionEffectsSuite) TestSecondBlessDoesNotApplyWithReason() {
 	s.NotEqual(effects[0].ID, effects[1].ID)
 	s.Equal("cleric-b", effects[1].Source.SourceID)
 	s.Equal(contributions.StateDoesNotApply, effects[1].State)
-	s.Equal("Another Bless already adds to this roll", effects[1].Reason)
+	s.Contains(effects[1].Reason, "Not selected")
+	s.Contains(effects[1].Reason, "cleric-a", "the explanation identifies the older source")
 	s.Empty(effects[1].Benefit)
 }
 
@@ -133,7 +134,7 @@ func (s *actionEffectsSuite) TestSelectedRollContributionsMatchAssessedApplies()
 	effects := s.assess(frame, held...)
 	var assessedSources, executedSources []string
 	for _, effect := range effects {
-		if effect.RollGroup != "" && effect.State == contributions.StateApplies {
+		if effect.Selection != nil && effect.State == contributions.StateApplies {
 			assessedSources = append(assessedSources, effect.Source.SourceID)
 		}
 	}

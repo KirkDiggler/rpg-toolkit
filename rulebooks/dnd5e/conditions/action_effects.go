@@ -6,6 +6,7 @@ package conditions
 import (
 	"fmt"
 
+	generic "github.com/KirkDiggler/rpg-toolkit/mechanics/effects"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/classes"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
@@ -31,9 +32,9 @@ type AssessActionEffectsOutput struct {
 // AssessActionEffects asks every loaded effect how it bears on the framed
 // action. An effect that does not bear yields no row; one whose rule cannot yet
 // answer yields an unavailable row with its description; one that answers is
-// asked through contributions.ActionAssessor and mapped one to one. When an
-// earlier roll contribution in the same stacking group already applies, a
-// later one does not apply, with that reason.
+// asked through contributions.ActionAssessor and mapped one to one. Applicable
+// contributions then receive explicit neutral selection decisions; an excluded
+// row names the selected source without changing its owning condition.
 //
 // Reading spends, rolls and publishes nothing. Errors: nil input, an invalid
 // frame, a condition whose ref the registry does not hold, a bearing effect
@@ -46,8 +47,6 @@ func AssessActionEffects(in *AssessActionEffectsInput) (*AssessActionEffectsOutp
 	if err := in.Frame.Validate(); err != nil {
 		return nil, rpgerr.Wrap(err, "assess action effects requires a valid frame")
 	}
-	groups := newRollGroupSelection()
-
 	effects := make([]contributions.Effect, 0, len(in.Conditions))
 	ids := make(map[string]struct{}, len(in.Conditions))
 	for _, condition := range in.Conditions {
@@ -92,17 +91,6 @@ func AssessActionEffects(in *AssessActionEffectsInput) (*AssessActionEffectsOutp
 					return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "duplicate effect row id %q", row.ID)
 				}
 				ids[row.ID] = struct{}{}
-				if row.RollGroup != "" && row.State == contributions.StateApplies {
-					claim, err := groups.claim(&rollClaimInput{Metadata: dnd5eEvents.RollContributionMetadataOutput{Applicable: true, Group: row.RollGroup}, Applies: true, Name: row.Source.Name})
-					if err != nil {
-						return nil, err
-					}
-					if claim.Shadowed {
-						row.State = contributions.StateDoesNotApply
-						row.Reason = "Another " + claim.HeldBy + " already adds to this roll"
-						row.Benefit = ""
-					}
-				}
 				row.Participation = own.participation
 				effects = append(effects, row)
 			}
@@ -141,6 +129,36 @@ func AssessActionEffects(in *AssessActionEffectsInput) (*AssessActionEffectsOutp
 		}
 		effects = append(effects, effect)
 	}
+	// Applicability is the kind's answer. Selection is a separate decision
+	// over applicable rows, projected as a noncontribution with its own reason.
+	var candidates []generic.SelectionCandidate
+	rowsByID := make(map[string]int, len(effects))
+	for i, row := range effects {
+		rowsByID[row.ID] = i
+		if row.Selection == nil {
+			continue
+		}
+		if err := generic.ValidateSelectionRule(&generic.ValidateSelectionRuleInput{Rule: *row.Selection}); err != nil {
+			return nil, fmt.Errorf("effect %s: %w", row.ID, err)
+		}
+		if row.State == contributions.StateApplies {
+			candidates = append(candidates, generic.SelectionCandidate{ID: row.ID, Rule: *row.Selection})
+		}
+	}
+	selection, err := generic.SelectContributions(&generic.SelectContributionsInput{Candidates: candidates})
+	if err != nil {
+		return nil, err
+	}
+	for _, decision := range selection.Decisions {
+		if decision.Selected {
+			continue
+		}
+		row := &effects[rowsByID[decision.ID]]
+		winner := effects[rowsByID[decision.SelectedInstead]]
+		row.State = contributions.StateDoesNotApply
+		row.Reason = fmt.Sprintf("Not selected: older %s from %s already contributes to this roll", winner.Source.Name, winner.Source.SourceID)
+		row.Benefit = ""
+	}
 	return &AssessActionEffectsOutput{Effects: effects}, nil
 }
 
@@ -153,7 +171,7 @@ type answerEffectInput struct {
 
 // answerEffect asks one answering condition and maps its answer onto the row,
 // with participation owned by its descriptor. Composed roll-part selection is
-// handled by the shared group claimant in the plural-row path.
+// handled by the neutral selector after gathering applicable plural rows.
 func answerEffect(in *answerEffectInput) error {
 	ref := in.Condition.Ref().String()
 	assessor, ok := in.Condition.(contributions.ActionAssessor)

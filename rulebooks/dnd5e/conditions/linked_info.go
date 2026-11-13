@@ -157,7 +157,7 @@ func (p linkedRollProvider) RollContributionMetadata(in *dndevents.DescribeRollC
 	if err != nil {
 		return dndevents.RollContributionMetadataOutput{}, err
 	}
-	return dndevents.RollContributionMetadataOutput{Applicable: out.Applicable, Group: out.Group}, nil
+	return dndevents.RollContributionMetadataOutput{Applicable: out.Applicable, ID: p.output.ID(), Selection: out.Selection}, nil
 }
 
 func (p linkedRollProvider) DescribeRollContributions(in *dndevents.DescribeRollContributionsInput) (*dndevents.DescribeRollContributionsOutput, error) {
@@ -173,7 +173,7 @@ func (p linkedRollProvider) DescribeRollContributions(in *dndevents.DescribeRoll
 func (c *LinkedCondition) RollContributors() []dndevents.RollContributionProvider {
 	var providers []dndevents.RollContributionProvider
 	for _, part := range c.assembly.CurrentOutputs() {
-		if part.Output.Kind() == dndfx.KindRollModifier {
+		if part.Output.Kind() == dndfx.KindAddToRoll {
 			providers = append(providers, linkedRollProvider{output: part.Output, origin: c.origin, name: c.bindings.Name})
 		}
 	}

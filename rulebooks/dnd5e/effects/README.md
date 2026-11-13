@@ -67,7 +67,7 @@ also a standalone part:
 | `damage_bonus` | Subscribed | Yes | Fixed/class-scaled scalar amount; optional frame-fact guard |
 | `resistance` | Subscribed | Yes | Nonempty, valid, unique damage types |
 | `advantage` | Subscribed | Yes | Saves/checks, or attacks explicitly by/against the holder; optional supported frame-fact guard |
-| `roll_modifier` | Query-only | Yes | Unresolved dice, roll domains, selection group and sign |
+| `add_to_roll` | Query-only | Yes | One dice amount, roll domains, explicit polarity and contribution-selection policy |
 | `concentration` | Subscribed | Yes | Positive applied damage requests a CON follow-up; zero HP ends maintenance |
 | `duration` | No separate output | Yes | Positive holder-turn-end count and explicit activation-grace choice |
 | `combat_activity` | No separate output | Yes | Holder attack/positive-applied-damage activity; independent first-end grace |
@@ -143,9 +143,15 @@ A known mismatch is not applicable. Missing required facts are `Depends` for
 information and an explicit refusal when execution cannot answer. An absent query
 can describe an effect without claiming its benefit applies.
 
-`DescribeRoll` returns unresolved signed dice and selection facts. It does not
-roll them or subscribe another roll handler. The recipient's roll path selects
-contributions and evaluates them once.
+`DescribeRoll` returns unresolved signed dice and explicit selection policy. It does
+not roll them or subscribe another roll handler. `AddToRoll` stores dice only in
+Amount; params carry polarity, supported attack/save domains and SelectionRule.
+The neutral selector chooses already-applicable contributions in persisted order:
+AllApplicable requires no group, and OldestApplicable chooses one per group. An
+excluded contribution remains held under its own lifetime. The recipient's roll
+path evaluates only selected dice once; information uses the same decisions.
+Definition validation shares the native contribution-dice parser, so mixed pools
+or fixed modifiers cannot pass construction only to fail at resolution.
 
 `ProjectHeldEffects` captures configured target facts as detached values.
 `AssessTargetHeldEffects` reads those values, not live target behavior; absent
@@ -183,7 +189,7 @@ are not interchangeable identities.
 | Independent declarations and binding | [parts.go](parts.go), [part_validation.go](part_validation.go) |
 | Payload part example | [resistance_part.go](resistance_part.go) |
 | Maintenance parts | [concentration_part.go](concentration_part.go), [duration_part.go](duration_part.go), [end_parts.go](end_parts.go) |
-| Query-only roll contribution | [roll_modifier.go](roll_modifier.go) |
+| Query-only roll contribution | [add_to_roll.go](add_to_roll.go) |
 | Named Rage composition | [raging_definition.go](../conditions/raging_definition.go) |
 | Linked ownership and delivery | [application.go](../conditions/application.go), [application_binding.go](../conditions/application_binding.go) |
 

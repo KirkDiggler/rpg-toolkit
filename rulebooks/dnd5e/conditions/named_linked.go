@@ -16,17 +16,20 @@ import (
 )
 
 func namedRollParts(group string, subtract bool) []dndfx.PartDeclaration {
+	polarity := dndfx.Positive
+	if subtract {
+		polarity = dndfx.Negative
+	}
 	params, err := json.Marshal(struct {
-		Dice     string   `json:"dice"`
-		Group    string   `json:"group"`
-		Rolls    []string `json:"rolls"`
-		Subtract bool     `json:"subtract"`
-	}{Dice: "1d4", Group: group, Rolls: []string{"attack", "saving_throw"}, Subtract: subtract})
+		Polarity  dndfx.Polarity        `json:"polarity"`
+		Rolls     []string              `json:"rolls"`
+		Selection generic.SelectionRule `json:"selection"`
+	}{Polarity: polarity, Rolls: []string{"attack", "saving_throw"}, Selection: generic.SelectionRule{Mode: generic.OldestApplicable, Group: group}})
 	if err != nil {
 		panic(err) // static, typed rulebook declaration; no runtime input
 	}
 	return []dndfx.PartDeclaration{
-		{Key: "roll", Kind: dndfx.KindRollModifier, Params: params, OnTerminal: generic.EndPart},
+		{Key: "roll", Kind: dndfx.KindAddToRoll, Amount: &generic.Amount{Dice: "1d4"}, Params: params, OnTerminal: generic.EndPart},
 		{Key: "rest", Kind: dndfx.KindEndOn, Params: json.RawMessage(`{"beat":"rest","reason":"rest"}`), OnTerminal: generic.EndAttachment},
 	}
 }

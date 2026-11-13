@@ -37,8 +37,10 @@
 // rest, combat-end, next received turn-start or dropped-to-zero for its holder.
 // Actual last-member loss reports the source-neutral members_empty cause.
 // Resistance reuses its existing incoming fold.
-// Roll modifiers are query-only, describe signed dice with selection metadata, and
-// never subscribe a second roll handler. DescribeRoll and Assess share the kind's
+// AddToRoll is query-only and describes signed dice plus explicit selection
+// policy; it never subscribes a second roll handler. Dice lives only in Amount,
+// with polarity/domains/selection in params. Unbound validation uses the same
+// homogeneous-dice grammar as the native resolver. DescribeRoll and Assess share the kind's
 // applicability; RollQuery names an actual recipient roll, not a caster's outgoing
 // save-shaped action. InspectPart returns maintenance facts without exposing bag
 // interpretation to callers. Registry/transport integration is owned above this
