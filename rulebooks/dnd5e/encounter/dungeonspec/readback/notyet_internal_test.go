@@ -27,6 +27,7 @@ func TestNotYetSuite(t *testing.T) { suite.Run(t, new(NotYetSuite)) }
 // stands for.
 var specOf = map[string]reflect.Type{
 	"root":               reflect.TypeOf(dungeonspec.SingleRoomSpec{}),
+	"party":              reflect.TypeOf(dungeonspec.PartySpec{}),
 	"room":               reflect.TypeOf(dungeonspec.RoomSource{}),
 	"room.room":          reflect.TypeOf(dungeonspec.RoomGameplaySource{}),
 	"monsterDeclaration": reflect.TypeOf(dungeonspec.RoomMonsterSource{}),

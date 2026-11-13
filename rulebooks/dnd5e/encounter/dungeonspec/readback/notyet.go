@@ -24,7 +24,8 @@ import (
 // saidKeys is, for each kind of authored mapping, the keys the read-back
 // says or summarises. A key absent from its list is not yet said.
 var saidKeys = map[string][]string{
-	"root":               {"version", "key", "play", "templates", "bundles", "factions", "dispositions", "intel", "exits", "endings", "room", "interactions", "behaviorDefinitions"},
+	"root":               {"version", "key", "play", "templates", "bundles", "factions", "dispositions", "intel", "exits", "endings", "room", "interactions", "behaviorDefinitions", "party"},
+	"party":              {"sharing"},
 	"room":               {"version", "id", "name", "coordinateFrame", "scene", "room"},
 	"room.room":          {"implicitRegionId", "walls", "regions", "propDeclarations", "arrangementDeclarations", "monsterDeclarations", "partyStart", "monsterBindings", "doorBindings", "propBindings"},
 	"monsterDeclaration": {"id", "ref", "startingCell", "appearanceRef", "defaultActivityRef"},
@@ -139,6 +140,7 @@ func (b *builder) notYetSaid() []Unsaid {
 	room := at(root, "room")
 	gp := at(room, "room")
 	check(root, "", "root")
+	check(at(root, "party"), "party", "party")
 	check(room, "room", "room")
 	check(gp, "room.room", "room.room")
 	each(at(gp, "regions"), "room.room.regions", func(n *yaml.Node, p string) { check(n, p, "region") })

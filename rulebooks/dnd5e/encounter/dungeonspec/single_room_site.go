@@ -138,6 +138,17 @@ func (singleRoomCells) spell(cell spatial.Position) string {
 // `dispositions`, each a list of mappings, and `tables`, a mapping of id to
 // table (rpg-toolkit#1897).
 func siteScopeShape(doc *yaml.Node, add errSink) {
+	// THE PARTY BLOCK (rpg-project#935): a mapping whose one key is a word.
+	// An authored `null` — the block or its word — would decode as unmarked
+	// and lose the author's intent, so it is refused here; the word itself
+	// is judged by [grammar.partySharing].
+	if party := optionalNode(doc, "party", "", add); party != nil {
+		if party.Kind != yaml.MappingNode {
+			add("party", "expected a map with a sharing")
+		} else if sharing := optionalNode(party, "sharing", "party", add); sharing != nil && sharing.Tag != "!!str" {
+			add("party.sharing", errNotAString)
+		}
+	}
 	if factions := optionalNode(doc, "factions", "", add); factions != nil {
 		for i, fa := range factions.Content {
 			factionShape(fa, fmt.Sprintf("factions[%d]", i), add)
@@ -291,6 +302,7 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 		LineTopics:   lineGrantedTopics(s),
 	})
 	g.factions()
+	g.partySharing(s.Party)
 	behaviorSourceValues(s, add)
 	topicGuards(s, add)
 	g.factionOrders()

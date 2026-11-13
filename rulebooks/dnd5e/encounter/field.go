@@ -758,6 +758,16 @@ type FieldInput struct {
 	// already passes, and NOT SITE DATA: they are never in the site's hash —
 	// the definition and its progress are the run's ([EncounterData.Interactions]).
 	Interactions []InteractionInput
+
+	// Sharing is the party's sharing dial (sharing.go, rpg-project#935):
+	// how much of a party friend's perception a player is shown. Optional;
+	// empty is unmarked, which runs as [DefaultSharing], shared view.
+	// CARRIED HERE for the interactions' reason and NOT SITE DATA: never in
+	// the site's hash, persisted as the run's ([EncounterData.Sharing]).
+	// [SharingKnowledge] is refused at launch ([ErrSharedKnowledgeNotBuilt]),
+	// any word outside [Sharings] with [ErrUnknownSharing]. Inert: no
+	// audience is decided by it.
+	Sharing Sharing
 }
 
 // IntelID is the author's name for one intel record — [IntelRecord.ID].
