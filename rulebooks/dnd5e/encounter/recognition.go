@@ -117,12 +117,15 @@ type TriggerRecognized struct {
 func (t TriggerRecognized) isTrigger() {}
 
 // Consequence is one thing that follows an interaction entering a state
-// ([InteractionInput.Outcomes]). Exactly one kind is set; [Recognition] is
-// the first and only kind.
+// ([InteractionInput.Outcomes]). Exactly one kind is set: [Recognition], or
+// — on an interaction's outcome only — [Arrest] (arrest.go, rpg-project#925).
 type Consequence struct {
-	// Recognize is: holders come to hold a topic about subjects. REQUIRED
-	// (the only kind).
+	// Recognize is: holders come to hold a topic about subjects.
 	Recognize *Recognition `json:"recognize,omitzero"`
+
+	// Arrest is: the speaker's party is arrested, to be held in a cell.
+	// Only on an interaction's outcome.
+	Arrest *Arrest `json:"arrest,omitzero"`
 }
 
 // RecognitionHolder names who comes to hold the topic.
@@ -204,6 +207,15 @@ func validateOutcomes(id InteractionID, states map[string]bool, outcomes map[str
 		}
 		for i, c := range outcomes[state] {
 			what := fmt.Sprintf("interaction %q outcome %q consequence %d", id, state, i)
+			if c.Arrest != nil {
+				if c.Recognize != nil {
+					return fmt.Errorf("%s is of two kinds: one consequence is one kind", what)
+				}
+				if err := validateArrestShape(what, *c.Arrest); err != nil {
+					return err
+				}
+				continue
+			}
 			if err := validateConsequence(what, c, true); err != nil {
 				return err
 			}
@@ -220,6 +232,8 @@ func validateOutcomes(id InteractionID, states map[string]bool, outcomes map[str
 func validateConsequence(what string, c Consequence, carriers bool) error {
 	r := c.Recognize
 	switch {
+	case c.Arrest != nil:
+		return fmt.Errorf("%s arrests: an arrest follows an interaction entering a state, never a line's row", what)
 	case r == nil:
 		return fmt.Errorf("%s is of no kind: the one kind is recognize", what)
 	case r.Topic == "":
@@ -251,6 +265,10 @@ func cloneOutcomes(outcomes map[string][]Consequence) map[string][]Consequence {
 				r := *c.Recognize
 				c.Recognize = &r
 			}
+			if c.Arrest != nil {
+				a := cloneArrest(*c.Arrest)
+				c.Arrest = &a
+			}
 			copied = append(copied, c)
 		}
 		out[state] = copied
@@ -268,6 +286,10 @@ func grantedTopics(interactions map[InteractionID]*interactionRecord, lines ...[
 			for _, c := range cs {
 				if c.Recognize != nil {
 					out[c.Recognize.Topic] = true
+				}
+				// An arrest grants both its topics (arrest.go).
+				if c.Arrest != nil {
+					out[TopicArrested], out[TopicWanted] = true, true
 				}
 			}
 		}
@@ -403,6 +425,10 @@ type recognitionLine struct {
 	// said to when the words were said ([ReservedScene.SawTarget]): who may
 	// be told that creature is the one who came to hold a recognition.
 	sawTarget []MemberID
+	// unaware is true when a subject is not told of a record about
+	// themselves (arrest.go): a wanted member perceives nothing of the guards
+	// deciding it.
+	unaware bool
 }
 
 // knowsHolder is whether reader may be named the holder of a recognition
@@ -446,10 +472,14 @@ func (line recognitionLine) sees(reach sightReach, holder, subject MemberID) boo
 // Speak as the step, so the next offer and the next crossing read it.
 func (e *Encounter) applyOutcome(r *interactionRecord, line recognitionLine) error {
 	for _, c := range r.input.Outcomes[line.state] {
-		if c.Recognize == nil {
-			continue
+		var err error
+		switch {
+		case c.Arrest != nil:
+			err = e.applyArrest(r, *c.Arrest, line)
+		case c.Recognize != nil:
+			err = e.grantRecognition(*c.Recognize, line)
 		}
-		if err := e.grantRecognition(*c.Recognize, line); err != nil {
+		if err != nil {
 			return fmt.Errorf("interaction %q outcome %q: %w", line.interaction, line.state, err)
 		}
 	}
@@ -640,7 +670,7 @@ func (e *Encounter) tellRecognition(
 		byKey["reader:"+string(reader)] = nil
 		var told []string
 		for _, s := range subjects {
-			if reader == holder || reader == s || line.perceives(reach, reader, s) {
+			if reader == holder || (reader == s && !line.unaware) || (reader != s && line.perceives(reach, reader, s)) {
 				told = append(told, string(s))
 			}
 		}

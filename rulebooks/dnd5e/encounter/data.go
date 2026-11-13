@@ -3489,6 +3489,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 	if err := validatePropInteractions(interactions, granted, f); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
+	if err := validateArrests(interactions, f); err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
 	if err := validateInteractionAddresses(interactions, memberOptions); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}

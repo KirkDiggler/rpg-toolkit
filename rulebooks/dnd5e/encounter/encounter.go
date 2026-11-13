@@ -932,6 +932,9 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 	if err := validatePropInteractions(interactions, granted, f); err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
+	if err := validateArrests(interactions, f); err != nil {
+		return nil, fmt.Errorf("newencounter: %w", err)
+	}
 
 	// The two concealment capabilities, required exactly when the field
 	// declares a concealment (rpg-toolkit#1371) — the same
