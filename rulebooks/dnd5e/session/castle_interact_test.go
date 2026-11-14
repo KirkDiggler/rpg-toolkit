@@ -58,7 +58,7 @@ var (
 // passagePlayTests are the tests that read [passagePlay].
 var passagePlayTests = []string{
 	"TestCastleTheToldAreOfferedTheGrate", "TestCastleTheGrateAtEachTheirOwn", "TestCastleTheGrateAtSharedView",
-	"TestCastleAnUntoldWitnessSeesOnlyAPlace", "TestCastleAPropsAnswerIsNarratedToWhomItWasShown",
+	"TestCastleAnUntoldWitnessWhoSawItKnowsTheGrate", "TestCastleAPropsAnswerIsNarratedToWhomItWasShown",
 	"TestCastleTheAltarExaminedTeachesItsWatchers", "TestCastleAThingIsNotSaidAndTheUntoldAreRefused",
 }
 
@@ -78,6 +78,8 @@ var passagePlay struct {
 	view   map[string][]session.Act
 	altar  beat
 	learnt map[string]bool
+	// bobAfter is bob's interact rows once he saw alice use the grate.
+	bobAfter []session.InteractOptionRow
 	// telling is the scullion's answer to alice's coin; altarView is bob's
 	// catch-up after the altar, at shared view.
 	telling   beat
@@ -175,6 +177,13 @@ func playThePassage() error {
 		return fmt.Errorf("alice lifts the grate: %w", err)
 	}
 	passagePlay.to = placedAt(c, "alice")
+	bobPanel, err := c.mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "bob"})
+	if err != nil {
+		return err
+	}
+	for _, d := range bobPanel.Declarations {
+		passagePlay.bobAfter = append(passagePlay.bobAfter, d.InteractOptions...)
+	}
 	after := storesOf(c)
 	passagePlay.own, passagePlay.view = map[string][]session.Act{}, map[string][]session.Act{}
 	// THE CATCH-UP READS THE TESTS USE, and no more: each is a fold of the
@@ -305,27 +314,36 @@ func TestCastleTheGrateAtEachTheirOwn(t *testing.T) {
 	require.Empty(t, where[session.RelocateAct](append(live.to("dan"), passagePlay.own["dan"]...), moverIs("alice")))
 }
 
-// TestCastleAnUntoldWitnessSeesOnlyAPlace: bob, in sight of alice and
-// never told of the grate, at each their own, sees only that she did
-// something where she stood and left — no prop named anywhere on his
-// stream, live or on catch-up.
-//
-// THE ONE CASE THE OPERATOR'S "if you saw it, you know it" FLIPS: at the
-// encounter that rules it, bob comes to know the grate by sight, is shown
-// the `thing` version, and is offered the grate's things to do. Every
-// assertion of this case is here.
-func TestCastleAnUntoldWitnessSeesOnlyAPlace(t *testing.T) {
+// TestCastleAnUntoldWitnessWhoSawItKnowsTheGrate: bob, in sight of alice
+// and of the grate and never told of it, at each their own, sees her use it
+// and so comes to know it — "if you saw it, you know it" (rpg-project#959,
+// ruled on #848): the grate revealed to him, the `thing` version with its
+// seen words, the grate's pick as a shown witness, the "left" relocation;
+// and he is then offered the grate's things to do himself.
+func TestCastleAnUntoldWitnessWhoSawItKnowsTheGrate(t *testing.T) {
 	thePassage(t)
-	from, live := passagePlay.from, passagePlay.grate
-	placed := interactsBy(live.to("bob"), "alice")
-	require.Len(t, placed, 1, "bob saw her do something")
-	require.Equal(t, session.InteractAct{Actor: aliceParty, Place: &from}, placed[0].body, "where, and nothing it was")
+	live := passagePlay.grate
+	seen := interactsBy(live.to("bob"), "alice")
+	require.Len(t, seen, 1, "bob saw her do it")
+	require.Equal(t, session.InteractAct{
+		Actor: aliceParty, Prop: session.Party{Kind: session.PartyProp, ID: "grate"},
+		Words: "lifts the grate by the hearth and climbs down into the dark",
+	}, seen[0].body, "the thing, seen: he knows it now")
+	revealed := where[session.Perception](live.to("bob"), func(p session.Perception) bool { return p.Revealed != nil })
+	require.NotEmpty(t, revealed, "the grate is revealed to him by sight")
+	require.NotEmpty(t, where[session.TableAnswer](live.to("bob"), func(a session.TableAnswer) bool { return a.Who.ID == "grate" }),
+		"and he is told the grate's answer as a shown witness")
 	left := where[session.RelocateAct](live.to("bob"), moverIs("alice"))
 	require.Len(t, left, 1)
 	require.Equal(t, session.RelocateLeft, left[0].body.End)
-	raw, err := json.Marshal(append(live.to("bob"), passagePlay.own["bob"]...))
-	require.NoError(t, err)
-	require.NotContains(t, string(raw), "grate", "no prop named on bob's stream, live or on catch-up")
+
+	var offered []string
+	for _, r := range passagePlay.bobAfter {
+		if r.Prop == "grate" {
+			offered = append(offered, r.OptionID)
+		}
+	}
+	require.ElementsMatch(t, []string{"to-chapel", "to-cells"}, offered, "and is offered the grate himself")
 }
 
 // TestCastleTheGrateAtSharedView: bob is shown alice's own version through
