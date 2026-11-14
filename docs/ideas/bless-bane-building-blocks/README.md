@@ -1,213 +1,160 @@
-# Bless and Bane as consumers of effect tools
+# Effects first: definitions we can inspect and compose
 
-This is the working construction surface for [composable conditions #703](https://github.com/KirkDiggler/rpg-project/issues/703), governed by [the design](design.md). The Go snippets show the typed authoring surface. R4 permits spelling to evolve through the consumer; R5 makes a concentration-maintained raging ring the composition test. [The implementation receipt](implementation.md) names exact source and verification, separately from release status. The existing composer, assemblies, application custody and roll resolver remain the runtime. This cut gives authors typed effect values and makes contribution selection an explicit, reusable value operation. The [implementation plan](plan.md) follows these contracts through the neutral provider, root consumer and API adoption.
+This is the walkthrough for [composable conditions #703](https://github.com/KirkDiggler/rpg-project/issues/703), governed by [the design](design.md). **The reusable unit is an effect composition, not necessarily a condition.** Code and configuration expose two authoring surfaces over the same definitions. The [acceptance scenarios](acceptance.md) describe the observable contract; [source evidence](implementation.md) and the [next design work](next-steps.md) stay separate from that contract.
 
 ## Component shape
 
 ```mermaid
 flowchart TD
-    subgraph DND[rulebooks/dnd5e]
-      Go[Typed effect definitions: AddToRoll and EndOn] --> Parts[effects.CompileParts]
-      Data[Authored definition JSON] --> Library[conditions.CompileDefinitions]
-      Parts --> Template[PartTemplate and PartDeclaration validation]
-      Library --> Template
-      Template --> Apply[Existing application and local assembly]
-      Apply --> Candidates[Applicable contributions in persisted holder order]
-      Info[Information rows with selection explanations]
-      Dice[Existing rolls.ResolveContributions] --> Fold[Owning roll operation combines signed components]
+    subgraph Rulebook[D&D rulebook authoring]
+      Named[Complete named Raging definition] --> Fields[Typed benefit and maintenance fields]
+      Fields --> Values[Canonical configured effects and compositions]
+      Config[Configuration declarations and references] --> Resolve[Reference resolution and validation]
+      Catalogue[Optional catalogue and discovery metadata] --> Resolve
+      Values --> Resolve
+      Resolve --> Compiled[Owned compiled values]
     end
-    subgraph Neutral[mechanics/effects]
-      Pick[SelectionRule and SelectContributions]
-      Runtime[Existing machines, assemblies and lifetime] --> Apply
+    subgraph Host[Condition and application layer]
+      Compiled --> Placement[Identity, holder roles and terminal placement]
+      Placement --> Binding[Existing binding and exact custody]
     end
-    Candidates --> Pick
-    Pick --> Info
-    Pick --> Dice
-    Fold --> Result[Total and source breakdown]
+    subgraph Neutral[Existing machinery]
+      Binding --> Runtime[Machines, assemblies and lifetimes]
+      Runtime --> Selection[Pure contribution selection]
+    end
+    Selection --> Info[Rulebook information and selected-value resolution]
 ```
 
-Construction is inert. **Selection does not apply, suspend, remove or roll an effect.** R1–R3.
+Compilation of an effect or group does not require a fabricated condition or catalogue. **Making it run still requires a host to bind it.** The diagram does not introduce floating effects, another runtime or a second custody authority. R6/R8.
 
-## What the author writes
+## Discovering the definition in Go
 
-The proposed Go entry point compiles an ordered list of typed values in one fallible operation. Effect values contain no callbacks or runtime state. `CompileParts` converts them to the existing canonical declarations and returns any validation/encoding error; no `must` wrapper is involved.
+A known rulebook definition has a known shape. Its named fields are the primary discovery surface:
 
 ```go
-func blessedParts() (*effects.CompilePartsOutput, error) {
-    return effects.CompileParts(&effects.CompilePartsInput{
-        Parts: []effects.PartSpec{
-            {
-                Key: "roll",
-                Effect: effects.AddToRoll{
-                    Amount: effects.SignedDice{
-                        Notation: "1d4",
-                        Polarity: effects.Positive,
-                    },
-                    Rolls: []contributions.RollKind{
-                        contributions.RollKindAttack,
-                        contributions.RollKindSavingThrow,
-                    },
-                    Selection: generic.SelectionRule{
-                        Mode:  generic.OldestApplicable,
-                        Group: "bless",
-                    },
-                },
-                OnTerminal: generic.EndPart,
-            },
-            {
-                Key: "rest",
-                Effect: effects.EndOn{
-                    Beat:   effects.BeatRest,
-                    Reason: "rest",
-                },
-                OnTerminal: generic.EndAttachment,
-            },
-        },
-    })
-}
+// Member-access sketch; exact exported types/signatures belong to the re-cut plan.
+raging.Benefits.DamageBonus
+raging.Benefits.PhysicalResistance
+raging.Benefits.StrengthSavingThrows
+raging.Benefits.StrengthChecks
+
+raging.Maintenance.CombatActivity
+raging.Maintenance.Duration
 ```
 
-Bane declares the same mechanical effect with `Polarity: effects.Negative` and `Group: "bane"`. Its definition is explicit content, not a helper taking a positional subtract boolean. The two short declarations may repeat their actual content; they do not duplicate execution logic.
+A whole-group projection, illustratively `raging.Benefits.All()`, exposes the ordered values from those same fields. It does not keep a second list of separately constructed effects. A field is a real configured part, not an accessor that searches a hidden catalogue and panics when the entry is absent. R7.
 
-`AddToRoll` alone supplies no ending. The separate `EndOn` is the recipient's rest policy. **The caster's concentration and spell duration remain in the spell's coordinator maintenance**, not in `AddToRoll` or silently in the named-condition wrapper. Targeting, Bane's initial saving throws and payment remain in the existing cast/application path.
+The configured physical-resistance effect knows its selected damage types. It does not know that its declaration is also useful inside Rage, who will receive it, which item will grant it, or which maintenance will accompany it.
 
-`PartSpec` supplies the local key and terminal scope around a typed effect definition. Its `Effect` accepts a closed rulebook definition interface, implemented by value types such as `AddToRoll` and `EndOn`; an adapter produces `PartTemplate` and the same kind validator used by JSON authoring checks it. This is a Go construction adapter, not another evaluator or serialized format. The final exported spelling of that interface is an implementation detail; admitting arbitrary runtime callbacks is not.
+## The same definition in configuration
 
-`CompilePartsOutput.Parts` is an owned `[]PartDeclaration`. It contains no holder, application ID, subscription, cost or live state. A named descriptor retains an error-returning parts factory and invokes it through existing error-returning preparation/create/load boundaries, rather than compiling fallible definitions during package initialization.
+Configuration needs names because it cannot use Go fields. Its catalogue exposes definition/group/member IDs with display names and descriptions so a tool can enumerate valid choices rather than require authors to guess a string.
 
-### The data equivalent
+A reference can express this selection:
 
-The proposed canonical leaf has one amount location:
+| Reference component | Selected value |
+|---|---|
+| Definition | Raging |
+| Group | Benefits |
+| Member | Physical resistance |
 
-```json
-{
-  "kind": "add_to_roll",
-  "amount": {"dice": "1d4"},
-  "params": {
-    "polarity": "positive",
-    "rolls": ["attack", "saving_throw"],
-    "selection": {"mode": "oldest_applicable", "group": "bless"}
-  }
-}
-```
+This is a semantic sketch, not a finalized JSON path syntax. The reference contract must specify addressing, ambiguity/refusal and supported composition depth before implementation. Configuration can also declare a configured effect directly, or select a whole group/definition. It is not limited to choosing built-in condition names. R6/R7.
 
-The typed `SignedDice` is lowered to the existing `Amount.Dice` plus explicit polarity. No second dice value remains in params. Authored data and Go values receive the same validation. Unsupported kinds, fields, domains, selection modes, empty groups, invalid dice and invalid scopes are errors, including on a nonselected candidate. R4 is proposed.
+**Typed fields and resolved references reach the same canonical values.** The catalogue exports the actual named definition's members, not a separate configuration implementation of Rage. Registration and reference discovery are optional services around those values; they are not prerequisites for compiling an inline effect.
 
-## The composition test: a raging ring
+## One definition, three consumers
 
-**Reuse the benefits; choose the maintenance.** A named benefit bundle is useful only if its contents are the same small typed effects an author can assemble individually. `conditions.RagingBenefits` supplies the four Rage benefits without importing native Rage's activity trackers, duration, rest policy or condition identity. Its damage input preserves the existing fixed-versus-live-Barbarian-level choice.
+| Consumer | Benefit composition | Maintenance composition |
+|---|---|---|
+| Native Rage | Complete Raging benefits | Complete Raging maintenance |
+| Raging ring | Complete Raging benefits | Explicit concentration maintenance |
+| Activity-sustained ward | Raging physical resistance only | Complete Raging maintenance |
 
-The intended ring definition is ordinary construction, not an item-specific handler:
+The host binds each choice to its own identity, participants and state. The ring does not acquire the Raging condition identity merely because it borrows the benefits. The ward does not need Rage's damage bonus or advantages merely because it borrows the upkeep. Payment and activation eligibility remain with their existing owners. R8.
 
-```go
-benefits, err := conditions.RagingBenefits(&conditions.RagingBenefitsInput{
-    DamageBonus: conditions.RagingDamageBonus{Fixed: &bonus},
-})
-if err != nil {
-    return nil, err
-}
-return conditions.CompileComposition(&conditions.CompileCompositionInput{
-    ID: "raging-ring",
-    Spec: conditions.CompositionSpec{
-        Name: "Maintained rage", Coordinator: conditions.DefinitionUser,
-        Benefits: benefits.Parts,
-        Maintenance: []effects.PartSpec{
-            {Key: "concentration", Effect: effects.Concentration{}, OnTerminal: generic.EndApplication},
-            {Key: "empty", Effect: effects.UntilEmpty{}, OnTerminal: generic.EndApplication},
-            {Key: "rest", Effect: effects.EndOn{Beat: effects.BeatRest, Reason: "rest"}, OnTerminal: generic.EndApplication},
-        },
-    },
-})
-```
-
-`CompileComposition` is the code-authoring adapter for one named composition. It returns the existing `CompileDefinitionsOutput` containing a one-definition catalogue, so the source still uses `BindDefinition`, `PrepareApplication` and the existing delivery protocol. It compiles the typed parts into the same expanded definition representation as the JSON library compiler; it introduces neither a second runtime nor a second binder. The source/host wiring is outside this definition.
-
-Native Raging reuses the same benefit declarations while retaining its native lifecycle and saved binding contract. The ring selects concentration instead of activity/duration upkeep. Its recipient may remain idle without losing the grant; a failed maintainer concentration consequence ends that exact application. No native item acquisition is implied.
-
-An override convenience is not the foundation. Explicitly choosing a different maintenance list already expresses the change. A future convenience may replace that named group on a copied definition; it must not deep-patch a live Raging machine or switch off hidden trackers. R5.
+An override engine is unnecessary for these choices. They are compositions of values. If a replacement convenience is later useful, it must preserve explicit groups, value ownership and validation rather than patch a live machine's flags.
 
 ## Ownership and contracts
 
+The conceptual contracts below are settled in direction. The exact new Go types and catalogue schema are open work named in the design; the current symbols are evidence for where the seams start, not promises that every target API exists.
+
 | Component | Owns | Input → output |
 |---|---|---|
-| `effects.AddToRoll`, `EndOn`, `CompileParts` | Typed definition construction and canonical lowering | `CompilePartsInput{Parts []PartSpec}` → `CompilePartsOutput{Parts []PartDeclaration}`, error |
-| Rulebook kind entry | Roll applicability, signed-dice meaning, parameter validation and description | Canonical declaration and actual roll query → unresolved contribution and selection rule |
-| `conditions.RagingBenefits` | Named reusable benefit composition, not its lifetime | Existing damage-bonus choice → owned typed benefit parts |
-| `conditions.CompileComposition` / library compiler | One validated expanded composition representation | Code-authored `CompositionSpec` or authored library → existing immutable `CompiledDefinitions` |
-| Condition holder | Instance identity and durable insertion order | Ordered live/saved conditions → ordered candidate outputs |
-| `mechanics/effects.SelectContributions` (proposed) | Pure selection among already-applicable candidates | `SelectContributionsInput{Candidates []SelectionCandidate}` → decisions in candidate order, error |
-| Conditions' roll/information adapters | Gathering candidates and attributing selection decisions | Kind answers plus neutral decisions → existing roll contribution values / explanatory rows |
-| `rolls.ResolveContributions` and its owning roll operation | Resolving selected dice once, then combining signed components | Selected `DiceContribution` values → sourced `RollComponent` values → operation-owned total |
-| Existing application and assemblies | Independent local state and exact linked cleanup | Parts, bindings, occurrences → state changes and existing removal protocol |
+| Rulebook effect vocabulary | Mechanical meaning, supported parameters, guard/amount validation | Configured effect value → validated canonical leaf; current owners include `effects.Definition`, `PartTemplate`, `kinds.go` |
+| Reusable composition model, below conditions | Ordered named members, ownership and composition structure | Configured values/member references → canonical effect composition; exact type to settle |
+| Named rulebook definitions | Content and typed discoverable fields | Raging construction inputs → complete typed Raging definition with benefit and maintenance values |
+| Optional catalogue/resolver | Registration, enumeration and reference resolution | Definition/group/member reference → owned canonical value or explicit error |
+| Canonical compiler | One mechanical/structural validation path | Inline or resolved effect/composition → owned compiled values, without fake runtime identities |
+| Condition/application definition | Placement, host identity and complete lifecycle composition | Compiled values plus explicit roles/scopes → bound instance through the existing host protocol |
+| Existing assembly/lifetime machinery | Local running state and exact linked lifetime | Bound declarations and occurrences → state changes and cleanup |
+| Neutral contribution selector | Choice among applicable ordered candidates | `SelectionRule` and candidates → per-contribution decisions, without lifecycle mutation |
+| Owning roll/information path | Applicable facts, explanation, arithmetic and provenance | Selected unresolved terms → sourced breakdown; excluded rows remain explainable |
 
-The neutral selector knows no dice, D&D roll kinds, condition refs, bus or clock. It receives stable opaque candidate IDs and an already ordered applicable list. It never reconstructs age or returns a replacement/removal plan.
+The mechanical vocabulary must not import named Rage content. The generic composition model must not require a condition coordinator. The catalogue must not become a running-instance store. The condition host must not reconstruct effect mechanics. The compiler must not read a mutable latest definition during reload. The neutral selector must not decide that a losing instance should end.
 
-The first supported policies are explicit `AllApplicable` (no group) and `OldestApplicable` (a nonempty group). There is no implicit zero-value policy. Each decision identifies its candidate and either selects it or identifies the selected candidate that excludes it. Duplicate IDs and malformed policies refuse the whole call. There is no cached winner to restore and no configurable strongest/newest/custom-comparator machinery.
+## Walk one part through
 
-The rulebook adapters do not roll or mutate a condition to select it. Missing roll facts remain unknown; they are not treated as known eligibility. The first cut only needs roll-kind applicability, not an arbitrary conditional priority language.
+1. The complete typed Raging definition holds a physical-resistance declaration. Its parameters select bludgeoning, piercing and slashing.
+2. A Go author selects the field; a configuration author resolves its named member. Neither operation takes the part away from the source definition or copies runtime state.
+3. A ward definition pairs that declaration with the Raging maintenance composition. Canonical validation checks the meanings and structure before binding or payment.
+4. The host supplies the ward's own provenance, recipient and exact instance/application identity. It maps lifecycle scope explicitly; the original Rage identity does not travel with the borrowed part.
+5. The existing incoming-damage path applies the selected resistance meaning. For nine slashing damage with no other changes, the existing settlement produces four, with the ward's actual source provenance.
+6. The reused upkeep observes the bound holder's occurrences under the same rules native Rage uses. It owns independent state; another Rage instance's activity or countdown is not shared.
+7. Saving retains the resolved definition and that instance's state. A catalogue edit cannot rewrite the ward during reload.
 
-The information adapter keeps the selection decision separate from the kind's applicability answer internally. The existing outward effect-row contract can report a noncontributing row with an explicit “not selected; older instance contributes” reason; this does not require a new proto enum in this cut.
-
-## Walk one roll through
-
-A player holds Bless A, Bless B and Bane C, in that insertion order. Each instance has its own origin, application membership and lifecycle state.
-
-1. On an attack, each `AddToRoll` answers that its domain applies. No dice are rolled while gathering these answers.
-2. Candidates retain the holder's order, with declaration/output order as the tie-breaker inside a single instance. The IDs name individual contributions, not the whole condition.
-3. The selector chooses A for `bless`, marks B not selected by A, and chooses C independently for `bane`.
-4. The information path can still show B as held, with its source and selection reason. Any unrelated effect carried by B's condition remains independent.
-5. The roll path evaluates only A's and C's dice, then includes `+A.d4 − C.d4` in the existing breakdown.
-6. If A ends, its exact attachment is removed. The next query selects B. B's age and remaining lifetime are unchanged; if B has already expired, it is absent rather than revived.
-
-Saving and loading preserves holder order. No sort by source name, ref, timestamp or subscription ID is involved. A newly admitted replacement is a new insertion; restoring the same instance is not.
+This walkthrough binds the ward and native Rage to the same upkeep contract. It does not decide new gameplay rules while renaming their containers.
 
 ## Separations that look like one thing
 
-| Query | Source of truth |
+| Question | Source of truth |
 |---|---|
-| May this instance coexist? | Existing admission/address and application rules |
-| Does its roll effect apply here? | `AddToRoll`'s mechanical meaning and roll query |
-| Which applicable effects contribute? | Explicit selection policy over ordered candidates |
-| How do selected values combine? | Additive meaning and the existing signed roll fold |
-| Does an instance end? | Its own maintenance/ending policies, not selection |
-| Which is oldest? | The holder's persisted insertion order |
+| What does this configured effect mean? | Rulebook kind and parameters |
+| Which effects are assembled together? | Reusable composition value |
+| How does a Go author discover named pieces? | Typed definition fields |
+| How does a configuration/tool author discover pieces? | Catalogue IDs and enumerable metadata over those same values |
+| Who holds/maintains this running grant? | Host binding, not the reusable definition |
+| May independent instances coexist? | Existing admission and exact-address policy |
+| Which applicable contributions participate now? | Neutral selection policy over durable order |
+| How do selected contributions combine? | Mechanical meaning and the owning operation |
+| When does this instance end? | Its selected maintenance and independent state |
 
-Selecting at condition granularity would incorrectly suppress unrelated effects. Replacing a nonselected instance would destroy its independent lifetime. Rolling every candidate before selection would consume extra randomness and produce facts that never participated.
+Using an effect kind as member identity is ambiguous when a definition has two differently configured resistances. Borrowing an already-bound condition leaks identity and lifetime. Treating nonselection as removal loses independent timers. Keeping a typed facade and separate configuration definitions permits them to drift.
 
 ## Trade-offs
 
 | Decision | Benefit | Cost / boundary | Not taken |
 |---|---|---|---|
-| Typed values plus one compile boundary | Readable definitions; callers own failures | Rulebook maintains small adapters into its canonical templates | Panic constructors or handwritten JSON at the content call site |
-| Neutral selection on values | Other meanings can reuse selection without importing roll rules | Conditions supplies ordered, applicable candidates | Another D&D-specific winner loop |
-| Persisted insertion order | No second age authority | Holders preserve order through admission, save, load and removal | Wall-clock timestamps or sorting by IDs |
-| Signed dice as the first quantity | Uses the native roll contract without invented support | Fixed roll modifiers/check offers need their own consumer contract | Advertising support that only exists in a constructor |
+| Typed fields over real member values | IDE discovery and documentation at the use site | Named rulebook definitions maintain typed shapes and canonical projections | GetPart as the primary Go authoring surface |
+| Configuration references over the same values | Dynamic authoring without duplicate rule implementations | Resolver owns identity, enumeration and refusal contracts | A separate JSON-only Rage implementation |
+| General compositions below conditions | Standalone effects and both maintenance/benefit groups are reusable | Condition placement is an explicit adapter boundary | Requiring a coordinator and catalogue for every value |
+| Full native Rage consumes the definition | Upkeep reuse is real, not cosmetic | Native timeline/state parity must be measured and preserved | A public maintenance facade over an unrelated private machine |
+| Existing runtime remains authoritative | Reuse of custody, selection and lifetime guarantees | Authoring expansion must lower into its actual capabilities | Another nested interpreter or deep-override framework |
 
 ## Edges
 
-This first cut supports signed dice on attacks and saving throws, including the existing death-save path. `SignedDice` makes that boundary visible. Fixed roll adjustments, ability checks, optional offers/consumption (Guidance), advantage/disadvantage and non-roll selection consumers are not claimed implemented. A future quantity should reuse the existing amount machinery and extend the actual roll consumer; it must not fake a scalar as a die.
+A native round-anchored duration and a holder-turn counter are different contracts. Decomposing Raging maintenance must account for activation grace, incomplete clocks, backwards/reset clocks, attacks including misses, positive applied damage and competing endings. Preserving native behavior does not imply preserving every private struct; any saved-representation change must be deliberate and obey the current-format/data-preservation policy. R8.
 
-The JSON kind/parameter change follows current-format discipline, not an implicit migration commitment. No historical reader, normalization or automatic operator-data reset is introduced. The independent application protocol, native Raging/Reckless behavior and deferred item adoption remain unchanged; extracting native Raging's benefit source changes composition code, not its eligibility, lifetime or saved binding behavior. No repo-wide removal of unrelated registry/trait panics is claimed by removing the Bless/Bane construction panic.
+The new acceptance does not establish native inventory acquisition, studio UI, arbitrary scripting, unlimited composition nesting or support for every roll quantity. These remain outside the named proof. A configured definition can be compiled independently; the current condition/application system remains its first runtime host.
 
 ## Where a change lands
 
-- Change `1d4` to `1d6`, narrow to attack rolls, or change sign: the authored effect value only.
-- Let independently applicable roll gifts all contribute: select `AllApplicable`; additive arithmetic does not change.
-- Change recipient expiry: replace the separately declared lifecycle part; do not edit `AddToRoll`.
-- Add a genuinely new selection policy: the neutral selector and its contract, not each named condition.
+- New amount/type selection or another arrangement of existing meanings: authored values/compositions.
+- Another named reusable part or group: the rulebook definition and its catalogue projection, not another execution handler.
+- A genuinely new mechanical meaning: the rulebook kind and its shared validation/execution/information contract.
+- Another host placement or source price: the binding/source layer, not the effect definition.
+- Changed native upkeep semantics: a rules decision and its lifetime owner, not a renamed field or configuration override.
 
 ## Source map
 
-| Concern | Current owner / proposed addition |
+Paths below are relative to the toolkit, and identify the starting seams for the revision.
+
+| Concern | Inspected source / required change |
 |---|---|
-| Neutral selection | `mechanics/effects/selection.go` (proposed) |
-| Typed effect construction | `rulebooks/dnd5e/effects` (proposed `AddToRoll`, `EndOn`, `CompileParts`) |
-| Canonical declaration/validation | `effects/parts.go`, `part_templates.go`, `kinds.go` |
-| Current roll implementation | `effects/roll_modifier.go` |
-| Shared Rage benefit source | `conditions/raging_definition.go`; proposed `conditions/raging_benefits.go` |
-| Code/data composition compilation | `conditions/definition_compile.go`; proposed `conditions/composition.go` |
-| Named consumers | `conditions/blessed.go`, `baned.go`, `named_linked.go` |
-| Current selection and information | `conditions/roll_selection.go`, `action_effects.go`, `linked_info.go` |
-| Durable order | `character/character.go`, `character/load.go`, `monster/monster.go`, `monstertraits/prepare.go` |
-| Existing cast maintenance | `spells/maintenance.go`, `spells/cast.go` |
-| Existing signed roll evaluation | `rolls/resolve.go`, `contributions/source.go` |
+| Typed leaves and pure lowering | `rulebooks/dnd5e/effects/definitions.go`, `compile_parts.go`, `compile_outputs.go` |
+| Neutral selection | `mechanics/effects/selection.go`; preserve |
+| Current condition-first composition adapter | `rulebooks/dnd5e/conditions/composition.go`; separate reusable values from host placement/catalogue |
+| Current data library | `rulebooks/dnd5e/conditions/definition.go`, `definition_compile.go`; generalize benefit-only sets and clarify catalogue ownership |
+| Current Rage benefit source and private upkeep | `rulebooks/dnd5e/conditions/raging_benefits.go`, `raging_definition.go`; replace the asymmetric public surface with a complete definition |
+| Reusable upkeep mechanisms to compare | `rulebooks/dnd5e/effects/activity_part.go`, `duration_part.go`, `end_parts.go` |
+| Host binding/custody | `rulebooks/dnd5e/conditions/definition_bind.go`, `application.go`, `application_binding.go`; preserve invariant ownership |
+| Existing first-cut proof | `rulebooks/dnd5e/conditions/typed_composition_example_test.go`, `typed_composition_test.go`, `contribution_order_test.go` |

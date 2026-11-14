@@ -1,4 +1,6 @@
-# Bless/Bane building blocks implementation plan
+# First-cut implementation plan — retained execution record
+
+> **Superseded for continuing work by design R6–R8. Do not execute the remaining API-adoption/review/release steps from this plan.** T1–T5 source work and its evidence remain valuable; the condition-first public structure and unchanged private Rage upkeep are not the revised finish line. See the [current design](design.md), [direction-change record](https://github.com/KirkDiggler/rpg-toolkit/pull/2425#issuecomment-6869803445) and [path to the replacement plan](next-steps.md). The task contracts below describe the first cut, not a checked plan for the new one.
 
 > **For agentic workers:** use the executing-plans skill for direct, task-by-task execution. Implementation delegation is not authorized. One independent joined review follows the completed wave under the project review policy, not one campaign per task.
 

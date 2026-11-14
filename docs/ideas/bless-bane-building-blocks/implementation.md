@@ -1,4 +1,6 @@
-# Building-block implementation receipt
+# First-cut building-block implementation receipt
+
+**Scope:** the source evidence below is the earlier condition-first cut. It does not prove the effect-first definition/field/catalogue/native-maintenance contracts in [R6–R8](design.md#rulings). The operator's look acknowledged the ring example and led to that revision; the current stop is [replanning the new shape](next-steps.md), not another acknowledgment of the old example.
 
 Story [#703](https://github.com/KirkDiggler/rpg-project/issues/703). Source checkpoints, not released tags or a merge claim. Direction: [approval and the ring success measure](https://github.com/KirkDiggler/rpg-toolkit/pull/2425#issuecomment-6865141821).
 
@@ -46,4 +48,4 @@ Fresh root `go test -race -count=1 ./...`, `go vet ./...` and `golangci-lint run
 
 Repository `make pre-commit` still fails in unchanged Core coverage extraction/reporting: `bc` syntax/illegal-colon errors, reported 78.0% against minimum80, exit2. Core/Events/Makefile are unchanged. No gate or hook was bypassed, and the repository target is not represented as green.
 
-The operator's ergonomics look, API consumer adoption, one joined independent review and release authority remain open. No reviewers are running. No operator environment, stack lifecycle or persisted data was changed. A general overrides facility remains exploratory; explicit benefit/maintenance composition already passes this consumer.
+The first-cut ergonomics look is acknowledged and led to a design revision. The new effect-first proof, API consumer adoption, one joined independent review and release authority remain open. No reviewers are running. No operator environment, stack lifecycle or persisted data was changed. A general overrides facility remains exploratory; explicit benefit/maintenance composition already passes this consumer.

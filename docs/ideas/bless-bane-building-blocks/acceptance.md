@@ -1,29 +1,48 @@
-# Observable proof for the first cut
+# Acceptance — complete effect definitions and symmetric reuse
 
-These are acceptance scenarios for the [design](design.md), not executed results or an implementation task list. R5 makes the ease of constructing a concentration-maintained raging ring part of the finish line, not a deferred demonstration. The linked PR carries baseline observations and later evidence.
+These scenarios define the [R6–R8 design](design.md), not executed results. [The first-cut source receipt](implementation.md) proves useful prerequisites; it does not establish the revised definition/catalogue/native-maintenance contracts.
+
+## The defining proof
+
+| Consumer | Typed-code construction | Configuration construction | Observable outcome |
+|---|---|---|---|
+| Native Rage | Consume the complete typed Raging definition | Resolve the equivalent complete definition | Same benefits, scaling and characterized native maintenance/state behavior; no independent private recipe defining different upkeep |
+| Concentration-maintained raging ring | Reuse the benefit group; choose explicit concentration maintenance | Reference the same benefit composition; choose the same maintenance | Idle recipient retains benefits; maintainer failure ends only this grant; no native Rage activity/duration imported accidentally |
+| Activity-sustained resistance ward | Select `raging.Benefits.PhysicalResistance` and Rage's maintenance group | Reference the same member and maintenance composition | Only the configured resistance is granted; upkeep follows the native Rage contract, without damage bonus/advantages or borrowed live state |
+
+The exact exported spellings and reference syntax are fixed by the replacement plan. The required distinctions and reuse are not optional.
+
+## Authoring and ownership
 
 | Scenario | What must be observable |
 |---|---|
-| Construct Bless and Bane in Go | Definitions use typed AddToRoll and separately declared EndOn values. Errors return to the caller. No namedRollParts helper, handwritten JSON at those call sites or fallible initialization convenience is needed. |
-| Author the same leaves as data | Go and JSON lower to equivalent canonical declarations and receive the same validation. Dice has one canonical amount location. |
-| Build an unnamed variant | +1d6 on attacks only with a different explicit lifetime executes through the same implementation; no condition-name branch or new registry entry is introduced for its effect meaning. |
-| Keep two Bless instances and one Bane | All three remain held with independent identities and lifetimes. The oldest applicable Bless and the Bane contribute; their sourced signed terms combine. |
-| Use AllApplicable | Two independent applicable additive gifts both contribute. The additive meaning is unchanged; there is no special additive flag or fake per-instance group required to obtain this behavior. |
-| Remove the selected Bless | The next eligible Bless contributes on the next query. Its identity, age and remaining lifetime are unchanged. |
-| Expire a nonselected instance | It disappears under its own policy. Removing the winner later cannot revive the expired instance. |
-| Select one effect of a multi-effect condition | Only the losing contribution is excluded. Another effect on that same condition still participates where applicable. |
-| Save and reload a character | Before/after selection chooses the same source in the same order. A newly admitted instance follows restored survivors. |
-| Save, reload and attach a monster | The carried condition order survives preparation/attachment and selects the same source. Subscription registration order is not an age authority. |
-| Inspect versus resolve | Information and actual roll use the same selection decisions. A held applicable loser explains which older contribution was selected instead; it is not described as expired. |
-| Count RNG use | Only selected dice are requested, exactly once; faces stay unsigned and provenance/sign survive the result breakdown. Querying applicability or selection rolls nothing. |
-| Reject malformed input | Invalid dice, polarity, domains, keys/scopes and selection policies return errors, including malformed unselected definitions/candidates. The first cut does not pretend to implement fixed amounts or check offers. |
-| Omit EndOn | The roll effect alone does not end on rest. Adding explicit recipient EndOn or coordinator maintenance supplies that behavior without changing roll mechanics. |
-| Retain native application behavior | Normal Bless/Bane cast/payment, independent concentration cleanup, pending Bane saves, source identity and reload remain intact. Existing native Raging and other unchanged payloads still work. |
-| Write a raging ring in Go | A short definition selects reusable Rage benefits and concentration maintenance using public typed values. It contains no hand-authored JSON, new handler or copy of native Rage's machine. The source/host wiring remains separate. |
-| Share Rage benefits honestly | Native Raging and the ring use the same benefit declaration source, including fixed/live-level damage choice. An author can also select a single typed resistance/damage/advantage effect without granting opaque Raging. |
-| Replace upkeep, not behavior | The ring's recipient may remain idle across turn ends without losing the benefit grant. A maintainer concentration failure removes only that grant. Native Raging retains its original activity/grace/duration behavior. |
-| Preserve value ownership | Compiling a second composition with different maintenance or mutating its input cannot change the shared benefit source, another compiled definition or an active saved instance. No generic override engine is needed to pass this test. |
+| Configure one effect directly | Validation/compilation requires no invented condition name, coordinator, maintenance group or catalogue registration. Running it still requires explicit host binding. |
+| Configure a reusable composition | Several named ordered effects form reusable content without becoming a condition merely for storage/reuse. |
+| Discover known rulebook parts | Compiling Go examples select named fields for benefits and maintenance; no GetPart/key search is the primary API. Fields and whole-group projections contain the same declarations native Rage consumes. |
+| Discover dynamic definitions | Catalogue enumeration exposes stable IDs, names and descriptions for definitions/groups/members; configuration can select a whole definition, group or member, or declare inline content. |
+| Compare code and configuration | Equivalent choices resolve to equivalent canonical mechanical declarations and intended placement, including the three consumers above. No parallel JSON-only effect implementation. |
+| Reject invalid references | Missing/ambiguous targets, unsupported structures and any permitted-reference cycles produce explicit pre-activation errors, not partial grants or silently skipped members. |
+| Compile an uncatalogued value | A direct effect/composition succeeds without manufacturing a one-entry catalogue. |
+| Derive another definition | Changing its selected maintenance or effect configuration cannot mutate the source definition, another compiled value or an active instance. |
+| Bind reused content | Source identity, holder/maintainer roles and terminal scope belong to the new host/application; reuse does not inherit the original Rage identity, price or live countdown. |
+| Restore an active instance | Resolved definitions/state are retained; catalogue edits cannot change an already-paid grant. Any current-format change is explicit and does not reset operator data. |
+| Preserve native upkeep | Activation grace, qualifying activity, duration, absent/backwards/reset clock observations and competing terminal events match the characterized native contract; a turn counter is not assumed equivalent to round anchoring. |
+| Report construction errors | Invalid definitions and missing pieces return useful errors. No panic-based initializer, fallback default or invented runtime identity is used to validate an unbound definition. |
+
+## Retained selection and application guarantees
+
+| Scenario | What must remain observable |
+|---|---|
+| Two Bless instances plus Bane | Three independent held instances; oldest applicable Bless and Bane supply their signed terms. |
+| AllApplicable | Independent additive contributions participate without fabricated per-instance exclusion groups. |
+| Winner removal | Next eligible live instance contributes without reapplication or lifetime renewal. |
+| Nonselected expiry | Its own maintenance continues; it can end and cannot be revived by removing the winner later. |
+| Multi-effect condition | Losing roll selection does not suspend sibling resistance or other independent effects. |
+| Character and monster reload | Durable ordering survives load/attach and changed subscription registration order. |
+| Information and resolution | They agree on selected identities; applicable-but-unselected effects remain explainable; only selected dice are rolled once. |
+| Unnamed +1d6 attack-only variant | New content and independent maintenance, not a new handler or condition-name branch. |
+| Exact custody and payment | Fixed intended recipients, independent pending finalization, valid paused Bane delivery, exact generation cleanup and source-owned payment remain intact. |
 
 ## Evidence boundaries
 
-Pure selector and definition tests establish value contracts. Rulebook tests establish composition and keeper/roll integration. Consumer-module tests establish adoption of the provider graph. A native browser walk establishes what a player can acquire, read and observe; a scripted module fixture does not replace it. Exact native adoption and release slices belong to the checked implementation plan after agreement on the concrete API.
+Pure model/resolver tests establish authoring contracts. Rulebook integration proves the native and borrowed compositions through the real runtime. Consumer-module tests prove adoption of that provider graph. Browser evidence proves what a player can acquire/read/observe; a module fixture is not native inventory or UI proof. A test-selected concentration outcome is labeled as such. No review or merge readiness follows merely from the first-cut ring example passing.

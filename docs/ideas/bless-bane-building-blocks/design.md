@@ -1,46 +1,54 @@
-# Roll effects and contribution selection
+# Effect-first definitions and reusable compositions
 
 ## Shape
 
 ```mermaid
-flowchart LR
-    Definition[Typed or data-authored effect definition] --> Canonical[Canonical validated part]
-    Canonical --> Instance[Independently lived condition instance]
-    Instance --> Applicable[Applicable contribution values in holder order]
-    Applicable --> Selection[Neutral policy selection]
-    Selection --> Information[Selection explanation]
-    Selection --> Resolution[Resolve selected signed dice]
-    Resolution --> Fold[Owning roll operation adds signed components]
+flowchart TD
+    Go[Typed rulebook definitions with named fields] --> Values[Configured effects and reusable compositions]
+    Data[Configuration-defined effects, compositions and references] --> Resolve[Resolve references and validate]
+    Catalogue[Optional catalogue and discovery metadata] --> Resolve
+    Values --> Resolve
+    Resolve --> Compiled[Owned canonical compiled values]
+    Compiled --> Host[Condition or application definition and placement]
+    Host --> Bind[Bind identity, participants and independent state]
+    Bind --> Runtime[Existing machines, assemblies and lifetime custody]
+    Runtime --> Applicable[Applicable contributions in durable holder order]
+    Applicable --> Select[Neutral contribution selection]
+    Select --> Info[Information and provenance]
+    Select --> Roll[Resolve selected signed terms in the owning operation]
 ```
 
-The [walkthrough and working Go surface](README.md) explain the agreed boundaries. Public spellings may evolve with the concrete consumers under R4; the separation of owners and the acceptance outcomes do not.
+R6–R8 replace the condition-first construction cut with effect-first authoring; [the direction-change record](https://github.com/KirkDiggler/rpg-toolkit/pull/2425) preserves that cut and the operator's words that moved it. The [walkthrough](README.md) explains the ownership boundaries. Concrete API contracts are the next design work, not authority to infer a second runtime.
 
 ## Law
 
-### Agreed model
+### Authoring units and reuse
 
-1. Condition coexistence, effect applicability, contribution selection and arithmetic combination are separate decisions. Existing exact-address admission and application custody remain authoritative. R1.
-2. Valid independent Bless/Bane instances may coexist. Each retains its provenance, membership and lifetime; not being selected neither removes it nor pauses its lifetime. R1.
-3. Bless selects the oldest applicable contributor in the Bless group; Bane selects independently in the Bane group. Selection is at contribution granularity, not whole-condition granularity. Removing a winner allows the next eligible live contributor to participate without reapplication or renewed duration. R2.
-4. AddToRoll denotes an additive contribution with a signed amount. It has no separate additive/stackable flag. Selected Bless and Bane terms combine positively and negatively in the existing owning roll operation. R3.
-5. Selection spends, rolls and mutates nothing. An unselected die is not rolled. Mechanical applicability is assessed before contribution selection. R2/R3.
-6. Named conditions select effects and explicit lifecycle policies; the roll effect does not acquire concentration, rest, duration, targeting or payment as implicit behavior. R1/R3.
+1. A configured effect supplies one rulebook-owned mechanical meaning and its supported configuration. It carries no live holder, application identity, source budget or running state. R6.
+2. An effect composition assembles ordered, named effects or reusable compositions. A composition can be authored, validated and reused without inventing a condition, coordinator, mandatory maintenance group or catalogue entry. R6.
+3. Benefits and maintenance name roles within a complete definition; they are not mandatory top-level categories for every effect composition. Mechanical capability and valid placement remain validated rather than inferred from a friendly group name. R6/R8.
+4. A complete Raging definition exposes its benefit and maintenance pieces as discoverable typed fields. Its fields are the actual declaration values consumed by native Raging, not wrappers over a separate implementation or a second catalogue. R7/R8.
+5. An author can select an individual configured part, an entire named composition, or the complete definition. Retrieval is not removal from the source definition; deriving and compiling another definition cannot mutate a shared source or an already running instance. R7.
+6. Configuration can declare effects and compositions directly, or reference named definitions, groups and members. Typed code and configuration converge on the same canonical values and mechanical validation. A new combination needs content, not a named behavior handler. R6/R7.
+7. A catalogue supplies optional registration, reference resolution and enumerable discovery metadata. It is not required merely to construct or compile one value. Stable authored IDs are distinct from runtime application/attachment/output identities. R7.
+8. Reference resolution and validation finish before activation/payment. Unresolved or ambiguous references, malformed meanings and unsupported composition shapes fail explicitly without partial activation, guessed defaults or panic convenience. R4/R7.
+9. Running instances own resolved declarations and independent state. They do not read a mutable latest catalogue to decide which effects or upkeep they now have. R4/R7.
 
-### Construction and selection
+### Conditions, maintenance and runtime ownership
 
-7. Typed effect values compile through `effects.CompileParts` into owned canonical `PartDeclaration` values. The compiler accepts no runtime participants or callbacks supplied by authored content, and returns validation errors without panic-based construction. JSON-authored templates use the same kind validation. R4.
-8. The neutral `mechanics/effects` selector accepts an ordered applicable candidate list with opaque IDs and explicit `SelectionRule` values. It validates the complete list and returns ordered selection decisions, including the selected ID responsible for exclusion. It knows no rules, dice, holder state or clock. R4.
-9. The first policies are AllApplicable with no group and OldestApplicable with a nonempty group. An empty/unknown mode, duplicate candidate ID or malformed policy is an error. No winner is persisted separately from the live candidate list. R4.
-10. Oldest means earliest surviving holder insertion order. Saving and loading preserve it; removal preserves survivor order. Part/output declaration order resolves ordering within one admitted instance. Restoring does not refresh age; admitting a new instance appends it. R4.
-11. The first AddToRoll quantity is explicit SignedDice: unsigned homogeneous dice notation plus nonzero Positive/Negative polarity. Attack and saving-throw domains are supported; unsupported quantities/domains are refused rather than advertised through a constructor alone. R4.
-12. The canonical AddToRoll kind is `add_to_roll`. Its sole amount is `Amount.Dice`; params carry polarity, roll domains and selection. The typed construction adapter is not another persisted format or mechanical evaluator. R4.
-13. Named Bless/Bane definition factories return errors through existing preparation/create/load boundaries. No fallible definition compilation occurs through a new package-initialization `must` path. Recipient rest cleanup is an explicit EndOn declaration; existing spell-coordinator policy remains spell-owned. R4.
-14. Runtime and information adapters consume the same neutral selection decisions. An applicable but unselected contribution remains explainable by identity/source; a projection may express noncontribution through its existing state/reason fields without changing the underlying lifetime or applicability answer. R4.
-15. The change preserves fixed intended recipients, independent finalization, pending saves, exact generation cleanup and End-before-detach semantics. Source payment remains outside effects. R1/R4.
-16. No old-format reader, dual writer, silent normalization or automatic reset accompanies the current declaration format. Native Raging activation, eligibility, scaling and lifetime behavior remain unchanged; sharing its benefit declarations does not migrate its lifecycle or codec. Reckless, other condition-family migrations, UI authoring, inventory and unrelated static-registry/trait panic cleanup are outside this cut. R4/R5.
-17. A concentration-maintained raging ring is an acceptance consumer of the building blocks. Its benefit composition is reusable without inheriting normal Raging's activity/duration rules; changing maintenance neither copies mechanical handlers nor mutates a shared benefit definition. R5.
-18. Code-authored compositions and data-authored libraries converge on the same validated expanded declarations and existing binder/runtime. A source may choose a shared benefit bundle or individual typed effects independently of coordinator maintenance. R5.
-19. A named Raging benefit bundle belongs to conditions, not the neutral engine or the mechanical vocabulary. Native Raging and the ring consume the same benefit declaration source when a bundle is provided; their independent lifecycle policies remain with their enclosing definitions. R5.
+10. Conditions/applications consume effect compositions and provide placement, binding, identity, persistence and custody. Source payment and activation eligibility remain separate. Reusing a part does not inherit the source condition's identity or its implicit application scope. R6/R8.
+11. Native Rage consumes the complete Raging definition. A ring can select its benefit composition with concentration maintenance; a ward can select only physical resistance with Rage's maintenance composition. The two groups have symmetric reuse. R5/R8.
+12. Native Raging's activation, scaling and intended upkeep behavior remain unchanged through decomposition, including activation grace, activity observations, duration, clock-reset behavior and terminal ordering. A round-anchored rule is not silently replaced by a holder-turn counter. Any saved-representation change is explicit in the checked plan. R8.
+13. Composition/reference expansion belongs to authoring/compilation. Existing machines, assemblies and linked lifetime machinery remain the runtime; no nested interpreter, deep patch engine or tracker-disabling override is implied. R6/R8.
+14. Fixed intended recipients, independent finalization, pending saves, exact generation cleanup, observed-versus-authoritative facts and End-before-detach remain binding. No historical reader, dual writer, silent normalization or automatic operator-data reset is added. R1/R4/R8.
+
+### Contribution selection and combination
+
+15. Condition coexistence, effect applicability, contribution selection and arithmetic combination are separate decisions. Nonselection neither removes a held instance nor pauses its lifetime or unrelated effects. R1/R2.
+16. Bless and Bane select the oldest applicable contribution within their independent groups. Oldest is durable holder insertion order, with authored output order within one instance; reload does not refresh age. Removing a winner exposes the next eligible live contributor without reapplication. R2/R4.
+17. The neutral selector consumes ordered applicable values with explicit policies and returns selection decisions without rolling, world lookup or retained winner state. AllApplicable has no group; OldestApplicable requires a nonempty group. Invalid input is an error with no partial decisions. R4.
+18. AddToRoll expresses signed additive meaning, not an additive/stackable flag. The owning roll operation resolves only selected amounts and preserves provenance. Information and execution consume the same selection decisions. Existing supported quantity/domain boundaries stay honest; authoring cannot advertise support absent from the consumer. R3/R4.
+19. Named Bless/Bane declarations use explicit ending policies and error-returning construction. Neither rest cleanup nor concentration is hidden inside a roll adjustment. R1/R4.
 
 ## Rulings
 
@@ -49,10 +57,16 @@ The [walkthrough and working Go surface](README.md) explain the agreed boundarie
 | R1 | settled | Bless/Bane first; tools rather than name-only cleanup; coexistence separate from contribution and lifetime | KirkDiggler | 2026-11-13 |
 | R2 | settled | Oldest applicable per group; independent live instances and contribution-level selection | KirkDiggler | 2026-11-13 |
 | R3 | settled | AddToRoll is signed additive meaning; select before resolving, no additive/stackable flag | KirkDiggler | 2026-11-13 |
-| R4 | settled | Construction/selection design direction; concrete API spelling may evolve through the consumer while preserving ownership, explicit validation and supported meanings | KirkDiggler | 2026-11-13 |
-| R5 | settled | Raging-ring ease is an acceptance measure: simple/reusable Rage benefits with concentration maintenance rather than native Rage upkeep | KirkDiggler | 2026-11-13 |
+| R4 | settled | Typed construction and explicit selection/validation; concrete spelling may evolve; condition-first public structure is superseded by R6–R8 | KirkDiggler | 2026-11-13 |
+| R5 | settled | Raging-ring ease is required; R8 expands the proof beyond borrowing benefits only | KirkDiggler | 2026-11-13 |
+| R6 | settled | Configured effects and reusable effect compositions are the authoring units; conditions are consumers | KirkDiggler | 2026-11-14 |
+| R7 | settled | Named typed fields for rulebook discovery; configuration IDs/references and enumeration reach the same values | KirkDiggler | 2026-11-14 |
+| R8 | settled | One complete Raging definition; reusable real maintenance; native Rage, concentration ring and activity ward through code and configuration | KirkDiggler | 2026-11-14 |
 
 ## Open
 
-- An override convenience is exploratory, not required. The baseline consumer composes benefits and maintenance explicitly. If a convenience is justified, replacing a declared maintenance group on an owned value is the candidate shape; generic deep patches, hidden tracker disabling and runtime mutation are not implied.
-- The checked implementation plan defines native consumer adoption and release evidence. Design agreement authorizes faithful planning/execution, not an automatic merge.
+- **Canonical contract:** fix exact effect/composition/member types, named-definition package ownership, ordered membership and how the typed fields expose the same generic values without a shadow catalogue. R6/R7 settle the ownership intent, not these signatures.
+- **Reference contract:** fix catalogue identity, member addressing, resolution timing, supported reference depth and invalid/cyclic-reference refusal before deriving implementation tasks. No unlimited nesting or arbitrary scripting capability is inferred.
+- **Maintenance contract:** characterize native Rage's real timeline/state first, then choose reusable parts that preserve it and specify the native binding/saved-representation boundary. Reuse of the current Duration adapter alone does not establish parity.
+- **Plan replacement:** re-cut concrete task contracts and provider/consumer checks against these seams. The retained first-cut plan is not authority to proceed with its API adoption or declare the new acceptance complete. [Path forward](next-steps.md).
+- An override convenience remains optional and uncommitted. Explicit selection/composition is the baseline; no automatic merge or production deployment is authorized.
