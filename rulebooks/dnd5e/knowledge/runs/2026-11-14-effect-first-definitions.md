@@ -4,7 +4,7 @@ S20 [rpg-project#956](https://github.com/KirkDiggler/rpg-project/issues/956), st
 
 ## Shipped
 
-- E1/E2 source checkpoints add canonical values, pure projection/intrinsic compilation, explicit placement, strict catalogue/reference resolution and whole-member derivation; native/consumer tasks remain pending and no release is claimed — [runtime PR](https://github.com/KirkDiggler/rpg-toolkit/pull/2430).
+- E1–E3 source checkpoints add canonical values/placement, strict catalogue/reference derivation and reusable activity/anchored-round maintenance with native parity; complete named/native/consumer adoption remains pending and no release is claimed — [runtime PR](https://github.com/KirkDiggler/rpg-toolkit/pull/2430).
 
 ## Decided
 
@@ -13,12 +13,17 @@ S20 [rpg-project#956](https://github.com/KirkDiggler/rpg-project/issues/956), st
 
 - DefineEntry is the measured typed-to-catalogue adapter: it projects through the same compiler into ordinary authored entries rather than adding a second interpretation path or a Go→JSON→Go round-trip — [catalogue](../../effects/catalogue.go).
 
+- One-round anchored duration needs an explicit positive-round availability fact before any anchor exists; the added fact is a stateless read of the existing turn-end occurrence, not a new clock or actor lookup — [round policy](../../effects/round_duration.go).
+
 ## Found
 
 - The compiler/placement suites observed missing-API RED then GREEN for standalone roots, explicit empty values, qualified order, duplicate/cyclic refusal, repeated subtree ownership, projection errors and placement coverage/scope checks; full root race/vet/lint pass — [compiler proof](../../effects/definition_compile_test.go).
 
 - Catalogue/reference/derivation suites observed missing-API RED then GREEN; forward and same-entry acyclic references work, actual cycles/overlapping replacements/unused invalid entries refuse, and both reference-contract JSON sketches execute as fixtures with source values preserved — [reference proof](../../effects/reference_test.go).
 
+- New maintenance suites observe missing-API RED then GREEN for sparse/relative/missing/negative/reset clocks, first-end grace, positive damage/misses, local/application routing and inactivity precedence while contributions remain visible during ending; unchanged native suites also remain green — [assembly proof](../../effects/raging_maintenance_assembly_test.go).
+
 ## Mistaken
 
+- The first round-state inspector checked the maximum only for live states; an added terminal-overflow assertion failed, then the shared bound check was corrected so malformed ended progress refuses too — [state proof](../../effects/round_duration_test.go).
 - A payload builder's registry read caused a Go initialization cycle; it now calls its kind-owned intrinsic validator directly while public declaration/placement validation retains table-owned scope checks — [validation owner](../../effects/effect_validation.go).

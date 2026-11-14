@@ -72,6 +72,7 @@ type DurationInfo struct {
 type PartInfo struct {
 	Concentration bool
 	Duration      *DurationInfo
+	RoundDuration *RoundDurationInfo
 }
 
 // InspectPartInput names an authored declaration and its exact saved runtime.

@@ -40,7 +40,7 @@
 // metadata and never constructs a condition merely to enumerate an effect.
 //
 // Typed Definition values (AddToRoll, EndOn, DamageBonus, Resistance, Advantage,
-// Concentration, Duration and UntilEmpty) compile through CompileParts into owned canonical
+// Concentration, Duration, CombatActivity, RoundDuration and UntilEmpty) compile through CompileParts into owned canonical
 // declarations. Construction requires no runtime identities, JSON at call sites
 // or panic convenience. CompileOutputs projects validated payload parts through
 // their existing kind builders for consumers that already own a machine recipe;
@@ -57,7 +57,12 @@
 // requests a CON follow-up from positive applied damage and has no duration counter;
 // duration owns its counter/grace separately. End-on and until-empty policies are
 // independent lifecycle parts. Combat-activity upkeep owns attack/applied-damage
-// flags and optional first-end grace, not a clock or concentration. End-on selects
+// flags and optional first-end grace, not a clock or concentration. RoundDuration
+// uses the existing machine's positive-round anchor/derived progress and explicit
+// expiry/reset reasons; sparse events do not prolong it. Its inspection reports
+// anchored progress separately from turn-end counts. Activity and anchored duration
+// support explicit attachment/application placement; their declared order preserves
+// first-terminal precedence through the existing assembly gate. End-on selects
 // rest, combat-end, next received turn-start or dropped-to-zero for its holder.
 // Actual last-member loss reports the source-neutral members_empty cause.
 // Resistance reuses its existing incoming fold.

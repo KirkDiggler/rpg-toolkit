@@ -73,6 +73,7 @@ also a standalone part:
 | `add_to_roll` | Query-only | Yes | One dice amount, roll domains, explicit polarity and contribution-selection policy |
 | `concentration` | Subscribed | Yes | Positive applied damage requests a CON follow-up; zero HP ends maintenance |
 | `duration` | No separate output | Yes | Positive holder-turn-end count and explicit activation-grace choice |
+| `round_duration` | No separate output | Yes | Positive anchored-round maximum, explicit expiry/reset reasons; missing events do not extend it |
 | `combat_activity` | No separate output | Yes | Holder attack/positive-applied-damage activity; independent first-end grace |
 | `end_on` | No separate output | Yes | Rest, combat-end, turn-start or dropped-to-zero beat, reason and terminal scope |
 | `until_empty` | No separate output | Yes | Actual last-member loss, not empty initial delivery |
@@ -202,10 +203,29 @@ and [Bane](../conditions/baned.go) use this path; Bane chooses Negative polarity
 its independent group. Their descriptor factories return errors through preparation,
 creation and loading rather than compiling fallible content at package initialization.
 
-Typed DamageBonus, Resistance, Advantage, Concentration, Duration and UntilEmpty values
+Typed DamageBonus, Resistance, Advantage, Concentration, Duration, CombatActivity,
+RoundDuration and UntilEmpty values
 select the existing meanings as well. `CompileOutputs` projects only payload
 parts through those same builders for a consumer that already owns a recipe. It
 refuses maintenance rather than dropping it, and requires no fake holder identity.
+
+## Upkeep is not one shared counter
+
+CombatActivity owns attack/positive-applied-damage flags and optional first-end
+grace. RoundDuration owns the first positive round anchor and derived elapsed
+progress; it does not count received events. Missing or negative rounds do not
+anchor/reset it. An active anchored duration expires at its configured elapsed
+boundary; a positive backwards round produces its explicit reset reason.
+
+Place activity before the anchored duration when inactivity must win a simultaneous
+end. The existing assembly gates sibling reactions on the first accepted terminal
+request while payload outputs remain observable. Both parts support local attachment
+or shared application ending; placement is explicit. A one-round policy ends on its
+first positive round observation, not a fabricated round-zero boundary.
+
+RoundDurationInfo and DescribeMaintenance keep anchored progress separate from
+holder-turn-end counters. These definitions use the existing machine's round
+operations and the same native occurrence vocabulary, not another clock.
 
 ## Authoring and binding are rulebook APIs
 
@@ -298,7 +318,7 @@ are not interchangeable identities.
 | Typed leaf values / first-cut adapters | [definitions.go](definitions.go), [compile_parts.go](compile_parts.go), [compile_outputs.go](compile_outputs.go) |
 | Independent declarations and binding | [parts.go](parts.go), [part_validation.go](part_validation.go) |
 | Payload part example | [resistance_part.go](resistance_part.go) |
-| Maintenance parts | [concentration_part.go](concentration_part.go), [duration_part.go](duration_part.go), [end_parts.go](end_parts.go) |
+| Maintenance parts | [concentration_part.go](concentration_part.go), [duration_part.go](duration_part.go), [round_duration.go](round_duration.go), [activity_part.go](activity_part.go), [end_parts.go](end_parts.go) |
 | Query-only roll contribution | [add_to_roll.go](add_to_roll.go) |
 | Shared Rage benefits / native lifecycle | [raging_benefits.go](../conditions/raging_benefits.go), [raging_definition.go](../conditions/raging_definition.go) |
 | Code-authored application composition | [composition.go](../conditions/composition.go) |

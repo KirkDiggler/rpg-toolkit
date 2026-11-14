@@ -134,6 +134,28 @@ func (d Duration) DefinitionData() (DefinitionData, error) {
 	return definitionTemplate(definitionTemplateInput{Kind: KindDuration, Params: durationParams(d)})
 }
 
+// CombatActivity observes holder attack attempts or positive applied damage.
+// SkipFirst controls activity grace independently of any duration definition.
+type CombatActivity struct{ SkipFirst bool }
+
+// DefinitionData projects activity configuration without a live tracker bag.
+func (d CombatActivity) DefinitionData() (DefinitionData, error) {
+	return definitionTemplate(definitionTemplateInput{Kind: KindCombatActivity, Params: activityParams(d)})
+}
+
+// RoundDuration measures a positive number of rounds from the first positive
+// holder round observation, with explicit elapsed/reset ending reasons.
+type RoundDuration struct {
+	Rounds        int
+	ExpiredReason string
+	ResetReason   string
+}
+
+// DefinitionData projects an anchored-round policy, not a clock or saved state.
+func (d RoundDuration) DefinitionData() (DefinitionData, error) {
+	return definitionTemplate(definitionTemplateInput{Kind: KindRoundDuration, Params: roundDurationParams(d)})
+}
+
 // UntilEmpty ends an application on actual last-member loss, not empty creation.
 type UntilEmpty struct{}
 
