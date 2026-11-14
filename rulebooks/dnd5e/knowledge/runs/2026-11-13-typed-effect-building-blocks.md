@@ -25,6 +25,8 @@ Slice [rpg-project#956](https://github.com/KirkDiggler/rpg-project/issues/956), 
 - Character and monster tests retain source order despite reversed runtime registration, then hand selection to the next instance without resetting its remaining duration; nonselected expiry and independent sibling resistance are also exercised — [character host proof](../../conditions/contribution_order_test.go).
 - The countdown proof brought a typed Duration adapter to the existing kind, with missing-API RED then grace/countdown GREEN; character integration reuses the existing complete host instead of duplicating a simulation in another package — [duration test](../../effects/typed_duration_test.go).
 
+- Replanning under R8 adds characterization for simultaneous native endings: inactivity wins both at the elapsed-duration boundary and when the clock also resets. The tests pass against unchanged production behavior; they are baseline evidence for decomposition, not new gameplay — [ending order](../../conditions/raging_end_order_test.go).
+
 ## Mistaken
 
 - The first immediate provider request resolved the repository root rather than its nested module; GitHub content and a direct module query established the correct subdir/hash, then the same pushed-hash request succeeded without a fabricated version or local override — [provider](https://github.com/KirkDiggler/rpg-toolkit/pull/2426).
