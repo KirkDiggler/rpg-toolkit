@@ -197,5 +197,5 @@ func (m *Manager) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, erro
 	}
 	defer release()
 
-	return m.speak(ctx, in)
+	return m.social(ctx, VerbSpeak, in)
 }

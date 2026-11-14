@@ -36,7 +36,6 @@ var recordOnly = map[string]bool{
 	encounter.BeatBehaviorDecision:  true,
 	encounter.BeatBehaviorWork:      true,
 	encounter.BeatTransferred:       true,
-	encounter.BeatInteracted:        true,
 	string(encounter.OutcomeBought): true,
 	string(encounter.OutcomeSold):   true,
 	encounter.BeatSneaking:          true,
@@ -70,7 +69,9 @@ func familyOf(beat string) (Family, bool) {
 		string(encounter.OutcomeDeathSave), encounter.BeatLooted,
 		encounter.BeatHeld, encounter.BeatDropped, encounter.BeatDoor, encounter.BeatEquipmentChanged,
 		encounter.BeatStayed, encounter.BeatSnuck, encounter.BeatRested, encounter.BeatBarred,
-		encounter.BeatRelocated:
+		encounter.BeatRelocated, encounter.BeatInteracted:
+		// A world NPC's `interacted` (no `view`) folds to nothing, as it
+		// always did ([interactPieces]).
 		return FamilyAct, true
 	case string(encounter.OutcomeStruck), string(encounter.OutcomeMissed), string(encounter.OutcomeWarded):
 		return FamilyAct, true // FamilyReaction when the beat carries a reaction ref
@@ -188,6 +189,8 @@ func decodePieces(recipient, tag, beat string, payload []byte) ([]piece, error) 
 		return one(p)
 	case encounter.BeatArrested:
 		return arrestPiece(payload)
+	case encounter.BeatInteracted:
+		return interactPieces(payload)
 	case encounter.BeatEquipmentChanged:
 		var p struct {
 			Member string `json:"member"`
@@ -1467,4 +1470,83 @@ func arrestPiece(payload []byte) ([]piece, error) {
 		taken = append(taken, member(id))
 	}
 	return one(piece{family: FamilyState, body: ArrestAct{Interaction: p.Interaction, Taken: taken, Cell: p.Cell}})
+}
+
+// interactPieces is one viewer's version of a thing done to a prop
+// (interacted with a `view`, rpg-project#959), or nothing for a world NPC's
+// `interacted`, which has no `view` and stays the record's, as it always was.
+func interactPieces(payload []byte) ([]piece, error) {
+	var head struct {
+		View string `json:"view"`
+	}
+	if err := json.Unmarshal(payload, &head); err != nil {
+		return nil, err
+	}
+	if head.View == "" {
+		return nil, nil
+	}
+	p, err := interactPiece(payload)
+	if err != nil {
+		return nil, err
+	}
+	return one(p)
+}
+
+// interactPiece is the [InteractAct] one viewer is shown of a thing done: the
+// doer's own version (the prop, the option, the `do` words, the verdict and
+// the check), a witness shown the prop (the prop and the `seen` words), or a
+// witness not shown it (the place). FAIL CLOSED: a view this build does not
+// know, no actor, or a version missing what its view must carry is
+// unreadable, never a guessed half.
+func interactPiece(payload []byte) (piece, error) {
+	var p struct {
+		View        string            `json:"view"`
+		Actor       string            `json:"actor"`
+		Prop        string            `json:"prop"`
+		Option      string            `json:"option"`
+		Do          string            `json:"do"`
+		Seen        string            `json:"seen"`
+		Beaten      *bool             `json:"beaten"`
+		Skill       string            `json:"skill"`
+		DC          *int              `json:"dc"`
+		Total       int               `json:"total"`
+		Calculation json.RawMessage   `json:"calculation"`
+		At          *spatial.Position `json:"at"`
+	}
+	if err := json.Unmarshal(payload, &p); err != nil {
+		return piece{}, err
+	}
+	if p.Actor == "" {
+		return piece{}, fmt.Errorf("interacted: a version names no actor")
+	}
+	act := InteractAct{Actor: member(p.Actor)}
+	switch p.View {
+	case encounter.InteractedViewActor:
+		if p.Prop == "" || p.Option == "" || p.Beaten == nil {
+			return piece{}, fmt.Errorf("interacted %q: the doer's version names no prop, option or verdict", p.Actor)
+		}
+		beaten := *p.Beaten
+		act.Prop, act.Option, act.Words, act.Beaten = prop(p.Prop), p.Option, p.Do, &beaten
+		if p.Skill != "" && p.DC != nil {
+			roll, err := rollOf(p.Calculation, nil, p.Total, p.DC, boolp(beaten))
+			if err != nil {
+				return piece{}, err
+			}
+			act.Skill, act.Roll = p.Skill, roll
+		}
+	case encounter.InteractedViewThing:
+		if p.Prop == "" {
+			return piece{}, fmt.Errorf("interacted %q: a shown witness's version names no prop", p.Actor)
+		}
+		act.Prop, act.Words = prop(p.Prop), p.Seen
+	case encounter.InteractedViewPlace:
+		if p.At == nil {
+			return piece{}, fmt.Errorf("interacted %q: a witness's version names no place", p.Actor)
+		}
+		at := *p.At
+		act.Place = &at
+	default:
+		return piece{}, fmt.Errorf("interacted %q: view %q", p.Actor, p.View)
+	}
+	return piece{family: FamilyAct, body: act}, nil
 }

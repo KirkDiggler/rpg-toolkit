@@ -178,7 +178,8 @@ func (s windowStory) validate() error {
 			return fmt.Errorf("%w: a check window names %d of a door, a target and a prop to finish; exactly one",
 				ErrInvalidSession, named)
 		}
-		if s.Door == "" && (s.Verb != VerbSpeak || s.Option == "") {
+		lineOrThing := s.Verb == VerbSpeak || (s.Verb == VerbInteract && s.Prop != "")
+		if s.Door == "" && (!lineOrThing || s.Option == "") {
 			return fmt.Errorf("%w: a check window names target %q prop %q under verb %q with line %q, which is not a line spoken",
 				ErrInvalidSession, s.Target, s.Prop, s.Verb, s.Option)
 		}
@@ -375,7 +376,7 @@ func reactDeclaration(session, member string, window interrupt.Window) (Declarat
 // the freeze is the fail-closed answer.
 func holdsTheTable(enc *encounter.Encounter, window interrupt.Window) bool {
 	w, err := thawWindow(window.Payload, string(window.Audience))
-	if err != nil || w.Story.Kind != storyCheck || w.Story.Verb != VerbSpeak || w.Story.Interaction == "" {
+	if err != nil || w.Story.Kind != storyCheck || (w.Story.Verb != VerbSpeak && w.Story.Verb != VerbInteract) || w.Story.Interaction == "" {
 		return true
 	}
 	clock, err := enc.ClockOf(&encounter.ClockOfInput{Member: encounter.MemberID(w.Audience)})
