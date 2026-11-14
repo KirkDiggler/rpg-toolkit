@@ -289,6 +289,31 @@ func (e *Encounter) relocate(in *RelocateInput, custody bool) (*RelocateOutput, 
 	if err != nil {
 		return nil, fmt.Errorf("relocate: refresh sight: %w", err)
 	}
+	// THEY WATCHED THEM GO (rpg-project#961): a witness of the leaving who
+	// does not see the mover now holds them as unknown — known of, placed
+	// nowhere — never a ghost on the cell they were seen to leave, and never
+	// where they went. One who sees the arrival holds the live sighting the
+	// refresh gave; one who saw neither end keeps whatever they held.
+	for i, m := range moves {
+		for _, w := range sawLeave[i] {
+			if w == m.Member {
+				continue
+			}
+			holdings, err := e.memberIntel(w)
+			if err != nil {
+				return nil, fmt.Errorf("relocate: %w", err)
+			}
+			if err := e.rewriteSight(w, m.Member, holdings, func(t *SightTestimony) bool {
+				if t.State == LocationUnknown {
+					return false
+				}
+				*t = SightTestimony{State: LocationUnknown}
+				return true
+			}); err != nil {
+				return nil, fmt.Errorf("relocate: %w", err)
+			}
+		}
+	}
 	out.IntelDeltas, out.Formed = deltas, formed
 	return out, nil
 }

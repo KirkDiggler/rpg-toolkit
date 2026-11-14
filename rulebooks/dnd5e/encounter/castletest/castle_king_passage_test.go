@@ -22,6 +22,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/KirkDiggler/rpg-toolkit/mind/perception"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
 	"github.com/KirkDiggler/rpg-toolkit/tools/spatial"
@@ -127,6 +128,23 @@ func TestMadKingTheScullionTellsTheWayAndTheGrateTakesIt(t *testing.T) {
 	require.Equal(t, encounter.InteractedViewThing, seen[0]["view"])
 	require.Equal(t, "lifts the grate by the hearth and climbs down into the dark", seen[0]["seen"])
 	require.NotContains(t, seen[0], "do", "the doer's own words are the doer's")
+	// NO GHOST ON THE GRATE (rpg-project#961): the rogue and the cook watched
+	// the fighter go, and hold them known of and placed nowhere.
+	for _, w := range []encounter.MemberID{kingRogue, kingCook} {
+		held, err := s.enc.View(&encounter.ViewInput{Member: w})
+		require.NoError(t, err)
+		found := false
+		for _, h := range held {
+			if h.Channel == perception.Sight && h.Subject == kingFighter {
+				found = true
+				require.False(t, h.CurrentOn(perception.Sight))
+				testimony, ok := encounter.DecodeSightTestimony(h.Payload)
+				require.True(t, ok)
+				require.Equal(t, encounter.LocationUnknown, testimony.State, "%s watched the fighter go: no ghost", w)
+			}
+		}
+		require.True(t, found, "%s still knows of the fighter", w)
+	}
 	require.Equal(t, theChapel, s.regionOf(s.at(kingFighter)))
 	require.NotEqual(t, theChapel, s.regionOf(s.at(kingRogue)), "the rogue stays until they say it")
 
