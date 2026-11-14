@@ -595,24 +595,11 @@ func (s *CastleSuite) TestAStateChangeReachesTheWholeRun() {
 	s.True(found, "the captain's stand-aside transition is said")
 }
 
-// TestTheSeizureSaysTheHailsDistance: the arrest's sentence names the
-// distance the engine seizes a wanted member within — the conversation's
-// hail distance, read from the content — in both its full and folded forms,
-// and follows the content when the distance changes (wanted.go).
-func (s *CastleSuite) TestTheSeizureSaysTheHailsDistance() {
+// TestTheCastlesSeizureSaysItsHailsDistance: the castle's arrest sentence
+// names the gate's hail distance, 2 cells, in both forms (the distance
+// following the content is seizure_test.go's, on a small site).
+func (s *CastleSuite) TestTheCastlesSeizureSaysItsHailsDistance() {
 	path := "interactions.front-gate.outcomes.arrested[0].arrest"
 	s.Contains(s.statement(readback.KindOutcome, path).Sentence, "sees again within 2 cells (the conversation's hail distance)")
 	s.Contains(s.rb.FoldedText(), "within 2 cells (the conversation's hail")
-
-	edited := strings.Replace(string(s.raw), "approach: { within: 2 }", "approach: { within: 3 }", 1)
-	s.Require().NotEqual(string(s.raw), edited, "precondition: the gate's approach is authored")
-	rb, err := readback.Of([]byte(edited))
-	s.Require().NoError(err)
-	for _, st := range rb.Statements() {
-		if st.Path == path {
-			s.Contains(st.Sentence, "sees again within 3 cells (the conversation's hail distance)")
-			return
-		}
-	}
-	s.Fail("no arrest statement")
 }
