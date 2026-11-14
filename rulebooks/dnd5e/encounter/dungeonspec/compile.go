@@ -1192,7 +1192,7 @@ func groupOf(entry AnswerSpec, weight int, o encounter.Orientation) encounter.An
 // optionsOf compiles a binding's lines (rpg-project#569): each option's check
 // through [approachesOf], its `requires` through [predicateOf], and both
 // verdicts' rows through [answerOf], every omitted weight resolved to 1.
-// A row's reveal names a concealment as the site key qualifies it.
+// A row's `tells` names an intel record as the site key qualifies it.
 //
 // NIL FOR NONE, an empty list included, so a creature nobody wrote a line for
 // compiles exactly as it did before options existed and the committed
@@ -1226,8 +1226,8 @@ func optionsOf(key string, specs []OptionSpec, o encounter.Orientation) []encoun
 				case row.Recognize != nil:
 					rec := recognitionOf("", row.Recognize, true, func(string, string) {})
 					c.Recognize = &rec
-				case row.Reveal != "":
-					c.Reveal = encounter.ConcealmentID(key + "/" + row.Reveal)
+				case row.Tells != "":
+					c.Tells = encounter.IntelID(key + "/" + row.Tells)
 				case row.Relocate != nil:
 					c.Relocate = &encounter.RelocateGrant{
 						To: encounter.RegionID(row.Relocate.To), Words: row.Relocate.Words, Rounds: row.Relocate.Rounds,

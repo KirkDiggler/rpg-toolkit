@@ -46,7 +46,7 @@ var saidKeys = map[string][]string{
 	"option":             {"id", "say", "loudness", "check", "requires", "advance", "success", "failure"},
 	"checkApproach":      {"ability", "tool", "dc"},
 	"advance":            {"interaction", "success", "failure"},
-	"optionRow":          {"say", "loudness", "fact", "recognize", "reveal", "relocate", "activity", "weight"},
+	"optionRow":          {"say", "loudness", "fact", "recognize", "tells", "relocate", "activity", "weight"},
 	"relocate":           {"to", "words", "rounds"},
 	"activity":           {"ref", "cycles"},
 	"post":               {"door", "at", "against", "pass"},

@@ -359,6 +359,11 @@ intel:
   - id: key-bearer
     reveals:
       fact: sergeant-holds-keys
+  # Hand edit (rpg-project#958, Passages S1): the way through the kitchen
+  # passage, as the scullion tells it. Whoever holds it knows the passage.
+  - id: kitchen-way
+    reveals:
+      concealment: kitchen-passage
 exits:
   - id: postern
     cell:
@@ -2146,7 +2151,8 @@ room:
           - id: policy
             use: reserve-2-policy
       # Hand edit (rpg-project#958, Passages S1): the scullion tells the way
-      # for a coin. Her answer reveals the passage to whoever catches it.
+      # for a coin. Whoever catches her answer comes to hold the record
+      # `kitchen-way`, and so knows the passage.
       scullion:
         faction: kitchen
         options:
@@ -2156,7 +2162,7 @@ room:
               holds: purse
             success:
               - say: The grate by the hearth. Lift it. One way climbs to the chapel, the other drops to the cells.
-                reveal: kitchen-passage
+                tells: kitchen-way
       sergeant:
         faction: garrison
         behaviors:

@@ -166,7 +166,7 @@ type answerOutput struct {
 
 	// learners is who caught the answer: the members its words reached, or a
 	// prop's witnesses — whom a fact on the row teaches, and whom a row's
-	// `reveal` grant teaches too (rpg-project#958).
+	// `tells` grant lands its record on too (rpg-project#958).
 	learners []MemberID
 }
 

@@ -164,7 +164,7 @@ func (b *builder) rowStatements(o encounter.Option, line, heading, p string, t l
 					out = append(out, b.grantStatement(o, *g.Consequence.Recognize, lead, path+".recognize", t,
 						foldInfo{line: heading, verdict: verdictWord, site: site, who: t.about.ID}))
 				}
-				if g.Failure == verdict.failure && g.Row == k && (g.Consequence.Reveal != "" || g.Consequence.Relocate != nil) {
+				if g.Failure == verdict.failure && g.Row == k && (g.Consequence.Tells != "" || g.Consequence.Relocate != nil) {
 					out = append(out, b.passageStatement(g.Consequence, row, lead, path, t,
 						foldInfo{line: heading, verdict: verdictWord, site: site, who: t.about.ID}))
 				}
@@ -205,20 +205,20 @@ func rowDoes(row encounter.Answer, t lineTarget, name string) ([]string, []Conne
 	return does, conns
 }
 
-// passageStatement says a row's reveal or relocate (rpg-project#958): who
-// comes to know the secret, or where the speaker is set down and what the
-// others are told of it.
+// passageStatement says a row's told record or relocate (rpg-project#958):
+// who comes to hold the record and what it reveals, or where the speaker is
+// set down and what the others are told of it.
 func (b *builder) passageStatement(c encounter.Consequence, row encounter.Answer, lead, path string, t lineTarget, f foldInfo) Statement {
-	if c.Reveal != "" {
-		id := b.unqualify(string(c.Reveal))
+	if c.Tells != "" {
+		id := b.unqualify(string(c.Tells))
 		who, short := "everyone who can see the speaker, the speaker included,", "everyone who sees the speaker"
 		if !t.prop {
 			who, short = learnersWords(row.Loudness, t.name), "every member {self}'s words reach"
 		}
-		s := fmt.Sprintf("%s, %s comes to know the secret %s: what it hides is shown to them, and a hidden thing's lines can be "+
-			"said by them. One who knows it already learns nothing again.", lead, who, quote(id))
-		f.text = short + " learns the secret " + quote(id)
-		return b.fstmt(KindLineGrant, t.about, path+".reveal", s, f, Connection{Kind: "concealment", ID: id, Role: "reveals"})
+		s := fmt.Sprintf("%s, %s comes to hold the record %s, as one who carried it would, and learns what it reveals (%s). "+
+			"One who holds it already is told nothing again.", lead, who, quote(id), b.recordReveals(c.Tells))
+		f.text = short + " comes to hold the record " + quote(id)
+		return b.fstmt(KindLineGrant, t.about, path+".tells", s, f, Connection{Kind: "record", ID: id, Role: "tells"})
 	}
 	r := c.Relocate
 	rounds := "No world time passes with it."
@@ -403,4 +403,20 @@ func (b *builder) offeredWords(o encounter.Option, conv string) string {
 		return " (the line is offered in no state of it)"
 	}
 	return " (the line is offered only in " + joinOr(states) + ")"
+}
+
+// recordReveals is what an intel record reveals, in words.
+func (b *builder) recordReveals(id encounter.IntelID) string {
+	for _, in := range b.c.Intel {
+		if in.ID != id {
+			continue
+		}
+		switch {
+		case in.Reveals.Concealment != "":
+			return "the secret " + quote(b.unqualify(string(in.Reveals.Concealment)))
+		case in.Reveals.Fact != "":
+			return "the fact " + quote(string(in.Reveals.Fact))
+		}
+	}
+	return "nothing this build can say"
 }

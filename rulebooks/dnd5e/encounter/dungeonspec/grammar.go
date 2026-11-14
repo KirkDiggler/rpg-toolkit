@@ -413,12 +413,12 @@ type grammar struct {
 	// faction-of-one rule. mindValid is every faction whose declared mind
 	// passed minds(). dispositionAt is every normalized pair to the
 	// disposition that speaks for it (rpg-project#375).
-	// regionIDs and concealmentIDs are what a row's `relocate:` and
-	// `reveal:` may name (rpg-project#958), set by a dialect that knows them
-	// before the lines are judged; nil leaves the engine's own construction
-	// to refuse a name it does not have.
-	regionIDs      map[string]bool
-	concealmentIDs map[string]bool
+	// regionIDs and intelIDs are what a row's `relocate:` and `tells:` may
+	// name (rpg-project#958), set by a dialect that knows them before the
+	// lines are judged; nil leaves the engine's own construction to refuse a
+	// name it does not have.
+	regionIDs map[string]bool
+	intelIDs  map[string]bool
 
 	factionIDs     map[string]int
 	factionMembers map[string][]int
@@ -767,23 +767,23 @@ func (g *grammar) rowRecognize(at, key string, o OptionSpec, row AnswerSpec, isP
 	recognitionOf(at, row.Recognize, named, func(path, message string) { g.fail(path, "%s", message) })
 }
 
-// rowPassage judges a line's row `reveal:` and `relocate:` (rpg-project#958):
+// rowPassage judges a line's row `tells:` and `relocate:` (rpg-project#958):
 // one grant per row, a relocate's words written and rounds zero or more, and
 // what each names declared on this site — when the dialect told the grammar
-// its regions and concealments ([grammar.regionIDs], [grammar.concealmentIDs]).
+// its regions and intel records ([grammar.regionIDs], [grammar.intelIDs]).
 func (g *grammar) rowPassage(at string, row AnswerSpec) {
 	grants := 0
-	for _, set := range []bool{row.Recognize != nil, row.Reveal != "", row.Relocate != nil} {
+	for _, set := range []bool{row.Recognize != nil, row.Tells != "", row.Relocate != nil} {
 		if set {
 			grants++
 		}
 	}
 	if grants > 1 {
-		g.fail(at, "a row grants one thing: `recognize`, `reveal` or `relocate`, not two")
+		g.fail(at, "a row grants one thing: `recognize`, `tells` or `relocate`, not two")
 		return
 	}
-	if row.Reveal != "" && g.concealmentIDs != nil && !g.concealmentIDs[row.Reveal] {
-		g.fail(at+".reveal", "%q is not a concealment of this site", row.Reveal)
+	if row.Tells != "" && g.intelIDs != nil && !g.intelIDs[row.Tells] {
+		g.fail(at+".tells", "%q is not an intel record of this site", row.Tells)
 	}
 	r := row.Relocate
 	if r == nil {
@@ -832,8 +832,8 @@ func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {
 		g.fail(at+".recognize", "recognize is only on a line's success or failure row: a table row grants nothing")
 	}
 	if key != string(encounter.AnswerSuccess) && key != string(encounter.AnswerFailure) {
-		if entry.Reveal != "" {
-			g.fail(at+".reveal", "reveal is only on a line's success or failure row: a table row grants nothing")
+		if entry.Tells != "" {
+			g.fail(at+".tells", "tells is only on a line's success or failure row: a table row grants nothing")
 		}
 		if entry.Relocate != nil {
 			g.fail(at+".relocate", "relocate is only on a line's success or failure row: a table row grants nothing")
@@ -891,7 +891,7 @@ func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {
 		return
 	// A line's row that reveals or relocates does something
 	// (rpg-project#958), with or without words.
-	case len(words) == 0 && entry.Say == "" && entry.Reveal == "" && entry.Relocate == nil:
+	case len(words) == 0 && entry.Say == "" && entry.Tells == "" && entry.Relocate == nil:
 		g.fail(at, "this entry does nothing and says nothing (line %d)", entry.Line)
 
 		return

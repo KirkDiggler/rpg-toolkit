@@ -15,8 +15,9 @@ import (
 )
 
 // secretpassage_test.go is A SECRET PASSAGE (rpg-project#958, Passages S1 of #848)
-// on the shut noise hall, a | b | c: a scullion in room a whose answer
-// reveals the passage, a grate in room a the passage hides, with one line to
+// on the shut noise hall, a | b | c: a scullion in room a whose answer tells
+// the way — an intel record that reveals the passage — a grate in room a the
+// passage hides, with one line to
 // room c, and an open stair beside it whose lines also go to room c and to a
 // one-cell nook east of c. Alice and Bob stand in a, Dan in b behind the shut
 // door, out of earshot.
@@ -26,6 +27,7 @@ const (
 	psgGrate    encounter.PropID        = "grate"
 	psgStair    encounter.PropID        = "stair"
 	psgPassage  encounter.ConcealmentID = "passage"
+	psgWay      encounter.IntelID       = "the-way"
 	psgRoomC    encounter.RegionID      = "room-c"
 	psgNook     encounter.RegionID      = "nook"
 )
@@ -61,7 +63,7 @@ func (s *SecretPassageSuite) hall(members ...encounter.MemberInput) *encounter.E
 	scullion.Options = []encounter.Option{{
 		ID: "favour", Say: "A way out?",
 		Success: []encounter.Answer{{Weight: 1, Say: "The grate."}},
-		Grants:  []encounter.RowGrant{{Consequence: encounter.Consequence{Reveal: psgPassage}}},
+		Grants:  []encounter.RowGrant{{Consequence: encounter.Consequence{Tells: psgWay}}},
 	}}
 	members = append(members, scullion)
 	sheets := sheetFacts{}
@@ -77,6 +79,7 @@ func (s *SecretPassageSuite) hall(members ...encounter.MemberInput) *encounter.E
 		{ID: psgStair, Ref: "dnd5e:props:test:stair", At: spatial.Position{X: 3, Y: 4}, BlocksMovement: &no, BlocksLineOfSight: &no,
 			Options: []encounter.Option{psgTo("to-c", psgRoomC), psgTo("to-nook", psgNook)}},
 	}
+	setup.Field.Intel = []encounter.IntelRecord{{ID: psgWay, Reveals: encounter.RevealTargets{Concealment: psgPassage}}}
 	setup.Field.Concealments = []encounter.ConcealmentInput{{
 		ID: psgPassage, Checks: []encounter.CheckApproach{{Ability: "investigation", DC: 30}}, Props: []encounter.PropID{psgGrate},
 	}}
@@ -138,6 +141,17 @@ func (s *SecretPassageSuite) where(enc *encounter.Encounter, id encounter.Member
 	return spatial.Position{}
 }
 
+// holds is how many times member was written holding the way.
+func (s *SecretPassageSuite) holds(enc *encounter.Encounter, member encounter.MemberID) int {
+	n := 0
+	for _, f := range enc.ToData().Journal.Facts {
+		if f.Kind == "holds:intel:"+string(psgWay) && f.Actor == string(member) {
+			n++
+		}
+	}
+	return n
+}
+
 // beats is every beat of kind in member's story.
 func (s *SecretPassageSuite) beats(enc *encounter.Encounter, member encounter.MemberID, kind string) []map[string]any {
 	var out []map[string]any
@@ -163,25 +177,30 @@ func (s *SecretPassageSuite) TestUnknownItIsUnseenAndUnsayable() {
 	s.Equal(cellAt(4, 4), s.where(enc, relAlice))
 }
 
-// TestTheAnswerRevealsItToWhoCaughtIt: Alice asks; she and Bob beside her
-// catch the answer and are shown the grate, each told by a reveal beat. Dan,
-// behind the shut door, caught nothing and knows nothing.
-func (s *SecretPassageSuite) TestTheAnswerRevealsItToWhoCaughtIt() {
+// TestTheAnswerLandsTheRecordOnWhoCaughtIt: Alice asks; she and Bob beside
+// her catch the answer, each comes to hold the way, and the record shows each
+// the grate with a reveal beat. Dan, behind the shut door, caught nothing,
+// holds nothing and sees nothing.
+func (s *SecretPassageSuite) TestTheAnswerLandsTheRecordOnWhoCaughtIt() {
 	enc := s.party()
 	s.told(enc)
 	for _, m := range []encounter.MemberID{relAlice, relBob} {
+		s.Equal(1, s.holds(enc, m), "%s holds the way", m)
 		s.True(s.sees(enc, m, psgGrate), "%s caught the answer", m)
 		offered, err := enc.PropOptionsFor(m, psgGrate)
 		s.Require().NoError(err)
 		s.Len(offered, 1)
 		s.Len(s.beats(enc, m, encounter.BeatConcealmentRevealed), 1)
 	}
+	s.Zero(s.holds(enc, relDan), "out of earshot, Dan holds nothing")
+	s.False(s.sees(enc, relDan, psgGrate))
 	_, err := enc.PropOptionsFor(relDan, psgGrate)
-	s.ErrorIs(err, encounter.ErrNoProp, "out of earshot, Dan learned nothing")
+	s.ErrorIs(err, encounter.ErrNoProp, "and can say nothing to it")
 	s.Empty(s.beats(enc, relDan, encounter.BeatConcealmentRevealed))
 
 	// Asked again, nobody is told twice.
 	s.told(enc)
+	s.Equal(1, s.holds(enc, relAlice))
 	s.Len(s.beats(enc, relAlice, encounter.BeatConcealmentRevealed), 1)
 }
 

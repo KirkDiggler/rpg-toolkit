@@ -1601,15 +1601,16 @@ type AnswerSpec struct {
 	//	    recognize: { topic: turned-away, holder: spoken_to, about: speaker }
 	Recognize *RecognizeSpec `yaml:"recognize,omitempty"`
 
-	// Reveal is what this row teaches whoever caught it when it is a line's
-	// row and is the row answered (rpg-project#958): a concealment of this
-	// site, its cells, doors and props together. On a creature's line or a
-	// prop's; a table row is refused.
+	// Tells is the intel record this row lands on whoever caught it when it
+	// is a line's row and is the row answered (rpg-project#958): a record of
+	// this site's `intel`, each catcher coming to hold it as a holder of it
+	// does, so they learn what it reveals — a secret, or a fact. On a
+	// creature's line or a prop's; a table row is refused.
 	//
 	//	success:
 	//	  - say: Behind the ovens. Mind your head.
-	//	    reveal: servants-passage
-	Reveal string `yaml:"reveal,omitempty"`
+	//	    tells: servants-way
+	Tells string `yaml:"tells,omitempty"`
 
 	// Relocate is where this row sets its speaker down when it is a line's
 	// row and is the row answered (rpg-project#958): a region of this site,
@@ -2772,7 +2773,7 @@ func (r *AnswerSpec) UnmarshalYAML(value *yaml.Node) error {
 		}
 		switch key {
 		case "weight", "say", "loudness", "activity", "when", "fact", "flee", "hold", "attack", "toward", "dash", "away",
-			"search", "use", "with", "as", "recognize", "reveal", "relocate":
+			"search", "use", "with", "as", "recognize", "tells", "relocate":
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.AnswerSpec",
 				value.Content[i].Line, key)

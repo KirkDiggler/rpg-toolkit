@@ -4,10 +4,11 @@
 package castletest
 
 // castle_king_passage_test.go is THE KITCHEN PASSAGE (rpg-project#958,
-// Passages S1): the castle's wiring of a line that reveals and a line that
-// takes you somewhere. The hero, beside the purse and in speaking reach of
-// the scullion, picks the purse up and buys the way; the fighter and the
-// rogue, by the grate across the kitchen, catch the answer too. The fighter
+// Passages S1): the castle's wiring of a line that tells a record and a line
+// that takes you somewhere. The hero, beside the purse and in speaking reach
+// of the scullion, picks the purse up and buys the way; the fighter and the
+// rogue, by the grate across the kitchen, catch the answer too, come to hold
+// the record `kitchen-way`, and so know the passage it reveals. The fighter
 // goes down the grate to the chapel, and the rogue follows and comes up
 // beside them. Each rule is proved on the small site
 // (secretpassage_test.go); this is only the wiring, placed so nobody walks.

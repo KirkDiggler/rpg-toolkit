@@ -10,14 +10,18 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 )
 
-// passage.go is A LINE THAT REVEALS, AND A LINE THAT TAKES YOU SOMEWHERE
+// passage.go is A LINE THAT TELLS, AND A LINE THAT TAKES YOU SOMEWHERE
 // (rpg-project#958, Passages S1 of #848): two grants a line's row may carry,
 // enough to author a secret passage with nothing passage-only in the engine.
 //
-//   - REVEAL: whoever caught the answer — the members its words reached, or
+//   - TELLS: whoever caught the answer — the members its words reached, or
 //     a prop's witnesses, the speech rule every fact on a row already uses —
-//     comes to know a concealment, through the one reveal writer
-//     ([Encounter.revealConcealmentTo]). The servant who tells you the way.
+//     comes to hold an intel record, exactly as a member who picks one up,
+//     loots one or has one carried into their presence does: the holding is
+//     written ([holdings.holdIntel]) and what the record reveals follows
+//     through [Encounter.applyReveals]. THE SECRET IS THE RECORD'S: a record
+//     whose `reveals` names a concealment teaches it; the spoken word only
+//     lands the record. The servant who tells you the way.
 //   - RELOCATE: the SPEAKER is set down on the first free cell of a region
 //     ([Encounter.FreeCellsIn]) through the exported [Encounter.Relocate] —
 //     so a held member is refused, a member in a fight is refused — with the
@@ -54,13 +58,13 @@ type RelocateGrant struct {
 	Rounds int `json:"rounds,omitempty"`
 }
 
-// validatePassageGrant refuses a reveal or a relocate nobody could author on
+// validatePassageGrant refuses a told record or a relocate nobody could author on
 // purpose: two kinds in one grant, a relocate with no region or no words, or
-// with negative rounds. Whether the region or the concealment exists is the
+// with negative rounds. Whether the region or the record exists is the
 // field's question ([Encounter.checkGrantTargets]).
 func validatePassageGrant(what string, c Consequence) error {
 	kinds := 0
-	for _, set := range []bool{c.Recognize != nil, c.Arrest != nil, c.Jail != nil, c.Reveal != "", c.Relocate != nil} {
+	for _, set := range []bool{c.Recognize != nil, c.Arrest != nil, c.Jail != nil, c.Tells != "", c.Relocate != nil} {
 		if set {
 			kinds++
 		}
@@ -81,12 +85,12 @@ func validatePassageGrant(what string, c Consequence) error {
 	return nil
 }
 
-// errNoGrantTarget is the refusal of a row grant naming a region or a
-// concealment the field does not have.
+// errNoGrantTarget is the refusal of a row grant naming a region or an intel
+// record the field does not have.
 var errNoGrantTarget = errors.New("a line's grant names something this site does not have")
 
 // checkGrantTargets refuses, at construction, a row grant on any line of the
-// options given that names a region or a concealment the field lacks.
+// options given that names a region or an intel record the field lacks.
 func (f *field) checkGrantTargets(owner string, options []Option) error {
 	for _, o := range options {
 		for i, g := range o.Grants {
@@ -97,38 +101,36 @@ func (f *field) checkGrantTargets(owner string, options []Option) error {
 						owner, o.ID, i, r.To, errNoGrantTarget)
 				}
 			}
-			if c.Reveal != "" && f.concealment(c.Reveal) == nil {
-				return fmt.Errorf("%s option %q grant %d reveals %q, which is not a concealment of this site: %w",
-					owner, o.ID, i, c.Reveal, errNoGrantTarget)
+			if _, ok := f.intelByID[c.Tells]; c.Tells != "" && !ok {
+				return fmt.Errorf("%s option %q grant %d tells %q, which is not an intel record of this site: %w",
+					owner, o.ID, i, c.Tells, errNoGrantTarget)
 			}
 		}
 	}
 	return nil
 }
 
-// concealment is the field's concealment with an id, or nil.
-func (f *field) concealment(id ConcealmentID) *concealment {
-	for i := range f.concealments {
-		if f.concealments[i].id == id {
-			return &f.concealments[i]
-		}
+// grantTells lands an intel record on everyone who caught the answer that
+// told it, each as a holder of it: the holding written, then what it reveals
+// through [Encounter.applyReveals] — the path a looted record and one
+// carried into a mind's presence already take. One who holds it already is
+// told nothing again.
+func (e *Encounter) grantTells(id IntelID, line recognitionLine) error {
+	if _, ok := e.field.intelByID[id]; !ok {
+		return fmt.Errorf("tells %q: %w", id, errNoGrantTarget)
 	}
-	return nil
-}
-
-// grantReveal teaches a concealment to everyone who caught the answer that
-// granted it, each through the one reveal writer; one who knows it already
-// learns nothing again.
-func (e *Encounter) grantReveal(id ConcealmentID, line recognitionLine) error {
-	c := e.field.concealment(id)
-	if c == nil {
-		return fmt.Errorf("reveal %q: %w", id, errNoGrantTarget)
+	cause := "told it in answer to line " + line.option
+	if line.spokenTo != "" {
+		cause = "told it by " + string(line.spokenTo)
 	}
 	for _, m := range line.learners {
-		if _, ok := e.members[m]; !ok || e.world.knowsConcealment(m, id) {
+		if _, ok := e.members[m]; !ok || e.holdings.holdsRecord(m, id) {
 			continue
 		}
-		if err := e.revealConcealmentTo(m, c, "told the way", line.at); err != nil {
+		if err := e.holdings.holdIntel(m, id, cause); err != nil {
+			return fmt.Errorf("tells %q to %q: %w", id, m, err)
+		}
+		if err := e.applyReveals(m, id, line.at); err != nil {
 			return err
 		}
 	}

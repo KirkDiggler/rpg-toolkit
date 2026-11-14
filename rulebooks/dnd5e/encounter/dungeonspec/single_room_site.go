@@ -333,8 +333,8 @@ func siteGrammar(s *SingleRoomSpec, add errSink) {
 	// (rpg-project#490). After the floor and the declarations, which every
 	// refusal about a concealment is about.
 	concealments := singleRoomConcealmentValues(s, g, add)
-	g.concealmentIDs, g.regionIDs = concealments, regionIDsOf(s)
 	declared := intelRecords(s.Intel, concealments, add)
+	g.intelIDs, g.regionIDs = declared, regionIDsOf(s)
 	for i, m := range g.members.all {
 		// EVERY MEMBER HERE IS A MONSTER, and the kind says so rather than
 		// being read back off the ref: [monsterValues] already refuses a ref
