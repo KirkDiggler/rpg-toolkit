@@ -111,8 +111,8 @@ func (s *RageWhileRagingSuite) TestNativeFirstTurnIsSavedThroughTheSharedCreator
 		s.Require().NoError(err)
 		var saved conditions.ComposedData
 		s.Require().NoError(json.Unmarshal(raw, &saved))
-		s.Equal("raging", saved.Runtime.State)
-		s.Equal(float64(1), saved.Runtime.Bag["turns_active"])
+		s.Equal("active", saved.Runtime.Parts["maintenance/combat-activity"].State)
+		s.Equal(float64(1), saved.Runtime.Parts["maintenance/duration"].Bag["turns_active"])
 		s.Equal(again.GetID(), saved.Origin.EntityID)
 		found = true
 	}

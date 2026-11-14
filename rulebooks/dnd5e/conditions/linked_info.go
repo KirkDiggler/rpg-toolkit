@@ -39,13 +39,22 @@ type NamedDurationInfo struct {
 	Progress dndfx.DurationInfo
 }
 
+// NamedRoundDurationInfo preserves each anchored clock's own identity/progress.
+type NamedRoundDurationInfo struct {
+	PartKey  string
+	Progress dndfx.RoundDurationInfo
+}
+
 // MaintenanceInfo contains only locally known maintenance. Duration is the
 // convenient single-clock view when exactly one duration exists; Durations keeps
 // every authored part without inventing a combined countdown.
 type MaintenanceInfo struct {
-	Concentration *ConcentrationInfo
-	Duration      *dndfx.DurationInfo
-	Durations     []NamedDurationInfo
+	Concentration      *ConcentrationInfo
+	Duration           *dndfx.DurationInfo
+	Durations          []NamedDurationInfo
+	RoundDuration      *dndfx.RoundDurationInfo
+	RoundDurations     []NamedRoundDurationInfo
+	concentrationParts int
 }
 
 // LinkedApplicationInfo returns detached address bindings and live keys.
@@ -66,27 +75,15 @@ func (c *LinkedCondition) LinkedApplicationInfo() LinkedApplicationInfo {
 // MaintenanceInfo asks each part's owning meaning to interpret its snapshot.
 // A recipient does not infer its coordinator's countdown from a link.
 func (c *LinkedCondition) MaintenanceInfo() (*MaintenanceInfo, error) {
-	result := &MaintenanceInfo{}
-	snapshot := c.assembly.Snapshot()
-	for _, declaration := range c.bindings.Parts {
-		info, err := dndfx.InspectPart(&dndfx.InspectPartInput{Declaration: declaration, Snapshot: snapshot.Parts[declaration.Key]})
-		if err != nil {
-			return nil, fmt.Errorf("linked part %q state: %w", declaration.Key, err)
-		}
-		if info.Concentration {
-			if result.Concentration != nil || c.role != LinkedCoordinator {
-				return nil, fmt.Errorf("invalid linked concentration custody")
-			}
-			result.Concentration = &ConcentrationInfo{Owner: c.ConditionAddress(), SourceRef: c.origin.Ref,
-				SourceName: c.bindings.Name, ChildCount: len(c.lifetime.Snapshot().LiveMembers)}
-		}
-		if info.Duration != nil {
-			result.Durations = append(result.Durations, NamedDurationInfo{PartKey: declaration.Key, Progress: *info.Duration})
-		}
+	result, err := inspectMaintenance(&inspectMaintenanceInput{Parts: c.bindings.Parts, Snapshot: c.assembly.Snapshot()})
+	if err != nil {
+		return nil, err
 	}
-	if len(result.Durations) == 1 {
-		progress := result.Durations[0].Progress
-		result.Duration = &progress
+	if result.concentrationParts > 1 || (result.concentrationParts != 0 && c.role != LinkedCoordinator) {
+		return nil, fmt.Errorf("invalid linked concentration custody")
+	}
+	if result.concentrationParts == 1 {
+		result.Concentration = &ConcentrationInfo{Owner: c.ConditionAddress(), SourceRef: c.origin.Ref, SourceName: c.bindings.Name, ChildCount: len(c.lifetime.Snapshot().LiveMembers)}
 	}
 	return result, nil
 }
@@ -99,6 +96,10 @@ type DescribeConditionOutput struct {
 	Display  Display
 	Origin   *dndevents.ConditionOrigin
 	Duration *dndfx.DurationInfo
+}
+
+type maintenanceProvider interface {
+	MaintenanceInfo() (*MaintenanceInfo, error)
 }
 
 // DescribeCondition returns registry display plus instance-owned metadata where
@@ -117,11 +118,13 @@ func DescribeCondition(in *DescribeConditionInput) (*DescribeConditionOutput, er
 		out.Origin = &copy
 	}
 	if linked, ok := in.Condition.(*LinkedCondition); ok {
-		info, err := linked.MaintenanceInfo()
+		out.Display.Name = linked.bindings.Name
+	}
+	if provider, ok := in.Condition.(maintenanceProvider); ok {
+		info, err := provider.MaintenanceInfo()
 		if err != nil {
 			return nil, err
 		}
-		out.Display.Name = linked.bindings.Name
 		out.Duration = info.Duration
 		if info.Concentration != nil {
 			out.Display.Name = "Concentrating on " + info.Concentration.SourceName
@@ -135,6 +138,17 @@ func DescribeCondition(in *DescribeConditionInput) (*DescribeConditionOutput, er
 			}
 			if clock.Progress.SkipNext {
 				text += " The next turn end is a grace boundary."
+			}
+			details = append(details, text)
+		}
+		for _, clock := range info.RoundDurations {
+			noun := "turns"
+			if clock.Progress.TurnsActive == 1 {
+				noun = "turn"
+			}
+			text := fmt.Sprintf("Active for %d %s.", clock.Progress.TurnsActive, noun)
+			if len(info.RoundDurations) > 1 {
+				text = clock.PartKey + ": " + text
 			}
 			details = append(details, text)
 		}

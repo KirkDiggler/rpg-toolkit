@@ -98,9 +98,11 @@ func (s *LoaderTestSuite) TestLoadRagingCondition() {
 	s.Require().NoError(json.Unmarshal(saved, &data))
 	s.Equal("barbarian-1", data.MemberID)
 	s.Equal("barbarian-1", data.Origin.EntityID)
-	s.Equal(true, data.Runtime.Bag["was_hit_this_turn"])
-	s.Equal(true, data.Runtime.Bag["did_attack_this_turn"])
-	s.JSONEq(`{"damage_bonus":{"barbarian_level":true}}`, string(data.Bindings))
+	s.Equal(true, data.Runtime.Parts["maintenance/combat-activity"].Bag["damaged"])
+	s.Equal(true, data.Runtime.Parts["maintenance/combat-activity"].Bag["attacked"])
+	s.Require().NotNil(data.Bindings.Parts[0].Amount.ByClassLevel)
+	s.Equal("barbarian", data.Bindings.Parts[0].Amount.ByClassLevel.Class)
+	s.Equal(3, data.Bindings.Parts[0].Amount.ByClassLevel.Steps[9])
 }
 
 func (s *LoaderTestSuite) TestLoadBrutalCriticalCondition() {

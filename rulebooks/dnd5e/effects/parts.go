@@ -73,6 +73,9 @@ type PartInfo struct {
 	Concentration bool
 	Duration      *DurationInfo
 	RoundDuration *RoundDurationInfo
+	// TurnEndObserved is a kind-owned known first-boundary witness. Nil means
+	// the part cannot report it; it is inspection data, not another live counter.
+	TurnEndObserved *bool
 }
 
 // InspectPartInput names an authored declaration and its exact saved runtime.
@@ -92,8 +95,8 @@ func BindPart(in *BindPartInput) (*BindPartOutput, error) {
 	if in == nil {
 		return nil, fmt.Errorf("part binding is required")
 	}
-	if strings.TrimSpace(in.Declaration.Key) == "" || strings.TrimSpace(in.HolderID) == "" || strings.TrimSpace(in.ApplicationID) == "" {
-		return nil, fmt.Errorf("part key, holder and application id are required")
+	if strings.TrimSpace(in.Declaration.Key) == "" || strings.TrimSpace(in.HolderID) == "" {
+		return nil, fmt.Errorf("part key and holder are required")
 	}
 	if err := in.Ref.IsValid(); err != nil {
 		return nil, fmt.Errorf("part attachment ref: %w", err)
@@ -105,6 +108,9 @@ func BindPart(in *BindPartInput) (*BindPartOutput, error) {
 	description, err := describePart(in.Declaration)
 	if err != nil {
 		return nil, err
+	}
+	if in.Declaration.OnTerminal == generic.EndApplication && strings.TrimSpace(in.ApplicationID) == "" {
+		return nil, fmt.Errorf("application-ending parts require an application id")
 	}
 	part, err := definition.part(in)
 	if err != nil {

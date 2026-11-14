@@ -237,7 +237,11 @@ func (s *canonicalEffectDetailsSuite) TestReadPreservesCharacterAndEffectIdentit
 			s.Require().True(known)
 			s.NotEmpty(row.Detail)
 			s.Equal(display.Name, row.Name)
-			s.Equal(display.Detail, row.Detail)
+			if row.Ref.Equals(raging.Ref()) {
+				s.Equal(display.Detail+" Active for 3 turns.", row.Detail, "the provider carries progress instead of asking the client to read a private bag")
+			} else {
+				s.Equal(display.Detail, row.Detail)
+			}
 			seen[row.Ref.String()] = true
 			if row.Ref.Equals(blessed.Ref()) {
 				s.Require().NotNil(row.SourceMember)

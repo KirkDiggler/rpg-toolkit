@@ -102,5 +102,5 @@ func inspectRoundDurationPart(in *InspectPartInput) (*PartInfo, error) {
 	if state.State == partStateEnded && anchor == 0 {
 		return nil, fmt.Errorf("ended round duration has no anchor")
 	}
-	return &PartInfo{RoundDuration: &RoundDurationInfo{Anchored: anchor > 0, RoundActivated: anchor, TurnsActive: turns, TotalRounds: params.Rounds}}, nil
+	return &PartInfo{RoundDuration: &RoundDurationInfo{Anchored: anchor > 0, RoundActivated: anchor, TurnsActive: turns, TotalRounds: params.Rounds}, TurnEndObserved: &saw}, nil
 }

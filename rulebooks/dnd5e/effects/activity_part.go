@@ -74,5 +74,10 @@ func inspectActivityPart(in *InspectPartInput) (*PartInfo, error) {
 	default:
 		return nil, fmt.Errorf("unknown activity state %q", in.Snapshot.State)
 	}
-	return &PartInfo{}, nil
+	info := &PartInfo{}
+	if params.SkipFirst {
+		observed := in.Snapshot.State != partStateFresh
+		info.TurnEndObserved = &observed
+	}
+	return info, nil
 }

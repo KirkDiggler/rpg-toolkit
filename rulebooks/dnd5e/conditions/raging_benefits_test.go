@@ -28,11 +28,21 @@ func (s *ragingBenefitsSuite) TestSharedNativeOutputs() {
 	s.Require().NoError(err)
 	outputs, err := dndfx.CompileOutputs(&dndfx.CompileOutputsInput{Parts: compiled.Parts})
 	s.Require().NoError(err)
-	native, err := ragingRecipe(generic.Amount{Fixed: &fixed})
+	native, err := bindRaging(json.RawMessage(`{"damage_bonus":{"fixed":5}}`))
 	s.Require().NoError(err)
-	s.Require().Len(native.States[ragingFresh].Outputs, 4)
+	var nativeBenefits []dndfx.PartDeclaration
+	for _, part := range native.Parts {
+		if part.OnTerminal == generic.EndPart {
+			nativeBenefits = append(nativeBenefits, part)
+		}
+	}
+	nativeOutputs, err := dndfx.CompileOutputs(&dndfx.CompileOutputsInput{Parts: nativeBenefits})
+	s.Require().NoError(err)
+	s.Require().Len(nativeOutputs.Outputs, 4)
 	s.Require().Len(outputs.Outputs, 4)
-	for i, raw := range native.States[ragingFresh].Outputs {
+	for i, out := range nativeOutputs.Outputs {
+		raw, err := json.Marshal(out)
+		s.Require().NoError(err)
 		authored, err := json.Marshal(outputs.Outputs[i])
 		s.Require().NoError(err)
 		s.JSONEq(string(raw), string(authored))
@@ -99,13 +109,16 @@ func (s *ragingBenefitsSuite) TestInputMutationCannotChangeAnotherBundle() {
 	b, err := RagingBenefits(&RagingBenefitsInput{DamageBonus: RagingDamageBonus{Fixed: &bonus}})
 	s.Require().NoError(err)
 	bonus = 99
-	damageEffect := a.Parts[0].Effect.(dndfx.DamageBonus)
-	s.Equal(2, *damageEffect.Amount.Fixed)
-	*damageEffect.Amount.Fixed = 88
-	saveEffect := a.Parts[2].Effect.(dndfx.Advantage)
-	saveEffect.When.Fact.Value = "dex"
-	checkEffect := a.Parts[3].Effect.(dndfx.Advantage)
-	s.Equal("str", checkEffect.When.Fact.Value, "changing one leaf must not rewrite its sibling")
+	damageEffect, err := a.Parts[0].Effect.DefinitionData()
+	s.Require().NoError(err)
+	s.Equal(2, *damageEffect.Effect.Amount.Fixed)
+	*damageEffect.Effect.Amount.Fixed = 88
+	saveEffect, err := a.Parts[2].Effect.DefinitionData()
+	s.Require().NoError(err)
+	saveEffect.Effect.When.Fact.Value = "dex"
+	checkEffect, err := a.Parts[3].Effect.DefinitionData()
+	s.Require().NoError(err)
+	s.Equal("str", checkEffect.Effect.When.Fact.Value, "changing one leaf must not rewrite its sibling")
 	compiled, err := dndfx.CompileParts(&dndfx.CompilePartsInput{Parts: b.Parts})
 	s.Require().NoError(err)
 	s.Equal(2, *compiled.Parts[0].Amount.Fixed)

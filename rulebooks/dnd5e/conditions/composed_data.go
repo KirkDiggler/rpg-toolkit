@@ -10,42 +10,41 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	generic "github.com/KirkDiggler/rpg-toolkit/mechanics/effects"
-	"github.com/KirkDiggler/rpg-toolkit/mechanics/effects/machine"
+	dndfx "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/effects"
 	dndevents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
 
-// ComposedData is the current persisted representation of a named rulebook
-// composition. Origin and Bindings are immutable instance inputs; Runtime is the
-// only mutable lifecycle snapshot. Nil sections are missing data, not creation.
+// LocalBindings freezes resolved local part declarations and terminal placement.
+// It contains neither a catalogue reference nor another mutable runtime bag.
+type LocalBindings struct {
+	Parts []dndfx.PartDeclaration `json:"parts"`
+}
+
+// ComposedData is the sole current local-composition envelope. Bindings are
+// resolved immutable values; Runtime owns independent per-part snapshots. The
+// old single state/bag envelope is refused, not normalized on load.
 type ComposedData struct {
 	Ref      core.Ref                   `json:"ref"`
 	MemberID string                     `json:"member_id"`
 	Origin   *dndevents.ConditionOrigin `json:"origin"`
-	Bindings json.RawMessage            `json:"bindings"`
-	Runtime  *generic.Snapshot          `json:"runtime"`
-}
-
-type boundComposition struct {
-	bindings json.RawMessage
-	recipe   machine.Recipe
+	Bindings *LocalBindings             `json:"bindings"`
+	Runtime  *generic.AssemblySnapshot  `json:"runtime"`
 }
 
 type compositionDefinition struct {
-	ref           core.Ref
-	display       Display
-	bind          func(json.RawMessage) (boundComposition, error)
-	validateState func(generic.Snapshot) error
+	ref     core.Ref
+	display Display
+	bind    func(json.RawMessage) (LocalBindings, error)
 }
 
-// ValidateBindingsInput names a composed definition and the authored binding
-// payload to validate without inventing a holder or constructing a runtime.
+// ValidateBindingsInput names native construction content, not active save data.
 type ValidateBindingsInput struct {
 	Ref      string
 	Bindings json.RawMessage
 }
 
-// ValidateBindings checks the same binding contract used by create and load.
-// It refuses nil input, unknown/non-composed refs and invalid binding data.
+// ValidateBindings checks the native source's construction choices without a
+// holder. Active loads validate saved resolved parts instead of rebuilding them.
 func ValidateBindings(in *ValidateBindingsInput) error {
 	if in == nil {
 		return fmt.Errorf("binding validation requires input")
@@ -74,7 +73,11 @@ func composedDescriptor(def compositionDefinition) descriptor {
 			if in.SourceRef != "" {
 				return nil, fmt.Errorf("composed condition requires Origin, not legacy SourceRef")
 			}
-			return createdAs(composeInstance(&def, in.MemberID, in.Origin, in.Config, nil))
+			bindings, err := def.bind(in.Config)
+			if err != nil {
+				return nil, err
+			}
+			return createdAs(composeInstance(&def, in.MemberID, in.Origin, &bindings, nil))
 		},
 		load: func(raw json.RawMessage) (dndevents.ConditionBehavior, error) {
 			var data ComposedData
@@ -84,29 +87,10 @@ func composedDescriptor(def compositionDefinition) descriptor {
 			if data.Ref != def.ref {
 				return nil, fmt.Errorf("condition data ref does not match %s", def.ref.String())
 			}
-			if data.Runtime == nil {
-				return nil, fmt.Errorf("composed condition runtime is required; recreate obsolete characters")
+			if data.Bindings == nil || data.Runtime == nil {
+				return nil, fmt.Errorf("composed condition requires resolved bindings and current assembly runtime")
 			}
 			return createdAs(composeInstance(&def, data.MemberID, data.Origin, data.Bindings, data.Runtime))
 		},
 	}
-}
-
-func validateRestoredRuntime(recipe machine.Recipe, state *generic.Snapshot) error {
-	if state.State == "" {
-		return fmt.Errorf("saved runtime state is required")
-	}
-	declared, ok := recipe.States[state.State]
-	if !ok || declared.Terminal {
-		return fmt.Errorf("saved runtime state %q is not live", state.State)
-	}
-	if state.Bag == nil || len(state.Bag) != len(recipe.Bag) {
-		return fmt.Errorf("saved runtime bag must contain every declared key exactly once")
-	}
-	for key := range recipe.Bag {
-		if _, ok := state.Bag[key]; !ok {
-			return fmt.Errorf("saved runtime bag is missing %q", key)
-		}
-	}
-	return nil
 }
