@@ -55,12 +55,8 @@ func escapeSite(t *testing.T, custody CustodyPhase, prisAt spatial.Position) *En
 			{ID: escGuard, Kind: KindMonster, Faction: escGate, Position: spatial.Position{X: 4, Y: 1}},
 			{ID: escCaptain, Kind: KindMonster, Faction: escGate, Position: spatial.Position{X: 4, Y: 4}},
 		},
-		Endings: []EndingInput{{Key: "withdrawn", Trigger: TriggerExternal{}}},
-		Capabilities: Capabilities{
-			Sight: everyoneSeesTheWholeMap{}, Equipment: UnobservedEquipment{}, Conditions: UnobservedEquipment{},
-			Sheets: zeroSheets{}, Participation: everyoneStanding{}, Initiative: orderAsGiven{}, Driver: passDriver{},
-			Actors: Actors{Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}},
-		},
+		Endings:      []EndingInput{{Key: "withdrawn", Trigger: TriggerExternal{}}},
+		Capabilities: escapeCapabilities(),
 	})
 	require.NoError(t, err)
 	// The guard carries the gate's conversation, and the gate arrested and
@@ -76,6 +72,16 @@ func escapeSite(t *testing.T, custody CustodyPhase, prisAt spatial.Position) *En
 		recognitionLine{interaction: "gate", holdersOnly: true}))
 	require.Equal(t, StanceNeutral, enc.stanceOf(escGate, FactionParty), "precondition: the garrison is civil")
 	return enc
+}
+
+// escapeCapabilities is the small site's host: everyone sees the whole map,
+// nobody falls, and nothing acts on a table.
+func escapeCapabilities() Capabilities {
+	return Capabilities{
+		Sight: everyoneSeesTheWholeMap{}, Equipment: UnobservedEquipment{}, Conditions: UnobservedEquipment{},
+		Sheets: zeroSheets{}, Participation: everyoneStanding{}, Initiative: orderAsGiven{}, Driver: passDriver{},
+		Actors: Actors{Striker: passStriker{}, Mover: quietMover{}, Announcer: quietAnnouncer{}},
+	}
 }
 
 func jailedIf(c CustodyPhase) []MemberID {
@@ -146,4 +152,44 @@ func TestNoEscapeWithoutAMind(t *testing.T) {
 	_, err = enc.Step(&StepInput{Member: escPris, To: enc.field.cellAt(spatial.Position{X: 2, Y: 1}), EndWalk: true})
 	require.NoError(t, err)
 	require.Equal(t, StanceNeutral, enc.stanceOf(escGate, FactionParty), "a faction with no mind learns nothing")
+}
+
+// TestTheEscapeAsksTheJailedPhase pins the escape's custody gate
+// (rpg-toolkit#2423, item 1): the prisoner is on the record's Jailed list but
+// their phase is held — a record that never jailed them — and standing out
+// of the cell in the guard's sight raises no escape.
+func TestTheEscapeAsksTheJailedPhase(t *testing.T) {
+	enc := escapeSite(t, CustodyHeld, spatial.Position{X: 3, Y: 1})
+	enc.interactions["gate"].arrest.Jailed = []MemberID{escPris}
+	refresh(t, enc)
+	require.False(t, escapedKnown(enc), "held, not jailed: no escape")
+}
+
+// TestTheEscapeAsksTheJailedList pins the escape's restriction to the jailed
+// at the trigger itself (rpg-toolkit#2423, item 2): the record's phase is
+// jailed and somebody was jailed, but not this prisoner (not on its Jailed
+// list), and standing outside in the guard's sight raises no escape.
+func TestTheEscapeAsksTheJailedList(t *testing.T) {
+	enc := escapeSite(t, CustodyJailed, spatial.Position{X: 3, Y: 1})
+	enc.interactions["gate"].arrest.Jailed = []MemberID{"someone-else"}
+	refresh(t, enc)
+	require.False(t, escapedKnown(enc), "never jailed: no escape")
+}
+
+// TestARejoinedWantedMemberRaisesNoEscape (rpg-toolkit#2423, item 3): a taken
+// member who left before the jail and came back is wanted and was never
+// jailed; seen outside the cell by the guard who arrested them, they raise no
+// escape — they are seized instead (wanted.go).
+func TestARejoinedWantedMemberRaisesNoEscape(t *testing.T) {
+	enc := escapeSite(t, CustodyJailed, spatial.Position{X: 3, Y: 1})
+	made := enc.interactions["gate"].arrest
+	made.Jailed = []MemberID{"someone-else"}
+	made.Wanted = []WantedMember{{ID: escPris, RememberedBy: []MemberID{escGuard}}}
+	reach, err := enc.placedSightReach()
+	require.NoError(t, err)
+	require.NoError(t, enc.holdTopic(reach, escGuard, []MemberID{escPris}, TopicWanted, ChannelJudgement,
+		recognitionLine{interaction: "gate", holdersOnly: true}))
+	refresh(t, enc)
+	require.False(t, escapedKnown(enc), "a rejoined wanted member is no escapee")
+	require.True(t, enc.inCustody(escPris), "they are seized, held in their own right")
 }

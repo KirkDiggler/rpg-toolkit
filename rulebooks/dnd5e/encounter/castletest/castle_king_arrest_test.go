@@ -72,7 +72,9 @@ var arrestScene struct {
 var arrestSceneTests = []string{
 	"TestMadKingTheSecondFailedClaimArrests", "TestMadKingTheArrestEndsTheAddressAndMovesNobody",
 	"TestMadKingTheArrestIsToldOnlyWhatItsReaderSees", "TestMadKingTheArrestIsKeptOnReload",
-	"TestMadKingAKeptRollArrestsAsTheWordsWereSaid",
+	"TestMadKingAKeptRollArrestsAsTheWordsWereSaid", "TestMadKingTheFightLineAtTheArrest", "TestMadKingTheSeizedAreHailed",
+	"TestMadKingAnArrestRecordWithCustodyOnTheRecordHolds", "TestMadKingStandAsideIsClosedToWhomTheGateSeeks",
+	"TestMadKingTheFightLineIsShouted",
 }
 
 // buildTheArrestScene plays the castle to the arrest: the hero learns of the
@@ -251,7 +253,12 @@ func TestMadKingTheArrestIsToldOnlyWhatItsReaderSees(t *testing.T) {
 	require.Len(t, told, 1, "the speaker is told the arrest once")
 	require.Contains(t, told[0]["taken"], string(hero), "he is told he is taken")
 	require.Contains(t, told[0]["taken"], string(inTheArea), "and the ally beside him")
-	require.Equal(t, "region-cells", told[0]["cell"])
+	require.Equal(t, "region-cells", told[0]["cell"], "the taken are told the cell")
+	witnessed := s.payloadsOf(hireling, encounter.BeatArrested)
+	require.NotEmpty(t, witnessed, "precondition: the hireling at the gate saw the arrest")
+	for _, b := range witnessed {
+		require.NotContains(t, b, "cell", "a witness is told who was taken, never the cell")
+	}
 
 	for _, player := range []encounter.MemberID{hero, inTheArea, seenOutside, leftTheGate, neverNear} {
 		for _, b := range s.payloadsOf(player, encounter.BeatArrested) {
@@ -331,6 +338,8 @@ func TestMadKingAKeptRollArrestsAsTheWordsWereSaid(t *testing.T) {
 	require.Contains(t, taken, hero, "the speaker is taken where the words were said")
 	require.True(t, taken[hero].InArea, "in the gatehouse, then")
 	require.NotContains(t, taken, leftTheGate, "walking into view before the settle takes nobody")
+	// Seen on the road, beyond the gate's hail, they are not seized either
+	// (wanted.go): they stay wanted.
 	require.Contains(t, wanted, leftTheGate, "the one who left stays wanted")
 }
 

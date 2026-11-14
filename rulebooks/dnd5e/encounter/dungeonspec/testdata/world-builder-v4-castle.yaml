@@ -316,6 +316,9 @@ dispositions:
       # Hand edit (rpg-project#925): a prisoner seen out of the cells turns
       # the garrison.
       - {fact: prisoners-escaped, then: hostile}
+      # Hand edit (rpg-project#925): an arrested member who refuses to be
+      # taken alive turns the garrison.
+      - {fact: refused-arrest, then: hostile}
   - between:
       - loyalists
       - party
@@ -1642,13 +1645,30 @@ room:
             requires:
               - interaction:
                   id: front-gate
-                  in: [arrested]
+                  in: [arrested, jailed]
               - recognized: arrested
             advance:
               interaction: front-gate
               success: came-quietly
             success:
               - say: Sensible. This way, and keep your hands where I can see them.
+          # Hand edit (rpg-project#925, ruled 2026-11-14): the held may also
+          # refuse. A held fighter cannot reach a guard to strike, so the way
+          # out by force is a line: it turns the garrison, and the fight that
+          # forms with the guard breaks the hold.
+          - id: never-alive
+            say: You will never take me alive.
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [arrested, jailed]
+              - recognized: arrested
+            success:
+              - say: Then we do this the hard way. To arms!
+                # Shouted, as the gate's hint is (rpg-toolkit#2409): the
+                # captain learns it whichever gate speaker it is said to.
+                loudness: shout
+                fact: refused-arrest
         behaviors:
           - id: policy
             use: gate-1-policy
@@ -1801,13 +1821,30 @@ room:
             requires:
               - interaction:
                   id: front-gate
-                  in: [arrested]
+                  in: [arrested, jailed]
               - recognized: arrested
             advance:
               interaction: front-gate
               success: came-quietly
             success:
               - say: Sensible. This way, and keep your hands where I can see them.
+          # Hand edit (rpg-project#925, ruled 2026-11-14): the held may also
+          # refuse. A held fighter cannot reach a guard to strike, so the way
+          # out by force is a line: it turns the garrison, and the fight that
+          # forms with the guard breaks the hold.
+          - id: never-alive
+            say: You will never take me alive.
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [arrested, jailed]
+              - recognized: arrested
+            success:
+              - say: Then we do this the hard way. To arms!
+                # Shouted, as the gate's hint is (rpg-toolkit#2409): the
+                # captain learns it whichever gate speaker it is said to.
+                loudness: shout
+                fact: refused-arrest
         behaviors:
           - id: policy
             use: gate-2-policy
@@ -1897,15 +1934,39 @@ room:
             requires:
               - interaction:
                   id: front-gate
-                  in: [arrested]
+                  in: [arrested, jailed]
               - recognized: arrested
             advance:
               interaction: front-gate
               success: came-quietly
             success:
               - say: Sensible. This way, and keep your hands where I can see them.
+          # Hand edit (rpg-project#925, ruled 2026-11-14): the held may also
+          # refuse. A held fighter cannot reach a guard to strike, so the way
+          # out by force is a line: it turns the garrison, and the fight that
+          # forms with the guard breaks the hold.
+          - id: never-alive
+            say: You will never take me alive.
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [arrested, jailed]
+              - recognized: arrested
+            success:
+              - say: Then we do this the hard way. To arms!
+                # Shouted, as the gate's hint is (rpg-toolkit#2409): the
+                # captain learns it whichever gate speaker it is said to.
+                loudness: shout
+                fact: refused-arrest
           - id: stand-aside
             say: Stand aside or bleed.
+            # Hand edit (rpg-project#925): closed to whoever the captain is
+            # looking for; strangers keep it.
+            requires:
+              - not:
+                  recognized: wanted
+              - not:
+                  recognized: arrested
             check:
               - ability: intimidation
                 dc: 14
@@ -2323,7 +2384,11 @@ interactions:
         arrested:
           transitions:
             - { on: came-quietly, to: jailed, reason: the arrested went quietly }
-        jailed: { terminal: true }
+        # Hand edit (rpg-project#925): a wanted member seized after the first
+        # group was jailed goes quietly to the cells beside them.
+        jailed:
+          transitions:
+            - { on: came-quietly, to: jailed, reason: another arrested went quietly }
 behaviorDefinitions:
   gate-1-policy:
     recipe:

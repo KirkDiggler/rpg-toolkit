@@ -240,6 +240,32 @@ type ArrestedMember struct {
 	// SeenBy are the arresting guards who saw the member at the arrest, in id
 	// order.
 	SeenBy []MemberID `json:"seen_by,omitempty"`
+
+	// Custody is this member's own custody phase, set for a member who joined
+	// the taken on their own (seized on sight, wanted.go). Empty means the
+	// record's phase ([ArrestRecord.Custody]) — the group taken at the
+	// arrest, and every record saved before custody was per member.
+	Custody CustodyPhase `json:"custody,omitempty"`
+}
+
+// phaseOf is the custody phase of the record's i-th taken member: their own
+// when they carry one, else the record's.
+func (r *ArrestRecord) phaseOf(i int) CustodyPhase {
+	if c := r.Taken[i].Custody; c != "" {
+		return c
+	}
+	return r.Custody
+}
+
+// setPhase moves the record's i-th taken member to a phase: their own when
+// they carry one, else the record's — which the group taken at the arrest
+// shares and always moves together (held, then jailed or broken).
+func (r *ArrestRecord) setPhase(i int, p CustodyPhase) {
+	if r.Taken[i].Custody != "" {
+		r.Taken[i].Custody = p
+		return
+	}
+	r.Custody = p
 }
 
 // WantedMember is one wanted member and which guards remember them.
@@ -547,12 +573,15 @@ func wantedIDs(r ArrestRecord) []MemberID {
 // member its reader cannot see. The wanted are named to the arresting guards
 // alone: who is wanted is the guards' memory, which no player perceives, so a
 // player's beat — the wanted member's, or a friend's who watched them — never
-// carries it. A reader told nobody is told nothing. Readers told the same
+// carries it. The cell they are to be held in is named to the taken and the
+// guards alone; a witness is told who was taken and no cell. A reader told
+// nobody is told nothing. Readers told the same
 // share one beat, in the order first met ([Encounter.tellRecognition]'s
 // shape).
 func (e *Encounter) tellArrest(reach sightReach, made ArrestRecord, guards []MemberID, line recognitionLine) error {
 	type telling struct {
 		taken, wanted []string
+		showCell      bool
 		audience      []MemberID
 	}
 	var tellings []*telling
@@ -582,10 +611,13 @@ func (e *Encounter) tellArrest(reach sightReach, made ArrestRecord, guards []Mem
 		if len(taken) == 0 && len(wanted) == 0 {
 			continue
 		}
-		key := strings.Join(taken, "\x00") + "\x01" + strings.Join(wanted, "\x00")
+		// WHERE THEY ARE TAKEN is told to the taken and the guards alone
+		// (rpg-project#925): a witness is told who, never the cell.
+		showCell := guard || slices.Contains(takenIDs(made), reader)
+		key := fmt.Sprintf("%t\x02", showCell) + strings.Join(taken, "\x00") + "\x01" + strings.Join(wanted, "\x00")
 		t, ok := byKey[key]
 		if !ok {
-			t = &telling{taken: taken, wanted: wanted}
+			t = &telling{taken: taken, wanted: wanted, showCell: showCell}
 			byKey[key] = t
 			tellings = append(tellings, t)
 		}
@@ -595,7 +627,9 @@ func (e *Encounter) tellArrest(reach sightReach, made ArrestRecord, guards []Mem
 		payload := map[string]interface{}{
 			"beat":        BeatArrested,
 			"interaction": string(line.interaction),
-			"cell":        string(made.Cell),
+		}
+		if t.showCell {
+			payload["cell"] = string(made.Cell)
 		}
 		if len(t.taken) > 0 {
 			payload["taken"] = t.taken
@@ -616,15 +650,17 @@ func (e *Encounter) tellArrest(reach sightReach, made ArrestRecord, guards []Mem
 	return nil
 }
 
-// inCustody reports whether a member is held by any arrest: taken by one
-// whose custody still holds.
+// inCustody reports whether a member is held by any arrest: taken by one, in
+// a phase that holds ([ArrestRecord.phaseOf]).
 func (e *Encounter) inCustody(id MemberID) bool {
 	for _, r := range e.interactions {
-		if r.arrest == nil || !r.arrest.Custody.holds() {
+		if r.arrest == nil {
 			continue
 		}
-		if slices.ContainsFunc(r.arrest.Taken, func(t ArrestedMember) bool { return t.ID == id }) {
-			return true
+		for i, t := range r.arrest.Taken {
+			if t.ID == id && r.arrest.phaseOf(i).holds() {
+				return true
+			}
 		}
 	}
 	return false
@@ -638,7 +674,8 @@ func (e *Encounter) refuseInCustody(verb string, id MemberID) error {
 	return nil
 }
 
-// breakCustody ends custody, for every taken member at once, of each arrest
+// breakCustody ends custody, for every taken member still held at once, of
+// each arrest
 // with one of its ARRESTING GUARDS among fighters: a fight with the guards
 // who hold them is the way out the ruling leaves (rpg-project#925). A fight
 // with nobody else — a taken member and a stranger — frees nobody: the
@@ -647,13 +684,23 @@ func (e *Encounter) refuseInCustody(verb string, id MemberID) error {
 // turn). The record's taken and wanted, and what the guards hold, stay.
 func (e *Encounter) breakCustody(fighters []MemberID) {
 	for id, r := range e.interactions {
-		if r.arrest == nil || !r.arrest.Custody.holds() {
+		if r.arrest == nil {
 			continue
 		}
+		guarded := false
 		for _, f := range fighters {
 			if m, ok := e.members[f]; ok && carries(m.Options, id) {
-				r.arrest.Custody = CustodyBroken
+				guarded = true
 				break
+			}
+		}
+		if !guarded {
+			continue
+		}
+		// EVERY MEMBER STILL HELD goes free at once; the jailed stay jailed.
+		for i := range r.arrest.Taken {
+			if r.arrest.phaseOf(i).holds() {
+				r.arrest.setPhase(i, CustodyBroken)
 			}
 		}
 	}
