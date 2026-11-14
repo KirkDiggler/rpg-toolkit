@@ -535,6 +535,11 @@ func (e *Encounter) hopsWithin(origins []PartitionID, bound int) (map[PartitionI
 type facetKey struct {
 	sees, words, seesTo bool
 	hops                int
+	// shownProp is whether the reader is shown the prop the line is said to
+	// ([Encounter.propShownTo]): only then does their version name it — a
+	// hidden thing is never named to one who does not know it, even one who
+	// catches the words (rpg-project#959).
+	shownProp bool
 }
 
 // appendSpeechBeats writes one [BeatSpeech] per facet group, in the order
@@ -554,6 +559,7 @@ func (e *Encounter) appendSpeechBeats(u utterance, where spatial.Position, all [
 			continue
 		}
 		k := facetKey{sees: p.sees, words: p.words, seesTo: p.seesTo && u.to != ""}
+		k.shownProp = u.prop != "" && e.propShownTo(u.speaker, p.member, u.prop)
 		if !p.sees {
 			k.hops = p.hops
 		}
@@ -586,7 +592,7 @@ func (e *Encounter) appendSpeechBeats(u utterance, where spatial.Position, all [
 			if u.option != "" {
 				body["option"] = u.option
 			}
-			if u.prop != "" {
+			if k.shownProp {
 				body["prop"] = string(u.prop)
 			}
 			if u.fact != "" {

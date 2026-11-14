@@ -230,8 +230,9 @@ func (b *builder) concealmentStatement(c encounter.ConcealmentInput) Statement {
 	for _, p := range c.Props {
 		hides = append(hides, "the prop "+b.propName(b.unqualify(string(p))))
 	}
-	s := fmt.Sprintf("The secret %s hides %s. A search finds it on %s. Until a member knows it — found, told, or read in a "+
-		"record — what it hides is not shown to them, and a hidden thing's lines cannot be said by them.",
+	s := fmt.Sprintf("The secret %s hides %s. A search finds it on %s. Until a member knows it — found, told, read in a "+
+		"record, or by seeing someone use something it hides — what it hides is not shown to them, and a hidden thing's "+
+		"lines cannot be said by them.",
 		quote(id), joinAnd(hides), checkWords(c.Checks))
 	return b.fstmt(KindConcealment, Subject{Kind: "concealment", ID: id}, "concealments."+id, s,
 		foldInfo{site: "the secret " + quote(id)})

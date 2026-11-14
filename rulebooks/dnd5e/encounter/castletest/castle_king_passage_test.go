@@ -64,7 +64,7 @@ var passageScene struct {
 }
 
 // passageSceneTests are the tests that start from [passageScene].
-var passageSceneTests = []string{"TestMadKingTheScullionTellsTheWayAndTheGrateTakesIt"}
+var passageSceneTests = []string{"TestMadKingTheScullionTellsTheWayAndTheGrateTakesIt", "TestMadKingWhoSawItKnowsIt"}
 
 // buildThePassageScene opens the castle with the hero beside the purse and
 // the fighter and the rogue by the grate; nobody knows the grate is there,
@@ -133,4 +133,28 @@ func TestMadKingTheScullionTellsTheWayAndTheGrateTakesIt(t *testing.T) {
 	s.doToTheGrate(kingRogue, "to-chapel")
 	require.Equal(t, theChapel, s.regionOf(s.at(kingRogue)))
 	require.InDelta(t, 1, s.enc.Distance(s.at(kingFighter), s.at(kingRogue)), 0, "the rogue comes up beside the fighter")
+}
+
+// TestMadKingWhoSawItKnowsIt (rpg-project#959, "if you saw it, you know
+// it"): a bard who joins the kitchen after the scullion told the way, and
+// so was never told, does not know the grate; watching the fighter go down
+// it, they know it, and take it themselves.
+func TestMadKingWhoSawItKnowsIt(t *testing.T) {
+	t.Parallel()
+	require.NoError(t, passageScene.err)
+	s := loadTheSceneOn(t, passageScene.blob, passageScene.compiled, passageScene.host)
+	const bard = encounter.MemberID("bard")
+	_, err := s.enc.Join(&encounter.JoinInput{Member: bard, Kind: encounter.KindPlayer, PrivateDiscoveries: true,
+		Cell: spatial.Position{X: -12, Y: -13}})
+	require.NoError(t, err)
+	_, err = s.enc.PropOptionsFor(bard, kingGrate)
+	require.ErrorIs(t, err, encounter.ErrNoProp, "precondition: the bard was never told")
+
+	s.doToTheGrate(kingFighter, "to-chapel")
+	offered, err := s.enc.PropOptionsFor(bard, kingGrate)
+	require.NoError(t, err, "the bard saw it used")
+	require.Len(t, offered, 2)
+
+	s.doToTheGrate(bard, "to-chapel")
+	require.Equal(t, theChapel, s.regionOf(s.at(bard)), "and takes it themselves")
 }

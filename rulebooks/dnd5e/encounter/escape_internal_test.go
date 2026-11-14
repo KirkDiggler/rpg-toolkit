@@ -33,11 +33,14 @@ const (
 // and the guard holding `arrested` about the prisoner.
 func escapeSite(t *testing.T, custody CustodyPhase, prisAt spatial.Position) *Encounter {
 	t.Helper()
-	return escapeSiteWith(t, custody, prisAt, nil)
+	return escapeSiteWith(t, custody, prisAt, nil, nil)
 }
 
-// escapeSiteWith is [escapeSite] with props on the floor (rpg-project#959).
-func escapeSiteWith(t *testing.T, custody CustodyPhase, prisAt spatial.Position, props []PropInput) *Encounter {
+// escapeSiteWith is [escapeSite] with props on the floor, and the secrets
+// hiding some of them (rpg-project#959).
+func escapeSiteWith(
+	t *testing.T, custody CustodyPhase, prisAt spatial.Position, props []PropInput, concealments []ConcealmentInput,
+) *Encounter {
 	t.Helper()
 	leaf := spatial.FootprintPlacement{
 		Footprint: spatial.Footprint{Box: &spatial.Box{W: 40, D: 1}},
@@ -46,11 +49,12 @@ func escapeSiteWith(t *testing.T, custody CustodyPhase, prisAt spatial.Position,
 	lock := DoorIsLocked(Lock{Approaches: []CheckApproach{{Ability: "dex", DC: 13}}})
 	enc, err := NewEncounter(&SetupInput{
 		Field: FieldInput{
-			Canvas:   openAir(),
-			Regions:  []RegionInput{rectRegion(string(escCell), 0, 0, 2, 5), rectRegion(string(escYard), 2, 0, 3, 5)},
-			Doors:    []DoorInput{{ID: "leaf", Placement: &leaf, State: lock}},
-			Props:    props,
-			Factions: []FactionInput{{ID: escGate, Mind: escCaptain}},
+			Canvas:       openAir(),
+			Regions:      []RegionInput{rectRegion(string(escCell), 0, 0, 2, 5), rectRegion(string(escYard), 2, 0, 3, 5)},
+			Doors:        []DoorInput{{ID: "leaf", Placement: &leaf, State: lock}},
+			Props:        props,
+			Concealments: concealments,
+			Factions:     []FactionInput{{ID: escGate, Mind: escCaptain}},
 			Dispositions: []DispositionInput{{
 				Between: [2]FactionID{escGate, FactionParty}, Stance: StanceNeutral,
 				Until: []UntilStep{{When: TriggerFact{Fact: escFact}, Then: StanceHostile}},
@@ -63,7 +67,7 @@ func escapeSiteWith(t *testing.T, custody CustodyPhase, prisAt spatial.Position,
 			{ID: escCaptain, Kind: KindMonster, Faction: escGate, Position: spatial.Position{X: 4, Y: 4}},
 		},
 		Endings:      []EndingInput{{Key: "withdrawn", Trigger: TriggerExternal{}}},
-		Capabilities: escapeCapabilities(),
+		Capabilities: escapeCapabilitiesFor(concealments),
 	})
 	require.NoError(t, err)
 	// The guard carries the gate's conversation, and the gate arrested and
@@ -79,6 +83,30 @@ func escapeSiteWith(t *testing.T, custody CustodyPhase, prisAt spatial.Position,
 		recognitionLine{interaction: "gate", holdersOnly: true}))
 	require.Equal(t, StanceNeutral, enc.stanceOf(escGate, FactionParty), "precondition: the garrison is civil")
 	return enc
+}
+
+// escapeCapabilitiesFor is [escapeCapabilities], with the two a field with
+// secrets needs when it has any: nothing is ever found by a search, and no
+// open door is ever witnessed.
+func escapeCapabilitiesFor(concealments []ConcealmentInput) Capabilities {
+	caps := escapeCapabilities()
+	if len(concealments) > 0 {
+		caps.CheckResolver, caps.Witness = searchFindsNothing{}, nobodyPerceives{}
+	}
+	return caps
+}
+
+// searchFindsNothing fails every check it is asked, a search included.
+type searchFindsNothing struct{}
+
+// ResolveCheck fails the check.
+func (searchFindsNothing) ResolveCheck(in *ResolveCheckInput) (*ResolveCheckOutput, error) {
+	return &ResolveCheckOutput{Applied: in.Approaches[0]}, nil
+}
+
+// ResolveDiscoveryCheck fails the automatic check the same way.
+func (searchFindsNothing) ResolveDiscoveryCheck(in *ResolveCheckInput) (*ResolveCheckOutput, error) {
+	return &ResolveCheckOutput{Applied: in.Approaches[0]}, nil
 }
 
 // escapeCapabilities is the small site's host: everyone sees the whole map,
