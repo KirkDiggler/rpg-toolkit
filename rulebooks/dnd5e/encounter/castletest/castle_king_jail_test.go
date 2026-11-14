@@ -507,3 +507,49 @@ func TestMadKingAnArrestRecordWithCustodyOnTheRecordHolds(t *testing.T) {
 	s := loadTheSceneOn(t, arrestScene.blob, arrestScene.compiled, arrestScene.host)
 	require.True(t, s.heldNow(hero), "the record's phase holds the taken")
 }
+
+// TestMadKingStandAsideIsClosedToWhomTheGateSeeks: the captain offers
+// "Stand aside or bleed." to a stranger — a party member neither taken nor
+// wanted — and not to a held member nor to a wanted one.
+func TestMadKingStandAsideIsClosedToWhomTheGateSeeks(t *testing.T) {
+	t.Parallel()
+	s, _ := theArrest(t)
+	require.True(t, s.offersTo(neverNear, kingCaptain, "stand-aside"), "a stranger is offered it")
+	require.False(t, s.offersTo(hero, kingCaptain, "stand-aside"), "a held member is not")
+	require.Contains(t, wantedOf(s.arrested()), leftTheGate, "precondition: still wanted")
+	require.False(t, s.offersTo(leftTheGate, kingCaptain, "stand-aside"), "nor a wanted one")
+}
+
+// TestMadKingTheFightLineIsShouted: the captain stands down the road, the
+// room beside the gatehouse through its open south doorway, beyond a spoken
+// line's carry; the held hero refuses to gate-1, whose answer is shouted, so
+// the captain catches it, learns of the refusal, and the garrison turns.
+func TestMadKingTheFightLineIsShouted(t *testing.T) {
+	t.Parallel()
+	s, _ := theArrest(t)
+	road, err := s.enc.FreeCellsIn("room-1-region", 60)
+	require.NoError(t, err)
+	var far spatial.Position
+	found := false
+	for _, c := range road {
+		if s.enc.Distance(s.at(kingGate1), c) > 8 && s.enc.Distance(s.at(hero), c) > 8 && s.enc.Distance(s.at(hero), c) < 14 {
+			far, found = c, true
+			break
+		}
+	}
+	require.True(t, found, "precondition: a road cell beyond a spoken line's carry")
+	_, err = s.enc.Relocate(&encounter.RelocateInput{
+		Moves: []encounter.Relocation{{Member: kingCaptain, To: far}},
+		Cause: encounter.RelocationCause{Ref: core.Ref{Module: "test", Type: "shortcuts", ID: "down-the-road"}, Words: "You walk down the road."},
+	})
+	require.NoError(t, err)
+
+	require.True(t, s.offersTo(hero, kingGate1, "never-alive"))
+	_, err = s.enc.Speak(context.Background(), &encounter.SpeakInput{
+		Range: speakReach, Actor: hero, Target: kingGate1, OptionID: "never-alive", Roller: rollsOne{},
+		Revision: s.revisionOf(hero, kingGate1, "never-alive"),
+	})
+	require.NoError(t, err)
+	require.True(t, s.learners("refused-arrest")[kingCaptain], "the captain catches the shout")
+	require.Equal(t, encounter.StanceHostile, s.stance(garrison, encounter.FactionParty), "and the garrison turns")
+}

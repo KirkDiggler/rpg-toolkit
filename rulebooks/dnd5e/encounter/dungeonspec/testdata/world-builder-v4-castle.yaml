@@ -1665,6 +1665,9 @@ room:
               - recognized: arrested
             success:
               - say: Then we do this the hard way. To arms!
+                # Shouted, as the gate's hint is (rpg-toolkit#2409): the
+                # captain learns it whichever gate speaker it is said to.
+                loudness: shout
                 fact: refused-arrest
         behaviors:
           - id: policy
@@ -1838,6 +1841,9 @@ room:
               - recognized: arrested
             success:
               - say: Then we do this the hard way. To arms!
+                # Shouted, as the gate's hint is (rpg-toolkit#2409): the
+                # captain learns it whichever gate speaker it is said to.
+                loudness: shout
                 fact: refused-arrest
         behaviors:
           - id: policy
@@ -1948,6 +1954,9 @@ room:
               - recognized: arrested
             success:
               - say: Then we do this the hard way. To arms!
+                # Shouted, as the gate's hint is (rpg-toolkit#2409): the
+                # captain learns it whichever gate speaker it is said to.
+                loudness: shout
                 fact: refused-arrest
           - id: stand-aside
             say: Stand aside or bleed.

@@ -73,7 +73,8 @@ var arrestSceneTests = []string{
 	"TestMadKingTheSecondFailedClaimArrests", "TestMadKingTheArrestEndsTheAddressAndMovesNobody",
 	"TestMadKingTheArrestIsToldOnlyWhatItsReaderSees", "TestMadKingTheArrestIsKeptOnReload",
 	"TestMadKingAKeptRollArrestsAsTheWordsWereSaid", "TestMadKingTheFightLineAtTheArrest", "TestMadKingTheSeizedAreHailed",
-	"TestMadKingAnArrestRecordWithCustodyOnTheRecordHolds",
+	"TestMadKingAnArrestRecordWithCustodyOnTheRecordHolds", "TestMadKingStandAsideIsClosedToWhomTheGateSeeks",
+	"TestMadKingTheFightLineIsShouted",
 }
 
 // buildTheArrestScene plays the castle to the arrest: the hero learns of the

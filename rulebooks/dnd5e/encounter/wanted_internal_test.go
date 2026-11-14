@@ -153,3 +153,49 @@ func TestNothingIsAskedWhenNobodyIsWanted(t *testing.T) {
 	require.Empty(t, enc.interactions["gate"].arrest.Taken)
 	require.False(t, enc.inCustody(wantWanted))
 }
+
+// TestAHostileGuardsFirstSightSeizesNobody pins the opposed-pair gate: the
+// garrison has turned while the wanted member stood unseen behind the shut
+// leaf; on the refresh where the guard first sees them — before that
+// refresh's trigger forms the fight — they are fought, not seized.
+func TestAHostileGuardsFirstSightSeizesNobody(t *testing.T) {
+	enc := escapeSite(t, CustodyHeld, spatial.Position{X: 1, Y: 1})
+	made := enc.interactions["gate"].arrest
+	made.Taken, made.Wanted = nil, []WantedMember{{ID: wantWanted, RememberedBy: []MemberID{escGuard}}}
+	_, err := enc.Join(&JoinInput{Member: wantWanted, Kind: KindPlayer, Cell: enc.field.cellAt(spatial.Position{X: 0, Y: 4})})
+	require.NoError(t, err)
+	reach, err := enc.placedSightReach()
+	require.NoError(t, err)
+	require.False(t, reach.Reaches(perception.Sight, escGuard, wantWanted), "precondition: the leaf hides them")
+	require.NoError(t, enc.holdTopic(reach, escGuard, []MemberID{wantWanted}, TopicWanted, ChannelJudgement,
+		recognitionLine{interaction: "gate", holdersOnly: true}))
+	// The free friend in the yard leaves, so the turn forms no fight yet.
+	_, err = enc.Exit(&ExitInput{Member: escFriend})
+	require.NoError(t, err)
+	require.NoError(t, enc.learnFact(escCaptain, escFact, "test", 0))
+	require.Equal(t, StanceHostile, enc.stanceOf(escGate, FactionParty), "precondition: the garrison turned")
+	fighting, err := enc.inFight(escGuard)
+	require.NoError(t, err)
+	require.False(t, fighting, "precondition: nobody in sight, so no fight yet")
+
+	_, err = enc.Unlock(&UnlockInput{Door: "leaf", Actor: escPris, Beaten: true, Total: 15,
+		Applied: CheckApproach{Ability: "dex", DC: 13}})
+	require.NoError(t, err)
+	require.Len(t, made.Wanted, 1, "first seen by a hostile guard: not seized")
+	require.False(t, enc.inCustody(wantWanted))
+}
+
+// TestAGuardInAFightSeizesNobody pins the in-a-fight gate: the guard is
+// already fighting when the wanted member comes into his sight; he seizes
+// nobody.
+func TestAGuardInAFightSeizesNobody(t *testing.T) {
+	enc := wantedSite(t)
+	_, err := enc.form(&FormInput{Order: []MemberID{escFriend, escGuard, escCaptain}})
+	require.NoError(t, err)
+	bubble, err := enc.bubbleFor(escGuard)
+	require.NoError(t, err)
+	require.NotNil(t, bubble, "precondition: the guard is in a fight")
+	require.NoError(t, enc.sweepWanted())
+	require.Len(t, enc.interactions["gate"].arrest.Wanted, 1, "a guard in a fight seizes nobody")
+	require.False(t, enc.inCustody(wantWanted))
+}
