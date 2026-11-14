@@ -46,6 +46,10 @@ func (b *builder) lineStatements(opts []encounter.Option, base string, t lineTar
 			head = fmt.Sprintf("%s offers something to do: %s; the one who does it is told %s. Nobody hears it; "+
 				"whoever sees them sees it done: one shown %s is told %s, one not shown it only that something was done "+
 				"where they stand.", capitalize(t.name), line, said(o.Do), t.name, seenWords(o.Seen))
+			if secret := b.secretOf(t); secret != "" {
+				head += fmt.Sprintf(" It is hidden by the secret %s: a watcher who sees it done, and sees where it stands, "+
+					"comes to know the secret by sight and is shown it.", quote(secret))
+			}
 			short = "done to {self}, seen not heard: a witness shown it is told " + seenWords(o.Seen) + "; "
 		}
 		if o.Checked() {
@@ -471,4 +475,20 @@ func seenWords(seen string) string {
 		return "the client's own words for using it (no `seen` is written)"
 	}
 	return "the doer " + said(seen)
+}
+
+// secretOf is the concealment a prop target belongs to, unqualified, or
+// empty for a creature or an unhidden prop.
+func (b *builder) secretOf(t lineTarget) string {
+	if !t.prop {
+		return ""
+	}
+	for _, c := range b.c.Concealments {
+		for _, p := range c.Props {
+			if string(p) == t.about.ID {
+				return b.unqualify(string(c.ID))
+			}
+		}
+	}
+	return ""
 }

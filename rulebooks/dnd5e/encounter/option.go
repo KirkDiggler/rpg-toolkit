@@ -762,6 +762,13 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	}
 
 	at := uint64(e.clock.ToData().HighWater)
+	// A LINE SAID TO A HIDDEN THING SHOWS IT to whoever sees it said to it
+	// (interact_prop.go, rpg-project#959): if you saw it, you know it.
+	if in.Prop != "" {
+		if err := e.revealBySight(in.Actor, in.Prop, witnesses, at); err != nil {
+			return nil, fmt.Errorf("speak: %w", err)
+		}
+	}
 	seq, err := e.appendSpokeBeat(in, option, beaten, at)
 	if err != nil {
 		return nil, err
