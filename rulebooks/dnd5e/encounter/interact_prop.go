@@ -191,26 +191,31 @@ func (e *Encounter) interactWithProp(ctx context.Context, in *InteractInput) (*I
 // prop the actor carries, one it is not hidden from. In witness order, the
 // actor always among them.
 func (e *Encounter) shownThePropOf(actor MemberID, prop PropID, witnesses []MemberID) []MemberID {
-	carried := slices.Contains(e.heldPropsOf(actor), prop)
 	out := []MemberID{}
 	for _, w := range witnesses {
-		switch {
-		case w == actor:
+		if e.propShownTo(actor, w, prop) {
 			out = append(out, w)
-		case carried:
-			if !e.hiddenPropTo(w, prop) {
-				out = append(out, w)
-			}
-		default:
-			if _, _, err := e.speakableProp(w, prop); err == nil {
-				out = append(out, w)
-			}
 		}
 	}
 	if !slices.Contains(out, actor) {
 		out = append([]MemberID{actor}, out...)
 	}
 	return out
+}
+
+// propShownTo is whether reader is shown the prop actor said a line to or
+// did a thing to: the actor always; for a prop the actor carries, one it is
+// not hidden from; else one who may be shown it where it stands
+// ([Encounter.speakableProp]'s probe).
+func (e *Encounter) propShownTo(actor, reader MemberID, prop PropID) bool {
+	switch {
+	case reader == actor:
+		return true
+	case slices.Contains(e.heldPropsOf(actor), prop):
+		return !e.hiddenPropTo(reader, prop)
+	}
+	_, _, err := e.speakableProp(reader, prop)
+	return err == nil
 }
 
 // tellInteracted writes the [BeatInteracted] versions of a thing done (this

@@ -341,6 +341,22 @@ func (s *InteractPropSuite) TestALineSaidToAHiddenThingShowsIt() {
 	s.Require().NoError(err)
 	s.Equal([]string{"saw it used"}, s.learnedPassage(enc, relBob))
 	s.Empty(s.learnedPassage(enc, relDan), "hearing it said is not seeing the grate")
+
+	// AND IT IS NAMED ONLY TO WHO IS SHOWN IT: Dan catches the words out of
+	// sight and is never told which thing they were said to; Bob, revealed
+	// by seeing it, is.
+	speech := func(m encounter.MemberID) map[string]any {
+		for _, b := range storyBeats(s.T(), enc, m) {
+			if b["beat"] == encounter.BeatSpeech && b["words"] == "Anyone down there?" {
+				return b
+			}
+		}
+		s.FailNow("no speech", string(m))
+		return nil
+	}
+	s.NotContains(speech(relDan), "prop", "a hidden thing is not named to a hearer out of sight")
+	s.Equal(string(ipGrate), speech(relBob)["prop"])
+	s.Equal(string(ipGrate), speech(relAlice)["prop"], "the speaker always knows what they spoke to")
 }
 
 // TestNobodyLearnsWhatNobodySaw: Alice, told, takes the stair to room c and
