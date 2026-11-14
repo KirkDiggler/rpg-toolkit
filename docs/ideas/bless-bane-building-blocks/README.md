@@ -27,6 +27,11 @@ flowchart TD
 
 Compilation of an effect or group does not require a fabricated condition or catalogue. **Making it run still requires a host to bind it.** The diagram does not introduce floating effects, another runtime or a second custody authority. R6/R8.
 
+The [composition contract proposal](composition-contracts.md) makes the canonical
+value shape, keys/paths/order, compilation refusals and placement boundary concrete.
+Its named-tree model lowers to the existing flat runtime, rather than giving every
+authoring group a new lifetime.
+
 ## Discovering the definition in Go
 
 A known rulebook definition has a known shape. Its named fields are the primary discovery surface:

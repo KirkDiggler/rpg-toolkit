@@ -62,10 +62,11 @@ R6–R8 replace the condition-first construction cut with effect-first authoring
 | R6 | settled | Configured effects and reusable effect compositions are the authoring units; conditions are consumers | KirkDiggler | 2026-11-14 |
 | R7 | settled | Named typed fields for rulebook discovery; configuration IDs/references and enumeration reach the same values | KirkDiggler | 2026-11-14 |
 | R8 | settled | One complete Raging definition; reusable real maintenance; native Rage, concentration ring and activity ward through code and configuration | KirkDiggler | 2026-11-14 |
+| R9 | open | Ordered named canonical composition tree, field projections, intrinsic compilation and explicit host placement; concrete proposal in composition-contracts.md | — | — |
 
 ## Open
 
-- **Canonical contract:** fix exact effect/composition/member types, named-definition package ownership, ordered membership and how the typed fields expose the same generic values without a shadow catalogue. R6/R7 settle the ownership intent, not these signatures.
+- **Canonical contract (R9):** [the concrete proposal](composition-contracts.md) specifies resolved leaf/composition/member shapes, keys/paths/order, ownership, refusal cases and the explicit placement boundary. Its recommended shape is awaiting agreement; the compiler-facing Go projection facade still needs its exact signature. R6/R7 settle the intent, not every proposed type.
 - **Reference contract:** fix catalogue identity, member addressing, resolution timing, supported reference depth and invalid/cyclic-reference refusal before deriving implementation tasks. No unlimited nesting or arbitrary scripting capability is inferred.
 - **Maintenance contract:** characterize native Rage's real timeline/state first, then choose reusable parts that preserve it and specify the native binding/saved-representation boundary. Reuse of the current Duration adapter alone does not establish parity.
 - **Plan replacement:** re-cut concrete task contracts and provider/consumer checks against these seams. The retained first-cut plan is not authority to proceed with its API adoption or declare the new acceptance complete. [Path forward](next-steps.md).

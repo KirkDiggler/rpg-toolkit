@@ -19,6 +19,13 @@ Inspect the native Raging recipe/codec and the activity/duration/end parts toget
 
 ## 2. Specify one canonical effect/composition model
 
+The [R9 composition contract proposal](composition-contracts.md) now supplies the
+resolved data shapes and conformance cases. It recommends an ordered named tree,
+flat runtime lowering and explicit placement rather than group-owned lifetimes.
+[The decision record](https://github.com/KirkDiggler/rpg-toolkit/pull/2425#issuecomment-6873310528)
+distinguishes that proposal from settled direction and the still-separate compiler
+facade, reference/variant and native-maintenance contracts.
+
 **Owner:** reusable rulebook effect/composition layer, below condition/application placement.
 
 Fix the concrete types for a configured leaf, ordered named composition members and a complete named definition. Specify how a typed Raging value exposes real fields and projects those same values into the generic model, with no duplicate content list. Separate intrinsic configuration from runtime holder/scope/source assignment. Make cloning/compilation ownership, invalid input and unbound compilation explicit.
