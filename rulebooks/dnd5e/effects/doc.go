@@ -22,6 +22,30 @@
 // it does not relabel the target as the actor. ProjectPartOutput and
 // AssessConfiguredOutput carry owned definitions through that same meaning.
 //
+// Compile accepts typed or resolved definitions without a condition, catalogue,
+// participant or ending policy. Canonical DefinitionData contains exactly one
+// EffectSpec or ordered CompositionData. Sibling keys identify members; labels
+// do not dispatch rules. Compilation preserves authored paths, rejects cycles
+// and invalid meanings, and owns its copies. A group creates no runtime scope.
+// Place applies explicit nonoverlapping mounts and kind-validated terminal scopes
+// to the compiled leaves without inventing holder/source/application identity.
+//
+// BuildCatalogue validates complete explicit entry sets, including unused data,
+// before publishing owned resolved values. DefineEntry supplies typed content to
+// that same path. Resolve selects an exact ref/member path and expands explicit
+// whole-member replacements; Derive performs that operation on canonical values.
+// Unknown/cyclic references and invalid/overlapping targets refuse without partial
+// results. No field merge, runtime lookup or catalogue-backed active state exists.
+// CatalogueData is the strict document shape; DescribeCatalogue owns discovery
+// metadata and never constructs a condition merely to enumerate an effect.
+//
+// Typed Definition values (AddToRoll, EndOn, DamageBonus, Resistance, Advantage,
+// Concentration, Duration, CombatActivity, RoundDuration and UntilEmpty) compile through CompileParts into owned canonical
+// declarations. Construction requires no runtime identities, JSON at call sites
+// or panic convenience. CompileOutputs projects validated payload parts through
+// their existing kind builders for consumers that already own a machine recipe;
+// it refuses maintenance rather than silently discarding its lifecycle.
+//
 // PartTemplate describes unbound authored meaning; ValidatePartTemplate reports
 // its kind-owned benefit/maintenance class and capabilities without runtime IDs.
 // Damage and save/check advantage are independent payload parts alongside
@@ -33,12 +57,19 @@
 // requests a CON follow-up from positive applied damage and has no duration counter;
 // duration owns its counter/grace separately. End-on and until-empty policies are
 // independent lifecycle parts. Combat-activity upkeep owns attack/applied-damage
-// flags and optional first-end grace, not a clock or concentration. End-on selects
+// flags and optional first-end grace, not a clock or concentration. RoundDuration
+// uses the existing machine's positive-round anchor/derived progress and explicit
+// expiry/reset reasons; sparse events do not prolong it. Its inspection reports
+// anchored progress separately from turn-end counts. Activity and anchored duration
+// support explicit attachment/application placement; their declared order preserves
+// first-terminal precedence through the existing assembly gate. End-on selects
 // rest, combat-end, next received turn-start or dropped-to-zero for its holder.
 // Actual last-member loss reports the source-neutral members_empty cause.
 // Resistance reuses its existing incoming fold.
-// Roll modifiers are query-only, describe signed dice with selection metadata, and
-// never subscribe a second roll handler. DescribeRoll and Assess share the kind's
+// AddToRoll is query-only and describes signed dice plus explicit selection
+// policy; it never subscribes a second roll handler. Dice lives only in Amount,
+// with polarity/domains/selection in params. Unbound validation uses the same
+// homogeneous-dice grammar as the native resolver. DescribeRoll and Assess share the kind's
 // applicability; RollQuery names an actual recipient roll, not a caster's outgoing
 // save-shaped action. InspectPart returns maintenance facts without exposing bag
 // interpretation to callers. Registry/transport integration is owned above this

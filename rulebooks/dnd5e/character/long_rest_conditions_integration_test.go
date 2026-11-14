@@ -12,6 +12,8 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -28,25 +30,34 @@ type attachedLongRestCase struct {
 	expectedRef *core.Ref
 	outcome     attachedLongRestOutcome
 	persisted   json.RawMessage
+	buildData   func(*testing.T) json.RawMessage
 }
 
 // attachedLongRestCases is authored independently of the conditions package's
-// loader registry and tests. Each entry carries its own persisted fixture,
-// canonical ref, and expected attached-character outcome.
+// loader registry and tests. Each entry declares its canonical ref and expected
+// outcome independently. Native definitions use the real creator for current
+// frozen data; other entries carry explicit persisted fixtures.
+func attachedRagingRestData(t *testing.T) json.RawMessage {
+	t.Helper()
+	made, err := conditions.CreateFromRef(&conditions.CreateFromRefInput{Ref: refs.Conditions.Raging().String(), MemberID: "condition-rest-member", Origin: &dnd5eEvents.ConditionOrigin{Ref: *refs.Features.Rage(), EntityID: "condition-rest-member"}, Config: json.RawMessage(`{"damage_bonus":{"barbarian_level":true}}`)})
+	require.NoError(t, err)
+	ctx, bus := context.Background(), events.NewEventBus()
+	require.NoError(t, made.Condition.Apply(ctx, bus))
+	require.NoError(t, dnd5eEvents.TurnEndTopic.On(bus).Publish(ctx, dnd5eEvents.TurnEndEvent{SubjectID: "condition-rest-member", Round: 2}))
+	_, err = dnd5eEvents.PostAttackRollChain.On(bus).PublishWithChain(ctx, &dnd5eEvents.PostAttackRollEvent{AttackerID: "condition-rest-member"}, events.NewStagedChain[*dnd5eEvents.PostAttackRollEvent](combat.ModifierStages))
+	require.NoError(t, err)
+	require.NoError(t, dnd5eEvents.TurnEndTopic.On(bus).Publish(ctx, dnd5eEvents.TurnEndEvent{SubjectID: "condition-rest-member", Round: 4}))
+	raw, err := made.Condition.ToJSON()
+	require.NoError(t, err)
+	require.NoError(t, made.Condition.Remove(ctx, bus))
+	return raw
+}
+
 var attachedLongRestCases = []attachedLongRestCase{
 	{
 		expectedRef: refs.Conditions.Raging(),
 		outcome:     attachedLongRestRemove,
-		persisted: json.RawMessage(`{
-			"ref":{"module":"dnd5e","type":"conditions","id":"raging"},
-			"member_id":"condition-rest-member",
-   "origin":{"ref":"dnd5e:features:rage","entity_id":"condition-rest-member"},
-   "bindings":{"damage_bonus":{"barbarian_level":true}},
-   "runtime":{"state":"raging","bag":{
-    "saw_turn_end":true,"round_activated":2,"turns_active":3,
-    "was_hit_this_turn":true,"did_attack_this_turn":true
-   }}
-		}`),
+		buildData:   attachedRagingRestData,
 	},
 	{
 		expectedRef: refs.Conditions.BrutalCritical(),
@@ -210,7 +221,11 @@ func TestLongRestPersistsEveryConditionOutcomeOnAttachedCharacter(t *testing.T) 
 		t.Run(refString, func(t *testing.T) {
 			ctx := context.Background()
 			data := plainFighter(ownerID)
-			data.Conditions = []json.RawMessage{testCase.persisted}
+			persisted := testCase.persisted
+			if testCase.buildData != nil {
+				persisted = testCase.buildData(t)
+			}
+			data.Conditions = []json.RawMessage{persisted}
 			if refString != carriedRef {
 				// A stored sheet names its free reaction beside whatever else
 				// it holds; the case that IS the reaction already stores it.

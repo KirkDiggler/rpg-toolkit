@@ -28,7 +28,11 @@ func parseDuration(declaration PartDeclaration) (durationParams, error) {
 	if declaration.OnTerminal != generic.EndApplication {
 		return durationParams{}, fmt.Errorf("duration must end its application")
 	}
-	params, err := decodeParams[durationParams](jsontext.Value(declaration.Params))
+	return parseDurationParams(jsontext.Value(declaration.Params))
+}
+
+func parseDurationParams(raw jsontext.Value) (durationParams, error) {
+	params, err := decodeParams[durationParams](raw)
 	if err != nil {
 		return durationParams{}, err
 	}

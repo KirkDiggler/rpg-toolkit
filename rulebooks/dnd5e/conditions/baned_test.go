@@ -12,6 +12,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	generic "github.com/KirkDiggler/rpg-toolkit/mechanics/effects"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -78,7 +79,7 @@ func TestBanedConditionDescribesUnresolvedAttackAndSavePenalty(t *testing.T) {
 		metadata, err := condition.RollContributors()[0].RollContributionMetadata(input)
 		require.NoError(t, err)
 		require.True(t, metadata.Applicable)
-		require.Equal(t, BanedContributionGroup, metadata.Group)
+		require.Equal(t, BanedContributionGroup, metadata.Selection.Group)
 
 		output, err := condition.DescribeRollContributions(input)
 		require.NoError(t, err)
@@ -163,7 +164,8 @@ func (s *syntheticContributionCondition) RollContributionMetadata(
 ) (dnd5eEvents.RollContributionMetadataOutput, error) {
 	return dnd5eEvents.RollContributionMetadataOutput{
 		Applicable: input != nil && input.Kind == dnd5eEvents.RollKindAttack,
-		Group:      "synthetic-blessing",
+		ID:         "synthetic-blessing:" + s.memberID,
+		Selection:  generic.SelectionRule{Mode: generic.OldestApplicable, Group: "synthetic-blessing"},
 	}, nil
 }
 func (s *syntheticContributionCondition) RollContributors() []dnd5eEvents.RollContributionProvider {

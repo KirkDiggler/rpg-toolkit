@@ -491,7 +491,7 @@ func (s *CharacterConditionsTestSuite) TestCharacterConditionRoundTrip() {
 	s.True(loadedCond.IsApplied(), "Loaded condition should be applied (subscribed to bus)")
 	snapshot := composedCharacterRageData(&s.Suite, loadedCond)
 	s.Equal("char-rt", snapshot.MemberID)
-	s.Equal(float64(3), snapshot.Runtime.Bag["turns_active"])
+	s.Equal(float64(3), snapshot.Runtime.Parts["maintenance/duration"].Bag["turns_active"])
 }
 
 // DummyEntity implements core.Entity for testing

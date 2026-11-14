@@ -79,7 +79,7 @@ func (s *applicationBindingSuite) sheetsClock(turns int, skip bool) []*character
 		} else {
 			data.Conditions = []json.RawMessage{s.blob(id, conditions.LinkedConditionConfig{ApplicationID: "app", Role: conditions.LinkedRecipient, AddressSourceID: "caster",
 				Bindings: &conditions.LinkedBindings{Name: "Blessed", Owner: &owner, MemberKey: id, Parts: []dndfx.PartDeclaration{
-					{Key: "dice", Kind: dndfx.KindRollModifier, Params: json.RawMessage(`{"dice":"1d4","group":"bless","rolls":["attack","saving_throw"]}`), OnTerminal: fx.EndPart},
+					{Key: "dice", Kind: dndfx.KindAddToRoll, Amount: &fx.Amount{Dice: "1d4"}, Params: json.RawMessage(`{"polarity":"positive","rolls":["attack","saving_throw"],"selection":{"mode":"oldest_applicable","group":"bless"}}`), OnTerminal: fx.EndPart},
 				}}})}
 		}
 		sheet, err := character.Load(context.Background(), data)

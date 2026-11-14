@@ -15,6 +15,7 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	coreResources "github.com/KirkDiggler/rpg-toolkit/core/resources"
 	"github.com/KirkDiggler/rpg-toolkit/events"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
 	dnd5eEvents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/refs"
 )
@@ -29,6 +30,7 @@ const (
 
 type longRestCase struct {
 	data                  json.RawMessage
+	buildData             func(*testing.T) json.RawMessage
 	ownerID               string
 	expectedRef           *core.Ref
 	expectedSourceID      string
@@ -36,13 +38,13 @@ type longRestCase struct {
 	endedPart             string
 	outcome               longRestOutcome
 	removalReason         string
-	endedState            string // explicit current-format state after removal, when represented
+	endedLocalPart        string // local assembly part which records its terminal state
 }
 
 // longRestCases is deliberately authored independently of the registry.
-// Its explicit persisted blobs and canonical refs make every loadable condition
-// name its long-rest rule without deriving either the fixture or expectation
-// from production dispatch.
+// Its persisted fixtures and canonical refs make every loadable condition name
+// its long-rest rule. Named definitions use their real creator to produce current
+// frozen data; expected rest outcomes remain explicit and independent.
 var longRestCases = map[string]longRestCase{
 	// This configured payload has no local rest rule; shared owner end policies
 	// belong to linked-application transport verification, not inference by ref.
@@ -55,21 +57,12 @@ var longRestCases = map[string]longRestCase{
 		ownerID: "member-1", expectedRef: refs.Conditions.Shillelagh(), expectedSourceID: "member-1", outcome: longRestRemove, removalReason: "rest",
 	},
 	refs.Conditions.Raging().String(): {
-		data: json.RawMessage(`{
-			"ref":{"module":"dnd5e","type":"conditions","id":"raging"},
-			"member_id":"member-1",
-   "origin":{"ref":"dnd5e:features:rage","entity_id":"member-1"},
-   "bindings":{"damage_bonus":{"barbarian_level":true}},
-   "runtime":{"state":"raging","bag":{
-    "saw_turn_end":true,"round_activated":2,"turns_active":3,
-    "was_hit_this_turn":true,"did_attack_this_turn":true
-   }}
-		}`),
-		ownerID:       "member-1",
-		expectedRef:   refs.Conditions.Raging(),
-		outcome:       longRestRemove,
-		removalReason: "rest",
-		endedState:    "ended",
+		buildData:      restRagingData,
+		ownerID:        "member-1",
+		expectedRef:    refs.Conditions.Raging(),
+		outcome:        longRestRemove,
+		removalReason:  "rest",
+		endedLocalPart: "maintenance/endings/rest",
 	},
 	refs.Conditions.BrutalCritical().String(): {
 		data: json.RawMessage(`{
@@ -465,6 +458,28 @@ var longRestCases = map[string]longRestCase{
 	},
 }
 
+func restRagingData(t *testing.T) json.RawMessage {
+	t.Helper()
+	condition := composedRageForTest("member-1")
+	ctx, bus := context.Background(), events.NewEventBus()
+	require.NoError(t, condition.Apply(ctx, bus))
+	require.NoError(t, dnd5eEvents.TurnEndTopic.On(bus).Publish(ctx, dnd5eEvents.TurnEndEvent{SubjectID: "member-1", Round: 2}))
+	_, err := dnd5eEvents.PostAttackRollChain.On(bus).PublishWithChain(ctx, &dnd5eEvents.PostAttackRollEvent{AttackerID: "member-1"}, events.NewStagedChain[*dnd5eEvents.PostAttackRollEvent](combat.ModifierStages))
+	require.NoError(t, err)
+	require.NoError(t, dnd5eEvents.TurnEndTopic.On(bus).Publish(ctx, dnd5eEvents.TurnEndEvent{SubjectID: "member-1", Round: 4}))
+	raw, err := condition.ToJSON()
+	require.NoError(t, err)
+	require.NoError(t, condition.Remove(ctx, bus))
+	return raw
+}
+
+func (c longRestCase) currentData(t *testing.T) json.RawMessage {
+	if c.buildData != nil {
+		return c.buildData(t)
+	}
+	return c.data
+}
+
 func TestLongRestRegistryIsExhaustive(t *testing.T) {
 	require.ElementsMatch(t,
 		RegisteredRefs(),
@@ -494,7 +509,7 @@ func TestLongRestRegistryBehavior(t *testing.T) {
 				})
 			require.NoError(t, err)
 
-			condition, err := LoadJSON(testCase.data)
+			condition, err := LoadJSON(testCase.currentData(t))
 			require.NoError(t, err)
 			require.Equal(t, testCase.expectedRef.String(), condition.Ref().String())
 
@@ -534,13 +549,13 @@ func TestLongRestRegistryBehavior(t *testing.T) {
 			case longRestRemove:
 				require.False(t, condition.IsApplied())
 				expected := before
-				if testCase.endedState != "" {
-					var data map[string]any
+				if testCase.endedLocalPart != "" {
+					var data ComposedData
 					require.NoError(t, json.Unmarshal(before, &data))
-					runtime, ok := data["runtime"].(map[string]any)
-					require.True(t, ok)
-					runtime["state"] = testCase.endedState
-					expected, err = json.Marshal(data)
+					part := data.Runtime.Parts[testCase.endedLocalPart]
+					part.State = "ended"
+					data.Runtime.Parts[testCase.endedLocalPart] = part
+					expected, err = json.Marshal(&data)
 					require.NoError(t, err)
 				}
 				if testCase.endedPart != "" {
@@ -587,7 +602,7 @@ func TestShortRestRegistryBehavior(t *testing.T) {
 				})
 			require.NoError(t, err)
 
-			condition, err := LoadJSON(testCase.data)
+			condition, err := LoadJSON(testCase.currentData(t))
 			require.NoError(t, err)
 			require.NoError(t, condition.Apply(ctx, bus))
 			t.Cleanup(func() { require.NoError(t, condition.Remove(ctx, bus)) })

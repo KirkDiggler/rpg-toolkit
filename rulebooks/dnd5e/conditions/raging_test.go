@@ -76,8 +76,10 @@ type ragingObservation struct {
 // ragingState observes the actual runtime snapshot; it runs no lifecycle logic
 // and owns no mirrored mutable condition state.
 func ragingState(c *ComposedCondition) ragingObservation {
-	bag := c.runtime.Snapshot().Bag
-	return ragingObservation{DidAttackThisTurn: bag[ragingDidAttack].(bool), WasHitThisTurn: bag[ragingWasHit].(bool), SawTurnEnd: bag[machine.KeySawTurnEnd].(bool), RoundActivated: bag[machine.KeyRoundActivated].(int), TurnsActive: bag[machine.KeyTurnsActive].(int)}
+	snapshot := c.runtime.Snapshot()
+	activity := snapshot.Parts["maintenance/combat-activity"]
+	clock := snapshot.Parts["maintenance/duration"]
+	return ragingObservation{DidAttackThisTurn: activity.Bag["attacked"].(bool), WasHitThisTurn: activity.Bag["damaged"].(bool), SawTurnEnd: clock.Bag[machine.KeySawTurnEnd].(bool), RoundActivated: clock.Bag[machine.KeyRoundActivated].(int), TurnsActive: clock.Bag[machine.KeyTurnsActive].(int)}
 }
 
 // RagingConditionTestSuite tests the RagingCondition behavior

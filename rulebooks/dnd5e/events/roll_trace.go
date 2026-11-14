@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/dice"
+	generic "github.com/KirkDiggler/rpg-toolkit/mechanics/effects"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/contributions"
 )
 
@@ -53,16 +54,17 @@ type RollConditionOwner interface {
 	) (*DescribeRollContributionsOutput, error)
 }
 
-// RollContributionMetadataOutput declares whether a provider applies to a roll
-// kind and the stacking group in which only the oldest provider contributes.
+// RollContributionMetadataOutput separates applicability from explicit selection.
+// ID names the individual output in its owning instance, not the whole condition.
 type RollContributionMetadataOutput struct {
 	Applicable bool
-	Group      string
+	ID         string
+	Selection  generic.SelectionRule
 }
 
 // RollContributionProvider is the optional capability implemented by a
-// condition that can describe a dice contribution. The condition owns both its
-// applicability/stacking rule and the resulting description.
+// condition that can describe a dice contribution. The provider owns its
+// applicability, explicit selection policy and unresolved description.
 type RollContributionProvider interface {
 	RollContributionMetadata(input *DescribeRollContributionsInput) (RollContributionMetadataOutput, error)
 	DescribeRollContributions(

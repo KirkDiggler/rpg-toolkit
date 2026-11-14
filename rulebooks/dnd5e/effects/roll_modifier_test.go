@@ -16,11 +16,12 @@ import (
 
 func (s *partsSuite) TestRollModifierDescribesDomainsWithoutRolling() {
 	for _, subtract := range []bool{false, true} {
-		params := `{"dice":"1d4","group":"bless","rolls":["attack","saving_throw"]}`
+		params := `{"polarity":"positive","rolls":["attack","saving_throw"],"selection":{"mode":"oldest_applicable","group":"bless"}}`
 		if subtract {
-			params = `{"dice":"1d4","subtract":true,"group":"bane","rolls":["attack","saving_throw"]}`
+			params = `{"polarity":"negative","rolls":["attack","saving_throw"],"selection":{"mode":"oldest_applicable","group":"bane"}}`
 		}
-		input := partInput("dice", dndfx.KindRollModifier, params)
+		input := partInput("dice", dndfx.KindAddToRoll, params)
+		input.Declaration.Amount = &fx.Amount{Dice: "1d4"}
 		input.Declaration.OnTerminal = fx.EndPart
 		input.HolderID = "recipient"
 		part := s.bind(input)
@@ -42,9 +43,9 @@ func (s *partsSuite) TestRollModifierDescribesDomainsWithoutRolling() {
 			s.Equal(input.Origin.Ref.String(), described.Contributions[0].Source.Ref.String())
 			s.Equal("maintainer", described.Contributions[0].Source.SourceID)
 			if subtract {
-				s.Equal("bane", described.Group)
+				s.Equal("bane", described.Selection.Group)
 			} else {
-				s.Equal("bless", described.Group)
+				s.Equal("bless", described.Selection.Group)
 			}
 		}
 		for _, request := range []*dndevents.DescribeRollContributionsInput{nil, {Kind: "ability_check"}, {Kind: "damage"}} {
@@ -61,7 +62,8 @@ func (s *partsSuite) TestRollModifierDescribesDomainsWithoutRolling() {
 }
 
 func (s *partsSuite) TestRollModifierKeepsSaverAndOutgoingActorDistinct() {
-	input := partInput("dice", dndfx.KindRollModifier, `{"dice":"1d4","group":"bless","rolls":["attack","saving_throw"]}`)
+	input := partInput("dice", dndfx.KindAddToRoll, `{"polarity":"positive","rolls":["attack","saving_throw"],"selection":{"mode":"oldest_applicable","group":"bless"}}`)
+	input.Declaration.Amount = &fx.Amount{Dice: "1d4"}
 	input.Declaration.OnTerminal = fx.EndPart
 	input.HolderID = "holder"
 	part := s.bind(input)
@@ -85,7 +87,8 @@ func (s *partsSuite) TestRollModifierKeepsSaverAndOutgoingActorDistinct() {
 }
 
 func (s *partsSuite) TestRollModifierRefusesMalformedBindingsAndInspectsCurrentState() {
-	input := partInput("dice", dndfx.KindRollModifier, `{"dice":"1d4","group":"bless","rolls":["attack"]}`)
+	input := partInput("dice", dndfx.KindAddToRoll, `{"polarity":"positive","rolls":["attack"],"selection":{"mode":"oldest_applicable","group":"bless"}}`)
+	input.Declaration.Amount = &fx.Amount{Dice: "1d4"}
 	input.Declaration.OnTerminal = fx.EndPart
 	part := s.bind(input)
 	composed, err := fx.Compose(part.Compose)
@@ -97,11 +100,11 @@ func (s *partsSuite) TestRollModifierRefusesMalformedBindingsAndInspectsCurrentS
 	s.False(info.Concentration)
 	s.Nil(info.Duration)
 	for _, params := range []string{
-		`{"dice":"bad","group":"bless","rolls":["attack"]}`,
-		`{"dice":"1d4","group":"","rolls":["attack"]}`,
-		`{"dice":"1d4","group":"bless","rolls":[]}`,
-		`{"dice":"1d4","group":"bless","rolls":["attack","attack"]}`,
-		`{"dice":"1d4","group":"bless","rolls":["damage"]}`,
+		`{"polarity":"unknown","rolls":["attack"],"selection":{"mode":"oldest_applicable","group":"bless"}}`,
+		`{"polarity":"positive","rolls":["attack"],"selection":{"mode":"oldest_applicable","group":""}}`,
+		`{"polarity":"positive","rolls":[],"selection":{"mode":"oldest_applicable","group":"bless"}}`,
+		`{"polarity":"positive","rolls":["attack","attack"],"selection":{"mode":"oldest_applicable","group":"bless"}}`,
+		`{"polarity":"positive","rolls":["damage"],"selection":{"mode":"oldest_applicable","group":"bless"}}`,
 	} {
 		input.Declaration.Params = json.RawMessage(params)
 		got, err := dndfx.BindPart(input)

@@ -886,8 +886,8 @@ func (c *Character) GetConditions() []dnd5eEvents.ConditionBehavior {
 	return c.conditions
 }
 
-// DescribeRollContributions returns the oldest applicable contribution in each
-// condition-declared stacking group from a copy of the current persisted order.
+// DescribeRollContributions selects applicable contributions by their explicit
+// policies from a copy of the current persisted condition order.
 func (c *Character) DescribeRollContributions(
 	input *dnd5eEvents.DescribeRollContributionsInput,
 ) (*dnd5eEvents.DescribeRollContributionsOutput, error) {

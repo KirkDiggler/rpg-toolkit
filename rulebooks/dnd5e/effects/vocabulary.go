@@ -138,6 +138,13 @@ func actionBool(frame any, weapon bool) (any, bool) {
 
 func machineVocabulary() machine.Vocabulary {
 	return machine.Vocabulary{Facts: map[machine.FactName]machine.FactSpec{
+		factTurnRoundAvailable: {Kind: machine.KindBool, Read: func(frame any) (any, bool) {
+			event, ok := frame.(dndevents.TurnEndEvent)
+			if !ok {
+				return nil, false
+			}
+			return event.Round > 0, true
+		}},
 		factApplication:   membershipFact(machine.KindString, func(e dndevents.ApplicationMembersChangedEvent) any { return e.ApplicationID }),
 		factOwnerRef:      membershipFact(machine.KindString, func(e dndevents.ApplicationMembersChangedEvent) any { return e.Owner.ConditionRef }),
 		factOwnerSource:   membershipFact(machine.KindString, func(e dndevents.ApplicationMembersChangedEvent) any { return e.Owner.SourceID }),

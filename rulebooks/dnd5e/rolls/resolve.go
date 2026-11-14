@@ -123,23 +123,44 @@ func validateContribution(contribution dnd5eEvents.DiceContribution) (checkedCon
 		return checkedContribution{}, err
 	}
 
-	matches := contributionNotation.FindStringSubmatch(contribution.Dice)
+	parsed, err := ParseContributionDice(&ParseContributionDiceInput{Notation: contribution.Dice})
+	if err != nil {
+		return checkedContribution{}, err
+	}
+	return checkedContribution{description: contribution, count: parsed.Count, size: parsed.Size}, nil
+}
+
+// ParseContributionDiceInput supplies unresolved notation without source identity.
+type ParseContributionDiceInput struct{ Notation string }
+
+// ParseContributionDiceOutput is the positive homogeneous pool the native
+// contribution resolver accepts. Parsing evaluates no dice and invents no source.
+type ParseContributionDiceOutput struct{ Count, Size int }
+
+// ParseContributionDice validates the native contribution grammar before binding
+// or payment. Nil input, signed/mixed/modified pools, nonpositive dice and integer
+// overflow are errors. Definition compilation and resolution share this parser.
+func ParseContributionDice(in *ParseContributionDiceInput) (*ParseContributionDiceOutput, error) {
+	if in == nil {
+		return nil, fmt.Errorf("contribution dice input is required")
+	}
+	matches := contributionNotation.FindStringSubmatch(in.Notation)
 	if matches == nil {
-		return checkedContribution{}, fmt.Errorf("dice notation %q must be unsigned homogeneous dice", contribution.Dice)
+		return nil, fmt.Errorf("dice notation %q must be unsigned homogeneous dice", in.Notation)
 	}
 	count := 1
 	var err error
 	if matches[1] != "" {
 		count, err = strconv.Atoi(matches[1])
 		if err != nil {
-			return checkedContribution{}, fmt.Errorf("dice count is invalid: %w", err)
+			return nil, fmt.Errorf("dice count is invalid: %w", err)
 		}
 	}
 	size, err := strconv.Atoi(matches[2])
 	if err != nil {
-		return checkedContribution{}, fmt.Errorf("die size is invalid: %w", err)
+		return nil, fmt.Errorf("die size is invalid: %w", err)
 	}
-	return checkedContribution{description: contribution, count: count, size: size}, nil
+	return &ParseContributionDiceOutput{Count: count, Size: size}, nil
 }
 
 // validateDiceSource refuses a source that cannot stand behind a physical

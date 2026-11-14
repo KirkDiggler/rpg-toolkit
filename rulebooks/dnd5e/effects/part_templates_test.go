@@ -33,7 +33,7 @@ func (s *partTemplateSuite) TestClassifiesThroughKindEntry() {
 		{dndfx.PartTemplate{Kind: dndfx.KindDuration, Params: json.RawMessage(`{"turn_ends":10}`)}, dndfx.PartClassMaintenance, false},
 		{dndfx.PartTemplate{Kind: dndfx.KindUntilEmpty}, dndfx.PartClassMaintenance, false},
 		{dndfx.PartTemplate{Kind: dndfx.KindEndOn, Params: json.RawMessage(`{"beat":"rest","reason":"rest"}`)}, dndfx.PartClassMaintenance, false},
-		{dndfx.PartTemplate{Kind: dndfx.KindRollModifier, Params: json.RawMessage(`{"dice":"1d4","group":"test","rolls":["attack"]}`)}, dndfx.PartClassBenefit, false},
+		{dndfx.PartTemplate{Kind: dndfx.KindAddToRoll, Amount: &fx.Amount{Dice: "1d4"}, Params: json.RawMessage(`{"polarity":"positive","rolls":["attack"],"selection":{"mode":"oldest_applicable","group":"test"}}`)}, dndfx.PartClassBenefit, false},
 	} {
 		s.Run(string(tc.template.Kind), func() {
 			out, err := dndfx.ValidatePartTemplate(&dndfx.ValidatePartTemplateInput{Template: tc.template})
@@ -73,7 +73,7 @@ func (s *partTemplateSuite) TestRejectsUnsupportedAmountOrWhen() {
 		{Kind: dndfx.KindResistance, Params: json.RawMessage(`{"types":["fire"]}`), When: abilityGuard("str")},
 		{Kind: dndfx.KindDuration, Params: json.RawMessage(`{"turn_ends":2}`), Amount: fixedBonus(2)},
 		{Kind: dndfx.KindConcentration, When: abilityGuard("str")},
-		{Kind: dndfx.KindRollModifier, Params: json.RawMessage(`{"dice":"1d4","group":"test","rolls":["attack"]}`), Amount: fixedBonus(2)},
+		{Kind: dndfx.KindAddToRoll, Params: json.RawMessage(`{"polarity":"positive","rolls":["attack"],"selection":{"mode":"oldest_applicable","group":"test"}}`), Amount: fixedBonus(2)},
 	} {
 		_, err := dndfx.ValidatePartTemplate(&dndfx.ValidatePartTemplateInput{Template: template})
 		s.Error(err)

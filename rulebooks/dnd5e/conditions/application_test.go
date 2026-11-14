@@ -21,7 +21,7 @@ func applicationSpec() conditions.ApplicationSpec {
 		{Key: "duration", Kind: dndfx.KindDuration, Params: json.RawMessage(`{"turn_ends":1}`), OnTerminal: fx.EndApplication},
 		{Key: "empty", Kind: dndfx.KindUntilEmpty, OnTerminal: fx.EndApplication},
 	}, Recipients: []conditions.RecipientSpec{{MemberID: "one", Ref: refs.Conditions.LinkedEffects().String(), Name: "Blessed", AddressSourceID: "caster", Lifetime: conditions.LifetimeShared,
-		Parts: []dndfx.PartDeclaration{{Key: "dice", Kind: dndfx.KindRollModifier, Params: json.RawMessage(`{"dice":"1d4","group":"bless","rolls":["attack","saving_throw"]}`), OnTerminal: fx.EndPart}},
+		Parts: []dndfx.PartDeclaration{{Key: "dice", Kind: dndfx.KindAddToRoll, Amount: &fx.Amount{Dice: "1d4"}, Params: json.RawMessage(`{"polarity":"positive","rolls":["attack","saving_throw"],"selection":{"mode":"oldest_applicable","group":"bless"}}`), OnTerminal: fx.EndPart}},
 	}}}
 }
 
@@ -95,7 +95,7 @@ func (s *applicationBindingSuite) TestPreparationOwnsBindingsAndRefusesInvalidSp
 			in.Spec.Recipients[0].Lifetime = conditions.LifetimeIndependent
 		},
 		func(in *conditions.PrepareApplicationInput) {
-			in.Spec.Recipients[0].Parts[0].Params = json.RawMessage(`{"dice":"bad","group":"bless","rolls":["attack"]}`)
+			in.Spec.Recipients[0].Parts[0].Amount.Dice = "bad"
 		},
 		func(in *conditions.PrepareApplicationInput) {
 			in.Spec.Recipients[0].Parts = append(in.Spec.Recipients[0].Parts, in.Spec.Recipients[0].Parts[0])

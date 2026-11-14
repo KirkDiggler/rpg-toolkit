@@ -26,19 +26,24 @@ const (
 	PartClassMaintenance PartClass = "maintenance"
 )
 
-// PartTemplate is reusable authored meaning without a key, scope or participant.
-// Each kind validates which optional fields it accepts.
-type PartTemplate struct {
+// EffectSpec is canonical configured meaning without a key, scope, participant
+// or runtime state. Each kind owns validation of its supported fields.
+type EffectSpec struct {
 	Kind   generic.KindName `json:"kind"`
 	Params json.RawMessage  `json:"params,omitempty"`
 	When   *machine.Guard   `json:"when,omitempty"`
 	Amount *generic.Amount  `json:"amount,omitempty"`
 }
 
-// Clone detaches all nested template values without binding an instance.
-func (p PartTemplate) Clone() PartTemplate {
+// PartTemplate is the source name used by the first-cut catalogue adapter.
+// It aliases the same canonical EffectSpec while that adapter is migrated;
+// there is no second representation or validation path.
+type PartTemplate = EffectSpec
+
+// Clone detaches all nested effect values without binding an instance.
+func (p EffectSpec) Clone() EffectSpec {
 	out := contributions.ConfiguredOutput{Definition: generic.Output{Kind: p.Kind, Params: jsontext.Value(p.Params), When: p.When, Amount: p.Amount}}.Clone().Definition
-	return PartTemplate{Kind: out.Kind, Params: json.RawMessage(out.Params), When: out.When, Amount: out.Amount}
+	return EffectSpec{Kind: out.Kind, Params: json.RawMessage(out.Params), When: out.When, Amount: out.Amount}
 }
 
 // Clone detaches a declaration's data while retaining its local identity/scope.
@@ -63,35 +68,21 @@ func ValidatePartTemplate(in *ValidatePartTemplateInput) (*ValidatePartTemplateO
 	if in == nil {
 		return nil, fmt.Errorf("part template is required")
 	}
-	t := in.Template
-	def, ok := kindTable[t.Kind]
-	if !ok || def.validatePart == nil || def.class == "" {
-		return nil, fmt.Errorf("unsupported effect template %q", t.Kind)
-	}
-	scope := generic.EndPart
-	if def.class == PartClassMaintenance {
-		scope = generic.EndApplication
-	}
-	decl := PartDeclaration{Kind: t.Kind, Params: t.Params, When: t.When, Amount: t.Amount, OnTerminal: scope}
-	if err := validatePartDefinition(decl, def); err != nil {
+	checked, err := ValidateEffect(&ValidateEffectInput{Effect: in.Template})
+	if err != nil {
 		return nil, err
 	}
-	result := &ValidatePartTemplateOutput{Class: def.class}
-	if def.describePart != nil {
-		info, err := def.describePart(decl)
-		if err != nil {
-			return nil, err
-		}
-		result.Capabilities = info.capabilities
-	}
-	return result, nil
+	return &ValidatePartTemplateOutput{Class: kindTable[in.Template.Kind].class, Capabilities: checked.Capabilities}, nil
 }
 
 func validatePartDefinition(decl PartDeclaration, def kindDefinition) error {
-	if def.payload == nil && (decl.When != nil || decl.Amount != nil) {
-		return fmt.Errorf("part %q does not accept when or amount", decl.Kind)
+	if _, err := ValidateEffect(&ValidateEffectInput{Effect: EffectSpec{Kind: decl.Kind, Params: decl.Params, When: decl.When, Amount: decl.Amount}}); err != nil {
+		return err
 	}
-	return def.validatePart(decl)
+	if !slices.Contains(def.capabilities.AllowedScopes, decl.OnTerminal) {
+		return fmt.Errorf("effect %q does not support terminal scope %q", decl.Kind, decl.OnTerminal)
+	}
+	return nil
 }
 
 // The generic machine owns guard evaluation. This validates only the authored

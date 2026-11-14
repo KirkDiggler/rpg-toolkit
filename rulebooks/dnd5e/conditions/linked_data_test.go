@@ -36,7 +36,7 @@ func linkedRecipientConfig() LinkedConditionConfig {
 		Bindings: &LinkedBindings{Name: "Blessed", MemberKey: "recipient", Owner: &dndevents.ConditionAddress{
 			MemberID: "caster-a", ConditionRef: refs.Conditions.LinkedEffects().String(), SourceID: "application-1",
 		}, Parts: []dndfx.PartDeclaration{
-			{Key: "bless", Kind: dndfx.KindRollModifier, Params: json.RawMessage(`{"dice":"1d4","group":"bless","rolls":["attack","saving_throw"]}`), OnTerminal: generic.EndPart},
+			{Key: "bless", Kind: dndfx.KindAddToRoll, Amount: &generic.Amount{Dice: "1d4"}, Params: json.RawMessage(`{"polarity":"positive","rolls":["attack","saving_throw"],"selection":{"mode":"oldest_applicable","group":"bless"}}`), OnTerminal: generic.EndPart},
 		}}}
 }
 
@@ -169,8 +169,8 @@ func (s *linkedDataSuite) TestRecipientOnlyInformationDoesNotInventDuration() {
 func (s *linkedDataSuite) TestEachPartKeepsItsGroupInExecutionAndInformation() {
 	mixed := linkedRecipientConfig()
 	mixed.Bindings.Name = "Mixed ward"
-	mixed.Bindings.Parts = append(mixed.Bindings.Parts, dndfx.PartDeclaration{Key: "bane", Kind: dndfx.KindRollModifier,
-		Params: json.RawMessage(`{"dice":"1d4","subtract":true,"group":"bane","rolls":["attack","saving_throw"]}`), OnTerminal: generic.EndPart})
+	mixed.Bindings.Parts = append(mixed.Bindings.Parts, dndfx.PartDeclaration{Key: "bane", Kind: dndfx.KindAddToRoll, Amount: &generic.Amount{Dice: "1d4"},
+		Params: json.RawMessage(`{"polarity":"negative","rolls":["attack","saving_throw"],"selection":{"mode":"oldest_applicable","group":"bane"}}`), OnTerminal: generic.EndPart})
 	first := s.create("recipient", mixed)
 	other := linkedRecipientConfig()
 	other.ApplicationID = "application-2"

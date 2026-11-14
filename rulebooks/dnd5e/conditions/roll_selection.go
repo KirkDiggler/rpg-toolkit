@@ -6,6 +6,7 @@ package conditions
 import (
 	"fmt"
 
+	generic "github.com/KirkDiggler/rpg-toolkit/mechanics/effects"
 	"github.com/KirkDiggler/rpg-toolkit/rpgerr"
 	dndevents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
 )
@@ -17,14 +18,16 @@ type DescribeSelectedRollContributionsInput struct {
 	Request    *dndevents.DescribeRollContributionsInput
 }
 
-// DescribeSelectedRollContributions selects the oldest applicable part in each
-// group, then describes only selected parts. Information uses the same claimant.
+// DescribeSelectedRollContributions gathers applicable output identities in
+// persisted condition/part order, applies their explicit neutral selection rules,
+// and describes only selected contributions. It neither rolls nor mutates owners.
+// Information consumes the same neutral selector, not another policy loop.
 func DescribeSelectedRollContributions(in *DescribeSelectedRollContributionsInput) (*dndevents.DescribeRollContributionsOutput, error) {
 	if in == nil || in.Request == nil {
 		return nil, rpgerr.New(rpgerr.CodeInvalidArgument, "roll contribution request is required")
 	}
-	out := &dndevents.DescribeRollContributionsOutput{}
-	groups := newRollGroupSelection()
+	var candidates []generic.SelectionCandidate
+	providers := map[string]dndevents.RollContributionProvider{}
 	for _, condition := range in.Conditions {
 		set, ok := condition.(dndevents.RollContributionSet)
 		if !ok {
@@ -38,60 +41,32 @@ func DescribeSelectedRollContributions(in *DescribeSelectedRollContributionsInpu
 			if err != nil {
 				return nil, err
 			}
-			claim, err := groups.claim(&rollClaimInput{Metadata: metadata, Applies: metadata.Applicable})
-			if err != nil {
-				return nil, err
-			}
-			if !claim.Applicable || claim.Shadowed {
+			if !metadata.Applicable {
 				continue
 			}
-			described, err := provider.DescribeRollContributions(in.Request)
-			if err != nil {
-				return nil, fmt.Errorf("describe roll contributions from %T: %w", condition, err)
-			}
-			if described == nil {
-				return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "roll contribution provider %T returned nil output", provider)
-			}
-			out.Contributions = append(out.Contributions, described.Contributions...)
+			candidates = append(candidates, generic.SelectionCandidate{ID: metadata.ID, Rule: metadata.Selection})
+			providers[metadata.ID] = provider
 		}
 	}
-	return out, nil
-}
-
-type rollGroupSelection struct {
-	holders map[string]string
-}
-
-func newRollGroupSelection() *rollGroupSelection {
-	return &rollGroupSelection{holders: map[string]string{}}
-}
-
-type rollClaimInput struct {
-	Metadata dndevents.RollContributionMetadataOutput
-	Applies  bool
-	Name     string
-}
-
-type rollClaimOutput struct {
-	Applicable bool
-	Shadowed   bool
-	HeldBy     string
-}
-
-func (s *rollGroupSelection) claim(in *rollClaimInput) (*rollClaimOutput, error) {
-	metadata := in.Metadata
-	out := &rollClaimOutput{Applicable: metadata.Applicable}
-	if !metadata.Applicable || !in.Applies {
-		return out, nil
+	selected, err := generic.SelectContributions(&generic.SelectContributionsInput{Candidates: candidates})
+	if err != nil {
+		return nil, err
 	}
-	if metadata.Group == "" {
-		return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "applicable roll contribution %q declared an empty stacking group", in.Name)
+	out := &dndevents.DescribeRollContributionsOutput{}
+	for _, decision := range selected.Decisions {
+		if !decision.Selected {
+			continue
+		}
+		provider := providers[decision.ID]
+		described, err := provider.DescribeRollContributions(in.Request)
+		if err != nil {
+			return nil, fmt.Errorf("describe roll contributions from %T: %w", provider, err)
+		}
+		if described == nil {
+			return nil, rpgerr.Newf(rpgerr.CodeInvalidArgument, "roll contribution provider %T returned nil output", provider)
+		}
+		out.Contributions = append(out.Contributions, described.Contributions...)
 	}
-	if holder, held := s.holders[metadata.Group]; held {
-		out.Shadowed, out.HeldBy = true, holder
-		return out, nil
-	}
-	s.holders[metadata.Group] = in.Name
 	return out, nil
 }
 

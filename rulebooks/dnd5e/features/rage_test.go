@@ -144,10 +144,15 @@ func (s *RageTestSuite) TestActivatePublishesCondition() {
 	s.Require().NotNil(data.Origin)
 	s.Equal(*refs.Features.Rage(), data.Origin.Ref)
 	s.Equal("barbarian-1", data.Origin.EntityID)
-	s.JSONEq(`{"damage_bonus":{"barbarian_level":true}}`, string(data.Bindings), "persist the strategy, never a cached class level or computed bonus")
+	s.Require().NotNil(data.Bindings)
+	s.Require().NotNil(data.Bindings.Parts[0].Amount.ByClassLevel)
+	s.Equal("barbarian", data.Bindings.Parts[0].Amount.ByClassLevel.Class, "persist the strategy, never a cached class level or computed bonus")
+	s.Equal(3, data.Bindings.Parts[0].Amount.ByClassLevel.Steps[9])
 	s.Require().NotNil(data.Runtime)
-	s.NotContains(data.Runtime.Bag, "level")
-	s.NotContains(data.Runtime.Bag, "damage_bonus")
+	for _, part := range data.Runtime.Parts {
+		s.NotContains(part.Bag, "level")
+		s.NotContains(part.Bag, "damage_bonus")
+	}
 }
 
 // TestRageRefusesAnOwnerWithNoBarbarianLevels: whether rages are unlimited

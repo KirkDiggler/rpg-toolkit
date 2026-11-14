@@ -55,18 +55,19 @@ func (s *composedRagingSuite) TestSharedRagingCreationHasIndependentStateAndOrig
 	s.Require().NoError(err)
 	s.Require().NoError(dndevents.TurnEndTopic.On(bus).Publish(ctx, dndevents.TurnEndEvent{SubjectID: "holder", Round: 4}))
 	a, b := s.data(first), s.data(second)
-	s.Equal("raging", a.Runtime.State)
-	s.Equal(float64(1), a.Runtime.Bag["turns_active"])
-	s.Equal("fresh", b.Runtime.State)
-	s.Equal(float64(0), b.Runtime.Bag["turns_active"])
-	s.Equal(1, changed, "the first state transition reaches the host dirty-state topic")
+	s.Equal("active", a.Runtime.Parts["maintenance/combat-activity"].State)
+	s.Equal(float64(1), a.Runtime.Parts["maintenance/duration"].Bag["turns_active"])
+	s.Equal("fresh", b.Runtime.Parts["maintenance/combat-activity"].State)
+	s.Equal(float64(0), b.Runtime.Parts["maintenance/duration"].Bag["turns_active"])
+	s.Equal(2, changed, "the independent grace and clock changes both reach the idempotent host dirty-state topic")
 	origin, ok := first.(dndevents.ConditionOriginProvider)
 	s.Require().True(ok)
 	s.Equal("ring-17", origin.ConditionOrigin().EntityID)
 	if addressed, ok := first.(dndevents.ConditionAddressProvider); ok {
 		s.Empty(addressed.ConditionAddress().SourceID, "origin is not stacking identity")
 	}
-	s.JSONEq(`{"damage_bonus":{"fixed":3}}`, string(a.Bindings))
+	s.Require().NotNil(a.Bindings.Parts[0].Amount.Fixed)
+	s.Equal(3, *a.Bindings.Parts[0].Amount.Fixed)
 	s.False(second.IsApplied())
 }
 
@@ -88,12 +89,22 @@ func (s *composedRagingSuite) TestStrictRestorePreservesProgressAndRefusesOldOrI
 	s.Equal("ring-17", s.data(restored).Origin.EntityID)
 	for _, mutate := range []func(*conditions.ComposedData){
 		func(d *conditions.ComposedData) { d.Runtime = nil },
-		func(d *conditions.ComposedData) { delete(d.Runtime.Bag, "did_attack_this_turn") },
-		func(d *conditions.ComposedData) { d.Runtime.Bag["extra"] = true },
-		func(d *conditions.ComposedData) { d.Runtime.State = "fresh" },
-		func(d *conditions.ComposedData) { d.Runtime.State = "ended" },
+		func(d *conditions.ComposedData) {
+			delete(d.Runtime.Parts["maintenance/combat-activity"].Bag, "attacked")
+		},
+		func(d *conditions.ComposedData) { d.Runtime.Parts["maintenance/combat-activity"].Bag["extra"] = true },
+		func(d *conditions.ComposedData) {
+			state := d.Runtime.Parts["maintenance/combat-activity"]
+			state.State = "fresh"
+			d.Runtime.Parts["maintenance/combat-activity"] = state
+		},
+		func(d *conditions.ComposedData) {
+			state := d.Runtime.Parts["maintenance/combat-activity"]
+			state.State = "ended"
+			d.Runtime.Parts["maintenance/combat-activity"] = state
+		},
 		func(d *conditions.ComposedData) { d.Origin = nil },
-		func(d *conditions.ComposedData) { d.Bindings = json.RawMessage(`{"damage_bonus":{"fixed":0}}`) },
+		func(d *conditions.ComposedData) { d.Bindings.Parts[0].Amount = nil },
 	} {
 		var data conditions.ComposedData
 		s.Require().NoError(json.Unmarshal(raw, &data))

@@ -99,6 +99,9 @@ func buildLinked(data LinkedConditionData, restored bool) (*LinkedCondition, err
 	if err != nil {
 		return nil, fmt.Errorf("linked assembly: %w", err)
 	}
+	if err := validateAssemblyRuntime(&assemblyRuntimeInput{Parts: c.bindings.Parts, Snapshot: c.assembly.Snapshot()}); err != nil {
+		return nil, err
+	}
 	if c.role == LinkedCoordinator {
 		members := make([]string, 0, len(c.bindings.Members))
 		for _, binding := range c.bindings.Members {

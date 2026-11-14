@@ -25,9 +25,8 @@ type activityParams struct {
 }
 
 func parseActivity(decl PartDeclaration) (activityParams, error) {
-	if decl.OnTerminal != generic.EndApplication {
-		return activityParams{}, fmt.Errorf("activity upkeep must end its application")
-	}
+	// Public part validation owns allowed terminal scopes. The meaning parser
+	// is shared by local and linked placements and does not choose one.
 	return decodeParams[activityParams](jsontext.Value(decl.Params))
 }
 func validateActivityPart(decl PartDeclaration) error { _, err := parseActivity(decl); return err }
@@ -75,5 +74,10 @@ func inspectActivityPart(in *InspectPartInput) (*PartInfo, error) {
 	default:
 		return nil, fmt.Errorf("unknown activity state %q", in.Snapshot.State)
 	}
-	return &PartInfo{}, nil
+	info := &PartInfo{}
+	if params.SkipFirst {
+		observed := in.Snapshot.State != partStateFresh
+		info.TurnEndObserved = &observed
+	}
+	return info, nil
 }

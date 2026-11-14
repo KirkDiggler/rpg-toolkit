@@ -3,7 +3,11 @@
 
 package effects
 
-import "fmt"
+import (
+	"encoding/json/jsontext"
+	"fmt"
+	"slices"
+)
 
 // DurationDeclaration describes an authored maximum and grace, not saved progress.
 type DurationDeclaration struct {
@@ -17,20 +21,33 @@ type NamedDurationDeclaration struct {
 	Duration DurationDeclaration
 }
 
+// RoundDurationDeclaration describes an anchored-round maximum, not a received
+// turn-end count or current elapsed progress.
+type RoundDurationDeclaration struct{ Rounds int }
+
+// NamedRoundDurationDeclaration keeps each independent anchored clock distinct.
+type NamedRoundDurationDeclaration struct {
+	PartKey  string
+	Duration RoundDurationDeclaration
+}
+
 // DescribeMaintenanceInput supplies source-authored parts without runtime identity.
 type DescribeMaintenanceInput struct{ Parts []PartDeclaration }
 
 // MaintenanceDescription reports capabilities without binding or rolling. Duration
 // is present only for one clock; Durations preserves all independently authored clocks.
 type MaintenanceDescription struct {
-	Concentration bool
-	Duration      *DurationDeclaration
-	Durations     []NamedDurationDeclaration
+	Concentration  bool
+	Duration       *DurationDeclaration
+	Durations      []NamedDurationDeclaration
+	RoundDuration  *RoundDurationDeclaration
+	RoundDurations []NamedRoundDurationDeclaration
 }
 
 type partDescription struct {
-	capabilities PartCapabilities
-	duration     *DurationDeclaration
+	capabilities  PartCapabilities
+	duration      *DurationDeclaration
+	roundDuration *RoundDurationDeclaration
 }
 
 // DescribeMaintenance validates parts and reports their maintenance requirements.
@@ -60,10 +77,17 @@ func DescribeMaintenance(in *DescribeMaintenanceInput) (*MaintenanceDescription,
 		if description.duration != nil {
 			result.Durations = append(result.Durations, NamedDurationDeclaration{PartKey: part.Key, Duration: *description.duration})
 		}
+		if description.roundDuration != nil {
+			result.RoundDurations = append(result.RoundDurations, NamedRoundDurationDeclaration{PartKey: part.Key, Duration: *description.roundDuration})
+		}
 	}
 	if len(result.Durations) == 1 {
 		duration := result.Durations[0].Duration
 		result.Duration = &duration
+	}
+	if len(result.RoundDurations) == 1 {
+		duration := result.RoundDurations[0].Duration
+		result.RoundDuration = &duration
 	}
 	return result, nil
 }
@@ -73,10 +97,25 @@ func describePart(part PartDeclaration) (partDescription, error) {
 		return partDescription{}, err
 	}
 	definition := kindTable[part.Kind]
+	var result partDescription
 	if definition.describePart != nil {
-		return definition.describePart(part)
+		description, err := definition.describePart(part)
+		if err != nil {
+			return partDescription{}, err
+		}
+		result = description
 	}
-	return partDescription{}, nil
+	result.capabilities = definition.capabilities
+	result.capabilities.AllowedScopes = slices.Clone(definition.capabilities.AllowedScopes)
+	return result, nil
+}
+
+func describeRoundDurationPart(part PartDeclaration) (partDescription, error) {
+	params, err := parseRoundDurationParams(jsontext.Value(part.Params))
+	if err != nil {
+		return partDescription{}, err
+	}
+	return partDescription{roundDuration: &RoundDurationDeclaration{Rounds: params.Rounds}}, nil
 }
 
 func describeConcentrationPart(_ PartDeclaration) (partDescription, error) {
