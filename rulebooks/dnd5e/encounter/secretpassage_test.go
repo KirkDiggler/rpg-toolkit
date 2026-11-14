@@ -6,6 +6,7 @@ package encounter_test
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -152,6 +153,17 @@ func (s *SecretPassageSuite) holds(enc *encounter.Encounter, member encounter.Me
 	return n
 }
 
+// learnedBecause is the cause of every fact that taught member the passage.
+func (s *SecretPassageSuite) learnedBecause(enc *encounter.Encounter, member encounter.MemberID) []string {
+	var out []string
+	for _, f := range enc.ToData().Journal.Facts {
+		if strings.HasPrefix(f.Kind, "known:") && strings.HasSuffix(f.Kind, string(psgPassage)) && f.Actor == string(member) {
+			out = append(out, f.Detail)
+		}
+	}
+	return out
+}
+
 // beats is every beat of kind in member's story.
 func (s *SecretPassageSuite) beats(enc *encounter.Encounter, member encounter.MemberID, kind string) []map[string]any {
 	var out []map[string]any
@@ -186,6 +198,7 @@ func (s *SecretPassageSuite) TestTheAnswerLandsTheRecordOnWhoCaughtIt() {
 	s.told(enc)
 	for _, m := range []encounter.MemberID{relAlice, relBob} {
 		s.Equal(1, s.holds(enc, m), "%s holds the way", m)
+		s.Equal([]string{"told the way to it"}, s.learnedBecause(enc, m), "%s was told it, not looted it", m)
 		s.True(s.sees(enc, m, psgGrate), "%s caught the answer", m)
 		offered, err := enc.PropOptionsFor(m, psgGrate)
 		s.Require().NoError(err)

@@ -141,6 +141,14 @@ func (b *builder) rowStatements(o encounter.Option, line, heading, p string, t l
 		for k, row := range verdict.rows {
 			path := fmt.Sprintf("%s.%s[%d]", p, verdict.key, k)
 			does, conns := rowDoes(row, t, t.name)
+			fdoes, _ := rowDoes(row, t, "{self}")
+			// A ROW THAT ONLY GRANTS (rpg-project#958): no words and no fact,
+			// its whole effect is the grant said next — "nothing is said"
+			// would read as a row that does nothing.
+			if row.Say == "" && row.Activity == nil && row.Fact == "" && grantsOnRow(o.Grants, verdict.failure, k) {
+				does = []string{"nothing is answered in words, and the row does what the next sentence says"}
+				fdoes = []string{"no words"}
+			}
 			// THE PICK IS TOLD BY HEARING (rpg-project#948): a creature's
 			// answer — its die and the rows it chose among — goes to whoever
 			// caught the line; one who only sees it answer is told that and
@@ -150,7 +158,6 @@ func (b *builder) rowStatements(o encounter.Option, line, heading, p string, t l
 				does = append(does, fmt.Sprintf("whoever sees %s answer and caught none of the line is told only that %s answered "+
 					"and what %s is seen doing, and, if they see the speaker, sees the line said without its words", t.name, t.name, t.name))
 			}
-			fdoes, _ := rowDoes(row, t, "{self}")
 			s := lead + ", " + joinAnd(does)
 			short := joinAnd(fdoes)
 			if len(verdict.rows) > 1 {
@@ -419,4 +426,14 @@ func (b *builder) recordReveals(id encounter.IntelID) string {
 		}
 	}
 	return "nothing this build can say"
+}
+
+// grantsOnRow reports whether any grant hangs on a verdict's row k.
+func grantsOnRow(grants []encounter.RowGrant, failure bool, k int) bool {
+	for _, g := range grants {
+		if g.Failure == failure && g.Row == k {
+			return true
+		}
+	}
+	return false
 }

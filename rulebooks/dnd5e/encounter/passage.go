@@ -110,6 +110,9 @@ func (f *field) checkGrantTargets(owner string, options []Option) error {
 	return nil
 }
 
+// toldCause is the cause a told record's concealment is journalled under.
+const toldCause = "told the way to it"
+
 // grantTells lands an intel record on everyone who caught the answer that
 // told it, each as a holder of it: the holding written, then what it reveals
 // through [Encounter.applyReveals] — the path a looted record and one
@@ -130,7 +133,7 @@ func (e *Encounter) grantTells(id IntelID, line recognitionLine) error {
 		if err := e.holdings.holdIntel(m, id, cause); err != nil {
 			return fmt.Errorf("tells %q to %q: %w", id, m, err)
 		}
-		if err := e.applyReveals(m, id, line.at); err != nil {
+		if err := e.applyReveals(m, id, toldCause, line.at); err != nil {
 			return err
 		}
 	}

@@ -630,8 +630,12 @@ type SpeakOutput struct {
 	// with the roll — nil when the option has no rows for that verdict.
 	Answered *Pick
 
-	// Formed is the fight a row's relocation formed on arrival
-	// (rpg-project#958): the speaker set down in hostile sight. Nil otherwise.
+	// Formed is the fight THIS LINE'S OWN ROW RELOCATION formed on arrival
+	// (rpg-project#958): the speaker set down by a `relocate` grant in
+	// hostile sight. Nothing else is reported here — not a fight a jail's
+	// relocation forms, not one a stance turn forms inside the same Speak —
+	// and nil when the row relocated nobody or formed nothing. Reporting
+	// every fight a verb forms is rpg-toolkit#2428.
 	Formed *FormedBubble
 }
 
