@@ -1156,8 +1156,24 @@ type OptionSpec struct {
 	// one binding's options.
 	ID string `yaml:"id" json:"id"`
 
-	// Say is the character's line, carried VERBATIM. REQUIRED non-empty.
+	// Say is the character's line, carried VERBATIM. Exactly one of Say and
+	// Do.
 	Say string `yaml:"say" json:"say"`
+
+	// Do is what the character does to a prop, in the actor's own words
+	// (rpg-project#959): something done, seen and not heard, through
+	// Interact. Exactly one of Say and Do; on a prop's option only, and
+	// never with a loudness.
+	//
+	//	- id: to-chapel
+	//	  do: You lift the grate and take the way up.
+	//	  seen: lifts the grate by the hearth and climbs down
+	Do string `yaml:"do,omitempty" json:"do,omitempty"`
+
+	// Seen is what a witness who is shown the prop is told the actor did —
+	// naming nothing that witness could not see. Only beside Do; omitted, a
+	// witness is told the client's own words for using the thing.
+	Seen string `yaml:"seen,omitempty" json:"seen,omitempty"`
 
 	// Loudness is how loudly the line is said (rpg-project#933, R10):
 	// `whisper`, `speak`, `shout` or `scream`. Omitted is speak; any other
@@ -1241,7 +1257,7 @@ func (r *RequiresSpec) UnmarshalYAML(value *yaml.Node) error {
 // optionKeys is every key an [OptionSpec] reads, for its hand-written
 // unknown-key refusal.
 var optionKeys = map[string]bool{
-	"id": true, "say": true, "loudness": true, "check": true, "requires": true, "advance": true, "success": true,
+	"id": true, "say": true, "do": true, "seen": true, "loudness": true, "check": true, "requires": true, "advance": true, "success": true,
 	"failure": true,
 }
 

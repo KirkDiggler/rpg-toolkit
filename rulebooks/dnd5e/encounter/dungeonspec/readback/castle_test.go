@@ -603,3 +603,16 @@ func (s *CastleSuite) TestTheCastlesSeizureSaysItsHailsDistance() {
 	s.Contains(s.statement(readback.KindOutcome, path).Sentence, "sees again within 2 cells (the conversation's hail distance)")
 	s.Contains(s.rb.FoldedText(), "within 2 cells (the conversation's hail")
 }
+
+// TestTheGrateIsDoneNotSaid (rpg-project#959): the grate's way up says back
+// as something done — seen, not heard — with the words a witness shown it is
+// told, and its row as done, not said.
+func (s *CastleSuite) TestTheGrateIsDoneNotSaid() {
+	const base = "room.room.propBindings.grate.options[0]"
+	line := s.statement(readback.KindLine, base).Sentence
+	s.Contains(line, "offers something to do")
+	s.Contains(line, "Nobody hears it")
+	s.Contains(line, "“lifts the grate by the hearth and climbs down into the dark”")
+	s.NotContains(line, "can say")
+	s.Contains(s.statement(readback.KindLineGrant, base+".success[0].relocate").Sentence, "is done,")
+}

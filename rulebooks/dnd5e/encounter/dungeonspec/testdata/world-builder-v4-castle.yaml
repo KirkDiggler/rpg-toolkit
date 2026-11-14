@@ -2340,19 +2340,23 @@ room:
       purse:
         holdable: true
       # Hand edit (rpg-project#958, Passages S1): the passage's kitchen end.
-      # One line per destination; nothing at either far end, so the way is
-      # one-way.
+      # One thing to do per destination; nothing at either far end, so the
+      # way is one-way. Hand edit (rpg-project#959, Passages S2): they are
+      # done, not said — seen, not heard — and what a witness sees names no
+      # destination.
       grate:
         options:
           - id: to-chapel
-            say: (lift the grate and take the way up)
+            do: You lift the grate and take the way up.
+            seen: lifts the grate by the hearth and climbs down into the dark
             success:
               - relocate:
                   to: region-chapel
                   words: The tunnel climbs, and you come up through a flagstone behind the chapel's altar.
                   rounds: 1
           - id: to-cells
-            say: (lift the grate and take the way down)
+            do: You lift the grate and take the way down.
+            seen: lifts the grate by the hearth and climbs down into the dark
             success:
               - relocate:
                   to: region-cells
@@ -2366,10 +2370,13 @@ room:
         holdable: true
         holds:
           - cooks-ledger
+      # Hand edit (rpg-project#959, Passages S2): the altar is examined by
+      # doing, not by saying; nobody says it aloud.
       altar:
         options:
           - id: examine
-            say: Examine the altar.
+            do: You examine the altar.
+            seen: looks the altar over
             check:
               - ability: religion
                 dc: 12

@@ -1207,7 +1207,7 @@ func validateMemberFacts(in memberFacts) error {
 	// A line nobody could speak is refused at the door, never when a player
 	// finally picks it (option.go). NO OPTIONS IS NOT A DEFECT: that is
 	// every creature nobody wrote a line for.
-	if err := validateOptions(in.Options); err != nil {
+	if err := validateCreatureOptions(in.Options); err != nil {
 		return fmt.Errorf("member %s: %w: %w", in.ID, err, ErrBadMember)
 	}
 	if len(in.Table) != 0 || in.Machine != nil {

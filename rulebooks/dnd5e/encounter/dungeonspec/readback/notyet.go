@@ -43,7 +43,7 @@ var saidKeys = map[string][]string{
 	"arrest":             {"cell", "area"},
 	"arrestArea":         {"regions", "cells"},
 	"recognize":          {"topic", "holder", "about", "heard_by"},
-	"option":             {"id", "say", "loudness", "check", "requires", "advance", "success", "failure"},
+	"option":             {"id", "say", "do", "seen", "loudness", "check", "requires", "advance", "success", "failure"},
 	"checkApproach":      {"ability", "tool", "dc"},
 	"advance":            {"interaction", "success", "failure"},
 	"optionRow":          {"say", "loudness", "fact", "recognize", "tells", "relocate", "activity", "weight"},

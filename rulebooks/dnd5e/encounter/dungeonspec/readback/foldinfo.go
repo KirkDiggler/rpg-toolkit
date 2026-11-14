@@ -16,6 +16,9 @@ type foldInfo struct {
 	miss string
 	// line is a line facet's heading: “say” (`id`).
 	line string
+	// done marks a line statement whose option is something done, not said
+	// (rpg-project#959): its plain rows fold under "When done".
+	done bool
 	// state is the routine state a post or a wake belongs to.
 	state string
 	// verdict is a row's or a grant's: "win", "miss" or "said".
