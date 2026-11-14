@@ -102,7 +102,7 @@ Projection contract:
 - Constructing a named definition returns caller-owned values. Derivation uses an explicit owned copy when nested mutable values are shared; ordinary Go shallow assignment is not advertised as a deep clone.
 - Compilation detaches all slices, guards, amounts and parameter storage. Editing authoring values afterward cannot change a compiled definition or running instance.
 
-Whether the Go entry point accepts a projection interface or an explicitly projected Definition is a remaining surface choice for the compiler API, not permission for a second mechanical compiler. Recommended ergonomics: accept a leaf, group or complete typed definition through one error-returning compile entry point; projection errors propagate through it, and only canonical data is retained.
+The [binding/compiler mapping](binding-contracts.md) selects one error-returning compile facade for typed leaves, groups, complete definitions and canonical data. Pure DefinitionData projection errors propagate through it; only owned canonical values are retained. The Data suffix distinguishes serialized/canonical shape from the typed projection interface, not a second compiler.
 
 ## 4. Compilation contract
 
@@ -158,10 +158,9 @@ A grouping member such as `benefits` or `maintenance` has no magic compiler mean
 
 ## Still separate
 
-The [R10 reference/variant proposal](reference-contracts.md) now makes the next
-choice explicit; the [native maintenance evidence](native-maintenance-evidence.md)
-records the measured timeline and reader boundary rather than guessing them.
+The [accepted R10 reference/variant contract](reference-contracts.md),
+[native maintenance evidence](native-maintenance-evidence.md) and
+[binding/state mapping](binding-contracts.md) complete the inputs to the
+[replacement execution plan](effect-first-plan.md).
 
-The next reference contract must address concrete catalogue refs, member addressing, variants/parameter choices and how a reusable group is configured without a generic deep-patch language. In particular, a fixed-bonus ring and live-Barbarian-scaled native Rage must not be conflated merely because both reuse Rage benefits.
-
-The native-maintenance contract must characterize real round anchoring, missing/reset clocks and terminal ordering before deciding the actual typed maintenance fields and lowering. Those investigations do not block agreeing on the definition/composition boundary, but they do block claiming a complete replacement execution plan.
+A fixed-bonus ring and live-Barbarian-scaled native Rage remain different configured values; R10's explicit replacement does not silently conflate them. Native clock/end-order behavior remains the binding baseline, not an opportunity to substitute a holder-turn counter. Any new measured contradiction returns to the affected contract rather than a parallel runtime.

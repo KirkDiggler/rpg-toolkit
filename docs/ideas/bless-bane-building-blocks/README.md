@@ -1,6 +1,6 @@
 # Effects first: definitions we can inspect and compose
 
-This is the walkthrough for [composable conditions #703](https://github.com/KirkDiggler/rpg-project/issues/703), governed by [the design](design.md). **The reusable unit is an effect composition, not necessarily a condition.** Code and configuration expose two authoring surfaces over the same definitions. The [acceptance scenarios](acceptance.md) describe the observable contract; [source evidence](implementation.md) and the [next design work](next-steps.md) stay separate from that contract.
+This is the walkthrough for [composable conditions #703](https://github.com/KirkDiggler/rpg-project/issues/703), governed by [the design](design.md). **The reusable unit is an effect composition, not necessarily a condition.** Code and configuration expose two authoring surfaces over the same definitions. The [acceptance scenarios](acceptance.md) describe the observable contract; [source evidence](implementation.md) and the [checked replacement plan](effect-first-plan.md) stay separate from that contract. The [binding/state mapping](binding-contracts.md) preserves measured native behavior through the existing runtime and reader seams.
 
 ## Component shape
 
@@ -63,11 +63,11 @@ A reference can express this selection:
 | Group | Benefits |
 | Member | Physical resistance |
 
-This is a semantic sketch, not a finalized JSON path syntax. The reference contract must specify addressing, ambiguity/refusal and supported composition depth before implementation. Configuration can also declare a configured effect directly, or select a whole group/definition. It is not limited to choosing built-in condition names. R6/R7.
+The reference contract spells this as a validated definition ref plus an array of member keys, with explicit refusal and owned whole-member derivation; the replacement plan fixes the decoder/resolver interfaces. Configuration can also declare a configured effect directly, or select a whole group/definition. It is not limited to choosing built-in condition names. R6/R7.
 
 **Typed fields and resolved references reach the same canonical values.** The catalogue exports the actual named definition's members, not a separate configuration implementation of Rage. Registration and reference discovery are optional services around those values; they are not prerequisites for compiling an inline effect.
 
-The [reference/variant proposal](reference-contracts.md) makes selection and explicit
+The [accepted reference/variant contract](reference-contracts.md) makes selection and explicit
 member replacement concrete; [native maintenance evidence](native-maintenance-evidence.md)
 records the clock/state contract the complete Raging definition must preserve.
 
@@ -85,12 +85,12 @@ An override engine is unnecessary for these choices. They are compositions of va
 
 ## Ownership and contracts
 
-The conceptual contracts below are settled in direction. The exact new Go types and catalogue schema are open work named in the design; the current symbols are evidence for where the seams start, not promises that every target API exists.
+The contracts below are settled. The replacement plan names the concrete new Go interfaces and catalogue schema; the current symbols identify the starting seams, not a claim that every target API is already implemented.
 
 | Component | Owns | Input → output |
 |---|---|---|
 | Rulebook effect vocabulary | Mechanical meaning, supported parameters, guard/amount validation | Configured effect value → validated canonical leaf; current owners include `effects.Definition`, `PartTemplate`, `kinds.go` |
-| Reusable composition model, below conditions | Ordered named members, ownership and composition structure | Configured values/member references → canonical effect composition; exact type to settle |
+| Reusable composition model, below conditions | Ordered named members, ownership and composition structure | Configured values/member references → canonical effect composition; DefinitionData/CompositionData/MemberData and the typed projection facade |
 | Named rulebook definitions | Content and typed discoverable fields | Raging construction inputs → complete typed Raging definition with benefit and maintenance values |
 | Optional catalogue/resolver | Registration, enumeration and reference resolution | Definition/group/member reference → owned canonical value or explicit error |
 | Canonical compiler | One mechanical/structural validation path | Inline or resolved effect/composition → owned compiled values, without fake runtime identities |

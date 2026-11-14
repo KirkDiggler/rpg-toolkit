@@ -20,7 +20,7 @@ Source: [native recipe](https://github.com/KirkDiggler/rpg-toolkit/blob/c99f3d85
 | Other endings | Holder rest, combat end and dropped-to-zero end Rage; unrelated holders do not | Existing rest/combat-end/zero-HP tests in `TestRagingConditionTestSuite` |
 | Restore | Current progress/origin/state survive strict reload; incomplete/old state refuses | `TestSharedComposedRaging/TestStrictRestorePreservesProgressAndRefusesOldOrIncompleteState` |
 
-The recipe's inspected terminal order on a live holder turn end is **no activity → elapsed duration → backwards clock → continued upkeep**. That ordering is source evidence; simultaneous-terminal parity needs an explicit new characterization assertion before decomposition, not a claim that the listed tests already cover every collision.
+The recipe's terminal order on a live holder turn end is **no activity → elapsed duration → backwards clock → continued upkeep**. Characterization checkpoint [13fdf1c9](https://github.com/KirkDiggler/rpg-toolkit/commit/13fdf1c94da0414c4a759dea1e1ed7f9c73af064) adds `TestIdleWinsAtTheDurationBoundary` (anchor4 → idle round13) and `TestIdleWinsWhenTheClockAlsoResets` (anchor7 → idle round1); both report `no_combat_activity` against unchanged production code. Full root race/vet/lint pass at that checkpoint. The decomposition must retain these observed priorities.
 
 The vocabulary's DamageReceived-named beat observes positive DamageTaken, not an instruction-like damage-request topic. A dropped-to-zero fact has its own ending meaning. The replacement must not apply HP damage again.
 
@@ -28,7 +28,7 @@ The vocabulary's DamageReceived-named beat observes positive DamageTaken, not an
 
 The current generic rulebook Duration part counts received holder turn ends. Native Rage uses a positive round anchor and derived elapsed rounds. The seven-events/ten-rounds case distinguishes them directly. Reusing the current counter under a new field name would change gameplay, even if ordinary consecutive-round tests passed.
 
-A reusable maintenance decomposition must preserve both grace/activity and anchored-clock semantics and their end ordering. No new mechanical type or saved representation is selected by this evidence file; those are the next native-maintenance contract.
+A reusable maintenance decomposition must preserve both grace/activity and anchored-clock semantics and their end ordering. The [binding/state mapping](binding-contracts.md) selects reusable activity and anchored-round parts plus the current local assembly representation; this evidence remains the parity baseline.
 
 ## Native reader seam that must be included
 

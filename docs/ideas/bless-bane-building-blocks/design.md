@@ -18,7 +18,7 @@ flowchart TD
     Select --> Roll[Resolve selected signed terms in the owning operation]
 ```
 
-R6–R8 replace the condition-first construction cut with effect-first authoring; [the direction-change record](https://github.com/KirkDiggler/rpg-toolkit/pull/2425) preserves that cut and the operator's words that moved it. The [walkthrough](README.md) explains the ownership boundaries. Concrete API contracts are the next design work, not authority to infer a second runtime.
+R6–R8 replace the condition-first construction cut with effect-first authoring; [the direction-change record](https://github.com/KirkDiggler/rpg-toolkit/pull/2425) preserves that cut and the operator's words that moved it. The [walkthrough](README.md) explains the ownership boundaries. The concrete compiler/reference/binding contracts and checked replacement plan implement that direction without a second runtime.
 
 ## Law
 
@@ -57,6 +57,9 @@ R6–R8 replace the condition-first construction cut with effect-first authoring
 22. Typed fields and configuration resolution project to the same owned canonical values. Intrinsic compilation requires no catalogue, participant or terminal scope; host placement supplies and validates identity, roles and end routing. R9.
 23. Catalogue references are resolved before canonical compilation, not retained as runtime nodes. Definition paths and catalogue identity remain separate from activation provenance and runtime instance keys. R9.
 
+24. Catalogue selection names a definition ref and a separate member path, and resolves exact configured values before compilation/binding. It does not infer a parameter change from the receiving actor or source. R10.
+25. Authored derivation replaces complete definitions at existing named member paths on an owned copy. Missing, duplicate, root or overlapping replacement paths refuse atomically; member key/order remain stable. No deep parameter merge or runtime mutation is implied. R10.
+
 ## Rulings
 
 | ID | status | scope | ruled by | date |
@@ -70,12 +73,10 @@ R6–R8 replace the condition-first construction cut with effect-first authoring
 | R7 | settled | Named typed fields for rulebook discovery; configuration IDs/references and enumeration reach the same values | KirkDiggler | 2026-11-14 |
 | R8 | settled | One complete Raging definition; reusable real maintenance; native Rage, concentration ring and activity ward through code and configuration | KirkDiggler | 2026-11-14 |
 | R9 | settled | Ordered named canonical composition tree, field projections, intrinsic compilation and explicit host placement | KirkDiggler | 2026-11-14 |
-| R10 | open | Catalogue/member reference identity and explicit whole-member replacement for authored variants | — | — |
+| R10 | settled | Catalogue/member reference identity and explicit whole-member replacement for authored variants | KirkDiggler | 2026-11-14 |
 
 ## Open
 
-- **Compiler facade:** [R9](composition-contracts.md) settles resolved leaf/composition/member shapes, keys/paths/order, ownership, refusal cases and explicit placement. The compiler-facing Go projection facade still needs its exact signature; it must delegate to the same intrinsic compiler, not introduce another evaluator.
-- **Reference/variant contract (R10):** [the concrete proposal](reference-contracts.md) separates ref identity from member paths and proposes whole-member replacement on owned values, not a deep merge. That derivation choice remains open; no unlimited nesting, runtime lookup or arbitrary scripting capability is inferred.
-- **Maintenance contract:** [the measured baseline](native-maintenance-evidence.md) identifies native timeline/state behavior and an affected reader seam. Specify reusable parts, simultaneous-ending parity and the native binding/saved-representation boundary next; the current Duration counter alone is not equivalent.
-- **Plan replacement:** re-cut concrete task contracts and provider/consumer checks against these seams. The retained first-cut plan is not authority to proceed with its API adoption or declare the new acceptance complete. [Path forward](next-steps.md).
-- An override convenience remains optional and uncommitted. Explicit selection/composition is the baseline; no automatic merge or production deployment is authorized.
+- No required product/rules choice is currently open. [Binding/state contracts](binding-contracts.md) map the accepted direction to the measured native semantics and reader seam; [the replacement plan](effect-first-plan.md) fixes the concrete interfaces, task coverage and consumer order.
+- If implementation would change a characterized native rule, introduce another lifecycle authority or require a persistence policy beyond the explicit current-format change, pause that affected task with evidence. Do not reopen the settled value/reference model for local spelling choices.
+- Explicit whole-member derivation is part of R10. A general deep-override engine, unlimited scripting/nesting guarantees, automatic merge and production deployment remain outside the agreement.

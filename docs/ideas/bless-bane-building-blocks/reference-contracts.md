@@ -1,6 +1,6 @@
-# Catalogue references and explicit variants — R10 proposal
+# Catalogue references and explicit variants — accepted R10
 
-This builds on the accepted [composition contract R9](composition-contracts.md). References are authoring instructions resolved into those owned values; they are not runtime nodes. The proposal is not implemented and does not authorize an API rollout.
+This builds on the accepted [composition contract R9](composition-contracts.md). References are authoring instructions resolved into those owned values; they are not runtime nodes. [R10 is accepted](https://github.com/KirkDiggler/rpg-toolkit/pull/2425#issuecomment-6883013648). This contract is not a claim of implementation or authority to merge/deploy; [the replacement plan](effect-first-plan.md) defines execution.
 
 ## Why this is the next real decision
 
@@ -132,7 +132,7 @@ Native Rage continues to use its live-scaling member. The derived ring shares th
 | Compile | Resolved canonical value or the typed projection facade | One intrinsic validator and owned compiled values; no catalogue lookup |
 | Bind | Compiled values + explicit host placement/identity | Existing runtime/custody with independent state; no definition derivation |
 
-The compiler facade should expose one fallible operation to Go callers for a typed leaf, group or whole definition; the projection delegates into the same canonical compiler. Exact facade/resolver function signatures are still to be fixed in the replacement plan, not inferred as multiple evaluators from this table.
+The compiler facade should expose one fallible operation to Go callers for a typed leaf, group or whole definition; the projection delegates into the same canonical compiler. The exact facade/resolver interfaces are fixed in replacement-plan E1/E2; this table does not imply multiple mechanical evaluators.
 
 ## 7. Conformance cases
 
@@ -147,4 +147,4 @@ The compiler facade should expose one fallible operation to Go callers for a typ
 
 ## Decision boundary
 
-The proposed new capability is **explicit whole-member replacement during authoring**. R9 remains settled. No replacement or parameter-override implementation starts merely because this document exists. Native Rage's timeline/state decomposition is still a separate required contract; this reference operation cannot make a turn counter equivalent to round anchoring.
+The accepted capability is **explicit whole-member replacement during authoring**. R9 remains settled. Implementation follows the checked replacement plan; no deep parameter-override capability is inferred. [Native binding/state contracts](binding-contracts.md) preserve the independently measured timeline; this reference operation cannot make a turn counter equivalent to round anchoring.
