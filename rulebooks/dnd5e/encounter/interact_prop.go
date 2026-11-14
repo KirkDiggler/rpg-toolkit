@@ -34,7 +34,9 @@ import (
 //     (absent when the author wrote none: the client words a generic);
 //   - a witness who sees the actor and is not shown the prop: the actor and
 //     where they stand — a concealed thing is never named to one who does
-//     not know it;
+//     not know it. A witness who SEES the concealed thing used knows it
+//     ([Encounter.revealBySight]) and is shown it; this version is left for
+//     one who sees the actor and not the thing;
 //   - anyone else: nothing.
 //
 // It lands [DeedUse] on every witness, the deeds channel's "saw them do
@@ -118,6 +120,12 @@ func (e *Encounter) interactWithProp(ctx context.Context, in *InteractInput) (*I
 	}
 
 	at := uint64(e.clock.ToData().HighWater)
+	// IF YOU SAW IT, YOU KNOW IT (rpg-project#959, ruled on #848): a watcher
+	// who sees the hidden thing used learns its secret first, and so is
+	// shown the thing below.
+	if err := e.revealBySight(in.Actor, in.Prop, witnesses, at); err != nil {
+		return nil, fmt.Errorf("interact: %w", err)
+	}
 	shown := e.shownThePropOf(in.Actor, in.Prop, witnesses)
 	seq, err := e.tellInteracted(in, option, r, beaten, where, witnesses, shown, at)
 	if err != nil {
@@ -265,4 +273,47 @@ func (e *Encounter) tellInteracted(
 		}
 	}
 	return seq, nil
+}
+
+// revealBySight is IF YOU SAW IT, YOU KNOW IT (rpg-project#959, ruled on
+// #848): every witness of a line said to, or a thing done to, a concealed
+// prop who sees the prop — a cell it stands on in their sight now, or the
+// doer's hands when the doer carries it — and does not know its secret comes
+// to know it, by sight, through the one reveal writer: the sibling of a
+// secret door seen standing open ([Encounter.sweepConcealment]). Player or
+// creature alike. A witness who sees the doer and not where the thing
+// stands learns nothing. A prop no concealment hides is not this rule's.
+func (e *Encounter) revealBySight(actor MemberID, prop PropID, witnesses []MemberID, at uint64) error {
+	id, hidden := e.field.concealmentOfProp[prop]
+	if !hidden {
+		return nil
+	}
+	c := e.field.concealmentOf(id)
+	if c == nil {
+		return nil
+	}
+	_, cells, err := e.speakableProp(actor, prop)
+	if err != nil {
+		return err
+	}
+	reach, err := e.placedSightReach()
+	if err != nil {
+		return err
+	}
+	for _, w := range witnesses {
+		if w == actor || e.members[w] == nil || e.world.knowsConcealment(w, id) {
+			continue
+		}
+		seen := cells == nil // carried: it is in the hands they see
+		for _, cell := range cells {
+			seen = seen || reach.reachesCell(w, cell)
+		}
+		if !seen {
+			continue
+		}
+		if err := e.revealConcealmentTo(w, c, "saw it used", at); err != nil {
+			return err
+		}
+	}
+	return nil
 }

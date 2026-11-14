@@ -29,6 +29,9 @@ const (
 	ipGrate    encounter.PropID        = "grate"
 	ipStair    encounter.PropID        = "stair"
 	ipPassage  encounter.ConcealmentID = "passage"
+	ipHatch    encounter.PropID        = "hatch"
+	ipEve      encounter.MemberID      = "eve"
+	ipGuard    encounter.MemberID      = "guard"
 	ipWay      encounter.IntelID       = "the-way"
 	ipPull                             = "Pull the lever"
 	ipPulled                           = "pulls the lever"
@@ -70,7 +73,10 @@ func (s *InteractPropSuite) hall(members ...encounter.MemberInput) *encounter.En
 			Failure:  []encounter.Answer{{Weight: 1, Say: "It will not move."}},
 		}),
 		prop(ipSign, 2, 4, encounter.Option{ID: "read", Say: "What does this say?", Success: []encounter.Answer{{Weight: 1, Say: "Keep out."}}}),
-		prop(ipGrate, 5, 4, encounter.Option{ID: "peek", Do: "You peer through the grate.", Success: []encounter.Answer{{Weight: 1, Say: "Steps, going down."}}}),
+		prop(ipGrate, 5, 4,
+			encounter.Option{ID: "peek", Do: "You peer through the grate.", Success: []encounter.Answer{{Weight: 1, Say: "Steps, going down."}}},
+			encounter.Option{ID: "hail", Say: "Anyone down there?", Success: []encounter.Answer{{Weight: 1}}}),
+		prop(ipHatch, 21, 8, encounter.Option{ID: "peek", Do: "You peer through the hatch.", Success: []encounter.Answer{{Weight: 1}}}),
 		prop(ipStair, 4, 6, encounter.Option{
 			ID: "down", Do: "You take the stair down.", Success: []encounter.Answer{{Weight: 1}},
 			Grants: []encounter.RowGrant{{Consequence: encounter.Consequence{
@@ -80,10 +86,10 @@ func (s *InteractPropSuite) hall(members ...encounter.MemberInput) *encounter.En
 	}
 	setup.Field.Intel = []encounter.IntelRecord{{ID: ipWay, Reveals: encounter.RevealTargets{Concealment: ipPassage}}}
 	setup.Field.Concealments = []encounter.ConcealmentInput{{
-		ID: ipPassage, Checks: []encounter.CheckApproach{{Ability: "investigation", DC: 30}}, Props: []encounter.PropID{ipGrate},
+		ID: ipPassage, Checks: []encounter.CheckApproach{{Ability: "investigation", DC: 30}}, Props: []encounter.PropID{ipGrate, ipHatch},
 	}}
 	setup.Field.Interactions = []encounter.InteractionInput{{ID: theFrontGate, Recipe: frontGateRecipe()}}
-	setup.Sight = &sightList{reach: map[encounter.MemberID]int{relDan: 0}, fallback: 40}
+	setup.Sight = &sightList{reach: map[encounter.MemberID]int{relDan: 0, ipEve: 3}, fallback: 40}
 	setup.CheckResolver = findsNothing{}
 	setup.Witness = nobodyPerceives{}
 	enc, err := encounter.NewEncounter(setup)
@@ -238,9 +244,7 @@ func (s *InteractPropSuite) TestItIsSeenNotHeard() {
 
 // TestAHiddenThingIsDoneOnlyByWhoKnowsIt: the grate offers nothing to
 // anyone until Alice is whispered the way; then it offers her its thing to
-// do, and nobody else. Done, Bob and Carol — who see her and are not shown
-// the grate — are told only that she did something where she stands: never
-// the grate, never the words.
+// do, and nobody else.
 func (s *InteractPropSuite) TestAHiddenThingIsDoneOnlyByWhoKnowsIt() {
 	enc := s.party()
 	_, err := enc.PropOptionsFor(relAlice, ipGrate)
@@ -251,35 +255,134 @@ func (s *InteractPropSuite) TestAHiddenThingIsDoneOnlyByWhoKnowsIt() {
 	s.told(enc)
 	offered, err := enc.PropOptionsFor(relAlice, ipGrate)
 	s.Require().NoError(err)
-	s.Require().Len(offered, 1)
+	s.Require().Len(offered, 2)
 	s.Equal("peek", offered[0].ID)
 	s.True(offered[0].Does(), "the offer says it is something done")
+	s.False(offered[1].Does(), "and a line to say beside it")
 	_, err = enc.PropOptionsFor(relBob, ipGrate)
 	s.ErrorIs(err, encounter.ErrNoProp, "Bob was not whispered it")
+}
 
-	_, err = s.do(enc, relAlice, ipGrate, "peek")
+// TestIfYouSawItYouKnowIt (rpg-project#959, ruled on #848): Alice, told,
+// peers through the hidden grate. Bob and Carol, untold, see it done: each
+// comes to know the passage by sight — the reveal before the deed in their
+// story — is told the `thing` version, and is then offered the grate. Eve,
+// who sees Alice and not as far as the grate, is told only the `place`
+// version and learns nothing. Dan, blind in earshot, learns nothing. A
+// guard, a creature, sees it and holds the passage too (nothing reacts).
+func (s *InteractPropSuite) TestIfYouSawItYouKnowIt() {
+	enc := s.party(at(ipEve, encounter.KindPlayer, 1, 4), at(ipGuard, encounter.KindMonster, 8, 2))
+	s.told(enc)
+	_, err := s.do(enc, relAlice, ipGrate, "peek")
 	s.Require().NoError(err)
-	s.Require().Len(s.interacted(enc, relAlice, relAlice), 1)
+
 	for _, m := range []encounter.MemberID{relBob, relCarol} {
-		seen := s.interacted(enc, m, relAlice)
-		s.Require().Len(seen, 1, "%s sees her do something", m)
-		s.Equal(encounter.InteractedViewPlace, seen[0]["view"])
-		s.NotNil(seen[0]["at"])
-		for _, key := range []string{"prop", "seen", "do", "option"} {
-			s.NotContains(seen[0], key, "a concealed thing is never named to %s", m)
-		}
+		s.Equal([]string{"saw it used"}, s.learnedPassage(enc, m), "%s saw it used", m)
+		var order []string
 		for _, b := range storyBeats(s.T(), enc, m) {
-			s.False(b["beat"] == encounter.BeatAnswered && b["option"] == "peek", "the grate's narration is not told to %s", m)
+			switch {
+			case b["beat"] == encounter.BeatConcealmentRevealed:
+				order = append(order, "revealed")
+			case b["beat"] == encounter.BeatInteracted && b["actor"] == string(relAlice):
+				order = append(order, b["view"].(string))
+				s.Equal(string(ipGrate), b["prop"])
+				s.NotContains(b, "do", "the doer's own words are the doer's")
+			}
 		}
+		s.Equal([]string{"revealed", encounter.InteractedViewThing}, order, "%s learns it, then sees the thing done", m)
+		offered, err := enc.PropOptionsFor(m, ipGrate)
+		s.Require().NoError(err, "%s is now offered the grate", m)
+		s.Len(offered, 2)
 	}
-	answered := 0
-	for _, b := range storyBeats(s.T(), enc, relAlice) {
-		if b["beat"] == encounter.BeatAnswered && b["option"] == "peek" && b["say"] == "Steps, going down." {
-			answered++
+
+	narrated := func(m encounter.MemberID) bool {
+		for _, b := range storyBeats(s.T(), enc, m) {
+			if b["beat"] == encounter.BeatAnswered && b["option"] == "peek" {
+				return true
+			}
 		}
+		return false
 	}
-	s.Equal(1, answered, "the narration is told to the one who did it")
+	s.True(narrated(relBob), "shown now, Bob is told the narration as a shown witness is")
+	s.False(narrated(ipEve), "Eve, not shown, is not")
+	eve := s.interacted(enc, ipEve, relAlice)
+	s.Require().Len(eve, 1, "precondition: Eve sees Alice")
+	s.Equal(encounter.InteractedViewPlace, eve[0]["view"], "Eve sees her, not the grate")
+	s.NotContains(eve[0], "prop")
+	s.Empty(s.learnedPassage(enc, ipEve))
+	s.Empty(s.learnedPassage(enc, relDan), "in earshot and out of sight, Dan learns nothing")
 	s.Empty(s.interacted(enc, relDan, relAlice))
+	s.Equal([]string{"saw it used"}, s.learnedPassage(enc, ipGuard), "a creature that sees it knows it too")
+}
+
+// TestAnOpenThingOutOfSightIsThePlace: no secret here — the lever hides
+// nothing — and Eve, who sees Alice and has never seen as far as the lever,
+// is told only the `place` version, as before (rpg-project#959).
+func (s *InteractPropSuite) TestAnOpenThingOutOfSightIsThePlace() {
+	enc := s.party(at(ipEve, encounter.KindPlayer, 1, 4))
+	_, err := enc.PropOptionsFor(ipEve, ipLever)
+	s.Require().ErrorIs(err, encounter.ErrNoProp, "precondition: Eve has never been shown the lever")
+	_, err = s.do(enc, relAlice, ipLever, "pull")
+	s.Require().NoError(err)
+	eve := s.interacted(enc, ipEve, relAlice)
+	s.Require().Len(eve, 1, "precondition: Eve sees Alice")
+	s.Equal(encounter.InteractedViewPlace, eve[0]["view"])
+	s.NotContains(eve[0], "prop")
+}
+
+// TestALineSaidToAHiddenThingShowsIt: Alice, told, calls down the grate;
+// Bob, who sees her say it to the grate, knows the passage by sight.
+func (s *InteractPropSuite) TestALineSaidToAHiddenThingShowsIt() {
+	enc := s.party()
+	s.told(enc)
+	_, err := enc.Speak(context.Background(), &encounter.SpeakInput{
+		Actor: relAlice, Prop: ipGrate, OptionID: "hail", Range: speakReach, Roller: rollsLowest{},
+	})
+	s.Require().NoError(err)
+	s.Equal([]string{"saw it used"}, s.learnedPassage(enc, relBob))
+	s.Empty(s.learnedPassage(enc, relDan), "hearing it said is not seeing the grate")
+}
+
+// TestNobodyLearnsWhatNobodySaw: Alice, told, takes the stair to room c and
+// peers through the hidden hatch there, in nobody's sight. Nobody learns the
+// passage.
+func (s *InteractPropSuite) TestNobodyLearnsWhatNobodySaw() {
+	enc := s.party()
+	s.told(enc)
+	_, err := s.do(enc, relAlice, ipStair, "down")
+	s.Require().NoError(err)
+	out, err := s.do(enc, relAlice, ipHatch, "peek")
+	s.Require().NoError(err)
+	s.Equal([]encounter.MemberID{relAlice}, out.Witnesses, "precondition: only Alice sees herself in room c")
+	for _, m := range []encounter.MemberID{relBob, relCarol, relDan} {
+		s.Empty(s.learnedPassage(enc, m), "%s saw nothing", m)
+	}
+}
+
+// TestWhatWasSeenSurvivesAReload: Bob, who saw it, still knows the grate
+// after the run is saved and loaded, and nothing is told again.
+func (s *InteractPropSuite) TestWhatWasSeenSurvivesAReload() {
+	enc := s.party()
+	s.told(enc)
+	_, err := s.do(enc, relAlice, ipGrate, "peek")
+	s.Require().NoError(err)
+	before := len(storyBeats(s.T(), enc, relBob))
+	loaded := s.reload(enc)
+	s.Len(storyBeats(s.T(), loaded, relBob), before, "nothing fires again")
+	_, err = loaded.PropOptionsFor(relBob, ipGrate)
+	s.NoError(err, "Bob still knows the grate")
+	s.Equal([]string{"saw it used"}, s.learnedPassage(loaded, relBob), "learned once")
+}
+
+// learnedPassage is the cause of every fact that taught member the passage.
+func (s *InteractPropSuite) learnedPassage(enc *encounter.Encounter, member encounter.MemberID) []string {
+	var out []string
+	for _, f := range enc.ToData().Journal.Facts {
+		if f.Kind == "known:concealment:"+string(ipPassage) && f.Actor == string(member) {
+			out = append(out, f.Detail)
+		}
+	}
+	return out
 }
 
 // TestAStaleThingIsRefused: the lever steps the front gate, so it is
@@ -362,22 +465,27 @@ func (s *InteractPropSuite) TestReloadRepeatsNothing() {
 	s.Require().True(ok)
 	s.Equal(psgRoomC, region, "the thing done set her down in room c")
 	before, landed := len(storyBeats(s.T(), enc, relAlice)), s.where(enc, relAlice)
+	loaded := s.reload(enc)
+	s.Equal(landed, s.where(loaded, relAlice))
+	s.Len(storyBeats(s.T(), loaded, relAlice), before, "nothing fires again")
+}
 
+// reload saves the run and loads it back on the hall's host.
+func (s *InteractPropSuite) reload(enc *encounter.Encounter) *encounter.Encounter {
 	blob, err := json.Marshal(enc.ToData())
 	s.Require().NoError(err)
 	var data encounter.EncounterData
 	s.Require().NoError(json.Unmarshal(blob, &data))
 	setup := noiseHallSetup(encounter.DoorIsClosed(), encounter.DoorIsClosed(), sheetFacts{
 		relAlice: {SpeedFeet: 30}, relBob: {SpeedFeet: 30}, relCarol: {SpeedFeet: 30}, relDan: {SpeedFeet: 30},
-		ipScullion: {SpeedFeet: 30},
+		ipScullion: {SpeedFeet: 30}, ipEve: {SpeedFeet: 30}, ipGuard: {SpeedFeet: 30},
 	}, passDriver{})
-	setup.Sight = &sightList{reach: map[encounter.MemberID]int{relDan: 0}, fallback: 40}
+	setup.Sight = &sightList{reach: map[encounter.MemberID]int{relDan: 0, ipEve: 3}, fallback: 40}
 	setup.CheckResolver = findsNothing{}
 	setup.Witness = nobodyPerceives{}
 	loaded, err := encounter.LoadEncounter(&encounter.LoadEncounterInput{Data: data, Capabilities: setup.Capabilities})
 	s.Require().NoError(err)
-	s.Equal(landed, s.where(loaded, relAlice))
-	s.Len(storyBeats(s.T(), loaded, relAlice), before, "nothing fires again")
+	return loaded
 }
 
 // TestTheKindIsRefusedWhereItIsWrong: the engine's own door on an option's

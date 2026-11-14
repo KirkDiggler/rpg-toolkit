@@ -612,7 +612,11 @@ func (s *CastleSuite) TestTheGrateIsDoneNotSaid() {
 	line := s.statement(readback.KindLine, base).Sentence
 	s.Contains(line, "offers something to do")
 	s.Contains(line, "Nobody hears it")
+	s.Contains(s.statement(readback.KindConcealment, "concealments.kitchen-passage").Sentence, "seeing someone use something it hides")
 	s.Contains(line, "“lifts the grate by the hearth and climbs down into the dark”")
 	s.NotContains(line, "can say")
+	s.Contains(line, "a watcher who sees it done, and sees where it stands, comes to know the secret by sight")
+	s.NotContains(s.statement(readback.KindLine, "room.room.propBindings.altar.options[0]").Sentence, "secret",
+		"the altar hides nothing")
 	s.Contains(s.statement(readback.KindLineGrant, base+".success[0].relocate").Sentence, "is done,")
 }
