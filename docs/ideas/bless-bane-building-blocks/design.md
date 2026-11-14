@@ -50,6 +50,13 @@ R6–R8 replace the condition-first construction cut with effect-first authoring
 18. AddToRoll expresses signed additive meaning, not an additive/stackable flag. The owning roll operation resolves only selected amounts and preserves provenance. Information and execution consume the same selection decisions. Existing supported quantity/domain boundaries stay honest; authoring cannot advertise support absent from the consumer. R3/R4.
 19. Named Bless/Bane declarations use explicit ending policies and error-returning construction. Neither rest cleanup nor concentration is hidden inside a roll adjustment. R1/R4.
 
+### Canonical composition contract
+
+20. A resolved definition contains exactly one configured effect or ordered composition. An explicit empty composition is a valid empty value; an absent definition is not. Members have nonblank keys unique among siblings, excluding the path separator. Names/descriptions do not dispatch behavior. R9.
+21. Compositions are authoring structure, not implicit lifetime boundaries. Reused acyclic subtrees receive distinct qualified local paths and independent state when bound. Cyclic structure is refused; traversal preserves authored order. R9.
+22. Typed fields and configuration resolution project to the same owned canonical values. Intrinsic compilation requires no catalogue, participant or terminal scope; host placement supplies and validates identity, roles and end routing. R9.
+23. Catalogue references are resolved before canonical compilation, not retained as runtime nodes. Definition paths and catalogue identity remain separate from activation provenance and runtime instance keys. R9.
+
 ## Rulings
 
 | ID | status | scope | ruled by | date |
@@ -62,12 +69,13 @@ R6–R8 replace the condition-first construction cut with effect-first authoring
 | R6 | settled | Configured effects and reusable effect compositions are the authoring units; conditions are consumers | KirkDiggler | 2026-11-14 |
 | R7 | settled | Named typed fields for rulebook discovery; configuration IDs/references and enumeration reach the same values | KirkDiggler | 2026-11-14 |
 | R8 | settled | One complete Raging definition; reusable real maintenance; native Rage, concentration ring and activity ward through code and configuration | KirkDiggler | 2026-11-14 |
-| R9 | open | Ordered named canonical composition tree, field projections, intrinsic compilation and explicit host placement; concrete proposal in composition-contracts.md | — | — |
+| R9 | settled | Ordered named canonical composition tree, field projections, intrinsic compilation and explicit host placement | KirkDiggler | 2026-11-14 |
+| R10 | open | Catalogue/member reference identity and explicit whole-member replacement for authored variants | — | — |
 
 ## Open
 
-- **Canonical contract (R9):** [the concrete proposal](composition-contracts.md) specifies resolved leaf/composition/member shapes, keys/paths/order, ownership, refusal cases and the explicit placement boundary. Its recommended shape is awaiting agreement; the compiler-facing Go projection facade still needs its exact signature. R6/R7 settle the intent, not every proposed type.
-- **Reference contract:** fix catalogue identity, member addressing, resolution timing, supported reference depth and invalid/cyclic-reference refusal before deriving implementation tasks. No unlimited nesting or arbitrary scripting capability is inferred.
-- **Maintenance contract:** characterize native Rage's real timeline/state first, then choose reusable parts that preserve it and specify the native binding/saved-representation boundary. Reuse of the current Duration adapter alone does not establish parity.
+- **Compiler facade:** [R9](composition-contracts.md) settles resolved leaf/composition/member shapes, keys/paths/order, ownership, refusal cases and explicit placement. The compiler-facing Go projection facade still needs its exact signature; it must delegate to the same intrinsic compiler, not introduce another evaluator.
+- **Reference/variant contract (R10):** [the concrete proposal](reference-contracts.md) separates ref identity from member paths and proposes whole-member replacement on owned values, not a deep merge. That derivation choice remains open; no unlimited nesting, runtime lookup or arbitrary scripting capability is inferred.
+- **Maintenance contract:** [the measured baseline](native-maintenance-evidence.md) identifies native timeline/state behavior and an affected reader seam. Specify reusable parts, simultaneous-ending parity and the native binding/saved-representation boundary next; the current Duration counter alone is not equivalent.
 - **Plan replacement:** re-cut concrete task contracts and provider/consumer checks against these seams. The retained first-cut plan is not authority to proceed with its API adoption or declare the new acceptance complete. [Path forward](next-steps.md).
 - An override convenience remains optional and uncommitted. Explicit selection/composition is the baseline; no automatic merge or production deployment is authorized.

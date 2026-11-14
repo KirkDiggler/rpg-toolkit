@@ -27,7 +27,7 @@ flowchart TD
 
 Compilation of an effect or group does not require a fabricated condition or catalogue. **Making it run still requires a host to bind it.** The diagram does not introduce floating effects, another runtime or a second custody authority. R6/R8.
 
-The [composition contract proposal](composition-contracts.md) makes the canonical
+The [accepted composition contract](composition-contracts.md) makes the canonical
 value shape, keys/paths/order, compilation refusals and placement boundary concrete.
 Its named-tree model lowers to the existing flat runtime, rather than giving every
 authoring group a new lifetime.
@@ -66,6 +66,10 @@ A reference can express this selection:
 This is a semantic sketch, not a finalized JSON path syntax. The reference contract must specify addressing, ambiguity/refusal and supported composition depth before implementation. Configuration can also declare a configured effect directly, or select a whole group/definition. It is not limited to choosing built-in condition names. R6/R7.
 
 **Typed fields and resolved references reach the same canonical values.** The catalogue exports the actual named definition's members, not a separate configuration implementation of Rage. Registration and reference discovery are optional services around those values; they are not prerequisites for compiling an inline effect.
+
+The [reference/variant proposal](reference-contracts.md) makes selection and explicit
+member replacement concrete; [native maintenance evidence](native-maintenance-evidence.md)
+records the clock/state contract the complete Raging definition must preserve.
 
 ## One definition, three consumers
 

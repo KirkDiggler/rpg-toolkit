@@ -13,7 +13,8 @@ Design work for [rpg-project#703](https://github.com/KirkDiggler/rpg-project/iss
 
 - On 2026-11-14 KirkDiggler accepted the effect-first direction: one complete Raging definition with discoverable typed fields, general configurable effects/compositions, shared code/config values and symmetric upkeep reuse. The first-cut execution plan is retained but superseded for continuing work; concrete canonical/reference/native-maintenance contracts must be re-cut before API adoption — [direction change](https://github.com/KirkDiggler/rpg-toolkit/pull/2425#issuecomment-6869803445).
 
-- The lead proposes R9 as an ordered named canonical tree lowered to flat runtime parts, with explicit placement rather than implicit group lifetimes; this is a proposal awaiting agreement, not an operator-approved runtime change — [R9 record](https://github.com/KirkDiggler/rpg-toolkit/pull/2425#issuecomment-6873310528).
+- KirkDiggler accepted R9's ordered named canonical tree, flat runtime lowering, owned compilation and explicit placement; reference variants and native state lowering remain separate contracts — [R9 acceptance](https://github.com/KirkDiggler/rpg-toolkit/pull/2425#issuecomment-6873569590).
+- The lead proposes R10's whole-member replacement as an explicit authoring operation for the fixed-bonus ring, not a silent parameter/deep merge; the decision remains open — [R10 choice](https://github.com/KirkDiggler/rpg-toolkit/pull/2425#issuecomment-6873671557).
 
 ## Found
 
@@ -23,6 +24,8 @@ Design work for [rpg-project#703](https://github.com/KirkDiggler/rpg-project/iss
 - At runtime source c99f3d85 the public composition still requires coordinator/benefits/maintenance and a catalogue entry, while native Rage keeps a private round-anchored upkeep recipe; the generic Duration part counts holder ends, so a field wrapper or direct substitution cannot establish the new parity contract — [measured starting point](https://github.com/KirkDiggler/rpg-toolkit/pull/2425#issuecomment-6869803445).
 
 - Existing PartDeclaration combines config with key/terminal scope, while Assembly owns ordered flat parts, namespace and end routing and refuses nested lifecycle hooks; pure definition compilation can be separated from placement without inventing another runtime — [inspected seam](https://github.com/KirkDiggler/rpg-toolkit/pull/2425#issuecomment-6873310528).
+
+- Fresh current Raging suites pass; missed ends, relative anchoring, roundless/negative rounds and clock reset are already pinned. The inspected web reader still consumes runtime.bag.turns_active, so native state decomposition has a reader seam the earlier opaque linked-payload argument did not cover — [baseline](../../docs/ideas/bless-bane-building-blocks/native-maintenance-evidence.md).
 
 ## Mistaken
 

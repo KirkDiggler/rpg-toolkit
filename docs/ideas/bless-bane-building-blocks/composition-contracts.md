@@ -1,6 +1,6 @@
-# Composition contracts — concrete proposal
+# Composition contracts — accepted R9
 
-Scope: settle the authoring-value and compilation boundary under [R6–R8](design.md), before choosing reference syntax or changing native Rage upkeep. These are proposed contracts, **not implemented APIs or an approved replacement execution plan**. The first-cut source remains unchanged.
+Scope: settle the authoring-value and compilation boundary under [R6–R8](design.md), before choosing reference syntax or changing native Rage upkeep. The value/structure/placement contract is accepted in [the R9 record](https://github.com/KirkDiggler/rpg-toolkit/pull/2425#issuecomment-6873569590). **This is not an implemented API or a checked replacement execution plan.** The first-cut source remains unchanged.
 
 ## The structural choice
 
@@ -157,6 +157,10 @@ A grouping member such as `benefits` or `maintenance` has no magic compiler mean
 | Name a group `maintenance` without placement | No implicit lifetime rule or authorization to end an application |
 
 ## Still separate
+
+The [R10 reference/variant proposal](reference-contracts.md) now makes the next
+choice explicit; the [native maintenance evidence](native-maintenance-evidence.md)
+records the measured timeline and reader boundary rather than guessing them.
 
 The next reference contract must address concrete catalogue refs, member addressing, variants/parameter choices and how a reusable group is configured without a generic deep-patch language. In particular, a fixed-bonus ring and live-Barbarian-scaled native Rage must not be conflated merely because both reuse Rage benefits.
 

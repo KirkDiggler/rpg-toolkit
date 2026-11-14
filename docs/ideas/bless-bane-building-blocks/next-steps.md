@@ -11,6 +11,11 @@ Direction: [design R6–R8](design.md#rulings). Agreement and the change from th
 
 ## 1. Reconcile the complete definition and its actual behavior
 
+[The native baseline](native-maintenance-evidence.md) records fresh passing Raging
+suites, exact clock/grace cases and the inspected native reader dependency.
+Simultaneous-ending characterization and the replacement state/lowering contract
+still need completion; the baseline is not a new runtime design.
+
 **Owner:** root rulebook design, with mechanics/effects read for its existing capabilities.
 
 Inspect the native Raging recipe/codec and the activity/duration/end parts together. Produce a parity matrix for activation grace, attacks including misses, positive applied damage, idle ending, ordinary round progress, missing/backwards/reset clock observations and competing terminal events. Identify which native state fields and condition-identity checks downstream code consumes.
@@ -19,12 +24,11 @@ Inspect the native Raging recipe/codec and the activity/duration/end parts toget
 
 ## 2. Specify one canonical effect/composition model
 
-The [R9 composition contract proposal](composition-contracts.md) now supplies the
-resolved data shapes and conformance cases. It recommends an ordered named tree,
-flat runtime lowering and explicit placement rather than group-owned lifetimes.
-[The decision record](https://github.com/KirkDiggler/rpg-toolkit/pull/2425#issuecomment-6873310528)
-distinguishes that proposal from settled direction and the still-separate compiler
-facade, reference/variant and native-maintenance contracts.
+The [accepted R9 composition contract](composition-contracts.md) supplies resolved
+data shapes and conformance cases: ordered named tree, flat runtime lowering and
+explicit placement rather than group-owned lifetimes. [Acceptance](https://github.com/KirkDiggler/rpg-toolkit/pull/2425#issuecomment-6873569590)
+is recorded. The compiler facade, reference/variant and native-maintenance contracts
+remain distinct work, not a reason to reopen R9.
 
 **Owner:** reusable rulebook effect/composition layer, below condition/application placement.
 
@@ -33,6 +37,11 @@ Fix the concrete types for a configured leaf, ordered named composition members 
 **Output:** concrete API sketches for whole Rage, its benefit group, one physical-resistance field and its maintenance group. Name the package dependency direction, including the named-definition/catalogue home, before writing tasks. The compiler must accept a direct value without creating a one-entry catalogue merely to operate.
 
 ## 3. Specify configuration discovery and reference resolution
+
+The [R10 contract proposal](reference-contracts.md) specifies selection/ownership
+and makes the fixed-bonus variant question concrete. [Its decision checklist](https://github.com/KirkDiggler/rpg-toolkit/pull/2425#issuecomment-6873671557)
+asks only about explicit whole-member replacement versus reassembly/another
+explicit parameter contract; no generic merge is assumed.
 
 **Owner:** catalogue/resolver adapter over the same values.
 
