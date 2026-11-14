@@ -100,11 +100,8 @@ func checkAddToRoll(out generic.Output) error {
 }
 
 func addToRollPartOutput(decl PartDeclaration) (generic.Output, error) {
-	if decl.OnTerminal != generic.EndPart {
-		return generic.Output{}, fmt.Errorf("add-to-roll payload requires local part scope")
-	}
 	out := generic.Output{Kind: KindAddToRoll, Params: jsontext.Value(decl.Params), When: decl.When, Amount: decl.Amount}
-	if err := checkAddToRoll(out); err != nil {
+	if err := validateAddToRollEffect(EffectSpec{Kind: KindAddToRoll, Params: decl.Params, When: decl.When, Amount: decl.Amount}); err != nil {
 		return generic.Output{}, err
 	}
 	return out, nil

@@ -48,10 +48,14 @@ func CompileParts(in *CompilePartsInput) (*CompilePartsOutput, error) {
 		if value.Kind() == reflect.Pointer && value.IsNil() {
 			return nil, fmt.Errorf("typed part %q has a nil effect definition", part.Key)
 		}
-		template, err := part.Effect.effectTemplate()
+		data, err := projectDefinition(&projectionInput{Definition: part.Effect, Active: map[*Composition]bool{}})
 		if err != nil {
 			return nil, fmt.Errorf("typed part %q: %w", part.Key, err)
 		}
+		if data.Effect == nil || data.Composition != nil {
+			return nil, fmt.Errorf("typed part %q requires one effect; compile and place compositions explicitly", part.Key)
+		}
+		template := data.Effect
 		declaration := PartDeclaration{Key: part.Key, Kind: template.Kind, Params: template.Params, When: template.When, Amount: template.Amount, OnTerminal: part.OnTerminal}
 		if err := ValidatePart(&ValidatePartInput{Declaration: declaration}); err != nil {
 			return nil, fmt.Errorf("typed part %q: %w", part.Key, err)

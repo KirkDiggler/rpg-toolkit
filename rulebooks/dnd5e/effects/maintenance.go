@@ -3,7 +3,10 @@
 
 package effects
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+)
 
 // DurationDeclaration describes an authored maximum and grace, not saved progress.
 type DurationDeclaration struct {
@@ -73,10 +76,17 @@ func describePart(part PartDeclaration) (partDescription, error) {
 		return partDescription{}, err
 	}
 	definition := kindTable[part.Kind]
+	var result partDescription
 	if definition.describePart != nil {
-		return definition.describePart(part)
+		description, err := definition.describePart(part)
+		if err != nil {
+			return partDescription{}, err
+		}
+		result = description
 	}
-	return partDescription{}, nil
+	result.capabilities = definition.capabilities
+	result.capabilities.AllowedScopes = slices.Clone(definition.capabilities.AllowedScopes)
+	return result, nil
 }
 
 func describeConcentrationPart(_ PartDeclaration) (partDescription, error) {

@@ -22,6 +22,14 @@
 // it does not relabel the target as the actor. ProjectPartOutput and
 // AssessConfiguredOutput carry owned definitions through that same meaning.
 //
+// Compile accepts typed or resolved definitions without a condition, catalogue,
+// participant or ending policy. Canonical DefinitionData contains exactly one
+// EffectSpec or ordered CompositionData. Sibling keys identify members; labels
+// do not dispatch rules. Compilation preserves authored paths, rejects cycles
+// and invalid meanings, and owns its copies. A group creates no runtime scope.
+// Place applies explicit nonoverlapping mounts and kind-validated terminal scopes
+// to the compiled leaves without inventing holder/source/application identity.
+//
 // Typed Definition values (AddToRoll, EndOn, DamageBonus, Resistance, Advantage,
 // Concentration, Duration and UntilEmpty) compile through CompileParts into owned canonical
 // declarations. Construction requires no runtime identities, JSON at call sites

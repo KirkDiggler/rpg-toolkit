@@ -115,6 +115,37 @@ See [`maintenance_composition_test.go`](../conditions/maintenance_composition_te
 for resistance with and without concentration and preservation of independent
 Raging. This is toolkit composition proof, not a native item-acquisition API.
 
+## Compile reusable definitions before choosing placement
+
+`Compile` accepts a typed leaf, a Go `Composition`, or resolved `DefinitionData`.
+The canonical data contains exactly one EffectSpec or CompositionData; compositions
+have ordered named members. No condition, catalogue, holder, application or terminal
+scope is required just to compile content. An explicit empty composition is empty;
+an absent definition is an error.
+
+```go
+compiled, err := effects.Compile(&effects.CompileInput{
+    Definition: effects.Resistance{Types: []damage.Type{damage.Slashing}},
+})
+// Handle err before choosing placement.
+placed, err := effects.Place(&effects.PlaceInput{
+    Definition: compiled.Definition,
+    Mounts: []effects.Mount{{Key: "ward", OnTerminal: generic.EndPart}},
+})
+```
+
+The root effect has an empty relative definition path; the mount supplies its local
+key. Nested compositions keep depth-first declared paths. Sibling keys are unique
+and exclude `/`; acyclic subtree reuse is allowed and copied, while cycles refuse.
+Compiled Data/Leaves views own their nested configuration. Group labels such as
+`maintenance` have no implicit lifetime meaning.
+
+Placement covers every leaf exactly once with explicit scope. Missing, overlapping
+or invalid paths/scopes refuse without a partial result. Kind-owned intrinsic
+validation is separate from placement validation, so neither fabricates facts for
+the other. `CompileParts` remains the first-cut leaf-and-scope adapter over those
+same validators while condition/application consumers move to definition placement.
+
 ## Typed construction before runtime binding
 
 A Go author supplies values, then explicitly compiles them. No participant IDs,
@@ -234,7 +265,9 @@ are not interchangeable identities.
 | Kind registration and shared evaluation | [kinds.go](kinds.go) |
 | Typed event-chain attachment | [attach.go](attach.go) |
 | Fact/beat binding and amounts | [vocabulary.go](vocabulary.go), [amounts.go](amounts.go) |
-| Typed definition values and pure compilation | [definitions.go](definitions.go), [compile_parts.go](compile_parts.go), [compile_outputs.go](compile_outputs.go) |
+| Canonical values, projection, compilation and placement | [definition_data.go](definition_data.go), [definition_projection.go](definition_projection.go), [definition_compile.go](definition_compile.go), [placement.go](placement.go) |
+| Intrinsic meaning and scope capabilities | [effect_validation.go](effect_validation.go), [kinds.go](kinds.go) |
+| Typed leaf values / first-cut adapters | [definitions.go](definitions.go), [compile_parts.go](compile_parts.go), [compile_outputs.go](compile_outputs.go) |
 | Independent declarations and binding | [parts.go](parts.go), [part_validation.go](part_validation.go) |
 | Payload part example | [resistance_part.go](resistance_part.go) |
 | Maintenance parts | [concentration_part.go](concentration_part.go), [duration_part.go](duration_part.go), [end_parts.go](end_parts.go) |

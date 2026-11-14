@@ -51,6 +51,8 @@ type BindPartInput struct {
 type PartCapabilities struct {
 	Concentration bool
 	Duration      bool
+	RoundDuration bool
+	AllowedScopes []generic.EndScope
 }
 
 // BindPartOutput supplies a local generic runtime declaration and its capabilities.

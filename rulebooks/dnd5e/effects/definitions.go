@@ -12,10 +12,13 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/damage"
 )
 
-// Definition is typed, unbound rulebook content. CompileParts lowers these
-// values into canonical PartDeclaration data and returns validation errors.
-// The private adapter method admits no author-supplied runtime callbacks.
-type Definition interface{ effectTemplate() (PartTemplate, error) }
+// Definition projects typed, unbound content to canonical definition data.
+// Projection is pure and finite: no world lookup, binding, payment or runtime
+// state. Compile propagates projection errors and retains only owned data,
+// never this interface or a running callback.
+type Definition interface {
+	DefinitionData() (DefinitionData, error)
+}
 
 // SignedDice describes an unresolved homogeneous pool and its explicit polarity.
 // Notation contains no sign or fixed modifier; construction never rolls it.
@@ -32,7 +35,8 @@ type AddToRoll struct {
 	Selection generic.SelectionRule
 }
 
-func (d AddToRoll) effectTemplate() (PartTemplate, error) {
+// DefinitionData projects the configured signed roll contribution without binding.
+func (d AddToRoll) DefinitionData() (DefinitionData, error) {
 	return definitionTemplate(definitionTemplateInput{Kind: KindAddToRoll, Amount: &generic.Amount{Dice: d.Amount.Notation}, Params: addToRollParams{Polarity: d.Amount.Polarity, Rolls: d.Rolls, Selection: d.Selection}})
 }
 
@@ -43,7 +47,8 @@ type EndOn struct {
 	Reason string
 }
 
-func (d EndOn) effectTemplate() (PartTemplate, error) {
+// DefinitionData projects the occurrence/reason without choosing an ending scope.
+func (d EndOn) DefinitionData() (DefinitionData, error) {
 	return definitionTemplate(definitionTemplateInput{Kind: KindEndOn, Params: endOnParams(d)})
 }
 
@@ -54,7 +59,8 @@ type DamageBonus struct {
 	When   *machine.Guard
 }
 
-func (d DamageBonus) effectTemplate() (PartTemplate, error) {
+// DefinitionData projects the amount/guard; Compile owns the resulting copy.
+func (d DamageBonus) DefinitionData() (DefinitionData, error) {
 	return definitionTemplate(definitionTemplateInput{Kind: KindDamageBonus, Amount: &d.Amount, When: d.When})
 }
 
@@ -62,7 +68,8 @@ func (d DamageBonus) effectTemplate() (PartTemplate, error) {
 // It includes no activity, concentration or other ending policy.
 type Resistance struct{ Types []damage.Type }
 
-func (d Resistance) effectTemplate() (PartTemplate, error) {
+// DefinitionData projects the configured damage types without runtime effects.
+func (d Resistance) DefinitionData() (DefinitionData, error) {
 	return definitionTemplate(definitionTemplateInput{Kind: KindResistance, Params: resistanceParams(d)})
 }
 
@@ -96,7 +103,8 @@ type Advantage struct {
 	When *machine.Guard
 }
 
-func (d Advantage) effectTemplate() (PartTemplate, error) {
+// DefinitionData projects domain/side/guard without assessing a live action.
+func (d Advantage) DefinitionData() (DefinitionData, error) {
 	params := struct {
 		On   AdvantageDomain `json:"on"`
 		Side AttackSide      `json:"side,omitempty"`
@@ -108,8 +116,9 @@ func (d Advantage) effectTemplate() (PartTemplate, error) {
 // concentration meaning. It adds no duration, rest or recipient-activity rule.
 type Concentration struct{}
 
-func (Concentration) effectTemplate() (PartTemplate, error) {
-	return PartTemplate{Kind: KindConcentration}, nil
+// DefinitionData projects concentration meaning without inventing an owner.
+func (Concentration) DefinitionData() (DefinitionData, error) {
+	return DefinitionData{Effect: &EffectSpec{Kind: KindConcentration}}, nil
 }
 
 // Duration counts positive holder turn ends independently of payloads or
@@ -120,15 +129,17 @@ type Duration struct {
 	SkipFirst bool
 }
 
-func (d Duration) effectTemplate() (PartTemplate, error) {
+// DefinitionData projects the authored counter/grace, not current progress.
+func (d Duration) DefinitionData() (DefinitionData, error) {
 	return definitionTemplate(definitionTemplateInput{Kind: KindDuration, Params: durationParams(d)})
 }
 
 // UntilEmpty ends an application on actual last-member loss, not empty creation.
 type UntilEmpty struct{}
 
-func (UntilEmpty) effectTemplate() (PartTemplate, error) {
-	return PartTemplate{Kind: KindUntilEmpty}, nil
+// DefinitionData projects last-member upkeep without inventing membership.
+func (UntilEmpty) DefinitionData() (DefinitionData, error) {
+	return DefinitionData{Effect: &EffectSpec{Kind: KindUntilEmpty}}, nil
 }
 
 type definitionTemplateInput struct {
@@ -138,14 +149,14 @@ type definitionTemplateInput struct {
 	Amount *generic.Amount
 }
 
-func definitionTemplate(in definitionTemplateInput) (PartTemplate, error) {
+func definitionTemplate(in definitionTemplateInput) (DefinitionData, error) {
 	var params json.RawMessage
 	if in.Params != nil {
 		raw, err := json.Marshal(in.Params)
 		if err != nil {
-			return PartTemplate{}, err
+			return DefinitionData{}, err
 		}
 		params = raw
 	}
-	return PartTemplate{Kind: in.Kind, Params: params, When: in.When, Amount: in.Amount}, nil
+	return DefinitionData{Effect: &EffectSpec{Kind: in.Kind, Params: params, When: in.When, Amount: in.Amount}}, nil
 }

@@ -46,7 +46,11 @@ func parseEndOn(declaration PartDeclaration) (endOnParams, error) {
 	if declaration.OnTerminal != generic.EndApplication && declaration.OnTerminal != generic.EndAttachment {
 		return endOnParams{}, fmt.Errorf("end policy must end its attachment or application")
 	}
-	params, err := decodeParams[endOnParams](jsontext.Value(declaration.Params))
+	return parseEndOnParams(jsontext.Value(declaration.Params))
+}
+
+func parseEndOnParams(raw jsontext.Value) (endOnParams, error) {
+	params, err := decodeParams[endOnParams](raw)
 	if err != nil {
 		return endOnParams{}, err
 	}

@@ -20,18 +20,20 @@ import (
 )
 
 type kindDefinition struct {
-	checkBinding func(generic.Output, BindInput) error
-	class        PartClass
-	payload      func(PartDeclaration) (generic.Output, error)
-	execution    generic.KindExecution
-	assess       func(*AssessInput, meaning) (assessment, error)
-	validatePart func(PartDeclaration) error
-	part         func(*BindPartInput) (boundPart, error)
-	inspectPart  func(*InspectPartInput) (*PartInfo, error)
-	describePart func(PartDeclaration) (partDescription, error)
-	check        func(generic.Output) error
-	meaning      func(jsontext.Value) (meaning, error)
-	attach       func(context.Context, events.EventBus, *generic.Bound, BindInput) (generic.Detach, error)
+	validateEffect func(EffectSpec) error
+	capabilities   PartCapabilities
+	checkBinding   func(generic.Output, BindInput) error
+	class          PartClass
+	payload        func(PartDeclaration) (generic.Output, error)
+	execution      generic.KindExecution
+	assess         func(*AssessInput, meaning) (assessment, error)
+	validatePart   func(PartDeclaration) error
+	part           func(*BindPartInput) (boundPart, error)
+	inspectPart    func(*InspectPartInput) (*PartInfo, error)
+	describePart   func(PartDeclaration) (partDescription, error)
+	check          func(generic.Output) error
+	meaning        func(jsontext.Value) (meaning, error)
+	attach         func(context.Context, events.EventBus, *generic.Bound, BindInput) (generic.Detach, error)
 }
 
 type meaning struct {
@@ -58,16 +60,16 @@ type assessment struct {
 // kindTable is the only kind registration: generic validation/attachment/rows
 // and richer rulebook assessment all resolve through these same entries.
 var kindTable = map[generic.KindName]kindDefinition{
-	KindCombatActivity: {class: PartClassMaintenance, validatePart: validateActivityPart, part: bindActivityPart, inspectPart: inspectActivityPart},
-	KindDamageBonus:    {class: PartClassBenefit, payload: damagePartOutput, validatePart: validateDamagePart, part: bindDamagePart, inspectPart: inspectDamagePart, check: checkDamage, meaning: damageMeaning, attach: attachDamage},
-	KindResistance:     {class: PartClassBenefit, payload: resistancePartOutput, validatePart: validateResistancePart, part: bindResistancePart, inspectPart: inspectResistancePart, check: checkResistance, meaning: resistanceMeaning, attach: attachResistance},
-	KindAdvantage:      {class: PartClassBenefit, payload: advantagePartOutput, validatePart: validateAdvantagePart, part: bindAdvantagePart, inspectPart: inspectAdvantagePart, check: checkAdvantage, checkBinding: checkAdvantageBinding, meaning: advantageMeaning, attach: attachAdvantage},
-	KindConcentration: {class: PartClassMaintenance, describePart: describeConcentrationPart, validatePart: checkUnparameterizedMaintenance, part: bindConcentrationPart, inspectPart: inspectConcentrationPart,
+	KindCombatActivity: {class: PartClassMaintenance, validateEffect: validateActivityEffect, capabilities: PartCapabilities{AllowedScopes: []generic.EndScope{generic.EndApplication}}, validatePart: validateActivityPart, part: bindActivityPart, inspectPart: inspectActivityPart},
+	KindDamageBonus:    {class: PartClassBenefit, validateEffect: validateDamageEffect, capabilities: PartCapabilities{AllowedScopes: []generic.EndScope{generic.EndPart}}, payload: damagePartOutput, validatePart: validateDamagePart, part: bindDamagePart, inspectPart: inspectDamagePart, check: checkDamage, meaning: damageMeaning, attach: attachDamage},
+	KindResistance:     {class: PartClassBenefit, validateEffect: validateResistanceEffect, capabilities: PartCapabilities{AllowedScopes: []generic.EndScope{generic.EndPart}}, payload: resistancePartOutput, validatePart: validateResistancePart, part: bindResistancePart, inspectPart: inspectResistancePart, check: checkResistance, meaning: resistanceMeaning, attach: attachResistance},
+	KindAdvantage:      {class: PartClassBenefit, validateEffect: validateAdvantageEffect, capabilities: PartCapabilities{AllowedScopes: []generic.EndScope{generic.EndPart}}, payload: advantagePartOutput, validatePart: validateAdvantagePart, part: bindAdvantagePart, inspectPart: inspectAdvantagePart, check: checkAdvantage, checkBinding: checkAdvantageBinding, meaning: advantageMeaning, attach: attachAdvantage},
+	KindConcentration: {class: PartClassMaintenance, validateEffect: validateUnparameterizedEffect, capabilities: PartCapabilities{Concentration: true, AllowedScopes: []generic.EndScope{generic.EndApplication}}, describePart: describeConcentrationPart, validatePart: checkUnparameterizedMaintenance, part: bindConcentrationPart, inspectPart: inspectConcentrationPart,
 		check: checkConcentrationOutput, meaning: concentrationMeaning, attach: attachConcentration},
-	KindDuration:   {class: PartClassMaintenance, describePart: describeDurationPart, validatePart: validateDurationPart, part: bindDurationPart, inspectPart: inspectDurationPart},
-	KindUntilEmpty: {class: PartClassMaintenance, validatePart: checkUnparameterizedMaintenance, part: bindUntilEmptyPart, inspectPart: inspectUntilEmptyPart},
-	KindEndOn:      {class: PartClassMaintenance, validatePart: validateEndOnPart, part: bindEndOnPart, inspectPart: inspectEndOnPart},
-	KindAddToRoll: {class: PartClassBenefit, payload: addToRollPartOutput, validatePart: validateAddToRollPart, part: bindAddToRollPart, inspectPart: inspectAddToRollPart, execution: generic.KindQuery,
+	KindDuration:   {class: PartClassMaintenance, validateEffect: validateDurationEffect, capabilities: PartCapabilities{Duration: true, AllowedScopes: []generic.EndScope{generic.EndApplication}}, describePart: describeDurationPart, validatePart: validateDurationPart, part: bindDurationPart, inspectPart: inspectDurationPart},
+	KindUntilEmpty: {class: PartClassMaintenance, validateEffect: validateUnparameterizedEffect, capabilities: PartCapabilities{AllowedScopes: []generic.EndScope{generic.EndApplication}}, validatePart: checkUnparameterizedMaintenance, part: bindUntilEmptyPart, inspectPart: inspectUntilEmptyPart},
+	KindEndOn:      {class: PartClassMaintenance, validateEffect: validateEndOnEffect, capabilities: PartCapabilities{AllowedScopes: []generic.EndScope{generic.EndAttachment, generic.EndApplication}}, validatePart: validateEndOnPart, part: bindEndOnPart, inspectPart: inspectEndOnPart},
+	KindAddToRoll: {class: PartClassBenefit, validateEffect: validateAddToRollEffect, capabilities: PartCapabilities{AllowedScopes: []generic.EndScope{generic.EndPart}}, payload: addToRollPartOutput, validatePart: validateAddToRollPart, part: bindAddToRollPart, inspectPart: inspectAddToRollPart, execution: generic.KindQuery,
 		check: checkAddToRoll, meaning: addToRollMeaning, assess: assessAddToRoll},
 }
 
