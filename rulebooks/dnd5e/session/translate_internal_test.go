@@ -397,17 +397,25 @@ func TestTranslateNamesWhomTheGuardsHold(t *testing.T) {
 	require.Equal(t, "The guards hold alice; they cannot be moved.", held.Sentence("cleric"))
 }
 
-// TestASpokenJailRefusalIsNotABadCoordinate: a line refused because the
-// cells cannot take the party arrives as [ErrJailRefused], with no
-// composition error, where translate alone would have said ErrBadPosition.
-// Any other landing refusal is left for translate.
-func TestASpokenJailRefusalIsNotABadCoordinate(t *testing.T) {
-	refused := fmt.Errorf("speak: jail: every taken member has left the run: %w", encounter.ErrBadPlacement)
-	require.ErrorIs(t, translate(refused), ErrBadPosition, "what it read as before")
-	got := spokenRefusal(refused)
-	require.ErrorIs(t, got, ErrJailRefused)
-	require.False(t, errors.Is(got, encounter.ErrBadPlacement), "no composition error crosses")
-	require.Equal(t, "The guards cannot take you to the cells now.", ErrJailRefused.Error())
+// TestANoRoomRefusalIsNotABadCoordinate: a line said or a thing done
+// refused because the place its verdict would set somebody down in has no
+// room — a passage's far end, or the cells — arrives as [ErrNoRoom] with a
+// neutral sentence, never the jail's, and with no composition error, where
+// translate alone would have said ErrBadPosition (rpg-toolkit#2429 item 1).
+// [ErrJailRefused] is the same sentinel. Any other landing refusal is left
+// for translate.
+func TestANoRoomRefusalIsNotABadCoordinate(t *testing.T) {
+	for _, refused := range []error{
+		fmt.Errorf("speak: jail: free cells in %q: 2 wanted, 1 free: %w", "region-cells", encounter.ErrBadPlacement),
+		fmt.Errorf("interact: relocate: free cells in %q: 1 wanted, 0 free: %w", "region-chapel", encounter.ErrBadPlacement),
+	} {
+		require.ErrorIs(t, translate(refused), ErrBadPosition, "what it read as before")
+		got := spokenRefusal(refused)
+		require.ErrorIs(t, got, ErrNoRoom)
+		require.ErrorIs(t, got, ErrJailRefused, "the deprecated name is the same sentinel")
+		require.False(t, errors.Is(got, encounter.ErrBadPlacement), "no composition error crosses")
+	}
+	require.Equal(t, "There is no room for you there now.", ErrNoRoom.Error())
 	other := fmt.Errorf("speak: %w", encounter.ErrNoOption)
 	require.ErrorIs(t, translate(spokenRefusal(other)), ErrNoOption)
 	require.NoError(t, spokenRefusal(nil))

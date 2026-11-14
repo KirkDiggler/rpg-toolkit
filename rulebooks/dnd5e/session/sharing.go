@@ -298,6 +298,8 @@ func headOf(e record.Entry) entryHead {
 		Position    *json.RawMessage `json:"position"`
 		Member      string           `json:"member"`
 		Cause       string           `json:"cause"`
+		View        string           `json:"view"`
+		Actor       string           `json:"actor"`
 	}
 	if json.Unmarshal(e.Payload, &p) != nil {
 		return entryHead{}
@@ -308,6 +310,10 @@ func headOf(e record.Entry) entryHead {
 		h.utterance = p.Utterance
 	case encounter.BeatRelocated:
 		h.utterance = relocationKey(p.Member, p.Cause, e)
+	case encounter.BeatInteracted:
+		if p.View != "" {
+			h.utterance = fmt.Sprintf("interacted\x00%s\x00%s\x00%d", p.Actor, e.Tags[encounter.ActTag], e.At)
+		}
 	case encounter.BeatAnswered:
 		h.creature, h.stripped = p.Creature, strippedPickOf(e.Payload)
 	case encounter.BeatConcealmentRevealed:
@@ -695,6 +701,92 @@ func mergedRelocation(versions []utteranceVersion) (piece, error) {
 	return out, nil
 }
 
+// mergedInteraction is the one [InteractAct] a recipient is shown of a thing
+// done that several party members perceived (rpg-project#959, R11): the
+// recipient's own version, each part it lacks — the prop, the option, the
+// words, the verdict and the check — taken from a friend's version in record
+// order, and [Perceived.Via] naming exactly the friends whose versions held
+// a part the recipient's own lacked. So a friend of the doer is shown the
+// doer's version through them, a hidden thing named included: SHOWN, NEVER
+// KNOWN — their own map and offers stay without it.
+func mergedInteraction(versions []utteranceVersion) (piece, error) {
+	var own *InteractAct
+	type friendVersion struct {
+		act InteractAct
+		via []encounter.MemberID
+	}
+	var friends []friendVersion
+	for _, v := range versions {
+		p, err := interactPiece(v.payload)
+		if err != nil {
+			return piece{}, err
+		}
+		act := p.body.(InteractAct)
+		if v.via == nil {
+			own = &act
+			continue
+		}
+		friends = append(friends, friendVersion{act: act, via: v.via})
+	}
+	var merged InteractAct
+	if own != nil {
+		merged = *own
+	}
+	var via []encounter.MemberID
+	for i, f := range friends {
+		if own == nil && i == 0 {
+			merged = InteractAct{Actor: f.act.Actor}
+		}
+		added := false
+		if merged.Prop == (Party{}) && f.act.Prop != (Party{}) {
+			merged.Prop, added = f.act.Prop, true
+		}
+		if merged.Option == "" && f.act.Option != "" {
+			merged.Option, added = f.act.Option, true
+		}
+		// The doer's words outrank a witness's: the friend's version that
+		// names the option is the doer's own.
+		if f.act.Option != "" && f.act.Words != "" && merged.Words != f.act.Words {
+			merged.Words, added = f.act.Words, true
+		} else if merged.Words == "" && f.act.Words != "" {
+			merged.Words, added = f.act.Words, true
+		}
+		if merged.Beaten == nil && f.act.Beaten != nil {
+			beaten := *f.act.Beaten
+			merged.Beaten, added = &beaten, true
+		}
+		if merged.Roll == nil && f.act.Roll != nil {
+			merged.Skill, merged.Roll, added = f.act.Skill, f.act.Roll, true
+		}
+		if merged.Place == nil && f.act.Place != nil && merged.Prop == (Party{}) {
+			at := *f.act.Place
+			merged.Place, added = &at, true
+		}
+		if !added {
+			continue
+		}
+		for _, id := range f.via {
+			if !slices.Contains(via, id) {
+				via = append(via, id)
+			}
+		}
+	}
+	// A NAMED THING NEEDS NO PLACE: once the merge names the prop, the bare
+	// "something was done there" of a witness not shown it says nothing more.
+	if merged.Prop != (Party{}) {
+		merged.Place = nil
+	}
+	out := piece{family: FamilyAct, body: merged}
+	if len(via) > 0 {
+		slices.Sort(via)
+		out.perceived = &Perceived{}
+		for _, id := range via {
+			out.perceived.Via = append(out.perceived.Via, member(string(id)))
+		}
+	}
+	return out, nil
+}
+
 // lacksAPart reports whether a friend's version holds a part the
 // recipient's own does not.
 func lacksAPart(own, friend SpeechAct) bool {
@@ -774,6 +866,17 @@ func marked(e storyEntry, pieces []piece) []piece {
 // entryPieces is what one story entry contributes: the merged speech for an
 // utterance several members perceived, else [piecesOf], marked.
 func entryPieces(recipient, tag string, e storyEntry) []piece {
+	if e.head.beat == encounter.BeatInteracted && e.head.utterance != "" && (len(e.versions) > 0 || e.via != nil) {
+		versions := e.versions
+		if len(versions) == 0 {
+			versions = []utteranceVersion{{payload: e.Payload, via: e.via}}
+		}
+		p, err := mergedInteraction(versions)
+		if err != nil {
+			return []piece{{family: FamilyAct, undecoded: fmt.Sprintf("%s: %v", encounter.BeatInteracted, err)}}
+		}
+		return []piece{p}
+	}
 	if e.head.beat == encounter.BeatRelocated && (len(e.versions) > 0 || e.via != nil) {
 		versions := e.versions
 		if len(versions) == 0 {

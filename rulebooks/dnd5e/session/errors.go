@@ -393,12 +393,22 @@ var (
 	// guards is the one other way out.
 	ErrInCustody = errors.New("The guards hold you; you cannot walk away.") //nolint:staticcheck // the player's sentence
 
-	// ErrJailRefused is a line refused whole because the cell its verdict
-	// would march the speaker's party into cannot take them now
-	// (rpg-project#925): every member taken has left the run, or the cells
-	// have too few free places. Nothing is said, stepped or moved. Its text
-	// is the sentence the player is shown.
-	ErrJailRefused = errors.New("The guards cannot take you to the cells now.") //nolint:staticcheck // the player's sentence
+	// ErrNoRoom is a line said or a thing done refused whole because its
+	// verdict would set somebody down where there is no room for them now:
+	// a passage's far end full (rpg-project#958), or the cells a jail
+	// marches the party to too full to take them (rpg-project#925). Nothing
+	// is said, done, stepped or moved. Its text is the sentence the player
+	// is shown, neutral because the encounter's refusal does not say which
+	// (rpg-toolkit#2429 item 1).
+	ErrNoRoom = errors.New("There is no room for you there now.") //nolint:staticcheck // the player's sentence
+
+	// ErrJailRefused is [ErrNoRoom] under the name the jail first gave it
+	// (rpg-project#925): the same sentinel, so errors.Is holds for either.
+	//
+	// Deprecated: use ErrNoRoom. The jail's own sentence ("The guards cannot
+	// take you to the cells now.") was wrong at a passage, and the encounter
+	// does not let this seam tell the two apart honestly.
+	ErrJailRefused = ErrNoRoom
 
 	// ErrNotDown is Loot's refusal for a body that is still standing — the
 	// host-seam twin of encounter.ErrNotDown (rpg-project#368 §4.2).

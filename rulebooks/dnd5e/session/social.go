@@ -74,12 +74,33 @@ type speakLanding struct {
 	// beat so the table reads "2d20 [7, 18] kept 7 · disadvantage: Poisoned"
 	// rather than one number (rpg-project#462).
 	Calculation *encounter.RollCalculation
+
+	// Verb is which composition op lands it: [VerbSpeak] for a line said,
+	// [VerbInteract] for a thing done to a prop (rpg-project#959). Empty is
+	// a line.
+	Verb Verb
 }
 
-// landSpoken hands one settled verdict to the composition's one social op,
-// which appends the `spoke` beat, lands the skill's deed, and rolls the
-// option's answer rows with this session's dice.
-func (m *Manager) landSpoken(ctx context.Context, enc *encounter.Encounter, in *speakLanding) (*encounter.SpeakOutput, error) {
+// landSpoken hands one settled verdict to the composition: a line to its one
+// social op, which appends the `spoke` beat, lands the skill's deed, and
+// rolls the option's answer rows with this session's dice; a thing done to
+// a prop to [encounter.Encounter.Interact], which does the same seen and not
+// heard (rpg-project#959). Only the verdict comes back: whether it beat the
+// check.
+func (m *Manager) landSpoken(ctx context.Context, enc *encounter.Encounter, in *speakLanding) (bool, error) {
+	if in.Verb == VerbInteract {
+		done, err := enc.Interact(&encounter.InteractInput{
+			Actor: in.Actor, Prop: in.Prop,
+			OptionID: in.OptionID, Revision: in.Revision, Skill: in.Skill,
+			Range:  InteractionReach,
+			Beaten: in.Beaten, DC: in.DC, Total: in.Total, Calculation: in.Calculation,
+			Roller: &diceSeam{roller: m.dice},
+		})
+		if err != nil {
+			return false, spokenRefusal(err)
+		}
+		return done.Beaten, nil
+	}
 	out, err := enc.Speak(ctx, &encounter.SpeakInput{
 		Actor: in.Actor, Target: in.Target, Prop: in.Prop,
 		OptionID: in.OptionID, Revision: in.Revision, Skill: in.Skill,
@@ -89,21 +110,28 @@ func (m *Manager) landSpoken(ctx context.Context, enc *encounter.Encounter, in *
 		Beaten: in.Beaten, DC: in.DC, Total: in.Total, Calculation: in.Calculation,
 		Roller: &diceSeam{roller: m.dice},
 	})
-	return out, spokenRefusal(err)
+	if err != nil {
+		return false, spokenRefusal(err)
+	}
+	return out.Beaten, nil
 }
 
-// spokenRefusal is the composition's Speak refusal in this seam's words where
-// it means something only a landing can mean (rpg-project#925): a line whose
-// verdict would jail the speaker's party when the cells cannot take them —
-// every taken member gone, or too few free cells — is refused whole as
-// [ErrJailRefused]. The composition names that refusal ErrBadPlacement,
-// which translate would read as a bad coordinate; it cannot be one here,
-// because the reply door ([encounter.Encounter.ChooseOption]) already
-// placed the speaker before anything was charged. Every other refusal is
-// returned as it came, for the caller's translate.
+// spokenRefusal is the composition's Speak or Interact refusal in this
+// seam's words where it means something only a landing can mean: a line or
+// a thing done whose verdict would set somebody down where there is no room
+// for them — a passage's far end full (rpg-project#958), or the cells a jail
+// marches the party to (rpg-project#925) — is refused whole as
+// [ErrNoRoom]. The composition names both ErrBadPlacement; it cannot be a
+// bad coordinate here, because the reply door
+// ([encounter.Encounter.ChooseOption]) already placed the actor before
+// anything was charged. ONE NEUTRAL SENTENCE FOR BOTH, because at this
+// encounter the two refusals carry the same sentinel and only their text
+// tells them apart, which is no honest thing to branch on
+// (rpg-toolkit#2429 item 1). Every other refusal is returned as it came, for
+// the caller's translate.
 func spokenRefusal(err error) error {
 	if err != nil && errors.Is(err, encounter.ErrBadPlacement) {
-		return fmt.Errorf("%w", ErrJailRefused)
+		return fmt.Errorf("%w", ErrNoRoom)
 	}
 	return err
 }
@@ -123,35 +151,35 @@ func spokenRefusal(err error) error {
 // ErrNotYourTurn, ErrDowned, ErrNoMember, ErrNoProp, ErrCannotAfford,
 // ErrUnwitnessed, ErrOutOfRange (a creature), ErrStaleDeclaration (a prop
 // no longer on the menu).
-func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, error) {
+func (m *Manager) social(ctx context.Context, verb Verb, in *SpeakInput) (*SpeakOutput, error) {
 	member := in.Member
 	if member == "" {
-		return nil, fmt.Errorf("%s: %w", VerbSpeak, ErrNoMemberID)
+		return nil, fmt.Errorf("%s: %w", verb, ErrNoMemberID)
 	}
 	if (in.Target == "") == (in.Prop == "") {
-		return nil, fmt.Errorf("%s: a line is said to exactly one creature or prop: %w", VerbSpeak, ErrNoMemberID)
+		return nil, fmt.Errorf("%s: a line is said to exactly one creature or prop: %w", verb, ErrNoMemberID)
 	}
 	if in.OptionID == "" {
-		return nil, fmt.Errorf("%s: no line named: %w", VerbSpeak, ErrNoOption)
+		return nil, fmt.Errorf("%s: no line named: %w", verb, ErrNoOption)
 	}
 
-	scope, err := m.openForChangeBy(ctx, string(VerbSpeak), in.Session, member)
+	scope, err := m.openForChangeBy(ctx, string(verb), in.Session, member)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
+		return nil, fmt.Errorf("%s: %w", verb, err)
 	}
 
 	clock, err := scope.enc.ClockOf(&encounter.ClockOfInput{Member: encounter.MemberID(member)})
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", VerbSpeak, translate(err))
+		return nil, fmt.Errorf("%s: %w", verb, translate(err))
 	}
 	// REFUSED OUTSIDE THE ACTOR'S TURN *ON THE TURN CLOCK ONLY* (R3, Kirk,
 	// 2026-09-17: "this will be the first getting verbs outside combat"). A
 	// front room has no turn to be out of, so the world clock is not gated.
 	if ClockKind(clock.Kind) == ClockTurn && string(clock.Active) != member {
-		return nil, fmt.Errorf("%s: %w", VerbSpeak, ErrNotYourTurn)
+		return nil, fmt.Errorf("%s: %w", verb, ErrNotYourTurn)
 	}
 	if err := refuseIfDown(scope, "member", member); err != nil {
-		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
+		return nil, fmt.Errorf("%s: %w", verb, err)
 	}
 
 	// ASKED BEFORE ANYTHING IS CHARGED, AND BEFORE ANYTHING IS ROLLED, through
@@ -162,23 +190,29 @@ func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, erro
 	// offered them.
 	lines, err := linesOffered(scope.enc, member, in.Target, in.Prop)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
+		return nil, fmt.Errorf("%s: %w", verb, err)
 	}
 	idx := slices.IndexFunc(lines, func(o encounter.OfferedOption) bool { return o.ID == in.OptionID })
 	if idx < 0 {
-		return nil, fmt.Errorf("%s: %q is not a line this speaker is offered: %w", VerbSpeak, in.OptionID, ErrNoOption)
+		return nil, fmt.Errorf("%s: %q is not a line this speaker is offered: %w", verb, in.OptionID, ErrNoOption)
 	}
 	line := lines[idx]
+	// SAID OR DONE (rpg-project#959): a line is Speak's and a thing to do is
+	// Interact's, and the other verb refuses it here, before anything is
+	// charged or rolled, as a line not offered.
+	if line.Does() != (verb == VerbInteract) {
+		return nil, fmt.Errorf("%s: %q is not one this verb takes: %w", verb, in.OptionID, ErrNoOption)
+	}
 
 	if in.Target != "" {
 		witnesses, err := scope.enc.Witnesses(encounter.MemberID(member))
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", VerbSpeak, translate(err))
+			return nil, fmt.Errorf("%s: %w", verb, translate(err))
 		}
 		if !slices.Contains(witnesses, encounter.MemberID(in.Target)) {
 			// THIS SEAM'S OWN SENTINEL, not the composition's. A raw
 			// encounter error crossing here is the S2 leak.
-			return nil, fmt.Errorf("%s: target %q cannot see the actor: %w", VerbSpeak, in.Target, ErrUnwitnessed)
+			return nil, fmt.Errorf("%s: target %q cannot see the actor: %w", verb, in.Target, ErrUnwitnessed)
 		}
 	}
 	// REACH LAST OF THE DOORS, BEFORE THE PRICE (rpg-project#753 R4): only a
@@ -187,7 +221,7 @@ func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, erro
 	// target is too far to hear must not cost the actor their action on the
 	// way to being told so. The composition asks again at its own door.
 	if err := refuseSpeakOutOfReach(scope.enc, member, in.Target, in.Prop); err != nil {
-		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
+		return nil, fmt.Errorf("%s: %w", verb, err)
 	}
 	// THE COMPOSITION'S REPLY DOOR, LAST BEFORE THE PRICE (rpg-project#924):
 	// the one door its Speak and Reserve ask, read-only. It adds the two
@@ -199,7 +233,7 @@ func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, erro
 		Actor: encounter.MemberID(member), Target: encounter.MemberID(in.Target), Prop: encounter.PropID(in.Prop),
 		OptionID: in.OptionID, Revision: in.Revision, Range: InteractionReach,
 	}); err != nil {
-		return nil, fmt.Errorf("%s: %w", VerbSpeak, translate(err))
+		return nil, fmt.Errorf("%s: %w", verb, translate(err))
 	}
 
 	// A PLAIN LINE IS FREE ON BOTH CLOCKS (rpg-project#785 R5: "the check is
@@ -208,7 +242,7 @@ func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, erro
 	// round for it. Asked after every door above, so a plain line is refused
 	// exactly where a checked one would be.
 	if !line.Checked() {
-		return m.speakPlain(ctx, scope, in)
+		return m.speakPlain(ctx, scope, verb, in)
 	}
 
 	// A CHECKED LINE IS THE ACTION: the standard action on the turn clock,
@@ -216,19 +250,19 @@ func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, erro
 	// the line lands ([encounter.Encounter.Speak]), so nothing is spent here.
 	if ClockKind(clock.Kind) == ClockTurn {
 		if err := m.spendOnSocial(ctx, scope, member, clock.Round); err != nil {
-			return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
+			return nil, fmt.Errorf("%s: %w", verb, err)
 		}
 	}
 
 	if err := m.stageCheck(ctx, scope, "member", member); err != nil {
-		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
+		return nil, fmt.Errorf("%s: %w", verb, err)
 	}
 	// A character with no proficiency in the skill the applied route rolls
 	// simply adds no proficiency bonus: one d20, no rule imposed
 	// (rpg-project#569).
 	outcome, verr := m.resolveStagedCheckPoseable(scope, member, line.Check)
 	if verr != nil {
-		return nil, fmt.Errorf("%s %q: %w", VerbSpeak, in.OptionID, verr)
+		return nil, fmt.Errorf("%s %q: %w", verb, in.OptionID, verr)
 	}
 
 	// THE ATTEMPT STOPPED TO ASK. The checker holds something that could join
@@ -236,11 +270,11 @@ func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, erro
 	// the target yet, so there is no deed and no beat beyond the pause itself
 	// — but the action, if one was spent, is spent and stays spent.
 	if outcome.Posed != nil {
-		return m.poseSocialWindow(ctx, scope, in, outcome.Posed)
+		return m.poseSocialWindow(ctx, scope, verb, in, outcome.Posed)
 	}
 
 	verdict := outcome.Verdict
-	if err := requireCalculation(string(VerbSpeak), member, verdict.Calculation); err != nil {
+	if err := requireCalculation(string(verb), member, verdict.Calculation); err != nil {
 		return nil, err
 	}
 
@@ -255,18 +289,19 @@ func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, erro
 		DC:          verdict.Applied.DC,
 		Total:       verdict.Total,
 		Calculation: verdict.Calculation,
+		Verb:        verb,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", VerbSpeak, translate(err))
+		return nil, fmt.Errorf("%s: %w", verb, translate(err))
 	}
 
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
+		return nil, fmt.Errorf("%s: %w", verb, err)
 	}
 
 	return &SpeakOutput{
-		Beaten:   spoken.Beaten,
+		Beaten:   spoken,
 		Total:    verdict.Total,
 		DC:       verdict.Applied.DC,
 		Applied:  projectApproach(verdict.Applied),
@@ -281,25 +316,26 @@ func (m *Manager) speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, erro
 // speakPlain lands a line that rolls no check (rpg-project#785 R5): nothing
 // is spent, nothing is staged or rolled, and the composition answers it from
 // its success rows with no deed. Every door was asked by the caller.
-func (m *Manager) speakPlain(ctx context.Context, scope *writeScope, in *SpeakInput) (*SpeakOutput, error) {
+func (m *Manager) speakPlain(ctx context.Context, scope *writeScope, verb Verb, in *SpeakInput) (*SpeakOutput, error) {
 	spoken, err := m.landSpoken(ctx, scope.enc, &speakLanding{
 		Actor:    encounter.MemberID(in.Member),
 		Target:   encounter.MemberID(in.Target),
 		Prop:     encounter.PropID(in.Prop),
 		OptionID: in.OptionID,
 		Revision: in.Revision,
+		Verb:     verb,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", VerbSpeak, translate(err))
+		return nil, fmt.Errorf("%s: %w", verb, translate(err))
 	}
 
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
+		return nil, fmt.Errorf("%s: %w", verb, err)
 	}
 
 	return &SpeakOutput{
-		Beaten:   spoken.Beaten,
+		Beaten:   spoken,
 		Target:   in.Target,
 		Prop:     in.Prop,
 		OptionID: in.OptionID,
@@ -420,24 +456,24 @@ func (m *Manager) spendOnSocial(
 // the check is re-read on the way back except the composition's own door,
 // which asks again whether the line is still offered.
 func (m *Manager) poseSocialWindow(
-	ctx context.Context, scope *writeScope, in *SpeakInput, posed *resolution.Pause,
+	ctx context.Context, scope *writeScope, verb Verb, in *SpeakInput, posed *resolution.Pause,
 ) (*SpeakOutput, error) {
 	member := in.Member
 	ask := posed.Ask
 	if ask.Audience != member {
 		return nil, fmt.Errorf("%s: %w: the machine asked %q on %q's roll",
-			VerbSpeak, ErrInvalidWorld, ask.Audience, member)
+			verb, ErrInvalidWorld, ask.Audience, member)
 	}
 	if ask.Offer.Ref.ID == "" || ask.Offer.Name == "" {
-		return nil, fmt.Errorf("%s: %w: the machine asked about an unnamed offer", VerbSpeak, ErrInvalidWorld)
+		return nil, fmt.Errorf("%s: %w: the machine asked about an unnamed offer", verb, ErrInvalidWorld)
 	}
 
-	if err := requirePosedCalculation(string(VerbSpeak), member, ask.Calculation); err != nil {
+	if err := requirePosedCalculation(string(verb), member, ask.Calculation); err != nil {
 		return nil, err
 	}
 
 	offer := ReactionRef{Ref: ask.Offer.Ref.String(), Name: ask.Offer.Name}
-	story := windowStory{Kind: storyCheck, Target: in.Target, Prop: in.Prop, Verb: VerbSpeak, Option: in.OptionID}
+	story := windowStory{Kind: storyCheck, Target: in.Target, Prop: in.Prop, Verb: verb, Option: in.OptionID}
 
 	// THE WAITING LINE HOLDS ITS CONVERSATION (rpg-project#924): every line
 	// reading or advancing the interaction is pending for everyone until the
@@ -451,7 +487,7 @@ func (m *Manager) poseSocialWindow(
 		OptionID: in.OptionID, Revision: in.Revision, Range: InteractionReach,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", VerbSpeak, translate(err))
+		return nil, fmt.Errorf("%s: %w", verb, translate(err))
 	}
 	if reserved.Interaction != "" {
 		story.Interaction = string(reserved.Interaction)
@@ -459,7 +495,7 @@ func (m *Manager) poseSocialWindow(
 		story.Held = reserved.Revision
 	}
 	if err := poseWindow(scope, *posed, story); err != nil {
-		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
+		return nil, fmt.Errorf("%s: %w", verb, err)
 	}
 
 	if _, err := scope.enc.RecordRollWindow(&encounter.RollWindowInput{
@@ -471,12 +507,12 @@ func (m *Manager) poseSocialWindow(
 		// scalars could carry (rpg-project#462 R5).
 		Calculation: rollCalculationFor(ask.Calculation),
 	}); err != nil {
-		return nil, fmt.Errorf("%s: %w", VerbSpeak, reportUnrecorded(scope, translate(err)))
+		return nil, fmt.Errorf("%s: %w", verb, reportUnrecorded(scope, translate(err)))
 	}
 
 	report, delivery, err := m.commit(ctx, scope)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", VerbSpeak, err)
+		return nil, fmt.Errorf("%s: %w", verb, err)
 	}
 
 	// The PRE-OFFER total rides out beside the roll, and the DC does not —

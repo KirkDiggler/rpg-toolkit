@@ -367,6 +367,43 @@ type RelocateAct struct {
 	End RelocateEnd
 }
 
+// InteractAct is a thing done to a prop, as one viewer perceived it
+// (interacted, rpg-project#959): seen, not heard. Each part is present only
+// when this viewer perceived it.
+//
+//   - The doer: Prop, Option, Words (the authored `do`), Beaten, and Skill
+//     with Roll when the thing was checked.
+//   - A witness shown the prop: Prop, and Words (the authored `seen`, empty
+//     when the author wrote none: a client words "<name> uses <thing>").
+//   - A witness who sees the doer and is not shown the prop: Place, the cell
+//     the doer stood on. A hidden thing is never named to one who does not
+//     know it.
+//
+// At shared view a friend is shown the doer's version through them, marked
+// in [Perceived.Via].
+type InteractAct struct {
+	// Actor is who did it (interacted `actor`).
+	Actor Party
+	// Prop is the thing it was done to (interacted `prop`), the zero Party
+	// for a viewer not shown it.
+	Prop Party
+	// Option is the thing's option id (interacted `option`): the doer's.
+	Option string
+	// Words are what this viewer is told: the doer's `do` words, or a shown
+	// witness's `seen` words (interacted `do`, `seen`).
+	Words string
+	// Place is where the doer stood (interacted `at`), for a viewer who saw
+	// them and was not shown the thing.
+	Place *spatial.Position
+	// Beaten is the verdict (interacted `beaten`): the doer's, true for a
+	// plain thing.
+	Beaten *bool
+	// Skill and Roll are the check (interacted `skill`, `dc`, `total`,
+	// `calculation`), the doer's, when the thing was checked.
+	Skill string
+	Roll  *Roll
+}
+
 // ArrestAct is a party arrested (arrested, rpg-project#925): the members
 // taken, as THIS recipient perceived them taken, and the cell region they are
 // to be held in.
@@ -490,6 +527,13 @@ type TableAnswer struct {
 	Roll *Roll
 	// Dealt is a temperament deal (tempered). Nil on a pick.
 	Dealt *Temper
+	// Narration is a PROP's answer in words (answered `say`, rpg-project#959):
+	// the author narrating what the speaker or doer found ("The sigils are
+	// the Pale One's…") — a prop has no voice, so its words ride its pick,
+	// to exactly whom the encounter sent the pick: the one who said the line
+	// or did the thing, and the witnesses shown the prop. Empty on a
+	// creature's answer, whose words ride each hearer's [SpeechAct].
+	Narration string
 }
 
 // StateKind is what a state entry changed.
@@ -932,6 +976,7 @@ func (DoorAct) isActBody()      {}
 func (BarredAct) isActBody()    {}
 func (RelocateAct) isActBody()  {}
 func (ArrestAct) isActBody()    {}
+func (InteractAct) isActBody()  {}
 func (EquipAct) isActBody()     {}
 func (StayAct) isActBody()      {}
 func (SneakAct) isActBody()     {}

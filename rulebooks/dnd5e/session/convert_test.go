@@ -226,6 +226,14 @@ var omitted = map[string]string{
 
 	"perception.Holding.Observed": "first-observed timestamp; no caller asks how old a memory is yet (rpg-toolkit#1702's own out-of-scope note)",
 
+	// The doorway frame's two fields (encounter v0.211.0, rpg-toolkit#2412),
+	// listed here only because this session moved to a later encounter
+	// before their projection landed. NOT A DECISION TO DROP THEM: they are
+	// carried by rpg-toolkit#2413, which removes these two lines when it
+	// lands.
+	"encounter.AtlasStructuralOpening.FrameSpan":      "not projected yet; carried by rpg-toolkit#2413",
+	"encounter.AtlasStructuralDoor.FramePresentation": "not projected yet; carried by rpg-toolkit#2413",
+
 	// CurrentVia is every channel delivering the subject right now. It is
 	// not carried verbatim — sightingStatus (convert.go) fans it out into
 	// Sighting's own Status/CurrentVia pair, kept for wire compatibility

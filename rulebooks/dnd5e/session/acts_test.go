@@ -383,7 +383,10 @@ func TestEveryBeatHasAFamily(t *testing.T) {
 	}
 
 	for _, kind := range []string{
-		encounter.BeatTable, encounter.BeatTransferred, encounter.BeatInteracted, encounter.BeatInteraction,
+		// `interacted` left this list with things done to props
+		// (rpg-project#959): it has a family now, and a world NPC's version
+		// (no `view`) still folds to nothing.
+		encounter.BeatTable, encounter.BeatTransferred, encounter.BeatInteraction,
 		encounter.BeatRecognized, string(encounter.OutcomeBought), string(encounter.OutcomeSold),
 	} {
 		_, _, recordOnly := session.FamilyOfBeatForTest(kind)

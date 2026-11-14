@@ -1884,6 +1884,32 @@ type SpeakOptionRow struct {
 	Why *Shortfall `json:"why,omitempty"`
 }
 
+// InteractOptionRow is one thing to do on a prop (rpg-project#959): the
+// prop, the id the request echoes, and the words the doer is told — seen,
+// not heard.
+type InteractOptionRow struct {
+	// Prop is the prop that offers it — the dungeon file's `place[].id`.
+	Prop string `json:"prop"`
+
+	// OptionID is the author's id for it, unique on its prop. The client
+	// echoes it in [InteractInput.OptionID] and never parses it.
+	OptionID string `json:"option_id"`
+
+	// Do is what the doer is told they do, VERBATIM as authored ("You lift
+	// the grate and take the way up.").
+	Do string `json:"do"`
+
+	// Available, Interaction, Revision, Pending, PendingOn and Why are
+	// [SpeakOptionRow]'s: a thing to do holds a conversation, waits on a
+	// roll and goes stale exactly as a line does.
+	Available   bool       `json:"available"`
+	Interaction string     `json:"interaction,omitempty"`
+	Revision    uint64     `json:"revision,omitempty"`
+	Pending     bool       `json:"pending,omitempty"`
+	PendingOn   string     `json:"pending_on,omitempty"`
+	Why         *Shortfall `json:"why,omitempty"`
+}
+
 // CastOption is one word on a cast's menu — Command's "Approach", "Flee",
 // "Grovel" — the seam's own word for the content's authored choice.
 //
