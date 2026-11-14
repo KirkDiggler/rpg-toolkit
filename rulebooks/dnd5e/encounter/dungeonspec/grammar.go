@@ -413,6 +413,13 @@ type grammar struct {
 	// faction-of-one rule. mindValid is every faction whose declared mind
 	// passed minds(). dispositionAt is every normalized pair to the
 	// disposition that speaks for it (rpg-project#375).
+	// regionIDs and intelIDs are what a row's `relocate:` and `tells:` may
+	// name (rpg-project#958), set by a dialect that knows them before the
+	// lines are judged; nil leaves the engine's own construction to refuse a
+	// name it does not have.
+	regionIDs map[string]bool
+	intelIDs  map[string]bool
+
 	factionIDs     map[string]int
 	factionMembers map[string][]int
 	mindValid      map[string]bool
@@ -610,6 +617,7 @@ func (g *grammar) options(path string, options []OptionSpec, props map[string]bo
 					g.fail(rowAt+".flee", "%s", errOptionPropFlees)
 				}
 				g.rowRecognize(rowAt+".recognize", verdict.key, o, row, isProp)
+				g.rowPassage(rowAt, row)
 			}
 		}
 	}
@@ -759,6 +767,42 @@ func (g *grammar) rowRecognize(at, key string, o OptionSpec, row AnswerSpec, isP
 	recognitionOf(at, row.Recognize, named, func(path, message string) { g.fail(path, "%s", message) })
 }
 
+// rowPassage judges a line's row `tells:` and `relocate:` (rpg-project#958):
+// one grant per row, a relocate's words written and rounds zero or more, and
+// what each names declared on this site — when the dialect told the grammar
+// its regions and intel records ([grammar.regionIDs], [grammar.intelIDs]).
+func (g *grammar) rowPassage(at string, row AnswerSpec) {
+	grants := 0
+	for _, set := range []bool{row.Recognize != nil, row.Tells != "", row.Relocate != nil} {
+		if set {
+			grants++
+		}
+	}
+	if grants > 1 {
+		g.fail(at, "a row grants one thing: `recognize`, `tells` or `relocate`, not two")
+		return
+	}
+	if row.Tells != "" && g.intelIDs != nil && !g.intelIDs[row.Tells] {
+		g.fail(at+".tells", "%q is not an intel record of this site", row.Tells)
+	}
+	r := row.Relocate
+	if r == nil {
+		return
+	}
+	switch {
+	case r.To == "":
+		g.fail(at+".relocate.to", "a relocate names the region its speaker is set down in")
+	case g.regionIDs != nil && !g.regionIDs[r.To]:
+		g.fail(at+".relocate.to", "%q is not a region of this site", r.To)
+	}
+	if r.Words == "" {
+		g.fail(at+".relocate.words", "a relocate tells the speaker what happens: write its words")
+	}
+	if r.Rounds < 0 {
+		g.fail(at+".relocate.rounds", "a relocate's rounds are zero or more")
+	}
+}
+
 // loudness refuses a `loudness` word the engine does not know, at its path
 // (rpg-project#933, R10). Omitted is speak, and is not written for the author.
 func (g *grammar) loudness(at, word string) {
@@ -786,6 +830,14 @@ func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {
 	// judged by [grammar.rowRecognize] on an option's verdicts.
 	if entry.Recognize != nil && key != string(encounter.AnswerSuccess) && key != string(encounter.AnswerFailure) {
 		g.fail(at+".recognize", "recognize is only on a line's success or failure row: a table row grants nothing")
+	}
+	if key != string(encounter.AnswerSuccess) && key != string(encounter.AnswerFailure) {
+		if entry.Tells != "" {
+			g.fail(at+".tells", "tells is only on a line's success or failure row: a table row grants nothing")
+		}
+		if entry.Relocate != nil {
+			g.fail(at+".relocate", "relocate is only on a line's success or failure row: a table row grants nothing")
+		}
 	}
 	g.loudness(at, entry.Loudness)
 	if entry.Weight != nil && *entry.Weight < 1 {
@@ -837,7 +889,9 @@ func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {
 			strings.Join(words, "` and `"), len(words), entry.Line)
 
 		return
-	case len(words) == 0 && entry.Say == "":
+	// A line's row that reveals or relocates does something
+	// (rpg-project#958), with or without words.
+	case len(words) == 0 && entry.Say == "" && entry.Tells == "" && entry.Relocate == nil:
 		g.fail(at, "this entry does nothing and says nothing (line %d)", entry.Line)
 
 		return

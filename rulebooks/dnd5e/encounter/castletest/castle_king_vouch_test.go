@@ -97,6 +97,9 @@ func TestMain(m *testing.M) {
 	if pattern == "" || err != nil || slices.ContainsFunc(hintSceneTests, re.MatchString) {
 		hintScene.once.Do(buildTheHintScene)
 	}
+	if pattern == "" || err != nil || slices.ContainsFunc(passageSceneTests, re.MatchString) {
+		passageScene.once.Do(buildThePassageScene)
+	}
 	os.Exit(m.Run())
 }
 

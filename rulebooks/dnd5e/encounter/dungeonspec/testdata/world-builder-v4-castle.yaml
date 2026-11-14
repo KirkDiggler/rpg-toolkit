@@ -359,6 +359,11 @@ intel:
   - id: key-bearer
     reveals:
       fact: sergeant-holds-keys
+  # Hand edit (rpg-project#958, Passages S1): the way through the kitchen
+  # passage, as the scullion tells it. Whoever holds it knows the passage.
+  - id: kitchen-way
+    reveals:
+      concealment: kitchen-passage
 exits:
   - id: postern
     cell:
@@ -400,6 +405,12 @@ endings:
     when:
       left: front-door
     outcome: failure
+# Hand edit (rpg-project#958, Passages S1): the kitchen passage. It hides
+# only the grate; a hard search finds it, and the scullion tells it.
+concealments:
+  kitchen-passage:
+    checks: [{ ability: investigation, dc: 18 }]
+    props: [grate]
 room:
   version: 3
   id: room-1
@@ -441,6 +452,18 @@ room:
           x: -36.6051177665153
           y: 0
           z: -15
+          rotationY: 0
+      # Hand edit (rpg-project#958, Passages S1): the grate by the hearth, the
+      # kitchen end of the passage. The concealment `kitchen-passage` hides
+      # it; the scullion tells the way.
+      - id: grate
+        kind: prop
+        assetRef: dnd5e:props:dark-fortress:sewer_grate_02
+        label: Grate by the Hearth
+        transform:
+          x: -32.90896534380867
+          y: 0
+          z: -21.0
           rotationY: 0
       - id: orders
         kind: prop
@@ -1378,6 +1401,14 @@ room:
           depth: 0.8
           offsetX: 0
           offsetZ: 0
+      grate:
+        blocksMovement: false
+        blocksLineOfSight: false
+        footprint:
+          width: 0.8
+          depth: 0.8
+          offsetX: 0
+          offsetZ: 0
       orders:
         blocksMovement: false
         blocksLineOfSight: false
@@ -2119,8 +2150,19 @@ room:
         behaviors:
           - id: policy
             use: reserve-2-policy
+      # Hand edit (rpg-project#958, Passages S1): the scullion tells the way
+      # for a coin. Whoever catches her answer comes to hold the record
+      # `kitchen-way`, and so knows the passage.
       scullion:
         faction: kitchen
+        options:
+          - id: favour
+            say: There's a coin in it if you know a way out of here.
+            requires:
+              holds: purse
+            success:
+              - say: The grate by the hearth. Lift it. One way climbs to the chapel, the other drops to the cells.
+                tells: kitchen-way
       sergeant:
         faction: garrison
         behaviors:
@@ -2297,6 +2339,25 @@ room:
     propBindings:
       purse:
         holdable: true
+      # Hand edit (rpg-project#958, Passages S1): the passage's kitchen end.
+      # One line per destination; nothing at either far end, so the way is
+      # one-way.
+      grate:
+        options:
+          - id: to-chapel
+            say: (lift the grate and take the way up)
+            success:
+              - relocate:
+                  to: region-chapel
+                  words: The tunnel climbs, and you come up through a flagstone behind the chapel's altar.
+                  rounds: 1
+          - id: to-cells
+            say: (lift the grate and take the way down)
+            success:
+              - relocate:
+                  to: region-cells
+                  words: The tunnel drops, and you squeeze out through a drain in the cells.
+                  rounds: 1
       orders:
         holdable: true
         holds:

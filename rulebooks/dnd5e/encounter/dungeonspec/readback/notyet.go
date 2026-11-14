@@ -24,7 +24,8 @@ import (
 // saidKeys is, for each kind of authored mapping, the keys the read-back
 // says or summarises. A key absent from its list is not yet said.
 var saidKeys = map[string][]string{
-	"root":               {"version", "key", "play", "templates", "bundles", "factions", "dispositions", "intel", "exits", "endings", "room", "interactions", "behaviorDefinitions", "party"},
+	"root":               {"version", "key", "play", "templates", "bundles", "factions", "dispositions", "intel", "exits", "endings", "room", "interactions", "behaviorDefinitions", "party", "concealments"},
+	"concealment":        {"checks", "cells", "props"},
 	"party":              {"sharing"},
 	"room":               {"version", "id", "name", "coordinateFrame", "scene", "room"},
 	"room.room":          {"implicitRegionId", "walls", "regions", "propDeclarations", "arrangementDeclarations", "monsterDeclarations", "partyStart", "monsterBindings", "doorBindings", "propBindings"},
@@ -45,7 +46,8 @@ var saidKeys = map[string][]string{
 	"option":             {"id", "say", "loudness", "check", "requires", "advance", "success", "failure"},
 	"checkApproach":      {"ability", "tool", "dc"},
 	"advance":            {"interaction", "success", "failure"},
-	"optionRow":          {"say", "loudness", "fact", "recognize", "activity", "weight"},
+	"optionRow":          {"say", "loudness", "fact", "recognize", "tells", "relocate", "activity", "weight"},
+	"relocate":           {"to", "words", "rounds"},
 	"activity":           {"ref", "cycles"},
 	"post":               {"door", "at", "against", "pass"},
 	"recipe":             {"ref", "initial", "states"},
@@ -123,6 +125,7 @@ func (b *builder) notYetSaid() []Unsaid {
 				each(at(o, verdict), op+"."+verdict, func(r *yaml.Node, rp string) {
 					check(r, rp, "optionRow")
 					recognize(r, rp)
+					check(at(r, "relocate"), rp+".relocate", "relocate")
 					check(at(r, "activity"), rp+".activity", "activity")
 				})
 			}
@@ -189,6 +192,7 @@ func (b *builder) notYetSaid() []Unsaid {
 			})
 		})
 	})
+	each(at(root, "concealments"), "concealments", func(n *yaml.Node, p string) { check(n, p, "concealment") })
 	each(at(root, "templates"), "templates", func(n *yaml.Node, p string) { check(n, p, "template") })
 	each(at(root, "endings"), "endings", func(n *yaml.Node, p string) { check(n, p, "ending") })
 	each(at(root, "exits"), "exits", func(n *yaml.Node, p string) { check(n, p, "exit") })

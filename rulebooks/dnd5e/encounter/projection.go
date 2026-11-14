@@ -530,17 +530,22 @@ type hiddenView struct {
 	unexploredCells map[spatial.Position]bool
 }
 
-// facesNone reports whether no door and no prop is hidden from this view:
-// the sight test then reads no concealment ([sightReach.seesCell]), so a
-// sweep under it is the site's raw answer ([Encounter.visibleFrom]).
-func (h hiddenView) facesNone() bool {
+// facesNone reports whether no door and no prop that could be a face is
+// hidden from this view: the sight test then reads no concealment
+// ([sightReach.seesCell]), so a sweep under it is the site's raw answer
+// ([Encounter.visibleFrom]). A hidden prop that could never be a face — a
+// cell prop, or a placed one that blocks no sight and is no door's wall
+// ([field.mayFaceSight]) — changes no sweep (rpg-project#958: the castle's
+// grate, hidden from everyone, would otherwise cost every sweep the site's
+// cache).
+func (h hiddenView) facesNone(f *field) bool {
 	for _, hid := range h.doors {
 		if hid {
 			return false
 		}
 	}
-	for _, hid := range h.props {
-		if hid {
+	for id, hid := range h.props {
+		if hid && f.mayFaceSight(id) {
 			return false
 		}
 	}
@@ -607,7 +612,7 @@ func (e *Encounter) hiddenFrom(member MemberID) hiddenView {
 // canvas before this is ever consulted; answering true for one as well costs
 // nothing and says the same thing.
 func (e *Encounter) masqueradeBlocks(member MemberID, from, to spatial.Position) bool {
-	if member == "" || !e.world.conceals() {
+	if member == "" || !e.world.conceals() || !e.field.concealsFloorOrDoors() {
 		return false
 	}
 	hidden := e.hiddenFrom(member)
@@ -826,4 +831,34 @@ func (f *field) segmentHidden(seg SegmentInput, hiddenCells map[spatial.Position
 	}
 
 	return true
+}
+
+// mayFaceSight reports whether a hidden prop could be a face a sight sweep
+// reads ([sightReach.seesCell]): a placed prop that blocks sight, or a
+// structural wall a door masquerades as. A cell prop never is, nor a placed
+// prop that blocks no sight; an id this field cannot place answers true, so
+// an unknown is never cheaper than it is.
+func (f *field) mayFaceSight(id PropID) bool {
+	for i := range f.structuralWalls {
+		if f.structuralWalls[i].id == id {
+			return true
+		}
+	}
+	if i := f.placedIndexOf(id); i >= 0 {
+		return f.placed[i].blocksLineOfSight
+	}
+	return f.propIndexOf(id) < 0
+}
+
+// concealsFloorOrDoors reports whether any concealment hides a cell or a
+// door: only then can a crossing masquerade as wall ([Encounter.masqueradeBlocks]).
+// A field whose secrets are props alone answers false, and a route over it
+// folds no member's knowledge per edge (rpg-project#958).
+func (f *field) concealsFloorOrDoors() bool {
+	for i := range f.concealments {
+		if len(f.concealments[i].cells) > 0 || len(f.concealments[i].doors) > 0 {
+			return true
+		}
+	}
+	return false
 }

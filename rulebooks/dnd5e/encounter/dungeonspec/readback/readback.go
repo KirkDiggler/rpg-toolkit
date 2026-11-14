@@ -32,6 +32,7 @@ const (
 	KindDoor        Kind = "place.door"
 	KindProp        Kind = "place.prop"
 	KindIntel       Kind = "place.intel"
+	KindConcealment Kind = "place.concealment"
 	KindTemplate    Kind = "place.template"
 	KindBundle      Kind = "place.bundle"
 	KindFaction     Kind = "side.faction"

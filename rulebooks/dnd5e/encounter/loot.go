@@ -209,7 +209,7 @@ func (e *Encounter) transferHoldings(from, to MemberID, cause string, at uint64)
 			if err := e.holdings.holdIntel(to, item.record, cause); err != nil {
 				return fmt.Errorf("transfer intel %q: %w", item.record, err)
 			}
-			if err := e.applyReveals(to, item.record, at); err != nil {
+			if err := e.applyReveals(to, item.record, lootedCause, at); err != nil {
 				return err
 			}
 		case item.prop != "":
@@ -229,7 +229,13 @@ func (e *Encounter) transferHoldings(from, to MemberID, cause string, at uint64)
 	return nil
 }
 
-// applyReveals gives one member what an intel record reveals.
+// lootedCause is the cause a held record's concealment is journalled under —
+// picked up, looted, or carried into a mind's presence.
+const lootedCause = "looted the way to it"
+
+// applyReveals gives one member what an intel record reveals, a concealment
+// journalled under cause: [lootedCause] for a record come to by holding, the
+// told cause for one a line's answer landed (passage.go).
 //
 // ONE ARM PER TARGET, and each arm is a call into the mechanism that already
 // owns that kind of knowledge rather than a second copy of it. A door is
@@ -251,7 +257,7 @@ func (e *Encounter) transferHoldings(from, to MemberID, cause string, at uint64)
 // already known. Returning early keeps "not declared" and "nothing to
 // reveal" distinguishable in a debugger even though no caller can tell them
 // apart.
-func (e *Encounter) applyReveals(to MemberID, id IntelID, at uint64) error {
+func (e *Encounter) applyReveals(to MemberID, id IntelID, cause string, at uint64) error {
 	rec, declared := e.field.intelByID[id]
 	if !declared {
 		return nil
@@ -269,7 +275,7 @@ func (e *Encounter) applyReveals(to MemberID, id IntelID, at uint64) error {
 		if c == nil || e.world.knowsConcealment(to, c.id) {
 			return nil
 		}
-		if err := e.revealConcealmentTo(to, c, "looted the way to it", at); err != nil {
+		if err := e.revealConcealmentTo(to, c, cause, at); err != nil {
 			return err
 		}
 	}
@@ -308,7 +314,7 @@ func (e *Encounter) applyReveals(to MemberID, id IntelID, at uint64) error {
 // which list the author wrote it in is not a rule about reading it.
 func (e *Encounter) applyPropReveals(to MemberID, prop PropID, at uint64) error {
 	for _, id := range e.field.propHolds(prop) {
-		if err := e.applyReveals(to, id, at); err != nil {
+		if err := e.applyReveals(to, id, lootedCause, at); err != nil {
 			return err
 		}
 	}

@@ -113,6 +113,9 @@ func (b *builder) place() []Group {
 	for _, id := range sortedKeys(gp.PropBindings) {
 		g.Statements = append(g.Statements, b.propStatements(id)...)
 	}
+	for _, c := range b.c.Concealments {
+		add(b.concealmentStatement(c))
+	}
 	for i, in := range b.c.Intel {
 		id := b.unqualify(string(in.ID))
 		s := fmt.Sprintf("The record %s: whoever comes to hold it learns ", quote(id))
@@ -210,6 +213,28 @@ func (b *builder) propName(id string) string {
 		}
 	}
 	return quote(id)
+}
+
+// concealmentStatement says one secret (rpg-project#958): what it hides, how
+// a search finds it, and that what it hides is unseen and unsayable until
+// known. Its passive tell and attempts are listed as not yet said.
+func (b *builder) concealmentStatement(c encounter.ConcealmentInput) Statement {
+	id := b.unqualify(string(c.ID))
+	var hides []string
+	if len(c.Cells) > 0 {
+		hides = append(hides, count(len(c.Cells), "floor cell", "floor cells"))
+	}
+	for _, d := range c.Doors {
+		hides = append(hides, "the door "+quote(b.unqualify(string(d))))
+	}
+	for _, p := range c.Props {
+		hides = append(hides, "the prop "+b.propName(b.unqualify(string(p))))
+	}
+	s := fmt.Sprintf("The secret %s hides %s. A search finds it on %s. Until a member knows it — found, told, or read in a "+
+		"record — what it hides is not shown to them, and a hidden thing's lines cannot be said by them.",
+		quote(id), joinAnd(hides), checkWords(c.Checks))
+	return b.fstmt(KindConcealment, Subject{Kind: "concealment", ID: id}, "concealments."+id, s,
+		foldInfo{site: "the secret " + quote(id)})
 }
 
 // propStatements says one bound prop: whether it can be carried, what it

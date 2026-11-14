@@ -805,7 +805,7 @@ func propsOf(spec *Spec) []encounter.PropInput {
 			// first frame.
 			Arrives: predicateOf(p.Arrives),
 			// The lines a character can say to it (rpg-project#569).
-			Options: optionsOf(p.Options, orientations[spec.Orientation]),
+			Options: optionsOf(spec.Key, p.Options, orientations[spec.Orientation]),
 		}
 		// Validate has already confirmed len(p.Offset) is 0, 2 or 3 by the
 		// time Compile runs; anything else is unreachable here. A missing
@@ -1192,11 +1192,12 @@ func groupOf(entry AnswerSpec, weight int, o encounter.Orientation) encounter.An
 // optionsOf compiles a binding's lines (rpg-project#569): each option's check
 // through [approachesOf], its `requires` through [predicateOf], and both
 // verdicts' rows through [answerOf], every omitted weight resolved to 1.
+// A row's `tells` names an intel record as the site key qualifies it.
 //
 // NIL FOR NONE, an empty list included, so a creature nobody wrote a line for
 // compiles exactly as it did before options existed and the committed
 // pictures omit the key.
-func optionsOf(specs []OptionSpec, o encounter.Orientation) []encounter.Option {
+func optionsOf(key string, specs []OptionSpec, o encounter.Orientation) []encounter.Option {
 	if len(specs) == 0 {
 		return nil
 	}
@@ -1220,13 +1221,21 @@ func optionsOf(specs []OptionSpec, o encounter.Orientation) []encounter.Option {
 			failure bool
 		}{{opt.Success, false}, {opt.Failure, true}} {
 			for i, row := range verdict.rows {
-				if row.Recognize == nil {
+				var c encounter.Consequence
+				switch {
+				case row.Recognize != nil:
+					rec := recognitionOf("", row.Recognize, true, func(string, string) {})
+					c.Recognize = &rec
+				case row.Tells != "":
+					c.Tells = encounter.IntelID(key + "/" + row.Tells)
+				case row.Relocate != nil:
+					c.Relocate = &encounter.RelocateGrant{
+						To: encounter.RegionID(row.Relocate.To), Words: row.Relocate.Words, Rounds: row.Relocate.Rounds,
+					}
+				default:
 					continue
 				}
-				rec := recognitionOf("", row.Recognize, true, func(string, string) {})
-				option.Grants = append(option.Grants, encounter.RowGrant{
-					Row: i, Failure: verdict.failure, Consequence: encounter.Consequence{Recognize: &rec},
-				})
+				option.Grants = append(option.Grants, encounter.RowGrant{Row: i, Failure: verdict.failure, Consequence: c})
 			}
 		}
 		out = append(out, option)
@@ -1635,7 +1644,7 @@ func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 		mp.Targeting = targeting
 		mp.Boss = p.Boss
 		mp.Holds = intelHoldingsOf(spec.Key, p.Holds)
-		mp.Options = optionsOf(from.optionsFor(p.Options, p.Faction), o)
+		mp.Options = optionsOf(spec.Key, from.optionsFor(p.Options, p.Faction), o)
 		mp.Arrives = predicateOf(p.Arrives)
 		out = append(out, mp)
 	}

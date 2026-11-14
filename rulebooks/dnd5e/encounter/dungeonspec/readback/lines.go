@@ -141,6 +141,14 @@ func (b *builder) rowStatements(o encounter.Option, line, heading, p string, t l
 		for k, row := range verdict.rows {
 			path := fmt.Sprintf("%s.%s[%d]", p, verdict.key, k)
 			does, conns := rowDoes(row, t, t.name)
+			fdoes, _ := rowDoes(row, t, "{self}")
+			// A ROW THAT ONLY GRANTS (rpg-project#958): no words and no fact,
+			// its whole effect is the grant said next — "nothing is said"
+			// would read as a row that does nothing.
+			if row.Say == "" && row.Activity == nil && row.Fact == "" && grantsOnRow(o.Grants, verdict.failure, k) {
+				does = []string{"nothing is answered in words, and the row does what the next sentence says"}
+				fdoes = []string{"no words"}
+			}
 			// THE PICK IS TOLD BY HEARING (rpg-project#948): a creature's
 			// answer — its die and the rows it chose among — goes to whoever
 			// caught the line; one who only sees it answer is told that and
@@ -150,7 +158,6 @@ func (b *builder) rowStatements(o encounter.Option, line, heading, p string, t l
 				does = append(does, fmt.Sprintf("whoever sees %s answer and caught none of the line is told only that %s answered "+
 					"and what %s is seen doing, and, if they see the speaker, sees the line said without its words", t.name, t.name, t.name))
 			}
-			fdoes, _ := rowDoes(row, t, "{self}")
 			s := lead + ", " + joinAnd(does)
 			short := joinAnd(fdoes)
 			if len(verdict.rows) > 1 {
@@ -162,6 +169,10 @@ func (b *builder) rowStatements(o encounter.Option, line, heading, p string, t l
 			for _, g := range o.Grants {
 				if g.Failure == verdict.failure && g.Row == k && g.Consequence.Recognize != nil {
 					out = append(out, b.grantStatement(o, *g.Consequence.Recognize, lead, path+".recognize", t,
+						foldInfo{line: heading, verdict: verdictWord, site: site, who: t.about.ID}))
+				}
+				if g.Failure == verdict.failure && g.Row == k && (g.Consequence.Tells != "" || g.Consequence.Relocate != nil) {
+					out = append(out, b.passageStatement(g.Consequence, row, lead, path, t,
 						foldInfo{line: heading, verdict: verdictWord, site: site, who: t.about.ID}))
 				}
 			}
@@ -199,6 +210,37 @@ func rowDoes(row encounter.Answer, t lineTarget, name string) ([]string, []Conne
 		does = append(does, "nothing is said")
 	}
 	return does, conns
+}
+
+// passageStatement says a row's told record or relocate (rpg-project#958):
+// who comes to hold the record and what it reveals, or where the speaker is
+// set down and what the others are told of it.
+func (b *builder) passageStatement(c encounter.Consequence, row encounter.Answer, lead, path string, t lineTarget, f foldInfo) Statement {
+	if c.Tells != "" {
+		id := b.unqualify(string(c.Tells))
+		who, short := "everyone who can see the speaker, the speaker included,", "everyone who sees the speaker"
+		if !t.prop {
+			who, short = learnersWords(row.Loudness, t.name), "every member {self}'s words reach"
+		}
+		s := fmt.Sprintf("%s, %s comes to hold the record %s, as one who carried it would, and learns what it reveals (%s). "+
+			"One who holds it already is told nothing again.", lead, who, quote(id), b.recordReveals(c.Tells))
+		f.text = short + " comes to hold the record " + quote(id)
+		return b.fstmt(KindLineGrant, t.about, path+".tells", s, f, Connection{Kind: "record", ID: id, Role: "tells"})
+	}
+	r := c.Relocate
+	rounds := "No world time passes with it."
+	switch {
+	case r.Rounds == 1:
+		rounds = "One round passes on the world clock with it, and creatures due in it act."
+	case r.Rounds > 1:
+		rounds = fmt.Sprintf("%d rounds pass on the world clock with it, and creatures due in them act.", r.Rounds)
+	}
+	s := fmt.Sprintf("%s, the speaker is set down on the first free cell of %s, without walking the way between, and is told %s. %s "+
+		"Whoever saw the speaker leave is told they went, never where; whoever sees them arrive is told they arrived, never from "+
+		"where. A speaker in a fight, held, or with no free cell to land on is refused the line whole; nobody else goes with them.",
+		lead, b.regionWords(string(r.To)), said(r.Words), rounds)
+	f.text = fmt.Sprintf("the speaker is set down in %s, told %s", b.regionName(string(r.To)), said(r.Words))
+	return b.fstmt(KindLineGrant, t.about, path+".relocate", s, f, Connection{Kind: "region", ID: string(r.To), Role: "sends-to"})
 }
 
 // grantStatement says one recognition a line's row grants: who comes to hold
@@ -368,4 +410,30 @@ func (b *builder) offeredWords(o encounter.Option, conv string) string {
 		return " (the line is offered in no state of it)"
 	}
 	return " (the line is offered only in " + joinOr(states) + ")"
+}
+
+// recordReveals is what an intel record reveals, in words.
+func (b *builder) recordReveals(id encounter.IntelID) string {
+	for _, in := range b.c.Intel {
+		if in.ID != id {
+			continue
+		}
+		switch {
+		case in.Reveals.Concealment != "":
+			return "the secret " + quote(b.unqualify(string(in.Reveals.Concealment)))
+		case in.Reveals.Fact != "":
+			return "the fact " + quote(string(in.Reveals.Fact))
+		}
+	}
+	return "nothing this build can say"
+}
+
+// grantsOnRow reports whether any grant hangs on a verdict's row k.
+func grantsOnRow(grants []encounter.RowGrant, failure bool, k int) bool {
+	for _, g := range grants {
+		if g.Failure == failure && g.Row == k {
+			return true
+		}
+	}
+	return false
 }
