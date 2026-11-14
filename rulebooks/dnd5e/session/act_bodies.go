@@ -527,6 +527,13 @@ type TableAnswer struct {
 	Roll *Roll
 	// Dealt is a temperament deal (tempered). Nil on a pick.
 	Dealt *Temper
+	// Narration is a PROP's answer in words (answered `say`, rpg-project#959):
+	// the author narrating what the speaker or doer found ("The sigils are
+	// the Pale One's…") — a prop has no voice, so its words ride its pick,
+	// to exactly whom the encounter sent the pick: the one who said the line
+	// or did the thing, and the witnesses shown the prop. Empty on a
+	// creature's answer, whose words ride each hearer's [SpeechAct].
+	Narration string
 }
 
 // StateKind is what a state entry changed.

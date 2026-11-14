@@ -764,6 +764,7 @@ func answeredPiece(payload []byte) ([]piece, error) {
 		Creature   string          `json:"creature"`
 		Prop       string          `json:"prop"`
 		Option     string          `json:"option"`
+		Say        string          `json:"say"`
 		Key        string          `json:"key"`
 		Word       string          `json:"word"`
 		Selector   string          `json:"selector"`
@@ -783,12 +784,15 @@ func answeredPiece(payload []byte) ([]piece, error) {
 		return nil, err
 	}
 	who := member(p.Creature)
+	narration := ""
 	if p.Prop != "" {
-		who = prop(p.Prop)
+		// A PROP'S ANSWER IS NARRATION and keeps its words on the pick; a
+		// creature's never does (its words ride each hearer's speech).
+		who, narration = prop(p.Prop), p.Say
 	}
 	answer := TableAnswer{
 		Who: who, Option: p.Option, Key: p.Key, Word: p.Word, Selector: p.Selector,
-		Temperament: p.Temper, Entry: p.Entry,
+		Temperament: p.Temper, Entry: p.Entry, Narration: narration,
 	}
 	if len(p.Activity) != 0 {
 		cue, valid := decodeActivityCue(p.Activity)

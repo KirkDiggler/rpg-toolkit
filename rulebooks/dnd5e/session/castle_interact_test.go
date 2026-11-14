@@ -58,7 +58,7 @@ var (
 // passagePlayTests are the tests that read [passagePlay].
 var passagePlayTests = []string{
 	"TestCastleTheToldAreOfferedTheGrate", "TestCastleTheGrateAtEachTheirOwn", "TestCastleTheGrateAtSharedView",
-	"TestCastleAnUntoldWitnessSeesOnlyAPlace",
+	"TestCastleAnUntoldWitnessSeesOnlyAPlace", "TestCastleAPropsAnswerIsNarratedToWhomItWasShown",
 	"TestCastleTheAltarExaminedTeachesItsWatchers", "TestCastleAThingIsNotSaidAndTheUntoldAreRefused",
 }
 
@@ -78,6 +78,10 @@ var passagePlay struct {
 	view   map[string][]session.Act
 	altar  beat
 	learnt map[string]bool
+	// telling is the scullion's answer to alice's coin; altarView is bob's
+	// catch-up after the altar, at shared view.
+	telling   beat
+	altarView []session.Act
 	// untold is bob doing the grate's thing; said is alice SAYING it.
 	untold, said error
 }
@@ -131,7 +135,10 @@ func playThePassage() error {
 	if _, err := c.mgr.Hold(ctx, &session.HoldInput{Session: "sess", Member: "alice", Target: "purse"}); err != nil {
 		return fmt.Errorf("alice takes the purse: %w", err)
 	}
-	if _, err := speakAsOffered(ctx, c.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "scullion", OptionID: "favour"}); err != nil {
+	if passagePlay.telling, err = capture(c, "alice buys the way", func() error {
+		_, err := speakAsOffered(ctx, c.mgr, &session.SpeakInput{Session: "sess", Member: "alice", Target: "scullion", OptionID: "favour"})
+		return err
+	}); err != nil {
 		return fmt.Errorf("alice buys the way: %w", err)
 	}
 	// BOB COMES IN AFTER, across the kitchen; alice steps up to the grate.
@@ -202,6 +209,15 @@ func playThePassage() error {
 	}); err != nil {
 		return fmt.Errorf("alice examines the altar: %w", err)
 	}
+	view, err := newJailHost(storesOf(c), encounter.SharingView, 18)
+	if err != nil {
+		return err
+	}
+	read, err := view.mgr.Acts(ctx, &session.ActsInput{Session: "sess", Member: "bob"})
+	if err != nil {
+		return err
+	}
+	passagePlay.altarView = read.Acts
 	passagePlay.learnt = map[string]bool{}
 	if journal := c.encounters.byID["sess"].Journal; journal != nil {
 		raw, err := json.Marshal(journal)
@@ -361,4 +377,45 @@ func TestCastleAThingIsNotSaidAndTheUntoldAreRefused(t *testing.T) {
 	require.ErrorAs(t, passagePlay.untold, &refusal)
 	require.ErrorIs(t, passagePlay.untold, session.ErrNoProp)
 	require.Equal(t, "You see no such thing here.", refusal.Sentence)
+}
+
+// altarSaid is the altar's answer to a beaten examination.
+const altarSaid = "The sigils are the Pale One’s. The king keeps a shrine to it."
+
+// narrated is every TableAnswer in acts that carries narration, by whom.
+func narrated(acts []session.Act, who string) []found[session.TableAnswer] {
+	return where[session.TableAnswer](acts, func(a session.TableAnswer) bool { return a.Who.ID == who && a.Narration != "" })
+}
+
+// TestCastleAPropsAnswerIsNarratedToWhomItWasShown: the altar's answer
+// reaches alice, who examined it, and the cleric, shown it, as narration on
+// the pick; bob and dan, who saw none of it, get none at each their own; at
+// shared view bob gets it through alice. The scullion's answer — a
+// creature's — carries no narration: its words rode speech.
+func TestCastleAPropsAnswerIsNarratedToWhomItWasShown(t *testing.T) {
+	thePassage(t)
+	for _, member := range []string{"alice", "cleric"} {
+		got := narrated(passagePlay.altar.to(member), "altar")
+		require.Len(t, got, 1, "%s is told what the altar shows", member)
+		require.Equal(t, altarSaid, got[0].body.Narration, member)
+		require.Equal(t, session.Party{Kind: session.PartyProp, ID: "altar"}, got[0].body.Who)
+	}
+	for _, member := range []string{"bob", "dan"} {
+		require.Empty(t, narrated(passagePlay.altar.to(member), "altar"), "%s saw none of it", member)
+	}
+	through := narrated(passagePlay.altarView, "altar")
+	require.Len(t, through, 1, "at shared view bob is told it through alice")
+	require.Equal(t, altarSaid, through[0].body.Narration)
+	require.NotNil(t, through[0].act.Perceived)
+	require.Contains(t, through[0].act.Perceived.Via, aliceParty)
+
+	scullion := where[session.TableAnswer](passagePlay.telling.to("alice"), func(a session.TableAnswer) bool { return a.Who.ID == "scullion" })
+	require.NotEmpty(t, scullion, "precondition: alice sees the scullion's pick")
+	for _, a := range scullion {
+		require.Empty(t, a.body.Narration, "a creature's answer is never narration")
+	}
+	words := where[session.SpeechAct](passagePlay.telling.to("alice"), func(s session.SpeechAct) bool {
+		return s.Speaker.ID == "scullion" && s.Words != nil
+	})
+	require.NotEmpty(t, words, "its words rode speech")
 }
