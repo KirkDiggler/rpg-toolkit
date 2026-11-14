@@ -378,18 +378,23 @@ func (b *builder) arrestStatement(id, state, path string) Statement {
 		"party who is not taken and whom one of those carriers has seen before. A creature of the party's faction is "+
 		"neither. The creature the deciding line was said to comes to hold %s about the taken and %s about the "+
 		"wanted, and the conversation's other carriers who catch the deciding line hold the same, heard. Who is wanted "+
-		"is told to those carriers alone, never to a player. The conversation's address ends. Who is taken and who is "+
-		"wanted is decided once and kept. The taken are held from that moment: they cannot walk, dash, sneak or cast "+
+		"is told to those carriers alone, never to a player. Only the taken and the carriers are told the cell; a "+
+		"witness is told who was taken. The conversation's address ends. Who is taken and who is wanted at the arrest "+
+		"is decided once and kept. A wanted member seen again by one of those carriers who is up, not in a fight and "+
+		"not hostile to them is seized where they stand: they join the taken, held in their own right whatever the "+
+		"others' hold has become, the carriers come to hold %s about them (told to the carriers alone), and they are "+
+		"told they are arrested; a sneak that beats the carrier keeps them unseen. The taken are held from that moment: they cannot walk, dash, sneak or cast "+
 		"themselves away, and nothing moves them but the conversation's own jail: a shove or a flee aimed at them is refused, and "+
 		"a spell that lands on them still lands but does not move them; "+
 		"speaking, looking, looting and fighting stay open. A fight with one of those carriers in it ends the hold for "+
-		"all of them, and the record stays; a fight without them frees nobody, and the held stay held inside it. A "+
+		"every member still held, and the record stays; the jailed stay jailed; a fight without them frees nobody, and the held stay held inside it. A "+
 		"taken player who leaves the run stays taken. The arrest itself moves nobody: only a jail outcome of the "+
 		"conversation sets the taken down in %s, and the hold ends there.",
 		quote(id), quote(state), b.regionWords(a.Cell), joinAnd(area), b.creatures(carriers),
-		quote(string(encounter.TopicArrested)), quote(string(encounter.TopicWanted)), b.regionName(a.Cell))
+		quote(string(encounter.TopicArrested)), quote(string(encounter.TopicWanted)), quote(string(encounter.TopicArrested)),
+		b.regionName(a.Cell))
 	f := foldInfo{state: state, site: fmt.Sprintf("the conversation %s on entering %s", quote(id), quote(state))}
-	f.text = fmt.Sprintf("On entering %s: arrests the players in %s or seen by its carriers, to %s; the rest they have seen become wanted, known to the carriers alone. The taken are held until a fight with the carriers in it, or until a jail sets them down in the cell; the arrest moves nobody.",
+	f.text = fmt.Sprintf("On entering %s: arrests the players in %s or seen by its carriers, to %s; the rest they have seen become wanted, known to the carriers alone, and are seized when a carrier sees them again. The taken are held until a fight with the carriers in it, or until a jail sets them down in the cell; the arrest moves nobody.",
 		quote(state), joinAnd(area), b.regionName(a.Cell))
 	return b.fstmt(KindOutcome, Subject{Kind: "conversation", ID: id}, path, s, f, conns...)
 }

@@ -107,21 +107,26 @@ func arrests(outcomes map[string][]Consequence) bool {
 // file's doc): asked whole before anything changes, by the line that would
 // fire it ([Encounter.refuseJailAhead]) and by the jail itself.
 func (e *Encounter) jailPlan(made *ArrestRecord) (present, gone []MemberID, cells []spatial.Position, err error) {
-	switch {
-	case made == nil:
+	if made == nil {
 		return nil, nil, nil, fmt.Errorf("jail: the interaction has arrested nobody: %w", ErrBadPlacement)
-	case made.Custody != CustodyHeld:
-		return nil, nil, nil, fmt.Errorf("jail: custody is %q, so nobody is held to take: %w", made.Custody, ErrBadPlacement)
 	}
-	for _, t := range made.Taken {
+	// THE HELD, MEMBER BY MEMBER: the group taken at the arrest, and anyone
+	// seized on sight since (wanted.go) — never the jailed or the freed.
+	for i, t := range made.Taken {
+		if made.phaseOf(i) != CustodyHeld {
+			continue
+		}
 		if _, ok := e.members[t.ID]; ok {
 			present = append(present, t.ID)
 		} else {
 			gone = append(gone, t.ID)
 		}
 	}
-	if len(present) == 0 {
-		return nil, nil, nil, fmt.Errorf("jail: every taken member has left the run: %w", ErrBadPlacement)
+	switch {
+	case len(present) == 0 && len(gone) == 0:
+		return nil, nil, nil, fmt.Errorf("jail: custody is %q and nobody is held to take: %w", made.Custody, ErrBadPlacement)
+	case len(present) == 0:
+		return nil, nil, nil, fmt.Errorf("jail: every held member has left the run: %w", ErrBadPlacement)
 	}
 	cells, err = e.FreeCellsIn(made.Cell, len(present))
 	if err != nil {
@@ -182,8 +187,13 @@ func (e *Encounter) applyJail(r *interactionRecord, j Jail, line recognitionLine
 		return fmt.Errorf("jail: %w", err)
 	}
 
-	made.Custody, made.Escape = CustodyJailed, j.Escaped
-	made.Jailed = slices.Clone(present)
+	for i, t := range made.Taken {
+		if slices.Contains(present, t.ID) {
+			made.setPhase(i, CustodyJailed)
+		}
+	}
+	made.Escape = j.Escaped
+	made.Jailed = append(made.Jailed, present...)
 
 	reach, err := e.placedSightReach()
 	if err != nil {
@@ -231,7 +241,7 @@ func (e *Encounter) sweepEscapes() error {
 	asked := false
 	for _, id := range slices.Sorted(maps.Keys(e.interactions)) {
 		made := e.interactions[id].arrest
-		if made == nil || made.Custody != CustodyJailed || made.Escape == "" {
+		if made == nil || made.Escape == "" || len(made.Jailed) == 0 {
 			continue
 		}
 		if !asked {
@@ -245,7 +255,13 @@ func (e *Encounter) sweepEscapes() error {
 		if err != nil {
 			return err
 		}
-		for _, m := range made.Jailed {
+		for i, t := range made.Taken {
+			// ONLY THE JAILED, by their own phase: a member held, freed by a
+			// fight, or never taken raises no escape.
+			m := t.ID
+			if made.phaseOf(i) != CustodyJailed || !slices.Contains(made.Jailed, m) {
+				continue
+			}
 			if _, ok := e.members[m]; !ok {
 				continue
 			}

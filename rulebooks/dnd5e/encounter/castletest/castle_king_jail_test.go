@@ -44,6 +44,7 @@ var jailedSceneTests = []string{
 	"TestMadKingGoingQuietlySetsTheTakenDownInTheCells", "TestMadKingTheJailIsOneVerbsTime",
 	"TestMadKingEachEndOfTheJailIsToldWhatItSaw", "TestMadKingTheJailedAreHeldByNothing",
 	"TestMadKingAnEscapeTurnsTheGarrison", "TestMadKingTheJailIsKeptOnReload",
+	"TestMadKingASeizedMemberGoesQuietlyBesideTheOthers", "TestMadKingTheSeizedRefuseAndFight",
 }
 
 // goQuietly has member say the arrested gate's line to the captain.
@@ -294,11 +295,11 @@ func TestMadKingTheLineIsOfferedOnlyToTheHeld(t *testing.T) {
 	gate, err := s.enc.FreeCellsIn("region-gatehouse", 1)
 	require.NoError(t, err)
 	_, err = s.enc.Relocate(&encounter.RelocateInput{
-		Moves: []encounter.Relocation{{Member: leftTheGate, To: gate[0]}},
+		Moves: []encounter.Relocation{{Member: neverNear, To: gate[0]}},
 		Cause: encounter.RelocationCause{Ref: core.Ref{Module: "test", Type: "shortcuts", ID: "to-the-gate"}, Words: "You are at the gate."},
 	})
 	require.NoError(t, err)
-	require.False(t, s.offersTo(leftTheGate, kingCaptain, comeQuietly), "a party member who was not taken is never offered it")
+	require.False(t, s.offersTo(neverNear, kingCaptain, comeQuietly), "a party member who was not taken is never offered it")
 
 	s.swingAs(seenOutside, kingGate2)
 	require.Equal(t, encounter.CustodyBroken, s.custody(), "precondition: the blow broke the hold")
@@ -348,4 +349,161 @@ func TestMadKingARefusedJailChangesNothing(t *testing.T) {
 	}
 	s.roundTrip()
 	require.Equal(t, "arrested", s.entrance(), "and the run saves and loads")
+}
+
+// seizeLeftTheGate sets the one who left the gate down beside the captain,
+// within the gate's hail; the refresh that follows seizes them (wanted.go).
+func (s *kingScene) seizeLeftTheGate() {
+	s.t.Helper()
+	captain := s.at(kingCaptain)
+	for _, d := range []spatial.Position{{X: -1, Y: 1}, {X: 0, Y: 1}, {X: -1, Y: 0}, {X: 1, Y: 0}, {X: 0, Y: 2}, {X: -2, Y: 1}} {
+		to := spatial.Position{X: captain.X + d.X, Y: captain.Y + d.Y}
+		_, err := s.enc.Relocate(&encounter.RelocateInput{
+			Moves: []encounter.Relocation{{Member: leftTheGate, To: to}},
+			Cause: encounter.RelocationCause{Ref: core.Ref{Module: "test", Type: "shortcuts", ID: "to-the-gate"}, Words: "You are at the gate."},
+		})
+		if err == nil {
+			break
+		}
+	}
+	require.LessOrEqual(s.t, s.enc.Distance(captain, s.at(leftTheGate)), 2.0, "precondition: beside the captain")
+	require.Equal(s.t, encounter.CustodyHeld, takenOf(s.arrested())[leftTheGate].Custody, "precondition: seized on sight and held")
+}
+
+// TestMadKingASeizedMemberGoesQuietlyBesideTheOthers: after the first group
+// is jailed, the one who left is seen at the gate and seized; they are
+// offered "We'll come quietly." again, and saying it re-enters `jailed`,
+// whose jail takes only them — the one present and held — onto a fresh cell
+// beside the others. A save and load after the seizure re-fires nothing.
+func TestMadKingASeizedMemberGoesQuietlyBesideTheOthers(t *testing.T) {
+	t.Parallel()
+	s := theJail(t)
+	first := map[encounter.MemberID]spatial.Position{}
+	for _, m := range takenMembers {
+		first[m] = s.at(m)
+	}
+	s.seizeLeftTheGate()
+	told := len(s.payloadsOf(leftTheGate, encounter.BeatArrested))
+	s.roundTrip()
+	require.Len(t, s.payloadsOf(leftTheGate, encounter.BeatArrested), told, "a load seizes nothing again")
+	require.True(t, s.heldNow(leftTheGate), "and they are still held")
+	require.True(t, s.offersTo(leftTheGate, kingCaptain, comeQuietly), "the seized are offered the line")
+
+	require.NoError(t, s.goQuietly(leftTheGate))
+	require.Equal(t, encounter.RegionID("region-cells"), s.regionOf(s.at(leftTheGate)), "set down in the cells")
+	for _, m := range takenMembers {
+		require.Equal(t, first[m], s.at(m), "%s was not moved again", m)
+		require.NotEqual(t, first[m], s.at(leftTheGate), "a fresh cell")
+	}
+	made := s.arrested()
+	require.Contains(t, made.Jailed, leftTheGate)
+	require.Equal(t, encounter.CustodyJailed, takenOf(made)[leftTheGate].Custody)
+}
+
+// TestMadKingTheSeizedRefuseAndFight: the one seized at the gate says "You
+// will never take me alive."; the garrison turns, the fight forms with the
+// guard, and the hold breaks.
+func TestMadKingTheSeizedRefuseAndFight(t *testing.T) {
+	t.Parallel()
+	s := theJail(t)
+	s.seizeLeftTheGate()
+	s.neverAlive(leftTheGate)
+	require.Equal(t, encounter.CustodyBroken, takenOf(s.arrested())[leftTheGate].Custody, "the hold is broken")
+	require.Equal(t, encounter.CustodyJailed, s.custody(), "the jailed stay jailed")
+}
+
+// TestMadKingTheFightLineAtTheArrest: at the first arrest the held speaker
+// refuses: the garrison turns, the fight forms, and the hold breaks for every
+// member held.
+func TestMadKingTheFightLineAtTheArrest(t *testing.T) {
+	t.Parallel()
+	s, _ := theArrest(t)
+	s.neverAlive(hero)
+	require.Equal(t, encounter.CustodyBroken, s.custody(), "the hold is broken")
+	require.False(t, s.heldNow(inTheArea), "for every member held")
+}
+
+// neverAlive has member refuse the arrest to the captain, and checks the
+// garrison turned and the fight formed with member in it.
+func (s *kingScene) neverAlive(member encounter.MemberID) {
+	s.t.Helper()
+	require.True(s.t, s.offersTo(member, kingCaptain, "never-alive"), "the held are offered the fight line")
+	_, err := s.enc.Speak(context.Background(), &encounter.SpeakInput{
+		Range: speakReach, Actor: member, Target: kingCaptain, OptionID: "never-alive", Roller: rollsOne{},
+		Revision: s.revisionOf(member, kingCaptain, "never-alive"),
+	})
+	require.NoError(s.t, err)
+	require.Equal(s.t, encounter.StanceHostile, s.stance(garrison, encounter.FactionParty), "the garrison turns")
+	require.Equal(s.t, encounter.ClockTurn, clockKind(s.t, s.enc, member), "the fight forms")
+}
+
+// TestMadKingTheSeizedAreHailed: the one who left stands in the gatehouse
+// three cells from the nearest gate speaker, outside the gate's hail and not seized; the
+// step that brings them within it seizes them, and the gate addresses them
+// with the lines the held are offered.
+func TestMadKingTheSeizedAreHailed(t *testing.T) {
+	t.Parallel()
+	s, _ := theArrest(t)
+	captain := s.at(kingCaptain)
+	free, err := s.enc.FreeCellsIn("region-gatehouse", 40)
+	require.NoError(t, err)
+	var start spatial.Position
+	found := false
+	nearest := func(c spatial.Position) float64 {
+		d := s.enc.Distance(captain, c)
+		for _, g := range []encounter.MemberID{kingGate1, kingGate2} {
+			d = min(d, s.enc.Distance(s.at(g), c))
+		}
+		return d
+	}
+	for _, c := range free {
+		if nearest(c) == 3 {
+			start, found = c, true
+			break
+		}
+	}
+	require.True(t, found, "precondition: a free gatehouse cell three from the nearest gate speaker")
+	_, err = s.enc.Relocate(&encounter.RelocateInput{
+		Moves: []encounter.Relocation{{Member: leftTheGate, To: start}},
+		Cause: encounter.RelocationCause{Ref: core.Ref{Module: "test", Type: "shortcuts", ID: "into-the-gatehouse"}, Words: "You are in the gatehouse."},
+	})
+	require.NoError(t, err)
+	require.Contains(t, wantedOf(s.arrested()), leftTheGate, "precondition: beyond the hail, not seized")
+
+	var next spatial.Position
+	found = false
+	for _, c := range free {
+		if s.enc.Distance(start, c) == 1 && nearest(c) <= 2 {
+			next, found = c, true
+			break
+		}
+	}
+	require.True(t, found, "precondition: a step into the hail")
+	_, err = s.enc.Step(&encounter.StepInput{Member: leftTheGate, To: next, EndWalk: true, Reach: speakReach})
+	require.NoError(t, err)
+	require.Equal(t, encounter.CustodyHeld, takenOf(s.arrested())[leftTheGate].Custody, "seized on sight")
+	addressed, err := s.enc.AddressFor(&encounter.AddressForInput{Member: leftTheGate, Reach: speakReach})
+	require.NoError(t, err)
+	require.NotNil(t, addressed.Address, "and the gate addresses them")
+}
+
+// TestMadKingAnArrestRecordWithCustodyOnTheRecordHolds: the arrest scene's
+// record names its custody once, on the record, and no member's own — the
+// shape every record had up to encounter v0.210.0; it loads and holds.
+func TestMadKingAnArrestRecordWithCustodyOnTheRecordHolds(t *testing.T) {
+	t.Parallel()
+	arrestScene.once.Do(buildTheArrestScene)
+	require.NoError(t, arrestScene.err)
+	var raw map[string]any
+	require.NoError(t, json.Unmarshal(arrestScene.blob, &raw))
+	for _, it := range raw["interactions"].([]any) {
+		if arrest, ok := it.(map[string]any)["arrest"].(map[string]any); ok {
+			require.Equal(t, "held", arrest["custody"])
+			for _, tk := range arrest["taken"].([]any) {
+				require.NotContains(t, tk.(map[string]any), "custody", "the old shape: no member's own phase")
+			}
+		}
+	}
+	s := loadTheSceneOn(t, arrestScene.blob, arrestScene.compiled, arrestScene.host)
+	require.True(t, s.heldNow(hero), "the record's phase holds the taken")
 }

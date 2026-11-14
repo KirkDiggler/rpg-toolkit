@@ -440,7 +440,7 @@ func (s *CastleSuite) TestTheFoldedFormIsNarrow() {
 // named, not said again.
 func (s *CastleSuite) TestSameLinesFold() {
 	text := s.rb.FoldedText()
-	s.Contains(text, "Guard (gate-2) has the same 5 lines as Guard (gate-1): `vouch`, `straggler`, `friends-inside`, `troupe`")
+	s.Contains(text, "Guard (gate-2) has the same 6 lines as Guard (gate-1): `vouch`, `straggler`, `friends-inside`, `troupe`,")
 	s.Equal(1, strings.Count(text, "“They’re with us. The captain let us in.” (`vouch`)"))
 }
 
@@ -454,7 +454,7 @@ func (s *CastleSuite) TestOneWordPreventsTheFold() {
 	rb, err := readback.Of([]byte(edited))
 	s.Require().NoError(err)
 	text := rb.FoldedText()
-	s.Contains(text, "Guard (gate-2) has the same 4 lines as Guard (gate-1): `straggler`, `friends-inside`, `troupe` and")
+	s.Contains(text, "Guard (gate-2) has the same 5 lines as Guard (gate-1): `straggler`, `friends-inside`, `troupe`,")
 	s.Equal(2, strings.Count(text, "“They’re with us. The captain let us in.” (`vouch`)"))
 	s.Contains(text, "the guard answers “Right you are. Go on through, the pair of you.”")
 }
@@ -472,7 +472,8 @@ func (s *CastleSuite) TestTheHailIsTheEngines() {
 	who := s.statement(readback.KindHailers, "interactions.front-gate.approach").Sentence
 	s.Contains(who, "in `warned-troupe`, Guard Captain (captain) (by `guest`)")
 	s.Contains(who, "in `arrested`, Guard (gate-1), Guard (gate-2) and Guard Captain (captain) (by `come-quietly`")
-	s.Contains(who, "in `admitted` and `jailed`, nobody")
+	s.Contains(who, "in `jailed`, Guard (gate-1), Guard (gate-2) and Guard Captain (captain) (by `come-quietly`")
+	s.Contains(who, "in `admitted`, nobody")
 	wake := s.statement(readback.KindRoutineWake, "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[3]").Sentence
 	s.Contains(wake, "when Guard Captain (captain) hails a character, which happens only under the conversation's hail rule")
 }

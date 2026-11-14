@@ -2212,6 +2212,10 @@ func (e *Encounter) refreshSightDeclaring(
 	if err := e.sweepEscapes(); err != nil {
 		return nil, nil, err
 	}
+	// An arresting guard who sees a wanted member seizes them (wanted.go).
+	if err := e.sweepWanted(); err != nil {
+		return nil, nil, err
+	}
 
 	formed, deltas, err := e.applyTrigger(deltas)
 	if err != nil {

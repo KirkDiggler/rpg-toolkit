@@ -911,13 +911,14 @@ func (e *Encounter) advanceInteraction(option Option, beaten bool, line recognit
 
 	// WHAT FOLLOWS ENTERING THE STATE (recognition.go, rpg-project#928):
 	// after the interaction beat, so the story tells the move before its
-	// consequence; only when the state is newly entered, so a terminal
-	// state's consequence happens once.
-	if stepped.To != stepped.From {
-		line.interaction, line.state = a.Interaction, stepped.To
-		if err := e.applyOutcome(inst, line); err != nil {
-			return err
-		}
+	// consequence. A FIRED SELF-TRANSITION RE-ENTERS the state
+	// (rpg-project#925): a jailed gate that takes another arrested member
+	// into the cells steps `jailed` to `jailed`, and its jail follows again.
+	// A terminal state fires no transition, so its consequence still happens
+	// once.
+	line.interaction, line.state = a.Interaction, stepped.To
+	if err := e.applyOutcome(inst, line); err != nil {
+		return err
 	}
 
 	return nil

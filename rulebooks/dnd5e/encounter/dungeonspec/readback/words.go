@@ -161,8 +161,12 @@ func (b *builder) triggerWords(t encounter.Trigger, ctx lineContext) (string, []
 		}
 		switch in := v.Inner.(type) {
 		case encounter.TriggerRecognized:
-			return fmt.Sprintf("%s does NOT recognise %s as %s (%s does not hold %s about %s)",
-					ctx.other, ctx.me, quote(string(in.Topic)), ctx.other, quote(string(in.Topic)), ctx.me),
+			held := ""
+			if in.Topic == encounter.TopicArrested {
+				held = fmt.Sprintf(", or does but %s is no longer held under the arrest (a fight broke the hold, or jailed)", ctx.me)
+			}
+			return fmt.Sprintf("%s does NOT recognise %s as %s (%s does not hold %s about %s)%s",
+					ctx.other, ctx.me, quote(string(in.Topic)), ctx.other, quote(string(in.Topic)), ctx.me, held),
 				[]Connection{{Kind: "topic", ID: string(in.Topic), Role: "asks"}}
 		case encounter.TriggerFact:
 			return fmt.Sprintf("%s does NOT know the fact %s", me, quote(string(in.Fact))),
