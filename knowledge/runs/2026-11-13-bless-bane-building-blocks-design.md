@@ -29,6 +29,9 @@ Design work for [rpg-project#703](https://github.com/KirkDiggler/rpg-project/iss
 
 - Replacement-plan self-check separated attachment placement from creature role: self-use and recipient-maintained grants can put coordinator/recipient attachments on the same creature without sharing their identity/state — [E5 contract](../../docs/ideas/bless-bane-building-blocks/effect-first-plan.md#task-5--e5-linked-application-placement-and-data-authoring-migration).
 
+- Root implementation through ddec816c passes full race/vet/lint and now runs native Rage from actual typed benefits/upkeep; source aliases remain only until the linked authoring migration, not as duplicate mechanical content — [runtime checkpoint](https://github.com/KirkDiggler/rpg-toolkit/commit/ddec816c44a4f930737be1071d51d389032ac291).
+- Resolution/session test code directly reads the changed ComposedData Runtime shape; S23#964 and S24#965 add explicit own-module pin/fixture/gate steps before API, expanding the checked plan to ten tasks without changing gameplay or merge authority — [adoption sequence](../../docs/ideas/bless-bane-building-blocks/effect-first-plan.md#task-7--e7-resolution-verifies-the-current-root-state-contract).
+
 ## Mistaken
 
 - The first ring proof established benefit reuse but not symmetric reuse of a complete definition; the revised acceptance includes native Rage and a resistance-only ward borrowing its upkeep through both code and configuration — [revised acceptance](../../docs/ideas/bless-bane-building-blocks/acceptance.md).

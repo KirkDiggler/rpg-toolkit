@@ -17,6 +17,7 @@
 - S19#955 / neutral#2426 at185aae3c is already implemented. Retain it and its tests; root currently consumes real `v0.6.1-0.20261113213522-185aae3c494e`.
 - S20#956 / root#2430 continues in `.worktrees/bless-bane-building-blocks`, branch `feat/bless-bane-building-blocks`. Production baseline c99f3d85; characterization checkpoint13fdf1c9 adds two native terminal-order tests with no production change. Full root race/vet/lint pass there.
 - S21#957 / API tree of the same name starts at dev2fe647ea, branch `chore/bless-bane-building-blocks`; preserve newer parallel pins on catch-up. No adoption is yet done.
+- S23#964 / resolution and S24#965 / session are measured additional consumers: their tests access changed ComposedData Runtime fields. Give each its own worktree/pin/fixture PR and full owning gates before API adoption.
 - S22#962 / web inspection tree of the same name is ataa481c03. Branch from/catch up to dev before writing. Its composed-Raging reader consumes `runtime.bag.turns_active`; the API already maps DescribeCondition detail to notes/private detail.
 - Design and evidence remain in `.worktrees/effect-foundation-review`, PR2425. Runtime code stays in its owning trees.
 - Deliver the implemented typed/configured three-consumer proof, source/IDE and native reader look, owning/consumer gates, one joined review and exact ready heads. Release only on operator go, inside-out on actual tags. No native ring acquisition/studio authoring/production promotion or operator-data reset is claimed.
@@ -37,13 +38,13 @@
 - Root-leaf/empty-value semantics and shadowing keys: no fake registration or last-writer-wins → E1/E5.
 - Late invalid replacement or overlapping mounts: no partial results or mutation-order semantics → E2/E5.
 - Native sparse/roundless/reset clocks and simultaneous endings: preserve measured semantics rather than substitute a turn counter → E3/E4.
-- Current-format adoption drops progress/source or revives state: test frozen declarations, strict restore, existing notes/detail and opaque web reader together → E4/E6–E8.
+- Current-format adoption drops progress/source or revives state: test frozen declarations, strict restore, existing notes/detail and opaque web reader together → E4/E6–E10.
 
 ## Sequence and release units
 
-E1 canonical compiler → E2 catalogue/derivation → E3 maintenance parity → E4 complete named definition/local host → E5 linked placement/data consumers → E6 joined rulebook proof → E7 API → E8 web/native observation. E2/E3 are conceptually independent but use one sequential root writer. Do not wait for a merge to begin a consumer.
+E1 canonical compiler → E2 catalogue/derivation → E3 maintenance parity → E4 complete named definition/local host → E5 linked placement/data consumers → E6 joined rulebook proof → E7 resolution → E8 session → E9 API → E10 web/native observation. E2/E3 are conceptually independent but use one sequential root writer. Do not wait for a merge to begin a consumer.
 
-Root E1–E6 ship in existing#2430, API E7 in S21 and web E8 in S22. Existing neutral#2426 remains a provider prerequisite. Release order, only after go: neutral actual tag → root final re-pin/gates/merge/tag → API final re-pin/gates/dev merge → matching web dev merge. Read actual module graphs and merge targets; preserve parallel work.
+Root E1–E6 ship in existing#2430, resolution E7 in S23, session E8 in S24, API E9 in S21 and web E10 in S22. Existing neutral#2426 remains a provider prerequisite. Release order, only after go: neutral actual tag → root final re-pin/gates/merge/tag → resolution re-pin/gates/merge/tag → session re-pin/gates/merge/tag → API final re-pin/gates/dev merge → matching web dev merge. Read actual module graphs and merge targets; preserve parallel work.
 
 ## Task 1 — E1: Canonical values, intrinsic compilation and explicit lowering
 
@@ -74,11 +75,11 @@ Root E1–E6 ship in existing#2430, API E7 in S21 and web E8 in S22. Existing ne
 
 **Files:** create `effects/catalogue.go`, `catalogue_data.go`, `reference.go`, `reference_resolve.go`, `derive.go`, `catalogue_test.go`, `reference_test.go`, `derive_test.go`; add `refs/definitions.go`; keep catalogue codecs out of core.
 
-**Interfaces:** `DefinitionReference{Definition core.Ref,Path []string}`; `AuthoredDefinition` has exactly one effect/composition/use form, with authored composition members recursively containing authored definitions. `DefinitionUse{Reference DefinitionReference,Replace []MemberReplacement}`; `MemberReplacement{Path []string,Definition AuthoredDefinition}`. `CatalogueEntry{Ref core.Ref,Name,Description string,Definition AuthoredDefinition}`; `BuildCatalogue(*BuildCatalogueInput{Entries []CatalogueEntry}) (*BuildCatalogueOutput{Catalogue *Catalogue},error)` returns an immutable catalogue after whole-set validation. `Resolve(*ResolveInput{Definition AuthoredDefinition,Catalogue *Catalogue}) (*ResolveOutput{Definition DefinitionData},error)` supports inline content without a catalogue. `Derive(*DeriveInput{Definition DefinitionData, Replace []ResolvedMemberReplacement}) (*DeriveOutput{Definition DefinitionData},error)` is the pure canonical helper, where `ResolvedMemberReplacement{Path []string,Definition DefinitionData}` contains no uses. `DescribeCatalogue(*DescribeCatalogueInput{Catalogue *Catalogue}) (*DescribeCatalogueOutput{Entries []DefinitionDescription},error)` returns detached descriptions with Ref, Path, node form, Name/Description, declared Order and leaf Kind.
+**Interfaces:** `DefinitionReference{Definition core.Ref,Path []string}`; `AuthoredDefinition` has exactly one effect/composition/use form, with authored composition members recursively containing authored definitions. `DefinitionUse{Reference DefinitionReference,Replace []MemberReplacement}`; `MemberReplacement{Path []string,Definition AuthoredDefinition}`. `CatalogueEntry{Ref core.Ref,Name,Description string,Definition AuthoredDefinition}`; `CatalogueData{Entries []CatalogueEntry}` is the strict file document. `DefineEntry(*DefineEntryInput{Ref core.Ref,Name,Description string,Definition Definition}) (*DefineEntryOutput{Entry CatalogueEntry},error)` projects typed content through E1 into the ordinary entry, avoiding a Go→JSON→Go bridge; `BuildCatalogue(*BuildCatalogueInput{Entries []CatalogueEntry}) (*BuildCatalogueOutput{Catalogue *Catalogue},error)` returns an immutable catalogue after whole-set validation. `Resolve(*ResolveInput{Definition AuthoredDefinition,Catalogue *Catalogue}) (*ResolveOutput{Definition DefinitionData},error)` supports inline content without a catalogue. `Derive(*DeriveInput{Definition DefinitionData, Replace []ResolvedMemberReplacement}) (*DeriveOutput{Definition DefinitionData},error)` is the pure canonical helper, where `ResolvedMemberReplacement{Path []string,Definition DefinitionData}` contains no uses. `DescribeCatalogue(*DescribeCatalogueInput{Catalogue *Catalogue}) (*DescribeCatalogueOutput{Entries []DefinitionDescription},error)` returns detached descriptions with Ref, Path, node form, Name/Description, declared Order and leaf Kind.
 
 **Behavior:** definition refs use the definitions namespace; wire refs are strings validated by core.ParseString, with path arrays separate. Do not inherit core's permissive historical object decoding. Forward references are allowed. Resolve selected roots/groups/leaves exactly; no implicit parameter/class substitution. Validate replacement paths against the selected source before applying any: nonempty, existing, unique, no ancestor/descendant overlap. Replace a whole member value, retaining key/order/metadata; no params/amount/array merge. Resolve reference-bearing replacements and refuse active expansion cycles while permitting acyclic same-entry member reuse. Validate unused catalogue entries too. No network/global registration or live catalogue in instances.
 
-**Tests:** `TestDefinitionCatalogueSuite` (typed/data entry equality, enumeration ownership, duplicate ref, unused invalid entry, forward reference); `TestDefinitionReferenceSuite` (root/group/member, missing/leaf traversal, strict wire ref, self/cross cycle, acyclic same-entry reuse, repeated selection ownership); `TestDefinitionDerivationSuite` (fixed2 replacement leaves original live scaling unchanged, late invalid/overlap/root replacement refusal, complete replacement rather than merge). JSON sketches in reference-contracts become executable fixtures.
+**Tests:** `TestDefinitionCatalogueSuite` (typed/data entry equality, enumeration ownership, duplicate ref, unused invalid entry, forward reference); `TestDefinitionReferenceSuite` (root/group/member, missing/leaf traversal, strict wire ref, self/cross cycle, acyclic same-entry reuse, repeated selection ownership); `TestDefinitionDerivationSuite` (fixed2 replacement leaves original live scaling unchanged, late invalid/overlap/root replacement refusal, complete replacement rather than merge). JSON sketches in reference-contracts become `effects/testdata/definitions/{resistance-use,fixed-rage-use}.json`, exercised by `TestDefinitionReferenceSuite/TestReferenceContractFixtures`.
 
 - [ ] Add named resolver/derivation tests and observe RED.
 - [ ] Implement strict codecs and resolution over E1 data; keep one intrinsic compiler.
@@ -91,13 +92,13 @@ Root E1–E6 ship in existing#2430, API E7 in S21 and web E8 in S22. Existing ne
 
 **Owner/delivers:** root effects; R8 behavior-preserving decomposition. **Prerequisites:** E1; existing native characterization13fdf1c9.
 
-**Files:** create `effects/round_duration.go`, `round_duration_test.go`; update `effects/definitions.go`, `kinds.go`, `parts.go`, `maintenance.go`, `activity_part.go`, `duration_part.go`, validation/inspection tests. Preserve the existing machine implementation.
+**Files:** create `effects/round_duration.go`, `round_duration_test.go`; update `effects/definitions.go`, `kinds.go`, `parts.go`, `maintenance.go`, `activity_part.go`, `duration_part.go`, `vocabulary.go`, validation/inspection tests. Preserve the existing machine implementation.
 
 **Interfaces:** typed `CombatActivity{SkipFirst bool}` over the existing kind. `RoundDuration{Rounds int,ExpiredReason,ResetReason string}`; kind `round_duration`, positive rounds and explicit nonblank reasons. It lowers to existing machine AnchorRound/DeriveTurnsActive and round guards, not a new clock. `RoundDurationInfo{Anchored bool,RoundActivated,TurnsActive,TotalRounds int}` is owned inspection data; extend PartInfo/maintenance descriptions with round-progress fields rather than pretending they are turn-end counts. Activity/round-duration support EndAttachment and EndApplication, while concentration/until-empty retain required application custody.
 
 **Behavior:** match native grace/activity/clock cases in native-maintenance-evidence.md. Order activity before round duration so first accepted termination gates the sibling. Zero/negative round does not anchor; missing round retains known progress and is not reset; positive lower round resets; elapsed cap uses rounds-anchor≥Rounds-1. No activity and elapsed/reset simultaneously report no_combat_activity. Positive DamageTaken only; never apply HP again. Each part owns independent state and valid restore bounds.
 
-**Tests:** `TestRoundDurationSuite`: sparse rounds1,2,3,4,8,9,10 expire10; anchor4 expires13; progress1,2,3,6 at4,5,6,9; unanchored roundless then6; negative then2; missing versus reset; invalid/terminal snapshots. `TestRagingMaintenanceAssemblySuite`: first-end grace, misses/positive damage, idle versus elapsed/reset precedence, local/application scope routing and End-before-detach contribution availability. Existing native suites remain unchanged until E4 rewires the consumer.
+**Tests:** `TestRoundDurationSuite`: sparse rounds1,2,3,4,8,9,10 expire10; anchor4 expires13; progress1,2,3,6 at4,5,6,9; unanchored roundless then6; negative then2; missing versus reset; invalid/terminal snapshots and first-positive-end expiry for a one-round policy (a private stateless round-availability fact, not another clock). `TestRagingMaintenanceAssemblySuite`: first-end grace, misses/positive damage, idle versus elapsed/reset precedence, local/application scope routing and End-before-detach contribution availability. Existing native suites remain unchanged until E4 rewires the consumer.
 
 - [ ] Add new-part/assembly tests, observe RED before adding the meaning.
 - [ ] Implement the reusable policy using existing machine tools; no named-Rage runtime branch.
@@ -110,20 +111,20 @@ Root E1–E6 ship in existing#2430, API E7 in S21 and web E8 in S22. Existing ne
 
 **Owner/delivers:** root named definitions/conditions/projection. **Prerequisites:** E1–E3.
 
-**Files:** create `definitions/doc.go`, `definitions/raging.go`, `definitions/catalogue.go`, `definitions/raging_test.go`; update `conditions/raging_definition.go`, `raging_benefits.go`, `composed.go`, `composed_data.go`, `descriptor.go`, `linked_info.go`, `character/status_view.go` and current Raging/factory/restore tests. Remove the asymmetric helper/private recipe after parity is established; no duplicate implementation remains.
+**Files:** create `definitions/doc.go`, `definitions/raging.go`, `definitions/catalogue.go`, `definitions/raging_test.go`; update `conditions/raging_definition.go`, `raging_benefits.go`, `composed.go`, `composed_data.go`, `descriptor.go`, `linked_info.go`, `conditions/maintenance_info.go`, `character/status_view.go` and current Raging/factory/restore tests. Remove the private recipe after parity is established. The first-cut RagingBenefits adapter may temporarily project the new definition while E5 migrates its last callers; it defines no separate mechanical content and is removed with that adapter.
 
 **Interfaces:** `definitions.Raging(*RagingInput{DamageBonus RagingDamageBonus}) (*RagingDefinition,error)`; `definitions.RagingDamageBonus{Fixed *int,BarbarianLevel bool}` retains existing JSON/choice semantics and moves to its named-content owner. Update native creation callers; do not add another persisted format. RagingDefinition exposes Benefits and Maintenance typed fields; benefits expose DamageBonus/PhysicalResistance/StrengthSavingThrows/StrengthChecks. Maintenance exposes CombatActivity, Duration and an Endings group with ZeroHP/Rest/CombatEnd. Every group/whole value implements DefinitionData projection from its actual fields, with fixed member keys/order. The catalogue entry uses refs.Definitions.Raging, not the active condition ref.
 
 Native local host compiles the whole definition and places benefits with EndPart and maintenance with EndAttachment. ComposedCondition becomes assembly-backed, retains ref/origin/by-ref admission and existing ConditionBehavior/assessment protocols. `LocalBindings{Parts []PartDeclaration}` is the immutable resolved local binding payload. ComposedData retains Ref/MemberID/Origin and stores `Bindings *LocalBindings` plus `Runtime *generic.AssemblySnapshot` (`runtime.parts`); old single-machine active data is refused, never normalized. CreateFromRef's RagingBindings input remains the source's construction contract, not the active save format. Load uses saved resolved parts, not latest catalogue reconstruction.
 
-Add a shared maintenance-inspection capability implemented by local and linked conditions. DescribeCondition provides round progress in Display.Detail, preserving “Active for N turns” through existing API fields. No duplicate mutable top-level progress bag. Native activation/price/cast restrictions remain at their existing owners.
+Local part binding requires no invented ApplicationID; application-ending meanings still require it. Add a shared maintenance-inspection capability implemented by local and linked conditions. Kind-owned `TurnEndObserved *bool` inspection witnesses let restore reject rewound activity grace beside an already-observed required clock, without a shared mutable bag or mid-dispatch coherence assertion. Independent Changed reports both reach existing idempotent dirty keepers; migrate the old one-machine notification count to assert both part updates rather than coalesce through a new bus mechanism. DescribeCondition provides round progress in Display.Detail, preserving “Active for N turns” through existing API fields. No duplicate mutable top-level progress bag. Native activation/price/cast restrictions remain at their existing owners.
 
 **Tests:** `TestCompleteRagingDefinitionSuite` (fields/full/group/member projections share actual values, owned mutation and native catalogue equivalence); existing Raging suites including13fdf1c9 priority tests through the new native instance; `TestComposedDefinitionRestoreSuite` (frozen parts, exact snapshot coverage, no terminal required maintenance revival, old current-format refusal, origin/ref unchanged); status-view tests assert provider progress1/2/3/6 and source. Verify no separate private ragingRecipe remains as an execution authority.
 
 - [ ] Write new definition/host/state tests, watch old shape fail where behavior/API changes.
 - [ ] Build typed definition/projection, then local adapter; preserve native semantic assertions while migrating layout-specific fixtures.
 - [ ] Run root race/vet/lint and inspect the complete production call chain from features.Rage through CreateFromRef.
-- [ ] Publish current-envelope/projection examples for E7/E8; commit/push.
+- [ ] Publish current-envelope/projection examples for E7–E10; commit/push.
 
 **Evidence:** actual native condition consumes complete definition; inspected state/identity contract and fresh regression gates, not just matching two duplicate recipes.
 
@@ -157,14 +158,44 @@ Add a shared maintenance-inspection capability implemented by local and linked c
 - [ ] Write new code/config equivalence and three-consumer tests before adapter fixes; label fixture-selected outcomes honestly.
 - [ ] Run executable examples and named suites; resolve only measured gaps in the owning layer.
 - [ ] Run full root race/vet/lint and repository make pre-commit, disclose unchanged Core failure separately if present; check docs links/genres.
-- [ ] Publish the actual typed field/config examples and reader-compatible provider source for early view and E7/E8.
+- [ ] Publish the actual typed field/config examples and reader-compatible provider source for early view and E7–E10.
 - [ ] Record exact source heads and evidence; no merge or native inventory claim.
 
 **Evidence:** compiler/runtime parity across all three consumers, actual source ergonomics and no dropped first-cut guarantees.
 
-## Task 7 — E7: API adopts the current native definition graph and projection
+## Task 7 — E7: Resolution verifies the current root state contract
 
-**Owner/delivers:** API S21#957. **Prerequisite:** pushed E6 root and neutral provider source; fresh merge-on-top dev catch-up.
+**Owner/delivers:** toolkit resolution module, S23#964. **Prerequisites:** pushed E6 root; create `.worktrees/effect-first-resolution` on `feat/effect-first-resolution` from current main, with nearest scoped resolution instructions loaded.
+
+**Files/interfaces:** resolution `go.mod`, `go.sum`, `raging_composition_test.go`, `dirty_test.go`, module run record. Pin the actual root source. The production ConditionBehavior/roll APIs remain; the current ComposedData snapshot is now per-part. Never modify this module from the root runtime tree.
+
+**Behavior/tests:** retain native applied-damage sustain, missed-attack dirty state, first-end progress, cold restoration and exact ending assertions. Replace private single-bag layout reads with current part snapshots/provider inspection. No mechanical expected value or dirty-state guarantee is weakened.
+
+- [ ] Baseline the owning module; adopt actual pushed root SHA and tidy.
+- [ ] Observe the old fixture compilation failure, migrate current fixtures/assertions, and run native Raging/dirty suites.
+- [ ] Run full module `go test -race -count=1 ./...`, `go vet ./...`, `golangci-lint run ./...`; commit/push a working draft.
+- [ ] Session consumes its real source; actual root tag and exact-head gates precede authorized resolution merge/tag.
+
+**Evidence:** own-module graph and complete gates, not only API compilation. No extra runtime rule is expected; any measured provider gap returns to its owner.
+
+## Task 8 — E8: Session verifies the root/resolution adoption
+
+**Owner/delivers:** toolkit session module, S24#965. **Prerequisites:** working pushed E6/E7 sources; create `.worktrees/effect-first-session` on `feat/effect-first-session` from current main and load its scoped instructions.
+
+**Files/interfaces:** session `go.mod`, `go.sum`, `conditions_test.go`, `effects_test.go`, module run record. Pin real root/resolution sources without taking over newer encounter/session work. Current snapshot/description contracts come from the providers.
+
+**Behavior/tests:** preserve activation/source/effect reads, first-turn grace, saved activity/progress and cold continuation; migrate old Runtime.State/Bag fixtures to current part state. No historical reader or second progress counter.
+
+- [ ] Baseline the module; adopt actual provider SHAs and observe current-format fixture failures.
+- [ ] Update fixtures/assertions while retaining original mechanics and origin/progress assertions.
+- [ ] Run full `go test -race -count=1 ./...`, `go vet ./...`, `golangci-lint run ./...`; commit/push its working draft.
+- [ ] API consumes the exact source graph. Actual provider tags and focused final-head gates precede authorized session merge/tag.
+
+**Evidence:** SDK-owned behavior passes on the graph the API will select, not stale unit pins concealed by API minimum-version selection.
+
+## Task 9 — E9: API adopts the current native definition graph and projection
+
+**Owner/delivers:** API S21#957. **Prerequisite:** pushed E6 root, E7 resolution, E8 session and neutral provider source; fresh merge-on-top dev catch-up.
 
 **Files:** API go.mod/go.sum; `internal/integration/session/composed_raging_acceptance_test.go`, `linked_maintenance_acceptance_test.go`, `effects_release_adoption_test.go`; `internal/handlers/dnd5e/v1alpha1/character/composed_raging_test.go`, current v2 private-sheet tests as needed; `internal/orchestrators/lobby/start_encounter_session_stack_test.go`; module run record. Inspect all actual ComposedData test constructors before migration.
 
@@ -175,13 +206,13 @@ Add a shared maintenance-inspection capability implemented by local and linked c
 - [ ] Baseline the current dev graph; adopt actual pushed SHAs with go get/tidy and inspect the graph diff.
 - [ ] Update only current-format fixtures/assertions, preserving semantic acceptance and public creation paths.
 - [ ] Run focused native suites, full make test (including cmd/server) and make ci-check before the working PR push.
-- [ ] Open/update API draft, hand exact graph and sample provider envelopes/details to E8.
+- [ ] Open/update API draft, hand exact graph and sample provider envelopes/details to E10.
 
 **Evidence:** actual API graph plus public/private/live/reload outcomes, not a provider fixture presented as transport proof.
 
-## Task 8 — E8: Web current reader, native view and joined readiness
+## Task 10 — E10: Web current reader, native view and joined readiness
 
-**Owner/delivers:** web S22#962; API/world observation coordination. **Prerequisites:** E7 working graph/projection; own web branch/worktree from dev, not operator checkout.
+**Owner/delivers:** web S22#962; API/world observation coordination. **Prerequisites:** E9 working graph/projection; own web branch/worktree from dev, not operator checkout.
 
 **Files:** `src/types/conditionData.ts`, `conditionData.test.ts`, `src/components/features/ConditionBadge.tsx`, `ConditionBadge.test.tsx`; relevant status/effect-row tests and owning run record. Keep other unmigrated payload readers unchanged. No generated SDK edit or new proto field expected.
 
@@ -207,9 +238,9 @@ Add a shared maintenance-inspection capability implemented by local and linked c
 | Ring and reverse-direction ward | E5/E6 | Both code/config paths and real runtime outcomes |
 | Placement is explicit, groups are not lifetimes | E1/E5 | Full coverage/scope checks, no magic maintenance label |
 | Independent selection/lifetimes/custody | E1/E5/E6 | Retained all/oldest, expiry, sibling effects, pending/finalization/generation tests |
-| Frozen current saves and no migration/reset | E4/E5/E7/E8 | Owned parts/state, strict reload/refusal and opaque current reader |
-| Preserve source/progress end-to-end | E4/E7/E8 | Provider detail → API notes/v2 detail → badge, native observation |
-| Own adoption/review/release discipline | E7/E8 | Actual graph, gates, joined review, operator merge authority and actual tags |
+| Frozen current saves and no migration/reset | E4/E5/E7–E10 | Owned parts/state, strict reload/refusal and opaque current reader |
+| Preserve source/progress end-to-end | E4/E7–E10 | Provider detail → API notes/v2 detail → badge, native observation |
+| Own adoption/review/release discipline | E7–E10 | Actual graph, gates, joined review, operator merge authority and actual tags |
 
 ## Provider/consumer seams
 
@@ -220,8 +251,8 @@ Add a shared maintenance-inspection capability implemented by local and linked c
 | E2 catalogue/resolver | E4/E6 | Ref+path+whole-member replacement → canonical DefinitionData, no uses left | Code/config three-consumer and invalid-reference tests |
 | E3 maintenance kinds | E4/E5 | Activity/RoundDuration/EndOn with explicit allowed local/application scopes and inspection | Native chronology, priority and runtime host tests |
 | E4 named definitions | Native/linked adapters | Actual typed fields and complete projected tree; placement mapping explicit | Same source used by native Rage/ring/ward |
-| E4 current state/progress | E7 API | ComposedData assembly snapshot; DescribeCondition detail, same condition ref/origin | Current persistence/private-source/progress tests |
-| E7 actual API graph | E8 web | Current opaque envelope plus existing notes/detail | Reader/rendering and served native observation |
+| E4 current state/progress | E7 resolution / E8 session / E9 API | ComposedData assembly snapshot; same native identity/progress and full consumer graph | Own-module snapshot/native suites and API persistence/private-source tests |
+| E9 actual API graph | E10 web | Current opaque envelope plus existing notes/detail | Reader/rendering and served native observation |
 
 ## Self-check and engineering choices
 
@@ -229,6 +260,7 @@ Add a shared maintenance-inspection capability implemented by local and linked c
 - PartTemplate's data is the unbound EffectSpec, not another language. Go projections can fail, but canonical compile has one validator and retains no callback.
 - The complete named definition has its own package to avoid effects→conditions cycles. Conditions remains the runtime/identity adapter, not the reusable authoring unit.
 - Local native Rage changes to an assembly snapshot explicitly. Progress moves through existing provider-owned detail/notes, so no proto expansion or client bag arithmetic is required by the inspected paths.
+- Resolution/session tests also directly access the changed ComposedData Runtime fields. S23#964 and S24#965 add separate owning-module pin/fixture/gate PRs; API compilation alone is not claimed to verify those module tests.
 - A distinct web deliverable was added because the native reader actually depends on the old bag. Earlier “linked parts are opaque” evidence is not reused outside its scope.
 - Plan self-check caught a role/attachment conflation: a recipient-maintained or self-use grant can map both attachments to one creature. E5 therefore names attachment placement separately from the coordinator's user/recipient role; no participant ID is used as a grouping shortcut.
 - Root tasks share one writer in order. Actual provider publication, native source look, consumer adoption, review and final release are all represented. The old first-cut completion markers do not skip these tasks.
