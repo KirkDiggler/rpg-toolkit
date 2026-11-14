@@ -629,6 +629,10 @@ type SpeakOutput struct {
 	// Answered is the row the world's die picked from the verdict's rows,
 	// with the roll — nil when the option has no rows for that verdict.
 	Answered *Pick
+
+	// Formed is the fight a row's relocation formed on arrival
+	// (rpg-project#958): the speaker set down in hostile sight. Nil otherwise.
+	Formed *FormedBubble
 }
 
 // Speak reports a line said to a creature or a prop, lands the deed its skill
@@ -726,6 +730,10 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	if err := e.refuseJailAhead(option, beaten); err != nil {
 		return refuse(fmt.Errorf("speak: %w", err))
 	}
+	// AND A ROW THAT WOULD SET THE SPEAKER DOWN ELSEWHERE (passage.go).
+	if err := e.refuseRelocateAhead(option, beaten, in.Actor); err != nil {
+		return refuse(fmt.Errorf("speak: %w", err))
+	}
 
 	at := uint64(e.clock.ToData().HighWater)
 	seq, err := e.appendSpokeBeat(in, option, beaten, at)
@@ -786,10 +794,12 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	// record, as an outcome does — a success row when the line lands, a
 	// failure row when it is missed — after the answer that says it, before
 	// the interaction moves, every time the row lands.
+	var formed *FormedBubble
 	if answered.pick != nil && len(option.Grants) > 0 {
 		iid, _ := optionInteraction(option)
-		if err := e.applyGrants(option, beaten, answered.pick.Entry, recognitionLine{
+		if formed, err = e.applyGrants(option, beaten, answered.pick.Entry, recognitionLine{
 			interaction: iid, option: option.ID, speaker: in.Actor, spokenTo: in.Target, witnesses: witnesses, at: at,
+			learners: answered.learners, reach: in.Range,
 			spoken: spoken, seen: admitted.seen, perceived: admitted.perceived, partyAt: admitted.partyAt, hearers: heardLine.catchers,
 			sawTarget: sawTargetOf(line),
 		}); err != nil {
@@ -837,6 +847,7 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 
 	return &SpeakOutput{
 		Beaten: beaten, Witnesses: witnesses, Hearers: heardLine.catchers, Deed: landed, Seq: seq, Answered: answered.pick,
+		Formed: formed,
 	}, nil
 }
 
@@ -1167,9 +1178,13 @@ func validatePropOptions(id PropID, ref string, options []Option) error {
 	for _, o := range options {
 		// A PROP RECOGNISES NOBODY (rpg-project#929): the holder of a grant is
 		// the one spoken to, and a prop holds nothing.
-		if len(o.Grants) > 0 {
-			return fmt.Errorf("prop %q option %q grants a record, and a prop holds nothing about anybody: %w",
-				id, o.ID, ErrNoField)
+		// A prop may still reveal a secret or carry its speaker elsewhere
+		// (passage.go, rpg-project#958): neither is a record it holds.
+		for _, g := range o.Grants {
+			if g.Consequence.Recognize != nil {
+				return fmt.Errorf("prop %q option %q grants a record, and a prop holds nothing about anybody: %w",
+					id, o.ID, ErrNoField)
+			}
 		}
 		for _, requires := range o.Requires {
 			if inner, _ := unwrapNot(requires); inner != nil {

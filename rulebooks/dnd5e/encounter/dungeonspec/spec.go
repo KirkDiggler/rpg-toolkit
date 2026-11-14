@@ -1312,6 +1312,20 @@ type OutcomeSpec struct {
 	Jail *JailSpec `yaml:"jail,omitempty" json:"jail,omitempty"`
 }
 
+// RelocateSpec is a row's `relocate:` ([encounter.RelocateGrant]): the
+// region its speaker is set down in, the words they are told, and the world
+// rounds it takes.
+type RelocateSpec struct {
+	// To is a region of this site. REQUIRED.
+	To string `yaml:"to"`
+
+	// Words is what the speaker is told. REQUIRED.
+	Words string `yaml:"words"`
+
+	// Rounds is how many world rounds pass with it; zero or more.
+	Rounds int `yaml:"rounds,omitempty"`
+}
+
 // JailSpec is `jail:` ([encounter.Jail]): what each member moved is told, how
 // many world rounds the move takes, and the fact the guards' mind learns
 // when a guard sees a jailed member outside the cell.
@@ -1586,6 +1600,25 @@ type AnswerSpec struct {
 	//	  - say: Never seen you before.
 	//	    recognize: { topic: turned-away, holder: spoken_to, about: speaker }
 	Recognize *RecognizeSpec `yaml:"recognize,omitempty"`
+
+	// Reveal is what this row teaches whoever caught it when it is a line's
+	// row and is the row answered (rpg-project#958): a concealment of this
+	// site, its cells, doors and props together. On a creature's line or a
+	// prop's; a table row is refused.
+	//
+	//	success:
+	//	  - say: Behind the ovens. Mind your head.
+	//	    reveal: servants-passage
+	Reveal string `yaml:"reveal,omitempty"`
+
+	// Relocate is where this row sets its speaker down when it is a line's
+	// row and is the row answered (rpg-project#958): a region of this site,
+	// what the speaker is told, and how many world rounds it takes. On a
+	// creature's line or a prop's; a table row is refused.
+	//
+	//	success:
+	//	  - relocate: { to: region-chapel, words: You come out behind the altar. }
+	Relocate *RelocateSpec `yaml:"relocate,omitempty"`
 
 	// When is the condition this entry is on the table under
 	// (rpg-project#465, design §2). `time` ONLY: a social key IS the
@@ -2739,7 +2772,7 @@ func (r *AnswerSpec) UnmarshalYAML(value *yaml.Node) error {
 		}
 		switch key {
 		case "weight", "say", "loudness", "activity", "when", "fact", "flee", "hold", "attack", "toward", "dash", "away",
-			"search", "use", "with", "as", "recognize":
+			"search", "use", "with", "as", "recognize", "reveal", "relocate":
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.AnswerSpec",
 				value.Content[i].Line, key)

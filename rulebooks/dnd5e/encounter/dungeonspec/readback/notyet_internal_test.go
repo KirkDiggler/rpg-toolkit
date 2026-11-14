@@ -48,6 +48,8 @@ var specOf = map[string]reflect.Type{
 	"checkApproach":      reflect.TypeOf(dungeonspec.ApproachSpec{}),
 	"advance":            reflect.TypeOf(dungeonspec.AdvanceSpec{}),
 	"optionRow":          reflect.TypeOf(dungeonspec.AnswerSpec{}),
+	"relocate":           reflect.TypeOf(dungeonspec.RelocateSpec{}),
+	"concealment":        reflect.TypeOf(dungeonspec.ConcealmentSpec{}),
 	"activity":           reflect.TypeOf(dungeonspec.ActivityCueSpec{}),
 	"post":               reflect.TypeOf(dungeonspec.HoldsSpec{}),
 	"recipe":             reflect.TypeOf(machine.Recipe{}),
@@ -66,13 +68,14 @@ var specOf = map[string]reflect.Type{
 // read-back knowingly does not say: present in a file, each is listed under
 // not yet said. A key here is a decision, not a gap.
 var acknowledged = map[string][]string{
-	"root":               {"concealments", "scenarios", "tables"},
+	"root":               {"scenarios", "tables"},
+	"concealment":        {"attempts", "notice"},
 	"monsterBinding":     {"table", "on", "states", "actions", "addActions", "dropActions"},
 	"faction":            {"behaviors", "behaviorState", "blockingStates", "posts", "table", "on", "states"},
 	"behaviorDefinition": {"ref", "parameters", "end", "body"},
 	"optionRow":          {"flee", "when", "hold", "attack", "toward", "dash", "away", "search", "use", "with", "as"},
 	"recipe":             {"bag"},
-	"tableRow":           {"recognize"},
+	"tableRow":           {"recognize", "reveal", "relocate"},
 	"template":           {"addActions", "dropActions", "experience"},
 }
 

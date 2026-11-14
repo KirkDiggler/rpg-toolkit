@@ -118,9 +118,10 @@ type TriggerRecognized struct {
 func (t TriggerRecognized) isTrigger() {}
 
 // Consequence is one thing that follows an interaction entering a state
-// ([InteractionInput.Outcomes]). Exactly one kind is set: [Recognition], or
-// — on an interaction's outcome only — [Arrest] or [Jail] (arrest.go,
-// jail.go, rpg-project#925).
+// ([InteractionInput.Outcomes]). Exactly one kind is set: [Recognition];
+// on an interaction's outcome only, [Arrest] or [Jail] (arrest.go, jail.go,
+// rpg-project#925); on a line's row only, Reveal or [RelocateGrant]
+// (passage.go, rpg-project#958).
 type Consequence struct {
 	// Recognize is: holders come to hold a topic about subjects.
 	Recognize *Recognition `json:"recognize,omitzero"`
@@ -133,6 +134,14 @@ type Consequence struct {
 	// cell. Only on an interaction's outcome, and only on an interaction that
 	// arrests.
 	Jail *Jail `json:"jail,omitzero"`
+
+	// Reveal is: whoever caught the answer comes to know a concealment
+	// (passage.go, rpg-project#958). Only on a line's row.
+	Reveal ConcealmentID `json:"reveal,omitzero"`
+
+	// Relocate is: the speaker is set down in a region (passage.go,
+	// rpg-project#958). Only on a line's row.
+	Relocate *RelocateGrant `json:"relocate,omitzero"`
 }
 
 // RecognitionHolder names who comes to hold the topic.
@@ -214,6 +223,12 @@ func validateOutcomes(id InteractionID, states map[string]bool, outcomes map[str
 		}
 		for i, c := range outcomes[state] {
 			what := fmt.Sprintf("interaction %q outcome %q consequence %d", id, state, i)
+			if c.Relocate != nil {
+				return fmt.Errorf("%s relocates: a relocate moves the speaker on a line's row; an interaction's outcome uses `jail`", what)
+			}
+			if c.Reveal != "" {
+				return fmt.Errorf("%s reveals: a reveal is a line's row teaching whoever caught its answer", what)
+			}
 			if c.Jail != nil {
 				if c.Recognize != nil || c.Arrest != nil {
 					return fmt.Errorf("%s is of two kinds: one consequence is one kind", what)
@@ -250,6 +265,9 @@ func validateOutcomes(id InteractionID, states map[string]bool, outcomes map[str
 // there would be nobody to hear.
 func validateConsequence(what string, c Consequence, carriers bool) error {
 	r := c.Recognize
+	if c.Reveal != "" || c.Relocate != nil {
+		return validatePassageGrant(what, c)
+	}
 	switch {
 	case c.Arrest != nil:
 		return fmt.Errorf("%s arrests: an arrest follows an interaction entering a state, never a line's row", what)
@@ -293,6 +311,10 @@ func cloneOutcomes(outcomes map[string][]Consequence) map[string][]Consequence {
 			if c.Jail != nil {
 				j := *c.Jail
 				c.Jail = &j
+			}
+			if c.Relocate != nil {
+				g := *c.Relocate
+				c.Relocate = &g
 			}
 			copied = append(copied, c)
 		}
@@ -391,6 +413,10 @@ func cloneGrants(grants []RowGrant) []RowGrant {
 			r := *g.Consequence.Recognize
 			g.Consequence.Recognize = &r
 		}
+		if g.Consequence.Relocate != nil {
+			r := *g.Consequence.Relocate
+			g.Consequence.Relocate = &r
+		}
 		out = append(out, g)
 	}
 	return out
@@ -399,17 +425,28 @@ func cloneGrants(grants []RowGrant) []RowGrant {
 // applyGrants runs every grant of the row that answered the line — a
 // success row when it landed, a failure row when it was missed
 // (rpg-project#929, #932): the same write an outcome makes, by the same live
-// sight, inside the same Speak.
-func (e *Encounter) applyGrants(o Option, beaten bool, row int, line recognitionLine) error {
+// sight, inside the same Speak. It returns the fight a relocation formed on
+// arrival, if one did (rpg-project#958).
+func (e *Encounter) applyGrants(o Option, beaten bool, row int, line recognitionLine) (*FormedBubble, error) {
+	var formed *FormedBubble
 	for _, g := range o.Grants {
-		if g.Failure == beaten || g.Row != row || g.Consequence.Recognize == nil {
+		if g.Failure == beaten || g.Row != row {
 			continue
 		}
-		if err := e.grantRecognition(*g.Consequence.Recognize, line); err != nil {
-			return fmt.Errorf("option %q grant: %w", o.ID, err)
+		var err error
+		switch c := g.Consequence; {
+		case c.Recognize != nil:
+			err = e.grantRecognition(*c.Recognize, line)
+		case c.Reveal != "":
+			err = e.grantReveal(c.Reveal, line)
+		case c.Relocate != nil:
+			formed, err = e.grantRelocate(*c.Relocate, line)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("option %q grant: %w", o.ID, err)
 		}
 	}
-	return nil
+	return formed, nil
 }
 
 // recognizes reports whether holder holds topic about subject: the one
@@ -440,6 +477,9 @@ type recognitionLine struct {
 	// judged in the scene it was spoken in, so whom the creature spoken to
 	// sees is seen, not the live reach.
 	spoken bool
+	// learners is who caught the answer that granted ([answerOutput.learners]):
+	// whom a row's reveal teaches (passage.go). Nil for an outcome.
+	learners []MemberID
 	// reach is the host's interaction reach the line was said within: what a
 	// consequence that moves members sweeps addresses at (jail.go).
 	reach int

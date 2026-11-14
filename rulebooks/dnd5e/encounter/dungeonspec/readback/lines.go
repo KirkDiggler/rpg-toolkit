@@ -164,6 +164,10 @@ func (b *builder) rowStatements(o encounter.Option, line, heading, p string, t l
 					out = append(out, b.grantStatement(o, *g.Consequence.Recognize, lead, path+".recognize", t,
 						foldInfo{line: heading, verdict: verdictWord, site: site, who: t.about.ID}))
 				}
+				if g.Failure == verdict.failure && g.Row == k && (g.Consequence.Reveal != "" || g.Consequence.Relocate != nil) {
+					out = append(out, b.passageStatement(g.Consequence, row, lead, path, t,
+						foldInfo{line: heading, verdict: verdictWord, site: site, who: t.about.ID}))
+				}
 			}
 		}
 	}
@@ -199,6 +203,37 @@ func rowDoes(row encounter.Answer, t lineTarget, name string) ([]string, []Conne
 		does = append(does, "nothing is said")
 	}
 	return does, conns
+}
+
+// passageStatement says a row's reveal or relocate (rpg-project#958): who
+// comes to know the secret, or where the speaker is set down and what the
+// others are told of it.
+func (b *builder) passageStatement(c encounter.Consequence, row encounter.Answer, lead, path string, t lineTarget, f foldInfo) Statement {
+	if c.Reveal != "" {
+		id := b.unqualify(string(c.Reveal))
+		who, short := "everyone who can see the speaker, the speaker included,", "everyone who sees the speaker"
+		if !t.prop {
+			who, short = learnersWords(row.Loudness, t.name), "every member {self}'s words reach"
+		}
+		s := fmt.Sprintf("%s, %s comes to know the secret %s: what it hides is shown to them, and a hidden thing's lines can be "+
+			"said by them. One who knows it already learns nothing again.", lead, who, quote(id))
+		f.text = short + " learns the secret " + quote(id)
+		return b.fstmt(KindLineGrant, t.about, path+".reveal", s, f, Connection{Kind: "concealment", ID: id, Role: "reveals"})
+	}
+	r := c.Relocate
+	rounds := "No world time passes with it."
+	switch {
+	case r.Rounds == 1:
+		rounds = "One round passes on the world clock with it, and creatures due in it act."
+	case r.Rounds > 1:
+		rounds = fmt.Sprintf("%d rounds pass on the world clock with it, and creatures due in them act.", r.Rounds)
+	}
+	s := fmt.Sprintf("%s, the speaker is set down on the first free cell of %s, without walking the way between, and is told %s. %s "+
+		"Whoever saw the speaker leave is told they went, never where; whoever sees them arrive is told they arrived, never from "+
+		"where. A speaker in a fight, held, or with no free cell to land on is refused the line whole; nobody else goes with them.",
+		lead, b.regionWords(string(r.To)), said(r.Words), rounds)
+	f.text = fmt.Sprintf("the speaker is set down in %s, told %s", b.regionName(string(r.To)), said(r.Words))
+	return b.fstmt(KindLineGrant, t.about, path+".relocate", s, f, Connection{Kind: "region", ID: string(r.To), Role: "sends-to"})
 }
 
 // grantStatement says one recognition a line's row grants: who comes to hold

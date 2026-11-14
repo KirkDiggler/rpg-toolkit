@@ -482,10 +482,16 @@ func validatePropInteractions(interactions map[InteractionID]*interactionRecord,
 		if err := validateOptionInteractions(interactions, granted, p.Options); err != nil {
 			return fmt.Errorf("prop %q: %w: %w", p.ID, err, ErrNoField)
 		}
+		if err := f.checkGrantTargets("prop "+string(p.ID), p.Options); err != nil {
+			return fmt.Errorf("%w: %w", err, ErrNoField)
+		}
 	}
 	for i := range f.placed {
 		if err := validateOptionInteractions(interactions, granted, f.placed[i].options); err != nil {
 			return fmt.Errorf("prop %q: %w: %w", f.placed[i].id, err, ErrNoField)
+		}
+		if err := f.checkGrantTargets("prop "+string(f.placed[i].id), f.placed[i].options); err != nil {
+			return fmt.Errorf("%w: %w", err, ErrNoField)
 		}
 	}
 	return nil

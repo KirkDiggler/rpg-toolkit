@@ -3499,6 +3499,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		if err := validateOptionInteractions(interactions, granted, memberOptions[id]); err != nil {
 			return nil, fmt.Errorf("load encounter: member %s: %w: %w", id, ErrInvalidData, err)
 		}
+		if err := f.checkGrantTargets("member "+string(id), memberOptions[id]); err != nil {
+			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+		}
 	}
 	for i, options := range reserveOptions {
 		if err := validateOptionInteractions(interactions, granted, options); err != nil {
