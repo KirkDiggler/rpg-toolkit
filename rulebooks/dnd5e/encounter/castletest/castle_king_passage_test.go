@@ -44,10 +44,10 @@ var (
 	theGrateTravelers = []encounter.MemberID{kingFighter, kingRogue}
 )
 
-// sayToTheGrate has a member say one of the grate's lines.
-func (s *kingScene) sayToTheGrate(member encounter.MemberID, option string) {
+// doToTheGrate has a member do one of the grate's things (rpg-project#959).
+func (s *kingScene) doToTheGrate(member encounter.MemberID, option string) {
 	s.t.Helper()
-	_, err := s.enc.Speak(context.Background(), &encounter.SpeakInput{
+	_, err := s.enc.Interact(&encounter.InteractInput{
 		Range: speakReach, Actor: member, Prop: kingGrate, OptionID: option, Roller: rollsOne{},
 	})
 	require.NoError(s.t, err)
@@ -110,11 +110,27 @@ func TestMadKingTheScullionTellsTheWayAndTheGrateTakesIt(t *testing.T) {
 		require.Len(t, offered, 2, "up to the chapel, down to the cells")
 	}
 
-	s.sayToTheGrate(kingFighter, "to-chapel")
+	s.doToTheGrate(kingFighter, "to-chapel")
+	// SEEN, NOT HEARD (rpg-project#959): the rogue beside the grate, shown it,
+	// sees the fighter climb down, and is never told where to.
+	story, err := s.enc.Story(&encounter.StoryInput{Audience: kingRogue})
+	require.NoError(t, err)
+	var seen []map[string]any
+	for _, entry := range story {
+		var b map[string]any
+		require.NoError(t, json.Unmarshal(entry.Payload, &b))
+		if b["beat"] == encounter.BeatInteracted && b["actor"] == string(kingFighter) {
+			seen = append(seen, b)
+		}
+	}
+	require.Len(t, seen, 1)
+	require.Equal(t, encounter.InteractedViewThing, seen[0]["view"])
+	require.Equal(t, "lifts the grate by the hearth and climbs down into the dark", seen[0]["seen"])
+	require.NotContains(t, seen[0], "do", "the doer's own words are the doer's")
 	require.Equal(t, theChapel, s.regionOf(s.at(kingFighter)))
 	require.NotEqual(t, theChapel, s.regionOf(s.at(kingRogue)), "the rogue stays until they say it")
 
-	s.sayToTheGrate(kingRogue, "to-chapel")
+	s.doToTheGrate(kingRogue, "to-chapel")
 	require.Equal(t, theChapel, s.regionOf(s.at(kingRogue)))
 	require.InDelta(t, 1, s.enc.Distance(s.at(kingFighter), s.at(kingRogue)), 0, "the rogue comes up beside the fighter")
 }

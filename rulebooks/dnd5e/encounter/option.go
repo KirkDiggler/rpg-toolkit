@@ -62,9 +62,15 @@ import (
 // three places. [TriggerRecognized] reads the CREATURE SPOKEN TO — what he
 // holds about the speaker (rpg-project#928) — and is refused there too.
 
-// Option is one line a character can say to a creature or a prop: what is
-// said, the check it rolls, what it waits on, and what is answered on each
-// verdict.
+// Option is one line a character can say to a creature or a prop, or one
+// thing a character can do to a prop (rpg-project#959): what is said or done,
+// the check it rolls, what it waits on, and what is answered on each verdict.
+//
+// ONE GRAMMAR WITH A KIND. An option SAYS ([Option.Say], through
+// [Encounter.Speak]) or DOES ([Option.Do], through [Encounter.Interact]),
+// exactly one; everything else — requirements, check, answers, grants, the
+// offer and its revision — is shared. Something done is seen, not heard: it
+// has no loudness, and it is done to a thing, never to a creature.
 type Option struct {
 	// ID names the line on its target. REQUIRED non-empty and unique among
 	// one target's options — the session offers it by this id and
@@ -72,9 +78,21 @@ type Option struct {
 	ID string
 
 	// Say is the character's line, carried VERBATIM onto the [BeatSpeech]
-	// versions of whoever catches its words. REQUIRED non-empty: an option is
-	// something said.
+	// versions of whoever catches its words. Exactly one of Say and
+	// [Option.Do] is set.
 	Say string
+
+	// Do is what the character does, in the actor's own words ("You lift the
+	// grate."), told to the actor alone on its [BeatInteracted] version
+	// (rpg-project#959). Exactly one of [Option.Say] and Do is set; a prop's
+	// option only. Omitted when empty.
+	Do string `json:"Do,omitempty"`
+
+	// Seen is what a witness who is shown the prop is told the actor did
+	// ("lifts the grate by the hearth"), naming nothing a witness could not
+	// see. Only beside [Option.Do]; empty leaves the witness's words to the
+	// client ("<name> uses <thing>"). Omitted when empty.
+	Seen string `json:"Seen,omitempty"`
 
 	// Loudness is how loudly the line is said (rpg-project#933, R10): one of
 	// [Loudnesses], empty for [LoudnessSpeak]. A whispered line is admitted
@@ -721,7 +739,11 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	// AN ABANDONED SETTLE IS JUDGED AS SPOKEN (rpg-project#938): its grants
 	// read whom the creature spoken to saw then.
 	spoken := settle != nil && settle.Abandoned && settle.Scene != nil
-	if err := refuseRollMismatch(in, option); err != nil {
+	// SOMETHING DONE IS NOT SAID (rpg-project#959): [Encounter.Interact] does it.
+	if option.Does() {
+		return refuse(fmt.Errorf("speak: option %q is done, not said: %w", in.OptionID, ErrNoOption))
+	}
+	if err := refuseRollMismatch("speak", in.OptionID, roll{skill: in.Skill, dc: in.DC, total: in.Total, calculation: in.Calculation}, option); err != nil {
 		return refuse(err)
 	}
 
@@ -939,24 +961,33 @@ func (e *Encounter) advanceInteraction(option Option, beaten bool, line recognit
 	return nil
 }
 
-// refuseRollMismatch is Speak's roll door. A checked line must name one of
+// refuseRollMismatch is the roll door of Speak and of Interact on a thing
+// (rpg-project#959). A checked line must name one of
 // its approaches as the skill ([ErrNoOption] otherwise). A PLAIN LINE ROLLS
 // NOTHING (R5), so a skill, a DC, a total or a calculation reported for one
 // is a caller that rolled a check the line does not have — refused with
 // [ErrNoOption] rather than written onto a beat as if it had happened.
 // Beaten is not asked of a plain line: it lands either way.
-func refuseRollMismatch(in *SpeakInput, option Option) error {
+func refuseRollMismatch(verb, optionID string, r roll, option Option) error {
 	if option.Checked() {
-		if !slices.ContainsFunc(option.Check, func(a CheckApproach) bool { return a.Ability == in.Skill }) {
-			return fmt.Errorf("speak: line %q offers no %q approach: %w", in.OptionID, in.Skill, ErrNoOption)
+		if !slices.ContainsFunc(option.Check, func(a CheckApproach) bool { return a.Ability == r.skill }) {
+			return fmt.Errorf("%s: line %q offers no %q approach: %w", verb, optionID, r.skill, ErrNoOption)
 		}
 		return nil
 	}
-	if in.Skill != "" || in.DC != 0 || in.Total != 0 || in.Calculation != nil {
-		return fmt.Errorf("speak: line %q rolls no check, and a roll was reported for it: %w", in.OptionID, ErrNoOption)
+	if r.skill != "" || r.dc != 0 || r.total != 0 || r.calculation != nil {
+		return fmt.Errorf("%s: line %q rolls no check, and a roll was reported for it: %w", verb, optionID, ErrNoOption)
 	}
 
 	return nil
+}
+
+// roll is the check a caller reports for a line or a thing done: the
+// approach, the DC and total the table saw, and the arithmetic behind it.
+type roll struct {
+	skill       string
+	dc, total   int
+	calculation *RollCalculation
 }
 
 // refusePropOutOfReach is THE PROP REACH MEASURE, one for Speak's door and
@@ -1063,8 +1094,16 @@ func validateOptions(options []Option) error {
 			return fmt.Errorf("option %q is declared twice", o.ID)
 		}
 		seen[o.ID] = true
-		if o.Say == "" {
-			return fmt.Errorf("option %q does not say what the character says", o.ID)
+		// ONE KIND (rpg-project#959): said or done, never both, never neither.
+		switch {
+		case o.Say == "" && o.Do == "":
+			return fmt.Errorf("option %q does not say what the character says or does", o.ID)
+		case o.Say != "" && o.Do != "":
+			return fmt.Errorf("option %q both says and does: an option is said or done", o.ID)
+		case o.Do != "" && o.Loudness != "":
+			return fmt.Errorf("option %q is done and has a loudness %q: something done is seen, not heard", o.ID, o.Loudness)
+		case o.Do == "" && o.Seen != "":
+			return fmt.Errorf("option %q is said and has seen words: only something done is seen", o.ID)
 		}
 		if err := validateLoudness(fmt.Sprintf("option %q", o.ID), o.Loudness); err != nil {
 			return err
@@ -1122,6 +1161,25 @@ func validateOptions(options []Option) error {
 
 	return nil
 }
+
+// validateCreatureOptions is [validateOptions] for a creature's lines, plus
+// the one thing only a creature can get wrong (rpg-project#959): something
+// is done to a thing, so a creature's option says.
+func validateCreatureOptions(options []Option) error {
+	if err := validateOptions(options); err != nil {
+		return err
+	}
+	for _, o := range options {
+		if o.Do != "" {
+			return fmt.Errorf("option %q is done to a creature: something done is done to a thing; a creature is spoken to", o.ID)
+		}
+	}
+	return nil
+}
+
+// Does reports whether the option is something done ([Option.Do]) rather
+// than something said: [Encounter.Interact]'s, not [Encounter.Speak]'s.
+func (o Option) Does() bool { return o.Do != "" }
 
 // validateOptionRequirement refuses one item of an option's `requires` this
 // composition cannot read: nothing at all, a fact or a holding that names

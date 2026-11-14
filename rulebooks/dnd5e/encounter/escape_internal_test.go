@@ -33,6 +33,12 @@ const (
 // and the guard holding `arrested` about the prisoner.
 func escapeSite(t *testing.T, custody CustodyPhase, prisAt spatial.Position) *Encounter {
 	t.Helper()
+	return escapeSiteWith(t, custody, prisAt, nil)
+}
+
+// escapeSiteWith is [escapeSite] with props on the floor (rpg-project#959).
+func escapeSiteWith(t *testing.T, custody CustodyPhase, prisAt spatial.Position, props []PropInput) *Encounter {
+	t.Helper()
 	leaf := spatial.FootprintPlacement{
 		Footprint: spatial.Footprint{Box: &spatial.Box{W: 40, D: 1}},
 		Origin:    spatial.Point{X: 12.5, Y: 8.66},
@@ -43,6 +49,7 @@ func escapeSite(t *testing.T, custody CustodyPhase, prisAt spatial.Position) *En
 			Canvas:   openAir(),
 			Regions:  []RegionInput{rectRegion(string(escCell), 0, 0, 2, 5), rectRegion(string(escYard), 2, 0, 3, 5)},
 			Doors:    []DoorInput{{ID: "leaf", Placement: &leaf, State: lock}},
+			Props:    props,
 			Factions: []FactionInput{{ID: escGate, Mind: escCaptain}},
 			Dispositions: []DispositionInput{{
 				Between: [2]FactionID{escGate, FactionParty}, Stance: StanceNeutral,

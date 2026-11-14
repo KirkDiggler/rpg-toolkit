@@ -219,10 +219,14 @@ func foldLine(facets []Statement, short string) Item {
 		if len(texts) == 0 {
 			continue
 		}
-		it.Text = v.lead + strings.Join(texts, "; or ")
+		lead := v.lead
+		if v.key == "said" && line.fold.done {
+			lead = "When done: "
+		}
+		it.Text = lead + strings.Join(texts, "; or ")
 		if _, ok := adv[v.adv]; ok && len(texts) > 1 {
 			// The advance is not an alternative row: it follows whichever row.
-			it.Text = v.lead + strings.Join(texts[:len(texts)-1], "; or ") + "; and " + texts[len(texts)-1]
+			it.Text = lead + strings.Join(texts[:len(texts)-1], "; or ") + "; and " + texts[len(texts)-1]
 		}
 		head.Items = append(head.Items, it)
 	}

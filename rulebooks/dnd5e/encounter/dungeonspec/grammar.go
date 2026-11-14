@@ -539,12 +539,17 @@ func retiredTableKey(key string) string {
 // the World Builder draws each on a form row and a second spelling of any is
 // the drift one grammar exists to prevent.
 const (
-	errOptionNoID       = "the option has no id"
-	errOptionNoSay      = "the option does not say what the character says"
-	errOptionNoCheck    = "this option needs at least one way to make its check — an ability and a DC"
-	errOptionPlainFails = "this line rolls no check, so it cannot be missed — write `check` to give it a failure, or omit `failure`"
-	errOptionPropFlees  = "a prop cannot run: `flee` is a creature's answer"
-	errOptionsEmpty     = "`options` lists nothing — omit it, or write a line it can be spoken to with"
+	errOptionNoID           = "the option has no id"
+	errOptionNoSay          = "the option does not say what the character says"
+	errOptionNoDeed         = "the option does not say what the character says, or what they do"
+	errOptionSaysAndDoes    = "an option is said or done, not both: write `say` or `do`"
+	errOptionDoneToCreature = "something done is done to a thing: a creature is spoken to, so its option says"
+	errOptionDoneLoudly     = "something done is seen, not heard: it has no loudness"
+	errOptionSeenSaid       = "`seen` is what a witness sees done: it goes beside `do`, not `say`"
+	errOptionNoCheck        = "this option needs at least one way to make its check — an ability and a DC"
+	errOptionPlainFails     = "this line rolls no check, so it cannot be missed — write `check` to give it a failure, or omit `failure`"
+	errOptionPropFlees      = "a prop cannot run: `flee` is a creature's answer"
+	errOptionsEmpty         = "`options` lists nothing — omit it, or write a line it can be spoken to with"
 )
 
 // options validates the lines an author wrote on a creature or a prop
@@ -584,8 +589,22 @@ func (g *grammar) options(path string, options []OptionSpec, props map[string]bo
 		default:
 			seen[o.ID] = i
 		}
-		if o.Say == "" {
+		// SAID OR DONE (rpg-project#959): one kind per option; something done
+		// is a thing's, silent, and alone carries what a witness sees.
+		switch {
+		case o.Say == "" && o.Do == "" && isProp:
+			g.fail(p+".say", "%s", errOptionNoDeed)
+		case o.Say == "" && o.Do == "":
 			g.fail(p+".say", "%s", errOptionNoSay)
+		case o.Say != "" && o.Do != "":
+			g.fail(p+".do", "%s", errOptionSaysAndDoes)
+		case o.Do != "" && !isProp:
+			g.fail(p+".do", "%s", errOptionDoneToCreature)
+		case o.Do != "" && o.Loudness != "":
+			g.fail(p+".loudness", "%s", errOptionDoneLoudly)
+		}
+		if o.Seen != "" && o.Do == "" {
+			g.fail(p+".seen", "%s", errOptionSeenSaid)
 		}
 		// ABSENT `check` IS A PLAIN LINE (rpg-project#785 R5): free on both
 		// clocks, never missed. Written empty is refused — the zero value

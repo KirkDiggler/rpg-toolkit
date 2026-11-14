@@ -1204,7 +1204,7 @@ func optionsOf(key string, specs []OptionSpec, o encounter.Orientation) []encoun
 	out := make([]encounter.Option, 0, len(specs))
 	for _, opt := range specs {
 		option := encounter.Option{
-			ID: opt.ID, Say: opt.Say, Loudness: opt.Loudness, Check: approachesOf(opt.Check),
+			ID: opt.ID, Say: opt.Say, Do: opt.Do, Seen: opt.Seen, Loudness: opt.Loudness, Check: approachesOf(opt.Check),
 			Requires: requirementsOf(opt.Requires),
 			Success:  rowsOf(opt.Success, o), Failure: rowsOf(opt.Failure, o),
 		}
