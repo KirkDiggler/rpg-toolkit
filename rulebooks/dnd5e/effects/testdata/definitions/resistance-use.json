@@ -1,0 +1,6 @@
+{
+  "use": {
+    "definition": "dnd5e:definitions:raging",
+    "path": ["benefits", "physical-resistance"]
+  }
+}

@@ -30,6 +30,15 @@
 // Place applies explicit nonoverlapping mounts and kind-validated terminal scopes
 // to the compiled leaves without inventing holder/source/application identity.
 //
+// BuildCatalogue validates complete explicit entry sets, including unused data,
+// before publishing owned resolved values. DefineEntry supplies typed content to
+// that same path. Resolve selects an exact ref/member path and expands explicit
+// whole-member replacements; Derive performs that operation on canonical values.
+// Unknown/cyclic references and invalid/overlapping targets refuse without partial
+// results. No field merge, runtime lookup or catalogue-backed active state exists.
+// CatalogueData is the strict document shape; DescribeCatalogue owns discovery
+// metadata and never constructs a condition merely to enumerate an effect.
+//
 // Typed Definition values (AddToRoll, EndOn, DamageBonus, Resistance, Advantage,
 // Concentration, Duration and UntilEmpty) compile through CompileParts into owned canonical
 // declarations. Construction requires no runtime identities, JSON at call sites

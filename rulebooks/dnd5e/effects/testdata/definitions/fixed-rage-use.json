@@ -1,0 +1,24 @@
+{
+  "use": {
+    "definition": "dnd5e:definitions:raging",
+    "path": ["benefits"],
+    "replace": [
+      {
+        "path": ["damage-bonus"],
+        "definition": {
+          "effect": {
+            "kind": "damage_bonus",
+            "amount": {"fixed": 2},
+            "when": {
+              "all": [
+                {"fact": {"name": "action.melee", "op": "eq", "value": true}},
+                {"fact": {"name": "action.weapon_pool", "op": "eq", "value": true}},
+                {"fact": {"name": "action.ability", "op": "eq", "value": "str"}}
+              ]
+            }
+          }
+        }
+      }
+    ]
+  }
+}

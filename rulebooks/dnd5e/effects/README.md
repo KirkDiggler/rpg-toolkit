@@ -146,6 +146,33 @@ validation is separate from placement validation, so neither fabricates facts fo
 the other. `CompileParts` remains the first-cut leaf-and-scope adapter over those
 same validators while condition/application consumers move to definition placement.
 
+## Optional catalogue and explicit derivation
+
+`DefineEntry` projects a typed definition into ordinary authored entry data through
+that same compiler. `CatalogueData` is the strict configuration document and
+`BuildCatalogue` validates its complete entry set, including unused definitions,
+before returning an immutable catalogue. No global registration or network lookup
+occurs. `DescribeCatalogue` returns owned entry/member metadata in declared order.
+
+`Resolve` accepts inline content without a catalogue, or an authored `use` naming
+a definition ref and a separate member-path array. Empty path selects the root.
+Definition refs use the `definitions` namespace, not a running condition identity;
+Go can discover built-ins through `refs.Definitions`. The wire spelling is one
+string ref—historical object-ref fallback is not part of this format.
+
+A use can include explicit whole-member replacements. Every target must already
+exist; root, duplicate and overlapping paths refuse. Replacement keeps local
+key/order/metadata and replaces the complete configured value, never merges
+params/guards/amounts or mutates an instance. `Derive` exposes the same operation
+for already-resolved canonical values. Source catalogues and other consumers stay
+unchanged. Forward references and acyclic same-entry member reuse are valid;
+actual cycles and missing paths are errors, not partial definitions.
+
+See the executable [reference](reference_test.go) and [derivation](derive_test.go)
+contracts and their [fixed-bonus configuration](testdata/definitions/fixed-rage-use.json).
+A resolved value contains no reference or live catalogue handle when handed to
+compilation/binding.
+
 ## Typed construction before runtime binding
 
 A Go author supplies values, then explicitly compiles them. No participant IDs,
@@ -267,6 +294,7 @@ are not interchangeable identities.
 | Fact/beat binding and amounts | [vocabulary.go](vocabulary.go), [amounts.go](amounts.go) |
 | Canonical values, projection, compilation and placement | [definition_data.go](definition_data.go), [definition_projection.go](definition_projection.go), [definition_compile.go](definition_compile.go), [placement.go](placement.go) |
 | Intrinsic meaning and scope capabilities | [effect_validation.go](effect_validation.go), [kinds.go](kinds.go) |
+| Catalogue, reference resolution and owned derivation | [catalogue.go](catalogue.go), [catalogue_data.go](catalogue_data.go), [reference_resolve.go](reference_resolve.go), [derive.go](derive.go) |
 | Typed leaf values / first-cut adapters | [definitions.go](definitions.go), [compile_parts.go](compile_parts.go), [compile_outputs.go](compile_outputs.go) |
 | Independent declarations and binding | [parts.go](parts.go), [part_validation.go](part_validation.go) |
 | Payload part example | [resistance_part.go](resistance_part.go) |
