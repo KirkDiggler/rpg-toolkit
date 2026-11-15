@@ -113,6 +113,10 @@ func (s *FoldEachSuite) TestFolded_NoAnswerRowExplainsItsLoudness() {
 			for _, tell := range reachTells {
 				s.NotContains(it.Text, tell, "%s: %s", name, it.Text)
 			}
+			// An answer that teaches says its loudness once: the fact clause
+			// rides on the answer's (review of rpg-toolkit#2442).
+			s.NotRegexp("at `\\w+` and every member", it.Text, "%s", name)
+			s.NotContains(it.Text, "words reach at `", "%s: %s", name, it.Text)
 			if strings.Contains(it.Text, ", at `speak`") {
 				named++
 			}
@@ -164,6 +168,85 @@ func (s *FoldEachSuite) TestFolded_ALoudnessIsExplainedOncePerCreature() {
 	s.Contains(speak.Text, "the guard captain's room (the wall partition the guard captain stands in)")
 	s.Contains(speak.Paths, "room.room.monsterBindings.captain.options[0].success[0]",
 		"the explanation stands for each row it explains")
+}
+
+// reachLoudness names the loudness a full sentence's reach explanation is
+// for, read from the explanation's own words (speechwords.go), or "".
+func reachLoudness(sentence string) string {
+	for _, r := range []struct{ tell, loud string }{
+		{"(the wall partition", "speak"},
+		{"and the next room over (a closed door on the way counts as a room)", "shout"},
+		{"two rooms beyond", "scream"},
+		{"only the one it is said to, and only from beside them", "whisper"},
+	} {
+		if strings.Contains(sentence, r.tell) {
+			return r.loud
+		}
+	}
+	return ""
+}
+
+// groupItem is the folded entry of a creature (heading "title: …") or a side
+// (heading "title") in its section.
+func groupItem(secs []readback.FoldedSection, section, title string) (readback.Item, bool) {
+	for _, sec := range secs {
+		if sec.Title != section {
+			continue
+		}
+		for _, it := range sec.Items {
+			if it.Text == title || strings.HasPrefix(it.Text, title+":") {
+				return it, true
+			}
+		}
+	}
+	return readback.Item{}, false
+}
+
+// TestFolded_TheLoudnessEntryStandsForEveryAnswerItExplains: in both folds,
+// every answer row and told record whose full sentence explains a loudness —
+// a creature's or a side's — is carried by that group's one entry for that
+// loudness, and the entry stands above the group's lines.
+func (s *FoldEachSuite) TestFolded_TheLoudnessEntryStandsForEveryAnswerItExplains() {
+	explained := 0
+	for _, sec := range s.rb.Sections {
+		if sec.Title != "Creatures" && sec.Title != "Sides" {
+			continue
+		}
+		for _, g := range sec.Groups {
+			for name, secs := range s.folds() {
+				item, ok := groupItem(secs, sec.Title, g.Title)
+				s.Require().True(ok, "%s: no folded %s", name, g.Title)
+				entries := map[string]readback.Item{}
+				at, firstLine := -1, -1
+				for i, it := range item.Items {
+					if m := regexp.MustCompile("^At `(\\w+)`, ").FindStringSubmatch(it.Text); m != nil {
+						entries[m[1]] = it
+						if at < 0 {
+							at = i
+						}
+					}
+					if len(it.Items) > 0 && firstLine < 0 {
+						firstLine = i
+					}
+				}
+				if len(entries) > 0 && firstLine >= 0 {
+					s.Less(at, firstLine, "%s: %s says what its loudness reaches above its lines", name, g.Title)
+				}
+				for _, st := range g.Statements {
+					if st.Kind != readback.KindLineRow && st.Kind != readback.KindLineGrant {
+						continue
+					}
+					l := reachLoudness(st.Sentence)
+					if l == "" {
+						continue
+					}
+					explained++
+					s.Contains(entries[l].Paths, st.Path, "%s: %s's `%s` entry stands for %s", name, g.Title, l, st.Path)
+				}
+			}
+		}
+	}
+	s.Positive(explained)
 }
 
 // TestFoldedEach_DropsNothing: every statement is stood for by an entry of

@@ -109,8 +109,17 @@ func foldPlain(g Group) Item {
 		short = "the prop"
 	}
 	var bundles Item
+	loudSaid := false
 	for _, chunk := range chunkLines(g.Statements) {
 		if chunk.line != nil {
+			// What each loudness reaches, said once above the lines that
+			// speak at it, as a creature's is.
+			if !loudSaid {
+				loudSaid = true
+				for _, it := range loudnessItems(g.Statements) {
+					head.Items = append(head.Items, withSelf(it, short))
+				}
+			}
 			head.Items = append(head.Items, foldLine(chunk.facets, short))
 			continue
 		}
@@ -138,9 +147,6 @@ func foldPlain(g Group) Item {
 	}
 	if bundles.Text != "" {
 		head.Items = append(head.Items, bundles)
-	}
-	for _, it := range loudnessItems(g.Statements) {
-		head.Items = append(head.Items, withSelf(it, short))
 	}
 	return head
 }

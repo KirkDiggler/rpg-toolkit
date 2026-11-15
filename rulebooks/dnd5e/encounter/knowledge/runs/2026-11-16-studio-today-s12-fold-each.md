@@ -22,3 +22,4 @@ Slice [rpg-project#980](https://github.com/KirkDiggler/rpg-project/issues/980) o
 ## Mistaken
 
 - The first loudness entry used the `terse` display, which printed "[at each line's requires, above]", a note meant for the conversation's line list; it now has its own note — [rpg-project#980](https://github.com/KirkDiggler/rpg-project/issues/980).
+- Review found the loudness entry's paths pinned on one row only (a first-path-only mutant and a nil told-record mutant both survived), a side's entry placed below the lines its note says are below it, and a folded fact clause that said "at `speak`" twice; a test now holds every explaining row and told record to its entry and the entry above the lines, and the three mutants fail — [review](https://github.com/KirkDiggler/rpg-toolkit/pull/2442#pullrequestreview-5912972554).

@@ -233,6 +233,11 @@ func rowDoes(row encounter.Answer, t lineTarget, name string, folded bool) ([]st
 			// A PROP'S ANSWER IS NARRATION, not a voice (rpg-project#933): its
 			// fact goes to those who saw the line said.
 			does = append(does, fmt.Sprintf("everyone who can see the speaker, the speaker included, learns the fact %s", quote(row.Fact)))
+		case folded && row.Say != "":
+			// The answer just named the loudness: the fact clause rides on
+			// it, said once.
+			does[len(does)-1] += fmt.Sprintf("; every member those words reach, seen or not, %s included, learns the fact %s",
+				name, quote(row.Fact))
 		case folded:
 			does = append(does, fmt.Sprintf("every member %s's words reach at %s, seen or not, %s included, learns the fact %s",
 				name, quote(loudnessOf(row.Loudness)), name, quote(row.Fact)))
