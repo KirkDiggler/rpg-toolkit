@@ -34,6 +34,16 @@
 // [ReadBack.NotYetSaid] with its path and kind. Geometry is summarised:
 // regions by count and name, walls and scene items by count.
 //
+// # Where the places join
+//
+// Under the place, one statement per join between two regions
+// (rpg-project#971): at a door, on open floor (no wall between them, so one
+// wall partition), or by a passage that is not physical (a row's `relocate`,
+// an arrest and its jail). A region in no join is said to be in none. The
+// geometry is the engine's own ([encounter.FloorTopology]); a join's state is
+// the door's, its holders' and the secret's, reached through its connections
+// and never restated.
+//
 // # Why its own package
 //
 // It reads only what dungeonspec and encounter export, adds nothing to

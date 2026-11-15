@@ -41,7 +41,7 @@ func seizure(t *testing.T, approach string) (string, string) {
 	rb, err := readback.Of(arrestingHailSite(t, approach))
 	require.NoError(t, err)
 	for _, st := range rb.Statements() {
-		if st.Path == "interactions.gate.outcomes.admitted[0].arrest" {
+		if st.Kind == readback.KindOutcome && st.Path == "interactions.gate.outcomes.admitted[0].arrest" {
 			return st.Sentence, rb.FoldedText()
 		}
 	}

@@ -58,6 +58,24 @@
               "path": "(engine rule)"
             }
           ]
+        },
+        {
+          "title": "Where the places join",
+          "about": {
+            "kind": "site",
+            "id": "hail-site"
+          },
+          "statements": [
+            {
+              "kind": "place.region.unjoined",
+              "about": {
+                "kind": "region",
+                "id": "region-hall"
+              },
+              "sentence": "Hall (region-hall) joins no other region: no door, open floor or passage reaches Hall.",
+              "path": "room.room.regions[1]"
+            }
+          ]
         }
       ]
     },
