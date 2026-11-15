@@ -24,6 +24,8 @@ Slice [rpg-project#981](https://github.com/KirkDiggler/rpg-project/issues/981) o
 
 ## Mistaken
 
+- The closure read found `knowWays` letting a holder with no pass through (the engine's `passLets` says no) and both judges ignoring a pass's `not`; one `passJudge` now serves both, an empty pass is not met, a `not` is said and connected `unless`, and probe m6 and the `not` case are site tests whose mutants fail — [closure](https://github.com/KirkDiggler/rpg-toolkit/pull/2443#pullrequestreview-5913268078).
+
 - Review of rpg-toolkit#2443 found the hold judged against a union of topics, not the engine's per-holder pass: a line on a creature holding no post, a pass on a password fact, and a pass needing a fact beside `admitted` were all said wrongly; a partial draw-off was counted as a way; a locked and held door's lock was said as a way through on its own; and the arrest's way named the arrest, not the `come-quietly` lines whose jail moves the taken. The castle's own list was right, which is why nothing caught it: every probe is now a small-site test and mutants A (any checked line is a way), B (any fact draws off) and C (partial as a way) each fail a way test — [review](https://github.com/KirkDiggler/rpg-toolkit/pull/2443#pullrequestreview-5913211546).
 
 - The first cut put fold texts through `self()`, which capitalises, so a way read "it is Offered while"; mid-sentence substitution is now its own helper — [rpg-project#981](https://github.com/KirkDiggler/rpg-project/issues/981).

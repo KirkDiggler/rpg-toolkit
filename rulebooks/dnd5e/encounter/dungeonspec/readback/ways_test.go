@@ -547,3 +547,43 @@ func (s *WaysSiteSuite) TestWays_Site_AnArrestWithNoJailHasNoWay() {
 	}
 	s.Equal(1, passages)
 }
+
+// g1Pass is g1's post's pass, to replace.
+const g1Pass = "            pass: { recognized: admitted }\n            at:\n              - { q: 2, r: 0 }"
+
+// TestWays_Site_AHolderWithNoPassStillHolds (probe m6): g1 lets through a
+// walker who knows the password; g2's post has no pass, so it lets nobody
+// but allies through. Knowing the password is partial: g2 still holds.
+func (s *WaysSiteSuite) TestWays_Site_AHolderWithNoPassStillHolds() {
+	rb := s.read(g1Pass, "            pass: { fact: password }\n            at:\n              - { q: 2, r: 0 }",
+		g2Pass, "            at:\n              - { q: 1, r: 0 }")
+	var known []readback.Statement
+	for _, w := range waysThrough(rb, siteGate) {
+		if connected(w, "fact", "password", "needs") {
+			known = append(known, w)
+		}
+	}
+	s.Require().Len(known, 1)
+	s.Equal(readback.KindWayPartial, known[0].Kind, known[0].Sentence)
+	s.True(connected(known[0], "creature", "g2", "still-holds"))
+}
+
+// TestWays_Site_ANotInAPassIsSaidAsACondition: both holders let through a
+// walker who knows the password and does NOT know `traitor`. Knowing the
+// password is a way, and says that a walker who knows `traitor` is still
+// barred.
+func (s *WaysSiteSuite) TestWays_Site_ANotInAPassIsSaidAsACondition() {
+	pass := "            pass: [{ fact: password }, { not: { fact: traitor } }]\n            at:\n"
+	rb := s.read(g1Pass, pass+"              - { q: 2, r: 0 }", g2Pass, pass+"              - { q: 1, r: 0 }")
+	var known *readback.Statement
+	for _, w := range waysThrough(rb, siteGate) {
+		if connected(w, "fact", "password", "needs") {
+			known = &w
+		}
+	}
+	s.Require().NotNil(known)
+	s.Equal(readback.KindWayKnown, known.Kind)
+	s.True(connected(*known, "fact", "traitor", "unless"))
+	s.False(connected(*known, "fact", "traitor", "needs"))
+	s.Contains(known.Sentence, "a walker who knows the fact `traitor` is still barred")
+}

@@ -47,10 +47,11 @@ import (
 // each need (`needs`), to what a miss grants or steps (`on-miss`), to the
 // holders a partial way leaves holding (`still-holds`), and to its method as
 // {Kind: "method", ID: "skill:<name>" | "ability:<name>" | "tool:<ref>" |
-// "knowledge" | "item" | "fight" | "free" | "conversation"}. A check with
-// alternatives carries one method per alternative, each with its own DC as
-// the connection's Value (a tool approach's ability and tool both carry it);
-// free, knowledge, fight and conversation carry none.
+// "knowledge" | "item" | "fight" | "free"}. A check with alternatives
+// carries one method per alternative, each with its own DC as the
+// connection's Value (a tool approach's ability and tool both carry it);
+// free, knowledge, item and fight carry none. A pass's `not` is a condition,
+// connected `unless`.
 
 // wayCtx is what the ways of one read-back read: every statement said so
 // far, by path, for the facets of the lines a way is carried by.
@@ -545,30 +546,76 @@ func (b *builder) reaches(g grant, member, h string) bool {
 	return member == h || (g.heard && g.conv != "" && contains(b.carriers[g.conv], h))
 }
 
-// passMet is whether a holder's every pass is met by the topics it comes to
-// hold through grants, and the facts and props those passes need besides.
-// A pass with no recognition in it is not met by a grant: knowing or
-// carrying is its own way.
-func passMet(h holder, held []string) (bool, []encounter.Trigger) {
-	var needs []encounter.Trigger
+// passJudge is the engine's pass judgment ([encounter.Encounter.passLets])
+// for one holder, every state it holds the door in: an empty pass lets
+// nobody but allies through; a recognition is met only by a topic the holder
+// comes to hold (held); a fact or a prop is met by what the walker knows or
+// carries (known), and is otherwise a need; a `not` holds for a walker who
+// lacks what it negates, so it is a condition said with the way. recognised
+// is whether every pass asks a recognition: a grant lifts only such a pass.
+func passJudge(h holder, held []string, known map[string]bool) (met, recognised bool, needs, nots []encounter.Trigger) {
+	if len(h.passes) == 0 {
+		return false, false, nil, nil
+	}
+	recognised = true
 	for _, pass := range h.passes {
-		recognised := false
+		if len(pass) == 0 {
+			return false, false, nil, nil
+		}
+		has := false
 		for _, t := range pass {
 			switch v := t.(type) {
 			case encounter.TriggerRecognized:
 				if !contains(held, string(v.Topic)) {
-					return false, nil
+					return false, false, nil, nil
 				}
-				recognised = true
-			case encounter.TriggerFact, encounter.TriggerHolds:
-				needs = append(needs, t)
+				has = true
+			case encounter.TriggerFact:
+				if !known["fact:"+string(v.Fact)] {
+					needs = append(needs, t)
+				}
+			case encounter.TriggerHolds:
+				if !known["prop:"+string(v.Prop)] {
+					needs = append(needs, t)
+				}
+			case encounter.TriggerNot:
+				nots = append(nots, v.Inner)
 			}
 		}
-		if !recognised {
-			return false, nil
+		recognised = recognised && has
+	}
+	return true, recognised, needs, nots
+}
+
+// unlessWords says the `not` conditions of a pass as a clause, with their
+// connections: the walker is let through only while lacking each.
+func (b *builder) unlessWords(nots []encounter.Trigger) (string, []Connection) {
+	var parts []string
+	var cs []Connection
+	seen := map[string]bool{}
+	for _, t := range nots {
+		if k := fmt.Sprintf("%#v", t); seen[k] {
+			continue
+		} else {
+			seen[k] = true
+		}
+		switch v := t.(type) {
+		case encounter.TriggerFact:
+			parts = append(parts, "knows the fact "+quote(string(v.Fact)))
+			cs = append(cs, Connection{Kind: "fact", ID: string(v.Fact), Role: "unless"})
+		case encounter.TriggerHolds:
+			p := b.unqualify(string(v.Prop))
+			parts = append(parts, "carries the prop "+quote(p))
+			cs = append(cs, Connection{Kind: "prop", ID: p, Role: "unless"})
+		case encounter.TriggerRecognized:
+			parts = append(parts, "is held "+quote(string(v.Topic))+" by the holder")
+			cs = append(cs, Connection{Kind: "topic", ID: string(v.Topic), Role: "unless"})
 		}
 	}
-	return len(h.passes) > 0, needs
+	if len(parts) == 0 {
+		return "", nil
+	}
+	return "; a walker who " + joinOr(parts) + " is still barred", cs
 }
 
 // holdWays are the ways past a door's holders, each lifting its `hold`
@@ -614,7 +661,7 @@ func (b *builder) lineHoldWay(join Statement, joinWords string, site lineSite, h
 	var lifted, still []string
 	var cs []Connection
 	var why []string
-	var passNeeds []encounter.Trigger
+	var passNeeds, passNots []encounter.Trigger
 	viaHeard := false
 	teach := map[string]bool{}
 	for _, h := range holders {
@@ -627,7 +674,8 @@ func (b *builder) lineHoldWay(join Statement, joinWords string, site lineSite, h
 				}
 			}
 		}
-		met, needs := passMet(h, held)
+		met, recognised, needs, nots := passJudge(h, held, nil)
+		met = met && recognised
 		drawn := ""
 		for _, r := range o.Success {
 			if r.Fact != "" && h.leavesOn(r.Fact) {
@@ -638,6 +686,7 @@ func (b *builder) lineHoldWay(join Statement, joinWords string, site lineSite, h
 		case met:
 			lifted = append(lifted, h.id)
 			passNeeds = append(passNeeds, needs...)
+			passNots = append(passNots, nots...)
 		case drawn != "":
 			lifted = append(lifted, h.id)
 			teach[drawn] = true
@@ -692,6 +741,10 @@ func (b *builder) lineHoldWay(join Statement, joinWords string, site lineSite, h
 			cs = append(cs, Connection{Kind: "prop", ID: b.unqualify(string(v.Prop)), Role: "needs"})
 			why = append(why, fmt.Sprintf("the walker must also carry the prop %s", quote(b.unqualify(string(v.Prop)))))
 		}
+	}
+	if unless, ucs := b.unlessWords(passNots); unless != "" {
+		why[len(why)-1] += unless
+		cs = append(cs, ucs...)
 	}
 	f := ctx.facets(site.path, short)
 	lead, tail := lineHow(o, f)
@@ -753,23 +806,21 @@ func (b *builder) knowWays(join Statement, joinWords string, holders []holder, a
 				continue
 			}
 			seen[key] = true
+			known := map[string]bool{}
+			for _, f := range facts {
+				known["fact:"+f] = true
+			}
+			for _, p := range props {
+				known["prop:"+b.c.Key+"/"+p] = true
+				known["prop:"+p] = true
+			}
 			var lifted, still []string
+			var allNots []encounter.Trigger
 			for _, k := range holders {
-				meets := len(k.passes) > 0
-				for _, kp := range k.passes {
-					for _, t := range kp {
-						switch v := t.(type) {
-						case encounter.TriggerFact:
-							meets = meets && contains(facts, string(v.Fact))
-						case encounter.TriggerHolds:
-							meets = meets && contains(props, b.unqualify(string(v.Prop)))
-						case encounter.TriggerRecognized:
-							meets = false
-						}
-					}
-				}
-				if meets {
+				met, _, needs, nots := passJudge(k, nil, known)
+				if met && len(needs) == 0 {
 					lifted = append(lifted, k.id)
+					allNots = append(allNots, nots...)
 				} else {
 					still = append(still, k.id)
 				}
@@ -801,6 +852,10 @@ func (b *builder) knowWays(join Statement, joinWords string, holders []holder, a
 				for _, id := range still {
 					cs = append(cs, Connection{Kind: "creature", ID: id, Role: "still-holds"})
 				}
+			}
+			if unless, ucs := b.unlessWords(allNots); unless != "" {
+				s = strings.TrimSuffix(s, ".") + unless + "."
+				cs = append(cs, ucs...)
 			}
 			for _, id := range lifted {
 				cs = append([]Connection{{Kind: "creature", ID: id, Role: "by"}}, cs...)
