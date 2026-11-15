@@ -1,0 +1,193 @@
+# THE WAYS SITE (rpg-project#981): the joins site's two rooms with a door on
+# the seam, held from the west by two guards, for the review's probes of
+# rpg-toolkit#2443. ways_test.go edits it per probe.
+#
+#   gate-door  in the seam wall (scene x 4.33), closed.
+#   g1         posted at q 2, r 0; its pass is `admitted`; its routine
+#              leaves its post when it knows `cowed`.
+#   g2         posted at q 1, r 0; its pass is `admitted`; its routine never
+#              leaves.
+#   idle       holds no post and carries no conversation; its `bribe`
+#              grants `admitted` to itself alone.
+#   gate       g1's `claim` steps it to `admitted`, whose outcome makes the
+#              guard spoken to and the other carriers who witness it hold
+#              `admitted`. g2 carries it by `chat`.
+version: 5
+key: ways-site
+play: { void: transparent, lighting: bright, standing: centre-covered }
+factions:
+  - id: watch
+dispositions:
+  - between: [watch, party]
+    stance: neutral
+room:
+  version: 3
+  id: room-1
+  name: Ways Site
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz}
+  scene:
+    version: 1
+    id: scene-1
+    name: Ways Site
+    items: []
+    groups: []
+  room:
+    implicitRegionId: room-1-region
+    regions:
+      - id: room-1-region
+        name: Ways Site
+        lighting: { intensity: 1 }
+        cells: []
+      - id: region-west
+        name: West room
+        lighting: { intensity: 1 }
+        cells:
+          - r: 0
+            q: [[0, 2]]
+          - r: 1
+            q: [[0, 1]]
+      - id: region-east
+        name: East room
+        lighting: { intensity: 1 }
+        cells:
+          - r: 0
+            q: [[3, 5]]
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: {q: 0, r: 1}
+    monsterDeclarations:
+      - id: g1
+        ref: dnd5e:monsters:guard
+        startingCell: { location: { q: 2, r: 0 }, facing: e }
+      - id: g2
+        ref: dnd5e:monsters:guard
+        startingCell: { location: { q: 1, r: 0 }, facing: e }
+      - id: idle
+        ref: dnd5e:monsters:guard
+        startingCell: { location: { q: 0, r: 0 }, facing: e }
+    walls:
+      - id: seam-wall
+        label: seam-wall
+        line:
+          start: {x: 4.33, z: -2}
+          end: {x: 4.33, z: 2}
+        appearance: {assetRef: 'dnd5e:env:test:wall', height: 3, thickness: 0.3, elevation: 0}
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint: {width: 4, depth: 0.5, offsetX: 0, offsetZ: 0}
+        openings:
+          - id: seam-gap
+            position: 2
+            width: 1.5
+            door: {id: gate-door, assetRef: 'dnd5e:env:test:door'}
+    doorBindings:
+      gate-door: {closed: true}
+    monsterBindings:
+      g1:
+        faction: watch
+        options:
+          - id: claim
+            say: Let us through.
+            check:
+              - ability: persuasion
+                dc: 12
+            requires:
+              - interaction: { id: gate, in: [fresh] }
+            advance: { interaction: gate, success: admitted }
+            success:
+              - say: Go on.
+          - id: scare
+            say: Move.
+            check:
+              - ability: intimidation
+                dc: 10
+            success:
+              - say: Fine, fine.
+                fact: cowed
+        behaviors:
+          - id: policy
+            use: leaves-on-cowed
+        behaviorState: policy
+        posts:
+          ready:
+            door: gate-door
+            against: entering
+            pass: { recognized: admitted }
+            at:
+              - { q: 2, r: 0 }
+      g2:
+        faction: watch
+        options:
+          - id: chat
+            say: Nice day.
+            requires:
+              - interaction: { id: gate, in: [admitted] }
+            success:
+              - say: It is.
+        behaviors:
+          - id: policy
+            use: never-leaves
+        behaviorState: policy
+        posts:
+          ready:
+            door: gate-door
+            against: entering
+            pass: { recognized: admitted }
+            at:
+              - { q: 1, r: 0 }
+      idle:
+        faction: watch
+        options:
+          - id: bribe
+            say: For your trouble.
+            success:
+              - say: Much obliged.
+                recognize:
+                  topic: admitted
+                  holder: spoken_to
+                  about: party_in_sight
+interactions:
+  gate:
+    recipe:
+      ref: site:interactions:gate
+      initial: fresh
+      states:
+        fresh:
+          transitions:
+            - { on: admitted, to: admitted, reason: let through }
+        admitted: { terminal: true }
+    outcomes:
+      admitted:
+        - recognize:
+            topic: admitted
+            holder: spoken_to
+            about: party_in_sight
+            heard_by: carriers_who_witnessed
+behaviorDefinitions:
+  leaves-on-cowed:
+    recipe:
+      ref: site:behaviors:leaves-on-cowed
+      initial: ready
+      states:
+        ready:
+          transitions:
+            - on: fact
+              when:
+                fact:
+                  name: fact:cowed
+                  op: eq
+                  value: true
+              to: off
+              reason: stood aside
+        off:
+          transitions: []
+  never-leaves:
+    recipe:
+      ref: site:behaviors:never-leaves
+      initial: ready
+      states:
+        ready:
+          transitions: []

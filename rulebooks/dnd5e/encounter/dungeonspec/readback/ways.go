@@ -16,18 +16,36 @@ import (
 // statement per means through, naming its method, what it needs and what
 // failing does, each said right after its join.
 //
-// THE CHAIN IS SHORT AND THE ENGINE'S OWN: join → what bars it (a lock, a
-// holding post, a secret, a passage's carrier) → what lifts that bar (a lock
-// approach; a line that grants what the post's pass asks, or teaches a fact
-// the holder's routine leaves its post on; the fight; a search; a record that
-// reveals the secret). A need is named, never followed further: the studio's
-// threads follow a need to who teaches it. Nothing here simulates play — who
-// a line's words reach, which holder witnessed it — and every sentence says
-// where play decides.
+// BARS (the lead's ruling on rpg-toolkit#2443): a join is barred by zero or
+// more bars — `lock` (a door's lock), `hold` (posted holders), `hidden` (a
+// secret on its door or on the prop that carries it) — and a walker gets
+// through when EVERY bar is lifted. A way lifts exactly one bar and says so
+// as {bar, <bar>, lifts}; a consumer groups a join's ways by bar and reads
+// "any way past the lock AND any way past the holders". A join with no bar
+// has one `place.way.free` with no bar; a bar nothing lifts is said as
+// `place.way.none`. A passage's carrier (the line that relocates, the line
+// that steps a conversation into its jail) is how the passage is taken once
+// its bars are lifted, not a bar's alternative, and carries no bar.
+//
+// THE HOLD IS THE ENGINE'S PASS, PER HOLDER (post.go `passLets`): a holder
+// lets a walker through only when EVERY requirement of its post's pass is
+// met, and the door stays held while ANY posted holder bars the walker. So a
+// line lifts the hold only when, for every holder, its grant reaches that
+// holder (said to it, or heard as a carrier of the conversation when the
+// grant spreads to carriers who witness it) and meets that holder's whole
+// pass — the pass's facts and props named as needs — or it teaches a fact
+// that holder's routine leaves its posts on. A line that lifts some holders
+// and not all is `place.way.partial`, which a count of ways ignores by kind.
+//
+// THE CHAIN IS SHORT AND THE ENGINE'S OWN: join → its bars → what lifts each
+// bar → that thing's own check and requirements. A need is named, never
+// followed further. Nothing here simulates play — whose words reach whom,
+// who witnesses — and every sentence says where play decides.
 //
 // COUNTABLE WITHOUT THE SENTENCE: every way connects to its join
-// (`through`), to what carries it (`by`), to each need (`needs`), to what a
-// miss grants or steps (`on-miss`), and to its method as
+// (`through`), to the bar it lifts (`lifts`), to what carries it (`by`), to
+// each need (`needs`), to what a miss grants or steps (`on-miss`), to the
+// holders a partial way leaves holding (`still-holds`), and to its method as
 // {Kind: "method", ID: "skill:<name>" | "ability:<name>" | "tool:<ref>" |
 // "knowledge" | "item" | "fight" | "free" | "conversation"}. A check with
 // alternatives carries one method per alternative, each with its own DC as
@@ -60,11 +78,25 @@ func (c *wayCtx) under(path string) []Statement {
 	return out
 }
 
-// wayStmt makes a way statement. A way is not a hub entry: the needs it
+// The bars a join can carry.
+const (
+	barLock   = "lock"
+	barHold   = "hold"
+	barHidden = "hidden"
+)
+
+// wayLineID is a line's id in a way's connections: its carrier's id and its
+// own, so the same line on two creatures is two ids.
+func wayLineID(carrier, option string) string { return carrier + "/" + option }
+
+// wayStmt makes a way statement that lifts bar ("" for none). A way is not a hub entry: the needs it
 // names are the carrier's own requirements, already in the hubs, so it is
 // built without [builder.fstmt]'s hub registration.
-func wayStmt(kind Kind, join Statement, slug, path, sentence string, conns ...Connection) Statement {
+func wayStmt(kind Kind, join Statement, bar, slug, path, sentence string, conns ...Connection) Statement {
 	conns = append([]Connection{{Kind: "join", ID: join.About.ID, Role: "through"}}, conns...)
+	if bar != "" {
+		conns = append(conns[:1], append([]Connection{{Kind: "bar", ID: bar, Role: "lifts"}}, conns[1:]...)...)
+	}
 	return Statement{Kind: kind, About: Subject{Kind: "way", ID: "way:" + join.About.ID + ":" + slug},
 		Sentence: sentence, Path: path, Connects: dedupe(conns)}
 }
@@ -180,10 +212,9 @@ func lineHow(o encounter.Option, f lineFacets) (lead, tail string) {
 	return lead, tail
 }
 
-// waysFor says every way through one join, in a fixed order: what lifts a
-// secret, a lock, a holding post, a passage, else that nothing bars it.
+// waysFor says every way through one join: for each bar, what lifts it;
+// for a passage, the line that carries it; else that nothing bars it.
 func (b *builder) waysFor(join Statement, ctx *wayCtx, joinWords string) []Statement {
-	var out []Statement
 	carrier := func(kind string) string {
 		for _, c := range join.Connects {
 			if c.Kind == kind && c.Role == "by" {
@@ -192,37 +223,112 @@ func (b *builder) waysFor(join Statement, ctx *wayCtx, joinWords string) []State
 		}
 		return ""
 	}
+	var out []Statement
 	switch join.Kind {
 	case KindJoinDoor:
 		door := carrier("door")
-		out = append(out, b.secretWays(join, joinWords, "door", door)...)
-		out = append(out, b.lockWays(join, joinWords, door)...)
-		out = append(out, b.holdWays(join, joinWords, door, ctx)...)
-		if len(out) == 0 {
-			out = append(out, wayStmt(KindWayFree, join, "free", join.Path, fmt.Sprintf(
+		bars := b.doorBars(door)
+		out = append(out, b.secretWays(join, joinWords, "door", door, bars)...)
+		out = append(out, b.lockWays(join, joinWords, door, bars)...)
+		out = append(out, b.holdWays(join, joinWords, door, bars, ctx)...)
+		if len(bars) == 0 {
+			out = append(out, wayStmt(KindWayFree, join, "", "free", join.Path, fmt.Sprintf(
 				"Nothing bars %s: the door %s is neither locked, held nor hidden, so a member opens it and walks through.",
 				joinWords, quote(door)), Connection{Kind: "door", ID: door, Role: "by"}, method("free")))
 		}
 	case KindJoinOpen:
-		out = append(out, wayStmt(KindWayFree, join, "free", join.Path, fmt.Sprintf(
+		out = append(out, wayStmt(KindWayFree, join, "", "free", join.Path, fmt.Sprintf(
 			"Nothing bars %s: a member walks from one to the other.", joinWords), method("free")))
 	case KindJoinPassage:
 		if conv := carrier("conversation"); conv != "" {
-			out = append(out, b.arrestWay(join, joinWords, conv))
+			out = append(out, b.jailWays(join, joinWords, conv, ctx)...)
 			break
 		}
 		for _, kind := range []string{"prop", "creature", "faction"} {
 			if id := carrier(kind); id != "" {
-				out = append(out, b.secretWays(join, joinWords, kind, id)...)
+				var bars []string
+				if b.concealmentOf(kind, id) != nil {
+					bars = []string{barHidden}
+				}
+				out = append(out, b.secretWays(join, joinWords, kind, id, bars)...)
 				out = append(out, b.relocateWay(join, joinWords, kind, id, ctx))
 			}
 		}
 	}
-	if len(out) == 0 {
-		out = append(out, wayStmt(KindWayNone, join, "none", join.Path, fmt.Sprintf(
-			"No way through %s is said: nothing the file authors lifts what bars it.", joinWords)))
+	// A bar nothing lifts is said, never skipped.
+	for _, bar := range []string{barHidden, barLock, barHold} {
+		barred, lifted := false, false
+		if join.Kind == KindJoinDoor {
+			barred = contains(b.doorBars(carrier("door")), bar)
+		}
+		for _, w := range out {
+			if w.Kind != KindWayPartial && connected0(w, "bar", bar, "lifts") {
+				lifted = true
+			}
+		}
+		if barred && !lifted {
+			out = append(out, Statement{Kind: KindWayNone, About: Subject{Kind: "bar", ID: "bar:" + join.About.ID + ":" + bar},
+				Sentence: fmt.Sprintf("Nothing the file authors lifts the %s bar of %s: no way past it is said.", bar, joinWords),
+				Path:     join.Path, Connects: []Connection{{Kind: "join", ID: join.About.ID, Role: "through"},
+					{Kind: "bar", ID: bar, Role: "unlifted"}}})
+		}
 	}
 	return out
+}
+
+// connected0 is whether a statement carries the connection.
+func connected0(st Statement, kind, id, role string) bool {
+	for _, c := range st.Connects {
+		if c.Kind == kind && c.ID == id && c.Role == role {
+			return true
+		}
+	}
+	return false
+}
+
+// doorBars is what bars a door's join, in the order said: hidden, locked,
+// held.
+func (b *builder) doorBars(door string) []string {
+	var out []string
+	if b.concealmentOf("door", door) != nil {
+		out = append(out, barHidden)
+	}
+	if d := b.doorInput(door); d != nil && d.State != nil {
+		if _, locked := d.State.Lock(); locked {
+			out = append(out, barLock)
+		}
+	}
+	if len(b.doorHolders[door]) > 0 {
+		out = append(out, barHold)
+	}
+	return out
+}
+
+// barWords names a bar for a sentence.
+func barWords(bar string) string {
+	switch bar {
+	case barLock:
+		return "its lock"
+	case barHold:
+		return "its holders"
+	}
+	return "its secret"
+}
+
+// alsoBarred is the clause a way says when its join has other bars: lifting
+// this one does not pass them.
+func alsoBarred(bars []string, this string) string {
+	var others []string
+	for _, b := range bars {
+		if b != this {
+			others = append(others, barWords(b))
+		}
+	}
+	if len(others) == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" The join is also barred by %s, each to be passed as well: lifting this bar alone does not get a "+
+		"walker through.", joinAnd(others))
 }
 
 // concealmentOf is the secret hiding a door or a prop, or nil.
@@ -247,31 +353,30 @@ func (b *builder) concealmentOf(kind, id string) *encounter.ConcealmentInput {
 	return nil
 }
 
-// secretWays are the ways to KNOW a hidden door or prop: a search, and each
-// record that reveals the secret. Until a member knows it, what it hides is
-// not shown to them; seeing someone use it also reveals it, which is play,
-// not a way the file offers.
-func (b *builder) secretWays(join Statement, joinWords, kind, id string) []Statement {
+// secretWays are the ways to KNOW a hidden door or prop, lifting its
+// `hidden` bar: a search, and each record that reveals the secret. Seeing
+// someone use it also reveals it, which is play, not a way the file offers.
+func (b *builder) secretWays(join Statement, joinWords, kind, id string, bars []string) []Statement {
 	c := b.concealmentOf(kind, id)
 	if c == nil {
 		return nil
 	}
 	cid := b.unqualify(string(c.ID))
 	what := fmt.Sprintf("the %s %s", kind, quote(id))
-	out := []Statement{wayStmt(KindWaySearch, join, "search:"+cid, "concealments."+cid, fmt.Sprintf(
-		"A search finds the secret %s, which hides %s on %s, a way to know %s: until a member knows the secret, %s is "+
-			"not shown to them. A miss finds nothing.", quote(cid), what, joinWords, what, what),
+	also := alsoBarred(bars, barHidden)
+	out := []Statement{wayStmt(KindWaySearch, join, barHidden, "search:"+cid, "concealments."+cid, fmt.Sprintf(
+		"A search with %s finds the secret %s, which hides %s, lifting the hidden bar of %s: until a member knows the "+
+			"secret, %s is not shown to them. A miss finds nothing.%s", checkWords(c.Checks), quote(cid), what, joinWords, what, also),
 		append([]Connection{{Kind: "concealment", ID: cid, Role: "by"}}, methodsOf(c.Checks)...)...)}
-	out[0].Sentence = strings.Replace(out[0].Sentence, "A search finds", "A search with "+checkWords(c.Checks)+" finds", 1)
 	for i, in := range b.c.Intel {
 		if b.unqualify(string(in.Reveals.Concealment)) != cid {
 			continue
 		}
 		rid := b.unqualify(string(in.ID))
-		out = append(out, wayStmt(KindWayTold, join, "told:"+rid, fmt.Sprintf("intel[%d]", i), fmt.Sprintf(
-			"Holding the record %s reveals the secret %s, a way to know %s on %s: whoever comes to hold the record — "+
-				"told it, or taking what carries it — knows the secret. Who tells it or carries it is said with the record.",
-			quote(rid), quote(cid), what, joinWords),
+		out = append(out, wayStmt(KindWayTold, join, barHidden, "told:"+rid, fmt.Sprintf("intel[%d]", i), fmt.Sprintf(
+			"Holding the record %s reveals the secret %s, lifting the hidden bar of %s: whoever comes to hold the record — "+
+				"told it, or taking what carries it — knows %s. Who tells it or carries it is said with the record.%s",
+			quote(rid), quote(cid), joinWords, what, also),
 			Connection{Kind: "record", ID: rid, Role: "by"}, Connection{Kind: "concealment", ID: cid, Role: "by"}, method("knowledge")))
 	}
 	return out
@@ -287,8 +392,9 @@ func (b *builder) doorInput(id string) *encounter.DoorInput {
 	return nil
 }
 
-// lockWays is one way per approach of a locked door's lock.
-func (b *builder) lockWays(join Statement, joinWords, door string) []Statement {
+// lockWays is one way per approach of a locked door's lock, each lifting
+// its `lock` bar.
+func (b *builder) lockWays(join Statement, joinWords, door string, bars []string) []Statement {
 	d := b.doorInput(door)
 	if d == nil || d.State == nil {
 		return nil
@@ -303,20 +409,20 @@ func (b *builder) lockWays(join Statement, joinWords, door string) []Statement {
 		if a.Tool != "" {
 			slug += "+" + a.Tool
 		}
-		out = append(out, wayStmt(KindWayLock, join, slug, "room.room.doorBindings."+door, fmt.Sprintf(
-			"The door %s starts locked; beating its lock with %s opens it, a way through %s. A miss leaves the door locked.",
-			quote(door), checkWords([]encounter.CheckApproach{a}), joinWords),
+		out = append(out, wayStmt(KindWayLock, join, barLock, slug, "room.room.doorBindings."+door, fmt.Sprintf(
+			"The door %s starts locked; beating its lock with %s opens it, lifting the lock bar of %s. A miss leaves the "+
+				"door locked.%s", quote(door), checkWords([]encounter.CheckApproach{a}), joinWords, alsoBarred(bars, barLock)),
 			append([]Connection{{Kind: "door", ID: door, Role: "by"}}, methodsOf(lock.Approaches[i:i+1])...)...))
 	}
 	return out
 }
 
 // holder is one creature posted on a door: the states its post holds the
-// door in, the topics its pass asks, and its recipe.
+// door in, each such state's pass, and its recipe.
 type holder struct {
 	id     string
 	states []string
-	topics []string
+	passes [][]encounter.Trigger
 	recipe *machine.Recipe
 }
 
@@ -333,11 +439,7 @@ func (b *builder) holdersOf(door string) []holder {
 				continue
 			}
 			h.states = append(h.states, state)
-			for _, t := range p.Pass {
-				if r, ok := t.(encounter.TriggerRecognized); ok && !contains(h.topics, string(r.Topic)) {
-					h.topics = append(h.topics, string(r.Topic))
-				}
-			}
+			h.passes = append(h.passes, p.Pass)
 		}
 		h.recipe = postRecipe(m.Machine, m.Behaviors, h.states)
 		out = append(out, h)
@@ -370,8 +472,8 @@ func postRecipe(m *machine.Recipe, bh *encounter.BehaviorInput, states []string)
 }
 
 // leavesOn is whether a holder's routine leaves every state it holds the
-// door in when it comes to know the fact: a transition on the fact, guarded
-// by that fact alone being true, to a state that holds nothing on the door.
+// door in when it comes to know the fact: a transition guarded by that fact
+// alone being true, to a state that holds nothing on the door.
 func (h holder) leavesOn(fact string) bool {
 	if h.recipe == nil || len(h.states) == 0 {
 		return false
@@ -394,134 +496,319 @@ func (h holder) leavesOn(fact string) bool {
 	return true
 }
 
-// holdWays are the ways past a door's holding posts: every line whose win
-// (or plain saying) grants a topic the posts' pass asks, or teaches a fact
-// the holders' routines leave their posts on; and the fight.
-func (b *builder) holdWays(join Statement, joinWords, door string, ctx *wayCtx) []Statement {
+// grant is one recognition a line's win (or saying) makes: the topic, whom
+// it is about, the conversation whose carriers may hear it, whether it
+// spreads to them, and how it is made.
+type grant struct {
+	topic, about, conv, how string
+	heard                   bool
+}
+
+// grantsOf is every recognition a line's win (or saying) makes: its own
+// rows' and its conversation's outcome on the state its advance steps to.
+func (b *builder) grantsOf(o encounter.Option) []grant {
+	var out []grant
+	conv, _ := optionInteraction(o)
+	for _, g := range o.Grants {
+		if g.Failure || g.Consequence.Recognize == nil {
+			continue
+		}
+		r := g.Consequence.Recognize
+		out = append(out, grant{topic: string(r.Topic), about: shortSubjects(r.About), conv: conv,
+			heard: r.HeardBy != "", how: fmt.Sprintf("its %s", winWord(o))})
+	}
+	if o.Advance != nil && o.Advance.Success != "" {
+		c := string(o.Advance.Interaction)
+		for _, in := range b.c.Field.Interactions {
+			if string(in.ID) != c {
+				continue
+			}
+			for _, state := range targetsOf(in.Recipe, o.Advance.Success) {
+				for _, cq := range in.Outcomes[state] {
+					if cq.Recognize == nil {
+						continue
+					}
+					out = append(out, grant{topic: string(cq.Recognize.Topic), about: shortSubjects(cq.Recognize.About), conv: c,
+						heard: cq.Recognize.HeardBy != "",
+						how:   fmt.Sprintf("its %s steps %s to %s, whose outcome", winWord(o), quote(c), quote(state))})
+				}
+			}
+		}
+	}
+	return out
+}
+
+// reaches is whether a grant made by a line said to member comes to be held
+// by the holder: the holder is the one it is said to, or the grant spreads
+// to the conversation's carriers who witness it and the holder carries it.
+func (b *builder) reaches(g grant, member, h string) bool {
+	return member == h || (g.heard && g.conv != "" && contains(b.carriers[g.conv], h))
+}
+
+// passMet is whether a holder's every pass is met by the topics it comes to
+// hold through grants, and the facts and props those passes need besides.
+// A pass with no recognition in it is not met by a grant: knowing or
+// carrying is its own way.
+func passMet(h holder, held []string) (bool, []encounter.Trigger) {
+	var needs []encounter.Trigger
+	for _, pass := range h.passes {
+		recognised := false
+		for _, t := range pass {
+			switch v := t.(type) {
+			case encounter.TriggerRecognized:
+				if !contains(held, string(v.Topic)) {
+					return false, nil
+				}
+				recognised = true
+			case encounter.TriggerFact, encounter.TriggerHolds:
+				needs = append(needs, t)
+			}
+		}
+		if !recognised {
+			return false, nil
+		}
+	}
+	return len(h.passes) > 0, needs
+}
+
+// holdWays are the ways past a door's holders, each lifting its `hold`
+// bar: every line that lifts every holder (by meeting its pass, or drawing
+// it off its post), every knowing or carrying that meets every holder's
+// pass, and the fight; what lifts some holders and not all is partial.
+func (b *builder) holdWays(join Statement, joinWords, door string, bars []string, ctx *wayCtx) []Statement {
 	holders := b.holdersOf(door)
 	if len(holders) == 0 {
 		return nil
 	}
-	var ids, topics []string
+	var ids []string
 	for _, h := range holders {
 		ids = append(ids, h.id)
-		for _, t := range h.topics {
-			if !contains(topics, t) {
-				topics = append(topics, t)
-			}
-		}
 	}
+	also := alsoBarred(bars, barHold)
 	var out []Statement
 	for _, site := range b.lineSites() {
-		o := site.option
-		short := b.shortName(site.member)
-		lift, conns := b.liftWords(o, topics, holders)
-		if lift == "" {
-			continue
+		if w, ok := b.lineHoldWay(join, joinWords, site, holders, ids, also, ctx); ok {
+			out = append(out, w)
 		}
-		f := ctx.facets(site.path, short)
-		lead, tail := lineHow(o, f)
-		s := selfIn(fmt.Sprintf("The line %s of %s is a way through %s held by %s: %s; %s.%s",
-			quote(o.ID), b.creature(site.member), joinWords, b.creatures(ids), lead, lift, tail), short)
-		cs := []Connection{{Kind: "line", ID: o.ID, Role: "by"}, {Kind: "creature", ID: site.member, Role: "by"}}
-		if o.Checked() {
-			cs = append(cs, methodsOf(o.Check)...)
-		} else {
-			cs = append(cs, method("free"))
-		}
-		cs = append(cs, b.needsOf(o.Requires)...)
-		cs = append(cs, conns...)
-		cs = append(cs, f.onMiss...)
-		out = append(out, wayStmt(KindWayLine, join, "line:"+site.member+":"+o.ID, site.path, s, cs...))
 	}
+	out = append(out, b.knowWays(join, joinWords, holders, also)...)
 	var fc []Connection
 	for _, id := range ids {
 		fc = append(fc, Connection{Kind: "creature", ID: id, Role: "by"})
 	}
 	fc = append(fc, method("fight"))
-	out = append(out, wayStmt(KindWayFight, join, "fight", "room.room.monsterBindings."+holders[0].id+".posts", fmt.Sprintf(
-		"The fight is a way through %s: %s each hold the door only while posted, up and standing on a cell of the "+
-			"post; one who is down, or drawn off the post, holds nothing. Failing it is losing the fight.",
-		joinWords, b.creatures(ids)), fc...))
+	out = append(out, wayStmt(KindWayFight, join, barHold, "fight", "room.room.monsterBindings."+holders[0].id+".posts", fmt.Sprintf(
+		"The fight lifts the holders' bar of %s: %s each hold the door only while posted, up and standing on a cell of the "+
+			"post; one who is down, or drawn off the post, holds nothing. Failing it is losing the fight.%s",
+		joinWords, b.creatures(ids), also), fc...))
 	return out
 }
 
-// liftWords is how a line's win (or plain saying) lifts the holders' bar,
-// or empty: the topics its rows or its conversation's outcome grant that a
-// pass asks, and the facts it teaches that routines leave their posts on.
-func (b *builder) liftWords(o encounter.Option, topics []string, holders []holder) (string, []Connection) {
-	var parts []string
-	var conns []Connection
-	for _, g := range o.Grants {
-		if g.Failure || g.Consequence.Recognize == nil || !contains(topics, string(g.Consequence.Recognize.Topic)) {
-			continue
-		}
-		t := string(g.Consequence.Recognize.Topic)
-		parts = append(parts, fmt.Sprintf("its %s grants %s (the topic the posts let through), held by the creature it "+
-			"is said to about %s, and by the conversation's carriers who witness it", winWord(o), quote(t),
-			shortSubjects(g.Consequence.Recognize.About)))
-		conns = append(conns, Connection{Kind: "topic", ID: t, Role: "grants"})
-	}
-	if o.Advance != nil && o.Advance.Success != "" {
-		conv := string(o.Advance.Interaction)
-		for _, in := range b.c.Field.Interactions {
-			if string(in.ID) != conv {
-				continue
-			}
-			for _, state := range targetsOf(in.Recipe, o.Advance.Success) {
-				for _, c := range in.Outcomes[state] {
-					if c.Recognize == nil || !contains(topics, string(c.Recognize.Topic)) {
-						continue
-					}
-					t := string(c.Recognize.Topic)
-					parts = append(parts, fmt.Sprintf("its %s steps %s to %s, whose outcome grants %s (the topic the posts "+
-						"let through) to the creature it is said to and the carriers who witness it", winWord(o), quote(conv),
-						quote(state), quote(t)))
-					conns = append(conns, Connection{Kind: "topic", ID: t, Role: "grants"},
-						Connection{Kind: "conversation", ID: conv, Role: "advances"})
+// lineHoldWay says one line as a way past the holders, or partial, or
+// nothing when it lifts no holder.
+func (b *builder) lineHoldWay(join Statement, joinWords string, site lineSite, holders []holder, ids []string,
+	also string, ctx *wayCtx) (Statement, bool) {
+	o := site.option
+	grants := b.grantsOf(o)
+	short := b.shortName(site.member)
+	var lifted, still []string
+	var cs []Connection
+	var why []string
+	var passNeeds []encounter.Trigger
+	viaHeard := false
+	teach := map[string]bool{}
+	for _, h := range holders {
+		var held []string
+		for _, g := range grants {
+			if b.reaches(g, site.member, h.id) {
+				held = append(held, g.topic)
+				if site.member != h.id {
+					viaHeard = true
 				}
 			}
 		}
-	}
-	rows := o.Success
-	total := 0
-	for _, r := range rows {
-		total += r.Weight
-	}
-	for _, r := range rows {
-		if r.Fact == "" {
-			continue
-		}
-		var off, stay []string
-		for _, h := range holders {
-			if h.leavesOn(r.Fact) {
-				off = append(off, h.id)
-			} else {
-				stay = append(stay, h.id)
+		met, needs := passMet(h, held)
+		drawn := ""
+		for _, r := range o.Success {
+			if r.Fact != "" && h.leavesOn(r.Fact) {
+				drawn = r.Fact
 			}
 		}
-		if len(off) == 0 {
-			continue
-		}
-		p := fmt.Sprintf("its %s teaches %s to whoever its words reach", winWord(o), quote(r.Fact))
-		if len(rows) > 1 {
-			p = fmt.Sprintf("its %s, on the row of weight %d of %d, teaches %s to whoever its words reach", winWord(o),
-				r.Weight, total, quote(r.Fact))
-		}
-		if len(stay) == 0 {
-			p += fmt.Sprintf(", and every holder (%s) leaves its post once it knows it — a holder the words do not "+
-				"reach keeps holding", b.creatures(off))
-		} else {
-			p += fmt.Sprintf(", and %s leave their posts once they know it, but %s keep holding, so on its own it is "+
-				"not a way through", b.creatures(off), b.creatures(stay))
-		}
-		parts = append(parts, p)
-		conns = append(conns, Connection{Kind: "fact", ID: r.Fact, Role: "teaches"})
-		for _, id := range off {
-			conns = append(conns, Connection{Kind: "creature", ID: id, Role: "draws-off"})
+		switch {
+		case met:
+			lifted = append(lifted, h.id)
+			passNeeds = append(passNeeds, needs...)
+		case drawn != "":
+			lifted = append(lifted, h.id)
+			teach[drawn] = true
+			cs = append(cs, Connection{Kind: "creature", ID: h.id, Role: "draws-off"})
+		default:
+			still = append(still, h.id)
 		}
 	}
-	return strings.Join(parts, "; "), conns
+	if len(lifted) == 0 {
+		return Statement{}, false
+	}
+	for _, g := range grants {
+		s := fmt.Sprintf("%s makes the creature it is said to hold %s about %s", g.how, quote(g.topic), g.about)
+		if g.heard {
+			s += fmt.Sprintf(", and the conversation %s's other carriers who witness it hold the same, heard", quote(g.conv))
+		}
+		why = append(why, s)
+		cs = append(cs, Connection{Kind: "topic", ID: g.topic, Role: "grants"})
+		if strings.Contains(g.how, "steps") {
+			cs = append(cs, Connection{Kind: "conversation", ID: g.conv, Role: "advances"})
+		}
+	}
+	total := 0
+	for _, r := range o.Success {
+		total += r.Weight
+	}
+	for _, r := range o.Success {
+		if !teach[r.Fact] {
+			continue
+		}
+		s := fmt.Sprintf("its %s teaches %s to whoever its words reach, and a holder that knows it leaves its post; a holder "+
+			"the words do not reach keeps holding", winWord(o), quote(r.Fact))
+		if len(o.Success) > 1 {
+			s = strings.Replace(s, "teaches", fmt.Sprintf("on the row of weight %d of %d, teaches", r.Weight, total), 1)
+		}
+		why = append(why, s)
+		cs = append(cs, Connection{Kind: "fact", ID: r.Fact, Role: "teaches"})
+	}
+	if len(passNeeds) > 0 || len(grants) > 0 {
+		pass := "each holder lets a walker through only when every requirement of its post's pass is met"
+		if viaHeard {
+			pass += ", so a holder who did not witness it keeps holding"
+		}
+		why = append(why, pass)
+	}
+	for _, t := range passNeeds {
+		switch v := t.(type) {
+		case encounter.TriggerFact:
+			cs = append(cs, Connection{Kind: "fact", ID: string(v.Fact), Role: "needs"})
+			why = append(why, fmt.Sprintf("the walker must also know the fact %s", quote(string(v.Fact))))
+		case encounter.TriggerHolds:
+			cs = append(cs, Connection{Kind: "prop", ID: b.unqualify(string(v.Prop)), Role: "needs"})
+			why = append(why, fmt.Sprintf("the walker must also carry the prop %s", quote(b.unqualify(string(v.Prop)))))
+		}
+	}
+	f := ctx.facets(site.path, short)
+	lead, tail := lineHow(o, f)
+	kind, verb := KindWayLine, "lifts the holders' bar of"
+	if len(still) > 0 {
+		kind, verb = KindWayPartial, "helps past the holders of"
+		for _, id := range still {
+			cs = append(cs, Connection{Kind: "creature", ID: id, Role: "still-holds"})
+		}
+		tail = fmt.Sprintf(" It is not enough on its own: %s still %s.", b.creatures(still), pluralVerb(len(still), "holds", "hold")) + tail
+	}
+	s := selfIn(fmt.Sprintf("The line %s of %s %s %s, held by %s: %s; %s.%s%s",
+		quote(o.ID), b.creature(site.member), verb, joinWords, b.creatures(ids), lead, strings.Join(why, "; "), tail, also), short)
+	conns := []Connection{{Kind: "line", ID: wayLineID(site.member, o.ID), Role: "by"}, {Kind: "creature", ID: site.member, Role: "by"}}
+	if o.Checked() {
+		conns = append(conns, methodsOf(o.Check)...)
+	} else {
+		conns = append(conns, method("free"))
+	}
+	conns = append(conns, b.needsOf(o.Requires)...)
+	conns = append(conns, cs...)
+	conns = append(conns, f.onMiss...)
+	return wayStmt(kind, join, barHold, "line:"+site.member+":"+o.ID, site.path, s, conns...), true
+}
+
+// pluralVerb picks a verb by count.
+func pluralVerb(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
+// knowWays are the ways past the holders by knowing a fact or carrying a
+// prop: one per distinct pass made only of those, lifting every holder whose
+// every pass it meets; partial when another holder still holds.
+func (b *builder) knowWays(join Statement, joinWords string, holders []holder, also string) []Statement {
+	var out []Statement
+	seen := map[string]bool{}
+	for _, h := range holders {
+		for _, pass := range h.passes {
+			var facts, props []string
+			ok := len(pass) > 0
+			for _, t := range pass {
+				switch v := t.(type) {
+				case encounter.TriggerFact:
+					facts = append(facts, string(v.Fact))
+				case encounter.TriggerHolds:
+					props = append(props, b.unqualify(string(v.Prop)))
+				case encounter.TriggerRecognized:
+					ok = false
+				}
+			}
+			if !ok || len(facts)+len(props) == 0 {
+				continue
+			}
+			key := strings.Join(facts, ",") + "|" + strings.Join(props, ",")
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			var lifted, still []string
+			for _, k := range holders {
+				meets := len(k.passes) > 0
+				for _, kp := range k.passes {
+					for _, t := range kp {
+						switch v := t.(type) {
+						case encounter.TriggerFact:
+							meets = meets && contains(facts, string(v.Fact))
+						case encounter.TriggerHolds:
+							meets = meets && contains(props, b.unqualify(string(v.Prop)))
+						case encounter.TriggerRecognized:
+							meets = false
+						}
+					}
+				}
+				if meets {
+					lifted = append(lifted, k.id)
+				} else {
+					still = append(still, k.id)
+				}
+			}
+			var what []string
+			var cs []Connection
+			for _, f := range facts {
+				what = append(what, "knowing the fact "+quote(f))
+				cs = append(cs, Connection{Kind: "fact", ID: f, Role: "needs"})
+			}
+			for _, p := range props {
+				what = append(what, "carrying the prop "+quote(p))
+				cs = append(cs, Connection{Kind: "prop", ID: p, Role: "needs"})
+			}
+			if len(facts) > 0 {
+				cs = append(cs, method("knowledge"))
+			}
+			if len(props) > 0 {
+				cs = append(cs, method("item"))
+			}
+			kind := KindWayKnown
+			s := fmt.Sprintf("%s lifts the holders' bar of %s: %s %s a walker through on it.", capitalize(joinAnd(what)),
+				joinWords, b.creatures(lifted), pluralVerb(len(lifted), "lets", "let"))
+			if len(still) > 0 {
+				kind = KindWayPartial
+				s = fmt.Sprintf("%s helps past the holders of %s: %s %s a walker through on it, but it is not enough on its "+
+					"own: %s still %s.", capitalize(joinAnd(what)), joinWords, b.creatures(lifted),
+					pluralVerb(len(lifted), "lets", "let"), b.creatures(still), pluralVerb(len(still), "holds", "hold"))
+				for _, id := range still {
+					cs = append(cs, Connection{Kind: "creature", ID: id, Role: "still-holds"})
+				}
+			}
+			for _, id := range lifted {
+				cs = append([]Connection{{Kind: "creature", ID: id, Role: "by"}}, cs...)
+			}
+			out = append(out, wayStmt(kind, join, barHold, "know:"+key, "room.room.monsterBindings."+h.id+".posts", s+also, cs...))
+		}
+	}
+	return out
 }
 
 // winWord is what lifts the bar: a win of a checked line, the saying of a
@@ -551,7 +838,8 @@ func targetsOf(r machine.Recipe, beat machine.Beat) []string {
 	return out
 }
 
-// relocateWay is the line a passage is carried by, as a way.
+// relocateWay is the line a passage is carried by: how the passage is
+// taken once its bars are lifted, not an alternative to lifting them.
 func (b *builder) relocateWay(join Statement, joinWords, kind, id string, ctx *wayCtx) Statement {
 	path := join.Path
 	i := strings.LastIndex(path, ".options[")
@@ -588,7 +876,7 @@ func (b *builder) relocateWay(join Statement, joinWords, kind, id string, ctx *w
 	}
 	f := ctx.facets(linePath, short)
 	lead, tail := lineHow(o, f)
-	cs := []Connection{{Kind: "line", ID: o.ID, Role: "by"}, {Kind: kind, ID: id, Role: "by"}}
+	cs := []Connection{{Kind: "line", ID: wayLineID(id, o.ID), Role: "by"}, {Kind: kind, ID: id, Role: "by"}}
 	if o.Checked() {
 		cs = append(cs, methodsOf(o.Check)...)
 	} else {
@@ -599,38 +887,57 @@ func (b *builder) relocateWay(join Statement, joinWords, kind, id string, ctx *w
 	if c := b.concealmentOf(kind, id); c != nil {
 		cid := b.unqualify(string(c.ID))
 		cs = append(cs, Connection{Kind: "concealment", ID: cid, Role: "needs"})
-		hidden = fmt.Sprintf(" Only a member who knows the secret %s is shown the %s and can use the line.", quote(cid), kind)
+		hidden = fmt.Sprintf(" It is how the passage is taken once its hidden bar is lifted, not an alternative to it: only a "+
+			"member who knows the secret %s is shown the %s and can use the line.", quote(cid), kind)
 	}
 	cs = append(cs, f.onMiss...)
 	s := fmt.Sprintf("The line %s of the %s %s carries %s: %s; its %s sets the speaker down at the far end.%s%s",
 		quote(o.ID), kind, quote(id), joinWords, lead, winWord(o), hidden, tail)
-	return wayStmt(KindWayPassage, join, "line:"+kind+"-"+id+":"+o.ID, linePath, s, cs...)
+	return wayStmt(KindWayPassage, join, "", "line:"+kind+"-"+id+":"+o.ID, linePath, s, cs...)
 }
 
-// arrestWay is a conversation's arrest as the way it is taken: the
-// conversation enters the arresting state on the beats said, which the lines
-// that step it with them send.
-func (b *builder) arrestWay(join Statement, joinWords, conv string) Statement {
+// jailWays are the lines that carry an arrest's passage: those that step
+// the conversation into a state whose jail sets the taken down. Entering the
+// arresting state takes and holds the party and moves nobody; with no jail,
+// nobody passes, and no way is said (the join says so).
+func (b *builder) jailWays(join Statement, joinWords, conv string, ctx *wayCtx) []Statement {
 	path := join.Path
 	state := strings.TrimPrefix(path, "interactions."+conv+".outcomes.")
 	state = state[:strings.IndexByte(state, '[')]
-	var into []string
-	var beats []machine.Beat
-	for _, in := range b.c.Field.Interactions {
-		if string(in.ID) != conv {
-			continue
+	var in *encounter.InteractionInput
+	for i := range b.c.Field.Interactions {
+		if string(b.c.Field.Interactions[i].ID) == conv {
+			in = &b.c.Field.Interactions[i]
 		}
-		for _, s := range sortedKeys(in.Recipe.States) {
-			for _, tr := range in.Recipe.States[s].Transitions {
-				if tr.To == state {
-					into = append(into, fmt.Sprintf("from %s on %s", quote(s), quote(string(tr.On))))
-					beats = append(beats, tr.On)
-				}
+	}
+	if in == nil {
+		return nil
+	}
+	var jails []string
+	for _, s := range sortedKeys(in.Outcomes) {
+		for _, c := range in.Outcomes[s] {
+			if c.Jail != nil && !contains(jails, s) {
+				jails = append(jails, s)
 			}
 		}
 	}
-	var senders []string
-	var cs []Connection
+	if len(jails) == 0 {
+		return nil
+	}
+	// What takes them: the beats into the arresting state, and the lines
+	// that send those beats.
+	var into []string
+	var beats []machine.Beat
+	for _, s := range sortedKeys(in.Recipe.States) {
+		for _, tr := range in.Recipe.States[s].Transitions {
+			if tr.To == state {
+				into = append(into, fmt.Sprintf("from %s on %s", quote(s), quote(string(tr.On))))
+				beats = append(beats, tr.On)
+			}
+		}
+	}
+	var takers []string
+	var arrests []Connection
 	for _, site := range b.lineSites() {
 		a := site.option.Advance
 		if a == nil || string(a.Interaction) != conv {
@@ -642,21 +949,54 @@ func (b *builder) arrestWay(join Statement, joinWords, conv string) Statement {
 				if a.Success == beat {
 					verdict = "a win"
 				}
-				senders = append(senders, fmt.Sprintf("%s of %s (%s)", verdict, quote(site.option.ID), site.member))
-				cs = append(cs, Connection{Kind: "line", ID: site.option.ID, Role: "steps"})
+				takers = append(takers, fmt.Sprintf("%s of %s (%s)", verdict, quote(site.option.ID), site.member))
+				arrests = append(arrests, Connection{Kind: "line", ID: wayLineID(site.member, site.option.ID), Role: "arrests"})
 				break
 			}
 		}
 	}
-	s := fmt.Sprintf("The conversation %s carries %s: the party is taken on entering %s", quote(conv), joinWords, quote(state))
+	taken := fmt.Sprintf("The party is taken on entering %s", quote(state))
 	if len(into) > 0 {
-		s += ", which the conversation enters " + joinOr(into)
+		taken += ", which the conversation enters " + joinOr(into)
 	}
-	if len(senders) > 0 {
-		s += "; the lines that step it so are " + joinAnd(senders)
+	if len(takers) > 0 {
+		taken += "; the lines that step it so are " + joinAnd(takers)
 	}
-	s += ". Nobody chooses it: it is what those lines cost."
-	cs = append([]Connection{{Kind: "conversation", ID: conv, Role: "by"}}, cs...)
-	cs = append(cs, method("conversation"))
-	return wayStmt(KindWayPassage, join, "conversation:"+conv+":"+state, path, s, cs...)
+	taken += "."
+	var out []Statement
+	for _, site := range b.lineSites() {
+		a := site.option.Advance
+		if a == nil || string(a.Interaction) != conv || a.Success == "" {
+			continue
+		}
+		var to []string
+		for _, t := range targetsOf(in.Recipe, a.Success) {
+			if contains(jails, t) {
+				to = append(to, t)
+			}
+		}
+		if len(to) == 0 {
+			continue
+		}
+		o := site.option
+		short := b.shortName(site.member)
+		f := ctx.facets(site.path, short)
+		lead, tail := lineHow(o, f)
+		cs := []Connection{{Kind: "line", ID: wayLineID(site.member, o.ID), Role: "by"}, {Kind: "creature", ID: site.member, Role: "by"},
+			{Kind: "conversation", ID: conv, Role: "by"}}
+		if o.Checked() {
+			cs = append(cs, methodsOf(o.Check)...)
+		} else {
+			cs = append(cs, method("free"))
+		}
+		cs = append(cs, b.needsOf(o.Requires)...)
+		cs = append(cs, arrests...)
+		cs = append(cs, f.onMiss...)
+		s := selfIn(fmt.Sprintf("The line %s of %s carries %s: %s; its %s steps %s to %s, whose jail sets the taken down "+
+			"there, without walking the way between. %s Until a taken member says it, the taken stay held where they were "+
+			"taken.%s", quote(o.ID), b.creature(site.member), joinWords, lead, winWord(o), quote(conv), joinOr(quoteAll(to)),
+			taken, tail), short)
+		out = append(out, wayStmt(KindWayPassage, join, "", "line:"+site.member+":"+o.ID, site.path, s, cs...))
+	}
+	return out
 }

@@ -55,7 +55,7 @@ func methods(st readback.Statement) []string {
 // lineWay is the line way through a join carried by the line on the creature.
 func (s *WaysCastleSuite) lineWay(join, creature, line string) readback.Statement {
 	for _, w := range waysThrough(s.rb, join) {
-		if w.Kind == readback.KindWayLine && connected(w, "line", line, "by") && connected(w, "creature", creature, "by") {
+		if w.Kind == readback.KindWayLine && connected(w, "line", creature+"/"+line, "by") && connected(w, "creature", creature, "by") {
 			return w
 		}
 	}
@@ -143,7 +143,7 @@ func (s *WaysCastleSuite) TestWays_Castle_TheGuestClaimIsTheCaptains() {
 	w := s.lineWay(gateJoin, "captain", "guest")
 	s.Equal([]string{"skill:persuasion"}, methods(w))
 	for _, other := range waysThrough(s.rb, gateJoin) {
-		if connected(other, "line", "guest", "by") {
+		if connected(other, "line", "captain/guest", "by") || connected(other, "line", "gate-1/guest", "by") || connected(other, "line", "gate-2/guest", "by") {
 			s.True(connected(other, "creature", "captain", "by"), "only the captain carries `guest`")
 		}
 	}
@@ -197,18 +197,58 @@ func (s *WaysCastleSuite) TestWays_Castle_TheGateFight() {
 	}
 }
 
-// TestWays_Castle_TheArrestSaysItsTrigger: the arrest's passage is carried
-// by the conversation, entered from a warned state on a second claim's miss.
-func (s *WaysCastleSuite) TestWays_Castle_TheArrestSaysItsTrigger() {
+// TestWays_Castle_TheArrestIsCarriedByGoingQuietly: entering `arrested`
+// takes the party and moves nobody; the passage to the Cells is carried by
+// `come-quietly`, a free line on each gate speaker that steps the
+// conversation to `jailed`, whose jail sets the taken down. The misses that
+// arrest are named per creature.
+func (s *WaysCastleSuite) TestWays_Castle_TheArrestIsCarriedByGoingQuietly() {
 	ways := waysThrough(s.rb, "passage:region-gatehouse+room-1-region:region-cells:conversation-front-gate")
-	s.Require().Len(ways, 1)
-	w := ways[0]
-	s.Equal(readback.KindWayPassage, w.Kind)
-	s.True(connected(w, "conversation", "front-gate", "by"))
-	s.Contains(w.Sentence, "from `warned-guest` on `troupe-failed`")
-	s.Contains(w.Sentence, "from `warned-troupe` on `guest-failed`")
-	s.True(connected(w, "line", "guest", "steps"))
-	s.True(connected(w, "line", "troupe", "steps"))
+	s.Require().Len(ways, 3)
+	for i, who := range []string{"gate-1", "gate-2", "captain"} {
+		w := ways[i]
+		s.Equal(readback.KindWayPassage, w.Kind)
+		s.True(connected(w, "line", who+"/come-quietly", "by"), w.Sentence)
+		s.True(connected(w, "creature", who, "by"))
+		s.True(connected(w, "conversation", "front-gate", "by"))
+		s.True(connected(w, "topic", "arrested", "needs"))
+		s.Equal([]string{"free"}, methods(w))
+		s.Contains(w.Sentence, "steps `front-gate` to `jailed`, whose jail sets the taken down there")
+		s.Contains(w.Sentence, "from `warned-guest` on `troupe-failed`")
+		s.NotContains(w.Sentence, "Nobody chooses it")
+		for _, line := range []string{"gate-1/troupe", "gate-2/troupe", "captain/troupe", "captain/guest"} {
+			s.True(connected(w, "line", line, "arrests"), "%s arrests on a miss", line)
+		}
+		s.False(connected(w, "bar", "hold", "lifts"), "a passage's carrier lifts no bar")
+	}
+}
+
+// TestWays_Castle_TheGatesWaysExactly: the gate's ways are exactly these,
+// so a line that is not a way through (friends-inside, never-alive,
+// come-quietly, the cook's and the pedlar's) is pinned absent.
+func (s *WaysCastleSuite) TestWays_Castle_TheGatesWaysExactly() {
+	var got []string
+	for _, w := range waysThrough(s.rb, gateJoin) {
+		by := ""
+		for _, c := range w.Connects {
+			if c.Kind == "line" && c.Role == "by" {
+				by = c.ID
+			}
+		}
+		bar := ""
+		for _, c := range w.Connects {
+			if c.Kind == "bar" {
+				bar = c.ID
+			}
+		}
+		got = append(got, string(w.Kind)+" "+bar+" "+by)
+	}
+	s.Equal([]string{
+		"place.way.line hold gate-1/vouch", "place.way.line hold gate-1/straggler", "place.way.line hold gate-1/troupe",
+		"place.way.line hold gate-2/vouch", "place.way.line hold gate-2/straggler", "place.way.line hold gate-2/troupe",
+		"place.way.line hold captain/guest", "place.way.line hold captain/troupe", "place.way.line hold captain/stand-aside",
+		"place.way.line hold captain/turn", "place.way.fight hold ",
+	}, got)
 }
 
 // TestWays_Castle_TheLockedDoors: the kitchen door's two approaches and the
@@ -218,6 +258,8 @@ func (s *WaysCastleSuite) TestWays_Castle_TheLockedDoors() {
 	for _, join := range []string{"door:region-great-hall:region-kitchen:kitchen-wall-door", "door:region-barracks:region-cells:cells-wall-door"} {
 		for _, w := range waysThrough(s.rb, join) {
 			s.Equal(readback.KindWayLock, w.Kind, w.Sentence)
+			s.True(connected(w, "bar", "lock", "lifts"))
+			s.NotContains(w.Sentence, "also barred")
 			got[join] = append(got[join], strings.Join(methods(w), "+"))
 		}
 	}
@@ -239,10 +281,17 @@ func (s *WaysCastleSuite) TestWays_Castle_TheGratesWaysAreHiddenUntilKnown() {
 		s.True(connected(kinds[readback.KindWaySearch], "concealment", "kitchen-passage", "by"))
 		s.Equal([]string{"knowledge"}, methods(kinds[readback.KindWayTold]))
 		s.True(connected(kinds[readback.KindWayTold], "record", "kitchen-way", "by"))
+		s.True(connected(kinds[readback.KindWaySearch], "bar", "hidden", "lifts"))
+		s.True(connected(kinds[readback.KindWayTold], "bar", "hidden", "lifts"))
 		p := kinds[readback.KindWayPassage]
 		s.Equal([]string{"free"}, methods(p))
 		s.True(connected(p, "concealment", "kitchen-passage", "needs"))
 		s.True(connected(p, "prop", "grate", "by"))
+		s.True(connected(p, "line", "grate/"+map[string]string{"region-chapel": "to-chapel", "region-cells": "to-cells"}[to], "by"))
+		s.Contains(p.Sentence, "not an alternative to it")
+		for _, c := range p.Connects {
+			s.NotEqual("bar", c.Kind, "the passage's carrier lifts no bar")
+		}
 	}
 }
 
@@ -306,18 +355,23 @@ func (s *WaysCastleSuite) TestWays_Castle_HubsDoNotDoubleUp() {
 	}
 }
 
-// TestWays_FoldedUnderTheirJoin: in both folds each way is an entry under
-// its join, and every statement is still carried.
+// TestWays_FoldedUnderTheirJoin: in both folds the gate's join is one
+// entry and its ways are exactly the entries beneath it.
 func (s *WaysCastleSuite) TestWays_FoldedUnderTheirJoin() {
+	var want []string
+	for _, w := range waysThrough(s.rb, gateJoin) {
+		want = append(want, w.Path)
+	}
 	for _, secs := range [][]readback.FoldedSection{s.rb.Folded(), s.rb.FoldedEach()} {
-		found := false
+		var got []string
 		walkItems(secs, func(it readback.Item) {
 			if strings.Contains(it.Text, "join at the door `gate-wall-door`") {
-				found = true
-				s.GreaterOrEqual(len(it.Items), 10, "the gate's ways are under its join")
+				for _, c := range it.Items {
+					got = append(got, c.Paths...)
+				}
 			}
 		})
-		s.True(found)
+		s.Equal(want, got)
 	}
 }
 
@@ -341,4 +395,155 @@ func (s *JoinsSiteSuite) TestWays_Site_AClosedDoorIsFree() {
 	s.Require().Len(ways, 1)
 	s.Equal(readback.KindWayFree, ways[0].Kind)
 	s.True(connected(ways[0], "door", "seam-door", "by"))
+}
+
+// WaysSiteSuite is the review's probes of rpg-toolkit#2443 on the small ways
+// site: two holders on one door, judged per holder by the engine's pass.
+type WaysSiteSuite struct {
+	suite.Suite
+	raw string
+}
+
+func TestWaysSiteSuite(t *testing.T) { suite.Run(t, new(WaysSiteSuite)) }
+
+func (s *WaysSiteSuite) SetupTest() {
+	raw, err := os.ReadFile("testdata/ways-site.yaml")
+	s.Require().NoError(err)
+	s.raw = string(raw)
+}
+
+const siteGate = "door:region-east:region-west:gate-door"
+
+// read is the site with each old string replaced by its new one.
+func (s *WaysSiteSuite) read(edits ...string) *readback.ReadBack {
+	raw := s.raw
+	for i := 0; i+1 < len(edits); i += 2 {
+		s.Require().Contains(raw, edits[i])
+		raw = strings.Replace(raw, edits[i], edits[i+1], 1)
+	}
+	rb, err := readback.Of([]byte(raw))
+	s.Require().NoError(err)
+	return rb
+}
+
+// byLine is the way through the site's gate carried by the line, or nil.
+func byLine(rb *readback.ReadBack, line string) *readback.Statement {
+	for _, w := range waysThrough(rb, siteGate) {
+		if connected(w, "line", line, "by") {
+			return &w
+		}
+	}
+	return nil
+}
+
+// g2Pass is g2's post's pass, to replace.
+const g2Pass = "            pass: { recognized: admitted }\n            at:\n              - { q: 1, r: 0 }"
+
+// TestWays_Site_AGrantHeardByEveryHolderIsAWay: g1's `claim` makes g1 hold
+// `admitted` and g2 hold it heard (g2 carries `gate`): every holder's pass
+// is met.
+func (s *WaysSiteSuite) TestWays_Site_AGrantHeardByEveryHolderIsAWay() {
+	w := byLine(s.read(), "g1/claim")
+	s.Require().NotNil(w)
+	s.Equal(readback.KindWayLine, w.Kind)
+	s.True(connected(*w, "bar", "hold", "lifts"))
+	s.Contains(w.Sentence, "a holder who did not witness it keeps holding")
+}
+
+// TestWays_Site_ALineOnANonHolderIsNoWay (probe m1): `bribe` on a creature
+// holding no post, with no conversation and no heard_by, reaches no holder.
+func (s *WaysSiteSuite) TestWays_Site_ALineOnANonHolderIsNoWay() {
+	s.Nil(byLine(s.read(), "idle/bribe"))
+}
+
+// TestWays_Site_APartialDrawOffIsPartial (mutant C): `scare` teaches `cowed`,
+// which only g1's routine leaves its post on; g2 still holds.
+func (s *WaysSiteSuite) TestWays_Site_APartialDrawOffIsPartial() {
+	w := byLine(s.read(), "g1/scare")
+	s.Require().NotNil(w)
+	s.Equal(readback.KindWayPartial, w.Kind)
+	s.True(connected(*w, "creature", "g1", "draws-off"))
+	s.True(connected(*w, "creature", "g2", "still-holds"))
+	s.Contains(w.Sentence, "It is not enough on its own: Guard (g2) still holds.")
+}
+
+// TestWays_Site_APasswordPassIsKnowledge (probe m4): g2 lets through only
+// whoever knows `password`. `claim` no longer passes g2; knowing the
+// password passes g2 but not g1. Both are partial; only the fight is a way.
+func (s *WaysSiteSuite) TestWays_Site_APasswordPassIsKnowledge() {
+	rb := s.read(g2Pass, "            pass: { fact: password }\n            at:\n              - { q: 1, r: 0 }")
+	claim := byLine(rb, "g1/claim")
+	s.Require().NotNil(claim)
+	s.Equal(readback.KindWayPartial, claim.Kind)
+	s.True(connected(*claim, "creature", "g2", "still-holds"))
+	var known []readback.Statement
+	for _, w := range waysThrough(rb, siteGate) {
+		if connected(w, "fact", "password", "needs") && w.Kind != readback.KindWayLine {
+			known = append(known, w)
+		}
+	}
+	s.Require().Len(known, 1)
+	s.Equal(readback.KindWayPartial, known[0].Kind)
+	s.Equal([]string{"knowledge"}, methods(known[0]))
+	s.True(connected(known[0], "creature", "g1", "still-holds"))
+}
+
+// TestWays_Site_EveryHolderOnAPasswordIsAKnownWay: when both holders pass
+// on the password alone, knowing it is a way.
+func (s *WaysSiteSuite) TestWays_Site_EveryHolderOnAPasswordIsAKnownWay() {
+	rb := s.read(g2Pass, "            pass: { fact: password }\n            at:\n              - { q: 1, r: 0 }",
+		"            pass: { recognized: admitted }\n            at:\n              - { q: 2, r: 0 }",
+		"            pass: { fact: password }\n            at:\n              - { q: 2, r: 0 }")
+	var kinds []readback.Kind
+	for _, w := range waysThrough(rb, siteGate) {
+		kinds = append(kinds, w.Kind)
+	}
+	s.Contains(kinds, readback.KindWayKnown)
+	s.Nil(byLine(rb, "g1/claim"), "a grant meets no pass made only of a fact")
+}
+
+// TestWays_Site_AMixedPassNeedsItsFact (probe m3): g2's pass is `admitted`
+// AND the password; `claim` is a way that needs the password too.
+func (s *WaysSiteSuite) TestWays_Site_AMixedPassNeedsItsFact() {
+	rb := s.read(g2Pass, "            pass: [{ recognized: admitted }, { fact: password }]\n            at:\n              - { q: 1, r: 0 }")
+	w := byLine(rb, "g1/claim")
+	s.Require().NotNil(w)
+	s.Equal(readback.KindWayLine, w.Kind)
+	s.True(connected(*w, "fact", "password", "needs"))
+	s.Contains(w.Sentence, "the walker must also know the fact `password`")
+}
+
+// TestWays_Site_ALockedAndHeldDoorHasTwoBars (probe m5): the lock's ways
+// lift the lock, the holders' ways the hold, and each says the other bar.
+func (s *WaysSiteSuite) TestWays_Site_ALockedAndHeldDoorHasTwoBars() {
+	rb := s.read("      gate-door: {closed: true}", "      gate-door:\n        closed: true\n        locked:\n          - ability: str\n            dc: 12")
+	bars := map[string][]readback.Kind{}
+	for _, w := range waysThrough(rb, siteGate) {
+		for _, c := range w.Connects {
+			if c.Kind == "bar" {
+				bars[c.ID] = append(bars[c.ID], w.Kind)
+			}
+		}
+		if w.Kind == readback.KindWayLock || w.Kind == readback.KindWayFight {
+			s.Contains(w.Sentence, "lifting this bar alone does not get a walker through", w.Sentence)
+		}
+	}
+	s.Equal([]readback.Kind{readback.KindWayLock}, bars["lock"])
+	s.Contains(bars["hold"], readback.KindWayFight)
+	s.Contains(bars["hold"], readback.KindWayLine)
+}
+
+// TestWays_Site_AnArrestWithNoJailHasNoWay: the hail site's arrest has no
+// jail, so nobody passes and no way is said (the join says so).
+func (s *WaysSiteSuite) TestWays_Site_AnArrestWithNoJailHasNoWay() {
+	rb, err := readback.Of(arrestingHailSite(s.T(), "    approach: { within: 2 }\n"))
+	s.Require().NoError(err)
+	var passages int
+	for _, j := range joinsOf(rb) {
+		if j.Kind == readback.KindJoinPassage {
+			passages++
+			s.Empty(waysThrough(rb, j.About.ID))
+		}
+	}
+	s.Equal(1, passages)
 }

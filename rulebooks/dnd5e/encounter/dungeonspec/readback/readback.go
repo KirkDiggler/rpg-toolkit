@@ -54,9 +54,11 @@ const (
 
 	// The ways through a join (rpg-project#981, design R30), each said right
 	// after its join, about Subject{Kind: "way"}: nothing bars it (free), a
-	// lock approach, a line past holding posts, the fight with the holders,
-	// a search or a told record that reveals a secret, a passage's carrier,
-	// or none said.
+	// lock approach, a line past holding posts, knowing or carrying what a
+	// pass asks (known), the fight with the holders, a search or a told
+	// record that reveals a secret, or a passage's carrier. Partial helps
+	// past some holders and not all, and is no way on its own; none is a bar
+	// nothing lifts, about Subject{Kind: "bar"}.
 	KindWayFree    Kind = "place.way.free"
 	KindWayLock    Kind = "place.way.lock"
 	KindWayLine    Kind = "place.way.line"
@@ -64,6 +66,8 @@ const (
 	KindWaySearch  Kind = "place.way.search"
 	KindWayTold    Kind = "place.way.told"
 	KindWayPassage Kind = "place.way.passage"
+	KindWayKnown   Kind = "place.way.known"
+	KindWayPartial Kind = "place.way.partial"
 	KindWayNone    Kind = "place.way.none"
 
 	KindFaction     Kind = "side.faction"
