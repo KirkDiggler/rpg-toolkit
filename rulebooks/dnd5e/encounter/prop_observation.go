@@ -4,6 +4,7 @@
 package encounter
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 
@@ -318,6 +319,12 @@ func (e *Encounter) subjectSeers(subject core.EntityID, actor MemberID, mustSeeA
 // correctEmptyProps runs after the complete pass has retired current sight.
 // Omission alone does nothing: every cell supporting the remembered placement
 // must be positively visible before we can disprove that placement.
+//
+// AND THE SAME FOR A MEMBER (rpg-project#961, [Encounter.correctEmptyMember]):
+// a ghost — a held, non-current sighting of a member at a position — whose
+// cell the observer now positively sees is held as unknown. One walk over the
+// observer's holdings serves both, and an observer holding no non-current
+// sighting pays only that walk.
 func (e *Encounter) correctEmptyProps(observer MemberID, reach observationReach, at uint64) (bool, error) {
 	held, err := e.intelLog.Held(sightMember(observer))
 	if err != nil {
@@ -325,7 +332,18 @@ func (e *Encounter) correctEmptyProps(observer MemberID, reach observationReach,
 	}
 	changed := false
 	for _, h := range held {
-		if _, prop := subjectID(h.Subject, propSubjectKind); !prop || h.CurrentOn(perception.Sight) || h.Channel != perception.Sight {
+		if h.CurrentOn(perception.Sight) || h.Channel != perception.Sight {
+			continue
+		}
+		if _, member := subjectID(h.Subject, memberSubjectKind); member {
+			corrected, err := e.correctEmptyMember(observer, h, reach, at)
+			if err != nil {
+				return false, err
+			}
+			changed = changed || corrected
+			continue
+		}
+		if _, prop := subjectID(h.Subject, propSubjectKind); !prop {
 			continue
 		}
 		p, err := decodePropObservation(h.Payload)
@@ -366,3 +384,63 @@ func (e *Encounter) correctEmptyProps(observer MemberID, reach observationReach,
 	}
 	return changed, nil
 }
+
+// correctEmptyMember is IF YOU CAN SEE THE SPACE AND NOBODY IS THERE, YOU DO
+// NOT SEE A GHOST THERE (rpg-project#961; the monster-intel design's §5: "if
+// the monster then looks at the place it last saw you, the ghost is corrected
+// rather than left standing"). A held, non-current sighting of a member at a
+// position whose cell the PLAYER observer positively sees now (in their own
+// sight, in no secret they have not found: the prop rule's judgement) is
+// landed again as UNKNOWN: the subject is known of and placed nowhere.
+//
+// IT READS ONLY THE OBSERVER'S OWN LOOK AT THE CELL — never where the subject
+// is, never the stealth judgement. A sneaker standing unseen on their own
+// ghost's cell is corrected exactly as one who left: the watcher saw the
+// cell, and nobody there.
+//
+// WHAT A PLAYER NOW SEES: someone who walks out of their sight simply stops
+// being shown — the cell they left is in view and empty. A ghost remains only
+// on a place the player has since lost sight of: they walked away, a door
+// shut, the cell is in a secret they have not found. THE RULE IS A PLAYER'S:
+// a creature's memory is the one its search reads, and is left alone; a
+// relocation is the exception everyone shares ([Encounter.Relocate]: a
+// witness of the leaving holds the mover unknown at once).
+func (e *Encounter) correctEmptyMember(observer MemberID, h perception.Holding, reach observationReach, at uint64) (bool, error) {
+	if m := e.members[observer]; m == nil || m.Kind != KindPlayer {
+		return false, nil
+	}
+	// AN UNKNOWN IS LEFT AS IT IS, read without decoding: a player holding
+	// many of them pays a byte compare each, every pass.
+	if bytes.Equal(h.Payload, unknownSightPayload) {
+		return false, nil
+	}
+	testimony, ok := DecodeSightTestimony(h.Payload)
+	if !ok {
+		return false, fmt.Errorf("sighting of %q: %w", h.Subject, ErrInvalidData)
+	}
+	if testimony.State == LocationUnknown {
+		return false, nil
+	}
+	cell := testimony.Position
+	if reach.hidden[observer].cells[cell] || !reach.reachesCell(observer, cell) {
+		return false, nil
+	}
+	if _, err := e.intelLog.Report(perception.ReportInput{
+		Observer: sightMember(observer), Channel: perception.Sight, At: at,
+		Reports: []perception.Presence{{ID: h.Subject, Payload: unknownSightPayload}},
+	}); err != nil {
+		return false, fmt.Errorf("sighting of %q: %w", h.Subject, err)
+	}
+	return true, nil
+}
+
+// unknownSightPayload is the one stored form of a sighting held as unknown
+// ([EncodeSightTestimony] of [LocationUnknown]): written by the ghost
+// correction, and compared against before decoding.
+var unknownSightPayload = func() []byte {
+	p, err := EncodeSightTestimony(SightTestimony{State: LocationUnknown})
+	if err != nil {
+		panic(err)
+	}
+	return p
+}()

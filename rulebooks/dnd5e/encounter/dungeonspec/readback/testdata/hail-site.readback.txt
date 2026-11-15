@@ -14,6 +14,10 @@ THE PLACE
     - The party's sharing is not set, so it is shared view, the default.
         at (engine rule)
 
+  Where the places join
+    - Hall (region-hall) joins no other region: no door, open floor or passage leads from Hall to another region.
+        at room.room.regions[1]
+
 SIDES
 
   Faction `watch`
