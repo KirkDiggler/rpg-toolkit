@@ -15,7 +15,7 @@ THE PLACE
         at (engine rule)
 
   Where the places join
-    - Hall (region-hall) joins no other region: no door, open floor or passage reaches Hall.
+    - Hall (region-hall) joins no other region: no door, open floor or passage leads from Hall to another region.
         at room.room.regions[1]
 
 SIDES

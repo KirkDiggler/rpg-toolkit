@@ -44,6 +44,13 @@ const (
 	KindJoinOpen       Kind = "place.join.open"
 	KindJoinPassage    Kind = "place.join.passage"
 	KindRegionUnjoined Kind = "place.region.unjoined"
+	// A seam sight crosses and feet do not (a window): not a join, said so
+	// that nothing is skipped silently, about Subject{Kind: "seam"}.
+	KindSeamSight Kind = "place.seam.sight"
+	// A door that joins no two regions, about the door: both its sides one
+	// region's floor (within), or a side off the floor (edge).
+	KindDoorWithin Kind = "place.door.within"
+	KindDoorEdge   Kind = "place.door.edge"
 
 	KindFaction     Kind = "side.faction"
 	KindDisposition Kind = "side.disposition"

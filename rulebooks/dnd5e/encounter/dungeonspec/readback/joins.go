@@ -17,10 +17,12 @@ import (
 // place is a region; a join is where two regions meet:
 //
 //   - a DOOR: the door's crossings, each side looked up to its region;
-//   - OPEN FLOOR: a crossing between two regions' cells that nothing fixed
-//     closes — no wall, no door, no opaque prop — so the two are one wall
-//     partition of the floor. Two regions whose cells touch across a wall
-//     are NOT joined;
+//   - OPEN FLOOR: a crossing between two regions' cells that FEET can make
+//     on the fixed geometry, with no door in it. Feet decide a join (design
+//     R30: a join is a way from one place to the next); the sentence says
+//     whether sight crosses too. Two regions whose cells touch across a wall
+//     are NOT joined, and a seam sight crosses and feet do not (a window) is
+//     said as a sight seam, never a join;
 //   - a PASSAGE that is not physical: a line's `relocate`, and an arrest
 //     with the jail that sets the taken down.
 //
@@ -28,7 +30,9 @@ import (
 // crossings and the same partition canvas play reads, never re-derived here.
 // A join's state (free, locked, held, hidden) is not restated: it is the
 // door's, the door's holders' and the secret's, each already said and each
-// reached through the join's connections.
+// reached through the join's connections. A door that joins no two regions
+// — both sides one region's, or a side off the floor — is said as such, so
+// nothing is skipped silently.
 
 // joinGroupTitle is the title of the group the joins are said in, under the
 // place.
@@ -69,9 +73,14 @@ func (b *builder) joins(lines []Statement) Group {
 		return nil
 	}
 
+	// offFloor is, by region, the doors that lead from it off the floor:
+	// said with the region if it joins nothing, so "no door" is never said
+	// of a region a reader can see a door in.
+	offFloor := map[string][]string{}
 	for _, d := range topo.Doors {
 		id := b.unqualify(string(d.Door))
-		for _, pair := range regionPairs(d.Crossings, regionOf) {
+		pairs := regionPairs(d.Crossings, regionOf)
+		for _, pair := range pairs {
 			conns := append([]Connection{
 				{Kind: "region", ID: pair[0], Role: "joins"},
 				{Kind: "region", ID: pair[1], Role: "joins"},
@@ -83,12 +92,63 @@ func (b *builder) joins(lines []Statement) Group {
 			g.Statements = append(g.Statements, b.stmt(KindJoinDoor,
 				Subject{Kind: "join", ID: fmt.Sprintf("door:%s:%s:%s", pair[0], pair[1], id)}, b.doorPath(id), s, conns...))
 		}
+		if len(pairs) == 0 {
+			g.Statements = append(g.Statements, b.doorJoiningNothing(id, d, regionOf, offFloor))
+		}
 	}
 
-	for _, pair := range regionPairs(topo.Open, regionOf) {
-		s := fmt.Sprintf("%s and %s join on open floor: where their cells touch, no wall, door or opaque prop stands "+
-			"between them, so the two are one room as the walls make it, for sight, hearing and feet alike.",
-			b.regionWords(pair[0]), b.regionWords(pair[1]))
+	// Feet decide a join (design R30: a join is where a member can go from
+	// one place to the next). A seam sight crosses and feet do not is said
+	// as a sight seam, never a join.
+	type seamWays struct{ movesSees, movesBlind, seesOnly bool }
+	ways := map[[2]string]*seamWays{}
+	var order [][2]string
+	for _, seam := range topo.Seams {
+		pairs := regionPairs([]encounter.FloorCrossing{seam.FloorCrossing}, regionOf)
+		if len(pairs) == 0 {
+			continue
+		}
+		pair := pairs[0]
+		w := ways[pair]
+		if w == nil {
+			w = &seamWays{}
+			ways[pair] = w
+			order = append(order, pair)
+		}
+		switch {
+		case seam.Moves && seam.Sees:
+			w.movesSees = true
+		case seam.Moves:
+			w.movesBlind = true
+		default:
+			w.seesOnly = true
+		}
+	}
+	sortPairs(order)
+	for _, pair := range order {
+		w := ways[pair]
+		a, z := b.regionWords(pair[0]), b.regionWords(pair[1])
+		if !w.movesSees && !w.movesBlind {
+			s := fmt.Sprintf("%s and %s see each other where their cells touch, but no member can step from one to the "+
+				"other there: what stands between them stops feet and lets sight through. It is not a way between them.", a, z)
+			g.Statements = append(g.Statements, b.stmt(KindSeamSight,
+				Subject{Kind: "seam", ID: fmt.Sprintf("sight:%s:%s", pair[0], pair[1])}, "room.room.regions", s,
+				Connection{Kind: "region", ID: pair[0], Role: "sees"},
+				Connection{Kind: "region", ID: pair[1], Role: "sees"}))
+			continue
+		}
+		var s string
+		switch {
+		case w.movesSees && !w.movesBlind:
+			s = fmt.Sprintf("%s and %s join on open floor: where their cells touch, no wall, door or opaque prop stands "+
+				"between them, so the two are one room as the walls make it, for sight, hearing and feet alike.", a, z)
+		case !w.movesSees:
+			s = fmt.Sprintf("%s and %s join on open floor: where their cells touch, a member can step from one to the "+
+				"other with no door between them, but sight does not cross there: what stands between them blocks it.", a, z)
+		default:
+			s = fmt.Sprintf("%s and %s join on open floor: where their cells touch, a member can step from one to the "+
+				"other with no door between them; sight crosses at some of those places and is blocked at others.", a, z)
+		}
 		g.Statements = append(g.Statements, b.stmt(KindJoinOpen,
 			Subject{Kind: "join", ID: fmt.Sprintf("open:%s:%s", pair[0], pair[1])}, "room.room.regions", s,
 			Connection{Kind: "region", ID: pair[0], Role: "joins"},
@@ -100,6 +160,9 @@ func (b *builder) joins(lines []Statement) Group {
 
 	joined := map[string]bool{}
 	for _, st := range g.Statements {
+		if !joinKind(st.Kind) {
+			continue
+		}
 		for _, c := range st.Connects {
 			if c.Kind == "region" {
 				joined[c.ID] = true
@@ -110,11 +173,81 @@ func (b *builder) joins(lines []Statement) Group {
 		if len(r.Cells) == 0 || joined[r.ID] {
 			continue
 		}
-		s := fmt.Sprintf("%s joins no other region: no door, open floor or passage reaches %s.", b.regionWords(r.ID), b.regionName(r.ID))
+		s := fmt.Sprintf("%s joins no other region: no door, open floor or passage leads from %s to another region.",
+			b.regionWords(r.ID), b.regionName(r.ID))
+		var conns []Connection
+		for _, d := range offFloor[r.ID] {
+			s += fmt.Sprintf(" The door %s at %s leads off the floor.", quote(d), b.regionName(r.ID))
+			conns = append(conns, Connection{Kind: "door", ID: d, Role: "edge"})
+		}
 		g.Statements = append(g.Statements, b.stmt(KindRegionUnjoined, Subject{Kind: "region", ID: r.ID},
-			fmt.Sprintf("room.room.regions[%d]", i), s))
+			fmt.Sprintf("room.room.regions[%d]", i), s, conns...))
 	}
 	return g
+}
+
+// joinKind is whether a statement says a join: a door, open floor or a
+// passage. A sight seam and a door that joins nothing are not.
+func joinKind(k Kind) bool {
+	return k == KindJoinDoor || k == KindJoinOpen || k == KindJoinPassage
+}
+
+// doorJoiningNothing says a door that stands between no two regions: both
+// its sides one region's floor (within), or a side off the floor (edge).
+func (b *builder) doorJoiningNothing(id string, d encounter.DoorCrossings, regionOf map[spatial.Position]string,
+	offFloor map[string][]string) Statement {
+	about := Subject{Kind: "door", ID: id}
+	var touched []string
+	within := len(d.Crossings) > 0
+	for _, c := range d.Crossings {
+		a, okA := regionOf[c.From]
+		z, okZ := regionOf[c.To]
+		if !okA || !okZ {
+			within = false
+		}
+		for _, r := range []string{a, z} {
+			if r != "" && !contains(touched, r) {
+				touched = append(touched, r)
+			}
+		}
+	}
+	for _, cell := range d.Cells {
+		if r, ok := regionOf[cell]; ok && !contains(touched, r) {
+			touched = append(touched, r)
+		}
+	}
+	sort.Strings(touched)
+	var words []string
+	for _, r := range touched {
+		words = append(words, b.regionWords(r))
+	}
+	if within && len(touched) == 1 {
+		s := fmt.Sprintf("The door %s stands within %s: both its sides are %s's floor, so the door joins %s to no "+
+			"other region.", quote(id), words[0], b.regionName(touched[0]), b.regionName(touched[0]))
+		return b.stmt(KindDoorWithin, about, b.doorPath(id), s, Connection{Kind: "region", ID: touched[0], Role: "within"})
+	}
+	var conns []Connection
+	for _, r := range touched {
+		conns = append(conns, Connection{Kind: "region", ID: r, Role: "edge"})
+		offFloor[r] = append(offFloor[r], id)
+	}
+	s := fmt.Sprintf("The door %s leads off the floor: no region's floor lies on its far side, so the door joins no "+
+		"region to another.", quote(id))
+	if len(words) > 0 {
+		s = fmt.Sprintf("The door %s stands at the edge of %s and leads off the floor: no region's floor lies on its "+
+			"far side, so the door joins %s to no other region.", quote(id), joinAnd(words), joinAnd(words))
+	}
+	return b.stmt(KindDoorEdge, about, b.doorPath(id), s, conns...)
+}
+
+// sortPairs orders region pairs by their first id, then their second.
+func sortPairs(out [][2]string) {
+	sort.Slice(out, func(i, j int) bool {
+		if out[i][0] != out[j][0] {
+			return out[i][0] < out[j][0]
+		}
+		return out[i][1] < out[j][1]
+	})
 }
 
 // regionPairs is every distinct pair of different regions the crossings
@@ -138,12 +271,7 @@ func regionPairs(crossings []encounter.FloorCrossing, regionOf map[spatial.Posit
 			out = append(out, pair)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i][0] != out[j][0] {
-			return out[i][0] < out[j][0]
-		}
-		return out[i][1] < out[j][1]
-	})
+	sortPairs(out)
 	return out
 }
 

@@ -27,12 +27,27 @@ func (s *FloorTopologySuite) TestTwoRegionsOnOpenFloorMeetOnce() {
 	}}
 	out, err := encounter.FloorTopology(encounter.FloorTopologyInput{Field: field})
 	s.Require().NoError(err)
-	s.Equal([]encounter.FloorCrossing{{From: spatial.Position{X: 1, Y: 0}, To: spatial.Position{X: 2, Y: 0}}}, out.Open)
+	s.Equal([]encounter.RegionSeam{{FloorCrossing: encounter.FloorCrossing{From: spatial.Position{X: 1, Y: 0}, To: spatial.Position{X: 2, Y: 0}},
+		Moves: true, Sees: true}}, out.Seams)
 
 	field.Walls = []encounter.WallInput{wall(1, 0, 2, 0)}
 	out, err = encounter.FloorTopology(encounter.FloorTopologyInput{Field: field})
 	s.Require().NoError(err)
-	s.Empty(out.Open, "a wall on the seam closes it")
+	s.Empty(out.Seams, "a wall on the seam closes it to both")
+
+	field.Walls[0].BlocksLineOfSight = false
+	out, err = encounter.FloorTopology(encounter.FloorTopologyInput{Field: field})
+	s.Require().NoError(err)
+	s.Require().Len(out.Seams, 1)
+	s.False(out.Seams[0].Moves, "a window stops feet")
+	s.True(out.Seams[0].Sees, "a window lets sight through")
+
+	field.Walls[0].BlocksLineOfSight, field.Walls[0].BlocksMovement = true, false
+	out, err = encounter.FloorTopology(encounter.FloorTopologyInput{Field: field})
+	s.Require().NoError(err)
+	s.Require().Len(out.Seams, 1)
+	s.True(out.Seams[0].Moves, "a curtain lets feet through")
+	s.False(out.Seams[0].Sees, "a curtain stops sight")
 }
 
 // TestADoorIsNotOpenFloor: a door on the seam is the door's crossing, never an
@@ -43,10 +58,10 @@ func (s *FloorTopologySuite) TestADoorIsNotOpenFloor() {
 	}, Doors: []encounter.DoorInput{{ID: "door", Edges: []encounter.DoorEdge{{From: cellAt(1, 0), To: cellAt(2, 0)}}, State: encounter.DoorIsOpen()}}}
 	out, err := encounter.FloorTopology(encounter.FloorTopologyInput{Field: field})
 	s.Require().NoError(err)
-	s.Empty(out.Open)
+	s.Empty(out.Seams)
 	s.Equal([]encounter.DoorCrossings{{Door: "door", Crossings: []encounter.FloorCrossing{
 		{From: spatial.Position{X: 1, Y: 0}, To: spatial.Position{X: 2, Y: 0}},
-	}}}, out.Doors)
+	}, Cells: []spatial.Position{{X: 1, Y: 0}, {X: 2, Y: 0}}}}, out.Doors)
 }
 
 // TestAPlacedPropStandsWhereItCovers: a placed prop's cells come back in the

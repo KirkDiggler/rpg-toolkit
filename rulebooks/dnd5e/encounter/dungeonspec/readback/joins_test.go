@@ -4,6 +4,7 @@
 package readback_test
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -226,21 +227,55 @@ func (s *JoinsSiteSuite) SetupTest() {
 	s.raw = string(raw)
 }
 
-// seamWall is a wall on the seam between the two rooms: scene x 4.33 runs
-// between q 2 (x 3.46) and q 3 (x 5.20) of row 0.
-const seamWall = `    walls:
-      - id: seam-wall
-        label: seam-wall
+// wallAt is one wall along scene x from z -2 to z 2, blocking feet and sight
+// as told, with a door in its middle when door is not empty.
+func wallAt(id string, x float64, movement, sight bool, door string) string {
+	openings := "        openings: []\n"
+	if door != "" {
+		openings = "        openings:\n          - id: " + id + "-gap\n            position: 2\n            width: 1.5\n" +
+			"            door: {id: " + door + ", assetRef: 'dnd5e:env:test:door'}\n"
+	}
+	return fmt.Sprintf(`      - id: %s
+        label: %s
         line:
-          start: {x: 4.33, z: -2}
-          end: {x: 4.33, z: 2}
+          start: {x: %g, z: -2}
+          end: {x: %g, z: 2}
         appearance: {assetRef: 'dnd5e:env:test:wall', height: 3, thickness: 0.3, elevation: 0}
         blocker:
-          blocksMovement: true
-          blocksLineOfSight: true
+          blocksMovement: %t
+          blocksLineOfSight: %t
           footprint: {width: 4, depth: 0.5, offsetX: 0, offsetZ: 0}
-        openings: []
-`
+`, id, id, x, x, movement, sight) + openings
+}
+
+// seamX runs between q 2 (scene x 3.46) and q 3 (x 5.20) of row 0; edgeX runs
+// just east of q 5 (x 8.66), where the floor ends.
+const seamX, edgeX = 4.33, 9.53
+
+// withWalls is the joins site with the walls (and the door bindings) given.
+func (s *JoinsSiteSuite) withWalls(walls string, doors ...string) []byte {
+	block := "    walls:\n" + walls
+	if len(doors) > 0 {
+		block += "    doorBindings:\n"
+		for _, d := range doors {
+			block += "      " + d + ": {closed: true}\n"
+		}
+	}
+	edited := strings.Replace(s.raw, "    monsterDeclarations: []\n", "    monsterDeclarations: []\n"+block, 1)
+	s.Require().NotEqual(s.raw, edited)
+	return []byte(edited)
+}
+
+// ofKind is the statements of a kind.
+func ofKind(rb *readback.ReadBack, kind readback.Kind) []readback.Statement {
+	var out []readback.Statement
+	for _, st := range rb.Statements() {
+		if st.Kind == kind {
+			out = append(out, st)
+		}
+	}
+	return out
+}
 
 // TestJoins_OpenFloor_TwoRegionsNoWall: nothing built between the rooms, so
 // they meet on open floor — one join, and neither room is said unjoined.
@@ -262,21 +297,92 @@ func (s *JoinsSiteSuite) TestJoins_OpenFloor_TwoRegionsNoWall() {
 // TestJoins_WallBetween_NoJoin: a wall on the seam leaves the two rooms
 // touching but walled apart: no join, and each is said joined to nothing.
 func (s *JoinsSiteSuite) TestJoins_WallBetween_NoJoin() {
-	edited := strings.Replace(s.raw, "    monsterDeclarations: []\n", "    monsterDeclarations: []\n"+seamWall, 1)
-	s.Require().NotEqual(s.raw, edited)
-	rb, err := readback.Of([]byte(edited))
+	rb, err := readback.Of(s.withWalls(wallAt("seam-wall", seamX, true, true, "")))
 	s.Require().NoError(err)
 	s.Empty(joinsOf(rb))
+	s.Empty(ofKind(rb, readback.KindSeamSight))
 	unjoined := map[string]string{}
-	for _, st := range rb.Statements() {
-		if st.Kind == readback.KindRegionUnjoined {
-			unjoined[st.About.ID] = st.Path
-		}
+	for _, st := range ofKind(rb, readback.KindRegionUnjoined) {
+		unjoined[st.About.ID] = st.Path
 	}
 	s.Equal(map[string]string{
 		"region-west": "room.room.regions[1]",
 		"region-east": "room.room.regions[2]",
 	}, unjoined)
+}
+
+// TestJoins_Window_IsASightSeamNotAJoin: a wall that stops feet and lets
+// sight through is no way between the rooms. It is said as a sight seam,
+// and each room is still joined to nothing.
+func (s *JoinsSiteSuite) TestJoins_Window_IsASightSeamNotAJoin() {
+	rb, err := readback.Of(s.withWalls(wallAt("window", seamX, true, false, "")))
+	s.Require().NoError(err)
+	s.Empty(joinsOf(rb))
+	seams := ofKind(rb, readback.KindSeamSight)
+	s.Require().Len(seams, 1)
+	s.Equal(readback.Subject{Kind: "seam", ID: "sight:region-east:region-west"}, seams[0].About)
+	s.Equal(map[string]string{"region-west": "sees", "region-east": "sees"}, regionsOf(seams[0]))
+	s.Len(ofKind(rb, readback.KindRegionUnjoined), 2)
+}
+
+// TestJoins_Curtain_IsAJoinSightCannotCross: a wall that lets feet through
+// and stops sight is a way between the rooms, said as open floor whose
+// sentence says sight is blocked there.
+func (s *JoinsSiteSuite) TestJoins_Curtain_IsAJoinSightCannotCross() {
+	rb, err := readback.Of(s.withWalls(wallAt("curtain", seamX, false, true, "")))
+	s.Require().NoError(err)
+	joins := joinsOf(rb)
+	s.Require().Len(joins, 1)
+	s.Equal(readback.KindJoinOpen, joins[0].Kind)
+	s.Contains(joins[0].Sentence, "sight does not cross there")
+	s.NotContains(joins[0].Sentence, "sight, hearing and feet alike")
+	s.Empty(ofKind(rb, readback.KindRegionUnjoined))
+}
+
+// TestJoins_DoorWithinOneRegion_IsNoJoin: a door whose two sides are one
+// region's floor joins nothing, and is said to stand within that region.
+func (s *JoinsSiteSuite) TestJoins_DoorWithinOneRegion_IsNoJoin() {
+	one := strings.Replace(s.raw, "          - r: 0\n            q: [[0, 2]]", "          - r: 0\n            q: [[0, 5]]", 1)
+	one = strings.Replace(one, `      - id: region-east
+        name: East room
+        lighting: { intensity: 1 }
+        cells:
+          - r: 0
+            q: [[3, 5]]
+`, "", 1)
+	s.Require().NotContains(one, "region-east")
+	s.raw = one
+	rb, err := readback.Of(s.withWalls(wallAt("inner-wall", seamX, true, true, "inner-door"), "inner-door"))
+	s.Require().NoError(err)
+	s.Empty(joinsOf(rb), "a door within one region joins it to nothing")
+	within := ofKind(rb, readback.KindDoorWithin)
+	s.Require().Len(within, 1)
+	s.Equal(readback.Subject{Kind: "door", ID: "inner-door"}, within[0].About)
+	s.Equal(map[string]string{"region-west": "within"}, regionsOf(within[0]))
+	s.Equal("room.room.doorBindings.inner-door", within[0].Path)
+}
+
+// TestJoins_DoorOffTheFloor_IsSaidWithItsRegion: the east room is walled off
+// from the west, and its one door leads off the floor. The door is said at
+// the edge of the east room, and the east room's "joins no other region"
+// names that door rather than saying it has none.
+func (s *JoinsSiteSuite) TestJoins_DoorOffTheFloor_IsSaidWithItsRegion() {
+	rb, err := readback.Of(s.withWalls(
+		wallAt("seam-wall", seamX, true, true, "")+wallAt("outer-wall", edgeX, true, true, "outer-door"), "outer-door"))
+	s.Require().NoError(err)
+	s.Empty(joinsOf(rb))
+	edge := ofKind(rb, readback.KindDoorEdge)
+	s.Require().Len(edge, 1)
+	s.Equal(readback.Subject{Kind: "door", ID: "outer-door"}, edge[0].About)
+	s.Equal(map[string]string{"region-east": "edge"}, regionsOf(edge[0]))
+	var east readback.Statement
+	for _, st := range ofKind(rb, readback.KindRegionUnjoined) {
+		if st.About.ID == "region-east" {
+			east = st
+		}
+	}
+	s.Contains(east.Sentence, "The door `outer-door` at East room leads off the floor.")
+	s.True(connected(east, "door", "outer-door", "edge"))
 }
 
 // TestJoins_StableIDs: a join's id is built from its regions and what carries

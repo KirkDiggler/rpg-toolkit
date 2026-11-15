@@ -13,8 +13,8 @@ THE PLACE
     - The party's sharing is not set, so it is shared view, the default. [(engine rule)]
 
   Where the places join
-    - Hall (region-hall) joins no other region: no door, open floor or passage reaches Hall.
-        [room.room.regions[1]]
+    - Hall (region-hall) joins no other region: no door, open floor or passage leads from Hall to another
+        region. [room.room.regions[1]]
 
 SIDES
 

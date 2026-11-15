@@ -72,7 +72,7 @@
                 "kind": "region",
                 "id": "region-hall"
               },
-              "sentence": "Hall (region-hall) joins no other region: no door, open floor or passage reaches Hall.",
+              "sentence": "Hall (region-hall) joins no other region: no door, open floor or passage leads from Hall to another region.",
               "path": "room.room.regions[1]"
             }
           ]
