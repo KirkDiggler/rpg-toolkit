@@ -14,7 +14,7 @@ Slice [rpg-project#981](https://github.com/KirkDiggler/rpg-project/issues/981) o
 - A requirement that something NOT hold is a bar said in the sentence, never a `needs` connection — [rpg-project#981](https://github.com/KirkDiggler/rpg-project/issues/981).
 - The arrest's way has the method `conversation`, outside the suggested list: nobody chooses it, so no skill, knowledge, item, fight or free fits; the lines whose miss steps the conversation there connect with role `steps` — [rpg-project#981](https://github.com/KirkDiggler/rpg-project/issues/981).
 - A way is built without hub registration: its needs are its carrier's requirements, already in the hubs — [rpg-project#981](https://github.com/KirkDiggler/rpg-project/issues/981).
-- The DC is said in the sentence only: `Connection` has no place for a number; the smallest addition is reported to the lead, not built — [rpg-project#981](https://github.com/KirkDiggler/rpg-project/issues/981).
+- The DC is structured, by the lead's decision on the PR: `Connection` gains `Value int` (`value,omitempty`), set only on a way's `method` connections from a check — each alternative its own DC, a lock approach's ability and tool both the approach's; no other statement carries a value, so no golden moved — [rpg-toolkit#2443](https://github.com/KirkDiggler/rpg-toolkit/pull/2443).
 
 ## Found
 

@@ -4,6 +4,7 @@
 package readback_test
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -75,6 +76,65 @@ func (s *WaysCastleSuite) TestWays_Castle_TheTroupeClaim() {
 		s.True(connected(w, "conversation", "front-gate", "on-miss"), w.Sentence)
 		s.Contains(w.Sentence, "Performance against DC 13, or Deception against DC 15")
 		s.Contains(w.Sentence, "On a miss: the line steps `front-gate` with `troupe-failed`")
+	}
+}
+
+// methodDCs is a way's method connections as "id=DC".
+func methodDCs(st readback.Statement) []string {
+	var out []string
+	for _, c := range st.Connects {
+		if c.Kind == "method" {
+			out = append(out, fmt.Sprintf("%s=%d", c.ID, c.Value))
+		}
+	}
+	return out
+}
+
+// TestWays_Castle_EachMethodCarriesItsDC: a check's alternatives carry
+// their own difficulty; a lock approach's ability and tool share theirs; a
+// free way carries none.
+func (s *WaysCastleSuite) TestWays_Castle_EachMethodCarriesItsDC() {
+	s.Equal([]string{"skill:performance=13", "skill:deception=15"}, methodDCs(s.lineWay(gateJoin, "gate-1", "troupe")))
+	var kitchen []string
+	for _, w := range waysThrough(s.rb, "door:region-great-hall:region-kitchen:kitchen-wall-door") {
+		kitchen = append(kitchen, methodDCs(w)...)
+	}
+	s.Equal([]string{"ability:str=15", "ability:dex=13", "tool:dnd5e:item:thieves-tools=13"}, kitchen)
+	s.Equal([]string{"free=0"}, methodDCs(s.lineWay(gateJoin, "gate-1", "vouch")))
+	s.Equal([]string{"fight=0"}, methodDCs(waysThrough(s.rb, gateJoin)[len(waysThrough(s.rb, gateJoin))-1]))
+}
+
+// TestWays_Castle_DCsTotalByMethodFromConnections: a consumer totals the
+// difficulties of every way by method from the connections alone.
+func (s *WaysCastleSuite) TestWays_Castle_DCsTotalByMethodFromConnections() {
+	total := map[string]int{}
+	for _, st := range s.rb.Statements() {
+		if st.About.Kind != "way" {
+			continue
+		}
+		for _, c := range st.Connects {
+			if c.Kind == "method" {
+				total[c.ID] += c.Value
+			}
+		}
+	}
+	// troupe on three carriers, straggler on two, guest, turn.
+	s.Equal(3*15+2*15, total["skill:deception"])
+	s.Equal(3*13, total["skill:performance"])
+	s.Equal(2*13+11+15, total["skill:persuasion"])
+	s.Equal(0, total["free"])
+}
+
+// TestWays_OnlyWaysCarryAValue: no statement but a way carries a number,
+// so the line, lock and secret statements read as before.
+func (s *WaysCastleSuite) TestWays_OnlyWaysCarryAValue() {
+	for _, st := range s.rb.Statements() {
+		if st.About.Kind == "way" {
+			continue
+		}
+		for _, c := range st.Connects {
+			s.Zero(c.Value, "%s %s", st.Kind, st.Path)
+		}
 	}
 }
 

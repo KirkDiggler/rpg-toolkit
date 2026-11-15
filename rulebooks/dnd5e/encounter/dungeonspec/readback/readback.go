@@ -128,6 +128,9 @@ type Connection struct {
 	Kind string `json:"kind"`
 	ID   string `json:"id"`
 	Role string `json:"role"`
+	// Value is a number the connection carries where its kind has one: the
+	// difficulty of a check on a `method` connection; zero means none.
+	Value int `json:"value,omitempty"`
 }
 
 // Statement is one plain sentence about one thing, with where it is set.

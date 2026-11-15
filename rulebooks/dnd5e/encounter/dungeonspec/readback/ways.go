@@ -30,8 +30,9 @@ import (
 // miss grants or steps (`on-miss`), and to its method as
 // {Kind: "method", ID: "skill:<name>" | "ability:<name>" | "tool:<ref>" |
 // "knowledge" | "item" | "fight" | "free" | "conversation"}. A check with
-// alternatives carries one method per alternative. A DC is said in the
-// sentence only: [Connection] has no place for a number.
+// alternatives carries one method per alternative, each with its own DC as
+// the connection's Value (a tool approach's ability and tool both carry it);
+// free, knowledge, fight and conversation carry none.
 
 // wayCtx is what the ways of one read-back read: every statement said so
 // far, by path, for the facets of the lines a way is carried by.
@@ -81,9 +82,9 @@ func methodsOf(approaches []encounter.CheckApproach) []Connection {
 		case "str", "dex", "con", "int", "wis", "cha":
 			kind = "ability:"
 		}
-		out = append(out, Connection{Kind: "method", ID: kind + a.Ability, Role: "by"})
+		out = append(out, Connection{Kind: "method", ID: kind + a.Ability, Role: "by", Value: a.DC})
 		if a.Tool != "" {
-			out = append(out, Connection{Kind: "method", ID: "tool:" + a.Tool, Role: "by"})
+			out = append(out, Connection{Kind: "method", ID: "tool:" + a.Tool, Role: "by", Value: a.DC})
 		}
 	}
 	return out
