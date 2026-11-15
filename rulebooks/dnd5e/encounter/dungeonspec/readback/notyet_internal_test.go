@@ -68,6 +68,7 @@ var specOf = map[string]reflect.Type{
 // read-back knowingly does not say: present in a file, each is listed under
 // not yet said. A key here is a decision, not a gap.
 var acknowledged = map[string][]string{
+	"outcome":            {"sceneMove"},
 	"root":               {"scenarios", "tables"},
 	"concealment":        {"attempts", "notice"},
 	"monsterBinding":     {"table", "on", "states", "actions", "addActions", "dropActions"},

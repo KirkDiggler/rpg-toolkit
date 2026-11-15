@@ -1316,6 +1316,8 @@ type InteractionSpec struct {
 // ([encounter.Consequence]). Exactly one kind: `recognize`, `arrest` or
 // `jail`.
 type OutcomeSpec struct {
+	SceneMove *SceneMoveSpec `yaml:"sceneMove,omitempty" json:"sceneMove,omitempty"`
+
 	// Recognize is: a holder comes to hold a topic about subjects.
 	Recognize *RecognizeSpec `yaml:"recognize,omitempty" json:"recognize,omitempty"`
 

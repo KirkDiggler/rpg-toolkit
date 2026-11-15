@@ -133,6 +133,16 @@ func outcomesOf(
 			case kinds(c) > 1:
 				fail(itemAt, "a consequence is one kind: `recognize`, `arrest` or `jail`, not two")
 				continue
+			case c.SceneMove != nil:
+				move := &encounter.SceneMove{Leave: encounter.FactID(c.SceneMove.Leave)}
+				for _, guard := range c.SceneMove.Guards {
+					move.Guards = append(move.Guards, encounter.MemberID(guard))
+				}
+				for _, cell := range c.SceneMove.Anchors {
+					move.Anchors = append(move.Anchors, axialOffset(cell, spatial.HexOrientationPointyTop))
+				}
+				out[state] = append(out[state], encounter.Consequence{SceneMove: move})
+				continue
 			case c.Jail != nil:
 				switch {
 				case c.Jail.Words == "":
@@ -328,7 +338,7 @@ func arrestOf(at string, a *ArrestSpec, regions map[string]bool, fail func(at, m
 // kinds is how many consequence kinds one outcome item names.
 func kinds(c OutcomeSpec) int {
 	n := 0
-	for _, set := range []bool{c.Recognize != nil, c.Arrest != nil, c.Jail != nil} {
+	for _, set := range []bool{c.Recognize != nil, c.Arrest != nil, c.Jail != nil, c.SceneMove != nil} {
 		if set {
 			n++
 		}

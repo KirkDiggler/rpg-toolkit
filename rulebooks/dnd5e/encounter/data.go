@@ -3308,6 +3308,15 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			taught = append(taught, taughtFactsOf(r.Behaviors)...)
 			taught = append(taught, taughtOptionFactsOf(r.Options)...)
 		}
+		for _, interaction := range data.Interactions {
+			for _, outcomes := range interaction.Outcomes {
+				for _, outcome := range outcomes {
+					if outcome.SceneMove != nil {
+						taught = append(taught, outcome.SceneMove.Leave)
+					}
+				}
+			}
+		}
 		mintable := mintedFactIDs(f, triggersOf(endingInputsForValidation), taught)
 		if err = validateWorldFacts(
 			worldFacts, f, mintable, turnablePairsOf(f), data.EverMembers,
