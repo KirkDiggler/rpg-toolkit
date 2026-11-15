@@ -158,6 +158,17 @@ func (b *builder) joins(lines []Statement) Group {
 	g.Statements = append(g.Statements, b.relocatePassages(lines, topo, regionOf, hidden)...)
 	g.Statements = append(g.Statements, b.arrestPassages()...)
 
+	// THE WAYS, each right after its join (rpg-project#981).
+	ctx := newWayCtx(lines)
+	withWays := make([]Statement, 0, len(g.Statements))
+	for _, st := range g.Statements {
+		withWays = append(withWays, st)
+		if joinKind(st.Kind) {
+			withWays = append(withWays, b.waysFor(st, ctx, b.joinWords(st))...)
+		}
+	}
+	g.Statements = withWays
+
 	joined := map[string]bool{}
 	for _, st := range g.Statements {
 		if !joinKind(st.Kind) {
@@ -184,6 +195,28 @@ func (b *builder) joins(lines []Statement) Group {
 			fmt.Sprintf("room.room.regions[%d]", i), s, conns...))
 	}
 	return g
+}
+
+// joinWords names a join in a way's sentence: its regions and what carries
+// it.
+func (b *builder) joinWords(st Statement) string {
+	var regions []string
+	var by string
+	for _, c := range st.Connects {
+		switch {
+		case c.Kind == "region" && c.Role != "from":
+			regions = append(regions, b.regionName(c.ID))
+		case c.Role == "by" && c.Kind != "concealment":
+			by = fmt.Sprintf("%s %s", c.Kind, quote(c.ID))
+		}
+	}
+	switch st.Kind {
+	case KindJoinDoor:
+		return fmt.Sprintf("the join of %s at the %s", joinAnd(regions), by)
+	case KindJoinOpen:
+		return fmt.Sprintf("the open floor between %s", joinAnd(regions))
+	}
+	return fmt.Sprintf("the passage to %s by the %s", joinAnd(regions), by)
 }
 
 // joinKind is whether a statement says a join: a door, open floor or a

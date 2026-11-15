@@ -48,10 +48,14 @@
 // not physical (a row's `relocate`, an arrest and its jail). Feet decide a
 // join: a seam only sight crosses (a window) is said as a sight seam, a door
 // joining no two regions (within one, or off the floor) is said about the
-// door, and a region in no join is said to be in none. The
-// geometry is the engine's own ([encounter.FloorTopology]); a join's state is
-// the door's, its holders' and the secret's, reached through its connections
-// and never restated.
+// door, and a region in no join is said to be in none. After each join, its
+// WAYS (rpg-project#981): one statement per means through — free, a lock
+// approach, a line past holding posts, the fight, a search or a told record
+// for a secret, a passage's carrier — connected to its method, its needs and
+// what a miss grants or steps, so a consumer counts them without reading a
+// sentence. The geometry is the engine's own ([encounter.FloorTopology]); a
+// join's state is the door's, its holders' and the secret's, reached through
+// its connections and never restated.
 //
 // # Why its own package
 //

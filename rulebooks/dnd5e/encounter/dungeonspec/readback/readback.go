@@ -52,6 +52,20 @@ const (
 	KindDoorWithin Kind = "place.door.within"
 	KindDoorEdge   Kind = "place.door.edge"
 
+	// The ways through a join (rpg-project#981, design R30), each said right
+	// after its join, about Subject{Kind: "way"}: nothing bars it (free), a
+	// lock approach, a line past holding posts, the fight with the holders,
+	// a search or a told record that reveals a secret, a passage's carrier,
+	// or none said.
+	KindWayFree    Kind = "place.way.free"
+	KindWayLock    Kind = "place.way.lock"
+	KindWayLine    Kind = "place.way.line"
+	KindWayFight   Kind = "place.way.fight"
+	KindWaySearch  Kind = "place.way.search"
+	KindWayTold    Kind = "place.way.told"
+	KindWayPassage Kind = "place.way.passage"
+	KindWayNone    Kind = "place.way.none"
+
 	KindFaction     Kind = "side.faction"
 	KindDisposition Kind = "side.disposition"
 
