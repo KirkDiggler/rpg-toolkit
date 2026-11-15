@@ -161,8 +161,8 @@ func (b *builder) rowStatements(o encounter.Option, line, heading, p string, t l
 		}
 		for k, row := range verdict.rows {
 			path := fmt.Sprintf("%s.%s[%d]", p, verdict.key, k)
-			does, conns := rowDoes(row, t, t.name)
-			fdoes, _ := rowDoes(row, t, "{self}")
+			does, conns := rowDoes(row, t, t.name, false)
+			fdoes, _ := rowDoes(row, t, "{self}", true)
 			// A ROW THAT ONLY GRANTS (rpg-project#958): no words and no fact,
 			// its whole effect is the grant said next — "nothing is said"
 			// would read as a row that does nothing.
@@ -186,7 +186,8 @@ func (b *builder) rowStatements(o encounter.Option, line, heading, p string, t l
 				short += fmt.Sprintf(" (weight %d of %d)", row.Weight, total)
 			}
 			out = append(out, b.fstmt(KindLineRow, t.about, path, period(s),
-				foldInfo{text: short, line: heading, verdict: verdictWord, site: site, who: t.about.ID}, conns...))
+				foldInfo{text: short, line: heading, verdict: verdictWord, site: site, who: t.about.ID, loud: rowLoudness(row, t)},
+				conns...))
 			for _, g := range o.Grants {
 				if g.Failure == verdict.failure && g.Row == k && g.Consequence.Recognize != nil {
 					out = append(out, b.grantStatement(o, *g.Consequence.Recognize, lead, path+".recognize", t,
@@ -194,7 +195,7 @@ func (b *builder) rowStatements(o encounter.Option, line, heading, p string, t l
 				}
 				if g.Failure == verdict.failure && g.Row == k && (g.Consequence.Tells != "" || g.Consequence.Relocate != nil) {
 					out = append(out, b.passageStatement(g.Consequence, row, lead, path, t,
-						foldInfo{line: heading, verdict: verdictWord, site: site, who: t.about.ID}))
+						foldInfo{line: heading, verdict: verdictWord, site: site, who: t.about.ID, loud: tellsLoudness(g.Consequence, row, t)}))
 				}
 			}
 		}
@@ -202,8 +203,10 @@ func (b *builder) rowStatements(o encounter.Option, line, heading, p string, t l
 	return out
 }
 
-// rowDoes is what a line's answer row does, said about name.
-func rowDoes(row encounter.Answer, t lineTarget, name string) ([]string, []Connection) {
+// rowDoes is what a line's answer row does, said about name. Folded, a
+// loudness is named and not explained: the fold explains each loudness once
+// per thing that speaks at it ([rowLoudness]).
+func rowDoes(row encounter.Answer, t lineTarget, name string, folded bool) ([]string, []Connection) {
 	var does []string
 	var conns []Connection
 	if row.Say != "" {
@@ -212,6 +215,8 @@ func rowDoes(row encounter.Answer, t lineTarget, name string) ([]string, []Conne
 			does = append(does, "the one who did it and every witness shown "+name+" are told "+said(row.Say))
 		case t.prop:
 			does = append(does, "the speaker is told "+said(row.Say))
+		case folded:
+			does = append(does, fmt.Sprintf("%s answers %s, at %s", name, said(row.Say), quote(loudnessOf(row.Loudness))))
 		default:
 			does = append(does, fmt.Sprintf("%s answers %s, at %s: its words reach %s", name, said(row.Say),
 				quote(loudnessOf(row.Loudness)), reachWords(row.Loudness, name)))
@@ -228,6 +233,14 @@ func rowDoes(row encounter.Answer, t lineTarget, name string) ([]string, []Conne
 			// A PROP'S ANSWER IS NARRATION, not a voice (rpg-project#933): its
 			// fact goes to those who saw the line said.
 			does = append(does, fmt.Sprintf("everyone who can see the speaker, the speaker included, learns the fact %s", quote(row.Fact)))
+		case folded && row.Say != "":
+			// The answer just named the loudness: the fact clause rides on
+			// it, said once.
+			does[len(does)-1] += fmt.Sprintf("; every member those words reach, seen or not, %s included, learns the fact %s",
+				name, quote(row.Fact))
+		case folded:
+			does = append(does, fmt.Sprintf("every member %s's words reach at %s, seen or not, %s included, learns the fact %s",
+				name, quote(loudnessOf(row.Loudness)), name, quote(row.Fact)))
 		default:
 			does = append(does, fmt.Sprintf("%s learns the fact %s", learnersWords(row.Loudness, name), quote(row.Fact)))
 		}
@@ -237,6 +250,25 @@ func rowDoes(row encounter.Answer, t lineTarget, name string) ([]string, []Conne
 		does = append(does, "nothing is said")
 	}
 	return does, conns
+}
+
+// rowLoudness is the loudness whose reach a row's full sentence explains —
+// its spoken answer, or who learns its fact — or nil for a row that speaks
+// to nobody (something done, or a prop's narration).
+func rowLoudness(row encounter.Answer, t lineTarget) []string {
+	if t.done || t.prop || (row.Say == "" && row.Fact == "") {
+		return nil
+	}
+	return []string{loudnessOf(row.Loudness)}
+}
+
+// tellsLoudness is the loudness whose reach a told record's full sentence
+// explains: who hears a creature's spoken row.
+func tellsLoudness(c encounter.Consequence, row encounter.Answer, t lineTarget) []string {
+	if c.Tells == "" || t.done || t.prop {
+		return nil
+	}
+	return []string{loudnessOf(row.Loudness)}
 }
 
 // passageStatement says a row's told record or relocate (rpg-project#958):
