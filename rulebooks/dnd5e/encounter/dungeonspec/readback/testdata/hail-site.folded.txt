@@ -30,13 +30,15 @@ CREATURES
   Guard (porter): a dnd5e:monsters:guard of `watch` at q 3, r 0 in Hall, facing s
       [room.room.monsterDeclarations[0]]
     - Runs the routine `porter-policy` (as `policy`). [.behaviors[0]]
+    - At `speak`, the guard's words reach everyone in the guard's room (the wall partition the guard stands
+        in), and anyone in the next room within 30 feet of the guard by the way through an open doorway (a
+        closed door stops them), and whoever it is said to, wherever they stand. [said for every answer below
+        at `speak`]
     - “We're expected.” (`guest`), said to the guard; plain: rolls nothing, cannot be missed, free
         [.options[0]]
       - Offered while: `gate` is in `fresh`. [.requires[0]]
-      - When said: the guard answers “In you go.”, at `speak`: its words reach everyone in the guard's room
-          (the wall partition the guard stands in), and anyone in the next room within 30 feet of the guard by
-          the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they
-          stand; and the line steps `gate` with `admitted`: to `admitted` from `fresh` [.success[0], .advance]
+      - When said: the guard answers “In you go.”, at `speak`; and the line steps `gate` with `admitted`: to
+          `admitted` from `fresh` [.success[0], .advance]
 
 CONVERSATIONS
 

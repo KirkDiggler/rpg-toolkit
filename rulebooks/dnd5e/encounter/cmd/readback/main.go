@@ -7,12 +7,15 @@
 // Run from the module directory:
 //
 //	go run ./cmd/readback dungeonspec/testdata/world-builder-v4-castle.yaml
+//	go run ./cmd/readback --each dungeonspec/testdata/world-builder-v4-castle.yaml
 //	go run ./cmd/readback --full dungeonspec/testdata/world-builder-v4-castle.yaml
 //	go run ./cmd/readback --json dungeonspec/testdata/hail-site.yaml
 //
 // By default it prints the folded text: each line said once, things that
 // differ only by state or by creature said once, topics and facts as tables
-// of places. --full prints one sentence per statement, each followed by its
+// of places. --each prints the fold for one thing at a time: every creature
+// and routine said in full under its own heading, nothing named as the same
+// as another's (what the studio shows per selection). --full prints one sentence per statement, each followed by its
 // path. --json prints the structured statements. A file the
 // compiler refuses prints "REFUSED:" and the compiler's sentences and exits
 // 1; a bad flag, a missing argument or an unreadable file exits 2.
@@ -38,11 +41,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	asJSON := fs.Bool("json", false, "print the structured statements as JSON")
 	full := fs.Bool("full", false, "print one sentence per statement instead of the folded text")
+	each := fs.Bool("each", false, "print the fold for one thing at a time: nothing named as the same as another's")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if fs.NArg() != 1 {
-		_, _ = fmt.Fprintln(stderr, "usage: readback [--json] <file>")
+		_, _ = fmt.Fprintln(stderr, "usage: readback [--json | --full | --each] <file>")
 		return 2
 	}
 	raw, err := os.ReadFile(fs.Arg(0))
@@ -66,6 +70,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	if *full {
 		_, _ = io.WriteString(stdout, rb.Text())
+		return 0
+	}
+	if *each {
+		_, _ = io.WriteString(stdout, rb.FoldedEachText())
 		return 0
 	}
 	_, _ = io.WriteString(stdout, rb.FoldedText())

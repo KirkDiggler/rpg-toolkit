@@ -27,6 +27,9 @@ type foldInfo struct {
 	// `straggler`"), and who the creature it belongs to, when any.
 	site string
 	who  string
+	// loud is the loudness whose reach the full sentence explains and the
+	// fold only names: the fold explains it once for the thing that speaks.
+	loud []string
 }
 
 // fstmt is stmt with the statement's fold.

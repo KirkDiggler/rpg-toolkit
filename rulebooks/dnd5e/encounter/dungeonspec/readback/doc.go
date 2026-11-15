@@ -20,6 +20,12 @@
 // thing is set, and what it connects to ([Connection]: the topics, facts,
 // conversations, creatures and doors it reads or changes). [ReadBack.Text]
 // renders it for a person, each sentence followed by its path.
+// [ReadBack.Folded] groups the same statements for a person reading the
+// whole file, naming what one creature or routine shares with another;
+// [ReadBack.FoldedEach] groups them for one thing at a time, each said in
+// full under its own heading. Both name an answer's loudness and say what it
+// reaches once per speaker, and every folded entry carries the paths of the
+// statements it stands for.
 //
 // # The sentences
 //
