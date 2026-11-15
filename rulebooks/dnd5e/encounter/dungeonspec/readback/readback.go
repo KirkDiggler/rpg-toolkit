@@ -52,6 +52,24 @@ const (
 	KindDoorWithin Kind = "place.door.within"
 	KindDoorEdge   Kind = "place.door.edge"
 
+	// The ways through a join (rpg-project#981, design R30), each said right
+	// after its join, about Subject{Kind: "way"}: nothing bars it (free), a
+	// lock approach, a line past holding posts, knowing or carrying what a
+	// pass asks (known), the fight with the holders, a search or a told
+	// record that reveals a secret, or a passage's carrier. Partial helps
+	// past some holders and not all, and is no way on its own; none is a bar
+	// nothing lifts, about Subject{Kind: "bar"}.
+	KindWayFree    Kind = "place.way.free"
+	KindWayLock    Kind = "place.way.lock"
+	KindWayLine    Kind = "place.way.line"
+	KindWayFight   Kind = "place.way.fight"
+	KindWaySearch  Kind = "place.way.search"
+	KindWayTold    Kind = "place.way.told"
+	KindWayPassage Kind = "place.way.passage"
+	KindWayKnown   Kind = "place.way.known"
+	KindWayPartial Kind = "place.way.partial"
+	KindWayNone    Kind = "place.way.none"
+
 	KindFaction     Kind = "side.faction"
 	KindDisposition Kind = "side.disposition"
 
@@ -114,6 +132,9 @@ type Connection struct {
 	Kind string `json:"kind"`
 	ID   string `json:"id"`
 	Role string `json:"role"`
+	// Value is a number the connection carries where its kind has one: the
+	// difficulty of a check on a `method` connection; zero means none.
+	Value int `json:"value,omitempty"`
 }
 
 // Statement is one plain sentence about one thing, with where it is set.

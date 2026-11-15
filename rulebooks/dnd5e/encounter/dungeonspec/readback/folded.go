@@ -124,6 +124,13 @@ func foldPlain(g Group) Item {
 			continue
 		}
 		st := chunk.facets[0]
+		// A WAY IS SAID UNDER ITS JOIN (rpg-project#981): the join once,
+		// its ways beneath it.
+		if wayKind(st.Kind) && len(head.Items) > 0 {
+			last := &head.Items[len(head.Items)-1]
+			last.Items = append(last.Items, Item{Text: st.Sentence, Paths: []string{st.Path}})
+			continue
+		}
 		if st.Kind == KindEnding {
 			n := len(head.Items)
 			if n > 0 && strings.HasPrefix(head.Items[n-1].Text, "The run ends when "+st.fold.state+",") {
