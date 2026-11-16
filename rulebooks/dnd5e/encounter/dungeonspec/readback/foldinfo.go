@@ -30,6 +30,10 @@ type foldInfo struct {
 	// loud is the loudness whose reach the full sentence explains and the
 	// fold only names: the fold explains it once for the thing that speaks.
 	loud []string
+	// from and fromKind are what a statement repeated under a hub was first
+	// said about, and as what kind.
+	from     Subject
+	fromKind Kind
 }
 
 // fstmt is stmt with the statement's fold.

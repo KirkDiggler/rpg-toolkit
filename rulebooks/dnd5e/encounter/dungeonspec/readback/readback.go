@@ -106,6 +106,23 @@ const (
 	KindFactTeach  Kind = "fact.teach"
 	KindFactAsk    Kind = "fact.ask"
 
+	// The record and secret hubs (rpg-project#973): a record's own
+	// statement (what it reveals), who holds it, who tells it, and the ways
+	// it lifts; a secret's own statement (what it hides), the records that
+	// reveal it, how it is found (said once, from its own checks), the joins
+	// it bars and the ways that need it. A way repeated under one of these
+	// hubs is a pointer to the way ({way, <id>, is}) and never itself a way:
+	// a WAY is a statement whose kind begins `place.way.`.
+	KindRecordReveal Kind = "record.reveal"
+	KindRecordHold   Kind = "record.hold"
+	KindRecordTell   Kind = "record.tell"
+	KindRecordLift   Kind = "record.lift"
+	KindSecretHide   Kind = "secret.hide"
+	KindSecretReveal Kind = "secret.reveal"
+	KindSecretFind   Kind = "secret.find"
+	KindSecretBar    Kind = "secret.bar"
+	KindSecretNeed   Kind = "secret.need"
+
 	KindRoutine      Kind = "routine"
 	KindRoutineState Kind = "routine.state"
 	KindRoutineWake  Kind = "routine.wake"
