@@ -190,7 +190,8 @@ func (s *WaysCastleSuite) TestWays_Castle_DCsTotalByMethodFromConnections() {
 // so the line, lock and secret statements read as before.
 func (s *WaysCastleSuite) TestWays_OnlyWaysCarryAValue() {
 	for _, st := range s.rb.Statements() {
-		if st.About.Kind == "way" {
+		// A way repeated under a record or secret hub keeps its connections.
+		if st.About.Kind == "way" || strings.HasPrefix(string(st.Kind), "record.") || strings.HasPrefix(string(st.Kind), "secret.") {
 			continue
 		}
 		for _, c := range st.Connects {

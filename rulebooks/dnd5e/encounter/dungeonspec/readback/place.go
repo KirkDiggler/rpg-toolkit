@@ -126,6 +126,7 @@ func (b *builder) place() []Group {
 			conns = append(conns, Connection{Kind: "fact", ID: string(in.Reveals.Fact), Role: "teaches"})
 		case in.Reveals.Concealment != "":
 			s += "the secret " + quote(b.unqualify(string(in.Reveals.Concealment))) + "."
+			conns = append(conns, Connection{Kind: "concealment", ID: b.unqualify(string(in.Reveals.Concealment)), Role: "reveals"})
 		default:
 			s += "nothing this build can say."
 		}
@@ -234,8 +235,17 @@ func (b *builder) concealmentStatement(c encounter.ConcealmentInput) Statement {
 		"record, or by seeing someone use something it hides — what it hides is not shown to them, and a hidden thing's "+
 		"lines cannot be said by them.",
 		quote(id), joinAnd(hides), checkWords(c.Checks))
+	// WHAT IT HIDES, connected (rpg-project#973): the doors and props by
+	// id; cells have none and are said in the sentence.
+	var hc []Connection
+	for _, d := range c.Doors {
+		hc = append(hc, Connection{Kind: "door", ID: b.unqualify(string(d)), Role: "hides"})
+	}
+	for _, p := range c.Props {
+		hc = append(hc, Connection{Kind: "prop", ID: b.unqualify(string(p)), Role: "hides"})
+	}
 	return b.fstmt(KindConcealment, Subject{Kind: "concealment", ID: id}, "concealments."+id, s,
-		foldInfo{site: "the secret " + quote(id)})
+		foldInfo{site: "the secret " + quote(id)}, hc...)
 }
 
 // propStatements says one bound prop: whether it can be carried, what it

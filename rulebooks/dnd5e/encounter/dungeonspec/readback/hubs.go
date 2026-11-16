@@ -76,7 +76,9 @@ func (b *builder) hubGroups(kind string) []Group {
 // hubStatement repeats a statement under its hub, keeping its sentence,
 // path and connections.
 func (b *builder) hubStatement(kind Kind, about Subject, s Statement) Statement {
-	return Statement{Kind: kind, About: about, Sentence: s.Sentence, Path: s.Path, Connects: s.Connects, fold: s.fold}
+	f := s.fold
+	f.from, f.fromKind = s.About, s.Kind
+	return Statement{Kind: kind, About: about, Sentence: s.Sentence, Path: s.Path, Connects: s.Connects, fold: f}
 }
 
 // places counts places in words: "1 place", "3 places".
@@ -85,4 +87,93 @@ func places(n int) string {
 		return "1 place"
 	}
 	return fmt.Sprintf("%d places", n)
+}
+
+// threadKinds is, for a record or a secret hub, the order its statements are
+// said in: its own statement first, then each kind of place that reaches it.
+var threadKinds = map[string][]Kind{
+	"record":      {KindRecordReveal, KindRecordHold, KindRecordTell, KindRecordLift},
+	"concealment": {KindSecretHide, KindSecretReveal, KindSecretFind, KindSecretBar, KindSecretNeed},
+}
+
+// threadKind is the kind a statement takes under the record or secret hub
+// {kind, id}, or "" when it does not reach the hub. The hub's own statement
+// is what it reveals (a record) or hides (a secret).
+func threadKind(st Statement, kind, id string) Kind {
+	if kind == "record" {
+		if st.Kind == KindIntel && st.About.ID == id {
+			return KindRecordReveal
+		}
+		for _, c := range st.Connects {
+			if c.Kind != "record" || c.ID != id {
+				continue
+			}
+			switch {
+			case c.Role == "holds":
+				return KindRecordHold
+			case c.Role == "tells":
+				return KindRecordTell
+			case c.Role == "by" && st.Kind == KindWayTold:
+				return KindRecordLift
+			}
+		}
+		return ""
+	}
+	if st.Kind == KindConcealment && st.About.ID == id {
+		return KindSecretHide
+	}
+	for _, c := range st.Connects {
+		if c.Kind != "concealment" || c.ID != id {
+			continue
+		}
+		switch {
+		case c.Role == "reveals", c.Role == "by" && st.Kind == KindWayTold:
+			return KindSecretReveal
+		case c.Role == "by" && st.Kind == KindWaySearch:
+			return KindSecretFind
+		case c.Role == "hidden-by":
+			return KindSecretBar
+		case c.Role == "needs":
+			return KindSecretNeed
+		}
+	}
+	return ""
+}
+
+// threadGroups says each record (or secret) as a hub (rpg-project#973):
+// its own statement, then every statement that reaches it — who holds it,
+// who tells it, the ways it lifts; what reveals it, what finds it, the joins
+// it bars, the ways that need it — each repeated with its path, in reading
+// order within its kind. Every record and every secret has a hub, reached
+// by nothing or not. sts is every statement said before the hubs.
+func (b *builder) threadGroups(kind string, sts []Statement) []Group {
+	var ids []string
+	if kind == "record" {
+		for _, in := range b.c.Intel {
+			ids = append(ids, b.unqualify(string(in.ID)))
+		}
+	} else {
+		for _, c := range b.c.Concealments {
+			ids = append(ids, b.unqualify(string(c.ID)))
+		}
+	}
+	sort.Strings(ids)
+	title := "Record "
+	if kind == "concealment" {
+		title = "Secret "
+	}
+	var groups []Group
+	for _, id := range ids {
+		about := Subject{Kind: kind, ID: id}
+		g := Group{Title: title + quote(id), About: about}
+		for _, k := range threadKinds[kind] {
+			for _, st := range sts {
+				if threadKind(st, kind, id) == k {
+					g.Statements = append(g.Statements, b.hubStatement(k, about, st))
+				}
+			}
+		}
+		groups = append(groups, g)
+	}
+	return groups
 }

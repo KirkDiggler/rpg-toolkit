@@ -88,6 +88,10 @@ func (r *ReadBack) fold(share bool) []FoldedSection {
 			for _, g := range s.Groups {
 				items = append(items, foldHub(g))
 			}
+		case "Records", "Secrets":
+			for _, g := range s.Groups {
+				items = append(items, foldThread(g))
+			}
 		default:
 			for _, g := range s.Groups {
 				items = append(items, foldPlain(g))
@@ -1042,4 +1046,64 @@ func compactPaths(paths []string) string {
 		groups = append(groups, k+" "+strings.Join(rest[k], " "))
 	}
 	return strings.Join(groups, "; ")
+}
+
+// threadHeadings are the headings a record or secret hub folds its places
+// under, by kind.
+var threadHeadings = map[Kind]string{
+	KindRecordHold: "Held by", KindRecordTell: "Told by", KindRecordLift: "Lifts the hidden bar of",
+	KindSecretReveal: "Revealed by", KindSecretFind: "Found by", KindSecretBar: "Bars", KindSecretNeed: "Needed by",
+}
+
+// foldThread says a record or a secret hub as its own sentence, then a
+// short table of the places that reach it, each heading once.
+func foldThread(g Group) Item {
+	head := Item{Text: g.Title + " — nothing in the file says what it is"}
+	var order []Kind
+	rows := map[Kind]*Item{}
+	for _, st := range g.Statements {
+		heading, ok := threadHeadings[st.Kind]
+		if !ok {
+			head.Text = g.Title + " — " + st.Sentence
+			head.Paths = append(head.Paths, st.Path)
+			continue
+		}
+		it, ok := rows[st.Kind]
+		if !ok {
+			it = &Item{Text: heading + ": "}
+			rows[st.Kind] = it
+			order = append(order, st.Kind)
+		} else {
+			it.Text += "; "
+		}
+		it.Text += threadSite(st)
+		it.Paths = append(it.Paths, st.Path)
+	}
+	for _, k := range order {
+		rows[k].Text += "."
+		head.Items = append(head.Items, *rows[k])
+	}
+	return head
+}
+
+// threadSite names the place a statement stands for in a thread: the line
+// that tells it, the way taken, else the thing the statement was first said
+// about (the record that reveals, the creature or prop that holds, the join
+// barred).
+func threadSite(st Statement) string {
+	for _, c := range st.Connects {
+		if c.Kind == "join" && c.Role == "through" {
+			return "the " + strings.TrimPrefix(string(st.fold.fromKind), "place.way.") + " way through " + quote(c.ID)
+		}
+	}
+	if st.Kind == KindRecordTell && st.fold.site != "" {
+		if st.fold.who != "" {
+			return st.fold.site + " (" + st.fold.who + ")"
+		}
+		return st.fold.site
+	}
+	if st.fold.from.Kind != "" {
+		return "the " + st.fold.from.Kind + " " + quote(st.fold.from.ID)
+	}
+	return st.Path
 }

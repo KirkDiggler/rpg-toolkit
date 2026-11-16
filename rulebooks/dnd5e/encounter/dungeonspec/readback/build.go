@@ -227,9 +227,12 @@ func (b *builder) build() *ReadBack {
 	joins := b.joins(rb.Statements())
 	place.Groups = append(place.Groups[:1], append([]Group{joins}, place.Groups[1:]...)...)
 	// The hubs last, from every statement above that touches them.
+	said := rb.Statements()
 	rb.Sections = append(rb.Sections,
 		Section{Title: "Topics", Groups: b.hubGroups("topic")},
 		Section{Title: "Facts", Groups: b.hubGroups("fact")},
+		Section{Title: "Records", Groups: b.threadGroups("record", said)},
+		Section{Title: "Secrets", Groups: b.threadGroups("concealment", said)},
 	)
 	rb.NotYetSaid = b.notYetSaid()
 	return rb
