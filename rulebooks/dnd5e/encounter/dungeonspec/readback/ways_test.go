@@ -104,24 +104,85 @@ func (s *WaysCastleSuite) TestWays_Castle_EachMethodCarriesItsDC() {
 	s.Equal([]string{"fight=0"}, methodDCs(waysThrough(s.rb, gateJoin)[len(waysThrough(s.rb, gateJoin))-1]))
 }
 
+// approaches is a way's method connections read as a consumer reads them,
+// with no sentence: each `by` method is one alternative, and each `with`
+// method that follows it is a part of that same approach. Each approach is
+// "primary=DC" and "+part" for each part.
+func approaches(st readback.Statement) []string {
+	var out []string
+	for _, c := range st.Connects {
+		if c.Kind != "method" {
+			continue
+		}
+		switch c.Role {
+		case "by":
+			out = append(out, fmt.Sprintf("%s=%d", c.ID, c.Value))
+		case "with":
+			out[len(out)-1] += "+" + c.ID
+		}
+	}
+	return out
+}
+
+// TestWays_Castle_AlternativesAndTheirParts (rpg-toolkit#2444): a lock
+// approach with thieves' tools is ONE alternative with two parts; the
+// troupe claim is two alternatives with no parts.
+func (s *WaysCastleSuite) TestWays_Castle_AlternativesAndTheirParts() {
+	var kitchen [][]string
+	for _, w := range waysThrough(s.rb, "door:region-great-hall:region-kitchen:kitchen-wall-door") {
+		kitchen = append(kitchen, approaches(w))
+	}
+	s.Equal([][]string{{"ability:str=15"}, {"ability:dex=13+tool:dnd5e:item:thieves-tools"}}, kitchen)
+	var cells [][]string
+	for _, w := range waysThrough(s.rb, "door:region-barracks:region-cells:cells-wall-door") {
+		cells = append(cells, approaches(w))
+	}
+	s.Equal([][]string{{"ability:dex=13+tool:dnd5e:item:thieves-tools"}}, cells)
+	s.Equal([]string{"skill:performance=13", "skill:deception=15"}, approaches(s.lineWay(gateJoin, "gate-1", "troupe")))
+	for _, st := range s.rb.Statements() {
+		for i, c := range st.Connects {
+			if c.Kind == "method" && c.Role == "with" {
+				prev := st.Connects[i-1]
+				s.Equal("method", prev.Kind, "a part follows a method")
+				s.Contains([]string{"by", "with"}, prev.Role)
+			}
+		}
+	}
+}
+
 // TestWays_Castle_DCsTotalByMethodFromConnections: a consumer totals the
-// difficulties of every way by method from the connections alone.
+// difficulties of every way by the method rolled, counting each approach
+// once: a tool is a part of its ability's approach, never an approach.
 func (s *WaysCastleSuite) TestWays_Castle_DCsTotalByMethodFromConnections() {
 	total := map[string]int{}
+	count := map[string]int{}
+	parts := map[string]int{}
 	for _, st := range s.rb.Statements() {
 		if st.About.Kind != "way" {
 			continue
 		}
 		for _, c := range st.Connects {
-			if c.Kind == "method" {
-				total[c.ID] += c.Value
+			if c.Kind != "method" {
+				continue
 			}
+			if c.Role == "with" {
+				parts[c.ID]++
+				continue
+			}
+			total[c.ID] += c.Value
+			count[c.ID]++
 		}
 	}
 	// troupe on three carriers, straggler on two, guest, turn.
 	s.Equal(3*15+2*15, total["skill:deception"])
 	s.Equal(3*13, total["skill:performance"])
 	s.Equal(2*13+11+15, total["skill:persuasion"])
+	// the kitchen door's and the cells door's tool approaches; the kitchen's
+	// Strength.
+	s.Equal(13+13, total["ability:dex"])
+	s.Equal(15, total["ability:str"])
+	s.Zero(count["tool:dnd5e:item:thieves-tools"], "a tool is no approach of its own")
+	s.Equal(2, parts["tool:dnd5e:item:thieves-tools"])
 	s.Equal(0, total["free"])
 }
 
@@ -531,6 +592,18 @@ func (s *WaysSiteSuite) TestWays_Site_ALockedAndHeldDoorHasTwoBars() {
 	s.Equal([]readback.Kind{readback.KindWayLock}, bars["lock"])
 	s.Contains(bars["hold"], readback.KindWayFight)
 	s.Contains(bars["hold"], readback.KindWayLine)
+}
+
+// TestWays_Site_TwoApproachesWithOneToolKeepBothParts: a check whose two
+// alternatives each use the same tool at the same DC keeps the tool under
+// each, so neither approach loses its part.
+func (s *WaysSiteSuite) TestWays_Site_TwoApproachesWithOneToolKeepBothParts() {
+	rb := s.read("              - ability: persuasion\n                dc: 12",
+		"              - ability: dex\n                tool: dnd5e:item:thieves-tools\n                dc: 12\n"+
+			"              - ability: int\n                tool: dnd5e:item:thieves-tools\n                dc: 12")
+	w := byLine(rb, "g1/claim")
+	s.Require().NotNil(w)
+	s.Equal([]string{"ability:dex=12+tool:dnd5e:item:thieves-tools", "ability:int=12+tool:dnd5e:item:thieves-tools"}, approaches(*w))
 }
 
 // TestWays_Site_AnArrestWithNoJailHasNoWay: the hail site's arrest has no

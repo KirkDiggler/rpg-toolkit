@@ -48,8 +48,9 @@ import (
 // holders a partial way leaves holding (`still-holds`), and to its method as
 // {Kind: "method", ID: "skill:<name>" | "ability:<name>" | "tool:<ref>" |
 // "knowledge" | "item" | "fight" | "free"}. A check with alternatives
-// carries one method per alternative, each with its own DC as the
-// connection's Value (a tool approach's ability and tool both carry it);
+// carries one `by` method per alternative, each with its own DC as the
+// connection's Value; a part of the same approach (its tool) follows it
+// with role `with` and the same DC;
 // free, knowledge, item and fight carry none. A pass's `not` is a condition,
 // connected `unless`.
 
@@ -99,14 +100,17 @@ func wayStmt(kind Kind, join Statement, bar, slug, path, sentence string, conns 
 		conns = append(conns[:1], append([]Connection{{Kind: "bar", ID: bar, Role: "lifts"}}, conns[1:]...)...)
 	}
 	return Statement{Kind: kind, About: Subject{Kind: "way", ID: "way:" + join.About.ID + ":" + slug},
-		Sentence: sentence, Path: path, Connects: dedupe(conns)}
+		Sentence: sentence, Path: path, Connects: dedupeKeepingMethods(conns)}
 }
 
 // wayKind is whether a statement says a way.
 func wayKind(k Kind) bool { return strings.HasPrefix(string(k), "place.way.") }
 
-// methodsOf is a check's methods, one per alternative: a skill or an
-// ability, and the tool it is made with.
+// methodsOf is a check's methods (rpg-toolkit#2444): each alternative's
+// rolled ability or skill with role `by`, then each further part of that
+// same approach (its tool) with role `with`, immediately after it. A
+// consumer lists a way's alternatives as its `by` methods and counts each
+// approach once; every connection of an approach carries the approach's DC.
 func methodsOf(approaches []encounter.CheckApproach) []Connection {
 	var out []Connection
 	for _, a := range approaches {
@@ -117,7 +121,23 @@ func methodsOf(approaches []encounter.CheckApproach) []Connection {
 		}
 		out = append(out, Connection{Kind: "method", ID: kind + a.Ability, Role: "by", Value: a.DC})
 		if a.Tool != "" {
-			out = append(out, Connection{Kind: "method", ID: "tool:" + a.Tool, Role: "by", Value: a.DC})
+			out = append(out, Connection{Kind: "method", ID: "tool:" + a.Tool, Role: "with", Value: a.DC})
+		}
+	}
+	return out
+}
+
+// dedupeKeepingMethods is [dedupe] for a way: its method connections are
+// kept as built, in order, because a part (`with`) belongs to the `by` just
+// before it, and two approaches may share an identical part (the same tool
+// at the same DC) that must stay under each.
+func dedupeKeepingMethods(conns []Connection) []Connection {
+	seen := map[Connection]bool{}
+	out := make([]Connection, 0, len(conns))
+	for _, c := range conns {
+		if c.Kind == "method" || !seen[c] {
+			seen[c] = true
+			out = append(out, c)
 		}
 	}
 	return out
