@@ -108,8 +108,11 @@ const (
 
 	// The record and secret hubs (rpg-project#973): a record's own
 	// statement (what it reveals), who holds it, who tells it, and the ways
-	// it lifts; a secret's own statement (what it hides), what reveals it,
-	// what finds it, the joins it bars and the ways that need it.
+	// it lifts; a secret's own statement (what it hides), the records that
+	// reveal it, how it is found (said once, from its own checks), the joins
+	// it bars and the ways that need it. A way repeated under one of these
+	// hubs is a pointer to the way ({way, <id>, is}) and never itself a way:
+	// a WAY is a statement whose kind begins `place.way.`.
 	KindRecordReveal Kind = "record.reveal"
 	KindRecordHold   Kind = "record.hold"
 	KindRecordTell   Kind = "record.tell"

@@ -6,6 +6,9 @@ package readback
 import (
 	"fmt"
 	"sort"
+	"strings"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
 // hubGroups says each topic (or fact) as a hub: what it means, if the file
@@ -126,14 +129,12 @@ func threadKind(st Statement, kind, id string) Kind {
 		if c.Kind != "concealment" || c.ID != id {
 			continue
 		}
-		switch {
-		case c.Role == "reveals", c.Role == "by" && st.Kind == KindWayTold:
+		switch c.Role {
+		case "reveals":
 			return KindSecretReveal
-		case c.Role == "by" && st.Kind == KindWaySearch:
-			return KindSecretFind
-		case c.Role == "hidden-by":
+		case "hidden-by":
 			return KindSecretBar
-		case c.Role == "needs":
+		case "needs":
 			return KindSecretNeed
 		}
 	}
@@ -144,7 +145,7 @@ func threadKind(st Statement, kind, id string) Kind {
 // its own statement, then every statement that reaches it — who holds it,
 // who tells it, the ways it lifts; what reveals it, what finds it, the joins
 // it bars, the ways that need it — each repeated with its path, in reading
-// order within its kind. Every record and every secret has a hub, reached
+// order within its kind; how it is found is said once, from its own checks. Every record and every secret has a hub, reached
 // by nothing or not. sts is every statement said before the hubs.
 func (b *builder) threadGroups(kind string, sts []Statement) []Group {
 	var ids []string
@@ -167,13 +168,51 @@ func (b *builder) threadGroups(kind string, sts []Statement) []Group {
 		about := Subject{Kind: kind, ID: id}
 		g := Group{Title: title + quote(id), About: about}
 		for _, k := range threadKinds[kind] {
+			if k == KindSecretFind {
+				g.Statements = append(g.Statements, b.secretFind(id))
+				continue
+			}
 			for _, st := range sts {
 				if threadKind(st, kind, id) == k {
-					g.Statements = append(g.Statements, b.hubStatement(k, about, st))
+					g.Statements = append(g.Statements, b.threadStatement(k, about, st))
 				}
 			}
 		}
 		groups = append(groups, g)
 	}
 	return groups
+}
+
+// threadStatement repeats a statement under a record or secret hub. A WAY
+// repeated there is a pointer, never a way (rpg-project#973): it keeps its
+// sentence and path and carries the one connection {way, <id>, is}, so a
+// consumer that finds ways by their `through` connection or totals their
+// methods meets each way once, at its join.
+func (b *builder) threadStatement(kind Kind, about Subject, s Statement) Statement {
+	st := b.hubStatement(kind, about, s)
+	if wayKind(s.Kind) {
+		st.Connects = []Connection{{Kind: "way", ID: s.About.ID, Role: "is"}}
+		for _, c := range s.Connects {
+			if c.Kind == "join" && c.Role == "through" {
+				st.fold.site = fmt.Sprintf("the %s way through %s", strings.TrimPrefix(string(s.Kind), "place.way."), quote(c.ID))
+			}
+		}
+	}
+	return st
+}
+
+// secretFind says once how a secret is found: its own search checks, the
+// same however many joins it bars. It connects to the secret alone; the
+// search's methods are on each search way, at its join.
+func (b *builder) secretFind(id string) Statement {
+	var checks []encounter.CheckApproach
+	for _, c := range b.c.Concealments {
+		if b.unqualify(string(c.ID)) == id {
+			checks = c.Checks
+		}
+	}
+	return Statement{Kind: KindSecretFind, About: Subject{Kind: "concealment", ID: id},
+		Sentence: fmt.Sprintf("A search with %s finds the secret %s.", checkWords(checks), quote(id)),
+		Path:     "concealments." + id + ".checks",
+		Connects: []Connection{{Kind: "concealment", ID: id, Role: "finds"}}}
 }

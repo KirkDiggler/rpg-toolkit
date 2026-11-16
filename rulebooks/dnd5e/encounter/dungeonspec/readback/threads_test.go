@@ -79,9 +79,19 @@ func (s *ThreadsSuite) TestThreads_Castle_TheKitchenPassageSecret() {
 		got[st.Kind]++
 	}
 	s.Equal(map[readback.Kind]int{
-		readback.KindSecretHide: 1, readback.KindSecretReveal: 3, readback.KindSecretFind: 2,
+		readback.KindSecretHide: 1, readback.KindSecretReveal: 1, readback.KindSecretFind: 1,
 		readback.KindSecretBar: 2, readback.KindSecretNeed: 2,
 	}, got)
+	for _, st := range g.Statements {
+		switch st.Kind {
+		case readback.KindSecretReveal:
+			s.Equal("intel[4]", st.Path, "only the record reveals it")
+		case readback.KindSecretFind:
+			s.Equal("concealments.kitchen-passage.checks", st.Path)
+			s.Contains(st.Sentence, "Investigation against DC 18")
+			s.Equal([]readback.Connection{{Kind: "concealment", ID: "kitchen-passage", Role: "finds"}}, st.Connects)
+		}
+	}
 	s.Equal(readback.KindSecretHide, g.Statements[0].Kind)
 	s.True(connected(g.Statements[0], "prop", "grate", "hides"))
 	var bars []string
@@ -201,6 +211,39 @@ func (s *ThreadsSuite) TestThreads_Site_LonelyHubsStillHaveAHub() {
 	s.Equal([]string{"record.reveal intel[0]"}, kindsAt(r))
 	c, ok := hub(rb, "Secrets", "concealment", "nook")
 	s.Require().True(ok)
-	s.Equal([]string{"secret.hide concealments.nook"}, kindsAt(c))
+	s.Equal([]string{"secret.hide concealments.nook", "secret.find concealments.nook.checks"}, kindsAt(c))
 	s.Contains(c.Statements[0].Sentence, "1 floor cell")
+}
+
+// TestThreads_Castle_AHubRepeatIsNeverAWay: a way repeated under a record or
+// secret hub is a pointer to the way, carrying only {way, id, is}; so the
+// statements that go through a join are exactly the ways, and no statement
+// but a way carries a method.
+func (s *ThreadsSuite) TestThreads_Castle_AHubRepeatIsNeverAWay() {
+	through, ways := 0, 0
+	for _, st := range s.rb.Statements() {
+		isWay := strings.HasPrefix(string(st.Kind), "place.way.")
+		if isWay {
+			ways++
+		}
+		for _, c := range st.Connects {
+			if c.Kind == "join" && c.Role == "through" {
+				through++
+			}
+			if c.Kind == "method" {
+				s.True(isWay, "%s at %s carries a method", st.Kind, st.Path)
+			}
+		}
+	}
+	s.Equal(ways, through)
+	g, ok := hub(s.rb, "Records", "record", "kitchen-way")
+	s.Require().True(ok)
+	for _, st := range g.Statements {
+		if st.Kind == readback.KindRecordLift {
+			s.Require().Len(st.Connects, 1)
+			s.Equal("way", st.Connects[0].Kind)
+			s.Equal("is", st.Connects[0].Role)
+			s.True(strings.HasPrefix(st.Connects[0].ID, "way:passage:region-kitchen:"), st.Connects[0].ID)
+		}
+	}
 }

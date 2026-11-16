@@ -36,7 +36,10 @@
 // `secret.reveal`, `secret.find`, `secret.bar`, `secret.need`). A record
 // connects what it reveals and a secret what it hides, so a secret passage is
 // followed from the line that tells it to the prop it hides by connections
-// alone.
+// alone. A WAY is a statement whose kind begins `place.way.`; a way repeated
+// under a record or secret hub is a pointer to it, carrying only
+// {way, <id>, is}, and is never itself a way. Only a way carries a `method`
+// connection.
 //
 // # The sentences
 //

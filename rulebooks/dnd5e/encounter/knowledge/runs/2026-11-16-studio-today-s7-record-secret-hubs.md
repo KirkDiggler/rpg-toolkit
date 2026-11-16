@@ -20,4 +20,6 @@ Slice [rpg-project#973](https://github.com/KirkDiggler/rpg-project/issues/973) o
 
 ## Mistaken
 
+- Review of rpg-toolkit#2447: the hub repeats of ways kept `{join, through}`, `{bar, lifts}` and the DC-bearing methods, so a consumer finding ways by `through` saw each grate passage with 7 ways and a method total double counted; the told ways were listed as revealers beside the record; the search was listed once per join; and a mutant dropping the door `hides` connection survived. A way repeated under a record or secret hub is now a pointer (`{way, <id>, is}`), `secret.reveal` is the records alone, `secret.find` is said once from the concealment's own checks, and an internal test holds the door connection (the dialect cannot author a hidden door: `concealments.<id>.doors` is refused). Fact and topic hubs never repeated a way: ways are built outside the hub registration — [review](https://github.com/KirkDiggler/rpg-toolkit/pull/2447#pullrequestreview-5914676770).
+
 - The first fold named a way by its hub kind ("the way `record.lift`"); the repeated statement now keeps the kind it was first said as — [rpg-project#973](https://github.com/KirkDiggler/rpg-project/issues/973).

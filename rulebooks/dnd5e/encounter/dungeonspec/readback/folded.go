@@ -1091,10 +1091,11 @@ func foldThread(g Group) Item {
 // about (the record that reveals, the creature or prop that holds, the join
 // barred).
 func threadSite(st Statement) string {
-	for _, c := range st.Connects {
-		if c.Kind == "join" && c.Role == "through" {
-			return "the " + strings.TrimPrefix(string(st.fold.fromKind), "place.way.") + " way through " + quote(c.ID)
-		}
+	if wayKind(st.fold.fromKind) && st.fold.site != "" {
+		return st.fold.site
+	}
+	if st.Kind == KindSecretFind {
+		return "a s" + strings.TrimSuffix(strings.TrimPrefix(st.Sentence, "A s"), ".")
 	}
 	if st.Kind == KindRecordTell && st.fold.site != "" {
 		if st.fold.who != "" {
