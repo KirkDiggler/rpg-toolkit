@@ -353,6 +353,11 @@
                   "kind": "creature",
                   "id": "porter",
                   "role": "runs"
+                },
+                {
+                  "kind": "state",
+                  "id": "ready",
+                  "role": "starts"
                 }
               ]
             },
@@ -363,7 +368,14 @@
                 "id": "porter-policy"
               },
               "sentence": "In the state `ready`, Guard (porter) listens for 1 beat.",
-              "path": "behaviorDefinitions.porter-policy.recipe.states.ready"
+              "path": "behaviorDefinitions.porter-policy.recipe.states.ready",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "ready",
+                  "role": "is"
+                }
+              ]
             },
             {
               "kind": "routine.wake",
@@ -372,7 +384,24 @@
                 "id": "porter-policy"
               },
               "sentence": "In the state `ready`, when Guard (porter) hails a character, which happens only under the conversation's hail rule: the character's own step ended within the approach distance, Guard (porter) sees them and they see Guard (porter), Guard (porter) offers them a line that steps the conversation, no nearer carrier qualifies, and the conversation is addressing no one, Guard (porter) acts from its own `approached` rows.",
-              "path": "behaviorDefinitions.porter-policy.recipe.states.ready.transitions[0]"
+              "path": "behaviorDefinitions.porter-policy.recipe.states.ready.transitions[0]",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "ready",
+                  "role": "from"
+                },
+                {
+                  "kind": "beat",
+                  "id": "approached",
+                  "role": "on"
+                },
+                {
+                  "kind": "table",
+                  "id": "approached",
+                  "role": "picks"
+                }
+              ]
             },
             {
               "kind": "routine.row",
@@ -381,7 +410,14 @@
                 "id": "porter-policy"
               },
               "sentence": "`approached` row 1 of `porter-policy`: Guard (porter) says “Halt there. What's your business?” (at `speak`: its words reach everyone in Guard (porter)'s room (the wall partition Guard (porter) stands in), and anyone in the next room within 30 feet of Guard (porter) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand).",
-              "path": "behaviorDefinitions.porter-policy.table.approached[0]"
+              "path": "behaviorDefinitions.porter-policy.table.approached[0]",
+              "connects": [
+                {
+                  "kind": "table",
+                  "id": "approached",
+                  "role": "row-of"
+                }
+              ]
             }
           ]
         }

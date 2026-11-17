@@ -1,0 +1,139 @@
+# THE MACHINE SITE (rpg-project#994): the ways site's two rooms with a door
+# on the seam, held from the west by one guard whose routine has every shape
+# a machine's drawing needs. machine_test.go reads it back.
+#
+#   watch     starts `posted`.
+#     posted  on `time` stays in place and picks from `post` (the engine
+#             refuses two picks on one step: machine_internal_test.go says
+#             that shape);
+#             on `fact` (knows `cowed`) moves to `gone`, picking nothing;
+#             on `barred` moves to `alert`, picking `barred`.
+#     alert   on `time` moves back to `posted`, picking `post`.
+#     gone    is terminal.
+#   g         runs `watch`; holds the door in `posted` and `alert`; its body
+#             blocks in `posted` and `alert`.
+version: 5
+key: machine-site
+play: { void: transparent, lighting: bright, standing: centre-covered }
+factions:
+  - id: watch
+dispositions:
+  - between: [watch, party]
+    stance: neutral
+room:
+  version: 3
+  id: room-1
+  name: Machine Site
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz}
+  scene:
+    version: 1
+    id: scene-1
+    name: Machine Site
+    items: []
+    groups: []
+  room:
+    implicitRegionId: room-1-region
+    regions:
+      - id: room-1-region
+        name: Machine Site
+        lighting: { intensity: 1 }
+        cells: []
+      - id: region-west
+        name: West room
+        lighting: { intensity: 1 }
+        cells:
+          - r: 0
+            q: [[0, 2]]
+          - r: 1
+            q: [[0, 1]]
+      - id: region-east
+        name: East room
+        lighting: { intensity: 1 }
+        cells:
+          - r: 0
+            q: [[3, 5]]
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: {q: 0, r: 1}
+    monsterDeclarations:
+      - id: g
+        ref: dnd5e:monsters:guard
+        startingCell: { location: { q: 2, r: 0 }, facing: e }
+    walls:
+      - id: seam-wall
+        label: seam-wall
+        line:
+          start: {x: 4.33, z: -2}
+          end: {x: 4.33, z: 2}
+        appearance: {assetRef: 'dnd5e:env:test:wall', height: 3, thickness: 0.3, elevation: 0}
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint: {width: 4, depth: 0.5, offsetX: 0, offsetZ: 0}
+        openings:
+          - id: seam-gap
+            position: 2
+            width: 1.5
+            door: {id: gate-door, assetRef: 'dnd5e:env:test:door'}
+    doorBindings:
+      gate-door: {closed: true}
+    monsterBindings:
+      g:
+        faction: watch
+        behaviors:
+          - id: policy
+            use: watch
+        behaviorState: policy
+        blockingStates:
+          - posted
+          - alert
+        posts:
+          posted:
+            door: gate-door
+            against: entering
+            at:
+              - { q: 2, r: 0 }
+          alert:
+            door: gate-door
+            against: entering
+            at:
+              - { q: 2, r: 0 }
+behaviorDefinitions:
+  watch:
+    recipe:
+      ref: site:behaviors:watch
+      initial: posted
+      states:
+        posted:
+          transitions:
+            - on: time
+              do:
+                - pick: post
+            - on: fact
+              when:
+                fact:
+                  name: fact:cowed
+                  op: eq
+                  value: true
+              to: gone
+              reason: stood aside
+            - on: barred
+              to: alert
+              do:
+                - pick: barred
+        alert:
+          transitions:
+            - on: time
+              to: posted
+              do:
+                - pick: post
+        gone:
+          terminal: true
+    table:
+      post:
+        - say: All quiet.
+      barred:
+        - say: Halt.
+        - say: Not one step more.

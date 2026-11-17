@@ -154,6 +154,39 @@ type Connection struct {
 	Value int `json:"value,omitempty"`
 }
 
+// The connections that say a behaviour machine's shape (rpg-project#994),
+// so a reader draws the machine from connections alone. A state id is local
+// to its machine: the statement's subject (the routine, or the creature
+// whose routine decides its posts) scopes it.
+const (
+	// ConnState is a connection to one of the machine's states.
+	ConnState = "state"
+	// ConnBeat is a connection to the beat a step wakes on, its word exactly
+	// as authored ("time", "fact", "deed:x", "clock:world").
+	ConnBeat = "beat"
+	// ConnTable is a connection to one key of the routine's table of rows.
+	ConnTable = "table"
+
+	// RoleStarts is the state a routine starts in, on the routine statement.
+	RoleStarts = "starts"
+	// RoleIs is the state a routine.state statement says.
+	RoleIs = "is"
+	// RoleFinal marks a state with no way out, beside its RoleIs.
+	RoleFinal = "final"
+	// RoleFrom is the state a step is heard in.
+	RoleFrom = "from"
+	// RoleTo is the state a step moves to; a step that stays has none.
+	RoleTo = "to"
+	// RoleOn is the beat a step wakes on.
+	RoleOn = "on"
+	// RolePicks is a table key a step acts from, one per pick.
+	RolePicks = "picks"
+	// RoleRowOf is the table key a row belongs to.
+	RoleRowOf = "row-of"
+	// RoleWhile is a state a post holds, or a body blocks, in.
+	RoleWhile = "while"
+)
+
 // Statement is one plain sentence about one thing, with where it is set.
 type Statement struct {
 	Kind     Kind         `json:"kind"`
