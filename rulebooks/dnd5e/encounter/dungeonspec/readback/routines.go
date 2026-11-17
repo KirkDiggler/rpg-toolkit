@@ -54,6 +54,7 @@ func (b *builder) routines() []Group {
 		for _, r := range runners {
 			rc = append(rc, Connection{Kind: "creature", ID: r, Role: "runs"})
 		}
+		rc = append(rc, Connection{Kind: ConnState, ID: inst.Recipe.Initial, Role: RoleStarts})
 		add(b.fstmt(KindRoutine, about, base, fmt.Sprintf(
 			"The routine %s is run by %s; it starts in the state %s; its recipe is %s. When it acts from a set of rows, one row whose conditions hold is picked by weight.",
 			quote(def), b.creatures(runners), quote(inst.Recipe.Initial), quote(inst.Recipe.Ref.String())),
@@ -63,16 +64,18 @@ func (b *builder) routines() []Group {
 		for _, state := range statesInOrder(inst.Recipe) {
 			st := inst.Recipe.States[state]
 			spath := base + ".recipe.states." + state
+			is := Connection{Kind: ConnState, ID: state, Role: RoleIs}
 			if st.Terminal {
 				add(b.fstmt(KindRoutineState, about, spath, fmt.Sprintf("The state %s is final.", quote(state)),
-					foldInfo{state: state, text: "final"}))
+					foldInfo{state: state, text: "final"}, is, Connection{Kind: ConnState, ID: state, Role: RoleFinal}))
 			} else {
 				add(b.fstmt(KindRoutineState, about, spath, fmt.Sprintf(
 					"In the state %s, %s listens for %s.", quote(state), who, count(len(st.Transitions), "beat", "beats")),
-					foldInfo{state: state}))
+					foldInfo{state: state}, is))
 			}
 			for k, tr := range st.Transitions {
 				s, conns := wakeWords(tr, who)
+				conns = append(conns, stepShape(state, tr)...)
 				add(b.fstmt(KindRoutineWake, about, fmt.Sprintf("%s.transitions[%d]", spath, k),
 					fmt.Sprintf("In the state %s, %s.", quote(state), s),
 					foldInfo{state: state, text: shortWake(tr) + ".", site: "the routine " + quote(def)}, conns...))
@@ -86,6 +89,7 @@ func (b *builder) routines() []Group {
 		for _, key := range keys {
 			for i, row := range inst.Table[behavior.AnswerKey(key)] {
 				words, conns := b.rowWords(row, who)
+				conns = append(conns, Connection{Kind: ConnTable, ID: key, Role: RoleRowOf})
 				short := b.shortRow(row)
 				add(b.fstmt(KindRoutineRow, about, fmt.Sprintf("%s.table.%s[%d]", base, key, i), fmt.Sprintf(
 					"%s row %d of %s: %s", capitalize(quote(key)), i+1, quote(def), period(words)),
@@ -95,6 +99,23 @@ func (b *builder) routines() []Group {
 		groups = append(groups, g)
 	}
 	return groups
+}
+
+// stepShape is one step's place in its machine, as connections: the state
+// it is heard in, the state it moves to when it moves, the beat it wakes on
+// (the authored word) and each table key it picks from.
+func stepShape(from string, tr machine.Transition) []Connection {
+	conns := []Connection{{Kind: ConnState, ID: from, Role: RoleFrom}}
+	if tr.To != "" {
+		conns = append(conns, Connection{Kind: ConnState, ID: tr.To, Role: RoleTo})
+	}
+	conns = append(conns, Connection{Kind: ConnBeat, ID: string(tr.On), Role: RoleOn})
+	for _, a := range tr.Do {
+		if a.Pick != "" {
+			conns = append(conns, Connection{Kind: ConnTable, ID: string(a.Pick), Role: RolePicks})
+		}
+	}
+	return conns
 }
 
 // wakeWords says one routine transition about who, without its state.

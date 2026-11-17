@@ -154,6 +154,47 @@ type Connection struct {
 	Value int `json:"value,omitempty"`
 }
 
+// The connections that say a behaviour machine's shape (rpg-project#994),
+// so a reader draws the machine from connections alone. A state id is local
+// to its machine, and the machine is named by the statement's PATH, never
+// its subject: a routine's statements sit under
+// `behaviorDefinitions.<routine>.`, and a creature's post or blocking under
+// its binding, whose routine is the one its `behaviorState` names. A step
+// repeated under a fact or topic hub keeps its shape connections while its
+// subject is the fact or topic; its path still names the routine that owns
+// the step.
+const (
+	// ConnState is a connection to one of a machine's states, scoped by the
+	// routine the statement's path names.
+	ConnState = "state"
+	// ConnBeat is a connection to the beat a step wakes on, its word exactly
+	// as authored ("time", "fact", "deed:x", "clock:world").
+	ConnBeat = "beat"
+	// ConnTable is a connection to one key of the routine's table of rows.
+	ConnTable = "table"
+
+	// RoleStarts is the state a routine starts in, on the routine statement.
+	RoleStarts = "starts"
+	// RoleIs is the state a routine.state statement says.
+	RoleIs = "is"
+	// RoleFinal marks a state with no way out, beside its RoleIs.
+	RoleFinal = "final"
+	// RoleFrom is the state a step is heard in.
+	RoleFrom = "from"
+	// RoleTo is the state a step moves to. A step that names its own state
+	// re-enters it (the engine treats it as a move) and still says `to`; a
+	// step with no `to` stays and has none.
+	RoleTo = "to"
+	// RoleOn is the beat a step wakes on.
+	RoleOn = "on"
+	// RolePicks is a table key a step acts from, one per pick.
+	RolePicks = "picks"
+	// RoleRowOf is the table key a row belongs to.
+	RoleRowOf = "row-of"
+	// RoleWhile is a state a post holds, or a body blocks, in.
+	RoleWhile = "while"
+)
+
 // Statement is one plain sentence about one thing, with where it is set.
 type Statement struct {
 	Kind     Kind         `json:"kind"`
