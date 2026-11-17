@@ -183,7 +183,7 @@ func (s *MachineCastleSuite) TestMachine_Castle_EveryStepMatchesTheFile() {
 			}
 		})
 		sort.Strings(picks)
-		s.Equal(dedupeSorted(picks), connsOf(st, readback.ConnTable, readback.RolePicks), st.Path)
+		s.Equal(picks, connsOf(st, readback.ConnTable, readback.RolePicks), st.Path)
 	}
 	s.Positive(seen, "the castle has routine steps")
 
@@ -231,6 +231,27 @@ func (s *MachineCastleSuite) TestMachine_Castle_TheGateGuardHoldsWhileItsStates(
 	}
 }
 
+// TestMachine_Castle_AHubRepeatIsScopedByItsPath: a step repeated under a
+// fact hub keeps its shape, and the routine its path names owns the state.
+func (s *MachineCastleSuite) TestMachine_Castle_AHubRepeatIsScopedByItsPath() {
+	repeats := 0
+	for _, st := range s.rb.Statements() {
+		if st.Kind != readback.KindFactAsk || len(connsOf(st, readback.ConnState, readback.RoleFrom)) == 0 {
+			continue
+		}
+		repeats++
+		s.Equal("fact", st.About.Kind, st.Path)
+		m := wakePath.FindStringSubmatch(st.Path)
+		s.Require().NotNil(m, "a repeat's path names the routine that owns the step: %s", st.Path)
+		s.Equal([]string{m[2]}, connsOf(st, readback.ConnState, readback.RoleFrom), st.Path)
+		own := s.statementAt(readback.KindRoutineWake, st.Path)
+		s.Equal("routine", own.About.Kind)
+		s.Equal(m[1], own.About.ID, "the owning routine is the one the path names")
+		s.Equal(own.Connects, st.Connects, "the repeat keeps the step's connections")
+	}
+	s.Positive(repeats, "the castle repeats routine steps under fact hubs")
+}
+
 // statementAt is the first statement of the kind at path (the first is
 // where it was said; a hub repeat comes later and has another kind).
 func (s *MachineCastleSuite) statementAt(kind readback.Kind, path string) readback.Statement {
@@ -241,15 +262,4 @@ func (s *MachineCastleSuite) statementAt(kind readback.Kind, path string) readba
 	}
 	s.Require().Failf("no statement", "no %s at %s", kind, path)
 	return readback.Statement{}
-}
-
-// dedupeSorted drops repeats from a sorted list.
-func dedupeSorted(in []string) []string {
-	out := []string{}
-	for i, v := range in {
-		if i == 0 || v != in[i-1] {
-			out = append(out, v)
-		}
-	}
-	return out
 }
