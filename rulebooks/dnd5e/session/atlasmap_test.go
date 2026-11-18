@@ -161,18 +161,21 @@ func (s *AtlasMapSuite) TestNothingOnTheMapNamesARoom() {
 			"placed id or parent association (rpg-project#169)",
 	)
 	s.Equal(
-		[]string{"ID", "Position", "Width"},
+		[]string{"FrameSpan", "ID", "Position", "Width"},
 		fieldsOf(session.AtlasStructuralOpening{}),
-		"an opening is a name, a centre and a width — never a door id, so a withheld cut "+
+		"an opening has a name, centre, clear width and optional visual span — never a door id, so a withheld cut "+
 			"leaves no tell",
 	)
 	s.Equal(
-		[]string{"ID", "Ref", "From", "To", "Height", "Thickness", "Elevation"},
+		[]string{"FramePresentation", "ID", "Ref", "From", "To", "Height", "Thickness", "Elevation"},
 		fieldsOf(session.AtlasStructuralDoor{}),
 		"a structural door is the actual gameplay door id, an opaque ref, its resolved "+
 			"opening endpoints and the dimensions it fits — one flat record with no parent id "+
 			"and no state",
 	)
+	s.Equal([]string{"Before", "After"}, fieldsOf(session.WallFrameSpan{}), "visual extent contains no parent identity or passage rule")
+	s.Equal([]string{"Span", "FaceFinishes"}, fieldsOf(session.DoorFramePresentation{}), "a captured frame has no parent lookup or mutable state")
+	s.Equal([]string{"Side", "MaterialRef", "PhaseU"}, fieldsOf(session.DoorFrameFaceFinish{}), "wrapped phase carries no full distance to a hidden wall origin")
 }
 
 // TestTheMapIsEveryCellOnce: the two rooms' footprints are folded together,
