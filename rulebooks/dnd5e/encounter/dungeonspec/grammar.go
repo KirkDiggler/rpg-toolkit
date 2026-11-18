@@ -559,14 +559,14 @@ const (
 // each its own sentence: no id; an id already used on
 // this binding; no line; a check written empty, or an approach that
 // rolls nothing or has nothing to beat ([grammar.approaches], the lock's own
-// grammar); a `requires` that is none of its forms; a `holds`
+// grammar); a `requires` that is none of its forms; a `carries`
 // naming a prop this dungeon does not place, or one nobody can pick up; a
 // verdict written and left empty; and every row by the table's own grammar
 // ([grammar.answerEntry]) under the verdict's key — so `fact`, `flee` and a
 // line are legal, a time word and a `when` are not.
 //
 // props is the dialect's placed props, id to whether somebody can pick it up
-// — the universe a `holds` may name. isProp says the options are a prop's,
+// — the universe a `carries` may name. isProp says the options are a prop's,
 // whose rows may not `flee`.
 func (g *grammar) options(path string, options []OptionSpec, props map[string]bool, isProp bool) {
 	// AN EMPTY LIST IS REFUSED, NOT READ AS ABSENT — a verdict's own rule
@@ -683,13 +683,13 @@ func (g *grammar) optionRequires(path string, p *PredicateSpec, props map[string
 	case predicateInteraction:
 		g.interactionRequirement(path+".interaction", p.Interaction)
 	case predicateNoted:
-		// `noted` ASKS WHAT SOMEONE HAS IN MIND, `holds` WHAT IS IN HAND
+		// `noted` ASKS WHAT SOMEONE HAS IN MIND, `carries` WHAT IS IN HAND
 		// (rpg-project#1005): a prop's id under `noted` is pointed at
-		// `holds`, and a topic named like a prop is refused for the doubt.
+		// `carries`, and a topic named like a prop is refused for the doubt.
 		_, placed := props[p.Noted]
 		given := g.grants(p.Noted)
 		// A PROP'S ID FIRST, even on a prop's own line: the word the author
-		// needs is `holds`, not that a prop notes nothing.
+		// needs is `carries`, not that a prop notes nothing.
 		switch {
 		case placed && given:
 			g.fail(path+".noted", "%s", notedAmbiguous(p.Noted))
@@ -700,20 +700,17 @@ func (g *grammar) optionRequires(path string, p *PredicateSpec, props map[string
 		case !given:
 			g.fail(path+".noted", "%s", topicNeverGiven(p.Noted))
 		}
-	case predicateHolds:
-		holdable, placed := props[p.Holds]
-		// A TOPIC IN THE PROP'S PLACE is asked with `noted`
-		// (rpg-project#1005).
-		topic := ""
-		if g.grants(p.Holds) {
-			topic = "; a topic is asked with `noted`"
-		}
+	case predicateCarries:
+		holdable, placed := props[p.Carries]
 		switch {
 		case !placed:
-			g.fail(path+".holds", "%q is not a prop in this dungeon, so nobody can hold it%s", p.Holds, topic)
+			g.fail(path+".carries", "%q is not a prop in this dungeon, so nobody can carry it", p.Carries)
 		case !holdable:
-			g.fail(path+".holds", "%q is a prop nobody can pick up, so nobody can hold it%s", p.Holds, topic)
+			g.fail(path+".carries", "%q is a prop nobody can pick up, so nobody can carry it", p.Carries)
 		}
+	case predicateRetiredHolds:
+		_, placed := props[p.RetiredHolds]
+		g.fail(path+".holds", "%s", holdsRetired(p.RetiredHolds, placed, g.grants(p.RetiredHolds)))
 	default:
 		g.fail(path, "%s, and `%s` is none of them", optionRequiresForms, form)
 	}
@@ -774,7 +771,7 @@ func (g *grammar) optionAdvance(path string, a *AdvanceSpec, checked bool) {
 }
 
 // optionRequiresForms is the sentence naming what an option may require.
-const optionRequiresForms = "an option requires one or a list of { fact: <id> }, { holds: <prop id> }, " +
+const optionRequiresForms = "an option requires one or a list of { fact: <id> }, { carries: <prop id> }, " +
 	"{ interaction: { id, in: [<state>] } }, { noted: <topic> }, or { not: } one of them"
 
 // errNotedOnProp is the sentence a `noted` requirement on a prop's line is
@@ -789,14 +786,30 @@ const errGiveOnProp = "a prop notes nothing about anybody, so a line said to one
 // topic is refused with (rpg-project#1005).
 func notedNamesProp(id string) string {
 	return fmt.Sprintf("`noted` asks what the creature spoken to has noted about the speaker, and %q is a prop: "+
-		"a speaker with it in hand is `holds: %s`", id, id)
+		"a speaker carrying it is `carries: %s`", id, id)
 }
 
 // notedAmbiguous is the sentence a `noted` naming an id that is both a prop of
 // the site and a topic something gives is refused with (rpg-project#1005).
 func notedAmbiguous(id string) string {
 	return fmt.Sprintf("%q is both a prop and a topic something gives, so `noted: %s` leaves a reader unsure which "+
-		"is meant (the prop in hand is `holds: %s`): give the topic a name no prop has", id, id, id)
+		"is meant (a prop carried is `carries: %s`): give the topic a name no prop has", id, id, id)
+}
+
+// holdsRetired is the sentence a `holds` still written in a predicate is
+// refused with (rpg-project#1005): the key once meant carrying a prop, and
+// briefly what someone had in mind. It names the word for what the id is —
+// a prop this site places, a topic something gives — and both when it is
+// neither or both.
+func holdsRetired(id string, prop, topic bool) string {
+	switch {
+	case prop && !topic:
+		return fmt.Sprintf("`holds` is retired here: a prop the speaker carries is `carries: %s`", id)
+	case topic && !prop:
+		return fmt.Sprintf("`holds` is retired here: a topic the one spoken to has noted is `noted: %s`", id)
+	}
+	return "`holds` is retired here: a prop the speaker carries is `carries: <prop>`; " +
+		"a topic the one spoken to has noted is `noted: <topic>`"
 }
 
 // topicNeverGiven is the sentence a `noted` naming a topic nothing in the

@@ -2126,7 +2126,7 @@ room:
               - ability: persuasion
                 dc: 8
             requires:
-              holds: purse
+              carries: purse
             success:
               - say: Saw who?
                 fact: feast-tonight
@@ -2167,7 +2167,7 @@ room:
           - id: favour
             say: There's a coin in it if you know a way out of here.
             requires:
-              holds: purse
+              carries: purse
             success:
               - say: The grate by the hearth. Lift it. One way climbs to the chapel, the other drops to the cells.
                 tells: kitchen-way

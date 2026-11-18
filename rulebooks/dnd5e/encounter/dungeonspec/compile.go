@@ -655,10 +655,10 @@ func predicateOf(p *PredicateSpec) encounter.Trigger {
 		return encounter.TriggerFact{Fact: p.Fact}
 	case predicateStance:
 		return encounter.TriggerStance{Between: p.Stance.Between, Stance: encounter.Stance(p.Stance.Is)}
-	case predicateHolds:
+	case predicateCarries:
 		// An option's `requires` only — [grammar.predicate] refuses it
 		// everywhere else, so this arm is reached from [optionsOf] alone.
-		return encounter.TriggerHolds{Prop: encounter.PropID(p.Holds)}
+		return encounter.TriggerHolds{Prop: encounter.PropID(p.Carries)}
 	case predicateLeft:
 		// An ending's `when` only ([grammar.endings]); refused elsewhere.
 		return encounter.TriggerLeft{Exit: encounter.ExitID(p.Left)}

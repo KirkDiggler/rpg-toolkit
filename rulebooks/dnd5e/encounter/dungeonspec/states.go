@@ -193,6 +193,8 @@ func passRefusal(at string, p *PassSpec, topics map[string]bool) (string, string
 		}
 		switch pred.Form() {
 		case predicateFact:
+		case predicateRetiredHolds:
+			return path + ".holds", holdsRetired(pred.RetiredHolds, false, topics[pred.RetiredHolds])
 		case predicateNoted:
 			if !topics[pred.Noted] {
 				return path + ".noted", topicNeverGiven(pred.Noted)

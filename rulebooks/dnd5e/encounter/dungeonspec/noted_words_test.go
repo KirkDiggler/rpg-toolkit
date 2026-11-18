@@ -5,9 +5,9 @@ package dungeonspec_test
 
 // noted_words_test.go is THE NOTED WORDS (rpg-project#1005, as ruled): what
 // a creature has in mind about a person is a topic, asked with `noted` and
-// given with `give`; "hold" stays physical, so `holds` on a line's
-// `requires` is a prop in the speaker's hand; a state's post is `post`;
-// a machine asks about anybody with `noted.anyone:`. Every old word is
+// given with `give`; carrying a prop is `carries`; no predicate says
+// `holds` any more; a state's post is `post`; a machine asks about anybody
+// with `noted.anyone:`. Every old word is
 // refused when content is loaded, in a sentence naming the new one, and a
 // word that lived only in an unreleased build is refused naming its key.
 
@@ -81,10 +81,6 @@ func TestNotedWords_AnUnreleasedWordIsRefusedByName(t *testing.T) {
 		requireLoadRefused(t, castleWith(t, "                      name: noted:admitted\n", "                      name: holds:admitted\n"),
 			"states.in-hall.transitions[1].when.all[1].fact: fact \"holds:admitted\" is not in the vocabulary")
 	})
-	t.Run("carries on a line", func(t *testing.T) {
-		requireLoadRefused(t, goblinLine("requires: { carries: table }"),
-			"options[0].requires.carries: \"carries\" is not a key this build reads")
-	})
 }
 
 func TestNotedWords_AnInteractionsRecognizeIsNowGive(t *testing.T) {
@@ -110,11 +106,11 @@ func TestNotedWords_ASequenceBodysTopicIsNowNotedAnyone(t *testing.T) {
 		"`topic:welcome` is now `noted.anyone:welcome`")
 }
 
-func TestNotedWords_NotedAsksAboutAPersonHoldsAboutAHand(t *testing.T) {
-	t.Run("a prop named by noted is held", func(t *testing.T) {
+func TestNotedWords_NotedAsksAboutAPersonCarriesAThing(t *testing.T) {
+	t.Run("a prop named by noted is carried", func(t *testing.T) {
 		requireExactDefect(t, refusals(t, goblinLine("requires: { noted: table }")), goblinAt+"[0].requires.noted",
 			"`noted` asks what the creature spoken to has noted about the speaker, and \"table\" is a prop: "+
-				"a speaker with it in hand is `holds: table`")
+				"a speaker carrying it is `carries: table`")
 	})
 	t.Run("an id that is both a prop and a topic is refused for the doubt", func(t *testing.T) {
 		source := optionsOnGoblin("          - { id: hi, say: \"Hi.\", success: [{ say: Fine., " +
@@ -122,7 +118,7 @@ func TestNotedWords_NotedAsksAboutAPersonHoldsAboutAHand(t *testing.T) {
 			"          - { id: again, say: \"Again.\", requires: { noted: table } }\n")
 		requireExactDefect(t, refusals(t, source), goblinAt+"[1].requires.noted",
 			"\"table\" is both a prop and a topic something gives, so `noted: table` leaves a reader unsure which "+
-				"is meant (the prop in hand is `holds: table`): give the topic a name no prop has")
+				"is meant (a prop carried is `carries: table`): give the topic a name no prop has")
 	})
 	t.Run("a topic nothing gives", func(t *testing.T) {
 		requireExactDefect(t, refusals(t, goblinLine("requires: { noted: welcome }")), goblinAt+"[0].requires.noted",
@@ -134,11 +130,25 @@ func TestNotedWords_NotedAsksAboutAPersonHoldsAboutAHand(t *testing.T) {
 	})
 	t.Run("holds of a topic is pointed at noted", func(t *testing.T) {
 		requireExactDefect(t, refusals(t, optionsOnGoblin(givesWelcome+"          - { id: again, say: \"Again.\", requires: { holds: welcome } }\n")),
-			goblinAt+"[1].requires.holds", "\"welcome\" is not a prop in this dungeon, so nobody can hold it; a topic is asked with `noted`")
+			goblinAt+"[1].requires.holds", "`holds` is retired here: a topic the one spoken to has noted is `noted: welcome`")
 	})
-	t.Run("holds of nothing at all says only the prop", func(t *testing.T) {
+	t.Run("holds of a prop is pointed at carries", func(t *testing.T) {
+		requireExactDefect(t, refusals(t, goblinLine("requires: { holds: table }")), goblinAt+"[0].requires.holds",
+			"`holds` is retired here: a prop the speaker carries is `carries: table`")
+	})
+	t.Run("holds of neither names both", func(t *testing.T) {
 		requireExactDefect(t, refusals(t, goblinLine("requires: { holds: lantern }")), goblinAt+"[0].requires.holds",
-			"\"lantern\" is not a prop in this dungeon, so nobody can hold it")
+			"`holds` is retired here: a prop the speaker carries is `carries: <prop>`; a topic the one spoken to has noted is `noted: <topic>`")
+	})
+	t.Run("holds on a post's pass", func(t *testing.T) {
+		requireRefusedAt(t, refusals(t, strings.Replace(castleSource(t), "pass: { noted: admitted }", "pass: { holds: admitted }", 1)),
+			"room.room.monsterBindings.gate-1.posts.alert.pass.holds",
+			"`holds` is retired here: a topic the one spoken to has noted is `noted: admitted`")
+	})
+	t.Run("holds where nothing speaks", func(t *testing.T) {
+		// An ending's grammar is not told the site's props: both words.
+		requireRefusedAt(t, refusals(t, v4With("endings:\n  - { id: rich, when: { holds: table } }", "")), "endings[0].when.holds",
+			"`holds` is retired here: a prop the speaker carries is `carries: <prop>`; a topic the one spoken to has noted is `noted: <topic>`")
 	})
 }
 
@@ -152,10 +162,10 @@ func TestNotedWords_APropNotesNothingAboutAnybody(t *testing.T) {
 		requireRefusedAt(t, refusals(t, propLine("requires: { noted: welcome }")), at+".requires.noted",
 			"a prop notes nothing about anybody, so a line said to one cannot ask what it has noted")
 	})
-	t.Run("a prop's line naming a prop by noted is pointed at holds", func(t *testing.T) {
+	t.Run("a prop's line naming a prop by noted is pointed at carries", func(t *testing.T) {
 		requireExactDefect(t, refusals(t, propLine("requires: { noted: table }")), at+".requires.noted",
 			"`noted` asks what the creature spoken to has noted about the speaker, and \"table\" is a prop: "+
-				"a speaker with it in hand is `holds: table`")
+				"a speaker carrying it is `carries: table`")
 	})
 	t.Run("giving it a topic", func(t *testing.T) {
 		requireRefusedAt(t, refusals(t, propLine("success: [{ give: { topic: welcome, to: spoken_to, about: speaker } }]")),
