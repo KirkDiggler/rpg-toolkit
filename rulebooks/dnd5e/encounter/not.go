@@ -58,7 +58,7 @@ const notOfNot = "a not of a not is the predicate itself: write the inner one"
 
 // notHoldsFromTheStart is the liveness sentence a waited-for `not` of a form
 // that only ever becomes true is refused with.
-const notHoldsFromTheStart = "a not of a fact, a round or a fall holds from the start and can only stop holding, " +
+const notHoldsFromTheStart = "a not of a fact, a round or a fall is true from the start and can only stop being true, " +
 	"so nothing can fire it: a not is read by an option's requires or a leave ending's if, " +
 	"and waited for only on a stance a pair can turn away from"
 

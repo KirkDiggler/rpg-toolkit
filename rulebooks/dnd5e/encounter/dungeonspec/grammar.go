@@ -689,13 +689,16 @@ func (g *grammar) optionRequires(path string, p *PredicateSpec, props map[string
 		// an id that is both a prop and a holding is refused as ambiguous.
 		_, placed := props[p.Holding]
 		given := g.grants(p.Holding)
+		// A PROP'S ID FIRST, even on a prop's own line: there `holds: purse`
+		// was legal under the old meaning, and the word the author needs is
+		// `carries`, not that a prop holds nothing.
 		switch {
-		case isProp:
-			g.fail(path+".holds", "%s", errHoldsOnProp)
 		case placed && given:
 			g.fail(path+".holds", "%s", holdsAmbiguous(p.Holding))
 		case placed:
 			g.fail(path+".holds", "%s", holdsNamesProp(p.Holding))
+		case isProp:
+			g.fail(path+".holds", "%s", errHoldsOnProp)
 		case !given:
 			g.fail(path+".holds", "%s", holdingNeverGiven(p.Holding))
 		}
