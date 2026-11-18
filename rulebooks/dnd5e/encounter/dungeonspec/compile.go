@@ -674,7 +674,7 @@ func predicateOf(p *PredicateSpec) encounter.Trigger {
 	case predicateHolds:
 		// A creature's option's `requires` and a post's `pass` only
 		// (rpg-project#928); refused elsewhere.
-		return encounter.TriggerRecognized{Topic: encounter.TopicID(p.Holding)}
+		return encounter.TriggerRecognized{Topic: encounter.TopicID(p.Holds)}
 	default:
 		return nil
 	}

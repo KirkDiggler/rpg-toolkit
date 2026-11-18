@@ -1590,7 +1590,7 @@ room:
             success:
               - say: Right you are. Go on through, the lot of you.
                 give:
-                  holding: admitted
+                  topic: admitted
                   to: spoken_to
                   about: party_in_sight
                   heard_by: carriers_who_witnessed
@@ -1616,14 +1616,14 @@ room:
             success:
               - say: Fell behind, did you? Go on, catch them up.
                 give:
-                  holding: admitted
+                  topic: admitted
                   to: spoken_to
                   about: speaker
                   heard_by: carriers_who_witnessed
             failure:
               - say: Never seen you before. Unless one of that lot will speak for you.
                 give:
-                  holding: turned-away
+                  topic: turned-away
                   to: spoken_to
                   about: speaker
                   heard_by: carriers_who_witnessed
@@ -1766,7 +1766,7 @@ room:
             success:
               - say: Right you are. Go on through, the lot of you.
                 give:
-                  holding: admitted
+                  topic: admitted
                   to: spoken_to
                   about: party_in_sight
                   heard_by: carriers_who_witnessed
@@ -1792,14 +1792,14 @@ room:
             success:
               - say: Fell behind, did you? Go on, catch them up.
                 give:
-                  holding: admitted
+                  topic: admitted
                   to: spoken_to
                   about: speaker
                   heard_by: carriers_who_witnessed
             failure:
               - say: Never seen you before. Unless one of that lot will speak for you.
                 give:
-                  holding: turned-away
+                  topic: turned-away
                   to: spoken_to
                   about: speaker
                   heard_by: carriers_who_witnessed
@@ -1924,7 +1924,7 @@ room:
               success: admitted
               failure: guest-failed
             success:
-              # Hand edit (rpg-project#928): admission is a holding given. The
+              # Hand edit (rpg-project#928): admission is a topic given. The
               # interaction's `admitted` outcome is what lets the party by; a
               # fact in the walker's head no longer does.
               - say: Guests, is it? In you go. Mind your manners in the hall.
@@ -2402,15 +2402,15 @@ interactions:
     # Hand edit (rpg-project#923, Gate S3): the guard opens the conversation.
     # A gate speaker who sees a character come within two cells hails them.
     approach: { within: 2 }
-    # Hand edit (rpg-project#928): admission is a holding given. Entering
+    # Hand edit (rpg-project#928): admission is a topic given. Entering
     # `admitted`, the guard the winning line was said to is given the
-    # holding `admitted` about every member of the party he sees; the other
+    # topic `admitted` about every member of the party he sees; the other
     # gate guards who witnessed it come to hold it too, having heard. He
     # holds nothing about a member out of his sight, or one who was not there.
     outcomes:
       admitted:
         - give:
-            holding: admitted
+            topic: admitted
             to: spoken_to
             about: party_in_sight
             heard_by: carriers_who_witnessed

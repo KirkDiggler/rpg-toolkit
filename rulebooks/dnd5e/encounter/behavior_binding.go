@@ -14,7 +14,7 @@ import (
 type BehaviorVocabularyInput struct {
 	Facts  []FactID
 	Clocks []string
-	// Topics are the holdings a guard may ask about: about anybody as
+	// Topics are the topics a guard may ask about: about anybody as
 	// `topic:<id>` (rpg-project#929), about the one the beat names as
 	// `holds:<id>` (rpg-project#1000).
 	Topics []TopicID

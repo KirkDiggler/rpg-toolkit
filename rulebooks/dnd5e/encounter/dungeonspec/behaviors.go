@@ -128,15 +128,15 @@ func decodeBehaviorValue(value *BehaviorValue, out any) error {
 }
 
 // holdsAnyonePrefix is the content word a machine's guard asks with whether
-// the creature holds a holding about anybody (rpg-project#1005):
-// `holds.anyone:<holding>`. The engine's own fact name is unchanged
+// the creature holds a topic about anybody (rpg-project#1005):
+// `holds.anyone:<topic>`. The engine's own fact name is unchanged
 // ([encounter.MachineTopic], `topic:<id>`), because a saved run's recipe
 // carries it; the content word is lowered to it here, and the old content
 // word is refused ([topicGuardRetired]).
 const holdsAnyonePrefix = "holds.anyone:"
 
 // engineGuardWords is a native behavior value with every guard fact written
-// `holds.anyone:<holding>` lowered to the engine's [encounter.MachineTopic]
+// `holds.anyone:<topic>` lowered to the engine's [encounter.MachineTopic]
 // name. A value naming none is returned as it is, byte for byte.
 func engineGuardWords(raw jsontext.Value) jsontext.Value {
 	if !bytes.Contains(raw, []byte(holdsAnyonePrefix)) {
@@ -453,8 +453,8 @@ func roomBehaviorVocabulary(s *SingleRoomSpec) (machine.Vocabulary, error) {
 		}
 	}
 	// A GUARD MAY ASK WHAT IS HELD ABOUT ANYBODY (rpg-project#929, #1005),
-	// `holds.anyone:<holding>` lowered to the engine's `topic:<id>`, for any
-	// holding the document gives.
+	// `holds.anyone:<topic>` lowered to the engine's `topic:<id>`, for any
+	// topic the document gives.
 	var topics []encounter.TopicID
 	for _, topic := range sortedKeys(grantedTopicsOf(s)) {
 		topics = append(topics, encounter.TopicID(topic))

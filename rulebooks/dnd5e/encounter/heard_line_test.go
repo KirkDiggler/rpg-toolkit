@@ -31,7 +31,7 @@ const (
 )
 
 // The goblin's lines: a checked claim, a plain greeting, a plain line whose
-// answer gives the speaker the holding `admitted`, and a checked case whose
+// answer gives the speaker the topic `admitted`, and a checked case whose
 // failure row gives them `turned-away`.
 const (
 	lineClaim = "claim"
@@ -241,12 +241,12 @@ func TestALineHeardSaysWhetherTheClaimHeld(t *testing.T) {
 
 // TestHoldsAsksAboutTheOneHeard: `holds:admitted` is what the goblin holds
 // about the one it heard and saw — not anybody. Bob is admitted; alice's
-// claim does not move him, bob's does. The line that gives the holding is
+// claim does not move him, bob's does. The line that gives the topic is
 // heard before its own grant, so it moves nothing either.
 func TestHoldsAsksAboutTheOneHeard(t *testing.T) {
 	enc := lineHall(t, ears(t, false, on("heard", "knows", fact("holds:admitted", true))), nil)
 	sayTo(t, enc, lineBob, lineVouch, true)
-	require.Equal(t, "quiet", stateOf(t, enc, goblin), "the line that gives the holding is heard before it is given")
+	require.Equal(t, "quiet", stateOf(t, enc, goblin), "the line that gives the topic is heard before it is given")
 	sayTo(t, enc, alice, lineHello, true)
 	require.Equal(t, "quiet", stateOf(t, enc, goblin), "he holds `admitted` about bob, not about alice")
 	sayTo(t, enc, lineBob, lineHello, true)

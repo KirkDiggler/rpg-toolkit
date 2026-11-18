@@ -108,16 +108,16 @@ type PredicateSpec struct {
 	// and every state one its recipe declares.
 	Interaction *InteractionPredicateSpec
 
-	// Holding is the `{ holds: <holding> }` form (rpg-project#928, the word
-	// since rpg-project#1005): true when THE OTHER PARTY holds that holding
+	// Holds is the `{ holds: <topic> }` form (rpg-project#928, the word
+	// since rpg-project#1005): true when THE OTHER PARTY holds that topic
 	// about "me" — on an option's `requires`, the creature spoken to holds it
 	// about the speaker; on a post's `pass`, the post's holder holds it about
 	// the walker ([encounter.TriggerRecognized]). LEGAL ONLY ON A CREATURE'S
 	// OPTION'S `requires` AND A POST'S `pass` (and a `not` of it there): a
 	// prop holds nothing about anybody, and an until, an arrival or an
-	// ending never waits on it. Must name a holding something in the
+	// ending never waits on it. Must name a topic something in the
 	// document gives, and not a prop: carrying a thing is `carries`.
-	Holding string
+	Holds string
 }
 
 // InteractionPredicateSpec is the interaction form's own object: which
@@ -197,7 +197,7 @@ const (
 // the sentence that names the word that replaced it. An old file is refused
 // at load, never read under the old meaning.
 var retiredPredicateKeys = map[string]string{
-	"recognized": "`recognized` is now `holds`: write { holds: <holding> } " +
+	"recognized": "`recognized` is now `holds`: write { holds: <topic> } " +
 		"(what the creature spoken to, or a post's holder, holds about the speaker or the walker)",
 }
 
@@ -231,7 +231,7 @@ func (p *PredicateSpec) Form() string {
 		return predicateNot
 	case p.Interaction != nil:
 		return predicateInteraction
-	case p.Holding != "":
+	case p.Holds != "":
 		return predicateHolds
 	default:
 		return ""
@@ -280,14 +280,14 @@ func (p *PredicateSpec) UnmarshalYAML(value *yaml.Node) error {
 		Not     *PredicateSpec       `yaml:"not"`
 
 		Interaction *InteractionPredicateSpec `yaml:"interaction"`
-		Holding     string                    `yaml:"holds"`
+		Holds       string                    `yaml:"holds"`
 	}
 	if err := value.Decode(&obj); err != nil {
 		return err
 	}
 	*p = PredicateSpec{
 		Round: obj.Round, Down: obj.Down, Fact: obj.Fact, Stance: obj.Stance, Carries: obj.Carries, Left: obj.Left,
-		Not: obj.Not, Interaction: obj.Interaction, Holding: obj.Holding,
+		Not: obj.Not, Interaction: obj.Interaction, Holds: obj.Holds,
 	}
 
 	// A form that decoded to its own zero value said the key and nothing
@@ -361,7 +361,7 @@ func (p *PredicateSpec) String() string {
 	case predicateInteraction:
 		return fmt.Sprintf("{ interaction: { id: %s, in: [%s] } }", p.Interaction.ID, strings.Join(p.Interaction.In, ", "))
 	case predicateHolds:
-		return fmt.Sprintf("{ holds: %s }", p.Holding)
+		return fmt.Sprintf("{ holds: %s }", p.Holds)
 	default:
 		return "{ }"
 	}

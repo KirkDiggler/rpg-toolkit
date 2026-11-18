@@ -27,7 +27,7 @@ func (s *ContentCheckSuite) TestTheCastleCompiles() {
 }
 
 // TestAMisspeltTopicIsRefusedInTheCompilersWords: the gate guard's pass names
-// `admited`, a holding nothing gives; the checker prints the compiler's own
+// `admited`, a topic nothing gives; the checker prints the compiler's own
 // sentence at the path it refused, and exits 1.
 func (s *ContentCheckSuite) TestAMisspeltTopicIsRefusedInTheCompilersWords() {
 	raw, err := os.ReadFile(castle)
@@ -41,7 +41,7 @@ func (s *ContentCheckSuite) TestAMisspeltTopicIsRefusedInTheCompilersWords() {
 	s.Equal(1, run([]string{path}, &out, &errOut))
 	s.True(strings.HasPrefix(out.String(), "REFUSED: "), out.String())
 	s.Contains(out.String(), "room.room.monsterBindings.gate-1.posts.alert.pass.holds: "+
-		"\"admited\" is a holding no interaction's `outcomes` and no line's row gives, so nobody could ever hold it about anyone")
+		"\"admited\" is a topic no interaction's `outcomes` and no line's row gives, so nobody could ever hold it about anyone")
 }
 
 func (s *ContentCheckSuite) TestUsageAndUnreadable() {

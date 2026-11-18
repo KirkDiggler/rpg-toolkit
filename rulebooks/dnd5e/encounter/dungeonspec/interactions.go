@@ -162,7 +162,7 @@ func outcomesOf(
 				}
 				continue
 			case c.Give == nil:
-				fail(itemAt, "a consequence is `give: { holding, to, about }`, `arrest: { cell, area }` or `jail: { words }`")
+				fail(itemAt, "a consequence is `give: { topic, to, about }`, `arrest: { cell, area }` or `jail: { words }`")
 				continue
 			}
 			rec := givingOf(itemAt+".give", c.Give, true, fail)
@@ -179,11 +179,11 @@ func outcomesOf(
 // could hear it: where none is, `heard_by` is refused, since nobody would
 // hear.
 func givingOf(at string, r *GiveSpec, carriers bool, fail func(at, message string)) encounter.Recognition {
-	if r.Holding == "" {
-		fail(at+".holding", "a give names the holding given: write `holding: <holding>`")
+	if r.Topic == "" {
+		fail(at+".topic", "a give names the topic given: write `topic: <topic>`")
 	}
 	if r.To != string(encounter.RecognitionSpokenTo) {
-		fail(at+".to", fmt.Sprintf("a holding is given `to: %s`, the creature the line was said to",
+		fail(at+".to", fmt.Sprintf("a topic is given `to: %s`, the creature the line was said to",
 			encounter.RecognitionSpokenTo))
 	}
 	if r.About != string(encounter.RecognitionPartyInSight) && r.About != string(encounter.RecognitionSpeaker) {
@@ -199,12 +199,12 @@ func givingOf(at string, r *GiveSpec, carriers bool, fail func(at, message strin
 			"omit heard_by, or give the line an interaction it requires or advances")
 	}
 	return encounter.Recognition{
-		Topic: encounter.TopicID(r.Holding), Holder: encounter.RecognitionHolder(r.To),
+		Topic: encounter.TopicID(r.Topic), Holder: encounter.RecognitionHolder(r.To),
 		About: encounter.RecognitionSubjects(r.About), HeardBy: encounter.RecognitionHearers(r.HeardBy),
 	}
 }
 
-// lineGrantedTopics is every holding a line's success or failure row gives
+// lineGrantedTopics is every topic a line's success or failure row gives
 // (rpg-project#929, #932), read straight off the document: a creature's own lines
 // and its faction's.
 func lineGrantedTopics(s *SingleRoomSpec) map[string]bool {
@@ -212,8 +212,8 @@ func lineGrantedTopics(s *SingleRoomSpec) map[string]bool {
 	add := func(options []OptionSpec) {
 		for _, o := range options {
 			for _, row := range slices.Concat(o.Success, o.Failure) {
-				if row.Give != nil && row.Give.Holding != "" {
-					out[row.Give.Holding] = true
+				if row.Give != nil && row.Give.Topic != "" {
+					out[row.Give.Topic] = true
 				}
 			}
 		}
@@ -227,16 +227,16 @@ func lineGrantedTopics(s *SingleRoomSpec) map[string]bool {
 	return out
 }
 
-// grantedTopicsOf is every holding the document gives — a root interaction's
+// grantedTopicsOf is every topic the document gives — a root interaction's
 // `outcomes` and a line's success and failure rows — read straight off it: the
-// holdings a post's `pass` may ask `holds` of.
+// topics a post's `pass` may ask `holds` of.
 func grantedTopicsOf(s *SingleRoomSpec) map[string]bool {
 	out := lineGrantedTopics(s)
 	for _, spec := range s.Interactions {
 		for _, cs := range spec.Outcomes {
 			for _, c := range cs {
-				if c.Give != nil && c.Give.Holding != "" {
-					out[c.Give.Holding] = true
+				if c.Give != nil && c.Give.Topic != "" {
+					out[c.Give.Topic] = true
 				}
 			}
 		}
@@ -244,14 +244,14 @@ func grantedTopicsOf(s *SingleRoomSpec) map[string]bool {
 	return out
 }
 
-// topicGuards refuses a routine waiting on a holding nothing in the document
-// gives (rpg-project#929): a `holds.anyone:<holding>` guard in a behavior
-// definition's recipe whose holding no outcome and no line's row gives could
+// topicGuards refuses a routine waiting on a topic nothing in the document
+// gives (rpg-project#929): a `holds.anyone:<topic>` guard in a behavior
+// definition's recipe whose topic no outcome and no line's row gives could
 // never be true, so the transition could never fire. Refused at the
 // definition's recipe; the transition itself is the compiler's to name
 // beyond that. A guard still written in the retired `topic:<id>` is refused
 // naming the new word (rpg-project#1005), in a recipe or a sequence's body;
-// a `heard.claim` or a `holds:<holding>` on a beat that does not carry what
+// a `heard.claim` or a `holds:<topic>` on a beat that does not carry what
 // it reads is refused in the engine's sentence ([encounter.GuardWordsRefusal],
 // rpg-project#1000).
 func topicGuards(s *SingleRoomSpec, add errSink) {
@@ -285,10 +285,10 @@ func topicGuards(s *SingleRoomSpec, add errSink) {
 				for _, name := range retired {
 					add(at, topicGuardRetired(name))
 				}
-				for _, holding := range held {
-					if !granted[holding] {
-						add(at, fmt.Sprintf("%q is a holding no interaction's `outcomes` and no line's success or failure row gives, "+
-							"so nobody could ever come to hold it", holding))
+				for _, topic := range held {
+					if !granted[topic] {
+						add(at, fmt.Sprintf("%q is a topic no interaction's `outcomes` and no line's success or failure row gives, "+
+							"so nobody could ever come to hold it", topic))
 					}
 				}
 			}
@@ -305,12 +305,12 @@ const retiredTopicGuardPrefix = "topic:"
 // `topic:<id>` is refused with.
 func topicGuardRetired(name string) string {
 	id := strings.TrimPrefix(name, retiredTopicGuardPrefix)
-	return fmt.Sprintf("`%s` is now `%s%s`: a machine asks whether the creature holds %q about anyone with `%s<holding>`",
+	return fmt.Sprintf("`%s` is now `%s%s`: a machine asks whether the creature holds %q about anyone with `%s<topic>`",
 		name, holdsAnyonePrefix, id, id, holdsAnyonePrefix)
 }
 
-// guardTopics is every holding a guard asks `holds.anyone:<holding>` or
-// `holds:<holding>` (rpg-project#1000) of, nested included, and every guard
+// guardTopics is every topic a guard asks `holds.anyone:<topic>` or
+// `holds:<topic>` (rpg-project#1000) of, nested included, and every guard
 // fact still written in the retired `topic:<id>`.
 func guardTopics(g *machine.Guard) (held, retired []string) {
 	if g == nil {

@@ -200,7 +200,7 @@ func (b *builder) triggerWords(t encounter.Trigger, ctx lineContext) (string, []
 	return fmt.Sprintf("a requirement this build cannot say (%T)", t), nil
 }
 
-// subjectsWords says whom a holding given is about.
+// subjectsWords says whom a topic given is about.
 func subjectsWords(about encounter.RecognitionSubjects, holder string) string {
 	switch about {
 	case encounter.RecognitionPartyInSight:

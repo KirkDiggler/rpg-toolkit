@@ -48,9 +48,9 @@ func TestHeardWords_TheCaptainsStepIsRefusedWhereItCannotWork(t *testing.T) {
 				"it is read on heard, seen, barred and approached",
 		},
 		{
-			name: "holds of a holding nothing gives", old: theLiedToStep,
+			name: "holds of a topic nothing gives", old: theLiedToStep,
 			replacement: strings.Replace(theLiedToStep, "name: holds:admitted", "name: holds:welcome", 1), path: liedToAt,
-			sentence: "\"welcome\" is a holding no interaction's `outcomes` and no line's success or failure row gives, " +
+			sentence: "\"welcome\" is a topic no interaction's `outcomes` and no line's success or failure row gives, " +
 				"so nobody could ever come to hold it",
 		},
 	} {

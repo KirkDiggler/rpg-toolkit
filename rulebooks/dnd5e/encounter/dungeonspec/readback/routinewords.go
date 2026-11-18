@@ -28,7 +28,7 @@ func beatWords(on machine.Beat, who string) string {
 	case "fact":
 		return fmt.Sprintf("when %s learns a fact", who)
 	case "topic":
-		return fmt.Sprintf("when %s comes to hold a holding about someone, by its own judgement or by hearing it", who)
+		return fmt.Sprintf("when %s comes to hold a topic about someone, by its own judgement or by hearing it", who)
 	case "approached":
 		return fmt.Sprintf("when %s hails a character, which happens only under the conversation's hail rule: the "+
 			"character's own step ended within the approach distance, %s sees them and they see %s, %s offers them a line "+
@@ -54,7 +54,7 @@ func beatWords(on machine.Beat, who string) string {
 
 // guardWords says a transition's guard as a condition clause, with the
 // topics and facts it reads. on is the transition's beat: who a
-// `holds:<holding>` asks about is the one that beat names.
+// `holds:<topic>` asks about is the one that beat names.
 func guardWords(g *machine.Guard, who string, on machine.Beat) (string, []Connection) {
 	if g == nil {
 		return "", nil
@@ -128,7 +128,7 @@ func guardWords(g *machine.Guard, who string, on machine.Beat) (string, []Connec
 	return strings.Join(parts, " and "), conns
 }
 
-// aboutWords is the one a beat names, as a `holds:<holding>` asks about them
+// aboutWords is the one a beat names, as a `holds:<topic>` asks about them
 // (rpg-project#1000).
 func aboutWords(on machine.Beat, who string) string {
 	switch on {

@@ -146,7 +146,7 @@ room:
             success:
               - say: Much obliged.
                 give:
-                  holding: admitted
+                  topic: admitted
                   to: spoken_to
                   about: party_in_sight
 interactions:
@@ -162,7 +162,7 @@ interactions:
     outcomes:
       admitted:
         - give:
-            holding: admitted
+            topic: admitted
             to: spoken_to
             about: party_in_sight
             heard_by: carriers_who_witnessed

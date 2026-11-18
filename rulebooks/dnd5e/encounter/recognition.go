@@ -482,7 +482,7 @@ func (e *Encounter) recognizes(holder, subject MemberID, topic TopicID) bool {
 
 // holdsAbout is the one question "does holder hold topic about subject, now"
 // (rpg-project#928, #1000): a line's and a post's `holds` requirement, and a
-// machine's `holds:<holding>` guard, asked from the same holder.
+// machine's `holds:<topic>` guard, asked from the same holder.
 //
 // HELD AS ARRESTED IS UNDER ARREST NOW (rpg-project#925, arrest.go): the
 // guard's record stays for good, but it is true only while the member is

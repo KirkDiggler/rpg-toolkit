@@ -238,7 +238,7 @@ func TestAnOptionIsRefusedByName(t *testing.T) {
 			options: "          - { id: hi, say: \"Hi.\", requires: { round: 2 }, " +
 				"check: [{ ability: persuasion, dc: 10 }] }\n",
 			path: at + "[0].requires",
-			message: "an option requires one or a list of { fact: <id> }, { carries: <prop id> }, { interaction: { id, in: [<state>] } }, { holds: <holding> }, or { not: } one of them, " +
+			message: "an option requires one or a list of { fact: <id> }, { carries: <prop id> }, { interaction: { id, in: [<state>] } }, { holds: <topic> }, or { not: } one of them, " +
 				"and `round` is none of them",
 		},
 		{

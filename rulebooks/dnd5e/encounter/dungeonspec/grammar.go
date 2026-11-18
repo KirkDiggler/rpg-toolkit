@@ -345,7 +345,7 @@ type grammarInput struct {
 	// it is not refused a second time. A dialect with none leaves it nil.
 	Interactions map[string]*interactionShape
 
-	// LineTopics is every holding a line's success or failure row gives
+	// LineTopics is every topic a line's success or failure row gives
 	// (rpg-project#929, #932): with the interactions' outcomes, what a
 	// `holds` requirement may name.
 	LineTopics map[string]bool
@@ -658,7 +658,7 @@ func (g *grammar) optionRequirements(path string, requires RequiresSpec, props m
 
 // optionRequires judges one item of an option's `requires`: the SPEAKER's
 // own read — a fact, or carrying a placed prop somebody can pick up (R9) —
-// what the creature spoken to holds about the speaker (`holds`, a holding
+// what the creature spoken to holds about the speaker (`holds`, a topic
 // something in the document gives) — or the RUN's interaction state, judged
 // per run and not per speaker
 // (rpg-project#922, #916 R2), or a `not` of one; nothing else. Every item
@@ -686,21 +686,21 @@ func (g *grammar) optionRequires(path string, p *PredicateSpec, props map[string
 		// `holds` ASKS ABOUT A PERSON, `carries` ABOUT A POCKET
 		// (rpg-project#1005): the key once meant carrying, so a prop's id
 		// under it is the old meaning and is pointed at the new word, and
-		// an id that is both a prop and a holding is refused as ambiguous.
-		_, placed := props[p.Holding]
-		given := g.grants(p.Holding)
+		// an id that is both a prop and a topic is refused as ambiguous.
+		_, placed := props[p.Holds]
+		given := g.grants(p.Holds)
 		// A PROP'S ID FIRST, even on a prop's own line: there `holds: purse`
 		// was legal under the old meaning, and the word the author needs is
 		// `carries`, not that a prop holds nothing.
 		switch {
 		case placed && given:
-			g.fail(path+".holds", "%s", holdsAmbiguous(p.Holding))
+			g.fail(path+".holds", "%s", holdsAmbiguous(p.Holds))
 		case placed:
-			g.fail(path+".holds", "%s", holdsNamesProp(p.Holding))
+			g.fail(path+".holds", "%s", holdsNamesProp(p.Holds))
 		case isProp:
 			g.fail(path+".holds", "%s", errHoldsOnProp)
 		case !given:
-			g.fail(path+".holds", "%s", holdingNeverGiven(p.Holding))
+			g.fail(path+".holds", "%s", topicNeverGiven(p.Holds))
 		}
 	case predicateCarries:
 		holdable, placed := props[p.Carries]
@@ -771,7 +771,7 @@ func (g *grammar) optionAdvance(path string, a *AdvanceSpec, checked bool) {
 
 // optionRequiresForms is the sentence naming what an option may require.
 const optionRequiresForms = "an option requires one or a list of { fact: <id> }, { carries: <prop id> }, " +
-	"{ interaction: { id, in: [<state>] } }, { holds: <holding> }, or { not: } one of them"
+	"{ interaction: { id, in: [<state>] } }, { holds: <topic> }, or { not: } one of them"
 
 // errHoldsOnProp is the sentence a `holds` requirement on a prop's line is
 // refused with: a prop is never the one spoken to that holds anything.
@@ -779,27 +779,27 @@ const errHoldsOnProp = "a prop holds nothing about anybody, so a line said to on
 
 // errGiveOnProp is the sentence a `give` on a prop's line's row is refused
 // with, for [errHoldsOnProp]'s reason.
-const errGiveOnProp = "a prop holds nothing about anybody, so a line said to one cannot give it a holding"
+const errGiveOnProp = "a prop holds nothing about anybody, so a line said to one cannot give it a topic"
 
 // holdsNamesProp is the sentence a `holds` naming a prop of the site and no
-// holding is refused with (rpg-project#1005): `holds` once meant carrying.
+// topic is refused with (rpg-project#1005): `holds` once meant carrying.
 func holdsNamesProp(id string) string {
 	return fmt.Sprintf("`holds` asks what the creature spoken to holds about the speaker, and %q is a prop: "+
 		"a speaker carrying it is `carries: %s`", id, id)
 }
 
 // holdsAmbiguous is the sentence a `holds` naming an id that is both a prop of
-// the site and a holding something gives is refused with (rpg-project#1005).
+// the site and a topic something gives is refused with (rpg-project#1005).
 func holdsAmbiguous(id string) string {
-	return fmt.Sprintf("%q is both a prop and a holding something gives, so `holds: %s` reads two ways: "+
+	return fmt.Sprintf("%q is both a prop and a topic something gives, so `holds: %s` reads two ways: "+
 		"the creature spoken to holds %q about the speaker, or (the old meaning) the speaker carries the prop %q — "+
-		"write `carries: %s` for the prop, or give the holding a name no prop has", id, id, id, id, id)
+		"write `carries: %s` for the prop, or give the topic a name no prop has", id, id, id, id, id)
 }
 
-// holdingNeverGiven is the sentence a `holds` naming a holding nothing in the
+// topicNeverGiven is the sentence a `holds` naming a topic nothing in the
 // document gives is refused with.
-func holdingNeverGiven(id string) string {
-	return fmt.Sprintf("%q is a holding no interaction's `outcomes` and no line's row gives, "+
+func topicNeverGiven(id string) string {
+	return fmt.Sprintf("%q is a topic no interaction's `outcomes` and no line's row gives, "+
 		"so nobody could ever hold it about anyone", id)
 }
 

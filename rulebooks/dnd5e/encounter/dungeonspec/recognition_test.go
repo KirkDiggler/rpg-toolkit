@@ -30,7 +30,7 @@ func castleWith(t *testing.T, old, replacement string) string {
 
 // theOutcome is the front gate's authored outcome, as the castle writes it.
 const theOutcome = `        - give:
-            holding: admitted
+            topic: admitted
             to: spoken_to
             about: party_in_sight
             heard_by: carriers_who_witnessed
@@ -97,7 +97,7 @@ func TestDungeonspec_RecognitionIsRefusedAtTheAuthorsPath(t *testing.T) {
 	}{
 		{
 			name: "a holder that is not the one spoken to", old: theOutcome, replacement: strings.Replace(theOutcome, "to: spoken_to", "to: everyone", 1),
-			path: outcome + ".admitted[0].give.to", message: "a holding is given `to: spoken_to`, the creature the line was said to",
+			path: outcome + ".admitted[0].give.to", message: "a topic is given `to: spoken_to`, the creature the line was said to",
 		},
 		{
 			name: "subjects that are not the party in sight", old: theOutcome, replacement: strings.Replace(theOutcome, "about: party_in_sight", "about: the_town", 1),
@@ -123,7 +123,7 @@ func TestDungeonspec_RecognitionIsRefusedAtTheAuthorsPath(t *testing.T) {
 			"            requires:\n              holds: welcome\n"))
 		require.NotEmpty(t, errs)
 		require.True(t, strings.HasSuffix(errs[0].Path, ".requires.holds"), errs[0].Path)
-		require.Contains(t, errs[0].Message, `"welcome" is a holding no interaction's`)
+		require.Contains(t, errs[0].Message, `"welcome" is a topic no interaction's`)
 	})
 
 	t.Run("a pass asking for a topic nothing grants", func(t *testing.T) {
@@ -144,7 +144,7 @@ func TestDungeonspec_RecognitionIsRefusedAtTheAuthorsPath(t *testing.T) {
 // writes it (rpg-project#929).
 const theStragglersSuccess = `              - say: Fell behind, did you? Go on, catch them up.
                 give:
-                  holding: admitted
+                  topic: admitted
                   to: spoken_to
                   about: speaker
                   heard_by: carriers_who_witnessed
@@ -203,14 +203,14 @@ func TestDungeonspec_ALinesGrantIsRefusedAtTheAuthorsPath(t *testing.T) {
 
 	t.Run("on a plain line's failure row", func(t *testing.T) {
 		errs := refusals(t, strings.Replace(castleSource(t), "              - say: The troupe? Aye, they’re inside. If one of them comes back and speaks for you, in you go.\n",
-			"              - say: The troupe? Aye, they’re inside. If one of them comes back and speaks for you, in you go.\n            failure:\n              - say: No.\n                give: { holding: turned-away, to: spoken_to, about: speaker }\n", 1))
+			"              - say: The troupe? Aye, they’re inside. If one of them comes back and speaks for you, in you go.\n            failure:\n              - say: No.\n                give: { topic: turned-away, to: spoken_to, about: speaker }\n", 1))
 		require.NotEmpty(t, errs, "a plain line cannot be missed, so it has no failure row to grant on")
 		require.True(t, strings.HasSuffix(errs[0].Path, ".failure"), errs[0].Path)
 	})
 
 	t.Run("heard_by on a line that names no interaction", func(t *testing.T) {
 		text := castleWith(t, "            say: Where will the feast be, captain?\n            requires:\n              holds: admitted\n            success:\n              - say: In the great hall. You’re expected.\n",
-			"            say: Where will the feast be, captain?\n            requires:\n              holds: admitted\n            success:\n              - say: In the great hall. You’re expected.\n                give: { holding: admitted, to: spoken_to, about: speaker, heard_by: carriers_who_witnessed }\n")
+			"            say: Where will the feast be, captain?\n            requires:\n              holds: admitted\n            success:\n              - say: In the great hall. You’re expected.\n                give: { topic: admitted, to: spoken_to, about: speaker, heard_by: carriers_who_witnessed }\n")
 		errs := refusals(t, text)
 		require.NotEmpty(t, errs)
 		require.True(t, strings.HasSuffix(errs[0].Path, ".success[0].give.heard_by"), errs[0].Path)
@@ -225,12 +225,12 @@ func TestDungeonspec_ALinesGrantIsRefusedAtTheAuthorsPath(t *testing.T) {
 
 	t.Run("on a table row", func(t *testing.T) {
 		errs := refusals(t, castleWith(t, "        - say: Not one step further without my say.\n",
-			"        - say: Not one step further without my say.\n          give: { holding: admitted, to: spoken_to, about: speaker }\n"))
+			"        - say: Not one step further without my say.\n          give: { topic: admitted, to: spoken_to, about: speaker }\n"))
 		require.NotEmpty(t, errs)
 		require.Equal(t, "give is only on a line's success or failure row: a table row grants nothing", errs[0].Message)
 	})
 
-	t.Run("a guard asking about a holding nothing gives", func(t *testing.T) {
+	t.Run("a guard asking about a topic nothing gives", func(t *testing.T) {
 		errs := refusals(t, castleWith(t, "                  name: holds.anyone:admitted\n", "                  name: holds.anyone:welcome\n"))
 		require.NotEmpty(t, errs, "a routine cannot wait on a topic nobody could ever hold")
 	})

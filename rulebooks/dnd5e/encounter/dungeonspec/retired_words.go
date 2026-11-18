@@ -9,7 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// retired_words.go is THE HOLDING WORDS' OLD SPELLINGS (rpg-project#1005,
+// retired_words.go is THE HOLDS WORDS' OLD SPELLINGS (rpg-project#1005,
 // ruled on rpg-project#987): what an NPC holds about a person is asked with
 // `holds` and given with `give`; carrying a thing is `carries`; a state's
 // post is `post`; a machine asks about anybody with `holds.anyone:`. Every
@@ -21,10 +21,10 @@ import (
 // The refusal sentences, one per retired word. `recognized` is
 // [retiredPredicateKeys]'; `topic:` in a guard is [topicGuardRetired].
 const (
-	recognizeIsGive = "`recognize` is now `give`: write give: { holding: <holding>, to: spoken_to, " +
+	recognizeIsGive = "`recognize` is now `give`: write give: { topic: <topic>, to: spoken_to, " +
 		"about: party_in_sight|speaker, heard_by: carriers_who_witnessed }"
-	topicIsHolding   = "`topic` is now `holding`: write give: { holding: <holding>, to, about }"
-	holderIsTo       = "`holder` is now `to`: write give: { holding, to: spoken_to, about }"
+	holdingIsTopic   = "`holding` is now `topic`: write give: { topic: <topic>, to, about }"
+	holderIsTo       = "`holder` is now `to`: write give: { topic, to: spoken_to, about }"
 	stateHoldsIsPost = "a state's `holds` is now `post`: write post: { door: <door id>, at, against, pass }"
 )
 
@@ -41,11 +41,12 @@ func (*retiredRecognize) UnmarshalYAML(node *yaml.Node) error {
 	return retiredAt(node, recognizeIsGive)
 }
 
-// retiredTopic is a giving's retired `topic:` ([topicIsHolding]).
-type retiredTopic struct{}
+// retiredHolding is a give's `holding:`, the noun briefly written in place
+// of `topic` and taken back by the operator ([holdingIsTopic]).
+type retiredHolding struct{}
 
 // UnmarshalYAML refuses the old word, naming the new one.
-func (*retiredTopic) UnmarshalYAML(node *yaml.Node) error { return retiredAt(node, topicIsHolding) }
+func (*retiredHolding) UnmarshalYAML(node *yaml.Node) error { return retiredAt(node, holdingIsTopic) }
 
 // retiredHolder is a giving's retired `holder:` ([holderIsTo]).
 type retiredHolder struct{}

@@ -143,9 +143,9 @@ func (e *Encounter) envFor(id MemberID) *machineEnv { return &machineEnv{e: e, i
 // noise, or a voice whose words were not caught is neither.
 const factHeardClaim machine.FactName = "heard.claim"
 
-// holdsPrefix names a guard fact true while this creature holds a holding
-// about the one the beat names (rpg-project#1000): `holds:<holding>`.
-// `holds.anyone:<holding>` (the engine's `topic:<id>`) is the question
+// holdsPrefix names a guard fact true while this creature holds a topic
+// about the one the beat names (rpg-project#1000): `holds:<topic>`.
+// `holds.anyone:<topic>` (the engine's `topic:<id>`) is the question
 // about anybody.
 const holdsPrefix = "holds:"
 
@@ -164,13 +164,13 @@ func readHeardClaim(env any) (any, bool) {
 }
 
 // namingBeats is the beats whose event names the one it is about, in the
-// order a refusal lists them: what a `holds:<holding>` guard may be read on.
+// order a refusal lists them: what a `holds:<topic>` guard may be read on.
 var namingBeats = []machine.Beat{beatHeard, beatSeen, beatBarred, beatApproached}
 
 // GuardWordsRefusal is the refusal of one transition's guard words that
 // read the beat itself (rpg-project#1000), or "" when they are sound: a
 // `heard.claim` must name held or failed and be read on `heard`; a
-// `holds:<holding>` must be read on a beat that names someone (`heard`,
+// `holds:<topic>` must be read on a beat that names someone (`heard`,
 // `seen`, `barred`, `approached`). The one sentence the engine and a
 // content compiler both say.
 func GuardWordsRefusal(on machine.Beat, g *machine.Guard) string {
@@ -573,7 +573,7 @@ func MachineFact(id string) machine.FactName { return machine.FactName(factPrefi
 // holdings.
 func MachineTopic(id string) machine.FactName { return machine.FactName(topicPrefix + id) }
 
-// MachineHolds names a guard fact true while the creature holds a holding
+// MachineHolds names a guard fact true while the creature holds a topic
 // about the one the beat names (rpg-project#1000): `holds:<id>`.
 func MachineHolds(id string) machine.FactName { return machine.FactName(holdsPrefix + id) }
 

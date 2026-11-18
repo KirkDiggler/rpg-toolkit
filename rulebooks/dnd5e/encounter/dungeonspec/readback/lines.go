@@ -305,12 +305,12 @@ func (b *builder) passageStatement(c encounter.Consequence, row encounter.Answer
 	return b.fstmt(KindLineGrant, t.about, path+".relocate", s, f, Connection{Kind: "region", ID: string(r.To), Role: "sends-to"})
 }
 
-// grantStatement says one holding a line's row gives: who is given it, about
+// grantStatement says one topic a line's row gives: who is given it, about
 // whom they come to hold it, and who else hears it — in that order.
 func (b *builder) grantStatement(o encounter.Option, r encounter.Recognition, lead, path string, t lineTarget, f foldInfo) Statement {
 	topic := string(r.Topic)
 	holder := t.name
-	s := fmt.Sprintf("%s, %s — the creature the line is said to — is given the holding %s, and comes to hold it about %s.",
+	s := fmt.Sprintf("%s, %s — the creature the line is said to — is given the topic %s, and comes to hold it about %s.",
 		lead, holder, quote(topic), subjectsWords(r.About, holder))
 	conns := []Connection{{Kind: "topic", ID: topic, Role: "grants"}}
 	if t.id != "" {
@@ -322,7 +322,7 @@ func (b *builder) grantStatement(o encounter.Option, r encounter.Recognition, le
 	return b.fstmt(KindLineGrant, t.about, path, s, f, conns...)
 }
 
-// heardWords says who else comes to hold a holding given, having heard it.
+// heardWords says who else comes to hold a topic given, having heard it.
 func (b *builder) heardWords(r encounter.Recognition, conv string, except []string, conns *[]Connection) string {
 	topic := quote(string(r.Topic))
 	if r.HeardBy != encounter.RecognitionCarriersWhoWitnessed {
@@ -353,7 +353,7 @@ func (b *builder) heardWords(r encounter.Recognition, conv string, except []stri
 		quote(conv), who, topic)
 }
 
-// shortSubjects is whom a holding given is about, in the folded form.
+// shortSubjects is whom a topic given is about, in the folded form.
 func shortSubjects(about encounter.RecognitionSubjects) string {
 	switch about {
 	case encounter.RecognitionPartyInSight:
@@ -364,7 +364,7 @@ func shortSubjects(about encounter.RecognitionSubjects) string {
 	return fmt.Sprintf("the subjects %q", about)
 }
 
-// shortHeard is who else holds a holding given, in the folded form; the
+// shortHeard is who else holds a topic given, in the folded form; the
 // carriers themselves are named once, on the conversation.
 func shortHeard(r encounter.Recognition, conv string) string {
 	if r.HeardBy != encounter.RecognitionCarriersWhoWitnessed {

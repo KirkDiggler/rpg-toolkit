@@ -168,10 +168,10 @@ func (p PassSpec) MarshalJSON() ([]byte, error) {
 
 // passForms is the sentence naming what a pass may say.
 const passForms = "a pass is a fact (`pass: <fact>`), or one or a list of { fact: <id> }, " +
-	"{ holds: <holding> }, or { not: } one of them"
+	"{ holds: <topic> }, or { not: } one of them"
 
 // passRefusal judges a pass's grammar spelling: every predicate a fact, a
-// `holds` of a holding something gives (topics), or a `not` of
+// `holds` of a topic something gives (topics), or a `not` of
 // one. The first defect, at its own path under at, or "" for none. The
 // bare-word spelling is the caller's to judge against its facts.
 func passRefusal(at string, p *PassSpec, topics map[string]bool) (string, string) {
@@ -194,8 +194,8 @@ func passRefusal(at string, p *PassSpec, topics map[string]bool) (string, string
 		switch pred.Form() {
 		case predicateFact:
 		case predicateHolds:
-			if !topics[pred.Holding] {
-				return path + ".holds", holdingNeverGiven(pred.Holding)
+			if !topics[pred.Holds] {
+				return path + ".holds", topicNeverGiven(pred.Holds)
 			}
 		default:
 			return path, passForms
