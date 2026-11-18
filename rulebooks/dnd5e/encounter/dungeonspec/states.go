@@ -72,20 +72,25 @@ type StatesSpec struct {
 // creature none of whose states blocks blocks as it is declared. Refused on a
 // terminal state, which ends the machine and holds no post.
 //
-// Holds is the post this state holds (rpg-project#852): the door whose
-// opening a creature in this state bars to every mover not allied with it,
-// while it stands on one of the post's cells. Compiled into the placement's
+// Post is this state's post (rpg-project#852; the key `post` since
+// rpg-project#1005, which retired `holds` here): the door whose opening a
+// creature in this state bars to every mover not allied with it, while it
+// stands on one of the post's cells. Compiled into the placement's
 // [MonsterPlacement.Posts], the encounter's binding onto the recipe, never
 // into the recipe. Refused on a terminal state, as `blocks` is.
 type StateSpec struct {
 	Transitions []TransitionSpec `yaml:"transitions,omitempty" json:"transitions,omitempty"`
 	Terminal    bool             `yaml:"terminal,omitempty" json:"terminal,omitempty"`
 	Blocks      bool             `yaml:"blocks,omitempty" json:"blocks,omitempty"`
-	Holds       *HoldsSpec       `yaml:"holds,omitempty" json:"holds,omitempty"`
+	Post        *HoldsSpec       `yaml:"post,omitempty" json:"post,omitempty"`
+
+	// OldHolds is never set: it is here so a state still writing the
+	// retired `holds:` is refused naming `post` ([retiredStateHolds]).
+	OldHolds *retiredStateHolds `yaml:"holds,omitempty" json:"-"`
 }
 
-// HoldsSpec is a state's post:
-// `holds: { door: <id>, at: [{ q, r }, …], against: <direction>, pass: <fact> }`.
+// HoldsSpec is a post, a state's `post:` or a binding's `posts:` entry:
+// `post: { door: <id>, at: [{ q, r }, …], against: <direction>, pass: <fact> }`.
 // Door is the authored id of a door this document declares; At is the cells
 // a holder stands on to hold it, in the `{ q, r }` form a table's
 // `toward: { at }` uses, each refused unless it is floor. No `at` means the
@@ -108,13 +113,13 @@ type HoldsSpec struct {
 
 // PassSpec is a post's `pass` (rpg-project#928), in one of two spellings:
 //
-//	pass: troupe-password          # a fact the mover knows: a password
-//	pass: { recognized: admitted } # the post's holder holds the topic about the mover
+//	pass: troupe-password     # a fact the mover knows: a password
+//	pass: { holds: admitted } # the post's holder holds admitted about the mover
 //
 // The second is the requirement grammar an option's `requires` uses ([RequiresSpec]:
 // one predicate or a list, every one of which must hold), judged with the
 // MOVER as "me" and the post's HOLDER as "the other party". On a pass it
-// takes `{ fact }`, `{ recognized }` and a `{ not }` of one: an
+// takes `{ fact }`, `{ holds }` and a `{ not }` of one: an
 // interaction's state is the run's, never the pair's, and a holding is not
 // yet a pass any content asks for. The bare word is kept as written, so a
 // document round-trips the way it was authored.
@@ -163,10 +168,10 @@ func (p PassSpec) MarshalJSON() ([]byte, error) {
 
 // passForms is the sentence naming what a pass may say.
 const passForms = "a pass is a fact (`pass: <fact>`), or one or a list of { fact: <id> }, " +
-	"{ recognized: <topic> }, or { not: } one of them"
+	"{ holds: <holding> }, or { not: } one of them"
 
 // passRefusal judges a pass's grammar spelling: every predicate a fact, a
-// recognition on a topic some interaction grants (topics), or a `not` of
+// `holds` of a holding something gives (topics), or a `not` of
 // one. The first defect, at its own path under at, or "" for none. The
 // bare-word spelling is the caller's to judge against its facts.
 func passRefusal(at string, p *PassSpec, topics map[string]bool) (string, string) {
@@ -188,10 +193,9 @@ func passRefusal(at string, p *PassSpec, topics map[string]bool) (string, string
 		}
 		switch pred.Form() {
 		case predicateFact:
-		case predicateRecognized:
-			if !topics[pred.Recognized] {
-				return path + ".recognized", fmt.Sprintf(
-					"%q is a topic no interaction's `outcomes` grants, so no holder could ever recognize anyone on it", pred.Recognized)
+		case predicateHolds:
+			if !topics[pred.Holding] {
+				return path + ".holds", holdingNeverGiven(pred.Holding)
 			}
 		default:
 			return path, passForms
@@ -414,8 +418,8 @@ func (g *grammar) placeStates(path string, s *StatesSpec, owner string) {
 		if st.Terminal && st.Blocks {
 			fail(sp+".blocks", "a terminal state ends the machine and holds no post: `blocks` is for a state the creature stands in")
 		}
-		if st.Holds != nil {
-			g.placeHolds(sp+".holds", st, fail)
+		if st.Post != nil {
+			g.placeHolds(sp+".post", st, fail)
 		}
 		for i, t := range st.Transitions {
 			tp := fmt.Sprintf("%s.transitions[%d]", sp, i)
@@ -548,28 +552,28 @@ func recipeOf(s *StatesSpec, owner string) (*machine.Recipe, error) {
 // document declares, and cells that are floor in its frame.
 func (g *grammar) placeHolds(path string, st StateSpec, fail func(p, format string, args ...any)) {
 	if st.Terminal {
-		fail(path, "a terminal state ends the machine and holds no post: `holds` is for a state the creature stands in")
+		fail(path, "a terminal state ends the machine and keeps no post: `post` is for a state the creature stands in")
 	}
 	switch {
-	case st.Holds.Door == "":
+	case st.Post.Door == "":
 		fail(path+".door", "a post names the door whose opening it holds: write `door: <door id>`")
-	case !g.doors[st.Holds.Door]:
-		fail(path+".door", "%q is not a door this document declares", st.Holds.Door)
+	case !g.doors[st.Post.Door]:
+		fail(path+".door", "%q is not a door this document declares", st.Post.Door)
 	}
-	for i := range st.Holds.At {
-		answer := g.cells.cellAt(authoredCell{hex: &st.Holds.At[i]})
+	for i := range st.Post.At {
+		answer := g.cells.cellAt(authoredCell{hex: &st.Post.At[i]})
 		if answer.refusal != "" {
 			fail(fmt.Sprintf("%s.at[%d]", path, i), "%s", answer.refusal)
 		}
 	}
-	switch encounter.PostDirection(st.Holds.Against) {
+	switch encounter.PostDirection(st.Post.Against) {
 	case "", encounter.PostBothWays, encounter.PostEntering, encounter.PostLeaving:
 	default:
-		fail(path+".against", "%q is not a way a post holds: write `both`, `entering` or `leaving`", st.Holds.Against)
+		fail(path+".against", "%q is not a way a post holds: write `both`, `entering` or `leaving`", st.Post.Against)
 	}
 	// A PASS NOBODY CAN LEARN never lets anybody through, as a `when` fact
-	// that matches nothing never holds.
-	if pass := st.Holds.Pass; pass != nil {
+	// that matches nothing is never true.
+	if pass := st.Post.Pass; pass != nil {
 		if pass.Fact != "" && !g.facts[pass.Fact] {
 			fail(path+".pass", "%q is not a fact this file sets, so nobody could ever know the pass", pass.Fact)
 		}
@@ -592,7 +596,7 @@ func postsOf(own, faction *StatesSpec, key string) map[string]encounter.Post {
 	}
 	var out map[string]encounter.Post
 	for _, name := range s.stateNames() {
-		h := s.States[name].Holds
+		h := s.States[name].Post
 		if h == nil {
 			continue
 		}

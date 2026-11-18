@@ -320,7 +320,7 @@ type MonsterPlacement struct {
 	BlockingStates []string `json:"BlockingStates,omitempty"`
 
 	// Posts is, by state of Machine, the post that state holds
-	// (rpg-project#852, states.go's `holds`), each door qualified to the
+	// (rpg-project#852, states.go's `post`), each door qualified to the
 	// encounter's id — for a host to hand to [encounter.MemberInput.Posts]
 	// beside the recipe. Nil when no state holds a passage.
 	Posts map[string]encounter.Post `json:"Posts,omitempty"`
@@ -655,10 +655,10 @@ func predicateOf(p *PredicateSpec) encounter.Trigger {
 		return encounter.TriggerFact{Fact: p.Fact}
 	case predicateStance:
 		return encounter.TriggerStance{Between: p.Stance.Between, Stance: encounter.Stance(p.Stance.Is)}
-	case predicateHolds:
+	case predicateCarries:
 		// An option's `requires` only — [grammar.predicate] refuses it
 		// everywhere else, so this arm is reached from [optionsOf] alone.
-		return encounter.TriggerHolds{Prop: encounter.PropID(p.Holds)}
+		return encounter.TriggerHolds{Prop: encounter.PropID(p.Carries)}
 	case predicateLeft:
 		// An ending's `when` only ([grammar.endings]); refused elsewhere.
 		return encounter.TriggerLeft{Exit: encounter.ExitID(p.Left)}
@@ -671,10 +671,10 @@ func predicateOf(p *PredicateSpec) encounter.Trigger {
 		return encounter.TriggerInteraction{
 			Interaction: encounter.InteractionID(p.Interaction.ID), In: append([]string(nil), p.Interaction.In...),
 		}
-	case predicateRecognized:
+	case predicateHolds:
 		// A creature's option's `requires` and a post's `pass` only
 		// (rpg-project#928); refused elsewhere.
-		return encounter.TriggerRecognized{Topic: encounter.TopicID(p.Recognized)}
+		return encounter.TriggerRecognized{Topic: encounter.TopicID(p.Holding)}
 	default:
 		return nil
 	}
@@ -1223,8 +1223,8 @@ func optionsOf(key string, specs []OptionSpec, o encounter.Orientation) []encoun
 			for i, row := range verdict.rows {
 				var c encounter.Consequence
 				switch {
-				case row.Recognize != nil:
-					rec := recognitionOf("", row.Recognize, true, func(string, string) {})
+				case row.Give != nil:
+					rec := givingOf("", row.Give, true, func(string, string) {})
 					c.Recognize = &rec
 				case row.Tells != "":
 					c.Tells = encounter.IntelID(key + "/" + row.Tells)

@@ -4,7 +4,7 @@
 package dungeonspec_test
 
 // recognition_test.go is the authored half of ADMISSION IS RECOGNITION
-// (rpg-project#928): an interaction's `outcomes`, the `{ recognized }`
+// (rpg-project#928): an interaction's `outcomes`, the `{ holds }`
 // predicate on a creature's line and on a post's `pass`, each compiled from
 // the castle and each refused at the author's own path when it says a word
 // the slice does not have.
@@ -29,9 +29,9 @@ func castleWith(t *testing.T, old, replacement string) string {
 }
 
 // theOutcome is the front gate's authored outcome, as the castle writes it.
-const theOutcome = `        - recognize:
-            topic: admitted
-            holder: spoken_to
+const theOutcome = `        - give:
+            holding: admitted
+            to: spoken_to
             about: party_in_sight
             heard_by: carriers_who_witnessed
 `
@@ -70,7 +70,7 @@ func TestDungeonspec_AnOutcomeCompilesOntoItsInteraction(t *testing.T) {
 }
 
 func TestDungeonspec_APassStillTakesAFact(t *testing.T) {
-	c := loadSource(t, castleWith(t, `            pass: { recognized: admitted }
+	c := loadSource(t, castleWith(t, `            pass: { holds: admitted }
             at:
               - q: -4
                 r: 8
@@ -90,16 +90,16 @@ func TestDungeonspec_RecognitionIsRefusedAtTheAuthorsPath(t *testing.T) {
 		name, old, replacement, path, message string
 	}{
 		{
-			name: "a holder that is not the one spoken to", old: theOutcome, replacement: strings.Replace(theOutcome, "holder: spoken_to", "holder: everyone", 1),
-			path: outcome + ".admitted[0].recognize.holder", message: "the holder is `spoken_to`, the creature the line was said to",
+			name: "a holder that is not the one spoken to", old: theOutcome, replacement: strings.Replace(theOutcome, "to: spoken_to", "to: everyone", 1),
+			path: outcome + ".admitted[0].give.to", message: "a holding is given `to: spoken_to`, the creature the line was said to",
 		},
 		{
 			name: "subjects that are not the party in sight", old: theOutcome, replacement: strings.Replace(theOutcome, "about: party_in_sight", "about: the_town", 1),
-			path: outcome + ".admitted[0].recognize.about", message: "the subjects are `party_in_sight`, the speaker's party the holder sees, or `speaker`, the speaker alone",
+			path: outcome + ".admitted[0].give.about", message: "the subjects are `party_in_sight`, the speaker's party the holder sees, or `speaker`, the speaker alone",
 		},
 		{
 			name: "hearers that are not the witnessing carriers", old: theOutcome, replacement: strings.Replace(theOutcome, "heard_by: carriers_who_witnessed", "heard_by: the_town", 1),
-			path: outcome + ".admitted[0].recognize.heard_by", message: "the hearers are `carriers_who_witnessed`, or omit it for nobody",
+			path: outcome + ".admitted[0].give.heard_by", message: "the hearers are `carriers_who_witnessed`, or omit it for nobody",
 		},
 		{
 			name: "an outcome on a state the recipe lacks", old: "      admitted:\n" + theOutcome, replacement: "      welcomed:\n" + theOutcome,
@@ -113,21 +113,21 @@ func TestDungeonspec_RecognitionIsRefusedAtTheAuthorsPath(t *testing.T) {
 	}
 
 	t.Run("a line asking for a topic nothing grants", func(t *testing.T) {
-		errs := refusals(t, castleWith(t, "            requires:\n              recognized: admitted\n",
-			"            requires:\n              recognized: welcome\n"))
+		errs := refusals(t, castleWith(t, "            requires:\n              holds: admitted\n",
+			"            requires:\n              holds: welcome\n"))
 		require.NotEmpty(t, errs)
-		require.True(t, strings.HasSuffix(errs[0].Path, ".requires.recognized"), errs[0].Path)
-		require.Contains(t, errs[0].Message, `"welcome" is a topic no interaction's`)
+		require.True(t, strings.HasSuffix(errs[0].Path, ".requires.holds"), errs[0].Path)
+		require.Contains(t, errs[0].Message, `"welcome" is a holding no interaction's`)
 	})
 
 	t.Run("a pass asking for a topic nothing grants", func(t *testing.T) {
-		errs := refusals(t, strings.ReplaceAll(castleSource(t), "pass: { recognized: admitted }", "pass: { recognized: welcome }"))
+		errs := refusals(t, strings.ReplaceAll(castleSource(t), "pass: { holds: admitted }", "pass: { holds: welcome }"))
 		require.NotEmpty(t, errs)
-		require.True(t, strings.HasSuffix(errs[0].Path, ".pass.recognized"), errs[0].Path)
+		require.True(t, strings.HasSuffix(errs[0].Path, ".pass.holds"), errs[0].Path)
 	})
 
 	t.Run("a pass on an interaction's state", func(t *testing.T) {
-		errs := refusals(t, strings.ReplaceAll(castleSource(t), "pass: { recognized: admitted }",
+		errs := refusals(t, strings.ReplaceAll(castleSource(t), "pass: { holds: admitted }",
 			"pass: { interaction: { id: front-gate, in: [admitted] } }"))
 		require.NotEmpty(t, errs)
 		require.True(t, strings.HasSuffix(errs[0].Path, ".pass"), errs[0].Path)
@@ -137,9 +137,9 @@ func TestDungeonspec_RecognitionIsRefusedAtTheAuthorsPath(t *testing.T) {
 // theStragglersSuccess is gate-1's straggler line's success row, as the castle
 // writes it (rpg-project#929).
 const theStragglersSuccess = `              - say: Fell behind, did you? Go on, catch them up.
-                recognize:
-                  topic: admitted
-                  holder: spoken_to
+                give:
+                  holding: admitted
+                  to: spoken_to
                   about: speaker
                   heard_by: carriers_who_witnessed
 `
@@ -197,35 +197,35 @@ func TestDungeonspec_ALinesGrantIsRefusedAtTheAuthorsPath(t *testing.T) {
 
 	t.Run("on a plain line's failure row", func(t *testing.T) {
 		errs := refusals(t, strings.Replace(castleSource(t), "              - say: The troupe? Aye, they’re inside. If one of them comes back and speaks for you, in you go.\n",
-			"              - say: The troupe? Aye, they’re inside. If one of them comes back and speaks for you, in you go.\n            failure:\n              - say: No.\n                recognize: { topic: turned-away, holder: spoken_to, about: speaker }\n", 1))
+			"              - say: The troupe? Aye, they’re inside. If one of them comes back and speaks for you, in you go.\n            failure:\n              - say: No.\n                give: { holding: turned-away, to: spoken_to, about: speaker }\n", 1))
 		require.NotEmpty(t, errs, "a plain line cannot be missed, so it has no failure row to grant on")
 		require.True(t, strings.HasSuffix(errs[0].Path, ".failure"), errs[0].Path)
 	})
 
 	t.Run("heard_by on a line that names no interaction", func(t *testing.T) {
-		text := castleWith(t, "            say: Where will the feast be, captain?\n            requires:\n              recognized: admitted\n            success:\n              - say: In the great hall. You’re expected.\n",
-			"            say: Where will the feast be, captain?\n            requires:\n              recognized: admitted\n            success:\n              - say: In the great hall. You’re expected.\n                recognize: { topic: admitted, holder: spoken_to, about: speaker, heard_by: carriers_who_witnessed }\n")
+		text := castleWith(t, "            say: Where will the feast be, captain?\n            requires:\n              holds: admitted\n            success:\n              - say: In the great hall. You’re expected.\n",
+			"            say: Where will the feast be, captain?\n            requires:\n              holds: admitted\n            success:\n              - say: In the great hall. You’re expected.\n                give: { holding: admitted, to: spoken_to, about: speaker, heard_by: carriers_who_witnessed }\n")
 		errs := refusals(t, text)
 		require.NotEmpty(t, errs)
-		require.True(t, strings.HasSuffix(errs[0].Path, ".success[0].recognize.heard_by"), errs[0].Path)
+		require.True(t, strings.HasSuffix(errs[0].Path, ".success[0].give.heard_by"), errs[0].Path)
 	})
 
 	t.Run("an unknown subject word", func(t *testing.T) {
 		text := strings.Replace(castleSource(t), theStragglersSuccess,
 			strings.Replace(theStragglersSuccess, "about: speaker", "about: anyone", 1), 1)
-		requireExactDefect(t, refusals(t, text), gate1+".success[0].recognize.about",
+		requireExactDefect(t, refusals(t, text), gate1+".success[0].give.about",
 			"the subjects are `party_in_sight`, the speaker's party the holder sees, or `speaker`, the speaker alone")
 	})
 
 	t.Run("on a table row", func(t *testing.T) {
 		errs := refusals(t, castleWith(t, "        - say: Not one step further without my say.\n",
-			"        - say: Not one step further without my say.\n          recognize: { topic: admitted, holder: spoken_to, about: speaker }\n"))
+			"        - say: Not one step further without my say.\n          give: { holding: admitted, to: spoken_to, about: speaker }\n"))
 		require.NotEmpty(t, errs)
-		require.Equal(t, "recognize is only on a line's success or failure row: a table row grants nothing", errs[0].Message)
+		require.Equal(t, "give is only on a line's success or failure row: a table row grants nothing", errs[0].Message)
 	})
 
-	t.Run("a guard reading a topic nothing grants", func(t *testing.T) {
-		errs := refusals(t, castleWith(t, "                  name: topic:admitted\n", "                  name: topic:welcome\n"))
+	t.Run("a guard asking about a holding nothing gives", func(t *testing.T) {
+		errs := refusals(t, castleWith(t, "                  name: holds.anyone:admitted\n", "                  name: holds.anyone:welcome\n"))
 		require.NotEmpty(t, errs, "a routine cannot wait on a topic nobody could ever hold")
 	})
 }

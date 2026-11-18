@@ -38,15 +38,15 @@ var saidKeys = map[string][]string{
 	"behaviorDefinition": {"recipe", "table"},
 	"interaction":        {"recipe", "approach", "outcomes"},
 	"approach":           {"within"},
-	"outcome":            {"recognize", "arrest", "jail"},
+	"outcome":            {"give", "arrest", "jail"},
 	"jail":               {"words", "rounds", "escaped"},
 	"arrest":             {"cell", "area"},
 	"arrestArea":         {"regions", "cells"},
-	"recognize":          {"topic", "holder", "about", "heard_by"},
+	"give":               {"holding", "to", "about", "heard_by"},
 	"option":             {"id", "say", "do", "seen", "loudness", "check", "requires", "advance", "success", "failure"},
 	"checkApproach":      {"ability", "tool", "dc"},
 	"advance":            {"interaction", "success", "failure"},
-	"optionRow":          {"say", "loudness", "fact", "recognize", "tells", "relocate", "activity", "weight"},
+	"optionRow":          {"say", "loudness", "fact", "give", "tells", "relocate", "activity", "weight"},
 	"relocate":           {"to", "words", "rounds"},
 	"activity":           {"ref", "cycles"},
 	"post":               {"door", "at", "against", "pass"},
@@ -113,8 +113,8 @@ func (b *builder) notYetSaid() []Unsaid {
 		}
 		return nil
 	}
-	recognize := func(row *yaml.Node, path string) {
-		check(at(row, "recognize"), path+".recognize", "recognize")
+	give := func(row *yaml.Node, path string) {
+		check(at(row, "give"), path+".give", "give")
 	}
 	options := func(n *yaml.Node, path string) {
 		each(n, path, func(o *yaml.Node, op string) {
@@ -124,7 +124,7 @@ func (b *builder) notYetSaid() []Unsaid {
 			for _, verdict := range []string{"success", "failure"} {
 				each(at(o, verdict), op+"."+verdict, func(r *yaml.Node, rp string) {
 					check(r, rp, "optionRow")
-					recognize(r, rp)
+					give(r, rp)
 					check(at(r, "relocate"), rp+".relocate", "relocate")
 					check(at(r, "activity"), rp+".activity", "activity")
 				})
@@ -185,7 +185,7 @@ func (b *builder) notYetSaid() []Unsaid {
 		each(at(n, "outcomes"), p+".outcomes", func(list *yaml.Node, op string) {
 			each(list, op, func(c *yaml.Node, cp string) {
 				check(c, cp, "outcome")
-				recognize(c, cp)
+				give(c, cp)
 				check(at(c, "arrest"), cp+".arrest", "arrest")
 				check(at(at(c, "arrest"), "area"), cp+".arrest.area", "arrestArea")
 				check(at(c, "jail"), cp+".jail", "jail")

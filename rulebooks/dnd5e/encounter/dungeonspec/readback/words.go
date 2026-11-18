@@ -118,7 +118,7 @@ type lineContext struct {
 }
 
 // triggerWords says one compiled requirement or predicate as a clause about
-// who knows, holds or recognises what. It also returns the connections the
+// who knows, carries or holds what. It also returns the connections the
 // clause reads.
 func (b *builder) triggerWords(t encounter.Trigger, ctx lineContext) (string, []Connection) {
 	switch v := t.(type) {
@@ -142,8 +142,8 @@ func (b *builder) triggerWords(t encounter.Trigger, ctx lineContext) (string, []
 			held = fmt.Sprintf(", and only while %s is still held under the arrest: not once a fight has broken the hold, "+
 				"nor once jailed", ctx.me)
 		}
-		return fmt.Sprintf("%s recognises %s as %s (%s holds %s about %s)%s",
-				ctx.other, ctx.me, quote(string(v.Topic)), ctx.other, quote(string(v.Topic)), ctx.me, held),
+		return fmt.Sprintf("%s holds %s about %s%s",
+				ctx.other, quote(string(v.Topic)), ctx.me, held),
 			[]Connection{{Kind: "topic", ID: string(v.Topic), Role: "asks"}}
 	case encounter.TriggerInteraction:
 		in := quoteAll(v.In)
@@ -165,8 +165,8 @@ func (b *builder) triggerWords(t encounter.Trigger, ctx lineContext) (string, []
 			if in.Topic == encounter.TopicArrested {
 				held = fmt.Sprintf(", or does but %s is no longer held under the arrest (a fight broke the hold, or jailed)", ctx.me)
 			}
-			return fmt.Sprintf("%s does NOT recognise %s as %s (%s does not hold %s about %s)%s",
-					ctx.other, ctx.me, quote(string(in.Topic)), ctx.other, quote(string(in.Topic)), ctx.me, held),
+			return fmt.Sprintf("%s does NOT hold %s about %s%s",
+					ctx.other, quote(string(in.Topic)), ctx.me, held),
 				[]Connection{{Kind: "topic", ID: string(in.Topic), Role: "asks"}}
 		case encounter.TriggerFact:
 			return fmt.Sprintf("%s does NOT know the fact %s", me, quote(string(in.Fact))),
@@ -200,12 +200,12 @@ func (b *builder) triggerWords(t encounter.Trigger, ctx lineContext) (string, []
 	return fmt.Sprintf("a requirement this build cannot say (%T)", t), nil
 }
 
-// subjectsWords says whom a recognition is about.
+// subjectsWords says whom a holding given is about.
 func subjectsWords(about encounter.RecognitionSubjects, holder string) string {
 	switch about {
 	case encounter.RecognitionPartyInSight:
 		return fmt.Sprintf("the speaker and each member of the speaker's party that %s sees at that moment "+
-			"(a member out of %s's sight is not recognised)", holder, holder)
+			"(%s holds nothing about a member out of its sight)", holder, holder)
 	case encounter.RecognitionSpeaker:
 		return fmt.Sprintf("the speaker alone, if %s sees the speaker (not whoever stands beside the speaker)", holder)
 	}

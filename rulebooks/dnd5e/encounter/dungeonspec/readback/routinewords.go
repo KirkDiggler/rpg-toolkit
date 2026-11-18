@@ -28,7 +28,7 @@ func beatWords(on machine.Beat, who string) string {
 	case "fact":
 		return fmt.Sprintf("when %s learns a fact", who)
 	case "topic":
-		return fmt.Sprintf("when %s comes to hold a topic about someone, by its own judgement or by hearing it", who)
+		return fmt.Sprintf("when %s comes to hold a holding about someone, by its own judgement or by hearing it", who)
 	case "approached":
 		return fmt.Sprintf("when %s hails a character, which happens only under the conversation's hail rule: the "+
 			"character's own step ended within the approach distance, %s sees them and they see %s, %s offers them a line "+
@@ -75,7 +75,7 @@ func guardWords(g *machine.Guard, who string) (string, []Connection) {
 				who, raisedWords(strings.TrimPrefix(name, "heard.loudness:"))), nil)
 		case strings.HasPrefix(name, "topic:") && g.Fact.Op == "eq" && val == "true":
 			id := strings.TrimPrefix(name, "topic:")
-			add(fmt.Sprintf("%s holds the topic %s about anyone (%s recognises someone as %s)", who, quote(id), who, quote(id)),
+			add(fmt.Sprintf("%s holds %s about anyone", who, quote(id)),
 				[]Connection{{Kind: "topic", ID: id, Role: "wakes-on"}})
 		default:
 			add(fmt.Sprintf("%s %s is %s %s", whose(who), quote(name), opWords(g.Fact.Op), val), nil)

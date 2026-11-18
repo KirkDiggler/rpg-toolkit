@@ -62,12 +62,12 @@ func TestDungeonspec_TheArrestIsRefusedAtTheAuthorsPath(t *testing.T) {
 		// one at its path.
 		var here []dungeonspec.FieldError
 		for _, e := range refusals(t, castleWith(t, "        - arrest:\n"+theArrest,
-			"        - recognize: {topic: arrested, holder: spoken_to, about: party_in_sight}\n          arrest:\n"+theArrest)) {
+			"        - give: {holding: arrested, to: spoken_to, about: party_in_sight}\n          arrest:\n"+theArrest)) {
 			if e.Path == at {
 				here = append(here, e)
 			}
 		}
-		requireExactDefect(t, here, at, "a consequence is one kind: `recognize`, `arrest` or `jail`, not two")
+		requireExactDefect(t, here, at, "a consequence is one kind: `give`, `arrest` or `jail`, not two")
 	})
 }
 

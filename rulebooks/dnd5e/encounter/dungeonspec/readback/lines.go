@@ -190,7 +190,7 @@ func (b *builder) rowStatements(o encounter.Option, line, heading, p string, t l
 				conns...))
 			for _, g := range o.Grants {
 				if g.Failure == verdict.failure && g.Row == k && g.Consequence.Recognize != nil {
-					out = append(out, b.grantStatement(o, *g.Consequence.Recognize, lead, path+".recognize", t,
+					out = append(out, b.grantStatement(o, *g.Consequence.Recognize, lead, path+".give", t,
 						foldInfo{line: heading, verdict: verdictWord, site: site, who: t.about.ID}))
 				}
 				if g.Failure == verdict.failure && g.Row == k && (g.Consequence.Tells != "" || g.Consequence.Relocate != nil) {
@@ -305,13 +305,13 @@ func (b *builder) passageStatement(c encounter.Consequence, row encounter.Answer
 	return b.fstmt(KindLineGrant, t.about, path+".relocate", s, f, Connection{Kind: "region", ID: string(r.To), Role: "sends-to"})
 }
 
-// grantStatement says one recognition a line's row grants: who comes to hold
-// the topic, about whom, and who else hears it — in that order.
+// grantStatement says one holding a line's row gives: who is given it, about
+// whom they come to hold it, and who else hears it — in that order.
 func (b *builder) grantStatement(o encounter.Option, r encounter.Recognition, lead, path string, t lineTarget, f foldInfo) Statement {
 	topic := string(r.Topic)
 	holder := t.name
-	s := fmt.Sprintf("%s, %s — the creature the line is said to — comes to hold %s about %s: %s recognises them as %s.",
-		lead, holder, quote(topic), subjectsWords(r.About, holder), holder, quote(topic))
+	s := fmt.Sprintf("%s, %s — the creature the line is said to — is given the holding %s, and comes to hold it about %s.",
+		lead, holder, quote(topic), subjectsWords(r.About, holder))
 	conns := []Connection{{Kind: "topic", ID: topic, Role: "grants"}}
 	if t.id != "" {
 		conns = append(conns, Connection{Kind: "creature", ID: t.id, Role: "holds"})
@@ -322,7 +322,7 @@ func (b *builder) grantStatement(o encounter.Option, r encounter.Recognition, le
 	return b.fstmt(KindLineGrant, t.about, path, s, f, conns...)
 }
 
-// heardWords says who else comes to hold a recognition, having heard it.
+// heardWords says who else comes to hold a holding given, having heard it.
 func (b *builder) heardWords(r encounter.Recognition, conv string, except []string, conns *[]Connection) string {
 	topic := quote(string(r.Topic))
 	if r.HeardBy != encounter.RecognitionCarriersWhoWitnessed {
@@ -348,12 +348,12 @@ func (b *builder) heardWords(r encounter.Recognition, conv string, except []stri
 	}
 	return fmt.Sprintf("Every other creature that carries the conversation %s (%s), was among those the line's words reached "+
 		"when it was said, and is up, comes to hold %s about the same members too, having heard it, whether or not it sees "+
-		"them itself; one the words did not reach holds nothing, even if it saw the line said. When the holder recognises "+
-		"nobody, nobody else comes to hold anything either.",
+		"them itself; one the words did not reach holds nothing, even if it saw the line said. When the one given it comes "+
+		"to hold it about nobody, nobody else comes to hold anything either.",
 		quote(conv), who, topic)
 }
 
-// shortSubjects is whom a recognition is about, in the folded form.
+// shortSubjects is whom a holding given is about, in the folded form.
 func shortSubjects(about encounter.RecognitionSubjects) string {
 	switch about {
 	case encounter.RecognitionPartyInSight:
@@ -364,19 +364,19 @@ func shortSubjects(about encounter.RecognitionSubjects) string {
 	return fmt.Sprintf("the subjects %q", about)
 }
 
-// shortHeard is who else holds a recognition, in the folded form; the
+// shortHeard is who else holds a holding given, in the folded form; the
 // carriers themselves are named once, on the conversation.
 func shortHeard(r encounter.Recognition, conv string) string {
 	if r.HeardBy != encounter.RecognitionCarriersWhoWitnessed {
 		return "; nobody else holds it"
 	}
 	return fmt.Sprintf("; so does each other carrier of %s the line's words reached and who is up, about the same members, "+
-		"whether or not that carrier sees them (heard); if {self} recognises nobody, nobody else holds anything", quote(conv))
+		"whether or not that carrier sees them (heard); if {self} comes to hold it about nobody, nobody else holds anything", quote(conv))
 }
 
 // shortClause drops a requirement's restatement for the folded form: the
-// conversation block already says its state is the run's, and "recognises X
-// as T" already says who holds what about whom.
+// conversation block already says its state is the run's, and "holds T
+// about X" already says who holds what about whom.
 func shortClause(w string) string {
 	w = strings.Replace(w, " (one state for the whole run, not per speaker)", "", 1)
 	w = strings.Replace(w, "the conversation ", "", 1)

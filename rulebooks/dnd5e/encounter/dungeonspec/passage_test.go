@@ -93,7 +93,7 @@ func TestDungeonspec_APassageIsRefusedWhereItIsWrong(t *testing.T) {
 		"a relocate of negative rounds": {vaultRelocate, "              - relocate: { to: room-1-region, words: Up., rounds: -1 }\n",
 			read + ".relocate.rounds", "a relocate's rounds are zero or more"},
 		"two grants on a row": {vaultTells, vaultTells + "                relocate: { to: room-1-region, words: Up. }\n",
-			asked, "a row grants one thing: `recognize`, `tells` or `relocate`, not two"},
+			asked, "a row grants one thing: `give`, `tells` or `relocate`, not two"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			requireExactDefect(t, refusals(t, vaultWithAPassage(t, tc.old, tc.replacement)), tc.path, tc.message)

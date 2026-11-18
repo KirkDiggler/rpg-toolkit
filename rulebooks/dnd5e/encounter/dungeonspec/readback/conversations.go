@@ -111,7 +111,7 @@ func (b *builder) conversations() []Group {
 				if c.Recognize == nil {
 					continue
 				}
-				add(b.outcomeStatement(id, state, *c.Recognize, fmt.Sprintf("%s.outcomes.%s[%d].recognize", base, state, k)))
+				add(b.outcomeStatement(id, state, *c.Recognize, fmt.Sprintf("%s.outcomes.%s[%d].give", base, state, k)))
 			}
 		}
 		for _, site := range b.lineSites() {
@@ -194,8 +194,8 @@ func (b *builder) convStepWords(id, state string, tr machine.Transition) string 
 	return s + "."
 }
 
-// outcomeStatement says what entering a conversation's state grants: who
-// comes to hold the topic, about whom, and who else hears it.
+// outcomeStatement says what entering a conversation's state gives: who is
+// given the holding, about whom they come to hold it, and who else hears it.
 func (b *builder) outcomeStatement(id, state string, r encounter.Recognition, path string) Statement {
 	topic := quote(string(r.Topic))
 	holder := "the creature the deciding line was said to"
@@ -211,8 +211,8 @@ func (b *builder) outcomeStatement(id, state string, r encounter.Recognition, pa
 	for _, h := range holders {
 		conns = append(conns, Connection{Kind: "creature", ID: h, Role: "holds"})
 	}
-	s := fmt.Sprintf("When the conversation %s enters %s, %s (whichever of %s that was) comes to hold %s about %s: that creature recognises them as %s.",
-		quote(id), quote(state), holder, b.creatures(holders), topic, subjectsWords(r.About, "the creature"), topic)
+	s := fmt.Sprintf("When the conversation %s enters %s, %s (whichever of %s that was) is given the holding %s, and comes to hold it about %s.",
+		quote(id), quote(state), holder, b.creatures(holders), topic, subjectsWords(r.About, "the creature"))
 	s += " " + b.heardWords(r, id, nil, &conns)
 	f := foldInfo{state: state, site: fmt.Sprintf("the conversation %s on entering %s", quote(id), quote(state))}
 	f.text = strings.ReplaceAll(fmt.Sprintf("On entering %s: the creature the deciding line was said to comes to hold %s about %s",

@@ -318,7 +318,7 @@ type grammarInput struct {
 	Cells   cells
 
 	// Doors is every door id this document declares, as its author wrote
-	// it: what a state's `holds: { door }` may name (rpg-project#852).
+	// it: what a state's `post: { door }` may name (rpg-project#852).
 	Doors map[string]bool
 
 	// Picked is every table key a creature's states pick ([picksIn],
@@ -345,9 +345,9 @@ type grammarInput struct {
 	// it is not refused a second time. A dialect with none leaves it nil.
 	Interactions map[string]*interactionShape
 
-	// LineTopics is every topic a line's success or failure row grants
+	// LineTopics is every holding a line's success or failure row gives
 	// (rpg-project#929, #932): with the interactions' outcomes, what a
-	// `recognized` requirement may name.
+	// `holds` requirement may name.
 	LineTopics map[string]bool
 }
 
@@ -358,7 +358,7 @@ type interactionShape struct {
 	beats  map[string]bool
 
 	// topics is every topic the interaction's outcomes grant
-	// (rpg-project#928): what a `recognized` requirement may name.
+	// (rpg-project#928): what a `holds` requirement may name.
 	topics map[string]bool
 }
 
@@ -559,14 +559,14 @@ const (
 // each its own sentence: no id; an id already used on
 // this binding; no line; a check written empty, or an approach that
 // rolls nothing or has nothing to beat ([grammar.approaches], the lock's own
-// grammar); a `requires` that is neither `{ fact }` nor `{ holds }`; a `holds`
+// grammar); a `requires` that is none of its forms; a `carries`
 // naming a prop this dungeon does not place, or one nobody can pick up; a
 // verdict written and left empty; and every row by the table's own grammar
 // ([grammar.answerEntry]) under the verdict's key — so `fact`, `flee` and a
 // line are legal, a time word and a `when` are not.
 //
 // props is the dialect's placed props, id to whether somebody can pick it up
-// — the universe a `holds` may name. isProp says the options are a prop's,
+// — the universe a `carries` may name. isProp says the options are a prop's,
 // whose rows may not `flee`.
 func (g *grammar) options(path string, options []OptionSpec, props map[string]bool, isProp bool) {
 	// AN EMPTY LIST IS REFUSED, NOT READ AS ABSENT — a verdict's own rule
@@ -635,7 +635,7 @@ func (g *grammar) options(path string, options []OptionSpec, props map[string]bo
 				if isProp && row.Flee != nil {
 					g.fail(rowAt+".flee", "%s", errOptionPropFlees)
 				}
-				g.rowRecognize(rowAt+".recognize", verdict.key, o, row, isProp)
+				g.rowGive(rowAt+".give", verdict.key, o, row, isProp)
 				g.rowPassage(rowAt, row)
 			}
 		}
@@ -657,8 +657,10 @@ func (g *grammar) optionRequirements(path string, requires RequiresSpec, props m
 }
 
 // optionRequires judges one item of an option's `requires`: the SPEAKER's
-// own read — a fact, or a holding of a placed prop somebody can pick up (R9)
-// — or the RUN's interaction state, judged per run and not per speaker
+// own read — a fact, or carrying a placed prop somebody can pick up (R9) —
+// what the creature spoken to holds about the speaker (`holds`, a holding
+// something in the document gives) — or the RUN's interaction state, judged
+// per run and not per speaker
 // (rpg-project#922, #916 R2), or a `not` of one; nothing else. Every item
 // of the list must hold ([grammar.optionRequirements]).
 func (g *grammar) optionRequires(path string, p *PredicateSpec, props map[string]bool, isProp bool) {
@@ -680,21 +682,33 @@ func (g *grammar) optionRequires(path string, p *PredicateSpec, props map[string
 	case "", predicateFact:
 	case predicateInteraction:
 		g.interactionRequirement(path+".interaction", p.Interaction)
-	case predicateRecognized:
-		switch {
-		case isProp:
-			g.fail(path+".recognized", "a prop holds nothing about anybody, so a line said to one cannot require recognition")
-		case !g.grants(p.Recognized):
-			g.fail(path+".recognized", "%q is a topic no interaction's `outcomes` grants, so nobody could ever be recognized on it",
-				p.Recognized)
-		}
 	case predicateHolds:
-		holdable, placed := props[p.Holds]
+		// `holds` ASKS ABOUT A PERSON, `carries` ABOUT A POCKET
+		// (rpg-project#1005): the key once meant carrying, so a prop's id
+		// under it is the old meaning and is pointed at the new word, and
+		// an id that is both a prop and a holding is refused as ambiguous.
+		_, placed := props[p.Holding]
+		given := g.grants(p.Holding)
+		// A PROP'S ID FIRST, even on a prop's own line: there `holds: purse`
+		// was legal under the old meaning, and the word the author needs is
+		// `carries`, not that a prop holds nothing.
+		switch {
+		case placed && given:
+			g.fail(path+".holds", "%s", holdsAmbiguous(p.Holding))
+		case placed:
+			g.fail(path+".holds", "%s", holdsNamesProp(p.Holding))
+		case isProp:
+			g.fail(path+".holds", "%s", errHoldsOnProp)
+		case !given:
+			g.fail(path+".holds", "%s", holdingNeverGiven(p.Holding))
+		}
+	case predicateCarries:
+		holdable, placed := props[p.Carries]
 		switch {
 		case !placed:
-			g.fail(path+".holds", "%q is not a prop in this dungeon, so nobody can hold it", p.Holds)
+			g.fail(path+".carries", "%q is not a prop in this dungeon, so nobody can carry it", p.Carries)
 		case !holdable:
-			g.fail(path+".holds", "%q is a prop nobody can pick up, so nobody can hold it", p.Holds)
+			g.fail(path+".carries", "%q is a prop nobody can pick up, so nobody can carry it", p.Carries)
 		}
 	default:
 		g.fail(path, "%s, and `%s` is none of them", optionRequiresForms, form)
@@ -756,21 +770,51 @@ func (g *grammar) optionAdvance(path string, a *AdvanceSpec, checked bool) {
 }
 
 // optionRequiresForms is the sentence naming what an option may require.
-const optionRequiresForms = "an option requires one or a list of { fact: <id> }, { holds: <prop id> }, " +
-	"{ interaction: { id, in: [<state>] } }, { recognized: <topic> }, or { not: } one of them"
+const optionRequiresForms = "an option requires one or a list of { fact: <id> }, { carries: <prop id> }, " +
+	"{ interaction: { id, in: [<state>] } }, { holds: <holding> }, or { not: } one of them"
 
-// rowRecognize judges a line's row's `recognize:` (rpg-project#929): legal on
+// errHoldsOnProp is the sentence a `holds` requirement on a prop's line is
+// refused with: a prop is never the one spoken to that holds anything.
+const errHoldsOnProp = "a prop holds nothing about anybody, so a line said to one cannot ask what it holds"
+
+// errGiveOnProp is the sentence a `give` on a prop's line's row is refused
+// with, for [errHoldsOnProp]'s reason.
+const errGiveOnProp = "a prop holds nothing about anybody, so a line said to one cannot give it a holding"
+
+// holdsNamesProp is the sentence a `holds` naming a prop of the site and no
+// holding is refused with (rpg-project#1005): `holds` once meant carrying.
+func holdsNamesProp(id string) string {
+	return fmt.Sprintf("`holds` asks what the creature spoken to holds about the speaker, and %q is a prop: "+
+		"a speaker carrying it is `carries: %s`", id, id)
+}
+
+// holdsAmbiguous is the sentence a `holds` naming an id that is both a prop of
+// the site and a holding something gives is refused with (rpg-project#1005).
+func holdsAmbiguous(id string) string {
+	return fmt.Sprintf("%q is both a prop and a holding something gives, so `holds: %s` reads two ways: "+
+		"the creature spoken to holds %q about the speaker, or (the old meaning) the speaker carries the prop %q — "+
+		"write `carries: %s` for the prop, or give the holding a name no prop has", id, id, id, id, id)
+}
+
+// holdingNeverGiven is the sentence a `holds` naming a holding nothing in the
+// document gives is refused with.
+func holdingNeverGiven(id string) string {
+	return fmt.Sprintf("%q is a holding no interaction's `outcomes` and no line's row gives, "+
+		"so nobody could ever hold it about anyone", id)
+}
+
+// rowGive judges a line's row's `give:` (rpg-project#929, #1005): legal on
 // a creature's success or failure row (rpg-project#932: a failure row is a
 // checked line's, since a plain line is refused one) — a prop holds nothing
 // about anybody — in the words an outcome uses, `heard_by` only on a line
 // that names an interaction.
-func (g *grammar) rowRecognize(at, key string, o OptionSpec, row AnswerSpec, isProp bool) {
-	if row.Recognize == nil {
+func (g *grammar) rowGive(at, key string, o OptionSpec, row AnswerSpec, isProp bool) {
+	if row.Give == nil {
 		return
 	}
 	switch {
 	case isProp:
-		g.fail(at, "a prop holds nothing about anybody, so a line said to one cannot grant recognition")
+		g.fail(at, "%s", errGiveOnProp)
 		return
 	}
 	named := o.Advance != nil
@@ -783,7 +827,7 @@ func (g *grammar) rowRecognize(at, key string, o OptionSpec, row AnswerSpec, isP
 			named = true
 		}
 	}
-	recognitionOf(at, row.Recognize, named, func(path, message string) { g.fail(path, "%s", message) })
+	givingOf(at, row.Give, named, func(path, message string) { g.fail(path, "%s", message) })
 }
 
 // rowPassage judges a line's row `tells:` and `relocate:` (rpg-project#958):
@@ -792,13 +836,13 @@ func (g *grammar) rowRecognize(at, key string, o OptionSpec, row AnswerSpec, isP
 // its regions and intel records ([grammar.regionIDs], [grammar.intelIDs]).
 func (g *grammar) rowPassage(at string, row AnswerSpec) {
 	grants := 0
-	for _, set := range []bool{row.Recognize != nil, row.Tells != "", row.Relocate != nil} {
+	for _, set := range []bool{row.Give != nil, row.Tells != "", row.Relocate != nil} {
 		if set {
 			grants++
 		}
 	}
 	if grants > 1 {
-		g.fail(at, "a row grants one thing: `recognize`, `tells` or `relocate`, not two")
+		g.fail(at, "a row grants one thing: `give`, `tells` or `relocate`, not two")
 		return
 	}
 	if row.Tells != "" && g.intelIDs != nil && !g.intelIDs[row.Tells] {
@@ -845,10 +889,10 @@ func loudnessList() string {
 
 // answerEntry validates one row of one trigger's table.
 func (g *grammar) answerEntry(at string, key string, entry AnswerSpec) {
-	// A TABLE ROW GRANTS NOTHING (rpg-project#929): `recognize` is a line's,
-	// judged by [grammar.rowRecognize] on an option's verdicts.
-	if entry.Recognize != nil && key != string(encounter.AnswerSuccess) && key != string(encounter.AnswerFailure) {
-		g.fail(at+".recognize", "recognize is only on a line's success or failure row: a table row grants nothing")
+	// A TABLE ROW GRANTS NOTHING (rpg-project#929): `give` is a line's,
+	// judged by [grammar.rowGive] on an option's verdicts.
+	if entry.Give != nil && key != string(encounter.AnswerSuccess) && key != string(encounter.AnswerFailure) {
+		g.fail(at+".give", "give is only on a line's success or failure row: a table row grants nothing")
 	}
 	if key != string(encounter.AnswerSuccess) && key != string(encounter.AnswerFailure) {
 		if entry.Tells != "" {

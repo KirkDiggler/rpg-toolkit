@@ -221,9 +221,9 @@ func (s *BothWaysSuite) TestAWaitedForNotThatCannotFireIsRefused() {
 		trigger encounter.Trigger
 		says    string
 	}{
-		{"a fact", encounter.TriggerNot{Inner: encounter.TriggerFact{Fact: bwFact}}, "holds from the start"},
-		{"a round", encounter.TriggerNot{Inner: encounter.TriggerRound{Round: 3}}, "holds from the start"},
-		{"a fall", encounter.TriggerNot{Inner: encounter.TriggerMemberDown{Member: bwScout}}, "holds from the start"},
+		{"a fact", encounter.TriggerNot{Inner: encounter.TriggerFact{Fact: bwFact}}, "is true from the start"},
+		{"a round", encounter.TriggerNot{Inner: encounter.TriggerRound{Round: 3}}, "is true from the start"},
+		{"a fall", encounter.TriggerNot{Inner: encounter.TriggerMemberDown{Member: bwScout}}, "is true from the start"},
 		{"a stance the pair is not in", encounter.TriggerNot{Inner: goblinsHostile}, "which they are not from the start"},
 		{"a holding", encounter.TriggerNot{Inner: encounter.TriggerHolds{Prop: "purse"}}, "only something an option requires"},
 		{"a not", encounter.TriggerNot{Inner: encounter.TriggerNot{Inner: goblinsNeutral}}, "a not of a not"},
