@@ -363,14 +363,14 @@ func (g *grammar) predicate(path string, p *PredicateSpec, self *[2]string) {
 		// refused.
 	case predicateStance:
 		g.stancePredicate(path+".stance", p.Stance, self)
-	case predicateHolds:
-		g.fail(path+".holds", "%s", holdsOnlyRequires)
+	case predicateCarries:
+		g.fail(path+".carries", "%s", carriesOnlyRequires)
 	case predicateLeft:
 		g.fail(path+".left", "%s", leftOnlyEndings(p.Left))
 	case predicateInteraction:
 		g.fail(path+".interaction", "%s", interactionOnlyRequires)
-	case predicateRecognized:
-		g.fail(path+".recognized", "%s", recognizedOnlyRequires)
+	case predicateHolds:
+		g.fail(path+".holds", "%s", holdsOnlyRequires)
 	case predicateNot:
 		g.not(path+".not", p.Not, self)
 	}
@@ -397,9 +397,9 @@ const notHoldsFromTheStart = "a not of a fact, a round or a fall holds from the 
 
 // not checks the inner predicate of a WAITED-FOR `not` — an until, an
 // arrival, an ending's `when` (rpg-project#719). Scoped by what it wraps: a
-// `holds` or a `left` inside is refused in its own sentence, as it is bare.
-// The liveness law turned over: a `not` of a fact, a round or a fall holds
-// from the start ([notHoldsFromTheStart]), and a `not` of a stance waits for
+// `carries`, a `holds` or a `left` inside is refused in its own sentence, as
+// it is bare. The liveness law turned over: a `not` of a fact, a round or a
+// fall holds from the start ([notHoldsFromTheStart]), and a `not` of a stance waits for
 // the pair to turn AWAY, so the pair must hold the stance from the start and
 // be able to leave it. path is the `not`'s own path (`….not`).
 func (g *grammar) not(path string, p *PredicateSpec, self *[2]string) {
@@ -408,7 +408,7 @@ func (g *grammar) not(path string, p *PredicateSpec, self *[2]string) {
 		g.fail(path, "this predicate says nothing — %s", predicateForms)
 	case predicateNot:
 		g.fail(path, "%s", notOfNot)
-	case predicateHolds, predicateLeft, predicateInteraction, predicateRecognized:
+	case predicateCarries, predicateLeft, predicateInteraction, predicateHolds:
 		g.predicate(path, p, self)
 	case predicateStance:
 		g.notStance(path+".stance", p.Stance, self)
@@ -482,17 +482,16 @@ func (g *grammar) stanceShape(path string, s *StancePredicateSpec) bool {
 	return ok
 }
 
-// holdsOnlyRequires is the sentence `holds` is refused with anywhere but an
-// option's `requires` (rpg-project#569): it is read when somebody speaks, and
-// an until, an arrival or an ending is waited for — nothing notices a holding
-// change in order to fire one.
-const holdsOnlyRequires = "`holds` is only something an option requires: it reads what the speaker carries, " +
+// carriesOnlyRequires is the sentence `carries` is refused with anywhere but
+// an option's `requires` (rpg-project#569, #1005): it is read when somebody
+// speaks, and an until, an arrival or an ending is waited for — nothing
+// notices what somebody carries change in order to fire one.
+const carriesOnlyRequires = "`carries` is only something an option requires: it reads what the speaker carries, " +
 	"and nothing here speaks"
 
-// recognizedOnlyRequires is the sentence `recognized` is refused with
-// anywhere but a creature's option's `requires` or a post's `pass`
-// (rpg-project#928).
-const recognizedOnlyRequires = "`recognized` is only something a creature's line or a post's pass requires: " +
+// holdsOnlyRequires is the sentence `holds` is refused with anywhere but a
+// creature's option's `requires` or a post's `pass` (rpg-project#928, #1005).
+const holdsOnlyRequires = "`holds` is only something a creature's line or a post's pass requires: " +
 	"it reads what the creature spoken to, or the post's holder, holds about someone, and nothing waits on it"
 
 // interactionOnlyRequires is the sentence `interaction` is refused with

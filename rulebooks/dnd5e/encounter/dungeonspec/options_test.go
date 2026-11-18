@@ -70,11 +70,11 @@ const gossipOption = `          - id: gossip
 `
 
 // `requires` compiles to the composition's own trigger: `fact` to the
-// predicate's fact, `holds` to the read-only holds trigger.
+// predicate's fact, `carries` to the read-only holds trigger.
 func TestRequiresCompilesToTheTriggerTheEngineReads(t *testing.T) {
 	compiled := loadSource(t, optionsOnGoblin(gossipOption+`          - id: bribe
             say: "Ten gold says you never saw us."
-            requires: { holds: table }
+            requires: { carries: table }
             check: [{ ability: persuasion, dc: 8 }]
             success: [{ say: "Saw who?" }]
 `))
@@ -102,7 +102,7 @@ func TestRequiresIsOneOrAListOfPredicates(t *testing.T) {
             say: "We're the troupe."
             requires:
               - { fact: feast-tonight }
-              - { not: { holds: table } }
+              - { not: { carries: table } }
             success: [{ say: "Through." }]
 `))
 	goblin := monsterNamed(t, compiled, "goblin-1")
@@ -122,10 +122,10 @@ func TestARequiresListIsJudgedPerItem(t *testing.T) {
 
 	errs := refusals(t, optionsOnGoblin(`          - id: hi
             say: "Hi."
-            requires: [{ fact: feast-tonight }, { holds: nope }]
+            requires: [{ fact: feast-tonight }, { carries: nope }]
             success: [{ say: "Hi." }]
 `))
-	requireRefusedAt(t, errs, "room.room.monsterBindings.goblin-1.options[0].requires[1].holds", "not a prop in this dungeon")
+	requireRefusedAt(t, errs, "room.room.monsterBindings.goblin-1.options[0].requires[1].carries", "not a prop in this dungeon")
 }
 
 // A line with no `check` is a plain line (rpg-project#785 R5): it compiles
@@ -238,15 +238,15 @@ func TestAnOptionIsRefusedByName(t *testing.T) {
 			options: "          - { id: hi, say: \"Hi.\", requires: { round: 2 }, " +
 				"check: [{ ability: persuasion, dc: 10 }] }\n",
 			path: at + "[0].requires",
-			message: "an option requires one or a list of { fact: <id> }, { holds: <prop id> }, { interaction: { id, in: [<state>] } }, { recognized: <topic> }, or { not: } one of them, " +
+			message: "an option requires one or a list of { fact: <id> }, { carries: <prop id> }, { interaction: { id, in: [<state>] } }, { holds: <holding> }, or { not: } one of them, " +
 				"and `round` is none of them",
 		},
 		{
 			name: "holding a prop this room does not place",
-			options: "          - { id: hi, say: \"Hi.\", requires: { holds: lantern }, " +
+			options: "          - { id: hi, say: \"Hi.\", requires: { carries: lantern }, " +
 				"check: [{ ability: persuasion, dc: 10 }] }\n",
-			path:    at + "[0].requires.holds",
-			message: `"lantern" is not a prop in this dungeon, so nobody can hold it`,
+			path:    at + "[0].requires.carries",
+			message: `"lantern" is not a prop in this dungeon, so nobody can carry it`,
 		},
 		{
 			name: "an empty verdict",
@@ -264,10 +264,10 @@ func TestAnOptionIsRefusedByName(t *testing.T) {
 
 	t.Run("holding a prop nobody can pick up", func(t *testing.T) {
 		errs := refusals(t, v4With("", "    monsterBindings:\n      goblin-1:\n        options:\n"+
-			"          - { id: hi, say: \"Hi.\", requires: { holds: table }, "+
+			"          - { id: hi, say: \"Hi.\", requires: { carries: table }, "+
 			"check: [{ ability: persuasion, dc: 10 }] }\n"))
-		requireExactDefect(t, errs, at+"[0].requires.holds",
-			`"table" is a prop nobody can pick up, so nobody can hold it`)
+		requireExactDefect(t, errs, at+"[0].requires.carries",
+			`"table" is a prop nobody can pick up, so nobody can carry it`)
 	})
 }
 
@@ -310,30 +310,30 @@ func TestAPropsOptionCannotFlee(t *testing.T) {
 		"a prop cannot run: `flee` is a creature's answer")
 }
 
-// `holds` is a read of what the SPEAKER carries, so only an option may
+// `carries` is a read of what the SPEAKER carries, so only an option may
 // require it. An ending, an arrival or an until has no speaker, and each is
 // refused by name rather than as an unknown form.
 func TestHoldsIsOnlyAnOptionsRequirement(t *testing.T) {
-	const sentence = "`holds` is only something an option requires: it reads what the speaker carries, " +
+	const sentence = "`carries` is only something an option requires: it reads what the speaker carries, " +
 		"and nothing here speaks"
 
 	t.Run("an ending", func(t *testing.T) {
-		requireExactDefect(t, refusals(t, v4With("endings:\n  - { id: rich, when: { holds: table } }", "")),
-			"endings[0].when.holds", sentence)
+		requireExactDefect(t, refusals(t, v4With("endings:\n  - { id: rich, when: { carries: table } }", "")),
+			"endings[0].when.carries", sentence)
 	})
 
 	t.Run("an arrival", func(t *testing.T) {
 		requireExactDefect(t, refusals(t, v4With("",
-			"    monsterBindings:\n      goblin-1:\n        arrives: { holds: table }")),
-			"room.room.monsterBindings.goblin-1.arrives.holds", sentence)
+			"    monsterBindings:\n      goblin-1:\n        arrives: { carries: table }")),
+			"room.room.monsterBindings.goblin-1.arrives.carries", sentence)
 	})
 
 	t.Run("an until", func(t *testing.T) {
 		requireExactDefect(t, refusals(t, v4With(
 			"factions:\n  - { id: goblins }\ndispositions:\n"+
-				"  - { between: [goblins, party], stance: hostile, until: { holds: table } }",
+				"  - { between: [goblins, party], stance: hostile, until: { carries: table } }",
 			"    monsterBindings:\n      goblin-1: { faction: goblins }")),
-			"dispositions[0].until.holds", sentence)
+			"dispositions[0].until.carries", sentence)
 	})
 }
 

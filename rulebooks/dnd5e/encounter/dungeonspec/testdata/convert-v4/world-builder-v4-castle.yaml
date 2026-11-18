@@ -7481,7 +7481,7 @@ room:
               - ability: persuasion
                 dc: 8
             requires:
-              holds: purse
+              carries: purse
             success:
               - say: Saw who?
                 fact: feast-tonight

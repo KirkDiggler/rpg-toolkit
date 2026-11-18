@@ -1304,22 +1304,27 @@ type InteractionSpec struct {
 	//
 	//	outcomes:
 	//	  admitted:
-	//	    - recognize:
-	//	        topic: admitted
-	//	        holder: spoken_to
+	//	    - give:
+	//	        holding: admitted
+	//	        to: spoken_to
 	//	        about: party_in_sight
 	//	        heard_by: carriers_who_witnessed
 	Outcomes map[string][]OutcomeSpec `yaml:"outcomes,omitempty" json:"outcomes,omitempty"`
 }
 
 // OutcomeSpec is one consequence of an interaction entering a state
-// ([encounter.Consequence]). Exactly one kind: `recognize`, `arrest` or
+// ([encounter.Consequence]). Exactly one kind: `give`, `arrest` or
 // `jail`.
 type OutcomeSpec struct {
 	SceneMove *SceneMoveSpec `yaml:"sceneMove,omitempty" json:"sceneMove,omitempty"`
 
-	// Recognize is: a holder comes to hold a topic about subjects.
-	Recognize *RecognizeSpec `yaml:"recognize,omitempty" json:"recognize,omitempty"`
+	// Give is: a creature comes to hold a holding about someone
+	// (rpg-project#1005; the engine's [encounter.Recognition]).
+	Give *GiveSpec `yaml:"give,omitempty" json:"give,omitempty"`
+
+	// OldRecognize is never set: it is here so a file still writing the
+	// retired `recognize:` is refused naming `give` ([retiredRecognize]).
+	OldRecognize *retiredRecognize `yaml:"recognize,omitempty" json:"-"`
 
 	// Arrest is: the speaker's party is arrested, to be held in a cell
 	// (rpg-project#925, [encounter.Arrest]).
@@ -1390,16 +1395,19 @@ type ArrestAreaSpec struct {
 	Cells []RoomCellRow `yaml:"cells,omitempty" json:"cells,omitempty"`
 }
 
-// RecognizeSpec is `recognize:` ([encounter.Recognition]): the topic, who
-// holds it, about whom, and who else holds it having heard. The words are
-// fixed — exactly what the gate uses — and any other is refused.
-type RecognizeSpec struct {
-	// Topic is the topic held, authored content. REQUIRED.
-	Topic string `yaml:"topic" json:"topic"`
+// GiveSpec is `give:` (rpg-project#1005; the engine's [encounter.Recognition]):
+// the holding given, to whom, about whom, and who else comes to hold it
+// having heard. The who-words are fixed — exactly what the gate uses — and
+// any other is refused.
+//
+//	give: { holding: admitted, to: spoken_to, about: party_in_sight, heard_by: carriers_who_witnessed }
+type GiveSpec struct {
+	// Holding is the holding given, authored content. REQUIRED.
+	Holding string `yaml:"holding" json:"holding"`
 
-	// Holder is who holds it: `spoken_to`, the creature the line that moved
-	// the interaction was said to. REQUIRED.
-	Holder string `yaml:"holder" json:"holder"`
+	// To is who comes to hold it: `spoken_to`, the creature the line that
+	// moved the interaction was said to. REQUIRED.
+	To string `yaml:"to" json:"to"`
 
 	// About is whom it is held about: `party_in_sight`, the speaker's party
 	// the holder sees at that moment. REQUIRED.
@@ -1409,6 +1417,12 @@ type RecognizeSpec struct {
 	// interaction's other carriers who witnessed the line. Optional; absent,
 	// nobody else.
 	HeardBy string `yaml:"heard_by,omitempty" json:"heard_by,omitempty"`
+
+	// OldTopic and OldHolder are never set: they are here so a `give` still
+	// written in the retired `recognize` fields is refused naming the new
+	// ones ([retiredTopic], [retiredHolder]).
+	OldTopic  *retiredTopic  `yaml:"topic,omitempty" json:"-"`
+	OldHolder *retiredHolder `yaml:"holder,omitempty" json:"-"`
 }
 
 // InteractionApproachSpec is an interaction's `approach` (rpg-project#923): the
@@ -1605,19 +1619,19 @@ type AnswerSpec struct {
 	// every file that has one.
 	Flee *FleeSpec `yaml:"flee,omitempty"`
 
-	// Recognize is what this row grants when it is a line's row and is the
-	// row answered (rpg-project#929): the `recognize:` an interaction's
+	// Give is the holding this row gives when it is a line's row and is the
+	// row answered (rpg-project#929, #1005): the `give:` an interaction's
 	// outcome uses, the same words. Legal on an option's success rows, and
-	// on its failure rows (rpg-project#932), granted when the checked line
+	// on its failure rows (rpg-project#932), given when the checked line
 	// is missed; a table row is refused.
 	//
 	//	success:
 	//	  - say: Fair enough. In you go.
-	//	    recognize: { topic: admitted, holder: spoken_to, about: speaker }
+	//	    give: { holding: admitted, to: spoken_to, about: speaker }
 	//	failure:
 	//	  - say: Never seen you before.
-	//	    recognize: { topic: turned-away, holder: spoken_to, about: speaker }
-	Recognize *RecognizeSpec `yaml:"recognize,omitempty"`
+	//	    give: { holding: turned-away, to: spoken_to, about: speaker }
+	Give *GiveSpec `yaml:"give,omitempty"`
 
 	// Tells is the intel record this row lands on whoever caught it when it
 	// is a line's row and is the row answered (rpg-project#958): a record of
@@ -2789,9 +2803,12 @@ func (r *AnswerSpec) UnmarshalYAML(value *yaml.Node) error {
 		if key == "activity" && value.Content[i+1].Tag == "!!null" {
 			return fmt.Errorf("line %d: activity must not be null", value.Content[i+1].Line)
 		}
+		if key == "recognize" {
+			return fmt.Errorf("line %d: %s", value.Content[i].Line, recognizeIsGive)
+		}
 		switch key {
 		case "weight", "say", "loudness", "activity", "when", "fact", "flee", "hold", "attack", "toward", "dash", "away",
-			"search", "use", "with", "as", "recognize", "tells", "relocate":
+			"search", "use", "with", "as", "give", "tells", "relocate":
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.AnswerSpec",
 				value.Content[i].Line, key)

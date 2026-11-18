@@ -825,7 +825,7 @@ func (e *Encounter) tellRecognition(
 
 // errRecognizedOnProp is the refusal of a `recognized` requirement on a
 // prop's line: a prop holds nothing about anybody.
-var errRecognizedOnProp = errors.New("a prop holds nothing about anybody, so a line said to one cannot require recognition")
+var errRecognizedOnProp = errors.New("a prop holds nothing about anybody, so a line said to one cannot ask what it holds")
 
 // validateRecognizedTopics refuses a `recognized` requirement naming a topic
 // no interaction of the run grants — a requirement nobody can ever meet —
@@ -838,7 +838,7 @@ func validateRecognizedTopics(granted map[TopicID]bool, what string, requires []
 			continue
 		}
 		if !granted[r.Topic] {
-			return fmt.Errorf("%s requires recognition on topic %q, and no interaction's outcome grants it", what, r.Topic)
+			return fmt.Errorf("%s asks whether %q is held, and no interaction's outcome gives it", what, r.Topic)
 		}
 	}
 	return nil

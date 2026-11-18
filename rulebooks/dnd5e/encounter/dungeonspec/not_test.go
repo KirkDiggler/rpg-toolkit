@@ -37,7 +37,7 @@ func TestNotCompilesToTheEnginesNegation(t *testing.T) {
             check: [{ ability: persuasion, dc: 10 }]
           - id: beg
             say: "Spare a crust?"
-            requires: { not: { holds: table } }
+            requires: { not: { carries: table } }
             check: [{ ability: persuasion, dc: 10 }]
 `))
 		goblin := monsterNamed(t, compiled, "goblin-1")
@@ -92,14 +92,14 @@ func TestNotIsRefusedByName(t *testing.T) {
 		says               []string
 	}{
 		{name: "holds under a not on an ending",
-			source: v4With("endings:\n  - { id: rich, when: { not: { holds: table } } }", ""),
-			path:   "endings[0].when.not.holds", says: []string{"`holds` is only something an option requires"}},
+			source: v4With("endings:\n  - { id: rich, when: { not: { carries: table } } }", ""),
+			path:   "endings[0].when.not.carries", says: []string{"`carries` is only something an option requires"}},
 		{name: "holds under a not on an until",
-			source: v4With(notFactions+"  - { between: [dogs, party], stance: neutral, until: { not: { holds: table } } }", ""),
-			path:   "dispositions[1].until.not.holds", says: []string{"`holds` is only something an option requires"}},
+			source: v4With(notFactions+"  - { between: [dogs, party], stance: neutral, until: { not: { carries: table } } }", ""),
+			path:   "dispositions[1].until.not.carries", says: []string{"`carries` is only something an option requires"}},
 		{name: "holds under a not on an arrival",
-			source: v4With("", "    monsterBindings:\n      goblin-2: { arrives: { not: { holds: table } } }"),
-			path:   "room.room.monsterBindings.goblin-2.arrives.not.holds", says: []string{"`holds` is only something an option requires"}},
+			source: v4With("", "    monsterBindings:\n      goblin-2: { arrives: { not: { carries: table } } }"),
+			path:   "room.room.monsterBindings.goblin-2.arrives.not.carries", says: []string{"`carries` is only something an option requires"}},
 		{name: "left under a not on an until",
 			source: v4With(twoDoors+notFactions+"  - { between: [dogs, party], stance: neutral, until: { not: { left: front-door } } }", ""),
 			path:   "dispositions[1].until.not.left", says: []string{"only an ending waits for that"}},
