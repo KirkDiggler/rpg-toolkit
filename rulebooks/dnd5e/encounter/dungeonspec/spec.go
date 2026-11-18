@@ -1305,7 +1305,7 @@ type InteractionSpec struct {
 	//	outcomes:
 	//	  admitted:
 	//	    - give:
-	//	        holding: admitted
+	//	        topic: admitted
 	//	        to: spoken_to
 	//	        about: party_in_sight
 	//	        heard_by: carriers_who_witnessed
@@ -1318,7 +1318,7 @@ type InteractionSpec struct {
 type OutcomeSpec struct {
 	SceneMove *SceneMoveSpec `yaml:"sceneMove,omitempty" json:"sceneMove,omitempty"`
 
-	// Give is: a creature comes to hold a holding about someone
+	// Give is: a creature notes a topic about someone
 	// (rpg-project#1005; the engine's [encounter.Recognition]).
 	Give *GiveSpec `yaml:"give,omitempty" json:"give,omitempty"`
 
@@ -1396,16 +1396,17 @@ type ArrestAreaSpec struct {
 }
 
 // GiveSpec is `give:` (rpg-project#1005; the engine's [encounter.Recognition]):
-// the holding given, to whom, about whom, and who else comes to hold it
+// the topic given, to whom, about whom, and who else notes it
 // having heard. The who-words are fixed — exactly what the gate uses — and
 // any other is refused.
 //
-//	give: { holding: admitted, to: spoken_to, about: party_in_sight, heard_by: carriers_who_witnessed }
+//	give: { topic: admitted, to: spoken_to, about: party_in_sight, heard_by: carriers_who_witnessed }
 type GiveSpec struct {
-	// Holding is the holding given, authored content. REQUIRED.
-	Holding string `yaml:"holding" json:"holding"`
+	// Topic is the topic given, authored content: what the one it is given
+	// to notes about someone. REQUIRED.
+	Topic string `yaml:"topic" json:"topic"`
 
-	// To is who comes to hold it: `spoken_to`, the creature the line that
+	// To is who notes it: `spoken_to`, the creature the line that
 	// moved the interaction was said to. REQUIRED.
 	To string `yaml:"to" json:"to"`
 
@@ -1417,12 +1418,6 @@ type GiveSpec struct {
 	// interaction's other carriers who witnessed the line. Optional; absent,
 	// nobody else.
 	HeardBy string `yaml:"heard_by,omitempty" json:"heard_by,omitempty"`
-
-	// OldTopic and OldHolder are never set: they are here so a `give` still
-	// written in the retired `recognize` fields is refused naming the new
-	// ones ([retiredTopic], [retiredHolder]).
-	OldTopic  *retiredTopic  `yaml:"topic,omitempty" json:"-"`
-	OldHolder *retiredHolder `yaml:"holder,omitempty" json:"-"`
 }
 
 // InteractionApproachSpec is an interaction's `approach` (rpg-project#923): the
@@ -1619,7 +1614,7 @@ type AnswerSpec struct {
 	// every file that has one.
 	Flee *FleeSpec `yaml:"flee,omitempty"`
 
-	// Give is the holding this row gives when it is a line's row and is the
+	// Give is the topic this row gives when it is a line's row and is the
 	// row answered (rpg-project#929, #1005): the `give:` an interaction's
 	// outcome uses, the same words. Legal on an option's success rows, and
 	// on its failure rows (rpg-project#932), given when the checked line
@@ -1627,10 +1622,10 @@ type AnswerSpec struct {
 	//
 	//	success:
 	//	  - say: Fair enough. In you go.
-	//	    give: { holding: admitted, to: spoken_to, about: speaker }
+	//	    give: { topic: admitted, to: spoken_to, about: speaker }
 	//	failure:
 	//	  - say: Never seen you before.
-	//	    give: { holding: turned-away, to: spoken_to, about: speaker }
+	//	    give: { topic: turned-away, to: spoken_to, about: speaker }
 	Give *GiveSpec `yaml:"give,omitempty"`
 
 	// Tells is the intel record this row lands on whoever caught it when it

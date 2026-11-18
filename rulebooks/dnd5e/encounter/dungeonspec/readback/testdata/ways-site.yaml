@@ -115,7 +115,7 @@ room:
           ready:
             door: gate-door
             against: entering
-            pass: { holds: admitted }
+            pass: { noted: admitted }
             at:
               - { q: 2, r: 0 }
       g2:
@@ -135,7 +135,7 @@ room:
           ready:
             door: gate-door
             against: entering
-            pass: { holds: admitted }
+            pass: { noted: admitted }
             at:
               - { q: 1, r: 0 }
       idle:
@@ -146,7 +146,7 @@ room:
             success:
               - say: Much obliged.
                 give:
-                  holding: admitted
+                  topic: admitted
                   to: spoken_to
                   about: party_in_sight
 interactions:
@@ -162,7 +162,7 @@ interactions:
     outcomes:
       admitted:
         - give:
-            holding: admitted
+            topic: admitted
             to: spoken_to
             about: party_in_sight
             heard_by: carriers_who_witnessed

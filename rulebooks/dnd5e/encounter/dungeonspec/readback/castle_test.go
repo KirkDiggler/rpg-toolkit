@@ -235,7 +235,7 @@ func (s *CastleSuite) statement(kind readback.Kind, path string) readback.Statem
 }
 
 // TestThreeGuardsHoldTheGate: every gate guard holds the gate door and lets
-// through whom it holds `admitted` about.
+// through whom it has noted `admitted` about.
 func (s *CastleSuite) TestThreeGuardsHoldTheGate() {
 	for _, post := range []struct{ who, state, name string }{
 		{"gate-1", "posted", "Guard (gate-1)"},
@@ -248,7 +248,7 @@ func (s *CastleSuite) TestThreeGuardsHoldTheGate() {
 		s.Contains(hold.Sentence, "every creature not allied with "+post.name+" is barred")
 		pass := s.statement(readback.KindPass, at+".pass")
 		s.Contains(pass.Sentence, post.name+" lets a walker through that post, as an ally walks, when "+
-			post.name+" holds `admitted` about the walker.")
+			post.name+" has noted `admitted` about the walker.")
 	}
 }
 
@@ -266,12 +266,12 @@ func (s *CastleSuite) TestTheCaptainsGuestClaim() {
 	// is what admits, and it names the captain among its holders.
 	out := s.statement(readback.KindOutcome, "interactions.front-gate.outcomes.admitted[0].give").Sentence
 	s.Contains(out, "When the conversation `front-gate` enters `admitted`, the creature the deciding line was said to "+
-		"(whichever of Guard (gate-1), Guard (gate-2) and Guard Captain (captain) that was) is given the holding `admitted`, and comes to hold it about "+
+		"(whichever of Guard (gate-1), Guard (gate-2) and Guard Captain (captain) that was) is given the topic `admitted`, and notes it about "+
 		"the speaker and each member of the speaker's party that the creature sees at that moment")
 	s.Contains(out, "Every other creature that carries the conversation `front-gate`")
-	s.Contains(out, "was among those the line's words reached when it was said, and is up, comes to hold `admitted` "+
+	s.Contains(out, "was among those the line's words reached when it was said, and is up, notes `admitted` "+
 		"about the same members too, having heard it, whether or not it sees them itself; one the words did not reach "+
-		"holds nothing, even if it saw the line said",
+		"notes nothing, even if it saw the line said",
 		"the heard channel follows the line's words, not sight (rpg-project#933, R9)")
 }
 
@@ -306,12 +306,12 @@ func (s *CastleSuite) TestALineSaysItsLoudnessAndWhoPerceivesWhat() {
 	s.Contains(st.Sentence, "whoever only sees it said learns neither the words, which line it was, whether it worked, nor what it taught")
 }
 
-// TestTheCaptainGoesIn: the captain's routine wakes on the holding and walks
+// TestTheCaptainGoesIn: the captain's routine wakes on the topic and walks
 // to the hall.
 func (s *CastleSuite) TestTheCaptainGoesIn() {
 	wake := s.statement(readback.KindRoutineWake, "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[2]")
-	s.Contains(wake.Sentence, "In the state `ready`, when Guard Captain (captain) comes to hold a holding about someone")
-	s.Contains(wake.Sentence, "if Guard Captain (captain) holds `admitted` about anyone")
+	s.Contains(wake.Sentence, "In the state `ready`, when Guard Captain (captain) notes a topic about someone")
+	s.Contains(wake.Sentence, "if Guard Captain (captain) has noted `admitted` about anyone")
 	s.Contains(wake.Sentence, "Guard Captain (captain) moves to the state `in-hall`")
 	walk := s.statement(readback.KindRoutineRow, "behaviorDefinitions.captain-policy.table.in-hall[0]")
 	s.Contains(walk.Sentence, "Guard Captain (captain) walks toward the cell q 3, r -9")
@@ -325,25 +325,25 @@ func (s *CastleSuite) TestTheGuardsVouchAndStraggler() {
 	for _, g := range []struct{ id, name string }{{"gate-1", "Guard (gate-1)"}, {"gate-2", "Guard (gate-2)"}} {
 		base := "room.room.monsterBindings." + g.id + ".options"
 		s.Contains(s.statement(readback.KindLineRequire, base+"[0].requires[1]").Sentence,
-			"only while "+g.name+" holds `admitted` about the speaker.")
+			"only while "+g.name+" has noted `admitted` about the speaker.")
 		vouch := s.statement(readback.KindLineGrant, base+"[0].success[0].give").Sentence
-		s.Contains(vouch, g.name+" — the creature the line is said to — is given the holding `admitted`, and comes to hold it about the speaker and each member of the speaker's party that "+g.name+" sees")
+		s.Contains(vouch, g.name+" — the creature the line is said to — is given the topic `admitted`, and notes it about the speaker and each member of the speaker's party that "+g.name+" sees")
 		s.Contains(s.statement(readback.KindLineRequire, base+"[1].requires[1]").Sentence,
-			"only while "+g.name+" does NOT hold `admitted` about the speaker.")
+			"only while "+g.name+" has NOT noted `admitted` about the speaker.")
 		s.Contains(s.statement(readback.KindLineRequire, base+"[1].requires[2]").Sentence,
-			"only while "+g.name+" does NOT hold `turned-away` about the speaker.")
+			"only while "+g.name+" has NOT noted `turned-away` about the speaker.")
 		s.Contains(s.statement(readback.KindLineCheck, base+"[1].check").Sentence,
 			"Persuasion against DC 13, or Deception against DC 15")
 		away := s.statement(readback.KindLineGrant, base+"[1].failure[0].give").Sentence
 		s.Contains(away, "On a miss of the line")
-		s.Contains(away, g.name+" — the creature the line is said to — is given the holding `turned-away`, and comes to hold it about the speaker alone")
+		s.Contains(away, g.name+" — the creature the line is said to — is given the topic `turned-away`, and notes it about the speaker alone")
 		s.Contains(away, "Every other creature that carries the conversation `front-gate`")
 	}
 }
 
-// topicSites walks the authored tree for every place a holding is given (a
+// topicSites walks the authored tree for every place a topic is given (a
 // `give`) and every place it is asked for or woken on (a `holds` requirement
-// or pass, a `holds.anyone:` guard), at the path the read-back should name.
+// or pass, a `noted.anyone:` guard), at the path the read-back should name.
 func topicSites(n *yaml.Node, path string, grants, asks map[string]map[string]bool) {
 	note := func(m map[string]map[string]bool, topic, at string) {
 		if m[topic] == nil {
@@ -361,13 +361,13 @@ func topicSites(n *yaml.Node, path string, grants, asks map[string]map[string]bo
 			}
 			switch {
 			case key == "give":
-				note(grants, child(v, "holding").Value, at)
-			case key == "holds" && v.Kind == yaml.ScalarNode:
+				note(grants, child(v, "topic").Value, at)
+			case key == "noted" && v.Kind == yaml.ScalarNode:
 				note(asks, v.Value, askingPlace.FindString(at))
-			case key == "name" && strings.HasPrefix(v.Value, "holds.anyone:"):
-				note(asks, strings.TrimPrefix(v.Value, "holds.anyone:"), wakingPlace.FindString(at))
-			case key == "name" && strings.HasPrefix(v.Value, "holds:"):
-				note(asks, strings.TrimPrefix(v.Value, "holds:"), wakingPlace.FindString(at))
+			case key == "name" && strings.HasPrefix(v.Value, "noted.anyone:"):
+				note(asks, strings.TrimPrefix(v.Value, "noted.anyone:"), wakingPlace.FindString(at))
+			case key == "name" && strings.HasPrefix(v.Value, "noted:"):
+				note(asks, strings.TrimPrefix(v.Value, "noted:"), wakingPlace.FindString(at))
 			}
 			topicSites(v, at, grants, asks)
 		}
@@ -622,13 +622,14 @@ func (s *CastleSuite) TestTheGrateIsDoneNotSaid() {
 	s.Contains(s.statement(readback.KindLineGrant, base+".success[0].relocate").Sentence, "is done,")
 }
 
-// TestTheHoldingWords (rpg-project#1005): the castle reads back in the
-// holding words — every sentence, folded or not, says "holds … about" and
-// "is given", never "recognises", and nothing says "holds when" for "is true
-// when". An author's own id in backticks (the fact `party-recognized`) is
+// TestTheNotedWords (rpg-project#1005): the castle reads back in the
+// noted words — every sentence, folded or not, says "has noted … about" and
+// "is given the topic", never "recognises", never that something is held
+// about someone (hold is physical), never "a note", and nothing says "holds
+// when" for "is true when". An author's own id in backticks (the fact `party-recognized`) is
 // content, not the read-back's word, and is not read. The gate guard's vouch
-// says what he holds about the speaker once.
-func (s *CastleSuite) TestTheHoldingWords() {
+// says what he has noted about the speaker once.
+func (s *CastleSuite) TestTheNotedWords() {
 	ids := regexp.MustCompile("`[^`]*`")
 	for name, text := range map[string]string{
 		"sentences": s.rb.Text(), "folded": s.rb.FoldedText(), "folded each": s.rb.FoldedEachText(),
@@ -637,19 +638,22 @@ func (s *CastleSuite) TestTheHoldingWords() {
 		s.NotContains(lower, "recognis", name)
 		s.NotContains(lower, "recogniz", name)
 		s.NotContains(lower, "holds when", name)
+		s.NotContains(lower, "holds `id` about", name)
+		s.NotContains(lower, "hold `id` about", name)
+		s.NotContains(lower, "a note ", name)
 	}
 	req := s.statement(readback.KindLineRequire, "room.room.monsterBindings.gate-1.options[0].requires[1]").Sentence
-	s.Equal(1, strings.Count(req, "holds `admitted` about the speaker"), req)
+	s.Equal(1, strings.Count(req, "has noted `admitted` about the speaker"), req)
 }
 
 // TestTheCaptainLeavesOnALie: the read-back says the captain's step on a
 // line heard (rpg-project#1000) in plain words — the line heard at once, a
 // claim that failed, and what he holds about the one he heard, whom he
-// knows only by seeing — with the holding it asks for as a connection.
+// knows only by seeing — with the topic it asks for as a connection.
 func (s *CastleSuite) TestTheCaptainLeavesOnALie() {
 	wake := s.statement(readback.KindRoutineWake, "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1]")
 	s.Contains(wake.Sentence, "In the state `in-hall`, when Guard Captain (captain) hears a sound (a line a character says is heard at once, as it is said), "+
-		"if what Guard Captain (captain) heard was a claim that failed and Guard Captain (captain) holds `admitted` about the one "+
+		"if what Guard Captain (captain) heard was a claim that failed and Guard Captain (captain) has noted `admitted` about the one "+
 		"Guard Captain (captain) heard (Guard Captain (captain) knows who only by seeing them), Guard Captain (captain) moves to the state `back-to-gate`")
 	s.True(connected(wake, "topic", "admitted", "asks"), wake.Sentence)
 	walk := s.statement(readback.KindRoutineRow, "behaviorDefinitions.captain-policy.table.back-to-gate[0]")
@@ -658,5 +662,5 @@ func (s *CastleSuite) TestTheCaptainLeavesOnALie() {
 	post := s.statement(readback.KindPost, "room.room.monsterBindings.captain.posts.back-to-gate")
 	s.Contains(post.Sentence, "Guard Captain (captain) holds the door `gate-wall-door`")
 	pass := s.statement(readback.KindPass, "room.room.monsterBindings.captain.posts.back-to-gate.pass")
-	s.Contains(pass.Sentence, "when Guard Captain (captain) holds `admitted` about the walker")
+	s.Contains(pass.Sentence, "when Guard Captain (captain) has noted `admitted` about the walker")
 }

@@ -114,12 +114,12 @@ type HoldsSpec struct {
 // PassSpec is a post's `pass` (rpg-project#928), in one of two spellings:
 //
 //	pass: troupe-password     # a fact the mover knows: a password
-//	pass: { holds: admitted } # the post's holder holds admitted about the mover
+//	pass: { noted: admitted } # the post's holder has noted admitted about the mover
 //
 // The second is the requirement grammar an option's `requires` uses ([RequiresSpec]:
 // one predicate or a list, every one of which must hold), judged with the
 // MOVER as "me" and the post's HOLDER as "the other party". On a pass it
-// takes `{ fact }`, `{ holds }` and a `{ not }` of one: an
+// takes `{ fact }`, `{ noted }` and a `{ not }` of one: an
 // interaction's state is the run's, never the pair's, and a holding is not
 // yet a pass any content asks for. The bare word is kept as written, so a
 // document round-trips the way it was authored.
@@ -168,10 +168,10 @@ func (p PassSpec) MarshalJSON() ([]byte, error) {
 
 // passForms is the sentence naming what a pass may say.
 const passForms = "a pass is a fact (`pass: <fact>`), or one or a list of { fact: <id> }, " +
-	"{ holds: <holding> }, or { not: } one of them"
+	"{ noted: <topic> }, or { not: } one of them"
 
 // passRefusal judges a pass's grammar spelling: every predicate a fact, a
-// `holds` of a holding something gives (topics), or a `not` of
+// `noted` of a topic something gives (topics), or a `not` of
 // one. The first defect, at its own path under at, or "" for none. The
 // bare-word spelling is the caller's to judge against its facts.
 func passRefusal(at string, p *PassSpec, topics map[string]bool) (string, string) {
@@ -193,9 +193,11 @@ func passRefusal(at string, p *PassSpec, topics map[string]bool) (string, string
 		}
 		switch pred.Form() {
 		case predicateFact:
-		case predicateHolds:
-			if !topics[pred.Holding] {
-				return path + ".holds", holdingNeverGiven(pred.Holding)
+		case predicateRetiredHolds:
+			return path + ".holds", holdsRetired(pred.RetiredHolds, false, topics[pred.RetiredHolds])
+		case predicateNoted:
+			if !topics[pred.Noted] {
+				return path + ".noted", topicNeverGiven(pred.Noted)
 			}
 		default:
 			return path, passForms

@@ -125,7 +125,7 @@ func newBehaviorRuntime(in *BehaviorInput, progress *behavior.ComposerData) (*be
 			}
 		}
 		// A GUARD THAT READS THE BEAT reads one that carries it
-		// (rpg-project#1000): a claim on `heard`, a holding about someone
+		// (rpg-project#1000): a claim on `heard`, a topic about someone
 		// on a beat that names them.
 		if err := guardWordsOf(&spec.Recipe); err != nil {
 			return nil, fmt.Errorf("behaviors %q %w", spec.ID, err)

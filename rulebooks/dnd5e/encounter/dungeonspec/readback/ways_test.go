@@ -218,7 +218,7 @@ func (s *WaysCastleSuite) TestWays_Castle_VouchNeedsSomeoneAdmitted() {
 	s.Equal([]string{"free"}, methods(w))
 	s.True(connected(w, "topic", "admitted", "needs"), w.Sentence)
 	s.True(connected(w, "conversation", "front-gate", "needs"), w.Sentence)
-	s.Contains(w.Sentence, "the guard holds `admitted` about the speaker")
+	s.Contains(w.Sentence, "the guard has noted `admitted` about the speaker")
 	s.NotContains(w.Sentence, "{self}")
 }
 
@@ -498,7 +498,7 @@ func byLine(rb *readback.ReadBack, line string) *readback.Statement {
 }
 
 // g2Pass is g2's post's pass, to replace.
-const g2Pass = "            pass: { holds: admitted }\n            at:\n              - { q: 1, r: 0 }"
+const g2Pass = "            pass: { noted: admitted }\n            at:\n              - { q: 1, r: 0 }"
 
 // TestWays_Site_AGrantHeardByEveryHolderIsAWay: g1's `claim` makes g1 hold
 // `admitted` and g2 hold it heard (g2 carries `gate`): every holder's pass
@@ -553,7 +553,7 @@ func (s *WaysSiteSuite) TestWays_Site_APasswordPassIsKnowledge() {
 // on the password alone, knowing it is a way.
 func (s *WaysSiteSuite) TestWays_Site_EveryHolderOnAPasswordIsAKnownWay() {
 	rb := s.read(g2Pass, "            pass: { fact: password }\n            at:\n              - { q: 1, r: 0 }",
-		"            pass: { holds: admitted }\n            at:\n              - { q: 2, r: 0 }",
+		"            pass: { noted: admitted }\n            at:\n              - { q: 2, r: 0 }",
 		"            pass: { fact: password }\n            at:\n              - { q: 2, r: 0 }")
 	var kinds []readback.Kind
 	for _, w := range waysThrough(rb, siteGate) {
@@ -566,7 +566,7 @@ func (s *WaysSiteSuite) TestWays_Site_EveryHolderOnAPasswordIsAKnownWay() {
 // TestWays_Site_AMixedPassNeedsItsFact (probe m3): g2's pass is `admitted`
 // AND the password; `claim` is a way that needs the password too.
 func (s *WaysSiteSuite) TestWays_Site_AMixedPassNeedsItsFact() {
-	rb := s.read(g2Pass, "            pass: [{ holds: admitted }, { fact: password }]\n            at:\n              - { q: 1, r: 0 }")
+	rb := s.read(g2Pass, "            pass: [{ noted: admitted }, { fact: password }]\n            at:\n              - { q: 1, r: 0 }")
 	w := byLine(rb, "g1/claim")
 	s.Require().NotNil(w)
 	s.Equal(readback.KindWayLine, w.Kind)
@@ -622,7 +622,7 @@ func (s *WaysSiteSuite) TestWays_Site_AnArrestWithNoJailHasNoWay() {
 }
 
 // g1Pass is g1's post's pass, to replace.
-const g1Pass = "            pass: { holds: admitted }\n            at:\n              - { q: 2, r: 0 }"
+const g1Pass = "            pass: { noted: admitted }\n            at:\n              - { q: 2, r: 0 }"
 
 // TestWays_Site_AHolderWithNoPassStillHolds (probe m6): g1 lets through a
 // walker who knows the password; g2's post has no pass, so it lets nobody

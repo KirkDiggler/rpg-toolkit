@@ -31,7 +31,7 @@ const (
 )
 
 // The goblin's lines: a checked claim, a plain greeting, a plain line whose
-// answer gives the speaker the holding `admitted`, and a checked case whose
+// answer gives the speaker the topic `admitted`, and a checked case whose
 // failure row gives them `turned-away`.
 const (
 	lineClaim = "claim"
@@ -241,12 +241,12 @@ func TestALineHeardSaysWhetherTheClaimHeld(t *testing.T) {
 
 // TestHoldsAsksAboutTheOneHeard: `holds:admitted` is what the goblin holds
 // about the one it heard and saw — not anybody. Bob is admitted; alice's
-// claim does not move him, bob's does. The line that gives the holding is
+// claim does not move him, bob's does. The line that gives the topic is
 // heard before its own grant, so it moves nothing either.
 func TestHoldsAsksAboutTheOneHeard(t *testing.T) {
-	enc := lineHall(t, ears(t, false, on("heard", "knows", fact("holds:admitted", true))), nil)
+	enc := lineHall(t, ears(t, false, on("heard", "knows", fact("noted:admitted", true))), nil)
 	sayTo(t, enc, lineBob, lineVouch, true)
-	require.Equal(t, "quiet", stateOf(t, enc, goblin), "the line that gives the holding is heard before it is given")
+	require.Equal(t, "quiet", stateOf(t, enc, goblin), "the line that gives the topic is heard before it is given")
 	sayTo(t, enc, alice, lineHello, true)
 	require.Equal(t, "quiet", stateOf(t, enc, goblin), "he holds `admitted` about bob, not about alice")
 	sayTo(t, enc, lineBob, lineHello, true)
@@ -260,7 +260,7 @@ func TestHoldsAsksAboutTheOneHeard(t *testing.T) {
 // the same room, is a voice from nobody.
 func TestHoldsNeedsTheSpeakerSeen(t *testing.T) {
 	sight := sightRanges{}
-	enc := lineHall(t, ears(t, false, on("heard", "knows", fact("holds:admitted", true))), sight)
+	enc := lineHall(t, ears(t, false, on("heard", "knows", fact("noted:admitted", true))), sight)
 	_, err := enc.Speak(context.Background(), &encounter.SpeakInput{
 		Range: 10, Actor: lineBob, Target: lineNear, OptionID: lineVouch, Roller: rollsLowest{},
 	})
@@ -278,7 +278,7 @@ func TestHoldsNeedsTheSpeakerSeen(t *testing.T) {
 // first miss finds him holding nothing and only the second moves him.
 func TestALinesOwnFailureRowIsNotReadByItsOwnBeat(t *testing.T) {
 	enc := lineHall(t, ears(t, false,
-		on("heard", "again", fact("heard.claim", "failed"), fact("holds:turned-away", true)),
+		on("heard", "again", fact("heard.claim", "failed"), fact("noted:turned-away", true)),
 	), nil)
 	sayTo(t, enc, alice, lineCase, false)
 	require.Equal(t, "quiet", stateOf(t, enc, goblin), "the first miss: he held nothing when he heard it")

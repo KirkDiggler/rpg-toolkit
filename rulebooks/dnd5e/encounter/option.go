@@ -470,8 +470,8 @@ func (e *Encounter) requirementHolds(actor, other MemberID, requires Trigger) bo
 	case TriggerRecognized:
 		// THE OTHER PARTY'S HOLDING ABOUT ME (rpg-project#928): a line said
 		// to a prop has no other party, and never holds. The arrested rule
-		// is [Encounter.holdsAbout]'s, a machine's `holds:` asking alike.
-		return e.holdsAbout(other, actor, t.Topic)
+		// is [Encounter.hasNoted]'s, a machine's `noted:` asking alike.
+		return e.hasNoted(other, actor, t.Topic)
 	default:
 		return false
 	}

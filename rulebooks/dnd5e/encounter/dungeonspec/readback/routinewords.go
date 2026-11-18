@@ -28,7 +28,7 @@ func beatWords(on machine.Beat, who string) string {
 	case "fact":
 		return fmt.Sprintf("when %s learns a fact", who)
 	case "topic":
-		return fmt.Sprintf("when %s comes to hold a holding about someone, by its own judgement or by hearing it", who)
+		return fmt.Sprintf("when %s notes a topic about someone, by its own judgement or by hearing it", who)
 	case "approached":
 		return fmt.Sprintf("when %s hails a character, which happens only under the conversation's hail rule: the "+
 			"character's own step ended within the approach distance, %s sees them and they see %s, %s offers them a line "+
@@ -54,7 +54,7 @@ func beatWords(on machine.Beat, who string) string {
 
 // guardWords says a transition's guard as a condition clause, with the
 // topics and facts it reads. on is the transition's beat: who a
-// `holds:<holding>` asks about is the one that beat names.
+// `noted:<topic>` asks about is the one that beat names.
 func guardWords(g *machine.Guard, who string, on machine.Beat) (string, []Connection) {
 	if g == nil {
 		return "", nil
@@ -78,17 +78,17 @@ func guardWords(g *machine.Guard, who string, on machine.Beat) (string, []Connec
 			add(fmt.Sprintf("what %s heard was a claim that %s", who, val), nil)
 		case name == "heard.claim" && g.Fact.Op == "ne":
 			add(fmt.Sprintf("what %s heard was not a claim that %s", who, val), nil)
-		case strings.HasPrefix(name, "holds:") && g.Fact.Op == "eq" && (val == "true" || val == "false"):
-			id := strings.TrimPrefix(name, "holds:")
-			verb := "holds"
+		case strings.HasPrefix(name, "noted:") && g.Fact.Op == "eq" && (val == "true" || val == "false"):
+			id := strings.TrimPrefix(name, "noted:")
+			verb := "has noted"
 			if val == "false" {
-				verb = "does not hold"
+				verb = "has not noted"
 			}
 			add(fmt.Sprintf("%s %s %s about %s", who, verb, quote(id), aboutWords(on, who)),
 				[]Connection{{Kind: "topic", ID: id, Role: "asks"}})
 		case strings.HasPrefix(name, "topic:") && g.Fact.Op == "eq" && val == "true":
 			id := strings.TrimPrefix(name, "topic:")
-			add(fmt.Sprintf("%s holds %s about anyone", who, quote(id)),
+			add(fmt.Sprintf("%s has noted %s about anyone", who, quote(id)),
 				[]Connection{{Kind: "topic", ID: id, Role: "wakes-on"}})
 		default:
 			add(fmt.Sprintf("%s %s is %s %s", whose(who), quote(name), opWords(g.Fact.Op), val), nil)
@@ -128,7 +128,7 @@ func guardWords(g *machine.Guard, who string, on machine.Beat) (string, []Connec
 	return strings.Join(parts, " and "), conns
 }
 
-// aboutWords is the one a beat names, as a `holds:<holding>` asks about them
+// aboutWords is the one a beat names, as a `noted:<topic>` asks about them
 // (rpg-project#1000).
 func aboutWords(on machine.Beat, who string) string {
 	switch on {

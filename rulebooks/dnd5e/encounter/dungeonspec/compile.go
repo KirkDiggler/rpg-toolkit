@@ -671,10 +671,10 @@ func predicateOf(p *PredicateSpec) encounter.Trigger {
 		return encounter.TriggerInteraction{
 			Interaction: encounter.InteractionID(p.Interaction.ID), In: append([]string(nil), p.Interaction.In...),
 		}
-	case predicateHolds:
+	case predicateNoted:
 		// A creature's option's `requires` and a post's `pass` only
 		// (rpg-project#928); refused elsewhere.
-		return encounter.TriggerRecognized{Topic: encounter.TopicID(p.Holding)}
+		return encounter.TriggerRecognized{Topic: encounter.TopicID(p.Noted)}
 	default:
 		return nil
 	}

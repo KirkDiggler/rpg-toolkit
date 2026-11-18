@@ -27,12 +27,12 @@ func (s *ContentCheckSuite) TestTheCastleCompiles() {
 }
 
 // TestAMisspeltTopicIsRefusedInTheCompilersWords: the gate guard's pass names
-// `admited`, a holding nothing gives; the checker prints the compiler's own
+// `admited`, a topic nothing gives; the checker prints the compiler's own
 // sentence at the path it refused, and exits 1.
 func (s *ContentCheckSuite) TestAMisspeltTopicIsRefusedInTheCompilersWords() {
 	raw, err := os.ReadFile(castle)
 	s.Require().NoError(err)
-	bad := strings.Replace(string(raw), "pass: { holds: admitted }", "pass: { holds: admited }", 1)
+	bad := strings.Replace(string(raw), "pass: { noted: admitted }", "pass: { noted: admited }", 1)
 	s.Require().NotEqual(string(raw), bad)
 	path := filepath.Join(s.T().TempDir(), "bad.yaml")
 	s.Require().NoError(os.WriteFile(path, []byte(bad), 0o600))
@@ -40,8 +40,8 @@ func (s *ContentCheckSuite) TestAMisspeltTopicIsRefusedInTheCompilersWords() {
 	var out, errOut bytes.Buffer
 	s.Equal(1, run([]string{path}, &out, &errOut))
 	s.True(strings.HasPrefix(out.String(), "REFUSED: "), out.String())
-	s.Contains(out.String(), "room.room.monsterBindings.gate-1.posts.alert.pass.holds: "+
-		"\"admited\" is a holding no interaction's `outcomes` and no line's row gives, so nobody could ever hold it about anyone")
+	s.Contains(out.String(), "room.room.monsterBindings.gate-1.posts.alert.pass.noted: "+
+		"\"admited\" is a topic no interaction's `outcomes` and no line's row gives, so nobody could ever have noted it about anyone")
 }
 
 func (s *ContentCheckSuite) TestUsageAndUnreadable() {

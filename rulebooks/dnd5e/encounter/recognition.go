@@ -480,16 +480,16 @@ func (e *Encounter) recognizes(holder, subject MemberID, topic TopicID) bool {
 	return err == nil
 }
 
-// holdsAbout is the one question "does holder hold topic about subject, now"
-// (rpg-project#928, #1000): a line's and a post's `holds` requirement, and a
-// machine's `holds:<holding>` guard, asked from the same holder.
+// hasNoted is the one question "has holder noted topic about subject, now"
+// (rpg-project#928, #1000): a line's and a post's `noted` requirement, and a
+// machine's `noted:<topic>` guard, asked from the same holder.
 //
 // HELD AS ARRESTED IS UNDER ARREST NOW (rpg-project#925, arrest.go): the
 // guard's record stays for good, but it is true only while the member is
 // still held — not once a fight broke the hold, nor once jailed — so a line
 // that takes the arrested (`come-quietly`) is never offered to someone it
 // cannot take.
-func (e *Encounter) holdsAbout(holder, subject MemberID, topic TopicID) bool {
+func (e *Encounter) hasNoted(holder, subject MemberID, topic TopicID) bool {
 	if topic == TopicArrested && !e.inCustody(subject) {
 		return false
 	}
@@ -841,7 +841,7 @@ func (e *Encounter) tellRecognition(
 
 // errRecognizedOnProp is the refusal of a `recognized` requirement on a
 // prop's line: a prop holds nothing about anybody.
-var errRecognizedOnProp = errors.New("a prop holds nothing about anybody, so a line said to one cannot ask what it holds")
+var errRecognizedOnProp = errors.New("a prop notes nothing about anybody, so a line said to one cannot ask what it has noted")
 
 // validateRecognizedTopics refuses a `recognized` requirement naming a topic
 // no interaction of the run grants — a requirement nobody can ever meet —
@@ -854,7 +854,7 @@ func validateRecognizedTopics(granted map[TopicID]bool, what string, requires []
 			continue
 		}
 		if !granted[r.Topic] {
-			return fmt.Errorf("%s asks whether %q is held, and no interaction's outcome gives it", what, r.Topic)
+			return fmt.Errorf("%s asks whether %q is noted, and no interaction's outcome gives it", what, r.Topic)
 		}
 	}
 	return nil

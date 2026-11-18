@@ -365,12 +365,15 @@ func (g *grammar) predicate(path string, p *PredicateSpec, self *[2]string) {
 		g.stancePredicate(path+".stance", p.Stance, self)
 	case predicateCarries:
 		g.fail(path+".carries", "%s", carriesOnlyRequires)
+	case predicateRetiredHolds:
+		m, placed := g.members.at(p.RetiredHolds)
+		g.fail(path+".holds", "%s", holdsRetired(p.RetiredHolds, placed && !m.isMonster(), g.grants(p.RetiredHolds)))
 	case predicateLeft:
 		g.fail(path+".left", "%s", leftOnlyEndings(p.Left))
 	case predicateInteraction:
 		g.fail(path+".interaction", "%s", interactionOnlyRequires)
-	case predicateHolds:
-		g.fail(path+".holds", "%s", holdsOnlyRequires)
+	case predicateNoted:
+		g.fail(path+".noted", "%s", notedOnlyRequires)
 	case predicateNot:
 		g.not(path+".not", p.Not, self)
 	}
@@ -397,7 +400,7 @@ const notHoldsFromTheStart = "a not of a fact, a round or a fall is true from th
 
 // not checks the inner predicate of a WAITED-FOR `not` — an until, an
 // arrival, an ending's `when` (rpg-project#719). Scoped by what it wraps: a
-// `carries`, a `holds` or a `left` inside is refused in its own sentence, as
+// `carries`, a `noted` or a `left` inside is refused in its own sentence, as
 // it is bare. The liveness law turned over: a `not` of a fact, a round or a
 // fall holds from the start ([notHoldsFromTheStart]), and a `not` of a stance waits for
 // the pair to turn AWAY, so the pair must hold the stance from the start and
@@ -408,7 +411,7 @@ func (g *grammar) not(path string, p *PredicateSpec, self *[2]string) {
 		g.fail(path, "this predicate says nothing — %s", predicateForms)
 	case predicateNot:
 		g.fail(path, "%s", notOfNot)
-	case predicateCarries, predicateLeft, predicateInteraction, predicateHolds:
+	case predicateCarries, predicateRetiredHolds, predicateLeft, predicateInteraction, predicateNoted:
 		g.predicate(path, p, self)
 	case predicateStance:
 		g.notStance(path+".stance", p.Stance, self)
@@ -489,10 +492,10 @@ func (g *grammar) stanceShape(path string, s *StancePredicateSpec) bool {
 const carriesOnlyRequires = "`carries` is only something an option requires: it reads what the speaker carries, " +
 	"and nothing here speaks"
 
-// holdsOnlyRequires is the sentence `holds` is refused with anywhere but a
+// notedOnlyRequires is the sentence `noted` is refused with anywhere but a
 // creature's option's `requires` or a post's `pass` (rpg-project#928, #1005).
-const holdsOnlyRequires = "`holds` is only something a creature's line or a post's pass requires: " +
-	"it reads what the creature spoken to, or the post's holder, holds about someone, and nothing waits on it"
+const notedOnlyRequires = "`noted` is only something a creature's line or a post's pass requires: " +
+	"it reads what the creature spoken to, or the post's holder, has noted about someone, and nothing waits on it"
 
 // interactionOnlyRequires is the sentence `interaction` is refused with
 // anywhere but an option's `requires` (rpg-project#922).
