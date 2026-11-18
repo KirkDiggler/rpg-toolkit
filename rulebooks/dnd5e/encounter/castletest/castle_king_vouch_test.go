@@ -100,6 +100,9 @@ func TestMain(m *testing.M) {
 	if pattern == "" || err != nil || slices.ContainsFunc(passageSceneTests, re.MatchString) {
 		passageScene.once.Do(buildThePassageScene)
 	}
+	if pattern == "" || err != nil || slices.ContainsFunc(liedToSceneTests, re.MatchString) {
+		liedToScene.once.Do(buildTheLiedToScene)
+	}
 	os.Exit(m.Run())
 }
 

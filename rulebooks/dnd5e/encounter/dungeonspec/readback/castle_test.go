@@ -315,7 +315,7 @@ func (s *CastleSuite) TestTheCaptainGoesIn() {
 	s.Contains(wake.Sentence, "Guard Captain (captain) moves to the state `in-hall`")
 	walk := s.statement(readback.KindRoutineRow, "behaviorDefinitions.captain-policy.table.in-hall[0]")
 	s.Contains(walk.Sentence, "Guard Captain (captain) walks toward the cell q 3, r -9")
-	tick := s.statement(readback.KindRoutineWake, "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1]")
+	tick := s.statement(readback.KindRoutineWake, "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[2]")
 	s.Contains(tick.Sentence, "acts from its own `in-hall` rows")
 }
 
@@ -366,6 +366,8 @@ func topicSites(n *yaml.Node, path string, grants, asks map[string]map[string]bo
 				note(asks, v.Value, askingPlace.FindString(at))
 			case key == "name" && strings.HasPrefix(v.Value, "holds.anyone:"):
 				note(asks, strings.TrimPrefix(v.Value, "holds.anyone:"), wakingPlace.FindString(at))
+			case key == "name" && strings.HasPrefix(v.Value, "holds:"):
+				note(asks, strings.TrimPrefix(v.Value, "holds:"), wakingPlace.FindString(at))
 			}
 			topicSites(v, at, grants, asks)
 		}
@@ -521,7 +523,7 @@ func (s *CastleSuite) TestTheEngineRulesSayWhenTheWaitEnds() {
 // post and a knight answer (rpg-project#933), as the engine judges it.
 func (s *CastleSuite) TestTheGuardsAnswerShoutsNotTalk() {
 	wake := s.statement(readback.KindRoutineWake, "behaviorDefinitions.gate-1-policy.recipe.states.posted.transitions[5]")
-	s.Contains(wake.Sentence, "when Guard (gate-1) hears a sound, if it happened within 6 cells of Guard (gate-1) and "+
+	s.Contains(wake.Sentence, "when Guard (gate-1) hears a sound (a line a character says is heard at once, as it is said), if it happened within 6 cells of Guard (gate-1) and "+
 		"(NOT (what Guard (gate-1) heard was a `voice`), or what Guard (gate-1) heard was a voice at `shout` or louder "+
 		"(a clang, a crash or a boom is at no loudness)), Guard (gate-1) moves to the state `alert`")
 	row := s.statement(readback.KindRoutineRow, "behaviorDefinitions.keep-1-policy.table.time[5]")
@@ -638,4 +640,23 @@ func (s *CastleSuite) TestTheHoldingWords() {
 	}
 	req := s.statement(readback.KindLineRequire, "room.room.monsterBindings.gate-1.options[0].requires[1]").Sentence
 	s.Equal(1, strings.Count(req, "holds `admitted` about the speaker"), req)
+}
+
+// TestTheCaptainLeavesOnALie: the read-back says the captain's step on a
+// line heard (rpg-project#1000) in plain words — the line heard at once, a
+// claim that failed, and what he holds about the one he heard, whom he
+// knows only by seeing — with the holding it asks for as a connection.
+func (s *CastleSuite) TestTheCaptainLeavesOnALie() {
+	wake := s.statement(readback.KindRoutineWake, "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1]")
+	s.Contains(wake.Sentence, "In the state `in-hall`, when Guard Captain (captain) hears a sound (a line a character says is heard at once, as it is said), "+
+		"if what Guard Captain (captain) heard was a claim that failed and Guard Captain (captain) holds `admitted` about the one "+
+		"Guard Captain (captain) heard (Guard Captain (captain) knows who only by seeing them), Guard Captain (captain) moves to the state `back-to-gate`")
+	s.True(connected(wake, "topic", "admitted", "asks"), wake.Sentence)
+	walk := s.statement(readback.KindRoutineRow, "behaviorDefinitions.captain-policy.table.back-to-gate[0]")
+	s.Contains(walk.Sentence, "Guard Captain (captain) walks toward the cell q -4, r 8")
+	// Back at the gate he keeps it: the same post as in `ready`.
+	post := s.statement(readback.KindPost, "room.room.monsterBindings.captain.posts.back-to-gate")
+	s.Contains(post.Sentence, "Guard Captain (captain) holds the door `gate-wall-door`")
+	pass := s.statement(readback.KindPass, "room.room.monsterBindings.captain.posts.back-to-gate.pass")
+	s.Contains(pass.Sentence, "when Guard Captain (captain) holds `admitted` about the walker")
 }

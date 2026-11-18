@@ -121,7 +121,7 @@ func stepShape(from string, tr machine.Transition) []Connection {
 // wakeWords says one routine transition about who, without its state.
 func wakeWords(tr machine.Transition, who string) (string, []Connection) {
 	s := beatWords(tr.On, who)
-	cond, conns := guardWords(tr.When, who)
+	cond, conns := guardWords(tr.When, who, tr.On)
 	if cond != "" {
 		s += ", if " + cond
 	}

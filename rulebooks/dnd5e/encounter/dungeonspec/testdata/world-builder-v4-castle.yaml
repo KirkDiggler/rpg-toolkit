@@ -2066,6 +2066,14 @@ room:
             at:
               - q: -4
                 r: 8
+          # Hand edit (rpg-project#1000): the same post, back from the hall.
+          back-to-gate:
+            door: gate-wall-door
+            against: entering
+            pass: { holds: admitted }
+            at:
+              - q: -4
+                r: 8
       # A FAILED THEFT CLOSES THE KITCHEN, NOT THE KEEP (rpg-project#719):
       # the pilfer's failure teaches `caught-in-kitchen` to whoever saw it,
       # and the cook's theft and gossip are withheld from a speaker who knows
@@ -2869,9 +2877,61 @@ behaviorDefinitions:
                   value: true
               to: turned
               reason: the garrison turned
+            # Hand edit (rpg-project#1000): a line is heard at once. A claim
+            # that fails, from someone he holds `admitted` about and saw say
+            # it, sends him back out to his gate. A stranger's failed claim
+            # leaves him in the hall: he holds nothing about them.
+            - on: heard
+              when:
+                all:
+                  - fact:
+                      name: heard.claim
+                      op: eq
+                      value: failed
+                  - fact:
+                      name: holds:admitted
+                      op: eq
+                      value: true
+              to: back-to-gate
+              reason: an admitted guest lied to him
             - on: time
               do:
                 - pick: in-hall
+            - on: turn
+              do:
+                - pick: time
+        # Hand edit (rpg-project#1000): back to the gate, and keeping it. A
+        # concrete recipe cannot step on arriving (only a sequence's `$done`
+        # can), so this state carries his `ready` post, hail and bump: the
+        # post holds once he stands on its cell. It has no step on `topic`,
+        # so holding `admitted` about anyone never sends him back in.
+        back-to-gate:
+          transitions:
+            - on: fact
+              when:
+                fact:
+                  name: fact:guards-turned
+                  op: eq
+                  value: true
+              to: turned
+              reason: the garrison turned
+            - on: fact
+              when:
+                fact:
+                  name: fact:gate-cowed
+                  op: eq
+                  value: true
+              to: cowed
+              reason: stood aside
+            - on: approached
+              do:
+                - pick: approached
+            - on: barred
+              do:
+                - pick: barred
+            - on: time
+              do:
+                - pick: back-to-gate
             - on: turn
               do:
                 - pick: time
@@ -2893,6 +2953,10 @@ behaviorDefinitions:
       in-hall:
         - when: {enemy: none}
           toward: {at: {q: 3, r: -9}}
+      # Hand edit (rpg-project#1000): back to his gate spot, where he started.
+      back-to-gate:
+        - when: {enemy: none}
+          toward: {at: {q: -4, r: 8}}
       time:
         # Hand edit (smarter monsters S2, rpg-project#669): the captain goes for
         # whoever hit him, past a nearer enemy, as one line. Otherwise the rows

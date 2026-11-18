@@ -14,7 +14,9 @@ import (
 type BehaviorVocabularyInput struct {
 	Facts  []FactID
 	Clocks []string
-	// Topics are the topics a guard may read as `topic:<id>` (rpg-project#929).
+	// Topics are the holdings a guard may ask about: about anybody as
+	// `topic:<id>` (rpg-project#929), about the one the beat names as
+	// `holds:<id>` (rpg-project#1000).
 	Topics []TopicID
 }
 
@@ -52,6 +54,7 @@ func BehaviorVocabulary(in *BehaviorVocabularyInput) (*BehaviorVocabularyOutput,
 			return nil, fmt.Errorf("behavior vocabulary: empty topic ID")
 		}
 		addGuardFacts(v.Facts, &machine.Guard{Fact: &machine.FactLeaf{Name: MachineTopic(string(id))}})
+		addGuardFacts(v.Facts, &machine.Guard{Fact: &machine.FactLeaf{Name: MachineHolds(string(id))}})
 	}
 	return &BehaviorVocabularyOutput{Vocabulary: v}, nil
 }

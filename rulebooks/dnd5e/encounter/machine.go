@@ -6,6 +6,7 @@ package encounter
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"slices"
 	"sort"
@@ -37,8 +38,9 @@ func machineVocabulary() machine.Vocabulary {
 			beatFact: unscoped, beatTopic: unscoped, clockBeat(worldClockName): unscoped, clockBeat(clockFight): unscoped,
 		},
 		Facts: map[machine.FactName]machine.FactSpec{
-			factEnemy:    {Kind: machine.KindString, Read: readEnemy},
-			"heard.kind": {Kind: machine.KindString, Read: readHeardKind},
+			factEnemy:      {Kind: machine.KindString, Read: readEnemy},
+			"heard.kind":   {Kind: machine.KindString, Read: readHeardKind},
+			factHeardClaim: {Kind: machine.KindString, Read: readHeardClaim},
 		},
 	}
 }
@@ -92,6 +94,24 @@ func addGuardFacts(facts map[machine.FactName]machine.FactSpec, g *machine.Guard
 			return len(held) > 0, true
 		}}
 	}
+	// WHAT THIS CREATURE HOLDS ABOUT THE ONE THIS BEAT IS ABOUT
+	// (rpg-project#1000): the question a line's `holds` requirement asks,
+	// asked from the same holder, about the one the beat names. A beat that
+	// names nobody holds nothing about anybody: false.
+	if g.Fact != nil && strings.HasPrefix(string(g.Fact.Name), holdsPrefix) && len(g.Fact.Name) > len(holdsPrefix) {
+		topic := TopicID(strings.TrimPrefix(string(g.Fact.Name), holdsPrefix))
+		facts[g.Fact.Name] = machine.FactSpec{Kind: machine.KindBool, Read: func(env any) (any, bool) {
+			me, ok := env.(*machineEnv)
+			if !ok {
+				return nil, false
+			}
+			ev, ok := me.event.(wakeEv)
+			if !ok || ev.Subject == "" {
+				return false, true
+			}
+			return me.e.holdsAbout(me.id, ev.Subject, topic), true
+		}}
+	}
 	// A RAISED VOICE (rpg-project#933): only a loudness this rulebook names
 	// is registered, so a misspelt word is a fact the vocabulary refuses.
 	if g.Fact != nil && strings.HasPrefix(string(g.Fact.Name), heardLoudnessPrefix) {
@@ -117,6 +137,90 @@ type machineEnv struct {
 }
 
 func (e *Encounter) envFor(id MemberID) *machineEnv { return &machineEnv{e: e, id: id} }
+
+// factHeardClaim names the guard fact that reads a caught checked line's
+// verdict (rpg-project#1000): [ClaimHeld] or [ClaimFailed]. A plain line, a
+// noise, or a voice whose words were not caught is neither.
+const factHeardClaim machine.FactName = "heard.claim"
+
+// holdsPrefix names a guard fact true while this creature holds a holding
+// about the one the beat names (rpg-project#1000): `holds:<holding>`.
+// `holds.anyone:<holding>` (the engine's `topic:<id>`) is the question
+// about anybody.
+const holdsPrefix = "holds:"
+
+// readHeardClaim is `heard.claim`'s reader: the verdict the beat carries,
+// unknown when it carries none.
+func readHeardClaim(env any) (any, bool) {
+	me, ok := env.(*machineEnv)
+	if !ok {
+		return nil, false
+	}
+	ev, ok := me.event.(wakeEv)
+	if !ok || ev.Claim == "" {
+		return nil, false
+	}
+	return ev.Claim, true
+}
+
+// namingBeats is the beats whose event names the one it is about, in the
+// order a refusal lists them: what a `holds:<holding>` guard may be read on.
+var namingBeats = []machine.Beat{beatHeard, beatSeen, beatBarred, beatApproached}
+
+// GuardWordsRefusal is the refusal of one transition's guard words that
+// read the beat itself (rpg-project#1000), or "" when they are sound: a
+// `heard.claim` must name held or failed and be read on `heard`; a
+// `holds:<holding>` must be read on a beat that names someone (`heard`,
+// `seen`, `barred`, `approached`). The one sentence the engine and a
+// content compiler both say.
+func GuardWordsRefusal(on machine.Beat, g *machine.Guard) string {
+	if g == nil {
+		return ""
+	}
+	if g.Fact != nil {
+		name := string(g.Fact.Name)
+		switch {
+		case g.Fact.Name == factHeardClaim:
+			if v, ok := g.Fact.Value.(string); !ok || (v != ClaimHeld && v != ClaimFailed) {
+				return fmt.Sprintf("`heard.claim` is %s or %s, and this names %q", ClaimHeld, ClaimFailed, fmt.Sprint(g.Fact.Value))
+			}
+			if on != beatHeard {
+				return fmt.Sprintf("`heard.claim` reads what the creature heard, and `%s` is not hearing: it is read on `heard` only", on)
+			}
+		case strings.HasPrefix(name, holdsPrefix) && len(name) > len(holdsPrefix):
+			if !slices.Contains(namingBeats, on) {
+				return fmt.Sprintf("`%s` asks about the one this beat is about, and `%s` is about nobody: "+
+					"it is read on heard, seen, barred and approached", name, on)
+			}
+		}
+	}
+	children := []*machine.Guard{g.Not}
+	for i := range g.All {
+		children = append(children, &g.All[i])
+	}
+	for i := range g.Any {
+		children = append(children, &g.Any[i])
+	}
+	for _, c := range children {
+		if refusal := GuardWordsRefusal(on, c); refusal != "" {
+			return refusal
+		}
+	}
+	return ""
+}
+
+// guardWordsOf is the first refusal of a recipe's guard words
+// ([GuardWordsRefusal]), naming the state and the transition, or nil.
+func guardWordsOf(r *machine.Recipe) error {
+	for _, name := range slices.Sorted(maps.Keys(r.States)) {
+		for i, t := range r.States[name].Transitions {
+			if refusal := GuardWordsRefusal(t.On, t.When); refusal != "" {
+				return fmt.Errorf("state %q transition %d: %s", name, i, refusal)
+			}
+		}
+	}
+	return nil
+}
 
 func readHeardKind(env any) (any, bool) {
 	me, ok := env.(*machineEnv)
@@ -181,6 +285,9 @@ func readEnemy(env any) (any, bool) {
 func compileRecipe(r *machine.Recipe) (*machine.Program, error) {
 	p, err := r.Compile(vocabularyFor(r))
 	if err != nil {
+		return nil, err
+	}
+	if err := guardWordsOf(r); err != nil {
 		return nil, err
 	}
 	for _, key := range picksOf(r) {
@@ -465,6 +572,10 @@ func MachineFact(id string) machine.FactName { return machine.FactName(factPrefi
 // true while the member holds that topic about anybody, read from its own
 // holdings.
 func MachineTopic(id string) machine.FactName { return machine.FactName(topicPrefix + id) }
+
+// MachineHolds names a guard fact true while the creature holds a holding
+// about the one the beat names (rpg-project#1000): `holds:<id>`.
+func MachineHolds(id string) machine.FactName { return machine.FactName(holdsPrefix + id) }
 
 // MachineEnemyFact reads the actor's own enemy band, never authoritative intel.
 const MachineEnemyFact = factEnemy

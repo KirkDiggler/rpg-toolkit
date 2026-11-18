@@ -36,7 +36,7 @@ func beatWords(on machine.Beat, who string) string {
 	case "barred":
 		return fmt.Sprintf("when someone walks into %s and its body stops them", who)
 	case "heard":
-		return fmt.Sprintf("when %s hears a sound", who)
+		return fmt.Sprintf("when %s hears a sound (a line a character says is heard at once, as it is said)", who)
 	case "seen":
 		return fmt.Sprintf("when an opposed creature comes into %s sight", whose(who))
 	case "deed":
@@ -53,8 +53,9 @@ func beatWords(on machine.Beat, who string) string {
 }
 
 // guardWords says a transition's guard as a condition clause, with the
-// topics and facts it reads.
-func guardWords(g *machine.Guard, who string) (string, []Connection) {
+// topics and facts it reads. on is the transition's beat: who a
+// `holds:<holding>` asks about is the one that beat names.
+func guardWords(g *machine.Guard, who string, on machine.Beat) (string, []Connection) {
 	if g == nil {
 		return "", nil
 	}
@@ -73,6 +74,18 @@ func guardWords(g *machine.Guard, who string) (string, []Connection) {
 		case strings.HasPrefix(name, "heard.loudness:") && g.Fact.Op == "eq" && val == "true":
 			add(fmt.Sprintf("what %s heard was a voice%s (a clang, a crash or a boom is at no loudness)",
 				who, raisedWords(strings.TrimPrefix(name, "heard.loudness:"))), nil)
+		case name == "heard.claim" && g.Fact.Op == "eq":
+			add(fmt.Sprintf("what %s heard was a claim that %s", who, val), nil)
+		case name == "heard.claim" && g.Fact.Op == "ne":
+			add(fmt.Sprintf("what %s heard was not a claim that %s", who, val), nil)
+		case strings.HasPrefix(name, "holds:") && g.Fact.Op == "eq" && (val == "true" || val == "false"):
+			id := strings.TrimPrefix(name, "holds:")
+			verb := "holds"
+			if val == "false" {
+				verb = "does not hold"
+			}
+			add(fmt.Sprintf("%s %s %s about %s", who, verb, quote(id), aboutWords(on, who)),
+				[]Connection{{Kind: "topic", ID: id, Role: "asks"}})
 		case strings.HasPrefix(name, "topic:") && g.Fact.Op == "eq" && val == "true":
 			id := strings.TrimPrefix(name, "topic:")
 			add(fmt.Sprintf("%s holds %s about anyone", who, quote(id)),
@@ -96,23 +109,39 @@ func guardWords(g *machine.Guard, who string) (string, []Connection) {
 		add(fmt.Sprintf("%s rounds have passed since %s set its anchor", opWords(g.Rounds.Op)+" "+fmt.Sprint(g.Rounds.N), who), nil)
 	}
 	for i := range g.All {
-		s, c := guardWords(&g.All[i], who)
+		s, c := guardWords(&g.All[i], who, on)
 		add(s, c)
 	}
 	if len(g.Any) > 0 {
 		var any []string
 		for i := range g.Any {
-			s, c := guardWords(&g.Any[i], who)
+			s, c := guardWords(&g.Any[i], who, on)
 			any = append(any, s)
 			conns = append(conns, c...)
 		}
 		parts = append(parts, "("+strings.Join(any, ", or ")+")")
 	}
 	if g.Not != nil {
-		s, c := guardWords(g.Not, who)
+		s, c := guardWords(g.Not, who, on)
 		add("NOT ("+s+")", c)
 	}
 	return strings.Join(parts, " and "), conns
+}
+
+// aboutWords is the one a beat names, as a `holds:<holding>` asks about them
+// (rpg-project#1000).
+func aboutWords(on machine.Beat, who string) string {
+	switch on {
+	case "heard":
+		return "the one " + who + " heard (" + who + " knows who only by seeing them)"
+	case "seen":
+		return "the one " + who + " saw"
+	case "barred":
+		return "the one who walked into " + who
+	case "approached":
+		return "the one " + who + " hailed"
+	}
+	return "nobody (`" + string(on) + "` is about nobody)"
 }
 
 // opWords says a comparison.

@@ -20,7 +20,7 @@ import (
 // (“the garrison turned”)".
 func shortWake(tr machine.Transition) string {
 	s := shortBeat(tr.On)
-	if cond, _ := guardWords(tr.When, "it"); cond != "" {
+	if cond, _ := guardWords(tr.When, "it", tr.On); cond != "" {
 		s += ", if " + cond
 	}
 	var does []string
@@ -70,7 +70,7 @@ func shortBeat(on machine.Beat) string {
 	case "barred":
 		return "when someone walks into it and its body stops them"
 	case "heard":
-		return "on hearing a sound"
+		return "on hearing a sound (a character's line at once)"
 	case "seen":
 		return "when an opposed creature comes into its sight"
 	case "clock:fight":
