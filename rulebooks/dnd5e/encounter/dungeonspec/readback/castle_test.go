@@ -654,4 +654,9 @@ func (s *CastleSuite) TestTheCaptainLeavesOnALie() {
 	s.True(connected(wake, "topic", "admitted", "asks"), wake.Sentence)
 	walk := s.statement(readback.KindRoutineRow, "behaviorDefinitions.captain-policy.table.back-to-gate[0]")
 	s.Contains(walk.Sentence, "Guard Captain (captain) walks toward the cell q -4, r 8")
+	// Back at the gate he keeps it: the same post as in `ready`.
+	post := s.statement(readback.KindPost, "room.room.monsterBindings.captain.posts.back-to-gate")
+	s.Contains(post.Sentence, "Guard Captain (captain) holds the door `gate-wall-door`")
+	pass := s.statement(readback.KindPass, "room.room.monsterBindings.captain.posts.back-to-gate.pass")
+	s.Contains(pass.Sentence, "when Guard Captain (captain) holds `admitted` about the walker")
 }

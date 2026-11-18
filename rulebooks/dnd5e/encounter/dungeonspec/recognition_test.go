@@ -70,15 +70,21 @@ func TestDungeonspec_AnOutcomeCompilesOntoItsInteraction(t *testing.T) {
 }
 
 func TestDungeonspec_APassStillTakesAFact(t *testing.T) {
-	c := loadSource(t, castleWith(t, `            pass: { holds: admitted }
+	// The captain keeps one post in `ready` and the same in `back-to-gate`
+	// (rpg-project#1000): both take the password.
+	const captainsPass = `            pass: { holds: admitted }
             at:
               - q: -4
                 r: 8
-`, `            pass: password
+`
+	source := castleSource(t)
+	require.Equal(t, 2, strings.Count(source, captainsPass), "the castle writes the captain's post twice")
+	c := loadSource(t, strings.ReplaceAll(source, captainsPass, `            pass: password
             at:
               - q: -4
                 r: 8
 `))
+	require.Len(t, monsterNamed(t, c, "captain").Posts, 2)
 	for _, p := range monsterNamed(t, c, "captain").Posts {
 		require.Equal(t, []encounter.Trigger{encounter.TriggerFact{Fact: "password"}}, p.Pass, "a bare word is the password it always was")
 	}

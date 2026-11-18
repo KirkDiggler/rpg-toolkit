@@ -37,11 +37,19 @@ var liedToScene struct {
 	once sync.Once
 	err  error
 	blob []byte
+	// afterTheLie is the same run the moment the hero's claim to the
+	// captain has failed: the Speak, and the round it paid, played.
+	afterTheLie []byte
+	// backAtTheGate is the same run played on: the hero's claim failed to
+	// the captain, rounds passed until he stood on his gate spot, and one
+	// round more, which leaves him there.
+	backAtTheGate []byte
 }
 
 // liedToSceneTests are the tests that start from [liedToScene].
 var liedToSceneTests = []string{
 	"TestMadKingTheCaptainLeavesTheHallWhenAnAdmittedGuestLies", "TestMadKingAStrangersLieLeavesTheCaptainInTheHall",
+	"TestMadKingTheCaptainHoldsTheGateAgain",
 }
 
 // buildTheLiedToScene plays [liedToScene] from the admitted scene. The fact
@@ -74,20 +82,39 @@ func buildTheLiedToScene() {
 	require.True(tb, s.recognizes(kingGate1, straggler), "precondition: gate-1 admitted the straggler")
 	s.walkTo(s.at(kingCaptain))
 	s.walkMember(straggler, s.at(hero), false)
+	require.Equal(tb, "in-hall", machineState(tb, s.enc, kingCaptain), "precondition: the captain is in the hall")
+	require.True(tb, s.recognizes(kingCaptain, hero), "precondition: he admitted the hero")
+	require.False(tb, s.recognizes(kingCaptain, straggler), "precondition: and never the straggler")
 	liedToScene.blob, err = json.Marshal(s.enc.ToData())
+	require.NoError(tb, err)
+
+	// The hero lies; the captain walks back to his gate spot.
+	s.failTheClaim(hero)
+	liedToScene.afterTheLie, err = json.Marshal(s.enc.ToData())
+	require.NoError(tb, err)
+	for range 20 {
+		if s.at(kingCaptain) == captainsGateSpot {
+			break
+		}
+		s.aRoundPasses()
+	}
+	require.Equal(tb, captainsGateSpot, s.at(kingCaptain), "precondition: he reaches his gate spot")
+	s.aRoundPasses()
+	// The straggler, whom he never admitted, walks back out to the gate.
+	s.walkMember(straggler, s.at(kingGate1), false)
+	liedToScene.backAtTheGate, err = json.Marshal(s.enc.ToData())
 	require.NoError(tb, err)
 }
 
-// liedTo loads [liedToScene] into a fresh run, and checks where it stands.
+// liedTo loads [liedToScene] into a fresh run.
 func liedTo(t *testing.T) *kingScene {
 	t.Helper()
 	liedToScene.once.Do(buildTheLiedToScene)
 	require.NoError(t, liedToScene.err)
-	s := loadTheScene(t, liedToScene.blob)
-	require.Equal(t, "in-hall", machineState(t, s.enc, kingCaptain), "precondition: the captain is in the hall")
-	require.True(t, s.recognizes(kingCaptain, hero), "precondition: he admitted the hero")
-	require.False(t, s.recognizes(kingCaptain, straggler), "precondition: and never the straggler")
-	return s
+	// Its preconditions are the build's: the captain in the hall, holding
+	// `admitted` about the hero and not about the straggler. Each read of
+	// the whole run is a test's own clock, so they are not read again here.
+	return loadTheScene(t, liedToScene.blob)
 }
 
 // failTheClaim has a member miss the Ashford claim to the captain.
@@ -101,19 +128,20 @@ func (s *kingScene) failTheClaim(member encounter.MemberID) {
 	require.NoError(s.t, err, "%s says the claim to the captain", member)
 }
 
+// TestMadKingTheCaptainLeavesTheHallWhenAnAdmittedGuestLies is read off the
+// stored moment right after the hero's failed claim (the build played the
+// Speak): he answered it, turned for the gate in that Speak, and the round
+// the checked line paid already has him walking.
 func TestMadKingTheCaptainLeavesTheHallWhenAnAdmittedGuestLies(t *testing.T) {
 	t.Parallel()
-	s := liedTo(t)
-	s.failTheClaim(hero)
-	require.Equal(t, "back-to-gate", machineState(t, s.enc, kingCaptain), "the admitted hero lied: he turns for the gate at once")
+	liedToScene.once.Do(buildTheLiedToScene)
+	require.NoError(t, liedToScene.err)
+	s := loadTheScene(t, liedToScene.afterTheLie)
+	require.Equal(t, "back-to-gate", machineState(t, s.enc, kingCaptain), "the admitted hero lied: he turns for the gate")
 	require.Equal(t, []encounter.MemberID{kingCaptain}, s.answeredWithWords("Lies. Get out before I change my mind."),
 		"and he answered the line")
-
-	from := s.enc.Distance(s.at(kingCaptain), captainsGateSpot)
-	s.aRoundPasses()
-	require.Less(t, s.enc.Distance(s.at(kingCaptain), captainsGateSpot), from, "he walks back toward his gate")
-	hall, _ := s.enc.RegionAt(s.at(kingCaptain))
-	require.NotEqual(t, encounter.RegionID("region-great-hall"), hall, "and out of the hall")
+	require.Less(t, s.enc.Distance(s.at(kingCaptain), captainsGateSpot), s.enc.Distance(captainsPlaceInTheHall, captainsGateSpot),
+		"his first steps are toward his gate")
 }
 
 func TestMadKingAStrangersLieLeavesTheCaptainInTheHall(t *testing.T) {
@@ -123,9 +151,23 @@ func TestMadKingAStrangersLieLeavesTheCaptainInTheHall(t *testing.T) {
 	require.Equal(t, []encounter.MemberID{kingCaptain}, s.answeredWithWords("Lies. Get out before I change my mind."),
 		"he answers the straggler")
 	require.Equal(t, "in-hall", machineState(t, s.enc, kingCaptain), "and stays: he holds nothing about them")
-	at := s.at(kingCaptain)
-	s.aRoundPasses()
-	require.Equal(t, at, s.at(kingCaptain), "in the hall")
+}
+
+// TestMadKingTheCaptainHoldsTheGateAgain: back on his gate spot he keeps
+// the gate as he did in `ready` — his post bars the straggler, whom he holds
+// nothing about, though both gate guards let them through — and, still
+// holding `admitted` about the hero, nothing sends him back into the hall:
+// a round on, he is there.
+func TestMadKingTheCaptainHoldsTheGateAgain(t *testing.T) {
+	t.Parallel()
+	liedToScene.once.Do(buildTheLiedToScene)
+	require.NoError(t, liedToScene.err)
+	s := loadTheScene(t, liedToScene.backAtTheGate)
+	require.Equal(t, captainsGateSpot, s.at(kingCaptain), "he stands on his gate spot, a round after arriving")
+	require.Equal(t, "back-to-gate", machineState(t, s.enc, kingCaptain), "in the state that keeps his post")
+	require.True(t, s.recognizes(kingCaptain, hero), "he still holds `admitted` about the hero")
+	require.Equal(t, []encounter.MemberID{kingCaptain}, s.heldAgainst(straggler),
+		"his post bars the straggler he never admitted, whom the gate guards let through")
 }
 
 // answeredWithWords is every creature the hero was written answering with

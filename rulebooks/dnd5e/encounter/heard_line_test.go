@@ -38,6 +38,7 @@ const (
 	lineHello = "hello"
 	lineVouch = "vouch-me"
 	lineCase  = "case"
+	lineAside = "aside"
 )
 
 // lineOptions are the goblin's four lines.
@@ -52,6 +53,7 @@ func lineOptions() []encounter.Option {
 		{ID: lineClaim, Say: "We're expected.", Check: persuade,
 			Success: []encounter.Answer{{Weight: 1, Say: "Go on."}}, Failure: []encounter.Answer{{Weight: 1, Say: "Liar."}}},
 		{ID: lineHello, Say: "Evening.", Success: []encounter.Answer{{Weight: 1, Say: "Evening."}}},
+		{ID: lineAside, Say: "A word.", Success: []encounter.Answer{{Weight: 1, Say: "Not here.", Loudness: "whisper"}}},
 		{ID: lineVouch, Say: "Remember me.", Success: []encounter.Answer{{Weight: 1, Say: "I will."}},
 			Grants: []encounter.RowGrant{{Row: 0, Consequence: give("admitted")}}},
 		{ID: lineCase, Say: "I fell behind.", Check: persuade,
@@ -184,6 +186,25 @@ func TestALineIsHeardAtOnce(t *testing.T) {
 	require.Equal(t, map[encounter.MemberID]string{
 		goblin: "heard", lineNear: "heard", lineDeafEyed: "heard", lineNextDoor: "heard", lineFar: "quiet",
 	}, states(t, enc))
+}
+
+// TestALineIsHeardOnlyOnce: a line heard at once is not also landed for the
+// next raise. Alice's plain aside is answered in a whisper only she
+// catches, so nothing else of it can reach the room: after it, nothing of
+// hers waits for a listener, and the raise steps nobody a second time.
+func TestALineIsHeardOnlyOnce(t *testing.T) {
+	enc := lineHall(t, ears(t, true, on("heard", "once")), nil)
+	sayTo(t, enc, alice, lineAside, true)
+	require.Equal(t, "once", stateOf(t, enc, lineNear), "heard at once")
+	for _, b := range enc.ToData().Landed {
+		require.False(t, b.Beat == "heard" && b.Subject == alice, "nothing of alice's line waits for the raise: %+v", b)
+	}
+	_, err := aRound(enc)
+	require.NoError(t, err)
+	got := states(t, enc)
+	for _, id := range []encounter.MemberID{goblin, lineNear, lineDeafEyed, lineNextDoor} {
+		require.Equal(t, "once", got[id], "%s is stepped once for the line", id)
+	}
 }
 
 // TestALineHeardSaysWhetherTheClaimHeld: `heard.claim` is held or failed for
