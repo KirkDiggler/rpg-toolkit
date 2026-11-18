@@ -434,7 +434,7 @@ func (e *Encounter) sweepPresence(at uint64) error {
 				if err := e.holdings.holdIntel(mind, rec, "carried into its presence by "+string(holder)); err != nil {
 					return fmt.Errorf("presence transfer %q to %q: %w", rec, mind, err)
 				}
-				if err := e.applyReveals(mind, rec, at); err != nil {
+				if err := e.applyReveals(mind, rec, lootedCause, at); err != nil {
 					return err
 				}
 			}

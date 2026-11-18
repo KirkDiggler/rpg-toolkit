@@ -172,6 +172,27 @@ func (s *ReadTestSuite) TestStatusReportsOpen() {
 	s.Nil(status.Outcome, "an open encounter has no outcome yet")
 }
 
+// TestStatusCarriesThePartysSharing: the status read names the party's
+// sharing dial the run plays at (rpg-project#935), as the stored world
+// holds it — at each their own, at shared view, and unmarked, which reads
+// as the default, shared view.
+func (s *ReadTestSuite) TestStatusCarriesThePartysSharing() {
+	s.startWith(hexWorld())
+	for _, tc := range []struct {
+		stored encounter.Sharing
+		want   session.PartySharing
+	}{
+		{encounter.SharingOwn, session.PartySharingOwn},
+		{encounter.SharingView, session.PartySharingView},
+		{"", session.PartySharingView},
+	} {
+		s.encounters.byID["sess"].Sharing = tc.stored
+		status, err := s.mgr.Status(context.Background(), &session.StatusInput{Session: "sess"})
+		s.Require().NoError(err)
+		s.Equal(tc.want, status.Sharing, "stored %q", tc.stored)
+	}
+}
+
 // TestViewReturnsProjectedSightings pins that perception survives the boundary.
 func (s *ReadTestSuite) TestViewReturnsProjectedSightings() {
 	s.startWith(hexWorld())

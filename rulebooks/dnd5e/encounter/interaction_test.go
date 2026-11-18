@@ -82,6 +82,7 @@ func (s *InteractionSuite) gate(lines []encounter.Option, interactions ...encoun
 			Canvas:       openAir(),
 			Regions:      []encounter.RegionInput{rectRegion("yard", 0, 0, 8, 8)},
 			Interactions: interactions,
+			Dispositions: []encounter.DispositionInput{{Between: [2]encounter.FactionID{encounter.FactionParty, encounter.FactionMonsters}, Stance: encounter.StanceNeutral}},
 		},
 		Members: []encounter.MemberInput{
 			{ID: alice, Kind: encounter.KindPlayer, Position: spatial.Position{X: 2, Y: 2}},
@@ -386,4 +387,34 @@ func (s *InteractionSuite) TestNoInteractionsWritesNoKey() {
 	again, err := json.Marshal(reloaded.ToData())
 	s.Require().NoError(err)
 	s.NotContains(string(again), `"interactions"`)
+}
+
+func (s *InteractionSuite) TestSceneMoveSurvivesReload() {
+	for _, admitted := range []bool{true, false} {
+		state := "admitted"
+		move := &encounter.SceneMove{Guards: []encounter.MemberID{goblin}, Leave: "guard-relieved"}
+		if !admitted {
+			state = "arrested"
+			move.Anchors = []spatial.Position{cellAt(5, 5), cellAt(5, 6)}
+		}
+		s.Run(state, func() {
+			enc, err := s.gate(gateClaims(), encounter.InteractionInput{
+				ID: theFrontGate, Recipe: frontGateRecipe(),
+				Outcomes: map[string][]encounter.Consequence{state: {{SceneMove: move}}},
+			})
+			s.Require().NoError(err)
+			if !admitted {
+				s.Require().NoError(s.claim(enc, alice, "troupe", false))
+			}
+			s.Require().NoError(s.claim(enc, alice, "guest", admitted))
+			reloaded, err := s.reloaded(enc.ToData())
+			s.Require().NoError(err)
+			destination := spatial.Position{X: 2, Y: 1}
+			if !admitted {
+				destination = cellAt(6, 5)
+			}
+			_, err = reloaded.Step(&encounter.StepInput{Member: alice, To: destination, EndWalk: true, Reach: speakReach})
+			s.Require().NoError(err)
+		})
+	}
 }

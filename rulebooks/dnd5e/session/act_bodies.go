@@ -322,6 +322,107 @@ type BarredAct struct {
 	Verb string
 }
 
+// RelocateEnd is which end of a relocation one recipient perceived
+// (relocated `end`, rpg-project#925). A closed set a client branches on.
+type RelocateEnd string
+
+const (
+	// RelocateBoth: the recipient perceived the leaving and the arriving. The
+	// mover's own version is always both; a client tells it by Mover being
+	// the viewer, never by Words.
+	RelocateBoth RelocateEnd = "both"
+	// RelocateLeft: the recipient saw the member leave and not where they
+	// were set down.
+	RelocateLeft RelocateEnd = "left"
+	// RelocateArrived: the recipient saw the member arrive and not where they
+	// came from.
+	RelocateArrived RelocateEnd = "arrived"
+)
+
+// RelocateAct is a member set down at a place without walking (relocated,
+// rpg-project#925): taken away under arrest, say. There is no path; the
+// member leaves one cell and is at another. Each recipient is sent only the
+// end they perceived, and a recipient who perceived neither is sent nothing.
+//
+// AN ABSENT END WAS NOT PERCEIVED: From is nil unless the recipient saw the
+// leaving, To nil unless they saw the arriving, and neither is ever read as
+// the cell (0,0).
+type RelocateAct struct {
+	// Mover is the member set down (relocated `member`).
+	Mover Party
+	// From is where they were taken from (relocated `from`), when the
+	// recipient saw the leaving.
+	From *spatial.Position
+	// To is where they were set down (relocated `to`), when the recipient saw
+	// the arriving.
+	To *spatial.Position
+	// Cause is the full ref of what moved them (relocated `cause`), verbatim:
+	// a client words it for an observer and never branches a rule on it.
+	Cause string
+	// Words are the authored words the mover is told (relocated `words`):
+	// set in the mover's own version, and at shared view in a version that
+	// came through the mover; empty otherwise.
+	Words string
+	// End is which end this recipient perceived (relocated `end`).
+	End RelocateEnd
+}
+
+// InteractAct is a thing done to a prop, as one viewer perceived it
+// (interacted, rpg-project#959): seen, not heard. Each part is present only
+// when this viewer perceived it.
+//
+//   - The doer: Prop, Option, Words (the authored `do`), Beaten, and Skill
+//     with Roll when the thing was checked.
+//   - A witness shown the prop: Prop, and Words (the authored `seen`, empty
+//     when the author wrote none: a client words "<name> uses <thing>").
+//   - A witness who sees the doer and is not shown the prop: Place, the cell
+//     the doer stood on. A hidden thing is never named to one who does not
+//     know it.
+//
+// At shared view a friend is shown the doer's version through them, marked
+// in [Perceived.Via].
+type InteractAct struct {
+	// Actor is who did it (interacted `actor`).
+	Actor Party
+	// Prop is the thing it was done to (interacted `prop`), the zero Party
+	// for a viewer not shown it.
+	Prop Party
+	// Option is the thing's option id (interacted `option`): the doer's.
+	Option string
+	// Words are what this viewer is told: the doer's `do` words, or a shown
+	// witness's `seen` words (interacted `do`, `seen`).
+	Words string
+	// Place is where the doer stood (interacted `at`), for a viewer who saw
+	// them and was not shown the thing.
+	Place *spatial.Position
+	// Beaten is the verdict (interacted `beaten`): the doer's, true for a
+	// plain thing.
+	Beaten *bool
+	// Skill and Roll are the check (interacted `skill`, `dc`, `total`,
+	// `calculation`), the doer's, when the thing was checked.
+	Skill string
+	Roll  *Roll
+}
+
+// ArrestAct is a party arrested (arrested, rpg-project#925): the members
+// taken, as THIS recipient perceived them taken, and the cell region they are
+// to be held in.
+//
+// WHO IS WANTED IS NEVER HERE. The guards' memory of a member they mean to
+// arrest on sight is theirs alone; the encounter tells it to no player, and
+// this act has no field that could carry it.
+type ArrestAct struct {
+	// Interaction is the conversation that arrested (arrested
+	// `interaction`): the front gate.
+	Interaction string
+	// Taken are the members taken that this recipient perceives (arrested
+	// `taken`), in the beat's order. Never empty: a recipient told nobody is
+	// told nothing.
+	Taken []Party
+	// Cell is the region they are to be held in (arrested `cell`).
+	Cell string
+}
+
 // EquipAct is an item drawn or stowed (equipment-changed).
 type EquipAct struct {
 	// By is whose equipment changed (equipment-changed `member`).
@@ -426,6 +527,13 @@ type TableAnswer struct {
 	Roll *Roll
 	// Dealt is a temperament deal (tempered). Nil on a pick.
 	Dealt *Temper
+	// Narration is a PROP's answer in words (answered `say`, rpg-project#959):
+	// the author narrating what the speaker or doer found ("The sigils are
+	// the Pale One's…") — a prop has no voice, so its words ride its pick,
+	// to exactly whom the encounter sent the pick: the one who said the line
+	// or did the thing, and the witnesses shown the prop. Empty on a
+	// creature's answer, whose words ride each hearer's [SpeechAct].
+	Narration string
 }
 
 // StateKind is what a state entry changed.
@@ -866,6 +974,9 @@ func (HoldAct) isActBody()      {}
 func (DropAct) isActBody()      {}
 func (DoorAct) isActBody()      {}
 func (BarredAct) isActBody()    {}
+func (RelocateAct) isActBody()  {}
+func (ArrestAct) isActBody()    {}
+func (InteractAct) isActBody()  {}
 func (EquipAct) isActBody()     {}
 func (StayAct) isActBody()      {}
 func (SneakAct) isActBody()     {}

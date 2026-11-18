@@ -173,6 +173,12 @@ func (r readOnlyRoom) MoveEntity(entityID string, newPos spatial.Position) error
 	return fmt.Errorf("canvas: MoveEntity(%q, (%g,%g)): %w", entityID, newPos.X, newPos.Y, ErrReadOnly)
 }
 
+// RelocateEntity refuses. Use [Encounter.Relocate], which tells who saw the
+// member leave and arrive, and settles what the move ends.
+func (r readOnlyRoom) RelocateEntity(entityID string, newPos spatial.Position) error {
+	return fmt.Errorf("canvas: RelocateEntity(%q, (%g,%g)): %w", entityID, newPos.X, newPos.Y, ErrReadOnly)
+}
+
 // RemoveEntity refuses. Use [Encounter.Exit], which records where they stood on
 // the way out.
 func (r readOnlyRoom) RemoveEntity(entityID string) error {

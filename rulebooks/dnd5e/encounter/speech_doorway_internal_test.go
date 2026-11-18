@@ -75,8 +75,9 @@ func caught(t *testing.T, enc *Encounter, u utterance) map[MemberID]bool {
 
 // TestAVoiceInAnOpenDoorwayIsInBothRooms: standing in an open doorway is
 // standing in the rooms it joins — said there, a spoken line reaches both;
-// said in either room, it reaches the one in the doorway. A doorway is no
-// way through: a spoken line in the west room stays out of the east one.
+// said in either room, it reaches the one in the doorway. A spoken line in
+// the west room reaches the east one only as speech carries through an open
+// doorway ([SpeechCarryFeet], rpg-project#953): the whole hall is within it.
 func TestAVoiceInAnOpenDoorwayIsInBothRooms(t *testing.T) {
 	enc := doorwayHall(t, DoorIsOpen())
 
@@ -86,7 +87,7 @@ func TestAVoiceInAnOpenDoorwayIsInBothRooms(t *testing.T) {
 
 	west := caught(t, enc, utterance{speaker: doorwayWest, words: "Who's there?"})
 	require.True(t, west[doorwayIn], "the doorway hears the west room")
-	require.False(t, west[doorwayEast], "but a spoken line does not cross into the east room")
+	require.True(t, west[doorwayEast], "and the east room, within the carry through the open doorway")
 }
 
 // TestAShutDoorwayIsNoRoom: with the leaf shut the doorway joins nothing at

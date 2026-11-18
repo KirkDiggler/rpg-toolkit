@@ -822,8 +822,9 @@ func compileSpeakRow(
 	decl := Declaration{
 		Verb: VerbSpeak, Slot: slot, ID: id,
 		TargetKind: TargetMember, Candidates: projectCandidates(menu.targets),
-		SpeakOptions: menu.projectRows(),
-		Address:      menu.address,
+		SpeakOptions:    menu.projectRows(),
+		InteractOptions: menu.projectInteractRows(),
+		Address:         menu.address,
 	}
 	var priced *character.Character
 	if profile != nil {
@@ -913,6 +914,9 @@ type speakLine struct {
 func (m speakMenu) projectRows() []SpeakOptionRow {
 	out := make([]SpeakOptionRow, 0, len(m.lines))
 	for _, l := range m.lines {
+		if l.option.Does() {
+			continue // a thing to do rides [speakMenu.projectInteractRows]
+		}
 		row := SpeakOptionRow{
 			Target: l.target, Prop: l.prop,
 			OptionID: l.option.ID, Line: l.option.Say,
@@ -924,6 +928,32 @@ func (m speakMenu) projectRows() []SpeakOptionRow {
 		}
 		if l.option.Pending {
 			row.Why = &Shortfall{Reason: ShortfallLineReserved, Text: "this line waits on somebody's roll"}
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+// projectInteractRows is the menu's things to do (rpg-project#959): each
+// prop option whose kind is to do, as the composition offered it — the
+// probe law, the interaction, the revision and the pending all its own —
+// in the menu's order, and nothing a line is. Nil when there are none.
+func (m speakMenu) projectInteractRows() []InteractOptionRow {
+	var out []InteractOptionRow
+	for _, l := range m.lines {
+		if !l.option.Does() {
+			continue
+		}
+		row := InteractOptionRow{
+			Prop: l.prop, OptionID: l.option.ID, Do: l.option.Do,
+			Available:   !l.option.Pending,
+			Interaction: string(l.option.Interaction),
+			Revision:    l.option.Revision,
+			Pending:     l.option.Pending,
+			PendingOn:   string(l.option.PendingOn),
+		}
+		if l.option.Pending {
+			row.Why = &Shortfall{Reason: ShortfallLineReserved, Text: "this waits on somebody's roll"}
 		}
 		out = append(out, row)
 	}

@@ -58,6 +58,14 @@ const DeedIntimidate = "intimidate"
 // [DeedIntimidate]'s reason.
 const DeedPersuade = "persuade"
 
+// DeedUse is the verb a thing done to a prop lands under on the deeds
+// channel (rpg-project#959): what a witness would say they saw — somebody
+// used something, there. It names no thing (a concealed one is never named
+// to a witness who does not know it) and no target; its place is where the
+// doer stood. Landed on every witness, done or missed. No table reads it
+// yet: a guard reacting to seeing something done waits for a use.
+const DeedUse = "use"
+
 // deedForSkill is the deed a BEATEN check of one skill lands on its witnesses
 // (rpg-project#569, R3 — "the deed is the skill"): Intimidation lands
 // [DeedIntimidate], Persuasion lands [DeedPersuade], and every other skill

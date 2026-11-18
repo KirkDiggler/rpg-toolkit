@@ -187,6 +187,12 @@ type ReservedScene struct {
 	// SawTarget is who saw the creature the line was said to, then
 	// (rpg-project#933, R4): whom a kept settle's versions name it to.
 	SawTarget []MemberID `json:"sawTarget,omitempty"`
+
+	// PartyAt is where each player of the speaker's party stood then
+	// (rpg-project#925): the cells an arrest the line settles is decided on,
+	// so walking away before the settle dodges nothing. Absent for a member
+	// not placed; empty for a scene kept before arrests were.
+	PartyAt map[MemberID]spatial.Position `json:"partyAt,omitempty"`
 }
 
 // ReservedHearing is one member who heard a waiting line when it was said
@@ -445,6 +451,9 @@ type replied struct {
 	// perceived is that scene's [ReservedScene.Perceived], for the same
 	// settle; nil otherwise.
 	perceived map[MemberID][]MemberID
+	// partyAt is that scene's [ReservedScene.PartyAt], for the same settle;
+	// nil otherwise.
+	partyAt map[MemberID]spatial.Position
 }
 
 // replyDoor is THE ONE DOOR a reply to a line comes through — [Encounter.Speak],
@@ -490,7 +499,7 @@ func (e *Encounter) replyDoor(verb string, in lineReply, settling bool) (replied
 		return replied{
 			option: option, settle: settle, where: scene.Where,
 			witnesses: slices.Clone(scene.Witnesses), seen: slices.Clone(scene.Seen),
-			perceived: clonePerceived(scene.Perceived),
+			perceived: clonePerceived(scene.Perceived), partyAt: maps.Clone(scene.PartyAt),
 		}, nil
 	}
 	where, witnesses, err := e.audienceOf(in.actor)
@@ -725,6 +734,7 @@ func (e *Encounter) Reserve(in *ReserveInput) (*ReserveOutput, error) {
 		Holder: in.Actor, Target: in.Target, Prop: in.Prop, Option: in.OptionID, Revision: in.Revision, Reach: in.Range,
 		Scene: sceneOf(admitted, seen, perceived, facets, in.Actor),
 	}
+	r.reservation.Scene.PartyAt = e.arrestPartyCells(in.Actor)
 	r.revision++
 	seq, err := e.appendHeldBeat(id, in.Actor, true)
 	if err != nil {
@@ -1092,6 +1102,7 @@ func cloneReservation(r *InteractionReservation) *InteractionReservation {
 		scene.Witnesses, scene.Seen = slices.Clone(r.Scene.Witnesses), slices.Clone(r.Scene.Seen)
 		scene.Perceived = clonePerceived(r.Scene.Perceived)
 		scene.Heard, scene.SawTarget = slices.Clone(r.Scene.Heard), slices.Clone(r.Scene.SawTarget)
+		scene.PartyAt = maps.Clone(r.Scene.PartyAt)
 		c.Scene = &scene
 	}
 	return &c

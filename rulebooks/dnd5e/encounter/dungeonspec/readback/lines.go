@@ -18,6 +18,9 @@ type lineTarget struct {
 	about Subject // the statement's subject
 	id    string  // the member id, when a creature
 	prop  bool
+	// done is whether the option being said back is something done to the
+	// prop rather than said to it (rpg-project#959): seen, not heard.
+	done bool
 }
 
 // lineStatements says every line of one target, each facet its own
@@ -27,12 +30,28 @@ type lineTarget struct {
 func (b *builder) lineStatements(opts []encounter.Option, base string, t lineTarget) []Statement {
 	var out []Statement
 	for i, o := range opts {
+		t := t
+		t.done = o.Does()
 		p := fmt.Sprintf("%s[%d]", base, i)
 		line := fmt.Sprintf("the line %s (%s)", said(o.Say), quote(o.ID))
 		saidTo := Connection{Kind: t.about.Kind, ID: t.about.ID, Role: "said-to"}
 		heading := fmt.Sprintf("%s (%s)", said(o.Say), quote(o.ID))
 		head := fmt.Sprintf("The speaker can say %s to %s. %s %s", line, t.name, loudnessSentence(o.Loudness), perceivedSentence)
 		short := "said to {self}; " + foldedLoudness(o.Loudness)
+		if t.done {
+			// SOMETHING DONE (rpg-project#959): seen, not heard.
+			line = fmt.Sprintf("the thing to do %s (%s)", said(o.Do), quote(o.ID))
+			saidTo.Role = "done-to"
+			heading = fmt.Sprintf("%s (%s)", said(o.Do), quote(o.ID))
+			head = fmt.Sprintf("%s offers something to do: %s; the one who does it is told %s. Nobody hears it; "+
+				"whoever sees them sees it done: one shown %s is told %s, one not shown it only that something was done "+
+				"where they stand.", capitalize(t.name), line, said(o.Do), t.name, seenWords(o.Seen))
+			if secret := b.secretOf(t); secret != "" {
+				head += fmt.Sprintf(" It is hidden by the secret %s: a watcher who sees it done, and sees where it stands, "+
+					"comes to know the secret by sight and is shown it.", quote(secret))
+			}
+			short = "done to {self}, seen not heard: a witness shown it is told " + seenWords(o.Seen) + "; "
+		}
 		if o.Checked() {
 			head += " It is a checked line: it costs an action, one round of the world out of a fight."
 			short += "checked, an action (a round of the world out of a fight)"
@@ -40,7 +59,7 @@ func (b *builder) lineStatements(opts []encounter.Option, base string, t lineTar
 			head += " It is a plain line: it rolls nothing, cannot be missed, and costs nothing on either clock."
 			short += "plain: rolls nothing, cannot be missed, free"
 		}
-		out = append(out, b.fstmt(KindLine, t.about, p, head, foldInfo{text: short, line: heading}, saidTo))
+		out = append(out, b.fstmt(KindLine, t.about, p, head, foldInfo{text: short, line: heading, done: t.done}, saidTo))
 		if o.Checked() {
 			out = append(out, b.fstmt(KindLineCheck, t.about, p+".check", fmt.Sprintf(
 				"To win %s, the speaker rolls %s; beating the DC wins the line and missing it misses.",
@@ -131,6 +150,8 @@ func (b *builder) rowStatements(o encounter.Option, line, heading, p string, t l
 		switch {
 		case verdict.failure:
 			lead, verdictWord, site = "On a miss of "+line, "miss", "a miss of "+quote(o.ID)
+		case !o.Checked() && o.Does():
+			lead, verdictWord, site = "When "+line+" is done", "said", "doing "+quote(o.ID)
 		case !o.Checked():
 			lead, verdictWord, site = "When "+line+" is said", "said", "saying "+quote(o.ID)
 		}
@@ -140,7 +161,15 @@ func (b *builder) rowStatements(o encounter.Option, line, heading, p string, t l
 		}
 		for k, row := range verdict.rows {
 			path := fmt.Sprintf("%s.%s[%d]", p, verdict.key, k)
-			does, conns := rowDoes(row, t, t.name)
+			does, conns := rowDoes(row, t, t.name, false)
+			fdoes, _ := rowDoes(row, t, "{self}", true)
+			// A ROW THAT ONLY GRANTS (rpg-project#958): no words and no fact,
+			// its whole effect is the grant said next — "nothing is said"
+			// would read as a row that does nothing.
+			if row.Say == "" && row.Activity == nil && row.Fact == "" && grantsOnRow(o.Grants, verdict.failure, k) {
+				does = []string{"nothing is answered in words, and the row does what the next sentence says"}
+				fdoes = []string{"no words"}
+			}
 			// THE PICK IS TOLD BY HEARING (rpg-project#948): a creature's
 			// answer — its die and the rows it chose among — goes to whoever
 			// caught the line; one who only sees it answer is told that and
@@ -150,7 +179,6 @@ func (b *builder) rowStatements(o encounter.Option, line, heading, p string, t l
 				does = append(does, fmt.Sprintf("whoever sees %s answer and caught none of the line is told only that %s answered "+
 					"and what %s is seen doing, and, if they see the speaker, sees the line said without its words", t.name, t.name, t.name))
 			}
-			fdoes, _ := rowDoes(row, t, "{self}")
 			s := lead + ", " + joinAnd(does)
 			short := joinAnd(fdoes)
 			if len(verdict.rows) > 1 {
@@ -158,11 +186,16 @@ func (b *builder) rowStatements(o encounter.Option, line, heading, p string, t l
 				short += fmt.Sprintf(" (weight %d of %d)", row.Weight, total)
 			}
 			out = append(out, b.fstmt(KindLineRow, t.about, path, period(s),
-				foldInfo{text: short, line: heading, verdict: verdictWord, site: site, who: t.about.ID}, conns...))
+				foldInfo{text: short, line: heading, verdict: verdictWord, site: site, who: t.about.ID, loud: rowLoudness(row, t)},
+				conns...))
 			for _, g := range o.Grants {
 				if g.Failure == verdict.failure && g.Row == k && g.Consequence.Recognize != nil {
-					out = append(out, b.grantStatement(o, *g.Consequence.Recognize, lead, path+".recognize", t,
+					out = append(out, b.grantStatement(o, *g.Consequence.Recognize, lead, path+".give", t,
 						foldInfo{line: heading, verdict: verdictWord, site: site, who: t.about.ID}))
+				}
+				if g.Failure == verdict.failure && g.Row == k && (g.Consequence.Tells != "" || g.Consequence.Relocate != nil) {
+					out = append(out, b.passageStatement(g.Consequence, row, lead, path, t,
+						foldInfo{line: heading, verdict: verdictWord, site: site, who: t.about.ID, loud: tellsLoudness(g.Consequence, row, t)}))
 				}
 			}
 		}
@@ -170,14 +203,21 @@ func (b *builder) rowStatements(o encounter.Option, line, heading, p string, t l
 	return out
 }
 
-// rowDoes is what a line's answer row does, said about name.
-func rowDoes(row encounter.Answer, t lineTarget, name string) ([]string, []Connection) {
+// rowDoes is what a line's answer row does, said about name. Folded, a
+// loudness is named and not explained: the fold explains each loudness once
+// per thing that speaks at it ([rowLoudness]).
+func rowDoes(row encounter.Answer, t lineTarget, name string, folded bool) ([]string, []Connection) {
 	var does []string
 	var conns []Connection
 	if row.Say != "" {
-		if t.prop {
+		switch {
+		case t.done:
+			does = append(does, "the one who did it and every witness shown "+name+" are told "+said(row.Say))
+		case t.prop:
 			does = append(does, "the speaker is told "+said(row.Say))
-		} else {
+		case folded:
+			does = append(does, fmt.Sprintf("%s answers %s, at %s", name, said(row.Say), quote(loudnessOf(row.Loudness))))
+		default:
 			does = append(does, fmt.Sprintf("%s answers %s, at %s: its words reach %s", name, said(row.Say),
 				quote(loudnessOf(row.Loudness)), reachWords(row.Loudness, name)))
 		}
@@ -186,11 +226,22 @@ func rowDoes(row encounter.Answer, t lineTarget, name string) ([]string, []Conne
 		does = append(does, fmt.Sprintf("%s plays the activity %s %d times", name, quote(row.Activity.Ref), row.Activity.Cycles))
 	}
 	if row.Fact != "" {
-		if t.prop {
+		switch {
+		case t.done:
+			does = append(does, fmt.Sprintf("the one who did it and every witness shown %s learn the fact %s", name, quote(row.Fact)))
+		case t.prop:
 			// A PROP'S ANSWER IS NARRATION, not a voice (rpg-project#933): its
 			// fact goes to those who saw the line said.
 			does = append(does, fmt.Sprintf("everyone who can see the speaker, the speaker included, learns the fact %s", quote(row.Fact)))
-		} else {
+		case folded && row.Say != "":
+			// The answer just named the loudness: the fact clause rides on
+			// it, said once.
+			does[len(does)-1] += fmt.Sprintf("; every member those words reach, seen or not, %s included, learns the fact %s",
+				name, quote(row.Fact))
+		case folded:
+			does = append(does, fmt.Sprintf("every member %s's words reach at %s, seen or not, %s included, learns the fact %s",
+				name, quote(loudnessOf(row.Loudness)), name, quote(row.Fact)))
+		default:
 			does = append(does, fmt.Sprintf("%s learns the fact %s", learnersWords(row.Loudness, name), quote(row.Fact)))
 		}
 		conns = append(conns, Connection{Kind: "fact", ID: row.Fact, Role: "teaches"})
@@ -201,13 +252,66 @@ func rowDoes(row encounter.Answer, t lineTarget, name string) ([]string, []Conne
 	return does, conns
 }
 
-// grantStatement says one recognition a line's row grants: who comes to hold
-// the topic, about whom, and who else hears it — in that order.
+// rowLoudness is the loudness whose reach a row's full sentence explains —
+// its spoken answer, or who learns its fact — or nil for a row that speaks
+// to nobody (something done, or a prop's narration).
+func rowLoudness(row encounter.Answer, t lineTarget) []string {
+	if t.done || t.prop || (row.Say == "" && row.Fact == "") {
+		return nil
+	}
+	return []string{loudnessOf(row.Loudness)}
+}
+
+// tellsLoudness is the loudness whose reach a told record's full sentence
+// explains: who hears a creature's spoken row.
+func tellsLoudness(c encounter.Consequence, row encounter.Answer, t lineTarget) []string {
+	if c.Tells == "" || t.done || t.prop {
+		return nil
+	}
+	return []string{loudnessOf(row.Loudness)}
+}
+
+// passageStatement says a row's told record or relocate (rpg-project#958):
+// who comes to hold the record and what it reveals, or where the speaker is
+// set down and what the others are told of it.
+func (b *builder) passageStatement(c encounter.Consequence, row encounter.Answer, lead, path string, t lineTarget, f foldInfo) Statement {
+	if c.Tells != "" {
+		id := b.unqualify(string(c.Tells))
+		who, short := "everyone who can see the speaker, the speaker included,", "everyone who sees the speaker"
+		switch {
+		case t.done:
+			who, short = "the one who did it and every witness shown "+t.name+",", "the doer and every witness shown {self}"
+		case !t.prop:
+			who, short = learnersWords(row.Loudness, t.name), "every member {self}'s words reach"
+		}
+		s := fmt.Sprintf("%s, %s comes to hold the record %s, as one who carried it would, and learns what it reveals (%s). "+
+			"One who holds it already is told nothing again.", lead, who, quote(id), b.recordReveals(c.Tells))
+		f.text = short + " comes to hold the record " + quote(id)
+		return b.fstmt(KindLineGrant, t.about, path+".tells", s, f, Connection{Kind: "record", ID: id, Role: "tells"})
+	}
+	r := c.Relocate
+	rounds := "No world time passes with it."
+	switch {
+	case r.Rounds == 1:
+		rounds = "One round passes on the world clock with it, and creatures due in it act."
+	case r.Rounds > 1:
+		rounds = fmt.Sprintf("%d rounds pass on the world clock with it, and creatures due in them act.", r.Rounds)
+	}
+	s := fmt.Sprintf("%s, the speaker is set down on the first free cell of %s, without walking the way between, and is told %s. %s "+
+		"Whoever saw the speaker leave is told they went, never where; whoever sees them arrive is told they arrived, never from "+
+		"where. A speaker in a fight, held, or with no free cell to land on is refused the line whole; nobody else goes with them.",
+		lead, b.regionWords(string(r.To)), said(r.Words), rounds)
+	f.text = fmt.Sprintf("the speaker is set down in %s, told %s", b.regionName(string(r.To)), said(r.Words))
+	return b.fstmt(KindLineGrant, t.about, path+".relocate", s, f, Connection{Kind: "region", ID: string(r.To), Role: "sends-to"})
+}
+
+// grantStatement says one holding a line's row gives: who is given it, about
+// whom they come to hold it, and who else hears it — in that order.
 func (b *builder) grantStatement(o encounter.Option, r encounter.Recognition, lead, path string, t lineTarget, f foldInfo) Statement {
 	topic := string(r.Topic)
 	holder := t.name
-	s := fmt.Sprintf("%s, %s — the creature the line is said to — comes to hold %s about %s: %s recognises them as %s.",
-		lead, holder, quote(topic), subjectsWords(r.About, holder), holder, quote(topic))
+	s := fmt.Sprintf("%s, %s — the creature the line is said to — is given the holding %s, and comes to hold it about %s.",
+		lead, holder, quote(topic), subjectsWords(r.About, holder))
 	conns := []Connection{{Kind: "topic", ID: topic, Role: "grants"}}
 	if t.id != "" {
 		conns = append(conns, Connection{Kind: "creature", ID: t.id, Role: "holds"})
@@ -218,7 +322,7 @@ func (b *builder) grantStatement(o encounter.Option, r encounter.Recognition, le
 	return b.fstmt(KindLineGrant, t.about, path, s, f, conns...)
 }
 
-// heardWords says who else comes to hold a recognition, having heard it.
+// heardWords says who else comes to hold a holding given, having heard it.
 func (b *builder) heardWords(r encounter.Recognition, conv string, except []string, conns *[]Connection) string {
 	topic := quote(string(r.Topic))
 	if r.HeardBy != encounter.RecognitionCarriersWhoWitnessed {
@@ -244,12 +348,12 @@ func (b *builder) heardWords(r encounter.Recognition, conv string, except []stri
 	}
 	return fmt.Sprintf("Every other creature that carries the conversation %s (%s), was among those the line's words reached "+
 		"when it was said, and is up, comes to hold %s about the same members too, having heard it, whether or not it sees "+
-		"them itself; one the words did not reach holds nothing, even if it saw the line said. When the holder recognises "+
-		"nobody, nobody else comes to hold anything either.",
+		"them itself; one the words did not reach holds nothing, even if it saw the line said. When the one given it comes "+
+		"to hold it about nobody, nobody else comes to hold anything either.",
 		quote(conv), who, topic)
 }
 
-// shortSubjects is whom a recognition is about, in the folded form.
+// shortSubjects is whom a holding given is about, in the folded form.
 func shortSubjects(about encounter.RecognitionSubjects) string {
 	switch about {
 	case encounter.RecognitionPartyInSight:
@@ -260,19 +364,19 @@ func shortSubjects(about encounter.RecognitionSubjects) string {
 	return fmt.Sprintf("the subjects %q", about)
 }
 
-// shortHeard is who else holds a recognition, in the folded form; the
+// shortHeard is who else holds a holding given, in the folded form; the
 // carriers themselves are named once, on the conversation.
 func shortHeard(r encounter.Recognition, conv string) string {
 	if r.HeardBy != encounter.RecognitionCarriersWhoWitnessed {
 		return "; nobody else holds it"
 	}
 	return fmt.Sprintf("; so does each other carrier of %s the line's words reached and who is up, about the same members, "+
-		"whether or not that carrier sees them (heard); if {self} recognises nobody, nobody else holds anything", quote(conv))
+		"whether or not that carrier sees them (heard); if {self} comes to hold it about nobody, nobody else holds anything", quote(conv))
 }
 
 // shortClause drops a requirement's restatement for the folded form: the
-// conversation block already says its state is the run's, and "recognises X
-// as T" already says who holds what about whom.
+// conversation block already says its state is the run's, and "holds T
+// about X" already says who holds what about whom.
 func shortClause(w string) string {
 	w = strings.Replace(w, " (one state for the whole run, not per speaker)", "", 1)
 	w = strings.Replace(w, "the conversation ", "", 1)
@@ -368,4 +472,55 @@ func (b *builder) offeredWords(o encounter.Option, conv string) string {
 		return " (the line is offered in no state of it)"
 	}
 	return " (the line is offered only in " + joinOr(states) + ")"
+}
+
+// recordReveals is what an intel record reveals, in words.
+func (b *builder) recordReveals(id encounter.IntelID) string {
+	for _, in := range b.c.Intel {
+		if in.ID != id {
+			continue
+		}
+		switch {
+		case in.Reveals.Concealment != "":
+			return "the secret " + quote(b.unqualify(string(in.Reveals.Concealment)))
+		case in.Reveals.Fact != "":
+			return "the fact " + quote(string(in.Reveals.Fact))
+		}
+	}
+	return "nothing this build can say"
+}
+
+// grantsOnRow reports whether any grant hangs on a verdict's row k.
+func grantsOnRow(grants []encounter.RowGrant, failure bool, k int) bool {
+	for _, g := range grants {
+		if g.Failure == failure && g.Row == k {
+			return true
+		}
+	}
+	return false
+}
+
+// seenWords is what a witness shown a thing done is told: the authored
+// `seen` words, or the client's own for using the thing.
+func seenWords(seen string) string {
+	if seen == "" {
+		return "the client's own words for using it (no `seen` is written)"
+	}
+	return "the doer " + said(seen)
+}
+
+// secretOf is the concealment a prop target belongs to, unqualified, or
+// empty for a creature or an unhidden prop.
+func (b *builder) secretOf(t lineTarget) string {
+	if !t.prop {
+		return ""
+	}
+	for _, c := range b.c.Concealments {
+		for _, p := range c.Props {
+			if string(p) == t.about.ID {
+				return b.unqualify(string(c.ID))
+			}
+		}
+	}
+	return ""
 }

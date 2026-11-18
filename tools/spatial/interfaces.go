@@ -57,6 +57,10 @@ type Room interface {
 	// MoveEntity moves an entity to a new position
 	MoveEntity(entityID string, newPos Position) error
 
+	// RelocateEntity sets an entity already in the room down at another
+	// position without travelling the way between: no boundary is asked.
+	RelocateEntity(entityID string, newPos Position) error
+
 	// RemoveEntity removes an entity from the room
 	RemoveEntity(entityID string) error
 

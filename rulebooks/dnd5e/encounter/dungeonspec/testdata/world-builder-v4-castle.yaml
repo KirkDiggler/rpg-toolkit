@@ -313,6 +313,12 @@ dispositions:
     until:
       - {fact: guards-turned, then: allied}
       - {fact: party-recognized, then: hostile}
+      # Hand edit (rpg-project#925): a prisoner seen out of the cells turns
+      # the garrison.
+      - {fact: prisoners-escaped, then: hostile}
+      # Hand edit (rpg-project#925): an arrested member who refuses to be
+      # taken alive turns the garrison.
+      - {fact: refused-arrest, then: hostile}
   - between:
       - loyalists
       - party
@@ -353,6 +359,11 @@ intel:
   - id: key-bearer
     reveals:
       fact: sergeant-holds-keys
+  # Hand edit (rpg-project#958, Passages S1): the way through the kitchen
+  # passage, as the scullion tells it. Whoever holds it knows the passage.
+  - id: kitchen-way
+    reveals:
+      concealment: kitchen-passage
 exits:
   - id: postern
     cell:
@@ -394,6 +405,12 @@ endings:
     when:
       left: front-door
     outcome: failure
+# Hand edit (rpg-project#958, Passages S1): the kitchen passage. It hides
+# only the grate; a hard search finds it, and the scullion tells it.
+concealments:
+  kitchen-passage:
+    checks: [{ ability: investigation, dc: 18 }]
+    props: [grate]
 room:
   version: 3
   id: room-1
@@ -435,6 +452,18 @@ room:
           x: -36.6051177665153
           y: 0
           z: -15
+          rotationY: 0
+      # Hand edit (rpg-project#958, Passages S1): the grate by the hearth, the
+      # kitchen end of the passage. The concealment `kitchen-passage` hides
+      # it; the scullion tells the way.
+      - id: grate
+        kind: prop
+        assetRef: dnd5e:props:dark-fortress:sewer_grate_02
+        label: Grate by the Hearth
+        transform:
+          x: -32.90896534380867
+          y: 0
+          z: -21.0
           rotationY: 0
       - id: orders
         kind: prop
@@ -1372,6 +1401,14 @@ room:
           depth: 0.8
           offsetX: 0
           offsetZ: 0
+      grate:
+        blocksMovement: false
+        blocksLineOfSight: false
+        footprint:
+          width: 0.8
+          depth: 0.8
+          offsetX: 0
+          offsetZ: 0
       orders:
         blocksMovement: false
         blocksLineOfSight: false
@@ -1534,27 +1571,27 @@ room:
           # failure arrests, and either success admits the party.
           # Hand edit (rpg-project#929): the guest claim is the captain's
           # alone. Once the gate has admitted the party, a guard offers two
-          # lines of his own. A member he recognises may come back and vouch
-          # for whoever stands in his sight; a straggler he does not recognise
-          # may make their own case. Neither moves the gate's conversation.
+          # lines of his own. A member he holds `admitted` about may come back
+          # and vouch for whoever stands in his sight; a straggler he holds
+          # nothing about may make their own case. Neither moves the gate's conversation.
           # Hand edit (rpg-project#932): one try at that case. Turned away,
           # the straggler is remembered as turned away by this guard and by
           # the other who saw it, and neither offers the case to them again;
-          # a friend's vouch still lets them in. An unrecognised speaker may
-          # also ask after their friends, and is told a friend can speak for
-          # them.
+          # a friend's vouch still lets them in. A speaker he holds nothing
+          # about may also ask after their friends, and is told a friend can
+          # speak for them.
           - id: vouch
             say: They’re with us. The captain let us in.
             requires:
               - interaction:
                   id: front-gate
                   in: [admitted]
-              - recognized: admitted
+              - holds: admitted
             success:
               - say: Right you are. Go on through, the lot of you.
-                recognize:
-                  topic: admitted
-                  holder: spoken_to
+                give:
+                  holding: admitted
+                  to: spoken_to
                   about: party_in_sight
                   heard_by: carriers_who_witnessed
           - id: straggler
@@ -1569,25 +1606,25 @@ room:
                   id: front-gate
                   in: [admitted]
               - not:
-                  recognized: admitted
+                  holds: admitted
               # "Gone" is judged against the guard spoken to: it holds here
               # because each gate guard witnesses the other's refusals; a gate
               # whose posted guards cannot see each other would need another
               # means.
               - not:
-                  recognized: turned-away
+                  holds: turned-away
             success:
               - say: Fell behind, did you? Go on, catch them up.
-                recognize:
-                  topic: admitted
-                  holder: spoken_to
+                give:
+                  holding: admitted
+                  to: spoken_to
                   about: speaker
                   heard_by: carriers_who_witnessed
             failure:
               - say: Never seen you before. Unless one of that lot will speak for you.
-                recognize:
-                  topic: turned-away
-                  holder: spoken_to
+                give:
+                  holding: turned-away
+                  to: spoken_to
                   about: speaker
                   heard_by: carriers_who_witnessed
           - id: friends-inside
@@ -1597,7 +1634,7 @@ room:
                   id: front-gate
                   in: [admitted]
               - not:
-                  recognized: admitted
+                  holds: admitted
             success:
               # Hand edit (rpg-project#936): the hint is shouted, so a friend
               # inside, out of sight in the next room, catches the words
@@ -1623,12 +1660,46 @@ room:
             success:
               # Hand edit (rpg-project#836, #857, #928): the troupe is let
               # through. The interaction's `admitted` outcome makes the gate
-              # guards recognise them, and the posts let the recognised by.
+              # guards hold `admitted` about them, and the posts let them by.
               - say: Through to the hall, then. Don’t dawdle.
             failure:
               # Hand edit (rpg-project#922): a first failure is a warning,
-              # not recognition; the second claim's failure arrests.
+              # nothing given; the second claim's failure arrests.
               - say: Troupe? There’s no troupe on my list. What’s going on here?
+          # Hand edit (rpg-project#925): the arrested may go quietly. Offered
+          # only to a member this guard arrested; saying it moves the taken
+          # into the cells (the interaction's `jailed` outcome). If nobody
+          # says it, the taken stay held; striking a guard is the other way
+          # out.
+          - id: come-quietly
+            say: We’ll come quietly.
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [arrested, jailed]
+              - holds: arrested
+            advance:
+              interaction: front-gate
+              success: came-quietly
+            success:
+              - say: Sensible. This way, and keep your hands where I can see them.
+          # Hand edit (rpg-project#925, ruled 2026-11-14): the held may also
+          # refuse. A held fighter cannot reach a guard to strike, so the way
+          # out by force is a line: it turns the garrison, and the fight that
+          # forms with the guard breaks the hold.
+          - id: never-alive
+            say: You will never take me alive.
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [arrested, jailed]
+              - holds: arrested
+            success:
+              - say: Then we do this the hard way. To arms!
+                # Shouted, as the gate's hint is (rpg-toolkit#2409): the
+                # captain learns it whichever gate speaker it is said to.
+                loudness: shout
+                fact: refused-arrest
         behaviors:
           - id: policy
             use: gate-1-policy
@@ -1641,7 +1712,7 @@ room:
           alert:
             door: gate-wall-door
             against: entering
-            pass: { recognized: admitted }
+            pass: { holds: admitted }
             at:
               - q: -3
                 r: 7
@@ -1650,7 +1721,7 @@ room:
           challenged:
             door: gate-wall-door
             against: entering
-            pass: { recognized: admitted }
+            pass: { holds: admitted }
             at:
               - q: -3
                 r: 7
@@ -1659,7 +1730,7 @@ room:
           posted:
             door: gate-wall-door
             against: entering
-            pass: { recognized: admitted }
+            pass: { holds: admitted }
             at:
               - q: -3
                 r: 7
@@ -1676,27 +1747,27 @@ room:
           # failure arrests, and either success admits the party.
           # Hand edit (rpg-project#929): the guest claim is the captain's
           # alone. Once the gate has admitted the party, a guard offers two
-          # lines of his own. A member he recognises may come back and vouch
-          # for whoever stands in his sight; a straggler he does not recognise
-          # may make their own case. Neither moves the gate's conversation.
+          # lines of his own. A member he holds `admitted` about may come back
+          # and vouch for whoever stands in his sight; a straggler he holds
+          # nothing about may make their own case. Neither moves the gate's conversation.
           # Hand edit (rpg-project#932): one try at that case. Turned away,
           # the straggler is remembered as turned away by this guard and by
           # the other who saw it, and neither offers the case to them again;
-          # a friend's vouch still lets them in. An unrecognised speaker may
-          # also ask after their friends, and is told a friend can speak for
-          # them.
+          # a friend's vouch still lets them in. A speaker he holds nothing
+          # about may also ask after their friends, and is told a friend can
+          # speak for them.
           - id: vouch
             say: They’re with us. The captain let us in.
             requires:
               - interaction:
                   id: front-gate
                   in: [admitted]
-              - recognized: admitted
+              - holds: admitted
             success:
               - say: Right you are. Go on through, the lot of you.
-                recognize:
-                  topic: admitted
-                  holder: spoken_to
+                give:
+                  holding: admitted
+                  to: spoken_to
                   about: party_in_sight
                   heard_by: carriers_who_witnessed
           - id: straggler
@@ -1711,25 +1782,25 @@ room:
                   id: front-gate
                   in: [admitted]
               - not:
-                  recognized: admitted
+                  holds: admitted
               # "Gone" is judged against the guard spoken to: it holds here
               # because each gate guard witnesses the other's refusals; a gate
               # whose posted guards cannot see each other would need another
               # means.
               - not:
-                  recognized: turned-away
+                  holds: turned-away
             success:
               - say: Fell behind, did you? Go on, catch them up.
-                recognize:
-                  topic: admitted
-                  holder: spoken_to
+                give:
+                  holding: admitted
+                  to: spoken_to
                   about: speaker
                   heard_by: carriers_who_witnessed
             failure:
               - say: Never seen you before. Unless one of that lot will speak for you.
-                recognize:
-                  topic: turned-away
-                  holder: spoken_to
+                give:
+                  holding: turned-away
+                  to: spoken_to
                   about: speaker
                   heard_by: carriers_who_witnessed
           - id: friends-inside
@@ -1739,7 +1810,7 @@ room:
                   id: front-gate
                   in: [admitted]
               - not:
-                  recognized: admitted
+                  holds: admitted
             success:
               # Hand edit (rpg-project#936): the hint is shouted, so a friend
               # inside, out of sight in the next room, catches the words
@@ -1765,25 +1836,59 @@ room:
             success:
               # Hand edit (rpg-project#836, #857, #928): the troupe is let
               # through. The interaction's `admitted` outcome makes the gate
-              # guards recognise them, and the posts let the recognised by.
+              # guards hold `admitted` about them, and the posts let them by.
               - say: Through to the hall, then. Don’t dawdle.
             failure:
               # Hand edit (rpg-project#922): a first failure is a warning,
-              # not recognition; the second claim's failure arrests.
+              # nothing given; the second claim's failure arrests.
               - say: Troupe? There’s no troupe on my list. What’s going on here?
+          # Hand edit (rpg-project#925): the arrested may go quietly. Offered
+          # only to a member this guard arrested; saying it moves the taken
+          # into the cells (the interaction's `jailed` outcome). If nobody
+          # says it, the taken stay held; striking a guard is the other way
+          # out.
+          - id: come-quietly
+            say: We’ll come quietly.
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [arrested, jailed]
+              - holds: arrested
+            advance:
+              interaction: front-gate
+              success: came-quietly
+            success:
+              - say: Sensible. This way, and keep your hands where I can see them.
+          # Hand edit (rpg-project#925, ruled 2026-11-14): the held may also
+          # refuse. A held fighter cannot reach a guard to strike, so the way
+          # out by force is a line: it turns the garrison, and the fight that
+          # forms with the guard breaks the hold.
+          - id: never-alive
+            say: You will never take me alive.
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [arrested, jailed]
+              - holds: arrested
+            success:
+              - say: Then we do this the hard way. To arms!
+                # Shouted, as the gate's hint is (rpg-toolkit#2409): the
+                # captain learns it whichever gate speaker it is said to.
+                loudness: shout
+                fact: refused-arrest
         behaviors:
           - id: policy
             use: gate-2-policy
         # Hand edit (rpg-project#928): every gate guard holds the gate, so
         # killing one leaves it held. Her post is where she starts and her
         # beat's three stops before the gate, and it lets through whom she
-        # recognises.
+        # holds `admitted` about.
         behaviorState: policy
         posts:
           ready:
             door: gate-wall-door
             against: entering
-            pass: { recognized: admitted }
+            pass: { holds: admitted }
             at:
               - q: -3
                 r: 10
@@ -1819,7 +1924,7 @@ room:
               success: admitted
               failure: guest-failed
             success:
-              # Hand edit (rpg-project#928): admission is recognition. The
+              # Hand edit (rpg-project#928): admission is a holding given. The
               # interaction's `admitted` outcome is what lets the party by; a
               # fact in the walker's head no longer does.
               - say: Guests, is it? In you go. Mind your manners in the hall.
@@ -1844,14 +1949,55 @@ room:
             success:
               # Hand edit (rpg-project#836, #857, #928): the troupe is let
               # through. The interaction's `admitted` outcome makes the gate
-              # guards recognise them, and the posts let the recognised by.
+              # guards hold `admitted` about them, and the posts let them by.
               - say: Through to the hall, then. Don’t dawdle.
             failure:
               # Hand edit (rpg-project#922): a first failure is a warning,
-              # not recognition; the second claim's failure arrests.
+              # nothing given; the second claim's failure arrests.
               - say: Troupe? There’s no troupe on my list. What’s going on here?
+          # Hand edit (rpg-project#925): the arrested may go quietly. Offered
+          # only to a member this guard arrested; saying it moves the taken
+          # into the cells (the interaction's `jailed` outcome). If nobody
+          # says it, the taken stay held; striking a guard is the other way
+          # out.
+          - id: come-quietly
+            say: We’ll come quietly.
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [arrested, jailed]
+              - holds: arrested
+            advance:
+              interaction: front-gate
+              success: came-quietly
+            success:
+              - say: Sensible. This way, and keep your hands where I can see them.
+          # Hand edit (rpg-project#925, ruled 2026-11-14): the held may also
+          # refuse. A held fighter cannot reach a guard to strike, so the way
+          # out by force is a line: it turns the garrison, and the fight that
+          # forms with the guard breaks the hold.
+          - id: never-alive
+            say: You will never take me alive.
+            requires:
+              - interaction:
+                  id: front-gate
+                  in: [arrested, jailed]
+              - holds: arrested
+            success:
+              - say: Then we do this the hard way. To arms!
+                # Shouted, as the gate's hint is (rpg-toolkit#2409): the
+                # captain learns it whichever gate speaker it is said to.
+                loudness: shout
+                fact: refused-arrest
           - id: stand-aside
             say: Stand aside or bleed.
+            # Hand edit (rpg-project#925): closed to whoever the captain is
+            # looking for; strangers keep it.
+            requires:
+              - not:
+                  holds: wanted
+              - not:
+                  holds: arrested
             check:
               - ability: intimidation
                 dc: 14
@@ -1897,26 +2043,26 @@ room:
             success:
               - say: Evening. Keep to the road and mind the guards.
           # Hand edit (rpg-project#928): a line the captain answers only for
-          # someone he recognises as admitted. Plain, so it costs nothing.
+          # someone he holds `admitted` about. Plain, so it costs nothing.
           - id: the-way-in
             # Hand edit (rpg-project#929): he goes in once he has admitted
             # anyone, so the line reads the same at the gate or in the hall.
             say: Where will the feast be, captain?
             requires:
-              recognized: admitted
+              holds: admitted
             success:
               - say: In the great hall. You’re expected.
         behaviors:
           - id: policy
             use: captain-policy
         # Hand edit (rpg-project#928): the captain holds the gate too, from
-        # where he stands, and lets through whom he recognises.
+        # where he stands, and lets through whom he holds `admitted` about.
         behaviorState: policy
         posts:
           ready:
             door: gate-wall-door
             against: entering
-            pass: { recognized: admitted }
+            pass: { holds: admitted }
             at:
               - q: -4
                 r: 8
@@ -1972,7 +2118,7 @@ room:
               - ability: persuasion
                 dc: 8
             requires:
-              holds: purse
+              carries: purse
             success:
               - say: Saw who?
                 fact: feast-tonight
@@ -2004,8 +2150,19 @@ room:
         behaviors:
           - id: policy
             use: reserve-2-policy
+      # Hand edit (rpg-project#958, Passages S1): the scullion tells the way
+      # for a coin. Whoever catches her answer comes to hold the record
+      # `kitchen-way`, and so knows the passage.
       scullion:
         faction: kitchen
+        options:
+          - id: favour
+            say: There's a coin in it if you know a way out of here.
+            requires:
+              carries: purse
+            success:
+              - say: The grate by the hearth. Lift it. One way climbs to the chapel, the other drops to the cells.
+                tells: kitchen-way
       sergeant:
         faction: garrison
         behaviors:
@@ -2182,6 +2339,29 @@ room:
     propBindings:
       purse:
         holdable: true
+      # Hand edit (rpg-project#958, Passages S1): the passage's kitchen end.
+      # One thing to do per destination; nothing at either far end, so the
+      # way is one-way. Hand edit (rpg-project#959, Passages S2): they are
+      # done, not said — seen, not heard — and what a witness sees names no
+      # destination.
+      grate:
+        options:
+          - id: to-chapel
+            do: You lift the grate and take the way up.
+            seen: lifts the grate by the hearth and climbs down into the dark
+            success:
+              - relocate:
+                  to: region-chapel
+                  words: The tunnel climbs, and you come up through a flagstone behind the chapel's altar.
+                  rounds: 1
+          - id: to-cells
+            do: You lift the grate and take the way down.
+            seen: lifts the grate by the hearth and climbs down into the dark
+            success:
+              - relocate:
+                  to: region-cells
+                  words: The tunnel drops, and you squeeze out through a drain in the cells.
+                  rounds: 1
       orders:
         holdable: true
         holds:
@@ -2190,10 +2370,13 @@ room:
         holdable: true
         holds:
           - cooks-ledger
+      # Hand edit (rpg-project#959, Passages S2): the altar is examined by
+      # doing, not by saying; nobody says it aloud.
       altar:
         options:
           - id: examine
-            say: Examine the altar.
+            do: You examine the altar.
+            seen: looks the altar over
             check:
               - ability: religion
                 dc: 12
@@ -2211,18 +2394,41 @@ interactions:
     # Hand edit (rpg-project#923, Gate S3): the guard opens the conversation.
     # A gate speaker who sees a character come within two cells hails them.
     approach: { within: 2 }
-    # Hand edit (rpg-project#928): admission is recognition. Entering
-    # `admitted`, the guard the winning line was said to recognises every
-    # member of the party he sees; the other gate guards who witnessed it
-    # recognise them too, having heard. A member out of his sight, or one
-    # who was not there, is not recognised.
+    # Hand edit (rpg-project#928): admission is a holding given. Entering
+    # `admitted`, the guard the winning line was said to is given the
+    # holding `admitted` about every member of the party he sees; the other
+    # gate guards who witnessed it come to hold it too, having heard. He
+    # holds nothing about a member out of his sight, or one who was not there.
     outcomes:
       admitted:
-        - recognize:
-            topic: admitted
-            holder: spoken_to
+        - give:
+            holding: admitted
+            to: spoken_to
             about: party_in_sight
             heard_by: carriers_who_witnessed
+      # Hand edit (rpg-project#925, ruled 2026-11-13): the second failed
+      # claim arrests. Taken: the speaker's party standing in the arrest area
+      # or seen by any gate speaker at that moment; wanted: one the gate
+      # speakers saw before and who is not there. The area is the gatehouse,
+      # and the road just outside its south doorway — the cells within two
+      # (the hail's approach) of the doorway's inside cell, where a claimant
+      # who backed out of the door still stands at the gate.
+      arrested:
+        - arrest:
+            cell: region-cells
+            area:
+              regions: [region-gatehouse]
+              cells:
+                - {r: 13, q: [[-8, -5]]}
+                - {r: 14, q: [[-8, -6]]}
+      # Hand edit (rpg-project#925): going quietly moves the taken into the
+      # cells, an off-screen walk of 5 rounds. A gate speaker who sees one of
+      # them outside the cells again tells the captain they escaped.
+      jailed:
+        - jail:
+            words: The guards march you to the cells.
+            rounds: 5
+            escaped: prisoners-escaped
     recipe:
       ref: site:interactions:front-gate
       initial: fresh
@@ -2241,7 +2447,16 @@ interactions:
             - { on: guest-failed, to: arrested, reason: the second claim failed }
             - { on: admitted, to: admitted, reason: let through }
         admitted: { terminal: true }
-        arrested: { terminal: true }
+        # Hand edit (rpg-project#925): arrested waits for the taken to go
+        # quietly; jailed is where they end up.
+        arrested:
+          transitions:
+            - { on: came-quietly, to: jailed, reason: the arrested went quietly }
+        # Hand edit (rpg-project#925): a wanted member seized after the first
+        # group was jailed goes quietly to the cells beside them.
+        jailed:
+          transitions:
+            - { on: came-quietly, to: jailed, reason: another arrested went quietly }
 behaviorDefinitions:
   gate-1-policy:
     recipe:
@@ -2599,13 +2814,13 @@ behaviorDefinitions:
                   value: true
               to: cowed
               reason: stood aside
-            # Hand edit (rpg-project#929): once he recognises anyone as
-            # admitted — his own judgement or heard from a gate guard — the
+            # Hand edit (rpg-project#929): once he holds `admitted` about
+            # anyone — his own judgement or heard from a gate guard — the
             # captain goes in to the hall, once. The gate guards stay.
             - on: topic
               when:
                 fact:
-                  name: topic:admitted
+                  name: holds.anyone:admitted
                   op: eq
                   value: true
               to: in-hall

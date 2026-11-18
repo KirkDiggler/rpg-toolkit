@@ -31,6 +31,19 @@ func (s *ReadBackSuite) TestFoldedByDefault() {
 	s.Contains(out.String(), "NOT YET SAID")
 }
 
+// TestEach prints the fold for one thing at a time (rpg-project#980): the
+// captain says his own lines rather than naming the guard's.
+func (s *ReadBackSuite) TestEach() {
+	const castle = "../../dungeonspec/testdata/world-builder-v4-castle.yaml"
+	var out, errOut bytes.Buffer
+	s.Equal(0, run([]string{"--each", castle}, &out, &errOut))
+	s.Contains(out.String(), "Guard Captain (captain)")
+	s.NotContains(out.String(), "has the same 3 lines as")
+	out.Reset()
+	s.Equal(0, run([]string{castle}, &out, &errOut))
+	s.Contains(out.String(), "has the same 3 lines as", "the default fold still shares")
+}
+
 func (s *ReadBackSuite) TestFull() {
 	var out, errOut bytes.Buffer
 	s.Equal(0, run([]string{"--full", hail}, &out, &errOut))

@@ -162,17 +162,8 @@ func optionInteraction(o encounter.Option) (string, bool) {
 // regionAt is the authored region whose rows hold the axial cell, and its
 // display words.
 func (b *builder) regionAt(q, r int) string {
-	for _, reg := range b.spec.Room.Gameplay.Regions {
-		for _, row := range reg.Cells {
-			if row.R != r {
-				continue
-			}
-			for _, span := range row.Q {
-				if q >= span[0] && q <= span[1] {
-					return b.regionWords(reg.ID)
-				}
-			}
-		}
+	if id := b.specRegionAt(q, r); id != "" {
+		return b.regionWords(id)
 	}
 	return "no authored region"
 }
@@ -229,10 +220,19 @@ func (b *builder) build() *ReadBack {
 		Section{Title: "Conversations", Groups: b.conversations()},
 		Section{Title: "Routines", Groups: b.routines()},
 	)
+	// THE JOINS, under the place but said last of the sections above: a
+	// passage is read off the rows that relocate, which the creatures', the
+	// props' and the sides' lines say (rpg-project#971).
+	place := &rb.Sections[0]
+	joins := b.joins(rb.Statements())
+	place.Groups = append(place.Groups[:1], append([]Group{joins}, place.Groups[1:]...)...)
 	// The hubs last, from every statement above that touches them.
+	said := rb.Statements()
 	rb.Sections = append(rb.Sections,
 		Section{Title: "Topics", Groups: b.hubGroups("topic")},
 		Section{Title: "Facts", Groups: b.hubGroups("fact")},
+		Section{Title: "Records", Groups: b.threadGroups("record", said)},
+		Section{Title: "Secrets", Groups: b.threadGroups("concealment", said)},
 	)
 	rb.NotYetSaid = b.notYetSaid()
 	return rb

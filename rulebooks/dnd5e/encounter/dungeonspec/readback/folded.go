@@ -17,9 +17,14 @@ import (
 // The folds, all mechanical:
 //   - a line is said once, as a heading and short sub-items;
 //   - things that differ only by state are said once with the states listed;
-//   - creatures (or routines) whose lines, posts or rows are identical apart
-//     from the creature's own name are said once, and the others name what
-//     they share and say only what differs;
+//   - in the whole-file fold ([ReadBack.Folded]), creatures (or routines)
+//     whose lines, posts or rows are identical apart from the creature's own
+//     name are said once, and the others name what they share and say only
+//     what differs; the fold for one thing at a time
+//     ([ReadBack.FoldedEach]) says each in full under its own heading;
+//   - an answer names its loudness ("at `speak`"), and what that loudness
+//     reaches is said once for the thing that speaks, an entry standing for
+//     every answer it explains;
 //   - a creature is named in full on its heading and by a short form after;
 //   - topics and facts become short tables of places.
 
@@ -35,6 +40,9 @@ type Item struct {
 	// terse shows only the paths of the lines a fold names, not of every
 	// facet beneath them; Paths still carries them all.
 	terse bool
+	// note, when set, is shown in place of the paths in the text rendering;
+	// Paths still carries them all.
+	note string
 }
 
 // FoldedSection is one heading of the folded read-back.
@@ -50,23 +58,39 @@ func self(text, name string) string {
 	return capitalize(strings.ReplaceAll(text, "{self}", name))
 }
 
-// Folded is the read-back folded for a person.
-func (r *ReadBack) Folded() []FoldedSection {
+// Folded is the read-back folded for a person reading the whole file:
+// creatures and routines that share lines, posts or rows word for word are
+// said once and named by the others.
+func (r *ReadBack) Folded() []FoldedSection { return r.fold(true) }
+
+// FoldedEach is the read-back folded for a person reading one thing at a
+// time (rpg-project#980): the same folding as [ReadBack.Folded] without the
+// sharing across creatures and routines, so every creature's lines and posts
+// and every routine's states and rows are said under it in full folded form.
+func (r *ReadBack) FoldedEach() []FoldedSection { return r.fold(false) }
+
+// fold is both folds; share names what an earlier creature or routine
+// already said instead of saying it again.
+func (r *ReadBack) fold(share bool) []FoldedSection {
 	var out []FoldedSection
 	for _, s := range r.Sections {
 		var items []Item
 		switch s.Title {
 		case "Creatures":
-			items = foldCreatures(s.Groups)
+			items = foldCreatures(s.Groups, share)
 		case "Conversations":
 			for _, g := range s.Groups {
 				items = append(items, foldConversation(g))
 			}
 		case "Routines":
-			items = foldRoutines(s.Groups)
+			items = foldRoutines(s.Groups, share)
 		case "Topics", "Facts":
 			for _, g := range s.Groups {
 				items = append(items, foldHub(g))
+			}
+		case "Records", "Secrets":
+			for _, g := range s.Groups {
+				items = append(items, foldThread(g))
 			}
 		default:
 			for _, g := range s.Groups {
@@ -89,12 +113,28 @@ func foldPlain(g Group) Item {
 		short = "the prop"
 	}
 	var bundles Item
+	loudSaid := false
 	for _, chunk := range chunkLines(g.Statements) {
 		if chunk.line != nil {
+			// What each loudness reaches, said once above the lines that
+			// speak at it, as a creature's is.
+			if !loudSaid {
+				loudSaid = true
+				for _, it := range loudnessItems(g.Statements) {
+					head.Items = append(head.Items, withSelf(it, short))
+				}
+			}
 			head.Items = append(head.Items, foldLine(chunk.facets, short))
 			continue
 		}
 		st := chunk.facets[0]
+		// A WAY IS SAID UNDER ITS JOIN (rpg-project#981): the join once,
+		// its ways beneath it.
+		if wayKind(st.Kind) && len(head.Items) > 0 {
+			last := &head.Items[len(head.Items)-1]
+			last.Items = append(last.Items, Item{Text: st.Sentence, Paths: []string{st.Path}})
+			continue
+		}
 		if st.Kind == KindEnding {
 			n := len(head.Items)
 			if n > 0 && strings.HasPrefix(head.Items[n-1].Text, "The run ends when "+st.fold.state+",") {
@@ -120,6 +160,28 @@ func foldPlain(g Group) Item {
 		head.Items = append(head.Items, bundles)
 	}
 	return head
+}
+
+// loudnessItems is one entry per loudness a group's answers speak at, in the
+// order first spoken: what that loudness reaches, said once about {self},
+// standing for every statement whose full sentence explains it.
+func loudnessItems(sts []Statement) []Item {
+	var order []string
+	paths := map[string][]string{}
+	for _, st := range sts {
+		for _, l := range st.fold.loud {
+			if _, ok := paths[l]; !ok {
+				order = append(order, l)
+			}
+			paths[l] = append(paths[l], st.Path)
+		}
+	}
+	out := make([]Item, 0, len(order))
+	for _, l := range order {
+		out = append(out, Item{Text: fmt.Sprintf("At %s, {self}'s words reach %s.", quote(l), reachWords(l, "{self}")),
+			Paths: paths[l], note: fmt.Sprintf("said for every answer below at %s", quote(l))})
+	}
+	return out
 }
 
 // chunk is either one statement or the facets of one line.
@@ -219,10 +281,14 @@ func foldLine(facets []Statement, short string) Item {
 		if len(texts) == 0 {
 			continue
 		}
-		it.Text = v.lead + strings.Join(texts, "; or ")
+		lead := v.lead
+		if v.key == "said" && line.fold.done {
+			lead = "When done: "
+		}
+		it.Text = lead + strings.Join(texts, "; or ")
 		if _, ok := adv[v.adv]; ok && len(texts) > 1 {
 			// The advance is not an alternative row: it follows whichever row.
-			it.Text = v.lead + strings.Join(texts[:len(texts)-1], "; or ") + "; and " + texts[len(texts)-1]
+			it.Text = lead + strings.Join(texts[:len(texts)-1], "; or ") + "; and " + texts[len(texts)-1]
 		}
 		head.Items = append(head.Items, it)
 	}
@@ -274,13 +340,14 @@ type creatureBlock struct {
 	posts       []Item // texts with {self}
 	lines       []Item // texts with {self}, Base the line's own path
 	lineIDs     []string
+	loud        []Item // what each loudness its answers speak at reaches
 	after       []Item // borrowed lines
 }
 
-// foldCreatures folds every creature, then folds across creatures: a line
-// or post identical, apart from the name, to one an earlier creature has is
-// named, not said again.
-func foldCreatures(groups []Group) []Item {
+// foldCreatures folds every creature and, when share is set, folds across
+// creatures: a line or post identical, apart from the name, to one an
+// earlier creature has is named, not said again.
+func foldCreatures(groups []Group, share bool) []Item {
 	var blocks []creatureBlock
 	for _, g := range groups {
 		blocks = append(blocks, foldCreature(g))
@@ -294,8 +361,15 @@ func foldCreatures(groups []Group) []Item {
 			}
 			it.Items = append(it.Items, withSelf(x, c.short))
 		}
-		it.Items = append(it.Items, foldShared(c, blocks[:i], c.posts, nil, "post", "posts")...)
-		it.Items = append(it.Items, foldShared(c, blocks[:i], c.lines, c.lineIDs, "line", "lines")...)
+		earlier := blocks[:i]
+		if !share {
+			earlier = nil
+		}
+		it.Items = append(it.Items, foldShared(c, earlier, c.posts, nil, "post", "posts")...)
+		for _, x := range c.loud {
+			it.Items = append(it.Items, withSelf(x, c.short))
+		}
+		it.Items = append(it.Items, foldShared(c, earlier, c.lines, c.lineIDs, "line", "lines")...)
 		for _, x := range c.after {
 			it.Items = append(it.Items, withSelf(x, c.short))
 		}
@@ -455,6 +529,7 @@ func foldCreature(g Group) creatureBlock {
 		}
 		c.posts = append(c.posts, Item{Text: text + ".", Paths: postPaths[k], Base: base})
 	}
+	c.loud = loudnessItems(g.Statements)
 	return c
 }
 
@@ -594,9 +669,10 @@ func foldConversation(g Group) Item {
 	return head
 }
 
-// foldRoutines folds every routine, then names a routine identical, apart
-// from its runner's name, to an earlier one instead of saying it again.
-func foldRoutines(groups []Group) []Item {
+// foldRoutines folds every routine and, when share is set, names a routine
+// identical, apart from its runner's name, to an earlier one instead of
+// saying it again.
+func foldRoutines(groups []Group, share bool) []Item {
 	var out []Item
 	var seen []Item
 	var seenDef []string
@@ -605,6 +681,9 @@ func foldRoutines(groups []Group) []Item {
 		key := canonical(Item{Items: raw.Items}, raw.Base)
 		match := ""
 		for i, s := range seen {
+			if !share {
+				break
+			}
 			if canonical(Item{Items: s.Items}, s.Base) == key {
 				match = seenDef[i]
 				break
@@ -788,10 +867,18 @@ func foldHub(g Group) Item {
 // FoldedText renders the folded read-back, wrapped for a person: each entry
 // followed by its paths in brackets, relative to the entry above it where
 // they share its start.
-func (r *ReadBack) FoldedText() string {
+func (r *ReadBack) FoldedText() string { return r.foldedText(r.Folded()) }
+
+// FoldedEachText renders [ReadBack.FoldedEach] as [ReadBack.FoldedText]
+// renders the whole-file fold.
+func (r *ReadBack) FoldedEachText() string { return r.foldedText(r.FoldedEach()) }
+
+// foldedText renders folded sections with the read-back's title and its not
+// yet said.
+func (r *ReadBack) foldedText(secs []FoldedSection) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "READ-BACK: %s (%s)\n", r.Name, r.Key)
-	for _, s := range r.Folded() {
+	for _, s := range secs {
 		fmt.Fprintf(&sb, "\n%s\n", strings.ToUpper(s.Title))
 		for _, it := range s.Items {
 			sb.WriteString(ItemText(it))
@@ -839,6 +926,10 @@ func writeItem(sb *strings.Builder, it Item, base string, depth int) {
 	}
 	shown = withoutImplied(shown)
 	text := it.Text
+	if it.note != "" {
+		shown = nil
+		text += "  [" + it.note + "]"
+	}
 	if it.terse && len(shown) == 0 && len(it.Paths) > 0 {
 		text += "  [at each line's requires, above]"
 	}
@@ -955,4 +1046,65 @@ func compactPaths(paths []string) string {
 		groups = append(groups, k+" "+strings.Join(rest[k], " "))
 	}
 	return strings.Join(groups, "; ")
+}
+
+// threadHeadings are the headings a record or secret hub folds its places
+// under, by kind.
+var threadHeadings = map[Kind]string{
+	KindRecordHold: "Held by", KindRecordTell: "Told by", KindRecordLift: "Lifts the hidden bar of",
+	KindSecretReveal: "Revealed by", KindSecretFind: "Found by", KindSecretBar: "Bars", KindSecretNeed: "Needed by",
+}
+
+// foldThread says a record or a secret hub as its own sentence, then a
+// short table of the places that reach it, each heading once.
+func foldThread(g Group) Item {
+	head := Item{Text: g.Title + " — nothing in the file says what it is"}
+	var order []Kind
+	rows := map[Kind]*Item{}
+	for _, st := range g.Statements {
+		heading, ok := threadHeadings[st.Kind]
+		if !ok {
+			head.Text = g.Title + " — " + st.Sentence
+			head.Paths = append(head.Paths, st.Path)
+			continue
+		}
+		it, ok := rows[st.Kind]
+		if !ok {
+			it = &Item{Text: heading + ": "}
+			rows[st.Kind] = it
+			order = append(order, st.Kind)
+		} else {
+			it.Text += "; "
+		}
+		it.Text += threadSite(st)
+		it.Paths = append(it.Paths, st.Path)
+	}
+	for _, k := range order {
+		rows[k].Text += "."
+		head.Items = append(head.Items, *rows[k])
+	}
+	return head
+}
+
+// threadSite names the place a statement stands for in a thread: the line
+// that tells it, the way taken, else the thing the statement was first said
+// about (the record that reveals, the creature or prop that holds, the join
+// barred).
+func threadSite(st Statement) string {
+	if wayKind(st.fold.fromKind) && st.fold.site != "" {
+		return st.fold.site
+	}
+	if st.Kind == KindSecretFind {
+		return "a s" + strings.TrimSuffix(strings.TrimPrefix(st.Sentence, "A s"), ".")
+	}
+	if st.Kind == KindRecordTell && st.fold.site != "" {
+		if st.fold.who != "" {
+			return st.fold.site + " (" + st.fold.who + ")"
+		}
+		return st.fold.site
+	}
+	if st.fold.from.Kind != "" {
+		return "the " + st.fold.from.Kind + " " + quote(st.fold.from.ID)
+	}
+	return st.Path
 }

@@ -49,16 +49,16 @@ import (
 // an interface so a validator can name the field it is about in the file's
 // own path (`dispositions[0].until.down`).
 type PredicateSpec struct {
-	// Round is the `{ round: N }` form: holds when any fight in the run has
+	// Round is the `{ round: N }` form: true when any fight in the run has
 	// started round N (design R9 — the fight's own clock; outside a fight it
 	// never holds). N is at least 1, refused otherwise.
 	Round *int
 
-	// Down is the `{ down: <placement id> }` form: holds when that member is
+	// Down is the `{ down: <placement id> }` form: true when that member is
 	// Down. Must name a MONSTER placement in this file — a prop cannot fall.
 	Down string
 
-	// Fact is the `{ fact: <id> }` form: on `until`, holds when the faction's
+	// Fact is the `{ fact: <id> }` form: on `until`, true when the faction's
 	// mind knows the fact; on `arrives`, when anyone in the run does (design
 	// R5 — two grains, one spelling). A fact id is a plain string declared by
 	// mention; the dungeon does not require any record to reveal it (R8: the
@@ -66,31 +66,31 @@ type PredicateSpec struct {
 	Fact string
 
 	// Stance is the `{ stance: { between: [a, b], is: <word> } }` form:
-	// holds when the pair's stance folds to that value. Both factions must
+	// true when the pair's stance folds to that value. Both factions must
 	// exist (`party` allowed), and the word is one of hostile, neutral,
 	// allied.
 	Stance *StancePredicateSpec
 
-	// Holds is the `{ holds: <prop id> }` form (rpg-project#569): holds when
-	// the SPEAKER carries that prop. LEGAL ONLY AS AN OPTION'S `requires` —
-	// it reads one character's pockets at the moment they speak, and an
-	// until, an arrival or an ending has no speaker, so each refuses it by
-	// name ([grammar.predicate]). Must name a placed prop somebody can pick
-	// up.
-	Holds string
+	// Carries is the `{ carries: <prop id> }` form (rpg-project#569, the
+	// word since rpg-project#1005): true when the SPEAKER carries that prop.
+	// LEGAL ONLY AS AN OPTION'S `requires` — it reads one character's
+	// pockets at the moment they speak, and an until, an arrival or an
+	// ending has no speaker, so each refuses it by name ([grammar.predicate]).
+	// Must name a placed prop somebody can pick up.
+	Carries string
 
 	// Left is the `{ left: <exit id> }` form (rpg-project#716, ruled
-	// 2026-10-29): holds when the last standing party member has left by
+	// 2026-10-29): true when the last standing party member has left by
 	// that exit. LEGAL ONLY AS AN ENDING'S `when` — leaving is the end of
 	// the run, so nothing can turn, arrive or be spoken for after it — and
 	// refused by name everywhere else ([grammar.predicate]). Must name an
 	// exit this file declares.
 	Left string
 
-	// Not is the `{ not: <one predicate> }` form (rpg-project#719): holds
+	// Not is the `{ not: <one predicate> }` form (rpg-project#719): true
 	// when the inner predicate does not, judged where and when the inner one
 	// is (the engine's [encounter.TriggerNot]). SCOPED BY WHAT IT WRAPS: a
-	// `not` of `holds` only on an option's `requires`, of `left` only on an
+	// `not` of `carries` only on an option's `requires`, of `left` only on an
 	// ending's `when`, each refused elsewhere in the inner form's own words.
 	// On an until, an arrival or an ending's `when` it is waited for, and a
 	// `not` of a fact, a round or a fall holds from the start, so only a
@@ -99,7 +99,7 @@ type PredicateSpec struct {
 	Not *PredicateSpec
 
 	// Interaction is the `{ interaction: { id, in: [states] } }` form
-	// (rpg-project#922): holds when the run's interaction `id` is in one of
+	// (rpg-project#922): true when the run's interaction `id` is in one of
 	// the states listed. JUDGED PER RUN, not per speaker (#916 R2: the
 	// entrance remembers for the run). LEGAL ONLY ON AN OPTION'S `requires`
 	// (and a `not` of it there) — an interaction's state is read when a line
@@ -108,16 +108,16 @@ type PredicateSpec struct {
 	// and every state one its recipe declares.
 	Interaction *InteractionPredicateSpec
 
-	// Recognized is the `{ recognized: <topic> }` form (rpg-project#928):
-	// holds when THE OTHER PARTY holds that topic about "me" — on an
-	// option's `requires`, the creature spoken to holds it about the
-	// speaker; on a post's `pass`, the post's holder holds it about the
-	// walker ([encounter.TriggerRecognized]). LEGAL ONLY ON A CREATURE'S
+	// Holding is the `{ holds: <holding> }` form (rpg-project#928, the word
+	// since rpg-project#1005): true when THE OTHER PARTY holds that holding
+	// about "me" — on an option's `requires`, the creature spoken to holds it
+	// about the speaker; on a post's `pass`, the post's holder holds it about
+	// the walker ([encounter.TriggerRecognized]). LEGAL ONLY ON A CREATURE'S
 	// OPTION'S `requires` AND A POST'S `pass` (and a `not` of it there): a
 	// prop holds nothing about anybody, and an until, an arrival or an
-	// ending never waits on it. Must name a topic some root interaction's
-	// `outcomes` grants.
-	Recognized string
+	// ending never waits on it. Must name a holding something in the
+	// document gives, and not a prop: carrying a thing is `carries`.
+	Holding string
 }
 
 // InteractionPredicateSpec is the interaction form's own object: which
@@ -181,17 +181,25 @@ type StancePredicateSpec struct {
 
 // Predicate form names, for a refusal that says which form was meant.
 const (
-	predicateRound  = "round"
-	predicateDown   = "down"
-	predicateFact   = "fact"
-	predicateStance = "stance"
-	predicateHolds  = "holds"
-	predicateLeft   = "left"
-	predicateNot    = "not"
+	predicateRound   = "round"
+	predicateDown    = "down"
+	predicateFact    = "fact"
+	predicateStance  = "stance"
+	predicateCarries = "carries"
+	predicateLeft    = "left"
+	predicateNot     = "not"
 
 	predicateInteraction = "interaction"
-	predicateRecognized  = "recognized"
+	predicateHolds       = "holds"
 )
+
+// retiredPredicateKeys is every predicate key rpg-project#1005 renamed, with
+// the sentence that names the word that replaced it. An old file is refused
+// at load, never read under the old meaning.
+var retiredPredicateKeys = map[string]string{
+	"recognized": "`recognized` is now `holds`: write { holds: <holding> } " +
+		"(what the creature spoken to, or a post's holder, holds about the speaker or the walker)",
+}
 
 // predicateForms is the one sentence every predicate refusal points at.
 const predicateForms = "a predicate is exactly one of { round: N }, { down: <placement id> }, " +
@@ -215,16 +223,16 @@ func (p *PredicateSpec) Form() string {
 		return predicateFact
 	case p.Stance != nil:
 		return predicateStance
-	case p.Holds != "":
-		return predicateHolds
+	case p.Carries != "":
+		return predicateCarries
 	case p.Left != "":
 		return predicateLeft
 	case p.Not != nil:
 		return predicateNot
 	case p.Interaction != nil:
 		return predicateInteraction
-	case p.Recognized != "":
-		return predicateRecognized
+	case p.Holding != "":
+		return predicateHolds
 	default:
 		return ""
 	}
@@ -241,9 +249,13 @@ func (p *PredicateSpec) UnmarshalYAML(value *yaml.Node) error {
 
 	var forms []string
 	for i := 0; i < len(value.Content); i += 2 {
-		switch key := value.Content[i].Value; key {
-		case predicateRound, predicateDown, predicateFact, predicateStance, predicateHolds, predicateLeft, predicateNot,
-			predicateInteraction, predicateRecognized:
+		key := value.Content[i].Value
+		if why, retired := retiredPredicateKeys[key]; retired {
+			return fmt.Errorf("line %d: %s", value.Content[i].Line, why)
+		}
+		switch key {
+		case predicateRound, predicateDown, predicateFact, predicateStance, predicateCarries, predicateLeft, predicateNot,
+			predicateInteraction, predicateHolds:
 			forms = append(forms, key)
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.PredicateSpec",
@@ -259,23 +271,23 @@ func (p *PredicateSpec) UnmarshalYAML(value *yaml.Node) error {
 	}
 
 	var obj struct {
-		Round  *int                 `yaml:"round"`
-		Down   string               `yaml:"down"`
-		Fact   string               `yaml:"fact"`
-		Stance *StancePredicateSpec `yaml:"stance"`
-		Holds  string               `yaml:"holds"`
-		Left   string               `yaml:"left"`
-		Not    *PredicateSpec       `yaml:"not"`
+		Round   *int                 `yaml:"round"`
+		Down    string               `yaml:"down"`
+		Fact    string               `yaml:"fact"`
+		Stance  *StancePredicateSpec `yaml:"stance"`
+		Carries string               `yaml:"carries"`
+		Left    string               `yaml:"left"`
+		Not     *PredicateSpec       `yaml:"not"`
 
 		Interaction *InteractionPredicateSpec `yaml:"interaction"`
-		Recognized  string                    `yaml:"recognized"`
+		Holding     string                    `yaml:"holds"`
 	}
 	if err := value.Decode(&obj); err != nil {
 		return err
 	}
 	*p = PredicateSpec{
-		Round: obj.Round, Down: obj.Down, Fact: obj.Fact, Stance: obj.Stance, Holds: obj.Holds, Left: obj.Left,
-		Not: obj.Not, Interaction: obj.Interaction, Recognized: obj.Recognized,
+		Round: obj.Round, Down: obj.Down, Fact: obj.Fact, Stance: obj.Stance, Carries: obj.Carries, Left: obj.Left,
+		Not: obj.Not, Interaction: obj.Interaction, Holding: obj.Holding,
 	}
 
 	// A form that decoded to its own zero value said the key and nothing
@@ -340,16 +352,16 @@ func (p *PredicateSpec) String() string {
 	case predicateStance:
 		return fmt.Sprintf("{ stance: { between: [%s], is: %s } }",
 			strings.Join(p.Stance.Between[:], ", "), p.Stance.Is)
-	case predicateHolds:
-		return fmt.Sprintf("{ holds: %s }", p.Holds)
+	case predicateCarries:
+		return fmt.Sprintf("{ carries: %s }", p.Carries)
 	case predicateLeft:
 		return fmt.Sprintf("{ left: %s }", p.Left)
 	case predicateNot:
 		return fmt.Sprintf("{ not: %s }", p.Not.String())
 	case predicateInteraction:
 		return fmt.Sprintf("{ interaction: { id: %s, in: [%s] } }", p.Interaction.ID, strings.Join(p.Interaction.In, ", "))
-	case predicateRecognized:
-		return fmt.Sprintf("{ recognized: %s }", p.Recognized)
+	case predicateHolds:
+		return fmt.Sprintf("{ holds: %s }", p.Holding)
 	default:
 		return "{ }"
 	}

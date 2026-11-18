@@ -850,7 +850,34 @@ type Status struct {
 
 	// Outcome is the ending that fired, present only once closed.
 	Outcome *Outcome `json:"outcome,omitempty"`
+
+	// Sharing is the party's sharing dial this run plays at
+	// (rpg-project#935): what a player is shown of a friend's perception.
+	// A run whose content said nothing reads [PartySharingView], the default.
+	// Read off the encounter; nothing in this read decides by it.
+	Sharing PartySharing `json:"sharing"`
 }
+
+// PartySharing is the party's sharing dial as this seam names it — the
+// composition's encounter.Sharing, which may not cross (law S2). A closed
+// set a client branches on: it says whether the run is at "each their own"
+// or "shared view".
+type PartySharing string
+
+const (
+	// PartySharingOwn is "each their own": a player is shown only what their
+	// own character perceives.
+	PartySharingOwn PartySharing = "own"
+
+	// PartySharingView is "shared view", the default: a player is also shown
+	// what any party friend sees and hears.
+	PartySharingView PartySharing = "view"
+
+	// PartySharingKnowledge is "shared knowledge": designed, not built
+	// (rpg-project#937). A launched run never carries it; it is named so a
+	// status read of a world that does is an answer and not a refusal.
+	PartySharingKnowledge PartySharing = "knowledge"
+)
 
 // Outcome describes how an encounter ended. It carries no result: the
 // ending's declared success or failure reaches a host on the ended clock
@@ -1861,6 +1888,32 @@ type SpeakOptionRow struct {
 	// Why is present if and only if Available is false — the line's own
 	// reason, never the declaration's.
 	Why *Shortfall `json:"why,omitempty"`
+}
+
+// InteractOptionRow is one thing to do on a prop (rpg-project#959): the
+// prop, the id the request echoes, and the words the doer is told — seen,
+// not heard.
+type InteractOptionRow struct {
+	// Prop is the prop that offers it — the dungeon file's `place[].id`.
+	Prop string `json:"prop"`
+
+	// OptionID is the author's id for it, unique on its prop. The client
+	// echoes it in [InteractInput.OptionID] and never parses it.
+	OptionID string `json:"option_id"`
+
+	// Do is what the doer is told they do, VERBATIM as authored ("You lift
+	// the grate and take the way up.").
+	Do string `json:"do"`
+
+	// Available, Interaction, Revision, Pending, PendingOn and Why are
+	// [SpeakOptionRow]'s: a thing to do holds a conversation, waits on a
+	// roll and goes stale exactly as a line does.
+	Available   bool       `json:"available"`
+	Interaction string     `json:"interaction,omitempty"`
+	Revision    uint64     `json:"revision,omitempty"`
+	Pending     bool       `json:"pending,omitempty"`
+	PendingOn   string     `json:"pending_on,omitempty"`
+	Why         *Shortfall `json:"why,omitempty"`
 }
 
 // CastOption is one word on a cast's menu — Command's "Approach", "Flee",

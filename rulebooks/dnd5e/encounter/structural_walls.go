@@ -126,6 +126,9 @@ type StructuralOpeningInput struct {
 // state and no independent transform: the opening owns the pose, and the
 // door's state remains [DoorInput.State]'s.
 type StructuralDoorBindingInput struct {
+	// FramePresentation is optional fixed-frame appearance, never door state.
+	FramePresentation *DoorFramePresentation
+
 	// PlacedID is the existing raw, static door presence id — the same value
 	// as the nonblocking [PlacedPropInput.ID] the lowering emits for the
 	// attached door. REQUIRED non-empty and it must name a static placed
@@ -175,10 +178,11 @@ type structuralOpening struct {
 // structuralDoorBinding is one compiled door binding: the two existing
 // identities it ties together and the opening endpoints the compiler resolved.
 type structuralDoorBinding struct {
-	placedID PropID
-	doorID   DoorID
-	ref      string
-	from, to spatial.Point
+	framePresentation *DoorFramePresentation
+	placedID          PropID
+	doorID            DoorID
+	ref               string
+	from, to          spatial.Point
 }
 
 // sortStructuralLayout gives the full and member-scoped reads the same identity
@@ -395,6 +399,15 @@ func validateStructuralOpenings(
 				return nil, err
 			}
 			opening.door = binding
+			if binding.framePresentation != nil {
+				if err := validateDoorFramePresentation(binding.framePresentation, o.Width); err != nil {
+					return nil, fmt.Errorf("%s.door.frame_presentation: %w", op, err)
+				}
+				a, b = o.Position-binding.framePresentation.Span.Before, o.Position+binding.framePresentation.Span.After
+				if a < -roundoff || b > length+roundoff {
+					return nil, fmt.Errorf("%s frame span must fit within the line: %w", op, ErrNoField)
+				}
+			}
 		}
 		cuts = append(cuts, cut{start: a, end: b, index: j})
 		out = append(out, opening)
@@ -458,12 +471,16 @@ func (f *field) validateStructuralDoorBinding(
 		return nil, fmt.Errorf("%s must resolve a finite positive opening width: %w", dp, ErrNoField)
 	}
 
+	if err := validateDoorFramePresentation(b.FramePresentation, width); err != nil {
+		return nil, fmt.Errorf("%s.frame_presentation: %w", dp, err)
+	}
 	return &structuralDoorBinding{
-		placedID: b.PlacedID,
-		doorID:   b.DoorID,
-		ref:      b.Ref,
-		from:     b.From,
-		to:       b.To,
+		framePresentation: cloneDoorFramePresentation(b.FramePresentation),
+		placedID:          b.PlacedID,
+		doorID:            b.DoorID,
+		ref:               b.Ref,
+		from:              b.From,
+		to:                b.To,
 	}, nil
 }
 

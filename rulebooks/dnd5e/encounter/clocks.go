@@ -2168,14 +2168,13 @@ func (e *Encounter) settleWalkOn(kind ClockKind, audience []MemberID, moved int)
 // The resume runs it again for its own cells, which is the ordinary
 // incremental answer rather than a second copy of the first one.
 //
-// AND IT DOES NOT EDIT ANYBODY'S MEMORY (rpg-toolkit#1691). There was a
-// correction here: a ghost the mover held on the cell the mover just arrived
-// on was rewritten to unknown, on the reasoning that the mover would have
-// noticed nobody was standing there. It went out with the adoption of
-// mind/perception, which deliberately exposes no way to write one observer's
-// testimony behind a pass. The ghost now keeps the position it last saw —
-// honest and stale, which is what a memory is — and how to draw a memory the
-// world has moved past is the client's decision, not this module's.
+// A GHOST ON A CELL A PLAYER SEES IS CORRECTED IN THE PASS ITSELF
+// (rpg-project#961, [Encounter.correctEmptyMember]): the refresh's look, not
+// this function, holds a player's sighting of a member as unknown once that
+// player sees the remembered cell with nobody on it — the mover arriving on
+// it included. A creature's ghost keeps the position it last saw: its search
+// reads it, and a search that finds nothing ends in unknown on its own
+// ([Encounter.giveUpSearch]).
 func (e *Encounter) settleWalk(audience []MemberID, moved int) (map[MemberID]*IntelDelta, error) {
 	if moved == 0 {
 		return nil, errNoSettle
@@ -3045,6 +3044,8 @@ func (e *Encounter) formWithParticipation(
 	if err != nil {
 		return nil, fmt.Errorf("form append beat: %w", err)
 	}
+	// A FIGHT IS THE WAY OUT OF CUSTODY (rpg-project#925, arrest.go).
+	e.breakCustody(in.Order)
 
 	// The first turn of the fight starts here, and until this line nothing
 	// ever said so: SetOrder has always returned TurnStarted for whoever won
@@ -3196,6 +3197,8 @@ func (e *Encounter) transfer(in *TransferInput, driveAfterRemove bool) (*Transfe
 		e.disarm(in.Member)
 		// A straggler joining a fight is engaged by it too (sneaking R7).
 		e.endSneaking(in.Member)
+		// A FIGHT IS THE WAY OUT OF CUSTODY (rpg-project#925, arrest.go).
+		e.breakCustody([]MemberID{in.Member})
 	case ClockWorld:
 		if bubble == nil {
 			return nil, fmt.Errorf("transfer %q: %w", in.Member, ErrNoBubble)

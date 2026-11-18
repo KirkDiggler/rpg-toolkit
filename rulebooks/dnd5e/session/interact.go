@@ -5,6 +5,7 @@ package session
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -38,8 +39,26 @@ type InteractInput struct {
 
 	// Range is the maximum distance, in cells, Target may stand from Actor.
 	// Zero (the default) means adjacent — one cell. Forwarded to
-	// encounter.Interact untouched; see this type's own doc.
+	// encounter.Interact untouched; see this type's own doc. Not read for a
+	// thing done to a prop, which is measured at [InteractionReach] as a
+	// line is.
 	Range int
+
+	// Prop is the prop a thing is done to (rpg-project#959): the dungeon
+	// file's `place[].id`, as [InteractOptionRow.Prop] carries it. EXACTLY
+	// ONE of Target and Prop; with Prop, OptionID is required.
+	Prop string
+
+	// OptionID names the thing done, verbatim from
+	// [InteractOptionRow.OptionID]. It must be one the prop offers THIS
+	// actor now, and one to do rather than to say ([ErrNoOption]).
+	OptionID string
+
+	// Revision is the thing's [InteractOptionRow.Revision], verbatim; a
+	// thing done at any other revision is [ErrStaleOption], one pending on
+	// somebody's waiting roll [ErrLineReserved]. Not read for a thing that
+	// touches no conversation.
+	Revision uint64
 }
 
 // WorldNPCDescriptor is what a player sees after reaching a world NPC: the
@@ -86,7 +105,13 @@ type WorldNPCDescriptor struct {
 // recorded.
 type InteractOutput struct {
 	// Descriptor is what the target IS, assembled from session's own store.
+	// The zero descriptor for a thing done to a prop.
 	Descriptor WorldNPCDescriptor
+
+	// Done is the thing done to a prop (rpg-project#959): the attempt in the
+	// open, [SpeakOutput]'s shape, beside the world NPC's descriptor. Nil
+	// for a world NPC.
+	Done *DoneOutput
 
 	// Saved names what was persisted.
 	Saved SaveReport
@@ -95,8 +120,44 @@ type InteractOutput struct {
 	Delivery DeliveryReport
 }
 
+// DoneOutput is a thing done to a prop (rpg-project#959): the verdict, the
+// roll and the pause, exactly as [SpeakOutput] reports a line — the two share
+// one machine.
+type DoneOutput struct {
+	// Prop and OptionID echo what was done, and to what.
+	Prop     string `json:"prop"`
+	OptionID string `json:"option_id"`
+
+	// Beaten, Total, DC and Applied are [SpeakOutput]'s: the verdict (true
+	// for a plain thing, which rolls nothing), and the check's arithmetic.
+	Beaten  bool         `json:"beaten"`
+	Total   int          `json:"total"`
+	DC      int          `json:"dc"`
+	Applied DoorApproach `json:"applied"`
+
+	// Paused and Roll are [SpeakOutput.Paused]'s: the attempt stopped to ask
+	// whether to spend a held benefit; answer it with [Manager.React].
+	Paused bool `json:"paused,omitempty"`
+	Roll   *int `json:"roll,omitempty"`
+}
+
 // Interact confirms a player can reach a placed world NPC and returns what
-// it is.
+// it is — or, with a prop, does one of the prop's things to do.
+//
+// # A thing done to a prop (rpg-project#959)
+//
+// With [InteractInput.Prop] it is something done, seen and not heard: the
+// session's one social machine, shared with [Manager.Speak] — the same
+// doors in the same order, the same price (a checked thing is the action, a
+// plain one free), the same roll, the same waiting check that holds its
+// conversation, the same settle — landed through the composition's widened
+// Interact. Its errors are Speak's for a prop: ErrNoOption (not offered, or
+// a line to say), ErrNoProp (no such thing, or one this actor is not shown),
+// ErrStaleDeclaration (a thing no longer within reach), ErrStaleOption,
+// ErrLineReserved, ErrNoRoom (a far end with no room), ErrInBubble or
+// ErrInCustody (a move it would make refused).
+//
+// # A world NPC
 //
 // Two layers, two questions: encounter.Interact answers "can Actor reach
 // Target" (identity, adjacency, visibility) and holds no NPC content to
@@ -126,6 +187,9 @@ func (m *Manager) Interact(ctx context.Context, in *InteractInput) (*InteractOut
 		return nil, lockErr
 	}
 	defer release()
+	if in.Prop != "" || in.OptionID != "" {
+		return m.interactWithProp(ctx, in)
+	}
 	if in.Actor == "" || in.Target == "" {
 		return nil, fmt.Errorf("interact: %w", ErrNoMemberID)
 	}
@@ -217,4 +281,69 @@ func findWorldNPCIndex(data *SessionData, targetID string) (int, error) {
 		}
 	}
 	return -1, fmt.Errorf("world npc %q: %w", targetID, ErrNoSheet)
+}
+
+// interactWithProp is [Manager.Interact] for a thing done to a prop
+// (rpg-project#959): the session's one social machine ([Manager.social])
+// under [VerbInteract], its answer in [DoneOutput]'s shape.
+func (m *Manager) interactWithProp(ctx context.Context, in *InteractInput) (*InteractOutput, error) {
+	if in.Target != "" || in.Prop == "" {
+		return nil, fmt.Errorf("interact: a thing is done to exactly one prop, and to no creature: %w", ErrNoMemberID)
+	}
+	out, err := m.social(ctx, VerbInteract, &SpeakInput{
+		Session: in.Session, Member: in.Actor, Prop: in.Prop, OptionID: in.OptionID, Revision: in.Revision,
+	})
+	if err != nil {
+		return nil, thingRefused(err)
+	}
+	return &InteractOutput{
+		Done: &DoneOutput{
+			Prop: out.Prop, OptionID: out.OptionID, Beaten: out.Beaten, Total: out.Total, DC: out.DC,
+			Applied: out.Applied, Paused: out.Paused, Roll: out.Roll,
+		},
+		Saved: out.Saved, Delivery: out.Delivery,
+	}, nil
+}
+
+// ThingRefusal is a thing to do refused, with the sentence its doer is
+// shown (rpg-project#959): in the second person, since only the doer's own
+// verb is refused. It wraps the session's sentinel, so errors.Is still
+// tells the refusals apart.
+type ThingRefusal struct {
+	// Sentence is what the doer is shown.
+	Sentence string
+	// Err is the session sentinel refused by.
+	Err error
+}
+
+// Error is the sentence.
+func (e *ThingRefusal) Error() string { return e.Sentence }
+
+// Unwrap is the sentinel.
+func (e *ThingRefusal) Unwrap() error { return e.Err }
+
+// thingSentences are the refusals of a thing to do a doer may hear, each in
+// the second person.
+var thingSentences = []struct {
+	err      error
+	sentence string
+}{
+	{ErrStaleOption, "That has changed since you looked; look again."},
+	{ErrLineReserved, "That waits on somebody's roll."},
+	{ErrNoProp, "You see no such thing here."},
+	{ErrNoOption, "That is not something you can do here."},
+	{ErrStaleDeclaration, "You cannot reach that from here."},
+	{ErrOutOfRange, "You cannot reach that from here."},
+}
+
+// thingRefused is a thing to do's refusal with its sentence, or err as it
+// came when it is none of [thingSentences] (a refusal that already speaks —
+// [ErrNoRoom], [ErrInCustody] — or a defect).
+func thingRefused(err error) error {
+	for _, t := range thingSentences {
+		if errors.Is(err, t.err) {
+			return &ThingRefusal{Sentence: t.sentence, Err: err}
+		}
+	}
+	return err
 }

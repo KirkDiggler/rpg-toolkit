@@ -50,6 +50,7 @@ github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/cmd/keepgen/TestMai
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/TestObserversOf_EqualsFullRefresh  # the castle row needs a posted guard, arrivals and table-only creatures (rpg-project#909) (24.39s local, - CI)
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/TestObserversOf_FarObserverUntouched  # opens the 10k keep; to be sized: rpg-toolkit#2340 (1.85s local, 7.93s CI)
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec/keepgen/TestOptionsFromHeader_Garrison  # over budget, to be sized: rpg-toolkit#2342 (9.59s local, - CI)
+github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec/keepgen/TestOptionsFromHeader_RoundTrip  # on the hard line, failing unrelated PRs: generates a 12,345-hex keep twice and reads a 10,000-hex keep's header; to be sized: rpg-toolkit#2415 (~17s local, 10.1-10.4s CI)
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/TestPlacedReach_AgreesWithTheWalk  # near budget; runner variance, not a heavy fixture (2.46s local, 6.55s CI)
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/TestPlacementIndex_AgreesWithTheWalk  # over budget, to be sized: rpg-toolkit#2342 (2.79s local, 8.13s CI)
 github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/TestPropWithinReach_AgreesWithWithinReach  # over budget, to be sized: rpg-toolkit#2342 (2.84s local, 9.99s CI)

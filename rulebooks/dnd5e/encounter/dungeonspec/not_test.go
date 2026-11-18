@@ -37,7 +37,7 @@ func TestNotCompilesToTheEnginesNegation(t *testing.T) {
             check: [{ ability: persuasion, dc: 10 }]
           - id: beg
             say: "Spare a crust?"
-            requires: { not: { holds: table } }
+            requires: { not: { carries: table } }
             check: [{ ability: persuasion, dc: 10 }]
 `))
 		goblin := monsterNamed(t, compiled, "goblin-1")
@@ -92,14 +92,14 @@ func TestNotIsRefusedByName(t *testing.T) {
 		says               []string
 	}{
 		{name: "holds under a not on an ending",
-			source: v4With("endings:\n  - { id: rich, when: { not: { holds: table } } }", ""),
-			path:   "endings[0].when.not.holds", says: []string{"`holds` is only something an option requires"}},
+			source: v4With("endings:\n  - { id: rich, when: { not: { carries: table } } }", ""),
+			path:   "endings[0].when.not.carries", says: []string{"`carries` is only something an option requires"}},
 		{name: "holds under a not on an until",
-			source: v4With(notFactions+"  - { between: [dogs, party], stance: neutral, until: { not: { holds: table } } }", ""),
-			path:   "dispositions[1].until.not.holds", says: []string{"`holds` is only something an option requires"}},
+			source: v4With(notFactions+"  - { between: [dogs, party], stance: neutral, until: { not: { carries: table } } }", ""),
+			path:   "dispositions[1].until.not.carries", says: []string{"`carries` is only something an option requires"}},
 		{name: "holds under a not on an arrival",
-			source: v4With("", "    monsterBindings:\n      goblin-2: { arrives: { not: { holds: table } } }"),
-			path:   "room.room.monsterBindings.goblin-2.arrives.not.holds", says: []string{"`holds` is only something an option requires"}},
+			source: v4With("", "    monsterBindings:\n      goblin-2: { arrives: { not: { carries: table } } }"),
+			path:   "room.room.monsterBindings.goblin-2.arrives.not.carries", says: []string{"`carries` is only something an option requires"}},
 		{name: "left under a not on an until",
 			source: v4With(twoDoors+notFactions+"  - { between: [dogs, party], stance: neutral, until: { not: { left: front-door } } }", ""),
 			path:   "dispositions[1].until.not.left", says: []string{"only an ending waits for that"}},
@@ -121,13 +121,13 @@ func TestNotIsRefusedByName(t *testing.T) {
 			path:   at + ".not", says: []string{"`round` is none of them"}},
 		{name: "a not of a fact waited for on an ending",
 			source: v4With("endings:\n  - { id: e, when: { not: { fact: x } } }", ""),
-			path:   "endings[0].when.not", says: []string{"holds from the start and can only stop holding"}},
+			path:   "endings[0].when.not", says: []string{"is true from the start and can only stop being true"}},
 		{name: "a not of a round waited for on an until",
 			source: v4With(notFactions+"  - { between: [dogs, party], stance: neutral, until: { not: { round: 2 } } }", ""),
-			path:   "dispositions[1].until.not", says: []string{"holds from the start and can only stop holding"}},
+			path:   "dispositions[1].until.not", says: []string{"is true from the start and can only stop being true"}},
 		{name: "a not of a fall waited for on an arrival",
 			source: v4With("", "    monsterBindings:\n      goblin-2: { arrives: { not: { down: goblin-1 } } }"),
-			path:   "room.room.monsterBindings.goblin-2.arrives.not", says: []string{"holds from the start"}},
+			path:   "room.room.monsterBindings.goblin-2.arrives.not", says: []string{"is true from the start"}},
 		{name: "a not of a fall of nobody is that first",
 			source: v4With("endings:\n  - { id: e, when: { not: { down: king } } }", ""),
 			path:   "endings[0].when.not.down", says: []string{`"king" is not a placement in this dungeon`}},

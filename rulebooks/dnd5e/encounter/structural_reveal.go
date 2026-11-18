@@ -105,7 +105,7 @@ func changedStructuralDoors(before, after []AtlasStructuralDoor) []map[string]in
 	}
 	out := make([]map[string]interface{}, 0)
 	for _, d := range after {
-		if prior, known := had[d.ID]; known && prior == d {
+		if prior, known := had[d.ID]; known && sameStructuralDoor(prior, d) {
 			continue
 		}
 		out = append(out, structuralDoorRow(d))
@@ -120,7 +120,9 @@ func sameStructuralOpenings(a, b []AtlasStructuralOpening) bool {
 		return false
 	}
 	for i := range a {
-		if a[i] != b[i] {
+		left, right := a[i], b[i]
+		left.FrameSpan, right.FrameSpan = nil, nil
+		if left != right || !sameWallFrameSpan(a[i].FrameSpan, b[i].FrameSpan) {
 			return false
 		}
 	}
@@ -163,9 +165,11 @@ func structuralWallRow(w AtlasStructuralWall) map[string]interface{} {
 func structuralOpeningRows(openings []AtlasStructuralOpening) []map[string]interface{} {
 	out := make([]map[string]interface{}, 0, len(openings))
 	for _, o := range openings {
-		out = append(out, map[string]interface{}{
-			"id": o.ID, "position": o.Position, "width": o.Width,
-		})
+		row := map[string]interface{}{"id": o.ID, "position": o.Position, "width": o.Width}
+		if o.FrameSpan != nil {
+			row["frame_span"] = frameSpanRow(o.FrameSpan)
+		}
+		out = append(out, row)
 	}
 	return out
 }
@@ -174,7 +178,7 @@ func structuralOpeningRows(openings []AtlasStructuralOpening) []map[string]inter
 // canonical gameplay id, its opaque ref, its resolved opening endpoints and the
 // assembled dimensions it fits. Deliberately no state, lock or parent id.
 func structuralDoorRow(d AtlasStructuralDoor) map[string]interface{} {
-	return map[string]interface{}{
+	row := map[string]interface{}{
 		"id":        d.ID,
 		"ref":       d.Ref,
 		"from":      d.From,
@@ -183,4 +187,8 @@ func structuralDoorRow(d AtlasStructuralDoor) map[string]interface{} {
 		"thickness": d.Thickness,
 		"elevation": d.Elevation,
 	}
+	if d.FramePresentation != nil {
+		row["frame_presentation"] = doorFramePresentationRow(d.FramePresentation)
+	}
+	return row
 }

@@ -16,6 +16,9 @@ type foldInfo struct {
 	miss string
 	// line is a line facet's heading: “say” (`id`).
 	line string
+	// done marks a line statement whose option is something done, not said
+	// (rpg-project#959): its plain rows fold under "When done".
+	done bool
 	// state is the routine state a post or a wake belongs to.
 	state string
 	// verdict is a row's or a grant's: "win", "miss" or "said".
@@ -24,6 +27,13 @@ type foldInfo struct {
 	// `straggler`"), and who the creature it belongs to, when any.
 	site string
 	who  string
+	// loud is the loudness whose reach the full sentence explains and the
+	// fold only names: the fold explains it once for the thing that speaks.
+	loud []string
+	// from and fromKind are what a statement repeated under a hub was first
+	// said about, and as what kind.
+	from     Subject
+	fromKind Kind
 }
 
 // fstmt is stmt with the statement's fold.

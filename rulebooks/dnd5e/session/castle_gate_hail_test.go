@@ -42,6 +42,12 @@ var (
 	// watchingTheRoad is where the cleric stands to watch: in sight of the
 	// road and the captain, beyond the gate's approach distance.
 	watchingTheRoad = spatial.Position{X: -7, Y: 13}
+	// beyondTheCarry is farther down the road, still in sight of the gate,
+	// but beyond the 30 feet ordinary speech carries through the gate's
+	// open doorway into the next room (rpg-project#953): from
+	// [watchingTheRoad], five cells from the captain, his hail now carries,
+	// and from two cells farther down alice's answer would.
+	beyondTheCarry = spatial.Position{X: -7, Y: 17}
 	// besideTheHailCell is a cell beside where the hail stops alice, in the
 	// room she stands in.
 	besideTheHailCell = spatial.Position{X: -7, Y: 11}
@@ -229,16 +235,20 @@ func TestCastleSteppingOutOfReachEndsTheAddress(t *testing.T) {
 	require.Equal(t, theFrontGateAddress, speakRow(t, c.bar(t, "alice")).Address)
 }
 
-// TestCastleABystanderListensIn: the cleric watches the road from down
-// below the gate. She is not addressed, and she stands a room beyond the
+// TestCastleABystanderListensIn: the cleric watches the road from far
+// down below the gate. She is not addressed, and she stands a room beyond the
 // gate where the captain hails alice and alice answers him, so she sees each
 // of them speak and reads none of their words (rpg-project#933: a spoken line
 // reaches the speaker's room and whom it is said to). Alice, hailed, reads
 // his hail whole.
+//
+// She stands [beyondTheCarry]: since rpg-project#953 ordinary speech reaches
+// the next room within 30 feet through an open doorway, and from
+// [watchingTheRoad] the captain's hail now does.
 func TestCastleABystanderListensIn(t *testing.T) {
 	// Each their own (rpg-project#935): what the cleric's own senses carry.
 	c := openTheCastleFrom(t, eachTheirOwn(t, castleSource(t)), []*character.Data{armedFighter("alice"), healingCleric()}, 18)
-	c.placeInTheRecord(t, "cleric", watchingTheRoad)
+	c.placeInTheRecord(t, "cleric", beyondTheCarry)
 	_, out, hail := c.walkUpToTheGate(t)
 	require.NotNil(t, out.Addressed, "precondition: she was hailed")
 

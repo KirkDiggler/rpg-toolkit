@@ -508,7 +508,7 @@ func (m *Manager) answerCheck(
 func (m *Manager) landResumedSocial(
 	ctx context.Context, scope *writeScope, story windowStory, audience string, out *resolution.CheckOutput,
 ) error {
-	if story.Verb != VerbSpeak || story.Option == "" {
+	if (story.Verb != VerbSpeak && story.Verb != VerbInteract) || story.Option == "" {
 		// Unreachable: thawWindow refuses a target or prop under any other
 		// verb, or with no line. Refusing rather than defaulting keeps the day
 		// that stops being true from silently landing the wrong line.
@@ -533,6 +533,7 @@ func (m *Manager) landResumedSocial(
 		// the answer added — never the frozen one the window asked with. The
 		// caller refused a nil one before reaching either branch.
 		Calculation: rollCalculationFor(out.Calculation),
+		Verb:        story.Verb,
 	}); err != nil {
 		return translate(err)
 	}

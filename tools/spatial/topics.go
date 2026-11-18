@@ -52,7 +52,7 @@ type EntityMovedEvent struct {
 	FromCubePosition *CubeCoordinate `json:"from_cube_position,omitempty"` // Only set for hex grids
 	ToCubePosition   *CubeCoordinate `json:"to_cube_position,omitempty"`   // Only set for hex grids
 	RoomID           string          `json:"room_id"`
-	MovementType     string          `json:"movement_type"` // "normal", "teleport", "forced"
+	MovementType     string          `json:"movement_type"` // "normal" (MoveEntity) or MovementRelocated (RelocateEntity)
 }
 
 // EntityRemovedEvent contains data for entity removal events

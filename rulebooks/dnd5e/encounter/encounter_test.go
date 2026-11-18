@@ -990,7 +990,9 @@ func (s *EncounterTestSuite) TestMoveGhostForms() {
 		_, err = enc.Step(&encounter.StepInput{Member: alice, To: cellAt(10, 2)})
 		s.Require().NoError(err)
 
-		// alice's holding of bob: faded to ghost at bob's (unchanged) position.
+		// alice's holding of bob: faded to ghost at bob's (unchanged)
+		// position. SHE WALKED AWAY: bob's cell is behind the wall from where
+		// she stands, so the ghost stays (rpg-project#961).
 		aliceView, err := enc.View(&encounter.ViewInput{Member: alice})
 		s.Require().NoError(err)
 		s.Require().Len(aliceView, 1, "the ghost is HELD, not gone")
@@ -999,15 +1001,17 @@ func (s *EncounterTestSuite) TestMoveGhostForms() {
 		s.Require().NoError(json.Unmarshal(aliceView[0].Payload, &bobSeen))
 		s.Equal(18.0, bobSeen.Y, "ghost holds bob at his last-seen position")
 
-		// bob's holding of alice: the true ghost — alice's LAST-SEEN
-		// (pre-move) position. bob never saw her arrive at (10,2).
+		// bob's holding of alice: faded, and NO GHOST (rpg-project#961). Bob
+		// still sees the cell she left, (2,2), with nobody on it, so he holds
+		// her as known of and placed nowhere. He never saw her arrive at
+		// (10,2).
 		bobView, err := enc.View(&encounter.ViewInput{Member: bob})
 		s.Require().NoError(err)
-		s.Require().Len(bobView, 1)
+		s.Require().Len(bobView, 1, "bob still knows of alice")
 		s.False(bobView[0].CurrentOn(perception.Sight), "bob's sight of alice must fade too (symmetric)")
-		var aliceSeen sightPayload
-		s.Require().NoError(json.Unmarshal(bobView[0].Payload, &aliceSeen))
-		s.Equal(cellAt(2, 2), spatial.Position{X: aliceSeen.X, Y: aliceSeen.Y}, "bob's ghost of alice is at her PRE-move position")
+		aliceSeen, ok := encounter.DecodeSightTestimony(bobView[0].Payload)
+		s.Require().True(ok)
+		s.Equal(encounter.LocationUnknown, aliceSeen.State, "he sees her old cell empty: no ghost there")
 	})
 }
 

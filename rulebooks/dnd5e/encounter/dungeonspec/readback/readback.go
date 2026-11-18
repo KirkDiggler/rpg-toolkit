@@ -32,8 +32,44 @@ const (
 	KindDoor        Kind = "place.door"
 	KindProp        Kind = "place.prop"
 	KindIntel       Kind = "place.intel"
+	KindConcealment Kind = "place.concealment"
 	KindTemplate    Kind = "place.template"
 	KindBundle      Kind = "place.bundle"
+
+	// The joins (rpg-project#971, design R30, R31): where two regions meet,
+	// each said once, about Subject{Kind: "join"}. A join's state is not
+	// restated: it is the door's, its holders' and the secret's, read through
+	// the join's connections.
+	KindJoinDoor       Kind = "place.join.door"
+	KindJoinOpen       Kind = "place.join.open"
+	KindJoinPassage    Kind = "place.join.passage"
+	KindRegionUnjoined Kind = "place.region.unjoined"
+	// A seam sight crosses and feet do not (a window): not a join, said so
+	// that nothing is skipped silently, about Subject{Kind: "seam"}.
+	KindSeamSight Kind = "place.seam.sight"
+	// A door that joins no two regions, about the door: both its sides one
+	// region's floor (within), or a side off the floor (edge).
+	KindDoorWithin Kind = "place.door.within"
+	KindDoorEdge   Kind = "place.door.edge"
+
+	// The ways through a join (rpg-project#981, design R30), each said right
+	// after its join, about Subject{Kind: "way"}: nothing bars it (free), a
+	// lock approach, a line past holding posts, knowing or carrying what a
+	// pass asks (known), the fight with the holders, a search or a told
+	// record that reveals a secret, or a passage's carrier. Partial helps
+	// past some holders and not all, and is no way on its own; none is a bar
+	// nothing lifts, about Subject{Kind: "bar"}.
+	KindWayFree    Kind = "place.way.free"
+	KindWayLock    Kind = "place.way.lock"
+	KindWayLine    Kind = "place.way.line"
+	KindWayFight   Kind = "place.way.fight"
+	KindWaySearch  Kind = "place.way.search"
+	KindWayTold    Kind = "place.way.told"
+	KindWayPassage Kind = "place.way.passage"
+	KindWayKnown   Kind = "place.way.known"
+	KindWayPartial Kind = "place.way.partial"
+	KindWayNone    Kind = "place.way.none"
+
 	KindFaction     Kind = "side.faction"
 	KindDisposition Kind = "side.disposition"
 
@@ -70,6 +106,23 @@ const (
 	KindFactTeach  Kind = "fact.teach"
 	KindFactAsk    Kind = "fact.ask"
 
+	// The record and secret hubs (rpg-project#973): a record's own
+	// statement (what it reveals), who holds it, who tells it, and the ways
+	// it lifts; a secret's own statement (what it hides), the records that
+	// reveal it, how it is found (said once, from its own checks), the joins
+	// it bars and the ways that need it. A way repeated under one of these
+	// hubs is a pointer to the way ({way, <id>, is}) and never itself a way:
+	// a WAY is a statement whose kind begins `place.way.`.
+	KindRecordReveal Kind = "record.reveal"
+	KindRecordHold   Kind = "record.hold"
+	KindRecordTell   Kind = "record.tell"
+	KindRecordLift   Kind = "record.lift"
+	KindSecretHide   Kind = "secret.hide"
+	KindSecretReveal Kind = "secret.reveal"
+	KindSecretFind   Kind = "secret.find"
+	KindSecretBar    Kind = "secret.bar"
+	KindSecretNeed   Kind = "secret.need"
+
 	KindRoutine      Kind = "routine"
 	KindRoutineState Kind = "routine.state"
 	KindRoutineWake  Kind = "routine.wake"
@@ -96,7 +149,51 @@ type Connection struct {
 	Kind string `json:"kind"`
 	ID   string `json:"id"`
 	Role string `json:"role"`
+	// Value is a number the connection carries where its kind has one: the
+	// difficulty of a check on a `method` connection; zero means none.
+	Value int `json:"value,omitempty"`
 }
+
+// The connections that say a behaviour machine's shape (rpg-project#994),
+// so a reader draws the machine from connections alone. A state id is local
+// to its machine, and the machine is named by the statement's PATH, never
+// its subject: a routine's statements sit under
+// `behaviorDefinitions.<routine>.`, and a creature's post or blocking under
+// its binding, whose routine is the one its `behaviorState` names. A step
+// repeated under a fact or topic hub keeps its shape connections while its
+// subject is the fact or topic; its path still names the routine that owns
+// the step.
+const (
+	// ConnState is a connection to one of a machine's states, scoped by the
+	// routine the statement's path names.
+	ConnState = "state"
+	// ConnBeat is a connection to the beat a step wakes on, its word exactly
+	// as authored ("time", "fact", "deed:x", "clock:world").
+	ConnBeat = "beat"
+	// ConnTable is a connection to one key of the routine's table of rows.
+	ConnTable = "table"
+
+	// RoleStarts is the state a routine starts in, on the routine statement.
+	RoleStarts = "starts"
+	// RoleIs is the state a routine.state statement says.
+	RoleIs = "is"
+	// RoleFinal marks a state with no way out, beside its RoleIs.
+	RoleFinal = "final"
+	// RoleFrom is the state a step is heard in.
+	RoleFrom = "from"
+	// RoleTo is the state a step moves to. A step that names its own state
+	// re-enters it (the engine treats it as a move) and still says `to`; a
+	// step with no `to` stays and has none.
+	RoleTo = "to"
+	// RoleOn is the beat a step wakes on.
+	RoleOn = "on"
+	// RolePicks is a table key a step acts from, one per pick.
+	RolePicks = "picks"
+	// RoleRowOf is the table key a row belongs to.
+	RoleRowOf = "row-of"
+	// RoleWhile is a state a post holds, or a body blocks, in.
+	RoleWhile = "while"
+)
 
 // Statement is one plain sentence about one thing, with where it is set.
 type Statement struct {

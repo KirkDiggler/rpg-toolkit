@@ -320,7 +320,7 @@ type MonsterPlacement struct {
 	BlockingStates []string `json:"BlockingStates,omitempty"`
 
 	// Posts is, by state of Machine, the post that state holds
-	// (rpg-project#852, states.go's `holds`), each door qualified to the
+	// (rpg-project#852, states.go's `post`), each door qualified to the
 	// encounter's id — for a host to hand to [encounter.MemberInput.Posts]
 	// beside the recipe. Nil when no state holds a passage.
 	Posts map[string]encounter.Post `json:"Posts,omitempty"`
@@ -655,10 +655,10 @@ func predicateOf(p *PredicateSpec) encounter.Trigger {
 		return encounter.TriggerFact{Fact: p.Fact}
 	case predicateStance:
 		return encounter.TriggerStance{Between: p.Stance.Between, Stance: encounter.Stance(p.Stance.Is)}
-	case predicateHolds:
+	case predicateCarries:
 		// An option's `requires` only — [grammar.predicate] refuses it
 		// everywhere else, so this arm is reached from [optionsOf] alone.
-		return encounter.TriggerHolds{Prop: encounter.PropID(p.Holds)}
+		return encounter.TriggerHolds{Prop: encounter.PropID(p.Carries)}
 	case predicateLeft:
 		// An ending's `when` only ([grammar.endings]); refused elsewhere.
 		return encounter.TriggerLeft{Exit: encounter.ExitID(p.Left)}
@@ -671,10 +671,10 @@ func predicateOf(p *PredicateSpec) encounter.Trigger {
 		return encounter.TriggerInteraction{
 			Interaction: encounter.InteractionID(p.Interaction.ID), In: append([]string(nil), p.Interaction.In...),
 		}
-	case predicateRecognized:
+	case predicateHolds:
 		// A creature's option's `requires` and a post's `pass` only
 		// (rpg-project#928); refused elsewhere.
-		return encounter.TriggerRecognized{Topic: encounter.TopicID(p.Recognized)}
+		return encounter.TriggerRecognized{Topic: encounter.TopicID(p.Holding)}
 	default:
 		return nil
 	}
@@ -805,7 +805,7 @@ func propsOf(spec *Spec) []encounter.PropInput {
 			// first frame.
 			Arrives: predicateOf(p.Arrives),
 			// The lines a character can say to it (rpg-project#569).
-			Options: optionsOf(p.Options, orientations[spec.Orientation]),
+			Options: optionsOf(spec.Key, p.Options, orientations[spec.Orientation]),
 		}
 		// Validate has already confirmed len(p.Offset) is 0, 2 or 3 by the
 		// time Compile runs; anything else is unreachable here. A missing
@@ -1192,18 +1192,19 @@ func groupOf(entry AnswerSpec, weight int, o encounter.Orientation) encounter.An
 // optionsOf compiles a binding's lines (rpg-project#569): each option's check
 // through [approachesOf], its `requires` through [predicateOf], and both
 // verdicts' rows through [answerOf], every omitted weight resolved to 1.
+// A row's `tells` names an intel record as the site key qualifies it.
 //
 // NIL FOR NONE, an empty list included, so a creature nobody wrote a line for
 // compiles exactly as it did before options existed and the committed
 // pictures omit the key.
-func optionsOf(specs []OptionSpec, o encounter.Orientation) []encounter.Option {
+func optionsOf(key string, specs []OptionSpec, o encounter.Orientation) []encounter.Option {
 	if len(specs) == 0 {
 		return nil
 	}
 	out := make([]encounter.Option, 0, len(specs))
 	for _, opt := range specs {
 		option := encounter.Option{
-			ID: opt.ID, Say: opt.Say, Loudness: opt.Loudness, Check: approachesOf(opt.Check),
+			ID: opt.ID, Say: opt.Say, Do: opt.Do, Seen: opt.Seen, Loudness: opt.Loudness, Check: approachesOf(opt.Check),
 			Requires: requirementsOf(opt.Requires),
 			Success:  rowsOf(opt.Success, o), Failure: rowsOf(opt.Failure, o),
 		}
@@ -1220,13 +1221,21 @@ func optionsOf(specs []OptionSpec, o encounter.Orientation) []encounter.Option {
 			failure bool
 		}{{opt.Success, false}, {opt.Failure, true}} {
 			for i, row := range verdict.rows {
-				if row.Recognize == nil {
+				var c encounter.Consequence
+				switch {
+				case row.Give != nil:
+					rec := givingOf("", row.Give, true, func(string, string) {})
+					c.Recognize = &rec
+				case row.Tells != "":
+					c.Tells = encounter.IntelID(key + "/" + row.Tells)
+				case row.Relocate != nil:
+					c.Relocate = &encounter.RelocateGrant{
+						To: encounter.RegionID(row.Relocate.To), Words: row.Relocate.Words, Rounds: row.Relocate.Rounds,
+					}
+				default:
 					continue
 				}
-				rec := recognitionOf("", row.Recognize, true, func(string, string) {})
-				option.Grants = append(option.Grants, encounter.RowGrant{
-					Row: i, Failure: verdict.failure, Consequence: encounter.Consequence{Recognize: &rec},
-				})
+				option.Grants = append(option.Grants, encounter.RowGrant{Row: i, Failure: verdict.failure, Consequence: c})
 			}
 		}
 		out = append(out, option)
@@ -1635,7 +1644,7 @@ func monstersOf(spec *Spec, o encounter.Orientation) []MonsterPlacement {
 		mp.Targeting = targeting
 		mp.Boss = p.Boss
 		mp.Holds = intelHoldingsOf(spec.Key, p.Holds)
-		mp.Options = optionsOf(from.optionsFor(p.Options, p.Faction), o)
+		mp.Options = optionsOf(spec.Key, from.optionsFor(p.Options, p.Faction), o)
 		mp.Arrives = predicateOf(p.Arrives)
 		out = append(out, mp)
 	}

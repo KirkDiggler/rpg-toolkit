@@ -396,7 +396,7 @@ func (s *SingleRoomWallDoorSuite) TestAnUnknownAttachedDoorKeyRefuses() {
 	s.Require().Len(errs, 1)
 	s.Equal("room.room.walls[0].openings[0].door.transform", errs[0].Path)
 	s.Contains(errs[0].Message, `"transform" is not a key this build reads`)
-	s.Contains(errs[0].Message, "assetRef, id")
+	s.Contains(errs[0].Message, "assetRef, framePresentation, id")
 }
 
 // fixture is the authored fixture file's own bytes, for the cases that must

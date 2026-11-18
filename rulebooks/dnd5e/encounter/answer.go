@@ -163,6 +163,11 @@ type answerOutput struct {
 	// pick is the row the world's die picked, with its arithmetic, or nil
 	// when the option has no row for this verdict.
 	pick *Pick
+
+	// learners is who caught the answer: the members its words reached, or a
+	// prop's witnesses — whom a fact on the row teaches, and whom a row's
+	// `tells` grant lands its record on too (rpg-project#958).
+	learners []MemberID
 }
 
 // answer rolls the answer to a settled verdict and carries it out, returning
@@ -254,7 +259,7 @@ func (e *Encounter) answer(ctx context.Context, in answerInput) (answerOutput, e
 		}
 	}
 
-	return answerOutput{pick: chosen}, nil
+	return answerOutput{pick: chosen, learners: learners}, nil
 }
 
 // answerTime carries out what a creature's pick SAID — on its own time, or a

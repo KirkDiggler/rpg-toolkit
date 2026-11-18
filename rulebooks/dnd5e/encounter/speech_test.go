@@ -18,7 +18,8 @@ import (
 // speech_test.go is perceived speech (rpg-project#933) on the noise hall's
 // three rooms: room a holds the speaker alice and the goblin she speaks to;
 // door a–b stands on row 5, so bea in room b on that row sees into room a
-// and cole in room b off it does not; dana in room a is short-sighted and
+// — far enough along it that a spoken line does not carry to her through the
+// doorway (rpg-project#953) — and cole in room b off it does not; dana in room a is short-sighted and
 // sees nobody; ed is two rooms away in room c. Walls block sight, so a room
 // beyond is seen only through an open doorway.
 type SpeechSuite struct {
@@ -80,7 +81,7 @@ func (s *SpeechSuite) hallWith(
 		tableDriver(),
 		at(alice, encounter.KindPlayer, col, 5),
 		goblinIn,
-		at(speechBea, encounter.KindPlayer, 12, 5),
+		at(speechBea, encounter.KindPlayer, 16, 5),
 		at(speechCole, encounter.KindPlayer, 12, 1),
 		at(speechDana, encounter.KindPlayer, 2, 1),
 		at(speechEd, encounter.KindPlayer, 25, 8),

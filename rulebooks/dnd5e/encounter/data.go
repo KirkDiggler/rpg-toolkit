@@ -852,11 +852,12 @@ type StructuralOpeningData struct {
 // [StructuralDoorBindingInput]: the two existing world identities it ties
 // together and the resolved visual opening endpoints, in canonical feet.
 type StructuralDoorBindingData struct {
-	PlacedID string       `json:"placed_id"`
-	DoorID   string       `json:"door_id"`
-	Ref      string       `json:"ref"`
-	From     PositionData `json:"from"`
-	To       PositionData `json:"to"`
+	FramePresentation *DoorFramePresentationData `json:"frame_presentation,omitempty"`
+	PlacedID          string                     `json:"placed_id"`
+	DoorID            string                     `json:"door_id"`
+	Ref               string                     `json:"ref"`
+	From              PositionData               `json:"from"`
+	To                PositionData               `json:"to"`
 }
 
 // DoorData is the persistent representation of a door: what it is called,
@@ -1152,6 +1153,23 @@ func validateHoldingsFacts(facts []journalEntry, f *field, everMembers []MemberI
 				return fmt.Errorf("holdings fact %d picks up prop %q, which this field does not place: %w",
 					i, id, ErrInvalidData)
 			}
+		case strings.HasPrefix(kind, relocatedPrefix):
+			// A MEMBER SET DOWN ELSEWHERE (relocate.go): the actor is the
+			// member, the subject says so, and the cell is one a member can
+			// stand on.
+			id, at, ok := parseRelocated(kind)
+			if !ok {
+				return fmt.Errorf("holdings fact %d names kind %q, which is not a relocation this build writes: %w",
+					i, kind, ErrInvalidData)
+			}
+			if fd.Actor != string(id) || journal.EntityID(fd.Subject) != memberSubject(id) {
+				return fmt.Errorf("holdings fact %d relocates %q and names actor %q, subject %q: %w",
+					i, id, fd.Actor, fd.Subject, ErrInvalidData)
+			}
+			if !f.isStandable(at) {
+				return fmt.Errorf("holdings fact %d sets member %q down at [%g,%g], where nobody can stand: %w",
+					i, id, at.X, at.Y, ErrInvalidData)
+			}
 		case strings.HasPrefix(kind, droppedPrefix):
 			id, at, ok := parseDropped(kind)
 			if !ok {
@@ -1413,11 +1431,13 @@ func approachesDataFrom(approaches []CheckApproach) []CheckApproachData {
 // its check, its requirements as a LIST of persisted triggers
 // (rpg-project#922), and both verdicts' rows (rpg-project#569). Requires and
 // the rows omit when unset, and so does the check: a plain line
-// (rpg-project#785 R5) rolls none. Id and say are always written, because an
-// option without them is refused.
+// (rpg-project#785 R5) rolls none. Id is always written; say, or do and its
+// seen words (rpg-project#959), as the option's kind has them.
 type OptionData struct {
 	ID       string              `json:"id"`
-	Say      string              `json:"say"`
+	Say      string              `json:"say,omitempty"`
+	Do       string              `json:"do,omitempty"`
+	Seen     string              `json:"seen,omitempty"`
 	Loudness string              `json:"loudness,omitempty"`
 	Check    []CheckApproachData `json:"check,omitempty"`
 	Requires []TriggerData       `json:"requires,omitempty"`
@@ -1470,7 +1490,7 @@ func optionsDataFrom(options []Option) []OptionData {
 	out := make([]OptionData, 0, len(options))
 	for _, o := range options {
 		od := OptionData{
-			ID: o.ID, Say: o.Say, Loudness: o.Loudness, Check: approachesDataFrom(o.Check),
+			ID: o.ID, Say: o.Say, Do: o.Do, Seen: o.Seen, Loudness: o.Loudness, Check: approachesDataFrom(o.Check),
 			Success: rowsDataFrom(o.Success), Failure: rowsDataFrom(o.Failure),
 			Grants: cloneGrants(o.Grants),
 		}
@@ -1510,7 +1530,7 @@ func optionsFromData(data []OptionData) ([]Option, error) {
 	out := make([]Option, 0, len(data))
 	for _, od := range data {
 		o := Option{
-			ID: od.ID, Say: od.Say, Loudness: od.Loudness, Check: approachesFromData(od.Check),
+			ID: od.ID, Say: od.Say, Do: od.Do, Seen: od.Seen, Loudness: od.Loudness, Check: approachesFromData(od.Check),
 			Success: rowsFromData(od.Success), Failure: rowsFromData(od.Failure),
 			Grants: cloneGrants(od.Grants),
 		}
@@ -1542,7 +1562,7 @@ func (f *field) loadOptions(id MemberID, data []OptionData) ([]Option, error) {
 	if err != nil {
 		return nil, fmt.Errorf("member %q: %w: %w", id, err, ErrBadMember)
 	}
-	if err := validateOptions(options); err != nil {
+	if err := validateCreatureOptions(options); err != nil {
 		return nil, fmt.Errorf("member %q: %w: %w", id, err, ErrBadMember)
 	}
 	if err := f.validateOptionHolds(options); err != nil {
@@ -2790,11 +2810,12 @@ func fieldDataFrom(f *field) FieldData {
 				od := StructuralOpeningData{ID: o.id, Position: o.position, Width: o.width}
 				if o.door != nil {
 					od.Door = &StructuralDoorBindingData{
-						PlacedID: o.door.placedID,
-						DoorID:   o.door.doorID,
-						Ref:      o.door.ref,
-						From:     PositionData{X: o.door.from.X, Y: o.door.from.Y},
-						To:       PositionData{X: o.door.to.X, Y: o.door.to.Y},
+						FramePresentation: doorFramePresentationData(o.door.framePresentation),
+						PlacedID:          o.door.placedID,
+						DoorID:            o.door.doorID,
+						Ref:               o.door.ref,
+						From:              PositionData{X: o.door.from.X, Y: o.door.from.Y},
+						To:                PositionData{X: o.door.to.X, Y: o.door.to.Y},
 					}
 				}
 				swd.Openings = append(swd.Openings, od)
@@ -3287,6 +3308,15 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 			taught = append(taught, taughtFactsOf(r.Behaviors)...)
 			taught = append(taught, taughtOptionFactsOf(r.Options)...)
 		}
+		for _, interaction := range data.Interactions {
+			for _, outcomes := range interaction.Outcomes {
+				for _, outcome := range outcomes {
+					if outcome.SceneMove != nil {
+						taught = append(taught, outcome.SceneMove.Leave)
+					}
+				}
+			}
+		}
 		mintable := mintedFactIDs(f, triggersOf(endingInputsForValidation), taught)
 		if err = validateWorldFacts(
 			worldFacts, f, mintable, turnablePairsOf(f), data.EverMembers,
@@ -3480,6 +3510,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		if err := validateOptionInteractions(interactions, granted, memberOptions[id]); err != nil {
 			return nil, fmt.Errorf("load encounter: member %s: %w: %w", id, ErrInvalidData, err)
 		}
+		if err := f.checkGrantTargets("member "+string(id), memberOptions[id]); err != nil {
+			return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+		}
 	}
 	for i, options := range reserveOptions {
 		if err := validateOptionInteractions(interactions, granted, options); err != nil {
@@ -3487,6 +3520,9 @@ func LoadEncounter(input *LoadEncounterInput) (*Encounter, error) {
 		}
 	}
 	if err := validatePropInteractions(interactions, granted, f); err != nil {
+		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
+	}
+	if err := validateArrests(interactions, f); err != nil {
 		return nil, fmt.Errorf("load encounter: %w: %w", ErrInvalidData, err)
 	}
 	if err := validateInteractionAddresses(interactions, memberOptions); err != nil {
@@ -4077,12 +4113,21 @@ func fieldInputFrom(fd FieldData) (FieldInput, error) {
 		for _, sod := range swd.Openings {
 			o := StructuralOpeningInput{ID: sod.ID, Position: sod.Position, Width: sod.Width}
 			if sod.Door != nil {
+				var presentation *DoorFramePresentation
+				if sod.Door.FramePresentation != nil {
+					decoded, err := doorFramePresentationFromData(*sod.Door.FramePresentation)
+					if err != nil {
+						return FieldInput{}, fmt.Errorf("structural wall %q opening %q: %w", swd.ID, sod.ID, err)
+					}
+					presentation = &decoded
+				}
 				o.Door = &StructuralDoorBindingInput{
-					PlacedID: sod.Door.PlacedID,
-					DoorID:   sod.Door.DoorID,
-					Ref:      sod.Door.Ref,
-					From:     spatial.Point{X: sod.Door.From.X, Y: sod.Door.From.Y},
-					To:       spatial.Point{X: sod.Door.To.X, Y: sod.Door.To.Y},
+					FramePresentation: presentation,
+					PlacedID:          sod.Door.PlacedID,
+					DoorID:            sod.Door.DoorID,
+					Ref:               sod.Door.Ref,
+					From:              spatial.Point{X: sod.Door.From.X, Y: sod.Door.From.Y},
+					To:                spatial.Point{X: sod.Door.To.X, Y: sod.Door.To.Y},
 				}
 			}
 			w.Openings = append(w.Openings, o)

@@ -36,7 +36,6 @@ var recordOnly = map[string]bool{
 	encounter.BeatBehaviorDecision:  true,
 	encounter.BeatBehaviorWork:      true,
 	encounter.BeatTransferred:       true,
-	encounter.BeatInteracted:        true,
 	string(encounter.OutcomeBought): true,
 	string(encounter.OutcomeSold):   true,
 	encounter.BeatSneaking:          true,
@@ -69,14 +68,17 @@ func familyOf(beat string) (Family, bool) {
 		encounter.BeatSaved, encounter.BeatActivated, encounter.BeatActivationResult,
 		string(encounter.OutcomeDeathSave), encounter.BeatLooted,
 		encounter.BeatHeld, encounter.BeatDropped, encounter.BeatDoor, encounter.BeatEquipmentChanged,
-		encounter.BeatStayed, encounter.BeatSnuck, encounter.BeatRested, encounter.BeatBarred:
+		encounter.BeatStayed, encounter.BeatSnuck, encounter.BeatRested, encounter.BeatBarred,
+		encounter.BeatRelocated, encounter.BeatInteracted:
+		// A world NPC's `interacted` (no `view`) folds to nothing, as it
+		// always did ([interactPieces]).
 		return FamilyAct, true
 	case string(encounter.OutcomeStruck), string(encounter.OutcomeMissed), string(encounter.OutcomeWarded):
 		return FamilyAct, true // FamilyReaction when the beat carries a reaction ref
 	case encounter.BeatAnswered, encounter.BeatTempered:
 		return FamilyTableAnswer, true // a line's answer stands as its own table answer
 	case string(encounter.OutcomeDown), encounter.BeatStance, encounter.BeatConcentrationEnded,
-		string(encounter.OutcomeExperienceGained), encounter.BeatState:
+		string(encounter.OutcomeExperienceGained), encounter.BeatState, encounter.BeatArrested:
 		return FamilyState, true
 	case encounter.BeatSpeech:
 		// One member's version of something said (rpg-project#933): a line,
@@ -179,6 +181,16 @@ func decodePieces(recipient, tag, beat string, payload []byte) ([]piece, error) 
 		return doorPiece(payload)
 	case encounter.BeatBarred:
 		return barredPiece(payload)
+	case encounter.BeatRelocated:
+		p, err := relocatePiece(payload)
+		if err != nil {
+			return nil, err
+		}
+		return one(p)
+	case encounter.BeatArrested:
+		return arrestPiece(payload)
+	case encounter.BeatInteracted:
+		return interactPieces(payload)
 	case encounter.BeatEquipmentChanged:
 		var p struct {
 			Member string `json:"member"`
@@ -752,6 +764,7 @@ func answeredPiece(payload []byte) ([]piece, error) {
 		Creature   string          `json:"creature"`
 		Prop       string          `json:"prop"`
 		Option     string          `json:"option"`
+		Say        string          `json:"say"`
 		Key        string          `json:"key"`
 		Word       string          `json:"word"`
 		Selector   string          `json:"selector"`
@@ -771,12 +784,15 @@ func answeredPiece(payload []byte) ([]piece, error) {
 		return nil, err
 	}
 	who := member(p.Creature)
+	narration := ""
 	if p.Prop != "" {
-		who = prop(p.Prop)
+		// A PROP'S ANSWER IS NARRATION and keeps its words on the pick; a
+		// creature's never does (its words ride each hearer's speech).
+		who, narration = prop(p.Prop), p.Say
 	}
 	answer := TableAnswer{
 		Who: who, Option: p.Option, Key: p.Key, Word: p.Word, Selector: p.Selector,
-		Temperament: p.Temper, Entry: p.Entry,
+		Temperament: p.Temper, Entry: p.Entry, Narration: narration,
 	}
 	if len(p.Activity) != 0 {
 		cue, valid := decodeActivityCue(p.Activity)
@@ -1383,4 +1399,158 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// relocatePiece is one recipient's version of a member set down at a place
+// (relocated, rpg-project#925): the mover, the ends this version carries, the
+// cause, the words when the version is the mover's, and which end.
+//
+// FAIL CLOSED: a version naming no mover, no cause, an end this build does
+// not know, or an end its cells contradict (a "left" with a destination, a
+// "both" missing either) is unreadable, never a guessed half.
+func relocatePiece(payload []byte) (piece, error) {
+	var p struct {
+		Member string            `json:"member"`
+		From   *spatial.Position `json:"from"`
+		To     *spatial.Position `json:"to"`
+		Cause  string            `json:"cause"`
+		Words  string            `json:"words"`
+		End    string            `json:"end"`
+	}
+	if err := json.Unmarshal(payload, &p); err != nil {
+		return piece{}, err
+	}
+	if p.Member == "" || p.Cause == "" {
+		return piece{}, fmt.Errorf("relocated: a version names no mover or no cause")
+	}
+	end := RelocateEnd(p.End)
+	if want := relocateEndOf(p.From != nil, p.To != nil); want == "" || want != end {
+		return piece{}, fmt.Errorf("relocated %q: end %q with from %t and to %t", p.Member, p.End, p.From != nil, p.To != nil)
+	}
+	return piece{
+		family: FamilyAct,
+		body: RelocateAct{
+			Mover: member(p.Member), From: p.From, To: p.To, Cause: p.Cause, Words: p.Words, End: end,
+		},
+	}, nil
+}
+
+// relocateEndOf is the end a version with these cells tells: both, left,
+// arrived, or "" for a version with neither, which no reader is sent.
+func relocateEndOf(from, to bool) RelocateEnd {
+	switch {
+	case from && to:
+		return RelocateBoth
+	case from:
+		return RelocateLeft
+	case to:
+		return RelocateArrived
+	default:
+		return ""
+	}
+}
+
+// arrestPiece is one recipient's version of an arrest (arrested,
+// rpg-project#925): the conversation, the members taken they perceive, and
+// the cell region. The beat's `wanted` names the guards' memory and is told
+// to the arresting guards alone; it is never read here, so no act carries it
+// whoever its reader is.
+func arrestPiece(payload []byte) ([]piece, error) {
+	var p struct {
+		Interaction string   `json:"interaction"`
+		Cell        string   `json:"cell"`
+		Taken       []string `json:"taken"`
+	}
+	if err := json.Unmarshal(payload, &p); err != nil {
+		return nil, err
+	}
+	if len(p.Taken) == 0 {
+		// The guards' own version may name only the wanted; a reader told
+		// nobody taken is shown nothing.
+		return nil, nil
+	}
+	taken := make([]Party, 0, len(p.Taken))
+	for _, id := range p.Taken {
+		taken = append(taken, member(id))
+	}
+	return one(piece{family: FamilyState, body: ArrestAct{Interaction: p.Interaction, Taken: taken, Cell: p.Cell}})
+}
+
+// interactPieces is one viewer's version of a thing done to a prop
+// (interacted with a `view`, rpg-project#959), or nothing for a world NPC's
+// `interacted`, which has no `view` and stays the record's, as it always was.
+func interactPieces(payload []byte) ([]piece, error) {
+	var head struct {
+		View string `json:"view"`
+	}
+	if err := json.Unmarshal(payload, &head); err != nil {
+		return nil, err
+	}
+	if head.View == "" {
+		return nil, nil
+	}
+	p, err := interactPiece(payload)
+	if err != nil {
+		return nil, err
+	}
+	return one(p)
+}
+
+// interactPiece is the [InteractAct] one viewer is shown of a thing done: the
+// doer's own version (the prop, the option, the `do` words, the verdict and
+// the check), a witness shown the prop (the prop and the `seen` words), or a
+// witness not shown it (the place). FAIL CLOSED: a view this build does not
+// know, no actor, or a version missing what its view must carry is
+// unreadable, never a guessed half.
+func interactPiece(payload []byte) (piece, error) {
+	var p struct {
+		View        string            `json:"view"`
+		Actor       string            `json:"actor"`
+		Prop        string            `json:"prop"`
+		Option      string            `json:"option"`
+		Do          string            `json:"do"`
+		Seen        string            `json:"seen"`
+		Beaten      *bool             `json:"beaten"`
+		Skill       string            `json:"skill"`
+		DC          *int              `json:"dc"`
+		Total       int               `json:"total"`
+		Calculation json.RawMessage   `json:"calculation"`
+		At          *spatial.Position `json:"at"`
+	}
+	if err := json.Unmarshal(payload, &p); err != nil {
+		return piece{}, err
+	}
+	if p.Actor == "" {
+		return piece{}, fmt.Errorf("interacted: a version names no actor")
+	}
+	act := InteractAct{Actor: member(p.Actor)}
+	switch p.View {
+	case encounter.InteractedViewActor:
+		if p.Prop == "" || p.Option == "" || p.Beaten == nil {
+			return piece{}, fmt.Errorf("interacted %q: the doer's version names no prop, option or verdict", p.Actor)
+		}
+		beaten := *p.Beaten
+		act.Prop, act.Option, act.Words, act.Beaten = prop(p.Prop), p.Option, p.Do, &beaten
+		if p.Skill != "" && p.DC != nil {
+			roll, err := rollOf(p.Calculation, nil, p.Total, p.DC, boolp(beaten))
+			if err != nil {
+				return piece{}, err
+			}
+			act.Skill, act.Roll = p.Skill, roll
+		}
+	case encounter.InteractedViewThing:
+		if p.Prop == "" {
+			return piece{}, fmt.Errorf("interacted %q: a shown witness's version names no prop", p.Actor)
+		}
+		act.Prop, act.Words = prop(p.Prop), p.Seen
+	case encounter.InteractedViewPlace:
+		if p.At == nil {
+			return piece{}, fmt.Errorf("interacted %q: a witness's version names no place", p.Actor)
+		}
+		at := *p.At
+		act.Place = &at
+	default:
+		return piece{}, fmt.Errorf("interacted %q: view %q", p.Actor, p.View)
+	}
+	return piece{family: FamilyAct, body: act}, nil
 }

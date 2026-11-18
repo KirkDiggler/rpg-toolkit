@@ -1,0 +1,43 @@
+# THE JOINS SITE (rpg-project#971): two named regions on one open floor, a
+# west room and an east room, three cells each along row 0, with nothing
+# built between them. joins_test.go reads it back, then puts a wall on the
+# seam (scene x 4.33, between q 2 and q 3) to see the open-floor join go.
+version: 5
+key: joins-site
+play: { void: transparent, lighting: bright, standing: centre-covered }
+room:
+  version: 3
+  id: room-1
+  name: Joins Site
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz}
+  scene:
+    version: 1
+    id: scene-1
+    name: Joins Site
+    items: []
+    groups: []
+  room:
+    implicitRegionId: room-1-region
+    regions:
+      - id: room-1-region
+        name: Joins Site
+        lighting: { intensity: 1 }
+        cells: []
+      - id: region-west
+        name: West room
+        lighting: { intensity: 1 }
+        cells:
+          - r: 0
+            q: [[0, 2]]
+      - id: region-east
+        name: East room
+        lighting: { intensity: 1 }
+        cells:
+          - r: 0
+            q: [[3, 5]]
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: {q: 0, r: 0}
+    monsterDeclarations: []

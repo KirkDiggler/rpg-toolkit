@@ -40,11 +40,16 @@ var specOf = map[string]reflect.Type{
 	"interaction":        reflect.TypeOf(dungeonspec.InteractionSpec{}),
 	"approach":           reflect.TypeOf(dungeonspec.InteractionApproachSpec{}),
 	"outcome":            reflect.TypeOf(dungeonspec.OutcomeSpec{}),
-	"recognize":          reflect.TypeOf(dungeonspec.RecognizeSpec{}),
+	"arrest":             reflect.TypeOf(dungeonspec.ArrestSpec{}),
+	"arrestArea":         reflect.TypeOf(dungeonspec.ArrestAreaSpec{}),
+	"jail":               reflect.TypeOf(dungeonspec.JailSpec{}),
+	"give":               reflect.TypeOf(dungeonspec.GiveSpec{}),
 	"option":             reflect.TypeOf(dungeonspec.OptionSpec{}),
 	"checkApproach":      reflect.TypeOf(dungeonspec.ApproachSpec{}),
 	"advance":            reflect.TypeOf(dungeonspec.AdvanceSpec{}),
 	"optionRow":          reflect.TypeOf(dungeonspec.AnswerSpec{}),
+	"relocate":           reflect.TypeOf(dungeonspec.RelocateSpec{}),
+	"concealment":        reflect.TypeOf(dungeonspec.ConcealmentSpec{}),
 	"activity":           reflect.TypeOf(dungeonspec.ActivityCueSpec{}),
 	"post":               reflect.TypeOf(dungeonspec.HoldsSpec{}),
 	"recipe":             reflect.TypeOf(machine.Recipe{}),
@@ -63,13 +68,15 @@ var specOf = map[string]reflect.Type{
 // read-back knowingly does not say: present in a file, each is listed under
 // not yet said. A key here is a decision, not a gap.
 var acknowledged = map[string][]string{
-	"root":               {"concealments", "scenarios", "tables"},
+	"outcome":            {"sceneMove"},
+	"root":               {"scenarios", "tables"},
+	"concealment":        {"attempts", "notice"},
 	"monsterBinding":     {"table", "on", "states", "actions", "addActions", "dropActions"},
 	"faction":            {"behaviors", "behaviorState", "blockingStates", "posts", "table", "on", "states"},
 	"behaviorDefinition": {"ref", "parameters", "end", "body"},
 	"optionRow":          {"flee", "when", "hold", "attack", "toward", "dash", "away", "search", "use", "with", "as"},
 	"recipe":             {"bag"},
-	"tableRow":           {"recognize"},
+	"tableRow":           {"give", "tells", "relocate"},
 	"template":           {"addActions", "dropActions", "experience"},
 }
 
@@ -80,7 +87,9 @@ func keysOf(t reflect.Type) []string {
 	var out []string
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
-		if !f.IsExported() {
+		// A RETIRED WORD IS NO KEY (rpg-project#1005): an `Old…` field is
+		// there only so the old spelling is refused at load, naming the new.
+		if !f.IsExported() || strings.HasPrefix(f.Name, "Old") {
 			continue
 		}
 		name := ""
@@ -134,7 +143,7 @@ func (s *NotYetSuite) TestAnUnknownKeyAtEveryLevelIsListed() {
 		"room.room.monsterBindings.gate-1", "room.room.monsterBindings.gate-1.options[0]",
 		"room.room.monsterBindings.gate-1.options[1].check[0]", "room.room.monsterBindings.gate-1.options[3].advance",
 		"room.room.monsterBindings.gate-1.options[0].success[0]",
-		"room.room.monsterBindings.gate-1.options[0].success[0].recognize",
+		"room.room.monsterBindings.gate-1.options[0].success[0].give",
 		"room.room.monsterBindings.prisoner-1.options[0].success[0].activity",
 		"room.room.monsterBindings.gate-1.posts.alert", "factions[0]", "factions[1].options[0]", "dispositions[0]",
 		"room.room.propBindings.altar", "room.room.propBindings.altar.options[0]", "room.room.doorBindings.gate-wall-door",
@@ -145,7 +154,7 @@ func (s *NotYetSuite) TestAnUnknownKeyAtEveryLevelIsListed() {
 		"behaviorDefinitions.gate-1-policy.table.time[0]", "interactions.front-gate", "interactions.front-gate.approach",
 		"interactions.front-gate.recipe", "interactions.front-gate.recipe.states.fresh",
 		"interactions.front-gate.recipe.states.fresh.transitions[0]", "interactions.front-gate.outcomes.admitted[0]",
-		"interactions.front-gate.outcomes.admitted[0].recognize", "templates.guard", "endings[0]", "exits[0]", "intel[0]",
+		"interactions.front-gate.outcomes.admitted[0].give", "templates.guard", "endings[0]", "exits[0]", "intel[0]",
 	}
 	for _, at := range levels {
 		n := doc.root

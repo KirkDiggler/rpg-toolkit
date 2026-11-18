@@ -92,10 +92,14 @@ func (b *builder) creatureGroups() []Group {
 			}
 		}
 		if len(m.BlockingStates) > 0 {
+			var while []Connection
+			for _, state := range m.BlockingStates {
+				while = append(while, Connection{Kind: ConnState, ID: state, Role: RoleWhile})
+			}
 			add(b.fstmt(KindBlocking, about, bindPath+".blockingStates", fmt.Sprintf(
 				"While its routine is in the state %s, %s's body blocks the cell it stands on.",
 				joinOr(quoteAll(m.BlockingStates)), name), foldInfo{text: fmt.Sprintf(
-				"While its routine is in %s, {self}'s body blocks the cell it stands on.", joinOr(quoteAll(m.BlockingStates)))}))
+				"While its routine is in %s, {self}'s body blocks the cell it stands on.", joinOr(quoteAll(m.BlockingStates)))}, while...))
 		}
 		for _, state := range sortedKeys(m.Posts) {
 			g.Statements = append(g.Statements, b.postStatements(d.ID, state, m.Posts[state], bindPath+".posts."+state)...)
@@ -160,7 +164,7 @@ func (b *builder) postStatements(id, state string, p encounter.Post, path string
 	short := fmt.Sprintf("and {self} stands, up, on %s, it holds the door %s against anyone not allied with it, %s",
 		joinOr(cells), quote(door), fagainst)
 	out := []Statement{b.fstmt(KindPost, about, path, s, foldInfo{text: short, state: state},
-		Connection{Kind: "door", ID: door, Role: "holds"})}
+		Connection{Kind: "door", ID: door, Role: "holds"}, Connection{Kind: ConnState, ID: state, Role: RoleWhile})}
 	if len(p.Pass) > 0 {
 		var reqs, freqs []string
 		var conns []Connection

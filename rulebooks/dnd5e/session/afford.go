@@ -115,6 +115,13 @@ const (
 	// gate beyond sight.
 	VerbSpeak Verb = "speak"
 
+	// VerbInteract is [Manager.Interact] done to a prop: one of the prop's
+	// things to do (rpg-project#959). NEVER A DECLARATION OF ITS OWN: a
+	// prop's things to do are offered on the Speak row beside its lines
+	// ([Declaration.InteractOptions]), priced as lines are. It names the
+	// verb a waiting check's window resumes.
+	VerbInteract Verb = "interact"
+
 	// VerbDeathSave is [Manager.DeathSave]: the explicit saving throw offered
 	// only to the active Dying character with this turn's capacity remaining.
 	VerbDeathSave Verb = "death_save"
@@ -402,6 +409,16 @@ type Declaration struct {
 	// shape: a cast option is a word for one spell, a speak option is a line
 	// a TARGET offers, and the target travels with it.
 	SpeakOptions []SpeakOptionRow `json:"speak_options,omitempty"`
+
+	// InteractOptions are the things to do on the props this member can
+	// reach (rpg-project#959): one row per (prop, option) whose kind is to
+	// do, beside the props' lines in SpeakOptions, priced with them — a
+	// checked thing on the action row, a plain one on the free row. The
+	// same probe law: a prop the door would refuse, a hidden one not yet
+	// known included, is never offered. A row requires
+	// [InteractInput.Prop], OptionID and Revision back through
+	// [Manager.Interact]. Present only on a [VerbSpeak] declaration.
+	InteractOptions []InteractOptionRow `json:"interact_options,omitempty"`
 
 	// Address is the guard addressing this member and the interaction he
 	// speaks for (rpg-project#923, the guard opens the conversation), present
@@ -986,9 +1003,10 @@ func (m *Manager) speakRowOnTheWorldClock(
 	decl := Declaration{
 		Verb: VerbSpeak, Slot: SlotNone, ID: id,
 		TargetKind: TargetMember, Candidates: projectCandidates(menu.targets),
-		SpeakOptions: menu.projectRows(),
-		Address:      menu.address,
-		Information:  sessionVerbInformation(VerbSpeak),
+		SpeakOptions:    menu.projectRows(),
+		InteractOptions: menu.projectInteractRows(),
+		Address:         menu.address,
+		Information:     sessionVerbInformation(VerbSpeak),
 	}
 	// NO SHEET AND NO PROFILE: free roam has no economy to fall short of, so
 	// the shared order skips its price arm rather than waiving one.

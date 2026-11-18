@@ -334,6 +334,17 @@
 // leaves no tell, because its whole opening record is omitted. Known identity
 // with unknown mutable state keeps the cut and copies no state.
 //
+// Optional [DoorFramePresentation] captures an aperture-fitted surround's
+// visual span and explicit fixed-face looks. Extents enclose the aperture and
+// fit without overlapping other visual cuts; they never replace passage width
+// or mechanical footprints. Wrapped unitless U phases at the aperture centre
+// carry no hidden parent origin. Catalog resources and repeat sizes remain
+// outside this module. Input, site data, both Atlas reads and reveal rows are
+// detached. The independently permitted door receives its own presentation;
+// only a permitted opening receives the visual span, without a door identity.
+// Equal copied values do not generate parent-later reintroductions or patches.
+// Absence keeps legacy appearance; an empty face list keeps authored materials.
+//
 // A REVEAL CARRIES THE DIFFERENCE (structural_reveal.go, P2E). The existing
 // cells_revealed and concealment_revealed payloads gain optional
 // `structural_walls` and `structural_doors`: the new or changed projected rows

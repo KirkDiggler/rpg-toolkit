@@ -25,7 +25,9 @@ import (
 // A room is a wall partition joined by doors ([Encounter.links]); a closed
 // door on the way costs one room more, the rule every sound follows. The
 // words of a whisper reach only the member addressed; of a line spoken, the
-// speaker's room; of a shout, the next room as well; of a scream, two rooms.
+// speaker's room, and a short way into the next room through an open doorway
+// ([SpeechCarryFeet], rpg-project#953); of a shout, the next room as well; of
+// a scream, two rooms.
 // Catching the words is flat by level, no roll. Noticing that somebody spoke,
 // without the words, stays on passive Perception against the voice's
 // difficulty plus one step per room, as every sound.
@@ -38,7 +40,9 @@ const (
 	// LoudnessWhisper reaches only the member addressed, from beside them.
 	LoudnessWhisper Loudness = "whisper"
 
-	// LoudnessSpeak reaches every member in the speaker's room.
+	// LoudnessSpeak reaches every member in the speaker's room, and every
+	// member of the next room within [SpeechCarryFeet] of the speaker by a
+	// way through an open doorway of the speaker's room.
 	LoudnessSpeak Loudness = "speak"
 
 	// LoudnessShout reaches the speaker's room and the next room over.
@@ -47,6 +51,21 @@ const (
 	// LoudnessScream reaches two rooms over.
 	LoudnessScream Loudness = "scream"
 )
+
+// SpeechCarryFeet is how far a line spoken at [LoudnessSpeak] carries out of
+// the speaker's room through an OPEN doorway into the next room
+// (rpg-project#953, the operator: "ordinary speech should have a range"):
+// thirty feet, six cells. THE ONE PLACE THE NUMBER LIVES.
+//
+// MEASURED THROUGH THE DOORWAY, NOT IN A STRAIGHT LINE: a member of the next
+// room catches the words when, for some cell of an open door joining the
+// speaker's room to theirs, the distance from the speaker to that cell plus
+// the distance from that cell to them is at most this many feet, by
+// [Encounter.Distance] in cells ([CellsFromFeet]). So a member just the other
+// side of a wall with no open doorway near hears no words, however close in
+// a straight line; a closed door stops the words, as it always did. Only the
+// words carry: noticing a voice stays on passive Perception per room.
+const SpeechCarryFeet = 30
 
 // Loudnesses is every loudness word, in the order a refusal lists them.
 var Loudnesses = []Loudness{LoudnessWhisper, LoudnessSpeak, LoudnessShout, LoudnessScream}

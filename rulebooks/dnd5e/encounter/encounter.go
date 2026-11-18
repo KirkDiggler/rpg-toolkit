@@ -928,8 +928,14 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 		if err := validateOptionInteractions(interactions, granted, m.Options); err != nil {
 			return nil, fmt.Errorf("newencounter: member %s: %w: %w", m.ID, err, ErrBadMember)
 		}
+		if err := f.checkGrantTargets("member "+string(m.ID), m.Options); err != nil {
+			return nil, fmt.Errorf("newencounter: %w: %w", err, ErrBadMember)
+		}
 	}
 	if err := validatePropInteractions(interactions, granted, f); err != nil {
+		return nil, fmt.Errorf("newencounter: %w", err)
+	}
+	if err := validateArrests(interactions, f); err != nil {
 		return nil, fmt.Errorf("newencounter: %w", err)
 	}
 
@@ -2204,6 +2210,15 @@ func (e *Encounter) refreshSightDeclaring(
 	if err := e.sweepConcealment(); err != nil {
 		return nil, nil, err
 	}
+	// An arresting guard who sees a jailed member out of the cell raises
+	// the escape (jail.go), before the trigger asks who now fights.
+	if err := e.sweepEscapes(); err != nil {
+		return nil, nil, err
+	}
+	// An arresting guard who sees a wanted member seizes them (wanted.go).
+	if err := e.sweepWanted(); err != nil {
+		return nil, nil, err
+	}
 
 	formed, deltas, err := e.applyTrigger(deltas)
 	if err != nil {
@@ -2758,6 +2773,9 @@ func (e *Encounter) validateJoin(in *JoinInput) error {
 	}
 	if err := validateOptionInteractions(e.interactions, joinGranted, in.Options); err != nil {
 		return fmt.Errorf("join: member %s: %w: %w", in.Member, err, ErrBadMember)
+	}
+	if err := e.field.checkGrantTargets("member "+string(in.Member), in.Options); err != nil {
+		return fmt.Errorf("join: %w: %w", err, ErrBadMember)
 	}
 
 	// A holder must name a record this field declares — the SAME refusal
