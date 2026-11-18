@@ -195,7 +195,7 @@ func (b *builder) convStepWords(id, state string, tr machine.Transition) string 
 }
 
 // outcomeStatement says what entering a conversation's state gives: who is
-// given the topic, about whom they come to hold it, and who else hears it.
+// given the topic, about whom they note it, and who else hears it.
 func (b *builder) outcomeStatement(id, state string, r encounter.Recognition, path string) Statement {
 	topic := quote(string(r.Topic))
 	holder := "the creature the deciding line was said to"
@@ -211,11 +211,11 @@ func (b *builder) outcomeStatement(id, state string, r encounter.Recognition, pa
 	for _, h := range holders {
 		conns = append(conns, Connection{Kind: "creature", ID: h, Role: "holds"})
 	}
-	s := fmt.Sprintf("When the conversation %s enters %s, %s (whichever of %s that was) is given the topic %s, and comes to hold it about %s.",
+	s := fmt.Sprintf("When the conversation %s enters %s, %s (whichever of %s that was) is given the topic %s, and notes it about %s.",
 		quote(id), quote(state), holder, b.creatures(holders), topic, subjectsWords(r.About, "the creature"))
 	s += " " + b.heardWords(r, id, nil, &conns)
 	f := foldInfo{state: state, site: fmt.Sprintf("the conversation %s on entering %s", quote(id), quote(state))}
-	f.text = strings.ReplaceAll(fmt.Sprintf("On entering %s: the creature the deciding line was said to comes to hold %s about %s",
+	f.text = strings.ReplaceAll(fmt.Sprintf("On entering %s: the creature the deciding line was said to notes %s about %s",
 		quote(state), topic, shortSubjects(r.About))+shortHeard(r, id)+".", "{self}", "that creature")
 	return b.fstmt(KindOutcome, Subject{Kind: "conversation", ID: id}, path, s, f, conns...)
 }
@@ -341,7 +341,7 @@ func (b *builder) hailersWords(id string, in *encounter.InteractionInput) (strin
 
 // arrestStatement says what an arrest decides on entering a conversation's
 // state (rpg-project#925): who is taken and why, who becomes wanted, what
-// the guards come to hold, where the arrested are to be held — and that,
+// the guards note, where the arrested are to be held — and that,
 // for now, nobody is moved.
 func (b *builder) arrestStatement(id, state, path string) Statement {
 	spec := b.spec.Interactions[id].Outcomes[state]
@@ -382,13 +382,13 @@ func (b *builder) arrestStatement(id, state, path string) Statement {
 		"who is up (%s), as the deciding line is said; a roll kept and settled after its speaker walked away is "+
 		"decided where everyone stood and whom the carriers saw when its words were said. Wanted: a player of the "+
 		"party who is not taken and whom one of those carriers has seen before. A creature of the party's faction is "+
-		"neither. The creature the deciding line was said to comes to hold %s about the taken and %s about the "+
-		"wanted, and the conversation's other carriers who catch the deciding line hold the same, heard. Who is wanted "+
+		"neither. The creature the deciding line was said to notes %s about the taken and %s about the "+
+		"wanted, and the conversation's other carriers who catch the deciding line note the same, heard. Who is wanted "+
 		"is told to those carriers alone, never to a player. Only the taken and the carriers are told the cell; a "+
 		"witness is told who was taken. The conversation's address ends. Who is taken and who is wanted at the arrest "+
 		"is decided once and kept. A wanted member whom one of those carriers sees again %s, while that carrier is up, "+
 		"not in a fight and not hostile to them, is seized where they stand: they join the taken, held in their own right whatever the "+
-		"others' hold has become, the carriers come to hold %s about them (told to the carriers alone), and they are "+
+		"others' hold has become, the carriers note %s about them (told to the carriers alone), and they are "+
 		"told they are arrested; a sneak that beats the carrier keeps them unseen. The taken are held from that moment: they cannot walk, dash, sneak or cast "+
 		"themselves away, and nothing moves them but the conversation's own jail: a shove or a flee aimed at them is refused, and "+
 		"a spell that lands on them still lands but does not move them; "+
@@ -421,7 +421,7 @@ func (b *builder) jailStatement(id, state string, j encounter.Jail, path string)
 	escape := "Nothing raises an escape."
 	if j.Escaped != "" {
 		conns = append(conns, Connection{Kind: "fact", ID: string(j.Escaped), Role: "teaches"})
-		escape = fmt.Sprintf("When one of the conversation's carriers who holds %s about a jailed member sees them outside %s, "+
+		escape = fmt.Sprintf("When one of the conversation's carriers who has noted %s about a jailed member sees them outside %s, "+
 			"the carrier's faction's mind learns %s.", quote(string(encounter.TopicArrested)), b.regionWords(cell), quote(string(j.Escaped)))
 	}
 	rounds := "No world time passes with it."
@@ -431,7 +431,7 @@ func (b *builder) jailStatement(id, state string, j encounter.Jail, path string)
 	s := fmt.Sprintf("When the conversation %s enters %s, every member its arrest took who is still in the run and still held "+
 		"is set down on a free cell of %s, without walking the way between, and is told %s. %s Whoever saw a member leave "+
 		"is told they were taken away, never where; whoever sees them arrive is told they arrived, never from where. "+
-		"The carriers who are up come to hold %s about each of them. A taken member who has left the run is not moved and "+
+		"The carriers who are up note %s about each of them. A taken member who has left the run is not moved and "+
 		"becomes wanted. Nobody is held by the jail itself: the cell's walls and door hold them, and a member may pick the "+
 		"door and walk out. %s If there are not enough free cells, or nobody to take, the line that leads here is refused.",
 		quote(id), quote(state), b.regionWords(cell), quote(j.Words), rounds, quote(string(encounter.TopicJailed)), escape)

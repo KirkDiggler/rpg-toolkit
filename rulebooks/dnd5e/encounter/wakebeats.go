@@ -146,7 +146,7 @@ type wakeBeat struct {
 // walked into it (`barred`), the one it hailed (`approached`), and on
 // `heard` the speaker of a character's line whose words it caught while
 // seeing them. Every other beat names nobody: a noise, a voice not seen, a
-// deed, a fact, a topic, a clock. It is what a `holds:<topic>` guard asks
+// deed, a fact, a topic, a clock. It is what a `noted:<topic>` guard asks
 // about, and what a step's consequences will name (S2).
 //
 // Claim is a caught checked line's verdict, read by `heard.claim`.

@@ -22,7 +22,7 @@ const theLiedToStep = `            - on: heard
                       op: eq
                       value: failed
                   - fact:
-                      name: holds:admitted
+                      name: noted:admitted
 `
 
 // liedToAt is that step's guard's path.
@@ -41,17 +41,17 @@ func TestHeardWords_TheCaptainsStepIsRefusedWhereItCannotWork(t *testing.T) {
 			sentence: "`heard.claim` reads what the creature heard, and `seen` is not hearing: it is read on `heard` only",
 		},
 		{
-			name: "holds read on a beat that names nobody", old: "                  name: holds.anyone:admitted\n",
-			replacement: "                  name: holds:admitted\n",
+			name: "holds read on a beat that names nobody", old: "                  name: noted.anyone:admitted\n",
+			replacement: "                  name: noted:admitted\n",
 			path:        "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[2].when",
-			sentence: "`holds:admitted` asks about the one this beat is about, and `topic` is about nobody: " +
+			sentence: "`noted:admitted` asks about the one this beat is about, and `topic` is about nobody: " +
 				"it is read on heard, seen, barred and approached",
 		},
 		{
 			name: "holds of a topic nothing gives", old: theLiedToStep,
-			replacement: strings.Replace(theLiedToStep, "name: holds:admitted", "name: holds:welcome", 1), path: liedToAt,
+			replacement: strings.Replace(theLiedToStep, "name: noted:admitted", "name: noted:welcome", 1), path: liedToAt,
 			sentence: "\"welcome\" is a topic no interaction's `outcomes` and no line's success or failure row gives, " +
-				"so nobody could ever come to hold it",
+				"so nobody could ever note it",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

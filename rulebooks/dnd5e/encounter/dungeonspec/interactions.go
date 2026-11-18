@@ -229,7 +229,7 @@ func lineGrantedTopics(s *SingleRoomSpec) map[string]bool {
 
 // grantedTopicsOf is every topic the document gives — a root interaction's
 // `outcomes` and a line's success and failure rows — read straight off it: the
-// topics a post's `pass` may ask `holds` of.
+// topics a post's `pass` may ask `noted` of.
 func grantedTopicsOf(s *SingleRoomSpec) map[string]bool {
 	out := lineGrantedTopics(s)
 	for _, spec := range s.Interactions {
@@ -245,13 +245,13 @@ func grantedTopicsOf(s *SingleRoomSpec) map[string]bool {
 }
 
 // topicGuards refuses a routine waiting on a topic nothing in the document
-// gives (rpg-project#929): a `holds.anyone:<topic>` guard in a behavior
+// gives (rpg-project#929): a `noted.anyone:<topic>` guard in a behavior
 // definition's recipe whose topic no outcome and no line's row gives could
 // never be true, so the transition could never fire. Refused at the
 // definition's recipe; the transition itself is the compiler's to name
 // beyond that. A guard still written in the retired `topic:<id>` is refused
 // naming the new word (rpg-project#1005), in a recipe or a sequence's body;
-// a `heard.claim` or a `holds:<topic>` on a beat that does not carry what
+// a `heard.claim` or a `noted:<topic>` on a beat that does not carry what
 // it reads is refused in the engine's sentence ([encounter.GuardWordsRefusal],
 // rpg-project#1000).
 func topicGuards(s *SingleRoomSpec, add errSink) {
@@ -288,7 +288,7 @@ func topicGuards(s *SingleRoomSpec, add errSink) {
 				for _, topic := range held {
 					if !granted[topic] {
 						add(at, fmt.Sprintf("%q is a topic no interaction's `outcomes` and no line's success or failure row gives, "+
-							"so nobody could ever come to hold it", topic))
+							"so nobody could ever note it", topic))
 					}
 				}
 			}
@@ -305,12 +305,12 @@ const retiredTopicGuardPrefix = "topic:"
 // `topic:<id>` is refused with.
 func topicGuardRetired(name string) string {
 	id := strings.TrimPrefix(name, retiredTopicGuardPrefix)
-	return fmt.Sprintf("`%s` is now `%s%s`: a machine asks whether the creature holds %q about anyone with `%s<topic>`",
-		name, holdsAnyonePrefix, id, id, holdsAnyonePrefix)
+	return fmt.Sprintf("`%s` is now `%s%s`: a machine asks whether the creature has noted %q about anyone with `%s<topic>`",
+		name, notedAnyonePrefix, id, id, notedAnyonePrefix)
 }
 
-// guardTopics is every topic a guard asks `holds.anyone:<topic>` or
-// `holds:<topic>` (rpg-project#1000) of, nested included, and every guard
+// guardTopics is every topic a guard asks `noted.anyone:<topic>` or
+// `noted:<topic>` (rpg-project#1000) of, nested included, and every guard
 // fact still written in the retired `topic:<id>`.
 func guardTopics(g *machine.Guard) (held, retired []string) {
 	if g == nil {
@@ -318,10 +318,10 @@ func guardTopics(g *machine.Guard) (held, retired []string) {
 	}
 	if g.Fact != nil {
 		name := string(g.Fact.Name)
-		if id, ok := strings.CutPrefix(name, holdsAnyonePrefix); ok && id != "" {
+		if id, ok := strings.CutPrefix(name, notedAnyonePrefix); ok && id != "" {
 			held = append(held, id)
 		}
-		if id, ok := strings.CutPrefix(name, string(encounter.MachineHolds(""))); ok && id != "" {
+		if id, ok := strings.CutPrefix(name, string(encounter.MachineNoted(""))); ok && id != "" {
 			held = append(held, id)
 		}
 		if id, ok := strings.CutPrefix(name, retiredTopicGuardPrefix); ok && id != "" {

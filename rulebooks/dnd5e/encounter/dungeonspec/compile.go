@@ -655,10 +655,10 @@ func predicateOf(p *PredicateSpec) encounter.Trigger {
 		return encounter.TriggerFact{Fact: p.Fact}
 	case predicateStance:
 		return encounter.TriggerStance{Between: p.Stance.Between, Stance: encounter.Stance(p.Stance.Is)}
-	case predicateCarries:
+	case predicateHolds:
 		// An option's `requires` only — [grammar.predicate] refuses it
 		// everywhere else, so this arm is reached from [optionsOf] alone.
-		return encounter.TriggerHolds{Prop: encounter.PropID(p.Carries)}
+		return encounter.TriggerHolds{Prop: encounter.PropID(p.Holds)}
 	case predicateLeft:
 		// An ending's `when` only ([grammar.endings]); refused elsewhere.
 		return encounter.TriggerLeft{Exit: encounter.ExitID(p.Left)}
@@ -671,10 +671,10 @@ func predicateOf(p *PredicateSpec) encounter.Trigger {
 		return encounter.TriggerInteraction{
 			Interaction: encounter.InteractionID(p.Interaction.ID), In: append([]string(nil), p.Interaction.In...),
 		}
-	case predicateHolds:
+	case predicateNoted:
 		// A creature's option's `requires` and a post's `pass` only
 		// (rpg-project#928); refused elsewhere.
-		return encounter.TriggerRecognized{Topic: encounter.TopicID(p.Holds)}
+		return encounter.TriggerRecognized{Topic: encounter.TopicID(p.Noted)}
 	default:
 		return nil
 	}

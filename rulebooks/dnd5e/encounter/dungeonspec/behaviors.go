@@ -112,7 +112,7 @@ type behaviorSourceInput struct {
 	Vocabulary  machine.Vocabulary
 
 	// Topics is every topic a root interaction's outcomes grant
-	// (rpg-project#928): what a post's `pass` may ask `holds` of.
+	// (rpg-project#928): what a post's `pass` may ask `noted` of.
 	Topics map[string]bool
 }
 
@@ -127,26 +127,26 @@ func decodeBehaviorValue(value *BehaviorValue, out any) error {
 	return json.Unmarshal(engineGuardWords(value.raw), out, json.RejectUnknownMembers(true))
 }
 
-// holdsAnyonePrefix is the content word a machine's guard asks with whether
-// the creature holds a topic about anybody (rpg-project#1005):
-// `holds.anyone:<topic>`. The engine's own fact name is unchanged
+// notedAnyonePrefix is the content word a machine's guard asks with whether
+// the creature has noted a topic about anybody (rpg-project#1005):
+// `noted.anyone:<topic>`. The engine's own fact name is unchanged
 // ([encounter.MachineTopic], `topic:<id>`), because a saved run's recipe
 // carries it; the content word is lowered to it here, and the old content
 // word is refused ([topicGuardRetired]).
-const holdsAnyonePrefix = "holds.anyone:"
+const notedAnyonePrefix = "noted.anyone:"
 
 // engineGuardWords is a native behavior value with every guard fact written
-// `holds.anyone:<topic>` lowered to the engine's [encounter.MachineTopic]
+// `noted.anyone:<topic>` lowered to the engine's [encounter.MachineTopic]
 // name. A value naming none is returned as it is, byte for byte.
 func engineGuardWords(raw jsontext.Value) jsontext.Value {
-	if !bytes.Contains(raw, []byte(holdsAnyonePrefix)) {
+	if !bytes.Contains(raw, []byte(notedAnyonePrefix)) {
 		return raw
 	}
 	var node any
 	if err := json.Unmarshal(raw, &node); err != nil {
 		return raw
 	}
-	if !lowerHoldsAnyone(node) {
+	if !lowerNotedAnyone(node) {
 		return raw
 	}
 	out, err := json.Marshal(node, json.Deterministic(true))
@@ -156,26 +156,26 @@ func engineGuardWords(raw jsontext.Value) jsontext.Value {
 	return out
 }
 
-// lowerHoldsAnyone rewrites, in place, every `fact: { name: holds.anyone:<id> }`
+// lowerNotedAnyone rewrites, in place, every `fact: { name: noted.anyone:<id> }`
 // in a decoded JSON value, reporting whether it rewrote any.
-func lowerHoldsAnyone(node any) bool {
+func lowerNotedAnyone(node any) bool {
 	changed := false
 	switch v := node.(type) {
 	case map[string]any:
 		if fact, ok := v["fact"].(map[string]any); ok {
 			if name, ok := fact["name"].(string); ok {
-				if id, ok := strings.CutPrefix(name, holdsAnyonePrefix); ok && id != "" {
+				if id, ok := strings.CutPrefix(name, notedAnyonePrefix); ok && id != "" {
 					fact["name"] = string(encounter.MachineTopic(id))
 					changed = true
 				}
 			}
 		}
 		for _, child := range v {
-			changed = lowerHoldsAnyone(child) || changed
+			changed = lowerNotedAnyone(child) || changed
 		}
 	case []any:
 		for _, child := range v {
-			changed = lowerHoldsAnyone(child) || changed
+			changed = lowerNotedAnyone(child) || changed
 		}
 	}
 	return changed
@@ -453,7 +453,7 @@ func roomBehaviorVocabulary(s *SingleRoomSpec) (machine.Vocabulary, error) {
 		}
 	}
 	// A GUARD MAY ASK WHAT IS HELD ABOUT ANYBODY (rpg-project#929, #1005),
-	// `holds.anyone:<topic>` lowered to the engine's `topic:<id>`, for any
+	// `noted.anyone:<topic>` lowered to the engine's `topic:<id>`, for any
 	// topic the document gives.
 	var topics []encounter.TopicID
 	for _, topic := range sortedKeys(grantedTopicsOf(s)) {

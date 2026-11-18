@@ -315,7 +315,7 @@ room:
           - id: offer-the-purse
             say: Offer the purse.
             requires:
-              carries: purse
+              holds: purse
             check:
               - ability: persuasion
                 dc: 10

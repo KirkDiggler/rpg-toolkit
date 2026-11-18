@@ -1318,7 +1318,7 @@ type InteractionSpec struct {
 type OutcomeSpec struct {
 	SceneMove *SceneMoveSpec `yaml:"sceneMove,omitempty" json:"sceneMove,omitempty"`
 
-	// Give is: a creature comes to hold a topic about someone
+	// Give is: a creature notes a topic about someone
 	// (rpg-project#1005; the engine's [encounter.Recognition]).
 	Give *GiveSpec `yaml:"give,omitempty" json:"give,omitempty"`
 
@@ -1396,17 +1396,17 @@ type ArrestAreaSpec struct {
 }
 
 // GiveSpec is `give:` (rpg-project#1005; the engine's [encounter.Recognition]):
-// the topic given, to whom, about whom, and who else comes to hold it
+// the topic given, to whom, about whom, and who else notes it
 // having heard. The who-words are fixed — exactly what the gate uses — and
 // any other is refused.
 //
 //	give: { topic: admitted, to: spoken_to, about: party_in_sight, heard_by: carriers_who_witnessed }
 type GiveSpec struct {
 	// Topic is the topic given, authored content: what the one it is given
-	// to comes to hold about someone. REQUIRED.
+	// to notes about someone. REQUIRED.
 	Topic string `yaml:"topic" json:"topic"`
 
-	// To is who comes to hold it: `spoken_to`, the creature the line that
+	// To is who notes it: `spoken_to`, the creature the line that
 	// moved the interaction was said to. REQUIRED.
 	To string `yaml:"to" json:"to"`
 
@@ -1418,12 +1418,6 @@ type GiveSpec struct {
 	// interaction's other carriers who witnessed the line. Optional; absent,
 	// nobody else.
 	HeardBy string `yaml:"heard_by,omitempty" json:"heard_by,omitempty"`
-
-	// OldHolding and OldHolder are never set: they are here so a `give`
-	// still written in a retired field is refused naming the new one
-	// ([retiredHolding], [retiredHolder]).
-	OldHolding *retiredHolding `yaml:"holding,omitempty" json:"-"`
-	OldHolder  *retiredHolder  `yaml:"holder,omitempty" json:"-"`
 }
 
 // InteractionApproachSpec is an interaction's `approach` (rpg-project#923): the

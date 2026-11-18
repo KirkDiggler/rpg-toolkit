@@ -94,12 +94,12 @@ func addGuardFacts(facts map[machine.FactName]machine.FactSpec, g *machine.Guard
 			return len(held) > 0, true
 		}}
 	}
-	// WHAT THIS CREATURE HOLDS ABOUT THE ONE THIS BEAT IS ABOUT
-	// (rpg-project#1000): the question a line's `holds` requirement asks,
-	// asked from the same holder, about the one the beat names. A beat that
-	// names nobody holds nothing about anybody: false.
-	if g.Fact != nil && strings.HasPrefix(string(g.Fact.Name), holdsPrefix) && len(g.Fact.Name) > len(holdsPrefix) {
-		topic := TopicID(strings.TrimPrefix(string(g.Fact.Name), holdsPrefix))
+	// WHAT THIS CREATURE HAS NOTED ABOUT THE ONE THIS BEAT IS ABOUT
+	// (rpg-project#1000): the question a line's `noted` requirement asks,
+	// asked from the same holder, about the one the beat names. Nothing is
+	// noted about a beat that names nobody: false.
+	if g.Fact != nil && strings.HasPrefix(string(g.Fact.Name), notedPrefix) && len(g.Fact.Name) > len(notedPrefix) {
+		topic := TopicID(strings.TrimPrefix(string(g.Fact.Name), notedPrefix))
 		facts[g.Fact.Name] = machine.FactSpec{Kind: machine.KindBool, Read: func(env any) (any, bool) {
 			me, ok := env.(*machineEnv)
 			if !ok {
@@ -109,7 +109,7 @@ func addGuardFacts(facts map[machine.FactName]machine.FactSpec, g *machine.Guard
 			if !ok || ev.Subject == "" {
 				return false, true
 			}
-			return me.e.holdsAbout(me.id, ev.Subject, topic), true
+			return me.e.hasNoted(me.id, ev.Subject, topic), true
 		}}
 	}
 	// A RAISED VOICE (rpg-project#933): only a loudness this rulebook names
@@ -143,11 +143,11 @@ func (e *Encounter) envFor(id MemberID) *machineEnv { return &machineEnv{e: e, i
 // noise, or a voice whose words were not caught is neither.
 const factHeardClaim machine.FactName = "heard.claim"
 
-// holdsPrefix names a guard fact true while this creature holds a topic
-// about the one the beat names (rpg-project#1000): `holds:<topic>`.
-// `holds.anyone:<topic>` (the engine's `topic:<id>`) is the question
+// notedPrefix names a guard fact true while this creature has noted a topic
+// about the one the beat names (rpg-project#1000): `noted:<topic>`.
+// `noted.anyone:<topic>` (the engine's `topic:<id>`) is the question
 // about anybody.
-const holdsPrefix = "holds:"
+const notedPrefix = "noted:"
 
 // readHeardClaim is `heard.claim`'s reader: the verdict the beat carries,
 // unknown when it carries none.
@@ -164,13 +164,13 @@ func readHeardClaim(env any) (any, bool) {
 }
 
 // namingBeats is the beats whose event names the one it is about, in the
-// order a refusal lists them: what a `holds:<topic>` guard may be read on.
+// order a refusal lists them: what a `noted:<topic>` guard may be read on.
 var namingBeats = []machine.Beat{beatHeard, beatSeen, beatBarred, beatApproached}
 
 // GuardWordsRefusal is the refusal of one transition's guard words that
 // read the beat itself (rpg-project#1000), or "" when they are sound: a
 // `heard.claim` must name held or failed and be read on `heard`; a
-// `holds:<topic>` must be read on a beat that names someone (`heard`,
+// `noted:<topic>` must be read on a beat that names someone (`heard`,
 // `seen`, `barred`, `approached`). The one sentence the engine and a
 // content compiler both say.
 func GuardWordsRefusal(on machine.Beat, g *machine.Guard) string {
@@ -187,7 +187,7 @@ func GuardWordsRefusal(on machine.Beat, g *machine.Guard) string {
 			if on != beatHeard {
 				return fmt.Sprintf("`heard.claim` reads what the creature heard, and `%s` is not hearing: it is read on `heard` only", on)
 			}
-		case strings.HasPrefix(name, holdsPrefix) && len(name) > len(holdsPrefix):
+		case strings.HasPrefix(name, notedPrefix) && len(name) > len(notedPrefix):
 			if !slices.Contains(namingBeats, on) {
 				return fmt.Sprintf("`%s` asks about the one this beat is about, and `%s` is about nobody: "+
 					"it is read on heard, seen, barred and approached", name, on)
@@ -573,9 +573,9 @@ func MachineFact(id string) machine.FactName { return machine.FactName(factPrefi
 // holdings.
 func MachineTopic(id string) machine.FactName { return machine.FactName(topicPrefix + id) }
 
-// MachineHolds names a guard fact true while the creature holds a topic
-// about the one the beat names (rpg-project#1000): `holds:<id>`.
-func MachineHolds(id string) machine.FactName { return machine.FactName(holdsPrefix + id) }
+// MachineNoted names a guard fact true while the creature has noted a topic
+// about the one the beat names (rpg-project#1000): `noted:<id>`.
+func MachineNoted(id string) machine.FactName { return machine.FactName(notedPrefix + id) }
 
 // MachineEnemyFact reads the actor's own enemy band, never authoritative intel.
 const MachineEnemyFact = factEnemy

@@ -569,7 +569,7 @@ func (b *builder) reaches(g grant, member, h string) bool {
 // passJudge is the engine's pass judgment ([encounter.Encounter.passLets])
 // for one holder, every state it holds the door in: an empty pass lets
 // nobody but allies through; a recognition is met only by a topic the holder
-// comes to hold (held); a fact or a prop is met by what the walker knows or
+// notes (held); a fact or a prop is met by what the walker knows or
 // carries (known), and is otherwise a need; a `not` holds for a walker who
 // lacks what it negates, so it is a condition said with the way. recognised
 // is whether every pass asks a recognition: a grant lifts only such a pass.
@@ -628,7 +628,7 @@ func (b *builder) unlessWords(nots []encounter.Trigger) (string, []Connection) {
 			parts = append(parts, "carries the prop "+quote(p))
 			cs = append(cs, Connection{Kind: "prop", ID: p, Role: "unless"})
 		case encounter.TriggerRecognized:
-			parts = append(parts, "is held "+quote(string(v.Topic))+" by the holder")
+			parts = append(parts, "has "+quote(string(v.Topic))+" noted about them by the holder")
 			cs = append(cs, Connection{Kind: "topic", ID: string(v.Topic), Role: "unless"})
 		}
 	}
@@ -719,9 +719,9 @@ func (b *builder) lineHoldWay(join Statement, joinWords string, site lineSite, h
 		return Statement{}, false
 	}
 	for _, g := range grants {
-		s := fmt.Sprintf("%s makes the creature it is said to hold %s about %s", g.how, quote(g.topic), g.about)
+		s := fmt.Sprintf("%s makes the creature it is said to note %s about %s", g.how, quote(g.topic), g.about)
 		if g.heard {
-			s += fmt.Sprintf(", and the conversation %s's other carriers who witness it hold the same, heard", quote(g.conv))
+			s += fmt.Sprintf(", and the conversation %s's other carriers who witness it note the same, heard", quote(g.conv))
 		}
 		why = append(why, s)
 		cs = append(cs, Connection{Kind: "topic", ID: g.topic, Role: "grants"})

@@ -111,12 +111,12 @@ func TestTheGuardWordsAreRefused(t *testing.T) {
 			"`heard.claim` reads what the creature heard, and `time` is not hearing: it is read on `heard` only"},
 		{"a claim nested under a not", beatSeen, &machine.Guard{Not: leaf("heard.claim", "held")},
 			"`heard.claim` reads what the creature heard, and `seen` is not hearing: it is read on `heard` only"},
-		{"holds on a fact", beatFact, leaf("holds:admitted", true),
-			"`holds:admitted` asks about the one this beat is about, and `fact` is about nobody: it is read on heard, seen, barred and approached"},
-		{"holds on a topic", beatTopic, leaf("holds:admitted", true),
-			"`holds:admitted` asks about the one this beat is about, and `topic` is about nobody: it is read on heard, seen, barred and approached"},
-		{"holds on a deed", beatDeed, &machine.Guard{All: []machine.Guard{*leaf("holds:admitted", true)}},
-			"`holds:admitted` asks about the one this beat is about, and `deed` is about nobody: it is read on heard, seen, barred and approached"},
+		{"holds on a fact", beatFact, leaf("noted:admitted", true),
+			"`noted:admitted` asks about the one this beat is about, and `fact` is about nobody: it is read on heard, seen, barred and approached"},
+		{"holds on a topic", beatTopic, leaf("noted:admitted", true),
+			"`noted:admitted` asks about the one this beat is about, and `topic` is about nobody: it is read on heard, seen, barred and approached"},
+		{"holds on a deed", beatDeed, &machine.Guard{All: []machine.Guard{*leaf("noted:admitted", true)}},
+			"`noted:admitted` asks about the one this beat is about, and `deed` is about nobody: it is read on heard, seen, barred and approached"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.sentence, GuardWordsRefusal(tc.on, tc.when))
@@ -130,7 +130,7 @@ func TestTheGuardWordsAreRefused(t *testing.T) {
 		})
 	}
 	for _, on := range []machine.Beat{beatHeard, beatSeen, beatBarred, beatApproached} {
-		require.Empty(t, GuardWordsRefusal(on, leaf("holds:admitted", true)), "holds is read on %s", on)
+		require.Empty(t, GuardWordsRefusal(on, leaf("noted:admitted", true)), "holds is read on %s", on)
 	}
 	require.Empty(t, GuardWordsRefusal(beatHeard, leaf("heard.claim", "held")))
 }

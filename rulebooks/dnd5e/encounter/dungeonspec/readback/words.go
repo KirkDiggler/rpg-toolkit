@@ -118,7 +118,7 @@ type lineContext struct {
 }
 
 // triggerWords says one compiled requirement or predicate as a clause about
-// who knows, carries or holds what. It also returns the connections the
+// who knows, carries or has noted what. It also returns the connections the
 // clause reads.
 func (b *builder) triggerWords(t encounter.Trigger, ctx lineContext) (string, []Connection) {
 	switch v := t.(type) {
@@ -142,7 +142,7 @@ func (b *builder) triggerWords(t encounter.Trigger, ctx lineContext) (string, []
 			held = fmt.Sprintf(", and only while %s is still held under the arrest: not once a fight has broken the hold, "+
 				"nor once jailed", ctx.me)
 		}
-		return fmt.Sprintf("%s holds %s about %s%s",
+		return fmt.Sprintf("%s has noted %s about %s%s",
 				ctx.other, quote(string(v.Topic)), ctx.me, held),
 			[]Connection{{Kind: "topic", ID: string(v.Topic), Role: "asks"}}
 	case encounter.TriggerInteraction:
@@ -165,7 +165,7 @@ func (b *builder) triggerWords(t encounter.Trigger, ctx lineContext) (string, []
 			if in.Topic == encounter.TopicArrested {
 				held = fmt.Sprintf(", or does but %s is no longer held under the arrest (a fight broke the hold, or jailed)", ctx.me)
 			}
-			return fmt.Sprintf("%s does NOT hold %s about %s%s",
+			return fmt.Sprintf("%s has NOT noted %s about %s%s",
 					ctx.other, quote(string(in.Topic)), ctx.me, held),
 				[]Connection{{Kind: "topic", ID: string(in.Topic), Role: "asks"}}
 		case encounter.TriggerFact:
@@ -205,7 +205,7 @@ func subjectsWords(about encounter.RecognitionSubjects, holder string) string {
 	switch about {
 	case encounter.RecognitionPartyInSight:
 		return fmt.Sprintf("the speaker and each member of the speaker's party that %s sees at that moment "+
-			"(%s holds nothing about a member out of its sight)", holder, holder)
+			"(%s notes nothing about a member out of its sight)", holder, holder)
 	case encounter.RecognitionSpeaker:
 		return fmt.Sprintf("the speaker alone, if %s sees the speaker (not whoever stands beside the speaker)", holder)
 	}

@@ -72,7 +72,7 @@ func TestDungeonspec_AnOutcomeCompilesOntoItsInteraction(t *testing.T) {
 func TestDungeonspec_APassStillTakesAFact(t *testing.T) {
 	// The captain keeps one post in `ready` and the same in `back-to-gate`
 	// (rpg-project#1000): both take the password.
-	const captainsPass = `            pass: { holds: admitted }
+	const captainsPass = `            pass: { noted: admitted }
             at:
               - q: -4
                 r: 8
@@ -119,21 +119,21 @@ func TestDungeonspec_RecognitionIsRefusedAtTheAuthorsPath(t *testing.T) {
 	}
 
 	t.Run("a line asking for a topic nothing grants", func(t *testing.T) {
-		errs := refusals(t, castleWith(t, "            requires:\n              holds: admitted\n",
-			"            requires:\n              holds: welcome\n"))
+		errs := refusals(t, castleWith(t, "            requires:\n              noted: admitted\n",
+			"            requires:\n              noted: welcome\n"))
 		require.NotEmpty(t, errs)
-		require.True(t, strings.HasSuffix(errs[0].Path, ".requires.holds"), errs[0].Path)
+		require.True(t, strings.HasSuffix(errs[0].Path, ".requires.noted"), errs[0].Path)
 		require.Contains(t, errs[0].Message, `"welcome" is a topic no interaction's`)
 	})
 
 	t.Run("a pass asking for a topic nothing grants", func(t *testing.T) {
-		errs := refusals(t, strings.ReplaceAll(castleSource(t), "pass: { holds: admitted }", "pass: { holds: welcome }"))
+		errs := refusals(t, strings.ReplaceAll(castleSource(t), "pass: { noted: admitted }", "pass: { noted: welcome }"))
 		require.NotEmpty(t, errs)
-		require.True(t, strings.HasSuffix(errs[0].Path, ".pass.holds"), errs[0].Path)
+		require.True(t, strings.HasSuffix(errs[0].Path, ".pass.noted"), errs[0].Path)
 	})
 
 	t.Run("a pass on an interaction's state", func(t *testing.T) {
-		errs := refusals(t, strings.ReplaceAll(castleSource(t), "pass: { holds: admitted }",
+		errs := refusals(t, strings.ReplaceAll(castleSource(t), "pass: { noted: admitted }",
 			"pass: { interaction: { id: front-gate, in: [admitted] } }"))
 		require.NotEmpty(t, errs)
 		require.True(t, strings.HasSuffix(errs[0].Path, ".pass"), errs[0].Path)
@@ -209,8 +209,8 @@ func TestDungeonspec_ALinesGrantIsRefusedAtTheAuthorsPath(t *testing.T) {
 	})
 
 	t.Run("heard_by on a line that names no interaction", func(t *testing.T) {
-		text := castleWith(t, "            say: Where will the feast be, captain?\n            requires:\n              holds: admitted\n            success:\n              - say: In the great hall. You’re expected.\n",
-			"            say: Where will the feast be, captain?\n            requires:\n              holds: admitted\n            success:\n              - say: In the great hall. You’re expected.\n                give: { topic: admitted, to: spoken_to, about: speaker, heard_by: carriers_who_witnessed }\n")
+		text := castleWith(t, "            say: Where will the feast be, captain?\n            requires:\n              noted: admitted\n            success:\n              - say: In the great hall. You’re expected.\n",
+			"            say: Where will the feast be, captain?\n            requires:\n              noted: admitted\n            success:\n              - say: In the great hall. You’re expected.\n                give: { topic: admitted, to: spoken_to, about: speaker, heard_by: carriers_who_witnessed }\n")
 		errs := refusals(t, text)
 		require.NotEmpty(t, errs)
 		require.True(t, strings.HasSuffix(errs[0].Path, ".success[0].give.heard_by"), errs[0].Path)
@@ -231,7 +231,7 @@ func TestDungeonspec_ALinesGrantIsRefusedAtTheAuthorsPath(t *testing.T) {
 	})
 
 	t.Run("a guard asking about a topic nothing gives", func(t *testing.T) {
-		errs := refusals(t, castleWith(t, "                  name: holds.anyone:admitted\n", "                  name: holds.anyone:welcome\n"))
+		errs := refusals(t, castleWith(t, "                  name: noted.anyone:admitted\n", "                  name: noted.anyone:welcome\n"))
 		require.NotEmpty(t, errs, "a routine cannot wait on a topic nobody could ever hold")
 	})
 }

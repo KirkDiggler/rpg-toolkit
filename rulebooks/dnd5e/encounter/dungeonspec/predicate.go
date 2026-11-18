@@ -71,13 +71,14 @@ type PredicateSpec struct {
 	// allied.
 	Stance *StancePredicateSpec
 
-	// Carries is the `{ carries: <prop id> }` form (rpg-project#569, the
-	// word since rpg-project#1005): true when the SPEAKER carries that prop.
-	// LEGAL ONLY AS AN OPTION'S `requires` — it reads one character's
-	// pockets at the moment they speak, and an until, an arrival or an
-	// ending has no speaker, so each refuses it by name ([grammar.predicate]).
-	// Must name a placed prop somebody can pick up.
-	Carries string
+	// Holds is the `{ holds: <prop id> }` form (rpg-project#569): true when
+	// the SPEAKER holds that prop, in hand — the fact the player's Hold verb
+	// makes. LEGAL ONLY AS AN OPTION'S `requires` — it reads one character's
+	// hands at the moment they speak, and an until, an arrival or an ending
+	// has no speaker, so each refuses it by name ([grammar.predicate]). Must
+	// name a placed prop somebody can pick up; what someone has in mind is
+	// [PredicateSpec.Noted].
+	Holds string
 
 	// Left is the `{ left: <exit id> }` form (rpg-project#716, ruled
 	// 2026-10-29): true when the last standing party member has left by
@@ -90,7 +91,7 @@ type PredicateSpec struct {
 	// Not is the `{ not: <one predicate> }` form (rpg-project#719): true
 	// when the inner predicate does not, judged where and when the inner one
 	// is (the engine's [encounter.TriggerNot]). SCOPED BY WHAT IT WRAPS: a
-	// `not` of `carries` only on an option's `requires`, of `left` only on an
+	// `not` of `holds` only on an option's `requires`, of `left` only on an
 	// ending's `when`, each refused elsewhere in the inner form's own words.
 	// On an until, an arrival or an ending's `when` it is waited for, and a
 	// `not` of a fact, a round or a fall holds from the start, so only a
@@ -108,16 +109,16 @@ type PredicateSpec struct {
 	// and every state one its recipe declares.
 	Interaction *InteractionPredicateSpec
 
-	// Holds is the `{ holds: <topic> }` form (rpg-project#928, the word
-	// since rpg-project#1005): true when THE OTHER PARTY holds that topic
-	// about "me" — on an option's `requires`, the creature spoken to holds it
-	// about the speaker; on a post's `pass`, the post's holder holds it about
-	// the walker ([encounter.TriggerRecognized]). LEGAL ONLY ON A CREATURE'S
-	// OPTION'S `requires` AND A POST'S `pass` (and a `not` of it there): a
-	// prop holds nothing about anybody, and an until, an arrival or an
-	// ending never waits on it. Must name a topic something in the
-	// document gives, and not a prop: carrying a thing is `carries`.
-	Holds string
+	// Noted is the `{ noted: <topic> }` form (rpg-project#928, the word
+	// since rpg-project#1005): true when THE OTHER PARTY has noted that topic
+	// about "me" — on an option's `requires`, the creature spoken to has
+	// noted it about the speaker; on a post's `pass`, the post's holder has
+	// noted it about the walker ([encounter.TriggerRecognized]). LEGAL ONLY
+	// ON A CREATURE'S OPTION'S `requires` AND A POST'S `pass` (and a `not` of
+	// it there): a prop notes nothing about anybody, and an until, an
+	// arrival or an ending never waits on it. Must name a topic something in
+	// the document gives, and not a prop: a prop in hand is `holds`.
+	Noted string
 }
 
 // InteractionPredicateSpec is the interaction form's own object: which
@@ -181,24 +182,24 @@ type StancePredicateSpec struct {
 
 // Predicate form names, for a refusal that says which form was meant.
 const (
-	predicateRound   = "round"
-	predicateDown    = "down"
-	predicateFact    = "fact"
-	predicateStance  = "stance"
-	predicateCarries = "carries"
-	predicateLeft    = "left"
-	predicateNot     = "not"
+	predicateRound  = "round"
+	predicateDown   = "down"
+	predicateFact   = "fact"
+	predicateStance = "stance"
+	predicateHolds  = "holds"
+	predicateLeft   = "left"
+	predicateNot    = "not"
 
 	predicateInteraction = "interaction"
-	predicateHolds       = "holds"
+	predicateNoted       = "noted"
 )
 
 // retiredPredicateKeys is every predicate key rpg-project#1005 renamed, with
 // the sentence that names the word that replaced it. An old file is refused
 // at load, never read under the old meaning.
 var retiredPredicateKeys = map[string]string{
-	"recognized": "`recognized` is now `holds`: write { holds: <topic> } " +
-		"(what the creature spoken to, or a post's holder, holds about the speaker or the walker)",
+	"recognized": "`recognized` is now `noted`: write { noted: <topic> } " +
+		"(what the creature spoken to, or a post's holder, has noted about the speaker or the walker)",
 }
 
 // predicateForms is the one sentence every predicate refusal points at.
@@ -223,16 +224,16 @@ func (p *PredicateSpec) Form() string {
 		return predicateFact
 	case p.Stance != nil:
 		return predicateStance
-	case p.Carries != "":
-		return predicateCarries
+	case p.Holds != "":
+		return predicateHolds
 	case p.Left != "":
 		return predicateLeft
 	case p.Not != nil:
 		return predicateNot
 	case p.Interaction != nil:
 		return predicateInteraction
-	case p.Holds != "":
-		return predicateHolds
+	case p.Noted != "":
+		return predicateNoted
 	default:
 		return ""
 	}
@@ -254,8 +255,8 @@ func (p *PredicateSpec) UnmarshalYAML(value *yaml.Node) error {
 			return fmt.Errorf("line %d: %s", value.Content[i].Line, why)
 		}
 		switch key {
-		case predicateRound, predicateDown, predicateFact, predicateStance, predicateCarries, predicateLeft, predicateNot,
-			predicateInteraction, predicateHolds:
+		case predicateRound, predicateDown, predicateFact, predicateStance, predicateHolds, predicateLeft, predicateNot,
+			predicateInteraction, predicateNoted:
 			forms = append(forms, key)
 		default:
 			return fmt.Errorf("line %d: field %s not found in type dungeonspec.PredicateSpec",
@@ -271,23 +272,23 @@ func (p *PredicateSpec) UnmarshalYAML(value *yaml.Node) error {
 	}
 
 	var obj struct {
-		Round   *int                 `yaml:"round"`
-		Down    string               `yaml:"down"`
-		Fact    string               `yaml:"fact"`
-		Stance  *StancePredicateSpec `yaml:"stance"`
-		Carries string               `yaml:"carries"`
-		Left    string               `yaml:"left"`
-		Not     *PredicateSpec       `yaml:"not"`
+		Round  *int                 `yaml:"round"`
+		Down   string               `yaml:"down"`
+		Fact   string               `yaml:"fact"`
+		Stance *StancePredicateSpec `yaml:"stance"`
+		Holds  string               `yaml:"holds"`
+		Left   string               `yaml:"left"`
+		Not    *PredicateSpec       `yaml:"not"`
 
 		Interaction *InteractionPredicateSpec `yaml:"interaction"`
-		Holds       string                    `yaml:"holds"`
+		Noted       string                    `yaml:"noted"`
 	}
 	if err := value.Decode(&obj); err != nil {
 		return err
 	}
 	*p = PredicateSpec{
-		Round: obj.Round, Down: obj.Down, Fact: obj.Fact, Stance: obj.Stance, Carries: obj.Carries, Left: obj.Left,
-		Not: obj.Not, Interaction: obj.Interaction, Holds: obj.Holds,
+		Round: obj.Round, Down: obj.Down, Fact: obj.Fact, Stance: obj.Stance, Holds: obj.Holds, Left: obj.Left,
+		Not: obj.Not, Interaction: obj.Interaction, Noted: obj.Noted,
 	}
 
 	// A form that decoded to its own zero value said the key and nothing
@@ -352,16 +353,16 @@ func (p *PredicateSpec) String() string {
 	case predicateStance:
 		return fmt.Sprintf("{ stance: { between: [%s], is: %s } }",
 			strings.Join(p.Stance.Between[:], ", "), p.Stance.Is)
-	case predicateCarries:
-		return fmt.Sprintf("{ carries: %s }", p.Carries)
+	case predicateHolds:
+		return fmt.Sprintf("{ holds: %s }", p.Holds)
 	case predicateLeft:
 		return fmt.Sprintf("{ left: %s }", p.Left)
 	case predicateNot:
 		return fmt.Sprintf("{ not: %s }", p.Not.String())
 	case predicateInteraction:
 		return fmt.Sprintf("{ interaction: { id: %s, in: [%s] } }", p.Interaction.ID, strings.Join(p.Interaction.In, ", "))
-	case predicateHolds:
-		return fmt.Sprintf("{ holds: %s }", p.Holds)
+	case predicateNoted:
+		return fmt.Sprintf("{ noted: %s }", p.Noted)
 	default:
 		return "{ }"
 	}

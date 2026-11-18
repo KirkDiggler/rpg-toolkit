@@ -347,7 +347,7 @@ type grammarInput struct {
 
 	// LineTopics is every topic a line's success or failure row gives
 	// (rpg-project#929, #932): with the interactions' outcomes, what a
-	// `holds` requirement may name.
+	// `noted` requirement may name.
 	LineTopics map[string]bool
 }
 
@@ -358,7 +358,7 @@ type interactionShape struct {
 	beats  map[string]bool
 
 	// topics is every topic the interaction's outcomes grant
-	// (rpg-project#928): what a `holds` requirement may name.
+	// (rpg-project#928): what a `noted` requirement may name.
 	topics map[string]bool
 }
 
@@ -559,14 +559,14 @@ const (
 // each its own sentence: no id; an id already used on
 // this binding; no line; a check written empty, or an approach that
 // rolls nothing or has nothing to beat ([grammar.approaches], the lock's own
-// grammar); a `requires` that is none of its forms; a `carries`
+// grammar); a `requires` that is none of its forms; a `holds`
 // naming a prop this dungeon does not place, or one nobody can pick up; a
 // verdict written and left empty; and every row by the table's own grammar
 // ([grammar.answerEntry]) under the verdict's key — so `fact`, `flee` and a
 // line are legal, a time word and a `when` are not.
 //
 // props is the dialect's placed props, id to whether somebody can pick it up
-// — the universe a `carries` may name. isProp says the options are a prop's,
+// — the universe a `holds` may name. isProp says the options are a prop's,
 // whose rows may not `flee`.
 func (g *grammar) options(path string, options []OptionSpec, props map[string]bool, isProp bool) {
 	// AN EMPTY LIST IS REFUSED, NOT READ AS ABSENT — a verdict's own rule
@@ -658,7 +658,7 @@ func (g *grammar) optionRequirements(path string, requires RequiresSpec, props m
 
 // optionRequires judges one item of an option's `requires`: the SPEAKER's
 // own read — a fact, or carrying a placed prop somebody can pick up (R9) —
-// what the creature spoken to holds about the speaker (`holds`, a topic
+// what the creature spoken to has noted about the speaker (`noted`, a topic
 // something in the document gives) — or the RUN's interaction state, judged
 // per run and not per speaker
 // (rpg-project#922, #916 R2), or a `not` of one; nothing else. Every item
@@ -682,33 +682,37 @@ func (g *grammar) optionRequires(path string, p *PredicateSpec, props map[string
 	case "", predicateFact:
 	case predicateInteraction:
 		g.interactionRequirement(path+".interaction", p.Interaction)
-	case predicateHolds:
-		// `holds` ASKS ABOUT A PERSON, `carries` ABOUT A POCKET
-		// (rpg-project#1005): the key once meant carrying, so a prop's id
-		// under it is the old meaning and is pointed at the new word, and
-		// an id that is both a prop and a topic is refused as ambiguous.
-		_, placed := props[p.Holds]
-		given := g.grants(p.Holds)
-		// A PROP'S ID FIRST, even on a prop's own line: there `holds: purse`
-		// was legal under the old meaning, and the word the author needs is
-		// `carries`, not that a prop holds nothing.
+	case predicateNoted:
+		// `noted` ASKS WHAT SOMEONE HAS IN MIND, `holds` WHAT IS IN HAND
+		// (rpg-project#1005): a prop's id under `noted` is pointed at
+		// `holds`, and a topic named like a prop is refused for the doubt.
+		_, placed := props[p.Noted]
+		given := g.grants(p.Noted)
+		// A PROP'S ID FIRST, even on a prop's own line: the word the author
+		// needs is `holds`, not that a prop notes nothing.
 		switch {
 		case placed && given:
-			g.fail(path+".holds", "%s", holdsAmbiguous(p.Holds))
+			g.fail(path+".noted", "%s", notedAmbiguous(p.Noted))
 		case placed:
-			g.fail(path+".holds", "%s", holdsNamesProp(p.Holds))
+			g.fail(path+".noted", "%s", notedNamesProp(p.Noted))
 		case isProp:
-			g.fail(path+".holds", "%s", errHoldsOnProp)
+			g.fail(path+".noted", "%s", errNotedOnProp)
 		case !given:
-			g.fail(path+".holds", "%s", topicNeverGiven(p.Holds))
+			g.fail(path+".noted", "%s", topicNeverGiven(p.Noted))
 		}
-	case predicateCarries:
-		holdable, placed := props[p.Carries]
+	case predicateHolds:
+		holdable, placed := props[p.Holds]
+		// A TOPIC IN THE PROP'S PLACE is asked with `noted`
+		// (rpg-project#1005).
+		topic := ""
+		if g.grants(p.Holds) {
+			topic = "; a topic is asked with `noted`"
+		}
 		switch {
 		case !placed:
-			g.fail(path+".carries", "%q is not a prop in this dungeon, so nobody can carry it", p.Carries)
+			g.fail(path+".holds", "%q is not a prop in this dungeon, so nobody can hold it%s", p.Holds, topic)
 		case !holdable:
-			g.fail(path+".carries", "%q is a prop nobody can pick up, so nobody can carry it", p.Carries)
+			g.fail(path+".holds", "%q is a prop nobody can pick up, so nobody can hold it%s", p.Holds, topic)
 		}
 	default:
 		g.fail(path, "%s, and `%s` is none of them", optionRequiresForms, form)
@@ -770,37 +774,36 @@ func (g *grammar) optionAdvance(path string, a *AdvanceSpec, checked bool) {
 }
 
 // optionRequiresForms is the sentence naming what an option may require.
-const optionRequiresForms = "an option requires one or a list of { fact: <id> }, { carries: <prop id> }, " +
-	"{ interaction: { id, in: [<state>] } }, { holds: <topic> }, or { not: } one of them"
+const optionRequiresForms = "an option requires one or a list of { fact: <id> }, { holds: <prop id> }, " +
+	"{ interaction: { id, in: [<state>] } }, { noted: <topic> }, or { not: } one of them"
 
-// errHoldsOnProp is the sentence a `holds` requirement on a prop's line is
-// refused with: a prop is never the one spoken to that holds anything.
-const errHoldsOnProp = "a prop holds nothing about anybody, so a line said to one cannot ask what it holds"
+// errNotedOnProp is the sentence a `noted` requirement on a prop's line is
+// refused with: a prop is never the one spoken to that notes anything.
+const errNotedOnProp = "a prop notes nothing about anybody, so a line said to one cannot ask what it has noted"
 
 // errGiveOnProp is the sentence a `give` on a prop's line's row is refused
-// with, for [errHoldsOnProp]'s reason.
-const errGiveOnProp = "a prop holds nothing about anybody, so a line said to one cannot give it a topic"
+// with, for [errNotedOnProp]'s reason.
+const errGiveOnProp = "a prop notes nothing about anybody, so a line said to one cannot give it a topic"
 
-// holdsNamesProp is the sentence a `holds` naming a prop of the site and no
-// topic is refused with (rpg-project#1005): `holds` once meant carrying.
-func holdsNamesProp(id string) string {
-	return fmt.Sprintf("`holds` asks what the creature spoken to holds about the speaker, and %q is a prop: "+
-		"a speaker carrying it is `carries: %s`", id, id)
+// notedNamesProp is the sentence a `noted` naming a prop of the site and no
+// topic is refused with (rpg-project#1005).
+func notedNamesProp(id string) string {
+	return fmt.Sprintf("`noted` asks what the creature spoken to has noted about the speaker, and %q is a prop: "+
+		"a speaker with it in hand is `holds: %s`", id, id)
 }
 
-// holdsAmbiguous is the sentence a `holds` naming an id that is both a prop of
+// notedAmbiguous is the sentence a `noted` naming an id that is both a prop of
 // the site and a topic something gives is refused with (rpg-project#1005).
-func holdsAmbiguous(id string) string {
-	return fmt.Sprintf("%q is both a prop and a topic something gives, so `holds: %s` reads two ways: "+
-		"the creature spoken to holds %q about the speaker, or (the old meaning) the speaker carries the prop %q — "+
-		"write `carries: %s` for the prop, or give the topic a name no prop has", id, id, id, id, id)
+func notedAmbiguous(id string) string {
+	return fmt.Sprintf("%q is both a prop and a topic something gives, so `noted: %s` leaves a reader unsure which "+
+		"is meant (the prop in hand is `holds: %s`): give the topic a name no prop has", id, id, id)
 }
 
-// topicNeverGiven is the sentence a `holds` naming a topic nothing in the
+// topicNeverGiven is the sentence a `noted` naming a topic nothing in the
 // document gives is refused with.
 func topicNeverGiven(id string) string {
 	return fmt.Sprintf("%q is a topic no interaction's `outcomes` and no line's row gives, "+
-		"so nobody could ever hold it about anyone", id)
+		"so nobody could ever have noted it about anyone", id)
 }
 
 // rowGive judges a line's row's `give:` (rpg-project#929, #1005): legal on
