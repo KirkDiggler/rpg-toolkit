@@ -250,7 +250,10 @@ func grantedTopicsOf(s *SingleRoomSpec) map[string]bool {
 // never be true, so the transition could never fire. Refused at the
 // definition's recipe; the transition itself is the compiler's to name
 // beyond that. A guard still written in the retired `topic:<id>` is refused
-// naming the new word (rpg-project#1005), in a recipe or a sequence's body.
+// naming the new word (rpg-project#1005), in a recipe or a sequence's body;
+// a `heard.claim` or a `holds:<holding>` on a beat that does not carry what
+// it reads is refused in the engine's sentence ([encounter.GuardWordsRefusal],
+// rpg-project#1000).
 func topicGuards(s *SingleRoomSpec, add errSink) {
 	granted := grantedTopicsOf(s)
 	for _, id := range sortedKeys(s.BehaviorDefinitions) {
@@ -273,6 +276,11 @@ func topicGuards(s *SingleRoomSpec, add errSink) {
 		for _, state := range sortedKeys(recipe.States) {
 			for i, t := range recipe.States[state].Transitions {
 				at := fmt.Sprintf("behaviorDefinitions.%s.recipe.states.%s.transitions[%d].when", id, state, i)
+				// A GUARD THAT READS THE BEAT reads one that carries it
+				// (rpg-project#1000), in the engine's own sentence.
+				if refusal := encounter.GuardWordsRefusal(t.On, t.When); refusal != "" {
+					add(at, refusal)
+				}
 				held, retired := guardTopics(t.When)
 				for _, name := range retired {
 					add(at, topicGuardRetired(name))
@@ -301,9 +309,9 @@ func topicGuardRetired(name string) string {
 		name, holdsAnyonePrefix, id, id, holdsAnyonePrefix)
 }
 
-// guardTopics is every holding a guard asks `holds.anyone:<holding>` of,
-// nested included, and every guard fact still written in the retired
-// `topic:<id>`.
+// guardTopics is every holding a guard asks `holds.anyone:<holding>` or
+// `holds:<holding>` (rpg-project#1000) of, nested included, and every guard
+// fact still written in the retired `topic:<id>`.
 func guardTopics(g *machine.Guard) (held, retired []string) {
 	if g == nil {
 		return nil, nil
@@ -311,6 +319,9 @@ func guardTopics(g *machine.Guard) (held, retired []string) {
 	if g.Fact != nil {
 		name := string(g.Fact.Name)
 		if id, ok := strings.CutPrefix(name, holdsAnyonePrefix); ok && id != "" {
+			held = append(held, id)
+		}
+		if id, ok := strings.CutPrefix(name, string(encounter.MachineHolds(""))); ok && id != "" {
 			held = append(held, id)
 		}
 		if id, ok := strings.CutPrefix(name, retiredTopicGuardPrefix); ok && id != "" {

@@ -37,6 +37,12 @@ import (
 // for the world, so it is matched on the barrier alone in the verb that
 // bumped, and nothing that has landed is matched with it.
 //
+// AND ONE IS HEARD AT ONCE: a character's line ([Encounter.hearLine],
+// rpg-project#1000). Saying it is the character's act now, so every machine
+// its voice reached hears it in Speak, between the answer and the row's
+// grants, and the next offer reads what it moved. Every other sound, and a
+// creature's own speech, lands as below.
+//
 // LANDED BEATS PERSIST UNTIL THE RAISE THAT MATCHES THEM. A clang in a fight
 // turn, or a step short of a pace, raises nothing; the beat waits for the
 // round that does, and a save between the two keeps it
@@ -120,17 +126,60 @@ type wakeBeat struct {
 	Faction  FactionID
 	Hops     int
 	At       uint64
+
+	// Claim and Named are a character's line heard at once
+	// ([Encounter.hearLine], rpg-project#1000), never landed and so never
+	// saved. Claim is the verdict of a checked line whose words the listener
+	// caught ([ClaimHeld] or [ClaimFailed]), empty otherwise. Named is true
+	// when the listener also saw the speaker: only then is Subject the one
+	// this beat is about. A landed `heard` names nobody, whatever its Subject.
+	Claim string
+	Named bool
 }
 
 // wakeEv is a beat as one listener is asked it: the round, and how far it
 // was from the listener in hexes and regions (-1 when the beat names no
 // place, which no scope admits).
+//
+// Subject is the one the beat is about, AS THIS LISTENER'S SENSES NAME THEM
+// (rpg-project#1000): the opposed member it saw (`seen`), the mover who
+// walked into it (`barred`), the one it hailed (`approached`), and on
+// `heard` the speaker of a character's line whose words it caught while
+// seeing them. Every other beat names nobody: a noise, a voice not seen, a
+// deed, a fact, a topic, a clock. It is what a `holds:<holding>` guard asks
+// about, and what a step's consequences will name (S2).
+//
+// Claim is a caught checked line's verdict, read by `heard.claim`.
 type wakeEv struct {
 	Kind     string
 	Loudness Loudness
 	At       uint64
 	Distance int
 	Hops     int
+	Subject  MemberID
+	Claim    string
+}
+
+// The values `heard.claim` reads (rpg-project#1000): the checked line whose
+// words were caught held (it was beaten) or failed.
+const (
+	// ClaimHeld is a caught checked line that was beaten.
+	ClaimHeld = "held"
+	// ClaimFailed is a caught checked line that was missed.
+	ClaimFailed = "failed"
+)
+
+// namesSubject reports whether a beat, as its listener is asked it, names
+// the one it is about: by sight, a walk into it, or a hail, never by a
+// sound alone (rpg-project#1000).
+func namesSubject(b wakeBeat) bool {
+	switch b.Beat {
+	case beatSeen, beatBarred, beatApproached:
+		return true
+	case beatHeard:
+		return b.Named
+	}
+	return false
 }
 
 // inScope is the scoped beats' InScope: within hexes, within regions, both
@@ -388,7 +437,10 @@ func (e *Encounter) matchOne(b wakeBeat) error {
 // evFor is a landed beat as one listener is asked it. An error only when the
 // field's partitions cannot be derived ([field.partitionsNow]).
 func (e *Encounter) evFor(id MemberID, m *memberRecord, b wakeBeat) (wakeEv, error) {
-	ev := wakeEv{Kind: b.Kind, Loudness: b.Loudness, At: b.At, Distance: -1, Hops: -1}
+	ev := wakeEv{Kind: b.Kind, Loudness: b.Loudness, At: b.At, Distance: -1, Hops: -1, Claim: b.Claim}
+	if namesSubject(b) {
+		ev.Subject = b.Subject
+	}
 	if b.Cell == nil {
 		return ev, nil
 	}

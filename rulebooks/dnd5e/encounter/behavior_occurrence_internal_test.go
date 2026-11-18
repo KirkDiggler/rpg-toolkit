@@ -42,7 +42,9 @@ func (s *behaviorOccurrenceSuite) TestQueuedSoundsRetainTheirOwnKindsAcrossReloa
 			var delivered map[string]any
 			s.Require().NoError(json.Unmarshal(encoded, &delivered))
 			s.Equal(kind, delivered["Kind"])
-			s.NotContains(delivered, "Subject", "a delivered hearing event must not disclose an unseen maker")
+			// The event names a subject only where a sense names one
+			// (rpg-project#1000); a landed sound names nobody.
+			s.Empty(delivered["Subject"], "a delivered hearing event must not disclose an unseen maker")
 		})
 	}
 	s.Empty(driver.asked, "saving/loading queued observations grants no opportunity")

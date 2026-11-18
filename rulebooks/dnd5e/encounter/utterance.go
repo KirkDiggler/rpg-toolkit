@@ -75,6 +75,11 @@ type utterance struct {
 	// worked out for the fact, and its voice lands on whoever heard it, but
 	// no speech beat is written, there being no words.
 	silent bool
+
+	// atOnce is a character's line (rpg-project#1000): its voice is not
+	// landed for the next raise; [Encounter.Speak] has it heard at once
+	// ([Encounter.hearLine]) between the answer and the row's grants.
+	atOnce bool
 }
 
 // perceived is one member's facets of one utterance.
@@ -92,6 +97,8 @@ type facet struct {
 type spoken struct {
 	catchers []MemberID
 	all      []facet
+	// where is where it was said: the voice's cell.
+	where spatial.Position
 }
 
 // namedCatchers is who caught the words and saw who said them, in member
@@ -138,6 +145,7 @@ func (e *Encounter) utter(u utterance) (spoken, error) {
 	if err != nil {
 		return spoken{}, fmt.Errorf("utterance: %w", err)
 	}
+	out.where = where
 	if !u.silent {
 		if err := e.appendSpeechBeats(u, where, all); err != nil {
 			return spoken{}, err
@@ -158,9 +166,55 @@ func (e *Encounter) utter(u utterance) (spoken, error) {
 		}); err != nil {
 			return spoken{}, fmt.Errorf("utterance: voice: %w", err)
 		}
-		e.landHeard(heard, SoundVoice, loudnessWord(string(u.loudness)), where, u.speaker, u.at)
+		if !u.atOnce {
+			e.landHeard(heard, SoundVoice, loudnessWord(string(u.loudness)), where, u.speaker, u.at)
+		}
 	}
 	return out, nil
+}
+
+// hearLine has a character's line heard AT ONCE (rpg-project#1000) by every
+// member whose machine listens for `heard` and whom its voice reached — its
+// words or only that somebody spoke — in member order, each matched for this
+// one source and nothing else landed: the `heard` beat, stepped through the
+// state-change path (no pick), as a landed sound would be at the next raise.
+//
+// A listener who CAUGHT THE WORDS of a checked line hears its verdict
+// ([ClaimHeld], [ClaimFailed]); one who also SAW the speaker hears who said
+// it, the beat's subject. A voice only noticed carries neither, and a plain
+// line no verdict. Errors: a machine refused its blob.
+func (e *Encounter) hearLine(u utterance, s spoken) error {
+	if !e.listened(beatHeard) {
+		return nil
+	}
+	loudness := loudnessWord(string(u.loudness))
+	for _, p := range s.all {
+		if p.member == u.speaker || (!p.words && !p.noticed) {
+			continue
+		}
+		scope, ok := e.listensFor(p.member, beatHeard)
+		if !ok {
+			continue
+		}
+		cell := s.where
+		b := wakeBeat{Beat: beatHeard, Kind: SoundVoice, Loudness: loudness, Cell: &cell, Member: p.member, Hops: p.hops, At: u.at}
+		if p.words && u.roll != nil {
+			b.Claim = ClaimFailed
+			if u.roll.beaten {
+				b.Claim = ClaimHeld
+			}
+		}
+		if p.words && p.sees {
+			b.Subject, b.Named = u.speaker, true
+		}
+		if err := e.react(p.member, b, scope); err != nil {
+			return err
+		}
+		if e.outcome != nil {
+			return nil
+		}
+	}
+	return nil
 }
 
 // utterancePlace is where an utterance was said: the speaker's cell, or the

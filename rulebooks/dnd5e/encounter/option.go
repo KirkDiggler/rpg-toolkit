@@ -469,17 +469,9 @@ func (e *Encounter) requirementHolds(actor, other MemberID, requires Trigger) bo
 		return e.interactionIn(t.Interaction, t.In)
 	case TriggerRecognized:
 		// THE OTHER PARTY'S HOLDING ABOUT ME (rpg-project#928): a line said
-		// to a prop has no other party, and never holds.
-		//
-		// RECOGNISED AS ARRESTED IS UNDER ARREST NOW (rpg-project#925,
-		// arrest.go): the guard's record stays for good, but the requirement
-		// holds only while the member is still held — not once a fight broke
-		// the hold, nor once jailed — so a line that takes the arrested
-		// (`come-quietly`) is never offered to someone it cannot take.
-		if t.Topic == TopicArrested && !e.inCustody(actor) {
-			return false
-		}
-		return e.recognizes(other, actor, t.Topic)
+		// to a prop has no other party, and never holds. The arrested rule
+		// is [Encounter.holdsAbout]'s, a machine's `holds:` asking alike.
+		return e.holdsAbout(other, actor, t.Topic)
 	default:
 		return false
 	}
@@ -781,7 +773,7 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 	// was said ([ReservedScene]).
 	line := utterance{
 		speaker: in.Actor, to: in.Target, prop: in.Prop, words: option.Say, option: option.ID,
-		loudness: loudnessWord(option.Loudness), at: at,
+		loudness: loudnessWord(option.Loudness), at: at, atOnce: true,
 	}
 	if option.Checked() {
 		line.roll = &spokenRoll{skill: in.Skill, dc: in.DC, total: in.Total, beaten: beaten, calculation: in.Calculation}
@@ -820,6 +812,15 @@ func (e *Encounter) Speak(ctx context.Context, in *SpeakInput) (*SpeakOutput, er
 		witnesses: witnesses, lineCatchers: caughtOrNone(heardLine.catchers), at: at, roller: in.Roller,
 	})
 	if err != nil {
+		return nil, fmt.Errorf("speak: %w", err)
+	}
+
+	// THE LINE IS HEARD AT ONCE (rpg-project#1000): every machine its voice
+	// reached hears it now, after the answer that says it and BEFORE the
+	// row's grants, so a guard reacts with what it held when it heard the
+	// line — the line's own `give` never counts twice — and the very next
+	// offer reads the state it moved to.
+	if err := e.hearLine(line, heardLine); err != nil {
 		return nil, fmt.Errorf("speak: %w", err)
 	}
 
