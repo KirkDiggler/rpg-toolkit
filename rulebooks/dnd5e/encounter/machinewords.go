@@ -4,6 +4,7 @@
 package encounter
 
 import (
+	"maps"
 	"slices"
 	"strings"
 
@@ -80,6 +81,9 @@ type BeatWord struct {
 	Picks bool
 	// Label is a few plain words for an arrow or a dropdown.
 	Label string
+	// LabelWith is Label with the thing the beat is about filled in, for a
+	// beat that takes one ("learns {id}"); empty where it takes none.
+	LabelWith string
 	// Short is the read-back's folded form, about "it".
 	Short string
 	// Long is the read-back's sentence template.
@@ -113,8 +117,15 @@ type ConditionWord struct {
 	// Join is how the read-back joins a node's parts: " and " for `all`,
 	// ", or " for `any`; empty for a leaf.
 	Join string
-	// Label is a few plain words for an arrow.
+	// Label is a few plain words for an arrow; for a word with closed
+	// values, the fallback for a value ValueLabels does not name.
 	Label string
+	// LabelNot is the label when the condition is asked to be false ("has
+	// not learned {id}"); empty where Label's own negation reads right.
+	LabelNot string
+	// ValueLabels is, for a word with closed values, each value's own label
+	// ("seen": "sees an enemy").
+	ValueLabels map[string]string
 	// Long is the read-back's sentence template.
 	Long string
 
@@ -209,10 +220,10 @@ var machineBeatWords = []BeatWord{
 		About: "the one {who} saw",
 		Short: "when an opposed creature comes into its sight",
 		Long:  "when an opposed creature comes into {whose} sight"},
-	{Word: "fact", Label: "learns a fact",
+	{Word: "fact", Label: "learns a fact", LabelWith: "learns {id}",
 		Short: "on learning a fact",
 		Long:  "when {who} learns a fact"},
-	{Word: "topic", Label: "notes a topic about someone",
+	{Word: "topic", Label: "notes a topic about someone", LabelWith: "notes {id} about someone",
 		Short: "on noting a topic about someone (judged or heard)",
 		Long:  "when {who} notes a topic about someone, by its own judgement or by hearing it"},
 	{Word: "clock:world", Label: "a round of world time",
@@ -221,7 +232,7 @@ var machineBeatWords = []BeatWord{
 	{Word: "clock:fight", Label: "a round of its side's fight",
 		Short: "on each round of a fight its side is in",
 		Long:  "on each round of a fight {whose} side is in"},
-	{Word: "barred", Scoped: true, Names: true, Picks: true, Label: "someone walks into him",
+	{Word: "barred", Scoped: true, Names: true, Picks: true, Label: "someone walks into it",
 		About: "the one who walked into {who}",
 		Short: "when someone walks into it and its body stops them",
 		Long:  "when someone walks into {who} and its body stops them"},
@@ -231,10 +242,10 @@ var machineBeatWords = []BeatWord{
 		Long: "when {who} hails a character, which happens only under the conversation's hail rule: the " +
 			"character's own step ended within the approach distance, {who} sees them and they see {who}, {who} offers them a line " +
 			"that steps the conversation, no nearer carrier qualifies, and the conversation is addressing no one"},
-	{Word: deedPrefix, Open: SlotDeed, Scoped: true, Label: "this deed is done",
+	{Word: deedPrefix, Open: SlotDeed, Scoped: true, Label: "{id} is done", LabelWith: "{id} is done",
 		Short: "when the deed {id} is done",
 		Long:  "when the deed {id} is done"},
-	{Word: beatClock, Open: SlotClock, Label: "a round of this clock",
+	{Word: beatClock, Open: SlotClock, Label: "a round of {id}", LabelWith: "a round of {id}",
 		Short: "on the beat {beat}",
 		Long:  "on the beat {beat}"},
 }
@@ -243,28 +254,32 @@ var machineBeatWords = []BeatWord{
 var machineConditionWords = []ConditionWord{
 	{Word: string(factEnemy), Fact: true, Kind: "string",
 		Values: []string{string(EnemySeen), string(EnemyRemembered), string(EnemyNone)}, StatesForm: "{ enemy }",
-		Label: "knows of an enemy: {value}",
-		Long:  "{whose} {name} is {op} {value}"},
+		Label:       "an enemy is {value}",
+		ValueLabels: map[string]string{string(EnemySeen): "sees an enemy", string(EnemyRemembered): "remembers an enemy", string(EnemyNone): "knows of no enemy"},
+		Long:        "{whose} {name} is {op} {value}"},
 	{Word: factPrefix, Open: SlotFact, Fact: true, Kind: "bool", StatesForm: "{ fact }",
-		Label: "knows {id}",
-		Long:  "{who} knows the fact {id}"},
+		Label: "has learned {id}", LabelNot: "has not learned {id}",
+		Long: "{who} knows the fact {id}"},
 	{Word: "heard.kind", Fact: true, Kind: "string", Values: []string{SoundBoom, SoundCrash, SoundClang, SoundVoice},
-		Label: "what he heard was a {value}",
-		Long:  "what {who} heard was a {value}"},
+		Label: "it was a {value}",
+		ValueLabels: map[string]string{SoundBoom: "it was a boom", SoundCrash: "it was a crash", SoundClang: "it was a clang",
+			SoundVoice: "it was a voice"},
+		Long: "what {who} heard was a {value}"},
 	{Word: heardLoudnessPrefix, Open: SlotLoudness, Fact: true, Kind: "bool",
-		Label: "what he heard was raised to {id}",
+		Label: "it was at least a {id}",
 		Long:  "what {who} heard was a voice{raised} (a clang, a crash or a boom is at no loudness)"},
 	{Word: string(factHeardClaim), Fact: true, Kind: "string", Values: []string{ClaimHeld, ClaimFailed}, On: []string{string(beatHeard)},
-		Label: "what he heard was a claim that {value}",
-		Long:  "what {who} heard was a claim that {value}"},
+		Label:       "it was a claim that {value}",
+		ValueLabels: map[string]string{ClaimHeld: "it was a claim that held", ClaimFailed: "it was a claim that failed"},
+		Long:        "what {who} heard was a claim that {value}"},
 	{Word: notedPrefix, Open: SlotTopic, Fact: true, Kind: "bool", family: familyNaming,
-		Label: "has noted {id} about them",
-		Long:  "{who} {verb} {id} about {about}"},
+		Label: "has noted {id} about them", LabelNot: "has not noted {id} about them",
+		Long: "{who} {verb} {id} about {about}"},
 	{Word: notedAnyonePrefix, Open: SlotTopic, engine: topicPrefix, Fact: true, Kind: "bool",
-		Label: "has noted {id} about anyone",
-		Long:  "{who} {verb} {id} about anyone"},
+		Label: "has noted {id} about anyone", LabelNot: "has not noted {id} about anyone",
+		Long: "{who} {verb} {id} about anyone"},
 	{Word: "flag", Kind: "bool",
-		Label: "its flag {id} is set",
+		Label: "remembers {id}",
 		Long:  "{whose} flag {id} is set"},
 	{Word: "within", Kind: "int", family: familyScoped,
 		Label: "within {n} cells",
@@ -273,7 +288,7 @@ var machineConditionWords = []ConditionWord{
 		Label: "within {n} rooms",
 		Long:  "it happened within {n} rooms of {who}"},
 	{Word: "rounds", Kind: "int",
-		Label: "{op} {n} rounds since its anchor",
+		Label: "{op} {n} rounds since it marked the moment",
 		Long:  "{op} {n} rounds have passed since {who} set its anchor"},
 	{Word: "all", Join: " and ", Label: "all of these", Long: "{parts}"},
 	{Word: "any", Join: ", or ", Label: "any of these", Long: "({parts})"},
@@ -282,13 +297,13 @@ var machineConditionWords = []ConditionWord{
 
 // The acts, the move first.
 var machineActWords = []ActWord{
-	{Word: "to", Label: "goes to {id}", Short: "to {id}", Long: "moves to the state {id}"},
+	{Word: "to", Label: "changes to {id}", Short: "to {id}", Long: "moves to the state {id}"},
 	{Word: "pick", family: familyPicks, StatesForm: "{ pick: <key> }",
-		Label: "acts from {id}", Short: "acts from its {id} rows", Long: "acts from its own {id} rows"},
+		Label: "acts from the {id} list", Short: "acts from its {id} rows", Long: "acts from its own {id} rows"},
 	{Word: "wake_in", StatesForm: "{ wake_in: N }",
-		Label: "sleeps {n} rounds", Short: "wakes again in {n} rounds", Long: "wakes again in {n} rounds"},
-	{Word: "set", Label: "sets {id}", Short: "sets {id} to {value}", Long: "sets {id} to {value}"},
-	{Word: "clear", Label: "clears {id}", Short: "clears {id}", Long: "clears {id}"},
+		Label: "waits {n} rounds", Short: "wakes again in {n} rounds", Long: "wakes again in {n} rounds"},
+	{Word: "set", Label: "remembers {id}", Short: "sets {id} to {value}", Long: "sets {id} to {value}"},
+	{Word: "clear", Label: "forgets {id}", Short: "clears {id}", Long: "clears {id}"},
 	{Word: "anchor", StatesForm: "{ anchor: true }",
 		Label: "marks the moment", Short: "sets its anchor", Long: "sets its anchor to this moment"},
 }
@@ -309,6 +324,7 @@ func MachineWords() MachineWordsTable {
 	for i := range out.Conditions {
 		c := &out.Conditions[i]
 		c.Values = slices.Clone(c.Values)
+		c.ValueLabels = maps.Clone(c.ValueLabels)
 		c.On, c.engine, c.family = c.allowedOn(), "", familyNone
 	}
 	for i := range out.Acts {

@@ -332,3 +332,91 @@ func TestMachineWords_TargetedReactionsArePickingBeats(t *testing.T) {
 	require.Equal(t, []string{string(beatBarred), string(beatApproached)},
 		beatsWhere(func(b BeatWord) bool { return b.Picks && !b.Timed }))
 }
+
+// TestMachineWords_LabelsArePinned pins every label as the operator approved
+// it (rpg-project#997), so a change to one is a decision: per word, its
+// Label, then (for a beat) LabelWith or (for a condition) LabelNot, then
+// each value's own label.
+func TestMachineWords_LabelsArePinned(t *testing.T) {
+	got := map[string][]string{}
+	for _, b := range MachineWords().Beats {
+		got["beat "+b.Word] = []string{b.Label, b.LabelWith}
+	}
+	for _, c := range MachineWords().Conditions {
+		row := []string{c.Label, c.LabelNot}
+		for _, v := range c.Values {
+			row = append(row, v+"="+c.ValueLabels[v])
+		}
+		require.Len(t, c.ValueLabels, len(c.Values), "a label for each closed value of %s, and no other", c.Word)
+		got["cond "+c.Word] = row
+	}
+	for _, a := range MachineWords().Acts {
+		got["act "+a.Word] = []string{a.Label}
+	}
+	require.Equal(t, map[string][]string{
+		"beat time":        {"time passes", ""},
+		"beat turn":        {"its turn in a fight", ""},
+		"beat heard":       {"hears something", ""},
+		"beat deed":        {"a deed is done", ""},
+		"beat seen":        {"sees someone opposed", ""},
+		"beat fact":        {"learns a fact", "learns {id}"},
+		"beat topic":       {"notes a topic about someone", "notes {id} about someone"},
+		"beat clock:world": {"a round of world time", ""},
+		"beat clock:fight": {"a round of its side's fight", ""},
+		"beat barred":      {"someone walks into it", ""},
+		"beat approached":  {"hails someone", ""},
+		"beat deed:":       {"{id} is done", "{id} is done"},
+		"beat clock:":      {"a round of {id}", "a round of {id}"},
+		"cond enemy": {"an enemy is {value}", "",
+			"seen=sees an enemy", "remembered=remembers an enemy", "none=knows of no enemy"},
+		"cond fact:": {"has learned {id}", "has not learned {id}"},
+		"cond heard.kind": {"it was a {value}", "",
+			"boom=it was a boom", "crash=it was a crash", "clang=it was a clang", "voice=it was a voice"},
+		"cond heard.loudness:": {"it was at least a {id}", ""},
+		"cond heard.claim": {"it was a claim that {value}", "",
+			"held=it was a claim that held", "failed=it was a claim that failed"},
+		"cond noted:":        {"has noted {id} about them", "has not noted {id} about them"},
+		"cond noted.anyone:": {"has noted {id} about anyone", "has not noted {id} about anyone"},
+		"cond flag":          {"remembers {id}", ""},
+		"cond within":        {"within {n} cells", ""},
+		"cond regions":       {"within {n} rooms", ""},
+		"cond rounds":        {"{op} {n} rounds since it marked the moment", ""},
+		"cond all":           {"all of these", ""},
+		"cond any":           {"any of these", ""},
+		"cond not":           {"not this", ""},
+		"act to":             {"changes to {id}"},
+		"act pick":           {"acts from the {id} list"},
+		"act wake_in":        {"waits {n} rounds"},
+		"act set":            {"remembers {id}"},
+		"act clear":          {"forgets {id}"},
+		"act anchor":         {"marks the moment"},
+	}, got)
+}
+
+// TestMachineWords_LabelsKeepTheRules checks the label rules mechanically:
+// lower case first, the creature is "it", never "holds", never "a note".
+func TestMachineWords_LabelsKeepTheRules(t *testing.T) {
+	var labels []string
+	for _, b := range MachineWords().Beats {
+		labels = append(labels, b.Label, b.LabelWith)
+	}
+	for _, c := range MachineWords().Conditions {
+		labels = append(labels, c.Label, c.LabelNot)
+		for _, l := range c.ValueLabels {
+			labels = append(labels, l)
+		}
+	}
+	for _, a := range MachineWords().Acts {
+		labels = append(labels, a.Label)
+	}
+	for _, l := range labels {
+		if l == "" {
+			continue
+		}
+		require.Equal(t, strings.ToLower(l[:1]), l[:1], "%q starts lower case", l)
+		padded := " " + l + " "
+		for _, banned := range []string{" he ", " him ", " his ", "holds", "a note"} {
+			require.NotContains(t, padded, banned, l)
+		}
+	}
+}
