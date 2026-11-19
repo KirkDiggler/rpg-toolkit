@@ -12,6 +12,7 @@ package encounter
 
 import (
 	"encoding/json"
+	"errors"
 	"reflect"
 	"slices"
 	"strconv"
@@ -92,11 +93,31 @@ func typed(t *testing.T, kind, text string) any {
 // spell it: where it goes and what it takes come from the table.
 func writeWord(t *testing.T, step map[string]any, word string, w Written, args []Arg, condition map[string]any) {
 	t.Helper()
+	writeWordWith(t, step, word, w, args, condition, writeChoice{})
+}
+
+// writeChoice overrides the writer's choice for one argument, by name: a
+// value to write in place of the sample, or the argument left out.
+type writeChoice struct {
+	name  string
+	value any
+	omit  bool
+}
+
+// writeWordWith is [writeWord] with one argument chosen otherwise.
+func writeWordWith(t *testing.T, step map[string]any, word string, w Written, args []Arg, condition map[string]any, choice writeChoice) {
+	t.Helper()
 	spelled := word
 	keyed := map[string]any{}
 	var value any
 	for _, a := range args {
+		if choice.name == a.Name && choice.omit {
+			continue
+		}
 		v := argSample(t, args, a, 0, condition)
+		if choice.name == a.Name {
+			v = choice.value
+		}
 		if a.Many {
 			v = []any{v, argSample(t, args, a, 1, condition)}
 		}
@@ -349,4 +370,94 @@ func TestMachineWords_ArgsAreWellFormed(t *testing.T) {
 		}
 	}
 	require.Equal(t, []string{"all.parts", "any.parts", "clear.id"}, many)
+}
+
+// compiles reports whether one word, written with choice, makes a step the
+// engine takes.
+func compiles(t *testing.T, kind, word string, w Written, on []string, args []Arg, inner map[string]any, choice writeChoice) error {
+	t.Helper()
+	step := map[string]any{"on": beatFor(on)}
+	writeWordWith(t, step, word, w, args, inner, choice)
+	raw, err := json.Marshal(step)
+	require.NoError(t, err)
+	var tr machine.Transition
+	if err := json.Unmarshal(raw, &tr); err != nil {
+		return err
+	}
+	lower(tr.When)
+	if tr.On == "" {
+		return errors.New("no beat")
+	}
+	if kind == "act" {
+		_, err := CheckBehaviors(&CheckBehaviorsInput{Behaviors: *fixtureBehavior(*argsRecipe(t, tr), holds())})
+		return err
+	}
+	return ValidateMachine(argsRecipe(t, tr))
+}
+
+// TestMachineWords_FixedAndRequiredArePinned: the fixed arguments are
+// exactly these, and writing any other value for one is refused; no
+// argument is optional, and leaving out any written argument is refused.
+func TestMachineWords_FixedAndRequiredArePinned(t *testing.T) {
+	table := MachineWords()
+	inner := sampleCondition(t, table)
+	type word struct {
+		kind, word string
+		w          Written
+		on         []string
+		args       []Arg
+	}
+	var words []word
+	for _, b := range table.Beats {
+		words = append(words, word{"beat", b.Word, b.Written, nil, b.Args})
+	}
+	for _, c := range table.Conditions {
+		words = append(words, word{"condition", c.Word, c.Written, c.On, c.Args})
+	}
+	for _, a := range table.Acts {
+		words = append(words, word{"act", a.Word, a.Written, a.On, a.Args})
+	}
+	var fixed, optional []string
+	for _, w := range words {
+		for _, a := range w.args {
+			if a.Fixed != "" {
+				fixed = append(fixed, w.word+"."+a.Name+"="+a.Fixed)
+			}
+			if a.Optional {
+				optional = append(optional, w.word+"."+a.Name)
+			}
+			if a.Goes == PlaceImplied {
+				continue // written nowhere: nothing to write wrong or leave out
+			}
+			if a.Fixed != "" {
+				other := any("x")
+				switch a.Kind {
+				case ArgKindBool:
+					other = !typed(t, a.Kind, a.Fixed).(bool)
+				case ArgKindString:
+					if a.Names == SlotOp {
+						other = string(machine.OpGte)
+					}
+				}
+				require.Error(t, compiles(t, w.kind, w.word, w.w, w.on, w.args, inner, writeChoice{name: a.Name, value: other}),
+					"%s.%s is fixed at %s: writing %v must be refused", w.word, a.Name, a.Fixed, other)
+			}
+			if a.Optional {
+				left := map[string]any{"on": beatFor(w.on)}
+				writeWordWith(t, left, w.word, w.w, w.args, inner, writeChoice{name: a.Name, omit: true})
+				given := map[string]any{"on": beatFor(w.on)}
+				writeWordWith(t, given, w.word, w.w, w.args, inner, writeChoice{name: a.Name, value: typed(t, a.Kind, a.Default)})
+				require.Equal(t, stepOf(t, given), stepOf(t, left), "%s.%s left out means %s", w.word, a.Name, a.Default)
+			}
+			if !a.Optional {
+				require.Error(t, compiles(t, w.kind, w.word, w.w, w.on, w.args, inner, writeChoice{name: a.Name, omit: true}),
+					"%s.%s is required: leaving it out must be refused", w.word, a.Name)
+			}
+		}
+	}
+	require.Equal(t, []string{
+		"enemy.op=eq", "fact:.op=eq", "heard.kind.op=eq", "heard.loudness:.op=eq", "heard.claim.op=eq",
+		"noted:.op=eq", "noted.anyone:.op=eq", "within.op=lte", "regions.op=lte", "anchor.value=true",
+	}, fixed)
+	require.Equal(t, []string{"rounds.n"}, optional, "the arguments that may be left out")
 }

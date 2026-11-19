@@ -35,6 +35,15 @@ const (
 	// and never lands one.
 	BeatState = "state"
 
+	// BeatRoleState records a creature's OTHER role entering a state
+	// (rpg-project#1001): a machine beside its body's (investigate beside
+	// patrol), with the role's instance id and its recipe, besides what a
+	// [BeatState] says. Its own tag, so a reader that takes every
+	// [BeatState] as the body's is not told a second role's state as the
+	// body's; and its audience is the creature alone, so a player's stream,
+	// which hears every body state, is not told the role a guard keeps.
+	BeatRoleState = "role_state"
+
 	// BeatWakeCut records a raise that reached the bound on the beats one pass
 	// matches (rpg-project#766 S4, design §2): how many it matched and how
 	// many it dropped. No shipped content comes near it.

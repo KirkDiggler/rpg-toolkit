@@ -89,6 +89,28 @@ type Written struct {
 	Field string
 }
 
+// The parts of a step a word is written in ([Written.In]).
+const (
+	// WrittenInOn is the step's `on` itself: a beat.
+	WrittenInOn = "on"
+	// WrittenInWhen is a key of a condition's map, in the step's `when`.
+	WrittenInWhen = "when"
+	// WrittenInDo is a key of an act's map, in the step's `do`.
+	WrittenInDo = "do"
+	// WrittenInStep is a key of the step itself (`to`).
+	WrittenInStep = "step"
+)
+
+// The kinds an argument may be ([Arg.Kind]); a flag is declared with one of
+// the first three.
+const (
+	ArgKindString    = "string"
+	ArgKindInt       = "int"
+	ArgKindBool      = "bool"
+	ArgKindCondition = "condition" // a condition written as this table's words
+	ArgKindOf        = "of"        // the kind the flag named by [Arg.KindOf] was declared with
+)
+
 // ArgPlace is where an argument goes in what the author writes. Three
 // places cover every word:
 //   - [PlaceOpen]: after the word's colon, where the word is spelled:
@@ -124,7 +146,9 @@ type Arg struct {
 	Field string
 	// Names is what it names: a state, a list, a flag, a fact, a topic, a
 	// deed, a clock, a loudness, an op, a condition; SlotNone for a plain
-	// value.
+	// value. It is an [OpenSlot] because what fills a word's open part and
+	// what an argument names are one closed set: an open word's first
+	// argument names exactly its Open.
 	Names OpenSlot
 	// Kind is its type: "string", "int", "bool", "condition" (a condition
 	// written as this table's words), or "of": the kind the flag named by
@@ -142,7 +166,7 @@ type Arg struct {
 	// `all`, `any`).
 	Many bool
 	// Optional is true when it may be left out; Default is then what
-	// leaving it out means. None is optional today.
+	// leaving it out means (`rounds` with no `n` is n 0).
 	Optional bool
 	Default  string
 	// Fixed is a value it always has: written for the author, offered to
@@ -362,31 +386,31 @@ func argValues[T ~string](vs []T) []string {
 }
 
 // flagKinds is every kind a flag may be declared with: a bag's values.
-var flagKinds = []string{"bool", "int", "string"}
+var flagKinds = []string{ArgKindBool, ArgKindInt, ArgKindString}
 
 // The arguments the table's words share.
 var (
 	argOpen = func(names OpenSlot, values ...string) Arg {
-		return Arg{Name: "id", Goes: PlaceOpen, Names: names, Kind: "string", Values: values}
+		return Arg{Name: "id", Goes: PlaceOpen, Names: names, Kind: ArgKindString, Values: values}
 	}
 	argFactValue = func(kind string, values ...string) Arg {
 		return Arg{Name: "value", Goes: PlaceField, Field: "value", Kind: kind, Values: values}
 	}
-	argFactEq    = Arg{Name: "op", Goes: PlaceField, Field: "op", Names: SlotOp, Kind: "string", Fixed: string(machine.OpEq)}
-	argScopeN    = func(field string) Arg { return Arg{Name: "n", Goes: PlaceField, Field: field, Kind: "int"} }
-	argAtMost    = Arg{Name: "op", Goes: PlaceImplied, Names: SlotOp, Kind: "string", Fixed: string(OpAtMost)}
-	argValueN    = Arg{Name: "n", Goes: PlaceValue, Kind: "int"}
-	argValueFlag = Arg{Name: "id", Goes: PlaceValue, Names: SlotFlag, Kind: "string"}
-	argInner     = Arg{Name: "inner", Goes: PlaceValue, Names: SlotCondition, Kind: "condition"}
-	argParts     = Arg{Name: "parts", Goes: PlaceValue, Names: SlotCondition, Kind: "condition", Many: true}
+	argFactEq    = Arg{Name: "op", Goes: PlaceField, Field: "op", Names: SlotOp, Kind: ArgKindString, Fixed: string(machine.OpEq)}
+	argScopeN    = func(field string) Arg { return Arg{Name: "n", Goes: PlaceField, Field: field, Kind: ArgKindInt} }
+	argAtMost    = Arg{Name: "op", Goes: PlaceImplied, Names: SlotOp, Kind: ArgKindString, Fixed: string(OpAtMost)}
+	argValueN    = Arg{Name: "n", Goes: PlaceValue, Kind: ArgKindInt}
+	argValueFlag = Arg{Name: "id", Goes: PlaceValue, Names: SlotFlag, Kind: ArgKindString}
+	argInner     = Arg{Name: "inner", Goes: PlaceValue, Names: SlotCondition, Kind: ArgKindCondition}
+	argParts     = Arg{Name: "parts", Goes: PlaceValue, Names: SlotCondition, Kind: ArgKindCondition, Many: true}
 )
 
 // Where the table's words are written.
 var (
-	writtenOn = Written{In: "on"}
-	inFact    = Written{In: "when", Key: "fact", Field: "name"}
-	inWhen    = func(key string) Written { return Written{In: "when", Key: key} }
-	inDo      = func(key string) Written { return Written{In: "do", Key: key} }
+	writtenOn = Written{In: WrittenInOn}
+	inFact    = Written{In: WrittenInWhen, Key: "fact", Field: "name"}
+	inWhen    = func(key string) Written { return Written{In: WrittenInWhen, Key: key} }
+	inDo      = func(key string) Written { return Written{In: WrittenInDo, Key: key} }
 )
 
 // The beats in the order every refusal lists them: the fixed words, then
@@ -443,53 +467,53 @@ var machineBeatWords = []BeatWord{
 
 // The conditions, engine facts first, then the machine's guard leaves.
 var machineConditionWords = []ConditionWord{
-	{Word: string(factEnemy), Fact: true, Kind: "string",
+	{Word: string(factEnemy), Fact: true, Kind: ArgKindString,
 		Values: []string{string(EnemySeen), string(EnemyRemembered), string(EnemyNone)}, StatesForm: "{ enemy }",
 		Written:     inFact,
-		Args:        []Arg{argFactValue("string", string(EnemySeen), string(EnemyRemembered), string(EnemyNone)), argFactEq},
+		Args:        []Arg{argFactValue(ArgKindString, string(EnemySeen), string(EnemyRemembered), string(EnemyNone)), argFactEq},
 		Label:       "an enemy is {value}",
 		ValueLabels: map[string]string{string(EnemySeen): "sees an enemy", string(EnemyRemembered): "remembers an enemy", string(EnemyNone): "knows of no enemy"},
 		Long:        "{whose} {name} is {op} {value}"},
-	{Word: factPrefix, Open: SlotFact, Fact: true, Kind: "bool", StatesForm: "{ fact }",
-		Written: inFact, Args: []Arg{argOpen(SlotFact), argFactValue("bool"), argFactEq},
+	{Word: factPrefix, Open: SlotFact, Fact: true, Kind: ArgKindBool, StatesForm: "{ fact }",
+		Written: inFact, Args: []Arg{argOpen(SlotFact), argFactValue(ArgKindBool), argFactEq},
 		Label: "has learned {id}", LabelNot: "has not learned {id}",
 		Long: "{who} knows the fact {id}"},
-	{Word: "heard.kind", Fact: true, Kind: "string", Values: []string{SoundBoom, SoundCrash, SoundClang, SoundVoice},
-		Written: inFact, Args: []Arg{argFactValue("string", SoundBoom, SoundCrash, SoundClang, SoundVoice), argFactEq},
+	{Word: "heard.kind", Fact: true, Kind: ArgKindString, Values: []string{SoundBoom, SoundCrash, SoundClang, SoundVoice},
+		Written: inFact, Args: []Arg{argFactValue(ArgKindString, SoundBoom, SoundCrash, SoundClang, SoundVoice), argFactEq},
 		Label: "it was a {value}",
 		ValueLabels: map[string]string{SoundBoom: "it was a boom", SoundCrash: "it was a crash", SoundClang: "it was a clang",
 			SoundVoice: "it was a voice"},
 		Long: "what {who} heard was a {value}"},
-	{Word: heardLoudnessPrefix, Open: SlotLoudness, Fact: true, Kind: "bool",
-		Written: inFact, Args: []Arg{argOpen(SlotLoudness, argValues(Loudnesses)...), argFactValue("bool"), argFactEq},
+	{Word: heardLoudnessPrefix, Open: SlotLoudness, Fact: true, Kind: ArgKindBool,
+		Written: inFact, Args: []Arg{argOpen(SlotLoudness, argValues(Loudnesses)...), argFactValue(ArgKindBool), argFactEq},
 		Label: "it was at least a {id}",
 		Long:  "what {who} heard was a voice{raised} (a clang, a crash or a boom is at no loudness)"},
-	{Word: string(factHeardClaim), Fact: true, Kind: "string", Values: []string{ClaimHeld, ClaimFailed}, On: []string{string(beatHeard)},
-		Written: inFact, Args: []Arg{argFactValue("string", ClaimHeld, ClaimFailed), argFactEq},
+	{Word: string(factHeardClaim), Fact: true, Kind: ArgKindString, Values: []string{ClaimHeld, ClaimFailed}, On: []string{string(beatHeard)},
+		Written: inFact, Args: []Arg{argFactValue(ArgKindString, ClaimHeld, ClaimFailed), argFactEq},
 		Label:       "it was a claim that {value}",
 		ValueLabels: map[string]string{ClaimHeld: "it was a claim that held", ClaimFailed: "it was a claim that failed"},
 		Long:        "what {who} heard was a claim that {value}"},
-	{Word: notedPrefix, Open: SlotTopic, Fact: true, Kind: "bool", family: familyNaming,
-		Written: inFact, Args: []Arg{argOpen(SlotTopic), argFactValue("bool"), argFactEq},
+	{Word: notedPrefix, Open: SlotTopic, Fact: true, Kind: ArgKindBool, family: familyNaming,
+		Written: inFact, Args: []Arg{argOpen(SlotTopic), argFactValue(ArgKindBool), argFactEq},
 		Label: "has noted {id} about them", LabelNot: "has not noted {id} about them",
 		Long: "{who} {verb} {id} about {about}"},
-	{Word: notedAnyonePrefix, Open: SlotTopic, engine: topicPrefix, Fact: true, Kind: "bool",
-		Written: inFact, Args: []Arg{argOpen(SlotTopic), argFactValue("bool"), argFactEq},
+	{Word: notedAnyonePrefix, Open: SlotTopic, engine: topicPrefix, Fact: true, Kind: ArgKindBool,
+		Written: inFact, Args: []Arg{argOpen(SlotTopic), argFactValue(ArgKindBool), argFactEq},
 		Label: "has noted {id} about anyone", LabelNot: "has not noted {id} about anyone",
 		Long: "{who} {verb} {id} about anyone"},
-	{Word: "flag:", Open: SlotFlag, Kind: "bool", Written: inWhen("flag"), Args: []Arg{argValueFlag},
+	{Word: "flag:", Open: SlotFlag, Kind: ArgKindBool, Written: inWhen("flag"), Args: []Arg{argValueFlag},
 		Label: "{id} is set",
 		Long:  "{whose} flag {id} is set"},
-	{Word: "within", Kind: "int", family: familyScoped, Written: inWhen("scope"), Args: []Arg{argScopeN("within"), argAtMost},
+	{Word: "within", Kind: ArgKindInt, family: familyScoped, Written: inWhen("scope"), Args: []Arg{argScopeN("within"), argAtMost},
 		Label: "within {n} cells",
 		Long:  "it happened within {n} cells of {who}"},
-	{Word: "regions", Kind: "int", family: familyScoped, Written: inWhen("scope"), Args: []Arg{argScopeN("regions"), argAtMost},
+	{Word: "regions", Kind: ArgKindInt, family: familyScoped, Written: inWhen("scope"), Args: []Arg{argScopeN("regions"), argAtMost},
 		Label: "within {n} rooms",
 		Long:  "it happened within {n} rooms of {who}"},
-	{Word: "rounds", Kind: "int",
+	{Word: "rounds", Kind: ArgKindInt,
 		Written: inWhen("rounds"),
-		Args: []Arg{{Name: "op", Goes: PlaceField, Field: "op", Names: SlotOp, Kind: "string", Values: []string{string(machine.OpEq), string(machine.OpGte)}},
-			argScopeN("n")},
+		Args: []Arg{{Name: "op", Goes: PlaceField, Field: "op", Names: SlotOp, Kind: ArgKindString, Values: []string{string(machine.OpEq), string(machine.OpGte)}},
+			{Name: "n", Goes: PlaceField, Field: "n", Kind: ArgKindInt, Optional: true, Default: "0"}},
 		Label: "{op} {n} rounds since it marked the moment",
 		Long:  "{op} {n} rounds have passed since {who} set its anchor"},
 	{Word: "all", Join: " and ", Written: inWhen("all"), Args: []Arg{argParts}, Label: "all of these", Long: "{parts}"},
@@ -499,18 +523,18 @@ var machineConditionWords = []ConditionWord{
 
 // The acts, the move first.
 var machineActWords = []ActWord{
-	{Word: "to", Written: Written{In: "step", Key: "to"}, Args: []Arg{{Name: "id", Goes: PlaceValue, Names: SlotState, Kind: "string"}}, Label: "changes to {id}", Short: "to {id}", Long: "moves to the state {id}"},
+	{Word: "to", Written: Written{In: WrittenInStep, Key: "to"}, Args: []Arg{{Name: "id", Goes: PlaceValue, Names: SlotState, Kind: ArgKindString}}, Label: "changes to {id}", Short: "to {id}", Long: "moves to the state {id}"},
 	{Word: "pick", family: familyPicks, StatesForm: "{ pick: <key> }",
-		Written: inDo("pick"), Args: []Arg{{Name: "id", Goes: PlaceValue, Names: SlotList, Kind: "string"}},
+		Written: inDo("pick"), Args: []Arg{{Name: "id", Goes: PlaceValue, Names: SlotList, Kind: ArgKindString}},
 		Label: "acts from the {id} list", Short: "acts from its {id} rows", Long: "acts from its own {id} rows"},
 	{Word: "wake_in", StatesForm: "{ wake_in: N }", Written: inDo("wake_in"), Args: []Arg{argValueN},
 		Label: "waits {n} rounds", Short: "wakes again in {n} rounds", Long: "wakes again in {n} rounds"},
 	{Word: "set", Written: inDo("set"), Args: []Arg{
-		{Name: "id", Goes: PlaceField, Field: "key", Names: SlotFlag, Kind: "string"},
-		{Name: "value", Goes: PlaceField, Field: "value", Kind: "of", KindOf: "id", Kinds: flagKinds}}, Label: "sets {id} to {value}", Short: "sets {id} to {value}", Long: "sets {id} to {value}"},
-	{Word: "clear", Written: inDo("clear"), Args: []Arg{{Name: "id", Goes: PlaceValue, Names: SlotFlag, Kind: "string", Many: true}}, Label: "forgets {id}", Short: "clears {id}", Long: "clears {id}"},
+		{Name: "id", Goes: PlaceField, Field: "key", Names: SlotFlag, Kind: ArgKindString},
+		{Name: "value", Goes: PlaceField, Field: "value", Kind: ArgKindOf, KindOf: "id", Kinds: flagKinds}}, Label: "sets {id} to {value}", Short: "sets {id} to {value}", Long: "sets {id} to {value}"},
+	{Word: "clear", Written: inDo("clear"), Args: []Arg{{Name: "id", Goes: PlaceValue, Names: SlotFlag, Kind: ArgKindString, Many: true}}, Label: "forgets {id}", Short: "clears {id}", Long: "clears {id}"},
 	{Word: "anchor", StatesForm: "{ anchor: true }", Written: inDo("anchor"),
-		Args:  []Arg{{Name: "value", Goes: PlaceValue, Kind: "bool", Fixed: "true"}},
+		Args:  []Arg{{Name: "value", Goes: PlaceValue, Kind: ArgKindBool, Fixed: "true"}},
 		Label: "marks the moment", Short: "sets its anchor", Long: "sets its anchor to this moment"},
 }
 
