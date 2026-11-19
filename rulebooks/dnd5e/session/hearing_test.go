@@ -345,6 +345,10 @@ func (s *HearingSuite) TestSharingChangesNothingTheRulesDecided() {
 		read, err := enc.ReadRecord(&encounter.ReadRecordInput{})
 		s.Require().NoError(err)
 		ulid := regexp.MustCompile(`[0-9A-HJKMNP-TV-Z]{26}`)
+		// THE TWO RUNS ARE OF TWO CONTENTS: the sharing setting is authored,
+		// so scene_content's content_hash differs by design (rpg-project#1001);
+		// everything the rules decided must not.
+		contentHash := regexp.MustCompile(`"content_hash":"[0-9a-f]{64}"`)
 		out := run{bars: map[string]*session.AffordOutput{}}
 		for _, e := range read.Entries {
 			raw, err := json.Marshal(struct {
@@ -353,7 +357,7 @@ func (s *HearingSuite) TestSharingChangesNothingTheRulesDecided() {
 				Payload  json.RawMessage
 			}{e.Audience, e.Tags, e.Payload})
 			s.Require().NoError(err)
-			out.record = append(out.record, ulid.ReplaceAllString(string(raw), "<id>"))
+			out.record = append(out.record, contentHash.ReplaceAllString(ulid.ReplaceAllString(string(raw), "<id>"), `"content_hash":"<content>"`))
 		}
 		for _, m := range []string{"alice", "bob", "carol"} {
 			bar, err := s.mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: m})

@@ -302,7 +302,7 @@ func (m *Manager) AtlasOf(ctx context.Context, in *AtlasOfInput) (*Atlas, error)
 	if in.Dungeon == nil {
 		return nil, fmt.Errorf("atlasof: no dungeon: %w", ErrInvalidWorld)
 	}
-	world, _, err := launchWorld(in.Dungeon, m.sites)
+	world, _, err := launchWorld(in.Dungeon, in.DungeonKey, m.sites)
 	if err != nil {
 		return nil, fmt.Errorf("atlasof: %w", err)
 	}

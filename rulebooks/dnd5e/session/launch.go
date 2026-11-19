@@ -150,7 +150,7 @@ func (m *Manager) Launch(ctx context.Context, in *LaunchInput) (*LaunchOutput, e
 	if err != nil {
 		return nil, fmt.Errorf("launch: %w", err)
 	}
-	world, site, err := launchWorld(in.Dungeon, m.sites)
+	world, site, err := launchWorld(in.Dungeon, in.DungeonKey, m.sites)
 	if err != nil {
 		return nil, fmt.Errorf("launch: %w", err)
 	}
@@ -398,13 +398,23 @@ func resolveLaunchMonsters(dungeon *dungeonspec.Compiled) ([]launchMonster, erro
 // (rpg-project#879 S5), and the compiled site comes back beside the world
 // that names it by hash.
 func launchWorld(
-	dungeon *dungeonspec.Compiled, sites encounter.SiteProvider,
+	dungeon *dungeonspec.Compiled, key string, sites encounter.SiteProvider,
 ) (*encounter.EncounterData, *encounter.Site, error) {
 	endings, err := launchEndings(dungeon)
 	if err != nil {
 		return nil, nil, err
 	}
+	// WHAT THE RUN IS A RUN OF (rpg-project#1001): the key the host launched
+	// it under and the hash of the compiled dungeon, on the record's
+	// scene_content. A hash that cannot be taken is left off, never wrong:
+	// the run still launches.
+	content, err := dungeon.ContentHash()
+	if err != nil {
+		content = ""
+	}
 	enc, err := encounter.NewEncounter(&encounter.SetupInput{
+		Key:          key,
+		Content:      content,
 		Field:        dungeon.Field,
 		Endings:      endings,
 		Retention:    encounter.RetentionUnbounded,
