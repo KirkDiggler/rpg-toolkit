@@ -41,8 +41,9 @@ type transition struct {
 // program holds its own copy: changing the recipe afterwards changes
 // nothing compiled.
 //
-// It refuses, joining every problem found into one error that names where
-// each is: a beat v lacks (ErrUnknownBeat), a fact v lacks (ErrUnknownFact),
+// It refuses, joining every problem found into one error, each a
+// [*Refusal] that carries where it is ([Where]) and reads as it always has:
+// a beat v lacks (ErrUnknownBeat), a fact v lacks (ErrUnknownFact),
 // a To or Initial naming no state (ErrUnknownState), no Initial
 // (ErrNoInitial), an act that is not exactly one field or a WakeIn at or
 // below zero or a Set or Clear of an undeclared key (ErrBadAct), a scope
@@ -61,14 +62,14 @@ func (r Recipe) Compile(v Vocabulary) (*Program, error) {
 	for _, k := range sortedKeys(r.Bag) {
 		val := r.Bag[k]
 		if _, ok := kindOf(val); !ok {
-			c.failf(ErrBadBag, "bag."+k, "value %v (%T) is not a bool, int or string", val, val)
+			c.failf(ErrBadBag, atBag(k), "value %v (%T) is not a bool, int or string", val, val)
 		}
 	}
 	switch _, ok := r.States[r.Initial]; {
 	case r.Initial == "":
-		c.failf(ErrNoInitial, "initial", "the recipe names no initial state")
+		c.failf(ErrNoInitial, atInitial(), "the recipe names no initial state")
 	case !ok:
-		c.failf(ErrUnknownState, "initial", "state %q is not in the recipe", r.Initial)
+		c.failf(ErrUnknownState, atInitial(), "state %q is not in the recipe", r.Initial)
 	}
 
 	p := &Program{
@@ -93,18 +94,19 @@ type checker struct {
 	err error
 }
 
-// failf records one refusal of kind at where.
-func (c *checker) failf(kind error, where, format string, args ...any) {
-	c.err = errors.Join(c.err, fmt.Errorf("%w: %s: %s", kind, where, fmt.Sprintf(format, args...)))
+// failf records one refusal of kind at where, as a [*Refusal]: a place made
+// only by the [Where] constructors, so none can be left out.
+func (c *checker) failf(kind error, where Where, format string, args ...any) {
+	c.err = errors.Join(c.err, &Refusal{Where: where, Kind: kind, Message: fmt.Sprintf(format, args...)})
 }
 
 func (c *checker) state(name string, s State, all map[string]State) *program {
 	out := &program{terminal: s.Terminal}
 	if s.Terminal && len(s.Transitions) > 0 {
-		c.failf(ErrBadState, "states."+name, "a terminal state carries no transitions")
+		c.failf(ErrBadState, atState(name), "a terminal state carries no transitions")
 	}
 	for i, t := range s.Transitions {
-		where := fmt.Sprintf("states.%s.transitions[%d]", name, i)
+		where := atStep(name, i)
 		spec, ok := c.v.Beats[t.On]
 		if !ok {
 			c.failf(ErrUnknownBeat, where, "beat %q is not in the vocabulary", t.On)
@@ -115,11 +117,11 @@ func (c *checker) state(name string, s State, all map[string]State) *program {
 			}
 		}
 		for j, a := range t.Do {
-			c.act(fmt.Sprintf("%s.do[%d]", where, j), a)
+			c.act(where.in(fmt.Sprintf(".do[%d]", j)), a)
 		}
 		ct := transition{
 			on:     t.On,
-			when:   c.guard(t.When, spec, ok, where+".when"),
+			when:   c.guard(t.When, spec, ok, where.in(".when")),
 			to:     t.To,
 			do:     cloneActs(t.Do),
 			reason: t.Reason,
@@ -158,7 +160,7 @@ func listen(ls []Listen, on Beat, scope *ScopeLeaf) []Listen {
 	return ls
 }
 
-func (c *checker) act(where string, a Act) {
+func (c *checker) act(where Where, a Act) {
 	n := 0
 	for _, set := range []bool{a.Pick != "", a.WakeIn != 0, a.Set != nil, len(a.Clear) > 0, a.Anchor} {
 		if set {
@@ -193,7 +195,7 @@ func (c *checker) act(where string, a Act) {
 
 // guard checks g and compiles it for the beat spec; known is false when the
 // beat itself was refused, so its leaves are not refused twice.
-func (c *checker) guard(g *Guard, spec BeatSpec, known bool, where string) *guard {
+func (c *checker) guard(g *Guard, spec BeatSpec, known bool, where Where) *guard {
 	if g == nil {
 		return nil
 	}
@@ -213,34 +215,34 @@ func (c *checker) guard(g *Guard, spec BeatSpec, known bool, where string) *guar
 	}
 	switch {
 	case len(g.All) > 0:
-		return c.node(nodeAll, g.All, spec, known, where+".all")
+		return c.node(nodeAll, g.All, spec, known, where.in(".all"))
 	case len(g.Any) > 0:
-		return c.node(nodeAny, g.Any, spec, known, where+".any")
+		return c.node(nodeAny, g.Any, spec, known, where.in(".any"))
 	case g.Not != nil:
-		kid := c.guard(g.Not, spec, known, where+".not")
+		kid := c.guard(g.Not, spec, known, where.in(".not"))
 		reason := ""
 		if kid != nil {
 			reason = kid.reason
 		}
 		return &guard{kind: nodeNot, kids: []*guard{kid}, reason: reason}
 	case g.Fact != nil:
-		return c.fact(*g.Fact, where+".fact")
+		return c.fact(*g.Fact, where.in(".fact"))
 	case g.Flag != "":
 		if _, ok := c.bag[g.Flag].(bool); !ok {
-			c.failf(ErrBadGuard, where+".flag", "flag %q is not a bool the bag declares", g.Flag)
+			c.failf(ErrBadGuard, where.in(".flag"), "flag %q is not a bool the bag declares", g.Flag)
 		}
 		return &guard{kind: nodeFlag, flag: g.Flag, reason: "flag " + g.Flag}
 	case g.Scope != nil:
-		return c.scope(*g.Scope, spec, known, where+".scope")
+		return c.scope(*g.Scope, spec, known, where.in(".scope"))
 	default:
-		return c.rounds(*g.Rounds, spec, known, where+".rounds")
+		return c.rounds(*g.Rounds, spec, known, where.in(".rounds"))
 	}
 }
 
-func (c *checker) node(kind nodeKind, kids []Guard, spec BeatSpec, known bool, where string) *guard {
+func (c *checker) node(kind nodeKind, kids []Guard, spec BeatSpec, known bool, where Where) *guard {
 	g := &guard{kind: kind, kids: make([]*guard, 0, len(kids))}
 	for i := range kids {
-		g.kids = append(g.kids, c.guard(&kids[i], spec, known, fmt.Sprintf("%s[%d]", where, i)))
+		g.kids = append(g.kids, c.guard(&kids[i], spec, known, where.in(fmt.Sprintf("[%d]", i))))
 	}
 	if g.kids[0] != nil {
 		g.reason = g.kids[0].reason
@@ -248,7 +250,7 @@ func (c *checker) node(kind nodeKind, kids []Guard, spec BeatSpec, known bool, w
 	return g
 }
 
-func (c *checker) fact(f FactLeaf, where string) *guard {
+func (c *checker) fact(f FactLeaf, where Where) *guard {
 	fs, ok := c.v.Facts[f.Name]
 	if !ok || fs.Read == nil {
 		c.failf(ErrUnknownFact, where, "fact %q is not in the vocabulary", f.Name)
@@ -261,7 +263,7 @@ func (c *checker) fact(f FactLeaf, where string) *guard {
 	return &guard{kind: nodeFact, read: fs.Read, op: f.Op, value: f.Value, reason: "fact " + string(f.Name)}
 }
 
-func (c *checker) scope(s ScopeLeaf, spec BeatSpec, known bool, where string) *guard {
+func (c *checker) scope(s ScopeLeaf, spec BeatSpec, known bool, where Where) *guard {
 	switch {
 	case s.Within < 0 || s.Regions < 0:
 		c.failf(ErrBadGuard, where, "within %d and regions %d are not at or above zero", s.Within, s.Regions)
@@ -273,7 +275,7 @@ func (c *checker) scope(s ScopeLeaf, spec BeatSpec, known bool, where string) *g
 	return &guard{kind: nodeScope, scope: s, inScope: spec.InScope, reason: "scope"}
 }
 
-func (c *checker) rounds(r RoundsLeaf, spec BeatSpec, known bool, where string) *guard {
+func (c *checker) rounds(r RoundsLeaf, spec BeatSpec, known bool, where Where) *guard {
 	if known && spec.Round == nil {
 		c.failf(ErrNoRound, where, "the beat carries no round")
 	}
@@ -282,7 +284,7 @@ func (c *checker) rounds(r RoundsLeaf, spec BeatSpec, known bool, where string) 
 }
 
 // op refuses an op the kind does not support.
-func (c *checker) op(where string, op Op, kind ScalarKind) {
+func (c *checker) op(where Where, op Op, kind ScalarKind) {
 	switch {
 	case op != OpEq && op != OpGte:
 		c.failf(ErrBadGuard, where, "op %q is not %q or %q", op, OpEq, OpGte)
