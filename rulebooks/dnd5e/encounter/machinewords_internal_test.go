@@ -365,8 +365,8 @@ func TestMachineWords_LabelsArePinned(t *testing.T) {
 		"beat clock:fight": {"a round of its side's fight", ""},
 		"beat barred":      {"someone walks into it", ""},
 		"beat approached":  {"hails someone", ""},
-		"beat deed:":       {"{id} is done", "{id} is done"},
-		"beat clock:":      {"a round of {id}", "a round of {id}"},
+		"beat deed:":       {"{id} is done", ""},
+		"beat clock:":      {"a round of {id}", ""},
 		"cond enemy": {"an enemy is {value}", "",
 			"seen=sees an enemy", "remembered=remembers an enemy", "none=knows of no enemy"},
 		"cond fact:": {"has learned {id}", "has not learned {id}"},
@@ -377,7 +377,7 @@ func TestMachineWords_LabelsArePinned(t *testing.T) {
 			"held=it was a claim that held", "failed=it was a claim that failed"},
 		"cond noted:":        {"has noted {id} about them", "has not noted {id} about them"},
 		"cond noted.anyone:": {"has noted {id} about anyone", "has not noted {id} about anyone"},
-		"cond flag":          {"remembers {id}", ""},
+		"cond flag":          {"{id} is set", ""},
 		"cond within":        {"within {n} cells", ""},
 		"cond regions":       {"within {n} rooms", ""},
 		"cond rounds":        {"{op} {n} rounds since it marked the moment", ""},
@@ -387,7 +387,7 @@ func TestMachineWords_LabelsArePinned(t *testing.T) {
 		"act to":             {"changes to {id}"},
 		"act pick":           {"acts from the {id} list"},
 		"act wake_in":        {"waits {n} rounds"},
-		"act set":            {"remembers {id}"},
+		"act set":            {"sets {id} to {value}"},
 		"act clear":          {"forgets {id}"},
 		"act anchor":         {"marks the moment"},
 	}, got)
@@ -418,5 +418,21 @@ func TestMachineWords_LabelsKeepTheRules(t *testing.T) {
 		for _, banned := range []string{" he ", " him ", " his ", "holds", "a note"} {
 			require.NotContains(t, padded, banned, l)
 		}
+	}
+}
+
+// TestMachineWords_OpsAreSaidInPlainWords: every comparison the machine
+// compiles has the table's plain words, and a LabelWith never only repeats
+// its Label.
+func TestMachineWords_OpsAreSaidInPlainWords(t *testing.T) {
+	require.Equal(t, []OpWord{{Op: "eq", Words: "exactly"}, {Op: "gte", Words: "at least"}}, MachineWords().Ops)
+	for _, op := range []machine.Op{machine.OpEq, machine.OpGte} {
+		_, ok := OpWordsOf(string(op))
+		require.True(t, ok, op)
+	}
+	_, ok := OpWordsOf("ne")
+	require.False(t, ok)
+	for _, b := range MachineWords().Beats {
+		require.NotEqual(t, b.Label, b.LabelWith, b.Word)
 	}
 }

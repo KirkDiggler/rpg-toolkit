@@ -48,22 +48,39 @@
 // given it, about whom they note it, and who else hears it, in that order; a
 // requirement says whose knowledge it reads. Stiff and true beats elegant.
 //
-// # What a machine's step reads (rpg-project#1000, #1005)
+// # What a machine's step reads (rpg-project#1000, #1005, #997)
 //
-// A step's guard connects to what it reads, so a reader draws it from
-// connections alone:
+// Every condition in a step's `when` is one connection of kind `condition`
+// ([ConnCondition]), role `asks`, so a reader rebuilds the whole `when`
+// from connections alone:
 //
-//   - `noted:<topic>` (about the one the beat names), `eq` true or false:
-//     {topic, <topic>, asks}; the sentence says "has noted" or "has not noted".
-//   - `noted.anyone:<topic>` (compiled to the engine's `topic:<id>`):
-//     {topic, <topic>, wakes-on}; "has noted … about anyone" or "has not".
-//   - `heard.claim`: {claim, held|failed, asks} ([ConnClaim]): the id is the
-//     verdict asked; under a `not` the sentence says NOT and the connection
-//     stays.
-//   - `fact:<id>`: {fact, <id>, wakes-on}.
+//   - id: the condition's word as authored, its open part filled, from the
+//     machine words table ([encounter.MachineWords]): `heard.claim`,
+//     `noted:admitted`, `noted.anyone:admitted` (the engine's `topic:`),
+//     `fact:gate-cowed`, `heard.kind`, `heard.loudness:shout`, `enemy`,
+//     `flag`, `within`, `regions`, `rounds`.
+//   - is: the value compared, as text ("failed", "true", "3"); for `flag`,
+//     the flag's name.
+//   - op: the comparison where it is not equality, as the engine spells it
+//     (`gte`); the table's Ops give its plain words ("at least").
+//   - not: true under an odd number of `not`s: the step needs it false.
+//   - at: where it sits in the `when` as the author wrote it: `when`,
+//     `when.all[1]`, `when.any[0].not`. Conditions at one place are one
+//     node, all of them needed; `all`, `any` and `not` are read from the path
+//     and have no connection of their own.
 //
-// `heard.kind` and `heard.loudness:<w>` are said and connect to nothing: they
-// read the sound itself, not a thing in the file.
+// A condition that reads a thing in the file keeps that thing's connection
+// beside it, which the hubs group by: `fact:<id>` {fact, <id>, wakes-on};
+// `noted:<topic>` {topic, <topic>, asks}; `noted.anyone:<topic>` {topic,
+// <topic>, wakes-on}. The sentence says "has noted" or "has not noted", and
+// NOT (…) for a `not`; no sentence depends on the connections.
+//
+// The captain's step in `in-hall` on `heard` (the castle), whose `when` is
+// an `all` of a failed claim and `noted:admitted`, carries:
+//
+//	{condition, heard.claim, asks, is: failed, at: when.all[0]}
+//	{condition, noted:admitted, asks, is: true, at: when.all[1]}
+//	{topic, admitted, asks}
 //
 // # Nothing skipped silently
 //

@@ -56,75 +56,98 @@ func act(word string) encounter.ActWord {
 }
 
 // guardWords says a transition's guard as a condition clause, with the
-// topics and facts it reads. on is the transition's beat: who a
-// `noted:<topic>` asks about is the one that beat names.
+// topics and facts it reads and one [ConnCondition] per condition. on is the
+// transition's beat: who a `noted:<topic>` asks about is the one that beat
+// names.
 func guardWords(g *machine.Guard, who string, on machine.Beat) (string, []Connection) {
+	return guardWordsAt(g, who, on, "when", false)
+}
+
+// guardWordsAt is [guardWords] for the node at at, under an odd number of
+// `not`s when not is true.
+func guardWordsAt(g *machine.Guard, who string, on machine.Beat, at string, not bool) (string, []Connection) {
 	if g == nil {
 		return "", nil
 	}
 	var parts []string
 	var conns []Connection
 	add := func(s string, c []Connection) { parts = append(parts, s); conns = append(conns, c...) }
+	asks := func(id, is string, op machine.Op) Connection {
+		c := Connection{Kind: ConnCondition, ID: id, Role: "asks", Is: is, Not: not, At: at}
+		if op != machine.OpEq {
+			c.Op = string(op)
+		}
+		return c
+	}
 	if g.Fact != nil {
 		name := string(g.Fact.Name)
 		val := fmt.Sprint(g.Fact.Value)
-		word, id, _ := encounter.SplitConditionWord(name)
+		word, id, known := encounter.SplitConditionWord(name)
 		verb := "has noted"
 		if !boolTestTrue(val) {
 			verb = "has not noted"
 		}
-		say := func(c []Connection) {
+		condID := name
+		if known {
+			condID = word.Word + id
+		}
+		self := asks(condID, val, g.Fact.Op)
+		say := func(c ...Connection) {
 			add(fill(word.Long, "who", who, "whose", whose(who), "id", quote(id), "verb", verb,
-				"about", aboutWords(on, who), "raised", raisedWords(id)), c)
+				"about", aboutWords(on, who), "raised", raisedWords(id)), append([]Connection{self}, c...))
 		}
 		switch {
 		case word.Open == encounter.SlotFact && g.Fact.Op == "eq" && val == "true":
-			say([]Connection{{Kind: "fact", ID: id, Role: "wakes-on"}})
+			say(Connection{Kind: "fact", ID: id, Role: "wakes-on"})
 		case word.Word == "heard.kind" && g.Fact.Op == "eq":
-			add(fill(word.Long, "who", who, "value", quote(val)), nil)
+			add(fill(word.Long, "who", who, "value", quote(val)), []Connection{self})
 		case word.Open == encounter.SlotLoudness && g.Fact.Op == "eq" && val == "true":
-			say(nil)
+			say()
 		case word.Word == "heard.claim" && g.Fact.Op == "eq":
-			add(fill(word.Long, "who", who, "value", val), []Connection{{Kind: ConnClaim, ID: val, Role: "asks"}})
+			add(fill(word.Long, "who", who, "value", val), []Connection{self})
 		case word.Word == "noted:" && isBoolTest(g.Fact.Op, val):
-			say([]Connection{{Kind: "topic", ID: id, Role: "asks"}})
+			say(Connection{Kind: "topic", ID: id, Role: "asks"})
 		case word.Word == "noted.anyone:" && isBoolTest(g.Fact.Op, val):
 			// `noted.anyone:<topic>` as authored, the engine's `topic:<id>`
 			// once compiled (rpg-project#1005).
-			say([]Connection{{Kind: "topic", ID: id, Role: "wakes-on"}})
+			say(Connection{Kind: "topic", ID: id, Role: "wakes-on"})
 		default:
-			add(fill(cond("enemy").Long, "whose", whose(who), "name", quote(name), "op", opWords(g.Fact.Op), "value", val), nil)
+			add(fill(cond("enemy").Long, "whose", whose(who), "name", quote(name), "op", opWords(g.Fact.Op), "value", val),
+				[]Connection{self})
 		}
 	}
 	if g.Flag != "" {
-		add(fill(cond("flag").Long, "whose", whose(who), "id", quote(g.Flag)), nil)
+		add(fill(cond("flag").Long, "whose", whose(who), "id", quote(g.Flag)), []Connection{asks("flag", g.Flag, machine.OpEq)})
 	}
 	if g.Scope != nil {
 		if g.Scope.Within > 0 {
-			add(fill(cond("within").Long, "n", fmt.Sprint(g.Scope.Within), "who", who), nil)
+			add(fill(cond("within").Long, "n", fmt.Sprint(g.Scope.Within), "who", who),
+				[]Connection{asks("within", fmt.Sprint(g.Scope.Within), machine.OpEq)})
 		}
 		if g.Scope.Regions > 0 {
-			add(fill(cond("regions").Long, "n", fmt.Sprint(g.Scope.Regions), "who", who), nil)
+			add(fill(cond("regions").Long, "n", fmt.Sprint(g.Scope.Regions), "who", who),
+				[]Connection{asks("regions", fmt.Sprint(g.Scope.Regions), machine.OpEq)})
 		}
 	}
 	if g.Rounds != nil {
-		add(fill(cond("rounds").Long, "op", opWords(g.Rounds.Op), "n", fmt.Sprint(g.Rounds.N), "who", who), nil)
+		add(fill(cond("rounds").Long, "op", opWords(g.Rounds.Op), "n", fmt.Sprint(g.Rounds.N), "who", who),
+			[]Connection{asks("rounds", fmt.Sprint(g.Rounds.N), g.Rounds.Op)})
 	}
 	for i := range g.All {
-		s, c := guardWords(&g.All[i], who, on)
+		s, c := guardWordsAt(&g.All[i], who, on, fmt.Sprintf("%s.all[%d]", at, i), not)
 		add(s, c)
 	}
 	if len(g.Any) > 0 {
 		var any []string
 		for i := range g.Any {
-			s, c := guardWords(&g.Any[i], who, on)
+			s, c := guardWordsAt(&g.Any[i], who, on, fmt.Sprintf("%s.any[%d]", at, i), not)
 			any = append(any, s)
 			conns = append(conns, c...)
 		}
 		parts = append(parts, fill(cond("any").Long, "parts", strings.Join(any, cond("any").Join)))
 	}
 	if g.Not != nil {
-		s, c := guardWords(g.Not, who, on)
+		s, c := guardWordsAt(g.Not, who, on, at+".not", !not)
 		add(fill(cond("not").Long, "inner", s), c)
 	}
 	return fill(cond("all").Long, "parts", strings.Join(parts, cond("all").Join)), conns
@@ -150,19 +173,10 @@ func boolTestTrue(val string) bool {
 	return val == "true"
 }
 
-// opWords says a comparison.
+// opWords says a comparison, in the machine words table's plain words.
 func opWords(op machine.Op) string {
-	switch op {
-	case "gte":
-		return "at least"
-	case "gt":
-		return "more than"
-	case "lte":
-		return "at most"
-	case "lt":
-		return "fewer than"
-	case "eq":
-		return "exactly"
+	if w, ok := encounter.OpWordsOf(string(op)); ok {
+		return w
 	}
 	return string(op)
 }
