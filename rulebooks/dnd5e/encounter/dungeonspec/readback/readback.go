@@ -172,6 +172,13 @@ const (
 	ConnBeat = "beat"
 	// ConnTable is a connection to one key of the routine's table of rows.
 	ConnTable = "table"
+	// ConnClaim is a connection to the verdict a step's `heard.claim` guard
+	// reads (rpg-project#1000): its id is the value asked, "held" or
+	// "failed", so a reader of connections alone recovers it; role "asks".
+	// A step that asks the opposite says it under a `not`, which keeps the
+	// connection (the machine has no `ne`). It names no thing in the file:
+	// it is the engine's word for a caught claim's verdict.
+	ConnClaim = "claim"
 
 	// RoleStarts is the state a routine starts in, on the routine statement.
 	RoleStarts = "starts"

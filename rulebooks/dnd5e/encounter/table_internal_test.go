@@ -123,7 +123,8 @@ func (s *TableSuite) TestATableThisBuildCannotRollIsRefusedAtTheDoor() {
 		{
 			name:  "a `when` that names two things",
 			table: Table{AnswerTime: {{Weight: 1, Hold: true, When: []When{{Enemy: EnemySeen, Deed: "fled", Within: 1}}}}},
-			says:  "give each its own entry in the list, and every entry must hold",
+			// mind/behavior's own sentence, another module: not this one's to reword.
+			says: "give each its own entry in the list, and every entry must hold",
 		},
 		{
 			name:  "a `when` that names nothing",
@@ -194,7 +195,7 @@ func (s *TableSuite) TestATableThisBuildCannotRollIsRefusedAtTheDoor() {
 		{
 			name:  "a deed this build does not hold",
 			table: Table{AnswerTime: {{Weight: 1, Hold: true, When: []When{{Deed: "insulted", Within: 1}}}}},
-			says:  "not a deed this build holds",
+			says:  "not a deed this build knows",
 		},
 		{
 			name:  "a span counted from zero",

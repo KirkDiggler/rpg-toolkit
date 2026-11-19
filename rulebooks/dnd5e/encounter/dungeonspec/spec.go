@@ -2026,7 +2026,7 @@ func (w *WhenSpec) UnmarshalYAML(value *yaml.Node) error {
 	}
 	if len(value.Content) > 2 {
 		return fmt.Errorf("line %d: a `when` entry is one condition, and this names %d: "+
-			"give each its own entry in a list, `when: [{ … }, { … }]`, and every entry must hold",
+			"give each its own entry in a list, `when: [{ … }, { … }]`, and every entry must be true",
 			value.Line, len(value.Content)/2)
 	}
 
@@ -2045,7 +2045,7 @@ func (w *WhenSpec) UnmarshalYAML(value *yaml.Node) error {
 		return nil
 	case whenFact:
 		if body.Kind != yaml.ScalarNode || body.Value == "" {
-			return fmt.Errorf("line %d: `fact` in a `when` names the fact the creature must hold, and this names none",
+			return fmt.Errorf("line %d: `fact` in a `when` names the fact the creature must know, and this names none",
 				body.Line)
 		}
 		w.Fact = body.Value
@@ -2084,7 +2084,7 @@ func (w *WhenSpec) UnmarshalYAML(value *yaml.Node) error {
 	}
 
 	if !knownWhenDeed(key) {
-		return fmt.Errorf("line %d: `%s` is not a deed this build holds: they are %s (and `enemy`, `heard`, `fact`, `threat`, `not`)",
+		return fmt.Errorf("line %d: `%s` is not a deed this build knows: they are %s (and `enemy`, `heard`, `fact`, `threat`, `not`)",
 			value.Content[0].Line, key, strings.Join(encounter.WhenDeeds, ", "))
 	}
 	// UNKNOWN KEYS ARE REFUSED BY HAND, because Decode's strictness does not

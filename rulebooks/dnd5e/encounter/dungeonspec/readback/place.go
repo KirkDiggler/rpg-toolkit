@@ -75,7 +75,7 @@ func (b *builder) place() []Group {
 			conns = append(conns, more...)
 		}
 		if len(b.c.Endings) > 1 {
-			s += fmt.Sprintf(". It is ending %d of %d; the first in the list whose condition holds is the one the run ends on.", i+1, len(b.c.Endings))
+			s += fmt.Sprintf(". It is ending %d of %d; the first in the list whose condition is true is the one the run ends on.", i+1, len(b.c.Endings))
 		} else {
 			s += "."
 		}
@@ -385,7 +385,7 @@ func (b *builder) sides() []Group {
 				s += fmt.Sprintf("%s %s once %s", lead, then, w)
 			}
 			if len(d.Until) > 1 {
-				s += " (the first step that holds wins)"
+				s += " (the first step that is true wins)"
 			}
 			g.Statements = append(g.Statements, b.fstmt(KindDisposition, about, fmt.Sprintf("dispositions[%d]", i), s+".",
 				foldInfo{site: fmt.Sprintf("how %s and %s stand", quote(string(d.Between[0])), quote(string(d.Between[1])))}, conns...))

@@ -110,7 +110,7 @@ func (f *field) validateNotStance(what string, p TriggerStance, sentinel error) 
 	declared, _ := f.declaredStance(pair)
 	if declared != p.Stance {
 		return fmt.Errorf("%s waits for %s to stop being %s, which they are not from the start, "+
-			"so it holds from the start and nothing can fire it: %w", what, pair, p.Stance, sentinel)
+			"so it is true from the start and nothing can fire it: %w", what, pair, p.Stance, sentinel)
 	}
 	leaves := declared == StanceNeutral // R3: a blow across a neutral pair turns it hostile
 	for _, to := range f.untilTurnsTo(pair) {

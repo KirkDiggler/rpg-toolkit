@@ -146,9 +146,10 @@ func TestNotedWords_NotedAsksAboutAPersonCarriesAThing(t *testing.T) {
 			"`holds` is retired here: a topic the one spoken to has noted is `noted: admitted`")
 	})
 	t.Run("holds where nothing speaks", func(t *testing.T) {
-		// An ending's grammar is not told the site's props: both words.
-		requireRefusedAt(t, refusals(t, v4With("endings:\n  - { id: rich, when: { holds: table } }", "")), "endings[0].when.holds",
-			"`holds` is retired here: a prop the speaker carries is `carries: <prop>`; a topic the one spoken to has noted is `noted: <topic>`")
+		// Neither word that replaced it is legal in an ending: neither is suggested.
+		requireExactDefect(t, refusals(t, v4With("endings:\n  - { id: rich, when: { holds: table } }", "")), "endings[0].when.holds",
+			"`holds` is retired, and nothing here speaks: a prop carried and a topic noted are only asked by a line's requires "+
+				"(`carries`, `noted`) or a post's pass (`noted`)")
 	})
 }
 

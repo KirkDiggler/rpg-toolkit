@@ -75,20 +75,24 @@ func guardWords(g *machine.Guard, who string, on machine.Beat) (string, []Connec
 			add(fmt.Sprintf("what %s heard was a voice%s (a clang, a crash or a boom is at no loudness)",
 				who, raisedWords(strings.TrimPrefix(name, "heard.loudness:"))), nil)
 		case name == "heard.claim" && g.Fact.Op == "eq":
-			add(fmt.Sprintf("what %s heard was a claim that %s", who, val), nil)
-		case name == "heard.claim" && g.Fact.Op == "ne":
-			add(fmt.Sprintf("what %s heard was not a claim that %s", who, val), nil)
-		case strings.HasPrefix(name, "noted:") && g.Fact.Op == "eq" && (val == "true" || val == "false"):
+			add(fmt.Sprintf("what %s heard was a claim that %s", who, val), []Connection{{Kind: ConnClaim, ID: val, Role: "asks"}})
+		case strings.HasPrefix(name, "noted:") && isBoolTest(g.Fact.Op, val):
 			id := strings.TrimPrefix(name, "noted:")
 			verb := "has noted"
-			if val == "false" {
+			if !boolTestTrue(val) {
 				verb = "has not noted"
 			}
 			add(fmt.Sprintf("%s %s %s about %s", who, verb, quote(id), aboutWords(on, who)),
 				[]Connection{{Kind: "topic", ID: id, Role: "asks"}})
-		case strings.HasPrefix(name, "topic:") && g.Fact.Op == "eq" && val == "true":
+		case strings.HasPrefix(name, "topic:") && isBoolTest(g.Fact.Op, val):
+			// `noted.anyone:<topic>` as authored, the engine's `topic:<id>`
+			// once compiled (rpg-project#1005).
 			id := strings.TrimPrefix(name, "topic:")
-			add(fmt.Sprintf("%s has noted %s about anyone", who, quote(id)),
+			verb := "has noted"
+			if !boolTestTrue(val) {
+				verb = "has not noted"
+			}
+			add(fmt.Sprintf("%s %s %s about anyone", who, verb, quote(id)),
 				[]Connection{{Kind: "topic", ID: id, Role: "wakes-on"}})
 		default:
 			add(fmt.Sprintf("%s %s is %s %s", whose(who), quote(name), opWords(g.Fact.Op), val), nil)
@@ -142,6 +146,17 @@ func aboutWords(on machine.Beat, who string) string {
 		return "the one " + who + " hailed"
 	}
 	return "nobody (`" + string(on) + "` is about nobody)"
+}
+
+// isBoolTest reports whether a fact leaf compares a yes-or-no fact to a
+// yes or a no. The machine has no `ne` (a negation is a `not`).
+func isBoolTest(op machine.Op, val string) bool {
+	return op == "eq" && (val == "true" || val == "false")
+}
+
+// boolTestTrue reports whether a yes-or-no test asks for the fact to be true.
+func boolTestTrue(val string) bool {
+	return val == "true"
 }
 
 // opWords says a comparison.
@@ -237,7 +252,7 @@ func (b *builder) whenWords(w behavior.When, who string) (string, []Connection) 
 				target += ", on " + whose(who) + " side,"
 			}
 		}
-		return fmt.Sprintf("%s holds that the deed %s was done to %s within the last %d rounds", who, quote(w.Deed), target, w.Within), nil
+		return fmt.Sprintf("%s has noted that the deed %s was done to %s within the last %d rounds", who, quote(w.Deed), target, w.Within), nil
 	}
 	return "a condition this build cannot say", nil
 }

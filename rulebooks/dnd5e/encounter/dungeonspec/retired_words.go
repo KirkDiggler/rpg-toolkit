@@ -14,7 +14,7 @@ import (
 // retired_words.go is THE NOTED WORDS' OLD SPELLINGS (rpg-project#1005,
 // ruled on rpg-project#987 and after): what an NPC has in mind about a
 // person is a topic, asked with `noted` and given with `give`; "hold" stays
-// physical (a prop in hand is `holds`); a state's post is `post`; a machine
+// physical (carrying a prop is `carries`); a state's post is `post`; a machine
 // asks about anybody with `noted.anyone:`. Every old word is refused when
 // content is loaded, with a sentence naming the word that replaced it —
 // never read under its old meaning, so a file written before the rename

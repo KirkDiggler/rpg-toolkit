@@ -143,7 +143,7 @@ func foldPlain(g Group) Item {
 				continue
 			}
 			head.Items = append(head.Items, Item{Text: "The run ends when " + st.fold.state +
-				", on the first of these whose condition holds: " + st.fold.text + ".", Paths: []string{st.Path}})
+				", on the first of these whose condition is true: " + st.fold.text + ".", Paths: []string{st.Path}})
 			continue
 		}
 		if st.Kind == KindBundle {
@@ -778,7 +778,7 @@ func foldRoutine(g Group) Item {
 	if len(states.Items) > 0 {
 		head.Items = append(head.Items, states)
 	}
-	table := Item{Text: "Rows (one whose conditions hold is picked by weight):", Base: base + ".table."}
+	table := Item{Text: "Rows (one whose conditions are true is picked by weight):", Base: base + ".table."}
 	for _, k := range keys {
 		rs := rows[k]
 		if len(rs) == 1 {

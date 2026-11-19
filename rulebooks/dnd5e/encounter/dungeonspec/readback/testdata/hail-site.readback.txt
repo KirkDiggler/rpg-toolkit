@@ -67,7 +67,7 @@ CONVERSATIONS
 ROUTINES
 
   Routine `porter-policy`
-    - The routine `porter-policy` is run by Guard (porter); it starts in the state `ready`; its recipe is `site:behaviors:porter-policy`. When it acts from a set of rows, one row whose conditions hold is picked by weight.
+    - The routine `porter-policy` is run by Guard (porter); it starts in the state `ready`; its recipe is `site:behaviors:porter-policy`. When it acts from a set of rows, one row whose conditions are true is picked by weight.
         at behaviorDefinitions.porter-policy
     - In the state `ready`, Guard (porter) listens for 1 beat.
         at behaviorDefinitions.porter-policy.recipe.states.ready

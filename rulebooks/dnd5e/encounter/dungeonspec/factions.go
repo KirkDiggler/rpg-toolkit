@@ -366,8 +366,9 @@ func (g *grammar) predicate(path string, p *PredicateSpec, self *[2]string) {
 	case predicateCarries:
 		g.fail(path+".carries", "%s", carriesOnlyRequires)
 	case predicateRetiredHolds:
-		m, placed := g.members.at(p.RetiredHolds)
-		g.fail(path+".holds", "%s", holdsRetired(p.RetiredHolds, placed && !m.isMonster(), g.grants(p.RetiredHolds)))
+		// NOTHING HERE SPEAKS: neither word that replaced `holds` is legal
+		// in a waited-for predicate, so neither is suggested.
+		g.fail(path+".holds", "%s", holdsRetiredWhereNothingSpeaks)
 	case predicateLeft:
 		g.fail(path+".left", "%s", leftOnlyEndings(p.Left))
 	case predicateInteraction:
@@ -443,7 +444,7 @@ func (g *grammar) notStance(path string, s *StancePredicateSpec, self *[2]string
 	}
 	declared, turns := g.declaredStance(key)
 	if declared != s.Is {
-		g.fail(path, "%s and %s are %s from the start, not %s, so this holds from the start and nothing can fire it",
+		g.fail(path, "%s and %s are %s from the start, not %s, so this is true from the start and nothing can fire it",
 			key[0], key[1], declared, s.Is)
 		return
 	}
@@ -484,6 +485,12 @@ func (g *grammar) stanceShape(path string, s *StancePredicateSpec) bool {
 
 	return ok
 }
+
+// holdsRetiredWhereNothingSpeaks is the sentence a `holds` is refused with
+// in a waited-for predicate — an ending's `when`, an `until`, an `arrives`
+// (rpg-project#1005) — where neither `carries` nor `noted` is legal either.
+const holdsRetiredWhereNothingSpeaks = "`holds` is retired, and nothing here speaks: a prop carried and a topic noted " +
+	"are only asked by a line's requires (`carries`, `noted`) or a post's pass (`noted`)"
 
 // carriesOnlyRequires is the sentence `carries` is refused with anywhere but
 // an option's `requires` (rpg-project#569, #1005): it is read when somebody
