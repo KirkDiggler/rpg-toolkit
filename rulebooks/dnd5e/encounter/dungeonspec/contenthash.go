@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
@@ -55,7 +56,12 @@ const canonicalDepth = 64
 
 // canonicalEncode writes v deterministically into b: every struct field by
 // name (exported or not), every interface value as its concrete type then
-// its value, maps by sorted key, and a nil as nil. path names where v sits,
+// its value, maps by sorted key, and a nil as nil.
+//
+// A NIL SLICE OR MAP IS NOT AN EMPTY ONE. The compiler and the engine tell
+// them apart (a table entry with `rows: []` is a group the grammar checks,
+// one with none is a row; the table beat writes `rows` only when they are
+// present), so the encoding does too: nil is "nil", empty is "[0:]". path names where v sits,
 // for a refusal.
 func canonicalEncode(b *bytes.Buffer, v reflect.Value, path string, depth int) error {
 	if depth > canonicalDepth {
@@ -150,10 +156,31 @@ func canonicalEncode(b *bytes.Buffer, v reflect.Value, path string, depth int) e
 }
 
 // typeName is a type's full name, its package path included, so two types
-// of one name in two packages are told apart; an unnamed type its spelling.
+// of one name in two packages are told apart; an unnamed type is spelled
+// through the full names of what it is made of (`[]`, `*`, `map[K]V`,
+// `[n]`, a struct's fields), so it is told apart the same way.
 func typeName(t reflect.Type) string {
-	if t.Name() == "" {
-		return t.String()
+	if t.Name() != "" {
+		if t.PkgPath() == "" {
+			return t.Name() // a predeclared type: int, string, any's dynamic kinds
+		}
+		return t.PkgPath() + "." + t.Name()
 	}
-	return t.PkgPath() + "." + t.Name()
+	switch t.Kind() {
+	case reflect.Slice:
+		return "[]" + typeName(t.Elem())
+	case reflect.Array:
+		return "[" + strconv.Itoa(t.Len()) + "]" + typeName(t.Elem())
+	case reflect.Pointer:
+		return "*" + typeName(t.Elem())
+	case reflect.Map:
+		return "map[" + typeName(t.Key()) + "]" + typeName(t.Elem())
+	case reflect.Struct:
+		fields := make([]string, t.NumField())
+		for i := range fields {
+			fields[i] = t.Field(i).Name + " " + typeName(t.Field(i).Type)
+		}
+		return "struct{" + strings.Join(fields, "; ") + "}"
+	}
+	return t.String()
 }

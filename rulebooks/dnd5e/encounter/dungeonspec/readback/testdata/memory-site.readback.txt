@@ -1,0 +1,76 @@
+READ-BACK: Memory Site (memory-site)
+
+THE PLACE
+
+  Memory Site (memory-site)
+    - The site `memory-site` is “Memory Site”, a version 5 site document; its void is transparent, its lighting bright and its standing rule centre-covered.
+        at key
+    - The floor is 2 regions with cells: West room (region-west) and East room (region-east). Summarised: their cells, lighting and ground are not said one by one.
+        at room.room.regions
+    - Summarised: the coordinate frame, 1 wall line with 1 door in their openings, 0 scene items, 0 prop footprints and 0 arrangements. Their positions and shapes are not said one by one.
+        at room.room.walls
+    - The party starts at q 0, r 1, in West room (region-west).
+        at room.room.partyStart
+    - The party's sharing is not set, so it is shared view, the default.
+        at (engine rule)
+    - The door `gate-door` starts closed.
+        at room.room.doorBindings.gate-door
+
+  Where the places join
+    - East room (region-east) and West room (region-west) join at the door `gate-door`. Whether a member may cross there is the door's to say: how the door starts, its lock and its holders are said with the door `gate-door`.
+        at room.room.doorBindings.gate-door
+    - The fight lifts the holders' bar of the join of East room and West room at the door `gate-door`: Guard (g) each hold the door only while posted, up and standing on a cell of the post; one who is down, or drawn off the post, holds nothing. Failing it is losing the fight.
+        at room.room.monsterBindings.g.posts
+
+SIDES
+
+  Faction `watch`
+    - The faction `watch` is Guard (g); its mind (whose knowledge decides how the side stands) is Guard (g).
+        at factions[0]
+
+  How the sides stand
+    - The factions `watch` and `party` start neutral.
+        at dispositions[0]
+
+CREATURES
+
+  Guard (g)
+    - Guard (g) is a dnd5e:monsters:guard of the faction `watch`, standing at q 2, r 0 in West room (region-west), facing e.
+        at room.room.monsterDeclarations[0]
+    - Guard (g) runs the routine `watch` (as `policy`); this routine's state decides its posts and when its body blocks.
+        at room.room.monsterBindings.g.behaviors[0]
+    - While its routine is in the state `posted` or `alert`, Guard (g)'s body blocks the cell it stands on.
+        at room.room.monsterBindings.g.blockingStates
+    - While its routine is in the state `alert` and it stands, up, on q 2, r 0, Guard (g) holds the door `gate-door`: every creature not allied with Guard (g) is barred from crossing it, one way: a crossing that starts on the post's side, West room (region-west), and ends on the far side (the other way is not barred). Several holders hold one door: it is held while any of them holds it.
+        at room.room.monsterBindings.g.posts.alert
+    - While its routine is in the state `posted` and it stands, up, on q 2, r 0, Guard (g) holds the door `gate-door`: every creature not allied with Guard (g) is barred from crossing it, one way: a crossing that starts on the post's side, West room (region-west), and ends on the far side (the other way is not barred). Several holders hold one door: it is held while any of them holds it.
+        at room.room.monsterBindings.g.posts.posted
+
+ROUTINES
+
+  Routine `watch`
+    - The routine `watch` is run by Guard (g); it starts in the state `posted`; its recipe is `site:behaviors:watch`. When it acts from a set of rows, one row whose conditions are true is picked by weight.
+        at behaviorDefinitions.watch
+    - The routine `watch` remembers the flag `warned`, a bool that starts as false.
+        at behaviorDefinitions.watch.recipe.bag.warned
+    - In the state `posted`, Guard (g) listens for 3 beats.
+        at behaviorDefinitions.watch.recipe.states.posted
+    - In the state `posted`, on Guard (g)'s own time (each round Guard (g) is due, out of a fight), Guard (g) acts from its own `post` rows.
+        at behaviorDefinitions.watch.recipe.states.posted.transitions[0]
+    - In the state `posted`, when someone walks into Guard (g) and its body stops them, if Guard (g)'s flag `warned` is set, Guard (g) moves to the state `alert` and acts from its own `alarm` rows (“warned once already”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.
+        at behaviorDefinitions.watch.recipe.states.posted.transitions[1]
+    - In the state `posted`, when someone walks into Guard (g) and its body stops them, Guard (g) moves to the state `posted`, acts from its own `warn` rows and sets `warned` to true (“a first warning”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.
+        at behaviorDefinitions.watch.recipe.states.posted.transitions[2]
+    - In the state `alert`, Guard (g) listens for 1 beat.
+        at behaviorDefinitions.watch.recipe.states.alert
+    - In the state `alert`, on Guard (g)'s own time (each round Guard (g) is due, out of a fight), Guard (g) moves to the state `posted`, clears `warned` and acts from its own `post` rows (“the alarm is raised”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.
+        at behaviorDefinitions.watch.recipe.states.alert.transitions[0]
+    - `alarm` row 1 of `watch`: Guard (g) says “Guards! Guards!” (at `speak`: its words reach everyone in Guard (g)'s room (the wall partition Guard (g) stands in), and anyone in the next room within 30 feet of Guard (g) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand).
+        at behaviorDefinitions.watch.table.alarm[0]
+    - `post` row 1 of `watch`: Guard (g) says “All quiet.” (at `speak`: its words reach everyone in Guard (g)'s room (the wall partition Guard (g) stands in), and anyone in the next room within 30 feet of Guard (g) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand).
+        at behaviorDefinitions.watch.table.post[0]
+    - `warn` row 1 of `watch`: Guard (g) says “Halt.” (at `speak`: its words reach everyone in Guard (g)'s room (the wall partition Guard (g) stands in), and anyone in the next room within 30 feet of Guard (g) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand).
+        at behaviorDefinitions.watch.table.warn[0]
+
+NOT YET SAID
+  Nothing: every authored thing above is said or summarised.

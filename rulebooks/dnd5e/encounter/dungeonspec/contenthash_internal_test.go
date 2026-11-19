@@ -56,9 +56,7 @@ func jsonDrops(v reflect.Value) []jsonDrop {
 					name := "field " + t.String() + "." + f.Name
 					found[name] = jsonDrop{name, typeName(t) + "{"}
 				}
-				if f.IsExported() {
-					walk(fv, depth+1)
-				}
+				walk(fv, depth+1) // unexported fields too: their state is hashed
 			}
 		case reflect.Map:
 			iter := v.MapRange()
@@ -158,6 +156,13 @@ func TestTheEncodingSpellsWhatJSONDrops(t *testing.T) {
 	require.NotEqual(t, enc(encounter.CanvasInput{Void: encounter.VoidIsOpaque()}), enc(encounter.CanvasInput{Void: encounter.VoidIsTransparent()}))
 	require.NotEqual(t, enc(encounter.CanvasInput{Orientation: encounter.HexesArePointyTop()}),
 		enc(encounter.CanvasInput{Orientation: encounter.HexesAreFlatTop()}))
+
+	require.NotEqual(t, enc(holder{[]int(nil)}), enc(holder{[]int{}}), "a nil slice is not an empty one: the engine tells them apart")
+	require.NotEqual(t, enc(holder{map[string]int(nil)}), enc(holder{map[string]int{}}), "nor a nil map an empty one")
+	require.Equal(t, "[]github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter.FieldExit",
+		typeName(reflect.TypeOf([]encounter.FieldExit{})), "an unnamed type is spelled through full names")
+	require.Equal(t, "map[string]*github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter.FieldExit",
+		typeName(reflect.TypeOf(map[string]*encounter.FieldExit{})))
 
 	var buf bytes.Buffer
 	err := canonicalEncode(&buf, reflect.ValueOf(holder{func() {}}), "v", 0)

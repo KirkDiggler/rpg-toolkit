@@ -1,0 +1,134 @@
+# THE MEMORY SITE (rpg-project#1001): one guard whose machine remembers.
+# The first time someone walks into him he warns them and marks that he
+# has (`set: warned`); the second time he remembers the warning and raises
+# the alarm. On his next turn of the clock he forgets it (`clear: warned`)
+# and goes back to his post. memory_test.go reads it back.
+version: 5
+key: memory-site
+play: { void: transparent, lighting: bright, standing: centre-covered }
+factions:
+  - id: watch
+dispositions:
+  - between: [watch, party]
+    stance: neutral
+room:
+  version: 3
+  id: room-1
+  name: Memory Site
+  coordinateFrame: {horizontalPlane: world-xz, verticalAxis: world-y-up,
+    distanceUnit: world-scene-unit, hexRadius: 1,
+    footprintFrame: owner-local-xz}
+  scene:
+    version: 1
+    id: scene-1
+    name: Memory Site
+    items: []
+    groups: []
+  room:
+    implicitRegionId: room-1-region
+    regions:
+      - id: room-1-region
+        name: Memory Site
+        lighting: { intensity: 1 }
+        cells: []
+      - id: region-west
+        name: West room
+        lighting: { intensity: 1 }
+        cells:
+          - r: 0
+            q: [[0, 2]]
+          - r: 1
+            q: [[0, 1]]
+      - id: region-east
+        name: East room
+        lighting: { intensity: 1 }
+        cells:
+          - r: 0
+            q: [[3, 5]]
+    propDeclarations: {}
+    arrangementDeclarations: {}
+    partyStart: {q: 0, r: 1}
+    monsterDeclarations:
+      - id: g
+        ref: dnd5e:monsters:guard
+        startingCell: { location: { q: 2, r: 0 }, facing: e }
+    walls:
+      - id: seam-wall
+        label: seam-wall
+        line:
+          start: {x: 4.33, z: -2}
+          end: {x: 4.33, z: 2}
+        appearance: {assetRef: 'dnd5e:env:test:wall', height: 3, thickness: 0.3, elevation: 0}
+        blocker:
+          blocksMovement: true
+          blocksLineOfSight: true
+          footprint: {width: 4, depth: 0.5, offsetX: 0, offsetZ: 0}
+        openings:
+          - id: seam-gap
+            position: 2
+            width: 1.5
+            door: {id: gate-door, assetRef: 'dnd5e:env:test:door'}
+    doorBindings:
+      gate-door: {closed: true}
+    monsterBindings:
+      g:
+        faction: watch
+        behaviors:
+          - id: policy
+            use: watch
+        behaviorState: policy
+        blockingStates:
+          - posted
+          - alert
+        posts:
+          posted:
+            door: gate-door
+            against: entering
+            at:
+              - { q: 2, r: 0 }
+          alert:
+            door: gate-door
+            against: entering
+            at:
+              - { q: 2, r: 0 }
+behaviorDefinitions:
+  watch:
+    recipe:
+      ref: site:behaviors:watch
+      initial: posted
+      bag:
+        warned: false
+      states:
+        posted:
+          transitions:
+            - on: time
+              do:
+                - pick: post
+            - on: barred
+              when:
+                flag: warned
+              to: alert
+              reason: warned once already
+              do:
+                - pick: alarm
+            - on: barred
+              to: posted
+              reason: a first warning
+              do:
+                - pick: warn
+                - set: {key: warned, value: true}
+        alert:
+          transitions:
+            - on: time
+              to: posted
+              reason: the alarm is raised
+              do:
+                - clear: [warned]
+                - pick: post
+    table:
+      post:
+        - say: All quiet.
+      warn:
+        - say: Halt.
+      alarm:
+        - say: Guards! Guards!

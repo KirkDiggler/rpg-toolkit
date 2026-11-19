@@ -126,7 +126,10 @@ const (
 	KindRoutine      Kind = "routine"
 	KindRoutineState Kind = "routine.state"
 	KindRoutineWake  Kind = "routine.wake"
-	KindRoutineRow   Kind = "routine.row"
+	// KindRoutineFlag is one flag a routine's machine remembers: its bag's
+	// key, its kind and its starting value (rpg-project#1001).
+	KindRoutineFlag Kind = "routine.flag"
+	KindRoutineRow  Kind = "routine.row"
 )
 
 // EngineRule is the path of a statement that says how the engine runs what
@@ -191,6 +194,23 @@ const (
 	ConnBeat = "beat"
 	// ConnTable is a connection to one key of the routine's table of rows.
 	ConnTable = "table"
+	// ConnFlag is a connection to one flag of a routine's memory (its bag),
+	// scoped by the routine the statement's path names, as a state is. The
+	// role says how: "declares" on the flag's own statement (is: its
+	// starting value), "asks" on a step whose condition reads it, "sets" and
+	// "clears" on a step whose act writes it. A reader traces one flag by
+	// kind and id within one routine.
+	ConnFlag = "flag"
+	// ConnAct is one act of a step (rpg-project#1001), role "does": its id
+	// is the act's word, then a colon and what it names where it names
+	// something ("to:alert", "pick:time", "set:hailed", "clear:hailed",
+	// "wake_in", "anchor"); is is its value or count where it has one; at
+	// is its place as the author wrote it ("to", "do[1]", or
+	// "do[0].clear[1]" for one of several flags a clear names). A value
+	// (a set's, a flag's start) is written as its JSON literal, so its kind
+	// reads off it: true, 3, "idle". `to` and `pick` keep their state and
+	// table edges beside this one.
+	ConnAct = "act"
 	// ConnCondition is one condition a step's `when` reads (rpg-project#997),
 	// role "asks": its id is the word as authored with its open part filled
 	// ("heard.claim", "noted:admitted", "noted.anyone:admitted",

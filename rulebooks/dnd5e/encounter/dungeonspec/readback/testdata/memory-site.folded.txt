@@ -1,0 +1,65 @@
+READ-BACK: Memory Site (memory-site)
+
+THE PLACE
+
+  Memory Site (memory-site)
+    - The site `memory-site` is “Memory Site”, a version 5 site document; its void is transparent, its
+        lighting bright and its standing rule centre-covered. [key]
+    - The floor is 2 regions with cells: West room (region-west) and East room (region-east). Summarised:
+        their cells, lighting and ground are not said one by one. [room.room.regions]
+    - Summarised: the coordinate frame, 1 wall line with 1 door in their openings, 0 scene items, 0 prop
+        footprints and 0 arrangements. Their positions and shapes are not said one by one. [room.room.walls]
+    - The party starts at q 0, r 1, in West room (region-west). [room.room.partyStart]
+    - The party's sharing is not set, so it is shared view, the default. [(engine rule)]
+    - The door `gate-door` starts closed. [room.room.doorBindings.gate-door]
+
+  Where the places join
+    - East room (region-east) and West room (region-west) join at the door `gate-door`. Whether a member may
+        cross there is the door's to say: how the door starts, its lock and its holders are said with the door
+        `gate-door`. [room.room.doorBindings.gate-door]
+      - The fight lifts the holders' bar of the join of East room and West room at the door `gate-door`: Guard
+          (g) each hold the door only while posted, up and standing on a cell of the post; one who is down, or
+          drawn off the post, holds nothing. Failing it is losing the fight. [room.room.monsterBindings.g
+          .posts]
+
+SIDES
+
+  Faction `watch`
+    - The faction `watch` is Guard (g); its mind (whose knowledge decides how the side stands) is Guard (g).
+        [factions[0]]
+
+  How the sides stand
+    - The factions `watch` and `party` start neutral. [dispositions[0]]
+
+CREATURES
+
+  Guard (g): a dnd5e:monsters:guard of `watch` at q 2, r 0 in West room, facing e
+      [room.room.monsterDeclarations[0]]
+    - Runs the routine `watch` (as `policy`), whose state decides its posts and blocking. [.behaviors[0]]
+    - While its routine is in `posted` or `alert`, the guard's body blocks the cell it stands on.
+        [.blockingStates]
+    - While its routine is in `alert` or `posted` and the guard stands, up, on q 2, r 0, it holds the door
+        `gate-door` against anyone not allied with it, one way: from its side (West room) to the far side.
+        [.posts.alert, .posts.posted]
+
+ROUTINES
+
+  Routine `watch` — run by Guard (g); starts in `posted`; recipe `site:behaviors:watch`.
+      [behaviorDefinitions.watch]
+    - Memory (it is the runner):
+      - Remembers the flag `warned`, a bool that starts as false. [warned]
+    - States (it is the runner):
+      - In `posted`, on its time (out of a fight) → acts from its `post` rows. [posted.transitions[0]]
+      - In `posted`, when someone walks into it and its body stops them, if its flag `warned` is set → to
+          `alert` and acts from its `alarm` rows (“warned once already”). [posted.transitions[1]]
+      - In `posted`, when someone walks into it and its body stops them → to `posted`, acts from its `warn`
+          rows and sets `warned` to true (“a first warning”). [posted.transitions[2]]
+      - In `alert`, on its time (out of a fight) → to `posted`, clears `warned` and acts from its `post` rows
+          (“the alarm is raised”). [alert.transitions[0]]
+    - Rows (one whose conditions are true is picked by weight):
+      - `alarm`: says “Guards! Guards!” [alarm[0]]
+      - `post`: says “All quiet.” [post[0]]
+      - `warn`: says “Halt.” [warn[0]]
+
+NOT YET SAID
+  Nothing: every authored thing above is said or summarised.

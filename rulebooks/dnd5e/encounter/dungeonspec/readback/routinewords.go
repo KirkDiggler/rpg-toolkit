@@ -122,7 +122,8 @@ func guardWordsAt(g *machine.Guard, who string, on machine.Beat, at string, not 
 		}
 	}
 	if g.Flag != "" {
-		add(fill(cond("flag:").Long, "whose", whose(who), "id", quote(g.Flag)), []Connection{asks(cond("flag:").Word+g.Flag, "", machine.OpEq)})
+		add(fill(cond("flag:").Long, "whose", whose(who), "id", quote(g.Flag)), []Connection{asks(cond("flag:").Word+g.Flag, "", machine.OpEq),
+			{Kind: ConnFlag, ID: g.Flag, Role: "asks"}})
 	}
 	if g.Scope != nil {
 		if g.Scope.Within > 0 {

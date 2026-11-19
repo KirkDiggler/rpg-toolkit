@@ -85,6 +85,31 @@
 //	{condition, noted:admitted, asks, is: true, at: when.all[1]}
 //	{topic, admitted, asks}
 //
+// # What a machine does and remembers (rpg-project#1001)
+//
+// Every act of a step is one connection of kind `act` ([ConnAct]), role
+// `does`, in the order the author wrote them: id the act's word, then a
+// colon and what it names where it names something; is its value or count;
+// at its place.
+//
+//	{act, to:alert, does, at: to}
+//	{act, pick:post, does, at: do[0]}
+//	{act, set:warned, does, is: true, at: do[1]}
+//	{act, clear:warned, does, at: do[0].clear[0]}
+//	{act, wake_in, does, is: 3, at: do[2]}
+//	{act, anchor, does, at: do[3]}
+//
+// A value is its JSON literal (true, 2, "idle"), so its kind reads off it.
+// `to` and `pick` keep their {state, …, to} and {table, …, picks} edges.
+//
+// A routine's memory (its recipe's bag) is one statement per flag, kind
+// `routine.flag`, at `behaviorDefinitions.<routine>.recipe.bag.<flag>`,
+// with {flag, <flag>, declares, is: <its starting value>}. A step that
+// reads the flag carries {flag, <flag>, asks} beside its `flag:<flag>`
+// condition; one that sets or clears it carries {flag, <flag>, sets} or
+// {flag, <flag>, clears} beside its act. A reader traces one flag by kind
+// `flag` and its id within one routine (the statement's path names it).
+//
 // # Nothing skipped silently
 //
 // Whatever the file authors and this package cannot yet say is listed in

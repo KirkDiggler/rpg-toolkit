@@ -732,8 +732,11 @@ func foldRoutine(g Group) Item {
 	var finalPaths []string
 	rows := map[string][]Item{}
 	var keys []string
+	memory := Item{Text: "Memory (it is the runner):", Base: base + ".recipe.bag."}
 	for _, st := range g.Statements {
 		switch st.Kind {
+		case KindRoutineFlag:
+			memory.Items = append(memory.Items, Item{Text: st.fold.text, Paths: []string{st.Path}})
 		case KindRoutine:
 			head.Text += " — " + st.fold.text
 			head.Paths = []string{st.Path}
@@ -763,6 +766,9 @@ func foldRoutine(g Group) Item {
 			}
 			rows[st.fold.state] = append(rows[st.fold.state], Item{Text: st.fold.text, Paths: []string{st.Path}})
 		}
+	}
+	if len(memory.Items) > 0 {
+		head.Items = append(head.Items, memory)
 	}
 	states := Item{Text: "States (it is the runner):", Base: base + ".recipe.states."}
 	for _, t := range order {
