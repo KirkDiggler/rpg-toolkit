@@ -58,7 +58,47 @@ const (
 	// SlotLoudness is a loudness this rulebook names ([Loudnesses]):
 	// `heard.loudness:shout`.
 	SlotLoudness OpenSlot = "loudness"
+	// SlotState is a state of this machine: `to`.
+	SlotState OpenSlot = "state"
+	// SlotList is a list (a key) this machine's table has: `pick`.
+	SlotList OpenSlot = "list"
+	// SlotFlag is a key this machine's bag declares: `flag`, `set`, `clear`.
+	SlotFlag OpenSlot = "flag"
+	// SlotOp is a comparison, one of the table's Ops: `rounds`.
+	SlotOp OpenSlot = "op"
+	// SlotCondition is a condition built from this table: `all`, `any`,
+	// `not`.
+	SlotCondition OpenSlot = "condition"
 )
+
+// Arg is one thing a word takes: what a studio offers for it, and which
+// slot of the word's label and sentences it fills.
+type Arg struct {
+	// Slot is the label slot it fills: "{id}", "{value}", "{n}", "{op}",
+	// "{parts}", "{inner}".
+	Slot string
+	// Names is what it names: a state, a list, a flag, a fact, a topic, a
+	// deed, a clock, a loudness, an op, a condition; SlotNone for a plain
+	// value.
+	Names OpenSlot
+	// Kind is its type: "string", "int" or "bool"; "key" for a value of
+	// the kind the flag it sets was declared with; "condition" for one
+	// condition, "conditions" for several.
+	Kind string
+	// Values is the closed set it may be, in order; empty for an open one.
+	Values []string
+	// Many is true when it may name several (`clear` forgets several flags).
+	Many bool
+}
+
+// cloneArgs is args with its Values copied.
+func cloneArgs(args []Arg) []Arg {
+	out := slices.Clone(args)
+	for i := range out {
+		out[i].Values = slices.Clone(out[i].Values)
+	}
+	return out
+}
 
 // BeatWord is one beat a step can be on.
 type BeatWord struct {
@@ -74,6 +114,9 @@ type BeatWord struct {
 	// Names is a beat whose event names the one it is about: `noted:` may
 	// be read on it.
 	Names bool
+	// Args is what the beat takes: an open beat's part (`deed:<word>`);
+	// empty for a whole word.
+	Args []Arg
 	// About is the read-back's words for the one a naming beat is about;
 	// empty exactly when Names is false.
 	About string
@@ -107,6 +150,9 @@ type ConditionWord struct {
 	// Values is the closed set of values it may ask, in the order a refusal
 	// lists them; empty for an open value.
 	Values []string
+	// Args is what it takes, in order: its open part, the value it
+	// compares, a comparison, a count, the conditions a node holds.
+	Args []Arg
 	// On is the beats it may be read on, as [BeatWord.Word] spells them, in
 	// table order: a whole beat, or an open family's word (`deed:`) for
 	// every beat of that family; empty for any beat.
@@ -174,6 +220,9 @@ func (f beatFamily) beats() []string {
 type ActWord struct {
 	// Word is as authored: "to", "pick", "wake_in", "set", "clear", "anchor".
 	Word string
+	// Args is what it takes, in order; empty for one that takes nothing
+	// (`anchor`).
+	Args []Arg
 	// On is the beats a step may do it on, spelled as [ConditionWord.On];
 	// empty for any beat.
 	On []string
@@ -236,6 +285,24 @@ func OpWordsOf(op string) (string, bool) {
 	return "", false
 }
 
+// argValues is a closed set as strings.
+func argValues[T ~string](vs []T) []string {
+	out := make([]string, len(vs))
+	for i, v := range vs {
+		out[i] = string(v)
+	}
+	return out
+}
+
+// The arguments the table's words share.
+var (
+	argCount   = Arg{Slot: "{n}", Kind: "int"}
+	argYesNo   = Arg{Slot: "{value}", Kind: "bool"}
+	argFlag    = Arg{Slot: "{id}", Names: SlotFlag, Kind: "string"}
+	argOneCond = Arg{Slot: "{inner}", Names: SlotCondition, Kind: "condition"}
+	argConds   = Arg{Slot: "{parts}", Names: SlotCondition, Kind: "conditions"}
+)
+
 // The beats in the order every refusal lists them: the fixed words, then
 // the open families.
 var machineBeatWords = []BeatWord{
@@ -279,9 +346,11 @@ var machineBeatWords = []BeatWord{
 			"character's own step ended within the approach distance, {who} sees them and they see {who}, {who} offers them a line " +
 			"that steps the conversation, no nearer carrier qualifies, and the conversation is addressing no one"},
 	{Word: deedPrefix, Open: SlotDeed, Scoped: true, Label: "{id} is done",
+		Args:  []Arg{{Slot: "{id}", Names: SlotDeed, Kind: "string", Values: WhenDeeds}},
 		Short: "when the deed {id} is done",
 		Long:  "when the deed {id} is done"},
 	{Word: beatClock, Open: SlotClock, Label: "a round of {id}",
+		Args:  []Arg{{Slot: "{id}", Names: SlotClock, Kind: "string"}},
 		Short: "on the beat {beat}",
 		Long:  "on the beat {beat}"},
 }
@@ -290,56 +359,65 @@ var machineBeatWords = []BeatWord{
 var machineConditionWords = []ConditionWord{
 	{Word: string(factEnemy), Fact: true, Kind: "string",
 		Values: []string{string(EnemySeen), string(EnemyRemembered), string(EnemyNone)}, StatesForm: "{ enemy }",
+		Args:        []Arg{{Slot: "{value}", Kind: "string", Values: []string{string(EnemySeen), string(EnemyRemembered), string(EnemyNone)}}},
 		Label:       "an enemy is {value}",
 		ValueLabels: map[string]string{string(EnemySeen): "sees an enemy", string(EnemyRemembered): "remembers an enemy", string(EnemyNone): "knows of no enemy"},
 		Long:        "{whose} {name} is {op} {value}"},
 	{Word: factPrefix, Open: SlotFact, Fact: true, Kind: "bool", StatesForm: "{ fact }",
+		Args:  []Arg{{Slot: "{id}", Names: SlotFact, Kind: "string"}, argYesNo},
 		Label: "has learned {id}", LabelNot: "has not learned {id}",
 		Long: "{who} knows the fact {id}"},
 	{Word: "heard.kind", Fact: true, Kind: "string", Values: []string{SoundBoom, SoundCrash, SoundClang, SoundVoice},
+		Args:  []Arg{{Slot: "{value}", Kind: "string", Values: []string{SoundBoom, SoundCrash, SoundClang, SoundVoice}}},
 		Label: "it was a {value}",
 		ValueLabels: map[string]string{SoundBoom: "it was a boom", SoundCrash: "it was a crash", SoundClang: "it was a clang",
 			SoundVoice: "it was a voice"},
 		Long: "what {who} heard was a {value}"},
 	{Word: heardLoudnessPrefix, Open: SlotLoudness, Fact: true, Kind: "bool",
+		Args:  []Arg{{Slot: "{id}", Names: SlotLoudness, Kind: "string", Values: argValues(Loudnesses)}, argYesNo},
 		Label: "it was at least a {id}",
 		Long:  "what {who} heard was a voice{raised} (a clang, a crash or a boom is at no loudness)"},
 	{Word: string(factHeardClaim), Fact: true, Kind: "string", Values: []string{ClaimHeld, ClaimFailed}, On: []string{string(beatHeard)},
+		Args:        []Arg{{Slot: "{value}", Kind: "string", Values: []string{ClaimHeld, ClaimFailed}}},
 		Label:       "it was a claim that {value}",
 		ValueLabels: map[string]string{ClaimHeld: "it was a claim that held", ClaimFailed: "it was a claim that failed"},
 		Long:        "what {who} heard was a claim that {value}"},
 	{Word: notedPrefix, Open: SlotTopic, Fact: true, Kind: "bool", family: familyNaming,
+		Args:  []Arg{{Slot: "{id}", Names: SlotTopic, Kind: "string"}, argYesNo},
 		Label: "has noted {id} about them", LabelNot: "has not noted {id} about them",
 		Long: "{who} {verb} {id} about {about}"},
 	{Word: notedAnyonePrefix, Open: SlotTopic, engine: topicPrefix, Fact: true, Kind: "bool",
+		Args:  []Arg{{Slot: "{id}", Names: SlotTopic, Kind: "string"}, argYesNo},
 		Label: "has noted {id} about anyone", LabelNot: "has not noted {id} about anyone",
 		Long: "{who} {verb} {id} about anyone"},
-	{Word: "flag", Kind: "bool",
+	{Word: "flag", Kind: "bool", Args: []Arg{argFlag},
 		Label: "{id} is set",
 		Long:  "{whose} flag {id} is set"},
-	{Word: "within", Kind: "int", family: familyScoped,
+	{Word: "within", Kind: "int", family: familyScoped, Args: []Arg{argCount},
 		Label: "within {n} cells",
 		Long:  "it happened within {n} cells of {who}"},
-	{Word: "regions", Kind: "int", family: familyScoped,
+	{Word: "regions", Kind: "int", family: familyScoped, Args: []Arg{argCount},
 		Label: "within {n} rooms",
 		Long:  "it happened within {n} rooms of {who}"},
 	{Word: "rounds", Kind: "int",
+		Args:  []Arg{{Slot: "{op}", Names: SlotOp, Kind: "string", Values: []string{string(machine.OpEq), string(machine.OpGte)}}, argCount},
 		Label: "{op} {n} rounds since it marked the moment",
 		Long:  "{op} {n} rounds have passed since {who} set its anchor"},
-	{Word: "all", Join: " and ", Label: "all of these", Long: "{parts}"},
-	{Word: "any", Join: ", or ", Label: "any of these", Long: "({parts})"},
-	{Word: "not", StatesForm: "{ not }", Label: "not this", Long: "NOT ({inner})"},
+	{Word: "all", Join: " and ", Args: []Arg{argConds}, Label: "all of these", Long: "{parts}"},
+	{Word: "any", Join: ", or ", Args: []Arg{argConds}, Label: "any of these", Long: "({parts})"},
+	{Word: "not", StatesForm: "{ not }", Args: []Arg{argOneCond}, Label: "not this", Long: "NOT ({inner})"},
 }
 
 // The acts, the move first.
 var machineActWords = []ActWord{
-	{Word: "to", Label: "changes to {id}", Short: "to {id}", Long: "moves to the state {id}"},
+	{Word: "to", Args: []Arg{{Slot: "{id}", Names: SlotState, Kind: "string"}}, Label: "changes to {id}", Short: "to {id}", Long: "moves to the state {id}"},
 	{Word: "pick", family: familyPicks, StatesForm: "{ pick: <key> }",
+		Args:  []Arg{{Slot: "{id}", Names: SlotList, Kind: "string"}},
 		Label: "acts from the {id} list", Short: "acts from its {id} rows", Long: "acts from its own {id} rows"},
-	{Word: "wake_in", StatesForm: "{ wake_in: N }",
+	{Word: "wake_in", StatesForm: "{ wake_in: N }", Args: []Arg{argCount},
 		Label: "waits {n} rounds", Short: "wakes again in {n} rounds", Long: "wakes again in {n} rounds"},
-	{Word: "set", Label: "sets {id} to {value}", Short: "sets {id} to {value}", Long: "sets {id} to {value}"},
-	{Word: "clear", Label: "forgets {id}", Short: "clears {id}", Long: "clears {id}"},
+	{Word: "set", Args: []Arg{argFlag, {Slot: "{value}", Kind: "key"}}, Label: "sets {id} to {value}", Short: "sets {id} to {value}", Long: "sets {id} to {value}"},
+	{Word: "clear", Args: []Arg{{Slot: "{id}", Names: SlotFlag, Kind: "string", Many: true}}, Label: "forgets {id}", Short: "clears {id}", Long: "clears {id}"},
 	{Word: "anchor", StatesForm: "{ anchor: true }",
 		Label: "marks the moment", Short: "sets its anchor", Long: "sets its anchor to this moment"},
 }
@@ -358,14 +436,19 @@ func MachineWords() MachineWordsTable {
 		Acts:       slices.Clone(machineActWords),
 		Ops:        slices.Clone(machineOpWords),
 	}
+	for i := range out.Beats {
+		out.Beats[i].Args = cloneArgs(out.Beats[i].Args)
+	}
 	for i := range out.Conditions {
 		c := &out.Conditions[i]
+		c.Args = cloneArgs(c.Args)
 		c.Values = slices.Clone(c.Values)
 		c.ValueLabels = maps.Clone(c.ValueLabels)
 		c.On, c.engine, c.family = c.allowedOn(), "", familyNone
 	}
 	for i := range out.Acts {
 		a := &out.Acts[i]
+		a.Args = cloneArgs(a.Args)
 		a.On, a.family = a.allowedOn(), familyNone
 	}
 	return out
