@@ -281,6 +281,17 @@ func roomMembers(gp *RoomGameplaySource) members {
 // a mind or a faction-of-one is judged, and the dispositions come last because
 // an `until` is judged against the whole stance table.
 func siteGrammar(s *SingleRoomSpec, add errSink) {
+	// ONE REFUSAL ONCE: a definition's refused step is said by the content
+	// grammar and again by every creature that runs it, at the same path in
+	// the same words (rpg-project#997); the author reads it once.
+	seen := map[[2]string]bool{}
+	sink := add
+	add = func(path, message string) {
+		if key := [2]string{path, message}; !seen[key] {
+			seen[key] = true
+			sink(path, message)
+		}
+	}
 	gp := &s.Room.Gameplay
 	// NO "DID THIS DOCUMENT AUTHOR ANY OF IT" SHORTCUT. Every function below
 	// is INERT on a document that declares nothing — no faction to index, no

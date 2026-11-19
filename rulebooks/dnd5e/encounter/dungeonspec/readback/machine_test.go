@@ -141,13 +141,11 @@ type MachineCastleSuite struct {
 func TestMachineCastleSuite(t *testing.T) { suite.Run(t, new(MachineCastleSuite)) }
 
 func (s *MachineCastleSuite) SetupSuite() {
-	raw, err := os.ReadFile(castlePath)
-	s.Require().NoError(err)
+	raw, rb := theCastle(s.T())
 	var n yaml.Node
 	s.Require().NoError(yaml.Unmarshal(raw, &n))
 	s.doc = n.Content[0]
-	s.rb, err = readback.Of(raw)
-	s.Require().NoError(err)
+	s.rb = rb
 }
 
 var wakePath = regexp.MustCompile(`^behaviorDefinitions\.([^.]+)\.recipe\.states\.([^.]+)\.transitions\[(\d+)\]$`)

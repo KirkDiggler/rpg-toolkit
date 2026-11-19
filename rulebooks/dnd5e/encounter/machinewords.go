@@ -1,0 +1,375 @@
+// Copyright (C) 2026 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package encounter
+
+import (
+	"slices"
+	"strings"
+
+	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
+)
+
+// machinewords.go is THE MACHINE'S WORDS (rpg-project#997, #1001): one table
+// of every word a machine's step may use — the beats it can be on, what its
+// condition can read, what it can do — with where each is allowed and how
+// each is said. The vocabulary the machine compiles against, the refusals
+// that say where a word is allowed, the content compiler's own refusals and
+// the read-back's sentences all read it, so none can say a word the others
+// do not know.
+//
+// A WORD IS AS AUTHORED: "heard", "noted:" (a prefix whose open slot is a
+// topic), "deed:" (a deed word). Where content is lowered before the engine
+// sees it ("noted.anyone:" becomes the engine's "topic:"), Engine names the
+// engine's spelling.
+//
+// THE WORDS ARE SAID THREE WAYS: Long, the read-back's sentence template;
+// Short, its folded form; Label, a few plain words for an arrow or a
+// dropdown. A template's slots, in braces, are filled by the read-back:
+// {who} the runner, {whose} its possessive, {id} the open slot's value
+// (quoted), {value} a condition's value, {n} a count, {op} a comparison,
+// {verb} a noting's polarity ("has noted" / "has not noted"), {about} the
+// one a beat names, {raised} a loudness, {name} a fact's own word, {beat}
+// the whole beat (quoted), {parts} a node's parts joined by its Join, and
+// {inner} the guard a `not` wraps.
+
+// OpenSlot is what fills a prefix word's open part, and from where.
+type OpenSlot string
+
+const (
+	// SlotNone is a whole word: nothing follows it.
+	SlotNone OpenSlot = ""
+	// SlotDeed is a deed word this rulebook names ([WhenDeeds]): `deed:attacked`.
+	SlotDeed OpenSlot = "deed"
+	// SlotClock is a clock the document declares: `clock:bell:gong`.
+	SlotClock OpenSlot = "clock"
+	// SlotFact is a fact the document can set: `fact:gate-cowed`.
+	SlotFact OpenSlot = "fact"
+	// SlotTopic is a topic something in the document gives: `noted:admitted`.
+	SlotTopic OpenSlot = "topic"
+	// SlotLoudness is a loudness this rulebook names ([Loudnesses]):
+	// `heard.loudness:shout`.
+	SlotLoudness OpenSlot = "loudness"
+)
+
+// BeatWord is one beat a step can be on.
+type BeatWord struct {
+	// Word is the beat as authored: "heard", or a prefix "deed:", "clock:".
+	Word string
+	// Open is what follows a prefix word; SlotNone for a whole word.
+	Open OpenSlot
+	// Timed is a beat the clock raises (`time`, `turn`).
+	Timed bool
+	// Scoped is a beat that happened somewhere: `within` and `regions` may
+	// be asked of it.
+	Scoped bool
+	// Names is a beat whose event names the one it is about: `noted:` may
+	// be read on it.
+	Names bool
+	// Picks is a beat a step may act on with `pick`.
+	Picks bool
+	// Label is a few plain words for an arrow or a dropdown.
+	Label string
+	// Short is the read-back's folded form, about "it".
+	Short string
+	// Long is the read-back's sentence template.
+	Long string
+}
+
+// ConditionWord is one thing a step's condition can read: an engine fact
+// (Fact true) or a machine guard leaf.
+type ConditionWord struct {
+	// Word is as authored: "heard.claim", "noted:", "fact:", "within", "all".
+	Word string
+	// Open is what follows a prefix word.
+	Open OpenSlot
+	// Engine is the engine's spelling once content is lowered, where it
+	// differs from Word ("topic:" for "noted.anyone:").
+	Engine string
+	// Fact is true for an engine fact a `fact:` guard leaf names; false for
+	// a machine guard leaf (`flag`, `within`, `regions`, `rounds`, `all`,
+	// `any`, `not`).
+	Fact bool
+	// Kind is the value's kind: "bool", "string" or "int"; empty for a
+	// leaf that carries none (`all`, `any`, `not`).
+	Kind string
+	// Values is the closed set of values it may ask, in the order a refusal
+	// lists them; empty for an open value.
+	Values []string
+	// On is the beats it may be read on, in the order a refusal lists them;
+	// empty for any beat.
+	On []string
+	// StatesForm is how the states dialect writes it in a `when`
+	// ("{ enemy }"); empty where the dialect does not read it.
+	StatesForm string
+	// Join is how the read-back joins a node's parts: " and " for `all`,
+	// ", or " for `any`; empty for a leaf.
+	Join string
+	// Label is a few plain words for an arrow.
+	Label string
+	// Long is the read-back's sentence template.
+	Long string
+}
+
+// ActWord is one thing a step can do: move (`to`) or an act.
+type ActWord struct {
+	// Word is as authored: "to", "pick", "wake_in", "set", "clear", "anchor".
+	Word string
+	// On is the beats a step may do it on; empty for any beat.
+	On []string
+	// StatesForm is how the states dialect writes it in `do`
+	// ("{ pick: <key> }"); empty where the dialect does not take it.
+	StatesForm string
+	// Label is a few plain words for an arrow.
+	Label string
+	// Short is the read-back's folded form.
+	Short string
+	// Long is the read-back's sentence form.
+	Long string
+}
+
+// MachineWordsTable is every word a machine's step may use, with where each
+// is allowed and how each is said.
+type MachineWordsTable struct {
+	Beats      []BeatWord
+	Conditions []ConditionWord
+	Acts       []ActWord
+}
+
+// The beats in the order every refusal lists them: the fixed words, then
+// the open families.
+var machineBeatWords = []BeatWord{
+	{Word: "time", Timed: true, Picks: true, Label: "time passes",
+		Short: "on its time (out of a fight)",
+		Long:  "on {whose} own time (each round {who} is due, out of a fight)"},
+	{Word: "turn", Timed: true, Picks: true, Label: "its turn in a fight",
+		Short: "on its turn in a fight",
+		Long:  "on {whose} turn in a fight"},
+	{Word: "heard", Scoped: true, Names: true, Label: "hears something",
+		Short: "on hearing a sound (a character's line at once)",
+		Long:  "when {who} hears a sound (a line a character says is heard at once, as it is said)"},
+	{Word: "deed", Scoped: true, Label: "a deed is done",
+		Short: "when a deed is done",
+		Long:  "when a deed is done"},
+	{Word: "seen", Scoped: true, Names: true, Label: "sees someone opposed",
+		Short: "when an opposed creature comes into its sight",
+		Long:  "when an opposed creature comes into {whose} sight"},
+	{Word: "fact", Label: "learns a fact",
+		Short: "on learning a fact",
+		Long:  "when {who} learns a fact"},
+	{Word: "topic", Label: "notes a topic about someone",
+		Short: "on noting a topic about someone (judged or heard)",
+		Long:  "when {who} notes a topic about someone, by its own judgement or by hearing it"},
+	{Word: "clock:world", Label: "a round of world time",
+		Short: "on each round of world time",
+		Long:  "on each round of world time (out of a fight)"},
+	{Word: "clock:fight", Label: "a round of its side's fight",
+		Short: "on each round of a fight its side is in",
+		Long:  "on each round of a fight {whose} side is in"},
+	{Word: "barred", Scoped: true, Names: true, Picks: true, Label: "someone walks into him",
+		Short: "when someone walks into it and its body stops them",
+		Long:  "when someone walks into {who} and its body stops them"},
+	{Word: "approached", Scoped: true, Names: true, Picks: true, Label: "hails someone",
+		Short: "when it is the carrier that hails a character (only under the conversation's hail rule)",
+		Long: "when {who} hails a character, which happens only under the conversation's hail rule: the " +
+			"character's own step ended within the approach distance, {who} sees them and they see {who}, {who} offers them a line " +
+			"that steps the conversation, no nearer carrier qualifies, and the conversation is addressing no one"},
+	{Word: deedPrefix, Open: SlotDeed, Scoped: true, Label: "this deed is done",
+		Short: "when the deed {id} is done",
+		Long:  "when the deed {id} is done"},
+	{Word: beatClock, Open: SlotClock, Label: "a round of this clock",
+		Short: "on the beat {beat}",
+		Long:  "on the beat {beat}"},
+}
+
+// The conditions, engine facts first, then the machine's guard leaves.
+var machineConditionWords = []ConditionWord{
+	{Word: string(factEnemy), Fact: true, Kind: "string",
+		Values: []string{string(EnemySeen), string(EnemyRemembered), string(EnemyNone)}, StatesForm: "{ enemy }",
+		Label: "knows of an enemy: {value}",
+		Long:  "{whose} {name} is {op} {value}"},
+	{Word: factPrefix, Open: SlotFact, Fact: true, Kind: "bool", StatesForm: "{ fact }",
+		Label: "knows {id}",
+		Long:  "{who} knows the fact {id}"},
+	{Word: "heard.kind", Fact: true, Kind: "string", Values: []string{SoundBoom, SoundCrash, SoundClang, SoundVoice},
+		Label: "what he heard was a {value}",
+		Long:  "what {who} heard was a {value}"},
+	{Word: heardLoudnessPrefix, Open: SlotLoudness, Fact: true, Kind: "bool",
+		Label: "what he heard was raised to {id}",
+		Long:  "what {who} heard was a voice{raised} (a clang, a crash or a boom is at no loudness)"},
+	{Word: string(factHeardClaim), Fact: true, Kind: "string", Values: []string{ClaimHeld, ClaimFailed}, On: []string{string(beatHeard)},
+		Label: "what he heard was a claim that {value}",
+		Long:  "what {who} heard was a claim that {value}"},
+	{Word: notedPrefix, Open: SlotTopic, Fact: true, Kind: "bool", On: []string{"naming"},
+		Label: "has noted {id} about them",
+		Long:  "{who} {verb} {id} about {about}"},
+	{Word: notedAnyonePrefix, Open: SlotTopic, Engine: topicPrefix, Fact: true, Kind: "bool",
+		Label: "has noted {id} about anyone",
+		Long:  "{who} {verb} {id} about anyone"},
+	{Word: "flag", Kind: "bool",
+		Label: "its flag {id} is set",
+		Long:  "{whose} flag {id} is set"},
+	{Word: "within", Kind: "int", On: []string{"scoped"},
+		Label: "within {n} cells",
+		Long:  "it happened within {n} cells of {who}"},
+	{Word: "regions", Kind: "int", On: []string{"scoped"},
+		Label: "within {n} rooms",
+		Long:  "it happened within {n} rooms of {who}"},
+	{Word: "rounds", Kind: "int",
+		Label: "{op} {n} rounds since its anchor",
+		Long:  "{op} {n} rounds have passed since {who} set its anchor"},
+	{Word: "all", Join: " and ", Label: "all of these", Long: "{parts}"},
+	{Word: "any", Join: ", or ", Label: "any of these", Long: "({parts})"},
+	{Word: "not", StatesForm: "{ not }", Label: "not this", Long: "NOT ({inner})"},
+}
+
+// The acts, the move first.
+var machineActWords = []ActWord{
+	{Word: "to", Label: "goes to {id}", Short: "to {id}", Long: "moves to the state {id}"},
+	{Word: "pick", On: []string{"picks"}, StatesForm: "{ pick: <key> }",
+		Label: "acts from {id}", Short: "acts from its {id} rows", Long: "acts from its own {id} rows"},
+	{Word: "wake_in", StatesForm: "{ wake_in: N }",
+		Label: "sleeps {n} rounds", Short: "wakes again in {n} rounds", Long: "wakes again in {n} rounds"},
+	{Word: "set", Label: "sets {id}", Short: "sets {id} to {value}", Long: "sets {id} to {value}"},
+	{Word: "clear", Label: "clears {id}", Short: "clears {id}", Long: "clears {id}"},
+	{Word: "anchor", StatesForm: "{ anchor: true }",
+		Label: "marks the moment", Short: "sets its anchor", Long: "sets its anchor to this moment"},
+}
+
+// notedAnyonePrefix is the content word for a topic noted about anybody
+// (rpg-project#1005), lowered to the engine's [topicPrefix].
+const notedAnyonePrefix = "noted.anyone:"
+
+// MachineWords is the table of every word a machine's step may use. The
+// slices are copies: a caller's change reaches nothing.
+func MachineWords() MachineWordsTable {
+	out := MachineWordsTable{
+		Beats:      slices.Clone(machineBeatWords),
+		Conditions: slices.Clone(machineConditionWords),
+		Acts:       slices.Clone(machineActWords),
+	}
+	for i := range out.Conditions {
+		out.Conditions[i].Values = slices.Clone(out.Conditions[i].Values)
+		out.Conditions[i].On = slices.Clone(out.Conditions[i].On)
+	}
+	for i := range out.Acts {
+		out.Acts[i].On = slices.Clone(out.Acts[i].On)
+	}
+	return out
+}
+
+// BeatWordOf is the table's entry for a beat as authored: its whole word,
+// else its prefix family; false for a beat the table does not have.
+func BeatWordOf(on string) (BeatWord, bool) {
+	for _, b := range machineBeatWords {
+		if b.Open == SlotNone && b.Word == on {
+			return b, true
+		}
+	}
+	for _, b := range machineBeatWords {
+		if b.Open != SlotNone && strings.HasPrefix(on, b.Word) && len(on) > len(b.Word) {
+			return b, true
+		}
+	}
+	return BeatWord{}, false
+}
+
+// ConditionWordOf is the table's entry for a condition by its word or its
+// engine spelling ("noted.anyone:x" and "topic:x" both find
+// `noted.anyone:`); false for a word the table does not have.
+func ConditionWordOf(name string) (ConditionWord, bool) {
+	for _, c := range machineConditionWords {
+		if c.Open == SlotNone && c.Word == name {
+			return c, true
+		}
+	}
+	for _, c := range machineConditionWords {
+		if c.Open == SlotNone {
+			continue
+		}
+		for _, prefix := range []string{c.Word, c.Engine} {
+			if prefix != "" && strings.HasPrefix(name, prefix) && len(name) > len(prefix) {
+				return c, true
+			}
+		}
+	}
+	return ConditionWord{}, false
+}
+
+// ActWordOf is the table's entry for an act or the move.
+func ActWordOf(word string) (ActWord, bool) {
+	for _, a := range machineActWords {
+		if a.Word == word {
+			return a, true
+		}
+	}
+	return ActWord{}, false
+}
+
+// beatsWhere is every fixed beat (and the deed family) for which keep
+// holds, in table order: the list a refusal names.
+func beatsWhere(keep func(BeatWord) bool) []string {
+	var out []string
+	for _, b := range machineBeatWords {
+		if b.Open == SlotNone && keep(b) {
+			out = append(out, b.Word)
+		}
+	}
+	return out
+}
+
+// ConditionOn is the beats a condition may be read on, its "naming" and
+// "scoped" families expanded; nil for any beat.
+func (c ConditionWord) ConditionOn() []string {
+	return expandOn(c.On)
+}
+
+// ActOn is the beats an act may be done on, its "picks" family expanded;
+// nil for any beat.
+func (a ActWord) ActOn() []string {
+	return expandOn(a.On)
+}
+
+// expandOn expands the beat families a table entry names.
+func expandOn(on []string) []string {
+	if len(on) == 0 {
+		return nil
+	}
+	var out []string
+	for _, w := range on {
+		switch w {
+		case "naming":
+			out = append(out, beatsWhere(func(b BeatWord) bool { return b.Names })...)
+		case "scoped":
+			out = append(out, beatsWhere(func(b BeatWord) bool { return b.Scoped })...)
+		case "picks":
+			out = append(out, beatsWhere(func(b BeatWord) bool { return b.Picks })...)
+		default:
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
+// allowedOn reports whether a beat as authored is one of on's beats: a
+// family member counts as its family's prefix ("deed:attacked" is on a
+// list holding "deed" only when the family is scoped like it).
+func allowedOn(on []string, beat machine.Beat) bool {
+	if len(on) == 0 {
+		return true
+	}
+	if slices.Contains(on, string(beat)) {
+		return true
+	}
+	if b, ok := BeatWordOf(string(beat)); ok && b.Open != SlotNone {
+		for _, w := range on {
+			if bw, ok := BeatWordOf(w); ok && bw.Open == SlotNone && bw.Word+":" == b.Word {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// pickWord is the table's `pick` act: the beats a step may pick on.
+var pickWord, _ = ActWordOf("pick")

@@ -10,6 +10,8 @@ github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.25.0 h1:KCr1o6w2QEC7SWiB7MOS
 github.com/KirkDiggler/rpg-toolkit/mind/behavior v0.25.0/go.mod h1:HdjrZ//tpraKZq9rW0v2cgJuRHvITmEO3XAsIvg+pVE=
 github.com/KirkDiggler/rpg-toolkit/mind/machine v0.2.0 h1:IktTXi6zfCtBL8G9AHdj2d3gpyuPK6p1fjY4jYr1stE=
 github.com/KirkDiggler/rpg-toolkit/mind/machine v0.2.0/go.mod h1:7Q7d5co2WThTngjfpVf8NJWgV0iodpvkpFEcIxoLcA4=
+github.com/KirkDiggler/rpg-toolkit/mind/machine v0.3.0 h1:yWT2iHTOkV7QDbF3OseKpJXN2zcJRtY4VMSOEUSN7/o=
+github.com/KirkDiggler/rpg-toolkit/mind/machine v0.3.0/go.mod h1:7Q7d5co2WThTngjfpVf8NJWgV0iodpvkpFEcIxoLcA4=
 github.com/KirkDiggler/rpg-toolkit/mind/perception v0.4.0 h1:aoQxDJpZAmENlQr7Nl+sSHtqCdebwh24RRvc1USPnsw=
 github.com/KirkDiggler/rpg-toolkit/mind/perception v0.4.0/go.mod h1:CSaTa4GLoRShB6BqDdNrmKtAkmIs17w30EEN7Ex46Fs=
 github.com/KirkDiggler/rpg-toolkit/play/clock v0.1.0 h1:uKGivoRcgQW3sQ0I0G5ct0DkPBkSUwD/yX6bfK0i4XA=

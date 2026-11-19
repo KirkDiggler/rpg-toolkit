@@ -128,9 +128,9 @@ func wakeWords(tr machine.Transition, who string) (string, []Connection) {
 	s += ", " + who
 	var does []string
 	if tr.To != "" {
-		does = append(does, "moves to the state "+quote(tr.To))
+		does = append(does, fill(act("to").Long, "id", quote(tr.To)))
 	}
-	does = append(does, actWords(tr.Do, who)...)
+	does = append(does, actWords(tr.Do, false)...)
 	if len(does) == 0 {
 		does = append(does, "hears it and does nothing")
 	}

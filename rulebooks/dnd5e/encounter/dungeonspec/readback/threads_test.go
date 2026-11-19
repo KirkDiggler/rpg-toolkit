@@ -23,10 +23,7 @@ type ThreadsSuite struct {
 func TestThreadsSuite(t *testing.T) { suite.Run(t, new(ThreadsSuite)) }
 
 func (s *ThreadsSuite) SetupSuite() {
-	raw, err := os.ReadFile(castlePath)
-	s.Require().NoError(err)
-	s.rb, err = readback.Of(raw)
-	s.Require().NoError(err)
+	_, s.rb = theCastle(s.T())
 }
 
 // hub is the group about {kind, id} in the section titled.

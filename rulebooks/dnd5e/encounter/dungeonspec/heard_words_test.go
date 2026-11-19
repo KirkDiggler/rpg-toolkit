@@ -25,25 +25,26 @@ const theLiedToStep = `            - on: heard
                       name: noted:admitted
 `
 
-// liedToAt is that step's guard's path.
+// liedToAt is that step's guard's path; a refused leaf inside it is reported
+// at its own path below this (rpg-project#997).
 const liedToAt = "behaviorDefinitions.captain-policy.recipe.states.in-hall.transitions[1].when"
 
 func TestHeardWords_TheCaptainsStepIsRefusedWhereItCannotWork(t *testing.T) {
 	for _, tc := range []struct{ name, old, replacement, path, sentence string }{
 		{
 			name: "a claim that is neither held nor failed", old: theLiedToStep,
-			replacement: strings.Replace(theLiedToStep, "value: failed", "value: maybe", 1), path: liedToAt,
+			replacement: strings.Replace(theLiedToStep, "value: failed", "value: maybe", 1), path: liedToAt + ".all[0].fact",
 			sentence: "`heard.claim` is held or failed, and this names \"maybe\"",
 		},
 		{
 			name: "a claim read on a beat that is not hearing", old: theLiedToStep,
-			replacement: strings.Replace(theLiedToStep, "- on: heard", "- on: seen", 1), path: liedToAt,
+			replacement: strings.Replace(theLiedToStep, "- on: heard", "- on: seen", 1), path: liedToAt + ".all[0].fact",
 			sentence: "`heard.claim` reads what the creature heard, and `seen` is not hearing: it is read on `heard` only",
 		},
 		{
 			name: "holds read on a beat that names nobody", old: "                  name: noted.anyone:admitted\n",
 			replacement: "                  name: noted:admitted\n",
-			path:        "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[2].when",
+			path:        "behaviorDefinitions.captain-policy.recipe.states.ready.transitions[2].when.fact",
 			sentence: "`noted:admitted` asks about the one this beat is about, and `topic` is about nobody: " +
 				"it is read on heard, seen, barred and approached",
 		},
