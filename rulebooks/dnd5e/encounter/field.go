@@ -1467,7 +1467,9 @@ type SetupInput struct {
 	// beside the site's hash: the site hash names the geometry, this names
 	// everything an author wrote. Carried in rather than computed here
 	// because the content (the creatures, their lines and machines) joins
-	// the run after setup. Optional: empty writes none.
+	// the run after setup. TAKEN ON TRUST: the engine cannot recompute it,
+	// so a host that passes the hash of other content is not detected.
+	// Optional: empty writes none.
 	Content ContentHash
 
 	// Field describes the spatial layout.

@@ -21,7 +21,10 @@ const (
 	// right after [BeatSceneOpened]: the compiled site's hash ([SiteHash]),
 	// the content's hash when the host carries one ([SetupInput.Content]),
 	// the content's key when the host names one ([SetupInput.Key]), and
-	// this engine's module version when the build knows it. RECORD-ONLY:
+	// this engine's module version when the build knows it. A reader
+	// compares two runs' content hashes only when their `engine` matches;
+	// otherwise it says "saved under another engine", since one file
+	// compiles to other content under another engine. RECORD-ONLY:
 	// its audience is empty, so no member's story changes; the run's
 	// record (the host's diagnostic stream) carries it.
 	BeatSceneContent = "scene_content"

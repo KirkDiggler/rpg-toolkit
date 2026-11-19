@@ -16,7 +16,7 @@ import (
 
 // castleContentHash is the castle's content hash. A change here is a change
 // to the castle or to what the hash covers: make it deliberately.
-const castleContentHash = "52bc9896811909134638287d0ee3193b8929b926bd1493882fe165177121cd50"
+const castleContentHash = "03ebb0acee2436d7c513a0cf2b50cd9dd83a9cc66ab3f0af3d25fb375db67f21"
 
 func contentHashOf(t *testing.T, src string) encounter.ContentHash {
 	t.Helper()
@@ -61,4 +61,19 @@ func TestTheContentHashNamesWhatTheAuthorWrote(t *testing.T) {
 	require.NotEqual(t, m, contentHashOf(t, hashEdited(t, machine, "reason: stood aside", "reason: stood back")), "a machine's step")
 	require.NotEqual(t, m, contentHashOf(t, hashEdited(t, machine, "against: entering", "against: leaving")), "a post")
 	require.NotEqual(t, s, contentHashOf(t, hashEdited(t, site, "dc: ", "dc: 2")), "a check's DC")
+
+	// WHAT THE TYPES' JSON DROPS (rpg-project#1001): a void and an
+	// orientation encode as {}, and still change the hash.
+	tomb := fileOf(t, "testdata/reference-tomb.yaml")
+	require.NotEqual(t, contentHashOf(t, tomb), contentHashOf(t, hashEdited(t, tomb, "void: opaque", "void: transparent")),
+		"the void changes what every creature can see")
+	pointy := dungeonspec.Compiled{Key: "k", Field: encounter.FieldInput{Canvas: encounter.CanvasInput{
+		Void: encounter.VoidIsOpaque(), Orientation: encounter.HexesArePointyTop()}}}
+	flat := pointy
+	flat.Field.Canvas.Orientation = encounter.HexesAreFlatTop()
+	hp, err := pointy.ContentHash()
+	require.NoError(t, err)
+	hf, err := flat.ContentHash()
+	require.NoError(t, err)
+	require.NotEqual(t, hp, hf, "the hex orientation")
 }
