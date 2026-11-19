@@ -1213,6 +1213,42 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 		return nil, fmt.Errorf("newencounter append beat: %w", err)
 	}
 
+	// WHAT THIS IS A RUN OF (rpg-project#1001), for the record alone (an
+	// empty audience): the site's content hash, the content's key and the
+	// engine's version, the last two only when known.
+	content := map[string]string{"beat": BeatSceneContent, "site_hash": string(e.site.Hash())}
+	if in.Key != "" {
+		content["key"] = in.Key
+	}
+	if v := engineVersion(); v != "" {
+		content["engine"] = v
+	}
+	contentPayload, _ := json.Marshal(content)
+	if _, err := e.appendBeat(&record.AppendInput{
+		At:      uint64(e.clock.ToData().HighWater),
+		Tags:    map[string]string{"tag": "scene"},
+		Payload: contentPayload,
+	}); err != nil {
+		return nil, fmt.Errorf("newencounter append beat: %w", err)
+	}
+	// AND WHERE EACH MEMBER BEGINS, for the record alone: a member seated
+	// at setup writes no [BeatJoined], so its cell is said here, in the
+	// order the members were given.
+	for _, mi := range in.Members {
+		cell, onCanvas := e.canvas.GetEntityPosition(string(mi.ID))
+		if !onCanvas {
+			continue
+		}
+		placed, _ := json.Marshal(map[string]interface{}{"beat": BeatJoinedAt, "member": string(mi.ID), "cell": cell})
+		if _, err := e.appendBeat(&record.AppendInput{
+			At:      uint64(e.clock.ToData().HighWater),
+			Tags:    map[string]string{"tag": "membership"},
+			Payload: placed,
+		}); err != nil {
+			return nil, fmt.Errorf("newencounter append beat: %w", err)
+		}
+	}
+
 	// First light's own sighting beats, AFTER the scene has opened for the
 	// same reason everything else here is: a story in which members see each
 	// other before the scene exists is one nobody can follow. Setup holds the
@@ -2962,6 +2998,17 @@ func (e *Encounter) admitMember(in *JoinInput) (*memberRecord, *JoinOutput, erro
 		Payload:  beatBytes,
 	})
 	if err != nil {
+		return nil, nil, fmt.Errorf("join append beat: %w", err)
+	}
+
+	// WHERE IT JOINED (rpg-project#1001), for the record alone (an empty
+	// audience): a player learns no member's start cell from it.
+	atBytes, _ := json.Marshal(map[string]interface{}{"beat": BeatJoinedAt, "member": string(in.Member), "cell": in.Cell})
+	if _, err := e.appendBeat(&record.AppendInput{
+		At:      clockReadingForBeat,
+		Tags:    map[string]string{"tag": "membership"},
+		Payload: atBytes,
+	}); err != nil {
 		return nil, nil, fmt.Errorf("join append beat: %w", err)
 	}
 

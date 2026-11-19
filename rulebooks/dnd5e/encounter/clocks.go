@@ -691,7 +691,8 @@ func (e *Encounter) runIntents(
 						return err
 					}
 				}
-				traced, err := e.appendBehaviorDecision(&behaviorDecisionRecordInput{member: m, trace: selected.trace, pick: decision.Pick, pickRecord: pickRecord})
+				traced, err := e.appendBehaviorDecision(&behaviorDecisionRecordInput{member: m, trace: selected.trace,
+					pick: decision.Pick, instance: selected.instance, pickRecord: pickRecord})
 				if err != nil {
 					return err
 				}
@@ -790,6 +791,20 @@ type pickedFor struct {
 	to     MemberID
 }
 
+// qualifiedPick is chosen with its key qualified by the role (behavior
+// instance) whose table it came from, `behavior/<len>:<instance>/<key>`:
+// the ONE spelling a pick's key is recorded in, by the `answered` beat, the
+// table it indexes and a decision trace's selection alike. An empty
+// instance (an ordinary table) leaves the key as it is.
+func qualifiedPick(chosen *Pick, instance string) *Pick {
+	if chosen == nil || instance == "" {
+		return chosen
+	}
+	qualified := *chosen
+	qualified.Key = AnswerKey(fmt.Sprintf("behavior/%d:%s/%s", len(instance), instance, chosen.Key))
+	return &qualified
+}
+
 // appendPickBeat writes the roll a [Driver] made on this member's own table —
 // the same [BeatAnswered] a social verdict's answer writes, under the `time`
 // key, so a reader has one beat to learn rather than two.
@@ -814,9 +829,7 @@ func (e *Encounter) appendPickBeat(member MemberID, chosen *Pick, named pickedFo
 		if instance != "" {
 			bound := m.behaviors.input.Instances[m.behaviors.byID[instance]]
 			rows = bound.Instance.Table[chosen.Key]
-			qualified := *chosen
-			qualified.Key = AnswerKey(fmt.Sprintf("behavior/%d:%s/%s", len(instance), instance, chosen.Key))
-			chosen = &qualified
+			chosen = qualifiedPick(chosen, instance)
 		}
 		if err := e.describeTable(member, "", chosen.Key, rows, m.Temper, at); err != nil {
 			return "", fmt.Errorf("pick beat: %w", err)

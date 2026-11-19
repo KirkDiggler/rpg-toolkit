@@ -649,11 +649,13 @@ func (e *Encounter) appendRoleStateBeat(m *memberRecord, role string, stepped ma
 		"beat": BeatRoleState, "member": string(m.ID), "role": role,
 		"from": stepped.From, "to": stepped.To, "reason": stepped.Reason,
 	}
-	for _, b := range m.behaviors.input.Instances {
-		if b.Instance.ID == role {
-			body["recipe"] = b.Instance.Recipe.Ref.String()
-		}
+	// A ROLE NAMES ITS RECIPE OR THE BEAT IS NOT WRITTEN: a step from an
+	// instance the creature does not have is a broken composition.
+	i, ok := m.behaviors.byID[role]
+	if !ok {
+		return fmt.Errorf("role state: %s has no role %q", m.ID, role)
 	}
+	body["recipe"] = m.behaviors.input.Instances[i].Instance.Recipe.Ref.String()
 	payload, err := json.Marshal(body)
 	if err != nil {
 		return err

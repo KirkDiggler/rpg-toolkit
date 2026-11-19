@@ -86,9 +86,12 @@ func (e *Encounter) describeBehavior(m *memberRecord) error {
 }
 
 type behaviorDecisionRecordInput struct {
-	member     *memberRecord
-	trace      *behaviorDecisionTrace
-	pick       *Pick
+	member *memberRecord
+	trace  *behaviorDecisionTrace
+	pick   *Pick
+	// instance is the role whose table the pick came from: its selection's
+	// key is qualified by it, as the `answered` beat's is ([qualifiedPick]).
+	instance   string
 	pickRecord string
 	act        string
 }
@@ -109,7 +112,9 @@ func (e *Encounter) appendBehaviorDecision(in *behaviorDecisionRecordInput) (*be
 	if in.pick != nil && in.pickRecord == "" {
 		// The ordinary story suppresses repeated empty holds. Their actual row
 		// verdict still belongs in diagnostics, without reevaluating the table.
-		fields["selection"] = answeredBeatBody(answeredBy{creature: in.member.ID}, in.pick)
+		// THE TRACE NAMES THE PICK AS THE ANSWER DOES (rpg-project#1001): its
+		// key qualified by the role it came from.
+		fields["selection"] = answeredBeatBody(answeredBy{creature: in.member.ID}, qualifiedPick(in.pick, in.instance))
 	}
 	out, err := e.appendBehaviorRecord(&behaviorRecordInput{member: in.member, kind: BeatBehaviorDecision, act: in.act, fields: fields})
 	if err != nil {

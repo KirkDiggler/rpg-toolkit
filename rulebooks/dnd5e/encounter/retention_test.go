@@ -71,8 +71,9 @@ func (s *RetentionTestSuite) walkingEncounter(retention int) *encounter.Encounte
 }
 
 // generateBeats moves p1 back and forth n times, producing exactly n movement
-// beats. Setup has already produced one scene-opened beat, so the log holds
-// n+1 beats' worth of sequence numbers afterwards.
+// beats. Setup has already produced three entries (scene-opened, then the
+// record-only scene_content and p1's joined_at, rpg-project#1001), so the
+// log holds n+3 sequence numbers afterwards and p1's story n+1 beats.
 func (s *RetentionTestSuite) generateBeats(enc *encounter.Encounter, n int) {
 	for i := 0; i < n; i++ {
 		to := spatial.Position{X: 2, Y: 1}
@@ -110,8 +111,8 @@ func (s *RetentionTestSuite) TestTrimsToExactlyTheWindow() {
 	const window = 8
 	enc := s.walkingEncounter(window)
 
-	// 40 movement beats plus setup's scene-opened beat = 41 sequences
-	// assigned, comfortably past the window.
+	// 40 movement beats plus setup's three entries = 43 sequences assigned,
+	// comfortably past the window; p1's story is 41 of them.
 	s.generateBeats(enc, 40)
 
 	s.Equal(41, s.storyLen(enc),
@@ -136,17 +137,18 @@ func (s *RetentionTestSuite) TestLogAtExactlyTheWindowIsUntouched() {
 	const window = 8
 	enc := s.walkingEncounter(window)
 
-	// Setup contributes one scene-opened beat, so seven moves bring the log to
-	// exactly the window. The save is what would trim (#1381), so the guard
+	// Setup contributes three entries, so five moves bring the log to
+	// exactly the window; p1's story is the two the record-only entries are
+	// not told to it fewer. The save is what would trim (#1381), so the guard
 	// must be proven AT the boundary, not on a log that never crossed it.
-	s.generateBeats(enc, window-1)
+	s.generateBeats(enc, window-3)
 	enc.ToData()
 
-	s.Equal(window, s.storyLen(enc), "a full log is not an over-full one")
+	s.Equal(window-2, s.storyLen(enc), "a full log is not an over-full one")
 
 	entries, err := enc.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 1})
 	s.Require().NoError(err, "the very first beat must still be servable at the boundary")
-	s.Len(entries, window, "and nothing may have been dropped")
+	s.Len(entries, window-2, "and nothing may have been dropped")
 	s.Equal(uint64(1), entries[0].Seq)
 }
 
@@ -162,10 +164,11 @@ func (s *RetentionTestSuite) TestAfterSeqIsInclusive() {
 	enc := s.walkingEncounter(encounter.RetentionUnbounded)
 	s.generateBeats(enc, 5)
 
-	entries, err := enc.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 3})
+	// Seq 4 is the first move (1..3 are setup's, two of them record-only).
+	entries, err := enc.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 4})
 	s.Require().NoError(err)
 	s.Require().NotEmpty(entries)
-	s.Equal(uint64(3), entries[0].Seq,
+	s.Equal(uint64(4), entries[0].Seq,
 		"AfterSeq is an inclusive lower bound despite its name: to resume after N, pass N+1")
 }
 
@@ -182,9 +185,9 @@ func (s *RetentionTestSuite) TestSeqSurvivesTrimming() {
 	s.Require().NoError(err)
 	s.Require().Len(entries, window)
 
-	// 41 sequences assigned (1..41), retaining the last 8 => 34..41.
-	s.Equal(uint64(34), entries[0].Seq, "oldest retained Seq is the floor, unrenumbered")
-	s.Equal(uint64(41), entries[len(entries)-1].Seq, "newest retained Seq is unchanged")
+	// 43 sequences assigned (1..43), retaining the last 8 => 36..43.
+	s.Equal(uint64(36), entries[0].Seq, "oldest retained Seq is the floor, unrenumbered")
+	s.Equal(uint64(43), entries[len(entries)-1].Seq, "newest retained Seq is unchanged")
 	for i := 1; i < len(entries); i++ {
 		s.Equal(entries[i-1].Seq+1, entries[i].Seq, "retained sequences stay gapless")
 	}
@@ -216,8 +219,8 @@ func (s *RetentionTestSuite) TestResumeBelowFloorIsRejected() {
 	s.generateBeats(enc, 40)
 	enc.ToData() // the storage boundary is where the trim happens (#1381)
 
-	// Floor is 34; anything below it is gone.
-	_, err := enc.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 33})
+	// Floor is 36; anything below it is gone.
+	_, err := enc.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 35})
 	s.Require().Error(err)
 	s.ErrorIs(err, encounter.ErrTrimmed)
 
@@ -239,7 +242,7 @@ func (s *RetentionTestSuite) TestResumeAtFloorSucceeds() {
 	s.generateBeats(enc, 40)
 	enc.ToData() // the storage boundary is where the trim happens (#1381)
 
-	entries, err := enc.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 34})
+	entries, err := enc.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 36})
 	s.Require().NoError(err, "the floor itself is retained and must be servable")
 	s.Len(entries, window)
 }
@@ -341,10 +344,10 @@ func (s *RetentionTestSuite) TestFloorSurvivesReload() {
 	})
 	s.Require().NoError(err)
 
-	_, err = reloaded.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 33})
+	_, err = reloaded.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 35})
 	s.ErrorIs(err, encounter.ErrTrimmed, "the floor must be known after a reload")
 
-	_, err = reloaded.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 34})
+	_, err = reloaded.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 36})
 	s.NoError(err, "and must not over-reach after a reload either")
 }
 
@@ -437,14 +440,14 @@ func (s *RetentionTestSuite) TestVerbBeatsSurviveTheVerb() {
 	s.Len(entries, 4, "scene-opened, tick, pick, movement: the table is told to nobody (rpg-project#933)")
 	all, err := enc.ReadRecord(&encounter.ReadRecordInput{})
 	s.Require().NoError(err)
-	s.Require().Len(all.Entries, 7, "the two private configuration/decision records survive too; audience gaps are not trimming")
+	s.Require().Len(all.Entries, 10, "the private records survive too (scene_content, two joined_at, configuration, decision); audience gaps are not trimming")
 	for i, entry := range all.Entries {
 		s.Equal(uint64(i+1), entry.Seq, "nothing was trimmed out from under the verb")
 	}
 
 	data := enc.ToData()
 	s.Require().Len(data.Log.Entries, 1, "the boundary then emits exactly the window")
-	s.Equal(uint64(7), data.Log.Entries[0].Seq, "and keeps the newest beat")
+	s.Equal(uint64(10), data.Log.Entries[0].Seq, "and keeps the newest beat")
 
 	_, err = enc.Story(&encounter.StoryInput{Audience: "watcher", AfterSeq: 4})
 	s.ErrorIs(err, encounter.ErrTrimmed, "the floor advanced with the save, exactly as before")
@@ -524,13 +527,13 @@ func (s *RetentionTestSuite) TestWorldViewIsPure() {
 	const window = 8
 	enc := s.walkingEncounter(window)
 
-	// 40 movement beats plus setup's scene-opened beat = 41 sequences
+	// 40 movement beats plus setup's three entries = 43 sequences
 	// assigned, comfortably past the window: exactly the state where a read
 	// that secretly enforced retention would destroy evidence.
 	s.generateBeats(enc, 40)
 
 	view := enc.WorldView()
-	s.Len(view.Log.Entries, 41, "the view carries the whole live log, unbounded by the window")
+	s.Len(view.Log.Entries, 43, "the view carries the whole live log, unbounded by the window")
 
 	s.Equal(41, s.storyLen(enc), "the live log is untouched: the view trims nothing")
 	entries, err := enc.Story(&encounter.StoryInput{Audience: "p1", AfterSeq: 1})
@@ -559,7 +562,7 @@ func (s *RetentionTestSuite) TestWorldViewShowsTrimmedStateHonestly() {
 	s.generateBeats(enc, 40)
 
 	before := enc.WorldView()
-	s.Len(before.Log.Entries, 41, "before the save, the view holds the whole live log")
+	s.Len(before.Log.Entries, 43, "before the save, the view holds the whole live log")
 
 	data := enc.ToData()
 	s.Require().Len(data.Log.Entries, window)

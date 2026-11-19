@@ -513,6 +513,7 @@ var machineConditionWords = []ConditionWord{
 	{Word: "rounds", Kind: ArgKindInt,
 		Written: inWhen("rounds"),
 		Args: []Arg{{Name: "op", Goes: PlaceField, Field: "op", Names: SlotOp, Kind: ArgKindString, Values: []string{string(machine.OpEq), string(machine.OpGte)}},
+			// NO `n` IS n 0: with `eq`, the very round it marked the moment.
 			{Name: "n", Goes: PlaceField, Field: "n", Kind: ArgKindInt, Optional: true, Default: "0"}},
 		Label: "{op} {n} rounds since it marked the moment",
 		Long:  "{op} {n} rounds have passed since {who} set its anchor"},
