@@ -38,7 +38,11 @@ var recordOnly = map[string]bool{
 	// A creature's role beside its body stepping its machine
 	// (rpg-project#1001): told to the creature alone, for the run's record
 	// the studio watches; no act and no panel.
-	encounter.BeatRoleState:         true,
+	encounter.BeatRoleState: true,
+	// What a run is a run of, and where each member began (rpg-project#1001):
+	// told to nobody, for the run's record.
+	encounter.BeatSceneContent:      true,
+	encounter.BeatJoinedAt:          true,
 	encounter.BeatTransferred:       true,
 	string(encounter.OutcomeBought): true,
 	string(encounter.OutcomeSold):   true,
