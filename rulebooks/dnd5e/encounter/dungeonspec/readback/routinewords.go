@@ -5,7 +5,6 @@ package readback
 
 import (
 	"fmt"
-	"slices"
 	"sort"
 	"strings"
 
@@ -245,17 +244,13 @@ func (b *builder) whenWords(w behavior.When, who string) (string, []Connection) 
 		case behavior.ScopeActor:
 			return fmt.Sprintf("%s did the deed %s itself within the last %d rounds", who, quote(w.Deed), w.Within), nil
 		}
-		verb, own := deedVerb(w.Deed)
-		if own {
-			return fmt.Sprintf("%s did the deed %s itself within the last %d rounds", who, quote(w.Deed), w.Within), nil
-		}
 		if w.Who != "" {
 			target = b.creature(string(w.Who))
 			if w.Scope == behavior.ScopeAlly {
 				target += ", on " + whose(who) + " side,"
 			}
 		}
-		return fmt.Sprintf("%s %s the deed %s done to %s within the last %d rounds", who, verb, quote(w.Deed), target, w.Within), nil
+		return fmt.Sprintf("%s has noted that the deed %s was done to %s within the last %d rounds", who, quote(w.Deed), target, w.Within), nil
 	}
 	return "a condition this build cannot say", nil
 }
@@ -381,24 +376,4 @@ func (b *builder) rowWords(a behavior.Answer, who string) (string, []Connection)
 		out += fmt.Sprintf(" (weight %d)", a.Weight)
 	}
 	return out, conns
-}
-
-// deedVerb is the verb a held deed's sentence says, chosen from every way
-// that deed can reach a creature ([encounter.DeedReachOf]), so the sentence
-// is true of each: "saw" when sight is the only way, "saw or caused" when a
-// cause holds it unseen, and own when the deed is only ever the creature's
-// own testimony (`fled`), which reads as a deed it did itself. Any other way
-// (a deed told, rpg-project#992) reads "saw or learned of".
-func deedVerb(word string) (verb string, own bool) {
-	reach := encounter.DeedReachOf(word)
-	switch {
-	case slices.Equal(reach, []encounter.DeedReach{encounter.ReachOwn}):
-		return "", true
-	case slices.Equal(reach, []encounter.DeedReach{encounter.ReachSeen}):
-		return "saw", false
-	case slices.Equal(reach, []encounter.DeedReach{encounter.ReachSeen, encounter.ReachCaused}):
-		return "saw or caused", false
-	default:
-		return "saw or learned of", false
-	}
 }

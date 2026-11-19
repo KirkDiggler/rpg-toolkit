@@ -59,15 +59,49 @@ func TestMachineWords_EveryBeatCompilesAndIsValid(t *testing.T) {
 	require.Error(t, ValidateMachine(wordsRecipe(t, machine.Transition{On: "smell"})))
 }
 
-// TestMachineWords_ScopeIsAllowedOnlyOnScopedBeats: `within` compiles on a
-// beat the table marks Scoped and is refused on every other.
+// publishedAllows is how a reader of [MachineWords] reads an On list: a
+// whole beat by itself, a member of an open family by the family's word.
+// It is written here apart from [beatAllowed] so the published lists are
+// checked as a reader meets them.
+func publishedAllows(on []string, beat string) bool {
+	if len(on) == 0 || slices.Contains(on, beat) {
+		return true
+	}
+	for _, b := range MachineWords().Beats {
+		if b.Open != SlotNone && strings.HasPrefix(beat, b.Word) && slices.Contains(on, b.Word) {
+			return true
+		}
+	}
+	return false
+}
+
+// publishedCondition is a condition's published entry.
+func publishedCondition(t *testing.T, word string) ConditionWord {
+	t.Helper()
+	for _, c := range MachineWords().Conditions {
+		if c.Word == word {
+			return c
+		}
+	}
+	t.Fatalf("no condition %q", word)
+	return ConditionWord{}
+}
+
+// TestMachineWords_ScopeIsAllowedOnlyOnScopedBeats: `within` and `regions`
+// compile on a beat the table marks Scoped, `deed:<word>` included, and are
+// refused on every other; and the published On of each says exactly that.
 func TestMachineWords_ScopeIsAllowedOnlyOnScopedBeats(t *testing.T) {
 	for _, on := range everyBeat() {
 		b, _ := BeatWordOf(on)
-		err := ValidateMachine(wordsRecipe(t, machine.Transition{On: machine.Beat(on), When: &machine.Guard{Scope: &machine.ScopeLeaf{Within: 2}}}))
-		require.Equal(t, b.Scoped, err == nil, "%s: scoped %v, refused %v", on, b.Scoped, err)
+		for word, leaf := range map[string]machine.ScopeLeaf{"within": {Within: 2}, "regions": {Regions: 1}} {
+			err := ValidateMachine(wordsRecipe(t, machine.Transition{On: machine.Beat(on), When: &machine.Guard{Scope: &leaf}}))
+			require.Equal(t, b.Scoped, err == nil, "%s %s: scoped %v, refused %v", word, on, b.Scoped, err)
+			require.Equal(t, err == nil, publishedAllows(publishedCondition(t, word).On, on), "%s on %s: the published On disagrees", word, on)
+		}
 		require.Equal(t, b.Scoped, MachineBeatScoped(on), on)
 	}
+	require.NoError(t, ValidateMachine(wordsRecipe(t, machine.Transition{On: "deed:attacked",
+		When: &machine.Guard{Scope: &machine.ScopeLeaf{Within: 2}}})), "a deed:<word> step with within compiles")
 }
 
 // TestMachineWords_ConditionsAreReadWhereTheTableSays: each fact condition
@@ -91,6 +125,7 @@ func TestMachineWords_ConditionsAreReadWhereTheTableSays(t *testing.T) {
 		for _, on := range everyBeat() {
 			err := ValidateMachine(wordsRecipe(t, machine.Transition{On: machine.Beat(on), When: g}))
 			require.Equal(t, beatAllowed(c.allowedOn(), machine.Beat(on)), err == nil, "%s on %s: %v", c.Word, on, err)
+			require.Equal(t, publishedAllows(c.On, on), err == nil, "%s on %s: the published On disagrees", c.Word, on)
 		}
 	}
 }
@@ -109,12 +144,18 @@ func TestMachineWords_AClosedValueIsRefusedOutsideItsSet(t *testing.T) {
 // TestMachineWords_PickIsAllowedOnlyOnPickingBeats: a step picks on a beat
 // the table allows it, and is refused on every other, at its own step.
 func TestMachineWords_PickIsAllowedOnlyOnPickingBeats(t *testing.T) {
-	pick, _ := ActWordOf("pick")
+	var pick ActWord
+	for _, a := range MachineWords().Acts {
+		if a.Word == "pick" {
+			pick = a
+		}
+	}
 	for _, on := range everyBeat() {
 		r := wordsRecipe(t, machine.Transition{On: machine.Beat(on), Do: []machine.Act{{Pick: string(AnswerTime)}}})
 		_, err := CheckBehaviors(&CheckBehaviorsInput{Behaviors: *fixtureBehavior(*r, holds())})
 		allowed := beatAllowed(pick.allowedOn(), machine.Beat(on))
 		require.Equal(t, allowed, err == nil, "%s: %v", on, err)
+		require.Equal(t, publishedAllows(pick.On, on), err == nil, "pick on %s: the published On disagrees", on)
 		if !allowed {
 			refused := StepRefusals(err)
 			require.Len(t, refused, 1, on)
@@ -243,14 +284,18 @@ func TestMachineWords_WhereAllowedIsPinned(t *testing.T) {
 }
 
 // TestMachineWords_PublishesRealBeatsOnly holds the published view to the
-// shape a reader gets: every On a list of real beats, expanded from the
-// table's families, and no engine spelling.
+// shape a reader gets: every On a list of the table's own beat words (no
+// family name like "scoped"), expanded from the table's families, and no
+// engine spelling.
 func TestMachineWords_PublishesRealBeatsOnly(t *testing.T) {
 	table := MachineWords()
+	var words []string
+	for _, b := range table.Beats {
+		words = append(words, b.Word)
+	}
 	realBeats := func(on []string) {
 		for _, b := range on {
-			bw, ok := BeatWordOf(b)
-			require.True(t, ok && bw.Open == SlotNone && bw.Word == b, "%q is not a real beat", b)
+			require.Contains(t, words, b, "%q is not a beat of the table", b)
 		}
 	}
 	for _, c := range table.Conditions {
@@ -269,7 +314,7 @@ func TestMachineWords_PublishesRealBeatsOnly(t *testing.T) {
 		require.Equal(t, inner.allowedOn(), a.On, a.Word)
 	}
 	within, _ := ConditionWordOf("within")
-	require.Equal(t, []string{"heard", "deed", "seen", "barred", "approached"}, within.allowedOn())
+	require.Equal(t, []string{"heard", "deed", "seen", "barred", "approached", "deed:"}, within.allowedOn())
 }
 
 // TestMachineWords_AboutIsTheNamesColumn holds a beat's about-whom words to

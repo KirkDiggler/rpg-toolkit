@@ -8,7 +8,6 @@ import (
 	"slices"
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
-	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/deed"
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior/stage"
 	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
@@ -153,54 +152,6 @@ const DeedFled = "fled"
 // told-ledger retention cannot trim is rpg-toolkit#2158.
 const DeedFell = deed.VerbFell
 
-// DeedReach is one way a deed can come to be held by a creature. A sentence
-// about a held deed says only what is true of every way it could have come.
-type DeedReach string
-
-// The ways a deed can reach a creature today.
-const (
-	// ReachSeen: the creature saw the doer do it ([Encounter.audienceOf];
-	// a spoken deed, who caught the words and saw the speaker).
-	ReachSeen DeedReach = "seen"
-	// ReachOwn: the deed is the creature's own testimony about itself, held
-	// by nobody else ([DeedFled]).
-	ReachOwn DeedReach = "own"
-	// ReachCaused: the creature caused it and holds it without seeing it
-	// (a fall's cause, [Encounter.landFell]).
-	ReachCaused DeedReach = "caused"
-)
-
-// deedReaches is, for every deed verb this rulebook lands, every way it can
-// reach a creature: the one place a deed's sentence learns which verb is
-// true. A new deed verb is not done until it has a row here (a test walks
-// every `when` word and every verb). A deed that is told would add a
-// "learned" reach (word spreading, rpg-project#992).
-var deedReaches = map[string][]DeedReach{
-	DeedAttack:     {ReachSeen},
-	DeedIntimidate: {ReachSeen},
-	DeedPersuade:   {ReachSeen},
-	DeedUse:        {ReachSeen},
-	DeedFled:       {ReachOwn},
-	DeedFell:       {ReachSeen, ReachCaused},
-}
-
-// reachRecorded fails closed on a deed verb with no [deedReaches] row: a
-// deed nobody has said how it reaches a creature would read back as a
-// sentence nobody checked.
-func reachRecorded(verb string) error {
-	if _, ok := deedReaches[verb]; !ok {
-		return fmt.Errorf("deed: the verb %q has no reach recorded", verb)
-	}
-	return nil
-}
-
-// DeedReachOf is every way the deed a `when` word reads ([WhenDeeds]) can
-// reach a creature, in a fixed order, or nil for a word the rulebook does
-// not name.
-func DeedReachOf(word string) []DeedReach {
-	return slices.Clone(deedReaches[behavior.DeedVerbFor(word)])
-}
-
 // landFell tells every member whose sight reaches the fallen's cell that it
 // fell, naming its cause where the witness could see it ([DeedFell]). The
 // fallen witnesses its own fall, the way a target knows it was struck, and
@@ -332,9 +283,6 @@ func (e *Encounter) landDeed(
 func (e *Encounter) landSpokenDeed(
 	verb string, actor, target MemberID, where spatial.Position, catchers []MemberID, at uint64,
 ) error {
-	if err := reachRecorded(verb); err != nil {
-		return err
-	}
 	if err := stage.Land(&stage.LandInput{
 		Store:     memberReportStore{e},
 		Deed:      deed.Deed{Verb: verb, Actor: actor, Target: target, Where: where.String()},
@@ -373,9 +321,6 @@ func (e *Encounter) landSpokenDeed(
 func (e *Encounter) landDeedAt(
 	verb string, actor, target MemberID, where spatial.Position, witnesses []core.EntityID, at uint64,
 ) error {
-	if err := reachRecorded(verb); err != nil {
-		return err
-	}
 	if err := stage.Land(&stage.LandInput{
 		Store:     memberReportStore{e},
 		Deed:      deed.Deed{Verb: verb, Actor: actor, Target: target, Where: where.String()},

@@ -103,8 +103,9 @@ type ConditionWord struct {
 	// Values is the closed set of values it may ask, in the order a refusal
 	// lists them; empty for an open value.
 	Values []string
-	// On is the beats it may be read on, in the order a refusal lists them;
-	// empty for any beat.
+	// On is the beats it may be read on, as [BeatWord.Word] spells them, in
+	// table order: a whole beat, or an open family's word (`deed:`) for
+	// every beat of that family; empty for any beat.
 	On []string
 	// StatesForm is how the states dialect writes it in a `when`
 	// ("{ enemy }"); empty where the dialect does not read it.
@@ -135,24 +136,35 @@ const (
 	familyPicks  beatFamily = "picks"  // [BeatWord.Picks]
 )
 
-// beats is the family's beats, in table order.
+// beats is the family's beats, in table order, an open beat family by its
+// table word (`deed:` stands for every `deed:<word>`).
 func (f beatFamily) beats() []string {
+	var keep func(BeatWord) bool
 	switch f {
 	case familyNaming:
-		return beatsWhere(func(b BeatWord) bool { return b.Names })
+		keep = func(b BeatWord) bool { return b.Names }
 	case familyScoped:
-		return beatsWhere(func(b BeatWord) bool { return b.Scoped })
+		keep = func(b BeatWord) bool { return b.Scoped }
 	case familyPicks:
-		return beatsWhere(func(b BeatWord) bool { return b.Picks })
+		keep = func(b BeatWord) bool { return b.Picks }
+	default:
+		return nil
 	}
-	return nil
+	var out []string
+	for _, b := range machineBeatWords {
+		if keep(b) {
+			out = append(out, b.Word)
+		}
+	}
+	return out
 }
 
 // ActWord is one thing a step can do: move (`to`) or an act.
 type ActWord struct {
 	// Word is as authored: "to", "pick", "wake_in", "set", "clear", "anchor".
 	Word string
-	// On is the beats a step may do it on; empty for any beat.
+	// On is the beats a step may do it on, spelled as [ConditionWord.On];
+	// empty for any beat.
 	On []string
 	// StatesForm is how the states dialect writes it in `do`
 	// ("{ pick: <key> }"); empty where the dialect does not take it.
@@ -404,23 +416,15 @@ func SplitConditionWord(name string) (ConditionWord, string, bool) {
 }
 
 // beatAllowed reports whether a beat as authored is one of on's beats: a
-// family member counts as its family's prefix ("deed:attacked" is on a
-// list holding "deed" only when the family is scoped like it).
+// whole word by itself, a member of an open family by the family's table
+// word ("deed:attacked" is on a list holding "deed:"). A reader of
+// [MachineWords] matches a beat against On the same way.
 func beatAllowed(on []string, beat machine.Beat) bool {
-	if len(on) == 0 {
+	if len(on) == 0 || slices.Contains(on, string(beat)) {
 		return true
 	}
-	if slices.Contains(on, string(beat)) {
-		return true
-	}
-	if b, ok := BeatWordOf(string(beat)); ok && b.Open != SlotNone {
-		for _, w := range on {
-			if bw, ok := BeatWordOf(w); ok && bw.Open == SlotNone && bw.Word+":" == b.Word {
-				return true
-			}
-		}
-	}
-	return false
+	b, ok := BeatWordOf(string(beat))
+	return ok && b.Open != SlotNone && slices.Contains(on, b.Word)
 }
 
 // pickWord is the table's `pick` act: the beats a step may pick on.
