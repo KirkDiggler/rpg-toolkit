@@ -4,11 +4,13 @@
 package readback
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
 // routines says every behaviour definition, as compiled for the first
@@ -60,6 +62,17 @@ func (b *builder) routines() []Group {
 			quote(def), b.creatures(runners), quote(inst.Recipe.Initial), quote(inst.Recipe.Ref.String())),
 			foldInfo{text: fmt.Sprintf("run by %s; starts in %s; recipe %s.", b.creatures(runners), quote(inst.Recipe.Initial),
 				quote(inst.Recipe.Ref.String()))}, rc...))
+
+		// WHAT THE MACHINE REMEMBERS (rpg-project#1001): each flag its bag
+		// declares, its kind and the value it starts at.
+		for _, flag := range sortedKeys(inst.Recipe.Bag) {
+			start := inst.Recipe.Bag[flag]
+			literal, _ := json.Marshal(start)
+			add(b.fstmt(KindRoutineFlag, about, base+".recipe.bag."+flag, fmt.Sprintf(
+				"The routine %s remembers the flag %s, a %s that starts as %s.", quote(def), quote(flag), flagKind(start), string(literal)),
+				foldInfo{text: fmt.Sprintf("Remembers the flag %s, a %s that starts as %s.", quote(flag), flagKind(start), string(literal))},
+				Connection{Kind: ConnFlag, ID: flag, Role: "declares", Is: string(literal)}))
+		}
 
 		for _, state := range statesInOrder(inst.Recipe) {
 			st := inst.Recipe.States[state]
@@ -115,7 +128,42 @@ func stepShape(from string, tr machine.Transition) []Connection {
 			conns = append(conns, Connection{Kind: ConnTable, ID: string(a.Pick), Role: RolePicks})
 		}
 	}
-	return conns
+	return append(conns, actConnections(tr)...)
+}
+
+// actConnections is every act of a step as a [ConnAct], in the order the
+// author wrote them (the move first), with a [ConnFlag] beside each act
+// that writes a flag.
+func actConnections(tr machine.Transition) []Connection {
+	var out []Connection
+	does := func(id, is, at string) {
+		out = append(out, Connection{Kind: ConnAct, ID: id, Role: "does", Is: is, At: at})
+	}
+	if tr.To != "" {
+		does(act("to").Word+":"+tr.To, "", "to")
+	}
+	for j, a := range tr.Do {
+		at := fmt.Sprintf("do[%d]", j)
+		if a.Pick != "" {
+			does(act("pick").Word+":"+a.Pick, "", at)
+		}
+		if a.WakeIn != 0 {
+			does(act("wake_in").Word, fmt.Sprint(a.WakeIn), at)
+		}
+		if a.Anchor {
+			does(act("anchor").Word, "", at)
+		}
+		if a.Set != nil {
+			value, _ := json.Marshal(a.Set.Value)
+			does(act("set").Word+":"+a.Set.Key, string(value), at)
+			out = append(out, Connection{Kind: ConnFlag, ID: a.Set.Key, Role: "sets"})
+		}
+		for k, key := range a.Clear {
+			does(act("clear").Word+":"+key, "", fmt.Sprintf("%s.clear[%d]", at, k))
+			out = append(out, Connection{Kind: ConnFlag, ID: key, Role: "clears"})
+		}
+	}
+	return out
 }
 
 // wakeWords says one routine transition about who, without its state.
@@ -150,4 +198,17 @@ func wakeWords(tr machine.Transition, who string) (string, []Connection) {
 		s += fmt.Sprintf("; %s reach every member of the run, wherever they are, whether or not they saw or heard what caused it", what)
 	}
 	return s, conns
+}
+
+// flagKind is the kind a flag's starting value declares it: "bool", "int"
+// or "string", the kinds a machine's bag holds.
+func flagKind(v any) string {
+	switch v.(type) {
+	case bool:
+		return encounter.ArgKindBool
+	case int, int64, float64:
+		return encounter.ArgKindInt
+	default:
+		return encounter.ArgKindString
+	}
 }

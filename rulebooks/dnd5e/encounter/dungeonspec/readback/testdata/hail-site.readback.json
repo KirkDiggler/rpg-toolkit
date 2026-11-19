@@ -400,6 +400,12 @@
                   "kind": "table",
                   "id": "approached",
                   "role": "picks"
+                },
+                {
+                  "kind": "act",
+                  "id": "pick:approached",
+                  "role": "does",
+                  "at": "do[0]"
                 }
               ]
             },

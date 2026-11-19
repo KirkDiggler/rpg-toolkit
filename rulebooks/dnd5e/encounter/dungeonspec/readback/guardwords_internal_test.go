@@ -54,7 +54,7 @@ func TestAStepsGuardWordsAreDrawn(t *testing.T) {
 		{"heard.claim, eq failed", leafGuard("heard.claim", machine.OpEq, "failed"),
 			"what X heard was a claim that failed", []Connection{cond("heard.claim", "failed")}},
 		{"flag", &machine.Guard{Flag: "lit"}, "X's flag `lit` is set",
-			[]Connection{{Kind: ConnCondition, ID: "flag:lit", Role: "asks", At: "when"}}},
+			[]Connection{{Kind: ConnCondition, ID: "flag:lit", Role: "asks", At: "when"}, {Kind: ConnFlag, ID: "lit", Role: "asks"}}},
 		{"fact", leafGuard("fact:gate-cowed", machine.OpEq, true),
 			"X knows the fact `gate-cowed`",
 			[]Connection{cond("fact:gate-cowed", "true"), {Kind: "fact", ID: "gate-cowed", Role: "wakes-on"}}},
@@ -94,7 +94,7 @@ func TestAConditionKeepsItsPolarityAndPlace(t *testing.T) {
 	}, conns, "within and regions are at most")
 
 	_, conns = guardWords(&machine.Guard{Flag: "lit"}, "X", "time")
-	require.Equal(t, []Connection{{Kind: ConnCondition, ID: "flag:lit", Role: "asks", At: "when"}}, conns,
+	require.Equal(t, []Connection{{Kind: ConnCondition, ID: "flag:lit", Role: "asks", At: "when"}, {Kind: ConnFlag, ID: "lit", Role: "asks"}}, conns,
 		"a flag's name is in its id, as every word's open part is")
 
 	two := leafGuard("noted:admitted", machine.OpEq, true)

@@ -1,0 +1,638 @@
+{
+  "key": "memory-site",
+  "name": "Memory Site",
+  "sections": [
+    {
+      "title": "The place",
+      "groups": [
+        {
+          "title": "Memory Site (memory-site)",
+          "about": {
+            "kind": "site",
+            "id": "memory-site"
+          },
+          "statements": [
+            {
+              "kind": "place",
+              "about": {
+                "kind": "site",
+                "id": "memory-site"
+              },
+              "sentence": "The site `memory-site` is “Memory Site”, a version 5 site document; its void is transparent, its lighting bright and its standing rule centre-covered.",
+              "path": "key"
+            },
+            {
+              "kind": "place.regions",
+              "about": {
+                "kind": "site",
+                "id": "memory-site"
+              },
+              "sentence": "The floor is 2 regions with cells: West room (region-west) and East room (region-east). Summarised: their cells, lighting and ground are not said one by one.",
+              "path": "room.room.regions"
+            },
+            {
+              "kind": "place.geometry",
+              "about": {
+                "kind": "site",
+                "id": "memory-site"
+              },
+              "sentence": "Summarised: the coordinate frame, 1 wall line with 1 door in their openings, 0 scene items, 0 prop footprints and 0 arrangements. Their positions and shapes are not said one by one.",
+              "path": "room.room.walls"
+            },
+            {
+              "kind": "place.start",
+              "about": {
+                "kind": "site",
+                "id": "memory-site"
+              },
+              "sentence": "The party starts at q 0, r 1, in West room (region-west).",
+              "path": "room.room.partyStart"
+            },
+            {
+              "kind": "place.sharing",
+              "about": {
+                "kind": "site",
+                "id": "memory-site"
+              },
+              "sentence": "The party's sharing is not set, so it is shared view, the default.",
+              "path": "(engine rule)"
+            },
+            {
+              "kind": "place.door",
+              "about": {
+                "kind": "door",
+                "id": "gate-door"
+              },
+              "sentence": "The door `gate-door` starts closed.",
+              "path": "room.room.doorBindings.gate-door"
+            }
+          ]
+        },
+        {
+          "title": "Where the places join",
+          "about": {
+            "kind": "site",
+            "id": "memory-site"
+          },
+          "statements": [
+            {
+              "kind": "place.join.door",
+              "about": {
+                "kind": "join",
+                "id": "door:region-east:region-west:gate-door"
+              },
+              "sentence": "East room (region-east) and West room (region-west) join at the door `gate-door`. Whether a member may cross there is the door's to say: how the door starts, its lock and its holders are said with the door `gate-door`.",
+              "path": "room.room.doorBindings.gate-door",
+              "connects": [
+                {
+                  "kind": "region",
+                  "id": "region-east",
+                  "role": "joins"
+                },
+                {
+                  "kind": "region",
+                  "id": "region-west",
+                  "role": "joins"
+                },
+                {
+                  "kind": "door",
+                  "id": "gate-door",
+                  "role": "by"
+                }
+              ]
+            },
+            {
+              "kind": "place.way.fight",
+              "about": {
+                "kind": "way",
+                "id": "way:door:region-east:region-west:gate-door:fight"
+              },
+              "sentence": "The fight lifts the holders' bar of the join of East room and West room at the door `gate-door`: Guard (g) each hold the door only while posted, up and standing on a cell of the post; one who is down, or drawn off the post, holds nothing. Failing it is losing the fight.",
+              "path": "room.room.monsterBindings.g.posts",
+              "connects": [
+                {
+                  "kind": "join",
+                  "id": "door:region-east:region-west:gate-door",
+                  "role": "through"
+                },
+                {
+                  "kind": "bar",
+                  "id": "hold",
+                  "role": "lifts"
+                },
+                {
+                  "kind": "creature",
+                  "id": "g",
+                  "role": "by"
+                },
+                {
+                  "kind": "method",
+                  "id": "fight",
+                  "role": "by"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Sides",
+      "groups": [
+        {
+          "title": "Faction `watch`",
+          "about": {
+            "kind": "faction",
+            "id": "watch"
+          },
+          "statements": [
+            {
+              "kind": "side.faction",
+              "about": {
+                "kind": "faction",
+                "id": "watch"
+              },
+              "sentence": "The faction `watch` is Guard (g); its mind (whose knowledge decides how the side stands) is Guard (g).",
+              "path": "factions[0]"
+            }
+          ]
+        },
+        {
+          "title": "How the sides stand",
+          "about": {
+            "kind": "site",
+            "id": "memory-site"
+          },
+          "statements": [
+            {
+              "kind": "side.disposition",
+              "about": {
+                "kind": "disposition",
+                "id": "watch-party"
+              },
+              "sentence": "The factions `watch` and `party` start neutral.",
+              "path": "dispositions[0]"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Creatures",
+      "groups": [
+        {
+          "title": "Guard (g)",
+          "about": {
+            "kind": "creature",
+            "id": "g"
+          },
+          "statements": [
+            {
+              "kind": "creature",
+              "about": {
+                "kind": "creature",
+                "id": "g"
+              },
+              "sentence": "Guard (g) is a dnd5e:monsters:guard of the faction `watch`, standing at q 2, r 0 in West room (region-west), facing e.",
+              "path": "room.room.monsterDeclarations[0]",
+              "connects": [
+                {
+                  "kind": "faction",
+                  "id": "watch",
+                  "role": "member-of"
+                }
+              ]
+            },
+            {
+              "kind": "creature.routine",
+              "about": {
+                "kind": "creature",
+                "id": "g"
+              },
+              "sentence": "Guard (g) runs the routine `watch` (as `policy`); this routine's state decides its posts and when its body blocks.",
+              "path": "room.room.monsterBindings.g.behaviors[0]",
+              "connects": [
+                {
+                  "kind": "routine",
+                  "id": "watch",
+                  "role": "uses"
+                }
+              ]
+            },
+            {
+              "kind": "creature.blocking",
+              "about": {
+                "kind": "creature",
+                "id": "g"
+              },
+              "sentence": "While its routine is in the state `posted` or `alert`, Guard (g)'s body blocks the cell it stands on.",
+              "path": "room.room.monsterBindings.g.blockingStates",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "posted",
+                  "role": "while"
+                },
+                {
+                  "kind": "state",
+                  "id": "alert",
+                  "role": "while"
+                }
+              ]
+            },
+            {
+              "kind": "creature.post",
+              "about": {
+                "kind": "creature",
+                "id": "g"
+              },
+              "sentence": "While its routine is in the state `alert` and it stands, up, on q 2, r 0, Guard (g) holds the door `gate-door`: every creature not allied with Guard (g) is barred from crossing it, one way: a crossing that starts on the post's side, West room (region-west), and ends on the far side (the other way is not barred). Several holders hold one door: it is held while any of them holds it.",
+              "path": "room.room.monsterBindings.g.posts.alert",
+              "connects": [
+                {
+                  "kind": "door",
+                  "id": "gate-door",
+                  "role": "holds"
+                },
+                {
+                  "kind": "state",
+                  "id": "alert",
+                  "role": "while"
+                }
+              ]
+            },
+            {
+              "kind": "creature.post",
+              "about": {
+                "kind": "creature",
+                "id": "g"
+              },
+              "sentence": "While its routine is in the state `posted` and it stands, up, on q 2, r 0, Guard (g) holds the door `gate-door`: every creature not allied with Guard (g) is barred from crossing it, one way: a crossing that starts on the post's side, West room (region-west), and ends on the far side (the other way is not barred). Several holders hold one door: it is held while any of them holds it.",
+              "path": "room.room.monsterBindings.g.posts.posted",
+              "connects": [
+                {
+                  "kind": "door",
+                  "id": "gate-door",
+                  "role": "holds"
+                },
+                {
+                  "kind": "state",
+                  "id": "posted",
+                  "role": "while"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Conversations",
+      "groups": null
+    },
+    {
+      "title": "Routines",
+      "groups": [
+        {
+          "title": "Routine `watch`",
+          "about": {
+            "kind": "routine",
+            "id": "watch"
+          },
+          "statements": [
+            {
+              "kind": "routine",
+              "about": {
+                "kind": "routine",
+                "id": "watch"
+              },
+              "sentence": "The routine `watch` is run by Guard (g); it starts in the state `posted`; its recipe is `site:behaviors:watch`. When it acts from a set of rows, one row whose conditions are true is picked by weight.",
+              "path": "behaviorDefinitions.watch",
+              "connects": [
+                {
+                  "kind": "creature",
+                  "id": "g",
+                  "role": "runs"
+                },
+                {
+                  "kind": "state",
+                  "id": "posted",
+                  "role": "starts"
+                }
+              ]
+            },
+            {
+              "kind": "routine.flag",
+              "about": {
+                "kind": "routine",
+                "id": "watch"
+              },
+              "sentence": "The routine `watch` remembers the flag `warned`, a bool that starts as false.",
+              "path": "behaviorDefinitions.watch.recipe.bag.warned",
+              "connects": [
+                {
+                  "kind": "flag",
+                  "id": "warned",
+                  "role": "declares",
+                  "is": "false"
+                }
+              ]
+            },
+            {
+              "kind": "routine.state",
+              "about": {
+                "kind": "routine",
+                "id": "watch"
+              },
+              "sentence": "In the state `posted`, Guard (g) listens for 3 beats.",
+              "path": "behaviorDefinitions.watch.recipe.states.posted",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "posted",
+                  "role": "is"
+                }
+              ]
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "watch"
+              },
+              "sentence": "In the state `posted`, on Guard (g)'s own time (each round Guard (g) is due, out of a fight), Guard (g) acts from its own `post` rows.",
+              "path": "behaviorDefinitions.watch.recipe.states.posted.transitions[0]",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "posted",
+                  "role": "from"
+                },
+                {
+                  "kind": "beat",
+                  "id": "time",
+                  "role": "on"
+                },
+                {
+                  "kind": "table",
+                  "id": "post",
+                  "role": "picks"
+                },
+                {
+                  "kind": "act",
+                  "id": "pick:post",
+                  "role": "does",
+                  "at": "do[0]"
+                }
+              ]
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "watch"
+              },
+              "sentence": "In the state `posted`, when someone walks into Guard (g) and its body stops them, if Guard (g)'s flag `warned` is set, Guard (g) moves to the state `alert` and acts from its own `alarm` rows (“warned once already”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "path": "behaviorDefinitions.watch.recipe.states.posted.transitions[1]",
+              "connects": [
+                {
+                  "kind": "condition",
+                  "id": "flag:warned",
+                  "role": "asks",
+                  "at": "when"
+                },
+                {
+                  "kind": "flag",
+                  "id": "warned",
+                  "role": "asks"
+                },
+                {
+                  "kind": "state",
+                  "id": "posted",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "alert",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "barred",
+                  "role": "on"
+                },
+                {
+                  "kind": "table",
+                  "id": "alarm",
+                  "role": "picks"
+                },
+                {
+                  "kind": "act",
+                  "id": "to:alert",
+                  "role": "does",
+                  "at": "to"
+                },
+                {
+                  "kind": "act",
+                  "id": "pick:alarm",
+                  "role": "does",
+                  "at": "do[0]"
+                }
+              ]
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "watch"
+              },
+              "sentence": "In the state `posted`, when someone walks into Guard (g) and its body stops them, Guard (g) moves to the state `posted`, acts from its own `warn` rows and sets `warned` to true (“a first warning”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "path": "behaviorDefinitions.watch.recipe.states.posted.transitions[2]",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "posted",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "posted",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "barred",
+                  "role": "on"
+                },
+                {
+                  "kind": "table",
+                  "id": "warn",
+                  "role": "picks"
+                },
+                {
+                  "kind": "act",
+                  "id": "to:posted",
+                  "role": "does",
+                  "at": "to"
+                },
+                {
+                  "kind": "act",
+                  "id": "pick:warn",
+                  "role": "does",
+                  "at": "do[0]"
+                },
+                {
+                  "kind": "act",
+                  "id": "set:warned",
+                  "role": "does",
+                  "is": "true",
+                  "at": "do[1]"
+                },
+                {
+                  "kind": "flag",
+                  "id": "warned",
+                  "role": "sets"
+                }
+              ]
+            },
+            {
+              "kind": "routine.state",
+              "about": {
+                "kind": "routine",
+                "id": "watch"
+              },
+              "sentence": "In the state `alert`, Guard (g) listens for 1 beat.",
+              "path": "behaviorDefinitions.watch.recipe.states.alert",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "alert",
+                  "role": "is"
+                }
+              ]
+            },
+            {
+              "kind": "routine.wake",
+              "about": {
+                "kind": "routine",
+                "id": "watch"
+              },
+              "sentence": "In the state `alert`, on Guard (g)'s own time (each round Guard (g) is due, out of a fight), Guard (g) moves to the state `posted`, clears `warned` and acts from its own `post` rows (“the alarm is raised”); the change and its reason reach every member of the run, wherever they are, whether or not they saw or heard what caused it.",
+              "path": "behaviorDefinitions.watch.recipe.states.alert.transitions[0]",
+              "connects": [
+                {
+                  "kind": "state",
+                  "id": "alert",
+                  "role": "from"
+                },
+                {
+                  "kind": "state",
+                  "id": "posted",
+                  "role": "to"
+                },
+                {
+                  "kind": "beat",
+                  "id": "time",
+                  "role": "on"
+                },
+                {
+                  "kind": "table",
+                  "id": "post",
+                  "role": "picks"
+                },
+                {
+                  "kind": "act",
+                  "id": "to:posted",
+                  "role": "does",
+                  "at": "to"
+                },
+                {
+                  "kind": "act",
+                  "id": "clear:warned",
+                  "role": "does",
+                  "at": "do[0].clear[0]"
+                },
+                {
+                  "kind": "flag",
+                  "id": "warned",
+                  "role": "clears"
+                },
+                {
+                  "kind": "act",
+                  "id": "pick:post",
+                  "role": "does",
+                  "at": "do[1]"
+                }
+              ]
+            },
+            {
+              "kind": "routine.row",
+              "about": {
+                "kind": "routine",
+                "id": "watch"
+              },
+              "sentence": "`alarm` row 1 of `watch`: Guard (g) says “Guards! Guards!” (at `speak`: its words reach everyone in Guard (g)'s room (the wall partition Guard (g) stands in), and anyone in the next room within 30 feet of Guard (g) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand).",
+              "path": "behaviorDefinitions.watch.table.alarm[0]",
+              "connects": [
+                {
+                  "kind": "table",
+                  "id": "alarm",
+                  "role": "row-of"
+                }
+              ]
+            },
+            {
+              "kind": "routine.row",
+              "about": {
+                "kind": "routine",
+                "id": "watch"
+              },
+              "sentence": "`post` row 1 of `watch`: Guard (g) says “All quiet.” (at `speak`: its words reach everyone in Guard (g)'s room (the wall partition Guard (g) stands in), and anyone in the next room within 30 feet of Guard (g) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand).",
+              "path": "behaviorDefinitions.watch.table.post[0]",
+              "connects": [
+                {
+                  "kind": "table",
+                  "id": "post",
+                  "role": "row-of"
+                }
+              ]
+            },
+            {
+              "kind": "routine.row",
+              "about": {
+                "kind": "routine",
+                "id": "watch"
+              },
+              "sentence": "`warn` row 1 of `watch`: Guard (g) says “Halt.” (at `speak`: its words reach everyone in Guard (g)'s room (the wall partition Guard (g) stands in), and anyone in the next room within 30 feet of Guard (g) by the way through an open doorway (a closed door stops them), and whoever it is said to, wherever they stand).",
+              "path": "behaviorDefinitions.watch.table.warn[0]",
+              "connects": [
+                {
+                  "kind": "table",
+                  "id": "warn",
+                  "role": "row-of"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Topics",
+      "groups": null
+    },
+    {
+      "title": "Facts",
+      "groups": null
+    },
+    {
+      "title": "Records",
+      "groups": null
+    },
+    {
+      "title": "Secrets",
+      "groups": null
+    }
+  ],
+  "not_yet_said": []
+}

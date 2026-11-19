@@ -53,6 +53,7 @@ var specOf = map[string]reflect.Type{
 	"activity":           reflect.TypeOf(dungeonspec.ActivityCueSpec{}),
 	"post":               reflect.TypeOf(dungeonspec.HoldsSpec{}),
 	"recipe":             reflect.TypeOf(machine.Recipe{}),
+	"routineRecipe":      reflect.TypeOf(machine.Recipe{}),
 	"state":              reflect.TypeOf(machine.State{}),
 	"transition":         reflect.TypeOf(machine.Transition{}),
 	"act":                reflect.TypeOf(machine.Act{}),

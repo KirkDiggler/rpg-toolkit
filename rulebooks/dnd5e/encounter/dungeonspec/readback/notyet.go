@@ -51,6 +51,7 @@ var saidKeys = map[string][]string{
 	"activity":           {"ref", "cycles"},
 	"post":               {"door", "at", "against", "pass"},
 	"recipe":             {"ref", "initial", "states"},
+	"routineRecipe":      {"ref", "initial", "states", "bag"},
 	"state":              {"transitions", "terminal"},
 	"transition":         {"on", "when", "to", "do", "reason"},
 	"act":                {"pick", "wake_in", "set", "clear", "anchor"},
@@ -131,8 +132,8 @@ func (b *builder) notYetSaid() []Unsaid {
 			}
 		})
 	}
-	recipe := func(n *yaml.Node, path string) {
-		check(n, path, "recipe")
+	recipe := func(n *yaml.Node, path, kind string) {
+		check(n, path, kind)
 		each(at(n, "states"), path+".states", func(st *yaml.Node, sp string) {
 			check(st, sp, "state")
 			each(at(st, "transitions"), sp+".transitions", func(tr *yaml.Node, tp string) {
@@ -170,7 +171,7 @@ func (b *builder) notYetSaid() []Unsaid {
 	each(at(gp, "doorBindings"), "room.room.doorBindings", func(n *yaml.Node, p string) { check(n, p, "doorBinding") })
 	each(at(root, "behaviorDefinitions"), "behaviorDefinitions", func(n *yaml.Node, p string) {
 		check(n, p, "behaviorDefinition")
-		recipe(at(n, "recipe"), p+".recipe")
+		recipe(at(n, "recipe"), p+".recipe", "routineRecipe") // its bag is said (routines.go)
 		each(at(n, "table"), p+".table", func(rows *yaml.Node, kp string) {
 			each(rows, kp, func(r *yaml.Node, rp string) {
 				check(r, rp, "tableRow")
@@ -181,7 +182,7 @@ func (b *builder) notYetSaid() []Unsaid {
 	each(at(root, "interactions"), "interactions", func(n *yaml.Node, p string) {
 		check(n, p, "interaction")
 		check(at(n, "approach"), p+".approach", "approach")
-		recipe(at(n, "recipe"), p+".recipe")
+		recipe(at(n, "recipe"), p+".recipe", "recipe")
 		each(at(n, "outcomes"), p+".outcomes", func(list *yaml.Node, op string) {
 			each(list, op, func(c *yaml.Node, cp string) {
 				check(c, cp, "outcome")
