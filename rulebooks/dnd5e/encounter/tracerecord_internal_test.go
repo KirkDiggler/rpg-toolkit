@@ -67,12 +67,13 @@ func TestTheTraceAndTheAnswerNameAPickAlike(t *testing.T) {
 }
 
 // TestTheRecordSaysWhatItIsARunOf: a scene_content beat carries the site's
-// hash and the content's key, and a joined_at beat each member's start
+// hash, the content's hash and the content's key, and a joined_at beat each member's start
 // cell; both are told to nobody, so every member's story is the story it
 // was. A member that joins later gets its own joined_at.
 func TestTheRecordSaysWhatItIsARunOf(t *testing.T) {
 	in := wakeSetup(BehaviorDriver{}, monster("m-guard", 6, 2, holds()))
 	in.Key = "the-test-hall"
+	in.Content = "c0ffee"
 	enc, err := NewEncounter(in)
 	require.NoError(t, err)
 
@@ -89,7 +90,8 @@ func TestTheRecordSaysWhatItIsARunOf(t *testing.T) {
 			require.Empty(t, audiences[i], "joined_at is told to nobody")
 		}
 	}
-	require.Equal(t, map[string]any{"beat": BeatSceneContent, "site_hash": string(enc.Site().Hash()), "key": "the-test-hall"}, content,
+	require.Equal(t, map[string]any{"beat": BeatSceneContent, "site_hash": string(enc.Site().Hash()), "key": "the-test-hall",
+		"content_hash": "c0ffee"}, content,
 		"no engine version in a test build of this module")
 	for id, cell := range starts {
 		where, ok := enc.canvas.GetEntityPosition(id)
