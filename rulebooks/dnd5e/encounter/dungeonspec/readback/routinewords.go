@@ -262,7 +262,11 @@ func (b *builder) whenWords(w behavior.When, who string) (string, []Connection) 
 				target += ", on " + whose(who) + " side,"
 			}
 		}
-		return fmt.Sprintf("%s has noted that the deed %s was done to %s within the last %d rounds", who, quote(w.Deed), target, w.Within), nil
+		// SAW, because a deed lands only on whoever saw its doer (deed.go
+		// audienceOf; a spoken deed on who caught the words and saw the
+		// speaker). "learned" is the word for a deed that was told, when
+		// word spreads (rpg-project#992).
+		return fmt.Sprintf("%s saw the deed %s done to %s within the last %d rounds", who, quote(w.Deed), target, w.Within), nil
 	}
 	return "a condition this build cannot say", nil
 }
