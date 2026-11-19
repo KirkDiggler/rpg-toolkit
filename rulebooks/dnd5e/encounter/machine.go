@@ -146,9 +146,11 @@ func addGuardFacts(facts map[machine.FactName]machine.FactSpec, g *machine.Guard
 		}}
 	}
 	// A RAISED VOICE (rpg-project#933): only a loudness this rulebook names
-	// is registered, so a misspelt word is a fact the vocabulary refuses.
-	if g.Fact != nil && strings.HasPrefix(string(g.Fact.Name), heardLoudnessPrefix) {
-		if l, ok := loudnessOf(strings.TrimPrefix(string(g.Fact.Name), heardLoudnessPrefix)); ok && l != "" {
+	// is registered, so a misspelt word is a fact the vocabulary refuses,
+	// and so is none at all (`heard.loudness:` names no loudness; the
+	// machine words table says the loudness is required, rpg-project#1001).
+	if word, ok := strings.CutPrefix(string(guardFactName(g)), heardLoudnessPrefix); ok && word != "" {
+		if l, ok := loudnessOf(word); ok {
 			facts[g.Fact.Name] = machine.FactSpec{Kind: machine.KindBool, Read: readHeardLoudness(l)}
 		}
 	}
@@ -335,6 +337,14 @@ func readHeardKind(env any) (any, bool) {
 		return nil, false
 	}
 	return ev.Kind, true
+}
+
+// guardFactName is the name of g's fact leaf, or "" for none.
+func guardFactName(g *machine.Guard) machine.FactName {
+	if g == nil || g.Fact == nil {
+		return ""
+	}
+	return g.Fact.Name
 }
 
 // heardLoudnessPrefix names a guard fact that is true while the heard
@@ -628,6 +638,28 @@ func (e *Encounter) appendStateBeat(id MemberID, stepped machine.Stepped) error 
 	}
 	_, err = e.appendBeat(&record.AppendInput{At: uint64(e.clock.ToData().HighWater),
 		Audience: e.audienceFor(subjectBeat, id), Tags: map[string]string{"tag": BeatState}, Payload: payload})
+	return err
+}
+
+// appendRoleStateBeat writes [BeatRoleState] for one of m's roles other than
+// its body: the role's instance id and its recipe, the state it left and
+// entered, and why. Its audience is m alone.
+func (e *Encounter) appendRoleStateBeat(m *memberRecord, role string, stepped machine.Stepped) error {
+	body := map[string]interface{}{
+		"beat": BeatRoleState, "member": string(m.ID), "role": role,
+		"from": stepped.From, "to": stepped.To, "reason": stepped.Reason,
+	}
+	for _, b := range m.behaviors.input.Instances {
+		if b.Instance.ID == role {
+			body["recipe"] = b.Instance.Recipe.Ref.String()
+		}
+	}
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	_, err = e.appendBeat(&record.AppendInput{At: uint64(e.clock.ToData().HighWater),
+		Audience: []MemberID{m.ID}, Tags: map[string]string{"tag": BeatRoleState}, Payload: payload})
 	return err
 }
 

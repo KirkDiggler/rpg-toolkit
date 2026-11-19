@@ -322,7 +322,13 @@ func (e *Encounter) selectDecision(m *memberRecord, view MonsterView, opportunit
 func (e *Encounter) behaviorStepped(m *memberRecord, steps []behavior.InstanceStep) error {
 	for _, result := range steps {
 		step := result.Step
-		if result.ID != m.behaviors.input.BodyInstance || step.To == "" {
+		if step.To == "" {
+			continue
+		}
+		if result.ID != m.behaviors.input.BodyInstance {
+			if err := e.appendRoleStateBeat(m, result.ID, step); err != nil {
+				return err
+			}
 			continue
 		}
 		if err := e.appendStateBeat(m.ID, step); err != nil {

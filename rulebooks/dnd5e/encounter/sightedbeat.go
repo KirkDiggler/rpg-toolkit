@@ -176,8 +176,13 @@ func (e *Encounter) appendSightedBeats(
 			continue
 		}
 
+		// THE OBSERVER IS NAMED (rpg-project#1001): the record a run is
+		// watched from keeps the payload and not the audience, and the
+		// audience is the observer alone, so naming it tells nobody
+		// anything they did not have.
 		payload := map[string]interface{}{
-			"beat": BeatSighted,
+			"beat":     BeatSighted,
+			"observer": string(observer),
 		}
 		// Omitted rather than empty, both of them. An absent key is "this
 		// did not happen"; an empty list invites a reader to believe the
