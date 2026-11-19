@@ -90,7 +90,7 @@ func TestMachineWords_ConditionsAreReadWhereTheTableSays(t *testing.T) {
 		require.True(t, ok, "a sample for every fact word in the table: %s", c.Word)
 		for _, on := range everyBeat() {
 			err := ValidateMachine(wordsRecipe(t, machine.Transition{On: machine.Beat(on), When: g}))
-			require.Equal(t, allowedOn(c.ConditionOn(), machine.Beat(on)), err == nil, "%s on %s: %v", c.Word, on, err)
+			require.Equal(t, beatAllowed(c.allowedOn(), machine.Beat(on)), err == nil, "%s on %s: %v", c.Word, on, err)
 		}
 	}
 }
@@ -113,7 +113,7 @@ func TestMachineWords_PickIsAllowedOnlyOnPickingBeats(t *testing.T) {
 	for _, on := range everyBeat() {
 		r := wordsRecipe(t, machine.Transition{On: machine.Beat(on), Do: []machine.Act{{Pick: string(AnswerTime)}}})
 		_, err := CheckBehaviors(&CheckBehaviorsInput{Behaviors: *fixtureBehavior(*r, holds())})
-		allowed := allowedOn(pick.ActOn(), machine.Beat(on))
+		allowed := beatAllowed(pick.allowedOn(), machine.Beat(on))
 		require.Equal(t, allowed, err == nil, "%s: %v", on, err)
 		if !allowed {
 			refused := StepRefusals(err)
@@ -236,8 +236,54 @@ func TestMachineWords_WhereAllowedIsPinned(t *testing.T) {
 	require.Equal(t, []string{"time", "turn", "barred", "approached"}, beatsWhere(func(b BeatWord) bool { return b.Picks }))
 	require.Equal(t, []string{"time", "turn"}, beatsWhere(func(b BeatWord) bool { return b.Timed }))
 	claim, _ := ConditionWordOf("heard.claim")
-	require.Equal(t, []string{"heard"}, claim.ConditionOn())
+	require.Equal(t, []string{"heard"}, claim.allowedOn())
 	noted, _ := ConditionWordOf("noted:x")
-	require.Equal(t, []string{"heard", "seen", "barred", "approached"}, noted.ConditionOn())
+	require.Equal(t, []string{"heard", "seen", "barred", "approached"}, noted.allowedOn())
 	require.Equal(t, []string{"time", "turn", "heard", "deed", "seen", "fact", "topic", "clock:world", "clock:fight", "barred", "approached"}, MachineBeats)
+}
+
+// TestMachineWords_PublishesRealBeatsOnly holds the published view to the
+// shape a reader gets: every On a list of real beats, expanded from the
+// table's families, and no engine spelling.
+func TestMachineWords_PublishesRealBeatsOnly(t *testing.T) {
+	table := MachineWords()
+	realBeats := func(on []string) {
+		for _, b := range on {
+			bw, ok := BeatWordOf(b)
+			require.True(t, ok && bw.Open == SlotNone && bw.Word == b, "%q is not a real beat", b)
+		}
+	}
+	for _, c := range table.Conditions {
+		realBeats(c.On)
+		require.Empty(t, c.engine, c.Word)
+		require.Equal(t, familyNone, c.family, c.Word)
+		inner, _ := ConditionWordOf(c.Word + "x")
+		if c.Open == SlotNone {
+			inner, _ = ConditionWordOf(c.Word)
+		}
+		require.Equal(t, inner.allowedOn(), c.On, c.Word)
+	}
+	for _, a := range table.Acts {
+		realBeats(a.On)
+		inner, _ := ActWordOf(a.Word)
+		require.Equal(t, inner.allowedOn(), a.On, a.Word)
+	}
+	within, _ := ConditionWordOf("within")
+	require.Equal(t, []string{"heard", "deed", "seen", "barred", "approached"}, within.allowedOn())
+}
+
+// TestMachineWords_AboutIsTheNamesColumn holds a beat's about-whom words to
+// its Names column: the read-back says who a `noted:` asks about from them.
+func TestMachineWords_AboutIsTheNamesColumn(t *testing.T) {
+	for _, b := range machineBeatWords {
+		require.Equal(t, b.Names, b.About != "", b.Word)
+	}
+}
+
+// TestMachineWords_TargetedReactionsArePickingBeats pins the runtime's own
+// list of targeted reactions (wakebeats.go react: barred, approached) to the
+// table: the beats a step may pick on that the clock does not raise.
+func TestMachineWords_TargetedReactionsArePickingBeats(t *testing.T) {
+	require.Equal(t, []string{string(beatBarred), string(beatApproached)},
+		beatsWhere(func(b BeatWord) bool { return b.Picks && !b.Timed }))
 }

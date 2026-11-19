@@ -5,6 +5,7 @@ package readback
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -68,12 +69,7 @@ func guardWords(g *machine.Guard, who string, on machine.Beat) (string, []Connec
 	if g.Fact != nil {
 		name := string(g.Fact.Name)
 		val := fmt.Sprint(g.Fact.Value)
-		word, _ := encounter.ConditionWordOf(name)
-		prefix := word.Word
-		if word.Engine != "" && strings.HasPrefix(name, word.Engine) {
-			prefix = word.Engine
-		}
-		id := strings.TrimPrefix(name, prefix)
+		word, id, _ := encounter.SplitConditionWord(name)
 		verb := "has noted"
 		if !boolTestTrue(val) {
 			verb = "has not noted"
@@ -138,15 +134,8 @@ func guardWords(g *machine.Guard, who string, on machine.Beat) (string, []Connec
 // aboutWords is the one a beat names, as a `noted:<topic>` asks about them
 // (rpg-project#1000).
 func aboutWords(on machine.Beat, who string) string {
-	switch on {
-	case "heard":
-		return "the one " + who + " heard (" + who + " knows who only by seeing them)"
-	case "seen":
-		return "the one " + who + " saw"
-	case "barred":
-		return "the one who walked into " + who
-	case "approached":
-		return "the one " + who + " hailed"
+	if b, ok := encounter.BeatWordOf(string(on)); ok && b.Names {
+		return fill(b.About, "who", who)
 	}
 	return "nobody (`" + string(on) + "` is about nobody)"
 }
@@ -256,17 +245,17 @@ func (b *builder) whenWords(w behavior.When, who string) (string, []Connection) 
 		case behavior.ScopeActor:
 			return fmt.Sprintf("%s did the deed %s itself within the last %d rounds", who, quote(w.Deed), w.Within), nil
 		}
+		verb, own := deedVerb(w.Deed)
+		if own {
+			return fmt.Sprintf("%s did the deed %s itself within the last %d rounds", who, quote(w.Deed), w.Within), nil
+		}
 		if w.Who != "" {
 			target = b.creature(string(w.Who))
 			if w.Scope == behavior.ScopeAlly {
 				target += ", on " + whose(who) + " side,"
 			}
 		}
-		// SAW, because a deed lands only on whoever saw its doer (deed.go
-		// audienceOf; a spoken deed on who caught the words and saw the
-		// speaker). "learned" is the word for a deed that was told, when
-		// word spreads (rpg-project#992).
-		return fmt.Sprintf("%s saw the deed %s done to %s within the last %d rounds", who, quote(w.Deed), target, w.Within), nil
+		return fmt.Sprintf("%s %s the deed %s done to %s within the last %d rounds", who, verb, quote(w.Deed), target, w.Within), nil
 	}
 	return "a condition this build cannot say", nil
 }
@@ -392,4 +381,24 @@ func (b *builder) rowWords(a behavior.Answer, who string) (string, []Connection)
 		out += fmt.Sprintf(" (weight %d)", a.Weight)
 	}
 	return out, conns
+}
+
+// deedVerb is the verb a held deed's sentence says, chosen from every way
+// that deed can reach a creature ([encounter.DeedReachOf]), so the sentence
+// is true of each: "saw" when sight is the only way, "saw or caused" when a
+// cause holds it unseen, and own when the deed is only ever the creature's
+// own testimony (`fled`), which reads as a deed it did itself. Any other way
+// (a deed told, rpg-project#992) reads "saw or learned of".
+func deedVerb(word string) (verb string, own bool) {
+	reach := encounter.DeedReachOf(word)
+	switch {
+	case slices.Equal(reach, []encounter.DeedReach{encounter.ReachOwn}):
+		return "", true
+	case slices.Equal(reach, []encounter.DeedReach{encounter.ReachSeen}):
+		return "saw", false
+	case slices.Equal(reach, []encounter.DeedReach{encounter.ReachSeen, encounter.ReachCaused}):
+		return "saw or caused", false
+	default:
+		return "saw or learned of", false
+	}
 }

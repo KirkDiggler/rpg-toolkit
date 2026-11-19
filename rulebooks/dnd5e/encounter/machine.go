@@ -226,15 +226,16 @@ func guardWordsAt(on machine.Beat, g *machine.Guard, at []machine.Segment) (stri
 		switch {
 		case known && word.Word == string(factHeardClaim):
 			if v, ok := g.Fact.Value.(string); !ok || !slices.Contains(word.Values, v) {
-				return fmt.Sprintf("`heard.claim` is %s, and this names %q", strings.Join(word.Values, " or "), fmt.Sprint(g.Fact.Value)), here
+				return fmt.Sprintf("`%s` is %s, and this names %q", word.Word, strings.Join(word.Values, " or "), fmt.Sprint(g.Fact.Value)), here
 			}
-			if !allowedOn(word.ConditionOn(), on) {
-				return fmt.Sprintf("`heard.claim` reads what the creature heard, and `%s` is not hearing: it is read on `heard` only", on), here
+			if allowed := word.allowedOn(); !beatAllowed(allowed, on) {
+				return fmt.Sprintf("`%s` reads what the creature heard, and `%s` is not hearing: it is read on `%s` only",
+					word.Word, on, strings.Join(allowed, "`, `")), here
 			}
 		case known && word.Word == notedPrefix:
-			if !allowedOn(word.ConditionOn(), on) {
+			if !beatAllowed(word.allowedOn(), on) {
 				return fmt.Sprintf("`%s` asks about the one this beat is about, and `%s` is about nobody: "+
-					"it is read on %s", name, on, joinWords(word.ConditionOn(), "and")), here
+					"it is read on %s", name, on, joinWords(word.allowedOn(), "and")), here
 			}
 		}
 	}

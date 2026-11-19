@@ -114,10 +114,10 @@ func newBehaviorRuntime(in *BehaviorInput, progress *behavior.ComposerData) (*be
 		// pick, even conditionally; barred is the explicit targeted exception.
 		// THE PICK RULE IS THE TABLE'S ([MachineWords]: the `pick` act's
 		// beats), and its sentence is joined from it.
-		picks := pickWord.ActOn()
+		picks := pickWord.allowedOn()
 		for _, name := range slices.Sorted(maps.Keys(spec.Recipe.States)) {
 			for index, transition := range spec.Recipe.States[name].Transitions {
-				if allowedOn(picks, transition.On) {
+				if beatAllowed(picks, transition.On) {
 					continue
 				}
 				for j, act := range transition.Do {
