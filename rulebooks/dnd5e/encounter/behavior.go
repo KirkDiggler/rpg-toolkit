@@ -112,14 +112,19 @@ func newBehaviorRuntime(in *BehaviorInput, progress *behavior.ComposerData) (*be
 		// Generic machine/composer validation knows structure, not the
 		// encounter's action authority. Observe-only inputs cannot request a
 		// pick, even conditionally; barred is the explicit targeted exception.
+		// THE PICK RULE IS THE TABLE'S ([MachineWords]: the `pick` act's
+		// beats), and its sentence is joined from it.
+		picks := pickWord.allowedOn()
 		for _, name := range slices.Sorted(maps.Keys(spec.Recipe.States)) {
 			for index, transition := range spec.Recipe.States[name].Transitions {
-				if transition.On == beatTime || transition.On == beatTurn || transition.On == beatBarred || transition.On == beatApproached {
+				if beatAllowed(picks, transition.On) {
 					continue
 				}
-				for _, act := range transition.Do {
+				for j, act := range transition.Do {
 					if act.Pick != "" {
-						return nil, fmt.Errorf("behaviors %q state %q transition %d: selection is only authorized on time, turn, barred or approached, not %q", spec.ID, name, index, transition.On)
+						return nil, fmt.Errorf("behaviors %q %w", spec.ID, &StepRefusal{State: name, Transition: index,
+							Leaf:    []machine.Segment{{Name: "do", Index: j, Indexed: true}},
+							Message: fmt.Sprintf("selection is only authorized on %s, not %q", joinWords(picks, "or"), transition.On)})
 					}
 				}
 			}

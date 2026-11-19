@@ -10,6 +10,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
 // routinewords.go says a routine's vocabulary — its beats, guards, acts,
@@ -18,38 +19,40 @@ import (
 // whose is the possessive of an actor's name.
 func whose(who string) string { return who + "'s" }
 
-// beatWords says when a routine hears a beat.
+// beatWords says when a routine hears a beat: the table's Long
+// ([encounter.MachineWords]), about who.
 func beatWords(on machine.Beat, who string) string {
-	switch on {
-	case "time":
-		return fmt.Sprintf("on %s own time (each round %s is due, out of a fight)", whose(who), who)
-	case "turn":
-		return fmt.Sprintf("on %s turn in a fight", whose(who))
-	case "fact":
-		return fmt.Sprintf("when %s learns a fact", who)
-	case "topic":
-		return fmt.Sprintf("when %s notes a topic about someone, by its own judgement or by hearing it", who)
-	case "approached":
-		return fmt.Sprintf("when %s hails a character, which happens only under the conversation's hail rule: the "+
-			"character's own step ended within the approach distance, %s sees them and they see %s, %s offers them a line "+
-			"that steps the conversation, no nearer carrier qualifies, and the conversation is addressing no one", who, who, who, who)
-	case "barred":
-		return fmt.Sprintf("when someone walks into %s and its body stops them", who)
-	case "heard":
-		return fmt.Sprintf("when %s hears a sound (a line a character says is heard at once, as it is said)", who)
-	case "seen":
-		return fmt.Sprintf("when an opposed creature comes into %s sight", whose(who))
-	case "deed":
-		return "when a deed is done"
-	case "clock:fight":
-		return fmt.Sprintf("on each round of a fight %s side is in", whose(who))
-	case "clock:world":
-		return "on each round of world time (out of a fight)"
+	b, ok := encounter.BeatWordOf(string(on))
+	if !ok {
+		return fmt.Sprintf("on the beat %s", quote(string(on)))
 	}
-	if s, ok := strings.CutPrefix(string(on), "deed:"); ok {
-		return fmt.Sprintf("when the deed %s is done", quote(s))
+	return beatFill(b.Long, b, on, who)
+}
+
+// beatFill fills a beat template's slots.
+func beatFill(t string, b encounter.BeatWord, on machine.Beat, who string) string {
+	return fill(t, "who", who, "whose", whose(who), "id", quote(strings.TrimPrefix(string(on), b.Word)), "beat", quote(string(on)))
+}
+
+// fill replaces a table template's {slots}, given as name, value pairs.
+func fill(t string, pairs ...string) string {
+	r := make([]string, 0, len(pairs))
+	for i := 0; i+1 < len(pairs); i += 2 {
+		r = append(r, "{"+pairs[i]+"}", pairs[i+1])
 	}
-	return fmt.Sprintf("on the beat %s", quote(string(on)))
+	return strings.NewReplacer(r...).Replace(t)
+}
+
+// cond is the table's entry for a condition word that is certainly in it.
+func cond(word string) encounter.ConditionWord {
+	c, _ := encounter.ConditionWordOf(word)
+	return c
+}
+
+// act is the table's entry for an act word that is certainly in it.
+func act(word string) encounter.ActWord {
+	a, _ := encounter.ActWordOf(word)
+	return a
 }
 
 // guardWords says a transition's guard as a condition clause, with the
@@ -65,52 +68,47 @@ func guardWords(g *machine.Guard, who string, on machine.Beat) (string, []Connec
 	if g.Fact != nil {
 		name := string(g.Fact.Name)
 		val := fmt.Sprint(g.Fact.Value)
+		word, id, _ := encounter.SplitConditionWord(name)
+		verb := "has noted"
+		if !boolTestTrue(val) {
+			verb = "has not noted"
+		}
+		say := func(c []Connection) {
+			add(fill(word.Long, "who", who, "whose", whose(who), "id", quote(id), "verb", verb,
+				"about", aboutWords(on, who), "raised", raisedWords(id)), c)
+		}
 		switch {
-		case strings.HasPrefix(name, "fact:") && g.Fact.Op == "eq" && val == "true":
-			id := strings.TrimPrefix(name, "fact:")
-			add(fmt.Sprintf("%s knows the fact %s", who, quote(id)), []Connection{{Kind: "fact", ID: id, Role: "wakes-on"}})
-		case name == "heard.kind" && g.Fact.Op == "eq":
-			add(fmt.Sprintf("what %s heard was a %s", who, quote(val)), nil)
-		case strings.HasPrefix(name, "heard.loudness:") && g.Fact.Op == "eq" && val == "true":
-			add(fmt.Sprintf("what %s heard was a voice%s (a clang, a crash or a boom is at no loudness)",
-				who, raisedWords(strings.TrimPrefix(name, "heard.loudness:"))), nil)
-		case name == "heard.claim" && g.Fact.Op == "eq":
-			add(fmt.Sprintf("what %s heard was a claim that %s", who, val), []Connection{{Kind: ConnClaim, ID: val, Role: "asks"}})
-		case strings.HasPrefix(name, "noted:") && isBoolTest(g.Fact.Op, val):
-			id := strings.TrimPrefix(name, "noted:")
-			verb := "has noted"
-			if !boolTestTrue(val) {
-				verb = "has not noted"
-			}
-			add(fmt.Sprintf("%s %s %s about %s", who, verb, quote(id), aboutWords(on, who)),
-				[]Connection{{Kind: "topic", ID: id, Role: "asks"}})
-		case strings.HasPrefix(name, "topic:") && isBoolTest(g.Fact.Op, val):
+		case word.Open == encounter.SlotFact && g.Fact.Op == "eq" && val == "true":
+			say([]Connection{{Kind: "fact", ID: id, Role: "wakes-on"}})
+		case word.Word == "heard.kind" && g.Fact.Op == "eq":
+			add(fill(word.Long, "who", who, "value", quote(val)), nil)
+		case word.Open == encounter.SlotLoudness && g.Fact.Op == "eq" && val == "true":
+			say(nil)
+		case word.Word == "heard.claim" && g.Fact.Op == "eq":
+			add(fill(word.Long, "who", who, "value", val), []Connection{{Kind: ConnClaim, ID: val, Role: "asks"}})
+		case word.Word == "noted:" && isBoolTest(g.Fact.Op, val):
+			say([]Connection{{Kind: "topic", ID: id, Role: "asks"}})
+		case word.Word == "noted.anyone:" && isBoolTest(g.Fact.Op, val):
 			// `noted.anyone:<topic>` as authored, the engine's `topic:<id>`
 			// once compiled (rpg-project#1005).
-			id := strings.TrimPrefix(name, "topic:")
-			verb := "has noted"
-			if !boolTestTrue(val) {
-				verb = "has not noted"
-			}
-			add(fmt.Sprintf("%s %s %s about anyone", who, verb, quote(id)),
-				[]Connection{{Kind: "topic", ID: id, Role: "wakes-on"}})
+			say([]Connection{{Kind: "topic", ID: id, Role: "wakes-on"}})
 		default:
-			add(fmt.Sprintf("%s %s is %s %s", whose(who), quote(name), opWords(g.Fact.Op), val), nil)
+			add(fill(cond("enemy").Long, "whose", whose(who), "name", quote(name), "op", opWords(g.Fact.Op), "value", val), nil)
 		}
 	}
 	if g.Flag != "" {
-		add(fmt.Sprintf("%s flag %s is set", whose(who), quote(g.Flag)), nil)
+		add(fill(cond("flag").Long, "whose", whose(who), "id", quote(g.Flag)), nil)
 	}
 	if g.Scope != nil {
 		if g.Scope.Within > 0 {
-			add(fmt.Sprintf("it happened within %d cells of %s", g.Scope.Within, who), nil)
+			add(fill(cond("within").Long, "n", fmt.Sprint(g.Scope.Within), "who", who), nil)
 		}
 		if g.Scope.Regions > 0 {
-			add(fmt.Sprintf("it happened within %d rooms of %s", g.Scope.Regions, who), nil)
+			add(fill(cond("regions").Long, "n", fmt.Sprint(g.Scope.Regions), "who", who), nil)
 		}
 	}
 	if g.Rounds != nil {
-		add(fmt.Sprintf("%s rounds have passed since %s set its anchor", opWords(g.Rounds.Op)+" "+fmt.Sprint(g.Rounds.N), who), nil)
+		add(fill(cond("rounds").Long, "op", opWords(g.Rounds.Op), "n", fmt.Sprint(g.Rounds.N), "who", who), nil)
 	}
 	for i := range g.All {
 		s, c := guardWords(&g.All[i], who, on)
@@ -123,27 +121,20 @@ func guardWords(g *machine.Guard, who string, on machine.Beat) (string, []Connec
 			any = append(any, s)
 			conns = append(conns, c...)
 		}
-		parts = append(parts, "("+strings.Join(any, ", or ")+")")
+		parts = append(parts, fill(cond("any").Long, "parts", strings.Join(any, cond("any").Join)))
 	}
 	if g.Not != nil {
 		s, c := guardWords(g.Not, who, on)
-		add("NOT ("+s+")", c)
+		add(fill(cond("not").Long, "inner", s), c)
 	}
-	return strings.Join(parts, " and "), conns
+	return fill(cond("all").Long, "parts", strings.Join(parts, cond("all").Join)), conns
 }
 
 // aboutWords is the one a beat names, as a `noted:<topic>` asks about them
 // (rpg-project#1000).
 func aboutWords(on machine.Beat, who string) string {
-	switch on {
-	case "heard":
-		return "the one " + who + " heard (" + who + " knows who only by seeing them)"
-	case "seen":
-		return "the one " + who + " saw"
-	case "barred":
-		return "the one who walked into " + who
-	case "approached":
-		return "the one " + who + " hailed"
+	if b, ok := encounter.BeatWordOf(string(on)); ok && b.Names {
+		return fill(b.About, "who", who)
 	}
 	return "nobody (`" + string(on) + "` is about nobody)"
 }
@@ -176,24 +167,31 @@ func opWords(op machine.Op) string {
 	return string(op)
 }
 
-// actWords says what a transition does, as verb phrases without a subject.
-func actWords(acts []machine.Act, who string) []string {
+// actWords says what a transition does, as verb phrases without a subject:
+// each act's Long from the table, or its Short when short.
+func actWords(acts []machine.Act, short bool) []string {
+	say := func(w encounter.ActWord, pairs ...string) string {
+		if short {
+			return fill(w.Short, pairs...)
+		}
+		return fill(w.Long, pairs...)
+	}
 	var out []string
 	for _, a := range acts {
 		if a.Pick != "" {
-			out = append(out, fmt.Sprintf("acts from its own %s rows", quote(a.Pick)))
+			out = append(out, say(act("pick"), "id", quote(a.Pick)))
 		}
 		if a.Anchor {
-			out = append(out, "sets its anchor to this moment")
+			out = append(out, say(act("anchor")))
 		}
 		if a.WakeIn > 0 {
-			out = append(out, fmt.Sprintf("wakes again in %d rounds", a.WakeIn))
+			out = append(out, say(act("wake_in"), "n", fmt.Sprint(a.WakeIn)))
 		}
 		if a.Set != nil {
-			out = append(out, fmt.Sprintf("sets %s to %v", quote(a.Set.Key), a.Set.Value))
+			out = append(out, say(act("set"), "id", quote(a.Set.Key), "value", fmt.Sprint(a.Set.Value)))
 		}
 		for _, k := range a.Clear {
-			out = append(out, fmt.Sprintf("clears %s", quote(k)))
+			out = append(out, say(act("clear"), "id", quote(k)))
 		}
 	}
 	return out

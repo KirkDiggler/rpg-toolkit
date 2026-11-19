@@ -4,7 +4,6 @@
 package readback_test
 
 import (
-	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -24,10 +23,7 @@ type FoldEachSuite struct {
 func TestFoldEachSuite(t *testing.T) { suite.Run(t, new(FoldEachSuite)) }
 
 func (s *FoldEachSuite) SetupSuite() {
-	raw, err := os.ReadFile(castlePath)
-	s.Require().NoError(err)
-	s.rb, err = readback.Of(raw)
-	s.Require().NoError(err)
+	_, s.rb = theCastle(s.T())
 }
 
 // folds is both folds, by name.

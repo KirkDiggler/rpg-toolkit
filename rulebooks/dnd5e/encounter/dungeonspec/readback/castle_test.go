@@ -4,12 +4,16 @@
 package readback_test
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"regexp"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"gopkg.in/yaml.v3"
 
@@ -31,14 +35,58 @@ type CastleSuite struct {
 func TestCastleSuite(t *testing.T) { suite.Run(t, new(CastleSuite)) }
 
 func (s *CastleSuite) SetupSuite() {
-	raw, err := os.ReadFile(castlePath)
-	s.Require().NoError(err)
-	s.raw = raw
+	s.raw, s.rb = theCastle(s.T())
 	var n yaml.Node
-	s.Require().NoError(yaml.Unmarshal(raw, &n))
+	s.Require().NoError(yaml.Unmarshal(s.raw, &n))
 	s.doc = n.Content[0]
-	s.rb, err = readback.Of(raw)
-	s.Require().NoError(err)
+}
+
+// theCastleOnce is the castle's read-back, built once per test binary and
+// shared by every suite that only reads it: building it is the package's
+// costliest step, and a suite that rebuilt it paid for it again.
+var theCastleOnce struct {
+	once sync.Once
+	raw  []byte
+	rb   *readback.ReadBack
+	err  error
+}
+
+// castleSuites are the tests that read the shared castle.
+var castleSuites = []string{
+	"TestCastleSuite", "TestOneWordPreventsTheFold", "TestFoldEachSuite", "TestJoinsCastleSuite",
+	"TestMachineCastleSuite", "TestThreadsSuite", "TestWaysCastleSuite",
+}
+
+// TestMain builds the shared castle before any test runs, when the run's
+// -run pattern can select a test that reads it, so no one test's clock
+// carries the package's costliest step.
+func TestMain(m *testing.M) {
+	flag.Parse()
+	pattern := flag.Lookup("test.run").Value.String()
+	re, err := regexp.Compile(strings.SplitN(pattern, "/", 2)[0])
+	if pattern == "" || err != nil || slices.ContainsFunc(castleSuites, re.MatchString) {
+		buildTheCastle()
+	}
+	os.Exit(m.Run())
+}
+
+// buildTheCastle builds [theCastleOnce], once.
+func buildTheCastle() {
+	theCastleOnce.once.Do(func() {
+		theCastleOnce.raw, theCastleOnce.err = os.ReadFile(castlePath)
+		if theCastleOnce.err == nil {
+			theCastleOnce.rb, theCastleOnce.err = readback.Of(theCastleOnce.raw)
+		}
+	})
+}
+
+// theCastle is the castle's source and its shared read-back. A test reads it
+// and never changes it; a test about building it builds its own.
+func theCastle(t *testing.T) ([]byte, *readback.ReadBack) {
+	t.Helper()
+	buildTheCastle()
+	require.NoError(t, theCastleOnce.err)
+	return theCastleOnce.raw, theCastleOnce.rb
 }
 
 // child is a mapping's value at key, or nil.
@@ -447,7 +495,10 @@ func (s *CastleSuite) TestSameLinesFold() {
 
 // TestOneWordPreventsTheFold: the second guard's vouch answer differing by
 // one word is said in full, and only it; her other three lines still fold.
-func (s *CastleSuite) TestOneWordPreventsTheFold() {
+func TestOneWordPreventsTheFold(t *testing.T) {
+	s := &CastleSuite{}
+	s.SetT(t)
+	s.SetupSuite()
 	gate2 := strings.Index(string(s.raw), "      gate-2:\n        faction: garrison")
 	s.Require().Positive(gate2)
 	edited := string(s.raw[:gate2]) + strings.Replace(string(s.raw[gate2:]),

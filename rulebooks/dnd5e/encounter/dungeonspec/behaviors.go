@@ -305,6 +305,17 @@ func bindBehaviorSource(in behaviorSourceInput) (behaviorLowering, error) {
 				}
 			}
 			if _, err := encounter.CheckBehaviors(&encounter.CheckBehaviorsInput{Behaviors: encounter.BehaviorInput{Instances: []encounter.BoundBehavior{bound}}}); err != nil {
+				// A REFUSED STEP IS THE DEFINITION'S, AT ITS OWN PATH
+				// (rpg-project#997): a native recipe's steps are the
+				// author's, so each placed refusal is reported where the
+				// author wrote it. A sequence's states are generated from
+				// its body, and anything the refusal does not place, stay
+				// at the binding's `use`.
+				if definition.Recipe != nil {
+					if placed := recipeRefusals(err, "behaviorDefinitions."+binding.Use+".recipe"); len(placed) > 0 {
+						return behaviorLowering{}, &ValidationError{Errors: placed}
+					}
+				}
 				return behaviorLowering{}, behaviorSourceError(path+".use", fmt.Sprintf("definition %q: %v", binding.Use, err))
 			}
 			stateNames[binding.ID] = names

@@ -10,6 +10,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/mind/behavior"
 	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
 )
 
 // shortwords.go is a routine's vocabulary in the folded form: the same
@@ -25,25 +26,9 @@ func shortWake(tr machine.Transition) string {
 	}
 	var does []string
 	if tr.To != "" {
-		does = append(does, "to "+quote(tr.To))
+		does = append(does, fill(act("to").Short, "id", quote(tr.To)))
 	}
-	for _, a := range tr.Do {
-		if a.Pick != "" {
-			does = append(does, "acts from its "+quote(a.Pick)+" rows")
-		}
-		if a.Anchor {
-			does = append(does, "sets its anchor")
-		}
-		if a.WakeIn > 0 {
-			does = append(does, fmt.Sprintf("wakes again in %d rounds", a.WakeIn))
-		}
-		if a.Set != nil {
-			does = append(does, fmt.Sprintf("sets %s to %v", quote(a.Set.Key), a.Set.Value))
-		}
-		for _, k := range a.Clear {
-			does = append(does, "clears "+quote(k))
-		}
-	}
+	does = append(does, actWords(tr.Do, true)...)
 	if len(does) == 0 {
 		does = append(does, "nothing")
 	}
@@ -54,31 +39,13 @@ func shortWake(tr machine.Transition) string {
 	return s
 }
 
-// shortBeat says a beat tersely.
+// shortBeat says a beat tersely: the table's Short.
 func shortBeat(on machine.Beat) string {
-	switch on {
-	case "time":
-		return "on its time (out of a fight)"
-	case "turn":
-		return "on its turn in a fight"
-	case "fact":
-		return "on learning a fact"
-	case "topic":
-		return "on noting a topic about someone (judged or heard)"
-	case "approached":
-		return "when it is the carrier that hails a character (only under the conversation's hail rule)"
-	case "barred":
-		return "when someone walks into it and its body stops them"
-	case "heard":
-		return "on hearing a sound (a character's line at once)"
-	case "seen":
-		return "when an opposed creature comes into its sight"
-	case "clock:fight":
-		return "on each round of a fight its side is in"
-	case "clock:world":
-		return "on each round of world time"
+	b, ok := encounter.BeatWordOf(string(on))
+	if !ok {
+		return beatWords(on, "it")
 	}
-	return beatWords(on, "it")
+	return beatFill(b.Short, b, on, "it")
 }
 
 // shortEnemy says an enemy band tersely.

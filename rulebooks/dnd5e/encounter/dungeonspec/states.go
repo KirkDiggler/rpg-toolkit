@@ -436,7 +436,7 @@ func (g *grammar) placeStates(path string, s *StatesSpec, owner string) {
 			}
 			if (t.Within != 0 || t.Regions != 0) && !encounter.MachineBeatScoped(t.On) {
 				fail(tp+".within", "`%s` happened nowhere, so there is nothing to be within: "+
-					"`within` and `regions` are for heard, deed, seen and barred", t.On)
+					"`within` and `regions` are for %s", t.On, joinTableWords(scopedBeatWords(), "and"))
 			}
 			if t.Within < 0 || t.Regions < 0 || t.Rounds < 0 {
 				fail(tp, "a distance or a span is counted from 1")
@@ -459,7 +459,7 @@ func (g *grammar) placeStates(path string, s *StatesSpec, owner string) {
 					set++
 				}
 				if set != 1 {
-					fail(ap, "an act is one of { pick: <key> }, { wake_in: N } or { anchor: true }")
+					fail(ap, "an act is one of %s", joinTableWords(statesActForms(), "or"))
 				}
 				if a.WakeIn < 0 {
 					fail(ap+".wake_in", "a sleep is counted from 1")
@@ -476,7 +476,15 @@ func (g *grammar) placeStates(path string, s *StatesSpec, owner string) {
 		return
 	}
 	if err := encounter.ValidateMachine(r); err != nil {
-		g.fail(at, "%s", err)
+		// A REFUSED STEP AT THE KEY THE AUTHOR WROTE (rpg-project#997).
+		placed := placedRefusals(err)
+		if len(placed) == 0 {
+			g.fail(at, "%s", err)
+			return
+		}
+		for _, p := range placed {
+			g.fail(p.statesPath(at, s), "%s", p.message)
+		}
 	}
 }
 
@@ -493,15 +501,16 @@ func guardOf(w *WhenSpec) (*machine.Guard, error) {
 		}
 		return &machine.Guard{Not: inner}, nil
 	case w.Enemy != "":
-		if !slices.Contains([]string{string(encounter.EnemySeen), string(encounter.EnemyRemembered), string(encounter.EnemyNone)}, w.Enemy) {
-			return nil, fmt.Errorf("a state reads `enemy` as seen, remembered or none, and this names %q", w.Enemy)
+		if enemy, _ := encounter.ConditionWordOf(string(encounter.MachineEnemyFact)); !slices.Contains(enemy.Values, w.Enemy) {
+			return nil, fmt.Errorf("a state reads `enemy` as %s, and this names %q", joinTableWords(enemy.Values, "or"), w.Enemy)
 		}
 		return &machine.Guard{Fact: &machine.FactLeaf{Name: encounter.MachineEnemyFact, Op: machine.OpEq, Value: w.Enemy}}, nil
 	case w.Fact != "":
 		return &machine.Guard{Fact: &machine.FactLeaf{Name: encounter.MachineFact(w.Fact), Op: machine.OpEq, Value: true}}, nil
 	}
 
-	return nil, fmt.Errorf("a state's `when` is one of { enemy }, { fact } or { not }: a deed, a sound and a threat are beats a state listens for (`on: deed`, `on: heard`)")
+	return nil, fmt.Errorf("a state's `when` is one of %s: a deed, a sound and a threat are beats a state listens for (`on: deed`, `on: heard`)",
+		joinTableWords(statesWhenForms(), "or"))
 }
 
 // recipeOf compiles a states block to the machine's recipe, named after the
@@ -718,4 +727,53 @@ func specDoorIDs(spec *Spec) map[string]bool {
 	}
 
 	return out
+}
+
+// The states dialect's words, read from the encounter's one table
+// ([encounter.MachineWords]), so its refusals list what the table allows.
+
+// scopedBeatWords is every whole beat that happened somewhere, in table
+// order: what `within` and `regions` are for.
+func scopedBeatWords() []string {
+	var out []string
+	for _, b := range encounter.MachineWords().Beats {
+		if b.Scoped && b.Open == encounter.SlotNone {
+			out = append(out, b.Word)
+		}
+	}
+	return out
+}
+
+// statesActForms is every act the states dialect writes, in its spelling.
+func statesActForms() []string {
+	var out []string
+	for _, a := range encounter.MachineWords().Acts {
+		if a.StatesForm != "" {
+			out = append(out, a.StatesForm)
+		}
+	}
+	return out
+}
+
+// statesWhenForms is every condition a state's `when` reads, in its
+// spelling.
+func statesWhenForms() []string {
+	var out []string
+	for _, c := range encounter.MachineWords().Conditions {
+		if c.StatesForm != "" {
+			out = append(out, c.StatesForm)
+		}
+	}
+	return out
+}
+
+// joinTableWords joins words as "a, b and c" (or "a, b or c").
+func joinTableWords(words []string, conj string) string {
+	switch len(words) {
+	case 0:
+		return ""
+	case 1:
+		return words[0]
+	}
+	return strings.Join(words[:len(words)-1], ", ") + " " + conj + " " + words[len(words)-1]
 }

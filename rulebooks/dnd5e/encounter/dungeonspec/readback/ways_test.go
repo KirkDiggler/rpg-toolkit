@@ -24,10 +24,7 @@ type WaysCastleSuite struct {
 func TestWaysCastleSuite(t *testing.T) { suite.Run(t, new(WaysCastleSuite)) }
 
 func (s *WaysCastleSuite) SetupSuite() {
-	raw, err := os.ReadFile(castlePath)
-	s.Require().NoError(err)
-	s.rb, err = readback.Of(raw)
-	s.Require().NoError(err)
+	_, s.rb = theCastle(s.T())
 }
 
 // waysThrough is every way through the join with id.

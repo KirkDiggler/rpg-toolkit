@@ -68,10 +68,8 @@ type JoinsCastleSuite struct {
 func TestJoinsCastleSuite(t *testing.T) { suite.Run(t, new(JoinsCastleSuite)) }
 
 func (s *JoinsCastleSuite) SetupSuite() {
-	raw, err := os.ReadFile(castlePath)
-	s.Require().NoError(err)
-	s.rb, err = readback.Of(raw)
-	s.Require().NoError(err)
+	raw, rb := theCastle(s.T())
+	s.rb = rb
 	decoded, err := dungeonspec.DecodeSingleRoom(dungeonspec.SingleRoomDecodeInput{Source: raw})
 	s.Require().NoError(err)
 	s.regions = decoded.Spec.Room.Gameplay.Regions

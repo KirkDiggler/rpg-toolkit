@@ -278,8 +278,8 @@ func topicGuards(s *SingleRoomSpec, add errSink) {
 				at := fmt.Sprintf("behaviorDefinitions.%s.recipe.states.%s.transitions[%d].when", id, state, i)
 				// A GUARD THAT READS THE BEAT reads one that carries it
 				// (rpg-project#1000), in the engine's own sentence.
-				if refusal := encounter.GuardWordsRefusal(t.On, t.When); refusal != "" {
-					add(at, refusal)
+				if refusal, leaf := encounter.GuardWordsRefusalAt(t.On, t.When); refusal != "" {
+					add(strings.TrimSuffix(at, ".when")+leafPath(leaf), refusal)
 				}
 				held, retired := guardTopics(t.When)
 				for _, name := range retired {
