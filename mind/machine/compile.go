@@ -81,23 +81,29 @@ func (r Recipe) Compile(v Vocabulary) (*Program, error) {
 	for _, name := range sortedKeys(r.States) {
 		p.states[name] = c.state(name, r.States[name], r.States)
 	}
-	if c.err != nil {
-		return nil, c.err
+	if len(c.refusals) > 0 {
+		errs := make([]error, len(c.refusals))
+		for i, r := range c.refusals {
+			errs[i] = r
+		}
+		return nil, errors.Join(errs...)
 	}
 	return p, nil
 }
 
 // checker accumulates every refusal while it compiles.
 type checker struct {
-	v   Vocabulary
-	bag Bag
-	err error
+	v        Vocabulary
+	bag      Bag
+	refusals []*Refusal
 }
 
 // failf records one refusal of kind at where, as a [*Refusal]: a place made
-// only by the [Where] constructors, so none can be left out.
+// only by the [Where] constructors, so none can be left out. Compile joins
+// them once, in the order found; the text is what one join after another
+// always read, a line per refusal.
 func (c *checker) failf(kind error, where Where, format string, args ...any) {
-	c.err = errors.Join(c.err, &Refusal{Where: where, Kind: kind, Message: fmt.Sprintf(format, args...)})
+	c.refusals = append(c.refusals, &Refusal{Where: where, Kind: kind, Message: fmt.Sprintf(format, args...)})
 }
 
 func (c *checker) state(name string, s State, all map[string]State) *program {
@@ -117,11 +123,11 @@ func (c *checker) state(name string, s State, all map[string]State) *program {
 			}
 		}
 		for j, a := range t.Do {
-			c.act(where.in(fmt.Sprintf(".do[%d]", j)), a)
+			c.act(where.inAt("do", j), a)
 		}
 		ct := transition{
 			on:     t.On,
-			when:   c.guard(t.When, spec, ok, where.in(".when")),
+			when:   c.guard(t.When, spec, ok, where.in("when")),
 			to:     t.To,
 			do:     cloneActs(t.Do),
 			reason: t.Reason,
@@ -215,34 +221,34 @@ func (c *checker) guard(g *Guard, spec BeatSpec, known bool, where Where) *guard
 	}
 	switch {
 	case len(g.All) > 0:
-		return c.node(nodeAll, g.All, spec, known, where.in(".all"))
+		return c.node(nodeAll, "all", g.All, spec, known, where)
 	case len(g.Any) > 0:
-		return c.node(nodeAny, g.Any, spec, known, where.in(".any"))
+		return c.node(nodeAny, "any", g.Any, spec, known, where)
 	case g.Not != nil:
-		kid := c.guard(g.Not, spec, known, where.in(".not"))
+		kid := c.guard(g.Not, spec, known, where.in("not"))
 		reason := ""
 		if kid != nil {
 			reason = kid.reason
 		}
 		return &guard{kind: nodeNot, kids: []*guard{kid}, reason: reason}
 	case g.Fact != nil:
-		return c.fact(*g.Fact, where.in(".fact"))
+		return c.fact(*g.Fact, where.in("fact"))
 	case g.Flag != "":
 		if _, ok := c.bag[g.Flag].(bool); !ok {
-			c.failf(ErrBadGuard, where.in(".flag"), "flag %q is not a bool the bag declares", g.Flag)
+			c.failf(ErrBadGuard, where.in("flag"), "flag %q is not a bool the bag declares", g.Flag)
 		}
 		return &guard{kind: nodeFlag, flag: g.Flag, reason: "flag " + g.Flag}
 	case g.Scope != nil:
-		return c.scope(*g.Scope, spec, known, where.in(".scope"))
+		return c.scope(*g.Scope, spec, known, where.in("scope"))
 	default:
-		return c.rounds(*g.Rounds, spec, known, where.in(".rounds"))
+		return c.rounds(*g.Rounds, spec, known, where.in("rounds"))
 	}
 }
 
-func (c *checker) node(kind nodeKind, kids []Guard, spec BeatSpec, known bool, where Where) *guard {
+func (c *checker) node(kind nodeKind, name string, kids []Guard, spec BeatSpec, known bool, where Where) *guard {
 	g := &guard{kind: kind, kids: make([]*guard, 0, len(kids))}
 	for i := range kids {
-		g.kids = append(g.kids, c.guard(&kids[i], spec, known, where.in(fmt.Sprintf("[%d]", i))))
+		g.kids = append(g.kids, c.guard(&kids[i], spec, known, where.inAt(name, i)))
 	}
 	if g.kids[0] != nil {
 		g.reason = g.kids[0].reason
