@@ -19,6 +19,7 @@ const (
 
 	// BeatSceneContent records what a run is a run of (rpg-project#1001),
 	// right after [BeatSceneOpened]: the compiled site's hash ([SiteHash]),
+	// the content's hash when the host carries one ([SetupInput.Content]),
 	// the content's key when the host names one ([SetupInput.Key]), and
 	// this engine's module version when the build knows it. RECORD-ONLY:
 	// its audience is empty, so no member's story changes; the run's

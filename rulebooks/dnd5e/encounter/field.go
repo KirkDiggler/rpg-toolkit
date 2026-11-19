@@ -1458,9 +1458,17 @@ type EndingInput struct {
 // SetupInput contains all information needed to construct an encounter.
 type SetupInput struct {
 	// Key is the content's own key as the host names it (a dungeon's key),
-	// written on [BeatSceneOpened] so a run's record says what it is a run
+	// written on [BeatSceneContent] so a run's record says what it is a run
 	// of. Optional: empty writes none.
 	Key string
+
+	// Content is the hash of the content this run is of
+	// (`dungeonspec.Compiled.ContentHash`), written on [BeatSceneContent]
+	// beside the site's hash: the site hash names the geometry, this names
+	// everything an author wrote. Carried in rather than computed here
+	// because the content (the creatures, their lines and machines) joins
+	// the run after setup. Optional: empty writes none.
+	Content ContentHash
 
 	// Field describes the spatial layout.
 	Field FieldInput

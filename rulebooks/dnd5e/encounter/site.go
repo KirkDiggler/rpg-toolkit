@@ -68,6 +68,13 @@ import (
 // its [SiteData] JSON. Opaque to every reader; equal hashes are equal content.
 type SiteHash string
 
+// ContentHash is the content hash of a compiled run's content, as
+// `dungeonspec.Compiled.ContentHash` takes it: lower-case hex SHA-256 of the
+// compiled form's JSON. Opaque to every reader; equal hashes are equal
+// content. Where a [SiteHash] names the geometry, this names everything an
+// author wrote.
+type ContentHash string
+
 // SiteDataVersion names the shape [SiteData] is hashed and stored in. BUMP IT
 // when what a site compiles to changes for the same bytes, so a stored site
 // piece written by an older build is refused rather than reinterpreted.

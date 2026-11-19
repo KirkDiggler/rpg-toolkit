@@ -1220,6 +1220,9 @@ func newEncounter(in *SetupInput, visibleCacheEntries int) (*Encounter, error) {
 	if in.Key != "" {
 		content["key"] = in.Key
 	}
+	if in.Content != "" {
+		content["content_hash"] = string(in.Content)
+	}
 	if v := engineVersion(); v != "" {
 		content["engine"] = v
 	}

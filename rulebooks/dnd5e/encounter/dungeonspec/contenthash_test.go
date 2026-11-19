@@ -1,0 +1,64 @@
+// Copyright (C) 2026 Kirk Diggler
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+package dungeonspec_test
+
+import (
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter"
+	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/encounter/dungeonspec"
+)
+
+// castleContentHash is the castle's content hash. A change here is a change
+// to the castle or to what the hash covers: make it deliberately.
+const castleContentHash = "52bc9896811909134638287d0ee3193b8929b926bd1493882fe165177121cd50"
+
+func contentHashOf(t *testing.T, src string) encounter.ContentHash {
+	t.Helper()
+	c, err := dungeonspec.Load([]byte(src))
+	require.NoError(t, err)
+	h, err := c.ContentHash()
+	require.NoError(t, err)
+	return h
+}
+
+// fileOf is a content file's source.
+func fileOf(t *testing.T, path string) string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	return string(raw)
+}
+
+// hashEdited is src with the first place it writes old changed.
+func hashEdited(t *testing.T, src, old, replacement string) string {
+	t.Helper()
+	require.Contains(t, src, old, "precondition: the file writes %q", old)
+	return strings.Replace(src, old, replacement, 1)
+}
+
+// TestTheCastlesContentHashIsPinned: a change to the castle, or to what the
+// hash covers, is made deliberately.
+func TestTheCastlesContentHashIsPinned(t *testing.T) {
+	require.Equal(t, encounter.ContentHash(castleContentHash), contentHashOf(t, fileOf(t, "testdata/world-builder-v4-castle.yaml")))
+}
+
+// TestTheContentHashNamesWhatTheAuthorWrote (rpg-project#1001): two compiles
+// of one file hash alike; a comment does not change it; a line's words, a
+// DC, a machine's step and a post each do.
+func TestTheContentHashNamesWhatTheAuthorWrote(t *testing.T) {
+	machine := fileOf(t, "readback/testdata/machine-site.yaml")
+	site := fileOf(t, "testdata/world-builder-v4-site.yaml")
+	m, s := contentHashOf(t, machine), contentHashOf(t, site)
+	require.Equal(t, m, contentHashOf(t, machine), "two compiles of one file")
+	require.Equal(t, m, contentHashOf(t, hashEdited(t, machine, "# THE MACHINE SITE", "# The machine site")), "a comment is not content")
+	require.NotEqual(t, m, contentHashOf(t, hashEdited(t, machine, "say: Halt.", "say: Stop.")), "a line's words")
+	require.NotEqual(t, m, contentHashOf(t, hashEdited(t, machine, "reason: stood aside", "reason: stood back")), "a machine's step")
+	require.NotEqual(t, m, contentHashOf(t, hashEdited(t, machine, "against: entering", "against: leaving")), "a post")
+	require.NotEqual(t, s, contentHashOf(t, hashEdited(t, site, "dc: ", "dc: 2")), "a check's DC")
+}
