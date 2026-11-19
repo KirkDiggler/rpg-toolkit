@@ -101,11 +101,15 @@ func (b *builder) conversations() []Group {
 		for _, state := range sortedKeys(in.Outcomes) {
 			for k, c := range in.Outcomes[state] {
 				if c.Arrest != nil {
-					add(b.arrestStatement(id, state, fmt.Sprintf("%s.outcomes.%s[%d].arrest", base, state, k)))
+					path := fmt.Sprintf("%s.outcomes.%s[%d].arrest", base, state, k)
+					add(b.arrestStatement(id, state, path))
+					add(b.seizeStatement(id, state, path)) // set by the arrest itself
 					continue
 				}
 				if c.Jail != nil {
-					add(b.jailStatement(id, state, *c.Jail, fmt.Sprintf("%s.outcomes.%s[%d].jail", base, state, k)))
+					path := fmt.Sprintf("%s.outcomes.%s[%d].jail", base, state, k)
+					add(b.jailStatement(id, state, *c.Jail, path))
+					add(b.jailWantedStatement(id, state, path)) // set by the jail itself
 					continue
 				}
 				if c.Recognize == nil {
@@ -207,13 +211,19 @@ func (b *builder) outcomeStatement(id, state string, r encounter.Recognition, pa
 			}
 		}
 	}
-	conns := []Connection{{Kind: "topic", ID: string(r.Topic), Role: "grants"}}
-	for _, h := range holders {
-		conns = append(conns, Connection{Kind: "creature", ID: h, Role: "holds"})
-	}
+	// WHICHEVER CARRIER THE DECIDING LINE WAS SAID TO judges; the others
+	// hear: each carrier is named under both, the way it notes depending
+	// on whom the line was said to.
+	give := noteGive{topic: string(r.Topic), about: string(r.About), cause: Connection{Kind: "conversation", ID: id, Role: "enters", Is: state},
+		takers: []noteTaker{{word: string(encounter.RecognitionSpokenTo), creatures: holders}}}
 	s := fmt.Sprintf("When the conversation %s enters %s, %s (whichever of %s that was) is given the topic %s, and notes it about %s.",
 		quote(id), quote(state), holder, b.creatures(holders), topic, subjectsWords(r.About, "the creature"))
-	s += " " + b.heardWords(r, id, nil, &conns)
+	var heard []Connection
+	s += " " + b.heardWords(r, id, nil, &heard)
+	if r.HeardBy == encounter.RecognitionCarriersWhoWitnessed {
+		give.takers = append(give.takers, noteTaker{word: string(r.HeardBy), creatures: idsOf(heard)})
+	}
+	conns := noteGiveEdges(give)
 	f := foldInfo{state: state, site: fmt.Sprintf("the conversation %s on entering %s", quote(id), quote(state))}
 	f.text = strings.ReplaceAll(fmt.Sprintf("On entering %s: the creature the deciding line was said to notes %s about %s",
 		quote(state), topic, shortSubjects(r.About))+shortHeard(r, id)+".", "{self}", "that creature")
@@ -297,7 +307,7 @@ func (b *builder) hailersWords(id string, in *encounter.InteractionInput) (strin
 				if _, conv := t.(encounter.TriggerInteraction); conv {
 					continue
 				}
-				w, _ := b.triggerWords(t, lineContext{me: "the speaker", other: "the carrier"})
+				w, _ := b.triggerWords(t, lineContext{me: "the speaker", other: "the carrier", about: encounter.WhoTheSpeaker})
 				also = append(also, w)
 			}
 			if len(also) > 0 {
@@ -364,13 +374,16 @@ func (b *builder) arrestStatement(id, state, path string) Statement {
 	if n := len(dungeonspec.ExpandRows(a.Area.Cells, path+".area.cells", func(string, string) {})); n > 0 {
 		area = append(area, count(n, "cell", "cells")+" besides")
 	}
-	conns := []Connection{
-		{Kind: "topic", ID: string(encounter.TopicArrested), Role: "grants"},
-		{Kind: "topic", ID: string(encounter.TopicWanted), Role: "grants"},
+	// TWO NOTES, EACH WITH ITS OWN EDGES (its at is its topic): `arrested`
+	// about the taken and `wanted` about the gone, judged by the one the
+	// deciding line was said to and heard by the other carriers.
+	takers := []noteTaker{
+		{word: string(encounter.RecognitionSpokenTo), creatures: carriers},
+		{word: string(encounter.RecognitionCarriersWhoWitnessed), creatures: carriers},
 	}
-	for _, c := range carriers {
-		conns = append(conns, Connection{Kind: "creature", ID: c, Role: "holds"})
-	}
+	conns := noteGiveEdges(noteGive{topic: string(encounter.TopicArrested), about: encounter.WhoTheTaken, takers: takers})
+	conns = append(conns, noteGiveEdges(noteGive{topic: string(encounter.TopicWanted), about: encounter.WhoTheGone, takers: takers,
+		cause: Connection{Kind: "conversation", ID: id, Role: "enters", Is: state}})...)
 	// THE SEIZURE'S DISTANCE IS THE HAIL'S (wanted.go): read from the
 	// content, so the sentence follows the conversation's approach.
 	seizedWithin := "anywhere in their sight"
@@ -417,7 +430,9 @@ func (b *builder) jailStatement(id, state string, j encounter.Jail, path string)
 			}
 		}
 	}
-	conns := []Connection{{Kind: "topic", ID: string(encounter.TopicJailed), Role: "grants"}}
+	conns := noteGiveEdges(noteGive{topic: string(encounter.TopicJailed), about: encounter.WhoTheTaken,
+		takers: []noteTaker{{word: encounter.WhoTheArresting, creatures: b.carriers[id]}},
+		cause:  Connection{Kind: "conversation", ID: id, Role: "enters", Is: state}})
 	escape := "Nothing raises an escape."
 	if j.Escaped != "" {
 		conns = append(conns, Connection{Kind: "fact", ID: string(j.Escaped), Role: "teaches"})
@@ -439,4 +454,43 @@ func (b *builder) jailStatement(id, state string, j encounter.Jail, path string)
 	f.text = fmt.Sprintf("On entering %s: the taken are set down in %s (%s). Nobody is held but by the cell.",
 		quote(state), b.regionName(cell), quote(j.Words))
 	return b.fstmt(KindOutcome, Subject{Kind: "conversation", ID: id}, path, s, f, conns...)
+}
+
+// seizeStatement says the note a seizure gives (rpg-project#1001): a member
+// the arrest made wanted, seen again by one of the conversation's carriers,
+// is seized, and every arresting carrier who is up notes `arrested` about
+// them, each told its own note alone (wanted.go).
+func (b *builder) seizeStatement(id, state, path string) Statement {
+	carriers := b.carriers[id]
+	arrested := quote(string(encounter.TopicArrested))
+	s := fmt.Sprintf("When a member the conversation %s's arrest (on entering %s) made wanted is seized on sight, every "+
+		"arresting carrier who is up (%s) notes %s about them, by its own judgement, each told its own note alone.",
+		quote(id), quote(state), b.creatures(carriers), arrested)
+	f := foldInfo{state: state, site: fmt.Sprintf("the conversation %s on entering %s", quote(id), quote(state)),
+		text: fmt.Sprintf("On a seizure after entering %s: the arresting carriers note %s about the one seized.", quote(state), arrested)}
+	return b.fstmt(KindOutcome, Subject{Kind: "conversation", ID: id}, path, s, f, noteGiveEdges(noteGive{
+		topic: string(encounter.TopicArrested), about: encounter.WhoTheTaken,
+		takers: []noteTaker{{word: encounter.WhoTheArresting, creatures: carriers}},
+		cause:  Connection{Kind: "conversation", ID: id, Role: "enters", Is: state},
+	})...)
+}
+
+// jailWantedStatement says the note a jail gives the gone (rpg-project#1001):
+// a member of the arrest who is not there to be jailed stays wanted, noted
+// by each arresting carrier who has noted `arrested` about them, each told
+// its own note alone (jail.go).
+func (b *builder) jailWantedStatement(id, state, path string) Statement {
+	carriers := b.carriers[id]
+	s := fmt.Sprintf("When the conversation %s enters %s and jails the taken, a member of the arrest who is not there to be "+
+		"jailed stays wanted: every arresting carrier (%s) who has noted %s about them notes %s about them too, by its own "+
+		"judgement, each told its own note alone.",
+		quote(id), quote(state), b.creatures(carriers), quote(string(encounter.TopicArrested)), quote(string(encounter.TopicWanted)))
+	f := foldInfo{state: state, site: fmt.Sprintf("the conversation %s on entering %s", quote(id), quote(state)),
+		text: fmt.Sprintf("On entering %s: the arresting carriers note %s about each of the arrest who was not there to be jailed.",
+			quote(state), quote(string(encounter.TopicWanted)))}
+	return b.fstmt(KindOutcome, Subject{Kind: "conversation", ID: id}, path, s, f, noteGiveEdges(noteGive{
+		topic: string(encounter.TopicWanted), about: encounter.WhoTheGone,
+		takers: []noteTaker{{word: encounter.WhoTheArresting, creatures: carriers}},
+		cause:  Connection{Kind: "conversation", ID: id, Role: "enters", Is: state},
+	})...)
 }

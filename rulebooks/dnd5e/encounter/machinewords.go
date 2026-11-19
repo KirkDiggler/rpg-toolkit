@@ -338,6 +338,8 @@ type MachineWordsTable struct {
 	Beats      []BeatWord
 	Conditions []ConditionWord
 	Acts       []ActWord
+	// Who is every word that names who in a note ([WhoWord]).
+	Who []WhoWord
 	// Ops is every comparison a condition can make, with its plain words,
 	// so no reader maps the engine's `eq` or `gte` itself.
 	Ops []OpWord
@@ -552,6 +554,7 @@ func MachineWords() MachineWordsTable {
 		Conditions: slices.Clone(machineConditionWords),
 		Acts:       slices.Clone(machineActWords),
 		Ops:        slices.Clone(machineOpWords),
+		Who:        WhoWords(),
 	}
 	for i := range out.Beats {
 		out.Beats[i].Args = cloneArgs(out.Beats[i].Args)

@@ -65,7 +65,7 @@ func (b *builder) lineStatements(opts []encounter.Option, base string, t lineTar
 				"To win %s, the speaker rolls %s; beating the DC wins the line and missing it misses.",
 				line, checkWords(o.Check)), foldInfo{text: "rolls " + strings.ReplaceAll(checkWords(o.Check), " against ", " vs "), line: heading}))
 		}
-		ctx := lineContext{me: "the speaker", other: t.name}
+		ctx := lineContext{me: "the speaker", other: t.name, about: encounter.WhoTheSpeaker, whose: t.id}
 		fctx := lineContext{me: "the speaker", other: "{self}"}
 		for j, req := range o.Requires {
 			w, conns := b.triggerWords(req, ctx)
@@ -312,12 +312,17 @@ func (b *builder) grantStatement(o encounter.Option, r encounter.Recognition, le
 	holder := t.name
 	s := fmt.Sprintf("%s, %s — the creature the line is said to — is given the topic %s, and notes it about %s.",
 		lead, holder, quote(topic), subjectsWords(r.About, holder))
-	conns := []Connection{{Kind: "topic", ID: topic, Role: "grants"}}
-	if t.id != "" {
-		conns = append(conns, Connection{Kind: "creature", ID: t.id, Role: "holds"})
-	}
 	conv, _ := optionInteraction(o)
-	s += " " + b.heardWords(r, conv, []string{t.id}, &conns)
+	var heard []Connection
+	s += " " + b.heardWords(r, conv, []string{t.id}, &heard)
+	give := noteGive{topic: topic, about: string(r.About), cause: Connection{Kind: "option", ID: o.ID, Role: "on", Is: verdictOf(o, path)}}
+	if t.id != "" {
+		give.takers = append(give.takers, noteTaker{word: string(encounter.RecognitionSpokenTo), creatures: []string{t.id}})
+	}
+	if r.HeardBy == encounter.RecognitionCarriersWhoWitnessed {
+		give.takers = append(give.takers, noteTaker{word: string(r.HeardBy), creatures: idsOf(heard)})
+	}
+	conns := noteGiveEdges(give)
 	f.text = fmt.Sprintf("{self} notes %s about %s", quote(topic), shortSubjects(r.About)) + shortHeard(r, conv)
 	return b.fstmt(KindLineGrant, t.about, path, s, f, conns...)
 }
@@ -336,7 +341,7 @@ func (b *builder) heardWords(r encounter.Recognition, conv string, except []stri
 		}
 		if !skip {
 			others = append(others, id)
-			*conns = append(*conns, Connection{Kind: "creature", ID: id, Role: "holds"})
+			*conns = append(*conns, Connection{Kind: "creature", ID: id, Role: RoleNotes})
 		}
 	}
 	who := "nobody: no other creature carries it"
@@ -523,4 +528,25 @@ func (b *builder) secretOf(t lineTarget) string {
 		}
 	}
 	return ""
+}
+
+// verdictOf is what a line's row gives on: "win" for a success row of a
+// line with a check, "miss" for a failure row, "said" for a line with none.
+func verdictOf(o encounter.Option, path string) string {
+	switch {
+	case strings.Contains(path, ".failure["):
+		return "miss"
+	case !o.Checked():
+		return "said"
+	}
+	return "win"
+}
+
+// idsOf is the ids of conns, in order.
+func idsOf(conns []Connection) []string {
+	out := make([]string, 0, len(conns))
+	for _, c := range conns {
+		out = append(out, c.ID)
+	}
+	return out
 }

@@ -71,7 +71,8 @@ var admittedScene struct {
 
 // admittedSceneTests are the tests that start from the admitted gate.
 var admittedSceneTests = []string{
-	"TestMadKingTheCaptainGoesIn", "TestMadKingAStragglerIsVouchedFor", "TestMadKingAStragglerMakesTheirOwnCase",
+	"TestMadKingEveryNoteLandedWasPredicted",
+	"TestMadKingTheCaptainGoesIn", "TestMadKingTheOutcomeAndTheVouchLandWhatTheyPredict", "TestMadKingAStragglerIsVouchedFor", "TestMadKingAStragglerMakesTheirOwnCase",
 	"TestMadKingTheCaptainsLineGrantsNothingAgain", "TestMadKingAStragglerHasOneTry",
 	"TestMadKingAStragglerWhoWalksAwayKeepsTheRoll",
 	"TestMadKingEveryExitFromAnAbandonedRollLoads", "TestMadKingEveryExitFromTheAdmittedGateLoads",
@@ -99,6 +100,9 @@ func TestMain(m *testing.M) {
 	}
 	if pattern == "" || err != nil || slices.ContainsFunc(passageSceneTests, re.MatchString) {
 		passageScene.once.Do(buildThePassageScene)
+	}
+	if pattern == "" || err != nil || slices.ContainsFunc(noteTests, re.MatchString) {
+		noteReadBack.once.Do(buildTheNoteReadBack)
 	}
 	if pattern == "" || err != nil || slices.ContainsFunc(liedToSceneTests, re.MatchString) {
 		liedToScene.once.Do(buildTheLiedToScene)
