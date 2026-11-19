@@ -155,15 +155,17 @@ type Connection struct {
 
 	// Is, Op, Not and At belong to a [ConnCondition] connection only.
 
-	// Is is the value a condition compares, as text: "failed", "true", "3",
-	// a flag's name for `flag`.
+	// Is is the value a condition compares, as text: "failed", "true", "3".
 	Is string `json:"is,omitempty"`
-	// Op is the comparison where it is not equality, as the engine spells it
-	// ("gte"); the plain words for it are the machine words table's
-	// ([encounter.MachineWordsTable.Ops]).
+	// Op is the comparison where it is not equality ("gte"; "lte" for
+	// `within` and `regions`, at most); the plain words for each are the
+	// machine words table's ([encounter.MachineWordsTable.Ops]).
 	Op string `json:"op,omitempty"`
-	// Not is true when the condition sits under an odd number of `not`s:
-	// the step needs it false.
+	// Not says this leaf sits under an odd number of `not`s. It is a hint,
+	// not the structure: At is what makes the structure exact. Under
+	// `not: { all: [a, b] }` both a and b carry Not, at `when.not.all[0]`
+	// and `when.not.all[1]`, and the step needs NOT (a and b), not
+	// (NOT a) and (NOT b).
 	Not bool `json:"not,omitempty"`
 	// At is where the condition sits inside the step's `when`, as the author
 	// wrote it: "when", "when.all[1]", "when.any[0].not". Several conditions
@@ -192,7 +194,7 @@ const (
 	// ConnCondition is one condition a step's `when` reads (rpg-project#997),
 	// role "asks": its id is the word as authored with its open part filled
 	// ("heard.claim", "noted:admitted", "noted.anyone:admitted",
-	// "fact:gate-cowed", "within", "rounds", "flag"), from the machine words
+	// "fact:gate-cowed", "within", "rounds", "flag:lit"), from the machine words
 	// table ([encounter.MachineWords]); Is, Op, Not and At say the rest, so
 	// a reader rebuilds the condition from connections alone. A condition
 	// that reads a thing in the file (a fact, a topic) also keeps that

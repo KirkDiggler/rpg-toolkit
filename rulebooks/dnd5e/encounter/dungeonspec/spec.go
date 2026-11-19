@@ -2240,6 +2240,24 @@ func knownSoundKind(kind string) bool {
 // this dialect takes — the word means something, it is simply not a scope this
 // build reads.
 func scopeOf(in withinSpec, line int, deed string) (encounter.DeedScope, error) {
+	scope, err := namedScopeOf(in, line, deed)
+	if err != nil {
+		return "", err
+	}
+	// A CONDITION THAT CAN NEVER BE TRUE IS REFUSED (rpg-project#987): a
+	// creature in the relation this scope reads never holds this deed
+	// ([encounter.NeverTrue]), so the row would look like it works and never
+	// fire.
+	if why := encounter.NeverTrue(deed, scope); why != "" {
+		return "", fmt.Errorf("line %d: %s", line, why)
+	}
+
+	return scope, nil
+}
+
+// namedScopeOf is the scope a condition's body names, before asking whether
+// the deed can ever be held in it.
+func namedScopeOf(in withinSpec, line int, deed string) (encounter.DeedScope, error) {
 	if in.On != nil && in.As != nil {
 		return "", fmt.Errorf(
 			"line %d: `%s` names both `on: %s` and `as: %s`, and a condition asks one thing: "+

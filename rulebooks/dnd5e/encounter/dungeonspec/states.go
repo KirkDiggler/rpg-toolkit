@@ -399,17 +399,17 @@ func (g *grammar) placeStates(path string, s *StatesSpec, owner string) {
 		return
 	}
 	at := path + ".states"
-	switch _, ok := s.States[s.Initial]; {
-	case s.Initial == "":
-		g.fail(at+".initial", "a creature's states name the one it starts in: write `initial: <state>`")
-	case !ok:
-		g.fail(at+".initial", "%q is not a state this block declares: they are %s",
-			s.Initial, strings.Join(s.stateNames(), ", "))
-	}
 	failed := false
 	fail := func(p, format string, args ...any) {
 		failed = true
 		g.fail(p, format, args...)
+	}
+	switch _, ok := s.States[s.Initial]; {
+	case s.Initial == "":
+		fail(at+".initial", "a creature's states name the one it starts in: write `initial: <state>`")
+	case !ok:
+		fail(at+".initial", "%q is not a state this block declares: they are %s",
+			s.Initial, strings.Join(s.stateNames(), ", "))
 	}
 	for _, name := range s.stateNames() {
 		st := s.States[name]
@@ -467,7 +467,7 @@ func (g *grammar) placeStates(path string, s *StatesSpec, owner string) {
 			}
 		}
 	}
-	if failed || s.Initial == "" {
+	if failed {
 		return
 	}
 	r, err := recipeOf(s, owner)
@@ -475,16 +475,13 @@ func (g *grammar) placeStates(path string, s *StatesSpec, owner string) {
 		g.fail(at, "%s", err)
 		return
 	}
+	// EVERY REFUSAL THE MACHINE MAKES IS THIS DIALECT'S FIRST: an initial,
+	// a terminal state's steps, a beat, a `to`, a scope, a span, a `when`
+	// and an act are each refused above at the author's own key, and the
+	// dialect writes no flag, bag, set or clear. What the compile could
+	// still refuse is said on the block, failing closed.
 	if err := encounter.ValidateMachine(r); err != nil {
-		// A REFUSED STEP AT THE KEY THE AUTHOR WROTE (rpg-project#997).
-		placed := placedRefusals(err)
-		if len(placed) == 0 {
-			g.fail(at, "%s", err)
-			return
-		}
-		for _, p := range placed {
-			g.fail(p.statesPath(at, s), "%s", p.message)
-		}
+		g.fail(at, "%s", err)
 	}
 }
 

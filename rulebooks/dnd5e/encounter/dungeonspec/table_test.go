@@ -261,6 +261,12 @@ func TestEveryMalformedConditionIsRefusedAtItsOwnLine(t *testing.T) {
 		{name: "an `on` scope nobody reads", when: `{ attacked: { within: 3, on: friend } }`, says: "not a scope this build reads"},
 		{name: "an `as` scope nobody reads", when: `{ attacked: { within: 3, as: target } }`, says: "not a scope this build reads"},
 		{name: "both scopes at once", when: `{ attacked: { within: 3, on: ally, as: actor } }`, says: "asks one thing"},
+		// A CONDITION THAT CAN NEVER BE TRUE (rpg-project#987): `fled` is held
+		// only by the creature that ran, whose flight it is.
+		{name: "fled asked of an ally", when: `{ fled: { within: 3, on: ally } }`,
+			says: "`fled` is held only by the creature it was done to, so `on: ally` can never be true"},
+		{name: "fled asked of its doer", when: `{ fled: { within: 3, as: actor } }`,
+			says: "`fled` is held only by the creature it was done to, never by the one who did it, so `as: actor` can never be true"},
 		// A TYPO'D KEY, not a typo'd value (rpg-toolkit#1890 thread 3).
 		// `body.Decode` is not strict inside a custom unmarshaler, so before
 		// this the key was silently DROPPED and the condition quietly became
@@ -439,4 +445,22 @@ func withPlacementIn(t *testing.T, source, line string) string {
 	require.Contains(t, source, captain)
 
 	return strings.Replace(source, captain, line, 1)
+}
+
+// TestADeedACreatureCanHoldIsAccepted: every `when` deed word in every scope
+// a creature can hold it in loads, `intimidated` and `persuaded` as the
+// actor included: a creature that runs a table can say a line too
+// (deedways_test.go in the encounter drives it).
+func TestADeedACreatureCanHoldIsAccepted(t *testing.T) {
+	for _, word := range encounter.WhenDeeds {
+		for _, scope := range []string{"", ", on: ally", ", as: actor"} {
+			if word == "fled" && scope != "" {
+				continue
+			}
+			source := withPlacement(t, `  - { id: captain, ref: "dnd5e:monsters:skeleton-captain", at: [23,5], targeting: closest,
+      holds: [vault-map], on: { time: [ { when: { `+word+`: { within: 3`+scope+` } }, hold: {} } ] } }`)
+			_, err := dungeonspec.Decode([]byte(source))
+			require.NoError(t, err, "%s%s", word, scope)
+		}
+	}
 }

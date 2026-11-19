@@ -152,6 +152,128 @@ const DeedFled = "fled"
 // told-ledger retention cannot trim is rpg-toolkit#2158.
 const DeedFell = deed.VerbFell
 
+// DeedRelation is how a creature stands to a deed: it did it, it was done
+// to it, or it was done by someone else to someone else. A row's deed
+// condition reads one of them ([DeedScope]): the default reads deeds done to
+// the creature, `on: ally` deeds done to someone else on its side (which it
+// may have done itself), `as: actor` deeds it did.
+type DeedRelation string
+
+// The three ways a creature stands to a deed.
+const (
+	// RelationDoer is the creature that did it (the deed's actor).
+	RelationDoer DeedRelation = "doer"
+	// RelationTarget is the creature it was done to.
+	RelationTarget DeedRelation = "target"
+	// RelationOther is any other creature.
+	RelationOther DeedRelation = "other"
+)
+
+// DeedReach is how a creature in one relation to a deed comes to hold it.
+type DeedReach string
+
+// The ways a deed reaches a creature today. A deed that is told would add
+// "learned" (word spreading, rpg-project#992); none is told yet.
+const (
+	// ReachNever: a creature in this relation never holds it.
+	ReachNever DeedReach = "never"
+	// ReachSaw: it holds it when it saw the deed done (it sees the doer;
+	// for a fall, the one who fell), and not otherwise.
+	ReachSaw DeedReach = "saw"
+	// ReachDid: it always holds it, because it did it; for a fall, even
+	// when it cannot see the one who fell ([Encounter.landFell]).
+	ReachDid DeedReach = "did"
+	// ReachOwn: it always holds it, with no sight asked: the deed is its own
+	// ([DeedFled], its own fall).
+	ReachOwn DeedReach = "own"
+)
+
+// DeedWay is how one deed verb reaches a creature in each relation, beside
+// the landing code that makes it so. A test drives a real encounter for each
+// verb and checks every member's holding against this record, so the record
+// cannot drift from the landing.
+type DeedWay struct {
+	// Verb is the deed's verb on the deeds channel ([DeedAttack]).
+	Verb string
+	// Word is the `when` word that reads it ([WhenDeeds]); empty for a verb
+	// no row can ask (`use`).
+	Word string
+	// Doer, Target and Other are how a creature in each relation holds it.
+	Doer, Target, Other DeedReach
+}
+
+// Reach is how a creature in relation r comes to hold the deed.
+func (w DeedWay) Reach(r DeedRelation) DeedReach {
+	switch r {
+	case RelationDoer:
+		return w.Doer
+	case RelationTarget:
+		return w.Target
+	default:
+		return w.Other
+	}
+}
+
+// deedWays is every deed verb this composition lands, and how each reaches
+// a creature:
+//   - attack ([Encounter.landAttack]): everyone who sees the attacker, the
+//     attacker included; the one attacked only if it saw who did it.
+//   - intimidate, persuade ([Encounter.landSpokenDeed]): who caught the
+//     words and saw the speaker, the speaker included.
+//   - use ([Encounter.Interact]): who saw the doer; no one is its target.
+//   - fled ([Encounter.landFled]): the one that ran, and nobody else; its
+//     actor is who made it run, and is never told.
+//   - fell ([Encounter.landFell]): who sees the one who fell; the one who
+//     fell; and its cause, even unseen.
+var deedWays = []DeedWay{
+	{Verb: DeedAttack, Word: "attacked", Doer: ReachDid, Target: ReachSaw, Other: ReachSaw},
+	{Verb: DeedIntimidate, Word: "intimidated", Doer: ReachDid, Target: ReachSaw, Other: ReachSaw},
+	{Verb: DeedPersuade, Word: "persuaded", Doer: ReachDid, Target: ReachSaw, Other: ReachSaw},
+	{Verb: DeedUse, Doer: ReachDid, Target: ReachNever, Other: ReachSaw},
+	{Verb: DeedFled, Word: "fled", Doer: ReachNever, Target: ReachOwn, Other: ReachNever},
+	{Verb: DeedFell, Word: "fell", Doer: ReachDid, Target: ReachOwn, Other: ReachSaw},
+}
+
+// DeedWays is every deed verb this composition lands, with how each reaches
+// a creature. The slice is a copy.
+func DeedWays() []DeedWay {
+	return slices.Clone(deedWays)
+}
+
+// DeedWayOf is how the deed a `when` word reads reaches a creature; false
+// for a word no deed answers.
+func DeedWayOf(word string) (DeedWay, bool) {
+	for _, w := range deedWays {
+		if w.Word != "" && w.Word == word {
+			return w, true
+		}
+	}
+	return DeedWay{}, false
+}
+
+// NeverTrue is why a deed condition with this word and scope can never be
+// true, or "" when it can: a creature in the relation the scope reads never
+// holds the deed. `on: ally` reads another's relation or the doer's, and
+// `as: actor` the doer's; the default reads the target's, which every `when`
+// word reaches.
+func NeverTrue(word string, scope DeedScope) string {
+	w, ok := DeedWayOf(word)
+	if !ok {
+		return ""
+	}
+	switch scope {
+	case ScopeActor:
+		if w.Doer == ReachNever {
+			return fmt.Sprintf("`%s` is held only by the creature it was done to, never by the one who did it, so `as: actor` can never be true", word)
+		}
+	case ScopeAlly:
+		if w.Other == ReachNever && w.Doer == ReachNever {
+			return fmt.Sprintf("`%s` is held only by the creature it was done to, so `on: ally` can never be true", word)
+		}
+	}
+	return ""
+}
+
 // landFell tells every member whose sight reaches the fallen's cell that it
 // fell, naming its cause where the witness could see it ([DeedFell]). The
 // fallen witnesses its own fall, the way a target knows it was struck, and

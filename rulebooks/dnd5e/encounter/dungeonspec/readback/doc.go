@@ -58,12 +58,15 @@
 //     machine words table ([encounter.MachineWords]): `heard.claim`,
 //     `noted:admitted`, `noted.anyone:admitted` (the engine's `topic:`),
 //     `fact:gate-cowed`, `heard.kind`, `heard.loudness:shout`, `enemy`,
-//     `flag`, `within`, `regions`, `rounds`.
-//   - is: the value compared, as text ("failed", "true", "3"); for `flag`,
-//     the flag's name.
-//   - op: the comparison where it is not equality, as the engine spells it
-//     (`gte`); the table's Ops give its plain words ("at least").
-//   - not: true under an odd number of `not`s: the step needs it false.
+//     `flag:<name>`, `within`, `regions`, `rounds`.
+//   - is: the value compared, as text ("failed", "true", "3").
+//   - op: the comparison where it is not equality, as the engine spells it:
+//     `gte` for `rounds`, `lte` for `within` and `regions` (at most); the
+//     table's Ops give the plain words ("at least", "at most").
+//   - not: this leaf sits under an odd number of `not`s. A hint, not the
+//     structure: `at` is what makes it exact. Under `not: { all: [a, b] }`
+//     both carry not, at `when.not.all[0]` and `when.not.all[1]`, and the
+//     step needs NOT (a and b).
 //   - at: where it sits in the `when` as the author wrote it: `when`,
 //     `when.all[1]`, `when.any[0].not`. Conditions at one place are one
 //     node, all of them needed; `all`, `any` and `not` are read from the path

@@ -53,6 +53,8 @@ func TestAStepsGuardWordsAreDrawn(t *testing.T) {
 			[]Connection{cond("noted.anyone:admitted", "true"), {Kind: "topic", ID: "admitted", Role: "wakes-on"}}},
 		{"heard.claim, eq failed", leafGuard("heard.claim", machine.OpEq, "failed"),
 			"what X heard was a claim that failed", []Connection{cond("heard.claim", "failed")}},
+		{"flag", &machine.Guard{Flag: "lit"}, "X's flag `lit` is set",
+			[]Connection{{Kind: ConnCondition, ID: "flag:lit", Role: "asks", At: "when"}}},
 		{"fact", leafGuard("fact:gate-cowed", machine.OpEq, true),
 			"X knows the fact `gate-cowed`",
 			[]Connection{cond("fact:gate-cowed", "true"), {Kind: "fact", ID: "gate-cowed", Role: "wakes-on"}}},
@@ -84,32 +86,53 @@ func TestAConditionKeepsItsPolarityAndPlace(t *testing.T) {
 
 	_, conns = guardWords(&machine.Guard{Rounds: &machine.RoundsLeaf{Op: machine.OpGte, N: 3}}, "X", "time")
 	require.Equal(t, []Connection{{Kind: ConnCondition, ID: "rounds", Role: "asks", Is: "3", Op: "gte", At: "when"}}, conns)
+
+	_, conns = guardWords(&machine.Guard{Scope: &machine.ScopeLeaf{Within: 2, Regions: 1}}, "X", "heard")
+	require.Equal(t, []Connection{
+		{Kind: ConnCondition, ID: "within", Role: "asks", Is: "2", Op: "lte", At: "when"},
+		{Kind: ConnCondition, ID: "regions", Role: "asks", Is: "1", Op: "lte", At: "when"},
+	}, conns, "within and regions are at most")
+
+	_, conns = guardWords(&machine.Guard{Flag: "lit"}, "X", "time")
+	require.Equal(t, []Connection{{Kind: ConnCondition, ID: "flag:lit", Role: "asks", At: "when"}}, conns,
+		"a flag's name is in its id, as every word's open part is")
+
+	two := leafGuard("noted:admitted", machine.OpEq, true)
+	_, conns = guardWords(&machine.Guard{Not: &machine.Guard{All: []machine.Guard{*held, *two}}}, "X", "heard")
+	require.Equal(t, "when.not.all[0]", conns[0].At)
+	require.True(t, conns[0].Not, "each leaf under one not carries it; At says the not wraps the all")
+}
+
+// sampleInner is the condition the node samples hold.
+var sampleInner = leafGuard("heard.claim", machine.OpEq, "held")
+
+// conditionSamples is one authored sample of every condition word in the
+// table, with the id and place its connection must have.
+var conditionSamples = map[string]struct {
+	g      *machine.Guard
+	id, at string
+}{
+	"enemy":           {leafGuard("enemy", machine.OpEq, "seen"), "enemy", "when"},
+	"fact:":           {leafGuard("fact:gate-cowed", machine.OpEq, true), "fact:gate-cowed", "when"},
+	"heard.kind":      {leafGuard("heard.kind", machine.OpEq, "voice"), "heard.kind", "when"},
+	"heard.loudness:": {leafGuard("heard.loudness:shout", machine.OpEq, true), "heard.loudness:shout", "when"},
+	"heard.claim":     {sampleInner, "heard.claim", "when"},
+	"noted:":          {leafGuard("noted:admitted", machine.OpEq, true), "noted:admitted", "when"},
+	"noted.anyone:":   {leafGuard("topic:admitted", machine.OpEq, true), "noted.anyone:admitted", "when"},
+	"flag:":           {&machine.Guard{Flag: "lit"}, "flag:lit", "when"},
+	"within":          {&machine.Guard{Scope: &machine.ScopeLeaf{Within: 2}}, "within", "when"},
+	"regions":         {&machine.Guard{Scope: &machine.ScopeLeaf{Regions: 1}}, "regions", "when"},
+	"rounds":          {&machine.Guard{Rounds: &machine.RoundsLeaf{Op: machine.OpGte, N: 3}}, "rounds", "when"},
+	"all":             {&machine.Guard{All: []machine.Guard{*sampleInner}}, "heard.claim", "when.all[0]"},
+	"any":             {&machine.Guard{Any: []machine.Guard{*sampleInner}}, "heard.claim", "when.any[0]"},
+	"not":             {&machine.Guard{Not: sampleInner}, "heard.claim", "when.not"},
 }
 
 // TestEveryConditionWordIsAConnection walks the machine words table: every
 // condition word yields a connection of its own (a leaf) or places the
 // conditions under it (a node), so a new word cannot ship without one.
 func TestEveryConditionWordIsAConnection(t *testing.T) {
-	inner := leafGuard("heard.claim", machine.OpEq, "held")
-	sample := map[string]struct {
-		g      *machine.Guard
-		id, at string
-	}{
-		"enemy":           {leafGuard("enemy", machine.OpEq, "seen"), "enemy", "when"},
-		"fact:":           {leafGuard("fact:gate-cowed", machine.OpEq, true), "fact:gate-cowed", "when"},
-		"heard.kind":      {leafGuard("heard.kind", machine.OpEq, "voice"), "heard.kind", "when"},
-		"heard.loudness:": {leafGuard("heard.loudness:shout", machine.OpEq, true), "heard.loudness:shout", "when"},
-		"heard.claim":     {inner, "heard.claim", "when"},
-		"noted:":          {leafGuard("noted:admitted", machine.OpEq, true), "noted:admitted", "when"},
-		"noted.anyone:":   {leafGuard("topic:admitted", machine.OpEq, true), "noted.anyone:admitted", "when"},
-		"flag":            {&machine.Guard{Flag: "lit"}, "flag", "when"},
-		"within":          {&machine.Guard{Scope: &machine.ScopeLeaf{Within: 2}}, "within", "when"},
-		"regions":         {&machine.Guard{Scope: &machine.ScopeLeaf{Regions: 1}}, "regions", "when"},
-		"rounds":          {&machine.Guard{Rounds: &machine.RoundsLeaf{Op: machine.OpGte, N: 3}}, "rounds", "when"},
-		"all":             {&machine.Guard{All: []machine.Guard{*inner}}, "heard.claim", "when.all[0]"},
-		"any":             {&machine.Guard{Any: []machine.Guard{*inner}}, "heard.claim", "when.any[0]"},
-		"not":             {&machine.Guard{Not: inner}, "heard.claim", "when.not"},
-	}
+	sample := conditionSamples
 	for _, w := range encounter.MachineWords().Conditions {
 		tc, ok := sample[w.Word]
 		require.True(t, ok, "a sample for the condition word %q: a new word needs its connection", w.Word)
