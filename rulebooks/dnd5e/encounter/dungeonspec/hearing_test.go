@@ -213,13 +213,13 @@ func TestTheHearingWordsAreRefusedAtDecode(t *testing.T) {
 		{
 			name: "`fact` in a `when` naming nothing",
 			on:   `on: { time: [ { when: { fact: "" }, hold: {} } ] }`,
-			says: "`fact` in a `when` names the fact the creature must hold, and this names none",
+			says: "`fact` in a `when` names the fact the creature must know, and this names none",
 		},
 		{
 			name: "two conditions in one entry",
 			on:   `on: { time: [ { when: { enemy: seen, fact: alarm-raised }, hold: {} } ] }`,
 			says: "a `when` entry is one condition, and this names 2: give each its own entry in a list, " +
-				"`when: [{ … }, { … }]`, and every entry must hold",
+				"`when: [{ … }, { … }]`, and every entry must be true",
 		},
 		{
 			name: "an empty list",

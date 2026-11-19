@@ -68,7 +68,7 @@ ROUTINES
     - States (it is the runner):
       - In `ready`, when it is the carrier that hails a character (only under the conversation's hail rule) →
           acts from its `approached` rows. [ready.transitions[0]]
-    - Rows (one whose conditions hold is picked by weight):
+    - Rows (one whose conditions are true is picked by weight):
       - `approached`: says “Halt there. What's your business?” [approached[0]]
 
 NOT YET SAID

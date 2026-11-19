@@ -239,11 +239,11 @@ func TestALineHeardSaysWhetherTheClaimHeld(t *testing.T) {
 	}
 }
 
-// TestHoldsAsksAboutTheOneHeard: `holds:admitted` is what the goblin holds
+// TestNotedAsksAboutTheOneHeard: `holds:admitted` is what the goblin holds
 // about the one it heard and saw — not anybody. Bob is admitted; alice's
 // claim does not move him, bob's does. The line that gives the topic is
 // heard before its own grant, so it moves nothing either.
-func TestHoldsAsksAboutTheOneHeard(t *testing.T) {
+func TestNotedAsksAboutTheOneHeard(t *testing.T) {
 	enc := lineHall(t, ears(t, false, on("heard", "knows", fact("noted:admitted", true))), nil)
 	sayTo(t, enc, lineBob, lineVouch, true)
 	require.Equal(t, "quiet", stateOf(t, enc, goblin), "the line that gives the topic is heard before it is given")
@@ -253,12 +253,12 @@ func TestHoldsAsksAboutTheOneHeard(t *testing.T) {
 	require.Equal(t, "knows", stateOf(t, enc, goblin), "about bob, whom he heard and saw")
 }
 
-// TestHoldsNeedsTheSpeakerSeen: one who catches the words without seeing
+// TestNotedNeedsTheSpeakerSeen: one who catches the words without seeing
 // who said them holds nothing about them, whatever he holds about the
 // speaker: sight names, a heard voice names nobody. Near holds `admitted`
 // about bob; the lamp goes out on him, and bob's line to the goblin, in
 // the same room, is a voice from nobody.
-func TestHoldsNeedsTheSpeakerSeen(t *testing.T) {
+func TestNotedNeedsTheSpeakerSeen(t *testing.T) {
 	sight := sightRanges{}
 	enc := lineHall(t, ears(t, false, on("heard", "knows", fact("noted:admitted", true))), sight)
 	_, err := enc.Speak(context.Background(), &encounter.SpeakInput{

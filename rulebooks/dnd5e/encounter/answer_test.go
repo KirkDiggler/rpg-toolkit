@@ -1059,7 +1059,7 @@ func TestNotEnemySeenHoldsWithNoEnemyInSight(t *testing.T) {
 }
 
 // TestAListedWhenNeedsEveryEntryThroughTheRealPick is R8: a row's `when` is a
-// list and every entry must hold. Two guards both heard the alarm; one row
+// list and every entry must be true. Two guards both heard the alarm; one row
 // also needs nobody in sight (true), the other also needs a fact nobody
 // taught (false), and only the first walks.
 func TestAListedWhenNeedsEveryEntryThroughTheRealPick(t *testing.T) {

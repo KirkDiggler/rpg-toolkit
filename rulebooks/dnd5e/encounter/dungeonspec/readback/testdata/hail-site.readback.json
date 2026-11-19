@@ -346,7 +346,7 @@
                 "kind": "routine",
                 "id": "porter-policy"
               },
-              "sentence": "The routine `porter-policy` is run by Guard (porter); it starts in the state `ready`; its recipe is `site:behaviors:porter-policy`. When it acts from a set of rows, one row whose conditions hold is picked by weight.",
+              "sentence": "The routine `porter-policy` is run by Guard (porter); it starts in the state `ready`; its recipe is `site:behaviors:porter-policy`. When it acts from a set of rows, one row whose conditions are true is picked by weight.",
               "path": "behaviorDefinitions.porter-policy",
               "connects": [
                 {

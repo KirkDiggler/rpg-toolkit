@@ -506,7 +506,7 @@ type departureMatch struct {
 
 // departureEnding reports which declared ending one departure fires, in ONE
 // PASS IN DECLARATION ORDER over every ending a departure can fire
-// (rpg-project#716, D9: the first ending whose conditions hold fires). Each
+// (rpg-project#716, D9: the first ending whose conditions are true fires). Each
 // asks its own question:
 //
 //   - a [TriggerExitedHolding]: the member stood on its exit cell holding

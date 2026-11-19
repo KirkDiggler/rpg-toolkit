@@ -44,9 +44,26 @@
 // # The sentences
 //
 // Mechanical, "this knows that": subject first, active voice, every actor
-// named with its id beside it, never a pronoun. A recognition says who comes
-// to hold the topic, about whom, and who else hears it, in that order; a
+// named with its id beside it, never a pronoun. A topic given says who is
+// given it, about whom they note it, and who else hears it, in that order; a
 // requirement says whose knowledge it reads. Stiff and true beats elegant.
+//
+// # What a machine's step reads (rpg-project#1000, #1005)
+//
+// A step's guard connects to what it reads, so a reader draws it from
+// connections alone:
+//
+//   - `noted:<topic>` (about the one the beat names), `eq` true or false:
+//     {topic, <topic>, asks}; the sentence says "has noted" or "has not noted".
+//   - `noted.anyone:<topic>` (compiled to the engine's `topic:<id>`):
+//     {topic, <topic>, wakes-on}; "has noted … about anyone" or "has not".
+//   - `heard.claim`: {claim, held|failed, asks} ([ConnClaim]): the id is the
+//     verdict asked; under a `not` the sentence says NOT and the connection
+//     stays.
+//   - `fact:<id>`: {fact, <id>, wakes-on}.
+//
+// `heard.kind` and `heard.loudness:<w>` are said and connect to nothing: they
+// read the sound itself, not a thing in the file.
 //
 // # Nothing skipped silently
 //
