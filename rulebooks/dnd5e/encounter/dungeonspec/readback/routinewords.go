@@ -135,8 +135,13 @@ func guardWordsAt(g *machine.Guard, who string, on machine.Beat, at string, not 
 		}
 	}
 	if g.Rounds != nil {
-		add(fill(cond("rounds").Long, "op", opWords(g.Rounds.Op), "n", fmt.Sprint(g.Rounds.N), "who", who),
-			[]Connection{asks("rounds", fmt.Sprint(g.Rounds.N), g.Rounds.Op)})
+		said := fill(cond("rounds").Long, "op", opWords(g.Rounds.Op), "n", fmt.Sprint(g.Rounds.N), "who", who)
+		if g.Rounds.Op == machine.OpEq && g.Rounds.N == 0 {
+			// `rounds: { op: eq }` with no n (rpg-project#1001): the very
+			// round it marked the moment, said so rather than as "exactly 0".
+			said = "it is the very round " + who + " set its anchor"
+		}
+		add(said, []Connection{asks("rounds", fmt.Sprint(g.Rounds.N), g.Rounds.Op)})
 	}
 	for i := range g.All {
 		s, c := guardWordsAt(&g.All[i], who, on, fmt.Sprintf("%s.all[%d]", at, i), not)

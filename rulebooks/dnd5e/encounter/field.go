@@ -1457,6 +1457,11 @@ type EndingInput struct {
 
 // SetupInput contains all information needed to construct an encounter.
 type SetupInput struct {
+	// Key is the content's own key as the host names it (a dungeon's key),
+	// written on [BeatSceneOpened] so a run's record says what it is a run
+	// of. Optional: empty writes none.
+	Key string
+
 	// Field describes the spatial layout.
 	Field FieldInput
 

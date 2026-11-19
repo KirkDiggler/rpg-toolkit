@@ -17,8 +17,24 @@ const (
 	// members open on.
 	BeatSceneOpened = "scene-opened"
 
+	// BeatSceneContent records what a run is a run of (rpg-project#1001),
+	// right after [BeatSceneOpened]: the compiled site's hash ([SiteHash]),
+	// the content's key when the host names one ([SetupInput.Key]), and
+	// this engine's module version when the build knows it. RECORD-ONLY:
+	// its audience is empty, so no member's story changes; the run's
+	// record (the host's diagnostic stream) carries it.
+	BeatSceneContent = "scene_content"
+
 	// BeatJoined records a member joining the encounter.
 	BeatJoined = "joined"
+
+	// BeatJoinedAt records the cell a member entered the encounter at
+	// (rpg-project#1001): at setup, after [BeatSceneContent], for every
+	// member it was given; on a [Encounter.Join], right after its
+	// [BeatJoined]. RECORD-ONLY: its audience is empty, so a
+	// player learns no member's start cell from it, while the run's record
+	// carries it for the studio's watch.
+	BeatJoinedAt = "joined_at"
 
 	// BeatExited records a member leaving the encounter.
 	BeatExited = "exited"

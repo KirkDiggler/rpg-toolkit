@@ -94,8 +94,8 @@ func goblinRecordBeats(t *testing.T, enc *encounter.Encounter) []map[string]any 
 	for _, entry := range all.Entries {
 		var b map[string]any
 		require.NoError(t, json.Unmarshal(entry.Payload, &b))
-		if b["beat"] == encounter.BeatBehaviorConfig {
-			continue // the private configuration record, not a story beat
+		if b["beat"] == encounter.BeatBehaviorConfig || b["beat"] == encounter.BeatJoinedAt {
+			continue // a private record (its configuration, where it began), not a story beat
 		}
 		if b["creature"] == string(goblin) || b["member"] == string(goblin) || b["actor"] == string(goblin) {
 			out = append(out, b)

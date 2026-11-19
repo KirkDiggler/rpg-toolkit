@@ -148,3 +148,14 @@ func TestEveryConditionWordIsAConnection(t *testing.T) {
 		}
 	}
 }
+
+// TestRoundsWithNoCountIsTheVeryRound: `rounds: { op: eq }` with no n (n 0,
+// the table's default) is said as the very round the anchor was set, not
+// "exactly 0 rounds"; `gte` with no n keeps the template.
+func TestRoundsWithNoCountIsTheVeryRound(t *testing.T) {
+	s, conns := guardWords(&machine.Guard{Rounds: &machine.RoundsLeaf{Op: machine.OpEq}}, "X", "time")
+	require.Equal(t, "it is the very round X set its anchor", s)
+	require.Equal(t, []Connection{{Kind: ConnCondition, ID: "rounds", Role: "asks", Is: "0", At: "when"}}, conns)
+	s, _ = guardWords(&machine.Guard{Rounds: &machine.RoundsLeaf{Op: machine.OpGte}}, "X", "time")
+	require.Equal(t, "at least 0 rounds have passed since X set its anchor", s)
+}
