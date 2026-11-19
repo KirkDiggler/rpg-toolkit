@@ -370,9 +370,11 @@ func TestCastleAHeldDoorOutOfReachIsOutOfReach(t *testing.T) {
 	require.Equal(t, before, c.dice.rolls, "no die is thrown")
 }
 
-// gateOneAlonePosts is the castle's `ready` posts on gate-2 and the captain
-// (rpg-project#928), which [openTheGateWithGateOneAlone] strikes.
-var gateOneAlonePosts = regexp.MustCompile(`\n        posts:\n          ready:\n(?:            .*\n)+`)
+// gateOneAlonePosts is the castle's posts on gate-2 and the captain
+// (rpg-project#928), which [openTheGateWithGateOneAlone] strikes: each
+// whole `posts:` block, the captain's `back-to-gate` post (rpg-project#1000)
+// with its `ready` one, so no post is left without its key.
+var gateOneAlonePosts = regexp.MustCompile(`\n        posts:\n          ready:\n(?:          .*\n)+`)
 
 // openTheGateWithGateOneAlone is [openTheCastleForTwo] with gate-1 the gate's
 // only holder: a TEST FIXTURE for the routes about one post's mechanics. In

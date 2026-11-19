@@ -31,10 +31,14 @@ import (
 // and the player already reads the mode off the view, so it folds into no
 // act and puts nothing on any panel.
 var recordOnly = map[string]bool{
-	encounter.BeatTable:             true,
-	encounter.BeatBehaviorConfig:    true,
-	encounter.BeatBehaviorDecision:  true,
-	encounter.BeatBehaviorWork:      true,
+	encounter.BeatTable:            true,
+	encounter.BeatBehaviorConfig:   true,
+	encounter.BeatBehaviorDecision: true,
+	encounter.BeatBehaviorWork:     true,
+	// A creature's role beside its body stepping its machine
+	// (rpg-project#1001): told to the creature alone, for the run's record
+	// the studio watches; no act and no panel.
+	encounter.BeatRoleState:         true,
 	encounter.BeatTransferred:       true,
 	string(encounter.OutcomeBought): true,
 	string(encounter.OutcomeSold):   true,
