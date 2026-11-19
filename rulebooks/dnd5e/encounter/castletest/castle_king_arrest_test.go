@@ -70,6 +70,8 @@ var arrestScene struct {
 
 // arrestSceneTests are the tests that start from [arrestScene].
 var arrestSceneTests = []string{
+	"TestMadKingTheArrestLandsWhatItPredicts", "TestMadKingTheJailLandsWhatItPredicts", "TestMadKingTheJailWantsTheGoneByJudgement",
+	"TestMadKingEveryNoteLandedWasPredicted",
 	"TestMadKingTheSecondFailedClaimArrests", "TestMadKingTheArrestEndsTheAddressAndMovesNobody",
 	"TestMadKingTheArrestIsToldOnlyWhatItsReaderSees", "TestMadKingTheArrestIsKeptOnReload",
 	"TestMadKingAKeptRollArrestsAsTheWordsWereSaid", "TestMadKingTheFightLineAtTheArrest", "TestMadKingTheSeizedAreHailed",

@@ -182,18 +182,26 @@ func givingOf(at string, r *GiveSpec, carriers bool, fail func(at, message strin
 	if r.Topic == "" {
 		fail(at+".topic", "a give names the topic given: write `topic: <topic>`")
 	}
-	if r.To != string(encounter.RecognitionSpokenTo) {
-		fail(at+".to", fmt.Sprintf("a topic is given `to: %s`, the creature the line was said to",
-			encounter.RecognitionSpokenTo))
+	// THE WHO-WORDS ARE THE PUBLISHED LIST'S (encounter.WhoWords,
+	// rpg-project#1001): what `to`, `about` and `heard_by` accept is what
+	// the list allows there, so the read-back cannot name another.
+	tos, abouts, hearers := encounter.WhoWordsIn(encounter.WhoInGiveTo), encounter.WhoWordsIn(encounter.WhoInGiveAbout),
+		encounter.WhoWordsIn(encounter.WhoInGiveHeardBy)
+	if !slices.Contains(tos, r.To) {
+		fail(at+".to", fmt.Sprintf("a topic is given `to: %s`, the creature the line was said to", strings.Join(tos, "`, `")))
 	}
-	if r.About != string(encounter.RecognitionPartyInSight) && r.About != string(encounter.RecognitionSpeaker) {
-		fail(at+".about", fmt.Sprintf("the subjects are `%s`, the speaker's party the holder sees, or `%s`, the speaker alone",
-			encounter.RecognitionPartyInSight, encounter.RecognitionSpeaker))
+	if !slices.Contains(abouts, r.About) {
+		// Joined from the table, whatever it holds: each word with its label.
+		said := make([]string, 0, len(abouts))
+		for _, w := range abouts {
+			wd, _ := encounter.WhoWordOf(w)
+			said = append(said, fmt.Sprintf("`%s`, %s", w, wd.Label))
+		}
+		fail(at+".about", "the subjects are "+strings.Join(said, ", or "))
 	}
 	switch {
-	case r.HeardBy != "" && r.HeardBy != string(encounter.RecognitionCarriersWhoWitnessed):
-		fail(at+".heard_by", fmt.Sprintf("the hearers are `%s`, or omit it for nobody",
-			encounter.RecognitionCarriersWhoWitnessed))
+	case r.HeardBy != "" && !slices.Contains(hearers, r.HeardBy):
+		fail(at+".heard_by", fmt.Sprintf("the hearers are `%s`, or omit it for nobody", strings.Join(hearers, "`, `")))
 	case r.HeardBy != "" && !carriers:
 		fail(at+".heard_by", "this line names no interaction, so it has no other carriers to hear it: "+
 			"omit heard_by, or give the line an interaction it requires or advances")

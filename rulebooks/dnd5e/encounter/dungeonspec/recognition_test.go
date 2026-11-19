@@ -101,7 +101,7 @@ func TestDungeonspec_RecognitionIsRefusedAtTheAuthorsPath(t *testing.T) {
 		},
 		{
 			name: "subjects that are not the party in sight", old: theOutcome, replacement: strings.Replace(theOutcome, "about: party_in_sight", "about: the_town", 1),
-			path: outcome + ".admitted[0].give.about", message: "the subjects are `party_in_sight`, the speaker's party the holder sees, or `speaker`, the speaker alone",
+			path: outcome + ".admitted[0].give.about", message: "the subjects are `party_in_sight`, the speaker's party it sees, or `speaker`, the speaker, if it sees them",
 		},
 		{
 			name: "hearers that are not the witnessing carriers", old: theOutcome, replacement: strings.Replace(theOutcome, "heard_by: carriers_who_witnessed", "heard_by: the_town", 1),
@@ -220,7 +220,7 @@ func TestDungeonspec_ALinesGrantIsRefusedAtTheAuthorsPath(t *testing.T) {
 		text := strings.Replace(castleSource(t), theStragglersSuccess,
 			strings.Replace(theStragglersSuccess, "about: speaker", "about: anyone", 1), 1)
 		requireExactDefect(t, refusals(t, text), gate1+".success[0].give.about",
-			"the subjects are `party_in_sight`, the speaker's party the holder sees, or `speaker`, the speaker alone")
+			"the subjects are `party_in_sight`, the speaker's party it sees, or `speaker`, the speaker, if it sees them")
 	})
 
 	t.Run("on a table row", func(t *testing.T) {

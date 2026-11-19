@@ -523,6 +523,9 @@ func (h holder) leavesOn(fact string) bool {
 type grant struct {
 	topic, about, conv, how string
 	heard                   bool
+	// aboutWord is whom it is about as the who-words say it
+	// ([encounter.WhoWords]), for its note edges.
+	aboutWord string
 }
 
 // grantsOf is every recognition a line's win (or saying) makes: its own
@@ -535,7 +538,7 @@ func (b *builder) grantsOf(o encounter.Option) []grant {
 			continue
 		}
 		r := g.Consequence.Recognize
-		out = append(out, grant{topic: string(r.Topic), about: shortSubjects(r.About), conv: conv,
+		out = append(out, grant{topic: string(r.Topic), about: shortSubjects(r.About), conv: conv, aboutWord: string(r.About),
 			heard: r.HeardBy != "", how: fmt.Sprintf("its %s", winWord(o))})
 	}
 	if o.Advance != nil && o.Advance.Success != "" {
@@ -550,8 +553,8 @@ func (b *builder) grantsOf(o encounter.Option) []grant {
 						continue
 					}
 					out = append(out, grant{topic: string(cq.Recognize.Topic), about: shortSubjects(cq.Recognize.About), conv: c,
-						heard: cq.Recognize.HeardBy != "",
-						how:   fmt.Sprintf("its %s steps %s to %s, whose outcome", winWord(o), quote(c), quote(state))})
+						heard: cq.Recognize.HeardBy != "", aboutWord: string(cq.Recognize.About),
+						how: fmt.Sprintf("its %s steps %s to %s, whose outcome", winWord(o), quote(c), quote(state))})
 				}
 			}
 		}
@@ -724,7 +727,21 @@ func (b *builder) lineHoldWay(join Statement, joinWords string, site lineSite, h
 			s += fmt.Sprintf(", and the conversation %s's other carriers who witness it note the same, heard", quote(g.conv))
 		}
 		why = append(why, s)
-		cs = append(cs, Connection{Kind: "topic", ID: g.topic, Role: "grants"})
+		// THE ONE PLACE A GIVE'S NOTE EDGES ARE MADE (noteedges.go): the
+		// one the line is said to judges, the conversation's other
+		// carriers who catch it hear.
+		give := noteGive{topic: g.topic, about: g.aboutWord, cause: Connection{Kind: "option", ID: o.ID, Role: "on", Is: verdictOf(o, "")},
+			takers: []noteTaker{{word: string(encounter.RecognitionSpokenTo), creatures: []string{site.member}}}}
+		if g.heard {
+			var others []string
+			for _, c := range b.carriers[g.conv] {
+				if c != site.member {
+					others = append(others, c)
+				}
+			}
+			give.takers = append(give.takers, noteTaker{word: string(encounter.RecognitionCarriersWhoWitnessed), creatures: others})
+		}
+		cs = append(cs, noteGiveEdges(give)...)
 		if strings.Contains(g.how, "steps") {
 			cs = append(cs, Connection{Kind: "conversation", ID: g.conv, Role: "advances"})
 		}

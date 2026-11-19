@@ -147,7 +147,7 @@ type Subject struct {
 // Connection is one thing a statement reads or changes, and how: the edge a
 // later slice draws. Role is a verb from the reader's side: "grants",
 // "asks", "teaches", "wakes-on", "advances", "reads", "holds", "said-to",
-// "uses", "door", "carries".
+// "uses", "door", "carries", "about", "takes", "may-note", "whose".
 type Connection struct {
 	Kind string `json:"kind"`
 	ID   string `json:"id"`
