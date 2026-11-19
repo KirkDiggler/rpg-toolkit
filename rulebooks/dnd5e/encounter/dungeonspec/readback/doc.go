@@ -84,6 +84,24 @@
 //	{condition, heard.claim, asks, is: failed, at: when.all[0]}
 //	{condition, noted:admitted, asks, is: true, at: when.all[1]}
 //	{topic, admitted, asks}
+//	{who, the_one_named, about, at: admitted}
+//
+// # Trace one note (rpg-project#1001)
+//
+// Every statement that gives a topic or reads one says who, through one
+// function (noteedges.go), in the wire's own fields. A give carries
+// {topic, <topic>, grants}; {who, <word>, about, at: <topic>}, whom it is
+// about; {who, <word>, takes, is: <way>, at: <topic>} for each taker word,
+// the rule, with its way (`judgement` or `heard`, the engine's words); and
+// {creature, <id>, may-note, is: <way>, at: <topic>} for each creature that
+// rule resolves to in the file. A may-note edge lists who MAY come to note
+// it, not who will: the statement's sentence and conditions say when. What
+// gave it follows: {option, <id>, on, is: said|win|miss} or {conversation,
+// <id>, enters, is: <state>}. A read carries {topic, <topic>, asks} (or
+// wakes-on), negated when asked false; {who, <word>, about, at: <topic>};
+// and {creature, <id>, whose, at: <topic>} when it reads one creature's
+// notes. The words, their labels and their ways are the engine's who-words
+// list ([encounter.WhoWords]).
 //
 // # What a machine does and remembers (rpg-project#1001)
 //

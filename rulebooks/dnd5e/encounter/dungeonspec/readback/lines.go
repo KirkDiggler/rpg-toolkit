@@ -341,7 +341,7 @@ func (b *builder) heardWords(r encounter.Recognition, conv string, except []stri
 		}
 		if !skip {
 			others = append(others, id)
-			*conns = append(*conns, Connection{Kind: "creature", ID: id, Role: RoleNotes})
+			*conns = append(*conns, Connection{Kind: "creature", ID: id, Role: RoleMayNote})
 		}
 	}
 	who := "nobody: no other creature carries it"

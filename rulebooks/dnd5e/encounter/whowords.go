@@ -72,11 +72,11 @@ const (
 var whoWords = []WhoWord{
 	{Word: string(RecognitionSpokenTo), Role: WhoTaker, Label: "the one the line is said to", Allowed: WhoInGiveTo, Way: ChannelJudgement},
 	{Word: string(RecognitionCarriersWhoWitnessed), Role: WhoTaker, Label: "the other carriers who caught the words", Allowed: WhoInGiveHeardBy, Way: ChannelHeard},
-	{Word: WhoTheArresting, Role: WhoTaker, Label: "every guard who made the arrest", Allowed: WhoInEngine, Way: ChannelJudgement},
+	{Word: WhoTheArresting, Role: WhoTaker, Label: "each one up now that carries the conversation", Allowed: WhoInEngine, Way: ChannelJudgement},
 	{Word: string(RecognitionPartyInSight), Role: WhoAbout, Label: "the speaker's party it sees", Allowed: WhoInGiveAbout},
 	{Word: string(RecognitionSpeaker), Role: WhoAbout, Label: "the speaker, if it sees them", Allowed: WhoInGiveAbout},
 	{Word: WhoTheTaken, Role: WhoAbout, Label: "the ones taken", Allowed: WhoInEngine},
-	{Word: WhoTheGone, Role: WhoAbout, Label: "the ones gone before they were taken", Allowed: WhoInEngine},
+	{Word: WhoTheGone, Role: WhoAbout, Label: "the party members it saw who are not there now", Allowed: WhoInEngine},
 	{Word: WhoTheSpeaker, Role: WhoRead, Label: "the speaker", Allowed: WhoInRequires},
 	{Word: WhoTheWalker, Role: WhoRead, Label: "the walker", Allowed: WhoInPass},
 	{Word: WhoTheOneNamed, Role: WhoRead, Label: "the one the beat names", Allowed: WhoInNoted},

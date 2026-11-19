@@ -191,8 +191,13 @@ func givingOf(at string, r *GiveSpec, carriers bool, fail func(at, message strin
 		fail(at+".to", fmt.Sprintf("a topic is given `to: %s`, the creature the line was said to", strings.Join(tos, "`, `")))
 	}
 	if !slices.Contains(abouts, r.About) {
-		fail(at+".about", fmt.Sprintf("the subjects are `%s`, the speaker's party the holder sees, or `%s`, the speaker alone",
-			abouts[0], abouts[1]))
+		// Joined from the table, whatever it holds: each word with its label.
+		said := make([]string, 0, len(abouts))
+		for _, w := range abouts {
+			wd, _ := encounter.WhoWordOf(w)
+			said = append(said, fmt.Sprintf("`%s`, %s", w, wd.Label))
+		}
+		fail(at+".about", "the subjects are "+strings.Join(said, ", or "))
 	}
 	switch {
 	case r.HeardBy != "" && !slices.Contains(hearers, r.HeardBy):

@@ -12,9 +12,12 @@ const (
 	// "about" names whom a note is about (given or asked), role "takes" a
 	// taker word with its way in is. Its at is the topic it belongs to.
 	ConnWho = "who"
-	// RoleNotes is a creature that comes to note a topic: is is the way
-	// it comes by the note (the engine's word), at the topic.
-	RoleNotes = "notes"
+	// RoleMayNote is a creature that MAY come to note a topic: the takers'
+	// rule resolved against the file's creatures, not who will. Who does
+	// depends on who is there, up and within earshot when it runs; the
+	// statement's sentence and conditions say when. Is is the way it comes
+	// by the note (the engine's word), at the topic.
+	RoleMayNote = "may-note"
 	// RoleWhose is the creature whose note a line's or a post's read asks
 	// of; at is the topic.
 	RoleWhose = "whose"
@@ -44,7 +47,7 @@ func way(word string) string {
 
 // noteGiveEdges is every connection one topic given carries: the
 // `{topic, grants}` edge the hubs group by; whom it is about; each taker
-// word with its way; each creature that can come to note it, with its way;
+// word with its way; each creature that may come to note it, with its way;
 // and what gave it. THE ONE PLACE a give's note edges are made.
 func noteGiveEdges(g noteGive) []Connection {
 	out := []Connection{
@@ -56,7 +59,7 @@ func noteGiveEdges(g noteGive) []Connection {
 	}
 	for _, t := range g.takers {
 		for _, c := range t.creatures {
-			out = append(out, Connection{Kind: "creature", ID: c, Role: RoleNotes, Is: way(t.word), At: g.topic})
+			out = append(out, Connection{Kind: "creature", ID: c, Role: RoleMayNote, Is: way(t.word), At: g.topic})
 		}
 	}
 	if g.cause.Kind != "" {

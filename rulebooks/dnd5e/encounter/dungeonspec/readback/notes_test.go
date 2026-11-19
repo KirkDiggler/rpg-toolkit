@@ -70,7 +70,7 @@ func TestEveryNoteGivenOrReadSaysWho(t *testing.T) {
 					gives++
 					require.Len(t, edgesAt(st, readback.ConnWho, "about", c.ID), 1, "%s: whom %s is about", where, c.ID)
 					require.NotEmpty(t, edgesAt(st, readback.ConnWho, "takes", c.ID), "%s: who takes %s", where, c.ID)
-					for _, n := range edgesAt(st, "creature", readback.RoleNotes, c.ID) {
+					for _, n := range edgesAt(st, "creature", readback.RoleMayNote, c.ID) {
 						require.NotEmpty(t, n.Is, "%s: the way %s comes by %s", where, n.ID, c.ID)
 					}
 				case "asks", "wakes-on":
@@ -105,7 +105,7 @@ func TestTheCastleTracesAdmitted(t *testing.T) {
 			switch c.Role {
 			case "grants":
 				var takers, cause []string
-				for _, n := range edgesAt(st, "creature", readback.RoleNotes, "admitted") {
+				for _, n := range edgesAt(st, "creature", readback.RoleMayNote, "admitted") {
 					takers = append(takers, n.ID+" by "+n.Is)
 				}
 				sort.Strings(takers)
