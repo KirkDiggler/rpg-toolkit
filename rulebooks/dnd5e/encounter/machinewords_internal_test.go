@@ -204,8 +204,8 @@ func TestMachineWords_EveryAcceptedWordIsInTheTable(t *testing.T) {
 			require.Equal(t, 2, scopeType.NumField(), "a new scope leaf needs its table word")
 			continue
 		}
-		_, ok := ConditionWordOf(name)
-		require.True(t, ok, "guard leaf %q is in the table", name)
+		ok := slices.ContainsFunc(MachineWords().Conditions, func(c ConditionWord) bool { return c.Written.Key == name })
+		require.True(t, ok, "guard leaf %q is written by a table word", name)
 	}
 }
 
@@ -377,7 +377,7 @@ func TestMachineWords_LabelsArePinned(t *testing.T) {
 			"held=it was a claim that held", "failed=it was a claim that failed"},
 		"cond noted:":        {"has noted {id} about them", "has not noted {id} about them"},
 		"cond noted.anyone:": {"has noted {id} about anyone", "has not noted {id} about anyone"},
-		"cond flag":          {"{id} is set", ""},
+		"cond flag:":         {"{id} is set", ""},
 		"cond within":        {"within {n} cells", ""},
 		"cond regions":       {"within {n} rooms", ""},
 		"cond rounds":        {"{op} {n} rounds since it marked the moment", ""},

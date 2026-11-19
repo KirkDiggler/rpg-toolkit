@@ -3,15 +3,18 @@
 
 package encounter
 
-// machineargs_internal_test.go holds what each machine word TAKES (its
-// Args, rpg-project#997) to the compiler: a step built only from the
-// table's description of a word's arguments compiles, and the arguments
-// described reach every field the compiler reads (by reflection), so a
-// studio can build any word's input from the table alone.
+// machineargs_internal_test.go holds what each machine word TAKES and where
+// it goes (its Written and Args, rpg-project#997) to the compiler. ONE
+// generic writer turns any published word, its arguments and chosen values
+// into the step an author writes, with no code of its own per word: if it
+// can, a client can. Every word written that way compiles, and the words'
+// arguments reach every field the compiler reads.
 
 import (
+	"encoding/json"
 	"reflect"
 	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -19,13 +22,16 @@ import (
 	"github.com/KirkDiggler/rpg-toolkit/mind/machine"
 )
 
-// argsBag is the bag every built recipe declares: one bool flag.
-const argsFlag = "lit"
+// The bag every written recipe declares: two bool flags.
+var argsBag = machine.Bag{"lit": false, "lit2": false}
 
-// sampleOf is a value a studio could offer for arg, chosen only from what
-// the arg says: what it names, its kind and its closed values.
-func sampleOf(t *testing.T, word string, a Arg) any {
+// argSample is what a studio could offer for one argument, chosen only from
+// what the published arg says. nth picks a second item for a list.
+func argSample(t *testing.T, args []Arg, a Arg, nth int, condition map[string]any) any {
 	t.Helper()
+	if a.Fixed != "" {
+		return typed(t, a.Kind, a.Fixed)
+	}
 	if len(a.Values) > 0 {
 		return a.Values[len(a.Values)-1]
 	}
@@ -35,7 +41,7 @@ func sampleOf(t *testing.T, word string, a Arg) any {
 	case SlotList:
 		return string(AnswerTime)
 	case SlotFlag:
-		return argsFlag
+		return []string{"lit", "lit2"}[nth]
 	case SlotFact:
 		return "gate-cowed"
 	case SlotTopic:
@@ -43,210 +49,304 @@ func sampleOf(t *testing.T, word string, a Arg) any {
 	case SlotClock:
 		return "bell:gong"
 	case SlotCondition:
-		return machine.Guard{Flag: argsFlag}
+		return condition
 	}
 	switch a.Kind {
 	case "int":
 		return 2
-	case "bool", "key": // the bag's flag is a bool
+	case "bool":
 		return true
 	case "string":
 		return "x"
+	case "of":
+		i := slices.IndexFunc(args, func(o Arg) bool { return o.Name == a.KindOf })
+		require.GreaterOrEqual(t, i, 0, "%q takes its kind from %q, which is no argument", a.Name, a.KindOf)
+		require.Equal(t, SlotFlag, args[i].Names, "a kind comes from a flag")
+		flag := argSample(t, args, args[i], 0, condition).(string)
+		kind := reflect.TypeOf(argsBag[flag]).Kind().String()
+		require.Contains(t, a.Kinds, kind, "the flag's kind is one of the kinds the arg takes")
+		return typed(t, kind, map[string]string{"bool": "true", "int": "2", "string": "x"}[kind])
 	}
-	t.Fatalf("%s: an argument %+v a studio cannot offer anything for", word, a)
+	t.Fatalf("an argument %+v a studio cannot offer anything for", a)
 	return nil
 }
 
-// argsOf is the samples for every argument a word describes, in order; at
-// fails the test when the word needs an argument the table does not
-// describe.
-func argsOf(t *testing.T, word string, args []Arg) func(i int) any {
+// typed is text as a value of kind.
+func typed(t *testing.T, kind, text string) any {
 	t.Helper()
-	values := make([]any, len(args))
-	for i, a := range args {
-		values[i] = sampleOf(t, word, a)
+	switch kind {
+	case "bool":
+		v, err := strconv.ParseBool(text)
+		require.NoError(t, err)
+		return v
+	case "int":
+		v, err := strconv.Atoi(text)
+		require.NoError(t, err)
+		return v
 	}
-	return func(i int) any {
-		t.Helper()
-		require.Less(t, i, len(values), "%s needs an argument %d the table does not describe", word, i)
-		return values[i]
-	}
+	return text
 }
 
-// argsRecipe is a one-state recipe of one step, with the bag's flag.
-func argsRecipe(t *testing.T, step machine.Transition) *machine.Recipe {
-	r := wordsRecipe(t, step)
-	r.Bag = machine.Bag{argsFlag: false}
-	return r
-}
-
-// actFrom is the step an act word makes from its arguments alone.
-func actFrom(t *testing.T, w ActWord) machine.Transition {
+// writeWord writes one word into step (the step map an author writes) from
+// its published Written and Args alone. It reads the word's text only to
+// spell it: where it goes and what it takes come from the table.
+func writeWord(t *testing.T, step map[string]any, word string, w Written, args []Arg, condition map[string]any) {
 	t.Helper()
-	at := argsOf(t, w.Word, w.Args)
-	tr := machine.Transition{On: machine.Beat(AnswerTime)}
-	switch w.Word {
-	case "to":
-		tr.To = at(0).(string)
-	case "pick":
-		tr.Do = []machine.Act{{Pick: at(0).(string)}}
-	case "wake_in":
-		tr.Do = []machine.Act{{WakeIn: at(0).(int)}}
-	case "set":
-		tr.Do = []machine.Act{{Set: &machine.SetAct{Key: at(0).(string), Value: at(1)}}}
-	case "clear":
-		tr.Do = []machine.Act{{Clear: []string{at(0).(string)}}}
-	case "anchor":
-		tr.Do = []machine.Act{{Anchor: true}}
+	spelled := word
+	keyed := map[string]any{}
+	var value any
+	for _, a := range args {
+		v := argSample(t, args, a, 0, condition)
+		if a.Many {
+			v = []any{v, argSample(t, args, a, 1, condition)}
+		}
+		switch a.Goes {
+		case PlaceOpen:
+			spelled += v.(string)
+		case PlaceValue:
+			value = v
+		case PlaceField:
+			keyed[a.Field] = v
+		case PlaceImplied: // the word means it; nobody writes it
+		default:
+			t.Fatalf("%s: an argument placed nowhere: %+v", word, a)
+		}
+	}
+	if w.Field != "" {
+		keyed[w.Field] = spelled
+	}
+	var node any = keyed
+	if value != nil {
+		node = value
+	}
+	switch w.In {
+	case "on":
+		step["on"] = spelled
+	case "step":
+		step[w.Key] = node
+	case "when":
+		when, _ := step["when"].(map[string]any)
+		if when == nil {
+			when = map[string]any{}
+			step["when"] = when
+		}
+		when[w.Key] = node
+	case "do":
+		do, _ := step["do"].([]any)
+		step["do"] = append(do, map[string]any{w.Key: node})
 	default:
-		t.Fatalf("the act %q has no builder here: say how its arguments make a step", w.Word)
+		t.Fatalf("%s is written in %q, which is no part of a step", word, w.In)
 	}
+}
+
+// stepOf decodes a written step, lowered as the content compiler lowers it
+// (a word's engine spelling, from the table).
+func stepOf(t *testing.T, step map[string]any) machine.Transition {
+	t.Helper()
+	raw, err := json.Marshal(step)
+	require.NoError(t, err)
+	var tr machine.Transition
+	require.NoError(t, json.Unmarshal(raw, &tr), "%s", raw)
+	lower(tr.When)
 	return tr
 }
 
-// guardFrom is the guard a condition word makes from its arguments alone.
-func guardFrom(t *testing.T, w ConditionWord) machine.Guard {
-	t.Helper()
-	at := argsOf(t, w.Word, w.Args)
-	switch w.Word {
-	case "flag":
-		return machine.Guard{Flag: at(0).(string)}
-	case "within":
-		return machine.Guard{Scope: &machine.ScopeLeaf{Within: at(0).(int)}}
-	case "regions":
-		return machine.Guard{Scope: &machine.ScopeLeaf{Regions: at(0).(int)}}
-	case "rounds":
-		return machine.Guard{Rounds: &machine.RoundsLeaf{Op: machine.Op(at(0).(string)), N: at(1).(int)}}
-	case "all":
-		return machine.Guard{All: []machine.Guard{at(0).(machine.Guard)}}
-	case "any":
-		return machine.Guard{Any: []machine.Guard{at(0).(machine.Guard)}}
-	case "not":
-		inner := at(0).(machine.Guard)
-		return machine.Guard{Not: &inner}
+// lower spells every fact as the engine reads it.
+func lower(g *machine.Guard) {
+	if g == nil {
+		return
 	}
-	require.True(t, w.Fact, "%s has a builder here", w.Word)
-	name, next := w.Word, 0
-	if w.Open != SlotNone {
-		prefix := w.Word
-		if inner, _ := ConditionWordOf(w.Word + "x"); inner.engine != "" {
-			prefix = inner.engine // as the engine reads it once lowered
+	if g.Fact != nil {
+		if w, id, ok := SplitConditionWord(string(g.Fact.Name)); ok {
+			if inner, _ := ConditionWordOf(string(g.Fact.Name)); inner.engine != "" {
+				g.Fact.Name = machine.FactName(inner.engine + id)
+			}
+			_ = w
 		}
-		name, next = prefix+at(0).(string), 1
 	}
-	return machine.Guard{Fact: &machine.FactLeaf{Name: machine.FactName(name), Op: machine.OpEq, Value: at(next)}}
+	for i := range g.All {
+		lower(&g.All[i])
+	}
+	for i := range g.Any {
+		lower(&g.Any[i])
+	}
+	lower(g.Not)
+}
+
+// argsRecipe is a one-state recipe of one step, with the bag.
+func argsRecipe(t *testing.T, step machine.Transition) *machine.Recipe {
+	r := wordsRecipe(t, step)
+	r.Bag = argsBag.Clone()
+	return r
 }
 
 // beatFor is a beat a word is allowed on.
-func beatFor(on []string) machine.Beat {
+func beatFor(on []string) string {
 	if len(on) == 0 {
-		return machine.Beat(AnswerTime)
+		return string(AnswerTime)
 	}
-	return machine.Beat(on[0])
+	return on[0]
 }
 
-// TestMachineWords_EveryWordIsBuiltFromItsArgs: every act and condition the
-// published table holds, built only from its Args, compiles; and the
-// arguments reach every field the compiler reads.
-func TestMachineWords_EveryWordIsBuiltFromItsArgs(t *testing.T) {
+// sampleCondition is a condition written from the first table word that
+// takes no condition itself: what a `not`, `all` or `any` holds.
+func sampleCondition(t *testing.T, table MachineWordsTable) map[string]any {
+	t.Helper()
+	for _, c := range table.Conditions {
+		if !slices.ContainsFunc(c.Args, func(a Arg) bool { return a.Names == SlotCondition }) && len(c.On) == 0 {
+			step := map[string]any{}
+			writeWord(t, step, c.Word, c.Written, c.Args, nil)
+			return step["when"].(map[string]any)
+		}
+	}
+	t.Fatal("no condition to nest")
+	return nil
+}
+
+// TestMachineWords_EveryWordIsWrittenFromItsArgs: every beat, condition and
+// act the published table holds, written by the one generic writer from its
+// Written and Args, compiles; and the arguments reach every field the
+// compiler reads.
+func TestMachineWords_EveryWordIsWrittenFromItsArgs(t *testing.T) {
 	table := MachineWords()
-	var acts []machine.Act
-	var guards []machine.Guard
-	for _, w := range table.Acts {
-		tr := actFrom(t, w)
-		r := argsRecipe(t, tr)
-		_, err := CheckBehaviors(&CheckBehaviorsInput{Behaviors: *fixtureBehavior(*r, holds())})
-		require.NoError(t, err, "the act %s built from its args", w.Word)
-		acts = append(acts, tr.Do...)
-		if tr.To != "" {
-			acts = append(acts, machine.Act{}) // `to` is the step's own field, below
-		}
-	}
-	for _, w := range table.Conditions {
-		g := guardFrom(t, w)
-		tr := machine.Transition{On: beatFor(w.On), When: &g}
-		require.NoError(t, ValidateMachine(argsRecipe(t, tr)), "the condition %s built from its args", w.Word)
-		guards = append(guards, g)
-	}
+	inner := sampleCondition(t, table)
+	var steps []machine.Transition
 	for _, b := range table.Beats {
-		if b.Open == SlotNone {
-			require.Empty(t, b.Args, "%s takes nothing", b.Word)
-			continue
-		}
-		at := argsOf(t, b.Word, b.Args)
-		on := b.Word + at(0).(string)
-		require.NoError(t, ValidateMachine(argsRecipe(t, machine.Transition{On: machine.Beat(on)})), on)
+		step := map[string]any{}
+		writeWord(t, step, b.Word, b.Written, b.Args, inner)
+		tr := stepOf(t, step)
+		require.NoError(t, ValidateMachine(argsRecipe(t, tr)), "the beat %s, written as %v", b.Word, step)
+	}
+	for _, c := range table.Conditions {
+		step := map[string]any{"on": beatFor(c.On)}
+		writeWord(t, step, c.Word, c.Written, c.Args, inner)
+		tr := stepOf(t, step)
+		require.NoError(t, ValidateMachine(argsRecipe(t, tr)), "the condition %s, written as %v", c.Word, step)
+		steps = append(steps, tr)
+	}
+	for _, a := range table.Acts {
+		step := map[string]any{"on": beatFor(a.On)}
+		writeWord(t, step, a.Word, a.Written, a.Args, inner)
+		tr := stepOf(t, step)
+		_, err := CheckBehaviors(&CheckBehaviorsInput{Behaviors: *fixtureBehavior(*argsRecipe(t, tr), holds())})
+		require.NoError(t, err, "the act %s, written as %v", a.Word, step)
+		steps = append(steps, tr)
 	}
 
 	// EVERY FIELD THE COMPILER READS IS REACHED by some word's arguments: a
-	// new field on an act or a guard leaf fails here until a word takes it.
-	covered := func(name string, values []reflect.Value) {
-		t.Helper()
-		typ := values[0].Type()
-		for i := 0; i < typ.NumField(); i++ {
-			hit := slices.ContainsFunc(values, func(v reflect.Value) bool { return !v.Field(i).IsZero() })
-			require.True(t, hit, "%s.%s is set by no word's arguments", name, typ.Field(i).Name)
+	// new field on a step, an act or a guard leaf fails here until a word
+	// takes it.
+	var trs, acts, sets, guards, facts, scopes, rounds []reflect.Value
+	var walk func(g *machine.Guard)
+	walk = func(g *machine.Guard) {
+		if g == nil {
+			return
 		}
-	}
-	var actValues, setValues []reflect.Value
-	for _, a := range acts {
-		actValues = append(actValues, reflect.ValueOf(a))
-		if a.Set != nil {
-			setValues = append(setValues, reflect.ValueOf(*a.Set))
-		}
-	}
-	covered("machine.Act", actValues)
-	covered("machine.SetAct", setValues)
-	var guardValues, factValues, scopeValues, roundsValues []reflect.Value
-	for _, g := range guards {
-		guardValues = append(guardValues, reflect.ValueOf(g))
+		guards = append(guards, reflect.ValueOf(*g))
 		if g.Fact != nil {
-			factValues = append(factValues, reflect.ValueOf(*g.Fact))
+			facts = append(facts, reflect.ValueOf(*g.Fact))
 		}
 		if g.Scope != nil {
-			scopeValues = append(scopeValues, reflect.ValueOf(*g.Scope))
+			scopes = append(scopes, reflect.ValueOf(*g.Scope))
 		}
 		if g.Rounds != nil {
-			roundsValues = append(roundsValues, reflect.ValueOf(*g.Rounds))
+			rounds = append(rounds, reflect.ValueOf(*g.Rounds))
+		}
+		for i := range g.All {
+			walk(&g.All[i])
+		}
+		for i := range g.Any {
+			walk(&g.Any[i])
+		}
+		walk(g.Not)
+	}
+	for _, tr := range steps {
+		trs = append(trs, reflect.ValueOf(tr))
+		walk(tr.When)
+		for _, a := range tr.Do {
+			acts = append(acts, reflect.ValueOf(a))
+			if a.Set != nil {
+				sets = append(sets, reflect.ValueOf(*a.Set))
+			}
 		}
 	}
-	covered("machine.Guard", guardValues)
-	covered("machine.FactLeaf", factValues)
-	covered("machine.ScopeLeaf", scopeValues)
-	covered("machine.RoundsLeaf", roundsValues)
-	require.Contains(t, []string{"s"}, actFrom(t, mustAct(t, "to")).To, "`to` reaches the step's To")
-}
-
-// mustAct is the published act word.
-func mustAct(t *testing.T, word string) ActWord {
-	for _, a := range MachineWords().Acts {
-		if a.Word == word {
-			return a
+	covered := func(name string, values []reflect.Value, skip ...string) {
+		t.Helper()
+		require.NotEmpty(t, values, name)
+		typ := values[0].Type()
+		for i := 0; i < typ.NumField(); i++ {
+			if slices.Contains(skip, typ.Field(i).Name) {
+				continue
+			}
+			hit := slices.ContainsFunc(values, func(v reflect.Value) bool { return !v.Field(i).IsZero() })
+			require.True(t, hit, "%s.%s is written by no word's arguments", name, typ.Field(i).Name)
 		}
 	}
-	t.Fatalf("no act %q", word)
-	return ActWord{}
+	covered("machine.Transition", trs, "Reason") // a step's reason is free text, said by no word
+	covered("machine.Act", acts)
+	covered("machine.SetAct", sets)
+	covered("machine.Guard", guards)
+	covered("machine.FactLeaf", facts)
+	covered("machine.ScopeLeaf", scopes)
+	covered("machine.RoundsLeaf", rounds)
 }
 
-// TestMachineWords_ArgsAgreeWithTheWord: an open word's first argument
-// names what its open part is, and a condition's value argument has the
-// word's own kind and closed values.
-func TestMachineWords_ArgsAgreeWithTheWord(t *testing.T) {
+// TestMachineWords_ArgsAreWellFormed: every argument has a name, a place
+// and a kind from the closed sets; an open word's first argument fills its
+// open part and names what the word's Open says; a condition's value
+// argument has the word's kind and closed values; a list is a list.
+func TestMachineWords_ArgsAreWellFormed(t *testing.T) {
 	table := MachineWords()
-	for _, b := range table.Beats {
-		if b.Open != SlotNone {
-			require.Equal(t, b.Open, b.Args[0].Names, b.Word)
+	check := func(word string, open OpenSlot, args []Arg) {
+		t.Helper()
+		for _, a := range args {
+			require.Contains(t, []string{"id", "value", "n", "op", "parts", "inner"}, a.Name, word)
+			require.Contains(t, []ArgPlace{PlaceOpen, PlaceValue, PlaceField, PlaceImplied}, a.Goes, word)
+			require.False(t, a.Goes == PlaceImplied && a.Fixed == "", "%s.%s: an implied argument says its value", word, a.Name)
+			require.Equal(t, a.Goes == PlaceField, a.Field != "", "%s.%s: a field is named exactly when it goes in one", word, a.Name)
+			require.Contains(t, []string{"string", "int", "bool", "condition", "of"}, a.Kind, word)
+			require.Equal(t, a.Kind == "of", a.KindOf != "", "%s.%s", word, a.Name)
+			require.False(t, a.Optional && a.Default == "", "%s.%s: an optional argument says what leaving it out means", word, a.Name)
 		}
+		// AN OPEN WORD'S FIRST ARGUMENT IS ITS OPEN PART: spelled after its
+		// colon, or (`flag: lit`, read back as `flag:lit`) its key's value.
+		if open != SlotNone {
+			require.Equal(t, open, args[0].Names, word)
+			require.Contains(t, []ArgPlace{PlaceOpen, PlaceValue}, args[0].Goes, word)
+		} else {
+			require.False(t, slices.ContainsFunc(args, func(a Arg) bool { return a.Goes == PlaceOpen }), "%s: a whole word has no open part", word)
+		}
+	}
+	for _, b := range table.Beats {
+		check(b.Word, b.Open, b.Args)
 	}
 	for _, c := range table.Conditions {
-		if c.Open != SlotNone {
-			require.Equal(t, c.Open, c.Args[0].Names, c.Word)
-		}
+		check(c.Word, c.Open, c.Args)
 		for _, a := range c.Args {
-			if a.Slot == "{value}" && len(c.Values) > 0 {
+			if a.Name == "value" && len(c.Values) > 0 {
 				require.Equal(t, c.Values, a.Values, c.Word)
 				require.Equal(t, c.Kind, a.Kind, c.Word)
 			}
 		}
 	}
+	for _, a := range table.Acts {
+		check(a.Word, SlotNone, a.Args)
+	}
+	// A LIST IS WRITTEN AS A LIST, and these are the words that take one.
+	var many []string
+	for _, c := range table.Conditions {
+		for _, a := range c.Args {
+			if a.Many {
+				many = append(many, c.Word+"."+a.Name)
+			}
+		}
+	}
+	for _, a := range table.Acts {
+		for _, g := range a.Args {
+			if g.Many {
+				many = append(many, a.Word+"."+g.Name)
+			}
+		}
+	}
+	require.Equal(t, []string{"all.parts", "any.parts", "clear.id"}, many)
 }

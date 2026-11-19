@@ -164,3 +164,18 @@ func TestEveryCastleStepsWhenRebuildsFromItsConnections(t *testing.T) {
 	}
 	require.Positive(t, guarded, "the castle has guarded steps (%d steps)", steps)
 }
+
+// TestEveryCastleConditionIDResolves: every condition connection the castle
+// says resolves to a table word that takes it (conditionids_internal_test.go
+// holds every other content file).
+func TestEveryCastleConditionIDResolves(t *testing.T) {
+	_, rb := theCastle(t)
+	seen := 0
+	for _, st := range rb.Statements() {
+		for _, c := range readback.ConditionsOf(st.Connects) {
+			readback.RequireConditionAccepted(t, st.Path, c)
+			seen++
+		}
+	}
+	require.Positive(t, seen)
+}
