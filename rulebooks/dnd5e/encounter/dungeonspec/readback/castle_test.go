@@ -53,7 +53,7 @@ var theCastleOnce struct {
 
 // castleSuites are the tests that read the shared castle.
 var castleSuites = []string{
-	"TestCastleSuite", "TestOneWordPreventsTheFold", "TestEveryCastleStepsWhenRebuildsFromItsConnections", "TestFoldEachSuite", "TestJoinsCastleSuite",
+	"TestCastleSuite", "TestOneWordPreventsTheFold", "TestEveryDeedRowIsPinned", "TestEveryCastleStepsWhenRebuildsFromItsConnections", "TestFoldEachSuite", "TestJoinsCastleSuite",
 	"TestMachineCastleSuite", "TestThreadsSuite", "TestWaysCastleSuite",
 }
 

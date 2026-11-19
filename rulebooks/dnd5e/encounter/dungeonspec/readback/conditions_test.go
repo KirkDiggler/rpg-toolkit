@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -74,9 +75,11 @@ func rebuild(t *testing.T, conns []readback.Connection) *machine.Guard {
 			}
 		case "rounds":
 			node.Rounds = &machine.RoundsLeaf{Op: op, N: n}
-		case "flag":
-			node.Flag = c.Is
 		default:
+			if name, ok := strings.CutPrefix(c.ID, "flag:"); ok {
+				node.Flag = name
+				continue
+			}
 			var value any = c.Is
 			if b, err := strconv.ParseBool(c.Is); err == nil {
 				value = b

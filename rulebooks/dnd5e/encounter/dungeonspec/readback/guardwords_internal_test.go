@@ -84,6 +84,21 @@ func TestAConditionKeepsItsPolarityAndPlace(t *testing.T) {
 
 	_, conns = guardWords(&machine.Guard{Rounds: &machine.RoundsLeaf{Op: machine.OpGte, N: 3}}, "X", "time")
 	require.Equal(t, []Connection{{Kind: ConnCondition, ID: "rounds", Role: "asks", Is: "3", Op: "gte", At: "when"}}, conns)
+
+	_, conns = guardWords(&machine.Guard{Scope: &machine.ScopeLeaf{Within: 2, Regions: 1}}, "X", "heard")
+	require.Equal(t, []Connection{
+		{Kind: ConnCondition, ID: "within", Role: "asks", Is: "2", Op: "lte", At: "when"},
+		{Kind: ConnCondition, ID: "regions", Role: "asks", Is: "1", Op: "lte", At: "when"},
+	}, conns, "within and regions are at most")
+
+	_, conns = guardWords(&machine.Guard{Flag: "lit"}, "X", "time")
+	require.Equal(t, []Connection{{Kind: ConnCondition, ID: "flag:lit", Role: "asks", Is: "true", At: "when"}}, conns,
+		"a flag's name is in its id, as every word's open part is")
+
+	two := leafGuard("noted:admitted", machine.OpEq, true)
+	_, conns = guardWords(&machine.Guard{Not: &machine.Guard{All: []machine.Guard{*held, *two}}}, "X", "heard")
+	require.Equal(t, "when.not.all[0]", conns[0].At)
+	require.True(t, conns[0].Not, "each leaf under one not carries it; At says the not wraps the all")
 }
 
 // TestEveryConditionWordIsAConnection walks the machine words table: every
@@ -102,7 +117,7 @@ func TestEveryConditionWordIsAConnection(t *testing.T) {
 		"heard.claim":     {inner, "heard.claim", "when"},
 		"noted:":          {leafGuard("noted:admitted", machine.OpEq, true), "noted:admitted", "when"},
 		"noted.anyone:":   {leafGuard("topic:admitted", machine.OpEq, true), "noted.anyone:admitted", "when"},
-		"flag":            {&machine.Guard{Flag: "lit"}, "flag", "when"},
+		"flag":            {&machine.Guard{Flag: "lit"}, "flag:lit", "when"},
 		"within":          {&machine.Guard{Scope: &machine.ScopeLeaf{Within: 2}}, "within", "when"},
 		"regions":         {&machine.Guard{Scope: &machine.ScopeLeaf{Regions: 1}}, "regions", "when"},
 		"rounds":          {&machine.Guard{Rounds: &machine.RoundsLeaf{Op: machine.OpGte, N: 3}}, "rounds", "when"},
@@ -118,7 +133,7 @@ func TestEveryConditionWordIsAConnection(t *testing.T) {
 		require.Len(t, got, 1, w.Word)
 		require.Equal(t, tc.id, got[0].ID, w.Word)
 		require.Equal(t, tc.at, got[0].At, w.Word)
-		if w.Open == encounter.SlotNone && w.Join == "" && w.Word != "not" {
+		if w.Open == encounter.SlotNone && w.Join == "" && w.Word != "not" && w.Word != "flag" {
 			require.Equal(t, w.Word, got[0].ID, "a whole word is its own id")
 		} else if w.Open != encounter.SlotNone {
 			require.True(t, strings.HasPrefix(got[0].ID, w.Word), "%s fills its open part", w.Word)

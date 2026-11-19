@@ -211,11 +211,18 @@ type OpWord struct {
 	Words string
 }
 
-// machineOpWords is every comparison the machine compiles ([machine.OpEq],
-// [machine.OpGte]).
+// OpAtMost is the comparison a `within` or `regions` leaf makes: the event
+// was at most N cells or rooms away. The machine has no such op; the leaf
+// itself means it.
+const OpAtMost machine.Op = "lte"
+
+// machineOpWords is every comparison a condition makes: the two the machine
+// compiles ([machine.OpEq], [machine.OpGte]) and the bound a `within` or
+// `regions` leaf means ([OpAtMost]).
 var machineOpWords = []OpWord{
 	{Op: string(machine.OpEq), Words: "exactly"},
 	{Op: string(machine.OpGte), Words: "at least"},
+	{Op: string(OpAtMost), Words: "at most"},
 }
 
 // OpWordsOf is the plain words for a comparison as the engine spells it;

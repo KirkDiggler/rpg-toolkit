@@ -12,6 +12,8 @@ package dungeonspec_test
 import (
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // stepSite is the small site: one native definition `test`, a step on
@@ -82,4 +84,19 @@ func TestStepPaths_WithinNamesEveryScopedBeat(t *testing.T) {
 		"              - { on: fact, within: 2, to: posted }\n")))
 	requireRefusedAt(t, errs, "room.room.monsterBindings.goblin-1.states.posted.transitions[0].within",
 		"`fact` happened nowhere, so there is nothing to be within: `within` and `regions` are for heard, deed, seen, barred and approached")
+}
+
+// An unknown `initial` is refused once, in the dialect's own words: the
+// block stops there, so the compile is never asked the same thing.
+func TestStepPaths_AnUnknownInitialIsRefusedOnce(t *testing.T) {
+	errs := refusals(t, v4With("", bindingOnGoblin1("        states:\n          initial: nowhere\n          posted:\n            transitions:\n"+
+		"              - { on: heard, to: posted }\n")))
+	at := 0
+	for _, e := range errs {
+		if e.Path == "room.room.monsterBindings.goblin-1.states.initial" {
+			at++
+			require.Contains(t, e.Message, `"nowhere" is not a state this block declares`)
+		}
+	}
+	require.Equal(t, 1, at, "%v", errs)
 }

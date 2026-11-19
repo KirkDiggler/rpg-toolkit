@@ -425,7 +425,7 @@ func TestMachineWords_LabelsKeepTheRules(t *testing.T) {
 // compiles has the table's plain words, and a LabelWith never only repeats
 // its Label.
 func TestMachineWords_OpsAreSaidInPlainWords(t *testing.T) {
-	require.Equal(t, []OpWord{{Op: "eq", Words: "exactly"}, {Op: "gte", Words: "at least"}}, MachineWords().Ops)
+	require.Equal(t, []OpWord{{Op: "eq", Words: "exactly"}, {Op: "gte", Words: "at least"}, {Op: "lte", Words: "at most"}}, MachineWords().Ops)
 	for _, op := range []machine.Op{machine.OpEq, machine.OpGte} {
 		_, ok := OpWordsOf(string(op))
 		require.True(t, ok, op)

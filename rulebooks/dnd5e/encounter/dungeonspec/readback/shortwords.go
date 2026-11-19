@@ -87,15 +87,13 @@ func (b *builder) shortWhen(w behavior.When) string {
 	return s
 }
 
-// shortSelector says where a move goes, tersely.
-func shortSelector(s *behavior.Selector) string {
+// shortSelector says where a move goes, tersely. actor is who `actor`
+// names for the row's deed.
+func shortSelector(s *behavior.Selector, actor string) string {
 	if s.At != nil {
 		return posWords(*s.At)
 	}
-	if len(s.Path) > 0 {
-		return selectorWords(s, "it")
-	}
-	return selectorWords(s, "it")
+	return selectorWords(s, "it", actor)
 }
 
 // shortRow says one table row tersely: "if it knows of no enemy → walks to
@@ -113,16 +111,16 @@ func (b *builder) shortRow(a behavior.Answer) string {
 		does = append(does, fmt.Sprintf("plays %s %d times", quote(a.Activity.Ref), a.Activity.Cycles))
 	}
 	if a.Attack != nil {
-		does = append(does, "attacks "+shortSelector(a.Attack))
+		does = append(does, "attacks "+shortSelector(a.Attack, b.actorWords(a)))
 	}
 	if a.Toward != nil {
-		does = append(does, "walks to "+shortSelector(a.Toward))
+		does = append(does, "walks to "+shortSelector(a.Toward, b.actorWords(a)))
 	}
 	if a.Dash != nil {
-		does = append(does, "runs to "+shortSelector(a.Dash))
+		does = append(does, "runs to "+shortSelector(a.Dash, b.actorWords(a)))
 	}
 	if a.Away != nil {
-		does = append(does, "moves away from "+shortSelector(a.Away))
+		does = append(does, "moves away from "+shortSelector(a.Away, b.actorWords(a)))
 	}
 	if a.Flee {
 		does = append(does, "flees")

@@ -1,0 +1,16 @@
+world-builder-v4-castle.yaml behaviorDefinitions.captain-policy.table.time[0]
+	`time` row 1 of `captain-policy`: Guard Captain (captain) does one of the bundle `revenger`'s rows, by weight: [if Guard Captain (captain) saw someone attack Guard Captain (captain) within the last 2 rounds, Guard Captain (captain) attacks whoever attacked Guard Captain (captain); if Guard Captain (captain) saw someone attack Guard Captain (captain) within the last 2 rounds, Guard Captain (captain) walks toward whoever attacked Guard Captain (captain)].
+world-builder-v4-castle.yaml behaviorDefinitions.keep-1-policy.table.time[0]
+	`time` row 1 of `keep-1-policy`: if Knight (keep-1) saw The Mad King (king), on Knight (keep-1)'s side, fall within the last 3 rounds, Knight (keep-1) moves away from the enemy (weight 3).
+world-builder-v4-castle.yaml behaviorDefinitions.keep-2-policy.table.time[0]
+	`time` row 1 of `keep-2-policy`: if Knight (keep-2) saw The Mad King (king), on Knight (keep-2)'s side, fall within the last 3 rounds, Knight (keep-2) moves away from the enemy (weight 3).
+world-builder-v4-front-room.yaml behaviorDefinitions.bandit-1-policy.table.time[0]
+	`time` row 1 of `bandit-1-policy`: if Bandit (bandit-1) fled from someone within the last 3 rounds, Bandit (bandit-1) moves away from the one it fled from (weight 3).
+world-builder-v4-front-room.yaml behaviorDefinitions.bandit-1-policy.table.time[1]
+	`time` row 2 of `bandit-1-policy`: if Bandit (bandit-1) saw someone attack Bandit (bandit-1) within the last 3 rounds, Bandit (bandit-1) attacks whoever attacked Bandit (bandit-1) (weight 3).
+world-builder-v4-front-room.yaml behaviorDefinitions.bandit-2-policy.table.time[0]
+	`time` row 1 of `bandit-2-policy`: if Bandit (bandit-2) fled from someone within the last 3 rounds, Bandit (bandit-2) moves away from the one it fled from (weight 3).
+world-builder-v4-front-room.yaml behaviorDefinitions.bandit-2-policy.table.time[1]
+	`time` row 2 of `bandit-2-policy`: if Bandit (bandit-2) saw someone attack Bandit (bandit-2) within the last 3 rounds, Bandit (bandit-2) attacks whoever attacked Bandit (bandit-2) (weight 3).
+world-builder-v4-truce.yaml behaviorDefinitions.guard-1-policy.table.time[0]
+	`time` row 1 of `guard-1-policy`: if Bandit (guard-1) saw someone attack Bandit (guard-1) within the last 3 rounds, Bandit (guard-1) attacks whoever attacked Bandit (guard-1) (weight 3).

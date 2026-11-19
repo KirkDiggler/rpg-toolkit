@@ -17,7 +17,12 @@ import (
 // conditions and rows — always about a named actor (who), never "it".
 
 // whose is the possessive of an actor's name.
-func whose(who string) string { return who + "'s" }
+func whose(who string) string {
+	if who == "it" {
+		return "its"
+	}
+	return who + "'s"
+}
 
 // beatWords says when a routine hears a beat: the table's Long
 // ([encounter.MachineWords]), about who.
@@ -117,16 +122,16 @@ func guardWordsAt(g *machine.Guard, who string, on machine.Beat, at string, not 
 		}
 	}
 	if g.Flag != "" {
-		add(fill(cond("flag").Long, "whose", whose(who), "id", quote(g.Flag)), []Connection{asks("flag", g.Flag, machine.OpEq)})
+		add(fill(cond("flag").Long, "whose", whose(who), "id", quote(g.Flag)), []Connection{asks("flag:"+g.Flag, "true", machine.OpEq)})
 	}
 	if g.Scope != nil {
 		if g.Scope.Within > 0 {
 			add(fill(cond("within").Long, "n", fmt.Sprint(g.Scope.Within), "who", who),
-				[]Connection{asks("within", fmt.Sprint(g.Scope.Within), machine.OpEq)})
+				[]Connection{asks("within", fmt.Sprint(g.Scope.Within), encounter.OpAtMost)})
 		}
 		if g.Scope.Regions > 0 {
 			add(fill(cond("regions").Long, "n", fmt.Sprint(g.Scope.Regions), "who", who),
-				[]Connection{asks("regions", fmt.Sprint(g.Scope.Regions), machine.OpEq)})
+				[]Connection{asks("regions", fmt.Sprint(g.Scope.Regions), encounter.OpAtMost)})
 		}
 	}
 	if g.Rounds != nil {
@@ -251,26 +256,14 @@ func (b *builder) whenWords(w behavior.When, who string) (string, []Connection) 
 	case w.Threat != "":
 		return fmt.Sprintf("the threat at the cell %s move lands on is %s", whose(who), quote(string(w.Threat))), nil
 	case w.Deed != "":
-		target := who
-		switch w.Scope {
-		case behavior.ScopeAlly:
-			target = "a creature on " + whose(who) + " side"
-		case behavior.ScopeActor:
-			return fmt.Sprintf("%s did the deed %s itself within the last %d rounds", who, quote(w.Deed), w.Within), nil
-		}
-		if w.Who != "" {
-			target = b.creature(string(w.Who))
-			if w.Scope == behavior.ScopeAlly {
-				target += ", on " + whose(who) + " side,"
-			}
-		}
-		return fmt.Sprintf("%s has noted that the deed %s was done to %s within the last %d rounds", who, quote(w.Deed), target, w.Within), nil
+		return b.deedWords(w, who), nil
 	}
 	return "a condition this build cannot say", nil
 }
 
-// selectorWords says where a move goes.
-func selectorWords(s *behavior.Selector, who string) string {
+// selectorWords says where a move goes. actor is who `actor` names for the
+// row's deed ([builder.actorWords]).
+func selectorWords(s *behavior.Selector, who, actor string) string {
 	switch {
 	case s.At != nil:
 		return "the cell " + posWords(*s.At)
@@ -298,7 +291,7 @@ func selectorWords(s *behavior.Selector, who string) string {
 	case behavior.SelectorAttacker:
 		return "whoever attacked " + who
 	case behavior.SelectorActor:
-		return "the one who acted"
+		return actor
 	case behavior.SelectorSound:
 		return "the sound " + who + " heard"
 	case behavior.SelectorAlly:
@@ -326,16 +319,16 @@ func (b *builder) rowWords(a behavior.Answer, who string) (string, []Connection)
 		does = append(does, fmt.Sprintf("plays the activity %s %d times", quote(a.Activity.Ref), a.Activity.Cycles))
 	}
 	if a.Attack != nil {
-		does = append(does, "attacks "+selectorWords(a.Attack, who))
+		does = append(does, "attacks "+selectorWords(a.Attack, who, b.actorWords(a)))
 	}
 	if a.Toward != nil {
-		does = append(does, "walks toward "+selectorWords(a.Toward, who))
+		does = append(does, "walks toward "+selectorWords(a.Toward, who, b.actorWords(a)))
 	}
 	if a.Dash != nil {
-		does = append(does, "runs (dashes) toward "+selectorWords(a.Dash, who))
+		does = append(does, "runs (dashes) toward "+selectorWords(a.Dash, who, b.actorWords(a)))
 	}
 	if a.Away != nil {
-		does = append(does, "moves away from "+selectorWords(a.Away, who))
+		does = append(does, "moves away from "+selectorWords(a.Away, who, b.actorWords(a)))
 	}
 	if a.Flee {
 		does = append(does, "flees")
@@ -390,4 +383,101 @@ func (b *builder) rowWords(a behavior.Answer, who string) (string, []Connection)
 		out += fmt.Sprintf(" (weight %d)", a.Weight)
 	}
 	return out, conns
+}
+
+// The words for each deed a row can ask: what doing it is ("attack") and
+// what having done it is ("attacked"). A deed word with no words here is
+// said by [builder.deedWords]'s fallback, and a test walks every `when`
+// word so none ships without them.
+var deedVerbs = map[string]struct{ do, did string }{
+	"attacked":    {"attack", "attacked"},
+	"intimidated": {"intimidate", "intimidated"},
+	"persuaded":   {"persuade", "persuaded"},
+	"fled":        {"flee", "fled"},
+	"fell":        {"fall", "felled"},
+}
+
+// deedWords says a row's deed condition about who: what happened and how
+// who knows it, from how that deed reaches a creature in the relation the
+// condition reads ([encounter.DeedWayOf]). A deed is held as the creature
+// saw it: it knows who did it, and to whom, only if it saw them. "learned"
+// is the word for a deed that was told, which none is yet (word spreading,
+// rpg-project#992).
+func (b *builder) deedWords(w behavior.When, who string) string {
+	way, known := encounter.DeedWayOf(w.Deed)
+	v, said := deedVerbs[w.Deed]
+	if !known || !said {
+		return fmt.Sprintf("a deed condition on %s this build cannot say", quote(w.Deed))
+	}
+	if why := encounter.NeverTrue(w.Deed, w.Scope); why != "" {
+		return "never true: " + why
+	}
+	n := w.Within
+	k := ""
+	if w.Who != "" {
+		k = b.creature(string(w.Who))
+	}
+	switch w.Scope {
+	case behavior.ScopeActor:
+		switch {
+		case w.Deed == "fell" && k != "":
+			return fmt.Sprintf("%s felled %s and saw it fall within the last %d rounds", who, k, n)
+		case w.Deed == "fell":
+			return fmt.Sprintf("%s felled someone, or fell with no blow to explain it, within the last %d rounds", who, n)
+		}
+		return fmt.Sprintf("%s %s someone within the last %d rounds", who, v.did, n)
+	case behavior.ScopeAlly:
+		target := "a creature on " + whose(who) + " side"
+		if k != "" {
+			target = k + ", on " + whose(who) + " side,"
+		}
+		if w.Deed == "fell" {
+			return fmt.Sprintf("%s saw %s fall within the last %d rounds", who, target, n)
+		}
+		return fmt.Sprintf("%s saw someone %s %s within the last %d rounds", who, v.do, target, n)
+	}
+	if way.Target == encounter.ReachOwn {
+		switch {
+		case w.Deed == "fled":
+			return fmt.Sprintf("%s fled from someone within the last %d rounds", who, n)
+		case k != "" && k != who:
+			return fmt.Sprintf("%s fell within the last %d rounds; `who` names %s, so this is true only if that is %s", who, n, k, who)
+		}
+		return fmt.Sprintf("%s fell within the last %d rounds", who, n)
+	}
+	return fmt.Sprintf("%s saw someone %s %s within the last %d rounds", who, v.do, who, n)
+}
+
+// actorWords is who a row's `actor` selector names: the one who did the
+// deed its condition reads, as the creature knows them; "the one who acted"
+// for a row with no deed condition.
+func (b *builder) actorWords(a behavior.Answer) string {
+	var d *behavior.When
+	for i := range a.When {
+		if a.When[i].Deed != "" {
+			d = &a.When[i]
+			break
+		}
+	}
+	if d == nil {
+		return "the one who acted"
+	}
+	v, said := deedVerbs[d.Deed]
+	if !said {
+		return "the one who acted"
+	}
+	switch {
+	case d.Scope == behavior.ScopeActor:
+		return "itself"
+	case d.Deed == "fled":
+		return "the one it fled from"
+	}
+	object := "it"
+	if d.Scope == behavior.ScopeAlly {
+		object = "a creature on its side"
+		if d.Who != "" {
+			object = b.creature(string(d.Who))
+		}
+	}
+	return "the one who " + v.did + " " + object
 }
