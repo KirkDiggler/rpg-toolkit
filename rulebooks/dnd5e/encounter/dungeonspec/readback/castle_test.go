@@ -53,7 +53,7 @@ var theCastleOnce struct {
 
 // castleSuites are the tests that read the shared castle.
 var castleSuites = []string{
-	"TestCastleSuite", "TestOneWordPreventsTheFold", "TestFoldEachSuite", "TestJoinsCastleSuite",
+	"TestCastleSuite", "TestOneWordPreventsTheFold", "TestEveryCastleStepsWhenRebuildsFromItsConnections", "TestFoldEachSuite", "TestJoinsCastleSuite",
 	"TestMachineCastleSuite", "TestThreadsSuite", "TestWaysCastleSuite",
 }
 
@@ -707,7 +707,7 @@ func (s *CastleSuite) TestTheCaptainLeavesOnALie() {
 		"if what Guard Captain (captain) heard was a claim that failed and Guard Captain (captain) has noted `admitted` about the one "+
 		"Guard Captain (captain) heard (Guard Captain (captain) knows who only by seeing them), Guard Captain (captain) moves to the state `back-to-gate`")
 	s.True(connected(wake, "topic", "admitted", "asks"), wake.Sentence)
-	s.True(connected(wake, readback.ConnClaim, "failed", "asks"), "the claim it hears is drawn, with its verdict: %v", wake.Connects)
+	s.True(connected(wake, readback.ConnCondition, "heard.claim", "asks"), "the claim it hears is drawn: %v", wake.Connects)
 	walk := s.statement(readback.KindRoutineRow, "behaviorDefinitions.captain-policy.table.back-to-gate[0]")
 	s.Contains(walk.Sentence, "Guard Captain (captain) walks toward the cell q -4, r 8")
 	// Back at the gate he keeps it: the same post as in `ready`.

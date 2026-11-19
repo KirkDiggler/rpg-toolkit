@@ -198,6 +198,35 @@ type MachineWordsTable struct {
 	Beats      []BeatWord
 	Conditions []ConditionWord
 	Acts       []ActWord
+	// Ops is every comparison a condition can make, with its plain words,
+	// so no reader maps the engine's `eq` or `gte` itself.
+	Ops []OpWord
+}
+
+// OpWord is one comparison a condition can make.
+type OpWord struct {
+	// Op is the engine's spelling: "eq", "gte".
+	Op string
+	// Words is how a label or a sentence says it: "exactly", "at least".
+	Words string
+}
+
+// machineOpWords is every comparison the machine compiles ([machine.OpEq],
+// [machine.OpGte]).
+var machineOpWords = []OpWord{
+	{Op: string(machine.OpEq), Words: "exactly"},
+	{Op: string(machine.OpGte), Words: "at least"},
+}
+
+// OpWordsOf is the plain words for a comparison as the engine spells it;
+// false for one the machine does not compile.
+func OpWordsOf(op string) (string, bool) {
+	for _, o := range machineOpWords {
+		if o.Op == op {
+			return o.Words, true
+		}
+	}
+	return "", false
 }
 
 // The beats in the order every refusal lists them: the fixed words, then
@@ -242,10 +271,10 @@ var machineBeatWords = []BeatWord{
 		Long: "when {who} hails a character, which happens only under the conversation's hail rule: the " +
 			"character's own step ended within the approach distance, {who} sees them and they see {who}, {who} offers them a line " +
 			"that steps the conversation, no nearer carrier qualifies, and the conversation is addressing no one"},
-	{Word: deedPrefix, Open: SlotDeed, Scoped: true, Label: "{id} is done", LabelWith: "{id} is done",
+	{Word: deedPrefix, Open: SlotDeed, Scoped: true, Label: "{id} is done",
 		Short: "when the deed {id} is done",
 		Long:  "when the deed {id} is done"},
-	{Word: beatClock, Open: SlotClock, Label: "a round of {id}", LabelWith: "a round of {id}",
+	{Word: beatClock, Open: SlotClock, Label: "a round of {id}",
 		Short: "on the beat {beat}",
 		Long:  "on the beat {beat}"},
 }
@@ -279,7 +308,7 @@ var machineConditionWords = []ConditionWord{
 		Label: "has noted {id} about anyone", LabelNot: "has not noted {id} about anyone",
 		Long: "{who} {verb} {id} about anyone"},
 	{Word: "flag", Kind: "bool",
-		Label: "remembers {id}",
+		Label: "{id} is set",
 		Long:  "{whose} flag {id} is set"},
 	{Word: "within", Kind: "int", family: familyScoped,
 		Label: "within {n} cells",
@@ -302,7 +331,7 @@ var machineActWords = []ActWord{
 		Label: "acts from the {id} list", Short: "acts from its {id} rows", Long: "acts from its own {id} rows"},
 	{Word: "wake_in", StatesForm: "{ wake_in: N }",
 		Label: "waits {n} rounds", Short: "wakes again in {n} rounds", Long: "wakes again in {n} rounds"},
-	{Word: "set", Label: "remembers {id}", Short: "sets {id} to {value}", Long: "sets {id} to {value}"},
+	{Word: "set", Label: "sets {id} to {value}", Short: "sets {id} to {value}", Long: "sets {id} to {value}"},
 	{Word: "clear", Label: "forgets {id}", Short: "clears {id}", Long: "clears {id}"},
 	{Word: "anchor", StatesForm: "{ anchor: true }",
 		Label: "marks the moment", Short: "sets its anchor", Long: "sets its anchor to this moment"},
@@ -320,6 +349,7 @@ func MachineWords() MachineWordsTable {
 		Beats:      slices.Clone(machineBeatWords),
 		Conditions: slices.Clone(machineConditionWords),
 		Acts:       slices.Clone(machineActWords),
+		Ops:        slices.Clone(machineOpWords),
 	}
 	for i := range out.Conditions {
 		c := &out.Conditions[i]

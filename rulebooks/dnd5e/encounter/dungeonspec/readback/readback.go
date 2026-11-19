@@ -152,6 +152,23 @@ type Connection struct {
 	// Value is a number the connection carries where its kind has one: the
 	// difficulty of a check on a `method` connection; zero means none.
 	Value int `json:"value,omitempty"`
+
+	// Is, Op, Not and At belong to a [ConnCondition] connection only.
+
+	// Is is the value a condition compares, as text: "failed", "true", "3",
+	// a flag's name for `flag`.
+	Is string `json:"is,omitempty"`
+	// Op is the comparison where it is not equality, as the engine spells it
+	// ("gte"); the plain words for it are the machine words table's
+	// ([encounter.MachineWordsTable.Ops]).
+	Op string `json:"op,omitempty"`
+	// Not is true when the condition sits under an odd number of `not`s:
+	// the step needs it false.
+	Not bool `json:"not,omitempty"`
+	// At is where the condition sits inside the step's `when`, as the author
+	// wrote it: "when", "when.all[1]", "when.any[0].not". Several conditions
+	// at one place are one node, all of them needed.
+	At string `json:"at,omitempty"`
 }
 
 // The connections that say a behaviour machine's shape (rpg-project#994),
@@ -172,13 +189,15 @@ const (
 	ConnBeat = "beat"
 	// ConnTable is a connection to one key of the routine's table of rows.
 	ConnTable = "table"
-	// ConnClaim is a connection to the verdict a step's `heard.claim` guard
-	// reads (rpg-project#1000): its id is the value asked, "held" or
-	// "failed", so a reader of connections alone recovers it; role "asks".
-	// A step that asks the opposite says it under a `not`, which keeps the
-	// connection (the machine has no `ne`). It names no thing in the file:
-	// it is the engine's word for a caught claim's verdict.
-	ConnClaim = "claim"
+	// ConnCondition is one condition a step's `when` reads (rpg-project#997),
+	// role "asks": its id is the word as authored with its open part filled
+	// ("heard.claim", "noted:admitted", "noted.anyone:admitted",
+	// "fact:gate-cowed", "within", "rounds", "flag"), from the machine words
+	// table ([encounter.MachineWords]); Is, Op, Not and At say the rest, so
+	// a reader rebuilds the condition from connections alone. A condition
+	// that reads a thing in the file (a fact, a topic) also keeps that
+	// thing's own connection, which the hubs group by.
+	ConnCondition = "condition"
 
 	// RoleStarts is the state a routine starts in, on the routine statement.
 	RoleStarts = "starts"
