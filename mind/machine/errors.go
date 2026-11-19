@@ -5,9 +5,10 @@ package machine
 
 import "errors"
 
-// The refusals. Compile joins every problem it finds into one error, each
-// wrapping one of these and naming where in the recipe it is, so a host
-// tests a refusal with errors.Is and shows an author the message.
+// The refusals. Compile joins every problem it finds into one error, each a
+// [*Refusal] wrapping one of these and carrying where in the recipe it is
+// ([Where]), so a host tests a refusal with errors.Is, places it with
+// errors.As, and shows an author the message.
 var (
 	// ErrUnknownBeat refuses a transition on a beat the vocabulary does not
 	// supply, and a Step on one.
