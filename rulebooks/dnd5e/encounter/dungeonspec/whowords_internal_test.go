@@ -22,17 +22,27 @@ func TestTheWhoWordsAreTheGrammars(t *testing.T) {
 		return bad
 	}
 	valid := GiveSpec{Topic: "t", To: string(encounter.RecognitionSpokenTo), About: string(encounter.RecognitionSpeaker)}
-	words := append(encounter.WhoWords(), encounter.WhoWord{Word: "nobody-at-all"})
-	for _, w := range words {
-		g := valid
-		g.To = w.Word
-		require.Equal(t, w.Allowed == encounter.WhoInGiveTo, !refused(g, "to"), "to: %s", w.Word)
-		g = valid
-		g.About = w.Word
-		require.Equal(t, w.Allowed == encounter.WhoInGiveAbout, !refused(g, "about"), "about: %s", w.Word)
-		g = valid
-		g.HeardBy = w.Word
-		require.Equal(t, w.Allowed == encounter.WhoInGiveHeardBy, !refused(g, "heard_by"), "heard_by: %s", w.Word)
+	// ONE ENTRY PER (WORD, PLACE) (rpg-project#990): a word may be written in
+	// more than one place, so the claim is made per place — every word the
+	// list holds anywhere, and one it holds nowhere, is accepted at a place
+	// if and only if the list has an entry for it there.
+	set := map[string]func(g *GiveSpec, word string){
+		encounter.WhoInGiveTo:      func(g *GiveSpec, word string) { g.To = word },
+		encounter.WhoInGiveAbout:   func(g *GiveSpec, word string) { g.About = word },
+		encounter.WhoInGiveHeardBy: func(g *GiveSpec, word string) { g.HeardBy = word },
+	}
+	slot := map[string]string{encounter.WhoInGiveTo: "to", encounter.WhoInGiveAbout: "about", encounter.WhoInGiveHeardBy: "heard_by"}
+	words := []string{"nobody-at-all"}
+	for _, w := range encounter.WhoWords() {
+		words = append(words, w.Word)
+	}
+	for place, write := range set {
+		for _, word := range words {
+			g := valid
+			write(&g, word)
+			_, listed := encounter.WhoWordAt(place, word)
+			require.Equal(t, listed, !refused(g, slot[place]), "%s: %s", place, word)
+		}
 	}
 	for _, w := range encounter.WhoWords() {
 		if w.Role == encounter.WhoTaker {

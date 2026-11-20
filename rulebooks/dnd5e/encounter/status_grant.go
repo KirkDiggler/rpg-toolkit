@@ -10,8 +10,9 @@ import (
 )
 
 // status_grant.go is A LINE THAT GIVES A STATUS (rpg-project#1024): a line's
-// row may give its speaker a status effect an author wrote — "Warmed up" after
-// helping the cook.
+// row may give a status effect an author wrote — "Warmed up" to the speaker
+// after helping the cook, "Held" to the speaker's party a guard sees
+// (rpg-project#990).
 //
 // THE ENCOUNTER DOES NOT APPLY IT, AND CANNOT (C1): a status is a rules
 // object, and this module may not import the rules. The grant carries the
@@ -22,8 +23,28 @@ import (
 // give, and saves what that changed. Returned, not acted on: there is nothing
 // in the encounter's own state for a status to change.
 
-// StatusGrant is a status a line's row gives its speaker: the status's id in
-// its site and its authored block, carried unread.
+// StatusGrant is a status a line's row gives: the status's id in its site,
+// its authored block, carried unread, and who receives it.
+//
+// WHO RECEIVES IT is a who-word written at [WhoInApplyStatusTo], resolved when
+// the row lands by the same resolver `give` uses ([Encounter.whoNow]):
+//
+//   - `speaker` is the line's speaker, UNCONDITIONALLY — seen or not, on a
+//     thing's row as on a creature's;
+//   - `party_in_sight` is the speaker's party the creature spoken to sees at
+//     that moment, the speaker included only if seen — `give`'s reading;
+//   - `spoken_to` is the creature the line was said to.
+//
+// A row of a thing has nobody spoken to, so its `party_in_sight` and
+// `spoken_to` resolve to nobody. Each member the word resolves to is returned
+// once ([GrantedStatus]).
+//
+// EVERY MEMBER THE WORD RESOLVES TO IS RETURNED, sheet or no sheet: the
+// encounter does not know which members the rules hold a sheet for, and does
+// not guess. A receiver the rules cannot give the status to fails that give,
+// and the whole line is refused, as any failed give is — all or nothing.
+// Never add a silent skip here: a status dropped without a word is a rule
+// that did not happen.
 type StatusGrant struct {
 	// ID is the status's id in its site's `statuses:`; the same id is the
 	// same status.
@@ -32,11 +53,18 @@ type StatusGrant struct {
 	// Status is the authored block — {name, changes, maintenance, again[, when_given]} —
 	// as canonical JSON. The encounter never reads inside it.
 	Status json.RawMessage `json:"status"`
+
+	// To is who receives it: a word of [WhoInApplyStatusTo]. EMPTY IS THE
+	// SPEAKER for now — the short form `apply_status: <id>` the dungeonspec
+	// grammar still compiles, and a grant saved before this field — until the
+	// grammar requires the word (rpg-project#990).
+	To string `json:"to,omitzero"`
 }
 
 // GrantedStatus is a status a landed row gave: who was given it, and what.
 type GrantedStatus struct {
-	// Member is who was given it: the line's speaker.
+	// Member is who was given it: one member the grant's [StatusGrant.To]
+	// resolved to when the row landed.
 	Member MemberID
 
 	// Grant is the status given, as authored.
@@ -53,6 +81,10 @@ func validateStatusGrant(what string, g StatusGrant) error {
 	trimmed := bytes.TrimSpace(g.Status)
 	if len(trimmed) == 0 || trimmed[0] != '{' || !json.Valid(trimmed) {
 		return fmt.Errorf("%s gives status %q, whose authored block is not a JSON object", what, g.ID)
+	}
+	if _, ok := WhoWordAt(WhoInApplyStatusTo, g.To); g.To != "" && !ok {
+		return fmt.Errorf("%s gives status %q to %q: who receives it is one of %q",
+			what, g.ID, g.To, WhoWordsIn(WhoInApplyStatusTo))
 	}
 	return nil
 }

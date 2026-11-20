@@ -168,7 +168,7 @@ const (
 
 	// RecognitionPartyInSight is the speaker's party — the members of the
 	// speaker's faction, the speaker included — whom the holder sees on
-	// sight now, from his own testimony.
+	// live sight now, never from stored testimony ([Encounter.grantRecognition]).
 	RecognitionPartyInSight RecognitionSubjects = "party_in_sight"
 
 	// RecognitionSpeaker is the speaker alone, when the holder sees them
@@ -448,6 +448,32 @@ func cloneGrants(grants []RowGrant) []RowGrant {
 	return out
 }
 
+// grantStatus is one status grant landing: returned, not applied
+// (status_grant.go) — one [GrantedStatus] for each member its word resolves
+// to now ([landing.whoNow]), appended to given. A member given has this
+// status from this row already is not named again. An empty To is the
+// speaker, as the short form `apply_status: <id>` still compiles
+// (rpg-project#990).
+func (e *Encounter) grantStatus(g StatusGrant, line recognitionLine, given []GrantedStatus) ([]GrantedStatus, error) {
+	word := g.To
+	if word == "" {
+		word = string(RecognitionSpeaker)
+	}
+	receivers, err := e.landingOf(line).whoNow(WhoInApplyStatusTo, word)
+	if err != nil {
+		return nil, err
+	}
+	for _, member := range receivers {
+		if slices.ContainsFunc(given, func(s GrantedStatus) bool { return s.Member == member && s.Grant.ID == g.ID }) {
+			continue
+		}
+		grant := g
+		grant.Status = append(json.RawMessage(nil), g.Status...)
+		given = append(given, GrantedStatus{Member: member, Grant: grant})
+	}
+	return given, nil
+}
+
 // applyGrants runs every grant of the row that answered the line — a
 // success row when it landed, a failure row when it was missed
 // (rpg-project#929, #932): the same write an outcome makes, by the same live
@@ -469,10 +495,7 @@ func (e *Encounter) applyGrants(o Option, beaten bool, row int, line recognition
 		case c.Relocate != nil:
 			formed, err = e.grantRelocate(*c.Relocate, line)
 		case c.ApplyStatus != nil:
-			// Returned, not applied (status_grant.go): the rules give it.
-			grant := *c.ApplyStatus
-			grant.Status = append(json.RawMessage(nil), grant.Status...)
-			statuses = append(statuses, GrantedStatus{Member: line.speaker, Grant: grant})
+			statuses, err = e.grantStatus(*c.ApplyStatus, line, statuses)
 		}
 		if err != nil {
 			return nil, nil, fmt.Errorf("option %q grant: %w", o.ID, err)
@@ -632,23 +655,20 @@ func (e *Encounter) applyOutcome(r *interactionRecord, line recognitionLine) err
 // ([sightMember]), the observer key the store's sightings use and the load
 // check demands, and is told as [BeatRecognized] beats ([Encounter.tellRecognition]).
 func (e *Encounter) grantRecognition(r Recognition, line recognitionLine) error {
-	holder := line.spokenTo
-	if holder == "" {
-		return nil
+	// WHO, BY THE ONE RESOLVER a status grant asks too ([landing.whoNow]).
+	landed := e.landingOf(line)
+	holders, err := landed.whoNow(WhoInGiveTo, string(r.Holder))
+	if err != nil || len(holders) == 0 {
+		return err
 	}
-	reach, err := e.placedSightReach()
+	holder := holders[0]
+	reach, err := landed.sight()
 	if err != nil {
 		return err
 	}
-	subjects := e.partyInSight(reach, holder, line)
-	if r.About == RecognitionSpeaker {
-		subjects = nil
-		if line.speaker != holder && line.sees(reach, holder, line.speaker) {
-			subjects = []MemberID{line.speaker}
-		}
-	}
-	if len(subjects) == 0 {
-		return nil
+	subjects, err := landed.whoNow(WhoInGiveAbout, string(r.About))
+	if err != nil || len(subjects) == 0 {
+		return err
 	}
 	if err := e.holdTopic(reach, holder, subjects, r.Topic, ChannelJudgement, line); err != nil {
 		return err

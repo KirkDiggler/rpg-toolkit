@@ -6,21 +6,28 @@ package encounter
 import "slices"
 
 // WhoWord is one word that names who in a note (rpg-project#1001): who
-// takes it, whom it is about, or whose note a read asks of. `give`, a
-// line's requirement, a post's pass and a machine's guard name them; the
-// dungeonspec grammar and the read-back both read this list, so neither can
-// say a word the other does not know.
+// takes it, whom it is about, or whose note a read asks of — or who receives
+// a status effect a line's row gives (rpg-project#990). `give`, a line's
+// requirement, a post's pass, a machine's guard and `apply_status` name
+// them; the dungeonspec grammar and the read-back both read this list, so
+// neither can say a word the other does not know.
+//
+// ONE WORD MAY BE WRITTEN IN MORE THAN ONE PLACE, one entry per place:
+// `speaker` is a word of `give.about` and of `apply_status.to`, and its
+// label says what it means in each. A word is looked up WHERE IT IS WRITTEN
+// ([WhoWordAt]), never by the word alone.
 type WhoWord struct {
 	// Word is the word as authored or as the read-back names it.
 	Word string
 	// Role is what it names: [WhoTaker] (who comes to note it), [WhoAbout]
-	// (whom a given note is about) or [WhoRead] (whom a read asks about).
+	// (whom a given note is about), [WhoRead] (whom a read asks about) or
+	// [WhoReceiver] (who receives a status effect).
 	Role string
 	// Label is a few plain words for it.
 	Label string
 	// Allowed is where it is written ([WhoInGiveTo], [WhoInGiveAbout],
 	// [WhoInGiveHeardBy], [WhoInRequires], [WhoInPass], [WhoInNoted],
-	// [WhoInNotedAnyone]), or [WhoInEngine] for a word only the engine's
+	// [WhoInNotedAnyone], [WhoInApplyStatusTo]), or [WhoInEngine] for a word only the engine's
 	// own grants (an arrest, a jail, a seizure) use.
 	Allowed string
 	// Way is how a taker comes by the note, in the engine's own word
@@ -35,6 +42,9 @@ const (
 	WhoTaker = "taker"
 	WhoAbout = "about"
 	WhoRead  = "read"
+	// WhoReceiver is who receives a status effect a line's row gives
+	// (rpg-project#990). It notes nothing, so it has no Way.
+	WhoReceiver = "receiver"
 )
 
 // Where a who-word is written.
@@ -46,7 +56,10 @@ const (
 	WhoInPass        = "pass"
 	WhoInNoted       = "noted:"
 	WhoInNotedAnyone = "noted.anyone:"
-	WhoInEngine      = "engine"
+	// WhoInApplyStatusTo is who receives a status effect: a row's
+	// `apply_status: { status, to }` (rpg-project#990).
+	WhoInApplyStatusTo = "apply_status.to"
+	WhoInEngine        = "engine"
 )
 
 // The who-words the engine's own grants name, beside the authored ones.
@@ -81,15 +94,25 @@ var whoWords = []WhoWord{
 	{Word: WhoTheWalker, Role: WhoRead, Label: "the walker", Allowed: WhoInPass},
 	{Word: WhoTheOneNamed, Role: WhoRead, Label: "the one the beat names", Allowed: WhoInNoted},
 	{Word: WhoAnyone, Role: WhoRead, Label: "anyone", Allowed: WhoInNotedAnyone},
+	// WHO RECEIVES A STATUS EFFECT (rpg-project#990). `speaker` here is
+	// UNCONDITIONAL — the speaker receives it whether or not anyone sees
+	// them, on a thing's row as on a creature's — where `give.about`'s
+	// `speaker` is the speaker only if the holder sees them.
+	// `party_in_sight` and `spoken_to` mean exactly what `give` means by
+	// them: the one spoken to, and the speaker's party it sees.
+	{Word: string(RecognitionSpeaker), Role: WhoReceiver, Label: "the speaker, seen or not", Allowed: WhoInApplyStatusTo},
+	{Word: string(RecognitionPartyInSight), Role: WhoReceiver, Label: "the speaker's party it sees", Allowed: WhoInApplyStatusTo},
+	{Word: string(RecognitionSpokenTo), Role: WhoReceiver, Label: "the one the line is said to", Allowed: WhoInApplyStatusTo},
 }
 
 // WhoWords is every who-word, in order. The slice is a copy.
 func WhoWords() []WhoWord { return slices.Clone(whoWords) }
 
-// WhoWordOf is the who-word's entry; false for a word the list does not have.
-func WhoWordOf(word string) (WhoWord, bool) {
+// WhoWordAt is the who-word's entry where written; false for a word that
+// place does not allow.
+func WhoWordAt(allowed, word string) (WhoWord, bool) {
 	for _, w := range whoWords {
-		if w.Word == word {
+		if w.Word == word && w.Allowed == allowed {
 			return w, true
 		}
 	}
