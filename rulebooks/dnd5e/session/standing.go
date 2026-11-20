@@ -99,6 +99,10 @@ type standingSeam struct {
 	// the sheet, equipment and conditions seams beside it included — keeps
 	// and forgets the same answers. Nil keeps nothing.
 	memo *participationMemo
+
+	// facts is this verb's sheet facts read once per member
+	// ([sheetFactsMemo]), shared by pointer like memo. Nil keeps nothing.
+	facts *sheetFactsMemo
 }
 
 // liveEncounter is the slot [standingSeam.live] points at: nil until the
@@ -131,7 +135,8 @@ func (m *Manager) standingFor(
 	for id, kind := range kinds {
 		copiedKinds[id] = kind
 	}
-	return standingSeam{ctx: ctx, sheets: m.sheetsFor(nil), data: data, kinds: copiedKinds, live: &liveEncounter{}, memo: newParticipationMemo()}
+	return standingSeam{ctx: ctx, sheets: m.sheetsFor(nil), data: data, kinds: copiedKinds, live: &liveEncounter{}, memo: newParticipationMemo(),
+		facts: newSheetFactsMemo()}
 }
 
 // Assess returns the provider-derived scheduling/contact answer, Down

@@ -175,28 +175,11 @@ func (s *HoldStatusSuite) TestAFightStartingFreesTheHeld() {
 	ctx := context.Background()
 	s.say("hold")
 	s.Require().Equal(1, s.heldRows("Held"))
-
-	attack := ""
-	bar, err := s.mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "alice"})
-	s.Require().NoError(err)
-	for _, d := range bar.Declarations {
-		for _, c := range d.Candidates {
-			if d.Verb == session.VerbAttack && c.Member == "cook" && c.Available {
-				attack = d.ID
-			}
-		}
-	}
-	s.Require().NotEmpty(attack, "alice can swing at the cook beside her")
-	_, err = s.mgr.Attack(ctx, &session.AttackInput{Session: "sess", Attacker: "alice", Target: "cook", DeclarationID: attack})
-	s.Require().NoError(err)
-
-	turn, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
-	s.Require().NoError(err)
-	s.Require().Equal(session.ClockTurn, turn.Clock, "the swing formed a fight")
+	turn := s.swingAtTheCook()
 	s.Zero(s.heldRows("Held"), "the fight starting ended Held, on her saved sheet")
 
 	s.Require().Equal("alice", turn.Active, "precondition: alice's turn")
-	bar, err = s.mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "alice"})
+	bar, err := s.mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "alice"})
 	s.Require().NoError(err)
 	move := ""
 	for _, d := range bar.Declarations {
@@ -210,4 +193,64 @@ func (s *HoldStatusSuite) TestAFightStartingFreesTheHeld() {
 		Path: []spatial.Position{{X: at.X, Y: at.Y + 1}}})
 	s.Require().NoError(err, "freed, she steps")
 	s.NotEqual(at, s.where(s.mgr))
+}
+
+// swingAtTheCook has alice attack the cook beside her and returns the turn
+// after: the swing turns the kitchen hostile and forms a fight.
+func (s *HoldStatusSuite) swingAtTheCook() *session.TurnOutput {
+	ctx := context.Background()
+	attack := ""
+	bar, err := s.mgr.Afford(ctx, &session.AffordInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	for _, d := range bar.Declarations {
+		for _, c := range d.Candidates {
+			if d.Verb == session.VerbAttack && c.Member == "cook" && c.Available {
+				attack = d.ID
+			}
+		}
+	}
+	s.Require().NotEmpty(attack, "alice can swing at the cook beside her")
+	_, err = s.mgr.Attack(ctx, &session.AttackInput{Session: "sess", Attacker: "alice", Target: "cook", DeclarationID: attack})
+	s.Require().NoError(err)
+	turn, err := s.mgr.Turn(ctx, &session.TurnInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	s.Require().Equal(session.ClockTurn, turn.Clock, "the swing formed a fight")
+	return turn
+}
+
+// Catches a fight's start ending a hold not written to end then (rpg-toolkit
+// #2493): Snared ends only at a rest, so once alice's swing forms the fight
+// she still holds it, her Move is unavailable, and a step on her turn is
+// refused.
+func (s *HoldStatusSuite) TestAHoldNotWrittenToEndAtAFightKeepsHolding() {
+	s.say("snare")
+	turn := s.swingAtTheCook()
+	s.Equal(1, s.heldRows("Snared"), "the fight did not end Snared")
+	s.Require().Equal("alice", turn.Active, "precondition: alice's turn")
+
+	bar, err := s.mgr.Afford(context.Background(), &session.AffordInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err)
+	var move *session.Declaration
+	for i, d := range bar.Declarations {
+		if d.Verb == session.VerbMove {
+			move = &bar.Declarations[i]
+		}
+	}
+	s.Require().NotNil(move)
+	s.False(move.Available, "held, her Move is unavailable")
+	at := s.where(s.mgr)
+	_, err = s.mgr.Move(context.Background(), &session.MoveInput{Session: "sess", Member: "alice", DeclarationID: move.ID,
+		Path: []spatial.Position{{X: at.X, Y: at.Y + 1}}})
+	s.requireHeld(err, "You are Snared; you cannot move.")
+	s.Equal(at, s.where(s.mgr), "she has not moved")
+}
+
+// Catches a hold that outlives its holder's run: alice, held, leaves, and
+// Held is gone from her saved sheet.
+func (s *HoldStatusSuite) TestLeavingTheRunEndsTheHold() {
+	s.say("hold")
+	s.Require().Equal(1, s.heldRows("Held"))
+	_, err := s.mgr.Exit(context.Background(), &session.ExitInput{Session: "sess", Member: "alice"})
+	s.Require().NoError(err, "a held player may always leave")
+	s.Zero(s.heldRows("Held"), "her run ended, and Held with it")
 }
