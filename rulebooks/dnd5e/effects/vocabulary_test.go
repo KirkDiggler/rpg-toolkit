@@ -33,7 +33,8 @@ func (s *vocabularySuite) origin() dndevents.ConditionOrigin {
 
 func (s *vocabularySuite) recipe(amount fx.Amount) machine.Recipe {
 	fact := func(name machine.FactName, value any) machine.Guard {
-		return machine.Guard{Fact: &machine.FactLeaf{Name: name, Op: machine.OpEq, Value: value}}
+		scalar, _ := machine.ScalarOf(value)
+		return machine.Guard{Fact: &machine.FactLeaf{Name: name, Op: machine.OpEq, Value: scalar}}
 	}
 	strength := fact("action.ability", string(abilities.STR))
 	outputs := []fx.Output{

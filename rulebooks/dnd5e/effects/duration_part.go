@@ -47,7 +47,7 @@ func bindDurationPart(in *BindPartInput) (boundPart, error) {
 		Ref: in.Ref, Initial: partStateActive, Bag: machine.Bag{keyRemaining: params.TurnEnds},
 		States: map[string]machine.State{
 			partStateActive: {Transitions: []machine.Transition{
-				{On: BeatTurnEnd, About: Holder, When: &machine.Guard{Bag: &machine.BagLeaf{Key: keyRemaining, Op: machine.OpEq, Value: 1}}, To: partStateEnded, Reason: reasonDuration},
+				{On: BeatTurnEnd, About: Holder, When: &machine.Guard{Bag: &machine.BagLeaf{Key: keyRemaining, Op: machine.OpEq, Value: machine.IntScalar(1)}}, To: partStateEnded, Reason: reasonDuration},
 				{On: BeatTurnEnd, About: Holder, Do: []machine.Act{{Add: &machine.AddAct{Key: keyRemaining, Delta: -1}}}},
 			}},
 			partStateEnded: {Terminal: true},

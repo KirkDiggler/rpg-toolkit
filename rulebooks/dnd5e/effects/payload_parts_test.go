@@ -45,7 +45,7 @@ func (s *payloadPartsSuite) apply(parts ...dndfx.PartDeclaration) (*fx.Assembly,
 }
 func damagePart(amount *fx.Amount) dndfx.PartDeclaration {
 	return dndfx.PartDeclaration{Key: "bonus", Kind: dndfx.KindDamageBonus, OnTerminal: fx.EndPart, Amount: amount, When: &machine.Guard{All: []machine.Guard{
-		*abilityGuard("str"), {Fact: &machine.FactLeaf{Name: dndfx.FactMelee, Op: machine.OpEq, Value: true}}, {Fact: &machine.FactLeaf{Name: dndfx.FactWeaponPool, Op: machine.OpEq, Value: true}},
+		*abilityGuard("str"), {Fact: &machine.FactLeaf{Name: dndfx.FactMelee, Op: machine.OpEq, Value: machine.BoolScalar(true)}}, {Fact: &machine.FactLeaf{Name: dndfx.FactWeaponPool, Op: machine.OpEq, Value: machine.BoolScalar(true)}},
 	}}}
 }
 func (s *payloadPartsSuite) TestFixedDamageAndClassScalingUseExistingMeaning() {
@@ -130,15 +130,15 @@ func (s *payloadPartsSuite) TestResistanceUsesOneExistingFold() {
 func (s *payloadPartsSuite) TestDeclarationClonesOwnGuardsAndAmounts() {
 	decl := damagePart(fixedBonus(2))
 	cloned := decl.Clone()
-	cloned.When.All[0].Fact.Value = "dex"
+	cloned.When.All[0].Fact.Value = machine.StringScalar("dex")
 	*cloned.Amount.Fixed = 99
-	s.Equal("str", decl.When.All[0].Fact.Value)
+	s.Equal(machine.StringScalar("str"), decl.When.All[0].Fact.Value)
 	s.Equal(2, *decl.Amount.Fixed)
 	input := conditions.PrepareApplicationInput{ID: "application", CoordinatorID: "owner", Origin: dndevents.ConditionOrigin{Ref: core.Ref{Module: "example", Type: "items", ID: "ring"}, EntityID: "item-1"}, Existing: []conditions.ParticipantConditions{{MemberID: "owner"}, {MemberID: "holder"}}, Spec: conditions.ApplicationSpec{Name: "Bonus", CoordinatorParts: []dndfx.PartDeclaration{{Key: "empty", Kind: dndfx.KindUntilEmpty, OnTerminal: fx.EndApplication}}, Recipients: []conditions.RecipientSpec{{MemberID: "holder", Ref: refs.Conditions.LinkedEffects().String(), Name: "Bonus", AddressSourceID: "payload", Lifetime: conditions.LifetimeShared, Parts: []dndfx.PartDeclaration{decl}}}}}
 	prepared, err := conditions.PrepareApplication(&input)
 	s.Require().NoError(err)
 	*decl.Amount.Fixed = 88
-	decl.When.All[0].Fact.Value = "dex"
+	decl.When.All[0].Fact.Value = machine.StringScalar("dex")
 	made, err := conditions.CreateRecipient(&conditions.CreateRecipientInput{Prepared: prepared, SpecIndex: 0})
 	s.Require().NoError(err)
 	raw, err := made.Condition.ToJSON()
@@ -146,7 +146,7 @@ func (s *payloadPartsSuite) TestDeclarationClonesOwnGuardsAndAmounts() {
 	var saved conditions.LinkedConditionData
 	s.Require().NoError(json.Unmarshal(raw, &saved))
 	s.Equal(2, *saved.Bindings.Parts[0].Amount.Fixed)
-	s.Equal("str", saved.Bindings.Parts[0].When.All[0].Fact.Value)
+	s.Equal(machine.StringScalar("str"), saved.Bindings.Parts[0].When.All[0].Fact.Value)
 	*saved.Bindings.Parts[0].Amount.Fixed = 77
 	again, err := made.Condition.ToJSON()
 	s.Require().NoError(err)

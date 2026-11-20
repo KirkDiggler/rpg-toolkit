@@ -9,6 +9,7 @@ import (
 
 	"github.com/KirkDiggler/rpg-toolkit/core"
 	fx "github.com/KirkDiggler/rpg-toolkit/mechanics/effects"
+	"github.com/KirkDiggler/rpg-toolkit/mechanics/effects/machine"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
 	dndfx "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/effects"
 	dndevents "github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/events"
@@ -159,12 +160,12 @@ func (s *definitionCompilerSuite) TestBindingDoesNotSpendAttachOrAlias() {
 func (s *definitionCompilerSuite) TestReturnedSpecMutationCannotChangeLibrary() {
 	defs := s.compile(definitionFixture)
 	a := s.bind(defs, "ring", "A", "B", "first")
-	a.Spec.Recipients[0].Parts[0].When.Fact.Value = "dex"
+	a.Spec.Recipients[0].Parts[0].When.Fact.Value = machine.StringScalar("dex")
 	*a.Spec.Recipients[0].Parts[0].Amount.Fixed = 99
 	a.Spec.Recipients[0].Parts[1].Params[0] = '['
 	a.Spec.CoordinatorParts[0].Kind = "bad"
 	b := s.bind(defs, "ring", "A", "B", "second")
-	s.Equal("str", b.Spec.Recipients[0].Parts[0].When.Fact.Value)
+	s.Equal(machine.StringScalar("str"), b.Spec.Recipients[0].Parts[0].When.Fact.Value)
 	s.Equal(2, *b.Spec.Recipients[0].Parts[0].Amount.Fixed)
 	s.JSONEq(`{"types":["slashing"]}`, string(b.Spec.Recipients[0].Parts[1].Params))
 	s.Equal(dndfx.KindConcentration, b.Spec.CoordinatorParts[0].Kind)

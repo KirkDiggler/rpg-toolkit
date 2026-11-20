@@ -100,7 +100,7 @@ func (s *attackAdvantageSuite) TestMissingSideAndUnsupportedSaveSideRefused() {
 }
 func (s *attackAdvantageSuite) TestOpportunityAndAbilityFacts() {
 	decl := attackPart("by_holder")
-	decl.When = &machine.Guard{All: []machine.Guard{*abilityGuard("str"), {Fact: &machine.FactLeaf{Name: dndfx.FactOpportunity, Op: machine.OpEq, Value: false}}}}
+	decl.When = &machine.Guard{All: []machine.Guard{*abilityGuard("str"), {Fact: &machine.FactLeaf{Name: dndfx.FactOpportunity, Op: machine.OpEq, Value: machine.BoolScalar(false)}}}}
 	_, bus, _ := s.bound(decl)
 	f := attackFrame(0)
 	f.Action.Opportunity = contributions.Known(false)
