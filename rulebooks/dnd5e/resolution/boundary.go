@@ -134,7 +134,25 @@ var boundaryTopics = map[encounter.BoundaryKind]func(
 			SubjectID: string(b.Subject),
 		})
 	},
+	// A fight starting for one member (rpg-project#990): what ends when its
+	// holder's fight starts — an `ends_on: fight starts` status — hears it.
+	// No Round, for the fight ending's reason.
+	combatStarted: func(ctx context.Context, bus events.EventBus, b encounter.Boundary) error {
+		return dnd5eEvents.CombatStartTopic.On(bus).Publish(ctx, dnd5eEvents.CombatStartEvent{
+			SubjectID: string(b.Subject),
+		})
+	},
 }
+
+// combatStarted is the composition's fight-started boundary kind, spelled
+// exactly as the encounter spells its own CombatStarted ("combat_started"): a
+// fight a member is in has started for them, crossed once per member when the
+// fight forms and when a member joins one under way (rpg-project#990).
+//
+// Declared HERE, as the encounter's own string type, because this module
+// learns of the boundary before it pins an encounter that names it; the
+// spelling is pinned by a test on each side, so neither can rename it alone.
+const combatStarted encounter.BoundaryKind = "combat_started"
 
 type boundaryMachine struct {
 	crossed     []encounter.Boundary
