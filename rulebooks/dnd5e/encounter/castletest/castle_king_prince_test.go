@@ -15,6 +15,9 @@ package castletest
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -33,26 +36,63 @@ const (
 var (
 	theCells       = encounter.RegionID("region-cells")
 	theArmoury     = encounter.RegionID("region-armoury")
-	cellsEastEnd   = castleCell(-16, 9)
 	besideTheDrain = castleCell(-20, 13)
+	eastInTheCell  = castleCell(-18, 13)
 )
 
-// toThePrince is the jail with the hero walked to the rightful king, who
-// has not been spoken to: nobody knows the drain, and he is the party's to
-// take on.
+// princeScene is the jail with the hero walked to the rightful king and
+// the king's purpose said: built once, before any test, and loaded by each
+// test that starts from it. Nobody knows the drain yet, and he is the
+// party's to take on.
+var princeScene struct {
+	once sync.Once
+	err  error
+	blob []byte
+}
+
+// princeSceneTests are the tests that start from [princeScene].
+var princeSceneTests = []string{
+	"TestMadKingTheRightfulKingJoinsAndShowsTheWayOut", "TestMadKingTheRightfulKingLeftBehindStillTellsTheWay",
+}
+
+// buildThePrinceScene plays [princeScene] from the jailed scene.
+func buildThePrinceScene() {
+	tb := &fixtureTB{}
+	defer func() {
+		if r := recover(); r != nil {
+			if _, ok := r.(fixtureFailed); !ok {
+				panic(r)
+			}
+			princeScene.err = fmt.Errorf("the prince scene: %s", tb.failed)
+		}
+	}()
+	jailedScene.once.Do(buildTheJailedScene)
+	require.NoError(tb, jailedScene.err)
+	s := loadTheSceneOn(tb, jailedScene.blob, arrestScene.compiled, arrestScene.host)
+	require.Equal(tb, theCells, s.regionOf(s.at(hero)), "precondition: the hero was marched to the cells")
+	require.Equal(tb, theCells, s.regionOf(s.at(kingPrince)), "the rightful king is in the cells")
+	s.walkTo(s.at(kingPrince))
+	require.Equal(tb, theCells, s.regionOf(s.at(hero)))
+	_, err := s.enc.PropOptionsFor(hero, kingCellDrain)
+	require.ErrorIs(tb, err, encounter.ErrNoProp, "precondition: nobody knows the drain is there")
+	require.Equal(tb, encounter.StanceNeutral, s.stance(trueCrown, encounter.FactionParty), "he is civil to the party")
+	s.sayPlain(kingPrince, "kill-the-king")
+	princeScene.blob, err = json.Marshal(s.enc.ToData())
+	require.NoError(tb, err)
+}
+
+// toThePrince loads [princeScene] into a fresh run.
 func toThePrince(t *testing.T) *kingScene {
 	t.Helper()
-	s := theJail(t)
-	require.Equal(t, theCells, s.regionOf(s.at(hero)), "precondition: the hero was marched to the cells")
-	require.Equal(t, theCells, s.regionOf(s.at(kingPrince)), "the rightful king is in the cells")
-	s.walkTo(s.at(kingPrince))
-	require.Equal(t, theCells, s.regionOf(s.at(hero)))
-	_, err := s.enc.PropOptionsFor(hero, kingCellDrain)
-	require.ErrorIs(t, err, encounter.ErrNoProp, "precondition: nobody knows the drain is there")
-	require.Equal(t, encounter.StanceNeutral, s.stance(trueCrown, encounter.FactionParty), "he is civil to the party")
-	s.sayPlain(kingPrince, "kill-the-king")
+	princeScene.once.Do(buildThePrinceScene)
+	require.NoError(t, princeScene.err)
 
-	return s
+	// The jail's host, not saved and loaded back between rounds: the
+	// cells' walks are short, and the reload is proved on its own route.
+	host := arrestScene.host
+	host.noReload = true
+
+	return loadTheSceneOn(t, princeScene.blob, arrestScene.compiled, host)
 }
 
 // sayPlain has the hero say one of a creature's plain lines: no check.
@@ -65,10 +105,20 @@ func (s *kingScene) sayPlain(target encounter.MemberID, option string) {
 	require.NoError(s.t, err, "%s offers %q", target, option)
 }
 
-// throughTheDrain walks the hero to the drain and takes it.
+// stepAway has the hero take one step away from a member and end the walk:
+// one more round of the world for the creatures to act in.
+func (s *kingScene) stepAway(from encounter.MemberID) {
+	s.t.Helper()
+	out, err := s.enc.Route(encounter.RouteInput{Mover: hero, Policy: encounter.MoveAway, Anchor: s.at(from), Budget: 1})
+	require.NoError(s.t, err)
+	require.NotEmpty(s.t, out.Path, "the hero has room to step away (%s)", out.StoppedBy)
+	_, err = s.enc.Step(&encounter.StepInput{Member: hero, To: out.Path[0], EndWalk: true})
+	require.NoError(s.t, err)
+}
+
+// throughTheDrain has the hero, beside the drain, take it.
 func (s *kingScene) throughTheDrain() {
 	s.t.Helper()
-	s.walkTo(besideTheDrain)
 	offered, err := s.enc.PropOptionsFor(hero, kingCellDrain)
 	require.NoError(s.t, err, "the hero knows the drain")
 	require.NotEmpty(s.t, offered)
@@ -97,8 +147,9 @@ func TestMadKingTheRightfulKingJoinsAndShowsTheWayOut(t *testing.T) {
 	require.False(t, s.offersTo(hero, kingPrince, "join-us"), "taken on once")
 
 	post := s.at(kingPrince)
-	s.walkTo(cellsEastEnd)
-	s.markTime(2, kingPrince)
+	s.walkTo(eastInTheCell)
+	s.stepAway(kingPrince)
+	s.stepAway(kingPrince)
 	require.Positive(t, s.pickedTowardAlly(kingPrince), "he follows the party")
 	require.NotEqual(t, post, s.at(kingPrince), "he left where he stood")
 	require.Less(t, s.enc.Distance(s.at(kingPrince), s.at(hero)), s.enc.Distance(post, s.at(hero)),
@@ -119,6 +170,7 @@ func TestMadKingTheRightfulKingLeftBehindStillTellsTheWay(t *testing.T) {
 
 	require.False(t, s.learners("prince-recruited")[kingPrince])
 	require.Equal(t, encounter.StanceNeutral, s.stance(trueCrown, encounter.FactionParty), "left, he is not the party's side")
+	s.walkTo(besideTheDrain)
 	s.throughTheDrain()
 	require.Equal(t, post, s.at(kingPrince), "he stays in the cell")
 }
