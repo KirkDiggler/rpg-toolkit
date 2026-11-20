@@ -29,10 +29,11 @@ func (s *BoundaryTestSuite) SetupTest() { s.ctx = context.Background() }
 // heard records every turn boundary that reached the bus, in the order it
 // arrived — which is the only thing these tests are about.
 type heard struct {
-	starts    []dnd5eEvents.TurnStartEvent
-	ends      []dnd5eEvents.TurnEndEvent
-	fightEnds []dnd5eEvents.CombatEndEvent
-	order     []string
+	starts      []dnd5eEvents.TurnStartEvent
+	ends        []dnd5eEvents.TurnEndEvent
+	fightEnds   []dnd5eEvents.CombatEndEvent
+	fightStarts []dnd5eEvents.CombatStartEvent
+	order       []string
 }
 
 func (h *heard) listen(ctx context.Context, bus events.EventBus) {
@@ -46,6 +47,12 @@ func (h *heard) listen(ctx context.Context, bus events.EventBus) {
 		func(_ context.Context, e dnd5eEvents.TurnEndEvent) error {
 			h.ends = append(h.ends, e)
 			h.order = append(h.order, "end:"+e.SubjectID)
+			return nil
+		})
+	_, _ = dnd5eEvents.CombatStartTopic.On(bus).Subscribe(ctx,
+		func(_ context.Context, e dnd5eEvents.CombatStartEvent) error {
+			h.fightStarts = append(h.fightStarts, e)
+			h.order = append(h.order, "began:"+e.SubjectID)
 			return nil
 		})
 	_, _ = dnd5eEvents.CombatEndTopic.On(bus).Subscribe(ctx,
@@ -299,19 +306,19 @@ func (s *BoundaryTestSuite) TestAFightsEndingCarriesItsSubjectAndNothingElse() {
 // composition and not added here.
 //
 // Honest about its own limit: this cannot enumerate the composition's consts
-// from another module, so it will not fail the moment encounter grows a fourth
+// from another module, so it will not fail the moment encounter grows a fifth
 // kind. What fails then is the refusal above, at the first announcement that
 // carries it — loudly, in the session suite, rather than silently forever.
 // This test's job is narrower and still worth doing: it stops the table being
 // trimmed.
 func (s *BoundaryTestSuite) TestTheTableCoversEveryKindThisBuildKnows() {
 	for _, kind := range []encounter.BoundaryKind{
-		encounter.TurnStarted, encounter.TurnEnded, encounter.CombatEnded,
+		encounter.TurnStarted, encounter.TurnEnded, encounter.CombatEnded, combatStarted,
 	} {
 		_, ok := boundaryTopics[kind]
 		s.True(ok, "boundaryTopics has no entry for %q, so announcing one would be refused", kind)
 	}
-	s.Len(boundaryTopics, 3, "a fourth entry here needs a fourth kind above and a test with it")
+	s.Len(boundaryTopics, 4, "a fifth entry here needs a fifth kind above and a test with it")
 }
 
 func (s *BoundaryTestSuite) TestColdCombatantCanReactBeforeFirstTurnAndOnlyOwnerTurnRefreshes() {
@@ -347,4 +354,30 @@ func (s *BoundaryTestSuite) TestColdCombatantCanReactBeforeFirstTurnAndOnlyOwner
 	_, err = loaded.RefreshForTurn(s.ctx, &character.RefreshForTurnInput{TurnNumber: 2, Speed: loaded.GetSpeed()})
 	s.Require().NoError(err)
 	s.Equal(0, loaded.GetActionEconomy().ReactionsRemaining)
+}
+
+// TestAFightStartingReachesEachMemberItStartedFor (rpg-project#990): one start
+// per member the composition named, in its order, carrying the subject and
+// nothing else; nobody it did not name hears one.
+func (s *BoundaryTestSuite) TestAFightStartingReachesEachMemberItStartedFor() {
+	out, h, err := s.runBoundary([]encounter.Boundary{
+		{Kind: combatStarted, Subject: "alice", Round: 1},
+		{Kind: combatStarted, Subject: "goblin-7", Round: 1},
+		{Kind: encounter.TurnStarted, Subject: "alice", Round: 1},
+	})
+	s.Require().NoError(err)
+	s.Equal([]string{"began:alice", "began:goblin-7", "start:alice"}, h.order,
+		"each member's start once, before the first turn, as crossed")
+	s.Equal([]dnd5eEvents.CombatStartEvent{{SubjectID: "alice"}, {SubjectID: "goblin-7"}}, h.fightStarts)
+	s.Empty(h.fightEnds, "a start is not an end")
+	s.Require().IsType(BoundaryOutcome{}, out.Outcome)
+	s.Equal(3, out.Outcome.(BoundaryOutcome).Announced)
+}
+
+// TestTheFightStartedSpellingIsPinned: the encounter announces this kind as
+// "combat_started" and this module looks it up by the same string. The
+// encounter's own test pins its constant to the same literal, so a rename on
+// either side fails that side's test instead of drifting into a refusal.
+func (s *BoundaryTestSuite) TestTheFightStartedSpellingIsPinned() {
+	s.Equal(encounter.BoundaryKind("combat_started"), combatStarted)
 }
