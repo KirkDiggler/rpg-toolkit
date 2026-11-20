@@ -39,10 +39,16 @@ type noteGive struct {
 	cause  Connection
 }
 
-// way is how a taker word comes by a note, from the who-words list.
+// way is how a taker word comes by a note, from the who-words list: the
+// word's TAKER entry, since one word may be written in more than one place
+// (encounter.WhoWordAt) and only a taker comes by a note.
 func way(word string) string {
-	w, _ := encounter.WhoWordOf(word)
-	return w.Way
+	for _, w := range encounter.WhoWords() {
+		if w.Word == word && w.Role == encounter.WhoTaker {
+			return w.Way
+		}
+	}
+	return ""
 }
 
 // noteGiveEdges is every connection one topic given carries: the

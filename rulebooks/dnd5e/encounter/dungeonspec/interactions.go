@@ -194,7 +194,7 @@ func givingOf(at string, r *GiveSpec, carriers bool, fail func(at, message strin
 		// Joined from the table, whatever it holds: each word with its label.
 		said := make([]string, 0, len(abouts))
 		for _, w := range abouts {
-			wd, _ := encounter.WhoWordOf(w)
+			wd, _ := encounter.WhoWordAt(encounter.WhoInGiveAbout, w)
 			said = append(said, fmt.Sprintf("`%s`, %s", w, wd.Label))
 		}
 		fail(at+".about", "the subjects are "+strings.Join(said, ", or "))
