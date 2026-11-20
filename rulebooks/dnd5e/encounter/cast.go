@@ -405,6 +405,9 @@ func (e *Encounter) RecordCast(in *RecordCastInput) (*RecordCastOutput, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := e.refuseHeldCaster(in); err != nil {
+		return nil, err
+	}
 	prepared, err := e.prepareCast(in)
 	if err != nil {
 		return nil, err
