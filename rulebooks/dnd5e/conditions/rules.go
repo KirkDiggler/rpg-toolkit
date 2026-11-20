@@ -35,6 +35,7 @@ type ruleEntry struct {
 // rule is one rule compiled and composed, unattached: a bound output nothing
 // subscribes and no sheet holds.
 type rule struct {
+	ref    core.Ref
 	source string
 	output *generic.Bound
 }
@@ -81,7 +82,7 @@ func compileRules(data json.RawMessage) ([]rule, error) {
 		if len(outputs) != 1 {
 			return nil, fmt.Errorf("rules library %q: a rule is one output, got %d", entry.Source, len(outputs))
 		}
-		out = append(out, rule{source: entry.Source, output: outputs[0]})
+		out = append(out, rule{ref: ref, source: entry.Source, output: outputs[0]})
 	}
 	return out, nil
 }
@@ -96,6 +97,10 @@ type InitiativeInput struct {
 
 // InitiativeContribution is one named thing a creature adds to initiative.
 type InitiativeContribution struct {
+	// Ref is the content that adds it: a rule's own ref
+	// (`dnd5e:rules:dexterity-initiative`), or the ref of the held effect.
+	// Never nil.
+	Ref *core.Ref
 	// Source is what a player reads: "Dexterity", or a held effect's name.
 	Source string
 	// Amount is what it adds; negative subtracts.
@@ -132,8 +137,8 @@ func Initiative(in *InitiativeInput) (*InitiativeOutput, error) {
 	}
 	holder := &dndfx.HolderQuery{MemberID: in.MemberID, Scores: in.Scores}
 	out := &InitiativeOutput{}
-	add := func(source string, n int) {
-		out.Contributions = append(out.Contributions, InitiativeContribution{Source: source, Amount: n})
+	add := func(ref *core.Ref, source string, n int) {
+		out.Contributions = append(out.Contributions, InitiativeContribution{Ref: ref, Source: source, Amount: n})
 		out.Total += n
 	}
 	for _, r := range rules {
@@ -142,7 +147,8 @@ func Initiative(in *InitiativeInput) (*InitiativeOutput, error) {
 			return nil, fmt.Errorf("rule %q: %w", r.source, err)
 		}
 		if answer.Answered {
-			add(r.source, answer.Amount)
+			ref := r.ref
+			add(&ref, r.source, answer.Amount)
 		}
 	}
 	for _, held := range in.Conditions {
@@ -162,7 +168,8 @@ func Initiative(in *InitiativeInput) (*InitiativeOutput, error) {
 			}
 		}
 		if answered {
-			add(name, total)
+			ref := *held.Ref()
+			add(&ref, name, total)
 		}
 	}
 	return out, nil

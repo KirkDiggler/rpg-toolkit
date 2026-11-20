@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/events"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/combat"
@@ -132,7 +133,7 @@ func (s *monsterHeldRaiseSuite) TestInitiativeAddsDexterityByRule() {
 	s.Require().NoError(err)
 	out, err := quick.Initiative()
 	s.Require().NoError(err)
-	s.Equal([]conditions.InitiativeContribution{{Source: "Dexterity", Amount: 2}}, out.Contributions)
+	s.Equal([]conditions.InitiativeContribution{{Ref: &core.Ref{Module: "dnd5e", Type: "rules", ID: "dexterity-initiative"}, Source: "Dexterity", Amount: 2}}, out.Contributions)
 
 	blank, err := s.m.Initiative()
 	s.Require().NoError(err)

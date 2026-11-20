@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	"github.com/KirkDiggler/rpg-toolkit/core"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/abilities"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/character"
 	"github.com/KirkDiggler/rpg-toolkit/rulebooks/dnd5e/conditions"
@@ -63,7 +64,7 @@ func (s *initiativeRulesSuite) TestDexterityAddsItsModifierFromTheRule() {
 		out, err := conditions.Initiative(&conditions.InitiativeInput{MemberID: "m",
 			Scores: shared.AbilityScores{abilities.DEX: dex, abilities.STR: 20}})
 		s.Require().NoError(err)
-		s.Equal([]conditions.InitiativeContribution{{Source: "Dexterity", Amount: want}}, out.Contributions, "Dexterity %d", dex)
+		s.Equal([]conditions.InitiativeContribution{{Ref: &core.Ref{Module: "dnd5e", Type: "rules", ID: "dexterity-initiative"}, Source: "Dexterity", Amount: want}}, out.Contributions, "Dexterity %d", dex)
 		s.Equal(want, out.Total)
 	}
 }
@@ -89,7 +90,7 @@ func (s *initiativeRulesSuite) TestAHeldEffectAddsAndIsListedSecond() {
 	w, defs := s.setup()
 	s.give(w, defs, "well-fed", "B")
 	out := s.initiative(w, "B")
-	s.Equal([]conditions.InitiativeContribution{{Source: "Dexterity", Amount: 2}, {Source: "Well fed", Amount: 1}}, out.Contributions,
+	s.Equal([]conditions.InitiativeContribution{{Ref: &core.Ref{Module: "dnd5e", Type: "rules", ID: "dexterity-initiative"}, Source: "Dexterity", Amount: 2}, {Ref: s.heldRef(out), Source: "Well fed", Amount: 1}}, out.Contributions,
 		"the sheet's DEX 14 by rule, then the held status, once")
 	s.Equal(3, out.Total)
 	s.Equal(2, s.initiative(w, "A").Total, "a member without the status has the rule only")
@@ -101,7 +102,7 @@ func (s *initiativeRulesSuite) TestAnAuthoredEffectCanPlugInAnotherAbility() {
 	w, defs := s.setup()
 	s.give(w, defs, "keen-mind", "B")
 	out := s.initiative(w, "B")
-	s.Equal([]conditions.InitiativeContribution{{Source: "Dexterity", Amount: 2}, {Source: "Keen mind", Amount: 1}}, out.Contributions,
+	s.Equal([]conditions.InitiativeContribution{{Ref: &core.Ref{Module: "dnd5e", Type: "rules", ID: "dexterity-initiative"}, Source: "Dexterity", Amount: 2}, {Ref: s.heldRef(out), Source: "Keen mind", Amount: 1}}, out.Contributions,
 		"the sheet's WIS 12 gives +1")
 }
 
@@ -111,7 +112,7 @@ func (s *initiativeRulesSuite) TestEndingTheHeldEffectLeavesOnlyTheRule() {
 	w, defs := s.setup()
 	s.give(w, defs, "well-fed", "B")
 	s.Require().NoError(w.runEnd("B"))
-	s.Equal([]conditions.InitiativeContribution{{Source: "Dexterity", Amount: 2}}, s.initiative(w, "B").Contributions)
+	s.Equal([]conditions.InitiativeContribution{{Ref: &core.Ref{Module: "dnd5e", Type: "rules", ID: "dexterity-initiative"}, Source: "Dexterity", Amount: 2}}, s.initiative(w, "B").Contributions)
 }
 
 // Catches the rule leaking onto the sheet: it is not in the saved data of a
@@ -223,4 +224,31 @@ func BenchmarkInitiative(b *testing.B) {
 			}
 		})
 	}
+}
+
+// heldRef asserts the second contribution's ref is a real ref of its own, not
+// the Dexterity rule's, and answers it so the whole value can be compared.
+func (s *initiativeRulesSuite) heldRef(out *conditions.InitiativeOutput) *core.Ref {
+	s.Require().Len(out.Contributions, 2)
+	ref := out.Contributions[1].Ref
+	s.Require().NotNil(ref, "a held effect names the content that adds it")
+	s.Require().NoError(ref.IsValid())
+	s.NotEqual("dnd5e:rules:dexterity-initiative", ref.String())
+	return ref
+}
+
+// Catches a contribution with no ref, a held effect given the rule's ref, and a
+// rule ref that is the library's own pointer rather than a copy.
+func (s *initiativeRulesSuite) TestAContributionNamesWhatAddsIt() {
+	w, defs := s.setup()
+	s.give(w, defs, "well-fed", "B")
+	out := s.initiative(w, "B")
+	s.Require().Len(out.Contributions, 2)
+	s.Require().NotNil(out.Contributions[0].Ref)
+	s.Equal("dnd5e:rules:dexterity-initiative", out.Contributions[0].Ref.String())
+	s.heldRef(out)
+
+	out.Contributions[0].Ref.ID = "tampered"
+	again := s.initiative(w, "B")
+	s.Equal("dexterity-initiative", again.Contributions[0].Ref.ID, "the answer shares no pointer with the library")
 }
