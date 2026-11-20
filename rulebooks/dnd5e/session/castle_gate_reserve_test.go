@@ -139,6 +139,9 @@ func TestMain(m *testing.M) {
 	if wantedBy(pattern, kitchenPlayTests) {
 		kitchenPlay.once.Do(buildTheKitchenPlay)
 	}
+	if wantedBy(pattern, hallHoldTests) {
+		hallHold.once.Do(buildTheHallHold)
+	}
 	os.Exit(m.Run())
 }
 

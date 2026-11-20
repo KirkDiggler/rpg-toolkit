@@ -730,9 +730,17 @@ func translate(err error) error {
 	if errors.As(err, &held) {
 		return &CustodyMoveError{Member: string(held.Mover)}
 	}
+	// HELD BY AN EFFECT (rpg-project#990): the typed refusal, naming what
+	// holds the member, is ErrCannotMove.
+	var stuck *encounter.CannotMoveError
+	if errors.As(err, &stuck) {
+		return &CannotMoveError{Member: string(stuck.Member), HeldBy: append([]string(nil), stuck.HeldBy...)}
+	}
 	switch {
 	case errors.Is(err, encounter.ErrInCustody):
 		return fmt.Errorf("%w", ErrInCustody)
+	case errors.Is(err, encounter.ErrCannotMove):
+		return fmt.Errorf("%w", ErrCannotMove)
 	case errors.Is(err, encounter.ErrTrimmed):
 		return fmt.Errorf("%w", ErrStoryTrimmed)
 	case errors.Is(err, encounter.ErrNoMember):

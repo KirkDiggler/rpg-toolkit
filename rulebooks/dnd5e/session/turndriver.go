@@ -156,6 +156,13 @@ type MonsterView struct {
 
 	// Round is the fight's own round counter.
 	Round int
+
+	// CannotMove is the names of what holds this creature so that it cannot
+	// move under its own power — the held effects that take moving away
+	// (rpg-project#990). Empty means it may move under its own power. A
+	// driver may read it to choose something else; a walk it picks anyway
+	// does not happen, and the creature's turn ends where it stands.
+	CannotMove []string
 }
 
 // RememberedMember is one other member's last-known position. It carries no
@@ -632,7 +639,8 @@ func projectMonsterView(view encounter.MonsterView) MonsterView {
 			AttacksLeft: view.Budget.AttacksLeft, MovementFeet: view.Budget.MovementFeet,
 			BonusActions: view.Budget.BonusActions,
 		},
-		Round: view.Round,
+		Round:      view.Round,
+		CannotMove: append([]string(nil), view.CannotMove...),
 	}
 }
 

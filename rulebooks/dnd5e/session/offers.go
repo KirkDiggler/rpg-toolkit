@@ -84,7 +84,8 @@ type compiledOffer struct {
 	// unreadable is why this offer is blocked when the cause is a named
 	// refusal rather than a stale selector, in this package's own vocabulary:
 	// the first sheet a resolution participant needs and nobody can read, or
-	// the attacker's competing attack offers (ErrConflictingOffers). Nil
+	// the attacker's competing attack offers (ErrConflictingOffers), or a
+	// Move a held effect takes away ([CannotMoveError], rpg-project#990). Nil
 	// otherwise. Selecting a blocked offer reports it rather than calling the
 	// selector stale — the selector is current; the sheet or the unpicked
 	// offer is what refuses (rpg-project#538).
@@ -720,6 +721,21 @@ func buildMoveOffer(session, member string, sheet *character.Character) (compile
 		ID:         id,
 		TargetKind: TargetPath,
 		Candidates: []TargetCandidate{},
+	}
+	// HELD (rpg-project#990): what a held effect takes away is unavailable
+	// whatever the budget says, and says what holds them, in the verb's own
+	// sentence.
+	held, err := sheet.CannotMove()
+	if err != nil {
+		return compiledOffer{}, fmt.Errorf("move offer %q: %w: %v", member, ErrBadCharacter, err)
+	}
+	if held.CannotMove {
+		refusal := &CannotMoveError{Member: member, HeldBy: held.Sources}
+		why := Shortfall{Reason: ShortfallHeld, Text: refusal.Error()}
+		decl.Why = &why
+		// Selecting it anyway is refused with the hold, not as stale.
+		return compiledOffer{declaration: decl, sheet: sheet, verb: VerbMove, slot: SlotNone, variant: variant,
+			unreadable: refusal}, nil
 	}
 	if left >= 5 {
 		decl.Available = true

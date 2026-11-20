@@ -2091,6 +2091,13 @@ const (
 	// [SpeakOptionRow.Pending], never on a declaration. The verb refuses it
 	// as [ErrLineReserved].
 	ShortfallLineReserved ShortfallReason = "line_reserved"
+
+	// ShortfallHeld is a Move a held effect takes away (rpg-project#990):
+	// the member cannot move under their own power while it is held. Its
+	// [Shortfall.Text] is the sentence the verb would refuse with — "You are
+	// Held; you cannot move." — naming what holds them. The verb refuses it
+	// as [ErrCannotMove].
+	ShortfallHeld ShortfallReason = "held"
 )
 
 // Currency names which of a turn's budgets a NO_BUDGET shortfall ran out
