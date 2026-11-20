@@ -73,8 +73,12 @@ type DepartOutput struct {
 // leaver ends, with reason [DepartedReason]. Every hold the leaver holds ends
 // too, with the same reason, and its effects come off every remaining target:
 // the run settles what it put on its members, or a target's own departure
-// would later refuse for a caster who is gone. An effect on the leaver that
-// no hold names is not touched.
+// would later refuse for a caster who is gone.
+//
+// The leaver's run ends first: [dnd5eEvents.RunEndTopic] is published for
+// them, so an effect whose lifetime is end_on run_end comes off with its own
+// authored reason and is reported in Ended. Apart from that, an effect on the
+// leaver that no hold names is not touched.
 //
 // Returns [ErrNilInput], or [ErrBadParticipant] for a record that is not one
 // sheet, a leaver also among the others, an effect of a concentration spell
@@ -126,11 +130,6 @@ func departOn(
 		return nil, fmt.Errorf("%w: %q attached but is not in the cast", ErrBadParticipant, one.ID())
 	}
 
-	held, err := heldOn(one.Character, cast)
-	if err != nil {
-		return nil, err
-	}
-
 	ends, err := collectConcentrationEnds(ctx, surf.inner)
 	if err != nil {
 		return nil, err
@@ -139,7 +138,12 @@ func departOn(
 	if err != nil {
 		return nil, errors.Join(err, ends.stop(ctx))
 	}
-	releaseErr := release(ctx, surf.inner, one.ID(), held, cast.applications)
+	// The leaver's run ends first, so an effect whose authored lifetime is the
+	// run comes off for its own reason before the holds are read and released.
+	held, releaseErr := endRunThenRead(ctx, surf.inner, one.Character, cast)
+	if releaseErr == nil {
+		releaseErr = release(ctx, surf.inner, one.ID(), held, cast.applications)
+	}
 	if stopErr := errors.Join(ends.stop(ctx), removals.stop(ctx)); stopErr != nil {
 		return nil, errors.Join(releaseErr, stopErr)
 	}
@@ -220,6 +224,15 @@ func cloneMonsterData(in *monster.Data) (*monster.Data, error) {
 		return nil, fmt.Errorf("%w: monster %q: %w", ErrBadParticipant, in.ID, err)
 	}
 	return out, nil
+}
+
+// endRunThenRead tells the run's bus that the leaver's run ended, then reads
+// what holds still tie the leaver to the run.
+func endRunThenRead(ctx context.Context, bus events.EventBus, leaver *character.Data, cast *Participants) ([]heldEffects, error) {
+	if err := dnd5eEvents.RunEndTopic.On(bus).Publish(ctx, dnd5eEvents.RunEndEvent{SubjectID: leaver.ID}); err != nil {
+		return nil, fmt.Errorf("resolution: depart %q: end run: %w", leaver.ID, err)
+	}
+	return heldOn(leaver, cast)
 }
 
 // heldEffects is a detached protocol view of one application's affected entries.
